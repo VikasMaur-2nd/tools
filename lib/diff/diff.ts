@@ -941,9 +941,10 @@ type Tokens = ArrayLike<number>;
 
 /**
  * Aligns two token sequences. Appends the edit script to `ea` / `eb`:
- * (i, j) = match, (i, -1) = delete a[i], (-1, j) = insert b[j].
+ * (i, j) = match, (i, -1) = delete a[i], (-1, j) = insert b[j]. Returns the
+ * Myers work spent (above `budget`: it ran out and the script is approximate).
  */
-export function align(ta: Tokens, tb: Tokens, ea: number[], eb: number[], budget = LCS_ARRAY_BUDGET): void {
+export function align(ta: Tokens, tb: Tokens, ea: number[], eb: number[], budget = LCS_ARRAY_BUDGET): number {
   const n = ta.length;
   const m = tb.length;
   let p = 0;
@@ -954,7 +955,8 @@ export function align(ta: Tokens, tb: Tokens, ea: number[], eb: number[], budget
     ea.push(i);
     eb.push(i);
   }
-  if (p < n - s && p < m - s) alignRange(ta, tb, p, n - s, p, m - s, ea, eb, budget);
+  let work = 0;
+  if (p < n - s && p < m - s) work = alignRange(ta, tb, p, n - s, p, m - s, ea, eb, budget);
   else {
     for (let i = p; i < n - s; i++) {
       ea.push(i);
@@ -969,6 +971,7 @@ export function align(ta: Tokens, tb: Tokens, ea: number[], eb: number[], budget
     ea.push(n - s + i);
     eb.push(m - s + i);
   }
+  return work;
 }
 
 /**

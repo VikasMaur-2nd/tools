@@ -105,7 +105,8 @@ export class TableView {
     }
     this.buildCols();
     this.applySort();
-    this.render(true);
+    if (this.fq) this.find(this.fq);
+    else this.render(true);
   }
 
   private buildCols() {
@@ -170,6 +171,60 @@ export class TableView {
 
   private maps = new WeakMap<JNode, Map<string, JNode>>();
 
+  // ── Find (rows whose key or any cell contains the query) ────────────────
+
+  private fq = '';
+  private fhits: number[] = []; // display positions in `order`
+  private fi = -1;
+  private fset: Set<number> | null = null;
+
+  find(q: string) {
+    this.fq = q;
+    this.fhits = [];
+    this.fi = -1;
+    this.fset = null;
+    if (q && this.node) {
+      const cs = q !== q.toLowerCase();
+      const qn = cs ? q : q.toLowerCase();
+      const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
+      const isObj = this.node.t === OBJ;
+      for (let r = 0; r < this.order.length; r++) {
+        const it = this.items[this.order[r]];
+        let hit = has(isObj ? String(it.key) : String(this.order[r]));
+        for (let ci = 1; !hit && ci < this.cols.length; ci++) {
+          const c = this.cell(it, this.cols[ci]);
+          if (c && c.t < ARR) hit = has(cellText(c));
+        }
+        if (hit) this.fhits.push(r);
+      }
+      this.fset = new Set(this.fhits);
+      if (this.fhits.length) {
+        this.fi = 0;
+        this.gotoHit();
+      }
+    }
+    this.render(true);
+    return { total: this.fhits.length, index: this.fi };
+  }
+
+  step(dir: 1 | -1) {
+    const n = this.fhits.length;
+    if (n) {
+      this.fi = (this.fi + dir + n) % n;
+      this.gotoHit();
+      this.render(true);
+    }
+    return { total: n, index: this.fi };
+  }
+
+  private gotoHit() {
+    const r = this.fhits[this.fi];
+    this.sel = this.items[this.order[r]];
+    const y = r * TRH;
+    const vh = this.el.clientHeight - 32;
+    if (y < this.el.scrollTop || y + TRH > this.el.scrollTop + vh) this.el.scrollTop = Math.max(0, y - vh / 2);
+  }
+
   private applySort() {
     const n = this.items.length;
     const order = new Array<number>(n);
@@ -232,7 +287,8 @@ export class TableView {
     for (let r = first; r < last; r++) {
       const idx = this.order[r];
       const it = this.items[idx];
-      html += `<div class="tb-r${it === this.sel ? ' sel' : ''}" data-r="${idx}">`;
+      const hit = this.fset?.has(r) ? (r === this.fhits[this.fi] ? ' hit cur' : ' hit') : '';
+      html += `<div class="tb-r${it === this.sel ? ' sel' : ''}${hit}" data-r="${idx}">`;
       html += `<div class="tb-td tb-c0" data-c="0">${escapeHtml(isObj ? String(it.key) : String(idx))}</div>`;
       for (let ci = 1; ci < this.cols.length; ci++) {
         const c = this.cell(it, this.cols[ci]);

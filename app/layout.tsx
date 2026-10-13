@@ -46,7 +46,7 @@ export const viewport: Viewport = {
 
 // Runs before first paint: applies a manually chosen theme and the saved panel
 // split, and flags returning visitors so empty states don't flash.
-const BOOT = `try{var d=document.documentElement,l=localStorage,t=l.getItem('jf:theme');if(t==='light'||t==='dark')d.dataset.theme=t;var s=JSON.parse(l.getItem('jf:settings')||'{}').split;if(s>=.2&&s<=.8)d.style.setProperty('--split',s*100+'%');if(l.getItem('jf:doc'))d.dataset.doc=''}catch(e){}`;
+const BOOT = `try{var d=document.documentElement,l=localStorage,t=l.getItem('jf:theme');if(t==='light'||t==='dark')d.dataset.theme=t;var o=JSON.parse(l.getItem('jf:settings')||'{}'),s=o.split,c=o.splitCmp;if(s>=.2&&s<=.8)d.style.setProperty('--split',s*100+'%');if(c>=.4&&c<=.85)d.style.setProperty('--split-c',c*100+'%');if(l.getItem('jf:doc'))d.dataset.doc=''}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (

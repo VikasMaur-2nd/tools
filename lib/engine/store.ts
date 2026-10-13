@@ -14,6 +14,8 @@ export interface Settings {
   autoFormat: boolean;
   /** Editor width as a fraction of the window (0.2 – 0.8). */
   split: number;
+  /** Compare mode: width of the two editors together (0.4 – 0.85). */
+  splitCmp: number;
   /** Format view: pretty-printed or minified output, keys sorted or as written. */
   minify: boolean;
   sortKeys: boolean;
@@ -57,7 +59,8 @@ export interface UIState {
   /** JSONPath of the selected node. */
   path: string | null;
   cursor: { line: number; col: number; sel: number };
-  search: { q: string; total: number; index: number };
+  /** Find bar (searches whichever view is open). */
+  find: { open: boolean; q: string; total: number; index: number; /** bumps when q is set from outside the find bar */ seq: number };
   table: { segs: Seg[]; rows: number; cols: number; ok: boolean };
   /** Smart suggestion for input that isn't JSON (yet). */
   hint: Hint;
@@ -69,6 +72,9 @@ export interface UIState {
   fmt: { lines: number; pretty: number; minified: number };
   /** Current document text, published only while the Compare view is open. */
   docText: string;
+  /** Compare: the modified document (second editor). */
+  cmpText: string;
+  cmpFile: string | null;
   palette: false | 'commands' | 'url';
   shortcuts: boolean;
   dragging: boolean;
@@ -81,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   view: 'format',
   autoFormat: false,
   split: 0.5,
+  splitCmp: 0.66,
   minify: false,
   sortKeys: false,
   target: 'typescript',
@@ -98,7 +105,7 @@ export const INITIAL: UIState = {
   stale: false,
   path: null,
   cursor: { line: 1, col: 1, sel: 0 },
-  search: { q: '', total: 0, index: -1 },
+  find: { open: false, q: '', total: 0, index: -1, seq: 0 },
   table: { segs: [], rows: 0, cols: 0, ok: false },
   hint: null,
   fileName: null,
@@ -106,6 +113,8 @@ export const INITIAL: UIState = {
   convert: { loading: false, error: null, lines: 0, bytes: 0 },
   fmt: { lines: 0, pretty: 0, minified: 0 },
   docText: '',
+  cmpText: '',
+  cmpFile: null,
   palette: false,
   shortcuts: false,
   dragging: false,

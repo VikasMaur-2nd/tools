@@ -59,6 +59,8 @@ interface Change {
   kind: 'type' | 'del' | 'other';
 }
 
+const LINE_MARK = ['', 'dla', 'dld', 'dlc'];
+
 /** Textareas normalize line endings; the model must match them offset for offset. */
 const lf = (s: string) => (s.indexOf('\r') === -1 ? s : s.replace(/\r\n?/g, '\n'));
 
@@ -106,6 +108,8 @@ export class Editor {
   private scope: [number, number] | null = null;
   /** Exact offsets of the selected node when it sits on one line (minified docs). */
   private scopeMark: Mark | null = null;
+  /** Compare: per-line diff marks (1 added, 2 removed, 3 changed). */
+  private lineMarks: Uint8Array | null = null;
   private rFirst = -1;
   private rLast = -1;
   private rColA = 0;
@@ -149,6 +153,7 @@ export class Editor {
     el.addEventListener('paste', this.onViewPaste);
     document.addEventListener('selectionchange', this.onSel);
     this.ro = new ResizeObserver(() => {
+      if (!this.measured) this.measure();
       this.layout();
       this.render(true);
     });
@@ -186,6 +191,8 @@ export class Editor {
     if (this.view) ta.value = this.text;
   }
 
+  private measured = false;
+
   private measure() {
     const probe = document.createElement('span');
     probe.textContent = '0'.repeat(400);
@@ -193,6 +200,8 @@ export class Editor {
     this.hl.appendChild(probe);
     const w = probe.getBoundingClientRect().width / 400;
     probe.remove();
+    // A hidden editor (e.g. Compare's, before its tab opens) measures 0: retry when shown.
+    this.measured = w > 0;
     if (w > 0) this.cw = w;
   }
 
@@ -384,14 +393,16 @@ export class Editor {
       const a = this.ls[ln];
       const b = this.lineEnd(ln);
       const marks = this.marksFor(ln);
+      const lm = this.lineMarks ? this.lineMarks[ln] : 0;
+      const open = lm ? `<div class="${LINE_MARK[lm]}">` : '<div>';
       if (b - a > LONG_LINE && wide) {
         let sa = Math.min(b, a + colA);
         const sb = Math.min(b, a + colB);
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
-        html += `<div><i class="ed-sp" style="width:${pad}px"></i>${highlightLine(t, sa, sb, marks, sb === b)}</div>`;
+        html += `${open}<i class="ed-sp" style="width:${pad}px"></i>${highlightLine(t, sa, sb, marks, sb === b)}</div>`;
       } else {
-        html += `<div>${highlightLine(t, a, b, marks)}</div>`;
+        html += `${open}${highlightLine(t, a, b, marks)}</div>`;
       }
     }
     this.hl.style.transform = `translateY(${first * LH}px)`;
@@ -425,6 +436,8 @@ export class Editor {
     let g = '';
     for (let ln = first; ln < last; ln++) {
       let cls = this.diagCls.get(ln) ?? '';
+      const lm = this.lineMarks ? this.lineMarks[ln] : 0;
+      if (lm) cls += ' ' + LINE_MARK[lm];
       if (ln === this.caretLine) cls += ' c';
       if (ln >= l1 && ln <= l2) cls += ' s';
       g += cls ? `<div class="${cls.trim()}">${ln + 1}</div>` : `<div>${ln + 1}</div>`;
@@ -489,6 +502,19 @@ export class Editor {
       else break;
     }
     return i > p ? i : p + 1;
+  }
+
+  /** Compare: tint whole lines as added / removed / changed (null clears). */
+  setLineMarks(marks: Uint8Array | null) {
+    if (!marks && !this.lineMarks) return;
+    this.lineMarks = marks;
+    this.render(true);
+  }
+
+  /** Briefly point at a location without taking focus (used by Compare). */
+  point(off: number) {
+    this.setScope(off, off + 1);
+    this.reveal(off, true);
   }
 
   setBrackets(a: number, b: number) {

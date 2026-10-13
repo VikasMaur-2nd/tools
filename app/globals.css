@@ -287,10 +287,38 @@ svg {
   user-select: none;
 }
 
+/* Compare: Original | Modified | Differences */
+.comparing .panes {
+  grid-template-columns:
+    minmax(0, calc(var(--split-c, 66%) / 2)) minmax(0, calc(var(--split-c, 66%) / 2))
+    1px minmax(0, 1fr);
+}
+
+.pane-cmp {
+  border-left: 1px solid var(--line);
+}
+
+.side-tag {
+  padding: 2px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--fg);
+  font: 600 11px/1.2 var(--font-ui);
+  letter-spacing: 0.02em;
+}
+
 @media (max-width: 760px) {
   .panes {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, var(--split, 50%)) 1px minmax(0, 1fr);
+  }
+  .comparing .panes {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) 1px minmax(0, 1fr);
+  }
+  .pane-cmp {
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
   .split,
   .resizing {
@@ -918,6 +946,7 @@ kbd {
   position: absolute;
   top: 10px;
   left: 0;
+  right: 0;
   padding-left: 16px;
   color: var(--fg);
   white-space: pre;
@@ -1040,6 +1069,34 @@ kbd {
 [data-doc] .hero,
 [data-doc] .ed textarea::placeholder {
   visibility: hidden;
+}
+
+/* Compare: whole-line diff tints in both editors + gutter bars */
+.ed-hl > .dla {
+  background: var(--ok-soft);
+}
+
+.ed-hl > .dld {
+  background: var(--err-soft);
+}
+
+.ed-hl > .dlc {
+  background: var(--warn-soft);
+}
+
+.ed-gl > .dla {
+  box-shadow: inset 3px 0 var(--ok);
+  color: var(--ok);
+}
+
+.ed-gl > .dld {
+  box-shadow: inset 3px 0 var(--err);
+  color: var(--err);
+}
+
+.ed-gl > .dlc {
+  box-shadow: inset 3px 0 var(--warn);
+  color: var(--warn);
 }
 
 /* Syntax colors (shared by editor, tree, table and converters) */
@@ -2290,4 +2347,333 @@ dialog[open] {
     animation: none !important;
     transition: none !important;
   }
+}
+
+
+/* ─── Simplified toolbars: tabs · one main control · four fixed icons ──── */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.tabs button {
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 12.5px/1 var(--font-ui);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.tabs button:hover {
+  color: var(--fg);
+}
+
+.tabs button[aria-selected='true'] {
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.tabs-pick {
+  display: none;
+}
+
+.vmain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-right: 6px;
+}
+
+.vicons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.btn.on {
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+/* Narrow viewer: one dropdown instead of five tabs. */
+@container (max-width: 600px) {
+  .tabs {
+    display: none;
+  }
+  .tabs-pick {
+    display: inline-flex;
+  }
+}
+
+/* Very narrow: the main control takes its own row. */
+@container (max-width: 440px) {
+  .vbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding-block: 6px;
+    row-gap: 6px;
+  }
+  .vmain {
+    order: 3;
+    flex: 1 1 100%;
+    margin: 0;
+  }
+}
+
+/* Menus */
+.menu-wrap {
+  position: relative;
+  flex: none;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 70;
+  min-width: 232px;
+  padding: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+  animation: pop 0.12s ease-out;
+}
+
+.mi {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-2);
+  font: 13px/1.2 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.mi:hover,
+button.mi:focus-visible {
+  outline: none;
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.mi .kbd kbd {
+  height: 16px;
+  min-width: 16px;
+  font-size: 10px;
+}
+
+.mi-row {
+  cursor: default;
+}
+
+.mi-opts {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--bg-3);
+}
+
+.mi-opts button {
+  min-width: 28px;
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 12px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.mi-opts button:hover,
+.mi-opts button:focus-visible {
+  outline: none;
+  color: var(--fg);
+}
+
+.mi-opts button[aria-checked='true'] {
+  background: var(--seg-on);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.mi-check {
+  display: grid;
+  width: 16px;
+  color: var(--fg);
+}
+
+.mi-input {
+  width: 96px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--bg-2);
+  color: var(--fg);
+  font: 12px var(--font-mono);
+  outline: none;
+}
+
+.mi-input:focus {
+  border-color: var(--accent-line);
+}
+
+.mi-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--line);
+}
+
+.mi-head {
+  padding: 7px 9px 4px;
+  color: var(--faint);
+  font: 600 10.5px/1 var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Find bar (floats over the open view) */
+.findbar {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+  color: var(--muted);
+  animation: pop 0.12s ease-out;
+}
+
+.banner + .findbar {
+  top: 62px;
+}
+
+.findbar input {
+  width: 180px;
+  height: 26px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg);
+  font: 13px var(--font-ui);
+}
+
+.findbar .count {
+  min-width: 64px;
+  margin-right: 2px;
+  color: var(--muted);
+  font: 12px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Output folding & find marks */
+.cv-n {
+  position: sticky;
+}
+
+.cv-f {
+  position: absolute;
+  left: 6px;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 20px;
+  color: var(--faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.cv-f::before {
+  content: '';
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+
+.cv-f.c::before {
+  transform: none;
+}
+
+.cv:hover .cv-f,
+.cv-f.c {
+  opacity: 1;
+}
+
+.cv-f:hover {
+  color: var(--fg);
+}
+
+.cv-ph {
+  margin: 0 6px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--muted);
+  font: 11.5px/18px var(--font-ui);
+  cursor: pointer;
+  vertical-align: 1px;
+}
+
+.cv-ph:hover {
+  color: var(--fg);
+}
+
+.cv-c {
+  position: relative;
+}
+
+.cv-hit {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 2px;
+  background: var(--hit);
+  pointer-events: none;
+}
+
+.cv-hit.cur {
+  background: var(--hit-cur);
+}
+
+.tb-r.hit {
+  box-shadow: inset 2px 0 var(--hit-cur);
+}
+
+.tb-r.hit.cur {
+  background: var(--hit);
 }

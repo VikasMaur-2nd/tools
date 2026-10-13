@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { memo, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Engine } from '@/lib/engine/engine';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { store, useUI, type IndentId, type View } from '@/lib/engine/store';
@@ -48,24 +48,34 @@ function Btn({
 /** Input side: only what concerns the input itself. Everything that transforms it lives on the right. */
 const InputBar = memo(function InputBar() {
   const fileName = useUI((s) => s.fileName);
-  const mac = useUI((s) => s.mac);
-  const mod = mac ? '⌘' : 'Ctrl+';
+  const comparing = useUI((s) => s.settings.view === 'compare');
   return (
     <div className="toolbar" role="toolbar" aria-label="Input">
       <span className="fname" title={fileName ?? undefined}>
+        {comparing && <b className="side-tag">Original</b>}
         {fileName ? (
           <>
             <Icon name="file" size={14} />
             {fileName}
           </>
         ) : (
-          'Input'
+          !comparing && 'Input'
         )}
       </span>
       <span className="grow" />
-      <Btn icon="paste" label="Paste" hideLabel onClick={() => act((e) => e.paste())} />
-      <Btn icon="open" label={`Open file · ${mod}O`} hideLabel onClick={() => act((e) => e.openFile())} />
-      <Btn icon="trash" label="Clear" hideLabel onClick={() => act((e) => e.clear())} />
+      <Menu label="Input options">
+        {(close) => (
+          <>
+            <MItem label="Paste" keys="mod+V" onClick={() => act((e) => e.paste())} close={close} />
+            <MItem label="Open file" keys="mod+O" onClick={() => act((e) => e.openFile())} close={close} />
+            <MItem label="Load from URL" onClick={() => act((e) => e.openPalette('url'))} close={close} />
+            <MItem label="Try a sample" onClick={() => act((e) => e.sample())} close={close} />
+            <MSep />
+            <MItem label="Download input" keys="mod+S" onClick={() => act((e) => e.download())} close={close} />
+            <MItem label="Clear" onClick={() => act((e) => e.clear())} close={close} />
+          </>
+        )}
+      </Menu>
     </div>
   );
 });
@@ -87,97 +97,381 @@ function ViewNotice() {
   );
 }
 
+/** Markup driven by lib/engine/editor.ts (highlighted, virtualized editor). */
+function EditorDom({
+  edRef,
+  id,
+  label,
+  placeholder,
+  autoFocus,
+}: {
+  edRef: React.RefObject<HTMLDivElement | null>;
+  id: string;
+  label: string;
+  placeholder: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div className="ed" ref={edRef}>
+      <div className="ed-gut" aria-hidden="true">
+        <div className="ed-gl" />
+      </div>
+      <div className="ed-body">
+        <div className="ed-scope" />
+        <div className="ed-cur" />
+        <div className="ed-hl" aria-hidden="true" />
+        <textarea
+          id={id}
+          spellCheck={false}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          wrap="off"
+          autoFocus={autoFocus}
+          aria-label={label}
+          placeholder={placeholder}
+        />
+      </div>
+    </div>
+  );
+}
+
 function EditorPane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }) {
   return (
     <section className="pane pane-ed" aria-label="JSON input">
       <InputBar />
       <ViewNotice />
-      <div className="ed" ref={edRef}>
-        <div className="ed-gut" aria-hidden="true">
-          <div className="ed-gl" />
-        </div>
-        <div className="ed-body">
-          <div className="ed-scope" />
-          <div className="ed-cur" />
-          <div className="ed-hl" aria-hidden="true" />
-          <textarea
-            id="input"
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            wrap="off"
-            autoFocus
-            aria-label="JSON input"
-            placeholder="Looks like someone's got a JSON…"
-          />
-        </div>
+      <EditorDom edRef={edRef} id="input" label="JSON input" placeholder="Looks like someone's got a JSON…" autoFocus />
+    </section>
+  );
+}
+
+/** Compare mode: the second (modified) document gets its own full editor column. */
+function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }) {
+  const comparing = useUI((s) => s.settings.view === 'compare');
+  const cmpFile = useUI((s) => s.cmpFile);
+  return (
+    <section className="pane pane-cmp" aria-label="Modified JSON" hidden={!comparing}>
+      <div className="toolbar" role="toolbar" aria-label="Modified document">
+        <span className="fname" title={cmpFile ?? undefined}>
+          <b className="side-tag">Modified</b>
+          {cmpFile && (
+            <>
+              <Icon name="file" size={14} />
+              {cmpFile}
+            </>
+          )}
+        </span>
+        <span className="grow" />
+        <Menu label="Modified document options">
+          {(close) => (
+            <>
+              <MItem label="Paste" onClick={() => act((e) => e.pasteCompare())} close={close} />
+              <MItem label="Open file" onClick={() => act((e) => e.openFile(2))} close={close} />
+              <MItem label="Format" keys="mod+Enter" onClick={() => act((e) => e.formatCompare())} close={close} />
+              <MItem label="Swap with original" onClick={() => act((e) => e.swapCompare())} close={close} />
+              <MSep />
+              <MItem label="Clear" onClick={() => act((e) => e.clearCompare())} close={close} />
+            </>
+          )}
+        </Menu>
       </div>
+      <EditorDom edRef={edRef} id="input2" label="Modified JSON" placeholder="Paste the modified JSON to compare…" />
     </section>
   );
 }
 
 // ── Viewer pane ─────────────────────────────────────────────────────────────
 
-function SearchBox({ inputRef }: { inputRef: React.RefObject<HTMLInputElement | null> }) {
-  const { q, total, index } = useUI((s) => s.search);
-  const timer = useRef(0);
+// ── Menus (⋯) ────────────────────────────────────────────────────────────────
 
-  const onInput = () => {
+/** A small popover menu anchored to an icon button. Keyboard: ↑ ↓ to move, Esc to close. */
+function Menu({ label, children }: { label: string; children: (close: () => void) => React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const id = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const pop = wrap.current?.querySelector<HTMLElement>('.menu');
+    pop?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
+    const onDown = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    document.getElementById(id)?.focus();
+  };
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = [...(e.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+  };
+  return (
+    <div className="menu-wrap" ref={wrap}>
+      <button
+        id={id}
+        type="button"
+        className={`btn icon${open ? ' on' : ''}`}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-tip={open ? undefined : label}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name="more" />
+      </button>
+      {open && (
+        <div className="menu" role="menu" aria-label={label} onKeyDown={onKey}>
+          {children(close)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MItem({ label, keys, onClick, close }: { label: string; keys?: string; onClick: () => void; close: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="mi"
+      onClick={() => {
+        close();
+        onClick();
+      }}
+    >
+      <span>{label}</span>
+      {keys && <Kbd k={keys} />}
+    </button>
+  );
+}
+
+function MCheck({ label, checked, onClick }: { label: string; checked: boolean; onClick: () => void }) {
+  return (
+    <button type="button" role="menuitemcheckbox" aria-checked={checked} className="mi" onClick={onClick}>
+      <span>{label}</span>
+      <span className="mi-check">{checked && <Icon name="check" size={14} />}</span>
+    </button>
+  );
+}
+
+/** A row with a few mutually exclusive options (indent 2 · 4 · Tab, levels 1 · 2 · 3). */
+function MChoice<T extends string | number>({
+  label,
+  options,
+  value,
+  onPick,
+  close,
+}: {
+  label: string;
+  options: { v: T; label: string }[];
+  value?: T;
+  onPick: (v: T) => void;
+  /** Close the menu after picking (actions); omit to keep it open (settings). */
+  close?: () => void;
+}) {
+  return (
+    <div className="mi mi-row" role="group" aria-label={label}>
+      <span>{label}</span>
+      <span className="mi-opts">
+        {options.map((o) => (
+          <button
+            key={String(o.v)}
+            type="button"
+            role="menuitemradio"
+            aria-checked={value === o.v}
+            onClick={() => {
+              close?.();
+              onPick(o.v);
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+const MSep = () => <div className="mi-sep" role="separator" />;
+const MHead = ({ children }: { children: React.ReactNode }) => <div className="mi-head">{children}</div>;
+
+const LEVELS = [
+  { v: 1, label: '1' },
+  { v: 2, label: '2' },
+  { v: 3, label: '3' },
+];
+
+function FoldItems({ close }: { close: () => void }) {
+  return (
+    <>
+      <MItem label="Collapse all" onClick={() => act((e) => e.collapseAll())} close={close} />
+      <MItem label="Expand all" onClick={() => act((e) => e.expandAll())} close={close} />
+      <MChoice label="Show levels" options={LEVELS} onPick={(l) => act((e) => e.expandTo(l))} close={close} />
+    </>
+  );
+}
+
+function ViewMenu() {
+  const view = useUI((s) => s.settings.view);
+  const indent = useUI((s) => s.settings.indent);
+  const sortKeys = useUI((s) => s.settings.sortKeys);
+  const target = useUI((s) => s.settings.target);
+  const rootName = useUI((s) => s.settings.rootName);
+  const tsStyle = useUI((s) => s.settings.tsStyle);
+  const hasSel = useUI((s) => !!s.path);
+  const info = targetInfo(target);
+  return (
+    <Menu label="More options">
+      {(close) => (
+        <>
+          {view === 'format' && (
+            <>
+              <MHead>Format</MHead>
+              <MChoice
+                label="Indent"
+                value={indent}
+                options={[
+                  { v: '2', label: '2' },
+                  { v: '4', label: '4' },
+                  { v: 'tab', label: 'Tab' },
+                ]}
+                onPick={(v) => act((e) => e.setIndent(v as IndentId))}
+              />
+              <MCheck label="Sort keys" checked={sortKeys} onClick={() => act((e) => e.setFormat({ sortKeys: !sortKeys }))} />
+              <MItem label="Use as input" keys="mod+Enter" onClick={() => act((e) => e.useOutput())} close={close} />
+              <MSep />
+              <FoldItems close={close} />
+            </>
+          )}
+          {view === 'tree' && (
+            <>
+              <MHead>Tree</MHead>
+              <FoldItems close={close} />
+              <MSep />
+              <MItem label="Copy path" keys="P" onClick={() => act((e) => e.copyPath())} close={close} />
+              <MItem label="Copy value" keys="C" onClick={() => act((e) => e.copyValue())} close={close} />
+              {hasSel && <MItem label="Expand nested JSON string" onClick={() => act((e) => e.expandNested())} close={close} />}
+            </>
+          )}
+          {view === 'table' && (
+            <>
+              <MHead>Table</MHead>
+              <MItem label="Copy as CSV" onClick={() => act((e) => e.copyCSV())} close={close} />
+              <MItem label="Download CSV" onClick={() => act((e) => e.downloadCSV())} close={close} />
+              <MItem label="Download Excel (.xlsx)" onClick={() => act((e) => e.exportExcel())} close={close} />
+            </>
+          )}
+          {view === 'convert' && (
+            <>
+              <MHead>{info.label}</MHead>
+              {info.group === 'Types' && (
+                <label className="mi mi-row">
+                  <span>Root type name</span>
+                  <input
+                    className="mi-input"
+                    value={rootName}
+                    onChange={(e) => act((en) => en.setConvert({ rootName: e.target.value.replace(/[^\w$]/g, '') }))}
+                    spellCheck={false}
+                  />
+                </label>
+              )}
+              {info.id === 'typescript' && (
+                <MChoice
+                  label="Declare as"
+                  value={tsStyle}
+                  options={[
+                    { v: 'interface', label: 'interface' },
+                    { v: 'type', label: 'type' },
+                  ]}
+                  onPick={(v) => act((e) => e.setConvert({ tsStyle: v as 'interface' | 'type' }))}
+                />
+              )}
+              {info.group === 'Types' && <MSep />}
+              <FoldItems close={close} />
+            </>
+          )}
+        </>
+      )}
+    </Menu>
+  );
+}
+
+// ── Find bar ────────────────────────────────────────────────────────────────
+
+/** Floating find for the open view (Ctrl+F). Esc closes it. */
+function FindBar() {
+  const { open, q, total, index, seq } = useUI((s) => s.find);
+  const view = useUI((s) => s.settings.view);
+  if (!open || view === 'compare') return null;
+  return <FindInput key={seq} initial={q} total={total} index={index} view={view} />;
+}
+
+function FindInput({ initial, total, index, view }: { initial: string; total: number; index: number; view: View }) {
+  const [text, setText] = useState(initial);
+  const timer = useRef(0);
+  const run = (v: string) => {
     window.clearTimeout(timer.current);
-    const v = inputRef.current?.value ?? '';
-    timer.current = window.setTimeout(() => act((e) => e.search(v)), v.length > 2 ? 90 : 160);
+    timer.current = window.setTimeout(() => act((e) => e.find(v)), v.length > 2 ? 80 : 150);
   };
   const onKey = (ev: ReactKeyboardEvent<HTMLInputElement>) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
       window.clearTimeout(timer.current);
-      const v = ev.currentTarget.value;
-      act((e) => e.searchSubmit(v, ev.shiftKey ? -1 : 1));
+      act((e) => e.findSubmit(text, ev.shiftKey ? -1 : 1));
     } else if (ev.key === 'Escape') {
       ev.preventDefault();
       window.clearTimeout(timer.current);
-      const el = ev.currentTarget;
-      if (el.value) {
-        el.value = '';
-        act((e) => e.search(''));
-      } else act((e) => e.focusTree());
-    } else if (ev.key === 'ArrowDown') {
-      ev.preventDefault();
-      act((e) => e.focusTree());
+      act((e) => e.closeFind());
+      document.querySelector<HTMLElement>(`#view-${view}`)?.focus();
     }
   };
   return (
-    <div className="search">
+    <div className="findbar" role="search">
       <Icon name="search" size={14} />
       <input
-        ref={inputRef}
-        type="search"
-        placeholder="Search keys, values or $.path"
-        aria-label="Search keys and values"
-        onInput={onInput}
+        autoFocus
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          run(e.target.value);
+        }}
         onKeyDown={onKey}
+        placeholder={view === 'tree' ? 'Find, or $.path' : 'Find'}
+        aria-label="Find in view"
         spellCheck={false}
         autoComplete="off"
       />
-      {q ? (
-        <>
-          <span className="count" aria-live="polite">
-            {total ? `${index + 1}/${total >= 100000 ? '100k+' : total}` : 'No matches'}
-          </span>
-          <button type="button" className="btn icon sm" aria-label="Previous match" onClick={() => act((e) => e.searchStep(-1))}>
-            <Icon name="up" size={14} />
-          </button>
-          <button type="button" className="btn icon sm" aria-label="Next match" onClick={() => act((e) => e.searchStep(1))}>
-            <Icon name="down" size={14} />
-          </button>
-        </>
-      ) : (
-        <Kbd k="/" />
-      )}
+      <span className="count" aria-live="polite">
+        {text ? (total ? `${index + 1} of ${total >= 100000 ? '100k+' : total.toLocaleString()}` : 'No results') : ''}
+      </span>
+      <button type="button" className="btn icon sm" aria-label="Previous match" onClick={() => act((e) => e.findStep(-1))}>
+        <Icon name="up" size={14} />
+      </button>
+      <button type="button" className="btn icon sm" aria-label="Next match" onClick={() => act((e) => e.findStep(1))}>
+        <Icon name="down" size={14} />
+      </button>
+      <button type="button" className="btn icon sm" aria-label="Close find" onClick={() => act((e) => e.closeFind())}>
+        <Icon name="x" size={14} />
+      </button>
     </div>
   );
 }
+
+// ── Viewer toolbar: tabs · one main control · four fixed icons ──────────────
 
 function Crumbs() {
   const { segs, rows, cols, ok } = useUI((s) => s.table);
@@ -200,135 +494,21 @@ function Crumbs() {
   );
 }
 
-const VIEWS: { id: View; label: string; icon: IconName }[] = [
-  { id: 'format', label: 'Format', icon: 'braces' },
-  { id: 'tree', label: 'Tree', icon: 'tree' },
-  { id: 'table', label: 'Table', icon: 'table' },
-  { id: 'convert', label: 'Convert', icon: 'code' },
-  { id: 'compare', label: 'Compare', icon: 'diff' },
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'format', label: 'Format' },
+  { id: 'tree', label: 'Tree' },
+  { id: 'table', label: 'Table' },
+  { id: 'convert', label: 'Convert' },
+  { id: 'compare', label: 'Compare' },
 ];
 
-/** Format view controls: the output's shape, plus getting it out. */
-function FormatBar() {
-  const minify = useUI((s) => s.settings.minify);
-  const sortKeys = useUI((s) => s.settings.sortKeys);
-  const indent = useUI((s) => s.settings.indent);
-  const { pretty, minified } = useUI((s) => s.fmt);
-  const mac = useUI((s) => s.mac);
-  const mod = mac ? '⌘' : 'Ctrl+';
-  // Both sizes are always visible: what the whitespace costs is the point.
-  const saved = pretty > 0 ? Math.round((1 - minified / pretty) * 100) : 0;
-  return (
-    <>
-      <div className="seg seg-sm" role="radiogroup" aria-label="Output style">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!minify}
-          onClick={() => act((e) => e.setFormat({ minify: false }))}
-          data-tip="Pretty: indented and readable"
-        >
-          Pretty
-          {pretty > 0 && <span className="seg-size">{formatBytes(pretty)}</span>}
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={minify}
-          onClick={() => act((e) => e.setFormat({ minify: true }))}
-          data-tip={saved > 0 ? `Minified is ${saved}% smaller` : 'Minify: one line, no whitespace'}
-        >
-          Minify
-          {minified > 0 && <span className="seg-size">{formatBytes(minified)}</span>}
-        </button>
-      </div>
-      {!minify && (
-        <label className="pick pick-sm" data-tip="Indentation">
-          <span className="sr-only">Indentation</span>
-          <Icon name="format" size={13} className="pick-ico" />
-          <select value={indent} onChange={(e) => act((en) => en.setIndent(e.target.value as IndentId))}>
-            <option value="2">2</option>
-            <option value="4">4</option>
-            <option value="tab">Tab</option>
-          </select>
-          <Icon name="down" size={13} />
-        </label>
-      )}
-      <button
-        type="button"
-        className={`btn toggle${sortKeys ? ' on' : ''}`}
-        aria-pressed={sortKeys}
-        onClick={() => act((e) => e.setFormat({ sortKeys: !sortKeys }))}
-        data-tip="Sort object keys A to Z"
-      >
-        <Icon name="sort" size={14} />
-        <span className="lbl">Sort keys</span>
-      </button>
-      <span className="grow" />
-      <Btn icon="apply" label={`Use as input · ${mod}↵`} hideLabel onClick={() => act((e) => e.useOutput())} />
-      <Btn icon="copy" label="Copy output" hideLabel onClick={() => act((e) => e.copyOutput())} />
-      <Btn icon="download" label="Download .json" hideLabel onClick={() => act((e) => e.downloadOutput())} />
-    </>
-  );
-}
-
-function ConvertBar() {
-  const target = useUI((s) => s.settings.target);
-  const rootName = useUI((s) => s.settings.rootName);
-  const tsStyle = useUI((s) => s.settings.tsStyle);
-  const { lines, loading } = useUI((s) => s.convert);
-  const info = targetInfo(target);
-  return (
-    <>
-      <label className="pick">
-        <span className="sr-only">Convert to</span>
-        <select value={info.id} onChange={(e) => act((en) => en.setConvert({ target: e.target.value }))}>
-          {(['Types', 'Data'] as const).map((g) => (
-            <optgroup key={g} label={g === 'Types' ? 'Types & schemas' : 'Data formats'}>
-              {TARGETS.filter((t) => t.group === g).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-        <Icon name="down" size={13} />
-      </label>
-      {info.group === 'Types' && (
-        <input
-          className="root-name"
-          value={rootName}
-          onChange={(e) => act((en) => en.setConvert({ rootName: e.target.value.replace(/[^\w$]/g, '') }))}
-          aria-label="Root type name"
-          data-tip="Root type name"
-          spellCheck={false}
-        />
-      )}
-      {info.id === 'typescript' && (
-        <label className="pick">
-          <span className="sr-only">TypeScript style</span>
-          <select value={tsStyle} onChange={(e) => act((en) => en.setConvert({ tsStyle: e.target.value as 'interface' | 'type' }))}>
-            <option value="interface">interface</option>
-            <option value="type">type</option>
-          </select>
-          <Icon name="down" size={13} />
-        </label>
-      )}
-      <span className="grow" />
-      {loading ? <i className="spin muted" /> : lines > 0 && <span className="muted sm nowrap">{lines.toLocaleString()} lines</span>}
-      <Btn icon="copy" label={`Copy ${info.label}`} hideLabel onClick={() => act((e) => e.copyConvert())} />
-      <Btn icon="download" label={`Download .${info.ext}`} hideLabel onClick={() => act((e) => e.downloadConvert())} />
-    </>
-  );
-}
-
-function ViewToolbar({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
+/** Text tabs; on narrow panes a single dropdown instead. */
+function ViewSwitch() {
   const view = useUI((s) => s.settings.view);
   return (
-    <div className="toolbar" role="toolbar" aria-label="Viewer">
+    <>
       <div
-        className="seg"
+        className="tabs"
         role="tablist"
         aria-label="View"
         onKeyDown={(e) => {
@@ -349,35 +529,122 @@ function ViewToolbar({ searchRef }: { searchRef: React.RefObject<HTMLInputElemen
             tabIndex={view === v.id ? 0 : -1}
             aria-selected={view === v.id}
             aria-controls={`view-${v.id}`}
-            aria-label={v.label}
-            data-tip={`${v.label} · Alt+${i + 1}`}
+            data-tip={`Alt+${i + 1}`}
             onClick={() => act((e) => e.setView(v.id))}
           >
-            <Icon name={v.icon} size={14} />
-            <span className="lbl">{v.label}</span>
+            {v.label}
           </button>
         ))}
       </div>
-      <div className="vt-format" hidden={view !== 'format'}>
-        <FormatBar />
+      <label className="pick tabs-pick">
+        <span className="sr-only">View</span>
+        <select value={view} onChange={(e) => act((en) => en.setView(e.target.value as View))}>
+          {VIEWS.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+        <Icon name="down" size={13} />
+      </label>
+    </>
+  );
+}
+
+/** Format: Pretty / Minify, each with its size. */
+function OutputStyle() {
+  const minify = useUI((s) => s.settings.minify);
+  const { pretty, minified } = useUI((s) => s.fmt);
+  const saved = pretty > 0 ? Math.round((1 - minified / pretty) * 100) : 0;
+  return (
+    <div className="seg seg-sm" role="radiogroup" aria-label="Output style">
+      <button type="button" role="radio" aria-checked={!minify} onClick={() => act((e) => e.setFormat({ minify: false }))} data-tip="Indented and readable">
+        Pretty
+        {pretty > 0 && <span className="seg-size">{formatBytes(pretty)}</span>}
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={minify}
+        onClick={() => act((e) => e.setFormat({ minify: true }))}
+        data-tip={saved > 0 ? `${saved}% smaller` : 'One line, no whitespace'}
+      >
+        Minify
+        {minified > 0 && <span className="seg-size">{formatBytes(minified)}</span>}
+      </button>
+    </div>
+  );
+}
+
+/** Tree: the selected node's path (click to copy). */
+function TreePath() {
+  const path = useUI((s) => s.path);
+  if (!path) return <span className="muted sm nowrap">Select a node</span>;
+  return (
+    <button type="button" className="path" onClick={() => act((e) => e.copyPath())} data-tip="Copy path">
+      {path}
+    </button>
+  );
+}
+
+/** Convert: the language picker. */
+function TargetPick() {
+  const target = useUI((s) => s.settings.target);
+  const loading = useUI((s) => s.convert.loading);
+  const info = targetInfo(target);
+  return (
+    <>
+      {loading && <i className="spin muted" />}
+      <label className="pick">
+        <span className="sr-only">Convert to</span>
+        <select value={info.id} onChange={(e) => act((en) => en.setConvert({ target: e.target.value }))}>
+          {(['Types', 'Data'] as const).map((g) => (
+            <optgroup key={g} label={g === 'Types' ? 'Types & schemas' : 'Data formats'}>
+              {TARGETS.filter((t) => t.group === g).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <Icon name="down" size={13} />
+      </label>
+    </>
+  );
+}
+
+function ViewToolbar() {
+  const view = useUI((s) => s.settings.view);
+  const mac = useUI((s) => s.mac);
+  const mod = mac ? '⌘' : 'Ctrl+';
+  const findOpen = useUI((s) => s.find.open);
+  return (
+    <div className="toolbar vbar" role="toolbar" aria-label="Viewer">
+      <ViewSwitch />
+      <span className="grow" />
+      <div className="vmain">
+        {view === 'format' && <OutputStyle />}
+        {view === 'tree' && <TreePath />}
+        {view === 'table' && <Crumbs />}
+        {view === 'convert' && <TargetPick />}
       </div>
-      <div className="vt-tree" hidden={view !== 'tree'}>
-        <SearchBox inputRef={searchRef} />
-        <Btn icon="expand" label="Expand all" hideLabel onClick={() => act((e) => e.expandAll())} />
-        <Btn icon="collapse" label="Collapse all" hideLabel onClick={() => act((e) => e.collapseAll())} />
-      </div>
-      <div className="vt-table" hidden={view !== 'table'}>
-        <Crumbs />
-        <span className="grow" />
-        <Btn icon="copy" label="Copy CSV" hideLabel onClick={() => act((e) => e.copyCSV())} />
-        <Btn icon="download" label="Download CSV" hideLabel onClick={() => act((e) => e.downloadCSV())} />
-      </div>
-      <div className="vt-convert" hidden={view !== 'convert'}>
-        <ConvertBar />
-      </div>
-      <div className="vt-compare" hidden={view !== 'compare'}>
-        <span className="muted sm">Compare your document with another JSON</span>
-      </div>
+      {view !== 'compare' && (
+        <div className="vicons">
+          <button
+            type="button"
+            className={`btn icon${findOpen ? ' on' : ''}`}
+            aria-label={`Find · ${mod}F`}
+            data-tip={`Find · ${mod}F`}
+            onClick={() => act((e) => (store.get().find.open ? e.closeFind() : e.focusSearch()))}
+          >
+            <Icon name="search" />
+          </button>
+          <Btn icon="copy" label={view === 'tree' ? 'Copy (selected value or all)' : view === 'table' ? 'Copy as CSV' : 'Copy'} hideLabel onClick={() => act((e) => e.copyView())} />
+          <Btn icon="download" label={view === 'table' ? 'Download CSV' : 'Download'} hideLabel onClick={() => act((e) => e.downloadView())} />
+          <ViewMenu />
+        </div>
+      )}
     </div>
   );
 }
@@ -461,22 +728,21 @@ function ViewerPane({
   tableRef,
   codeRef,
   fmtRef,
-  searchRef,
 }: {
   treeRef: React.RefObject<HTMLDivElement | null>;
   fmtRef: React.RefObject<HTMLDivElement | null>;
   tableRef: React.RefObject<HTMLDivElement | null>;
   codeRef: React.RefObject<HTMLDivElement | null>;
-  searchRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const view = useUI((s) => s.settings.view);
   const stale = useUI((s) => s.stale);
   const empty = useUI((s) => s.empty);
   return (
     <section className="pane pane-view" aria-label="JSON viewer">
-      <ViewToolbar searchRef={searchRef} />
+      <ViewToolbar />
       <div className={`view${stale ? ' stale' : ''}`}>
         <Banner />
+        <FindBar />
         <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label="Formatted output">
           <div className="cv-sizer">
             <div className="cv-rows" />
@@ -524,21 +790,30 @@ const CompareView = dynamic(() => import('./CompareView'), {
   ssr: false,
   loading: () => <div className="cv-note">Loading compare…</div>,
 });
-const jumpTo = (off: number) => act((e) => e.jumpTo(off));
 const UNITS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
+const onJump = (l: number | undefined, r: number | undefined) => act((e) => e.compareJump(l, r));
+const onMarks = (l: Uint8Array | null, r: Uint8Array | null) => act((e) => e.compareMarks(l, r));
+const onSwap = () => act((e) => e.swapCompare());
 
 function CompareHost() {
   const leftText = useUI((s) => s.docText);
+  const rightText = useUI((s) => s.cmpText);
   const indent = useUI((s) => s.settings.indent);
-  return <CompareView leftText={leftText} indent={UNITS[indent]} onJump={jumpTo} />;
+  return <CompareView leftText={leftText} rightText={rightText} indent={UNITS[indent]} onJump={onJump} onMarks={onMarks} onSwap={onSwap} />;
 }
 
 // ── Split handle ────────────────────────────────────────────────────────────
 
 function Splitter() {
   const split = useUI((s) => s.settings.split);
+  const splitCmp = useUI((s) => s.settings.splitCmp);
+  const comparing = useUI((s) => s.settings.view === 'compare');
   const vertical = () => matchMedia('(max-width: 760px)').matches;
-  const set = (r: number) => document.documentElement.style.setProperty('--split', `${(Math.min(0.8, Math.max(0.2, r)) * 100).toFixed(2)}%`);
+  // Normal: editor vs viewer. Compare: both editors vs the differences panel.
+  const [lo, hi, cur, prop] = comparing ? [0.4, 0.85, splitCmp, '--split-c'] : [0.2, 0.8, split, '--split'];
+  const clamp = (r: number) => Math.min(hi, Math.max(lo, r));
+  const set = (r: number) => document.documentElement.style.setProperty(prop, `${(clamp(r) * 100).toFixed(2)}%`);
+  const save = (r: number) => act((en) => (comparing ? en.setSplitCmp(clamp(r)) : en.setSplit(clamp(r))));
 
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -546,7 +821,7 @@ function Splitter() {
     el.setPointerCapture(e.pointerId);
     const rect = main.getBoundingClientRect();
     const v = vertical();
-    let ratio = split;
+    let ratio = cur;
     document.body.classList.add('resizing');
     const move = (ev: PointerEvent) => {
       ratio = v ? (ev.clientY - rect.top) / rect.height : (ev.clientX - rect.left) / rect.width;
@@ -557,7 +832,7 @@ function Splitter() {
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
       document.body.classList.remove('resizing');
-      act((en) => en.setSplit(ratio));
+      save(ratio);
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
@@ -565,12 +840,13 @@ function Splitter() {
   };
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const d = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -0.02 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 0.02 : 0;
-    const abs = e.key === 'Home' ? 0.2 : e.key === 'End' ? 0.8 : e.key === 'Enter' ? 0.5 : -1;
+    const def = comparing ? 0.66 : 0.5;
+    const abs = e.key === 'Home' ? lo : e.key === 'End' ? hi : e.key === 'Enter' ? def : -1;
     if (!d && abs < 0) return;
     e.preventDefault();
-    const r = abs >= 0 ? abs : Math.min(0.8, Math.max(0.2, split + d));
+    const r = abs >= 0 ? abs : clamp(cur + d);
     set(r);
-    act((en) => en.setSplit(r));
+    save(r);
   };
   return (
     <div
@@ -578,15 +854,16 @@ function Splitter() {
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panels"
-      aria-valuenow={Math.round(split * 100)}
-      aria-valuemin={20}
-      aria-valuemax={80}
+      aria-valuenow={Math.round(cur * 100)}
+      aria-valuemin={lo * 100}
+      aria-valuemax={hi * 100}
       tabIndex={0}
       onPointerDown={onDown}
       onKeyDown={onKey}
       onDoubleClick={() => {
-        set(0.5);
-        act((en) => en.setSplit(0.5));
+        const def = comparing ? 0.66 : 0.5;
+        set(def);
+        save(def);
       }}
     />
   );
@@ -737,9 +1014,10 @@ export default function JsonTool() {
   const treeRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLDivElement>(null);
   const fmtRef = useRef<HTMLDivElement>(null);
+  const ed2Ref = useRef<HTMLDivElement>(null);
+  const comparing = useUI((s) => s.settings.view === 'compare');
 
   useEffect(() => {
     const e = new Engine({
@@ -747,9 +1025,9 @@ export default function JsonTool() {
       tree: treeRef.current!,
       table: tableRef.current!,
       file: fileRef.current!,
-      search: searchRef.current!,
       code: codeRef.current!,
       fmt: fmtRef.current!,
+      editor2: ed2Ref.current!,
     });
     setEngine(e);
     const warm = window.setTimeout(() => void import('./CompareView'), 5000);
@@ -762,16 +1040,17 @@ export default function JsonTool() {
   }, []);
 
   return (
-    <div className="app">
+    <div className={comparing ? 'app comparing' : 'app'}>
       <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
       <p className="sr-only">
         Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
       </p>
       <main className="panes">
         <EditorPane edRef={edRef} />
+        <ComparePane edRef={ed2Ref} />
         <Splitter />
         <Watermark />
-        <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} fmtRef={fmtRef} searchRef={searchRef} />
+        <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} fmtRef={fmtRef} />
       </main>
       <StatusBar />
       <ToastHost />

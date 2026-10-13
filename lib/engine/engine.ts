@@ -6,12 +6,12 @@ import { TreeView } from './tree';
 import { TableView } from './table';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
-import type { LineHighlighter } from './codeview';
+import type { FindResult, LineHighlighter } from './codeview';
 import { targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Status, type Theme, type View } from './store';
 import { SAMPLE } from './sample';
 
-const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme' };
+const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
 const MAX_PERSIST = 2_500_000;
 const THEME_COLORS = { light: '#ffffff', dark: '#000000' };
@@ -21,9 +21,10 @@ export interface EngineEls {
   tree: HTMLElement;
   table: HTMLElement;
   file: HTMLInputElement;
-  search: HTMLInputElement;
   code: HTMLElement;
   fmt: HTMLElement;
+  /** Compare: the second (modified) document's editor. */
+  editor2: HTMLElement;
 }
 
 /** JSON highlighter for soft-wrapped rows (a row may start inside a string). */
@@ -70,6 +71,7 @@ function loadSettings(): Settings {
     const s = JSON.parse(read(KEYS.settings) ?? '{}') as Partial<Settings>;
     const out = { ...DEFAULT_SETTINGS, ...s };
     out.split = Math.min(0.8, Math.max(0.2, Number(out.split) || 0.5));
+    out.splitCmp = Math.min(0.85, Math.max(0.4, Number(out.splitCmp) || 0.66));
     if (!['2', '4', 'tab'].includes(out.indent)) out.indent = '2';
     if (!['system', 'light', 'dark'].includes(out.theme)) out.theme = 'system';
     if (!['format', 'tree', 'table', 'convert', 'compare'].includes(out.view)) out.view = 'format';
@@ -168,6 +170,11 @@ async function fromBase64Url(b64: string): Promise<string> {
 
 export class Engine {
   readonly ed: Editor;
+  /** Compare: the modified document. */
+  readonly ed2: Editor;
+  private cmpTimer = 0;
+  /** Which editor the file picker loads into. */
+  private fileTarget: 1 | 2 = 1;
   readonly tree: TreeView;
   readonly table: TableView;
   readonly code: CodeView;
@@ -194,6 +201,7 @@ export class Engine {
   private toastId = 0;
   private dragDepth = 0;
   private settings: Settings;
+  /** Current find query (applies to the open view). */
   private query = '';
   private dead = false;
 
@@ -213,6 +221,19 @@ export class Engine {
       copyAll: () => void this.copyAll(),
     });
     this.ed.indentUnit = INDENTS[this.settings.indent];
+    this.ed2 = new Editor(els.editor2, {
+      change: this.onCompareChange,
+      caret: () => undefined,
+      nav: () => undefined,
+      escape: () => document.querySelector<HTMLElement>('.pane-view [role="tab"][aria-selected="true"]')?.focus(),
+      mode: () => undefined,
+      copyAll: () => void this.copy(this.ed2.text, 'Copied the modified document'),
+    });
+    this.ed2.indentUnit = INDENTS[this.settings.indent];
+    if (!this.ed2.text) {
+      const savedCmp = read(KEYS.cmp);
+      if (savedCmp) this.ed2.init(savedCmp);
+    }
     this.tree = new TreeView(els.tree, {
       select: (n, how) => this.selectFromView(n, how === 'search' ? 'search' : 'tree'),
       copy: (n, what) => (what === 'path' ? this.copyPath(n) : this.copyValue(n)),
@@ -234,6 +255,7 @@ export class Engine {
     }
     store.set({ fileName: read(KEYS.file) });
     this.analyze();
+    if (this.ed2.text) this.analyzeCompare();
     delete document.documentElement.dataset.doc;
 
     window.addEventListener('keydown', this.onKey, true);
@@ -244,6 +266,7 @@ export class Engine {
     window.addEventListener('pagehide', this.persistNow);
     window.addEventListener('hashchange', this.loadHash);
     this.ed.el.addEventListener('copy', this.onCopy);
+    this.ed2.el.addEventListener('copy', this.onCopy2);
     els.file.addEventListener('change', this.onFile);
 
     store.set({ ready: true });
@@ -264,6 +287,9 @@ export class Engine {
     window.removeEventListener('pagehide', this.persistNow);
     window.removeEventListener('hashchange', this.loadHash);
     this.ed.el.removeEventListener('copy', this.onCopy);
+    this.ed2.el.removeEventListener('copy', this.onCopy2);
+    clearTimeout(this.cmpTimer);
+    this.ed2.destroy();
     this.els.file.removeEventListener('change', this.onFile);
     clearTimeout(this.timer);
     clearTimeout(this.persistTimer);
@@ -349,7 +375,7 @@ export class Engine {
       this.table.setNode(null);
       ed.setDiagnostics([]);
       ed.setScope(-1, -1);
-      store.set({ empty: true, stale: false, status: { kind: 'empty' }, stats: null, path: null, hint: null, search: { q: this.query, total: 0, index: -1 } });
+      store.set({ empty: true, stale: false, status: { kind: 'empty' }, stats: null, path: null, hint: null });
       this.syncTableState();
       this.afterDoc();
       return;
@@ -363,12 +389,7 @@ export class Engine {
       this.sel = null;
       this.selPath = null;
       this.tablePath = [];
-      if (this.query) {
-        this.query = '';
-        this.els.search.value = '';
-        this.tree.search('', false);
-        store.set({ search: { q: '', total: 0, index: -1 } });
-      }
+      if (this.query) this.closeFind();
     }
 
     if (res.root) {
@@ -407,7 +428,8 @@ export class Engine {
       path: this.sel ? formatPath(pathOf(this.sel)) : null,
       hint,
     });
-    if (this.query) store.set({ search: { q: this.query, ...this.tree.search(this.query, false) } });
+    // Format/convert re-run their find when their text updates; the tree and table do it here.
+    if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
     this.syncTableState();
     this.updateBrackets();
     this.afterDoc();
@@ -691,14 +713,17 @@ export class Engine {
     this.persistSoon();
   }
 
-  openFile() {
+  openFile(target: 1 | 2 = 1) {
+    this.fileTarget = target;
     this.els.file.value = '';
     this.els.file.click();
   }
 
   private onFile = () => {
     const f = this.els.file.files?.[0];
-    if (f) void this.loadFile(f);
+    if (!f) return;
+    if (this.fileTarget === 2) void this.loadCompareFile(f);
+    else void this.loadFile(f);
   };
 
   async loadFile(f: File) {
@@ -788,6 +813,116 @@ export class Engine {
     this.toast(msg, 'ok');
   }
 
+  // ── Compare (second editor) ────────────────────────────────────────────
+
+  private onCompareChange = () => {
+    clearTimeout(this.cmpTimer);
+    const len = this.ed2.text.length;
+    this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
+  };
+
+  /** Squiggles for the modified document + publish it to the Compare panel. */
+  private analyzeCompare = () => {
+    clearTimeout(this.cmpTimer);
+    const text = this.ed2.text;
+    const diags: Diagnostic[] = [];
+    if (text.trim()) {
+      const r = parse(text);
+      for (let i = 0; i < r.issues.length && i < 300; i++) diags.push({ p: r.issues[i].p, cls: 'me' });
+      if (r.error) diags.push({ p: r.error.p, cls: 'me' });
+      for (let i = 0; i < r.warnings.length && i < 300; i++) diags.push({ p: r.warnings[i].p, cls: 'mw' });
+    }
+    this.ed2.setDiagnostics(diags);
+    store.set({ cmpText: text });
+    write(KEYS.cmp, text && text.length <= MAX_PERSIST ? text : null);
+  };
+
+  /** Called by the Compare panel with per-line marks for both editors. */
+  compareMarks(left: Uint8Array | null, right: Uint8Array | null) {
+    const on = this.settings.view === 'compare';
+    this.ed.setLineMarks(on ? left : null);
+    this.ed2.setLineMarks(on ? right : null);
+  }
+
+  /** Reveal a difference in both documents without moving focus. */
+  compareJump(left: number | undefined, right: number | undefined) {
+    if (left !== undefined) this.ed.point(left);
+    if (right !== undefined) this.ed2.point(right);
+  }
+
+  loadCompare(text: string, name: string | null) {
+    store.set({ cmpFile: name });
+    this.ed2.setValue(text, 0);
+    this.analyzeCompare();
+  }
+
+  async loadCompareFile(f: File) {
+    try {
+      const text = await f.text();
+      if (this.dead) return;
+      this.loadCompare(text, f.name);
+      if (this.settings.view !== 'compare') this.setView('compare');
+      this.toast(`Comparing with ${f.name}`, 'ok');
+    } catch {
+      this.toast(`Couldn't read ${f.name}`, 'err');
+    }
+  }
+
+  async pasteCompare() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return this.toast('Your clipboard is empty', 'info');
+      this.loadCompare(text, null);
+    } catch {
+      this.ed2.focus();
+      this.toast(`Press ${this.mod}V to paste`, 'info');
+    }
+  }
+
+  formatCompare() {
+    const text = this.ed2.text;
+    if (!text.trim()) return this.toast('Paste the modified JSON first', 'info');
+    const r = parse(text);
+    if (!r.root) return this.toast("Can't format it yet. Fix the error first.", 'err');
+    this.ed2.setValue(formatDoc(text, r, this.indent));
+    this.analyzeCompare();
+  }
+
+  clearCompare() {
+    store.set({ cmpFile: null });
+    this.ed2.setValue('');
+    this.analyzeCompare();
+    this.ed2.focus();
+  }
+
+  /** Swap original and modified (both undoable). */
+  swapCompare() {
+    const a = this.ed.text;
+    const b = this.ed2.text;
+    const fa = store.get().fileName;
+    const fb = store.get().cmpFile;
+    this.resetNext = true;
+    this.ed.setValue(b);
+    this.ed2.setValue(a);
+    store.set({ fileName: fb, cmpFile: fa });
+    write(KEYS.file, fb);
+    this.analyze();
+    this.analyzeCompare();
+    this.persistSoon();
+  }
+
+  setSplitCmp(splitCmp: number) {
+    this.setSettings({ splitCmp: Math.min(0.85, Math.max(0.4, splitCmp)) });
+  }
+
+  private onCopy2 = (e: ClipboardEvent) => {
+    const ed = this.ed2;
+    if (!ed.text || ed.selectedText()) return;
+    e.preventDefault();
+    e.clipboardData?.setData('text/plain', ed.text);
+    this.toast('Copied the modified document', 'ok');
+  };
+
   /** Copy with nothing selected copies the whole document. */
   private onCopy = (e: ClipboardEvent) => {
     const ed = this.ed;
@@ -872,7 +1007,10 @@ export class Engine {
   // ── Commands: view ─────────────────────────────────────────────────────
 
   setView(view: View) {
+    const prev = this.settings.view;
+    if (this.query && prev !== view) this.findIn(prev, '');
     this.setSettings({ view });
+    if (this.query) requestAnimationFrame(() => (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
       const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
@@ -881,7 +1019,13 @@ export class Engine {
     if (view === 'tree') requestAnimationFrame(() => this.tree.render(true));
     if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
-    if (view === 'compare') store.set({ docText: this.ed.text });
+    if (view === 'compare') {
+      store.set({ docText: this.ed.text, cmpText: this.ed2.text });
+      requestAnimationFrame(() => {
+        this.ed2.render(true);
+        if (!this.ed2.text) this.ed2.focus();
+      });
+    } else this.compareMarks(null, null);
   }
 
   // ── Format view (output) ───────────────────────────────────────────────
@@ -1050,47 +1194,117 @@ export class Engine {
     this.save(csv, `${base}.csv`, 'text/csv');
   }
 
+  // ── Folding (acts on the open view: format, convert or tree) ────────────
+
+  private foldView() {
+    const v = this.settings.view;
+    if (v !== 'format' && v !== 'convert' && v !== 'tree') this.setView('format');
+    return this.settings.view;
+  }
+
   expandAll() {
-    if (this.settings.view !== 'tree') this.setView('tree');
-    this.tree.expandAll();
+    const v = this.foldView();
+    if (v === 'tree') this.tree.expandAll();
+    else (v === 'format' ? this.fmt : this.code).unfoldAll();
   }
 
   collapseAll() {
-    if (this.settings.view !== 'tree') this.setView('tree');
-    this.tree.collapseAll();
+    this.expandTo(1);
   }
 
+  /** Show `level` levels; everything deeper is folded. */
   expandTo(level: number) {
-    if (this.settings.view !== 'tree') this.setView('tree');
-    this.tree.expandTo(level);
+    const v = this.foldView();
+    if (v === 'tree') this.tree.expandTo(level);
+    else (v === 'format' ? this.fmt : this.code).foldLevel(level);
   }
 
-  search(q: string) {
+  // ── Find (searches the open view) ───────────────────────────────────────
+
+  private findIn(view: View, q: string): FindResult {
+    switch (view) {
+      case 'tree':
+        return this.tree.search(q, true);
+      case 'format':
+        return this.fmt.find(q);
+      case 'convert':
+        return this.code.find(q);
+      case 'table':
+        return this.table.find(q);
+      default:
+        return { total: 0, index: -1 };
+    }
+  }
+
+  find(q: string, external = false) {
     this.query = q;
-    store.set({ search: { q, ...this.tree.search(q, true) } });
+    const f = store.get().find;
+    store.set({ find: { open: true, q, seq: f.seq + (external ? 1 : 0), ...this.findIn(this.settings.view, q) } });
   }
 
-  /** Enter in the search box: run a pending query, otherwise go to the next match. */
-  searchSubmit(q: string, dir: 1 | -1) {
-    if (q !== this.query) this.search(q);
-    else this.searchStep(dir);
+  /** Re-applies the query to the current view (after data or view changes). */
+  private refind(jump: boolean) {
+    const v = this.settings.view;
+    const r = v === 'tree' ? this.tree.search(this.query, jump) : this.findIn(v, this.query);
+    store.set({ find: { ...store.get().find, total: r.total, index: r.index } });
   }
 
-  searchStep(dir: 1 | -1) {
-    store.set({ search: { q: this.query, ...this.tree.step(dir) } });
+  findStep(dir: 1 | -1) {
+    const v = this.settings.view;
+    const r: FindResult =
+      v === 'tree' ? this.tree.step(dir) : v === 'format' ? this.fmt.step(dir) : v === 'convert' ? this.code.step(dir) : v === 'table' ? this.table.step(dir) : { total: 0, index: -1 };
+    store.set({ find: { ...store.get().find, ...r } });
   }
 
+  /** Enter in the find bar: run a pending query, otherwise go to the next match. */
+  findSubmit(q: string, dir: 1 | -1) {
+    if (q !== this.query) this.find(q);
+    else this.findStep(dir);
+  }
+
+  closeFind() {
+    if (this.query) this.findIn(this.settings.view, '');
+    this.query = '';
+    store.set({ find: { open: false, q: '', total: 0, index: -1, seq: store.get().find.seq + 1 } });
+  }
+
+  // ── Copy / download what the open view shows ────────────────────────────
+
+  copyView() {
+    switch (this.settings.view) {
+      case 'tree':
+        return this.sel ? this.copyValue(this.sel) : this.copyOutput();
+      case 'table':
+        return this.copyCSV();
+      case 'convert':
+        return this.copyConvert();
+      default:
+        return this.copyOutput();
+    }
+  }
+
+  downloadView() {
+    switch (this.settings.view) {
+      case 'table':
+        return this.downloadCSV();
+      case 'convert':
+        return void this.downloadConvert();
+      default:
+        return this.downloadOutput();
+    }
+  }
+
+  /** Opens the find bar for the open view, prefilled with the editor selection. */
   focusSearch() {
-    if (this.settings.view !== 'tree') this.setView('tree');
+    if (this.settings.view === 'compare') this.setView('format');
     const picked = this.ed.hasFocus() ? this.ed.selectedText() : '';
-    const input = this.els.search;
+    if (picked && picked.length < 100 && !picked.includes('\n')) this.find(picked, true);
+    else store.set({ find: { ...store.get().find, open: true } });
+    // The find bar focuses its input when it opens; re-focus if it was already open.
     requestAnimationFrame(() => {
-      if (picked && picked.length < 100 && !picked.includes('\n')) {
-        input.value = picked;
-        this.search(picked);
-      }
-      input.focus();
-      input.select();
+      const input = document.querySelector<HTMLInputElement>('.findbar input');
+      input?.focus();
+      input?.select();
     });
   }
 
@@ -1144,6 +1358,7 @@ export class Engine {
   setIndent(indent: IndentId) {
     this.setSettings({ indent });
     this.ed.indentUnit = INDENTS[indent];
+    this.ed2.indentUnit = INDENTS[indent];
     if (this.settings.view === 'format') this.scheduleFormat(0);
   }
 
@@ -1205,6 +1420,7 @@ export class Engine {
     const k = e.key.toLowerCase();
     let run: (() => void) | null = null;
     if (mod && !e.altKey && (k === 'k' || (e.shiftKey && k === 'p'))) run = () => this.openPalette();
+    else if (mod && !e.altKey && e.key === 'Enter' && this.ed2.hasFocus()) run = () => this.formatCompare();
     else if (mod && !e.altKey && e.key === 'Enter') run = e.shiftKey ? () => this.minify() : () => this.useOutput();
     else if (e.altKey && e.shiftKey && !mod && e.code === 'KeyF') run = () => this.format();
     else if (mod && !e.shiftKey && !e.altKey && k === 's') run = () => this.download();
@@ -1254,7 +1470,10 @@ export class Engine {
     this.dragDepth = 0;
     store.set({ dragging: false });
     const f = e.dataTransfer?.files[0];
-    if (f) void this.loadFile(f);
+    if (!f) return;
+    // Dropped on the Compare column: that's the modified document.
+    if ((e.target as HTMLElement | null)?.closest?.('.pane-cmp')) void this.loadCompareFile(f);
+    else void this.loadFile(f);
   };
 
   // ── Persistence & offline ──────────────────────────────────────────────
