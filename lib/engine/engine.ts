@@ -8,8 +8,9 @@ import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Status, type Theme, type View } from './store';
+import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type Theme, type View } from './store';
 import { SAMPLE } from './sample';
+import { codecs, compressedSize } from './sizes';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -376,7 +377,8 @@ export class Engine {
       this.table.setNode(null);
       ed.setDiagnostics([]);
       ed.setScope(-1, -1);
-      store.set({ empty: true, stale: false, status: { kind: 'empty' }, stats: null, path: null, hint: null });
+      store.set({ empty: true, stale: false, status: { kind: 'empty' }, stats: null, sizes: null, path: null, hint: null });
+      this.measure(null, '');
       this.syncTableState();
       this.afterDoc();
       return;
@@ -433,7 +435,46 @@ export class Engine {
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
     this.syncTableState();
     this.updateBrackets();
+    this.measure(res.root ? res : null, text);
     this.afterDoc();
+  }
+
+  private sizeTimer = 0;
+  private sizeSeq = 0;
+
+  /**
+   * Minified and compressed sizes of the document, measured after typing
+   * settles (one minify + native compression per codec, never on the
+   * keystroke). Invalid documents have none.
+   */
+  private measure(res: ParseResult | null, text: string) {
+    clearTimeout(this.sizeTimer);
+    const seq = ++this.sizeSeq;
+    const prev = store.get().sizes;
+    if (!res) {
+      if (prev) store.set({ sizes: null });
+      return;
+    }
+    if (prev && !prev.stale) store.set({ sizes: { ...prev, stale: true } });
+    this.sizeTimer = window.setTimeout(
+      async () => {
+        const blob = new Blob([formatDoc(text, res, '')]);
+        const sizes: Sizes = { min: blob.size, stale: false };
+        // Beyond this, compressing on every edit costs more than the number is worth.
+        if (blob.size <= 32_000_000) {
+          for (const [codec, name] of codecs()) {
+            try {
+              sizes[codec] = await compressedSize(blob, name);
+            } catch {
+              /* leave it unmeasured */
+            }
+            if (seq !== this.sizeSeq) return;
+          }
+        }
+        if (seq === this.sizeSeq) store.set({ sizes });
+      },
+      text.length > 1_000_000 ? 700 : 200,
+    );
   }
 
   /** Keeps the secondary views (convert, compare) in step with the document. */

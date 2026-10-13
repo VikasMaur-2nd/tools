@@ -34,6 +34,16 @@ export type Status =
   | { kind: 'fixable'; msg: string; p: number; line: number; col: number; count: number }
   | { kind: 'error'; msg: string; p: number; line: number; col: number };
 
+export interface Sizes {
+  min: number;
+  /** Compressed size of the minified document per codec (absent: not measured). */
+  gzip?: number;
+  brotli?: number;
+  zstd?: number;
+  /** Measured for an earlier version of the document (a new measurement is on its way). */
+  stale: boolean;
+}
+
 export interface Stats {
   bytes: number;
   lines: number;
@@ -72,6 +82,8 @@ export interface UIState {
   convert: { loading: boolean; error: string | null; lines: number; bytes: number };
   /** Format view output: line count and the byte size of both variants. */
   fmt: { lines: number; pretty: number; minified: number };
+  /** Wire sizes of the valid document: minified, then compressed by each codec the browser has. */
+  sizes: Sizes | null;
   /** Current document text, published only while the Compare view is open. */
   docText: string;
   /** Compare: the modified document (second editor). */
@@ -115,6 +127,7 @@ export const INITIAL: UIState = {
   viewOnly: false,
   convert: { loading: false, error: null, lines: 0, bytes: 0 },
   fmt: { lines: 0, pretty: 0, minified: 0 },
+  sizes: null,
   docText: '',
   cmpText: '',
   cmpFile: null,

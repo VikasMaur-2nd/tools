@@ -927,12 +927,55 @@ function StatusMsg() {
 
 const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
 
+const CODECS = [
+  ['gzip', 'gzip'],
+  ['brotli', 'brotli'],
+  ['zstd', 'zstd'],
+] as const;
+
+/** What you have, what you'd ship, what goes over the wire: raw, minified and compressed sizes side by side. */
+function Sizes() {
+  const raw = useUI((s) => s.stats?.bytes);
+  const sizes = useUI((s) => s.sizes);
+  const parsed = useUI((s) => s.status.kind === 'valid' || s.status.kind === 'fixable');
+  if (raw === undefined) return null;
+  const less = (n: number) => (raw > n ? ` · ${Math.round((1 - n / raw) * 100)}% smaller than the input` : '');
+  return (
+    <span className={sizes?.stale ? 'sizes stale' : 'sizes'}>
+      <span className="sz sz-raw" data-tip="Input, as typed" data-tip-up="">
+        {formatBytes(raw)} <i>raw</i>
+      </span>
+      {sizes ? (
+        <>
+          <span className="sz sz-min" data-tip={`Minified${less(sizes.min)}`} data-tip-up="">
+            {formatBytes(sizes.min)} <i>min</i>
+          </span>
+          {CODECS.map(([k, label]) => {
+            const n = sizes[k];
+            return n === undefined ? null : (
+              <span key={k} className="sz" data-tip={`Minified, then ${label}-compressed (what a server sends)${less(n)}`} data-tip-up="">
+                {formatBytes(n)} <i>{label}</i>
+              </span>
+            );
+          })}
+        </>
+      ) : (
+        parsed && (
+          <span className="sz" aria-hidden="true">
+            … <i>min</i>
+          </span>
+        )
+      )}
+    </span>
+  );
+}
+
 function Stats() {
   const stats = useUI((s) => s.stats);
   if (!stats) return null;
   return (
     <span className="stats muted" title={`Parsed in ${stats.ms.toFixed(1)} ms`}>
-      {formatBytes(stats.bytes)} · {plural(stats.lines, 'line')} · {plural(stats.nodes, 'node')} · depth {stats.depth}
+      {plural(stats.lines, 'line')} · {plural(stats.nodes, 'node')} · depth {stats.depth}
     </span>
   );
 }
@@ -954,6 +997,7 @@ function StatusBar() {
     <footer className="statusbar">
       <div className="sb-l">
         <StatusMsg />
+        <Sizes />
         <Stats />
       </div>
       <div className="sb-r">

@@ -1916,6 +1916,42 @@ button.tv-x:hover {
   }
 }
 
+/* Sizes: raw · min · gzip (· brotli · zstd where the browser can measure them) */
+.sizes {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: none;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sz {
+  flex: none;
+  padding: 4px 0;
+  cursor: default;
+}
+
+.sz i {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.sz + .sz::before {
+  content: '·';
+  margin: 0 6px;
+  color: var(--muted);
+}
+
+.sizes.stale .sz:not(.sz-raw) {
+  opacity: 0.5;
+}
+
+.sizes + .stats {
+  padding-left: 10px;
+  border-left: 1px solid var(--line-2);
+}
+
 .stats,
 .cursor {
   font-variant-numeric: tabular-nums;
@@ -2005,6 +2041,21 @@ a.sb-btn {
   .private,
   .path,
   .indent {
+    display: none;
+  }
+}
+
+/* Phones: drop raw, then minified (still on the Format view's Minify button); gzip stays. */
+@media (max-width: 520px) {
+  .sz-raw,
+  .sz-raw + .sz::before {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .sz-min,
+  .sz-min + .sz::before {
     display: none;
   }
 }
