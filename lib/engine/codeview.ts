@@ -101,7 +101,7 @@ export class CodeView {
     if (this.lines.length !== prevLines) this.folded.clear();
     this.scanFolds();
     const digits = String(this.lines.length).length;
-    this.el.style.setProperty('--cv-gw', `${Math.max(3, digits) + 4}ch`);
+    this.el.style.setProperty('--cv-gw', `${Math.max(3, digits) + 5}ch`);
     if (!keepScroll) this.el.scrollTop = 0;
     if (this.q) this.runFind(false);
     this.reflow(false);
@@ -193,7 +193,7 @@ export class CodeView {
     const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.el.scrollTop : 0;
     this.width = this.el.clientWidth;
     this.measure();
-    const gutter = (Math.max(3, String(this.lines.length).length) + 4) * this.cw;
+    const gutter = (Math.max(3, String(this.lines.length).length) + 5) * this.cw;
     this.cols = Math.max(20, Math.floor((this.width - gutter - PAD_X * 2) / this.cw));
     this.buildVisible();
     const vis = this.vis;

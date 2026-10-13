@@ -71,6 +71,8 @@ const InputBar = memo(function InputBar() {
             <MItem label="Load from URL" onClick={() => act((e) => e.openPalette('url'))} close={close} />
             <MItem label="Try a sample" onClick={() => act((e) => e.sample())} close={close} />
             <MSep />
+            <EditorFoldItems which={1} close={close} />
+            <MSep />
             <MItem label="Download input" keys="mod+S" onClick={() => act((e) => e.download())} close={close} />
             <MItem label="Clear" onClick={() => act((e) => e.clear())} close={close} />
           </>
@@ -171,10 +173,13 @@ function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> 
               <MItem label="Format" keys="mod+Enter" onClick={() => act((e) => e.formatCompare())} close={close} />
               <MItem label="Swap with original" onClick={() => act((e) => e.swapCompare())} close={close} />
               <MSep />
+              <EditorFoldItems which={2} close={close} />
+              <MSep />
               <MItem label="Clear" onClick={() => act((e) => e.clearCompare())} close={close} />
             </>
           )}
         </Menu>
+        <Btn icon="x" label="Close compare" hideLabel onClick={() => act((e) => e.closeCompare())} />
       </div>
       <EditorDom edRef={edRef} id="input2" label="Modified JSON" placeholder="Paste the modified JSON to compare…" />
     </section>
@@ -314,6 +319,17 @@ const LEVELS = [
   { v: 2, label: '2' },
   { v: 3, label: '3' },
 ];
+
+/** Folding for an editor (the gutter chevrons do the same per block). */
+function EditorFoldItems({ which, close }: { which: 1 | 2; close: () => void }) {
+  return (
+    <>
+      <MItem label="Collapse all" onClick={() => act((e) => e.foldEditor(which, 1))} close={close} />
+      <MItem label="Expand all" onClick={() => act((e) => e.foldEditor(which, 0))} close={close} />
+      <MChoice label="Show levels" options={LEVELS} onPick={(l) => act((e) => e.foldEditor(which, l))} close={close} />
+    </>
+  );
+}
 
 function FoldItems({ close }: { close: () => void }) {
   return (

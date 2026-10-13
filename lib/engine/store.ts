@@ -10,6 +10,8 @@ export interface Settings {
   theme: Theme;
   indent: IndentId;
   view: View;
+  /** The view to return to when Compare closes. */
+  prevView: Exclude<View, 'compare'>;
   /** Pretty-print minified JSON when it is pasted into an empty editor. */
   autoFormat: boolean;
   /** Editor width as a fraction of the window (0.2 – 0.8). */
@@ -85,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   indent: '2',
   view: 'format',
+  prevView: 'format',
   autoFormat: false,
   split: 0.5,
   splitCmp: 0.66,

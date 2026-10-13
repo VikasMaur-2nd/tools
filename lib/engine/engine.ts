@@ -75,6 +75,7 @@ function loadSettings(): Settings {
     if (!['2', '4', 'tab'].includes(out.indent)) out.indent = '2';
     if (!['system', 'light', 'dark'].includes(out.theme)) out.theme = 'system';
     if (!['format', 'tree', 'table', 'convert', 'compare'].includes(out.view)) out.view = 'format';
+    if (!['format', 'tree', 'table', 'convert'].includes(out.prevView)) out.prevView = 'format';
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
     if (out.tsStyle !== 'type') out.tsStyle = 'interface';
@@ -1009,7 +1010,7 @@ export class Engine {
   setView(view: View) {
     const prev = this.settings.view;
     if (this.query && prev !== view) this.findIn(prev, '');
-    this.setSettings({ view });
+    this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
     if (this.query) requestAnimationFrame(() => (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
@@ -1026,6 +1027,20 @@ export class Engine {
         if (!this.ed2.text) this.ed2.focus();
       });
     } else this.compareMarks(null, null);
+  }
+
+  /** Leaves Compare for the view that was open before it. */
+  closeCompare() {
+    if (this.settings.view !== 'compare') return;
+    this.setView(this.settings.prevView);
+    this.ed.focus();
+  }
+
+  /** Folding in an editor (1: input, 2: Compare's modified document); level 0 unfolds everything. */
+  foldEditor(which: 1 | 2, level: number) {
+    const ed = which === 2 ? this.ed2 : this.ed;
+    if (level) ed.foldLevel(level);
+    else ed.unfoldAll();
   }
 
   // ── Format view (output) ───────────────────────────────────────────────

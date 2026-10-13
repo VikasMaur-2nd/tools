@@ -864,11 +864,13 @@ kbd {
   top: 0;
   left: 0;
   right: 0;
-  padding-right: 16px;
 }
 
+/* Line number, then a fold column between it and the code. */
 .ed-gl > div {
+  position: relative;
   height: var(--lh);
+  padding-right: 22px;
 }
 
 .ed-gl > .c {
@@ -1649,7 +1651,7 @@ button.tv-x:hover {
   left: 0;
   flex: none;
   width: var(--cv-gw, 6ch);
-  padding-right: 16px;
+  padding-right: 24px;
   background: var(--bg);
   color: var(--faint);
   font-size: 12px;
@@ -2596,15 +2598,12 @@ button.mi:focus-visible {
   white-space: nowrap;
 }
 
-/* Output folding & find marks */
-.cv-n {
-  position: sticky;
-}
-
-.cv-f {
+/* Folding (output views and editors): a chevron column right of the line numbers */
+.cv-f,
+.ed-f {
   position: absolute;
-  left: 6px;
   top: 0;
+  right: 6px;
   display: grid;
   place-items: center;
   width: 14px;
@@ -2612,32 +2611,58 @@ button.mi:focus-visible {
   color: var(--faint);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition:
+    opacity 0.12s,
+    color 0.12s;
 }
 
-.cv-f::before {
+.ed-f {
+  right: 5px;
+  height: var(--lh);
+}
+
+.cv-f::before,
+.ed-f::before {
   content: '';
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
-  transform: rotate(90deg);
+  width: 5px;
+  height: 5px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: translateY(-1.5px) rotate(45deg);
   transition: transform 0.12s ease;
 }
 
-.cv-f.c::before {
-  transform: none;
+.cv-f.c::before,
+.ed-f.c::before {
+  transform: translateX(-1.5px) rotate(-45deg);
 }
 
 .cv:hover .cv-f,
-.cv-f.c {
+.ed-gut:hover .ed-f,
+.cv-f.c,
+.ed-f.c {
   opacity: 1;
 }
 
-.cv-f:hover {
+.cv-f.c,
+.ed-f.c {
+  color: var(--fg-2);
+}
+
+.cv-f:hover,
+.ed-f:hover {
   color: var(--fg);
 }
 
-.cv-ph {
+@media (hover: none) {
+  .cv-f,
+  .ed-f {
+    opacity: 1;
+  }
+}
+
+.cv-ph,
+.ed-ph {
   margin: 0 6px;
   padding: 0 7px;
   border: 0;
@@ -2651,6 +2676,21 @@ button.mi:focus-visible {
 
 .cv-ph:hover {
   color: var(--fg);
+}
+
+/* Editor: the pill sits under the textarea, which forwards clicks to it. */
+.ed-ph {
+  display: inline-block;
+}
+
+.ed-ph.w {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.ed-ph.e {
+  background: var(--err-soft);
+  color: var(--err);
 }
 
 .cv-c {

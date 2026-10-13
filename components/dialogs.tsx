@@ -161,14 +161,15 @@ function UrlPrompt() {
   );
 }
 
-const SHORTCUTS: { title: string; items: [string, string][] }[] = [
+/** [keys, what it does, keys on macOS if different] */
+const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
   {
     title: 'General',
     items: [
       ['mod+K', 'Command palette'],
       ['mod+O', 'Open file'],
       ['mod+S', 'Download JSON'],
-      ['mod+F', 'Search tree'],
+      ['mod+F', 'Find in the open view'],
       ['Alt+1', 'Format view'],
       ['Alt+2', 'Tree view'],
       ['Alt+3', 'Table view'],
@@ -184,6 +185,8 @@ const SHORTCUTS: { title: string; items: [string, string][] }[] = [
       ['mod+Shift+Enter', 'Minify input'],
       ['Shift+Alt+F', 'Format input in place'],
       ['Tab', 'Indent · Shift+Tab outdent'],
+      ['mod+Shift+[', 'Fold block at caret', 'Alt+mod+['],
+      ['mod+Shift+]', 'Unfold block at caret', 'Alt+mod+]'],
       ['mod+C', 'Copy all (nothing selected)'],
       ['mod+Z', 'Undo any change'],
       ['Esc', 'Jump to tree'],
@@ -215,6 +218,7 @@ const SHORTCUTS: { title: string; items: [string, string][] }[] = [
 
 export function ShortcutsDialog() {
   const open = useUI((s) => s.shortcuts);
+  const mac = useUI((s) => s.mac);
   return (
     <Modal open={open} onClose={() => store.set({ shortcuts: false })} className="sheet" label="Keyboard shortcuts">
       <header>
@@ -230,10 +234,10 @@ export function ShortcutsDialog() {
           <section key={g.title}>
             <h3>{g.title}</h3>
             <dl>
-              {g.items.map(([k, label]) => (
+              {g.items.map(([k, label, macK]) => (
                 <div key={k + label}>
                   <dt>
-                    <Kbd k={k} />
+                    <Kbd k={mac && macK ? macK : k} />
                   </dt>
                   <dd>{label}</dd>
                 </div>
