@@ -199,7 +199,7 @@ test('Java, C#, Kotlin, Swift', () => {
     'public record Root(\n    BigInteger id,',
     '    @JsonProperty("first-name") String firstName,',
     '    @JsonProperty("class") String class_,',
-    'record User(long id, String name, Address address, String nick, List<String> roles) {}',
+    ') {\n    public record User(long id, String name, Address address, String nick, List<String> roles) {}\n\n    public record Address(',
   );
   has(
     conv(API, 'csharp'),
@@ -410,6 +410,45 @@ test('large inputs are merged in one linear pass', () => {
   const out = convert(root, 'typescript', { rootName: 'Root' });
   assert.ok(Date.now() - t < 2000);
   assert.equal(out, 'export type Root = RootItem[];\n\nexport interface RootItem {\n  id: number;\n  name: string;\n  score: number | null;\n  tags: string[];\n  opt?: boolean;\n}\n');
+});
+
+// Type declarations per language (regression: unused named types were emitted).
+const DECL: Record<string, RegExp> = {
+  csharp: /^public class (\w+)/gm,
+  java: /\b(?:record|class) (\w+)[ (]/g,
+  kotlin: /^data class (\w+)\(/gm,
+  swift: /^struct (\w+): Codable/gm,
+  go: /^type (\w+) /gm,
+  rust: /^pub (?:struct|type) (\w+)/gm,
+  dart: /^class (\w+) \{/gm,
+  php: /^final class (\w+)/gm,
+};
+const declared = (out: string, lang: string) => [...out.matchAll(DECL[lang])].map((m) => m[1]);
+
+test('only types referenced from the root are emitted', () => {
+  for (const lang of Object.keys(DECL)) {
+    assert.deepEqual(declared(conv('{"features":["a","b"],"users":[{"tags":["math"]}]}', lang), lang), ['Root', 'User'], lang);
+    // Mixed values become the language's "any": objects inside them get no type.
+    const mixed = conv('{"users":[{"tags":["math"],"v":1},{"tags":[{"id":1}],"v":{"x":1},"addr":{"city":"c"}}]}', lang);
+    assert.deepEqual(declared(mixed, lang), ['Root', 'User', 'Addr'], lang);
+    assert.ok(!/\bTag\b/.test(mixed), lang);
+  }
+  // Languages with unions still reference (and declare) them.
+  has(conv('{"tags":["math",{"id":1}]}', 'typescript'), 'tags: (string | Tag)[];', 'export interface Tag {');
+  has(conv('{"tags":["math",{"id":1}]}', 'python'), 'tags: List[Union[str, Tag]]', 'class Tag(BaseModel):');
+});
+
+test('Java: the root is the only public top-level type', () => {
+  const topLevelPublic = (s: string) => s.split('\n').filter((l) => l.startsWith('public ')).length;
+  const out = conv(API, 'java');
+  assert.equal(topLevelPublic(out), 1);
+  assert.ok(out.trimEnd().endsWith('    public record DataItem(double k) {}\n}'));
+  const arr = conv('[{"a":1,"b":{"c":"x"}}]', 'java');
+  assert.equal(
+    arr,
+    'import java.util.List;\n\n// Root: List<RootItem>\npublic final class Root {\n    private Root() {}\n\n    public record RootItem(long a, B b) {}\n\n    public record B(String c) {}\n}\n',
+  );
+  assert.equal(conv('{"a":1}', 'java'), 'public record Root(long a) {}\n');
 });
 
 test('deep nesting does not throw', () => {

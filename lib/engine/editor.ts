@@ -104,6 +104,8 @@ export class Editor {
   private diagCls = new Map<number, string>();
   private brackets: Mark[] = [];
   private scope: [number, number] | null = null;
+  /** Exact offsets of the selected node when it sits on one line (minified docs). */
+  private scopeMark: Mark | null = null;
   private rFirst = -1;
   private rLast = -1;
   private rColA = 0;
@@ -223,6 +225,7 @@ export class Editor {
       this.el.classList.toggle('vmode', view);
       this.el.tabIndex = view ? 0 : -1;
       this.ev.mode(view);
+      this.ev.caret();
     }
     this.updateCaret();
     this.layout();
@@ -424,13 +427,14 @@ export class Editor {
 
   private marksFor(ln: number): Mark[] | null {
     const d = this.diag.get(ln);
-    if (!this.brackets.length) return d ?? null;
     const a = this.ls[ln];
     const b = this.lineEnd(ln);
-    const br = this.brackets.filter((m) => m.a >= a && m.a < b);
-    if (!br.length) return d ?? null;
-    if (!d) return br;
-    return [...d, ...br.filter((m) => !d.some((x) => m.a < x.b && m.b > x.a))].sort((x, y) => x.a - y.a);
+    const extra = this.brackets.filter((m) => m.a >= a && m.a < b);
+    const sm = this.scopeMark;
+    if (sm && sm.a >= a && sm.a < b && !extra.some((m) => m.a < sm.b && m.b > sm.a)) extra.push(sm);
+    if (!extra.length) return d ?? null;
+    if (!d) return extra.sort((x, y) => x.a - y.a);
+    return [...d, ...extra.filter((m) => !d.some((x) => m.a < x.b && m.b > x.a))].sort((x, y) => x.a - y.a);
   }
 
   // ── Decorations ────────────────────────────────────────────────────────
@@ -489,6 +493,7 @@ export class Editor {
 
   /** Highlights the lines spanned by a selected node. */
   setScope(s: number, e: number) {
+    this.scopeMark = null;
     if (s < 0) {
       this.scope = null;
       this.scopeEl.style.display = 'none';
@@ -496,6 +501,7 @@ export class Editor {
       const l1 = this.lineOf(s);
       const l2 = this.lineOf(Math.max(s, e - 1));
       this.scope = [l1, l2];
+      if (l1 === l2 && e > s) this.scopeMark = { a: s, b: e, cls: 'msel' };
       this.scopeEl.style.display = 'block';
       this.scopeEl.style.transform = `translateY(${PAD_T + l1 * LH}px)`;
       this.scopeEl.style.height = `${(l2 - l1 + 1) * LH}px`;
@@ -823,10 +829,13 @@ export class Editor {
     this.render(false);
   }
 
-  /** Is the line containing `off` currently on screen? */
+  /** Is `off` currently on screen (vertically and horizontally)? */
   isVisible(off: number) {
-    const y = PAD_T + this.lineOf(off) * LH;
-    return y >= this.el.scrollTop && y + LH <= this.el.scrollTop + this.el.clientHeight;
+    const ln = this.lineOf(off);
+    const y = PAD_T + ln * LH;
+    const x = PAD_L + (off - this.ls[ln]) * this.cw;
+    const el = this.el;
+    return y >= el.scrollTop && y + LH <= el.scrollTop + el.clientHeight && x >= el.scrollLeft && x <= el.scrollLeft + el.clientWidth - this.gutW - 24;
   }
 
   private indent(dir: 1 | -1) {

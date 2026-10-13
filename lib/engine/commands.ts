@@ -1,10 +1,11 @@
 import type { Engine } from './engine';
 import { store, type UIState } from './store';
+import { TARGETS } from './targets';
 
 export interface Command {
   id: string;
   title: string;
-  group: 'Edit' | 'File' | 'View' | 'Selection' | 'Settings' | 'Help';
+  group: 'Edit' | 'File' | 'View' | 'Convert' | 'Selection' | 'Settings' | 'Help';
   /** Shortcut, `mod` = ⌘ on macOS / Ctrl elsewhere. */
   keys?: string;
   /** Extra search terms. */
@@ -13,7 +14,29 @@ export interface Command {
   run: (e: Engine) => void;
 }
 
+const LANG_TERMS: Record<string, string> = {
+  typescript: 'ts interface type',
+  zod: 'schema validation ts',
+  'json-schema': 'schema generator draft',
+  csharp: 'c# cs dotnet class poco',
+  dart: 'flutter class',
+  java: 'pojo record class',
+  python: 'py pydantic dataclass model',
+  go: 'golang struct',
+  kotlin: 'kt data class',
+  swift: 'codable struct ios',
+  php: 'class',
+  rust: 'serde struct',
+  csv: 'spreadsheet comma',
+  xlsx: 'excel spreadsheet sheet',
+  yaml: 'yml',
+  xml: 'markup',
+  toml: 'config',
+};
+
 export const COMMANDS: Command[] = [
+  { id: 'undo', group: 'Edit', title: 'Undo', keys: 'mod+Z', run: (e) => e.undo() },
+  { id: 'redo', group: 'Edit', title: 'Redo', keys: 'mod+Shift+Z', run: (e) => e.redo() },
   { id: 'format', group: 'Edit', title: 'Format / beautify JSON', keys: 'mod+Enter', terms: 'pretty print indent', run: (e) => e.format() },
   { id: 'minify', group: 'Edit', title: 'Minify / compact JSON', keys: 'mod+Shift+Enter', terms: 'compress uglify one line', run: (e) => e.minify() },
   { id: 'sort', group: 'Edit', title: 'Sort keys A → Z', terms: 'order alphabetical', run: (e) => e.sortKeys() },
@@ -41,7 +64,19 @@ export const COMMANDS: Command[] = [
   { id: 'table', group: 'View', title: 'Table view', keys: 'Alt+2', terms: 'grid csv', active: (s) => s.settings.view === 'table', run: (e) => e.setView('table') },
   { id: 'convert', group: 'View', title: 'Convert to TypeScript, Zod, Go, YAML, CSV…', keys: 'Alt+3', terms: 'json to typescript interface type schema code generate class struct', active: (s) => s.settings.view === 'convert', run: (e) => e.setView('convert') },
   { id: 'compare', group: 'View', title: 'Compare / diff two JSON documents', keys: 'Alt+4', terms: 'diff compare difference', active: (s) => s.settings.view === 'compare', run: (e) => e.setView('compare') },
-  { id: 'excel', group: 'File', title: 'Export to Excel (.xlsx)', terms: 'xlsx spreadsheet download', run: (e) => { e.setConvert({ target: 'xlsx' }); void e.downloadConvert(); } },
+  { id: 'excel', group: 'File', title: 'Export to Excel (.xlsx)', terms: 'xlsx spreadsheet download', run: (e) => void e.exportExcel() },
+  ...TARGETS.map(
+    (t): Command => ({
+      id: `to-${t.id}`,
+      group: 'Convert',
+      title: `JSON to ${t.label}`,
+      terms: `convert ${LANG_TERMS[t.id] ?? ''}`,
+      active: (s) => s.settings.view === 'convert' && s.settings.target === t.id,
+      run: (e) => e.setConvert({ target: t.id }),
+    }),
+  ),
+  { id: 'copy-convert', group: 'Convert', title: 'Copy converted output', run: (e) => e.copyConvert() },
+  { id: 'download-convert', group: 'Convert', title: 'Download converted output', run: (e) => void e.downloadConvert() },
   { id: 'search', group: 'View', title: 'Search keys & values', keys: 'mod+F', terms: 'find filter jsonpath', run: (e) => e.focusSearch() },
   { id: 'expand', group: 'View', title: 'Expand all', run: (e) => e.expandAll() },
   { id: 'collapse', group: 'View', title: 'Collapse all', terms: 'fold', run: (e) => e.collapseAll() },

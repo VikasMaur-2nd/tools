@@ -263,12 +263,26 @@ function ViewToolbar({ searchRef }: { searchRef: React.RefObject<HTMLInputElemen
   const view = useUI((s) => s.settings.view);
   return (
     <div className="toolbar" role="toolbar" aria-label="Viewer">
-      <div className="seg" role="tablist" aria-label="View">
+      <div
+        className="seg"
+        role="tablist"
+        aria-label="View"
+        onKeyDown={(e) => {
+          const i = VIEWS.findIndex((v) => v.id === view);
+          const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+          const to = e.key === 'Home' ? 0 : e.key === 'End' ? VIEWS.length - 1 : d ? (i + d + VIEWS.length) % VIEWS.length : -1;
+          if (to < 0) return;
+          e.preventDefault();
+          act((en) => en.setView(VIEWS[to].id));
+          (e.currentTarget.children[to] as HTMLElement | undefined)?.focus();
+        }}
+      >
         {VIEWS.map((v, i) => (
           <button
             key={v.id}
             type="button"
             role="tab"
+            tabIndex={view === v.id ? 0 : -1}
             aria-selected={view === v.id}
             aria-controls={`view-${v.id}`}
             aria-label={v.label}
@@ -295,7 +309,7 @@ function ViewToolbar({ searchRef }: { searchRef: React.RefObject<HTMLInputElemen
         <ConvertBar />
       </div>
       <div className="vt-compare" hidden={view !== 'compare'}>
-        <span className="muted sm">Compare the document on the left with another JSON</span>
+        <span className="muted sm">Compare your document with another JSON</span>
       </div>
     </div>
   );
@@ -304,6 +318,20 @@ function ViewToolbar({ searchRef }: { searchRef: React.RefObject<HTMLInputElemen
 function Banner() {
   const status = useUI((s) => s.status);
   const hint = useUI((s) => s.hint);
+  if (status.kind === 'valid' && hint === 'unescape') {
+    return (
+      <div className="banner info" role="status" aria-live="polite">
+        <Icon name="braces" size={15} />
+        <span className="b-msg">
+          <b>This is a JSON string that contains JSON</b>
+          <span>Unescape it to view and edit the inner document.</span>
+        </span>
+        <button type="button" className="btn sm accent" onClick={() => act((e) => e.unescapeDoc())}>
+          Unescape JSON
+        </button>
+      </div>
+    );
+  }
   if (status.kind !== 'error' && status.kind !== 'fixable') return null;
   const err = status.kind === 'error';
   return (
@@ -523,9 +551,10 @@ function Splitter() {
   };
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const d = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -0.02 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 0.02 : 0;
-    if (!d) return;
+    const abs = e.key === 'Home' ? 0.2 : e.key === 'End' ? 0.8 : e.key === 'Enter' ? 0.5 : -1;
+    if (!d && abs < 0) return;
     e.preventDefault();
-    const r = Math.min(0.8, Math.max(0.2, split + d));
+    const r = abs >= 0 ? abs : Math.min(0.8, Math.max(0.2, split + d));
     set(r);
     act((en) => en.setSplit(r));
   };
@@ -595,7 +624,7 @@ function Stats() {
     <>
       {stats && (
         <span className="stats muted" title={`Parsed in ${stats.ms.toFixed(1)} ms`}>
-          {formatBytes(stats.bytes)} · {stats.lines.toLocaleString()} lines · {stats.nodes.toLocaleString()} nodes · depth {stats.depth}
+          {formatBytes(stats.bytes)} · {plural(stats.lines, 'line')} · {plural(stats.nodes, 'node')} · depth {stats.depth}
         </span>
       )}
       {path && (
@@ -606,6 +635,8 @@ function Stats() {
     </>
   );
 }
+
+const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
 
 function Cursor() {
   const { line, col, sel } = useUI((s) => s.cursor);

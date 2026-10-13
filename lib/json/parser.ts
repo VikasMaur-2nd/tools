@@ -599,6 +599,25 @@ export function parse(src: string): ParseResult {
         case 'Infinity':
           fix(s, `${w} is not valid JSON (replaced with null)`);
           return leaf(NUL, null, s, d, u, key);
+        // Typos of the literals: repair to what was obviously meant.
+        case 'tru':
+        case 'ture':
+        case 'treu':
+        case 'rtue':
+          fix(s, `Unexpected '${w}' — did you mean true?`);
+          return leaf(BOOL, true, s, d, u, key);
+        case 'fals':
+        case 'flase':
+        case 'fasle':
+        case 'fales':
+          fix(s, `Unexpected '${w}' — did you mean false?`);
+          return leaf(BOOL, false, s, d, u, key);
+        case 'nul':
+        case 'nulll':
+        case 'nill':
+        case 'nll':
+          fix(s, `Unexpected '${w}' — did you mean null?`);
+          return leaf(NUL, null, s, d, u, key);
       }
       const save = i;
       while (src.charCodeAt(i) === 32 || src.charCodeAt(i) === 9) i++;

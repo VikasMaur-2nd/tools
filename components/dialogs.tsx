@@ -23,7 +23,7 @@ function Modal({ open, onClose, className, label, children }: { open: boolean; o
       aria-label={label}
       onClose={onClose}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) e.currentTarget.close();
       }}
     >
       {open && children}
@@ -63,8 +63,9 @@ function Commands() {
   }, [active]);
 
   const run = (c: Command) => {
-    store.set({ palette: false });
-    // After the dialog has closed and restored focus, so commands can move focus.
+    // Close the native dialog first so the browser restores focus (and the
+    // editor's selection) before the command runs — commands may move focus.
+    listRef.current?.closest('dialog')?.close();
     requestAnimationFrame(() => act(c.run));
   };
 
@@ -80,7 +81,7 @@ function Commands() {
       if (list[active]) run(list[active]);
     } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
-      store.set({ palette: false });
+      e.currentTarget.closest('dialog')?.close();
     }
   };
 
@@ -142,7 +143,7 @@ function UrlPrompt() {
       className="pl-input"
       onSubmit={(e) => {
         e.preventDefault();
-        store.set({ palette: false });
+        e.currentTarget.closest('dialog')?.close();
         act((en) => en.fetchUrl(url));
       }}
     >

@@ -3,6 +3,8 @@ import type { JNode } from '../json/parser';
 import { type ConvertOptions, type Obj, type Prim, type Shape, camel, infer, isNull, kind, lit, pascal, snake, typeOf, uniq } from './infer';
 
 const props = (t: Obj) => [...t.props.values()];
+// Languages without union types: mixed values are `any`, so objects inside them get no type.
+const inferNU = (root: JNode, o: ConvertOptions, reserved: string, pc?: (s: string) => string) => infer(root, o, reserved, pc, false);
 const set = (s: string) => new Set(s.split(' '));
 const has = (body: string, re: string) => new RegExp(re).test(body);
 
@@ -18,7 +20,7 @@ const goName = (s: string) => {
 const GO_TAG = new RegExp('^[\\p{L}\\p{Nd}!#$%&()*+\\-./:;<=>?@[\\]^_{|}~ ]+$', 'u');
 
 export function toGo(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, '', goName);
+  const m = inferNU(root, o, '', goName);
   const P: Prim = {
     bool: 'bool',
     int: 'int64',
@@ -107,7 +109,7 @@ const RS_KW = set(
 const serdeCamel = (f: string) => f.replace(/_+(.?)/g, (_, c: string) => (c >= 'a' && c <= 'z' ? c.toUpperCase() : c));
 
 export function toRust(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, 'String Vec Option Box Result Value HashMap Self Some None Ok Err Serialize Deserialize Debug Clone');
+  const m = inferNU(root, o, 'String Vec Option Box Result Value HashMap Self Some None Ok Err Serialize Deserialize Debug Clone');
   const P: Prim = {
     bool: 'bool',
     int: 'i64',
@@ -152,7 +154,7 @@ const BOX: Record<string, string> = { boolean: 'Boolean', long: 'Long', double: 
 const box = (t: string) => BOX[t] || t;
 
 export function toJava(root: JNode, o: ConvertOptions): string {
-  const m = infer(
+  const m = inferNU(
     root,
     o,
     'String Object Long Double Boolean Integer List Map Record BigInteger JsonProperty Override Class Number Character Byte Short Float Void Math System Exception Error Thread Runtime Iterable Comparable Enum',
@@ -168,9 +170,8 @@ export function toJava(root: JNode, o: ConvertOptions): string {
     map: (t) => `Map<String, ${box(t)}>`,
     nul: box,
   };
-  const out: string[] = [];
-  if (!m.obj) out.push(`// ${m.name}: ${box(typeOf(m.root, P))}`);
-  for (const t of m.types) {
+  // One public top-level type (the file is Root.java); the others are nested public records.
+  const rec = (t: Obj, ind: string, body: string) => {
     const u = uniq();
     const cs = props(t).map((p) => {
       let f = camel(p.key) || 'field';
@@ -178,11 +179,15 @@ export function toJava(root: JNode, o: ConvertOptions): string {
       f = u(f);
       return `${f !== p.key ? `@JsonProperty(${lit(p.key)}) ` : ''}${typeOf(p.s, P, p.opt)} ${f}`;
     });
-    const head = `${t === m.obj ? 'public ' : ''}record ${t.name}(`;
-    const line = head + cs.join(', ') + ') {}';
-    out.push(line.length <= 100 ? line : `${head}\n    ${cs.join(',\n    ')}\n) {}`);
-  }
-  const body = out.join('\n\n');
+    const head = `${ind}public record ${t.name}(`;
+    const line = head + cs.join(', ') + ') {' + body;
+    return line.length <= 100 && !body.includes('\n') ? line : `${head}\n${ind}    ${cs.join(`,\n${ind}    `)}\n${ind}) {${body}`;
+  };
+  const nested = m.types.filter((t) => t !== m.obj).map((t) => rec(t, '    ', '}'));
+  const inner = nested.length ? `\n${nested.join('\n\n')}\n}` : '}';
+  const body = m.obj
+    ? rec(m.obj, '', inner)
+    : `// ${m.name}: ${box(typeOf(m.root, P))}` + (nested.length ? `\npublic final class ${m.name} {\n    private ${m.name}() {}\n${inner}` : '');
   const imp = [
     body.includes('@JsonProperty(') && 'com.fasterxml.jackson.annotation.JsonProperty',
     has(body, '\\bBigInteger\\b') && 'java.math.BigInteger',
@@ -196,7 +201,7 @@ export function toJava(root: JNode, o: ConvertOptions): string {
 
 export function toCSharp(root: JNode, o: ConvertOptions): string {
   const nj = o.csharpLib === 'newtonsoft';
-  const m = infer(
+  const m = inferNU(
     root,
     o,
     'String Object List Dictionary JsonElement JToken JsonProperty JsonPropertyName Decimal Math Console Type Attribute Exception Task Guid DateTime Int32 Int64 Double Boolean',
@@ -237,7 +242,7 @@ export function toCSharp(root: JNode, o: ConvertOptions): string {
 const KT_KW = set('as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while');
 
 export function toKotlin(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, 'String Int Long Double Boolean List Map Set Any Unit Nothing Array Pair Triple Serializable SerialName JsonElement Char Number Float Short Byte Result');
+  const m = inferNU(root, o, 'String Int Long Double Boolean List Map Set Any Unit Nothing Array Pair Triple Serializable SerialName JsonElement Char Number Float Short Byte Result');
   const P: Prim = {
     bool: 'Boolean',
     int: 'Long',
@@ -304,7 +309,7 @@ enum JSONValue: Codable {
 }`;
 
 export function toSwift(root: JNode, o: ConvertOptions): string {
-  const m = infer(
+  const m = inferNU(
     root,
     o,
     'String Int Double Bool Data Date URL Array Dictionary Set Optional Codable Decodable Encodable CodingKeys CodingKey Error Any AnyObject Type Self Character Float Decimal UUID Never Void Protocol JSONValue',
@@ -367,7 +372,7 @@ const DART_KW = set(
 );
 
 export function toDart(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, 'String List Map Set Object Function Type Iterable Future Stream DateTime Duration Uri Null Never Record Symbol MapEntry Comparable Pattern', (s) =>
+  const m = inferNU(root, o, 'String List Map Set Object Function Type Iterable Future Stream DateTime Duration Uri Null Never Record Symbol MapEntry Comparable Pattern', (s) =>
     dartId(pascal(s), 'N'),
   );
   const P: Prim = {
@@ -461,7 +466,7 @@ const PHP_RES =
 const phpStr = (k: string) => (/[\x00-\x1f\x7f]/.test(k) ? lit(k, '"', true, true) : lit(k, "'"));
 
 export function toPHP(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, PHP_RES);
+  const m = inferNU(root, o, PHP_RES);
   const P: Prim = {
     bool: 'bool',
     int: 'int',

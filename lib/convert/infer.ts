@@ -263,9 +263,10 @@ function item(hint: string): string {
 /**
  * Infers the type model of a document. `reserved` lists type names that would
  * clash with the target language (they get a "Class" suffix); `pc` turns a key
- * into a type name.
+ * into a type name. Without `unions`, mixed values become the language's
+ * "any" type, so objects inside them are neither named nor emitted.
  */
-export function infer(node: JNode, o: ConvertOptions, reserved = '', pc: (s: string) => string = pascal): Model {
+export function infer(node: JNode, o: ConvertOptions, reserved = '', pc: (s: string) => string = pascal, unions = true): Model {
   stamp = 0;
   const root = shape();
   add(root, node);
@@ -308,7 +309,9 @@ export function infer(node: JNode, o: ConvertOptions, reserved = '', pc: (s: str
   const types: Obj[] = [];
   const deps: Obj[] = [];
   // `it`: hint already names an item (nested arrays don't stack "ItemItem").
+  // Only types the emitter will reference are named (and so emitted).
   const name = (s: Shape, hint: string, it = false): void => {
+    if (!unions && kind(s) === 'union') return;
     if (s.arr) name(s.arr, it ? hint : item(hint), true);
     const ob = s.obj;
     if (!ob) return;

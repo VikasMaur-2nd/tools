@@ -1,4 +1,4 @@
-import { ARR, JNode, STR, parse, type ParseResult } from '../json/parser';
+import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
 import { byteLength, copyText, formatDoc, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { Editor, type ChangeKind, type Diagnostic } from './editor';
@@ -61,6 +61,29 @@ function loadSettings(): Settings {
   } catch {
     return DEFAULT_SETTINGS;
   }
+}
+
+/**
+ * The array of records a spreadsheet should show: the root if it's an array,
+ * otherwise the largest array of objects within two levels (`data`, `items`,
+ * `results`… in API responses). Falls back to the root.
+ */
+function records(root: JNode): JNode {
+  if (root.t === ARR) return root;
+  let best: JNode | null = null;
+  const consider = (n: JNode) => {
+    if (n.t !== ARR) return;
+    const list = n.v as JNode[];
+    if (!list.length || !list.some((c) => c.t === OBJ)) return;
+    if (!best || list.length > (best.v as JNode[]).length) best = n;
+  };
+  if (root.t === OBJ) {
+    for (const c of root.v as JNode[]) {
+      consider(c);
+      if (c.t === OBJ) for (const g of c.v as JNode[]) consider(g);
+    }
+  }
+  return best ?? root;
 }
 
 const JWT_RE = /^eyJ[\w-]*\.eyJ[\w-]*\.[\w-]*$/;
@@ -217,6 +240,10 @@ export class Engine {
   private onChange = (kind: ChangeKind) => {
     if (kind === 'paste' && this.ed.pasteFull) {
       this.resetNext = true;
+      if (store.get().fileName) {
+        store.set({ fileName: null });
+        write(KEYS.file, null);
+      }
       if (this.settings.autoFormat) setTimeout(this.autoFormat, 0);
     }
     this.ed.setBrackets(-1, -1);
@@ -237,10 +264,12 @@ export class Engine {
     const text = ed.text;
     const lines = ed.ls.length;
     if (lines > 3 && text.length / lines < 160) return;
-    const r = this.fresh();
-    if (!r?.root || r.error || r.issues.length) return;
+    // Parse without building views for the minified text — they'd be replaced at once.
+    const r = text === this.parsed && this.res ? this.res : parse(text);
+    if (!r.root || r.error || r.issues.length) return;
     const pretty = formatDoc(text, r, this.indent);
     if (pretty === text) return;
+    clearTimeout(this.timer);
     ed.setValue(pretty);
     this.analyze();
     this.toast(`Auto-formatted · ${this.mod}Z to undo`, 'info');
@@ -286,6 +315,12 @@ export class Engine {
       this.sel = null;
       this.selPath = null;
       this.tablePath = [];
+      if (this.query) {
+        this.query = '';
+        this.els.search.value = '';
+        this.tree.search('', false);
+        store.set({ search: { q: '', total: 0, index: -1 } });
+      }
     }
 
     if (res.root) {
@@ -356,6 +391,7 @@ export class Engine {
   // ── Selection sync ─────────────────────────────────────────────────────
 
   private onCaret = () => {
+    if (!this.ed) return; // fired while the editor itself is still being constructed
     const [s, e] = this.ed.selection;
     const { line, col } = this.ed.lineCol(s);
     store.set({ cursor: { line, col, sel: Math.abs(e - s) } });
@@ -510,6 +546,11 @@ export class Engine {
 
   /** Converts the current text from another format into JSON (undoable). */
   async importAs(fmt: 'yaml' | 'xml' | 'csv' | 'toml') {
+    const r = this.fresh();
+    if (r?.root && !r.error && !r.issues.length) {
+      this.toast(`This is already valid JSON — nothing to convert from ${fmt.toUpperCase()}`, 'info');
+      return;
+    }
     try {
       const { importToJson } = await import('../convert/import');
       const r = importToJson(this.ed.text, fmt, this.indent);
@@ -563,6 +604,27 @@ export class Engine {
     if (s.kind === 'error' || s.kind === 'fixable' || (s.kind === 'valid' && s.p !== undefined)) {
       const p = (s as { p: number }).p;
       this.ed.select(p, p, true);
+    } else if (s.kind === 'valid') this.toast('No errors — this is valid JSON', 'ok');
+  }
+
+  undo() {
+    this.ed.undo();
+  }
+
+  redo() {
+    this.ed.redo();
+  }
+
+  /** Downloads an .xlsx of the data without changing the current view. */
+  async exportExcel() {
+    const root = this.fresh()?.root ?? this.good?.root;
+    if (!root) return this.toast('Paste or open valid JSON first', 'info');
+    try {
+      const { toXlsx } = await import('../convert/xlsx');
+      const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
+      this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), `${base}.xlsx`);
+    } catch {
+      this.toast("Couldn't create the Excel file", 'err');
     }
   }
 
@@ -803,10 +865,11 @@ export class Engine {
       const mod = await this.loadConverters();
       const s = this.settings;
       const info = targetInfo(s.target);
-      // Excel is a binary download; preview exactly what its rows will hold.
+      // CSV and Excel share one flattening (dotted columns) over the main array of
+      // records; Excel is a binary download, so its preview is the same table.
       const out =
-        info.id === 'xlsx'
-          ? (await import('../convert/xlsx')).toCsv(root)
+        info.id === 'xlsx' || info.id === 'csv'
+          ? (await import('../convert/xlsx')).toCsv(records(root))
           : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle });
       this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
@@ -822,15 +885,21 @@ export class Engine {
   }
 
   async downloadConvert() {
-    const info = targetInfo(this.settings.target);
+    const s0 = this.settings;
+    const info = targetInfo(s0.target);
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    const name = info.id === 'typescript' || info.id === 'zod' ? `${base}.${info.id === 'zod' ? 'schema.' : ''}ts` : `${base}.${info.ext}`;
+    const name =
+      info.id === 'java'
+        ? `${s0.rootName || 'Root'}.java` // a public Java class must live in a file of the same name
+        : info.id === 'typescript' || info.id === 'zod'
+          ? `${base}.${info.id === 'zod' ? 'schema.' : ''}ts`
+          : `${base}.${info.ext}`;
     if (info.id === 'xlsx') {
       const root = this.good?.root;
       if (!root) return this.toast('Paste or open valid JSON first', 'info');
       try {
         const { toXlsx } = await import('../convert/xlsx');
-        this.saveBlob(await toXlsx(root, { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
+        this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
       } catch {
         this.toast("Couldn't create the Excel file", 'err');
       }

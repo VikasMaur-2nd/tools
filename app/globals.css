@@ -236,11 +236,21 @@ svg {
 
 .pane {
   position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   container-type: inline-size;
+}
+
+.pane > .toolbar {
+  flex: none;
+}
+
+.pane > .ed,
+.pane > .view {
+  flex: 1;
 }
 
 .split {
@@ -922,25 +932,24 @@ kbd {
 }
 
 .ed-notice {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  z-index: 6;
   display: flex;
+  flex: none;
   align-items: center;
   gap: 10px;
-  max-width: calc(100% - 24px);
-  padding: 6px 6px 6px 12px;
-  border: 1px solid var(--line-2);
-  border-radius: 10px;
+  min-width: 0;
+  padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid var(--line);
   background: var(--bg-2);
-  box-shadow: var(--shadow);
   color: var(--fg-2);
   font-size: 12px;
-  transform: translateX(-50%);
 }
 
 .ed-notice span {
+  flex: 1;
+  min-width: 0;
+}
+
+.ed-notice span:not(.kbd) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1008,6 +1017,11 @@ kbd {
   width: 0.6em;
 }
 
+.msel {
+  border-radius: 2px;
+  background: var(--sel);
+}
+
 .mbr {
   border-radius: 2px;
   background: var(--accent-soft);
@@ -1048,6 +1062,19 @@ kbd {
 .banner.warn {
   background: var(--warn-soft);
   color: var(--warn);
+}
+
+.banner.info {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.banner .b-msg {
+  cursor: default;
+}
+
+.banner button.b-msg {
+  cursor: pointer;
 }
 
 .b-msg {
@@ -1180,6 +1207,10 @@ kbd {
 }
 
 .tv-i {
+  color: var(--faint);
+}
+
+.tv-k.empty {
   color: var(--faint);
 }
 
@@ -1504,6 +1535,7 @@ button.tv-x:hover {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow: auto;
 }
 
 /* Empty state */
@@ -2065,6 +2097,24 @@ dialog[open] {
   flex: none;
 }
 
+/* Narrow viewer pane: the view's controls wrap onto their own row. */
+@container (max-width: 600px) {
+  .pane-view > .toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding-block: 6px;
+    row-gap: 6px;
+  }
+  .vt-tree,
+  .vt-table,
+  .vt-convert,
+  .vt-compare {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+}
+
 /* Touch devices: no keyboard hints; iOS zooms into inputs under 16px. */
 .coarse-only {
   display: none;
@@ -2073,6 +2123,33 @@ dialog[open] {
 @media (pointer: coarse) {
   .coarse-only {
     display: inline-block;
+  }
+  .btn,
+  .pick select,
+  .root-name,
+  .search {
+    height: 36px;
+  }
+  .btn.icon {
+    width: 36px;
+  }
+  .seg button {
+    height: 32px;
+    padding: 0 12px;
+  }
+  .toolbar {
+    height: 52px;
+  }
+  .statusbar {
+    height: calc(36px + env(safe-area-inset-bottom));
+  }
+  .sb-btn {
+    height: 32px;
+    min-width: 36px;
+    justify-content: center;
+  }
+  .st-link {
+    padding-block: 8px;
   }
   .fine-only,
   .search > .kbd,

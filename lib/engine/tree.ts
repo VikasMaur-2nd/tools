@@ -243,11 +243,11 @@ export class TreeView {
     this.mi = -1;
     const root = this.root;
     if (q && root) {
-      if (q[0] === '$' || (q[0] === '/' && q.length > 1)) {
-        const segs = parsePath(q);
-        const hit = segs ? resolve(root, segs) : null;
-        if (hit) this.matches = [hit];
-      } else {
+      // `$.a[0]` / `/a/0` jump to that node; if it doesn't resolve, it's plain text ($ref, /v1/users…).
+      const segs = q[0] === '$' || (q[0] === '/' && q.length > 1) ? parsePath(q) : null;
+      const hit = segs && segs.length ? resolve(root, segs) : null;
+      if (hit) this.matches = [hit];
+      else {
         const qn = this.qn;
         const cs = this.cs;
         const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
@@ -355,6 +355,7 @@ export class TreeView {
     if (this.matchSet?.has(n)) cls += n === this.matches[this.mi] ? ' hit cur' : ' hit';
     const cont = n.t >= ARR;
     let h = `<div class="${cls}" data-i="${i}" role="treeitem" aria-level="${n.d + 1}"`;
+    if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : kids(n.u).indexOf(n) + 1}"`;
     if (cont) h += ` aria-expanded="${n.x}"`;
     if (sel) h += ' id="tv-sel" aria-selected="true"';
     h += ` style="padding-left:${n.d * IND + 6}px">`;
@@ -362,6 +363,7 @@ export class TreeView {
     h += cont ? `<b class="tv-t${n.x ? ' o' : ''}"></b>` : '<b class="tv-t n"></b>';
     if (!n.u) h += '<span class="tv-root">root</span>';
     else if (typeof n.key === 'number') h += `<span class="tv-i">${n.key}</span><span class="tv-c">:</span>`;
+    else if (n.key === '') h += '<span class="tv-k empty">""</span><span class="tv-c">:</span>';
     else h += `<span class="tv-k">${this.mark(n.key as string)}</span><span class="tv-c">:</span>`;
 
     if (cont) {
