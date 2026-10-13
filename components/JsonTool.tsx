@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Engine } from '@/lib/engine/engine';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
@@ -941,6 +942,9 @@ function StatusBar() {
       </div>
       <div className="sb-r">
         <Cursor />
+        <Link className="sb-btn" href="/blogs" prefetch={false}>
+          Blog
+        </Link>
         <button type="button" className="sb-btn" onClick={() => act((e) => e.openPalette())} aria-label="All commands" data-tip="All commands" data-tip-up="">
           <span className="fine-only">
             <Kbd k="mod+K" />

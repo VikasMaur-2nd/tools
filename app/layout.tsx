@@ -1,22 +1,30 @@
 import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import { Analytics } from '@/components/Analytics';
+import { jsonLdScript, siteJsonLd } from './seo';
 import './globals.css';
+import './content.css';
 
 const SITE = 'https://tools.vikasmaur.com';
 
 // Code font: self-hosted at build time (no requests to Google), preloaded, and
 // cached offline by the service worker like every other asset.
 const code = JetBrains_Mono({ subsets: ['latin'], variable: '--font-code', display: 'swap' });
-const TITLE = 'JSON Formatter & Validator: Free, Private JSON Viewer | Tool Kumar';
+const TITLE = 'Free JSON Viewer & Formatter | Tool Kumar';
 const DESCRIPTION =
-  'Free, fast JSON formatter, viewer and validator. Beautify, minify, repair and explore JSON in a tree or table view. No upload, no ads. Runs in your browser and works offline.';
+  'View, format, validate, repair, minify and compare JSON online for free. Tool Kumar runs in your browser, keeps data on your device and works offline.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
-  title: TITLE,
+  title: { default: TITLE, template: '%s | Tool Kumar' },
   description: DESCRIPTION,
   applicationName: 'Tool Kumar',
+  keywords: ['JSON viewer', 'JSON formatter', 'JSON validator', 'JSON beautifier', 'format JSON online', 'JSON editor'],
+  authors: [{ name: 'Tool Kumar' }],
+  creator: 'Tool Kumar',
+  publisher: 'Tool Kumar',
+  classification: 'Developer tools',
+  referrer: 'strict-origin-when-cross-origin',
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
@@ -25,8 +33,21 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     locale: 'en_US',
+    images: [
+      {
+        url: '/opengraph-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Tool Kumar JSON viewer and formatter',
+      },
+    ],
   },
-  twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },
+  twitter: {
+    card: 'summary_large_image',
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ['/twitter-image.png'],
+  },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 } },
   formatDetection: { telephone: false, email: false, address: false },
   appleWebApp: { capable: true, title: 'Tool Kumar', statusBarStyle: 'black-translucent' },
@@ -53,6 +74,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     <html lang="en" dir="ltr" className={code.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: BOOT }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(siteJsonLd) }} />
       </head>
       <body>
         {children}
