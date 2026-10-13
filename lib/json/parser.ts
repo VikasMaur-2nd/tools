@@ -71,8 +71,8 @@ export interface ParseResult {
   /**
    * True when JSON.parse + JSON.stringify would reproduce this document exactly
    * (strict, no duplicate keys, canonical numbers, no integer-like keys that JS
-   * would reorder, no escaped one-character keys) — enables the native fast
-   * path for formatting.
+   * would reorder, no escapes in keys) — enables the native fast path for
+   * formatting.
    */
   exact: boolean;
 }
@@ -403,9 +403,9 @@ export function parse(src: string): ParseResult {
     for (;;) {
       const ks = i;
       const k = c === 34 ? str(34) : looseKey(c);
-      // Not natively reproducible: integer-like keys (JS reorders them) and one-character keys
-      // written as an escape such as "\n" (V8 13.x JSON.parse can read those back as "\").
-      if (exact && ((isDigit(k.charCodeAt(0)) && INT_KEY.test(k)) || (k.length === 1 && i - ks > 3))) exact = false;
+      // Not natively reproducible: integer-like keys (JS reorders them) and keys written with
+      // escapes (V8 13.x JSON.parse can misread "\n" as "\" after seeing a key containing "\").
+      if (exact && (i - ks !== k.length + 2 || (isDigit(k.charCodeAt(0)) && INT_KEY.test(k)))) exact = false;
       let dup = false;
       if (set) {
         dup = set.has(k);

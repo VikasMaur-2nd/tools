@@ -29,11 +29,11 @@ A fast, private, offline-capable JSON formatter, validator and viewer. Everythin
 ## Develop
 
 ```bash
-npm install
-npm run dev      # http://localhost:3000
-npm test         # parser, converter and diff test suites
-npm run lint
-npm run build && npm start
+pnpm install
+pnpm dev         # http://localhost:3000
+pnpm test        # parser, converter, diff and interchange test suites
+pnpm lint
+pnpm build && pnpm start
 ```
 
 ## Layout

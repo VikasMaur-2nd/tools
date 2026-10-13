@@ -1,6 +1,6 @@
 import JsonTool from '@/components/JsonTool';
 
-const SITE = 'https://tools.vikasmaur.com/';
+const SITE = 'https://tools.vikasmaur.com';
 
 const JSON_LD = {
   '@context': 'https://schema.org',

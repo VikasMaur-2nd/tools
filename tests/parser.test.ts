@@ -35,11 +35,12 @@ const casesOf = (n: number) => Math.round(n * SCALE);
 const dump = (src: string) => process.env.FUZZ_DUMP && writeFileSync(process.env.FUZZ_DUMP, src);
 
 /**
- * V8 13.x (Node 24) JSON.parse bug: once any object with the key "\" (source `"\\"`) has been
- * parsed, later one-character keys written as an escape (`"\n"`, `"\u0061"`, …) come back as "\".
- * The oracle (JSON.parse) must never see such a key, or later comparisons in this process lie.
+ * V8 13.x (Node 24) JSON.parse bug: an escaped key is compared against the expected (transition)
+ * key using its *raw* source text, so once a key containing a backslash has been parsed, later keys
+ * with escapes can be misread (`"\\n"` as "\\" after "\\"; `"\\\\_"` as "\\\\" after "\\\\").
+ * The oracle (JSON.parse) must never see a key containing a backslash, or later comparisons lie.
  */
-const POISON = /"\\(?:\\|u005[cC])"\s*:/;
+const POISON = /(?:\\\\|\\u005[cC])(?:[^"\\]|\\.)*"\s*:/;
 
 const strictOk = (r: ParseResult) => r.root !== null && !r.error && r.issues.length === 0;
 
@@ -673,25 +674,31 @@ describe('exact flag', () => {
   test('false for repaired, duplicate-key and NDJSON documents', () => {
     for (const src of ['[1,]', '{"a":1,"a":1}', '1\n2', '1,', '\ufeff1', '// x\n1']) assert.equal(exactOf(src), false, src);
   });
-  test('false for one-character keys written as an escape (V8 JSON.parse bug, see POISON)', () => {
-    for (const src of ['{"\\n": 1}', '{"\\u0061": 1}', '{"\\/": 1}', '{"a": {"\\"": 1}}', '{"\\\\": 1}'])
+  test('false for keys written with escapes (V8 JSON.parse bug, see POISON)', () => {
+    for (const src of ['{"\\n": 1}', '{"\\u0061": 1}', '{"\\/": 1}', '{"a": {"\\"": 1}}', '{"\\\\": 1}', '{"caf\\u00e9": 1}', '{"\\\\_": 1}'])
       assert.equal(exactOf(src), false, src);
-    for (const src of ['{"a": 1}', '{"caf\\u00e9": 1}', '{"\\n\\n": 1}', '{"a": "\\n"}']) assert.equal(exactOf(src), true, src);
+    for (const src of ['{"a": 1}', '{"caf\u00e9": 1}', '{"a": "\\n\\u00e9"}']) assert.equal(exactOf(src), true, src);
   });
   test('formatDoc is immune to the V8 escaped-key bug (subprocess)', (t) => {
-    // Fresh process: the bug needs a map whose only transition is the key "\\".
+    // Fresh process: the bug needs a map whose only transition is a key containing a backslash.
     const lib = JSON.stringify(join(__dirname, '..', 'lib', 'json'));
     const code = `
       const { parse } = require(${lib} + '/parser');
       const { formatDoc } = require(${lib} + '/format');
       JSON.parse(String.raw\`{"qz9": 0, "\\\\": 0}\`);
+      JSON.parse(String.raw\`{"qz8": 0, "\\\\\\\\": 0}\`);
       const src = String.raw\`{"qz9": 0, "\\n": 1}\`;
-      process.stdout.write(JSON.stringify([Object.keys(JSON.parse(src))[1], formatDoc(src, parse(src), '')]));`;
+      const src2 = String.raw\`{"qz8": 0, "\\\\_": 1}\`;
+      process.stdout.write(JSON.stringify([
+        Object.keys(JSON.parse(src))[1], formatDoc(src, parse(src), ''),
+        Object.keys(JSON.parse(src2))[1], formatDoc(src2, parse(src2), ''),
+      ]));`;
     const out = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8' });
     assert.equal(out.status, 0, out.stderr);
-    const [nativeKey, formatted] = JSON.parse(out.stdout) as [string, string];
-    t.diagnostic(`JSON.parse read the key "\\n" as ${JSON.stringify(nativeKey)} on V8 ${process.versions.v8}`);
-    assert.equal(formatted, '{"qz9":0,"\\n":1}');
+    const [key1, formatted1, key2, formatted2] = JSON.parse(out.stdout) as string[];
+    t.diagnostic(`V8 ${process.versions.v8} JSON.parse read the keys "\\n" and "\\\\_" as ${JSON.stringify(key1)} and ${JSON.stringify(key2)}`);
+    assert.equal(formatted1, '{"qz9":0,"\\n":1}');
+    assert.equal(formatted2, '{"qz8":0,"\\\\_":1}');
   });
   test('native fast path agrees with the custom serializer whenever exact', () => {
     const src = '{"name":"\\u00e9\\ud83d\\ude00","n":[1,0.5,-3],"s":"\\ud800","e":{},"a":[]}';

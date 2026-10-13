@@ -2,8 +2,8 @@
 // lib/ plus tests/**/*.test.ts to CommonJS in .test-build/ with the repo's own
 // TypeScript compiler, then runs the compiled tests with `node --test`.
 //
-//   npm test                                  # everything
-//   npm test -- --test-name-pattern=parser    # extra args go to `node --test`
+//   pnpm test                                 # everything
+//   pnpm test --test-name-pattern=parser      # extra args go to `node --test`
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
