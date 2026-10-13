@@ -213,25 +213,43 @@ function FormatBar() {
   const minify = useUI((s) => s.settings.minify);
   const sortKeys = useUI((s) => s.settings.sortKeys);
   const indent = useUI((s) => s.settings.indent);
+  const { pretty, minified } = useUI((s) => s.fmt);
   const mac = useUI((s) => s.mac);
   const mod = mac ? '⌘' : 'Ctrl+';
+  // Both sizes are always visible: what the whitespace costs is the point.
+  const saved = pretty > 0 ? Math.round((1 - minified / pretty) * 100) : 0;
   return (
     <>
       <div className="seg seg-sm" role="radiogroup" aria-label="Output style">
-        <button type="button" role="radio" aria-checked={!minify} onClick={() => act((e) => e.setFormat({ minify: false }))}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={!minify}
+          onClick={() => act((e) => e.setFormat({ minify: false }))}
+          data-tip="Pretty: indented and readable"
+        >
           Pretty
+          {pretty > 0 && <span className="seg-size">{formatBytes(pretty)}</span>}
         </button>
-        <button type="button" role="radio" aria-checked={minify} onClick={() => act((e) => e.setFormat({ minify: true }))}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={minify}
+          onClick={() => act((e) => e.setFormat({ minify: true }))}
+          data-tip={saved > 0 ? `Minified is ${saved}% smaller` : 'Minify: one line, no whitespace'}
+        >
           Minify
+          {minified > 0 && <span className="seg-size">{formatBytes(minified)}</span>}
         </button>
       </div>
       {!minify && (
-        <label className="pick">
+        <label className="pick pick-sm" data-tip="Indentation">
           <span className="sr-only">Indentation</span>
+          <Icon name="format" size={13} className="pick-ico" />
           <select value={indent} onChange={(e) => act((en) => en.setIndent(e.target.value as IndentId))}>
-            <option value="2">2 spaces</option>
-            <option value="4">4 spaces</option>
-            <option value="tab">Tabs</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="tab">Tab</option>
           </select>
           <Icon name="down" size={13} />
         </label>

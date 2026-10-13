@@ -55,6 +55,9 @@ export class CodeView {
       else this.render(true);
     });
     this.ro.observe(el);
+    document.fonts?.ready.then(() => {
+      if (this.el.isConnected && this.lines.length) this.reflow(true);
+    });
   }
 
   destroy() {

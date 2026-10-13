@@ -7,7 +7,7 @@
 :root {
   color-scheme: light;
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-mono: var(--font-code), 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, 'Liberation Mono', monospace;
   --lh: 20px;
   --rh: 24px;
 
@@ -608,8 +608,31 @@ svg {
 /* Small segmented switch (Pretty / Minify) and toggle buttons */
 .seg-sm button {
   height: 24px;
-  padding: 0 10px;
+  padding: 0 9px;
   font-size: 12px;
+}
+
+.seg-size {
+  color: var(--faint);
+  font: 500 11px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.seg-sm button[aria-checked='true'] .seg-size {
+  color: var(--muted);
+}
+
+/* Compact picker with a leading icon (indentation) */
+.pick.pick-sm select {
+  padding-left: 28px;
+  padding-right: 24px;
+}
+
+.pick.pick-sm .pick-ico {
+  position: absolute;
+  left: 9px;
+  right: auto;
+  pointer-events: none;
 }
 
 .seg-sm button[aria-checked='true'] {

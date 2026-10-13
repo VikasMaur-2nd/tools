@@ -65,8 +65,8 @@ export interface UIState {
   /** Huge document shown read-only for speed. */
   viewOnly: boolean;
   convert: { loading: boolean; error: string | null; lines: number; bytes: number };
-  /** Format view output size. */
-  fmt: { lines: number; bytes: number };
+  /** Format view output: line count and the byte size of both variants. */
+  fmt: { lines: number; pretty: number; minified: number };
   /** Current document text, published only while the Compare view is open. */
   docText: string;
   palette: false | 'commands' | 'url';
@@ -104,7 +104,7 @@ export const INITIAL: UIState = {
   fileName: null,
   viewOnly: false,
   convert: { loading: false, error: null, lines: 0, bytes: 0 },
-  fmt: { lines: 0, bytes: 0 },
+  fmt: { lines: 0, pretty: 0, minified: 0 },
   docText: '',
   palette: false,
   shortcuts: false,

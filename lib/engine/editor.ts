@@ -154,6 +154,13 @@ export class Editor {
     });
     this.ro.observe(el);
     this.model(ta.value, true);
+    // The code font may arrive after first paint: re-measure glyph width then.
+    document.fonts?.ready.then(() => {
+      if (!this.el.isConnected) return;
+      this.measure();
+      this.layout();
+      this.render(true);
+    });
   }
 
   destroy() {

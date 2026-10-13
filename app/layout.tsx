@@ -1,8 +1,13 @@
 import type { Metadata, Viewport } from 'next';
+import { JetBrains_Mono } from 'next/font/google';
 import { Analytics } from '@/components/Analytics';
 import './globals.css';
 
 const SITE = 'https://tools.vikasmaur.com';
+
+// Code font: self-hosted at build time (no requests to Google), preloaded, and
+// cached offline by the service worker like every other asset.
+const code = JetBrains_Mono({ subsets: ['latin'], variable: '--font-code', display: 'swap' });
 const TITLE = 'JSON Formatter & Validator: Free, Private JSON Viewer | Tool Kumar';
 const DESCRIPTION =
   'Free, fast JSON formatter, viewer and validator. Beautify, minify, repair and explore JSON in a tree or table view. No upload, no ads. Runs in your browser and works offline.';
@@ -45,7 +50,7 @@ const BOOT = `try{var d=document.documentElement,l=localStorage,t=l.getItem('jf:
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" dir="ltr" suppressHydrationWarning>
+    <html lang="en" dir="ltr" className={code.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: BOOT }} />
       </head>

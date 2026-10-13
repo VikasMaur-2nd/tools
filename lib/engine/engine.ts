@@ -106,6 +106,26 @@ function records(root: JNode): JNode {
   return best ?? root;
 }
 
+/**
+ * Bytes pretty-printing adds over minified output: per non-empty container a
+ * newline + indent before each child and before the closer, and a space after
+ * every object key's colon (all ASCII).
+ */
+function prettyExtra(root: JNode, unit: number): number {
+  if (root.t < ARR) return 0;
+  let extra = 0;
+  const stack: JNode[] = [root];
+  while (stack.length) {
+    const n = stack.pop() as JNode;
+    const list = n.v as JNode[];
+    const k = list.length;
+    if (!k) continue;
+    extra += k * (1 + (n.d + 1) * unit) + 1 + n.d * unit + (n.t === OBJ ? k : 0);
+    for (const c of list) if (c.t >= ARR) stack.push(c);
+  }
+  return extra;
+}
+
 const JWT_RE = /^eyJ[\w-]*\.eyJ[\w-]*\.[\w-]*$/;
 
 /** Cheap guess at what non-JSON input is, to offer a one-click conversion. */
@@ -889,7 +909,14 @@ export class Engine {
     if (this.settings.view !== 'format') return;
     const out = this.output();
     this.fmt.setText(out, jsonRow, true);
-    store.set({ fmt: { lines: this.fmt.lineCount, bytes: out.length } });
+    // Size of the shown variant is measured; the other differs only by whitespace,
+    // which is computed from the tree (no second format of big documents).
+    const bytes = byteLength(out);
+    const extra = this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
+    const minify = this.settings.minify;
+    store.set({
+      fmt: { lines: this.fmt.lineCount, pretty: out ? (minify ? bytes + extra : bytes) : 0, minified: out ? (minify ? bytes : bytes - extra) : 0 },
+    });
   };
 
   /** Replaces the input with the Format view's output (undoable). */
