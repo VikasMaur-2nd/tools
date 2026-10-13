@@ -2683,6 +2683,10 @@ button.mi:focus-visible {
   display: inline-block;
 }
 
+.ed-fold {
+  cursor: pointer;
+}
+
 .ed-ph.w {
   background: var(--warn-soft);
   color: var(--warn);
@@ -2691,6 +2695,22 @@ button.mi:focus-visible {
 .ed-ph.e {
   background: var(--err-soft);
   color: var(--err);
+}
+
+/* Compare: a folded block that hides changes says so */
+.ed-ph.dla {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.ed-ph.dld {
+  background: var(--err-soft);
+  color: var(--err);
+}
+
+.ed-ph.dlc {
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 
 .cv-c {

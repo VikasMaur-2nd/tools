@@ -15,9 +15,10 @@ import { highlightLine, type Mark } from './highlight';
  * Undo/redo is ours (browser undo is lost on programmatic changes and is tied
  * to slow DOM editing commands).
  *
- * Folding: a folded block hides whole lines, so the textarea holds the model
- * minus those lines ("display" text). Offsets map between the two by line;
- * every public API speaks model offsets.
+ * Folding: a folded block hides its inner lines and its closing line (drawn
+ * after the "⋯ N lines" pill, like the output view), so the textarea holds the
+ * model minus those lines ("display" text). Offsets map between the two by
+ * line; every public API speaks model offsets.
  */
 
 export const LH = 20;
@@ -398,7 +399,9 @@ export class Editor {
   /**
    * A line ending in `{` or `[` opens a block that the next line starting with
    * the matching closer ends (same rule as the output view: exact for
-   * formatted JSON, linear in lines). Re-validates folds after edits.
+   * formatted JSON, linear in lines). A block folds only if its closing line
+   * is just the closer (`}` or `},`): that line hides with it. Re-validates
+   * folds after edits.
    */
   private scanFolds() {
     const t = this.text;
@@ -415,12 +418,12 @@ export class Editor {
       if (a === e) continue;
       const first = t.charCodeAt(a);
       if (first === 47 && t.charCodeAt(a + 1) === 47) continue; // a // comment line
-      if ((first === 125 || first === 93) && stack.length) {
-        const o = stack.pop() as number;
-        if (i > o + 1) close[o] = i;
-      }
       let b = e - 1;
       while (b > a && (t.charCodeAt(b) === 32 || t.charCodeAt(b) === 9 || t.charCodeAt(b) === 13)) b--;
+      if ((first === 125 || first === 93) && stack.length) {
+        const o = stack.pop() as number;
+        if (i > o + 1 && (b === a || (b === a + 1 && t.charCodeAt(b) === 44))) close[o] = i;
+      }
       const last = t.charCodeAt(b);
       if ((last === 123 || last === 91) && !(b === a && (first === 125 || first === 93))) {
         depth[i] = stack.length;
@@ -455,10 +458,10 @@ export class Editor {
       vis.push(i);
       if (this.folded.has(i)) {
         const c = this.close[i];
-        // Hide [end of the opener line, the newline before the closer line).
+        // Hide [end of the opener line, end of the closer line).
         out += t.slice(from, this.lineEnd(i));
-        from = this.ls[c] - 1;
-        i = c - 1;
+        from = this.lineEnd(c);
+        i = c;
       }
     }
     out += t.slice(from);
@@ -512,7 +515,7 @@ export class Editor {
 
   /**
    * Textarea offset → model offset. The newline after a folded line stands for
-   * the hidden lines plus the newline before the closer: `right` maps its start
+   * the hidden lines plus the newline after the closer: `right` maps its start
    * to the latter (so deleting it never drops hidden lines).
    */
   private d2m(off: number, right = false) {
@@ -524,7 +527,7 @@ export class Editor {
     const m = this.ls[ln] + Math.max(0, off - dls[k]);
     const end = this.lineEnd(ln);
     if (m >= end) {
-      if (right && this.folded.has(ln)) return this.ls[this.close[ln]] - 1;
+      if (right && this.folded.has(ln)) return this.lineEnd(this.close[ln]);
       return end;
     }
     return m;
@@ -559,13 +562,13 @@ export class Editor {
   toggleFold(ln: number) {
     const c = this.close[ln];
     if (c < 0) return;
-    // Its lines enter or leave the textarea as one run: [end of the line, newline before the closer).
+    // Its lines enter or leave the textarea as one run: [end of the line, end of the closer line).
     const at = this.m2d(this.lineEnd(ln));
     if (this.folded.has(ln)) {
       this.folded.delete(ln);
-      return this.refold(ln, { at, end: () => this.m2d(this.ls[c] - 1), cut: false });
+      return this.refold(ln, { at, end: () => this.m2d(this.lineEnd(c)), cut: false });
     }
-    const end = this.m2d(this.ls[c] - 1);
+    const end = this.m2d(this.lineEnd(c));
     this.folded.set(ln, c - ln);
     this.refold(ln, { at, end: () => end, cut: true });
   }
@@ -607,7 +610,7 @@ export class Editor {
   private unhide(off: number) {
     if (!this.vis || !this.hidden(off)) return;
     const ln = this.lineOf(off);
-    for (const o of [...this.folded.keys()]) if (o < ln && this.close[o] > ln) this.folded.delete(o);
+    for (const o of [...this.folded.keys()]) if (o < ln && this.close[o] >= ln) this.folded.delete(o);
     this.refold(-1);
   }
 
@@ -762,18 +765,29 @@ export class Editor {
     this.gl.innerHTML = this.gutterHtml(first, last);
   }
 
-  /** The "⋯ N lines" pill after a folded line (flags errors hidden inside). */
+  /** The "⋯ N lines" pill and the hidden closer after a folded line (flags errors and Compare changes hidden inside). */
   private foldPill(ln: number) {
     const c = this.close[ln];
     const n = c - ln - 1;
     let cls = '';
     for (const [l, k] of this.diagCls) {
-      if (l > ln && l < c) {
+      if (l > ln && l <= c) {
         cls = k;
         if (k === 'e') break;
       }
     }
-    return `<span class="ed-ph${cls ? ' ' + cls : ''}" data-f="${ln}">⋯ ${n} line${n === 1 ? '' : 's'}</span>`;
+    const lm = this.lineMarks;
+    if (!cls && lm) {
+      let kinds = 0;
+      for (let l = ln + 1; l <= c && l < lm.length; l++) if (lm[l]) kinds |= 1 << lm[l];
+      // Only additions or only removals keep their color; a mix reads as "changed".
+      if (kinds) cls = kinds === 2 ? 'dla' : kinds === 4 ? 'dld' : 'dlc';
+    }
+    const t = this.text;
+    let a = this.ls[c];
+    while (t.charCodeAt(a) === 32 || t.charCodeAt(a) === 9) a++;
+    const closer = highlightLine(t, a, this.lineEnd(c), null);
+    return `<span class="ed-fold" data-f="${ln}"><span class="ed-ph${cls ? ' ' + cls : ''}">⋯ ${n} line${n === 1 ? '' : 's'}</span>${closer}</span>`;
   }
 
   /** If `sa` falls inside a string, start the slice at the string's opening quote (bounded). */
@@ -1039,7 +1053,7 @@ export class Editor {
     const next = new Map<number, number>();
     for (const [o, span] of this.folded) {
       const hs = this.lineEnd(o);
-      const he = this.ls[o + span] - 1;
+      const he = this.lineEnd(o + span);
       if (b <= hs) next.set(o + d, span);
       else if (a > he || (keep && d === 0)) next.set(o, span);
       else if (!(a <= hs && b > he)) this.foldsLost = true;
@@ -1084,7 +1098,7 @@ export class Editor {
   /** The fold pill sits under the textarea: find it by position. */
   private pillAt(x: number, y: number) {
     if (!this.folded.size) return -1;
-    for (const el of this.hl.querySelectorAll<HTMLElement>('.ed-ph')) {
+    for (const el of this.hl.querySelectorAll<HTMLElement>('.ed-fold')) {
       const r = el.getBoundingClientRect();
       if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return Number(el.dataset.f);
     }
@@ -1128,7 +1142,7 @@ export class Editor {
   /** View mode: clicking a line moves the (virtual) caret there. */
   private onViewClick = (e: MouseEvent) => {
     if (!this.view) return;
-    const pill = (e.target as HTMLElement).closest('.ed-ph') as HTMLElement | null;
+    const pill = (e.target as HTMLElement).closest('.ed-fold') as HTMLElement | null;
     if (pill) return this.toggleFold(Number(pill.dataset.f));
     if (window.getSelection()?.toString()) return;
     const r = this.body.getBoundingClientRect();
