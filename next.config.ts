@@ -26,6 +26,13 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   poweredByHeader: false,
   reactStrictMode: true,
+  // The blog lives at /blogs; send the common singular spelling there too.
+  async redirects() {
+    return [
+      { source: "/blog", destination: "/blogs", permanent: true },
+      { source: "/blog/:slug", destination: "/blogs/:slug", permanent: true },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

@@ -40,6 +40,7 @@ pnpm build && pnpm start
 
 ```
 app/                 layout (metadata, theme bootstrap), page, CSS, manifest, robots, sitemap, icons
+app/blogs/           blog index and posts; add a post to posts.ts plus a page in its own folder
 components/          React UI (toolbars, status bar, dialogs)
 lib/json/            lossless tolerant parser, serializer, paths, smart value helpers
 lib/engine/          editor, tree, table and code views + the engine that ties them together
