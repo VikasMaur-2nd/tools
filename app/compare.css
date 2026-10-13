@@ -616,3 +616,34 @@
     transition: none;
   }
 }
+
+/* ── Diff colors (layered on the glyph and shape cues above) ── */
+
+.cmp-k-added .cmp-mark {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: var(--bg);
+}
+
+.cmp-k-removed .cmp-mark {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.cmp-k-changed .cmp-mark,
+.cmp-k-type .cmp-mark {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.cmp-old {
+  background: var(--err-soft);
+  color: var(--err);
+  text-decoration-color: currentColor;
+}
+
+.cmp-new {
+  background: var(--ok-soft);
+  color: var(--ok);
+}

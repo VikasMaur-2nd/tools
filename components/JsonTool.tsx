@@ -420,34 +420,15 @@ function Banner() {
   );
 }
 
-/** Raw state (nothing typed or pasted yet): a quiet brand watermark. */
+/** Raw state (nothing typed or pasted yet): the name, centered on the divider. */
 function Watermark() {
   const empty = useUI((s) => s.empty);
   const view = useUI((s) => s.settings.view);
   if (!empty || view === 'compare') return null;
   return (
-    <div className="watermark">
-      <div className="wm-in">
-        <Logo size={44} />
-        <div className="wm-name" aria-hidden="true">
-          Tool Kumar
-        </div>
-        <h1 className="wm-sub">JSON Formatter &amp; Viewer</h1>
-        <p className="sr-only">
-          Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
-        </p>
-      </div>
+    <div className="watermark" aria-hidden="true">
+      Tool Kumar
     </div>
-  );
-}
-
-/** The Tool Kumar monogram (pure currentColor). */
-function Logo({ size = 28 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="logo-mark">
-      <rect width="32" height="32" rx="7" fill="currentColor" />
-      <path d="M4 6H20V12L24 6H28L21.33 16L28 26H24L20 20V26H16V10H12V26H8V10H4Z" fill="var(--bg)" />
-    </svg>
   );
 }
 
@@ -514,7 +495,6 @@ function ViewerPane({
         <div id="view-compare" className="cmp-host" hidden={view !== 'compare'}>
           {view === 'compare' && <CompareHost />}
         </div>
-        <Watermark />
       </div>
     </section>
   );
@@ -765,9 +745,14 @@ export default function JsonTool() {
 
   return (
     <div className="app">
+      <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
+      <p className="sr-only">
+        Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
+      </p>
       <main className="panes">
         <EditorPane edRef={edRef} />
         <Splitter />
+        <Watermark />
         <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} fmtRef={fmtRef} searchRef={searchRef} />
       </main>
       <StatusBar />

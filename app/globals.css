@@ -1,5 +1,6 @@
 /* ─── Design tokens ──────────────────────────────────────────────────────────
-   Pure black & white. Light is the default; dark applies from the OS
+   Black & white chrome; color only where it carries meaning (syntax,
+   errors, warnings, search hits, diffs). Light is the default; dark applies from the OS
    preference with no JS (so it can never flash). A manual override sets
    [data-theme] before first paint. */
 
@@ -30,13 +31,14 @@
   --cur-line: rgba(0, 0, 0, 0.03);
   --scope: rgba(0, 0, 0, 0.045);
   --guide: rgba(0, 0, 0, 0.08);
-  --ok: #0a0a0a;
-  --warn: #0a0a0a;
-  --err: #0a0a0a;
-  --warn-soft: rgba(0, 0, 0, 0.05);
-  --err-soft: rgba(0, 0, 0, 0.08);
-  --hit: rgba(0, 0, 0, 0.14);
-  --hit-cur: rgba(0, 0, 0, 0.32);
+  --ok: #15803d;
+  --warn: #b45309;
+  --err: #dc2626;
+  --warn-soft: rgba(217, 119, 6, 0.1);
+  --ok-soft: rgba(21, 128, 61, 0.1);
+  --err-soft: rgba(220, 38, 38, 0.08);
+  --hit: rgba(250, 204, 21, 0.4);
+  --hit-cur: rgba(249, 115, 22, 0.45);
   --tip-bg: #0a0a0a;
   --tip-fg: #ffffff;
   --overlay: rgba(255, 255, 255, 0.82);
@@ -44,13 +46,13 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16);
   --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.06);
 
-  --c-key: #0a0a0a;
-  --c-str: #5c5c5c;
-  --c-num: #0a0a0a;
-  --c-bool: #0a0a0a;
-  --c-null: #8a8a8a;
-  --c-punct: #a8a8a8;
-  --c-com: #a8a8a8;
+  --c-key: #1d4ed8;
+  --c-str: #047857;
+  --c-num: #b45309;
+  --c-bool: #7c3aed;
+  --c-null: #be123c;
+  --c-punct: #8a92a0;
+  --c-com: #8a92a0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -76,13 +78,14 @@
     --cur-line: rgba(255, 255, 255, 0.035);
     --scope: rgba(255, 255, 255, 0.05);
     --guide: rgba(255, 255, 255, 0.08);
-    --ok: #ededed;
-    --warn: #ededed;
-    --err: #ededed;
-    --warn-soft: rgba(255, 255, 255, 0.05);
-    --err-soft: rgba(255, 255, 255, 0.1);
-    --hit: rgba(255, 255, 255, 0.18);
-    --hit-cur: rgba(255, 255, 255, 0.4);
+    --ok: #4ade80;
+    --warn: #f0b04a;
+    --err: #f87171;
+    --warn-soft: rgba(240, 176, 74, 0.1);
+    --ok-soft: rgba(74, 222, 128, 0.12);
+    --err-soft: rgba(248, 113, 113, 0.12);
+    --hit: rgba(250, 204, 21, 0.25);
+    --hit-cur: rgba(249, 115, 22, 0.5);
     --tip-bg: #ededed;
     --tip-fg: #000000;
     --overlay: rgba(0, 0, 0, 0.8);
@@ -90,13 +93,13 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.7);
     --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
-    --c-key: #ededed;
-    --c-str: #9a9a9a;
-    --c-num: #ededed;
-    --c-bool: #ededed;
-    --c-null: #7a7a7a;
-    --c-punct: #555555;
-    --c-com: #555555;
+    --c-key: #8ab4ff;
+    --c-str: #86d9a8;
+    --c-num: #f5b97c;
+    --c-bool: #c9a5ff;
+    --c-null: #ff8fa8;
+    --c-punct: #6c7484;
+    --c-com: #6c7484;
   }
 }
 
@@ -122,13 +125,14 @@
   --cur-line: rgba(255, 255, 255, 0.035);
   --scope: rgba(255, 255, 255, 0.05);
   --guide: rgba(255, 255, 255, 0.08);
-  --ok: #ededed;
-  --warn: #ededed;
-  --err: #ededed;
-  --warn-soft: rgba(255, 255, 255, 0.05);
-  --err-soft: rgba(255, 255, 255, 0.1);
-  --hit: rgba(255, 255, 255, 0.18);
-  --hit-cur: rgba(255, 255, 255, 0.4);
+  --ok: #4ade80;
+  --warn: #f0b04a;
+  --err: #f87171;
+  --warn-soft: rgba(240, 176, 74, 0.1);
+  --ok-soft: rgba(74, 222, 128, 0.12);
+  --err-soft: rgba(248, 113, 113, 0.12);
+  --hit: rgba(250, 204, 21, 0.25);
+  --hit-cur: rgba(249, 115, 22, 0.5);
   --tip-bg: #ededed;
   --tip-fg: #000000;
   --overlay: rgba(0, 0, 0, 0.8);
@@ -136,13 +140,13 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.7);
   --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
-  --c-key: #ededed;
-  --c-str: #9a9a9a;
-  --c-num: #ededed;
-  --c-bool: #ededed;
-  --c-null: #7a7a7a;
-  --c-punct: #555555;
-  --c-com: #555555;
+  --c-key: #8ab4ff;
+  --c-str: #86d9a8;
+  --c-num: #f5b97c;
+  --c-bool: #c9a5ff;
+  --c-null: #ff8fa8;
+  --c-punct: #6c7484;
+  --c-com: #6c7484;
 }
 
 /* ─── Base ─────────────────────────────────────────────────────────────── */
@@ -1052,14 +1056,13 @@ kbd {
 }
 
 .me {
-  text-decoration-color: var(--fg);
-  text-decoration-thickness: 1.5px;
+  text-decoration-color: var(--err);
   background: var(--err-soft);
 }
 
 .mw {
-  text-decoration-style: dotted;
-  text-decoration-color: var(--muted);
+  text-decoration-color: var(--warn);
+  background: var(--warn-soft);
 }
 
 .meol {
@@ -1105,16 +1108,15 @@ kbd {
 }
 
 .banner.err {
-  background: var(--fg);
-  color: var(--bg);
+  background: var(--err-soft);
+  color: var(--err);
 }
 
-.banner.err .b-msg span {
-  color: inherit;
-  opacity: 0.75;
+.banner.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 
-.banner.warn,
 .banner.info {
   background: var(--bg-2);
   color: var(--fg);
@@ -1618,46 +1620,33 @@ button.tv-x:hover {
   text-align: center;
 }
 
-/* Raw state watermark */
+/* Raw state watermark: the name sits on the divider, centered on the page. */
+.panes {
+  position: relative;
+}
+
 .watermark {
   position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+  top: 50%;
+  left: var(--split, 50%);
+  z-index: 6;
+  padding: 12px 22px;
   background: var(--bg);
+  color: var(--line-2);
+  font: 700 clamp(30px, 4.6vw, 60px) / 1 var(--font-ui);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
   pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-.wm-in {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  color: var(--line-2);
-  text-align: center;
-}
-
-.wm-name {
-  color: var(--line-2);
-  font: 700 clamp(34px, 7cqi, 64px) / 1 var(--font-ui);
-  letter-spacing: -0.04em;
-}
-
-.wm-sub {
-  margin: 0;
-  color: var(--faint);
-  font: 500 13px/1 var(--font-ui);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.logo-mark {
-  display: block;
-  flex: none;
+@media (max-width: 760px) {
+  .watermark {
+    top: var(--split, 50%);
+    left: 50%;
+  }
 }
 
 .hero h1 {
