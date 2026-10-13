@@ -12,7 +12,7 @@ export function Logo({ size = 24 }: { size?: number }) {
   );
 }
 
-type Section = 'blogs' | 'resources' | 'about';
+type Section = 'blogs' | 'about';
 
 export default function ContentShell({
   children,
@@ -39,9 +39,6 @@ export default function ContentShell({
           <nav className="site-nav" aria-label="Main">
             <Link href="/blogs" aria-current={here('blogs')}>
               Blog
-            </Link>
-            <Link href="/resources" aria-current={here('resources')}>
-              Resources
             </Link>
             <Link href="/about" aria-current={here('about')}>
               About
@@ -86,17 +83,6 @@ export default function ContentShell({
                 ))}
                 <li>
                   <Link href="/blogs">All posts</Link>
-                </li>
-              </ul>
-            </nav>
-            <nav aria-label="Resources">
-              <p className="foot-h">Resources</p>
-              <ul>
-                <li>
-                  <Link href="/resources/json-reference">JSON syntax reference</Link>
-                </li>
-                <li>
-                  <Link href="/resources/json-examples">JSON examples</Link>
                 </li>
               </ul>
             </nav>
