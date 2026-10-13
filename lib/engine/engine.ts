@@ -5,7 +5,8 @@ import { Editor, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
 import { TableView } from './table';
 import { CodeView } from './codeview';
-import { escapeHtml } from './highlight';
+import { escapeHtml, highlightLine } from './highlight';
+import type { LineHighlighter } from './codeview';
 import { targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Status, type Theme, type View } from './store';
 import { SAMPLE } from './sample';
@@ -13,7 +14,7 @@ import { SAMPLE } from './sample';
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
 const MAX_PERSIST = 2_500_000;
-const THEME_COLORS = { light: '#ffffff', dark: '#0c0d10' };
+const THEME_COLORS = { light: '#ffffff', dark: '#000000' };
 
 export interface EngineEls {
   editor: HTMLElement;
@@ -22,7 +23,24 @@ export interface EngineEls {
   file: HTMLInputElement;
   search: HTMLInputElement;
   code: HTMLElement;
+  fmt: HTMLElement;
 }
+
+/** JSON highlighter for soft-wrapped rows (a row may start inside a string). */
+const jsonRow: LineHighlighter = (t, inStr, esc) => {
+  if (!inStr) return highlightLine(t, 0, t.length, null);
+  let i = esc ? 1 : 0;
+  for (; i < t.length; i++) {
+    const c = t.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34) {
+      i++;
+      break;
+    }
+  }
+  i = Math.min(i, t.length);
+  return `<span class="ts">${escapeHtml(t.slice(0, i))}</span>` + highlightLine(t, i, t.length, null);
+};
 
 type ConvertModule = typeof import('../convert');
 
@@ -54,7 +72,9 @@ function loadSettings(): Settings {
     out.split = Math.min(0.8, Math.max(0.2, Number(out.split) || 0.5));
     if (!['2', '4', 'tab'].includes(out.indent)) out.indent = '2';
     if (!['system', 'light', 'dark'].includes(out.theme)) out.theme = 'system';
-    if (!['tree', 'table', 'convert', 'compare'].includes(out.view)) out.view = 'tree';
+    if (!['format', 'tree', 'table', 'convert', 'compare'].includes(out.view)) out.view = 'format';
+    out.minify = !!out.minify;
+    out.sortKeys = !!out.sortKeys;
     if (out.tsStyle !== 'type') out.tsStyle = 'interface';
     out.rootName = String(out.rootName || 'Root').slice(0, 60);
     return out;
@@ -131,7 +151,11 @@ export class Engine {
   readonly tree: TreeView;
   readonly table: TableView;
   readonly code: CodeView;
+  readonly fmt: CodeView;
   private els: EngineEls;
+  private fmtTimer = 0;
+  /** Text that `good` was parsed from (needed by the native formatting fast path). */
+  private goodText = '';
   private conv: ConvertModule | null = null;
   private convTimer = 0;
 
@@ -181,6 +205,7 @@ export class Engine {
       drill: (n) => this.tableShow(n),
     });
     this.code = new CodeView(els.code);
+    this.fmt = new CodeView(els.fmt);
 
     // Restore: text typed/restored before hydration wins, then saved doc.
     if (!this.ed.text) {
@@ -224,11 +249,13 @@ export class Engine {
     clearTimeout(this.persistTimer);
     clearTimeout(this.toastTimer);
     clearTimeout(this.convTimer);
+    clearTimeout(this.fmtTimer);
     this.persistNow();
     this.ed.destroy();
     this.tree.destroy();
     this.table.destroy();
     this.code.destroy();
+    this.fmt.destroy();
   }
 
   get indent() {
@@ -264,7 +291,7 @@ export class Engine {
     const text = ed.text;
     const lines = ed.ls.length;
     if (lines > 3 && text.length / lines < 160) return;
-    // Parse without building views for the minified text — they'd be replaced at once.
+    // Parse without building views for the minified text: they'd be replaced at once.
     const r = text === this.parsed && this.res ? this.res : parse(text);
     if (!r.root || r.error || r.issues.length) return;
     const pretty = formatDoc(text, r, this.indent);
@@ -294,6 +321,7 @@ export class Engine {
     if (!text.trim()) {
       this.res = null;
       this.good = null;
+      this.goodText = '';
       this.sel = null;
       this.selPath = null;
       this.tablePath = [];
@@ -325,6 +353,7 @@ export class Engine {
 
     if (res.root) {
       this.good = res;
+      this.goodText = text;
       this.tree.setRoot(res.root, reset, res.nodes);
       this.sel = this.selPath ? resolve(res.root, this.selPath) : null;
       this.tree.select(this.sel, { scroll: false });
@@ -366,8 +395,10 @@ export class Engine {
 
   /** Keeps the secondary views (convert, compare) in step with the document. */
   private afterDoc() {
-    if (this.settings.view === 'convert') this.scheduleConvert(150);
-    else if (this.settings.view === 'compare') store.set({ docText: this.ed.text });
+    const v = this.settings.view;
+    if (v === 'format') this.scheduleFormat(this.ed.text.length > 1_000_000 ? 250 : 60);
+    else if (v === 'convert') this.scheduleConvert(150);
+    else if (v === 'compare') store.set({ docText: this.ed.text });
   }
 
   private statusOf(res: ParseResult): Status {
@@ -455,12 +486,12 @@ export class Engine {
   private transform(fn: (r: ParseResult, text: string) => string, done: (r: ParseResult) => string) {
     const r = this.fresh();
     if (!r) {
-      this.toast('Nothing to format yet — paste some JSON first', 'info');
+      this.toast('Nothing to format yet. Paste some JSON first.', 'info');
       this.ed.focus();
       return;
     }
     if (!r.root) {
-      this.toast("Can't do that yet — fix the error first", 'err');
+      this.toast("Can't do that yet. Fix the error first.", 'err');
       this.gotoError();
       return;
     }
@@ -507,7 +538,7 @@ export class Engine {
   repair() {
     const r = this.fresh();
     if (r?.root && !r.issues.length) {
-      this.toast('Already valid JSON — nothing to repair', 'info');
+      this.toast('Already valid JSON, nothing to repair', 'info');
       return;
     }
     this.format();
@@ -548,7 +579,7 @@ export class Engine {
   async importAs(fmt: 'yaml' | 'xml' | 'csv' | 'toml') {
     const r = this.fresh();
     if (r?.root && !r.error && !r.issues.length) {
-      this.toast(`This is already valid JSON — nothing to convert from ${fmt.toUpperCase()}`, 'info');
+      this.toast(`This is already valid JSON, nothing to convert from ${fmt.toUpperCase()}`, 'info');
       return;
     }
     try {
@@ -604,7 +635,7 @@ export class Engine {
     if (s.kind === 'error' || s.kind === 'fixable' || (s.kind === 'valid' && s.p !== undefined)) {
       const p = (s as { p: number }).p;
       this.ed.select(p, p, true);
-    } else if (s.kind === 'valid') this.toast('No errors — this is valid JSON', 'ok');
+    } else if (s.kind === 'valid') this.toast('No errors, this is valid JSON', 'ok');
   }
 
   undo() {
@@ -695,7 +726,7 @@ export class Engine {
 
   sample() {
     this.load(SAMPLE, 'sample.json');
-    this.toast('Loaded a sample — try the tree, table and search', 'info');
+    this.toast('Loaded a sample. Try the tree, table and search.', 'info');
   }
 
   clear() {
@@ -772,7 +803,7 @@ export class Engine {
     try {
       const data = await toBase64Url(formatDoc(this.ed.text, r, ''));
       if (data.length > 60_000) return this.toast('Too large to share as a link (limit ≈ 60 KB compressed)', 'err');
-      await this.copy(`${location.origin}${location.pathname}#j=${data}`, 'Share link copied — the data lives in the link, not on a server');
+      await this.copy(`${location.origin}${location.pathname}#j=${data}`, 'Share link copied. The data lives in the link, not on a server.');
     } catch {
       this.toast("Your browser can't create share links", 'err');
     }
@@ -814,7 +845,7 @@ export class Engine {
       if (this.settings.autoFormat) this.autoFormat();
       this.toast(`Loaded ${url.hostname}`, 'ok');
     } catch {
-      this.toast("Couldn't fetch — the server must allow cross-origin requests (CORS)", 'err');
+      this.toast("Couldn't fetch. The server must allow cross-origin requests (CORS).", 'err');
     }
   }
 
@@ -828,8 +859,62 @@ export class Engine {
       this.tableShow(base);
     } else this.table.setNode(null);
     if (view === 'tree') requestAnimationFrame(() => this.tree.render(true));
+    if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
     if (view === 'compare') store.set({ docText: this.ed.text });
+  }
+
+  // ── Format view (output) ───────────────────────────────────────────────
+
+  setFormat(patch: Partial<Pick<Settings, 'minify' | 'sortKeys'>>) {
+    this.setSettings(patch);
+    if (this.settings.view !== 'format') this.setView('format');
+    else this.scheduleFormat(0);
+  }
+
+  private scheduleFormat(delay: number) {
+    clearTimeout(this.fmtTimer);
+    this.fmtTimer = window.setTimeout(this.runFormat, delay);
+  }
+
+  /** The formatted output for the current settings (from the last valid parse). */
+  private output(): string {
+    const r = this.good;
+    if (!r?.root) return '';
+    const s = this.settings;
+    return formatDoc(this.goodText, r, s.minify ? '' : this.indent, s.sortKeys);
+  }
+
+  private runFormat = () => {
+    if (this.settings.view !== 'format') return;
+    const out = this.output();
+    this.fmt.setText(out, jsonRow, true);
+    store.set({ fmt: { lines: this.fmt.lineCount, bytes: out.length } });
+  };
+
+  /** Replaces the input with the Format view's output (undoable). */
+  useOutput() {
+    const r = this.fresh();
+    if (!r?.root) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
+    const s = this.settings;
+    const fixed = this.fixed(r);
+    this.transform(
+      (res, t) => formatDoc(t, res, s.minify ? '' : this.indent, s.sortKeys),
+      () => (s.minify ? 'Minified input' : 'Formatted input') + fixed,
+    );
+  }
+
+  copyOutput() {
+    const out = this.fmt.text || this.output();
+    if (!out) return this.toast('Nothing to copy yet', 'info');
+    void this.copy(out, this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
+  }
+
+  downloadOutput() {
+    const out = this.fmt.text || this.output();
+    if (!out) return this.toast('Nothing to download yet', 'info');
+    const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
+    this.save(out, `${base}${this.settings.minify ? '.min' : ''}.json`, 'application/json');
   }
 
   // ── Convert ────────────────────────────────────────────────────────────
@@ -1000,7 +1085,7 @@ export class Engine {
   /** Makes a huge (view-only) document editable. */
   editAnyway() {
     this.ed.editAnyway();
-    this.toast('Editing enabled — large documents may feel slower to type in', 'info');
+    this.toast('Editing enabled. Large documents may feel slower to type in.', 'info');
   }
 
   /** `?url=https://…` loads remote JSON on open (shareable deep link). */
@@ -1032,6 +1117,7 @@ export class Engine {
   setIndent(indent: IndentId) {
     this.setSettings({ indent });
     this.ed.indentUnit = INDENTS[indent];
+    if (this.settings.view === 'format') this.scheduleFormat(0);
   }
 
   setTheme(theme: Theme) {
@@ -1092,14 +1178,14 @@ export class Engine {
     const k = e.key.toLowerCase();
     let run: (() => void) | null = null;
     if (mod && !e.altKey && (k === 'k' || (e.shiftKey && k === 'p'))) run = () => this.openPalette();
-    else if (mod && !e.altKey && e.key === 'Enter') run = e.shiftKey ? () => this.minify() : () => this.format();
+    else if (mod && !e.altKey && e.key === 'Enter') run = e.shiftKey ? () => this.minify() : () => this.useOutput();
     else if (e.altKey && e.shiftKey && !mod && e.code === 'KeyF') run = () => this.format();
     else if (mod && !e.shiftKey && !e.altKey && k === 's') run = () => this.download();
     else if (mod && !e.shiftKey && !e.altKey && k === 'o') run = () => this.openFile();
     else if (mod && !e.shiftKey && !e.altKey && k === 'f') run = () => this.focusSearch();
-    // On macOS, Option+digit types characters (#, €…) — never steal it while typing.
-    else if (e.altKey && !mod && /^Digit[1-4]$/.test(e.code) && !(s.mac && typing)) {
-      const views: View[] = ['tree', 'table', 'convert', 'compare'];
+    // On macOS, Option+digit types characters (#, €…): never steal it while typing.
+    else if (e.altKey && !mod && /^Digit[1-5]$/.test(e.code) && !(s.mac && typing)) {
+      const views: View[] = ['format', 'tree', 'table', 'convert', 'compare'];
       run = () => this.setView(views[Number(e.code.slice(5)) - 1]);
     }
     else if (!typing && !mod && !e.altKey) {

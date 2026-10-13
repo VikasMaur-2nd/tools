@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Seg } from '../json/path';
 
 export type Theme = 'system' | 'light' | 'dark';
-export type View = 'tree' | 'table' | 'convert' | 'compare';
+export type View = 'format' | 'tree' | 'table' | 'convert' | 'compare';
 export type IndentId = '2' | '4' | 'tab';
 export type Hint = 'unescape' | 'jwt' | 'yaml' | 'xml' | 'csv' | 'toml' | null;
 
@@ -14,6 +14,9 @@ export interface Settings {
   autoFormat: boolean;
   /** Editor width as a fraction of the window (0.2 – 0.8). */
   split: number;
+  /** Format view: pretty-printed or minified output, keys sorted or as written. */
+  minify: boolean;
+  sortKeys: boolean;
   /** Convert panel target id, root type name and TypeScript flavour. */
   target: string;
   rootName: string;
@@ -62,6 +65,8 @@ export interface UIState {
   /** Huge document shown read-only for speed. */
   viewOnly: boolean;
   convert: { loading: boolean; error: string | null; lines: number; bytes: number };
+  /** Format view output size. */
+  fmt: { lines: number; bytes: number };
   /** Current document text, published only while the Compare view is open. */
   docText: string;
   palette: false | 'commands' | 'url';
@@ -73,9 +78,11 @@ export interface UIState {
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   indent: '2',
-  view: 'tree',
-  autoFormat: true,
+  view: 'format',
+  autoFormat: false,
   split: 0.5,
+  minify: false,
+  sortKeys: false,
   target: 'typescript',
   rootName: 'Root',
   tsStyle: 'interface',
@@ -97,6 +104,7 @@ export const INITIAL: UIState = {
   fileName: null,
   viewOnly: false,
   convert: { loading: false, error: null, lines: 0, bytes: 0 },
+  fmt: { lines: 0, bytes: 0 },
   docText: '',
   palette: false,
   shortcuts: false,

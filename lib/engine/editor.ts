@@ -6,10 +6,10 @@ import { highlightLine, type Mark } from './highlight';
  *  - Edit mode: a native <textarea> (caret, selection, IME, accessibility)
  *    sized to its full content, layered over a virtualized syntax-highlighted
  *    copy of the visible lines. Both share one scroll container, so they move
- *    together natively — no scroll lag.
+ *    together natively: no scroll lag.
  *  - View mode (huge documents): browsers lay out every line of a textarea,
  *    which takes seconds at hundreds of thousands of lines. We drop the
- *    textarea and show only the virtualized highlighted view — instant at any
+ *    textarea and show only the virtualized highlighted view: instant at any
  *    size, still selectable, formattable and undoable. "Edit anyway" opts in.
  *
  * Undo/redo is ours (browser undo is lost on programmatic changes and is tied

@@ -236,7 +236,7 @@ export class TableView {
       html += `<div class="tb-td tb-c0" data-c="0">${escapeHtml(isObj ? String(it.key) : String(idx))}</div>`;
       for (let ci = 1; ci < this.cols.length; ci++) {
         const c = this.cell(it, this.cols[ci]);
-        if (!c) html += '<div class="tb-td"><span class="tb-x">—</span></div>';
+        if (!c) html += '<div class="tb-td"><span class="tb-x">·</span></div>';
         else if (c.t >= ARR) {
           const len = kids(c).length;
           html += `<div class="tb-td" data-c="${ci}"><button class="tb-dr" data-c="${ci}">${c.t === OBJ ? `{${len}}` : `[${len}]`}</button></div>`;

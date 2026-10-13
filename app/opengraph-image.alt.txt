@@ -1,1 +1,1 @@
-JSON Viewer & Formatter: format, validate, repair and explore JSON in your browser. 100% private and works offline.
+Tool Kumar JSON Formatter & Viewer: format, validate, repair, convert and compare JSON in your browser. Private, works offline and free.

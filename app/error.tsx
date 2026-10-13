@@ -11,7 +11,7 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
     <div className="hero" role="alert">
       <div className="hero-in">
         <h1>Something went wrong</h1>
-        <p className="lead">Your JSON is saved in this browser. Try again — if it keeps happening, reload the page.</p>
+        <p className="lead">Your JSON is saved in this browser. Try again, and if it keeps happening, reload the page.</p>
         <div className="hero-actions">
           <button type="button" className="btn primary lg" onClick={() => retry()}>
             Try again

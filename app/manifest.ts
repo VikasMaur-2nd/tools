@@ -5,18 +5,18 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'JSON Viewer & Formatter',
-    short_name: 'JSON Viewer',
+    name: 'Tool Kumar · JSON Formatter & Viewer',
+    short_name: 'Tool Kumar',
     description:
-      'Fast, private JSON viewer, formatter, validator and repair tool. Explore JSON as a tree or table. Works offline — your data never leaves your device.',
+      'Fast, private JSON formatter and viewer. Format, validate, repair, convert and compare JSON, and explore it as a tree or table. Works offline, and your data never leaves your device.',
     lang: 'en',
     dir: 'ltr',
     start_url: '/',
     scope: '/',
     display: 'standalone',
     orientation: 'any',
-    background_color: '#0C0D10',
-    theme_color: '#0C0D10',
+    background_color: '#000000',
+    theme_color: '#000000',
     categories: ['developer', 'productivity', 'utilities'],
     icons: [
       { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },

@@ -1,11 +1,14 @@
 /* ─── Compare (JSON diff) panel ──────────────────────────────────────────────
-   Uses only the design tokens from globals.css, so light / dark themes apply
-   automatically. Every class is prefixed with `cmp-`. */
+   Strictly monochrome: only the neutral design tokens from globals.css, so
+   light / dark themes apply automatically. Kinds of difference are told apart
+   by glyph and shape, never by hue:
+     added    +  solid (inverted) badge, value in full contrast
+     removed  −  hollow badge, dimmed path, value struck through
+     changed  ~  gray badge, old value struck through → new value
+     type     ≠  dashed badge, type names in outlined tags
+   Every class is prefixed with `cmp-`. */
 
 .cmp {
-  --cmp-ok-soft: color-mix(in srgb, var(--ok) 12%, transparent);
-  --cmp-type: var(--c-bool);
-  --cmp-type-soft: color-mix(in srgb, var(--c-bool) 12%, transparent);
   position: relative;
   display: grid;
   grid-template-rows: minmax(88px, var(--cmp-ed, 38%)) 7px minmax(0, 1fr);
@@ -48,20 +51,24 @@
   min-width: 0;
 }
 
+/* "Modified" is a solid tag, "Original" a dashed outline. */
 .cmp-role {
   flex: none;
-  padding: 0 7px;
+  padding: 0 6px;
+  border: 1px solid var(--fg);
   border-radius: 5px;
-  background: var(--cmp-ok-soft);
-  color: var(--ok);
-  font: 600 11px/18px var(--font-ui);
+  background: var(--fg);
+  color: var(--bg);
+  font: 600 11px/16px var(--font-ui);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
 .cmp-role.orig {
-  background: var(--err-soft);
-  color: var(--err);
+  border-style: dashed;
+  border-color: var(--muted);
+  background: transparent;
+  color: var(--fg-2);
 }
 
 .cmp-fname {
@@ -111,7 +118,7 @@
 }
 
 .cmp-ta:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--accent-line);
+  box-shadow: inset 0 0 0 1px var(--line-2);
 }
 
 .cmp-err,
@@ -128,9 +135,11 @@
   text-align: left;
 }
 
+/* Error: strong left rule + full-contrast text; warning: quiet gray. */
 .cmp-err {
-  background: var(--err-soft);
-  color: var(--err);
+  background: var(--bg-3);
+  box-shadow: inset 3px 0 var(--fg);
+  color: var(--fg);
   cursor: pointer;
 }
 
@@ -143,8 +152,8 @@
 }
 
 .cmp-warn {
-  background: var(--warn-soft);
-  color: var(--warn);
+  background: var(--bg-2);
+  color: var(--fg-2);
 }
 
 /* ── splitter ── */
@@ -203,25 +212,31 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* Summary chips are neutral outlines; the active filter is filled (inverted). */
 .cmp-chip {
   display: inline-flex;
   align-items: center;
   flex: none;
   height: 24px;
   padding: 0 9px;
-  border: 1px solid transparent;
+  border: 1px solid var(--line-2);
   border-radius: 999px;
+  background: transparent;
+  color: var(--fg);
   font: 600 12px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: pointer;
   transition:
-    box-shadow 0.12s,
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s,
     opacity 0.12s;
 }
 
 .cmp-chip .cmp-lbl {
   margin-left: 4px;
+  color: var(--muted);
   font-weight: 500;
 }
 
@@ -231,27 +246,17 @@
 }
 
 .cmp-chip:not(:disabled):hover {
-  border-color: currentColor;
+  border-color: var(--fg);
 }
 
 .cmp-chip[aria-pressed='true'] {
-  border-color: currentColor;
-  box-shadow: inset 0 0 0 1px currentColor;
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
 }
 
-.cmp-chip.cmp-k-added {
-  background: var(--cmp-ok-soft);
-  color: var(--ok);
-}
-
-.cmp-chip.cmp-k-removed {
-  background: var(--err-soft);
-  color: var(--err);
-}
-
-.cmp-chip.cmp-k-changed {
-  background: var(--warn-soft);
-  color: var(--warn);
+.cmp-chip[aria-pressed='true'] .cmp-lbl {
+  color: inherit;
 }
 
 .cmp-title {
@@ -312,9 +317,9 @@
 }
 
 .cmp-opt[aria-pressed='true'] {
-  border-color: var(--accent-line);
+  border-color: var(--fg);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--fg);
 }
 
 .cmp-opt[aria-pressed='true'] svg {
@@ -360,7 +365,7 @@
 }
 
 .cmp-list:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--accent-line);
+  box-shadow: inset 0 0 0 1px var(--line-2);
 }
 
 .cmp-sizer {
@@ -397,28 +402,35 @@
   flex: none;
   width: 20px;
   height: 20px;
+  border: 1px solid transparent;
   border-radius: 5px;
   font: 700 13px/1 var(--font-mono);
 }
 
+/* added: solid, inverted */
 .cmp-k-added .cmp-mark {
-  background: var(--cmp-ok-soft);
-  color: var(--ok);
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
 }
 
+/* removed: hollow, dimmed */
 .cmp-k-removed .cmp-mark {
-  background: var(--err-soft);
-  color: var(--err);
+  border-color: var(--line-2);
+  color: var(--muted);
 }
 
+/* changed: gray fill */
 .cmp-k-changed .cmp-mark {
-  background: var(--warn-soft);
-  color: var(--warn);
+  border-color: var(--line-2);
+  background: var(--bg-3);
+  color: var(--fg);
 }
 
+/* type changed: dashed outline */
 .cmp-k-type .cmp-mark {
-  background: var(--cmp-type-soft);
-  color: var(--cmp-type);
+  border: 1px dashed var(--fg-2);
+  color: var(--fg);
 }
 
 .cmp-body {
@@ -451,31 +463,42 @@
   line-height: 17px;
 }
 
+.cmp-k-removed .cmp-path {
+  color: var(--muted);
+}
+
 .cmp-old,
 .cmp-new {
   padding: 0 3px;
   border-radius: 3px;
 }
 
+/* old value: struck through and dimmed */
 .cmp-old {
-  background: var(--err-soft);
-  color: var(--err);
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+  text-decoration-thickness: 1px;
 }
 
+/* new value: full contrast on a soft neutral wash */
 .cmp-new {
-  background: var(--cmp-ok-soft);
-  color: var(--ok);
+  background: var(--accent-soft);
+  color: var(--fg);
 }
 
 .cmp-arrow {
   margin: 0 6px;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .cmp-tn {
   margin-right: 4px;
-  color: var(--cmp-type);
-  font: italic 11.5px var(--font-ui);
+  padding: 0 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  color: var(--fg-2);
+  font: italic 11px/15px var(--font-ui);
 }
 
 .cmp-note {
@@ -534,7 +557,7 @@
   content: '\2713';
   display: inline-block;
   width: 14px;
-  color: var(--ok);
+  color: var(--fg);
   text-indent: 0;
 }
 
@@ -542,13 +565,10 @@
   color: var(--faint);
 }
 
-.cmp-empty.ok > svg {
-  color: var(--ok);
-}
-
+.cmp-empty.ok > svg,
 .cmp-empty.err > svg,
 .cmp-empty.err p {
-  color: var(--err);
+  color: var(--fg);
 }
 
 .cmp-note-toast {
@@ -559,8 +579,8 @@
   max-width: calc(100% - 24px);
   padding: 7px 12px;
   border-radius: 8px;
-  background: var(--tip-bg);
-  color: var(--tip-fg);
+  background: var(--tip-bg, var(--fg));
+  color: var(--tip-fg, var(--bg));
   box-shadow: var(--shadow);
   font: 500 12px/1.3 var(--font-ui);
   transform: translateX(-50%);

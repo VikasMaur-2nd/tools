@@ -263,7 +263,7 @@ function CompareView({ leftText, indent, onJump }: CompareViewProps) {
 
   const paste = () => {
     const blocked = () => {
-      flash('Clipboard access was blocked — paste with Ctrl+V / ⌘V');
+      flash('Clipboard access was blocked. Paste with Ctrl+V / ⌘V');
       taRef.current?.focus();
     };
     if (!navigator.clipboard?.readText) return blocked();
@@ -293,10 +293,10 @@ function CompareView({ leftText, indent, onJump }: CompareViewProps) {
     if (!result) return;
     const ops = toPatch(result.changes);
     const text = patchText(ops, indent);
-    if (!navigator.clipboard?.writeText) return flash('Copy failed — clipboard access was blocked');
+    if (!navigator.clipboard?.writeText) return flash('Copy failed: clipboard access was blocked');
     navigator.clipboard.writeText(text).then(
-      () => flash(result.truncated ? 'Copied — incomplete: too many differences' : `JSON Patch copied (${ops.length.toLocaleString()} operation${ops.length === 1 ? '' : 's'})`),
-      () => flash('Copy failed — clipboard access was blocked'),
+      () => flash(result.truncated ? 'Copied, but incomplete: too many differences' : `JSON Patch copied (${ops.length.toLocaleString()} operation${ops.length === 1 ? '' : 's'})`),
+      () => flash('Copy failed: clipboard access was blocked'),
     );
   };
 
@@ -419,7 +419,7 @@ function CompareView({ leftText, indent, onJump }: CompareViewProps) {
         <p>
           <b>Compare two JSON documents</b>
           <br />
-          Paste, drop or open the second document above — it is compared with the JSON in the editor.
+          Paste, drop or open the second document above. It is compared with the JSON in the editor.
         </p>
         <ul>
           <li>Arrays are matched by content or by id, so an insertion is one change</li>
@@ -441,7 +441,7 @@ function CompareView({ leftText, indent, onJump }: CompareViewProps) {
       <div className="cmp-empty err">
         <Icon name="alert" size={22} />
         <p>
-          The editor&apos;s JSON is invalid — Ln {lm.line(lErr.p)}, Col {lm.col(lErr.p)}: {lErr.m}
+          The editor&apos;s JSON is invalid (Ln {lm.line(lErr.p)}, Col {lm.col(lErr.p)}): {lErr.m}
         </p>
         {onJump && (
           <button type="button" className="btn sm" onClick={() => onJump(lErr.p)}>
@@ -532,14 +532,14 @@ function CompareView({ leftText, indent, onJump }: CompareViewProps) {
             <Icon name="alert" size={14} />
             <b>Invalid JSON</b>
             <span>
-              Ln {rLines.line(rErr.p)}, Col {rLines.col(rErr.p)} — {rErr.m}
+              Ln {rLines.line(rErr.p)}, Col {rLines.col(rErr.p)}: {rErr.m}
             </span>
           </button>
         )}
         {!rErr && rp && rp.issues.length > 0 && (
           <div className="cmp-warn">
             <Icon name="wand" size={14} />
-            Not strict JSON — compared as repaired ({rp.issues.length} issue{rp.issues.length > 1 ? 's' : ''})
+            Not strict JSON, compared as repaired ({rp.issues.length} issue{rp.issues.length > 1 ? 's' : ''})
           </div>
         )}
       </section>

@@ -4,7 +4,7 @@ import { parsePath, resolve } from '../json/path';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
 
-/** Value hints (dates, JWTs, nested JSON…) load after first paint — they're just tooltips. */
+/** Value hints (dates, JWTs, nested JSON…) load after first paint: they're just tooltips. */
 let valueHints: ((n: JNode) => ValueHint[]) | null = null;
 let hintsLoading = false;
 

@@ -1,12 +1,12 @@
-# tools.vikasmaur.com — JSON Formatter & Viewer
+# Tool Kumar (JSON Formatter & Viewer)
 
-A fast, private, offline-capable JSON formatter, validator and viewer. Everything runs in the browser — nothing is uploaded.
+A fast, private, offline-capable JSON formatter, validator and viewer. Everything runs in the browser; nothing is uploaded.
 
 **Live:** https://tools.vikasmaur.com
 
 ## Features
 
-- **Format / minify / sort keys** with 2, 4 or tab indentation — all undoable.
+- **Format / minify / sort keys** with 2, 4 or tab indentation, all undoable.
 - **Validate** with exact line & column errors and in-editor squiggles.
 - **Repair** loose JSON: comments, trailing commas, single quotes, unquoted keys, Python `True/None`, `NaN`, NDJSON, JSONP, code fences, truncated input…
 - **Lossless**: big integers and long decimals are never rounded; duplicate keys are kept and flagged.
@@ -22,7 +22,7 @@ A fast, private, offline-capable JSON formatter, validator and viewer. Everythin
 ## Stack
 
 - [Next.js 16](https://nextjs.org) (App Router, statically prerendered) + TypeScript
-- Zero runtime dependencies beyond React/Next — the parser, editor, tree, table, converters and diff are hand-written.
+- Zero runtime dependencies beyond React/Next: the parser, editor, tree, table, converters and diff are hand-written.
 - Hand-written CSS with design tokens (`app/globals.css`), hand-written service worker (`public/sw.js`).
 - [Vercel Web Analytics](https://vercel.com/docs/analytics) (page views only; share-link data in the URL hash is stripped).
 

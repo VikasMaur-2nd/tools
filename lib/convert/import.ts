@@ -207,7 +207,7 @@ function csv(src: string, delim: string | null, indent: string): string {
       f = '';
       for (;;) {
         const e = src.indexOf('"', i);
-        if (e < 0) fail('Unterminated quoted field — missing closing "', st);
+        if (e < 0) fail('Unterminated quoted field: missing closing "', st);
         f += src.slice(i, e);
         i = e + 1;
         if (src.charCodeAt(i) !== 34) break;
@@ -331,7 +331,7 @@ function yaml(src: string): V {
       } else if (c === 35) comment();
       else break;
     }
-    if (tab && i < n) f('Tabs are not allowed for indentation — use spaces');
+    if (tab && i < n) f('Tabs are not allowed for indentation. Use spaces');
   };
   /** Position of the ':' if the line at p starts with an implicit key, else -1. */
   const keyEnd = (p: number): number => {
@@ -383,7 +383,7 @@ function yaml(src: string): V {
     while (i < n && !sepAt(i) && !flowInd(at(i))) i++;
     const name = src.slice(s, i);
     const v = anchors.get(name);
-    if (v === undefined) f(`Unknown alias *${name} — anchors must be defined (&${name}) before use`, s - 1);
+    if (v === undefined) f(`Unknown alias *${name} : anchors must be defined (&${name}) before use`, s - 1);
     return v as V;
   };
   const quoted = (q: number): string => {
@@ -451,7 +451,7 @@ function yaml(src: string): V {
   };
   const plain = (ind: number, asStr: boolean): V => {
     const c = at(i);
-    if (c === 64 || c === 96) f(`Plain values cannot start with '${src[i]}' — wrap the value in quotes`);
+    if (c === 64 || c === 96) f(`Plain values cannot start with '${src[i]}'. Wrap the value in quotes`);
     let t = plainLine();
     while (at(i) === 10) {
       let p = i;
@@ -489,7 +489,7 @@ function yaml(src: string): V {
     }
     sp();
     comment();
-    if (i < n && at(i) !== 10) f('Invalid block scalar header — expected |, >, an optional +/- and indentation digit');
+    if (i < n && at(i) !== 10) f('Invalid block scalar header: expected |, >, an optional +/- and indentation digit');
     let bi = explicit ? Math.max(ind, 0) + explicit : -1;
     let out = '';
     let empty = 0;
@@ -579,7 +579,7 @@ function yaml(src: string): V {
     const m = new Map<string, V>();
     for (;;) {
       fws();
-      if (i >= n || docMark(i)) f(`Unterminated flow ${isMap ? "mapping — missing '}'" : "sequence — missing ']'"}`, s);
+      if (i >= n || docMark(i)) f(`Unterminated flow ${isMap ? "mapping: missing '}'" : "sequence: missing ']'"}`, s);
       if (at(i) === close) {
         i++;
         break;
@@ -605,7 +605,7 @@ function yaml(src: string): V {
       } else a.push(k);
       fws();
       if (at(i) === 44) i++;
-      else if (at(i) !== close) f(i >= n ? `Unterminated flow ${isMap ? "mapping — missing '}'" : "sequence — missing ']'"}` : `Expected ',' or '${isMap ? '}' : ']'}'`, i >= n ? s : i);
+      else if (at(i) !== close) f(i >= n ? `Unterminated flow ${isMap ? "mapping: missing '}'" : "sequence: missing ']'"}` : `Expected ',' or '${isMap ? '}' : ']'}'`, i >= n ? s : i);
     }
     return isMap ? m : a;
   };
@@ -628,7 +628,7 @@ function yaml(src: string): V {
     if (has) {
       const c = at(i);
       if (dash(i)) {
-        if (!fresh && ctx === MAP) f('A sequence cannot start on the same line as its key — move it to the next line');
+        if (!fresh && ctx === MAP) f('A sequence cannot start on the same line as its key. Move it to the next line');
         v = seq(col(i));
       } else if (c === 124 || c === 62) v = blockScalar(ind);
       else if (c === 42) {
@@ -636,7 +636,7 @@ function yaml(src: string): V {
         eolRest();
       } else if (c === 63 && sepAt(i + 1)) f('Complex mapping keys (?) are not supported');
       else if (keyEnd(i) >= 0) {
-        if (!fresh && ctx === MAP) f('Mapping values are not allowed here — quote the value if it contains ": "', keyEnd(i));
+        if (!fresh && ctx === MAP) f('Mapping values are not allowed here. Quote the value if it contains ": "', keyEnd(i));
         v = map(col(i));
       } else if (c === 91 || c === 123) {
         v = flow();
@@ -656,7 +656,7 @@ function yaml(src: string): V {
       const kp = i;
       if (at(i) === 63 && sepAt(i + 1)) f('Complex mapping keys (?) are not supported');
       const ce = keyEnd(i);
-      if (ce < 0) f(dash(i) ? 'Expected a mapping key, found a sequence item — check the indentation' : 'Expected a mapping key (key: value)');
+      if (ce < 0) f(dash(i) ? 'Expected a mapping key, found a sequence item. Check the indentation' : 'Expected a mapping key (key: value)');
       const q = at(i);
       let ke = ce;
       while (isWs(at(ke - 1))) ke--;
@@ -716,7 +716,7 @@ function yaml(src: string): V {
     }
     docs.push(node(-1, 0));
     skip();
-    if (i < n && !docMark(i)) f(col(i) ? 'Bad indentation — this line is indented more than its block' : 'Unexpected content after the document');
+    if (i < n && !docMark(i)) f(col(i) ? 'Bad indentation: this line is indented more than its block' : 'Unexpected content after the document');
   }
   return docs.length > 1 ? docs : (docs[0] ?? null);
 }
@@ -808,15 +808,15 @@ function xml(src: string): V {
     }
     if (lt < 0) break;
     i = lt;
-    if (src.startsWith('<!--', i)) skipTo('-->', 'comment — missing -->');
+    if (src.startsWith('<!--', i)) skipTo('-->', 'comment: missing -->');
     else if (src.startsWith('<![CDATA[', i)) {
       const top = stack[stack.length - 1];
       if (!top) f('CDATA is only allowed inside an element');
       const e = src.indexOf(']]>', i + 9);
-      if (e < 0) f('Unterminated CDATA section — missing ]]>');
+      if (e < 0) f('Unterminated CDATA section: missing ]]>');
       top.text += src.slice(i + 9, e);
       i = e + 3;
-    } else if (src.startsWith('<?', i)) skipTo('?>', 'processing instruction — missing ?>');
+    } else if (src.startsWith('<?', i)) skipTo('?>', 'processing instruction: missing ?>');
     else if (src.startsWith('<!', i)) {
       let depth = 0;
       let j = i + 2;
@@ -833,7 +833,7 @@ function xml(src: string): V {
           j = e < 0 ? n : e;
         }
       }
-      if (j >= n) f('Unterminated declaration — missing >');
+      if (j >= n) f('Unterminated declaration: missing >');
       i = j + 1;
     } else if (at(i + 1) === 47) {
       i += 2;
@@ -843,12 +843,12 @@ function xml(src: string): V {
       i++;
       const fr = stack.pop();
       if (!fr) f(`Unexpected closing tag </${nm}>`, lt);
-      else if (fr.name !== nm) f(`Mismatched closing tag </${nm}> — expected </${fr.name}>`, lt);
+      else if (fr.name !== nm) f(`Mismatched closing tag </${nm}>: expected </${fr.name}>`, lt);
       else close(fr);
     } else {
       i++;
       const nm = name();
-      if (!nm) f(`Invalid character after '<' — escape it as &lt;`, lt);
+      if (!nm) f(`Invalid character after '<'. Escape it as &lt;`, lt);
       if (!stack.length && root) f('Only one root element is allowed', lt);
       const fr: Frame = { name: nm, m: null, text: '', p: lt };
       let self = false;
@@ -865,7 +865,7 @@ function xml(src: string): V {
           self = true;
           break;
         }
-        if (i >= n) f(`Unterminated tag <${nm}> — missing >`, lt);
+        if (i >= n) f(`Unterminated tag <${nm}>: missing >`, lt);
         if (sp === i) f(`Expected whitespace, '>' or '/>' in <${nm}>`);
         const ap = i;
         const an = name();
@@ -925,7 +925,7 @@ function toml(src: string): V {
   const eol = () => {
     ws();
     if (at(i) === 35) while (i < n && at(i) !== 10) i++;
-    if (i < n && at(i) !== 10) f(`Unexpected '${src[i]}' — expected a new line after the value`);
+    if (i < n && at(i) !== 10) f(`Unexpected '${src[i]}': expected a new line after the value`);
   };
   const esc = (): string => {
     const c = src[i++];
@@ -989,7 +989,7 @@ function toml(src: string): V {
       else {
         const s = i;
         while (/[\w-]/.test(src[i] ?? '')) i++;
-        if (s === i) f(i >= n || at(i) === 10 ? 'Expected a key' : `Invalid character '${src[i]}' in key — quote the key`);
+        if (s === i) f(i >= n || at(i) === 10 ? 'Expected a key' : `Invalid character '${src[i]}' in key. Quote the key`);
         parts.push(src.slice(s, i));
       }
       ws();
@@ -1006,7 +1006,7 @@ function toml(src: string): V {
         i++;
         break;
       }
-      if (i >= n) f("Unterminated array — missing ']'", s);
+      if (i >= n) f("Unterminated array: missing ']'", s);
       a.push(value());
       wsnl();
       if (at(i) === 44) i++;
@@ -1046,7 +1046,7 @@ function toml(src: string): V {
       stop();
     }
     const t = src.slice(s, i);
-    if (!t) f(i >= n || at(i) === 10 ? 'Expected a value' : `Unexpected '${src[i]}' — expected a value`);
+    if (!t) f(i >= n || at(i) === 10 ? 'Expected a value' : `Unexpected '${src[i]}': expected a value`);
     if (t === 'true') return true;
     if (t === 'false') return false;
     if (/^[+-]?(inf|nan)$/.test(t)) return null;
@@ -1054,7 +1054,7 @@ function toml(src: string): V {
     if (/^0x[\da-fA-F](_?[\da-fA-F])*$|^0o[0-7](_?[0-7])*$|^0b[01](_?[01])*$/.test(t)) return new Num(BigInt(t.replace(/_/g, '')).toString());
     if (/^[+-]?(0|[1-9](_?\d)*)(\.\d(_?\d)*)?([eE][+-]?\d(_?\d)*)?$/.test(t)) return new Num(t.replace(/_|^\+/g, ''));
     if (DT.test(t)) return t.replace(/^(\d{4}-\d{2}-\d{2})[Tt ]/, '$1T').replace(/z$/, 'Z');
-    return f(/^[+-]?\d/.test(t) ? `Invalid number '${t}'` : `Invalid value '${t}' — strings must be quoted`, s);
+    return f(/^[+-]?\d/.test(t) ? `Invalid number '${t}'` : `Invalid value '${t}': strings must be quoted`, s);
   };
   const keyval = (t: Map<string, V>) => {
     const kp = i;
@@ -1070,7 +1070,7 @@ function toml(src: string): V {
         x = new Map();
         m.set(path[k], x);
         dotted.add(x);
-      } else if (!(x instanceof Map) || !dotted.has(x) || frozen.has(x)) f(`Cannot add keys to "${path.slice(0, k + 1).join('.')}" — it is already defined`, kp);
+      } else if (!(x instanceof Map) || !dotted.has(x) || frozen.has(x)) f(`Cannot add keys to "${path.slice(0, k + 1).join('.')}": it is already defined`, kp);
       m = x as Map<string, V>;
     }
     const last = path[path.length - 1];
@@ -1084,7 +1084,7 @@ function toml(src: string): V {
       let x = m.get(path[k]);
       if (x === undefined) m.set(path[k], (x = new Map()));
       else if (Array.isArray(x) && aot.has(x)) x = x[x.length - 1];
-      if (!(x instanceof Map) || frozen.has(x)) f(`Cannot extend "${path.slice(0, k + 1).join('.')}" — it is already defined as a value`, kp);
+      if (!(x instanceof Map) || frozen.has(x)) f(`Cannot extend "${path.slice(0, k + 1).join('.')}": it is already defined as a value`, kp);
       m = x as Map<string, V>;
     }
     return m;
@@ -1108,7 +1108,7 @@ function toml(src: string): V {
         if (x === undefined) {
           parent.set(last, (x = []));
           aot.add(x);
-        } else if (!Array.isArray(x) || !aot.has(x)) f(`Cannot define [[${name}]] — "${name}" is already defined and is not an array of tables`, kp);
+        } else if (!Array.isArray(x) || !aot.has(x)) f(`Cannot define [[${name}]]: "${name}" is already defined and is not an array of tables`, kp);
         const t = new Map<string, V>();
         (x as V[]).push(t);
         cur = t;

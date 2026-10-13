@@ -71,7 +71,7 @@ export interface ParseResult {
   /**
    * True when JSON.parse + JSON.stringify would reproduce this document exactly
    * (strict, no duplicate keys, canonical numbers, no integer-like keys that JS
-   * would reorder, no escapes in keys) — enables the native fast path for
+   * would reorder, no escapes in keys); enables the native fast path for
    * formatting.
    */
   exact: boolean;
@@ -252,12 +252,12 @@ export function parse(src: string): ParseResult {
           i += 4;
           return String.fromCharCode(v);
         }
-        fix(i - 2, 'Invalid unicode escape — expected \\u followed by 4 hex digits');
+        fix(i - 2, 'Invalid unicode escape: expected \\u followed by 4 hex digits');
         return 'u';
     }
-    if (i > n) fail(i - 2, 'Unterminated string — missing closing quote');
+    if (i > n) fail(i - 2, 'Unterminated string: missing closing quote');
     if (c === 120 && isHex(src.charCodeAt(i)) && isHex(src.charCodeAt(i + 1))) {
-      fix(i - 2, 'Invalid escape \\x — use \\u00XX instead');
+      fix(i - 2, 'Invalid escape \\x: use \\u00XX instead');
       const v = parseInt(src.slice(i, i + 2), 16);
       i += 2;
       return String.fromCharCode(v);
@@ -277,7 +277,7 @@ export function parse(src: string): ParseResult {
     let seg = ++i;
     let out = '';
     for (;;) {
-      if (i >= n) fail(s, 'Unterminated string — missing closing quote');
+      if (i >= n) fail(s, 'Unterminated string: missing closing quote');
       const c = src.charCodeAt(i);
       if (c === q || c === q2) {
         out += src.slice(seg, i);
@@ -330,7 +330,7 @@ export function parse(src: string): ParseResult {
       fix(i, 'Numbers need a digit before the decimal point');
       clean = false;
     } else {
-      fail(i, i >= n ? 'Unexpected end of input — expected a number' : `Invalid number: unexpected ${describe(i)}`);
+      fail(i, i >= n ? 'Unexpected end of input: expected a number' : `Invalid number: unexpected ${describe(i)}`);
     }
     c = src.charCodeAt(i);
     if (c === 46) {
@@ -378,7 +378,7 @@ export function parse(src: string): ParseResult {
       fix(s, 'Property names must be wrapped in double quotes');
       return src.slice(s, i);
     }
-    if (i >= n) fail(i, 'Unexpected end of input — expected a property name');
+    if (i >= n) fail(i, 'Unexpected end of input: expected a property name');
     return fail(i, `Expected a property name in double quotes, found ${describe(i)}`);
   };
 
@@ -422,7 +422,7 @@ export function parse(src: string): ParseResult {
       ws();
       c = src.charCodeAt(i);
       if (c === 58) i++;
-      else if (i >= n) fail(i, "Unexpected end of input — expected ':' after property name");
+      else if (i >= n) fail(i, "Unexpected end of input: expected ':' after property name");
       else if (c === 61) {
         fix(i, "Expected ':' after property name");
         i++;
@@ -449,7 +449,7 @@ export function parse(src: string): ParseResult {
         }
         if (i >= n) {
           fix(cp, 'Trailing commas are not allowed');
-          fix(n, "Unexpected end of input — missing '}'");
+          fix(n, "Unexpected end of input: missing '}'");
           break;
         }
         if (c === 93) {
@@ -464,7 +464,7 @@ export function parse(src: string): ParseResult {
         break;
       }
       if (i >= n) {
-        fix(n, "Unexpected end of input — missing '}'");
+        fix(n, "Unexpected end of input: missing '}'");
         break;
       }
       if (c === 93) {
@@ -518,7 +518,7 @@ export function parse(src: string): ParseResult {
         }
         if (i >= n) {
           fix(cp, 'Trailing commas are not allowed');
-          fix(n, "Unexpected end of input — missing ']'");
+          fix(n, "Unexpected end of input: missing ']'");
           break;
         }
         if (c === 125) {
@@ -533,7 +533,7 @@ export function parse(src: string): ParseResult {
         break;
       }
       if (i >= n) {
-        fix(n, "Unexpected end of input — missing ']'");
+        fix(n, "Unexpected end of input: missing ']'");
         break;
       }
       if (c === 125) {
@@ -604,26 +604,26 @@ export function parse(src: string): ParseResult {
         case 'ture':
         case 'treu':
         case 'rtue':
-          fix(s, `Unexpected '${w}' — did you mean true?`);
+          fix(s, `Unexpected '${w}'. Did you mean true?`);
           return leaf(BOOL, true, s, d, u, key);
         case 'fals':
         case 'flase':
         case 'fasle':
         case 'fales':
-          fix(s, `Unexpected '${w}' — did you mean false?`);
+          fix(s, `Unexpected '${w}'. Did you mean false?`);
           return leaf(BOOL, false, s, d, u, key);
         case 'nul':
         case 'nulll':
         case 'nill':
         case 'nll':
-          fix(s, `Unexpected '${w}' — did you mean null?`);
+          fix(s, `Unexpected '${w}'. Did you mean null?`);
           return leaf(NUL, null, s, d, u, key);
       }
       const save = i;
       while (src.charCodeAt(i) === 32 || src.charCodeAt(i) === 9) i++;
       if (src.charCodeAt(i) === 40) {
         // JSONP callback(…) or wrappers such as ObjectId("…") / ISODate("…")
-        fix(s, `${w}(…) is not valid JSON — only its argument is kept`);
+        fix(s, `${w}(…) is not valid JSON (only its argument is kept)`);
         i++;
         ws();
         let inner: JNode;
@@ -656,13 +656,13 @@ export function parse(src: string): ParseResult {
       let e = i;
       while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
       const text = src.slice(s, e);
-      fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}' — strings must be wrapped in double quotes`);
+      fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
       const nd = new JNode(STR, text, s, d, u, key);
       nd.e = e;
       return nd;
     }
-    if (i >= n) fail(i, 'Unexpected end of input — expected a value');
-    return fail(i, `Unexpected ${describe(i)} — expected a value`);
+    if (i >= n) fail(i, 'Unexpected end of input: expected a value');
+    return fail(i, `Unexpected ${describe(i)}: expected a value`);
   };
 
   const value = (d: number, u: JNode | null, key: Key): JNode => {
@@ -735,7 +735,7 @@ export function parse(src: string): ParseResult {
               ws();
             }
             if (i >= n || (fence && src.startsWith('```', i))) break;
-            if (list.length === 1) fix(i, 'Multiple top-level values — wrapped in an array');
+            if (list.length === 1) fix(i, 'Multiple top-level values (wrapped in an array)');
             list.push(value(1, wrap, list.length));
           }
           wrap.e = i;

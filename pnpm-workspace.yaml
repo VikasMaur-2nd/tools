@@ -1,4 +1,4 @@
-# pnpm settings (single package — no workspaces).
+# pnpm settings (single package: no workspaces).
 allowBuilds:
   # eslint-config-next → unrs-resolver: its postinstall only downloads a fallback
   # native binary; pnpm already installs the platform binding as an optional dep.

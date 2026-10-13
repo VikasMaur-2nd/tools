@@ -123,7 +123,7 @@ function b64urlText(s: string): string | null {
 // header.payload.signature (JWS compact), optional "Bearer " prefix
 const JWT = /^(?:[Bb]earer\s+)?(eyJ[\w-]*)\.([\w-]+)\.([\w-]*)$/;
 
-/** Exactly two dots (5-part JWE has four) — found natively before any regex work. */
+/** Exactly two dots (5-part JWE has four), found natively before any regex work. */
 function jwtParts(s: string): RegExpExecArray | null {
   const a = s.indexOf('.');
   const b = a < 0 ? -1 : s.indexOf('.', a + 1);
@@ -231,8 +231,8 @@ const MAX_EMBED = 5 * 1024 * 1024;
 const pair = (x: number, y: number) => (x === 123 && y === 125) || (x === 91 && y === 93);
 
 /**
- * If a (decoded) string value is itself a JSON object/array — optionally
- * whitespace-padded or double-encoded as a JSON string literal — returns the
+ * If a (decoded) string value is itself a JSON object/array (optionally
+ * whitespace-padded or double-encoded as a JSON string literal), returns the
  * inner JSON text, else null. Only parses when the first/last non-space
  * characters already pair up as `{}` / `[]`.
  */

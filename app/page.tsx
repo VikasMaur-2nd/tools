@@ -5,10 +5,11 @@ const SITE = 'https://tools.vikasmaur.com';
 const JSON_LD = {
   '@context': 'https://schema.org',
   '@type': 'WebApplication',
-  name: 'JSON Viewer & Formatter',
+  name: 'Tool Kumar JSON Formatter & Viewer',
+  alternateName: ['Tool Kumar', 'JSON Formatter', 'JSON Viewer', 'JSON Validator'],
   url: SITE,
   description:
-    'Format, validate, repair and explore JSON in your browser. Tree and table views, precise error messages, search, JSONPath, CSV export and offline support.',
+    'Format, validate, repair and explore JSON in your browser. Tree, table, convert and compare views, precise error messages, search, JSONPath, CSV and Excel export, offline support.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Any',
   browserRequirements: 'Requires JavaScript',

@@ -64,7 +64,7 @@ function Commands() {
 
   const run = (c: Command) => {
     // Close the native dialog first so the browser restores focus (and the
-    // editor's selection) before the command runs — commands may move focus.
+    // editor's selection) before the command runs: commands may move focus.
     listRef.current?.closest('dialog')?.close();
     requestAnimationFrame(() => act(c.run));
   };
@@ -153,7 +153,7 @@ function UrlPrompt() {
         type="url"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://api.example.com/data.json — press Enter to load"
+        placeholder="https://api.example.com/data.json (press Enter to load)"
         aria-label="URL to load JSON from"
         spellCheck={false}
       />
@@ -169,19 +169,20 @@ const SHORTCUTS: { title: string; items: [string, string][] }[] = [
       ['mod+O', 'Open file'],
       ['mod+S', 'Download JSON'],
       ['mod+F', 'Search tree'],
-      ['Alt+1', 'Tree view'],
-      ['Alt+2', 'Table view'],
-      ['Alt+3', 'Convert'],
-      ['Alt+4', 'Compare'],
+      ['Alt+1', 'Format view'],
+      ['Alt+2', 'Tree view'],
+      ['Alt+3', 'Table view'],
+      ['Alt+4', 'Convert'],
+      ['Alt+5', 'Compare'],
       ['?', 'This help'],
     ],
   },
   {
     title: 'Editor',
     items: [
-      ['mod+Enter', 'Format'],
-      ['mod+Shift+Enter', 'Minify'],
-      ['Shift+Alt+F', 'Format (VS Code)'],
+      ['mod+Enter', 'Use output as input'],
+      ['mod+Shift+Enter', 'Minify input'],
+      ['Shift+Alt+F', 'Format input in place'],
       ['Tab', 'Indent · Shift+Tab outdent'],
       ['mod+C', 'Copy all (nothing selected)'],
       ['mod+Z', 'Undo any change'],

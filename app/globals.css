@@ -1,6 +1,7 @@
 /* ─── Design tokens ──────────────────────────────────────────────────────────
-   Light is the default; dark applies from the OS preference with no JS (so it
-   can never flash). A manual override sets [data-theme] before first paint. */
+   Pure black & white. Light is the default; dark applies from the OS
+   preference with no JS (so it can never flash). A manual override sets
+   [data-theme] before first paint. */
 
 :root {
   color-scheme: light;
@@ -10,138 +11,138 @@
   --rh: 24px;
 
   --bg: #ffffff;
-  --bg-2: #f7f8fa;
-  --bg-3: #eef0f4;
-  --line: #e7e9ee;
-  --line-2: #d8dbe3;
-  --fg: #15171c;
-  --fg-2: #454c5a;
-  --muted: #687080;
-  --faint: #9aa1ad;
-  --accent: #4c6fff;
+  --bg-2: #fafafa;
+  --bg-3: #f0f0f0;
+  --line: #ebebeb;
+  --line-2: #dcdcdc;
+  --fg: #0a0a0a;
+  --fg-2: #4a4a4a;
+  --muted: #6e6e6e;
+  --faint: #a3a3a3;
+  --accent: #0a0a0a;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(76, 111, 255, 0.1);
-  --accent-line: rgba(76, 111, 255, 0.45);
+  --accent-soft: rgba(0, 0, 0, 0.06);
+  --accent-line: rgba(0, 0, 0, 0.35);
   --seg-on: #ffffff;
-  --sel: rgba(76, 111, 255, 0.22);
-  --row-hover: rgba(15, 23, 42, 0.04);
-  --row-sel: rgba(76, 111, 255, 0.11);
-  --cur-line: rgba(15, 23, 42, 0.035);
-  --scope: rgba(76, 111, 255, 0.07);
-  --guide: rgba(15, 23, 42, 0.08);
-  --ok: #15803d;
-  --warn: #b45309;
-  --err: #dc2626;
-  --warn-soft: rgba(217, 119, 6, 0.1);
-  --err-soft: rgba(220, 38, 38, 0.08);
-  --hit: rgba(250, 204, 21, 0.4);
-  --hit-cur: rgba(249, 115, 22, 0.45);
-  --tip-bg: #15171c;
-  --tip-fg: #f5f6f8;
-  --overlay: rgba(255, 255, 255, 0.78);
-  --backdrop: rgba(15, 18, 25, 0.32);
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px -8px rgba(15, 23, 42, 0.2);
-  --shadow-lg: 0 24px 64px -16px rgba(15, 23, 42, 0.35), 0 2px 8px rgba(15, 23, 42, 0.08);
+  --sel: rgba(0, 0, 0, 0.14);
+  --row-hover: rgba(0, 0, 0, 0.035);
+  --row-sel: rgba(0, 0, 0, 0.07);
+  --cur-line: rgba(0, 0, 0, 0.03);
+  --scope: rgba(0, 0, 0, 0.045);
+  --guide: rgba(0, 0, 0, 0.08);
+  --ok: #0a0a0a;
+  --warn: #0a0a0a;
+  --err: #0a0a0a;
+  --warn-soft: rgba(0, 0, 0, 0.05);
+  --err-soft: rgba(0, 0, 0, 0.08);
+  --hit: rgba(0, 0, 0, 0.14);
+  --hit-cur: rgba(0, 0, 0, 0.32);
+  --tip-bg: #0a0a0a;
+  --tip-fg: #ffffff;
+  --overlay: rgba(255, 255, 255, 0.82);
+  --backdrop: rgba(0, 0, 0, 0.28);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.06);
 
-  --c-key: #1d4ed8;
-  --c-str: #047857;
-  --c-num: #b45309;
-  --c-bool: #7c3aed;
-  --c-null: #be123c;
-  --c-punct: #8a92a0;
-  --c-com: #8a92a0;
+  --c-key: #0a0a0a;
+  --c-str: #5c5c5c;
+  --c-num: #0a0a0a;
+  --c-bool: #0a0a0a;
+  --c-null: #8a8a8a;
+  --c-punct: #a8a8a8;
+  --c-com: #a8a8a8;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --bg: #0c0d10;
-    --bg-2: #111318;
-    --bg-3: #191c23;
-    --line: #1f222a;
-    --line-2: #2c303b;
-    --fg: #e8eaef;
-    --fg-2: #b6bcc8;
-    --muted: #8a919f;
-    --faint: #5c6371;
-    --accent: #7b93ff;
-    --accent-fg: #0c0d10;
-    --accent-soft: rgba(123, 147, 255, 0.13);
-    --accent-line: rgba(123, 147, 255, 0.5);
-    --seg-on: #262a34;
-    --sel: rgba(123, 147, 255, 0.3);
-    --row-hover: rgba(255, 255, 255, 0.035);
-    --row-sel: rgba(123, 147, 255, 0.15);
-    --cur-line: rgba(255, 255, 255, 0.03);
-    --scope: rgba(123, 147, 255, 0.075);
-    --guide: rgba(255, 255, 255, 0.07);
-    --ok: #4ade80;
-    --warn: #f0b04a;
-    --err: #f87171;
-    --warn-soft: rgba(240, 176, 74, 0.1);
-    --err-soft: rgba(248, 113, 113, 0.1);
-    --hit: rgba(250, 204, 21, 0.25);
-    --hit-cur: rgba(249, 115, 22, 0.5);
-    --tip-bg: #e8eaef;
-    --tip-fg: #0c0d10;
-    --overlay: rgba(12, 13, 16, 0.78);
-    --backdrop: rgba(0, 0, 0, 0.55);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.6);
-    --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --bg: #000000;
+    --bg-2: #0a0a0a;
+    --bg-3: #161616;
+    --line: #1c1c1c;
+    --line-2: #2c2c2c;
+    --fg: #ededed;
+    --fg-2: #b0b0b0;
+    --muted: #8a8a8a;
+    --faint: #555555;
+    --accent: #ededed;
+    --accent-fg: #000000;
+    --accent-soft: rgba(255, 255, 255, 0.07);
+    --accent-line: rgba(255, 255, 255, 0.4);
+    --seg-on: #222222;
+    --sel: rgba(255, 255, 255, 0.2);
+    --row-hover: rgba(255, 255, 255, 0.04);
+    --row-sel: rgba(255, 255, 255, 0.09);
+    --cur-line: rgba(255, 255, 255, 0.035);
+    --scope: rgba(255, 255, 255, 0.05);
+    --guide: rgba(255, 255, 255, 0.08);
+    --ok: #ededed;
+    --warn: #ededed;
+    --err: #ededed;
+    --warn-soft: rgba(255, 255, 255, 0.05);
+    --err-soft: rgba(255, 255, 255, 0.1);
+    --hit: rgba(255, 255, 255, 0.18);
+    --hit-cur: rgba(255, 255, 255, 0.4);
+    --tip-bg: #ededed;
+    --tip-fg: #000000;
+    --overlay: rgba(0, 0, 0, 0.8);
+    --backdrop: rgba(0, 0, 0, 0.6);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.7);
+    --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
-    --c-key: #8ab4ff;
-    --c-str: #86d9a8;
-    --c-num: #f5b97c;
-    --c-bool: #c9a5ff;
-    --c-null: #ff8fa8;
-    --c-punct: #6c7484;
-    --c-com: #6c7484;
+    --c-key: #ededed;
+    --c-str: #9a9a9a;
+    --c-num: #ededed;
+    --c-bool: #ededed;
+    --c-null: #7a7a7a;
+    --c-punct: #555555;
+    --c-com: #555555;
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0c0d10;
-  --bg-2: #111318;
-  --bg-3: #191c23;
-  --line: #1f222a;
-  --line-2: #2c303b;
-  --fg: #e8eaef;
-  --fg-2: #b6bcc8;
-  --muted: #8a919f;
-  --faint: #5c6371;
-  --accent: #7b93ff;
-  --accent-fg: #0c0d10;
-  --accent-soft: rgba(123, 147, 255, 0.13);
-  --accent-line: rgba(123, 147, 255, 0.5);
-  --seg-on: #262a34;
-  --sel: rgba(123, 147, 255, 0.3);
-  --row-hover: rgba(255, 255, 255, 0.035);
-  --row-sel: rgba(123, 147, 255, 0.15);
-  --cur-line: rgba(255, 255, 255, 0.03);
-  --scope: rgba(123, 147, 255, 0.075);
-  --guide: rgba(255, 255, 255, 0.07);
-  --ok: #4ade80;
-  --warn: #f0b04a;
-  --err: #f87171;
-  --warn-soft: rgba(240, 176, 74, 0.1);
-  --err-soft: rgba(248, 113, 113, 0.1);
-  --hit: rgba(250, 204, 21, 0.25);
-  --hit-cur: rgba(249, 115, 22, 0.5);
-  --tip-bg: #e8eaef;
-  --tip-fg: #0c0d10;
-  --overlay: rgba(12, 13, 16, 0.78);
-  --backdrop: rgba(0, 0, 0, 0.55);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --bg: #000000;
+  --bg-2: #0a0a0a;
+  --bg-3: #161616;
+  --line: #1c1c1c;
+  --line-2: #2c2c2c;
+  --fg: #ededed;
+  --fg-2: #b0b0b0;
+  --muted: #8a8a8a;
+  --faint: #555555;
+  --accent: #ededed;
+  --accent-fg: #000000;
+  --accent-soft: rgba(255, 255, 255, 0.07);
+  --accent-line: rgba(255, 255, 255, 0.4);
+  --seg-on: #222222;
+  --sel: rgba(255, 255, 255, 0.2);
+  --row-hover: rgba(255, 255, 255, 0.04);
+  --row-sel: rgba(255, 255, 255, 0.09);
+  --cur-line: rgba(255, 255, 255, 0.035);
+  --scope: rgba(255, 255, 255, 0.05);
+  --guide: rgba(255, 255, 255, 0.08);
+  --ok: #ededed;
+  --warn: #ededed;
+  --err: #ededed;
+  --warn-soft: rgba(255, 255, 255, 0.05);
+  --err-soft: rgba(255, 255, 255, 0.1);
+  --hit: rgba(255, 255, 255, 0.18);
+  --hit-cur: rgba(255, 255, 255, 0.4);
+  --tip-bg: #ededed;
+  --tip-fg: #000000;
+  --overlay: rgba(0, 0, 0, 0.8);
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 24px 64px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
-  --c-key: #8ab4ff;
-  --c-str: #86d9a8;
-  --c-num: #f5b97c;
-  --c-bool: #c9a5ff;
-  --c-null: #ff8fa8;
-  --c-punct: #6c7484;
-  --c-com: #6c7484;
+  --c-key: #ededed;
+  --c-str: #9a9a9a;
+  --c-num: #ededed;
+  --c-bool: #ededed;
+  --c-null: #7a7a7a;
+  --c-punct: #555555;
+  --c-com: #555555;
 }
 
 /* ─── Base ─────────────────────────────────────────────────────────────── */
@@ -222,6 +223,7 @@ svg {
 
 .app {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
   height: 100dvh;
@@ -341,7 +343,7 @@ svg {
 .btn.primary {
   background: var(--accent);
   color: var(--accent-fg);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .btn.primary:hover {
@@ -396,20 +398,20 @@ svg {
 .fname {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
-  max-width: 200px;
-  margin-right: 6px;
+  max-width: 60%;
+  margin: 0 6px 0 6px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 @container (max-width: 520px) {
-  .toolbar .lbl,
-  .fname {
+  .toolbar .lbl {
     display: none;
   }
   .toolbar .btn:not(.icon) {
@@ -453,8 +455,23 @@ svg {
   background: var(--seg-on);
   color: var(--fg);
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.1),
     0 0 0 1px var(--line);
+}
+
+/* Format bar: the indent picker never truncates; Sort keys goes icon-only when tight. */
+.vt-format .pick {
+  flex: none;
+}
+
+@container (max-width: 760px) {
+  .vt-format .btn.toggle .lbl {
+    display: none;
+  }
+  .vt-format .btn.toggle {
+    width: 28px;
+    padding: 0;
+  }
 }
 
 /* Narrow panes: only the active tab keeps its label (all have tooltips + aria-labels). */
@@ -473,6 +490,7 @@ svg {
   }
 }
 
+.vt-format,
 .vt-tree,
 .vt-table,
 .vt-convert,
@@ -581,6 +599,37 @@ svg {
 .crumbs .dims {
   margin-left: 8px;
   font-family: var(--font-ui);
+}
+
+/* Small segmented switch (Pretty / Minify) and toggle buttons */
+.seg-sm button {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.seg-sm button[aria-checked='true'] {
+  background: var(--seg-on);
+  color: var(--fg);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    0 0 0 1px var(--line);
+}
+
+.vt-format > .seg-sm + .pick,
+.vt-format > .pick + .btn,
+.vt-format > .seg-sm + .btn {
+  margin-left: 6px;
+}
+
+.btn.toggle {
+  border-color: var(--line);
+}
+
+.btn.toggle.on {
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
 }
 
 /* Convert toolbar */
@@ -1003,13 +1052,14 @@ kbd {
 }
 
 .me {
-  text-decoration-color: var(--err);
+  text-decoration-color: var(--fg);
+  text-decoration-thickness: 1.5px;
   background: var(--err-soft);
 }
 
 .mw {
-  text-decoration-color: var(--warn);
-  background: var(--warn-soft);
+  text-decoration-style: dotted;
+  text-decoration-color: var(--muted);
 }
 
 .meol {
@@ -1055,18 +1105,19 @@ kbd {
 }
 
 .banner.err {
-  background: var(--err-soft);
-  color: var(--err);
+  background: var(--fg);
+  color: var(--bg);
 }
 
-.banner.warn {
-  background: var(--warn-soft);
-  color: var(--warn);
+.banner.err .b-msg span {
+  color: inherit;
+  opacity: 0.75;
 }
 
+.banner.warn,
 .banner.info {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--bg-2);
+  color: var(--fg);
 }
 
 .banner .b-msg {
@@ -1104,7 +1155,9 @@ kbd {
 }
 
 .banner .btn.accent {
-  border-color: transparent;
+  border-color: currentColor;
+  background: transparent;
+  color: inherit;
 }
 
 /* Tree */
@@ -1487,6 +1540,14 @@ button.tv-x:hover {
   min-width: max-content;
 }
 
+.cv-wrap .cv-sizer {
+  min-width: 0;
+}
+
+.cv-wrap .cv-l {
+  overflow: hidden;
+}
+
 .cv-rows {
   position: absolute;
   top: 0;
@@ -1557,16 +1618,46 @@ button.tv-x:hover {
   text-align: center;
 }
 
-.logo {
+/* Raw state watermark */
+.watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 18px;
-  border-radius: 16px;
-  background: linear-gradient(140deg, #8ea2ff, #4c6fff);
-  color: #fff;
-  box-shadow: 0 12px 32px -10px rgba(76, 111, 255, 0.6);
+  padding: 24px;
+  background: var(--bg);
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.wm-in {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--line-2);
+  text-align: center;
+}
+
+.wm-name {
+  color: var(--line-2);
+  font: 700 clamp(34px, 7cqi, 64px) / 1 var(--font-ui);
+  letter-spacing: -0.04em;
+}
+
+.wm-sub {
+  margin: 0;
+  color: var(--faint);
+  font: 500 13px/1 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.logo-mark {
+  display: block;
+  flex: none;
 }
 
 .hero h1 {
@@ -1643,6 +1734,7 @@ button.tv-x:hover {
 /* ─── Status bar ───────────────────────────────────────────────────────── */
 
 .statusbar {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1721,6 +1813,21 @@ button.tv-x:hover {
   height: 7px;
   border-radius: 50%;
   background: currentColor;
+}
+
+/* Shape, not color: filled = valid, half = fixable, ring = invalid. */
+.st-link.warn .dot {
+  background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.st.err .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.st.err .st-msg {
+  font-weight: 600;
 }
 
 .spin {
@@ -1857,8 +1964,8 @@ button.tv-x:hover {
   padding: 4px 10px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--tip-fg);
+  color: var(--tip-bg);
   font: 600 12px/1 var(--font-ui);
   cursor: pointer;
   pointer-events: auto;
@@ -1883,12 +1990,8 @@ button.tv-x:hover {
   opacity: 1;
 }
 
-.toast.ok svg {
-  color: var(--ok);
-}
-
-.toast.err svg {
-  color: var(--err);
+.toast svg {
+  color: inherit;
 }
 
 @keyframes toast {
@@ -2106,6 +2209,7 @@ dialog[open] {
     padding-block: 6px;
     row-gap: 6px;
   }
+  .vt-format,
   .vt-tree,
   .vt-table,
   .vt-convert,

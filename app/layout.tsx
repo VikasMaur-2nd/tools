@@ -3,20 +3,20 @@ import { Analytics } from '@/components/Analytics';
 import './globals.css';
 
 const SITE = 'https://tools.vikasmaur.com';
-const TITLE = 'JSON Formatter & Validator — Free, Private JSON Viewer Online';
+const TITLE = 'JSON Formatter & Validator: Free, Private JSON Viewer | Tool Kumar';
 const DESCRIPTION =
-  'Free, fast JSON formatter, viewer and validator. Beautify, minify, repair and explore JSON in a tree or table view. No upload, no ads — runs in your browser and works offline.';
+  'Free, fast JSON formatter, viewer and validator. Beautify, minify, repair and explore JSON in a tree or table view. No upload, no ads. Runs in your browser and works offline.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   title: TITLE,
   description: DESCRIPTION,
-  applicationName: 'JSON Viewer & Formatter',
+  applicationName: 'Tool Kumar',
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
     url: '/',
-    siteName: 'JSON Viewer & Formatter',
+    siteName: 'Tool Kumar',
     title: TITLE,
     description: DESCRIPTION,
     locale: 'en_US',
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 } },
   formatDetection: { telephone: false, email: false, address: false },
-  appleWebApp: { capable: true, title: 'JSON Viewer', statusBarStyle: 'black-translucent' },
+  appleWebApp: { capable: true, title: 'Tool Kumar', statusBarStyle: 'black-translucent' },
   category: 'developer tools',
 };
 
@@ -35,7 +35,7 @@ export const viewport: Viewport = {
   colorScheme: 'light dark',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0c0d10' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
   ],
 };
 

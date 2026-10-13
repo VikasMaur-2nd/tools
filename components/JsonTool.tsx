@@ -45,26 +45,25 @@ function Btn({
 
 // ── Editor pane ─────────────────────────────────────────────────────────────
 
-const EditorToolbar = memo(function EditorToolbar() {
-  const fixable = useUI((s) => s.status.kind === 'fixable');
+/** Input side: only what concerns the input itself. Everything that transforms it lives on the right. */
+const InputBar = memo(function InputBar() {
   const fileName = useUI((s) => s.fileName);
   const mac = useUI((s) => s.mac);
   const mod = mac ? '⌘' : 'Ctrl+';
   return (
-    <div className="toolbar" role="toolbar" aria-label="Editor actions">
-      <Btn icon="format" label="Format" variant="primary" tip={`Beautify · ${mod}↵`} onClick={() => act((e) => e.format())} />
-      <Btn icon="minify" label="Minify" tip={`Compact to one line · ${mod}⇧↵`} onClick={() => act((e) => e.minify())} />
-      <Btn icon="sort" label="Sort" tip="Sort keys A → Z" onClick={() => act((e) => e.sortKeys())} />
-      {fixable && <Btn icon="wand" label="Repair" variant="accent" tip="Fix quotes, commas, comments & more" onClick={() => act((e) => e.repair())} />}
+    <div className="toolbar" role="toolbar" aria-label="Input">
+      <span className="fname" title={fileName ?? undefined}>
+        {fileName ? (
+          <>
+            <Icon name="file" size={14} />
+            {fileName}
+          </>
+        ) : (
+          'Input'
+        )}
+      </span>
       <span className="grow" />
-      {fileName && (
-        <span className="fname" title={fileName}>
-          <Icon name="file" size={14} />
-          {fileName}
-        </span>
-      )}
-      <Btn icon="copy" label="Copy" hideLabel onClick={() => act((e) => e.copyAll())} />
-      <Btn icon="download" label={`Download · ${mod}S`} hideLabel onClick={() => act((e) => e.download())} />
+      <Btn icon="paste" label="Paste" hideLabel onClick={() => act((e) => e.paste())} />
       <Btn icon="open" label={`Open file · ${mod}O`} hideLabel onClick={() => act((e) => e.openFile())} />
       <Btn icon="trash" label="Clear" hideLabel onClick={() => act((e) => e.clear())} />
     </div>
@@ -79,7 +78,7 @@ function ViewNotice() {
     <div className="ed-notice" role="status">
       <Icon name="lock" size={13} />
       <span>
-        Large document{bytes ? ` (${formatBytes(bytes)})` : ''} — read-only for speed. Format, search &amp; export still work.
+        Large document{bytes ? ` (${formatBytes(bytes)})` : ''} is read-only for speed. Everything on the right still works.
       </span>
       <button type="button" className="btn sm" onClick={() => act((e) => e.editAnyway())}>
         Edit anyway
@@ -91,7 +90,7 @@ function ViewNotice() {
 function EditorPane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }) {
   return (
     <section className="pane pane-ed" aria-label="JSON input">
-      <EditorToolbar />
+      <InputBar />
       <ViewNotice />
       <div className="ed" ref={edRef}>
         <div className="ed-gut" aria-hidden="true">
@@ -202,11 +201,58 @@ function Crumbs() {
 }
 
 const VIEWS: { id: View; label: string; icon: IconName }[] = [
+  { id: 'format', label: 'Format', icon: 'braces' },
   { id: 'tree', label: 'Tree', icon: 'tree' },
   { id: 'table', label: 'Table', icon: 'table' },
   { id: 'convert', label: 'Convert', icon: 'code' },
   { id: 'compare', label: 'Compare', icon: 'diff' },
 ];
+
+/** Format view controls: the output's shape, plus getting it out. */
+function FormatBar() {
+  const minify = useUI((s) => s.settings.minify);
+  const sortKeys = useUI((s) => s.settings.sortKeys);
+  const indent = useUI((s) => s.settings.indent);
+  const mac = useUI((s) => s.mac);
+  const mod = mac ? '⌘' : 'Ctrl+';
+  return (
+    <>
+      <div className="seg seg-sm" role="radiogroup" aria-label="Output style">
+        <button type="button" role="radio" aria-checked={!minify} onClick={() => act((e) => e.setFormat({ minify: false }))}>
+          Pretty
+        </button>
+        <button type="button" role="radio" aria-checked={minify} onClick={() => act((e) => e.setFormat({ minify: true }))}>
+          Minify
+        </button>
+      </div>
+      {!minify && (
+        <label className="pick">
+          <span className="sr-only">Indentation</span>
+          <select value={indent} onChange={(e) => act((en) => en.setIndent(e.target.value as IndentId))}>
+            <option value="2">2 spaces</option>
+            <option value="4">4 spaces</option>
+            <option value="tab">Tabs</option>
+          </select>
+          <Icon name="down" size={13} />
+        </label>
+      )}
+      <button
+        type="button"
+        className={`btn toggle${sortKeys ? ' on' : ''}`}
+        aria-pressed={sortKeys}
+        onClick={() => act((e) => e.setFormat({ sortKeys: !sortKeys }))}
+        data-tip="Sort object keys A to Z"
+      >
+        <Icon name="sort" size={14} />
+        <span className="lbl">Sort keys</span>
+      </button>
+      <span className="grow" />
+      <Btn icon="apply" label={`Use as input · ${mod}↵`} hideLabel onClick={() => act((e) => e.useOutput())} />
+      <Btn icon="copy" label="Copy output" hideLabel onClick={() => act((e) => e.copyOutput())} />
+      <Btn icon="download" label="Download .json" hideLabel onClick={() => act((e) => e.downloadOutput())} />
+    </>
+  );
+}
 
 function ConvertBar() {
   const target = useUI((s) => s.settings.target);
@@ -294,6 +340,9 @@ function ViewToolbar({ searchRef }: { searchRef: React.RefObject<HTMLInputElemen
           </button>
         ))}
       </div>
+      <div className="vt-format" hidden={view !== 'format'}>
+        <FormatBar />
+      </div>
       <div className="vt-tree" hidden={view !== 'tree'}>
         <SearchBox inputRef={searchRef} />
         <Btn icon="expand" label="Expand all" hideLabel onClick={() => act((e) => e.expandAll())} />
@@ -340,7 +389,7 @@ function Banner() {
       <button type="button" className="b-msg" onClick={() => act((e) => e.gotoError())}>
         <b>{err ? 'Invalid JSON' : `Not strict JSON · ${status.count} fixable issue${status.count > 1 ? 's' : ''}`}</b>
         <span>
-          Ln {status.line}, Col {status.col} — {status.msg}
+          Ln {status.line}, Col {status.col}: {status.msg}
         </span>
       </button>
       {hint === 'unescape' && (
@@ -363,82 +412,42 @@ function Banner() {
           Go to error
         </button>
       ) : (
-        <button type="button" className="btn sm accent" onClick={() => act((e) => e.repair())}>
-          <Icon name="wand" size={14} /> Repair
+        <button type="button" className="btn sm accent" onClick={() => act((e) => e.repair())} data-tip="Replace the input with the repaired JSON">
+          <Icon name="wand" size={14} /> Repair input
         </button>
       )}
     </div>
   );
 }
 
-function Hero() {
+/** Raw state (nothing typed or pasted yet): a quiet brand watermark. */
+function Watermark() {
   const empty = useUI((s) => s.empty);
   const view = useUI((s) => s.settings.view);
   if (!empty || view === 'compare') return null;
   return (
-    <div className="hero">
-      <div className="hero-in">
-        <div className="logo" aria-hidden="true">
-          <Icon name="braces" size={28} />
+    <div className="watermark">
+      <div className="wm-in">
+        <Logo size={44} />
+        <div className="wm-name" aria-hidden="true">
+          Tool Kumar
         </div>
-        <h1>JSON Formatter &amp; Viewer</h1>
-        <p className="lead">
-          Format, validate, repair and explore JSON instantly. No upload, no ads, works offline — your data never leaves your device.
+        <h1 className="wm-sub">JSON Formatter &amp; Viewer</h1>
+        <p className="sr-only">
+          Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
         </p>
-        <div className="hero-actions">
-          <button type="button" className="btn primary lg" onClick={() => act((e) => e.paste())}>
-            <Icon name="paste" /> Paste JSON
-          </button>
-          <button type="button" className="btn lg" onClick={() => act((e) => e.openFile())}>
-            <Icon name="open" /> Open file
-          </button>
-          <button type="button" className="btn lg" onClick={() => act((e) => e.sample())}>
-            <Icon name="file" /> Try a sample
-          </button>
-        </div>
-        <p className="muted sm">or drop a .json file anywhere</p>
-        <ul className="features">
-          <li>
-            <Icon name="tree" size={15} />
-            Tree &amp; table views
-          </li>
-          <li>
-            <Icon name="alert" size={15} />
-            Pinpoint errors
-          </li>
-          <li>
-            <Icon name="wand" size={15} />
-            One-click repair
-          </li>
-          <li>
-            <Icon name="search" size={15} />
-            Search &amp; JSONPath
-          </li>
-          <li>
-            <Icon name="check" size={15} />
-            Lossless big numbers
-          </li>
-          <li>
-            <Icon name="lock" size={15} />
-            Private &amp; offline
-          </li>
-        </ul>
-        <div className="tips">
-          <span>
-            <Kbd k="mod+Enter" /> Format
-          </span>
-          <span>
-            <Kbd k="mod+K" /> Commands
-          </span>
-          <span>
-            <Kbd k="mod+F" /> Search
-          </span>
-          <span>
-            <Kbd k="?" /> Shortcuts
-          </span>
-        </div>
       </div>
     </div>
+  );
+}
+
+/** The Tool Kumar monogram (pure currentColor). */
+function Logo({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="logo-mark">
+      <rect width="32" height="32" rx="7" fill="currentColor" />
+      <path d="M4 6H20V12L24 6H28L21.33 16L28 26H24L20 20V26H16V10H12V26H8V10H4Z" fill="var(--bg)" />
+    </svg>
   );
 }
 
@@ -452,9 +461,11 @@ function ViewerPane({
   treeRef,
   tableRef,
   codeRef,
+  fmtRef,
   searchRef,
 }: {
   treeRef: React.RefObject<HTMLDivElement | null>;
+  fmtRef: React.RefObject<HTMLDivElement | null>;
   tableRef: React.RefObject<HTMLDivElement | null>;
   codeRef: React.RefObject<HTMLDivElement | null>;
   searchRef: React.RefObject<HTMLInputElement | null>;
@@ -467,6 +478,11 @@ function ViewerPane({
       <ViewToolbar searchRef={searchRef} />
       <div className={`view${stale ? ' stale' : ''}`}>
         <Banner />
+        <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label="Formatted output">
+          <div className="cv-sizer">
+            <div className="cv-rows" />
+          </div>
+        </div>
         <div id="view-tree" className="tv" ref={treeRef} tabIndex={0} role="tree" aria-label="JSON tree" hidden={view !== 'tree' || empty}>
           <div className="tv-sizer">
             <div className="tv-rows" />
@@ -498,7 +514,7 @@ function ViewerPane({
         <div id="view-compare" className="cmp-host" hidden={view !== 'compare'}>
           {view === 'compare' && <CompareHost />}
         </div>
-        <Hero />
+        <Watermark />
       </div>
     </section>
   );
@@ -584,7 +600,7 @@ function StatusMsg() {
   const status = useUI((s) => s.status);
   switch (status.kind) {
     case 'empty':
-      return <span className="st muted">Ready — paste, type or drop JSON</span>;
+      return <span className="st muted">Ready</span>;
     case 'parsing':
       return (
         <span className="st muted">
@@ -598,7 +614,7 @@ function StatusMsg() {
           Valid JSON
           {status.warnings > 0 && (
             <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg}>
-              · {status.warnings} duplicate key{status.warnings > 1 ? 's' : ''}
+              · {plural(status.warnings, 'duplicate key')}
             </button>
           )}
         </span>
@@ -617,26 +633,17 @@ function StatusMsg() {
   }
 }
 
+const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+
 function Stats() {
   const stats = useUI((s) => s.stats);
-  const path = useUI((s) => s.path);
+  if (!stats) return null;
   return (
-    <>
-      {stats && (
-        <span className="stats muted" title={`Parsed in ${stats.ms.toFixed(1)} ms`}>
-          {formatBytes(stats.bytes)} · {plural(stats.lines, 'line')} · {plural(stats.nodes, 'node')} · depth {stats.depth}
-        </span>
-      )}
-      {path && (
-        <button type="button" className="path" onClick={() => act((e) => e.copyPath())} data-tip="Copy path" data-tip-up="">
-          {path}
-        </button>
-      )}
-    </>
+    <span className="stats muted" title={`Parsed in ${stats.ms.toFixed(1)} ms`}>
+      {formatBytes(stats.bytes)} · {plural(stats.lines, 'line')} · {plural(stats.nodes, 'node')} · depth {stats.depth}
+    </span>
   );
 }
-
-const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
 
 function Cursor() {
   const { line, col, sel } = useUI((s) => s.cursor);
@@ -648,8 +655,8 @@ function Cursor() {
   );
 }
 
+/** One quiet line: status and document stats on the left; caret, commands and theme on the right. */
 function StatusBar() {
-  const indent = useUI((s) => s.settings.indent);
   const theme = useUI((s) => s.settings.theme);
   return (
     <footer className="statusbar">
@@ -659,17 +666,6 @@ function StatusBar() {
       </div>
       <div className="sb-r">
         <Cursor />
-        <label className="indent" data-tip="Indentation" data-tip-up="">
-          <span className="sr-only">Indentation</span>
-          <select value={indent} onChange={(e) => act((en) => en.setIndent(e.target.value as IndentId))}>
-            <option value="2">Spaces: 2</option>
-            <option value="4">Spaces: 4</option>
-            <option value="tab">Tabs</option>
-          </select>
-        </label>
-        <span className="private" data-tip="100% client-side · works offline · nothing is uploaded" data-tip-up="">
-          <Icon name="lock" size={13} /> Private
-        </span>
         <button type="button" className="sb-btn" onClick={() => act((e) => e.openPalette())} aria-label="All commands" data-tip="All commands" data-tip-up="">
           <span className="fine-only">
             <Kbd k="mod+K" />
@@ -681,7 +677,7 @@ function StatusBar() {
           className="sb-btn"
           onClick={() => act((e) => e.cycleTheme())}
           aria-label={`Theme: ${theme}`}
-          data-tip={`Theme: ${theme === 'system' ? 'system' : theme}`}
+          data-tip={`Theme: ${theme}`}
           data-tip-up=""
         >
           <Icon name={theme === 'light' ? 'sun' : theme === 'dark' ? 'moon' : 'system'} size={14} />
@@ -745,6 +741,7 @@ export default function JsonTool() {
   const fileRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLDivElement>(null);
+  const fmtRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const e = new Engine({
@@ -754,6 +751,7 @@ export default function JsonTool() {
       file: fileRef.current!,
       search: searchRef.current!,
       code: codeRef.current!,
+      fmt: fmtRef.current!,
     });
     setEngine(e);
     const warm = window.setTimeout(() => void import('./CompareView'), 5000);
@@ -770,7 +768,7 @@ export default function JsonTool() {
       <main className="panes">
         <EditorPane edRef={edRef} />
         <Splitter />
-        <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} searchRef={searchRef} />
+        <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} fmtRef={fmtRef} searchRef={searchRef} />
       </main>
       <StatusBar />
       <ToastHost />

@@ -1,4 +1,4 @@
-/** Convert targets (metadata only — the converters themselves are lazy-loaded). */
+/** Convert targets (metadata only: the converters themselves are lazy-loaded). */
 export interface TargetInfo {
   id: string;
   label: string;

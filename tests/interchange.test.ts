@@ -422,7 +422,7 @@ describe('CSV import', () => {
   });
 
   test('unterminated quote reports line and column', () => {
-    assert.deepEqual(err('a,b\n1,"oops\n2,3', 'csv'), { error: 'Unterminated quoted field — missing closing "', line: 2, col: 3 });
+    assert.deepEqual(err('a,b\n1,"oops\n2,3', 'csv'), { error: 'Unterminated quoted field: missing closing "', line: 2, col: 3 });
   });
 });
 
@@ -760,7 +760,7 @@ c">hello</xsi:note>
 
   test('errors carry line and column', () => {
     const cases: [string, RegExp, number, number][] = [
-      ['<a>\n  <b></a>', /Mismatched closing tag <\/a> — expected <\/b>/, 2, 6],
+      ['<a>\n  <b></a>', /Mismatched closing tag <\/a>: expected <\/b>/, 2, 6],
       ['<a>\n<b>', /Unclosed element <b>/, 2, 1],
       ['<a/>\n<b/>', /Only one root element/, 2, 1],
       ['<a x=1/>', /Attribute values must be quoted/, 1, 6],
@@ -892,7 +892,7 @@ multi = [
     const cases: [string, RegExp, number, number][] = [
       ['a = 1\na = 2\n', /Duplicate key "a"/, 2, 1],
       ['[t]\nx = 1\n[t]\n', /Table \[t\] is defined more than once/, 3, 1],
-      ['name = hello\n', /Invalid value 'hello' — strings must be quoted/, 1, 8],
+      ['name = hello\n', /Invalid value 'hello': strings must be quoted/, 1, 8],
       ['s = "open\n', /Unterminated string/, 1, 5],
       ['a = 1 b = 2\n', /expected a new line after the value/, 1, 7],
       ['a = { b = 1 }\n[a]\n', /defined more than once/, 2, 1],

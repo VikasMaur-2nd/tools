@@ -6,7 +6,7 @@
  *  other same-origin    stale-while-revalidate
  *  never touched        cross-origin, non-GET, /_vercel/* (analytics), RSC requests
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const PREFIX = 'json-viewer-';
 const CACHE = PREFIX + VERSION;
 const ORIGIN = self.location.origin;
