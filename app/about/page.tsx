@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import ContentShell from '../content-shell';
-import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { aboutPageLd, jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 
 export const metadata: Metadata = {
   title: { absolute: 'About Tool Kumar' },
@@ -21,6 +21,7 @@ export const metadata: Metadata = {
 export default function AboutPage() {
   return (
     <ContentShell current="about">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript({ '@context': 'https://schema.org', '@graph': [aboutPageLd] }) }} />
       <header className="page-head">
         <p className="eyebrow">About Tool Kumar</p>
         <h1>Private tools that keep your data close</h1>

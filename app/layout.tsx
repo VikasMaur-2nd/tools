@@ -14,6 +14,11 @@ const TITLE = 'Free JSON Viewer & Formatter | Tool Kumar';
 const DESCRIPTION =
   'View, format, validate, repair, minify and compare JSON online for free. Tool Kumar runs in your browser, keeps data on your device and works offline.';
 
+const verification: Metadata['verification'] = {
+  ...(process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : {}),
+  ...(process.env.BING_SITE_VERIFICATION ? { other: { 'msvalidate.01': process.env.BING_SITE_VERIFICATION } } : {}),
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   title: { default: TITLE, template: '%s | Tool Kumar' },
@@ -52,6 +57,7 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false, email: false, address: false },
   appleWebApp: { capable: true, title: 'Tool Kumar', statusBarStyle: 'black-translucent' },
   category: 'developer tools',
+  ...(Object.keys(verification).length > 0 ? { verification } : {}),
 };
 
 export const viewport: Viewport = {

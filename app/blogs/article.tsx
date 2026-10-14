@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { highlightCode } from '@/lib/convert/highlight';
 import ContentShell, { Logo } from '../content-shell';
-import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { jsonLdScript, postJsonLd, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 import { Arrow, PostCard } from './post-card';
 import { POSTS, formatDate, type Post } from './posts';
 
@@ -65,6 +65,7 @@ export function Article({ post, lede, children }: { post: Post; lede: ReactNode;
   const related = POSTS.filter((p) => p.slug !== post.slug).slice(0, 2);
   return (
     <ContentShell current="blogs" progress>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(postJsonLd(post)) }} />
       <article className="article">
         <header className="article-head">
           <nav className="breadcrumbs" aria-label="Breadcrumb">

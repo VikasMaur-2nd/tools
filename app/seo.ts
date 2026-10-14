@@ -44,45 +44,51 @@ export const ORGANIZATION = {
   },
 } as const;
 
-export const jsonLd = {
+const baseGraph = [
+  ORGANIZATION,
+  {
+    '@type': 'WebSite',
+    '@id': `${SITE}/#website`,
+    url: SITE,
+    name: SITE_NAME,
+    description: JSON_TOOL_DESCRIPTION,
+    publisher: { '@id': `${SITE}/#organization` },
+    inLanguage: 'en-US',
+  },
+] as const;
+
+const applicationJsonLd = {
+  '@type': ['WebApplication', 'SoftwareApplication'],
+  '@id': `${SITE}/#json-viewer`,
+  name: JSON_TOOL_NAME,
+  alternateName: ['JSON Viewer', 'JSON Formatter', 'JSON Validator', 'JSON Beautifier'],
+  url: SITE,
+  description: JSON_TOOL_DESCRIPTION,
+  applicationCategory: 'DeveloperApplication',
+  applicationSubCategory: 'JSON viewer and formatter',
+  operatingSystem: 'Any',
+  browserRequirements: 'Requires JavaScript',
+  isAccessibleForFree: true,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  publisher: { '@id': `${SITE}/#organization` },
+  featureList: [
+    'JSON formatter and beautifier',
+    'JSON validator with line and column errors',
+    'Repair for common JSON mistakes',
+    'Collapsible tree and table views',
+    'Search keys and values and copy JSON paths',
+    'Minify and sort keys',
+    'Compare JSON documents',
+    'Convert JSON to other formats',
+    'Works offline and keeps documents on the device',
+  ],
+} as const;
+
+export const homeJsonLd = {
   '@context': 'https://schema.org',
   '@graph': [
-    ORGANIZATION,
-    {
-      '@type': 'WebSite',
-      '@id': `${SITE}/#website`,
-      url: SITE,
-      name: SITE_NAME,
-      description: JSON_TOOL_DESCRIPTION,
-      publisher: { '@id': `${SITE}/#organization` },
-      inLanguage: 'en-US',
-    },
-    {
-      '@type': ['WebApplication', 'SoftwareApplication'],
-      '@id': `${SITE}/#json-viewer`,
-      name: JSON_TOOL_NAME,
-      alternateName: ['JSON Viewer', 'JSON Formatter', 'JSON Validator', 'JSON Beautifier'],
-      url: SITE,
-      description: JSON_TOOL_DESCRIPTION,
-      applicationCategory: 'DeveloperApplication',
-      applicationSubCategory: 'JSON viewer and formatter',
-      operatingSystem: 'Any',
-      browserRequirements: 'Requires JavaScript',
-      isAccessibleForFree: true,
-      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-      publisher: { '@id': `${SITE}/#organization` },
-      featureList: [
-        'JSON formatter and beautifier',
-        'JSON validator with line and column errors',
-        'Repair for common JSON mistakes',
-        'Collapsible tree and table views',
-        'Search keys and values and copy JSON paths',
-        'Minify and sort keys',
-        'Compare JSON documents',
-        'Convert JSON to other formats',
-        'Works offline and keeps documents on the device',
-      ],
-    },
+    ...baseGraph,
+    applicationJsonLd,
     {
       '@type': 'BreadcrumbList',
       '@id': `${SITE}/#breadcrumb`,
@@ -100,10 +106,13 @@ export const jsonLd = {
   ],
 } as const;
 
+/** Shared entities only. Page-specific schemas are rendered on their page. */
+export const siteJsonLd = { '@context': 'https://schema.org', '@graph': baseGraph } as const;
+
 const BLOG = `${SITE}/blogs`;
 const postUrl = (slug: string) => `${BLOG}/${slug}`;
 
-const blogPageLd = {
+export const blogPageLd = {
   '@type': 'CollectionPage',
   '@id': `${BLOG}#page`,
   url: BLOG,
@@ -117,7 +126,9 @@ const blogPageLd = {
   },
 };
 
-const postsLd = POSTS.flatMap((post) => [
+export const postJsonLd = (post: (typeof POSTS)[number]) => ({
+  '@context': 'https://schema.org',
+  '@graph': [
   {
     '@type': 'BlogPosting',
     '@id': `${postUrl(post.slug)}#article`,
@@ -146,9 +157,10 @@ const postsLd = POSTS.flatMap((post) => [
       { '@type': 'ListItem', position: 3, name: post.title, item: postUrl(post.slug) },
     ],
   },
-]);
+  ],
+});
 
-const aboutPageLd = {
+export const aboutPageLd = {
   '@type': 'AboutPage',
   '@id': `${SITE}/about#page`,
   url: `${SITE}/about`,
@@ -157,11 +169,6 @@ const aboutPageLd = {
   about: { '@id': `${SITE}/#organization` },
   mainEntity: ORGANIZATION,
   inLanguage: 'en-US',
-} as const;
-
-export const siteJsonLd = {
-  '@context': 'https://schema.org',
-  '@graph': [...jsonLd['@graph'], blogPageLd, ...postsLd, aboutPageLd],
 } as const;
 
 export function jsonLdScript(value: unknown) {
