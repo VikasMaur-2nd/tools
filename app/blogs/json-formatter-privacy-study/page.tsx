@@ -6,16 +6,18 @@ const post = getPost('json-formatter-privacy-study');
 export const metadata = postMetadata(post);
 
 const RESULTS = [
-  ['JSONFormatter', 'Blocked by browser challenge', '—', '—', '—', '—', '—'],
-  ['Code Beautify JSON Viewer', 'No marker observed', '142', '0.77 MB', 'Yes', 'No', 'Tested'],
-  ['JSONLint', 'No marker observed', '139', '0.60 MB', 'No', 'No', 'Tested'],
-  ['JSON Editor Online', 'Blocked by browser challenge', '—', '—', '—', '—', '—'],
-  ['JSON Beautifier', 'No marker observed', '10', '0.62 MB', 'Yes', 'No', 'Tested'],
-  ['JSON Viewer Stack', 'No marker observed', '8', '0.18 MB', 'Yes', 'No', 'Tested'],
-  ['JSON Formatter Online', 'No marker observed', '2', '0.13 MB', 'No', 'No', 'Tested'],
-  ['JSON Hero', 'No marker observed', '6', '0.02 MB', 'No', 'No', 'Tested'],
-  ['JSON Compare', 'No marker observed', '10', '0.11 MB', 'No', 'No', 'Tested'],
-  ['Tool Kumar', 'No marker observed', '0', '0.00 MB', 'No', 'Yes', 'Tested'],
+  ['JSONFormatter', 'Not tested (browser challenge)', '—', '—', '—', '—'],
+  ['Code Beautify JSON Viewer', 'No marker observed', '203', '2.84 MB', 'Yes', 'No'],
+  ['JSONLint', 'Action not confirmed', '194', '1.39 MB', 'No', 'No'],
+  ['JSON Editor Online', 'Not tested (browser challenge)', '—', '—', '—', '—'],
+  ['JSON Beautifier', 'No marker observed', '10', '1.79 MB', 'Yes', 'No'],
+  ['JSON Viewer Stack', 'No marker observed', '8', '0.67 MB', 'Yes', 'No'],
+  ['JSON Formatter Online', 'Action not confirmed', '2', '0.28 MB', 'No', 'No'],
+  ['JSON Hero', 'Marker sent', '5', '1.64 MB', 'Yes', 'No'],
+  ['JSON Compare', 'No marker observed', '12', '1.31 MB', 'No', 'No'],
+  ['Curious Concept JSON Formatter', 'Not tested (browser challenge)', '—', '—', '—', '—'],
+  ['FreeFormatter JSON Formatter', 'Action not confirmed', '8', '0.33 MB', 'No', 'No'],
+  ['Tool Kumar', 'No marker observed', '0', '0.28 MB', 'No', 'Yes'],
 ] as const;
 
 const SOURCES = [
@@ -28,13 +30,11 @@ export default function JsonFormatterPrivacyStudyPage() {
   return (
     <Article
       post={post}
-      lede="A fake canary document went through ten online JSON viewers and formatters on October 14, 2026. We recorded network requests, third-party hosts, transfer size, save or share controls and an offline reload. The test is a snapshot of what a browser observed from one location; it is not a claim about a service’s intentions or every version of its software."
+      lede="A fake canary document went through twelve online JSON viewers and formatters on October 14, 2026. We recorded network requests, third-party hosts, transfer size, save or share controls and an offline reload. The test is a snapshot of what a browser observed from one location; it is not a claim about a service’s intentions or every version of its software."
     >
       <h2 id="headline-findings">What we found</h2>
       <p>
-        The canary marker appeared in no outgoing request URL or request body in the eight tools that loaded. Tool Kumar made no
-        request to a third-party host and reloaded while the network was disabled after its first visit. Several other tools loaded
-        many advertising, analytics or identity hosts even though our fake JSON marker was not present in those requests.
+        JSON Hero sent the canary marker in a POST request to its own <code>jsonhero.io</code> host while creating a document. We did not observe the marker in captured requests from the other tested, confirmed actions. Three tools were blocked by browser challenges, and three tools did not produce enough DOM evidence to confirm that their action ran. Tool Kumar made no request to a third-party host and reloaded while the network was disabled after its first visit.
       </p>
       <div className="table-wrap">
         <table>
@@ -46,7 +46,6 @@ export default function JsonFormatterPrivacyStudyPage() {
               <th scope="col">Transfer</th>
               <th scope="col">Save/share UI</th>
               <th scope="col">Offline reload</th>
-              <th scope="col">Run</th>
             </tr>
           </thead>
           <tbody>
@@ -60,9 +59,7 @@ export default function JsonFormatterPrivacyStudyPage() {
         </table>
       </div>
       <p className="note">
-        “No marker observed” means our capture did not find the unique string in a request URL or body after loading the page, pasting the
-        document and clicking the first visible format, validate, parse or process control. It does not prove that a tool can never
-        upload other input or that a later action has the same behavior. A dash means the browser challenge prevented a fair test.
+        “No marker observed” means the action was confirmed with DOM evidence and our capture found no raw, URL-encoded or base64 marker in request URLs, fetched POST bodies or sent WebSocket frames. “Action not confirmed” means the page accepted or displayed input but the captured evidence did not prove that the requested action completed. A dash means a browser challenge prevented a fair test.
       </p>
 
       <h2 id="why-this-test">Why test JSON formatters?</h2>
@@ -81,9 +78,9 @@ export default function JsonFormatterPrivacyStudyPage() {
 
       <h2 id="method">Method</h2>
       <ol>
-        <li>We selected ten sites that appeared in checks for “JSON formatter”, “JSON viewer”, “JSON validator” or “JSON beautifier”, plus Tool Kumar for the same comparison. Search results vary by location and time.</li>
-        <li>In a fresh headless Chromium page, we loaded each URL, waited seven seconds, pasted the same JSON and clicked the first visible control whose label matched format, beautify, validate, parse, submit, process or view.</li>
-        <li>The JSON contained only fake values and a run-specific marker: <code>TK-PRIVACY-CANARY-1791949677021-W5</code>. We captured Chrome DevTools Protocol request events, then counted distinct request hosts and encoded transfer bytes for the run.</li>
+        <li>We selected eleven sites that appeared in checks for “JSON formatter”, “JSON viewer”, “JSON validator” or “JSON beautifier”, plus Tool Kumar for the same comparison. Search results vary by location and time.</li>
+        <li>In a fresh headless Chromium profile with cache disabled, we loaded each URL, waited seven seconds, pasted the same JSON and clicked the first visible control whose label matched format, beautify, validate, parse, submit, process, view, Go or Compare.</li>
+        <li>The JSON contained only fake values and a run-specific marker: <code>TK-PRIVACY-CANARY-1791949677021-W5</code>. We captured Chrome DevTools Protocol request events, fetched post data for requests that declared a body, recorded sent WebSocket frames and searched raw, URL-encoded, base64 and base64url forms. Transfer size is the sum of every <code>Network.loadingFinished.encodedDataLength</code> event, including the document, cross-checked against Performance API resource and navigation entries.</li>
         <li>We recorded visible Save, Share, Recent Links or public-link language from the loaded page. After the first visit, we disabled the network and reloaded to check whether the page still rendered from its cache or service worker.</li>
         <li>The run used Chromium 145.0.7632.0 on the test host, from an automated environment whose IP location was not asserted. The test date was October 14, 2026 UTC.</li>
       </ol>
@@ -98,7 +95,7 @@ export default function JsonFormatterPrivacyStudyPage() {
       <p>
         The raw capture is <a href="/research/json-formatter-privacy-study.json" download>available as JSON</a>. It includes timestamps,
         browser version, request counts, host lists, transfer bytes and the exact status recorded for each site. The no-dependency runner
-        script and notes are kept with the research files for reproducibility.
+        script, screenshots and notes are kept with the research files for reproducibility.
       </p>
 
       <h2 id="interpretation">How to read the table</h2>
@@ -125,8 +122,7 @@ export default function JsonFormatterPrivacyStudyPage() {
 
       <h2 id="limitations">Limitations</h2>
       <p>
-        This was one run per site, from one automated browser and one network location. A challenge blocked JSONFormatter and JSON Editor
-        Online, and we did not bypass either. We did not create accounts, click a Save control, crawl saved links, inspect server-side
+        This was one run per site, from one automated browser and one network location. Challenges blocked JSONFormatter, JSON Editor Online and Curious Concept JSON Formatter, and we did not bypass them. Three loaded pages did not provide enough evidence to confirm the requested action. We did not create accounts, click a Save control, crawl saved links, inspect server-side
         retention or test mobile browsers. Ad auctions and third-party hosts can change between runs. The results describe this dated
         interaction, not a permanent property of any service.
       </p>

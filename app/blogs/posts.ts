@@ -22,10 +22,10 @@ export interface Post {
 export const POSTS: Post[] = [
   {
     slug: 'json-formatter-privacy-study',
-    title: 'Do online JSON formatters upload your data? A 10-tool canary test',
+    title: 'Do online JSON formatters upload your data? A 12-tool canary test',
     description:
-      'We tested ten popular online JSON viewers and formatters with a unique fake canary document to see what left the browser, which third-party hosts loaded and whether offline use worked.',
-    excerpt: 'A dated, reproducible canary test of ten JSON tools, including Tool Kumar, with raw network data you can download.',
+      'We tested twelve popular online JSON viewers and formatters with a unique fake canary document to see what left the browser, which third-party hosts loaded and whether offline use worked.',
+    excerpt: 'A dated, reproducible canary test of twelve JSON tools, including Tool Kumar, with raw network data you can download.',
     category: 'Research',
     published: '2026-10-14',
     updated: '2026-10-14',
