@@ -21,10 +21,11 @@ export interface Settings {
   /** Format view: pretty-printed or minified output, keys sorted or as written. */
   minify: boolean;
   sortKeys: boolean;
-  /** Convert panel target id, root type name and TypeScript flavour. */
+  /** Convert panel target id, root type name, TypeScript flavour and C# JSON library. */
   target: string;
   rootName: string;
   tsStyle: 'interface' | 'type';
+  csharpLib: 'stj' | 'newtonsoft';
 }
 
 export type Status =
@@ -108,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
   target: 'typescript',
   rootName: 'Root',
   tsStyle: 'interface',
+  csharpLib: 'stj',
 };
 
 export const INITIAL: UIState = {

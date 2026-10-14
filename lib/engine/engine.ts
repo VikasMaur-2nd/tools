@@ -101,6 +101,7 @@ function loadSettings(): Settings {
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
     if (out.tsStyle !== 'type') out.tsStyle = 'interface';
+    if (out.csharpLib !== 'newtonsoft') out.csharpLib = 'stj';
     out.rootName = String(out.rootName || 'Root').slice(0, 60);
     return out;
   } catch {
@@ -1171,7 +1172,7 @@ export class Engine {
 
   // ── Convert ────────────────────────────────────────────────────────────
 
-  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle'>>) {
+  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib'>>) {
     this.setSettings(patch);
     if (this.settings.view !== 'convert') this.setView('convert');
     else this.scheduleConvert(patch.rootName !== undefined ? 200 : 0);
@@ -1207,7 +1208,7 @@ export class Engine {
       const out =
         info.id === 'xlsx' || info.id === 'csv'
           ? (await import('../convert/xlsx')).toCsv(records(root))
-          : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle });
+          : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
       this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {

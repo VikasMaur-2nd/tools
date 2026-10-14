@@ -350,6 +350,7 @@ function ViewMenu() {
   const target = useUI((s) => s.settings.target);
   const rootName = useUI((s) => s.settings.rootName);
   const tsStyle = useUI((s) => s.settings.tsStyle);
+  const csharpLib = useUI((s) => s.settings.csharpLib);
   const hasSel = useUI((s) => !!s.path);
   const info = targetInfo(target);
   return (
@@ -416,6 +417,17 @@ function ViewMenu() {
                     { v: 'type', label: 'type' },
                   ]}
                   onPick={(v) => act((e) => e.setConvert({ tsStyle: v as 'interface' | 'type' }))}
+                />
+              )}
+              {info.id === 'csharp' && (
+                <MChoice
+                  label="Library"
+                  value={csharpLib}
+                  options={[
+                    { v: 'stj', label: 'System.Text.Json' },
+                    { v: 'newtonsoft', label: 'Newtonsoft' },
+                  ]}
+                  onPick={(v) => act((e) => e.setConvert({ csharpLib: v as 'stj' | 'newtonsoft' }))}
                 />
               )}
               {info.group === 'Types' && <MSep />}
