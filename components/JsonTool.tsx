@@ -34,7 +34,7 @@ function Btn({
       type="button"
       className={`btn${variant ? ' ' + variant : ''}${hideLabel ? ' icon' : ''}`}
       onClick={onClick}
-      aria-label={hideLabel ? label : undefined}
+      aria-label={label}
       data-tip={tip ?? (hideLabel ? label : undefined)}
       data-tip-up={up ? '' : undefined}
     >
@@ -64,6 +64,7 @@ const InputBar = memo(function InputBar() {
         )}
       </span>
       <span className="grow" />
+      <Btn icon="share" label="Share" tip="Copy a link that contains this JSON (nothing is uploaded)" onClick={() => act((e) => e.share())} />
       <Menu label="Input options">
         {(close) => (
           <>
