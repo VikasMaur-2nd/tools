@@ -142,7 +142,11 @@ function ToolContent({ page }: { page: ToolPage }) {
         <dl className="tool-faq">{page.faqs.map(({ question, answer }) => <div key={question}><dt>{question}</dt><dd>{answer}</dd></div>)}</dl>
 
         <h2>Related tools</h2>
-        <p>{page.related.map((slug, i) => <span key={slug}>{i > 0 ? ', ' : ''}<Link href={`/tools/${slug}`}>{TOOL_PAGE_BY_SLUG.get(slug)?.heading ?? slug}</Link></span>)}.</p>
+        <p>{page.related.map((slug, i) => {
+          const home = slug === 'home';
+          const label = home ? 'JSON formatter' : TOOL_PAGE_BY_SLUG.get(slug)?.heading ?? slug;
+          return <span key={slug}>{i > 0 ? ', ' : ''}<Link href={home ? '/' : `/tools/${slug}`}>{label}</Link></span>;
+        })}.</p>
       </div>
     </ContentShell>
   );

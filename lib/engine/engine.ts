@@ -36,6 +36,19 @@ export interface EnginePreset {
   initialImport?: 'yaml' | 'xml' | 'csv' | 'toml';
 }
 
+export interface EngineOptions {
+  /** Keep an initial landing-page sample out of the user's home-page storage. */
+  preserveDocument?: boolean;
+}
+
+export function persistenceAfterChange(enabled: boolean, kind: ChangeKind): boolean {
+  return enabled || kind !== 'set';
+}
+
+export function persistenceAfterLoad(enabled: boolean, persist: boolean): boolean {
+  return enabled || persist;
+}
+
 /** JSON highlighter for soft-wrapped rows (a row may start inside a string). */
 const jsonRow: LineHighlighter = (t, inStr, esc) => {
   if (!inStr) return highlightLine(t, 0, t.length, null);
@@ -211,12 +224,14 @@ export class Engine {
   private toastId = 0;
   private dragDepth = 0;
   private settings: Settings;
+  private persistEnabled: boolean;
   /** Current find query (applies to the open view). */
   private query = '';
   private dead = false;
 
-  constructor(els: EngineEls) {
+  constructor(els: EngineEls, options: EngineOptions = {}) {
     this.els = els;
+    this.persistEnabled = !options.preserveDocument;
     this.settings = loadSettings();
     const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
     store.set({ settings: this.settings, mac });
@@ -321,6 +336,7 @@ export class Engine {
   // ── Pipeline ───────────────────────────────────────────────────────────
 
   private onChange = (kind: ChangeKind) => {
+    this.persistEnabled = persistenceAfterChange(this.persistEnabled, kind);
     if (kind === 'paste' && this.ed.pasteFull) {
       this.resetNext = true;
       if (store.get().fileName) {
@@ -338,7 +354,7 @@ export class Engine {
       clearTimeout(this.timer);
       this.timer = window.setTimeout(() => this.analyze(), len < 100_000 ? 60 : len < 1_000_000 ? 160 : len < 5_000_000 ? 350 : 700);
     }
-    this.persistSoon();
+    if (this.persistEnabled) this.persistSoon();
   };
 
   /** Pretty-prints compact JSON right after it is pasted (one undo step reverts it). */
@@ -753,14 +769,15 @@ export class Engine {
 
   // ── Commands: documents ────────────────────────────────────────────────
 
-  load(text: string, name: string | null) {
+  load(text: string, name: string | null, persist = true) {
+    this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
     store.set({ fileName: name });
-    write(KEYS.file, name);
+    if (persist) write(KEYS.file, name);
     this.ed.setValue(text, 0);
     this.analyze();
     this.ed.el.scrollTop = 0;
-    this.persistSoon();
+    if (persist) this.persistSoon();
   }
 
   openFile(target: 1 | 2 = 1) {
@@ -1543,6 +1560,7 @@ export class Engine {
   // ── Persistence & offline ──────────────────────────────────────────────
 
   private persistSoon() {
+    if (!this.persistEnabled) return;
     clearTimeout(this.persistTimer);
     // Big synchronous localStorage writes happen when the user is idle.
     this.persistTimer = window.setTimeout(() => {
@@ -1553,6 +1571,7 @@ export class Engine {
 
   private persistNow = () => {
     clearTimeout(this.persistTimer);
+    if (!this.persistEnabled) return;
     const t = this.ed.text;
     write(KEYS.doc, t && t.length <= MAX_PERSIST ? t : null);
   };

@@ -15,7 +15,6 @@
 ## Dedicated JSON tools
 
 - [All JSON tools](https://tools.vikasmaur.com/tools): the crawlable index of formatter, validator, conversion and import tools.
-- [JSON formatter](https://tools.vikasmaur.com/tools/json-formatter): format and beautify JSON.
 - [JSON validator](https://tools.vikasmaur.com/tools/json-validator): find syntax errors and repair common loose JSON.
 - [JSON minifier](https://tools.vikasmaur.com/tools/json-minifier): remove insignificant whitespace.
 - [JSON diff](https://tools.vikasmaur.com/tools/json-diff): compare two JSON documents.

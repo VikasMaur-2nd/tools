@@ -1094,9 +1094,9 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
       code: codeRef.current!,
       fmt: fmtRef.current!,
       editor2: ed2Ref.current!,
-    });
+    }, { preserveDocument: !!pagePreset?.initialText });
     if (pagePreset?.initialText) {
-      e.load(pagePreset.initialText, pagePreset.initialFileName ?? null);
+      e.load(pagePreset.initialText, pagePreset.initialFileName ?? null, false);
       if (pagePreset.settings?.view === 'convert') {
         e.setConvert({ target: pagePreset.settings.target ?? 'typescript', rootName: pagePreset.settings.rootName ?? 'Root', tsStyle: pagePreset.settings.tsStyle ?? 'interface' });
       } else if (pagePreset.settings?.view) {

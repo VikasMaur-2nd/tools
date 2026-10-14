@@ -32,9 +32,9 @@ export default function ToolsPage() {
         <p className="lede">Format, validate, compare and convert JSON in your browser. These tools share the same local editor, so your documents stay on your device.</p>
       </header>
       <section className="tool-grid" aria-label="JSON tools">
+        <article className="tool-card"><p className="resource-kind">JSON viewer and formatter</p><h2><Link href="/">JSON formatter</Link></h2><p>Format, validate, repair, minify and explore JSON in the main Tool Kumar editor.</p><Link className="resource-arrow" href="/">Open tool <span aria-hidden="true">→</span></Link></article>
         {TOOL_PAGES.map((page) => <article className="tool-card" key={page.slug}><p className="resource-kind">{page.modeLabel}</p><h2><Link href={`/tools/${page.slug}`}>{page.heading}</Link></h2><p>{page.description}</p><Link className="resource-arrow" href={`/tools/${page.slug}`}>Open tool <span aria-hidden="true">→</span></Link></article>)}
       </section>
     </ContentShell>
   );
 }
-
