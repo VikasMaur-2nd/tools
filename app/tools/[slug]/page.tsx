@@ -150,5 +150,5 @@ function ToolContent({ page }: { page: ToolPage }) {
 
 export default async function ToolPageRoute({ params }: PageProps<'/tools/[slug]'>) {
   const page = getPage((await params).slug);
-  return <><div className="landing-tool"><JsonTool preset={page.preset} /></div><ToolContent page={page} /></>;
+  return <div className="home-page landing-page"><div className="landing-tool"><JsonTool preset={page.preset} /></div><ToolContent page={page} /></div>;
 }
