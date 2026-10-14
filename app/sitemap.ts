@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { POSTS } from './blogs/posts';
+import { ERROR_GUIDES } from './json-errors/errors';
 import { TOOL_PAGES } from '@/lib/tool-pages';
 
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
@@ -10,6 +11,12 @@ const SITE = 'https://tools.vikasmaur.com';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
+    ...['/json-errors', ...ERROR_GUIDES.map(guide => `/json-errors/${guide.slug}`)].map(path => ({
+      url: `${SITE}${path}`,
+      lastModified: '2026-10-14',
+      changeFrequency: 'monthly' as const,
+      priority: 0.75,
+    })),
     {
       url: SITE,
       lastModified: LAST_MODIFIED,

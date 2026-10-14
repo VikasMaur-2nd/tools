@@ -1278,6 +1278,10 @@ html:has(.content-page:not([style*='none'])) {
 }
 
 @media (max-width: 420px) {
+  .site-header-in {
+    gap: 8px;
+  }
+
   .site-brand span {
     display: none;
   }
@@ -1288,7 +1292,7 @@ html:has(.content-page:not([style*='none'])) {
   }
 
   .site-nav a {
-    padding-inline: 6px;
+    padding-inline: 4px;
   }
 
   .site-nav .site-cta {
@@ -1316,4 +1320,25 @@ html:has(.content-page:not([style*='none'])) {
   .post-card:hover {
     transform: none;
   }
+}
+
+/* Diagnostic strings wrap without widening the article at mobile widths. */
+.json-error-table {
+  min-width: 640px;
+  table-layout: fixed;
+}
+
+.json-error-table code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.prose .json-error-table tbody th {
+  min-width: 0;
+  width: 22%;
+  overflow-wrap: anywhere;
+}
+
+.json-error-table td {
+  overflow-wrap: anywhere;
 }

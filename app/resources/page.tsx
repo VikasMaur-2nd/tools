@@ -17,6 +17,12 @@ export const metadata: Metadata = {
 
 const resources = [
   {
+    href: "/json-errors",
+    kind: "Troubleshooting",
+    title: "JSON error messages and fixes",
+    description: "Exact runtime messages, reproducible causes and fixes for HTML responses, empty input, quoting and other JSON parsing failures.",
+  },
+  {
     href: '/resources/json-reference',
     kind: 'Reference',
     title: 'JSON syntax reference',
