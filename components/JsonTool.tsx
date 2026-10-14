@@ -6,7 +6,8 @@ import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKe
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
-import { store, useUI, type IndentId, type View } from '@/lib/engine/store';
+import { store, useUI, type IndentId, type JwtInfo, type View } from '@/lib/engine/store';
+import { compact } from '@/lib/json/jwt';
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
 import { formatBytes } from '@/lib/json/format';
 import { Icon, type IconName } from './icons';
@@ -685,6 +686,34 @@ function ViewToolbar() {
   );
 }
 
+/** The current time, re-read every `ms` while the component is shown. */
+function useNow(ms: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), ms);
+    return () => window.clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
+/** The status-bar label for a JWT, e.g. "expires in 59m": it ages, so it is recomputed as time passes. */
+function jwtWhen(j: JwtInfo, nowMs: number) {
+  const now = nowMs / 1000;
+  if (j.exp !== undefined && j.exp <= now) return { warn: true, text: `expired ${compact(now - j.exp)} ago` };
+  if (j.nbf !== undefined && j.nbf > now) return { warn: true, text: `valid in ${compact(j.nbf - now)}` };
+  return { warn: false, text: j.exp !== undefined ? `expires in ${compact(j.exp - now)}` : 'no expiry' };
+}
+
+function JwtStatus({ jwt }: { jwt: JwtInfo }) {
+  const t = jwtWhen(jwt, useNow(1000));
+  return (
+    <span className={`st ${t.warn ? 'warn' : 'ok'}`} title="Decoded in your browser. The signature is not verified.">
+      <i className="dot" />
+      JWT{jwt.alg ? ` · ${jwt.alg}` : ''} · {t.text}
+    </span>
+  );
+}
+
 function Banner() {
   const status = useUI((s) => s.status);
   const hint = useUI((s) => s.hint);
@@ -912,14 +941,7 @@ function StatusMsg() {
         </span>
       );
     case 'valid':
-      if (status.jwt) {
-        return (
-          <span className={`st ${status.expired ? 'warn' : 'ok'}`} title="Decoded in your browser. The signature is not verified.">
-            <i className="dot" />
-            {status.jwt}
-          </span>
-        );
-      }
+      if (status.jwt) return <JwtStatus jwt={status.jwt} />;
       return (
         <span className="st ok" title={status.jsonl ? 'One JSON value per line, shown as an array of records' : undefined}>
           <i className="dot" />

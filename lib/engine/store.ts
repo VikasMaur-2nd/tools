@@ -30,10 +30,18 @@ export interface Settings {
   csharpLib: 'stj' | 'newtonsoft';
 }
 
+/** A JWT input: its algorithm and NumericDate claims (seconds), shown live (they age). */
+export interface JwtInfo {
+  alg?: string;
+  exp?: number;
+  iat?: number;
+  nbf?: number;
+}
+
 export type Status =
   | { kind: 'empty' }
   | { kind: 'parsing' }
-  | { kind: 'valid'; warnings: number; msg?: string; p?: number; line?: number; col?: number; jwt?: string; expired?: boolean; jsonl?: number }
+  | { kind: 'valid'; warnings: number; msg?: string; p?: number; line?: number; col?: number; jwt?: JwtInfo; jsonl?: number }
   | { kind: 'fixable'; msg: string; p: number; line: number; col: number; count: number }
   | { kind: 'error'; msg: string; p: number; line: number; col: number };
 

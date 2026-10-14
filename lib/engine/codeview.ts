@@ -52,6 +52,8 @@ export class CodeView {
   /** Per long line: string state at each row boundary (bit 1 = in string, bit 2 = escape pending). */
   private states = new Map<number, number[]>();
   private html = new Map<number, string>();
+  /** Labels drawn after a line's text (not part of it: copy and find ignore them). */
+  private notes: Map<number, string> | null = null;
   private rFirst = -1;
   private rLast = -1;
   private raf = 0;
@@ -88,6 +90,13 @@ export class CodeView {
     this.el.removeEventListener('click', this.onClick);
     this.ro.disconnect();
     cancelAnimationFrame(this.raf);
+  }
+
+  /** Puts a small label after each given line (line index → HTML), or clears them. */
+  setNotes(notes: Map<number, string> | null) {
+    if (!notes && !this.notes) return;
+    this.notes = notes;
+    this.render(true);
   }
 
   /** `json`: the text is JSON (enables correct highlighting of wrapped strings). */
@@ -342,7 +351,9 @@ export class CodeView {
       if (sub) gut = '';
       else if (this.close[ln] >= 0) gut = `<b class="cv-f${foldedHere ? ' c' : ''}" data-f="${ln}" title="${foldedHere ? 'Unfold' : 'Fold'}"></b>${ln + 1}`;
       else gut = String(ln + 1);
-      out += `<div class="cv-l"><span class="cv-n">${gut}</span><span class="cv-c">${marks}${h || ' '}</span></div>`;
+      const note = this.notes?.get(ln);
+      const tail = note && (!wrapped || a + this.cols >= line.length) ? note : '';
+      out += `<div class="cv-l"><span class="cv-n">${gut}</span><span class="cv-c">${marks}${h || ' '}${tail}</span></div>`;
     }
     this.rows.style.transform = `translateY(${first * RH}px)`;
     this.rows.innerHTML = out;

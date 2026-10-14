@@ -283,16 +283,17 @@ html:has(.content-page:not([style*='none'])) {
   padding: 72px 0 96px;
 }
 
-/* Landing pages place the full editor above the readable, crawlable guide. */
+/* Landing pages open on the full-screen editor, like the homepage; the
+   readable, crawlable guide starts below the fold. */
 .landing-tool {
-  min-height: 620px;
-  height: min(760px, 100vh);
-  border-bottom: 1px solid var(--line);
+  min-height: 560px;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .landing-tool .app {
   height: 100%;
-  min-height: 620px;
+  min-height: 560px;
 }
 
 .tool-page-head {
@@ -396,11 +397,6 @@ html:has(.content-page:not([style*='none'])) {
 }
 
 @media (max-width: 620px) {
-  .landing-tool,
-  .landing-tool .app {
-    min-height: 560px;
-  }
-
   .tool-grid,
   .tool-example-grid {
     grid-template-columns: 1fr;

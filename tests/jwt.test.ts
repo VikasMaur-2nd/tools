@@ -1,11 +1,11 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { readJwt } from '../lib/json/jwt';
+import { duration, readJwt } from '../lib/json/jwt';
 import { jwtLine } from '../lib/engine/highlight';
 
 const b64u = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
 const H = b64u('{"alg":"HS256","typ":"JWT"}');
-const P = b64u('{"sub":"u1","exp":1822348800}');
+const P = b64u('{"sub":"u1","iat":1790812800,"nbf":1790812800,"exp":1822348800}');
 const TOKEN = `${H}.${P}.c2ln`;
 /** 2026-10-13T12:00:00Z */
 const NOW = Date.UTC(2026, 9, 13, 12);
@@ -15,8 +15,8 @@ describe('readJwt', () => {
     const j = readJwt(TOKEN, '  ', NOW);
     assert.ok(j);
     assert.equal(j.alg, 'HS256');
-    assert.equal(j.exp, 1822348800);
-    assert.deepEqual(JSON.parse(j.json).payload, { sub: 'u1', exp: 1822348800 });
+    assert.deepEqual([j.exp, j.iat, j.nbf], [1822348800, 1790812800, 1790812800]);
+    assert.deepEqual(JSON.parse(j.json).payload, { sub: 'u1', iat: 1790812800, nbf: 1790812800, exp: 1822348800 });
     const [pre, h, p, s, end] = j.at;
     assert.deepEqual([pre, h], [0, 0]);
     assert.equal(TOKEN.slice(h, p - 1), H);
@@ -62,5 +62,16 @@ describe('jwtLine', () => {
     const j = readJwt(TOKEN, '', NOW)!;
     const edited = '<b>' + TOKEN.slice(3);
     assert.ok(!jwtLine(edited, 0, edited.length, j.at).includes('<b>'));
+  });
+});
+
+describe('duration', () => {
+  test('words with a second unit only while the first is small', () => {
+    const cases: [number, string][] = [
+      [0, '0 seconds'], [1, '1 second'], [45, '45 seconds'], [60, '1 minute'], [61, '1 minute 1 second'],
+      [3599, '59 minutes'], [3600, '1 hour'], [3630, '1 hour'], [7140, '1 hour 59 minutes'], [90061, '1 day 1 hour'],
+      [40 * 86400, '40 days'], [2 * 31536000 + 86400, '2 years 1 day'], [-5, '0 seconds'],
+    ];
+    for (const [sec, words] of cases) assert.equal(duration(sec), words, String(sec));
   });
 });

@@ -153,8 +153,10 @@ export interface JwtInput {
   /** The decoded document (as {@link jwtToJson}). */
   json: string;
   alg?: string;
-  /** `exp` in NumericDate seconds, when present. */
+  /** NumericDate claims (seconds), when present: expiry, issued at, not before. */
   exp?: number;
+  iat?: number;
+  nbf?: number;
   /** Offsets: "Bearer " prefix start, header start, payload start, signature start, signature end. Dots sit just before payload and signature. */
   at: [number, number, number, number, number];
 }
@@ -176,7 +178,29 @@ export function readJwt(text: string, indent: string, now = Date.now()): JwtInpu
   const p = h + m[1].length + 1;
   const s = p + m[2].length + 1;
   const alg = (d.header as Record<string, unknown>).alg;
-  return { json: toJson(d, indent), alg: typeof alg === 'string' ? alg : undefined, exp: d.exp, at: [i, h, p, s, s + m[3].length] };
+  const claim = (k: string) => {
+    const v = isObj(d.payload) ? d.payload[k] : undefined;
+    return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+  };
+  return { json: toJson(d, indent), alg: typeof alg === 'string' ? alg : undefined, exp: d.exp, iat: claim('iat'), nbf: claim('nbf'), at: [i, h, p, s, s + m[3].length] };
+}
+
+const UNIT: [string, number][] = [['year', 31536000], ['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]];
+
+/** A duration in words: "45 seconds", "1 hour 59 minutes", "3 days 4 hours", "40 days". */
+export function duration(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const word = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  for (let k = 0; k < UNIT.length; k++) {
+    const [name, size] = UNIT[k];
+    const n = Math.floor(s / size);
+    if (!n && size > 1) continue;
+    // A second unit only while the first is small ("1 hour 59 minutes", not "40 days 3 hours").
+    const next = UNIT[k + 1];
+    const m = next && n < 10 ? Math.floor((s - n * size) / next[1]) : 0;
+    return m ? `${word(n, name)} ${word(m, next[0])}` : word(n, name);
+  }
+  return '0 seconds';
 }
 
 /** Compact non-negative duration: 45s, 12m, 2h, 3d, 1y. */

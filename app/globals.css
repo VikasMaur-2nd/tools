@@ -2756,6 +2756,25 @@ button.mi:focus-visible {
   color: var(--fg);
 }
 
+/* A label after a line, e.g. a JWT's "expires in 351 days" beside exp. */
+.cv-note-tag {
+  margin-left: 12px;
+  padding: 0 7px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--muted);
+  font: 11.5px/18px var(--font-ui);
+  vertical-align: 1px;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.cv-note-tag.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 /* Editor: the pill sits under the textarea, which forwards clicks to it. */
 .ed-ph {
   display: inline-block;

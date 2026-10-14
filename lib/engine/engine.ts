@@ -11,7 +11,7 @@ import { targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type Theme, type View } from './store';
 import { SAMPLE } from './sample';
 import { codecs, compressedSize } from './sizes';
-import { compact, readJwt, type JwtInput } from '../json/jwt';
+import { duration, readJwt, type JwtInput } from '../json/jwt';
 import { idle } from './idle';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -228,6 +228,7 @@ export class Engine {
   readonly fmt: CodeView;
   private els: EngineEls;
   private fmtTimer = 0;
+  private expTimer = 0;
   /** Text that `good` was parsed from (needed by the native formatting fast path). */
   private goodText = '';
   private conv: ConvertModule | null = null;
@@ -351,6 +352,7 @@ export class Engine {
     clearTimeout(this.toastTimer);
     clearTimeout(this.convTimer);
     clearTimeout(this.fmtTimer);
+    clearTimeout(this.expTimer);
     this.persistNow();
     this.ed.destroy();
     this.tree.destroy();
@@ -512,12 +514,9 @@ export class Engine {
     return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
   }
 
-  /** "JWT · HS256 · expires in 59m": decoded locally, signature not verified. */
-  private jwtStatus(jwt: JwtInput): Status {
-    const now = Date.now() / 1000;
-    const expired = jwt.exp !== undefined && jwt.exp <= now;
-    const when = jwt.exp === undefined ? '' : expired ? ` · expired ${compact(now - jwt.exp)} ago` : ` · expires in ${compact(jwt.exp - now)}`;
-    return { kind: 'valid', warnings: 0, jwt: `JWT${jwt.alg ? ' · ' + jwt.alg : ''}${when}`, expired };
+  /** A decoded JWT (signature not verified); the UI shows its expiry live. */
+  private jwtStatus({ alg, exp, iat, nbf }: JwtInput): Status {
+    return { kind: 'valid', warnings: 0, jwt: { alg, exp, iat, nbf } };
   }
 
   private sizeTimer = 0;
@@ -1200,6 +1199,7 @@ export class Engine {
     const text = this.formatted();
     const out = escape && text ? JSON.stringify(text) : text;
     this.fmt.setText(out, jsonRow, true);
+    this.noteExpiry(minify || escape ? '' : out);
     // Size of the shown variant is measured; the other differs only by whitespace,
     // which is computed from the tree (no second format of big documents).
     const bytes = byteLength(text);
@@ -1209,6 +1209,26 @@ export class Engine {
       fmt: { lines: this.fmt.lineCount, pretty: text ? min + extra : 0, minified: min, escaped: escape && out ? byteLength(out) : 0 },
     });
   };
+
+  /**
+   * A decoded JWT's formatted output labels the payload's exp line with how long
+   * until (or since) it expires, kept current while the view is open.
+   */
+  private noteExpiry(out: string) {
+    clearTimeout(this.expTimer);
+    const exp = this.jwt?.exp;
+    const at = exp === undefined || !out ? -1 : out.indexOf('"payload"');
+    const m = at < 0 ? null : /\n[ \t]*"exp":[ \t]*-?\d/g;
+    if (m) m.lastIndex = at;
+    const hit = m?.exec(out);
+    if (!hit || exp === undefined) return this.fmt.setNotes(null);
+    let line = 1;
+    for (let i = out.indexOf('\n'); i >= 0 && i < hit.index; i = out.indexOf('\n', i + 1)) line++;
+    const left = exp - Date.now() / 1000;
+    const text = left > 0 ? `expires in ${duration(left)}` : `expired ${duration(-left)} ago`;
+    this.fmt.setNotes(new Map([[line, `<span class="cv-note-tag${left > 0 ? '' : ' warn'}">${text}</span>`]]));
+    this.expTimer = window.setTimeout(() => this.settings.view === 'format' && this.noteExpiry(out), Math.abs(left) < 3600 ? 1000 : 30_000);
+  }
 
   /** Replaces the input with the Format view's output (undoable). */
   useOutput() {
