@@ -1,4 +1,4 @@
-import { escapeHtml, StringStates, stringState } from './highlight';
+import { bidiContext, escapeHtml, StringStates, stringState, trimWs } from './highlight';
 import { LONG_LINE, Wrapper } from './wrap';
 
 /*
@@ -396,7 +396,7 @@ export class CodeView {
     this.rColB = wide ? vcB + H_OVERSCAN : Infinity;
     const cur = this.hi >= 0 ? this.hits[this.hi * 2] : -1;
     const curCol = this.hi >= 0 ? this.hits[this.hi * 2 + 1] : -1;
-    const w = (this.q.length * this.cw).toFixed(1);
+    const qn = this.q.length;
     let out = '';
     let place = false;
     for (let row = first; row < last; row++) {
@@ -417,10 +417,14 @@ export class CodeView {
         a = Math.min(b, this.rColA);
         b = Math.min(b, this.rColB);
       }
+      // A row of other scripts drawn alone gets its neighbours as bidi context.
+      const ctx = rows > 1 && !block && this.odd[vi] === 1;
       let h = this.html.get(row);
       if (h === undefined) {
         const s = !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : this.strs.at(line, 0, a);
-        h = this.hl(a || b < line.length ? line.slice(a, b) : line, (s & 1) === 1, (s & 2) === 2);
+        const se = ctx && b < line.length ? trimWs(line, a, b) : b;
+        h = this.hl(a || se < line.length ? line.slice(a, se) : line, (s & 1) === 1, (s & 2) === 2);
+        if (ctx) h = `${bidiContext(line, Math.max(0, a - 64), a)}${h}${bidiContext(line, b, Math.min(line.length, b + 64))}${escapeHtml(line.slice(se, b))}`;
         if (foldedHere) {
           const end = this.close[ln];
           const n = end - ln - 1;
@@ -428,18 +432,21 @@ export class CodeView {
         }
         this.html.set(row, h);
       }
-      // Find highlights for this row's slice. Wide glyphs: placed by their rects once drawn.
+      // Find highlights for this row's part of each match. Wide glyphs: placed
+      // by their rects once drawn (a block's match may span rows).
       const pad = rows === 1 && a ? a * this.cw : 0;
       let marks = '';
       const lh = this.q ? this.hitLines.get(ln) : undefined;
       if (lh) {
         for (const col of lh) {
-          if (col < a || col >= b) continue;
-          const isCur = ln === cur && col === curCol;
+          if (col >= b || col + qn <= a) continue;
+          const from = Math.max(col, a);
+          const to = Math.min(col + qn, b);
+          const cls = `cv-hit${ln === cur && col === curCol ? ' cur' : ''}`;
           if (this.odd[vi] === 1 && this.wrapper) {
-            marks += `<i class="cv-hit${isCur ? ' cur' : ''}" data-h="${col - a}"></i>`;
+            marks += `<i class="${cls}" data-h="${from - a}" data-n="${to - from}"></i>`;
             place = true;
-          } else marks += `<i class="cv-hit${isCur ? ' cur' : ''}" style="left:${(pad + (col - a) * this.cw).toFixed(1)}px;width:${w}px"></i>`;
+          } else marks += `<i class="${cls}" style="left:${(pad + (from - a) * this.cw).toFixed(1)}px;width:${((to - from) * this.cw).toFixed(1)}px"></i>`;
         }
       }
       let gut: string;
@@ -457,17 +464,21 @@ export class CodeView {
     if (place) this.placeHits();
   }
 
-  /** Puts find highlights on text the browser lays out (wide glyphs) over the matched characters. */
+  /** Puts find highlights on text the browser lays out (wide glyphs) over the matched characters, one box per row. */
   private placeHits() {
     const rg = document.createRange();
-    const len = this.q.length;
     for (const mark of this.rows.querySelectorAll<HTMLElement>('i[data-h]')) {
       const c = mark.parentElement as HTMLElement;
-      if (!textRange(rg, c, Number(mark.dataset.h), len)) continue;
-      const r = rg.getClientRects()[0];
-      if (!r) continue;
+      if (!textRange(rg, c, Number(mark.dataset.h), Number(mark.dataset.n))) continue;
       const box = c.getBoundingClientRect();
-      mark.style.cssText = `left:${(r.left - box.left).toFixed(1)}px;top:${(r.top - box.top).toFixed(1)}px;width:${r.width.toFixed(1)}px;height:${r.height.toFixed(1)}px;bottom:auto`;
+      let at: Element = mark;
+      for (const r of rg.getClientRects()) {
+        if (!r.width) continue;
+        const el = at === mark && !mark.style.cssText ? mark : (mark.cloneNode() as HTMLElement);
+        el.style.cssText = `left:${(r.left - box.left).toFixed(1)}px;top:${(r.top - box.top).toFixed(1)}px;width:${r.width.toFixed(1)}px;height:${r.height.toFixed(1)}px;bottom:auto`;
+        if (el !== mark) at.after(el);
+        at = el;
+      }
     }
   }
 
@@ -549,9 +560,9 @@ export class CodeView {
   }
 }
 
-/** Sets `rg` to `len` characters of `el`'s text from offset `from` (text nodes in order). */
+/** Sets `rg` to `len` characters of `el`'s text from offset `from` (text nodes in order, bidi context aside). */
 function textRange(rg: Range, el: HTMLElement, from: number, len: number) {
-  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => ((n.parentElement as HTMLElement).closest('.ctx') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
   let pos = 0;
   let started = false;
   for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {

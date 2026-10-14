@@ -1,4 +1,4 @@
-import { escapeHtml, highlightLine, jwtLine, StringStates, stringState, type Mark } from './highlight';
+import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
 import { LONG_LINE, Wrapper } from './wrap';
 
 /*
@@ -119,23 +119,6 @@ function editRange(old: string, now: string, ss: number, se: number): [number, n
     while (a < cap && old.charCodeAt(a) === now.charCodeAt(a)) a++;
   }
   return [a, eo, en];
-}
-
-/** `t[a, b)` as invisible, zero-width context for a row drawn on its own (whole code points only). */
-function context(t: string, a: number, b: number) {
-  if ((t.charCodeAt(a) & 0xfc00) === 0xdc00) a++;
-  if ((t.charCodeAt(b - 1) & 0xfc00) === 0xd800) b--;
-  return b > a ? `<span class="ed-ctx">${escapeHtml(t.slice(a, b))}</span>` : '';
-}
-
-/** End of `t[a, b)` without its trailing whitespace (bidi classes WS and S, isolate marks). */
-function trimWs(t: string, a: number, b: number) {
-  while (b > a) {
-    const c = t.charCodeAt(b - 1);
-    if (c === 32 || c === 9 || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x205f || c === 0x3000 || (c >= 0x2066 && c <= 0x2069)) b--;
-    else break;
-  }
-  return b;
 }
 
 /** Counts line breaks in `s`, stopping early at `cap`. */
@@ -928,16 +911,17 @@ export class Editor {
       const b = this.lineEnd(ln);
       const marks = this.marksFor(ln);
       const lm = this.lineMarks ? this.lineMarks[ln] : 0;
-      const open = lm ? `<div class="${LINE_MARK[lm]}">` : '<div>';
+      // View mode: where the row's text starts, for clicks (see offsetAt).
+      const open = (o: number) => `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view ? ` data-o="${o}"` : ''}>`;
       const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
       if (b - a > LONG_LINE && wide) {
         let sa = Math.min(b, a + colA);
         const sb = Math.min(b, a + colB);
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
-        html += `${open}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa, sb, this.jwt) : highlightLine(t, sa, sb, marks, sb === b)}${sb === b ? ph : ''}</div>`;
+        html += `${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa, sb, this.jwt) : highlightLine(t, sa, sb, marks, sb === b)}${sb === b ? ph : ''}</div>`;
       } else {
-        html += `${open}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
+        html += `${open(a)}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
       }
     }
     this.hl.style.transform = `translateY(${first * LH}px)`;
@@ -987,19 +971,17 @@ export class Editor {
         for (let sub = s0; sub < s1; sub++) {
           const sb = sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b;
           const end = sb === b;
-          // Right-to-left text orders by its neighbours on the line: give the row
-          // its neighbours, at zero size, so it reads as it does in the textarea.
-          // Whitespace ending a row stays last (it takes the line's direction).
+          // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa, sb) : sb;
           let body = this.jwt ? jwtLine(t, sa, se, this.jwt) : highlightLine(t, sa, se, marks, end, str);
-          if (odd) body = `${context(t, Math.max(a, sa - 64), sa)}${body}${context(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
-          html += `<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`;
+          if (odd) body = `${bidiContext(t, Math.max(a, sa - 64), sa)}${body}${bidiContext(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
+          html += `<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}"${this.view ? ` data-o="${sa}"` : ''}>${body}${end ? ph : ''}</div>`;
           if (!this.jwt) str = stringState(t, sa, sb, str);
           sa = sb;
         }
       } else {
         if (top < 0) top = y;
-        html += `${lm ? `<div class="${LINE_MARK[lm]}">` : '<div>'}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
+        html += `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view ? ` data-o="${a}"` : ''}>${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
       }
       // Gutter: the number on a line's first row, its bars on every row.
       const cls = this.gutClass(ln);
@@ -1413,11 +1395,34 @@ export class Editor {
     const k = this.kAt(vr);
     const [a, b] = this.rowSpan(k, vr - this.yOf(k));
     const col = Math.max(0, Math.round((e.clientX - r.left - PAD_L) / this.cw));
-    this.vcaret = Math.min(a + col, b);
+    // The browser knows which character is under the pointer (wide glyphs, clusters).
+    this.vcaret = this.offsetAt(e.clientX, e.clientY) ?? Math.min(a + col, b);
     if (this.updateCaret()) this.render(true);
     this.ev.caret();
     this.ev.nav();
   };
+
+  /** View mode: model offset of the caret position at a point over the drawn text, if any. */
+  private offsetAt(x: number, y: number): number | null {
+    const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null };
+    let node: Node | null = null;
+    let off = 0;
+    if (d.caretPositionFromPoint) {
+      const p = d.caretPositionFromPoint(x, y);
+      if (p) [node, off] = [p.offsetNode, p.offset];
+    } else {
+      const rg = d.caretRangeFromPoint?.(x, y);
+      if (rg) [node, off] = [rg.startContainer, rg.startOffset];
+    }
+    if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+    const row = node.parentElement?.closest<HTMLElement>('[data-o]');
+    if (!row || row.parentElement !== this.hl || (node.parentElement as HTMLElement).closest('.ctx, .ed-fold, .meol')) return null;
+    let o = Number(row.dataset.o);
+    const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n && n !== node; n = walk.nextNode()) if (!(n.parentElement as HTMLElement).closest('.ctx, .ed-fold, .meol')) o += (n as Text).length;
+    o = Math.min(o + off, this.text.length);
+    return (this.text.charCodeAt(o) & 0xfc00) === 0xdc00 ? o - 1 : o;
+  }
 
   /** View mode keys (the scroller has focus). */
   private onViewKey = (e: KeyboardEvent) => {

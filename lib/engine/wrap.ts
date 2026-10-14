@@ -98,6 +98,23 @@ function tabTo(x: number, cw: number) {
   return g < cw / 2 ? g + stop : g;
 }
 
+/** Length of the common prefix of `x` and `y` (compared a block at a time, then by character). */
+function samePrefix(x: string, y: string) {
+  const max = Math.min(x.length, y.length);
+  let p = 0;
+  while (p + 4096 <= max && x.slice(p, p + 4096) === y.slice(p, p + 4096)) p += 4096;
+  while (p < max && x.charCodeAt(p) === y.charCodeAt(p)) p++;
+  return p;
+}
+
+/** Length of the common suffix of `x` and `y`, at most `max`. */
+function sameSuffix(x: string, y: string, max: number) {
+  let q = 0;
+  while (q + 4096 <= max && x.slice(x.length - q - 4096, x.length - q) === y.slice(y.length - q - 4096, y.length - q)) q += 4096;
+  while (q < max && x.charCodeAt(x.length - 1 - q) === y.charCodeAt(y.length - 1 - q)) q++;
+  return q;
+}
+
 const fragment = (nodes: Node[]) => {
   const f = document.createDocumentFragment();
   for (const n of nodes) f.appendChild(n);
@@ -126,6 +143,8 @@ export class Wrapper {
   private range: Range | null = null;
   private readonly lead = [0, 0];
   private trust = true;
+  /** The last `rows()` call, whose unchanged lines the next one reuses. */
+  private last: { text: string; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array } | null = null;
 
   constructor(host: HTMLElement, lh: number, exact = true) {
     this.lh = lh;
@@ -197,25 +216,50 @@ export class Wrapper {
     this.odd = odd;
     const cols = this.cols;
     if (!cols) return out.fill(1);
-    if (!this.trust) odd.fill(1);
-    NON_ASCII.lastIndex = 0;
-    let i = this.trust ? 0 : n;
-    for (let m = NON_ASCII.exec(text); m && i < n; m = NON_ASCII.exec(text)) {
-      const p = m.index;
-      while (i < n && B[i] <= p) i++;
-      if (i === n) break;
-      // A character in hidden (folded) lines doesn't count.
-      if (p < A[i]) NON_ASCII.lastIndex = A[i];
-      else {
-        odd[i] = 1;
-        NON_ASCII.lastIndex = B[i];
+    // An edit changes a few lines: lines before and after it (same text, same
+    // place) keep their rows from last time, so typing costs no more in a
+    // big document.
+    let lo = 0;
+    let hi = n;
+    const last = this.last;
+    if (last) {
+      const old = last.text;
+      const p = samePrefix(old, text);
+      const q = sameSuffix(old, text, Math.min(old.length, text.length) - p);
+      const m = last.A.length;
+      while (lo < n && lo < m && B[lo] < p && A[lo] === last.A[lo] && B[lo] === last.B[lo]) lo++;
+      const d = text.length - old.length;
+      const dk = n - m;
+      while (hi > lo && hi - 1 - dk >= lo && hi - 1 - dk < m && A[hi - 1] >= text.length - q && A[hi - 1] - d === last.A[hi - 1 - dk] && B[hi - 1] - d === last.B[hi - 1 - dk]) hi--;
+      out.set(last.out.subarray(0, lo));
+      odd.set(last.odd.subarray(0, lo));
+      out.set(last.out.subarray(hi - dk, m), hi);
+      odd.set(last.odd.subarray(hi - dk, m), hi);
+    }
+    this.last = { text, A, B, out, odd };
+    if (!this.trust) odd.fill(1, lo, hi);
+    else if (lo < hi) {
+      const end = B[hi - 1];
+      NON_ASCII.lastIndex = A[lo];
+      let i = lo;
+      for (let m = NON_ASCII.exec(text); m && m.index < end; m = NON_ASCII.exec(text)) {
+        const p = m.index;
+        while (i < hi && B[i] <= p) i++;
+        if (i === hi) break;
+        // A character in hidden (folded) lines doesn't count.
+        if (p < A[i]) NON_ASCII.lastIndex = A[i];
+        else {
+          odd[i] = 1;
+          NON_ASCII.lastIndex = B[i];
+        }
       }
     }
     const tabs = text.indexOf('\t') !== -1;
     const lead = this.lead;
-    const keep = new Map<string, number>();
+    // Whole documents prune counts of lines that are gone; edits only add.
+    const keep = lo === 0 && hi === n ? new Map<string, number>() : this.sized;
     const unsized: number[] = [];
-    for (let k = 0; k < n; k++) {
+    for (let k = lo; k < hi; k++) {
       const a = A[k];
       const b = B[k];
       if (!odd[k]) {
@@ -254,6 +298,8 @@ export class Wrapper {
       });
     }
     this.sized = keep;
+    // Edits only add counts: start afresh (pruning) once enough have piled up.
+    if (keep.size > n + 5000) this.last = null;
     return out;
   }
 
@@ -469,11 +515,8 @@ export class Wrapper {
   /** Turns mirror `m` into a copy of `s` if they differ by a small edit; false if they don't. */
   private patch(m: Mirror, s: string): boolean {
     const old = m.text;
-    const max = Math.min(old.length, s.length);
-    let p = 0;
-    while (p < max && old.charCodeAt(p) === s.charCodeAt(p)) p++;
-    let q = 0;
-    while (q < max - p && old.charCodeAt(old.length - 1 - q) === s.charCodeAt(s.length - 1 - q)) q++;
+    const p = samePrefix(old, s);
+    const q = sameSuffix(old, s, Math.min(old.length, s.length) - p);
     if (old.length - p - q > PATCH || s.length - p - q > PATCH) return false;
     // Re-chunk the text nodes around the edit (one character either side, for clusters).
     const at = m.at;
@@ -506,6 +549,7 @@ export class Wrapper {
   /** Drops every row count and break (they depend on the width, the fonts and the mode). */
   private forget() {
     this.sized.clear();
+    this.last = null;
     for (const m of this.mirrors.values()) m.el.remove();
     this.mirrors.clear();
     this.sums.clear();

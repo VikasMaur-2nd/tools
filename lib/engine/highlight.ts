@@ -32,6 +32,31 @@ export function stringState(text: string, a: number, b: number, state = 0): numb
   return s;
 }
 
+/**
+ * `t[a, b)` as invisible, zero-size context for a row of a long line drawn on
+ * its own: right-to-left text orders by its neighbours on the line, so this
+ * makes the row read as it does wrapped whole. Whole code points only.
+ */
+export function bidiContext(t: string, a: number, b: number) {
+  if ((t.charCodeAt(a) & 0xfc00) === 0xdc00) a++;
+  if ((t.charCodeAt(b - 1) & 0xfc00) === 0xd800) b--;
+  return b > a ? `<span class="ctx">${escapeHtml(t.slice(a, b))}</span>` : '';
+}
+
+/**
+ * End of `t[a, b)` without trailing whitespace (bidi classes WS and S, isolate
+ * marks). Whitespace ending a row takes the line's direction (rule L1), so it
+ * goes after the row's trailing context.
+ */
+export function trimWs(t: string, a: number, b: number) {
+  while (b > a) {
+    const c = t.charCodeAt(b - 1);
+    if (c === 32 || c === 9 || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x205f || c === 0x3000 || (c >= 0x2066 && c <= 0x2069)) b--;
+    else break;
+  }
+  return b;
+}
+
 const STEP = 8192;
 
 /**
