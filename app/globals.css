@@ -1754,6 +1754,17 @@ button.tv-x:hover {
   }
 }
 
+/* Phones: the watermark sits on the divider, over the viewer's toolbar. Until
+   there is a document, those controls (and Share) stay hidden; their space is
+   kept, so nothing moves when they appear. A saved document (data-doc, set
+   before hydration) shows them at once. */
+@media (max-width: 760px) {
+  html:not([data-doc]) .app.is-empty:not(.comparing) .pane-view > .toolbar,
+  html:not([data-doc]) .app.is-empty:not(.comparing) .pane-ed [aria-label='Share'] {
+    visibility: hidden;
+  }
+}
+
 .hero h1 {
   margin: 0 0 10px;
   font: 650 27px/1.2 var(--font-ui);

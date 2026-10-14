@@ -1128,6 +1128,7 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
   const fmtRef = useRef<HTMLDivElement>(null);
   const ed2Ref = useRef<HTMLDivElement>(null);
   const comparing = useUI((s) => s.settings.view === 'compare');
+  const empty = useUI((s) => s.empty);
 
   useEffect(() => {
     const pagePreset = presetRef.current;
@@ -1155,7 +1156,7 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
   }, []);
 
   return (
-    <div className={comparing ? 'app comparing' : 'app'}>
+    <div className={`app${comparing ? ' comparing' : ''}${empty ? ' is-empty' : ''}`}>
       {!preset && (
         <>
           <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
