@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type 
 import { SAMPLE } from './sample';
 import { codecs, compressedSize } from './sizes';
 import { compact, readJwt, type JwtInput } from '../json/jwt';
+import { idle } from './idle';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -213,9 +214,6 @@ async function fromBase64Url(b64: string): Promise<string> {
   const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
   return new Response(stream).text();
 }
-
-/** Runs `fn` when the main thread is idle (soon, where requestIdleCallback is missing). */
-export const idle = (fn: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(fn, { timeout: 5000 }) : setTimeout(fn, 200));
 
 export class Engine {
   readonly ed: Editor;

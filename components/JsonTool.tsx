@@ -3,7 +3,8 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { Engine, idle, type EnginePreset } from '@/lib/engine/engine';
+import { Engine, type EnginePreset } from '@/lib/engine/engine';
+import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { store, useUI, type IndentId, type View } from '@/lib/engine/store';
 import { TARGETS, targetInfo } from '@/lib/engine/targets';

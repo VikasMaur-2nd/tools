@@ -1,6 +1,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { preview } from '../json/format';
 import { parsePath, resolve } from '../json/path';
+import { idle } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
 
@@ -312,11 +313,14 @@ export class TreeView {
 
   render(force: boolean) {
     if (!valueHints && !hintsLoading && this.rows.length) {
+      // Hints decorate rows that are already readable, so they load when the page is idle.
       hintsLoading = true;
-      void import('../json/smart').then((m) => {
-        valueHints = (n) => m.valueHints(n);
-        this.render(true);
-      });
+      idle(() =>
+        void import('../json/smart').then((m) => {
+          valueHints = (n) => m.valueHints(n);
+          this.render(true);
+        }),
+      );
     }
     const st = this.el.scrollTop;
     const vh = this.el.clientHeight;
@@ -382,7 +386,11 @@ export class TreeView {
       case STR: {
         const s = n.v as string;
         const shown = JSON.stringify(s.length > 400 ? s.slice(0, 400) + '…' : s);
-        const hint = valueHints?.(n)[0];
+        // Badges (nested JSON, JWT) need their hint now; other hints only label the
+        // tooltip, built on hover (date labels load the browser's locale data).
+        const c0 = s.charCodeAt(0);
+        const badge = c0 === 123 || c0 === 91 || c0 === 34 || c0 === 101 || c0 === 66 || c0 === 98 || c0 <= 32;
+        const hint = badge ? valueHints?.(n)[0] : undefined;
         let extra = '';
         let vcls = 'tv-s';
         if (s.length < 64 && COLOR.test(s)) extra = `<i class="tv-sw" style="background:${s}"></i>`;
@@ -391,13 +399,12 @@ export class TreeView {
         else if (hint?.kind === 'jwt') extra += '<span class="tv-x">JWT</span>';
         let title = hint ? hint.label : '';
         if (s.length > 60) title = (title ? title + '\n\n' : '') + (s.length > 2000 ? s.slice(0, 2000) + '…' : s);
-        h += `${extra}<span class="${vcls}"${title ? ` title="${escapeHtml(title)}"` : ''}>${this.mark(shown)}</span>`;
+        h += `${extra}<span class="${vcls}"${title ? ` title="${escapeHtml(title)}"` : ''}${badge ? '' : ' data-h'}>${this.mark(shown)}</span>`;
         break;
       }
       case NUM: {
         const raw = n.v as string;
-        const hint = (raw.length === 10 || raw.length === 13) && valueHints ? valueHints(n)[0] : undefined;
-        h += `<span class="tv-n"${hint ? ` title="${escapeHtml(hint.label)}"` : ''}>${this.mark(raw)}</span>`;
+        h += `<span class="tv-n"${raw.length === 10 || raw.length === 13 ? ' data-h' : ''}>${this.mark(raw)}</span>`;
         break;
       }
       case BOOL:
@@ -430,8 +437,18 @@ export class TreeView {
     if (i !== this.hover) {
       this.hover = i;
       this.placeActs();
+      this.hintTitle(r, this.rows[i]);
     }
   };
+
+  /** A value's hint (date, epoch, color, link…) becomes its tooltip the first time its row is hovered. */
+  private hintTitle(r: HTMLElement, n: JNode | undefined) {
+    const v = r.querySelector<HTMLElement>('[data-h]');
+    if (!v || !n || !valueHints) return;
+    v.removeAttribute('data-h');
+    const label = valueHints(n)[0]?.label;
+    if (label) v.title = v.title ? label + '\n\n' + v.title : label;
+  }
 
   private onLeave = () => {
     this.hover = -1;
