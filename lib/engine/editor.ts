@@ -167,6 +167,8 @@ export class Editor {
   private rColA = 0;
   private rColB = 0;
   private raf = 0;
+  /** A decoration changed: the next frame redraws even if the visible rows didn't move. */
+  private redraw = false;
   private typing = false;
   private selBefore: [number, number] = [0, 0];
   private undo_: Change[] = [];
@@ -703,8 +705,20 @@ export class Editor {
 
   private frame = () => {
     this.raf = 0;
-    this.render(false);
+    const force = this.redraw;
+    this.redraw = false;
+    this.render(force);
   };
+
+  /**
+   * Decorations (diagnostics, brackets, scope, marks) redraw once in the next
+   * frame, however many change together: each immediate redraw reads layout,
+   * which costs a full page layout on long pages.
+   */
+  private renderSoon() {
+    this.redraw = true;
+    if (!this.raf) this.raf = requestAnimationFrame(this.frame);
+  }
 
   private onTaScroll = () => {
     const ta = this.ta;
@@ -722,6 +736,7 @@ export class Editor {
   };
 
   render(force: boolean) {
+    if (force) this.redraw = false;
     const n = this.rows;
     const st = this.el.scrollTop;
     const vh = this.el.clientHeight;
@@ -845,7 +860,7 @@ export class Editor {
   setDiagnostics(list: Diagnostic[]) {
     this.diagList = list;
     this.buildDiag();
-    this.render(true);
+    this.renderSoon();
   }
 
   private diagList: Diagnostic[] = [];
@@ -906,14 +921,14 @@ export class Editor {
     const cur = this.jwt;
     if (at === cur || (at && cur && at.every((v, i) => v === cur[i]))) return;
     this.jwt = at;
-    this.render(true);
+    this.renderSoon();
   }
 
   /** Compare: tint whole lines as added / removed / changed (null clears). */
   setLineMarks(marks: Uint8Array | null) {
     if (!marks && !this.lineMarks) return;
     this.lineMarks = marks;
-    this.render(true);
+    this.renderSoon();
   }
 
   /** Briefly point at a location without taking focus (used by Compare). */
@@ -926,7 +941,7 @@ export class Editor {
     const next = a < 0 ? [] : [{ a, b: a + 1, cls: 'mbr' }, { a: b, b: b + 1, cls: 'mbr' }];
     if (next.length === this.brackets.length && next.every((m, i) => m.a === this.brackets[i].a)) return;
     this.brackets = next;
-    this.render(true);
+    this.renderSoon();
   }
 
   /** Highlights the lines spanned by a selected node. */
@@ -943,7 +958,7 @@ export class Editor {
       this.scopeEl.style.display = 'block';
       this.placeScope();
     }
-    this.render(true);
+    this.renderSoon();
   }
 
   /** Positions the scope band over the display rows its lines occupy. */

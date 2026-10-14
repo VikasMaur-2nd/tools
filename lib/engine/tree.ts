@@ -312,6 +312,9 @@ export class TreeView {
   };
 
   render(force: boolean) {
+    // A hidden tree draws when it is shown (the engine renders it on a view change
+    // and after a load); measuring it while hidden would force a page layout.
+    if (this.el.hidden) return;
     if (!valueHints && !hintsLoading && this.rows.length) {
       // Hints decorate rows that are already readable, so they load when the page is idle.
       hintsLoading = true;

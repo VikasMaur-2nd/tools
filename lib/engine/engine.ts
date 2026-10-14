@@ -495,6 +495,8 @@ export class Engine {
       path: this.sel ? formatPath(pathOf(this.sel)) : null,
       hint,
     });
+    // The tree may have been hidden (empty state) while it was rebuilt; draw it once shown.
+    if (this.settings.view === 'tree') requestAnimationFrame(() => this.tree.render(true));
     // Format/convert re-run their find when their text updates; the tree and table do it here.
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
     this.syncTableState();

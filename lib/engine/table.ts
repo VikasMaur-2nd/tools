@@ -92,6 +92,7 @@ export class TableView {
   }
 
   setNode(node: JNode | null, keepSort = false) {
+    if (!node && !this.node) return; // already empty: nothing to lay out
     const key = node ? pathOf(node).join('\u0001') : null;
     const same = key !== null && key === this.nodeKey;
     this.nodeKey = key;
