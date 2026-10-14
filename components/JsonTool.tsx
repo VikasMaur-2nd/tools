@@ -1120,10 +1120,14 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
 
   return (
     <div className={comparing ? 'app comparing' : 'app'}>
-      <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
-      <p className="sr-only">
-        Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
-      </p>
+      {!preset && (
+        <>
+          <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
+          <p className="sr-only">
+            Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
+          </p>
+        </>
+      )}
       <main className="panes">
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />
