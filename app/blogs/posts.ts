@@ -21,6 +21,27 @@ export interface Post {
 
 export const POSTS: Post[] = [
   {
+    slug: 'json-formatter-privacy-study',
+    title: 'Do online JSON formatters upload your data? A 10-tool canary test',
+    description:
+      'We tested ten popular online JSON viewers and formatters with a unique fake canary document to see what left the browser, which third-party hosts loaded and whether offline use worked.',
+    excerpt: 'A dated, reproducible canary test of ten JSON tools, including Tool Kumar, with raw network data you can download.',
+    category: 'Research',
+    published: '2026-10-14',
+    updated: '2026-10-14',
+    minutes: 10,
+    keywords: ['JSON formatter privacy', 'online JSON viewer security', 'JSON tool data upload', 'private JSON formatter', 'browser privacy test'],
+    sample: `{
+  "marker": "TK-PRIVACY-CANARY-...",
+  "fake": true
+}`,
+    citations: [
+      'https://labs.watchtowr.com/stop-putting-your-passwords-into-random-websites-yes-seriously-you-are-the-problem/',
+      'https://thehackernews.com/2025/11/years-of-jsonformatter-and-codebeautify.html',
+      'https://securityaffairs.com/185150/security/thousands-of-sensitive-secrets-published-on-jsonformatter-and-codebeautify.html',
+    ],
+  },
+  {
     slug: 'json-formatting-guide',
     title: 'How to format and validate JSON: a practical guide',
     description:
