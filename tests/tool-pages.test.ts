@@ -32,14 +32,78 @@ test('landing presets never replace saved documents, but user changes persist', 
 });
 
 test('conversion pages select a converter target and import pages select an importer', () => {
-  for (const slug of ['json-to-typescript', 'json-to-zod', 'json-schema-generator', 'json-to-go', 'json-to-python', 'json-to-yaml', 'json-to-csv', 'json-to-xml', 'json-to-excel']) {
+  for (const slug of ['json-to-typescript', 'json-to-zod', 'json-schema-generator', 'json-to-go', 'json-to-python', 'json-to-yaml', 'json-to-csv', 'json-to-xml', 'json-to-excel', 'json-to-dart', 'json-to-kotlin', 'json-to-swift', 'json-to-java', 'json-to-csharp', 'json-to-rust', 'json-to-php', 'json-to-toml']) {
     const page = TOOL_PAGES.find((entry) => entry.slug === slug);
     assert.ok(page?.preset.settings?.view === 'convert', slug);
     assert.ok(page?.preset.settings?.target, slug);
   }
-  for (const slug of ['yaml-to-json', 'csv-to-json', 'xml-to-json']) {
+  for (const slug of ['yaml-to-json', 'csv-to-json', 'xml-to-json', 'toml-to-json']) {
     const page = TOOL_PAGES.find((entry) => entry.slug === slug);
     assert.ok(page?.preset.initialImport, slug);
     assert.equal(page?.preset.settings?.view, 'format', slug);
+  }
+});
+
+// Keep generator wording tied to the output users actually receive from each preset.
+test('new language pages emit the documented models from their nested samples', async () => {
+  const { convert } = await import('../lib/convert');
+  const { parse } = await import('../lib/json/parser');
+  const cases = [
+    ['json-to-dart', 'dart', 'factory Root.fromJson', 'Map<String, dynamic> toJson()', 'final String? note;', "json['user-id']"],
+    ['json-to-kotlin', 'kotlin', '@Serializable', 'data class Root(', '@SerialName("user-id")', 'val note: String? = null'],
+    ['json-to-swift', 'swift', 'struct Root: Codable', 'enum CodingKeys: String, CodingKey', 'case userId = "user-id"', 'let note: String?'],
+    ['json-to-java', 'java', 'public record Root(', '@JsonProperty("user-id")', 'List<Item> items', 'public record Item(double price, String note)'],
+    ['json-to-csharp', 'csharp', 'using System.Text.Json.Serialization;', '[JsonPropertyName("user-id")]', 'required List<Item> Items', 'required string? Note'],
+    ['json-to-rust', 'rust', '#[derive(Debug, Clone, Serialize, Deserialize)]', '#[serde(rename = "user-id")]', 'pub items: Vec<Item>', 'pub note: Option<String>'],
+    ['json-to-php', 'php', 'declare(strict_types=1);', 'public readonly array $items', 'public static function fromArray', "$data['user-id']"],
+  ];
+  for (const [slug, target, ...expected] of cases) {
+    const page = TOOL_PAGES.find((entry) => entry.slug === slug);
+    assert.ok(page, slug);
+    assert.equal(page.preset.settings?.target, target);
+    assert.equal(page.preset.initialText, page.sample);
+    const parsed = parse(page.sample);
+    assert.ok(parsed.root && !parsed.error, slug);
+    const output = convert(parsed.root, target, { rootName: 'Root' });
+    for (const text of expected) assert.ok(output.includes(text), `${slug}: ${text}`);
+  }
+});
+
+test('TOML pages demonstrate tables and disclose lossy values', async () => {
+  const { convert } = await import('../lib/convert');
+  const { parse } = await import('../lib/json/parser');
+  const { importToJson } = await import('../lib/convert/import');
+  const exporter = TOOL_PAGES.find((page) => page.slug === 'json-to-toml')!;
+  const importer = TOOL_PAGES.find((page) => page.slug === 'toml-to-json')!;
+  const output = convert(parse(exporter.sample).root!, 'toml', { rootName: 'Root' });
+  assert.ok(output.includes('[profile]'));
+  assert.equal(output.match(/\[\[items\]\]/g)?.length, 2);
+  assert.ok(output.includes('# note = null (omitted: TOML has no null)'));
+  assert.equal(importer.preset.initialImport, 'toml');
+  const imported = importToJson(importer.sample, 'toml', '  ');
+  assert.ok('json' in imported);
+  assert.deepEqual(JSON.parse(imported.json), {
+    title: 'API client', retries: 3, server: { host: 'localhost', enabled: true }, users: [{ name: 'Ada' }, { name: 'Lin' }],
+  });
+});
+
+test('all pages have distinct search metadata and resolvable related links', () => {
+  for (const key of ['title', 'description', 'query'] as const) {
+    assert.equal(new Set(TOOL_PAGES.map((page) => page[key])).size, TOOL_PAGES.length, key);
+  }
+  const slugs = new Set(TOOL_PAGES.map((page) => page.slug));
+  for (const page of TOOL_PAGES) {
+    assert.equal(page.secondary.length, 2, page.slug);
+    assert.ok(page.faqs.length <= 5, page.slug);
+    for (const related of page.related) {
+      assert.ok(slugs.has(related) || related === 'home' || related === 'privacy-study', `${page.slug}: ${related}`);
+    }
+  }
+  for (const slug of ['offline-json-formatter', 'secure-json-formatter']) {
+    const page = TOOL_PAGES.find((entry) => entry.slug === slug)!;
+    assert.equal(page.preset.settings?.view, 'format');
+    assert.equal(page.preset.settings?.minify, false);
+    assert.ok(page.related.includes('privacy-study'));
+    assert.ok(page.related.includes(slug === 'offline-json-formatter' ? 'secure-json-formatter' : 'offline-json-formatter'));
   }
 });

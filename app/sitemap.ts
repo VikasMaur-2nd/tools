@@ -7,6 +7,7 @@ import { TOOL_PAGES } from '@/lib/tool-pages';
 // keeps this route free of sync IO so it prerenders under `cacheComponents`.
 const LAST_MODIFIED = '2026-10-13';
 const RESOURCES_LAST_MODIFIED = '2026-10-14';
+const TOOLS_LAST_MODIFIED = '2026-10-14';
 const SITE = 'https://tools.vikasmaur.com';
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -61,13 +62,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${SITE}/tools`,
-      lastModified: LAST_MODIFIED,
+      lastModified: TOOLS_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.9,
     },
     ...TOOL_PAGES.map((page) => ({
       url: `${SITE}/tools/${page.slug}`,
-      lastModified: LAST_MODIFIED,
+      lastModified: TOOLS_LAST_MODIFIED,
       changeFrequency: 'monthly' as const,
       priority: 0.8,
     })),

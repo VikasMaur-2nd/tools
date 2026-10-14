@@ -30,7 +30,7 @@ function prettyJson(text: string) {
   return formatDoc(text, result, '  ');
 }
 
-function importedExample(text: string, format: 'yaml' | 'csv' | 'xml') {
+function importedExample(text: string, format: 'yaml' | 'csv' | 'xml' | 'toml') {
   const result = importToJson(text, format, '  ');
   return 'json' in result ? prettyJson(result.json) : `Import error: ${result.error}`;
 }
@@ -50,6 +50,7 @@ function exampleOutput(page: ToolPage) {
   if (page.slug === 'yaml-to-json') return importedExample(page.sample, 'yaml');
   if (page.slug === 'csv-to-json') return importedExample(page.sample, 'csv');
   if (page.slug === 'xml-to-json') return importedExample(page.sample, 'xml');
+  if (page.slug === 'toml-to-json') return importedExample(page.sample, 'toml');
   const root = parse(page.sample).root;
   if (!root) return page.sample;
   const target = page.preset.settings?.target;
@@ -132,6 +133,12 @@ function ToolContent({ page }: { page: ToolPage }) {
           <div><h3>Output</h3><pre><code>{output}</code></pre></div>
         </div>
 
+        {page.sections?.map(({ heading, paragraphs, code }) => <section key={heading}>
+          <h2>{heading}</h2>
+          {paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+          {code && <pre className="tool-usage"><code>{code}</code></pre>}
+        </section>)}
+
         <h2>Options and edge cases</h2>
         <ul>{page.options.map((option) => <li key={option}>{option}</li>)}</ul>
 
@@ -144,8 +151,10 @@ function ToolContent({ page }: { page: ToolPage }) {
         <h2>Related tools</h2>
         <p>{page.related.map((slug, i) => {
           const home = slug === 'home';
-          const label = home ? 'JSON formatter' : TOOL_PAGE_BY_SLUG.get(slug)?.heading ?? slug;
-          return <span key={slug}>{i > 0 ? ', ' : ''}<Link href={home ? '/' : `/tools/${slug}`}>{label}</Link></span>;
+          const study = slug === 'privacy-study';
+          const label = home ? 'JSON formatter' : study ? 'JSON formatter privacy study' : TOOL_PAGE_BY_SLUG.get(slug)?.heading ?? slug;
+          const href = home ? '/' : study ? '/blogs/json-formatter-privacy-study' : `/tools/${slug}`;
+          return <span key={slug}>{i > 0 ? ', ' : ''}<Link href={href}>{label}</Link></span>;
         })}.</p>
       </div>
     </ContentShell>

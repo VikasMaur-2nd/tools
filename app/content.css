@@ -360,7 +360,8 @@ html:has(.content-page:not([style*='none'])) {
   text-transform: uppercase;
 }
 
-.tool-example-grid pre {
+.tool-example-grid pre,
+.tool-usage {
   min-height: 120px;
   max-height: 420px;
   margin: 0;

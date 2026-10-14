@@ -44,6 +44,18 @@
 - [Bad control character in string literal in JSON](https://tools.vikasmaur.com/json-errors/bad-control-character): Fix unescaped newlines, tabs and other control characters inside JSON strings. See exact JavaScript and Python errors and use serializers to escape values.
 - [Go JSON: invalid character looking for beginning of value](https://tools.vikasmaur.com/json-errors/go-invalid-character): Diagnose unexpected prefixes, plain-text errors and byte-order marks in Go JSON input. Check HTTP bodies and use SyntaxError.Offset to locate the bad byte.
 
+- [JSON to Dart](https://tools.vikasmaur.com/tools/json-to-dart): Null-safe classes with constructors, fromJson and toJson methods.
+- [JSON to Kotlin data classes](https://tools.vikasmaur.com/tools/json-to-kotlin): kotlinx.serialization @Serializable models with @SerialName mappings.
+- [JSON to Swift models](https://tools.vikasmaur.com/tools/json-to-swift): Codable structs with CodingKeys and optional properties.
+- [JSON to Java](https://tools.vikasmaur.com/tools/json-to-java): Java records with nested records and Jackson @JsonProperty mappings.
+- [JSON to C# classes](https://tools.vikasmaur.com/tools/json-to-csharp): System.Text.Json models with required and nullable properties.
+- [JSON to Rust structs](https://tools.vikasmaur.com/tools/json-to-rust): serde derives, key renames, Vec fields and Option types.
+- [JSON to PHP classes](https://tools.vikasmaur.com/tools/json-to-php): PHP 8.1 readonly constructor properties and fromArray methods.
+- [JSON to TOML](https://tools.vikasmaur.com/tools/json-to-toml): Tables and arrays of tables, with comments for omitted nulls and large integers.
+- [TOML to JSON](https://tools.vikasmaur.com/tools/toml-to-json): Local TOML import with tables, scalar values and arrays.
+- [Offline JSON formatter](https://tools.vikasmaur.com/tools/offline-json-formatter): Installation, caching, offline verification, storage and updates.
+- [Secure JSON formatter](https://tools.vikasmaur.com/tools/secure-json-formatter): Local document processing, Network verification, analytics disclosure and CSP limits.
+
 ## Site facts
 
 - The parser and formatter run in the browser.
