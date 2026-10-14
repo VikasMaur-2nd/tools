@@ -34,6 +34,8 @@ const LANGS: Record<string, [string, string, string?]> = {
   php: ['chs$k', 'php declare final class public private protected readonly function static return new fn isset', 'int float string bool array mixed self'],
   toml: ['hst=H-', ''],
 };
+// Plain JavaScript (error-guide examples) reads well with the TypeScript rules.
+LANGS.javascript = LANGS.typescript;
 const TL = set('true false True False');
 const TZ = set('null nil None undefined');
 const isDigit = (c: number) => c >= 48 && c <= 57;

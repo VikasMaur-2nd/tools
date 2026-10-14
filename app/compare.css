@@ -560,6 +560,7 @@
 
 /* ── empty / status states ── */
 
+/* Focusable (tabIndex 0) so its text can be scrolled by keyboard on short screens. */
 .cmp-empty {
   position: absolute;
   inset: 0;

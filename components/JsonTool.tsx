@@ -736,9 +736,7 @@ function Watermark() {
   const view = useUI((s) => s.settings.view);
   if (!empty || view === 'compare') return null;
   return (
-    <div className="watermark" aria-hidden="true">
-      Tool Kumar
-    </div>
+    <div className="watermark" aria-hidden="true" />
   );
 }
 

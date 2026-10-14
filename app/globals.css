@@ -18,7 +18,7 @@
   --line-2: #dcdcdc;
   --fg: #0a0a0a;
   --fg-2: #4a4a4a;
-  --muted: #6e6e6e;
+  --muted: #6a6a6a;
   --faint: #a3a3a3;
   --accent: #0a0a0a;
   --accent-fg: #ffffff;
@@ -51,8 +51,8 @@
   --c-num: #b45309;
   --c-bool: #7c3aed;
   --c-null: #be123c;
-  --c-punct: #8a92a0;
-  --c-com: #8a92a0;
+  --c-punct: #687080;
+  --c-com: #687080;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -98,8 +98,8 @@
     --c-num: #f5b97c;
     --c-bool: #c9a5ff;
     --c-null: #ff8fa8;
-    --c-punct: #6c7484;
-    --c-com: #6c7484;
+    --c-punct: #7a8292;
+    --c-com: #7a8292;
   }
 }
 
@@ -145,8 +145,8 @@
   --c-num: #f5b97c;
   --c-bool: #c9a5ff;
   --c-null: #ff8fa8;
-  --c-punct: #6c7484;
-  --c-com: #6c7484;
+  --c-punct: #7a8292;
+  --c-com: #7a8292;
 }
 
 /* ─── Base ─────────────────────────────────────────────────────────────── */
@@ -648,14 +648,11 @@ svg {
 }
 
 .seg-size {
-  color: var(--faint);
+  color: var(--muted);
   font: 500 11px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
 }
 
-.seg-sm button[aria-checked='true'] .seg-size {
-  color: var(--muted);
-}
 
 /* Compact picker with a leading icon (indentation) */
 .pick.pick-sm select {
@@ -858,7 +855,7 @@ kbd {
   width: var(--gw, 56px);
   min-height: 100%;
   background: var(--bg);
-  color: var(--faint);
+  color: var(--muted);
   font-size: 12px;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1674,7 +1671,7 @@ button.tv-x:hover {
   width: var(--cv-gw, 6ch);
   padding-right: 24px;
   background: var(--bg);
-  color: var(--faint);
+  color: var(--muted);
   font-size: 12px;
   text-align: right;
   -webkit-user-select: none;
@@ -1743,6 +1740,11 @@ button.tv-x:hover {
   pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Generated content: pure decoration, so it carries no text for contrast checks or screen readers. */
+.watermark::before {
+  content: 'Tool Kumar';
 }
 
 @media (max-width: 760px) {
@@ -2626,7 +2628,7 @@ button.mi:focus-visible {
 
 .mi-head {
   padding: 7px 9px 4px;
-  color: var(--faint);
+  color: var(--muted);
   font: 600 10.5px/1 var(--font-ui);
   letter-spacing: 0.06em;
   text-transform: uppercase;

@@ -525,7 +525,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   const errBox = (title: string, src: string, err: { p: number; m: string }, side: 'l' | 'r') => {
     const lm = new LineMap(src);
     return (
-      <div className="cmp-empty err">
+      <div tabIndex={0} className="cmp-empty err">
         <Icon name="alert" size={22} />
         <p>
           <b>{title}</b>
@@ -541,7 +541,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     );
   };
   const same = (identical: boolean, msg: string) => (
-    <div className="cmp-empty ok">
+    <div tabIndex={0} className="cmp-empty ok">
       <Icon name="check" size={22} />
       <p>
         <b>No differences</b>
@@ -554,7 +554,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   let empty: ReactNode = null;
   if (!rightText.trim()) {
     empty = (
-      <div className="cmp-empty">
+      <div tabIndex={0} className="cmp-empty">
         <Icon name="diff" size={22} />
         <p>
           <b>Compare two JSON documents</b>
@@ -571,7 +571,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     );
   } else if (!leftText.trim()) {
     empty = (
-      <div className="cmp-empty">
+      <div tabIndex={0} className="cmp-empty">
         <Icon name="file" size={22} />
         <p>Add the original JSON on the left to compare.</p>
       </div>
@@ -581,7 +581,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   else if (view === 'changes') {
     if (result?.error)
       empty = (
-        <div className="cmp-empty err">
+        <div tabIndex={0} className="cmp-empty err">
           <Icon name="alert" size={22} />
           <p>{result.error}</p>
         </div>
@@ -590,7 +590,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
       empty = same(d.l === d.r, `The documents are equivalent${dOpts.arrayOrder || dOpts.ci || ignoreKey ? ' (with the ignore options above)' : ''}.`);
   } else if (typeof model === 'string')
     empty = (
-      <div className="cmp-empty err">
+      <div tabIndex={0} className="cmp-empty err">
         <Icon name="alert" size={22} />
         <p>{model}</p>
       </div>
