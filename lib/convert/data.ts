@@ -291,3 +291,14 @@ export function toTOML(root: JNode, rootName: string): string {
   const s = L.join('\n').replace(/^\n+/, '');
   return s ? s + '\n' : '';
 }
+
+/* ---------- JSON Lines (NDJSON) ---------- */
+
+/**
+ * One compact JSON value per line: each element of a top-level array, or the
+ * whole document when it isn't an array. Numbers keep their source digits.
+ */
+export function toJSONL(root: JNode): string {
+  const vals = root.t === ARR ? (root.v as JNode[]) : [root];
+  return vals.map((n) => stringify(n, '') + '\n').join('');
+}

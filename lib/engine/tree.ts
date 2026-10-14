@@ -242,10 +242,15 @@ export class TreeView {
     this.matchSet = null;
     this.mi = -1;
     const root = this.root;
+    let note: string | undefined;
     if (q && root) {
       // `$.a[0]` / `/a/0` jump to that node; if it doesn't resolve, it's plain text ($ref, /v1/users…).
       const segs = q[0] === '$' || (q[0] === '/' && q.length > 1) ? parsePath(q) : null;
       const hit = segs && segs.length ? resolve(root, segs) : null;
+      // Wildcards, recursive descent, filters and slices are JSONPath queries, not one location.
+      if (!hit && q[0] === '$' && /\*|\.\.|\?|@|\[-?\d*:-?\d*\]/.test(q)) {
+        note = 'Wildcards, filters and slices are not supported. Use a concrete path such as $.users[0].name';
+      }
       if (hit) this.matches = [hit];
       else {
         const qn = this.qn;
@@ -278,7 +283,7 @@ export class TreeView {
       }
     }
     this.render(true);
-    return { total: this.matches.length, index: this.mi };
+    return { total: this.matches.length, index: this.mi, note: this.matches.length ? undefined : note };
   }
 
   step(dir: 1 | -1) {

@@ -39,9 +39,9 @@ const API = JSON.stringify({
 test('TARGETS are ordered and complete', () => {
   assert.deepEqual(
     TARGETS.map((t) => t.id),
-    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'yaml', 'xml', 'toml'],
+    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'yaml', 'xml', 'toml', 'jsonl'],
   );
-  assert.ok(TARGETS.every((t) => t.group === (['csv', 'yaml', 'xml', 'toml'].includes(t.id) ? 'Data' : 'Types')));
+  assert.ok(TARGETS.every((t) => t.group === (['csv', 'yaml', 'xml', 'toml', 'jsonl'].includes(t.id) ? 'Data' : 'Types')));
   assert.throws(() => conv('1', 'cobol'));
 });
 

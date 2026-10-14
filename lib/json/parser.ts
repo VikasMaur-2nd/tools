@@ -75,6 +75,13 @@ export interface ParseResult {
    * formatting.
    */
   exact: boolean;
+  /** Several top-level values (or one, with `lines`) were wrapped in one array: NDJSON / JSON Lines. */
+  multi: boolean;
+}
+
+export interface ParseOptions {
+  /** JSON Lines input (a .jsonl / .ndjson file): wrap the values in an array even when there is only one. */
+  lines?: boolean;
 }
 
 class ParseError {
@@ -158,12 +165,13 @@ export function normalizeNumber(raw: string): string {
   return sign + ip + (fp ? '.' + fp : '') + exp;
 }
 
-export function parse(src: string): ParseResult {
+export function parse(src: string, { lines = false }: ParseOptions = {}): ParseResult {
   const n = src.length;
   let i = 0;
   let nodes = 0;
   let depth = 0;
   let exact = true;
+  let multi = false;
   let issues: Issue[] = [];
   let warnings: Issue[] = [];
 
@@ -717,39 +725,38 @@ export function parse(src: string): ParseResult {
         }
       };
       skipTail();
-      if (i < n) {
-        let c = src.charCodeAt(i);
-        if (startsValue(c)) {
-          // Several top-level values (NDJSON / JSON Lines): re-parse them into one array.
-          issues = issues.slice(0, before);
-          warnings = [];
-          nodes = 1;
-          depth = 0;
-          i = start;
-          const wrap = new JNode(ARR, [], start, 0, null, undefined);
-          const list = wrap.v as JNode[];
-          for (;;) {
-            ws();
-            while (src.charCodeAt(i) === 44 || src.charCodeAt(i) === 59) {
-              i++;
-              ws();
-            }
-            if (i >= n || (fence && src.startsWith('```', i))) break;
-            if (list.length === 1) fix(i, 'Multiple top-level values (wrapped in an array)');
-            list.push(value(1, wrap, list.length));
-          }
-          wrap.e = i;
-          root = wrap;
-          skipTail();
-        } else {
-          while (c === 125 || c === 93) {
-            fix(i, `Unexpected ${describe(i)} after the JSON value`);
+      if ((i < n && startsValue(src.charCodeAt(i))) || lines) {
+        // Several top-level values (NDJSON / JSON Lines): re-parse them into one array.
+        multi = true;
+        issues = issues.slice(0, before);
+        warnings = [];
+        nodes = 1;
+        depth = 0;
+        i = start;
+        const wrap = new JNode(ARR, [], start, 0, null, undefined);
+        const list = wrap.v as JNode[];
+        for (;;) {
+          ws();
+          while (src.charCodeAt(i) === 44 || src.charCodeAt(i) === 59) {
             i++;
             ws();
-            c = src.charCodeAt(i);
           }
-          if (i < n) fail(i, `Unexpected ${describe(i)} after the JSON value`);
+          if (i >= n || (fence && src.startsWith('```', i))) break;
+          if (list.length === 1) fix(i, 'Multiple top-level values (wrapped in an array)');
+          list.push(value(1, wrap, list.length));
         }
+        wrap.e = i;
+        root = wrap;
+        skipTail();
+      } else if (i < n) {
+        let c = src.charCodeAt(i);
+        while (c === 125 || c === 93) {
+          fix(i, `Unexpected ${describe(i)} after the JSON value`);
+          i++;
+          ws();
+          c = src.charCodeAt(i);
+        }
+        if (i < n) fail(i, `Unexpected ${describe(i)} after the JSON value`);
       }
     }
   } catch (e) {
@@ -759,6 +766,7 @@ export function parse(src: string): ParseResult {
     root = null;
   }
   issues.sort((a, b) => a.p - b.p);
-  exact = exact && !!root && !issues.length && !warnings.length;
-  return { root, issues, warnings, error, nodes, depth, exact };
+  // A wrapped document is not the source text, so the native formatting fast path can't apply.
+  exact = exact && !!root && !issues.length && !warnings.length && !multi;
+  return { root, issues, warnings, error, nodes, depth, exact, multi: multi && !!root };
 }

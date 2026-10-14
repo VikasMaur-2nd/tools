@@ -100,6 +100,7 @@ function loadSettings(): Settings {
     if (!['format', 'tree', 'table', 'convert'].includes(out.prevView)) out.prevView = 'format';
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
+    out.escape = !!out.escape;
     if (out.tsStyle !== 'type') out.tsStyle = 'interface';
     if (out.csharpLib !== 'newtonsoft') out.csharpLib = 'stj';
     out.rootName = String(out.rootName || 'Root').slice(0, 60);
@@ -150,6 +151,27 @@ function prettyExtra(root: JNode, unit: number): number {
     for (const c of list) if (c.t >= ARR) stack.push(c);
   }
   return extra;
+}
+
+const MULTI = 'Multiple top-level values (wrapped in an array)';
+/** Opened JSON Lines files: even one record reads as a list of records. */
+const LINES_FILE = /\.(jsonl|ndjson)$/i;
+
+/**
+ * JSON Lines / NDJSON: strict JSON values, one per line, separated by newlines
+ * only (blank lines are skipped). Concatenated or comma-separated values are
+ * still shown, but as loose JSON with an issue to fix.
+ */
+export function jsonLines(text: string, res: ParseResult): boolean {
+  if (!res.multi || !res.root || res.error || res.issues.some((x) => x.m !== MULTI)) return false;
+  const recs = res.root.v as JNode[];
+  for (let k = 0; k < recs.length; k++) {
+    const r = recs[k];
+    const nl = text.indexOf('\n', r.s);
+    if (nl >= 0 && nl < r.e) return false;
+    if (k && !/^[ \t\r]*\n\s*$/.test(text.slice(recs[k - 1].e, r.s))) return false;
+  }
+  return true;
 }
 
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
@@ -230,6 +252,9 @@ export class Engine {
   private toastId = 0;
   private dragDepth = 0;
   private settings: Settings;
+  /** Settings as stored; differs from `settings` while a landing page's preset is shown. */
+  private saved: Settings;
+  private presetting = false;
   private persistEnabled: boolean;
   /** Current find query (applies to the open view). */
   private query = '';
@@ -238,7 +263,7 @@ export class Engine {
   constructor(els: EngineEls, options: EngineOptions = {}) {
     this.els = els;
     this.persistEnabled = !options.preserveDocument;
-    this.settings = loadSettings();
+    this.settings = this.saved = loadSettings();
     const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
     store.set({ settings: this.settings, mac });
     this.applyTheme(this.settings.theme);
@@ -420,7 +445,8 @@ export class Engine {
     const t0 = performance.now();
     const jwt = readJwt(text, this.indent);
     const src = jwt ? jwt.json : text;
-    const res = parse(src);
+    const res = parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
+    const lines = !jwt && jsonLines(text, res);
     const ms = performance.now() - t0;
     this.res = res;
     this.jwt = jwt;
@@ -452,21 +478,21 @@ export class Engine {
     // Diagnostics → editor squiggles (a decoded JWT's positions aren't in the editor).
     const diags: Diagnostic[] = [];
     if (!jwt) {
-      for (let i = 0; i < res.issues.length && i < 300; i++) diags.push({ p: res.issues[i].p, cls: 'me' });
+      for (let i = 0; i < res.issues.length && i < 300 && !lines; i++) diags.push({ p: res.issues[i].p, cls: 'me' });
       if (res.error) diags.push({ p: res.error.p, cls: 'me' });
       for (let i = 0; i < res.warnings.length && i < 300; i++) diags.push({ p: res.warnings[i].p, cls: 'mw' });
     }
     ed.setDiagnostics(diags);
 
     let hint: Hint = null;
-    if (jwt) hint = null;
+    if (jwt || lines) hint = null;
     else if (res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
     else if (res.error || res.issues.length) hint = sniff(text);
 
     store.set({
       empty: false,
       stale: !res.root && !!this.good,
-      status: jwt ? this.jwtStatus(jwt) : JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
+      status: jwt ? this.jwtStatus(jwt) : lines ? this.linesStatus(res) : JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
       stats: { bytes: byteLength(text), lines: ed.ls.length, nodes: res.nodes, depth: res.depth, ms },
       path: this.sel ? formatPath(pathOf(this.sel)) : null,
       hint,
@@ -477,6 +503,13 @@ export class Engine {
     this.updateBrackets();
     this.measure(res.root && !jwt ? res : null, text);
     this.afterDoc();
+  }
+
+  /** Valid JSON Lines: the wrapping into an array is how they're viewed, not an issue. */
+  private linesStatus(res: ParseResult): Status {
+    const w = res.warnings[0];
+    const jsonl = (res.root!.v as JNode[]).length;
+    return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
   }
 
   /** "JWT · HS256 · expires in 59m": decoded locally, signature not verified. */
@@ -1136,7 +1169,7 @@ export class Engine {
 
   // ── Format view (output) ───────────────────────────────────────────────
 
-  setFormat(patch: Partial<Pick<Settings, 'minify' | 'sortKeys'>>) {
+  setFormat(patch: Partial<Pick<Settings, 'minify' | 'sortKeys' | 'escape'>>) {
     this.setSettings(patch);
     if (this.settings.view !== 'format') this.setView('format');
     else this.scheduleFormat(0);
@@ -1147,25 +1180,33 @@ export class Engine {
     this.fmtTimer = window.setTimeout(this.runFormat, delay);
   }
 
-  /** The formatted output for the current settings (from the last valid parse). */
-  private output(): string {
+  /** The formatted document for the current settings (from the last valid parse), before any escaping. */
+  private formatted(): string {
     const r = this.good;
     if (!r?.root) return '';
     const s = this.settings;
-    return formatDoc(this.goodText, r, s.minify ? '' : this.indent, s.sortKeys);
+    return formatDoc(this.goodText, r, s.minify || s.escape ? '' : this.indent, s.sortKeys);
+  }
+
+  /** The Format view's output: the formatted document, or it as one JSON string literal. */
+  private output(): string {
+    const text = this.formatted();
+    return this.settings.escape && text ? JSON.stringify(text) : text;
   }
 
   private runFormat = () => {
     if (this.settings.view !== 'format') return;
-    const out = this.output();
+    const { minify, escape } = this.settings;
+    const text = this.formatted();
+    const out = escape && text ? JSON.stringify(text) : text;
     this.fmt.setText(out, jsonRow, true);
     // Size of the shown variant is measured; the other differs only by whitespace,
     // which is computed from the tree (no second format of big documents).
-    const bytes = byteLength(out);
+    const bytes = byteLength(text);
     const extra = this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
-    const minify = this.settings.minify;
+    const min = !text ? 0 : minify || escape ? bytes : bytes - extra;
     store.set({
-      fmt: { lines: this.fmt.lineCount, pretty: out ? (minify ? bytes + extra : bytes) : 0, minified: out ? (minify ? bytes : bytes - extra) : 0 },
+      fmt: { lines: this.fmt.lineCount, pretty: text ? min + extra : 0, minified: min, escaped: escape && out ? byteLength(out) : 0 },
     });
   };
 
@@ -1176,22 +1217,22 @@ export class Engine {
     const s = this.settings;
     const fixed = this.fixed(r);
     this.transform(
-      (res, t) => formatDoc(t, res, s.minify ? '' : this.indent, s.sortKeys),
-      () => (s.minify ? 'Minified input' : 'Formatted input') + fixed,
+      (res, t) => (s.escape ? JSON.stringify(formatDoc(t, res, '', s.sortKeys)) : formatDoc(t, res, s.minify ? '' : this.indent, s.sortKeys)),
+      () => (s.escape ? 'Escaped input to a JSON string' : s.minify ? 'Minified input' : 'Formatted input') + fixed,
     );
   }
 
   copyOutput() {
     const out = this.fmt.text || this.output();
     if (!out) return this.toast('Nothing to copy yet', 'info');
-    void this.copy(out, this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
+    void this.copy(out, this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
   }
 
   downloadOutput() {
     const out = this.fmt.text || this.output();
     if (!out) return this.toast('Nothing to download yet', 'info');
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    this.save(out, `${base}${this.settings.minify ? '.min' : ''}.json`, 'application/json');
+    this.save(out, `${base}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`, 'application/json');
   }
 
   // ── Convert ────────────────────────────────────────────────────────────
@@ -1355,7 +1396,7 @@ export class Engine {
   private refind(jump: boolean) {
     const v = this.settings.view;
     const r = v === 'tree' ? this.tree.search(this.query, jump) : this.findIn(v, this.query);
-    store.set({ find: { ...store.get().find, total: r.total, index: r.index } });
+    store.set({ find: { ...store.get().find, total: r.total, index: r.index, note: r.note } });
   }
 
   findStep(dir: 1 | -1) {
@@ -1461,7 +1502,31 @@ export class Engine {
   private setSettings(patch: Partial<Settings>) {
     this.settings = { ...this.settings, ...patch };
     store.settings(patch);
-    write(KEYS.settings, JSON.stringify(this.settings));
+    if (this.presetting) return;
+    this.saved = { ...this.saved, ...patch };
+    write(KEYS.settings, JSON.stringify(this.saved));
+  }
+
+  /**
+   * Shows a landing page's sample in its view. The visitor's saved document and
+   * settings stay as they were (a format page doesn't leave the homepage sorting
+   * keys); changes the visitor then makes are saved as usual.
+   */
+  applyPreset(p: EnginePreset) {
+    const s = p.settings ?? {};
+    this.presetting = true;
+    try {
+      this.load(p.initialText ?? '', p.initialFileName ?? null, false);
+      if (s.view === 'convert') {
+        this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface' });
+      } else if (s.view) {
+        this.setView(s.view);
+        if (s.view === 'format') this.setFormat({ minify: s.minify ?? false, sortKeys: s.sortKeys ?? false, escape: s.escape ?? false });
+      }
+    } finally {
+      this.presetting = false;
+    }
+    if (p.initialImport) window.setTimeout(() => void this.importAs(p.initialImport!), 0);
   }
 
   setIndent(indent: IndentId) {

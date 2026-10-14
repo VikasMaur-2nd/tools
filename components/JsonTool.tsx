@@ -444,13 +444,13 @@ function ViewMenu() {
 
 /** Floating find for the open view (Ctrl+F). Esc closes it. */
 function FindBar() {
-  const { open, q, total, index, seq } = useUI((s) => s.find);
+  const { open, q, total, index, note, seq } = useUI((s) => s.find);
   const view = useUI((s) => s.settings.view);
   if (!open || view === 'compare') return null;
-  return <FindInput key={seq} initial={q} total={total} index={index} view={view} />;
+  return <FindInput key={seq} initial={q} total={total} index={index} note={note} view={view} />;
 }
 
-function FindInput({ initial, total, index, view }: { initial: string; total: number; index: number; view: View }) {
+function FindInput({ initial, total, index, note, view }: { initial: string; total: number; index: number; note?: string; view: View }) {
   const [text, setText] = useState(initial);
   const timer = useRef(0);
   const run = (v: string) => {
@@ -485,8 +485,8 @@ function FindInput({ initial, total, index, view }: { initial: string; total: nu
         spellCheck={false}
         autoComplete="off"
       />
-      <span className="count" aria-live="polite">
-        {text ? (total ? `${index + 1} of ${total >= 100000 ? '100k+' : int(total)}` : 'No results') : ''}
+      <span className="count" aria-live="polite" title={note}>
+        {text ? (total ? `${index + 1} of ${total >= 100000 ? '100k+' : int(total)}` : note ? 'Concrete paths only' : 'No results') : ''}
       </span>
       <button type="button" className="btn icon sm" aria-label="Previous match" onClick={() => act((e) => e.findStep(-1))}>
         <Icon name="up" size={14} />
@@ -581,26 +581,31 @@ function ViewSwitch() {
   );
 }
 
-/** Format: Pretty / Minify, each with its size. */
+/** Format: Pretty / Minify / String (escaped), each with its size. */
 function OutputStyle() {
   const minify = useUI((s) => s.settings.minify);
-  const { pretty, minified } = useUI((s) => s.fmt);
+  const escape = useUI((s) => s.settings.escape);
+  const { pretty, minified, escaped } = useUI((s) => s.fmt);
   const saved = pretty > 0 ? Math.round((1 - minified / pretty) * 100) : 0;
   return (
     <div className="seg seg-sm" role="radiogroup" aria-label="Output style">
-      <button type="button" role="radio" aria-checked={!minify} onClick={() => act((e) => e.setFormat({ minify: false }))} data-tip="Indented and readable">
+      <button type="button" role="radio" aria-checked={!minify && !escape} onClick={() => act((e) => e.setFormat({ minify: false, escape: false }))} data-tip="Indented and readable">
         Pretty
         {pretty > 0 && <span className="seg-size">{formatBytes(pretty)}</span>}
       </button>
       <button
         type="button"
         role="radio"
-        aria-checked={minify}
-        onClick={() => act((e) => e.setFormat({ minify: true }))}
+        aria-checked={minify && !escape}
+        onClick={() => act((e) => e.setFormat({ minify: true, escape: false }))}
         data-tip={saved > 0 ? `${saved}% smaller` : 'One line, no whitespace'}
       >
         Minify
         {minified > 0 && <span className="seg-size">{formatBytes(minified)}</span>}
+      </button>
+      <button type="button" role="radio" aria-checked={escape} onClick={() => act((e) => e.setFormat({ escape: true }))} data-tip="Minified, then escaped as one JSON string">
+        String
+        {escaped > 0 && <span className="seg-size">{formatBytes(escaped)}</span>}
       </button>
     </div>
   );
@@ -915,9 +920,9 @@ function StatusMsg() {
         );
       }
       return (
-        <span className="st ok">
+        <span className="st ok" title={status.jsonl ? 'One JSON value per line, shown as an array of records' : undefined}>
           <i className="dot" />
-          Valid JSON
+          {status.jsonl ? `JSON Lines · ${plural(status.jsonl, 'record')}` : 'Valid JSON'}
           {status.warnings > 0 && (
             <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg}>
               · {plural(status.warnings, 'duplicate key')}
@@ -1115,20 +1120,7 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
     setEngine(e);
     // A landing page's sample loads in the next task: hydration and the empty editor
     // paint first, and neither half is one long blocking task on a slow phone.
-    const sample = pagePreset?.initialText
-      ? window.setTimeout(() => {
-          e.load(pagePreset.initialText!, pagePreset.initialFileName ?? null, false);
-          if (pagePreset.settings?.view === 'convert') {
-            e.setConvert({ target: pagePreset.settings.target ?? 'typescript', rootName: pagePreset.settings.rootName ?? 'Root', tsStyle: pagePreset.settings.tsStyle ?? 'interface' });
-          } else if (pagePreset.settings?.view) {
-            e.setView(pagePreset.settings.view);
-            if (pagePreset.settings.view === 'format' && (pagePreset.settings.minify !== undefined || pagePreset.settings.sortKeys !== undefined)) {
-              e.setFormat({ minify: pagePreset.settings.minify, sortKeys: pagePreset.settings.sortKeys });
-            }
-          }
-          if (pagePreset.initialImport) window.setTimeout(() => void e.importAs(pagePreset.initialImport!), 0);
-        }, 0)
-      : 0;
+    const sample = pagePreset?.initialText ? window.setTimeout(() => e.applyPreset(pagePreset), 0) : 0;
     const warm = window.setTimeout(() => idle(() => void import('./CompareView')), 6000);
     return () => {
       window.clearTimeout(sample);

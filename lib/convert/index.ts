@@ -1,11 +1,11 @@
 /**
  * Convert: JSON -> types (TypeScript, Zod, JSON Schema, C#, Dart, Java, Python,
- * Go, Kotlin, Swift, PHP, Rust) and data formats (CSV, YAML, XML, TOML).
+ * Go, Kotlin, Swift, PHP, Rust) and data formats (CSV, YAML, XML, TOML, JSON Lines).
  * Zero dependencies; meant to be lazy-loaded.
  */
 import type { JNode } from '../json/parser';
 import type { ConvertOptions } from './infer';
-import { toCSV, toTOML, toXML, toYAML } from './data';
+import { toCSV, toJSONL, toTOML, toXML, toYAML } from './data';
 import { toCSharp, toDart, toGo, toJava, toKotlin, toPHP, toPython, toRust, toSwift } from './langs';
 import { toJSONSchema, toTypeScript, toZod } from './types';
 
@@ -42,6 +42,7 @@ export const TARGETS: Target[] = [
   T('yaml', 'YAML', 'Data', 'yaml'),
   T('xml', 'XML', 'Data', 'xml'),
   T('toml', 'TOML', 'Data', 'toml'),
+  T('jsonl', 'JSON Lines', 'Data', 'jsonl', 'json'),
 ];
 
 const EMIT: Record<string, Emitter> = {
@@ -61,9 +62,10 @@ const EMIT: Record<string, Emitter> = {
   yaml: toYAML,
   xml: (r, o) => toXML(r, o.rootName),
   toml: (r, o) => toTOML(r, o.rootName),
+  jsonl: toJSONL,
 };
 
-const COMMENT: Record<string, string> = { python: '# ', yaml: '# ', toml: '# ', csv: '', 'json-schema': '' };
+const COMMENT: Record<string, string> = { python: '# ', yaml: '# ', toml: '# ', csv: '', 'json-schema': '', jsonl: '' };
 
 /** Converts a parsed document to `target` (a `Target.id`). */
 export function convert(root: JNode, target: string, opts: ConvertOptions): string {

@@ -42,6 +42,16 @@
 - [TOML to JSON](https://tools.vikasmaur.com/tools/toml-to-json): local TOML import with tables, scalar values and arrays.
 - [Offline JSON formatter](https://tools.vikasmaur.com/tools/offline-json-formatter): installation, caching, offline verification, storage and updates.
 - [Secure JSON formatter](https://tools.vikasmaur.com/tools/secure-json-formatter): local document processing, network verification, analytics disclosure and CSP limits.
+- [JSONL viewer](https://tools.vikasmaur.com/tools/jsonl-viewer): browse JSON Lines and NDJSON records as a tree or table.
+- [NDJSON to JSON](https://tools.vikasmaur.com/tools/ndjson-to-json): turn JSON Lines into one JSON array.
+- [JSONL to CSV](https://tools.vikasmaur.com/tools/jsonl-to-csv): JSON Lines records to CSV with dotted columns for nested fields.
+- [JSON to JSONL](https://tools.vikasmaur.com/tools/json-to-jsonl): one compact JSON record per line from an array.
+- [Sort JSON keys](https://tools.vikasmaur.com/tools/sort-json-keys): sort object keys alphabetically at every level.
+- [JSON escape and unescape](https://tools.vikasmaur.com/tools/json-escape): a JSON document as one escaped string, and back.
+- [JSON repair](https://tools.vikasmaur.com/tools/json-repair): fix quotes, commas, comments and other common mistakes.
+- [JSON to table](https://tools.vikasmaur.com/tools/json-to-table): a sortable grid with one row per record.
+- [JSON path finder](https://tools.vikasmaur.com/tools/json-path-finder): copy the path to any value, or jump to a path.
+- [Large JSON file viewer](https://tools.vikasmaur.com/tools/large-json-viewer): open big JSON files locally in a fast tree view.
 
 ## JSON error guides
 

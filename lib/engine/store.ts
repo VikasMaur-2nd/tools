@@ -21,6 +21,8 @@ export interface Settings {
   /** Format view: pretty-printed or minified output, keys sorted or as written. */
   minify: boolean;
   sortKeys: boolean;
+  /** Format view: show the minified document as one escaped JSON string literal. */
+  escape: boolean;
   /** Convert panel target id, root type name, TypeScript flavour and C# JSON library. */
   target: string;
   rootName: string;
@@ -31,7 +33,7 @@ export interface Settings {
 export type Status =
   | { kind: 'empty' }
   | { kind: 'parsing' }
-  | { kind: 'valid'; warnings: number; msg?: string; p?: number; line?: number; col?: number; jwt?: string; expired?: boolean }
+  | { kind: 'valid'; warnings: number; msg?: string; p?: number; line?: number; col?: number; jwt?: string; expired?: boolean; jsonl?: number }
   | { kind: 'fixable'; msg: string; p: number; line: number; col: number; count: number }
   | { kind: 'error'; msg: string; p: number; line: number; col: number };
 
@@ -73,7 +75,7 @@ export interface UIState {
   path: string | null;
   cursor: { line: number; col: number; sel: number };
   /** Find bar (searches whichever view is open). */
-  find: { open: boolean; q: string; total: number; index: number; /** bumps when q is set from outside the find bar */ seq: number };
+  find: { open: boolean; q: string; total: number; index: number; note?: string; /** bumps when q is set from outside the find bar */ seq: number };
   table: { segs: Seg[]; rows: number; cols: number; ok: boolean };
   /** Smart suggestion for input that isn't JSON (yet). */
   hint: Hint;
@@ -82,7 +84,7 @@ export interface UIState {
   viewOnly: boolean;
   convert: { loading: boolean; error: string | null; lines: number; bytes: number };
   /** Format view output: line count and the byte size of both variants. */
-  fmt: { lines: number; pretty: number; minified: number };
+  fmt: { lines: number; pretty: number; minified: number; escaped: number };
   /** Wire sizes of the valid document: minified, then compressed by each codec the browser has. */
   sizes: Sizes | null;
   /** Current document text, published only while the Compare view is open. */
@@ -106,6 +108,7 @@ export const DEFAULT_SETTINGS: Settings = {
   splitCmp: 0.66,
   minify: false,
   sortKeys: false,
+  escape: false,
   target: 'typescript',
   rootName: 'Root',
   tsStyle: 'interface',
@@ -128,7 +131,7 @@ export const INITIAL: UIState = {
   fileName: null,
   viewOnly: false,
   convert: { loading: false, error: null, lines: 0, bytes: 0 },
-  fmt: { lines: 0, pretty: 0, minified: 0 },
+  fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0 },
   sizes: null,
   docText: '',
   cmpText: '',

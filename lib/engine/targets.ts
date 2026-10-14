@@ -27,6 +27,7 @@ export const TARGETS: TargetInfo[] = [
   { id: 'yaml', label: 'YAML', group: 'Data', ext: 'yaml', lang: 'yaml', mime: 'text/yaml' },
   { id: 'xml', label: 'XML', group: 'Data', ext: 'xml', lang: 'xml', mime: 'application/xml' },
   { id: 'toml', label: 'TOML', group: 'Data', ext: 'toml', lang: 'toml', mime: 'text/plain' },
+  { id: 'jsonl', label: 'JSON Lines (NDJSON)', group: 'Data', ext: 'jsonl', lang: 'json', mime: 'application/x-ndjson' },
 ];
 
 export const targetInfo = (id: string) => TARGETS.find((t) => t.id === id) ?? TARGETS[0];

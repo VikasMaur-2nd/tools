@@ -25,6 +25,8 @@ const plain: LineHighlighter = (t) => escapeHtml(t);
 export interface FindResult {
   total: number;
   index: number;
+  /** Why a query can't match as written (the tree's path search). */
+  note?: string;
 }
 
 export class CodeView {

@@ -7,7 +7,8 @@ import { toCsv } from '@/lib/convert/xlsx';
 import { importToJson } from '@/lib/convert/import';
 import { formatDoc } from '@/lib/json/format';
 import { jwtToJson } from '@/lib/json/jwt';
-import { parse } from '@/lib/json/parser';
+import { ARR, OBJ, STR, kids, parse, type JNode } from '@/lib/json/parser';
+import { formatPath, pathOf } from '@/lib/json/path';
 import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../../seo';
 import ContentShell from '../../content-shell';
 import { TOOL_PAGE_BY_SLUG, TOOL_PAGES, type ToolPage } from '@/lib/tool-pages';
@@ -35,6 +36,28 @@ function importedExample(text: string, format: 'yaml' | 'csv' | 'xml' | 'toml') 
   return 'json' in result ? prettyJson(result.json) : `Import error: ${result.error}`;
 }
 
+/** The Table view as text: an index column, then one column per key ({n} / [n] for nested values, · for missing). */
+function textTable(root: JNode) {
+  const items = kids(root);
+  const keys: string[] = [];
+  for (const it of items) if (it.t === OBJ) for (const c of kids(it)) if (!keys.includes(String(c.key))) keys.push(String(c.key));
+  const cell = (n: JNode | undefined) => (!n ? '·' : n.t === OBJ ? `{${kids(n).length}}` : n.t === ARR ? `[${kids(n).length}]` : String(n.v));
+  const grid = [['#', ...keys], ...items.map((it, i) => [String(i), ...keys.map((k) => cell(kids(it).find((c) => c.key === k)))])];
+  const widths = keys.map((_, c) => Math.max(...grid.map((row) => row[c + 1].length)));
+  return grid.map((row) => [row[0].padEnd(2), ...row.slice(1).map((v, c) => v.padEnd(widths[c]))].join('  ').trimEnd()).join('\n');
+}
+
+/** Every leaf value with its path, as the tree's path display shows it. */
+function pathList(root: JNode) {
+  const out: string[] = [];
+  const walk = (n: JNode) => {
+    if (n.t >= ARR) for (const c of kids(n)) walk(c);
+    else out.push(`${formatPath(pathOf(n))}  ${n.t === STR ? JSON.stringify(n.v) : String(n.v)}`);
+  };
+  walk(root);
+  return out.join('\n');
+}
+
 function exampleOutput(page: ToolPage) {
   if (page.slug === 'json-validator') {
     const result = parse(page.sample);
@@ -52,6 +75,11 @@ function exampleOutput(page: ToolPage) {
   if (page.slug === 'csv-to-json') return importedExample(page.sample, 'csv');
   if (page.slug === 'xml-to-json') return importedExample(page.sample, 'xml');
   if (page.slug === 'toml-to-json') return importedExample(page.sample, 'toml');
+  if (page.slug === 'jsonl-viewer' || page.slug === 'ndjson-to-json') return formatDoc(page.sample, parse(page.sample, { lines: true }), '  ');
+  if (page.slug === 'sort-json-keys') return formatDoc(page.sample, parse(page.sample), '  ', true);
+  if (page.slug === 'json-escape') return JSON.stringify(formatDoc(page.sample, parse(page.sample), ''));
+  if (page.slug === 'json-to-table') return textTable(parse(page.sample).root!);
+  if (page.slug === 'json-path-finder') return pathList(parse(page.sample).root!);
   const root = parse(page.sample).root;
   if (!root) return page.sample;
   const target = page.preset.settings?.target;
