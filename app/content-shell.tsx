@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
+import IntentLink from '@/components/IntentLink';
 import { POSTS } from './blogs/posts';
 
 /** The app icon, drawn with theme colors so it follows light and dark mode. */
@@ -32,26 +32,26 @@ export default function ContentShell({
       </a>
       <header className="site-header">
         <div className="wrap site-header-in">
-          <Link className="site-brand" href="/" aria-label="Tool Kumar JSON viewer">
+          <IntentLink className="site-brand" href="/" aria-label="Tool Kumar JSON viewer">
             <Logo />
             <span>Tool Kumar</span>
-          </Link>
+          </IntentLink>
           <nav className="site-nav" aria-label="Main">
-            <Link href="/tools" aria-current={here('tools')}>
+            <IntentLink href="/tools" aria-current={here('tools')}>
               Tools
-            </Link>
-            <Link href="/blogs" aria-current={here('blogs')}>
+            </IntentLink>
+            <IntentLink href="/blogs" aria-current={here('blogs')}>
               Blog
-            </Link>
-            <Link href="/resources" aria-current={here('resources')}>
+            </IntentLink>
+            <IntentLink href="/resources" aria-current={here('resources')}>
               Resources
-            </Link>
-            <Link href="/about" aria-current={here('about')}>
+            </IntentLink>
+            <IntentLink href="/about" aria-current={here('about')}>
               About
-            </Link>
-            <Link className="site-cta" href="/">
+            </IntentLink>
+            <IntentLink className="site-cta" href="/">
               JSON viewer
-            </Link>
+            </IntentLink>
           </nav>
         </div>
         {progress && <div className="progress" aria-hidden="true" />}
@@ -65,20 +65,20 @@ export default function ContentShell({
         <div className="wrap">
           <div className="foot-grid">
             <div className="foot-brand">
-              <Link className="site-brand" href="/">
+              <IntentLink className="site-brand" href="/">
                 <Logo size={22} />
                 <span>Tool Kumar</span>
-              </Link>
+              </IntentLink>
               <p>Private, browser-based JSON tools. Your data never leaves your device.</p>
             </div>
             <nav aria-label="Tools">
               <p className="foot-h">Tools</p>
               <ul>
                 <li>
-                  <Link href="/">JSON viewer &amp; formatter</Link>
+                  <IntentLink href="/">JSON viewer &amp; formatter</IntentLink>
                 </li>
                 <li>
-                  <Link href="/tools">All JSON tools</Link>
+                  <IntentLink href="/tools">All JSON tools</IntentLink>
                 </li>
               </ul>
             </nav>
@@ -87,11 +87,11 @@ export default function ContentShell({
               <ul>
                 {POSTS.slice(0, 4).map((p) => (
                   <li key={p.slug}>
-                    <Link href={`/blogs/${p.slug}`}>{p.title.split(':')[0]}</Link>
+                    <IntentLink href={`/blogs/${p.slug}`}>{p.title.split(':')[0]}</IntentLink>
                   </li>
                 ))}
                 <li>
-                  <Link href="/blogs">All posts</Link>
+                  <IntentLink href="/blogs">All posts</IntentLink>
                 </li>
               </ul>
             </nav>
@@ -99,13 +99,13 @@ export default function ContentShell({
               <p className="foot-h">Resources</p>
               <ul>
                 <li>
-                  <Link href="/resources/json-reference">JSON syntax reference</Link>
+                  <IntentLink href="/resources/json-reference">JSON syntax reference</IntentLink>
                 </li>
                 <li>
-                  <Link href="/resources/json-examples">JSON examples</Link>
+                  <IntentLink href="/resources/json-examples">JSON examples</IntentLink>
                 </li>
                 <li>
-                  <Link href="/json-errors">JSON error guides</Link>
+                  <IntentLink href="/json-errors">JSON error guides</IntentLink>
                 </li>
               </ul>
             </nav>
@@ -113,7 +113,7 @@ export default function ContentShell({
               <p className="foot-h">Company</p>
               <ul>
                 <li>
-                  <Link href="/about">About Tool Kumar</Link>
+                  <IntentLink href="/about">About Tool Kumar</IntentLink>
                 </li>
               </ul>
             </nav>

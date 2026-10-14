@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import IntentLink from '@/components/IntentLink';
 import { notFound } from 'next/navigation';
 import JsonTool from '@/components/JsonTool';
 import { convert } from '@/lib/convert';
@@ -155,7 +155,7 @@ function ToolContent({ page }: { page: ToolPage }) {
           const study = slug === 'privacy-study';
           const label = home ? 'JSON formatter' : study ? 'JSON formatter privacy study' : TOOL_PAGE_BY_SLUG.get(slug)?.heading ?? slug;
           const href = home ? '/' : study ? '/blogs/json-formatter-privacy-study' : `/tools/${slug}`;
-          return <span key={slug}>{i > 0 ? ', ' : ''}<Link href={href}>{label}</Link></span>;
+          return <span key={slug}>{i > 0 ? ', ' : ''}<IntentLink href={href}>{label}</IntentLink></span>;
         })}.</p>
       </div>
     </ContentShell>
