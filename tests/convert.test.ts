@@ -456,3 +456,12 @@ test('deep nesting does not throw', () => {
   const root = doc('['.repeat(depth) + '{"a":1}' + ']'.repeat(depth));
   for (const t of TARGETS) assert.equal(typeof convert(root, t.id, { rootName: 'Root' }), 'string');
 });
+
+// Record components cannot shadow Object methods, even when they are valid identifiers.
+test('Java record components preserve keys that name Object methods', () => {
+  const out = conv('{"toString":"Ada","hashCode":42,"getClass":"user","wait":true,"clone":null,"finalize":false,"notify":1,"notifyAll":2}', 'java');
+  for (const name of ['toString', 'hashCode', 'getClass', 'wait', 'clone', 'finalize', 'notify', 'notifyAll']) {
+    assert.ok(out.includes(`@JsonProperty("${name}")`), name);
+    assert.match(out, new RegExp(`\\b${name}_[,)\\s]`), name);
+  }
+});

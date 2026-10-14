@@ -148,7 +148,7 @@ export function toRust(root: JNode, o: ConvertOptions): string {
 /* ---------- Java (records + Jackson) ---------- */
 
 const JAVA_KW = set(
-  'abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var record yield sealed permits _',
+  'abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var record yield sealed permits _ clone finalize getClass hashCode notify notifyAll toString wait',
 );
 const BOX: Record<string, string> = { boolean: 'Boolean', long: 'Long', double: 'Double' };
 const box = (t: string) => BOX[t] || t;
