@@ -101,7 +101,8 @@ function loadSettings(): Settings {
     if (!['format', 'tree', 'table', 'convert'].includes(out.prevView)) out.prevView = 'format';
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
-    out.escape = !!out.escape;
+    // String output is a one-off conversion, not a preference: a new visit shows the document itself.
+    out.escape = false;
     if (out.tsStyle !== 'type') out.tsStyle = 'interface';
     if (out.csharpLib !== 'newtonsoft') out.csharpLib = 'stj';
     out.rootName = String(out.rootName || 'Root').slice(0, 60);
