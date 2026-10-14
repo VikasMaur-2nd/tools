@@ -104,6 +104,9 @@ export default function ContentShell({
                 <li>
                   <Link href="/resources/json-examples">JSON examples</Link>
                 </li>
+                <li>
+                  <Link href="/json-errors">JSON error guides</Link>
+                </li>
               </ul>
             </nav>
             <nav aria-label="Company">

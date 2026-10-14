@@ -32,6 +32,18 @@
 - [JSON to Excel](https://tools.vikasmaur.com/tools/json-to-excel): export JSON records to XLSX.
 - [JWT decoder](https://tools.vikasmaur.com/tools/jwt-decoder): inspect a JWT header and payload without verification.
 
+## JSON error guides
+
+- [JSON errors hub](https://tools.vikasmaur.com/json-errors): choose a guide by diagnostic message and root cause.
+- [Unexpected token '<' / DOCTYPE is not valid JSON](https://tools.vikasmaur.com/json-errors/unexpected-token-html): Fix JSON parsing failures caused by HTML responses. Inspect the response status, content type and body before parsing in JavaScript, Python or Go.
+- [Unexpected end of JSON input: empty or truncated data](https://tools.vikasmaur.com/json-errors/unexpected-end-of-json-input): Find and fix empty responses and truncated JSON behind Unexpected end of JSON input, Python Expecting value at char 0 and Go EOF errors.
+- ["undefined" or "[object Object]" is not valid JSON](https://tools.vikasmaur.com/json-errors/undefined-is-not-valid-json): Fix JSON.parse calls that receive undefined or an already-parsed object. Learn when to parse, when to stringify and how to guard missing storage values.
+- [Expecting property name enclosed in double quotes](https://tools.vikasmaur.com/json-errors/single-quotes-unquoted-keys): Fix single-quoted strings and unquoted keys in JSON. Compare exact Python and JavaScript errors and serialize objects without unsafe quote replacement.
+- [JSON trailing comma errors in objects and arrays](https://tools.vikasmaur.com/json-errors/trailing-comma): Remove trailing commas that strict JSON parsers reject. See version-specific JavaScript, Python and .NET messages and generate valid JSON with serializers.
+- [JSONDecodeError: Extra data and multiple JSON values](https://tools.vikasmaur.com/json-errors/extra-data): Fix Python JSONDecodeError: Extra data and JavaScript errors after a JSON value. Distinguish one JSON document from NDJSON and parse each format correctly.
+- [Bad control character in string literal in JSON](https://tools.vikasmaur.com/json-errors/bad-control-character): Fix unescaped newlines, tabs and other control characters inside JSON strings. See exact JavaScript and Python errors and use serializers to escape values.
+- [Go JSON: invalid character looking for beginning of value](https://tools.vikasmaur.com/json-errors/go-invalid-character): Diagnose unexpected prefixes, plain-text errors and byte-order marks in Go JSON input. Check HTTP bodies and use SyntaxError.Offset to locate the bad byte.
+
 ## Site facts
 
 - The parser and formatter run in the browser.
