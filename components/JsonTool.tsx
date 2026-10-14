@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { Engine } from '@/lib/engine/engine';
+import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { store, useUI, type IndentId, type View } from '@/lib/engine/store';
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
@@ -1073,7 +1073,8 @@ function DropOverlay() {
 
 // ── Root ───────────────────────────────────────────────────────────────────
 
-export default function JsonTool() {
+export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
+  const presetRef = useRef(preset);
   const edRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -1084,6 +1085,7 @@ export default function JsonTool() {
   const comparing = useUI((s) => s.settings.view === 'compare');
 
   useEffect(() => {
+    const pagePreset = presetRef.current;
     const e = new Engine({
       editor: edRef.current!,
       tree: treeRef.current!,
@@ -1092,7 +1094,20 @@ export default function JsonTool() {
       code: codeRef.current!,
       fmt: fmtRef.current!,
       editor2: ed2Ref.current!,
-    });
+    }, { preserveDocument: !!pagePreset?.initialText });
+    if (pagePreset?.initialText) {
+      e.load(pagePreset.initialText, pagePreset.initialFileName ?? null, false);
+      if (pagePreset.settings?.view === 'convert') {
+        e.setConvert({ target: pagePreset.settings.target ?? 'typescript', rootName: pagePreset.settings.rootName ?? 'Root', tsStyle: pagePreset.settings.tsStyle ?? 'interface' });
+      } else if (pagePreset.settings?.view) {
+        e.setView(pagePreset.settings.view);
+        if (pagePreset.settings.view === 'format' && (pagePreset.settings.minify !== undefined || pagePreset.settings.sortKeys !== undefined)) {
+          e.setFormat({ minify: pagePreset.settings.minify, sortKeys: pagePreset.settings.sortKeys });
+        }
+      }
+      if (pagePreset.decodeJwt) window.setTimeout(() => void e.decodeJwt(), 0);
+      if (pagePreset.initialImport) window.setTimeout(() => void e.importAs(pagePreset.initialImport as 'yaml' | 'xml' | 'csv' | 'toml'), 0);
+    }
     setEngine(e);
     const warm = window.setTimeout(() => void import('./CompareView'), 5000);
     return () => {
@@ -1105,10 +1120,14 @@ export default function JsonTool() {
 
   return (
     <div className={comparing ? 'app comparing' : 'app'}>
-      <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
-      <p className="sr-only">
-        Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
-      </p>
+      {!preset && (
+        <>
+          <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
+          <p className="sr-only">
+            Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
+          </p>
+        </>
+      )}
       <main className="panes">
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />

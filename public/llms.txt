@@ -12,6 +12,26 @@
 - [Origin of JSON](https://tools.vikasmaur.com/blogs/origin-of-json): the history of the format and its standards.
 - [About Tool Kumar](https://tools.vikasmaur.com/about): privacy and processing details.
 
+## Dedicated JSON tools
+
+- [All JSON tools](https://tools.vikasmaur.com/tools): the crawlable index of formatter, validator, conversion and import tools.
+- [JSON validator](https://tools.vikasmaur.com/tools/json-validator): find syntax errors and repair common loose JSON.
+- [JSON minifier](https://tools.vikasmaur.com/tools/json-minifier): remove insignificant whitespace.
+- [JSON diff](https://tools.vikasmaur.com/tools/json-diff): compare two JSON documents.
+- [JSON to TypeScript](https://tools.vikasmaur.com/tools/json-to-typescript): generate TypeScript declarations.
+- [JSON to Zod](https://tools.vikasmaur.com/tools/json-to-zod): generate a Zod schema.
+- [JSON Schema generator](https://tools.vikasmaur.com/tools/json-schema-generator): infer a JSON Schema from an example.
+- [JSON to Go](https://tools.vikasmaur.com/tools/json-to-go): generate Go structs with JSON tags.
+- [JSON to Python](https://tools.vikasmaur.com/tools/json-to-python): generate Python Pydantic models.
+- [JSON to YAML](https://tools.vikasmaur.com/tools/json-to-yaml): convert JSON to YAML.
+- [YAML to JSON](https://tools.vikasmaur.com/tools/yaml-to-json): import YAML as formatted JSON.
+- [JSON to CSV](https://tools.vikasmaur.com/tools/json-to-csv): export JSON records to CSV.
+- [CSV to JSON](https://tools.vikasmaur.com/tools/csv-to-json): import CSV records as JSON.
+- [JSON to XML](https://tools.vikasmaur.com/tools/json-to-xml): convert JSON to XML.
+- [XML to JSON](https://tools.vikasmaur.com/tools/xml-to-json): import XML as JSON.
+- [JSON to Excel](https://tools.vikasmaur.com/tools/json-to-excel): export JSON records to XLSX.
+- [JWT decoder](https://tools.vikasmaur.com/tools/jwt-decoder): inspect a JWT header and payload without verification.
+
 ## Site facts
 
 - The parser and formatter run in the browser.
