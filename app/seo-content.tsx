@@ -47,6 +47,9 @@ export default function SeoContent() {
         Use the <Link href="/resources/json-reference">JSON syntax reference</Link> to check the standard rules, or download{' '}
         <Link href="/resources/json-examples">JSON examples for APIs and configuration</Link> for documentation and tests.
       </p>
+      <p>
+        Open the <Link href="/tools">JSON tools hub</Link> for dedicated pages covering JSON diff, JSON Schema, TypeScript, Zod, CSV, YAML, XML, Excel and JWT decoding.
+      </p>
     </section>
   );
 }

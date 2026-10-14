@@ -28,6 +28,14 @@ export interface EngineEls {
   editor2: HTMLElement;
 }
 
+export interface EnginePreset {
+  settings?: Partial<Settings>;
+  initialText?: string;
+  initialFileName?: string;
+  decodeJwt?: boolean;
+  initialImport?: 'yaml' | 'xml' | 'csv' | 'toml';
+}
+
 /** JSON highlighter for soft-wrapped rows (a row may start inside a string). */
 const jsonRow: LineHighlighter = (t, inStr, esc) => {
   if (!inStr) return highlightLine(t, 0, t.length, null);

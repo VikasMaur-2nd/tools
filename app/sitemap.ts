@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { POSTS } from './blogs/posts';
+import { TOOL_PAGES } from '@/lib/tool-pages';
 
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
 // keeps this route free of sync IO so it prerenders under `cacheComponents`.
@@ -51,5 +52,17 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.75,
     },
+    {
+      url: `${SITE}/tools`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: 'monthly',
+      priority: 0.9,
+    },
+    ...TOOL_PAGES.map((page) => ({
+      url: `${SITE}/tools/${page.slug}`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
   ];
 }
