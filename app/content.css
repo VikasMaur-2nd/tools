@@ -34,6 +34,67 @@ html:has(.content-page:not([style*='none'])) {
   font: 16px/1.6 var(--font-ui);
 }
 
+/* The editor remains a full-screen first interaction, while the homepage
+   explanation is crawlable and readable below it. */
+.home-page {
+  min-height: 100%;
+}
+
+.home-page .seo-content {
+  width: min(100% - 48px, 920px);
+  margin: 0 auto;
+  padding: 64px 0 88px;
+  color: var(--fg-2);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.home-page .seo-content h2 {
+  margin: 0 0 12px;
+  color: var(--fg);
+  font-size: clamp(22px, 3vw, 32px);
+  letter-spacing: -0.03em;
+}
+
+.home-page .seo-content h2:not(:first-child) {
+  margin-top: 42px;
+}
+
+.home-page .seo-content p,
+.home-page .seo-content ul,
+.home-page .seo-content ol,
+.home-page .seo-content dl {
+  margin: 0 0 18px;
+}
+
+.home-page .seo-content ul,
+.home-page .seo-content ol {
+  padding-left: 24px;
+}
+
+.home-page .seo-content dt {
+  margin-top: 16px;
+  color: var(--fg);
+  font-weight: 650;
+}
+
+.home-page .seo-content dd {
+  margin: 4px 0 0;
+}
+
+.home-page .seo-content a {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .home-page .seo-content {
+    width: min(100% - 32px, 920px);
+    padding: 48px 0 64px;
+    font-size: 15px;
+  }
+}
+
 .content-page ::selection {
   background: var(--sel);
 }

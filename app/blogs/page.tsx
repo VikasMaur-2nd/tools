@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import ContentShell from '../content-shell';
-import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { blogPageLd, jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 import { Arrow, PostCard } from './post-card';
 import { POSTS } from './posts';
 
@@ -26,6 +26,7 @@ export const metadata: Metadata = {
 export default function BlogsPage() {
   return (
     <ContentShell current="blogs">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript({ '@context': 'https://schema.org', '@graph': [blogPageLd] }) }} />
       <header className="page-head">
         <p className="eyebrow">Tool Kumar blog</p>
         <h1>JSON guides, tips and history</h1>

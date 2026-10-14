@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function SeoContent() {
   return (
-    <section className="sr-only" aria-labelledby="seo-content-title">
+    <section className="seo-content" aria-labelledby="seo-content-title">
       <h2 id="seo-content-title">Free JSON viewer and formatter</h2>
       <p>
         Tool Kumar is a free online JSON viewer, formatter and validator. Paste JSON or open a local file to format it, check

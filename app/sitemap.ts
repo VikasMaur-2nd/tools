@@ -4,6 +4,7 @@ import { POSTS } from './blogs/posts';
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
 // keeps this route free of sync IO so it prerenders under `cacheComponents`.
 const LAST_MODIFIED = '2026-10-13';
+const RESOURCES_LAST_MODIFIED = '2026-10-14';
 const SITE = 'https://tools.vikasmaur.com';
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -34,19 +35,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${SITE}/resources`,
-      lastModified: LAST_MODIFIED,
+      lastModified: RESOURCES_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.8,
     },
     {
       url: `${SITE}/resources/json-reference`,
-      lastModified: LAST_MODIFIED,
+      lastModified: RESOURCES_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.75,
     },
     {
       url: `${SITE}/resources/json-examples`,
-      lastModified: LAST_MODIFIED,
+      lastModified: RESOURCES_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.75,
     },

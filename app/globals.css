@@ -171,6 +171,13 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+html:has(.home-page),
+html:has(.home-page) body {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;

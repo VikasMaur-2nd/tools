@@ -5,7 +5,7 @@ import { Code } from '../blogs/article';
 import ContentShell, { Logo } from '../content-shell';
 import { jsonLdScript, SITE, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 
-export const RESOURCE_DATE = '2026-10-13';
+export const RESOURCE_DATE = '2026-10-14';
 
 export function resourceMetadata({ title, description, path }: { title: string; description: string; path: string }): Metadata {
   return {
