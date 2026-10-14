@@ -1,4 +1,4 @@
-import { escapeHtml, highlightLine, jwtLine, stringState, type Mark } from './highlight';
+import { escapeHtml, highlightLine, jwtLine, StringStates, stringState, type Mark } from './highlight';
 import { LONG_LINE, Wrapper } from './wrap';
 
 /*
@@ -194,6 +194,7 @@ export class Editor {
   private wodd = new Uint8Array(0);
   /** Text or folds changed since rows were last wrapped. */
   private wrapDirty = true;
+  private strs = new StringStates();
   private rFirst = -1;
   private rLast = -1;
   private rColA = 0;
@@ -835,12 +836,28 @@ export class Editor {
     this.body.style.width = this.wy ? '' : `${Math.ceil(this.maxCols * this.cw) + PAD_L + PAD_R + this.extraW}px`;
     this.body.style.height = h + 'px';
     this.gut.style.height = h + 'px';
-    // The textarea overflows its box, so it has more rows than we counted: this
-    // browser breaks ASCII its own way.
-    if (this.wy && !this.view && this.ta.scrollHeight > this.ta.clientHeight + 1 && this.wrapper?.distrust()) {
+    // The textarea overflows its box: it has more rows than we counted. Glyph
+    // widths may be stale (a font just arrived); failing that, this browser
+    // breaks ASCII its own way, so measure every line.
+    const wr = this.wrapper;
+    if (wr?.cols && this.wy && !this.view && !this.healing && this.overflows()) {
+      this.healing = true;
+      this.measure();
+      wr.reset();
       this.wrapDirty = true;
       this.layout();
+      if (this.overflows() && wr.distrust()) {
+        this.wrapDirty = true;
+        this.layout();
+      }
+      this.healing = false;
     }
+  }
+
+  private healing = false;
+
+  private overflows() {
+    return this.ta.scrollHeight > this.ta.clientHeight + 1;
   }
 
   private onScroll = () => {
@@ -966,7 +983,7 @@ export class Editor {
         const s1 = Math.min(rows, r1 - y);
         if (top < 0) top = y + s0;
         let sa = a + wr.rowStart(t, a, b, s0, odd);
-        let str = this.jwt ? 0 : stringState(t, a, sa);
+        let str = this.jwt ? 0 : this.strs.at(t, a, sa);
         for (let sub = s0; sub < s1; sub++) {
           const sb = sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b;
           const end = sb === b;

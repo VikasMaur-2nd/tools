@@ -1,4 +1,4 @@
-import { escapeHtml, stringState } from './highlight';
+import { escapeHtml, StringStates, stringState } from './highlight';
 import { LONG_LINE, Wrapper } from './wrap';
 
 /*
@@ -64,6 +64,8 @@ export class CodeView {
   private hl: LineHighlighter = plain;
   /** Track JSON string state across wrapped rows. */
   private json = false;
+  /** Long lines drawn around the view while not wrapping: string state at the first column drawn. */
+  private strs = new StringStates();
   /** Per wrapped line: string state at each row start (see stringState). */
   private states = new Map<number, number[]>();
   private html = new Map<number, string>();
@@ -386,7 +388,8 @@ export class CodeView {
     let vi = total ? this.visOfRow(first) : 0;
     // A line drawn as one block starts at its first row.
     if (total && this.isBlock(vi)) first = this.rowStart[vi];
-    if (wide && (vcA < this.rColA || vcB > this.rColB)) this.html.clear();
+    // Rows drawn earlier are kept for scrolling back, within reason.
+    if ((wide && (vcA < this.rColA || vcB > this.rColB)) || this.html.size > 4000) this.html.clear();
     this.rFirst = first;
     this.rLast = last;
     this.rColA = wide ? Math.max(0, vcA - H_OVERSCAN) : 0;
@@ -416,7 +419,7 @@ export class CodeView {
       }
       let h = this.html.get(row);
       if (h === undefined) {
-        const s = !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : stringState(line, 0, a);
+        const s = !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : this.strs.at(line, 0, a);
         h = this.hl(a || b < line.length ? line.slice(a, b) : line, (s & 1) === 1, (s & 2) === 2);
         if (foldedHere) {
           const end = this.close[ln];

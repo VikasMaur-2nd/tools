@@ -91,6 +91,13 @@ function chunks(s: string, a: number, b: number): [Text[], number[]] {
   return [nodes, at];
 }
 
+/** Width of a tab at `x` px into a row: to the next tab stop, the one after if that's under half a cell away (CSS Text). */
+function tabTo(x: number, cw: number) {
+  const stop = TAB * cw;
+  const g = (Math.floor(x / stop) + 1) * stop - x;
+  return g < cw / 2 ? g + stop : g;
+}
+
 const fragment = (nodes: Node[]) => {
   const f = document.createDocumentFragment();
   for (const n of nodes) f.appendChild(n);
@@ -147,8 +154,7 @@ export class Wrapper {
     if (cw !== this.cw) this.glyphs.clear();
     this.cols = cols;
     this.cw = cw;
-    this.sized.clear();
-    this.dropMirrors();
+    this.forget();
     this.box.style.width = this.width + 'px';
     return true;
   }
@@ -157,8 +163,7 @@ export class Wrapper {
   setExact(exact: boolean) {
     if (exact === this.exact) return false;
     this.exact = exact;
-    this.sized.clear();
-    this.dropMirrors();
+    this.forget();
     return true;
   }
 
@@ -169,8 +174,7 @@ export class Wrapper {
   distrust() {
     if (!this.trust) return false;
     this.trust = false;
-    this.sized.clear();
-    this.dropMirrors();
+    this.forget();
     return true;
   }
 
@@ -179,8 +183,7 @@ export class Wrapper {
     this.cols = 0;
     this.cw = 0;
     this.glyphs.clear();
-    this.sized.clear();
-    this.dropMirrors();
+    this.forget();
   }
 
   /**
@@ -283,9 +286,14 @@ export class Wrapper {
     }
     if (!this.exact && b - a > LONG_LINE) {
       const st = this.sum(text.slice(a, b));
-      let r = 0;
-      while (r + 1 < st.length && st[r + 1] <= off - a) r++;
-      return r;
+      let lo = 0;
+      let hi = st.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (st[mid] <= off - a) lo = mid;
+        else hi = mid - 1;
+      }
+      return lo;
     }
     const m = this.mirror(text.slice(a, b));
     const o = Math.min(b - a - 1, off - a);
@@ -422,7 +430,7 @@ export class Wrapper {
       let g: number;
       let join = joined;
       if (c >= 32 && c < 127) g = cw;
-      else if (c === 9) g = TAB * cw;
+      else if (c === 9) g = tabTo(w, cw);
       else {
         if (c >= 0xd800 && c < 0xdc00) {
           c = s.codePointAt(i) as number;
@@ -438,6 +446,7 @@ export class Wrapper {
       if (!join && w + g > max && i > starts[starts.length - 1]) {
         starts.push(i);
         w = 0;
+        if (c === 9) g = tabTo(0, cw);
       }
       w += g;
       joined = c === 0x200d;
@@ -494,7 +503,9 @@ export class Wrapper {
     return true;
   }
 
-  private dropMirrors() {
+  /** Drops every row count and break (they depend on the width, the fonts and the mode). */
+  private forget() {
+    this.sized.clear();
     for (const m of this.mirrors.values()) m.el.remove();
     this.mirrors.clear();
     this.sums.clear();

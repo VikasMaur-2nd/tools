@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { asciiCells, asciiRows, leadOf } from '../lib/engine/wrap';
-import { highlightLine, stringState } from '../lib/engine/highlight';
+import { highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 
 describe('soft wrap arithmetic', () => {
   test('printable ASCII takes one cell per character', () => {
@@ -37,6 +37,13 @@ describe('rows that start inside a string', () => {
     assert.equal(stringState(t, 0, 10), 1);
     assert.equal(stringState(t, 0, 12), 0);
     assert.equal(stringState(t, 4, 9, 0), stringState(t, 0, 9));
+  });
+
+  test('checkpoints give the state a scan from the line start does, in any order', () => {
+    const line = JSON.stringify(Array.from({ length: 3000 }, (_, i) => ({ k: 'v"\\' + i, n: i })));
+    const t = 'x\n' + line;
+    const states = new StringStates();
+    for (const off of [2, 100, 8194, 20000, 61000, 30000, 9, t.length]) assert.equal(states.at(t, 2, off), stringState(t, 2, off), String(off));
   });
 
   test('a row that continues a string highlights its rest as a string', () => {

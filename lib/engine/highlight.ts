@@ -32,6 +32,30 @@ export function stringState(text: string, a: number, b: number, state = 0): numb
   return s;
 }
 
+const STEP = 8192;
+
+/**
+ * stringState at offsets deep in long lines, from checkpoints every STEP
+ * characters: drawing rows while scrolling never rescans a line from its start.
+ */
+export class StringStates {
+  private text = '';
+  private lines = new Map<number, number[]>();
+
+  /** State at offset `off` of the line of `text` that starts at `a`. */
+  at(text: string, a: number, off: number): number {
+    if (text !== this.text) {
+      this.text = text;
+      this.lines.clear();
+    }
+    let cp = this.lines.get(a);
+    if (!cp) this.lines.set(a, (cp = [0]));
+    const k = Math.floor((off - a) / STEP);
+    for (let i = cp.length; i <= k; i++) cp.push(stringState(text, a + (i - 1) * STEP, a + i * STEP, cp[i - 1]));
+    return stringState(text, a + k * STEP, off, cp[k]);
+  }
+}
+
 /**
  * Syntax-highlights `text[a, b)` (one line, JSON never spans lines) into HTML.
  * Tolerant of loose JSON so the editor stays readable while it's invalid.
