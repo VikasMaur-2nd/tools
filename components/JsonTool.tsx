@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { Engine, type EnginePreset } from '@/lib/engine/engine';
+import { Engine, idle, type EnginePreset } from '@/lib/engine/engine';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { store, useUI, type IndentId, type View } from '@/lib/engine/store';
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
@@ -486,7 +486,7 @@ function FindInput({ initial, total, index, view }: { initial: string; total: nu
         autoComplete="off"
       />
       <span className="count" aria-live="polite">
-        {text ? (total ? `${index + 1} of ${total >= 100000 ? '100k+' : total.toLocaleString()}` : 'No results') : ''}
+        {text ? (total ? `${index + 1} of ${total >= 100000 ? '100k+' : int(total)}` : 'No results') : ''}
       </span>
       <button type="button" className="btn icon sm" aria-label="Previous match" onClick={() => act((e) => e.findStep(-1))}>
         <Icon name="up" size={14} />
@@ -518,7 +518,7 @@ function Crumbs() {
         </span>
       ))}
       <span className="muted sm dims">
-        {rows.toLocaleString()} × {cols - 1}
+        {int(rows)} × {cols - 1}
       </span>
     </nav>
   );
@@ -939,7 +939,9 @@ function StatusMsg() {
   }
 }
 
-const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+/** Thousands separators only where they show: the first toLocaleString() pays for the locale data (~80 ms on a slow phone). */
+const int = (n: number) => (n < 1000 ? String(n) : n.toLocaleString());
+const plural = (n: number, w: string) => `${int(n)} ${w}${n === 1 ? '' : 's'}`;
 
 const CODECS = [
   ['gzip', 'gzip'],
@@ -1000,7 +1002,7 @@ function Cursor() {
   return (
     <span className="cursor muted">
       Ln {line}, Col {col}
-      {sel > 0 && ` (${sel.toLocaleString()} selected)`}
+      {sel > 0 && ` (${int(sel)} selected)`}
     </span>
   );
 }
@@ -1110,21 +1112,26 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
       fmt: fmtRef.current!,
       editor2: ed2Ref.current!,
     }, { preserveDocument: !!pagePreset?.initialText });
-    if (pagePreset?.initialText) {
-      e.load(pagePreset.initialText, pagePreset.initialFileName ?? null, false);
-      if (pagePreset.settings?.view === 'convert') {
-        e.setConvert({ target: pagePreset.settings.target ?? 'typescript', rootName: pagePreset.settings.rootName ?? 'Root', tsStyle: pagePreset.settings.tsStyle ?? 'interface' });
-      } else if (pagePreset.settings?.view) {
-        e.setView(pagePreset.settings.view);
-        if (pagePreset.settings.view === 'format' && (pagePreset.settings.minify !== undefined || pagePreset.settings.sortKeys !== undefined)) {
-          e.setFormat({ minify: pagePreset.settings.minify, sortKeys: pagePreset.settings.sortKeys });
-        }
-      }
-      if (pagePreset.initialImport) window.setTimeout(() => void e.importAs(pagePreset.initialImport as 'yaml' | 'xml' | 'csv' | 'toml'), 0);
-    }
     setEngine(e);
-    const warm = window.setTimeout(() => void import('./CompareView'), 5000);
+    // A landing page's sample loads in the next task: hydration and the empty editor
+    // paint first, and neither half is one long blocking task on a slow phone.
+    const sample = pagePreset?.initialText
+      ? window.setTimeout(() => {
+          e.load(pagePreset.initialText!, pagePreset.initialFileName ?? null, false);
+          if (pagePreset.settings?.view === 'convert') {
+            e.setConvert({ target: pagePreset.settings.target ?? 'typescript', rootName: pagePreset.settings.rootName ?? 'Root', tsStyle: pagePreset.settings.tsStyle ?? 'interface' });
+          } else if (pagePreset.settings?.view) {
+            e.setView(pagePreset.settings.view);
+            if (pagePreset.settings.view === 'format' && (pagePreset.settings.minify !== undefined || pagePreset.settings.sortKeys !== undefined)) {
+              e.setFormat({ minify: pagePreset.settings.minify, sortKeys: pagePreset.settings.sortKeys });
+            }
+          }
+          if (pagePreset.initialImport) window.setTimeout(() => void e.importAs(pagePreset.initialImport!), 0);
+        }, 0)
+      : 0;
+    const warm = window.setTimeout(() => idle(() => void import('./CompareView')), 6000);
     return () => {
+      window.clearTimeout(sample);
       window.clearTimeout(warm);
       e.destroy();
       if (getEngine() === e) setEngine(null);

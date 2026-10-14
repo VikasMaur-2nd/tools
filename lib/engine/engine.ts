@@ -37,7 +37,7 @@ export interface EnginePreset {
 }
 
 export interface EngineOptions {
-  /** Keep an initial landing-page sample out of the user's home-page storage. */
+  /** A landing page: skip restoring the saved document and keep the page's sample out of home-page storage. */
   preserveDocument?: boolean;
 }
 
@@ -192,6 +192,9 @@ async function fromBase64Url(b64: string): Promise<string> {
   return new Response(stream).text();
 }
 
+/** Runs `fn` when the main thread is idle (soon, where requestIdleCallback is missing). */
+export const idle = (fn: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(fn, { timeout: 5000 }) : setTimeout(fn, 200));
+
 export class Engine {
   readonly ed: Editor;
   /** Compare: the modified document. */
@@ -276,8 +279,9 @@ export class Engine {
     this.code = new CodeView(els.code);
     this.fmt = new CodeView(els.fmt);
 
-    // Restore: text typed/restored before hydration wins, then saved doc.
-    if (!this.ed.text) {
+    // Restore: text typed/restored before hydration wins, then saved doc. A landing
+    // page replaces it with its own sample at once, so it isn't parsed there.
+    if (!this.ed.text && !options.preserveDocument) {
       const saved = read(KEYS.doc);
       if (saved) this.ed.init(saved);
     }
@@ -1206,7 +1210,10 @@ export class Engine {
   private async loadConverters(): Promise<ConvertModule> {
     if (!this.conv) {
       store.set({ convert: { ...store.get().convert, loading: true } });
-      this.conv = await import('../convert');
+      const mod = await import('../convert');
+      // The module's start-up and the first conversion run as two shorter tasks.
+      await new Promise((r) => setTimeout(r, 0));
+      this.conv = mod;
     }
     return this.conv;
   }
@@ -1608,25 +1615,26 @@ export class Engine {
       navigator.serviceWorker
         .register('/sw.js')
         .then(() => navigator.serviceWorker.ready)
-        .then(async (reg) => {
-          // Load the lazy features once (idle, after startup) so they're cached for
-          // offline use and survive a deploy while this tab stays open.
-          await Promise.all([
-            import('../convert'),
-            import('../convert/import'),
-            import('../convert/xlsx'),
-            import('../json/smart'),
-          ]).catch(() => {});
-          // Hand the SW every asset this page loaded so the app works offline right away.
-          const urls = performance
-            .getEntriesByType('resource')
-            .map((e) => e.name)
-            .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
-          reg.active?.postMessage({ type: 'cache', urls: [location.origin + '/', ...urls] });
+        .then((reg) => {
+          // Load the lazy features once so they're cached for offline use and survive a
+          // deploy while this tab stays open: one module per idle period, never a long task.
+          const mods = [() => import('../convert'), () => import('../convert/import'), () => import('../convert/xlsx'), () => import('../json/smart')];
+          const next = () => {
+            const load = mods.shift();
+            if (load) return void load().then(() => idle(next), () => idle(next));
+            // Hand the SW every asset this page loaded so the app works offline.
+            const urls = performance
+              .getEntriesByType('resource')
+              .map((e) => e.name)
+              .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
+            reg.active?.postMessage({ type: 'cache', urls: [location.origin + '/', ...urls] });
+          };
+          idle(next);
         })
         .catch(() => {});
     };
-    if (document.readyState === 'complete') setTimeout(go, 1000);
-    else window.addEventListener('load', () => setTimeout(go, 1000), { once: true });
+    // Offline caching is never urgent: start well after the page has settled.
+    if (document.readyState === 'complete') setTimeout(go, 4000);
+    else window.addEventListener('load', () => setTimeout(go, 4000), { once: true });
   }
 }
