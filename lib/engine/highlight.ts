@@ -124,3 +124,22 @@ export function highlightLine(text: string, a: number, b: number, marks: Mark[] 
   }
   return out;
 }
+
+const JWT_CLS = ['jw-b', 'jw-h', 'jw-d', 'jw-p', 'jw-d', 'jw-s'];
+
+/**
+ * `text[a, b)` of a JWT input, coloured by part: the optional "Bearer " prefix,
+ * header, payload and signature, with the dots muted. `at` is the prefix start,
+ * header, payload and signature starts and the signature end.
+ */
+export function jwtLine(text: string, a: number, b: number, at: readonly number[]): string {
+  const cut = [at[0], at[1], at[2] - 1, at[2], at[3] - 1, at[3], at[4]];
+  let out = escapeHtml(text.slice(a, Math.max(a, Math.min(b, cut[0]))));
+  for (let k = 0; k < JWT_CLS.length; k++) {
+    const s = Math.max(a, cut[k]);
+    const e = Math.min(b, cut[k + 1]);
+    // Escaped anyway: offsets lag an edit until the next analysis.
+    if (e > s) out += `<span class="${JWT_CLS[k]}">${escapeHtml(text.slice(s, e))}</span>`;
+  }
+  return out + escapeHtml(text.slice(Math.min(b, Math.max(a, cut[6])), b));
+}

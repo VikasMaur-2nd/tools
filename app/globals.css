@@ -1130,6 +1130,20 @@ kbd {
 .tp {
   color: var(--c-punct);
 }
+/* JWT input parts, in jwt.io's order of colours: header, payload, signature. */
+.jw-h {
+  color: var(--c-null);
+}
+.jw-p {
+  color: var(--c-bool);
+}
+.jw-s {
+  color: var(--c-key);
+}
+.jw-b,
+.jw-d {
+  color: var(--c-punct);
+}
 .tc {
   color: var(--c-com);
   font-style: italic;

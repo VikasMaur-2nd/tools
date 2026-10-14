@@ -1,4 +1,4 @@
-import { highlightLine, type Mark } from './highlight';
+import { highlightLine, jwtLine, type Mark } from './highlight';
 
 /*
  * The document lives in `text` (the model). Two presentations:
@@ -160,6 +160,8 @@ export class Editor {
   private scopeMark: Mark | null = null;
   /** Compare: per-line diff marks (1 added, 2 removed, 3 changed). */
   private lineMarks: Uint8Array | null = null;
+  /** The input is one JWT: its part offsets (see jwtLine), coloured instead of JSON tokens. */
+  private jwt: readonly number[] | null = null;
   private rFirst = -1;
   private rLast = -1;
   private rColA = 0;
@@ -754,9 +756,9 @@ export class Editor {
         const sb = Math.min(b, a + colB);
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
-        html += `${open}<i class="ed-sp" style="width:${pad}px"></i>${highlightLine(t, sa, sb, marks, sb === b)}${sb === b ? ph : ''}</div>`;
+        html += `${open}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa, sb, this.jwt) : highlightLine(t, sa, sb, marks, sb === b)}${sb === b ? ph : ''}</div>`;
       } else {
-        html += `${open}${highlightLine(t, a, b, marks)}${ph}</div>`;
+        html += `${open}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
       }
     }
     this.hl.style.transform = `translateY(${first * LH}px)`;
@@ -897,6 +899,14 @@ export class Editor {
       else break;
     }
     return i > p ? i : p + 1;
+  }
+
+  /** Colours a JWT input by part (null: back to JSON highlighting). */
+  setJwt(at: readonly number[] | null) {
+    const cur = this.jwt;
+    if (at === cur || (at && cur && at.every((v, i) => v === cur[i]))) return;
+    this.jwt = at;
+    this.render(true);
   }
 
   /** Compare: tint whole lines as added / removed / changed (null clears). */

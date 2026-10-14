@@ -4,7 +4,7 @@ import type { Seg } from '../json/path';
 export type Theme = 'system' | 'light' | 'dark';
 export type View = 'format' | 'tree' | 'table' | 'convert' | 'compare';
 export type IndentId = '2' | '4' | 'tab';
-export type Hint = 'unescape' | 'jwt' | 'yaml' | 'xml' | 'csv' | 'toml' | null;
+export type Hint = 'unescape' | 'yaml' | 'xml' | 'csv' | 'toml' | null;
 
 export interface Settings {
   theme: Theme;
@@ -31,7 +31,7 @@ export interface Settings {
 export type Status =
   | { kind: 'empty' }
   | { kind: 'parsing' }
-  | { kind: 'valid'; warnings: number; msg?: string; p?: number; line?: number; col?: number }
+  | { kind: 'valid'; warnings: number; msg?: string; p?: number; line?: number; col?: number; jwt?: string; expired?: boolean }
   | { kind: 'fixable'; msg: string; p: number; line: number; col: number; count: number }
   | { kind: 'error'; msg: string; p: number; line: number; col: number };
 

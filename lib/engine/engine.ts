@@ -11,6 +11,7 @@ import { targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type Theme, type View } from './store';
 import { SAMPLE } from './sample';
 import { codecs, compressedSize } from './sizes';
+import { compact, readJwt, type JwtInput } from '../json/jwt';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -32,7 +33,6 @@ export interface EnginePreset {
   settings?: Partial<Settings>;
   initialText?: string;
   initialFileName?: string;
-  decodeJwt?: boolean;
   initialImport?: 'yaml' | 'xml' | 'csv' | 'toml';
 }
 
@@ -152,12 +152,12 @@ function prettyExtra(root: JNode, unit: number): number {
   return extra;
 }
 
-const JWT_RE = /^eyJ[\w-]*\.eyJ[\w-]*\.[\w-]*$/;
+/** JWT-shaped, for a clearer error when a part doesn't decode. */
+const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
 
 /** Cheap guess at what non-JSON input is, to offer a one-click conversion. */
 function sniff(text: string): Hint {
   const t = text.trim();
-  if (JWT_RE.test(t)) return 'jwt';
   if (t.includes('\\"') && /^"?\s*[[{]/.test(t)) return 'unescape';
   if (t[0] === '<') return 'xml';
   if (t[0] === '{' || t[0] === '[') {
@@ -215,6 +215,8 @@ export class Engine {
   private parsed = '';
   /** Last result with a usable tree (shown dimmed while the text is broken). */
   private good: ParseResult | null = null;
+  /** The input is a JWT: `res` and the views describe its decoded document. */
+  private jwt: JwtInput | null = null;
   private sel: JNode | null = null;
   private selPath: Seg[] | null = null;
   private tablePath: Seg[] = [];
@@ -394,6 +396,8 @@ export class Engine {
     if (!text.trim()) {
       this.res = null;
       this.good = null;
+      this.jwt = null;
+      ed.setJwt(null);
       this.goodText = '';
       this.sel = null;
       this.selPath = null;
@@ -410,9 +414,13 @@ export class Engine {
     }
 
     const t0 = performance.now();
-    const res = parse(text);
+    const jwt = readJwt(text, this.indent);
+    const src = jwt ? jwt.json : text;
+    const res = parse(src);
     const ms = performance.now() - t0;
     this.res = res;
+    this.jwt = jwt;
+    ed.setJwt(jwt ? jwt.at : null);
     if (reset) {
       this.sel = null;
       this.selPath = null;
@@ -422,7 +430,7 @@ export class Engine {
 
     if (res.root) {
       this.good = res;
-      this.goodText = text;
+      this.goodText = src;
       this.tree.setRoot(res.root, reset, res.nodes);
       this.sel = this.selPath ? resolve(res.root, this.selPath) : null;
       this.tree.select(this.sel, { scroll: false });
@@ -437,21 +445,24 @@ export class Engine {
       ed.setScope(-1, -1);
     }
 
-    // Diagnostics → editor squiggles.
+    // Diagnostics → editor squiggles (a decoded JWT's positions aren't in the editor).
     const diags: Diagnostic[] = [];
-    for (let i = 0; i < res.issues.length && i < 300; i++) diags.push({ p: res.issues[i].p, cls: 'me' });
-    if (res.error) diags.push({ p: res.error.p, cls: 'me' });
-    for (let i = 0; i < res.warnings.length && i < 300; i++) diags.push({ p: res.warnings[i].p, cls: 'mw' });
+    if (!jwt) {
+      for (let i = 0; i < res.issues.length && i < 300; i++) diags.push({ p: res.issues[i].p, cls: 'me' });
+      if (res.error) diags.push({ p: res.error.p, cls: 'me' });
+      for (let i = 0; i < res.warnings.length && i < 300; i++) diags.push({ p: res.warnings[i].p, cls: 'mw' });
+    }
     ed.setDiagnostics(diags);
 
     let hint: Hint = null;
-    if (res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
+    if (jwt) hint = null;
+    else if (res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
     else if (res.error || res.issues.length) hint = sniff(text);
 
     store.set({
       empty: false,
       stale: !res.root && !!this.good,
-      status: this.statusOf(res),
+      status: jwt ? this.jwtStatus(jwt) : JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
       stats: { bytes: byteLength(text), lines: ed.ls.length, nodes: res.nodes, depth: res.depth, ms },
       path: this.sel ? formatPath(pathOf(this.sel)) : null,
       hint,
@@ -460,8 +471,16 @@ export class Engine {
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
     this.syncTableState();
     this.updateBrackets();
-    this.measure(res.root ? res : null, text);
+    this.measure(res.root && !jwt ? res : null, text);
     this.afterDoc();
+  }
+
+  /** "JWT · HS256 · expires in 59m": decoded locally, signature not verified. */
+  private jwtStatus(jwt: JwtInput): Status {
+    const now = Date.now() / 1000;
+    const expired = jwt.exp !== undefined && jwt.exp <= now;
+    const when = jwt.exp === undefined ? '' : expired ? ` · expired ${compact(now - jwt.exp)} ago` : ` · expires in ${compact(jwt.exp - now)}`;
+    return { kind: 'valid', warnings: 0, jwt: `JWT${jwt.alg ? ' · ' + jwt.alg : ''}${when}`, expired };
   }
 
   private sizeTimer = 0;
@@ -525,7 +544,7 @@ export class Engine {
 
   /** Is the viewer showing positions that match the current text? */
   private get synced() {
-    return !!this.res?.root && this.parsed === this.ed.text;
+    return !!this.res?.root && this.parsed === this.ed.text && !this.jwt;
   }
 
   // ── Selection sync ─────────────────────────────────────────────────────
@@ -604,12 +623,14 @@ export class Engine {
       this.gotoError();
       return;
     }
+    // A JWT input is rewritten from its decoded document (undoable).
+    const jwt = this.jwt;
     const before = this.ed.text;
     // Keep the caret on the same node across the rewrite.
-    const at = nodeAt(r.root, this.ed.caret, before);
+    const at = jwt ? null : nodeAt(r.root, this.ed.caret, before);
     const path = at ? pathOf(at) : null;
-    const next = fn(r, before);
-    const msg = done(r);
+    const next = fn(r, jwt ? jwt.json : before);
+    const msg = done(r) + (jwt ? ` · replaced the JWT with its decoded JSON · ${this.mod}Z to undo` : '');
     if (next === before) {
       this.toast(msg.replace(/ ·.*/, '') + ' · no changes', 'info');
       return;
@@ -729,14 +750,13 @@ export class Engine {
     this.toast(`Expanded nested JSON · ${this.mod}Z to undo`, 'ok');
   }
 
-  /** Replaces a JWT with its decoded header, payload and claims. */
-  async decodeJwt() {
-    const { jwtToJson } = await import('../json/smart');
-    const json = jwtToJson(this.ed.text.trim(), this.indent);
-    if (!json) return this.toast("That doesn't look like a valid JWT", 'err');
-    this.ed.setValue(json);
+  /** Replaces a JWT input with its decoded header, payload and claims, to edit them. */
+  decodeJwt() {
+    const jwt = this.fresh() && this.jwt;
+    if (!jwt) return this.toast('The input is not a JWT', 'info');
+    this.ed.setValue(jwt.json);
     this.analyze();
-    this.toast(`Decoded JWT (signature not verified) · ${this.mod}Z to undo`, 'ok');
+    this.toast(`Replaced the JWT with its decoded JSON (signature not verified) · ${this.mod}Z to undo`, 'ok');
   }
 
   gotoError() {
@@ -744,7 +764,7 @@ export class Engine {
     if (s.kind === 'error' || s.kind === 'fixable' || (s.kind === 'valid' && s.p !== undefined)) {
       const p = (s as { p: number }).p;
       this.ed.select(p, p, true);
-    } else if (s.kind === 'valid') this.toast('No errors, this is valid JSON', 'ok');
+    } else if (s.kind === 'valid') this.toast(this.jwt ? 'No errors, this JWT decodes' : 'No errors, this is valid JSON', 'ok');
   }
 
   undo() {
@@ -1024,7 +1044,7 @@ export class Engine {
     const r = this.fresh();
     if (!r?.root) return this.toast('Only valid JSON can be shared', 'err');
     try {
-      const data = await toBase64Url(formatDoc(this.ed.text, r, ''));
+      const data = await toBase64Url(this.jwt ? this.ed.text.trim() : formatDoc(this.ed.text, r, ''));
       if (data.length > 60_000) return this.toast('Too large to share as a link (limit ≈ 60 KB compressed)', 'err');
       await this.copy(`${location.origin}${location.pathname}#j=${data}`, 'Share link copied. The data lives in the link, not on a server.');
     } catch {

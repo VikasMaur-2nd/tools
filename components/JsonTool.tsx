@@ -712,11 +712,6 @@ function Banner() {
           Unescape JSON
         </button>
       )}
-      {hint === 'jwt' && (
-        <button type="button" className="btn sm accent" onClick={() => act((e) => e.decodeJwt())}>
-          Decode JWT
-        </button>
-      )}
       {(hint === 'yaml' || hint === 'xml' || hint === 'csv' || hint === 'toml') && (
         <button type="button" className="btn sm accent" onClick={() => act((e) => e.importAs(hint))}>
           {hint.toUpperCase()} → JSON
@@ -913,6 +908,14 @@ function StatusMsg() {
         </span>
       );
     case 'valid':
+      if (status.jwt) {
+        return (
+          <span className={`st ${status.expired ? 'warn' : 'ok'}`} title="Decoded in your browser. The signature is not verified.">
+            <i className="dot" />
+            {status.jwt}
+          </span>
+        );
+      }
       return (
         <span className="st ok">
           <i className="dot" />
@@ -950,7 +953,8 @@ const CODECS = [
 function Sizes() {
   const raw = useUI((s) => s.stats?.bytes);
   const sizes = useUI((s) => s.sizes);
-  const parsed = useUI((s) => s.status.kind === 'valid' || s.status.kind === 'fixable');
+  // A JWT input has no minified form of its own: just its raw size.
+  const parsed = useUI((s) => (s.status.kind === 'valid' && !s.status.jwt) || s.status.kind === 'fixable');
   if (raw === undefined) return null;
   const less = (n: number) => (raw > n ? ` · ${Math.round((1 - n / raw) * 100)}% smaller than the input` : '');
   return (
@@ -1118,7 +1122,6 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
           e.setFormat({ minify: pagePreset.settings.minify, sortKeys: pagePreset.settings.sortKeys });
         }
       }
-      if (pagePreset.decodeJwt) window.setTimeout(() => void e.decodeJwt(), 0);
       if (pagePreset.initialImport) window.setTimeout(() => void e.importAs(pagePreset.initialImport as 'yaml' | 'xml' | 'csv' | 'toml'), 0);
     }
     setEngine(e);

@@ -6,7 +6,7 @@ import { convert } from '@/lib/convert';
 import { toCsv } from '@/lib/convert/xlsx';
 import { importToJson } from '@/lib/convert/import';
 import { formatDoc } from '@/lib/json/format';
-import { decodeJwt } from '@/lib/json/smart';
+import { jwtToJson } from '@/lib/json/jwt';
 import { parse } from '@/lib/json/parser';
 import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../../seo';
 import ContentShell from '../../content-shell';
@@ -46,7 +46,8 @@ function exampleOutput(page: ToolPage) {
     return `Invalid JSON\nLine ${line}, column ${col}: ${issue?.m ?? 'invalid syntax'}`;
   }
   if (page.slug === 'json-diff') return '- "role": "admin"\n+ "role": "editor"';
-  if (page.slug === 'jwt-decoder') return JSON.stringify(decodeJwt(page.sample, 1700000000000), null, 2);
+  // A fixed clock keeps the prerender static (the sample expires 2027-10-01).
+  if (page.slug === 'jwt-decoder') return jwtToJson(page.sample, '  ', Date.UTC(2026, 9, 14)) ?? page.sample;
   if (page.slug === 'yaml-to-json') return importedExample(page.sample, 'yaml');
   if (page.slug === 'csv-to-json') return importedExample(page.sample, 'csv');
   if (page.slug === 'xml-to-json') return importedExample(page.sample, 'xml');
