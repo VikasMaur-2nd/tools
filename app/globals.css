@@ -842,6 +842,8 @@ kbd {
   font: 13px/var(--lh) var(--font-mono);
   font-variant-ligatures: none;
   font-feature-settings: 'liga' 0, 'calt' 0;
+  /* As textareas have it: the highlighted copy must shape text exactly like the textarea. */
+  text-rendering: auto;
   tab-size: 4;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -989,6 +991,80 @@ kbd {
 .ed-scope {
   display: none;
   background: var(--scope);
+}
+
+/*
+ * Soft wrap (lib/engine/wrap.ts): the textarea, the highlighted copy and the
+ * hidden measuring box break lines identically, at --tw (whole cells).
+ */
+.ed.wrap {
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.ed.wrap textarea,
+.ed.wrap .ed-hl > div,
+.wrap-box div {
+  white-space: break-spaces;
+  line-break: anywhere;
+  hyphens: none;
+}
+
+.ed.wrap textarea {
+  right: auto;
+  width: calc(28px + var(--tw));
+  padding-right: 12px;
+}
+
+.ed.wrap .ed-hl > div {
+  width: var(--tw);
+  height: auto;
+  min-height: var(--lh);
+}
+
+/* A row of a long line, drawn on its own. */
+.ed.wrap .ed-hl > .ed-row {
+  height: var(--lh);
+  white-space: pre;
+}
+
+/* Drawn past the line's end without taking room, so it never adds a row. */
+.ed.wrap .ed-fold {
+  display: inline-block;
+  width: 0;
+  white-space: pre;
+}
+
+.ed.wrap .meol {
+  margin-right: -0.6em;
+}
+
+/* Neighbouring text for a row drawn alone: orders right-to-left text, takes no room. */
+.ed-ctx {
+  font-size: 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.wrap-box {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  contain: strict;
+  pointer-events: none;
+}
+
+.wrap-box div {
+  min-height: var(--lh, 20px);
+}
+
+.wrap-box i {
+  display: inline-block;
+  font-style: normal;
+  white-space: pre;
 }
 
 .ed.plain {
@@ -1648,6 +1724,30 @@ button.tv-x:hover {
 
 .cv-wrap .cv-l {
   overflow: hidden;
+}
+
+/* Wrap off: lines run on (the sizer is as wide as the longest). */
+.cv-wrap.cv-nowrap .cv-l {
+  overflow: visible;
+}
+
+/* A wrapped line of wide glyphs, laid out by the browser like wrap.ts measured it. */
+.cv-l.cv-b {
+  height: auto;
+  min-height: 20px;
+}
+
+.cv-b .cv-c {
+  width: var(--cv-tw);
+  padding-right: 0;
+  white-space: break-spaces;
+  line-break: anywhere;
+  hyphens: none;
+}
+
+/* Stands in for the columns left of a long line's drawn slice. */
+.cv-sp {
+  display: inline-block;
 }
 
 .cv-rows {
@@ -2607,6 +2707,12 @@ button.mi:focus-visible {
   background: var(--seg-on);
   color: var(--fg);
   box-shadow: 0 0 0 1px var(--line);
+}
+
+.mi-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .mi-check {

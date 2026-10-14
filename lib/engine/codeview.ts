@@ -1,9 +1,13 @@
-import { escapeHtml } from './highlight';
+import { escapeHtml, stringState } from './highlight';
+import { LONG_LINE, Wrapper } from './wrap';
 
 /*
  * Virtualized read-only code viewer with lazily highlighted lines.
- * - Long lines soft-wrap into fixed-width rows (monospace), so a minified
- *   multi-megabyte line reads like a paragraph and virtualization still works.
+ * - Long lines soft-wrap (see wrap.ts), so a minified multi-megabyte line
+ *   reads like a paragraph and virtualization still works. ASCII rows are
+ *   slices of the line; a line of wider glyphs (CJK, emoji…) is laid out by
+ *   the browser in one block, or sliced where the browser breaks it if long.
+ *   Without wrapping, lines run on and long ones are drawn around the view.
  * - Brace/bracket blocks fold from the gutter (JSON and C-like code).
  * - Find highlights matches and jumps between them, unfolding as needed.
  */
@@ -12,6 +16,8 @@ const RH = 20;
 const OVERSCAN = 30;
 const PAD_X = 16;
 const MAX_HITS = 100_000;
+/** Columns drawn either side of the view on long lines while not wrapping. */
+const H_OVERSCAN = 400;
 
 /**
  * Highlights a slice of a line. `inString` is set when the slice starts inside
@@ -44,12 +50,21 @@ export class CodeView {
   /** Nesting depth of each block opener. */
   private depth = new Int32Array(0);
   private folded = new Set<number>();
-  private cols = 80;
   private cw = 7.8;
+  /** Soft wrap (null: lines run on and the view scrolls sideways). */
+  private wrapper: Wrapper | null;
+  /** Per visible line: 1 where the browser decides the breaks (Wrapper.odd). */
+  private odd = new Uint8Array(0);
+  /** Offset of each line in `text`. */
+  private ls = new Int32Array(0);
+  private maxLen = 0;
+  /** Columns drawn of long lines while not wrapping. */
+  private rColA = 0;
+  private rColB = 0;
   private hl: LineHighlighter = plain;
   /** Track JSON string state across wrapped rows. */
   private json = false;
-  /** Per long line: string state at each row boundary (bit 1 = in string, bit 2 = escape pending). */
+  /** Per wrapped line: string state at each row start (see stringState). */
   private states = new Map<number, number[]>();
   private html = new Map<number, string>();
   /** Labels drawn after a line's text (not part of it: copy and find ignore them). */
@@ -73,6 +88,7 @@ export class CodeView {
     this.el = el;
     this.sizer = el.querySelector('.cv-sizer') as HTMLElement;
     this.rows = el.querySelector('.cv-rows') as HTMLElement;
+    this.wrapper = new Wrapper(el, RH, false);
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
     this.ro = new ResizeObserver(() => {
@@ -80,16 +96,34 @@ export class CodeView {
       else this.render(true);
     });
     this.ro.observe(el);
-    document.fonts?.ready.then(() => {
-      if (this.el.isConnected && this.lines.length) this.reflow(true);
-    });
+    document.fonts?.ready.then(this.onFonts);
+    document.fonts?.addEventListener('loadingdone', this.onFonts);
   }
+
+  /** The code font (or its subset for another script) arrived: glyph widths and wrapped rows change. */
+  private onFonts = () => {
+    this.wrapper?.reset();
+    if (this.el.isConnected && this.lines.length) this.reflow(true);
+  };
 
   destroy() {
     this.el.removeEventListener('scroll', this.onScroll);
     this.el.removeEventListener('click', this.onClick);
     this.ro.disconnect();
     cancelAnimationFrame(this.raf);
+    document.fonts?.removeEventListener('loadingdone', this.onFonts);
+    this.wrapper?.destroy();
+  }
+
+  /** Soft-wraps long lines at the view's width, or lets them run on. */
+  setWrap(on: boolean) {
+    if (on === !!this.wrapper) return;
+    const top = this.lines.length ? this.lineAtRow(Math.floor(this.el.scrollTop / RH)) : -1;
+    this.wrapper?.destroy();
+    this.wrapper = on ? new Wrapper(this.el, RH, false) : null;
+    this.el.classList.toggle('cv-nowrap', !on);
+    this.el.scrollLeft = 0;
+    this.reflow(true, top);
   }
 
   /** Puts a small label after each given line (line index → HTML), or clears them. */
@@ -108,6 +142,16 @@ export class CodeView {
     this.hl = hl;
     this.json = json;
     this.lines = text ? text.split('\n') : [];
+    const ls = new Int32Array(this.lines.length);
+    let maxLen = 0;
+    for (let i = 0, p = 0; i < this.lines.length; i++) {
+      const len = this.lines[i].length;
+      ls[i] = p;
+      p += len + 1;
+      if (len > maxLen) maxLen = len;
+    }
+    this.ls = ls;
+    this.maxLen = maxLen;
     // Folds survive edits that keep the shape (same line count), e.g. changing a value.
     if (this.lines.length !== prevLines) this.folded.clear();
     this.scanFolds();
@@ -205,21 +249,37 @@ export class CodeView {
     this.width = this.el.clientWidth;
     this.measure();
     const gutter = (Math.max(3, String(this.lines.length).length) + 5) * this.cw;
-    this.cols = Math.max(20, Math.floor((this.width - gutter - PAD_X * 2) / this.cw));
     this.buildVisible();
     const vis = this.vis;
-    const rs = new Int32Array(vis.length + 1);
-    let r = 0;
-    for (let i = 0; i < vis.length; i++) {
-      rs[i] = r;
-      const len = this.lines[vis[i]].length;
-      r += !this.folded.has(vis[i]) && len > this.cols ? Math.ceil(len / this.cols) : 1;
+    const n = vis.length;
+    const wr = this.wrapper;
+    let wrapped: Int32Array | null = null;
+    if (wr) {
+      if (wr.fit(this.width - gutter - PAD_X * 2, this.cw)) this.el.style.setProperty('--cv-tw', `${wr.width}px`);
+      if (wr.cols) {
+        const A = new Int32Array(n);
+        const B = new Int32Array(n);
+        for (let i = 0; i < n; i++) {
+          A[i] = this.ls[vis[i]];
+          B[i] = A[i] + this.lines[vis[i]].length;
+        }
+        wrapped = wr.rows(this.text, A, B);
+      }
     }
-    rs[vis.length] = r;
+    this.odd = wrapped && wr ? wr.odd : new Uint8Array(n);
+    const rs = new Int32Array(n + 1);
+    let r = 0;
+    for (let i = 0; i < n; i++) {
+      rs[i] = r;
+      r += wrapped && !this.folded.has(vis[i]) ? wrapped[i] : 1;
+    }
+    rs[n] = r;
     this.rowStart = rs;
     this.states.clear();
     this.html.clear();
     this.sizer.style.height = r * RH + 24 + 'px';
+    // Not wrapping, the longest line sets how far the view scrolls sideways.
+    this.sizer.style.width = wr ? '' : `${Math.ceil(gutter + (this.maxLen + 4) * this.cw + PAD_X * 2)}px`;
     if (firstLine >= 0) this.el.scrollTop = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
     this.render(true);
   }
@@ -252,8 +312,8 @@ export class CodeView {
     return this.vis.length ? this.vis[this.visOfRow(row)] : 0;
   }
 
-  /** First visual row of `line` (or of the folded block that contains it). */
-  private rowOfLine(line: number) {
+  /** Index into `vis` of `line` (or of the folded block that contains it). */
+  private visIndex(line: number) {
     const vis = this.vis;
     let lo = 0;
     let hi = vis.length - 1;
@@ -262,29 +322,37 @@ export class CodeView {
       if (vis[mid] <= line) lo = mid;
       else hi = mid - 1;
     }
-    return this.rowStart[Math.max(0, lo)] ?? 0;
+    return Math.max(0, lo);
   }
 
-  /** JSON string state at the start of wrapped row `sub` of line `ln`. */
-  private stateAt(ln: number, sub: number): number {
+  /** First visual row of `line` (or of the folded block that contains it). */
+  private rowOfLine(line: number) {
+    return this.rowStart[this.visIndex(line)] ?? 0;
+  }
+
+  /** Offset in visible line `vi` where its wrapped row `sub` starts. */
+  private subStart(vi: number, sub: number) {
+    const ln = this.vis[vi];
+    const len = this.lines[ln].length;
+    if (sub <= 0) return 0;
+    if (sub >= this.rowStart[vi + 1] - this.rowStart[vi]) return len;
+    const a = this.ls[ln];
+    return (this.wrapper as Wrapper).rowStart(this.text, a, a + len, sub, this.odd[vi] === 1);
+  }
+
+  /** Is visible line `vi` drawn as one block the browser wraps (wide glyphs, not long)? */
+  private isBlock(vi: number) {
+    return this.odd[vi] === 1 && this.rowStart[vi + 1] - this.rowStart[vi] > 1 && this.lines[this.vis[vi]].length <= LONG_LINE;
+  }
+
+  /** JSON string state at the start of wrapped row `sub` of visible line `vi`. */
+  private stateAt(vi: number, sub: number): number {
     if (!this.json || sub === 0) return 0;
+    const ln = this.vis[vi];
     let st = this.states.get(ln);
     if (!st) this.states.set(ln, (st = [0]));
     const line = this.lines[ln];
-    const cols = this.cols;
-    for (let k = st.length; k <= sub; k++) {
-      let s = st[k - 1];
-      const end = Math.min(line.length, k * cols);
-      for (let i = (k - 1) * cols; i < end; i++) {
-        const c = line.charCodeAt(i);
-        if (s & 2) s &= ~2;
-        else if (s & 1) {
-          if (c === 92) s |= 2;
-          else if (c === 34) s = 0;
-        } else if (c === 34) s = 1;
-      }
-      st.push(s);
-    }
+    for (let k = st.length; k <= sub; k++) st.push(stringState(line, this.subStart(vi, k - 1), this.subStart(vi, k), st[k - 1]));
     return st[sub];
   }
 
@@ -302,33 +370,54 @@ export class CodeView {
   };
 
   render(force: boolean) {
-    const st = this.el.scrollTop;
-    const vh = this.el.clientHeight;
+    const el = this.el;
+    const st = el.scrollTop;
+    const vh = el.clientHeight;
     const total = this.rowStart[this.vis.length] ?? 0;
     const vf = Math.floor(st / RH);
     const vl = Math.min(total, Math.ceil((st + vh) / RH));
-    if (!force && vf >= this.rFirst && vl <= this.rLast) return;
-    const first = Math.max(0, vf - OVERSCAN);
+    // Not wrapping: long lines are drawn only around the columns in view.
+    const wide = !this.wrapper && this.maxLen > LONG_LINE;
+    const vcA = wide ? Math.max(0, Math.floor(el.scrollLeft / this.cw) - 12) : 0;
+    const vcB = vcA + Math.ceil(el.clientWidth / this.cw) + 12;
+    if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return;
+    let first = Math.max(0, vf - OVERSCAN);
     const last = Math.min(total, vl + OVERSCAN);
+    let vi = total ? this.visOfRow(first) : 0;
+    // A line drawn as one block starts at its first row.
+    if (total && this.isBlock(vi)) first = this.rowStart[vi];
+    if (wide && (vcA < this.rColA || vcB > this.rColB)) this.html.clear();
     this.rFirst = first;
     this.rLast = last;
+    this.rColA = wide ? Math.max(0, vcA - H_OVERSCAN) : 0;
+    this.rColB = wide ? vcB + H_OVERSCAN : Infinity;
     const cur = this.hi >= 0 ? this.hits[this.hi * 2] : -1;
     const curCol = this.hi >= 0 ? this.hits[this.hi * 2 + 1] : -1;
     const w = (this.q.length * this.cw).toFixed(1);
     let out = '';
-    let vi = total ? this.visOfRow(first) : 0;
+    let place = false;
     for (let row = first; row < last; row++) {
       while (vi + 1 < this.vis.length && this.rowStart[vi + 1] <= row) vi++;
       const ln = this.vis[vi];
       const sub = row - this.rowStart[vi];
+      const rows = this.rowStart[vi + 1] - this.rowStart[vi];
       const foldedHere = this.folded.has(ln);
       const line = this.lines[ln];
-      const wrapped = !foldedHere && line.length > this.cols;
-      const a = wrapped ? sub * this.cols : 0;
+      const block = this.isBlock(vi);
+      // This row's slice of the line: [a, b).
+      let a = 0;
+      let b = line.length;
+      if (rows > 1 && !block) {
+        a = this.subStart(vi, sub);
+        b = this.subStart(vi, sub + 1);
+      } else if (wide && b > LONG_LINE) {
+        a = Math.min(b, this.rColA);
+        b = Math.min(b, this.rColB);
+      }
       let h = this.html.get(row);
       if (h === undefined) {
-        const s = this.stateAt(ln, sub);
-        h = this.hl(wrapped ? line.slice(a, a + this.cols) : line, (s & 1) === 1, (s & 2) === 2);
+        const s = !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : stringState(line, 0, a);
+        h = this.hl(a || b < line.length ? line.slice(a, b) : line, (s & 1) === 1, (s & 2) === 2);
         if (foldedHere) {
           const end = this.close[ln];
           const n = end - ln - 1;
@@ -336,15 +425,18 @@ export class CodeView {
         }
         this.html.set(row, h);
       }
-      // Find highlights for this row's slice.
+      // Find highlights for this row's slice. Wide glyphs: placed by their rects once drawn.
+      const pad = rows === 1 && a ? a * this.cw : 0;
       let marks = '';
       const lh = this.q ? this.hitLines.get(ln) : undefined;
       if (lh) {
-        const b = wrapped ? a + this.cols : line.length;
         for (const col of lh) {
           if (col < a || col >= b) continue;
           const isCur = ln === cur && col === curCol;
-          marks += `<i class="cv-hit${isCur ? ' cur' : ''}" style="left:${((col - a) * this.cw).toFixed(1)}px;width:${w}px"></i>`;
+          if (this.odd[vi] === 1 && this.wrapper) {
+            marks += `<i class="cv-hit${isCur ? ' cur' : ''}" data-h="${col - a}"></i>`;
+            place = true;
+          } else marks += `<i class="cv-hit${isCur ? ' cur' : ''}" style="left:${(pad + (col - a) * this.cw).toFixed(1)}px;width:${w}px"></i>`;
         }
       }
       let gut: string;
@@ -352,11 +444,28 @@ export class CodeView {
       else if (this.close[ln] >= 0) gut = `<b class="cv-f${foldedHere ? ' c' : ''}" data-f="${ln}" title="${foldedHere ? 'Unfold' : 'Fold'}"></b>${ln + 1}`;
       else gut = String(ln + 1);
       const note = this.notes?.get(ln);
-      const tail = note && (!wrapped || a + this.cols >= line.length) ? note : '';
-      out += `<div class="cv-l"><span class="cv-n">${gut}</span><span class="cv-c">${marks}${h || ' '}${tail}</span></div>`;
+      const tail = note && b >= line.length ? note : '';
+      const sp = pad ? `<i class="cv-sp" style="width:${pad.toFixed(1)}px"></i>` : '';
+      out += `<div class="cv-l${block ? ' cv-b' : ''}"><span class="cv-n">${gut}</span><span class="cv-c">${sp}${marks}${h || ' '}${tail}</span></div>`;
+      if (block) row += rows - 1;
     }
     this.rows.style.transform = `translateY(${first * RH}px)`;
     this.rows.innerHTML = out;
+    if (place) this.placeHits();
+  }
+
+  /** Puts find highlights on text the browser lays out (wide glyphs) over the matched characters. */
+  private placeHits() {
+    const rg = document.createRange();
+    const len = this.q.length;
+    for (const mark of this.rows.querySelectorAll<HTMLElement>('i[data-h]')) {
+      const c = mark.parentElement as HTMLElement;
+      if (!textRange(rg, c, Number(mark.dataset.h), len)) continue;
+      const r = rg.getClientRects()[0];
+      if (!r) continue;
+      const box = c.getBoundingClientRect();
+      mark.style.cssText = `left:${(r.left - box.left).toFixed(1)}px;top:${(r.top - box.top).toFixed(1)}px;width:${r.width.toFixed(1)}px;height:${r.height.toFixed(1)}px;bottom:auto`;
+    }
   }
 
   // ── Find ───────────────────────────────────────────────────────────────
@@ -412,10 +521,47 @@ export class CodeView {
     const ln = this.hits[this.hi * 2];
     const col = this.hits[this.hi * 2 + 1];
     this.reveal(ln);
-    const row = this.rowOfLine(ln) + (this.lines[ln].length > this.cols ? Math.floor(col / this.cols) : 0);
-    const y = row * RH;
-    const vh = this.el.clientHeight;
-    if (y < this.el.scrollTop || y + RH > this.el.scrollTop + vh) this.el.scrollTop = Math.max(0, y - vh / 2 + RH);
+    const vi = this.visIndex(ln);
+    // The wrapped row holding the match: the last row starting at or before it.
+    let sub = 0;
+    const rows = this.rowStart[vi + 1] - this.rowStart[vi];
+    if (rows > 1) {
+      let hi = rows - 1;
+      while (sub < hi) {
+        const mid = (sub + hi + 1) >> 1;
+        if (this.subStart(vi, mid) <= col) sub = mid;
+        else hi = mid - 1;
+      }
+    }
+    const y = (this.rowStart[vi] + sub) * RH;
+    const el = this.el;
+    const vh = el.clientHeight;
+    if (y < el.scrollTop || y + RH > el.scrollTop + vh) el.scrollTop = Math.max(0, y - vh / 2 + RH);
+    if (!this.wrapper) {
+      const x = col * this.cw;
+      const view = el.clientWidth - 80;
+      if (x < el.scrollLeft || x > el.scrollLeft + view) el.scrollLeft = Math.max(0, x - view / 3);
+    }
     this.render(true);
   }
+}
+
+/** Sets `rg` to `len` characters of `el`'s text from offset `from` (text nodes in order). */
+function textRange(rg: Range, el: HTMLElement, from: number, len: number) {
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let pos = 0;
+  let started = false;
+  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+    const end = pos + n.length;
+    if (!started && from < end) {
+      rg.setStart(n, from - pos);
+      started = true;
+    }
+    if (started && from + len <= end) {
+      rg.setEnd(n, from + len - pos);
+      return true;
+    }
+    pos = end;
+  }
+  return false;
 }

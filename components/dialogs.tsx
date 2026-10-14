@@ -175,6 +175,7 @@ const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
       ['Alt+3', 'Table view'],
       ['Alt+4', 'Convert'],
       ['Alt+5', 'Compare'],
+      ['Alt+Z', 'Wrap long lines on or off'],
       ['?', 'This help'],
     ],
   },

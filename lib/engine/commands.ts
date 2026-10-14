@@ -110,6 +110,7 @@ export const COMMANDS: Command[] = [
   { id: 'theme-light', group: 'Settings', title: 'Theme: light', terms: 'appearance', active: (s) => s.settings.theme === 'light', run: (e) => e.setTheme('light') },
   { id: 'theme-dark', group: 'Settings', title: 'Theme: dark', terms: 'appearance night', active: (s) => s.settings.theme === 'dark', run: (e) => e.setTheme('dark') },
   { id: 'autoformat', group: 'Settings', title: 'Auto-format on paste', active: (s) => s.settings.autoFormat, run: (e) => e.toggleAutoFormat() },
+  { id: 'wrap', group: 'Settings', title: 'Wrap long lines', keys: 'Alt+Z', terms: 'word wrap soft wrap line break overflow horizontal scroll', active: (s) => s.settings.wrap, run: (e) => e.toggleWrap() },
 
   { id: 'shortcuts', group: 'Help', title: 'Keyboard shortcuts', keys: '?', terms: 'help keys', run: () => store.set({ shortcuts: true }) },
 ];

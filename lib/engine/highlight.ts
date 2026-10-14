@@ -15,12 +15,31 @@ const isWord = (c: number) =>
   (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || isDigit(c) || c === 95 || c === 36 || (c > 127 && c !== 0x201c && c !== 0x201d);
 
 /**
+ * JSON string state after `text[a, b)` starting from `state`: 0 outside a
+ * string, 1 inside one, 3 inside one right after a backslash. For a wrapped
+ * row that starts mid-string.
+ */
+export function stringState(text: string, a: number, b: number, state = 0): number {
+  let s = state;
+  for (let i = a; i < b; i++) {
+    const c = text.charCodeAt(i);
+    if (s === 3) s = 1;
+    else if (s === 1) {
+      if (c === 92) s = 3;
+      else if (c === 34) s = 0;
+    } else if (c === 34) s = 1;
+  }
+  return s;
+}
+
+/**
  * Syntax-highlights `text[a, b)` (one line, JSON never spans lines) into HTML.
  * Tolerant of loose JSON so the editor stays readable while it's invalid.
  * Marks (diagnostics, bracket matches) are merged into the token spans so they
- * line up with the glyphs exactly.
+ * line up with the glyphs exactly. `str`: the slice starts inside a string
+ * (see stringState).
  */
-export function highlightLine(text: string, a: number, b: number, marks: Mark[] | null, lineEnd = true): string {
+export function highlightLine(text: string, a: number, b: number, marks: Mark[] | null, lineEnd = true, str = 0): string {
   let out = '';
 
   const wrap = (s: number, e: number, cls: string) => {
@@ -47,6 +66,23 @@ export function highlightLine(text: string, a: number, b: number, marks: Mark[] 
   };
 
   let i = a;
+  if (str) {
+    // The rest of a string begun on an earlier row.
+    let j = str === 3 ? a + 1 : a;
+    while (j < b) {
+      const d = text.charCodeAt(j);
+      if (d === 92) j += 2;
+      else if (d === 34) {
+        j++;
+        break;
+      } else j++;
+    }
+    j = Math.min(j, b);
+    let k = j;
+    while (k < b && (text.charCodeAt(k) === 32 || text.charCodeAt(k) === 9)) k++;
+    emit(a, j, text.charCodeAt(k) === 58 ? 'tk' : 'ts');
+    i = j;
+  }
   while (i < b) {
     const c = text.charCodeAt(i);
     if (c === 32 || c === 9) {

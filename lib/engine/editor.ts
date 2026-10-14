@@ -1,4 +1,5 @@
-import { highlightLine, jwtLine, type Mark } from './highlight';
+import { escapeHtml, highlightLine, jwtLine, stringState, type Mark } from './highlight';
+import { LONG_LINE, Wrapper } from './wrap';
 
 /*
  * The document lives in `text` (the model). Two presentations:
@@ -19,6 +20,11 @@ import { highlightLine, jwtLine, type Mark } from './highlight';
  * after the "⋯ N lines" pill, like the output view), so the textarea holds the
  * model minus those lines ("display" text). Offsets map between the two by
  * line; every public API speaks model offsets.
+ *
+ * Soft wrap: the textarea wraps (CSS), and each display line takes the rows
+ * the Wrapper says the browser gives it (see wrap.ts). Lines are drawn whole,
+ * so the browser wraps the copy exactly like the textarea; long lines are
+ * drawn as the rows on screen only.
  */
 
 export const LH = 20;
@@ -27,7 +33,8 @@ const PAD_B = 48;
 const PAD_L = 16;
 const PAD_R = 48;
 const OVERSCAN = 40;
-const LONG_LINE = 3000;
+/** Right padding while wrapping (the textarea's text ends this far from the edge). */
+const PAD_RW = 12;
 const H_OVERSCAN = 600;
 /** Above these sizes the editor switches to view mode. */
 const VIEW_CHARS = 2_000_000;
@@ -114,6 +121,23 @@ function editRange(old: string, now: string, ss: number, se: number): [number, n
   return [a, eo, en];
 }
 
+/** `t[a, b)` as invisible, zero-width context for a row drawn on its own (whole code points only). */
+function context(t: string, a: number, b: number) {
+  if ((t.charCodeAt(a) & 0xfc00) === 0xdc00) a++;
+  if ((t.charCodeAt(b - 1) & 0xfc00) === 0xd800) b--;
+  return b > a ? `<span class="ed-ctx">${escapeHtml(t.slice(a, b))}</span>` : '';
+}
+
+/** End of `t[a, b)` without its trailing whitespace (bidi classes WS and S, isolate marks). */
+function trimWs(t: string, a: number, b: number) {
+  while (b > a) {
+    const c = t.charCodeAt(b - 1);
+    if (c === 32 || c === 9 || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x205f || c === 0x3000 || (c >= 0x2066 && c <= 0x2069)) b--;
+    else break;
+  }
+  return b;
+}
+
 /** Counts line breaks in `s`, stopping early at `cap`. */
 function countLines(s: string, cap: number) {
   let n = 0;
@@ -162,6 +186,14 @@ export class Editor {
   private lineMarks: Uint8Array | null = null;
   /** The input is one JWT: its part offsets (see jwtLine), coloured instead of JSON tokens. */
   private jwt: readonly number[] | null = null;
+  /** Soft wrap (null: off). */
+  private wrapper: Wrapper | null = null;
+  /** While wrapping: the first visual row of each display line (length rows + 1). */
+  private wy: Int32Array | null = null;
+  /** While wrapping: 1 for display lines whose breaks the browser decides (Wrapper.odd). */
+  private wodd = new Uint8Array(0);
+  /** Text or folds changed since rows were last wrapped. */
+  private wrapDirty = true;
   private rFirst = -1;
   private rLast = -1;
   private rColA = 0;
@@ -234,14 +266,20 @@ export class Editor {
     });
     this.ro.observe(el);
     this.model(ta.value, true);
-    // The code font may arrive after first paint: re-measure glyph width then.
-    document.fonts?.ready.then(() => {
-      if (!this.el.isConnected) return;
-      this.measure();
-      this.layout();
-      this.render(true);
-    });
+    // The code font may arrive after first paint, and its subsets for other
+    // scripts when such text appears: re-measure glyphs (and wrapped rows) then.
+    document.fonts?.ready.then(this.onFonts);
+    document.fonts?.addEventListener('loadingdone', this.onFonts);
   }
+
+  private onFonts = () => {
+    if (!this.el.isConnected) return;
+    this.measure();
+    this.wrapper?.reset();
+    this.wrapDirty = true;
+    this.layout();
+    this.render(true);
+  };
 
   destroy() {
     const ta = this.ta;
@@ -264,9 +302,11 @@ export class Editor {
     this.el.removeEventListener('mouseup', this.onViewClick);
     this.el.removeEventListener('paste', this.onViewPaste);
     document.removeEventListener('selectionchange', this.onSel);
+    document.fonts?.removeEventListener('loadingdone', this.onFonts);
     this.ro.disconnect();
     cancelAnimationFrame(this.raf);
-    this.el.classList.remove('hl-on', 'vmode');
+    this.wrapper?.destroy();
+    this.el.classList.remove('hl-on', 'vmode', 'wrap');
     if (this.view || this.vis) ta.value = this.text;
   }
 
@@ -325,9 +365,10 @@ export class Editor {
       this.ev.mode(view);
       this.ev.caret();
     }
+    this.wrapDirty = true;
+    this.layout();
     this.updateCaret();
     this.placeScope();
-    this.layout();
     this.render(true);
   }
 
@@ -447,6 +488,7 @@ export class Editor {
 
   /** Rebuilds the visible-line map and the textarea text from the folds. */
   private buildDisplay() {
+    this.wrapDirty = true;
     if (!this.folded.size) {
       this.vis = null;
       this.dls = null;
@@ -501,6 +543,100 @@ export class Editor {
   /** Model line shown on display row `k`. */
   private lineAt(k: number) {
     return this.vis ? this.vis[k] : k;
+  }
+
+  /** First visual row of display row `k` (they differ while wrapping). */
+  private yOf(k: number) {
+    return this.wy ? this.wy[k] : k;
+  }
+
+  /** Visual rows in all. */
+  private get vrows() {
+    return this.wy ? this.wy[this.rows] : this.rows;
+  }
+
+  /** Display row shown on visual row `r` (clamped). */
+  private kAt(r: number) {
+    const n = this.rows;
+    const wy = this.wy;
+    if (!wy) return Math.max(0, Math.min(n - 1, r));
+    let lo = 0;
+    let hi = n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (wy[mid] <= r) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  /** Model line at the top of the view. */
+  private topLine() {
+    return this.lineAt(this.kAt(Math.floor((this.el.scrollTop - PAD_T) / LH)));
+  }
+
+  /** Visual row showing model offset `off` (the caret before that character). */
+  private vrowOf(off: number) {
+    const ln = this.lineOf(off);
+    const k = this.rowOf(ln);
+    const wy = this.wy;
+    if (!wy || !this.wrapper || this.lineAt(k) !== ln) return this.yOf(k);
+    return wy[k] + this.wrapper.rowAt(this.text, this.ls[ln], this.lineEnd(ln), off, this.wodd[k] === 1, wy[k + 1] - wy[k]);
+  }
+
+  /** Model offsets [start, end) of wrapped row `sub` of display row `k`. */
+  private rowSpan(k: number, sub: number): [number, number] {
+    const ln = this.lineAt(k);
+    const a = this.ls[ln];
+    const b = this.lineEnd(ln);
+    const wr = this.wrapper;
+    if (!wr || !this.wy) return [a, b];
+    const rows = this.wy[k + 1] - this.wy[k];
+    const odd = this.wodd[k] === 1;
+    return [a + wr.rowStart(this.text, a, b, sub, odd), sub + 1 < rows ? a + wr.rowStart(this.text, a, b, sub + 1, odd) : b];
+  }
+
+  /** Soft-wraps lines at the editor's width, or stops. */
+  setWrap(on: boolean) {
+    if (on === !!this.wrapper) return;
+    const top = this.topLine();
+    this.wrapper?.destroy();
+    this.wrapper = on ? new Wrapper(this.body, LH) : null;
+    this.wy = null;
+    this.wrapDirty = true;
+    this.el.classList.toggle('wrap', on);
+    this.ta.wrap = on ? 'soft' : 'off';
+    this.layout();
+    this.el.scrollTop = PAD_T + this.yOf(this.rowOf(top)) * LH;
+    this.el.scrollLeft = 0;
+    this.updateCaret();
+    this.placeScope();
+    this.render(true);
+  }
+
+  /** Re-wraps rows after a change of text, folds, width or font. */
+  private rewrap() {
+    const wr = this.wrapper as Wrapper;
+    const space = this.el.clientWidth - this.gutW - PAD_L - PAD_RW;
+    const resized = wr.fit(space, this.cw);
+    if (resized) this.el.style.setProperty('--tw', `${wr.width}px`);
+    // Without the textarea (view mode) nothing has to line up with it: long lines can be summed.
+    const moded = wr.setExact(!this.view);
+    if (!resized && !moded && !this.wrapDirty && this.wy) return;
+    this.wrapDirty = false;
+    const n = this.rows;
+    const A = new Int32Array(n);
+    const B = new Int32Array(n);
+    for (let k = 0; k < n; k++) {
+      const ln = this.lineAt(k);
+      A[k] = this.ls[ln];
+      B[k] = this.lineEnd(ln);
+    }
+    const rows = wr.rows(this.text, A, B);
+    const wy = new Int32Array(n + 1);
+    for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
+    this.wy = wy;
+    this.wodd = wr.odd;
   }
 
   /** Display row containing textarea offset `off`. */
@@ -628,8 +764,8 @@ export class Editor {
   private refold(anchor: number, patch?: { at: number; end: () => number; cut: boolean }) {
     let [s, e] = this.view ? [this.vcaret, this.vcaret] : this.selection;
     const el = this.el;
-    const top = anchor >= 0 ? anchor : this.lineAt(Math.min(this.rows - 1, Math.max(0, Math.floor((el.scrollTop - PAD_T) / LH))));
-    const y = PAD_T + this.rowOf(top) * LH - el.scrollTop;
+    const top = anchor >= 0 ? anchor : this.topLine();
+    const y = PAD_T + this.yOf(this.rowOf(top)) * LH - el.scrollTop;
     this.buildDisplay();
     // A caret inside a newly folded block moves to the end of its first line.
     const fix = (off: number) => (this.hidden(off) ? this.lineEnd(this.lineAt(this.rowOf(this.lineOf(off)))) : off);
@@ -658,7 +794,7 @@ export class Editor {
       ta.setSelectionRange(this.m2d(s), this.m2d(e));
     }
     this.layout();
-    el.scrollTop = Math.max(0, PAD_T + this.rowOf(top) * LH - y);
+    el.scrollTop = Math.max(0, PAD_T + this.yOf(this.rowOf(top)) * LH - y);
     this.updateCaret();
     this.placeScope();
     this.render(true);
@@ -692,11 +828,19 @@ export class Editor {
       this.gutW = gw;
       this.el.style.setProperty('--gw', gw + 'px');
     }
-    const w = Math.ceil(this.maxCols * this.cw) + PAD_L + PAD_R + this.extraW;
-    const h = this.rows * LH + PAD_T + PAD_B;
-    this.body.style.width = w + 'px';
+    if (this.wrapper) this.rewrap();
+    else this.wy = null;
+    const h = this.vrows * LH + PAD_T + PAD_B;
+    // Wrapped, the body takes the editor's width (CSS); the textarea's text box is --tw wide.
+    this.body.style.width = this.wy ? '' : `${Math.ceil(this.maxCols * this.cw) + PAD_L + PAD_R + this.extraW}px`;
     this.body.style.height = h + 'px';
     this.gut.style.height = h + 'px';
+    // The textarea overflows its box, so it has more rows than we counted: this
+    // browser breaks ASCII its own way.
+    if (this.wy && !this.view && this.ta.scrollHeight > this.ta.clientHeight + 1 && this.wrapper?.distrust()) {
+      this.wrapDirty = true;
+      this.layout();
+    }
   }
 
   private onScroll = () => {
@@ -725,8 +869,10 @@ export class Editor {
     // The textarea never scrolls itself; if a line is wider than our estimate
     // (wide glyphs), grow the content instead.
     if (ta.scrollLeft || ta.scrollTop) {
-      if (ta.scrollLeft) this.extraW += ta.scrollLeft + 200;
-      const { scrollLeft, scrollTop } = ta;
+      // Wrapped, nothing is wider than the view: the editor never scrolls sideways.
+      const scrollLeft = this.wy ? 0 : ta.scrollLeft;
+      const scrollTop = ta.scrollTop;
+      if (scrollLeft) this.extraW += scrollLeft + 200;
       ta.scrollLeft = 0;
       ta.scrollTop = 0;
       this.layout();
@@ -737,6 +883,7 @@ export class Editor {
 
   render(force: boolean) {
     if (force) this.redraw = false;
+    if (this.wy) return this.renderWrapped(force);
     const n = this.rows;
     const st = this.el.scrollTop;
     const vh = this.el.clientHeight;
@@ -780,6 +927,73 @@ export class Editor {
     this.hl.innerHTML = html;
     this.gl.style.transform = `translateY(${PAD_T + first * LH}px)`;
     this.gl.innerHTML = this.gutterHtml(first, last);
+  }
+
+  /**
+   * Draws the visual rows around the view while wrapping. A line is drawn
+   * whole (the browser wraps it like the textarea) unless it's long: then
+   * just its rows on screen, each a slice of the line.
+   */
+  private renderWrapped(force: boolean) {
+    const wy = this.wy as Int32Array;
+    const wr = this.wrapper as Wrapper;
+    const n = this.rows;
+    const total = wy[n];
+    const st = this.el.scrollTop;
+    const vf = Math.max(0, Math.floor((st - PAD_T) / LH));
+    const vl = Math.min(total, Math.ceil((st + this.el.clientHeight - PAD_T) / LH));
+    if (!force && vf >= this.rFirst && vl <= this.rLast) return;
+    const r0 = Math.max(0, vf - OVERSCAN);
+    const r1 = Math.min(total, vl + OVERSCAN);
+    this.rFirst = r0;
+    this.rLast = r1;
+    const t = this.text;
+    let html = '';
+    let gut = '';
+    let top = -1;
+    for (let k = this.kAt(r0); k < n && wy[k] < r1; k++) {
+      const ln = this.lineAt(k);
+      const a = this.ls[ln];
+      const b = this.lineEnd(ln);
+      const y = wy[k];
+      const rows = wy[k + 1] - y;
+      const marks = this.marksFor(ln);
+      const lm = this.lineMarks ? this.lineMarks[ln] : 0;
+      const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
+      if (rows > 1 && b - a > LONG_LINE) {
+        const odd = this.wodd[k] === 1;
+        const s0 = Math.max(0, r0 - y);
+        const s1 = Math.min(rows, r1 - y);
+        if (top < 0) top = y + s0;
+        let sa = a + wr.rowStart(t, a, b, s0, odd);
+        let str = this.jwt ? 0 : stringState(t, a, sa);
+        for (let sub = s0; sub < s1; sub++) {
+          const sb = sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b;
+          const end = sb === b;
+          // Right-to-left text orders by its neighbours on the line: give the row
+          // its neighbours, at zero size, so it reads as it does in the textarea.
+          // Whitespace ending a row stays last (it takes the line's direction).
+          const se = odd && !end ? trimWs(t, sa, sb) : sb;
+          let body = this.jwt ? jwtLine(t, sa, se, this.jwt) : highlightLine(t, sa, se, marks, end, str);
+          if (odd) body = `${context(t, Math.max(a, sa - 64), sa)}${body}${context(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
+          html += `<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`;
+          if (!this.jwt) str = stringState(t, sa, sb, str);
+          sa = sb;
+        }
+      } else {
+        if (top < 0) top = y;
+        html += `${lm ? `<div class="${LINE_MARK[lm]}">` : '<div>'}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
+      }
+      // Gutter: the number on a line's first row, its bars on every row.
+      const cls = this.gutClass(ln);
+      const open = cls ? `<div class="${cls}">` : '<div>';
+      const f = this.close[ln] >= 0 ? `<b class="ed-f${this.folded.has(ln) ? ' c' : ''}" data-f="${ln}"></b>` : '';
+      for (let r = Math.max(r0, y); r < Math.min(r1, y + rows); r++) gut += r === y ? `${open}${ln + 1}${f}</div>` : `${open}</div>`;
+    }
+    this.hl.style.transform = `translateY(${Math.max(0, top) * LH}px)`;
+    this.hl.innerHTML = html;
+    this.gl.style.transform = `translateY(${PAD_T + r0 * LH}px)`;
+    this.gl.innerHTML = gut;
   }
 
   /** The "⋯ N lines" pill and the hidden closer after a folded line (flags errors and Compare changes hidden inside). */
@@ -826,21 +1040,25 @@ export class Editor {
   }
 
   private gutterHtml(first: number, last: number) {
-    const s = this.scope;
-    const l1 = s ? s[0] : -1;
-    const l2 = s ? s[1] : -1;
     let g = '';
     for (let k = first; k < last; k++) {
       const ln = this.lineAt(k);
-      let cls = this.diagCls.get(ln) ?? '';
-      const lm = this.lineMarks ? this.lineMarks[ln] : 0;
-      if (lm) cls += ' ' + LINE_MARK[lm];
-      if (ln === this.caretLine) cls += ' c';
-      if (ln >= l1 && ln <= l2) cls += ' s';
+      const cls = this.gutClass(ln);
       const f = this.close[ln] >= 0 ? `<b class="ed-f${this.folded.has(ln) ? ' c' : ''}" data-f="${ln}"></b>` : '';
-      g += cls ? `<div class="${cls.trim()}">${ln + 1}${f}</div>` : `<div>${ln + 1}${f}</div>`;
+      g += cls ? `<div class="${cls}">${ln + 1}${f}</div>` : `<div>${ln + 1}${f}</div>`;
     }
     return g;
+  }
+
+  /** Gutter classes of model line `ln`: diagnostics, Compare marks, caret line, selected node. */
+  private gutClass(ln: number) {
+    let cls = this.diagCls.get(ln) ?? '';
+    const lm = this.lineMarks ? this.lineMarks[ln] : 0;
+    if (lm) cls += ' ' + LINE_MARK[lm];
+    if (ln === this.caretLine) cls += ' c';
+    const s = this.scope;
+    if (s && ln >= s[0] && ln <= s[1]) cls += ' s';
+    return cls.trim();
   }
 
   private marksFor(ln: number): Mark[] | null {
@@ -965,16 +1183,17 @@ export class Editor {
   private placeScope() {
     const sc = this.scope;
     if (!sc || sc[1] >= this.ls.length) return;
-    const r1 = this.rowOf(sc[0]);
-    const r2 = this.rowOf(sc[1]);
+    const r1 = this.yOf(this.rowOf(sc[0]));
+    const r2 = this.yOf(this.rowOf(sc[1]) + 1);
     this.scopeEl.style.transform = `translateY(${PAD_T + r1 * LH}px)`;
-    this.scopeEl.style.height = `${(r2 - r1 + 1) * LH}px`;
+    this.scopeEl.style.height = `${(r2 - r1) * LH}px`;
   }
 
   private updateCaret() {
     const [s, e] = this.selection;
     const ln = this.lineOf(s);
-    this.cur.style.transform = `translateY(${PAD_T + this.rowOf(ln) * LH}px)`;
+    // Wrapped, the band marks the caret's row (a minified document is one line).
+    this.cur.style.transform = `translateY(${PAD_T + (this.wy ? this.vrowOf(s) : this.rowOf(ln)) * LH}px)`;
     this.cur.style.visibility = this.lineOf(e) !== ln ? 'hidden' : '';
     if (ln !== this.caretLine) {
       this.caretLine = ln;
@@ -1123,8 +1342,10 @@ export class Editor {
   /** The fold pill sits under the textarea: find it by position. */
   private pillAt(x: number, y: number) {
     if (!this.folded.size) return -1;
+    const rg = document.createRange();
     for (const el of this.hl.querySelectorAll<HTMLElement>('.ed-fold')) {
-      const r = el.getBoundingClientRect();
+      rg.selectNodeContents(el);
+      const r = rg.getBoundingClientRect();
       if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return Number(el.dataset.f);
     }
     return -1;
@@ -1171,9 +1392,11 @@ export class Editor {
     if (pill) return this.toggleFold(Number(pill.dataset.f));
     if (window.getSelection()?.toString()) return;
     const r = this.body.getBoundingClientRect();
-    const ln = this.lineAt(Math.max(0, Math.min(this.rows - 1, Math.floor((e.clientY - r.top - PAD_T) / LH))));
+    const vr = Math.max(0, Math.min(this.vrows - 1, Math.floor((e.clientY - r.top - PAD_T) / LH)));
+    const k = this.kAt(vr);
+    const [a, b] = this.rowSpan(k, vr - this.yOf(k));
     const col = Math.max(0, Math.round((e.clientX - r.left - PAD_L) / this.cw));
-    this.vcaret = Math.min(this.ls[ln] + col, this.lineEnd(ln));
+    this.vcaret = Math.min(a + col, b);
     if (this.updateCaret()) this.render(true);
     this.ev.caret();
     this.ev.nav();
@@ -1402,24 +1625,27 @@ export class Editor {
     const ln = this.lineOf(off);
     const el = this.el;
     const vh = el.clientHeight;
-    const y = PAD_T + this.rowOf(ln) * LH;
+    const y = PAD_T + this.vrowOf(off) * LH;
     if (y < el.scrollTop + LH || y + LH * 2 > el.scrollTop + vh) {
       el.scrollTop = center ? y - vh / 2 + LH : y < el.scrollTop ? y - LH : y - vh + LH * 3;
     }
-    const x = PAD_L + (off - this.ls[ln]) * this.cw;
-    const vw = el.clientWidth - this.gutW;
-    if (x < el.scrollLeft || x > el.scrollLeft + vw - 40) el.scrollLeft = Math.max(0, x - vw / 2);
+    if (!this.wy) {
+      const x = PAD_L + (off - this.ls[ln]) * this.cw;
+      const vw = el.clientWidth - this.gutW;
+      if (x < el.scrollLeft || x > el.scrollLeft + vw - 40) el.scrollLeft = Math.max(0, x - vw / 2);
+    }
     this.render(false);
   }
 
   /** Is `off` currently on screen (vertically and horizontally)? */
   isVisible(off: number) {
     if (this.hidden(off)) return false;
-    const ln = this.lineOf(off);
-    const y = PAD_T + this.rowOf(ln) * LH;
-    const x = PAD_L + (off - this.ls[ln]) * this.cw;
+    const y = PAD_T + this.vrowOf(off) * LH;
     const el = this.el;
-    return y >= el.scrollTop && y + LH <= el.scrollTop + el.clientHeight && x >= el.scrollLeft && x <= el.scrollLeft + el.clientWidth - this.gutW - 24;
+    if (y < el.scrollTop || y + LH > el.scrollTop + el.clientHeight) return false;
+    if (this.wy) return true;
+    const x = PAD_L + (off - this.ls[this.lineOf(off)]) * this.cw;
+    return x >= el.scrollLeft && x <= el.scrollLeft + el.clientWidth - this.gutW - 24;
   }
 
   private indent(dir: 1 | -1) {
@@ -1486,6 +1712,27 @@ export class Editor {
   private page(dir: 1 | -1, extend: boolean) {
     const ta = this.ta;
     const lines = Math.max(1, Math.floor(this.el.clientHeight / LH) - 2);
+    if (this.wy) {
+      // By visual rows, keeping the column within the row.
+      const back = ta.selectionDirection === 'backward';
+      const [s, e] = this.selection;
+      const focus = back ? s : e;
+      const anchor = back ? e : s;
+      const vr = this.vrowOf(focus);
+      const k = this.kAt(vr);
+      const col = focus - this.rowSpan(k, vr - this.yOf(k))[0];
+      const target = Math.max(0, Math.min(this.vrows - 1, vr + dir * lines));
+      const k2 = this.kAt(target);
+      const sub = target - this.yOf(k2);
+      const [a, b] = this.rowSpan(k2, sub);
+      // A row's end is the next row's start, except on the line's last row.
+      const off = Math.max(a, Math.min(a + col, sub + 1 < this.yOf(k2 + 1) - this.yOf(k2) ? b - 1 : b));
+      if (extend) ta.setSelectionRange(this.m2d(Math.min(anchor, off)), this.m2d(Math.max(anchor, off)), off < anchor ? 'backward' : 'forward');
+      else ta.setSelectionRange(this.m2d(off), this.m2d(off));
+      this.el.scrollTop += dir * lines * LH;
+      this.typing = false;
+      return;
+    }
     const focus = ta.selectionDirection === 'backward' ? ta.selectionStart : ta.selectionEnd;
     const anchor = ta.selectionDirection === 'backward' ? ta.selectionEnd : ta.selectionStart;
     // Rows of the textarea text (folded lines excluded).

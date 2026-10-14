@@ -76,6 +76,7 @@ const InputBar = memo(function InputBar() {
             <MItem label="Try a sample" onClick={() => act((e) => e.sample())} close={close} />
             <MSep />
             <EditorFoldItems which={1} close={close} />
+            <WrapItem />
             <MSep />
             <MItem label="Download input" keys="mod+S" onClick={() => act((e) => e.download())} close={close} />
             <MItem label="Clear" onClick={() => act((e) => e.clear())} close={close} />
@@ -178,6 +179,7 @@ function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> 
               <MItem label="Swap with original" onClick={() => act((e) => e.swapCompare())} close={close} />
               <MSep />
               <EditorFoldItems which={2} close={close} />
+              <WrapItem />
               <MSep />
               <MItem label="Clear" onClick={() => act((e) => e.clearCompare())} close={close} />
             </>
@@ -268,13 +270,22 @@ function MItem({ label, keys, onClick, close }: { label: string; keys?: string; 
   );
 }
 
-function MCheck({ label, checked, onClick }: { label: string; checked: boolean; onClick: () => void }) {
+function MCheck({ label, keys, checked, onClick }: { label: string; keys?: string; checked: boolean; onClick: () => void }) {
   return (
     <button type="button" role="menuitemcheckbox" aria-checked={checked} className="mi" onClick={onClick}>
       <span>{label}</span>
-      <span className="mi-check">{checked && <Icon name="check" size={14} />}</span>
+      <span className="mi-end">
+        {keys && <Kbd k={keys} />}
+        <span className="mi-check">{checked && <Icon name="check" size={14} />}</span>
+      </span>
     </button>
   );
+}
+
+/** Soft wrap: one setting for the editors and the code views. */
+function WrapItem() {
+  const wrap = useUI((s) => s.settings.wrap);
+  return <MCheck label="Wrap lines" keys="Alt+Z" checked={wrap} onClick={() => act((e) => e.toggleWrap())} />;
 }
 
 /** A row with a few mutually exclusive options (indent 2 · 4 · Tab, levels 1 · 2 · 3). */
@@ -376,6 +387,7 @@ function ViewMenu() {
               <MItem label="Use as input" keys="mod+Enter" onClick={() => act((e) => e.useOutput())} close={close} />
               <MSep />
               <FoldItems close={close} />
+              <WrapItem />
             </>
           )}
           {view === 'tree' && (
@@ -434,6 +446,7 @@ function ViewMenu() {
               )}
               {info.group === 'Types' && <MSep />}
               <FoldItems close={close} />
+              <WrapItem />
             </>
           )}
         </>

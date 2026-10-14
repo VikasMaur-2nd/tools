@@ -14,6 +14,8 @@ export interface Settings {
   prevView: Exclude<View, 'compare'>;
   /** Pretty-print minified JSON when it is pasted into an empty editor. */
   autoFormat: boolean;
+  /** Soft-wrap long lines in the editors and the code views. */
+  wrap: boolean;
   /** Editor width as a fraction of the window (0.2 – 0.8). */
   split: number;
   /** Compare mode: width of the two editors together (0.4 – 0.85). */
@@ -112,6 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   view: 'format',
   prevView: 'format',
   autoFormat: false,
+  wrap: true,
   split: 0.5,
   splitCmp: 0.66,
   minify: false,

@@ -101,6 +101,7 @@ function loadSettings(): Settings {
     if (!['format', 'tree', 'table', 'convert'].includes(out.prevView)) out.prevView = 'format';
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
+    out.wrap = out.wrap !== false;
     // String output is a one-off conversion, not a preference: a new visit shows the document itself.
     out.escape = false;
     if (out.tsStyle !== 'type') out.tsStyle = 'interface';
@@ -280,6 +281,7 @@ export class Engine {
     });
     this.code = new CodeView(els.code);
     this.fmt = new CodeView(els.fmt);
+    this.applyWrap();
 
     // Restore: text typed/restored before hydration wins, then saved doc. A landing
     // page replaces it with its own sample at once, so it isn't parsed there.
@@ -1546,6 +1548,20 @@ export class Engine {
     this.toast(`Theme: ${next === 'system' ? 'match system' : next}`, 'info');
   }
 
+  /** Soft wrap on or off, in both editors and both code views. */
+  toggleWrap() {
+    this.setSettings({ wrap: !this.settings.wrap });
+    this.applyWrap();
+  }
+
+  private applyWrap() {
+    const on = this.settings.wrap;
+    this.ed.setWrap(on);
+    this.ed2.setWrap(on);
+    this.fmt.setWrap(on);
+    this.code.setWrap(on);
+  }
+
   toggleAutoFormat() {
     this.setSettings({ autoFormat: !this.settings.autoFormat });
     this.toast(`Auto-format on paste ${this.settings.autoFormat ? 'on' : 'off'}`, 'info');
@@ -1598,6 +1614,8 @@ export class Engine {
     else if (mod && !e.shiftKey && !e.altKey && k === 's') run = () => this.download();
     else if (mod && !e.shiftKey && !e.altKey && k === 'o') run = () => this.openFile();
     else if (mod && !e.shiftKey && !e.altKey && k === 'f') run = () => this.focusSearch();
+    // Alt+Z like VS Code (on macOS, Option+Z types Ω: not while typing).
+    else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ' && !(s.mac && typing)) run = () => this.toggleWrap();
     // On macOS, Option+digit types characters (#, €…): never steal it while typing.
     else if (e.altKey && !mod && /^Digit[1-5]$/.test(e.code) && !(s.mac && typing)) {
       const views: View[] = ['format', 'tree', 'table', 'convert', 'compare'];
