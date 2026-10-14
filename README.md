@@ -4,6 +4,17 @@ A fast, private, offline-capable JSON formatter, validator and viewer. Everythin
 
 **Live:** https://tools.vikasmaur.com
 
+## JSON resources
+
+These server-rendered pages can be linked from documentation, tutorials and developer reading lists:
+
+- [JSON syntax reference](https://tools.vikasmaur.com/resources/json-reference), based on RFC 8259 and ECMA-404.
+- [JSON examples for APIs, configuration and tests](https://tools.vikasmaur.com/resources/json-examples), with downloadable fictional-data fixtures.
+- [How to format and validate JSON](https://tools.vikasmaur.com/blogs/json-formatting-guide).
+- [The origin of JSON](https://tools.vikasmaur.com/blogs/origin-of-json).
+
+Browse the [resource library](https://tools.vikasmaur.com/resources) or [open the private JSON viewer](https://tools.vikasmaur.com).
+
 ## Features
 
 - **Format / minify / sort keys** with 2, 4 or tab indentation, all undoable.
@@ -41,12 +52,15 @@ pnpm build && pnpm start
 ```
 app/                 layout (metadata, theme bootstrap), page, CSS, manifest, robots, sitemap, icons
 app/blogs/           blog index and posts; add a post to posts.ts plus a page in its own folder
+app/resources/       citable JSON reference and reusable example pages
 components/          React UI (toolbars, status bar, dialogs)
 lib/json/            lossless tolerant parser, serializer, paths, smart value helpers
 lib/engine/          editor, tree, table and code views + the engine that ties them together
 lib/convert/         type/code generators, data formats, importers, XLSX writer (lazy-loaded)
 lib/diff/            structural JSON diff + JSON Patch
 public/sw.js         offline service worker
+public/examples/     downloadable JSON fixtures used by resource pages
+public/llms.txt      concise crawler and AI-reader index of the public pages
 tests/               node:test suites
 ```
 

@@ -1,0 +1,12 @@
+{
+  "app": {
+    "name": "Canvas",
+    "port": 8080,
+    "debug": false
+  },
+  "features": {
+    "comments": true,
+    "uploads": false
+  },
+  "allowedOrigins": ["https://example.com"]
+}

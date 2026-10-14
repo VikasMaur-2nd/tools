@@ -1,0 +1,12 @@
+{
+  "data": [
+    {"id": "usr_1042", "name": "Asha Rao", "role": "editor"},
+    {"id": "usr_1043", "name": "Noah Chen", "role": "reviewer"}
+  ],
+  "page": {
+    "number": 1,
+    "size": 2,
+    "total": 2,
+    "next": null
+  }
+}

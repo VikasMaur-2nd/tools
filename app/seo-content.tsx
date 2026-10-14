@@ -43,6 +43,10 @@ export default function SeoContent() {
         Learn more in the <Link href="/blogs">Tool Kumar JSON blog</Link>, including a practical guide to formatting and validating JSON and
         the <Link href="/blogs/origin-of-json">origin story of JSON</Link>.
       </p>
+      <p>
+        Use the <Link href="/resources/json-reference">JSON syntax reference</Link> to check the standard rules, or download{' '}
+        <Link href="/resources/json-examples">JSON examples for APIs and configuration</Link> for documentation and tests.
+      </p>
     </section>
   );
 }

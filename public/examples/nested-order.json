@@ -1,0 +1,9 @@
+{
+  "orderId": "ord_7021",
+  "customer": {"name": "Mina Patel", "country": "IN"},
+  "lines": [
+    {"sku": "notebook-a5", "quantity": 2, "price": 6.5},
+    {"sku": "pen-blue", "quantity": 3, "price": 1.25}
+  ],
+  "paid": true
+}

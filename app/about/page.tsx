@@ -46,6 +46,10 @@ export default function AboutPage() {
           The <Link href="/blogs">Tool Kumar blog</Link> explains practical JSON and developer workflow topics. Each guide links to the tool
           so you can test the examples yourself. The <Link href="/">JSON viewer</Link> remains free to use.
         </p>
+        <p>
+          Our <Link href="/resources">JSON resources</Link> provide a standards-based syntax reference and original example files for
+          developers, writers and teachers to cite or reuse.
+        </p>
 
         <h2>Start with JSON</h2>
         <p>

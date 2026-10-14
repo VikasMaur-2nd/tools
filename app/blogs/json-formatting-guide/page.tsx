@@ -126,6 +126,10 @@ export default function JsonFormattingGuidePage() {
         Every one of these can be checked in the <Link href="/">free JSON viewer and formatter</Link>: it points to the line and column
         of the first error and offers to repair the common ones for you.
       </p>
+      <p>
+        For the exact syntax rules, see the <Link href="/resources/json-reference">JSON reference</Link>. If you need a file for a test or
+        tutorial, start with our <Link href="/resources/json-examples">downloadable JSON examples</Link>.
+      </p>
     </Article>
   );
 }

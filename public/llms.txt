@@ -1,0 +1,20 @@
+# Tool Kumar
+
+> Free, private JSON tools that run in the browser. Documents stay on the device and the app works offline after it loads.
+
+## Primary pages
+
+- [JSON viewer and formatter](https://tools.vikasmaur.com/): format, validate, repair, minify, compare and convert JSON.
+- [Resource library](https://tools.vikasmaur.com/resources): the site's reference pages and guides.
+- [JSON syntax reference](https://tools.vikasmaur.com/resources/json-reference): values, objects, arrays, strings, numbers and common invalid forms, with links to RFC 8259 and ECMA-404.
+- [JSON examples](https://tools.vikasmaur.com/resources/json-examples): fictional API, configuration and nested-data examples with downloadable files.
+- [Formatting and validation guide](https://tools.vikasmaur.com/blogs/json-formatting-guide): a practical workflow for finding and fixing syntax errors.
+- [Origin of JSON](https://tools.vikasmaur.com/blogs/origin-of-json): the history of the format and its standards.
+- [About Tool Kumar](https://tools.vikasmaur.com/about): privacy and processing details.
+
+## Site facts
+
+- The parser and formatter run in the browser.
+- No account is required to use the viewer.
+- The app supports tree and table views, search, JSON paths, comparison, conversion and local downloads.
+- Share links keep document data in the URL hash; the service does not process the document on a server.
