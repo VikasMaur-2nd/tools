@@ -5,6 +5,7 @@ import { Analytics } from '@/components/Analytics';
 import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
 import { serverT } from '@/lib/i18n/server';
 import { jsonLdScript, siteJsonLd } from './(en)/seo';
+import { englishSocialImages } from './social-images';
 import './globals.css';
 import './content.css';
 
@@ -50,7 +51,7 @@ export function rootMetadata(locale: SiteLocale): Metadata {
       title,
       description,
       locale: localeInfo(locale).og,
-      images: [
+      images: locale === 'en' ? [englishSocialImages.openGraph] : [
         {
           url: '/opengraph-image.png',
           width: 1200,
@@ -63,7 +64,7 @@ export function rootMetadata(locale: SiteLocale): Metadata {
       card: 'summary_large_image',
       title,
       description,
-      images: ['/twitter-image.png'],
+      images: locale === 'en' ? [englishSocialImages.twitter] : ['/twitter-image.png'],
     },
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 } },
     formatDetection: { telephone: false, email: false, address: false },

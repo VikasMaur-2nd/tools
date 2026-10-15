@@ -18,7 +18,7 @@ const live = (lang: string): lang is Locale => isLocale(lang) && liveLocales().i
 
 export async function generateMetadata({ params }: LayoutProps<'/[lang]'>): Promise<Metadata> {
   const { lang } = await params;
-  return live(lang) ? rootMetadata(lang) : {};
+  return live(lang) ? rootMetadata(lang) : { metadataBase: new URL('https://tools.vikasmaur.com') };
 }
 
 export const viewport: Viewport = rootViewport;
