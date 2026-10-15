@@ -55,6 +55,15 @@
   --c-null: #be123c;
   --c-punct: #687080;
   --c-com: #687080;
+  /* CSV columns, in an order that keeps neighbours far apart. */
+  --cc0: #1d4ed8;
+  --cc1: #b45309;
+  --cc2: #047857;
+  --cc3: #be185d;
+  --cc4: #0e7490;
+  --cc5: #b91c1c;
+  --cc6: #7c3aed;
+  --cc7: #4d7c0f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -102,6 +111,14 @@
     --c-null: #ff8fa8;
     --c-punct: #7a8292;
     --c-com: #7a8292;
+    --cc0: #8ab4ff;
+    --cc1: #f5b97c;
+    --cc2: #86d9a8;
+    --cc3: #f9a8d4;
+    --cc4: #67e8f9;
+    --cc5: #fca5a5;
+    --cc6: #c9a5ff;
+    --cc7: #bef264;
   }
 }
 
@@ -149,6 +166,14 @@
   --c-null: #ff8fa8;
   --c-punct: #7a8292;
   --c-com: #7a8292;
+  --cc0: #8ab4ff;
+  --cc1: #f5b97c;
+  --cc2: #86d9a8;
+  --cc3: #f9a8d4;
+  --cc4: #67e8f9;
+  --cc5: #fca5a5;
+  --cc6: #c9a5ff;
+  --cc7: #bef264;
 }
 
 /* ─── Base ─────────────────────────────────────────────────────────────── */
@@ -3047,3 +3072,41 @@ button.mi:focus-visible {
 .tb-r.hit.cur {
   background: var(--hit);
 }
+
+/* CSV and Excel previews: each column in its own colour, the header record bold. */
+.cc0 {
+  color: var(--cc0);
+}
+
+.cc1 {
+  color: var(--cc1);
+}
+
+.cc2 {
+  color: var(--cc2);
+}
+
+.cc3 {
+  color: var(--cc3);
+}
+
+.cc4 {
+  color: var(--cc4);
+}
+
+.cc5 {
+  color: var(--cc5);
+}
+
+.cc6 {
+  color: var(--cc6);
+}
+
+.cc7 {
+  color: var(--cc7);
+}
+
+.ch {
+  font-weight: 600;
+}
+

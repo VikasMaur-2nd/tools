@@ -26,7 +26,17 @@ const H_OVERSCAN = 400;
  * a JSON string (a wrapped continuation row), `esc` when that string's previous
  * character was a backslash.
  */
-export type LineHighlighter = (text: string, inString: boolean, esc: boolean) => string;
+export type LineHighlighter = (text: string, inString: boolean, esc: boolean, state: number) => string;
+
+/**
+ * Tracks a highlighter's state through the text (CSV: the column and whether
+ * it's inside quotes), so a row that starts mid-record is coloured right.
+ * `scan` returns the state after `s[a, b)`.
+ */
+export interface Scanner {
+  start: number;
+  scan(s: string, a: number, b: number, state: number): number;
+}
 
 const plain: LineHighlighter = (t) => escapeHtml(t);
 
@@ -67,6 +77,9 @@ export class CodeView {
   private hl: LineHighlighter = plain;
   /** Track JSON string state across wrapped rows. */
   private json = false;
+  private scanner: Scanner | null = null;
+  /** With a scanner: its state at the start of each line. */
+  private lineStates = new Int32Array(0);
   /** Long lines drawn around the view while not wrapping: string state at the first column drawn. */
   private strs = new StringStates();
   /** Per wrapped line: string state at each row start (see stringState). */
@@ -143,9 +156,10 @@ export class CodeView {
     this.render(true);
   }
 
-  /** `json`: the text is JSON (enables correct highlighting of wrapped strings). */
-  setText(text: string, hl: LineHighlighter, json = false) {
+  /** `json`: the text is JSON (enables correct highlighting of wrapped strings). `scanner`: see Scanner. */
+  setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null) {
     if (text === this.text && hl === this.hl) return;
+    this.scanner = scanner;
     const prevLines = this.lines.length;
     const keepScroll = this.text && text.slice(0, 64) === this.text.slice(0, 64);
     this.text = text;
@@ -162,6 +176,14 @@ export class CodeView {
     }
     this.ls = ls;
     this.maxLen = maxLen;
+    if (scanner) {
+      const st = (this.lineStates = new Int32Array(this.lines.length));
+      let state = scanner.start;
+      for (let i = 0; i < this.lines.length; i++) {
+        st[i] = state;
+        state = scanner.scan('\n', 0, 1, scanner.scan(this.lines[i], 0, this.lines[i].length, state));
+      }
+    }
     // Folds survive edits that keep the shape (same line count), e.g. changing a value.
     if (this.lines.length !== prevLines) this.folded.clear();
     this.scanFolds();
@@ -355,14 +377,19 @@ export class CodeView {
     return this.odd[vi] === 1 && this.rowStart[vi + 1] - this.rowStart[vi] > 1 && this.lines[this.vis[vi]].length <= LONG_LINE;
   }
 
-  /** JSON string state at the start of wrapped row `sub` of visible line `vi`. */
+  /** Highlighter state at the start of wrapped row `sub` of visible line `vi` (JSON strings, or the scanner's). */
   private stateAt(vi: number, sub: number): number {
-    if (!this.json || sub === 0) return 0;
+    const sc = this.scanner;
     const ln = this.vis[vi];
+    if (!sc && (!this.json || sub === 0)) return 0;
     let st = this.states.get(ln);
-    if (!st) this.states.set(ln, (st = [0]));
+    if (!st) this.states.set(ln, (st = [sc ? this.lineStates[ln] : 0]));
     const line = this.lines[ln];
-    for (let k = st.length; k <= sub; k++) st.push(stringState(line, this.subStart(vi, k - 1), this.subStart(vi, k), st[k - 1]));
+    for (let k = st.length; k <= sub; k++) {
+      const a = this.subStart(vi, k - 1);
+      const b = this.subStart(vi, k);
+      st.push(sc ? sc.scan(line, a, b, st[k - 1]) : stringState(line, a, b, st[k - 1]));
+    }
     return st[sub];
   }
 
@@ -429,14 +456,17 @@ export class CodeView {
       const ctx = rows > 1 && !block && this.odd[vi] === 1;
       let h = this.html.get(row);
       if (h === undefined) {
-        const s = !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : this.strs.at(line, 0, a);
+        const sc = this.scanner;
+        const s = sc
+          ? rows > 1 ? this.stateAt(vi, sub) : sc.scan(line, 0, a, this.lineStates[ln])
+          : !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : this.strs.at(line, 0, a);
         const se = ctx && b < line.length ? trimWs(line, a, b) : b;
-        h = this.hl(a || se < line.length ? line.slice(a, se) : line, (s & 1) === 1, (s & 2) === 2);
+        h = this.hl(a || se < line.length ? line.slice(a, se) : line, (s & 1) === 1, (s & 2) === 2, s);
         if (ctx) h = `${bidiContext(line, Math.max(0, a - 64), a)}${h}${bidiContext(line, b, Math.min(line.length, b + 64))}${escapeHtml(line.slice(se, b))}`;
         if (foldedHere) {
           const end = this.close[ln];
           const n = end - ln - 1;
-          h += `<button type="button" class="cv-ph" data-f="${ln}" title="${this.unfold}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</button>${this.hl(this.lines[end].trim(), false, false)}`;
+          h += `<button type="button" class="cv-ph" data-f="${ln}" title="${this.unfold}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</button>${this.hl(this.lines[end].trim(), false, false, 0)}`;
         }
         this.html.set(row, h);
       }

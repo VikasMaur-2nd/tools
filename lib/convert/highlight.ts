@@ -298,6 +298,71 @@ function csv(src: string, emit: Emit): void {
   }
 }
 
+/*
+ * CSV by column ("rainbow"): each field takes its column's colour (cc0…cc7,
+ * repeating) and the header record is bold, so a value's column is clear at a
+ * glance. A row of the view can start mid-record (a quoted field with a line
+ * break, or a wrapped row), so the view passes in the state where it starts:
+ * column << 2 | header << 1 | inside quotes.
+ */
+
+/** State at the start of a CSV document: column 0 of the header record. */
+export const CSV_START = 2;
+
+/** CSV state after `s[a, b)` from `state`. */
+export function csvScan(s: string, a: number, b: number, state: number): number {
+  let col = state >> 2;
+  let head = state & 2;
+  let q = state & 1;
+  for (let i = a; i < b; i++) {
+    const c = s.charCodeAt(i);
+    if (q) {
+      if (c === 34) {
+        if (s.charCodeAt(i + 1) === 34) i++;
+        else q = 0;
+      }
+    } else if (c === 44) col++;
+    else if (c === 34) q = 1;
+    else if (c === 10) {
+      col = 0;
+      head = 0;
+    }
+  }
+  return (col << 2) | head | q;
+}
+
+/** Highlights a piece of one CSV line that starts in `state` (see `csvScan`). */
+export function csvLine(src: string, state: number): string {
+  const n = src.length;
+  const head = state & 2 ? ' ch' : '';
+  let col = state >> 2;
+  let q = state & 1;
+  let out = '';
+  for (let i = 0; i < n; ) {
+    const c = src.charCodeAt(i);
+    if (!q && (c === 44 || c === 13)) {
+      out += c === 44 ? '<span class="tp">,</span>' : '\r';
+      if (c === 44) col++;
+      i++;
+      continue;
+    }
+    let j = i;
+    for (; j < n; j++) {
+      const d = src.charCodeAt(j);
+      if (q) {
+        if (d === 34) {
+          if (src.charCodeAt(j + 1) === 34) j++;
+          else q = 0;
+        }
+      } else if (d === 44 || d === 13) break;
+      else if (d === 34) q = 1;
+    }
+    out += `<span class="cc${col % 8}${head}">${esc(src.slice(i, j))}</span>`;
+    i = j;
+  }
+  return out;
+}
+
 /** Highlights converter output as HTML (`lang` is a `Target.lang`). */
 export function highlightCode(src: string, lang: string): string {
   // Small pieces are joined in batches: far less GC work than one huge rope.

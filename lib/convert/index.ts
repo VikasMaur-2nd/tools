@@ -10,7 +10,7 @@ import { toCSharp, toDart, toGo, toJava, toKotlin, toPHP, toPython, toRust, toSw
 import { toJSONSchema, toTypeScript, toZod } from './types';
 
 export type { ConvertOptions } from './infer';
-export { highlightCode } from './highlight';
+export { CSV_START, csvLine, csvScan, highlightCode } from './highlight';
 
 export interface Target {
   id: string;

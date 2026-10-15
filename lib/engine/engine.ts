@@ -1269,7 +1269,8 @@ export class Engine {
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
         : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
-      this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
+      if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
+      else this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
       this.code.setText('', escapeHtml);
