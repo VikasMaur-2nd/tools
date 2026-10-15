@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TOOL_PAGES } from '../lib/tool-pages';
-import { persistenceAfterChange, persistenceAfterLoad } from '../lib/engine/engine';
+import { persistenceAfterChange, persistenceAfterLoad } from '../lib/engine/rules';
 
 test('dedicated tool pages have unique slugs and working presets', () => {
   const slugs = TOOL_PAGES.map((page) => page.slug);

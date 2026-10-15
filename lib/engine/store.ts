@@ -32,6 +32,14 @@ export interface Settings {
   csharpLib: 'stj' | 'newtonsoft';
 }
 
+/** A tool page's starting state. */
+export interface EnginePreset {
+  settings?: Partial<Settings>;
+  initialText?: string;
+  initialFileName?: string;
+  initialImport?: 'yaml' | 'xml' | 'csv' | 'toml';
+}
+
 /** A JWT input: its algorithm and NumericDate claims (seconds), shown live (they age). */
 export interface JwtInfo {
   alg?: string;

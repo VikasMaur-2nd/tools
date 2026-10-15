@@ -146,3 +146,53 @@ describe('cursive letters joined across a row break', () => {
     assert.equal(joins(true, '𞤀|𞤁'), true); // Adlam, outside the BMP
   });
 });
+
+describe('row breaks added up for long lines', () => {
+  const el = () => ({ className: '', style: {}, setAttribute() {}, appendChild() {}, remove() {} });
+  (globalThis as { document?: unknown }).document ??= { createElement: el };
+  const TAB = 4;
+  const tabTo = (x: number, cw: number) => {
+    const stop = TAB * cw;
+    const g = (Math.floor(x / stop) + 1) * stop - x;
+    return g < cw / 2 ? g + stop : g;
+  };
+  // The character-by-character original, for ASCII, tabs and a zero-width joiner of width 0.
+  const reference = (s: string, cw: number, max: number) => {
+    const starts = [0];
+    let w = 0;
+    let joined = false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      let g = c === 9 ? tabTo(w, cw) : c === 0x200d ? 0 : cw;
+      if (!joined && c !== 0x200d && w + g > max && i > starts[starts.length - 1]) {
+        starts.push(i);
+        w = 0;
+        if (c === 9) g = tabTo(0, cw);
+      }
+      w += g;
+      joined = c === 0x200d;
+    }
+    return starts;
+  };
+
+  test('the ASCII fast path breaks exactly where adding up one by one does', () => {
+    let seed = 3;
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
+    // Cell widths exact in binary: the two ways of adding up then agree to the last bit.
+    for (const [cols, cw] of [[8, 8], [37, 7.5], [60, 6.25], [120, 7.75]] as const) {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+      w.fit(cols * cw + cw / 2 + 0.25, cw);
+      const internals = w as unknown as { sum(s: string): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+      internals.glyphs.set(0x200d, 0);
+      internals.joins.add(0x200d);
+      for (let k = 0; k < 400; k++) {
+        let s = '';
+        for (let n = rnd(900); n > 0; n--) {
+          const r = rnd(40);
+          s += r === 0 ? '\t' : r === 1 ? '‍' : String.fromCharCode(32 + rnd(95));
+        }
+        assert.deepEqual([...internals.sum(s)], reference(s, cw, w.width), `cols ${cols}, ${JSON.stringify(s.slice(0, 40))}`);
+      }
+    }
+  });
+});

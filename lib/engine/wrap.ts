@@ -41,6 +41,10 @@ const JOINS = /[\p{M}\u200d\ufe00-\ufe0f\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}\u
  */
 const JOINS_NEXT = /[\u0620\u0626\u0628\u062a-\u062e\u0633-\u0647\u0649\u064a\u066e\u066f\u0678-\u0687\u069a-\u06bf\u06c1\u06c2\u06cc\u06ce\u06d0\u06d1\u06fa-\u06fc\u06ff\u0712-\u0714\u071a-\u071d\u071f-\u0727\u0729\u072b\u072d\u072e\u074e-\u0758\u075c-\u076a\u076d-\u0770\u0772\u0775-\u0777\u077a-\u077f\u07ca-\u07ea\u07fa\u0841-\u0845\u0848\u084a-\u0853\u0855\u0860\u0862-\u0865\u0868\u0883-\u0886\u0889-\u088d\u088f\u08a0-\u08a9\u08af\u08b0\u08b3-\u08b8\u08ba-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua872\u{10ac0}-\u{10ac4}\u{10acd}\u{10ad3}-\u{10adc}\u{10ade}-\u{10ae0}\u{10aeb}-\u{10aee}\u{10b80}\u{10b82}\u{10b86}-\u{10b88}\u{10b8a}\u{10b8b}\u{10b8d}\u{10b90}\u{10bad}\u{10bae}\u{10d00}-\u{10d21}\u{10d23}\u{10ec3}\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f32}\u{10f34}-\u{10f44}\u{10f51}-\u{10f53}\u{10f70}-\u{10f73}\u{10f76}-\u{10f81}\u{10fb0}\u{10fb2}\u{10fb3}\u{10fb8}\u{10fbb}\u{10fbc}\u{10fbe}\u{10fbf}\u{10fc1}\u{10fc4}\u{10fca}\u{10fcb}\u{1e900}-\u{1e943}]/u;
 const JOINS_PREV = /[\u0620\u0622-\u064a\u066e\u066f\u0671-\u0673\u0675-\u06d3\u06d5\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u077f\u07ca-\u07ea\u07fa\u0840-\u0858\u0860\u0862-\u0865\u0867-\u086a\u0870-\u0886\u0889-\u088f\u08a0-\u08ac\u08ae-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua871\u{10ac0}-\u{10ac5}\u{10ac7}\u{10ac9}\u{10aca}\u{10ace}-\u{10ad6}\u{10ad8}-\u{10ae1}\u{10ae4}\u{10aeb}-\u{10aef}\u{10b80}-\u{10b91}\u{10ba9}-\u{10bae}\u{10d01}-\u{10d23}\u{10ec2}-\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f44}\u{10f51}-\u{10f54}\u{10f70}-\u{10f81}\u{10fb0}\u{10fb2}-\u{10fb6}\u{10fb8}-\u{10fbf}\u{10fc1}-\u{10fc4}\u{10fc9}\u{10fca}\u{1e900}-\u{1e943}]/u;
+/** Characters that can be over four cells wide (ligatures, cuneiform, hieroglyphs, musical symbols). */
+const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
+/** A run of printable ASCII (sticky). */
+const RUN = /[\x20-\x7e]+/y;
 /** Long lines whose breaks were added up (see `sum`). */
 const SUMS = 4;
 
@@ -178,7 +182,10 @@ export class Wrapper {
   fit(space: number, cw: number): boolean {
     const cols = space > 0 && cw > 0 ? Math.max(8, Math.floor((space - cw / 2) / cw)) : 0;
     if (cols === this.cols && cw === this.cw) return false;
-    if (cw !== this.cw) this.glyphs.clear();
+    if (cw !== this.cw) {
+      this.glyphs.clear();
+      this.font = '';
+    }
     this.cols = cols;
     this.cw = cw;
     this.forget();
@@ -203,6 +210,30 @@ export class Wrapper {
     this.trust = false;
     this.forget();
     return true;
+  }
+
+  /**
+   * Fonts finished loading. Rows that must match a textarea are measured
+   * afresh; otherwise only the glyphs learned so far are re-measured (on the
+   * canvas), and rows recomputed only if one of them changed width noticeably.
+   * True if rows must be recomputed.
+   */
+  fontsLoaded(): boolean {
+    if (this.exact || !this.ctx || !this.font) {
+      this.reset();
+      return true;
+    }
+    const x = this.ctx;
+    x.font = this.font;
+    let changed = false;
+    for (const [c, w] of this.glyphs) {
+      const n = x.measureText(String.fromCodePoint(c)).width + 0.05;
+      if (Math.abs(n - w) > 0.01) this.glyphs.set(c, n);
+      // A font swapped for one of nearly the same widths moves no break that matters here.
+      if (Math.abs(n - w) >= 0.2) changed = true;
+    }
+    if (changed) this.forget();
+    return changed;
   }
 
   /** Forgets measurements (the code font arrived, so glyph widths changed). */
@@ -290,6 +321,20 @@ export class Wrapper {
         keep.set(s, r);
       }
     }
+    if (unsized.length && !this.exact) {
+      // Rows drawn by these views needn't match a textarea: a line a quarter of a row long
+      // can't wrap (no character but the widest few is over four cells), so isn't measured.
+      const quarter = cols >> 2;
+      let w = 0;
+      for (const k of unsized) {
+        const s = B[k] - A[k] <= quarter ? text.slice(A[k], B[k]) : '';
+        if (s && !FORCED.test(s) && !WIDE.test(s)) {
+          out[k] = 1;
+          keep.set(s, 1);
+        } else unsized[w++] = k;
+      }
+      unsized.length = w;
+    }
     if (unsized.length) {
       const lines = unsized.map((k) => text.slice(A[k], B[k]));
       this.learn(lines);
@@ -375,16 +420,21 @@ export class Wrapper {
       }
     }
     if (!todo.length) return;
-    // Each in its own inline block: nothing joins or shapes across them.
-    const els = todo.map((c) => {
-      const e = document.createElement('i');
-      e.textContent = String.fromCodePoint(c);
-      return e;
-    });
-    this.scratch.replaceChildren(fragment(els));
-    els.forEach((e, k) => this.glyphs.set(todo[k], e.getBoundingClientRect().width));
-    this.scratch.textContent = '';
+    // Measured on a canvas in the same fonts: no layout (a forced one would also lay
+    // out whatever else just changed on the page). A hair over, as both uses need.
+    const x = (this.ctx ??= document.createElement('canvas').getContext('2d'));
+    if (!x) return;
+    if (!this.font) {
+      // Read once per cell width (a style read here would restyle the whole changed page).
+      const cs = getComputedStyle(this.scratch);
+      this.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    }
+    x.font = this.font;
+    for (const c of todo) this.glyphs.set(c, x.measureText(String.fromCodePoint(c)).width + 0.05);
   }
+
+  private ctx: CanvasRenderingContext2D | null = null;
+  private font = '';
 
   /**
    * Does `s` surely fit one row? Glyphs measured alone are at least as wide
@@ -471,35 +521,53 @@ export class Wrapper {
   private sum(s: string): Int32Array {
     const hit = this.sums.get(s);
     if (hit) return hit;
-    this.learn([s]);
     const cw = this.cw;
     const max = this.width;
+    /** Printable ASCII characters a row holds from its start. */
+    const full = Math.floor(max / cw);
     const starts = [0];
+    let last = 0;
     let w = 0;
     let joined = false;
     let flags = 0;
     let forced = false;
     for (let i = 0; i < s.length; ) {
       let c = s.charCodeAt(i);
+      if (c >= 32 && c < 127 && !joined) {
+        // A run of printable ASCII is one cell a character: its breaks are arithmetic.
+        RUN.lastIndex = i;
+        RUN.test(s);
+        const e = RUN.lastIndex;
+        // (A row can already be over full: nothing breaks before a joined character.)
+        let k = i + Math.max(0, Math.floor((max - w) / cw));
+        if (k === last) k++;
+        if (k < e) {
+          for (; k < e; k += full) starts.push((last = k));
+          w = (e - last) * cw;
+        } else w += (e - i) * cw;
+        flags = 0;
+        i = e;
+        continue;
+      }
       let n = 1;
       let g: number;
       let join = joined;
-      if (c >= 32 && c < 127) g = cw;
-      else if (c === 9) g = tabTo(w, cw);
+      if (c === 9) g = tabTo(w, cw);
+      else if (c >= 32 && c < 127) g = cw;
       else {
         if (c >= 0xd800 && c < 0xdc00) {
           c = s.codePointAt(i) as number;
           if (c > 0xffff) n = 2;
         }
-        g = c === 0xfe0f ? 2.5 * cw : (this.glyphs.get(c) ?? cw);
+        g = c === 0xfe0f ? 2.5 * cw : (this.glyphs.get(c) ?? this.glyph(c));
         if (this.joins.has(c)) join = true;
         if (c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029) forced = true;
         // Regional indicators pair into flags.
         if (c >= 0x1f1e6 && c <= 0x1f1ff) join ||= flags++ % 2 === 1;
         else flags = 0;
       }
-      if (!join && w + g > max && i > starts[starts.length - 1]) {
-        starts.push(i);
+      if (!join && w + g > max && i > last) {
+        starts.push((last = i));
         w = 0;
         if (c === 9) g = tabTo(0, cw);
       }
@@ -507,7 +575,7 @@ export class Wrapper {
       joined = c === 0x200d;
       i += n;
       if (forced && i < s.length) {
-        starts.push(i);
+        starts.push((last = i));
         w = 0;
       }
       forced = false;
@@ -516,6 +584,12 @@ export class Wrapper {
     this.sums.set(s, out);
     if (this.sums.size > SUMS) this.sums.delete(this.sums.keys().next().value as string);
     return out;
+  }
+
+  /** Width of code point `c`, measured now (see `learn`). */
+  private glyph(c: number) {
+    this.learn([String.fromCodePoint(c)]);
+    return this.glyphs.get(c) ?? this.cw;
   }
 
   /** Where the last patch changed its mirror (rows starting before it are kept). */

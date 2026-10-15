@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { parse } from '../lib/json/parser';
 import { formatDoc } from '../lib/json/format';
 import { convert } from '../lib/convert';
-import { jsonLines } from '../lib/engine/engine';
+import { jsonLines } from '../lib/engine/rules';
 import { TOOL_PAGES } from '../lib/tool-pages';
 
 const isLines = (text: string) => jsonLines(text, parse(text));

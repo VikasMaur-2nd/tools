@@ -1,4 +1,4 @@
-import type { EnginePreset } from './engine/engine';
+import type { EnginePreset } from './engine/store';
 
 export type ToolPage = {
   slug: string;

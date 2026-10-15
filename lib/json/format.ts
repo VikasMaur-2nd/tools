@@ -64,7 +64,195 @@ export function stringify(root: JNode, indent: string, sortKeys = false): string
  */
 export function formatDoc(src: string, res: ParseResult, indent: string, sortKeys = false): string {
   if (res.exact && !sortKeys) return JSON.stringify(JSON.parse(src), null, indent || undefined);
-  return stringify(res.root as JNode, indent, sortKeys);
+  // Strict JSON with numbers the engine would round: re-indented straight from the text.
+  const fast = !sortKeys && !res.error && !res.issues.length && !res.multi ? reindent(src, indent) : null;
+  return fast ?? stringify(res.root as JNode, indent, sortKeys);
+}
+
+/** A JSON number, from its first character (sticky). */
+const NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][-+]?\d+)?/y;
+/** Characters a string token must be re-quoted for (global, searched forward once). */
+const SPECIAL = /[\\\x00-\x1f\ud800-\udfff]/g;
+
+/**
+ * Re-indents strict JSON text in one pass, checking its grammar as it goes:
+ * the same text `stringify` makes from the parsed tree (numbers and plain
+ * strings are copied, strings with escapes or surrogates are re-quoted), without
+ * building the tree. Null if the text isn't strict JSON (comments, trailing
+ * commas…), which the full parser then reports or repairs.
+ */
+export function reindent(src: string, indent: string): string | null {
+  return reindenter(src, indent)(Infinity) as string | null;
+}
+
+/** Copy of `buf` (its first `len` units) with room for `k` more. */
+function grown(buf: Uint16Array, len: number, k: number) {
+  const next = new Uint16Array(Math.max(buf.length * 2, len + k));
+  next.set(buf.subarray(0, len));
+  return next;
+}
+
+/**
+ * `reindent` in steps: each call works until the time `until` (from
+ * performance.now()) and returns undefined if there's more to do, so a big
+ * document is re-indented without one long freeze.
+ */
+export function reindenter(src: string, indent: string): (until: number) => string | null | undefined {
+  const n = src.length;
+  const unit = indent.length;
+  const iu = unit ? indent.charCodeAt(0) : 0;
+  const same = indent === (unit ? String.fromCharCode(iu).repeat(unit) : '');
+  const stack: number[] = []; // 123 object, 91 array
+  // Output is written as UTF-16 code units and decoded once: millions of small
+  // string pieces would cost far more in garbage collection than the work itself.
+  // What may come next (want): 0 value, 1 value or close (array start), 2 key or
+  // close (object start), 3 key, 4 colon, 5 comma or close, 6 end of text.
+  // special: the next backslash, control character or surrogate (one forward search overall).
+  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1 };
+  return (until: number) => step(st, until);
+}
+
+interface Reindent {
+  src: string;
+  indent: string;
+  n: number;
+  unit: number;
+  iu: number;
+  same: boolean;
+  stack: number[];
+  buf: Uint16Array;
+  len: number;
+  i: number;
+  want: number;
+  special: number;
+}
+
+/** Runs a reindent until `until`; the loop works on locals (closure or object reads per character are slow). */
+function step(st: Reindent, until: number): string | null | undefined {
+  {
+    const { src, indent, n, unit, iu, same, stack } = st;
+    let { buf, len, i, want, special } = st;
+    for (let steps = 1; ; steps++) {
+      if ((steps & 4095) === 0 && performance.now() > until) {
+        st.buf = buf;
+        st.len = len;
+        st.i = i;
+        st.want = want;
+        st.special = special;
+        return undefined;
+      }
+      let c = src.charCodeAt(i);
+      while (c === 32 || c === 10 || c === 13 || c === 9) c = src.charCodeAt(++i);
+      if (i >= n) return want === 6 ? new TextDecoder('utf-16le').decode(buf.subarray(0, len)) : null;
+      if (want === 6) return null;
+      // Room for any punctuation plus a line break and its indent.
+      const depth = stack.length + 1;
+      if (len + 8 + depth * unit > buf.length) buf = grown(buf, len, 8 + depth * unit);
+      let br = -1; // write a line break and indent for this depth after the punctuation
+      if (want === 4) {
+        if (c !== 58) return null;
+        buf[len++] = 58;
+        if (unit) buf[len++] = 32;
+        i++;
+        want = 0;
+        continue;
+      }
+      if (want === 5) {
+        const top = stack[stack.length - 1];
+        if (c === 44) {
+          buf[len++] = 44;
+          br = stack.length;
+          i++;
+          want = top === 123 ? 3 : 0;
+        } else if ((c === 125 && top === 123) || (c === 93 && top === 91)) {
+          stack.pop();
+          if (unit) {
+            buf[len++] = 10;
+            for (let k = stack.length * unit; k > 0; k--) buf[len++] = same ? iu : indent.charCodeAt(k % unit);
+          }
+          buf[len++] = c;
+          i++;
+          want = stack.length ? 5 : 6;
+          continue;
+        } else return null;
+      } else if (want === 1 || want === 2) {
+        // A container's close right after its open, or its first item (the open is written now).
+        if ((want === 1 && c === 93) || (want === 2 && c === 125)) {
+          stack.pop();
+          buf[len++] = want === 1 ? 91 : 123;
+          buf[len++] = c;
+          i++;
+          want = stack.length ? 5 : 6;
+          continue;
+        }
+        buf[len++] = want === 2 ? 123 : 91;
+        br = stack.length;
+      }
+      if (br >= 0 && unit) {
+        buf[len++] = 10;
+        for (let k = br * unit; k > 0; k--) buf[len++] = same ? iu : indent.charCodeAt(k % unit);
+      }
+      // After a comma, read on; after an open, the item at `i` comes next.
+      if (want === 0 || want === 3) {
+        if (br >= 0 && c === 44) continue;
+      }
+      if (c === 34) {
+        let j = i + 1;
+        for (;;) {
+          j = src.indexOf('"', j);
+          if (j < 0) return null;
+          let b = j - 1;
+          while (src.charCodeAt(b) === 92) b--;
+          if ((j - b) % 2) break;
+          j++;
+        }
+        if (special < i) {
+          SPECIAL.lastIndex = i;
+          special = SPECIAL.exec(src)?.index ?? n;
+        }
+        let s: string | null = null;
+        if (special < j) {
+          try {
+            s = quote(JSON.parse(src.slice(i, j + 1)) as string);
+          } catch {
+            return null;
+          }
+        }
+        const k = s ? s.length : j + 1 - i;
+        if (len + k > buf.length) buf = grown(buf, len, k);
+        if (s) for (let m = 0; m < k; m++) buf[len++] = s.charCodeAt(m);
+        else for (let m = i; m <= j; m++) buf[len++] = src.charCodeAt(m);
+        i = j + 1;
+        want = want === 2 || want === 3 ? 4 : stack.length ? 5 : 6;
+        continue;
+      }
+      if (want === 2 || want === 3) return null;
+      if (c === 123 || c === 91) {
+        // Very deep nesting is left to the parser (it reports what it can't hold).
+        if (stack.length > 500) return null;
+        stack.push(c);
+        i++;
+        want = c === 123 ? 2 : 1;
+        continue;
+      }
+      let end = i;
+      if (c === 116 && src.startsWith('true', i)) end = i + 4;
+      else if (c === 102 && src.startsWith('false', i)) end = i + 5;
+      else if (c === 110 && src.startsWith('null', i)) end = i + 4;
+      else {
+        NUMBER.lastIndex = i;
+        if (NUMBER.test(src)) end = NUMBER.lastIndex;
+      }
+      if (end === i) return null;
+      // A literal ends at whitespace or a delimiter (not "truex" or "1x").
+      const d = src.charCodeAt(end);
+      if (end < n && !(d === 32 || d === 10 || d === 13 || d === 9 || d === 44 || d === 93 || d === 125)) return null;
+      if (len + end - i > buf.length) buf = grown(buf, len, end - i);
+      for (let m = i; m < end; m++) buf[len++] = src.charCodeAt(m);
+      i = end;
+      want = stack.length ? 5 : 6;
+    }
+  }
 }
 
 /** Text to copy for a node: raw text for strings, JSON for everything else. */

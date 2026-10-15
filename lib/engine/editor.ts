@@ -41,6 +41,12 @@ const H_OVERSCAN = 600;
 /** Above these sizes the editor switches to view mode. */
 const VIEW_CHARS = 2_000_000;
 const VIEW_LINES = 30_000;
+/**
+ * Loaded documents this big open in view mode too, quietly: laying out a
+ * textarea that holds them is most of the time it takes to open them. The
+ * first click, edit key or paste loads the textarea (see `wake`).
+ */
+const LAZY_CHARS = 100_000;
 /** Must match `tab-size` in CSS. */
 const TAB = 4;
 
@@ -56,6 +62,8 @@ export interface EditorEvents {
   mode(view: boolean): void;
   /** Copy the whole document (view mode has no textarea to copy from). */
   copyAll(): void;
+  /** A paste replaces the whole document with `text`: true if the listener loads it instead (see Engine.load). */
+  fullPaste?(text: string): boolean;
 }
 
 export interface Diagnostic {
@@ -161,6 +169,9 @@ export class Editor {
   pasteFull = false;
 
   private forceEdit = false;
+  /** In view mode only until the first edit (see LAZY_CHARS); `loading`: setValue is loading a document. */
+  private lazy = false;
+  private loading = false;
   private vcaret = 0;
   /** After Esc, the next Tab moves focus instead of indenting (no keyboard trap). */
   private tabMovesFocus = false;
@@ -270,10 +281,14 @@ export class Editor {
 
   private onFonts = () => {
     if (!this.el.isConnected) return;
+    const cw = this.cw;
     this.measure();
-    this.wrapper?.reset();
-    this.wrapDirty = true;
-    this.layout();
+    // Rows only move if a width changed (always re-measured while matching a textarea).
+    if (this.cw !== cw || !this.wrapper || this.wrapper.fontsLoaded()) {
+      if (this.cw !== cw) this.wrapper?.reset();
+      this.wrapDirty = true;
+      this.layout();
+    }
     this.render(true);
   };
 
@@ -347,7 +362,11 @@ export class Editor {
 
     // Typing never flips an open editor into view mode; loads and big pastes do.
     const big = t.length > VIEW_CHARS || ls.length > VIEW_LINES;
-    const view = !this.forceEdit && big && !(fromTa && !this.view);
+    const lazy = !big && (this.view ? this.lazy : this.loading && t.length > LAZY_CHARS);
+    const view = !this.forceEdit && (big || lazy) && !(fromTa && !this.view);
+    const notice = view && !lazy;
+    if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
+    this.lazy = view && lazy;
     if (view) {
       if (!this.view) this.vcaret = Math.min(this.caret, t.length);
       if (this.ta.value) this.ta.value = '';
@@ -358,7 +377,6 @@ export class Editor {
       this.view = view;
       this.el.classList.toggle('vmode', view);
       this.el.tabIndex = view ? 0 : -1;
-      this.ev.mode(view);
       this.ev.caret();
     }
     this.wrapDirty = true;
@@ -376,6 +394,14 @@ export class Editor {
   /** Sets the initial document (no undo step). */
   init(text: string) {
     this.model(lf(text), false);
+  }
+
+  /** Leaves a quiet view mode (see LAZY_CHARS) for the textarea, caret at `at`. True if it did. */
+  private wake(at: number) {
+    if (!this.view || !this.lazy) return false;
+    this.editAnyway();
+    this.setCaret(at);
+    return true;
   }
 
   /** Loads a huge document into the textarea anyway (slow once, then editable). */
@@ -1354,10 +1380,18 @@ export class Editor {
     this.pasteFull = !ta.value.trim() || (ta.selectionStart === 0 && ta.selectionEnd === ta.value.length);
     // Browsers insert multi-line text line by line (slow for big pastes): do it ourselves.
     const text = e.clipboardData?.getData('text/plain');
+    if (text && this.pasteFull && this.ev.fullPaste?.(text.replace(/\r\n?/g, '\n'))) return void e.preventDefault();
     if (text && (text.length > 20_000 || countLines(text, 200) >= 200)) {
       e.preventDefault();
       const [a, b] = this.selection;
-      this.apply(a, b, text.replace(/\r\n?/g, '\n'), undefined, undefined, 'paste');
+      // A whole big document opens quietly in view mode, like a loaded file (see LAZY_CHARS).
+      this.loading = this.pasteFull;
+      try {
+        this.apply(a, b, text.replace(/\r\n?/g, '\n'), undefined, undefined, 'paste');
+      } finally {
+        this.loading = false;
+      }
+      if (this.view) this.el.focus({ preventScroll: true });
     }
   };
 
@@ -1431,6 +1465,7 @@ export class Editor {
     const col = Math.max(0, Math.round((e.clientX - r.left - PAD_L) / this.cw));
     // The browser knows which character is under the pointer (wide glyphs, clusters).
     this.vcaret = this.offsetAt(e.clientX, e.clientY) ?? Math.min(a + col, b);
+    if (this.wake(this.vcaret)) return;
     if (this.updateCaret()) this.render(true);
     this.ev.caret();
     this.ev.nav();
@@ -1462,6 +1497,11 @@ export class Editor {
   private onViewKey = (e: KeyboardEvent) => {
     if (!this.view || e.target !== this.el) return;
     const mod = e.metaKey || e.ctrlKey;
+    // An editing key: the textarea takes focus now, so the key's input lands in it.
+    if (this.lazy && !mod && !e.altKey && (e.key.length === 1 || e.isComposing || /^(Backspace|Delete|Enter|Process)$/.test(e.key))) {
+      this.wake(this.vcaret);
+      return;
+    }
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) this.redo();
@@ -1486,6 +1526,9 @@ export class Editor {
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
+    // Quiet view mode is an editor: paste at the caret.
+    const at = this.vcaret;
+    if (this.wake(at)) return this.replace(at, at, text.replace(/\r\n?/g, '\n'));
     this.pasteFull = true;
     this.apply(0, this.text.length, text, 0, 0, 'paste');
   };
@@ -1651,12 +1694,17 @@ export class Editor {
     this.ev.change(kind);
   }
 
-  /** Replaces the whole document as one undoable step. */
-  setValue(next: string, caret = 0) {
+  /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
+  setValue(next: string, caret = 0, load = false) {
     next = lf(next);
     if (next !== this.text) {
       this.forceEdit = false;
-      this.apply(0, this.text.length, next, caret, caret, 'set');
+      this.loading = load;
+      try {
+        this.apply(0, this.text.length, next, caret, caret, 'set');
+      } finally {
+        this.loading = false;
+      }
     }
     this.select(caret, caret, true);
   }

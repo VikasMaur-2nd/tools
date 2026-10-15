@@ -39,6 +39,8 @@ export interface Scanner {
 }
 
 const plain: LineHighlighter = (t) => escapeHtml(t);
+/** Leading spaces and tabs (sticky). */
+const INDENT = /[ \t]*/y;
 
 export interface FindResult {
   total: number;
@@ -125,8 +127,15 @@ export class CodeView {
 
   /** The code font (or its subset for another script) arrived: glyph widths and wrapped rows change. */
   private onFonts = () => {
-    this.wrapper?.reset();
-    if (this.el.isConnected && this.lines.length) this.reflow(true);
+    if (!this.el.isConnected || !this.lines.length) return void this.wrapper?.reset();
+    const cw = this.cw;
+    this.measure();
+    // Rows only move if a width changed; otherwise just redraw in the new glyphs.
+    if (this.cw !== cw || this.wrapper?.fontsLoaded()) this.reflow(true);
+    else {
+      this.html.clear();
+      this.render(true);
+    }
   };
 
   destroy() {
@@ -204,8 +213,10 @@ export class CodeView {
     const stack: number[] = [];
     for (let i = 0; i < n; i++) {
       const line = this.lines[i];
-      let a = 0;
-      while (a < line.length && (line.charCodeAt(a) === 32 || line.charCodeAt(a) === 9)) a++;
+      // The indentation's end (a native search: deep documents indent a lot).
+      INDENT.lastIndex = 0;
+      INDENT.test(line);
+      const a = INDENT.lastIndex;
       const first = line.charCodeAt(a);
       if ((first === 125 || first === 93) && stack.length) {
         const o = stack.pop() as number;

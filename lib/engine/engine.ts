@@ -1,5 +1,5 @@
 import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
-import { byteLength, copyText, formatDoc, stringify } from '../json/format';
+import { byteLength, copyText, formatDoc, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { Editor, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
@@ -8,10 +8,11 @@ import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type Theme, type View } from './store';
+import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
-import { idle } from './idle';
+import { idle, soon } from './idle';
+import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -29,24 +30,11 @@ export interface EngineEls {
   editor2: HTMLElement;
 }
 
-export interface EnginePreset {
-  settings?: Partial<Settings>;
-  initialText?: string;
-  initialFileName?: string;
-  initialImport?: 'yaml' | 'xml' | 'csv' | 'toml';
-}
+export type { EnginePreset } from './store';
 
 export interface EngineOptions {
   /** A landing page: skip restoring the saved document and keep the page's sample out of home-page storage. */
   preserveDocument?: boolean;
-}
-
-export function persistenceAfterChange(enabled: boolean, kind: ChangeKind): boolean {
-  return enabled || kind !== 'set';
-}
-
-export function persistenceAfterLoad(enabled: boolean, persist: boolean): boolean {
-  return enabled || persist;
 }
 
 /** JSON highlighter for soft-wrapped rows (a row may start inside a string). */
@@ -132,26 +120,12 @@ function prettyExtra(root: JNode, unit: number): number {
   return extra;
 }
 
-const MULTI = 'Multiple top-level values (wrapped in an array)';
 /** Opened JSON Lines files: even one record reads as a list of records. */
 const LINES_FILE = /\.(jsonl|ndjson)$/i;
-
-/**
- * JSON Lines / NDJSON: strict JSON values, one per line, separated by newlines
- * only (blank lines are skipped). Concatenated or comma-separated values are
- * still shown, but as loose JSON with an issue to fix.
- */
-export function jsonLines(text: string, res: ParseResult): boolean {
-  if (!res.multi || !res.root || res.error || res.issues.some((x) => x.m !== MULTI)) return false;
-  const recs = res.root.v as JNode[];
-  for (let k = 0; k < recs.length; k++) {
-    const r = recs[k];
-    const nl = text.indexOf('\n', r.s);
-    if (nl >= 0 && nl < r.e) return false;
-    if (k && !/^[ \t\r]*\n\s*$/.test(text.slice(recs[k - 1].e, r.s))) return false;
-  }
-  return true;
-}
+/** From this size, a load in the Format view draws its output before the editor (see `load`). */
+const OUTPUT_FIRST = 200_000;
+/** From this size, that output is re-indented in a worker. */
+const WORKER_MIN = 2_000_000;
 
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
 const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
@@ -238,6 +212,13 @@ export class Engine {
       escape: () => this.leaveEditor(),
       mode: (viewOnly) => store.set({ viewOnly }),
       copyAll: () => void this.copyAll(),
+      // A big document pasted over everything opens like a file: output first, then the editor.
+      fullPaste: (text) => {
+        if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
+        this.refocus = true;
+        this.load(text, null, true, true);
+        return true;
+      },
     });
     this.ed.indentUnit = INDENTS[this.settings.indent];
     this.ed2 = new Editor(els.editor2, {
@@ -301,6 +282,7 @@ export class Engine {
   }
 
   destroy() {
+    this.worker?.terminate();
     this.dead = true;
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('dragenter', this.onDragEnter);
@@ -346,7 +328,19 @@ export class Engine {
     }
     this.ed.setBrackets(-1, -1);
     const len = this.ed.text.length;
-    if (!this.ed.text.trim()) {
+    if (kind === 'paste' && this.ed.pasteFull && this.ed.text.trim()) {
+      // A whole document arrived at once: no typing to wait out.
+      const text = this.ed.text;
+      const now = () => {
+        this.loaded = true;
+        this.analyze();
+      };
+      if (!this.outputFirst(text, null, now)) {
+        this.loadSeq++;
+        clearTimeout(this.timer);
+        this.timer = window.setTimeout(now, 0);
+      }
+    } else if (!this.ed.text.trim()) {
       this.analyze();
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
@@ -504,7 +498,8 @@ export class Engine {
     }
     if (prev && !prev.stale) store.set({ sizes: { ...prev, stale: true } });
     this.sizeTimer = window.setTimeout(
-      async () => {
+      () => idle(async () => {
+        if (seq !== this.sizeSeq) return;
         const blob = new Blob([formatDoc(text, res, '')]);
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
@@ -514,16 +509,21 @@ export class Engine {
           if (encoders) Object.assign(sizes, await encoders.compressedSizes(blob, () => seq === this.sizeSeq));
         }
         if (seq === this.sizeSeq) store.set({ sizes });
-      },
+      }),
       text.length > 1_000_000 ? 700 : 200,
     );
   }
 
+  /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
+  private loaded = false;
+
   /** Keeps the secondary views (convert, compare) in step with the document. */
   private afterDoc() {
     const v = this.settings.view;
-    if (v === 'format') this.scheduleFormat(this.ed.text.length > 1_000_000 ? 250 : 60);
-    else if (v === 'convert') this.scheduleConvert(150);
+    const now = this.loaded;
+    this.loaded = false;
+    if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.text.length > 1_000_000 ? 250 : 60);
+    else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
     else if (v === 'compare') store.set({ docText: this.ed.text });
   }
 
@@ -788,18 +788,121 @@ export class Engine {
 
   // ── Commands: documents ────────────────────────────────────────────────
 
-  load(text: string, name: string | null, persist = true) {
+  /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
+  load(text: string, name: string | null, persist = true, outputFirst = false) {
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
+    this.loadSeq++; // drops what an earlier load still has pending
     store.set({ fileName: name });
     if (persist) write(KEYS.file, name);
-    this.ed.setValue(text, 0);
-    this.analyze();
-    this.ed.el.scrollTop = 0;
-    if (persist) this.persistSoon();
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) return;
+    this.finishLoad(text, persist);
+  }
+
+  /**
+   * A big strict-JSON document in the Format view: draws its output first,
+   * re-indented straight from the text (in a worker, or here in slices), and
+   * calls `next` (its analysis) once that has painted. False if it doesn't apply.
+   */
+  private outputFirst(text: string, name: string | null, next: () => void): boolean {
+    const s = this.settings;
+    if (text.length < OUTPUT_FIRST || s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '') || readJwt(text, this.indent)) return false;
+    const seq = ++this.loadSeq;
+    clearTimeout(this.fmtTimer);
+    clearTimeout(this.timer);
+    const indent = s.minify || s.escape ? '' : this.indent;
+    const done = (out: string | null) => {
+      if (seq !== this.loadSeq) return;
+      if (out === null) return next();
+      // On a first document the views are still hidden (empty state): show the output now.
+      store.set({ empty: false, status: { kind: 'parsing' } });
+      this.fmt.el.hidden = false;
+      this.drawFormat(out, text, this.fmtSettings());
+      // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
+      // the output can be scrolled and searched right away, without that work in the way.
+      setTimeout(() => idle(() => seq === this.loadSeq && next(), 1000), 300);
+    };
+    const here = () => {
+      const run = reindenter(text, indent);
+      const step = () => {
+        if (seq !== this.loadSeq) return;
+        const out = run(performance.now() + 40);
+        if (out === undefined) soon(step);
+        else soon(() => done(out));
+      };
+      step();
+    };
+    // A warm worker leaves the page free; a cold one would cost more than smaller documents take here.
+    const w = text.length < WORKER_MIN && !this.workerWarm ? null : this.reindentWorker();
+    if (!w) {
+      if (text.length < WORKER_MIN) done(reindent(text, indent));
+      else here();
+    } else {
+      this.reindentJob = { id: seq, done, fallback: here };
+      w.postMessage({ id: seq, text, indent });
+    }
+    return true;
+  }
+
+  /** Bumped by every load: a deferred step of an older one is dropped. */
+  private loadSeq = 0;
+  /** null: unavailable (it failed to start), so loads re-indent on the main thread. */
+  private worker: Worker | null | undefined;
+  /** The worker has run its warm-up (see reindent.worker.ts). */
+  private workerWarm = false;
+  private reindentJob: { id: number; done: (out: string | null) => void; fallback: () => void } | null = null;
+
+  /** The re-indenting worker, started on first use or when a file is about to arrive. */
+  private reindentWorker(): Worker | null {
+    if (this.worker !== undefined) return this.worker;
+    try {
+      const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null }>) => {
+        if (e.data.id === -1) return void (this.workerWarm = true);
+        const job = this.reindentJob;
+        if (!job || job.id !== e.data.id) return;
+        this.reindentJob = null;
+        job.done(e.data.out);
+      };
+      w.onerror = () => {
+        // It couldn't load (offline before it was ever cached, or blocked): work here instead.
+        this.worker = null;
+        w.terminate();
+        const job = this.reindentJob;
+        this.reindentJob = null;
+        job?.fallback();
+      };
+      this.worker = w;
+      const doc = JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ id: i, name: `Zoë ${i}`, tags: ['a', 'b'], n: 1.5e3, ok: true, x: null, s: 'say "hi"\n' })));
+      w.postMessage({ id: -1, text: doc, indent: '  ', warm: 12 });
+    } catch {
+      this.worker = null;
+    }
+    return this.worker;
+  }
+
+  /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
+  /** A paste was loaded as a document: the editor keeps the focus it had. */
+  private refocus = false;
+
+  private finishLoad(text: string, persist: boolean, split = false) {
+    this.ed.setValue(text, 0, true);
+    if (this.refocus) this.ed.focus();
+    this.refocus = false;
+    const seq = this.loadSeq;
+    const rest = () => {
+      if (seq !== this.loadSeq) return;
+      this.loaded = true;
+      this.analyze();
+      this.ed.el.scrollTop = 0;
+      if (persist) this.persistSoon();
+    };
+    if (split) soon(rest);
+    else rest();
   }
 
   openFile(target: 1 | 2 = 1) {
+    this.reindentWorker();
     this.fileTarget = target;
     this.els.file.value = '';
     this.els.file.click();
@@ -813,6 +916,9 @@ export class Engine {
   };
 
   async loadFile(f: File) {
+    performance.clearMarks('tk:formatted');
+    performance.mark('tk:input');
+    this.markOutput = true;
     if (f.size > 300 * 1024 * 1024) {
       this.toast('That file is too large to open in a browser tab', 'err');
       return;
@@ -833,7 +939,7 @@ export class Engine {
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
         }
       }
-      this.load(text, f.name);
+      this.load(text, f.name, true, true);
       this.toast(`Opened ${f.name}`, 'ok');
     } catch {
       this.toast(`Couldn't read ${f.name}`, 'err');
@@ -1092,7 +1198,8 @@ export class Engine {
       const text = await res.text();
       if (this.dead) return;
       const name = url.pathname.split('/').pop() || url.hostname;
-      this.load(text, /\.json$/i.test(name) ? name : name + '.json');
+      // Auto-format reads the editor right after: only then is the load done in place.
+      this.load(text, /\.json$/i.test(name) ? name : name + '.json', true, !this.settings.autoFormat);
       if (this.settings.autoFormat) this.autoFormat();
       this.toast(`Loaded ${url.hostname}`, 'ok');
     } catch {
@@ -1165,22 +1272,59 @@ export class Engine {
     return this.settings.escape && text ? JSON.stringify(text) : text;
   }
 
+  /** What the Format view last drew: the source text and the settings it used. */
+  private fmtSrc = '';
+  private fmtKey = '';
+  private fmtText = '';
+  /** User Timing for DevTools: a file opened (tk:input) → its output painted (tk:formatted). */
+  private markOutput = false;
+
   private runFormat = () => {
     if (this.settings.view !== 'format') return;
-    const { minify, escape } = this.settings;
-    const text = this.formatted();
-    const out = escape && text ? JSON.stringify(text) : text;
-    this.fmt.setText(out, jsonRow, true);
-    this.noteExpiry(minify || escape ? '' : out);
+    // Already drawn for this document and settings (a big load draws it before its analysis).
+    const key = this.fmtSettings();
+    const drawn = !!this.good && this.goodText === this.fmtSrc && key === this.fmtKey;
+    const text = drawn ? this.fmtText : this.formatted();
+    if (!drawn) this.drawFormat(text, this.good ? this.goodText : '', key);
     // Size of the shown variant is measured; the other differs only by whitespace,
     // which is computed from the tree (no second format of big documents).
-    const bytes = byteLength(text);
-    const extra = this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
-    const min = !text ? 0 : minify || escape ? bytes : bytes - extra;
-    store.set({
-      fmt: { lines: this.fmt.lineCount, pretty: text ? min + extra : 0, minified: min, escaped: escape && out ? byteLength(out) : 0 },
-    });
+    const seq = ++this.fmtStatSeq;
+    const stats = () => {
+      if (seq !== this.fmtStatSeq) return;
+      const { minify, escape } = this.settings;
+      const bytes = byteLength(text);
+      const extra = this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
+      const min = !text ? 0 : minify || escape ? bytes : bytes - extra;
+      store.set({
+        fmt: { lines: this.fmt.lineCount, pretty: text ? min + extra : 0, minified: min, escaped: escape && text ? byteLength(this.fmt.text) : 0 },
+      });
+    };
+    // A big document's sizes wait for a quiet moment (they only label the Pretty / Minify buttons).
+    if (text.length > 500_000) idle(stats, 1000);
+    else stats();
   };
+  private fmtStatSeq = 0;
+
+  /** The Format view's settings, as a key: output is redrawn when they or the document change. */
+  private fmtSettings() {
+    const { minify, escape, sortKeys } = this.settings;
+    return `${minify}${escape}${sortKeys}${this.indent}`;
+  }
+
+  /** Shows `text` (the formatted `src`) in the Format view. */
+  private drawFormat(text: string, src: string, key: string) {
+    const { minify, escape } = this.settings;
+    this.fmtSrc = src;
+    this.fmtKey = key;
+    this.fmtText = text;
+    const out = escape && text ? JSON.stringify(text) : text;
+    this.fmt.setText(out, jsonRow, true);
+    if (this.markOutput) {
+      this.markOutput = false;
+      requestAnimationFrame(() => performance.mark('tk:formatted'));
+    }
+    this.noteExpiry(minify || escape ? '' : out);
+  }
 
   /**
    * A decoded JWT's formatted output labels the payload's exp line with how long
@@ -1629,6 +1773,7 @@ export class Engine {
 
   private onDragEnter = (e: DragEvent) => {
     if (!this.hasFiles(e)) return;
+    this.reindentWorker();
     this.dragDepth++;
     store.set({ dragging: true });
   };
@@ -1692,7 +1837,30 @@ export class Engine {
         .then((reg) => {
           // Load the lazy features once so they're cached for offline use and survive a
           // deploy while this tab stays open: one module per idle period, never a long task.
-          const mods = [() => import('./sizes'), () => import('./sample'), () => import('../convert'), () => import('../convert/import'), () => import('../convert/xlsx'), () => import('../json/smart')];
+          const mods = [
+            () => import('./sizes'),
+            // Run the re-indenter on the sample a few times: optimized now, a first big file opens at full speed.
+            () => import('./sample').then(({ SAMPLE }) => {
+              // Text beyond Latin-1 too: the engine optimizes for the kind of string it has seen.
+              const doc = `[${Array(150).fill(SAMPLE).join(',')},"Zürich – 東京"]`;
+              for (let k = 0; k < 4; k++) {
+                reindent(doc, k & 1 ? '' : '  ');
+                parse(doc);
+              }
+              // Find each common script's fallback font once, so the first document using it lays out faster.
+              const x = document.createElement('canvas').getContext('2d');
+              const cs = getComputedStyle(this.ed.el);
+              if (x) {
+                x.font = `${cs.fontSize} ${cs.fontFamily}`;
+                for (const c of 'é Я α 中 あ 한 ب א ह ไ ✓ 😀'.split(' ')) x.measureText(c);
+              }
+            }),
+            () => import('../convert'),
+            () => import('../convert/import'),
+            () => import('../convert/xlsx'),
+            () => import('../json/smart'),
+            async () => void this.reindentWorker(),
+          ];
           const next = () => {
             const load = mods.shift();
             if (load) return void load().then(() => idle(next), () => idle(next));
