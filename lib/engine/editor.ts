@@ -690,7 +690,7 @@ export class Editor {
     this.wy = null;
     this.wrapDirty = true;
     this.el.classList.toggle('wrap', on);
-    this.ta.wrap = on ? 'soft' : 'off';
+    this.ta.wrap = on && !this.surface ? 'soft' : 'off';
     this.layout();
     this.sc.top = PAD_T + this.yOf(this.rowOf(top)) * LH;
     this.el.scrollLeft = 0;
@@ -997,10 +997,12 @@ export class Editor {
     const vcB = vcA + Math.ceil(this.el.clientWidth / this.cw);
     if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return this.place(false);
 
-    const first = Math.max(0, vf - OVERSCAN);
-    const last = Math.min(n, vl + OVERSCAN);
-    const colA = wide ? Math.max(0, vcA - H_OVERSCAN) : 0;
-    const colB = wide ? vcB + H_OVERSCAN : Infinity;
+    const overscan = this.surface ? 12 : OVERSCAN;
+    const margin = this.surface ? 120 : H_OVERSCAN;
+    const first = Math.max(0, vf - overscan);
+    const last = Math.min(n, vl + overscan);
+    const colA = wide ? Math.max(0, vcA - margin) : 0;
+    const colB = wide ? vcB + margin : Infinity;
     this.rFirst = first;
     this.rLast = last;
     this.rColA = colA;
@@ -1041,7 +1043,7 @@ export class Editor {
       this.hl.style.transform = `translateY(${this.hlY + s}px)`;
       this.gl.style.transform = `translateY(${this.glY + s}px)`;
     }
-    this.surface?.paint();
+    if (!this.redraw) this.surface?.paint();
     if (s === this.shiftAt) return;
     this.shiftAt = s;
     this.cur.style.transform = `translateY(${this.curY + s}px)`;
@@ -1062,8 +1064,9 @@ export class Editor {
     const vf = Math.max(0, Math.floor((st - PAD_T) / LH));
     const vl = Math.min(total, Math.ceil((st + this.el.clientHeight - PAD_T) / LH));
     if (!force && vf >= this.rFirst && vl <= this.rLast) return this.place(false);
-    const r0 = Math.max(0, vf - OVERSCAN);
-    const r1 = Math.min(total, vl + OVERSCAN);
+    const overscan = this.surface ? 12 : OVERSCAN;
+    const r0 = Math.max(0, vf - overscan);
+    const r1 = Math.min(total, vl + overscan);
     this.rFirst = r0;
     this.rLast = r1;
     const t = this.text;

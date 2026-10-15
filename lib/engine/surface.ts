@@ -41,6 +41,7 @@ export class Surface {
     this.ink.setAttribute('aria-hidden', 'true');
     this.body.appendChild(this.ink);
     h.el.classList.add('surface');
+    h.ta.wrap = 'off';
     h.ta.setAttribute('role', 'textbox');
     h.ta.setAttribute('aria-multiline', 'true');
     h.el.addEventListener('pointerdown', this.down);
@@ -52,6 +53,7 @@ export class Surface {
   destroy() {
     this.up();
     this.h.el.classList.remove('surface');
+    this.h.ta.wrap = this.h.el.classList.contains('wrap') ? 'soft' : 'off';
     this.h.el.removeEventListener('pointerdown', this.down);
     document.removeEventListener('pointermove', this.move);
     document.removeEventListener('pointerup', this.up);
@@ -116,6 +118,7 @@ export class Surface {
       e.preventDefault();
       const [a, b] = this.selection;
       this.h.edit(a, b, '', e.inputType);
+      this.h.moved(false);
     }
   }
 

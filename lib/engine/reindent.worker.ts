@@ -18,6 +18,7 @@ self.onmessage = async (e: MessageEvent<{ id: number; text: string; indent: stri
     const { lines = false, sort = false, minify = false } = e.data.analysis ?? {};
     const t0 = performance.now();
     const res = parse(text, { lines });
+    const ms = performance.now() - t0;
     if (e.data.compare) {
       const diags = [
         ...res.issues.slice(0, 300).map(({ p }) => ({ p, cls: 'me' })),
@@ -29,7 +30,7 @@ self.onmessage = async (e: MessageEvent<{ id: number; text: string; indent: stri
     }
     const formatted = res.root ? formatDoc(text, res, minify ? '' : indent, sort) : '';
     const min = res.root ? minify && !sort ? formatted : formatDoc(text, res, '') : '';
-    const analysis: AnalysisResult = { res, formatted, min, ms: performance.now() - t0 };
+    const analysis: AnalysisResult = { res, formatted, min, ms };
     if (res.root && e.data.analysis?.convert) {
       const opts = e.data.analysis?.convert;
       try {

@@ -900,7 +900,9 @@ export class Engine {
           const job = this.analysisJob;
           const result = e.data.analysis;
           if (job?.id === e.data.id) soon(() => {
-            if (this.analysisJob === job && job.text === this.ed.text && job.key === this.analysisKey()) this.analyze(result);
+            if (this.analysisJob !== job || job.text !== this.ed.text) return;
+            if (job.key !== this.analysisKey()) return this.analyzeLater();
+            this.analyze(result);
           });
           return;
         }
