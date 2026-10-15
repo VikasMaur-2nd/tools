@@ -111,3 +111,38 @@ describe('row counts reused across edits', () => {
     }
   });
 });
+
+describe('cursive letters joined across a row break', () => {
+  const el = () => ({ className: '', style: {}, setAttribute() {}, appendChild() {}, remove() {} });
+  (globalThis as { document?: unknown }).document ??= { createElement: el };
+  const at = (s: string) => [s.replace('|', ''), s.indexOf('|')] as const;
+  const joins = (gecko: boolean, s: string) => {
+    const g = globalThis as { CSS?: unknown };
+    const prev = g.CSS;
+    g.CSS = { supports: () => gecko };
+    try {
+      const [t, i] = at(s);
+      return new Wrapper(el() as unknown as HTMLElement, 20).joinsAt(t, i);
+    } finally {
+      g.CSS = prev;
+    }
+  };
+
+  test('a word cut between two joining letters stays joined in Gecko only', () => {
+    assert.equal(joins(true, 'ال|قاهرة'), true); // lam (dual) → qaf
+    assert.equal(joins(false, 'ال|قاهرة'), false);
+  });
+
+  test('letters that only join backwards, or never, end the join', () => {
+    assert.equal(joins(true, 'القاهر|ة'), false); // reh joins only the letter before it
+    assert.equal(joins(true, 'با|ب'), false); // alef
+    assert.equal(joins(true, 'ب|ء'), false); // hamza never joins
+    assert.equal(joins(true, 'ab|cd'), false);
+  });
+
+  test('marks are skipped, and other cursive scripts count', () => {
+    assert.equal(joins(true, 'بَ|ب'), true); // fatha over beh
+    assert.equal(joins(true, 'ܒ|ܒ'), true); // Syriac beth
+    assert.equal(joins(true, '𞤀|𞤁'), true); // Adlam, outside the BMP
+  });
+});

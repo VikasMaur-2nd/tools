@@ -35,6 +35,12 @@ export const LONG_LINE = 3000;
 const FORCED = /[\v\f\x85\u2028\u2029]/;
 /** Code points that never start a row: marks, joiners, variation selectors, skin tones, tags. */
 const JOINS = /[\p{M}\u200d\ufe00-\ufe0f\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
+/**
+ * Cursive joining (Unicode 17 ArabicShaping.txt): letters that join the
+ * letter after them (types D, L, C) and the letter before them (D, R, C).
+ */
+const JOINS_NEXT = /[\u0620\u0626\u0628\u062a-\u062e\u0633-\u0647\u0649\u064a\u066e\u066f\u0678-\u0687\u069a-\u06bf\u06c1\u06c2\u06cc\u06ce\u06d0\u06d1\u06fa-\u06fc\u06ff\u0712-\u0714\u071a-\u071d\u071f-\u0727\u0729\u072b\u072d\u072e\u074e-\u0758\u075c-\u076a\u076d-\u0770\u0772\u0775-\u0777\u077a-\u077f\u07ca-\u07ea\u07fa\u0841-\u0845\u0848\u084a-\u0853\u0855\u0860\u0862-\u0865\u0868\u0883-\u0886\u0889-\u088d\u088f\u08a0-\u08a9\u08af\u08b0\u08b3-\u08b8\u08ba-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua872\u{10ac0}-\u{10ac4}\u{10acd}\u{10ad3}-\u{10adc}\u{10ade}-\u{10ae0}\u{10aeb}-\u{10aee}\u{10b80}\u{10b82}\u{10b86}-\u{10b88}\u{10b8a}\u{10b8b}\u{10b8d}\u{10b90}\u{10bad}\u{10bae}\u{10d00}-\u{10d21}\u{10d23}\u{10ec3}\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f32}\u{10f34}-\u{10f44}\u{10f51}-\u{10f53}\u{10f70}-\u{10f73}\u{10f76}-\u{10f81}\u{10fb0}\u{10fb2}\u{10fb3}\u{10fb8}\u{10fbb}\u{10fbc}\u{10fbe}\u{10fbf}\u{10fc1}\u{10fc4}\u{10fca}\u{10fcb}\u{1e900}-\u{1e943}]/u;
+const JOINS_PREV = /[\u0620\u0622-\u064a\u066e\u066f\u0671-\u0673\u0675-\u06d3\u06d5\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u077f\u07ca-\u07ea\u07fa\u0840-\u0858\u0860\u0862-\u0865\u0867-\u086a\u0870-\u0886\u0889-\u088f\u08a0-\u08ac\u08ae-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua871\u{10ac0}-\u{10ac5}\u{10ac7}\u{10ac9}\u{10aca}\u{10ace}-\u{10ad6}\u{10ad8}-\u{10ae1}\u{10ae4}\u{10aeb}-\u{10aef}\u{10b80}-\u{10b91}\u{10ba9}-\u{10bae}\u{10d01}-\u{10d23}\u{10ec2}-\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f44}\u{10f51}-\u{10f54}\u{10f70}-\u{10f81}\u{10fb0}\u{10fb2}-\u{10fb6}\u{10fb8}-\u{10fbf}\u{10fc1}-\u{10fc4}\u{10fc9}\u{10fca}\u{1e900}-\u{1e943}]/u;
 /** Long lines whose breaks were added up (see `sum`). */
 const SUMS = 4;
 
@@ -140,6 +146,8 @@ export class Wrapper {
   private mirrors = new Map<string, Mirror>();
   private sums = new Map<string, Int32Array>();
   private joins = new Set<number>();
+  /** Does this browser keep letters joined across a soft row break (Firefox does)? Measured once. */
+  private across: boolean | null = null;
   private range: Range | null = null;
   private readonly lead = [0, 0];
   private trust = true;
@@ -202,6 +210,7 @@ export class Wrapper {
     this.cols = 0;
     this.cw = 0;
     this.glyphs.clear();
+    this.across = null;
     this.forget();
   }
 
@@ -544,6 +553,34 @@ export class Wrapper {
     m.at = Int32Array.from([...at.subarray(0, i), ...starts, ...tail]);
     this.edit = Math.max(0, p - 16);
     return true;
+  }
+
+  /**
+   * Is a row that breaks before `t[i]` drawn by the browser with the letters
+   * either side still joined? Only where this browser joins across soft breaks:
+   * a copy drawn row by row then needs joiners (U+200D) at the cut to match.
+   */
+  joinsAt(t: string, i: number): boolean {
+    if (i <= 0 || i >= t.length || !JOINS_PREV.test(String.fromCodePoint(t.codePointAt(i) as number))) return false;
+    // The letter before, past any marks (they're transparent to joining).
+    let k = i;
+    let c: string;
+    do {
+      k -= (t.charCodeAt(k - 1) & 0xfc00) === 0xdc00 && k > 1 ? 2 : 1;
+      c = String.fromCodePoint(t.codePointAt(k) as number);
+    } while (k > 0 && /[\p{Mn}\p{Me}]/u.test(c));
+    if (!JOINS_NEXT.test(c)) return false;
+    this.across ??= this.joinsAcrossBreaks();
+    return this.across;
+  }
+
+  /**
+   * Gecko shapes a word before breaking it into rows, so its letters stay
+   * joined across a soft break; Blink and WebKit shape each row on its own.
+   * No measurement shows it (the forms can share one width), hence the check.
+   */
+  private joinsAcrossBreaks() {
+    return typeof CSS !== 'undefined' && CSS.supports('-moz-appearance', 'none');
   }
 
   /** Drops every row count and break (they depend on the width, the fonts and the mode). */

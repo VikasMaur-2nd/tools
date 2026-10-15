@@ -999,7 +999,12 @@ export class Editor {
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa, sb) : sb;
           let body = this.jwt ? jwtLine(t, sa, se, this.jwt) : highlightLine(t, sa, se, marks, end, str);
-          if (odd) body = `${bidiContext(t, Math.max(a, sa - 64), sa)}${body}${bidiContext(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
+          if (odd) {
+            // Where the browser keeps a word's letters joined across the break, so does the copy.
+            const zl = wr.exact && wr.joinsAt(t, sa) ? '\u200d' : '';
+            const zr = wr.exact && se === sb && !end && wr.joinsAt(t, sb) ? '\u200d' : '';
+            body = `${bidiContext(t, Math.max(a, sa - 64), sa)}${zl}${body}${zr}${bidiContext(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
+          }
           html += `<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}"${this.view ? ` data-o="${sa}"` : ''}>${body}${end ? ph : ''}</div>`;
           if (!this.jwt) str = stringState(t, sa, sb, str);
           sa = sb;
