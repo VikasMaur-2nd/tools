@@ -1165,13 +1165,14 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
           </p>
         </>
       )}
-      <main className="panes">
+      {/* The page supplies the main landmark (home: around the tool and its guide; landing pages: the content below). */}
+      <div className="panes">
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />
         <Splitter />
         <Watermark />
         <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} fmtRef={fmtRef} />
-      </main>
+      </div>
       <StatusBar />
       <ToastHost />
       <DropOverlay />

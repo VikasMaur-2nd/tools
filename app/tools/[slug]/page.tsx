@@ -3,7 +3,9 @@ import IntentLink from '@/components/IntentLink';
 import { notFound } from 'next/navigation';
 import JsonTool from '@/components/JsonTool';
 import { convert } from '@/lib/convert';
-import { toCsv } from '@/lib/convert/xlsx';
+import { diff } from '@/lib/diff/diff';
+import { patchText, toPatch } from '@/lib/diff/patch';
+import { records, toCsv } from '@/lib/convert/xlsx';
 import { importToJson } from '@/lib/convert/import';
 import { formatDoc } from '@/lib/json/format';
 import { jwtToJson } from '@/lib/json/jwt';
@@ -11,6 +13,7 @@ import { ARR, OBJ, STR, kids, parse, type JNode } from '@/lib/json/parser';
 import { formatPath, pathOf } from '@/lib/json/path';
 import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../../seo';
 import ContentShell from '../../content-shell';
+import { ERROR_GUIDES } from '../../json-errors/errors';
 import { TOOL_PAGE_BY_SLUG, TOOL_PAGES, type ToolPage } from '@/lib/tool-pages';
 
 export const ensureStatic = 'navigation';
@@ -23,6 +26,12 @@ function getPage(slug: string): ToolPage {
   const page = TOOL_PAGE_BY_SLUG.get(slug);
   if (!page) notFound();
   return page;
+}
+
+/** Link to an error guide; a missing guide fails the build instead of shipping a broken link. */
+function errorGuide(slug: string) {
+  if (!ERROR_GUIDES.some((guide) => guide.slug === slug)) throw new Error(`Unknown JSON error guide: ${slug}`);
+  return `/json-errors/${slug}`;
 }
 
 function prettyJson(text: string) {
@@ -68,7 +77,11 @@ function exampleOutput(page: ToolPage) {
     const col = p - (before.lastIndexOf('\n') + 1) + 1;
     return `Invalid JSON\nLine ${line}, column ${col}: ${issue?.m ?? 'invalid syntax'}`;
   }
-  if (page.slug === 'json-diff') return '- "role": "admin"\n+ "role": "editor"';
+  if (page.slug === 'json-diff') {
+    // The patch Copy JSON Patch gives for the sample, with its ignored path.
+    const [left, right] = page.sample.replace('Original:\n', '').split('\n\nModified:\n').map((t) => parse(t).root!);
+    return patchText(toPatch(diff(left, right, { ignorePaths: ['$.meta.updatedAt'], seed: 1 }).changes), '  ');
+  }
   // A fixed clock keeps the prerender static (the sample expires 2027-10-01).
   if (page.slug === 'jwt-decoder') return jwtToJson(page.sample, '  ', Date.UTC(2026, 9, 14)) ?? page.sample;
   if (page.slug === 'yaml-to-json') return importedExample(page.sample, 'yaml');
@@ -83,8 +96,8 @@ function exampleOutput(page: ToolPage) {
   const root = parse(page.sample).root;
   if (!root) return page.sample;
   const target = page.preset.settings?.target;
-  if (target === 'xlsx') return toCsv(root);
-  if (target === 'csv') return toCsv(root);
+  // The tool tabulates the main array of records, as the live CSV / Excel views do.
+  if (target === 'xlsx' || target === 'csv') return toCsv(records(root));
   if (target) return convert(root, target, { rootName: 'Root', tsStyle: 'interface' });
   if (page.slug === 'json-minifier') return formatDoc(page.sample, parse(page.sample), '');
   return formatDoc(page.sample, parse(page.sample), '  ');
@@ -135,7 +148,7 @@ export async function generateMetadata({ params }: PageProps<'/tools/[slug]'>): 
     description: page.description,
     keywords: [page.query, ...page.secondary],
     alternates: { canonical: `/tools/${page.slug}` },
-    openGraph: { type: 'website', url: `/tools/${page.slug}`, title: page.title, description: page.description, images: [SOCIAL_IMAGE] },
+    openGraph: { type: 'website', url: `/tools/${page.slug}`, siteName: SITE_NAME, title: page.title, description: page.description, images: [SOCIAL_IMAGE] },
     twitter: { card: 'summary_large_image', title: page.title, description: page.description, images: ['/twitter-image.png'] },
   };
 }
@@ -177,6 +190,11 @@ function ToolContent({ page }: { page: ToolPage }) {
         <h2 id="faq">{page.heading} questions</h2>
         <dl className="tool-faq">{page.faqs.map(({ question, answer }) => <div key={question}><dt>{question}</dt><dd>{answer}</dd></div>)}</dl>
 
+        {page.guides && <>
+          <h2>Related error guides</h2>
+          <ul>{page.guides.map(({ slug, text }) => <li key={slug}><IntentLink href={errorGuide(slug)}>{text}</IntentLink></li>)}</ul>
+        </>}
+
         <h2>Related tools</h2>
         <p>{page.related.map((slug, i) => {
           const home = slug === 'home';
@@ -192,5 +210,5 @@ function ToolContent({ page }: { page: ToolPage }) {
 
 export default async function ToolPageRoute({ params }: PageProps<'/tools/[slug]'>) {
   const page = getPage((await params).slug);
-  return <div className="home-page landing-page"><div className="landing-tool"><JsonTool preset={page.preset} /></div><ToolContent page={page} /></div>;
+  return <div className="home-page landing-page"><section className="landing-tool" aria-label={`${page.heading} tool`}><JsonTool preset={page.preset} /></section><ToolContent page={page} /></div>;
 }

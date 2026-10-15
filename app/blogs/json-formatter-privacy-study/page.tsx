@@ -1,24 +1,21 @@
 import Link from 'next/link';
 import { Article, Code, postMetadata } from '../article';
 import { getPost } from '../posts';
+import study from '@/public/research/json-formatter-privacy-study.json';
 
 const post = getPost('json-formatter-privacy-study');
 export const metadata = postMetadata(post);
 
-const RESULTS = [
-  ['JSONFormatter', 'Not tested (browser challenge)', '—', '—', '—', '—'],
-  ['Code Beautify JSON Viewer', 'No marker observed', '203', '2.84 MB', 'Yes', 'No'],
-  ['JSONLint', 'Action not confirmed', '194', '1.39 MB', 'No', 'No'],
-  ['JSON Editor Online', 'Not tested (browser challenge)', '—', '—', '—', '—'],
-  ['JSON Beautifier', 'No marker observed', '10', '1.79 MB', 'Yes', 'No'],
-  ['JSON Viewer Stack', 'No marker observed', '8', '0.67 MB', 'Yes', 'No'],
-  ['JSON Formatter Online', 'Action not confirmed', '2', '0.28 MB', 'No', 'No'],
-  ['JSON Hero', 'Marker sent', '5', '1.64 MB', 'Yes', 'No'],
-  ['JSON Compare', 'No marker observed', '12', '1.31 MB', 'No', 'No'],
-  ['Curious Concept JSON Formatter', 'Not tested (browser challenge)', '—', '—', '—', '—'],
-  ['FreeFormatter JSON Formatter', 'Action not confirmed', '8', '0.33 MB', 'No', 'No'],
-  ['Tool Kumar', 'No marker observed', '0', '0.28 MB', 'No', 'Yes'],
-] as const;
+/** The table is read from the published capture, so the page and the download can't disagree. */
+const yesNo = (v: boolean | null) => (v === null ? '—' : v ? 'Yes' : 'No');
+const RESULTS = study.sites.map((site) => {
+  if (site.status.startsWith('not tested')) return [site.name, 'Not tested (browser challenge)', '—', '—', '—', '—'];
+  const request = site.status === 'action not confirmed' ? 'Action not confirmed' : site.markerInRequest ? 'Marker sent' : 'No marker observed';
+  // Decimal megabytes (1 MB = 1,000,000 bytes).
+  return [site.name, request, String(site.thirdPartyHosts.length), `${(site.transferBytes / 1e6).toFixed(2)} MB`, yesNo(site.publicSaveFeature), yesNo(site.offlineReload)];
+});
+const codeBeautify = study.sites.find((site) => site.name === 'Code Beautify JSON Viewer')!;
+const toolKumar = study.sites.find((site) => site.name === 'Tool Kumar')!;
 
 const SOURCES = [
   ['watchTowr Labs, “Stop Putting Your Passwords Into Random Websites” (25 Nov 2025)', 'https://labs.watchtowr.com/stop-putting-your-passwords-into-random-websites-yes-seriously-you-are-the-problem/'],
@@ -80,7 +77,8 @@ export default function JsonFormatterPrivacyStudyPage() {
       <ol>
         <li>We selected eleven sites that appeared in checks for “JSON formatter”, “JSON viewer”, “JSON validator” or “JSON beautifier”, plus Tool Kumar for the same comparison. Search results vary by location and time.</li>
         <li>In a fresh headless Chromium profile with cache disabled, we loaded each URL, waited seven seconds, pasted the same JSON and clicked the first visible control whose label matched format, beautify, validate, parse, submit, process, view, Go or Compare.</li>
-        <li>The JSON contained only fake values and a run-specific marker: <code>TK-PRIVACY-CANARY-1791949677021-W5</code>. We captured Chrome DevTools Protocol request events, fetched post data for requests that declared a body, recorded sent WebSocket frames and searched raw, URL-encoded, base64 and base64url forms. Transfer size is the sum of every <code>Network.loadingFinished.encodedDataLength</code> event, including the document, cross-checked against Performance API resource and navigation entries.</li>
+        <li>The JSON contained only fake values and a run-specific marker: <code>{study.marker}</code>. We captured Chrome DevTools Protocol request events, fetched post data for requests that declared a body, recorded sent WebSocket frames and searched raw, URL-encoded, base64 and base64url forms. Transfer size is the sum of every <code>Network.loadingFinished.encodedDataLength</code> event, including the document.</li>
+        <li>We also recorded the transfer sizes the page’s Performance API reported, but they do not confirm the table’s totals. For most sites they are lower, as with Code Beautify: {codeBeautify.performanceTransferBytes.toLocaleString('en-US')} bytes against {codeBeautify.transferBytes.toLocaleString('en-US')}. Resource Timing reports no transfer size for cross-origin responses that don’t send a Timing-Allow-Origin header, and a page’s entries leave out requests made inside its iframes, where ads often load. We did not establish which of these explains each site’s difference. The table uses the DevTools Protocol totals; for Tool Kumar the two totals differ by {Math.abs(toolKumar.transferCrossCheckDelta!)} bytes.</li>
         <li>We recorded visible Save, Share, Recent Links or public-link language from the loaded page. After the first visit, we disabled the network and reloaded to check whether the page still rendered from its cache or service worker.</li>
         <li>The run used Chromium 145.0.7632.0 on the test host, from an automated environment whose IP location was not asserted. The test date was October 14, 2026 UTC.</li>
       </ol>
@@ -94,8 +92,12 @@ export default function JsonFormatterPrivacyStudyPage() {
 }`}</Code>
       <p>
         The raw capture is <a href="/research/json-formatter-privacy-study.json" download>available as JSON</a>. It includes timestamps,
-        browser version, request counts, host lists, transfer bytes and the exact status recorded for each site. The no-dependency runner
-        script, screenshots and notes are kept with the research files for reproducibility.
+        browser version, request counts, host lists, transfer bytes, both transfer totals and the exact status recorded for each site. The
+        no-dependency runner script, screenshots and notes are kept privately with our research files; the JSON file is the published record.
+      </p>
+      <p className="note">
+        Corrected October 15, 2026: the marker above now matches the published capture, transfer sizes are given in decimal megabytes
+        instead of mislabeled mebibytes, and the Performance API comparison is described as recorded rather than as a confirmation.
       </p>
 
       <h2 id="interpretation">How to read the table</h2>
@@ -119,6 +121,10 @@ export default function JsonFormatterPrivacyStudyPage() {
         <li>Look for Save, Share, Recent Links or a generated URL. Treat a URL that reproduces the document as public until the service documents a different access model.</li>
         <li>For offline behavior, visit once, switch DevTools to Offline and reload. A cached shell can still render while a later formatting action may need resources that are not cached.</li>
       </ol>
+      <p>
+        To repeat these checks on Tool Kumar, <Link href="/tools/secure-json-formatter">verify this formatter’s network and storage behavior</Link>{' '}
+        with the procedure on its secure processing page, then <Link href="/tools/offline-json-formatter">set up and test the offline formatter</Link>.
+      </p>
 
       <h2 id="limitations">Limitations</h2>
       <p>

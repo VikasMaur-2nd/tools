@@ -28,7 +28,7 @@ export const POSTS: Post[] = [
     excerpt: 'A dated, reproducible canary test of twelve JSON tools, including Tool Kumar, with raw network data you can download.',
     category: 'Research',
     published: '2026-10-14',
-    updated: '2026-10-14',
+    updated: '2026-10-15',
     minutes: 10,
     keywords: ['JSON formatter privacy', 'online JSON viewer security', 'JSON tool data upload', 'private JSON formatter', 'browser privacy test'],
     sample: `{
@@ -49,7 +49,7 @@ export const POSTS: Post[] = [
     excerpt: 'Understand valid JSON, track down syntax errors and choose readable formatting for APIs, config files and logs.',
     category: 'Guide',
     published: '2026-10-13',
-    updated: '2026-10-13',
+    updated: '2026-10-15',
     minutes: 6,
     keywords: ['format JSON', 'validate JSON', 'JSON syntax error', 'JSON formatter', 'common JSON errors'],
     sample: `{

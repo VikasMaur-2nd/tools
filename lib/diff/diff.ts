@@ -45,6 +45,8 @@ export interface DiffOptions {
   caseInsensitiveStrings?: boolean;
   /** Stop after this many changes (default 100 000); sets `truncated`. */
   maxChanges?: number;
+  /** Hash seed (default random per run, so collisions can't be precomputed). Fixed for prerendered output. */
+  seed?: number;
 }
 
 export interface Change {
@@ -352,8 +354,8 @@ class Differ {
   private readonly ig: boolean;
   readonly root: Ig;
   private lcsLeft = LCS_TOTAL_BUDGET;
-  /** Per-run hash seed, so collisions can't be precomputed. */
-  private readonly salt = (Math.random() * TWO32) | 0;
+  /** Hash seed (see `DiffOptions.seed`). */
+  private readonly salt: number;
   /**
    * Equal hash tokens imply equal values (a false match is ~2^-52 per pair),
    * so hash-matched elements are not walked again. Not with a numeric
@@ -368,6 +370,7 @@ class Differ {
     this.ci = o.caseInsensitiveStrings ?? false;
     this.trustHash = this.tol === 0;
     this.max = o.maxChanges ?? 100000;
+    this.salt = o.seed ?? (Math.random() * TWO32) | 0;
     const { abs, any } = compileIgnore(o.ignorePaths ?? []);
     this.anyRoot = any;
     this.ig = !!(abs || any);

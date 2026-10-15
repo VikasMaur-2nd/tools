@@ -18,6 +18,7 @@ export function postMetadata(post: Post): Metadata {
     openGraph: {
       type: 'article',
       url,
+      siteName: SITE_NAME,
       title,
       description: post.description,
       publishedTime: post.published,

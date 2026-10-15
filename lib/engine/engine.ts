@@ -113,29 +113,6 @@ function loadSettings(): Settings {
 }
 
 /**
- * The array of records a spreadsheet should show: the root if it's an array,
- * otherwise the largest array of objects within two levels (`data`, `items`,
- * `results`… in API responses). Falls back to the root.
- */
-function records(root: JNode): JNode {
-  if (root.t === ARR) return root;
-  let best: JNode | null = null;
-  const consider = (n: JNode) => {
-    if (n.t !== ARR) return;
-    const list = n.v as JNode[];
-    if (!list.length || !list.some((c) => c.t === OBJ)) return;
-    if (!best || list.length > (best.v as JNode[]).length) best = n;
-  };
-  if (root.t === OBJ) {
-    for (const c of root.v as JNode[]) {
-      consider(c);
-      if (c.t === OBJ) for (const g of c.v as JNode[]) consider(g);
-    }
-  }
-  return best ?? root;
-}
-
-/**
  * Bytes pretty-printing adds over minified output: per non-empty container a
  * newline + indent before each child and before the closer, and a space after
  * every object key's colon (all ASCII).
@@ -817,7 +794,7 @@ export class Engine {
     const root = this.fresh()?.root ?? this.good?.root;
     if (!root) return this.toast('Paste or open valid JSON first', 'info');
     try {
-      const { toXlsx } = await import('../convert/xlsx');
+      const { records, toXlsx } = await import('../convert/xlsx');
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
       this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), `${base}.xlsx`);
     } catch {
@@ -1294,10 +1271,10 @@ export class Engine {
       const info = targetInfo(s.target);
       // CSV and Excel share one flattening (dotted columns) over the main array of
       // records; Excel is a binary download, so its preview is the same table.
-      const out =
-        info.id === 'xlsx' || info.id === 'csv'
-          ? (await import('../convert/xlsx')).toCsv(records(root))
-          : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
+      const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
+      const out = xlsx
+        ? xlsx.toCsv(xlsx.records(root))
+        : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
       this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
@@ -1325,7 +1302,7 @@ export class Engine {
       const root = this.good?.root;
       if (!root) return this.toast('Paste or open valid JSON first', 'info');
       try {
-        const { toXlsx } = await import('../convert/xlsx');
+        const { records, toXlsx } = await import('../convert/xlsx');
         this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
       } catch {
         this.toast("Couldn't create the Excel file", 'err');

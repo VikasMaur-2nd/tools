@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: { absolute: `${TITLE} | ${SITE_NAME}` },
   description: DESCRIPTION,
   alternates: { canonical: '/tools' },
-  openGraph: { type: 'website', url: '/tools', title: TITLE, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
+  openGraph: { type: 'website', url: '/tools', siteName: SITE_NAME, title: TITLE, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
   twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: ['/twitter-image.png'] },
 };
 

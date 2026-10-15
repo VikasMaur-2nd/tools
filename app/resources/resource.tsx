@@ -15,6 +15,7 @@ export function resourceMetadata({ title, description, path }: { title: string; 
     openGraph: {
       type: 'article',
       url: path,
+      siteName: SITE_NAME,
       title: `${title} | ${SITE_NAME}`,
       description,
       publishedTime: RESOURCE_DATE,

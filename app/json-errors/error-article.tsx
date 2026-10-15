@@ -113,7 +113,7 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
                 V8 string positions count UTF-16 code units; Go offsets count bytes read. Unicode text can make these
                 offsets differ. Use the original text and its line/column context rather than copying an offset between runtimes.</p>
               <p>Tool Kumar can classify some input as fixable loose JSON. Review a proposed change before using the{' '}
-                <Link prefetch={false} href="/tools/json-validator">repair action</Link>, then validate the result against your API contract.
+                <Link prefetch={false} href="/tools/json-repair">JSON repair tool</Link>, then validate the result against your API contract.
                 For empty input, inspect the producer or response because there is no character to select.</p>
               <h2 id="faq">Frequently asked questions</h2><Faq entries={guide.faq} />
               <h2 id="related">Related errors and tools</h2>
@@ -125,6 +125,8 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
                 <li><Link prefetch={false} href="/resources/json-reference">JSON syntax reference</Link></li>
                 {guide.slug === 'go-invalid-character' && <li><Link prefetch={false} href="/tools/json-to-go">Generate Go structs from valid JSON</Link></li>}
                 {guide.slug === 'extra-data' && <li><Link prefetch={false} href="/tools/json-to-csv">Convert an array of JSON records to CSV</Link></li>}
+                {guide.slug === 'extra-data' && <li><Link prefetch={false} href="/tools/ndjson-to-json">Convert NDJSON into one JSON array</Link></li>}
+                {guide.slug === 'trailing-comma' && <li><Link prefetch={false} href="/tools/json-repair">Repair a trailing comma locally</Link></li>}
               </ul>
               <h2 id="sources">Standards and diagnostic sources</h2>
               <p><a href={SOURCES.rfc}>RFC 8259</a> and <a href={SOURCES.ecma}>ECMA-404</a> define JSON syntax.

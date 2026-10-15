@@ -11,7 +11,10 @@ export default function SeoContent() {
       <h2>JSON tools that run in your browser</h2>
       <ul>
         <li>Format and beautify JSON with readable indentation.</li>
-        <li>Validate JSON and jump to the exact line and column with an error.</li>
+        <li>
+          Validate JSON and jump to the exact line and column with an error, or use the dedicated{' '}
+          <Link href="/tools/json-validator">JSON validator with line and column errors</Link>.
+        </li>
         <li>Repair comments, trailing commas, single quotes and other common input mistakes.</li>
         <li>Minify JSON, sort keys and copy a clean result.</li>
         <li>Explore nested objects in a collapsible tree or table view.</li>
@@ -42,6 +45,10 @@ export default function SeoContent() {
       <p>
         Learn more in the <Link href="/blogs">Tool Kumar JSON blog</Link>, including a practical guide to formatting and validating JSON and
         the <Link href="/blogs/origin-of-json">origin story of JSON</Link>.
+      </p>
+      <p>
+        Got a parser error such as Unexpected token or Unexpected end of JSON input?{' '}
+        <Link href="/json-errors">Find a fix for your JSON error message</Link> in our error guides.
       </p>
       <p>
         Use the <Link href="/resources/json-reference">JSON syntax reference</Link> to check the standard rules, or download{' '}

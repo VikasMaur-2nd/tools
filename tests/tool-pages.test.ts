@@ -107,3 +107,13 @@ test('all pages have distinct search metadata and resolvable related links', () 
     assert.ok(page.related.includes(slug === 'offline-json-formatter' ? 'secure-json-formatter' : 'offline-json-formatter'));
   }
 });
+
+// The schema page explains required properties with real generator output.
+test('schema generator section shows the generated schema for its sample', async () => {
+  const { convert } = await import('../lib/convert');
+  const { parse } = await import('../lib/json/parser');
+  const page = TOOL_PAGES.find((entry) => entry.slug === 'json-schema-generator')!;
+  const [, sample, schema] = /^Input:\n(.*)\n\nGenerated schema:\n([\s\S]*)$/.exec(page.sections![0].code!)!;
+  assert.equal(schema, convert(parse(sample).root!, 'json-schema', { rootName: 'Root' }).trimEnd());
+  assert.match(schema, /"required": \["id", "email"\]/);
+});

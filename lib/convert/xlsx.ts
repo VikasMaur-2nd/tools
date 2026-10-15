@@ -93,6 +93,29 @@ function table(root: JNode, flatten: Flatten): Table {
 }
 
 /**
+ * The array of records a spreadsheet should show: the root if it's an array,
+ * otherwise the largest array of objects within two levels (`data`, `items`,
+ * `results`… in API responses). Falls back to the root.
+ */
+export function records(root: JNode): JNode {
+  if (root.t === ARR) return root;
+  let best: JNode | null = null;
+  const consider = (n: JNode) => {
+    if (n.t !== ARR) return;
+    const list = n.v as JNode[];
+    if (!list.length || !list.some((c) => c.t === OBJ)) return;
+    if (!best || list.length > (best.v as JNode[]).length) best = n;
+  };
+  if (root.t === OBJ) {
+    for (const c of root.v as JNode[]) {
+      consider(c);
+      if (c.t === OBJ) for (const g of c.v as JNode[]) consider(g);
+    }
+  }
+  return best ?? root;
+}
+
+/**
  * Turns any JSON value into a header + rows grid (shared by CSV / XLSX export).
  * Array of objects → union of keys (first-seen order); array of primitives →
  * "value"; array of arrays → columns by position; object of objects → "key"

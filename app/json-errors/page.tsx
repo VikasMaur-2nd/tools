@@ -9,7 +9,7 @@ const TITLE = 'JSON errors: exact messages, causes and fixes';
 const DESCRIPTION = 'Diagnose JSON parse errors by cause: HTML responses, empty input, undefined values, quoting, trailing commas, extra data, control characters and Go input prefixes.';
 export const metadata: Metadata = {
   title: TITLE, description: DESCRIPTION, alternates: { canonical: '/json-errors' },
-  openGraph: { type: 'website', url: '/json-errors', title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
+  openGraph: { type: 'website', url: '/json-errors', siteName: SITE_NAME, title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
   twitter: { card: 'summary_large_image', title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: ['/twitter-image.png'] },
 };
 

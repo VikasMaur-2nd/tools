@@ -25,8 +25,8 @@ export default function JsonFormattingGuidePage() {
 }`}</Code>
       <p>
         Single quotes, comments, trailing commas and unquoted keys are common in JavaScript, but they are not part of standard JSON. A
-        strict parser reports them as errors. If you received a loose JSON-like file, Tool Kumar can identify common mistakes and offer a
-        repair action while keeping the original input available.
+        strict parser reports them as errors. If you received a loose JSON-like file, Tool Kumar can identify common mistakes so you can{' '}
+        <Link href="/tools/json-repair">review and apply common JSON repairs</Link> while keeping the original input available.
       </p>
 
       <h2 id="find-syntax-errors">How to find a JSON syntax error</h2>
@@ -34,7 +34,10 @@ export default function JsonFormattingGuidePage() {
         <li>
           Paste the document into the <Link href="/">Tool Kumar JSON viewer</Link>.
         </li>
-        <li>Read the error line and column shown below the input.</li>
+        <li>
+          Read the error line and column shown below the input, or paste into the <Link href="/tools/json-validator">JSON validator</Link> to
+          check the exact line and column.
+        </li>
         <li>Check the character before the reported position. The missing comma or quote often appears immediately before it.</li>
         <li>Format the document again after the fix. Reformatting makes the next error easier to see.</li>
       </ol>

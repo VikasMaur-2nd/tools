@@ -11,6 +11,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     url: '/about',
+    siteName: SITE_NAME,
     title: `About ${SITE_NAME}`,
     description: 'A private, browser-based JSON viewer and developer tool from Tool Kumar.',
     images: [SOCIAL_IMAGE],

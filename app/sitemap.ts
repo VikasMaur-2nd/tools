@@ -6,21 +6,28 @@ import { TOOL_PAGES } from '@/lib/tool-pages';
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
 // keeps this route free of sync IO so it prerenders under `cacheComponents`.
 const LAST_MODIFIED = '2026-10-13';
+const HOME_LAST_MODIFIED = '2026-10-15';
 const RESOURCES_LAST_MODIFIED = '2026-10-14';
 const TOOLS_LAST_MODIFIED = '2026-10-14';
+const ERRORS_LAST_MODIFIED = '2026-10-14';
+const ERROR_GUIDES_LAST_MODIFIED = '2026-10-15';
+/** Tool pages whose content changed after TOOLS_LAST_MODIFIED, and when. */
+const TOOL_UPDATES: Record<string, string> = Object.fromEntries(
+  ['json-validator', 'json-minifier', 'json-diff', 'json-schema-generator', 'json-to-go', 'json-to-csv', 'json-to-xml', 'json-to-excel', 'jwt-decoder', 'json-to-toml', 'toml-to-json', 'secure-json-formatter', 'jsonl-viewer', 'jsonl-to-csv', 'json-escape', 'json-repair'].map((slug) => [slug, '2026-10-15']),
+);
 const SITE = 'https://tools.vikasmaur.com';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     ...['/json-errors', ...ERROR_GUIDES.map(guide => `/json-errors/${guide.slug}`)].map(path => ({
       url: `${SITE}${path}`,
-      lastModified: '2026-10-14',
+      lastModified: path === '/json-errors' ? ERRORS_LAST_MODIFIED : ERROR_GUIDES_LAST_MODIFIED,
       changeFrequency: 'monthly' as const,
       priority: 0.75,
     })),
     {
       url: SITE,
-      lastModified: LAST_MODIFIED,
+      lastModified: HOME_LAST_MODIFIED,
       changeFrequency: 'weekly',
       priority: 1,
     },
@@ -68,7 +75,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     ...TOOL_PAGES.map((page) => ({
       url: `${SITE}/tools/${page.slug}`,
-      lastModified: TOOLS_LAST_MODIFIED,
+      lastModified: TOOL_UPDATES[page.slug] ?? TOOLS_LAST_MODIFIED,
       changeFrequency: 'monthly' as const,
       priority: 0.8,
     })),

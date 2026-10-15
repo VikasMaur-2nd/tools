@@ -90,11 +90,6 @@ export const homeJsonLd = {
     ...baseGraph,
     applicationJsonLd,
     {
-      '@type': 'BreadcrumbList',
-      '@id': `${SITE}/#breadcrumb`,
-      itemListElement: [{ '@type': 'ListItem', position: 1, name: 'JSON viewer', item: SITE }],
-    },
-    {
       '@type': 'FAQPage',
       '@id': `${SITE}/#faq`,
       mainEntity: FAQ_ENTRIES.map(({ question, answer }) => ({
