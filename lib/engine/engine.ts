@@ -277,6 +277,7 @@ export class Engine {
     this.handleLaunch();
     if (!matchMedia('(pointer: coarse)').matches || !this.ed.text) this.ed.focus();
     this.registerSW();
+    this.warmUp();
     // Warm the optional example after the editor can respond to input.
     idle(() => { if (!this.dead) void import('./sample').catch(() => {}); });
   }
@@ -881,10 +882,10 @@ export class Engine {
     return this.worker;
   }
 
-  /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
   /** A paste was loaded as a document: the editor keeps the focus it had. */
   private refocus = false;
 
+  /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
   private finishLoad(text: string, persist: boolean, split = false) {
     this.ed.setValue(text, 0, true);
     if (this.refocus) this.ed.focus();
@@ -1839,27 +1840,10 @@ export class Engine {
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
             () => import('./sizes'),
-            // Run the re-indenter on the sample a few times: optimized now, a first big file opens at full speed.
-            () => import('./sample').then(({ SAMPLE }) => {
-              // Text beyond Latin-1 too: the engine optimizes for the kind of string it has seen.
-              const doc = `[${Array(150).fill(SAMPLE).join(',')},"Zürich – 東京"]`;
-              for (let k = 0; k < 4; k++) {
-                reindent(doc, k & 1 ? '' : '  ');
-                parse(doc);
-              }
-              // Find each common script's fallback font once, so the first document using it lays out faster.
-              const x = document.createElement('canvas').getContext('2d');
-              const cs = getComputedStyle(this.ed.el);
-              if (x) {
-                x.font = `${cs.fontSize} ${cs.fontFamily}`;
-                for (const c of 'é Я α 中 あ 한 ب א ह ไ ✓ 😀'.split(' ')) x.measureText(c);
-              }
-            }),
             () => import('../convert'),
             () => import('../convert/import'),
             () => import('../convert/xlsx'),
             () => import('../json/smart'),
-            async () => void this.reindentWorker(),
           ];
           const next = () => {
             const load = mods.shift();
@@ -1877,6 +1861,41 @@ export class Engine {
         .catch(() => {});
     };
     // Offline caching is never urgent: start well after the page has settled.
+    if (document.readyState === 'complete') setTimeout(go, 4000);
+    else window.addEventListener('load', () => setTimeout(go, 4000), { once: true });
+  }
+
+  /**
+   * Gets the open path hot before a first file arrives, one short step per idle
+   * period: the re-indenter and parser optimized (on text beyond Latin-1 too, since
+   * engines optimize for the kinds of strings they have seen), each common script's
+   * fallback font found, and the worker started.
+   */
+  private warmUp() {
+    if (process.env.NODE_ENV !== 'production') return;
+    const go = () =>
+      import('./sample').then(({ SAMPLE }) => {
+        const doc = `[${Array(150).fill(SAMPLE).join(',')},"Zürich – 東京"]`;
+        const steps: (() => unknown)[] = [];
+        for (let k = 0; k < 4; k++) steps.push(() => reindent(doc, k & 1 ? '' : '  '), () => parse(doc));
+        steps.push(
+          () => {
+            const x = document.createElement('canvas').getContext('2d');
+            const cs = getComputedStyle(this.ed.el);
+            if (!x) return;
+            x.font = `${cs.fontSize} ${cs.fontFamily}`;
+            for (const c of 'é Я α 中 あ 한 ب א ह ไ ✓ 😀'.split(' ')) x.measureText(c);
+          },
+          () => this.reindentWorker(),
+        );
+        const next = () => {
+          const step = steps.shift();
+          if (!step) return;
+          step();
+          idle(next);
+        };
+        idle(next);
+      });
     if (document.readyState === 'complete') setTimeout(go, 4000);
     else window.addEventListener('load', () => setTimeout(go, 4000), { once: true });
   }
