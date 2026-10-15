@@ -12,17 +12,26 @@ export interface AnalysisResult {
   converted?: { out: string; error: string | null };
 }
 
-self.onmessage = async (e: MessageEvent<{ id: number; text: string; indent: string; warm?: number; analysis?: { lines: boolean; sort: boolean; minify: boolean; convert?: { target: string; rootName: string; tsStyle: Settings['tsStyle']; csharpLib: Settings['csharpLib'] } } }>) => {
+self.onmessage = async (e: MessageEvent<{ id: number; text: string; indent: string; warm?: number; compare?: boolean; analysis?: { lines: boolean; sort: boolean; minify: boolean; convert?: { target: string; rootName: string; tsStyle: Settings['tsStyle']; csharpLib: Settings['csharpLib'] } } }>) => {
   const { id, text, indent, warm } = e.data;
-  if (e.data.analysis) {
-    const { lines, sort, minify } = e.data.analysis;
+  if (e.data.analysis || e.data.compare) {
+    const { lines = false, sort = false, minify = false } = e.data.analysis ?? {};
     const t0 = performance.now();
     const res = parse(text, { lines });
+    if (e.data.compare) {
+      const diags = [
+        ...res.issues.slice(0, 300).map(({ p }) => ({ p, cls: 'me' })),
+        ...(res.error ? [{ p: res.error.p, cls: 'me' }] : []),
+        ...res.warnings.slice(0, 300).map(({ p }) => ({ p, cls: 'mw' })),
+      ];
+      self.postMessage({ id, diags });
+      return;
+    }
     const formatted = res.root ? formatDoc(text, res, minify ? '' : indent, sort) : '';
     const min = res.root ? minify && !sort ? formatted : formatDoc(text, res, '') : '';
     const analysis: AnalysisResult = { res, formatted, min, ms: performance.now() - t0 };
-    if (res.root && e.data.analysis.convert) {
-      const opts = e.data.analysis.convert;
+    if (res.root && e.data.analysis?.convert) {
+      const opts = e.data.analysis?.convert;
       try {
         const mod = await import('../convert');
         const csv = opts.target === 'csv' || opts.target === 'xlsx' ? await import('../convert/xlsx') : null;

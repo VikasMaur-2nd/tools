@@ -352,7 +352,7 @@ export class Engine {
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
       clearTimeout(this.timer);
-      this.timer = window.setTimeout(() => this.analyzeLater(), len < 100_000 ? 60 : len < 1_000_000 ? 160 : len < 5_000_000 ? 350 : 700);
+      this.timer = window.setTimeout(() => this.analyzeLater(), len < 100_000 ? 60 : len < 250_000 ? 160 : len < 5_000_000 ? 500 : 700);
     }
     if (this.persistEnabled) this.persistSoon();
   };
@@ -492,7 +492,12 @@ export class Engine {
     this.updateBrackets();
     this.measure(res.root && !jwt ? res : null, text, prepared?.min);
     if (prepared?.converted) this.preparedConvert = { src, key: this.convertKey(), ...prepared.converted };
-    if (prepared && res.root && this.settings.view === 'format') this.drawFormat(prepared.formatted, src, this.fmtSettings());
+    if (prepared && res.root && this.settings.view === 'format') {
+      const key = this.fmtSettings();
+      soon(() => {
+        if (this.ed.text === text && key === this.fmtSettings() && this.settings.view === 'format') this.drawFormat(prepared.formatted, src, key);
+      });
+    }
     this.afterDoc();
   }
 
@@ -885,10 +890,18 @@ export class Engine {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; analysis?: AnalysisResult }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; analysis?: AnalysisResult; diags?: Diagnostic[] }>) => {
+        if (e.data.diags) {
+          const job = this.compareJob;
+          if (job?.id === e.data.id && job.text === this.ed2.text) this.applyCompareDiags(job.text, e.data.diags);
+          return;
+        }
         if (e.data.analysis) {
           const job = this.analysisJob;
-          if (job?.id === e.data.id && job.text === this.ed.text && job.key === this.analysisKey()) this.analyze(e.data.analysis);
+          const result = e.data.analysis;
+          if (job?.id === e.data.id) soon(() => {
+            if (this.analysisJob === job && job.text === this.ed.text && job.key === this.analysisKey()) this.analyze(result);
+          });
           return;
         }
         if (e.data.id === -1) return void (this.workerWarm = true);
@@ -905,6 +918,7 @@ export class Engine {
         this.reindentJob = null;
         job?.fallback();
         if (this.analysisJob) { this.analysisJob = null; this.analyze(); }
+        if (this.compareJob) { this.compareJob = null; this.analyzeCompare(); }
       };
       this.worker = w;
       const doc = JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ id: i, name: `Zoë ${i}`, tags: ['a', 'b'], n: 1.5e3, ok: true, x: null, s: 'say "hi"\n' })));
@@ -1048,10 +1062,22 @@ export class Engine {
 
   // ── Compare (second editor) ────────────────────────────────────────────
 
+  private compareJob: { id: number; text: string } | null = null;
+
   private onCompareChange = () => {
+    this.compareJob = null;
     clearTimeout(this.cmpTimer);
     const len = this.ed2.text.length;
-    this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
+    this.cmpTimer = window.setTimeout(this.analyzeCompareLater, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
+  };
+
+  private analyzeCompareLater = () => {
+    const text = this.ed2.text;
+    const worker = text.length >= 100_000 ? this.reindentWorker() : null;
+    if (!worker) return this.analyzeCompare();
+    const job = { id: ++this.analysisSeq, text };
+    this.compareJob = job;
+    worker.postMessage({ id: job.id, text, compare: true });
   };
 
   /** Squiggles for the modified document + publish it to the Compare panel. */
@@ -1065,10 +1091,15 @@ export class Engine {
       if (r.error) diags.push({ p: r.error.p, cls: 'me' });
       for (let i = 0; i < r.warnings.length && i < 300; i++) diags.push({ p: r.warnings[i].p, cls: 'mw' });
     }
+    this.applyCompareDiags(text, diags);
+  };
+
+  private applyCompareDiags(text: string, diags: Diagnostic[]) {
+    this.compareJob = null;
     this.ed2.setDiagnostics(diags);
     store.set({ cmpText: text });
     write(KEYS.cmp, text && text.length <= MAX_PERSIST ? text : null);
-  };
+  }
 
   /** Called by the Compare panel with per-line marks for both editors. */
   compareMarks(left: Uint8Array | null, right: Uint8Array | null) {
