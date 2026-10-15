@@ -10,7 +10,7 @@ const LAST_MODIFIED = '2026-10-13';
 const HOME_LAST_MODIFIED = '2026-10-15';
 const RESOURCES_LAST_MODIFIED = '2026-10-14';
 const TOOLS_LAST_MODIFIED = '2026-10-14';
-const ERRORS_LAST_MODIFIED = '2026-10-14';
+const ERRORS_LAST_MODIFIED = '2026-10-15';
 const ERROR_GUIDES_LAST_MODIFIED = '2026-10-15';
 /** Tool pages whose content changed after TOOLS_LAST_MODIFIED, and when. */
 const TOOL_UPDATES: Record<string, string> = Object.fromEntries(

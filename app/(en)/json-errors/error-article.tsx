@@ -3,7 +3,7 @@ import ContentShell, { Logo } from '../content-shell';
 import { Code } from '../blogs/article';
 import { RESOURCE_DATE } from '../resources/resource';
 import { jsonLdScript, SITE, SITE_NAME, SOCIAL_IMAGE } from '../seo';
-import { ERROR_GUIDES, SOURCES, type ErrorGuide } from './errors';
+import { ERROR_GUIDES, GUIDES_UPDATED, GUIDES_UPDATED_LABEL, SOURCES, type ErrorGuide } from './errors';
 import HttpExamples from './http-examples';
 
 export function Faq({ entries }: { entries: ErrorGuide['faq'] }) {
@@ -31,16 +31,34 @@ const sections = [
   { id: 'sources', label: 'Sources' },
 ];
 
+// Serialization errors have no input to locate; binding errors have valid JSON of the wrong shape.
+const sectionsFor = (kind: ErrorGuide['kind']) => kind === 'serialize'
+  ? sections.filter(section => section.id !== 'position')
+  : kind === 'binding'
+    ? sections.map(section => section.id === 'position' ? { ...section, label: 'Compare the JSON shape' } : section)
+    : sections;
+
+const CTA = {
+  parse: { title: 'Check the text you actually received', text: 'Find syntax errors and inspect repairs in your browser. Your document stays on your device.', href: '/tools/json-validator', label: 'Open the JSON validator' },
+  serialize: { title: 'Check the JSON you send', text: 'Paste serialized output to confirm it is valid JSON before it leaves your app. Your document stays on your device.', href: '/tools/json-validator', label: 'Open the JSON validator' },
+  binding: { title: 'See the shape of your JSON', text: 'Browse the document as a tree and copy the path to any value. Your document stays on your device.', href: '/', label: 'Open the JSON viewer' },
+};
+
 export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
   const url = `${SITE}/json-errors/${guide.slug}`;
-  const citations = [...new Set(guide.messages.flatMap(message => message.source ? [message.source] : []))];
+  const citations = [...new Set([
+    ...guide.messages.flatMap(message => message.source ? [message.source] : []),
+    ...(guide.docs ?? []).map(doc => doc.href),
+  ])];
+  const hasRuntime = (prefix: string) => guide.messages.some(message => message.runtime.startsWith(prefix));
+  const cta = CTA[guide.kind ?? 'parse'];
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
       {
         '@type': 'TechArticle', '@id': `${url}#article`, headline: guide.title, description: guide.description,
         url, mainEntityOfPage: { '@type': 'WebPage', '@id': url }, image: `${SITE}${SOCIAL_IMAGE.url}`,
-        datePublished: RESOURCE_DATE, dateModified: RESOURCE_DATE,
+        datePublished: guide.published ?? RESOURCE_DATE, dateModified: GUIDES_UPDATED,
         author: { '@id': `${SITE}/#organization` }, publisher: { '@id': `${SITE}/#organization` },
         isPartOf: { '@id': `${SITE}/json-errors#page` }, inLanguage: 'en-US',
         citation: [...citations, SOURCES.rfc, SOURCES.ecma],
@@ -70,7 +88,7 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
           <p className="lede">{guide.description}</p>
           <div className="byline"><Logo size={36} /><p>
             <span className="byline-name">{SITE_NAME}</span>
-            <span className="byline-meta"><time dateTime={RESOURCE_DATE}>October 14, 2026</time> · Examples checked in Node 24 and Python 3.14</span>
+            <span className="byline-meta"><time dateTime={GUIDES_UPDATED}>{GUIDES_UPDATED_LABEL}</time> · {guide.checked ?? 'Examples checked in Node 24 and Python 3.14'}</span>
           </p></div>
         </header>
         <div className="article-grid">
@@ -102,6 +120,16 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
                 <h3>{fix.title}</h3><p>{fix.text}</p><Code lang={fix.lang}>{fix.code}</Code>
               </section>)}
               {guide.http && <HttpExamples />}
+              {guide.kind === 'binding' && <>
+                <h2 id="position">Compare the JSON shape with your types</h2>
+                <ol>
+                  <li>Copy the exact JSON your code received, for example from a log or a failing test.</li>
+                  <li>Paste it into the <Link prefetch={false} href="/">Tool Kumar JSON viewer</Link>. The document stays in your browser.</li>
+                  <li>Open the tree at the property named in the error and check whether the value there is an object, an array or a single value. The <Link prefetch={false} href="/tools/json-path-finder">JSON path finder</Link> copies the path to any value.</li>
+                  <li>Generate types from the same document with a converter listed under related tools, then compare them with your own classes or structs.</li>
+                </ol>
+              </>}
+              {!guide.kind && <>
               <h2 id="position">Find the exact position with Tool Kumar</h2>
               <ol>
                 <li>Copy the exact input text, including its original whitespace. For HTTP failures, copy the raw response body.</li>
@@ -115,6 +143,7 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
               <p>Tool Kumar can classify some input as fixable loose JSON. Review a proposed change before using the{' '}
                 <Link prefetch={false} href="/tools/json-repair">JSON repair tool</Link>, then validate the result against your API contract.
                 For empty input, inspect the producer or response because there is no character to select.</p>
+              </>}
               <h2 id="faq">Frequently asked questions</h2><Faq entries={guide.faq} />
               <h2 id="related">Related errors and tools</h2>
               <ul>{guide.related.map(slug => {
@@ -123,31 +152,29 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
               })}
                 <li><Link prefetch={false} href="/json-errors">All JSON error guides</Link></li>
                 <li><Link prefetch={false} href="/resources/json-reference">JSON syntax reference</Link></li>
-                {guide.slug === 'go-invalid-character' && <li><Link prefetch={false} href="/tools/json-to-go">Generate Go structs from valid JSON</Link></li>}
-                {guide.slug === 'extra-data' && <li><Link prefetch={false} href="/tools/json-to-csv">Convert an array of JSON records to CSV</Link></li>}
-                {guide.slug === 'extra-data' && <li><Link prefetch={false} href="/tools/ndjson-to-json">Convert NDJSON into one JSON array</Link></li>}
-                {guide.slug === 'trailing-comma' && <li><Link prefetch={false} href="/tools/json-repair">Repair a trailing comma locally</Link></li>}
+                {guide.tools?.map(tool => <li key={tool.href}><Link prefetch={false} href={tool.href}>{tool.label}</Link></li>)}
               </ul>
               <h2 id="sources">Standards and diagnostic sources</h2>
               <p><a href={SOURCES.rfc}>RFC 8259</a> and <a href={SOURCES.ecma}>ECMA-404</a> define JSON syntax.
                 Diagnostic wording belongs to the parser. The table links each cited message to its source.</p>
               <ul className="sources">
-                <li><a href={SOURCES.mdn}>MDN JSON.parse error reference</a></li>
-                <li><a href={SOURCES.python}>Python json documentation and JSONDecodeError attributes</a></li>
+                {(hasRuntime('JavaScript') || hasRuntime('Firefox')) && <li><a href={SOURCES.mdn}>MDN JSON.parse error reference</a></li>}
+                {hasRuntime('Python') && <li><a href={SOURCES.python}>Python json documentation and JSONDecodeError attributes</a></li>}
                 {guide.http && <li><a href={SOURCES.fetch}>MDN fetch response handling</a></li>}
                 {guide.http && <li><a href={SOURCES.requests}>Requests JSON response handling</a></li>}
                 {(guide.http || guide.slug === 'extra-data') && <li><a href={SOURCES.goDocs}>Go encoding/json documentation</a></li>}
-                {guide.messages.some(message => message.runtime.startsWith('Safari')) && <li><a href={SOURCES.safariPrefix}>WebKit source for the JSON Parse error prefix</a></li>}
+                {hasRuntime('Safari') && <li><a href={SOURCES.safariPrefix}>WebKit source for the JSON Parse error prefix</a></li>}
+                {guide.docs?.map(doc => <li key={doc.href}><a href={doc.href}>{doc.label}</a></li>)}
               </ul>
             </div>
-            <aside className="cta-card" aria-label="Validate JSON">
-              <p className="cta-title">Check the text you actually received</p>
-              <p>Find syntax errors and inspect repairs in your browser. Your document stays on your device.</p>
-              <Link prefetch={false} className="button" href="/tools/json-validator">Open the JSON validator <span className="arrow" aria-hidden="true">→</span></Link>
+            <aside className="cta-card" aria-label={cta.title}>
+              <p className="cta-title">{cta.title}</p>
+              <p>{cta.text}</p>
+              <Link prefetch={false} className="button" href={cta.href}>{cta.label} <span className="arrow" aria-hidden="true">→</span></Link>
             </aside>
           </div>
           <nav className="toc" aria-labelledby="toc-title"><p id="toc-title">On this page</p><ol>
-            {sections.map(section => <li key={section.id}><a href={`#${section.id}`}>{section.label}</a></li>)}
+            {sectionsFor(guide.kind).map(section => <li key={section.id}><a href={`#${section.id}`}>{section.label}</a></li>)}
           </ol></nav>
         </div>
       </article>
