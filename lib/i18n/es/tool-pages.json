@@ -1,0 +1,1743 @@
+{
+  "json-validator": {
+    "hash": "a1c439c2d927",
+    "title": "Validar JSON: detecta errores por línea y columna",
+    "description": "Valida JSON en tu navegador sin subir datos sensibles. Detecta errores de sintaxis, comas finales y problemas que se pueden reparar.",
+    "heading": "Validador JSON",
+    "query": "validar JSON",
+    "secondary": [
+      "validador JSON online",
+      "comprobar sintaxis JSON"
+    ],
+    "intro": "Pega JSON para comprobar si cumple la sintaxis estándar. Tool Kumar señala la línea y la columna exactas y ofrece reparaciones para los errores habituales del JSON no estricto.",
+    "modeLabel": "Vista de validación y errores",
+    "exampleLabel": "Este ejemplo tiene una coma final. El validador señala la coma que aparece después de 36.",
+    "steps": [
+      "Pega el documento en el panel de entrada.",
+      "Lee el aviso de error y ve a la ubicación indicada.",
+      "Corrige el carácter o elige Reparar entrada cuando el problema se pueda corregir con seguridad."
+    ],
+    "options": [
+      "Comprueba objetos, arrays, cadenas, números, booleanos y null.",
+      "Informa por separado de las comas finales, los comentarios y otros problemas de entrada que se pueden corregir.",
+      "Usa la vista con formato para confirmar el resultado reparado."
+    ],
+    "faqs": [
+      {
+        "question": "¿Qué comprueba un validador JSON?",
+        "answer": "Comprueba la sintaxis JSON, incluidas las comillas, las comas, los corchetes, las llaves, los números y los tipos de valor permitidos."
+      },
+      {
+        "question": "¿Puede reparar JSON inválido?",
+        "answer": "Puede reparar errores habituales, como comas finales y comillas simples, y mostrar el resultado como una edición que puedes deshacer."
+      },
+      {
+        "question": "¿Dónde se realiza la validación?",
+        "answer": "El analizador se ejecuta localmente en tu navegador. Tool Kumar no necesita hacer una solicitud a un servidor."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "trailing-comma",
+        "text": "Por qué las comas finales no son válidas en JSON"
+      },
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Unexpected end of JSON input: encuentra lo que se ha cortado"
+      },
+      {
+        "slug": "unexpected-token-html",
+        "text": "Unexpected token '<': comprueba si la respuesta es HTML"
+      }
+    ]
+  },
+  "json-minifier": {
+    "hash": "b67067161d8f",
+    "title": "Minificar JSON para cargas útiles de API compactas",
+    "description": "Minifica JSON en tu navegador sin subir el archivo. Tool Kumar conserva el orden de las claves y los números grandes al crear una carga útil compacta.",
+    "heading": "Minificar JSON",
+    "query": "minificar JSON",
+    "secondary": [
+      "minificador JSON",
+      "comprimir JSON",
+      "JSON minifier online"
+    ],
+    "intro": "Elimina los espacios en blanco no significativos de JSON antes de enviarlo por la red o guardarlo como datos de prueba. La entrada legible permanece a la izquierda.",
+    "modeLabel": "Vista de JSON minificado",
+    "exampleLabel": "El minificador elimina la sangría y los saltos de línea y conserva todos los valores. El espacio dentro de \"Ada Lovelace\" se mantiene porque forma parte de una cadena.",
+    "steps": [
+      "Pega JSON válido.",
+      "La salida pasa a mostrarse en una sola línea compacta.",
+      "Copia o descarga el JSON minificado."
+    ],
+    "options": [
+      "Vuelve a la salida con formato en cualquier momento.",
+      "Ordena las claves solo si el sistema que recibe los datos no depende del orden de inserción.",
+      "El analizador conserva los dígitos originales en lugar de redondear los enteros grandes."
+    ],
+    "faqs": [
+      {
+        "question": "¿Minificar cambia los datos JSON?",
+        "answer": "No. Elimina los espacios en blanco fuera de las cadenas. Los valores, los nombres de las claves y su orden se mantienen."
+      },
+      {
+        "question": "¿Cambian las cadenas?",
+        "answer": "No. Los espacios en blanco dentro de las cadenas entre comillas se conservan."
+      },
+      {
+        "question": "¿Puedo validar mientras minifico?",
+        "answer": "Sí. La barra de estado indica si la entrada es válida antes de generar la salida compacta."
+      }
+    ]
+  },
+  "json-diff": {
+    "hash": "e4ff776b20f8",
+    "title": "Comparar JSON y ver diferencias entre dos documentos",
+    "description": "Compara dos documentos JSON en paralelo sin subirlos. Tool Kumar resalta los valores modificados y procesa ambas entradas en tu navegador.",
+    "heading": "Comparar JSON",
+    "query": "comparar JSON",
+    "secondary": [
+      "comparador de JSON online",
+      "diferencias entre JSON",
+      "JSON diff online"
+    ],
+    "intro": "Pega un documento original y uno modificado para ver qué ha cambiado. La vista Comparar mantiene los dos editores alineados y señala las adiciones, las eliminaciones y las modificaciones.",
+    "modeLabel": "Vista Comparar",
+    "exampleLabel": "Las claves están en otro orden, algo que Ignorar orden de claves, activado de forma predeterminada, no señala. Con $.meta.updatedAt entre las rutas ignoradas, quedan dos cambios: el valor de role y la etiqueta añadida. Copiar JSON Patch genera este parche RFC 6902.",
+    "steps": [
+      "Pega el JSON original en el primer panel.",
+      "Pega el JSON modificado en el segundo panel.",
+      "Revisa la lista Cambios o la comparación por líneas en Líneas y copia un JSON Patch o cualquiera de los documentos."
+    ],
+    "options": [
+      "Cambios enumera cada diferencia estructural por su ruta JSON. Líneas compara los dos documentos línea a línea tras aplicarles el mismo formato, por lo que la sangría y los espacios nunca aparecen como cambios.",
+      "Ignorar orden de claves está activado de forma predeterminada, así que los objetos con las mismas claves en otro orden se consideran iguales. Desactívalo para ver los cambios en el orden de las claves.",
+      "En Cambios, Ignorar orden de arrays compara los arrays como colecciones sin orden e Ignorar mayúsculas compara las cadenas sin distinguir entre mayúsculas y minúsculas. Líneas solo admite Ignorar orden de claves.",
+      "Las rutas ignoradas permiten omitir campos que cambian sin aportar información útil. $.meta.updatedAt es una ruta exacta, $.items[*].ts coincide con todos los elementos y una clave sin ruta, como updatedAt, coincide a cualquier profundidad.",
+      "Copiar JSON Patch genera las diferencias como un parche RFC 6902 que transforma el documento original en el modificado. Se omiten las rutas ignoradas y los cambios que solo afectan al orden de las claves.",
+      "Los números se comparan por su valor, por lo que 1.0 es igual a 1 y los enteros grandes conservan todos sus dígitos. Los elementos de arrays de objetos con un id, _id, uuid, key o name único se emparejan según ese valor."
+    ],
+    "faqs": [
+      {
+        "question": "¿Puedo comparar dos archivos JSON?",
+        "answer": "Sí. Abre un archivo en cada panel de comparación o pega ambos documentos."
+      },
+      {
+        "question": "¿La comparación envía los archivos a un servidor?",
+        "answer": "No. El análisis y la comparación se realizan en el navegador."
+      },
+      {
+        "question": "¿Puede comparar arrays anidados?",
+        "answer": "Sí. Los objetos y arrays anidados se comparan elemento a elemento, e insertar un elemento en un array no hace que el resto aparezca como modificado."
+      },
+      {
+        "question": "¿Cómo ignoro una marca de tiempo que siempre cambia?",
+        "answer": "Escribe su ruta, como $.meta.updatedAt, en el campo de rutas ignoradas de la vista Cambios. Separa varias rutas con comas; [*] coincide con cualquier índice de un array."
+      },
+      {
+        "question": "¿Puedo exportar las diferencias como un JSON Patch?",
+        "answer": "Sí. Copiar JSON Patch copia operaciones add, remove y replace de RFC 6902 que transforman el documento original en el modificado."
+      }
+    ]
+  },
+  "json-to-typescript": {
+    "hash": "c27d5cb1895d",
+    "title": "JSON a TypeScript con interfaces y tipos anidados",
+    "description": "Convierte JSON a interfaces o tipos de TypeScript en tu navegador, sin subir datos. Pega un ejemplo y genera código con estructuras anidadas inferidas.",
+    "heading": "JSON a TypeScript",
+    "query": "JSON a TypeScript",
+    "secondary": [
+      "generar interfaces TypeScript desde JSON",
+      "convertir JSON a TypeScript",
+      "JSON to TypeScript"
+    ],
+    "intro": "Convierte una respuesta JSON representativa en declaraciones de TypeScript. El conversor recorre los objetos y arrays anidados para que los tipos generados coincidan con la estructura del ejemplo.",
+    "modeLabel": "Salida de TypeScript",
+    "exampleLabel": "Tool Kumar genera la salida que aparece abajo a partir del JSON de ejemplo.",
+    "steps": [
+      "Pega una respuesta JSON representativa.",
+      "Elige TypeScript en la vista Convertir.",
+      "Define el nombre raíz y copia o descarga las declaraciones."
+    ],
+    "options": [
+      "Elige la sintaxis interface o type en la opción Declarar como.",
+      "Cambia el nombre del tipo raíz para que coincida con el recurso de tu API.",
+      "La inferencia de tipos opcionales y de unión se basa en los valores presentes en el ejemplo."
+    ],
+    "faqs": [
+      {
+        "question": "¿El conversor de JSON a TypeScript admite objetos anidados?",
+        "answer": "Sí. Los objetos anidados se convierten en declaraciones con nombre y los arrays usan el tipo inferido para sus elementos."
+      },
+      {
+        "question": "¿Puedo elegir entre interface y type?",
+        "answer": "Sí. La opción Declarar como cambia la forma de la declaración generada."
+      },
+      {
+        "question": "¿Se sube el JSON?",
+        "answer": "No. La conversión usa el analizador y el conversor locales de tu navegador."
+      }
+    ]
+  },
+  "json-to-zod": {
+    "hash": "6e099361479c",
+    "title": "JSON a Zod: genera un esquema a partir de un ejemplo",
+    "description": "Genera un esquema Zod desde JSON en tu navegador sin subir datos. Tool Kumar infiere objetos y arrays anidados y te permite copiar el código TypeScript.",
+    "heading": "JSON a Zod",
+    "query": "JSON a Zod",
+    "secondary": [
+      "generar esquema Zod desde JSON",
+      "convertir JSON a Zod",
+      "JSON to Zod"
+    ],
+    "intro": "Pega un JSON de ejemplo y obtén un esquema Zod para tu proyecto de TypeScript. Las comprobaciones generadas reflejan los valores y el anidamiento del ejemplo.",
+    "modeLabel": "Salida del esquema Zod",
+    "exampleLabel": "Tool Kumar genera este esquema a partir del objeto de ejemplo.",
+    "steps": [
+      "Pega un JSON con la estructura que recibe tu aplicación.",
+      "Abre la vista Convertir y elige Esquema Zod.",
+      "Cambia el nombre raíz y copia el código generado."
+    ],
+    "options": [
+      "Los objetos anidados se convierten en llamadas z.object anidadas.",
+      "Los arrays usan el esquema inferido para sus elementos.",
+      "La salida solo contiene código. Añade las restricciones específicas de tu proyecto, como el formato de correo electrónico o la longitud mínima."
+    ],
+    "faqs": [
+      {
+        "question": "¿Esto crea un validador completo para una API?",
+        "answer": "Crea un esquema Zod para la estructura del ejemplo. Añade restricciones para las reglas que no se pueden deducir de él."
+      },
+      {
+        "question": "¿Cómo se tratan los valores null?",
+        "answer": "Los valores null se convierten en z.null() en el esquema generado."
+      },
+      {
+        "question": "¿Puedo cambiar el nombre del esquema raíz?",
+        "answer": "Sí. Define el nombre raíz en la barra de herramientas del conversor."
+      }
+    ]
+  },
+  "json-schema-generator": {
+    "hash": "40303de8e661",
+    "title": "Generar JSON Schema a partir de un ejemplo JSON",
+    "description": "Genera JSON Schema desde un ejemplo JSON sin subir datos. Tool Kumar infiere propiedades, arrays y tipos primitivos en tu navegador.",
+    "heading": "Generador de JSON Schema",
+    "query": "generar JSON Schema",
+    "secondary": [
+      "JSON a JSON Schema",
+      "generador de JSON Schema",
+      "generar esquema JSON desde JSON"
+    ],
+    "intro": "Usa un documento JSON representativo para crear un esquema preliminar en JSON Schema. El resultado describe la estructura observada y te da un punto de partida para la validación.",
+    "modeLabel": "Salida de JSON Schema",
+    "exampleLabel": "El esquema se genera a partir del objeto de ejemplo, incluidos profile y tags anidados. Todas las propiedades están presentes en este único objeto, así que todas son obligatorias.",
+    "steps": [
+      "Pega un documento de ejemplo.",
+      "Elige JSON Schema en la vista Convertir.",
+      "Revisa las propiedades inferidas y guarda el esquema."
+    ],
+    "options": [
+      "Los objetos y arrays anidados se representan de forma recursiva.",
+      "Una propiedad se incluye en required cuando está presente en todos los objetos de muestra de esa posición. Por tanto, una sola muestra completa hace que todas las propiedades observadas sean obligatorias; en un array de objetos, una clave ausente en algunos objetos se vuelve opcional.",
+      "Los valores null en algunos objetos añaden null al tipo de la propiedad en lugar de hacerla opcional.",
+      "La salida es un punto de partida. Revisa required, añade formatos, rangos y patrones, y elimina todo lo que el contrato de tu API no garantice.",
+      "Esta página genera un esquema; no valida un documento frente a uno. Usa la página del validador para comprobar la sintaxis JSON antes de generar el esquema."
+    ],
+    "faqs": [
+      {
+        "question": "¿El generador marca todas las propiedades como obligatorias?",
+        "answer": "Solo las propiedades presentes en todos los objetos de muestra. Una sola muestra completa marca todas sus propiedades como obligatorias, mientras que una clave ausente en algunos objetos de un array se vuelve opcional. Revisa la lista required según el contrato de tu API antes de publicar el esquema."
+      },
+      {
+        "question": "¿Qué versión utiliza?",
+        "answer": "La salida declara JSON Schema Draft 2020-12 con las palabras clave estándar type y properties."
+      },
+      {
+        "question": "¿Puede inferir la estructura de los elementos de un array?",
+        "answer": "Sí. Los arrays de objetos generan un esquema items basado en la estructura observada de los objetos."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Cómo se eligen las propiedades obligatorias",
+        "paragraphs": [
+          "Si generas un esquema a partir de varios registros, la lista required conserva solo las claves presentes en todos ellos. En este ejemplo, ambos usuarios tienen id y email, pero solo el primero tiene phone, por lo que phone se describe sin ser obligatorio."
+        ]
+      }
+    ]
+  },
+  "json-to-go": {
+    "hash": "c85598725dd2",
+    "title": "JSON a Go: genera structs con etiquetas JSON",
+    "description": "Convierte JSON a structs de Go con tipos anidados y etiquetas JSON. Tool Kumar lo procesa en tu navegador sin subir los datos de entrada.",
+    "heading": "JSON a Go",
+    "query": "JSON a Go",
+    "secondary": [
+      "JSON a struct Go",
+      "JSON a Golang"
+    ],
+    "intro": "Genera definiciones de structs de Go a partir de un JSON de ejemplo. Los nombres se convierten en identificadores exportados de Go y las etiquetas conservan las claves originales.",
+    "modeLabel": "Salida de Go",
+    "exampleLabel": "Estos structs se generan a partir del JSON de ejemplo y su objeto profile anidado.",
+    "steps": [
+      "Pega el JSON de la respuesta que quieres modelar.",
+      "Elige Go en la vista Convertir.",
+      "Copia los structs generados en tu paquete y revisa los nombres."
+    ],
+    "options": [
+      "Los nombres del tipo raíz y de los tipos anidados se infieren a partir de las claves.",
+      "Las etiquetas JSON conservan las claves que no siguen las convenciones de nombres de Go.",
+      "Revisa los campos de tiempo, los decimales y los que admiten null, porque los ejemplos JSON no pueden expresar todas las reglas del dominio."
+    ],
+    "faqs": [
+      {
+        "question": "¿El conversor añade etiquetas JSON?",
+        "answer": "Sí. Cada campo conserva su clave de origen en una etiqueta json del struct."
+      },
+      {
+        "question": "¿Cómo se tratan los objetos anidados?",
+        "answer": "Se convierten en structs independientes con nombre, a los que hace referencia el struct padre."
+      },
+      {
+        "question": "¿Puedo cambiar el nombre raíz?",
+        "answer": "Sí. Define el nombre raíz en la barra de herramientas del conversor."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "go-invalid-character",
+        "text": "Diagnosticar errores invalid character al leer JSON en Go"
+      }
+    ]
+  },
+  "json-to-python": {
+    "hash": "fafa568e5334",
+    "title": "JSON a Python: genera modelos Pydantic",
+    "description": "Convierte JSON a modelos Pydantic de Python sin subir datos. Tool Kumar infiere campos anidados y genera el código en tu navegador.",
+    "heading": "JSON a Python",
+    "query": "JSON a Python",
+    "secondary": [
+      "JSON a Pydantic",
+      "generar clases Python desde JSON"
+    ],
+    "intro": "Convierte una respuesta JSON en definiciones de modelos Pydantic de Python. Usa el código generado como punto de partida con tipos y añade después las validaciones del dominio.",
+    "modeLabel": "Salida de Python",
+    "exampleLabel": "Los modelos de Python que aparecen abajo se generan a partir del JSON de ejemplo.",
+    "steps": [
+      "Pega un objeto JSON o una respuesta de API.",
+      "Elige Python (Pydantic) en la vista Convertir.",
+      "Define un nombre raíz y copia las definiciones de los modelos."
+    ],
+    "options": [
+      "Los objetos anidados se convierten en clases BaseModel anidadas.",
+      "Las listas y los valores opcionales se basan en el ejemplo observado.",
+      "Revisa las reglas de fechas, decimales y tipos de unión para los datos de producción."
+    ],
+    "faqs": [
+      {
+        "question": "¿Genera modelos Pydantic?",
+        "answer": "Sí. La opción de Python genera definiciones de Pydantic BaseModel con campos tipados."
+      },
+      {
+        "question": "¿Qué ocurre con las claves JSON que contienen guiones?",
+        "answer": "El conversor crea un nombre de campo válido en Python y conserva la clave original mediante un alias cuando es necesario."
+      },
+      {
+        "question": "¿Puedo usar un solo registro JSON?",
+        "answer": "Sí. Un solo objeto basta para inferir un modelo. Usa un ejemplo más amplio cuando los campos varíen."
+      }
+    ]
+  },
+  "json-to-yaml": {
+    "hash": "17b363edfc4b",
+    "title": "JSON a YAML: conversor local para objetos y arrays",
+    "description": "Convierte JSON a YAML con un analizador local sin pérdidas, sin subir datos. Pega un objeto o array y copia YAML limpio para configuración y documentación.",
+    "heading": "JSON a YAML",
+    "query": "JSON a YAML",
+    "secondary": [
+      "convertir JSON a YAML",
+      "conversor de JSON a YAML",
+      "convertidor de JSON a YAML"
+    ],
+    "intro": "Convierte datos JSON en YAML legible sin enviarlos a un servidor. El conversor admite objetos anidados, arrays, cadenas, booleanos, valores null y números.",
+    "modeLabel": "Salida de YAML",
+    "exampleLabel": "Este YAML se genera con el conversor integrado de JSON a YAML.",
+    "steps": [
+      "Pega JSON válido.",
+      "Elige YAML en la vista Convertir.",
+      "Copia el YAML o descárgalo para usarlo como archivo de configuración."
+    ],
+    "options": [
+      "La sangría sigue el formato de salida del conversor y los arrays anidados mantienen su legibilidad.",
+      "Las cadenas se entrecomillan para conservar su tipo cuando YAML podría inferir otro distinto.",
+      "Revisa los anclajes de YAML o las etiquetas específicas de la aplicación, porque el conversor genera YAML de datos simples."
+    ],
+    "faqs": [
+      {
+        "question": "¿Puedo convertir JSON anidado a YAML?",
+        "answer": "Sí. Los objetos y arrays se generan de forma recursiva con una sangría legible."
+      },
+      {
+        "question": "¿Se conservan los números grandes de JSON?",
+        "answer": "El analizador conserva el texto original de los números durante la conversión, por lo que JavaScript no redondea los enteros grandes."
+      },
+      {
+        "question": "¿Se puede volver a importar YAML como JSON?",
+        "answer": "Sí. Usa la página YAML a JSON para analizar YAML de datos simples y volver a obtener JSON con formato."
+      }
+    ]
+  },
+  "yaml-to-json": {
+    "hash": "d6e32c71205e",
+    "title": "YAML a JSON con formato en tu navegador",
+    "description": "Convierte YAML a JSON con formato sin subir el documento. Tool Kumar analiza YAML de datos simples en tu navegador e informa de los errores.",
+    "heading": "YAML a JSON",
+    "query": "YAML a JSON",
+    "secondary": [
+      "convertir YAML a JSON",
+      "YAML a JSON online"
+    ],
+    "intro": "Pega un documento YAML y conviértelo en JSON para una API, datos de prueba o una sesión de depuración. El importador admite mapeos, secuencias, escalares y valores entre comillas.",
+    "modeLabel": "Importación de YAML a JSON",
+    "exampleLabel": "El JSON con formato que aparece abajo se genera al importar este ejemplo YAML.",
+    "steps": [
+      "Pega YAML o abre un archivo .yaml o .yml.",
+      "Elige YAML → JSON cuando el importador detecte YAML.",
+      "Revisa el JSON con formato y cópialo o descárgalo."
+    ],
+    "options": [
+      "Los mapeos y secuencias simples se convierten en objetos y arrays JSON.",
+      "Los valores entre comillas siguen siendo cadenas; los números y booleanos sin comillas se convierten en valores JSON.",
+      "El importador de datos simples no admite anclajes, etiquetas personalizadas ni YAML ejecutable."
+    ],
+    "faqs": [
+      {
+        "question": "¿El importador admite listas YAML?",
+        "answer": "Sí. Los elementos con sangría y guion se convierten en arrays JSON, incluidos los arrays anidados dentro de objetos."
+      },
+      {
+        "question": "¿Qué funciones de YAML no se admiten?",
+        "answer": "El importador se centra en datos simples. Las etiquetas personalizadas, los anclajes y las directivas específicas de una aplicación pueden requerir una biblioteca YAML."
+      },
+      {
+        "question": "¿Puedo abrir un archivo YAML?",
+        "answer": "Sí. Usa Abrir archivo y Tool Kumar detectará las extensiones .yaml y .yml antes de importar."
+      }
+    ]
+  },
+  "json-to-csv": {
+    "hash": "7f15407a3074",
+    "title": "JSON a CSV con columnas para campos anidados",
+    "description": "Convierte registros JSON a CSV sin subir datos. Tool Kumar aplana los campos anidados en columnas con nombres separados por puntos, en tu navegador.",
+    "heading": "JSON a CSV",
+    "query": "JSON a CSV",
+    "secondary": [
+      "convertir JSON a CSV",
+      "conversor de JSON a CSV",
+      "convertidor de JSON a CSV"
+    ],
+    "intro": "Convierte registros JSON en un CSV compatible con hojas de cálculo. El conversor encuentra el array principal de objetos, crea las columnas y entrecomilla los valores con comas o saltos de línea.",
+    "modeLabel": "Salida de CSV",
+    "exampleLabel": "Este CSV se genera a partir del array users del documento de ejemplo.",
+    "steps": [
+      "Pega un array de objetos o una respuesta de API que contenga uno.",
+      "Elige CSV en la vista Convertir.",
+      "Copia la vista previa o descarga el archivo CSV."
+    ],
+    "options": [
+      "Las claves de objetos anidados se convierten en nombres de columna separados por puntos, como profile.city.",
+      "Un array de valores simples ocupa una sola celda con sus valores separados por comas. Un array de objetos se mantiene en una sola celda como JSON compacto.",
+      "Se selecciona el mayor array de objetos adecuado dentro del objeto que contiene la respuesta."
+    ],
+    "faqs": [
+      {
+        "question": "¿Qué estructura JSON funciona mejor para CSV?",
+        "answer": "Usa un array de objetos. El conversor también encuentra el mayor array de objetos dentro de una respuesta que envuelve los datos en una propiedad como users o data."
+      },
+      {
+        "question": "¿Cómo se representan los objetos anidados?",
+        "answer": "Las propiedades anidadas se convierten en nombres de columna separados por puntos, de modo que el CSV mantiene una estructura rectangular."
+      },
+      {
+        "question": "¿Se escapan las comas y las comillas?",
+        "answer": "Sí. Los campos CSV se entrecomillan y las comillas internas se duplican según las reglas estándar de CSV."
+      }
+    ]
+  },
+  "csv-to-json": {
+    "hash": "58d77f369e7a",
+    "title": "CSV a JSON con inferencia de tipos",
+    "description": "Convierte CSV a JSON sin subir archivos. Tool Kumar detecta columnas, interpreta números y booleanos y conserva el resultado en tu navegador.",
+    "heading": "CSV a JSON",
+    "query": "CSV a JSON",
+    "secondary": [
+      "convertir CSV a JSON",
+      "conversor de CSV a JSON",
+      "convertidor de CSV a JSON"
+    ],
+    "intro": "Pega CSV o abre un archivo .csv para crear un array JSON de registros. El importador lee campos entre comillas e infiere números simples, booleanos y valores null.",
+    "modeLabel": "Importación de CSV a JSON",
+    "exampleLabel": "El JSON que aparece abajo se genera al importar el ejemplo CSV.",
+    "steps": [
+      "Pega CSV con una fila de encabezados.",
+      "Elige CSV → JSON cuando el detector identifique la entrada.",
+      "Revisa el array y copia o descarga el JSON."
+    ],
+    "options": [
+      "Se detectan los delimitadores coma, punto y coma, tabulación y barra vertical.",
+      "Los campos entre comillas pueden contener comas y saltos de línea.",
+      "Los campos vacíos sin comillas se convierten en null; los campos vacíos entre comillas siguen siendo cadenas vacías."
+    ],
+    "faqs": [
+      {
+        "question": "¿El conversor de CSV a JSON lee comas entre comillas?",
+        "answer": "Sí. El importador reconoce los campos entre comillas para que las comas dentro de un valor sigan formando parte de él."
+      },
+      {
+        "question": "¿Cómo se detectan los números?",
+        "answer": "Las celdas sin comillas que cumplen la sintaxis numérica de JSON se convierten en números. Entrecomilla un valor si debe seguir siendo una cadena."
+      },
+      {
+        "question": "¿Puedo abrir un archivo TSV?",
+        "answer": "Sí. El mismo importador detecta archivos separados por tabulaciones y los convierte en registros JSON."
+      }
+    ]
+  },
+  "json-to-xml": {
+    "hash": "45edac3a65ca",
+    "title": "JSON a XML para objetos y arrays anidados",
+    "description": "Convierte JSON a XML sin subir el documento. Tool Kumar transforma objetos y arrays en XML legible en tu navegador y mantiene privado el documento de origen.",
+    "heading": "JSON a XML",
+    "query": "JSON a XML",
+    "secondary": [
+      "convertir JSON a XML",
+      "conversor de JSON a XML",
+      "convertidor de JSON a XML"
+    ],
+    "intro": "Crea XML a partir de un objeto o array JSON para un endpoint de un sistema antiguo, un feed o una prueba de integración. Las claves se convierten en nombres de elementos y los elementos de los arrays se representan como elementos repetidos.",
+    "modeLabel": "Salida de XML",
+    "exampleLabel": "El XML se genera a partir del objeto de ejemplo. Su elemento raíz, root, toma el nombre del ajuste Nombre raíz.",
+    "steps": [
+      "Pega JSON válido.",
+      "Elige XML en la vista Convertir.",
+      "Define el nombre raíz si el sistema receptor espera un elemento concreto."
+    ],
+    "options": [
+      "Las claves de los objetos se convierten en elementos XML.",
+      "Los arrays generan elementos hijos repetidos.",
+      "Los valores se escapan como texto XML, incluidos los signos & y los corchetes angulares."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo se representan los arrays JSON en XML?",
+        "answer": "Los valores del array se convierten en elementos repetidos con el nombre de su propiedad."
+      },
+      {
+        "question": "¿Puedo cambiar el elemento raíz?",
+        "answer": "Sí. Define el nombre raíz en la barra de herramientas del conversor."
+      },
+      {
+        "question": "¿Se conserva el valor null de JSON?",
+        "answer": "Los valores null se generan como elementos vacíos. Revisa el esquema receptor si necesita un atributo nil explícito."
+      }
+    ]
+  },
+  "xml-to-json": {
+    "hash": "1ca1d5a99a27",
+    "title": "XML a JSON para documentos de datos simples",
+    "description": "Convierte XML a JSON con formato sin subir el archivo original. Tool Kumar analiza los elementos y atributos localmente en tu navegador.",
+    "heading": "XML a JSON",
+    "query": "XML a JSON",
+    "secondary": [
+      "convertir XML a JSON",
+      "conversor de XML a JSON",
+      "convertidor de XML a JSON"
+    ],
+    "intro": "Pega un documento XML o abre un archivo local para convertir sus elementos en objetos JSON. Los elementos hermanos repetidos se convierten en arrays, una representación adecuada para XML centrado en datos.",
+    "modeLabel": "Importación de XML a JSON",
+    "exampleLabel": "El JSON que aparece abajo se genera al importar los dos elementos user repetidos.",
+    "steps": [
+      "Pega XML o abre un archivo .xml.",
+      "Elige XML → JSON cuando el detector identifique XML.",
+      "Revisa el objeto y copia el JSON con formato."
+    ],
+    "options": [
+      "Los elementos hijos con nombres repetidos se convierten en arrays.",
+      "Los atributos se conservan con la representación de atributos del importador.",
+      "El importador admite XML de datos. Los documentos con contenido mixto pueden necesitar un analizador XML específico del dominio."
+    ],
+    "faqs": [
+      {
+        "question": "¿Los elementos XML repetidos se convierten en arrays?",
+        "answer": "Sí. Los elementos hermanos repetidos se agrupan en un array JSON."
+      },
+      {
+        "question": "¿Se conservan los atributos XML?",
+        "answer": "Sí. Los atributos se representan en el objeto importado para que sus valores sigan estando disponibles."
+      },
+      {
+        "question": "¿Puedo abrir un archivo XML?",
+        "answer": "Sí. Tool Kumar detecta los archivos .xml en el selector de archivos y ofrece XML a JSON."
+      }
+    ]
+  },
+  "json-to-excel": {
+    "hash": "ac8ab1cf408b",
+    "title": "JSON a Excel con exportación local a XLSX",
+    "description": "Exporta registros JSON a un archivo Excel XLSX sin subir tus datos. Tool Kumar crea el libro de Excel localmente en tu navegador.",
+    "heading": "JSON a Excel",
+    "query": "JSON a Excel",
+    "secondary": [
+      "convertir JSON a Excel",
+      "exportar JSON a Excel",
+      "JSON a XLSX"
+    ],
+    "intro": "Convierte un array de registros JSON en un libro .xlsx. Usa el mismo aplanado de registros que la exportación CSV para crear una hoja clara que puedes revisar o compartir.",
+    "modeLabel": "Exportación a Excel",
+    "exampleLabel": "La vista previa muestra la hoja de cálculo como texto CSV. El array users se convierte en una fila por usuario, con las mismas celdas que se incluyen en la descarga XLSX.",
+    "steps": [
+      "Pega un array de registros o una respuesta de API que contenga uno.",
+      "Elige Excel en la vista Convertir.",
+      "Descarga el libro .xlsx generado."
+    ],
+    "options": [
+      "Los campos anidados se convierten en columnas con nombres separados por puntos.",
+      "Se busca el mayor array de objetos dentro de la respuesta que contiene los datos.",
+      "El libro se crea con las API del navegador y no sale del dispositivo."
+    ],
+    "faqs": [
+      {
+        "question": "¿Puedo exportar JSON anidado a Excel?",
+        "answer": "Sí. Las propiedades anidadas se convierten en columnas con nombres separados por puntos para que cada registro ocupe una fila de la hoja de cálculo."
+      },
+      {
+        "question": "¿La herramienta sube mis datos?",
+        "answer": "No. La generación de XLSX se realiza localmente en el navegador."
+      },
+      {
+        "question": "¿Y si mi JSON es un solo objeto?",
+        "answer": "El exportador usa el objeto o el mayor array anidado de objetos que encuentre. Los arrays de registros producen la hoja más útil."
+      }
+    ]
+  },
+  "jwt-decoder": {
+    "hash": "faaa60f544c8",
+    "title": "Decodificar JWT: encabezado, payload y claims",
+    "description": "Decodifica un JWT en tu navegador sin enviar el token a un servidor. Tool Kumar muestra encabezado, payload, texto de la firma y fechas legibles.",
+    "heading": "Decodificador JWT",
+    "query": "decodificar JWT",
+    "secondary": [
+      "decodificador JWT online",
+      "JWT decoder",
+      "decodificar token JWT"
+    ],
+    "intro": "Pega un JWT compacto para inspeccionarlo. El token permanece en el editor, con cada parte en un color, mientras que el encabezado, el payload y los claims de tiempo decodificados aparecen al lado en un formato legible. Decodificar no verifica la firma, así que usa el resultado para inspección y depuración, no para autenticar.",
+    "modeLabel": "JSON del JWT decodificado",
+    "exampleLabel": "Tool Kumar decodifica este token HS256 de ejemplo en su encabezado, payload y firma, y añade un objeto _claims con fechas legibles para exp e iat.",
+    "steps": [
+      "Pega un JWT, con o sin el prefijo Bearer.",
+      "Lee el encabezado, el payload y _claims decodificados a la derecha. La línea exp indica cuánto falta para que caduque el token o cuánto tiempo ha pasado desde que caducó.",
+      "Comprueba los valores exp, iat y nbf y verifica después la firma en tu propia aplicación."
+    ],
+    "options": [
+      "El decodificador acepta tokens JWS compactos de tres partes.",
+      "No verifica la firma ni obtiene una clave.",
+      "exp, iat y nbf también aparecen como fechas ISO dentro de _claims, con expired establecido en true cuando exp ya ha pasado.",
+      "Para editar el JSON decodificado, usa Reemplazar JWT por JSON decodificado en la paleta de comandos."
+    ],
+    "faqs": [
+      {
+        "question": "¿Decodificar un JWT lo verifica?",
+        "answer": "No. Decodificar solo lee el encabezado y el payload codificados en base64url. La verificación de la firma debe realizarse con la clave del emisor en tu aplicación."
+      },
+      {
+        "question": "¿Se envía mi token a algún sitio?",
+        "answer": "No. La decodificación se realiza en el navegador y el token permanece en tu dispositivo."
+      },
+      {
+        "question": "¿Puede decodificar un token Bearer?",
+        "answer": "Sí. El decodificador acepta tokens con el prefijo Bearer opcional."
+      },
+      {
+        "question": "¿Por qué la salida tiene un objeto _claims?",
+        "answer": "Tool Kumar lo añade para mostrar exp, iat y nbf como fechas ISO legibles e indicar si el token ha caducado. El guion bajo indica que es un dato calculado; no forma parte del token."
+      }
+    ]
+  },
+  "json-to-dart": {
+    "hash": "06a580195f03",
+    "title": "JSON a Dart con null safety y métodos JSON",
+    "description": "Convierte JSON a clases Dart con null safety, constructores, fromJson y toJson. Genera modelos Flutter en tu navegador sin subir datos.",
+    "heading": "JSON a Dart",
+    "query": "JSON a Dart",
+    "secondary": [
+      "generar clases Dart desde JSON",
+      "JSON a Dart para Flutter"
+    ],
+    "intro": "Genera modelos Dart para una respuesta de API en Flutter. La salida incluye campos final, constructores const, un constructor factory fromJson y un método toJson para cada clase anidada.",
+    "modeLabel": "Salida de JSON a Dart",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "Las claves JSON como user-id se convierten en campos camelCase. Los métodos JSON generados conservan las claves originales.",
+      "Los precios enteros y fraccionarios se unifican en double. El decodificador convierte primero a num y llama a toDouble, por lo que ambos valores del ejemplo funcionan.",
+      "Un valor null y una cadena dan lugar a String?. Un campo que solo aparece como null sigue siendo dynamic porque se desconoce el tipo previsto.",
+      "Las fechas siguen siendo String. Revisa por tu cuenta el análisis con DateTime. Dart compilado para la web no puede representar con exactitud todos los enteros grandes."
+    ],
+    "faqs": [
+      {
+        "question": "¿Genera anotaciones json_serializable?",
+        "answer": "No. Escribe directamente los métodos fromJson y toJson. No hay anotaciones @JsonSerializable, archivos part ni un paso con build_runner."
+      },
+      {
+        "question": "¿Cómo gestiona null safety?",
+        "answer": "Los valores null y los campos ausentes en algunos registros hacen que los campos inferidos admitan null. Los campos que no admiten null usan argumentos de constructor required. Los campos que solo contienen null usan dynamic."
+      },
+      {
+        "question": "¿Puede convertir arrays de objetos anidados?",
+        "answer": "Sí. El ejemplo genera List<Item>, transforma cada elemento de entrada con Item.fromJson y llama a toJson en cada elemento al codificar."
+      },
+      {
+        "question": "¿Necesito un paquete de Flutter?",
+        "answer": "Los modelos generados usan tipos del núcleo de Dart. Decodifica el texto de la respuesta con dart:convert y llama después a Root.fromJson."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Usar el modelo en Flutter",
+        "paragraphs": [
+          "Importa dart:convert y pega las clases generadas en un archivo de modelo. Pasa el mapa de la respuesta decodificada a Root.fromJson. jsonEncode llama al método toJson generado.",
+          "Si tu proyecto ya usa json_serializable, adapta los campos a ese flujo de trabajo en lugar de mantener dos conjuntos de métodos JSON generados."
+        ]
+      }
+    ]
+  },
+  "json-to-kotlin": {
+    "hash": "a4c5a24960eb",
+    "title": "JSON a Kotlin: data classes para kotlinx.serialization",
+    "description": "Genera data classes Kotlin desde JSON con @Serializable y @SerialName. Infiere modelos, listas y campos que admiten null en tu navegador, sin subir datos.",
+    "heading": "JSON a data classes de Kotlin",
+    "query": "JSON a Kotlin",
+    "secondary": [
+      "generar data class desde JSON",
+      "convertir JSON a Kotlin",
+      "JSON a data class Kotlin"
+    ],
+    "intro": "Convierte un JSON de ejemplo en data classes para kotlinx.serialization. Los objetos anidados tienen sus propias clases, los arrays se convierten en valores List y los campos renombrados conservan sus nombres JSON mediante @SerialName.",
+    "modeLabel": "Salida de JSON a data classes de Kotlin",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "El generador añade @Serializable a cada data class e importa las anotaciones de kotlinx.serialization. No genera @Json de Moshi ni @SerializedName de Gson.",
+      "Los enteros usan Long, las fracciones usan Double y los valores que solo son null o mezclan tipos usan JsonElement. Los campos que admiten null tienen null como valor predeterminado.",
+      "Los enteros fuera del rango de 64 bits con signo se convierten en Double, lo que puede perder precisión. Usa cadenas o un serializador personalizado para identificadores exactos.",
+      "Las cadenas de fecha siguen siendo String. Un solo ejemplo no permite saber si un campo es obligatorio en todas las respuestas de la API."
+    ],
+    "faqs": [
+      {
+        "question": "¿Qué biblioteca de serialización de Kotlin utiliza?",
+        "answer": "kotlinx.serialization. La salida usa @Serializable y añade @SerialName cuando una propiedad de Kotlin difiere de su clave JSON."
+      },
+      {
+        "question": "¿Puedo usarlo con Moshi?",
+        "answer": "Los tipos de campo pueden servirte de base para un modelo, pero las anotaciones son para kotlinx.serialization. Sustitúyelas y configura la generación de código de Moshi si tu aplicación Android usa Moshi."
+      },
+      {
+        "question": "¿Cómo se tratan los campos ausentes y los valores null?",
+        "answer": "Los campos ausentes en algunos registros del array o que aparecen como null pasan a admitir null y tienen null como valor predeterminado. Los campos obligatorios que no admiten null no tienen valor predeterminado."
+      },
+      {
+        "question": "¿Crea DTO de Kotlin para Android?",
+        "answer": "Sí. Crea data classes adecuadas como DTO. Configura en tu proyecto el plugin de serialización del compilador de Kotlin y la biblioteca JSON de tiempo de ejecución."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Decodificar una respuesta de API en Android",
+        "paragraphs": [
+          "Activa el plugin de serialización del compilador de Kotlin y añade la dependencia JSON de kotlinx.serialization a tu aplicación. Usa el tipo Root generado con Json.decodeFromString.",
+          "ignoreUnknownKeys permite nuevos campos del servidor sin provocar un error. Actívalo solo cuando la política de tu API admita campos desconocidos."
+        ]
+      }
+    ]
+  },
+  "json-to-swift": {
+    "hash": "5f5ba4bf5cd2",
+    "title": "JSON a Swift: genera modelos Codable",
+    "description": "Convierte JSON a structs Codable de Swift con CodingKeys, modelos anidados y propiedades opcionales. Genera el código en tu navegador sin subir datos.",
+    "heading": "JSON a modelos Swift",
+    "query": "JSON a Swift",
+    "secondary": [
+      "generar modelos Codable desde JSON",
+      "convertir JSON a Swift"
+    ],
+    "intro": "Genera structs de Swift que cumplen el protocolo Codable. El conversor añade CodingKeys cuando los nombres de las propiedades difieren del JSON, de modo que una clave como user-id se decodifica como userId.",
+    "modeLabel": "Salida de JSON a modelos Swift",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "Los enteros se infieren como Int, los valores fraccionarios como Double y los enteros fuera del rango de 64 bits con signo como Decimal. Comprueba los límites de la plataforma de destino y la precisión decimal.",
+      "Los valores null o los campos ausentes se convierten en propiedades opcionales. Una estructura con solo null o con tipos mezclados usa el tipo auxiliar JSONValue generado cuando es necesario.",
+      "JSONValue almacena los números como Double, así que usa tipos explícitos para importes monetarios exactos o identificadores muy grandes.",
+      "Las cadenas de fecha siguen siendo String. Si cambias un campo a Date, configura JSONDecoder.dateDecodingStrategy según el formato de la API."
+    ],
+    "faqs": [
+      {
+        "question": "¿Genera clases o structs?",
+        "answer": "Structs que cumplen el protocolo Codable, con propiedades let y tipos de modelo anidados. Importa Foundation."
+      },
+      {
+        "question": "¿Cuándo añade CodingKeys?",
+        "answer": "Cuando cambia el nombre de una propiedad, genera una enumeración CodingKeys que mapea los identificadores de Swift con las claves JSON originales."
+      },
+      {
+        "question": "¿Cómo trata null?",
+        "answer": "Los valores null observados y los campos ausentes producen propiedades opcionales. Los valores desconocidos o de tipos mezclados usan una enumeración JSONValue que cumple el protocolo Codable y se añade solo cuando se utiliza."
+      },
+      {
+        "question": "¿Puedo usar JSONDecoder directamente?",
+        "answer": "Sí. Copia los structs generados en tu proyecto y decodifica Root.self desde Data. Revisa primero los campos opcionales y los tipos de fecha."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Decodificar con JSONDecoder",
+        "paragraphs": [
+          "Usa JSONDecoder con el struct Root generado. Codable también permite codificar el mismo modelo con JSONEncoder.",
+          "Mantén la estrategia de claves predeterminada para esta salida. Sus CodingKeys ya contienen los nombres del JSON, incluido created_at."
+        ]
+      }
+    ]
+  },
+  "json-to-java": {
+    "hash": "37c805a235c6",
+    "title": "JSON a Java: records con mapeos de campos Jackson",
+    "description": "Genera records Java desde JSON con records anidados, listas tipadas y mapeos Jackson @JsonProperty. Revisa el código en tu navegador sin subir datos.",
+    "heading": "JSON a Java",
+    "query": "JSON a Java",
+    "secondary": [
+      "JSON a POJO",
+      "generar clases Java desde JSON"
+    ],
+    "intro": "Convierte un ejemplo de API en records de Java para Jackson. La raíz es un único record público y los records anidados se declaran dentro de él para que puedas guardar la salida en Root.java.",
+    "modeLabel": "Salida de JSON a Java",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "Esta opción genera records, no POJO mutables con setters. Usa Java 16 o posterior y una versión de Jackson compatible con records, como la 2.12 o posterior.",
+      "Los componentes de un record renombrados o con nombres reservados reciben @JsonProperty con la clave original. Los arrays de objetos anidados se convierten en List<Item>.",
+      "Los enteros usan long, los enteros grandes fuera del rango de 64 bits con signo usan BigInteger y las fracciones usan double. Los tipos primitivos que admiten null usan clases envoltorio como Long.",
+      "Los campos que solo contienen null o mezclan tipos usan Object. Las fechas siguen siendo String. Usa BigDecimal y un mapeo revisado cuando necesites aritmética decimal exacta."
+    ],
+    "faqs": [
+      {
+        "question": "¿El conversor de JSON a Java genera POJO?",
+        "answer": "Genera records inmutables de Java. Si necesitas POJO de Java 8, setters o un constructor sin argumentos, adapta la salida o usa un generador para ese estilo de modelo."
+      },
+      {
+        "question": "¿Para qué biblioteca JSON genera código?",
+        "answer": "Jackson. El conversor importa @JsonProperty cuando necesita conservar una clave que difiere del nombre del componente de Java."
+      },
+      {
+        "question": "¿Puedo guardar todos los tipos anidados en un archivo?",
+        "answer": "Sí. El record raíz público contiene records públicos anidados, por lo que la salida predeterminada para un objeto cabe en Root.java."
+      },
+      {
+        "question": "¿Cómo deserializo el record?",
+        "answer": "Usa ObjectMapper.readValue(responseBody, Root.class) con una versión de Jackson compatible con records. Revisa el tratamiento de fechas y los límites numéricos de tu API."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Usar el record con Jackson",
+        "paragraphs": [
+          "Guarda la salida predeterminada como Root.java. Jackson construye los componentes del record a partir de las propiedades JSON. Un record anidado como Item está disponible como Root.Item.",
+          "La salida no contiene una declaración de paquete. Añade el paquete que usa tu aplicación. Registra tus módulos habituales de Jackson si cambias las fechas a tipos java.time."
+        ]
+      }
+    ]
+  },
+  "json-to-csharp": {
+    "hash": "32fef4d0dcfa",
+    "title": "JSON a C#: clases para System.Text.Json",
+    "description": "Genera clases C# desde JSON con propiedades required, tipos que admiten null y atributos JsonPropertyName, en tu navegador y sin subir datos.",
+    "heading": "JSON a clases C#",
+    "query": "JSON a C#",
+    "secondary": [
+      "generar clases C# desde JSON",
+      "JSON a C# System.Text.Json"
+    ],
+    "intro": "Genera modelos C# para System.Text.Json. La salida predeterminada asigna un atributo JsonPropertyName a cada propiedad y usa required para los campos presentes en todos los registros del ejemplo.",
+    "modeLabel": "Salida de JSON a clases C#",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "La opción predeterminada es System.Text.Json. Elige Newtonsoft en Más opciones para obtener atributos JsonProperty de Newtonsoft.Json y JToken para valores desconocidos.",
+      "Los miembros required generados necesitan C# 11 o posterior. La sintaxis de referencias que admiten null presupone que las anotaciones correspondientes están activadas.",
+      "Los enteros usan long, los enteros fuera del rango de 64 bits con signo usan decimal y las fracciones usan double. decimal también tiene un rango finito; elige una representación personalizada para valores mayores.",
+      "Un campo que admite null puede seguir siendo required si todos los registros contienen su clave. La presencia obligatoria y la aceptación de null son reglas independientes. Las fechas siguen siendo string."
+    ],
+    "faqs": [
+      {
+        "question": "¿Usa System.Text.Json o Newtonsoft.Json?",
+        "answer": "System.Text.Json de forma predeterminada, con atributos JsonPropertyName. Elige Newtonsoft en el menú Más opciones del conversor para generar atributos JsonProperty de Newtonsoft.Json."
+      },
+      {
+        "question": "¿Qué versión de C# requiere la salida?",
+        "answer": "C# 11 o posterior para los miembros required. Activa los tipos de referencia que admiten null para usar string? y las demás anotaciones de referencia como se espera."
+      },
+      {
+        "question": "¿Por qué una propiedad required puede admitir null?",
+        "answer": "La clave aparece en todos los registros del ejemplo, pero su valor puede ser null. Por ejemplo, required string? Note modela la presencia por separado del tipo del valor."
+      },
+      {
+        "question": "¿Genera listas y clases anidadas?",
+        "answer": "Sí. Los arrays de objetos se convierten en List<Item> y se genera una clase para cada estructura anidada."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Deserializar con System.Text.Json",
+        "paragraphs": [
+          "Copia las clases en tu proyecto .NET y activa las anotaciones de tipos que admiten null. Los atributos JsonPropertyName mapean las propiedades PascalCase a las claves exactas de la entrada.",
+          "Usa una versión de .NET cuyo System.Text.Json admita miembros required, como .NET 7 o posterior. Configura las opciones del serializador para tu aplicación."
+        ]
+      }
+    ]
+  },
+  "json-to-rust": {
+    "hash": "bd870172bdcb",
+    "title": "JSON a Rust: structs con atributos derive de serde",
+    "description": "Genera structs Rust desde JSON con Serialize y Deserialize de serde, claves renombradas, Vec y Option, en tu navegador y sin subir datos.",
+    "heading": "JSON a structs Rust",
+    "query": "JSON a Rust",
+    "secondary": [
+      "JSON a struct Rust",
+      "generar structs serde desde JSON"
+    ],
+    "intro": "Genera structs públicos de Rust con derive de Debug, Clone, Serialize y Deserialize. Las claves JSON se convierten en campos snake_case con atributos rename de serde cuando el nombre original difiere.",
+    "modeLabel": "Salida de JSON a structs Rust",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "Los arrays se convierten en Vec y los campos tipados que admiten null, en Option. Los campos ausentes en algunos registros añaden skip_serializing_if = \"Option::is_none\".",
+      "Los valores desconocidos, los que solo son null o los que mezclan tipos usan serde_json::Value. Los cambios de nombre conservan la puntuación y las palabras reservadas de Rust usan identificadores raw cuando es posible.",
+      "Los enteros usan i64 o i128 si superan el rango de 64 bits con signo. Las fracciones usan f64. Revisa la compatibilidad de serde_json y el rango numérico antes de aceptar enteros muy grandes.",
+      "Las fechas siguen siendo String. Los importes decimales exactos necesitan un tipo de dominio y un serializador; un ejemplo JSON no puede proporcionar esas reglas."
+    ],
+    "faqs": [
+      {
+        "question": "¿El generador incluye el derive de serde?",
+        "answer": "Sí. Importa serde::{Deserialize, Serialize} y deriva Debug, Clone, Serialize y Deserialize para los structs."
+      },
+      {
+        "question": "¿Se conservan los nombres JSON?",
+        "answer": "Sí. Genera atributos rename de serde cuando es necesario y puede usar rename_all = \"camelCase\" cuando eso reduce los mapeos individuales por campo."
+      },
+      {
+        "question": "¿Cómo se representan los valores null y los ausentes?",
+        "answer": "Los campos tipados que admiten null o están ausentes usan Option<T>. Los campos desconocidos y los que solo contienen null usan serde_json::Value, que también puede contener null de JSON."
+      },
+      {
+        "question": "¿Puedo deserializar el resultado con serde_json?",
+        "answer": "Sí. Añade serde con la característica derive y serde_json a tu proyecto Rust y deserializa después al tipo Root generado."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Usar los structs con serde_json",
+        "paragraphs": [
+          "Activa la característica derive de la dependencia serde y añade serde_json en Cargo.toml. Copia los structs en un módulo y deserializa la respuesta.",
+          "La inferencia a partir de ejemplos no establece reglas de validación para la aplicación. Comprueba los rangos, los campos obligatorios y las marcas de tiempo antes de considerar el modelo decodificado como una entrada de confianza."
+        ]
+      }
+    ]
+  },
+  "json-to-php": {
+    "hash": "7fc19be29801",
+    "title": "JSON a PHP: clases con propiedades readonly tipadas",
+    "description": "Genera clases PHP 8.1 desde JSON con propiedades readonly y fromArray, sin subir datos. Aprende a decodificar JSON a modelos o arrays asociativos de PHP.",
+    "heading": "JSON a clases PHP",
+    "query": "JSON a PHP",
+    "secondary": [
+      "convertir JSON a array PHP",
+      "JSON a array asociativo PHP",
+      "generar clases PHP desde JSON"
+    ],
+    "intro": "Genera clases para PHP 8.1 o posterior con propiedades readonly tipadas y promovidas en el constructor. Cada clase tiene un método fromArray que mapea las claves JSON originales y construye los objetos anidados.",
+    "modeLabel": "Salida de JSON a clases PHP",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "La salida empieza con declare(strict_types=1) y genera clases final. Los arrays de objetos anidados incluyen los tipos de sus elementos en PHPDoc y se construyen con array_map.",
+      "Los valores que admiten null usan ?type; los campos que solo contienen null o mezclan tipos usan mixed. Las fechas siguen siendo string.",
+      "Los enteros usan int y los que superan el rango de 64 bits con signo usan float. Esto puede causar pérdida de precisión. Revisa los límites de la plataforma PHP y decodifica los identificadores grandes como cadenas cuando sea necesario.",
+      "No se incluye una implementación de toArray ni de JsonSerializable. Añade una serialización explícita si necesitas las claves JSON originales al codificar las clases."
+    ],
+    "faqs": [
+      {
+        "question": "¿Puedo convertir JSON a un array asociativo de PHP?",
+        "answer": "Sí, con el propio PHP mediante json_decode($json, true, 512, JSON_THROW_ON_ERROR). Este generador produce clases de modelo tipadas en lugar de un literal de array PHP."
+      },
+      {
+        "question": "¿Qué versión de PHP necesita el código generado?",
+        "answer": "PHP 8.1 o posterior para las propiedades readonly promovidas en el constructor. La salida también usa propiedades tipadas, argumentos con nombre y strict_types."
+      },
+      {
+        "question": "¿Cómo se convierten los objetos anidados en clases?",
+        "answer": "fromArray llama al método fromArray de la clase anidada. Los arrays de objetos anidados usan array_map, con los tipos de sus elementos documentados en PHPDoc."
+      },
+      {
+        "question": "¿Se conservan las claves al volver a codificar como JSON?",
+        "answer": "El método fromArray conserva los mapeos de entrada. La salida no incluye un codificador personalizado, así que json_encode usa los nombres de las propiedades de estos objetos. Añade JsonSerializable o un método toArray si necesitas las claves JSON originales."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Elegir entre un array y un modelo tipado",
+        "paragraphs": [
+          "Para obtener un array asociativo de PHP, basta con json_decode con true. Para usar los modelos generados, pasa ese array a Root::fromArray. JSON_THROW_ON_ERROR informa de las entradas mal formadas.",
+          "Si un identificador supera PHP_INT_MAX, JSON_BIGINT_AS_STRING puede conservar sus dígitos, pero debes cambiar a string la propiedad float correspondiente del código generado. Un float inferido no es un tipo exacto para identificadores."
+        ]
+      }
+    ]
+  },
+  "json-to-toml": {
+    "hash": "41bb6e2c5bdc",
+    "title": "JSON a TOML con tablas y arrays de tablas",
+    "description": "Convierte JSON a tablas y arrays de tablas TOML en tu navegador, sin subir datos. Revisa los cambios en valores null y enteros fuera de 64 bits.",
+    "heading": "JSON a TOML",
+    "query": "JSON a TOML",
+    "secondary": [
+      "convertir JSON a TOML",
+      "conversor de JSON a TOML",
+      "convertidor de JSON a TOML"
+    ],
+    "intro": "Convierte una configuración JSON en tablas TOML. Los objetos anidados se convierten en encabezados de tabla y los arrays de objetos, en arrays de tablas. Revisa los comentarios de la salida sobre los valores que TOML no puede representar.",
+    "modeLabel": "Salida de JSON a TOML",
+    "exampleLabel": "El TOML generado tiene una tabla [profile] y dos tablas [[items]]. El campo note con valor null se omite y se indica con un comentario.",
+    "steps": [
+      "Pega una configuración JSON válida.",
+      "Revisa las tablas TOML y los comentarios sobre valores omitidos o modificados.",
+      "Copia o descarga el TOML y valídalo después con el esquema de configuración de tu aplicación."
+    ],
+    "options": [
+      "TOML no tiene un valor null. Las propiedades con valor null se omiten y se indican con un comentario; los elementos null dentro de arrays u objetos en línea se eliminan. Esta conversión puede cambiar los datos.",
+      "Los enteros fuera del rango de 64 bits con signo se escriben como cadenas entre comillas, con un comentario explicativo.",
+      "Un array o escalar en el nivel superior se coloca bajo una clave cuyo nombre se toma del ajuste Nombre raíz, root de forma predeterminada, porque un documento TOML debe ser una tabla.",
+      "Las cadenas siguen siendo cadenas, incluidos los valores que parecen fechas. Las claves con espacios se entrecomillan."
+    ],
+    "faqs": [
+      {
+        "question": "¿La conversión de JSON a TOML conserva todos los datos?",
+        "answer": "No en todos los documentos. TOML no tiene null y los enteros deben caber en 64 bits con signo. El exportador omite los valores null y entrecomilla los enteros fuera de rango, con comentarios que explican esos cambios."
+      },
+      {
+        "question": "¿Cómo se representan los arrays de objetos?",
+        "answer": "Se convierten en arrays de tablas, como [[items]], con una tabla por objeto."
+      },
+      {
+        "question": "¿Puedo volver a convertirlo a JSON?",
+        "answer": "Sí. Usa TOML a JSON para la configuración editada. Los valores null omitidos no se pueden recuperar automáticamente."
+      },
+      {
+        "question": "¿Se puede convertir a TOML un array JSON en el nivel superior?",
+        "answer": "Sí. El conversor lo coloca bajo el nombre raíz porque TOML requiere una tabla en la raíz del documento."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Pasar una configuración a un stack basado en TOML",
+        "paragraphs": [
+          "Usa la salida para los datos que admita una aplicación que lea TOML y comprueba después el esquema de esa aplicación. Cargo.toml de Rust y pyproject.toml de Python requieren tablas y claves concretas; convertir una estructura no crea esos archivos de proyecto por ti.",
+          "En este ejemplo, cada elemento es una tabla [[items]] independiente. El primer campo note se omite porque su valor es null. Compara la salida con el JSON de origen antes de guardar.",
+          "Si necesitas conservar los valores null, mantén JSON o usa YAML en lugar de aceptar sin revisión una configuración modificada."
+        ]
+      }
+    ]
+  },
+  "toml-to-json": {
+    "hash": "da150149c95e",
+    "title": "TOML a JSON para archivos de configuración",
+    "description": "Convierte tablas TOML, arrays de tablas y escalares a JSON con formato en tu navegador, sin subir archivos. Revisa el resultado y descarga JSON.",
+    "heading": "TOML a JSON",
+    "query": "TOML a JSON",
+    "secondary": [
+      "convertir TOML a JSON",
+      "conversor de TOML a JSON",
+      "convertidor de TOML a JSON"
+    ],
+    "intro": "Pega una configuración TOML o abre un archivo .toml para verla como JSON con formato. El importador lee tablas, claves separadas por puntos, arrays, tablas en línea y cadenas TOML en tu navegador.",
+    "modeLabel": "Importación de TOML a JSON",
+    "exampleLabel": "La tabla server se convierte en un objeto y las tablas users repetidas se convierten en un array de objetos.",
+    "steps": [
+      "Pega TOML o abre un archivo .toml.",
+      "Al abrir un archivo .toml, la conversión es inmediata. Si pegas TOML, elige TOML → JSON en el aviso y revisa después el resultado.",
+      "Copia o descarga el JSON para la aplicación receptora."
+    ],
+    "options": [
+      "Los valores de fecha y hora de TOML se convierten en cadenas JSON, no en objetos Date.",
+      "Se conservan los dígitos de los enteros, incluidos los enteros hexadecimales, octales y binarios convertidos a notación decimal. Los sistemas que usan Number de JavaScript pueden seguir redondeando los valores grandes.",
+      "Los valores inf y nan de TOML se convierten en null porque JSON no admite valores numéricos no finitos.",
+      "Los comentarios y el formato de las tablas desaparecen. Las claves duplicadas y la sintaxis inválida producen un error de importación."
+    ],
+    "faqs": [
+      {
+        "question": "¿Lee arrays de tablas?",
+        "answer": "Sí. Los encabezados [[users]] repetidos producen un array JSON de objetos."
+      },
+      {
+        "question": "¿Qué ocurre con las fechas TOML?",
+        "answer": "Se convierten en cadenas JSON. El importador normaliza el separador de fecha y hora a T y la z minúscula final a Z."
+      },
+      {
+        "question": "¿Puedo importar Cargo.toml o pyproject.toml?",
+        "answer": "Sí. Abre el archivo o pega su contenido TOML. El resultado representa sus datos; no convierte las convenciones de un gestor de paquetes a las de otro ecosistema."
+      },
+      {
+        "question": "¿Puede conservar los comentarios?",
+        "answer": "No. JSON no admite comentarios. Usa el archivo TOML original si necesitas sus comentarios o su disposición."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Leer datos TOML como JSON",
+        "paragraphs": [
+          "Una tabla [server] se convierte en un objeto server. Los encabezados [[users]] se convierten en registros del array users. Esto resulta útil para inspeccionar una configuración o enviar sus datos a una API JSON.",
+          "Convertir un archivo Cargo.toml o pyproject.toml cambia el formato, no el significado de sus ajustes de paquetes o dependencias. Revisa el esquema de destino antes de usar la salida."
+        ]
+      }
+    ]
+  },
+  "offline-json-formatter": {
+    "hash": "776eb6bff586",
+    "title": "Formatear JSON sin conexión en Windows, Mac y móvil",
+    "description": "Instala Tool Kumar o usa una pestaña en caché para formatear JSON sin conexión y sin subir datos. Consulta cómo comprobarlo, guardar datos y actualizar.",
+    "heading": "Formateador JSON sin conexión",
+    "query": "formatear JSON sin conexión",
+    "secondary": [
+      "formateador JSON offline",
+      "formatear JSON sin internet"
+    ],
+    "intro": "Formatea JSON sin conexión a internet después de que la primera visita con conexión haya terminado de guardar la aplicación en caché. Puedes usarla en una pestaña del navegador o instalarla como aplicación web en las plataformas compatibles.",
+    "modeLabel": "JSON con formato",
+    "exampleLabel": "El mismo formateador local produce esta salida con conexión o después de guardar los recursos de la aplicación en caché para usarlos sin conexión.",
+    "steps": [
+      "Abre Tool Kumar con conexión y espera unos segundos después de que la página termine de cargar. Permite que el navegador almacene datos del sitio.",
+      "Abre las herramientas de desarrollo, elige Red, cambia el menú de limitación de velocidad a Sin conexión y recarga la página de inicio. En un teléfono, activa el modo avión y recarga.",
+      "Pega el ejemplo y confirma que aparece la salida con formato. Prueba también la conversión si la necesitas y devuelve después Red a su configuración habitual."
+    ],
+    "options": [
+      "La instalación es opcional. El service worker permite usar la página de inicio en caché también en una pestaña normal del navegador.",
+      "La aplicación guarda en caché la página de inicio, JavaScript, los estilos, las fuentes, los iconos y los módulos de conversión. Las páginas completas que visites se pueden guardar en caché; si una página no está en caché, se muestra la página de inicio.",
+      "Cargar una URL remota requiere conexión. Las solicitudes de analítica y a otros orígenes no se guardan en caché. La navegación interna sin conexión también puede mostrar la página de inicio, porque los datos de las rutas de Next.js no se guardan en caché.",
+      "El uso sin conexión depende de que el navegador conserve el almacenamiento del sitio. Borrar los datos del sitio, las políticas de navegación privada o la liberación de almacenamiento pueden eliminar la caché de la aplicación."
+    ],
+    "faqs": [
+      {
+        "question": "¿Se puede descargar un formateador JSON sin conexión para Windows o Mac?",
+        "answer": "Instala Tool Kumar desde Chrome o Edge, o usa Añadir al Dock en Safari en las versiones compatibles de macOS. Es una aplicación web, no una descarga independiente en formato .exe o .dmg."
+      },
+      {
+        "question": "¿Se puede usar sin conexión en Firefox de escritorio?",
+        "answer": "Sí, si los service workers y el almacenamiento del sitio están activados y la primera visita ha terminado de guardar los recursos en caché. Si tu versión de Firefox no tiene opción de instalación, mantén el sitio en una pestaña o añádelo a tus marcadores."
+      },
+      {
+        "question": "¿Puedo usar el formateador en modo avión?",
+        "answer": "Sí, después de que una visita con conexión haya guardado la aplicación en caché. Recarga la página de inicio y prueba con un ejemplo antes de depender de ella sin conexión."
+      },
+      {
+        "question": "¿Cómo se actualiza la aplicación sin conexión?",
+        "answer": "Cargar la página de inicio con conexión actualiza la estructura de la aplicación y sus recursos en caché. Cuando hay un conjunto actualizado de recursos listo, una pestaña abierta muestra el mensaje Recargar. Cierra y vuelve a abrir la aplicación o recarga para usar la nueva versión."
+      },
+      {
+        "question": "¿Dónde se guarda mi JSON?",
+        "answer": "El JSON editado por el usuario se guarda en localStorage de este navegador si no supera el límite de 2,500,000 caracteres. También se pueden guardar el texto de comparación, el nombre del archivo, los ajustes y el tema. La caché del service worker almacena recursos de la aplicación."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Instalar en Windows, macOS, Linux o ChromeOS",
+        "paragraphs": [
+          "En Chrome, abre el menú del navegador y elige Enviar, guardar y compartir y después Instalar página como aplicación. También puede aparecer un icono de instalación en la barra de direcciones. En Edge, elige Configuración y más, Aplicaciones y después Instalar este sitio como una aplicación. Los nombres de los menús varían según la versión del navegador.",
+          "En macOS Sonoma o posterior, Safari ofrece Archivo, Añadir al Dock. Abre la aplicación una vez con conexión y haz la comprobación de uso sin conexión antes de desconectarte. Instalarla no sustituye el paso de guardarla en caché.",
+          "Puede que Firefox de escritorio no ofrezca instalar el sitio como aplicación. Aun así, puedes usar el sitio en caché sin conexión en una pestaña de Firefox si los service workers están activados."
+        ]
+      },
+      {
+        "heading": "Instalar en iPhone, iPad o Android",
+        "paragraphs": [
+          "En iOS o iPadOS, abre el sitio en Safari, toca Compartir y elige Añadir a la pantalla de inicio. Activa Abrir como app web si tu versión ofrece ese interruptor y toca Añadir.",
+          "En Android, abre el sitio en Chrome, toca el menú y elige Instalar aplicación o Añadir a la pantalla de inicio. Ábrelo primero con conexión y espera a que se guarde en caché antes de activar el modo avión."
+        ]
+      },
+      {
+        "heading": "Comprobar la caché y borrar los datos locales",
+        "paragraphs": [
+          "En las herramientas de desarrollo de Chromium, Aplicación, Service Workers muestra el worker registrado. Almacenamiento en caché muestra la caché json-viewer y Almacenamiento local muestra las claves jf:. La caché contiene recursos de la aplicación; localStorage puede contener el documento que has editado.",
+          "Para eliminar ambos, cierra las otras pestañas de Tool Kumar y usa Aplicación, Almacenamiento, Borrar datos del sitio, incluidos el almacenamiento local, el almacenamiento en caché y los service workers. Otros navegadores ofrecen controles equivalentes para los datos del sitio en sus ajustes. Tendrás que visitar el sitio con conexión antes de poder volver a usarlo sin conexión."
+        ]
+      },
+      {
+        "heading": "Usar JSON sensible sin conexión",
+        "paragraphs": [
+          "Prueba primero el modo sin conexión con un ejemplo que no contenga datos sensibles. Cuando la aplicación funcione con la red desactivada, pega los datos sensibles. Las extensiones del navegador con acceso a la página pueden seguir leyéndolos. Borra los datos del sitio al terminar en un dispositivo compartido."
+        ]
+      }
+    ]
+  },
+  "secure-json-formatter": {
+    "hash": "2a030202b992",
+    "title": "Formateador JSON seguro: procesamiento local en tu navegador",
+    "description": "Inspecciona JSON en tu navegador sin subir documentos ni crear cuenta. Comprueba tú mismo las solicitudes y lee los límites de analítica, almacenamiento y CSP.",
+    "heading": "Formateador JSON seguro",
+    "query": "formateador JSON seguro",
+    "secondary": [
+      "formatear JSON de forma segura",
+      "formateador JSON privado",
+      "formatear JSON sin subir datos"
+    ],
+    "intro": "Tool Kumar analiza y formatea tu documento en el navegador. Pegar JSON no lo envía a un servidor y no necesitas una cuenta. El sitio sí usa Vercel Web Analytics, por lo que las afirmaciones sobre privacidad deben distinguir el procesamiento del documento de la telemetría de la página.",
+    "modeLabel": "JSON con formato",
+    "exampleLabel": "El mismo formateador local produce esta salida con conexión o después de guardar los recursos de la aplicación en caché para usarlos sin conexión.",
+    "steps": [
+      "Abre las herramientas de desarrollo y selecciona Red. Espera a que la página termine de cargar y borra después la lista de solicitudes.",
+      "Pega un JSON sin datos sensibles con un marcador único como network-check-7 y edita un valor. El formateador debería actualizarse sin que ninguna solicitud contenga ese marcador.",
+      "Inspecciona las solicitudes nuevas, en especial sus pestañas Carga útil. Comprueba tanto Fetch/XHR como Todo, porque la analítica puede usar solicitudes de tipo beacon. Esto lleva unos 30 segundos con un ejemplo pequeño."
+    ],
+    "options": [
+      "El analizador, los generadores de código y la creación de descargas se ejecutan localmente. Abrir un archivo local no lo sube.",
+      "Vercel Web Analytics registra las visitas a las páginas. En producción, su script se sirve desde este origen en /_vercel/insights/script.js y la telemetría usa /_vercel/insights; la capa de integración elimina los fragmentos de URL antes de enviar los eventos. El código no tiene configurados eventos que envíen el contenido de los documentos.",
+      "Un enlace para compartir coloca el JSON en el fragmento de la URL. El fragmento no se envía en una solicitud HTTP, pero cualquiera que tenga el enlace completo puede leer el documento. Evita compartir secretos.",
+      "Cargar desde URL solicita expresamente el endpoint elegido desde tu navegador. Ese endpoint recibe una solicitud. Un enlace ?url= también puede activar la carga remota; pega los datos o usa un archivo local para trabajar con información sensible."
+    ],
+    "faqs": [
+      {
+        "question": "¿Es seguro este formateador JSON para datos confidenciales?",
+        "answer": "Procesa los documentos localmente, sin subir lo que pegas. Aun así, debes confiar en el código que recibes, tu navegador y sus extensiones. Para trabajar con secretos, verifica las solicitudes, usa una pestaña cuyo funcionamiento sin conexión hayas comprobado y borra después el almacenamiento local."
+      },
+      {
+        "question": "¿El sitio usa analítica?",
+        "answer": "Sí. Vercel Web Analytics registra la telemetría de las páginas. La capa de integración elimina los fragmentos de URL y la aplicación no tiene ningún evento configurado que envíe el contenido del editor. Las solicitudes de analítica son independientes del procesamiento local del JSON."
+      },
+      {
+        "question": "¿Qué protege la política de seguridad de contenido?",
+        "answer": "La CSP de la página impide cargarla en marcos, restringe las URL base a este origen y bloquea los objetos incrustados. No tiene directivas script-src ni connect-src, así que no restringe todos los scripts ni todos los destinos de red."
+      },
+      {
+        "question": "¿Mi JSON permanece después de cerrar la pestaña?",
+        "answer": "Los documentos editados por el usuario de hasta 2,500,000 caracteres pueden persistir en localStorage de este navegador, junto con el texto de comparación y los ajustes. Borra los datos del sitio en dispositivos compartidos. Visitar una página con una configuración predefinida no sustituye por sí solo el documento guardado de la página de inicio."
+      },
+      {
+        "question": "¿Puedo pegar JWT o claves de API?",
+        "answer": "Usa primero un ejemplo sin datos sensibles para comprobar el funcionamiento sin conexión y después da preferencia a una pestaña sin conexión para trabajar con secretos. Las extensiones con acceso a la página pueden seguir leyendo el editor. Un JWT decodificado no es un token verificado y una clave filtrada debe revocarse."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Qué protege el procesamiento local en el navegador",
+        "paragraphs": [
+          "Un formateador que sube JSON da acceso al documento a un servidor. Aquí, el análisis y el formato usan el código del analizador del navegador y las descargas generadas usan las API locales del navegador. El flujo habitual de pegar datos no incluye ninguna solicitud que contenga el documento.",
+          "La comprobación anterior en Red verifica la sesión actual. No demuestra lo que harán todas las versiones futuras. Repítela después de las actualizaciones cuando los datos requieran ese cuidado."
+        ]
+      },
+      {
+        "heading": "Analítica y solicitudes a terceros",
+        "paragraphs": [
+          "El sitio usa Vercel Web Analytics para registrar las visitas a las páginas, no el contenido de los documentos. En producción, el script de analítica se carga desde /_vercel/insights/script.js en este mismo origen y envía telemetría de las páginas a través de /_vercel/insights. La capa de integración de la aplicación elimina los fragmentos de URL antes de enviar los eventos. Evita poner secretos en las rutas o en los parámetros de consulta de las URL.",
+          "La tipografía del código se prepara durante la compilación para servirla desde el propio sitio, por lo que usar esta página no solicita una fuente a Google. La auditoría del código fuente no encontró ninguna otra integración de analítica. La carga de una URL remota solicitada por el usuario es una excepción al flujo normal de entrada local."
+        ]
+      },
+      {
+        "heading": "Leer los encabezados de seguridad reales",
+        "paragraphs": [
+          "A continuación se muestra la Content-Security-Policy de la página. Impide incrustar esta página en un marco, cambiar su URL base a otro origen y cargar contenido object/embed. No establece script-src, default-src ni connect-src en las páginas.",
+          "Otros encabezados configurados incluyen X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin y una Permissions-Policy que desactiva la cámara, el micrófono, la geolocalización, los pagos y USB. La respuesta del service worker tiene una CSP independiente y más estricta."
+        ]
+      },
+      {
+        "heading": "Gestionar JWT, claves de API y documentos guardados",
+        "paragraphs": [
+          "Desactiva las extensiones innecesarias que tengan acceso a la página. Confirma que la aplicación en caché funciona con la red desactivada antes de pegar un token o una clave. Mantén los secretos fuera de los enlaces para compartir, las capturas de pantalla y los parámetros de consulta de las URL del navegador.",
+          "Las ediciones del usuario pueden permanecer en localStorage, que no es un almacén cifrado de secretos. Cierra las otras pestañas de Tool Kumar y borra el almacenamiento local, el almacenamiento en caché y el service worker del sitio desde los ajustes de datos del sitio del navegador después de trabajar con información sensible.",
+          "Usa un decodificador JWT para inspeccionar los claims y verifica después las firmas en tu propia aplicación. Si una credencial ya se ha expuesto, revócala o renuévala; formatear no puede deshacer la divulgación."
+        ]
+      }
+    ]
+  },
+  "jsonl-viewer": {
+    "hash": "5d02579b43c6",
+    "title": "Visor JSONL para archivos JSON Lines y NDJSON",
+    "description": "Abre un archivo .jsonl o .ndjson y explora sus registros en árbol o tabla. Tool Kumar lee JSON Lines en tu navegador sin subir el archivo.",
+    "heading": "Visor JSONL",
+    "query": "visor JSONL",
+    "secondary": [
+      "ver archivos JSON Lines",
+      "visor NDJSON online"
+    ],
+    "intro": "Abre o pega JSON Lines, también llamado NDJSON, para inspeccionar un registro por línea. Tool Kumar muestra los registros en una lista para que puedas desplegarlos en el árbol, ordenarlos en la tabla o buscarlos, y el archivo permanece en tu dispositivo.",
+    "modeLabel": "Vista de árbol de JSON Lines",
+    "exampleLabel": "Cada línea es un registro. El visor lee estas tres líneas como una lista de tres registros, que aquí se muestra como el array JSON que presentan el árbol y la tabla.",
+    "steps": [
+      "Abre un archivo .jsonl o .ndjson, o pega las líneas en el panel de entrada.",
+      "Comprueba la barra de estado, que indica JSON Lines y el número de registros.",
+      "Despliega los registros en Árbol, cambia a Tabla para ver una fila por registro o pulsa Ctrl+F (⌘F en un Mac) para buscar claves y valores."
+    ],
+    "options": [
+      "Cada línea contiene un valor JSON completo. Las líneas en blanco se omiten.",
+      "Los registros repartidos en varias líneas o separados por comas también se abren, pero la barra de estado los identifica como JSON con sintaxis no estricta y un problema que revisar, en lugar de como JSON Lines.",
+      "Al abrir un archivo .jsonl o .ndjson con un solo registro, también se lee como una lista de un registro.",
+      "Un registro que no se pueda leer detiene el análisis y la barra de estado muestra su línea y columna.",
+      "Si se superan los 2,000,000 caracteres o las 30,000 líneas, la entrada pasa a ser de solo lectura para mantener la rapidez de las vistas. Editar de todos modos vuelve a activar la edición."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo abro un archivo NDJSON?",
+        "answer": "Elige Abrir archivo en el menú de entrada (Ctrl+O, o ⌘O en un Mac) y selecciona el archivo .ndjson o .jsonl, o arrástralo a la página. El archivo se lee en tu navegador y no se sube."
+      },
+      {
+        "question": "¿Por qué usar JSONL en lugar de un array JSON?",
+        "answer": "Cada línea es un registro completo, por lo que un productor puede añadir registros y un consumidor puede procesar el archivo de forma secuencial o dividirlo línea a línea. Un array JSON solo es válido cuando llega su corchete de cierre."
+      },
+      {
+        "question": "¿JSONL es lo mismo que NDJSON?",
+        "answer": "En la práctica, sí. Ambos nombres describen valores JSON delimitados por saltos de línea y Tool Kumar lee los archivos .jsonl y .ndjson de la misma forma."
+      },
+      {
+        "question": "¿Puedo convertir los registros en un array JSON o en CSV?",
+        "answer": "Sí. La vista Formatear muestra los registros como un único array JSON que puedes copiar o descargar, y la página JSONL a CSV los convierte en columnas de hoja de cálculo."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "extra-data",
+        "text": "Por qué un analizador JSON muestra Extra data al leer JSON Lines"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Qué es JSON Lines",
+        "paragraphs": [
+          "JSON Lines coloca un valor JSON en cada línea, normalmente un objeto por registro. Se usa en logs, exportaciones de analítica y conjuntos de datos de aprendizaje automático porque un programa puede añadir o leer una sola línea sin cargar un array entero.",
+          "Un analizador JSON estricto rechaza este tipo de archivo porque contiene varios valores en el nivel superior. Tool Kumar reconoce la estructura de un registro por línea y muestra los registros en una lista en lugar de informar de un error."
+        ]
+      }
+    ]
+  },
+  "ndjson-to-json": {
+    "hash": "6290f450ec30",
+    "title": "NDJSON a JSON: convierte JSONL en un array",
+    "description": "Convierte NDJSON o JSON Lines en un array JSON en tu navegador, sin subir datos. Cada línea es un elemento y los números grandes conservan sus dígitos.",
+    "heading": "NDJSON a JSON",
+    "query": "NDJSON a JSON",
+    "secondary": [
+      "convertir JSONL a JSON",
+      "JSON Lines a array JSON"
+    ],
+    "intro": "Pega NDJSON o abre un archivo .jsonl para convertir sus líneas en un único array JSON. La entrada conserva sus líneas y el array con formato aparece al lado, listo para copiar o descargar como .json.",
+    "modeLabel": "Salida de array JSON",
+    "exampleLabel": "Cada una de las tres líneas se convierte en un elemento del array. Los números de pedido conservan todos sus dígitos; JSON.parse de JavaScript redondearía 9007199254740993 a 9007199254740992.",
+    "steps": [
+      "Pega las líneas o abre un archivo .ndjson o .jsonl.",
+      "Lee el array en la vista Formatear y alterna entre Con formato y Minificar.",
+      "Cópialo o descárgalo como archivo .json."
+    ],
+    "options": [
+      "Cada línea se convierte en un elemento del array, en el orden del archivo. Una línea que contiene un array sigue siendo un solo elemento, de modo que las líneas [1,2] y [3] se convierten en [[1,2],[3]].",
+      "Las líneas en blanco se omiten. Si una línea no es JSON estricto, se señala con su línea y columna. La sintaxis no estricta, como una coma final, se puede reparar; el texto que no se pueda leer detiene la conversión.",
+      "Una sola línea pegada se considera JSON normal y se mantiene tal cual. Ábrela como archivo .jsonl o .ndjson para obtener un array de un elemento.",
+      "Los números conservan sus dígitos originales, incluidos los enteros mayores que 2^53.",
+      "Para sustituir la entrada por el array, elige Usar como entrada en el menú Más opciones (Ctrl+Enter). Ctrl+Z deshace el cambio."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo convierto NDJSON a JSON?",
+        "answer": "Pega el NDJSON o abre el archivo. La vista Formatear muestra un array JSON con un elemento por línea; cópialo o descárgalo como .json."
+      },
+      {
+        "question": "¿Cómo convierto JSONL a JSON?",
+        "answer": "De la misma forma. JSONL y NDJSON son dos nombres de un mismo formato y este conversor lee tanto archivos .jsonl como .ndjson."
+      },
+      {
+        "question": "¿Qué ocurre con una línea inválida?",
+        "answer": "Se señala con su línea y columna. La sintaxis no estricta, como las comillas simples, se puede reparar con Reparar entrada; una línea que no se pueda leer detiene la conversión hasta que la corrijas."
+      },
+      {
+        "question": "¿Puedo hacer la conversión inversa?",
+        "answer": "Sí. JSON a JSONL convierte un array de registros en un valor JSON compacto por línea."
+      }
+    ]
+  },
+  "jsonl-to-csv": {
+    "hash": "efc51c1e4f45",
+    "title": "JSONL a CSV para registros NDJSON",
+    "description": "Convierte registros JSON Lines o NDJSON a CSV en tu navegador, sin subir datos. Los objetos anidados crean columnas como profile.city.",
+    "heading": "JSONL a CSV",
+    "query": "JSONL a CSV",
+    "secondary": [
+      "convertir NDJSON a CSV",
+      "convertir JSONL a CSV"
+    ],
+    "intro": "Convierte un objeto JSON por línea en filas de una hoja de cálculo. Tool Kumar reúne las claves de todos los registros en columnas, aplana los objetos anidados en nombres separados por puntos y mantiene el archivo en tu dispositivo.",
+    "modeLabel": "Salida de CSV",
+    "exampleLabel": "Los dos registros comparten una fila de encabezados. Los campos anidados de profile se convierten en profile.city y profile.plan, el array tags ocupa una celda y los valores ausentes quedan vacíos.",
+    "steps": [
+      "Pega las líneas o abre un archivo .jsonl o .ndjson.",
+      "Comprueba el CSV en la vista Convertir. La primera fila enumera todas las columnas.",
+      "Copia o descarga el CSV, o elige Excel (.xlsx) en el conversor para descargar un libro de Excel."
+    ],
+    "options": [
+      "Las columnas son las claves encontradas en todos los registros, en el orden en que aparecen por primera vez.",
+      "Los objetos anidados se convierten en columnas con nombres separados por puntos. Un array de valores simples se escribe en una sola celda, con sus valores separados por comas; un array de objetos se mantiene en una sola celda como JSON compacto.",
+      "Tanto los campos ausentes como los valores null se convierten en celdas vacías, por lo que al volver a JSON no se pueden distinguir.",
+      "Las celdas que contienen comas, comillas o saltos de línea se entrecomillan según las reglas de CSV. Los números conservan sus dígitos originales.",
+      "Un solo registro en un archivo .jsonl abierto también produce una fila de encabezados y una fila de datos."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo convierto NDJSON a CSV?",
+        "answer": "Pega los registros o abre el archivo .ndjson. La vista Convertir muestra el CSV con una fila de encabezados; cópialo o descarga un archivo .csv."
+      },
+      {
+        "question": "¿Cómo abro el resultado en Excel?",
+        "answer": "Descarga el CSV y ábrelo en Excel, o elige Excel (.xlsx) en el conversor para descargar un libro con las mismas columnas."
+      },
+      {
+        "question": "¿Qué ocurre con los objetos anidados?",
+        "answer": "Sus campos se convierten en columnas con nombres separados por puntos, como profile.city. Los arrays anidados permanecen en una sola celda."
+      }
+    ]
+  },
+  "sort-json-keys": {
+    "hash": "1c266111b5d7",
+    "title": "Ordenar claves JSON alfabéticamente en todos los niveles",
+    "description": "Ordena alfabéticamente las claves de cada objeto JSON, incluidos los anidados, en tu navegador. Los arrays mantienen su orden y los números, sus dígitos.",
+    "heading": "Ordenar claves JSON",
+    "query": "ordenar claves JSON",
+    "secondary": [
+      "ordenar JSON alfabéticamente",
+      "ordenar JSON por claves",
+      "JSON sort keys online"
+    ],
+    "intro": "Pega JSON para ver las claves de todos los objetos en orden alfabético, incluidos los anidados. Los arrays mantienen su orden, así que el significado de los datos no cambia; solo cambia el orden de las claves.",
+    "modeLabel": "Salida de JSON con claves ordenadas",
+    "exampleLabel": "Se ordenan todos los objetos, incluidos los anidados. La lista owners conserva su orden y la clave \"10\" se sitúa antes de \"2\" porque las claves se comparan como texto.",
+    "steps": [
+      "Pega tu JSON o abre un archivo.",
+      "Lee la salida con las claves ordenadas en la vista Formatear. Ordenar claves está activado en el menú Más opciones.",
+      "Copia o descarga el resultado, o elige Usar como entrada (Ctrl+Enter) para ordenar las claves de la propia entrada. Ctrl+Z deshace el cambio."
+    ],
+    "options": [
+      "La ordenación es recursiva. También se ordenan los objetos dentro de otros objetos y dentro de arrays.",
+      "Los arrays mantienen el orden de sus elementos. Ordenar los valores de un array o los registros por una propiedad es otra operación.",
+      "Las claves se comparan como texto, carácter a carácter, por lo que \"10\" se sitúa antes de \"2\" y las mayúsculas antes de las minúsculas.",
+      "Los valores no cambian y los números conservan sus dígitos originales.",
+      "Para confirmar que solo ha cambiado el orden de las claves, compara ambas versiones en Comparar JSON con Ignorar orden de claves activado."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo ordeno las claves JSON?",
+        "answer": "Pega el JSON aquí. La salida muestra las claves de cada objeto en orden alfabético, en todos los niveles. Cópiala o aplícala a la entrada con Usar como entrada."
+      },
+      {
+        "question": "¿Cómo ordeno un archivo JSON alfabéticamente?",
+        "answer": "Abre el archivo con Abrir archivo (Ctrl+O, o ⌘O en un Mac) y descarga después la salida con las claves ordenadas. Solo cambian de posición las claves de los objetos; los arrays mantienen su orden."
+      },
+      {
+        "question": "¿Ordenar las claves cambia mis datos?",
+        "answer": "No cambia ningún valor. Los objetos JSON no tienen un orden definido, así que los analizadores estándar leen los mismos datos. El código que dependa del orden de las claves puede comportarse de otra manera."
+      }
+    ]
+  },
+  "json-escape": {
+    "hash": "7339b4deed1d",
+    "title": "Escapar JSON a cadena y desescapar de vuelta a JSON",
+    "description": "Escapa un documento JSON como una sola cadena con comillas y saltos de línea escapados, o desescapa una cadena para volver a JSON legible, todo en tu navegador.",
+    "heading": "Escapar y desescapar JSON",
+    "query": "escapar JSON",
+    "secondary": [
+      "desescapar JSON",
+      "JSON stringify online",
+      "convertir JSON a string"
+    ],
+    "intro": "Pega JSON para obtenerlo como una sola cadena escapada, la forma que necesitas cuando JSON va dentro de otro valor JSON, una variable de entorno o unos datos de prueba. Pega una cadena escapada para volver a convertirla en JSON legible.",
+    "modeLabel": "Salida de cadena escapada",
+    "exampleLabel": "El documento se minifica y después se escribe como una sola cadena JSON. Cada comilla interna se convierte en \\\" y el salto de línea escapado de note se convierte en \\\\n.",
+    "steps": [
+      "Pega un documento JSON o abre un archivo.",
+      "Lee la cadena escapada en la vista Formatear, donde está seleccionada la opción Cadena. Con formato y Minificar muestran el documento en sí.",
+      "Para desescapar, pega una cadena JSON que contenga JSON y elige Desescapar JSON en el aviso. La entrada pasa a ser el documento con formato."
+    ],
+    "options": [
+      "El escape parte del documento minificado, de modo que la cadena no contiene espacios en blanco adicionales.",
+      "Escapar una cadena ya escapada añade otra capa de barras inversas. Desescápala una vez por cada capa.",
+      "La entrada se lee como JSON y no se ejecuta como JavaScript. La sintaxis no estricta, como los comentarios o las comillas simples, se repara antes de escapar.",
+      "Puedes expandir una cadena dentro de un documento más grande en su propia ubicación. Selecciónala en Árbol y elige Expandir cadena JSON anidada en el menú Más opciones.",
+      "Desescapar sustituye la entrada y Ctrl+Z deshace el cambio."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo escapo una cadena JSON?",
+        "answer": "Pega el documento JSON. La salida Cadena lo muestra como un único literal de cadena JSON, con cada comilla, barra inversa y salto de línea escapados. Cópialo donde se espere una cadena."
+      },
+      {
+        "question": "¿Cómo desescapo JSON?",
+        "answer": "Pega la cadena escapada, incluidas las comillas exteriores. Tool Kumar detecta que contiene JSON y ofrece Desescapar JSON, que la sustituye por el documento con formato."
+      },
+      {
+        "question": "¿Por qué JSON.stringify añade barras inversas a mi cadena?",
+        "answer": "El valor ya era una cadena JSON, por lo que volver a convertirlo en cadena escapa sus comillas. Una llamada a JSON.parse devuelve el texto JSON original y volver a analizar ese texto devuelve el objeto. También puedes desescaparlo aquí para leer el documento."
+      }
+    ]
+  },
+  "large-json-viewer": {
+    "hash": "641457c4d603",
+    "title": "Visor de archivos JSON grandes en tu navegador",
+    "description": "Abre archivos JSON grandes en árbol, tabla o texto sin subirlos. En nuestra prueba, analizar 52.4 MB tardó cerca de un segundo en un navegador de escritorio.",
+    "heading": "Visor de archivos JSON grandes",
+    "query": "visor de archivos JSON grandes",
+    "secondary": [
+      "abrir JSON grande online",
+      "ver archivos JSON pesados"
+    ],
+    "intro": "Abre un archivo JSON grande de tu dispositivo y explóralo como árbol, tabla o texto con formato. El archivo se lee en tu navegador y nunca se sube; los documentos muy grandes pasan a un modo de solo lectura que mantiene rápido el desplazamiento.",
+    "modeLabel": "Vista de árbol",
+    "exampleLabel": "Aquí se muestra un pequeño ejemplo en lugar de tu archivo. Abre tu propio archivo para ver su tamaño, número de líneas y número de nodos en la barra de estado.",
+    "steps": [
+      "Elige Abrir archivo (Ctrl+O, o ⌘O en un Mac) o arrastra el archivo a la página.",
+      "Cuando la barra de estado informe del análisis, explora Árbol o cambia a Tabla si tienes un array de registros.",
+      "Pulsa Ctrl+F (⌘F) para buscar o escribe una ruta como $.users[1] en la barra de búsqueda para ir a un nodo."
+    ],
+    "options": [
+      "Se aceptan archivos de hasta 300 MB. Es un límite de seguridad, no una garantía. El tamaño que se puede abrir con comodidad depende de la memoria del dispositivo y de la estructura de los datos.",
+      "Si se superan los 2,000,000 caracteres o las 30,000 líneas, la entrada pasa a ser de solo lectura para mantener la rapidez de las vistas. Editar de todos modos vuelve a activar la edición.",
+      "El análisis se ejecuta en el hilo principal, así que la página se pausa mientras se lee un archivo muy grande.",
+      "Los documentos de más de 2,500,000 caracteres no se guardan para tu próxima visita; tendrás que volver a abrir el archivo.",
+      "En el editor y las vistas de árbol, tabla y texto solo se dibujan las filas que aparecen en pantalla, por lo que el desplazamiento sigue siendo fluido una vez abierto el archivo."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo veo un archivo JSON grande?",
+        "answer": "Ábrelo aquí con Abrir archivo o arrástralo a la página. El árbol muestra la estructura sin desplegarlo todo y Buscar te lleva a claves, valores o una ruta."
+      },
+      {
+        "question": "¿Cómo veo archivos JSON grandes en un Mac?",
+        "answer": "Abre esta página en Safari, Chrome u otro navegador actual y elige Abrir archivo (⌘O). No necesitas instalar nada."
+      },
+      {
+        "question": "¿Cómo abro un archivo JSON grande en Windows?",
+        "answer": "Abre esta página en Edge o Chrome y elige Abrir archivo (Ctrl+O). El archivo se lee en tu equipo y no se sube."
+      },
+      {
+        "question": "¿Hay un límite de tamaño?",
+        "answer": "La página acepta archivos de hasta 300 MB. El tamaño que se puede abrir con fluidez depende de la memoria de tu dispositivo y de la estructura de los datos."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Un ejemplo con mediciones",
+        "paragraphs": [
+          "Abrimos un archivo de 52.4 MB (52,428,028 bytes) con 51,501 registros, cada uno un objeto pequeño con una cadena de 996 caracteres, en Chromium 154 en un equipo de escritorio con Linux. El análisis tardó alrededor de 1.0 segundo y el árbol estuvo listo unos 1.9 segundos después de seleccionar el archivo. El documento tenía 154,505 nodos.",
+          "Ese archivo tiene pocos niveles de anidamiento y contiene principalmente texto. Los datos muy anidados, muchos números pequeños, un portátil antiguo o un teléfono pueden requerir más tiempo. Toma estas cifras como una referencia, no como una garantía."
+        ]
+      }
+    ]
+  },
+  "json-repair": {
+    "hash": "37e9857866ee",
+    "title": "Reparar JSON: corrige errores y revisa cada cambio",
+    "description": "Repara JSON en tu navegador sin subir datos. Corrige comillas simples, claves sin comillas, comentarios y comas finales o ausentes; revisa cada cambio.",
+    "heading": "Reparar JSON",
+    "query": "reparar JSON",
+    "secondary": [
+      "corregir JSON online",
+      "arreglar JSON inválido",
+      "reparar JSON malformado"
+    ],
+    "intro": "Pega JSON incorrecto para ver qué falla y una versión reparada al lado. Tool Kumar señala cada problema con su línea y columna, y Reparar entrada aplica todas las correcciones en un solo paso que puedes deshacer.",
+    "modeLabel": "Salida de JSON reparado",
+    "exampleLabel": "Este ejemplo combina errores habituales: un comentario, claves sin comillas, comillas simples, True y None de Python, una coma final, una coma ausente y NaN. La salida es el documento reparado.",
+    "steps": [
+      "Pega el JSON incorrecto o abre el archivo.",
+      "El aviso cuenta los problemas reparables e indica el primero con su línea y columna; el editor subraya cada uno.",
+      "Comprueba el documento reparado en la vista Formatear y elige Reparar entrada para aplicarlo. Ctrl+Z deshace el cambio."
+    ],
+    "options": [
+      "Corrige comentarios, claves sin comillas, cadenas con comillas simples, comas finales, comas ausentes entre propiedades, True, False y None de Python y bloques de código Markdown que rodean el JSON pegado.",
+      "NaN e Infinity no tienen representación en JSON, así que se convierten en null. Comprueba la salida cuando esos valores importen.",
+      "Algunas entradas no se pueden reparar, como una cadena sin comilla de cierre. En ese caso, el aviso informa de un error y su ubicación.",
+      "La reparación conserva los dígitos de tus números y el orden de tus claves."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo corrijo un JSON incorrecto?",
+        "answer": "Pégalo aquí. Tool Kumar señala cada problema y muestra una versión reparada. Elige Reparar entrada para aplicar todas las correcciones a la vez o edita la entrada a mano."
+      },
+      {
+        "question": "¿Se pueden reparar todos los errores JSON?",
+        "answer": "No. Los errores de comillas, comas y comentarios se corrigen automáticamente. El texto que falta, como una cadena cortada antes de su comilla de cierre, debe corregirse a mano."
+      },
+      {
+        "question": "¿La reparación cambia mis valores?",
+        "answer": "Los valores se mantienen, salvo NaN e Infinity, que JSON no puede representar y que se convierten en null. Revisa la salida antes de usarla."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "single-quotes-unquoted-keys",
+        "text": "Corregir comillas simples y claves sin comillas"
+      },
+      {
+        "slug": "trailing-comma",
+        "text": "Eliminar una coma final"
+      }
+    ]
+  },
+  "json-to-table": {
+    "hash": "1b27f36399aa",
+    "title": "JSON a tabla: explora y ordena tus registros",
+    "description": "Visualiza un array JSON como tabla ordenable en tu navegador, sin subir datos. Abre valores anidados, copia como CSV o descarga Excel con una fila por registro.",
+    "heading": "JSON a tabla",
+    "query": "JSON a tabla",
+    "secondary": [
+      "ver JSON en tabla",
+      "convertir JSON a tabla online"
+    ],
+    "intro": "Pega un array de objetos JSON para verlo como tabla, con una fila por registro y una columna por clave. Ordena por cualquier columna, abre los objetos y arrays anidados en la propia tabla y exporta lo que ves.",
+    "modeLabel": "Vista de tabla",
+    "exampleLabel": "Una fila por usuario y una columna por clave. El objeto address anidado permanece en una sola celda que puedes abrir; un valor ausente se muestra como un punto.",
+    "steps": [
+      "Pega un array JSON de objetos o abre un archivo.",
+      "Léelo en la vista Tabla. Haz clic en el encabezado de una columna para ordenar por ella y vuelve a hacer clic para invertir el orden.",
+      "Haz clic en un objeto o array anidado para abrirlo como una tabla independiente; la ruta sobre la tabla te permite volver. El menú Más opciones permite copiar la tabla como CSV o descargar CSV o Excel."
+    ],
+    "options": [
+      "Las columnas son las claves encontradas en los registros, hasta un máximo de 120 columnas.",
+      "También puedes usar un objeto; cada clave se convierte en una fila.",
+      "Los valores anidados conservan su estructura en la tabla. Las exportaciones a CSV y Excel aplanan los objetos anidados en columnas con nombres separados por puntos, como address.city.",
+      "Solo se dibujan las filas que aparecen en pantalla, por lo que el desplazamiento por arrays largos es fluido."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo convierto JSON a una tabla?",
+        "answer": "Pega un array JSON de objetos. La vista Tabla muestra una fila por objeto y una columna por clave; expórtala como CSV o Excel cuando necesites un archivo."
+      },
+      {
+        "question": "¿Puedo ver JSON anidado en una tabla?",
+        "answer": "Sí. Los objetos y arrays anidados aparecen como celdas que puedes abrir, cada uno como una tabla independiente, con una ruta para volver."
+      },
+      {
+        "question": "¿Puedo ordenar la tabla?",
+        "answer": "Sí. Haz clic en el encabezado de una columna para ordenar por ella y vuelve a hacer clic para invertir el orden."
+      }
+    ]
+  },
+  "json-path-finder": {
+    "hash": "930c5ebb1176",
+    "title": "JSON path finder: copia la ruta de cualquier valor",
+    "description": "Selecciona un valor del árbol JSON para ver y copiar su ruta, o escribe una ruta o JSON Pointer para ir a él en tu navegador, sin subir datos.",
+    "heading": "JSON path finder: encontrar la ruta de un valor",
+    "query": "JSON path finder",
+    "secondary": [
+      "obtener ruta de un valor JSON",
+      "buscar JSONPath online",
+      "copiar ruta JSON"
+    ],
+    "intro": "Encuentra la ruta exacta de un valor en un documento JSON grande. Selecciona un nodo en el árbol para ver su ruta, cópiala con un clic o escribe una ruta para ir directamente al valor.",
+    "modeLabel": "Árbol con rutas",
+    "exampleLabel": "Cada valor del ejemplo aparece con la ruta que lleva hasta él. Las claves que no son nombres simples usan corchetes, como [\"first name\"].",
+    "steps": [
+      "Pega tu JSON o abre un archivo. Se abre la vista Árbol.",
+      "Haz clic en un valor. Su ruta aparece en la barra de herramientas; haz clic en ella o pulsa P para copiarla.",
+      "Para ir a un valor, pulsa Ctrl+F (⌘F) y escribe una ruta como $.store.books[1].title o un JSON Pointer como /store/books/1/title."
+    ],
+    "options": [
+      "Las rutas usan notación de puntos y corchetes, como en JSONPath. Los índices de los arrays empiezan en 0.",
+      "Buscar acepta una ruta concreta o un JSON Pointer (RFC 6901) y selecciona ese nodo.",
+      "No se evalúan los comodines, el descenso recursivo, los filtros ni las selecciones por rango, como $..price. La barra de búsqueda lo indica en lugar de intentar adivinar.",
+      "Pulsa C para copiar el valor seleccionado. El menú Más opciones también incluye Copiar ruta y Copiar valor."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo encuentro la ruta JSON de un valor?",
+        "answer": "Abre el JSON en la vista Árbol y haz clic en el valor. Su ruta aparece en la barra de herramientas y se copia al hacer clic en ella."
+      },
+      {
+        "question": "¿Puedo buscar con una expresión JSONPath?",
+        "answer": "Las rutas concretas funcionan, como $.users[0].email. Las expresiones con comodines o filtros no se evalúan; usa Buscar para buscar una clave o un valor."
+      },
+      {
+        "question": "¿Admite JSON Pointer?",
+        "answer": "Sí. Escribe un puntero como /users/0/email en Buscar para ir a ese valor."
+      }
+    ]
+  },
+  "json-to-jsonl": {
+    "hash": "d2bd4b8ed9ef",
+    "title": "JSON a JSONL: convierte un array JSON a NDJSON",
+    "description": "Convierte un array JSON a JSON Lines en tu navegador, con un registro compacto por línea y números exactos. Descarga .jsonl sin subir tus datos.",
+    "heading": "JSON a JSONL",
+    "query": "JSON a JSONL",
+    "secondary": [
+      "JSON a NDJSON",
+      "convertir array JSON a JSON Lines"
+    ],
+    "intro": "Convierte un array JSON en JSON Lines, también llamado NDJSON. Cada elemento ocupa su propia línea como JSON compacto. Los pipelines de logs, las importaciones masivas y los conjuntos de datos que leen un registro cada vez esperan este formato.",
+    "modeLabel": "Salida de JSON Lines",
+    "exampleLabel": "Cada elemento del array se convierte en una línea. Los arrays y objetos anidados permanecen dentro de su registro y los identificadores grandes conservan todos sus dígitos.",
+    "steps": [
+      "Pega un array JSON o abre un archivo.",
+      "Lee el JSON Lines en la vista Convertir.",
+      "Copia las líneas o descárgalas como archivo .jsonl."
+    ],
+    "options": [
+      "Cada elemento del array del nivel superior se convierte, en orden, en una línea de JSON compacto y cada línea termina con un salto de línea.",
+      "Un documento que no sea un array se convierte en una sola línea.",
+      "Los arrays y objetos anidados permanecen dentro de su registro; solo se divide el nivel superior.",
+      "Los números conservan sus dígitos originales."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo convierto JSON a JSONL?",
+        "answer": "Pega un array JSON aquí. El conversor escribe cada elemento en su propia línea; copia el resultado o descárgalo como .jsonl."
+      },
+      {
+        "question": "¿NDJSON es lo mismo que JSONL?",
+        "answer": "En la práctica, sí. Ambos significan un valor JSON por línea, por lo que la salida sirve para las herramientas que usan cualquiera de los dos nombres."
+      },
+      {
+        "question": "¿Puedo volver a convertir JSONL en un array JSON?",
+        "answer": "Sí. NDJSON a JSON lee las líneas y devuelve un único array JSON."
+      }
+    ]
+  }
+}

@@ -1,4 +1,6 @@
-import { highlightLine, jwtLine, type Mark } from './highlight';
+import { escapeHtml, highlightLine, jwtLine, type Mark } from './highlight';
+import { TallScroll } from './tall';
+import { rt } from '../i18n/ui';
 
 /*
  * The document lives in `text` (the model). Two presentations:
@@ -127,6 +129,12 @@ export class Editor {
   private gut: HTMLElement;
   private gl: HTMLElement;
   private body: HTMLElement;
+  /** Scroll offsets in content px (only a huge document in view mode outgrows the browser's height limit). */
+  private sc: TallScroll;
+  /** Content y of the caret band and the scope band; `shiftAt`: the scroll shift they were drawn with. */
+  private curY = 0;
+  private scopeY = 0;
+  private shiftAt = 0;
   private hl: HTMLElement;
   private cur: HTMLElement;
   private scopeEl: HTMLElement;
@@ -200,6 +208,7 @@ export class Editor {
     this.gut = el.querySelector('.ed-gut') as HTMLElement;
     this.gl = el.querySelector('.ed-gl') as HTMLElement;
     this.body = el.querySelector('.ed-body') as HTMLElement;
+    this.sc = new TallScroll(el);
     this.hl = el.querySelector('.ed-hl') as HTMLElement;
     this.cur = el.querySelector('.ed-cur') as HTMLElement;
     this.scopeEl = el.querySelector('.ed-scope') as HTMLElement;
@@ -628,8 +637,8 @@ export class Editor {
   private refold(anchor: number, patch?: { at: number; end: () => number; cut: boolean }) {
     let [s, e] = this.view ? [this.vcaret, this.vcaret] : this.selection;
     const el = this.el;
-    const top = anchor >= 0 ? anchor : this.lineAt(Math.min(this.rows - 1, Math.max(0, Math.floor((el.scrollTop - PAD_T) / LH))));
-    const y = PAD_T + this.rowOf(top) * LH - el.scrollTop;
+    const top = anchor >= 0 ? anchor : this.lineAt(Math.min(this.rows - 1, Math.max(0, Math.floor((this.sc.top - PAD_T) / LH))));
+    const y = PAD_T + this.rowOf(top) * LH - this.sc.top;
     this.buildDisplay();
     // A caret inside a newly folded block moves to the end of its first line.
     const fix = (off: number) => (this.hidden(off) ? this.lineEnd(this.lineAt(this.rowOf(this.lineOf(off)))) : off);
@@ -658,7 +667,7 @@ export class Editor {
       ta.setSelectionRange(this.m2d(s), this.m2d(e));
     }
     this.layout();
-    el.scrollTop = Math.max(0, PAD_T + this.rowOf(top) * LH - y);
+    this.sc.top = Math.max(0, PAD_T + this.rowOf(top) * LH - y);
     this.updateCaret();
     this.placeScope();
     this.render(true);
@@ -695,8 +704,7 @@ export class Editor {
     const w = Math.ceil(this.maxCols * this.cw) + PAD_L + PAD_R + this.extraW;
     const h = this.rows * LH + PAD_T + PAD_B;
     this.body.style.width = w + 'px';
-    this.body.style.height = h + 'px';
-    this.gut.style.height = h + 'px';
+    this.sc.fit(h, this.body, this.gut);
   }
 
   private onScroll = () => {
@@ -731,21 +739,21 @@ export class Editor {
       ta.scrollTop = 0;
       this.layout();
       this.el.scrollLeft += scrollLeft;
-      this.el.scrollTop += scrollTop;
+      this.sc.top += scrollTop;
     }
   };
 
   render(force: boolean) {
     if (force) this.redraw = false;
     const n = this.rows;
-    const st = this.el.scrollTop;
+    const st = this.sc.top;
     const vh = this.el.clientHeight;
     const vf = Math.max(0, Math.floor((st - PAD_T) / LH));
     const vl = Math.min(n, Math.ceil((st + vh - PAD_T) / LH));
     const wide = this.maxCols > LONG_LINE;
     const vcA = Math.max(0, Math.floor((this.el.scrollLeft - PAD_L) / this.cw));
     const vcB = vcA + Math.ceil(this.el.clientWidth / this.cw);
-    if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return;
+    if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return this.place(false);
 
     const first = Math.max(0, vf - OVERSCAN);
     const last = Math.min(n, vl + OVERSCAN);
@@ -776,10 +784,22 @@ export class Editor {
         html += `${open}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
       }
     }
-    this.hl.style.transform = `translateY(${first * LH}px)`;
     this.hl.innerHTML = html;
-    this.gl.style.transform = `translateY(${PAD_T + first * LH}px)`;
     this.gl.innerHTML = this.gutterHtml(first, last);
+    this.place(true);
+  }
+
+  /** Positions the drawn rows, gutter and bands; with a scaled scroll offset (see TallScroll) they move as it scrolls. */
+  private place(rows: boolean) {
+    const s = this.sc.shift;
+    if (rows || s !== this.shiftAt) {
+      this.hl.style.transform = `translateY(${this.rFirst * LH + s}px)`;
+      this.gl.style.transform = `translateY(${PAD_T + this.rFirst * LH + s}px)`;
+    }
+    if (s === this.shiftAt) return;
+    this.shiftAt = s;
+    this.cur.style.transform = `translateY(${this.curY + s}px)`;
+    this.scopeEl.style.transform = `translateY(${this.scopeY + s}px)`;
   }
 
   /** The "⋯ N lines" pill and the hidden closer after a folded line (flags errors and Compare changes hidden inside). */
@@ -804,7 +824,7 @@ export class Editor {
     let a = this.ls[c];
     while (t.charCodeAt(a) === 32 || t.charCodeAt(a) === 9) a++;
     const closer = highlightLine(t, a, this.lineEnd(c), null);
-    return `<span class="ed-fold" data-f="${ln}"><span class="ed-ph${cls ? ' ' + cls : ''}">⋯ ${n} line${n === 1 ? '' : 's'}</span>${closer}</span>`;
+    return `<span class="ed-fold" data-f="${ln}"><span class="ed-ph${cls ? ' ' + cls : ''}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</span>${closer}</span>`;
   }
 
   /** If `sa` falls inside a string, start the slice at the string's opening quote (bounded). */
@@ -967,14 +987,16 @@ export class Editor {
     if (!sc || sc[1] >= this.ls.length) return;
     const r1 = this.rowOf(sc[0]);
     const r2 = this.rowOf(sc[1]);
-    this.scopeEl.style.transform = `translateY(${PAD_T + r1 * LH}px)`;
+    this.scopeY = PAD_T + r1 * LH;
+    this.scopeEl.style.transform = `translateY(${this.scopeY + this.sc.shift}px)`;
     this.scopeEl.style.height = `${(r2 - r1 + 1) * LH}px`;
   }
 
   private updateCaret() {
     const [s, e] = this.selection;
     const ln = this.lineOf(s);
-    this.cur.style.transform = `translateY(${PAD_T + this.rowOf(ln) * LH}px)`;
+    this.curY = PAD_T + this.rowOf(ln) * LH;
+    this.cur.style.transform = `translateY(${this.curY + this.sc.shift}px)`;
     this.cur.style.visibility = this.lineOf(e) !== ln ? 'hidden' : '';
     if (ln !== this.caretLine) {
       this.caretLine = ln;
@@ -1171,7 +1193,7 @@ export class Editor {
     if (pill) return this.toggleFold(Number(pill.dataset.f));
     if (window.getSelection()?.toString()) return;
     const r = this.body.getBoundingClientRect();
-    const ln = this.lineAt(Math.max(0, Math.min(this.rows - 1, Math.floor((e.clientY - r.top - PAD_T) / LH))));
+    const ln = this.lineAt(Math.max(0, Math.min(this.rows - 1, Math.floor((e.clientY - r.top - this.sc.shift - PAD_T) / LH))));
     const col = Math.max(0, Math.round((e.clientX - r.left - PAD_L) / this.cw));
     this.vcaret = Math.min(this.ls[ln] + col, this.lineEnd(ln));
     if (this.updateCaret()) this.render(true);
@@ -1403,8 +1425,9 @@ export class Editor {
     const el = this.el;
     const vh = el.clientHeight;
     const y = PAD_T + this.rowOf(ln) * LH;
-    if (y < el.scrollTop + LH || y + LH * 2 > el.scrollTop + vh) {
-      el.scrollTop = center ? y - vh / 2 + LH : y < el.scrollTop ? y - LH : y - vh + LH * 3;
+    const st = this.sc.top;
+    if (y < st + LH || y + LH * 2 > st + vh) {
+      this.sc.top = center ? y - vh / 2 + LH : y < st ? y - LH : y - vh + LH * 3;
     }
     const x = PAD_L + (off - this.ls[ln]) * this.cw;
     const vw = el.clientWidth - this.gutW;
@@ -1419,7 +1442,8 @@ export class Editor {
     const y = PAD_T + this.rowOf(ln) * LH;
     const x = PAD_L + (off - this.ls[ln]) * this.cw;
     const el = this.el;
-    return y >= el.scrollTop && y + LH <= el.scrollTop + el.clientHeight && x >= el.scrollLeft && x <= el.scrollLeft + el.clientWidth - this.gutW - 24;
+    const st = this.sc.top;
+    return y >= st && y + LH <= st + el.clientHeight && x >= el.scrollLeft && x <= el.scrollLeft + el.clientWidth - this.gutW - 24;
   }
 
   private indent(dir: 1 | -1) {
@@ -1497,7 +1521,7 @@ export class Editor {
     const off = Math.min(start(target) + col, end(target));
     if (extend) ta.setSelectionRange(Math.min(anchor, off), Math.max(anchor, off), off < anchor ? 'backward' : 'forward');
     else ta.setSelectionRange(off, off);
-    this.el.scrollTop += dir * lines * LH;
+    this.sc.top += dir * lines * LH;
     this.typing = false;
   }
 }

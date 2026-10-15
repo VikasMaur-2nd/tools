@@ -2,6 +2,8 @@ import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
 import { escapeHtml } from './highlight';
+import { TallScroll } from './tall';
+import { rt } from '../i18n/ui';
 
 /* Virtualized grid of an array (rows = items) or object (rows = properties). */
 
@@ -45,6 +47,7 @@ export class TableView {
   readonly el: HTMLElement;
   private head: HTMLElement;
   private sizer: HTMLElement;
+  private sc: TallScroll;
   private rowsEl: HTMLElement;
   private empty: HTMLElement;
   private ev: TableEvents;
@@ -59,6 +62,9 @@ export class TableView {
   private sortDir = 1;
   private rFirst = -1;
   private rLast = -1;
+  /** Content height the spacer was sized for, and the drawn rows' translateY. */
+  private h = -1;
+  private y = NaN;
   private raf = 0;
   private cw = 7.6;
   sel: JNode | null = null;
@@ -68,6 +74,7 @@ export class TableView {
     this.ev = ev;
     this.head = el.querySelector('.tb-head') as HTMLElement;
     this.sizer = el.querySelector('.tb-sizer') as HTMLElement;
+    this.sc = new TallScroll(el);
     this.rowsEl = el.querySelector('.tb-rows') as HTMLElement;
     this.empty = el.querySelector('.tb-empty') as HTMLElement;
     el.addEventListener('scroll', this.onScroll, { passive: true });
@@ -101,7 +108,7 @@ export class TableView {
     if (!keepSort || !same) {
       this.sortCol = -1;
       this.sortDir = 1;
-      this.el.scrollTop = 0;
+      this.sc.top = 0;
       this.el.scrollLeft = 0;
     }
     this.buildCols();
@@ -223,7 +230,8 @@ export class TableView {
     this.sel = this.items[this.order[r]];
     const y = r * TRH;
     const vh = this.el.clientHeight - 32;
-    if (y < this.el.scrollTop || y + TRH > this.el.scrollTop + vh) this.el.scrollTop = Math.max(0, y - vh / 2);
+    const st = this.sc.top;
+    if (y < st || y + TRH > st + vh) this.sc.top = Math.max(0, y - vh / 2);
   }
 
   private applySort() {
@@ -257,7 +265,7 @@ export class TableView {
     let h = '';
     this.cols.forEach((c, i) => {
       const s = i === this.sortCol ? (this.sortDir > 0 ? ' asc' : ' desc') : '';
-      h += `<button class="tb-th${i === 0 ? ' tb-c0' : ''}${s}" data-c="${i}" title="Sort by ${escapeHtml(c.label)}">${escapeHtml(c.label)}</button>`;
+      h += `<button class="tb-th${i === 0 ? ' tb-c0' : ''}${s}" data-c="${i}" title="${escapeHtml(rt('Sort by {column}', { column: c.label }))}">${escapeHtml(c.label)}</button>`;
     });
     this.head.innerHTML = h;
     this.empty.hidden = !!this.node;
@@ -272,13 +280,13 @@ export class TableView {
   };
 
   render(force: boolean) {
-    const st = this.el.scrollTop;
-    const vh = this.el.clientHeight;
     const n = this.order.length;
-    this.sizer.style.height = n * TRH + 'px';
+    if (n * TRH !== this.h) this.sc.fit((this.h = n * TRH), this.sizer);
+    const st = this.sc.top;
+    const vh = this.el.clientHeight;
     const vf = Math.floor(st / TRH);
     const vl = Math.min(n, Math.ceil((st + vh) / TRH));
-    if (!force && vf >= this.rFirst && vl <= this.rLast) return;
+    if (!force && vf >= this.rFirst && vl <= this.rLast) return this.place();
     const first = Math.max(0, vf - OVERSCAN);
     const last = Math.min(n, vl + OVERSCAN);
     this.rFirst = first;
@@ -306,8 +314,14 @@ export class TableView {
       }
       html += '</div>';
     }
-    this.rowsEl.style.transform = `translateY(${first * TRH}px)`;
     this.rowsEl.innerHTML = html;
+    this.place();
+  }
+
+  /** Positions the drawn rows (they move with the scroll offset when it's scaled, see TallScroll). */
+  private place() {
+    const y = this.rFirst * TRH + this.sc.shift;
+    if (y !== this.y) this.rowsEl.style.transform = `translateY(${(this.y = y)}px)`;
   }
 
   private onClick = (e: MouseEvent) => {

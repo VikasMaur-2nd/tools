@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { COMMANDS, fuzzy, keyLabel, type Command } from '@/lib/engine/commands';
 import { store, useUI } from '@/lib/engine/store';
 import { act } from '@/lib/engine/instance';
+import { useT } from '@/lib/i18n/react';
 import { Kbd } from './Kbd';
 import { Icon } from './icons';
 
@@ -33,8 +34,9 @@ function Modal({ open, onClose, className, label, children }: { open: boolean; o
 
 export function CommandPalette() {
   const mode = useUI((s) => s.palette);
+  const t = useT();
   return (
-    <Modal open={!!mode} onClose={() => store.set({ palette: false })} className="palette" label="Command palette">
+    <Modal open={!!mode} onClose={() => store.set({ palette: false })} className="palette" label={t('Command palette')}>
       {mode === 'url' ? <UrlPrompt /> : <Commands />}
     </Modal>
   );
@@ -46,15 +48,26 @@ function Commands() {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
+  const t = useT();
+  // Titles and search terms in the page's language; the English ones stay searchable.
+  const names = useMemo(() => {
+    const m = new Map<Command, { title: string; group: string; hay: string }>();
+    for (const c of COMMANDS) {
+      const terms = `${c.group} ${c.terms ?? ''}`;
+      const hay = t.lang ? `${t(c.group)} ${c.terms ? t(c.terms) : ''} ${c.id.startsWith('to-') ? t('convert') : ''} ${terms} ${c.title}` : terms;
+      m.set(c, { title: t.msg(c.title), group: t(c.group), hay });
+    }
+    return m;
+  }, [t]);
 
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return COMMANDS;
-    return COMMANDS.map((c) => ({ c, s: Math.max(fuzzy(needle, c.title) * 1.2, fuzzy(needle, `${c.group} ${c.terms ?? ''}`)) }))
+    return COMMANDS.map((c) => ({ c, s: Math.max(fuzzy(needle, names.get(c)!.title) * 1.2, fuzzy(needle, names.get(c)!.hay)) }))
       .filter((x) => x.s >= 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.c);
-  }, [q]);
+  }, [q, names]);
 
   const active = Math.min(sel, Math.max(0, list.length - 1));
 
@@ -98,8 +111,8 @@ function Commands() {
             setSel(0);
           }}
           onKeyDown={onKey}
-          placeholder="Type a command…"
-          aria-label="Search commands"
+          placeholder={t('Type a command…')}
+          aria-label={t('Search commands')}
           role="combobox"
           aria-expanded="true"
           aria-controls="pl-list"
@@ -119,8 +132,8 @@ function Commands() {
             onClick={() => run(c)}
           >
             <span className="pl-check">{c.active?.(state) && <Icon name="check" size={14} />}</span>
-            <span className="pl-title">{c.title}</span>
-            <span className="pl-group">{c.group}</span>
+            <span className="pl-title">{names.get(c)!.title}</span>
+            <span className="pl-group">{names.get(c)!.group}</span>
             {c.keys && (
               <span className="kbd">
                 {keyLabel(c.keys, mac).map((k, j) => (
@@ -130,7 +143,7 @@ function Commands() {
             )}
           </li>
         ))}
-        {!list.length && <li className="pl-none">No matching commands</li>}
+        {!list.length && <li className="pl-none">{t('No matching commands')}</li>}
       </ul>
     </>
   );
@@ -138,6 +151,7 @@ function Commands() {
 
 function UrlPrompt() {
   const [url, setUrl] = useState('');
+  const t = useT();
   return (
     <form
       className="pl-input"
@@ -153,8 +167,8 @@ function UrlPrompt() {
         type="url"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://api.example.com/data.json (press Enter to load)"
-        aria-label="URL to load JSON from"
+        placeholder={t('https://api.example.com/data.json (press Enter to load)')}
+        aria-label={t('URL to load JSON from')}
         spellCheck={false}
       />
     </form>
@@ -219,27 +233,28 @@ const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
 export function ShortcutsDialog() {
   const open = useUI((s) => s.shortcuts);
   const mac = useUI((s) => s.mac);
+  const t = useT();
   return (
-    <Modal open={open} onClose={() => store.set({ shortcuts: false })} className="sheet" label="Keyboard shortcuts">
+    <Modal open={open} onClose={() => store.set({ shortcuts: false })} className="sheet" label={t('Keyboard shortcuts')}>
       <header>
         <h2>
-          <Icon name="keyboard" size={18} /> Keyboard shortcuts
+          <Icon name="keyboard" size={18} /> {t('Keyboard shortcuts')}
         </h2>
-        <button type="button" className="btn icon" aria-label="Close" onClick={() => store.set({ shortcuts: false })} autoFocus>
+        <button type="button" className="btn icon" aria-label={t('Close')} onClick={() => store.set({ shortcuts: false })} autoFocus>
           <Icon name="x" />
         </button>
       </header>
       <div className="sheet-grid">
         {SHORTCUTS.map((g) => (
           <section key={g.title}>
-            <h3>{g.title}</h3>
+            <h3>{t(g.title)}</h3>
             <dl>
               {g.items.map(([k, label, macK]) => (
                 <div key={k + label}>
                   <dt>
                     <Kbd k={mac && macK ? macK : k} />
                   </dt>
-                  <dd>{label}</dd>
+                  <dd>{t(label)}</dd>
                 </div>
               ))}
             </dl>

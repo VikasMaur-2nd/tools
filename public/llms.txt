@@ -55,6 +55,19 @@
 - [JSON path finder](https://tools.vikasmaur.com/tools/json-path-finder): copy the path to any value, or jump to a path.
 - [Large JSON file viewer](https://tools.vikasmaur.com/tools/large-json-viewer): open big JSON files locally in a fast tree view.
 
+## Other languages
+
+The JSON viewer, the tools hub and the dedicated tool pages are also available in eight languages, under the same English slugs (for example /de/tools/json-validator). Each page links its language versions with hreflang. Blog posts, resources and error guides are in English only.
+
+- [Español](https://tools.vikasmaur.com/es): [herramientas JSON](https://tools.vikasmaur.com/es/tools)
+- [Português (Brasil)](https://tools.vikasmaur.com/pt): [ferramentas JSON](https://tools.vikasmaur.com/pt/tools)
+- [Deutsch](https://tools.vikasmaur.com/de): [JSON-Tools](https://tools.vikasmaur.com/de/tools)
+- [Français](https://tools.vikasmaur.com/fr): [outils JSON](https://tools.vikasmaur.com/fr/tools)
+- [日本語](https://tools.vikasmaur.com/ja): [JSON ツール](https://tools.vikasmaur.com/ja/tools)
+- [한국어](https://tools.vikasmaur.com/ko): [JSON 도구](https://tools.vikasmaur.com/ko/tools)
+- [简体中文](https://tools.vikasmaur.com/zh): [JSON 工具](https://tools.vikasmaur.com/zh/tools)
+- [Русский](https://tools.vikasmaur.com/ru): [инструменты JSON](https://tools.vikasmaur.com/ru/tools)
+
 ## JSON error guides
 
 - [JSON errors hub](https://tools.vikasmaur.com/json-errors): choose a guide by diagnostic message and root cause.
