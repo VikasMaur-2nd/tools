@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type 
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
+import type { AnalysisResult } from './reindent.worker';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -327,7 +328,12 @@ export class Engine {
       }
       if (this.settings.autoFormat) setTimeout(this.autoFormat, 0);
     }
+    this.analysisJob = null;
     this.ed.setBrackets(-1, -1);
+    clearTimeout(this.fmtTimer);
+    clearTimeout(this.convTimer);
+    clearTimeout(this.sizeTimer);
+    this.sizeSeq++;
     const len = this.ed.text.length;
     if (kind === 'paste' && this.ed.pasteFull && this.ed.text.trim()) {
       // A whole document arrived at once: no typing to wait out.
@@ -346,7 +352,7 @@ export class Engine {
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
       clearTimeout(this.timer);
-      this.timer = window.setTimeout(() => this.analyze(), len < 100_000 ? 60 : len < 1_000_000 ? 160 : len < 5_000_000 ? 350 : 700);
+      this.timer = window.setTimeout(() => this.analyzeLater(), len < 100_000 ? 60 : len < 1_000_000 ? 160 : len < 5_000_000 ? 350 : 700);
     }
     if (this.persistEnabled) this.persistSoon();
   };
@@ -376,8 +382,27 @@ export class Engine {
     return this.res;
   }
 
-  analyze() {
+  /** Typing in large input parses and formats in the existing worker. Stale replies are ignored. */
+  private analysisJob: { id: number; text: string; key: string } | null = null;
+  private analysisSeq = 1_000_000_000;
+  private preparedConvert: { src: string; key: string; out: string; error: string | null } | null = null;
+
+  private convertKey() { const s = this.settings; return JSON.stringify([s.target, s.rootName, s.tsStyle, s.csharpLib]); }
+  private analysisKey() { return this.fmtSettings() + this.settings.view + this.convertKey(); }
+
+  private analyzeLater() {
+    const text = this.ed.text;
+    if (text.length < 100_000 || readJwt(text, this.indent)) return this.analyze();
+    const worker = this.reindentWorker();
+    if (!worker) return this.analyze();
+    const job = { id: ++this.analysisSeq, text, key: this.analysisKey() };
+    this.analysisJob = job;
+    worker.postMessage({ id: job.id, text, indent: this.indent, analysis: { lines: LINES_FILE.test(store.get().fileName ?? ''), sort: this.settings.sortKeys, minify: this.settings.minify || this.settings.escape, convert: this.settings.view === 'convert' ? { target: this.settings.target, rootName: this.settings.rootName, tsStyle: this.settings.tsStyle, csharpLib: this.settings.csharpLib } : undefined } });
+  }
+
+  analyze(prepared?: AnalysisResult) {
     clearTimeout(this.timer);
+    this.analysisJob = null;
     const ed = this.ed;
     const text = ed.text;
     const reset = this.resetNext;
@@ -407,9 +432,9 @@ export class Engine {
     const t0 = performance.now();
     const jwt = readJwt(text, this.indent);
     const src = jwt ? jwt.json : text;
-    const res = parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
+    const res = prepared?.res ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
     const lines = !jwt && jsonLines(text, res);
-    const ms = performance.now() - t0;
+    const ms = prepared?.ms ?? performance.now() - t0;
     this.res = res;
     this.jwt = jwt;
     ed.setJwt(jwt ? jwt.at : null);
@@ -465,7 +490,9 @@ export class Engine {
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
     this.syncTableState();
     this.updateBrackets();
-    this.measure(res.root && !jwt ? res : null, text);
+    this.measure(res.root && !jwt ? res : null, text, prepared?.min);
+    if (prepared?.converted) this.preparedConvert = { src, key: this.convertKey(), ...prepared.converted };
+    if (prepared && res.root && this.settings.view === 'format') this.drawFormat(prepared.formatted, src, this.fmtSettings());
     this.afterDoc();
   }
 
@@ -489,7 +516,7 @@ export class Engine {
    * settles (one minify + native compression per codec, never on the
    * keystroke). Invalid documents have none.
    */
-  private measure(res: ParseResult | null, text: string) {
+  private measure(res: ParseResult | null, text: string, min?: string) {
     clearTimeout(this.sizeTimer);
     const seq = ++this.sizeSeq;
     const prev = store.get().sizes;
@@ -501,7 +528,7 @@ export class Engine {
     this.sizeTimer = window.setTimeout(
       () => idle(async () => {
         if (seq !== this.sizeSeq) return;
-        const blob = new Blob([formatDoc(text, res, '')]);
+        const blob = new Blob([min ?? formatDoc(text, res, '')]);
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
         if (blob.size <= 32_000_000) {
@@ -858,7 +885,12 @@ export class Engine {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; analysis?: AnalysisResult }>) => {
+        if (e.data.analysis) {
+          const job = this.analysisJob;
+          if (job?.id === e.data.id && job.text === this.ed.text && job.key === this.analysisKey()) this.analyze(e.data.analysis);
+          return;
+        }
         if (e.data.id === -1) return void (this.workerWarm = true);
         const job = this.reindentJob;
         if (!job || job.id !== e.data.id) return;
@@ -872,6 +904,7 @@ export class Engine {
         const job = this.reindentJob;
         this.reindentJob = null;
         job?.fallback();
+        if (this.analysisJob) { this.analysisJob = null; this.analyze(); }
       };
       this.worker = w;
       const doc = JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ id: i, name: `Zoë ${i}`, tags: ['a', 'b'], n: 1.5e3, ok: true, x: null, s: 'say "hi"\n' })));
@@ -1411,7 +1444,9 @@ export class Engine {
       // CSV and Excel share one flattening (dotted columns) over the main array of
       // records; Excel is a binary download, so its preview is the same table.
       const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
-      const out = xlsx
+      const prepared = this.preparedConvert?.src === this.goodText && this.preparedConvert.key === this.convertKey() ? this.preparedConvert : null;
+      if (prepared?.error) throw new Error(prepared.error);
+      const out = prepared ? prepared.out : xlsx
         ? xlsx.toCsv(xlsx.records(root))
         : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
