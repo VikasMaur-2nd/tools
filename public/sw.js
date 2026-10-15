@@ -53,10 +53,19 @@ function extractAssets(html) {
 /** Cache `url` unless present. Resolves false only on a network failure. */
 async function cacheIfMissing(cache, url) {
   if (await cache.match(url, MATCH)) return true;
-  return fetch(url, { credentials: 'same-origin' }).then(
-    (res) => (cacheable(res) ? cache.put(url, res).then(() => true, () => true) : true),
-    () => false,
-  );
+  try {
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!cacheable(res)) return true;
+    if ((res.headers.get('content-type') || '').includes('text/html')) {
+      const assets = extractAssets(await res.clone().text());
+      const results = await Promise.all(assets.map((asset) => cacheIfMissing(cache, asset)));
+      if (results.includes(false)) return false;
+    }
+    await cache.put(url, res).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

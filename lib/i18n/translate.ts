@@ -31,11 +31,13 @@ function durationParts(sec: number, long: boolean): Record<string, number> {
 
 export function translator(d: UiDict | null | undefined, lang?: string): T {
   if (!d) return EN;
-  const nf = new Intl.NumberFormat(lang);
-  const fixed = [0, 1].map((digits) => new Intl.NumberFormat(lang, { minimumFractionDigits: digits, maximumFractionDigits: digits }));
-  const rules = new Intl.PluralRules(lang);
-  const num = (n: number) => nf.format(n);
-  const pick = (v: string | Forms, n: number) => (typeof v === 'string' ? v : (v[rules.select(n)] ?? v.other ?? ''));
+  // Locale data is expensive on a cold phone. Labels need no number formatters.
+  let nf: Intl.NumberFormat | undefined;
+  let rules: Intl.PluralRules | undefined;
+  const fixed: Intl.NumberFormat[] = [];
+  const num = (n: number) => (nf ??= new Intl.NumberFormat(lang)).format(n);
+  const decimal = (n: number, digits: number) => (fixed[digits] ??= new Intl.NumberFormat(lang, { minimumFractionDigits: digits, maximumFractionDigits: digits })).format(n);
+  const pick = (v: string | Forms, n: number) => (typeof v === 'string' ? v : (v[(rules ??= new Intl.PluralRules(lang)).select(n)] ?? v.other ?? ''));
   const tr = (s: string) => {
     const v = d[s];
     return v === undefined ? s : pick(v, 1);
@@ -95,8 +97,8 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
       b < 1024
         ? fill(tr('{size} B'), { size: num(b) })
         : b < 1048576
-          ? fill(tr('{size} KB'), { size: fixed[b < 10240 ? 1 : 0].format(b / 1024) })
-          : fill(tr('{size} MB'), { size: fixed[1].format(b / 1048576) }),
+          ? fill(tr('{size} KB'), { size: decimal(b / 1024, b < 10240 ? 1 : 0) })
+          : fill(tr('{size} MB'), { size: decimal(b / 1048576, 1) }),
     dur: (sec: number, long?: boolean) => {
       const style = long ? 'long' : 'narrow';
       const parts = durationParts(sec, !!long);

@@ -2576,6 +2576,31 @@ dialog[open] {
 }
 
 /* Very narrow: the main control takes its own row. */
+/* Translated labels need the compact layout earlier than the English controls. */
+@container (max-width: 900px) {
+  html:not([lang='en']) .tabs {
+    display: none;
+  }
+  html:not([lang='en']) .tabs-pick {
+    display: inline-flex;
+  }
+}
+
+@container (max-width: 650px) {
+  html:not([lang='en']) .vbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding-block: 6px;
+    row-gap: 6px;
+  }
+  html:not([lang='en']) .vmain {
+    order: 3;
+    flex: 1 1 100%;
+    margin: 0;
+  }
+}
+
 @container (max-width: 440px) {
   .vbar {
     flex-wrap: wrap;

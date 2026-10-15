@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
-import { ErrorTextProvider } from '@/lib/i18n/react';
+import { ErrorTextProvider } from '@/lib/i18n/errors';
 import { LOCALES, isLocale, type Locale } from '@/lib/i18n/locales';
 import { errorText, liveLocales } from '@/lib/i18n/server';
 import { RootDocument, rootMetadata, rootViewport } from '../root-document';

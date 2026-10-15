@@ -36,7 +36,7 @@ export const fill = (s: string, p?: Params) => (p ? s.replace(/\{(\w+)\}/g, (m, 
 /** Thousands separators only where they show: the first toLocaleString() pays for the locale data (~80 ms on a slow phone). */
 const int = (n: number) => (n < 1000 ? String(n) : n.toLocaleString());
 
-export const EN: T = Object.assign((s: string, p?: Params) => fill(s, p), {
+export const EN: T = Object.assign(fill, {
   n: (c: number, one: string, other: string, p?: Params) => fill(c === 1 ? one : other, { ...p, n: int(c) }),
   msg: (s: string) => s,
   num: int,
