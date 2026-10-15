@@ -1,7 +1,8 @@
 import type { MetadataRoute } from 'next';
-import { POSTS } from './blogs/posts';
-import { ERROR_GUIDES } from './json-errors/errors';
+import { POSTS } from './(en)/blogs/posts';
+import { ERROR_GUIDES } from './(en)/json-errors/errors';
 import { TOOL_PAGES } from '@/lib/tool-pages';
+import { sitemapLanguages } from '@/lib/i18n/server';
 
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
 // keeps this route free of sync IO so it prerenders under `cacheComponents`.
@@ -17,6 +18,14 @@ const TOOL_UPDATES: Record<string, string> = Object.fromEntries(
 );
 const SITE = 'https://tools.vikasmaur.com';
 
+/** A page and its translations, each listing the whole hreflang cluster. */
+const cluster = (path: string, entry: Omit<MetadataRoute.Sitemap[number], 'url'>) => {
+  const languages = sitemapLanguages(path);
+  return Object.values(languages)
+    .filter((url, i, all) => all.indexOf(url) === i)
+    .map((url) => ({ url, ...entry, alternates: { languages } }));
+};
+
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     ...['/json-errors', ...ERROR_GUIDES.map(guide => `/json-errors/${guide.slug}`)].map(path => ({
@@ -25,12 +34,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly' as const,
       priority: 0.75,
     })),
-    {
-      url: SITE,
+    ...cluster('/', {
       lastModified: HOME_LAST_MODIFIED,
       changeFrequency: 'weekly',
       priority: 1,
-    },
+    }),
     {
       url: `${SITE}/blogs`,
       lastModified: POSTS.reduce((latest, p) => (p.updated > latest ? p.updated : latest), LAST_MODIFIED),
@@ -67,17 +75,17 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.75,
     },
-    {
-      url: `${SITE}/tools`,
+    ...cluster('/tools', {
       lastModified: TOOLS_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.9,
-    },
-    ...TOOL_PAGES.map((page) => ({
-      url: `${SITE}/tools/${page.slug}`,
-      lastModified: TOOL_UPDATES[page.slug] ?? TOOLS_LAST_MODIFIED,
-      changeFrequency: 'monthly' as const,
-      priority: 0.8,
-    })),
+    }),
+    ...TOOL_PAGES.flatMap((page) =>
+      cluster(`/tools/${page.slug}`, {
+        lastModified: TOOL_UPDATES[page.slug] ?? TOOLS_LAST_MODIFIED,
+        changeFrequency: 'monthly',
+        priority: 0.8,
+      }),
+    ),
   ];
 }

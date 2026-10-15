@@ -1,8 +1,9 @@
+import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
+import { serverT, type UiKey } from '@/lib/i18n/server';
 import { POSTS } from './blogs/posts';
 
 export const SITE = 'https://tools.vikasmaur.com';
 export const SITE_NAME = 'Tool Kumar';
-export const JSON_TOOL_NAME = 'Tool Kumar JSON Viewer & Formatter';
 export const JSON_TOOL_DESCRIPTION =
   'View, format, validate, repair, minify and compare JSON online for free. Tool Kumar runs in your browser, keeps data on your device and works offline.';
 export const SOCIAL_IMAGE = {
@@ -12,24 +13,11 @@ export const SOCIAL_IMAGE = {
   alt: 'Tool Kumar JSON viewer and formatter',
 } as const;
 
-export const FAQ_ENTRIES = [
-  {
-    question: 'What is a JSON viewer?',
-    answer: 'A JSON viewer displays structured JSON in a readable format, often with a collapsible tree, search and validation.',
-  },
-  {
-    question: 'How do I format JSON online?',
-    answer: 'Paste your JSON into Tool Kumar. The formatter creates an indented view, while the validator reports syntax errors.',
-  },
-  {
-    question: 'Is this JSON viewer private?',
-    answer: 'Yes. Parsing and formatting happen in your browser, so your document does not need to leave your device.',
-  },
-  {
-    question: 'Can I validate a large JSON file?',
-    answer: 'Yes. The viewer is designed for large documents and keeps the input local while it parses the file.',
-  },
-] as const;
+/** The homepage FAQ (visible content and FAQPage data) in a language. */
+export const faqEntries = (locale: SiteLocale = 'en') => {
+  const t = serverT(locale);
+  return ([1, 2, 3, 4] as const).map((i) => ({ question: t(`home.faq.${i}.q`), answer: t(`home.faq.${i}.a`) }));
+};
 
 export const ORGANIZATION = {
   '@type': 'Organization',
@@ -57,49 +45,47 @@ const baseGraph = [
   },
 ] as const;
 
-const applicationJsonLd = {
-  '@type': ['WebApplication', 'SoftwareApplication'],
-  '@id': `${SITE}/#json-viewer`,
-  name: JSON_TOOL_NAME,
-  alternateName: ['JSON Viewer', 'JSON Formatter', 'JSON Validator', 'JSON Beautifier'],
-  url: SITE,
-  description: JSON_TOOL_DESCRIPTION,
-  applicationCategory: 'DeveloperApplication',
-  applicationSubCategory: 'JSON viewer and formatter',
-  operatingSystem: 'Any',
-  browserRequirements: 'Requires JavaScript',
-  isAccessibleForFree: true,
-  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-  publisher: { '@id': `${SITE}/#organization` },
-  featureList: [
-    'JSON formatter and beautifier',
-    'JSON validator with line and column errors',
-    'Repair for common JSON mistakes',
-    'Collapsible tree and table views',
-    'Search keys and values and copy JSON paths',
-    'Minify and sort keys',
-    'Compare JSON documents',
-    'Convert JSON to other formats',
-    'Works offline and keeps documents on the device',
-  ],
-} as const;
-
-export const homeJsonLd = {
-  '@context': 'https://schema.org',
-  '@graph': [
-    ...baseGraph,
-    applicationJsonLd,
-    {
-      '@type': 'FAQPage',
-      '@id': `${SITE}/#faq`,
-      mainEntity: FAQ_ENTRIES.map(({ question, answer }) => ({
-        '@type': 'Question',
-        name: question,
-        acceptedAnswer: { '@type': 'Answer', text: answer },
-      })),
-    },
-  ],
-} as const;
+/** The homepage's app and FAQ entities; each language's homepage is its own page. */
+export function homeJsonLd(locale: SiteLocale = 'en') {
+  const t = serverT(locale);
+  const url = locale === 'en' ? SITE : `${SITE}/${locale}`;
+  const id = locale === 'en' ? `${SITE}/` : url;
+  const inLanguage = locale === 'en' ? {} : { inLanguage: localeInfo(locale).lang };
+  const list = (key: UiKey) => t(key).split(/\s*,\s*/);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      ...baseGraph,
+      {
+        '@type': ['WebApplication', 'SoftwareApplication'],
+        '@id': `${id}#json-viewer`,
+        name: t('home.appName'),
+        alternateName: list('home.alternateNames'),
+        url,
+        description: t('home.description'),
+        ...inLanguage,
+        applicationCategory: 'DeveloperApplication',
+        applicationSubCategory: t('home.subCategory'),
+        operatingSystem: 'Any',
+        browserRequirements: 'Requires JavaScript',
+        isAccessibleForFree: true,
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        publisher: { '@id': `${SITE}/#organization` },
+        featureList: ([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((i) => t(`home.feature.${i}`)),
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': `${id}#faq`,
+        ...inLanguage,
+        mainEntity: faqEntries(locale).map(({ question, answer }) => ({
+          '@type': 'Question',
+          name: question,
+          acceptedAnswer: { '@type': 'Answer', text: answer },
+        })),
+      },
+    ],
+  };
+}
 
 /** Shared entities only. Page-specific schemas are rendered on their page. */
 export const siteJsonLd = { '@context': 'https://schema.org', '@graph': baseGraph } as const;

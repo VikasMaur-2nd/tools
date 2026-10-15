@@ -2,14 +2,14 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { store, useUI, type IndentId, type JwtInfo, type View } from '@/lib/engine/store';
-import { compact } from '@/lib/json/jwt';
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
-import { formatBytes } from '@/lib/json/format';
+import { useT } from '@/lib/i18n/react';
+import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
 import { CommandPalette, ShortcutsDialog } from './dialogs';
@@ -31,17 +31,18 @@ function Btn({
   hideLabel?: boolean;
   up?: boolean;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
       className={`btn${variant ? ' ' + variant : ''}${hideLabel ? ' icon' : ''}`}
       onClick={onClick}
-      aria-label={label}
-      data-tip={tip ?? (hideLabel ? label : undefined)}
+      aria-label={t(label)}
+      data-tip={tip ? t(tip) : hideLabel ? t(label) : undefined}
       data-tip-up={up ? '' : undefined}
     >
       <Icon name={icon} />
-      {!hideLabel && <span className="lbl">{label}</span>}
+      {!hideLabel && <span className="lbl">{t(label)}</span>}
     </button>
   );
 }
@@ -52,17 +53,18 @@ function Btn({
 const InputBar = memo(function InputBar() {
   const fileName = useUI((s) => s.fileName);
   const comparing = useUI((s) => s.settings.view === 'compare');
+  const t = useT();
   return (
-    <div className="toolbar" role="toolbar" aria-label="Input">
+    <div className="toolbar" role="toolbar" aria-label={t('Input')}>
       <span className="fname" title={fileName ?? undefined}>
-        {comparing && <b className="side-tag">Original</b>}
+        {comparing && <b className="side-tag">{t('Original')}</b>}
         {fileName ? (
           <>
             <Icon name="file" size={14} />
             {fileName}
           </>
         ) : (
-          !comparing && 'Input'
+          !comparing && t('Input')
         )}
       </span>
       <span className="grow" />
@@ -89,15 +91,18 @@ const InputBar = memo(function InputBar() {
 function ViewNotice() {
   const viewOnly = useUI((s) => s.viewOnly);
   const bytes = useUI((s) => s.stats?.bytes ?? 0);
+  const t = useT();
   if (!viewOnly) return null;
   return (
     <div className="ed-notice" role="status">
       <Icon name="lock" size={13} />
       <span>
-        Large document{bytes ? ` (${formatBytes(bytes)})` : ''} is read-only for speed. Everything on the right still works.
+        {bytes
+          ? t('Large document ({size}) is read-only for speed. Everything on the right still works.', { size: t.bytes(bytes) })
+          : t('Large document is read-only for speed. Everything on the right still works.')}
       </span>
       <button type="button" className="btn sm" onClick={() => act((e) => e.editAnyway())}>
-        Edit anyway
+        {t('Edit anyway')}
       </button>
     </div>
   );
@@ -143,11 +148,12 @@ function EditorDom({
 }
 
 function EditorPane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }) {
+  const t = useT();
   return (
-    <section className="pane pane-ed" aria-label="JSON input">
+    <section className="pane pane-ed" aria-label={t('JSON input')}>
       <InputBar />
       <ViewNotice />
-      <EditorDom edRef={edRef} id="input" label="JSON input" placeholder="Looks like someone's got a JSON…" autoFocus />
+      <EditorDom edRef={edRef} id="input" label={t('JSON input')} placeholder={t("Looks like someone's got a JSON…")} autoFocus />
     </section>
   );
 }
@@ -156,11 +162,12 @@ function EditorPane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }
 function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }) {
   const comparing = useUI((s) => s.settings.view === 'compare');
   const cmpFile = useUI((s) => s.cmpFile);
+  const t = useT();
   return (
-    <section className="pane pane-cmp" aria-label="Modified JSON" hidden={!comparing}>
-      <div className="toolbar" role="toolbar" aria-label="Modified document">
+    <section className="pane pane-cmp" aria-label={t('Modified JSON')} hidden={!comparing}>
+      <div className="toolbar" role="toolbar" aria-label={t('Modified document')}>
         <span className="fname" title={cmpFile ?? undefined}>
-          <b className="side-tag">Modified</b>
+          <b className="side-tag">{t('Modified')}</b>
           {cmpFile && (
             <>
               <Icon name="file" size={14} />
@@ -185,7 +192,7 @@ function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> 
         </Menu>
         <Btn icon="x" label="Close compare" hideLabel onClick={() => act((e) => e.closeCompare())} />
       </div>
-      <EditorDom edRef={edRef} id="input2" label="Modified JSON" placeholder="Paste the modified JSON to compare…" />
+      <EditorDom edRef={edRef} id="input2" label={t('Modified JSON')} placeholder={t('Paste the modified JSON to compare…')} />
     </section>
   );
 }
@@ -199,6 +206,7 @@ function Menu({ label, children }: { label: string; children: (close: () => void
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const id = useId();
+  const name = useT()(label);
 
   useEffect(() => {
     if (!open) return;
@@ -234,16 +242,16 @@ function Menu({ label, children }: { label: string; children: (close: () => void
         id={id}
         type="button"
         className={`btn icon${open ? ' on' : ''}`}
-        aria-label={label}
+        aria-label={name}
         aria-haspopup="menu"
         aria-expanded={open}
-        data-tip={open ? undefined : label}
+        data-tip={open ? undefined : name}
         onClick={() => setOpen((o) => !o)}
       >
         <Icon name="more" />
       </button>
       {open && (
-        <div className="menu" role="menu" aria-label={label} onKeyDown={onKey}>
+        <div className="menu" role="menu" aria-label={name} onKeyDown={onKey}>
           {children(close)}
         </div>
       )}
@@ -262,7 +270,7 @@ function MItem({ label, keys, onClick, close }: { label: string; keys?: string; 
         onClick();
       }}
     >
-      <span>{label}</span>
+      <span>{useT()(label)}</span>
       {keys && <Kbd k={keys} />}
     </button>
   );
@@ -271,7 +279,7 @@ function MItem({ label, keys, onClick, close }: { label: string; keys?: string; 
 function MCheck({ label, checked, onClick }: { label: string; checked: boolean; onClick: () => void }) {
   return (
     <button type="button" role="menuitemcheckbox" aria-checked={checked} className="mi" onClick={onClick}>
-      <span>{label}</span>
+      <span>{useT()(label)}</span>
       <span className="mi-check">{checked && <Icon name="check" size={14} />}</span>
     </button>
   );
@@ -292,9 +300,10 @@ function MChoice<T extends string | number>({
   /** Close the menu after picking (actions); omit to keep it open (settings). */
   close?: () => void;
 }) {
+  const t = useT();
   return (
-    <div className="mi mi-row" role="group" aria-label={label}>
-      <span>{label}</span>
+    <div className="mi mi-row" role="group" aria-label={t(label)}>
+      <span>{t(label)}</span>
       <span className="mi-opts">
         {options.map((o) => (
           <button
@@ -307,7 +316,7 @@ function MChoice<T extends string | number>({
               onPick(o.v);
             }}
           >
-            {o.label}
+            {t(o.label)}
           </button>
         ))}
       </span>
@@ -316,7 +325,7 @@ function MChoice<T extends string | number>({
 }
 
 const MSep = () => <div className="mi-sep" role="separator" />;
-const MHead = ({ children }: { children: React.ReactNode }) => <div className="mi-head">{children}</div>;
+const MHead = ({ children }: { children: string }) => <div className="mi-head">{useT()(children)}</div>;
 
 const LEVELS = [
   { v: 1, label: '1' },
@@ -355,6 +364,7 @@ function ViewMenu() {
   const csharpLib = useUI((s) => s.settings.csharpLib);
   const hasSel = useUI((s) => !!s.path);
   const info = targetInfo(target);
+  const t = useT();
   return (
     <Menu label="More options">
       {(close) => (
@@ -401,7 +411,7 @@ function ViewMenu() {
               <MHead>{info.label}</MHead>
               {info.group === 'Types' && (
                 <label className="mi mi-row">
-                  <span>Root type name</span>
+                  <span>{t('Root type name')}</span>
                   <input
                     className="mi-input"
                     value={rootName}
@@ -453,6 +463,7 @@ function FindBar() {
 }
 
 function FindInput({ initial, total, index, note, view }: { initial: string; total: number; index: number; note?: string; view: View }) {
+  const t = useT();
   const [text, setText] = useState(initial);
   const timer = useRef(0);
   const run = (v: string) => {
@@ -482,21 +493,21 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
           run(e.target.value);
         }}
         onKeyDown={onKey}
-        placeholder={view === 'tree' ? 'Find, or $.path' : 'Find'}
-        aria-label="Find in view"
+        placeholder={t(view === 'tree' ? 'Find, or $.path' : 'Find')}
+        aria-label={t('Find in view')}
         spellCheck={false}
         autoComplete="off"
       />
-      <span className="count" aria-live="polite" title={note}>
-        {text ? (total ? `${index + 1} of ${total >= 100000 ? '100k+' : int(total)}` : note ? 'Concrete paths only' : 'No results') : ''}
+      <span className="count" aria-live="polite" title={note && t.msg(note)}>
+        {text ? (total ? t('{i} of {total}', { i: t.num(index + 1), total: total >= 100000 ? '100k+' : t.num(total) }) : t(note ? 'Concrete paths only' : 'No results')) : ''}
       </span>
-      <button type="button" className="btn icon sm" aria-label="Previous match" onClick={() => act((e) => e.findStep(-1))}>
+      <button type="button" className="btn icon sm" aria-label={t('Previous match')} onClick={() => act((e) => e.findStep(-1))}>
         <Icon name="up" size={14} />
       </button>
-      <button type="button" className="btn icon sm" aria-label="Next match" onClick={() => act((e) => e.findStep(1))}>
+      <button type="button" className="btn icon sm" aria-label={t('Next match')} onClick={() => act((e) => e.findStep(1))}>
         <Icon name="down" size={14} />
       </button>
-      <button type="button" className="btn icon sm" aria-label="Close find" onClick={() => act((e) => e.closeFind())}>
+      <button type="button" className="btn icon sm" aria-label={t('Close find')} onClick={() => act((e) => e.closeFind())}>
         <Icon name="x" size={14} />
       </button>
     </div>
@@ -507,9 +518,10 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
 
 function Crumbs() {
   const { segs, rows, cols, ok } = useUI((s) => s.table);
-  if (!ok) return <span className="muted sm">Select an array or object</span>;
+  const t = useT();
+  if (!ok) return <span className="muted sm">{t('Select an array or object')}</span>;
   return (
-    <nav className="crumbs" aria-label="Table location">
+    <nav className="crumbs" aria-label={t('Table location')}>
       <button type="button" onClick={() => act((e) => e.tableGoto([]))}>$</button>
       {segs.map((k, i) => (
         <span key={i}>
@@ -520,7 +532,7 @@ function Crumbs() {
         </span>
       ))}
       <span className="muted sm dims">
-        {int(rows)} × {cols - 1}
+        {t.num(rows)} × {t.num(cols - 1)}
       </span>
     </nav>
   );
@@ -537,12 +549,13 @@ const VIEWS: { id: View; label: string }[] = [
 /** Text tabs; on narrow panes a single dropdown instead. */
 function ViewSwitch() {
   const view = useUI((s) => s.settings.view);
+  const t = useT();
   return (
     <>
       <div
         className="tabs"
         role="tablist"
-        aria-label="View"
+        aria-label={t('View')}
         onKeyDown={(e) => {
           const i = VIEWS.findIndex((v) => v.id === view);
           const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
@@ -564,16 +577,16 @@ function ViewSwitch() {
             data-tip={`Alt+${i + 1}`}
             onClick={() => act((e) => e.setView(v.id))}
           >
-            {v.label}
+            {t(v.label)}
           </button>
         ))}
       </div>
       <label className="pick tabs-pick">
-        <span className="sr-only">View</span>
+        <span className="sr-only">{t('View')}</span>
         <select value={view} onChange={(e) => act((en) => en.setView(e.target.value as View))}>
           {VIEWS.map((v) => (
             <option key={v.id} value={v.id}>
-              {v.label}
+              {t(v.label)}
             </option>
           ))}
         </select>
@@ -589,25 +602,26 @@ function OutputStyle() {
   const escape = useUI((s) => s.settings.escape);
   const { pretty, minified, escaped } = useUI((s) => s.fmt);
   const saved = pretty > 0 ? Math.round((1 - minified / pretty) * 100) : 0;
+  const t = useT();
   return (
-    <div className="seg seg-sm" role="radiogroup" aria-label="Output style">
-      <button type="button" role="radio" aria-checked={!minify && !escape} onClick={() => act((e) => e.setFormat({ minify: false, escape: false }))} data-tip="Indented and readable">
-        Pretty
-        {pretty > 0 && <span className="seg-size">{formatBytes(pretty)}</span>}
+    <div className="seg seg-sm" role="radiogroup" aria-label={t('Output style')}>
+      <button type="button" role="radio" aria-checked={!minify && !escape} onClick={() => act((e) => e.setFormat({ minify: false, escape: false }))} data-tip={t('Indented and readable')}>
+        {t('Pretty')}
+        {pretty > 0 && <span className="seg-size">{t.bytes(pretty)}</span>}
       </button>
       <button
         type="button"
         role="radio"
         aria-checked={minify && !escape}
         onClick={() => act((e) => e.setFormat({ minify: true, escape: false }))}
-        data-tip={saved > 0 ? `${saved}% smaller` : 'One line, no whitespace'}
+        data-tip={saved > 0 ? t('{percent}% smaller', { percent: saved }) : t('One line, no whitespace')}
       >
-        Minify
-        {minified > 0 && <span className="seg-size">{formatBytes(minified)}</span>}
+        {t('Minify')}
+        {minified > 0 && <span className="seg-size">{t.bytes(minified)}</span>}
       </button>
-      <button type="button" role="radio" aria-checked={escape} onClick={() => act((e) => e.setFormat({ escape: true }))} data-tip="Minified, then escaped as one JSON string">
-        String
-        {escaped > 0 && <span className="seg-size">{formatBytes(escaped)}</span>}
+      <button type="button" role="radio" aria-checked={escape} onClick={() => act((e) => e.setFormat({ escape: true }))} data-tip={t('Minified, then escaped as one JSON string')}>
+        {t('String')}
+        {escaped > 0 && <span className="seg-size">{t.bytes(escaped)}</span>}
       </button>
     </div>
   );
@@ -616,9 +630,10 @@ function OutputStyle() {
 /** Tree: the selected node's path (click to copy). */
 function TreePath() {
   const path = useUI((s) => s.path);
-  if (!path) return <span className="muted sm nowrap">Select a node</span>;
+  const t = useT();
+  if (!path) return <span className="muted sm nowrap">{t('Select a node')}</span>;
   return (
-    <button type="button" className="path" onClick={() => act((e) => e.copyPath())} data-tip="Copy path">
+    <button type="button" className="path" onClick={() => act((e) => e.copyPath())} data-tip={t('Copy path')}>
       {path}
     </button>
   );
@@ -629,17 +644,18 @@ function TargetPick() {
   const target = useUI((s) => s.settings.target);
   const loading = useUI((s) => s.convert.loading);
   const info = targetInfo(target);
+  const t = useT();
   return (
     <>
       {loading && <i className="spin muted" />}
       <label className="pick">
-        <span className="sr-only">Convert to</span>
+        <span className="sr-only">{t('Convert to')}</span>
         <select value={info.id} onChange={(e) => act((en) => en.setConvert({ target: e.target.value }))}>
           {(['Types', 'Data'] as const).map((g) => (
-            <optgroup key={g} label={g === 'Types' ? 'Types & schemas' : 'Data formats'}>
-              {TARGETS.filter((t) => t.group === g).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
+            <optgroup key={g} label={t(g === 'Types' ? 'Types & schemas' : 'Data formats')}>
+              {TARGETS.filter((x) => x.group === g).map((x) => (
+                <option key={x.id} value={x.id}>
+                  {t(x.label)}
                 </option>
               ))}
             </optgroup>
@@ -656,8 +672,9 @@ function ViewToolbar() {
   const mac = useUI((s) => s.mac);
   const mod = mac ? '⌘' : 'Ctrl+';
   const findOpen = useUI((s) => s.find.open);
+  const t = useT();
   return (
-    <div className="toolbar vbar" role="toolbar" aria-label="Viewer">
+    <div className="toolbar vbar" role="toolbar" aria-label={t('Viewer')}>
       <ViewSwitch />
       <span className="grow" />
       <div className="vmain">
@@ -671,8 +688,8 @@ function ViewToolbar() {
           <button
             type="button"
             className={`btn icon${findOpen ? ' on' : ''}`}
-            aria-label={`Find · ${mod}F`}
-            data-tip={`Find · ${mod}F`}
+            aria-label={`${t('Find')}${t(' · ')}${mod}F`}
+            data-tip={`${t('Find')}${t(' · ')}${mod}F`}
             onClick={() => act((e) => (store.get().find.open ? e.closeFind() : e.focusSearch()))}
           >
             <Icon name="search" />
@@ -697,19 +714,20 @@ function useNow(ms: number) {
 }
 
 /** The status-bar label for a JWT, e.g. "expires in 59m": it ages, so it is recomputed as time passes. */
-function jwtWhen(j: JwtInfo, nowMs: number) {
+function jwtWhen(j: JwtInfo, nowMs: number, t: T) {
   const now = nowMs / 1000;
-  if (j.exp !== undefined && j.exp <= now) return { warn: true, text: `expired ${compact(now - j.exp)} ago` };
-  if (j.nbf !== undefined && j.nbf > now) return { warn: true, text: `valid in ${compact(j.nbf - now)}` };
-  return { warn: false, text: j.exp !== undefined ? `expires in ${compact(j.exp - now)}` : 'no expiry' };
+  if (j.exp !== undefined && j.exp <= now) return { warn: true, text: t('expired {duration} ago', { duration: t.dur(now - j.exp) }) };
+  if (j.nbf !== undefined && j.nbf > now) return { warn: true, text: t('valid in {duration}', { duration: t.dur(j.nbf - now) }) };
+  return { warn: false, text: j.exp !== undefined ? t('expires in {duration}', { duration: t.dur(j.exp - now) }) : t('no expiry') };
 }
 
 function JwtStatus({ jwt }: { jwt: JwtInfo }) {
-  const t = jwtWhen(jwt, useNow(1000));
+  const t = useT();
+  const w = jwtWhen(jwt, useNow(1000), t);
   return (
-    <span className={`st ${t.warn ? 'warn' : 'ok'}`} title="Decoded in your browser. The signature is not verified.">
+    <span className={`st ${w.warn ? 'warn' : 'ok'}`} title={t('Decoded in your browser. The signature is not verified.')}>
       <i className="dot" />
-      JWT{jwt.alg ? ` · ${jwt.alg}` : ''} · {t.text}
+      {['JWT', jwt.alg, w.text].filter(Boolean).join(t(' · '))}
     </span>
   );
 }
@@ -717,16 +735,17 @@ function JwtStatus({ jwt }: { jwt: JwtInfo }) {
 function Banner() {
   const status = useUI((s) => s.status);
   const hint = useUI((s) => s.hint);
+  const t = useT();
   if (status.kind === 'valid' && hint === 'unescape') {
     return (
       <div className="banner info" role="status" aria-live="polite">
         <Icon name="braces" size={15} />
         <span className="b-msg">
-          <b>This is a JSON string that contains JSON</b>
-          <span>Unescape it to view and edit the inner document.</span>
+          <b>{t('This is a JSON string that contains JSON')}</b>
+          <span>{t('Unescape it to view and edit the inner document.')}</span>
         </span>
         <button type="button" className="btn sm accent" onClick={() => act((e) => e.unescapeDoc())}>
-          Unescape JSON
+          {t('Unescape JSON')}
         </button>
       </div>
     );
@@ -737,28 +756,26 @@ function Banner() {
     <div className={`banner ${err ? 'err' : 'warn'}`} role="status" aria-live="polite">
       <Icon name="alert" size={15} />
       <button type="button" className="b-msg" onClick={() => act((e) => e.gotoError())}>
-        <b>{err ? 'Invalid JSON' : `Not strict JSON · ${status.count} fixable issue${status.count > 1 ? 's' : ''}`}</b>
-        <span>
-          Ln {status.line}, Col {status.col}: {status.msg}
-        </span>
+        <b>{err ? t('Invalid JSON') : t.n(status.count, 'Not strict JSON · {n} fixable issue', 'Not strict JSON · {n} fixable issues')}</b>
+        <span>{t('Ln {line}, Col {col}: {msg}', { line: status.line, col: status.col, msg: t.msg(status.msg) })}</span>
       </button>
       {hint === 'unescape' && (
         <button type="button" className="btn sm accent" onClick={() => act((e) => e.unescapeDoc())}>
-          Unescape JSON
+          {t('Unescape JSON')}
         </button>
       )}
       {(hint === 'yaml' || hint === 'xml' || hint === 'csv' || hint === 'toml') && (
         <button type="button" className="btn sm accent" onClick={() => act((e) => e.importAs(hint))}>
-          {hint.toUpperCase()} → JSON
+          {t('{format} → JSON', { format: hint.toUpperCase() })}
         </button>
       )}
       {err ? (
         <button type="button" className="btn sm" onClick={() => act((e) => e.gotoError())}>
-          Go to error
+          {t('Go to error')}
         </button>
       ) : (
-        <button type="button" className="btn sm accent" onClick={() => act((e) => e.repair())} data-tip="Replace the input with the repaired JSON">
-          <Icon name="wand" size={14} /> Repair input
+        <button type="button" className="btn sm accent" onClick={() => act((e) => e.repair())} data-tip={t('Replace the input with the repaired JSON')}>
+          <Icon name="wand" size={14} /> {t('Repair input')}
         </button>
       )}
     </div>
@@ -777,8 +794,9 @@ function Watermark() {
 
 function ConvertNote() {
   const { error } = useUI((s) => s.convert);
+  const t = useT();
   if (!error) return null;
-  return <div className="cv-note">{error}</div>;
+  return <div className="cv-note">{t.msg(error)}</div>;
 }
 
 function ViewerPane({
@@ -795,25 +813,26 @@ function ViewerPane({
   const view = useUI((s) => s.settings.view);
   const stale = useUI((s) => s.stale);
   const empty = useUI((s) => s.empty);
+  const t = useT();
   return (
-    <section className="pane pane-view" aria-label="JSON viewer">
+    <section className="pane pane-view" aria-label={t('JSON viewer')}>
       <ViewToolbar />
       <div className={`view${stale ? ' stale' : ''}`}>
         <Banner />
         <FindBar />
-        <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label="Formatted output">
+        <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label={t('Formatted output')}>
           <div className="cv-sizer">
             <div className="cv-rows" />
           </div>
         </div>
-        <div id="view-tree" className="tv" ref={treeRef} tabIndex={0} role="tree" aria-label="JSON tree" hidden={view !== 'tree' || empty}>
+        <div id="view-tree" className="tv" ref={treeRef} tabIndex={0} role="tree" aria-label={t('JSON tree')} hidden={view !== 'tree' || empty}>
           <div className="tv-sizer">
             <div className="tv-rows" />
             <div className="tv-acts" hidden>
-              <button type="button" data-a="value" aria-label="Copy value" data-tip="Copy value">
+              <button type="button" data-a="value" aria-label={t('Copy value')} data-tip={t('Copy value')}>
                 <Icon name="copy" size={14} />
               </button>
-              <button type="button" data-a="path" aria-label="Copy path" data-tip="Copy path">
+              <button type="button" data-a="path" aria-label={t('Copy path')} data-tip={t('Copy path')}>
                 <Icon name="path" size={14} />
               </button>
             </div>
@@ -825,10 +844,10 @@ function ViewerPane({
             <div className="tb-rows" />
           </div>
           <div className="tb-empty" hidden>
-            Select an array or object in the tree to see it as a table.
+            {t('Select an array or object in the tree to see it as a table.')}
           </div>
         </div>
-        <div id="view-convert" className="cv" ref={codeRef} hidden={view !== 'convert' || empty} tabIndex={0} aria-label="Converted output">
+        <div id="view-convert" className="cv" ref={codeRef} hidden={view !== 'convert' || empty} tabIndex={0} aria-label={t('Converted output')}>
           <div className="cv-sizer">
             <div className="cv-rows" />
           </div>
@@ -846,7 +865,9 @@ function ViewerPane({
 // prefetched in the background shortly after startup for offline use).
 const CompareView = dynamic(() => import('./CompareView'), {
   ssr: false,
-  loading: () => <div className="cv-note">Loading compare…</div>,
+  loading: function Loading() {
+    return <div className="cv-note">{useT()('Loading compare…')}</div>;
+  },
 });
 const UNITS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
 const onJump = (l: number | undefined, r: number | undefined) => act((e) => e.compareJump(l, r));
@@ -911,7 +932,7 @@ function Splitter() {
       className="split"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize panels"
+      aria-label={useT()('Resize panels')}
       aria-valuenow={Math.round(cur * 100)}
       aria-valuemin={lo * 100}
       aria-valuemax={hi * 100}
@@ -931,24 +952,25 @@ function Splitter() {
 
 function StatusMsg() {
   const status = useUI((s) => s.status);
+  const t = useT();
   switch (status.kind) {
     case 'empty':
-      return <span className="st muted">Ready</span>;
+      return <span className="st muted">{t('Ready')}</span>;
     case 'parsing':
       return (
         <span className="st muted">
-          <i className="spin" /> Parsing…
+          <i className="spin" /> {t('Parsing…')}
         </span>
       );
     case 'valid':
       if (status.jwt) return <JwtStatus jwt={status.jwt} />;
       return (
-        <span className="st ok" title={status.jsonl ? 'One JSON value per line, shown as an array of records' : undefined}>
+        <span className="st ok" title={status.jsonl ? t('One JSON value per line, shown as an array of records') : undefined}>
           <i className="dot" />
-          {status.jsonl ? `JSON Lines · ${plural(status.jsonl, 'record')}` : 'Valid JSON'}
+          {status.jsonl ? t.n(status.jsonl, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}
           {status.warnings > 0 && (
-            <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg}>
-              · {plural(status.warnings, 'duplicate key')}
+            <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg && t.msg(status.msg)}>
+              · {t.n(status.warnings, '{n} duplicate key', '{n} duplicate keys')}
             </button>
           )}
         </span>
@@ -956,20 +978,14 @@ function StatusMsg() {
     default: {
       const err = status.kind === 'error';
       return (
-        <button type="button" className={`st st-link ${err ? 'err' : 'warn'}`} onClick={() => act((e) => e.gotoError())} title="Go to error">
+        <button type="button" className={`st st-link ${err ? 'err' : 'warn'}`} onClick={() => act((e) => e.gotoError())} title={t('Go to error')}>
           <i className="dot" />
-          <span className="st-msg">
-            Ln {status.line}, Col {status.col}: {status.msg}
-          </span>
+          <span className="st-msg">{t('Ln {line}, Col {col}: {msg}', { line: status.line, col: status.col, msg: t.msg(status.msg) })}</span>
         </button>
       );
     }
   }
 }
-
-/** Thousands separators only where they show: the first toLocaleString() pays for the locale data (~80 ms on a slow phone). */
-const int = (n: number) => (n < 1000 ? String(n) : n.toLocaleString());
-const plural = (n: number, w: string) => `${int(n)} ${w}${n === 1 ? '' : 's'}`;
 
 const CODECS = [
   ['gzip', 'gzip'],
@@ -983,23 +999,24 @@ function Sizes() {
   const sizes = useUI((s) => s.sizes);
   // A JWT input has no minified form of its own: just its raw size.
   const parsed = useUI((s) => (s.status.kind === 'valid' && !s.status.jwt) || s.status.kind === 'fixable');
+  const t = useT();
   if (raw === undefined) return null;
-  const less = (n: number) => (raw > n ? ` · ${Math.round((1 - n / raw) * 100)}% smaller than the input` : '');
+  const less = (n: number) => (raw > n ? t(' · ') + t('{percent}% smaller than the input', { percent: Math.round((1 - n / raw) * 100) }) : '');
   return (
     <span className={sizes?.stale ? 'sizes stale' : 'sizes'}>
-      <span className="sz sz-raw" data-tip="Input, as typed" data-tip-up="">
-        {formatBytes(raw)} <i>raw</i>
+      <span className="sz sz-raw" data-tip={t('Input, as typed')} data-tip-up="">
+        {t.bytes(raw)} <i>{t('raw')}</i>
       </span>
       {sizes ? (
         <>
-          <span className="sz sz-min" data-tip={`Minified${less(sizes.min)}`} data-tip-up="">
-            {formatBytes(sizes.min)} <i>min</i>
+          <span className="sz sz-min" data-tip={t('Minified') + less(sizes.min)} data-tip-up="">
+            {t.bytes(sizes.min)} <i>{t('min')}</i>
           </span>
           {CODECS.map(([k, label]) => {
             const n = sizes[k];
             return n === undefined ? null : (
-              <span key={k} className="sz" data-tip={`Minified, then ${label}-compressed (what a server sends)${less(n)}`} data-tip-up="">
-                {formatBytes(n)} <i>{label}</i>
+              <span key={k} className="sz" data-tip={t('Minified, then {codec}-compressed (what a server sends)', { codec: label }) + less(n)} data-tip-up="">
+                {t.bytes(n)} <i>{label}</i>
               </span>
             );
           })}
@@ -1007,7 +1024,7 @@ function Sizes() {
       ) : (
         parsed && (
           <span className="sz" aria-hidden="true">
-            … <i>min</i>
+            … <i>{t('min')}</i>
           </span>
         )
       )}
@@ -1017,27 +1034,31 @@ function Sizes() {
 
 function Stats() {
   const stats = useUI((s) => s.stats);
+  const t = useT();
   if (!stats) return null;
   return (
-    <span className="stats muted" title={`Parsed in ${stats.ms.toFixed(1)} ms`}>
-      {plural(stats.lines, 'line')} · {plural(stats.nodes, 'node')} · depth {stats.depth}
+    <span className="stats muted" title={t('Parsed in {ms} ms', { ms: t.lang ? t.num(Math.round(stats.ms * 10) / 10) : stats.ms.toFixed(1) })}>
+      {t.n(stats.lines, '{n} line', '{n} lines')} · {t.n(stats.nodes, '{n} node', '{n} nodes')} · {t('depth {depth}', { depth: stats.depth })}
     </span>
   );
 }
 
 function Cursor() {
   const { line, col, sel } = useUI((s) => s.cursor);
+  const t = useT();
   return (
     <span className="cursor muted">
-      Ln {line}, Col {col}
-      {sel > 0 && ` (${int(sel)} selected)`}
+      {t('Ln {line}, Col {col}', { line, col })}
+      {sel > 0 && ' ' + t.n(sel, '({n} selected)', '({n} selected)')}
     </span>
   );
 }
 
 /** One quiet line: status and document stats on the left; caret, commands and theme on the right. */
-function StatusBar() {
+function StatusBar({ langs }: { langs?: ReactNode }) {
   const theme = useUI((s) => s.settings.theme);
+  const t = useT();
+  const themeLabel = t(theme === 'light' ? 'Theme: light' : theme === 'dark' ? 'Theme: dark' : 'Theme: system');
   return (
     <footer className="statusbar">
       <div className="sb-l">
@@ -1047,10 +1068,11 @@ function StatusBar() {
       </div>
       <div className="sb-r">
         <Cursor />
-        <Link className="sb-btn" href="/blogs" prefetch={false}>
-          Blog
+        <Link className="sb-btn" href="/blogs" prefetch={false} hrefLang={t.lang ? 'en' : undefined}>
+          {t('Blog')}
         </Link>
-        <button type="button" className="sb-btn" onClick={() => act((e) => e.openPalette())} aria-label="All commands" data-tip="All commands" data-tip-up="">
+        {langs}
+        <button type="button" className="sb-btn" onClick={() => act((e) => e.openPalette())} aria-label={t('All commands')} data-tip={t('All commands')} data-tip-up="">
           <span className="fine-only">
             <Kbd k="mod+K" />
           </span>
@@ -1060,8 +1082,8 @@ function StatusBar() {
           type="button"
           className="sb-btn"
           onClick={() => act((e) => e.cycleTheme())}
-          aria-label={`Theme: ${theme}`}
-          data-tip={`Theme: ${theme}`}
+          aria-label={themeLabel}
+          data-tip={themeLabel}
           data-tip-up=""
         >
           <Icon name={theme === 'light' ? 'sun' : theme === 'dark' ? 'moon' : 'system'} size={14} />
@@ -1073,13 +1095,14 @@ function StatusBar() {
 
 function ToastHost() {
   const toast = useUI((s) => s.toast);
+  const t = useT();
   return (
     <div className="toasts" aria-live="polite" role="status">
       {toast && (
         <div key={toast.id} className={`toast ${toast.kind}`}>
           {toast.kind === 'ok' && <Icon name="check" size={14} />}
           {toast.kind === 'err' && <Icon name="alert" size={14} />}
-          {toast.msg}
+          {t.msg(toast.msg)}
           {toast.action && (
             <button
               type="button"
@@ -1089,11 +1112,11 @@ function ToastHost() {
                 toast.action?.run();
               }}
             >
-              {toast.action.label}
+              {t.msg(toast.action.label)}
             </button>
           )}
           {toast.action && (
-            <button type="button" className="toast-x" aria-label="Dismiss" onClick={() => store.set({ toast: null })}>
+            <button type="button" className="toast-x" aria-label={t('Dismiss')} onClick={() => store.set({ toast: null })}>
               <Icon name="x" size={13} />
             </button>
           )}
@@ -1105,12 +1128,13 @@ function ToastHost() {
 
 function DropOverlay() {
   const dragging = useUI((s) => s.dragging);
+  const t = useT();
   if (!dragging) return null;
   return (
     <div className="drop">
       <div>
         <Icon name="open" size={28} />
-        Drop to open your JSON file
+        {t('Drop to open your JSON file')}
       </div>
     </div>
   );
@@ -1118,7 +1142,9 @@ function DropOverlay() {
 
 // ── Root ───────────────────────────────────────────────────────────────────
 
-export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
+export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /** Language switcher (server-rendered links). */ langs?: ReactNode } = {}) {
+  const t = useT();
+  const tRef = useRef(t);
   const presetRef = useRef(preset);
   const edRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -1132,6 +1158,8 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
 
   useEffect(() => {
     const pagePreset = presetRef.current;
+    // Engine DOM code (folds, tooltips, value hints) reads the page's strings from here.
+    setRuntime(tRef.current);
     const e = new Engine({
       editor: edRef.current!,
       tree: treeRef.current!,
@@ -1159,10 +1187,8 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
     <div className={`app${comparing ? ' comparing' : ''}${empty ? ' is-empty' : ''}`}>
       {!preset && (
         <>
-          <h1 className="sr-only">Tool Kumar: JSON Formatter &amp; Viewer</h1>
-          <p className="sr-only">
-            Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.
-          </p>
+          <h1 className="sr-only">{t('Tool Kumar: JSON Formatter & Viewer')}</h1>
+          <p className="sr-only">{t('Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.')}</p>
         </>
       )}
       {/* The page supplies the main landmark (home: around the tool and its guide; landing pages: the content below). */}
@@ -1173,7 +1199,7 @@ export default function JsonTool({ preset }: { preset?: EnginePreset } = {}) {
         <Watermark />
         <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} fmtRef={fmtRef} />
       </div>
-      <StatusBar />
+      <StatusBar langs={langs} />
       <ToastHost />
       <DropOverlay />
       <CommandPalette />
