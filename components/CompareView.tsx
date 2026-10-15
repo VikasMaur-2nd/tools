@@ -24,6 +24,8 @@ import { LineMap, lineMarks } from '@/lib/diff/lines';
 import { buildRows, canonLines, diffLines, pairLines, wordDiff, ROW_DEL, ROW_EQ, ROW_GAP, ROW_MOD, type Canon, type LineDiff, type Pairs, type Row as DRow } from '@/lib/diff/text';
 import { highlightLine, type Mark } from '@/lib/engine/highlight';
 import { Icon } from './icons';
+import { useT } from '@/lib/i18n/react';
+import type { T } from '@/lib/i18n/ui';
 
 export interface CompareViewProps {
   /** Original document (main editor). */
@@ -109,17 +111,18 @@ function textModel(l: JNode, r: JNode, sortKeys: boolean): TextModel | string {
 
 const valueText = (n: JNode) => (n.t >= ARR ? preview(n, 90) : primText(n, 160));
 
-const describe = (c: Change) =>
+const describe = (c: Change, tr: T) =>
   c.order
-    ? `Key order differs at ${formatPath(c.path)}`
-    : `${KIND_LABEL[c.kind]} ${formatPath(c.path)}${c.left ? ': ' + valueText(c.left) : ''}${c.right ? (c.left ? ' → ' : ': ') + valueText(c.right) : ''}`;
+    ? tr('Key order differs at {path}', { path: formatPath(c.path) })
+    : `${tr(KIND_LABEL[c.kind])} ${formatPath(c.path)}${c.left ? ': ' + valueText(c.left) : ''}${c.right ? (c.left ? ' → ' : ': ') + valueText(c.right) : ''}`;
 
 const matches = (c: Change, f: Filter) => f === 'all' || c.kind === f || (f === 'changed' && c.kind === 'type');
 
 const Row = memo(function Row({ c, i, sel }: { c: Change; i: number; sel: boolean }) {
+  const tr = useT();
   const kind = c.kind;
   let vals;
-  if (c.order) vals = <span className="cmp-note">key order differs</span>;
+  if (c.order) vals = <span className="cmp-note">{tr('key order differs')}</span>;
   else if (kind === 'added') vals = <span className="cmp-new">{valueText(c.right as JNode)}</span>;
   else if (kind === 'removed') vals = <span className="cmp-old">{valueText(c.left as JNode)}</span>;
   else {
@@ -144,7 +147,7 @@ const Row = memo(function Row({ c, i, sel }: { c: Change; i: number; sel: boolea
       className={`cmp-row cmp-k-${kind}${sel ? ' sel' : ''}`}
       style={{ transform: `translateY(${i * ROW_H}px)` }}
       aria-current={sel || undefined}
-      aria-label={describe(c)}
+      aria-label={describe(c, tr)}
     >
       <span className="cmp-mark" aria-hidden="true">
         {KIND_MARK[kind]}
@@ -162,14 +165,14 @@ const Row = memo(function Row({ c, i, sel }: { c: Change; i: number; sel: boolea
  * pane of the side-by-side layout.
  */
 const DiffLine = memo(function DiffLine({ r, i, side, sel, m }: { r: DRow; i: number; side: number; sel: boolean; m: TextModel }) {
+  const tr = useT();
   const style = { top: i * LINE_H };
   if (r.k === ROW_GAP) {
-    const label = `${r.n.toLocaleString()} unchanged lines`;
     return (
       <div role="listitem" data-r={i} className={`cmp-dl gap${sel ? ' sel' : ''}`} style={style} aria-current={sel || undefined}>
-        <button type="button" className="cmp-gapb" aria-label={`Show ${label}`}>
+        <button type="button" className="cmp-gapb" aria-label={tr.n(r.n, 'Show {n} unchanged line', 'Show {n} unchanged lines')}>
           {'⋯ '}
-          {label}
+          {tr.n(r.n, '{n} unchanged line', '{n} unchanged lines')}
         </button>
       </div>
     );
@@ -216,8 +219,11 @@ const DiffLine = memo(function DiffLine({ r, i, side, sel, m }: { r: DRow; i: nu
     }
   }
   let html = highlightLine(shown, 0, shown.length, marks, false);
-  if (shown !== text) html += `<span class="cmp-more"> … ${(text.length - shown.length).toLocaleString()} more characters</span>`;
-  const label = cls === ' fill' ? 'Blank' : `${cls === ' del' ? 'Removed' : cls === ' add' ? 'Added' : 'Unchanged'}, line ${(la >= 0 ? la : lb) + 1}: ${text.slice(0, 160)}`;
+  if (shown !== text) html += `<span class="cmp-more"> … ${tr.n(text.length - shown.length, '{n} more character', '{n} more characters')}</span>`;
+  const label =
+    cls === ' fill'
+      ? tr('Blank')
+      : tr(cls === ' del' ? 'Removed, line {line}: {text}' : cls === ' add' ? 'Added, line {line}: {text}' : 'Unchanged, line {line}: {text}', { line: (la >= 0 ? la : lb) + 1, text: text.slice(0, 160) });
 
   return (
     <div role="listitem" data-r={i} className={`cmp-dl${cls}${sel ? ' sel' : ''}`} style={style} aria-current={sel || undefined} aria-label={label}>
@@ -232,6 +238,7 @@ const DiffLine = memo(function DiffLine({ r, i, side, sel, m }: { r: DRow; i: nu
 });
 
 function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: CompareViewProps) {
+  const tr = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const lwRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -431,10 +438,10 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     if (!result) return;
     const ops = toPatch(result.changes);
     const text = patchText(ops, indent);
-    if (!navigator.clipboard?.writeText) return flash('Copy failed: clipboard access was blocked');
+    if (!navigator.clipboard?.writeText) return flash(tr('Copy failed: clipboard access was blocked'));
     navigator.clipboard.writeText(text).then(
-      () => flash(result.truncated ? 'Copied, but incomplete: too many differences' : `JSON Patch copied (${ops.length.toLocaleString()} operation${ops.length === 1 ? '' : 's'})`),
-      () => flash('Copy failed: clipboard access was blocked'),
+      () => flash(result.truncated ? tr('Copied, but incomplete: too many differences') : tr.n(ops.length, 'JSON Patch copied ({n} operation)', 'JSON Patch copied ({n} operations)')),
+      () => flash(tr('Copy failed: clipboard access was blocked')),
     );
   };
 
@@ -528,13 +535,13 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
       <div tabIndex={0} className="cmp-empty err">
         <Icon name="alert" size={22} />
         <p>
-          <b>{title}</b>
+          <b>{tr(title)}</b>
           <br />
-          Ln {lm.line(err.p)}, Col {lm.col(err.p)}: {err.m}
+          {tr('Ln {line}, Col {col}: {msg}', { line: lm.line(err.p), col: lm.col(err.p), msg: tr.msg(err.m) })}
         </p>
         {onJump && (
           <button type="button" className="btn sm" onClick={() => gotoError(side)}>
-            Go to error
+            {tr('Go to error')}
           </button>
         )}
       </div>
@@ -544,9 +551,9 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     <div tabIndex={0} className="cmp-empty ok">
       <Icon name="check" size={22} />
       <p>
-        <b>No differences</b>
+        <b>{tr('No differences')}</b>
         <br />
-        {identical ? 'The documents are identical.' : msg}
+        {tr(identical ? 'The documents are identical.' : msg)}
       </p>
     </div>
   );
@@ -557,15 +564,15 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
       <div tabIndex={0} className="cmp-empty">
         <Icon name="diff" size={22} />
         <p>
-          <b>Compare two JSON documents</b>
+          <b>{tr('Compare two JSON documents')}</b>
           <br />
-          Paste the modified JSON in the middle column. It is compared with the original on the left.
+          {tr('Paste the modified JSON in the middle column. It is compared with the original on the left.')}
         </p>
         <ul>
-          <li>Arrays are matched by content or by id, so an insertion is one change</li>
-          <li>Ignore key order, array order, case or specific paths</li>
-          <li>Line by line Diff view with word-level highlights</li>
-          <li>Copy the differences as a JSON Patch (RFC 6902)</li>
+          <li>{tr('Arrays are matched by content or by id, so an insertion is one change')}</li>
+          <li>{tr('Ignore key order, array order, case or specific paths')}</li>
+          <li>{tr('Line by line Diff view with word-level highlights')}</li>
+          <li>{tr('Copy the differences as a JSON Patch (RFC 6902)')}</li>
         </ul>
       </div>
     );
@@ -573,7 +580,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     empty = (
       <div tabIndex={0} className="cmp-empty">
         <Icon name="file" size={22} />
-        <p>Add the original JSON on the left to compare.</p>
+        <p>{tr('Add the original JSON on the left to compare.')}</p>
       </div>
     );
   } else if (lErr) empty = errBox('Fix the original JSON on the left', d.l, lErr, 'l');
@@ -583,19 +590,19 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
       empty = (
         <div tabIndex={0} className="cmp-empty err">
           <Icon name="alert" size={22} />
-          <p>{result.error}</p>
+          <p>{tr.msg(result.error)}</p>
         </div>
       );
     else if (result && !result.changes.length)
-      empty = same(d.l === d.r, `The documents are equivalent${dOpts.arrayOrder || dOpts.ci || ignoreKey ? ' (with the ignore options above)' : ''}.`);
+      empty = same(d.l === d.r, dOpts.arrayOrder || dOpts.ci || ignoreKey ? 'The documents are equivalent (with the ignore options above).' : 'The documents are equivalent.');
   } else if (typeof model === 'string')
     empty = (
       <div tabIndex={0} className="cmp-empty err">
         <Icon name="alert" size={22} />
-        <p>{model}</p>
+        <p>{tr.msg(model)}</p>
       </div>
     );
-  else if (tm && !tm.d.hunks.length) empty = same(d.l === d.r, `Same data: only the formatting${keyOrder ? ' or key order' : ''} differs.`);
+  else if (tm && !tm.d.hunks.length) empty = same(d.l === d.r, keyOrder ? 'Same data: only the formatting or key order differs.' : 'Same data: only the formatting differs.');
 
   let body: ReactNode;
   let live = '';
@@ -604,13 +611,13 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     const last = Math.min(n, Math.ceil((scroll + viewH) / ROW_H) + OVERSCAN);
     const items = [];
     for (let i = first; i < last; i++) items.push(<Row key={i} c={shown[i]} i={i} sel={i === sel} />);
-    live = sel >= 0 ? `${sel + 1} of ${n}: ${describe(shown[sel])}` : sum ? `${sum.added} added, ${sum.removed} removed, ${changedCount} changed` : '';
+    live = sel >= 0 ? `${tr('{i} of {total}', { i: sel + 1, total: n })}: ${describe(shown[sel], tr)}` : sum ? tr('{added} added, {removed} removed, {changed} changed', { added: sum.added, removed: sum.removed, changed: changedCount }) : '';
     body = (
       <div
         ref={listRef}
         className="cmp-list"
         role="list"
-        aria-label={`Differences${n ? ` (${n.toLocaleString()})` : ''}`}
+        aria-label={n ? tr('Differences ({count})', { count: tr.num(n) }) : tr('Differences')}
         tabIndex={n ? 0 : -1}
         onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
         onKeyDown={onListKey}
@@ -638,7 +645,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
           ref={side === 2 ? setRightPane : setLeftPane}
           className="cmp-ds"
           role="list"
-          aria-label={side === 1 ? 'Original lines' : side === 2 ? 'Modified lines' : 'Line differences'}
+          aria-label={tr(side === 1 ? 'Original lines' : side === 2 ? 'Modified lines' : 'Line differences')}
           tabIndex={0}
           style={{ '--cmp-nw': tm.digits } as CSSProperties}
           onScroll={onDiffScroll}
@@ -653,16 +660,16 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     };
     const r = selRow >= 0 ? rows[selRow] : null;
     live = !r
-      ? `${tm.d.added} lines added, ${tm.d.removed} removed`
+      ? tr('{added} lines added, {removed} removed', { added: tm.d.added, removed: tm.d.removed })
       : r.k === ROW_GAP
-        ? `${r.n} unchanged lines, press Enter to show them`
+        ? tr.n(r.n, '{n} unchanged line, press Enter to show it', '{n} unchanged lines, press Enter to show them')
         : r.k === ROW_EQ
-          ? `Unchanged line ${r.a + 1}`
+          ? tr('Unchanged line {line}', { line: r.a + 1 })
           : r.a >= 0 && (r.k !== ROW_MOD || r.b < 0)
-            ? `Removed line ${r.a + 1}`
+            ? tr('Removed line {line}', { line: r.a + 1 })
             : r.a >= 0
-              ? `Changed line ${r.a + 1} to line ${r.b + 1}`
-              : `Added line ${r.b + 1}`;
+              ? tr('Changed line {from} to line {to}', { from: r.a + 1, to: r.b + 1 })
+              : tr('Added line {line}', { line: r.b + 1 });
     body = <div className={`cmp-dv${split ? ' split' : ''}`}>{split ? [pane(1), pane(2)] : pane(0)}</div>;
   }
 
@@ -670,21 +677,21 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   const navN = isDiff ? starts.length : n;
 
   return (
-    <div ref={rootRef} className={`cmp${stale ? ' stale' : ''}`} role="region" aria-label="Differences">
+    <div ref={rootRef} className={`cmp${stale ? ' stale' : ''}`} role="region" aria-label={tr('Differences')}>
       <div className="cmp-head">
-        <div className="seg seg-sm" role="radiogroup" aria-label="Show differences as">
-          <button type="button" role="radio" aria-checked={sub === 'changes'} onClick={() => pickSub('changes')} data-tip="Structural changes by JSON path">
-            Changes
+        <div className="seg seg-sm" role="radiogroup" aria-label={tr('Show differences as')}>
+          <button type="button" role="radio" aria-checked={sub === 'changes'} onClick={() => pickSub('changes')} data-tip={tr('Structural changes by JSON path')}>
+            {tr('Changes')}
           </button>
-          <button type="button" role="radio" aria-checked={sub === 'diff'} onClick={() => pickSub('diff')} data-tip="Line by line diff of the formatted documents">
-            Diff
+          <button type="button" role="radio" aria-checked={sub === 'diff'} onClick={() => pickSub('diff')} data-tip={tr('Line by line diff of the formatted documents')}>
+            {tr('Diff')}
           </button>
         </div>
         <span className="grow" />
-        <button type="button" className="btn sm icon" aria-label="Swap original and modified" data-tip="Swap original ⇄ modified" disabled={!onSwap} onClick={() => onSwap?.()}>
+        <button type="button" className="btn sm icon" aria-label={tr('Swap original and modified')} data-tip={tr('Swap original ⇄ modified')} disabled={!onSwap} onClick={() => onSwap?.()}>
           <Icon name="swap" size={15} />
         </button>
-        <button type="button" className="btn sm" aria-label="Copy JSON Patch" disabled={!result || !!result.error} data-tip="RFC 6902 patch: original → modified" onClick={copyPatch}>
+        <button type="button" className="btn sm" aria-label={tr('Copy JSON Patch')} disabled={!result || !!result.error} data-tip={tr('RFC 6902 patch: original → modified')} onClick={copyPatch}>
           <Icon name="copy" size={15} />
           <span className="cmp-lbl">JSON Patch</span>
         </button>
@@ -693,16 +700,16 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
       <div className="cmp-sum">
         {isDiff ? (
           tm ? (
-            <span className="cmp-stat" data-tip="Both sides re-formatted the same way: only data changes show">
-              <b className="cmp-plus">+{tm.d.added.toLocaleString()}</b>
+            <span className="cmp-stat" data-tip={tr('Both sides re-formatted the same way: only data changes show')}>
+              <b className="cmp-plus">+{tr.num(tm.d.added)}</b>
               <b className="cmp-minus">
                 {'−'}
-                {tm.d.removed.toLocaleString()}
+                {tr.num(tm.d.removed)}
               </b>
-              <span className="cmp-lbl">lines</span>
+              <span className="cmp-lbl">{tr('lines')}</span>
             </span>
           ) : (
-            <span className="cmp-title">Line diff</span>
+            <span className="cmp-title">{tr('Line diff')}</span>
           )
         ) : sum ? (
           <>
@@ -710,60 +717,60 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
               type="button"
               className="cmp-chip cmp-k-added"
               aria-pressed={eff === 'added'}
-              aria-label={`${sum.added} added: show only additions`}
+              aria-label={tr('{count} added: show only additions', { count: sum.added })}
               disabled={!sum.added}
-              data-tip="Show only additions"
+              data-tip={tr('Show only additions')}
               onClick={() => toggleFilter('added')}
             >
-              +{sum.added.toLocaleString()}
-              <span className="cmp-lbl">added</span>
+              +{tr.num(sum.added)}
+              <span className="cmp-lbl">{tr('added')}</span>
             </button>
             <button
               type="button"
               className="cmp-chip cmp-k-removed"
               aria-pressed={eff === 'removed'}
-              aria-label={`${sum.removed} removed: show only removals`}
+              aria-label={tr('{count} removed: show only removals', { count: sum.removed })}
               disabled={!sum.removed}
-              data-tip="Show only removals"
+              data-tip={tr('Show only removals')}
               onClick={() => toggleFilter('removed')}
             >
               {'−'}
-              {sum.removed.toLocaleString()}
-              <span className="cmp-lbl">removed</span>
+              {tr.num(sum.removed)}
+              <span className="cmp-lbl">{tr('removed')}</span>
             </button>
             <button
               type="button"
               className="cmp-chip cmp-k-changed"
               aria-pressed={eff === 'changed'}
-              aria-label={`${changedCount} changed: show only changes`}
+              aria-label={tr('{count} changed: show only changes', { count: changedCount })}
               disabled={!changedCount}
-              data-tip={sum.type ? `Show only changes (${sum.type} type change${sum.type > 1 ? 's' : ''})` : 'Show only changes'}
+              data-tip={sum.type ? tr.n(sum.type, 'Show only changes ({n} type change)', 'Show only changes ({n} type changes)') : tr('Show only changes')}
               onClick={() => toggleFilter('changed')}
             >
-              ~{changedCount.toLocaleString()}
-              <span className="cmp-lbl">changed</span>
+              ~{tr.num(changedCount)}
+              <span className="cmp-lbl">{tr('changed')}</span>
             </button>
           </>
         ) : (
-          <span className="cmp-title">Differences</span>
+          <span className="cmp-title">{tr('Differences')}</span>
         )}
-        {!isDiff && result?.truncated && <span className="cmp-trunc">first {result.changes.length.toLocaleString()}</span>}
+        {!isDiff && result?.truncated && <span className="cmp-trunc">{tr('first {count}', { count: tr.num(result.changes.length) })}</span>}
         <span className="grow" />
         {isDiff && wide && (
-          <div className="seg seg-sm" role="radiogroup" aria-label="Diff layout">
+          <div className="seg seg-sm" role="radiogroup" aria-label={tr('Diff layout')}>
             <button type="button" role="radio" aria-checked={layout === 'unified'} onClick={() => pickLayout('unified')}>
-              Unified
+              {tr('Unified')}
             </button>
             <button type="button" role="radio" aria-checked={layout === 'split'} onClick={() => pickLayout('split')}>
-              Split
+              {tr('Split')}
             </button>
           </div>
         )}
         <button
           type="button"
           className="btn sm icon"
-          aria-label={isDiff ? 'Previous change' : 'Previous difference'}
-          data-tip="Previous"
+          aria-label={tr(isDiff ? 'Previous change' : 'Previous difference')}
+          data-tip={tr('Previous')}
           disabled={!navN}
           onClick={() => (isDiff ? goHunk(-1) : select(sel < 0 ? n - 1 : Math.max(0, sel - 1), true))}
         >
@@ -772,8 +779,8 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
         <button
           type="button"
           className="btn sm icon"
-          aria-label={isDiff ? 'Next change' : 'Next difference'}
-          data-tip="Next"
+          aria-label={tr(isDiff ? 'Next change' : 'Next difference')}
+          data-tip={tr('Next')}
           disabled={!navN}
           onClick={() => (isDiff ? goHunk(1) : select(sel < 0 ? 0 : Math.min(n - 1, sel + 1), true))}
         >
@@ -781,20 +788,20 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
         </button>
       </div>
 
-      <div className="cmp-opts" role="group" aria-label="Comparison options">
+      <div className="cmp-opts" role="group" aria-label={tr('Comparison options')}>
         <button type="button" className="cmp-opt" aria-pressed={opts.keyOrder} onClick={() => setOpt('keyOrder')}>
           <Icon name="check" size={13} />
-          Ignore key order
+          {tr('Ignore key order')}
         </button>
         {!isDiff && (
           <>
             <button type="button" className="cmp-opt" aria-pressed={opts.arrayOrder} onClick={() => setOpt('arrayOrder')}>
               <Icon name="check" size={13} />
-              Ignore array order
+              {tr('Ignore array order')}
             </button>
             <button type="button" className="cmp-opt" aria-pressed={opts.ci} onClick={() => setOpt('ci')}>
               <Icon name="check" size={13} />
-              Ignore case
+              {tr('Ignore case')}
             </button>
             <input
               className="cmp-ign"
@@ -804,8 +811,8 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
                 mem.ignore = e.target.value;
                 setIgnoreText(e.target.value);
               }}
-              placeholder="Ignore paths: updatedAt, $.meta.etag, $.items[*].ts"
-              aria-label="Paths to ignore, comma separated"
+              placeholder={tr('Ignore paths: updatedAt, $.meta.etag, $.items[*].ts')}
+              aria-label={tr('Paths to ignore, comma separated')}
               spellCheck={false}
               autoComplete="off"
             />

@@ -3,6 +3,7 @@ import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
+import { rt } from '../i18n/ui';
 
 /* Virtualized grid of an array (rows = items) or object (rows = properties). */
 
@@ -264,7 +265,7 @@ export class TableView {
     let h = '';
     this.cols.forEach((c, i) => {
       const s = i === this.sortCol ? (this.sortDir > 0 ? ' asc' : ' desc') : '';
-      h += `<button class="tb-th${i === 0 ? ' tb-c0' : ''}${s}" data-c="${i}" title="Sort by ${escapeHtml(c.label)}">${escapeHtml(c.label)}</button>`;
+      h += `<button class="tb-th${i === 0 ? ' tb-c0' : ''}${s}" data-c="${i}" title="${escapeHtml(rt('Sort by {column}', { column: c.label }))}">${escapeHtml(c.label)}</button>`;
     });
     this.head.innerHTML = h;
     this.empty.hidden = !!this.node;

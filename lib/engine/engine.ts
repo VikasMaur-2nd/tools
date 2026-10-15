@@ -11,7 +11,8 @@ import { targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type Theme, type View } from './store';
 import { SAMPLE } from './sample';
 import { codecs, compressedSize } from './sizes';
-import { duration, readJwt, type JwtInput } from '../json/jwt';
+import { readJwt, type JwtInput } from '../json/jwt';
+import { rt } from '../i18n/ui';
 import { idle } from './idle';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -1203,7 +1204,7 @@ export class Engine {
     let line = 1;
     for (let i = out.indexOf('\n'); i >= 0 && i < hit.index; i = out.indexOf('\n', i + 1)) line++;
     const left = exp - Date.now() / 1000;
-    const text = left > 0 ? `expires in ${duration(left)}` : `expired ${duration(-left)} ago`;
+    const text = escapeHtml(left > 0 ? rt('expires in {duration}', { duration: rt.dur(left, true) }) : rt('expired {duration} ago', { duration: rt.dur(-left, true) }));
     this.fmt.setNotes(new Map([[line, `<span class="cv-note-tag${left > 0 ? '' : ' warn'}">${text}</span>`]]));
     this.expTimer = window.setTimeout(() => this.settings.view === 'format' && this.noteExpiry(out), Math.abs(left) < 3600 ? 1000 : 30_000);
   }
