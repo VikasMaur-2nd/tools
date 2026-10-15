@@ -1,4 +1,5 @@
 import { escapeHtml } from './highlight';
+import { TallScroll } from './tall';
 
 /*
  * Virtualized read-only code viewer with lazily highlighted lines.
@@ -32,6 +33,7 @@ export interface FindResult {
 export class CodeView {
   readonly el: HTMLElement;
   private sizer: HTMLElement;
+  private sc: TallScroll;
   private rows: HTMLElement;
   private ro: ResizeObserver;
   private lines: string[] = [];
@@ -56,6 +58,8 @@ export class CodeView {
   private notes: Map<number, string> | null = null;
   private rFirst = -1;
   private rLast = -1;
+  /** translateY of the drawn rows. */
+  private y = NaN;
   private raf = 0;
   private width = 0;
   // find
@@ -72,6 +76,7 @@ export class CodeView {
   constructor(el: HTMLElement) {
     this.el = el;
     this.sizer = el.querySelector('.cv-sizer') as HTMLElement;
+    this.sc = new TallScroll(el);
     this.rows = el.querySelector('.cv-rows') as HTMLElement;
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
@@ -113,7 +118,7 @@ export class CodeView {
     this.scanFolds();
     const digits = String(this.lines.length).length;
     this.el.style.setProperty('--cv-gw', `${Math.max(3, digits) + 5}ch`);
-    if (!keepScroll) this.el.scrollTop = 0;
+    if (!keepScroll) this.sc.top = 0;
     if (this.q) this.runFind(false);
     this.reflow(false);
   }
@@ -175,7 +180,7 @@ export class CodeView {
   foldLevel(level: number) {
     this.folded.clear();
     for (let i = 0; i < this.close.length; i++) if (this.close[i] >= 0 && this.depth[i] >= level) this.folded.add(i);
-    this.el.scrollTop = 0;
+    this.sc.top = 0;
     this.reflow(false);
   }
 
@@ -200,8 +205,8 @@ export class CodeView {
 
   /** Recomputes visible lines and wrapping (on text, fold or width changes). */
   private reflow(keepPosition: boolean, anchor = -1) {
-    const firstLine = anchor >= 0 ? anchor : keepPosition ? this.lineAtRow(Math.floor(this.el.scrollTop / RH)) : -1;
-    const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.el.scrollTop : 0;
+    const firstLine = anchor >= 0 ? anchor : keepPosition ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
+    const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.sc.top : 0;
     this.width = this.el.clientWidth;
     this.measure();
     const gutter = (Math.max(3, String(this.lines.length).length) + 5) * this.cw;
@@ -219,8 +224,8 @@ export class CodeView {
     this.rowStart = rs;
     this.states.clear();
     this.html.clear();
-    this.sizer.style.height = r * RH + 24 + 'px';
-    if (firstLine >= 0) this.el.scrollTop = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
+    this.sc.fit(r * RH + 24, this.sizer);
+    if (firstLine >= 0) this.sc.top = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
     this.render(true);
   }
 
@@ -302,12 +307,12 @@ export class CodeView {
   };
 
   render(force: boolean) {
-    const st = this.el.scrollTop;
+    const st = this.sc.top;
     const vh = this.el.clientHeight;
     const total = this.rowStart[this.vis.length] ?? 0;
     const vf = Math.floor(st / RH);
     const vl = Math.min(total, Math.ceil((st + vh) / RH));
-    if (!force && vf >= this.rFirst && vl <= this.rLast) return;
+    if (!force && vf >= this.rFirst && vl <= this.rLast) return this.place();
     const first = Math.max(0, vf - OVERSCAN);
     const last = Math.min(total, vl + OVERSCAN);
     this.rFirst = first;
@@ -355,8 +360,14 @@ export class CodeView {
       const tail = note && (!wrapped || a + this.cols >= line.length) ? note : '';
       out += `<div class="cv-l"><span class="cv-n">${gut}</span><span class="cv-c">${marks}${h || ' '}${tail}</span></div>`;
     }
-    this.rows.style.transform = `translateY(${first * RH}px)`;
     this.rows.innerHTML = out;
+    this.place();
+  }
+
+  /** Positions the drawn rows (they move with the scroll offset when it's scaled, see TallScroll). */
+  private place() {
+    const y = this.rFirst * RH + this.sc.shift;
+    if (y !== this.y) this.rows.style.transform = `translateY(${(this.y = y)}px)`;
   }
 
   // ── Find ───────────────────────────────────────────────────────────────
@@ -401,7 +412,7 @@ export class CodeView {
     }
     if (!hits.length) return;
     // Start from the first match at or below the top of the view.
-    const top = this.lineAtRow(Math.floor(this.el.scrollTop / RH));
+    const top = this.lineAtRow(Math.floor(this.sc.top / RH));
     let i = 0;
     while (i * 2 < hits.length && hits[i * 2] < top) i++;
     this.hi = i * 2 < hits.length ? i : 0;
@@ -415,7 +426,8 @@ export class CodeView {
     const row = this.rowOfLine(ln) + (this.lines[ln].length > this.cols ? Math.floor(col / this.cols) : 0);
     const y = row * RH;
     const vh = this.el.clientHeight;
-    if (y < this.el.scrollTop || y + RH > this.el.scrollTop + vh) this.el.scrollTop = Math.max(0, y - vh / 2 + RH);
+    const st = this.sc.top;
+    if (y < st || y + RH > st + vh) this.sc.top = Math.max(0, y - vh / 2 + RH);
     this.render(true);
   }
 }

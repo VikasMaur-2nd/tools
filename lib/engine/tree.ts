@@ -4,6 +4,7 @@ import { parsePath, resolve } from '../json/path';
 import { idle } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
+import { TallScroll } from './tall';
 
 /** Value hints (dates, JWTs, nested JSON…) load after first paint: they're just tooltips. */
 let valueHints: ((n: JNode) => ValueHint[]) | null = null;
@@ -42,6 +43,7 @@ const keyOf = (n: JNode) => {
 export class TreeView {
   readonly el: HTMLElement;
   private sizer: HTMLElement;
+  private sc: TallScroll;
   private rowsEl: HTMLElement;
   private acts: HTMLElement;
   private ev: TreeEvents;
@@ -60,6 +62,8 @@ export class TreeView {
   mi = -1;
   private rFirst = -1;
   private rLast = -1;
+  /** translateY of the drawn rows. */
+  private y = NaN;
   private raf = 0;
   private hover = -1;
 
@@ -67,6 +71,7 @@ export class TreeView {
     this.el = el;
     this.ev = ev;
     this.sizer = el.querySelector('.tv-sizer') as HTMLElement;
+    this.sc = new TallScroll(el);
     this.rowsEl = el.querySelector('.tv-rows') as HTMLElement;
     this.acts = el.querySelector('.tv-acts') as HTMLElement;
     el.addEventListener('scroll', this.onScroll, { passive: true });
@@ -96,7 +101,7 @@ export class TreeView {
     if (reset) {
       this.toggles.clear();
       this.limit = nodes <= 50_000 ? Infinity : nodes <= 500_000 ? 3 : 2;
-      this.el.scrollTop = 0;
+      this.sc.top = 0;
     }
     this.root = root;
     if (!root) this.sel = null;
@@ -105,7 +110,7 @@ export class TreeView {
 
   private rebuild() {
     this.rows = this.root ? this.flatten(this.root, '', true) : [];
-    this.sizer.style.height = this.rows.length * RH + 'px';
+    this.sc.fit(this.rows.length * RH, this.sizer);
     this.render(true);
   }
 
@@ -170,7 +175,7 @@ export class TreeView {
     while (j < this.rows.length && this.rows[j].d > n.d) j++;
     const sub = open ? this.flatten(n, keyOf(n), false) : [];
     this.rows = this.rows.slice(0, i + 1).concat(sub, this.rows.slice(j));
-    this.sizer.style.height = this.rows.length * RH + 'px';
+    this.sc.fit(this.rows.length * RH, this.sizer);
     this.render(true);
   }
 
@@ -185,7 +190,7 @@ export class TreeView {
     this.limit = 1;
     this.toggles.clear();
     this.rebuild();
-    this.el.scrollTop = 0;
+    this.sc.top = 0;
   }
 
   expandTo(level: number) {
@@ -221,10 +226,10 @@ export class TreeView {
     const i = this.indexOf(this.sel);
     if (i < 0) return;
     const top = i * RH;
-    const st = this.el.scrollTop;
+    const st = this.sc.top;
     const vh = this.el.clientHeight;
     if (top < st || top + RH > st + vh) {
-      this.el.scrollTop = center ? top - vh / 2 + RH / 2 : top < st ? top : top - vh + RH;
+      this.sc.top = center ? top - vh / 2 + RH / 2 : top < st ? top : top - vh + RH;
     }
   }
 
@@ -325,22 +330,31 @@ export class TreeView {
         }),
       );
     }
-    const st = this.el.scrollTop;
+    const st = this.sc.top;
     const vh = this.el.clientHeight;
     const vf = Math.floor(st / RH);
     const vl = Math.min(this.rows.length, Math.ceil((st + vh) / RH));
-    if (!force && vf >= this.rFirst && vl <= this.rLast) return;
+    if (!force && vf >= this.rFirst && vl <= this.rLast) {
+      // Scaled scrolling (see TallScroll) moves the drawn rows too.
+      if (this.sc.shift + this.rFirst * RH !== this.y) this.placeRows();
+      return;
+    }
     const first = Math.max(0, vf - OVERSCAN);
     const last = Math.min(this.rows.length, vl + OVERSCAN);
     this.rFirst = first;
     this.rLast = last;
     let html = '';
     for (let i = first; i < last; i++) html += this.row(this.rows[i], i);
-    this.rowsEl.style.transform = `translateY(${first * RH}px)`;
     this.rowsEl.innerHTML = html;
     const si = this.sel ? this.indexOf(this.sel) : -1;
     if (si >= first && si < last) this.el.setAttribute('aria-activedescendant', 'tv-sel');
     else this.el.removeAttribute('aria-activedescendant');
+    this.placeRows();
+  }
+
+  private placeRows() {
+    const y = this.rFirst * RH + this.sc.shift;
+    if (y !== this.y) this.rowsEl.style.transform = `translateY(${(this.y = y)}px)`;
     this.placeActs();
   }
 
@@ -429,7 +443,7 @@ export class TreeView {
       return;
     }
     this.acts.hidden = false;
-    this.acts.style.transform = `translateY(${i * RH}px)`;
+    this.acts.style.transform = `translateY(${i * RH + this.sc.shift}px)`;
     this.acts.dataset.i = String(i);
   }
 
