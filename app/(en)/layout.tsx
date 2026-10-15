@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import { Analytics } from '@/components/Analytics';
 import { jsonLdScript, siteJsonLd } from './seo';
-import './globals.css';
-import './content.css';
+import '../globals.css';
+import '../content.css';
 
 const SITE = 'https://tools.vikasmaur.com';
 

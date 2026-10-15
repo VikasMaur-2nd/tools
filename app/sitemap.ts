@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
-import { POSTS } from './blogs/posts';
-import { ERROR_GUIDES } from './json-errors/errors';
+import { POSTS } from './(en)/blogs/posts';
+import { ERROR_GUIDES } from './(en)/json-errors/errors';
 import { TOOL_PAGES } from '@/lib/tool-pages';
 
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
