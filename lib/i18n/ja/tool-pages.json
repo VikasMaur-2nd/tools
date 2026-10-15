@@ -1,1 +1,1741 @@
-{}
+{
+  "json-validator": {
+    "hash": "a1c439c2d927",
+    "title": "JSON構文チェック：エラーの行と列を表示",
+    "description": "JSONの構文をブラウザー上でチェックします。構文エラーや末尾のカンマ、修復できる問題を、機密データをアップロードせずに見つけられます。",
+    "heading": "JSON構文チェック",
+    "query": "JSON 構文チェック",
+    "secondary": [
+      "JSON チェック オンライン",
+      "JSON バリデーター",
+      "JSON 文法チェック"
+    ],
+    "intro": "JSONを貼り付けると、標準の構文に沿っているかをチェックできます。Tool Kumarはエラーの正確な行と列を示し、よくある構文の崩れには修復を提案します。",
+    "modeLabel": "構文チェックとエラー表示",
+    "exampleLabel": "このサンプルには末尾のカンマがあります。「JSON構文チェック」は36の後ろのカンマを指摘します。",
+    "steps": [
+      "入力欄にJSONを貼り付けます。",
+      "エラーバナーを確認し、エラーの位置へ移動します。",
+      "該当する文字を直します。安全に修正できる問題なら「入力を修復」を選ぶこともできます。"
+    ],
+    "options": [
+      "オブジェクト、配列、文字列、数値、ブール値、nullをチェックします。",
+      "末尾のカンマやコメントなど、修復できる入力の問題は個別に報告します。",
+      "修復した結果は、整形された表示で確認できます。"
+    ],
+    "faqs": [
+      {
+        "question": "JSON構文チェックでは何を確認しますか？",
+        "answer": "引用符、カンマ、括弧、数値、使用できる値の型など、JSONの構文を確認します。"
+      },
+      {
+        "question": "不正なJSONを修復できますか？",
+        "answer": "末尾のカンマやシングルクォートなど、よくある問題は修復できます。修復結果は元に戻せる編集として反映されます。"
+      },
+      {
+        "question": "チェックはどこで行われますか？",
+        "answer": "パーサーはブラウザー内でローカルに動作します。Tool Kumarはサーバーへのリクエストを必要としません。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "trailing-comma",
+        "text": "JSONで末尾のカンマが無効になる理由"
+      },
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Unexpected end of JSON input：途切れた箇所を見つける"
+      },
+      {
+        "slug": "unexpected-token-html",
+        "text": "Unexpected token '<'：HTMLレスポンスが返っていないか確認する"
+      }
+    ]
+  },
+  "json-minifier": {
+    "hash": "b67067161d8f",
+    "title": "JSON圧縮（minify）：APIペイロードを1行に",
+    "description": "JSONをオンラインで圧縮し、コンパクトなペイロードをコピーできます。Tool Kumarはファイルをローカルで処理し、キーの順序や大きな数値もそのまま保ちます。",
+    "heading": "JSON圧縮",
+    "query": "JSON 圧縮",
+    "secondary": [
+      "JSON minify",
+      "JSON 1行にする",
+      "JSON 改行 削除"
+    ],
+    "intro": "ネットワークで送信する前やテスト用フィクスチャに保存する前に、JSONから意味を持たない空白を取り除きます。読みやすい入力は左側にそのまま残ります。",
+    "modeLabel": "圧縮したJSONの表示",
+    "exampleLabel": "圧縮ではインデントと改行を取り除き、値はすべてそのまま残します。\"Ada Lovelace\"の間の空白は文字列の一部なので、取り除かれません。",
+    "steps": [
+      "有効なJSONを貼り付けます。",
+      "出力がコンパクトな1行に切り替わります。",
+      "圧縮したJSONをコピーするか、ダウンロードします。"
+    ],
+    "options": [
+      "いつでも整形された出力に戻せます。",
+      "キーのソートは、受け取る側が挿入順に依存していない場合にだけ使ってください。",
+      "パーサーは大きな整数を丸めず、元の桁をそのまま保持します。"
+    ],
+    "faqs": [
+      {
+        "question": "圧縮するとJSONのデータは変わりますか？",
+        "answer": "いいえ。取り除くのは文字列の外にある空白だけです。値、キー名、順序は変わりません。"
+      },
+      {
+        "question": "文字列は変更されますか？",
+        "answer": "いいえ。引用符で囲まれた文字列内の空白はそのまま残ります。"
+      },
+      {
+        "question": "圧縮と同時に構文チェックもできますか？",
+        "answer": "はい。圧縮した出力を生成する前に、入力が有効かどうかがステータスバーに表示されます。"
+      }
+    ]
+  },
+  "json-diff": {
+    "hash": "e4ff776b20f8",
+    "title": "JSON比較ツール：2つのJSONの差分を表示",
+    "description": "2つのJSONを左右に並べて比較できます。Tool Kumarは変更された値をハイライトし、両方の入力をブラウザー内に保持します。",
+    "heading": "JSON比較",
+    "query": "JSON 比較",
+    "secondary": [
+      "JSON 差分",
+      "JSON diff",
+      "JSON 比較 ツール"
+    ],
+    "intro": "変更前と変更後のJSONを貼り付けると、何が変わったかを確認できます。「比較」ビューでは2つのエディターの位置がそろった状態で、追加、削除、変更が示されます。",
+    "modeLabel": "比較ビュー",
+    "exampleLabel": "キーの順序は異なりますが、「キーの順序を無視」（デフォルトでオン）が有効なので、差分としては報告されません。無視するパスに$.meta.updatedAtを指定すると、roleの値の変更と追加されたタグの2件だけが残ります。「JSON Patchをコピー」を使うと、次のRFC 6902パッチが得られます。",
+    "steps": [
+      "1つ目の欄に変更前のJSONを貼り付けます。",
+      "2つ目の欄に変更後のJSONを貼り付けます。",
+      "「変更」の一覧か行単位の「差分」を確認し、JSON Patchまたは必要なほうのドキュメントをコピーします。"
+    ],
+    "options": [
+      "「変更」では、構造上の違いをJSONパスごとに一覧表示します。「差分」では、両方のドキュメントを同じ方法で整形してから行単位で比較するため、インデントや空白の違いが変更として表示されることはありません。",
+      "「キーの順序を無視」はデフォルトでオンのため、同じキーが別の順序で並んでいるオブジェクトは同一とみなされます。キーの順序の変更を確認するには、オフにしてください。",
+      "「変更」では、「配列の順序を無視」を使うと配列を順序のないコレクションとして比較し、「大小文字の区別なし」を使うと文字列を大文字と小文字の違いを問わずに比較します。「差分」で使えるのは「キーの順序を無視」だけです。",
+      "無視するパスを指定すると、毎回変わるようなノイズになるフィールドを比較から除外できます。$.meta.updatedAtは1つの厳密なパス、$.items[*].tsはすべてのitemに一致し、updatedAtのようにキー名だけを書くと、どの深さにあるキーにも一致します。",
+      "「JSON Patchをコピー」は、変更前のドキュメントを変更後のドキュメントに変えるRFC 6902パッチとして、差分を書き出します。無視するパスと、キーの順序だけが違う箇所は含まれません。",
+      "数値は値で比較されるため、1.0と1は等しいとみなされ、大きな整数も桁が失われません。id、_id、uuid、key、nameのいずれかが一意に定まっているオブジェクトの配列は、その値で要素どうしが対応付けられます。"
+    ],
+    "faqs": [
+      {
+        "question": "2つのJSONファイルを比較できますか？",
+        "answer": "はい。左右の比較欄にそれぞれファイルを開くか、両方のドキュメントを貼り付けてください。"
+      },
+      {
+        "question": "比較のためにファイルがサーバーへ送信されますか？",
+        "answer": "いいえ。解析と比較はブラウザー内で行われます。"
+      },
+      {
+        "question": "ネストした配列も比較できますか？",
+        "answer": "はい。ネストしたオブジェクトや配列は要素ごとに比較され、配列に要素を1つ挿入しても、残りの要素が変更されたことにはなりません。"
+      },
+      {
+        "question": "毎回変わるタイムスタンプを無視するにはどうすればよいですか？",
+        "answer": "「変更」ビューの「無視するパス（カンマ区切り）」欄に、$.meta.updatedAtのようなパスを入力します。複数のパスはカンマで区切ります。[*]は、すべての配列インデックスに一致します。"
+      },
+      {
+        "question": "差分をJSON Patchとして書き出せますか？",
+        "answer": "はい。「JSON Patchをコピー」を使うと、変更前のドキュメントを変更後のドキュメントに変えるRFC 6902のadd、remove、replace操作をコピーできます。"
+      }
+    ]
+  },
+  "json-to-typescript": {
+    "hash": "c27d5cb1895d",
+    "title": "JSONをTypeScriptの型に変換：interface対応",
+    "description": "JSONをTypeScriptのinterfaceまたはtypeにオンラインで変換します。サンプルを貼り付けると、ネストした構造まで推論したコードをブラウザー内で生成します。",
+    "heading": "JSONをTypeScriptの型に変換",
+    "query": "JSON TypeScript 変換",
+    "secondary": [
+      "json to typescript",
+      "JSON 型 生成 TypeScript",
+      "JSON interface 自動生成"
+    ],
+    "intro": "代表的なJSONレスポンスを、TypeScriptの型宣言に変換します。ネストしたオブジェクトや配列もたどるため、生成される型はサンプルの構造と一致します。",
+    "modeLabel": "TypeScriptの出力",
+    "exampleLabel": "以下の出力は、Tool KumarがサンプルのJSONから生成したものです。",
+    "steps": [
+      "代表的なJSONレスポンスを貼り付けます。",
+      "「変換」ビューで「TypeScript」を選びます。",
+      "ルート名を設定し、型宣言をコピーまたはダウンロードします。"
+    ],
+    "options": [
+      "「TypeScriptのスタイル」設定で、interface構文とtype構文を選べます。",
+      "ルートの型名は、APIのリソースに合わせて変更できます。",
+      "オプショナルやユニオン型の推論は、サンプルに含まれる値に基づきます。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONからTypeScriptへの変換は、ネストしたオブジェクトに対応していますか？",
+        "answer": "はい。ネストしたオブジェクトは名前付きの宣言になり、配列には推論した要素の型が使われます。"
+      },
+      {
+        "question": "interfaceとtypeのどちらで出力するか選べますか？",
+        "answer": "はい。「TypeScriptのスタイル」設定で、生成する宣言の形式を切り替えられます。"
+      },
+      {
+        "question": "JSONはアップロードされますか？",
+        "answer": "いいえ。変換には、ブラウザー内で動くローカルのパーサーと変換機能を使います。"
+      }
+    ]
+  },
+  "json-to-zod": {
+    "hash": "6e099361479c",
+    "title": "JSONからZodスキーマを生成：ネストも自動推論",
+    "description": "JSONからZodスキーマをオンラインで生成します。Tool Kumarはネストしたオブジェクトや配列をローカルで推論し、TypeScriptのコードとしてコピーできます。",
+    "heading": "JSONからZodスキーマを生成",
+    "query": "JSON Zod スキーマ 生成",
+    "secondary": [
+      "JSON Zod 変換",
+      "Zod スキーマ 自動生成",
+      "json to zod"
+    ],
+    "intro": "サンプルのJSONを貼り付けると、TypeScriptプロジェクトに追加できるZodスキーマを生成します。生成されるチェックは、サンプルの値とネスト構造をそのまま反映します。",
+    "modeLabel": "Zodスキーマの出力",
+    "exampleLabel": "Tool Kumarは、サンプルのオブジェクトからこのスキーマを生成します。",
+    "steps": [
+      "アプリケーションが受け取るJSONを貼り付けます。",
+      "「変換」ビューを開き、「Zodスキーマ」を選びます。",
+      "ルート名を変更し、生成されたコードをコピーします。"
+    ],
+    "options": [
+      "ネストしたオブジェクトは、ネストしたz.object呼び出しになります。",
+      "配列には、推論した要素のスキーマが使われます。",
+      "出力はコードのみです。メールアドレス形式や最小文字数など、プロジェクト固有のrefinementはご自身で追加してください。"
+    ],
+    "faqs": [
+      {
+        "question": "API用の完全なバリデーターが生成されますか？",
+        "answer": "生成されるのは、サンプルの構造に対応したZodスキーマです。サンプルからは読み取れないルールは、refinementとして追加してください。"
+      },
+      {
+        "question": "nullはどう扱われますか？",
+        "answer": "null値は、生成されたスキーマでz.null()になります。"
+      },
+      {
+        "question": "ルートのスキーマ名を変更できますか？",
+        "answer": "はい。変換ツールのツールバーでルート名を設定してください。"
+      }
+    ]
+  },
+  "json-schema-generator": {
+    "hash": "40303de8e661",
+    "title": "JSON Schema生成：サンプルのJSONから作成",
+    "description": "サンプルのJSONからJSON Schemaを生成します。Tool Kumarはプロパティ、配列、プリミティブ型をブラウザー内で推論し、データをアップロードしません。",
+    "heading": "JSON Schema生成",
+    "query": "JSON Schema 生成",
+    "secondary": [
+      "JSON Schema 自動生成",
+      "JSON から JSON Schema"
+    ],
+    "intro": "代表的なJSONドキュメントから、JSON Schemaのたたき台を作成します。結果はサンプルの構造を記述したもので、バリデーションの出発点になります。",
+    "modeLabel": "JSON Schemaの出力",
+    "exampleLabel": "このスキーマは、ネストしたprofileやtagsも含めて、サンプルのオブジェクトから生成したものです。このオブジェクトにはすべてのプロパティが含まれているため、すべてのプロパティがrequiredになります。",
+    "steps": [
+      "サンプルのドキュメントを貼り付けます。",
+      "「変換」ビューで「JSON Schema」を選びます。",
+      "推論されたプロパティを確認し、スキーマを保存します。"
+    ],
+    "options": [
+      "ネストしたオブジェクトや配列は、再帰的に記述されます。",
+      "プロパティは、その位置にあるサンプルのオブジェクトすべてに存在する場合にrequiredへ含まれます。そのため、完全なサンプルが1つあれば、確認されたすべてのプロパティがrequiredになります。オブジェクトの配列では、一部のオブジェクトにないキーは省略可能になります。",
+      "一部のオブジェクトでnullになっている値は、プロパティを省略可能にするのではなく、プロパティの型にnullを追加します。",
+      "出力はあくまでたたき台です。requiredを見直し、format、値の範囲、パターンを追加し、API仕様で保証していない内容は削除してください。",
+      "このページはスキーマを生成するもので、ドキュメントをスキーマに照らして検証する機能はありません。生成の前に、「JSON構文チェック」ページでJSONの構文を確認できます。"
+    ],
+    "faqs": [
+      {
+        "question": "すべてのプロパティが必須（required）になりますか？",
+        "answer": "サンプルのオブジェクトすべてに存在するプロパティだけが必須になります。完全なサンプルが1つなら、そのすべてのプロパティがrequiredになります。一方、配列内の一部のオブジェクトにないキーは省略可能になります。スキーマを公開する前に、requiredの一覧をAPI仕様と照らして見直してください。"
+      },
+      {
+        "question": "どのドラフトを使っていますか？",
+        "answer": "出力はJSON Schema Draft 2020-12を宣言し、標準のtypeとpropertiesキーワードを使います。"
+      },
+      {
+        "question": "配列の要素の構造も推論できますか？",
+        "answer": "はい。オブジェクトの配列からは、サンプル内のオブジェクトの構造に基づいてitemsスキーマが生成されます。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "requiredのプロパティが決まる仕組み",
+        "paragraphs": [
+          "複数のレコードからスキーマを生成すると、requiredの一覧には、すべてのレコードに存在するキーだけが残ります。このサンプルでは、2人のユーザーはどちらもidとemailを持っていますが、phoneを持つのは最初のユーザーだけです。そのため、phoneはスキーマに記述されますが、requiredには含まれません。"
+        ]
+      }
+    ]
+  },
+  "json-to-go": {
+    "hash": "c85598725dd2",
+    "title": "JSONをGoの構造体に変換：struct自動生成",
+    "description": "JSONを、ネストした型とJSONタグ付きのGoの構造体に変換します。Tool Kumarは変換をブラウザー内で実行し、入力を端末の外に出しません。",
+    "heading": "JSONをGoの構造体に変換",
+    "query": "JSON Go 構造体 変換",
+    "secondary": [
+      "json to go",
+      "JSON golang struct 生成"
+    ],
+    "intro": "サンプルのJSONから、Goの構造体の定義を生成します。名前はエクスポートされるGoの識別子に変換され、タグには元のキーが残ります。",
+    "modeLabel": "Goの出力",
+    "exampleLabel": "これらの構造体は、サンプルのJSONとネストしたprofileオブジェクトから生成したものです。",
+    "steps": [
+      "モデル化するレスポンスのJSONを貼り付けます。",
+      "「変換」ビューで「Go」を選びます。",
+      "生成された構造体をパッケージにコピーし、名前を確認します。"
+    ],
+    "options": [
+      "ルートとネストした型の名前は、キーから推論されます。",
+      "Goの命名に合わないキーも、JSONタグで元のまま保持されます。",
+      "日時、10進数、null許容のフィールドは確認してください。JSONのサンプルでは、ドメインのルールをすべて表現できないためです。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONタグは追加されますか？",
+        "answer": "はい。各フィールドは、元のキーをjson構造体タグとして保持します。"
+      },
+      {
+        "question": "ネストしたオブジェクトはどう扱われますか？",
+        "answer": "名前付きの別の構造体になり、親の構造体から参照されます。"
+      },
+      {
+        "question": "ルート名を変更できますか？",
+        "answer": "はい。変換ツールのツールバーでルート名を設定してください。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "go-invalid-character",
+        "text": "GoのJSONで「invalid character」エラーが出る原因を調べる"
+      }
+    ]
+  },
+  "json-to-python": {
+    "hash": "fafa568e5334",
+    "title": "JSONをPythonのモデルに変換：Pydantic対応",
+    "description": "JSONをPythonのPydanticモデルに変換します。Tool Kumarはネストしたフィールドを推論し、コードの生成中もサンプルデータをブラウザー内にとどめます。",
+    "heading": "JSONをPythonのモデルに変換",
+    "query": "JSON Python クラス 変換",
+    "secondary": [
+      "JSON Pydantic 変換",
+      "json to pydantic"
+    ],
+    "intro": "JSONレスポンスを、PythonのPydanticモデル定義に変換します。生成したコードを型付きの出発点として使い、ドメイン固有のバリデーションを追加してください。",
+    "modeLabel": "Pythonの出力",
+    "exampleLabel": "以下のPythonモデルは、サンプルのJSONから生成したものです。",
+    "steps": [
+      "JSONオブジェクトまたはAPIレスポンスを貼り付けます。",
+      "「変換」ビューで「Python（Pydantic）」を選びます。",
+      "ルート名を設定し、モデル定義をコピーします。"
+    ],
+    "options": [
+      "ネストしたオブジェクトは、ネストしたBaseModelクラスになります。",
+      "リストやオプショナルな値は、サンプルに含まれる値に基づきます。",
+      "本番データでは、日付、10進数、ユニオンのルールを確認してください。"
+    ],
+    "faqs": [
+      {
+        "question": "Pydanticモデルを生成できますか？",
+        "answer": "はい。変換先でPythonを選ぶと、型付きフィールドを持つPydanticのBaseModel定義を出力します。"
+      },
+      {
+        "question": "ハイフンを含むJSONキーはどうなりますか？",
+        "answer": "Pythonで有効なフィールド名を作成し、必要に応じてaliasで元のキーを保持します。"
+      },
+      {
+        "question": "JSONのレコード1件だけでも使えますか？",
+        "answer": "はい。モデルの推論にはオブジェクト1つで足ります。フィールドがレコードごとに異なる場合は、幅広いサンプルを使ってください。"
+      }
+    ]
+  },
+  "json-to-yaml": {
+    "hash": "17b363edfc4b",
+    "title": "JSONをYAMLに変換：ローカル処理で値を保持",
+    "description": "JSONをYAMLにオンラインで変換します。値を損なわないパーサーがローカルで動作し、オブジェクトや配列から設定ファイルやドキュメント向けのきれいなYAMLを作れます。",
+    "heading": "JSONをYAMLに変換",
+    "query": "JSON YAML 変換",
+    "secondary": [
+      "JSON to YAML",
+      "JSON YAML 変換 オンライン"
+    ],
+    "intro": "JSONデータを、サーバーに送信せずに読みやすいYAMLに変換します。ネストしたオブジェクト、配列、文字列、ブール値、null、数値に対応しています。",
+    "modeLabel": "YAMLの出力",
+    "exampleLabel": "このYAMLは、組み込みのJSON→YAML変換機能で生成したものです。",
+    "steps": [
+      "有効なJSONを貼り付けます。",
+      "「変換」ビューで「YAML」を選びます。",
+      "YAMLをコピーするか、設定ファイル用にダウンロードします。"
+    ],
+    "options": [
+      "インデントは変換結果の出力に従い、ネストした配列も読みやすく保たれます。",
+      "YAMLが別の型と解釈しかねない文字列は、引用符付きのまま文字列として残ります。",
+      "変換結果はプレーンなデータのYAMLです。YAML固有のアンカーやアプリケーション独自のタグが必要な場合は確認してください。"
+    ],
+    "faqs": [
+      {
+        "question": "ネストしたJSONもYAMLに変換できますか？",
+        "answer": "はい。オブジェクトと配列は、読みやすいインデントで再帰的に出力されます。"
+      },
+      {
+        "question": "大きな数値は保持されますか？",
+        "answer": "パーサーは変換中も元の数値テキストを保持するため、大きな整数がJavaScriptによって丸められることはありません。"
+      },
+      {
+        "question": "YAMLをJSONに戻せますか？",
+        "answer": "はい。「YAMLをJSONに変換」ページを使うと、プレーンなYAMLを解析して整形されたJSONに戻せます。"
+      }
+    ]
+  },
+  "yaml-to-json": {
+    "hash": "d6e32c71205e",
+    "title": "YAMLをJSONに変換：ブラウザー内で完結",
+    "description": "YAMLを整形されたJSONにオンラインで変換します。Tool KumarはプレーンなYAMLをローカルで解析してエラーを報告し、変換後のドキュメントも端末の外に出しません。",
+    "heading": "YAMLをJSONに変換",
+    "query": "YAML JSON 変換",
+    "secondary": [
+      "YAML to JSON",
+      "YAML JSON 変換 オンライン"
+    ],
+    "intro": "YAMLドキュメントを貼り付けると、APIやテスト用フィクスチャ、デバッグに使えるJSONに変換できます。インポーターはマッピング、シーケンス、スカラー、引用符付きの値に対応しています。",
+    "modeLabel": "YAMLからJSONへのインポート",
+    "exampleLabel": "以下の整形されたJSONは、このYAMLのサンプルをインポートして生成したものです。",
+    "steps": [
+      "YAMLを貼り付けるか、.yamlまたは.ymlファイルを開きます。",
+      "インポーターがYAMLを検出したら、「YAML → JSON」を選びます。",
+      "整形されたJSONを確認し、コピーまたはダウンロードします。"
+    ],
+    "options": [
+      "プレーンなマッピングとシーケンスは、JSONのオブジェクトと配列になります。",
+      "引用符付きの値は文字列のまま残り、引用符のない数値やブール値はJSONの値になります。",
+      "アンカー、カスタムタグ、実行可能なYAMLは、プレーンなデータ向けのインポーターでは扱いません。"
+    ],
+    "faqs": [
+      {
+        "question": "YAMLのリストに対応していますか？",
+        "answer": "はい。インデントしたハイフンの項目はJSONの配列になります。オブジェクトの中にネストした配列も同様です。"
+      },
+      {
+        "question": "対応していないYAMLの機能はありますか？",
+        "answer": "インポーターはプレーンなデータを対象としています。カスタムタグ、アンカー、アプリケーション固有のディレクティブには、YAMLライブラリが必要な場合があります。"
+      },
+      {
+        "question": "YAMLファイルを開けますか？",
+        "answer": "はい。「ファイルを開く」を使うと、Tool Kumarは拡張子.yamlと.ymlを検出してからインポートします。"
+      }
+    ]
+  },
+  "json-to-csv": {
+    "hash": "7f15407a3074",
+    "title": "JSONをCSVに変換：レコードの配列向け",
+    "description": "JSONレコードの配列をオンラインでCSVに変換します。Tool Kumarはネストしたフィールドをドット区切りの列に展開し、エクスポートもローカルで行います。",
+    "heading": "JSONをCSVに変換",
+    "query": "JSON CSV 変換",
+    "secondary": [
+      "JSON to CSV",
+      "JSON CSV 変換 オンライン"
+    ],
+    "intro": "JSONのレコードを、表計算ソフトで扱いやすいCSVに変換します。メインとなるオブジェクトの配列を見つけて列を作成し、カンマや改行を含む値は引用符で囲みます。",
+    "modeLabel": "CSVの出力",
+    "exampleLabel": "このCSVは、サンプルのドキュメントにあるusers配列から生成したものです。",
+    "steps": [
+      "オブジェクトの配列、またはそれを含むAPIレスポンスを貼り付けます。",
+      "「変換」ビューで「CSV」を選びます。",
+      "プレビューをコピーするか、CSVファイルをダウンロードします。"
+    ],
+    "options": [
+      "ネストしたオブジェクトのキーは、profile.cityのようなドット区切りの列名になります。",
+      "単純な値の配列は、値をカンマで区切って1つのセルに入ります。オブジェクトの配列は、コンパクトなJSONとして1つのセルに入ります。",
+      "レスポンスのラッパーからは、条件に合う最大のオブジェクト配列が選ばれます。"
+    ],
+    "faqs": [
+      {
+        "question": "CSVにはどのような構造のJSONが向いていますか？",
+        "answer": "オブジェクトの配列が最適です。usersやdataのようなレスポンスのラッパーの中から、最大のオブジェクト配列を見つけることもできます。"
+      },
+      {
+        "question": "ネストしたオブジェクトはどう表現されますか？",
+        "answer": "ネストしたプロパティはドット区切りの列名になり、CSVの各行の列数がそろいます。"
+      },
+      {
+        "question": "カンマや引用符はエスケープされますか？",
+        "answer": "はい。標準的なCSVのルールに従い、フィールドを引用符で囲み、値の中の引用符は二重にします。"
+      }
+    ]
+  },
+  "csv-to-json": {
+    "hash": "58d77f369e7a",
+    "title": "CSVをJSONに変換：数値やブール値も型推論",
+    "description": "CSVをオンラインでJSONに変換します。Tool Kumarは列を検出して数値やブール値を解析し、インポートした結果をブラウザー内にとどめます。",
+    "heading": "CSVをJSONに変換",
+    "query": "CSV JSON 変換",
+    "secondary": [
+      "CSV to JSON",
+      "CSV から JSON に変換"
+    ],
+    "intro": "CSVを貼り付けるか.csvファイルを開くと、レコードのJSON配列を作成します。インポーターは引用符で囲まれたフィールドを読み取り、単純な数値、ブール値、nullを推論します。",
+    "modeLabel": "CSVからJSONへのインポート",
+    "exampleLabel": "以下のJSONは、CSVのサンプルをインポートして生成したものです。",
+    "steps": [
+      "ヘッダー行のあるCSVを貼り付けます。",
+      "入力がCSVとして検出されたら、「CSV → JSON」を選びます。",
+      "配列を確認し、JSONをコピーまたはダウンロードします。"
+    ],
+    "options": [
+      "区切り文字として、カンマ、セミコロン、タブ、パイプを検出します。",
+      "引用符で囲まれたフィールドには、カンマや改行を含められます。",
+      "引用符のない空のフィールドはnullになり、引用符で囲まれた空のフィールドは空文字列のまま残ります。"
+    ],
+    "faqs": [
+      {
+        "question": "引用符内のカンマも正しく読み取れますか？",
+        "answer": "はい。インポーターは引用符で囲まれたフィールドを追跡するため、値の中のカンマはその値の一部として扱われます。"
+      },
+      {
+        "question": "数値はどのように判定されますか？",
+        "answer": "引用符のないセルのうち、JSONの数値の構文に一致するものが数値になります。文字列のまま残したい値は引用符で囲んでください。"
+      },
+      {
+        "question": "TSVファイルも開けますか？",
+        "answer": "はい。同じインポーターがタブ区切りのファイルを検出し、JSONのレコードに変換します。"
+      }
+    ]
+  },
+  "json-to-xml": {
+    "hash": "45edac3a65ca",
+    "title": "JSONをXMLに変換：ネストしたデータに対応",
+    "description": "JSONをオンラインでXMLに変換します。Tool Kumarはオブジェクトと配列を読みやすいXMLにブラウザー内で変換し、元のドキュメントを外部に出しません。",
+    "heading": "JSONをXMLに変換",
+    "query": "JSON XML 変換",
+    "secondary": [
+      "JSON to XML",
+      "JSON から XML に変換"
+    ],
+    "intro": "レガシーなエンドポイント、フィード、結合テスト向けに、JSONのオブジェクトや配列からXMLを作成します。キーは要素名になり、配列の各項目は繰り返し要素になります。",
+    "modeLabel": "XMLの出力",
+    "exampleLabel": "このXMLは、サンプルのオブジェクトから生成したものです。ドキュメント要素のrootは、ルート名の設定から決まります。",
+    "steps": [
+      "有効なJSONを貼り付けます。",
+      "「変換」ビューで「XML」を選びます。",
+      "受け取る側のシステムが特定の要素名を求める場合は、ルート名を設定します。"
+    ],
+    "options": [
+      "オブジェクトのキーはXML要素になります。",
+      "配列は、繰り返しの子要素として出力されます。",
+      "値はXMLテキストとしてエスケープされます。アンパサンドや山括弧も対象です。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONの配列はXMLでどう表現されますか？",
+        "answer": "配列の値は、そのプロパティ名の下に繰り返し要素として出力されます。"
+      },
+      {
+        "question": "ルート要素を変更できますか？",
+        "answer": "はい。変換ツールのツールバーでルート名を設定してください。"
+      },
+      {
+        "question": "JSONのnullは保持されますか？",
+        "answer": "null値は空の要素として出力されます。明示的なnil属性が必要かどうかは、受け取る側のスキーマを確認してください。"
+      }
+    ]
+  },
+  "xml-to-json": {
+    "hash": "1ca1d5a99a27",
+    "title": "XMLをJSONに変換：シンプルなXML向け",
+    "description": "XMLを整形されたJSONにオンラインで変換します。Tool Kumarは要素と属性をローカルで解析し、元のファイルをアップロードせずに結果を表示します。",
+    "heading": "XMLをJSONに変換",
+    "query": "XML JSON 変換",
+    "secondary": [
+      "XML to JSON",
+      "XML から JSON に変換"
+    ],
+    "intro": "XMLドキュメントを貼り付けるかローカルのファイルを開くと、要素をJSONのオブジェクトに変換します。繰り返される兄弟要素は配列になるため、データ中心のXMLに適しています。",
+    "modeLabel": "XMLからJSONへのインポート",
+    "exampleLabel": "以下のJSONは、繰り返される2つのuser要素をインポートして生成したものです。",
+    "steps": [
+      "XMLを貼り付けるか、.xmlファイルを開きます。",
+      "入力がXMLとして検出されたら、「XML → JSON」を選びます。",
+      "オブジェクトを確認し、整形されたJSONをコピーします。"
+    ],
+    "options": [
+      "同じ名前で繰り返される子要素は配列になります。",
+      "属性は、インポーター独自の属性表現で保持されます。",
+      "インポーターはデータ用のXMLを対象としています。混合コンテンツを含むドキュメントには、用途に合ったXMLパーサーが必要な場合があります。"
+    ],
+    "faqs": [
+      {
+        "question": "繰り返されるXML要素は配列になりますか？",
+        "answer": "はい。繰り返される兄弟要素は、JSONの配列にまとめられます。"
+      },
+      {
+        "question": "XMLの属性は保持されますか？",
+        "answer": "はい。属性はインポートしたオブジェクト内で表現されるため、その値を引き続き利用できます。"
+      },
+      {
+        "question": "XMLファイルを開けますか？",
+        "answer": "はい。ファイル選択で.xmlファイルを選ぶと、Tool Kumarがそれを検出し、「XML → JSON」の変換を提案します。"
+      }
+    ]
+  },
+  "json-to-excel": {
+    "hash": "ac8ab1cf408b",
+    "title": "JSONをExcelに変換：XLSXをローカルで出力",
+    "description": "JSONのレコードをオンラインでExcelのXLSXファイルに書き出します。Tool Kumarはブックをブラウザー内で作成し、データをアップロードすることはありません。",
+    "heading": "JSONをExcelに変換",
+    "query": "JSON Excel 変換",
+    "secondary": [
+      "JSON エクセル 変換",
+      "JSON XLSX 変換"
+    ],
+    "intro": "JSONレコードの配列を、.xlsxのブックに変換します。CSVエクスポートと同じ方法でレコードをフラット化するため、確認や共有に使えるきれいなシートが得られます。",
+    "modeLabel": "Excelへのエクスポート",
+    "exampleLabel": "プレビューにはワークシートがCSVテキストで表示されます。users配列はユーザーごとに1行になり、ダウンロードするXLSXにもこれと同じセルが入ります。",
+    "steps": [
+      "レコードの配列、またはそれを含むAPIレスポンスを貼り付けます。",
+      "「変換」ビューで「Excel（.xlsx）」を選びます。",
+      "生成された.xlsxのブックをダウンロードします。"
+    ],
+    "options": [
+      "ネストしたフィールドは、ドット区切りの列になります。",
+      "レスポンスのラッパーの中から、最大のオブジェクト配列を探します。",
+      "ブックはブラウザーのAPIで作成され、端末の外に出ることはありません。"
+    ],
+    "faqs": [
+      {
+        "question": "ネストしたJSONもExcelに書き出せますか？",
+        "answer": "はい。ネストしたプロパティはドット区切りの列になるため、各レコードがワークシートの1行に収まります。"
+      },
+      {
+        "question": "データはアップロードされますか？",
+        "answer": "いいえ。XLSXの生成はブラウザー内でローカルに行われます。"
+      },
+      {
+        "question": "JSONがオブジェクト1つだけの場合はどうなりますか？",
+        "answer": "エクスポーターは、そのオブジェクト自体か、見つかった中で最大のネストしたオブジェクト配列を使います。最も使いやすいシートになるのは、レコードの配列です。"
+      }
+    ]
+  },
+  "jwt-decoder": {
+    "hash": "faaa60f544c8",
+    "title": "JWTデコード：ヘッダー、ペイロード、クレームを表示",
+    "description": "トークンをサーバーに送信せずに、JWTをオンラインでデコードします。Tool Kumarはヘッダー、ペイロード、署名のテキスト、読みやすい形式の時刻クレームを表示します。",
+    "heading": "JWTデコード",
+    "query": "JWT デコード",
+    "secondary": [
+      "JWT デコーダー",
+      "JWT 中身 確認",
+      "JWT デコード オンライン"
+    ],
+    "intro": "コンパクト形式のJWTを貼り付けると、中身を確認できます。トークンはパートごとに色分けされてエディターに残り、その横にデコードされたヘッダー、ペイロード、読みやすい形式の時刻クレームが表示されます。デコードでは署名を検証しないため、結果は認証ではなく、中身の確認やデバッグに使ってください。",
+    "modeLabel": "デコードしたJWTのJSON",
+    "exampleLabel": "Tool Kumarは、このHS256のサンプルトークンをヘッダー、ペイロード、署名にデコードし、expとiatの時刻を読みやすく示す_claimsオブジェクトも追加します。",
+    "steps": [
+      "JWTを貼り付けます。先頭のBearerは付いていても付いていなくてもかまいません。",
+      "右側で、デコードされたヘッダー、ペイロード、_claimsを確認します。expの行には、トークンの有効期限までの残り時間、または期限切れになってからの経過時間が表示されます。",
+      "exp、iat、nbfの値を確認し、署名の検証はご自身のアプリケーションで行います。"
+    ],
+    "options": [
+      "3つのパートからなるJWSコンパクト形式のトークンに対応しています。",
+      "署名の検証や鍵の取得は行いません。",
+      "exp、iat、nbfは、_claimsの下にISO形式の時刻としても表示されます。expを過ぎると、expiredがtrueになります。",
+      "デコードしたJSONを編集するには、コマンドパレットから「JWTをデコード済みJSONに置換」を実行します。"
+    ],
+    "faqs": [
+      {
+        "question": "JWTをデコードすれば、検証したことになりますか？",
+        "answer": "いいえ。デコードでは、base64urlでエンコードされたヘッダーとペイロードを読み取るだけです。署名の検証は、発行者の鍵を使ってご自身のアプリケーションで行う必要があります。"
+      },
+      {
+        "question": "トークンはどこかに送信されますか？",
+        "answer": "いいえ。デコードはブラウザー内で行われ、トークンは端末内にとどまります。"
+      },
+      {
+        "question": "Bearerトークンもデコードできますか？",
+        "answer": "はい。先頭にBearerが付いていてもいなくても、トークンを受け付けます。"
+      },
+      {
+        "question": "出力に_claimsオブジェクトがあるのはなぜですか？",
+        "answer": "exp、iat、nbfを読みやすいISO形式の時刻で示し、トークンが期限切れかどうかを表すために、Tool Kumarが追加しています。先頭のアンダースコアは計算で求めた値であることを示しており、トークン自体には含まれません。"
+      }
+    ]
+  },
+  "json-to-dart": {
+    "hash": "06a580195f03",
+    "title": "JSONをDartのモデルに変換：null安全に対応",
+    "description": "JSONを、コンストラクター、fromJson、toJsonを備えたnull安全なDartクラスに変換します。ネストしたFlutterのモデルも、サンプルをアップロードせずにローカルで生成できます。",
+    "heading": "JSONをDartのモデルに変換",
+    "query": "JSON Dart 変換",
+    "secondary": [
+      "json to dart",
+      "Flutter JSON モデル 生成",
+      "JSON Dart null safety"
+    ],
+    "intro": "FlutterのAPIレスポンス用に、Dartのモデルを生成します。ネストした各クラスには、finalフィールド、constコンストラクター、fromJsonファクトリ、toJsonメソッドが含まれます。",
+    "modeLabel": "Dartの出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "user-idのようなJSONキーは、camelCaseのフィールドに対応付けられます。生成されたJSONメソッドでは元のキーが保たれます。",
+      "整数と小数のpriceは、doubleにまとめられます。デコード処理ではnumを経由してキャストし、toDoubleを呼び出すため、サンプルのどちらの値でも動作します。",
+      "nullと文字列が混在するとString?になります。nullしか見られないフィールドは、本来の型がわからないためdynamicのままです。",
+      "日付はStringのままです。DateTimeへの変換はご自身で確認してください。Web向けにコンパイルしたDartでは、大きな整数をすべて正確に表現できるわけではありません。"
+    ],
+    "faqs": [
+      {
+        "question": "json_serializableのアノテーションも生成されますか？",
+        "answer": "いいえ。fromJsonとtoJsonのメソッドを直接書き出します。@JsonSerializableアノテーション、partファイル、build_runnerの手順はありません。"
+      },
+      {
+        "question": "null安全はどう扱われますか？",
+        "answer": "nullの値や、一部のレコードに存在しないフィールドがあると、推論されるフィールドはnull許容になります。nullでないフィールドはrequiredのコンストラクター引数になり、nullのみのフィールドはdynamicになります。"
+      },
+      {
+        "question": "ネストしたオブジェクトの配列も変換できますか？",
+        "answer": "はい。サンプルからはList<Item>が生成されます。入力の各要素はItem.fromJsonで変換され、エンコード時には各itemのtoJsonが呼び出されます。"
+      },
+      {
+        "question": "Flutterのパッケージは必要ですか？",
+        "answer": "生成されるモデルはDartのコア型を使います。レスポンスのテキストをdart:convertでデコードしてから、Root.fromJsonを呼び出してください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Flutterでモデルを使う",
+        "paragraphs": [
+          "dart:convertをインポートし、生成されたクラスをモデル用のファイルに貼り付けます。デコードしたレスポンスのMapをRoot.fromJsonに渡します。jsonEncodeは、生成されたtoJsonメソッドを呼び出します。",
+          "プロジェクトですでにjson_serializableを使っている場合は、生成されたJSONメソッドを2系統で管理するのではなく、フィールドをそのワークフローに合わせてください。"
+        ]
+      }
+    ]
+  },
+  "json-to-kotlin": {
+    "hash": "a4c5a24960eb",
+    "title": "JSONをKotlinのデータクラスに変換：ネストも推論",
+    "description": "JSONから、@Serializableと@SerialName付きのKotlinデータクラスを生成します。ネストしたモデル、リスト、null許容フィールドもブラウザー内で推論します。",
+    "heading": "JSONをKotlinのデータクラスに変換",
+    "query": "JSON Kotlin data class 変換",
+    "secondary": [
+      "json to kotlin",
+      "Kotlin data class 自動生成",
+      "JSON Kotlin データクラス 生成"
+    ],
+    "intro": "サンプルのJSONを、kotlinx.serialization用のデータクラスに変換します。ネストしたオブジェクトには専用のクラスが作られ、配列はListになり、名前を変えたフィールドは@SerialNameで元のJSONキーを保持します。",
+    "modeLabel": "Kotlinのデータクラスの出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "各データクラスに@Serializableを付け、kotlinx.serializationのアノテーションをインポートします。Moshiの@JsonやGsonの@SerializedNameは出力しません。",
+      "整数はLong、小数はDouble、nullのみや型が混在する値はJsonElementになります。null許容フィールドのデフォルト値はnullです。",
+      "符号付き64ビットの範囲を超える整数はDoubleになり、精度が失われることがあります。識別子を正確に保持するには、文字列かカスタムシリアライザーを使ってください。",
+      "日付の文字列はStringのままです。1つのサンプルだけでは、あるフィールドがすべてのAPIレスポンスで必須かどうかは判断できません。"
+    ],
+    "faqs": [
+      {
+        "question": "どのKotlinシリアライゼーションライブラリを使いますか？",
+        "answer": "kotlinx.serializationです。出力には@Serializableが使われ、KotlinのプロパティがJSONキーと異なる場合は@SerialNameが追加されます。"
+      },
+      {
+        "question": "Moshiでも使えますか？",
+        "answer": "フィールドの型はモデル作成の出発点として使えますが、アノテーションはkotlinx.serialization向けです。AndroidアプリでMoshiを使っている場合は、アノテーションを置き換え、Moshiのコード生成を設定してください。"
+      },
+      {
+        "question": "存在しないフィールドやnullのフィールドはどう扱われますか？",
+        "answer": "配列内の一部のレコードに存在しないフィールドや、nullが見られたフィールドはnull許容になり、デフォルト値はnullになります。nullでない必須フィールドにはデフォルト値がありません。"
+      },
+      {
+        "question": "Android向けのKotlin DTOを作成できますか？",
+        "answer": "はい。DTOとして使えるデータクラスを作成します。プロジェクトでは、Kotlin serializationのコンパイラプラグインとJSONランタイムを設定してください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "AndroidでAPIレスポンスをデコードする",
+        "paragraphs": [
+          "アプリでKotlin serializationのコンパイラプラグインを有効にし、kotlinx.serializationのJSON依存関係を追加します。生成されたRoot型をJson.decodeFromStringで使います。",
+          "ignoreUnknownKeysを設定すると、サーバー側で新しいフィールドが追加されても失敗しません。未知のフィールドを許容するAPIの方針である場合にだけ設定してください。"
+        ]
+      }
+    ]
+  },
+  "json-to-swift": {
+    "hash": "5f5ba4bf5cd2",
+    "title": "JSONをSwiftのモデルに変換：Codableの構造体を生成",
+    "description": "JSONを、CodingKeys、ネストしたモデル、オプショナルなプロパティを備えたSwiftのCodable構造体に変換します。コードの生成とコピーはブラウザー内でローカルに行えます。",
+    "heading": "JSONをSwiftのモデルに変換",
+    "query": "JSON Swift Codable 変換",
+    "secondary": [
+      "json to swift",
+      "Swift Codable 自動生成",
+      "JSON Swift struct 変換"
+    ],
+    "intro": "Codableに準拠したSwiftの構造体を生成します。プロパティ名がJSONと異なる場合はCodingKeysを追加するため、user-idのようなキーもuserIdにデコードされます。",
+    "modeLabel": "Swiftのモデルの出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "整数はInt、小数はDouble、符号付き64ビットの範囲を超える整数はDecimalと推論されます。対象プラットフォームの制限と10進数の精度を確認してください。",
+      "nullや存在しないフィールドは、オプショナルなプロパティになります。nullのみ、または型が混在する場合は、必要に応じて生成されるJSONValueヘルパーを使います。",
+      "JSONValueは数値をDoubleとして保持するため、正確な金額や非常に大きなIDには明示的な型を使ってください。",
+      "日付の文字列はStringのままです。フィールドをDateに変更する場合は、APIの形式に合わせてJSONDecoder.dateDecodingStrategyを設定してください。"
+    ],
+    "faqs": [
+      {
+        "question": "クラスと構造体のどちらを生成しますか？",
+        "answer": "Codableに準拠した構造体を、letプロパティとネストしたモデル型付きで生成します。Foundationをインポートします。"
+      },
+      {
+        "question": "CodingKeysはいつ追加されますか？",
+        "answer": "プロパティ名が変わる場合に、Swiftの識別子を元のJSONキーに対応付けるCodingKeysのenumを出力します。"
+      },
+      {
+        "question": "nullはどう扱われますか？",
+        "answer": "nullが見られたフィールドや存在しないフィールドは、オプショナルなプロパティになります。不明な値や型が混在する値にはCodableなJSONValueのenumを使い、これは参照される場合にだけ追加されます。"
+      },
+      {
+        "question": "JSONDecoderでそのまま使えますか？",
+        "answer": "はい。生成された構造体をプロジェクトにコピーし、DataからRoot.selfをデコードします。事前に、オプショナルなフィールドと日付の型を確認してください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "JSONDecoderでデコードする",
+        "paragraphs": [
+          "生成されたRoot構造体をJSONDecoderで使います。Codableなので、同じモデルをJSONEncoderでエンコードすることもできます。",
+          "この出力では、キー戦略はデフォルトのままにしてください。CodingKeysには、created_atを含む元のJSONキーがすでに入っています。"
+        ]
+      }
+    ]
+  },
+  "json-to-java": {
+    "hash": "37c805a235c6",
+    "title": "JSONをJavaのrecordに変換：Jackson対応",
+    "description": "JSONからJava recordを生成します。ネストしたrecord、型付きリスト、Jacksonの@JsonPropertyによる対応付けを含みます。入力をアップロードせずローカルで確認できます。",
+    "heading": "JSONをJavaのrecordに変換",
+    "query": "JSON Java 変換",
+    "secondary": [
+      "json to java",
+      "JSON POJO 変換",
+      "JSON Java record 生成"
+    ],
+    "intro": "APIのサンプルを、Jackson用のJavaのrecordに変換します。ルートは1つのpublicなrecordで、ネストしたrecordはその内側に置かれるため、出力をそのままRoot.javaとして保存できます。",
+    "modeLabel": "Javaの出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "このターゲットが出力するのはrecordで、setterを持つミュータブルなPOJOではありません。Java 16以降と、recordに対応したJackson（2.12以降など）を使ってください。",
+      "名前を変えたrecordコンポーネントや予約語にあたるコンポーネントには、元のキーを指定した@JsonPropertyが付きます。ネストしたオブジェクトの配列はList<Item>になります。",
+      "整数はlong、符号付き64ビットを超える大きな整数はBigInteger、小数はdoubleになります。null許容のプリミティブには、Longなどのボックス型を使います。",
+      "nullのみ、または型が混在するフィールドはObjectになります。日付はStringのままです。正確な10進数演算が必要な場合は、BigDecimalを使い、対応付けを見直してください。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONからJavaへの変換でPOJOは生成されますか？",
+        "answer": "生成されるのはイミュータブルなJavaのrecordです。Java 8のPOJO、setter、引数なしのコンストラクターが必要な場合は、出力を書き換えるか、そのモデル形式に対応したジェネレーターを使ってください。"
+      },
+      {
+        "question": "どのJSONライブラリが対象ですか？",
+        "answer": "Jacksonです。Javaのコンポーネント名と異なるキーを保持する必要がある場合は、@JsonPropertyをインポートします。"
+      },
+      {
+        "question": "ネストした型をすべて1つのファイルに保存できますか？",
+        "answer": "はい。publicなルートのrecordの中に、publicなネストしたrecordが含まれるため、オブジェクトから生成したデフォルトの出力はRoot.javaに収まります。"
+      },
+      {
+        "question": "recordにデシリアライズするにはどうすればよいですか？",
+        "answer": "recordに対応したJacksonで、ObjectMapper.readValue(responseBody, Root.class)を使います。APIに合わせて、日付の扱いと数値の上限を確認してください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Jacksonでrecordを使う",
+        "paragraphs": [
+          "デフォルトの出力をRoot.javaとして保存します。JacksonはJSONのプロパティからrecordのコンポーネントを構築します。Itemのようなネストしたrecordは、Root.Itemとして利用できます。",
+          "出力にはpackage宣言が含まれていません。アプリケーションで使うパッケージを追加してください。日付をjava.timeの型に変更する場合は、普段使っているJacksonモジュールを登録してください。"
+        ]
+      }
+    ]
+  },
+  "json-to-csharp": {
+    "hash": "32fef4d0dcfa",
+    "title": "JSONをC#のクラスに変換：System.Text.Json用",
+    "description": "JSONから、requiredプロパティ、null許容型、JsonPropertyName属性を備えたC#クラスを生成します。ネストしたモデルもブラウザー内で変換できます。",
+    "heading": "JSONをC#のクラスに変換",
+    "query": "JSON C# クラス 変換",
+    "secondary": [
+      "json to c#",
+      "JSON C# クラス 自動生成"
+    ],
+    "intro": "System.Text.Json用のC#モデルを生成します。デフォルトの出力では、各プロパティにJsonPropertyName属性を付け、すべてのサンプルレコードに存在するフィールドにはrequiredを使います。",
+    "modeLabel": "C#のクラスの出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "デフォルトはSystem.Text.Jsonです。「その他のオプション」で「Newtonsoft」を選ぶと、Newtonsoft.JsonのJsonProperty属性が付き、不明な値にはJTokenが使われます。",
+      "生成されるrequiredメンバーには、C# 11以降が必要です。null許容参照型の構文は、null許容注釈が有効になっていることを前提としています。",
+      "整数はlong、符号付き64ビットを超える整数はdecimal、小数はdoubleになります。decimalにも範囲の上限があるため、さらに大きな値には独自の表現を選んでください。",
+      "すべてのレコードにキーがあれば、null許容のフィールドでもrequiredになることがあります。キーの存在が必須であることと、nullを受け付けることは別のルールです。日付はstringのままです。"
+    ],
+    "faqs": [
+      {
+        "question": "System.Text.JsonとNewtonsoft.Jsonのどちらを使いますか？",
+        "answer": "デフォルトはSystem.Text.Jsonで、JsonPropertyName属性を使います。変換ツールの「その他のオプション」メニューで「Newtonsoft」を選ぶと、代わりにNewtonsoft.JsonのJsonProperty属性を出力します。"
+      },
+      {
+        "question": "出力にはどのバージョンのC#が必要ですか？",
+        "answer": "requiredメンバーにはC# 11以降が必要です。string?などの参照型の注釈を意図どおりに使うには、null許容参照型を有効にしてください。"
+      },
+      {
+        "question": "requiredのプロパティがnull許容にもなるのはなぜですか？",
+        "answer": "キーはすべてのサンプルレコードに現れますが、値はnullの場合があるためです。たとえばrequired string? Noteは、キーの存在と値の型を別々に表しています。"
+      },
+      {
+        "question": "リストやネストしたクラスも生成されますか？",
+        "answer": "はい。オブジェクトの配列はList<Item>になり、ネストした構造ごとにクラスが生成されます。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "System.Text.Jsonでデシリアライズする",
+        "paragraphs": [
+          "クラスを.NETプロジェクトにコピーし、null許容注釈を有効にします。JsonPropertyName属性によって、PascalCaseのプロパティが入力のキーと正確に対応付けられます。",
+          "System.Text.Jsonがrequiredメンバーに対応している.NETのバージョン（.NET 7以降など）を使ってください。シリアライザーのオプションは、アプリケーションに合わせて設定します。"
+        ]
+      }
+    ]
+  },
+  "json-to-rust": {
+    "hash": "bd870172bdcb",
+    "title": "JSONをRustの構造体に変換：serde対応",
+    "description": "JSONから、serdeのSerializeとDeserialize、キーのリネーム、Vecフィールド、Option型を備えたRustの構造体を生成します。変換はブラウザー内でローカルに実行されます。",
+    "heading": "JSONをRustの構造体に変換",
+    "query": "JSON Rust 構造体 変換",
+    "secondary": [
+      "json to rust",
+      "Rust serde 構造体 生成"
+    ],
+    "intro": "Debug、Clone、Serialize、Deserializeをderiveした、publicなRustの構造体を生成します。JSONキーはsnake_caseのフィールドになり、元のキー名と異なる場合はserdeのrename属性が付きます。",
+    "modeLabel": "Rustの構造体の出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "配列はVecに、型のわかるnull許容フィールドはOptionになります。一部のレコードに存在しないフィールドには、skip_serializing_if = \"Option::is_none\"が追加されます。",
+      "不明な値、nullのみの値、型が混在する値にはserde_json::Valueを使います。リネームでは記号もそのまま保持され、Rustの予約語には可能な限りraw識別子を使います。",
+      "整数はi64、符号付き64ビットを超える場合はi128になります。小数はf64です。非常に大きな整数を受け付ける前に、serde_jsonの対応状況と数値の範囲を確認してください。",
+      "日付はStringのままです。金額を正確な10進数で扱うには、専用の型とシリアライザーが必要です。そうしたルールはJSONのサンプルからは得られません。"
+    ],
+    "faqs": [
+      {
+        "question": "serdeのderiveは含まれますか？",
+        "answer": "はい。serde::{Deserialize, Serialize}をインポートし、構造体にDebug、Clone、Serialize、Deserializeをderiveします。"
+      },
+      {
+        "question": "JSONのキー名は保持されますか？",
+        "answer": "はい。必要な箇所にserdeのrename属性を出力します。フィールドごとの対応付けを減らせる場合は、rename_all = \"camelCase\"を使うこともあります。"
+      },
+      {
+        "question": "nullや存在しない値はどう表現されますか？",
+        "answer": "型のわかるnull許容フィールドや、存在しないことがあるフィールドにはOption<T>を使います。不明なフィールドやnullのみのフィールドにはserde_json::Valueを使い、これ自体がJSONのnullを保持できます。"
+      },
+      {
+        "question": "生成結果をserde_jsonでデシリアライズできますか？",
+        "answer": "はい。Rustプロジェクトにderiveフィーチャーを有効にしたserdeとserde_jsonを追加し、生成されたRoot型にデシリアライズします。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "serde_jsonで構造体を使う",
+        "paragraphs": [
+          "Cargo.tomlで、依存関係にあるserdeのderiveフィーチャーを有効にし、serde_jsonを追加します。構造体をモジュールにコピーし、レスポンスをデシリアライズします。",
+          "サンプルに基づく推論では、アプリケーションのバリデーションルールは設定されません。デコードしたモデルを信頼できる入力として扱う前に、値の範囲、必須フィールド、タイムスタンプを確認してください。"
+        ]
+      }
+    ]
+  },
+  "json-to-php": {
+    "hash": "7fc19be29801",
+    "title": "JSONをPHPのクラスに変換：型付きreadonlyプロパティ",
+    "description": "JSONから、readonlyのコンストラクタープロパティとfromArrayメソッドを備えたPHP 8.1のクラスを生成します。JSONをモデルや連想配列にデコードする方法も紹介します。",
+    "heading": "JSONをPHPのクラスに変換",
+    "query": "JSON PHP クラス 変換",
+    "secondary": [
+      "JSON PHP 連想配列 変換",
+      "json to php"
+    ],
+    "intro": "コンストラクターでプロモートされた型付きreadonlyプロパティを持つ、PHP 8.1以降向けのクラスを生成します。各クラスには、元のJSONキーを対応付けてネストしたオブジェクトを組み立てるfromArrayメソッドがあります。",
+    "modeLabel": "PHPのクラスの出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "出力はdeclare(strict_types=1)で始まり、finalクラスを生成します。ネストしたオブジェクトの配列には、PHPDocによる要素の型とarray_mapによる組み立てが使われます。",
+      "null許容の値には?typeを使い、nullのみ、または型が混在するフィールドにはmixedを使います。日付はstringのままです。",
+      "整数はint、符号付き64ビットを超える整数はfloatになります。この場合、精度が失われることがあります。PHPのプラットフォームの上限を確認し、必要に応じて大きなIDは文字列としてデコードしてください。",
+      "toArrayやJsonSerializableの実装はありません。クラスをエンコードするときに元のJSONキーが必要な場合は、明示的なシリアライズ処理を追加してください。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONをPHPの連想配列に変換できますか？",
+        "answer": "はい。PHP自体の機能を使い、json_decode($json, true, 512, JSON_THROW_ON_ERROR)とします。このジェネレーターが出力するのは、PHPの配列リテラルではなく型付きのモデルクラスです。"
+      },
+      {
+        "question": "生成されたコードにはどのバージョンのPHPが必要ですか？",
+        "answer": "コンストラクターでプロモートされたreadonlyプロパティを使うため、PHP 8.1以降が必要です。出力では、型付きプロパティ、名前付き引数、strict_typesも使っています。"
+      },
+      {
+        "question": "ネストしたオブジェクトはどのようにクラスになりますか？",
+        "answer": "fromArrayが、ネストしたクラスのfromArrayメソッドを呼び出します。ネストしたオブジェクトの配列にはarray_mapを使い、要素の型はPHPDocに記録されます。"
+      },
+      {
+        "question": "JSONにエンコードし直すときもキーは保持されますか？",
+        "answer": "fromArrayメソッドは入力時の対応付けを保持します。出力には独自のエンコーダーがないため、これらのオブジェクトにjson_encodeを使うとプロパティ名が使われます。元のJSONキーが必要な場合は、JsonSerializableかtoArrayメソッドを追加してください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "配列と型付きモデルのどちらを使うか",
+        "paragraphs": [
+          "PHPの連想配列が必要なだけなら、trueを指定したjson_decodeで十分です。生成したモデルを使う場合は、その配列をRoot::fromArrayに渡します。JSON_THROW_ON_ERRORを指定すると、不正な入力がエラーとして報告されます。",
+          "IDがPHP_INT_MAXを超える場合、JSON_BIGINT_AS_STRINGで桁を保持できますが、対応する生成済みのfloatプロパティをstringに変更する必要があります。推論されたfloatは、IDを正確に表す型ではありません。"
+        ]
+      }
+    ]
+  },
+  "json-to-toml": {
+    "hash": "41bb6e2c5bdc",
+    "title": "JSONをTOMLに変換：テーブルと配列に対応",
+    "description": "JSONを、TOMLのテーブルやテーブルの配列にローカルで変換します。nullや、TOMLの64ビットの範囲を超える整数が出力にどう影響するかも確認できます。",
+    "heading": "JSONをTOMLに変換",
+    "query": "JSON TOML 変換",
+    "secondary": [
+      "JSON to TOML",
+      "JSON TOML 変換 オンライン"
+    ],
+    "intro": "JSONの設定をTOMLのテーブルに変換します。ネストしたオブジェクトはテーブルのヘッダーに、オブジェクトの配列はテーブルの配列になります。TOMLで表現できない値については、出力内のコメントを確認してください。",
+    "modeLabel": "TOMLの出力",
+    "exampleLabel": "生成されたTOMLには、[profile]テーブルと2つの[[items]]テーブルがあります。nullのnoteは、コメントを残して省略されます。",
+    "steps": [
+      "有効なJSONの設定を貼り付けます。",
+      "TOMLのテーブルと、省略または変更された値についてのコメントを確認します。",
+      "TOMLをコピーまたはダウンロードし、アプリケーションの設定スキーマに照らして検証します。"
+    ],
+    "options": [
+      "TOMLにはnullがありません。nullのプロパティはコメントを残して省略され、配列やインラインオブジェクト内のnullの要素は削除されます。この変換によってデータが変わることがあります。",
+      "符号付き64ビットの範囲外の整数は、説明のコメント付きで、引用符で囲んだ文字列として書き出されます。",
+      "TOMLのドキュメントはテーブルでなければならないため、トップレベルの配列やスカラーは、ルート名の設定から決まるキー（デフォルトはroot）の下にラップされます。",
+      "日付のように見える値も含め、文字列は文字列のまま残ります。空白を含むキーは引用符で囲まれます。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONからTOMLへの変換で、データは失われませんか？",
+        "answer": "ドキュメントによってはデータが失われます。TOMLにはnullがなく、整数は符号付き64ビットに収まる必要があります。エクスポーターはnullを省略し、範囲外の整数を引用符で囲みます。こうした変更は、コメントで説明されます。"
+      },
+      {
+        "question": "オブジェクトの配列はどう表現されますか？",
+        "answer": "[[items]]のようなテーブルの配列になり、オブジェクトごとに1つのテーブルが作られます。"
+      },
+      {
+        "question": "JSONに戻せますか？",
+        "answer": "はい。編集した設定は「TOMLをJSONに変換」で変換できます。ただし、省略されたnull値は自動では復元できません。"
+      },
+      {
+        "question": "トップレベルがJSONの配列でもTOMLにできますか？",
+        "answer": "はい。TOMLではドキュメントのルートがテーブルである必要があるため、配列をルート名の下にラップします。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "設定をTOMLベースの環境に移行する",
+        "paragraphs": [
+          "出力は、TOMLを読み込むアプリケーションが受け付けるデータに使い、そのアプリケーションのスキーマを確認してください。RustのCargo.tomlやPythonのpyproject.tomlには、特定のテーブルとキーが必要です。構造を変換しても、そうしたプロジェクトファイルが自動で作られるわけではありません。",
+          "この例では、各itemがそれぞれ独立した[[items]]テーブルになります。最初のnoteはnullなので省略されます。保存する前に、元のJSONと比較してください。",
+          "nullを保持することが重要なら、変更された設定を気づかないまま受け入れるのではなく、JSONのまま使うかYAMLを使ってください。"
+        ]
+      }
+    ]
+  },
+  "toml-to-json": {
+    "hash": "da150149c95e",
+    "title": "TOMLをJSONに変換：設定ファイル向け",
+    "description": "TOMLのテーブル、テーブルの配列、スカラー値を、整形されたJSONにローカルで変換します。TOMLファイルを開いて結果を確認し、JSONをダウンロードできます。",
+    "heading": "TOMLをJSONに変換",
+    "query": "TOML JSON 変換",
+    "secondary": [
+      "TOML to JSON",
+      "TOML から JSON に変換"
+    ],
+    "intro": "TOMLの設定を貼り付けるか.tomlファイルを開くと、整形されたJSONとして表示できます。インポーターは、テーブル、ドット区切りのキー、配列、インラインテーブル、TOMLの文字列をブラウザー内で読み取ります。",
+    "modeLabel": "TOMLからJSONへのインポート",
+    "exampleLabel": "serverテーブルはオブジェクトになり、繰り返されるusersテーブルはオブジェクトの配列になります。",
+    "steps": [
+      "TOMLを貼り付けるか、.tomlファイルを開きます。",
+      "開いた.tomlファイルはすぐに変換されます。貼り付けたTOMLの場合は、バナーで「TOML → JSON」を選び、結果を確認します。",
+      "受け取る側のアプリケーション用に、JSONをコピーまたはダウンロードします。"
+    ],
+    "options": [
+      "TOMLの日付と時刻の値は、JSONの文字列になり、Dateオブジェクトにはなりません。",
+      "整数の各桁の数字は正確に保持されます。16進数、8進数、2進数の整数は10進表記に変換されます。ただし、JavaScriptのNumberを使う側では、大きな値が丸められる可能性があります。",
+      "JSONには有限でない数値がないため、TOMLのinfとnanはnullになります。",
+      "コメントやテーブルの書式は失われます。重複したキーや不正な構文があると、インポートエラーになります。"
+    ],
+    "faqs": [
+      {
+        "question": "テーブルの配列も読み取れますか？",
+        "answer": "はい。繰り返される[[users]]ヘッダーは、JSONのオブジェクトの配列になります。"
+      },
+      {
+        "question": "TOMLの日付はどうなりますか？",
+        "answer": "JSONの文字列になります。インポーターは、日付と時刻の区切りをTに、末尾の小文字のzをZに正規化します。"
+      },
+      {
+        "question": "Cargo.tomlやpyproject.tomlもインポートできますか？",
+        "answer": "はい。ファイルを開くか、TOMLの内容を貼り付けてください。結果はそのデータを表すもので、パッケージマネージャーの規約を別のエコシステム向けに変換するものではありません。"
+      },
+      {
+        "question": "コメントは保持できますか？",
+        "answer": "いいえ。JSONにはコメントがありません。コメントやレイアウトが必要な場合は、元のTOMLファイルを使ってください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "TOMLのデータをJSONとして読む",
+        "paragraphs": [
+          "[server]テーブルはserverオブジェクトになり、[[users]]ヘッダーはusers配列のレコードになります。設定の中身を確認するときや、そのデータをJSONのAPIに送るときに便利です。",
+          "Cargo.tomlやpyproject.tomlを変換しても、変わるのは形式だけで、パッケージや依存関係の設定の意味は変わりません。出力を使う前に、変換先のスキーマを確認してください。"
+        ]
+      }
+    ]
+  },
+  "offline-json-formatter": {
+    "hash": "776eb6bff586",
+    "title": "JSON整形をオフラインで：Windows、Mac、モバイル",
+    "description": "Tool KumarをJSON整形アプリとしてインストールするか、キャッシュ済みのブラウザータブをオフラインで使えます。設定手順、オフラインでの確認方法、ローカルストレージ、更新の仕組みを説明します。",
+    "heading": "オフラインで使えるJSON整形ツール",
+    "query": "JSON 整形 オフライン",
+    "secondary": [
+      "JSON 整形 ツール Windows",
+      "JSON 整形 アプリ",
+      "JSON フォーマッター オフライン"
+    ],
+    "intro": "最初にオンラインでアクセスしてアプリのキャッシュが完了すれば、その後はインターネットに接続しなくてもJSONを整形できます。ブラウザーのタブで開いておくことも、対応プラットフォームではWebアプリとしてインストールすることもできます。",
+    "modeLabel": "整形したJSON",
+    "exampleLabel": "オンラインでも、アプリのアセットをオフライン用にキャッシュした後でも、同じローカルの整形機能がこの出力を生成します。",
+    "steps": [
+      "インターネットに接続した状態でTool Kumarを開き、ページの読み込みが終わってから数秒待ちます。ブラウザーにサイトデータの保存を許可してください。",
+      "DevToolsを開いて「ネットワーク」（Network）を選び、スロットリングのメニューを「オフライン」（Offline）に変えて、トップページを再読み込みします。スマートフォンでは、機内モードをオンにして再読み込みします。",
+      "サンプルを貼り付け、整形された出力が表示されることを確認します。変換も使う場合はあわせてテストし、最後に「ネットワーク」の設定を元に戻します。"
+    ],
+    "options": [
+      "インストールは必須ではありません。Service Workerにより、キャッシュされたトップページは通常のブラウザータブでも動作します。",
+      "アプリは、トップページ、JavaScript、スタイル、フォント、アイコン、変換モジュールをキャッシュします。一度アクセスしたページは、ページ全体がキャッシュされることがあります。キャッシュされていないページは、トップページで代替されます。",
+      "リモートURLからの読み込みには接続が必要です。アナリティクスとクロスオリジンのリクエストはキャッシュされません。Next.jsのルートデータはキャッシュされないため、オフライン時のサイト内移動でもトップページで代替されることがあります。",
+      "オフラインで使えるかどうかは、ブラウザーがサイトのストレージを保持しているかどうかに左右されます。サイトデータの消去、プライベートブラウジングのポリシー、ブラウザーによるストレージの自動削除によって、アプリのキャッシュが消えることがあります。"
+    ],
+    "faqs": [
+      {
+        "question": "WindowsやMac向けに、オフラインで使えるJSON整形ツールのダウンロード版はありますか？",
+        "answer": "ChromeまたはEdgeからTool Kumarをインストールするか、対応バージョンのmacOSではSafariの「Dockに追加」を使ってください。これはWebアプリであり、.exeや.dmgを別途ダウンロードするものではありません。"
+      },
+      {
+        "question": "デスクトップ版のFirefoxでもオフラインで使えますか？",
+        "answer": "はい。Service Workerとサイトのストレージが有効で、最初のアクセスでキャッシュが完了していれば使えます。お使いのFirefoxにインストールの項目がない場合は、サイトをタブで開いておくか、ブックマークしてください。"
+      },
+      {
+        "question": "機内モードでも整形ツールを使えますか？",
+        "answer": "はい。オンラインでアクセスしてアプリがキャッシュされた後であれば使えます。接続なしで使う前に、トップページを再読み込みし、サンプルで動作を確認してください。"
+      },
+      {
+        "question": "オフライン版のアプリはどのように更新されますか？",
+        "answer": "オンラインでトップページを読み込むと、キャッシュされたシェルとそのアセットが更新されます。変更されたアセット一式の準備ができると、開いているタブに「再読み込み」のメッセージが表示されます。新しいバージョンを使うには、アプリを閉じて開き直すか、再読み込みしてください。"
+      },
+      {
+        "question": "JSONはどこに保存されますか？",
+        "answer": "ユーザーが編集したJSONは、2,500,000文字の上限に収まる場合、このブラウザーのlocalStorageに保存されます。比較用のテキスト、ファイル名、設定、テーマも保存されることがあります。Service Workerのキャッシュには、アプリケーションのリソースが保存されます。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Windows、macOS、Linux、ChromeOSにインストールする",
+        "paragraphs": [
+          "Chromeでは、ブラウザーのメニューを開き、「キャスト、保存、共有」→「ページをアプリとしてインストール」の順に選びます。アドレスバーにインストールのアイコンが表示されることもあります。Edgeでは、「設定など」→「アプリ」→「このサイトをアプリとしてインストール」の順に選びます。メニューの表記はブラウザーのバージョンによって異なります。",
+          "macOS Sonoma以降のSafariでは、「ファイル」→「Dockに追加」を使えます。接続を切る前に、オンラインの状態でアプリを一度開き、オフラインでの動作確認を行ってください。インストールしても、キャッシュの手順が不要になるわけではありません。",
+          "デスクトップ版のFirefoxでは、サイトをアプリとしてインストールする項目がない場合があります。その場合でも、Service Workerが有効であれば、キャッシュされたサイトをFirefoxのタブでオフラインで使えます。"
+        ]
+      },
+      {
+        "heading": "iPhone、iPad、Androidにインストールする",
+        "paragraphs": [
+          "iOSまたはiPadOSでは、Safariでサイトを開き、「共有」をタップして「ホーム画面に追加」を選びます。お使いのバージョンに「Webアプリとして開く」のスイッチがある場合はオンにして、「追加」をタップします。",
+          "Androidでは、Chromeでサイトを開き、メニューをタップして「アプリをインストール」または「ホーム画面に追加」を選びます。機内モードをオンにする前に、まずオンラインで開き、キャッシュが完了するまで待ってください。"
+        ]
+      },
+      {
+        "heading": "キャッシュを確認し、ローカルデータを消去する",
+        "paragraphs": [
+          "ChromiumのDevToolsでは、「アプリケーション」（Application）の「Service Workers」に登録済みのワーカーが表示されます。「キャッシュストレージ」（Cache Storage）にはjson-viewerキャッシュが、「ローカルストレージ」（Local Storage）にはjf:で始まるキーが表示されます。キャッシュにはアプリのアセットが保存され、localStorageには編集したドキュメントが保存されている場合があります。",
+          "両方を削除するには、ほかのTool Kumarのタブを閉じてから、「アプリケーション」→「ストレージ」（Storage）→「サイトデータを消去」（Clear site data）を使い、ローカルストレージ、キャッシュストレージ、Service Workerを含めて消去します。ほかのブラウザーにも、設定内に同等のサイトデータの管理機能があります。再びオフラインで使うには、一度オンラインでアクセスする必要があります。"
+        ]
+      },
+      {
+        "heading": "機密性の高いJSONをオフラインで扱う",
+        "paragraphs": [
+          "まず、無害なサンプルでオフラインモードを試してください。ネットワークを無効にした状態でアプリが動作することを確認してから、機密データを貼り付けます。ページへのアクセス権を持つブラウザーの拡張機能は、その場合でもデータを読み取れます。共有端末では、作業が終わったらサイトデータを消去してください。"
+        ]
+      }
+    ]
+  },
+  "secure-json-formatter": {
+    "hash": "2a030202b992",
+    "title": "JSON整形を安全に：処理はブラウザー内で完結",
+    "description": "JSONをブラウザー内で確認できます。アップロードやアカウントは不要です。機密情報を扱う前に通信をご自身で検証し、アナリティクス、ストレージ、CSPの制限事項をご確認ください。",
+    "heading": "安全なJSON整形ツール",
+    "query": "JSON 整形 安全",
+    "secondary": [
+      "JSON 整形 ローカル",
+      "JSON 整形 情報漏洩",
+      "安全な JSON フォーマッター"
+    ],
+    "intro": "Tool Kumarは、ドキュメントの解析と整形をブラウザー内で行います。JSONを貼り付けてもサーバーには送信されず、アカウントも必要ありません。ただし、このサイトはVercel Web Analyticsを使用しているため、プライバシーについては、ドキュメントの処理とページのテレメトリを分けて考える必要があります。",
+    "modeLabel": "整形したJSON",
+    "exampleLabel": "オンラインでも、アプリのアセットをオフライン用にキャッシュした後でも、同じローカルの整形機能がこの出力を生成します。",
+    "steps": [
+      "DevToolsを開き、「ネットワーク」（Network）を選びます。ページの読み込みが終わるのを待ってから、リクエストの一覧をクリアします。",
+      "network-check-7のような固有のマーカーを含む無害なJSONを貼り付け、値を1つ編集します。整形結果は、そのマーカーを含むリクエストなしで更新されるはずです。",
+      "新しいリクエストがあれば、特に「ペイロード」（Payload）タブを確認します。アナリティクスはビーコンリクエストを使う場合があるため、「Fetch/XHR」と「すべて」（All）の両方を確認してください。小さなサンプルなら30秒ほどで終わります。"
+    ],
+    "options": [
+      "パーサー、コード生成、ダウンロードファイルの作成はローカルで実行されます。ローカルのファイルを開いても、アップロードはされません。",
+      "Vercel Web Analyticsはページビューを記録します。本番環境では、そのスクリプトはこのサイトと同じオリジンの/_vercel/insights/script.jsから配信され、テレメトリには/_vercel/insightsが使われます。ラッパーはイベントの送信前にURLフラグメントを取り除きます。ドキュメントの内容を送るイベントは、コード内に設定されていません。",
+      "共有リンクでは、JSONがURLフラグメントに入ります。フラグメントはHTTPリクエストでは送信されませんが、リンク全体を知っている人は誰でもドキュメントを読めます。機密情報は共有しないでください。",
+      "「URLから読み込む」は、指定したエンドポイントをブラウザーから明示的に取得します。そのエンドポイント側にはリクエストが届きます。?url=付きのリンクでもリモートからの読み込みが始まることがあるため、機密性の高い作業では貼り付けかローカルのファイルを使ってください。"
+    ],
+    "faqs": [
+      {
+        "question": "このJSON整形ツールは機密データに使っても安全ですか？",
+        "answer": "ドキュメントはローカルで処理され、貼り付けた内容がアップロードされることはありません。それでも、配信されるコード、お使いのブラウザー、拡張機能を信頼できることが前提です。機密情報を扱う場合は、リクエストを検証し、動作確認済みのオフラインのタブを使い、終わったらローカルストレージを消去してください。"
+      },
+      {
+        "question": "このサイトはアナリティクスを使っていますか？",
+        "answer": "はい。Vercel Web Analyticsがページのテレメトリを記録します。ラッパーはURLフラグメントを取り除き、アプリケーションにはエディターの内容を送信するイベントは設定されていません。アナリティクスのリクエストは、ローカルでのJSON処理とは別のものです。"
+      },
+      {
+        "question": "Content Security Policyは何を保護しますか？",
+        "answer": "ページのCSPは、フレームへの埋め込みをブロックし、ベースURLをこのオリジンに制限し、埋め込みオブジェクトをブロックします。script-srcやconnect-srcのディレクティブはないため、すべてのスクリプトや通信先を制限するものではありません。"
+      },
+      {
+        "question": "タブを閉じた後もJSONは残りますか？",
+        "answer": "ユーザーが編集した2,500,000文字までのドキュメントは、比較用のテキストや設定とともに、このブラウザーのlocalStorageに残ることがあります。共有端末ではサイトデータを消去してください。プリセットのページを開いただけでは、トップページに保存されたドキュメントは置き換わりません。"
+      },
+      {
+        "question": "JWTやAPIキーを貼り付けても大丈夫ですか？",
+        "answer": "まず無害なサンプルでオフラインでの動作を確認し、機密情報にはオフラインのタブを使うことをおすすめします。ページにアクセスできる拡張機能は、その場合でもエディターの内容を読み取れます。デコードしたJWTは検証済みのトークンではありません。また、漏えいしたキーは失効させてください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "ブラウザー内での処理で守られるもの",
+        "paragraphs": [
+          "JSONをアップロードする整形ツールでは、サーバーがドキュメントにアクセスできます。このツールでは、解析と整形にブラウザー上のパーサーのコードを使い、ダウンロードファイルの生成にはローカルのブラウザーAPIを使います。通常の貼り付け操作では、ドキュメントを含むリクエストは発生しません。",
+          "上記のネットワークの確認で検証できるのは、現在のセッションだけです。今後のすべてのバージョンの動作を保証するものではありません。データの重要度に応じて、更新後にも確認を繰り返してください。"
+        ]
+      },
+      {
+        "heading": "アナリティクスとサードパーティへのリクエスト",
+        "paragraphs": [
+          "このサイトはVercel Web Analyticsを使用して、ドキュメントの内容ではなくページビューを記録しています。本番環境では、アナリティクスのスクリプトは同じオリジンの/_vercel/insights/script.jsから読み込まれ、ページのテレメトリは/_vercel/insightsを通じて送信されます。URLフラグメントは、イベントの送信前にアプリケーションのラッパーによって取り除かれます。URLのパスやクエリパラメーターには機密情報を入れないでください。",
+          "コード用のフォントはビルド時にセルフホストされるため、このページを使ってもGoogleにフォントがリクエストされることはありません。ソースコードの監査では、ほかのアナリティクスの組み込みは見つかりませんでした。ユーザーが指定したリモートURLの取得は、通常のローカル入力に対する例外です。"
+        ]
+      },
+      {
+        "heading": "実際のセキュリティヘッダーを確認する",
+        "paragraphs": [
+          "ページのContent-Security-Policyを以下に示します。このポリシーは、ページのフレームへの埋め込み、ベースURLの別オリジンへの変更、object/embedコンテンツの読み込みをブロックします。ページにはscript-src、default-src、connect-srcは設定されていません。",
+          "そのほかに設定されているヘッダーには、X-Content-Type-Options: nosniff、X-Frame-Options: DENY、Referrer-Policy: strict-origin-when-cross-origin、カメラ、マイク、位置情報、決済、USBを無効にするPermissions-Policyがあります。Service Workerのレスポンスには、別のより厳格なCSPが設定されています。"
+        ]
+      },
+      {
+        "heading": "JWT、APIキー、保存されたドキュメントの扱い",
+        "paragraphs": [
+          "ページへのアクセス権を持つ不要な拡張機能は無効にしてください。トークンやキーを貼り付ける前に、ネットワークを無効にした状態でキャッシュ済みのアプリが動作することを確認します。機密情報は、共有リンク、スクリーンショット、ブラウザーのURLのクエリに含めないでください。",
+          "ユーザーの編集内容はlocalStorageに残ることがありますが、localStorageは暗号化された機密情報の保管庫ではありません。機密性の高い作業の後は、ほかのTool Kumarのタブを閉じ、ブラウザーのサイトデータの設定から、このサイトのローカルストレージ、キャッシュストレージ、Service Workerを消去してください。",
+          "JWTデコードツールでクレームを確認し、署名はご自身のアプリケーションで検証してください。認証情報がすでに漏えいしている場合は、失効させるかローテーションしてください。整形しても、漏えいをなかったことにはできません。"
+        ]
+      }
+    ]
+  },
+  "jsonl-viewer": {
+    "hash": "5d02579b43c6",
+    "title": "JSONLビューアー：NDJSONファイルにも対応",
+    "description": ".jsonlや.ndjsonファイルを開き、レコードをツリーや表形式で閲覧できます。Tool KumarはJSON Linesをブラウザー内で読み込み、アップロードは行いません。",
+    "heading": "JSONLビューアー",
+    "query": "JSONL ビューアー",
+    "secondary": [
+      "NDJSON ビューアー",
+      "JSONL 開く",
+      "JSON Lines 表示"
+    ],
+    "intro": "NDJSONとも呼ばれるJSON Linesを開くか貼り付けると、1行に1件ずつのレコードを確認できます。Tool Kumarはレコードを一覧にするので、ツリーで展開したり、テーブルで並べ替えたり、検索したりできます。ファイルは端末の外に出ません。",
+    "modeLabel": "JSON Linesのツリービュー",
+    "exampleLabel": "1行が1件のレコードです。ビューアーはこの3行を3件のレコードのリストとして読み込みます。ここでは、ツリーとテーブルに表示されるJSON配列の形で示しています。",
+    "steps": [
+      ".jsonlまたは.ndjsonファイルを開くか、入力欄に行を貼り付けます。",
+      "ステータスバーを確認します。「JSON Lines」とレコード数が表示されます。",
+      "「ツリー」でレコードを展開するか、「テーブル」に切り替えて1レコード1行で表示します。キーや値を検索するには、Ctrl+F（Macでは⌘F）を押します。"
+    ],
+    "options": [
+      "各行には、完結したJSONの値が1つずつ入ります。空行はスキップされます。",
+      "複数行にまたがるレコードや、カンマで区切られたレコードも開けます。ただし、ステータスバーにはJSON Linesではなく、確認が必要な問題を含む厳密でないJSONとして表示されます。",
+      "開いた.jsonlや.ndjsonファイルのレコードが1件だけでも、1件のレコードからなるリストとして読み込まれます。",
+      "読み取れないレコードがあると解析が止まり、ステータスバーにその行と列が表示されます。",
+      "2,000,000文字または30,000行を超えると、表示を高速に保つために入力が読み取り専用になります。「編集を有効にする」を選ぶと、再び編集できるようになります。"
+    ],
+    "faqs": [
+      {
+        "question": "NDJSONファイルはどうやって開きますか？",
+        "answer": "入力メニューから「ファイルを開く」（Ctrl+O、Macでは⌘O）を選んで.ndjsonまたは.jsonlファイルを指定するか、ファイルをページにドラッグします。ファイルはブラウザー内で読み込まれ、アップロードはされません。"
+      },
+      {
+        "question": "JSON配列ではなくJSONLを使う理由は何ですか？",
+        "answer": "各行が完結したレコードなので、書き込む側はレコードを追記でき、読み込む側は1行ずつストリーミングしたり、ファイルを分割したりできます。JSON配列は、閉じ括弧が届くまで有効なJSONになりません。"
+      },
+      {
+        "question": "JSONLとNDJSONは同じものですか？",
+        "answer": "実質的には同じです。どちらも改行区切りのJSONの値を指す名前で、Tool Kumarは.jsonlと.ndjsonのファイルを同じように読み込みます。"
+      },
+      {
+        "question": "レコードをJSON配列やCSVに変換できますか？",
+        "answer": "はい。「フォーマット」ビューではレコードが1つのJSON配列として表示され、コピーやダウンロードができます。「JSONLをCSVに変換」ページを使うと、表計算ソフト向けの列に変換できます。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "extra-data",
+        "text": "JSON Linesを読み込むと、パーサーが「Extra data」エラーを出す理由"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "JSON Linesとは",
+        "paragraphs": [
+          "JSON Linesは、各行に1つのJSONの値を置く形式で、通常は1レコードにつき1つのオブジェクトです。プログラムが配列全体を読み込まずに1行だけ追記したり読み取ったりできるため、ログ、アナリティクスのエクスポート、機械学習のデータセットなどで使われています。",
+          "このようなファイルにはトップレベルの値が複数あるため、厳密なJSONパーサーでは受け付けられません。Tool Kumarは1行1レコードの構成を認識し、エラーを報告する代わりにレコードを一覧表示します。"
+        ]
+      }
+    ]
+  },
+  "ndjson-to-json": {
+    "hash": "6290f450ec30",
+    "title": "NDJSONをJSON配列に変換（JSONLにも対応）",
+    "description": "NDJSONやJSON Linesを、ブラウザー内で1つのJSON配列に変換します。各行が1つの要素になり、大きな数値も桁を保ったまま変換されます。アップロードは一切行いません。",
+    "heading": "NDJSONをJSONに変換",
+    "query": "NDJSON JSON 変換",
+    "secondary": [
+      "JSONL JSON 変換",
+      "JSONL JSON 配列 変換"
+    ],
+    "intro": "NDJSONを貼り付けるか.jsonlファイルを開くと、各行を1つのJSON配列にまとめます。入力は行のまま残り、その横に整形された配列が表示されるので、そのままコピーしたり.jsonとしてダウンロードしたりできます。",
+    "modeLabel": "JSON配列の出力",
+    "exampleLabel": "3行がそれぞれ配列の要素になります。orderの番号はすべての桁が保たれます。JavaScriptのJSON.parseでは、9007199254740993が9007199254740992に丸められてしまいます。",
+    "steps": [
+      "NDJSONの各行を貼り付けるか、.ndjsonまたは.jsonlファイルを開きます。",
+      "「フォーマット」ビューで配列を確認し、「整形」と「圧縮」を切り替えます。",
+      "コピーするか、.jsonファイルとしてダウンロードします。"
+    ],
+    "options": [
+      "各行は、ファイル内の順番どおりに配列の1要素になります。配列が入った行も1つの要素のままなので、[1,2]と[3]の2行は[[1,2],[3]]になります。",
+      "空行はスキップされます。厳密なJSONでない行は、行と列を示して指摘されます。末尾のカンマのような厳密でない構文は修復でき、読み取れないテキストがあると変換が止まります。",
+      "1行だけを貼り付けた場合は通常のJSONとして扱われ、そのまま残ります。要素が1つの配列にするには、.jsonlまたは.ndjsonファイルとして開いてください。",
+      "2^53を超える整数も含め、数値は元の桁を保ちます。",
+      "入力を配列で置き換えるには、「その他のオプション」メニューの「入力として使用」（Ctrl+Enter）を選びます。Ctrl+Zで元に戻せます。"
+    ],
+    "faqs": [
+      {
+        "question": "NDJSONをJSONに変換するにはどうすればよいですか？",
+        "answer": "NDJSONを貼り付けるか、ファイルを開きます。「フォーマット」ビューに1行1要素のJSON配列が表示されるので、コピーするか.jsonとしてダウンロードします。"
+      },
+      {
+        "question": "JSONLをJSONに変換するにはどうすればよいですか？",
+        "answer": "同じ手順です。JSONLとNDJSONは同じ形式の2つの呼び名で、このツールは.jsonlと.ndjsonのどちらのファイルも読み込めます。"
+      },
+      {
+        "question": "不正な行はどうなりますか？",
+        "answer": "行と列を示して指摘されます。シングルクォートのような厳密でない構文は「入力を修復」で修復できます。読み取れない行がある場合は、修正するまで変換が止まります。"
+      },
+      {
+        "question": "逆方向の変換もできますか？",
+        "answer": "はい。「JSONをJSONLに変換」を使うと、レコードの配列を1行に1つのコンパクトなJSONの値に戻せます。"
+      }
+    ]
+  },
+  "jsonl-to-csv": {
+    "hash": "efc51c1e4f45",
+    "title": "JSONLをCSVに変換：NDJSONのレコードに対応",
+    "description": "JSON LinesやNDJSONのレコードをCSVに変換します。ネストしたオブジェクトはprofile.cityのようなドット区切りの列になり、変換はブラウザー内で実行されます。",
+    "heading": "JSONLをCSVに変換",
+    "query": "JSONL CSV 変換",
+    "secondary": [
+      "NDJSON CSV 変換",
+      "JSONL CSV 変換 オンライン"
+    ],
+    "intro": "1行に1つずつ並んだJSONオブジェクトを、表計算ソフトの行に変換します。Tool Kumarはすべてのレコードのキーを集めて列にし、ネストしたオブジェクトをドット区切りの名前に展開します。ファイルは端末の外に出ません。",
+    "modeLabel": "CSVの出力",
+    "exampleLabel": "2件のレコードは1つのヘッダー行を共有します。ネストしたprofileのフィールドはprofile.cityとprofile.planになり、tags配列は1つのセルに入り、存在しない値は空のままです。",
+    "steps": [
+      "JSONLの各行を貼り付けるか、.jsonlまたは.ndjsonファイルを開きます。",
+      "「変換」ビューでCSVを確認します。1行目にすべての列が並びます。",
+      "CSVをコピーまたはダウンロードします。ブックとしてダウンロードするには、変換ツールで「Excel（.xlsx）」を選びます。"
+    ],
+    "options": [
+      "列は、全レコードで見つかったキーを、最初に現れた順に並べたものです。",
+      "ネストしたオブジェクトはドット区切りの列になります。単純な値の配列は、値をカンマで区切って1つのセルに書き込まれ、オブジェクトの配列は、コンパクトなJSONとして1つのセルに入ります。",
+      "存在しないフィールドとnull値はどちらも空のセルになるため、JSONに戻したときに両者を区別できません。",
+      "カンマ、引用符、改行を含むセルは、CSVの規則に従って引用符で囲まれます。数値は元の各桁の数字をそのまま保持します。",
+      "開いた.jsonlファイルのレコードが1件だけでも、ヘッダー行と1行のデータ行になります。"
+    ],
+    "faqs": [
+      {
+        "question": "NDJSONをCSVに変換するにはどうすればよいですか？",
+        "answer": "レコードを貼り付けるか、.ndjsonファイルを開きます。「変換」ビューにヘッダー行付きのCSVが表示されるので、コピーするか.csvファイルをダウンロードします。"
+      },
+      {
+        "question": "変換結果をExcelで開くにはどうすればよいですか？",
+        "answer": "CSVをダウンロードしてExcelで開くか、変換ツールで「Excel（.xlsx）」を選び、同じ列を持つブックをダウンロードします。"
+      },
+      {
+        "question": "ネストしたオブジェクトはどうなりますか？",
+        "answer": "そのフィールドは、profile.cityのようにドットで区切った名前の列になります。ネストした配列は1つのセルに入ります。"
+      }
+    ]
+  },
+  "sort-json-keys": {
+    "hash": "1c266111b5d7",
+    "title": "JSONのキーをソート：全階層をアルファベット順に",
+    "description": "ネストしたオブジェクトも含め、すべてのJSONオブジェクトのキーをアルファベット順にソートします。配列の順序はそのままです。数値の桁も保たれ、アップロードは一切行いません。",
+    "heading": "JSONのキーをソート",
+    "query": "JSON キー ソート",
+    "secondary": [
+      "JSON キー 並べ替え",
+      "JSON キー アルファベット順",
+      "JSON ソート 再帰"
+    ],
+    "intro": "JSONを貼り付けると、ネストしたものも含め、すべてのオブジェクトのキーがアルファベット順に並びます。配列の順序は保たれるのでデータの意味は変わらず、変わるのはキーの順序だけです。",
+    "modeLabel": "ソートしたJSONの出力",
+    "exampleLabel": "ネストしたものも含め、すべてのオブジェクトがソートされます。ownersリストの順序はそのままで、キーはテキストとして比較されるため、\"10\"は\"2\"より前に来ます。",
+    "steps": [
+      "JSONを貼り付けるか、ファイルを開きます。",
+      "「フォーマット」ビューでソートされた出力を確認します。「その他のオプション」メニューでは「キーをソート」がオンになっています。",
+      "結果をコピーまたはダウンロードします。入力そのものをソートするには、「入力として使用」（Ctrl+Enter）を選びます。Ctrl+Zで元に戻せます。"
+    ],
+    "options": [
+      "ソートは再帰的に行われます。オブジェクトの中や配列の中にあるオブジェクトもソートされます。",
+      "配列の要素の順序は保たれます。配列の値の並べ替えや、プロパティによるレコードの並べ替えは、別の操作です。",
+      "キーはテキストとして1文字ずつ比較されるため、\"10\"は\"2\"より前に、大文字は小文字より前に来ます。",
+      "値は変わらず、数値も元の桁を保ちます。",
+      "変わったのがキーの順序だけであることを確かめるには、「JSON比較」で「キーの順序を無視」をオンにして、両方のバージョンを比較してください。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONのキーをソートするにはどうすればよいですか？",
+        "answer": "ここにJSONを貼り付けます。出力では、すべての階層のオブジェクトのキーがアルファベット順に並びます。コピーするか、「入力として使用」で入力に反映させてください。"
+      },
+      {
+        "question": "JSONファイルをアルファベット順に並べ替えるにはどうすればよいですか？",
+        "answer": "「ファイルを開く」（Ctrl+O、Macでは⌘O）でファイルを開き、ソートされた出力をダウンロードします。移動するのはオブジェクトのキーだけで、配列の順序は保たれます。"
+      },
+      {
+        "question": "ソートするとデータは変わりますか？",
+        "answer": "値は一切変わりません。JSONのオブジェクトは順序を持たないため、標準的なパーサーは同じデータとして読み込みます。ただし、キーの順序に依存するコードでは動作が変わる可能性があります。"
+      }
+    ]
+  },
+  "json-escape": {
+    "hash": "7339b4deed1d",
+    "title": "JSONエスケープ：文字列への変換とエスケープ解除",
+    "description": "JSONドキュメントを、引用符や改行をエスケープした1つのJSON文字列に変換します。文字列化されたドキュメントのエスケープを解除して、読みやすいJSONに戻すこともブラウザー内でできます。",
+    "heading": "JSONのエスケープとエスケープ解除",
+    "query": "JSON エスケープ",
+    "secondary": [
+      "JSON エスケープ 解除",
+      "JSON アンエスケープ",
+      "JSON.stringify オンライン"
+    ],
+    "intro": "JSONを貼り付けると、エスケープされた1つの文字列として取得できます。JSONを別のJSONの値、環境変数、テスト用フィクスチャの中に入れるときに必要な形式です。エスケープされた文字列を貼り付ければ、読みやすいJSONに戻せます。",
+    "modeLabel": "エスケープした文字列の出力",
+    "exampleLabel": "ドキュメントを圧縮してから、1つのJSON文字列として書き出します。内側の引用符はすべて\\\"になり、noteにあるエスケープ済みの改行は\\\\nになります。",
+    "steps": [
+      "JSONドキュメントを貼り付けるか、ファイルを開きます。",
+      "「文字列」が選ばれた「フォーマット」ビューで、エスケープされた文字列を確認します。「整形」と「圧縮」では、ドキュメントそのものが表示されます。",
+      "エスケープを解除するには、JSONを含むJSON文字列を貼り付け、バナーで「JSONのエスケープを解除」を選びます。入力が整形されたドキュメントに置き換わります。"
+    ],
+    "options": [
+      "エスケープは圧縮したドキュメントをもとに行うため、文字列に余分な空白は含まれません。",
+      "エスケープ済みの文字列をさらにエスケープすると、バックスラッシュがもう1層追加されます。層の数だけエスケープ解除を繰り返してください。",
+      "入力はJSONとして読み込まれ、JavaScriptとして実行されることはありません。コメントやシングルクォートのような厳密でない構文は、エスケープの前に修復されます。",
+      "大きなドキュメントの中にある文字列値は、その場で展開できます。「ツリー」でその値を選択し、「その他のオプション」メニューから「ネストしたJSON文字列を展開」を選んでください。",
+      "エスケープ解除は入力を置き換えます。Ctrl+Zで元に戻せます。"
+    ],
+    "faqs": [
+      {
+        "question": "JSON文字列をエスケープするにはどうすればよいですか？",
+        "answer": "JSONドキュメントを貼り付けます。「文字列」の出力に、引用符、バックスラッシュ、改行をそれぞれエスケープした1つのJSON文字列リテラルが表示されます。文字列が必要な場所にコピーして使ってください。"
+      },
+      {
+        "question": "JSONのエスケープを解除するにはどうすればよいですか？",
+        "answer": "エスケープされた文字列を、外側の引用符も含めて貼り付けます。Tool Kumarは中身がJSONであることを検出して「JSONのエスケープを解除」を提案し、それを選ぶと整形されたドキュメントに置き換わります。"
+      },
+      {
+        "question": "JSON.stringifyで文字列にバックスラッシュが付くのはなぜですか？",
+        "answer": "その値がすでにJSON文字列だったため、もう一度文字列化したことで引用符がエスケープされたのです。JSON.parseを1回呼び出すと元のJSONテキストが返り、そのテキストをもう一度解析するとオブジェクトが返ります。または、ここでエスケープを解除して、ドキュメントを読むこともできます。"
+      }
+    ]
+  },
+  "large-json-viewer": {
+    "hash": "641457c4d603",
+    "title": "大容量JSONビューアー：ブラウザーで表示",
+    "description": "巨大なJSONファイルをローカルで開き、ツリー、テーブル、テキストで表示します。テストでは52.4 MBのファイルをデスクトップのブラウザーで約1秒で解析しました。アップロードは行いません。",
+    "heading": "大容量JSONビューアー",
+    "query": "大容量 JSON ビューアー",
+    "secondary": [
+      "巨大 JSON ビューアー",
+      "大きい JSON ファイル 開く",
+      "JSON 重い 開けない"
+    ],
+    "intro": "端末にある大きなJSONファイルを開き、ツリー、テーブル、整形済みのテキストとして閲覧できます。ファイルはブラウザー内で読み込まれ、アップロードされることはありません。非常に大きなドキュメントは、スクロールを高速に保つ読み取り専用モードに切り替わります。",
+    "modeLabel": "ツリービュー",
+    "exampleLabel": "ここでは、小さなサンプルをファイルの代わりに表示しています。ご自身のファイルを開くと、そのサイズ、行数、ノード数がステータスバーに表示されます。",
+    "steps": [
+      "「ファイルを開く」（Ctrl+O、Macでは⌘O）を選ぶか、ファイルをページにドラッグします。",
+      "ステータスバーに解析の結果が表示されたら、「ツリー」で閲覧します。レコードの配列なら「テーブル」に切り替えます。",
+      "Ctrl+F（⌘F）を押して検索するか、検索バーに$.users[1]のようなパスを入力してノードに移動します。"
+    ],
+    "options": [
+      "300 MBまでのファイルを受け付けます。これは安全のための上限であり、開けることを保証するものではありません。快適に開けるサイズは、端末のメモリとデータの構造によって変わります。",
+      "2,000,000文字または30,000行を超えると、表示を高速に保つために入力が読み取り専用になります。「編集を有効にする」を選ぶと、再び編集できるようになります。",
+      "解析はメインスレッドで実行されるため、非常に大きなファイルを読み込んでいる間はページが一時的に止まります。",
+      "2,500,000文字を超えるドキュメントは、次回のアクセスのために保存されません。次回はファイルをもう一度開いてください。",
+      "エディター、ツリー、テーブル、テキストの各ビューでは画面に表示されている行だけを描画するため、ファイルを開いた後のスクロールは滑らかです。"
+    ],
+    "faqs": [
+      {
+        "question": "巨大なJSONファイルを表示するにはどうすればよいですか？",
+        "answer": "このページで「ファイルを開く」を使うか、ファイルをページにドラッグします。ツリーではすべてを展開せずに構造を確認でき、「検索」でキー、値、パスに移動できます。"
+      },
+      {
+        "question": "Macで巨大なJSONファイルを表示するにはどうすればよいですか？",
+        "answer": "Safari、Chromeなどの最新のブラウザーでこのページを開き、「ファイルを開く」（⌘O）を選びます。インストールは不要です。"
+      },
+      {
+        "question": "Windowsで巨大なJSONファイルを開くにはどうすればよいですか？",
+        "answer": "EdgeまたはChromeでこのページを開き、「ファイルを開く」（Ctrl+O）を選びます。ファイルはお使いのコンピューター上で読み込まれ、アップロードはされません。"
+      },
+      {
+        "question": "サイズの上限はありますか？",
+        "answer": "このページは300 MBまでのファイルを受け付けます。どの程度のサイズまで快適に開けるかは、端末のメモリとデータの構造によって変わります。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "実測の例",
+        "paragraphs": [
+          "デスクトップのLinux上のChromium 154で、51,501件のレコード（それぞれ996文字の文字列を持つ小さなオブジェクト）を含む52.4 MB（52,428,028バイト）のファイルを開きました。解析には約1.0秒かかり、ファイルを選んでから約1.9秒でツリーが使える状態になりました。ドキュメントのノード数は154,505でした。",
+          "このファイルは階層が浅く、大部分がテキストです。深くネストしたデータや小さな数値が多いデータ、古いノートパソコンやスマートフォンでは、さらに時間がかかることがあります。これらの数値は保証ではなく、1つの参考値として捉えてください。"
+        ]
+      }
+    ]
+  },
+  "json-repair": {
+    "hash": "37e9857866ee",
+    "title": "JSON修復：壊れたJSONをオンラインで修正",
+    "description": "シングルクォート、引用符のないキー、コメント、末尾のカンマやカンマの抜けなど、JSONによくある間違いを修復します。すべての修正を確認してから、有効なJSONをコピーできます。",
+    "heading": "JSON修復",
+    "query": "JSON 修復",
+    "secondary": [
+      "壊れた JSON 修正",
+      "JSON エラー 修正 オンライン",
+      "json repair"
+    ],
+    "intro": "壊れたJSONを貼り付けると、どこが間違っているかと、修復したバージョンが並べて表示されます。Tool Kumarは問題ごとに行と列を示し、「入力を修復」を選ぶと、すべての修正を1回の操作で適用します。この操作は元に戻せます。",
+    "modeLabel": "修復したJSONの出力",
+    "exampleLabel": "このサンプルには、よくある間違いが混在しています。コメント、引用符のないキー、シングルクォート、PythonのTrueとNone、末尾のカンマ、カンマの抜け、NaNです。出力は修復後のドキュメントです。",
+    "steps": [
+      "壊れたJSONを貼り付けるか、ファイルを開きます。",
+      "バナーには修復できる問題の数と、最初の問題の内容が行と列付きで表示され、エディターでは各問題に下線が引かれます。",
+      "「フォーマット」ビューで修復後のドキュメントを確認し、「入力を修復」を選んで適用します。Ctrl+Zで元に戻せます。"
+    ],
+    "options": [
+      "コメント、引用符のないキー、シングルクォートの文字列、末尾のカンマ、プロパティ間のカンマの抜け、PythonのTrue、False、None、貼り付けたJSONを囲むMarkdownのコードフェンスを修正します。",
+      "NaNとInfinityはJSONで表現できないため、nullになります。これらの値が重要な場合は、出力を確認してください。",
+      "閉じ引用符のない文字列など、修復できない入力もあります。その場合、バナーには代わりにエラーとその位置が表示されます。",
+      "修復しても、数値の桁とキーの順序は保たれます。"
+    ],
+    "faqs": [
+      {
+        "question": "壊れたJSONを直すにはどうすればよいですか？",
+        "answer": "ここに貼り付けてください。Tool Kumarが各問題を示し、修復したバージョンを表示します。「入力を修復」を選んですべての修正を一度に適用するか、入力を手作業で編集します。"
+      },
+      {
+        "question": "どんなJSONのエラーでも修復できますか？",
+        "answer": "いいえ。引用符、カンマ、コメントのようなうっかりミスは自動で修正されます。閉じ引用符の前で途切れた文字列のように、テキストが欠けている場合は手作業で直す必要があります。"
+      },
+      {
+        "question": "修復で値が変わることはありますか？",
+        "answer": "値は変わりません。ただし、JSONで表現できないNaNとInfinityはnullになります。使う前に出力を確認してください。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "single-quotes-unquoted-keys",
+        "text": "シングルクォートと引用符なしのキーを修正する"
+      },
+      {
+        "slug": "trailing-comma",
+        "text": "末尾のカンマを削除する"
+      }
+    ]
+  },
+  "json-to-table": {
+    "hash": "1b27f36399aa",
+    "title": "JSONのテーブル表示：レコードを表形式で閲覧",
+    "description": "JSON配列を、1レコード1行の並べ替え可能な表として表示します。ネストした値はその場で開け、CSVとしてのコピーやExcelのダウンロードもすべてブラウザー内で行えます。",
+    "heading": "JSONのテーブル表示",
+    "query": "JSON テーブル 表示",
+    "secondary": [
+      "JSON 表 変換",
+      "JSON 表形式 表示",
+      "JSON テーブル ビューアー"
+    ],
+    "intro": "JSONオブジェクトの配列を貼り付けると、1レコード1行、1キー1列の表として表示されます。任意の列で並べ替えたり、ネストしたオブジェクトや配列をその場で開いたりでき、表示している内容をエクスポートできます。",
+    "modeLabel": "テーブルビュー",
+    "exampleLabel": "ユーザーごとに1行、キーごとに1列です。ネストしたaddressオブジェクトは開くことのできる1つのセルのまま残り、存在しない値はドットで表示されます。",
+    "steps": [
+      "JSONオブジェクトの配列を貼り付けるか、ファイルを開きます。",
+      "「テーブル」ビューで確認します。列見出しをクリックするとその列で並べ替えられ、もう一度クリックすると順序が逆になります。",
+      "ネストしたオブジェクトや配列をクリックすると、それ自体が1つの表として開きます。表の上に表示されるパスから元に戻れます。「その他のオプション」メニューでは、表をCSVとしてコピーしたり、CSVやExcelをダウンロードしたりできます。"
+    ],
+    "options": [
+      "列は、レコード全体で見つかったキーです（最大120列）。",
+      "オブジェクトも表示できます。その場合は、キーごとに1行になります。",
+      "グリッドでは、ネストした値はネストしたまま表示されます。CSVとExcelへのエクスポートでは、ネストしたオブジェクトがaddress.cityのようなドット区切りの列に展開されます。",
+      "画面に表示されている行だけを描画するため、長い配列でも滑らかにスクロールできます。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONを表に変換するにはどうすればよいですか？",
+        "answer": "JSONオブジェクトの配列を貼り付けます。「テーブル」ビューに、オブジェクトごとに1行、キーごとに1列の表が表示されます。ファイルが必要な場合は、CSVまたはExcelとしてエクスポートしてください。"
+      },
+      {
+        "question": "ネストしたJSONも表で表示できますか？",
+        "answer": "はい。ネストしたオブジェクトや配列は開くことのできるセルとして表示され、開くとそれぞれが1つの表になります。パスから元に戻れます。"
+      },
+      {
+        "question": "表を並べ替えられますか？",
+        "answer": "はい。列見出しをクリックするとその列で並べ替えられ、もう一度クリックすると順序が逆になります。"
+      }
+    ]
+  },
+  "json-path-finder": {
+    "hash": "930c5ebb1176",
+    "title": "JSONパス取得ツール：任意の値のパスをコピー",
+    "description": "JSONツリーで値をクリックすると、$.users[0].emailのようなパスを確認してコピーできます。パスやJSON Pointerを入力して、その値に直接移動することもできます。",
+    "heading": "JSONパス取得ツール",
+    "query": "JSON パス 取得",
+    "secondary": [
+      "JSONPath 確認",
+      "JSON パス 調べる",
+      "json path finder"
+    ],
+    "intro": "大きなJSONドキュメントの中で、値への正確なパスを調べられます。ツリーでノードを選択するとパスが表示され、ワンクリックでコピーできます。パスを入力して、その値に直接移動することもできます。",
+    "modeLabel": "パス付きのツリー",
+    "exampleLabel": "サンプル内のすべての値と、そこに至るパスです。単純な名前ではないキーには、[\"first name\"]のように角括弧を使います。",
+    "steps": [
+      "JSONを貼り付けるか、ファイルを開きます。「ツリー」ビューが開きます。",
+      "値をクリックします。ツールバーにパスが表示されるので、パスをクリックするか、Pキーを押してコピーします。",
+      "値に移動するには、Ctrl+F（⌘F）を押して、$.store.books[1].titleのようなパスか、/store/books/1/titleのようなJSON Pointerを入力します。"
+    ],
+    "options": [
+      "パスは、JSONPathと同じくドット記法とブラケット記法で表します。配列のインデックスは0から始まります。",
+      "「検索」は具体的なパスまたはJSON Pointer（RFC 6901）を受け付け、そのノードを選択します。",
+      "ワイルドカード、再帰下降、フィルター、スライスは評価されません。$..priceも対象外です。その場合、検索バーは推測で処理せず、評価できないことを表示します。",
+      "選択した値をコピーするにはCキーを押します。「その他のオプション」メニューにも「パスをコピー」と「値をコピー」があります。"
+    ],
+    "faqs": [
+      {
+        "question": "値のJSONパスを調べるにはどうすればよいですか？",
+        "answer": "「ツリー」ビューでJSONを開き、値をクリックします。ツールバーにパスが表示され、パスをクリックするとコピーされます。"
+      },
+      {
+        "question": "JSONPath式で検索できますか？",
+        "answer": "$.users[0].emailのような具体的なパスは使えます。ワイルドカードやフィルターを含む式は評価されないため、代わりに「検索」でキーや値を検索してください。"
+      },
+      {
+        "question": "JSON Pointerに対応していますか？",
+        "answer": "はい。「検索」に/users/0/emailのようなポインターを入力すると、その値に移動します。"
+      }
+    ]
+  },
+  "json-to-jsonl": {
+    "hash": "d2bd4b8ed9ef",
+    "title": "JSONをJSONLに変換：配列を1行1レコードに",
+    "description": "JSON配列をJSON Linesに変換します。1行に1つのコンパクトなレコードを書き出し、数値も正確に保ちます。データをアップロードせずに.jsonlファイルをダウンロードできます。",
+    "heading": "JSONをJSONLに変換",
+    "query": "JSON JSONL 変換",
+    "secondary": [
+      "JSON NDJSON 変換",
+      "JSON 配列 JSONL 変換"
+    ],
+    "intro": "JSON配列を、NDJSONとも呼ばれるJSON Linesに変換します。各要素がコンパクトなJSONとして1行ずつ並びます。ログのパイプライン、一括インポート、1レコードずつ読み込むデータセットなどで求められる形式です。",
+    "modeLabel": "JSON Linesの出力",
+    "exampleLabel": "配列の各要素が1行になります。ネストした配列やオブジェクトはそのレコードの中にとどまり、大きなIDもすべての桁が保たれます。",
+    "steps": [
+      "JSON配列を貼り付けるか、ファイルを開きます。",
+      "「変換」ビューでJSON Linesを確認します。",
+      "JSON Linesの出力をコピーするか、.jsonlファイルとしてダウンロードします。"
+    ],
+    "options": [
+      "トップレベルの配列の各要素が、順番どおりにコンパクトなJSONの1行になります。どの行も改行で終わります。",
+      "配列ではないドキュメントは1行になります。",
+      "ネストした配列やオブジェクトはそのレコード内にとどまり、分割されるのはトップレベルだけです。",
+      "数値は元の桁を保ちます。"
+    ],
+    "faqs": [
+      {
+        "question": "JSONをJSONLに変換するにはどうすればよいですか？",
+        "answer": "ここにJSON配列を貼り付けます。各要素が1行ずつ書き出されるので、結果をコピーするか、.jsonlとしてダウンロードします。"
+      },
+      {
+        "question": "NDJSONとJSONLは同じものですか？",
+        "answer": "実質的には同じです。どちらも1行に1つのJSONの値を意味するため、JSONLとNDJSONのどちらを指定するツールにも出力を使えます。"
+      },
+      {
+        "question": "JSONLをJSON配列に戻せますか？",
+        "answer": "はい。「NDJSONをJSONに変換」を使うと、各行を読み込んで1つのJSON配列に戻せます。"
+      }
+    ]
+  }
+}

@@ -1,1 +1,1738 @@
-{}
+{
+  "json-validator": {
+    "hash": "a1c439c2d927",
+    "title": "JSON 校验工具：语法错误精确到行和列",
+    "description": "在浏览器中在线校验 JSON，找出语法错误、尾随逗号和可以修复的问题，并定位到具体的行和列。敏感数据无需上传。",
+    "heading": "JSON 校验工具",
+    "query": "JSON 校验",
+    "secondary": [
+      "JSON 在线校验",
+      "JSON 格式验证",
+      "JSON 语法检查"
+    ],
+    "intro": "粘贴 JSON，检查它是否符合标准语法。Tool Kumar 会标出错误所在的具体行和列，并为常见的不规范 JSON 提供修复。",
+    "modeLabel": "校验与错误视图",
+    "exampleLabel": "这个示例带有一个尾随逗号，校验工具会指向 36 后面的那个逗号。",
+    "steps": [
+      "把文档粘贴到输入面板。",
+      "查看错误提示栏，并跳转到出错位置。",
+      "修改出错的字符；如果问题可以安全修正，也可以选择“修复输入”。"
+    ],
+    "options": [
+      "检查对象、数组、字符串、数字、布尔值和 null。",
+      "尾随逗号、注释等可修复的输入问题会单独列出。",
+      "在“格式化”视图中确认修复后的结果。"
+    ],
+    "faqs": [
+      {
+        "question": "JSON 校验工具会检查什么？",
+        "answer": "检查 JSON 语法，包括引号、逗号、括号、数字以及允许的值类型。"
+      },
+      {
+        "question": "能修复无效的 JSON 吗？",
+        "answer": "可以修复尾随逗号、单引号等常见问题，修复结果会作为一次可撤销的编辑显示出来。"
+      },
+      {
+        "question": "校验在哪里进行？",
+        "answer": "解析器在你的浏览器本地运行，Tool Kumar 不需要向服务器发送请求。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "trailing-comma",
+        "text": "为什么尾随逗号是无效的 JSON"
+      },
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Unexpected end of JSON input：找出被截断的部分"
+      },
+      {
+        "slug": "unexpected-token-html",
+        "text": "Unexpected token '<'：检查返回的是不是 HTML 响应"
+      }
+    ]
+  },
+  "json-minifier": {
+    "hash": "b67067161d8f",
+    "title": "JSON 压缩工具：生成紧凑的 API 数据",
+    "description": "在线压缩 JSON，去掉多余空白后复制紧凑的结果。Tool Kumar 在本地处理文件，保留键的顺序，大数值也不会失真。",
+    "heading": "JSON 压缩工具",
+    "query": "JSON 压缩",
+    "secondary": [
+      "JSON 在线压缩",
+      "JSON 压缩成一行",
+      "JSON 去除空格"
+    ],
+    "intro": "通过网络发送 JSON 或把它存为测试数据之前，先去掉无意义的空白。左侧仍保留可读的原始输入。",
+    "modeLabel": "压缩后的 JSON 视图",
+    "exampleLabel": "压缩会去掉缩进和换行，同时保留每一个值。\"Ada Lovelace\" 中的空格属于字符串的一部分，所以会保留。",
+    "steps": [
+      "粘贴有效的 JSON。",
+      "输出会变成紧凑的一行。",
+      "复制或下载压缩后的 JSON。"
+    ],
+    "options": [
+      "随时可以切换回美化输出。",
+      "只有在使用方不依赖插入顺序时，才对键排序。",
+      "解析器会保留原始数字，大整数不会被舍入。"
+    ],
+    "faqs": [
+      {
+        "question": "压缩会改变 JSON 数据吗？",
+        "answer": "不会。它只删除字符串之外的空白，值、键名和顺序都保持不变。"
+      },
+      {
+        "question": "字符串会被修改吗？",
+        "answer": "不会。带引号的字符串内部的空白会原样保留。"
+      },
+      {
+        "question": "可以边压缩边校验吗？",
+        "answer": "可以。生成紧凑输出之前，状态栏会提示输入是否有效。"
+      }
+    ]
+  },
+  "json-diff": {
+    "hash": "e4ff776b20f8",
+    "title": "JSON 对比工具：并排比较两份 JSON 文档",
+    "description": "并排对比两份 JSON 文档，看清哪里发生了变化。Tool Kumar 会高亮改动的值，两份输入都只留在你的浏览器本地。",
+    "heading": "JSON 对比",
+    "query": "JSON 对比",
+    "secondary": [
+      "JSON 在线对比",
+      "JSON 比较工具",
+      "JSON diff"
+    ],
+    "intro": "粘贴原始文档和修改后的文档，即可看到改动。对比视图让两个编辑器保持对齐，并标出新增、删除和修改。",
+    "modeLabel": "对比视图",
+    "exampleLabel": "两份文档的键顺序不同，但“忽略键顺序”（默认开启）不会把它报告为差异。把 $.meta.updatedAt 加入忽略路径后，只剩两处更改：role 的值，以及新增的标签。“复制 JSON Patch”会给出下面这份 RFC 6902 补丁。",
+    "steps": [
+      "在第一个面板中粘贴原始 JSON。",
+      "在第二个面板中粘贴修改后的 JSON。",
+      "查看“更改”列表或逐行的“Diff”，然后复制 JSON Patch 或任意一份文档。"
+    ],
+    "options": [
+      "“更改”按 JSON 路径列出每一处结构差异。“Diff”会先用同样的方式格式化两份文档，再逐行对比，因此缩进和空格的差异不会被当作更改。",
+      "“忽略键顺序”默认开启，所以键相同、顺序不同的对象会被视为相等。关闭它即可看到键顺序的更改。",
+      "在“更改”中，“忽略数组顺序”会把数组当作无序集合来比较，“忽略大小写”则在比较字符串时不区分大小写。“Diff”只支持“忽略键顺序”。",
+      "忽略路径可以跳过总在变化的干扰字段：$.meta.updatedAt 是一个精确路径，$.items[*].ts 匹配每个 item，而像 updatedAt 这样单独的键名会匹配任意深度的同名键。",
+      "“复制 JSON Patch”会把差异写成 RFC 6902 补丁，用它可以把原始文档变成修改后的文档。被忽略的路径和仅键顺序不同的更改不会包含在内。",
+      "数字按值比较，因此 1.0 等于 1，大整数也会保留每一位。带有唯一 id、_id、uuid、key 或 name 的对象数组，会按这个值来匹配元素。"
+    ],
+    "faqs": [
+      {
+        "question": "可以对比两个 JSON 文件吗？",
+        "answer": "可以。在两个对比面板中各打开一个文件，或者直接粘贴两份文档。"
+      },
+      {
+        "question": "对比时会把文件发送到服务器吗？",
+        "answer": "不会。解析和对比都在浏览器中进行。"
+      },
+      {
+        "question": "能对比嵌套数组吗？",
+        "answer": "能。嵌套的对象和数组会逐个元素对比，在数组中插入一个元素，不会把后面的元素都标为已更改。"
+      },
+      {
+        "question": "怎样忽略总在变化的时间戳？",
+        "answer": "在“更改”视图的“要忽略的路径，用逗号分隔”输入框中输入它的路径，例如 $.meta.updatedAt。多个路径用逗号分隔；[*] 匹配每一个数组索引。"
+      },
+      {
+        "question": "可以把差异导出为 JSON Patch 吗？",
+        "answer": "可以。“复制 JSON Patch”会复制 RFC 6902 的 add、remove 和 replace 操作，用它们可以把原始文档变成修改后的文档。"
+      }
+    ]
+  },
+  "json-to-typescript": {
+    "hash": "c27d5cb1895d",
+    "title": "JSON 转 TypeScript 接口和类型",
+    "description": "在线把 JSON 转成 TypeScript interface 或 type。粘贴一份示例，即可在浏览器中生成代码，嵌套结构会被自动推断。",
+    "heading": "JSON 转 TypeScript",
+    "query": "JSON 转 TypeScript",
+    "secondary": [
+      "JSON 转 TS",
+      "JSON 生成 TypeScript 接口"
+    ],
+    "intro": "把一份有代表性的 JSON 响应转换成 TypeScript 类型声明。转换器会逐层处理嵌套的对象和数组，让生成的类型与示例结构一致。",
+    "modeLabel": "TypeScript 输出",
+    "exampleLabel": "下面的输出由 Tool Kumar 根据示例 JSON 生成。",
+    "steps": [
+      "粘贴一份有代表性的 JSON 响应。",
+      "在“转换”视图中选择 TypeScript。",
+      "设置根名称，然后复制或下载类型声明。"
+    ],
+    "options": [
+      "通过“TypeScript 风格”设置选择 interface 或 type 语法。",
+      "把根类型重命名为与你的 API 资源一致的名称。",
+      "可选属性和联合类型的推断取决于示例中实际出现的值。"
+    ],
+    "faqs": [
+      {
+        "question": "JSON 转 TypeScript 能处理嵌套对象吗？",
+        "answer": "能。嵌套对象会生成具名的类型声明，数组使用推断出的元素类型。"
+      },
+      {
+        "question": "可以选择 interface 还是 type 吗？",
+        "answer": "可以。“TypeScript 风格”设置可以切换生成的声明形式。"
+      },
+      {
+        "question": "JSON 会被上传吗？",
+        "answer": "不会。转换使用的是你浏览器中的本地解析器和转换器。"
+      }
+    ]
+  },
+  "json-to-zod": {
+    "hash": "6e099361479c",
+    "title": "JSON 转 Zod schema 在线生成",
+    "description": "在线根据 JSON 生成 Zod schema。Tool Kumar 在本地推断嵌套的对象和数组，生成的 TypeScript 代码可以直接复制。",
+    "heading": "JSON 转 Zod",
+    "query": "JSON 转 Zod",
+    "secondary": [
+      "JSON 转 Zod schema",
+      "JSON 生成 Zod"
+    ],
+    "intro": "粘贴示例 JSON，得到可以加入 TypeScript 项目的 Zod schema。生成的校验规则与示例中的值和嵌套结构一一对应。",
+    "modeLabel": "Zod schema 输出",
+    "exampleLabel": "Tool Kumar 根据示例对象生成了这个 schema。",
+    "steps": [
+      "粘贴你的应用接收到的 JSON 结构。",
+      "打开“转换”视图，选择 Zod schema。",
+      "修改根名称，然后复制生成的代码。"
+    ],
+    "options": [
+      "嵌套对象会生成嵌套的 z.object 调用。",
+      "数组使用推断出的元素 schema。",
+      "输出只是代码。邮箱格式、最小长度等项目特有的细化规则，需要你自己添加。"
+    ],
+    "faqs": [
+      {
+        "question": "这会生成一个完整的 API 校验器吗？",
+        "answer": "它会根据示例的结构生成 Zod schema。示例体现不出来的规则，请自行添加细化（refinement）。"
+      },
+      {
+        "question": "null 值怎么处理？",
+        "answer": "null 值在生成的 schema 中会变成 z.null()。"
+      },
+      {
+        "question": "可以重命名根 schema 吗？",
+        "answer": "可以。在转换器工具栏中设置根名称即可。"
+      }
+    ]
+  },
+  "json-schema-generator": {
+    "hash": "40303de8e661",
+    "title": "JSON Schema 生成器：根据示例 JSON 生成",
+    "description": "根据 JSON 示例生成 JSON Schema。Tool Kumar 在你的浏览器中推断属性、数组和基本类型，无需上传。",
+    "heading": "JSON Schema 生成器",
+    "query": "JSON Schema 生成器",
+    "secondary": [
+      "JSON 生成 JSON Schema",
+      "JSON 转 JSON Schema",
+      "JSON Schema 在线生成"
+    ],
+    "intro": "用一份有代表性的 JSON 文档创建 JSON Schema 草稿。结果描述示例中的结构，可以作为校验的起点。",
+    "modeLabel": "JSON Schema 输出",
+    "exampleLabel": "这个 schema 根据示例对象生成，包括嵌套的 profile 和 tags。这个对象包含了每一个属性，所以每个属性都是必填。",
+    "steps": [
+      "粘贴一份示例文档。",
+      "在“转换”视图中选择 JSON Schema。",
+      "检查推断出的属性，然后保存 schema。"
+    ],
+    "options": [
+      "嵌套的对象和数组会被递归描述。",
+      "如果某个位置上所有被采样的对象都有某个属性，它就会列入 required。因此，一份完整的示例会让每个出现过的属性都成为必填；在对象数组中，只有部分对象具有的键则是可选的。",
+      "在部分对象中为 null 的值，不会让属性变成可选，而是把 null 加入该属性的类型。",
+      "输出只是一个起点。请检查 required，补充 format、取值范围和 pattern，并删除你的 API 契约没有承诺的内容。",
+      "本页用于生成 schema，不会根据 schema 校验文档。生成之前，可以先在“JSON 校验工具”页面检查 JSON 语法。"
+    ],
+    "faqs": [
+      {
+        "question": "生成器会把每个属性都标为必填吗？",
+        "answer": "只有每个被采样的对象都具有的属性才会标为必填。单独一份完整的示例会把它的所有属性都标为必填，而数组中只有部分对象具有的键则是可选的。发布 schema 之前，请对照你的 API 契约检查 required 列表。"
+      },
+      {
+        "question": "使用哪个草案版本？",
+        "answer": "输出声明为 JSON Schema Draft 2020-12，并使用标准的 type 和 properties 关键字。"
+      },
+      {
+        "question": "能推断数组元素的结构吗？",
+        "answer": "能。对象数组会根据示例中的对象结构生成 items schema。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "required 属性是如何确定的",
+        "paragraphs": [
+          "根据多条记录生成 schema 时，required 列表只保留每条记录都有的键。在这个示例中，两个用户都有 id 和 email，但只有第一个用户有 phone，所以 phone 会被描述，但不会列入 required。"
+        ]
+      }
+    ]
+  },
+  "json-to-go": {
+    "hash": "c85598725dd2",
+    "title": "JSON 转 Go 结构体：含嵌套类型和 JSON 标签",
+    "description": "把 JSON 转换成带嵌套类型和 JSON 标签的 Go 结构体。Tool Kumar 在你的浏览器中完成转换，输入始终留在本地。",
+    "heading": "JSON 转 Go 结构体",
+    "query": "JSON 转 Go 结构体",
+    "secondary": [
+      "JSON 转 Go struct",
+      "JSON 转 Golang 结构体"
+    ],
+    "intro": "根据 JSON 示例生成 Go 结构体定义。字段名会转换为导出的 Go 标识符，标签中保留原始键名。",
+    "modeLabel": "Go 输出",
+    "exampleLabel": "这些结构体由示例 JSON 及其嵌套的 profile 对象生成。",
+    "steps": [
+      "粘贴你要建模的响应 JSON。",
+      "在“转换”视图中选择 Go。",
+      "把生成的结构体复制到你的包中，并检查命名。"
+    ],
+    "options": [
+      "根类型和嵌套类型的名称根据键名推断。",
+      "对于不符合 Go 命名规范的键，JSON 标签会保留原始键名。",
+      "请检查时间、小数和可空字段，因为 JSON 示例无法表达所有业务规则。"
+    ],
+    "faqs": [
+      {
+        "question": "转换器会添加 JSON 标签吗？",
+        "answer": "会。每个字段都会在 json 结构体标签（struct tag）中保留源键名。"
+      },
+      {
+        "question": "嵌套对象怎么处理？",
+        "answer": "它们会变成单独的具名结构体，由父结构体引用。"
+      },
+      {
+        "question": "可以修改根名称吗？",
+        "answer": "可以。在转换器工具栏中设置根名称即可。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "go-invalid-character",
+        "text": "排查 Go 解析 JSON 时出现的 invalid character 错误"
+      }
+    ]
+  },
+  "json-to-python": {
+    "hash": "fafa568e5334",
+    "title": "JSON 转 Python 类：生成 Pydantic 模型",
+    "description": "把 JSON 转换成 Python Pydantic 模型。Tool Kumar 会推断嵌套字段，生成代码时你的示例数据始终留在浏览器中。",
+    "heading": "JSON 转 Python 类",
+    "query": "JSON 转 Python 类",
+    "secondary": [
+      "JSON 转 Pydantic 模型",
+      "JSON 生成 Python 模型"
+    ],
+    "intro": "把 JSON 响应转换成 Python Pydantic 模型定义。你可以在生成的类型定义基础上，再添加业务校验。",
+    "modeLabel": "Python 输出",
+    "exampleLabel": "下面的 Python 模型根据示例 JSON 生成。",
+    "steps": [
+      "粘贴一个 JSON 对象或 API 响应。",
+      "在“转换”视图中选择 Python (Pydantic)。",
+      "设置根名称，然后复制模型定义。"
+    ],
+    "options": [
+      "嵌套对象会生成嵌套的 BaseModel 类。",
+      "列表和可选值根据示例中的数据推断。",
+      "用于生产数据之前，请检查日期、小数和联合类型的规则。"
+    ],
+    "faqs": [
+      {
+        "question": "会生成 Pydantic 模型吗？",
+        "answer": "会。选择 Python 作为转换目标后，会输出带类型字段的 Pydantic BaseModel 定义。"
+      },
+      {
+        "question": "带连字符的 JSON 键会怎样？",
+        "answer": "转换器会生成合法的 Python 字段名，并在需要时通过别名（alias）保留源键名。"
+      },
+      {
+        "question": "只用一条 JSON 记录可以吗？",
+        "answer": "可以。一个对象就足以推断出模型。如果字段会变化，请使用覆盖面更广的示例。"
+      }
+    ]
+  },
+  "json-to-yaml": {
+    "hash": "17b363edfc4b",
+    "title": "JSON 转 YAML 在线转换：本地解析不上传",
+    "description": "使用本地无损解析器，在线把 JSON 转成 YAML。粘贴对象或数组，即可复制适用于配置文件和文档的整洁 YAML。",
+    "heading": "JSON 转 YAML",
+    "query": "JSON 转 YAML",
+    "secondary": [
+      "JSON 转 YAML 在线",
+      "JSON YAML 互转"
+    ],
+    "intro": "把 JSON 数据转换成易读的 YAML，无需发送到服务器。转换器支持嵌套对象、数组、字符串、布尔值、null 和数字。",
+    "modeLabel": "YAML 输出",
+    "exampleLabel": "这段 YAML 由内置的 JSON 转 YAML 转换器生成。",
+    "steps": [
+      "粘贴有效的 JSON。",
+      "在“转换”视图中选择 YAML。",
+      "复制 YAML，或下载为配置文件。"
+    ],
+    "options": [
+      "缩进遵循转换器的输出，嵌套数组依然清晰易读。",
+      "在 YAML 可能推断出其他类型的情况下，带引号的字符串仍保持为字符串。",
+      "转换器只输出纯数据 YAML，YAML 特有的锚点或应用标签需要你自行检查。"
+    ],
+    "faqs": [
+      {
+        "question": "可以把嵌套 JSON 转成 YAML 吗？",
+        "answer": "可以。对象和数组会被递归输出，缩进清晰易读。"
+      },
+      {
+        "question": "大的 JSON 数字会被保留吗？",
+        "answer": "解析器在转换时会保留数字的原始文本，所以大整数不会被 JavaScript 舍入。"
+      },
+      {
+        "question": "YAML 能导回 JSON 吗？",
+        "answer": "能。使用“YAML 转 JSON”页面，即可把纯数据 YAML 解析回格式化的 JSON。"
+      }
+    ]
+  },
+  "yaml-to-json": {
+    "hash": "d6e32c71205e",
+    "title": "YAML 转 JSON：在浏览器中本地转换",
+    "description": "在线把 YAML 转成格式化的 JSON。Tool Kumar 在本地解析纯数据 YAML 并报告错误，转换结果始终留在你的设备上。",
+    "heading": "YAML 转 JSON",
+    "query": "YAML 转 JSON",
+    "secondary": [
+      "YAML 转 JSON 在线",
+      "YML 转 JSON"
+    ],
+    "intro": "粘贴 YAML 文档，把它转换成 JSON，用于 API、测试数据或调试。导入器支持映射、序列、标量和带引号的值。",
+    "modeLabel": "YAML 导入为 JSON",
+    "exampleLabel": "下面这份格式化的 JSON，是导入这个 YAML 示例后得到的。",
+    "steps": [
+      "粘贴 YAML，或打开 .yaml 或 .yml 文件。",
+      "导入器识别出 YAML 后，选择 YAML → JSON。",
+      "检查格式化后的 JSON，然后复制或下载。"
+    ],
+    "options": [
+      "普通的映射和序列会变成 JSON 对象和数组。",
+      "带引号的值仍是字符串；不带引号的数字和布尔值会变成相应的 JSON 值。",
+      "锚点、自定义标签和可执行的 YAML 不在纯数据导入器的支持范围内。"
+    ],
+    "faqs": [
+      {
+        "question": "导入器支持 YAML 列表吗？",
+        "answer": "支持。以 - 开头的缩进条目会变成 JSON 数组，嵌套在对象中的数组也一样。"
+      },
+      {
+        "question": "哪些 YAML 特性不受支持？",
+        "answer": "导入器专注于纯数据。自定义标签、锚点和应用特定的指令，可能需要借助 YAML 库来处理。"
+      },
+      {
+        "question": "可以打开 YAML 文件吗？",
+        "answer": "可以。使用“打开文件”，Tool Kumar 会在导入前识别 .yaml 和 .yml 扩展名。"
+      }
+    ]
+  },
+  "json-to-csv": {
+    "hash": "7f15407a3074",
+    "title": "JSON 转 CSV 在线转换：嵌套字段自动展平",
+    "description": "在线把 JSON 记录数组转换为 CSV。Tool Kumar 会把嵌套字段展平为以点号分隔的列，导出过程全部在本地完成。",
+    "heading": "JSON 转 CSV",
+    "query": "JSON 转 CSV",
+    "secondary": [
+      "JSON 转 CSV 在线",
+      "JSON 数组转 CSV"
+    ],
+    "intro": "把 JSON 记录转换成适合电子表格的 CSV。转换器会找到主要的对象数组并生成列，包含逗号或换行的值会加上引号。",
+    "modeLabel": "CSV 输出",
+    "exampleLabel": "这份 CSV 由示例文档中的 users 数组生成。",
+    "steps": [
+      "粘贴一个对象数组，或包含对象数组的 API 响应。",
+      "在“转换”视图中选择 CSV。",
+      "复制预览内容，或下载 CSV 文件。"
+    ],
+    "options": [
+      "嵌套对象的键会变成以点号分隔的列名，例如 profile.city。",
+      "由普通值组成的数组会放在一个单元格中，各个值以逗号分隔。对象数组则以紧凑 JSON 的形式放在一个单元格中。",
+      "如果响应外面包了一层，会从中选取最大的合适对象数组。"
+    ],
+    "faqs": [
+      {
+        "question": "什么样的 JSON 结构最适合转 CSV？",
+        "answer": "对象数组。转换器也能在 users、data 这类响应包装对象中，找到最大的对象数组。"
+      },
+      {
+        "question": "嵌套对象如何表示？",
+        "answer": "嵌套属性会变成以点号分隔的列名，这样 CSV 能保持规整的矩形结构。"
+      },
+      {
+        "question": "逗号和引号会转义吗？",
+        "answer": "会。按照标准 CSV 规则，字段会加上引号，字段内的引号会被双写。"
+      }
+    ]
+  },
+  "csv-to-json": {
+    "hash": "58d77f369e7a",
+    "title": "CSV 转 JSON 在线转换：自动推断类型",
+    "description": "在线把 CSV 转换为 JSON。Tool Kumar 会自动识别列，解析数字和布尔值，导入结果始终留在你的浏览器中。",
+    "heading": "CSV 转 JSON",
+    "query": "CSV 转 JSON",
+    "secondary": [
+      "CSV 转 JSON 在线",
+      "TSV 转 JSON"
+    ],
+    "intro": "粘贴 CSV 或打开 .csv 文件，生成一个由记录组成的 JSON 数组。导入器能读取带引号的字段，并推断简单的数字、布尔值和 null。",
+    "modeLabel": "CSV 导入为 JSON",
+    "exampleLabel": "下面的 JSON 是导入 CSV 示例后生成的。",
+    "steps": [
+      "粘贴带表头行的 CSV。",
+      "检测器识别出输入格式后，选择 CSV → JSON。",
+      "检查数组，然后复制或下载 JSON。"
+    ],
+    "options": [
+      "自动识别逗号、分号、制表符和竖线分隔符。",
+      "带引号的字段可以包含逗号和换行。",
+      "不带引号的空字段变成 null；带引号的空字段保持为空字符串。"
+    ],
+    "faqs": [
+      {
+        "question": "CSV 转 JSON 能正确读取引号内的逗号吗？",
+        "answer": "能。导入器会跟踪带引号的字段，值内部的逗号仍属于该值。"
+      },
+      {
+        "question": "数字是怎么识别的？",
+        "answer": "不带引号且符合 JSON 数字语法的单元格会变成数字。如果某个值必须保持为字符串，请给它加上引号。"
+      },
+      {
+        "question": "可以打开 TSV 文件吗？",
+        "answer": "可以。同一个导入器能识别制表符分隔的文件，并将其转换为 JSON 记录。"
+      }
+    ]
+  },
+  "json-to-xml": {
+    "hash": "45edac3a65ca",
+    "title": "JSON 转 XML 在线转换：支持嵌套数据",
+    "description": "在线把 JSON 转换为 XML。Tool Kumar 在你的浏览器中把对象和数组映射为易读的 XML，源文档始终保持私密。",
+    "heading": "JSON 转 XML",
+    "query": "JSON 转 XML",
+    "secondary": [
+      "JSON 转 XML 在线",
+      "JSON XML 互转"
+    ],
+    "intro": "从 JSON 对象或数组生成 XML，用于旧版接口、数据源（feed）或集成测试。键会变成元素名，重复的数组项会变成重复的元素。",
+    "modeLabel": "XML 输出",
+    "exampleLabel": "这段 XML 根据示例对象生成。文档根元素 root 来自根名称设置。",
+    "steps": [
+      "粘贴有效的 JSON。",
+      "在“转换”视图中选择 XML。",
+      "如果接收系统要求特定的根元素，请设置根名称。"
+    ],
+    "options": [
+      "对象的键会变成 XML 元素。",
+      "数组会输出重复的子元素。",
+      "值会按 XML 文本转义，包括 & 符号和尖括号。"
+    ],
+    "faqs": [
+      {
+        "question": "JSON 数组在 XML 中如何表示？",
+        "answer": "数组中的值会在其属性名下变成重复的元素。"
+      },
+      {
+        "question": "可以修改根元素吗？",
+        "answer": "可以。在转换器工具栏中设置根名称即可。"
+      },
+      {
+        "question": "会保留 JSON 的 null 吗？",
+        "answer": "null 值会输出为空元素。如果接收方的 schema 需要显式的 nil 属性，请自行检查。"
+      }
+    ]
+  },
+  "xml-to-json": {
+    "hash": "1ca1d5a99a27",
+    "title": "XML 转 JSON 在线转换：适合简单 XML 文档",
+    "description": "在线把 XML 转换为格式化的 JSON。Tool Kumar 在本地解析元素和属性并显示结果，无需上传源文件。",
+    "heading": "XML 转 JSON",
+    "query": "XML 转 JSON",
+    "secondary": [
+      "XML 转 JSON 在线",
+      "XML JSON 互转"
+    ],
+    "intro": "粘贴 XML 文档或打开本地文件，把元素转换为 JSON 对象。重复的同级元素会变成数组，很适合以数据为主的 XML。",
+    "modeLabel": "XML 导入为 JSON",
+    "exampleLabel": "下面的 JSON 是导入两个重复的 user 元素后生成的。",
+    "steps": [
+      "粘贴 XML，或打开 .xml 文件。",
+      "检测器识别出 XML 后，选择 XML → JSON。",
+      "检查生成的对象，然后复制格式化的 JSON。"
+    ],
+    "options": [
+      "重复的子元素名会变成数组。",
+      "属性会按导入器的属性表示方式保留。",
+      "导入器适用于数据型 XML。混合内容文档可能需要专门的 XML 解析器。"
+    ],
+    "faqs": [
+      {
+        "question": "重复的 XML 元素会变成数组吗？",
+        "answer": "会。重复的同级元素会被归入一个 JSON 数组。"
+      },
+      {
+        "question": "XML 属性会保留吗？",
+        "answer": "会。属性会在导入后的对象中表示出来，其值仍然可用。"
+      },
+      {
+        "question": "可以打开 XML 文件吗？",
+        "answer": "可以。Tool Kumar 会在文件选择器中识别 .xml 文件，并提供 XML 转 JSON。"
+      }
+    ]
+  },
+  "json-to-excel": {
+    "hash": "ac8ab1cf408b",
+    "title": "JSON 转 Excel：在本地生成 XLSX 文件",
+    "description": "在线把 JSON 记录导出为 Excel XLSX 文件。Tool Kumar 在你的浏览器中生成工作簿，绝不上传你的数据。",
+    "heading": "JSON 转 Excel",
+    "query": "JSON 转 Excel",
+    "secondary": [
+      "JSON 转 XLSX",
+      "JSON 导出 Excel"
+    ],
+    "intro": "把 JSON 记录数组转换成 .xlsx 工作簿。它使用与 CSV 导出相同的记录展平方式，生成一张整洁的工作表，方便查看或分享。",
+    "modeLabel": "Excel 导出",
+    "exampleLabel": "预览把工作表显示为 CSV 文本：users 数组中每个用户占一行，单元格与下载的 XLSX 文件中的相同。",
+    "steps": [
+      "粘贴一个记录数组，或包含记录数组的 API 响应。",
+      "在“转换”视图中选择 Excel。",
+      "下载生成的 .xlsx 工作簿。"
+    ],
+    "options": [
+      "嵌套字段会变成以点号分隔的列。",
+      "如果响应外面包了一层，会在其中查找最大的对象数组。",
+      "工作簿通过浏览器 API 生成，不会离开你的设备。"
+    ],
+    "faqs": [
+      {
+        "question": "可以把嵌套 JSON 导出到 Excel 吗？",
+        "answer": "可以。嵌套属性会变成以点号分隔的列，每条记录正好占工作表的一行。"
+      },
+      {
+        "question": "这个工具会上传我的数据吗？",
+        "answer": "不会。XLSX 文件在浏览器本地生成。"
+      },
+      {
+        "question": "如果我的 JSON 只是一个对象呢？",
+        "answer": "导出器会使用该对象，或使用它能找到的最大嵌套对象数组。记录数组生成的工作表最有用。"
+      }
+    ]
+  },
+  "jwt-decoder": {
+    "hash": "faaa60f544c8",
+    "title": "JWT 在线解析：解码头部、载荷与声明",
+    "description": "在线解码 JWT，token 不会发送到服务器。Tool Kumar 显示头部、载荷、签名文本，以及易读的时间类声明。",
+    "heading": "JWT 在线解析",
+    "query": "JWT 在线解析",
+    "secondary": [
+      "JWT 解码",
+      "JWT 解析工具",
+      "JWT 解密"
+    ],
+    "intro": "粘贴紧凑格式的 JWT 即可查看其内容。token 会保留在编辑器中并按部分着色，旁边同时显示解码后的头部、载荷和易读的时间类声明。解码不会验证签名，因此结果只适合用于查看和调试，不能用于身份认证。",
+    "modeLabel": "解码后的 JWT JSON",
+    "exampleLabel": "Tool Kumar 把这个 HS256 示例 token 解码为头部、载荷和签名，并附加一个 _claims 对象，以易读的时间显示 exp 和 iat。",
+    "steps": [
+      "粘贴 JWT，带不带 Bearer 前缀都可以。",
+      "在右侧查看解码后的头部、载荷和 _claims。exp 这一行会标注距离 token 过期还有多久，或已经过期多久。",
+      "检查 exp、iat 和 nbf 的值，然后在你自己的应用中验证签名。"
+    ],
+    "options": [
+      "解码器接受由三部分组成的 JWS 紧凑格式 token。",
+      "它不会验证签名，也不会获取密钥。",
+      "exp、iat 和 nbf 还会以 ISO 时间显示在 _claims 下；一旦超过 exp，expired 会被设为 true。",
+      "如需编辑解码后的 JSON，请在命令面板中使用“用解码后的 JSON 替换 JWT”。"
+    ],
+    "faqs": [
+      {
+        "question": "解码 JWT 等于验证它吗？",
+        "answer": "不是。解码只是读取 base64url 编码的头部和载荷。签名必须在你的应用中用签发方的密钥来验证。"
+      },
+      {
+        "question": "我的 token 会被发送到别处吗？",
+        "answer": "不会。解码在浏览器中运行，token 始终留在你的设备上。"
+      },
+      {
+        "question": "能解码 Bearer token 吗？",
+        "answer": "能。解码器接受带有可选 Bearer 前缀的 token。"
+      },
+      {
+        "question": "为什么输出中有一个 _claims 对象？",
+        "answer": "这是 Tool Kumar 添加的，用来以易读的 ISO 时间显示 exp、iat 和 nbf，并说明 token 是否已过期。下划线表示它是计算得出的字段，并不属于 token 本身。"
+      }
+    ]
+  },
+  "json-to-dart": {
+    "hash": "06a580195f03",
+    "title": "JSON 转 Dart 模型：支持空安全和 JSON 方法",
+    "description": "把 JSON 转换为空安全的 Dart 类，包含构造函数、fromJson 和 toJson。在本地生成嵌套的 Flutter 模型，无需上传示例。",
+    "heading": "JSON 转 Dart",
+    "query": "JSON 转 Dart",
+    "secondary": [
+      "JSON 转 Dart 模型",
+      "JSON 转 Dart 实体类",
+      "JSON 转 Dart 空安全"
+    ],
+    "intro": "为 Flutter API 响应生成 Dart 模型。每个嵌套类都有 final 字段、const 构造函数、fromJson 工厂构造函数和 toJson 方法。",
+    "modeLabel": "JSON 转 Dart 输出",
+    "exampleLabel": "以下输出来自内置转换器。两个数组元素的 price 值用于推断浮点型字段；note 值分别为 null 和字符串，因此推断为可空字段。",
+    "steps": [
+      "粘贴一份有代表性的响应，其中应包含字段存在差异的记录。",
+      "检查生成的输出，必要时修改根名称。",
+      "复制或下载代码，然后对照你的 API 契约检查类型。"
+    ],
+    "options": [
+      "user-id 这样的 JSON 键会映射为 camelCase 字段，生成的 JSON 方法保留原始键名。",
+      "整数和小数价格会合并为 double。解码器先转为 num 再调用 toDouble，所以两个示例值都能正常处理。",
+      "null 加字符串会生成 String?。只出现过 null 的字段保持为 dynamic，因为无法得知它本来的类型。",
+      "日期保持为 String，DateTime 解析请自行检查。编译到 Web 的 Dart 无法精确表示所有大整数。"
+    ],
+    "faqs": [
+      {
+        "question": "会生成 json_serializable 注解吗？",
+        "answer": "不会。它直接写出 fromJson 和 toJson 方法，没有 @JsonSerializable 注解和 part 文件，也不需要 build_runner 步骤。"
+      },
+      {
+        "question": "如何处理空安全？",
+        "answer": "值为 null 或在部分记录中缺失的字段，会被推断为可空。非空字段使用 required 构造函数参数。只出现过 null 的字段使用 dynamic。"
+      },
+      {
+        "question": "能转换嵌套对象的数组吗？",
+        "answer": "能。示例会生成 List<Item>，解码时把每个输入元素交给 Item.fromJson，编码时对每个 item 调用 toJson。"
+      },
+      {
+        "question": "需要 Flutter 包吗？",
+        "answer": "生成的模型只使用 Dart 核心类型。用 dart:convert 解码响应文本，再调用 Root.fromJson 即可。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "在 Flutter 中使用模型",
+        "paragraphs": [
+          "导入 dart:convert，把生成的类粘贴到一个模型文件中。把解码后的响应 map 传给 Root.fromJson；jsonEncode 会调用生成的 toJson 方法。",
+          "如果你的项目已经在用 json_serializable，请把这些字段改写到那套流程中，而不是同时维护两套生成的 JSON 方法。"
+        ]
+      }
+    ]
+  },
+  "json-to-kotlin": {
+    "hash": "a4c5a24960eb",
+    "title": "JSON 转 Kotlin 数据类：含序列化注解",
+    "description": "根据 JSON 生成带 @Serializable 和 @SerialName 的 Kotlin 数据类，在浏览器中推断嵌套模型、列表和可空字段。",
+    "heading": "JSON 转 Kotlin 数据类",
+    "query": "JSON 转 Kotlin 数据类",
+    "secondary": [
+      "JSON 转 Kotlin data class",
+      "JSON 转 Kotlin 实体类"
+    ],
+    "intro": "把示例 JSON 转换成适用于 kotlinx.serialization 的数据类。嵌套对象各自生成独立的类，数组变成 List，重命名的字段通过 @SerialName 保留传输时的原始键名。",
+    "modeLabel": "JSON 转 Kotlin 数据类输出",
+    "exampleLabel": "以下输出来自内置转换器。两个数组元素的 price 值用于推断浮点型字段；note 值分别为 null 和字符串，因此推断为可空字段。",
+    "steps": [
+      "粘贴一份有代表性的响应，其中应包含字段存在差异的记录。",
+      "检查生成的输出，必要时修改根名称。",
+      "复制或下载代码，然后对照你的 API 契约检查类型。"
+    ],
+    "options": [
+      "生成器会为每个数据类加上 @Serializable，并导入 kotlinx.serialization 注解。它不会生成 Moshi 的 @Json 或 Gson 的 @SerializedName。",
+      "整数使用 Long，小数使用 Double，只出现过 null 或类型混合的值使用 JsonElement。可空字段默认值为 null。",
+      "超出有符号 64 位范围的整数会变成 Double，可能丢失精度。需要精确的标识符时，请使用字符串或自定义序列化器。",
+      "日期字符串保持为 String。仅凭一份示例，无法判断某个字段是否在每个 API 响应中都必然存在。"
+    ],
+    "faqs": [
+      {
+        "question": "使用哪个 Kotlin 序列化库？",
+        "answer": "kotlinx.serialization。输出使用 @Serializable，当 Kotlin 属性名与 JSON 键名不同时会加上 @SerialName。"
+      },
+      {
+        "question": "可以配合 Moshi 使用吗？",
+        "answer": "字段类型可以作为编写模型的起点，但注解适用于 kotlinx.serialization。如果你的 Android 应用使用 Moshi，请替换这些注解并配置 Moshi 代码生成。"
+      },
+      {
+        "question": "缺失字段和 null 字段如何处理？",
+        "answer": "在部分数组记录中缺失或出现过 null 的字段会变成可空类型，默认值为 null。必填的非空字段没有默认值。"
+      },
+      {
+        "question": "能为 Android 生成 Kotlin DTO 吗？",
+        "answer": "能。它生成的数据类适合用作 DTO。请在项目中配置 Kotlin 序列化编译器插件和 JSON 运行时库。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "解码 Android API 响应",
+        "paragraphs": [
+          "在应用中启用 Kotlin 序列化编译器插件，并添加 kotlinx.serialization 的 JSON 依赖。用生成的 Root 类型调用 Json.decodeFromString。",
+          "ignoreUnknownKeys 让服务端新增的字段不会导致解析失败。只有在你的 API 策略允许未知字段时，才设置这个选项。"
+        ]
+      }
+    ]
+  },
+  "json-to-swift": {
+    "hash": "5f5ba4bf5cd2",
+    "title": "JSON 转 Swift 模型：生成 Codable 结构体",
+    "description": "把 JSON 转换为 Swift Codable 结构体，包含 CodingKeys、嵌套模型和可选属性。在浏览器本地生成并复制代码。",
+    "heading": "JSON 转 Swift 模型",
+    "query": "JSON 转 Swift 模型",
+    "secondary": [
+      "JSON 转 Swift Codable",
+      "JSON 转 Swift 结构体"
+    ],
+    "intro": "生成遵循 Codable 的 Swift 结构体。当属性名与 JSON 键名不同时，转换器会添加 CodingKeys，所以像 user-id 这样的键仍能解码到 userId。",
+    "modeLabel": "JSON 转 Swift 模型输出",
+    "exampleLabel": "以下输出来自内置转换器。两个数组元素的 price 值用于推断浮点型字段；note 值分别为 null 和字符串，因此推断为可空字段。",
+    "steps": [
+      "粘贴一份有代表性的响应，其中应包含字段存在差异的记录。",
+      "检查生成的输出，必要时修改根名称。",
+      "复制或下载代码，然后对照你的 API 契约检查类型。"
+    ],
+    "options": [
+      "整数推断为 Int，小数推断为 Double，超出有符号 64 位范围的整数推断为 Decimal。请检查目标平台的限制和小数精度。",
+      "null 或缺失的字段会变成可选属性。只出现过 null 或类型混合的结构，会在需要时使用生成的 JSONValue 辅助类型。",
+      "JSONValue 用 Double 存储数字，因此精确的金额或非常大的 ID 请使用明确的类型。",
+      "日期字符串保持为 String。如果把字段改为 Date，请按 API 的日期格式配置 JSONDecoder.dateDecodingStrategy。"
+    ],
+    "faqs": [
+      {
+        "question": "生成的是类还是结构体？",
+        "answer": "遵循 Codable 的结构体，使用 let 属性和嵌套的模型类型，并导入 Foundation。"
+      },
+      {
+        "question": "什么时候会添加 CodingKeys？",
+        "answer": "当属性名发生变化时，会生成一个 CodingKeys 枚举，把 Swift 标识符映射回原始 JSON 键名。"
+      },
+      {
+        "question": "如何处理 null？",
+        "answer": "示例中为 null 或在部分记录中缺失的字段会生成可选属性。未知或类型混合的值使用一个遵循 Codable 的 JSONValue 枚举，只在被引用时才会添加。"
+      },
+      {
+        "question": "可以直接用 JSONDecoder 吗？",
+        "answer": "可以。把生成的结构体复制到项目中，从 Data 解码 Root.self 即可。请先检查可选字段和日期类型。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "用 JSONDecoder 解码",
+        "paragraphs": [
+          "用 JSONDecoder 配合生成的 Root 结构体进行解码。借助 Codable，同一个模型也可以用 JSONEncoder 编码。",
+          "这份输出请保持默认的键解码策略。它的 CodingKeys 已经包含传输时的原始键名，包括 created_at。"
+        ]
+      }
+    ]
+  },
+  "json-to-java": {
+    "hash": "37c805a235c6",
+    "title": "JSON 转 Java 实体类（Jackson record）",
+    "description": "根据 JSON 生成 Java record，包含嵌套 record、带类型的 List 和 Jackson @JsonProperty 映射。在本地检查代码，无需上传输入。",
+    "heading": "JSON 转 Java 实体类",
+    "query": "JSON 转 Java 实体类",
+    "secondary": [
+      "JSON 转 Java 类",
+      "JSON 转 Java POJO",
+      "JSON 转 Java record"
+    ],
+    "intro": "把 API 示例转换为适用于 Jackson 的 Java record（记录类）。根类型是一个 public record，嵌套的 record 都定义在它内部，因此整个输出可以保存在 Root.java 中。",
+    "modeLabel": "JSON 转 Java 实体类输出",
+    "exampleLabel": "以下输出来自内置转换器。两个数组元素的 price 值用于推断浮点型字段；note 值分别为 null 和字符串，因此推断为可空字段。",
+    "steps": [
+      "粘贴一份有代表性的响应，其中应包含字段存在差异的记录。",
+      "检查生成的输出，必要时修改根名称。",
+      "复制或下载代码，然后对照你的 API 契约检查类型。"
+    ],
+    "options": [
+      "这个目标生成的是 record，而不是带 setter 的可变 POJO。需要 Java 16 或更高版本，以及支持 record 的 Jackson 版本，例如 2.12 或更高。",
+      "被重命名或与保留字冲突的 record 组件，会加上带原始键名的 @JsonProperty。嵌套的对象数组变成 List<Item>。",
+      "整数使用 long，超出有符号 64 位范围的大整数使用 BigInteger，小数使用 double。可空的基本类型使用 Long 等包装类型。",
+      "只出现过 null 或类型混合的字段使用 Object，日期保持为 String。需要精确的十进制运算时，请改用 BigDecimal，并确认相应的映射。"
+    ],
+    "faqs": [
+      {
+        "question": "JSON 转 Java 会生成 POJO 吗？",
+        "answer": "它生成的是不可变的 Java record。如果你需要 Java 8 风格的 POJO、setter 或无参构造函数，请改写输出，或使用面向那种模型风格的生成器。"
+      },
+      {
+        "question": "面向哪个 JSON 库？",
+        "answer": "Jackson。当需要保留与 Java 组件名不同的键名时，转换器会导入 @JsonProperty。"
+      },
+      {
+        "question": "可以把所有嵌套类型保存在一个文件里吗？",
+        "answer": "可以。public 根 record 内含嵌套的 public record，所以默认的对象输出可以放进 Root.java。"
+      },
+      {
+        "question": "如何反序列化这个 record？",
+        "answer": "在支持 record 的 Jackson 中使用 ObjectMapper.readValue(responseBody, Root.class)。请根据你的 API 检查日期处理和数值范围。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "在 Jackson 中使用 record",
+        "paragraphs": [
+          "把默认输出保存为 Root.java。Jackson 会根据 JSON 属性构造 record 组件。像 Item 这样的嵌套 record，可以通过 Root.Item 访问。",
+          "输出中没有 package 声明，请加上你的应用所用的包名。如果把日期改为 java.time 类型，请注册你常用的 Jackson 模块。"
+        ]
+      }
+    ]
+  },
+  "json-to-csharp": {
+    "hash": "32fef4d0dcfa",
+    "title": "JSON 转 C# 实体类（System.Text.Json）",
+    "description": "根据 JSON 生成 C# 类，包含 required 属性、可为 null 的类型和 JsonPropertyName 特性，在浏览器中转换嵌套模型。",
+    "heading": "JSON 转 C# 实体类",
+    "query": "JSON 转 C# 实体类",
+    "secondary": [
+      "JSON 转 C# 类",
+      "JSON 转 C# 模型"
+    ],
+    "intro": "为 System.Text.Json 生成 C# 模型。默认输出会为每个属性加上 JsonPropertyName 特性，并对每条示例记录中都存在的字段使用 required。",
+    "modeLabel": "JSON 转 C# 实体类输出",
+    "exampleLabel": "以下输出来自内置转换器。两个数组元素的 price 值用于推断浮点型字段；note 值分别为 null 和字符串，因此推断为可空字段。",
+    "steps": [
+      "粘贴一份有代表性的响应，其中应包含字段存在差异的记录。",
+      "检查生成的输出，必要时修改根名称。",
+      "复制或下载代码，然后对照你的 API 契约检查类型。"
+    ],
+    "options": [
+      "默认使用 System.Text.Json。在“更多选项”中选择 Newtonsoft，即可生成 Newtonsoft.Json 的 JsonProperty 特性，未知值使用 JToken。",
+      "生成的 required 成员需要 C# 11 或更高版本。使用可为 null 的引用类型语法时，假定项目已启用可为 null 注释。",
+      "整数使用 long，超出有符号 64 位范围的整数使用 decimal，小数使用 double。decimal 的范围同样有限；更大的值请自行选择表示方式。",
+      "当每条记录都包含某个键时，可为 null 的字段仍然可以是 required。“必须存在”和“允许为 null”是两条独立的规则。日期保持为 string。"
+    ],
+    "faqs": [
+      {
+        "question": "使用 System.Text.Json 还是 Newtonsoft.Json？",
+        "answer": "默认使用 System.Text.Json，生成 JsonPropertyName 特性。在转换器的“更多选项”菜单中选择 Newtonsoft，即可改为生成 Newtonsoft.Json 的 JsonProperty 特性。"
+      },
+      {
+        "question": "输出需要哪个 C# 版本？",
+        "answer": "required 成员需要 C# 11 或更高版本。启用可为 null 的引用类型后，string? 等引用类型注释才能按预期工作。"
+      },
+      {
+        "question": "为什么 required 属性还可以为 null？",
+        "answer": "这个键出现在每条示例记录中，但它的值可能是 null。例如 required string? Note 就把“是否存在”和值的类型分开表达。"
+      },
+      {
+        "question": "会生成列表和嵌套类吗？",
+        "answer": "会。对象数组会变成 List<Item>，每种嵌套结构都会生成一个类。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "用 System.Text.Json 反序列化",
+        "paragraphs": [
+          "把这些类复制到你的 .NET 项目中，并启用可为 null 注释。JsonPropertyName 特性会把 PascalCase 属性映射到输入中的确切键名。",
+          "请使用 System.Text.Json 支持 required 成员的 .NET 版本，例如 .NET 7 或更高版本，并根据你的应用配置序列化器选项。"
+        ]
+      }
+    ]
+  },
+  "json-to-rust": {
+    "hash": "bd870172bdcb",
+    "title": "JSON 转 Rust 结构体：带 serde 派生",
+    "description": "根据 JSON 生成带 serde Serialize 和 Deserialize 的 Rust 结构体，支持键名重命名、Vec 字段和 Option 类型，在浏览器本地转换。",
+    "heading": "JSON 转 Rust 结构体",
+    "query": "JSON 转 Rust 结构体",
+    "secondary": [
+      "JSON 转 Rust struct",
+      "JSON 转 Rust serde"
+    ],
+    "intro": "生成派生 Debug、Clone、Serialize 和 Deserialize 的公有 Rust 结构体。JSON 键会变成 snake_case 字段；当传输时的键名不同时，会加上 serde rename 属性。",
+    "modeLabel": "JSON 转 Rust 结构体输出",
+    "exampleLabel": "以下输出来自内置转换器。两个数组元素的 price 值用于推断浮点型字段；note 值分别为 null 和字符串，因此推断为可空字段。",
+    "steps": [
+      "粘贴一份有代表性的响应，其中应包含字段存在差异的记录。",
+      "检查生成的输出，必要时修改根名称。",
+      "复制或下载代码，然后对照你的 API 契约检查类型。"
+    ],
+    "options": [
+      "数组变成 Vec，有类型的可空字段变成 Option。在部分记录中缺失的字段会加上 skip_serializing_if = \"Option::is_none\"。",
+      "未知、只出现过 null 或类型混合的值使用 serde_json::Value。重命名会保留标点符号；Rust 保留字在可能时使用原始标识符（raw identifier）。",
+      "整数使用 i64，超出有符号 64 位范围时使用 i128。小数使用 f64。接受非常大的整数之前，请检查 serde_json 的支持情况和数值范围。",
+      "日期保持为 String。精确的十进制金额需要专门的领域类型和序列化器；JSON 示例无法提供这些规则。"
+    ],
+    "faqs": [
+      {
+        "question": "生成器会包含 serde 派生吗？",
+        "answer": "会。它导入 serde::{Deserialize, Serialize}，并为结构体派生 Debug、Clone、Serialize 和 Deserialize。"
+      },
+      {
+        "question": "会保留 JSON 名称吗？",
+        "answer": "会。它会在需要时生成 serde rename 属性；如果能减少逐字段映射，也可能使用 rename_all = \"camelCase\"。"
+      },
+      {
+        "question": "null 和缺失的值如何表示？",
+        "answer": "有类型的可空或缺失字段使用 Option<T>。未知字段和只出现过 null 的字段使用 serde_json::Value，它本身也可以容纳 JSON null。"
+      },
+      {
+        "question": "可以用 serde_json 反序列化结果吗？",
+        "answer": "可以。在 Rust 项目中添加启用了 derive 特性的 serde 和 serde_json，然后反序列化为生成的 Root 类型。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "配合 serde_json 使用结构体",
+        "paragraphs": [
+          "在 Cargo.toml 中为 serde 依赖启用 derive 特性，并添加 serde_json。把结构体复制到一个模块中，然后反序列化响应。",
+          "基于示例的推断不会设定应用的校验规则。把解码后的模型当作可信输入之前，请检查数值范围、必填字段和时间戳。"
+        ]
+      }
+    ]
+  },
+  "json-to-php": {
+    "hash": "7fc19be29801",
+    "title": "JSON 转 PHP 类：带类型的 readonly 属性",
+    "description": "根据 JSON 生成 PHP 8.1 类，使用构造函数提升的 readonly 属性和 fromArray 方法，并了解如何把 JSON 解码为模型或关联数组。",
+    "heading": "JSON 转 PHP 类",
+    "query": "JSON 转 PHP 类",
+    "secondary": [
+      "JSON 转 PHP 数组",
+      "JSON 转 PHP 关联数组"
+    ],
+    "intro": "生成适用于 PHP 8.1 及更高版本的类，通过构造函数属性提升定义带类型的 readonly 属性。每个类都有一个 fromArray 方法，负责映射原始 JSON 键名并构建嵌套对象。",
+    "modeLabel": "JSON 转 PHP 类输出",
+    "exampleLabel": "以下输出来自内置转换器。两个数组元素的 price 值用于推断浮点型字段；note 值分别为 null 和字符串，因此推断为可空字段。",
+    "steps": [
+      "粘贴一份有代表性的响应，其中应包含字段存在差异的记录。",
+      "检查生成的输出，必要时修改根名称。",
+      "复制或下载代码，然后对照你的 API 契约检查类型。"
+    ],
+    "options": [
+      "输出以 declare(strict_types=1) 开头，生成 final 类。嵌套的对象数组带有 PHPDoc 元素类型，并通过 array_map 构建。",
+      "可空值使用 ?type；只出现过 null 或类型混合的字段使用 mixed。日期保持为 string。",
+      "整数使用 int，超出有符号 64 位范围的整数使用 float，这可能丢失精度。请检查 PHP 平台的限制，必要时把大 ID 解码为字符串。",
+      "没有实现 toArray 或 JsonSerializable。如果编码这些类时需要原始 JSON 键名，请自行添加显式的序列化逻辑。"
+    ],
+    "faqs": [
+      {
+        "question": "可以把 JSON 转换为 PHP 关联数组吗？",
+        "answer": "可以，用 PHP 本身就能做到：json_decode($json, true, 512, JSON_THROW_ON_ERROR)。这个生成器输出的是带类型的模型类，而不是 PHP 数组字面量。"
+      },
+      {
+        "question": "生成的代码需要哪个 PHP 版本？",
+        "answer": "构造函数提升的 readonly 属性需要 PHP 8.1 或更高版本。输出还用到了类型化属性、命名参数和 strict_types。"
+      },
+      {
+        "question": "嵌套对象如何变成类？",
+        "answer": "fromArray 会调用嵌套类的 fromArray 方法。嵌套对象数组使用 array_map，元素类型记录在 PHPDoc 中。"
+      },
+      {
+        "question": "编码回 JSON 时会保留原始键名吗？",
+        "answer": "fromArray 方法保留了输入的映射关系。但输出中没有自定义编码器，所以对这些对象调用 json_encode 时会使用属性名。如果需要原始的传输键名，请添加 JsonSerializable 或 toArray 方法。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "选择数组还是带类型的模型",
+        "paragraphs": [
+          "如果只需要 PHP 关联数组，用 json_decode 并传入 true 就够了。要使用生成的模型，把这个数组传给 Root::fromArray。JSON_THROW_ON_ERROR 会报告格式错误的输入。",
+          "如果某个 ID 超过 PHP_INT_MAX，JSON_BIGINT_AS_STRING 可以保留它的全部数字，但你必须把生成的对应 float 属性改为 string。推断出的 float 不是精确的 ID 类型。"
+        ]
+      }
+    ]
+  },
+  "json-to-toml": {
+    "hash": "41bb6e2c5bdc",
+    "title": "JSON 转 TOML：生成表和表数组",
+    "description": "在本地把 JSON 转换为 TOML 表和表数组，并了解 null 值和超出 TOML 64 位范围的整数会如何影响输出。",
+    "heading": "JSON 转 TOML",
+    "query": "JSON 转 TOML",
+    "secondary": [
+      "JSON 转 TOML 在线",
+      "JSON TOML 互转"
+    ],
+    "intro": "把 JSON 配置转换为 TOML 表。嵌套对象变成表头，对象数组变成表数组。对于 TOML 无法表示的值，请查看输出中的注释。",
+    "modeLabel": "JSON 转 TOML 输出",
+    "exampleLabel": "生成的 TOML 包含一个 [profile] 表和两个 [[items]] 表。值为 null 的 note 被省略，并附有一条注释。",
+    "steps": [
+      "粘贴有效的 JSON 配置。",
+      "检查 TOML 表，以及关于被省略或被改动的值的注释。",
+      "复制或下载 TOML，然后对照你的应用配置 schema 进行校验。"
+    ],
+    "options": [
+      "TOML 没有 null 值。值为 null 的属性会被省略并附上注释，数组或内联表中的 null 元素会被直接丢弃。这种转换可能改变数据。",
+      "超出有符号 64 位范围的整数会写成带引号的字符串，并附上说明注释。",
+      "TOML 文档必须是一个表，因此顶层的数组或标量会被包裹在一个键下，键名来自根名称设置（默认为 root）。",
+      "字符串仍然是字符串，看起来像日期的值也一样。包含空格的键会加上引号。"
+    ],
+    "faqs": [
+      {
+        "question": "JSON 转 TOML 是无损的吗？",
+        "answer": "并非对所有文档都是。TOML 没有 null，整数也必须在有符号 64 位范围内。导出器会省略 null，并给超出范围的整数加上引号，同时用注释说明这些改动。"
+      },
+      {
+        "question": "对象数组如何表示？",
+        "answer": "它们会变成表数组，例如 [[items]]，每个对象对应一个表。"
+      },
+      {
+        "question": "可以再转回 JSON 吗？",
+        "answer": "可以。对编辑后的配置使用“TOML 转 JSON”即可。被省略的 null 值无法自动恢复。"
+      },
+      {
+        "question": "顶层 JSON 数组可以转成 TOML 吗？",
+        "answer": "可以。由于 TOML 要求文档根部是一个表，转换器会把它包裹在根名称下。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "把配置迁移到使用 TOML 的技术栈",
+        "paragraphs": [
+          "如果应用支持读取 TOML，可以使用转换后的数据，但请先检查该应用的 schema。Rust 的 Cargo.toml 和 Python 的 pyproject.toml 都要求特定的表和键；转换数据结构并不会替你生成这些项目文件。",
+          "在这个示例中，每个 item 都是一个单独的 [[items]] 表。第一个 note 因为是 null 而被省略。保存之前，请与源数据对比。",
+          "如果必须保留 null，请继续使用 JSON 或改用 YAML，不要直接接受已经改变数据的配置。"
+        ]
+      }
+    ]
+  },
+  "toml-to-json": {
+    "hash": "da150149c95e",
+    "title": "TOML 转 JSON：配置文件在线转换",
+    "description": "在本地把 TOML 表、表数组和标量值转换为格式化的 JSON。打开 TOML 文件，检查结果，然后下载 JSON。",
+    "heading": "TOML 转 JSON",
+    "query": "TOML 转 JSON",
+    "secondary": [
+      "TOML 转 JSON 在线",
+      "TOML JSON 互转"
+    ],
+    "intro": "粘贴 TOML 配置或打开 .toml 文件，即可看到格式化的 JSON。导入器在你的浏览器中读取表、点分键、数组、内联表和 TOML 字符串。",
+    "modeLabel": "TOML 导入为 JSON",
+    "exampleLabel": "server 表变成一个对象，重复的 users 表变成一个对象数组。",
+    "steps": [
+      "粘贴 TOML，或打开 .toml 文件。",
+      "打开的 .toml 文件会直接转换。如果是粘贴的 TOML，请在提示栏中选择 TOML → JSON，然后检查结果。",
+      "复制或下载 JSON，供接收方应用使用。"
+    ],
+    "options": [
+      "TOML 的日期和时间值会变成 JSON 字符串，而不是 Date 对象。",
+      "整数的每一位都会保留，十六进制、八进制和二进制整数会转换为十进制表示。使用 JavaScript Number 的程序仍可能对大数值进行舍入。",
+      "TOML 的 inf 和 nan 会变成 null，因为 JSON 没有非有限数值。",
+      "注释和表的排版格式会丢失。重复的键和无效语法会导致导入错误。"
+    ],
+    "faqs": [
+      {
+        "question": "能读取表数组吗？",
+        "answer": "能。重复的 [[users]] 表头会生成一个 JSON 对象数组。"
+      },
+      {
+        "question": "TOML 日期会怎样？",
+        "answer": "它们会变成 JSON 字符串。导入器会把日期时间的分隔符统一为 T，并把末尾的小写 z 统一为 Z。"
+      },
+      {
+        "question": "可以导入 Cargo.toml 或 pyproject.toml 吗？",
+        "answer": "可以。打开文件或粘贴其中的 TOML 内容即可。结果只表示其中的数据，不会把包管理器的约定转换成另一个生态的约定。"
+      },
+      {
+        "question": "能保留注释吗？",
+        "answer": "不能。JSON 没有注释。如果需要注释或排版，请使用原始的 TOML 文件。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "以 JSON 格式查看 TOML 数据",
+        "paragraphs": [
+          "[server] 表会变成 server 对象，[[users]] 表头会变成 users 数组中的记录。这便于查看配置，或把其中的数据发送给 JSON API。",
+          "转换 Cargo.toml 或 pyproject.toml 文件改变的只是格式，不会改变其中包或依赖设置的含义。使用输出之前，请检查目标 schema。"
+        ]
+      }
+    ]
+  },
+  "offline-json-formatter": {
+    "hash": "776eb6bff586",
+    "title": "离线 JSON 格式化工具：Windows、Mac 和手机可用",
+    "description": "把 Tool Kumar 安装为 JSON 格式化应用，或在已缓存的浏览器标签页中离线使用。了解安装步骤、离线检查、本地存储和更新方式。",
+    "heading": "离线 JSON 格式化工具",
+    "query": "离线 JSON 格式化工具",
+    "secondary": [
+      "JSON 格式化工具离线版",
+      "JSON 格式化工具下载",
+      "JSON 格式化工具 Windows"
+    ],
+    "intro": "首次在线访问并完成应用缓存后，无需联网即可格式化 JSON。你可以把它留在浏览器标签页中，也可以在支持的平台上将其安装为 Web 应用。",
+    "modeLabel": "格式化后的 JSON",
+    "exampleLabel": "无论是在线使用，还是在应用资源缓存后离线使用，同一个本地格式化工具都会生成这样的输出。",
+    "steps": [
+      "在联网状态下打开 Tool Kumar，页面加载完成后再等几秒钟。允许浏览器存储网站数据。",
+      "打开开发者工具，选择“网络”（Network），把节流菜单改为“离线”（Offline），然后重新加载首页。在手机上，开启飞行模式后重新加载。",
+      "粘贴示例，确认出现格式化后的输出。如果需要转换功能，也一并测试，然后把“网络”面板恢复为平时的设置。"
+    ],
+    "options": [
+      "安装是可选的。Service Worker 让缓存的首页在普通浏览器标签页中同样可用。",
+      "应用会缓存首页、JavaScript、样式、字体、图标和转换模块。访问过的完整页面可以被缓存；未缓存的页面会回退到首页。",
+      "从远程 URL 加载需要联网。访问统计请求和跨源请求不会被缓存。由于 Next.js 的路由数据不会被缓存，离线时的站内导航也可能回退。",
+      "离线使用依赖浏览器保留网站存储。清除网站数据、无痕浏览的策略或存储空间被回收，都可能删除应用缓存。"
+    ],
+    "faqs": [
+      {
+        "question": "有适用于 Windows 或 Mac 的离线 JSON 格式化工具下载吗？",
+        "answer": "你可以通过 Chrome 或 Edge 安装 Tool Kumar；在支持的 macOS 版本上，也可以使用 Safari 的“添加到程序坞”。它是一个 Web 应用，没有单独的 .exe 或 .dmg 下载。"
+      },
+      {
+        "question": "桌面版 Firefox 能离线使用吗？",
+        "answer": "可以，前提是启用了 Service Worker 和网站存储，并且首次访问已完成缓存。如果你的 Firefox 版本没有安装选项，把网站留在标签页中或加入书签即可。"
+      },
+      {
+        "question": "飞行模式下能使用格式化工具吗？",
+        "answer": "能，前提是之前的在线访问已经缓存了应用。在断网状态下依赖它之前，请重新加载首页，并用示例测试一下。"
+      },
+      {
+        "question": "离线应用如何更新？",
+        "answer": "在线加载首页时，会刷新缓存的应用外壳及其资源。更新后的资源准备就绪后，已打开的标签页会显示“重新加载”提示。关闭后重新打开，或重新加载页面，即可使用新版本。"
+      },
+      {
+        "question": "我的 JSON 存储在哪里？",
+        "answer": "用户编辑过的 JSON 在不超过 2,500,000 个字符的限制时，会保存在此浏览器的 localStorage 中。对比文本、文件名、设置和主题也可能被保存。Service Worker 缓存存放的是应用资源。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "在 Windows、macOS、Linux 或 ChromeOS 上安装",
+        "paragraphs": [
+          "在 Chrome 中，打开浏览器菜单，选择“投放、保存和分享”，然后选择“将页面作为应用安装”。地址栏中也可能出现安装图标。在 Edge 中，依次选择“设置及其他”、“应用”、“将此站点作为应用安装”。菜单名称因浏览器版本而异。",
+          "在 macOS Sonoma 或更高版本上，可以在 Safari 中依次选择“文件”和“添加到程序坞”。断网之前，先在线打开一次应用并完成离线检查。安装并不能代替缓存这一步。",
+          "桌面版 Firefox 可能不提供把网站安装为应用的选项。只要启用了 Service Worker，你仍然可以在 Firefox 标签页中离线使用已缓存的网站。"
+        ]
+      },
+      {
+        "heading": "在 iPhone、iPad 或 Android 上安装",
+        "paragraphs": [
+          "在 iOS 或 iPadOS 上，用 Safari 打开网站，轻点“共享”，选择“添加到主屏幕”。如果你的系统版本提供“作为 Web App 打开”开关，请将其开启，然后轻点“添加”。",
+          "在 Android 上，用 Chrome 打开网站，轻点菜单，选择“安装应用”或“添加到主屏幕”。先在线打开一次并等待缓存完成，再开启飞行模式。"
+        ]
+      },
+      {
+        "heading": "检查缓存并清除本地数据",
+        "paragraphs": [
+          "在 Chromium 开发者工具的“应用”（Application）面板中，Service Workers 会显示已注册的 worker，Cache Storage（缓存空间）中有 json-viewer 缓存，Local Storage（本地存储空间）中有 jf: 开头的键。缓存存放的是应用资源；localStorage 中可能保存着你编辑过的文档。",
+          "要同时清除两者，请先关闭其他 Tool Kumar 标签页，然后依次打开“应用”和“存储”，使用“清除网站数据”（Clear site data），清除范围要包括本地存储、缓存空间和 Service Worker。其他浏览器的设置中也有相应的网站数据管理功能。清除之后，需要再在线访问一次，离线使用才能重新生效。"
+        ]
+      },
+      {
+        "heading": "离线处理敏感 JSON",
+        "paragraphs": [
+          "先用无害的示例测试离线模式。确认应用在断网状态下可以正常工作后，再粘贴敏感数据。具有页面访问权限的浏览器扩展仍然可以读取这些数据。在共用设备上用完后，请清除网站数据。"
+        ]
+      }
+    ]
+  },
+  "secure-json-formatter": {
+    "hash": "2a030202b992",
+    "title": "本地 JSON 格式化工具：不上传文档与隐私说明",
+    "description": "在本地查看 JSON，无需上传文档，也无需注册账号。你可以自行检查网络请求，并在处理机密信息前了解访问统计、存储和 CSP 的局限。",
+    "heading": "本地 JSON 格式化工具",
+    "query": "本地 JSON 格式化工具",
+    "secondary": [
+      "JSON 格式化工具安全吗",
+      "JSON 格式化不上传",
+      "安全的 JSON 格式化工具"
+    ],
+    "intro": "Tool Kumar 在浏览器中解析和格式化你的文档。粘贴 JSON 不会把它提交到服务器，也无需注册账号。本站使用了 Vercel Web Analytics，因此隐私说明需要区分文档处理和页面遥测。",
+    "modeLabel": "格式化后的 JSON",
+    "exampleLabel": "无论是在线使用，还是在应用资源缓存后离线使用，同一个本地格式化工具都会生成这样的输出。",
+    "steps": [
+      "打开开发者工具并选择“网络”（Network）。等页面加载完成后，清空请求列表。",
+      "粘贴一段带有唯一标记（例如 network-check-7）的无害 JSON，并修改其中一个值。格式化结果应当随之更新，且不会出现包含该标记的请求。",
+      "检查所有新出现的请求，尤其是它们的“载荷”（Payload）标签页。Fetch/XHR 和“全部”（All）都要检查，因为访问统计可能使用 beacon 请求。用一个小示例，整个过程大约需要 30 秒。"
+    ],
+    "options": [
+      "解析器、代码生成器和下载文件的生成都在本地运行。打开本地文件不会上传它。",
+      "Vercel Web Analytics 会记录页面浏览量。在生产环境中，它的脚本从本站同源的 /_vercel/insights/script.js 提供，遥测数据发送到 /_vercel/insights；封装代码会在发送事件之前移除 URL 片段。代码中没有配置任何包含文档内容的事件。",
+      "分享链接会把 JSON 放在 URL 片段中。URL 片段不会随 HTTP 请求发送，但任何拿到完整链接的人都能读取文档。请避免分享机密信息。",
+      "“从 URL 加载”会在你的浏览器中主动请求你选择的地址，该地址会收到一次请求。带 ?url= 的链接也可能触发远程加载；处理敏感数据时，请使用粘贴或本地文件。"
+    ],
+    "faqs": [
+      {
+        "question": "这个 JSON 格式化工具处理机密数据安全吗？",
+        "answer": "它在本地处理文档，粘贴的内容不会上传。但你仍然需要信任所加载的代码、你的浏览器和扩展。处理机密信息时，请检查网络请求，使用经过测试的离线标签页，并在用完后清除本地存储。"
+      },
+      {
+        "question": "本站使用访问统计工具吗？",
+        "answer": "使用。Vercel Web Analytics 会记录页面遥测数据。封装代码会去除 URL 片段，应用中也没有配置任何发送编辑器内容的事件。访问统计请求与本地 JSON 处理是相互独立的。"
+      },
+      {
+        "question": "内容安全策略（CSP）能防护什么？",
+        "answer": "页面的 CSP 禁止本页面被嵌入框架，把 base URL 限制为本站同源，并禁止嵌入对象。它没有 script-src 或 connect-src 指令，因此并不限制所有脚本或网络请求目标。"
+      },
+      {
+        "question": "关闭标签页后，我的 JSON 还会保留吗？",
+        "answer": "用户编辑过的、不超过 2,500,000 个字符的文档，可能会连同对比文本和设置一起保留在此浏览器的 localStorage 中。在共用设备上，请清除网站数据。仅访问某个预设页面，不会替换首页已保存的文档。"
+      },
+      {
+        "question": "可以粘贴 JWT 或 API 密钥吗？",
+        "answer": "先用无害的示例确认离线可用，然后优先在离线标签页中处理机密信息。具有页面访问权限的扩展仍然可以读取编辑器内容。解码后的 JWT 并不是经过验证的 token；已泄露的密钥应当吊销。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "浏览器本地处理能保护什么",
+        "paragraphs": [
+          "会上传 JSON 的格式化工具，会让服务器获得你的文档。在这里，解析和格式化使用的是浏览器中的解析器代码，生成的下载文件使用本地浏览器 API。在常规的粘贴流程中，不存在携带文档内容的请求。",
+          "上面的网络检查只能验证当前会话，不能证明未来每个版本的行为。数据敏感时，请在更新后重新检查。"
+        ]
+      },
+      {
+        "heading": "访问统计与第三方请求",
+        "paragraphs": [
+          "本站使用 Vercel Web Analytics 记录页面浏览量，而不是文档内容。在生产环境中，统计脚本从同源的 /_vercel/insights/script.js 加载，并通过 /_vercel/insights 发送页面遥测数据。应用的封装代码会在发送事件之前去除 URL 片段。请避免把机密信息放在 URL 路径或查询参数中。",
+          "代码字体在构建时已配置为自托管，因此使用本页面不会向 Google 请求字体。源码审查没有发现其他访问统计集成。用户主动发起的远程 URL 请求，是常规本地输入流程之外的例外。"
+        ]
+      },
+      {
+        "heading": "查看实际的安全响应头",
+        "paragraphs": [
+          "页面的 Content-Security-Policy 如下所示。它禁止在框架中嵌入本页面，禁止把 base URL 改为其他源，也禁止加载 object/embed 内容。它没有在页面上设置 script-src、default-src 或 connect-src。",
+          "其他已配置的响应头包括 X-Content-Type-Options: nosniff、X-Frame-Options: DENY、Referrer-Policy: strict-origin-when-cross-origin，以及禁用摄像头、麦克风、地理位置、支付和 USB 的 Permissions-Policy。Service Worker 的响应有一个单独的、更严格的 CSP。"
+        ]
+      },
+      {
+        "heading": "处理 JWT、API 密钥和已保存的文档",
+        "paragraphs": [
+          "停用不需要的、具有页面访问权限的扩展。在粘贴 token 或密钥之前，确认缓存的应用在断网状态下可以正常工作。不要把机密信息放进分享链接、截图或浏览器地址栏的 URL 查询参数中。",
+          "用户的编辑内容可能保留在 localStorage 中，它并不是用于保存机密信息的加密存储。处理完敏感数据后，请关闭其他 Tool Kumar 标签页，并通过浏览器的网站数据设置，清除本站的本地存储、缓存空间和 Service Worker。",
+          "用“JWT 在线解析”工具查看声明，然后在你自己的应用中验证签名。如果凭据已经泄露，请吊销或轮换它；格式化无法撤回已经发生的泄露。"
+        ]
+      }
+    ]
+  },
+  "jsonl-viewer": {
+    "hash": "5d02579b43c6",
+    "title": "JSONL 查看器：在线打开 NDJSON 文件",
+    "description": "打开 .jsonl 或 .ndjson 文件，以树形或表格浏览其中的记录。Tool Kumar 在你的浏览器中读取 JSON Lines，无需上传。",
+    "heading": "JSONL 查看器",
+    "query": "JSONL 查看器",
+    "secondary": [
+      "JSONL 在线查看",
+      "NDJSON 查看器",
+      "JSONL 文件怎么打开"
+    ],
+    "intro": "打开或粘贴 JSON Lines（也叫 NDJSON），逐行查看每条记录。Tool Kumar 会列出这些记录，你可以在树形视图中展开、在表格中排序或进行搜索，文件始终留在你的设备上。",
+    "modeLabel": "JSON Lines 树形视图",
+    "exampleLabel": "每行是一条记录。查看器将这三行读取为包含三条记录的列表，这里用树形和表格视图中的 JSON 数组来展示。",
+    "steps": [
+      "打开 .jsonl 或 .ndjson 文件，或把这些行粘贴到输入面板中。",
+      "查看状态栏：它会显示 JSON Lines 以及记录条数。",
+      "在“树形”中展开记录，切换到“表格”以每行显示一条记录，或按 Ctrl+F（Mac 上为 ⌘F）搜索键和值。"
+    ],
+    "options": [
+      "每一行包含一个完整的 JSON 值，空行会被跳过。",
+      "跨多行书写或以逗号分隔的记录仍然可以打开，但状态栏会把它们报告为不规范的 JSON，并提示有待检查的问题，而不是显示为 JSON Lines。",
+      "打开的 .jsonl 或 .ndjson 文件即使只有一条记录，也仍会被读作只含一条记录的列表。",
+      "遇到无法读取的记录时，解析会停止，状态栏会显示它所在的行和列。",
+      "输入超过 2,000,000 个字符或 30,000 行时会变为只读，以保持视图流畅。点击“仍要编辑”可以重新开启编辑。"
+    ],
+    "faqs": [
+      {
+        "question": "如何打开 NDJSON 文件？",
+        "answer": "在输入菜单中选择“打开文件”（Ctrl+O，Mac 上为 ⌘O），选取 .ndjson 或 .jsonl 文件，或直接把文件拖到页面上。文件在你的浏览器中读取，不会被上传。"
+      },
+      {
+        "question": "为什么用 JSONL 而不用 JSON 数组？",
+        "answer": "每一行都是一条完整的记录，因此生产方可以不断追加记录，消费方也可以逐行流式读取或拆分文件。而 JSON 数组要等到结尾的方括号出现后才是有效的。"
+      },
+      {
+        "question": "JSONL 和 NDJSON 是一回事吗？",
+        "answer": "实际上是的。这两个名称描述的都是以换行分隔的 JSON 值，Tool Kumar 对 .jsonl 和 .ndjson 文件的读取方式完全相同。"
+      },
+      {
+        "question": "可以把这些记录转换成 JSON 数组或 CSV 吗？",
+        "answer": "可以。“格式化”视图会把记录显示为一个 JSON 数组，可以复制或下载；“JSONL 转 CSV”页面则可以把它们转换成表格列。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "extra-data",
+        "text": "为什么 JSON 解析器读取 JSON Lines 时会报告 Extra data 错误"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "什么是 JSON Lines",
+        "paragraphs": [
+          "JSON Lines 每行放一个 JSON 值，通常每条记录是一个对象。日志、分析数据导出和机器学习数据集都采用这种格式，因为程序可以追加或读取单独一行，而无需加载整个数组。",
+          "严格的 JSON 解析器会拒绝这样的文件，因为其中包含多个顶层值。Tool Kumar 能识别这种每行一条记录的布局，会列出这些记录，而不是报错。"
+        ]
+      }
+    ]
+  },
+  "ndjson-to-json": {
+    "hash": "6290f450ec30",
+    "title": "JSONL 转 JSON 数组：NDJSON 在线转换",
+    "description": "在浏览器中把 NDJSON 或 JSON Lines 转换为一个 JSON 数组。每行变成一个元素，大数值的每一位都原样保留，数据不会上传。",
+    "heading": "JSONL 转 JSON",
+    "query": "JSONL 转 JSON",
+    "secondary": [
+      "NDJSON 转 JSON",
+      "JSONL 转 JSON 数组"
+    ],
+    "intro": "粘贴 NDJSON 或打开 .jsonl 文件，把其中的各行转换为一个 JSON 数组。输入保持原有的行，旁边显示格式化后的数组，可以直接复制，或下载为 .json。",
+    "modeLabel": "JSON 数组输出",
+    "exampleLabel": "三行中的每一行都变成数组的一个元素。order 数字保留了每一位；而在 JavaScript 中，JSON.parse 会把 9007199254740993 舍入为 9007199254740992。",
+    "steps": [
+      "粘贴这些行，或打开 .ndjson 或 .jsonl 文件。",
+      "在“格式化”视图中查看数组，可以在“美化”和“压缩”之间切换。",
+      "复制数组，或下载为 .json 文件。"
+    ],
+    "options": [
+      "每一行按文件中的顺序变成一个数组元素。内容为数组的行仍是一个元素，所以 [1,2] 和 [3] 这两行会变成 [[1,2],[3]]。",
+      "空行会被跳过。不是严格 JSON 的行会被标出行号和列号：尾随逗号这类不规范语法可以修复，而无法读取的文本会让转换停止。",
+      "单独粘贴的一行就是普通 JSON，会保持原样。把它作为 .jsonl 或 .ndjson 文件打开，才会得到只含一个元素的数组。",
+      "数字的每一位都原样保留，包括超过 2^53 的整数。",
+      "如需用数组替换输入，请在“更多选项”菜单中选择“用作输入”（Ctrl+Enter）。按 Ctrl+Z 可以撤销。"
+    ],
+    "faqs": [
+      {
+        "question": "如何把 NDJSON 转换为 JSON？",
+        "answer": "粘贴 NDJSON 或打开文件。“格式化”视图会显示一个 JSON 数组，每行对应一个元素；可以复制，或下载为 .json。"
+      },
+      {
+        "question": "如何把 JSONL 转换为 JSON？",
+        "answer": "方法相同。JSONL 和 NDJSON 是同一种格式的两个名称，这个转换器能读取 .jsonl 和 .ndjson 两种文件。"
+      },
+      {
+        "question": "无效的行会怎样？",
+        "answer": "它会被标出行号和列号。单引号这类不规范语法可以用“修复输入”修复；无法读取的行会让转换停止，直到你修正它。"
+      },
+      {
+        "question": "可以反向转换吗？",
+        "answer": "可以。“JSON 转 JSONL”会把记录数组转换回每行一个紧凑的 JSON 值。"
+      }
+    ]
+  },
+  "jsonl-to-csv": {
+    "hash": "efc51c1e4f45",
+    "title": "JSONL 转 CSV：NDJSON 记录转表格",
+    "description": "把 JSON Lines 或 NDJSON 记录转换为 CSV。嵌套对象会变成 profile.city 这样以点号分隔的列，转换在你的浏览器中完成。",
+    "heading": "JSONL 转 CSV",
+    "query": "JSONL 转 CSV",
+    "secondary": [
+      "NDJSON 转 CSV",
+      "JSONL 转 CSV 在线"
+    ],
+    "intro": "把每行一个 JSON 对象的数据转换为电子表格中的行。Tool Kumar 会把所有记录的键汇总成列，把嵌套对象展平为以点号分隔的名称，文件始终留在你的设备上。",
+    "modeLabel": "CSV 输出",
+    "exampleLabel": "两条记录共用一个表头行。嵌套的 profile 字段变成 profile.city 和 profile.plan，tags 数组填入一个单元格，缺失的值保持为空。",
+    "steps": [
+      "粘贴这些行，或打开 .jsonl 或 .ndjson 文件。",
+      "在“转换”视图中查看 CSV，第一行列出所有列。",
+      "复制或下载 CSV；也可以在转换器中选择 Excel (.xlsx)，下载工作簿。"
+    ],
+    "options": [
+      "列由所有记录中出现的键组成，按首次出现的顺序排列。",
+      "嵌套对象会变成以点号分隔的列。由普通值组成的数组会写入一个单元格，各个值以逗号分隔；对象数组则以紧凑 JSON 的形式放在一个单元格中。",
+      "缺失字段和 null 值都会变成空单元格，因此转换回 JSON 时无法区分二者。",
+      "包含逗号、引号或换行的单元格会按 CSV 规范加上引号。数字的每一位都原样保留。",
+      "打开的 .jsonl 文件即使只有一条记录，也会生成一个表头行和一个数据行。"
+    ],
+    "faqs": [
+      {
+        "question": "如何把 NDJSON 转换为 CSV？",
+        "answer": "粘贴记录或打开 .ndjson 文件。“转换”视图会显示带表头行的 CSV；可以复制，或下载 .csv 文件。"
+      },
+      {
+        "question": "如何在 Excel 中打开结果？",
+        "answer": "下载 CSV 后用 Excel 打开；或在转换器中选择 Excel (.xlsx)，下载列完全相同的工作簿。"
+      },
+      {
+        "question": "嵌套对象会怎样？",
+        "answer": "它们的字段会变成用点号命名的列，例如 profile.city。嵌套数组保留在一个单元格中。"
+      }
+    ]
+  },
+  "sort-json-keys": {
+    "hash": "1c266111b5d7",
+    "title": "JSON 键名排序：所有层级按字母顺序排列",
+    "description": "按字母顺序为每个 JSON 对象的键排序，嵌套对象也包括在内，数组保持原有顺序。数字的每一位都原样保留，数据不会上传。",
+    "heading": "JSON 键名排序",
+    "query": "JSON 键名排序",
+    "secondary": [
+      "JSON 排序",
+      "JSON 按字母排序",
+      "JSON key 排序"
+    ],
+    "intro": "粘贴 JSON，即可看到每个对象的键按字母顺序排列，嵌套对象也不例外。数组保持原有顺序，因此数据含义不变，变化的只是键的顺序。",
+    "modeLabel": "排序后的 JSON 输出",
+    "exampleLabel": "每个对象都已排序，嵌套对象也包括在内。owners 列表保持原有顺序；由于键按文本比较，\"10\" 排在 \"2\" 之前。",
+    "steps": [
+      "粘贴 JSON 或打开文件。",
+      "在“格式化”视图中查看排序后的输出。“更多选项”菜单中的“键名排序”已开启。",
+      "复制或下载结果，或者选择“用作输入”（Ctrl+Enter）直接对输入排序。按 Ctrl+Z 可以撤销。"
+    ],
+    "options": [
+      "排序是递归的：对象中的对象、数组中的对象也会被排序。",
+      "数组保持元素顺序。对数组的值排序，或按某个属性对记录排序，是另一种操作。",
+      "键按文本逐字符比较，所以 \"10\" 排在 \"2\" 之前，大写字母排在小写字母之前。",
+      "值不会改变，数字的每一位都原样保留。",
+      "要确认只有键的顺序发生了变化，可以在 JSON 对比中开启“忽略键顺序”，比较两个版本。"
+    ],
+    "faqs": [
+      {
+        "question": "如何给 JSON 的键排序？",
+        "answer": "把 JSON 粘贴到这里。输出会把每个对象的键按字母顺序排列，各个层级都是如此。你可以复制结果，或选择“用作输入”替换输入内容。"
+      },
+      {
+        "question": "如何按字母顺序排序 JSON 文件？",
+        "answer": "用“打开文件”（Ctrl+O，Mac 上为 ⌘O）打开文件，然后下载排序后的输出。只有对象的键会移动，数组保持原有顺序。"
+      },
+      {
+        "question": "排序会改变我的数据吗？",
+        "answer": "不会改变任何值。JSON 对象本身是无序的，所以标准解析器读到的是相同的数据。但依赖键顺序的代码，行为仍可能有所不同。"
+      }
+    ]
+  },
+  "json-escape": {
+    "hash": "7339b4deed1d",
+    "title": "JSON 转义与反转义：JSON 与字符串互转",
+    "description": "把 JSON 文档转义为一个 JSON 字符串（引号和换行都会转义），或把字符串化的文档反转义为易读的 JSON，全部在浏览器中完成。",
+    "heading": "JSON 转义与反转义",
+    "query": "JSON 转义",
+    "secondary": [
+      "JSON 反转义",
+      "JSON 去除转义",
+      "JSON.stringify 在线"
+    ],
+    "intro": "粘贴 JSON，即可得到一个转义后的字符串。当 JSON 需要放进另一个 JSON 值、环境变量或测试数据中时，就需要这种形式。粘贴转义后的字符串，则可以把它还原为易读的 JSON。",
+    "modeLabel": "转义字符串输出",
+    "exampleLabel": "文档先被压缩，再写成一个 JSON 字符串：内部的每个引号都变成 \\\"，note 中已转义的换行变成 \\\\n。",
+    "steps": [
+      "粘贴 JSON 文档或打开文件。",
+      "在“格式化”视图中查看转义后的字符串，此时选中的是“字符串”。“美化”和“压缩”显示的是文档本身。",
+      "如需反转义，粘贴一个包含 JSON 的 JSON 字符串，然后在提示栏中选择“反转义 JSON”。输入会变成格式化后的文档。"
+    ],
+    "options": [
+      "转义以压缩后的文档为基础，因此字符串中不含多余的空白。",
+      "对已经转义过的字符串再次转义，会再加一层反斜杠。有几层就反转义几次。",
+      "输入按 JSON 读取，而不是作为 JavaScript 运行。注释、单引号这类不规范语法会在转义前被修复。",
+      "文档中的字符串值可以就地展开：在“树形”中选中它，然后从“更多选项”菜单中选择“展开嵌套 JSON 字符串”。",
+      "反转义会替换输入，按 Ctrl+Z 可以撤销。"
+    ],
+    "faqs": [
+      {
+        "question": "如何转义 JSON 字符串？",
+        "answer": "粘贴 JSON 文档。“字符串”输出会把它显示为一个 JSON 字符串字面量，其中的每个引号、反斜杠和换行都已转义。把它复制到任何需要字符串的地方即可。"
+      },
+      {
+        "question": "如何反转义 JSON？",
+        "answer": "粘贴转义后的字符串，包括最外层的引号。Tool Kumar 会识别出其中包含 JSON，并提供“反转义 JSON”，用格式化后的文档替换它。"
+      },
+      {
+        "question": "为什么 JSON.stringify 会给我的字符串加上反斜杠？",
+        "answer": "这个值本来就是 JSON 字符串，再次字符串化就会转义其中的引号。调用一次 JSON.parse 会得到原始的 JSON 文本，再解析一次这段文本才会得到对象。你也可以在这里反转义，查看文档内容。"
+      }
+    ]
+  },
+  "large-json-viewer": {
+    "hash": "641457c4d603",
+    "title": "大 JSON 文件查看器：在浏览器本地打开",
+    "description": "在本地以树形、表格或文本视图打开大 JSON 文件。在我们的测试中，一个 52.4 MB 的文件在桌面浏览器中约 1 秒解析完成，无需上传。",
+    "heading": "大 JSON 文件查看器",
+    "query": "大 JSON 文件查看器",
+    "secondary": [
+      "超大 JSON 文件打开",
+      "大 JSON 文件在线查看",
+      "大 JSON 文件怎么打开"
+    ],
+    "intro": "从你的设备打开大 JSON 文件，以树形、表格或格式化文本浏览。文件在你的浏览器中读取，从不上传；超大文档会切换到只读模式，以保持滚动流畅。",
+    "modeLabel": "树形视图",
+    "exampleLabel": "这里用一个小示例代替你的文件。打开你自己的文件后，状态栏会显示它的大小、行数和节点数。",
+    "steps": [
+      "选择“打开文件”（Ctrl+O，Mac 上为 ⌘O），或把文件拖到页面上。",
+      "状态栏报告解析完成后，浏览“树形”视图；如果是记录数组，也可以切换到“表格”。",
+      "按 Ctrl+F（⌘F）搜索，或在查找栏中输入 $.users[1] 这样的路径，跳转到对应节点。"
+    ],
+    "options": [
+      "接受不超过 300 MB 的文件。这是安全上限，并不保证文件一定能流畅打开，实际情况取决于设备内存和数据结构。",
+      "输入超过 2,000,000 个字符或 30,000 行时会变为只读，以保持视图流畅。点击“仍要编辑”可以重新开启编辑。",
+      "解析在主线程上运行，因此读取超大文件时页面会暂时停顿。",
+      "超过 2,500,000 个字符的文档不会保留到下次访问，届时请重新打开文件。",
+      "编辑器、树形、表格和文本视图都只绘制屏幕上可见的行，因此文件打开后，滚动依然流畅。"
+    ],
+    "faqs": [
+      {
+        "question": "如何查看大 JSON 文件？",
+        "answer": "在这里用“打开文件”打开，或把文件拖到页面上。树形视图无需全部展开即可显示结构，“查找”可以跳转到键、值或路径。"
+      },
+      {
+        "question": "如何在 Mac 上查看大 JSON 文件？",
+        "answer": "在 Safari、Chrome 或其他新版浏览器中打开本页面，选择“打开文件”（⌘O）即可，无需安装任何软件。"
+      },
+      {
+        "question": "如何在 Windows 上打开大 JSON 文件？",
+        "answer": "在 Edge 或 Chrome 中打开本页面，选择“打开文件”（Ctrl+O）。文件在你的电脑上读取，不会被上传。"
+      },
+      {
+        "question": "有大小限制吗？",
+        "answer": "本页面接受不超过 300 MB 的文件。多大的文件能流畅打开，取决于你的设备内存和数据结构。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "一次实测示例",
+        "paragraphs": [
+          "我们在桌面 Linux 上的 Chromium 154 中打开了一个 52.4 MB 的文件（52,428,028 字节），其中包含 51,501 条记录。每条记录都是一个小对象，包含长度为 996 个字符的字符串。解析耗时约 1.0 秒，从选择文件到树形视图就绪约 1.9 秒。该文档共有 154,505 个节点。",
+          "这个文件层级浅，内容以文本为主。深度嵌套的数据、大量小数字、较旧的笔记本电脑或手机都可能耗时更长，因此这些数字只能作为一个参考点，而不是保证。"
+        ]
+      }
+    ]
+  },
+  "json-repair": {
+    "hash": "37e9857866ee",
+    "title": "JSON 修复：在线修复格式错误的 JSON",
+    "description": "修复常见的 JSON 错误，例如单引号、键名缺少引号、注释，以及尾随逗号或缺失的逗号。逐项检查修复内容后，复制有效的 JSON。",
+    "heading": "JSON 修复",
+    "query": "JSON 修复",
+    "secondary": [
+      "JSON 格式修复",
+      "JSON 在线修复",
+      "修复 JSON 格式错误"
+    ],
+    "intro": "粘贴有问题的 JSON，即可看到错误所在，旁边还会显示修复后的版本。Tool Kumar 会标出每个问题的行号和列号，“修复输入”会一步应用所有修复，并且可以撤销。",
+    "modeLabel": "修复后的 JSON 输出",
+    "exampleLabel": "这个示例混合了多种常见错误：注释、键名没有引号、单引号、Python 的 True 和 None、尾随逗号、缺失的逗号以及 NaN。输出是修复后的文档。",
+    "steps": [
+      "粘贴有问题的 JSON，或打开文件。",
+      "提示栏会统计可修复问题的数量，并指出第一个问题及其行号和列号，编辑器会给每个问题加上下划线。",
+      "在“格式化”视图中检查修复后的文档，然后选择“修复输入”应用修复。按 Ctrl+Z 可以撤销。"
+    ],
+    "options": [
+      "可修复注释、未加引号的键、单引号字符串、尾随逗号、属性之间缺失的逗号、Python 的 True、False 和 None，以及粘贴的 JSON 外围的 Markdown 代码围栏。",
+      "NaN 和 Infinity 在 JSON 中没有对应的表示，因此会变成 null。如果这些值很重要，请检查输出。",
+      "有些输入无法修复，例如缺少结尾引号的字符串。这时提示栏会改为报告错误及其位置。",
+      "修复会原样保留数字的每一位和键的顺序。"
+    ],
+    "faqs": [
+      {
+        "question": "如何修复有问题的 JSON？",
+        "answer": "粘贴到这里。Tool Kumar 会标出每个问题，并显示修复后的版本。选择“修复输入”可以一次应用所有修复，也可以手动编辑输入。"
+      },
+      {
+        "question": "所有 JSON 错误都能修复吗？",
+        "answer": "不能。引号、逗号、注释这类小错误会被自动修复。缺失的文本，例如在结尾引号之前就被截断的字符串，需要手动修复。"
+      },
+      {
+        "question": "修复会改变我的值吗？",
+        "answer": "值保持不变，只有 NaN 和 Infinity 例外：JSON 无法表示它们，因此会变成 null。使用之前，请检查输出。"
+      }
+    ],
+    "guides": [
+      {
+        "slug": "single-quotes-unquoted-keys",
+        "text": "修复单引号和未加引号的键"
+      },
+      {
+        "slug": "trailing-comma",
+        "text": "删除尾随逗号"
+      }
+    ]
+  },
+  "json-to-table": {
+    "hash": "1b27f36399aa",
+    "title": "JSON 转表格查看器：按行浏览每条记录",
+    "description": "把 JSON 数组显示为可排序的表格，每条记录一行。可以就地展开嵌套值，复制为 CSV 或下载 Excel，全部在浏览器中完成。",
+    "heading": "JSON 转表格",
+    "query": "JSON 转表格",
+    "secondary": [
+      "JSON 表格查看",
+      "JSON 转表格在线",
+      "JSON 表格视图"
+    ],
+    "intro": "粘贴一个 JSON 对象数组，即可以表格形式查看：每条记录一行，每个键一列。可以按任意列排序，就地展开嵌套的对象和数组，并导出你看到的内容。",
+    "modeLabel": "表格视图",
+    "exampleLabel": "每个用户一行，每个键一列。嵌套的 address 对象保持为一个可以展开的单元格，缺失的值显示为一个圆点。",
+    "steps": [
+      "粘贴一个 JSON 对象数组，或打开文件。",
+      "在“表格”视图中查看。点击列标题按该列排序，再次点击则反向排序。",
+      "点击嵌套的对象或数组，可以把它单独作为一个表格打开；表格上方的路径可以带你返回。“更多选项”菜单可以把表格复制为 CSV，或下载 CSV 或 Excel。"
+    ],
+    "options": [
+      "列由各条记录中出现的键组成，最多 120 列。",
+      "对象同样适用：每个键变成一行。",
+      "嵌套值在表格中保持嵌套。CSV 和 Excel 导出会把嵌套对象展平为以点号分隔的列，例如 address.city。",
+      "只绘制屏幕上可见的行，因此长数组也能流畅滚动。"
+    ],
+    "faqs": [
+      {
+        "question": "如何把 JSON 转换为表格？",
+        "answer": "粘贴一个 JSON 对象数组。在“表格”视图中，每个对象占一行，每个键占一列；需要文件时，可以导出为 CSV 或 Excel。"
+      },
+      {
+        "question": "可以在表格中查看嵌套 JSON 吗？",
+        "answer": "可以。嵌套的对象和数组显示为可以展开的单元格，每个都能单独作为一个表格打开，并提供返回的路径。"
+      },
+      {
+        "question": "可以对表格排序吗？",
+        "answer": "可以。点击列标题按该列排序，再次点击则反向排序。"
+      }
+    ]
+  },
+  "json-path-finder": {
+    "hash": "930c5ebb1176",
+    "title": "JSON 路径查找：点击复制任意值的路径",
+    "description": "在 JSON 树中点击任意值，即可查看并复制它的路径，例如 $.users[0].email；也可以输入路径或 JSON Pointer 直接跳转。",
+    "heading": "JSON 路径查找",
+    "query": "JSON 路径查找",
+    "secondary": [
+      "JSON 路径获取",
+      "JSON 字段路径复制",
+      "JSONPath 路径查找"
+    ],
+    "intro": "在大型 JSON 文档中找到某个值的准确路径。在树形视图中选中节点即可看到它的路径，点一下就能复制；也可以输入路径，直接跳转到对应的值。",
+    "modeLabel": "带路径的树形视图",
+    "exampleLabel": "示例中的每个值及其对应的路径。不是普通名称的键使用方括号表示，例如 [\"first name\"]。",
+    "steps": [
+      "粘贴 JSON 或打开文件，随后会打开“树形”视图。",
+      "点击一个值，它的路径会显示在工具栏中；点击路径或按 P 即可复制。",
+      "要跳转到某个值，请按 Ctrl+F（⌘F），输入 $.store.books[1].title 这样的路径，或 /store/books/1/title 这样的 JSON Pointer。"
+    ],
+    "options": [
+      "路径使用点号和方括号表示法，与 JSONPath 相同。数组索引从 0 开始。",
+      "“查找”接受具体路径或 JSON Pointer（RFC 6901），并选中对应的节点。",
+      "通配符、递归下降、过滤器和切片（例如 $..price）不会被求值。查找栏会明确说明这一点，而不是去猜测。",
+      "按 C 复制选中的值。“更多选项”菜单中也有“复制路径”和“复制值”。"
+    ],
+    "faqs": [
+      {
+        "question": "如何找到某个值的 JSON 路径？",
+        "answer": "在“树形”视图中打开 JSON，点击该值。它的路径会显示在工具栏中，点击路径即可复制。"
+      },
+      {
+        "question": "可以用 JSONPath 表达式搜索吗？",
+        "answer": "具体路径可以，例如 $.users[0].email。带通配符或过滤器的表达式不会被求值；这种情况请改用“查找”搜索键或值。"
+      },
+      {
+        "question": "支持 JSON Pointer 吗？",
+        "answer": "支持。在“查找”中输入 /users/0/email 这样的指针，即可跳转到对应的值。"
+      }
+    ]
+  },
+  "json-to-jsonl": {
+    "hash": "d2bd4b8ed9ef",
+    "title": "JSON 转 JSONL：JSON 数组转 NDJSON",
+    "description": "把 JSON 数组转换为 JSON Lines，每行一条紧凑记录，数字保持精确。无需上传数据，即可下载 .jsonl 文件。",
+    "heading": "JSON 转 JSONL",
+    "query": "JSON 转 JSONL",
+    "secondary": [
+      "JSON 转 NDJSON",
+      "JSON 数组转 JSONL"
+    ],
+    "intro": "把 JSON 数组转换为 JSON Lines（也叫 NDJSON）：每个元素以紧凑 JSON 的形式单独占一行。日志管道、批量导入以及逐条读取记录的数据集都要求使用这种格式。",
+    "modeLabel": "JSON Lines 输出",
+    "exampleLabel": "数组中的每个元素变成一行。嵌套的数组和对象保留在各自的记录中，大 ID 保留了每一位数字。",
+    "steps": [
+      "粘贴 JSON 数组或打开文件。",
+      "在“转换”视图中查看 JSON Lines。",
+      "复制这些行，或下载为 .jsonl 文件。"
+    ],
+    "options": [
+      "顶层数组的每个元素按顺序变成一行紧凑 JSON，每行都以换行符结尾。",
+      "不是数组的文档会变成单独一行。",
+      "嵌套的数组和对象保留在所属记录中；只拆分顶层。",
+      "数字的每一位都原样保留。"
+    ],
+    "faqs": [
+      {
+        "question": "如何把 JSON 转换为 JSONL？",
+        "answer": "把 JSON 数组粘贴到这里。转换器会把每个元素单独写成一行；可以复制结果，或下载为 .jsonl。"
+      },
+      {
+        "question": "NDJSON 和 JSONL 是一回事吗？",
+        "answer": "实际上是的。二者都表示每行一个 JSON 值，所以输出适用于要求其中任一名称的工具。"
+      },
+      {
+        "question": "可以把 JSONL 转换回 JSON 数组吗？",
+        "answer": "可以。“JSONL 转 JSON”会读取这些行，返回一个 JSON 数组。"
+      }
+    ]
+  }
+}
