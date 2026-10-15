@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import IntentLink from '@/components/IntentLink';
 import { notFound } from 'next/navigation';
 import JsonTool from '@/components/JsonTool';
+import LocalizedTool from '@/components/LocalizedTool';
+import { StatusLangs } from '@/components/LangSwitch';
 import { convert } from '@/lib/convert';
 import { diff } from '@/lib/diff/diff';
 import { patchText, toPatch } from '@/lib/diff/patch';
@@ -15,6 +17,9 @@ import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../../seo';
 import ContentShell from '../../content-shell';
 import { ERROR_GUIDES } from '../../json-errors/errors';
 import { TOOL_PAGE_BY_SLUG, TOOL_PAGES, type ToolPage } from '@/lib/tool-pages';
+import { localeInfo, localePath, type SiteLocale } from '@/lib/i18n/locales';
+import { getLocale } from '@/lib/i18n/locale';
+import { alternates, clientUi, ogLocales, serverT, toolPage } from '@/lib/i18n/server';
 
 export const ensureStatic = 'navigation';
 
@@ -22,10 +27,12 @@ export function generateStaticParams() {
   return TOOL_PAGES.map(({ slug }) => ({ slug }));
 }
 
-function getPage(slug: string): ToolPage {
-  const page = TOOL_PAGE_BY_SLUG.get(slug);
+/** The page in the current language (English routes, or a translation under /<lang>). */
+async function getPage(slug: string): Promise<{ page: ToolPage; locale: SiteLocale }> {
+  const locale = await getLocale();
+  const page = locale === 'en' ? TOOL_PAGE_BY_SLUG.get(slug) : toolPage(locale, slug);
   if (!page) notFound();
-  return page;
+  return { page, locale };
 }
 
 /** Link to an error guide; a missing guide fails the build instead of shipping a broken link. */
@@ -103,36 +110,40 @@ function exampleOutput(page: ToolPage) {
   return formatDoc(page.sample, parse(page.sample), '  ');
 }
 
-function pageJsonLd(page: ToolPage) {
-  const url = `${SITE}/tools/${page.slug}`;
+function pageJsonLd(page: ToolPage, locale: SiteLocale) {
+  const t = serverT(locale);
+  const url = SITE + localePath(locale, `/tools/${page.slug}`);
+  const inLanguage = locale === 'en' ? {} : { inLanguage: localeInfo(locale).lang };
   return {
     '@context': 'https://schema.org',
     '@graph': [
       {
         '@type': ['WebApplication', 'SoftwareApplication'],
         '@id': `${url}#app`,
-        name: `Tool Kumar ${page.heading}`,
+        name: t('tool.appName', { heading: page.heading }),
         url,
         description: page.description,
+        ...inLanguage,
         applicationCategory: 'DeveloperApplication',
         operatingSystem: 'Any',
         browserRequirements: 'Requires JavaScript',
         isAccessibleForFree: true,
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-        featureList: [page.modeLabel, 'Local browser processing', 'Copy and download output'],
+        featureList: [page.modeLabel, t('tool.feature.local'), t('tool.feature.copy')],
       },
       {
         '@type': 'BreadcrumbList',
         '@id': `${url}#breadcrumb`,
         itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: SITE },
-          { '@type': 'ListItem', position: 2, name: 'Tools', item: `${SITE}/tools` },
+          { '@type': 'ListItem', position: 1, name: t('site.home'), item: SITE + (locale === 'en' ? '' : `/${locale}`) },
+          { '@type': 'ListItem', position: 2, name: t('site.nav.tools'), item: SITE + localePath(locale, '/tools') },
           { '@type': 'ListItem', position: 3, name: page.heading, item: url },
         ],
       },
       {
         '@type': 'FAQPage',
         '@id': `${url}#faq`,
+        ...inLanguage,
         mainEntity: page.faqs.map(({ question, answer }) => ({
           '@type': 'Question', name: question, acceptedAnswer: { '@type': 'Answer', text: answer },
         })),
@@ -142,37 +153,61 @@ function pageJsonLd(page: ToolPage) {
 }
 
 export async function generateMetadata({ params }: PageProps<'/tools/[slug]'>): Promise<Metadata> {
-  const page = getPage((await params).slug);
+  const { page, locale } = await getPage((await params).slug);
+  const path = `/tools/${page.slug}`;
+  // Localized pages add og:locale (+ alternates) and a translated image description.
+  const og = locale === 'en' ? { images: [SOCIAL_IMAGE] } : { ...ogLocales(path, locale), images: [{ ...SOCIAL_IMAGE, alt: serverT(locale)('site.ogAlt') }] };
   return {
     title: { absolute: `${page.title} | ${SITE_NAME}` },
     description: page.description,
     keywords: [page.query, ...page.secondary],
-    alternates: { canonical: `/tools/${page.slug}` },
-    openGraph: { type: 'website', url: `/tools/${page.slug}`, siteName: SITE_NAME, title: page.title, description: page.description, images: [SOCIAL_IMAGE] },
+    alternates: alternates(path, locale),
+    openGraph: { type: 'website', url: localePath(locale, path), siteName: SITE_NAME, title: page.title, description: page.description, ...og },
     twitter: { card: 'summary_large_image', title: page.title, description: page.description, images: ['/twitter-image.png'] },
   };
 }
 
-function ToolContent({ page }: { page: ToolPage }) {
+/** "A, B, C." in English; translated pages list the links the way their language does ("A、B、C。"). */
+function relatedLinks(page: ToolPage, locale: SiteLocale) {
+  const t = serverT(locale);
+  const links = page.related.map((slug) => {
+    const home = slug === 'home';
+    const study = slug === 'privacy-study';
+    // Related pages stay in this language where they exist, otherwise link to English.
+    const local = home || study || locale === 'en' ? null : toolPage(locale, slug);
+    const english = locale !== 'en' && (study || (!home && !local));
+    const label = home ? t('site.formatter') : study ? t('tool.study') : (local ?? TOOL_PAGE_BY_SLUG.get(slug))?.heading ?? slug;
+    const href = home ? localePath(locale, '/') : study ? '/blogs/json-formatter-privacy-study' : localePath(english ? 'en' : locale, `/tools/${slug}`);
+    return <IntentLink key={slug} href={href} {...(english && { hrefLang: 'en', lang: study ? undefined : 'en' })}>{label}</IntentLink>;
+  });
+  if (locale === 'en') return <>{links.map((link, i) => <span key={i}>{i > 0 ? ', ' : ''}{link}</span>)}.</>;
+  const lang = localeInfo(locale).lang;
+  let i = 0;
+  const parts = new Intl.ListFormat(lang, { type: 'conjunction' }).formatToParts(links.map(() => '\u0000'));
+  return <>{parts.map((p, k) => (p.type === 'element' ? links[i++] : <span key={`s${k}`}>{p.value}</span>))}{/^(ja|zh)/.test(lang) ? '。' : '.'}</>;
+}
+
+function ToolContent({ page, locale }: { page: ToolPage; locale: SiteLocale }) {
   const output = exampleOutput(page);
+  const t = serverT(locale);
   return (
-    <ContentShell current="tools">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(pageJsonLd(page)) }} />
+    <ContentShell current="tools" path={`/tools/${page.slug}`}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(pageJsonLd(page, locale)) }} />
       <header className="page-head tool-page-head">
-        <p className="eyebrow">Tool Kumar tool</p>
+        <p className="eyebrow">{t('tool.eyebrow')}</p>
         <h1>{page.heading}</h1>
         <p className="lede">{page.intro}</p>
       </header>
 
       <div className="prose tool-prose">
-        <h2>How to use this tool</h2>
+        <h2>{t('tool.howTo')}</h2>
         <ol>{page.steps.map((step) => <li key={step}>{step}</li>)}</ol>
 
-        <h2>Worked example</h2>
+        <h2>{t('tool.example')}</h2>
         <p>{page.exampleLabel}</p>
         <div className="tool-example-grid">
-          <div><h3>Input{page.sampleName ? ` · ${page.sampleName}` : ''}</h3><pre><code>{page.sample}</code></pre></div>
-          <div><h3>Output</h3><pre><code>{output}</code></pre></div>
+          <div><h3>{t('tool.input')}{page.sampleName ? ` · ${page.sampleName}` : ''}</h3><pre><code>{page.sample}</code></pre></div>
+          <div><h3>{t('tool.output')}</h3><pre><code>{output}</code></pre></div>
         </div>
 
         {page.sections?.map(({ heading, paragraphs, code }) => <section key={heading}>
@@ -181,34 +216,30 @@ function ToolContent({ page }: { page: ToolPage }) {
           {code && <pre className="tool-usage"><code>{code}</code></pre>}
         </section>)}
 
-        <h2>Options and edge cases</h2>
+        <h2>{t('tool.options')}</h2>
         <ul>{page.options.map((option) => <li key={option}>{option}</li>)}</ul>
 
-        <h2>Private by default</h2>
-        <p>Your document stays in this browser. Tool Kumar parses, converts and creates downloads on your device, with no account or upload step.</p>
+        <h2>{t('tool.private')}</h2>
+        <p>{t('tool.privateText')}</p>
 
-        <h2 id="faq">{page.heading} questions</h2>
+        <h2 id="faq">{t('tool.faq', { heading: page.heading })}</h2>
         <dl className="tool-faq">{page.faqs.map(({ question, answer }) => <div key={question}><dt>{question}</dt><dd>{answer}</dd></div>)}</dl>
 
         {page.guides && <>
-          <h2>Related error guides</h2>
-          <ul>{page.guides.map(({ slug, text }) => <li key={slug}><IntentLink href={errorGuide(slug)}>{text}</IntentLink></li>)}</ul>
+          <h2>{t('tool.guides')}</h2>
+          <ul>{page.guides.map(({ slug, text }) => <li key={slug}><IntentLink href={errorGuide(slug)} {...(locale !== 'en' && { hrefLang: 'en' })}>{text}</IntentLink></li>)}</ul>
         </>}
 
-        <h2>Related tools</h2>
-        <p>{page.related.map((slug, i) => {
-          const home = slug === 'home';
-          const study = slug === 'privacy-study';
-          const label = home ? 'JSON formatter' : study ? 'JSON formatter privacy study' : TOOL_PAGE_BY_SLUG.get(slug)?.heading ?? slug;
-          const href = home ? '/' : study ? '/blogs/json-formatter-privacy-study' : `/tools/${slug}`;
-          return <span key={slug}>{i > 0 ? ', ' : ''}<IntentLink href={href}>{label}</IntentLink></span>;
-        })}.</p>
+        <h2>{t('tool.related')}</h2>
+        <p>{relatedLinks(page, locale)}</p>
       </div>
     </ContentShell>
   );
 }
 
 export default async function ToolPageRoute({ params }: PageProps<'/tools/[slug]'>) {
-  const page = getPage((await params).slug);
-  return <div className="home-page landing-page"><section className="landing-tool" aria-label={`${page.heading} tool`}><JsonTool preset={page.preset} /></section><ToolContent page={page} /></div>;
+  const { page, locale } = await getPage((await params).slug);
+  const langs = <StatusLangs path={`/tools/${page.slug}`} locale={locale} />;
+  const tool = locale === 'en' ? <JsonTool preset={page.preset} langs={langs} /> : <LocalizedTool preset={page.preset} langs={langs} ui={clientUi(locale)} lang={localeInfo(locale).lang} />;
+  return <div className="home-page landing-page"><section className="landing-tool" aria-label={serverT(locale)('tool.section', { heading: page.heading })}>{tool}</section><ToolContent page={page} locale={locale} /></div>;
 }

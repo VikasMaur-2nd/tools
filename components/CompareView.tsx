@@ -723,7 +723,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
               onClick={() => toggleFilter('added')}
             >
               +{tr.num(sum.added)}
-              <span className="cmp-lbl">{tr('added')}</span>
+              <span className="cmp-lbl">{tr.n(sum.added, 'added', 'added')}</span>
             </button>
             <button
               type="button"
@@ -736,7 +736,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
             >
               {'−'}
               {tr.num(sum.removed)}
-              <span className="cmp-lbl">{tr('removed')}</span>
+              <span className="cmp-lbl">{tr.n(sum.removed, 'removed', 'removed')}</span>
             </button>
             <button
               type="button"
@@ -748,7 +748,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
               onClick={() => toggleFilter('changed')}
             >
               ~{tr.num(changedCount)}
-              <span className="cmp-lbl">{tr('changed')}</span>
+              <span className="cmp-lbl">{tr.n(changedCount, 'changed', 'changed')}</span>
             </button>
           </>
         ) : (

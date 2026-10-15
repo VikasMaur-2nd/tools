@@ -1,62 +1,42 @@
 import Link from 'next/link';
+import { localePath, type SiteLocale } from '@/lib/i18n/locales';
+import { rich } from '@/lib/i18n/rich';
+import { serverT } from '@/lib/i18n/server';
+import { faqEntries } from './seo';
 
-export default function SeoContent() {
+export default function SeoContent({ locale = 'en' }: { locale?: SiteLocale }) {
+  const t = serverT(locale);
+  // The blog and resources are English: localized pages mark those links.
+  const en = locale === 'en' ? {} : { hrefLang: 'en' };
+  const link = (href: string, local = false) => <Link href={local ? localePath(locale, href) : href} {...(local ? {} : en)} />;
   return (
     <section className="seo-content" aria-labelledby="seo-content-title">
-      <h2 id="seo-content-title">Free JSON viewer and formatter</h2>
-      <p>
-        Tool Kumar is a free online JSON viewer, formatter and validator. Paste JSON or open a local file to format it, check
-        syntax, repair common mistakes and inspect the result in a readable tree or table.
-      </p>
-      <h2>JSON tools that run in your browser</h2>
+      <h2 id="seo-content-title">{t('home.h2')}</h2>
+      <p>{t('home.intro')}</p>
+      <h2>{t('home.toolsH2')}</h2>
       <ul>
-        <li>Format and beautify JSON with readable indentation.</li>
-        <li>
-          Validate JSON and jump to the exact line and column with an error, or use the dedicated{' '}
-          <Link href="/tools/json-validator">JSON validator with line and column errors</Link>.
-        </li>
-        <li>Repair comments, trailing commas, single quotes and other common input mistakes.</li>
-        <li>Minify JSON, sort keys and copy a clean result.</li>
-        <li>Explore nested objects in a collapsible tree or table view.</li>
-        <li>Search keys and values, copy JSON paths, compare documents and convert JSON to other formats.</li>
+        <li>{t('home.tools.1')}</li>
+        <li>{rich(t('home.tools.validator'), { validator: link('/tools/json-validator', true) })}</li>
+        {([3, 4, 5, 6] as const).map((i) => (
+          <li key={i}>{t(`home.tools.${i}`)}</li>
+        ))}
       </ul>
-      <h2>How to use the JSON viewer</h2>
+      <h2>{t('home.howH2')}</h2>
       <ol>
-        <li>Paste JSON into the input pane or choose a JSON file from your device.</li>
-        <li>Read the formatted output, expand the tree or switch to the table view.</li>
-        <li>Fix any reported syntax error, then copy or download the result.</li>
+        {([1, 2, 3] as const).map((i) => (
+          <li key={i}>{t(`home.how.${i}`)}</li>
+        ))}
       </ol>
-      <h2>Private by default</h2>
-      <p>
-        Your JSON stays in this browser. Tool Kumar does not upload documents to a server, require an account or place ads in
-        the editor. The app can continue working offline after it loads.
-      </p>
-      <h2>JSON viewer questions</h2>
+      <h2>{t('home.privateH2')}</h2>
+      <p>{t('home.private')}</p>
+      <h2>{t('home.faqH2')}</h2>
       <dl>
-        <dt>What is a JSON viewer?</dt>
-        <dd>A JSON viewer displays structured JSON in a readable format, often with a collapsible tree, search and validation.</dd>
-        <dt>How do I format JSON online?</dt>
-        <dd>Paste your JSON into Tool Kumar. The formatter creates an indented view, while the validator reports syntax errors.</dd>
-        <dt>Is this JSON viewer private?</dt>
-        <dd>Yes. Parsing and formatting happen in your browser, so your document does not need to leave your device.</dd>
-        <dt>Can I validate a large JSON file?</dt>
-        <dd>Yes. The viewer is designed for large documents and keeps the input local while it parses the file.</dd>
+        {faqEntries(locale).map(({ question, answer }) => [<dt key={question}>{question}</dt>, <dd key={answer}>{answer}</dd>])}
       </dl>
-      <p>
-        Learn more in the <Link href="/blogs">Tool Kumar JSON blog</Link>, including a practical guide to formatting and validating JSON and
-        the <Link href="/blogs/origin-of-json">origin story of JSON</Link>.
-      </p>
-      <p>
-        Got a parser error such as Unexpected token or Unexpected end of JSON input?{' '}
-        <Link href="/json-errors">Find a fix for your JSON error message</Link> in our error guides.
-      </p>
-      <p>
-        Use the <Link href="/resources/json-reference">JSON syntax reference</Link> to check the standard rules, or download{' '}
-        <Link href="/resources/json-examples">JSON examples for APIs and configuration</Link> for documentation and tests.
-      </p>
-      <p>
-        Open the <Link href="/tools">JSON tools hub</Link> for dedicated pages covering JSON diff, JSON Schema, TypeScript, Zod, CSV, YAML, XML, Excel and JWT decoding.
-      </p>
+      <p>{rich(t('home.more.blog'), { blog: link('/blogs'), origin: link('/blogs/origin-of-json') })}</p>
+      <p>{rich(t('home.more.errors'), { errors: link('/json-errors') })}</p>
+      <p>{rich(t('home.more.resources'), { reference: link('/resources/json-reference'), examples: link('/resources/json-examples') })}</p>
+      <p>{rich(t('home.more.tools'), { tools: link('/tools', true) })}</p>
     </section>
   );
 }

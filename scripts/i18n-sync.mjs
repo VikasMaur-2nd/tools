@@ -28,7 +28,7 @@ const source = existsSync(sourcePath) ? JSON.parse(readFileSync(sourcePath, 'utf
 const write = (file, data) => writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
 let failed = false;
 
-const PAGE_FIELDS = ['hash', 'title', 'description', 'heading', 'query', 'secondary', 'intro', 'modeLabel', 'exampleLabel', 'steps', 'options', 'faqs', 'sections'];
+const PAGE_FIELDS = ['hash', 'title', 'description', 'heading', 'query', 'secondary', 'intro', 'modeLabel', 'exampleLabel', 'steps', 'options', 'faqs', 'guides', 'sections'];
 
 for (const locale of locales) {
   const info = LOCALES.find((l) => l.id === locale);
@@ -86,6 +86,7 @@ for (const locale of locales) {
       for (const f of ['hash', 'title', 'description', 'heading', 'query', 'intro', 'modeLabel', 'exampleLabel']) if (typeof clean[f] !== 'string' || !clean[f].trim()) errors.push(`${slug}.${f}: missing`);
       for (const f of ['secondary', 'steps', 'options', 'faqs']) if (!Array.isArray(clean[f])) errors.push(`${slug}.${f}: not an array`);
       if (clean.sections) clean.sections = clean.sections.map((s) => ({ heading: s.heading, paragraphs: s.paragraphs }));
+      if (clean.guides) clean.guides = clean.guides.map((g) => ({ slug: g.slug, text: g.text }));
       out[slug] = clean;
     }
     if (errors.length) {

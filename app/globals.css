@@ -2058,6 +2058,69 @@ a.sb-btn {
   text-decoration: none;
 }
 
+/* Language menu: a native disclosure of plain links (no script). */
+.sb-lang {
+  position: relative;
+}
+
+.sb-lang > summary {
+  gap: 4px;
+  list-style: none;
+}
+
+.sb-lang > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sb-lang[open] > summary {
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.sb-lang-id {
+  font: 600 10.5px/1 var(--font-ui);
+  letter-spacing: 0.04em;
+}
+
+.sb-lang-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 70;
+  min-width: 190px;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+  list-style: none;
+  animation: pop 0.12s ease-out;
+}
+
+.sb-lang-menu a {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--fg-2);
+  font: 13px/1.2 var(--font-ui);
+  text-decoration: none;
+}
+
+.sb-lang-menu a:hover,
+.sb-lang-menu a:focus-visible {
+  outline: none;
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.sb-lang-menu a[aria-current='page'] {
+  color: var(--fg);
+  font-weight: 600;
+}
+
 .sb-btn kbd {
   height: 16px;
   min-width: 16px;
@@ -2411,6 +2474,12 @@ dialog[open] {
     height: 32px;
     min-width: 36px;
     justify-content: center;
+  }
+  .sb-lang-id {
+    display: none;
+  }
+  .sb-lang-menu a {
+    min-height: 40px;
   }
   .st-link {
     padding-block: 8px;

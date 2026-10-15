@@ -1,7 +1,8 @@
 /* JSON Viewer & Formatter: offline-first service worker (hand-written, no deps, ES2017).
  *
  *  '/' navigations      stale-while-revalidate (instant load, also offline)
- *  other navigations    network-first, then cache, then the cached '/'
+ *  other navigations    network-first, then cache, then the cached home of the
+ *                       page's language (/es, /ja…), then the cached '/'
  *  /_next/static/*      cache-first (content-hashed, immutable)
  *  other same-origin    stale-while-revalidate
  *  never touched        cross-origin, non-GET, /_vercel/* (analytics), RSC requests
@@ -19,6 +20,8 @@ const ATTR_RE = /\s(?:href|src)="(\/(?!\/)[^"]*)"/g;
 const FILE_RE = /\.(?:m?js|css|json|webmanifest|ico|png|svg|jpe?g|webp|avif|gif|woff2?)(?:\?.*)?$/i;
 
 const isStatic = (path) => path.startsWith('/_next/static/');
+/** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
+const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
 
 /** Requests the SW must leave alone (analytics, RSC/flight data, the SW itself). */
 function bypass(url, headers) {
@@ -75,6 +78,14 @@ async function refreshShell() {
   const keep = new Set(assets);
   if (!prev || prev.every((u) => keep.has(u))) return; // first install, or same build
   const keys = await cache.keys();
+  // Other cached pages (a language's home, tool pages) keep the chunks their HTML points at
+  // until they are fetched again, so they still open offline after a deploy.
+  for (const k of keys) {
+    const path = new URL(k.url).pathname;
+    if (path === '/' || isStatic(path) || FILE_RE.test(path)) continue;
+    const page = await cache.match(k, MATCH);
+    if (page && (page.headers.get('content-type') || '').includes('text/html')) extractAssets(await page.text()).forEach((u) => keep.add(u));
+  }
   await Promise.all(
     keys.filter((k) => isStatic(new URL(k.url).pathname) && !keep.has(k.url)).map((k) => cache.delete(k)),
   );
@@ -141,7 +152,10 @@ async function networkFirst(event, req) {
       if (cacheable(res)) event.waitUntil(cache.put(req, res.clone()).catch(() => {}));
       return res;
     },
-    async () => (await cache.match(req, MATCH)) || (await cache.match('/', MATCH)) || Response.error(),
+    async () => {
+      const home = langHome(new URL(req.url).pathname);
+      return (await cache.match(req, MATCH)) || (home && (await cache.match(home, MATCH))) || (await cache.match('/', MATCH)) || Response.error();
+    },
   );
 }
 

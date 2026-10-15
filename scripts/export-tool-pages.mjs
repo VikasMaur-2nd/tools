@@ -16,6 +16,6 @@ for (const p of TOOL_PAGES) {
     _sample_doNotTranslate: p.sample,
   };
 }
-const words = JSON.stringify(Object.values(pages).map(({ hash, _sample_doNotTranslate, _codeBlocks_doNotTranslate, ...t }) => t)).split(/\s+/).length;
+const words = JSON.stringify(TOOL_PAGES.map(pageText)).split(/\s+/).length;
 if (out) writeFileSync(out, JSON.stringify(pages, null, 2) + '\n');
 console.log(`${Object.keys(pages).length} pages, ~${words} words${out ? ` -> ${out}` : ''}`);

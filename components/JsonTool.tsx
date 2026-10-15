@@ -688,8 +688,8 @@ function ViewToolbar() {
           <button
             type="button"
             className={`btn icon${findOpen ? ' on' : ''}`}
-            aria-label={`${t('Find')} · ${mod}F`}
-            data-tip={`${t('Find')} · ${mod}F`}
+            aria-label={`${t('Find')}${t(' · ')}${mod}F`}
+            data-tip={`${t('Find')}${t(' · ')}${mod}F`}
             onClick={() => act((e) => (store.get().find.open ? e.closeFind() : e.focusSearch()))}
           >
             <Icon name="search" />
@@ -727,7 +727,7 @@ function JwtStatus({ jwt }: { jwt: JwtInfo }) {
   return (
     <span className={`st ${w.warn ? 'warn' : 'ok'}`} title={t('Decoded in your browser. The signature is not verified.')}>
       <i className="dot" />
-      JWT{jwt.alg ? ` · ${jwt.alg}` : ''} · {w.text}
+      {['JWT', jwt.alg, w.text].filter(Boolean).join(t(' · '))}
     </span>
   );
 }
@@ -1001,7 +1001,7 @@ function Sizes() {
   const parsed = useUI((s) => (s.status.kind === 'valid' && !s.status.jwt) || s.status.kind === 'fixable');
   const t = useT();
   if (raw === undefined) return null;
-  const less = (n: number) => (raw > n ? ` · ${t('{percent}% smaller than the input', { percent: Math.round((1 - n / raw) * 100) })}` : '');
+  const less = (n: number) => (raw > n ? t(' · ') + t('{percent}% smaller than the input', { percent: Math.round((1 - n / raw) * 100) }) : '');
   return (
     <span className={sizes?.stale ? 'sizes stale' : 'sizes'}>
       <span className="sz sz-raw" data-tip={t('Input, as typed')} data-tip-up="">
@@ -1049,7 +1049,7 @@ function Cursor() {
   return (
     <span className="cursor muted">
       {t('Ln {line}, Col {col}', { line, col })}
-      {sel > 0 && ' ' + t('({count} selected)', { count: t.num(sel) })}
+      {sel > 0 && ' ' + t.n(sel, '({n} selected)', '({n} selected)')}
     </span>
   );
 }

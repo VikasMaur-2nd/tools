@@ -21,6 +21,7 @@ export function pageText(p: ToolPage) {
     steps: p.steps,
     options: p.options,
     faqs: p.faqs,
+    ...(p.guides ? { guides: p.guides.map((g) => ({ slug: g.slug, text: g.text })) } : {}),
     ...(p.sections ? { sections: p.sections.map((s) => ({ heading: s.heading, paragraphs: s.paragraphs })) } : {}),
   };
 }

@@ -89,7 +89,7 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
       const v = d[one] ?? d[other];
       return fill(v === undefined ? (c === 1 ? one : other) : pick(v, c), { ...p, n: num(c) });
     },
-    msg: (s: string) => one(s) ?? (s.includes(SEP) ? s.split(SEP).map((x) => one(x) ?? x).join(SEP) : s),
+    msg: (s: string) => one(s) ?? (s.includes(SEP) ? s.split(SEP).map((x) => one(x) ?? x).join(tr(SEP)) : s),
     num,
     bytes: (b: number) =>
       b < 1024

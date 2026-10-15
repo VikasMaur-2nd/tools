@@ -30,7 +30,7 @@ import ruPages from './ru/tool-pages.json';
 export const SITE = 'https://tools.vikasmaur.com';
 
 /** The translatable text of a tool page, as exported for translators (scripts/export-tool-pages.mjs). */
-export type PageText = Pick<ToolPage, 'title' | 'description' | 'heading' | 'query' | 'secondary' | 'intro' | 'modeLabel' | 'exampleLabel' | 'steps' | 'options' | 'faqs'> & {
+export type PageText = Pick<ToolPage, 'title' | 'description' | 'heading' | 'query' | 'secondary' | 'intro' | 'modeLabel' | 'exampleLabel' | 'steps' | 'options' | 'faqs' | 'guides'> & {
   hash: string;
   sections?: { heading: string; paragraphs: string[] }[];
 };
@@ -152,6 +152,8 @@ function localize(page: ToolPage, t: PageText): ToolPage | null {
     steps: t.steps,
     options: t.options,
     faqs: t.faqs,
+    // Guide links keep the English slugs (the guides are English); only their text is translated.
+    guides: page.guides?.map((g) => ({ ...g, text: t.guides?.find((x) => x.slug === g.slug)?.text ?? g.text })),
     sections: page.sections?.map((s, i) => ({ ...s, heading: t.sections![i].heading, paragraphs: t.sections![i].paragraphs })),
   };
 }
@@ -169,6 +171,7 @@ const pseudoPage = (page: ToolPage): PageText => ({
   steps: page.steps.map(pseudo),
   options: page.options.map(pseudo),
   faqs: page.faqs.map((f) => ({ question: pseudo(f.question), answer: pseudo(f.answer) })),
+  ...(page.guides && { guides: page.guides.map((g) => ({ slug: g.slug, text: pseudo(g.text) })) }),
   ...(page.sections && { sections: page.sections.map((s) => ({ heading: pseudo(s.heading), paragraphs: s.paragraphs.map(pseudo) })) }),
 });
 

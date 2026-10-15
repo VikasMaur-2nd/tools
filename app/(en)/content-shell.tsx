@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
 import IntentLink from '@/components/IntentLink';
+import { FooterLangs } from '@/components/LangSwitch';
+import { localePath } from '@/lib/i18n/locales';
+import { getLocale } from '@/lib/i18n/locale';
+import { serverT } from '@/lib/i18n/server';
 import { POSTS } from './blogs/posts';
 
 /** The app icon, drawn with theme colors so it follows light and dark mode. */
@@ -14,43 +18,51 @@ export function Logo({ size = 24 }: { size?: number }) {
 
 type Section = 'blogs' | 'resources' | 'about' | 'tools';
 
-export default function ContentShell({
+export default async function ContentShell({
   children,
   current,
   progress = false,
+  path,
 }: {
   children: ReactNode;
   current?: Section;
   /** Show a reading progress bar under the header. */
   progress?: boolean;
+  /** The page's English path, for the language switcher (pages that exist in one language leave it out). */
+  path?: string;
 }) {
   const here = (s: Section) => (current === s ? ('page' as const) : undefined);
+  const locale = await getLocale();
+  const t = serverT(locale);
+  const to = (p: string) => localePath(locale, p);
+  // Sections that are not translated link to the English pages, marked as such.
+  const en = locale === 'en' ? {} : { hrefLang: 'en', title: t('site.englishOnly') };
   return (
     <div className="content-page">
       <a className="skip" href="#content">
-        Skip to content
+        {t('site.skip')}
       </a>
       <header className="site-header">
         <div className="wrap site-header-in">
-          <IntentLink className="site-brand" href="/" aria-label="Tool Kumar JSON viewer">
+          <IntentLink className="site-brand" href={to('/')} aria-label={t('site.brand')}>
             <Logo />
             <span>Tool Kumar</span>
           </IntentLink>
-          <nav className="site-nav" aria-label="Main">
-            <IntentLink href="/tools" aria-current={here('tools')}>
-              Tools
+          <nav className="site-nav" aria-label={t('site.nav.main')}>
+            <IntentLink href={to('/tools')} aria-current={here('tools')}>
+              {t('site.nav.tools')}
             </IntentLink>
-            <IntentLink href="/blogs" aria-current={here('blogs')}>
-              Blog
+            <IntentLink href="/blogs" aria-current={here('blogs')} {...en}>
+              {t('site.nav.blog')}
             </IntentLink>
-            <IntentLink href="/resources" aria-current={here('resources')}>
-              Resources
+            <IntentLink href="/resources" aria-current={here('resources')} {...en}>
+              {t('site.nav.resources')}
             </IntentLink>
-            <IntentLink href="/about" aria-current={here('about')}>
-              About
+            <IntentLink href="/about" aria-current={here('about')} {...en}>
+              {t('site.nav.about')}
             </IntentLink>
-            <IntentLink className="site-cta" href="/">
-              JSON viewer
+            <IntentLink className="site-cta" href={to('/')}>
+              {t('site.cta')}
             </IntentLink>
           </nav>
         </div>
@@ -65,60 +77,73 @@ export default function ContentShell({
         <div className="wrap">
           <div className="foot-grid">
             <div className="foot-brand">
-              <IntentLink className="site-brand" href="/">
+              <IntentLink className="site-brand" href={to('/')}>
                 <Logo size={22} />
                 <span>Tool Kumar</span>
               </IntentLink>
-              <p>Private, browser-based JSON tools. Your data never leaves your device.</p>
+              <p>{t('site.footer.tagline')}</p>
             </div>
-            <nav aria-label="Tools">
-              <p className="foot-h">Tools</p>
+            <nav aria-label={t('site.footer.tools')}>
+              <p className="foot-h">{t('site.footer.tools')}</p>
               <ul>
                 <li>
-                  <IntentLink href="/">JSON viewer &amp; formatter</IntentLink>
+                  <IntentLink href={to('/')}>{t('site.footer.viewer')}</IntentLink>
                 </li>
                 <li>
-                  <IntentLink href="/tools">All JSON tools</IntentLink>
+                  <IntentLink href={to('/tools')}>{t('site.footer.allTools')}</IntentLink>
                 </li>
               </ul>
             </nav>
-            <nav aria-label="Blog">
-              <p className="foot-h">Blog</p>
+            <nav aria-label={t('site.footer.blog')}>
+              <p className="foot-h">{t('site.footer.blog')}</p>
               <ul>
                 {POSTS.slice(0, 4).map((p) => (
                   <li key={p.slug}>
-                    <IntentLink href={`/blogs/${p.slug}`}>{p.title.split(':')[0]}</IntentLink>
+                    <IntentLink href={`/blogs/${p.slug}`} {...en} {...(locale !== 'en' && { lang: 'en' })}>
+                      {p.title.split(':')[0]}
+                    </IntentLink>
                   </li>
                 ))}
                 <li>
-                  <IntentLink href="/blogs">All posts</IntentLink>
+                  <IntentLink href="/blogs" {...en}>
+                    {t('site.footer.allPosts')}
+                  </IntentLink>
                 </li>
               </ul>
             </nav>
-            <nav aria-label="Resources">
-              <p className="foot-h">Resources</p>
+            <nav aria-label={t('site.footer.resources')}>
+              <p className="foot-h">{t('site.footer.resources')}</p>
               <ul>
                 <li>
-                  <IntentLink href="/resources/json-reference">JSON syntax reference</IntentLink>
+                  <IntentLink href="/resources/json-reference" {...en}>
+                    {t('site.footer.reference')}
+                  </IntentLink>
                 </li>
                 <li>
-                  <IntentLink href="/resources/json-examples">JSON examples</IntentLink>
+                  <IntentLink href="/resources/json-examples" {...en}>
+                    {t('site.footer.examples')}
+                  </IntentLink>
                 </li>
                 <li>
-                  <IntentLink href="/json-errors">JSON error guides</IntentLink>
+                  <IntentLink href="/json-errors" {...en}>
+                    {t('site.footer.errors')}
+                  </IntentLink>
                 </li>
               </ul>
             </nav>
-            <nav aria-label="Company">
-              <p className="foot-h">Company</p>
+            <nav aria-label={t('site.footer.company')}>
+              <p className="foot-h">{t('site.footer.company')}</p>
               <ul>
                 <li>
-                  <IntentLink href="/about">About Tool Kumar</IntentLink>
+                  <IntentLink href="/about" {...en}>
+                    {t('site.footer.about')}
+                  </IntentLink>
                 </li>
               </ul>
             </nav>
           </div>
-          <p className="foot-note">© Tool Kumar · Free, no account, works offline.</p>
+          {path && <FooterLangs path={path} locale={locale} />}
+          <p className="foot-note">{t('site.footer.note')}</p>
         </div>
       </footer>
     </div>

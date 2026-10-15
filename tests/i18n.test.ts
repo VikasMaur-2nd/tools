@@ -7,6 +7,7 @@ import { LOCALES } from '../lib/i18n/locales';
 import { pageHash, textHash } from '../lib/i18n/page-text';
 import { EN, fill } from '../lib/i18n/ui';
 import { translator } from '../lib/i18n/translate';
+import { parse } from '../lib/json/parser';
 
 /*
  * Translations: dictionary hygiene (fails), translation completeness and
@@ -62,11 +63,28 @@ test('English dictionary: client strings are unique and still used by the code',
     seen.set(v, id);
     if (RESERVED.has(k) || COMPOSED.has(k) || /\.(zero|one|two|few|many)$/.test(k)) continue;
     // Templates are built from pieces in code: every literal piece must still be there.
-    const pieces = v.split(/\{\w+\}/).filter((p) => p.trim().length >= 3);
+    // The parser inserts describe(i) into these templates; verify the complete messages below.
+    const template = v.replace('control character U+{code}', '{token}');
+    const pieces = template.split(/\{\w+\}/).filter((p) => p.trim().length >= 3);
     if (!(pieces.length ? pieces : [v]).every((p) => corpus.includes(p))) unused.push(`${k}: ${JSON.stringify(v)}`);
   }
   assert.deepEqual(dup, [], 'the browser looks strings up by their English text, so two keys cannot share one');
   assert.deepEqual(unused, [], 'strings the code no longer shows: update the English text in lib/i18n/en/ui.json (same key: translations get flagged as stale) or remove the key');
+});
+
+test('control-character templates match the parser diagnostics', () => {
+  const cases = {
+    'parse.badNumberControl': '-\u0001',
+    'parse.expectedKeyControl': '{\u0001',
+    'parse.colonControl': '{"a"\u0001',
+    'parse.afterValueControl': '{"a":1\u0001',
+    'parse.afterItemControl': '[1\u0001',
+    'parse.expectedValueControl': '\u0001',
+    'parse.afterJsonControl': '{}\u0001',
+  };
+  for (const [key, input] of Object.entries(cases)) {
+    assert.equal(parse(input).error?.m, fill(en[key], { code: '0001' }), key);
+  }
 });
 
 test('English dictionary: every string the code translates is in it', () => {
