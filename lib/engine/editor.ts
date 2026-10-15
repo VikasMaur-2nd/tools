@@ -1344,8 +1344,9 @@ export class Editor {
     const rg = document.createRange();
     for (const el of this.hl.querySelectorAll<HTMLElement>('.ed-fold')) {
       rg.selectNodeContents(el);
-      const r = rg.getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return Number(el.dataset.f);
+      for (const r of rg.getClientRects()) {
+        if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return Number(el.dataset.f);
+      }
     }
     return -1;
   }

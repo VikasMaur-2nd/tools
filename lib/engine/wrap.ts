@@ -600,7 +600,15 @@ export class Wrapper {
     const rg = (this.range ??= document.createRange());
     rg.setStart(node, k);
     rg.setEnd(node, Math.min(node.length, k + 1));
-    const rect = rg.getClientRects()[0] ?? rg.getBoundingClientRect();
+    // WebKit puts an empty rect at the end of the previous row before a character that starts a row.
+    const rects = rg.getClientRects();
+    let rect = rects[rects.length - 1] ?? rg.getBoundingClientRect();
+    for (const x of rects) {
+      if (x.width) {
+        rect = x;
+        break;
+      }
+    }
     return Math.max(0, Math.floor(((rect.top + rect.bottom) / 2 - top) / this.lh));
   }
 }
