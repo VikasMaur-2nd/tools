@@ -6,7 +6,7 @@ import { ERROR_GUIDES, HUB_FAQ } from './errors';
 import { Faq, faqJsonLd } from './error-article';
 
 const TITLE = 'JSON errors: exact messages, causes and fixes';
-const DESCRIPTION = 'Diagnose JSON parse errors by cause: HTML responses, empty input, undefined values, quoting, trailing commas, extra data, control characters and Go input prefixes.';
+const DESCRIPTION = 'Find the cause of JSON parse, serialization and type errors in JavaScript, Python, Java, Go, PHP and .NET, with exact messages by runtime and code to fix them.';
 export const metadata: Metadata = {
   title: TITLE, description: DESCRIPTION, alternates: { canonical: '/json-errors' },
   openGraph: { type: 'website', url: '/json-errors', siteName: SITE_NAME, title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
@@ -38,7 +38,7 @@ export default function JsonErrorsHub() {
         <nav className="breadcrumbs" aria-label="Breadcrumb"><ol><li><Link prefetch={false} href="/">Home</Link></li><li aria-current="page">JSON errors</li></ol></nav>
         <p className="eyebrow">JSON troubleshooting</p>
         <h1>JSON errors: find the cause and fix the input</h1>
-        <p className="lede">Start with the message you saw. Each guide explains the input that triggers it, with reproduced JavaScript and Python errors, cited diagnostics from other runtimes and code to fix the cause.</p>
+        <p className="lede">Start with the message you saw. Each guide explains what triggers it, with reproduced JavaScript and Python errors, cited diagnostics from other runtimes and code to fix the cause.</p>
       </header>
       <section className="resource-grid" aria-label="JSON error guides">
         {ERROR_GUIDES.map(guide => <article className="resource-card" key={guide.slug}>
