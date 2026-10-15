@@ -3110,3 +3110,51 @@ button.mi:focus-visible {
   font-weight: 600;
 }
 
+
+/* Large editable documents use a bounded native input passage and drawn selection. */
+.ed.surface textarea,
+.ed.surface.wrap textarea {
+  inset: auto;
+  width: 2px;
+  height: 20px;
+  min-height: 0;
+  padding: 0;
+  opacity: 0.01;
+  white-space: pre;
+  pointer-events: none;
+  caret-color: transparent;
+}
+
+.ed.surface .ed-hl {
+  pointer-events: auto;
+  user-select: none;
+  cursor: text;
+}
+
+.ed-ink {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ed-ink i {
+  position: absolute;
+  display: block;
+}
+
+.ed-selection {
+  background: var(--sel);
+}
+
+.ed-composition {
+  border-bottom: 1px solid var(--fg);
+}
+
+.ed-caret {
+  visibility: hidden;
+  background: var(--fg);
+}
+
+.ed.focused .ed-caret {
+  visibility: visible;
+}

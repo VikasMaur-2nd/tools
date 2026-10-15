@@ -1,4 +1,5 @@
 import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
+import { Surface } from './surface';
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
@@ -47,6 +48,8 @@ const VIEW_LINES = 30_000;
  * first click, edit key or paste loads the textarea (see `wake`).
  */
 const LAZY_CHARS = 100_000;
+/** Keep native editing for normal documents. */
+const SURFACE_CHARS = 250_000;
 /** Must match `tab-size` in CSS. */
 const TAB = 4;
 
@@ -168,6 +171,7 @@ export class Editor {
   /** Last paste replaced the whole document. */
   pasteFull = false;
 
+  private surface: Surface | null = null;
   private forceEdit = false;
   /** In view mode only until the first edit (see LAZY_CHARS); `loading`: setValue is loading a document. */
   private lazy = false;
@@ -317,8 +321,9 @@ export class Editor {
     this.ro.disconnect();
     cancelAnimationFrame(this.raf);
     this.wrapper?.destroy();
+    this.surface?.destroy();
     this.el.classList.remove('hl-on', 'vmode', 'wrap');
-    if (this.view || this.vis) ta.value = this.text;
+    if (this.view || this.vis || this.surface) ta.value = this.text;
   }
 
   private measured = false;
@@ -367,7 +372,12 @@ export class Editor {
     const notice = view && !lazy;
     if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
     this.lazy = view && lazy;
-    if (view) {
+    const custom = !view && (t.length >= SURFACE_CHARS || (!!this.surface && fromTa));
+    if (custom && !this.surface) this.surface = this.makeSurface();
+    else if (!custom && this.surface) { this.surface.destroy(); this.surface = null; }
+    if (this.surface) {
+      this.surface.select(...this.surface.selection);
+    } else if (view) {
       if (!this.view) this.vcaret = Math.min(this.caret, t.length);
       if (this.ta.value) this.ta.value = '';
     } else if (!fromTa) {
@@ -384,6 +394,52 @@ export class Editor {
     this.updateCaret();
     this.placeScope();
     this.render(true);
+  }
+
+  private makeSurface() {
+    const ed = this;
+    return new Surface({
+      el: this.el, ta: this.ta,
+      get text() { return ed.text; },
+      edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
+      moved: (nav) => {
+        this.updateCaret();
+        this.reveal(this.caret);
+        this.render(true);
+        this.ev.caret();
+        if (nav) this.ev.nav();
+      },
+      point: (x, y) => {
+        const exact = this.offsetAt(x, y);
+        if (exact !== null) return exact;
+        const box = this.body.getBoundingClientRect();
+        const row = Math.max(0, Math.min(this.vrows - 1, Math.floor((y - box.top - this.sc.shift - PAD_T) / LH)));
+        const k = this.kAt(row);
+        const [a, b] = this.rowSpan(k, row - this.yOf(k));
+        return Math.min(b, a + Math.max(0, Math.round((x - box.left - PAD_L) / this.cw)));
+      },
+      row: (off) => { const r = this.vrowOf(off); const k = this.kAt(r); return [r, ...this.rowSpan(k, r - this.yOf(k))]; },
+      span: (row) => { row = Math.max(0, Math.min(this.vrows - 1, row)); const k = this.kAt(row); return this.rowSpan(k, row - this.yOf(k)); },
+      reveal: (off) => this.reveal(off),
+      scroll: (dy) => { this.sc.top += dy; this.render(false); },
+      fold: (ln) => this.toggleFold(ln),
+    });
+  }
+
+  /** The input passage reports a bounded replacement in model offsets. */
+  private surfaceEdit(a: number, b: number, ins: string, kind: string) {
+    const old = this.text;
+    this.selBefore = this.selection;
+    this.selAfter = [a + ins.length, a + ins.length];
+    this.typing = true;
+    this.tabMovesFocus = false;
+    this.pasteFull = false;
+    this.shiftFolds(a, b, ins, true);
+    this.shiftDiags(a, b, ins.length);
+    this.model(old.slice(0, a) + ins + old.slice(b), true);
+    this.surface?.select(...this.selAfter);
+    if (this.compOld === null) this.record(old, this.text, kind);
+    this.ev.change('input');
   }
 
   /** What the textarea holds: the model minus folded lines. */
@@ -448,11 +504,11 @@ export class Editor {
   }
 
   get caret() {
-    return this.view ? this.vcaret : this.d2m(this.ta.selectionStart);
+    return this.surface ? this.surface.head : this.view ? this.vcaret : this.d2m(this.ta.selectionStart);
   }
 
   get selection(): [number, number] {
-    return this.view ? [this.vcaret, this.vcaret] : [this.d2m(this.ta.selectionStart), this.d2m(this.ta.selectionEnd)];
+    return this.surface ? this.surface.selection : this.view ? [this.vcaret, this.vcaret] : [this.d2m(this.ta.selectionStart), this.d2m(this.ta.selectionEnd)];
   }
 
   selectedText() {
@@ -643,7 +699,7 @@ export class Editor {
     const resized = wr.fit(space, this.cw);
     if (resized) this.el.style.setProperty('--tw', `${wr.width}px`);
     // Without the textarea (view mode) nothing has to line up with it: long lines can be summed.
-    const moded = wr.setExact(!this.view);
+    const moded = wr.setExact(!this.view && !this.surface);
     if (!resized && !moded && !this.wrapDirty && this.wy) return;
     this.wrapDirty = false;
     const n = this.rows;
@@ -793,7 +849,8 @@ export class Editor {
     const fix = (off: number) => (this.hidden(off) ? this.lineEnd(this.lineAt(this.rowOf(this.lineOf(off)))) : off);
     s = fix(s);
     e = fix(e);
-    if (this.view) this.vcaret = s;
+    if (this.surface) this.surface.select(s, e);
+    else if (this.view) this.vcaret = s;
     else {
       const ta = this.ta;
       let done = false;
@@ -835,7 +892,8 @@ export class Editor {
   setCaret(off: number) {
     off = Math.max(0, Math.min(off, this.text.length));
     this.unhide(off);
-    if (this.view) this.vcaret = off;
+    if (this.surface) this.surface.select(off);
+    else if (this.view) this.vcaret = off;
     else this.ta.setSelectionRange(this.m2d(off), this.m2d(off));
     if (this.updateCaret()) this.render(true);
     this.reveal(off, true);
@@ -860,7 +918,7 @@ export class Editor {
     // widths may be stale (a font just arrived); failing that, this browser
     // breaks ASCII its own way, so measure every line.
     const wr = this.wrapper;
-    if (wr?.cols && this.wy && !this.view && !this.healing && this.overflows()) {
+    if (wr?.cols && this.wy && !this.view && !this.surface && !this.healing && this.overflows()) {
       this.healing = true;
       this.measure();
       wr.reset();
@@ -902,6 +960,7 @@ export class Editor {
   }
 
   private onTaScroll = () => {
+    if (this.surface) return;
     const ta = this.ta;
     // The textarea never scrolls itself; if a line is wider than our estimate
     // (wide glyphs), grow the content instead.
@@ -949,7 +1008,7 @@ export class Editor {
       const marks = this.marksFor(ln);
       const lm = this.lineMarks ? this.lineMarks[ln] : 0;
       // View mode: where the row's text starts, for clicks (see offsetAt).
-      const open = (o: number) => `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view ? ` data-o="${o}"` : ''}>`;
+      const open = (o: number) => `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view || this.surface ? ` data-o="${o}"` : ''}>`;
       const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
       if (b - a > LONG_LINE && wide) {
         let sa = Math.min(b, a + colA);
@@ -975,6 +1034,7 @@ export class Editor {
       this.hl.style.transform = `translateY(${this.hlY + s}px)`;
       this.gl.style.transform = `translateY(${this.glY + s}px)`;
     }
+    this.surface?.paint();
     if (s === this.shiftAt) return;
     this.shiftAt = s;
     this.cur.style.transform = `translateY(${this.curY + s}px)`;
@@ -1031,13 +1091,13 @@ export class Editor {
             const zr = wr.exact && se === sb && !end && wr.joinsAt(t, sb) ? '\u200d' : '';
             body = `${bidiContext(t, Math.max(a, sa - 64), sa)}${zl}${body}${zr}${bidiContext(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
           }
-          html += `<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}"${this.view ? ` data-o="${sa}"` : ''}>${body}${end ? ph : ''}</div>`;
+          html += `<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}"${this.view || this.surface ? ` data-o="${sa}"` : ''}>${body}${end ? ph : ''}</div>`;
           if (!this.jwt) str = stringState(t, sa, sb, str);
           sa = sb;
         }
       } else {
         if (top < 0) top = y;
-        html += `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view ? ` data-o="${a}"` : ''}>${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
+        html += `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view || this.surface ? ` data-o="${a}"` : ''}>${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
       }
       // Gutter: the number on a line's first row, its bars on every row.
       const cls = this.gutClass(ln);
@@ -1267,6 +1327,7 @@ export class Editor {
 
   private onBeforeInput = (e: InputEvent) => {
     if (this.quiet) return;
+    if (this.surface && e.inputType !== 'historyUndo' && e.inputType !== 'historyRedo') return this.surface.beforeInput(e);
     if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
       e.preventDefault();
       if (e.inputType === 'historyUndo') this.undo();
@@ -1282,6 +1343,7 @@ export class Editor {
 
   private onInput = (e: Event) => {
     if (this.quiet) return;
+    if (this.surface) return this.surface.input(e as InputEvent);
     const it = (e as InputEvent).inputType ?? '';
     const old = this.text;
     this.typing = true;
@@ -1364,6 +1426,7 @@ export class Editor {
   }
 
   private onCompStart = () => {
+    if (this.surface) { this.surface.compositionStart(); this.compOld = this.text; this.selBefore = this.selection; return; }
     this.compOld = this.text;
     this.selBefore = this.selection;
   };
@@ -1371,12 +1434,23 @@ export class Editor {
   private onCompEnd = () => {
     const old = this.compOld;
     this.compOld = null;
+    if (this.surface) { this.surface.compositionEnd(); if (old !== null) this.record(old, this.text, 'insertText'); return; }
     this.sync();
     if (old !== null) this.record(old, this.text, 'insertText');
   };
 
   private onPaste = (e: ClipboardEvent) => {
     const ta = this.ta;
+    if (this.surface) {
+      const text = e.clipboardData?.getData('text/plain');
+      if (text !== undefined) {
+        e.preventDefault();
+        const [a, b] = this.selection;
+        this.pasteFull = a === 0 && b === this.text.length;
+        if (!this.pasteFull || !this.ev.fullPaste?.(lf(text))) this.apply(a, b, text, undefined, undefined, 'paste');
+      }
+      return;
+    }
     this.pasteFull = !ta.value.trim() || (ta.selectionStart === 0 && ta.selectionEnd === ta.value.length);
     // Browsers insert multi-line text line by line (slow for big pastes): do it ourselves.
     const text = e.clipboardData?.getData('text/plain');
@@ -1397,6 +1471,13 @@ export class Editor {
 
   /** Copy / cut with folds: the clipboard gets the hidden lines too. */
   private onCopy = (e: ClipboardEvent) => {
+    if (this.surface && e.clipboardData) {
+      e.preventDefault();
+      const [a, b] = this.selection;
+      e.clipboardData.setData('text/plain', this.text.slice(a, b));
+      if (e.type === 'cut') this.replace(a, b, '');
+      return;
+    }
     if (!this.vis || !e.clipboardData) return;
     const [a, b] = this.selection;
     if (b - a === this.ta.selectionEnd - this.ta.selectionStart) return;
@@ -1446,6 +1527,7 @@ export class Editor {
 
   private onSel = () => {
     if (document.activeElement !== this.ta) return;
+    if (this.surface) return this.surface.nativeSelection();
     if (this.updateCaret()) this.render(true);
     this.ev.caret();
     if (this.typing) this.typing = false;
@@ -1535,6 +1617,7 @@ export class Editor {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.isComposing) return;
+    if (this.surface?.key(e)) return;
     const mod = e.metaKey || e.ctrlKey;
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {
       e.preventDefault();
@@ -1658,7 +1741,7 @@ export class Editor {
     const db = this.m2d(b);
     // Through the textarea only when [a, b) holds no hidden lines.
     const plain = this.d2m(da) === a && this.d2m(db) === b && db - da === b - a;
-    if (!this.view && plain && text.length + (b - a) < 4000 && countLines(text, 40) < 40) {
+    if (!this.view && !this.surface && plain && text.length + (b - a) < 4000 && countLines(text, 40) < 40) {
       ta.focus({ preventScroll: true });
       ta.setSelectionRange(da, db);
       this.selBefore = [a, b];
@@ -1712,14 +1795,17 @@ export class Editor {
   select(a: number, b: number, center = true) {
     this.unhide(a);
     this.unhide(b);
-    if (this.view) {
+    if (this.surface) {
+      this.ta.focus({ preventScroll: true });
+      this.surface.select(a, b);
+    } else if (this.view) {
       this.vcaret = a;
       if (b > a) this.setScope(a, b);
     } else {
       this.ta.focus({ preventScroll: true });
       this.ta.setSelectionRange(this.m2d(a), this.m2d(b));
     }
-    if (this.updateCaret()) this.render(true);
+    if (this.updateCaret() || this.surface) this.render(true);
     this.reveal(a, center);
   }
 
