@@ -1448,8 +1448,14 @@ export class Editor {
 
   private onCompEnd = () => {
     const old = this.compOld;
+    if (this.surface) {
+      this.surface.compositionEnd();
+      this.compOld = null;
+      this.selBefore = this.compSel;
+      if (old !== null) this.record(old, this.text, 'insertText');
+      return;
+    }
     this.compOld = null;
-    if (this.surface) { this.surface.compositionEnd(); this.selBefore = this.compSel; if (old !== null) this.record(old, this.text, 'insertText'); return; }
     this.sync();
     if (old !== null) this.record(old, this.text, 'insertText');
   };

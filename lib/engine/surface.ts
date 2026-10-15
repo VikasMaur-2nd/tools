@@ -99,10 +99,11 @@ export class Surface {
     const t = h.text;
     const [a, b] = this.selection;
     // Keep the existing passage during ordinary typing. Recenter near its edges.
-    if (this.head < this.start + 128 || this.head > this.start + this.value.length - 128 || t.slice(this.start, this.start + this.value.length) !== this.value) {
+    if (this.value.length > PASSAGE * 2 || this.head < this.start + 128 || this.head > this.start + this.value.length - 128 || t.slice(this.start, this.start + this.value.length) !== this.value) {
       this.start = this.boundary(Math.max(0, this.head - PASSAGE / 2), -1);
       const end = this.boundary(Math.min(t.length, this.start + PASSAGE), 1);
       this.value = t.slice(this.start, end);
+      this.before = this.value;
       if (h.ta.value !== this.value) h.ta.value = this.value;
     }
     const s = Math.max(0, Math.min(this.value.length, a - this.start));
@@ -154,6 +155,11 @@ export class Surface {
   }
 
   compositionEnd() {
+    // Some browsers commit the native value before their final input event.
+    if (this.h.ta.value !== this.value) {
+      this.before = this.value;
+      this.input(new InputEvent('input', { inputType: 'insertCompositionText' }));
+    }
     this.composing = false;
     this.composition = null;
     this.sync();
