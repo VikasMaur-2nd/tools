@@ -1150,6 +1150,38 @@ html:has(.content-page:not([style*='none'])) {
   color: var(--fg);
 }
 
+.foot-langs {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 36px;
+  color: var(--muted);
+}
+
+.foot-langs svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.site-footer .foot-langs ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.site-footer .foot-langs li + li {
+  margin-top: 0;
+}
+
+.site-footer .foot-langs a[aria-current='page'] {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.foot-langs + .foot-note {
+  margin-top: 24px;
+}
+
 .foot-note {
   margin: 40px 0 0;
   border-top: 1px solid var(--line);

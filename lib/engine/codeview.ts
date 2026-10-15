@@ -1,6 +1,7 @@
 import { bidiContext, escapeHtml, StringStates, stringState, trimWs } from './highlight';
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
+import { rt } from '../i18n/ui';
 
 /*
  * Virtualized read-only code viewer with lazily highlighted lines.
@@ -85,6 +86,8 @@ export class CodeView {
   private hitLines = new Map<number, number[]>();
   private hi = -1;
   text = '';
+  private fold = escapeHtml(rt('Fold'));
+  private unfold = escapeHtml(rt('Unfold'));
 
   get lineCount() {
     return this.lines.length;
@@ -433,7 +436,7 @@ export class CodeView {
         if (foldedHere) {
           const end = this.close[ln];
           const n = end - ln - 1;
-          h += `<button type="button" class="cv-ph" data-f="${ln}" title="Unfold">⋯ ${n} line${n === 1 ? '' : 's'}</button>${this.hl(this.lines[end].trim(), false, false)}`;
+          h += `<button type="button" class="cv-ph" data-f="${ln}" title="${this.unfold}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</button>${this.hl(this.lines[end].trim(), false, false)}`;
         }
         this.html.set(row, h);
       }
@@ -456,7 +459,7 @@ export class CodeView {
       }
       let gut: string;
       if (sub) gut = '';
-      else if (this.close[ln] >= 0) gut = `<b class="cv-f${foldedHere ? ' c' : ''}" data-f="${ln}" title="${foldedHere ? 'Unfold' : 'Fold'}"></b>${ln + 1}`;
+      else if (this.close[ln] >= 0) gut = `<b class="cv-f${foldedHere ? ' c' : ''}" data-f="${ln}" title="${foldedHere ? this.unfold : this.fold}"></b>${ln + 1}`;
       else gut = String(ln + 1);
       const note = this.notes?.get(ln);
       const tail = note && b >= line.length ? note : '';

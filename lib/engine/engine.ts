@@ -9,9 +9,8 @@ import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type Theme, type View } from './store';
-import { SAMPLE } from './sample';
-import { codecs, compressedSize } from './sizes';
-import { duration, readJwt, type JwtInput } from '../json/jwt';
+import { readJwt, type JwtInput } from '../json/jwt';
+import { rt } from '../i18n/ui';
 import { idle } from './idle';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -179,20 +178,6 @@ function sniff(text: string): Hint {
   return null;
 }
 
-async function toBase64Url(s: string): Promise<string> {
-  const stream = new Blob([s]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
-  let bin = '';
-  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-async function fromBase64Url(b64: string): Promise<string> {
-  const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-  const buf = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Response(stream).text();
-}
 
 export class Engine {
   readonly ed: Editor;
@@ -311,6 +296,8 @@ export class Engine {
     this.handleLaunch();
     if (!matchMedia('(pointer: coarse)').matches || !this.ed.text) this.ed.focus();
     this.registerSW();
+    // Warm the optional example after the editor can respond to input.
+    idle(() => { if (!this.dead) void import('./sample').catch(() => {}); });
   }
 
   destroy() {
@@ -522,14 +509,9 @@ export class Engine {
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
         if (blob.size <= 32_000_000) {
-          for (const [codec, name] of codecs()) {
-            try {
-              sizes[codec] = await compressedSize(blob, name);
-            } catch {
-              /* leave it unmeasured */
-            }
-            if (seq !== this.sizeSeq) return;
-          }
+          const encoders = await import('./sizes').catch(() => null);
+          if (seq !== this.sizeSeq) return;
+          if (encoders) Object.assign(sizes, await encoders.compressedSizes(blob, () => seq === this.sizeSeq));
         }
         if (seq === this.sizeSeq) store.set({ sizes });
       },
@@ -873,9 +855,16 @@ export class Engine {
     }
   }
 
-  sample() {
-    this.load(SAMPLE, 'sample.json');
-    this.toast('Loaded a sample. Try the tree, table and search.', 'info');
+  async sample() {
+    const seq = this.sizeSeq;
+    try {
+      const { SAMPLE } = await import('./sample');
+      if (this.dead || seq !== this.sizeSeq) return;
+      this.load(SAMPLE, 'sample.json');
+      this.toast('Loaded a sample. Try the tree, table and search.', 'info');
+    } catch {
+      this.toast("Couldn't read sample.json", 'err');
+    }
   }
 
   clear() {
@@ -1060,7 +1049,9 @@ export class Engine {
     const r = this.fresh();
     if (!r?.root) return this.toast('Only valid JSON can be shared', 'err');
     try {
-      const data = await toBase64Url(this.jwt ? this.ed.text.trim() : formatDoc(this.ed.text, r, ''));
+      const text = this.jwt ? this.ed.text.trim() : formatDoc(this.ed.text, r, '');
+      const { toBase64Url } = await import('./sizes');
+      const data = await toBase64Url(text);
       if (data.length > 60_000) return this.toast('Too large to share as a link (limit ≈ 60 KB compressed)', 'err');
       await this.copy(`${location.origin}${location.pathname}#j=${data}`, 'Share link copied. The data lives in the link, not on a server.');
     } catch {
@@ -1072,6 +1063,7 @@ export class Engine {
     const h = location.hash;
     if (!h.startsWith('#j=')) return;
     try {
+      const { fromBase64Url } = await import('./sizes');
       const text = await fromBase64Url(h.slice(3));
       history.replaceState(null, '', location.pathname + location.search);
       if (this.dead) return;
@@ -1205,7 +1197,7 @@ export class Engine {
     let line = 1;
     for (let i = out.indexOf('\n'); i >= 0 && i < hit.index; i = out.indexOf('\n', i + 1)) line++;
     const left = exp - Date.now() / 1000;
-    const text = left > 0 ? `expires in ${duration(left)}` : `expired ${duration(-left)} ago`;
+    const text = escapeHtml(left > 0 ? rt('expires in {duration}', { duration: rt.dur(left, true) }) : rt('expired {duration} ago', { duration: rt.dur(-left, true) }));
     this.fmt.setNotes(new Map([[line, `<span class="cv-note-tag${left > 0 ? '' : ' warn'}">${text}</span>`]]));
     this.expTimer = window.setTimeout(() => this.settings.view === 'format' && this.noteExpiry(out), Math.abs(left) < 3600 ? 1000 : 30_000);
   }
@@ -1699,7 +1691,7 @@ export class Engine {
         .then((reg) => {
           // Load the lazy features once so they're cached for offline use and survive a
           // deploy while this tab stays open: one module per idle period, never a long task.
-          const mods = [() => import('../convert'), () => import('../convert/import'), () => import('../convert/xlsx'), () => import('../json/smart')];
+          const mods = [() => import('./sizes'), () => import('./sample'), () => import('../convert'), () => import('../convert/import'), () => import('../convert/xlsx'), () => import('../json/smart')];
           const next = () => {
             const load = mods.shift();
             if (load) return void load().then(() => idle(next), () => idle(next));
@@ -1708,7 +1700,8 @@ export class Engine {
               .getEntriesByType('resource')
               .map((e) => e.name)
               .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
-            reg.active?.postMessage({ type: 'cache', urls: [location.origin + '/', ...urls] });
+            const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
+            reg.active?.postMessage({ type: 'cache', urls: [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] });
           };
           idle(next);
         })

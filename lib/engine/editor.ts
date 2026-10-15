@@ -1,6 +1,7 @@
 import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
+import { rt } from '../i18n/ui';
 
 /*
  * The document lives in `text` (the model). Two presentations:
@@ -1042,7 +1043,7 @@ export class Editor {
     let a = this.ls[c];
     while (t.charCodeAt(a) === 32 || t.charCodeAt(a) === 9) a++;
     const closer = highlightLine(t, a, this.lineEnd(c), null);
-    return `<span class="ed-fold" data-f="${ln}"><span class="ed-ph${cls ? ' ' + cls : ''}">⋯ ${n} line${n === 1 ? '' : 's'}</span>${closer}</span>`;
+    return `<span class="ed-fold" data-f="${ln}"><span class="ed-ph${cls ? ' ' + cls : ''}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</span>${closer}</span>`;
   }
 
   /** If `sa` falls inside a string, start the slice at the string's opening quote (bounded). */

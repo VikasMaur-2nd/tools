@@ -8,8 +8,8 @@
  * while rendering rows.
  */
 import { NUM, STR, type JNode } from './parser';
-import { formatBytes } from './format';
-import { compact, decode } from './jwt';
+import { decode } from './jwt';
+import { rt } from '../i18n/ui';
 
 export { decodeJwt, isJwt, jwtToJson, type DecodedJwt, type JwtClaims } from './jwt';
 
@@ -41,7 +41,7 @@ function relTime(sec: number, days = false): string {
     const v = Math.round(sec / size);
     if (rtf === undefined) {
       try {
-        rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+        rtf = new Intl.RelativeTimeFormat(rt.lang, { numeric: 'auto' });
       } catch {
         rtf = null;
       }
@@ -58,8 +58,8 @@ function relTime(sec: number, days = false): string {
 function humanDate(ms: number, dateOnly: boolean): string {
   try {
     const f = dateOnly
-      ? (dtfDate ??= new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone: 'UTC' }))
-      : (dtfTime ??= new Intl.DateTimeFormat(undefined, {
+      ? (dtfDate ??= new Intl.DateTimeFormat(rt.lang, { dateStyle: 'medium', timeZone: 'UTC' }))
+      : (dtfTime ??= new Intl.DateTimeFormat(rt.lang, {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
@@ -175,7 +175,7 @@ function dateHint(s: string, now: number): ValueHint | null {
   if (!timed) {
     const t = new Date(now);
     const days = Math.round((ms - Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) / 864e5);
-    return { kind: 'date', label: humanDate(ms, true) + ' · ' + relTime(days * 86400, true) };
+    return { kind: 'date', label: humanDate(ms, true) + rt(' · ') + relTime(days * 86400, true) };
   }
   if (tz && tz.length > 1) {
     const oh = +tz.slice(1, 3);
@@ -183,7 +183,7 @@ function dateHint(s: string, now: number): ValueHint | null {
     if (oh > 23 || om > 59) return null;
     ms -= (tz[0] === '-' ? -1 : 1) * (oh * 60 + om) * 60000;
   }
-  return { kind: 'date', label: humanDate(ms, false) + ' · ' + relTime((ms - now) / 1000) };
+  return { kind: 'date', label: humanDate(ms, false) + rt(' · ') + relTime((ms - now) / 1000) };
 }
 
 /** Unix seconds (10 digits, optional fraction) or milliseconds (13 digits) in 2001–2099. */
@@ -196,7 +196,7 @@ function epochHint(raw: string, now: number): ValueHint | null {
   if (ms < 1e12 || ms >= 4102444800000) return null;
   let iso = new Date(ms).toISOString();
   if (!isMs && iso.endsWith('.000Z')) iso = iso.slice(0, -5) + 'Z';
-  return { kind: isMs ? 'epoch-ms' : 'epoch-s', label: iso + ' · ' + relTime((ms - now) / 1000) };
+  return { kind: isMs ? 'epoch-ms' : 'epoch-s', label: iso + rt(' · ') + relTime((ms - now) / 1000) };
 }
 
 const hex2 = (n: number) => (n < 16 ? '0' : '') + n.toString(16);
@@ -210,7 +210,7 @@ function colorHint(s: string): ValueHint | null {
     if (x.length === 3) x = x[0] + x[0] + x[1] + x[1] + x[2] + x[2];
     const rgb = parseInt(x.slice(0, 2), 16) + ', ' + parseInt(x.slice(2, 4), 16) + ', ' + parseInt(x.slice(4, 6), 16);
     const a = x.length === 8 ? Math.round(parseInt(x.slice(6), 16) / 2.55) / 100 : 1;
-    return { kind: 'color', label: 'Color · ' + (a < 1 ? 'rgba(' + rgb + ', ' + a : 'rgb(' + rgb) + ')' };
+    return { kind: 'color', label: rt('Color') + rt(' · ') + (a < 1 ? 'rgba(' + rgb + ', ' + a : 'rgb(' + rgb) + ')' };
   }
   const m = CFN.exec(s);
   if (!m) return null;
@@ -235,14 +235,14 @@ function colorHint(s: string): ValueHint | null {
   const a = args.length > 3 ? clamp(pct(3) ? num(3) / 100 : num(3), 1) : 1;
   let hex = '#';
   for (const v of rgb) hex += hex2(Math.round(clamp(v, 255)));
-  return { kind: 'color', label: 'Color · ' + hex + (a < 1 ? hex2(Math.round(a * 255)) : '') };
+  return { kind: 'color', label: rt('Color') + rt(' · ') + hex + (a < 1 ? hex2(Math.round(a * 255)) : '') };
 }
 
 function uuidHint(s: string, now: number): ValueHint | null {
   const m = UUID.exec(s);
   if (!m) return null;
-  if (/^[0-]+$/.test(s)) return { kind: 'uuid', label: 'UUID (nil)' };
-  if (/^[fF-]+$/.test(s)) return { kind: 'uuid', label: 'UUID (max)' };
+  if (/^[0-]+$/.test(s)) return { kind: 'uuid', label: rt('UUID (nil)') };
+  if (/^[fF-]+$/.test(s)) return { kind: 'uuid', label: rt('UUID (max)') };
   const v = m[1];
   if (v < '1' || v > '8' || !/[89ab]/i.test(m[2])) return null;
   const hx = (a: number, b: number) => parseInt(s.slice(a, b), 16);
@@ -254,7 +254,7 @@ function uuidHint(s: string, now: number): ValueHint | null {
         : v === '6'
           ? (hx(0, 8) * 2 ** 28 + hx(9, 13) * 2 ** 12 + hx(15, 18)) / 1e4 - GREGORIAN_MS
           : NaN;
-  return { kind: 'uuid', label: 'UUID v' + v + (isNaN(ms) ? '' : ' · ' + relTime((ms - now) / 1000)) };
+  return { kind: 'uuid', label: rt('UUID v{version}', { version: v }) + (isNaN(ms) ? '' : rt(' · ') + relTime((ms - now) / 1000)) };
 }
 
 function strHint(n: JNode, now: number): ValueHint | null {
@@ -272,7 +272,7 @@ function strHint(n: JNode, now: number): ValueHint | null {
   if (lc === 104) {
     const m = URL_RE.exec(s);
     const a = m && AUTHORITY.exec(m[1]);
-    if (a) return { kind: 'url', label: 'Link · ' + a[1].toLowerCase() };
+    if (a) return { kind: 'url', label: rt('Link') + rt(' · ') + a[1].toLowerCase() };
   }
   if (lc === 100) {
     const m = IMG.exec(s);
@@ -280,7 +280,7 @@ function strHint(n: JNode, now: number): ValueHint | null {
       const body = len - m[0].length;
       const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0;
       const type = m[1].split('+')[0].toUpperCase();
-      return { kind: 'base64-image', label: type + ' image · ' + formatBytes(Math.max(0, ((body * 3) >> 2) - pad)) };
+      return { kind: 'base64-image', label: rt('{type} image', { type }) + rt(' · ') + rt.bytes(Math.max(0, ((body * 3) >> 2) - pad)) };
     }
   }
   if (c === 101 || lc === 98 || isWs(c)) {
@@ -291,14 +291,14 @@ function strHint(n: JNode, now: number): ValueHint | null {
         exp === undefined
           ? 'JWT'
           : d.claims.expired
-            ? 'JWT · expired ' + compact(now / 1000 - exp) + ' ago'
-            : 'JWT · expires in ' + compact(exp - now / 1000);
+            ? 'JWT' + rt(' · ') + rt('expired {duration} ago', { duration: rt.dur(now / 1000 - exp) })
+            : 'JWT' + rt(' · ') + rt('expires in {duration}', { duration: rt.dur(exp - now / 1000) });
       return { kind: 'jwt', label };
     }
   }
-  if (len <= 254 && s.indexOf('@') > 0 && EMAIL.test(s)) return { kind: 'email', label: 'Email address' };
+  if (len <= 254 && s.indexOf('@') > 0 && EMAIL.test(s)) return { kind: 'email', label: rt('Email address') };
   if ((c === 123 || c === 91 || c === 34 || isWs(c)) && isEmbedded(n, s)) {
-    return { kind: 'json', label: 'JSON string (' + len + ' chars)' };
+    return { kind: 'json', label: rt.n(len, 'JSON string ({n} char)', 'JSON string ({n} chars)') };
   }
   return null;
 }

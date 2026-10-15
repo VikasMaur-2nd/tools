@@ -5,6 +5,7 @@ import { idle } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
+import { rt } from '../i18n/ui';
 
 /** Value hints (dates, JWTs, nested JSON…) load after first paint: they're just tooltips. */
 let valueHints: ((n: JNode) => ValueHint[]) | null = null;
@@ -47,6 +48,7 @@ export class TreeView {
   private rowsEl: HTMLElement;
   private acts: HTMLElement;
   private ev: TreeEvents;
+  private expandTip = escapeHtml(rt('Expand this JSON string into real JSON'));
   private ro: ResizeObserver;
 
   root: JNode | null = null;
@@ -412,7 +414,7 @@ export class TreeView {
         let vcls = 'tv-s';
         if (s.length < 64 && COLOR.test(s)) extra = `<i class="tv-sw" style="background:${s}"></i>`;
         else if (s.length < 2048 && URL_RE.test(s)) vcls += ' url';
-        if (hint?.kind === 'json') extra += '<button type="button" class="tv-x" data-n="1" title="Expand this JSON string into real JSON">JSON</button>';
+        if (hint?.kind === 'json') extra += '<button type="button" class="tv-x" data-n="1" title="' + this.expandTip + '">JSON</button>';
         else if (hint?.kind === 'jwt') extra += '<span class="tv-x">JWT</span>';
         let title = hint ? hint.label : '';
         if (s.length > 60) title = (title ? title + '\n\n' : '') + (s.length > 2000 ? s.slice(0, 2000) + '…' : s);
