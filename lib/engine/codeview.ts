@@ -1,4 +1,5 @@
 import { bidiContext, escapeHtml, StringStates, stringState, trimWs } from './highlight';
+import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
 
 /*
@@ -38,6 +39,7 @@ export interface FindResult {
 export class CodeView {
   readonly el: HTMLElement;
   private sizer: HTMLElement;
+  private sc: TallScroll;
   private rows: HTMLElement;
   private ro: ResizeObserver;
   private lines: string[] = [];
@@ -73,6 +75,8 @@ export class CodeView {
   private notes: Map<number, string> | null = null;
   private rFirst = -1;
   private rLast = -1;
+  /** translateY of the drawn rows. */
+  private y = NaN;
   private raf = 0;
   private width = 0;
   // find
@@ -89,6 +93,7 @@ export class CodeView {
   constructor(el: HTMLElement) {
     this.el = el;
     this.sizer = el.querySelector('.cv-sizer') as HTMLElement;
+    this.sc = new TallScroll(el);
     this.rows = el.querySelector('.cv-rows') as HTMLElement;
     this.wrapper = new Wrapper(el, RH, false);
     el.addEventListener('scroll', this.onScroll, { passive: true });
@@ -120,7 +125,7 @@ export class CodeView {
   /** Soft-wraps long lines at the view's width, or lets them run on. */
   setWrap(on: boolean) {
     if (on === !!this.wrapper) return;
-    const top = this.lines.length ? this.lineAtRow(Math.floor(this.el.scrollTop / RH)) : -1;
+    const top = this.lines.length ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
     this.wrapper?.destroy();
     this.wrapper = on ? new Wrapper(this.el, RH, false) : null;
     this.el.classList.toggle('cv-nowrap', !on);
@@ -159,7 +164,7 @@ export class CodeView {
     this.scanFolds();
     const digits = String(this.lines.length).length;
     this.el.style.setProperty('--cv-gw', `${Math.max(3, digits) + 5}ch`);
-    if (!keepScroll) this.el.scrollTop = 0;
+    if (!keepScroll) this.sc.top = 0;
     if (this.q) this.runFind(false);
     this.reflow(false);
   }
@@ -221,7 +226,7 @@ export class CodeView {
   foldLevel(level: number) {
     this.folded.clear();
     for (let i = 0; i < this.close.length; i++) if (this.close[i] >= 0 && this.depth[i] >= level) this.folded.add(i);
-    this.el.scrollTop = 0;
+    this.sc.top = 0;
     this.reflow(false);
   }
 
@@ -246,8 +251,8 @@ export class CodeView {
 
   /** Recomputes visible lines and wrapping (on text, fold or width changes). */
   private reflow(keepPosition: boolean, anchor = -1) {
-    const firstLine = anchor >= 0 ? anchor : keepPosition ? this.lineAtRow(Math.floor(this.el.scrollTop / RH)) : -1;
-    const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.el.scrollTop : 0;
+    const firstLine = anchor >= 0 ? anchor : keepPosition ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
+    const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.sc.top : 0;
     this.width = this.el.clientWidth;
     this.measure();
     const gutter = (Math.max(3, String(this.lines.length).length) + 5) * this.cw;
@@ -279,10 +284,10 @@ export class CodeView {
     this.rowStart = rs;
     this.states.clear();
     this.html.clear();
-    this.sizer.style.height = r * RH + 24 + 'px';
+    this.sc.fit(r * RH + 24, this.sizer);
     // Not wrapping, the longest line sets how far the view scrolls sideways.
     this.sizer.style.width = wr ? '' : `${Math.ceil(gutter + (this.maxLen + 4) * this.cw + PAD_X * 2)}px`;
-    if (firstLine >= 0) this.el.scrollTop = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
+    if (firstLine >= 0) this.sc.top = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
     this.render(true);
   }
 
@@ -373,7 +378,7 @@ export class CodeView {
 
   render(force: boolean) {
     const el = this.el;
-    const st = el.scrollTop;
+    const st = this.sc.top;
     const vh = el.clientHeight;
     const total = this.rowStart[this.vis.length] ?? 0;
     const vf = Math.floor(st / RH);
@@ -382,7 +387,7 @@ export class CodeView {
     const wide = !this.wrapper && this.maxLen > LONG_LINE;
     const vcA = wide ? Math.max(0, Math.floor(el.scrollLeft / this.cw) - 12) : 0;
     const vcB = vcA + Math.ceil(el.clientWidth / this.cw) + 12;
-    if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return;
+    if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return this.place();
     let first = Math.max(0, vf - OVERSCAN);
     const last = Math.min(total, vl + OVERSCAN);
     let vi = total ? this.visOfRow(first) : 0;
@@ -459,9 +464,15 @@ export class CodeView {
       out += `<div class="cv-l${block ? ' cv-b' : ''}"><span class="cv-n">${gut}</span><span class="cv-c">${sp}${marks}${h || ' '}${tail}</span></div>`;
       if (block) row += rows - 1;
     }
-    this.rows.style.transform = `translateY(${first * RH}px)`;
     this.rows.innerHTML = out;
+    this.place();
     if (place) this.placeHits();
+  }
+
+  /** Positions the drawn rows (they move with the scroll offset when it's scaled, see TallScroll). */
+  private place() {
+    const y = this.rFirst * RH + this.sc.shift;
+    if (y !== this.y) this.rows.style.transform = `translateY(${(this.y = y)}px)`;
   }
 
   /** Puts find highlights on text the browser lays out (wide glyphs) over the matched characters, one box per row. */
@@ -524,7 +535,7 @@ export class CodeView {
     }
     if (!hits.length) return;
     // Start from the first match at or below the top of the view.
-    const top = this.lineAtRow(Math.floor(this.el.scrollTop / RH));
+    const top = this.lineAtRow(Math.floor(this.sc.top / RH));
     let i = 0;
     while (i * 2 < hits.length && hits[i * 2] < top) i++;
     this.hi = i * 2 < hits.length ? i : 0;
@@ -550,7 +561,8 @@ export class CodeView {
     const y = (this.rowStart[vi] + sub) * RH;
     const el = this.el;
     const vh = el.clientHeight;
-    if (y < el.scrollTop || y + RH > el.scrollTop + vh) el.scrollTop = Math.max(0, y - vh / 2 + RH);
+    const st = this.sc.top;
+    if (y < st || y + RH > st + vh) this.sc.top = Math.max(0, y - vh / 2 + RH);
     if (!this.wrapper) {
       const x = col * this.cw;
       const view = el.clientWidth - 80;
