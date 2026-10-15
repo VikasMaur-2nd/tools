@@ -9,14 +9,14 @@ export interface SurfaceHost {
   row(off: number): [number, number, number];
   span(row: number): [number, number];
   reveal(off: number): void;
-  scroll(dy: number): void;
+  scroll(dy: number, dx: number): void;
   fold(line: number): void;
 }
 
 const PASSAGE = 2048;
 const ignored = '.ctx, .ed-fold, .meol';
-const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-const words = new Intl.Segmenter(undefined, { granularity: 'word' });
+let graphemes: Intl.Segmenter;
+let words: Intl.Segmenter;
 
 export class Surface {
   anchor = 0;
@@ -123,19 +123,24 @@ export class Surface {
     const ta = this.h.ta;
     const old = this.before || this.value;
     const now = ta.value;
+    if (old === now) return;
     let a = 0, b = old.length, c = now.length;
     while (a < b && a < c && old.charCodeAt(a) === now.charCodeAt(a)) a++;
     while (b > a && c > a && old.charCodeAt(b - 1) === now.charCodeAt(c - 1)) { b--; c--; }
-    const start = this.start;
-    const sel: [number, number] = [start + ta.selectionStart, start + ta.selectionEnd];
+    let start = this.start;
+    let sel: [number, number] = [start + ta.selectionStart, start + ta.selectionEnd];
     const range = this.selection;
     this.value = now;
     this.before = now;
-    if (this.composing) this.composition = [this.composition?.[0] ?? start + a, sel[1]];
     // A proxy cannot contain a large model selection. Replace the actual selection.
-    const clipped = !this.composing && range[0] !== range[1] && (range[0] < start || range[1] > start + old.length);
+    const clipped = range[0] !== range[1] && (range[0] < start || range[1] > start + old.length);
+    if (clipped) {
+      this.start = start = range[0] - a;
+      sel = [start + ta.selectionStart, start + ta.selectionEnd];
+    }
+    if (this.composing) this.composition = [this.composition?.[0] ?? start + a, sel[1]];
     this.h.edit(clipped ? range[0] : start + a, clipped ? range[1] : start + b, now.slice(a, c), e.inputType || 'insertText');
-    if (!clipped) this.select(sel[0], sel[1], ta.selectionDirection === 'backward');
+    this.select(sel[0], sel[1], ta.selectionDirection === 'backward');
     this.h.moved(false);
   }
 
@@ -158,7 +163,8 @@ export class Surface {
     if (off >= t.length) return t.length;
     const a = Math.max(0, off - (word ? 2048 : 128));
     const b = Math.min(t.length, off + (word ? 2048 : 128));
-    const segments = (word ? words : graphemes).segment(t.slice(a, b));
+    const segmenter = word ? words ??= new Intl.Segmenter(undefined, { granularity: 'word' }) : graphemes ??= new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    const segments = segmenter.segment(t.slice(a, b));
     const part = segments.containing(off - a);
     if (!part) return off;
     if (dir < 0) return a + part.index;
@@ -183,6 +189,7 @@ export class Surface {
       const dir = e.key === 'Backspace' ? -1 : 1;
       const next = a === b ? this.adjacent(off, dir, word) : dir < 0 ? a : b;
       h.edit(Math.min(a, next), Math.max(b, next), '', dir < 0 ? 'deleteContentBackward' : 'deleteContentForward');
+      h.moved(false);
     } else if (/^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown)$/.test(e.key)) {
       const left = e.key === 'ArrowLeft';
       const right = e.key === 'ArrowRight';
@@ -299,6 +306,11 @@ export class Surface {
         }
         at = end;
       }
+      if (a <= at && b > at && this.h.text.charCodeAt(at) === 10) {
+        const end = this.rectAt(at) ?? row.getBoundingClientRect();
+        const box = row.getBoundingClientRect();
+        draw(new DOMRect(end.left, end.top, Math.max(8, box.right - end.left), 20), 'ed-selection');
+      }
     }
     const caret = this.rectAt(this.head);
     if (caret) {
@@ -329,7 +341,7 @@ export class Surface {
     const [a, b] = this.extent(at, e.detail);
     if (!e.shiftKey) this.anchor = a;
     this.head = b;
-    this.drag = { x: e.clientX, y: e.clientY, unit: e.detail, a, b };
+    this.drag = { x: e.clientX, y: e.clientY, unit: e.detail, a: e.shiftKey ? this.anchor : a, b: e.shiftKey ? this.anchor : b };
     this.h.ta.focus({ preventScroll: true });
     this.h.moved(true);
     this.dragFrame = requestAnimationFrame(this.autoscroll);
@@ -346,7 +358,7 @@ export class Surface {
     if (!d) return;
     const [a, b] = this.extent(this.boundary(this.h.point(d.x, d.y), -1), d.unit);
     if (a < d.a) { this.anchor = d.b; this.head = a; }
-    else this.head = b;
+    else { this.anchor = d.a; this.head = b; }
     this.h.moved(false);
   }
 
@@ -355,7 +367,9 @@ export class Surface {
     const r = this.h.el.getBoundingClientRect();
     const y = this.drag.y;
     const dy = y < r.top + 20 ? y - r.top - 20 : y > r.bottom - 20 ? y - r.bottom + 20 : 0;
-    if (dy) { this.h.scroll(Math.max(-80, Math.min(80, dy / 3))); this.dragTo(); }
+    const x = this.drag.x;
+    const dx = this.h.el.classList.contains('wrap') ? 0 : x < r.left + 80 ? x - r.left - 80 : x > r.right - 20 ? x - r.right + 20 : 0;
+    if (dy || dx) { this.h.scroll(Math.max(-80, Math.min(80, dy / 3)), Math.max(-80, Math.min(80, dx / 3))); this.dragTo(); }
     this.dragFrame = requestAnimationFrame(this.autoscroll);
   };
 

@@ -3158,3 +3158,13 @@ button.mi:focus-visible {
 .ed.focused .ed-caret {
   visibility: visible;
 }
+
+@keyframes ed-blink {
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ed.focused .ed-caret {
+    animation: ed-blink 1s step-end infinite;
+  }
+}

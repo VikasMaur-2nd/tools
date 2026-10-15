@@ -5,12 +5,14 @@ import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
 
 /*
- * The document lives in `text` (the model). Two presentations:
+ * The document lives in `text` (the model). Three presentations:
  *
  *  - Edit mode: a native <textarea> (caret, selection, IME, accessibility)
  *    sized to its full content, layered over a virtualized syntax-highlighted
  *    copy of the visible lines. Both share one scroll container, so they move
  *    together natively: no scroll lag.
+ *  - Large editable documents: Surface captures input in a bounded textarea,
+ *    maps it into the model, and draws the selection over the virtual rows.
  *  - View mode (huge documents): browsers lay out every line of a textarea,
  *    which takes seconds at hundreds of thousands of lines. We drop the
  *    textarea and show only the virtualized highlighted view: instant at any
@@ -181,6 +183,7 @@ export class Editor {
   private tabMovesFocus = false;
   /** Text before an IME composition started (recorded as one undo step). */
   private compOld: string | null = null;
+  private compSel: [number, number] = [0, 0];
   private cw = 7.8;
   private maxCols = 0;
   private extraW = 0;
@@ -346,7 +349,7 @@ export class Editor {
    * Sets the document and refreshes everything derived from it.
    * `fromTa`: the textarea already holds `t` (user input).
    */
-  private model(t: string, fromTa: boolean) {
+  private model(t: string, fromTa: boolean, defer = false) {
     this.text = t;
     const ls = [0];
     let maxLen = 0;
@@ -373,8 +376,11 @@ export class Editor {
     if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
     this.lazy = view && lazy;
     const custom = !view && (t.length >= SURFACE_CHARS || (!!this.surface && fromTa));
-    if (custom && !this.surface) this.surface = this.makeSurface();
-    else if (!custom && this.surface) { this.surface.destroy(); this.surface = null; }
+    if (custom && !this.surface) {
+      const selection = this.selection;
+      this.surface = this.makeSurface();
+      this.surface.select(...selection);
+    } else if (!custom && this.surface) { this.surface.destroy(); this.surface = null; }
     if (this.surface) {
       this.surface.select(...this.surface.selection);
     } else if (view) {
@@ -393,19 +399,19 @@ export class Editor {
     this.layout();
     this.updateCaret();
     this.placeScope();
-    this.render(true);
+    if (this.surface && (fromTa || defer)) this.renderSoon();
+    else this.render(true);
   }
 
   private makeSurface() {
-    const ed = this;
+    const readText = () => this.text;
     return new Surface({
       el: this.el, ta: this.ta,
-      get text() { return ed.text; },
+      get text() { return readText(); },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
       moved: (nav) => {
         this.updateCaret();
         this.reveal(this.caret);
-        this.render(true);
         this.ev.caret();
         if (nav) this.ev.nav();
       },
@@ -421,7 +427,7 @@ export class Editor {
       row: (off) => { const r = this.vrowOf(off); const k = this.kAt(r); return [r, ...this.rowSpan(k, r - this.yOf(k))]; },
       span: (row) => { row = Math.max(0, Math.min(this.vrows - 1, row)); const k = this.kAt(row); return this.rowSpan(k, row - this.yOf(k)); },
       reveal: (off) => this.reveal(off),
-      scroll: (dy) => { this.sc.top += dy; this.render(false); },
+      scroll: (dy, dx) => { this.sc.top += dy; this.el.scrollLeft += dx; this.render(false); },
       fold: (ln) => this.toggleFold(ln),
     });
   }
@@ -429,6 +435,7 @@ export class Editor {
   /** The input passage reports a bounded replacement in model offsets. */
   private surfaceEdit(a: number, b: number, ins: string, kind: string) {
     const old = this.text;
+    if (a === b && !ins) return;
     this.selBefore = this.selection;
     this.selAfter = [a + ins.length, a + ins.length];
     this.typing = true;
@@ -841,7 +848,6 @@ export class Editor {
    */
   private refold(anchor: number, patch?: { at: number; end: () => number; cut: boolean }) {
     let [s, e] = this.view ? [this.vcaret, this.vcaret] : this.selection;
-    const el = this.el;
     const top = anchor >= 0 ? anchor : this.topLine();
     const y = PAD_T + this.yOf(this.rowOf(top)) * LH - this.sc.top;
     this.buildDisplay();
@@ -897,6 +903,7 @@ export class Editor {
     else this.ta.setSelectionRange(this.m2d(off), this.m2d(off));
     if (this.updateCaret()) this.render(true);
     this.reveal(off, true);
+    if (this.surface) this.ev.caret();
   }
 
   // ── Layout & rendering ─────────────────────────────────────────────────
@@ -1327,6 +1334,11 @@ export class Editor {
 
   private onBeforeInput = (e: InputEvent) => {
     if (this.quiet) return;
+    if (this.surface && e.cancelable && /^(insertLineBreak|insertParagraph)$/.test(e.inputType)) {
+      e.preventDefault();
+      this.newline();
+      return;
+    }
     if (this.surface && e.inputType !== 'historyUndo' && e.inputType !== 'historyRedo') return this.surface.beforeInput(e);
     if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
       e.preventDefault();
@@ -1426,7 +1438,7 @@ export class Editor {
   }
 
   private onCompStart = () => {
-    if (this.surface) { this.surface.compositionStart(); this.compOld = this.text; this.selBefore = this.selection; return; }
+    if (this.surface) { this.surface.compositionStart(); this.compOld = this.text; this.compSel = this.selBefore = this.selection; return; }
     this.compOld = this.text;
     this.selBefore = this.selection;
   };
@@ -1434,7 +1446,7 @@ export class Editor {
   private onCompEnd = () => {
     const old = this.compOld;
     this.compOld = null;
-    if (this.surface) { this.surface.compositionEnd(); if (old !== null) this.record(old, this.text, 'insertText'); return; }
+    if (this.surface) { this.surface.compositionEnd(); this.selBefore = this.compSel; if (old !== null) this.record(old, this.text, 'insertText'); return; }
     this.sync();
     if (old !== null) this.record(old, this.text, 'insertText');
   };
@@ -1723,7 +1735,7 @@ export class Editor {
     this.typing = true;
     this.shiftFolds(a, b, text, true);
     this.shiftDiags(a, b, text.length);
-    this.model(v.slice(0, a) + text + v.slice(b), false);
+    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface);
     this.select(sel[0], sel[1], false);
     this.ev.change('input');
   }
@@ -1772,7 +1784,7 @@ export class Editor {
     this.typing = true;
     this.shiftFolds(a, b, text, true);
     this.shiftDiags(a, b, text.length);
-    this.model(v.slice(0, a) + text + v.slice(b), false);
+    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface);
     this.select(s1, s2, false);
     this.ev.change(kind);
   }
@@ -1805,8 +1817,9 @@ export class Editor {
       this.ta.focus({ preventScroll: true });
       this.ta.setSelectionRange(this.m2d(a), this.m2d(b));
     }
-    if (this.updateCaret() || this.surface) this.render(true);
+    if (this.updateCaret() && !this.surface) this.render(true);
     this.reveal(a, center);
+    if (this.surface) this.ev.caret();
   }
 
   /** Scrolls so that `off` is visible. */
