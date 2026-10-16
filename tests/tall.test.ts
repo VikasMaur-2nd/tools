@@ -9,12 +9,17 @@ function scroller(clientHeight = 800) {
   const spacer = { style: { height: '' } } as unknown as HTMLElement;
   const el = {
     clientHeight,
+    reads: 0,
     get scrollTop() {
+      el.reads++;
       return st;
     },
     set scrollTop(v: number) {
       const max = Math.max(0, parseFloat(spacer.style.height || '0') - clientHeight);
+      const was = st;
       st = Math.round(Math.max(0, Math.min(max, v)));
+      // The browser tells listeners before the next frame.
+      if (st !== was) listeners.get('scroll')?.({} as Event);
     },
     scrolls: 0,
     addEventListener: (t: string, f: EventListener) => listeners.set(t, f),
@@ -36,7 +41,7 @@ test('short content scrolls 1:1 with no listeners', () => {
   assert.equal(el.scrollTop, 5000);
   assert.equal(sc.top, 5000);
   assert.equal(sc.shift, 0);
-  assert.equal(el.listeners.size, 0);
+  assert.ok(!el.listeners.has('wheel') && !el.listeners.has('keydown'));
 });
 
 test('tall content caps the spacer and maps the whole range', () => {
@@ -82,5 +87,20 @@ test('the content offset survives height changes in and out of scaling', () => {
   sc.fit(14_000_000, spacer);
   assert.equal(el.scrollTop, 12_000_000);
   assert.equal(sc.top, 12_000_000);
-  assert.equal(el.listeners.size, 0);
+  assert.ok(!el.listeners.has('wheel') && !el.listeners.has('keydown'));
+});
+
+test('scrollTop is read once until the element scrolls', () => {
+  const { el, spacer, sc } = scroller();
+  sc.fit(80_000_000, spacer);
+  sc.top = 2_000_000;
+  const reads = el.reads;
+  for (let i = 0; i < 5; i++) void (sc.top + sc.shift);
+  assert.ok(el.reads - reads <= 1, `${el.reads - reads} reads`);
+  // The same height again reads nothing.
+  sc.fit(80_000_000, spacer);
+  assert.ok(el.reads - reads <= 1);
+  // The scrollbar moved (a scroll event): read afresh.
+  el.scrollTop = (MAX_H - el.clientHeight) / 4;
+  assert.ok(Math.abs(sc.top - (80_000_000 - el.clientHeight) / 4) < 10);
 });
