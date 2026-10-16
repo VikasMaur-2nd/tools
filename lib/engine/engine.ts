@@ -875,13 +875,15 @@ export class Engine {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; res?: ParseResult }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; buf?: ArrayBuffer; res?: ParseResult }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
         if (e.data.res) return void (this.workerParse = e.data);
         const job = this.reindentJob;
         if (!job || job.id !== e.data.id) return;
         this.reindentJob = null;
-        job.done(e.data.out, this.workerParse?.id === job.id ? this.workerParse.res : undefined);
+        // A big output arrives as transferred UTF-16 code units (see reindent.worker.ts): one native decode.
+        const out = e.data.buf ? new TextDecoder('utf-16le', { ignoreBOM: true }).decode(e.data.buf) : e.data.out;
+        job.done(out, this.workerParse?.id === job.id ? this.workerParse.res : undefined);
         this.workerParse = null;
       };
       w.onerror = () => {
