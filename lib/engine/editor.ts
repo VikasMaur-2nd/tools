@@ -62,10 +62,18 @@ const SURFACE_CHARS = 250_000;
 let SurfaceClass: typeof Surface | undefined;
 let surfaceLoad: Promise<void> | undefined;
 export function loadSurface() {
-  return (surfaceLoad ??= import('./surface').then(
-    (m) => void (SurfaceClass = m.Surface),
-    () => void (surfaceLoad = undefined),
-  ));
+  return (surfaceLoad ??= (async () => {
+    // A flaky network can fail a fetch: try again a few times, then give up until the next need.
+    for (let k = 0; k < 4; k++) {
+      try {
+        SurfaceClass = (await import('./surface')).Surface;
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 400 * 2 ** k));
+      }
+    }
+    surfaceLoad = undefined;
+  })());
 }
 /** Edits inserting at most this much patch the line state (see model); bigger ones rescan. */
 const PATCH_CHARS = 1 << 16;
