@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, parse, type JNode, type ParseResult } from '../lib/json/parser';
-import { packTree, unpacker } from '../lib/json/pack';
+import { nodeAt, pathOf } from '../lib/json/path';
+import { packStrings, packTree, packedPosition, unpacker } from '../lib/json/pack';
 
 /** Every field of every node, parent links included, must match. */
 function same(a: JNode | null, b: JNode | null, path = '$') {
@@ -27,7 +28,7 @@ function same(a: JNode | null, b: JNode | null, path = '$') {
 /** Packs and rebuilds in tiny steps (deadline already passed: one batch per call). */
 function roundTrip(src: string, lines = false): [ParseResult, ParseResult] {
   const res = parse(src, { lines });
-  const packed = packTree(res, src);
+  const packed = packStrings(packTree(res, src));
   const step = unpacker(structuredClone(packed), src);
   let out: ParseResult | undefined;
   for (let k = 0; k < 100_000 && !(out = step(0)); k++);
@@ -94,11 +95,35 @@ test('packed trees rebuild exactly: lenient input, escapes, JSON Lines and error
 test('a big document rebuilds in many short steps', () => {
   const src = JSON.stringify(Array.from({ length: 20000 }, (_, i) => ({ id: i, name: `User ${i}`, tags: ['a', 'b'], ok: i % 2 === 0, n: i * 1.5, s: 'x\ny' })));
   const res = parse(src);
-  const packed = packTree(res, src);
+  const packed = packStrings(packTree(res, src));
   const step = unpacker(packed, src);
   let calls = 0;
   let out: ParseResult | undefined;
   while (!(out = step(0))) calls++;
   assert.ok(calls > 10, 'sliced');
   same(res.root, out.root);
+});
+
+test('packed caret navigation matches the node tree, including keys and container boundaries', () => {
+  for (const text of ['{"a":[1,2,{"b":true}], "c": "v", "empty":{}}', '[1,2,{"key,comma": [[],{}]}]', '{a:1,b:[2,3,]}', '{"a":1}\n{"b":2}']) {
+    const res = parse(text);
+    const packed = packStrings(packTree(res, text));
+    for (let off = 0; off <= text.length; off++) {
+      const n = nodeAt(res.root, off, text);
+      const at = packedPosition(packed, off, text);
+      assert.deepEqual(at?.path ?? null, n ? pathOf(n) : null, `${text} @ ${off}`);
+      let container = n;
+      while (container && container.t < ARR) container = container.u;
+      assert.equal(at?.start ?? -1, container?.s ?? -1, `container @ ${off}`);
+      assert.equal(at?.end ?? -1, container?.e ?? -1, `container end @ ${off}`);
+    }
+  }
+});
+
+test('transferred strings retain empty text, escapes and unpaired UTF-16 surrogates', () => {
+  check('{"": "", "lone": "\\ud800", "key\\udc00": "\\udfff", "paired": "😀", "escape": "a\\nb"}');
+  const src = '{"key": "value"}';
+  const res = parse(src);
+  const plain = unpacker(packTree(res, src), src)(Infinity)!;
+  same(plain.root, res.root);
 });
