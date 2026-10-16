@@ -1,5 +1,5 @@
 import { Doc } from './doc';
-import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
+import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
 import { foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines } from './lines';
@@ -452,6 +452,7 @@ export class Editor {
     const old = this.doc;
     const doc = typeof t === 'string' ? Doc.of(t) : t;
     const fits = !!edit && old.length - (edit.b - edit.a) + edit.ins.length === doc.length;
+    this.lineEdit = null;
     // The wrapper may reuse rows outside this edit, in the rows() call this model() makes (see rewrap).
     this.wrapEdit = edit && fits && old === this.wrapText ? [edit.a, edit.b, edit.a + edit.ins.length] : null;
     this.doc = doc;
@@ -472,6 +473,7 @@ export class Editor {
       // Soft-wrapped, the widest line only matters once wrapping is off (see layout): skip measuring it.
       const widths = !this.el.classList.contains('wrap');
       const r = patchLines(ls, old, doc, a, b, ins, this.maxCols, widths, doc.tabs);
+      this.lineEdit = [la, la + r.added + 1];
       this.maxCols = r.max;
       if (!widths) this.maxStale = true;
       if (few && r.added <= 64) {
@@ -826,6 +828,8 @@ export class Editor {
     const top = this.topLine();
     this.wrapper?.destroy();
     this.wrapper = on ? new Wrapper(this.body, LH) : null;
+    // (rewrap copies the counts, and `wodd` is replaced on every call.)
+    if (this.wrapper) this.wrapper.recycle = true;
     // A huge line's rows past an edit are estimated, then exact when idle: lay out again with them.
     if (this.wrapper)
       this.wrapper.onRows = () => {
@@ -851,6 +855,21 @@ export class Editor {
   /** The text the wrapper last measured rows for (an edit hint is only valid against it). */
   private wrapText: Doc | null = null;
 
+  /** The line range [la, end) of `ls` the last model() edit rewrote (lines after it only moved), or null. */
+  private lineEdit: [number, number] | null = null;
+  /**
+   * Arrays for rewrap, two of each in turn (the wrapper keeps the last call's
+   * lines): a document of a million lines would otherwise allocate megabytes
+   * per key.
+   */
+  private bufs: Int32Array[] = [];
+  private flip = 0;
+
+  private buf(i: number, n: number) {
+    const b = this.bufs[i];
+    return b && b.length === n ? b : (this.bufs[i] = new Int32Array(n));
+  }
+
   private rewrap() {
     const wr = this.wrapper as Wrapper;
     const space = this.sc.width - this.gutW - PAD_L - PAD_RW;
@@ -861,17 +880,32 @@ export class Editor {
     if (!resized && !moded && !this.wrapDirty && this.wy) return;
     this.wrapDirty = false;
     const n = this.rows;
-    const A = new Int32Array(n);
-    const B = new Int32Array(n);
-    for (let k = 0; k < n; k++) {
-      const ln = this.lineAt(k);
-      A[k] = this.ls[ln];
-      B[k] = this.lineEnd(ln);
+    this.flip ^= 1;
+    const A = this.buf(this.flip * 3, n);
+    const B = this.buf(this.flip * 3 + 1, n);
+    const ls = this.ls;
+    if (!this.vis) {
+      for (let k = 0; k + 1 < n; k++) {
+        A[k] = ls[k];
+        B[k] = ls[k + 1] - 1;
+      }
+      A[n - 1] = ls[n - 1];
+      B[n - 1] = this.doc.length;
+    } else {
+      for (let k = 0; k < n; k++) {
+        const ln = this.lineAt(k);
+        A[k] = ls[ln];
+        B[k] = this.lineEnd(ln);
+      }
     }
-    const rows = wr.rows(this.src, A, B, this.wrapEdit ?? undefined);
+    // An edit of lines [la, end) of an unfolded text: the wrapper needn't compare the others to find them.
+    const edit = this.wrapEdit ?? undefined;
+    const rows = wr.rows(this.src, A, B, edit, edit && !this.vis && this.lineEdit ? this.lineEdit : undefined);
     this.wrapEdit = null;
+    this.lineEdit = null;
     this.wrapText = this.doc;
-    const wy = new Int32Array(n + 1);
+    const wy = this.buf(this.flip * 3 + 2, n + 1);
+    wy[0] = 0;
     for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
     this.wy = wy;
     this.wodd = wr.odd;
@@ -1265,7 +1299,10 @@ export class Editor {
             // Where the browser keeps a word's letters joined across the break, so does the copy.
             const zl = wr.exact && wr.joinsAt(t, sa - o) ? '\u200d' : '';
             const zr = wr.exact && se === sb && !end && wr.joinsAt(t, sb - o) ? '\u200d' : '';
-            body = `${bidiContext(t, Math.max(a, sa - 64) - o, sa - o)}${zl}${body}${zr}${bidiContext(t, sb - o, Math.min(b, sb + 64) - o)}${escapeHtml(t.slice(se - o, sb - o))}`;
+            // (Only right-to-left text orders by its neighbours: without any, the context changes nothing, and
+            // laying it out costs as much again as the row.)
+            const ctx = mayReorder(t, Math.max(a, sa - 64) - o, Math.min(b, sb + 64) - o);
+            body = `${ctx ? bidiContext(t, Math.max(a, sa - 64) - o, sa - o) : ''}${zl}${body}${zr}${ctx ? bidiContext(t, sb - o, Math.min(b, sb + 64) - o) : ''}${escapeHtml(t.slice(se - o, sb - o))}`;
           }
           html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`);
           offs?.push(sa);

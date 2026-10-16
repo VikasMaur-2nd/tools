@@ -103,13 +103,140 @@ function breaksIn(t: Src, a: number, b: number) {
   return n;
 }
 
+/** A run of row starts: `a[i, i + n)`, each plus `d`. */
+interface Seg {
+  a: Int32Array;
+  i: number;
+  n: number;
+  d: number;
+}
+
+/** Runs shorter than this are copied together into one; more runs than MAX_SEGS, and all are. */
+const SMALL = 4096;
+const MAX_SEGS = 12;
+
+/**
+ * Row starts of a long line as runs of arrays shared with its earlier
+ * versions: an edit moves every row after it by the edit's length, and
+ * copying them all per key would cost the line's rows (600K for 50 MB).
+ */
+class Starts {
+  readonly length: number;
+  /** Row index each run starts at. */
+  private readonly at: number[];
+  private hit = 0;
+
+  constructor(private readonly segs: Seg[]) {
+    let n = 0;
+    this.at = segs.map((x) => ((n += x.n), n - x.n));
+    this.length = n;
+  }
+
+  static of(a: Int32Array): Starts {
+    return new Starts(a.length ? [{ a, i: 0, n: a.length, d: 0 }] : []);
+  }
+
+  /** The run holding row `r`. */
+  private seg(r: number): number {
+    const at = this.at;
+    const h = this.hit;
+    if (h < at.length && at[h] <= r && (h + 1 === at.length || at[h + 1] > r)) return h;
+    let lo = 0;
+    let hi = at.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (at[mid] <= r) lo = mid;
+      else hi = mid - 1;
+    }
+    return (this.hit = lo);
+  }
+
+  get(r: number): number {
+    const k = this.seg(r);
+    const x = this.segs[k];
+    return x.a[x.i + r - this.at[k]] + x.d;
+  }
+
+  /** Rows [from, to), plus `dd`, appended to `out` as runs. */
+  part(from: number, to: number, dd: number, out: Seg[] = []): Seg[] {
+    to = Math.min(to, this.length);
+    if (from >= to) return out;
+    for (let k = this.seg(from); k < this.segs.length && this.at[k] < to; k++) {
+      const x = this.segs[k];
+      const a = Math.max(from, this.at[k]);
+      const b = Math.min(to, this.at[k] + x.n);
+      if (b > a) out.push({ a: x.a, i: x.i + a - this.at[k], n: b - a, d: x.d + dd });
+    }
+    return out;
+  }
+
+  /** Runs as row starts: neighbouring short runs copied into one, and everything once there are too many. */
+  static join(segs: Seg[]): Starts {
+    const copy = (run: Seg[]) => {
+      const a = new Int32Array(run.reduce((n, x) => n + x.n, 0));
+      let o = 0;
+      for (const x of run) {
+        for (let k = 0; k < x.n; k++) a[o + k] = x.a[x.i + k] + x.d;
+        o += x.n;
+      }
+      return { a, i: 0, n: a.length, d: 0 };
+    };
+    const out: Seg[] = [];
+    let run: Seg[] = [];
+    for (const x of segs) {
+      if (!x.n) continue;
+      if (x.n < SMALL) {
+        run.push(x);
+        continue;
+      }
+      if (run.length) out.push(run.length > 1 ? copy(run) : run[0]);
+      run = [];
+      out.push(x);
+    }
+    if (run.length) out.push(run.length > 1 ? copy(run) : run[0]);
+    return new Starts(out.length > MAX_SEGS ? [copy(out)] : out);
+  }
+
+  /** First row in [lo, hi) starting at or after `x` (hi if none). */
+  lower(x: number, lo: number, hi: number): number {
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.get(mid) < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  /** Last row starting at or before `x` (0 if none). */
+  floor(x: number): number {
+    let lo = 0;
+    let hi = this.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.get(mid) <= x) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  array(): Int32Array {
+    const a = new Int32Array(this.length);
+    let o = 0;
+    for (const x of this.segs) {
+      for (let k = 0; k < x.n; k++) a[o + k] = x.a[x.i + k] + x.d;
+      o += x.n;
+    }
+    return a;
+  }
+}
+
 interface SumEntry {
   t: Src;
   /** The text version it is valid for (see rows): lookups never compare texts, which costs their length. */
   v: number;
   a: number;
   b: number;
-  st: Int32Array;
+  st: Starts;
   /** Rows `[0, exact)` are exact, the rest estimated until refined. */
   exact: number;
 }
@@ -244,6 +371,15 @@ export class Wrapper {
   private diff: { old: Src; text: Src; p: number; q: number } | null = null;
   /** The last `rows()` call, whose unchanged lines the next one reuses. */
   private last: { text: Src; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array } | null = null;
+  /**
+   * rows() reuses its arrays two calls later (the last call's are read by the next): for a caller that
+   * keeps neither `odd` nor the counts past the next call. A document of a million lines would
+   * otherwise allocate megabytes per key.
+   */
+  recycle = false;
+  private outs: Int32Array<ArrayBuffer>[] = [];
+  private odds: Uint8Array<ArrayBuffer>[] = [];
+  private flip = 0;
 
   constructor(host: HTMLElement, lh: number, exact = true) {
     this.lh = lh;
@@ -345,14 +481,18 @@ export class Wrapper {
 
   /**
    * Rows taken by each line `text[A[i], B[i])`. Lines the arithmetic can't
-   * size are measured together. Also sets `odd`.
+   * size are measured together. Also sets `odd`. With an `edit`, `lines` can
+   * say which lines [lo, hi) it rewrote (the others only moved): no comparing
+   * every line with the last call's to find them. (See `recycle`.)
    */
-  rows(text: Src, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number]): Int32Array {
+  rows(text: Src, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number], lines?: readonly [number, number]): Int32Array {
     const n = A.length;
     const hint = edit ?? this.hint;
     this.hint = null;
-    const out = new Int32Array(n);
-    const odd = new Uint8Array(n);
+    this.flip ^= 1;
+    const f = this.flip;
+    const out = this.recycle && this.outs[f]?.length === n ? this.outs[f].fill(0) : (this.outs[f] = new Int32Array(n));
+    const odd = this.recycle && this.odds[f]?.length === n ? this.odds[f].fill(0) : (this.odds[f] = new Uint8Array(n));
     this.odd = odd;
     const cols = this.cols;
     if (!cols) return out.fill(1);
@@ -383,10 +523,15 @@ export class Wrapper {
       this.diff = { old, text, p, q };
       if (p < Math.min(old.length, text.length) || old.length !== text.length) this.version(old, text, p, q);
       const m = last.A.length;
-      while (lo < n && lo < m && B[lo] < p && A[lo] === last.A[lo] && B[lo] === last.B[lo]) lo++;
       const d = text.length - old.length;
       const dk = n - m;
-      while (hi > lo && hi - 1 - dk >= lo && hi - 1 - dk < m && A[hi - 1] >= text.length - q && A[hi - 1] - d === last.A[hi - 1 - dk] && B[hi - 1] - d === last.B[hi - 1 - dk]) hi--;
+      if (told && lines && lines[0] >= 0 && lines[0] <= lines[1] && lines[1] <= n && lines[1] - dk >= lines[0] && lines[1] - dk <= m) {
+        lo = lines[0];
+        hi = lines[1];
+      } else {
+        while (lo < n && lo < m && B[lo] < p && A[lo] === last.A[lo] && B[lo] === last.B[lo]) lo++;
+        while (hi > lo && hi - 1 - dk >= lo && hi - 1 - dk < m && A[hi - 1] >= text.length - q && A[hi - 1] - d === last.A[hi - 1 - dk] && B[hi - 1] - d === last.B[hi - 1 - dk]) hi--;
+      }
       out.set(last.out.subarray(0, lo));
       odd.set(last.odd.subarray(0, lo));
       out.set(last.out.subarray(hi - dk, m), hi);
@@ -450,7 +595,7 @@ export class Wrapper {
         odd[k] = 1;
       }
       if (!this.exact && b - a > LONG_LINE) {
-        out[k] = this.sum(text, a, b).length;
+        out[k] = this.rowsOf(text, a, b).length;
         continue;
       }
       const s = text.slice(a, b);
@@ -510,8 +655,8 @@ export class Wrapper {
       return Math.min(b - a, r * this.cols - cells + chars);
     }
     if (!this.exact && b - a > LONG_LINE) {
-      const st = this.sum(text, a, b);
-      return r < st.length ? st[r] : b - a;
+      const st = this.rowsOf(text, a, b);
+      return r < st.length ? st.get(r) : b - a;
     }
     const m = this.mirror(text.slice(a, b));
     return r >= m.rows ? b - a : this.probe(m, b - a, r);
@@ -526,17 +671,7 @@ export class Wrapper {
       const col = cells === chars ? off - a : off - a <= chars ? 0 : cells + off - a - chars;
       return Math.min(rows - 1, Math.floor(col / this.cols));
     }
-    if (!this.exact && b - a > LONG_LINE) {
-      const st = this.sum(text, a, b);
-      let lo = 0;
-      let hi = st.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (st[mid] <= off - a) lo = mid;
-        else hi = mid - 1;
-      }
-      return lo;
-    }
+    if (!this.exact && b - a > LONG_LINE) return this.rowsOf(text, a, b).floor(off - a);
     const m = this.mirror(text.slice(a, b));
     const o = Math.min(b - a - 1, off - a);
     return Math.min(m.rows - 1, this.probeRow(m, o, m.el.getBoundingClientRect().top));
@@ -696,6 +831,11 @@ export class Wrapper {
    * `rows()` (or `edited()`), else the line is compared with the last one in place.
    */
   private sum(t: Src, a: number, b: number): Int32Array {
+    return this.rowsOf(t, a, b).array();
+  }
+
+  /** `sum`, as runs shared with the line's earlier rows (see Starts). */
+  private rowsOf(t: Src, a: number, b: number): Starts {
     const last = this.lastSum;
     // (By version, not by text. A text rows() wasn't given, from a direct caller, is a version of its own.)
     if (t !== this.verText) {
@@ -706,7 +846,7 @@ export class Wrapper {
     for (const e of this.sums) if (e.v === this.ver && e.a === a && e.b === b) return (this.lastSum = e).st;
     const len = b - a;
     // The old rows: kept before the edit; after `tail` (the edit's end) a row start `d` past an old one resynchronizes.
-    let old: Int32Array | null = null;
+    let old: Starts | null = null;
     let exact = 0;
     let p = 0;
     let edit = 0;
@@ -746,25 +886,17 @@ export class Wrapper {
     // Estimated rows (see below) can't anchor a resynchronization.
     if (old && exact < old.length) tail = Infinity;
     // The first old row starting at or after `p` (rows are in order: no walking the line's rows to it).
-    let keep = 1;
-    if (old) {
-      let hi = Math.min(old.length, exact);
-      while (keep < hi) {
-        const mid = (keep + hi) >> 1;
-        if (old[mid] < p) keep = mid + 1;
-        else hi = mid;
-      }
-    }
+    const keep = old ? old.lower(p, 1, Math.min(old.length, exact)) : 1;
     // Rows `[0, keep)` are the old ones; `starts` are new; then old rows from `from`, shifted by `d`.
     const starts: number[] = [];
     let from = -1;
     let j = keep;
-    const at = old ? old[keep - 1] : 0;
+    const at = old ? old.get(keep - 1) : 0;
     const brk = (x: number) => {
       starts.push(x);
       if (x < tail || !old) return false;
-      while (j < old.length && old[j] + d < x) j++;
-      if (j >= old.length || old[j] + d !== x) return false;
+      while (j < old.length && old.get(j) + d < x) j++;
+      if (j >= old.length || old.get(j) + d !== x) return false;
       from = j + 1;
       return true;
     };
@@ -773,24 +905,23 @@ export class Wrapper {
     const near = Math.max(p, at, edit);
     const stop = tail === Infinity && len - near > LAZY_ROWS ? near + LAZY_ROWS : len;
     const resynced = this.breakRows(t, a, len, st, stop, brk, (x) => void starts.push(x));
-    const rest = old && from >= 0 ? old.length - from : 0;
+    const runs = old ? old.part(0, keep, 0) : [{ a: Int32Array.of(0), i: 0, n: 1, d: 0 }];
     if (!resynced && st.i < len) {
       // Estimated: whole rows of printable ASCII (JSON is mostly that) from the last exact start.
       const full = Math.max(1, Math.floor(this.width / this.cw));
-      const head = keep + starts.length;
       const more = Math.max(0, Math.ceil((len - st.lastStart) / full) - 1);
-      const out = new Int32Array(head + more);
-      if (old) out.set(old.subarray(0, keep));
-      for (let k = 0; k < starts.length; k++) out[keep + k] = starts[k];
-      for (let k = 0; k < more; k++) out[head + k] = st.lastStart + (k + 1) * full;
-      const e = this.keepSum(t, a, b, out, head);
+      const head = keep + starts.length;
+      const est = new Int32Array(starts.length + more);
+      est.set(starts);
+      for (let k = 0; k < more; k++) est[starts.length + k] = st.lastStart + (k + 1) * full;
+      runs.push({ a: est, i: 0, n: est.length, d: 0 });
+      const e = this.keepSum(t, a, b, Starts.join(runs), head);
       this.refine(e, st);
-      return out;
+      return e.st;
     }
-    const out = new Int32Array(keep + starts.length + rest);
-    if (old) out.set(old.subarray(0, keep));
-    for (let k = 0; k < starts.length; k++) out[keep + k] = starts[k];
-    if (old) for (let k = 0, o = keep + starts.length; k < rest; k++) out[o + k] = old[from + k] + d;
+    runs.push({ a: Int32Array.from(starts), i: 0, n: starts.length, d: 0 });
+    if (old && from >= 0) old.part(from, old.length, d, runs);
+    const out = Starts.join(runs);
     return this.keepSum(t, a, b, out, out.length).st;
   }
 
@@ -896,9 +1027,9 @@ export class Wrapper {
     const add = (x: number) => void job.starts.push(x);
     while (s.i < len && performance.now() < until) this.breakRows(e.t, e.a, len, s, s.i + 20_000, (x) => (add(x), false), add);
     if (s.i < len) return false;
-    const st = new Int32Array(e.exact + job.starts.length);
-    st.set(e.st.subarray(0, e.exact));
-    st.set(job.starts, e.exact);
+    const runs = e.st.part(0, e.exact, 0);
+    runs.push({ a: Int32Array.from(job.starts), i: 0, n: job.starts.length, d: 0 });
+    const st = Starts.join(runs);
     e.st = st;
     e.exact = st.length;
     // The last rows() call counted the line's estimated rows, and the next one reuses its counts.
@@ -945,7 +1076,7 @@ export class Wrapper {
   }
 
   /** Remembers `st` as the row starts of `t[a, b)` (see `sum`); rows from `exact` on are estimated. `from`: the entry it replaces, whose pending refinement it takes over. */
-  private keepSum(t: Src, a: number, b: number, st: Int32Array, exact: number, from?: SumEntry): SumEntry {
+  private keepSum(t: Src, a: number, b: number, st: Starts, exact: number, from?: SumEntry): SumEntry {
     const e: SumEntry = { t, a, b, st, exact, v: this.ver };
     if (from) for (const job of this.pending) if (job.e === from) job.e = e;
     this.lastSum = e;

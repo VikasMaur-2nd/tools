@@ -39,6 +39,12 @@ export function stringState(text: string, a: number, b: number, state = 0): numb
   return s;
 }
 
+/** Right-to-left letters (Hebrew, Arabic, Syriac, Thaana, NKo... and their supplementary planes) and bidi controls. */
+const RTL = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefe\u061c\u200f\u202a-\u202e\u2066-\u2069]|\ud802[\udc00-\udfff]|\ud803[\udc00-\udfff]|\ud83a[\udc00-\udfff]|\ud83b[\udc00-\udfff]/;
+
+/** Can text order differently in `t[a, b)` than it is stored (does it hold anything right-to-left)? */
+export const mayReorder = (t: string, a: number, b: number) => RTL.test(t.slice(a, b));
+
 /**
  * `t[a, b)` as invisible, zero-size context for a row of a long line drawn on
  * its own: right-to-left text orders by its neighbours on the line, so this
