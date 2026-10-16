@@ -10,7 +10,8 @@ export const TAB = 4;
 export interface Chars {
   readonly length: number;
   charCodeAt(i: number): number;
-  indexOf(s: string, from?: number): number;
+  /** (A Doc stops searching at `to`; a string searches on.) */
+  indexOf(s: string, from?: number, to?: number): number;
 }
 
 /** End (exclusive, before the '\n') of line `ln`. */
@@ -30,13 +31,13 @@ export function lineOfIn(ls: number[], off: number) {
 
 /** Columns of t[s, e) with tabs expanded to TAB stops (equals e - s without tabs). */
 export function lineWidth(t: Chars, s: number, e: number) {
-  let tab = t.indexOf('\t', s);
+  let tab = t.indexOf('\t', s, e);
   if (tab === -1 || tab >= e) return e - s;
   // Tab to tab with the native search: a huge line costs its tabs, not its characters.
   let col = tab - s;
   while (tab !== -1 && tab < e) {
     col += TAB - (col % TAB);
-    const next = t.indexOf('\t', tab + 1);
+    const next = t.indexOf('\t', tab + 1, e);
     const end = next === -1 || next >= e ? e : next;
     col += end - tab - 1;
     tab = end < e ? next : -1;
@@ -63,8 +64,13 @@ export function lineStarts(t: string) {
 /** Widest line of `t` in columns. */
 export function maxWidth(t: Chars, ls: number[]) {
   let max = 0;
+  // The next tab, found once for all the lines before it (a search per line could run to the end each time).
+  let tab = t.indexOf('\t', 0);
   for (let ln = 0; ln < ls.length; ln++) {
-    const w = lineWidth(t, ls[ln], lineEndIn(ls, t.length, ln));
+    const s = ls[ln];
+    const e = lineEndIn(ls, t.length, ln);
+    if (tab !== -1 && tab < s) tab = t.indexOf('\t', s);
+    const w = tab === -1 || tab >= e ? e - s : lineWidth(t, s, e);
     if (w > max) max = w;
   }
   return max;
