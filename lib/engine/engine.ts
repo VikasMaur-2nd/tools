@@ -12,7 +12,6 @@ import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type 
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
-import type { AnalysisResult } from './reindent.worker';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -328,7 +327,6 @@ export class Engine {
       }
       if (this.settings.autoFormat) setTimeout(this.autoFormat, 0);
     }
-    this.analysisJob = null;
     this.ed.setBrackets(-1, -1);
     clearTimeout(this.fmtTimer);
     clearTimeout(this.convTimer);
@@ -352,7 +350,7 @@ export class Engine {
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
       clearTimeout(this.timer);
-      this.timer = window.setTimeout(() => this.analyzeLater(), len < 100_000 ? 60 : len < 250_000 ? 160 : len < 5_000_000 ? 500 : 700);
+      this.timer = window.setTimeout(this.analyzeTyped, len < 100_000 ? 60 : len < 250_000 ? 160 : len < 5_000_000 ? 500 : 700);
     }
     if (this.persistEnabled) this.persistSoon();
   };
@@ -382,27 +380,18 @@ export class Engine {
     return this.res;
   }
 
-  /** Typing in large input parses and formats in the existing worker. Stale replies are ignored. */
-  private analysisJob: { id: number; text: string; key: string } | null = null;
-  private analysisSeq = 1_000_000_000;
-  private preparedConvert: { src: string; key: string; out: string; error: string | null } | null = null;
-
-  private convertKey() { const s = this.settings; return JSON.stringify([s.target, s.rootName, s.tsStyle, s.csharpLib]); }
-  private analysisKey() { return this.fmtSettings() + this.settings.view + this.convertKey(); }
-
-  private analyzeLater() {
+  /**
+   * After typing: a big document's output is re-indented in the worker and
+   * drawn first, its analysis follows when the page is idle (see outputFirst),
+   * so neither blocks the keys.
+   */
+  private analyzeTyped = () => {
     const text = this.ed.text;
-    if (text.length < 100_000 || readJwt(text, this.indent)) return this.analyze();
-    const worker = this.reindentWorker();
-    if (!worker) return this.analyze();
-    const job = { id: ++this.analysisSeq, text, key: this.analysisKey() };
-    this.analysisJob = job;
-    worker.postMessage({ id: job.id, text, indent: this.indent, analysis: { lines: LINES_FILE.test(store.get().fileName ?? ''), sort: this.settings.sortKeys, minify: this.settings.minify || this.settings.escape, convert: this.settings.view === 'convert' ? { target: this.settings.target, rootName: this.settings.rootName, tsStyle: this.settings.tsStyle, csharpLib: this.settings.csharpLib } : undefined } });
-  }
+    if (!this.outputFirst(text, store.get().fileName, () => this.ed.text === text && this.analyze())) this.analyze();
+  };
 
-  analyze(prepared?: AnalysisResult) {
+  analyze() {
     clearTimeout(this.timer);
-    this.analysisJob = null;
     const ed = this.ed;
     const text = ed.text;
     const reset = this.resetNext;
@@ -432,9 +421,9 @@ export class Engine {
     const t0 = performance.now();
     const jwt = readJwt(text, this.indent);
     const src = jwt ? jwt.json : text;
-    const res = prepared?.res ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
+    const res = parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
     const lines = !jwt && jsonLines(text, res);
-    const ms = prepared?.ms ?? performance.now() - t0;
+    const ms = performance.now() - t0;
     this.res = res;
     this.jwt = jwt;
     ed.setJwt(jwt ? jwt.at : null);
@@ -490,14 +479,7 @@ export class Engine {
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
     this.syncTableState();
     this.updateBrackets();
-    this.measure(res.root && !jwt ? res : null, text, prepared?.min);
-    if (prepared?.converted) this.preparedConvert = { src, key: this.convertKey(), ...prepared.converted };
-    if (prepared && res.root && this.settings.view === 'format') {
-      const key = this.fmtSettings();
-      soon(() => {
-        if (this.ed.text === text && key === this.fmtSettings() && this.settings.view === 'format') this.drawFormat(prepared.formatted, src, key);
-      });
-    }
+    this.measure(res.root && !jwt ? res : null, text);
     this.afterDoc();
   }
 
@@ -521,7 +503,7 @@ export class Engine {
    * settles (one minify + native compression per codec, never on the
    * keystroke). Invalid documents have none.
    */
-  private measure(res: ParseResult | null, text: string, min?: string) {
+  private measure(res: ParseResult | null, text: string) {
     clearTimeout(this.sizeTimer);
     const seq = ++this.sizeSeq;
     const prev = store.get().sizes;
@@ -533,7 +515,7 @@ export class Engine {
     this.sizeTimer = window.setTimeout(
       () => idle(async () => {
         if (seq !== this.sizeSeq) return;
-        const blob = new Blob([min ?? formatDoc(text, res, '')]);
+        const blob = new Blob([formatDoc(text, res, '')]);
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
         if (blob.size <= 32_000_000) {
@@ -890,22 +872,7 @@ export class Engine {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; analysis?: AnalysisResult; diags?: Diagnostic[] }>) => {
-        if (e.data.diags) {
-          const job = this.compareJob;
-          if (job?.id === e.data.id && job.text === this.ed2.text) this.applyCompareDiags(job.text, e.data.diags);
-          return;
-        }
-        if (e.data.analysis) {
-          const job = this.analysisJob;
-          const result = e.data.analysis;
-          if (job?.id === e.data.id) soon(() => {
-            if (this.analysisJob !== job || job.text !== this.ed.text) return;
-            if (job.key !== this.analysisKey()) return this.analyzeLater();
-            this.analyze(result);
-          });
-          return;
-        }
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
         const job = this.reindentJob;
         if (!job || job.id !== e.data.id) return;
@@ -919,8 +886,6 @@ export class Engine {
         const job = this.reindentJob;
         this.reindentJob = null;
         job?.fallback();
-        if (this.analysisJob) { this.analysisJob = null; this.analyze(); }
-        if (this.compareJob) { this.compareJob = null; this.analyzeCompare(); }
       };
       this.worker = w;
       const doc = JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ id: i, name: `Zoë ${i}`, tags: ['a', 'b'], n: 1.5e3, ok: true, x: null, s: 'say "hi"\n' })));
@@ -1064,22 +1029,10 @@ export class Engine {
 
   // ── Compare (second editor) ────────────────────────────────────────────
 
-  private compareJob: { id: number; text: string } | null = null;
-
   private onCompareChange = () => {
-    this.compareJob = null;
     clearTimeout(this.cmpTimer);
     const len = this.ed2.text.length;
-    this.cmpTimer = window.setTimeout(this.analyzeCompareLater, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
-  };
-
-  private analyzeCompareLater = () => {
-    const text = this.ed2.text;
-    const worker = text.length >= 100_000 ? this.reindentWorker() : null;
-    if (!worker) return this.analyzeCompare();
-    const job = { id: ++this.analysisSeq, text };
-    this.compareJob = job;
-    worker.postMessage({ id: job.id, text, compare: true });
+    this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
   };
 
   /** Squiggles for the modified document + publish it to the Compare panel. */
@@ -1093,15 +1046,10 @@ export class Engine {
       if (r.error) diags.push({ p: r.error.p, cls: 'me' });
       for (let i = 0; i < r.warnings.length && i < 300; i++) diags.push({ p: r.warnings[i].p, cls: 'mw' });
     }
-    this.applyCompareDiags(text, diags);
-  };
-
-  private applyCompareDiags(text: string, diags: Diagnostic[]) {
-    this.compareJob = null;
     this.ed2.setDiagnostics(diags);
     store.set({ cmpText: text });
     write(KEYS.cmp, text && text.length <= MAX_PERSIST ? text : null);
-  }
+  };
 
   /** Called by the Compare panel with per-line marks for both editors. */
   compareMarks(left: Uint8Array | null, right: Uint8Array | null) {
@@ -1477,9 +1425,7 @@ export class Engine {
       // CSV and Excel share one flattening (dotted columns) over the main array of
       // records; Excel is a binary download, so its preview is the same table.
       const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
-      const prepared = this.preparedConvert?.src === this.goodText && this.preparedConvert.key === this.convertKey() ? this.preparedConvert : null;
-      if (prepared?.error) throw new Error(prepared.error);
-      const out = prepared ? prepared.out : xlsx
+      const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
         : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
