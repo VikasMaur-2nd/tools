@@ -295,6 +295,7 @@ export class CodeView {
     const cw = this.cw;
     const reuse = change && !scanner && !resized && cols === this.layoutCols && cw === this.layoutCw && wr === this.layoutWrap && !folded.size && !this.folded.size && this.vis.length === this.ls.length ? change : null;
     const n = index.starts.length;
+    const small = text.length < 2_000_000;
     const vis = new Int32Array(n);
     const rs = new Int32Array(n + 1);
     const odd = new Uint8Array(n);
@@ -306,13 +307,13 @@ export class CodeView {
     const endOf = (ln: number) => ln + 1 < n ? index.starts[ln + 1] - 1 : text.length;
     const step = () => {
       if (seq !== this.layoutSeq) return;
-      const until = text.length < 2_000_000 ? Infinity : performance.now() + 8;
+      const until = small ? Infinity : performance.now() + 8;
       do {
         const batch: number[] = [];
         const base = index.starts[i];
-        // Bound both the line count and text passed to the wrapper. It never compares whole outputs.
-        for (; i < n && batch.length < 512; i++) {
-          if (batch.length && endOf(i) - base > 64_000) break;
+        // Large outputs bound each wrapper call; small documents keep one shared glyph/layout pass.
+        for (; i < n && (small || batch.length < 512); i++) {
+          if (!small && batch.length && endOf(i) - base > 64_000) break;
           if (scanner) {
             states[i] = state;
             state = scanner.scan('\n', 0, 1, scanner.scan(text, index.starts[i], endOf(i), state));

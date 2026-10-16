@@ -508,8 +508,11 @@ export class Engine {
         this.table.setNode(resolve(res.root, this.tablePath) ?? res.root, true);
       } else this.table.setNode(null);
       ed.setScope(this.sel && this.sel.t >= ARR ? this.sel.s : -1, this.sel ? this.sel.e : -1);
-    } else if (reset || !this.good) {
+    } else if (reset || !this.good && !this.goodPacked) {
       this.good = null;
+      this.goodPacked = null;
+      this.goodMetrics = null;
+      this.goodText = '';
       this.tree.setRoot(null, true);
       this.table.setNode(null);
       ed.setScope(-1, -1);
@@ -823,7 +826,7 @@ export class Engine {
 
   /** Turns a string value that holds JSON (`"{\"a\":1}"`) into real JSON, in place. */
   async expandNested(n: JNode | null = this.sel) {
-    if (n && n === this.sel && this.packed) { this.fresh(); n = this.sel; }
+    if (n === this.sel && this.packed && this.selPath) { this.fresh(); n = this.sel; }
     if (!n || n.t !== STR || !this.synced) return this.toast('Select a string that contains JSON', 'info');
     const { embeddedJson } = await import('../json/smart');
     const inner = embeddedJson(n.v as string);
@@ -1117,12 +1120,13 @@ export class Engine {
   }
 
   copyValue(n: JNode | null = this.sel) {
-    if (n && n === this.sel && this.goodPacked) { this.materializeGood(); n = this.sel; }
+    if (n === this.sel && this.goodPacked && this.selPath) { this.materializeGood(); n = this.sel; }
     if (!n) return this.toast('Select a node first', 'info');
     void this.copy(copyText(n, this.indent), n.t >= ARR ? 'Copied value as JSON' : 'Copied value');
   }
 
   copyPath(n: JNode | null = this.sel) {
+    if (n === this.sel && this.goodPacked && this.selPath) return void this.copy(formatPath(this.selPath), 'Copied path');
     if (!n) return this.toast('Select a node first', 'info');
     void this.copy(formatPath(pathOf(n)), 'Copied path');
   }
@@ -1437,6 +1441,8 @@ export class Engine {
   private pendingFmtWorkerId = 0;
   private fmtKey = '';
   private fmtText = '';
+  private fmtVersion = 0;
+  private fmtCounts: { version: number; pretty: number; minified: number; escaped: number } | null = null;
   /** User Timing for DevTools: a file opened (tk:input) → its output painted (tk:formatted). */
   private markOutput = false;
 
@@ -1454,14 +1460,19 @@ export class Engine {
     const seq = ++this.fmtStatSeq;
     const stats = () => {
       if (seq !== this.fmtStatSeq) return;
+      const cached = this.fmtCounts;
+      if (cached?.version === this.fmtVersion) {
+        store.set({ fmt: { lines: this.fmt.lineCount, pretty: cached.pretty, minified: cached.minified, escaped: cached.escaped } });
+        return;
+      }
       const { minify, escape } = this.settings;
       const metrics = this.goodMetrics;
       const extra = metrics ? metrics.extra + metrics.units * this.indent.length : this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
       const bytes = metrics ? metrics.min + (this.settings.minify || this.settings.escape ? 0 : extra) : byteLength(text);
       const min = !text ? 0 : minify || escape ? bytes : bytes - extra;
-      store.set({
-        fmt: { lines: this.fmt.lineCount, pretty: text ? min + extra : 0, minified: min, escaped: escape && text ? metrics?.escaped ?? byteLength(this.fmt.text) : 0 },
-      });
+      const counts = { pretty: text ? min + extra : 0, minified: min, escaped: escape && text ? metrics?.escaped ?? byteLength(this.fmt.text) : 0 };
+      this.fmtCounts = { version: this.fmtVersion, ...counts };
+      store.set({ fmt: { lines: this.fmt.lineCount, ...counts } });
     };
     // A big document's sizes wait for a quiet moment (they only label the Pretty / Minify buttons).
     if (text.length > 500_000) idle(stats, 1000);
@@ -1479,6 +1490,8 @@ export class Engine {
   private drawFormat(text: string, src: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange) {
     this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;
+    this.fmtVersion++;
+    this.fmtStatSeq++;
     const { minify, escape } = this.settings;
     this.fmtSrc = src;
     this.fmtKey = key;
