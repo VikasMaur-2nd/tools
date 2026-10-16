@@ -1,6 +1,7 @@
 import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
+import { foldSig, lineEndIn, lineOfIn, lineStarts, patchLines, scanFolds } from './lines';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
 
@@ -61,8 +62,8 @@ export function loadSurface() {
     () => void (surfaceLoad = undefined),
   ));
 }
-/** Must match `tab-size` in CSS. */
-const TAB = 4;
+/** Edits inserting at most this much patch the line state (see model); bigger ones rescan. */
+const PATCH_CHARS = 1 << 16;
 
 export type ChangeKind = 'input' | 'paste' | 'set';
 
@@ -380,22 +381,28 @@ export class Editor {
    * Sets the document and refreshes everything derived from it.
    * `fromTa`: the textarea already holds `t` (user input).
    */
-  private model(t: string, fromTa: boolean, defer = false) {
+  private model(t: string, fromTa: boolean, defer = false, edit?: { a: number; b: number; ins: string }) {
+    const old = this.text;
     this.text = t;
-    const ls = [0];
-    let maxLen = 0;
-    let prev = 0;
-    for (let p = t.indexOf('\n'); p !== -1; p = t.indexOf('\n', p + 1)) {
-      if (p - prev > maxLen) maxLen = p - prev;
-      ls.push(p + 1);
-      prev = p + 1;
+    let rescan = true;
+    if (edit && edit.ins.length <= PATCH_CHARS && old.length - (edit.b - edit.a) + edit.ins.length === t.length) {
+      // A bounded edit: patch the line starts and the widest line instead of rescanning the document.
+      // The fold structure stands if the edit stays on one line and leaves that line's part in it alone.
+      const { a, b, ins } = edit;
+      const ls = this.ls;
+      const la = lineOfIn(ls, a);
+      const one = la === lineOfIn(ls, b) && ins.indexOf('\n') === -1;
+      const sig = one ? foldSig(old, ls[la], lineEndIn(ls, old.length, la)) : -1;
+      this.maxCols = patchLines(ls, old, t, a, b, ins, this.maxCols).max;
+      rescan = !one || foldSig(t, ls[la], lineEndIn(ls, t.length, la)) !== sig || this.close.length !== ls.length;
+    } else {
+      const { ls, max } = lineStarts(t);
+      this.ls = ls;
+      this.maxCols = max;
     }
-    if (t.length - prev > maxLen) maxLen = t.length - prev;
-    this.ls = ls;
-    if (maxLen && t.indexOf('\t') !== -1) maxLen = this.visualMax();
-    this.maxCols = maxLen;
+    const ls = this.ls;
     this.extraW = 0;
-    this.scanFolds();
+    if (rescan) this.scanFolds();
     this.buildDisplay();
     if (this.diagList.length) this.buildDiag();
 
@@ -498,7 +505,7 @@ export class Editor {
     this.pasteFull = false;
     this.shiftFolds(a, b, ins, true);
     this.shiftDiags(a, b, ins.length);
-    this.model(old.slice(0, a) + ins + old.slice(b), true);
+    this.model(old.slice(0, a) + ins + old.slice(b), true, false, { a, b, ins });
     this.surface?.select(...this.selAfter);
     if (this.compOld === null) this.record(old, this.text, kind, [a, b, a + ins.length]);
     this.ev.change('input');
@@ -529,19 +536,6 @@ export class Editor {
     this.model(this.text, false);
     this.focus();
     this.setCaret(caret);
-  }
-
-  private visualMax() {
-    const t = this.text;
-    let max = 0;
-    for (let ln = 0; ln < this.ls.length; ln++) {
-      const a = this.ls[ln];
-      const b = this.lineEnd(ln);
-      let col = 0;
-      for (let i = a; i < b; i++) col = t.charCodeAt(i) === 9 ? col + TAB - (col % TAB) : col + 1;
-      if (col > max) max = col;
-    }
-    return max;
   }
 
   lineEnd(ln: number) {
@@ -591,32 +585,8 @@ export class Editor {
    * folds after edits.
    */
   private scanFolds() {
-    const t = this.text;
-    const ls = this.ls;
-    const n = ls.length;
-    const close = new Int32Array(n).fill(-1);
-    const depth = new Int32Array(n);
-    const stack: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const s = ls[i];
-      const e = this.lineEnd(i);
-      let a = s;
-      while (a < e && (t.charCodeAt(a) === 32 || t.charCodeAt(a) === 9)) a++;
-      if (a === e) continue;
-      const first = t.charCodeAt(a);
-      if (first === 47 && t.charCodeAt(a + 1) === 47) continue; // a // comment line
-      let b = e - 1;
-      while (b > a && (t.charCodeAt(b) === 32 || t.charCodeAt(b) === 9 || t.charCodeAt(b) === 13)) b--;
-      if ((first === 125 || first === 93) && stack.length) {
-        const o = stack.pop() as number;
-        if (i > o + 1 && (b === a || (b === a + 1 && t.charCodeAt(b) === 44))) close[o] = i;
-      }
-      const last = t.charCodeAt(b);
-      if ((last === 123 || last === 91) && !(b === a && (first === 125 || first === 93))) {
-        depth[i] = stack.length;
-        stack.push(i);
-      }
-    }
+    const { close, depth } = scanFolds(this.text, this.ls);
+    const n = this.ls.length;
     this.close = close;
     this.depth = depth;
     // A fold survives an edit only if its block still spans the same lines.
