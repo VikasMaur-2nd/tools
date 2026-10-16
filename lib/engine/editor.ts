@@ -406,8 +406,9 @@ export class Editor {
     const notice = view && !lazy;
     if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
     this.lazy = view && lazy;
-    // A user edit keeps the big-document editor until the text is well under the threshold (no flip-flopping at it).
-    let custom = !view && (t.length >= SURFACE_CHARS || (!!this.surface && fromTa && t.length >= SURFACE_CHARS * 0.8));
+    // A user edit keeps the big-document editor until the text is well under the threshold (no flip-flopping
+    // at it), and never leaves it mid-composition (see onCompEnd).
+    let custom = !view && (t.length >= SURFACE_CHARS || (!!this.surface && fromTa && (t.length >= SURFACE_CHARS * 0.8 || this.compOld !== null)));
     if (t.length >= SURFACE_CHARS && !SurfaceClass) {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
@@ -1513,6 +1514,8 @@ export class Editor {
       this.compOld = null;
       this.selBefore = this.compSel;
       if (old !== null) this.record(old, this.text, 'insertText');
+      // The composition shrank the document: now the native editor can take over.
+      if (this.text.length < SURFACE_CHARS * 0.8) this.model(this.text, false);
       return;
     }
     this.compOld = null;
