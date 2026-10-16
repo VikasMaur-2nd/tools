@@ -93,6 +93,8 @@ export interface EditorEvents {
   copyAll(): void;
   /** A paste replaces the whole document with `text`: true if the listener loads it instead (see Engine.load). */
   fullPaste?(text: string): boolean;
+  /** Input is about to be handled: a document still on its way to the editor must arrive first. */
+  flush?(): void;
 }
 
 export interface Diagnostic {
@@ -372,6 +374,7 @@ export class Editor {
     this.gut.addEventListener('mousedown', this.onGutter);
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('keydown', this.onViewKey);
+    el.addEventListener('pointerdown', this.onPress, true);
     el.addEventListener('mouseup', this.onViewClick);
     el.addEventListener('paste', this.onViewPaste);
     document.addEventListener('selectionchange', this.onSel);
@@ -419,6 +422,7 @@ export class Editor {
     this.gut.removeEventListener('mousedown', this.onGutter);
     this.el.removeEventListener('scroll', this.onScroll);
     this.el.removeEventListener('keydown', this.onViewKey);
+    this.el.removeEventListener('pointerdown', this.onPress, true);
     this.el.removeEventListener('mouseup', this.onViewClick);
     this.el.removeEventListener('paste', this.onViewPaste);
     document.removeEventListener('selectionchange', this.onSel);
@@ -637,6 +641,16 @@ export class Editor {
     this.editAnyway();
     this.setCaret(at);
     return true;
+  }
+
+  /** A press in the editor: a document still on its way arrives first (see EditorEvents.flush). */
+  private onPress = () => {
+    this.ev.flush?.();
+  };
+
+  /** The user is working in the editor: a document waiting in the quiet view becomes editable now. */
+  takeOver() {
+    if (this.view && this.lazy) this.editAnyway();
   }
 
   /** Loads a huge document into the textarea anyway (slow once, then editable). */
@@ -1578,6 +1592,7 @@ export class Editor {
 
   private onBeforeInput = (e: InputEvent) => {
     if (this.quiet) return;
+    this.ev.flush?.();
     if (this.surface && e.cancelable && /^(insertLineBreak|insertParagraph)$/.test(e.inputType)) {
       e.preventDefault();
       this.newline();
@@ -1706,6 +1721,7 @@ export class Editor {
   };
 
   private onPaste = (e: ClipboardEvent) => {
+    this.ev.flush?.();
     const ta = this.ta;
     if (this.surface) {
       const text = e.clipboardData?.getData('text/plain');
@@ -1737,6 +1753,7 @@ export class Editor {
 
   /** Copy / cut with folds: the clipboard gets the hidden lines too. */
   private onCopy = (e: ClipboardEvent) => {
+    this.ev.flush?.();
     if (this.surface && e.clipboardData) {
       e.preventDefault();
       const [a, b] = this.selection;
@@ -1843,8 +1860,20 @@ export class Editor {
 
   /** View mode keys (the scroller has focus). */
   private onViewKey = (e: KeyboardEvent) => {
+    const view = this.view;
+    this.ev.flush?.();
+    // The document this key was for just arrived for editing: the editor answers it.
+    if (view && !this.view && e.target === this.el) return this.onKey(e);
     if (!this.view || e.target !== this.el) return;
     const mod = e.metaKey || e.ctrlKey;
+    // In the quiet view, select all selects the document for editing (cut, paste and typing then act on all of it).
+    if (this.lazy && mod && !e.altKey && e.code === 'KeyA') {
+      e.preventDefault();
+      this.wake(this.vcaret);
+      this.select(0, this.doc.length, false);
+      this.ev.caret();
+      return;
+    }
     // An editing key: the textarea takes focus now, so the key's input lands in it.
     if (this.lazy && !mod && !e.altKey && (e.key.length === 1 || e.isComposing || /^(Backspace|Delete|Enter|Process)$/.test(e.key))) {
       this.wake(this.vcaret);
@@ -1870,6 +1899,7 @@ export class Editor {
 
   /** View mode: pasting replaces the document (there is no caret to insert at). */
   private onViewPaste = (e: ClipboardEvent) => {
+    this.ev.flush?.();
     if (!this.view || e.target === this.ta) return;
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
@@ -1883,6 +1913,8 @@ export class Editor {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.isComposing) return;
+    // (A document still on its way arrives first: the key acts on what is shown.)
+    this.ev.flush?.();
     if (this.surface?.key(e)) return;
     const mod = e.metaKey || e.ctrlKey;
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {

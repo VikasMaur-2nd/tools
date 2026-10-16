@@ -217,6 +217,7 @@ export class Engine {
       escape: () => this.leaveEditor(),
       mode: (viewOnly) => store.set({ viewOnly }),
       copyAll: () => void this.copyAll(),
+      flush: this.flushLoad,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
@@ -906,9 +907,32 @@ export class Engine {
     this.loadSeq++; // drops what an earlier load still has pending
     store.set({ fileName: name });
     if (persist) write(KEYS.file, name);
-    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) return;
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) {
+      // Until the editor has it, input would act on the old document: the first input hands it over at once.
+      this.pendingLoad = { seq: this.loadSeq, text, persist };
+      return;
+    }
     this.finishLoad(text, persist);
   }
+
+  /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
+  private pendingLoad: { seq: number; text: string; persist: boolean } | null = null;
+
+  /**
+   * Input arrived in the editor before a pending load reached it (a key, a paste or a cut right after
+   * pasting a big document): give the editor the document now, so the input acts on what is shown.
+   */
+  private flushLoad = () => {
+    const p = this.pendingLoad;
+    if (!p || p.seq !== this.loadSeq) return;
+    this.pendingLoad = null;
+    // The load's deferred steps are dropped; the analysis draws its output as usual.
+    this.loadSeq++;
+    this.finishLoad(p.text, p.persist, true);
+    // Arrived for the user's input: editable at once, not in the quiet view.
+    this.ed.takeOver();
+    this.onCaret();
+  };
 
   /**
    * A big strict-JSON document in the Format view: draws its output first,
@@ -1050,6 +1074,7 @@ export class Engine {
 
   /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
   private finishLoad(text: string, persist: boolean, split = false) {
+    this.pendingLoad = null;
     this.ed.setValue(text, 0, true);
     if (this.refocus) this.ed.focus();
     this.refocus = false;

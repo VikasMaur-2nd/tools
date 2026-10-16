@@ -638,44 +638,74 @@ export class CodeView {
     this.hi = -1;
     const q = this.q;
     if (!q) return;
+    // Smart case: lowercase queries match any case.
     const cs = q !== q.toLowerCase();
     const qn = cs ? q : q.toLowerCase();
-    let ln = 0;
-    let col = 0;
+    const n = this.text.length;
+    const ls = this.ls;
+    const hits = this.hits;
+    const add = (at: number) => {
+      // The line holding offset `at` (a query has no line break, so a match stays in one line).
+      let lo = 0;
+      let hi = ls.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (ls[mid] <= at) lo = mid;
+        else hi = mid - 1;
+      }
+      hits.push(lo, at - ls[lo]);
+      let cols = this.hitLines.get(lo);
+      if (!cols) this.hitLines.set(lo, (cols = []));
+      cols.push(at - ls[lo]);
+    };
+    // Big chunks of the whole text with the native search (a line at a time costs a slice and a
+    // lowercase copy per line); in 8 ms steps for a big output, so typing is never held up.
+    const CHUNK = 1 << 20;
+    let pos = 0;
     const run = () => {
       if (seq !== this.findSeq) return;
-      const until = this.text.length < 2_000_000 ? Infinity : performance.now() + 8;
-      while (ln < this.ls.length && this.hits.length < MAX_HITS * 2) {
-        const line = this.line(ln);
-        const end = Math.min(line.length, col + 64_000);
-        const part = line.slice(col, end + qn.length - 1);
-        const search = cs ? part : part.toLowerCase();
-        let p = search.indexOf(qn);
-        let next = end;
-        while (p >= 0 && col + p < end && this.hits.length < MAX_HITS * 2) {
-          const at = col + p;
-          this.hits.push(ln, at);
-          let cols = this.hitLines.get(ln);
-          if (!cols) this.hitLines.set(ln, (cols = []));
-          cols.push(at);
-          next = Math.max(next, at + qn.length);
-          p = search.indexOf(qn, p + qn.length);
+      const until = n < 2_000_000 ? Infinity : performance.now() + 8;
+      while (pos < n && hits.length < MAX_HITS * 2) {
+        const end = Math.min(n, pos + CHUNK);
+        const raw = this.model.slice(pos, Math.min(n, end + qn.length - 1));
+        const part = cs ? raw : raw.toLowerCase();
+        if (part.length !== raw.length) {
+          // Lowercasing changed lengths (e.g. İ): offsets don't map, search this chunk line by line.
+          for (let ln = Math.max(0, this.lineOfOffset(pos)); ln < ls.length && ls[ln] < end; ln++) {
+            const line = cs ? this.line(ln) : this.line(ln).toLowerCase();
+            for (let p = line.indexOf(qn); p >= 0 && hits.length < MAX_HITS * 2; p = line.indexOf(qn, p + qn.length)) if (ls[ln] + p >= pos && ls[ln] + p < end) add(ls[ln] + p);
+          }
+        } else {
+          for (let p = part.indexOf(qn); p >= 0 && pos + p < end && hits.length < MAX_HITS * 2; p = part.indexOf(qn, p + qn.length)) add(pos + p);
         }
-        col = next;
-        if (col >= line.length) { ln++; col = 0; }
-        if (performance.now() >= until) return soon(run);
+        pos = end;
+        if (performance.now() >= until) return void soon(run);
       }
-      if (this.hits.length) {
+      if (hits.length) {
+        // Start from the first match at or below the top of the view.
         const top = this.lineAtRow(Math.floor(this.sc.top / RH));
         let i = 0;
-        while (i * 2 < this.hits.length && this.hits[i * 2] < top) i++;
-        this.hi = i * 2 < this.hits.length ? i : 0;
+        while (i * 2 < hits.length && hits[i * 2] < top) i++;
+        this.hi = i * 2 < hits.length ? i : 0;
         if (jump) this.goto();
       }
       this.render(true);
-      this.onFind?.({ total: this.hits.length / 2, index: this.hi });
+      this.onFind?.({ total: hits.length / 2, index: this.hi });
     };
     run();
+  }
+
+  /** The line holding text offset `off`. */
+  private lineOfOffset(off: number) {
+    const ls = this.ls;
+    let lo = 0;
+    let hi = ls.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (ls[mid] <= off) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
   }
 
   private goto() {
