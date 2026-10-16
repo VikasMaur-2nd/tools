@@ -1498,7 +1498,7 @@ export class Editor {
     const ta = this.ta;
     if (this.surface) {
       const text = e.clipboardData?.getData('text/plain');
-      if (text !== undefined) {
+      if (text) {
         e.preventDefault();
         const [a, b] = this.selection;
         this.pasteFull = a === 0 && b === this.text.length;

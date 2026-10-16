@@ -108,6 +108,10 @@ export class Surface {
    */
   adopt() {
     const ta = this.h.ta;
+    // Only a selection the textarea made itself (ours is set in sync).
+    const k = this.mark();
+    if (k === this.native) return false;
+    this.native = k;
     const a = this.start + ta.selectionStart;
     const b = this.start + ta.selectionEnd;
     const [s, e] = this.selection;
@@ -134,6 +138,14 @@ export class Surface {
     const [a, b] = this.selection;
     const dir = this.head < this.anchor ? 'backward' : 'forward';
     if (ta.selectionStart !== at(a) || ta.selectionEnd !== at(b) || ta.selectionDirection !== dir) ta.setSelectionRange(at(a), at(b), dir);
+    this.native = this.mark();
+  }
+
+  /** The textarea's selection, where the passage is. */
+  private native = '';
+  private mark() {
+    const ta = this.h.ta;
+    return `${this.start} ${ta.selectionStart} ${ta.selectionEnd} ${ta.selectionDirection}`;
   }
 
   beforeInput(e: InputEvent) {
