@@ -383,6 +383,8 @@ export class Editor {
    */
   private model(t: string, fromTa: boolean, defer = false, edit?: { a: number; b: number; ins: string }) {
     const old = this.text;
+    // The wrapper may reuse rows outside this edit, in the rows() call this model() makes (see rewrap).
+    this.wrapEdit = edit && old === this.wrapText && old.length - (edit.b - edit.a) + edit.ins.length === t.length ? [edit.a, edit.b, edit.a + edit.ins.length] : null;
     this.text = t;
     let rescan = true;
     if (edit && edit.ins.length <= PATCH_CHARS && old.length - (edit.b - edit.a) + edit.ins.length === t.length) {
@@ -727,6 +729,11 @@ export class Editor {
   }
 
   /** Re-wraps rows after a change of text, folds, width or font. */
+  /** The edit since the last rows() call, when model() knows it (null: compare the texts). */
+  private wrapEdit: [number, number, number] | null = null;
+  /** The text the wrapper last measured rows for (an edit hint is only valid against it). */
+  private wrapText = '';
+
   private rewrap() {
     const wr = this.wrapper as Wrapper;
     const space = this.el.clientWidth - this.gutW - PAD_L - PAD_RW;
@@ -744,7 +751,9 @@ export class Editor {
       A[k] = this.ls[ln];
       B[k] = this.lineEnd(ln);
     }
-    const rows = wr.rows(this.text, A, B);
+    const rows = wr.rows(this.text, A, B, this.wrapEdit ?? undefined);
+    this.wrapEdit = null;
+    this.wrapText = this.text;
     const wy = new Int32Array(n + 1);
     for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
     this.wy = wy;
@@ -1781,7 +1790,7 @@ export class Editor {
     this.typing = true;
     this.shiftFolds(a, b, text, true);
     this.shiftDiags(a, b, text.length);
-    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface);
+    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface, { a, b, ins: text });
     this.select(sel[0], sel[1], false);
     this.ev.change('input');
   }
@@ -1830,7 +1839,7 @@ export class Editor {
     this.typing = true;
     this.shiftFolds(a, b, text, true);
     this.shiftDiags(a, b, text.length);
-    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface);
+    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface, { a, b, ins: text });
     this.select(s1, s2, false);
     this.ev.change(kind);
   }
