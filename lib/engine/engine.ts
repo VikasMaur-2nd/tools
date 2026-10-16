@@ -1,7 +1,7 @@
 import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
 import { byteLength, copyText, formatDoc, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
-import { Editor, type ChangeKind, type Diagnostic } from './editor';
+import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
 import { TableView } from './table';
 import { CodeView } from './codeview';
@@ -1906,6 +1906,7 @@ export class Engine {
             for (const c of 'é Я α 中 あ 한 ب א ह ไ ✓ 😀'.split(' ')) x.measureText(c);
           },
           () => this.reindentWorker(),
+          () => loadSurface(),
         );
         const next = () => {
           const step = steps.shift();

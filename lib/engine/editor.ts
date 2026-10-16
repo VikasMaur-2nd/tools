@@ -1,5 +1,5 @@
 import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
-import { Surface } from './surface';
+import type { Surface } from './surface';
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
@@ -52,6 +52,15 @@ const VIEW_LINES = 30_000;
 const LAZY_CHARS = 100_000;
 /** Keep native editing for normal documents. */
 const SURFACE_CHARS = 250_000;
+/** The big-document editor's module: most visits never need it, so it loads on first need (and when the page is idle, see Engine). */
+let SurfaceClass: typeof Surface | undefined;
+let surfaceLoad: Promise<void> | undefined;
+export function loadSurface() {
+  return (surfaceLoad ??= import('./surface').then(
+    (m) => void (SurfaceClass = m.Surface),
+    () => void (surfaceLoad = undefined),
+  ));
+}
 /** Must match `tab-size` in CSS. */
 const TAB = 4;
 
@@ -397,12 +406,29 @@ export class Editor {
     const notice = view && !lazy;
     if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
     this.lazy = view && lazy;
-    const custom = !view && (t.length >= SURFACE_CHARS || (!!this.surface && fromTa));
+    // A user edit keeps the big-document editor until the text is well under the threshold (no flip-flopping at it).
+    let custom = !view && (t.length >= SURFACE_CHARS || (!!this.surface && fromTa && t.length >= SURFACE_CHARS * 0.8));
+    if (t.length >= SURFACE_CHARS && !SurfaceClass) {
+      // Native editing until the module arrives (it is usually cached already), then switch.
+      custom = false;
+      void loadSurface().then(() => {
+        if (SurfaceClass && !this.surface && !this.view && this.el.isConnected && this.text.length >= SURFACE_CHARS) this.model(this.text, false);
+      });
+    }
     if (custom && !this.surface) {
       const selection = this.selection;
       this.surface = this.makeSurface();
       this.surface.select(...selection);
-    } else if (!custom && this.surface) { this.surface.destroy(); this.surface = null; }
+    } else if (!custom && this.surface) {
+      const [sa, sb] = this.surface.selection;
+      this.surface.destroy();
+      this.surface = null;
+      // The textarea held only a passage: give it the document again, with the selection.
+      if (!view) {
+        this.ta.value = this.shown;
+        this.ta.setSelectionRange(this.m2d(sa), this.m2d(sb));
+      }
+    }
     if (this.surface) {
       // (A user edit places the selection itself, right after.)
       if (!fromTa) this.surface.select(...this.surface.selection);
@@ -428,7 +454,7 @@ export class Editor {
 
   private makeSurface() {
     const readText = () => this.text;
-    return new Surface({
+    return new SurfaceClass!({
       el: this.el, ta: this.ta,
       get text() { return readText(); },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
