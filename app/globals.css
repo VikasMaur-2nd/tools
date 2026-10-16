@@ -3142,20 +3142,20 @@ button.mi:focus-visible {
   display: block;
 }
 
-.ed-selection {
+.ed-ink .s {
   background: var(--sel);
 }
 
-.ed-composition {
+.ed-ink .u {
   border-bottom: 1px solid var(--fg);
 }
 
-.ed-caret {
+.ed-ink .c {
   visibility: hidden;
   background: var(--fg);
 }
 
-.ed.focused .ed-caret {
+.ed.focused .ed-ink .c {
   visibility: visible;
 }
 
@@ -3164,7 +3164,7 @@ button.mi:focus-visible {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .ed.focused .ed-caret {
+  .ed.focused .ed-ink .c {
     animation: ed-blink 1s step-end infinite;
   }
 }

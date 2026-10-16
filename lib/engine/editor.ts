@@ -136,6 +136,28 @@ function editRange(old: string, now: string, ss: number, se: number): [number, n
   return [a, eo, en];
 }
 
+/**
+ * Sets `el`'s children (one per string of `old`) to `rows`, rebuilding only
+ * the run between the unchanged first and last ones: typing redraws the rows
+ * it changed, not the view.
+ */
+function patch(el: HTMLElement, old: string[], rows: string[]) {
+  let f = 0;
+  let a = old.length;
+  let b = rows.length;
+  while (f < a && f < b && old[f] === rows[f]) f++;
+  while (a > f && b > f && old[a - 1] === rows[b - 1]) {
+    a--;
+    b--;
+  }
+  const kids = el.children;
+  if (kids.length !== old.length || (!f && a === old.length)) return void (el.innerHTML = rows.join(''));
+  for (let i = a - 1; i >= f; i--) kids[i].remove();
+  const html = rows.slice(f, b).join('');
+  if (f < kids.length) kids[f].insertAdjacentHTML('beforebegin', html);
+  else el.insertAdjacentHTML('beforeend', html);
+}
+
 /** Counts line breaks in `s`, stopping early at `cap`. */
 function countLines(s: string, cap: number) {
   let n = 0;
@@ -382,7 +404,8 @@ export class Editor {
       this.surface.select(...selection);
     } else if (!custom && this.surface) { this.surface.destroy(); this.surface = null; }
     if (this.surface) {
-      this.surface.select(...this.surface.selection);
+      // (A user edit places the selection itself, right after.)
+      if (!fromTa) this.surface.select(...this.surface.selection);
     } else if (view) {
       if (!this.view) this.vcaret = Math.min(this.caret, t.length);
       if (this.ta.value) this.ta.value = '';
@@ -409,12 +432,7 @@ export class Editor {
       el: this.el, ta: this.ta,
       get text() { return readText(); },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
-      moved: (nav) => {
-        this.updateCaret();
-        this.reveal(this.caret);
-        this.ev.caret();
-        if (nav) this.ev.nav();
-      },
+      moved: (nav) => this.surfaceMoved(nav),
       point: (x, y) => {
         const exact = this.offsetAt(x, y);
         if (exact !== null) return exact;
@@ -432,11 +450,18 @@ export class Editor {
     });
   }
 
+  private surfaceMoved(nav: boolean) {
+    this.updateCaret();
+    this.reveal(this.caret);
+    this.ev.caret();
+    if (nav) this.ev.nav();
+  }
+
   /** The input passage reports a bounded replacement in model offsets. */
   private surfaceEdit(a: number, b: number, ins: string, kind: string) {
     const old = this.text;
     if (a === b && !ins) return;
-    this.selBefore = this.selection;
+    this.selBefore = this.surface!.selection;
     this.selAfter = [a + ins.length, a + ins.length];
     this.typing = true;
     this.tabMovesFocus = false;
@@ -445,7 +470,7 @@ export class Editor {
     this.shiftDiags(a, b, ins.length);
     this.model(old.slice(0, a) + ins + old.slice(b), true);
     this.surface?.select(...this.selAfter);
-    if (this.compOld === null) this.record(old, this.text, kind);
+    if (this.compOld === null) this.record(old, this.text, kind, [a, b, a + ins.length]);
     this.ev.change('input');
   }
 
@@ -511,10 +536,12 @@ export class Editor {
   }
 
   get caret() {
+    this.surface?.adopt();
     return this.surface ? this.surface.head : this.view ? this.vcaret : this.d2m(this.ta.selectionStart);
   }
 
   get selection(): [number, number] {
+    this.surface?.adopt();
     return this.surface ? this.surface.selection : this.view ? [this.vcaret, this.vcaret] : [this.d2m(this.ta.selectionStart), this.d2m(this.ta.selectionEnd)];
   }
 
@@ -997,7 +1024,7 @@ export class Editor {
     const vcB = vcA + Math.ceil(this.el.clientWidth / this.cw);
     if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return this.place(false);
 
-    const overscan = this.surface ? 12 : OVERSCAN;
+    const overscan = this.surface ? 8 : OVERSCAN;
     const margin = this.surface ? 120 : H_OVERSCAN;
     const first = Math.max(0, vf - overscan);
     const last = Math.min(n, vl + overscan);
@@ -1009,7 +1036,7 @@ export class Editor {
     this.rColB = colB;
 
     const t = this.text;
-    let html = '';
+    const html: string[] = [];
     for (let k = first; k < last; k++) {
       const ln = this.lineAt(k);
       const a = this.ls[ln];
@@ -1024,13 +1051,12 @@ export class Editor {
         const sb = Math.min(b, a + colB);
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
-        html += `${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa, sb, this.jwt) : highlightLine(t, sa, sb, marks, sb === b)}${sb === b ? ph : ''}</div>`;
+        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa, sb, this.jwt) : highlightLine(t, sa, sb, marks, sb === b)}${sb === b ? ph : ''}</div>`);
       } else {
-        html += `${open(a)}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
+        html.push(`${open(a)}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`);
       }
     }
-    this.hl.innerHTML = html;
-    this.gl.innerHTML = this.gutterHtml(first, last);
+    this.draw(html, this.gutterHtml(first, last));
     this.hlY = first * LH;
     this.glY = PAD_T + first * LH;
     this.place(true);
@@ -1064,14 +1090,14 @@ export class Editor {
     const vf = Math.max(0, Math.floor((st - PAD_T) / LH));
     const vl = Math.min(total, Math.ceil((st + this.el.clientHeight - PAD_T) / LH));
     if (!force && vf >= this.rFirst && vl <= this.rLast) return this.place(false);
-    const overscan = this.surface ? 12 : OVERSCAN;
+    const overscan = this.surface ? 8 : OVERSCAN;
     const r0 = Math.max(0, vf - overscan);
     const r1 = Math.min(total, vl + overscan);
     this.rFirst = r0;
     this.rLast = r1;
     const t = this.text;
-    let html = '';
-    let gut = '';
+    const html: string[] = [];
+    const gut: string[] = [];
     let top = -1;
     for (let k = this.kAt(r0); k < n && wy[k] < r1; k++) {
       const ln = this.lineAt(k);
@@ -1101,22 +1127,21 @@ export class Editor {
             const zr = wr.exact && se === sb && !end && wr.joinsAt(t, sb) ? '\u200d' : '';
             body = `${bidiContext(t, Math.max(a, sa - 64), sa)}${zl}${body}${zr}${bidiContext(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
           }
-          html += `<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}"${this.view || this.surface ? ` data-o="${sa}"` : ''}>${body}${end ? ph : ''}</div>`;
+          html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}"${this.view || this.surface ? ` data-o="${sa}"` : ''}>${body}${end ? ph : ''}</div>`);
           if (!this.jwt) str = stringState(t, sa, sb, str);
           sa = sb;
         }
       } else {
         if (top < 0) top = y;
-        html += `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view || this.surface ? ` data-o="${a}"` : ''}>${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`;
+        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view || this.surface ? ` data-o="${a}"` : ''}>${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`);
       }
       // Gutter: the number on a line's first row, its bars on every row.
       const cls = this.gutClass(ln);
       const open = cls ? `<div class="${cls}">` : '<div>';
       const f = this.close[ln] >= 0 ? `<b class="ed-f${this.folded.has(ln) ? ' c' : ''}" data-f="${ln}"></b>` : '';
-      for (let r = Math.max(r0, y); r < Math.min(r1, y + rows); r++) gut += r === y ? `${open}${ln + 1}${f}</div>` : `${open}</div>`;
+      for (let r = Math.max(r0, y); r < Math.min(r1, y + rows); r++) gut.push(r === y ? `${open}${ln + 1}${f}</div>` : `${open}</div>`);
     }
-    this.hl.innerHTML = html;
-    this.gl.innerHTML = gut;
+    this.draw(html, gut);
     this.hlY = Math.max(0, top) * LH;
     this.glY = PAD_T + r0 * LH;
     this.place(true);
@@ -1166,14 +1191,23 @@ export class Editor {
   }
 
   private gutterHtml(first: number, last: number) {
-    let g = '';
+    const g: string[] = [];
     for (let k = first; k < last; k++) {
       const ln = this.lineAt(k);
       const cls = this.gutClass(ln);
       const f = this.close[ln] >= 0 ? `<b class="ed-f${this.folded.has(ln) ? ' c' : ''}" data-f="${ln}"></b>` : '';
-      g += cls ? `<div class="${cls}">${ln + 1}${f}</div>` : `<div>${ln + 1}${f}</div>`;
+      g.push(cls ? `<div class="${cls}">${ln + 1}${f}</div>` : `<div>${ln + 1}${f}</div>`);
     }
     return g;
+  }
+
+  /** The drawn rows and gutter, as last set (see patch). */
+  private rowsHtml: string[] = [];
+  private gutHtml: string[] = [];
+
+  private draw(rows: string[], gut: string[]) {
+    patch(this.hl, this.rowsHtml, (this.rowsHtml = rows));
+    patch(this.gl, this.gutHtml, (this.gutHtml = gut));
   }
 
   /** Gutter classes of model line `ln`: diagnostics, Compare marks, caret line, selected node. */
@@ -1548,7 +1582,7 @@ export class Editor {
 
   private onSel = () => {
     if (document.activeElement !== this.ta) return;
-    if (this.surface) return this.surface.nativeSelection();
+    if (this.surface) return void (this.surface.adopt() && this.surfaceMoved(true));
     if (this.updateCaret()) this.render(true);
     this.ev.caret();
     if (this.typing) this.typing = false;
@@ -1686,10 +1720,11 @@ export class Editor {
   // Every edit is stored as a minimal replacement; consecutive typing /
   // deleting is grouped like in IDEs.
 
-  private record(old: string, now: string, kind: string) {
+  /** `r`: the changed range [start, old end, new end] when known (no diffing a big document). */
+  private record(old: string, now: string, kind: string, r?: [number, number, number]) {
     if (old === now) return;
     const sb = this.selBefore;
-    const [a, eo, en] = diffRange(old, now, Math.min(sb[0], this.selAfter[0]));
+    const [a, eo, en] = r ?? diffRange(old, now, Math.min(sb[0], this.selAfter[0]));
     const ch: Change = {
       a,
       del: old.slice(a, eo),

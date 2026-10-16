@@ -1,12 +1,22 @@
-/** Virtual editor input. The textarea holds a bounded passage, never the document. */
+/**
+ * The editor for big documents (see Editor): the model is the document, only
+ * the rows on screen are drawn, and the labelled textarea holds a passage of
+ * about PASSAGE characters around the caret. Typing, IME composition, mobile
+ * keyboards, autocorrect, the clipboard and Left/Right/Backspace/Delete stay
+ * native inside the passage; its changes map back to model offsets. The caret
+ * and the selection are drawn over the rows.
+ */
 export interface SurfaceHost {
   el: HTMLElement;
   ta: HTMLTextAreaElement;
   text: string;
   edit(a: number, b: number, text: string, kind: string): void;
   moved(nav: boolean): void;
+  /** Model offset at a point over the rows. */
   point(x: number, y: number): number;
+  /** Visual row showing `off`, and its model start and end. */
   row(off: number): [number, number, number];
+  /** Model start and end of visual row `row`. */
   span(row: number): [number, number];
   reveal(off: number): void;
   scroll(dy: number, dx: number): void;
@@ -14,21 +24,28 @@ export interface SurfaceHost {
 }
 
 const PASSAGE = 2048;
-const ignored = '.ctx, .ed-fold, .meol';
-let graphemes: Intl.Segmenter;
+/** The caret keeps at least this many characters of the passage on either side (else it moves). */
+const EDGE = 128;
+/** Text in a drawn row that isn't the row's own (bidi context, fold pills, line-end marks). */
+const NOT_TEXT = '.ctx, .ed-fold, .meol';
 let words: Intl.Segmenter;
 
 export class Surface {
   anchor = 0;
   head = 0;
+  /** The passage: its model offset, its text, and the textarea's text before the pending edit. */
   private start = 0;
   private value = '';
   private before = '';
-  private composing = false;
-  private composition: [number, number] | null = null;
-  private preferredX: number | null = null;
-  private drag: { x: number; y: number; unit: number; a: number; b: number } | null = null;
-  private dragFrame = 0;
+  /** The textarea's selection when the pending edit began. */
+  private selD: [number, number] | null = null;
+  /** Model range of the text being composed (an IME session is on). */
+  private comp: [number, number] | null = null;
+  private x: number | null = null;
+  private drag: { x: number; y: number; n: number; a: number; b: number } | null = null;
+  private press = { t: 0, x: 0, y: 0, n: 0 };
+  private touched = false;
+  private frame = 0;
   private ink: HTMLElement;
   private hl: HTMLElement;
   private body: HTMLElement;
@@ -36,32 +53,31 @@ export class Surface {
   constructor(private h: SurfaceHost) {
     this.hl = h.el.querySelector('.ed-hl')!;
     this.body = h.el.querySelector('.ed-body')!;
-    this.ink = document.createElement('div');
+    this.ink = this.body.appendChild(document.createElement('div'));
     this.ink.className = 'ed-ink';
-    this.ink.setAttribute('aria-hidden', 'true');
-    this.body.appendChild(this.ink);
     h.el.classList.add('surface');
     h.ta.wrap = 'off';
     h.ta.setAttribute('role', 'textbox');
     h.ta.setAttribute('aria-multiline', 'true');
-    h.el.addEventListener('pointerdown', this.down);
-    document.addEventListener('pointermove', this.move);
-    document.addEventListener('pointerup', this.up);
-    document.addEventListener('pointercancel', this.up);
+    this.listen(true);
+  }
+
+  private listen(on: boolean) {
+    const f = on ? 'addEventListener' : 'removeEventListener';
+    this.h.el[f]('pointerdown', this.down as EventListener);
+    this.h.el[f]('click', this.tap as EventListener);
+    for (const [type, fn] of [['pointermove', this.move], ['pointerup', this.up], ['pointercancel', this.up]] as const) document[f](type, fn as EventListener);
   }
 
   destroy() {
     this.up();
+    this.listen(false);
+    const ta = this.h.ta;
     this.h.el.classList.remove('surface');
-    this.h.ta.wrap = this.h.el.classList.contains('wrap') ? 'soft' : 'off';
-    this.h.el.removeEventListener('pointerdown', this.down);
-    document.removeEventListener('pointermove', this.move);
-    document.removeEventListener('pointerup', this.up);
-    document.removeEventListener('pointercancel', this.up);
-    this.h.ta.style.removeProperty('left');
-    this.h.ta.style.removeProperty('top');
-    this.h.ta.removeAttribute('role');
-    this.h.ta.removeAttribute('aria-multiline');
+    ta.wrap = this.h.el.classList.contains('wrap') ? 'soft' : 'off';
+    ta.style.left = ta.style.top = '';
+    ta.removeAttribute('role');
+    ta.removeAttribute('aria-multiline');
     this.ink.remove();
   }
 
@@ -70,160 +86,174 @@ export class Surface {
   }
 
   select(a: number, b = a, backward = false) {
-    const end = this.h.text.length;
-    a = Math.max(0, Math.min(end, a));
-    b = Math.max(0, Math.min(end, b));
+    const n = this.h.text.length;
+    a = Math.max(0, Math.min(n, a));
+    b = Math.max(0, Math.min(n, b));
     this.anchor = backward ? b : a;
     this.head = backward ? a : b;
-    this.preferredX = null;
+    this.x = null;
     this.sync();
   }
 
-  /** Native accessibility selection and autocorrection refer to this passage. */
-  nativeSelection() {
-    if (this.composing) return;
+  /** Is the model selection inside the passage (so the textarea's selection is all of it)? */
+  private inside() {
+    const [a, b] = this.selection;
+    return a >= this.start && b <= this.start + this.value.length;
+  }
+
+  /**
+   * Takes the textarea's selection if it moved (native Left/Right, assistive
+   * technology) and the model's fits in the passage; selectionchange comes
+   * later, so readers call this first. True if it moved.
+   */
+  adopt() {
     const ta = this.h.ta;
     const a = this.start + ta.selectionStart;
     const b = this.start + ta.selectionEnd;
     const [s, e] = this.selection;
-    // A selection bigger than the passage belongs to the model, not this clipped proxy.
-    if (s < this.start || e > this.start + this.value.length || (a === s && b === e)) return;
-    this.anchor = ta.selectionDirection === 'backward' ? b : a;
-    this.head = ta.selectionDirection === 'backward' ? a : b;
-    this.h.moved(true);
+    if (this.selD || this.comp || !this.inside() || (a === s && b === e)) return false;
+    const back = ta.selectionDirection === 'backward';
+    this.anchor = back ? b : a;
+    this.head = back ? a : b;
+    this.x = null;
+    return true;
   }
 
+  /** Moves the passage to the caret when it nears an edge (or the text changed under it), and selects in it. */
   private sync() {
-    if (this.composing) return;
-    const h = this.h;
-    const t = h.text;
-    const [a, b] = this.selection;
-    // Keep the existing passage during ordinary typing. Recenter near its edges.
-    if (this.value.length > PASSAGE * 2 || this.head < this.start + 128 || this.head > this.start + this.value.length - 128 || t.slice(this.start, this.start + this.value.length) !== this.value) {
-      this.start = this.boundary(Math.max(0, this.head - PASSAGE / 2), -1);
-      const end = this.boundary(Math.min(t.length, this.start + PASSAGE), 1);
-      this.value = t.slice(this.start, end);
-      this.before = this.value;
-      if (h.ta.value !== this.value) h.ta.value = this.value;
+    if (this.comp) return;
+    const ta = this.h.ta;
+    const t = this.h.text;
+    const end = this.start + this.value.length;
+    if ((this.start && this.head < this.start + EDGE) || (end < t.length && this.head > end - EDGE) || this.value.length > 2 * PASSAGE || t.slice(this.start, end) !== this.value) {
+      this.start = this.boundary(this.head - PASSAGE / 2, -1);
+      this.value = this.before = t.slice(this.start, this.boundary(this.start + PASSAGE, 1));
+      if (ta.value !== this.value) ta.value = this.value;
     }
-    const s = Math.max(0, Math.min(this.value.length, a - this.start));
-    const e = Math.max(0, Math.min(this.value.length, b - this.start));
+    const at = (o: number) => Math.max(0, Math.min(this.value.length, o - this.start));
+    const [a, b] = this.selection;
     const dir = this.head < this.anchor ? 'backward' : 'forward';
-    if (h.ta.selectionStart !== s || h.ta.selectionEnd !== e || h.ta.selectionDirection !== dir) h.ta.setSelectionRange(s, e, dir);
+    if (ta.selectionStart !== at(a) || ta.selectionEnd !== at(b) || ta.selectionDirection !== dir) ta.setSelectionRange(at(a), at(b), dir);
   }
 
   beforeInput(e: InputEvent) {
-    this.before = this.h.ta.value;
-    if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') return;
-    if (this.anchor !== this.head && !this.composing && e.cancelable && e.inputType.startsWith('delete')) {
+    const ta = this.h.ta;
+    this.adopt();
+    this.before = ta.value;
+    // Deleting a selection: the model's, which may be bigger than the passage.
+    if (this.anchor !== this.head && !this.comp && e.cancelable && e.inputType.startsWith('delete')) {
       e.preventDefault();
-      const [a, b] = this.selection;
-      this.h.edit(a, b, '', e.inputType);
-      this.h.moved(false);
+      this.h.edit(...this.selection, '', e.inputType);
+      return this.h.moved(false);
     }
+    this.selD = [ta.selectionStart, ta.selectionEnd];
   }
 
+  /** The textarea's text changed: the same change, in model offsets. */
   input(e: InputEvent) {
     const ta = this.h.ta;
     const old = this.before || this.value;
     const now = ta.value;
+    // Anchored to the selection the edit replaced (an insert never slides past equal characters).
+    const [ss, se] = this.selD ?? [old.length, 0];
+    this.selD = null;
     if (old === now) return;
-    let a = 0, b = old.length, c = now.length;
-    while (a < b && a < c && old.charCodeAt(a) === now.charCodeAt(a)) a++;
-    while (b > a && c > a && old.charCodeAt(b - 1) === now.charCodeAt(c - 1)) { b--; c--; }
-    let start = this.start;
-    let sel: [number, number] = [start + ta.selectionStart, start + ta.selectionEnd];
-    const range = this.selection;
-    this.value = now;
-    this.before = now;
-    // A proxy cannot contain a large model selection. Replace the actual selection.
-    const clipped = range[0] !== range[1] && (range[0] < start || range[1] > start + old.length);
-    if (clipped) {
-      this.start = start = range[0] - a;
-      sel = [start + ta.selectionStart, start + ta.selectionEnd];
+    let a = 0;
+    let b = old.length;
+    let c = now.length;
+    while (a < ss && a < c && old.charCodeAt(a) === now.charCodeAt(a)) a++;
+    while (b > a && b > se && c > a && old.charCodeAt(b - 1) === now.charCodeAt(c - 1)) {
+      b--;
+      c--;
     }
-    if (this.composing) this.composition = [this.composition?.[0] ?? start + a, sel[1]];
-    this.h.edit(clipped ? range[0] : start + a, clipped ? range[1] : start + b, now.slice(a, c), e.inputType || 'insertText');
+    const [s, e2] = this.selection;
+    // A model selection bigger than the passage is what the edit replaced.
+    const big = s < e2 && !this.inside();
+    if (big) this.start = s - a;
+    this.value = this.before = now;
+    const sel = [this.start + ta.selectionStart, this.start + ta.selectionEnd];
+    if (this.comp) this.comp = [this.comp[0], sel[1]];
+    this.h.edit(big ? s : this.start + a, big ? e2 : this.start + b, now.slice(a, c), e.inputType || 'insertText');
     this.select(sel[0], sel[1], ta.selectionDirection === 'backward');
     this.h.moved(false);
   }
 
   compositionStart() {
     this.before = this.h.ta.value;
-    this.composing = true;
-    this.composition = this.selection;
+    this.comp = this.selection;
   }
 
   compositionEnd() {
-    // Some browsers commit the native value before their final input event.
+    // Some browsers commit the final text before (or without) its input event.
     if (this.h.ta.value !== this.value) {
       this.before = this.value;
       this.input(new InputEvent('input', { inputType: 'insertCompositionText' }));
     }
-    this.composing = false;
-    this.composition = null;
+    this.comp = this.selD = null;
     this.sync();
     this.paint();
   }
 
+  /** The word boundary (Intl.Segmenter) or code point boundary at or before (dir < 0) / after `off`. */
   private boundary(off: number, dir: number, word = false) {
     const t = this.h.text;
-    if (off < 0 || (off === 0 && dir < 0)) return 0;
-    if (off >= t.length) return t.length;
-    const a = Math.max(0, off - (word ? 2048 : 128));
-    const b = Math.min(t.length, off + (word ? 2048 : 128));
-    const segmenter = word ? words ??= new Intl.Segmenter(undefined, { granularity: 'word' }) : graphemes ??= new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-    const segments = segmenter.segment(t.slice(a, b));
-    const part = segments.containing(off - a);
-    if (!part) return off;
-    if (dir < 0) return a + part.index;
-    return a + part.index + part.segment.length;
+    off = Math.max(0, Math.min(t.length, off));
+    if (word) {
+      const a = Math.max(0, off - 2048);
+      const part = (words ??= new Intl.Segmenter(undefined, { granularity: 'word' })).segment(t.slice(a, off + 2048)).containing(off - a);
+      return part ? a + part.index + (dir > 0 ? part.segment.length : 0) : off;
+    }
+    return (t.charCodeAt(off) & 0xfc00) === 0xdc00 ? off + dir : off;
   }
 
-  private adjacent(off: number, dir: number, word = false) {
-    return dir < 0 ? this.boundary(off - 1, -1, word) : this.boundary(off, 1, word);
-  }
-
+  /**
+   * Keys the passage can't answer for the model: rows, pages, the document's
+   * ends, select all, and moving a selection bigger than the passage.
+   */
   key(e: KeyboardEvent): boolean {
-    if (e.isComposing || this.composing) return false;
-    const mod = e.ctrlKey || e.metaKey;
-    const word = e.altKey || e.ctrlKey;
+    if (e.isComposing || this.comp) return false;
+    this.adopt();
     const h = this.h;
+    const k = e.key;
+    const mod = e.ctrlKey || e.metaKey;
     const [a, b] = this.selection;
+    const left = k === 'ArrowLeft';
+    const side = left || k === 'ArrowRight';
+    const vert = /^(ArrowUp|ArrowDown|PageUp|PageDown)$/.test(k);
+    const home = k === 'Home' || k === 'End';
     let off = this.head;
     if (mod && !e.altKey && e.code === 'KeyA') {
       this.select(0, h.text.length);
       h.moved(true);
-    } else if (e.key === 'Backspace' || e.key === 'Delete') {
-      const dir = e.key === 'Backspace' ? -1 : 1;
-      const next = a === b ? this.adjacent(off, dir, word) : dir < 0 ? a : b;
-      h.edit(Math.min(a, next), Math.max(b, next), '', dir < 0 ? 'deleteContentBackward' : 'deleteContentForward');
+    } else if (e.metaKey && (k === 'Backspace' || k === 'Delete')) {
+      // ⌘⌫ (macOS): to the row's start; ⌘⌦: to its end.
+      const row = h.row(off);
+      const to = a < b ? off : k === 'Delete' ? row[2] : row[1];
+      h.edit(Math.min(a, to), Math.max(b, to), '', 'deleteSoftLine');
       h.moved(false);
-    } else if (/^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown)$/.test(e.key)) {
-      const left = e.key === 'ArrowLeft';
-      const right = e.key === 'ArrowRight';
-      if (left || right) {
-        const dir = left ? -1 : 1;
-        off = !e.shiftKey && a !== b && !word ? dir < 0 ? a : b : this.visualMove(off, left ? 'left' : 'right', word) ?? this.adjacent(off, dir, word);
-        if (e.metaKey) { const row = h.row(off); off = left ? row[1] : row[2]; }
-        this.preferredX = null;
-      } else if (e.key === 'Home' || e.key === 'End') {
-        const end = e.key === 'End';
+    } else if ((side && (e.metaKey || !this.inside())) || vert || home) {
+      if ((home && mod) || (e.metaKey && /^Arrow(Up|Down)$/.test(k))) {
+        off = k === 'End' || k === 'ArrowDown' ? h.text.length : 0;
+        this.x = null;
+      } else if (home || e.metaKey) {
+        // The row's start or end (⌘← and ⌘→ on macOS). A wrapped row ends before its next row's first character.
         const row = h.row(off);
-        off = mod ? end ? h.text.length : 0 : end ? h.row(row[2])[0] > row[0] ? this.adjacent(row[2], -1) : row[2] : row[1];
-        this.preferredX = null;
+        off = k === 'Home' || left ? row[1] : h.row(row[2])[0] > row[0] ? this.boundary(row[2] - 1, -1) : row[2];
+        this.x = null;
+      } else if (side) {
+        const dir = left ? -1 : 1;
+        off = !e.shiftKey && a < b ? (left ? a : b) : this.boundary(dir < 0 ? off - 1 : off + 1, dir, e.ctrlKey || e.altKey);
+        this.x = null;
       } else {
-        const page = e.key.startsWith('Page');
-        const dir = e.key === 'ArrowUp' || e.key === 'PageUp' ? -1 : 1;
-        const step = page ? Math.max(1, Math.floor(h.el.clientHeight / 20) - 2) : 1;
+        // Up and down keep the caret's x (by the drawn glyphs: any script, any width).
+        const step = k[0] === 'P' ? Math.max(1, Math.floor(h.el.clientHeight / 20) - 2) : 1;
         const [row, start] = h.row(off);
-        const rect = this.rectAt(off);
-        this.preferredX ??= rect?.left ?? this.body.getBoundingClientRect().left + 16;
-        const [s, end] = h.span(row + dir * step);
+        this.x ??= this.rect(off)?.left ?? this.body.getBoundingClientRect().left;
+        const [s, end] = h.span(row + (k === 'ArrowUp' || k === 'PageUp' ? -step : step));
         off = Math.min(end, s + off - start);
         h.reveal(off);
-        const target = this.rectAt(s);
-        if (target) off = Math.max(s, Math.min(end, h.point(this.preferredX, target.top + 10)));
+        const r = this.rect(s);
+        if (r) off = Math.max(s, Math.min(end, h.point(this.x, r.top + 10)));
       }
       if (!e.shiftKey) this.anchor = off;
       this.head = off;
@@ -234,153 +264,163 @@ export class Surface {
     return true;
   }
 
-  private nodes(row: HTMLElement) {
+  /** The drawn rows (each knows its model start). */
+  private rows() {
+    return this.hl.querySelectorAll<HTMLElement>('[data-o]');
+  }
+
+  /** A drawn row's own text nodes. */
+  private texts(row: HTMLElement) {
     const out: Text[] = [];
     const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
-    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement?.closest(ignored)) out.push(n as Text);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement!.closest(NOT_TEXT)) out.push(n as Text);
     return out;
   }
 
-  private domAt(off: number): [Node, number] | null {
-    for (const row of Array.from(this.hl.querySelectorAll<HTMLElement>('[data-o]')).reverse()) {
-      const start = Number(row.dataset.o);
-      if (start > off) continue;
-      const nodes = this.nodes(row);
-      let at = start;
-      for (const n of nodes) {
-        if (off <= at + n.length) return [n, off - at];
-        at += n.length;
+  /** Where model offset `off` is drawn (the caret before that character), if it is. */
+  private rect(off: number) {
+    let row: HTMLElement | undefined;
+    for (const r of this.rows()) {
+      if (+r.dataset.o! > off) break;
+      row = r;
+    }
+    if (!row) return null;
+    let at = +row.dataset.o!;
+    let hit: [Node, number] = [row, row.childNodes.length];
+    for (const n of this.texts(row)) {
+      if (off <= at + n.length) {
+        hit = [n, off - at];
+        break;
       }
-      if (off === at) return [row, row.childNodes.length];
+      at += n.length;
     }
-    return null;
-  }
-
-  private modelAt(node: Node, off: number) {
-    const row = (node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement)?.closest<HTMLElement>('[data-o]');
-    if (!row || row.parentElement !== this.hl) return null;
-    let at = Number(row.dataset.o);
-    if (node === row) {
-      const range = document.createRange();
-      range.setStart(row, 0); range.setEnd(node, off);
-      return at + range.toString().length;
-    }
-    for (const n of this.nodes(row)) { if (n === node) return at + off; at += n.length; }
-    return null;
-  }
-
-  /** The browser orders bidi runs and grapheme clusters in the drawn row. */
-  private visualMove(off: number, dir: 'left' | 'right', word: boolean) {
-    const point = this.domAt(off);
-    const sel = window.getSelection();
-    if (!point || !sel?.modify) return null;
-    sel.collapse(...point);
-    sel.modify('move', dir, word ? 'word' : 'character');
-    const next = sel.focusNode ? this.modelAt(sel.focusNode, sel.focusOffset) : null;
-    sel.removeAllRanges();
-    this.h.ta.focus({ preventScroll: true });
-    return next === off ? null : next;
-  }
-
-  private rectAt(off: number) {
-    const p = this.domAt(off);
-    if (!p) return null;
+    if (hit[0] === row && off !== at) return null;
     const r = document.createRange();
-    r.setStart(...p); r.collapse(true);
+    r.setStart(...hit);
     const rect = r.getClientRects()[0];
-    if (rect?.height) return rect;
-    const row = (p[0].nodeType === 1 ? p[0] as Element : p[0].parentElement)?.closest('[data-o]');
-    return row?.getBoundingClientRect() ?? null;
+    return rect?.height ? rect : row.getBoundingClientRect();
   }
 
+  /** Draws the selection, the composition's underline and the caret, and puts the textarea under the caret (IME windows open there). */
   paint() {
     this.sync();
     const box = this.body.getBoundingClientRect();
     const [a, b] = this.selection;
+    const t = this.h.text;
     let html = '';
-    const draw = (r: DOMRect, cls: string) => {
-      if (r.height && (r.width || cls === 'ed-caret')) html += `<i class="${cls}" style="left:${r.left - box.left}px;top:${r.top - box.top}px;width:${cls === 'ed-caret' ? 1.5 : r.width}px;height:${r.height}px"></i>`;
+    const draw = (r: DOMRect, cls: string, w = r.width) => {
+      if (r.height) html += `<i class="${cls}" style="left:${r.left - box.left}px;top:${r.top - box.top}px;width:${w}px;height:${r.height}px"></i>`;
     };
-    if (a !== b || this.composition) for (const row of this.hl.querySelectorAll<HTMLElement>('[data-o]')) {
-      const start = Number(row.dataset.o);
-      let at = start;
-      for (const n of this.nodes(row)) {
-        const end = at + n.length;
-        for (const [s, e, cls] of [[a, b, 'ed-selection'], ...(this.composition ? [[...this.composition, 'ed-composition']] : [])] as [number, number, string][]) {
-          if (e > at && s < end) {
+    const spans: [number, number, string][] = [[a, b, 's']];
+    if (this.comp) spans.push([...this.comp, 'u']);
+    if (a < b || this.comp) for (const row of this.rows()) {
+      let at = +row.dataset.o!;
+      for (const n of this.texts(row)) {
+        for (const [s, e, cls] of spans) {
+          if (e > at && s < at + n.length) {
             const rg = document.createRange();
-            rg.setStart(n, Math.max(0, s - at)); rg.setEnd(n, Math.min(n.length, e - at));
+            rg.setStart(n, Math.max(0, s - at));
+            rg.setEnd(n, Math.min(n.length, e - at));
             for (const r of rg.getClientRects()) draw(r, cls);
           }
         }
-        at = end;
+        at += n.length;
       }
-      if (a <= at && b > at && this.h.text.charCodeAt(at) === 10) {
-        const end = this.rectAt(at) ?? row.getBoundingClientRect();
-        const box = row.getBoundingClientRect();
-        draw(new DOMRect(end.left, end.top, Math.max(8, box.right - end.left), 20), 'ed-selection');
+      // A selected line break: up to the row's end.
+      if (a <= at && b > at && t.charCodeAt(at) === 10) {
+        const r = this.rect(at);
+        const end = row.getBoundingClientRect().right;
+        if (r) draw(r, 's', Math.max(8, end - r.left));
       }
     }
-    const caret = this.rectAt(this.head);
+    const caret = this.rect(this.head);
     if (caret) {
-      draw(caret, 'ed-caret');
+      draw(caret, 'c', 1.5);
       this.h.ta.style.left = `${caret.left - box.left}px`;
       this.h.ta.style.top = `${caret.top - box.top}px`;
     }
     this.ink.innerHTML = html;
   }
 
-  private extent(off: number, unit: number): [number, number] {
-    if (unit >= 3) {
-      const t = this.h.text;
-      const a = t.lastIndexOf('\n', off - 1) + 1;
-      const b = t.indexOf('\n', off);
-      return [a, b < 0 ? t.length : b + 1];
-    }
-    if (unit === 2) return [this.boundary(off, -1, true), this.boundary(off, 1, true)];
-    return [off, off];
+  /** The selection unit around `off`: a character, a word (double click) or a line (triple). */
+  private unit(off: number, n: number): [number, number] {
+    const t = this.h.text;
+    const e = t.indexOf('\n', off);
+    if (n > 2) return [t.lastIndexOf('\n', off - 1) + 1, e < 0 ? t.length : e + 1];
+    return n > 1 ? [this.boundary(off, -1, true), this.boundary(off, 1, true)] : [off, off];
+  }
+
+  private at(x: number, y: number) {
+    return this.boundary(this.h.point(x, y), -1);
   }
 
   private down = (e: PointerEvent) => {
-    if (e.button !== 0 || !(e.target as Element).closest('.ed-body')) return;
-    const pill = (e.target as Element).closest<HTMLElement>('[data-f]');
-    if (pill) { e.preventDefault(); this.h.fold(Number(pill.dataset.f)); return; }
+    const el = e.target as Element;
+    if (e.button || !el.closest('.ed-body')) return;
+    const pill = el.closest<HTMLElement>('[data-f]');
+    if (pill) {
+      e.preventDefault();
+      return this.h.fold(Number(pill.dataset.f));
+    }
+    // A finger may be starting to scroll: its tap places the caret on click.
+    this.touched = e.pointerType === 'touch';
+    if (this.touched) return;
     e.preventDefault();
-    const at = this.boundary(this.h.point(e.clientX, e.clientY), -1);
-    const [a, b] = this.extent(at, e.detail);
-    if (!e.shiftKey) this.anchor = a;
+    // Pointer events carry no click count in every browser: count presses ourselves.
+    const p = this.press;
+    p.n = e.timeStamp - p.t < 500 && Math.abs(e.clientX - p.x) < 5 && Math.abs(e.clientY - p.y) < 5 ? Math.min(3, p.n + 1) : 1;
+    Object.assign(p, { t: e.timeStamp, x: e.clientX, y: e.clientY });
+    const [a, b] = this.unit(this.at(e.clientX, e.clientY), p.n);
+    const from = e.shiftKey ? this.anchor : a;
+    this.drag = { x: e.clientX, y: e.clientY, n: p.n, a: from, b: e.shiftKey ? from : b };
+    this.anchor = from;
     this.head = b;
-    this.drag = { x: e.clientX, y: e.clientY, unit: e.detail, a: e.shiftKey ? this.anchor : a, b: e.shiftKey ? this.anchor : b };
     this.h.ta.focus({ preventScroll: true });
     this.h.moved(true);
-    this.dragFrame = requestAnimationFrame(this.autoscroll);
+    this.frame = requestAnimationFrame(this.scrollOut);
+  };
+
+  private tap = (e: MouseEvent) => {
+    if (!this.touched || (e.target as Element).closest('[data-f]')) return;
+    this.touched = false;
+    this.select(this.at(e.clientX, e.clientY));
+    this.h.ta.focus({ preventScroll: true });
+    this.h.moved(true);
   };
 
   private move = (e: PointerEvent) => {
     if (!this.drag) return;
-    this.drag.x = e.clientX; this.drag.y = e.clientY;
-    this.dragTo();
+    this.drag.x = e.clientX;
+    this.drag.y = e.clientY;
+    this.extend();
   };
 
-  private dragTo() {
-    const d = this.drag;
-    if (!d) return;
-    const [a, b] = this.extent(this.boundary(this.h.point(d.x, d.y), -1), d.unit);
-    if (a < d.a) { this.anchor = d.b; this.head = a; }
-    else { this.anchor = d.a; this.head = b; }
+  /** The drag's selection: from where it began, in its units, to the pointer. */
+  private extend() {
+    const d = this.drag!;
+    const [a, b] = this.unit(this.at(d.x, d.y), d.n);
+    this.anchor = a < d.a ? d.b : d.a;
+    this.head = a < d.a ? a : b;
     this.h.moved(false);
   }
 
-  private autoscroll = () => {
-    if (!this.drag) return;
+  /** Dragging past an edge scrolls, faster the farther out. */
+  private scrollOut = () => {
+    const d = this.drag;
+    if (!d) return;
     const r = this.h.el.getBoundingClientRect();
-    const y = this.drag.y;
-    const dy = y < r.top + 20 ? y - r.top - 20 : y > r.bottom - 20 ? y - r.bottom + 20 : 0;
-    const x = this.drag.x;
-    const dx = this.h.el.classList.contains('wrap') ? 0 : x < r.left + 80 ? x - r.left - 80 : x > r.right - 20 ? x - r.right + 20 : 0;
-    if (dy || dx) { this.h.scroll(Math.max(-80, Math.min(80, dy / 3)), Math.max(-80, Math.min(80, dx / 3))); this.dragTo(); }
-    this.dragFrame = requestAnimationFrame(this.autoscroll);
+    const out = (v: number, lo: number, hi: number) => Math.max(-80, Math.min(80, (v < lo ? v - lo : v > hi ? v - hi : 0) / 3));
+    const dy = out(d.y, r.top + 20, r.bottom - 20);
+    const dx = this.h.el.classList.contains('wrap') ? 0 : out(d.x, r.left + 80, r.right - 20);
+    if (dy || dx) {
+      this.h.scroll(dy, dx);
+      this.extend();
+    }
+    this.frame = requestAnimationFrame(this.scrollOut);
   };
 
-  private up = () => { this.drag = null; cancelAnimationFrame(this.dragFrame); };
+  private up = () => {
+    this.drag = null;
+    cancelAnimationFrame(this.frame);
+  };
 }
