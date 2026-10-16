@@ -31,6 +31,39 @@ export interface PackedTree {
   strs: string[];
   /** Parent indexes support caret navigation without rebuilding node objects. */
   parents: Int32Array<ArrayBuffer>;
+  words?: { text: Uint16Array<ArrayBuffer>; offsets: Int32Array<ArrayBuffer> };
+}
+
+/** Transfer decoded strings as raw UTF-16, so receiving a large string table cannot block the page. */
+export function packStrings(tree: PackedTree): PackedTree & { words: NonNullable<PackedTree['words']> } {
+  let length = 0;
+  for (const word of tree.strs) length += word.length;
+  const text = new Uint16Array(length);
+  const offsets = new Int32Array(tree.strs.length + 1);
+  let at = 0;
+  for (let i = 0; i < tree.strs.length; i++) {
+    offsets[i] = at;
+    const word = tree.strs[i];
+    for (let j = 0; j < word.length; j++) text[at++] = word.charCodeAt(j);
+  }
+  offsets[tree.strs.length] = at;
+  return { ...tree, strs: [], words: { text, offsets } };
+}
+
+const decoded = new WeakMap<PackedTree, Map<number, string>>();
+function stringAt(tree: PackedTree, index: number): string {
+  if (!tree.words) return tree.strs[index];
+  let cache = decoded.get(tree);
+  if (!cache) decoded.set(tree, (cache = new Map()));
+  const cached = cache.get(index);
+  if (cached !== undefined) return cached;
+  const { text, offsets } = tree.words;
+  const end = offsets[index + 1];
+  let value = '';
+  // TextDecoder replaces unpaired surrogates; JSON values must retain their exact UTF-16 units.
+  for (let i = offsets[index]; i < end; i += 4096) value += String.fromCharCode(...text.subarray(i, Math.min(end, i + 4096)));
+  cache.set(index, value);
+  return value;
 }
 
 /** Packs `res` (parsed from `src`). The node array's buffer can be transferred. */
@@ -132,13 +165,13 @@ export function unpacker(p: PackedTree, src: string): (until: number) => ParseRe
         const s = a[o + 1];
         const e = a[o + 2];
         const kids = a[o + 3];
-        const key: Key = kk === K_NUM ? a[o + 4] : kk === K_STR ? p.strs[a[o + 4]] : undefined;
+        const key: Key = kk === K_NUM ? a[o + 4] : kk === K_STR ? stringAt(p, a[o + 4]) : undefined;
         let v: JNode['v'];
         if (t >= ARR) v = [];
         else if (vk === V_TRUE) v = true;
         else if (vk === V_FALSE) v = false;
         else if (vk === V_SLICE) v = t === NUM ? src.slice(s, e) : src.slice(s + 1, e - 1);
-        else if (vk === V_STR) v = p.strs[a[o + 5]];
+        else if (vk === V_STR) v = stringAt(p, a[o + 5]);
         else v = null;
         const u = open.length ? open[open.length - 1] : null;
         const nd = new JNode(t, v, s, u ? u.d + 1 : 0, u, key);
@@ -193,7 +226,7 @@ export function packedPosition(tree: PackedTree, off: number, src: string) {
   for (let i = node; parents[i] >= 0; i = parents[i]) {
     const meta = a[i * W];
     const key = a[i * W + 4];
-    path.push(((meta >> 3) & 3) === K_NUM ? key : tree.strs[key]);
+    path.push(((meta >> 3) & 3) === K_NUM ? key : stringAt(tree, key));
   }
   path.reverse();
   let container = node;

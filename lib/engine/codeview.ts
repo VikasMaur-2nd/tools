@@ -4,6 +4,7 @@ import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
 import { codeIndexer, type CodeChange, type CodeIndex } from '../json/code-index';
 import { soon } from './idle';
+import { TextSlices } from '../json/text-slices';
 
 /*
  * Virtualized read-only code viewer with lazily highlighted lines.
@@ -55,13 +56,15 @@ export class CodeView {
   private sc: TallScroll;
   private rows: HTMLElement;
   private ro: ResizeObserver;
+  private model = TextSlices.from('');
+  private lineText = new Map<number, string>();
   private layoutSeq = 0;
   private textSeq = 0;
   private wrapTextLength = 0;
   private layoutWrap: Wrapper | null = null;
   private layoutCols = -1;
   private layoutCw = 0;
-  private pending: { text: string; hl: LineHighlighter; json: boolean; scanner: Scanner | null; index?: CodeIndex; change?: CodeChange } | null = null;
+  private pending: { text: string; hl: LineHighlighter; json: boolean; scanner: Scanner | null; index?: CodeIndex; change?: CodeChange; patch?: string } | null = null;
   /** Visible lines (folded blocks removed), in order. */
   private vis = new Int32Array(0);
   /** First visual row of each visible line (length = vis + 1). */
@@ -191,20 +194,36 @@ export class CodeView {
   }
 
   private line(i: number) {
-    return this.text.slice(this.ls[i], this.lineEnd(i));
+    let text = this.lineText.get(i);
+    if (text === undefined) {
+      text = this.model.slice(this.ls[i], this.lineEnd(i));
+      if (this.lineText.size >= 256) this.lineText.clear();
+      this.lineText.set(i, text);
+    }
+    return text;
+  }
+
+  /** Pin the currently acknowledged output for a worker's later patch. */
+  snapshotText() {
+    const model = this.model;
+    return (a: number, b: number) => model.slice(a, b);
   }
 
   /** `index` can arrive as transferable arrays from the formatting worker. */
-  setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null, index?: CodeIndex, change?: CodeChange) {
+  setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null, index?: CodeIndex, change?: CodeChange, patch?: string) {
     const seq = ++this.textSeq;
     const same = change ? text.length === this.text.length && change.prefix === text.length : text === this.text;
     if (same && hl === this.hl) {
-      this.pending = null;
-      this.layoutSeq++;
+      if (this.pending) {
+        this.pending = null;
+        this.layoutSeq++;
+        this.reflow(true);
+      }
       soon(() => { if (seq === this.textSeq) this.onReady?.(); });
       return;
     }
-    this.pending = { text, hl, json, scanner, index, change };
+    this.pending = { text, hl, json, scanner, index, change, patch };
+    const model = change && patch !== undefined ? this.model.patch(change.prefix, change.suffix, patch) : TextSlices.from(text);
     const run = index ? null : codeIndexer(text);
     const prepare = () => {
       if (seq !== this.textSeq) return;
@@ -215,9 +234,11 @@ export class CodeView {
       for (const o of folded) if (ready.close[o] < 0) folded.delete(o);
       this.layout(text, ready, folded, scanner, false, -1, () => {
         if (seq !== this.textSeq) return false;
-        const keepScroll = this.text && text.slice(0, 64) === this.text.slice(0, 64);
+        const keepScroll = this.text && model.slice(0, 64) === this.model.slice(0, 64);
         this.pending = null;
         this.text = text;
+        this.model = model;
+        this.lineText.clear();
         this.hl = hl;
         this.json = json;
         this.scanner = scanner;
@@ -230,7 +251,7 @@ export class CodeView {
         if (!keepScroll) this.sc.top = 0;
         soon(() => { if (seq === this.textSeq) this.onReady?.(); });
         return true;
-      }, change);
+      }, change, model);
     };
     prepare();
   }
@@ -275,14 +296,14 @@ export class CodeView {
   private reflow(keepPosition: boolean, anchor = -1) {
     if (this.pending) {
       const p = this.pending;
-      this.setText(p.text, p.hl, p.json, p.scanner, p.index, p.change);
+      this.setText(p.text, p.hl, p.json, p.scanner, p.index, p.change, p.patch);
       return;
     }
     this.layout(this.text, { starts: this.ls, close: this.close, depth: this.depth, maxLen: this.maxLen }, this.folded, this.scanner, keepPosition, anchor);
   }
 
   /** Prepare a replacement away from the live model, then publish it in one short task. */
-  private layout(text: string, index: CodeIndex, folded: Set<number>, scanner: Scanner | null, keepPosition: boolean, anchor: number, commit = () => true, change?: CodeChange) {
+  private layout(text: string, index: CodeIndex, folded: Set<number>, scanner: Scanner | null, keepPosition: boolean, anchor: number, commit = () => true, change?: CodeChange, model = this.model) {
     const seq = ++this.layoutSeq;
     const firstLine = anchor >= 0 ? anchor : keepPosition ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
     const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.sc.top : 0;
@@ -339,7 +360,7 @@ export class CodeView {
         const missing = batch.filter((_, k) => cached[k] < 0);
         let wrapped: Int32Array | null = null;
         if (wr?.cols && missing.length) {
-          const local = text.slice(base, endOf(batch[batch.length - 1]));
+          const local = model.slice(base, endOf(batch[batch.length - 1]));
           const a = Int32Array.from(missing, (ln) => index.starts[ln] - base);
           const b = Int32Array.from(missing, (ln) => endOf(ln) - base);
           wrapped = wr.rows(local, a, b, [0, this.wrapTextLength, local.length]);

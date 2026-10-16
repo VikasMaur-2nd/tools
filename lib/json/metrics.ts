@@ -1,10 +1,11 @@
-import { ARR, OBJ, type JNode, type ParseResult } from './parser';
+import { ARR, OBJ, STR, type JNode, type ParseResult } from './parser';
 import { byteLength, formatDoc } from './format';
 
 export interface DocumentMetrics {
   bytes: number;
   records?: number;
   escaped?: number;
+  unescape?: boolean;
   min: number;
   /** Pretty whitespace bytes, independent of the selected indent unit. */
   extra: number;
@@ -26,5 +27,7 @@ export function documentMetrics(text: string, res: ParseResult, minified?: strin
     units += k * (n.d + 1) + n.d;
     for (const child of list) if (child.t >= ARR) stack.push(child);
   }
-  return { bytes: byteLength(text), min: res.root ? byteLength(minified ?? formatDoc(text, res, '')) : 0, extra, units };
+  const metrics: DocumentMetrics = { bytes: byteLength(text), min: res.root ? byteLength(minified ?? formatDoc(text, res, '')) : 0, extra, units };
+  if (res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) metrics.unescape = true;
+  return metrics;
 }

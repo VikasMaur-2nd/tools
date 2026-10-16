@@ -71,7 +71,7 @@ export function codeChange(old: string, text: string): CodeChange {
 }
 
 /** Reconstruct a worker's small output patch against the version it compared. */
-export function applyCodeChange(before: string, patch: string, change: CodeChange): string {
+export function applyCodeChange(before: string, patch: string, change: CodeChange, slice = (a: number, b: number) => before.slice(a, b)): string {
   if (change.prefix === before.length && !patch && !change.suffix) return before;
-  return before.slice(0, change.prefix) + patch + (change.suffix ? before.slice(before.length - change.suffix) : '');
+  return slice(0, change.prefix) + patch + (change.suffix ? slice(before.length - change.suffix, before.length) : '');
 }

@@ -112,6 +112,16 @@ export class TreeView {
     if (active || !root) this.activate();
   }
 
+  /** Drop obsolete node objects while Format retains the newer packed tree. Keep expansion and scroll. */
+  releaseRoot() {
+    this.root = null;
+    this.rows = [];
+    this.sel = null;
+    this.matches = [];
+    this.matchSet = null;
+    this.dirty = true;
+  }
+
   /** A hidden view retains its settings and selection without flattening the new tree. */
   activate() {
     if (!this.dirty) return;

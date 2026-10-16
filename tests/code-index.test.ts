@@ -66,3 +66,9 @@ test('output patches reconstruct insertions, removals and Unicode edits exactly'
   }
   assert.equal(applyCodeChange(before, '', { prefix: before.length, suffix: 0 }), before);
 });
+
+test('worker metrics preserve the nested JSON string hint without a materialized root', () => {
+  const src = JSON.stringify('  {"nested":true}');
+  assert.equal(documentMetrics(src, parse(src)).unescape, true);
+  assert.equal(documentMetrics('"ordinary text"', parse('"ordinary text"')).unescape, undefined);
+});

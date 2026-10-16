@@ -1,6 +1,6 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
 import { byteLength, formatDoc, reindent } from '../json/format';
-import { packTree } from '../json/pack';
+import { packStrings, packTree } from '../json/pack';
 import { parse, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
@@ -57,8 +57,8 @@ self.onmessage = (e: MessageEvent<Request>) => {
     const metrics = documentMetrics(text, res, min ?? '');
     if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
     if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
-    const tree = packTree(res, text);
-    (self as unknown as Worker).postMessage({ id, tree, metrics }, [tree.nodes.buffer, tree.parents.buffer]);
+    const tree = packStrings(packTree(res, text));
+    (self as unknown as Worker).postMessage({ id, tree, metrics }, [tree.nodes.buffer, tree.parents.buffer, tree.words.text.buffer, tree.words.offsets.buffer]);
     // Compression consumes the same minified variant, entirely off the page's thread.
     if (res.root && metrics.min <= 32_000_000) {
       if (min !== null) void compressedSizes(new Blob([min]), () => latest === id).then((sizes) => {
