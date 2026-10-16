@@ -9,7 +9,12 @@
 export interface SurfaceHost {
   el: HTMLElement;
   ta: HTMLTextAreaElement;
-  text: string;
+  /** The document's length, text and characters (read where needed: it can be huge). */
+  readonly length: number;
+  slice(a: number, b: number): string;
+  charCodeAt(i: number): number;
+  /** Model start and end of the line holding `off`. */
+  line(off: number): [number, number];
   edit(a: number, b: number, text: string, kind: string): void;
   moved(nav: boolean): void;
   /** Model offset at a point over the rows. */
@@ -86,7 +91,7 @@ export class Surface {
   }
 
   select(a: number, b = a, backward = false) {
-    const n = this.h.text.length;
+    const n = this.h.length;
     a = Math.max(0, Math.min(n, a));
     b = Math.max(0, Math.min(n, b));
     this.anchor = backward ? b : a;
@@ -127,11 +132,11 @@ export class Surface {
   private sync() {
     if (this.comp) return;
     const ta = this.h.ta;
-    const t = this.h.text;
+    const h = this.h;
     const end = this.start + this.value.length;
-    if ((this.start && this.head < this.start + EDGE) || (end < t.length && this.head > end - EDGE) || this.value.length > 2 * PASSAGE || t.slice(this.start, end) !== this.value) {
+    if ((this.start && this.head < this.start + EDGE) || (end < h.length && this.head > end - EDGE) || this.value.length > 2 * PASSAGE || h.slice(this.start, end) !== this.value) {
       this.start = this.boundary(this.head - PASSAGE / 2, -1);
-      this.value = this.before = t.slice(this.start, this.boundary(this.start + PASSAGE, 1));
+      this.value = this.before = h.slice(this.start, this.boundary(this.start + PASSAGE, 1));
       if (ta.value !== this.value) ta.value = this.value;
     }
     const at = (o: number) => Math.max(0, Math.min(this.value.length, o - this.start));
@@ -208,14 +213,14 @@ export class Surface {
 
   /** The word boundary (Intl.Segmenter) or code point boundary at or before (dir < 0) / after `off`. */
   private boundary(off: number, dir: number, word = false) {
-    const t = this.h.text;
-    off = Math.max(0, Math.min(t.length, off));
+    const h = this.h;
+    off = Math.max(0, Math.min(h.length, off));
     if (word) {
       const a = Math.max(0, off - 2048);
-      const part = (words ??= new Intl.Segmenter(undefined, { granularity: 'word' })).segment(t.slice(a, off + 2048)).containing(off - a);
+      const part = (words ??= new Intl.Segmenter(undefined, { granularity: 'word' })).segment(h.slice(a, off + 2048)).containing(off - a);
       return part ? a + part.index + (dir > 0 ? part.segment.length : 0) : off;
     }
-    return (t.charCodeAt(off) & 0xfc00) === 0xdc00 ? off + dir : off;
+    return (h.charCodeAt(off) & 0xfc00) === 0xdc00 ? off + dir : off;
   }
 
   /**
@@ -235,7 +240,7 @@ export class Surface {
     const home = k === 'Home' || k === 'End';
     let off = this.head;
     if (mod && !e.altKey && e.code === 'KeyA') {
-      this.select(0, h.text.length);
+      this.select(0, h.length);
       h.moved(true);
     } else if (e.metaKey && (k === 'Backspace' || k === 'Delete')) {
       // ⌘⌫ (macOS): to the row's start; ⌘⌦: to its end.
@@ -245,7 +250,7 @@ export class Surface {
       h.moved(false);
     } else if ((side && (e.metaKey || !this.inside())) || vert || home) {
       if ((home && mod) || (e.metaKey && /^Arrow(Up|Down)$/.test(k))) {
-        off = k === 'End' || k === 'ArrowDown' ? h.text.length : 0;
+        off = k === 'End' || k === 'ArrowDown' ? h.length : 0;
         this.x = null;
       } else if (home || e.metaKey) {
         // The row's start or end (⌘← and ⌘→ on macOS). A wrapped row ends before its next row's first character.
@@ -315,10 +320,13 @@ export class Surface {
 
   /** Draws the selection, the composition's underline and the caret, and puts the textarea under the caret (IME windows open there). */
   paint() {
+    // The textarea moved its selection (Shift+Arrow) and its selectionchange hasn't come yet: take it
+    // rather than put the old one back, and tell the editor as that event would have.
+    if (this.adopt()) queueMicrotask(() => this.h.moved(true));
     this.sync();
     const box = this.body.getBoundingClientRect();
     const [a, b] = this.selection;
-    const t = this.h.text;
+    const h = this.h;
     let html = '';
     const draw = (r: DOMRect, cls: string, w = r.width) => {
       if (r.height) html += `<i class="${cls}" style="left:${r.left - box.left}px;top:${r.top - box.top}px;width:${w}px;height:${r.height}px"></i>`;
@@ -339,7 +347,7 @@ export class Surface {
         at += n.length;
       }
       // A selected line break: up to the row's end.
-      if (a <= at && b > at && t.charCodeAt(at) === 10) {
+      if (a <= at && b > at && h.charCodeAt(at) === 10) {
         const r = this.rect(at);
         const end = row.getBoundingClientRect().right;
         if (r) draw(r, 's', Math.max(8, end - r.left));
@@ -356,9 +364,11 @@ export class Surface {
 
   /** The selection unit around `off`: a character, a word (double click) or a line (triple). */
   private unit(off: number, n: number): [number, number] {
-    const t = this.h.text;
-    const e = t.indexOf('\n', off);
-    if (n > 2) return [t.lastIndexOf('\n', off - 1) + 1, e < 0 ? t.length : e + 1];
+    if (n > 2) {
+      // The line with its line break.
+      const [a, e] = this.h.line(off);
+      return [a, Math.min(this.h.length, e + 1)];
+    }
     return n > 1 ? [this.boundary(off, -1, true), this.boundary(off, 1, true)] : [off, off];
   }
 

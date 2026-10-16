@@ -19,7 +19,11 @@
  *   broken by adding up its glyphs' widths, which is instant at any size.
  */
 
+import type { Doc } from './doc';
 import { samePrefix } from './highlight';
+
+/** The text rows are found for: a string, or the editor's document (read a slice at a time, see Doc). */
+export type Src = string | Doc;
 
 /** Must match `tab-size` in CSS. */
 const TAB = 4;
@@ -45,15 +49,62 @@ const JOINS_NEXT = /[\u0620\u0626\u0628\u062a-\u062e\u0633-\u0647\u0649\u064a\u0
 const JOINS_PREV = /[\u0620\u0622-\u064a\u066e\u066f\u0671-\u0673\u0675-\u06d3\u06d5\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u077f\u07ca-\u07ea\u07fa\u0840-\u0858\u0860\u0862-\u0865\u0867-\u086a\u0870-\u0886\u0889-\u088f\u08a0-\u08ac\u08ae-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua871\u{10ac0}-\u{10ac5}\u{10ac7}\u{10ac9}\u{10aca}\u{10ace}-\u{10ad6}\u{10ad8}-\u{10ae1}\u{10ae4}\u{10aeb}-\u{10aef}\u{10b80}-\u{10b91}\u{10ba9}-\u{10bae}\u{10d01}-\u{10d23}\u{10ec2}-\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f44}\u{10f51}-\u{10f54}\u{10f70}-\u{10f81}\u{10fb0}\u{10fb2}-\u{10fb6}\u{10fb8}-\u{10fbf}\u{10fc1}-\u{10fc4}\u{10fc9}\u{10fca}\u{1e900}-\u{1e943}]/u;
 /** Characters that can be over four cells wide (ligatures, cuneiform, hieroglyphs, musical symbols). */
 const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
-/** A run of printable ASCII (sticky). */
+/** A run of printable ASCII (sticky), and what ends one. */
 const RUN = /[\x20-\x7e]+/y;
+const NOT_PRINTABLE = /[^\x20-\x7e]/g;
 /** Long lines whose breaks were added up (see `sum`). */
 const SUMS = 4;
-/** Characters past an edit whose rows are found at once; the rest of a longer line when idle (see refine). */
-const LAZY_ROWS = 300_000;
+/**
+ * Characters past an edit whose rows are found at once (hundreds of rows: the view and the caret are
+ * among them); the rest of a longer line when idle (see refine).
+ */
+const LAZY_ROWS = 32_768;
+
+/** The text as one string, if it is one. */
+const flatOf = (t: Src): string | null => (typeof t === 'string' ? t : t.flat);
+
+/** First character in t[from, to) that isn't printable ASCII, a tab or a line break, or -1. */
+function nonAscii(t: Src, from: number, to: number): number {
+  let r = -1;
+  let at = from;
+  const look = (x: string, i: number, j: number) => {
+    // In a view: a search on from `i` in the whole string would run on past `j`.
+    NON_ASCII.lastIndex = 0;
+    const m = NON_ASCII.exec(i === 0 && j === x.length ? x : x.slice(i, j));
+    if (m) r = at + m.index;
+    at += j - i;
+    return !!m;
+  };
+  const s = flatOf(t);
+  if (s !== null) look(s, Math.max(0, from), Math.min(s.length, to));
+  else (t as Doc).each(from, to, look);
+  return r;
+}
+
+/** End of the run of printable ASCII in `t` from `from` (at most `to`), searched in views of its pieces. */
+function endOfRun(t: Doc, from: number, to: number): number {
+  let r = to;
+  let at = from;
+  t.each(from, to, (x, i, j) => {
+    NOT_PRINTABLE.lastIndex = 0;
+    const m = NOT_PRINTABLE.exec(i === 0 && j === x.length ? x : x.slice(i, j));
+    if (m) r = at + m.index;
+    at += j - i;
+    return !!m;
+  });
+  return r;
+}
+
+/** Line breaks in t[a, b). */
+function breaksIn(t: Src, a: number, b: number) {
+  const s = t.slice(a, b);
+  let n = 0;
+  for (let i = s.indexOf('\n'); i !== -1; i = s.indexOf('\n', i + 1)) n++;
+  return n;
+}
 
 interface SumEntry {
-  t: string;
+  t: Src;
   /** The text version it is valid for (see rows): lookups never compare texts, which costs their length. */
   v: number;
   a: number;
@@ -85,7 +136,7 @@ interface Mirror {
 }
 
 /** Leading spaces and tabs of `t[a, b)`: [cells, characters]. */
-export function leadOf(t: string, a: number, b: number, out = [0, 0]): number[] {
+export function leadOf(t: Src, a: number, b: number, out = [0, 0]): number[] {
   let col = 0;
   let i = a;
   for (; i < b; i++) {
@@ -100,7 +151,7 @@ export function leadOf(t: string, a: number, b: number, out = [0, 0]): number[] 
 }
 
 /** Cells taken by `t[a, b)` when it's printable ASCII after its leading spaces and tabs, else -1. */
-export function asciiCells(t: string, a: number, b: number, lead = [0, 0]): number {
+export function asciiCells(t: Src, a: number, b: number, lead = [0, 0]): number {
   leadOf(t, a, b, lead);
   for (let j = a + lead[1]; j < b; j++) {
     const c = t.charCodeAt(j);
@@ -134,7 +185,7 @@ function tabTo(x: number, cw: number) {
 }
 
 /** Length of the common prefix of `x` from `xa` and `y` from `ya`, at most `max` (no copies: slices of a string share it). */
-function prefixAt(x: string, xa: number, y: string, ya: number, max: number) {
+function prefixAt(x: Src, xa: number, y: Src, ya: number, max: number) {
   let p = 0;
   while (p + 4096 <= max && x.slice(xa + p, xa + p + 4096) === y.slice(ya + p, ya + p + 4096)) p += 4096;
   while (p < max && x.charCodeAt(xa + p) === y.charCodeAt(ya + p)) p++;
@@ -142,7 +193,7 @@ function prefixAt(x: string, xa: number, y: string, ya: number, max: number) {
 }
 
 /** Length of the common suffix of `x` before `xb` and `y` before `yb`, at most `max`. */
-function suffixAt(x: string, xb: number, y: string, yb: number, max: number) {
+function suffixAt(x: Src, xb: number, y: Src, yb: number, max: number) {
   let q = 0;
   while (q + 4096 <= max && x.slice(xb - q - 4096, xb - q) === y.slice(yb - q - 4096, yb - q)) q += 4096;
   while (q < max && x.charCodeAt(xb - 1 - q) === y.charCodeAt(yb - 1 - q)) q++;
@@ -150,7 +201,7 @@ function suffixAt(x: string, xb: number, y: string, yb: number, max: number) {
 }
 
 /** Length of the common suffix of `x` and `y`, at most `max`. */
-function sameSuffix(x: string, y: string, max: number) {
+function sameSuffix(x: Src, y: Src, max: number) {
   let q = 0;
   while (q + 4096 <= max && x.slice(x.length - q - 4096, x.length - q) === y.slice(y.length - q - 4096, y.length - q)) q += 4096;
   while (q < max && x.charCodeAt(x.length - 1 - q) === y.charCodeAt(y.length - 1 - q)) q++;
@@ -190,9 +241,9 @@ export class Wrapper {
   /** An edit announced by `edited()`, for the next `rows()` call. */
   private hint: readonly [number, number, number] | null = null;
   /** How the last `rows()` text differs from the one before: same first `p` and last `q` characters. */
-  private diff: { old: string; text: string; p: number; q: number } | null = null;
+  private diff: { old: Src; text: Src; p: number; q: number } | null = null;
   /** The last `rows()` call, whose unchanged lines the next one reuses. */
-  private last: { text: string; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array } | null = null;
+  private last: { text: Src; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array } | null = null;
 
   constructor(host: HTMLElement, lh: number, exact = true) {
     this.lh = lh;
@@ -296,7 +347,7 @@ export class Wrapper {
    * Rows taken by each line `text[A[i], B[i])`. Lines the arithmetic can't
    * size are measured together. Also sets `odd`.
    */
-  rows(text: string, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number]): Int32Array {
+  rows(text: Src, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number]): Int32Array {
     const n = A.length;
     const hint = edit ?? this.hint;
     this.hint = null;
@@ -311,14 +362,20 @@ export class Wrapper {
     let lo = 0;
     let hi = n;
     const last = this.last;
+    /** Long lines whose oddness follows from the lines they were and the edit (no scanning them): 0 or 1, else -1. */
+    let inherit = -1;
     if (last) {
       const old = last.text;
       let p: number;
       let q: number;
       // A known edit `[a, oldEnd, newEnd)` spares comparing the texts (two passes over the document).
-      if (hint && hint[0] >= 0 && hint[0] <= hint[1] && hint[0] <= hint[2] && hint[1] <= old.length && hint[2] <= text.length && text.length - old.length === hint[2] - hint[1]) {
-        p = hint[0];
-        q = text.length - hint[2];
+      const told = !!hint && hint[0] >= 0 && hint[0] <= hint[1] && hint[0] <= hint[2] && hint[1] <= old.length && hint[2] <= text.length && text.length - old.length === hint[2] - hint[1];
+      if (told) {
+        p = hint![0];
+        q = text.length - hint![2];
+      } else if (old === text) {
+        p = text.length;
+        q = 0;
       } else {
         p = samePrefix(old, text);
         q = sameSuffix(old, text, Math.min(old.length, text.length) - p);
@@ -334,6 +391,14 @@ export class Wrapper {
       odd.set(last.odd.subarray(0, lo));
       out.set(last.out.subarray(hi - dk, m), hi);
       odd.set(last.odd.subarray(hi - dk, m), hi);
+      // Lines [lo, hi) are lines [lo, hi - dk) edited: long ones hold other text if those did or the edit
+      // brought some (or, rarely, until the line is next laid out afresh, held some it deleted). Only
+      // where line counts show no fold opened or closed, and the views draw every row (they break such
+      // lines the same either way; a textarea's rows are measured exactly).
+      if (told && !this.exact && hi > lo && dk === breaksIn(text, hint![0], hint![2]) - breaksIn(old, hint![0], hint![1])) {
+        inherit = nonAscii(text, hint![0], hint![2]) >= 0 ? 1 : 0;
+        for (let k = lo; k < hi - dk && !inherit; k++) inherit = last.odd[k];
+      }
     }
     if (!last) {
       this.diff = null;
@@ -342,23 +407,32 @@ export class Wrapper {
     this.verText = text;
     this.last = { text, A, B, out, odd };
     if (!this.trust) odd.fill(1, lo, hi);
-    else if (lo < hi) {
-      const end = B[hi - 1];
-      NON_ASCII.lastIndex = A[lo];
-      let i = lo;
-      for (let m = NON_ASCII.exec(text); m && m.index < end; m = NON_ASCII.exec(text)) {
-        const p = m.index;
-        while (i < hi && B[i] <= p) i++;
-        if (i === hi) break;
-        // A character in hidden (folded) lines doesn't count.
-        if (p < A[i]) NON_ASCII.lastIndex = A[i];
-        else {
-          odd[i] = 1;
-          NON_ASCII.lastIndex = B[i];
+    else {
+      const long = (k: number) => inherit >= 0 && B[k] - A[k] > LONG_LINE;
+      for (let k0 = lo; k0 < hi; ) {
+        if (long(k0)) {
+          odd[k0++] = inherit;
+          continue;
         }
+        let k1 = k0 + 1;
+        while (k1 < hi && !long(k1)) k1++;
+        // Lines [k0, k1): one search from match to match.
+        const end = B[k1 - 1];
+        let i = k0;
+        for (let p = nonAscii(text, A[k0], end); p >= 0; ) {
+          while (i < k1 && B[i] <= p) i++;
+          if (i === k1) break;
+          // A character in hidden (folded) lines doesn't count.
+          if (p < A[i]) p = nonAscii(text, A[i], end);
+          else {
+            odd[i] = 1;
+            p = nonAscii(text, B[i], end);
+          }
+        }
+        k0 = k1;
       }
     }
-    const tabs = text.indexOf('\t') !== -1;
+    const tabs = typeof text === 'string' ? text.indexOf('\t') !== -1 : text.tabs;
     const lead = this.lead;
     // Whole documents prune counts of lines that are gone; edits only add.
     const keep = lo === 0 && hi === n ? new Map<string, number>() : this.sized;
@@ -429,7 +503,7 @@ export class Wrapper {
    * Offset (from the line start) of the first character on row `r` of the
    * line `text[a, b)`. `odd` as set by `rows()`.
    */
-  rowStart(text: string, a: number, b: number, r: number, odd: boolean): number {
+  rowStart(text: Src, a: number, b: number, r: number, odd: boolean): number {
     if (r <= 0) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
@@ -444,7 +518,7 @@ export class Wrapper {
   }
 
   /** Row of the line `text[a, b)` (taking `rows` rows) that shows offset `off`: the caret before that character. */
-  rowAt(text: string, a: number, b: number, off: number, odd: boolean, rows: number): number {
+  rowAt(text: Src, a: number, b: number, off: number, odd: boolean, rows: number): number {
     if (rows <= 1 || off <= a) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
@@ -584,14 +658,14 @@ export class Wrapper {
   /** Version of the text given to rows(); entries of the last one that the edit didn't touch carry over. */
   private ver = 0;
   /** The text of version `ver` (the same object rows() was given: comparing with it costs nothing then). */
-  private verText = '';
+  private verText: Src = '';
 
   /**
    * The text changed from `old` to `text` (same first `p` and last `q`
    * characters): a new version. Remembered lines wholly before the edit keep
    * their rows as they are, lines wholly after it shifted.
    */
-  private version(old: string, text: string, p: number, q: number) {
+  private version(old: Src, text: Src, p: number, q: number) {
     const prev = this.ver++;
     const oldEnd = old.length - q;
     const d = text.length - old.length;
@@ -621,7 +695,7 @@ export class Wrapper {
    * Never copies the line, nor keys anything by its text: the edit comes from
    * `rows()` (or `edited()`), else the line is compared with the last one in place.
    */
-  private sum(t: string, a: number, b: number): Int32Array {
+  private sum(t: Src, a: number, b: number): Int32Array {
     const last = this.lastSum;
     // (By version, not by text. A text rows() wasn't given, from a direct caller, is a version of its own.)
     if (t !== this.verText) {
@@ -671,8 +745,16 @@ export class Wrapper {
     }
     // Estimated rows (see below) can't anchor a resynchronization.
     if (old && exact < old.length) tail = Infinity;
+    // The first old row starting at or after `p` (rows are in order: no walking the line's rows to it).
     let keep = 1;
-    if (old) while (keep < old.length && keep < exact && old[keep] < p) keep++;
+    if (old) {
+      let hi = Math.min(old.length, exact);
+      while (keep < hi) {
+        const mid = (keep + hi) >> 1;
+        if (old[mid] < p) keep = mid + 1;
+        else hi = mid;
+      }
+    }
     // Rows `[0, keep)` are the old ones; `starts` are new; then old rows from `from`, shifted by `d`.
     const starts: number[] = [];
     let from = -1;
@@ -716,21 +798,27 @@ export class Wrapper {
    * Breaks `t[a, a + len)` into rows from state `s` until the line ends, `stop`
    * characters in, or `brk` (told each row start) returns true. True if it did.
    */
-  private breakRows(t: string, a: number, len: number, s: BreakState, stop: number, brk: (x: number) => boolean, push: (x: number) => void): boolean {
+  private breakRows(src: Src, a: number, len: number, s: BreakState, stop: number, brk: (x: number) => boolean, push: (x: number) => void): boolean {
     const cw = this.cw;
     const max = this.width;
     /** Printable ASCII characters a row holds from its start. */
     const full = Math.floor(max / cw);
     const b = a + len;
+    const flat = flatOf(src);
+    const t = flat ?? src;
     let { i, lastStart, w, joined, flags, forced } = s;
     let done = false;
     while (i < len && i < stop && !done) {
       let c = t.charCodeAt(a + i);
       if (c >= 32 && c < 127 && !joined) {
-        // A run of printable ASCII is one cell a character: its breaks are arithmetic.
-        RUN.lastIndex = a + i;
-        RUN.test(t);
-        const e = Math.min(RUN.lastIndex, b) - a;
+        // A run of printable ASCII is one cell a character: its breaks are arithmetic. (Taken whole
+        // however far it runs past `stop`: the breaks then don't depend on where a call stopped.)
+        let e: number;
+        if (flat !== null) {
+          RUN.lastIndex = a + i;
+          RUN.test(flat);
+          e = Math.min(RUN.lastIndex, b) - a;
+        } else e = endOfRun(src as Doc, a + i, b) - a;
         // (A row can already be over full: nothing breaks before a joined character.)
         let k = i + Math.max(0, Math.floor((max - w) / cw));
         if (k === lastStart) k++;
@@ -749,8 +837,11 @@ export class Wrapper {
       else if (c >= 32 && c < 127) g = cw;
       else {
         if (c >= 0xd800 && c < 0xdc00 && i + 1 < len) {
-          c = t.codePointAt(a + i) as number;
-          if (c > 0xffff) n = 2;
+          const lo = t.charCodeAt(a + i + 1);
+          if (lo >= 0xdc00 && lo < 0xe000) {
+            c = (c - 0xd800) * 0x400 + lo - 0xdc00 + 0x10000;
+            n = 2;
+          }
         }
         g = c === 0xfe0f ? 2.5 * cw : (this.glyphs.get(c) ?? this.glyph(c));
         if (this.joins.has(c)) join = true;
@@ -810,6 +901,19 @@ export class Wrapper {
     st.set(job.starts, e.exact);
     e.st = st;
     e.exact = st.length;
+    // The last rows() call counted the line's estimated rows, and the next one reuses its counts.
+    const last = this.last;
+    if (last && last.text === e.t) {
+      const A = last.A;
+      let lo = 0;
+      let hi = A.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (A[mid] <= e.a) lo = mid;
+        else hi = mid - 1;
+      }
+      if (A[lo] === e.a && last.B[lo] === e.b) last.out[lo] = st.length;
+    }
     return true;
   }
 
@@ -841,7 +945,7 @@ export class Wrapper {
   }
 
   /** Remembers `st` as the row starts of `t[a, b)` (see `sum`); rows from `exact` on are estimated. `from`: the entry it replaces, whose pending refinement it takes over. */
-  private keepSum(t: string, a: number, b: number, st: Int32Array, exact: number, from?: SumEntry): SumEntry {
+  private keepSum(t: Src, a: number, b: number, st: Int32Array, exact: number, from?: SumEntry): SumEntry {
     const e: SumEntry = { t, a, b, st, exact, v: this.ver };
     if (from) for (const job of this.pending) if (job.e === from) job.e = e;
     this.lastSum = e;

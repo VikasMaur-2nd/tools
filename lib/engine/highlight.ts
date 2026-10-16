@@ -1,3 +1,10 @@
+/** Text read in slices and by character: a string, or the editor's document (see Doc). */
+interface Text {
+  readonly length: number;
+  charCodeAt(i: number): number;
+  slice(a?: number, b?: number): string;
+}
+
 /** A decorated range within the document (absolute offsets). */
 export interface Mark {
   a: number;
@@ -59,12 +66,8 @@ export function trimWs(t: string, a: number, b: number) {
 
 const STEP = 8192;
 
-/**
- * stringState at offsets deep in long lines, from checkpoints every STEP
- * characters: drawing rows while scrolling never rescans a line from its start.
- */
 /** Length of the common prefix of `x` and `y` (compared a block at a time, then by character). */
-export function samePrefix(x: string, y: string) {
+export function samePrefix(x: Text, y: Text) {
   const max = Math.min(x.length, y.length);
   let p = 0;
   while (p + 4096 <= max && x.slice(p, p + 4096) === y.slice(p, p + 4096)) p += 4096;
@@ -72,26 +75,44 @@ export function samePrefix(x: string, y: string) {
   return p;
 }
 
+/**
+ * stringState at offsets deep in long lines, from checkpoints every STEP
+ * characters: drawing rows while scrolling never rescans a line from its start.
+ */
 export class StringStates {
-  private text = '';
+  private text: Text = '';
   private lines = new Map<number, number[]>();
+  /** A later text and where it first differs from `text` (told by `edited`, so never compared). */
+  private next: Text | null = null;
+  private p = 0;
+
+  /** `text` is `old` changed from offset `p` on. */
+  edited(old: Text, text: Text, p: number) {
+    if (old === this.next) this.p = Math.min(this.p, p);
+    else if (old === this.text && this.next === null) this.p = p;
+    else return;
+    this.next = text;
+  }
 
   /** State at offset `off` of the line of `text` that starts at `a`. */
-  at(text: string, a: number, off: number): number {
+  at(text: Text, a: number, off: number): number {
     if (text !== this.text) {
       // An edit keeps the checkpoints before it (typing in a long line rescans a step, not the line).
-      const p = samePrefix(this.text, text);
+      const p = text === this.next ? this.p : samePrefix(this.text, text);
       for (const [s, cp] of this.lines) {
         if (s > p) this.lines.delete(s);
         else cp.length = Math.min(cp.length, Math.floor((p - s) / STEP) + 1);
       }
       this.text = text;
+      this.next = null;
     }
     let cp = this.lines.get(a);
     if (!cp) this.lines.set(a, (cp = [0]));
     const k = Math.floor((off - a) / STEP);
-    for (let i = cp.length; i <= k; i++) cp.push(stringState(text, a + (i - 1) * STEP, a + i * STEP, cp[i - 1]));
-    return stringState(text, a + k * STEP, off, cp[k]);
+    // (A string's states from slices of it: the editor's document is read in views, not by character.)
+    const state = (from: number, to: number, st: number) => (typeof text === 'string' ? stringState(text, from, to, st) : stringState(text.slice(from, to), 0, to - from, st));
+    for (let i = cp.length; i <= k; i++) cp.push(state(a + (i - 1) * STEP, a + i * STEP, cp[i - 1]));
+    return state(a + k * STEP, off, cp[k]);
   }
 }
 

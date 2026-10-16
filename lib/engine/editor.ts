@@ -1,8 +1,9 @@
+import { Doc } from './doc';
 import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
-import { foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds } from './lines';
-import { LONG_LINE, Wrapper } from './wrap';
+import { foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines } from './lines';
+import { LONG_LINE, Wrapper, type Src } from './wrap';
 import { rt } from '../i18n/ui';
 
 /*
@@ -162,9 +163,13 @@ function editRange(old: string, now: string, ss: number, se: number): [number, n
 /**
  * Sets `el`'s children (one per string of `old`) to `rows`, rebuilding only
  * the run between the unchanged first and last ones: typing redraws the rows
- * it changed, not the view.
+ * it changed, not the view. `offs`: each row's model offset, its `data-o`
+ * (kept apart: typing moves the offsets of every row after the caret, not
+ * their text, so those rows only have the attribute updated).
  */
-function patch(el: HTMLElement, old: string[], rows: string[]) {
+function patch(el: HTMLElement, old: string[], rows: string[], offs: number[] | null) {
+  // (Every row starts with `<div`.)
+  const html = (i: number) => (offs ? `<div data-o="${offs[i]}"${rows[i].slice(4)}` : rows[i]);
   let f = 0;
   let a = old.length;
   let b = rows.length;
@@ -174,11 +179,33 @@ function patch(el: HTMLElement, old: string[], rows: string[]) {
     b--;
   }
   const kids = el.children;
-  if (kids.length !== old.length || (!f && a === old.length)) return void (el.innerHTML = rows.join(''));
+  if (kids.length !== old.length || (!f && a === old.length)) return void (el.innerHTML = rows.map((_, i) => html(i)).join(''));
   for (let i = a - 1; i >= f; i--) kids[i].remove();
-  const html = rows.slice(f, b).join('');
-  if (f < kids.length) kids[f].insertAdjacentHTML('beforebegin', html);
-  else el.insertAdjacentHTML('beforeend', html);
+  let add = '';
+  for (let i = f; i < b; i++) add += html(i);
+  if (f < kids.length) kids[f].insertAdjacentHTML('beforebegin', add);
+  else el.insertAdjacentHTML('beforeend', add);
+  if (!offs) return;
+  for (let i = 0; i < rows.length; i++) {
+    if (i >= f && i < b) continue;
+    const o = String(offs[i]);
+    if (kids[i].getAttribute('data-o') !== o) kids[i].setAttribute('data-o', o);
+  }
+}
+
+/** Marks moved into a slice of the text starting at `o`. */
+const moved = (ms: Mark[] | null, o: number) => (!ms || !o ? ms : ms.map((m) => ({ a: m.a - o, b: m.b - o, cls: m.cls })));
+
+/** The changed range `r` ([start, old end, new end]) grown by replacing [a, b) of its new text with `n` characters. */
+function grow(r: [number, number, number] | null, a: number, b: number, n: number): [number, number, number] {
+  if (!r) return [a, b, a + n];
+  let [lo, eo, en] = r;
+  if (a < lo) lo = a;
+  if (b > en) {
+    eo += b - en;
+    en = b;
+  }
+  return [lo, eo, en + n - (b - a)];
 }
 
 /** Counts line breaks in `s`, stopping early at `cap`. */
@@ -208,8 +235,30 @@ export class Editor {
   private scopeEl: HTMLElement;
   private ev: EditorEvents;
 
-  /** The document. */
-  text = '';
+  /** The document: an edit makes a new version without copying a big text (see Doc). */
+  private doc = Doc.of('');
+  /** The document as one string (built when first read after an edit: per-key code reads `doc`). */
+  get text(): string {
+    return this.doc.toString();
+  }
+  /**
+   * The document for the wrapper and the string states, which tell versions
+   * apart by identity: the string itself while it is one (as the native
+   * textarea's always is), else the Doc.
+   */
+  private get src(): Src {
+    return this.doc.flat ?? this.doc;
+  }
+  /** Characters in the document (without building it). */
+  get length(): number {
+    return this.doc.length;
+  }
+  /** Is the document empty or only whitespace? (Without building it.) */
+  get blank(): boolean {
+    let ink = false;
+    this.doc.each(0, this.doc.length, (s, i, j) => (ink = /\S/.test(i === 0 && j === s.length ? s : s.slice(i, j))));
+    return !ink;
+  }
   /** Line start offsets. */
   ls: number[] = [0];
   /** Read-only virtualized presentation for huge documents. */
@@ -227,7 +276,9 @@ export class Editor {
   /** After Esc, the next Tab moves focus instead of indenting (no keyboard trap). */
   private tabMovesFocus = false;
   /** Text before an IME composition started (recorded as one undo step). */
-  private compOld: string | null = null;
+  private compOld: Doc | null = null;
+  /** What the composition changed so far: [start, end before it, end now] (null: nothing yet). */
+  private compR: [number, number, number] | null = null;
   private compSel: [number, number] = [0, 0];
   private cw = 7.8;
   private maxCols = 0;
@@ -270,17 +321,17 @@ export class Editor {
   private ro: ResizeObserver;
   // folding
   /** Closing line of the block each line opens (only blocks spanning 3+ lines), else -1. */
-  private close = new Int32Array(1).fill(-1);
+  private close: Int32Array = new Int32Array(1).fill(-1);
   /** Nesting depth of each block opener. */
-  private depth = new Int32Array(1);
+  private depth: Int32Array = new Int32Array(1);
   /** Folded opener line → its span (closer line - opener line) when folded. */
   private folded = new Map<number, number>();
   /** Model lines shown, in order (null: nothing folded, display = model). */
   private vis: Int32Array | null = null;
   /** Display line starts (offsets into the textarea text) while folded. */
   private dls: Int32Array | null = null;
-  /** The textarea text while folded. */
-  private dtext = '';
+  /** The textarea text while folded (built when first needed: the big-document editor never needs it). */
+  private dtextCache: string | null = null;
   /** A fold was dropped while syncing a model change (the textarea needs refreshing). */
   private foldsLost = false;
   /** Model selection right after the last user edit. */
@@ -394,65 +445,81 @@ export class Editor {
 
   /**
    * Sets the document and refreshes everything derived from it.
-   * `fromTa`: the textarea already holds `t` (user input).
+   * `fromTa`: the textarea already holds `t` (user input). `edit`: what changed
+   * from the last document (a bounded edit patches what derives from it).
    */
-  private model(t: string, fromTa: boolean, defer = false, edit?: { a: number; b: number; ins: string }) {
-    const old = this.text;
+  private model(t: string | Doc, fromTa: boolean, defer = false, edit?: { a: number; b: number; ins: string }) {
+    const old = this.doc;
+    const doc = typeof t === 'string' ? Doc.of(t) : t;
+    const fits = !!edit && old.length - (edit.b - edit.a) + edit.ins.length === doc.length;
     // The wrapper may reuse rows outside this edit, in the rows() call this model() makes (see rewrap).
-    this.wrapEdit = edit && old === this.wrapText && old.length - (edit.b - edit.a) + edit.ins.length === t.length ? [edit.a, edit.b, edit.a + edit.ins.length] : null;
-    this.text = t;
-    let rescan = true;
-    if (edit && edit.ins.length <= PATCH_CHARS && old.length - (edit.b - edit.a) + edit.ins.length === t.length) {
+    this.wrapEdit = edit && fits && old === this.wrapText ? [edit.a, edit.b, edit.a + edit.ins.length] : null;
+    this.doc = doc;
+    // String states before the edit stand (see StringStates).
+    if (edit && fits) this.strs.edited(old.flat ?? old, this.src, edit.a);
+    let folds: { close: Int32Array; depth: Int32Array } | null = null;
+    if (edit && fits && edit.ins.length <= PATCH_CHARS) {
       // A bounded edit: patch the line starts and the widest line instead of rescanning the document.
-      // The fold structure stands if the edit stays on one line and leaves that line's part in it alone.
       const { a, b, ins } = edit;
       const ls = this.ls;
+      const n0 = ls.length;
       const la = lineOfIn(ls, a);
-      const one = la === lineOfIn(ls, b) && ins.indexOf('\n') === -1;
-      const sig = one ? foldSig(old, ls[la], lineEndIn(ls, old.length, la)) : -1;
+      const lb = lineOfIn(ls, b);
+      // The fold structure stands if the edited lines keep their parts in it, or neither open nor close a block
+      // before or after the edit (then the lines after them only move).
+      const few = lb - la <= 64 && this.close.length === n0;
+      const was = few ? Array.from({ length: lb - la + 1 }, (_, k) => foldSig(old, ls[la + k], lineEndIn(ls, old.length, la + k))) : [];
       // Soft-wrapped, the widest line only matters once wrapping is off (see layout): skip measuring it.
       const widths = !this.el.classList.contains('wrap');
-      this.maxCols = patchLines(ls, old, t, a, b, ins, this.maxCols, widths).max;
+      const r = patchLines(ls, old, doc, a, b, ins, this.maxCols, widths, doc.tabs);
+      this.maxCols = r.max;
       if (!widths) this.maxStale = true;
-      rescan = !one || foldSig(t, ls[la], lineEndIn(ls, t.length, la)) !== sig || this.close.length !== ls.length;
+      if (few && r.added <= 64) {
+        const now = Array.from({ length: r.added + 1 }, (_, k) => foldSig(doc, ls[la + k], lineEndIn(ls, doc.length, la + k)));
+        const plain = (s: number) => (s & 10) === 0;
+        if (now.length === was.length && now.every((s, k) => s === was[k])) folds = { close: this.close, depth: this.depth };
+        else if (was.every(plain) && now.every(plain)) folds = shiftFoldLines(this.close, this.depth, la, lb, r.added);
+      }
     } else {
-      const { ls, max } = lineStarts(t);
+      const { ls, max, tabs } = lineStarts(doc.toString());
+      doc.knowTabs(tabs);
       this.maxStale = false;
       this.ls = ls;
       this.maxCols = max;
     }
     const ls = this.ls;
     this.extraW = 0;
-    if (rescan) this.scanFolds();
+    this.scanFolds(folds);
     this.buildDisplay();
     if (this.diagList.length) this.buildDiag();
 
     // Typing never flips an open editor into view mode; loads and big pastes do.
     // Many lines only slow the native textarea down; the big-document editor draws just the rows on screen.
-    const big = t.length > VIEW_CHARS || (ls.length > VIEW_LINES && t.length < SURFACE_CHARS);
+    const len = doc.length;
+    const big = len > VIEW_CHARS || (ls.length > VIEW_LINES && len < SURFACE_CHARS);
     // A document the textarea can't take waits in the quiet view, even when asked to edit, until the
     // big-document editor's module arrives (it is usually cached already; see loadSurface below).
-    const wait = t.length > NATIVE_CHARS && !SurfaceClass;
-    const lazy = !big && (wait || (this.view ? this.lazy : this.loading && t.length > LAZY_CHARS));
+    const wait = len > NATIVE_CHARS && !SurfaceClass;
+    const lazy = !big && (wait || (this.view ? this.lazy : this.loading && len > LAZY_CHARS));
     const view = (wait || !this.forceEdit) && (big || lazy) && !(fromTa && !this.view);
     const notice = view && !lazy;
     if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
     this.lazy = view && lazy;
     // A user edit keeps the big-document editor until the text is well under the threshold (no flip-flopping
     // at it), and never leaves it mid-composition (see onCompEnd).
-    let custom = !view && (t.length >= SURFACE_CHARS || (!!this.surface && fromTa && (t.length >= SURFACE_CHARS * 0.8 || this.compOld !== null)));
-    if (t.length >= SURFACE_CHARS && !SurfaceClass) {
+    let custom = !view && (len >= SURFACE_CHARS || (!!this.surface && fromTa && (len >= SURFACE_CHARS * 0.8 || this.compOld !== null)));
+    if (len >= SURFACE_CHARS && !SurfaceClass) {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
-        if (!SurfaceClass || this.surface || !this.el.isConnected || this.text.length < SURFACE_CHARS) return;
+        if (!SurfaceClass || this.surface || !this.el.isConnected || this.doc.length < SURFACE_CHARS) return;
         // Switch to it: from the textarea, from a view that only its line count made read-only, or
         // (asked to edit while it was on its way) from the quiet view, keeping the caret.
-        const lines = this.view && !this.lazy && this.text.length <= VIEW_CHARS;
+        const lines = this.view && !this.lazy && this.doc.length <= VIEW_CHARS;
         const asked = this.view && this.forceEdit;
         if (this.view && !lines && !asked) return;
         const at = this.vcaret;
-        this.model(this.text, false);
+        this.model(this.doc, false);
         if (asked) {
           this.focus();
           this.setCaret(at);
@@ -477,7 +544,7 @@ export class Editor {
       // (A user edit places the selection itself, right after.)
       if (!fromTa) this.surface.select(...this.surface.selection);
     } else if (view) {
-      if (!this.view) this.vcaret = Math.min(this.caret, t.length);
+      if (!this.view) this.vcaret = Math.min(this.caret, len);
       if (this.ta.value) this.ta.value = '';
     } else if (!fromTa) {
       this.ta.value = this.shown;
@@ -497,10 +564,13 @@ export class Editor {
   }
 
   private makeSurface() {
-    const readText = () => this.text;
+    const doc = () => this.doc;
     return new SurfaceClass!({
       el: this.el, ta: this.ta,
-      get text() { return readText(); },
+      get length() { return doc().length; },
+      slice: (a, b) => this.doc.slice(a, b),
+      charCodeAt: (i) => this.doc.charCodeAt(i),
+      line: (off) => { const ln = this.lineOf(off); return [this.ls[ln], this.lineEnd(ln)]; },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
       moved: (nav) => this.surfaceMoved(nav),
       point: (x, y) => {
@@ -529,7 +599,7 @@ export class Editor {
 
   /** The input passage reports a bounded replacement in model offsets. */
   private surfaceEdit(a: number, b: number, ins: string, kind: string) {
-    const old = this.text;
+    const old = this.doc;
     if (a === b && !ins) return;
     this.selBefore = this.surface!.selection;
     this.selAfter = [a + ins.length, a + ins.length];
@@ -538,9 +608,10 @@ export class Editor {
     this.pasteFull = false;
     this.shiftFolds(a, b, ins, true);
     this.shiftDiags(a, b, ins.length);
-    this.model(old.slice(0, a) + ins + old.slice(b), true, false, { a, b, ins });
+    this.model(old.edit(a, b, ins), true, false, { a, b, ins });
     this.surface?.select(...this.selAfter);
-    if (this.compOld === null) this.record(old, this.text, kind, [a, b, a + ins.length]);
+    if (this.compOld === null) this.record(old, this.doc, kind, [a, b, a + ins.length]);
+    else this.compR = grow(this.compR, a, b, ins.length);
     this.ev.change('input');
   }
 
@@ -566,13 +637,13 @@ export class Editor {
   editAnyway() {
     this.forceEdit = true;
     const caret = this.vcaret;
-    this.model(this.text, false);
+    this.model(this.doc, false);
     this.focus();
     this.setCaret(caret);
   }
 
   lineEnd(ln: number) {
-    return ln + 1 < this.ls.length ? this.ls[ln + 1] - 1 : this.text.length;
+    return ln + 1 < this.ls.length ? this.ls[ln + 1] - 1 : this.doc.length;
   }
 
   lineOf(off: number) {
@@ -605,7 +676,7 @@ export class Editor {
   selectedText() {
     if (this.view) return window.getSelection()?.toString() ?? '';
     const [a, b] = this.selection;
-    return this.text.slice(a, b);
+    return this.doc.slice(a, b);
   }
 
   // ── Folding ────────────────────────────────────────────────────────────
@@ -615,10 +686,10 @@ export class Editor {
    * the matching closer ends (same rule as the output view: exact for
    * formatted JSON, linear in lines). A block folds only if its closing line
    * is just the closer (`}` or `},`): that line hides with it. Re-validates
-   * folds after edits.
+   * folds after edits. `known`: the structure, worked out from the last one.
    */
-  private scanFolds() {
-    const { close, depth } = scanFolds(this.text, this.ls);
+  private scanFolds(known: { close: Int32Array; depth: Int32Array } | null = null) {
+    const { close, depth } = known ?? scanFolds(this.doc, this.ls);
     const n = this.ls.length;
     this.close = close;
     this.depth = depth;
@@ -634,28 +705,19 @@ export class Editor {
   /** Rebuilds the visible-line map and the textarea text from the folds. */
   private buildDisplay() {
     this.wrapDirty = true;
+    this.dtextCache = null;
     if (!this.folded.size) {
       this.vis = null;
       this.dls = null;
-      this.dtext = '';
       return;
     }
-    const t = this.text;
     const n = this.ls.length;
     const vis: number[] = [];
-    let out = '';
-    let from = 0;
     for (let i = 0; i < n; i++) {
       vis.push(i);
-      if (this.folded.has(i)) {
-        const c = this.close[i];
-        // Hide [end of the opener line, end of the closer line).
-        out += t.slice(from, this.lineEnd(i));
-        from = this.lineEnd(c);
-        i = c;
-      }
+      // Hide [end of the opener line, end of the closer line).
+      if (this.folded.has(i)) i = this.close[i];
     }
-    out += t.slice(from);
     const dls = new Int32Array(vis.length);
     let p = 0;
     for (let k = 0; k < vis.length; k++) {
@@ -664,7 +726,23 @@ export class Editor {
     }
     this.vis = Int32Array.from(vis);
     this.dls = dls;
-    this.dtext = out;
+  }
+
+  /** The textarea text while folded: the model minus folded lines. */
+  private get dtext(): string {
+    if (this.dtextCache !== null) return this.dtextCache;
+    const vis = this.vis;
+    if (!vis) return '';
+    const t = this.doc;
+    let out = '';
+    let from = 0;
+    for (let k = 0; k < vis.length; k++) {
+      const i = vis[k];
+      if (!this.folded.has(i)) continue;
+      out += t.slice(from, this.lineEnd(i));
+      from = this.lineEnd(this.close[i]);
+    }
+    return (this.dtextCache = out + t.slice(from));
   }
 
   /** Display row of model line `ln` (a hidden line maps to the row of its fold). */
@@ -726,7 +804,7 @@ export class Editor {
     const k = this.rowOf(ln);
     const wy = this.wy;
     if (!wy || !this.wrapper || this.lineAt(k) !== ln) return this.yOf(k);
-    return wy[k] + this.wrapper.rowAt(this.text, this.ls[ln], this.lineEnd(ln), off, this.wodd[k] === 1, wy[k + 1] - wy[k]);
+    return wy[k] + this.wrapper.rowAt(this.src, this.ls[ln], this.lineEnd(ln), off, this.wodd[k] === 1, wy[k + 1] - wy[k]);
   }
 
   /** Model offsets [start, end) of wrapped row `sub` of display row `k`. */
@@ -738,7 +816,8 @@ export class Editor {
     if (!wr || !this.wy) return [a, b];
     const rows = this.wy[k + 1] - this.wy[k];
     const odd = this.wodd[k] === 1;
-    return [a + wr.rowStart(this.text, a, b, sub, odd), sub + 1 < rows ? a + wr.rowStart(this.text, a, b, sub + 1, odd) : b];
+    const t = this.src;
+    return [a + wr.rowStart(t, a, b, sub, odd), sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b];
   }
 
   /** Soft-wraps lines at the editor's width, or stops. */
@@ -770,11 +849,11 @@ export class Editor {
   /** The edit since the last rows() call, when model() knows it (null: compare the texts). */
   private wrapEdit: [number, number, number] | null = null;
   /** The text the wrapper last measured rows for (an edit hint is only valid against it). */
-  private wrapText = '';
+  private wrapText: Doc | null = null;
 
   private rewrap() {
     const wr = this.wrapper as Wrapper;
-    const space = this.el.clientWidth - this.gutW - PAD_L - PAD_RW;
+    const space = this.sc.width - this.gutW - PAD_L - PAD_RW;
     const resized = wr.fit(space, this.cw);
     if (resized) this.el.style.setProperty('--tw', `${wr.width}px`);
     // Without the textarea (view mode) nothing has to line up with it: long lines can be summed.
@@ -789,9 +868,9 @@ export class Editor {
       A[k] = this.ls[ln];
       B[k] = this.lineEnd(ln);
     }
-    const rows = wr.rows(this.text, A, B, this.wrapEdit ?? undefined);
+    const rows = wr.rows(this.src, A, B, this.wrapEdit ?? undefined);
     this.wrapEdit = null;
-    this.wrapText = this.text;
+    this.wrapText = this.doc;
     const wy = new Int32Array(n + 1);
     for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
     this.wy = wy;
@@ -970,7 +1049,7 @@ export class Editor {
   }
 
   setCaret(off: number) {
-    off = Math.max(0, Math.min(off, this.text.length));
+    off = Math.max(0, Math.min(off, this.doc.length));
     this.unhide(off);
     if (this.surface) this.surface.select(off);
     else if (this.view) this.vcaret = off;
@@ -994,10 +1073,12 @@ export class Editor {
     const h = this.vrows * LH + PAD_T + PAD_B;
     // Wrapped, the body takes the editor's width (CSS); the textarea's text box is --tw wide.
     if (!this.wy && this.maxStale) {
-      this.maxCols = maxWidth(this.text, this.ls);
+      this.maxCols = maxWidth(this.doc, this.ls);
       this.maxStale = false;
     }
-    this.body.style.width = this.wy ? '' : `${Math.ceil(this.maxCols * this.cw) + PAD_L + PAD_R + this.extraW}px`;
+    const bw = this.wy ? '' : `${Math.ceil(this.maxCols * this.cw) + PAD_L + PAD_R + this.extraW}px`;
+    // (Only when it changes: any style write makes the next layout read lay the page out.)
+    if (bw !== this.bodyW) this.body.style.width = this.bodyW = bw;
     this.sc.fit(h, this.body, this.gut);
     // The textarea overflows its box: it has more rows than we counted. Glyph
     // widths may be stale (a font just arrived); failing that, this browser
@@ -1018,6 +1099,7 @@ export class Editor {
   }
 
   private healing = false;
+  private bodyW = '';
 
   private overflows() {
     return this.ta.scrollHeight > this.ta.clientHeight + 1;
@@ -1067,12 +1149,12 @@ export class Editor {
     if (this.wy) return this.renderWrapped(force);
     const n = this.rows;
     const st = this.sc.top;
-    const vh = this.el.clientHeight;
+    const vh = this.sc.height;
     const vf = Math.max(0, Math.floor((st - PAD_T) / LH));
     const vl = Math.min(n, Math.ceil((st + vh - PAD_T) / LH));
     const wide = this.maxCols > LONG_LINE;
     const vcA = Math.max(0, Math.floor((this.el.scrollLeft - PAD_L) / this.cw));
-    const vcB = vcA + Math.ceil(this.el.clientWidth / this.cw);
+    const vcB = vcA + Math.ceil(this.sc.width / this.cw);
     if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return this.place(false);
 
     const overscan = this.surface ? 8 : OVERSCAN;
@@ -1086,28 +1168,30 @@ export class Editor {
     this.rColA = colA;
     this.rColB = colB;
 
-    const t = this.text;
     const html: string[] = [];
+    // View mode and the big-document editor: where each row's text starts, for clicks (see offsetAt).
+    const offs: number[] | null = this.view || this.surface ? [] : null;
     for (let k = first; k < last; k++) {
       const ln = this.lineAt(k);
       const a = this.ls[ln];
       const b = this.lineEnd(ln);
       const marks = this.marksFor(ln);
       const lm = this.lineMarks ? this.lineMarks[ln] : 0;
-      // View mode: where the row's text starts, for clicks (see offsetAt).
-      const open = (o: number) => `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view || this.surface ? ` data-o="${o}"` : ''}>`;
+      const open = (o: number) => (offs?.push(o), `<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>`);
       const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
       if (b - a > LONG_LINE && wide) {
         let sa = Math.min(b, a + colA);
         const sb = Math.min(b, a + colB);
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
-        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa, sb, this.jwt) : highlightLine(t, sa, sb, marks, sb === b)}${sb === b ? ph : ''}</div>`);
+        const [t, o] = this.win(sa, sb + 1);
+        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa - o, sb - o, this.jwtAt(o)) : highlightLine(t, sa - o, sb - o, moved(marks, o), sb === b)}${sb === b ? ph : ''}</div>`);
       } else {
-        html.push(`${open(a)}${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`);
+        const [t, o] = this.win(a, b + 1);
+        html.push(`${open(a)}${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
       }
     }
-    this.draw(html, this.gutterHtml(first, last));
+    this.draw(html, this.gutterHtml(first, last), offs);
     this.hlY = first * LH;
     this.glY = PAD_T + first * LH;
     this.place(true);
@@ -1123,7 +1207,7 @@ export class Editor {
     if (!this.redraw) this.surface?.paint();
     if (s === this.shiftAt) return;
     this.shiftAt = s;
-    this.cur.style.transform = `translateY(${this.curY + s}px)`;
+    this.cur.style.transform = this.curTf = `translateY(${this.curY + s}px)`;
     this.scopeEl.style.transform = `translateY(${this.scopeY + s}px)`;
   }
 
@@ -1139,16 +1223,17 @@ export class Editor {
     const total = wy[n];
     const st = this.sc.top;
     const vf = Math.max(0, Math.floor((st - PAD_T) / LH));
-    const vl = Math.min(total, Math.ceil((st + this.el.clientHeight - PAD_T) / LH));
+    const vl = Math.min(total, Math.ceil((st + this.sc.height - PAD_T) / LH));
     if (!force && vf >= this.rFirst && vl <= this.rLast) return this.place(false);
     const overscan = this.surface ? 8 : OVERSCAN;
     const r0 = Math.max(0, vf - overscan);
     const r1 = Math.min(total, vl + overscan);
     this.rFirst = r0;
     this.rLast = r1;
-    const t = this.text;
+    const doc = this.src;
     const html: string[] = [];
     const gut: string[] = [];
+    const offs: number[] | null = this.view || this.surface ? [] : null;
     let top = -1;
     for (let k = this.kAt(r0); k < n && wy[k] < r1; k++) {
       const ln = this.lineAt(k);
@@ -1164,27 +1249,34 @@ export class Editor {
         const s0 = Math.max(0, r0 - y);
         const s1 = Math.min(rows, r1 - y);
         if (top < 0) top = y + s0;
-        let sa = a + wr.rowStart(t, a, b, s0, odd);
-        let str = this.jwt ? 0 : this.strs.at(t, a, sa);
+        let sa = a + wr.rowStart(doc, a, b, s0, odd);
+        // The rows on screen and the neighbours read around them, from one string at offset `o`.
+        const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, odd) : b;
+        const [t, o] = this.win(Math.max(a, sa - 64), Math.min(b, ea + 64) + 1);
+        const ms = moved(marks, o);
+        let str = this.jwt ? 0 : this.strs.at(doc, a, sa);
         for (let sub = s0; sub < s1; sub++) {
-          const sb = sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b;
+          const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, odd) : b;
           const end = sb === b;
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
-          const se = odd && !end ? trimWs(t, sa, sb) : sb;
-          let body = this.jwt ? jwtLine(t, sa, se, this.jwt) : highlightLine(t, sa, se, marks, end, str);
+          const se = odd && !end ? trimWs(t, sa - o, sb - o) + o : sb;
+          let body = this.jwt ? jwtLine(t, sa - o, se - o, this.jwtAt(o)) : highlightLine(t, sa - o, se - o, ms, end, str);
           if (odd) {
             // Where the browser keeps a word's letters joined across the break, so does the copy.
-            const zl = wr.exact && wr.joinsAt(t, sa) ? '\u200d' : '';
-            const zr = wr.exact && se === sb && !end && wr.joinsAt(t, sb) ? '\u200d' : '';
-            body = `${bidiContext(t, Math.max(a, sa - 64), sa)}${zl}${body}${zr}${bidiContext(t, sb, Math.min(b, sb + 64))}${escapeHtml(t.slice(se, sb))}`;
+            const zl = wr.exact && wr.joinsAt(t, sa - o) ? '\u200d' : '';
+            const zr = wr.exact && se === sb && !end && wr.joinsAt(t, sb - o) ? '\u200d' : '';
+            body = `${bidiContext(t, Math.max(a, sa - 64) - o, sa - o)}${zl}${body}${zr}${bidiContext(t, sb - o, Math.min(b, sb + 64) - o)}${escapeHtml(t.slice(se - o, sb - o))}`;
           }
-          html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}"${this.view || this.surface ? ` data-o="${sa}"` : ''}>${body}${end ? ph : ''}</div>`);
-          if (!this.jwt) str = stringState(t, sa, sb, str);
+          html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`);
+          offs?.push(sa);
+          if (!this.jwt) str = stringState(t, sa - o, sb - o, str);
           sa = sb;
         }
       } else {
         if (top < 0) top = y;
-        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}${this.view || this.surface ? ` data-o="${a}"` : ''}>${this.jwt ? jwtLine(t, a, b, this.jwt) : highlightLine(t, a, b, marks)}${ph}</div>`);
+        const [t, o] = this.win(a, b + 1);
+        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
+        offs?.push(a);
       }
       // Gutter: the number on a line's first row, its bars on every row.
       const cls = this.gutClass(ln);
@@ -1192,7 +1284,7 @@ export class Editor {
       const f = this.close[ln] >= 0 ? `<b class="ed-f${this.folded.has(ln) ? ' c' : ''}" data-f="${ln}"></b>` : '';
       for (let r = Math.max(r0, y); r < Math.min(r1, y + rows); r++) gut.push(r === y ? `${open}${ln + 1}${f}</div>` : `${open}</div>`);
     }
-    this.draw(html, gut);
+    this.draw(html, gut, offs);
     this.hlY = Math.max(0, top) * LH;
     this.glY = PAD_T + r0 * LH;
     this.place(true);
@@ -1216,29 +1308,52 @@ export class Editor {
       // Only additions or only removals keep their color; a mix reads as "changed".
       if (kinds) cls = kinds === 2 ? 'dla' : kinds === 4 ? 'dld' : 'dlc';
     }
-    const t = this.text;
+    const d = this.doc;
     let a = this.ls[c];
-    while (t.charCodeAt(a) === 32 || t.charCodeAt(a) === 9) a++;
-    const closer = highlightLine(t, a, this.lineEnd(c), null);
+    const e = this.lineEnd(c);
+    while (a < e && (d.charCodeAt(a) === 32 || d.charCodeAt(a) === 9)) a++;
+    const [t, o] = this.win(a, e + 1);
+    const closer = highlightLine(t, a - o, e - o, null);
     return `<span class="ed-fold" data-f="${ln}"><span class="ed-ph${cls ? ' ' + cls : ''}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</span>${closer}</span>`;
   }
 
   /** If `sa` falls inside a string, start the slice at the string's opening quote (bounded). */
   private stringStart(a: number, sa: number) {
-    const t = this.text;
-    let inStr = false;
-    let start = a;
-    for (let i = a; i < sa; i++) {
+    // A string open where the scan starts opened 4000 or more characters before `sa`: too far.
+    const from = Math.max(a, sa - 3999);
+    let s = from > a ? this.strs.at(this.src, a, from) : 0;
+    let start = -1;
+    const [t, o] = this.win(from, sa);
+    for (let i = from - o; i < sa - o; i++) {
       const c = t.charCodeAt(i);
-      if (inStr) {
-        if (c === 92) i++;
-        else if (c === 34) inStr = false;
+      if (s === 3) s = 1;
+      else if (s === 1) {
+        if (c === 92) s = 3;
+        else if (c === 34) s = 0;
       } else if (c === 34) {
-        inStr = true;
-        start = i;
+        s = 1;
+        start = i + o;
       }
     }
-    return inStr && sa - start < 4000 ? start : sa;
+    return s && start >= 0 ? start : sa;
+  }
+
+  /**
+   * The text [a, b) to draw from, at the offset of its first character: the
+   * document itself while it is one string, else a slice (a view of one
+   * piece, or a copy where edits cut it).
+   */
+  private win(a: number, b: number): [string, number] {
+    const flat = this.doc.flat;
+    if (flat !== null) return [flat, 0];
+    a = Math.max(0, a);
+    return [this.doc.slice(a, b), a];
+  }
+
+  /** The JWT part offsets in a slice from `o`. */
+  private jwtAt(o: number): readonly number[] {
+    const j = this.jwt as readonly number[];
+    return o ? j.map((x) => x - o) : j;
   }
 
   private gutterHtml(first: number, last: number) {
@@ -1256,9 +1371,9 @@ export class Editor {
   private rowsHtml: string[] = [];
   private gutHtml: string[] = [];
 
-  private draw(rows: string[], gut: string[]) {
-    patch(this.hl, this.rowsHtml, (this.rowsHtml = rows));
-    patch(this.gl, this.gutHtml, (this.gutHtml = gut));
+  private draw(rows: string[], gut: string[], offs: number[] | null) {
+    patch(this.hl, this.rowsHtml, (this.rowsHtml = rows), offs);
+    patch(this.gl, this.gutHtml, (this.gutHtml = gut), null);
   }
 
   /** Gutter classes of model line `ln`: diagnostics, Compare marks, caret line, selected node. */
@@ -1297,11 +1412,10 @@ export class Editor {
   private buildDiag() {
     this.diag.clear();
     this.diagCls.clear();
-    const t = this.text;
     for (const d of this.diagList) {
-      const p = Math.min(d.p, t.length);
+      const p = Math.min(d.p, this.doc.length);
       const ln = this.lineOf(p);
-      const end = Math.min(this.tokenEnd(p), this.lineEnd(ln));
+      const end = this.tokenEnd(p, this.lineEnd(ln));
       const arr = this.diag.get(ln) ?? [];
       if (!arr.some((m) => p < m.b && end > m.a) && !arr.some((m) => m.a === p)) arr.push({ a: p, b: end, cls: d.cls });
       this.diag.set(ln, arr);
@@ -1317,14 +1431,12 @@ export class Editor {
     this.diagList = this.diagList.filter((x) => x.p < a || x.p >= b).map((x) => (x.p >= b ? { p: x.p + d, cls: x.cls } : x));
   }
 
-  /** Extent of the token starting at `p`, for squiggles. */
-  private tokenEnd(p: number) {
-    const t = this.text;
-    const c = t.charCodeAt(p);
+  /** Extent of the token starting at `p`, for squiggles (at most `lim`, the end of its line). */
+  private tokenEnd(p: number, lim: number) {
+    const t = this.doc;
     if (p >= t.length) return p;
+    const c = t.charCodeAt(p);
     if (c === 34 || c === 39) {
-      const nl = t.indexOf('\n', p);
-      const lim = nl < 0 ? t.length : nl;
       for (let i = p + 1; i < lim; i++) {
         const d = t.charCodeAt(i);
         if (d === 92) i++;
@@ -1332,17 +1444,14 @@ export class Editor {
       }
       return lim;
     }
-    if (c === 47 || c === 35) {
-      const nl = t.indexOf('\n', p);
-      return nl < 0 ? t.length : nl;
-    }
+    if (c === 47 || c === 35) return lim;
     let i = p;
-    while (i < t.length) {
+    while (i < lim) {
       const d = t.charCodeAt(i);
       if ((d >= 48 && d <= 57) || (d >= 65 && d <= 90) || (d >= 97 && d <= 122) || d === 95 || d === 36 || d === 46 || d === 43 || d === 45 || d > 127) i++;
       else break;
     }
-    return i > p ? i : p + 1;
+    return Math.min(lim, i > p ? i : p + 1);
   }
 
   /** Colours a JWT input by part (null: back to JSON highlighting). */
@@ -1401,13 +1510,19 @@ export class Editor {
     this.scopeEl.style.height = `${(r2 - r1) * LH}px`;
   }
 
+  private curTf = '';
+  private curVis = '';
+
   private updateCaret() {
     const [s, e] = this.selection;
     const ln = this.lineOf(s);
     // Wrapped, the band marks the caret's row (a minified document is one line).
     this.curY = PAD_T + (this.wy ? this.vrowOf(s) : this.rowOf(ln)) * LH;
-    this.cur.style.transform = `translateY(${this.curY + this.sc.shift}px)`;
-    this.cur.style.visibility = this.lineOf(e) !== ln ? 'hidden' : '';
+    // (Written only when they change: each style write costs the next layout read a style pass.)
+    const tf = `translateY(${this.curY + this.sc.shift}px)`;
+    const vis = this.lineOf(e) !== ln ? 'hidden' : '';
+    if (tf !== this.curTf) this.cur.style.transform = this.curTf = tf;
+    if (vis !== this.curVis) this.cur.style.visibility = this.curVis = vis;
     if (ln !== this.caretLine) {
       this.caretLine = ln;
       return true;
@@ -1445,13 +1560,13 @@ export class Editor {
     if (this.quiet) return;
     if (this.surface) return this.surface.input(e as InputEvent);
     const it = (e as InputEvent).inputType ?? '';
-    const old = this.text;
+    const old = this.doc;
     this.typing = true;
     this.tabMovesFocus = false;
     if (it !== 'insertFromPaste') this.pasteFull = false;
     if (!this.sync()) return;
     // An IME composition is recorded once, when it ends.
-    if (this.compOld === null) this.record(old, this.text, it);
+    if (this.compOld === null) this.record(old, this.doc, it);
     this.ev.change(it === 'insertFromPaste' || it === 'insertFromDrop' ? 'paste' : 'input');
   };
 
@@ -1510,10 +1625,10 @@ export class Editor {
    */
   private shiftFolds(a: number, b: number, ins: string, keep = false) {
     if (!this.folded.size) return;
-    const t = this.text;
     let d = 0;
     for (let i = ins.indexOf('\n'); i !== -1; i = ins.indexOf('\n', i + 1)) d++;
-    for (let i = t.indexOf('\n', a); i !== -1 && i < b; i = t.indexOf('\n', i + 1)) d--;
+    // (Lines [a, b) ends on, from the line starts: the text isn't searched.)
+    d -= lineOfIn(this.ls, b) - lineOfIn(this.ls, a);
     const next = new Map<number, number>();
     for (const [o, span] of this.folded) {
       const hs = this.lineEnd(o);
@@ -1526,8 +1641,9 @@ export class Editor {
   }
 
   private onCompStart = () => {
-    if (this.surface) { this.surface.compositionStart(); this.compOld = this.text; this.compSel = this.selBefore = this.selection; return; }
-    this.compOld = this.text;
+    this.compR = null;
+    if (this.surface) { this.surface.compositionStart(); this.compOld = this.doc; this.compSel = this.selBefore = this.selection; return; }
+    this.compOld = this.doc;
     this.selBefore = this.selection;
   };
 
@@ -1537,14 +1653,15 @@ export class Editor {
       this.surface.compositionEnd();
       this.compOld = null;
       this.selBefore = this.compSel;
-      if (old !== null) this.record(old, this.text, 'insertText');
+      if (old !== null) this.record(old, this.doc, 'insertText', this.compR ?? undefined);
+      this.compR = null;
       // The composition shrank the document: now the native editor can take over.
-      if (this.text.length < SURFACE_CHARS * 0.8) this.model(this.text, false);
+      if (this.doc.length < SURFACE_CHARS * 0.8) this.model(this.doc, false);
       return;
     }
     this.compOld = null;
     this.sync();
-    if (old !== null) this.record(old, this.text, 'insertText');
+    if (old !== null) this.record(old, this.doc, 'insertText');
   };
 
   private onPaste = (e: ClipboardEvent) => {
@@ -1554,7 +1671,7 @@ export class Editor {
       if (text) {
         e.preventDefault();
         const [a, b] = this.selection;
-        this.pasteFull = a === 0 && b === this.text.length;
+        this.pasteFull = a === 0 && b === this.doc.length;
         if (!this.pasteFull || !this.ev.fullPaste?.(lf(text))) this.apply(a, b, text, undefined, undefined, 'paste');
       }
       return;
@@ -1582,7 +1699,7 @@ export class Editor {
     if (this.surface && e.clipboardData) {
       e.preventDefault();
       const [a, b] = this.selection;
-      e.clipboardData.setData('text/plain', this.text.slice(a, b));
+      e.clipboardData.setData('text/plain', this.doc.slice(a, b));
       if (e.type === 'cut') this.replace(a, b, '');
       return;
     }
@@ -1590,7 +1707,7 @@ export class Editor {
     const [a, b] = this.selection;
     if (b - a === this.ta.selectionEnd - this.ta.selectionStart) return;
     e.preventDefault();
-    e.clipboardData.setData('text/plain', this.text.slice(a, b));
+    e.clipboardData.setData('text/plain', this.doc.slice(a, b));
     if (e.type === 'cut') this.replace(a, b, '');
   };
 
@@ -1679,8 +1796,8 @@ export class Editor {
     let o = Number(row.dataset.o);
     const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
     for (let n = walk.nextNode(); n && n !== node; n = walk.nextNode()) if (!(n.parentElement as HTMLElement).closest('.ctx, .ed-fold, .meol')) o += (n as Text).length;
-    o = Math.min(o + off, this.text.length);
-    return (this.text.charCodeAt(o) & 0xfc00) === 0xdc00 ? o - 1 : o;
+    o = Math.min(o + off, this.doc.length);
+    return (this.doc.charCodeAt(o) & 0xfc00) === 0xdc00 ? o - 1 : o;
   }
 
   /** View mode keys (the scroller has focus). */
@@ -1720,7 +1837,7 @@ export class Editor {
     const at = this.vcaret;
     if (this.wake(at)) return this.replace(at, at, text.replace(/\r\n?/g, '\n'));
     this.pasteFull = true;
-    this.apply(0, this.text.length, text, 0, 0, 'paste');
+    this.apply(0, this.doc.length, text, 0, 0, 'paste');
   };
 
   private onKey = (e: KeyboardEvent) => {
@@ -1742,7 +1859,7 @@ export class Editor {
     switch (e.key) {
       case 'Tab':
         // Empty editor, or Esc pressed first: Tab moves focus like everywhere else.
-        if (mod || e.altKey || this.tabMovesFocus || !this.text) return;
+        if (mod || e.altKey || this.tabMovesFocus || !this.doc.length) return;
         e.preventDefault();
         this.indent(e.shiftKey ? -1 : 1);
         return;
@@ -1774,10 +1891,11 @@ export class Editor {
   // deleting is grouped like in IDEs.
 
   /** `r`: the changed range [start, old end, new end] when known (no diffing a big document). */
-  private record(old: string, now: string, kind: string, r?: [number, number, number]) {
+  private record(old: Doc, now: Doc, kind: string, r?: [number, number, number]) {
     if (old === now) return;
     const sb = this.selBefore;
-    const [a, eo, en] = r ?? diffRange(old, now, Math.min(sb[0], this.selAfter[0]));
+    if (!r && old.length === now.length && old.toString() === now.toString()) return;
+    const [a, eo, en] = r ?? diffRange(old.toString(), now.toString(), Math.min(sb[0], this.selAfter[0]));
     const ch: Change = {
       a,
       del: old.slice(a, eo),
@@ -1828,11 +1946,10 @@ export class Editor {
 
   /** Low-level replace without recording history. */
   private write(a: number, b: number, text: string, sel: [number, number]) {
-    const v = this.text;
     this.typing = true;
     this.shiftFolds(a, b, text, true);
     this.shiftDiags(a, b, text.length);
-    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface, { a, b, ins: text });
+    this.model(this.edited(a, b, text), false, !!this.surface, { a, b, ins: text });
     this.select(sel[0], sel[1], false);
     this.ev.change('input');
   }
@@ -1871,9 +1988,8 @@ export class Editor {
 
   private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind) {
     text = lf(text);
-    const v = this.text;
     const sb = this.selection;
-    const del = v.slice(a, b);
+    const del = this.doc.slice(a, b);
     const s1 = selA ?? a + text.length;
     const s2 = selB ?? s1;
     this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other' });
@@ -1881,19 +1997,28 @@ export class Editor {
     this.typing = true;
     this.shiftFolds(a, b, text, true);
     this.shiftDiags(a, b, text.length);
-    this.model(v.slice(0, a) + text + v.slice(b), false, !!this.surface, { a, b, ins: text });
+    this.model(this.edited(a, b, text), false, !!this.surface, { a, b, ins: text });
     this.select(s1, s2, false);
     this.ev.change(kind);
+  }
+
+  /**
+   * The document with [a, b) replaced by `text`: a new version of it for the
+   * big-document editor, else one string (the native textarea's).
+   */
+  private edited(a: number, b: number, text: string) {
+    const d = this.doc;
+    return this.surface ? d.edit(a, b, text) : Doc.of(d.slice(0, a) + text + d.slice(b));
   }
 
   /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
   setValue(next: string, caret = 0, load = false) {
     next = lf(next);
-    if (next !== this.text) {
+    if (next.length !== this.doc.length || next !== this.text) {
       this.forceEdit = false;
       this.loading = load;
       try {
-        this.apply(0, this.text.length, next, caret, caret, 'set');
+        this.apply(0, this.doc.length, next, caret, caret, 'set');
       } finally {
         this.loading = false;
       }
@@ -1924,7 +2049,7 @@ export class Editor {
     this.unhide(off);
     const ln = this.lineOf(off);
     const el = this.el;
-    const vh = el.clientHeight;
+    const vh = this.sc.height;
     const y = PAD_T + this.vrowOf(off) * LH;
     const st = this.sc.top;
     if (y < st + LH || y + LH * 2 > st + vh) {
@@ -1932,7 +2057,7 @@ export class Editor {
     }
     if (!this.wy) {
       const x = PAD_L + (off - this.ls[ln]) * this.cw;
-      const vw = el.clientWidth - this.gutW;
+      const vw = this.sc.width - this.gutW;
       if (x < el.scrollLeft || x > el.scrollLeft + vw - 40) el.scrollLeft = Math.max(0, x - vw / 2);
     }
     this.render(false);
@@ -1944,14 +2069,14 @@ export class Editor {
     const y = PAD_T + this.vrowOf(off) * LH;
     const el = this.el;
     const st = this.sc.top;
-    if (y < st || y + LH > st + el.clientHeight) return false;
+    if (y < st || y + LH > st + this.sc.height) return false;
     if (this.wy) return true;
     const x = PAD_L + (off - this.ls[this.lineOf(off)]) * this.cw;
-    return x >= el.scrollLeft && x <= el.scrollLeft + el.clientWidth - this.gutW - 24;
+    return x >= el.scrollLeft && x <= el.scrollLeft + this.sc.width - this.gutW - 24;
   }
 
   private indent(dir: 1 | -1) {
-    const v = this.text;
+    const v = this.doc;
     const [s, e] = this.selection;
     const unit = this.indentUnit;
     const l1 = this.lineOf(s);
@@ -1977,7 +2102,7 @@ export class Editor {
   }
 
   private newline() {
-    const v = this.text;
+    const v = this.doc;
     const [s, e] = this.selection;
     // Line starts are known: no scanning back (a minified document is one long line).
     const lineStart = this.ls[this.lineOf(s)];
@@ -1986,11 +2111,11 @@ export class Editor {
     const indent = v.slice(lineStart, w);
     let k = s - 1;
     while (k >= lineStart && (v.charCodeAt(k) === 32 || v.charCodeAt(k) === 9)) k--;
-    const before = v[k];
-    if (before === '{' || before === '[') {
+    const before = k >= 0 ? v.charCodeAt(k) : 0;
+    if (before === 123 || before === 91) {
       const inner = indent + this.indentUnit;
-      const after = v[e];
-      if ((before === '{' && after === '}') || (before === '[' && after === ']')) {
+      const after = v.charCodeAt(e);
+      if ((before === 123 && after === 125) || (before === 91 && after === 93)) {
         this.replace(s, e, '\n' + inner + '\n' + indent, s + 1 + inner.length);
       } else this.replace(s, e, '\n' + inner);
     } else this.replace(s, e, '\n' + indent);
@@ -2002,7 +2127,7 @@ export class Editor {
   private dedentCloser(ch: string) {
     const [s, e] = this.selection;
     if (s !== e) return false;
-    const v = this.text;
+    const v = this.doc;
     const lineStart = this.ls[this.lineOf(s)];
     // Only whitespace before the caret: check without copying a long line.
     for (let i = lineStart; i < s; i++) if (v.charCodeAt(i) !== 32 && v.charCodeAt(i) !== 9) return false;
@@ -2019,7 +2144,7 @@ export class Editor {
 
   private page(dir: 1 | -1, extend: boolean) {
     const ta = this.ta;
-    const lines = Math.max(1, Math.floor(this.el.clientHeight / LH) - 2);
+    const lines = Math.max(1, Math.floor(this.sc.height / LH) - 2);
     if (this.wy) {
       // By visual rows, keeping the column within the row.
       const back = ta.selectionDirection === 'backward';

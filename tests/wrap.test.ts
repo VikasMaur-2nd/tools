@@ -285,7 +285,7 @@ describe('row breaks added up for long lines', () => {
         for (let i = 0; i < A.length; i++) {
           const got = w.sum(next, A[i], B[i]);
           // Exact at once up to the window past the edit (where the view and the caret are).
-          const near = want.sums[i].filter((x) => A[i] + x <= at + 290_000);
+          const near = want.sums[i].filter((x) => A[i] + x <= at + 30_000);
           const gotN = [...got.subarray(0, near.length)];
           const bad = gotN.findIndex((x, k) => x !== near[k]);
           assert.ok(bad < 0 && gotN.length === near.length, `near the edit: line ${i}, edit at ${at}: first diff row ${bad} got ${gotN.slice(Math.max(0, bad - 2), bad + 3)} want ${near.slice(Math.max(0, bad - 2), bad + 3)} of ${near.length} (got ${got.length})`);

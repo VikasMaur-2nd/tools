@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { foldSig, lineEndIn, lineOfIn, lineStarts, lineWidth, maxWidth, patchLines, scanFolds } from '../lib/engine/lines';
+import { foldSig, lineEndIn, lineOfIn, lineStarts, lineWidth, maxWidth, patchLines, scanFolds, shiftFoldLines } from '../lib/engine/lines';
 
 /** Deterministic PRNG so failures reproduce. */
 function rng(seed: number) {
@@ -124,6 +124,39 @@ describe('lines', () => {
       }
     }
     assert.ok(skipped > 1000, `the fast path should be common (${skipped})`);
+  });
+
+  test('edits of lines that neither open nor close a block move the fold structure as a rescan finds it', () => {
+    let shifted = 0;
+    const plain = (s: number) => (s & 10) === 0;
+    for (let seed = 300; seed <= 340; seed++) {
+      const r = rng(seed);
+      let t = piece(r, 400);
+      const { ls } = lineStarts(t);
+      let folds = scanFolds(t, ls);
+      for (let step = 0; step < 150; step++) {
+        const a = Math.floor(r() * (t.length + 1));
+        const b = Math.min(t.length, a + Math.floor(r() * 6));
+        // Enter, Backspace over line breaks, or a little text.
+        const ins = r() < 0.5 ? '\n' + ' '.repeat(Math.floor(r() * 3)) : piece(r, 3);
+        const next = t.slice(0, a) + ins + t.slice(b);
+        const la = lineOfIn(ls, a);
+        const lb = lineOfIn(ls, b);
+        const was = Array.from({ length: lb - la + 1 }, (_, k) => foldSig(t, ls[la + k], lineEndIn(ls, t.length, la + k)));
+        const { added } = patchLines(ls, t, next, a, b, ins, 0, false);
+        const now = Array.from({ length: added + 1 }, (_, k) => foldSig(next, ls[la + k], lineEndIn(ls, next.length, la + k)));
+        const full = scanFolds(next, ls);
+        if (was.every(plain) && now.every(plain)) {
+          shifted++;
+          const got = shiftFoldLines(folds.close, folds.depth, la, lb, added);
+          assert.deepEqual(got.close, full.close, `seed ${seed} step ${step}: close`);
+          assert.deepEqual(got.depth, full.depth, `seed ${seed} step ${step}: depth`);
+        }
+        folds = full;
+        t = next;
+      }
+    }
+    assert.ok(shifted > 500, `the fast path should be common (${shifted})`);
   });
 
   test('scanFolds matches the editor loop it replaced', () => {

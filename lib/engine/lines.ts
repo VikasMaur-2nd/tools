@@ -6,6 +6,13 @@
 /** Must match `tab-size` in CSS. */
 export const TAB = 4;
 
+/** Text read by offset: a string, or the editor's document (see Doc). */
+export interface Chars {
+  readonly length: number;
+  charCodeAt(i: number): number;
+  indexOf(s: string, from?: number): number;
+}
+
 /** End (exclusive, before the '\n') of line `ln`. */
 export const lineEndIn = (ls: number[], len: number, ln: number) => (ln + 1 < ls.length ? ls[ln + 1] - 1 : len);
 
@@ -22,7 +29,7 @@ export function lineOfIn(ls: number[], off: number) {
 }
 
 /** Columns of t[s, e) with tabs expanded to TAB stops (equals e - s without tabs). */
-export function lineWidth(t: string, s: number, e: number) {
+export function lineWidth(t: Chars, s: number, e: number) {
   let tab = t.indexOf('\t', s);
   if (tab === -1 || tab >= e) return e - s;
   // Tab to tab with the native search: a huge line costs its tabs, not its characters.
@@ -37,7 +44,7 @@ export function lineWidth(t: string, s: number, e: number) {
   return col;
 }
 
-/** Line starts of `t` and its widest line in columns. */
+/** Line starts of `t`, its widest line in columns, and whether it has a tab. */
 export function lineStarts(t: string) {
   const ls = [0];
   let max = 0;
@@ -48,12 +55,13 @@ export function lineStarts(t: string) {
     prev = p + 1;
   }
   if (t.length - prev > max) max = t.length - prev;
-  if (max && t.indexOf('\t') !== -1) max = maxWidth(t, ls);
-  return { ls, max };
+  const tabs = t.indexOf('\t') !== -1;
+  if (max && tabs) max = maxWidth(t, ls);
+  return { ls, max, tabs };
 }
 
 /** Widest line of `t` in columns. */
-export function maxWidth(t: string, ls: number[]) {
+export function maxWidth(t: Chars, ls: number[]) {
   let max = 0;
   for (let ln = 0; ln < ls.length; ln++) {
     const w = lineWidth(t, ls[ln], lineEndIn(ls, t.length, ln));
@@ -67,13 +75,15 @@ export function maxWidth(t: string, ls: number[]) {
  * by `ins` (giving `next`). Returns the new width, and the line range that
  * changed: lines [la, la + added] of `next` replace lines [la, lb] of `old`.
  * `widths: false` skips measuring (each costs its line) and returns `max` unchanged.
+ * `tabs: false`: the text has no tabs (a line is as wide as it is long).
  */
-export function patchLines(ls: number[], old: string, next: string, a: number, b: number, ins: string, max: number, widths = true) {
+export function patchLines(ls: number[], old: Chars, next: Chars, a: number, b: number, ins: string, max: number, widths = true, tabs = true) {
   const la = lineOfIn(ls, a);
   const lb = lineOfIn(ls, b);
+  const width = (t: Chars, s: number, e: number) => (tabs ? lineWidth(t, s, e) : e - s);
   let oldMax = 0;
   for (let ln = la; widths && ln <= lb; ln++) {
-    const w = lineWidth(old, ls[ln], lineEndIn(ls, old.length, ln));
+    const w = width(old, ls[ln], lineEndIn(ls, old.length, ln));
     if (w > oldMax) oldMax = w;
   }
   const starts: number[] = [];
@@ -86,12 +96,19 @@ export function patchLines(ls: number[], old: string, next: string, a: number, b
   if (!widths) return { max, la, lb, added };
   let newMax = 0;
   for (let ln = la; ln <= la + added; ln++) {
-    const w = lineWidth(next, ls[ln], lineEndIn(ls, next.length, ln));
+    const w = width(next, ls[ln], lineEndIn(ls, next.length, ln));
     if (w > newMax) newMax = w;
   }
   // The widest line was among the edited ones and every replacement is narrower: rescan.
-  const width = oldMax < max || newMax >= max ? Math.max(max, newMax) : maxWidth(next, ls);
-  return { max: width, la, lb, added };
+  const most = oldMax < max || newMax >= max ? Math.max(max, newMax) : tabs ? maxWidth(next, ls) : widest(ls, next.length);
+  return { max: most, la, lb, added };
+}
+
+/** Widest line by line starts alone (no tabs). */
+function widest(ls: number[], len: number) {
+  let max = 0;
+  for (let ln = 0; ln < ls.length; ln++) max = Math.max(max, lineEndIn(ls, len, ln) - ls[ln]);
+  return max;
 }
 
 /**
@@ -99,7 +116,7 @@ export function patchLines(ls: number[], old: string, next: string, a: number, b
  * with a closer, ends with an opener, is only a closer (`}` or `},`). Two
  * lines with equal signatures play the same part in the fold structure.
  */
-export function foldSig(t: string, s: number, e: number) {
+export function foldSig(t: Chars, s: number, e: number) {
   let a = s;
   while (a < e && (t.charCodeAt(a) === 32 || t.charCodeAt(a) === 9)) a++;
   if (a === e) return 0;
@@ -115,7 +132,7 @@ export function foldSig(t: string, s: number, e: number) {
 }
 
 /** Fold structure: for each line, the line its block closes on (-1 if none) and its depth. */
-export function scanFolds(t: string, ls: number[]) {
+export function scanFolds(t: Chars, ls: number[]) {
   const n = ls.length;
   const close = new Int32Array(n).fill(-1);
   const depth = new Int32Array(n);
@@ -133,4 +150,26 @@ export function scanFolds(t: string, ls: number[]) {
     }
   }
   return { close, depth };
+}
+
+/**
+ * The fold structure after lines [la, lb] became lines [la, la + added], all
+ * of them neither opening nor closing a block (foldSig without 2 or 8): the
+ * blocks are the same, the lines after the edit only move. Blocks around the
+ * edit keep 3+ lines (they hold the edited lines and their own two).
+ */
+export function shiftFoldLines(close: Int32Array, depth: Int32Array, la: number, lb: number, added: number) {
+  const d = added - (lb - la);
+  if (!d) return { close, depth };
+  const n = close.length + d;
+  const c = new Int32Array(n);
+  const dp = new Int32Array(n);
+  c.set(close.subarray(0, la + 1));
+  dp.set(depth.subarray(0, la + 1));
+  c.fill(-1, la + 1, la + added + 1);
+  c.set(close.subarray(lb + 1), la + added + 1);
+  dp.set(depth.subarray(lb + 1), la + added + 1);
+  // (No block closes on an edited line: every one closing after line la closes after lb.)
+  for (let i = 0; i < n; i++) if (c[i] > la) c[i] += d;
+  return { close: c, depth: dp };
 }
