@@ -971,7 +971,8 @@ export class Engine {
       // On a first document the views are still hidden (empty state): show the output now.
       store.set({ empty: false, status: { kind: 'parsing' } });
       this.fmt.el.hidden = false;
-      this.drawFormat(out, text, key, index, display, change?.base === this.fmtWorkerId ? change : undefined, patch);
+      // (Id 0: the output shown was drawn here, so the worker had nothing to compare it with.)
+      this.drawFormat(out, text, key, index, display, change?.base && change.base === this.fmtWorkerId ? change : undefined, patch);
       this.pendingFmtWorkerId = seq;
       // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
       // the output can be scrolled and searched right away, without that work in the way.
