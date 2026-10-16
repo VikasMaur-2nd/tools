@@ -176,6 +176,8 @@ export class Engine {
   /** Result for `parsed`. */
   private res: ParseResult | null = null;
   private parsed = '';
+  /** The editor version `parsed` came from (see synced). */
+  private parsedVer: object | null = null;
   /** Last result with a usable tree (shown dimmed while the text is broken). */
   private good: ParseResult | null = null;
   /** The input is a JWT: `res` and the views describe its decoded document. */
@@ -333,8 +335,9 @@ export class Engine {
     clearTimeout(this.convTimer);
     clearTimeout(this.sizeTimer);
     this.sizeSeq++;
-    const len = this.ed.text.length;
-    if (kind === 'paste' && this.ed.pasteFull && this.ed.text.trim()) {
+    // (Per key: length and blank don't build a big document's text, see Editor.text.)
+    const len = this.ed.length;
+    if (kind === 'paste' && this.ed.pasteFull && !this.ed.blank) {
       // A whole document arrived at once: no typing to wait out.
       const text = this.ed.text;
       const now = () => {
@@ -346,7 +349,7 @@ export class Engine {
         clearTimeout(this.timer);
         this.timer = window.setTimeout(now, 0);
       }
-    } else if (!this.ed.text.trim()) {
+    } else if (this.ed.blank) {
       this.analyze();
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
@@ -387,8 +390,9 @@ export class Engine {
    * so neither blocks the keys.
    */
   private analyzeTyped = () => {
+    const ver = this.ed.version;
     const text = this.ed.text;
-    if (!this.outputFirst(text, store.get().fileName, (res) => this.ed.text === text && this.analyze(res), true)) this.analyze();
+    if (!this.outputFirst(text, store.get().fileName, (res) => this.ed.version === ver && this.analyze(res), true)) this.analyze();
   };
 
   /** `parsed`: the worker's parse of the current text. */
@@ -399,6 +403,7 @@ export class Engine {
     const reset = this.resetNext;
     this.resetNext = false;
     this.parsed = text;
+    this.parsedVer = ed.version;
 
     if (!text.trim()) {
       this.res = null;
@@ -539,7 +544,7 @@ export class Engine {
     const v = this.settings.view;
     const now = this.loaded;
     this.loaded = false;
-    if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.text.length > 1_000_000 ? 250 : 60);
+    if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
     else if (v === 'compare') store.set({ docText: this.ed.text });
   }
@@ -559,7 +564,7 @@ export class Engine {
 
   /** Is the viewer showing positions that match the current text? */
   private get synced() {
-    return !!this.res?.root && this.parsed === this.ed.text && !this.jwt;
+    return !!this.res?.root && this.parsedVer === this.ed.version && !this.jwt;
   }
 
   // ── Selection sync ─────────────────────────────────────────────────────
@@ -1854,8 +1859,8 @@ export class Engine {
   private persistNow = () => {
     clearTimeout(this.persistTimer);
     if (!this.persistEnabled) return;
-    const t = this.ed.text;
-    write(KEYS.doc, t && t.length <= MAX_PERSIST ? t : null);
+    const n = this.ed.length;
+    write(KEYS.doc, n && n <= MAX_PERSIST ? this.ed.text : null);
   };
 
   private registerSW() {

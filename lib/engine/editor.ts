@@ -249,6 +249,10 @@ export class Editor {
   private get src(): Src {
     return this.doc.flat ?? this.doc;
   }
+  /** The document's version: a new object after every edit (compare by identity, without building the text). */
+  get version(): object {
+    return this.doc;
+  }
   /** Characters in the document (without building it). */
   get length(): number {
     return this.doc.length;
