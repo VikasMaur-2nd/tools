@@ -387,10 +387,11 @@ export class Engine {
    */
   private analyzeTyped = () => {
     const text = this.ed.text;
-    if (!this.outputFirst(text, store.get().fileName, () => this.ed.text === text && this.analyze())) this.analyze();
+    if (!this.outputFirst(text, store.get().fileName, (res) => this.ed.text === text && this.analyze(res), true)) this.analyze();
   };
 
-  analyze() {
+  /** `parsed`: the worker's parse of the current text. */
+  analyze(parsed?: ParseResult) {
     clearTimeout(this.timer);
     const ed = this.ed;
     const text = ed.text;
@@ -421,7 +422,7 @@ export class Engine {
     const t0 = performance.now();
     const jwt = readJwt(text, this.indent);
     const src = jwt ? jwt.json : text;
-    const res = parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
+    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
     const lines = !jwt && jsonLines(text, res);
     const ms = performance.now() - t0;
     this.res = res;
@@ -819,23 +820,23 @@ export class Engine {
    * re-indented straight from the text (in a worker, or here in slices), and
    * calls `next` (its analysis) once that has painted. False if it doesn't apply.
    */
-  private outputFirst(text: string, name: string | null, next: () => void): boolean {
+  private outputFirst(text: string, name: string | null, next: (res?: ParseResult) => void, typed = false): boolean {
     const s = this.settings;
     if (text.length < OUTPUT_FIRST || s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '') || readJwt(text, this.indent)) return false;
     const seq = ++this.loadSeq;
     clearTimeout(this.fmtTimer);
     clearTimeout(this.timer);
     const indent = s.minify || s.escape ? '' : this.indent;
-    const done = (out: string | null) => {
+    const done = (out: string | null, res?: ParseResult) => {
       if (seq !== this.loadSeq) return;
-      if (out === null) return next();
+      if (out === null) return next(res);
       // On a first document the views are still hidden (empty state): show the output now.
       store.set({ empty: false, status: { kind: 'parsing' } });
       this.fmt.el.hidden = false;
       this.drawFormat(out, text, this.fmtSettings());
       // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
       // the output can be scrolled and searched right away, without that work in the way.
-      setTimeout(() => idle(() => seq === this.loadSeq && next(), 1000), 300);
+      setTimeout(() => idle(() => seq === this.loadSeq && next(res), 1000), 300);
     };
     const here = () => {
       const run = reindenter(text, indent);
@@ -848,13 +849,14 @@ export class Engine {
       step();
     };
     // A warm worker leaves the page free; a cold one would cost more than smaller documents take here.
-    const w = text.length < WORKER_MIN && !this.workerWarm ? null : this.reindentWorker();
+    // Typing: the worker parses too, so nothing big is left for the page.
+    const w = text.length < WORKER_MIN && !this.workerWarm && !typed ? null : this.reindentWorker();
     if (!w) {
       if (text.length < WORKER_MIN) done(reindent(text, indent));
       else here();
     } else {
       this.reindentJob = { id: seq, done, fallback: here };
-      w.postMessage({ id: seq, text, indent });
+      w.postMessage({ id: seq, text, indent, parse: typed });
     }
     return true;
   }
@@ -865,19 +867,22 @@ export class Engine {
   private worker: Worker | null | undefined;
   /** The worker has run its warm-up (see reindent.worker.ts). */
   private workerWarm = false;
-  private reindentJob: { id: number; done: (out: string | null) => void; fallback: () => void } | null = null;
+  private workerParse: { id: number; res?: ParseResult } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, res?: ParseResult) => void; fallback: () => void } | null = null;
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; res?: ParseResult }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
+        if (e.data.res) return void (this.workerParse = e.data);
         const job = this.reindentJob;
         if (!job || job.id !== e.data.id) return;
         this.reindentJob = null;
-        job.done(e.data.out);
+        job.done(e.data.out, this.workerParse?.id === job.id ? this.workerParse.res : undefined);
+        this.workerParse = null;
       };
       w.onerror = () => {
         // It couldn't load (offline before it was ever cached, or blocked): work here instead.
