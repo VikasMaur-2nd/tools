@@ -230,4 +230,73 @@ describe('row breaks added up for long lines', () => {
       }
     }
   });
+  test('rows() after an edit, told or not where it was, matches a fresh count on long lines', () => {
+    let seed = 11;
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
+    type X = Pick<Wrapper, 'rows' | 'rowStart' | 'odd'> & { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+    const make = (cols: number, cw: number) => {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+      w.fit(cols * cw + cw / 2 + 0.25, cw);
+      const x = w as unknown as X;
+      for (const [c, g] of [[0x200d, 0], [0x301, 0], [0xe9, cw], [0x4e2d, 2 * cw], [0x1f600, 2 * cw], [0x1f1ee, 1.5 * cw], [0x1f1f3, 1.5 * cw], [0x2028, 0]]) x.glyphs.set(c, g);
+      x.joins.add(0x200d);
+      x.joins.add(0x301);
+      return x;
+    };
+    const pick = () => {
+      const r = rnd(50);
+      return r === 0 ? '\t' : r === 1 ? '‍' : r === 2 ? 'é' : r === 3 ? '中' : r === 4 ? '\u{1f1ee}\u{1f1f3}' : r === 5 ? ' ' : r === 6 ? 'é' : r === 7 ? '😀' : String.fromCharCode(32 + rnd(95));
+    };
+    const lines = (t: string) => {
+      const A: number[] = [];
+      const B: number[] = [];
+      let a = 0;
+      for (;;) {
+        const e = t.indexOf('\n', a);
+        A.push(a);
+        B.push(e < 0 ? t.length : e);
+        if (e < 0) break;
+        a = e + 1;
+      }
+      return [Int32Array.from(A), Int32Array.from(B)] as const;
+    };
+    for (const [cols, cw] of [[8, 8], [37, 7.5], [120, 7.75]] as const) {
+      const told = make(cols, cw);
+      const guessed = make(cols, cw);
+      const long = () => {
+        let s = '';
+        for (let n = 5000 + rnd(1500); n > 0; n--) s += pick();
+        return s;
+      };
+      let t = long() + '\n' + long() + '\n' + long();
+      told.rows(t, ...lines(t));
+      guessed.rows(t, ...lines(t));
+      for (let k = 0; k < 200; k++) {
+        const low = (i: number) => (t.charCodeAt(i) & 0xfc00) === 0xdc00;
+        let at = rnd(t.length + 1);
+        if (low(at)) at--;
+        let end = Math.min(t.length, at + (rnd(4) === 0 ? rnd(8) : 0));
+        if (low(end)) end++;
+        let ins = rnd(5) ? pick() : '';
+        // (Only long lines: shorter ones would be measured, and tests have no layout.)
+        if (rnd(30) === 0 && at - t.lastIndexOf('\n', at - 1) > 3600 && (t.indexOf('\n', end) < 0 ? t.length : t.indexOf('\n', end)) - end > 3600) ins += '\n';
+        t = t.slice(0, at) + ins + t.slice(end);
+        const [A, B] = lines(t);
+        const a = told.rows(t, A, B, [at, end, at + ins.length]);
+        const g = guessed.rows(t, A, B);
+        const fresh = make(cols, cw);
+        const f = fresh.rows(t, A, B);
+        assert.deepEqual([...a], [...f], `told: cols ${cols}, edit ${k} at ${at}`);
+        assert.deepEqual([...g], [...f], `guessed: cols ${cols}, edit ${k} at ${at}`);
+        for (let i = 0; i < A.length; i++) {
+          if (B[i] - A[i] <= 3000 || !fresh.odd[i]) continue;
+          const want = [...fresh.sum(t, A[i], B[i])];
+          assert.deepEqual([...told.sum(t, A[i], B[i])], want, `told breaks: line ${i}, edit ${k}`);
+          assert.deepEqual([...guessed.sum(t, A[i], B[i])], want, `guessed breaks: line ${i}, edit ${k}`);
+          const r = rnd(want.length);
+          assert.equal(told.rowStart(t, A[i], B[i], r, true), want[r]);
+        }
+      }
+    }
+  });
 });

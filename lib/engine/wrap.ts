@@ -110,6 +110,22 @@ function tabTo(x: number, cw: number) {
   return g < cw / 2 ? g + stop : g;
 }
 
+/** Length of the common prefix of `x` from `xa` and `y` from `ya`, at most `max` (no copies: slices of a string share it). */
+function prefixAt(x: string, xa: number, y: string, ya: number, max: number) {
+  let p = 0;
+  while (p + 4096 <= max && x.slice(xa + p, xa + p + 4096) === y.slice(ya + p, ya + p + 4096)) p += 4096;
+  while (p < max && x.charCodeAt(xa + p) === y.charCodeAt(ya + p)) p++;
+  return p;
+}
+
+/** Length of the common suffix of `x` before `xb` and `y` before `yb`, at most `max`. */
+function suffixAt(x: string, xb: number, y: string, yb: number, max: number) {
+  let q = 0;
+  while (q + 4096 <= max && x.slice(xb - q - 4096, xb - q) === y.slice(yb - q - 4096, yb - q)) q += 4096;
+  while (q < max && x.charCodeAt(xb - 1 - q) === y.charCodeAt(yb - 1 - q)) q++;
+  return q;
+}
+
 /** Length of the common suffix of `x` and `y`, at most `max`. */
 function sameSuffix(x: string, y: string, max: number) {
   let q = 0;
@@ -141,13 +157,17 @@ export class Wrapper {
   private sized = new Map<string, number>();
   private glyphs = new Map<number, number>();
   private mirrors = new Map<string, Mirror>();
-  private sums = new Map<string, Int32Array>();
+  private sums: { t: string; a: number; b: number; st: Int32Array }[] = [];
   private joins = new Set<number>();
   /** Does this browser keep letters joined across a soft row break (Firefox does)? Measured once. */
   private across: boolean | null = null;
   private range: Range | null = null;
   private readonly lead = [0, 0];
   private trust = true;
+  /** An edit announced by `edited()`, for the next `rows()` call. */
+  private hint: readonly [number, number, number] | null = null;
+  /** How the last `rows()` text differs from the one before: same first `p` and last `q` characters. */
+  private diff: { old: string; text: string; p: number; q: number } | null = null;
   /** The last `rows()` call, whose unchanged lines the next one reuses. */
   private last: { text: string; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array } | null = null;
 
@@ -239,11 +259,22 @@ export class Wrapper {
   }
 
   /**
+   * Announces that the next `rows()` text is the last one with `[a, oldEnd)`
+   * replaced by what is now `[a, newEnd)` (same as passing it to `rows()`).
+   * Spares `rows()` and long-line breaking from comparing the texts.
+   */
+  edited(a: number, oldEnd: number, newEnd: number) {
+    this.hint = [a, oldEnd, newEnd];
+  }
+
+  /**
    * Rows taken by each line `text[A[i], B[i])`. Lines the arithmetic can't
    * size are measured together. Also sets `odd`.
    */
-  rows(text: string, A: Int32Array, B: Int32Array): Int32Array {
+  rows(text: string, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number]): Int32Array {
     const n = A.length;
+    const hint = edit ?? this.hint;
+    this.hint = null;
     const out = new Int32Array(n);
     const odd = new Uint8Array(n);
     this.odd = odd;
@@ -257,8 +288,17 @@ export class Wrapper {
     const last = this.last;
     if (last) {
       const old = last.text;
-      const p = samePrefix(old, text);
-      const q = sameSuffix(old, text, Math.min(old.length, text.length) - p);
+      let p: number;
+      let q: number;
+      // A known edit `[a, oldEnd, newEnd)` spares comparing the texts (two passes over the document).
+      if (hint && hint[0] >= 0 && hint[0] <= hint[1] && hint[0] <= hint[2] && hint[1] <= old.length && hint[2] <= text.length && text.length - old.length === hint[2] - hint[1]) {
+        p = hint[0];
+        q = text.length - hint[2];
+      } else {
+        p = samePrefix(old, text);
+        q = sameSuffix(old, text, Math.min(old.length, text.length) - p);
+      }
+      this.diff = { old, text, p, q };
       const m = last.A.length;
       while (lo < n && lo < m && B[lo] < p && A[lo] === last.A[lo] && B[lo] === last.B[lo]) lo++;
       const d = text.length - old.length;
@@ -269,6 +309,7 @@ export class Wrapper {
       out.set(last.out.subarray(hi - dk, m), hi);
       odd.set(last.odd.subarray(hi - dk, m), hi);
     }
+    if (!last) this.diff = null;
     this.last = { text, A, B, out, odd };
     if (!this.trust) odd.fill(1, lo, hi);
     else if (lo < hi) {
@@ -511,7 +552,7 @@ export class Wrapper {
   }
 
   /** The last line `sum` added up: found again by identity, and the start of the next one (see `sum`). */
-  private lastSum: { t: string; a: number; b: number; s: string; st: Int32Array } | null = null;
+  private lastSum: { t: string; a: number; b: number; st: Int32Array } | null = null;
 
   /**
    * Row starts of the long line `t[a, b)`, breaking where its glyphs' widths
@@ -520,39 +561,59 @@ export class Wrapper {
    * Typing changes one line a character at a time: its rows before the edit
    * are kept, and once a row after it starts where an old row did (shifted),
    * the rest are the old rows, so a key costs a row or two, not the line.
+   * Never copies the line, nor keys anything by its text: the edit comes from
+   * `rows()` (or `edited()`), else the line is compared with the last one in place.
    */
   private sum(t: string, a: number, b: number): Int32Array {
     const last = this.lastSum;
-    if (last && last.t === t && last.a === a && last.b === b) return last.st;
-    const s = t.slice(a, b);
-    const hit = this.sums.get(s);
-    if (hit) return hit;
+    if (last && last.a === a && last.b === b && last.t === t) return last.st;
+    for (const e of this.sums) if (e.a === a && e.b === b && e.t === t) return (this.lastSum = e).st;
+    const len = b - a;
     const cw = this.cw;
     const max = this.width;
     /** Printable ASCII characters a row holds from its start. */
     const full = Math.floor(max / cw);
-    const starts = [0];
-    let row = 0;
     // The old rows: after `tail` (the edit's end) a row start `d` past an old one resynchronizes.
-    const old = last?.st;
+    let old: Int32Array | null = null;
+    let p = 0;
     let tail = Infinity;
     let d = 0;
-    let j = 0;
-    if (old && last) {
-      const p = samePrefix(last.s, s);
-      tail = s.length - sameSuffix(last.s, s, Math.min(last.s.length, s.length) - p);
-      d = s.length - last.s.length;
-      while (row + 1 < old.length && old[row + 1] < p) starts.push(old[++row]);
-      j = row + 1;
+    const diff = this.diff;
+    if (last && diff && diff.text === t && diff.old === last.t) {
+      const dt = t.length - last.t.length;
+      const oldEnd = last.t.length - diff.q;
+      // An edit wholly before or after the line leaves its rows as they were.
+      if (oldEnd < last.a && a === last.a + dt && b === last.b + dt) return this.keepSum(t, a, b, last.st);
+      if (diff.p > last.b && a === last.a && b === last.b) return this.keepSum(t, a, b, last.st);
+      if (a === last.a && diff.p >= a && b - last.b === dt && oldEnd <= last.b) {
+        old = last.st;
+        p = diff.p - a;
+        tail = t.length - diff.q - a;
+        d = dt;
+      }
+    } else if (last) {
+      const ol = last.b - last.a;
+      const m = Math.min(ol, len);
+      p = prefixAt(last.t, last.a, t, a, m);
+      if (p === m && ol === len) return this.keepSum(t, a, b, last.st);
+      old = last.st;
+      tail = len - suffixAt(last.t, last.b, t, b, m - p);
+      d = len - ol;
     }
-    let i = starts[row];
+    let keep = 1;
+    if (old) while (keep < old.length && old[keep] < p) keep++;
+    // Rows `[0, keep)` are the old ones; `starts` are new; then old rows from `from`, shifted by `d`.
+    const starts: number[] = [];
+    let from = -1;
+    let j = keep;
+    let i = old ? old[keep - 1] : 0;
     let done = false;
     const brk = (x: number) => {
       starts.push(x);
       if (x < tail || !old) return false;
       while (j < old.length && old[j] + d < x) j++;
       if (j >= old.length || old[j] + d !== x) return false;
-      for (let k = j + 1; k < old.length; k++) starts.push(old[k] + d);
+      from = j + 1;
       return (done = true);
     };
     let lastStart = i;
@@ -560,13 +621,13 @@ export class Wrapper {
     let joined = false;
     let flags = 0;
     let forced = false;
-    while (i < s.length && !done) {
-      let c = s.charCodeAt(i);
+    while (i < len && !done) {
+      let c = t.charCodeAt(a + i);
       if (c >= 32 && c < 127 && !joined) {
         // A run of printable ASCII is one cell a character: its breaks are arithmetic.
-        RUN.lastIndex = i;
-        RUN.test(s);
-        const e = RUN.lastIndex;
+        RUN.lastIndex = a + i;
+        RUN.test(t);
+        const e = Math.min(RUN.lastIndex, b) - a;
         // (A row can already be over full: nothing breaks before a joined character.)
         let k = i + Math.max(0, Math.floor((max - w) / cw));
         if (k === lastStart) k++;
@@ -584,8 +645,8 @@ export class Wrapper {
       if (c === 9) g = tabTo(w, cw);
       else if (c >= 32 && c < 127) g = cw;
       else {
-        if (c >= 0xd800 && c < 0xdc00) {
-          c = s.codePointAt(i) as number;
+        if (c >= 0xd800 && c < 0xdc00 && i + 1 < len) {
+          c = t.codePointAt(a + i) as number;
           if (c > 0xffff) n = 2;
         }
         g = c === 0xfe0f ? 2.5 * cw : (this.glyphs.get(c) ?? this.glyph(c));
@@ -605,17 +666,27 @@ export class Wrapper {
       w += g;
       joined = c === 0x200d;
       i += n;
-      if (forced && i < s.length && !done) {
+      if (forced && i < len && !done) {
         brk((lastStart = i));
         w = 0;
       }
       forced = false;
     }
-    const out = Int32Array.from(starts);
-    this.lastSum = { t, a, b, s, st: out };
-    this.sums.set(s, out);
-    if (this.sums.size > SUMS) this.sums.delete(this.sums.keys().next().value as string);
-    return out;
+    const rest = old && from >= 0 ? old.length - from : 0;
+    const out = new Int32Array(keep + starts.length + rest);
+    if (old) out.set(old.subarray(0, keep));
+    for (let k = 0; k < starts.length; k++) out[keep + k] = starts[k];
+    if (old) for (let k = 0, o = keep + starts.length; k < rest; k++) out[o + k] = old[from + k] + d;
+    return this.keepSum(t, a, b, out);
+  }
+
+  /** Remembers `st` as the row starts of `t[a, b)` (see `sum`). */
+  private keepSum(t: string, a: number, b: number, st: Int32Array) {
+    const e = { t, a, b, st };
+    this.lastSum = e;
+    this.sums.push(e);
+    if (this.sums.length > SUMS) this.sums.shift();
+    return st;
   }
 
   /** Width of code point `c`, measured now (see `learn`). */
@@ -695,8 +766,10 @@ export class Wrapper {
     this.last = null;
     for (const m of this.mirrors.values()) m.el.remove();
     this.mirrors.clear();
-    this.sums.clear();
+    this.sums.length = 0;
     this.lastSum = null;
+    this.diff = null;
+    this.hint = null;
   }
 
   /** First offset on row `r` (binary search between the nearest rows already probed). */
