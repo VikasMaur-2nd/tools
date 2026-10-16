@@ -1,6 +1,7 @@
 import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
 import { byteLength, copyText, formatDoc, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
+import { unpacker, type PackedTree } from '../json/pack';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
 import { TableView } from './table';
@@ -827,16 +828,29 @@ export class Engine {
     clearTimeout(this.fmtTimer);
     clearTimeout(this.timer);
     const indent = s.minify || s.escape ? '' : this.indent;
-    const done = (out: string | null, res?: ParseResult) => {
+    // The worker's parse (after typing) is rebuilt in short slices, input handled between them, then analysed.
+    const analyse = (tree?: PackedTree) => {
       if (seq !== this.loadSeq) return;
-      if (out === null) return next(res);
+      if (!tree) return next();
+      const step = unpacker(tree, text);
+      const run = () => {
+        if (seq !== this.loadSeq) return;
+        const res = step(performance.now() + 8);
+        if (res) next(res);
+        else soon(run);
+      };
+      run();
+    };
+    const done = (out: string | null, tree?: PackedTree) => {
+      if (seq !== this.loadSeq) return;
+      if (out === null) return analyse(tree);
       // On a first document the views are still hidden (empty state): show the output now.
       store.set({ empty: false, status: { kind: 'parsing' } });
       this.fmt.el.hidden = false;
       this.drawFormat(out, text, this.fmtSettings());
       // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
       // the output can be scrolled and searched right away, without that work in the way.
-      setTimeout(() => idle(() => seq === this.loadSeq && next(res), 1000), 300);
+      setTimeout(() => idle(() => analyse(tree), 1000), 300);
     };
     const here = () => {
       const run = reindenter(text, indent);
@@ -867,23 +881,21 @@ export class Engine {
   private worker: Worker | null | undefined;
   /** The worker has run its warm-up (see reindent.worker.ts). */
   private workerWarm = false;
-  private workerParse: { id: number; res?: ParseResult } | null = null;
-  private reindentJob: { id: number; done: (out: string | null, res?: ParseResult) => void; fallback: () => void } | null = null;
+  private workerParse: { id: number; tree: PackedTree } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree) => void; fallback: () => void } | null = null;
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; buf?: ArrayBuffer; res?: ParseResult }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
-        if (e.data.res) return void (this.workerParse = e.data);
+        if (e.data.tree) return void (this.workerParse = { id: e.data.id, tree: e.data.tree });
         const job = this.reindentJob;
         if (!job || job.id !== e.data.id) return;
         this.reindentJob = null;
-        // A big output arrives as transferred UTF-16 code units (see reindent.worker.ts): one native decode.
-        const out = e.data.buf ? new TextDecoder('utf-16le', { ignoreBOM: true }).decode(e.data.buf) : e.data.out;
-        job.done(out, this.workerParse?.id === job.id ? this.workerParse.res : undefined);
+        job.done(e.data.out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined);
         this.workerParse = null;
       };
       w.onerror = () => {
