@@ -923,6 +923,7 @@ export class Engine {
 
   openFile(target: 1 | 2 = 1) {
     this.reindentWorker();
+    void loadSurface();
     this.fileTarget = target;
     this.els.file.value = '';
     this.els.file.click();

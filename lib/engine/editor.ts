@@ -400,7 +400,8 @@ export class Editor {
     if (this.diagList.length) this.buildDiag();
 
     // Typing never flips an open editor into view mode; loads and big pastes do.
-    const big = t.length > VIEW_CHARS || ls.length > VIEW_LINES;
+    // Many lines only slow the native textarea down; the big-document editor draws just the rows on screen.
+    const big = t.length > VIEW_CHARS || (ls.length > VIEW_LINES && t.length < SURFACE_CHARS);
     const lazy = !big && (this.view ? this.lazy : this.loading && t.length > LAZY_CHARS);
     const view = !this.forceEdit && (big || lazy) && !(fromTa && !this.view);
     const notice = view && !lazy;
@@ -413,7 +414,9 @@ export class Editor {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
-        if (SurfaceClass && !this.surface && !this.view && this.el.isConnected && this.text.length >= SURFACE_CHARS) this.model(this.text, false);
+        // Switch to it, or out of a read-only view that only its line count caused.
+        const lines = this.view && !this.lazy && this.text.length <= VIEW_CHARS;
+        if (SurfaceClass && !this.surface && (!this.view || lines) && this.el.isConnected && this.text.length >= SURFACE_CHARS) this.model(this.text, false);
       });
     }
     if (custom && !this.surface) {
