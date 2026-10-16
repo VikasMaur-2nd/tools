@@ -59,15 +59,32 @@ export interface CodeChange {
 
 /** Compared off-thread: unchanged lines can keep their measured wrapping. */
 export function codeChange(old: string, text: string): CodeChange {
+  return codeChanger(old, text)(Infinity)!;
+}
+
+/** codeChange in bounded steps (the page compares big outputs between input events). */
+export function codeChanger(old: string, text: string): (until: number) => CodeChange | undefined {
   const max = Math.min(old.length, text.length);
   let prefix = 0;
-  while (prefix + 4096 <= max && old.slice(prefix, prefix + 4096) === text.slice(prefix, prefix + 4096)) prefix += 4096;
-  while (prefix < max && old.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix++;
   let suffix = 0;
-  const left = max - prefix;
-  while (suffix + 4096 <= left && old.slice(old.length - suffix - 4096, old.length - suffix) === text.slice(text.length - suffix - 4096, text.length - suffix)) suffix += 4096;
-  while (suffix < left && old.charCodeAt(old.length - suffix - 1) === text.charCodeAt(text.length - suffix - 1)) suffix++;
-  return { prefix, suffix };
+  let end = false;
+  return (until) => {
+    if (!end) {
+      while (prefix + 4096 <= max && old.slice(prefix, prefix + 4096) === text.slice(prefix, prefix + 4096)) {
+        prefix += 4096;
+        if ((prefix & 0x3ffff) === 0 && performance.now() >= until) return;
+      }
+      while (prefix < max && old.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix++;
+      end = true;
+    }
+    const left = max - prefix;
+    while (suffix + 4096 <= left && old.slice(old.length - suffix - 4096, old.length - suffix) === text.slice(text.length - suffix - 4096, text.length - suffix)) {
+      suffix += 4096;
+      if ((suffix & 0x3ffff) === 0 && performance.now() >= until) return;
+    }
+    while (suffix < left && old.charCodeAt(old.length - suffix - 1) === text.charCodeAt(text.length - suffix - 1)) suffix++;
+    return { prefix, suffix };
+  };
 }
 
 /** Reconstruct a worker's small output patch against the version it compared. */

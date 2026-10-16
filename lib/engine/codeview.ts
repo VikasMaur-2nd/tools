@@ -2,7 +2,7 @@ import { bidiContext, escapeHtml, StringStates, stringState, trimWs } from './hi
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
-import { codeIndexer, type CodeChange, type CodeIndex } from '../json/code-index';
+import { codeChanger, codeIndexer, type CodeChange, type CodeIndex } from '../json/code-index';
 import { soon } from './idle';
 import { TextSlices } from '../json/text-slices';
 
@@ -225,8 +225,16 @@ export class CodeView {
     this.pending = { text, hl, json, scanner, index, change, patch };
     const model = change && patch !== undefined ? this.model.patch(change.prefix, change.suffix, patch) : TextSlices.from(text);
     const run = index ? null : codeIndexer(text);
+    // A big output that came without its change (drawn here, or by a worker that had nothing to compare
+    // it with): find it here, so unchanged lines keep their measured wrapping.
+    const diff = !change && !scanner && hl === this.hl && text.length >= 2_000_000 && this.text.length >= 2_000_000 ? codeChanger(this.text, text) : null;
     const prepare = () => {
       if (seq !== this.textSeq) return;
+      if (diff && !change) {
+        change = diff(performance.now() + 8);
+        if (!change) return soon(prepare);
+        if (this.pending) this.pending.change = change;
+      }
       const ready = index ?? run!(text.length < 2_000_000 ? Infinity : performance.now() + 8);
       if (!ready) return soon(prepare);
       if (this.pending) this.pending.index = ready;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyCodeChange, codeChange, codeIndexer } from '../lib/json/code-index';
+import { applyCodeChange, codeChange, codeChanger, codeIndexer } from '../lib/json/code-index';
 import { documentMetrics } from '../lib/json/metrics';
 import { byteLength, formatDoc } from '../lib/json/format';
 import { parse } from '../lib/json/parser';
@@ -52,6 +52,28 @@ test('output changes keep only disjoint, exact prefixes and suffixes', () => {
   const before = 'prefix'.repeat(2000) + 'x' + 'suffix'.repeat(2000);
   const after = before.replace('x' + 'suffix', 'y' + 'suffix');
   assert.deepEqual(codeChange(before, after), { prefix: 12000, suffix: 12000 });
+});
+
+test('output changes found in steps match the one-pass comparison', () => {
+  const body = 'é😀東京 "k": [1, 2],\n'.repeat(60000);
+  for (const [before, after] of [
+    [body, body],
+    [body, 'x' + body],
+    [body, body + 'x'],
+    [body, body.slice(0, 500000) + 'ZQX' + body.slice(500000)],
+    [body, body.slice(0, 700001) + body.slice(700005)],
+    ['', body],
+    [body, ''],
+    ['short', body],
+  ] as const) {
+    const step = codeChanger(before, after);
+    let calls = 0;
+    let found;
+    while (!(found = step(0))) calls++;
+    assert.deepEqual(found, codeChange(before, after));
+    if (before.length > 1e6 && after.length > 1e6) assert.ok(calls > 2, 'it yields between steps');
+    assert.equal(applyCodeChange(before, after.slice(found.prefix, after.length - found.suffix), found), after);
+  }
 });
 
 test('output patches reconstruct insertions, removals and Unicode edits exactly', () => {
