@@ -63,6 +63,15 @@ const STEP = 8192;
  * stringState at offsets deep in long lines, from checkpoints every STEP
  * characters: drawing rows while scrolling never rescans a line from its start.
  */
+/** Length of the common prefix of `x` and `y` (compared a block at a time, then by character). */
+export function samePrefix(x: string, y: string) {
+  const max = Math.min(x.length, y.length);
+  let p = 0;
+  while (p + 4096 <= max && x.slice(p, p + 4096) === y.slice(p, p + 4096)) p += 4096;
+  while (p < max && x.charCodeAt(p) === y.charCodeAt(p)) p++;
+  return p;
+}
+
 export class StringStates {
   private text = '';
   private lines = new Map<number, number[]>();
@@ -70,8 +79,13 @@ export class StringStates {
   /** State at offset `off` of the line of `text` that starts at `a`. */
   at(text: string, a: number, off: number): number {
     if (text !== this.text) {
+      // An edit keeps the checkpoints before it (typing in a long line rescans a step, not the line).
+      const p = samePrefix(this.text, text);
+      for (const [s, cp] of this.lines) {
+        if (s > p) this.lines.delete(s);
+        else cp.length = Math.min(cp.length, Math.floor((p - s) / STEP) + 1);
+      }
       this.text = text;
-      this.lines.clear();
     }
     let cp = this.lines.get(a);
     if (!cp) this.lines.set(a, (cp = [0]));

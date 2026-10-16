@@ -19,6 +19,8 @@
  *   broken by adding up its glyphs' widths, which is instant at any size.
  */
 
+import { samePrefix } from './highlight';
+
 /** Must match `tab-size` in CSS. */
 const TAB = 4;
 /** Text nodes of a mirror end at the first ASCII character after this many characters. */
@@ -106,15 +108,6 @@ function tabTo(x: number, cw: number) {
   const stop = TAB * cw;
   const g = (Math.floor(x / stop) + 1) * stop - x;
   return g < cw / 2 ? g + stop : g;
-}
-
-/** Length of the common prefix of `x` and `y` (compared a block at a time, then by character). */
-function samePrefix(x: string, y: string) {
-  const max = Math.min(x.length, y.length);
-  let p = 0;
-  while (p + 4096 <= max && x.slice(p, p + 4096) === y.slice(p, p + 4096)) p += 4096;
-  while (p < max && x.charCodeAt(p) === y.charCodeAt(p)) p++;
-  return p;
 }
 
 /** Length of the common suffix of `x` and `y`, at most `max`. */
@@ -311,10 +304,14 @@ export class Wrapper {
         }
         odd[k] = 1;
       }
+      if (!this.exact && b - a > LONG_LINE) {
+        out[k] = this.sum(text, a, b).length;
+        continue;
+      }
       const s = text.slice(a, b);
       let r = this.sized.get(s) ?? keep.get(s);
       // A long line is laid out once, as the mirror its rows are later read from.
-      if (r === undefined && s.length > LONG_LINE) r = this.exact ? this.mirror(s).rows : this.sum(s).length;
+      if (r === undefined && s.length > LONG_LINE) r = this.mirror(s).rows;
       if (r === undefined) unsized.push(k);
       else {
         out[k] = r;
@@ -368,7 +365,7 @@ export class Wrapper {
       return Math.min(b - a, r * this.cols - cells + chars);
     }
     if (!this.exact && b - a > LONG_LINE) {
-      const st = this.sum(text.slice(a, b));
+      const st = this.sum(text, a, b);
       return r < st.length ? st[r] : b - a;
     }
     const m = this.mirror(text.slice(a, b));
@@ -385,7 +382,7 @@ export class Wrapper {
       return Math.min(rows - 1, Math.floor(col / this.cols));
     }
     if (!this.exact && b - a > LONG_LINE) {
-      const st = this.sum(text.slice(a, b));
+      const st = this.sum(text, a, b);
       let lo = 0;
       let hi = st.length - 1;
       while (lo < hi) {
@@ -513,12 +510,21 @@ export class Wrapper {
     return m;
   }
 
+  /** The last line `sum` added up: found again by identity, and the start of the next one (see `sum`). */
+  private lastSum: { t: string; a: number; b: number; s: string; st: Int32Array } | null = null;
+
   /**
-   * Row starts of the long line `s`, breaking where its glyphs' widths (each
-   * at least as wide as in context, see `fits`) fill a row; never inside a
-   * character's cluster or a flag. For views that draw every row themselves.
+   * Row starts of the long line `t[a, b)`, breaking where its glyphs' widths
+   * (each at least as wide as in context, see `fits`) fill a row; never inside
+   * a character's cluster or a flag. For views that draw every row themselves.
+   * Typing changes one line a character at a time: its rows before the edit
+   * are kept, and once a row after it starts where an old row did (shifted),
+   * the rest are the old rows, so a key costs a row or two, not the line.
    */
-  private sum(s: string): Int32Array {
+  private sum(t: string, a: number, b: number): Int32Array {
+    const last = this.lastSum;
+    if (last && last.t === t && last.a === a && last.b === b) return last.st;
+    const s = t.slice(a, b);
     const hit = this.sums.get(s);
     if (hit) return hit;
     const cw = this.cw;
@@ -526,12 +532,35 @@ export class Wrapper {
     /** Printable ASCII characters a row holds from its start. */
     const full = Math.floor(max / cw);
     const starts = [0];
-    let last = 0;
+    let row = 0;
+    // The old rows: after `tail` (the edit's end) a row start `d` past an old one resynchronizes.
+    const old = last?.st;
+    let tail = Infinity;
+    let d = 0;
+    let j = 0;
+    if (old && last) {
+      const p = samePrefix(last.s, s);
+      tail = s.length - sameSuffix(last.s, s, Math.min(last.s.length, s.length) - p);
+      d = s.length - last.s.length;
+      while (row + 1 < old.length && old[row + 1] < p) starts.push(old[++row]);
+      j = row + 1;
+    }
+    let i = starts[row];
+    let done = false;
+    const brk = (x: number) => {
+      starts.push(x);
+      if (x < tail || !old) return false;
+      while (j < old.length && old[j] + d < x) j++;
+      if (j >= old.length || old[j] + d !== x) return false;
+      for (let k = j + 1; k < old.length; k++) starts.push(old[k] + d);
+      return (done = true);
+    };
+    let lastStart = i;
     let w = 0;
     let joined = false;
     let flags = 0;
     let forced = false;
-    for (let i = 0; i < s.length; ) {
+    while (i < s.length && !done) {
       let c = s.charCodeAt(i);
       if (c >= 32 && c < 127 && !joined) {
         // A run of printable ASCII is one cell a character: its breaks are arithmetic.
@@ -540,10 +569,10 @@ export class Wrapper {
         const e = RUN.lastIndex;
         // (A row can already be over full: nothing breaks before a joined character.)
         let k = i + Math.max(0, Math.floor((max - w) / cw));
-        if (k === last) k++;
+        if (k === lastStart) k++;
         if (k < e) {
-          for (; k < e; k += full) starts.push((last = k));
-          w = (e - last) * cw;
+          for (; k < e && !done; k += full) brk((lastStart = k));
+          w = (e - lastStart) * cw;
         } else w += (e - i) * cw;
         flags = 0;
         i = e;
@@ -566,21 +595,24 @@ export class Wrapper {
         if (c >= 0x1f1e6 && c <= 0x1f1ff) join ||= flags++ % 2 === 1;
         else flags = 0;
       }
-      if (!join && w + g > max && i > last) {
-        starts.push((last = i));
+      if (!join && w + g > max && i > lastStart) {
+        // (A flag's half can't resynchronize: which half it is depends on what came before.)
+        if (flags) starts.push((lastStart = i));
+        else brk((lastStart = i));
         w = 0;
         if (c === 9) g = tabTo(0, cw);
       }
       w += g;
       joined = c === 0x200d;
       i += n;
-      if (forced && i < s.length) {
-        starts.push((last = i));
+      if (forced && i < s.length && !done) {
+        brk((lastStart = i));
         w = 0;
       }
       forced = false;
     }
     const out = Int32Array.from(starts);
+    this.lastSum = { t, a, b, s, st: out };
     this.sums.set(s, out);
     if (this.sums.size > SUMS) this.sums.delete(this.sums.keys().next().value as string);
     return out;
@@ -664,6 +696,7 @@ export class Wrapper {
     for (const m of this.mirrors.values()) m.el.remove();
     this.mirrors.clear();
     this.sums.clear();
+    this.lastSum = null;
   }
 
   /** First offset on row `r` (binary search between the nearest rows already probed). */

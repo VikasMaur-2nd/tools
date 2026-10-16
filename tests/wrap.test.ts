@@ -182,7 +182,7 @@ describe('row breaks added up for long lines', () => {
     for (const [cols, cw] of [[8, 8], [37, 7.5], [60, 6.25], [120, 7.75]] as const) {
       const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
       w.fit(cols * cw + cw / 2 + 0.25, cw);
-      const internals = w as unknown as { sum(s: string): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+      const internals = w as unknown as { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
       internals.glyphs.set(0x200d, 0);
       internals.joins.add(0x200d);
       for (let k = 0; k < 400; k++) {
@@ -191,7 +191,42 @@ describe('row breaks added up for long lines', () => {
           const r = rnd(40);
           s += r === 0 ? '\t' : r === 1 ? '‍' : String.fromCharCode(32 + rnd(95));
         }
-        assert.deepEqual([...internals.sum(s)], reference(s, cw, w.width), `cols ${cols}, ${JSON.stringify(s.slice(0, 40))}`);
+        assert.deepEqual([...internals.sum(s, 0, s.length)], reference(s, cw, w.width), `cols ${cols}, ${JSON.stringify(s.slice(0, 40))}`);
+      }
+    }
+  });
+  test('typing in a long line breaks it exactly as adding it up afresh does', () => {
+    let seed = 7;
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
+    const make = (cols: number, cw: number) => {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+      w.fit(cols * cw + cw / 2 + 0.25, cw);
+      const x = w as unknown as { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+      for (const [c, g] of [[0x200d, 0], [0x301, 0], [0xe9, cw], [0x4e2d, 2 * cw], [0x1f1ee, 1.5 * cw], [0x1f1f3, 1.5 * cw], [0x2028, 0]]) x.glyphs.set(c, g);
+      x.joins.add(0x200d);
+      x.joins.add(0x301);
+      return x;
+    };
+    const pick = () => {
+      const r = rnd(60);
+      return r === 0 ? '\t' : r === 1 ? '\u200d' : r === 2 ? 'e\u0301' : r === 3 ? '中' : r === 4 ? '\u{1f1ee}\u{1f1f3}' : r === 5 ? '\u2028' : r === 6 ? 'é' : String.fromCharCode(32 + rnd(95));
+    };
+    for (const [cols, cw] of [[8, 8], [37, 7.5], [120, 7.75]] as const) {
+      const typed = make(cols, cw);
+      let s = '';
+      for (let n = 4000; n > 0; n--) s += pick();
+      const pre = 'x\n';
+      for (let k = 0; k < 300; k++) {
+        // Never between the halves of a surrogate pair.
+        const low = (i: number) => (s.charCodeAt(i) & 0xfc00) === 0xdc00;
+        let at = rnd(s.length + 1);
+        if (low(at)) at--;
+        let end = Math.min(s.length, at + (rnd(4) === 0 ? rnd(6) : 0));
+        if (low(end)) end++;
+        s = s.slice(0, at) + (rnd(5) ? pick() : '') + s.slice(end);
+        const t = pre + s;
+        const fresh = make(cols, cw).sum(s, 0, s.length);
+        assert.deepEqual([...typed.sum(t, pre.length, t.length)], [...fresh], `cols ${cols}, edit ${k} at ${at}`);
       }
     }
   });
