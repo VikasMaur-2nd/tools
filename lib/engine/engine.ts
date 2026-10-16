@@ -2,7 +2,7 @@ import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
 import { byteLength, copyText, formatDoc, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
-import type { CodeChange, CodeIndex } from '../json/code-index';
+import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
 import type { DocumentMetrics } from '../json/metrics';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
@@ -959,8 +959,24 @@ export class Engine {
       if (text.length < WORKER_MIN) done(reindent(text, indent));
       else here();
     } else {
-      this.reindentJob = { id: seq, done, fallback: here };
-      w.postMessage({ id: seq, text, indent, parse: typed, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape });
+      this.reindentJob = { id: seq, done, fallback: here, baseText: this.fmtText, outParts: [], displayParts: [] };
+      const request = { id: seq, indent, parse: typed, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: this.fmtWorkerId };
+      if (text.length < WORKER_MIN) w.postMessage({ ...request, text });
+      else {
+        w.postMessage({ ...request, start: true });
+        let at = 0;
+        const send = () => {
+          if (this.dead || seq !== this.loadSeq || this.worker !== w) return;
+          const until = performance.now() + 8;
+          do {
+            const end = Math.min(text.length, at + 256_000);
+            w.postMessage({ id: seq, chunk: text.slice(at, end), last: end === text.length });
+            at = end;
+          } while (at < text.length && performance.now() < until);
+          if (at < text.length) soon(send);
+        };
+        soon(send);
+      }
     }
     return true;
   }
@@ -973,14 +989,14 @@ export class Engine {
   private workerWarm = false;
   private measuredSizes: { id: number; sizes: Sizes } | null = null;
   private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
-  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }) => void; fallback: () => void } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }) => void; fallback: () => void; baseText: string; outParts: string[]; displayParts: string[] } | null = null;
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; chunkedOut?: boolean; chunkedDisplay?: boolean }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
         if (e.data.id !== this.loadSeq) return;
         if (e.data.sizes) {
@@ -991,8 +1007,14 @@ export class Engine {
         if (e.data.tree) return void (this.workerParse = { id: e.data.id, tree: e.data.tree, metrics: e.data.metrics });
         const job = this.reindentJob;
         if (!job || job.id !== e.data.id) return;
+        if (e.data.chunk !== undefined) {
+          (e.data.field === 'display' ? job.displayParts : job.outParts).push(e.data.chunk);
+          return;
+        }
         this.reindentJob = null;
-        job.done(e.data.out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.index, e.data.display, e.data.change);
+        const out = e.data.patch !== undefined && e.data.change ? applyCodeChange(job.baseText, e.data.patch, e.data.change) : e.data.chunkedOut ? job.outParts.join('') : e.data.out;
+        const display = e.data.chunkedDisplay ? job.displayParts.join('') : e.data.display;
+        job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.index, display, e.data.change);
         this.workerParse = null;
       };
       w.onerror = () => {

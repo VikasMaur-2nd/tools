@@ -69,3 +69,9 @@ export function codeChange(old: string, text: string): CodeChange {
   while (suffix < left && old.charCodeAt(old.length - suffix - 1) === text.charCodeAt(text.length - suffix - 1)) suffix++;
   return { prefix, suffix };
 }
+
+/** Reconstruct a worker's small output patch against the version it compared. */
+export function applyCodeChange(before: string, patch: string, change: CodeChange): string {
+  if (change.prefix === before.length && !patch && !change.suffix) return before;
+  return before.slice(0, change.prefix) + patch + (change.suffix ? before.slice(before.length - change.suffix) : '');
+}

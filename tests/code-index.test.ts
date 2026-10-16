@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { codeChange, codeIndexer } from '../lib/json/code-index';
+import { applyCodeChange, codeChange, codeIndexer } from '../lib/json/code-index';
 import { documentMetrics } from '../lib/json/metrics';
 import { byteLength, formatDoc } from '../lib/json/format';
 import { parse } from '../lib/json/parser';
@@ -52,4 +52,17 @@ test('output changes keep only disjoint, exact prefixes and suffixes', () => {
   const before = 'prefix'.repeat(2000) + 'x' + 'suffix'.repeat(2000);
   const after = before.replace('x' + 'suffix', 'y' + 'suffix');
   assert.deepEqual(codeChange(before, after), { prefix: 12000, suffix: 12000 });
+});
+
+test('output patches reconstruct insertions, removals and Unicode edits exactly', () => {
+  const before = 'head\n' + 'é😀東京 abc\n'.repeat(800) + 'tail';
+  for (let i = 0; i <= before.length; i += 37) {
+    for (const insert of ['', 'x', '😀\n']) {
+      const after = before.slice(0, i) + insert + before.slice(i + 3);
+      const change = codeChange(before, after);
+      const patch = after.slice(change.prefix, after.length - change.suffix);
+      assert.equal(applyCodeChange(before, patch, change), after);
+    }
+  }
+  assert.equal(applyCodeChange(before, '', { prefix: before.length, suffix: 0 }), before);
 });

@@ -197,7 +197,8 @@ export class CodeView {
   /** `index` can arrive as transferable arrays from the formatting worker. */
   setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null, index?: CodeIndex, change?: CodeChange) {
     const seq = ++this.textSeq;
-    if (text === this.text && hl === this.hl) {
+    const same = change ? text.length === this.text.length && change.prefix === text.length : text === this.text;
+    if (same && hl === this.hl) {
       this.pending = null;
       this.layoutSeq++;
       soon(() => { if (seq === this.textSeq) this.onReady?.(); });
