@@ -230,6 +230,76 @@ describe('row breaks added up for long lines', () => {
       }
     }
   });
+  test('a huge line split or joined: rows near the edit exact at once, all of them once settled', () => {
+    let seed = 5;
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
+    type X = Pick<Wrapper, 'rows' | 'rowStart' | 'settle' | 'onRows'> & { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+    const make = () => {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+      w.fit(80 * 8 + 4 + 0.25, 8);
+      const x = w as unknown as X;
+      for (const [c, g] of [[0xe9, 8], [0x4e2d, 16], [0x1f600, 16]]) x.glyphs.set(c, g);
+      return x;
+    };
+    const pick = () => {
+      const r = rnd(40);
+      return r === 0 ? 'é' : r === 1 ? '中' : r === 2 ? '😀' : r === 3 ? '\t' : String.fromCharCode(32 + rnd(95));
+    };
+    let s = '';
+    for (let n = 760_000; n > 0; n--) s += pick();
+    const lines = (t: string) => {
+      const A: number[] = [];
+      const B: number[] = [];
+      for (let a = 0; ; ) {
+        const e = t.indexOf('\n', a);
+        A.push(a);
+        B.push(e < 0 ? t.length : e);
+        if (e < 0) break;
+        a = e + 1;
+      }
+      return [Int32Array.from(A), Int32Array.from(B)] as const;
+    };
+    const exact = (t: string) => {
+      const f = make();
+      const [A, B] = lines(t);
+      f.rows(t, A, B);
+      f.settle();
+      return { rows: [...f.rows(t, A, B)], sums: Array.from(A, (a, i) => [...f.sum(t, a, B[i])]) };
+    };
+    const w = make();
+    let refined = 0;
+    w.onRows = () => refined++;
+    let t = s;
+    w.rows(t, ...lines(t));
+    w.settle();
+    assert.deepEqual([...w.sum(t, 0, t.length)], exact(t).sums[0], 'first layout, settled');
+    for (const at of [3500, 400_000]) {
+      // Enter: split, then Backspace: join again.
+      for (const [next, edit] of [
+        [t.slice(0, at) + '\n' + t.slice(at), [at, at, at + 1]],
+        [t, [at, at + 1, at]],
+      ] as [string, [number, number, number]][]) {
+        const [A, B] = lines(next);
+        w.rows(next, A, B, edit);
+        const want = exact(next);
+        for (let i = 0; i < A.length; i++) {
+          const got = w.sum(next, A[i], B[i]);
+          // Exact at once up to the window past the edit (where the view and the caret are).
+          const near = want.sums[i].filter((x) => A[i] + x <= at + 290_000);
+          const gotN = [...got.subarray(0, near.length)];
+          const bad = gotN.findIndex((x, k) => x !== near[k]);
+          assert.ok(bad < 0 && gotN.length === near.length, `near the edit: line ${i}, edit at ${at}: first diff row ${bad} got ${gotN.slice(Math.max(0, bad - 2), bad + 3)} want ${near.slice(Math.max(0, bad - 2), bad + 3)} of ${near.length} (got ${got.length})`);
+        }
+        const before = refined;
+        w.settle();
+        assert.ok(refined >= before, 'told when refined');
+        assert.deepEqual([...w.rows(next, A, B)], want.rows, `rows once settled, edit at ${at}`);
+        for (let i = 0; i < A.length; i++) assert.deepEqual([...w.sum(next, A[i], B[i])], want.sums[i], `breaks once settled: line ${i}, edit at ${at}`);
+        t = next;
+      }
+    }
+  });
+
   test('rows() after an edit, told or not where it was, matches a fresh count on long lines', () => {
     let seed = 11;
     const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);

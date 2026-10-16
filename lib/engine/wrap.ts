@@ -49,6 +49,29 @@ const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\
 const RUN = /[\x20-\x7e]+/y;
 /** Long lines whose breaks were added up (see `sum`). */
 const SUMS = 4;
+/** Characters past an edit whose rows are found at once; the rest of a longer line when idle (see refine). */
+const LAZY_ROWS = 300_000;
+
+interface SumEntry {
+  t: string;
+  /** The text version it is valid for (see rows): lookups never compare texts, which costs their length. */
+  v: number;
+  a: number;
+  b: number;
+  st: Int32Array;
+  /** Rows `[0, exact)` are exact, the rest estimated until refined. */
+  exact: number;
+}
+
+/** Where breaking a line into rows stopped (see breakRows). */
+interface BreakState {
+  i: number;
+  lastStart: number;
+  w: number;
+  joined: boolean;
+  flags: number;
+  forced: boolean;
+}
 
 interface Mirror {
   text: string;
@@ -157,7 +180,7 @@ export class Wrapper {
   private sized = new Map<string, number>();
   private glyphs = new Map<number, number>();
   private mirrors = new Map<string, Mirror>();
-  private sums: { t: string; a: number; b: number; st: Int32Array }[] = [];
+  private sums: SumEntry[] = [];
   private joins = new Set<number>();
   /** Does this browser keep letters joined across a soft row break (Firefox does)? Measured once. */
   private across: boolean | null = null;
@@ -184,6 +207,8 @@ export class Wrapper {
 
   destroy() {
     this.box.remove();
+    this.pending = [];
+    clearTimeout(this.refineTimer);
   }
 
   /** Text width of a row in px: whole cells plus half a cell, so rounding never decides a break. */
@@ -299,6 +324,7 @@ export class Wrapper {
         q = sameSuffix(old, text, Math.min(old.length, text.length) - p);
       }
       this.diff = { old, text, p, q };
+      if (p < Math.min(old.length, text.length) || old.length !== text.length) this.version(old, text, p, q);
       const m = last.A.length;
       while (lo < n && lo < m && B[lo] < p && A[lo] === last.A[lo] && B[lo] === last.B[lo]) lo++;
       const d = text.length - old.length;
@@ -309,7 +335,11 @@ export class Wrapper {
       out.set(last.out.subarray(hi - dk, m), hi);
       odd.set(last.odd.subarray(hi - dk, m), hi);
     }
-    if (!last) this.diff = null;
+    if (!last) {
+      this.diff = null;
+      this.ver++;
+    }
+    this.verText = text;
     this.last = { text, A, B, out, odd };
     if (!this.trust) odd.fill(1, lo, hi);
     else if (lo < hi) {
@@ -551,8 +581,35 @@ export class Wrapper {
     return m;
   }
 
+  /** Version of the text given to rows(); entries of the last one that the edit didn't touch carry over. */
+  private ver = 0;
+  /** The text of version `ver` (the same object rows() was given: comparing with it costs nothing then). */
+  private verText = '';
+
+  /**
+   * The text changed from `old` to `text` (same first `p` and last `q`
+   * characters): a new version. Remembered lines wholly before the edit keep
+   * their rows as they are, lines wholly after it shifted.
+   */
+  private version(old: string, text: string, p: number, q: number) {
+    const prev = this.ver++;
+    const oldEnd = old.length - q;
+    const d = text.length - old.length;
+    for (let k = 0; k < this.sums.length; k++) {
+      const e = this.sums[k];
+      if (e.v !== prev) continue;
+      let next: SumEntry | null = null;
+      if (e.b < p) next = { ...e, t: text, v: this.ver };
+      else if (e.a > oldEnd) next = { ...e, t: text, a: e.a + d, b: e.b + d, v: this.ver };
+      if (!next) continue;
+      // (lastSum stays the old entry: the edited line's rows are worked out from it, see sum.)
+      for (const job of this.pending) if (job.e === e) job.e = next;
+      this.sums[k] = next;
+    }
+  }
+
   /** The last line `sum` added up: found again by identity, and the start of the next one (see `sum`). */
-  private lastSum: { t: string; a: number; b: number; st: Int32Array } | null = null;
+  private lastSum: SumEntry | null = null;
 
   /**
    * Row starts of the long line `t[a, b)`, breaking where its glyphs' widths
@@ -566,16 +623,19 @@ export class Wrapper {
    */
   private sum(t: string, a: number, b: number): Int32Array {
     const last = this.lastSum;
-    if (last && last.a === a && last.b === b && last.t === t) return last.st;
-    for (const e of this.sums) if (e.a === a && e.b === b && e.t === t) return (this.lastSum = e).st;
+    // (By version, not by text. A text rows() wasn't given, from a direct caller, is a version of its own.)
+    if (t !== this.verText) {
+      this.ver++;
+      this.verText = t;
+    }
+    if (last && last.v === this.ver && last.a === a && last.b === b) return last.st;
+    for (const e of this.sums) if (e.v === this.ver && e.a === a && e.b === b) return (this.lastSum = e).st;
     const len = b - a;
-    const cw = this.cw;
-    const max = this.width;
-    /** Printable ASCII characters a row holds from its start. */
-    const full = Math.floor(max / cw);
-    // The old rows: after `tail` (the edit's end) a row start `d` past an old one resynchronizes.
+    // The old rows: kept before the edit; after `tail` (the edit's end) a row start `d` past an old one resynchronizes.
     let old: Int32Array | null = null;
+    let exact = 0;
     let p = 0;
+    let edit = 0;
     let tail = Infinity;
     let d = 0;
     const diff = this.diff;
@@ -583,45 +643,88 @@ export class Wrapper {
       const dt = t.length - last.t.length;
       const oldEnd = last.t.length - diff.q;
       // An edit wholly before or after the line leaves its rows as they were.
-      if (oldEnd < last.a && a === last.a + dt && b === last.b + dt) return this.keepSum(t, a, b, last.st);
-      if (diff.p > last.b && a === last.a && b === last.b) return this.keepSum(t, a, b, last.st);
-      if (a === last.a && diff.p >= a && b - last.b === dt && oldEnd <= last.b) {
-        old = last.st;
-        p = diff.p - a;
-        tail = t.length - diff.q - a;
-        d = dt;
+      if (oldEnd < last.a && a === last.a + dt && b === last.b + dt) return this.keepSum(t, a, b, last.st, last.exact, last).st;
+      if (diff.p > last.b && a === last.a && b === last.b) return this.keepSum(t, a, b, last.st, last.exact, last).st;
+      // Same start: the rows before the edit stand (a line split or joined there keeps them too). The
+      // line that started there may be any of the remembered ones (joining two: the first).
+      const base = a === last.a ? last : this.sums.find((e) => e.a === a && e.v === last.v);
+      if (base && diff.p >= a) {
+        old = base.st;
+        exact = base.exact;
+        p = Math.min(diff.p, base.b) - a;
+        if (base === last && b - last.b === dt && oldEnd <= last.b) {
+          tail = t.length - diff.q - a;
+          d = dt;
+        }
       }
+      // Rows near the edit are found at once (the view and the caret are there), however they start.
+      edit = Math.max(0, diff.p - a);
     } else if (last) {
       const ol = last.b - last.a;
       const m = Math.min(ol, len);
       p = prefixAt(last.t, last.a, t, a, m);
-      if (p === m && ol === len) return this.keepSum(t, a, b, last.st);
+      if (p === m && ol === len) return this.keepSum(t, a, b, last.st, last.exact, last).st;
       old = last.st;
+      exact = last.exact;
       tail = len - suffixAt(last.t, last.b, t, b, m - p);
       d = len - ol;
     }
+    // Estimated rows (see below) can't anchor a resynchronization.
+    if (old && exact < old.length) tail = Infinity;
     let keep = 1;
-    if (old) while (keep < old.length && old[keep] < p) keep++;
+    if (old) while (keep < old.length && keep < exact && old[keep] < p) keep++;
     // Rows `[0, keep)` are the old ones; `starts` are new; then old rows from `from`, shifted by `d`.
     const starts: number[] = [];
     let from = -1;
     let j = keep;
-    let i = old ? old[keep - 1] : 0;
-    let done = false;
+    const at = old ? old[keep - 1] : 0;
     const brk = (x: number) => {
       starts.push(x);
       if (x < tail || !old) return false;
       while (j < old.length && old[j] + d < x) j++;
       if (j >= old.length || old[j] + d !== x) return false;
       from = j + 1;
-      return (done = true);
+      return true;
     };
-    let lastStart = i;
-    let w = 0;
-    let joined = false;
-    let flags = 0;
-    let forced = false;
-    while (i < len && !done) {
+    const st: BreakState = { i: at, lastStart: at, w: 0, joined: false, flags: 0, forced: false };
+    // A huge line split or joined far from its end: rows near the edit now, the rest when idle (see refine).
+    const near = Math.max(p, at, edit);
+    const stop = tail === Infinity && len - near > LAZY_ROWS ? near + LAZY_ROWS : len;
+    const resynced = this.breakRows(t, a, len, st, stop, brk, (x) => void starts.push(x));
+    const rest = old && from >= 0 ? old.length - from : 0;
+    if (!resynced && st.i < len) {
+      // Estimated: whole rows of printable ASCII (JSON is mostly that) from the last exact start.
+      const full = Math.max(1, Math.floor(this.width / this.cw));
+      const head = keep + starts.length;
+      const more = Math.max(0, Math.ceil((len - st.lastStart) / full) - 1);
+      const out = new Int32Array(head + more);
+      if (old) out.set(old.subarray(0, keep));
+      for (let k = 0; k < starts.length; k++) out[keep + k] = starts[k];
+      for (let k = 0; k < more; k++) out[head + k] = st.lastStart + (k + 1) * full;
+      const e = this.keepSum(t, a, b, out, head);
+      this.refine(e, st);
+      return out;
+    }
+    const out = new Int32Array(keep + starts.length + rest);
+    if (old) out.set(old.subarray(0, keep));
+    for (let k = 0; k < starts.length; k++) out[keep + k] = starts[k];
+    if (old) for (let k = 0, o = keep + starts.length; k < rest; k++) out[o + k] = old[from + k] + d;
+    return this.keepSum(t, a, b, out, out.length).st;
+  }
+
+  /**
+   * Breaks `t[a, a + len)` into rows from state `s` until the line ends, `stop`
+   * characters in, or `brk` (told each row start) returns true. True if it did.
+   */
+  private breakRows(t: string, a: number, len: number, s: BreakState, stop: number, brk: (x: number) => boolean, push: (x: number) => void): boolean {
+    const cw = this.cw;
+    const max = this.width;
+    /** Printable ASCII characters a row holds from its start. */
+    const full = Math.floor(max / cw);
+    const b = a + len;
+    let { i, lastStart, w, joined, flags, forced } = s;
+    let done = false;
+    while (i < len && i < stop && !done) {
       let c = t.charCodeAt(a + i);
       if (c >= 32 && c < 127 && !joined) {
         // A run of printable ASCII is one cell a character: its breaks are arithmetic.
@@ -632,7 +735,7 @@ export class Wrapper {
         let k = i + Math.max(0, Math.floor((max - w) / cw));
         if (k === lastStart) k++;
         if (k < e) {
-          for (; k < e && !done; k += full) brk((lastStart = k));
+          for (; k < e && !done; k += full) done = brk((lastStart = k));
           w = (e - lastStart) * cw;
         } else w += (e - i) * cw;
         flags = 0;
@@ -658,8 +761,9 @@ export class Wrapper {
       }
       if (!join && w + g > max && i > lastStart) {
         // (A flag's half can't resynchronize: which half it is depends on what came before.)
-        if (flags) starts.push((lastStart = i));
-        else brk((lastStart = i));
+        lastStart = i;
+        if (flags) push(i);
+        else done = brk(i);
         w = 0;
         if (c === 9) g = tabTo(0, cw);
       }
@@ -667,26 +771,83 @@ export class Wrapper {
       joined = c === 0x200d;
       i += n;
       if (forced && i < len && !done) {
-        brk((lastStart = i));
+        done = brk((lastStart = i));
         w = 0;
       }
       forced = false;
     }
-    const rest = old && from >= 0 ? old.length - from : 0;
-    const out = new Int32Array(keep + starts.length + rest);
-    if (old) out.set(old.subarray(0, keep));
-    for (let k = 0; k < starts.length; k++) out[keep + k] = starts[k];
-    if (old) for (let k = 0, o = keep + starts.length; k < rest; k++) out[o + k] = old[from + k] + d;
-    return this.keepSum(t, a, b, out);
+    Object.assign(s, { i, lastStart, w, joined, flags, forced });
+    return done;
   }
 
-  /** Remembers `st` as the row starts of `t[a, b)` (see `sum`). */
-  private keepSum(t: string, a: number, b: number, st: Int32Array) {
-    const e = { t, a, b, st };
+  /** Lines whose rows past an edit are estimated, finished a slice at a time when the page is idle. */
+  private pending: { e: SumEntry; s: BreakState; starts: number[] }[] = [];
+  private refineTimer = 0;
+  /** Called when estimated rows were replaced by exact ones (the view relayouts). */
+  onRows: (() => void) | null = null;
+
+  private refine(e: SumEntry, s: BreakState) {
+    this.pending.push({ e, s, starts: [] });
+    clearTimeout(this.refineTimer);
+    this.refineTimer = setTimeout(this.refineStep, 50) as unknown as number;
+  }
+
+  /** Is `e` still the entry for its line (no edit has replaced it)? */
+  private live(e: SumEntry) {
+    return this.lastSum === e || this.sums.includes(e);
+  }
+
+  /** Advances `job` by up to `budget` ms (Infinity: to the end). True when its rows are all exact. */
+  private advance(job: { e: SumEntry; s: BreakState; starts: number[] }, budget: number) {
+    const { e, s } = job;
+    const len = e.b - e.a;
+    const until = performance.now() + budget;
+    const add = (x: number) => void job.starts.push(x);
+    while (s.i < len && performance.now() < until) this.breakRows(e.t, e.a, len, s, s.i + 20_000, (x) => (add(x), false), add);
+    if (s.i < len) return false;
+    const st = new Int32Array(e.exact + job.starts.length);
+    st.set(e.st.subarray(0, e.exact));
+    st.set(job.starts, e.exact);
+    e.st = st;
+    e.exact = st.length;
+    return true;
+  }
+
+  private refineStep = () => {
+    let changed = false;
+    const until = performance.now() + 8;
+    while (this.pending.length && performance.now() < until) {
+      const job = this.pending[0];
+      // Superseded (an edit made a new entry, with its own job if it needs one).
+      if (!this.live(job.e)) {
+        this.pending.shift();
+        continue;
+      }
+      if (!this.advance(job, until - performance.now())) break;
+      this.pending.shift();
+      changed = true;
+    }
+    if (this.pending.length) this.refineTimer = setTimeout(this.refineStep, 0) as unknown as number;
+    if (changed) this.onRows?.();
+  };
+
+  /** Finishes estimated rows now (tests; a view about to need them all). */
+  settle() {
+    clearTimeout(this.refineTimer);
+    let changed = false;
+    for (const job of this.pending) if (this.live(job.e) && this.advance(job, Infinity)) changed = true;
+    this.pending = [];
+    if (changed) this.onRows?.();
+  }
+
+  /** Remembers `st` as the row starts of `t[a, b)` (see `sum`); rows from `exact` on are estimated. `from`: the entry it replaces, whose pending refinement it takes over. */
+  private keepSum(t: string, a: number, b: number, st: Int32Array, exact: number, from?: SumEntry): SumEntry {
+    const e: SumEntry = { t, a, b, st, exact, v: this.ver };
+    if (from) for (const job of this.pending) if (job.e === from) job.e = e;
     this.lastSum = e;
     this.sums.push(e);
     if (this.sums.length > SUMS) this.sums.shift();
-    return st;
+    return e;
   }
 
   /** Width of code point `c`, measured now (see `learn`). */
@@ -770,6 +931,8 @@ export class Wrapper {
     this.lastSum = null;
     this.diff = null;
     this.hint = null;
+    this.pending = [];
+    clearTimeout(this.refineTimer);
   }
 
   /** First offset on row `r` (binary search between the nearest rows already probed). */

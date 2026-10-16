@@ -113,7 +113,7 @@ export class CodeView {
     this.sizer = el.querySelector('.cv-sizer') as HTMLElement;
     this.sc = new TallScroll(el);
     this.rows = el.querySelector('.cv-rows') as HTMLElement;
-    this.wrapper = new Wrapper(el, RH, false);
+    this.wrapper = this.makeWrapper();
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
     this.ro = new ResizeObserver(() => {
@@ -147,12 +147,19 @@ export class CodeView {
     this.wrapper?.destroy();
   }
 
+  /** A huge line's estimated rows become exact when idle (see Wrapper.refine): lay out again then. */
+  private makeWrapper() {
+    const w = new Wrapper(this.el, RH, false);
+    w.onRows = () => this.reflow(true);
+    return w;
+  }
+
   /** Soft-wraps long lines at the view's width, or lets them run on. */
   setWrap(on: boolean) {
     if (on === !!this.wrapper) return;
     const top = this.lines.length ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
     this.wrapper?.destroy();
-    this.wrapper = on ? new Wrapper(this.el, RH, false) : null;
+    this.wrapper = on ? this.makeWrapper() : null;
     this.el.classList.toggle('cv-nowrap', !on);
     this.el.scrollLeft = 0;
     this.reflow(true, top);

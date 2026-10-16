@@ -23,10 +23,17 @@ export function lineOfIn(ls: number[], off: number) {
 
 /** Columns of t[s, e) with tabs expanded to TAB stops (equals e - s without tabs). */
 export function lineWidth(t: string, s: number, e: number) {
-  const tab = t.indexOf('\t', s);
+  let tab = t.indexOf('\t', s);
   if (tab === -1 || tab >= e) return e - s;
+  // Tab to tab with the native search: a huge line costs its tabs, not its characters.
   let col = tab - s;
-  for (let i = tab; i < e; i++) col = t.charCodeAt(i) === 9 ? col + TAB - (col % TAB) : col + 1;
+  while (tab !== -1 && tab < e) {
+    col += TAB - (col % TAB);
+    const next = t.indexOf('\t', tab + 1);
+    const end = next === -1 || next >= e ? e : next;
+    col += end - tab - 1;
+    tab = end < e ? next : -1;
+  }
   return col;
 }
 
@@ -59,12 +66,13 @@ export function maxWidth(t: string, ls: number[]) {
  * Updates `ls` (in place) and the widest-line width for `old`[a, b) replaced
  * by `ins` (giving `next`). Returns the new width, and the line range that
  * changed: lines [la, la + added] of `next` replace lines [la, lb] of `old`.
+ * `widths: false` skips measuring (each costs its line) and returns `max` unchanged.
  */
-export function patchLines(ls: number[], old: string, next: string, a: number, b: number, ins: string, max: number) {
+export function patchLines(ls: number[], old: string, next: string, a: number, b: number, ins: string, max: number, widths = true) {
   const la = lineOfIn(ls, a);
   const lb = lineOfIn(ls, b);
   let oldMax = 0;
-  for (let ln = la; ln <= lb; ln++) {
+  for (let ln = la; widths && ln <= lb; ln++) {
     const w = lineWidth(old, ls[ln], lineEndIn(ls, old.length, ln));
     if (w > oldMax) oldMax = w;
   }
@@ -74,6 +82,8 @@ export function patchLines(ls: number[], old: string, next: string, a: number, b
   if (d) for (let i = lb + 1; i < ls.length; i++) ls[i] += d;
   if (lb > la || starts.length) ls.splice(la + 1, lb - la, ...starts);
   const added = starts.length;
+  // Widths not wanted (soft wrap: lines are as wide as the view): `max` is then stale, the caller knows.
+  if (!widths) return { max, la, lb, added };
   let newMax = 0;
   for (let ln = la; ln <= la + added; ln++) {
     const w = lineWidth(next, ls[ln], lineEndIn(ls, next.length, ln));
