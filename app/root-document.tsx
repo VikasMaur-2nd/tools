@@ -23,7 +23,8 @@ const SITE = 'https://tools.vikasmaur.com';
 const code = JetBrains_Mono({ subsets: ['latin'], variable: '--font-code', display: 'swap' });
 
 const verification: NonNullable<Metadata['verification']> = {
-  ...(process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : {}),
+  // Search Console ownership token (public by design: it is served in every page's <head>).
+  google: process.env.GOOGLE_SITE_VERIFICATION || 'F40WCLXMCnx44iMDDlW8Uwqi2UhCM7eMomg9v48zMAE',
   ...(process.env.BING_SITE_VERIFICATION ? { other: { 'msvalidate.01': process.env.BING_SITE_VERIFICATION } } : {}),
 };
 
