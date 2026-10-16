@@ -1,7 +1,7 @@
 import { bidiContext, escapeHtml, highlightLine, jwtLine, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
-import { foldSig, lineEndIn, lineOfIn, lineStarts, patchLines, scanFolds } from './lines';
+import { foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds } from './lines';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
 
@@ -42,8 +42,13 @@ const OVERSCAN = 40;
 /** Right padding while wrapping (the textarea's text ends this far from the edge). */
 const PAD_RW = 12;
 const H_OVERSCAN = 600;
-/** Above these sizes the editor switches to view mode. */
-const VIEW_CHARS = 2_000_000;
+/**
+ * Above these sizes the editor switches to read-only view mode (Edit anyway still edits). The
+ * big-document editor costs a key about the same up to here (see Surface); the native textarea,
+ * which lays out every line, only takes NATIVE_CHARS / VIEW_LINES.
+ */
+const VIEW_CHARS = 16_000_000;
+const NATIVE_CHARS = 2_000_000;
 const VIEW_LINES = 30_000;
 /**
  * Loaded documents this big open in view mode too, quietly: laying out a
@@ -218,6 +223,8 @@ export class Editor {
   private compSel: [number, number] = [0, 0];
   private cw = 7.8;
   private maxCols = 0;
+  /** maxCols may be out of date (edits while soft-wrapped don't measure lines). */
+  private maxStale = false;
   private extraW = 0;
   private gutW = 0;
   private diag = new Map<number, Mark[]>();
@@ -395,10 +402,14 @@ export class Editor {
       const la = lineOfIn(ls, a);
       const one = la === lineOfIn(ls, b) && ins.indexOf('\n') === -1;
       const sig = one ? foldSig(old, ls[la], lineEndIn(ls, old.length, la)) : -1;
-      this.maxCols = patchLines(ls, old, t, a, b, ins, this.maxCols).max;
+      // Soft-wrapped, the widest line only matters once wrapping is off (see layout): skip measuring it.
+      const widths = !this.el.classList.contains('wrap');
+      this.maxCols = patchLines(ls, old, t, a, b, ins, this.maxCols, widths).max;
+      if (!widths) this.maxStale = true;
       rescan = !one || foldSig(t, ls[la], lineEndIn(ls, t.length, la)) !== sig || this.close.length !== ls.length;
     } else {
       const { ls, max } = lineStarts(t);
+      this.maxStale = false;
       this.ls = ls;
       this.maxCols = max;
     }
@@ -411,8 +422,11 @@ export class Editor {
     // Typing never flips an open editor into view mode; loads and big pastes do.
     // Many lines only slow the native textarea down; the big-document editor draws just the rows on screen.
     const big = t.length > VIEW_CHARS || (ls.length > VIEW_LINES && t.length < SURFACE_CHARS);
-    const lazy = !big && (this.view ? this.lazy : this.loading && t.length > LAZY_CHARS);
-    const view = !this.forceEdit && (big || lazy) && !(fromTa && !this.view);
+    // A document the textarea can't take waits in the quiet view, even when asked to edit, until the
+    // big-document editor's module arrives (it is usually cached already; see loadSurface below).
+    const wait = t.length > NATIVE_CHARS && !SurfaceClass;
+    const lazy = !big && (wait || (this.view ? this.lazy : this.loading && t.length > LAZY_CHARS));
+    const view = (wait || !this.forceEdit) && (big || lazy) && !(fromTa && !this.view);
     const notice = view && !lazy;
     if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
     this.lazy = view && lazy;
@@ -423,9 +437,18 @@ export class Editor {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
-        // Switch to it, or out of a read-only view that only its line count caused.
+        if (!SurfaceClass || this.surface || !this.el.isConnected || this.text.length < SURFACE_CHARS) return;
+        // Switch to it: from the textarea, from a view that only its line count made read-only, or
+        // (asked to edit while it was on its way) from the quiet view, keeping the caret.
         const lines = this.view && !this.lazy && this.text.length <= VIEW_CHARS;
-        if (SurfaceClass && !this.surface && (!this.view || lines) && this.el.isConnected && this.text.length >= SURFACE_CHARS) this.model(this.text, false);
+        const asked = this.view && this.forceEdit;
+        if (this.view && !lines && !asked) return;
+        const at = this.vcaret;
+        this.model(this.text, false);
+        if (asked) {
+          this.focus();
+          this.setCaret(at);
+        }
       });
     }
     if (custom && !this.surface) {
@@ -716,6 +739,13 @@ export class Editor {
     const top = this.topLine();
     this.wrapper?.destroy();
     this.wrapper = on ? new Wrapper(this.body, LH) : null;
+    // A huge line's rows past an edit are estimated, then exact when idle: lay out again with them.
+    if (this.wrapper)
+      this.wrapper.onRows = () => {
+        this.wrapDirty = true;
+        this.layout();
+        this.render(true);
+      };
     this.wy = null;
     this.wrapDirty = true;
     this.el.classList.toggle('wrap', on);
@@ -955,6 +985,10 @@ export class Editor {
     else this.wy = null;
     const h = this.vrows * LH + PAD_T + PAD_B;
     // Wrapped, the body takes the editor's width (CSS); the textarea's text box is --tw wide.
+    if (!this.wy && this.maxStale) {
+      this.maxCols = maxWidth(this.text, this.ls);
+      this.maxStale = false;
+    }
     this.body.style.width = this.wy ? '' : `${Math.ceil(this.maxCols * this.cw) + PAD_L + PAD_R + this.extraW}px`;
     this.sc.fit(h, this.body, this.gut);
     // The textarea overflows its box: it has more rows than we counted. Glyph
