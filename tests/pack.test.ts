@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, parse, type JNode, type ParseResult } from '../lib/json/parser';
-import { packTree, unpacker } from '../lib/json/pack';
+import { nodeAt, pathOf } from '../lib/json/path';
+import { packTree, packedPosition, unpacker } from '../lib/json/pack';
 
 /** Every field of every node, parent links included, must match. */
 function same(a: JNode | null, b: JNode | null, path = '$') {
@@ -101,4 +102,20 @@ test('a big document rebuilds in many short steps', () => {
   while (!(out = step(0))) calls++;
   assert.ok(calls > 10, 'sliced');
   same(res.root, out.root);
+});
+
+test('packed caret navigation matches the node tree, including keys and container boundaries', () => {
+  for (const text of ['{"a":[1,2,{"b":true}], "c": "v", "empty":{}}', '[1,2,{"key,comma": [[],{}]}]', '{a:1,b:[2,3,]}', '{"a":1}\n{"b":2}']) {
+    const res = parse(text);
+    const packed = packTree(res, text);
+    for (let off = 0; off <= text.length; off++) {
+      const n = nodeAt(res.root, off, text);
+      const at = packedPosition(packed, off, text);
+      assert.deepEqual(at?.path ?? null, n ? pathOf(n) : null, `${text} @ ${off}`);
+      let container = n;
+      while (container && container.t < ARR) container = container.u;
+      assert.equal(at?.start ?? -1, container?.s ?? -1, `container @ ${off}`);
+      assert.equal(at?.end ?? -1, container?.e ?? -1, `container end @ ${off}`);
+    }
+  }
 });

@@ -12,7 +12,7 @@
  * it (the page slices the same text); anything else, and every property name,
  * goes in the string table (property names once each).
  */
-import { ARR, JNode, NUM, type Key, type Kind, type ParseResult } from './parser';
+import { ARR, JNode, NUM, OBJ, type Key, type Kind, type ParseResult } from './parser';
 
 const W = 6;
 const K_NONE = 0;
@@ -29,13 +29,18 @@ export interface PackedTree {
   head: Omit<ParseResult, 'root'>;
   nodes: Int32Array;
   strs: string[];
+  /** Parent indexes support caret navigation without rebuilding node objects. */
+  parents: Int32Array<ArrayBuffer>;
 }
 
 /** Packs `res` (parsed from `src`). The node array's buffer can be transferred. */
 export function packTree(res: ParseResult, src: string): PackedTree {
   const { root, ...head } = res;
-  if (!root) return { head, nodes: new Int32Array(0), strs: [] };
+  if (!root) return { head, nodes: new Int32Array(0), strs: [], parents: new Int32Array(0) };
   let out = new Int32Array(Math.max(16, res.nodes + 1) * W);
+  let parents = new Int32Array(out.length / W);
+  const open: number[] = [];
+  const left: number[] = [];
   const strs: string[] = [];
   const keys = new Map<string, number>();
   const str = (s: string) => {
@@ -77,7 +82,13 @@ export function packTree(res: ParseResult, src: string): PackedTree {
       const grown = new Int32Array(out.length * 2);
       grown.set(out);
       out = grown;
+      const grownParents = new Int32Array(out.length / W);
+      grownParents.set(parents);
+      parents = grownParents;
     }
+    parents[n] = open.length ? open[open.length - 1] : -1;
+    if (left.length && --left[left.length - 1] === 0) { open.pop(); left.pop(); }
+    if (kids) { open.push(n); left.push(kids); }
     const o = n++ * W;
     out[o] = nd.t | (kk << 3) | (vk << 5);
     out[o + 1] = nd.s;
@@ -90,7 +101,7 @@ export function packTree(res: ParseResult, src: string): PackedTree {
       for (let i = list.length - 1; i >= 0; i--) stack.push(list[i]);
     }
   }
-  return { head, nodes: out.subarray(0, n * W), strs };
+  return { head, nodes: out.subarray(0, n * W), strs, parents: parents.subarray(0, n) };
 }
 
 /**
@@ -149,4 +160,43 @@ export function unpacker(p: PackedTree, src: string): (until: number) => ParseRe
     }
     return i < total ? undefined : ({ ...p.head, root } as ParseResult);
   };
+}
+
+/** Caret path and nearest container, without allocating or walking the whole tree. */
+export function packedPosition(tree: PackedTree, off: number, src: string) {
+  const a = tree.nodes;
+  const parents = tree.parents;
+  const count = a.length / W;
+  if (!count || off < a[1] || off > a[2]) return null;
+  let lo = 0;
+  let hi = count - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >>> 1;
+    if (a[mid * W + 1] <= off) lo = mid;
+    else hi = mid - 1;
+  }
+  const before = lo;
+  let node = before;
+  while (node >= 0 && off > a[node * W + 2]) node = parents[node];
+  if (node < 0) return null;
+  if ((a[node * W] & 7) === OBJ && off > a[node * W + 1] && before + 1 < count) {
+    let next = before + 1;
+    while (parents[next] >= 0 && parents[next] !== node) next = parents[next];
+    if (parents[next] === node && off < a[next * W + 1]) {
+      let prev = before;
+      while (parents[prev] >= 0 && parents[prev] !== node) prev = parents[prev];
+      const comma = prev === node ? -1 : src.indexOf(',', a[prev * W + 2]);
+      if (comma < 0 || comma >= a[next * W + 1] || comma < off) node = next;
+    }
+  }
+  const path: (string | number)[] = [];
+  for (let i = node; parents[i] >= 0; i = parents[i]) {
+    const meta = a[i * W];
+    const key = a[i * W + 4];
+    path.push(((meta >> 3) & 3) === K_NUM ? key : tree.strs[key]);
+  }
+  path.reverse();
+  let container = node;
+  while (container >= 0 && (a[container * W] & 7) < ARR) container = parents[container];
+  return { path, start: container >= 0 ? a[container * W + 1] : -1, end: container >= 0 ? a[container * W + 2] : -1 };
 }
