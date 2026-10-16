@@ -1,7 +1,9 @@
 import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
 import { byteLength, copyText, formatDoc, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
-import { unpacker, type PackedTree } from '../json/pack';
+import { packedPosition, unpacker, type PackedTree } from '../json/pack';
+import type { CodeChange, CodeIndex } from '../json/code-index';
+import type { DocumentMetrics } from '../json/metrics';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
 import { TableView } from './table';
@@ -133,7 +135,7 @@ const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
 
 /** Cheap guess at what non-JSON input is, to offer a one-click conversion. */
 function sniff(text: string): Hint {
-  const t = text.trim();
+  const t = text.slice(0, 4000).trim();
   if (t.includes('\\"') && /^"?\s*[[{]/.test(t)) return 'unescape';
   if (t[0] === '<') return 'xml';
   if (t[0] === '{' || t[0] === '[') {
@@ -248,6 +250,17 @@ export class Engine {
     });
     this.code = new CodeView(els.code);
     this.fmt = new CodeView(els.fmt);
+    this.fmt.onReady = () => {
+      this.fmtWorkerId = this.pendingFmtWorkerId;
+      if (this.markOutput) {
+        this.markOutput = false;
+        requestAnimationFrame(() => performance.mark('tk:formatted'));
+      }
+      if (this.settings.view === 'format' && this.goodText === this.fmtSrc) this.runFormat();
+    };
+    for (const [view, code] of [['format', this.fmt], ['convert', this.code]] as const) code.onFind = (result) => {
+      if (this.settings.view === view && this.query) store.set({ find: { ...store.get().find, ...result } });
+    };
     this.applyWrap();
 
     // Restore: text typed/restored before hydration wins, then saved doc. A landing
@@ -319,6 +332,17 @@ export class Engine {
   // ── Pipeline ───────────────────────────────────────────────────────────
 
   private onChange = (kind: ChangeKind) => {
+    this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
+    this.workerParse = null;
+    if (this.reindentJob && this.worker) {
+      // A synchronous worker parse cannot consume a cancellation message until it finishes.
+      this.worker.terminate();
+      this.worker = undefined;
+      this.workerWarm = false;
+      this.reindentJob = null;
+    }
+    this.measuredSizes = null;
+    this.fmtStatSeq++;
     this.persistEnabled = persistenceAfterChange(this.persistEnabled, kind);
     if (kind === 'paste' && this.ed.pasteFull) {
       this.resetNext = true;
@@ -373,7 +397,32 @@ export class Engine {
     this.toast(`Auto-formatted · ${this.mod}Z to undo`, 'info');
   };
 
+  private packed: { tree: PackedTree; text: string; metrics?: DocumentMetrics } | null = null;
+  private goodPacked: Engine['packed'] = null;
+
+  private materializeGood() {
+    if (!this.goodPacked) return;
+    const { tree, text } = this.goodPacked;
+    const res = unpacker(tree, text)(Infinity)!;
+    if (this.packed?.text === text && text === this.ed.text) {
+      this.analyze(res, this.goodMetrics ?? undefined);
+      return;
+    }
+    this.good = res;
+    this.goodPacked = null;
+    this.tree.setRoot(this.good.root, false, this.good.nodes, false);
+    this.sel = this.selPath ? resolve(this.good.root, this.selPath) : null;
+    this.tree.select(this.sel, { scroll: false });
+  }
+
+  /** Commands that need nodes materialize a deferred Format-view tree on demand. */
   private fresh(): ParseResult | null {
+    if (this.packed?.text === this.ed.text) {
+      const { tree, text, metrics } = this.packed;
+      this.viewSeq++;
+      this.packed = null;
+      this.analyze(unpacker(tree, text)(Infinity), metrics);
+    }
     if (this.ed.text !== this.parsed || (!this.res && this.ed.text.trim())) {
       clearTimeout(this.timer);
       this.analyze();
@@ -388,11 +437,14 @@ export class Engine {
    */
   private analyzeTyped = () => {
     const text = this.ed.text;
-    if (!this.outputFirst(text, store.get().fileName, (res) => this.ed.text === text && this.analyze(res), true)) this.analyze();
+    if (!this.outputFirst(text, store.get().fileName, (res, metrics) => this.analyze(res, metrics), true)) this.analyze();
   };
 
-  /** `parsed`: the worker's parse of the current text. */
-  analyze(parsed?: ParseResult) {
+  private goodMetrics: DocumentMetrics | null = null;
+
+  /** Publish analysis; a Format-only result can retain its packed tree until needed. */
+  analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
+    if (!lazy) this.packed = null;
     clearTimeout(this.timer);
     const ed = this.ed;
     const text = ed.text;
@@ -403,6 +455,8 @@ export class Engine {
     if (!text.trim()) {
       this.res = null;
       this.good = null;
+      this.goodPacked = null;
+      this.goodMetrics = null;
       this.jwt = null;
       ed.setJwt(null);
       this.goodText = '';
@@ -424,7 +478,7 @@ export class Engine {
     const jwt = readJwt(text, this.indent);
     const src = jwt ? jwt.json : text;
     const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
-    const lines = !jwt && jsonLines(text, res);
+    const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
     const ms = performance.now() - t0;
     this.res = res;
     this.jwt = jwt;
@@ -436,10 +490,18 @@ export class Engine {
       if (this.query) this.closeFind();
     }
 
-    if (res.root) {
+    if (lazy) {
+      this.goodMetrics = metrics ?? null;
+      this.goodPacked = this.packed;
+      // Format already has the worker's output. Nodes are needed only by commands and other views.
+      this.goodText = src;
+      ed.setScope(-1, -1);
+    } else if (res.root) {
+      this.goodMetrics = metrics ?? null;
+      this.goodPacked = null;
       this.good = res;
       this.goodText = src;
-      this.tree.setRoot(res.root, reset, res.nodes);
+      this.tree.setRoot(res.root, reset, res.nodes, this.settings.view === 'tree');
       this.sel = this.selPath ? resolve(res.root, this.selPath) : null;
       this.tree.select(this.sel, { scroll: false });
       if (this.settings.view === 'table') {
@@ -469,9 +531,9 @@ export class Engine {
 
     store.set({
       empty: false,
-      stale: !res.root && !!this.good,
-      status: jwt ? this.jwtStatus(jwt) : lines ? this.linesStatus(res) : JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
-      stats: { bytes: byteLength(text), lines: ed.ls.length, nodes: res.nodes, depth: res.depth, ms },
+      stale: !lazy && !res.root && !!(this.good || this.goodPacked),
+      status: jwt ? this.jwtStatus(jwt) : lines ? this.linesStatus(res, metrics?.records) : text.length <= 1_000_000 && JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
+      stats: { bytes: metrics?.bytes ?? byteLength(text), lines: ed.ls.length, nodes: res.nodes, depth: res.depth, ms },
       path: this.sel ? formatPath(pathOf(this.sel)) : null,
       hint,
     });
@@ -481,14 +543,15 @@ export class Engine {
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
     this.syncTableState();
     this.updateBrackets();
-    this.measure(res.root && !jwt ? res : null, text);
+    if (metrics && (res.root || lazy && this.packed!.tree.nodes.length) && !jwt) store.set({ sizes: this.measuredSizes?.id === this.loadSeq ? this.measuredSizes.sizes : { min: metrics.min, stale: false } });
+    else this.measure(res.root && !jwt ? res : null, text);
     this.afterDoc();
   }
 
   /** Valid JSON Lines: the wrapping into an array is how they're viewed, not an issue. */
-  private linesStatus(res: ParseResult): Status {
+  private linesStatus(res: ParseResult, records?: number): Status {
     const w = res.warnings[0];
-    const jsonl = (res.root!.v as JNode[]).length;
+    const jsonl = records ?? (res.root!.v as JNode[]).length;
     return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
   }
 
@@ -559,7 +622,7 @@ export class Engine {
 
   /** Is the viewer showing positions that match the current text? */
   private get synced() {
-    return !!this.res?.root && this.parsed === this.ed.text && !this.jwt;
+    return !this.packed && !!this.res?.root && this.parsed === this.ed.text && !this.jwt;
   }
 
   // ── Selection sync ─────────────────────────────────────────────────────
@@ -574,6 +637,13 @@ export class Engine {
 
   /** Caret moved by the user → reveal the node under it in the tree. */
   private onNav = () => {
+    if (this.packed?.text === this.ed.text) {
+      const at = packedPosition(this.packed.tree, this.ed.caret, this.ed.text);
+      this.selPath = at?.path ?? null;
+      store.set({ path: at ? formatPath(at.path) : null });
+      this.ed.setScope(-1, -1);
+      return;
+    }
     if (!this.synced) return;
     const n = nodeAt(this.res!.root, this.ed.caret, this.ed.text);
     if (!n || n === this.sel) return;
@@ -583,6 +653,15 @@ export class Engine {
   };
 
   private updateBrackets() {
+    if (this.packed?.text === this.ed.text) {
+      const off = this.ed.caret;
+      const at = packedPosition(this.packed.tree, off, this.ed.text);
+      const close = at ? at.end - 1 : -1;
+      const c = this.ed.text.charCodeAt(close);
+      const match = at && (c === 125 || c === 93) && (off === at.start || off === at.start + 1 || off === close || off === at.end);
+      this.ed.setBrackets(match ? at.start : -1, match ? close : -1);
+      return;
+    }
     if (!this.synced) return;
     const off = this.ed.caret;
     const t = this.ed.text;
@@ -744,6 +823,7 @@ export class Engine {
 
   /** Turns a string value that holds JSON (`"{\"a\":1}"`) into real JSON, in place. */
   async expandNested(n: JNode | null = this.sel) {
+    if (n && n === this.sel && this.packed) { this.fresh(); n = this.sel; }
     if (!n || n.t !== STR || !this.synced) return this.toast('Select a string that contains JSON', 'info');
     const { embeddedJson } = await import('../json/smart');
     const inner = embeddedJson(n.v as string);
@@ -821,36 +901,43 @@ export class Engine {
    * re-indented straight from the text (in a worker, or here in slices), and
    * calls `next` (its analysis) once that has painted. False if it doesn't apply.
    */
-  private outputFirst(text: string, name: string | null, next: (res?: ParseResult) => void, typed = false): boolean {
+  private outputFirst(text: string, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void, typed = false): boolean {
     const s = this.settings;
-    if (text.length < OUTPUT_FIRST || s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '') || readJwt(text, this.indent)) return false;
+    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || readJwt(text, this.indent)) return false;
     const seq = ++this.loadSeq;
     clearTimeout(this.fmtTimer);
     clearTimeout(this.timer);
+    const key = this.fmtSettings();
     const indent = s.minify || s.escape ? '' : this.indent;
     // The worker's parse (after typing) is rebuilt in short slices, input handled between them, then analysed.
-    const analyse = (tree?: PackedTree) => {
+    const analyse = (tree?: PackedTree, metrics?: DocumentMetrics) => {
       if (seq !== this.loadSeq) return;
       if (!tree) return next();
+      if (typed && tree.nodes.length && this.fmtSrc === text && this.settings.view === 'format' && text.length >= WORKER_MIN) {
+        this.packed = { tree, text, metrics };
+        this.analyze({ ...tree.head, root: null }, metrics, true);
+        return;
+      }
       const step = unpacker(tree, text);
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
-        if (res) next(res);
+        if (res) next(res, metrics);
         else soon(run);
       };
       run();
     };
-    const done = (out: string | null, tree?: PackedTree) => {
+    const done = (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }) => {
       if (seq !== this.loadSeq) return;
-      if (out === null) return analyse(tree);
+      if (out === null || key !== this.fmtSettings() || typed && this.settings.view !== 'format') return analyse(tree, metrics);
       // On a first document the views are still hidden (empty state): show the output now.
       store.set({ empty: false, status: { kind: 'parsing' } });
       this.fmt.el.hidden = false;
-      this.drawFormat(out, text, this.fmtSettings());
+      this.drawFormat(out, text, key, index, display, change?.base === this.fmtWorkerId ? change : undefined);
+      this.pendingFmtWorkerId = seq;
       // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
       // the output can be scrolled and searched right away, without that work in the way.
-      setTimeout(() => idle(() => analyse(tree), 1000), 300);
+      setTimeout(() => idle(() => analyse(tree, metrics), 1000), 300);
     };
     const here = () => {
       const run = reindenter(text, indent);
@@ -870,7 +957,7 @@ export class Engine {
       else here();
     } else {
       this.reindentJob = { id: seq, done, fallback: here };
-      w.postMessage({ id: seq, text, indent, parse: typed });
+      w.postMessage({ id: seq, text, indent, parse: typed, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape });
     }
     return true;
   }
@@ -881,21 +968,28 @@ export class Engine {
   private worker: Worker | null | undefined;
   /** The worker has run its warm-up (see reindent.worker.ts). */
   private workerWarm = false;
-  private workerParse: { id: number; tree: PackedTree } | null = null;
-  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree) => void; fallback: () => void } | null = null;
+  private measuredSizes: { id: number; sizes: Sizes } | null = null;
+  private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }) => void; fallback: () => void } | null = null;
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
-        if (e.data.tree) return void (this.workerParse = { id: e.data.id, tree: e.data.tree });
+        if (e.data.id !== this.loadSeq) return;
+        if (e.data.sizes) {
+          this.measuredSizes = { id: e.data.id, sizes: e.data.sizes };
+          store.set({ sizes: e.data.sizes });
+          return;
+        }
+        if (e.data.tree) return void (this.workerParse = { id: e.data.id, tree: e.data.tree, metrics: e.data.metrics });
         const job = this.reindentJob;
         if (!job || job.id !== e.data.id) return;
         this.reindentJob = null;
-        job.done(e.data.out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined);
+        job.done(e.data.out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.index, e.data.display, e.data.change);
         this.workerParse = null;
       };
       w.onerror = () => {
@@ -1023,6 +1117,7 @@ export class Engine {
   }
 
   copyValue(n: JNode | null = this.sel) {
+    if (n && n === this.sel && this.goodPacked) { this.materializeGood(); n = this.sel; }
     if (!n) return this.toast('Select a node first', 'info');
     void this.copy(copyText(n, this.indent), n.t >= ARR ? 'Copied value as JSON' : 'Copied value');
   }
@@ -1244,7 +1339,32 @@ export class Engine {
 
   // ── Commands: view ─────────────────────────────────────────────────────
 
+  private viewSeq = 0;
+
   setView(view: View) {
+    const viewSeq = ++this.viewSeq;
+    const packed = this.packed?.text === this.ed.text ? this.packed : this.goodPacked;
+    if (view !== 'format' && view !== 'compare' && packed) {
+      const { tree, text, metrics } = packed;
+      const seq = this.loadSeq;
+      const step = unpacker(tree, text);
+      const run = () => {
+        if (this.dead || seq !== this.loadSeq || viewSeq !== this.viewSeq) return;
+        const res = step(performance.now() + 8);
+        if (!res) return soon(run);
+        if (text === this.ed.text) this.analyze(res, metrics);
+        else {
+          this.good = res;
+          this.goodPacked = null;
+          this.tree.setRoot(res.root, false, res.nodes, false);
+          this.sel = this.selPath ? resolve(res.root, this.selPath) : null;
+          this.tree.select(this.sel, { scroll: false });
+        }
+        this.setView(view);
+      };
+      soon(run);
+      return;
+    }
     const prev = this.settings.view;
     if (this.query && prev !== view) this.findIn(prev, '');
     this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
@@ -1254,7 +1374,10 @@ export class Engine {
       const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
       this.tableShow(base);
     } else this.table.setNode(null);
-    if (view === 'tree') requestAnimationFrame(() => this.tree.render(true));
+    if (view === 'tree') {
+      this.tree.activate();
+      requestAnimationFrame(() => this.tree.render(true));
+    }
     if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
     if (view === 'compare') {
@@ -1295,6 +1418,7 @@ export class Engine {
 
   /** The formatted document for the current settings (from the last valid parse), before any escaping. */
   private formatted(): string {
+    if (this.packed && this.fmtSrc === this.packed.text && this.fmtKey === this.fmtSettings()) return this.fmtText;
     const r = this.good;
     if (!r?.root) return '';
     const s = this.settings;
@@ -1309,6 +1433,8 @@ export class Engine {
 
   /** What the Format view last drew: the source text and the settings it used. */
   private fmtSrc = '';
+  private fmtWorkerId = 0;
+  private pendingFmtWorkerId = 0;
   private fmtKey = '';
   private fmtText = '';
   /** User Timing for DevTools: a file opened (tk:input) → its output painted (tk:formatted). */
@@ -1316,9 +1442,11 @@ export class Engine {
 
   private runFormat = () => {
     if (this.settings.view !== 'format') return;
+    if (this.packed && this.fmtKey !== this.fmtSettings()) this.fresh();
+    if (this.fmtKey !== this.fmtSettings()) this.materializeGood();
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
-    const drawn = !!this.good && this.goodText === this.fmtSrc && key === this.fmtKey;
+    const drawn = this.goodText === this.fmtSrc && key === this.fmtKey;
     const text = drawn ? this.fmtText : this.formatted();
     if (!drawn) this.drawFormat(text, this.good ? this.goodText : '', key);
     // Size of the shown variant is measured; the other differs only by whitespace,
@@ -1327,11 +1455,12 @@ export class Engine {
     const stats = () => {
       if (seq !== this.fmtStatSeq) return;
       const { minify, escape } = this.settings;
-      const bytes = byteLength(text);
-      const extra = this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
+      const metrics = this.goodMetrics;
+      const extra = metrics ? metrics.extra + metrics.units * this.indent.length : this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
+      const bytes = metrics ? metrics.min + (this.settings.minify || this.settings.escape ? 0 : extra) : byteLength(text);
       const min = !text ? 0 : minify || escape ? bytes : bytes - extra;
       store.set({
-        fmt: { lines: this.fmt.lineCount, pretty: text ? min + extra : 0, minified: min, escaped: escape && text ? byteLength(this.fmt.text) : 0 },
+        fmt: { lines: this.fmt.lineCount, pretty: text ? min + extra : 0, minified: min, escaped: escape && text ? metrics?.escaped ?? byteLength(this.fmt.text) : 0 },
       });
     };
     // A big document's sizes wait for a quiet moment (they only label the Pretty / Minify buttons).
@@ -1347,17 +1476,15 @@ export class Engine {
   }
 
   /** Shows `text` (the formatted `src`) in the Format view. */
-  private drawFormat(text: string, src: string, key: string) {
+  private drawFormat(text: string, src: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange) {
+    this.fmtWorkerId = 0;
+    this.pendingFmtWorkerId = 0;
     const { minify, escape } = this.settings;
     this.fmtSrc = src;
     this.fmtKey = key;
     this.fmtText = text;
-    const out = escape && text ? JSON.stringify(text) : text;
-    this.fmt.setText(out, jsonRow, true);
-    if (this.markOutput) {
-      this.markOutput = false;
-      requestAnimationFrame(() => performance.mark('tk:formatted'));
-    }
+    const out = display ?? (escape && text ? JSON.stringify(text) : text);
+    this.fmt.setText(out, jsonRow, true, null, index, change);
     this.noteExpiry(minify || escape ? '' : out);
   }
 

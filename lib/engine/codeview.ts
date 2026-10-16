@@ -2,6 +2,8 @@ import { bidiContext, escapeHtml, StringStates, stringState, trimWs } from './hi
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
+import { codeIndexer, type CodeChange, type CodeIndex } from '../json/code-index';
+import { soon } from './idle';
 
 /*
  * Virtualized read-only code viewer with lazily highlighted lines.
@@ -39,8 +41,6 @@ export interface Scanner {
 }
 
 const plain: LineHighlighter = (t) => escapeHtml(t);
-/** Leading spaces and tabs (sticky). */
-const INDENT = /[ \t]*/y;
 
 export interface FindResult {
   total: number;
@@ -55,7 +55,13 @@ export class CodeView {
   private sc: TallScroll;
   private rows: HTMLElement;
   private ro: ResizeObserver;
-  private lines: string[] = [];
+  private layoutSeq = 0;
+  private textSeq = 0;
+  private wrapTextLength = 0;
+  private layoutWrap: Wrapper | null = null;
+  private layoutCols = -1;
+  private layoutCw = 0;
+  private pending: { text: string; hl: LineHighlighter; json: boolean; scanner: Scanner | null; index?: CodeIndex; change?: CodeChange } | null = null;
   /** Visible lines (folded blocks removed), in order. */
   private vis = new Int32Array(0);
   /** First visual row of each visible line (length = vis + 1). */
@@ -100,12 +106,15 @@ export class CodeView {
   private hits: number[] = []; // flat [line, col, line, col, …]
   private hitLines = new Map<number, number[]>();
   private hi = -1;
+  private findSeq = 0;
+  onFind: ((result: FindResult) => void) | null = null;
   text = '';
+  onReady: (() => void) | null = null;
   private fold = escapeHtml(rt('Fold'));
   private unfold = escapeHtml(rt('Unfold'));
 
   get lineCount() {
-    return this.lines.length;
+    return this.ls.length;
   }
 
   constructor(el: HTMLElement) {
@@ -127,7 +136,8 @@ export class CodeView {
 
   /** The code font (or its subset for another script) arrived: glyph widths and wrapped rows change. */
   private onFonts = () => {
-    if (!this.el.isConnected || !this.lines.length) return void this.wrapper?.reset();
+    if (this.pending) return this.reflow(true);
+    if (!this.el.isConnected || !this.ls.length) return void this.wrapper?.reset();
     const cw = this.cw;
     this.measure();
     // Rows only move if a width changed; otherwise just redraw in the new glyphs.
@@ -139,6 +149,10 @@ export class CodeView {
   };
 
   destroy() {
+    this.pending = null;
+    this.layoutSeq++;
+    this.textSeq++;
+    this.findSeq++;
     this.el.removeEventListener('scroll', this.onScroll);
     this.el.removeEventListener('click', this.onClick);
     this.ro.disconnect();
@@ -157,7 +171,7 @@ export class CodeView {
   /** Soft-wraps long lines at the view's width, or lets them run on. */
   setWrap(on: boolean) {
     if (on === !!this.wrapper) return;
-    const top = this.lines.length ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
+    const top = this.ls.length ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
     this.wrapper?.destroy();
     this.wrapper = on ? this.makeWrapper() : null;
     this.el.classList.toggle('cv-nowrap', !on);
@@ -172,91 +186,55 @@ export class CodeView {
     this.render(true);
   }
 
-  /** `json`: the text is JSON (enables correct highlighting of wrapped strings). `scanner`: see Scanner. */
-  setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null) {
-    if (text === this.text && hl === this.hl) return;
-    this.scanner = scanner;
-    const prevLines = this.lines.length;
-    const keepScroll = this.text && text.slice(0, 64) === this.text.slice(0, 64);
-    this.text = text;
-    this.hl = hl;
-    this.json = json;
-    this.lines = text ? text.split('\n') : [];
-    const ls = new Int32Array(this.lines.length);
-    let maxLen = 0;
-    for (let i = 0, p = 0; i < this.lines.length; i++) {
-      const len = this.lines[i].length;
-      ls[i] = p;
-      p += len + 1;
-      if (len > maxLen) maxLen = len;
+  private lineEnd(i: number) {
+    return i + 1 < this.ls.length ? this.ls[i + 1] - 1 : this.text.length;
+  }
+
+  private line(i: number) {
+    return this.text.slice(this.ls[i], this.lineEnd(i));
+  }
+
+  /** `index` can arrive as transferable arrays from the formatting worker. */
+  setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null, index?: CodeIndex, change?: CodeChange) {
+    const seq = ++this.textSeq;
+    if (text === this.text && hl === this.hl) {
+      this.pending = null;
+      this.layoutSeq++;
+      soon(() => { if (seq === this.textSeq) this.onReady?.(); });
+      return;
     }
-    this.ls = ls;
-    this.maxLen = maxLen;
-    if (scanner) {
-      const st = (this.lineStates = new Int32Array(this.lines.length));
-      let state = scanner.start;
-      for (let i = 0; i < this.lines.length; i++) {
-        st[i] = state;
-        state = scanner.scan('\n', 0, 1, scanner.scan(this.lines[i], 0, this.lines[i].length, state));
-      }
-    }
-    // Folds survive edits that keep the shape (same line count), e.g. changing a value.
-    if (this.lines.length !== prevLines) this.folded.clear();
-    this.scanFolds();
-    const digits = String(this.lines.length).length;
-    this.el.style.setProperty('--cv-gw', `${Math.max(3, digits) + 5}ch`);
-    if (!keepScroll) this.sc.top = 0;
-    if (this.q) this.runFind(false);
-    this.reflow(false);
+    this.pending = { text, hl, json, scanner, index, change };
+    const run = index ? null : codeIndexer(text);
+    const prepare = () => {
+      if (seq !== this.textSeq) return;
+      const ready = index ?? run!(text.length < 2_000_000 ? Infinity : performance.now() + 8);
+      if (!ready) return soon(prepare);
+      if (this.pending) this.pending.index = ready;
+      const folded = this.ls.length === ready.starts.length ? new Set(this.folded) : new Set<number>();
+      for (const o of folded) if (ready.close[o] < 0) folded.delete(o);
+      this.layout(text, ready, folded, scanner, false, -1, () => {
+        if (seq !== this.textSeq) return false;
+        const keepScroll = this.text && text.slice(0, 64) === this.text.slice(0, 64);
+        this.pending = null;
+        this.text = text;
+        this.hl = hl;
+        this.json = json;
+        this.scanner = scanner;
+        this.ls = ready.starts;
+        this.close = ready.close;
+        this.depth = ready.depth;
+        this.maxLen = ready.maxLen;
+        this.folded = folded;
+        this.el.style.setProperty('--cv-gw', `${Math.max(3, String(this.ls.length).length) + 5}ch`);
+        if (!keepScroll) this.sc.top = 0;
+        soon(() => { if (seq === this.textSeq) this.onReady?.(); });
+        return true;
+      }, change);
+    };
+    prepare();
   }
 
   // ── Folding ────────────────────────────────────────────────────────────
-
-  /** Lines ending in `{` or `[` open a block that the matching `}`/`]` line closes. */
-  private scanFolds() {
-    const n = this.lines.length;
-    const close = new Int32Array(n).fill(-1);
-    const depth = new Int32Array(n);
-    const stack: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const line = this.lines[i];
-      // The indentation's end (a native search: deep documents indent a lot).
-      INDENT.lastIndex = 0;
-      INDENT.test(line);
-      const a = INDENT.lastIndex;
-      const first = line.charCodeAt(a);
-      if ((first === 125 || first === 93) && stack.length) {
-        const o = stack.pop() as number;
-        if (i > o + 1) close[o] = i;
-      }
-      let b = line.length - 1;
-      while (b >= 0 && (line.charCodeAt(b) === 32 || line.charCodeAt(b) === 9)) b--;
-      const last = line.charCodeAt(b);
-      if ((last === 123 || last === 91) && !(b === a && (first === 125 || first === 93))) {
-        depth[i] = stack.length;
-        stack.push(i);
-      }
-    }
-    this.close = close;
-    this.depth = depth;
-    for (const o of this.folded) if (close[o] < 0) this.folded.delete(o);
-  }
-
-  private buildVisible() {
-    const n = this.lines.length;
-    if (!this.folded.size) {
-      const v = new Int32Array(n);
-      for (let i = 0; i < n; i++) v[i] = i;
-      this.vis = v;
-      return;
-    }
-    const out: number[] = [];
-    for (let i = 0; i < n; i++) {
-      out.push(i);
-      if (this.folded.has(i)) i = this.close[i];
-    }
-    this.vis = Int32Array.from(out);
-  }
 
   toggle(line: number) {
     if (this.close[line] < 0) return;
@@ -294,44 +272,112 @@ export class CodeView {
 
   /** Recomputes visible lines and wrapping (on text, fold or width changes). */
   private reflow(keepPosition: boolean, anchor = -1) {
+    if (this.pending) {
+      const p = this.pending;
+      this.setText(p.text, p.hl, p.json, p.scanner, p.index, p.change);
+      return;
+    }
+    this.layout(this.text, { starts: this.ls, close: this.close, depth: this.depth, maxLen: this.maxLen }, this.folded, this.scanner, keepPosition, anchor);
+  }
+
+  /** Prepare a replacement away from the live model, then publish it in one short task. */
+  private layout(text: string, index: CodeIndex, folded: Set<number>, scanner: Scanner | null, keepPosition: boolean, anchor: number, commit = () => true, change?: CodeChange) {
+    const seq = ++this.layoutSeq;
     const firstLine = anchor >= 0 ? anchor : keepPosition ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
     const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.sc.top : 0;
     this.width = this.el.clientWidth;
     this.measure();
-    const gutter = (Math.max(3, String(this.lines.length).length) + 5) * this.cw;
-    this.buildVisible();
-    const vis = this.vis;
-    const n = vis.length;
+    const gutter = (Math.max(3, String(index.starts.length).length) + 5) * this.cw;
     const wr = this.wrapper;
-    let wrapped: Int32Array | null = null;
-    if (wr) {
-      if (wr.fit(this.width - gutter - PAD_X * 2, this.cw)) this.el.style.setProperty('--cv-tw', `${wr.width}px`);
-      if (wr.cols) {
-        const A = new Int32Array(n);
-        const B = new Int32Array(n);
-        for (let i = 0; i < n; i++) {
-          A[i] = this.ls[vis[i]];
-          B[i] = A[i] + this.lines[vis[i]].length;
-        }
-        wrapped = wr.rows(this.text, A, B);
-      }
-    }
-    this.odd = wrapped && wr ? wr.odd : new Uint8Array(n);
+    const resized = wr?.fit(this.width - gutter - PAD_X * 2, this.cw);
+    if (resized && wr) this.el.style.setProperty('--cv-tw', `${wr.width}px`);
+    const cols = wr?.cols ?? 0;
+    const cw = this.cw;
+    const reuse = change && !scanner && !resized && cols === this.layoutCols && cw === this.layoutCw && wr === this.layoutWrap && !folded.size && !this.folded.size && this.vis.length === this.ls.length ? change : null;
+    const n = index.starts.length;
+    const vis = new Int32Array(n);
     const rs = new Int32Array(n + 1);
-    let r = 0;
-    for (let i = 0; i < n; i++) {
-      rs[i] = r;
-      r += wrapped && !this.folded.has(vis[i]) ? wrapped[i] : 1;
-    }
-    rs[n] = r;
-    this.rowStart = rs;
-    this.states.clear();
-    this.html.clear();
-    this.sc.fit(r * RH + 24, this.sizer);
-    // Not wrapping, the longest line sets how far the view scrolls sideways.
-    this.sizer.style.width = wr ? '' : `${Math.ceil(gutter + (this.maxLen + 4) * this.cw + PAD_X * 2)}px`;
-    if (firstLine >= 0) this.sc.top = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
-    this.render(true);
+    const odd = new Uint8Array(n);
+    const states = scanner ? new Int32Array(n) : this.lineStates;
+    let i = 0;
+    let count = 0;
+    let rows = 0;
+    let state = scanner?.start ?? 0;
+    const endOf = (ln: number) => ln + 1 < n ? index.starts[ln + 1] - 1 : text.length;
+    const step = () => {
+      if (seq !== this.layoutSeq) return;
+      const until = text.length < 2_000_000 ? Infinity : performance.now() + 8;
+      do {
+        const batch: number[] = [];
+        const base = index.starts[i];
+        // Bound both the line count and text passed to the wrapper. It never compares whole outputs.
+        for (; i < n && batch.length < 512; i++) {
+          if (batch.length && endOf(i) - base > 64_000) break;
+          if (scanner) {
+            states[i] = state;
+            state = scanner.scan('\n', 0, 1, scanner.scan(text, index.starts[i], endOf(i), state));
+          }
+          batch.push(i);
+          if (folded.has(i)) {
+            const close = index.close[i];
+            if (scanner) for (let k = i + 1; k <= close; k++) {
+              states[k] = state;
+              state = scanner.scan('\n', 0, 1, scanner.scan(text, index.starts[k], endOf(k), state));
+            }
+            i = close;
+          }
+        }
+        if (!batch.length) break;
+        const cached = batch.map((ln) => {
+          if (!reuse) return -1;
+          const old = endOf(ln) < reuse.prefix ? ln : index.starts[ln] >= text.length - reuse.suffix ? ln + this.ls.length - n : -1;
+          if (old < 0 || old >= this.ls.length) return -1;
+          return this.lineEnd(old) - this.ls[old] === endOf(ln) - index.starts[ln] ? old : -1;
+        });
+        const missing = batch.filter((_, k) => cached[k] < 0);
+        let wrapped: Int32Array | null = null;
+        if (wr?.cols && missing.length) {
+          const local = text.slice(base, endOf(batch[batch.length - 1]));
+          const a = Int32Array.from(missing, (ln) => index.starts[ln] - base);
+          const b = Int32Array.from(missing, (ln) => endOf(ln) - base);
+          wrapped = wr.rows(local, a, b, [0, this.wrapTextLength, local.length]);
+          this.wrapTextLength = local.length;
+        }
+        let measured = 0;
+        for (let k = 0; k < batch.length; k++) {
+          const ln = batch[k];
+          const old = cached[k];
+          vis[count] = ln;
+          rs[count] = rows;
+          if (old >= 0) {
+            odd[count++] = this.odd[old];
+            rows += this.rowStart[old + 1] - this.rowStart[old];
+          } else {
+            odd[count++] = wrapped && wr ? wr.odd[measured] : 0;
+            rows += wrapped && !folded.has(ln) ? wrapped[measured] : 1;
+            measured++;
+          }
+        }
+      } while (i < n && performance.now() < until);
+      if (i < n) return soon(step);
+      if (!commit()) return;
+      rs[count] = rows;
+      this.layoutWrap = wr;
+      this.layoutCols = cols;
+      this.layoutCw = cw;
+      this.vis = vis.subarray(0, count);
+      this.rowStart = rs.subarray(0, count + 1);
+      this.odd = odd.subarray(0, count);
+      this.lineStates = states;
+      this.states.clear();
+      this.html.clear();
+      this.sc.fit(rows * RH + 24, this.sizer);
+      this.sizer.style.width = wr ? '' : `${Math.ceil(gutter + (index.maxLen + 4) * this.cw + PAD_X * 2)}px`;
+      if (firstLine >= 0) this.sc.top = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
+      if (this.q) this.runFind(false);
+      this.render(true);
+    };
+    step();
   }
 
   private measure() {
@@ -383,16 +429,16 @@ export class CodeView {
   /** Offset in visible line `vi` where its wrapped row `sub` starts. */
   private subStart(vi: number, sub: number) {
     const ln = this.vis[vi];
-    const len = this.lines[ln].length;
+    const len = this.line(ln).length;
     if (sub <= 0) return 0;
     if (sub >= this.rowStart[vi + 1] - this.rowStart[vi]) return len;
-    const a = this.ls[ln];
-    return (this.wrapper as Wrapper).rowStart(this.text, a, a + len, sub, this.odd[vi] === 1);
+    const line = this.line(ln);
+    return (this.wrapper as Wrapper).rowStart(line, 0, len, sub, this.odd[vi] === 1);
   }
 
   /** Is visible line `vi` drawn as one block the browser wraps (wide glyphs, not long)? */
   private isBlock(vi: number) {
-    return this.odd[vi] === 1 && this.rowStart[vi + 1] - this.rowStart[vi] > 1 && this.lines[this.vis[vi]].length <= LONG_LINE;
+    return this.odd[vi] === 1 && this.rowStart[vi + 1] - this.rowStart[vi] > 1 && this.line(this.vis[vi]).length <= LONG_LINE;
   }
 
   /** Highlighter state at the start of wrapped row `sub` of visible line `vi` (JSON strings, or the scanner's). */
@@ -402,7 +448,7 @@ export class CodeView {
     if (!sc && (!this.json || sub === 0)) return 0;
     let st = this.states.get(ln);
     if (!st) this.states.set(ln, (st = [sc ? this.lineStates[ln] : 0]));
-    const line = this.lines[ln];
+    const line = this.line(ln);
     for (let k = st.length; k <= sub; k++) {
       const a = this.subStart(vi, k - 1);
       const b = this.subStart(vi, k);
@@ -458,7 +504,7 @@ export class CodeView {
       const sub = row - this.rowStart[vi];
       const rows = this.rowStart[vi + 1] - this.rowStart[vi];
       const foldedHere = this.folded.has(ln);
-      const line = this.lines[ln];
+      const line = this.line(ln);
       const block = this.isBlock(vi);
       // This row's slice of the line: [a, b).
       let a = 0;
@@ -484,7 +530,7 @@ export class CodeView {
         if (foldedHere) {
           const end = this.close[ln];
           const n = end - ln - 1;
-          h += `<button type="button" class="cv-ph" data-f="${ln}" title="${this.unfold}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</button>${this.hl(this.lines[end].trim(), false, false, 0)}`;
+          h += `<button type="button" class="cv-ph" data-f="${ln}" title="${this.unfold}">⋯ ${escapeHtml(rt.n(n, '{n} line', '{n} lines'))}</button>${this.hl(this.line(end).trim(), false, false, 0)}`;
         }
         this.html.set(row, h);
       }
@@ -563,34 +609,50 @@ export class CodeView {
   }
 
   private runFind(jump: boolean) {
+    const seq = ++this.findSeq;
     this.hits = [];
     this.hitLines.clear();
     this.hi = -1;
     const q = this.q;
     if (!q) return;
-    // Smart case: lowercase queries match any case.
     const cs = q !== q.toLowerCase();
     const qn = cs ? q : q.toLowerCase();
-    const hits = this.hits;
-    for (let ln = 0; ln < this.lines.length && hits.length < MAX_HITS * 2; ln++) {
-      const line = cs ? this.lines[ln] : this.lines[ln].toLowerCase();
-      let p = line.indexOf(qn);
-      if (p < 0) continue;
-      const cols: number[] = [];
-      while (p >= 0) {
-        hits.push(ln, p);
-        cols.push(p);
-        p = line.indexOf(qn, p + qn.length);
+    let ln = 0;
+    let col = 0;
+    const run = () => {
+      if (seq !== this.findSeq) return;
+      const until = this.text.length < 2_000_000 ? Infinity : performance.now() + 8;
+      while (ln < this.ls.length && this.hits.length < MAX_HITS * 2) {
+        const line = this.line(ln);
+        const end = Math.min(line.length, col + 64_000);
+        const part = line.slice(col, end + qn.length - 1);
+        const search = cs ? part : part.toLowerCase();
+        let p = search.indexOf(qn);
+        let next = end;
+        while (p >= 0 && col + p < end && this.hits.length < MAX_HITS * 2) {
+          const at = col + p;
+          this.hits.push(ln, at);
+          let cols = this.hitLines.get(ln);
+          if (!cols) this.hitLines.set(ln, (cols = []));
+          cols.push(at);
+          next = Math.max(next, at + qn.length);
+          p = search.indexOf(qn, p + qn.length);
+        }
+        col = next;
+        if (col >= line.length) { ln++; col = 0; }
+        if (performance.now() >= until) return soon(run);
       }
-      this.hitLines.set(ln, cols);
-    }
-    if (!hits.length) return;
-    // Start from the first match at or below the top of the view.
-    const top = this.lineAtRow(Math.floor(this.sc.top / RH));
-    let i = 0;
-    while (i * 2 < hits.length && hits[i * 2] < top) i++;
-    this.hi = i * 2 < hits.length ? i : 0;
-    if (jump) this.goto();
+      if (this.hits.length) {
+        const top = this.lineAtRow(Math.floor(this.sc.top / RH));
+        let i = 0;
+        while (i * 2 < this.hits.length && this.hits[i * 2] < top) i++;
+        this.hi = i * 2 < this.hits.length ? i : 0;
+        if (jump) this.goto();
+      }
+      this.render(true);
+      this.onFind?.({ total: this.hits.length / 2, index: this.hi });
+    };
+    run();
   }
 
   private goto() {

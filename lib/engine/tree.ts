@@ -55,6 +55,7 @@ export class TreeView {
   rows: JNode[] = [];
   sel: JNode | null = null;
   private limit = Infinity;
+  private dirty = false;
   private toggles = new Map<string, boolean>();
   private q = '';
   private qn = '';
@@ -99,15 +100,24 @@ export class TreeView {
 
   // ── Model ──────────────────────────────────────────────────────────────
 
-  setRoot(root: JNode | null, reset: boolean, nodes = 0) {
+  setRoot(root: JNode | null, reset: boolean, nodes = 0, active = true) {
     if (reset) {
       this.toggles.clear();
       this.limit = nodes <= 50_000 ? Infinity : nodes <= 500_000 ? 3 : 2;
       this.sc.top = 0;
     }
     this.root = root;
-    if (!root) this.sel = null;
+    this.sel = null;
+    this.dirty = true;
+    if (active || !root) this.activate();
+  }
+
+  /** A hidden view retains its settings and selection without flattening the new tree. */
+  activate() {
+    if (!this.dirty) return;
+    this.dirty = false;
     this.rebuild();
+    if (this.sel) this.reveal(this.sel);
   }
 
   private rebuild() {
@@ -216,6 +226,7 @@ export class TreeView {
 
   select(n: JNode | null, opts: { scroll?: boolean; center?: boolean } = {}) {
     this.sel = n;
+    if (this.dirty) return;
     if (n) {
       this.reveal(n);
       if (opts.scroll !== false) this.scrollToSel(!!opts.center);
@@ -321,7 +332,7 @@ export class TreeView {
   render(force: boolean) {
     // A hidden tree draws when it is shown (the engine renders it on a view change
     // and after a load); measuring it while hidden would force a page layout.
-    if (this.el.hidden) return;
+    if (this.el.hidden || this.dirty) return;
     if (!valueHints && !hintsLoading && this.rows.length) {
       // Hints decorate rows that are already readable, so they load when the page is idle.
       hintsLoading = true;
