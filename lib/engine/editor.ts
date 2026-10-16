@@ -251,6 +251,10 @@ export class Editor {
   private get src(): Src {
     return this.doc.flat ?? this.doc;
   }
+  /** Editing a document that opened in a view (after Edit anyway, or woken from the quiet view). */
+  get editingAnyway() {
+    return this.forceEdit && !this.view;
+  }
   /** The document's version: a new object after every edit (compare by identity, without building the text). */
   get version(): object {
     return this.doc;
@@ -1761,9 +1765,11 @@ export class Editor {
       if (e.type === 'cut') this.replace(a, b, '');
       return;
     }
-    if (!this.vis || !e.clipboardData) return;
+    if (!e.clipboardData) return;
     const [a, b] = this.selection;
-    if (b - a === this.ta.selectionEnd - this.ta.selectionStart) return;
+    // The textarea's own copy would do, unless the selection hides folded lines, or holds no-break
+    // spaces (WebKit's copy turns them into spaces, changing a string's value).
+    if ((!this.vis || b - a === this.ta.selectionEnd - this.ta.selectionStart) && this.doc.indexOf('\u00a0', a, b) < 0) return;
     e.preventDefault();
     e.clipboardData.setData('text/plain', this.doc.slice(a, b));
     if (e.type === 'cut') this.replace(a, b, '');
@@ -2084,11 +2090,14 @@ export class Editor {
     return this.surface ? d.edit(a, b, text) : Doc.of(d.slice(0, a) + text + d.slice(b));
   }
 
-  /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
-  setValue(next: string, caret = 0, load = false) {
+  /**
+   * Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS).
+   * `keepEdit`: one pasted while editing such a document (see editingAnyway), so it stays editable too.
+   */
+  setValue(next: string, caret = 0, load = false, keepEdit = false) {
     next = lf(next);
     if (next.length !== this.doc.length || next !== this.text) {
-      this.forceEdit = false;
+      this.forceEdit = keepEdit && this.forceEdit;
       this.loading = load;
       try {
         this.apply(0, this.doc.length, next, caret, caret, 'set');

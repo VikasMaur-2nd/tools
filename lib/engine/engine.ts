@@ -222,7 +222,8 @@ export class Engine {
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
         this.refocus = true;
-        this.load(text, null, true, true);
+        // (Pasted while editing a document that opened in a view: the user chose to edit, so it stays editable.)
+        this.load(text, null, true, true, this.ed.editingAnyway);
         return true;
       },
     });
@@ -901,22 +902,22 @@ export class Engine {
   // ── Commands: documents ────────────────────────────────────────────────
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
-  load(text: string, name: string | null, persist = true, outputFirst = false) {
+  load(text: string, name: string | null, persist = true, outputFirst = false, keepEdit = false) {
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
     this.loadSeq++; // drops what an earlier load still has pending
     store.set({ fileName: name });
     if (persist) write(KEYS.file, name);
-    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) {
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, keepEdit))) {
       // Until the editor has it, input would act on the old document: the first input hands it over at once.
-      this.pendingLoad = { seq: this.loadSeq, text, persist };
+      this.pendingLoad = { seq: this.loadSeq, text, persist, keepEdit };
       return;
     }
-    this.finishLoad(text, persist);
+    this.finishLoad(text, persist, false, keepEdit);
   }
 
   /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
-  private pendingLoad: { seq: number; text: string; persist: boolean } | null = null;
+  private pendingLoad: { seq: number; text: string; persist: boolean; keepEdit: boolean } | null = null;
 
   /**
    * Input arrived in the editor before a pending load reached it (a key, a paste or a cut right after
@@ -928,7 +929,7 @@ export class Engine {
     this.pendingLoad = null;
     // The load's deferred steps are dropped; the analysis draws its output as usual.
     this.loadSeq++;
-    this.finishLoad(p.text, p.persist, true);
+    this.finishLoad(p.text, p.persist, true, p.keepEdit);
     // Arrived for the user's input: editable at once, not in the quiet view.
     this.ed.takeOver();
     this.onCaret();
@@ -1074,9 +1075,9 @@ export class Engine {
   private refocus = false;
 
   /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
-  private finishLoad(text: string, persist: boolean, split = false) {
+  private finishLoad(text: string, persist: boolean, split = false, keepEdit = false) {
     this.pendingLoad = null;
-    this.ed.setValue(text, 0, true);
+    this.ed.setValue(text, 0, true, keepEdit);
     if (this.refocus) this.ed.focus();
     this.refocus = false;
     const seq = this.loadSeq;
