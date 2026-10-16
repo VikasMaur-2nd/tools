@@ -1928,8 +1928,11 @@ export class Editor {
   private newline() {
     const v = this.text;
     const [s, e] = this.selection;
-    const lineStart = v.lastIndexOf('\n', s - 1) + 1;
-    const indent = /^[ \t]*/.exec(v.slice(lineStart, s))?.[0] ?? '';
+    // Line starts are known: no scanning back (a minified document is one long line).
+    const lineStart = this.ls[this.lineOf(s)];
+    let w = lineStart;
+    while (w < s && (v.charCodeAt(w) === 32 || v.charCodeAt(w) === 9)) w++;
+    const indent = v.slice(lineStart, w);
     let k = s - 1;
     while (k >= lineStart && (v.charCodeAt(k) === 32 || v.charCodeAt(k) === 9)) k--;
     const before = v[k];
@@ -1940,7 +1943,8 @@ export class Editor {
         this.replace(s, e, '\n' + inner + '\n' + indent, s + 1 + inner.length);
       } else this.replace(s, e, '\n' + inner);
     } else this.replace(s, e, '\n' + indent);
-    this.reveal(this.caret);
+    // The big-document editor's edit already revealed the caret (select); reveal draws again.
+    if (!this.surface) this.reveal(this.caret);
   }
 
   /** Typing a closer on a whitespace-only line removes one indent level first. */
@@ -1948,9 +1952,11 @@ export class Editor {
     const [s, e] = this.selection;
     if (s !== e) return false;
     const v = this.text;
-    const lineStart = v.lastIndexOf('\n', s - 1) + 1;
+    const lineStart = this.ls[this.lineOf(s)];
+    // Only whitespace before the caret: check without copying a long line.
+    for (let i = lineStart; i < s; i++) if (v.charCodeAt(i) !== 32 && v.charCodeAt(i) !== 9) return false;
     const lead = v.slice(lineStart, s);
-    if (!lead || /[^ \t]/.test(lead)) return false;
+    if (!lead) return false;
     const unit = this.indentUnit;
     let cut = 0;
     if (lead.endsWith('\t')) cut = 1;
