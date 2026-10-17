@@ -1,0 +1,3086 @@
+{
+  "generatedAt": "2026-10-17T09:22:35.498Z",
+  "commit": "925fc3c6f004552a8cdea9628699de9735682d01",
+  "method": "Planned: three fresh-profile attempts per data size and source format in the 925fc3c repeat. Earlier series have their own requested counts. Actual attempts are reported per cell. Normal combined quantiles require at least three profiles with all matched positions; every failed or incomplete attempt remains an outcome; first, middle and last record email values; twenty trusted CDP keydown/up pairs at requested 100 ms intervals. Per-key rAF uses trusted event timestamps. Event Timing records only events at/above its 16 ms threshold and is reported separately. Output update starts at the final trusted keydown timestamp for every editor, independent of native input events. Manual button times are separate. Percentiles use nearest rank.",
+  "groups": [
+    {
+      "site": "Tool Kumar",
+      "size": "100kb-pretty",
+      "format": "prettified",
+      "sourceSize": "100kb",
+      "runs": 3,
+      "completeProfiles": 3,
+      "matchedSources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing1__2026-10-17T08-37-01-190Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing2__2026-10-17T09-01-10-797Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing3__2026-10-17T09-05-18-112Z.json"
+      ],
+      "opening": {
+        "n": 3,
+        "median": 432,
+        "p95": 535,
+        "max": 535
+      },
+      "design": {
+        "editor": "Native textarea with virtual syntax highlighting",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "100kb",
+        "key": "100kb-pretty",
+        "format": "prettified",
+        "minifiedSourceSha256": "6dd2438f91bf60e11617fe2464e8d49af823d45dc21dc31e15cb9624554d48e9",
+        "file": "bench-100kb-pretty.json",
+        "bytes": 186427,
+        "characters": 185483,
+        "lines": 7945,
+        "sha256": "f6ea1a3f66fe1dc9eeac68447b0ab5f0043f80f9c91646b5efcf0a8fa31b8e08",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 483,
+            "line": 20,
+            "column": 33
+          },
+          {
+            "name": "middle",
+            "email": "user59@example.com",
+            "offset": 87513,
+            "line": 3751,
+            "column": 34
+          },
+          {
+            "name": "end",
+            "email": "user117@example.com",
+            "offset": 183870,
+            "line": 7874,
+            "column": 35
+          }
+        ]
+      },
+      "editAnyway": false,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing1__2026-10-17T08-37-01-190Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing2__2026-10-17T09-01-10-797Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing3__2026-10-17T09-05-18-112Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        }
+      ],
+      "raf": {
+        "n": 180,
+        "median": 27.299999997019768,
+        "p95": 45.69999999925494,
+        "max": 81.59999999776483
+      },
+      "eventTiming": {
+        "median": "32.0 ms",
+        "p95": "56.0 ms",
+        "entries": 179,
+        "totalKeys": 180,
+        "censoredBelow16ms": 1,
+        "conditional": {
+          "n": 179,
+          "median": 32,
+          "p95": 56,
+          "max": 96
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing1__2026-10-17T08-37-01-190Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing2__2026-10-17T09-01-10-797Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing3__2026-10-17T09-05-18-112Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 22,
+            "p95": 64.59999999776483,
+            "max": 81.59999999776483
+          },
+          "eventTimingAboveThreshold": {
+            "n": 59,
+            "median": 32,
+            "p95": 88,
+            "max": 96
+          },
+          "eventTimingMissingOrBelow16ms": 1,
+          "outputUpdate": {
+            "n": 3,
+            "median": 311,
+            "p95": 488.0999999977648,
+            "max": 488.0999999977648
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 100,
+          "longestTaskMs": 67
+        },
+        {
+          "position": "middle",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing1__2026-10-17T08-37-01-190Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing2__2026-10-17T09-01-10-797Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing3__2026-10-17T09-05-18-112Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 24.299999997019768,
+            "p95": 31,
+            "max": 32.29999999701977
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 32,
+            "p95": 40,
+            "max": 40
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 313.5,
+            "p95": 397.3999999985099,
+            "max": 397.3999999985099
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 33.19999999999709,
+          "longestTaskMs": null
+        },
+        {
+          "position": "end",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing1__2026-10-17T08-37-01-190Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing2__2026-10-17T09-01-10-797Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing3__2026-10-17T09-05-18-112Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 29.599999997764826,
+            "p95": 36.69999999925494,
+            "max": 65
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 40,
+            "p95": 48,
+            "max": 88
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 325.8999999985099,
+            "p95": 329.3999999985099,
+            "max": 329.3999999985099
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 66.79999999998836,
+          "longestTaskMs": 57
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 9,
+            "median": 69.5,
+            "p95": 77.59999999776483,
+            "max": 77.59999999776483
+          },
+          "samples": 9
+        },
+        "backspace": {
+          "raf": {
+            "n": 9,
+            "median": 23.299999997019768,
+            "p95": 30.699999999254942,
+            "max": 30.699999999254942
+          },
+          "samples": 9
+        },
+        "snippet": {
+          "raf": {
+            "n": 9,
+            "median": 23,
+            "p95": 34.19999999925494,
+            "max": 34.19999999925494
+          },
+          "samples": 9,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 9,
+            "median": 368,
+            "p95": 406.1000000014901,
+            "max": 406.1000000014901
+          },
+          "samples": 9,
+          "confirmedEffects": 9,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [
+          "measured",
+          "measured",
+          "measured"
+        ],
+        "frames": {
+          "n": 182,
+          "median": 16.699999999982538,
+          "p95": 33.29999999998836,
+          "max": 33.39999999999418
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 3,
+        "median": 256,
+        "p95": 263,
+        "max": 263
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing1__2026-10-17T08-37-01-190Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing2__2026-10-17T09-01-10-797Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb-pretty__editing3__2026-10-17T09-05-18-112Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "100kb",
+      "format": "minified",
+      "sourceSize": "100kb",
+      "runs": 3,
+      "completeProfiles": 3,
+      "matchedSources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing1__2026-10-17T08-36-22-329Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing2__2026-10-17T09-00-30-817Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing3__2026-10-17T09-04-39-093Z.json"
+      ],
+      "opening": {
+        "n": 3,
+        "median": 614,
+        "p95": 629,
+        "max": 629
+      },
+      "design": {
+        "editor": "Native textarea with virtual syntax highlighting",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "100kb",
+        "key": "100kb",
+        "format": "minified",
+        "minifiedSourceSha256": "6dd2438f91bf60e11617fe2464e8d49af823d45dc21dc31e15cb9624554d48e9",
+        "file": "bench-100kb.json",
+        "bytes": 99638,
+        "characters": 98694,
+        "lines": 1,
+        "sha256": "6dd2438f91bf60e11617fe2464e8d49af823d45dc21dc31e15cb9624554d48e9",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 354,
+            "line": 1,
+            "column": 354
+          },
+          {
+            "name": "middle",
+            "email": "user59@example.com",
+            "offset": 46963,
+            "line": 1,
+            "column": 46963
+          },
+          {
+            "name": "end",
+            "email": "user117@example.com",
+            "offset": 97877,
+            "line": 1,
+            "column": 97877
+          }
+        ]
+      },
+      "editAnyway": false,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing1__2026-10-17T08-36-22-329Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing2__2026-10-17T09-00-30-817Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing3__2026-10-17T09-04-39-093Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        }
+      ],
+      "raf": {
+        "n": 180,
+        "median": 73.09999999776483,
+        "p95": 727.5999999977648,
+        "max": 1325.5
+      },
+      "eventTiming": {
+        "median": "88.0 ms",
+        "p95": "744.0 ms",
+        "entries": 180,
+        "totalKeys": 180,
+        "censoredBelow16ms": 0,
+        "conditional": {
+          "n": 180,
+          "median": 88,
+          "p95": 744,
+          "max": 1344
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing1__2026-10-17T08-36-22-329Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing2__2026-10-17T09-00-30-817Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing3__2026-10-17T09-04-39-093Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 106.59999999776483,
+            "p95": 1026.5999999977648,
+            "max": 1325.5
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 128,
+            "p95": 1040,
+            "max": 1344
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 282,
+            "p95": 757.2999999970198,
+            "max": 757.2999999970198
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 949.9000000000015,
+          "longestTaskMs": 495
+        },
+        {
+          "position": "middle",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing1__2026-10-17T08-36-22-329Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing2__2026-10-17T09-00-30-817Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing3__2026-10-17T09-04-39-093Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 73.09999999776483,
+            "p95": 89.09999999776483,
+            "max": 115.79999999701977
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 88,
+            "p95": 112,
+            "max": 136
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 244.69999999925494,
+            "p95": 291.19999999925494,
+            "max": 291.19999999925494
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 116.60000000000218,
+          "longestTaskMs": 102
+        },
+        {
+          "position": "end",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing1__2026-10-17T08-36-22-329Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing2__2026-10-17T09-00-30-817Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing3__2026-10-17T09-04-39-093Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 41.79999999701977,
+            "p95": 55,
+            "max": 64
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 56,
+            "p95": 72,
+            "max": 88
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 212.69999999925494,
+            "p95": 236.09999999776483,
+            "max": 236.09999999776483
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 50.099999999998545,
+          "longestTaskMs": 60
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 9,
+            "median": 135.80000000074506,
+            "p95": 186.90000000223517,
+            "max": 186.90000000223517
+          },
+          "samples": 9
+        },
+        "backspace": {
+          "raf": {
+            "n": 9,
+            "median": 79.19999999925494,
+            "p95": 150.69999999925494,
+            "max": 150.69999999925494
+          },
+          "samples": 9
+        },
+        "snippet": {
+          "raf": {
+            "n": 9,
+            "median": 72.09999999776483,
+            "p95": 86.19999999925494,
+            "max": 86.19999999925494
+          },
+          "samples": 9,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 9,
+            "median": 100.09999999776483,
+            "p95": 107.80000000074506,
+            "max": 107.80000000074506
+          },
+          "samples": 9,
+          "confirmedEffects": 9,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [
+          "measured",
+          "measured",
+          "measured"
+        ],
+        "frames": {
+          "n": 134,
+          "median": 16.700000000004366,
+          "p95": 50.10000000000582,
+          "max": 99.90000000000146
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 3,
+        "median": 292,
+        "p95": 298,
+        "max": 298
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing1__2026-10-17T08-36-22-329Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing2__2026-10-17T09-00-30-817Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__100kb__editing3__2026-10-17T09-04-39-093Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "10mb-pretty",
+      "format": "prettified",
+      "sourceSize": "10mb",
+      "runs": 3,
+      "completeProfiles": 3,
+      "matchedSources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing1__2026-10-17T08-15-44-940Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing2__2026-10-17T08-45-57-579Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing3__2026-10-17T08-57-35-150Z.json"
+      ],
+      "opening": {
+        "n": 3,
+        "median": 1697,
+        "p95": 1753,
+        "max": 1753
+      },
+      "design": {
+        "editor": "Custom virtual editor with a native textarea passage",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "10mb",
+        "key": "10mb-pretty",
+        "format": "prettified",
+        "minifiedSourceSha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "file": "bench-10mb-pretty.json",
+        "bytes": 18592911,
+        "characters": 18495818,
+        "lines": 788600,
+        "sha256": "7c58a423f0f7bbd22159b6519acd16faea3377fe6501a796b70c652deed1e6d9",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 485,
+            "line": 20,
+            "column": 33
+          },
+          {
+            "name": "middle",
+            "email": "user6013@example.com",
+            "offset": 9290103,
+            "line": 396294,
+            "column": 36
+          },
+          {
+            "name": "end",
+            "email": "user12025@example.com",
+            "offset": 18494201,
+            "line": 788529,
+            "column": 37
+          }
+        ]
+      },
+      "editAnyway": true,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing1__2026-10-17T08-15-44-940Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing2__2026-10-17T08-45-57-579Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing3__2026-10-17T08-57-35-150Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        }
+      ],
+      "raf": {
+        "n": 180,
+        "median": 15.899999998509884,
+        "p95": 29.399999998509884,
+        "max": 52.099999997764826
+      },
+      "eventTiming": {
+        "median": "32.0 ms",
+        "p95": "56.0 ms",
+        "entries": 179,
+        "totalKeys": 180,
+        "censoredBelow16ms": 1,
+        "conditional": {
+          "n": 179,
+          "median": 32,
+          "p95": 56,
+          "max": 104
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing1__2026-10-17T08-15-44-940Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing2__2026-10-17T08-45-57-579Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing3__2026-10-17T08-57-35-150Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 16,
+            "p95": 26.599999997764826,
+            "max": 31.199999999254942
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 32,
+            "p95": 48,
+            "max": 56
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 2932.39999999851,
+            "p95": 3300.39999999851,
+            "max": 3300.39999999851
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 16.80000000000291,
+          "longestTaskMs": null
+        },
+        {
+          "position": "middle",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing1__2026-10-17T08-15-44-940Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing2__2026-10-17T08-45-57-579Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing3__2026-10-17T08-57-35-150Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 16.799999997019768,
+            "p95": 33.099999997764826,
+            "max": 52.099999997764826
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 32,
+            "p95": 64,
+            "max": 104
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 3050.199999999255,
+            "p95": 3065.599999997765,
+            "max": 3065.599999997765
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 83.29999999999563,
+          "longestTaskMs": null
+        },
+        {
+          "position": "end",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing1__2026-10-17T08-15-44-940Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing2__2026-10-17T08-45-57-579Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing3__2026-10-17T08-57-35-150Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 12.5,
+            "p95": 20.5,
+            "max": 28
+          },
+          "eventTimingAboveThreshold": {
+            "n": 59,
+            "median": 32,
+            "p95": 48,
+            "max": 56
+          },
+          "eventTimingMissingOrBelow16ms": 1,
+          "outputUpdate": {
+            "n": 3,
+            "median": 3329.099999997765,
+            "p95": 3447,
+            "max": 3447
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 33.30000000000291,
+          "longestTaskMs": null
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 9,
+            "median": 45.80000000074506,
+            "p95": 166,
+            "max": 166
+          },
+          "samples": 9
+        },
+        "backspace": {
+          "raf": {
+            "n": 9,
+            "median": 37.400000002235174,
+            "p95": 68.89999999850988,
+            "max": 68.89999999850988
+          },
+          "samples": 9
+        },
+        "snippet": {
+          "raf": {
+            "n": 9,
+            "median": 24.799999997019768,
+            "p95": 61.099999997764826,
+            "max": 61.099999997764826
+          },
+          "samples": 9,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 9,
+            "median": 23.899999998509884,
+            "p95": 61.599999997764826,
+            "max": 61.599999997764826
+          },
+          "samples": 9,
+          "confirmedEffects": 9,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [
+          "measured",
+          "measured",
+          "measured"
+        ],
+        "frames": {
+          "n": 190,
+          "median": 16.69999999999709,
+          "p95": 49.90000000000873,
+          "max": 716.5999999999913
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 3,
+        "median": 1115,
+        "p95": 1158,
+        "max": 1158
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing1__2026-10-17T08-15-44-940Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing2__2026-10-17T08-45-57-579Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb-pretty__editing3__2026-10-17T08-57-35-150Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "10mb",
+      "format": "minified",
+      "sourceSize": "10mb",
+      "runs": 3,
+      "completeProfiles": 3,
+      "matchedSources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing1__2026-10-17T08-12-58-871Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing2__2026-10-17T08-44-13-626Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing3__2026-10-17T08-55-22-239Z.json"
+      ],
+      "opening": {
+        "n": 3,
+        "median": 1861,
+        "p95": 1924,
+        "max": 1924
+      },
+      "design": {
+        "editor": "Custom virtual editor with a native textarea passage",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "10mb",
+        "key": "10mb",
+        "format": "minified",
+        "minifiedSourceSha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "file": "bench-10mb.json",
+        "bytes": 9999719,
+        "characters": 9902626,
+        "lines": 1,
+        "sha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user6013@example.com",
+            "offset": 4966740,
+            "line": 1,
+            "column": 4966740
+          },
+          {
+            "name": "end",
+            "email": "user12025@example.com",
+            "offset": 9901805,
+            "line": 1,
+            "column": 9901805
+          }
+        ]
+      },
+      "editAnyway": false,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing1__2026-10-17T08-12-58-871Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing2__2026-10-17T08-44-13-626Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing3__2026-10-17T08-55-22-239Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        }
+      ],
+      "raf": {
+        "n": 180,
+        "median": 14.099999997764826,
+        "p95": 31.5,
+        "max": 86.79999999701977
+      },
+      "eventTiming": {
+        "median": "48.0 ms",
+        "p95": "88.0 ms",
+        "entries": 179,
+        "totalKeys": 180,
+        "censoredBelow16ms": 1,
+        "conditional": {
+          "n": 179,
+          "median": 48,
+          "p95": 96,
+          "max": 144
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing1__2026-10-17T08-12-58-871Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing2__2026-10-17T08-44-13-626Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing3__2026-10-17T08-55-22-239Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 11.099999997764826,
+            "p95": 31.5,
+            "max": 76.09999999776483
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 56,
+            "p95": 104,
+            "max": 112
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 2704,
+            "p95": 2908.099999997765,
+            "max": 2908.099999997765
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 83.40000000000146,
+          "longestTaskMs": 68
+        },
+        {
+          "position": "middle",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing1__2026-10-17T08-12-58-871Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing2__2026-10-17T08-44-13-626Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing3__2026-10-17T08-55-22-239Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 15.599999997764826,
+            "p95": 41.19999999925494,
+            "max": 86.79999999701977
+          },
+          "eventTimingAboveThreshold": {
+            "n": 59,
+            "median": 56,
+            "p95": 104,
+            "max": 144
+          },
+          "eventTimingMissingOrBelow16ms": 1,
+          "outputUpdate": {
+            "n": 3,
+            "median": 2780.7999999970198,
+            "p95": 3326.7999999970198,
+            "max": 3326.7999999970198
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 83.19999999999709,
+          "longestTaskMs": 73
+        },
+        {
+          "position": "end",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing1__2026-10-17T08-12-58-871Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing2__2026-10-17T08-44-13-626Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing3__2026-10-17T08-55-22-239Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 11.399999998509884,
+            "p95": 19,
+            "max": 22
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 32,
+            "p95": 56,
+            "max": 72
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 2579,
+            "p95": 2714.199999999255,
+            "max": 2714.199999999255
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 33.400000000001455,
+          "longestTaskMs": null
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 9,
+            "median": 20.099999997764826,
+            "p95": 35.19999999925494,
+            "max": 35.19999999925494
+          },
+          "samples": 9
+        },
+        "backspace": {
+          "raf": {
+            "n": 9,
+            "median": 13,
+            "p95": 23.600000001490116,
+            "max": 23.600000001490116
+          },
+          "samples": 9
+        },
+        "snippet": {
+          "raf": {
+            "n": 9,
+            "median": 38.900000002235174,
+            "p95": 84.5,
+            "max": 84.5
+          },
+          "samples": 9,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 9,
+            "median": 32.599999997764826,
+            "p95": 48.69999999925494,
+            "max": 48.69999999925494
+          },
+          "samples": 9,
+          "confirmedEffects": 9,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [
+          "measured",
+          "measured",
+          "measured"
+        ],
+        "frames": {
+          "n": 189,
+          "median": 16.69999999999709,
+          "p95": 49.90000000000873,
+          "max": 600.0999999999913
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 3,
+        "median": 1046,
+        "p95": 1157,
+        "max": 1157
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing1__2026-10-17T08-12-58-871Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing2__2026-10-17T08-44-13-626Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__10mb__editing3__2026-10-17T08-55-22-239Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "1mb-pretty",
+      "format": "prettified",
+      "sourceSize": "1mb",
+      "runs": 3,
+      "completeProfiles": 3,
+      "matchedSources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing1__2026-10-17T08-07-15-672Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing2__2026-10-17T08-43-07-849Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing3__2026-10-17T08-54-06-934Z.json"
+      ],
+      "opening": {
+        "n": 3,
+        "median": 447,
+        "p95": 465,
+        "max": 465
+      },
+      "design": {
+        "editor": "Custom virtual editor with a native textarea passage",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "1mb",
+        "key": "1mb-pretty",
+        "format": "prettified",
+        "minifiedSourceSha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "file": "bench-1mb-pretty.json",
+        "bytes": 1863123,
+        "characters": 1853789,
+        "lines": 79196,
+        "sha256": "9bec4b74b12e2ce115890456adfb1aa5cf9955e75b065da2e5ba275ae3de5764",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 484,
+            "line": 20,
+            "column": 33
+          },
+          {
+            "name": "middle",
+            "email": "user603@example.com",
+            "offset": 927641,
+            "line": 39654,
+            "column": 35
+          },
+          {
+            "name": "end",
+            "email": "user1204@example.com",
+            "offset": 1852174,
+            "line": 79125,
+            "column": 36
+          }
+        ]
+      },
+      "editAnyway": false,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing1__2026-10-17T08-07-15-672Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing2__2026-10-17T08-43-07-849Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing3__2026-10-17T08-54-06-934Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        }
+      ],
+      "raf": {
+        "n": 180,
+        "median": 11.599999997764826,
+        "p95": 18.5,
+        "max": 22.099999997764826
+      },
+      "eventTiming": {
+        "median": "24.0 ms",
+        "p95": "48.0 ms",
+        "entries": 178,
+        "totalKeys": 180,
+        "censoredBelow16ms": 2,
+        "conditional": {
+          "n": 178,
+          "median": 24,
+          "p95": 48,
+          "max": 56
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing1__2026-10-17T08-07-15-672Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing2__2026-10-17T08-43-07-849Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing3__2026-10-17T08-54-06-934Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 17.099999997764826,
+            "p95": 18.599999997764826,
+            "max": 18.699999999254942
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 24,
+            "p95": 40,
+            "max": 48
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 3,
+            "median": 830.1999999992549,
+            "p95": 895.3999999985099,
+            "max": 895.3999999985099
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 16.80000000000109,
+          "longestTaskMs": null
+        },
+        {
+          "position": "middle",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing1__2026-10-17T08-07-15-672Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing2__2026-10-17T08-43-07-849Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing3__2026-10-17T08-54-06-934Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 9.699999999254942,
+            "p95": 13.199999999254942,
+            "max": 16.799999997019768
+          },
+          "eventTimingAboveThreshold": {
+            "n": 60,
+            "median": 24,
+            "p95": 48,
+            "max": 48
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 16.80000000000291,
+          "longestTaskMs": null
+        },
+        {
+          "position": "end",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing1__2026-10-17T08-07-15-672Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing2__2026-10-17T08-43-07-849Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing3__2026-10-17T08-54-06-934Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 11,
+            "p95": 16.899999998509884,
+            "max": 22.099999997764826
+          },
+          "eventTimingAboveThreshold": {
+            "n": 58,
+            "median": 24,
+            "p95": 48,
+            "max": 56
+          },
+          "eventTimingMissingOrBelow16ms": 2,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 16.80000000000291,
+          "longestTaskMs": null
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 9,
+            "median": 17,
+            "p95": 101.39999999850988,
+            "max": 101.39999999850988
+          },
+          "samples": 9
+        },
+        "backspace": {
+          "raf": {
+            "n": 9,
+            "median": 11.099999997764826,
+            "p95": 102,
+            "max": 102
+          },
+          "samples": 9
+        },
+        "snippet": {
+          "raf": {
+            "n": 9,
+            "median": 16.5,
+            "p95": 95,
+            "max": 95
+          },
+          "samples": 9,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 9,
+            "median": 13.300000000745058,
+            "p95": 32.600000001490116,
+            "max": 32.600000001490116
+          },
+          "samples": 9,
+          "confirmedEffects": 9,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [
+          "measured",
+          "measured",
+          "measured"
+        ],
+        "frames": {
+          "n": 200,
+          "median": 16.69999999999709,
+          "p95": 16.799999999995634,
+          "max": 66.70000000000437
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 3,
+        "median": 438,
+        "p95": 438,
+        "max": 438
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing1__2026-10-17T08-07-15-672Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing2__2026-10-17T08-43-07-849Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb-pretty__editing3__2026-10-17T08-54-06-934Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "1mb",
+      "format": "minified",
+      "sourceSize": "1mb",
+      "runs": 3,
+      "completeProfiles": 3,
+      "matchedSources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing1__2026-10-17T08-04-55-045Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing2__2026-10-17T08-41-54-747Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing3__2026-10-17T08-53-00-577Z.json"
+      ],
+      "opening": {
+        "n": 3,
+        "median": 405,
+        "p95": 421,
+        "max": 421
+      },
+      "design": {
+        "editor": "Custom virtual editor with a native textarea passage",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "1mb",
+        "key": "1mb",
+        "format": "minified",
+        "minifiedSourceSha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "file": "bench-1mb.json",
+        "bytes": 999554,
+        "characters": 990220,
+        "lines": 1,
+        "sha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 355,
+            "line": 1,
+            "column": 355
+          },
+          {
+            "name": "middle",
+            "email": "user603@example.com",
+            "offset": 495594,
+            "line": 1,
+            "column": 495594
+          },
+          {
+            "name": "end",
+            "email": "user1204@example.com",
+            "offset": 989401,
+            "line": 1,
+            "column": 989401
+          }
+        ]
+      },
+      "editAnyway": false,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing1__2026-10-17T08-04-55-045Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing2__2026-10-17T08-41-54-747Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing3__2026-10-17T08-53-00-577Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
+        }
+      ],
+      "raf": {
+        "n": 180,
+        "median": 11.399999998509884,
+        "p95": 18.599999997764826,
+        "max": 34.29999999701977
+      },
+      "eventTiming": {
+        "median": "32.0 ms",
+        "p95": "56.0 ms",
+        "entries": 177,
+        "totalKeys": 180,
+        "censoredBelow16ms": 3,
+        "conditional": {
+          "n": 177,
+          "median": 32,
+          "p95": 56,
+          "max": 72
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing1__2026-10-17T08-04-55-045Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing2__2026-10-17T08-41-54-747Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing3__2026-10-17T08-53-00-577Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 10.699999999254942,
+            "p95": 22.899999998509884,
+            "max": 34.29999999701977
+          },
+          "eventTimingAboveThreshold": {
+            "n": 59,
+            "median": 40,
+            "p95": 64,
+            "max": 72
+          },
+          "eventTimingMissingOrBelow16ms": 1,
+          "outputUpdate": {
+            "n": 3,
+            "median": 780,
+            "p95": 848.7999999970198,
+            "max": 848.7999999970198
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 3,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 50.100000000000364,
+          "longestTaskMs": null
+        },
+        {
+          "position": "middle",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing1__2026-10-17T08-04-55-045Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing2__2026-10-17T08-41-54-747Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing3__2026-10-17T08-53-00-577Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 13.5,
+            "p95": 19.399999998509884,
+            "max": 21.5
+          },
+          "eventTimingAboveThreshold": {
+            "n": 59,
+            "median": 32,
+            "p95": 56,
+            "max": 72
+          },
+          "eventTimingMissingOrBelow16ms": 1,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 50.10000000000218,
+          "longestTaskMs": 66
+        },
+        {
+          "position": "end",
+          "runs": 3,
+          "verifiedRuns": 3,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing1__2026-10-17T08-04-55-045Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing2__2026-10-17T08-41-54-747Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing3__2026-10-17T08-53-00-577Z.json",
+              "status": "measured",
+              "nativeInputEvents": 20,
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 60,
+            "median": 11.5,
+            "p95": 15,
+            "max": 17.199999999254942
+          },
+          "eventTimingAboveThreshold": {
+            "n": 59,
+            "median": 24,
+            "p95": 48,
+            "max": 48
+          },
+          "eventTimingMissingOrBelow16ms": 1,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": 33.30000000000291,
+          "longestTaskMs": null
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 9,
+            "median": 11.599999997764826,
+            "p95": 81,
+            "max": 81
+          },
+          "samples": 9
+        },
+        "backspace": {
+          "raf": {
+            "n": 9,
+            "median": 10.599999997764826,
+            "p95": 34.30000000074506,
+            "max": 34.30000000074506
+          },
+          "samples": 9
+        },
+        "snippet": {
+          "raf": {
+            "n": 9,
+            "median": 14,
+            "p95": 48.099999997764826,
+            "max": 48.099999997764826
+          },
+          "samples": 9,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 9,
+            "median": 12.800000000745058,
+            "p95": 20.100000001490116,
+            "max": 20.100000001490116
+          },
+          "samples": 9,
+          "confirmedEffects": 9,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [
+          "measured",
+          "measured",
+          "measured"
+        ],
+        "frames": {
+          "n": 189,
+          "median": 16.69999999999709,
+          "p95": 16.80000000000291,
+          "max": 33.400000000001455
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 3,
+        "median": 495,
+        "p95": 496,
+        "max": 496
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing1__2026-10-17T08-04-55-045Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing2__2026-10-17T08-41-54-747Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__1mb__editing3__2026-10-17T08-53-00-577Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "50mb-pretty",
+      "format": "prettified",
+      "sourceSize": "50mb",
+      "runs": 4,
+      "completeProfiles": 0,
+      "matchedSources": [],
+      "opening": {
+        "n": 4,
+        "median": 11437,
+        "p95": 12817,
+        "max": 12817
+      },
+      "design": {
+        "editor": "Custom virtual editor with a native textarea passage",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "50mb",
+        "key": "50mb-pretty",
+        "format": "prettified",
+        "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "file": "bench-50mb-pretty.json",
+        "bytes": 92806317,
+        "characters": 92325694,
+        "lines": 3930172,
+        "sha256": "2a3c261871b43b8bebc51742df5e4f38500d9893e4e0dde3f71dc744a38fbc55",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 485,
+            "line": 20,
+            "column": 33
+          },
+          {
+            "name": "middle",
+            "email": "user30026@example.com",
+            "offset": 46204305,
+            "line": 1967779,
+            "column": 37
+          },
+          {
+            "name": "end",
+            "email": "user60051@example.com",
+            "offset": 92324077,
+            "line": 3930101,
+            "column": 37
+          }
+        ]
+      },
+      "editAnyway": true,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T08-33-09-565Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2746 MiB exceeded the 2560 MiB cap",
+          "phase": "source restoration",
+          "memoryStop": {
+            "reason": "browser memory 2746 MiB exceeded the 2560 MiB cap",
+            "atMs": 35955,
+            "browserMiB": 2746,
+            "memAvailableMiB": 8134
+          }
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T08-35-48-226Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2647 MiB exceeded the 2560 MiB cap",
+          "phase": "source restoration",
+          "memoryStop": {
+            "reason": "browser memory 2647 MiB exceeded the 2560 MiB cap",
+            "atMs": 33287,
+            "browserMiB": 2647,
+            "memAvailableMiB": 9369
+          }
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T08-41-21-066Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2576 MiB exceeded the 2560 MiB cap",
+          "phase": "source restoration",
+          "memoryStop": {
+            "reason": "browser memory 2576 MiB exceeded the 2560 MiB cap",
+            "atMs": 32882,
+            "browserMiB": 2576,
+            "memAvailableMiB": 9471
+          }
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T08-59-48-063Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2642 MiB exceeded the 2560 MiB cap",
+          "phase": "source restoration",
+          "memoryStop": {
+            "reason": "browser memory 2642 MiB exceeded the 2560 MiB cap",
+            "atMs": 33960,
+            "browserMiB": 2642,
+            "memAvailableMiB": 8662
+          }
+        }
+      ],
+      "raf": {
+        "n": 0,
+        "median": null,
+        "p95": null,
+        "max": null,
+        "reason": "Fewer than three complete matched profiles. Use the separate position results. All incomplete attempts remain outcomes."
+      },
+      "eventTiming": {
+        "median": "Fewer than three complete matched profiles",
+        "p95": "Fewer than three complete matched profiles",
+        "entries": 0,
+        "totalKeys": 0,
+        "censoredBelow16ms": 0,
+        "conditional": {
+          "n": 0,
+          "median": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 4,
+          "verifiedRuns": 0,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T08-33-09-565Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T08-35-48-226Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T08-41-21-066Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T08-59-48-063Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingAboveThreshold": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": null,
+          "longestTaskMs": null
+        },
+        {
+          "position": "middle",
+          "runs": 0,
+          "verifiedRuns": 0,
+          "outcomes": [],
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingAboveThreshold": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": null,
+          "longestTaskMs": null
+        },
+        {
+          "position": "end",
+          "runs": 0,
+          "verifiedRuns": 0,
+          "outcomes": [],
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingAboveThreshold": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": null,
+          "longestTaskMs": null
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0
+        },
+        "backspace": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0
+        },
+        "snippet": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0,
+          "confirmedEffects": 0,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": null
+            },
+            {
+              "position": "start",
+              "confirmed": null
+            },
+            {
+              "position": "start",
+              "confirmed": null
+            },
+            {
+              "position": "start",
+              "confirmed": null
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [],
+        "frames": {
+          "n": 0,
+          "median": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 4,
+        "median": 2056,
+        "p95": 2347,
+        "max": 2347
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T08-33-09-565Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T08-35-48-226Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T08-41-21-066Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T08-59-48-063Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "50mb",
+      "format": "minified",
+      "sourceSize": "50mb",
+      "runs": 4,
+      "completeProfiles": 0,
+      "matchedSources": [],
+      "opening": {
+        "n": 4,
+        "median": 8944,
+        "p95": 10719,
+        "max": 10719
+      },
+      "design": {
+        "editor": "Custom virtual editor with a native textarea passage",
+        "update": "Live formatted view",
+        "output": "#view-format"
+      },
+      "fixture": {
+        "size": "50mb",
+        "key": "50mb",
+        "format": "minified",
+        "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "file": "bench-50mb.json",
+        "bytes": 49998859,
+        "characters": 49518236,
+        "lines": 1,
+        "sha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user30026@example.com",
+            "offset": 24766824,
+            "line": 1,
+            "column": 24766824
+          },
+          {
+            "name": "end",
+            "email": "user60051@example.com",
+            "offset": 49517415,
+            "line": 1,
+            "column": 49517415
+          }
+        ]
+      },
+      "editAnyway": true,
+      "outcomes": [
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing1__2026-10-17T08-31-12-835Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2580 MiB exceeded the 2560 MiB cap",
+          "phase": "source restoration",
+          "memoryStop": {
+            "reason": "browser memory 2580 MiB exceeded the 2560 MiB cap",
+            "atMs": 41223,
+            "browserMiB": 2580,
+            "memAvailableMiB": 7559
+          }
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing1__2026-10-17T08-34-39-624Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2619 MiB exceeded the 2560 MiB cap",
+          "phase": "source restoration",
+          "memoryStop": {
+            "reason": "browser memory 2619 MiB exceeded the 2560 MiB cap",
+            "atMs": 38014,
+            "browserMiB": 2619,
+            "memAvailableMiB": 8232
+          }
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing2__2026-10-17T08-40-36-192Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2788 MiB exceeded the 2560 MiB cap",
+          "phase": "start-dispatched",
+          "memoryStop": {
+            "reason": "browser memory 2788 MiB exceeded the 2560 MiB cap",
+            "atMs": 43344,
+            "browserMiB": 2788,
+            "memAvailableMiB": 9149
+          }
+        },
+        {
+          "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing3__2026-10-17T08-59-03-709Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "Browser cap during editing preparation",
+          "reason": "browser memory 2682 MiB exceeded the 2560 MiB cap",
+          "phase": "start-dispatched",
+          "memoryStop": {
+            "reason": "browser memory 2682 MiB exceeded the 2560 MiB cap",
+            "atMs": 43517,
+            "browserMiB": 2682,
+            "memAvailableMiB": 8708
+          }
+        }
+      ],
+      "raf": {
+        "n": 0,
+        "median": null,
+        "p95": null,
+        "max": null,
+        "reason": "Fewer than three complete matched profiles. Use the separate position results. All incomplete attempts remain outcomes."
+      },
+      "eventTiming": {
+        "median": "Fewer than three complete matched profiles",
+        "p95": "Fewer than three complete matched profiles",
+        "entries": 0,
+        "totalKeys": 0,
+        "censoredBelow16ms": 0,
+        "conditional": {
+          "n": 0,
+          "median": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "positions": [
+        {
+          "position": "start",
+          "runs": 4,
+          "verifiedRuns": 0,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing1__2026-10-17T08-31-12-835Z.json",
+              "status": "could not be measured",
+              "reason": "Public analysis status did not settle for Tree caret preparation",
+              "sourceMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing1__2026-10-17T08-34-39-624Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing2__2026-10-17T08-40-36-192Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            },
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing3__2026-10-17T08-59-03-709Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": true,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingAboveThreshold": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": null,
+          "longestTaskMs": null
+        },
+        {
+          "position": "middle",
+          "runs": 1,
+          "verifiedRuns": 0,
+          "outcomes": [
+            {
+              "source": "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing1__2026-10-17T08-31-12-835Z.json",
+              "status": "could not be measured",
+              "reason": "websocket closed",
+              "sourceMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
+            }
+          ],
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingAboveThreshold": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": null,
+          "longestTaskMs": null
+        },
+        {
+          "position": "end",
+          "runs": 0,
+          "verifiedRuns": 0,
+          "outcomes": [],
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingAboveThreshold": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "eventTimingMissingOrBelow16ms": 0,
+          "outputUpdate": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "buttonToOutput": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "outputConfirmedRuns": 0,
+          "outputVisibilityNote": null,
+          "longestFrameMs": null,
+          "longestTaskMs": null
+        }
+      ],
+      "operations": {
+        "enter": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0
+        },
+        "backspace": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0
+        },
+        "snippet": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0,
+          "methods": [
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard",
+            "Trusted Ctrl+V from browser clipboard"
+          ]
+        },
+        "undo": {
+          "raf": {
+            "n": 0,
+            "median": null,
+            "p95": null,
+            "max": null
+          },
+          "samples": 0,
+          "confirmedEffects": 0,
+          "effectNotes": [
+            {
+              "position": "start",
+              "confirmed": null
+            },
+            {
+              "position": "middle",
+              "confirmed": null
+            },
+            {
+              "position": "start",
+              "confirmed": null
+            },
+            {
+              "position": "start",
+              "confirmed": null
+            },
+            {
+              "position": "start",
+              "confirmed": null
+            }
+          ]
+        }
+      },
+      "scrolling": {
+        "outcomes": [],
+        "frames": {
+          "n": 0,
+          "median": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "rendererPeakMiB": {
+        "n": 4,
+        "median": 2283,
+        "p95": 2505,
+        "max": 2505
+      },
+      "sources": [
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing1__2026-10-17T08-31-12-835Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing1__2026-10-17T08-34-39-624Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing2__2026-10-17T08-40-36-192Z.json",
+        "results/2026-10-17-925fc3c/results/raw/tool-kumar__50mb__editing3__2026-10-17T08-59-03-709Z.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1107 @@
+{
+  "generatedAt": "2026-10-17T09:22:35.567833+00:00",
+  "method": "Compare rendered numeric tokens using arbitrary-precision Decimal. Grade Format and packed-tree views separately. Duplicate members are separate from numeric values.",
+  "runs": [
+    {
+      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run1__2026-10-17T07-55-23-842Z.json",
+      "sha256": "9ee6ae14dae44b75e582bbcc599137b4a395cbc9dc65f6982c474c0140e8a2d4",
+      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+      "batchId": "2026-10-17T07-55-20-428Z",
+      "workerPath": false,
+      "startedAt": "2026-10-17T07:55:26.030Z",
+      "status": "captured",
+      "reason": null,
+      "workerEvents": null,
+      "workerEventsBeforeEdit": null,
+      "trustedEdit": null,
+      "views": [
+        {
+          "view": "format",
+          "cases": [
+            {
+              "case": "v_unsafe_odd",
+              "source": "9007199254756831",
+              "rendered": "9007199254756831",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_above_safe",
+              "source": "9007199254740993",
+              "rendered": "9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_id19",
+              "source": "1234567890123456789",
+              "rendered": "1234567890123456789",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_negative",
+              "source": "-9007199254740993",
+              "rendered": "-9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_long_decimal",
+              "source": "0.1000000000000000055511151231257827",
+              "rendered": "0.1000000000000000055511151231257827",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_money",
+              "source": "12345678901234567.89",
+              "rendered": "12345678901234567.89",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_overflow",
+              "source": "1e400",
+              "rendered": "1e400",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_duplicates",
+              "source": [
+                "1",
+                "2"
+              ],
+              "rendered": [
+                "1",
+                "2"
+              ],
+              "verdict": "kept"
+            },
+            {
+              "case": "r_one",
+              "source": "1.0",
+              "rendered": "1.0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_one_half",
+              "source": "1.50",
+              "rendered": "1.50",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent",
+              "source": "1e2",
+              "rendered": "1e2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent_upper",
+              "source": "1E+2",
+              "rendered": "1E+2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_negative_zero",
+              "source": "-0",
+              "rendered": "-0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_unicode",
+              "source": "\"é\"",
+              "rendered": "\"é\"",
+              "verdict": "same spelling"
+            }
+          ],
+          "captures": [
+            "tool-kumar__run1__2026-10-17T07-55-23-842Z__capture0.txt",
+            "tool-kumar__run1__2026-10-17T07-55-23-842Z__capture1.txt"
+          ]
+        }
+      ],
+      "fixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      }
+    },
+    {
+      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run2__2026-10-17T08-00-09-899Z.json",
+      "sha256": "5bf60ce9b8a98709ef57da32bedadec8ca00b2c5a1e493fe8deed3157ed3b684",
+      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+      "batchId": "2026-10-17T08-00-06-352Z",
+      "workerPath": false,
+      "startedAt": "2026-10-17T08:00:12.108Z",
+      "status": "captured",
+      "reason": null,
+      "workerEvents": null,
+      "workerEventsBeforeEdit": null,
+      "trustedEdit": null,
+      "views": [
+        {
+          "view": "format",
+          "cases": [
+            {
+              "case": "v_unsafe_odd",
+              "source": "9007199254756831",
+              "rendered": "9007199254756831",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_above_safe",
+              "source": "9007199254740993",
+              "rendered": "9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_id19",
+              "source": "1234567890123456789",
+              "rendered": "1234567890123456789",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_negative",
+              "source": "-9007199254740993",
+              "rendered": "-9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_long_decimal",
+              "source": "0.1000000000000000055511151231257827",
+              "rendered": "0.1000000000000000055511151231257827",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_money",
+              "source": "12345678901234567.89",
+              "rendered": "12345678901234567.89",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_overflow",
+              "source": "1e400",
+              "rendered": "1e400",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_duplicates",
+              "source": [
+                "1",
+                "2"
+              ],
+              "rendered": [
+                "1",
+                "2"
+              ],
+              "verdict": "kept"
+            },
+            {
+              "case": "r_one",
+              "source": "1.0",
+              "rendered": "1.0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_one_half",
+              "source": "1.50",
+              "rendered": "1.50",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent",
+              "source": "1e2",
+              "rendered": "1e2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent_upper",
+              "source": "1E+2",
+              "rendered": "1E+2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_negative_zero",
+              "source": "-0",
+              "rendered": "-0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_unicode",
+              "source": "\"é\"",
+              "rendered": "\"é\"",
+              "verdict": "same spelling"
+            }
+          ],
+          "captures": [
+            "tool-kumar__run2__2026-10-17T08-00-09-899Z__capture0.txt",
+            "tool-kumar__run2__2026-10-17T08-00-09-899Z__capture1.txt"
+          ]
+        }
+      ],
+      "fixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      }
+    },
+    {
+      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run3__2026-10-17T07-53-31-023Z.json",
+      "sha256": "78afdb48d3377cf5b3d444e19f5cd478048f3ec3d990f7f239fef9f2b49d731a",
+      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+      "batchId": "2026-10-17T07-53-27-396Z",
+      "workerPath": true,
+      "startedAt": "2026-10-17T07:53:33.237Z",
+      "status": "captured",
+      "reason": null,
+      "workerEvents": [
+        {
+          "direction": "sent",
+          "id": -1,
+          "textLength": 36581
+        },
+        {
+          "direction": "received",
+          "id": -1,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "parse": false,
+          "start": true
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 52437,
+          "last": true
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "parse": true,
+          "start": true
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 52438,
+          "last": true
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": true,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": false,
+          "output": false
+        }
+      ],
+      "workerEventsBeforeEdit": 22,
+      "trustedEdit": {
+        "method": "CDP Input.insertText",
+        "text": " ",
+        "position": "document start"
+      },
+      "views": [
+        {
+          "view": "format",
+          "cases": [
+            {
+              "case": "v_unsafe_odd",
+              "source": "9007199254756831",
+              "rendered": "9007199254756831",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_above_safe",
+              "source": "9007199254740993",
+              "rendered": "9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_id19",
+              "source": "1234567890123456789",
+              "rendered": "1234567890123456789",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_negative",
+              "source": "-9007199254740993",
+              "rendered": "-9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_long_decimal",
+              "source": "0.1000000000000000055511151231257827",
+              "rendered": "0.1000000000000000055511151231257827",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_money",
+              "source": "12345678901234567.89",
+              "rendered": "12345678901234567.89",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_overflow",
+              "source": "1e400",
+              "rendered": "1e400",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_duplicates",
+              "source": [
+                "1",
+                "2"
+              ],
+              "rendered": [
+                "1",
+                "2"
+              ],
+              "verdict": "kept"
+            },
+            {
+              "case": "r_one",
+              "source": "1.0",
+              "rendered": "1.0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_one_half",
+              "source": "1.50",
+              "rendered": "1.50",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent",
+              "source": "1e2",
+              "rendered": "1e2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent_upper",
+              "source": "1E+2",
+              "rendered": "1E+2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_negative_zero",
+              "source": "-0",
+              "rendered": "-0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_unicode",
+              "source": "\"é\"",
+              "rendered": "\"é\"",
+              "verdict": "same spelling"
+            }
+          ],
+          "captures": [
+            "tool-kumar__run3__2026-10-17T07-53-31-023Z__capture0.txt",
+            "tool-kumar__run3__2026-10-17T07-53-31-023Z__capture1.txt"
+          ]
+        },
+        {
+          "view": "tree",
+          "cases": [
+            {
+              "case": "v_unsafe_odd",
+              "source": "9007199254756831",
+              "rendered": "9007199254756831",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_above_safe",
+              "source": "9007199254740993",
+              "rendered": "9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_id19",
+              "source": "1234567890123456789",
+              "rendered": "1234567890123456789",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_negative",
+              "source": "-9007199254740993",
+              "rendered": "-9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_long_decimal",
+              "source": "0.1000000000000000055511151231257827",
+              "rendered": "0.1000000000000000055511151231257827",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_money",
+              "source": "12345678901234567.89",
+              "rendered": "12345678901234567.89",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_overflow",
+              "source": "1e400",
+              "rendered": "1e400",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_duplicates",
+              "source": [
+                "1",
+                "2"
+              ],
+              "rendered": [
+                "1",
+                "2"
+              ],
+              "verdict": "kept"
+            },
+            {
+              "case": "r_one",
+              "source": "1.0",
+              "rendered": "1.0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_one_half",
+              "source": "1.50",
+              "rendered": "1.50",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent",
+              "source": "1e2",
+              "rendered": "1e2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent_upper",
+              "source": "1E+2",
+              "rendered": "1E+2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_negative_zero",
+              "source": "-0",
+              "rendered": "-0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_unicode",
+              "source": "\"é\"",
+              "rendered": "\"é\"",
+              "verdict": "same spelling"
+            }
+          ],
+          "captures": [
+            "tool-kumar__run3__2026-10-17T07-53-31-023Z__capture2.txt"
+          ]
+        }
+      ],
+      "fixture": {
+        "file": "fidelity-worker.json",
+        "bytes": 2100438,
+        "sha256": "325a1f6b66fe3a922079329d233e1cd0d07253c50d87c3610e1c578c49d0bdd7"
+      }
+    },
+    {
+      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run4__2026-10-17T07-55-37-244Z.json",
+      "sha256": "064ddbb3252cb4e84773e5ee05144ba777125c5e2bae43f6c91a091b0b0e20ce",
+      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+      "batchId": "2026-10-17T07-55-20-428Z",
+      "workerPath": true,
+      "startedAt": "2026-10-17T07:55:39.447Z",
+      "status": "captured",
+      "reason": null,
+      "workerEvents": [
+        {
+          "direction": "sent",
+          "id": -1,
+          "textLength": 36581
+        },
+        {
+          "direction": "received",
+          "id": -1,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "parse": false,
+          "start": true
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 2,
+          "chunkLength": 52437,
+          "last": true
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 2,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "parse": true,
+          "start": true
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 256000,
+          "last": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "chunkLength": 52438,
+          "last": true
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": true,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": false,
+          "output": false
+        }
+      ],
+      "workerEventsBeforeEdit": 22,
+      "trustedEdit": {
+        "method": "CDP Input.insertText",
+        "text": " ",
+        "position": "document start"
+      },
+      "views": [
+        {
+          "view": "format",
+          "cases": [
+            {
+              "case": "v_unsafe_odd",
+              "source": "9007199254756831",
+              "rendered": "9007199254756831",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_above_safe",
+              "source": "9007199254740993",
+              "rendered": "9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_id19",
+              "source": "1234567890123456789",
+              "rendered": "1234567890123456789",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_negative",
+              "source": "-9007199254740993",
+              "rendered": "-9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_long_decimal",
+              "source": "0.1000000000000000055511151231257827",
+              "rendered": "0.1000000000000000055511151231257827",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_money",
+              "source": "12345678901234567.89",
+              "rendered": "12345678901234567.89",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_overflow",
+              "source": "1e400",
+              "rendered": "1e400",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_duplicates",
+              "source": [
+                "1",
+                "2"
+              ],
+              "rendered": [
+                "1",
+                "2"
+              ],
+              "verdict": "kept"
+            },
+            {
+              "case": "r_one",
+              "source": "1.0",
+              "rendered": "1.0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_one_half",
+              "source": "1.50",
+              "rendered": "1.50",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent",
+              "source": "1e2",
+              "rendered": "1e2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent_upper",
+              "source": "1E+2",
+              "rendered": "1E+2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_negative_zero",
+              "source": "-0",
+              "rendered": "-0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_unicode",
+              "source": "\"é\"",
+              "rendered": "\"é\"",
+              "verdict": "same spelling"
+            }
+          ],
+          "captures": [
+            "tool-kumar__run4__2026-10-17T07-55-37-244Z__capture0.txt",
+            "tool-kumar__run4__2026-10-17T07-55-37-244Z__capture1.txt"
+          ]
+        },
+        {
+          "view": "tree",
+          "cases": [
+            {
+              "case": "v_unsafe_odd",
+              "source": "9007199254756831",
+              "rendered": "9007199254756831",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_above_safe",
+              "source": "9007199254740993",
+              "rendered": "9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_id19",
+              "source": "1234567890123456789",
+              "rendered": "1234567890123456789",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_negative",
+              "source": "-9007199254740993",
+              "rendered": "-9007199254740993",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_long_decimal",
+              "source": "0.1000000000000000055511151231257827",
+              "rendered": "0.1000000000000000055511151231257827",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_money",
+              "source": "12345678901234567.89",
+              "rendered": "12345678901234567.89",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_overflow",
+              "source": "1e400",
+              "rendered": "1e400",
+              "verdict": "kept"
+            },
+            {
+              "case": "v_duplicates",
+              "source": [
+                "1",
+                "2"
+              ],
+              "rendered": [
+                "1",
+                "2"
+              ],
+              "verdict": "kept"
+            },
+            {
+              "case": "r_one",
+              "source": "1.0",
+              "rendered": "1.0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_one_half",
+              "source": "1.50",
+              "rendered": "1.50",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent",
+              "source": "1e2",
+              "rendered": "1e2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_exponent_upper",
+              "source": "1E+2",
+              "rendered": "1E+2",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_negative_zero",
+              "source": "-0",
+              "rendered": "-0",
+              "verdict": "same spelling"
+            },
+            {
+              "case": "r_unicode",
+              "source": "\"é\"",
+              "rendered": "\"é\"",
+              "verdict": "same spelling"
+            }
+          ],
+          "captures": [
+            "tool-kumar__run4__2026-10-17T07-55-37-244Z__capture2.txt"
+          ]
+        }
+      ],
+      "fixture": {
+        "file": "fidelity-worker.json",
+        "bytes": 2100438,
+        "sha256": "325a1f6b66fe3a922079329d233e1cd0d07253c50d87c3610e1c578c49d0bdd7"
+      }
+    }
+  ],
+  "excludedAttempts": []
+}

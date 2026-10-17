@@ -1,0 +1,62 @@
+[
+  {
+    "path": "file",
+    "size": "1mb",
+    "success": "3/3",
+    "polledMs": 3028,
+    "preciseDomMs": 2202.800000011921,
+    "preciseNextFrameMs": 2216.5,
+    "baselineDomMs": 2202.800000011921,
+    "baselineNextFrameMs": 2216.5,
+    "baselinePolledMs": 3028,
+    "changePercent": 0
+  },
+  {
+    "path": "file",
+    "size": "10mb",
+    "success": "3/3",
+    "polledMs": 4221,
+    "preciseDomMs": 3086.800000011921,
+    "preciseNextFrameMs": 3095.800000011921,
+    "baselineDomMs": 3086.800000011921,
+    "baselineNextFrameMs": 3095.800000011921,
+    "baselinePolledMs": 4221,
+    "changePercent": 0
+  },
+  {
+    "path": "file",
+    "size": "50mb",
+    "success": "3/3",
+    "polledMs": 21229,
+    "preciseDomMs": 12750.699999988079,
+    "preciseNextFrameMs": 12759.099999964237,
+    "baselineDomMs": 12750.699999988079,
+    "baselineNextFrameMs": 12759.099999964237,
+    "baselinePolledMs": 21229,
+    "changePercent": 0
+  },
+  {
+    "path": "paste",
+    "size": "1mb",
+    "success": "3/3",
+    "polledMs": 3285,
+    "preciseDomMs": 3127.900000035763,
+    "preciseNextFrameMs": 3134.600000023842,
+    "baselineDomMs": 3127.900000035763,
+    "baselineNextFrameMs": 3134.600000023842,
+    "baselinePolledMs": 3285,
+    "changePercent": 0
+  },
+  {
+    "path": "paste",
+    "size": "10mb",
+    "success": "3/3",
+    "polledMs": 4353,
+    "preciseDomMs": 3488.199999988079,
+    "preciseNextFrameMs": 3496.600000023842,
+    "baselineDomMs": 3488.199999988079,
+    "baselineNextFrameMs": 3496.600000023842,
+    "baselinePolledMs": 4353,
+    "changePercent": 0
+  }
+]

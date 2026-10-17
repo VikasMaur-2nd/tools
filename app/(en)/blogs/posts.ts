@@ -21,6 +21,22 @@ export interface Post {
 
 export const POSTS: Post[] = [
   {
+    slug: 'large-file-json-benchmark',
+    title: 'Large JSON benchmark: opening, typing and number fidelity',
+    description: 'A research draft with dated JSON tool measurements, Tool Kumar before and after, and an incomplete repeat for opening, editing and number fidelity.',
+    excerpt: 'Historical and retained JSON tool observations, with a separately labeled Tool Kumar repeat after code and hardware changes.',
+    category: 'Research',
+    published: '2026-10-17',
+    updated: '2026-10-17',
+    minutes: 20,
+    keywords: ['large JSON file viewer', 'JSON formatter benchmark', '50 MB JSON file', 'JSON number precision', 'JSON viewer memory'],
+    sample: `{
+  "file": "50 MB",
+  "check": ["open", "search", "edit"]
+}`,
+    citations: ['https://www.rfc-editor.org/rfc/rfc8259'],
+  },
+  {
     slug: 'json-formatter-privacy-study',
     title: 'Do online JSON formatters upload your data? A 12-tool canary test',
     description:

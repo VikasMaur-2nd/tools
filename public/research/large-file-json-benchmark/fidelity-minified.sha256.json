@@ -1,0 +1,7 @@
+{
+  "file": "fidelity-minified.json",
+  "bytes": 407,
+  "sha256": "a5051b3a97e29877e0bf250d2920577860b8bdbf487de42d8df0e37f12fc6bea",
+  "derivedFrom": "fidelity.json",
+  "transformation": "Remove literal LF whitespace only. No strings in this fixture contain literal LF; all numeric tokens, member order, duplicate names and string content stay identical."
+}

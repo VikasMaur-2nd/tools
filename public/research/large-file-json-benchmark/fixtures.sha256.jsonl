@@ -1,0 +1,4 @@
+{"file":"bench-tiny.json","bytes":3854,"records":5,"sha256":"ca4acff52a21a16bd9b785048beefd977a08260aa8f19e5184d6ed25d3b7fdb4"}
+{"file":"bench-1mb.json","bytes":999554,"records":1204,"sha256":"eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed"}
+{"file":"bench-10mb.json","bytes":9999719,"records":12025,"sha256":"1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d"}
+{"file":"bench-50mb.json","bytes":49998859,"records":60051,"sha256":"c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23"}

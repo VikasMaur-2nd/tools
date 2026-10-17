@@ -1,0 +1,7 @@
+# Fidelity capture corrections and bounded retries
+
+Code Beautify run 1 has one valid full screenshot and text capture. A generic scroll step then selected the page body and moved the output offscreen, so the record was marked uncheckable. The derived verdict uses only the complete, unobstructed capture0, whose screenshot shows every case. The raw record stays unchanged. The generic scroll step now stops before the body; no extra Code Beautify visit was needed.
+
+JSONLint runs 1 and 2 accepted and validated the multiline fixture, showed safe-integer and duplicate-key warnings, but did not offer the expected Prettify button. Their source-editor contents are not formatted-output evidence and are excluded from the fidelity verdict. Each receives exactly one documented fresh-profile retry. The retry uses `fidelity-minified.json`, derived only by removing LF whitespace from `fidelity.json`, through the same paste path, Validate, then Prettify. Every numeric token, string and duplicate member is identical. Both files have separate SHA-256 records. No further retry is allowed if this path fails. The retry tests whether the button is conditional on minified input, as in the main study's input.
+
+The first parse-cost batch stopped at the load gate before starting its next worker. No complete timings from that aborted attempt are used. The completed parse-cost job checkpoints each worker, so a high-load stop can release the lock without losing a completed observation.

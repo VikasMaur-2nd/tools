@@ -1,0 +1,2272 @@
+{
+  "generatedAt": "2026-10-15T07:04:44.651Z",
+  "purpose": "run",
+  "runs": 55,
+  "summary": [
+    {
+      "site": "Code Beautify JSON Viewer",
+      "size": "1mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 4407,
+        "range": [
+          3803,
+          6011
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 2353,
+        "range": [
+          2353,
+          2353
+        ],
+        "n": 1
+      },
+      "blockingMs": {
+        "median": 3460,
+        "range": [
+          3460,
+          3460
+        ],
+        "n": 1
+      },
+      "scrollToFrameMs": {
+        "median": 38,
+        "range": [
+          36,
+          55
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 39,
+        "range": [
+          27,
+          39
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 89,
+      "afterLoadLongestTaskMs": {
+        "median": 16833,
+        "range": [
+          16833,
+          16833
+        ],
+        "n": 1
+      },
+      "peakRendererToViewMiB": {
+        "median": 677,
+        "range": [
+          642,
+          731
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 1022,
+        "range": [
+          982,
+          1070
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 2210,
+        "range": [
+          2175,
+          2220
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 2561,
+        "range": [
+          2531,
+          2569
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [
+        "browser memory 2569 MiB exceeded the 2560 MiB cap",
+        "browser memory 2561 MiB exceeded the 2560 MiB cap"
+      ],
+      "features": {
+        "search": {
+          "ok": 1,
+          "total": 3,
+          "medianMs": 21399,
+          "statuses": {
+            "unresponsive at 30 s": 2,
+            "ok": 1
+          }
+        },
+        "collapse": {
+          "ok": 1,
+          "total": 3,
+          "medianMs": 2422,
+          "statuses": {
+            "not tested after previous feature froze": 2,
+            "ok": 1
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.81,
+        1.43
+      ],
+      "memAvailableAtStartMiB": [
+        4086,
+        4456
+      ],
+      "failures": [],
+      "files": [
+        "code-beautify-json-viewer__1mb__run1__2026-10-15T06-28-12-970Z.json",
+        "code-beautify-json-viewer__1mb__run2__2026-10-15T06-34-52-411Z.json",
+        "code-beautify-json-viewer__1mb__run3__2026-10-15T06-35-53-549Z.json"
+      ]
+    },
+    {
+      "site": "Code Beautify JSON Viewer",
+      "size": "10mb",
+      "runs": 3,
+      "outcomes": {
+        "exceeded memory cap": 3
+      },
+      "visibleMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "longestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "blockingMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "scrollToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "keyToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "worstInteractionMs": null,
+      "afterLoadLongestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "peakRendererToViewMiB": {
+        "median": 2247,
+        "range": [
+          2245,
+          2249
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 2576,
+        "range": [
+          2574,
+          2582
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 2247,
+        "range": [
+          2245,
+          2249
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 2576,
+        "range": [
+          2574,
+          2582
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [
+        "browser memory 2582 MiB exceeded the 2560 MiB cap",
+        "browser memory 2574 MiB exceeded the 2560 MiB cap",
+        "browser memory 2576 MiB exceeded the 2560 MiB cap"
+      ],
+      "features": {},
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.74,
+        2.09
+      ],
+      "memAvailableAtStartMiB": [
+        4099,
+        4402
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 17911,
+          "memoryCap": "browser memory 2582 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 2,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 19227,
+          "memoryCap": "browser memory 2574 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 3,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 18724,
+          "memoryCap": "browser memory 2576 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        }
+      ],
+      "files": [
+        "code-beautify-json-viewer__10mb__run1__2026-10-15T06-38-46-458Z.json",
+        "code-beautify-json-viewer__10mb__run2__2026-10-15T06-44-01-668Z.json",
+        "code-beautify-json-viewer__10mb__run3__2026-10-15T06-44-56-271Z.json"
+      ]
+    },
+    {
+      "site": "Code Beautify JSON Viewer",
+      "size": "50mb",
+      "runs": 3,
+      "outcomes": {
+        "exceeded memory cap": 3
+      },
+      "visibleMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "longestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "blockingMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "scrollToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "keyToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "worstInteractionMs": null,
+      "afterLoadLongestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "peakRendererToViewMiB": {
+        "median": 2239,
+        "range": [
+          2159,
+          2260
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 2578,
+        "range": [
+          2561,
+          2584
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 2239,
+        "range": [
+          2159,
+          2260
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 2578,
+        "range": [
+          2561,
+          2584
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [
+        "browser memory 2584 MiB exceeded the 2560 MiB cap",
+        "browser memory 2578 MiB exceeded the 2560 MiB cap",
+        "browser memory 2561 MiB exceeded the 2560 MiB cap"
+      ],
+      "features": {},
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.85,
+        1.32
+      ],
+      "memAvailableAtStartMiB": [
+        4186,
+        4463
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 18472,
+          "memoryCap": "browser memory 2584 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 2,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 14648,
+          "memoryCap": "browser memory 2578 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 3,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 22345,
+          "memoryCap": "browser memory 2561 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        }
+      ],
+      "files": [
+        "code-beautify-json-viewer__50mb__run1__2026-10-15T06-48-54-292Z.json",
+        "code-beautify-json-viewer__50mb__run2__2026-10-15T06-57-10-208Z.json",
+        "code-beautify-json-viewer__50mb__run3__2026-10-15T06-59-43-811Z.json"
+      ]
+    },
+    {
+      "site": "JSON Beautifier",
+      "size": "1mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 863,
+        "range": [
+          788,
+          999
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 258,
+        "range": [
+          258,
+          302
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 476,
+        "range": [
+          400,
+          529
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 49,
+        "range": [
+          49,
+          55
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 42,
+        "range": [
+          27,
+          42
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 69,
+      "afterLoadLongestTaskMs": {
+        "median": 0,
+        "range": [
+          0,
+          0
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 373,
+        "range": [
+          371,
+          378
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 668,
+        "range": [
+          666,
+          672
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 422,
+        "range": [
+          419,
+          429
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 727,
+        "range": [
+          726,
+          728
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 89,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 0,
+          "total": 3,
+          "medianMs": null,
+          "statuses": {
+            "not available": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.03,
+        2.46
+      ],
+      "memAvailableAtStartMiB": [
+        3843,
+        4513
+      ],
+      "failures": [],
+      "files": [
+        "json-beautifier__1mb__run1__2026-10-15T06-28-53-419Z.json",
+        "json-beautifier__1mb__run2__2026-10-15T06-34-39-838Z.json",
+        "json-beautifier__1mb__run3__2026-10-15T06-36-33-339Z.json"
+      ]
+    },
+    {
+      "site": "JSON Beautifier",
+      "size": "10mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 6138,
+        "range": [
+          6069,
+          6322
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 1957,
+        "range": [
+          1944,
+          2094
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 5529,
+        "range": [
+          5507,
+          5772
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 157,
+        "range": [
+          145,
+          192
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 83,
+        "range": [
+          83,
+          138
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 338,
+      "afterLoadLongestTaskMs": {
+        "median": 104,
+        "range": [
+          0,
+          210
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 1153,
+        "range": [
+          1142,
+          1163
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 1448,
+        "range": [
+          1440,
+          1459
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 1279,
+        "range": [
+          1241,
+          1468
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 1581,
+        "range": [
+          1540,
+          1768
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 268,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 0,
+          "total": 3,
+          "medianMs": null,
+          "statuses": {
+            "not available": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.74,
+        2.26
+      ],
+      "memAvailableAtStartMiB": [
+        4060,
+        4480
+      ],
+      "failures": [],
+      "files": [
+        "json-beautifier__10mb__run1__2026-10-15T06-39-14-665Z.json",
+        "json-beautifier__10mb__run2__2026-10-15T06-43-39-843Z.json",
+        "json-beautifier__10mb__run3__2026-10-15T06-45-23-953Z.json"
+      ]
+    },
+    {
+      "site": "JSON Beautifier",
+      "size": "50mb",
+      "runs": 3,
+      "outcomes": {
+        "exceeded memory cap": 3
+      },
+      "visibleMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "longestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "blockingMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "scrollToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "keyToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "worstInteractionMs": null,
+      "afterLoadLongestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "peakRendererToViewMiB": {
+        "median": 2283,
+        "range": [
+          2269,
+          2338
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 2585,
+        "range": [
+          2564,
+          2633
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 2283,
+        "range": [
+          2269,
+          2338
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 2585,
+        "range": [
+          2564,
+          2633
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [
+        "browser memory 2633 MiB exceeded the 2560 MiB cap",
+        "browser memory 2585 MiB exceeded the 2560 MiB cap",
+        "browser memory 2564 MiB exceeded the 2560 MiB cap"
+      ],
+      "features": {},
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.82,
+        2.2
+      ],
+      "memAvailableAtStartMiB": [
+        3822,
+        4567
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 20278,
+          "memoryCap": "browser memory 2633 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 2,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 19690,
+          "memoryCap": "browser memory 2585 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 3,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 20216,
+          "memoryCap": "browser memory 2564 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        }
+      ],
+      "files": [
+        "json-beautifier__50mb__run1__2026-10-15T06-49-22-552Z.json",
+        "json-beautifier__50mb__run2__2026-10-15T06-56-39-185Z.json",
+        "json-beautifier__50mb__run3__2026-10-15T07-00-16-953Z.json"
+      ]
+    },
+    {
+      "site": "JSON Formatter Online",
+      "size": "1mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 427,
+        "range": [
+          409,
+          464
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 107,
+        "range": [
+          105,
+          131
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 158,
+        "range": [
+          151,
+          194
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 33,
+        "range": [
+          33,
+          34
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 41,
+        "range": [
+          41,
+          63
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 109,
+      "afterLoadLongestTaskMs": {
+        "median": 247,
+        "range": [
+          238,
+          269
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 157,
+        "range": [
+          157,
+          157
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 442,
+        "range": [
+          442,
+          443
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 218,
+        "range": [
+          218,
+          221
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 528,
+        "range": [
+          527,
+          528
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 370,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 0,
+          "total": 3,
+          "medianMs": null,
+          "statuses": {
+            "no result within 30 s": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.39,
+        2.69
+      ],
+      "memAvailableAtStartMiB": [
+        4088,
+        4469
+      ],
+      "failures": [],
+      "files": [
+        "json-formatter-online__1mb__run1__2026-10-15T06-29-18-255Z.json",
+        "json-formatter-online__1mb__run2__2026-10-15T06-33-46-959Z.json",
+        "json-formatter-online__1mb__run3__2026-10-15T06-36-57-862Z.json"
+      ]
+    },
+    {
+      "site": "JSON Formatter Online",
+      "size": "10mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 1223,
+        "range": [
+          1218,
+          1224
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 616,
+        "range": [
+          610,
+          619
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 965,
+        "range": [
+          959,
+          972
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 70,
+        "range": [
+          65,
+          76
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 51,
+        "range": [
+          49,
+          59
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 172,
+      "afterLoadLongestTaskMs": {
+        "median": 1983,
+        "range": [
+          1955,
+          2142
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 287,
+        "range": [
+          286,
+          288
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 574,
+        "range": [
+          573,
+          575
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 418,
+        "range": [
+          417,
+          419
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 715,
+        "range": [
+          713,
+          716
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 2250,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 0,
+          "total": 3,
+          "medianMs": null,
+          "statuses": {
+            "no result within 30 s": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        2.26,
+        2.69
+      ],
+      "memAvailableAtStartMiB": [
+        4256,
+        4370
+      ],
+      "failures": [],
+      "files": [
+        "json-formatter-online__10mb__run1__2026-10-15T06-39-59-040Z.json",
+        "json-formatter-online__10mb__run2__2026-10-15T06-42-01-318Z.json",
+        "json-formatter-online__10mb__run3__2026-10-15T06-46-09-146Z.json"
+      ]
+    },
+    {
+      "site": "JSON Formatter Online",
+      "size": "50mb",
+      "runs": 3,
+      "outcomes": {
+        "no formatted view within 90 s": 3
+      },
+      "visibleMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "longestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "blockingMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "scrollToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "keyToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "worstInteractionMs": null,
+      "afterLoadLongestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "peakRendererToViewMiB": {
+        "median": 1070,
+        "range": [
+          1066,
+          1071
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 1349,
+        "range": [
+          1346,
+          1351
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 1070,
+        "range": [
+          1066,
+          1071
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 1349,
+        "range": [
+          1346,
+          1351
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {},
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.53,
+        1.76
+      ],
+      "memAvailableAtStartMiB": [
+        4416,
+        4592
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "no formatted view within 90 s",
+          "elapsedAtStopMs": 90056,
+          "notes": []
+        },
+        {
+          "run": 2,
+          "status": "no formatted view within 90 s",
+          "elapsedAtStopMs": 90054,
+          "notes": []
+        },
+        {
+          "run": 3,
+          "status": "no formatted view within 90 s",
+          "elapsedAtStopMs": 90053,
+          "notes": []
+        }
+      ],
+      "files": [
+        "json-formatter-online__50mb__run1__2026-10-15T06-50-41-818Z.json",
+        "json-formatter-online__50mb__run2__2026-10-15T06-54-10-491Z.json",
+        "json-formatter-online__50mb__run3__2026-10-15T07-01-35-875Z.json"
+      ]
+    },
+    {
+      "site": "JSON Hero",
+      "size": "1mb",
+      "runs": 1,
+      "outcomes": {
+        "unresponsive at 90 s": 1
+      },
+      "visibleMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "longestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "blockingMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "scrollToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "keyToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "worstInteractionMs": null,
+      "afterLoadLongestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "peakRendererToViewMiB": {
+        "median": 268,
+        "range": [
+          268,
+          268
+        ],
+        "n": 1
+      },
+      "peakBrowserToViewMiB": {
+        "median": 552,
+        "range": [
+          552,
+          552
+        ],
+        "n": 1
+      },
+      "peakRendererMiB": {
+        "median": 276,
+        "range": [
+          276,
+          276
+        ],
+        "n": 1
+      },
+      "peakBrowserMiB": {
+        "median": 561,
+        "range": [
+          561,
+          561
+        ],
+        "n": 1
+      },
+      "memoryCapHits": [],
+      "features": {},
+      "documentUploaded": true,
+      "loadAtStart": [
+        3.52,
+        3.52
+      ],
+      "memAvailableAtStartMiB": [
+        4059,
+        4059
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "unresponsive at 90 s",
+          "elapsedAtStopMs": 90000,
+          "notes": [
+            "screenshot failed: Page.captureScreenshot: timeout 15000ms"
+          ]
+        }
+      ],
+      "files": [
+        "json-hero__1mb__run1__2026-10-15T06-30-23-887Z.json"
+      ]
+    },
+    {
+      "site": "JSON Viewer Stack",
+      "size": "1mb",
+      "runs": 3,
+      "outcomes": {
+        "view detected, interaction obstructed": 1,
+        "ok": 2
+      },
+      "visibleMs": {
+        "median": 686,
+        "range": [
+          647,
+          725
+        ],
+        "n": 2
+      },
+      "longestTaskMs": {
+        "median": 318,
+        "range": [
+          318,
+          318
+        ],
+        "n": 2
+      },
+      "blockingMs": {
+        "median": 365,
+        "range": [
+          353,
+          377
+        ],
+        "n": 2
+      },
+      "scrollToFrameMs": {
+        "median": 33,
+        "range": [
+          33,
+          33
+        ],
+        "n": 2
+      },
+      "keyToFrameMs": {
+        "median": 20,
+        "range": [
+          18,
+          21
+        ],
+        "n": 2
+      },
+      "worstInteractionMs": 251,
+      "afterLoadLongestTaskMs": {
+        "median": 520,
+        "range": [
+          465,
+          574
+        ],
+        "n": 2
+      },
+      "peakRendererToViewMiB": {
+        "median": 210,
+        "range": [
+          207,
+          220
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 510,
+        "range": [
+          508,
+          551
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 227,
+        "range": [
+          224,
+          260
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 551,
+        "range": [
+          536,
+          576
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 0,
+          "total": 2,
+          "medianMs": null,
+          "statuses": {
+            "not available": 2
+          }
+        },
+        "collapse": {
+          "ok": 2,
+          "total": 2,
+          "medianMs": 373,
+          "statuses": {
+            "ok": 2
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.05,
+        2.56
+      ],
+      "memAvailableAtStartMiB": [
+        4043,
+        4527
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "view detected, interaction obstructed",
+          "notes": [
+            "Screenshot shows a full-page advertisement over the viewer. A pre-guard interaction clicked the ad and navigated away. Scroll, key and feature results from that navigation are invalid; no bot challenge was bypassed. Opening detection is DOM-only and not a confirmed unobscured view."
+          ]
+        }
+      ],
+      "files": [
+        "json-viewer-stack__1mb__run1__2026-10-15T06-29-06-981Z.json",
+        "json-viewer-stack__1mb__run2__2026-10-15T06-34-27-953Z.json",
+        "json-viewer-stack__1mb__run3__2026-10-15T06-36-45-970Z.json"
+      ]
+    },
+    {
+      "site": "JSON Viewer Stack",
+      "size": "10mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 2,
+        "view detected, interaction obstructed": 1
+      },
+      "visibleMs": {
+        "median": 8895,
+        "range": [
+          8816,
+          8973
+        ],
+        "n": 2
+      },
+      "longestTaskMs": {
+        "median": 3235,
+        "range": [
+          3219,
+          3251
+        ],
+        "n": 2
+      },
+      "blockingMs": {
+        "median": 8091,
+        "range": [
+          8052,
+          8130
+        ],
+        "n": 2
+      },
+      "scrollToFrameMs": {
+        "median": 33,
+        "range": [
+          33,
+          33
+        ],
+        "n": 2
+      },
+      "keyToFrameMs": {
+        "median": 211,
+        "range": [
+          90,
+          332
+        ],
+        "n": 2
+      },
+      "worstInteractionMs": 1062,
+      "afterLoadLongestTaskMs": {
+        "median": 5202,
+        "range": [
+          5075,
+          5329
+        ],
+        "n": 2
+      },
+      "peakRendererToViewMiB": {
+        "median": 673,
+        "range": [
+          666,
+          673
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 990,
+        "range": [
+          983,
+          990
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 996,
+        "range": [
+          666,
+          996
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 1296,
+        "range": [
+          983,
+          1297
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 0,
+          "total": 2,
+          "medianMs": null,
+          "statuses": {
+            "not available": 2
+          }
+        },
+        "collapse": {
+          "ok": 2,
+          "total": 2,
+          "medianMs": 614,
+          "statuses": {
+            "ok": 2
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.63,
+        2.41
+      ],
+      "memAvailableAtStartMiB": [
+        4179,
+        4344
+      ],
+      "failures": [
+        {
+          "run": 2,
+          "status": "view detected, interaction obstructed",
+          "notes": [
+            "Output was covered at the interaction point; no interaction was sent.",
+            "no scroll target found for interaction probes"
+          ]
+        }
+      ],
+      "files": [
+        "json-viewer-stack__10mb__run1__2026-10-15T06-39-33-270Z.json",
+        "json-viewer-stack__10mb__run2__2026-10-15T06-42-46-511Z.json",
+        "json-viewer-stack__10mb__run3__2026-10-15T06-45-42-938Z.json"
+      ]
+    },
+    {
+      "site": "JSON Viewer Stack",
+      "size": "50mb",
+      "runs": 3,
+      "outcomes": {
+        "unresponsive at 90 s": 3
+      },
+      "visibleMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "longestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "blockingMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "scrollToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "keyToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "worstInteractionMs": null,
+      "afterLoadLongestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "peakRendererToViewMiB": {
+        "median": 1963,
+        "range": [
+          1950,
+          1970
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 2364,
+        "range": [
+          2358,
+          2439
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 1963,
+        "range": [
+          1953,
+          1970
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 2364,
+        "range": [
+          2358,
+          2439
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {},
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.65,
+        2.37
+      ],
+      "memAvailableAtStartMiB": [
+        4199,
+        4587
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "unresponsive at 90 s",
+          "elapsedAtStopMs": 35437,
+          "notes": []
+        },
+        {
+          "run": 2,
+          "status": "unresponsive at 90 s",
+          "elapsedAtStopMs": 36521,
+          "notes": []
+        },
+        {
+          "run": 3,
+          "status": "unresponsive at 90 s",
+          "elapsedAtStopMs": 35835,
+          "notes": []
+        }
+      ],
+      "files": [
+        "json-viewer-stack__50mb__run1__2026-10-15T06-49-53-889Z.json",
+        "json-viewer-stack__50mb__run2__2026-10-15T06-55-49-680Z.json",
+        "json-viewer-stack__50mb__run3__2026-10-15T07-00-47-363Z.json"
+      ]
+    },
+    {
+      "site": "JSONLint",
+      "size": "1mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 6820,
+        "range": [
+          6646,
+          7395
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 1963,
+        "range": [
+          1333,
+          2353
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 5889,
+        "range": [
+          5210,
+          6549
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 252,
+        "range": [
+          120,
+          370
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 81,
+        "range": [
+          74,
+          150
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 637,
+      "afterLoadLongestTaskMs": {
+        "median": 530,
+        "range": [
+          448,
+          621
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 562,
+        "range": [
+          553,
+          593
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 908,
+        "range": [
+          900,
+          939
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 658,
+        "range": [
+          647,
+          668
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 1014,
+        "range": [
+          1004,
+          1023
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 312,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 197,
+          "statuses": {
+            "ok": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.92,
+        2.51
+      ],
+      "memAvailableAtStartMiB": [
+        4112,
+        4545
+      ],
+      "failures": [],
+      "files": [
+        "jsonlint__1mb__run1__2026-10-15T06-29-59-726Z.json",
+        "jsonlint__1mb__run2__2026-10-15T06-33-21-770Z.json",
+        "jsonlint__1mb__run3__2026-10-15T06-37-39-382Z.json"
+      ]
+    },
+    {
+      "site": "JSONLint",
+      "size": "10mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 20475,
+        "range": [
+          20216,
+          21063
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 11375,
+        "range": [
+          11182,
+          11463
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 19665,
+        "range": [
+          19485,
+          20338
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 237,
+        "range": [
+          233,
+          453
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 101,
+        "range": [
+          73,
+          107
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 529,
+      "afterLoadLongestTaskMs": {
+        "median": 402,
+        "range": [
+          278,
+          526
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 1644,
+        "range": [
+          1644,
+          1743
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 1987,
+        "range": [
+          1983,
+          2092
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 1693,
+        "range": [
+          1644,
+          1743
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 2044,
+        "range": [
+          1983,
+          2092
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 551,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 571,
+          "statuses": {
+            "ok": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.27,
+        2.42
+      ],
+      "memAvailableAtStartMiB": [
+        4338,
+        4498
+      ],
+      "failures": [],
+      "files": [
+        "jsonlint__10mb__run1__2026-10-15T06-40-43-182Z.json",
+        "jsonlint__10mb__run2__2026-10-15T06-41-22-684Z.json",
+        "jsonlint__10mb__run3__2026-10-15T06-46-54-838Z.json"
+      ]
+    },
+    {
+      "site": "JSONLint",
+      "size": "50mb",
+      "runs": 3,
+      "outcomes": {
+        "exceeded memory cap": 3
+      },
+      "visibleMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "longestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "blockingMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "scrollToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "keyToFrameMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "worstInteractionMs": null,
+      "afterLoadLongestTaskMs": {
+        "median": null,
+        "range": null,
+        "n": 0
+      },
+      "peakRendererToViewMiB": {
+        "median": 2103,
+        "range": [
+          2072,
+          2125
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 2584,
+        "range": [
+          2561,
+          2588
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 2103,
+        "range": [
+          2072,
+          2125
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 2584,
+        "range": [
+          2561,
+          2588
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [
+        "browser memory 2584 MiB exceeded the 2560 MiB cap",
+        "browser memory 2561 MiB exceeded the 2560 MiB cap",
+        "browser memory 2588 MiB exceeded the 2560 MiB cap"
+      ],
+      "features": {},
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.47,
+        1.99
+      ],
+      "memAvailableAtStartMiB": [
+        4205,
+        4514
+      ],
+      "failures": [
+        {
+          "run": 1,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 20414,
+          "memoryCap": "browser memory 2584 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 2,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 27245,
+          "memoryCap": "browser memory 2561 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        },
+        {
+          "run": 3,
+          "status": "exceeded memory cap",
+          "elapsedAtStopMs": 25675,
+          "memoryCap": "browser memory 2588 MiB exceeded the 2560 MiB cap",
+          "notes": []
+        }
+      ],
+      "files": [
+        "jsonlint__50mb__run1__2026-10-15T06-52-21-011Z.json",
+        "jsonlint__50mb__run2__2026-10-15T06-52-58-658Z.json",
+        "jsonlint__50mb__run3__2026-10-15T07-03-14-801Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "1mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 890,
+        "range": [
+          889,
+          900
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 401,
+        "range": [
+          392,
+          423
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 605,
+        "range": [
+          593,
+          610
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 29,
+        "range": [
+          29,
+          35
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 16,
+        "range": [
+          14,
+          25
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 83,
+      "afterLoadLongestTaskMs": {
+        "median": 0,
+        "range": [
+          0,
+          53
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 241,
+        "range": [
+          241,
+          241
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 531,
+        "range": [
+          530,
+          531
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 241,
+        "range": [
+          241,
+          241
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 536,
+        "range": [
+          536,
+          538
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 78,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 96,
+          "statuses": {
+            "ok": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.95,
+        1.73
+      ],
+      "memAvailableAtStartMiB": [
+        4157,
+        4470
+      ],
+      "failures": [],
+      "files": [
+        "tool-kumar__1mb__run1__2026-10-15T06-28-02-514Z.json",
+        "tool-kumar__1mb__run2__2026-10-15T06-35-32-374Z.json",
+        "tool-kumar__1mb__run3__2026-10-15T06-35-43-124Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "10mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 2482,
+        "range": [
+          2290,
+          2498
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 721,
+        "range": [
+          721,
+          722
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 1742,
+        "range": [
+          1612,
+          1753
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 37,
+        "range": [
+          29,
+          45
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 21,
+        "range": [
+          13,
+          26
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 63,
+      "afterLoadLongestTaskMs": {
+        "median": 57,
+        "range": [
+          0,
+          83
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 471,
+        "range": [
+          470,
+          480
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 770,
+        "range": [
+          769,
+          779
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 488,
+        "range": [
+          480,
+          492
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 804,
+        "range": [
+          779,
+          805
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 149,
+          "statuses": {
+            "ok": 3
+          }
+        },
+        "collapse": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 115,
+          "statuses": {
+            "ok": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        0.75,
+        2.67
+      ],
+      "memAvailableAtStartMiB": [
+        4309,
+        4533
+      ],
+      "failures": [],
+      "files": [
+        "tool-kumar__10mb__run1__2026-10-15T06-38-33-738Z.json",
+        "tool-kumar__10mb__run2__2026-10-15T06-44-31-974Z.json",
+        "tool-kumar__10mb__run3__2026-10-15T06-44-44-167Z.json"
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "50mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "median": 9857,
+        "range": [
+          9165,
+          9924
+        ],
+        "n": 3
+      },
+      "longestTaskMs": {
+        "median": 4330,
+        "range": [
+          4184,
+          4436
+        ],
+        "n": 3
+      },
+      "blockingMs": {
+        "median": 9182,
+        "range": [
+          8627,
+          9345
+        ],
+        "n": 3
+      },
+      "scrollToFrameMs": {
+        "median": 33,
+        "range": [
+          30,
+          35
+        ],
+        "n": 3
+      },
+      "keyToFrameMs": {
+        "median": 18,
+        "range": [
+          16,
+          21
+        ],
+        "n": 3
+      },
+      "worstInteractionMs": 64,
+      "afterLoadLongestTaskMs": {
+        "median": 190,
+        "range": [
+          188,
+          239
+        ],
+        "n": 3
+      },
+      "peakRendererToViewMiB": {
+        "median": 1486,
+        "range": [
+          1468,
+          1512
+        ],
+        "n": 3
+      },
+      "peakBrowserToViewMiB": {
+        "median": 1771,
+        "range": [
+          1754,
+          1798
+        ],
+        "n": 3
+      },
+      "peakRendererMiB": {
+        "median": 1486,
+        "range": [
+          1468,
+          1512
+        ],
+        "n": 3
+      },
+      "peakBrowserMiB": {
+        "median": 1771,
+        "range": [
+          1754,
+          1798
+        ],
+        "n": 3
+      },
+      "memoryCapHits": [],
+      "features": {
+        "search": {
+          "ok": 0,
+          "total": 3,
+          "medianMs": null,
+          "statuses": {
+            "no result within 30 s": 3
+          }
+        },
+        "collapse": {
+          "ok": 3,
+          "total": 3,
+          "medianMs": 279,
+          "statuses": {
+            "ok": 3
+          }
+        }
+      },
+      "documentUploaded": false,
+      "loadAtStart": [
+        1.67,
+        1.99
+      ],
+      "memAvailableAtStartMiB": [
+        4167,
+        4525
+      ],
+      "failures": [],
+      "files": [
+        "tool-kumar__50mb__run1__2026-10-15T06-47-34-365Z.json",
+        "tool-kumar__50mb__run2__2026-10-15T06-57-34-624Z.json",
+        "tool-kumar__50mb__run3__2026-10-15T06-58-24-258Z.json"
+      ]
+    }
+  ]
+}

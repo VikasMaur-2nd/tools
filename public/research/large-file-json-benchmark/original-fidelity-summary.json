@@ -1,0 +1,2097 @@
+{
+  "generatedAt": "2026-10-15T12:37:30.182033+00:00",
+  "fixture": {
+    "file": "fidelity.json",
+    "bytes": 425,
+    "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c",
+    "synthetic": true
+  },
+  "method": "Exact decimal numeric comparison of rendered tokens with Python Decimal. Duplicate-member occurrences are compared separately. Representation changes, including negative zero, are notes. Only unobstructed captures count.",
+  "excludedAttempts": [
+    {
+      "raw": "results/raw-fidelity/2026-10-15/jsonlint__run1__2026-10-15T12-23-33-402Z.json",
+      "site": "JSONLint",
+      "run": 1,
+      "reason": "harness: trigger readiness not met",
+      "excludedAs": "harness error, no Prettify offered for multiline fixture; one retry with whitespace-only minified equivalent"
+    },
+    {
+      "raw": "results/raw-fidelity/2026-10-15/jsonlint__run2__2026-10-15T12-24-22-574Z.json",
+      "site": "JSONLint",
+      "run": 2,
+      "reason": "harness: trigger readiness not met",
+      "excludedAs": "harness error, no Prettify offered for multiline fixture; one retry with whitespace-only minified equivalent"
+    }
+  ],
+  "runs": [
+    {
+      "site": "Code Beautify JSON Viewer",
+      "run": 1,
+      "date": "2026-10-15T12:20:08.715Z",
+      "raw": "results/raw-fidelity/2026-10-15/code-beautify-json-viewer__run1__2026-10-15T12-20-06-395Z.json",
+      "rawSha256": "1b136219441368fc555facae28d3a032eac3fd7b1d1d8b5e9db501b5c6157fe4",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "code-beautify-json-viewer__run1__2026-10-15T12-20-06-395Z__capture0.txt"
+      ],
+      "captureNotes": [
+        "Harness marked the run uncheckable because capture1 scrolled the page offscreen. Capture0 is unobstructed and shows every case. Grade uses capture0 only; original record unchanged."
+      ],
+      "reason": "output covered at capture hit point; DOM is diagnostic only",
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "é",
+          "verdict": "same value; tree omits JSON quotes"
+        }
+      ]
+    },
+    {
+      "site": "Code Beautify JSON Viewer",
+      "run": 2,
+      "date": "2026-10-15T12:27:39.583Z",
+      "raw": "results/raw-fidelity/2026-10-15/code-beautify-json-viewer__run2__2026-10-15T12-27-37-251Z.json",
+      "rawSha256": "b3d9d0fb5f628bc06c9ddf99b5941d6b44466978ed32350159ad398a876362dc",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "code-beautify-json-viewer__run2__2026-10-15T12-27-37-251Z__capture0.txt",
+        "code-beautify-json-viewer__run2__2026-10-15T12-27-37-251Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "é",
+          "verdict": "same value; tree omits JSON quotes"
+        }
+      ]
+    },
+    {
+      "site": "JSON Beautifier",
+      "run": 1,
+      "date": "2026-10-15T12:20:56.662Z",
+      "raw": "results/raw-fidelity/2026-10-15/json-beautifier__run1__2026-10-15T12-20-54-309Z.json",
+      "rawSha256": "401d8358e941b832a2c8d5d2550d81d9501ef2f24aa4f0a393d6a63d8a1cdef4",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "json-beautifier__run1__2026-10-15T12-20-54-309Z__capture0.txt",
+        "json-beautifier__run1__2026-10-15T12-20-54-309Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "JSON Beautifier",
+      "run": 2,
+      "date": "2026-10-15T12:26:51.719Z",
+      "raw": "results/raw-fidelity/2026-10-15/json-beautifier__run2__2026-10-15T12-26-49-456Z.json",
+      "rawSha256": "b2a960991bc29de8139f792e4c27b31a1aa49bf6b7999f7fbaa007665d52f53c",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "json-beautifier__run2__2026-10-15T12-26-49-456Z__capture0.txt",
+        "json-beautifier__run2__2026-10-15T12-26-49-456Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "JSON Formatter Online",
+      "run": 1,
+      "date": "2026-10-15T12:22:47.341Z",
+      "raw": "results/raw-fidelity/2026-10-15/json-formatter-online__run1__2026-10-15T12-22-44-949Z.json",
+      "rawSha256": "b6b111a1a827927b3e923582c9ab398dcf171900469230e27d7cc0dc873caee1",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "json-formatter-online__run1__2026-10-15T12-22-44-949Z__capture0.txt",
+        "json-formatter-online__run1__2026-10-15T12-22-44-949Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "JSON Formatter Online",
+      "run": 2,
+      "date": "2026-10-15T12:25:13.177Z",
+      "raw": "results/raw-fidelity/2026-10-15/json-formatter-online__run2__2026-10-15T12-25-10-913Z.json",
+      "rawSha256": "9125d57eeb190d5de4c40423f265f1b00745db444453c7b36fac06fca5da94ab",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "json-formatter-online__run2__2026-10-15T12-25-10-913Z__capture0.txt",
+        "json-formatter-online__run2__2026-10-15T12-25-10-913Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "JSON Viewer Stack",
+      "run": 1,
+      "date": "2026-10-15T12:21:44.681Z",
+      "raw": "results/raw-fidelity/2026-10-15/json-viewer-stack__run1__2026-10-15T12-21-42-401Z.json",
+      "rawSha256": "573f543502021a1a34c2525b8107f41e82a863ce49c467a4a5c4c7a5c378809d",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "json-viewer-stack__run1__2026-10-15T12-21-42-401Z__capture0.txt",
+        "json-viewer-stack__run1__2026-10-15T12-21-42-401Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "Infinity",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "JSON Viewer Stack",
+      "run": 2,
+      "date": "2026-10-15T12:26:03.607Z",
+      "raw": "results/raw-fidelity/2026-10-15/json-viewer-stack__run2__2026-10-15T12-26-01-227Z.json",
+      "rawSha256": "b300ecf72f273a2fc71facbc57eb6e149345364c12f8b41621dfe7747a829809",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "json-viewer-stack__run2__2026-10-15T12-26-01-227Z__capture0.txt",
+        "json-viewer-stack__run2__2026-10-15T12-26-01-227Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "Infinity",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "JSONLint",
+      "run": 1,
+      "date": "2026-10-15T12:29:15.280Z",
+      "raw": "results/raw-fidelity/2026-10-15/jsonlint__run1__2026-10-15T12-29-12-939Z.json",
+      "rawSha256": "eaebb5683dfe14338c7b9e12502ee6e93ee9a9a5e0b0d99fd95714328ca7e3f4",
+      "inputFixture": {
+        "file": "fidelity-minified.json",
+        "bytes": 407,
+        "sha256": "a5051b3a97e29877e0bf250d2920577860b8bdbf487de42d8df0e37f12fc6bea"
+      },
+      "retry": true,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "jsonlint__run1__2026-10-15T12-29-12-939Z__capture0.txt",
+        "jsonlint__run1__2026-10-15T12-29-12-939Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "JSONLint",
+      "run": 2,
+      "date": "2026-10-15T12:29:38.130Z",
+      "raw": "results/raw-fidelity/2026-10-15/jsonlint__run2__2026-10-15T12-29-35-739Z.json",
+      "rawSha256": "763615aeca240401e1f3934637ccc0e85b0746a307d8a224a6248992cce7ca2a",
+      "inputFixture": {
+        "file": "fidelity-minified.json",
+        "bytes": 407,
+        "sha256": "a5051b3a97e29877e0bf250d2920577860b8bdbf487de42d8df0e37f12fc6bea"
+      },
+      "retry": true,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "jsonlint__run2__2026-10-15T12-29-35-739Z__capture0.txt",
+        "jsonlint__run2__2026-10-15T12-29-35-739Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756832",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456800",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740992",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234568",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "null",
+          "verdict": "changed"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "2"
+          ],
+          "verdict": "changed"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.5",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "100",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "0",
+          "verdict": "representation only"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "run": 1,
+      "date": "2026-10-15T12:18:42.711Z",
+      "raw": "results/raw-fidelity/2026-10-15/tool-kumar__run1__2026-10-15T12-18-40-380Z.json",
+      "rawSha256": "7f2578263a56d062e1c3b47182974326a9e557e86341f5c533d5fc7a1f20e78e",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "tool-kumar__run1__2026-10-15T12-18-40-380Z__capture0.txt",
+        "tool-kumar__run1__2026-10-15T12-18-40-380Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756831",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740993",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456789",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740993",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1000000000000000055511151231257827",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234567.89",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "1e400",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "1",
+            "2"
+          ],
+          "verdict": "kept"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1.0",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.50",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "1e2",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "1E+2",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "-0",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    },
+    {
+      "site": "Tool Kumar",
+      "run": 2,
+      "date": "2026-10-15T12:28:27.377Z",
+      "raw": "results/raw-fidelity/2026-10-15/tool-kumar__run2__2026-10-15T12-28-25-060Z.json",
+      "rawSha256": "572871b6ccae4f2ff8eec385bec54a299ea9456516c1069425e1b8b2077b5edb",
+      "inputFixture": {
+        "file": "fidelity.json",
+        "bytes": 425,
+        "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
+      },
+      "retry": false,
+      "controlFields": {
+        "export": true,
+        "next_cursor": true
+      },
+      "validCaptures": [
+        "tool-kumar__run2__2026-10-15T12-28-25-060Z__capture0.txt",
+        "tool-kumar__run2__2026-10-15T12-28-25-060Z__capture1.txt"
+      ],
+      "captureNotes": [],
+      "reason": null,
+      "cases": [
+        {
+          "case": "v_unsafe_odd",
+          "caseClass": "number value",
+          "source": "9007199254756831",
+          "rendered": "9007199254756831",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_above_safe",
+          "caseClass": "number value",
+          "source": "9007199254740993",
+          "rendered": "9007199254740993",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_id19",
+          "caseClass": "number value",
+          "source": "1234567890123456789",
+          "rendered": "1234567890123456789",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_negative",
+          "caseClass": "number value",
+          "source": "-9007199254740993",
+          "rendered": "-9007199254740993",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_long_decimal",
+          "caseClass": "number value",
+          "source": "0.1000000000000000055511151231257827",
+          "rendered": "0.1000000000000000055511151231257827",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_money",
+          "caseClass": "number value",
+          "source": "12345678901234567.89",
+          "rendered": "12345678901234567.89",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_overflow",
+          "caseClass": "number value",
+          "source": "1e400",
+          "rendered": "1e400",
+          "verdict": "kept"
+        },
+        {
+          "case": "v_duplicates",
+          "caseClass": "duplicate members",
+          "source": [
+            "1",
+            "2"
+          ],
+          "rendered": [
+            "1",
+            "2"
+          ],
+          "verdict": "kept"
+        },
+        {
+          "case": "r_one",
+          "caseClass": "representation note",
+          "source": "1.0",
+          "rendered": "1.0",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_one_half",
+          "caseClass": "representation note",
+          "source": "1.50",
+          "rendered": "1.50",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_exponent",
+          "caseClass": "representation note",
+          "source": "1e2",
+          "rendered": "1e2",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_exponent_upper",
+          "caseClass": "representation note",
+          "source": "1E+2",
+          "rendered": "1E+2",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_negative_zero",
+          "caseClass": "representation note",
+          "source": "-0",
+          "rendered": "-0",
+          "verdict": "same spelling"
+        },
+        {
+          "case": "r_unicode",
+          "caseClass": "representation note",
+          "source": "\"é\"",
+          "rendered": "\"é\"",
+          "verdict": "same spelling"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "site": "Code Beautify JSON Viewer",
+      "runs": 2,
+      "classes": {
+        "number value": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          }
+        ],
+        "duplicate members": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          }
+        ],
+        "representation note": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> é (same value; tree omits JSON quotes)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> é (same value; tree omits JSON quotes)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "site": "JSON Beautifier",
+      "runs": 2,
+      "classes": {
+        "number value": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          }
+        ],
+        "duplicate members": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          }
+        ],
+        "representation note": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "site": "JSON Formatter Online",
+      "runs": 2,
+      "classes": {
+        "number value": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          }
+        ],
+        "duplicate members": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          }
+        ],
+        "representation note": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "site": "JSON Viewer Stack",
+      "runs": 2,
+      "classes": {
+        "number value": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> Infinity (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> Infinity (changed)"
+            ]
+          }
+        ],
+        "duplicate members": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          }
+        ],
+        "representation note": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "site": "JSONLint",
+      "runs": 2,
+      "classes": {
+        "number value": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 7,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756832 (changed)",
+              "v_above_safe: 9007199254740993 -> 9007199254740992 (changed)",
+              "v_id19: 1234567890123456789 -> 1234567890123456800 (changed)",
+              "v_negative: -9007199254740993 -> -9007199254740992 (changed)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1 (changed)",
+              "v_money: 12345678901234567.89 -> 12345678901234568 (changed)",
+              "v_overflow: 1e400 -> null (changed)"
+            ]
+          }
+        ],
+        "duplicate members": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 1,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['2'] (changed)"
+            ]
+          }
+        ],
+        "representation note": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1 (representation only)",
+              "r_one_half: 1.50 -> 1.5 (representation only)",
+              "r_exponent: 1e2 -> 100 (representation only)",
+              "r_exponent_upper: 1E+2 -> 100 (representation only)",
+              "r_negative_zero: -0 -> 0 (representation only)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "site": "Tool Kumar",
+      "runs": 2,
+      "classes": {
+        "number value": [
+          {
+            "run": 1,
+            "kept": 7,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756831 (kept)",
+              "v_above_safe: 9007199254740993 -> 9007199254740993 (kept)",
+              "v_id19: 1234567890123456789 -> 1234567890123456789 (kept)",
+              "v_negative: -9007199254740993 -> -9007199254740993 (kept)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1000000000000000055511151231257827 (kept)",
+              "v_money: 12345678901234567.89 -> 12345678901234567.89 (kept)",
+              "v_overflow: 1e400 -> 1e400 (kept)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 7,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "v_unsafe_odd: 9007199254756831 -> 9007199254756831 (kept)",
+              "v_above_safe: 9007199254740993 -> 9007199254740993 (kept)",
+              "v_id19: 1234567890123456789 -> 1234567890123456789 (kept)",
+              "v_negative: -9007199254740993 -> -9007199254740993 (kept)",
+              "v_long_decimal: 0.1000000000000000055511151231257827 -> 0.1000000000000000055511151231257827 (kept)",
+              "v_money: 12345678901234567.89 -> 12345678901234567.89 (kept)",
+              "v_overflow: 1e400 -> 1e400 (kept)"
+            ]
+          }
+        ],
+        "duplicate members": [
+          {
+            "run": 1,
+            "kept": 1,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['1', '2'] (kept)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 1,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "v_duplicates: ['1', '2'] -> ['1', '2'] (kept)"
+            ]
+          }
+        ],
+        "representation note": [
+          {
+            "run": 1,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1.0 (same spelling)",
+              "r_one_half: 1.50 -> 1.50 (same spelling)",
+              "r_exponent: 1e2 -> 1e2 (same spelling)",
+              "r_exponent_upper: 1E+2 -> 1E+2 (same spelling)",
+              "r_negative_zero: -0 -> -0 (same spelling)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          },
+          {
+            "run": 2,
+            "kept": 0,
+            "changed": 0,
+            "uncheckable": 0,
+            "notes": [
+              "r_one: 1.0 -> 1.0 (same spelling)",
+              "r_one_half: 1.50 -> 1.50 (same spelling)",
+              "r_exponent: 1e2 -> 1e2 (same spelling)",
+              "r_exponent_upper: 1E+2 -> 1E+2 (same spelling)",
+              "r_negative_zero: -0 -> -0 (same spelling)",
+              "r_unicode: \"é\" -> \"é\" (same spelling)"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

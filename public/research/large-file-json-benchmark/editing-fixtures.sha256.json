@@ -1,0 +1,483 @@
+{
+  "generatedAt": "2026-10-17T07:50:37.341Z",
+  "method": "Original seeded record stream. Two-space source re-indenting keeps number literals, duplicate members and string contents. Size label refers to minified data bytes, not pretty file bytes.",
+  "vendorCommit": "b7157f60b7a2d000c7354a38f91a545fa2b71c05",
+  "fixtures": [
+    {
+      "size": "tiny",
+      "key": "tiny",
+      "format": "minified",
+      "minifiedSourceSha256": "ca4acff52a21a16bd9b785048beefd977a08260aa8f19e5184d6ed25d3b7fdb4",
+      "file": "bench-tiny.json",
+      "bytes": 3854,
+      "characters": 3825,
+      "lines": 1,
+      "sha256": "ca4acff52a21a16bd9b785048beefd977a08260aa8f19e5184d6ed25d3b7fdb4",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 352,
+          "line": 1,
+          "column": 352
+        },
+        {
+          "name": "middle",
+          "email": "user3@example.com",
+          "offset": 1518,
+          "line": 1,
+          "column": 1518
+        },
+        {
+          "name": "end",
+          "email": "user5@example.com",
+          "offset": 3012,
+          "line": 1,
+          "column": 3012
+        }
+      ]
+    },
+    {
+      "size": "tiny",
+      "key": "tiny-pretty",
+      "format": "prettified",
+      "minifiedSourceSha256": "ca4acff52a21a16bd9b785048beefd977a08260aa8f19e5184d6ed25d3b7fdb4",
+      "file": "bench-tiny-pretty.json",
+      "bytes": 6772,
+      "characters": 6743,
+      "lines": 294,
+      "sha256": "1be4541839a79e623440cb68f82c0bb0cb6258e8a59e92b50746036a188ecf48",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 481,
+          "line": 20,
+          "column": 33
+        },
+        {
+          "name": "middle",
+          "email": "user3@example.com",
+          "offset": 2449,
+          "line": 106,
+          "column": 33
+        },
+        {
+          "name": "end",
+          "email": "user5@example.com",
+          "offset": 5134,
+          "line": 223,
+          "column": 33
+        }
+      ]
+    },
+    {
+      "size": "100kb",
+      "key": "100kb",
+      "format": "minified",
+      "minifiedSourceSha256": "6dd2438f91bf60e11617fe2464e8d49af823d45dc21dc31e15cb9624554d48e9",
+      "file": "bench-100kb.json",
+      "bytes": 99638,
+      "characters": 98694,
+      "lines": 1,
+      "sha256": "6dd2438f91bf60e11617fe2464e8d49af823d45dc21dc31e15cb9624554d48e9",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 354,
+          "line": 1,
+          "column": 354
+        },
+        {
+          "name": "middle",
+          "email": "user59@example.com",
+          "offset": 46963,
+          "line": 1,
+          "column": 46963
+        },
+        {
+          "name": "end",
+          "email": "user117@example.com",
+          "offset": 97877,
+          "line": 1,
+          "column": 97877
+        }
+      ]
+    },
+    {
+      "size": "100kb",
+      "key": "100kb-pretty",
+      "format": "prettified",
+      "minifiedSourceSha256": "6dd2438f91bf60e11617fe2464e8d49af823d45dc21dc31e15cb9624554d48e9",
+      "file": "bench-100kb-pretty.json",
+      "bytes": 186427,
+      "characters": 185483,
+      "lines": 7945,
+      "sha256": "f6ea1a3f66fe1dc9eeac68447b0ab5f0043f80f9c91646b5efcf0a8fa31b8e08",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 483,
+          "line": 20,
+          "column": 33
+        },
+        {
+          "name": "middle",
+          "email": "user59@example.com",
+          "offset": 87513,
+          "line": 3751,
+          "column": 34
+        },
+        {
+          "name": "end",
+          "email": "user117@example.com",
+          "offset": 183870,
+          "line": 7874,
+          "column": 35
+        }
+      ]
+    },
+    {
+      "size": "1mb",
+      "key": "1mb",
+      "format": "minified",
+      "minifiedSourceSha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+      "file": "bench-1mb.json",
+      "bytes": 999554,
+      "characters": 990220,
+      "lines": 1,
+      "sha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 355,
+          "line": 1,
+          "column": 355
+        },
+        {
+          "name": "middle",
+          "email": "user603@example.com",
+          "offset": 495594,
+          "line": 1,
+          "column": 495594
+        },
+        {
+          "name": "end",
+          "email": "user1204@example.com",
+          "offset": 989401,
+          "line": 1,
+          "column": 989401
+        }
+      ]
+    },
+    {
+      "size": "1mb",
+      "key": "1mb-pretty",
+      "format": "prettified",
+      "minifiedSourceSha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+      "file": "bench-1mb-pretty.json",
+      "bytes": 1863123,
+      "characters": 1853789,
+      "lines": 79196,
+      "sha256": "9bec4b74b12e2ce115890456adfb1aa5cf9955e75b065da2e5ba275ae3de5764",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 484,
+          "line": 20,
+          "column": 33
+        },
+        {
+          "name": "middle",
+          "email": "user603@example.com",
+          "offset": 927641,
+          "line": 39654,
+          "column": 35
+        },
+        {
+          "name": "end",
+          "email": "user1204@example.com",
+          "offset": 1852174,
+          "line": 79125,
+          "column": 36
+        }
+      ]
+    },
+    {
+      "size": "5mb",
+      "key": "5mb",
+      "format": "minified",
+      "minifiedSourceSha256": "d3dc126ca6d60f70a843fabd40900789d20e58c55ff34c161b9d02eaa37375fc",
+      "file": "bench-5mb.json",
+      "bytes": 4999348,
+      "characters": 4951066,
+      "lines": 1,
+      "sha256": "d3dc126ca6d60f70a843fabd40900789d20e58c55ff34c161b9d02eaa37375fc",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 355,
+          "line": 1,
+          "column": 355
+        },
+        {
+          "name": "middle",
+          "email": "user2997@example.com",
+          "offset": 2480961,
+          "line": 1,
+          "column": 2480961
+        },
+        {
+          "name": "end",
+          "email": "user5993@example.com",
+          "offset": 4950247,
+          "line": 1,
+          "column": 4950247
+        }
+      ]
+    },
+    {
+      "size": "5mb",
+      "key": "5mb-pretty",
+      "format": "prettified",
+      "minifiedSourceSha256": "d3dc126ca6d60f70a843fabd40900789d20e58c55ff34c161b9d02eaa37375fc",
+      "file": "bench-5mb-pretty.json",
+      "bytes": 9309034,
+      "characters": 9260752,
+      "lines": 395042,
+      "sha256": "b2c04c0b7715c9a027c11940a22a0e4e0bfcdda838fae561511618d449e3967d",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 484,
+          "line": 20,
+          "column": 33
+        },
+        {
+          "name": "middle",
+          "email": "user2997@example.com",
+          "offset": 4644729,
+          "line": 198209,
+          "column": 36
+        },
+        {
+          "name": "end",
+          "email": "user5993@example.com",
+          "offset": 9259137,
+          "line": 394971,
+          "column": 36
+        }
+      ]
+    },
+    {
+      "size": "10mb",
+      "key": "10mb",
+      "format": "minified",
+      "minifiedSourceSha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+      "file": "bench-10mb.json",
+      "bytes": 9999719,
+      "characters": 9902626,
+      "lines": 1,
+      "sha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 356,
+          "line": 1,
+          "column": 356
+        },
+        {
+          "name": "middle",
+          "email": "user6013@example.com",
+          "offset": 4966740,
+          "line": 1,
+          "column": 4966740
+        },
+        {
+          "name": "end",
+          "email": "user12025@example.com",
+          "offset": 9901805,
+          "line": 1,
+          "column": 9901805
+        }
+      ]
+    },
+    {
+      "size": "10mb",
+      "key": "10mb-pretty",
+      "format": "prettified",
+      "minifiedSourceSha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+      "file": "bench-10mb-pretty.json",
+      "bytes": 18592911,
+      "characters": 18495818,
+      "lines": 788600,
+      "sha256": "7c58a423f0f7bbd22159b6519acd16faea3377fe6501a796b70c652deed1e6d9",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 485,
+          "line": 20,
+          "column": 33
+        },
+        {
+          "name": "middle",
+          "email": "user6013@example.com",
+          "offset": 9290103,
+          "line": 396294,
+          "column": 36
+        },
+        {
+          "name": "end",
+          "email": "user12025@example.com",
+          "offset": 18494201,
+          "line": 788529,
+          "column": 37
+        }
+      ]
+    },
+    {
+      "size": "25mb",
+      "key": "25mb",
+      "format": "minified",
+      "minifiedSourceSha256": "7feeafcfc0c900f18c0b1c2d84a3ec72d1fad0e1f419a5ef71b2d7b470db9a63",
+      "file": "bench-25mb.json",
+      "bytes": 24999379,
+      "characters": 24757862,
+      "lines": 1,
+      "sha256": "7feeafcfc0c900f18c0b1c2d84a3ec72d1fad0e1f419a5ef71b2d7b470db9a63",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 356,
+          "line": 1,
+          "column": 356
+        },
+        {
+          "name": "middle",
+          "email": "user15008@example.com",
+          "offset": 12356147,
+          "line": 1,
+          "column": 12356147
+        },
+        {
+          "name": "end",
+          "email": "user30014@example.com",
+          "offset": 24757041,
+          "line": 1,
+          "column": 24757041
+        }
+      ]
+    },
+    {
+      "size": "25mb",
+      "key": "25mb-pretty",
+      "format": "prettified",
+      "minifiedSourceSha256": "7feeafcfc0c900f18c0b1c2d84a3ec72d1fad0e1f419a5ef71b2d7b470db9a63",
+      "file": "bench-25mb-pretty.json",
+      "bytes": 46429175,
+      "characters": 46187658,
+      "lines": 1967069,
+      "sha256": "f38edc3bae2df05ab719ad795331b9feee0d45e922b6d3a4d5b5e6ed274ef0eb",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 485,
+          "line": 20,
+          "column": 33
+        },
+        {
+          "name": "middle",
+          "email": "user15008@example.com",
+          "offset": 23062831,
+          "line": 982902,
+          "column": 37
+        },
+        {
+          "name": "end",
+          "email": "user30014@example.com",
+          "offset": 46186041,
+          "line": 1966998,
+          "column": 37
+        }
+      ]
+    },
+    {
+      "size": "50mb",
+      "key": "50mb",
+      "format": "minified",
+      "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+      "file": "bench-50mb.json",
+      "bytes": 49998859,
+      "characters": 49518236,
+      "lines": 1,
+      "sha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 356,
+          "line": 1,
+          "column": 356
+        },
+        {
+          "name": "middle",
+          "email": "user30026@example.com",
+          "offset": 24766824,
+          "line": 1,
+          "column": 24766824
+        },
+        {
+          "name": "end",
+          "email": "user60051@example.com",
+          "offset": 49517415,
+          "line": 1,
+          "column": 49517415
+        }
+      ]
+    },
+    {
+      "size": "50mb",
+      "key": "50mb-pretty",
+      "format": "prettified",
+      "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+      "file": "bench-50mb-pretty.json",
+      "bytes": 92806317,
+      "characters": 92325694,
+      "lines": 3930172,
+      "sha256": "2a3c261871b43b8bebc51742df5e4f38500d9893e4e0dde3f71dc744a38fbc55",
+      "positions": [
+        {
+          "name": "start",
+          "email": "user1@example.com",
+          "offset": 485,
+          "line": 20,
+          "column": 33
+        },
+        {
+          "name": "middle",
+          "email": "user30026@example.com",
+          "offset": 46204305,
+          "line": 1967779,
+          "column": 37
+        },
+        {
+          "name": "end",
+          "email": "user60051@example.com",
+          "offset": 92324077,
+          "line": 3930101,
+          "column": 37
+        }
+      ]
+    }
+  ]
+}
