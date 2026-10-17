@@ -1034,8 +1034,7 @@ export class Engine {
   private worker: Worker | null | undefined;
   /** The worker has run its warm-up (see reindent.worker.ts). */
   private workerWarm = false;
-  /** A worker has run in this page; restarts that failed to load (see onerror). */
-  private workerRan = false;
+  /** Workers that failed to load or start (see onerror). */
   private workerFails = 0;
   private measuredSizes: { id: number; sizes: Sizes } | null = null;
   private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
@@ -1047,10 +1046,7 @@ export class Engine {
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
       w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; chunkedOut?: boolean; chunkedDisplay?: boolean }>) => {
-        if (e.data.id === -1) {
-          this.workerWarm = this.workerRan = true;
-          return;
-        }
+        if (e.data.id === -1) return void (this.workerWarm = true);
         if (e.data.id !== this.loadSeq) return;
         if (e.data.sizes) {
           this.measuredSizes = { id: e.data.id, sizes: e.data.sizes };
@@ -1070,10 +1066,11 @@ export class Engine {
         job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.index, display, e.data.change, e.data.patch);
         this.workerParse = null;
       };
-      w.onerror = () => {
-        // It couldn't load (offline before it was ever cached, or blocked): work here instead.
-        // (One restarted after typing that fails to load, when one ran before, is tried again later.)
-        this.worker = this.workerRan && ++this.workerFails < 3 ? undefined : null;
+      w.onerror = (e) => {
+        // It couldn't load (offline before it was ever cached, blocked, or its start cut short by a
+        // navigation): work here instead, and start another on a later use, a few times over.
+        e.preventDefault();
+        this.worker = ++this.workerFails < 3 ? undefined : null;
         w.terminate();
         const job = this.reindentJob;
         this.reindentJob = null;
