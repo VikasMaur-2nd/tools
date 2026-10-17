@@ -591,7 +591,7 @@ export class Editor {
       charCodeAt: (i) => this.doc.charCodeAt(i),
       line: (off) => { const ln = this.lineOf(off); return [this.ls[ln], this.lineEnd(ln)]; },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
-      moved: (nav) => this.surfaceMoved(nav),
+      moved: (nav, reveal) => this.surfaceMoved(nav, reveal),
       point: (x, y) => {
         const exact = this.offsetAt(x, y);
         if (exact !== null) return exact;
@@ -609,9 +609,10 @@ export class Editor {
     });
   }
 
-  private surfaceMoved(nav: boolean) {
+  private surfaceMoved(nav: boolean, reveal = true) {
     this.updateCaret();
-    this.reveal(this.caret);
+    if (reveal) this.reveal(this.caret);
+    else this.render(false);
     this.ev.caret();
     if (nav) this.ev.nav();
   }
@@ -2168,7 +2169,7 @@ export class Editor {
     const y = PAD_T + this.vrowOf(off) * LH;
     const st = this.sc.top;
     if (y < st + LH || y + LH * 2 > st + vh) {
-      this.sc.top = center ? y - vh / 2 + LH : y < st ? y - LH : y - vh + LH * 3;
+      this.sc.top = center ? y - vh / 2 + LH : y < st + LH ? y - LH : y - vh + LH * 3;
     }
     if (!this.wy) {
       const x = PAD_L + (off - this.ls[ln]) * this.cw;

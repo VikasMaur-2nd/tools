@@ -16,7 +16,8 @@ export interface SurfaceHost {
   /** Model start and end of the line holding `off`. */
   line(off: number): [number, number];
   edit(a: number, b: number, text: string, kind: string): void;
-  moved(nav: boolean): void;
+  /** The caret or selection moved (`nav`: by navigating); `reveal` false: leave the view where it is. */
+  moved(nav: boolean, reveal?: boolean): void;
   /** Model offset at a point over the rows. */
   point(x: number, y: number): number;
   /** Visual row showing `off`, and its model start and end. */
@@ -398,8 +399,8 @@ export class Surface {
     this.anchor = from;
     this.head = b;
     this.h.ta.focus({ preventScroll: true });
-    this.h.moved(true);
-    this.frame = requestAnimationFrame(this.scrollOut);
+    // (Not scrolled to: it is on screen, and text moved under the held button would join the selection.)
+    this.h.moved(true, false);
   };
 
   private tap = (e: MouseEvent) => {
@@ -411,9 +412,13 @@ export class Surface {
   };
 
   private move = (e: PointerEvent) => {
-    if (!this.drag) return;
-    this.drag.x = e.clientX;
-    this.drag.y = e.clientY;
+    const d = this.drag;
+    if (!d) return;
+    d.x = e.clientX;
+    d.y = e.clientY;
+    // Only a drag scrolls at the edges, not a press on the first or last row (or its jitter).
+    const p = this.press;
+    if (!this.frame && Math.abs(d.x - p.x) + Math.abs(d.y - p.y) > 4) this.frame = requestAnimationFrame(this.scrollOut);
     this.extend();
   };
 
@@ -423,7 +428,8 @@ export class Surface {
     const [a, b] = this.unit(this.at(d.x, d.y), d.n);
     this.anchor = a < d.a ? d.b : d.a;
     this.head = a < d.a ? a : b;
-    this.h.moved(false);
+    // (Nor is the head: it is under the pointer, or past an edge, where scrollOut scrolls.)
+    this.h.moved(false, false);
   }
 
   /** Dragging past an edge scrolls, faster the farther out. */
@@ -444,5 +450,6 @@ export class Surface {
   private up = () => {
     this.drag = null;
     cancelAnimationFrame(this.frame);
+    this.frame = 0;
   };
 }
