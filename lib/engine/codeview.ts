@@ -233,7 +233,11 @@ export class CodeView {
       if (diff && !change) {
         change = diff(performance.now() + 8);
         if (!change) return soon(prepare);
-        if (this.pending) this.pending.change = change;
+        // (A redraw before this one is shown starts from the change found, against the text itself.)
+        if (this.pending) {
+          this.pending.change = change;
+          this.pending.patch = undefined;
+        }
       }
       const ready = index ?? run!(text.length < 2_000_000 ? Infinity : performance.now() + 8);
       if (!ready) return soon(prepare);
@@ -648,11 +652,17 @@ export class CodeView {
     if (!q) return;
     // Smart case: lowercase queries match any case.
     const cs = q !== q.toLowerCase();
-    const qn = cs ? q : q.toLowerCase();
+    // (İ is the one character whose lowercase is longer: as i, every offset still maps.)
+    const fold = (t: string) => t.replace(/\u0130/g, 'i').toLowerCase();
+    const qn = cs ? q : fold(q);
     const n = this.text.length;
     const ls = this.ls;
     const hits = this.hits;
+    let next = 0;
     const add = (at: number) => {
+      // (Matches don't overlap, across chunk edges too.)
+      if (at < next) return;
+      next = at + qn.length;
       // The line holding offset `at` (a query has no line break, so a match stays in one line).
       let lo = 0;
       let hi = ls.length - 1;
@@ -676,16 +686,8 @@ export class CodeView {
       while (pos < n && hits.length < MAX_HITS * 2) {
         const end = Math.min(n, pos + CHUNK);
         const raw = this.model.slice(pos, Math.min(n, end + qn.length - 1));
-        const part = cs ? raw : raw.toLowerCase();
-        if (part.length !== raw.length) {
-          // Lowercasing changed lengths (e.g. İ): offsets don't map, search this chunk line by line.
-          for (let ln = Math.max(0, this.lineOfOffset(pos)); ln < ls.length && ls[ln] < end; ln++) {
-            const line = cs ? this.line(ln) : this.line(ln).toLowerCase();
-            for (let p = line.indexOf(qn); p >= 0 && hits.length < MAX_HITS * 2; p = line.indexOf(qn, p + qn.length)) if (ls[ln] + p >= pos && ls[ln] + p < end) add(ls[ln] + p);
-          }
-        } else {
-          for (let p = part.indexOf(qn); p >= 0 && pos + p < end && hits.length < MAX_HITS * 2; p = part.indexOf(qn, p + qn.length)) add(pos + p);
-        }
+        const part = cs ? raw : fold(raw);
+        for (let p = part.indexOf(qn); p >= 0 && pos + p < end && hits.length < MAX_HITS * 2; p = part.indexOf(qn, p + qn.length)) add(pos + p);
         pos = end;
         if (performance.now() >= until) return void soon(run);
       }
@@ -701,19 +703,6 @@ export class CodeView {
       this.onFind?.({ total: hits.length / 2, index: this.hi });
     };
     run();
-  }
-
-  /** The line holding text offset `off`. */
-  private lineOfOffset(off: number) {
-    const ls = this.ls;
-    let lo = 0;
-    let hi = ls.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (ls[mid] <= off) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo;
   }
 
   private goto() {

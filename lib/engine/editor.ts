@@ -93,8 +93,11 @@ export interface EditorEvents {
   copyAll(): void;
   /** A paste replaces the whole document with `text`: true if the listener loads it instead (see Engine.load). */
   fullPaste?(text: string): boolean;
-  /** Input is about to be handled: a document still on its way to the editor must arrive first. */
-  flush?(): void;
+  /**
+   * Input is about to be handled: a document still on its way to the editor must arrive first.
+   * `edit`: the input edits, so the document is editable at once (else it arrives as it would have).
+   */
+  flush?(edit: boolean): void;
 }
 
 export interface Diagnostic {
@@ -251,9 +254,9 @@ export class Editor {
   private get src(): Src {
     return this.doc.flat ?? this.doc;
   }
-  /** Editing a document that opened in a view (after Edit anyway, or woken from the quiet view). */
+  /** Editing a document that opened read-only, after Edit anyway (not one woken from the quiet view). */
   get editingAnyway() {
-    return this.forceEdit && !this.view;
+    return this.anyway && this.forceEdit && !this.view;
   }
   /** The document's version: a new object after every edit (compare by identity, without building the text). */
   get version(): object {
@@ -279,6 +282,8 @@ export class Editor {
 
   private surface: Surface | null = null;
   private forceEdit = false;
+  /** Edit anyway was chosen in the read-only view (see editingAnyway). */
+  private anyway = false;
   /** In view mode only until the first edit (see LAZY_CHARS); `loading`: setValue is loading a document. */
   private lazy = false;
   private loading = false;
@@ -649,7 +654,7 @@ export class Editor {
 
   /** A press in the editor: a document still on its way arrives first (see EditorEvents.flush). */
   private onPress = () => {
-    this.ev.flush?.();
+    this.ev.flush?.(false);
   };
 
   /** The user is working in the editor: a document waiting in the quiet view becomes editable now. */
@@ -659,6 +664,7 @@ export class Editor {
 
   /** Loads a huge document into the textarea anyway (slow once, then editable). */
   editAnyway() {
+    if (this.view && !this.lazy) this.anyway = true;
     this.forceEdit = true;
     const caret = this.vcaret;
     this.model(this.doc, false);
@@ -1596,7 +1602,12 @@ export class Editor {
 
   private onBeforeInput = (e: InputEvent) => {
     if (this.quiet) return;
-    this.ev.flush?.();
+    this.ev.flush?.(true);
+    // (The document that arrived opened read-only: the textarea no longer edits it.)
+    if (this.view) {
+      if (e.cancelable) e.preventDefault();
+      return;
+    }
     if (this.surface && e.cancelable && /^(insertLineBreak|insertParagraph)$/.test(e.inputType)) {
       e.preventDefault();
       this.newline();
@@ -1618,6 +1629,10 @@ export class Editor {
 
   private onInput = (e: Event) => {
     if (this.quiet) return;
+    if (this.view) {
+      this.ta.value = '';
+      return;
+    }
     if (this.surface) return this.surface.input(e as InputEvent);
     const it = (e as InputEvent).inputType ?? '';
     const old = this.doc;
@@ -1725,7 +1740,9 @@ export class Editor {
   };
 
   private onPaste = (e: ClipboardEvent) => {
-    this.ev.flush?.();
+    this.ev.flush?.(true);
+    // (The document that arrived opened read-only: a paste replaces it, as in the view.)
+    if (this.view) return this.viewPaste(e);
     const ta = this.ta;
     if (this.surface) {
       const text = e.clipboardData?.getData('text/plain');
@@ -1757,7 +1774,11 @@ export class Editor {
 
   /** Copy / cut with folds: the clipboard gets the hidden lines too. */
   private onCopy = (e: ClipboardEvent) => {
-    this.ev.flush?.();
+    this.ev.flush?.(e.type === 'cut');
+    if (this.view) {
+      if (e.type === 'cut') e.preventDefault();
+      return;
+    }
     if (this.surface && e.clipboardData) {
       e.preventDefault();
       const [a, b] = this.selection;
@@ -1867,8 +1888,9 @@ export class Editor {
   /** View mode keys (the scroller has focus). */
   private onViewKey = (e: KeyboardEvent) => {
     const view = this.view;
-    this.ev.flush?.();
-    // The document this key was for just arrived for editing: the editor answers it.
+    // (It arrives as it would have: the view's own keys wake the quiet view to edit.)
+    this.ev.flush?.(false);
+    // The document this key was for just arrived editable: the editor answers it.
     if (view && !this.view && e.target === this.el) return this.onKey(e);
     if (!this.view || e.target !== this.el) return;
     const mod = e.metaKey || e.ctrlKey;
@@ -1905,8 +1927,12 @@ export class Editor {
 
   /** View mode: pasting replaces the document (there is no caret to insert at). */
   private onViewPaste = (e: ClipboardEvent) => {
-    this.ev.flush?.();
-    if (!this.view || e.target === this.ta) return;
+    if (e.target === this.ta) return;
+    this.ev.flush?.(false);
+    if (this.view) this.viewPaste(e);
+  };
+
+  private viewPaste(e: ClipboardEvent) {
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
@@ -1915,14 +1941,20 @@ export class Editor {
     if (this.wake(at)) return this.replace(at, at, text.replace(/\r\n?/g, '\n'));
     this.pasteFull = true;
     this.apply(0, this.doc.length, text, 0, 0, 'paste');
-  };
+  }
 
   private onKey = (e: KeyboardEvent) => {
     if (e.isComposing) return;
     // (A document still on its way arrives first: the key acts on what is shown.)
-    this.ev.flush?.();
-    if (this.surface?.key(e)) return;
+    this.ev.flush?.(true);
     const mod = e.metaKey || e.ctrlKey;
+    // It opened read-only: only undo and redo still apply, the view takes the rest.
+    if (this.view && !(mod && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) && e.target === this.ta) {
+      e.preventDefault();
+      this.el.focus({ preventScroll: true });
+      return;
+    }
+    if (this.surface?.key(e)) return;
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) this.redo();
@@ -2092,12 +2124,13 @@ export class Editor {
 
   /**
    * Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS).
-   * `keepEdit`: one pasted while editing such a document (see editingAnyway), so it stays editable too.
+   * `keepEdit`: one pasted while editing a document opened with Edit anyway, so it stays editable too.
    */
   setValue(next: string, caret = 0, load = false, keepEdit = false) {
     next = lf(next);
     if (next.length !== this.doc.length || next !== this.text) {
       this.forceEdit = keepEdit && this.forceEdit;
+      if (!this.forceEdit) this.anyway = false;
       this.loading = load;
       try {
         this.apply(0, this.doc.length, next, caret, caret, 'set');

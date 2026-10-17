@@ -422,6 +422,8 @@ export class Engine {
 
   /** Commands that need nodes materialize a deferred Format-view tree on demand. */
   private fresh(): ParseResult | null {
+    // (A document still on its way arrives first: commands act on what is shown.)
+    this.flushLoad();
     if (this.packed?.id === this.loadSeq) {
       const { tree, text, metrics } = this.packed;
       this.viewSeq++;
@@ -713,6 +715,7 @@ export class Engine {
   }
 
   private openInEditor(n: JNode) {
+    this.flushLoad();
     if (!this.synced) return;
     this.ed.select(n.s, n.e);
   }
@@ -790,6 +793,7 @@ export class Engine {
   }
 
   unescapeDoc() {
+    this.flushLoad();
     const text = this.ed.text;
     const r = this.fresh();
     let inner: string | null = null;
@@ -837,6 +841,7 @@ export class Engine {
 
   /** Turns a string value that holds JSON (`"{\"a\":1}"`) into real JSON, in place. */
   async expandNested(n: JNode | null = this.sel) {
+    this.flushLoad();
     if (n === this.sel && this.packed && this.selPath) { this.fresh(); n = this.sel; }
     if (!n || n.t !== STR || !this.synced) return this.toast('Select a string that contains JSON', 'info');
     const { embeddedJson } = await import('../json/smart');
@@ -877,10 +882,12 @@ export class Engine {
   }
 
   undo() {
+    this.flushLoad();
     this.ed.undo();
   }
 
   redo() {
+    this.flushLoad();
     this.ed.redo();
   }
 
@@ -903,6 +910,7 @@ export class Engine {
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
   load(text: string, name: string | null, persist = true, outputFirst = false, keepEdit = false) {
+    this.pendingLoad = null;
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
     this.loadSeq++; // drops what an earlier load still has pending
@@ -923,15 +931,16 @@ export class Engine {
    * Input arrived in the editor before a pending load reached it (a key, a paste or a cut right after
    * pasting a big document): give the editor the document now, so the input acts on what is shown.
    */
-  private flushLoad = () => {
+  private flushLoad = (edit = false) => {
     const p = this.pendingLoad;
-    if (!p || p.seq !== this.loadSeq) return;
+    if (!p) return;
     this.pendingLoad = null;
+    if (p.seq !== this.loadSeq) return;
     // The load's deferred steps are dropped; the analysis draws its output as usual.
     this.loadSeq++;
     this.finishLoad(p.text, p.persist, true, p.keepEdit);
-    // Arrived for the user's input: editable at once, not in the quiet view.
-    this.ed.takeOver();
+    // Arrived for an edit: editable at once, not in the quiet view.
+    if (edit) this.ed.takeOver();
     this.onCaret();
   };
 
@@ -973,7 +982,8 @@ export class Engine {
       store.set({ empty: false, status: { kind: 'parsing' } });
       this.fmt.el.hidden = false;
       // (Id 0: the output shown was drawn here, so the worker had nothing to compare it with.)
-      this.drawFormat(out, text, key, index, display, change?.base && change.base === this.fmtWorkerId ? change : undefined, patch);
+      const base = !!change?.base && change.base === this.fmtWorkerId;
+      this.drawFormat(out, text, key, index, display, base ? change : undefined, base ? patch : undefined);
       this.pendingFmtWorkerId = seq;
       // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
       // the output can be scrolled and searched right away, without that work in the way.
@@ -1175,6 +1185,7 @@ export class Engine {
   }
 
   async copyAll() {
+    this.flushLoad();
     if (!this.ed.text) return this.toast('Nothing to copy yet', 'info');
     await this.copy(this.ed.text, 'Copied to clipboard');
   }
@@ -1290,6 +1301,7 @@ export class Engine {
 
   /** Swap original and modified (both undoable). */
   swapCompare() {
+    this.flushLoad();
     const a = this.ed.text;
     const b = this.ed2.text;
     const fa = store.get().fileName;
@@ -1326,6 +1338,7 @@ export class Engine {
   };
 
   download() {
+    this.flushLoad();
     if (!this.ed.text) return this.toast('Nothing to download yet', 'info');
     const name = store.get().fileName || 'data.json';
     this.save(this.ed.text, /\.[a-z0-9]+$/i.test(name) ? name : name + '.json', 'application/json');
@@ -1406,6 +1419,7 @@ export class Engine {
   private viewSeq = 0;
 
   setView(view: View, ready?: () => void) {
+    this.flushLoad();
     const viewSeq = ++this.viewSeq;
     const packed = this.packed?.id === this.loadSeq ? this.packed : this.goodPacked;
     if (view !== 'format' && view !== 'compare' && packed) {
