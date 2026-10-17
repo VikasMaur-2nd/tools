@@ -1088,7 +1088,12 @@ export class Engine {
   private finishLoad(text: string, persist: boolean, split = false, keepEdit = false) {
     this.pendingLoad = null;
     this.ed.setValue(text, 0, true, keepEdit);
-    if (this.refocus) this.ed.focus();
+    if (this.refocus) {
+      // Pasted in the editor: the user is editing, so it arrives editable (not in the quiet view,
+      // where a selection by keyboard would select nothing and the next paste would add to it).
+      this.ed.takeOver();
+      this.ed.focus();
+    }
     this.refocus = false;
     const seq = this.loadSeq;
     const rest = () => {
