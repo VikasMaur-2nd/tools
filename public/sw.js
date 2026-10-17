@@ -3,7 +3,8 @@
  *  '/' navigations      stale-while-revalidate (instant load, also offline)
  *  other navigations    network-first, then cache, then the cached home of the
  *                       page's language (/es, /ja…), then the cached '/'
- *  /_next/static/*      cache-first (content-hashed, immutable)
+ *  /_next/static/*      cache-first (content-hashed, immutable); a worker's script
+ *                       is answered with a new Response so it keeps its #params=
  *  other same-origin    stale-while-revalidate
  *  never touched        cross-origin, non-GET, /_vercel/* (analytics), RSC requests
  */
@@ -171,11 +172,19 @@ async function networkFirst(event, req) {
 async function cacheFirst(event, req) {
   const cache = await caches.open(CACHE);
   const hit = await cache.match(req, MATCH);
-  if (hit) return hit;
-  const res = await fetch(req);
-  if (cacheable(res)) event.waitUntil(cache.put(req, res.clone()).catch(() => {}));
-  return res;
+  const res = hit || (await fetch(req));
+  if (!hit && cacheable(res)) event.waitUntil(cache.put(req, res.clone()).catch(() => {}));
+  return req.destination === 'worker' ? asNew(res) : res;
 }
+
+/**
+ * Turbopack's worker bootstrap reads its config from its URL's fragment (#params=…), and a
+ * worker takes the URL of the response it gets. A cached copy can have been fetched without
+ * the fragment (Safari lists resources without it, so the page hands over the bare URL), and
+ * served as is it starts the worker without its config ("Missing worker bootstrap config").
+ * A new Response has no URL, so the worker keeps the one it was created with.
+ */
+const asNew = (res) => new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
 
 async function staleWhileRevalidate(event, req) {
   const cache = await caches.open(CACHE);
