@@ -3,7 +3,7 @@
   "method": "Compare rendered numeric tokens using arbitrary-precision Decimal. Grade Format and packed-tree views separately. Duplicate members are separate from numeric values.",
   "runs": [
     {
-      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run1__2026-10-17T07-55-23-842Z.json",
+      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run1__2026-10-17T07-55-23-842Z.json",
       "sha256": "9ee6ae14dae44b75e582bbcc599137b4a395cbc9dc65f6982c474c0140e8a2d4",
       "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
       "batchId": "2026-10-17T07-55-20-428Z",
@@ -104,8 +104,8 @@
             },
             {
               "case": "r_unicode",
-              "source": "\"é\"",
-              "rendered": "\"é\"",
+              "source": "\"\u00e9\"",
+              "rendered": "\"\u00e9\"",
               "verdict": "same spelling"
             }
           ],
@@ -119,10 +119,11 @@
         "file": "fidelity.json",
         "bytes": 425,
         "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
-      }
+      },
+      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run1__2026-10-17T07-55-23-842Z.json"
     },
     {
-      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run2__2026-10-17T08-00-09-899Z.json",
+      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run2__2026-10-17T08-00-09-899Z.json",
       "sha256": "5bf60ce9b8a98709ef57da32bedadec8ca00b2c5a1e493fe8deed3157ed3b684",
       "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
       "batchId": "2026-10-17T08-00-06-352Z",
@@ -223,8 +224,8 @@
             },
             {
               "case": "r_unicode",
-              "source": "\"é\"",
-              "rendered": "\"é\"",
+              "source": "\"\u00e9\"",
+              "rendered": "\"\u00e9\"",
               "verdict": "same spelling"
             }
           ],
@@ -238,10 +239,11 @@
         "file": "fidelity.json",
         "bytes": 425,
         "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
-      }
+      },
+      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run2__2026-10-17T08-00-09-899Z.json"
     },
     {
-      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run3__2026-10-17T07-53-31-023Z.json",
+      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run3__2026-10-17T07-53-31-023Z.json",
       "sha256": "78afdb48d3377cf5b3d444e19f5cd478048f3ec3d990f7f239fef9f2b49d731a",
       "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
       "batchId": "2026-10-17T07-53-27-396Z",
@@ -556,8 +558,8 @@
             },
             {
               "case": "r_unicode",
-              "source": "\"é\"",
-              "rendered": "\"é\"",
+              "source": "\"\u00e9\"",
+              "rendered": "\"\u00e9\"",
               "verdict": "same spelling"
             }
           ],
@@ -655,8 +657,8 @@
             },
             {
               "case": "r_unicode",
-              "source": "\"é\"",
-              "rendered": "\"é\"",
+              "source": "\"\u00e9\"",
+              "rendered": "\"\u00e9\"",
               "verdict": "same spelling"
             }
           ],
@@ -669,10 +671,11 @@
         "file": "fidelity-worker.json",
         "bytes": 2100438,
         "sha256": "325a1f6b66fe3a922079329d233e1cd0d07253c50d87c3610e1c578c49d0bdd7"
-      }
+      },
+      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run3__2026-10-17T07-53-31-023Z.json"
     },
     {
-      "source": "results/raw-fidelity/2026-10-17/tool-kumar__run4__2026-10-17T07-55-37-244Z.json",
+      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run4__2026-10-17T07-55-37-244Z.json",
       "sha256": "064ddbb3252cb4e84773e5ee05144ba777125c5e2bae43f6c91a091b0b0e20ce",
       "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
       "batchId": "2026-10-17T07-55-20-428Z",
@@ -987,8 +990,8 @@
             },
             {
               "case": "r_unicode",
-              "source": "\"é\"",
-              "rendered": "\"é\"",
+              "source": "\"\u00e9\"",
+              "rendered": "\"\u00e9\"",
               "verdict": "same spelling"
             }
           ],
@@ -1086,8 +1089,8 @@
             },
             {
               "case": "r_unicode",
-              "source": "\"é\"",
-              "rendered": "\"é\"",
+              "source": "\"\u00e9\"",
+              "rendered": "\"\u00e9\"",
               "verdict": "same spelling"
             }
           ],
@@ -1100,7 +1103,8 @@
         "file": "fidelity-worker.json",
         "bytes": 2100438,
         "sha256": "325a1f6b66fe3a922079329d233e1cd0d07253c50d87c3610e1c578c49d0bdd7"
-      }
+      },
+      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run4__2026-10-17T07-55-37-244Z.json"
     }
   ],
   "excludedAttempts": []

@@ -23,11 +23,11 @@ export const POSTS: Post[] = [
   {
     slug: 'large-file-json-benchmark',
     title: 'Large JSON benchmark: opening, typing and number fidelity',
-    description: 'A research draft with dated JSON tool measurements, Tool Kumar before and after, and an incomplete repeat for opening, editing and number fidelity.',
-    excerpt: 'Historical and retained JSON tool observations, with a separately labeled Tool Kumar repeat after code and hardware changes.',
+    description: "Six JSON tools tested for opening, typing, memory and number fidelity, with minified and prettified files and a dated Tool Kumar before-and-after.",
+    excerpt: "Three attempts per opening size, plus editing and size checks. Includes failures and the hardware change between the original and latest study.",
     category: 'Research',
     published: '2026-10-17',
-    updated: '2026-10-17',
+    updated: "2026-10-17",
     minutes: 20,
     keywords: ['large JSON file viewer', 'JSON formatter benchmark', '50 MB JSON file', 'JSON number precision', 'JSON viewer memory'],
     sample: `{

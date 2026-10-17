@@ -9,7 +9,7 @@
 
 .chart svg {
   display: block;
-  min-width: 560px;
+  min-width: 750px;
   width: 100%;
   height: auto;
 }

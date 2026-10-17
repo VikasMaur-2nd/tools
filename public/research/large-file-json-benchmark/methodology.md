@@ -1,7 +1,7 @@
 # Methodology: opening 1 MB, 10 MB and 50 MB JSON in online JSON viewers
 
 <!-- BEGIN accepted 925fc3c status -->
-## Current accepted 925fc3c observations
+## Earlier 925fc3c observations with the 2.5 GiB budget
 
 Updated 2026-10-17T09:22:35.791791+00:00. These are results from unchanged before/after deployment evidence. The wider study is incomplete.
 
@@ -83,7 +83,7 @@ Small fidelity profiles and the 2.1-million-character worker fixture are separat
 <!-- END 925fc3c protocol -->
 
 
-## Production refresh for 925fc3c, October 17, 2026
+## Earlier production refresh for 925fc3c, October 17, 2026
 
 The active Tool Kumar repeat is `results/2026-10-17-925fc3c/`. GitHub Production deployment 7136322793 succeeded at 07:15:32 UTC for `925fc3c6f004552a8cdea9628699de9735682d01`. The served HTML returned build token `0KTjE-idTF_Ru-giVfrP7` and `/_next/static/immutable/chunks/` scripts. See `verification/initial-provenance.json` in that directory. This metadata-only request does not supply a benchmark result.
 
@@ -403,3 +403,83 @@ Sources: `results/2026-10-17-memory-6g/summary.json`, `tables.md`, `editing-summ
 
 The public guide at https://tools.vikasmaur.com/tools/large-json-viewer says files up to 300 MB are accepted. Source inspection records a 300 MiB guard, 314,572,800 bytes. The guide also still says read-only above 2,000,000 characters and parsing on the main thread. Those descriptions are stale after the worker and 16M-character changes. This is recorded for the owner; the guide and engine were not edited by this study.
 <!-- END supplemental capacity -->
+
+<!-- BEGIN six-tool comparison -->
+## Latest six-tool comparison at the same memory budget
+
+Measurement dates, UTC: 2026-10-17. Tool Kumar reference production is `925fc3c6f004552a8cdea9628699de9735682d01`. Every tool has a 6 GiB browser-tree budget, a 3,500 MiB host available-memory floor and an 8,000 MiB starting requirement. All accepted timed runs started below load 4 and ran alone inside flock --close. Source commits of the competitors are unknown; their visit time and scripts are recorded. The original 2.5 GiB series and earlier Tool Kumar-only supplement are preserved separately.
+
+The scheduled measurement plan has an outcome for every case. This does not mean that every typing cell has three valid profiles or every size is usable. Failed, blocked, excluded and skipped attempts remain in the export.
+
+- Tool Kumar: 1mb: 0.383 s; {'ok': 3}; 0 cap stops / 10mb: 1.572 s; {'ok': 3}; 0 cap stops / 50mb: 9.051 s; {'ok': 3}; 0 cap stops
+- Code Beautify JSON Viewer: 1mb: 4.220 s; {'ok': 3}; 0 cap stops / 10mb: 21.888 s; {'ok': 3}; 3 cap stops / 50mb: not measured; {'exceeded memory cap': 3}; 3 cap stops
+- JSON Beautifier: 1mb: 0.803 s; {'ok': 3}; 0 cap stops / 10mb: 5.510 s; {'ok': 3}; 0 cap stops / 50mb: 28.159 s; {'ok': 3}; 0 cap stops
+- JSON Viewer Stack: 1mb: 0.639 s; {'ok': 3}; 0 cap stops / 10mb: 8.598 s; {'view detected, interaction obstructed': 1, 'ok': 2}; 0 cap stops / 50mb: 49.822 s; {'view detected, interaction obstructed': 1, 'ok': 2}; 0 cap stops
+- JSON Formatter Online: 1mb: 0.461 s; {'ok': 3}; 0 cap stops / 10mb: 1.153 s; {'ok': 3}; 0 cap stops / 50mb: not measured; {'no formatted view within 90 s': 3}; 0 cap stops
+- JSONLint: 1mb: 6.432 s; {'ok': 3}; 0 cap stops / 10mb: 19.563 s; {'ok': 3}; 0 cap stops / 50mb: not measured; {'unresponsive at 90 s': 1, 'exceeded memory cap': 2}; 2 cap stops
+
+Typing coverage by source and data size:
+
+- Code Beautify JSON Viewer, 100kb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- Code Beautify JSON Viewer, 100kb: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- Code Beautify JSON Viewer, 10mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- Code Beautify JSON Viewer, 10mb: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- Code Beautify JSON Viewer, 1mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- Code Beautify JSON Viewer, 1mb: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Beautifier, 100kb-pretty: 3/3 complete profiles. Event Timing median/p95 24.0 ms / 40.0 ms.
+- JSON Beautifier, 100kb: 3/4 complete profiles. Event Timing median/p95 176.0 ms / 272.0 ms.
+- JSON Beautifier, 10mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Beautifier, 10mb: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Beautifier, 1mb-pretty: 3/3 complete profiles. Event Timing median/p95 24.0 ms / 32.0 ms.
+- JSON Beautifier, 1mb: 3/6 complete profiles. Event Timing median/p95 1888.0 ms / 2376.0 ms.
+- JSON Beautifier, 50mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Beautifier, 50mb: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Formatter Online, 100kb-pretty: 3/3 complete profiles. Event Timing median/p95 16.0 ms / 24.0 ms.
+- JSON Formatter Online, 100kb: 3/3 complete profiles. Event Timing median/p95 40.0 ms / 48.0 ms.
+- JSON Formatter Online, 10mb-pretty: 3/3 complete profiles. Event Timing median/p95 32.0 ms / 32.0 ms.
+- JSON Formatter Online, 10mb: 3/3 complete profiles. Event Timing median/p95 64.0 ms / 112.0 ms.
+- JSON Formatter Online, 1mb-pretty: 3/3 complete profiles. Event Timing median/p95 32.0 ms / 40.0 ms.
+- JSON Formatter Online, 1mb: 3/3 complete profiles. Event Timing median/p95 40.0 ms / 56.0 ms.
+- JSON Viewer Stack, 100kb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Viewer Stack, 100kb: 1/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Viewer Stack, 10mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Viewer Stack, 10mb: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Viewer Stack, 1mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSON Viewer Stack, 1mb: 3/3 complete profiles. Event Timing median/p95 3112.0 ms / 4016.0 ms.
+- JSONLint, 100kb-pretty: 0/4 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSONLint, 100kb: 2/4 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSONLint, 10mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSONLint, 10mb: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSONLint, 1mb-pretty: 0/3 complete profiles. Event Timing median/p95 Fewer than three complete matched profiles / Fewer than three complete matched profiles.
+- JSONLint, 1mb: 3/3 complete profiles. Event Timing median/p95 2040.0 ms / 2912.0 ms.
+- Tool Kumar, 100kb-pretty: 3/3 complete profiles. Event Timing median/p95 32.0 ms / 40.0 ms.
+- Tool Kumar, 100kb: 3/3 complete profiles. Event Timing median/p95 88.0 ms / 216.0 ms.
+- Tool Kumar, 10mb-pretty: 3/3 complete profiles. Event Timing median/p95 24.0 ms / 40.0 ms.
+- Tool Kumar, 10mb: 3/3 complete profiles. Event Timing median/p95 32.0 ms / 56.0 ms.
+- Tool Kumar, 1mb-pretty: 3/3 complete profiles. Event Timing median/p95 24.0 ms / 40.0 ms.
+- Tool Kumar, 1mb: 3/3 complete profiles. Event Timing median/p95 32.0 ms / 48.0 ms.
+- Tool Kumar, 50mb-pretty: 3/3 complete profiles. Event Timing median/p95 56.0 ms / 72.0 ms.
+- Tool Kumar, 50mb: 3/3 complete profiles. Event Timing median/p95 40.0 ms / 56.0 ms.
+
+Tool Kumar prettified 50 MB, start caret: confirmed visible-output median 9918.5 ms in 3/3 profiles. Typing latency is separate.
+
+Tool Kumar prettified 50 MB, middle caret: visible-output interval unconfirmed. Typing latency is separate.
+
+Tool Kumar prettified 50 MB, end caret: visible-output interval unconfirmed. Typing latency is separate.
+
+Tool Kumar minified 50 MB, start caret: confirmed visible-output median 8987.1 ms in 3/3 profiles. Typing latency is separate.
+
+Tool Kumar minified 50 MB, middle caret: visible-output interval unconfirmed. Typing latency is separate.
+
+Tool Kumar minified 50 MB, end caret: visible-output interval unconfirmed. Typing latency is separate.
+
+JSON Beautifier folding was missed by the inherited adapter. Later scheduled visits inspect its public root gutter and record the actual collapse outcome. JSON Formatter Online's initial shortcut can fold inner nodes without fully collapsing the root. Those probe-specific failures and later root-control probes remain separate. One original JSONLint 50 MB opening observation is excluded because a short local hash test may have overlapped it. Its original unresponsive result and single isolated correction are retained in RETRIES.md.
+
+JSON Beautifier minified 100 KB and 1 MB source-preparation failures keep their originals and at most one corrected visit per demonstrated caret-clamping case. Public Ace focus and source-format checks distinguish preparation from ordinary typing. The correction decisions are recorded in source-preparation-corrections-complete.json. No extra 10 MB visit was permitted for its different preparation timeouts.
+
+The larger ladder requires every primary 50 MB attempt to open without a watchdog stop. Stack therefore did not climb to 100 MB after an obstructed 50 MB attempt, despite two other previews. The 25 MB gap is skipped after any failed smaller 10 MB primary attempt or earlier gap failure. These skipped cases are not measured file-size limits.
+
+The one-command Tool Kumar refresh now defaults to the same 6 GiB browser budget. Run `./refresh.sh --url https://tools.vikasmaur.com/ --commit 925fc3c --runs 3 --editing-runs 3`. An alternate URL requires a source commit label. Use `--browser-budget-mib 2560` only for a separately labeled repeat of the earlier budget, and `--dry-run` to inspect the plan without a page load. Every new run gets its own dated directory.
+
+Exact numbers, raw hashes, per-position typing, output updates, feature evidence, memory and skip reasons are in `results/2026-10-17-competitors-6g/public-summary.json`. Review tables are in `review-tables.md`. The isolation and adapter changes are in `RETRIES.md`. `comparison-refresh.sh` regenerates the comparison tables. `regenerate-six-tool.sh` at the study root updates the article and page only after the scheduled plan is complete. Safari copying/offline worker behavior remains untested.
+<!-- END six-tool comparison -->

@@ -11,7 +11,8 @@ const outDir = process.argv[2] || '.';
 mkdirSync(outDir, { recursive: true });
 
 // Sizes are decimal megabytes; each file is the largest whole number of records that fits.
-const TARGETS = [['bench-tiny.json', 4_000], ['bench-1mb.json', 1_000_000], ['bench-10mb.json', 10_000_000], ['bench-50mb.json', 50_000_000]];
+const ORIGINAL_TARGETS = [['bench-tiny.json', 4_000], ['bench-1mb.json', 1_000_000], ['bench-10mb.json', 10_000_000], ['bench-50mb.json', 50_000_000]];
+const TARGETS = process.argv[3] ? process.argv[3].split(',').map(n=>[`bench-${n}mb.json`,Number(n)*1_000_000]) : ORIGINAL_TARGETS;
 const SEED = 20261015;
 
 function mulberry32(seed) {
