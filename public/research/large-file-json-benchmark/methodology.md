@@ -385,3 +385,21 @@ Each phase records remote main and Production deployment metadata before and aft
 The prettified partner of the 10 MB fixture exceeds Tool Kumar's 16-million-character default editable threshold. Its editing attempt also uses the public Edit anyway control and is labeled, just like the 50 MB attempts. The size label refers to the minified data. Every format has separate actual bytes, characters and line counts.
 
 An early resized-host 1 MB editing attempt reached formatted output while the input still showed its placeholder. The preparation click arrived before source presentation. No typing burst was sent. Its minified and prettified cases each use their one documented retry, waiting for the public input fixture marker before activation. Future primary readiness probes record the source wait separately. The opening done predicate and the per-key clock do not move. Earlier successful primary activation observations remain valid. This is a preparation correction, with the readiness gap preserved in the study and findings file.
+
+<!-- BEGIN supplemental capacity -->
+## Supplemental capacity test, October 17, 2026
+
+Production `925fc3c` was checked before and after every batch. This separate series uses a 6 GiB browser-tree budget and a 3,500 MiB host available-memory floor. It requires at least 8,000 MiB available before a browser run. It preserves the earlier 2.5 GiB comparison and its failures. The host is the resized four-CPU, 15,759 MiB instance.
+
+- 100 MB: formatted view in 21.362 s. Search, collapse, tree and scroll-to-end passed. Peak total browser memory was 2819 MiB. One exploratory attempt.
+- 200 MB: formatted view in 39.708 s. Search, collapse, tree and scroll-to-end passed. Peak total browser memory was 5049 MiB. One exploratory attempt.
+- 400 MB: no formatted view within 90 s. The full capacity test did not pass. Peak total browser memory was 430 MiB. One exploratory attempt.
+- 50 MB prettified after Edit anyway: 3/3 complete matched profiles. Event Timing median 56.0 ms, p95 96.0 ms. The rAF cross-check and output-update coverage are in the separate tables.
+- 50 MB minified after Edit anyway: 3/3 complete matched profiles. Event Timing median 48.0 ms, p95 104.0 ms. The rAF cross-check and output-update coverage are in the separate tables.
+
+Visible Format output lagged in the minified start-position probe. Two of three profiles supplied intervals of 9.755 s and 10.093 s from the final key. All other matched 50 MB output intervals remain unconfirmed. Post-window public-search diagnostics do not supply latency. This is separate from the successful typing and Undo checks. The owner was told.
+
+Sources: `results/2026-10-17-memory-6g/summary.json`, `tables.md`, `editing-summary.json`, `completed.jsonl`, `verification/` and linked raw records. This does not establish competitor limits at 6 GiB or a universal maximum file size. `node capacity-refresh.mjs --commit 925fc3c --editing` creates a fresh series and regenerates its tables.
+
+The public guide at https://tools.vikasmaur.com/tools/large-json-viewer says files up to 300 MB are accepted. Source inspection records a 300 MiB guard, 314,572,800 bytes. The guide also still says read-only above 2,000,000 characters and parsing on the main thread. Those descriptions are stale after the worker and 16M-character changes. This is recorded for the owner; the guide and engine were not edited by this study.
+<!-- END supplemental capacity -->

@@ -34,7 +34,7 @@ On the paste path at 1 MB, JSON Formatter Online's retained 0.375 s observation 
 
 On the paste path at 10 MB, JSON Formatter Online's retained 1.163 s observation was lower than Tool Kumar's 1.504 s median. Tool Kumar has 3 runs and that competitor cell has 1. This is a partial same-day comparison, not a repeated fresh ranking.
 
-At 100 MB, formatted output appeared in 17.101 s, then the browser reached the fixed memory cap before search and the later checks. This is a visible preview followed by a cap stop, not a fully usable 100 MB result. The size climb stopped there.
+Under the original 2.5 GiB browser budget, 100 MB formatted output appeared in 17.101 s before the watchdog stopped the browser. That run could not establish full usability. The separate 6 GiB capacity tests below use the resized host's extra memory without replacing those earlier observations.
 
 All 4 current fidelity observations kept the seven numeric values and both duplicate members. Both worker checks graded rendered Format and Tree after a trusted edit and a matching packed-tree reply.
 
@@ -42,7 +42,7 @@ JSON Formatter Online won the original smaller-file comparison. It took 0.43 s a
 
 On the same resized host, local 1 MB polled opening fell from 0.866 s at 19b7ac7 to 0.393 s at 925fc3c. The 50 MB result was mixed. Its polled median fell from 9.127 s to 8.649 s, but the precise in-page DOM median increased from 6.388 s to 8.576 s. The code control does not support a claim that every opening metric improved.
 
-The 50 MB typing attempts did not supply three complete matched profiles under the fixed 2.5 GiB browser cap. The first attempts stopped during preparation. A later minified attempt reached the first burst before the cap stop. There is no valid combined 50 MB typing median here. The source opened editable after Edit anyway, but that alone did not establish sustained typing within the cap. The failures remain in the editing table.
+The 50 MB typing attempts did not supply three complete matched profiles under the fixed 2.5 GiB browser cap. The first attempts stopped during preparation. A later minified attempt reached the first burst before the cap stop. The 2.5 GiB series supplies no valid combined 50 MB typing median. The separate 6 GiB observations are reported in the size-capacity section. The source opened editable after Edit anyway, but that alone did not establish sustained typing within the cap. The failures remain in the editing table.
 
 The 100 KB minified source had an Event Timing median of 88.0 ms and p95 of 744.0 ms. Its prettified partner was 32.0 ms and 56.0 ms. These smaller sources used the native textarea path. The larger editable fixtures used the custom virtual editor. Smaller was not always faster to type in this setup. This does not isolate wrapping as the cause.
 
@@ -260,7 +260,7 @@ Earlier Tool Kumar 1 MB minified and prettified attempts on `b7157f6` could not 
 
 These are partial tested brackets, not exact maximum sizes. Tool Kumar has one exploratory gap run at 5 MB and 25 MB. Competitor gap sizes remain unmeasured. The primary 1 MB, 10 MB and 50 MB cells target three repeats and show actual counts. That fixed comparison attempts all three sizes even if a smaller primary run fails. We stop climbing a tool's exploratory ladder at its first opening failure. Only a tool that passes 50 MB can try 100 MB, with at least 3,500 MB available in `free -m` before it starts. The same browser cap still applies.
 
-| Tool | Largest opened | First observed failure or cap stop | Sizes tried |
+| Tool | Largest opened in the 2.5 GiB series | First observed failure or cap stop in that series | Sizes tried |
 |---|---|---|---|
 | Tool Kumar | 100 MB | 100 MB: 1/1 opened, 17.101 s [17.101 s to 17.101 s]; 1 cap stop(s) during the full run | 1 MB, 5 MB, 10 MB, 25 MB, 50 MB, 100 MB |
 | Code Beautify JSON Viewer | 1 MB | 1 MB: 1/1 opened, 4.058 s [4.058 s to 4.058 s]; 1 cap stop(s) during the full run | 1 MB, 10 MB, 50 MB |
@@ -281,6 +281,35 @@ Public size-limit statements from the pages loaded in this refresh are listed be
 | JSONLint | https://jsonlint.com/ | No size-limit statement found on the loaded page |
 
 A cap message, a responsive minified editor, a hung page and a crash are separate outcomes. The first failure describes our browser, cap and fixture shape. It does not establish a product's universal file limit. Files with one long line can behave differently from files with many short lines.
+
+### Supplemental size tests with a 6 GiB browser budget
+
+The resized instance had room to test beyond the old browser cap. On October 17, 2026, we repeated Tool Kumar capacity checks at `925fc3c` with a 6 GiB total-browser budget, instead of 2.5 GiB. The watchdog still stopped below 3,500 MiB of host available memory. Each run required at least 8,000 MiB available at its start. Browser, viewport, fixture generator, six-second settle and opening predicate stayed the same. Production evidence was unchanged before and after every accepted batch.
+
+These are one-attempt exploratory size tests, not repeated performance estimates. They are separate from the earlier comparison and do not establish competitor limits under the larger budget. A formatted preview and completion of all navigation checks remain separate outcomes. Default input at these sizes is read-only. This ladder does not test editing above the original 50 MB data size.
+
+| Source size | Actual bytes | Polled formatted view | Last-record search | Collapse | Scroll to end | Tree | Peak total browser | Full-run outcome |
+|---|---|---|---|---|---|---|---|---|
+| 100 MB | 99999788 | 21.362 s | ok | ok | ok | ok | 2819 MiB | Completed |
+| 200 MB | 199999972 | 39.708 s | ok | ok | ok | ok | 5049 MiB | Completed |
+| 400 MB | 399999594 | no formatted view within 90 s | Not reached | Not reached | Not reached | Not reached | 430 MiB | no formatted view within 90 s |
+
+The [public large-file guide](https://tools.vikasmaur.com/tools/large-json-viewer) states a 300 MB safety limit. The pinned source implements 300 MiB, or 314,572,800 bytes. The 400 MB fixture exceeds that guard and produced no formatted view within 90 s. The browser watchdog did not stop that run. The largest successful fixture here is 200 MB; we did not measure the exact boundary between 200 MB and the guard.
+
+### Supplemental 50 MB editing with the 6 GiB budget
+
+These profiles click Edit anyway and use the same first, middle and last record carets, twenty trusted CDP characters at ten per second, Enter, Backspace, a 200-character paste, Undo and input-scrolling checks. The minified and prettified sources contain the same data. The larger pretty file has its own byte count and hash. Preparation uses trusted Undo, with an exact source hash checked at the end. Values below combine only three complete matched profiles. Failed profiles remain outcomes in the download. Event Timing and the rAF cross-check retain the threshold and frame limitations described in the main editing section.
+
+| Source format | Actual bytes | Complete profiles / attempts | Event median | Event p95 | rAF median | rAF p95 | Output update | Longest frame | Longest long task |
+|---|---|---|---|---|---|---|---|---|---|
+| prettified | 92806317 | 3/3 | 56.0 ms | 96.0 ms | 36.1 ms | 64.1 ms | start: Not confirmed; middle: Not confirmed; end: Not confirmed | 83.3 ms | 79.0 ms |
+| minified | 49998859 | 3/3 | 48.0 ms | 104.0 ms | 10.2 ms | 63.3 ms | start: 9755.1 ms in 2/3 profiles; middle: Not confirmed; end: Not confirmed | 166.7 ms | 159.0 ms |
+
+The minified start position supplied confirmed visible-output intervals in two of three profiles, 9.755 s and 10.093 s after the final key. Other positions and the prettified profiles did not supply confirmed intervals within the observer window. Later public-search diagnostics sometimes found the marker, which establishes eventual content, not its update time. The successful typing profiles do not establish equally fast formatted-output updates.
+
+The separate capacity download includes per-operation frame times, Undo confirmation, source hash checks, scrolling frames, individual caret positions and every incomplete attempt. A failure in caret preparation is not assigned a keystroke latency.
+
+[Supplemental capacity measurements](publish/capacity-summary.json) contain fixture hashes, limits, raw-source references, failed attempts and deployment checks. A stop at the new budget would still be a benchmark stop, not a universal maximum file size.
 
 ## Which features still worked at each size?
 

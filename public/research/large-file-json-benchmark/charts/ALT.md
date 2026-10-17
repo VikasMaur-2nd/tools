@@ -8,3 +8,7 @@
 - `editing-latency.svg`: Minified and prettified trusted keydown-to-next-rAF medians and p95 for each tool and data size. Solid and outline circles distinguish source formats. A logarithmic scale allows larger freezes to remain visible. Unverified typing remains unmeasured. Event Timing threshold bounds and output-update times are in the article table.
 
 - `local-code-opening.svg`: Partial local production builds of the listed commits on the same four-CPU host. Bars show median polled file opening at 1 MB, 10 MB and 50 MB, with successful-run counts. The adjacent table gives ranges and precise DOM and frame timing. These are separate from CDN results.
+
+## editing-50mb-6g.svg
+
+50 MB source data after Edit anyway, separate 6 GiB browser budget. prettified: 3/3 complete profiles; Event Timing median 56.0 ms, p95 96.0 ms. minified: 3/3 complete profiles; Event Timing median 48.0 ms, p95 104.0 ms. The main comparison retains its 2.5 GiB cap failures.

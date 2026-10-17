@@ -1,0 +1,1219 @@
+{
+  "generatedAt": "2026-10-17T17:27:05.443317+00:00",
+  "scope": "Separate Tool Kumar capacity series. Does not replace the 2.5 GiB comparison or establish competitor limits. Exploratory size ladder has one attempt per size; typing requires three complete matched profiles per format.",
+  "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+  "environment": {
+    "recordedAt": "2026-10-17T17:08:52.183678+00:00",
+    "logicalCPUs": 4,
+    "memoryMiB": 15759,
+    "node": "v24.21.0",
+    "free": "               total        used        free      shared  buff/cache   available\nMem:           15759        3769        4721          96        7616       11989\nSwap:          14834         405       14429\n",
+    "browserCapMiB": 6144,
+    "memAvailableFloorMiB": 3500,
+    "minAvailableToStartMiB": 8000,
+    "browser": "Chromium 145.0.7632.0",
+    "viewport": [
+      1366,
+      900
+    ],
+    "gpu": false,
+    "settleSeconds": 6,
+    "note": "Supplemental size/typing capacity series. Different memory budget from all earlier timing comparisons. Tool Kumar only. Same source harness except watchdog cap/floor, pre-run memory gate, and watchdog hash in each record."
+  },
+  "checks": {
+    "acceptedRecordsPresent": true,
+    "oneCommit": true,
+    "allStartsBelow4": true,
+    "sixGiBBrowserBudget": true,
+    "hostFloor3500MiB": true,
+    "everyFixtureVerified": true,
+    "noUploads": true,
+    "deploymentStable:2026-10-17T17-08-57-535Z": true,
+    "deploymentStable:2026-10-17T17-09-56-912Z": true,
+    "deploymentStable:2026-10-17T17-11-20-692Z": true,
+    "deploymentStable:2026-10-17T17-13-30-691Z": true,
+    "deploymentStable:2026-10-17T17-17-19-305Z": true,
+    "deploymentStable:2026-10-17T17-17-28-432Z": true,
+    "deploymentStable:2026-10-17T17-19-28-983Z": true,
+    "deploymentStable:2026-10-17T17-19-36-795Z": true,
+    "deploymentStable:2026-10-17T17-21-55-891Z": true
+  },
+  "integrityPass": true,
+  "sizeObservations": [
+    {
+      "size": "100mb",
+      "run": 1,
+      "startedAt": "2026-10-17T17:09:01.307Z",
+      "finishedAt": "2026-10-17T17:09:35.699Z",
+      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+      "batchId": "2026-10-17T17-08-57-535Z",
+      "fixture": {
+        "file": "bench-100mb.json",
+        "bytes": 99999788,
+        "sha256": "dda41c73526f8cf82b328bcc79600f168327a48de0ee29b8d6fc65154ae11d69",
+        "expectedSha256": "dda41c73526f8cf82b328bcc79600f168327a48de0ee29b8d6fc65154ae11d69",
+        "sha256Verified": true
+      },
+      "status": "ok",
+      "visibleMs": 21362,
+      "elapsedAtStopMs": null,
+      "precise": {
+        "t0": 7570.30000000447,
+        "inputEnabledMs": null,
+        "domMs": 17555.89999999851,
+        "nextFrameMs": 17560.89999999851,
+        "secondFrameMs": 21331.79999999702,
+        "treeDomMs": null,
+        "checks": 1350,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "features": {
+        "search": {
+          "status": "ok",
+          "ms": 636
+        },
+        "collapse": {
+          "status": "ok",
+          "ms": 869
+        }
+      },
+      "compatibility": {
+        "scrollEnd": {
+          "text": "7852648\n      \"active\": false,\n7852649\n      \"score\": 69.5065,\n7852650\n      \"created_at\": \"2023-01-13T14:09:09.000Z\",\n7852651\n      \"tags\": [\n7852652\n        \"support:priority\",\n7852653\n        \"test\"\n7852654\n      ],\n7852655\n      \"address\": {\n7852656\n        \"street\": \"\u0130stiklal Caddesi 179\",\n7852657\n        \"city\": \"Lagos\",\n7852658\n        \"country\": \"NG\",\n7852659\n        \"geo\": {\n7852660\n          \"lat\": 6.51759,\n7852661\n          \"lng\": 3.38372\n7852662\n        }\n7852663\n      },\n7852664\n      \"preferences\": {\n7852665\n        \"locale\": \"pl-PL\",\n7852666\n        \"theme\": \"dark\",\n7852667\n        \"newsletter\": false\n7852668\n      },\n7852669\n      \"orders\": [\n7852670\n        {\n7852671\n          \"order_id\": \"ORD-119935-1\",\n7852672\n          \"status\": \"refunded\",\n7852673\n          \"currency\": \"JPY\",\n7852674\n          \"total\": 692.36,\n7852675\n          \"items\": [\n7852676\n            {\n7852677\n              \"sku\": \"SKU-73EB43\",\n7852678\n              \"qty\": 4,\n7852679\n              \"price\": 173.09,\n7852680\n              \"discount\": null\n7852681\n            }\n7852682\n          ],\n7852683\n          \"note\": \"Path C:\\\\orders\\\\archive\"\n7852684\n        },\n7852685\n        {\n7852686\n          \"order_id\": \"ORD-119935-2\",\n7852687\n          \"status\": \"paid\",\n7852688\n          \"currency\": \"EUR\",\n7852689\n          \"total\": 864.49,\n7852690\n          \"items\": [\n7852691\n            {\n7852692\n              \"sku\": \"SKU-0402C8\",\n7852693\n              \"qty\": 1,\n7852694\n              \"price\": 118.46,\n7852695\n              \"discount\": 0.05\n7852696\n            },\n7852697\n            {\n7852698\n              \"sku\": \"SKU-C57008\",\n7852699\n              \"qty\": 5,\n7852700\n              \"price\": 97.55,\n7852701\n              \"discount\": null\n7852702\n            },\n7852703\n            {\n7852704\n              \"sku\": \"SKU-34BD83\",\n7852705\n              \"qty\": 2,\n7852706\n              \"price\": 129.14,\n7852707\n              \"discount\": null\n7852708\n            }\n7852709\n          ],\n7852710\n          \"note\": null\n7852711\n        }\n7852712\n      ],\n7852713\n      \"bio\": null,\n7852714\n      \"search_probe\": \"TKLB-NEEDLE-LAST\"\n7852715\n    }\n7852716\n  ],\n7852717\n  \"next_cursor\": null\n7852718\n}",
+          "top": 14999172,
+          "height": 15000000,
+          "client": 828,
+          "status": "ok"
+        },
+        "tree": {
+          "status": "not offered in tested view"
+        }
+      },
+      "tree": {
+        "status": "ok",
+        "evidence": {
+          "text": "root\n{3}\nmeta\n:\n{6}\nexport\n:\n\"customers\"\ngenerator\n:\n\"tk-large-json-bench v1\"\nmarker\n:\n\"TKLB-7F3A-MARKER\"\ngenerated_at\n:\n\"2026-10-15T00:00:00Z\"\nrecord_count\n:\n119935\nschema_version\n:\n3\ndata\n:\n[119935]\n0\n:\n{13}\n{id: 1, uuid: \"3e8a02e9-9ebc-4170-9a2b-9e9640f0614d\", account_number: 9007199254748912, name: {\u2026}, \u2026}\n1\n:\n{13}\n{id: 2, uuid: \"46c05709-45a3-40bb-9ef1-2fe06837fb33\", account_number: 9007199254756831, name: {\u2026}, \u2026}\n2\n:\n{13}\n{id: 3, uuid: \"0cef8391-818f-4d70-ae3e-f31a7972b412\", account_number: 9007199254764750, name: {\u2026}, \u2026}\n3\n:\n{13}\n{id: 4, uuid: \"d20cd2c0-af86-4714-ad23-c0e43f86bea8\", account_number: 9007199254772669, name: {\u2026}, \u2026}\n4\n:\n{13}\n{id: 5, uuid: \"7aec3c5f-13b3-466e-a88d-a566577495b2\", account_number: 9007199254780588, name: {\u2026}, \u2026}\n5\n:\n{13}\n{id: 6, uuid: \"6e29d0b1-ba7d-483b-b6fa-00191bc350e0\", account_number: 9007199254788507, name: {\u2026}, \u2026}\n6\n:\n{13}\n{id: 7, uuid: \"1cc2b5ed-52c7-4227-b06b-e8c4554ab34b\", account_number: 9007199254796426, name: {\u2026}, \u2026}\n7\n:\n{13}\n{id: 8, uuid: \"cbd9446d-1676-4c77-938c-1245a172c475\", account_number: 9007199254804345, name: {\u2026}, \u2026}\n8\n:\n{13}\n{id: 9, uuid: \"eb3cc295-9c9c-42f6-9786-863482862228\", account_number: 9007199254812264, name: {\u2026}, \u2026}\n",
+          "visible": true,
+          "tabs": [
+            {
+              "text": "Format",
+              "selected": "false"
+            },
+            {
+              "text": "Tree",
+              "selected": "true"
+            },
+            {
+              "text": "Table",
+              "selected": "false"
+            },
+            {
+              "text": "Convert",
+              "selected": "false"
+            },
+            {
+              "text": "Compare",
+              "selected": "false"
+            }
+          ]
+        }
+      },
+      "editing": {
+        "status": "read-only by default",
+        "before": {
+          "readOnly": false,
+          "disabled": false,
+          "visible": false,
+          "text": "",
+          "class": ""
+        }
+      },
+      "readOnlyNotice": "Large document (95.4 MB) is read-only for speed. Everything on the right still works.\nEdit anyway",
+      "notes": [],
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__100mb__size-ladder-6g1__2026-10-17T17-09-01-023Z.json",
+      "rawSha256": "795fdcbcba5139a18a387a11fa342ae471278ac521e08381f523137ed55caa91",
+      "memory": {
+        "peakRendererMiB": 2537,
+        "peakBrowserMiB": 2819,
+        "minMemAvailableMiB": 8433,
+        "samples": 174,
+        "killed": null
+      },
+      "fullRunCompleted": true
+    },
+    {
+      "size": "200mb",
+      "run": 1,
+      "startedAt": "2026-10-17T17:10:12.570Z",
+      "finishedAt": "2026-10-17T17:11:05.591Z",
+      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+      "batchId": "2026-10-17T17-09-56-912Z",
+      "fixture": {
+        "file": "bench-200mb.json",
+        "bytes": 199999972,
+        "sha256": "fe13bc1b68958f453dcfa23dd74c35ae6c49b4d28332c121aacca5f05bd851b3",
+        "expectedSha256": "fe13bc1b68958f453dcfa23dd74c35ae6c49b4d28332c121aacca5f05bd851b3",
+        "sha256Verified": true
+      },
+      "status": "ok",
+      "visibleMs": 39708,
+      "elapsedAtStopMs": null,
+      "precise": {
+        "t0": 7415.69999999553,
+        "inputEnabledMs": null,
+        "domMs": 39564.10000000149,
+        "nextFrameMs": 39567,
+        "secondFrameMs": 39633,
+        "treeDomMs": null,
+        "checks": 2581,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "features": {
+        "search": {
+          "status": "ok",
+          "ms": 569
+        },
+        "collapse": {
+          "status": "ok",
+          "ms": 1360
+        }
+      },
+      "compatibility": {
+        "scrollEnd": {
+          "text": " 69.5065,\n15678287\n      \"created_at\": \"2023-01-13T14:09:09.000Z\",\n15678288\n      \"tags\": [\n15678289\n        \"support:priority\",\n15678290\n        \"test\"\n15678291\n      ],\n15678292\n      \"address\": {\n15678293\n        \"street\": \"\u0130stiklal Caddesi 179\",\n15678294\n        \"city\": \"Lagos\",\n15678295\n        \"country\": \"NG\",\n15678296\n        \"geo\": {\n15678297\n          \"lat\": 6.51759,\n15678298\n          \"lng\": 3.38372\n15678299\n        }\n15678300\n      },\n15678301\n      \"preferences\": {\n15678302\n        \"locale\": \"pl-PL\",\n15678303\n        \"theme\": \"dark\",\n15678304\n        \"newsletter\": false\n15678305\n      },\n15678306\n      \"orders\": [\n15678307\n        {\n15678308\n          \"order_id\": \"ORD-239230-1\",\n15678309\n          \"status\": \"refunded\",\n15678310\n          \"currency\": \"JPY\",\n15678311\n          \"total\": 692.36,\n15678312\n          \"items\": [\n15678313\n            {\n15678314\n              \"sku\": \"SKU-73EB43\",\n15678315\n              \"qty\": 4,\n15678316\n              \"price\": 173.09,\n15678317\n              \"discount\": null\n15678318\n            }\n15678319\n          ],\n15678320\n          \"note\": \"Path C:\\\\orders\\\\archive\"\n15678321\n        },\n15678322\n        {\n15678323\n          \"order_id\": \"ORD-239230-2\",\n15678324\n          \"status\": \"paid\",\n15678325\n          \"currency\": \"EUR\",\n15678326\n          \"total\": 864.49,\n15678327\n          \"items\": [\n15678328\n            {\n15678329\n              \"sku\": \"SKU-0402C8\",\n15678330\n              \"qty\": 1,\n15678331\n              \"price\": 118.46,\n15678332\n              \"discount\": 0.05\n15678333\n            },\n15678334\n            {\n15678335\n              \"sku\": \"SKU-C57008\",\n15678336\n              \"qty\": 5,\n15678337\n              \"price\": 97.55,\n15678338\n              \"discount\": null\n15678339\n            },\n15678340\n            {\n15678341\n              \"sku\": \"SKU-34BD83\",\n15678342\n              \"qty\": 2,\n15678343\n              \"price\": 129.14,\n15678344\n              \"discount\": null\n15678345\n            }\n15678346\n          ],\n15678347\n          \"note\": null\n15678348\n        }\n15678349\n      ],\n15678350\n      \"bio\": null,\n15678351\n      \"search_probe\": \"TKLB-NEEDLE-LAST\"\n15678352\n    }\n15678353\n  ],\n15678354\n  \"next_cursor\": null\n15678355\n}",
+          "top": 14999172,
+          "height": 15000000,
+          "client": 828,
+          "status": "ok"
+        },
+        "tree": {
+          "status": "not offered in tested view"
+        }
+      },
+      "tree": {
+        "status": "ok",
+        "evidence": {
+          "text": "root\n{3}\nmeta\n:\n{6}\nexport\n:\n\"customers\"\ngenerator\n:\n\"tk-large-json-bench v1\"\nmarker\n:\n\"TKLB-7F3A-MARKER\"\ngenerated_at\n:\n\"2026-10-15T00:00:00Z\"\nrecord_count\n:\n239230\nschema_version\n:\n3\ndata\n:\n[239230]\n0\n:\n{13}\n{id: 1, uuid: \"3e8a02e9-9ebc-4170-9a2b-9e9640f0614d\", account_number: 9007199254748912, name: {\u2026}, \u2026}\n1\n:\n{13}\n{id: 2, uuid: \"46c05709-45a3-40bb-9ef1-2fe06837fb33\", account_number: 9007199254756831, name: {\u2026}, \u2026}\n2\n:\n{13}\n{id: 3, uuid: \"0cef8391-818f-4d70-ae3e-f31a7972b412\", account_number: 9007199254764750, name: {\u2026}, \u2026}\n3\n:\n{13}\n{id: 4, uuid: \"d20cd2c0-af86-4714-ad23-c0e43f86bea8\", account_number: 9007199254772669, name: {\u2026}, \u2026}\n4\n:\n{13}\n{id: 5, uuid: \"7aec3c5f-13b3-466e-a88d-a566577495b2\", account_number: 9007199254780588, name: {\u2026}, \u2026}\n5\n:\n{13}\n{id: 6, uuid: \"6e29d0b1-ba7d-483b-b6fa-00191bc350e0\", account_number: 9007199254788507, name: {\u2026}, \u2026}\n6\n:\n{13}\n{id: 7, uuid: \"1cc2b5ed-52c7-4227-b06b-e8c4554ab34b\", account_number: 9007199254796426, name: {\u2026}, \u2026}\n7\n:\n{13}\n{id: 8, uuid: \"cbd9446d-1676-4c77-938c-1245a172c475\", account_number: 9007199254804345, name: {\u2026}, \u2026}\n8\n:\n{13}\n{id: 9, uuid: \"eb3cc295-9c9c-42f6-9786-863482862228\", account_number: 9007199254812264, name: {\u2026}, \u2026}\n",
+          "visible": true,
+          "tabs": [
+            {
+              "text": "Format",
+              "selected": "false"
+            },
+            {
+              "text": "Tree",
+              "selected": "true"
+            },
+            {
+              "text": "Table",
+              "selected": "false"
+            },
+            {
+              "text": "Convert",
+              "selected": "false"
+            },
+            {
+              "text": "Compare",
+              "selected": "false"
+            }
+          ]
+        }
+      },
+      "editing": {
+        "status": "read-only by default",
+        "before": {
+          "readOnly": false,
+          "disabled": false,
+          "visible": false,
+          "text": "",
+          "class": ""
+        }
+      },
+      "readOnlyNotice": "Large document (190.7 MB) is read-only for speed. Everything on the right still works.\nEdit anyway",
+      "notes": [],
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__200mb__size-ladder-6g1__2026-10-17T17-10-12-409Z.json",
+      "rawSha256": "596074919a62749ba2532ac93fd384751177ad33268b4d48bd1da072fd89661c",
+      "memory": {
+        "peakRendererMiB": 4771,
+        "peakBrowserMiB": 5049,
+        "minMemAvailableMiB": 7145,
+        "samples": 267,
+        "killed": null
+      },
+      "fullRunCompleted": true
+    },
+    {
+      "size": "400mb",
+      "run": 1,
+      "startedAt": "2026-10-17T17:11:49.159Z",
+      "finishedAt": "2026-10-17T17:13:26.869Z",
+      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+      "batchId": "2026-10-17T17-11-20-692Z",
+      "fixture": {
+        "file": "bench-400mb.json",
+        "bytes": 399999594,
+        "sha256": "933968cfcf23684702ec5df6bceb9ddecd4683eb6d1975cf49157ed5afeb3f16",
+        "expectedSha256": "933968cfcf23684702ec5df6bceb9ddecd4683eb6d1975cf49157ed5afeb3f16",
+        "sha256Verified": true
+      },
+      "status": "no formatted view within 90 s",
+      "visibleMs": null,
+      "elapsedAtStopMs": 90085,
+      "precise": {
+        "t0": 7279.19999999553,
+        "inputEnabledMs": null,
+        "domMs": null,
+        "nextFrameMs": null,
+        "secondFrameMs": null,
+        "treeDomMs": null,
+        "checks": 10812,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "features": null,
+      "compatibility": null,
+      "tree": null,
+      "editing": null,
+      "readOnlyNotice": null,
+      "notes": [],
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__400mb__size-ladder-6g1__2026-10-17T17-11-48-833Z.json",
+      "rawSha256": "e315df4ebd2d96ac56631ef6ff5bd5e6a8fca132279866374ee2b8d6ea73e5cc",
+      "memory": {
+        "peakRendererMiB": 147,
+        "peakBrowserMiB": 430,
+        "minMemAvailableMiB": 11431,
+        "samples": 490,
+        "killed": null
+      },
+      "fullRunCompleted": false
+    }
+  ],
+  "editing": {
+    "generatedAt": "2026-10-17T17:27:05.209Z",
+    "commit": "925fc3c6f004552a8cdea9628699de9735682d01",
+    "method": "Planned: three fresh-profile attempts per data size and source format in the 925fc3c repeat. Earlier series have their own requested counts. Actual attempts are reported per cell. Normal combined quantiles require at least three profiles with all matched positions; every failed or incomplete attempt remains an outcome; first, middle and last record email values; twenty trusted CDP keydown/up pairs at requested 100 ms intervals. Per-key rAF uses trusted event timestamps. Event Timing records only events at/above its 16 ms threshold and is reported separately. Output update starts at the final trusted keydown timestamp for every editor, independent of native input events. Manual button times are separate. Percentiles use nearest rank.",
+    "groups": [
+      {
+        "site": "Tool Kumar",
+        "size": "50mb-pretty",
+        "format": "prettified",
+        "sourceSize": "50mb",
+        "runs": 3,
+        "completeProfiles": 3,
+        "matchedSources": [
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json"
+        ],
+        "opening": {
+          "n": 3,
+          "median": 11162,
+          "p95": 11414,
+          "max": 11414
+        },
+        "design": {
+          "editor": "Custom virtual editor with a native textarea passage",
+          "update": "Live formatted view",
+          "output": "#view-format"
+        },
+        "fixture": {
+          "size": "50mb",
+          "key": "50mb-pretty",
+          "format": "prettified",
+          "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+          "file": "bench-50mb-pretty.json",
+          "bytes": 92806317,
+          "characters": 92325694,
+          "lines": 3930172,
+          "sha256": "2a3c261871b43b8bebc51742df5e4f38500d9893e4e0dde3f71dc744a38fbc55",
+          "positions": [
+            {
+              "name": "start",
+              "email": "user1@example.com",
+              "offset": 485,
+              "line": 20,
+              "column": 33
+            },
+            {
+              "name": "middle",
+              "email": "user30026@example.com",
+              "offset": 46204305,
+              "line": 1967779,
+              "column": 37
+            },
+            {
+              "name": "end",
+              "email": "user60051@example.com",
+              "offset": 92324077,
+              "line": 3930101,
+              "column": 37
+            }
+          ]
+        },
+        "editAnyway": true,
+        "outcomes": [
+          {
+            "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+            "opening": "ok",
+            "rawOpeningStatus": "ok",
+            "editing": "measured",
+            "phase": "source restoration",
+            "memoryStop": null
+          },
+          {
+            "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+            "opening": "ok",
+            "rawOpeningStatus": "ok",
+            "editing": "measured",
+            "phase": "source restoration",
+            "memoryStop": null
+          },
+          {
+            "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json",
+            "opening": "ok",
+            "rawOpeningStatus": "ok",
+            "editing": "measured",
+            "phase": "source restoration",
+            "memoryStop": null
+          }
+        ],
+        "raf": {
+          "n": 180,
+          "median": 36.100000001490116,
+          "p95": 64.10000000149012,
+          "max": 84.10000000149012
+        },
+        "eventTiming": {
+          "median": "56.0 ms",
+          "p95": "96.0 ms",
+          "entries": 177,
+          "totalKeys": 180,
+          "censoredBelow16ms": 3,
+          "conditional": {
+            "n": 177,
+            "median": 56,
+            "p95": 96,
+            "max": 128
+          }
+        },
+        "positions": [
+          {
+            "position": "start",
+            "runs": 3,
+            "verifiedRuns": 3,
+            "outcomes": [
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              }
+            ],
+            "raf": {
+              "n": 60,
+              "median": 39.100000001490116,
+              "p95": 71.60000000149012,
+              "max": 81.39999999850988
+            },
+            "eventTimingAboveThreshold": {
+              "n": 59,
+              "median": 64,
+              "p95": 112,
+              "max": 112
+            },
+            "eventTimingMissingOrBelow16ms": 1,
+            "outputUpdate": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "buttonToOutput": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "outputConfirmedRuns": 0,
+            "outputVisibilityNote": null,
+            "longestFrameMs": 83.30000000000291,
+            "longestTaskMs": 78
+          },
+          {
+            "position": "middle",
+            "runs": 3,
+            "verifiedRuns": 3,
+            "outcomes": [
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              }
+            ],
+            "raf": {
+              "n": 60,
+              "median": 34.5,
+              "p95": 56.79999999701977,
+              "max": 70.89999999850988
+            },
+            "eventTimingAboveThreshold": {
+              "n": 58,
+              "median": 56,
+              "p95": 96,
+              "max": 96
+            },
+            "eventTimingMissingOrBelow16ms": 2,
+            "outputUpdate": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "buttonToOutput": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "outputConfirmedRuns": 0,
+            "outputVisibilityNote": null,
+            "longestFrameMs": 66.70000000000437,
+            "longestTaskMs": 68
+          },
+          {
+            "position": "end",
+            "runs": 3,
+            "verifiedRuns": 3,
+            "outcomes": [
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              }
+            ],
+            "raf": {
+              "n": 60,
+              "median": 30.19999999552965,
+              "p95": 63.100000001490116,
+              "max": 84.10000000149012
+            },
+            "eventTimingAboveThreshold": {
+              "n": 60,
+              "median": 56,
+              "p95": 96,
+              "max": 128
+            },
+            "eventTimingMissingOrBelow16ms": 0,
+            "outputUpdate": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "buttonToOutput": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "outputConfirmedRuns": 0,
+            "outputVisibilityNote": null,
+            "longestFrameMs": 66.60000000000582,
+            "longestTaskMs": 79
+          }
+        ],
+        "operations": {
+          "enter": {
+            "raf": {
+              "n": 9,
+              "median": 135.79999999701977,
+              "p95": 307.40000000596046,
+              "max": 307.40000000596046
+            },
+            "samples": 9
+          },
+          "backspace": {
+            "raf": {
+              "n": 9,
+              "median": 69.39999999850988,
+              "p95": 189.19999999552965,
+              "max": 189.19999999552965
+            },
+            "samples": 9
+          },
+          "snippet": {
+            "raf": {
+              "n": 9,
+              "median": 44.80000000447035,
+              "p95": 67.60000000149012,
+              "max": 67.60000000149012
+            },
+            "samples": 9,
+            "methods": [
+              "Trusted Ctrl+V from browser clipboard",
+              "Trusted Ctrl+V from browser clipboard",
+              "Trusted Ctrl+V from browser clipboard"
+            ]
+          },
+          "undo": {
+            "raf": {
+              "n": 9,
+              "median": 46.70000000298023,
+              "p95": 63.5,
+              "max": 63.5
+            },
+            "samples": 9,
+            "confirmedEffects": 9,
+            "effectNotes": [
+              {
+                "position": "start",
+                "confirmed": true
+              },
+              {
+                "position": "middle",
+                "confirmed": true
+              },
+              {
+                "position": "end",
+                "confirmed": true
+              },
+              {
+                "position": "start",
+                "confirmed": true
+              },
+              {
+                "position": "middle",
+                "confirmed": true
+              },
+              {
+                "position": "end",
+                "confirmed": true
+              },
+              {
+                "position": "start",
+                "confirmed": true
+              },
+              {
+                "position": "middle",
+                "confirmed": true
+              },
+              {
+                "position": "end",
+                "confirmed": true
+              }
+            ]
+          }
+        },
+        "scrolling": {
+          "outcomes": [
+            "measured",
+            "measured",
+            "measured"
+          ],
+          "frames": {
+            "n": 197,
+            "median": 16.69999999999709,
+            "p95": 33.30000000000291,
+            "max": 133.29999999998836
+          }
+        },
+        "rendererPeakMiB": {
+          "n": 3,
+          "median": 3271,
+          "p95": 3714,
+          "max": 3714
+        },
+        "sources": [
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json"
+        ]
+      },
+      {
+        "site": "Tool Kumar",
+        "size": "50mb",
+        "format": "minified",
+        "sourceSize": "50mb",
+        "runs": 3,
+        "completeProfiles": 3,
+        "matchedSources": [
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json"
+        ],
+        "opening": {
+          "n": 3,
+          "median": 8711,
+          "p95": 9558,
+          "max": 9558
+        },
+        "design": {
+          "editor": "Custom virtual editor with a native textarea passage",
+          "update": "Live formatted view",
+          "output": "#view-format"
+        },
+        "fixture": {
+          "size": "50mb",
+          "key": "50mb",
+          "format": "minified",
+          "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+          "file": "bench-50mb.json",
+          "bytes": 49998859,
+          "characters": 49518236,
+          "lines": 1,
+          "sha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+          "positions": [
+            {
+              "name": "start",
+              "email": "user1@example.com",
+              "offset": 356,
+              "line": 1,
+              "column": 356
+            },
+            {
+              "name": "middle",
+              "email": "user30026@example.com",
+              "offset": 24766824,
+              "line": 1,
+              "column": 24766824
+            },
+            {
+              "name": "end",
+              "email": "user60051@example.com",
+              "offset": 49517415,
+              "line": 1,
+              "column": 49517415
+            }
+          ]
+        },
+        "editAnyway": true,
+        "outcomes": [
+          {
+            "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+            "opening": "ok",
+            "rawOpeningStatus": "ok",
+            "editing": "measured",
+            "phase": "source restoration",
+            "memoryStop": null
+          },
+          {
+            "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+            "opening": "ok",
+            "rawOpeningStatus": "ok",
+            "editing": "measured",
+            "phase": "source restoration",
+            "memoryStop": null
+          },
+          {
+            "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json",
+            "opening": "ok",
+            "rawOpeningStatus": "ok",
+            "editing": "measured",
+            "phase": "source restoration",
+            "memoryStop": null
+          }
+        ],
+        "raf": {
+          "n": 180,
+          "median": 10.199999995529652,
+          "p95": 63.29999999701977,
+          "max": 166.29999999701977
+        },
+        "eventTiming": {
+          "median": "48.0 ms",
+          "p95": "104.0 ms",
+          "entries": 180,
+          "totalKeys": 180,
+          "censoredBelow16ms": 0,
+          "conditional": {
+            "n": 180,
+            "median": 48,
+            "p95": 104,
+            "max": 200
+          }
+        },
+        "positions": [
+          {
+            "position": "start",
+            "runs": 3,
+            "verifiedRuns": 3,
+            "outcomes": [
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              }
+            ],
+            "raf": {
+              "n": 60,
+              "median": 16.299999997019768,
+              "p95": 78.5,
+              "max": 166.29999999701977
+            },
+            "eventTimingAboveThreshold": {
+              "n": 60,
+              "median": 64,
+              "p95": 152,
+              "max": 200
+            },
+            "eventTimingMissingOrBelow16ms": 0,
+            "outputUpdate": {
+              "n": 2,
+              "median": 9755.10000000149,
+              "p95": 10092.60000000149,
+              "max": 10092.60000000149
+            },
+            "buttonToOutput": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "outputConfirmedRuns": 2,
+            "outputVisibilityNote": null,
+            "longestFrameMs": 166.70000000000073,
+            "longestTaskMs": 159
+          },
+          {
+            "position": "middle",
+            "runs": 3,
+            "verifiedRuns": 3,
+            "outcomes": [
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              }
+            ],
+            "raf": {
+              "n": 60,
+              "median": 8.299999997019768,
+              "p95": 64.39999999850988,
+              "max": 152.19999999552965
+            },
+            "eventTimingAboveThreshold": {
+              "n": 60,
+              "median": 48,
+              "p95": 104,
+              "max": 192
+            },
+            "eventTimingMissingOrBelow16ms": 0,
+            "outputUpdate": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "buttonToOutput": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "outputConfirmedRuns": 0,
+            "outputVisibilityNote": null,
+            "longestFrameMs": 166.59999999999854,
+            "longestTaskMs": 145
+          },
+          {
+            "position": "end",
+            "runs": 3,
+            "verifiedRuns": 3,
+            "outcomes": [
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              },
+              {
+                "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json",
+                "status": "measured",
+                "nativeInputEvents": 20,
+                "sourceMarkerObserved": true,
+                "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+                "protocolTimeouts": 0
+              }
+            ],
+            "raf": {
+              "n": 60,
+              "median": 8.799999997019768,
+              "p95": 16.899999998509884,
+              "max": 17.5
+            },
+            "eventTimingAboveThreshold": {
+              "n": 60,
+              "median": 32,
+              "p95": 48,
+              "max": 56
+            },
+            "eventTimingMissingOrBelow16ms": 0,
+            "outputUpdate": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "buttonToOutput": {
+              "n": 0,
+              "median": null,
+              "p95": null,
+              "max": null
+            },
+            "outputConfirmedRuns": 0,
+            "outputVisibilityNote": null,
+            "longestFrameMs": 33.30000000000291,
+            "longestTaskMs": null
+          }
+        ],
+        "operations": {
+          "enter": {
+            "raf": {
+              "n": 9,
+              "median": 17.700000002980232,
+              "p95": 176.80000000447035,
+              "max": 176.80000000447035
+            },
+            "samples": 9
+          },
+          "backspace": {
+            "raf": {
+              "n": 9,
+              "median": 10.199999995529652,
+              "p95": 19.099999994039536,
+              "max": 19.099999994039536
+            },
+            "samples": 9
+          },
+          "snippet": {
+            "raf": {
+              "n": 9,
+              "median": 20.399999998509884,
+              "p95": 118,
+              "max": 118
+            },
+            "samples": 9,
+            "methods": [
+              "Trusted Ctrl+V from browser clipboard",
+              "Trusted Ctrl+V from browser clipboard",
+              "Trusted Ctrl+V from browser clipboard"
+            ]
+          },
+          "undo": {
+            "raf": {
+              "n": 9,
+              "median": 17.599999994039536,
+              "p95": 127.20000000298023,
+              "max": 127.20000000298023
+            },
+            "samples": 9,
+            "confirmedEffects": 9,
+            "effectNotes": [
+              {
+                "position": "start",
+                "confirmed": true
+              },
+              {
+                "position": "middle",
+                "confirmed": true
+              },
+              {
+                "position": "end",
+                "confirmed": true
+              },
+              {
+                "position": "start",
+                "confirmed": true
+              },
+              {
+                "position": "middle",
+                "confirmed": true
+              },
+              {
+                "position": "end",
+                "confirmed": true
+              },
+              {
+                "position": "start",
+                "confirmed": true
+              },
+              {
+                "position": "middle",
+                "confirmed": true
+              },
+              {
+                "position": "end",
+                "confirmed": true
+              }
+            ]
+          }
+        },
+        "scrolling": {
+          "outcomes": [
+            "measured",
+            "measured",
+            "measured"
+          ],
+          "frames": {
+            "n": 162,
+            "median": 16.69999999999709,
+            "p95": 33.40000000000873,
+            "max": 116.60000000000582
+          }
+        },
+        "rendererPeakMiB": {
+          "n": 3,
+          "median": 3083,
+          "p95": 3113,
+          "max": 3113
+        },
+        "sources": [
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+          "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json"
+        ]
+      }
+    ]
+  },
+  "records": [
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__100mb__size-ladder-6g1__2026-10-17T17-09-01-023Z.json",
+      "rawSha256": "795fdcbcba5139a18a387a11fa342ae471278ac521e08381f523137ed55caa91",
+      "size": "100mb",
+      "purpose": "size-ladder-6g",
+      "status": "ok",
+      "batchId": "2026-10-17T17-08-57-535Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__200mb__size-ladder-6g1__2026-10-17T17-10-12-409Z.json",
+      "rawSha256": "596074919a62749ba2532ac93fd384751177ad33268b4d48bd1da072fd89661c",
+      "size": "200mb",
+      "purpose": "size-ladder-6g",
+      "status": "ok",
+      "batchId": "2026-10-17T17-09-56-912Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__400mb__size-ladder-6g1__2026-10-17T17-11-48-833Z.json",
+      "rawSha256": "e315df4ebd2d96ac56631ef6ff5bd5e6a8fca132279866374ee2b8d6ea73e5cc",
+      "size": "400mb",
+      "purpose": "size-ladder-6g",
+      "status": "no formatted view within 90 s",
+      "batchId": "2026-10-17T17-11-20-692Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+      "rawSha256": "edb202c8b17d42eafb8aeab98eee10945600116157143c0936be3089c1756bb2",
+      "size": "50mb-pretty",
+      "purpose": "editing",
+      "status": "ok",
+      "batchId": "2026-10-17T17-13-30-691Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+      "rawSha256": "5de6df58d899d02d8709fafe4299301f22c8c90f5747e8fed44e24c0adc89de0",
+      "size": "50mb-pretty",
+      "purpose": "editing",
+      "status": "ok",
+      "batchId": "2026-10-17T17-17-28-432Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json",
+      "rawSha256": "95efe5640cf0ea1899cc219dcd69cce021252c81291880bdcd1912083ae2d719",
+      "size": "50mb-pretty",
+      "purpose": "editing",
+      "status": "ok",
+      "batchId": "2026-10-17T17-21-55-891Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+      "rawSha256": "b04bc29360eaebdda6989673e31e0f7e8fa0e13139766e1a203c0c1fc5291eca",
+      "size": "50mb",
+      "purpose": "editing",
+      "status": "ok",
+      "batchId": "2026-10-17T17-13-30-691Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+      "rawSha256": "2086df9248728ebe64d03ee209d2af767329b62d8cd2a82542fdeca57b66c471",
+      "size": "50mb",
+      "purpose": "editing",
+      "status": "ok",
+      "batchId": "2026-10-17T17-19-36-795Z"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json",
+      "rawSha256": "cbceb9c8fa15468f4d193afc446f26d1ede1e5c0f37142f22cffd0b255e7f11f",
+      "size": "50mb",
+      "purpose": "editing",
+      "status": "ok",
+      "batchId": "2026-10-17T17-21-55-891Z"
+    }
+  ],
+  "publicSizeDocumentation": {
+    "at": "2026-10-17T17:19:32.323Z",
+    "url": "https://tools.vikasmaur.com/tools/large-json-viewer",
+    "status": 200,
+    "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+    "batchId": "2026-10-17T17-19-28-983Z",
+    "sha256": "08bbe19f9e9f74def537baa5745c3d233294eef35f0ab2d55cd60d2988ec1930",
+    "matches": [
+      "umbers as one reference point rather than a guarantee. Options and edge cases Files up to 300 MB are accepted. That is a safety limit rather than a promise: what opens comfortably depends on the device memory and the shape of the data. ",
+      "Above 2,000,000 characters or 30,000 lines the input becomes read-only so the views stay fast. Edit anyway turns editing back on. Parsing runs on the main thread, so ",
+      "on your computer and is not uploaded. Is there a size limit? The page accepts files up to 300 MB. How large a file opens smoothly depends on your device memory and on the shape of the data. Related tools JSONL viewer , JSON validator , "
+    ],
+    "note": "Normal HTTP load of the public guide. This records documentation, not a successful 300 MB browser test. Source implementation guard at 925fc3c is 300 * 1024 * 1024 bytes."
+  },
+  "ladderStop": {
+    "at": "2026-10-17T17:13:26.869Z",
+    "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
+    "largestFullRunPassed": "200mb",
+    "firstFailure": "400mb",
+    "status": "no formatted view within 90 s",
+    "reason": "No formatted view within 90 seconds. Stop the exploratory ladder at its first failure.",
+    "rawSource": "results/raw/tool-kumar__400mb__size-ladder-6g1__2026-10-17T17-11-48-833Z.json"
+  },
+  "fileSizeGuardSource": {
+    "commit": "925fc3c6f004552a8cdea9628699de9735682d01",
+    "path": "lib/engine/engine.ts",
+    "sourceSha256": "a364e91ec97da941606c3eb69814ea698976bfec238e400124a17bf324c81e9b",
+    "firstLine": 1129,
+    "excerpt": "  async loadFile(f: File) {\n    performance.clearMarks('tk:formatted');\n    performance.mark('tk:input');\n    this.markOutput = true;\n    if (f.size > 300 * 1024 * 1024) {\n      this.toast('That file is too large to open in a browser tab', 'err');\n      return;\n    }\n    try {",
+    "guardBytes": 314572800,
+    "note": "Read-only source inspection. This is an implementation guard, not a successful file-opening measurement at the boundary."
+  },
+  "editingSourceRestoration": [
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing2__2026-10-17T17-19-40-158Z.json",
+      "exact": true,
+      "status": "measured"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing1__2026-10-17T17-15-22-814Z.json",
+      "exact": true,
+      "status": "measured"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing2__2026-10-17T17-17-31-894Z.json",
+      "exact": true,
+      "status": "measured"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb-pretty__editing3__2026-10-17T17-23-49-899Z.json",
+      "exact": true,
+      "status": "measured"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing1__2026-10-17T17-13-34-009Z.json",
+      "exact": true,
+      "status": "measured"
+    },
+    {
+      "source": "results/2026-10-17-memory-6g/results/raw/tool-kumar__50mb__editing3__2026-10-17T17-21-59-276Z.json",
+      "exact": true,
+      "status": "measured"
+    }
+  ]
+}
