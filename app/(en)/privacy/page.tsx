@@ -184,8 +184,8 @@ export default function PrivacyPage() {
         <h2>Turning analytics off</h2>
         <p>
           Use the switch at the top of this page. It applies to this browser until you clear the site’s data, and it stops both tools: PostHog isn’t
-          loaded at all and Vercel counts nothing. If your browser sends Global Privacy Control or Do Not Track, PostHog never loads, without you doing
-          anything.
+          loaded at all and Vercel counts nothing. In the JSON tool, the same choice is <strong>Privacy mode</strong> in the command palette (Ctrl+K, or
+          ⌘K on a Mac). If your browser sends Global Privacy Control or Do Not Track, PostHog never loads, without you doing anything.
         </p>
         <p className="muted">Last updated 18 October 2026.</p>
       </div>

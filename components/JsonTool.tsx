@@ -1086,6 +1086,9 @@ function StatusBar({ langs }: { langs?: ReactNode }) {
         <Link className="sb-btn" href="/blogs" prefetch={false} hrefLang={t.lang ? 'en' : undefined}>
           {t('Blog')}
         </Link>
+        <Link className="sb-btn sb-privacy" href="/privacy" prefetch={false} hrefLang={t.lang ? 'en' : undefined}>
+          {t('Privacy')}
+        </Link>
         {langs}
         <button type="button" className="sb-btn" onClick={() => act((e) => e.openPalette())} aria-label={t('All commands')} data-tip={t('All commands')} data-tip-up="">
           <span className="fine-only">
