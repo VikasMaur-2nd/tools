@@ -3,3 +3,5 @@ allowBuilds:
   # eslint-config-next → unrs-resolver: its postinstall only downloads a fallback
   # native binary; pnpm already installs the platform binding as an optional dep.
   unrs-resolver: false
+  # posthog-js → core-js: its postinstall only prints a funding message.
+  core-js: false

@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { PRIVATE } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
@@ -56,7 +57,7 @@ const InputBar = memo(function InputBar() {
   const t = useT();
   return (
     <div className="toolbar" role="toolbar" aria-label={t('Input')}>
-      <span className="fname" title={fileName ?? undefined}>
+      <span className={`fname ${PRIVATE}`} title={fileName ?? undefined}>
         {comparing && <b className="side-tag">{t('Original')}</b>}
         {fileName ? (
           <>
@@ -124,7 +125,7 @@ function EditorDom({
   autoFocus?: boolean;
 }) {
   return (
-    <div className="ed" ref={edRef}>
+    <div className={`ed ${PRIVATE}`} ref={edRef}>
       <div className="ed-gut" aria-hidden="true">
         <div className="ed-gl" />
       </div>
@@ -167,7 +168,7 @@ function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> 
   return (
     <section className="pane pane-cmp" aria-label={t('Modified JSON')} hidden={!comparing}>
       <div className="toolbar" role="toolbar" aria-label={t('Modified document')}>
-        <span className="fname" title={cmpFile ?? undefined}>
+        <span className={`fname ${PRIVATE}`} title={cmpFile ?? undefined}>
           <b className="side-tag">{t('Modified')}</b>
           {cmpFile && (
             <>
@@ -534,7 +535,7 @@ function Crumbs() {
   const t = useT();
   if (!ok) return <span className="muted sm">{t('Select an array or object')}</span>;
   return (
-    <nav className="crumbs" aria-label={t('Table location')}>
+    <nav className={`crumbs ${PRIVATE}`} aria-label={t('Table location')}>
       <button type="button" onClick={() => act((e) => e.tableGoto([]))}>$</button>
       {segs.map((k, i) => (
         <span key={i}>
@@ -646,7 +647,7 @@ function TreePath() {
   const t = useT();
   if (!path) return <span className="muted sm nowrap">{t('Select a node')}</span>;
   return (
-    <button type="button" className="path" onClick={() => act((e) => e.copyPath())} data-tip={t('Copy path')}>
+    <button type="button" className={`path ${PRIVATE}`} onClick={() => act((e) => e.copyPath())} data-tip={t('Copy path')}>
       {path}
     </button>
   );
@@ -830,7 +831,8 @@ function ViewerPane({
   return (
     <section className="pane pane-view" aria-label={t('JSON viewer')}>
       <ViewToolbar />
-      <div className={`view${stale ? ' stale' : ''}`}>
+      {/* Everything in here shows the document: session replay records it as an empty box. */}
+      <div className={`view ${PRIVATE}${stale ? ' stale' : ''}`}>
         <Banner />
         <FindBar />
         <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label={t('Formatted output')}>
@@ -1217,7 +1219,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <DropOverlay />
       <CommandPalette />
       <ShortcutsDialog />
-      <input ref={fileRef} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />
+      <input ref={fileRef} className={PRIVATE} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />
     </div>
   );
 }

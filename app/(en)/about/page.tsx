@@ -39,6 +39,10 @@ export default function AboutPage() {
           sent to a Tool Kumar server for processing. Recent work can be restored from this browser when you return to the app.
         </p>
         <p>
+          To decide what to improve, we measure which features are used with Vercel Web Analytics and PostHog, never what you paste. The{' '}
+          <Link href="/privacy">privacy page</Link> lists every event, explains what screen recordings leave out and lets you turn analytics off.
+        </p>
+        <p>
           The viewer also supports offline use after the app has loaded. You can inspect large documents, search values, compare files and
           export results without moving the source JSON to another service.
         </p>

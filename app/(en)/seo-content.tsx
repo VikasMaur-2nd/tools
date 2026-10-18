@@ -37,6 +37,7 @@ export default function SeoContent({ locale = 'en' }: { locale?: SiteLocale }) {
       <p>{rich(t('home.more.errors'), { errors: link('/json-errors') })}</p>
       <p>{rich(t('home.more.resources'), { reference: link('/resources/json-reference'), examples: link('/resources/json-examples') })}</p>
       <p>{rich(t('home.more.tools'), { tools: link('/tools', true) })}</p>
+      <p>{rich(t('home.more.privacy'), { privacy: link('/privacy') })}</p>
     </section>
   );
 }
