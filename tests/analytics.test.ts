@@ -168,6 +168,8 @@ test('beforeSend drops unexpected events and strips URLs', () => {
   assert.ok(!('$elements_chain' in e.properties!) && !('$el_text' in e.properties!));
   assert.equal(e.$set_once!.$initial_current_url, 'https://tools.vikasmaur.com/');
   assert.ok(!JSON.stringify(e).includes('SECRET'));
+  const search = beforeSend({ event: 'feature_used', properties: { feature: 'find', ph_keyword: 'SECRET', $set_once: { $initial_ph_keyword: 'SECRET' } } })!;
+  assert.ok(!JSON.stringify(search).includes('SECRET'));
   const vitals = beforeSend({
     event: '$web_vitals',
     properties: { $web_vitals_LCP_event: { navigationURL: 'https://tools.vikasmaur.com/?ref=SECRET', $current_url: 'https://tools.vikasmaur.com/#j=SECRET', entries: [{ url: 'https://x.test/?q=SECRET' }] } },

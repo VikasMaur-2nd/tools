@@ -62,9 +62,9 @@ export type AnalyticsState = 'on' | 'off' | 'browser' | 'unavailable';
 
 /** What the privacy page shows: on, turned off here, refused by the browser, or not set up on this host. */
 export function analyticsState(): AnalyticsState {
-  if (!TOKEN || !INGEST) return 'unavailable';
   const p = pref();
   if (p === 'off') return 'off';
+  if (!TOKEN || !INGEST) return 'unavailable';
   if (browserOptOut()) return 'browser';
   // PostHog drops crawler, audit and automation traffic anyway: don't download it for them.
   if (p !== 'debug' && (location.hostname !== SITE_HOST || navigator.webdriver || BOTS.test(navigator.userAgent))) return 'unavailable';
@@ -132,7 +132,7 @@ export function withVia<T>(v: Via, fn: () => T): T {
 
 /** Queues or sends an event as is (it is cleaned in ./posthog.ts). For ./load.ts and `track`. */
 export function emit(event: string, props: Record<string, unknown>) {
-  if (!started) return;
+  if (!started || pref() === 'off') return;
   const p = { via: via(), ...props };
   if (send) send(event, p);
   else if (queue.length < 100) queue.push({ event, props: p, at: new Date() });

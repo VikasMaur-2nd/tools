@@ -15,7 +15,9 @@ const SDK_EVENTS = new Set(['$pageview', '$pageleave', '$web_vitals', '$$heatmap
 export const allowedEvent = (name: string) => SDK_EVENTS.has(name) || name in EVENT_PROPS;
 
 /** Properties that may hold element text or attributes; we never want them, whatever enables them. */
-const DROP_PROPS = new Set(['$elements', '$elements_chain', '$el_text', '$external_click_url', '$copy_type', '$selected_content']);
+const DROP_PROPS = new Set(['$elements', '$elements_chain', '$el_text', '$external_click_url', '$copy_type', '$selected_content',
+  // Search terms PostHog reads from a search engine's referrer.
+  'ph_keyword', '$initial_ph_keyword', '$session_entry_ph_keyword']);
 
 type Props = Record<string, unknown>;
 

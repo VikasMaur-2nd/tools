@@ -8,14 +8,15 @@ const NOTE: Record<AnalyticsState, string> = {
   off: 'Off. This browser sends nothing to Vercel or PostHog, not even page views.',
   browser:
     'PostHog is off because your browser sends Global Privacy Control or Do Not Track. Vercel still counts anonymous page views unless you switch analytics off.',
-  unavailable: 'Analytics is not active on this copy of the site (a local or preview build), so nothing is sent from here.',
+  unavailable: 'PostHog is not active on this copy of the site (a local or preview build). Vercel may still count anonymous page views unless you switch analytics off.',
 };
 
 /** The privacy page's on/off switch for analytics in this browser. */
 export default function AnalyticsSwitch() {
   // null on the server: the choice lives in this browser.
   const state = useSyncExternalStore<AnalyticsState | null>(onAnalyticsChange, analyticsState, () => null);
-  const on = state === 'on' || state === 'browser';
+  // On unless turned off here: Vercel counts page views even where PostHog is unavailable or refused.
+  const on = state !== null && state !== 'off';
   return (
     <div className="consent" aria-live="polite">
       <div className="consent-row">

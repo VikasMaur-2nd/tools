@@ -21,11 +21,13 @@ function session() {
     opt_out_capturing: () => calls.push('opt_out'), stopSessionRecording: () => calls.push('stop_recording'),
     opt_in_capturing: () => calls.push('opt_in'), startSessionRecording: () => calls.push('start_recording'),
   };
-  const sdk = { initPostHog: () => { loads++; return ph; }, sender: () => () => {} };
+  const sent: string[] = [];
+  const sdk = { initPostHog: () => { loads++; return ph; }, sender: () => (event: string) => { sent.push(event); } };
   const exports: {
     startAnalytics?: () => void;
     setAnalyticsEnabled?: (on: boolean) => void;
     reportError?: (error: unknown, source?: string) => void;
+    track?: (event: string, props: Record<string, unknown>) => void;
   } = {};
   const source = readFileSync(resolve(process.cwd(), 'lib/analytics/index.ts'), 'utf8');
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
@@ -49,7 +51,7 @@ function session() {
     // The dynamic import is compiled into a promise and a deferred require.
     await new Promise<void>((done) => setImmediate(done));
   };
-  return { api: exports as Required<typeof exports>, reports, ready, fire, navigator, loads: () => loads, calls, sdkState };
+  return { api: exports as Required<typeof exports>, reports, ready, fire, navigator, loads: () => loads, calls, sdkState, sent };
 }
 
 test('early errors and rejections wait for the SDK, and duplicate errors report once', async () => {
@@ -125,4 +127,14 @@ test("PostHog's opt-out stored by an earlier page gives way to the site's choice
   s.api.startAnalytics();
   await s.ready();
   assert.deepEqual(s.calls, ['opt_in']);
+});
+
+test('actions while analytics is off are never sent, even after turning it back on', async () => {
+  const s = session();
+  s.api.startAnalytics();
+  s.api.setAnalyticsEnabled(false);
+  s.api.track('feature_used', { feature: 'copy_output' });
+  s.api.setAnalyticsEnabled(true);
+  await s.ready();
+  assert.deepEqual(s.sent, []);
 });
