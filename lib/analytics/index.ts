@@ -8,6 +8,7 @@
  * production site.
  */
 import type { EventName, Events, Via } from './events';
+import type { ErrorSource } from './exceptions';
 
 /**
  * Class for every element that shows document content (editors, file names,
@@ -32,10 +33,15 @@ let ph: Ph | null = null;
 /** Cleans an event (./events.ts allow-lists) and sends it; set once PostHog has loaded. */
 let send: ((event: string, props: Record<string, unknown>, at?: Date) => void) | null = null;
 let started = false;
+let booting = false;
 /** Whether events are being collected on this page (./load.ts checks it before watching the editor). */
 export const collecting = () => started;
 /** Events before PostHog loads. Only kept in memory, and cleaned like every other event before sending. */
 const queue: { event: string; props: Record<string, unknown>; at: Date }[] = [];
+const errorQueue: { error: unknown; source: ErrorSource }[] = [];
+const reportedErrors = new WeakSet<object>();
+let errorWindow = 0;
+let errorCount = 0;
 
 const pref = () => {
   try {
@@ -84,6 +90,7 @@ export function setAnalyticsEnabled(on: boolean) {
   dispatchEvent(new Event(CHANGE));
   if (!on) {
     queue.length = 0;
+    errorQueue.length = 0;
     if (ph) {
       // Opt out first: stopping the recorder flushes its buffer, which must then be refused too.
       ph.opt_out_capturing();
@@ -92,7 +99,8 @@ export function setAnalyticsEnabled(on: boolean) {
   } else if (ph) {
     ph.opt_in_capturing();
     ph.startSessionRecording();
-  } else startAnalytics(0);
+  } else if (started) void boot().catch(() => {});
+  else startAnalytics(0);
 }
 
 /** For Vercel Web Analytics' beforeSend: false once the visitor turned analytics off. */
@@ -134,16 +142,47 @@ export function track<K extends Exclude<EventName, 'json_loaded'>>(event: K, pro
   emit(event, props);
 }
 
+/**
+ * PostHog Error Tracking, through its captureException API. Errors wait in memory
+ * for the idle-loaded SDK; before_send rebuilds their payload without any message
+ * or document data. Bound volume to 10 per minute and report an Error object once.
+ */
+export function reportError(error: unknown, source: ErrorSource = 'manual') {
+  try {
+    if (typeof window === 'undefined' || analyticsState() !== 'on') return;
+    if (!started) startAnalytics(0);
+    if (error && typeof error === 'object') {
+      if (reportedErrors.has(error)) return;
+      reportedErrors.add(error);
+    }
+    const now = Date.now();
+    if (now - errorWindow >= 60_000) { errorWindow = now; errorCount = 0; }
+    if (errorCount >= 10) return;
+    errorCount++;
+    if (ph) ph.captureException(error, { error_source: source });
+    else if (errorQueue.length < 10) errorQueue.push({ error, source });
+  } catch {
+    // Error reporting must never break the application or recursively report itself.
+  }
+}
+
 // ── Loading PostHog ──────────────────────────────────────────────────────────
 
 async function boot() {
-  const lazy = await import('./posthog');
-  if (analyticsState() !== 'on') return;
-  ph = lazy.initPostHog(TOKEN, INGEST);
-  // Local testing (see .env.example): the instance is reachable from the console.
-  if (pref() === 'debug') (window as Window & { posthog?: Ph }).posthog = ph;
-  send = lazy.sender(ph);
-  for (const q of queue.splice(0)) send(q.event, q.props, q.at);
+  if (ph || booting) return;
+  booting = true;
+  try {
+    const lazy = await import('./posthog');
+    if (analyticsState() !== 'on') return;
+    ph = lazy.initPostHog(TOKEN, INGEST);
+    // Local testing (see .env.example): the instance is reachable from the console.
+    if (pref() === 'debug') (window as Window & { posthog?: Ph }).posthog = ph;
+    send = lazy.sender(ph);
+    for (const q of queue.splice(0)) send(q.event, q.props, q.at);
+    for (const q of errorQueue.splice(0)) ph.captureException(q.error, { error_source: q.source });
+  } finally {
+    booting = false;
+  }
 }
 
 /**
@@ -156,6 +195,12 @@ async function boot() {
 export function startAnalytics(delay = 3000) {
   if (started || typeof window === 'undefined' || analyticsState() !== 'on') return;
   started = true;
+  // Installed synchronously before hydration; SDK autocapture stays off to avoid duplicates.
+  addEventListener('error', (e: ErrorEvent) => {
+    // Resource-load failures have no Error and may name a private URL. Ignore those.
+    if (e.error != null) reportError(e.error, 'unhandled_error');
+  });
+  addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => reportError(e.reason, 'unhandled_rejection'));
   const input = (e: Event) => {
     lastInput = { via: e.type === 'keydown' ? 'keyboard' : 'pointer', at: performance.now() };
   };

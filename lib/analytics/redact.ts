@@ -5,11 +5,12 @@
  */
 import { EVENT_PROPS } from './events';
 import { cleanUrl } from './url';
+import { exceptionProps } from './exceptions';
 
 export { cleanUrl };
 
-/** PostHog's own events that we allow; any other `$event` (autocapture, exceptions, surveys…) is dropped. */
-const SDK_EVENTS = new Set(['$pageview', '$pageleave', '$web_vitals', '$$heatmap', '$snapshot', '$opt_in']);
+/** PostHog's own events that we allow; exceptions have a separate, stricter sanitizer. */
+const SDK_EVENTS = new Set(['$pageview', '$pageleave', '$web_vitals', '$$heatmap', '$snapshot', '$opt_in', '$exception']);
 
 export const allowedEvent = (name: string) => SDK_EVENTS.has(name) || name in EVENT_PROPS;
 
@@ -46,11 +47,21 @@ export interface CaptureLike {
   properties?: Props;
   $set?: Props;
   $set_once?: Props;
+  $unset?: string[];
 }
 
 /** `before_send`: drop events we don't send on purpose, strip URLs everywhere else. */
-export function beforeSend<T extends CaptureLike>(e: T | null): T | null {
+export function beforeSend<T extends CaptureLike>(e: T | null, scripts: ReadonlySet<string> = new Set()): T | null {
   if (!e || !allowedEvent(e.event)) return null;
+  if (e.event === '$exception') {
+    const properties = exceptionProps(e.properties ?? {}, scripts);
+    if (!properties) return null;
+    const out = { ...e, properties };
+    delete out.$set;
+    delete out.$set_once;
+    delete out.$unset;
+    return out;
+  }
   // Recordings: their URLs are already masked by the recorder config; leave the payload alone.
   if (e.event === '$snapshot') return e;
   const out = { ...e };

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EVENT_PROPS, clean, countBucket, errorKind, fileKind, loadedProps, round2, sizeBucket, sizeKb } from '../lib/analytics/events';
 import { beforeSend, cleanUrl, maskAttribute } from '../lib/analytics/redact';
+import { ERROR_MESSAGE, exceptionProps } from '../lib/analytics/exceptions';
 import { parse } from '../lib/json/parser';
 
 /*
@@ -195,6 +196,80 @@ test('replay masks readable attributes and keeps layout ones', () => {
   assert.equal(maskAttribute('href', '/tools/json-diff?x=1#y'), '/tools/json-diff');
   assert.equal(maskAttribute('href', 'https://tools.vikasmaur.com/#j=SECRET'), 'https://tools.vikasmaur.com/');
   assert.equal(maskAttribute('d', 'M4 6H20V12'), 'M4 6H20V12');
+});
+
+test('exception reports rebuild every error and cause without document data', () => {
+  const secret = 'PRIVATE_CANARY_CUSTOMER_DATA';
+  const script = 'https://tools.vikasmaur.com/_next/static/chunks/app-123.js';
+  const id = '0199ec80-1234-7123-8abc-0123456789ab';
+  const exception = (type: string) => ({
+    type, value: secret, module: secret,
+    mechanism: { type: secret, source: secret, data: { secret } },
+    stacktrace: { type: 'raw', frames: [{
+      filename: `${script}?utm_source=${secret}#${secret}`, lineno: 12, colno: 34,
+      function: secret, abs_path: secret, context_line: secret,
+      pre_context: [secret], post_context: [secret], vars: { [secret]: secret },
+      chunk_id: id,
+    }, { filename: `https://private.example/${secret}.js`, lineno: 5 }] },
+  });
+  const payload = {
+    event: '$exception',
+    properties: {
+      token: 'phc_project', distinct_id: id, $device_id: id, $session_id: id, $window_id: id,
+      $release_id: id, $lib: 'web', $lib_version: '1.438.12',
+      error_source: 'unhandled_error', $exception_list: [exception('TypeError'), exception(secret)],
+      $exception_message: secret, $exception_stack_trace_raw: secret, $exception_fingerprint: secret,
+      $issue_name: secret, $issue_description: secret, $exception_steps: [{ $message: secret }],
+      $current_url: `https://tools.vikasmaur.com/?utm_source=${secret}#j=${secret}`,
+      $set: { [secret]: secret }, $set_once: { [secret]: secret }, custom: secret,
+    },
+    $set: { [secret]: secret }, $set_once: { [secret]: secret }, $unset: [secret],
+  };
+  const out = beforeSend(payload, new Set([script]))!;
+  assert.ok(!JSON.stringify(out).includes(secret));
+  assert.equal(out.$set, undefined);
+  assert.equal(out.$set_once, undefined);
+  assert.equal(out.$unset, undefined);
+  assert.deepEqual(out.properties.$exception_list, [
+    { type: 'TypeError', value: ERROR_MESSAGE, mechanism: { type: 'generic', handled: false }, stacktrace: { type: 'raw', frames: [{
+      platform: 'web:javascript', filename: script, in_app: true, lineno: 12, colno: 34, chunk_id: id,
+    }] } },
+    { type: 'Error', value: ERROR_MESSAGE, mechanism: { type: 'generic', handled: false }, stacktrace: { type: 'raw', frames: [{
+      platform: 'web:javascript', filename: script, in_app: true, lineno: 12, colno: 34, chunk_id: id,
+    }] } },
+  ]);
+  assert.equal(out.properties.token, 'phc_project');
+  assert.equal(out.properties.$session_id, id);
+  assert.equal(out.properties.$release_id, id);
+  // No mutation: neither the original Error data nor SDK payload is changed.
+  assert.equal(payload.properties.$exception_list[0].value, secret);
+});
+
+test('exception sanitizer rejects unknown stack paths and malformed payloads', () => {
+  assert.equal(exceptionProps({}, new Set()), null);
+  assert.equal(exceptionProps({ $exception_list: [] }, new Set()), null);
+  const data = { $exception_list: [{ type: 'SyntaxError', value: 'SECRET', stacktrace: { frames: [
+    { filename: 'data:text/javascript,SECRET' }, { filename: 'blob:https://tools.vikasmaur.com/SECRET' },
+    { filename: 'https://tools.vikasmaur.com/_next/static/chunks/SECRET.js' },
+    { filename: 'chrome-extension://SECRET/app.js' },
+  ] } }], error_source: 'SECRET', distinct_id: 'SECRET', $release_id: 'SECRET' };
+  const out = exceptionProps(data, new Set())!;
+  assert.ok(!JSON.stringify(out).includes('SECRET'));
+  assert.deepEqual(out.$exception_list, [{ type: 'SyntaxError', value: ERROR_MESSAGE, mechanism: { type: 'generic', handled: true } }]);
+  assert.equal(out.error_source, 'manual');
+  assert.equal(out.distinct_id, undefined);
+  assert.equal(out.$release_id, undefined);
+});
+
+test('exception sanitizer bounds chained errors, stack depth and coordinates', () => {
+  const script = 'https://tools.vikasmaur.com/_next/static/chunks/app.js';
+  const out = exceptionProps({ $exception_list: Array.from({ length: 100 }, () => ({
+    type: 'Error', stacktrace: { frames: Array.from({ length: 100 }, () => ({ filename: script, lineno: Infinity, colno: -1, chunk_id: 'SECRET' })) },
+  })) }, new Set([script]))!;
+  const list = out.$exception_list as { stacktrace: { frames: Record<string, unknown>[] } }[];
+  assert.equal(list.length, 5);
+  assert.equal(list[0].stacktrace.frames.length, 50);
+  assert.deepEqual(list[0].stacktrace.frames[0], { platform: 'web:javascript', filename: script, in_app: true });
 });
 
 test('every view that shows the document is kept out of session replay', () => {

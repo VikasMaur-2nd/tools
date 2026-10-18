@@ -17,7 +17,7 @@ import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
-import { PRIVATE, track } from '../analytics';
+import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import type { InputSource } from '../analytics/events';
 
@@ -856,7 +856,8 @@ export class Engine {
       this.analyze();
       track('feature_used', { feature: `import_${fmt}` });
       this.toast(`Converted ${fmt.toUpperCase()} to JSON · ${this.mod}Z to undo`, 'ok');
-    } catch {
+    } catch (error) {
+      reportError(error, 'import');
       this.toast('Conversion failed', 'err');
     }
   }
@@ -1146,6 +1147,7 @@ export class Engine {
           e.preventDefault();
           // Ignore duplicate failure events and never move this full parse onto the typing thread.
           if (this.analysisWorker !== w) return;
+          reportError(e.error ?? new Error(), 'worker');
           this.analysisFails++;
           w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
         };
@@ -1153,7 +1155,7 @@ export class Engine {
         const current = () => this.postDocument(w, request, document, true);
         if (good) this.postDocument(w, { ...request, good: true }, good, true, current);
         else current();
-      } catch { this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; }
+      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; }
     }, 2200);
   }
 
@@ -1188,6 +1190,7 @@ export class Engine {
         // It couldn't load (offline before it was ever cached, blocked, or its start cut short by a
         // navigation): work here instead, and start another on a later use, a few times over.
         e.preventDefault();
+        reportError(e.error ?? new Error(), 'worker');
         this.workerDoc = null;
         this.worker = ++this.workerFails < 3 ? undefined : null;
         w.terminate();
@@ -1848,6 +1851,7 @@ export class Engine {
       else this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
+      reportError(e, 'conversion');
       this.code.setText('', escapeHtml);
       store.set({ convert: { loading: false, error: e instanceof Error ? e.message : 'Conversion failed', lines: 0, bytes: 0 } });
     }
@@ -1875,7 +1879,8 @@ export class Engine {
       try {
         const { records, toXlsx } = await import('../convert/xlsx');
         this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
-      } catch {
+      } catch (error) {
+        reportError(error, 'export');
         this.toast("Couldn't create the Excel file", 'err');
       }
       return;

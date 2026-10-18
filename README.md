@@ -36,6 +36,15 @@ Browse the [resource library](https://tools.vikasmaur.com/resources) or [open th
 - Zero runtime dependencies beyond React/Next: the parser, editor, tree, table, converters and diff are hand-written.
 - Hand-written CSS with design tokens (`app/globals.css`), hand-written service worker (`public/sw.js`).
 - [Vercel Web Analytics](https://vercel.com/docs/analytics) (page views only; share-link data in the URL hash is stripped).
+- [PostHog](https://posthog.com) (feature analytics, masked session replay and sanitized browser Error Tracking; see `/privacy`).
+
+## PostHog setup
+
+Copy `.env.example` to `.env.local`, or add its two public variables to Vercel's Production environment and redeploy. Get the project token from PostHog's project settings and use the US or EU ingestion host for the project's region. Enable **Discard client IP data** in PostHog's project settings so the privacy page's IP statement is accurate. Session Replay must be enabled in the project if you want recordings.
+
+Application errors are sent to PostHog Error Tracking through `captureException()`. Early browser listeners catch uncaught errors and unhandled rejections; the existing React error boundaries and selected conversion/worker handlers call `reportError()`. SDK exception autocapture stays off to prevent duplicate listeners and console capture. Reports retain standard error categories, known application script coordinates and anonymous session links. They discard original messages, arbitrary properties, source snippets, local variables and breadcrumbs. Privacy mode and browser opt-outs also stop error reporting. Reports are limited to 10 per minute per page, with duplicate Error objects ignored.
+
+For readable production stacks, set the optional secret `POSTHOG_API_KEY` and numeric `POSTHOG_PROJECT_ID` from `.env.example` in the build environment. The PostHog Next.js plugin uploads application source maps and deletes them from the deployment. Without these credentials, errors still arrive with minified script locations. This integration reports browser application failures, not server/build logs or expected input validation failures. The project is statically rendered and document processing runs in the browser.
 
 ## Develop
 

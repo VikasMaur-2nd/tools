@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withPostHogConfig } from "@posthog/nextjs-config";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -83,4 +84,12 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Build-only credentials upload our source maps so sanitized code coordinates
+// resolve to readable stacks. They are never included in the browser bundle.
+const uploadSourceMaps = Boolean(process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID);
+export default uploadSourceMaps ? withPostHogConfig(nextConfig, {
+  personalApiKey: process.env.POSTHOG_API_KEY!,
+  projectId: process.env.POSTHOG_PROJECT_ID!,
+  host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || (posthogHost || "https://us.i.posthog.com").replace(/\/(us|eu)\.i\./, "/$1."),
+  sourcemaps: { enabled: true, deleteAfterUpload: true },
+}) : nextConfig;

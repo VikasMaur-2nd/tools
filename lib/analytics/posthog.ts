@@ -17,6 +17,7 @@
 import posthog, { type CaptureResult, type PostHog, type PostHogConfig } from 'posthog-js';
 import { clean, loadedProps, type RawLoad } from './events';
 import { beforeSend, cleanUrl, maskAttribute } from './redact';
+import { applicationScripts } from './exceptions';
 
 /** Same-origin path that next.config.ts rewrites to the ingestion host. */
 const RELAY = '/relay';
@@ -43,11 +44,14 @@ export function initPostHog(token: string, ingest: string): PostHog {
     capture_pageleave: true,
     capture_performance: { web_vitals: true, network_timing: false },
     capture_heatmaps: true,
-    // Off, whatever the project settings say: these read element text, errors or the clipboard.
+    // Off, whatever the project settings say: these read element text or the clipboard.
     autocapture: false,
     capture_dead_clicks: false,
     rageclick: false,
+    // Our early browser listeners call captureException(), covering startup errors too.
+    // Keep SDK listeners off to avoid duplicates, and never capture console.error.
     capture_exceptions: false,
+    error_tracking: { exception_steps: { enabled: false } },
     enable_recording_console_log: false,
     mask_all_text: true,
     mask_all_element_attributes: true,
@@ -60,7 +64,7 @@ export function initPostHog(token: string, ingest: string): PostHog {
     disable_conversations: true,
     disable_web_experiments: true,
     advanced_disable_feature_flags: true,
-    before_send: (e: CaptureResult | null) => beforeSend(e),
+    before_send: (e: CaptureResult | null) => beforeSend(e, e?.event === '$exception' ? applicationScripts() : undefined),
     session_recording: {
       blockClass: 'ph-no-capture',
       blockSelector: 'input[type="file"]',

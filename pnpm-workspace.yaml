@@ -5,3 +5,5 @@ allowBuilds:
   unrs-resolver: false
   # posthog-js → core-js: its postinstall only prints a funding message.
   core-js: false
+  # Source map uploads use PostHog's native CLI, downloaded by its postinstall.
+  '@posthog/cli': true

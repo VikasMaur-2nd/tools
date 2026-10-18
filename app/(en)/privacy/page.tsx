@@ -89,7 +89,7 @@ export default function PrivacyPage() {
           <li>Anything inside your documents: text, keys, values or JSON paths</li>
           <li>What you type into Find, JSONPath queries or the type name for generated code</li>
           <li>File names, the URLs you load from and share links</li>
-          <li>Error messages, clipboard contents and exact document sizes</li>
+          <li>Original error messages, clipboard contents and exact document sizes</li>
           <li>Your IP address, once your approximate location has been looked up</li>
         </ul>
 
@@ -126,6 +126,14 @@ export default function PrivacyPage() {
             <strong>Speed and clicks:</strong> Core Web Vitals, and where on the page people click and move the pointer (heatmaps, positions only).
           </li>
           <li>
+            <strong>Application errors:</strong> PostHog Error Tracking receives unexpected browser errors, unhandled promise rejections, React
+            rendering failures and failures reported by our conversion, import, export and background processing code. Reports contain a standard
+            error category, the part of the app that reported it, and available application script locations with line and column numbers. Every
+            original error message is replaced with a fixed privacy message before sending. We remove arbitrary error details, function names,
+            source snippets, local variables and error breadcrumbs. Reports can be linked to the same anonymous visit and masked recording.
+            Normal JSON validation errors are counted by category in the document events below.
+          </li>
+          <li>
             <strong>Screen recordings</strong>, described in the next section.
           </li>
         </ul>
@@ -150,8 +158,9 @@ export default function PrivacyPage() {
 
         <h2>Every event, and what it carries</h2>
         <p>
-          These are all the events the site sends to PostHog besides page views, web vitals, heatmap clicks and recordings. The table is built from the
-          code that sends them. Every value is a feature name, a choice from a fixed list, a yes or no, or a rounded number.
+          These are all the feature events the site sends to PostHog. The table is built from the
+          code that sends them. Every value is a feature name, a choice from a fixed list, a yes or no, or a rounded number. Error Tracking also sends
+          {' '}<code>$exception</code> events with the limited details described above.
         </p>
         <div className="table-wrap">
           <table className="privacy-events">
