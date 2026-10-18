@@ -1268,16 +1268,16 @@ export class Engine {
         if (fmt !== 'json' && fmt !== 'unknown') {
           const r = importToJson(text, fmt, this.indent);
           if ('json' in r) {
-            this.load(r.json, f.name.replace(/\.[^.]+$/, '.json'));
             noteLoad(source, 1, f.name);
+            this.load(r.json, f.name.replace(/\.[^.]+$/, '.json'));
             this.toast(`Converted ${f.name} to JSON`, 'ok');
             return;
           }
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
         }
       }
-      this.load(text, f.name, true, true);
       noteLoad(source, 1, f.name);
+      this.load(text, f.name, true, true);
       this.toast(`Opened ${f.name}`, 'ok');
     } catch {
       this.toast(`Couldn't read ${f.name}`, 'err');
@@ -1291,9 +1291,9 @@ export class Engine {
         this.toast('Your clipboard is empty', 'info');
         return;
       }
+      noteLoad('paste_button');
       this.load(text, null);
       if (this.settings.autoFormat) this.autoFormat();
-      noteLoad('paste_button');
     } catch {
       this.ed.focus();
       this.toast(`Press ${this.mod}V to paste`, 'info');
@@ -1305,8 +1305,8 @@ export class Engine {
     try {
       const { SAMPLE } = await import('./sample');
       if (this.dead || seq !== this.sizeSeq) return;
-      this.load(SAMPLE, 'sample.json');
       noteLoad('sample', 1, 'sample.json');
+      this.load(SAMPLE, 'sample.json');
       this.toast('Loaded a sample. Try the tree, table and search.', 'info');
     } catch {
       this.toast("Couldn't read sample.json", 'err');
@@ -1532,8 +1532,8 @@ export class Engine {
       if (text.length > 20_000_000) return this.toast('That share link is too large to open', 'err');
       const had = !!this.ed.text.trim();
       const r = parse(text);
-      this.load(r.root && !r.error ? formatDoc(text, r, this.indent) : text, null);
       noteLoad('share_link');
+      this.load(r.root && !r.error ? formatDoc(text, r, this.indent) : text, null);
       this.toast(had ? `Loaded shared JSON · ${this.mod}Z restores your previous document` : 'Loaded shared JSON', 'ok');
     } catch {
       this.toast('That share link is broken or incomplete', 'err');
@@ -1556,9 +1556,9 @@ export class Engine {
       if (this.dead) return;
       const name = url.pathname.split('/').pop() || url.hostname;
       // Auto-format reads the editor right after: only then is the load done in place.
+      noteLoad(source);
       this.load(text, /\.json$/i.test(name) ? name : name + '.json', true, !this.settings.autoFormat);
       if (this.settings.autoFormat) this.autoFormat();
-      noteLoad(source);
       this.toast(`Loaded ${url.hostname}`, 'ok');
     } catch {
       this.toast("Couldn't fetch. The server must allow cross-origin requests (CORS).", 'err');

@@ -81,6 +81,17 @@ export function onAnalyticsChange(cb: () => void) {
   };
 }
 
+/** Stops collecting on this page: drops queued events, opts PostHog out and stops the recording. */
+function stop() {
+  queue.length = 0;
+  errorQueue.length = 0;
+  if (ph) {
+    // Opt out first: stopping the recorder flushes its buffer, which must then be refused too.
+    ph.opt_out_capturing();
+    ph.stopSessionRecording();
+  }
+}
+
 /** Turns analytics on or off in this browser (both PostHog and Vercel Web Analytics). */
 export function setAnalyticsEnabled(on: boolean) {
   try {
@@ -88,15 +99,8 @@ export function setAnalyticsEnabled(on: boolean) {
     else localStorage.setItem(PREF, 'off');
   } catch {}
   dispatchEvent(new Event(CHANGE));
-  if (!on) {
-    queue.length = 0;
-    errorQueue.length = 0;
-    if (ph) {
-      // Opt out first: stopping the recorder flushes its buffer, which must then be refused too.
-      ph.opt_out_capturing();
-      ph.stopSessionRecording();
-    }
-  } else if (ph) {
+  if (!on) stop();
+  else if (ph) {
     ph.opt_in_capturing();
     ph.startSessionRecording();
   } else if (started) void boot().catch(() => {});
@@ -175,6 +179,8 @@ async function boot() {
     const lazy = await import('./posthog');
     if (analyticsState() !== 'on') return;
     ph = lazy.initPostHog(TOKEN, INGEST);
+    // PostHog keeps its own opt-out from an earlier page; the site's choice (now on) is what counts.
+    if (ph.has_opted_out_capturing()) ph.opt_in_capturing();
     // Local testing (see .env.example): the instance is reachable from the console.
     if (pref() === 'debug') (window as Window & { posthog?: Ph }).posthog = ph;
     send = lazy.sender(ph);
@@ -195,6 +201,10 @@ async function boot() {
 export function startAnalytics(delay = 3000) {
   if (started || typeof window === 'undefined' || analyticsState() !== 'on') return;
   started = true;
+  // Turned off in another tab: stop here too.
+  addEventListener('storage', (e) => {
+    if (e.key === PREF && e.newValue === 'off') stop();
+  });
   // Installed synchronously before hydration; SDK autocapture stays off to avoid duplicates.
   addEventListener('error', (e: ErrorEvent) => {
     // Resource-load failures have no Error and may name a private URL. Ignore those.

@@ -287,7 +287,7 @@ test('every view that shows the document is kept out of session replay', () => {
   const index = readFileSync(join(process.cwd(), 'lib/analytics/index.ts'), 'utf8');
   assert.match(index, /export const PRIVATE = 'ph-no-capture';/);
   const ph = readFileSync(join(process.cwd(), 'lib/analytics/posthog.ts'), 'utf8');
-  for (const opt of ["blockClass: 'ph-no-capture'", "maskTextSelector: '*'", 'maskAllInputs: true', 'recordBody: false', 'recordHeaders: false', 'autocapture: false', 'capture_exceptions: false', 'enable_recording_console_log: false', 'disable_capture_url_hashes: true']) {
+  for (const opt of ["blockClass: 'ph-no-capture'", "maskTextSelector: '*'", 'maskAllInputs: true', 'recordBody: false', 'recordHeaders: false', 'autocapture: false', 'capture_exceptions: false', 'enable_recording_console_log: false', 'disable_capture_url_hashes: true', 'captureConsoleLogs: false, beforeSend: () => null']) {
     assert.ok(ph.includes(opt), opt);
   }
 });

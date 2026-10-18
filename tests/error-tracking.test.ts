@@ -13,9 +13,13 @@ function session() {
   const reports: { error: unknown; props: { error_source: string } }[] = [];
   let clock = 0;
   let loads = 0;
+  const calls: string[] = [];
+  const sdkState = { optedOut: false };
   const ph = {
     captureException: (error: unknown, props: { error_source: string }) => reports.push({ error, props }),
-    opt_out_capturing() {}, stopSessionRecording() {}, opt_in_capturing() {}, startSessionRecording() {},
+    has_opted_out_capturing: () => sdkState.optedOut,
+    opt_out_capturing: () => calls.push('opt_out'), stopSessionRecording: () => calls.push('stop_recording'),
+    opt_in_capturing: () => calls.push('opt_in'), startSessionRecording: () => calls.push('start_recording'),
   };
   const sdk = { initPostHog: () => { loads++; return ph; }, sender: () => () => {} };
   const exports: {
@@ -45,7 +49,7 @@ function session() {
     // The dynamic import is compiled into a promise and a deferred require.
     await new Promise<void>((done) => setImmediate(done));
   };
-  return { api: exports as Required<typeof exports>, reports, ready, fire, navigator, loads: () => loads };
+  return { api: exports as Required<typeof exports>, reports, ready, fire, navigator, loads: () => loads, calls, sdkState };
 }
 
 test('early errors and rejections wait for the SDK, and duplicate errors report once', async () => {
@@ -105,4 +109,20 @@ test('error collection can resume after opting out during SDK startup', async ()
   s.api.reportError(new Error('private input'), 'conversion');
   assert.equal(s.loads(), 1);
   assert.equal(s.reports.length, 1);
+});
+
+test('turning analytics off in another tab stops this one', async () => {
+  const s = session();
+  s.api.startAnalytics();
+  await s.ready();
+  s.fire('storage', { key: 'jf:analytics', newValue: 'off' });
+  assert.deepEqual(s.calls, ['opt_out', 'stop_recording']);
+});
+
+test("PostHog's opt-out stored by an earlier page gives way to the site's choice", async () => {
+  const s = session();
+  s.sdkState.optedOut = true;
+  s.api.startAnalytics();
+  await s.ready();
+  assert.deepEqual(s.calls, ['opt_in']);
 });

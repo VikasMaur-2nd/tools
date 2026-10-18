@@ -1203,7 +1203,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "381b97ba9d80",
+    "hash": "6aa134126011",
     "title": "Formateur JSON sécurisé : traitement dans le navigateur",
     "description": "Inspectez du JSON dans le navigateur, sans envoi du document ni compte. Vérifiez les requêtes, la mesure d'audience, le stockage et les limites de CSP.",
     "heading": "Formateur JSON sécurisé",
@@ -1222,7 +1222,7 @@
     ],
     "options": [
       "L'analyseur, les générateurs de code et la création des fichiers à télécharger s'exécutent en local. Ouvrir un fichier local ne l'envoie pas au serveur.",
-      "Vercel Web Analytics compte les pages vues via /_vercel/insights. PostHog enregistre les pages vues, les événements d'utilisation des fonctionnalités et les enregistrements d'écran via /relay. Les deux chemins se trouvent sur cette origine. Les enregistrements excluent les éditeurs, les noms de fichiers et toutes les vues de sortie, le navigateur masque tout le reste du texte de la page, et les événements ne contiennent que les noms des fonctionnalités, les réglages et des plages de taille arrondies.",
+      "Vercel Web Analytics compte les pages vues via /_vercel/insights. PostHog enregistre les pages vues, les événements d'utilisation des fonctionnalités et les enregistrements d'écran via /relay. Les deux chemins se trouvent sur cette origine. Les enregistrements excluent les éditeurs, les noms de fichiers et toutes les vues de sortie, le navigateur masque tout le reste du texte de la page, et aucun événement ne contient le contenu des documents.",
       "Un lien de partage place le JSON dans le fragment d'URL. Ce fragment n'est pas envoyé dans une requête HTTP, mais toute personne possédant le lien complet peut lire le document. Évitez de partager des secrets.",
       "« Charger depuis une URL » appelle explicitement le point de terminaison choisi depuis votre navigateur. Ce point de terminaison reçoit une requête. Un lien ?url= peut aussi déclencher un chargement distant ; collez les données ou ouvrez un fichier local pour les données sensibles."
     ],

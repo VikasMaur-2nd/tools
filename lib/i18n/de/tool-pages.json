@@ -1226,7 +1226,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "381b97ba9d80",
+    "hash": "6aa134126011",
     "title": "Sicherer JSON-Formatter mit Verarbeitung im Browser",
     "description": "Prüfe JSON lokal ohne Dokument-Upload und Konto. Kontrolliere die Netzwerkanfragen selbst und lies vor sensiblen Daten zu Analytics, Speicher und CSP.",
     "heading": "Sicherer JSON-Formatter",
@@ -1246,7 +1246,7 @@
     ],
     "options": [
       "Parser, Codegeneratoren und das Erstellen von Downloads laufen lokal. Eine lokale Datei wird beim Öffnen nicht hochgeladen.",
-      "Vercel Web Analytics zählt Seitenaufrufe über /_vercel/insights. PostHog erfasst Seitenaufrufe, Ereignisse zur Nutzung von Funktionen und Bildschirmaufzeichnungen über /relay. Beide Pfade liegen auf dieser Origin. Die Aufzeichnungen lassen die Editoren, Dateinamen und sämtliche Ausgabeansichten aus. Der Browser maskiert den gesamten übrigen Seitentext. Ereignisse enthalten nur Funktionsnamen, Einstellungen und gerundete Größenbereiche.",
+      "Vercel Web Analytics zählt Seitenaufrufe über /_vercel/insights. PostHog erfasst Seitenaufrufe, Ereignisse zur Nutzung von Funktionen und Bildschirmaufzeichnungen über /relay. Beide Pfade liegen auf dieser Origin. Die Aufzeichnungen lassen die Editoren, Dateinamen und sämtliche Ausgabeansichten aus. Der Browser maskiert den gesamten übrigen Seitentext. Kein Ereignis enthält Dokumentinhalte.",
       "Ein Freigabelink enthält JSON im URL-Fragment. Das Fragment wird nicht in einer HTTP-Anfrage gesendet. Wer den vollständigen Link hat, kann das Dokument aber lesen. Teile keine Geheimnisse über solche Links.",
       "„Von URL laden“ ruft den gewählten Endpunkt ausdrücklich in deinem Browser ab. Dieser Endpunkt erhält eine Anfrage. Auch ein Link mit ?url= kann das Laden entfernter Daten auslösen. Verwende für sensible Daten das Einfügen oder eine lokale Datei."
     ],

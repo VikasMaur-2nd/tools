@@ -53,6 +53,8 @@ export function initPostHog(token: string, ingest: string): PostHog {
     capture_exceptions: false,
     error_tracking: { exception_steps: { enabled: false } },
     enable_recording_console_log: false,
+    // PostHog Logs would send raw console output (error messages included) past every filter here.
+    logs: { captureConsoleLogs: false, beforeSend: () => null },
     mask_all_text: true,
     mask_all_element_attributes: true,
     disable_capture_url_hashes: true,
@@ -77,8 +79,8 @@ export function initPostHog(token: string, ingest: string): PostHog {
       collectFonts: false,
       recordCrossOriginIframes: false,
       compress_events: false,
-      // The page URL shown in the replay player, and any request entry: no fragment, no query.
-      maskCapturedNetworkRequestFn: (req) => (req.isInitial ? { ...req, name: req.name && cleanUrl(req.name) } : null),
+      // Page URLs in the recording keep their path only; network entries are dropped.
+      maskCapturedNetworkRequestFn: (req) => (req.entryType || req.initiatorType ? null : { ...req, name: req.name && cleanUrl(req.name) }),
     },
   };
   posthog.init(token, config);

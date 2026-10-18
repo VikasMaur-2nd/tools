@@ -105,7 +105,7 @@ export default function PrivacyPage() {
         <ul>
           <li>
             <strong>Page views and visits:</strong> the page’s path, the site you came from, your browser, operating system, screen size, language, time
-            zone. Fragments and query parameters are removed from every URL, apart from <code>utm_</code> campaign tags.
+            zone, the site’s language, light or dark theme, touch or mouse input and whether it runs as an installed app. Fragments and query parameters are removed from every URL, apart from <code>utm_</code> campaign tags.
           </li>
           <li>
             <strong>Approximate location:</strong> continent, country, region, city, postal code, latitude, longitude and time zone, where available.

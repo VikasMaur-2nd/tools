@@ -36,12 +36,11 @@ function report() {
 }
 
 /**
- * A document arrived in an editor (`source` says how). Reported once its first
- * check settles, with its size range, validity and the error category. Call it
- * right after the document was put in the editor; `next` waits for the next
- * check instead (a paste the editor hasn't analysed yet).
+ * A document is arriving in an editor (`source` says how). Call it just before
+ * the document goes in: it is reported once the editor's next check settles,
+ * with its size range, validity and the error category.
  */
-export function noteLoad(source: InputSource, editor: 1 | 2 = 1, fileName?: string | null, next = false) {
+export function noteLoad(source: InputSource, editor: 1 | 2 = 1, fileName?: string | null) {
   if (!collecting()) return;
   if (pending) report();
   if (editor === 2) {
@@ -53,15 +52,13 @@ export function noteLoad(source: InputSource, editor: 1 | 2 = 1, fileName?: stri
     return;
   }
   const since = performance.now();
-  let first = store.get().status;
+  const before = store.get().status;
+  // Every check publishes a new status object; the one already shown belongs to the previous document.
   const check = () => {
     const st = store.get().status;
-    if (next && st === first) return;
-    if (SETTLED.has(st.kind) || performance.now() - since > 60_000) report();
-    first = st;
+    if (st !== before && (SETTLED.has(st.kind) || performance.now() - since > 60_000)) report();
   };
   pending = { source, editor, file: fileName ?? null, unsub: store.subscribe(check) };
-  if (!next) check();
 }
 
 /** Pastes straight into an editor (the most common way in), reported once the editor has checked them. Once per page. */
@@ -72,7 +69,7 @@ export function watchPastes() {
     'paste',
     (e) => {
       const pane = (e.target as Element | null)?.closest?.('.pane-ed, .pane-cmp');
-      if (pane) noteLoad('paste', pane.classList.contains('pane-cmp') ? 2 : 1, null, true);
+      if (pane) noteLoad('paste', pane.classList.contains('pane-cmp') ? 2 : 1);
     },
     { capture: true, passive: true },
   );

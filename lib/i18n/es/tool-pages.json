@@ -1216,7 +1216,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "381b97ba9d80",
+    "hash": "6aa134126011",
     "title": "Formateador JSON seguro: procesamiento local en tu navegador",
     "description": "Inspecciona JSON en tu navegador sin subir documentos ni crear cuenta. Comprueba tú mismo las solicitudes y lee los límites de analítica, almacenamiento y CSP.",
     "heading": "Formateador JSON seguro",
@@ -1236,7 +1236,7 @@
     ],
     "options": [
       "El analizador, los generadores de código y la creación de descargas se ejecutan localmente. Abrir un archivo local no lo sube.",
-      "Vercel Web Analytics cuenta las visitas a las páginas a través de /_vercel/insights. PostHog registra visitas a las páginas, eventos de uso de funciones y grabaciones de pantalla a través de /relay. Ambas rutas pertenecen a este origen. Las grabaciones excluyen los editores, los nombres de archivo y todas las vistas de salida, el navegador enmascara el resto del texto de la página y los eventos solo contienen nombres de funciones, ajustes y rangos de tamaño redondeados.",
+      "Vercel Web Analytics cuenta las visitas a las páginas a través de /_vercel/insights. PostHog registra visitas a las páginas, eventos de uso de funciones y grabaciones de pantalla a través de /relay. Ambas rutas pertenecen a este origen. Las grabaciones excluyen los editores, los nombres de archivo y todas las vistas de salida, el navegador enmascara el resto del texto de la página y ningún evento contiene el contenido de los documentos.",
       "Un enlace para compartir coloca el JSON en el fragmento de la URL. El fragmento no se envía en una solicitud HTTP, pero cualquiera que tenga el enlace completo puede leer el documento. Evita compartir secretos.",
       "Cargar desde URL solicita expresamente el endpoint elegido desde tu navegador. Ese endpoint recibe una solicitud. Un enlace ?url= también puede activar la carga remota; pega los datos o usa un archivo local para trabajar con información sensible."
     ],
