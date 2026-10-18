@@ -16,7 +16,7 @@ const out = join(root, '.test-build');
 const ts = createRequire(import.meta.url)('typescript');
 
 /** Plain-TS source dirs (no React / DOM-store code). Missing dirs are skipped. */
-const SRC_DIRS = ['lib/json', 'lib/convert'];
+const SRC_DIRS = ['lib/json', 'lib/convert', 'lib/testdata'];
 const EXCLUDE = new Set(['lib/engine/store.ts', 'lib/engine/instance.ts']);
 const IMPORTS_REACT = /\bfrom\s+['"]react(?:-dom)?(?:\/[^'"]*)?['"]|\brequire\(\s*['"]react['"]/;
 
@@ -60,6 +60,7 @@ const options = {
   paths: { '@/*': ['./*'] },
   sourceMap: true,
   noEmitOnError: true,
+  rewriteRelativeImportExtensions: true,
 };
 
 rmSync(out, { recursive: true, force: true });

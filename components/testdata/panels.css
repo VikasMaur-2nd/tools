@@ -1,0 +1,49 @@
+.testdata-panel {
+  margin: 28px 0 40px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  padding: clamp(18px, 4vw, 32px);
+  background: var(--bg-2);
+  color: var(--fg);
+  font: 15px/1.6 var(--font-ui);
+}
+.testdata-panel h2 { margin: 0 0 8px; font-size: 23px; font-weight: 650; letter-spacing: -0.025em; }
+.testdata-panel p { margin: 0 0 16px; }
+.testdata-note { color: var(--muted); font-size: 14px; }
+.testdata-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 24px 0 16px; border: 0; padding: 0; }
+.testdata-panel label { display: block; color: var(--fg); font-size: 14px; font-weight: 550; }
+.testdata-panel :is(select, input, textarea) { display: block; box-sizing: border-box; width: 100%; min-height: 44px; margin-top: 7px; border: 1px solid var(--line-2); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--fg); font: inherit; }
+.testdata-panel textarea { resize: vertical; font: 13px/1.65 var(--font-mono); tab-size: 2; }
+.testdata-panel :is(button, .button) { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; border: 1px solid var(--line-2); border-radius: 8px; padding: 9px 16px; background: var(--bg); color: var(--fg); font: 550 14px/1.5 var(--font-ui); text-decoration: none; cursor: pointer; }
+.testdata-panel .button { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.testdata-panel :is(button, .button):hover { filter: brightness(0.9); }
+.testdata-panel :disabled { opacity: 0.55; cursor: default; }
+.testdata-panel :is(button, a, select, input, textarea, summary, pre):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.testdata-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.testdata-custom { grid-column: 1 / -1; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.testdata-progress { margin-top: 24px; min-height: 80px; }
+.testdata-progress progress { display: block; width: 100%; height: 7px; accent-color: var(--fg); }
+.testdata-progress p { margin-top: 10px; color: var(--fg-2); font-size: 14px; }
+.testdata-output { min-height: 280px; border-top: 1px solid var(--line); padding-top: 20px; }
+.testdata-stats { display: flex; gap: 40px; margin: 0 0 16px; }
+.testdata-stats dt { color: var(--muted); font-size: 12px; }
+.testdata-stats dd { margin: 2px 0 0; font: 500 22px var(--font-mono); }
+.testdata-hash { font-size: 12px; color: var(--muted); }
+.testdata-panel .testdata-hash code { display: block; margin-top: 4px; padding: 0; background: none; color: var(--fg); font: 12px/1.7 var(--font-mono); white-space: normal; overflow-wrap: anywhere; }
+.testdata-match { color: var(--ok); font-size: 14px; }
+.testdata-reference { margin-top: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.testdata-reference pre { margin: 0; overflow: auto; padding: 16px; font: 12px/1.8 var(--font-mono); }
+.testdata-details { margin: 22px 0; }
+.testdata-details summary { width: fit-content; cursor: pointer; font-weight: 550; }
+.testdata-details label { margin-top: 16px; }
+.testdata-cases { margin: 18px 0; font-size: 14px; }
+.testdata-cases dt { margin-top: 12px; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.testdata-cases dd { margin: 4px 0 0; color: var(--fg-2); }
+.testdata-results { min-height: 120px; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 20px; }
+.testdata-panel .testdata-differences { list-style: none; padding: 0; margin: 0; }
+.testdata-differences li { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; border-left: 2px solid var(--warn); padding: 10px 14px; background: var(--bg); overflow-wrap: anywhere; }
+.testdata-differences li.testdata-spelling { border-color: var(--line-2); }
+.testdata-differences strong { font-size: 14px; }
+.testdata-differences span { font-size: 13px; color: var(--fg-2); }
+.testdata-panel .testdata-differences code { padding: 0; background: none; font: 12px/1.7 var(--font-mono); white-space: pre-wrap; }
+@media (max-width: 540px) { .testdata-fields { grid-template-columns: 1fr; gap: 16px; } .testdata-stats { gap: 24px; } }

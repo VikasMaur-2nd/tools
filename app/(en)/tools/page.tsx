@@ -1,3 +1,4 @@
+import { TESTDATA_PAGES } from '@/lib/testdata/pages';
 import type { Metadata } from 'next';
 import IntentLink from '@/components/IntentLink';
 import ContentShell from '../content-shell';
@@ -32,7 +33,7 @@ export default async function ToolsPage() {
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
-      { '@type': 'CollectionPage', '@id': `${url('/tools')}#page`, url: url('/tools'), name: TITLE, description: DESCRIPTION, isPartOf: { '@id': `${SITE}/#website` }, ...(locale !== 'en' && { inLanguage: localeInfo(locale).lang }), mainEntity: { '@type': 'ItemList', itemListElement: TOOL_PAGES.map((page, i) => ({ '@type': 'ListItem', position: i + 1, name: page.heading, url: url(`/tools/${page.slug}`) })) } },
+      { '@type': 'CollectionPage', '@id': `${url('/tools')}#page`, url: url('/tools'), name: TITLE, description: DESCRIPTION, isPartOf: { '@id': `${SITE}/#website` }, ...(locale !== 'en' && { inLanguage: localeInfo(locale).lang }), mainEntity: { '@type': 'ItemList', itemListElement: [...TOOL_PAGES, ...(locale === 'en' ? TESTDATA_PAGES : [])].map((page, i) => ({ '@type': 'ListItem', position: i + 1, name: page.heading, url: url(`/tools/${page.slug}`) })) } },
       { '@type': 'BreadcrumbList', itemListElement: [{ '@type': 'ListItem', position: 1, name: t('site.home'), item: home }, { '@type': 'ListItem', position: 2, name: t('site.nav.tools'), item: url('/tools') }] },
     ],
   };
@@ -47,6 +48,7 @@ export default async function ToolsPage() {
       <section className="tool-grid" aria-label={t('hub.gridLabel')}>
         <article className="tool-card"><p className="resource-kind">{t('hub.formatterKind')}</p><h2><IntentLink href={localePath(locale, '/')}>{t('site.formatter')}</IntentLink></h2><p>{t('hub.formatterText')}</p><IntentLink className="resource-arrow" href={localePath(locale, '/')}>{t('hub.open')} <span aria-hidden="true">→</span></IntentLink></article>
         {TOOL_PAGES.map((page) => <article className="tool-card" key={page.slug}><p className="resource-kind">{page.modeLabel}</p><h2><IntentLink href={localePath(locale, `/tools/${page.slug}`)}>{page.heading}</IntentLink></h2><p>{page.description}</p><IntentLink className="resource-arrow" href={localePath(locale, `/tools/${page.slug}`)}>{t('hub.open')} <span aria-hidden="true">→</span></IntentLink></article>)}
+        {locale === 'en' && TESTDATA_PAGES.map(page => <article className="tool-card" key={page.slug}><p className="resource-kind">Benchmark tools</p><h2><IntentLink href={`/tools/${page.slug}`}>{page.heading}</IntentLink></h2><p>{page.description}</p><IntentLink className="resource-arrow" href={`/tools/${page.slug}`}>Open tool <span aria-hidden="true">→</span></IntentLink></article>)}
       </section>
     </ContentShell>
   );

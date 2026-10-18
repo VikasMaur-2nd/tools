@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { POSTS } from './(en)/blogs/posts';
 import { ERROR_GUIDES } from './(en)/json-errors/errors';
+import { TESTDATA_PAGES } from '@/lib/testdata/pages';
 import { TOOL_PAGES } from '@/lib/tool-pages';
 import { sitemapLanguages } from '@/lib/i18n/server';
 
@@ -28,6 +29,12 @@ const cluster = (path: string, entry: Omit<MetadataRoute.Sitemap[number], 'url'>
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
+    ...TESTDATA_PAGES.map(page => ({
+      url: `${SITE}/tools/${page.slug}`,
+      lastModified: '2026-10-18',
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
     ...['/json-errors', ...ERROR_GUIDES.map(guide => `/json-errors/${guide.slug}`)].map(path => ({
       url: `${SITE}${path}`,
       lastModified: path === '/json-errors' ? ERRORS_LAST_MODIFIED : ERROR_GUIDES_LAST_MODIFIED,
