@@ -84,6 +84,15 @@ export default function PrivacyPage() {
           </li>
         </ul>
 
+        <h2>What we never collect</h2>
+        <ul>
+          <li>Anything inside your documents: text, keys, values or JSON paths</li>
+          <li>What you type into Find, JSONPath queries or the type name for generated code</li>
+          <li>File names, the URLs you load from and share links</li>
+          <li>Error messages, clipboard contents and exact document sizes</li>
+          <li>Your IP address, once your approximate location has been looked up</li>
+        </ul>
+
         <h2>What we measure</h2>
         <h3>Vercel Web Analytics</h3>
         <p>
@@ -96,8 +105,13 @@ export default function PrivacyPage() {
         <ul>
           <li>
             <strong>Page views and visits:</strong> the page’s path, the site you came from, your browser, operating system, screen size, language, time
-            zone and approximate location (country, region and city, estimated from your IP address, which is then discarded). Fragments and query parameters
-            are removed from every URL, apart from <code>utm_</code> campaign tags.
+            zone. Fragments and query parameters are removed from every URL, apart from <code>utm_</code> campaign tags.
+          </li>
+          <li>
+            <strong>Approximate location:</strong> continent, country, region, city, postal code, latitude, longitude and time zone, where available.
+            PostHog estimates these from your IP address, then discards the IP address. It may also include an accuracy radius and confidence scores
+            for the estimates. This is an IP-based estimate, not your GPS location or an exact street address. We do not request your browser’s
+            location permission.
           </li>
           <li>
             <strong>Feature use:</strong> the events in the table below, such as which view or Convert language you pick, which buttons you use and how a
@@ -161,15 +175,6 @@ export default function PrivacyPage() {
             </tbody>
           </table>
         </div>
-
-        <h2>What we never collect</h2>
-        <ul>
-          <li>Anything inside your documents: text, keys, values or JSON paths</li>
-          <li>What you type into Find, JSONPath queries or the type name for generated code</li>
-          <li>File names, the URLs you load from and share links</li>
-          <li>Error messages, clipboard contents and exact document sizes</li>
-          <li>Your IP address, once your approximate location has been looked up</li>
-        </ul>
 
         <h2>Where the data goes</h2>
         <p>
