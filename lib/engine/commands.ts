@@ -1,4 +1,5 @@
 import type { Engine } from './engine';
+import { analyticsAllowed, setAnalyticsEnabled } from '../analytics';
 import { store, type UIState } from './store';
 import { TARGETS } from './targets';
 
@@ -111,6 +112,19 @@ export const COMMANDS: Command[] = [
   { id: 'theme-dark', group: 'Settings', title: 'Theme: dark', terms: 'appearance night', active: (s) => s.settings.theme === 'dark', run: (e) => e.setTheme('dark') },
   { id: 'autoformat', group: 'Settings', title: 'Auto-format on paste', active: (s) => s.settings.autoFormat, run: (e) => e.toggleAutoFormat() },
   { id: 'wrap', group: 'Settings', title: 'Wrap long lines', keys: 'Alt+Z', terms: 'word wrap soft wrap line break overflow horizontal scroll', active: (s) => s.settings.wrap, run: (e) => e.toggleWrap() },
+  {
+    id: 'privacy-mode',
+    group: 'Settings',
+    title: 'Privacy mode (no analytics)',
+    terms: 'analytics tracking telemetry posthog opt out session replay recording',
+    // Kept in this browser (lib/analytics), not in the editor's settings; the privacy page's switch is the same choice.
+    active: () => !analyticsAllowed(),
+    run: (e) => {
+      const on = analyticsAllowed();
+      setAnalyticsEnabled(!on);
+      e.toast(on ? 'Privacy mode on: this browser sends no analytics' : 'Privacy mode off. The privacy page lists what is measured.', 'info');
+    },
+  },
 
   { id: 'shortcuts', group: 'Help', title: 'Keyboard shortcuts', keys: '?', terms: 'help keys', run: () => store.set({ shortcuts: true }) },
 ];

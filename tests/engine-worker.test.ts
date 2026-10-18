@@ -16,6 +16,7 @@ function session() {
   let timer = 0;
   const defer = (fn: () => void) => { tasks.set(++timer, fn); return timer; };
   const state = { fileName: null };
+  const errors: { error: unknown; source: string }[] = [];
   const workers: { terminated: boolean; onerror?: (e: { preventDefault(): void }) => void; postMessage(data: unknown): void; terminate(): void }[] = [];
   const exports: Record<string, new () => Record<string, any>> = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
   const source = readFileSync(resolve(__dirname, '../../lib/engine/engine.ts'), 'utf8').replaceAll('import.meta.url', '"file:///engine.js"');
@@ -32,6 +33,7 @@ function session() {
     require: (name: string) => {
       if (name === './store') return { store: { get: () => state, set: () => {} } };
       if (name === './idle') return { soon: defer, idle: defer };
+      if (name === '../analytics') return { reportError: (error: unknown, source: string) => errors.push({ error, source }) };
       if (name.startsWith('../json/') || name === './doc' || name === './rules') return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
@@ -47,7 +49,7 @@ function session() {
   engine.ed = { version: Doc.of('{"a":1}'), text: '{"a":1}' };
   engine.fmt = { text: '', el: {}, snapshotText: () => () => '', setText: () => {}, inlineIndex: () => ({ close: new Int32Array(0), depth: new Int32Array(0) }) };
   const tick = () => { const first = tasks.entries().next().value; if (first) { tasks.delete(first[0]); first[1](); } };
-  return { engine, workers, tick };
+  return { engine, workers, tick, errors };
 }
 
 test('worker patch uses the displayed text when layout commits before onReady', () => {
@@ -108,7 +110,7 @@ for (const text of ['', '{"small":true}', ' '.repeat(2_000_000)]) {
 }
 
 test('analysis worker stops after three failures without a synchronous whole-document fallback', () => {
-  const { engine, workers, tick } = session();
+  const { engine, workers, tick, errors } = session();
   let fallbacks = 0;
   for (let i = 0; i < 5; i++) {
     engine.queueAnalysis(0, Doc.of('{}'), null, () => { fallbacks++; });
@@ -117,6 +119,8 @@ test('analysis worker stops after three failures without a synchronous whole-doc
   }
   assert.equal(workers.length, 3);
   assert.equal(fallbacks, 0);
+  assert.equal(errors.length, 3, 'each active worker failure is reported once');
+  assert.ok(errors.every((e) => e.source === 'worker'));
 });
 
 test('settings reformat retained output before its analysis is ready', () => {

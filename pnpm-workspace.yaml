@@ -3,3 +3,8 @@ allowBuilds:
   # eslint-config-next → unrs-resolver: its postinstall only downloads a fallback
   # native binary; pnpm already installs the platform binding as an optional dep.
   unrs-resolver: false
+  # posthog-js → core-js: its postinstall only prints a funding message.
+  core-js: false
+  # PostHog's source-map CLI downloads its ~100 MB binary on first use (only builds with upload
+  # credentials), so skip the postinstall download on every install.
+  '@posthog/cli': false

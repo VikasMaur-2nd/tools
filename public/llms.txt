@@ -13,6 +13,7 @@
 - [Formatting and validation guide](https://tools.vikasmaur.com/blogs/json-formatting-guide): a practical workflow for finding and fixing syntax errors.
 - [Origin of JSON](https://tools.vikasmaur.com/blogs/origin-of-json): the history of the format and its standards.
 - [About Tool Kumar](https://tools.vikasmaur.com/about): privacy and processing details.
+- [Privacy](https://tools.vikasmaur.com/privacy): what the analytics (Vercel Web Analytics, PostHog) measure, what screen recordings leave out, and how to turn analytics off.
 
 ## Dedicated JSON tools
 

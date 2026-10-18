@@ -2,11 +2,13 @@
 
 import { useContext, useEffect } from 'react';
 import { ErrorText } from '@/lib/i18n/errors';
+import { reportError } from '@/lib/analytics';
 
 /** Last-resort fallback: the document is saved locally, so a retry/reload loses nothing. */
 export default function Error({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   const s = useContext(ErrorText);
   useEffect(() => {
+    reportError(error, 'react_boundary');
     console.error(error);
   }, [error]);
   return (

@@ -1226,7 +1226,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "2a030202b992",
+    "hash": "6aa134126011",
     "title": "Sicherer JSON-Formatter mit Verarbeitung im Browser",
     "description": "Prüfe JSON lokal ohne Dokument-Upload und Konto. Kontrolliere die Netzwerkanfragen selbst und lies vor sensiblen Daten zu Analytics, Speicher und CSP.",
     "heading": "Sicherer JSON-Formatter",
@@ -1236,7 +1236,7 @@
       "json sicher formatieren",
       "ist json formatter sicher"
     ],
-    "intro": "Tool Kumar parst und formatiert dein Dokument im Browser. Eingefügtes JSON wird nicht an einen Server übermittelt. Ein Konto ist nicht erforderlich. Die Website verwendet allerdings Vercel Web Analytics. Datenschutzangaben müssen deshalb zwischen der Dokumentverarbeitung und der Seitentelemetrie unterscheiden.",
+    "intro": "Tool Kumar parst und formatiert dein Dokument im Browser. Eingefügtes JSON wird nicht an einen Server übermittelt. Ein Konto ist nicht erforderlich. Die Website verwendet allerdings Analytics (Vercel Web Analytics und PostHog). Diese erhalten niemals Dokumentinhalte. Datenschutzangaben müssen deshalb zwischen der Dokumentverarbeitung und der Nutzungstelemetrie unterscheiden.",
     "modeLabel": "Formatiertes JSON",
     "exampleLabel": "Derselbe lokale Formatter erzeugt diese Ausgabe online oder nachdem seine Anwendungsressourcen für den Offlinebetrieb im Cache gespeichert wurden.",
     "steps": [
@@ -1246,7 +1246,7 @@
     ],
     "options": [
       "Parser, Codegeneratoren und das Erstellen von Downloads laufen lokal. Eine lokale Datei wird beim Öffnen nicht hochgeladen.",
-      "Vercel Web Analytics erfasst Seitenaufrufe. In der Produktionsumgebung wird das Skript auf dieser Origin unter /_vercel/insights/script.js bereitgestellt. Die Telemetrie verwendet /_vercel/insights. Der Wrapper entfernt URL-Fragmente, bevor Ereignisse gesendet werden. Im Code sind keine Ereignisse für Dokumentinhalte konfiguriert.",
+      "Vercel Web Analytics zählt Seitenaufrufe über /_vercel/insights. PostHog erfasst Seitenaufrufe, Ereignisse zur Nutzung von Funktionen und Bildschirmaufzeichnungen über /relay. Beide Pfade liegen auf dieser Origin. Die Aufzeichnungen lassen die Editoren, Dateinamen und sämtliche Ausgabeansichten aus. Der Browser maskiert den gesamten übrigen Seitentext. Kein Ereignis enthält Dokumentinhalte.",
       "Ein Freigabelink enthält JSON im URL-Fragment. Das Fragment wird nicht in einer HTTP-Anfrage gesendet. Wer den vollständigen Link hat, kann das Dokument aber lesen. Teile keine Geheimnisse über solche Links.",
       "„Von URL laden“ ruft den gewählten Endpunkt ausdrücklich in deinem Browser ab. Dieser Endpunkt erhält eine Anfrage. Auch ein Link mit ?url= kann das Laden entfernter Daten auslösen. Verwende für sensible Daten das Einfügen oder eine lokale Datei."
     ],
@@ -1257,7 +1257,7 @@
       },
       {
         "question": "Verwendet die Website Analytics?",
-        "answer": "Ja. Vercel Web Analytics erfasst Seitentelemetrie. Der Wrapper entfernt URL-Fragmente. In der Anwendung ist kein Ereignis konfiguriert, das Editorinhalte sendet. Analytics-Anfragen sind von der lokalen JSON-Verarbeitung getrennt."
+        "answer": "Ja. Vercel Web Analytics zählt Seitenaufrufe, und PostHog erfasst die Nutzung von Funktionen und Bildschirmaufzeichnungen. Die Aufzeichnungen lassen die Editoren, Dateinamen und Ausgaben aus. Der Browser maskiert den gesamten übrigen Text. Kein Ereignis enthält Dokumentinhalte. Du kannst Analytics auf der Datenschutzseite ausschalten."
       },
       {
         "question": "Was schützt die Content Security Policy?",
@@ -1283,8 +1283,8 @@
       {
         "heading": "Analytics und Anfragen an Dritte",
         "paragraphs": [
-          "Die Website verwendet Vercel Web Analytics, um Seitenaufrufe zu erfassen, keine Dokumentinhalte. In der Produktionsumgebung lädt das Analytics-Skript von /_vercel/insights/script.js auf derselben Origin und sendet Seitentelemetrie über /_vercel/insights. Der Anwendungswrapper entfernt URL-Fragmente vor dem Senden von Ereignissen. Schreibe keine Geheimnisse in URL-Pfade oder Abfrageparameter.",
-          "Die Code-Schriftart wird beim Build selbst gehostet. Die Nutzung dieser Seite löst daher keine Schriftanfrage an Google aus. Bei der Prüfung des Quellcodes wurde keine weitere Analytics-Integration gefunden. Ein von dir angeforderter Abruf einer entfernten URL ist eine Ausnahme vom üblichen Ablauf mit lokaler Eingabe."
+          "Die Website verwendet Vercel Web Analytics, um Seitenaufrufe zu zählen, und PostHog, um zu sehen, welche Funktionen genutzt werden, mit gerundeten Bereichen für die Dokumentgröße und Bildschirmaufzeichnungen. Beide senden ihre Anfragen an dieselbe Origin (/_vercel/insights und /relay), und keines der beiden Tools erhält Dokumentinhalte. URL-Fragmente und Abfrageparameter werden vor dem Senden von Ereignissen entfernt, mit Ausnahme von utm_-Kampagnen-Tags. Schreibe keine Geheimnisse in URL-Pfade.",
+          "Die Aufzeichnungen lassen die Editoren, Dateinamen, Pfade und sämtliche Ausgabeansichten vollständig aus. Der Browser ersetzt den gesamten übrigen Seitentext durch Sternchen, bevor etwas gesendet wird. PostHog-Payloads sind unkomprimiertes JSON (die wenigen, die beim Schließen einer Seite gesendet werden, sind base64-kodiert), sodass du auch sie auf die Markierung prüfen kannst. Du kannst Analytics auf der Datenschutzseite ausschalten. Die Code-Schriftart wird beim Build selbst gehostet. Ein von dir angeforderter Abruf einer entfernten URL ist die einzige Ausnahme vom üblichen Ablauf mit lokaler Eingabe."
         ]
       },
       {

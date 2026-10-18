@@ -12,6 +12,8 @@ Every feature, interaction, pixel and line of code must beat every competing too
 - **Easiest possible.** Zero learning curve: autofocus, sensible defaults, clear errors, undo for everything, keyboard shortcuts for power users.
 - **Best looking.** Clean, modern, calm UI that is flawless in both light and dark mode (system default, no flash), on desktop and mobile.
 - **Private & reliable.** 100% client‑side, works offline after the first visit, accessible (keyboard + screen readers).
+- **Analytics never sees documents.** Any element that shows document content (text, keys, paths, file names, any output) carries the `PRIVATE` class from `lib/analytics` so session replay records it as an empty box. Events only carry values from fixed lists, booleans and rounded numbers (`lib/analytics/events.ts`); the `/privacy` page lists them, so describe new events there.
+- **Errors never carry input.** Use `reportError` from `lib/analytics` for unexpected application failures. PostHog exceptions go through `lib/analytics/exceptions.ts`, which rebuilds them with standard error categories and known application script coordinates only. Never send error messages, arbitrary context, raw stacks, function names, source snippets, local variables or console logs.
 
 ## 2. BEST SEO
 

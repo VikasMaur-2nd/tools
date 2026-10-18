@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { COMMANDS, fuzzy, keyLabel, type Command } from '@/lib/engine/commands';
 import { store, useUI } from '@/lib/engine/store';
 import { act } from '@/lib/engine/instance';
+import { PRIVATE, track, withVia } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
 import { Kbd } from './Kbd';
 import { Icon } from './icons';
@@ -79,7 +80,8 @@ function Commands() {
     // Close the native dialog first so the browser restores focus (and the
     // editor's selection) before the command runs: commands may move focus.
     listRef.current?.closest('dialog')?.close();
-    requestAnimationFrame(() => act(c.run));
+    track('command_run', { command: c.id });
+    requestAnimationFrame(() => act((e) => withVia('palette', () => c.run(e))));
   };
 
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -163,6 +165,7 @@ function UrlPrompt() {
     >
       <Icon name="globe" size={16} />
       <input
+        className={PRIVATE}
         autoFocus
         type="url"
         value={url}
@@ -235,6 +238,9 @@ export function ShortcutsDialog() {
   const open = useUI((s) => s.shortcuts);
   const mac = useUI((s) => s.mac);
   const t = useT();
+  useEffect(() => {
+    if (open) track('feature_used', { feature: 'shortcuts' });
+  }, [open]);
   return (
     <Modal open={open} onClose={() => store.set({ shortcuts: false })} className="sheet" label={t('Keyboard shortcuts')}>
       <header>

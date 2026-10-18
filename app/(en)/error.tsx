@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect } from 'react';
+import { reportError } from '@/lib/analytics';
 
 /** Last-resort fallback: the document is saved locally, so a retry/reload loses nothing. */
 export default function Error({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
+    reportError(error, 'react_boundary');
     console.error(error);
   }, [error]);
   return (

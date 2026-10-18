@@ -1203,7 +1203,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "2a030202b992",
+    "hash": "6aa134126011",
     "title": "Formateur JSON sécurisé : traitement dans le navigateur",
     "description": "Inspectez du JSON dans le navigateur, sans envoi du document ni compte. Vérifiez les requêtes, la mesure d'audience, le stockage et les limites de CSP.",
     "heading": "Formateur JSON sécurisé",
@@ -1212,7 +1212,7 @@
       "formater JSON confidentiel",
       "formateur JSON sans envoi au serveur"
     ],
-    "intro": "Tool Kumar analyse et formate votre document dans le navigateur. Coller du JSON ne l'envoie pas à un serveur, et aucun compte n'est nécessaire. Le site utilise toutefois Vercel Web Analytics : les affirmations sur la confidentialité doivent donc distinguer le traitement du document de la télémétrie des pages.",
+    "intro": "Tool Kumar analyse et formate votre document dans le navigateur. Coller du JSON ne l'envoie pas à un serveur, et aucun compte n'est nécessaire. Le site utilise toutefois des outils de mesure d'audience (Vercel Web Analytics et PostHog), qui ne reçoivent jamais le contenu des documents. Les affirmations sur la confidentialité doivent donc distinguer le traitement du document de la télémétrie d'utilisation.",
     "modeLabel": "JSON formaté",
     "exampleLabel": "Le même formateur local produit cette sortie en ligne ou une fois les ressources de l'application mises en cache pour une utilisation hors ligne.",
     "steps": [
@@ -1222,7 +1222,7 @@
     ],
     "options": [
       "L'analyseur, les générateurs de code et la création des fichiers à télécharger s'exécutent en local. Ouvrir un fichier local ne l'envoie pas au serveur.",
-      "Vercel Web Analytics enregistre les pages vues. En production, son script est servi depuis cette origine à l'adresse /_vercel/insights/script.js, et la télémétrie utilise /_vercel/insights ; le code d'intégration supprime les fragments d'URL avant l'envoi des événements. Aucun événement portant sur le contenu des documents n'est configuré dans le code.",
+      "Vercel Web Analytics compte les pages vues via /_vercel/insights. PostHog enregistre les pages vues, les événements d'utilisation des fonctionnalités et les enregistrements d'écran via /relay. Les deux chemins se trouvent sur cette origine. Les enregistrements excluent les éditeurs, les noms de fichiers et toutes les vues de sortie, le navigateur masque tout le reste du texte de la page, et aucun événement ne contient le contenu des documents.",
       "Un lien de partage place le JSON dans le fragment d'URL. Ce fragment n'est pas envoyé dans une requête HTTP, mais toute personne possédant le lien complet peut lire le document. Évitez de partager des secrets.",
       "« Charger depuis une URL » appelle explicitement le point de terminaison choisi depuis votre navigateur. Ce point de terminaison reçoit une requête. Un lien ?url= peut aussi déclencher un chargement distant ; collez les données ou ouvrez un fichier local pour les données sensibles."
     ],
@@ -1233,7 +1233,7 @@
       },
       {
         "question": "Le site utilise-t-il un outil de mesure d'audience ?",
-        "answer": "Oui. Vercel Web Analytics enregistre la télémétrie des pages. Le code d'intégration supprime les fragments d'URL, et aucun événement configuré dans l'application n'envoie le contenu des éditeurs. Les requêtes de mesure d'audience sont distinctes du traitement local du JSON."
+        "answer": "Oui. Vercel Web Analytics compte les pages vues, et PostHog enregistre l'utilisation des fonctionnalités et les enregistrements d'écran. Les enregistrements excluent les éditeurs, les noms de fichiers et les sorties, le navigateur masque tout le reste du texte, et aucun événement ne contient le contenu des documents. Vous pouvez désactiver la mesure d'audience sur la page de confidentialité."
       },
       {
         "question": "Que protège la politique de sécurité du contenu ?",
@@ -1259,8 +1259,8 @@
       {
         "heading": "Mesure d'audience et requêtes tierces",
         "paragraphs": [
-          "Le site utilise Vercel Web Analytics pour enregistrer les pages vues, pas le contenu des documents. En production, le script de mesure d'audience est chargé depuis /_vercel/insights/script.js sur cette même origine et envoie la télémétrie des pages via /_vercel/insights. Le code d'intégration de l'application supprime les fragments d'URL avant l'envoi des événements. Évitez de placer des secrets dans les chemins d'URL ou les paramètres de requête.",
-          "La police du code est intégrée aux ressources hébergées par le site lors de la compilation. Utiliser cette page ne déclenche donc pas de requête de police vers Google. L'audit du code source n'a trouvé aucune autre intégration de mesure d'audience. Le chargement d'une URL distante demandé par l'utilisateur constitue une exception au fonctionnement habituel avec une entrée locale."
+          "Le site utilise Vercel Web Analytics pour compter les pages vues et PostHog pour voir quelles fonctionnalités sont utilisées, avec des plages arrondies de taille des documents et des enregistrements d'écran. Les deux envoient leurs requêtes à cette même origine (/_vercel/insights et /relay), et aucun ne reçoit le contenu des documents. Les fragments d'URL et les paramètres de requête, à l'exception des balises de campagne utm_, sont supprimés avant l'envoi des événements. Évitez de placer des secrets dans les chemins d'URL.",
+          "Les enregistrements excluent entièrement les éditeurs, les noms de fichiers, les chemins et toutes les vues de sortie, et le navigateur remplace tout le reste du texte de la page par des astérisques avant tout envoi. Les charges utiles de PostHog sont du JSON non compressé (les quelques-unes envoyées à la fermeture d'une page sont encodées en base64), vous pouvez donc y rechercher le marqueur aussi. Vous pouvez désactiver la mesure d'audience sur la page de confidentialité. La police du code est intégrée aux ressources hébergées par le site lors de la compilation, et le chargement d'une URL distante demandé par l'utilisateur est la seule exception au fonctionnement habituel avec une entrée locale."
         ]
       },
       {

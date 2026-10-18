@@ -139,6 +139,11 @@ export default async function ContentShell({
                     {t('site.footer.about')}
                   </IntentLink>
                 </li>
+                <li>
+                  <IntentLink href="/privacy" {...en}>
+                    {t('site.footer.privacy')}
+                  </IntentLink>
+                </li>
               </ul>
             </nav>
           </div>

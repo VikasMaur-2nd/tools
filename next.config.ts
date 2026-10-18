@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
+import { withPostHogConfig } from "@posthog/nextjs-config";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Referrer-Policy", value: "strict-origin" },
   { key: "X-Frame-Options", value: "DENY" },
   {
     key: "Permissions-Policy",
@@ -20,15 +21,37 @@ const securityHeaders = [
   },
 ];
 
+// PostHog ingestion host (https://us.i.posthog.com or https://eu.i.posthog.com). The browser
+// never talks to it directly: /relay on this origin is rewritten to it (see lib/analytics).
+const posthogHost = (process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "").replace(/\/$/, "");
+const posthogAssets = posthogHost.replace(/^https:\/\/(us|eu)\.i\.posthog\.com$/, "https://$1-assets.i.posthog.com");
+
 const nextConfig: NextConfig = {
   turbopack: { root: process.cwd() },
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
   reactStrictMode: true,
+  // PostHog's API paths end in a slash (/relay/e/, /relay/flags/), which Next.js would
+  // otherwise redirect away; the redirect below keeps doing that for every other path.
+  skipTrailingSlashRedirect: true,
+  async rewrites() {
+    if (!posthogHost) return [];
+    return {
+      beforeFiles: [
+        { source: "/relay/static/:path*", destination: `${posthogAssets}/static/:path*` },
+        { source: "/relay/array/:path*", destination: `${posthogAssets}/array/:path*` },
+        { source: "/relay/:path*", destination: `${posthogHost}/:path*` },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
   // The blog lives at /blogs; send the common singular spelling there too.
   async redirects() {
     return [
+      // What Next.js does by default (skipTrailingSlashRedirect turns it off): /about/ → /about.
+      { source: "/:path((?!relay/).+)/", destination: "/:path", permanent: true },
       { source: "/blog", destination: "/blogs", permanent: true },
       { source: "/blog/:slug", destination: "/blogs/:slug", permanent: true },
     ];
@@ -61,4 +84,12 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Build-only credentials upload our source maps so sanitized code coordinates
+// resolve to readable stacks. They are never included in the browser bundle.
+const uploadSourceMaps = Boolean(process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID);
+export default uploadSourceMaps ? withPostHogConfig(nextConfig, {
+  personalApiKey: process.env.POSTHOG_API_KEY!,
+  projectId: process.env.POSTHOG_PROJECT_ID!,
+  host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || (posthogHost || "https://us.i.posthog.com").replace(/\/(us|eu)\.i\./, "/$1."),
+  sourcemaps: { enabled: true, deleteAfterUpload: true },
+}) : nextConfig;

@@ -17,6 +17,9 @@ import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
+import { PRIVATE, reportError, track } from '../analytics';
+import { noteLoad, watchPastes } from '../analytics/load';
+import type { InputSource } from '../analytics/events';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -294,6 +297,7 @@ export class Engine {
     els.file.addEventListener('change', this.onFile);
 
     store.set({ ready: true });
+    watchPastes();
     void this.loadHash();
     this.loadQueryUrl();
     this.handleLaunch();
@@ -766,7 +770,8 @@ export class Engine {
 
   private fixed = (r: ParseResult) => (r.issues.length ? ` · fixed ${r.issues.length} issue${r.issues.length > 1 ? 's' : ''}` : '');
 
-  format() {
+  format(report = true) {
+    if (report) track('feature_used', { feature: 'format_input' });
     this.transform(
       (r, t) => formatDoc(t, r, this.indent),
       (r) => 'Formatted' + this.fixed(r),
@@ -774,6 +779,7 @@ export class Engine {
   }
 
   minify() {
+    track('feature_used', { feature: 'minify_input' });
     this.transform(
       (r, t) => formatDoc(t, r, ''),
       (r) => 'Minified' + this.fixed(r),
@@ -781,6 +787,7 @@ export class Engine {
   }
 
   sortKeys() {
+    track('feature_used', { feature: 'sort_input' });
     this.transform(
       (r) => stringify(r.root!, this.indent, true),
       (r) => 'Sorted keys' + this.fixed(r),
@@ -793,10 +800,12 @@ export class Engine {
       this.toast('Already valid JSON, nothing to repair', 'info');
       return;
     }
-    this.format();
+    track('feature_used', { feature: 'repair' });
+    this.format(false);
   }
 
   stringifyDoc() {
+    track('feature_used', { feature: 'escape' });
     this.transform(
       (r, t) => JSON.stringify(formatDoc(t, r, '')),
       () => 'Escaped to a JSON string',
@@ -825,6 +834,7 @@ export class Engine {
     const next = pr.root && !pr.error ? formatDoc(inner, pr, this.indent) : inner;
     this.ed.setValue(next);
     this.analyze();
+    track('feature_used', { feature: 'unescape' });
     this.toast('Unescaped', 'ok');
   }
 
@@ -844,8 +854,10 @@ export class Engine {
       }
       this.ed.setValue(r.json);
       this.analyze();
+      track('feature_used', { feature: `import_${fmt}` });
       this.toast(`Converted ${fmt.toUpperCase()} to JSON · ${this.mod}Z to undo`, 'ok');
-    } catch {
+    } catch (error) {
+      reportError(error, 'import');
       this.toast('Conversion failed', 'err');
     }
   }
@@ -872,6 +884,7 @@ export class Engine {
       this.tree.select(target, { center: true });
       this.ed.setCaret(target.s);
     }
+    track('feature_used', { feature: 'expand_nested' });
     this.toast(`Expanded nested JSON · ${this.mod}Z to undo`, 'ok');
   }
 
@@ -881,6 +894,7 @@ export class Engine {
     if (!jwt) return this.toast('The input is not a JWT', 'info');
     this.ed.setValue(jwt.json);
     this.analyze();
+    track('feature_used', { feature: 'decode_jwt' });
     this.toast(`Replaced the JWT with its decoded JSON (signature not verified) · ${this.mod}Z to undo`, 'ok');
   }
 
@@ -912,6 +926,7 @@ export class Engine {
       const { records, toXlsx } = await import('../convert/xlsx');
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
       this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), `${base}.xlsx`);
+      track('feature_used', { feature: 'export_xlsx' });
     } catch {
       this.toast("Couldn't create the Excel file", 'err');
     }
@@ -1132,6 +1147,7 @@ export class Engine {
           e.preventDefault();
           // Ignore duplicate failure events and never move this full parse onto the typing thread.
           if (this.analysisWorker !== w) return;
+          reportError(e.error ?? new Error(), 'worker');
           this.analysisFails++;
           w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
         };
@@ -1139,7 +1155,7 @@ export class Engine {
         const current = () => this.postDocument(w, request, document, true);
         if (good) this.postDocument(w, { ...request, good: true }, good, true, current);
         else current();
-      } catch { this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; }
+      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; }
     }, 2200);
   }
 
@@ -1174,6 +1190,7 @@ export class Engine {
         // It couldn't load (offline before it was ever cached, blocked, or its start cut short by a
         // navigation): work here instead, and start another on a later use, a few times over.
         e.preventDefault();
+        reportError(e.error ?? new Error(), 'worker');
         this.workerDoc = null;
         this.worker = ++this.workerFails < 3 ? undefined : null;
         w.terminate();
@@ -1231,10 +1248,10 @@ export class Engine {
     const f = this.els.file.files?.[0];
     if (!f) return;
     if (this.fileTarget === 2) void this.loadCompareFile(f);
-    else void this.loadFile(f);
+    else void this.loadFile(f, 'file');
   };
 
-  async loadFile(f: File) {
+  async loadFile(f: File, source: InputSource = 'file') {
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
     this.markOutput = true;
@@ -1251,6 +1268,7 @@ export class Engine {
         if (fmt !== 'json' && fmt !== 'unknown') {
           const r = importToJson(text, fmt, this.indent);
           if ('json' in r) {
+            noteLoad(source, 1, f.name);
             this.load(r.json, f.name.replace(/\.[^.]+$/, '.json'));
             this.toast(`Converted ${f.name} to JSON`, 'ok');
             return;
@@ -1258,6 +1276,7 @@ export class Engine {
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
         }
       }
+      noteLoad(source, 1, f.name);
       this.load(text, f.name, true, true);
       this.toast(`Opened ${f.name}`, 'ok');
     } catch {
@@ -1272,6 +1291,7 @@ export class Engine {
         this.toast('Your clipboard is empty', 'info');
         return;
       }
+      noteLoad('paste_button');
       this.load(text, null);
       if (this.settings.autoFormat) this.autoFormat();
     } catch {
@@ -1285,6 +1305,7 @@ export class Engine {
     try {
       const { SAMPLE } = await import('./sample');
       if (this.dead || seq !== this.sizeSeq) return;
+      noteLoad('sample', 1, 'sample.json');
       this.load(SAMPLE, 'sample.json');
       this.toast('Loaded a sample. Try the tree, table and search.', 'info');
     } catch {
@@ -1293,6 +1314,7 @@ export class Engine {
   }
 
   clear() {
+    track('feature_used', { feature: 'clear' });
     this.resetNext = true;
     store.set({ fileName: null });
     write(KEYS.file, null);
@@ -1304,16 +1326,19 @@ export class Engine {
   async copyAll() {
     this.flushLoad();
     if (!this.ed.text) return this.toast('Nothing to copy yet', 'info');
+    track('feature_used', { feature: 'copy_input' });
     await this.copy(this.ed.text, 'Copied to clipboard');
   }
 
   copyValue(n: JNode | null = this.sel) {
     if (n === this.sel && this.goodPacked && this.selPath) { this.materializeGood(); n = this.sel; }
     if (!n) return this.toast('Select a node first', 'info');
+    track('feature_used', { feature: 'copy_value' });
     void this.copy(copyText(n, this.indent), n.t >= ARR ? 'Copied value as JSON' : 'Copied value');
   }
 
   copyPath(n: JNode | null = this.sel) {
+    if (n) track('feature_used', { feature: 'copy_path' });
     if (n === this.sel && this.goodPacked && this.selPath) return void this.copy(formatPath(this.selPath), 'Copied path');
     if (!n) return this.toast('Select a node first', 'info');
     void this.copy(formatPath(pathOf(n)), 'Copied path');
@@ -1324,6 +1349,7 @@ export class Engine {
       await navigator.clipboard.writeText(text);
     } catch {
       const ta = document.createElement('textarea');
+      ta.className = PRIVATE;
       ta.value = text;
       ta.style.cssText = 'position:fixed;opacity:0';
       document.body.appendChild(ta);
@@ -1377,11 +1403,12 @@ export class Engine {
     this.analyzeCompare();
   }
 
-  async loadCompareFile(f: File) {
+  async loadCompareFile(f: File, source: InputSource = 'file') {
     try {
       const text = await f.text();
       if (this.dead) return;
       this.loadCompare(text, f.name);
+      noteLoad(source, 2, f.name);
       if (this.settings.view !== 'compare') this.setView('compare');
       this.toast(`Comparing with ${f.name}`, 'ok');
     } catch {
@@ -1394,6 +1421,7 @@ export class Engine {
       const text = await navigator.clipboard.readText();
       if (!text) return this.toast('Your clipboard is empty', 'info');
       this.loadCompare(text, null);
+      noteLoad('paste_button', 2);
     } catch {
       this.ed2.focus();
       this.toast(`Press ${this.mod}V to paste`, 'info');
@@ -1405,6 +1433,7 @@ export class Engine {
     if (!text.trim()) return this.toast('Paste the modified JSON first', 'info');
     const r = parse(text);
     if (!r.root) return this.toast("Can't format it yet. Fix the error first.", 'err');
+    track('feature_used', { feature: 'compare_format' });
     this.ed2.setValue(formatDoc(text, r, this.indent));
     this.analyzeCompare();
   }
@@ -1418,6 +1447,7 @@ export class Engine {
 
   /** Swap original and modified (both undoable). */
   swapCompare() {
+    track('feature_used', { feature: 'compare_swap' });
     this.flushLoad();
     const a = this.ed.text;
     const b = this.ed2.text;
@@ -1458,6 +1488,7 @@ export class Engine {
     this.flushLoad();
     if (!this.ed.text) return this.toast('Nothing to download yet', 'info');
     const name = store.get().fileName || 'data.json';
+    track('feature_used', { feature: 'download_input' });
     this.save(this.ed.text, /\.[a-z0-9]+$/i.test(name) ? name : name + '.json', 'application/json');
   }
 
@@ -1483,6 +1514,7 @@ export class Engine {
       const { toBase64Url } = await import('./sizes');
       const data = await toBase64Url(text);
       if (data.length > 60_000) return this.toast('Too large to share as a link (limit ≈ 60 KB compressed)', 'err');
+      track('feature_used', { feature: 'share_link' });
       await this.copy(`${location.origin}${location.pathname}#j=${data}`, 'Share link copied. The data lives in the link, not on a server.');
     } catch {
       this.toast("Your browser can't create share links", 'err');
@@ -1500,6 +1532,7 @@ export class Engine {
       if (text.length > 20_000_000) return this.toast('That share link is too large to open', 'err');
       const had = !!this.ed.text.trim();
       const r = parse(text);
+      noteLoad('share_link');
       this.load(r.root && !r.error ? formatDoc(text, r, this.indent) : text, null);
       this.toast(had ? `Loaded shared JSON · ${this.mod}Z restores your previous document` : 'Loaded shared JSON', 'ok');
     } catch {
@@ -1507,7 +1540,7 @@ export class Engine {
     }
   };
 
-  async fetchUrl(raw: string) {
+  async fetchUrl(raw: string, source: 'url' | 'url_param' = 'url') {
     let url: URL;
     try {
       url = new URL(raw.trim());
@@ -1523,6 +1556,7 @@ export class Engine {
       if (this.dead) return;
       const name = url.pathname.split('/').pop() || url.hostname;
       // Auto-format reads the editor right after: only then is the load done in place.
+      noteLoad(source);
       this.load(text, /\.json$/i.test(name) ? name : name + '.json', true, !this.settings.autoFormat);
       if (this.settings.autoFormat) this.autoFormat();
       this.toast(`Loaded ${url.hostname}`, 'ok');
@@ -1561,6 +1595,7 @@ export class Engine {
       return;
     }
     const prev = this.settings.view;
+    if (prev !== view && !this.presetting) track('view_opened', { view, ...(view === 'convert' && { target: targetInfo(this.settings.target).id }) });
     if (this.query && prev !== view) this.findIn(prev, '');
     this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
     if (this.query) requestAnimationFrame(() => (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
@@ -1588,6 +1623,7 @@ export class Engine {
   /** Leaves Compare for the view that was open before it. */
   closeCompare() {
     if (this.settings.view !== 'compare') return;
+    track('feature_used', { feature: 'compare_close' });
     this.setView(this.settings.prevView);
     this.ed.focus();
   }
@@ -1595,6 +1631,7 @@ export class Engine {
   /** Folding in an editor (1: input, 2: Compare's modified document); level 0 unfolds everything. */
   foldEditor(which: 1 | 2, level: number) {
     const ed = which === 2 ? this.ed2 : this.ed;
+    track('feature_used', { feature: 'fold_input', level });
     if (level) ed.foldLevel(level);
     else ed.unfoldAll();
   }
@@ -1602,6 +1639,12 @@ export class Engine {
   // ── Format view (output) ───────────────────────────────────────────────
 
   setFormat(patch: Partial<Pick<Settings, 'minify' | 'sortKeys' | 'escape'>>) {
+    if (!this.presetting) {
+      if (patch.sortKeys !== undefined && patch.sortKeys !== this.settings.sortKeys) track('format_option_changed', { option: 'sort_keys', value: String(patch.sortKeys) });
+      const style = patch.escape ? 'string' : patch.minify !== undefined ? (patch.minify ? 'minify' : 'pretty') : null;
+      const was = this.settings.escape ? 'string' : this.settings.minify ? 'minify' : 'pretty';
+      if (style && style !== was) track('format_option_changed', { option: 'style', value: style });
+    }
     this.setSettings(patch);
     if (this.settings.view !== 'format') this.setView('format');
     else this.scheduleFormat(0);
@@ -1729,6 +1772,7 @@ export class Engine {
   useOutput() {
     const r = this.fresh();
     if (!r?.root) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
+    track('feature_used', { feature: 'use_output' });
     const s = this.settings;
     const fixed = this.fixed(r);
     this.transform(
@@ -1740,12 +1784,14 @@ export class Engine {
   copyOutput() {
     const out = this.fmt.text || this.output();
     if (!out) return this.toast('Nothing to copy yet', 'info');
+    track('feature_used', { feature: 'copy_output' });
     void this.copy(out, this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
   }
 
   downloadOutput() {
     const out = this.fmt.text || this.output();
     if (!out) return this.toast('Nothing to download yet', 'info');
+    track('feature_used', { feature: 'download_output' });
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
     this.save(out, `${base}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`, 'application/json');
   }
@@ -1753,6 +1799,15 @@ export class Engine {
   // ── Convert ────────────────────────────────────────────────────────────
 
   setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib'>>) {
+    if (!this.presetting) {
+      const s = this.settings;
+      // The target and options come from fixed lists. The root type name is typed, so it is never sent.
+      if (patch.target && patch.target !== s.target) {
+        track('convert_target_selected', { target: targetInfo(patch.target).id, group: targetInfo(patch.target).group === 'Types' ? 'types' : 'data' });
+      }
+      if (patch.tsStyle && patch.tsStyle !== s.tsStyle) track('convert_option_changed', { option: 'ts_style', value: patch.tsStyle });
+      if (patch.csharpLib && patch.csharpLib !== s.csharpLib) track('convert_option_changed', { option: 'csharp_lib', value: patch.csharpLib });
+    }
     this.setSettings(patch);
     if (this.settings.view !== 'convert') this.setView('convert');
     else this.scheduleConvert(patch.rootName !== undefined ? 200 : 0);
@@ -1796,6 +1851,7 @@ export class Engine {
       else this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
+      reportError(e, 'conversion');
       this.code.setText('', escapeHtml);
       store.set({ convert: { loading: false, error: e instanceof Error ? e.message : 'Conversion failed', lines: 0, bytes: 0 } });
     }
@@ -1803,6 +1859,7 @@ export class Engine {
 
   copyConvert() {
     if (!this.code.text) return this.toast('Nothing to copy yet', 'info');
+    track('feature_used', { feature: 'copy_convert' });
     void this.copy(this.code.text, `Copied ${targetInfo(this.settings.target).label}`);
   }
 
@@ -1822,7 +1879,8 @@ export class Engine {
       try {
         const { records, toXlsx } = await import('../convert/xlsx');
         this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
-      } catch {
+      } catch (error) {
+        reportError(error, 'export');
         this.toast("Couldn't create the Excel file", 'err');
       }
       return;
@@ -1850,12 +1908,14 @@ export class Engine {
   copyCSV() {
     const csv = this.table.toCSV();
     if (!csv) return this.toast('Open an array or object in the table first', 'info');
+    track('feature_used', { feature: 'copy_csv' });
     void this.copy(csv, 'Copied table as CSV');
   }
 
   downloadCSV() {
     const csv = this.table.toCSV();
     if (!csv) return this.toast('Open an array or object in the table first', 'info');
+    track('feature_used', { feature: 'download_csv' });
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
     this.save(csv, `${base}.csv`, 'text/csv');
   }
@@ -1870,17 +1930,20 @@ export class Engine {
 
   expandAll() {
     const v = this.foldView();
+    track('feature_used', { feature: 'expand_all', view: v });
     if (v === 'tree') this.tree.expandAll();
     else (v === 'format' ? this.fmt : this.code).unfoldAll();
   }
 
   collapseAll() {
-    this.expandTo(1);
+    this.expandTo(1, false);
+    track('feature_used', { feature: 'collapse_all', view: this.settings.view });
   }
 
   /** Show `level` levels; everything deeper is folded. */
-  expandTo(level: number) {
+  expandTo(level: number, report = true) {
     const v = this.foldView();
+    if (report) track('feature_used', { feature: 'expand_level', view: v, level });
     if (v === 'tree') this.tree.expandTo(level);
     else (v === 'format' ? this.fmt : this.code).foldLevel(level);
   }
@@ -1903,6 +1966,8 @@ export class Engine {
   }
 
   find(q: string, external = false) {
+    // One event per search (not per keystroke). Whether it is a JSONPath is all that is kept of the query.
+    if (q && !this.query) track('feature_used', { feature: 'find', view: this.settings.view, jsonpath: q.trimStart().startsWith('$') });
     this.query = q;
     const f = store.get().find;
     store.set({ find: { open: true, q, seq: f.seq + (external ? 1 : 0), ...this.findIn(this.settings.view, q) } });
@@ -1991,6 +2056,7 @@ export class Engine {
 
   /** Makes a huge (view-only) document editable. */
   editAnyway() {
+    track('feature_used', { feature: 'edit_anyway' });
     this.ed.editAnyway();
     this.toast('Editing enabled. Large documents may feel slower to type in.', 'info');
   }
@@ -2000,7 +2066,7 @@ export class Engine {
     const url = new URLSearchParams(location.search).get('url');
     if (!url) return;
     history.replaceState(null, '', location.pathname + location.hash);
-    void this.fetchUrl(url);
+    void this.fetchUrl(url, 'url_param');
   }
 
   /** Files opened from the OS with the installed app (manifest file_handlers). */
@@ -2009,7 +2075,7 @@ export class Engine {
     const lq = (window as unknown as { launchQueue?: { setConsumer(cb: (p: LaunchParams) => void): void } }).launchQueue;
     lq?.setConsumer(async (p) => {
       const h = p.files?.[0];
-      if (h) void this.loadFile(await h.getFile());
+      if (h) void this.loadFile(await h.getFile(), 'launch');
     });
   }
 
@@ -2046,6 +2112,7 @@ export class Engine {
   }
 
   setIndent(indent: IndentId) {
+    if (indent !== this.settings.indent) track('format_option_changed', { option: 'indent', value: indent });
     this.setSettings({ indent });
     this.ed.indentUnit = INDENTS[indent];
     this.ed2.indentUnit = INDENTS[indent];
@@ -2053,6 +2120,7 @@ export class Engine {
   }
 
   setTheme(theme: Theme) {
+    track('feature_used', { feature: 'theme', value: theme });
     this.setSettings({ theme });
     this.applyTheme(theme);
   }
@@ -2066,6 +2134,7 @@ export class Engine {
 
   /** Soft wrap on or off, in both editors and both code views. */
   toggleWrap() {
+    track('feature_used', { feature: 'wrap', on: !this.settings.wrap });
     this.setSettings({ wrap: !this.settings.wrap });
     this.applyWrap();
   }
@@ -2079,6 +2148,7 @@ export class Engine {
   }
 
   toggleAutoFormat() {
+    track('feature_used', { feature: 'auto_format', on: !this.settings.autoFormat });
     this.setSettings({ autoFormat: !this.settings.autoFormat });
     this.toast(`Auto-format on paste ${this.settings.autoFormat ? 'on' : 'off'}`, 'info');
   }
@@ -2112,6 +2182,7 @@ export class Engine {
   }
 
   openPalette(mode: 'commands' | 'url' = 'commands') {
+    track('feature_used', { feature: mode === 'url' ? 'load_url_dialog' : 'palette' });
     store.set({ palette: mode, shortcuts: false });
   }
 
@@ -2179,8 +2250,8 @@ export class Engine {
     const f = e.dataTransfer?.files[0];
     if (!f) return;
     // Dropped on the Compare column: that's the modified document.
-    if ((e.target as HTMLElement | null)?.closest?.('.pane-cmp')) void this.loadCompareFile(f);
-    else void this.loadFile(f);
+    if ((e.target as HTMLElement | null)?.closest?.('.pane-cmp')) void this.loadCompareFile(f, 'drop');
+    else void this.loadFile(f, 'drop');
   };
 
   // ── Persistence & offline ──────────────────────────────────────────────

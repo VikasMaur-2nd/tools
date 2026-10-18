@@ -14,8 +14,10 @@ const ERRORS_LAST_MODIFIED = '2026-10-15';
 const ERROR_GUIDES_LAST_MODIFIED = '2026-10-15';
 /** Tool pages whose content changed after TOOLS_LAST_MODIFIED, and when. */
 const TOOL_UPDATES: Record<string, string> = Object.fromEntries(
-  ['json-validator', 'json-minifier', 'json-diff', 'json-schema-generator', 'json-to-go', 'json-to-csv', 'json-to-xml', 'json-to-excel', 'jwt-decoder', 'json-to-toml', 'toml-to-json', 'secure-json-formatter', 'jsonl-viewer', 'jsonl-to-csv', 'json-escape', 'json-repair'].map((slug) => [slug, '2026-10-15']),
+  ['json-validator', 'json-minifier', 'json-diff', 'json-schema-generator', 'json-to-go', 'json-to-csv', 'json-to-xml', 'json-to-excel', 'jwt-decoder', 'json-to-toml', 'toml-to-json', 'jsonl-viewer', 'jsonl-to-csv', 'json-escape', 'json-repair'].map((slug) => [slug, '2026-10-15']),
 );
+TOOL_UPDATES['secure-json-formatter'] = '2026-10-18';
+const PRIVACY_LAST_MODIFIED = '2026-10-18';
 const SITE = 'https://tools.vikasmaur.com';
 
 /** A page and its translations, each listing the whole hreflang cluster. */
@@ -53,9 +55,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     })),
     {
       url: `${SITE}/about`,
-      lastModified: LAST_MODIFIED,
+      lastModified: PRIVACY_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.5,
+    },
+    {
+      url: `${SITE}/privacy`,
+      lastModified: PRIVACY_LAST_MODIFIED,
+      changeFrequency: 'yearly',
+      priority: 0.3,
     },
     {
       url: `${SITE}/resources`,

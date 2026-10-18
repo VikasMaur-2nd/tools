@@ -43,7 +43,8 @@ export function rootMetadata(locale: SiteLocale): Metadata {
     creator: 'Tool Kumar',
     publisher: 'Tool Kumar',
     classification: 'Developer tools',
-    referrer: 'strict-origin-when-cross-origin',
+    // Origin only, even to this site: analytics requests through the proxy never carry the page's query string.
+    referrer: 'strict-origin',
     ...(locale === 'en' && { alternates: { canonical: '/' } }),
     openGraph: {
       type: 'website',

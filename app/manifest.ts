@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Tool Kumar · JSON Formatter & Viewer',
     short_name: 'Tool Kumar',
     description:
-      'Fast, private JSON formatter and viewer. Format, validate, repair, convert and compare JSON, and explore it as a tree or table. Works offline, and your data never leaves your device.',
+      'Fast, private JSON formatter and viewer. Format, validate, repair, convert and compare JSON, and explore it as a tree or table. Works offline, and your JSON never leaves your device.',
     lang: 'en',
     dir: 'ltr',
     start_url: '/',

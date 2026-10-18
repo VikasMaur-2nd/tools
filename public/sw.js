@@ -6,7 +6,7 @@
  *  /_next/static/*      cache-first (content-hashed, immutable); a worker's script
  *                       is answered with a new Response so it keeps its #params=
  *  other same-origin    stale-while-revalidate
- *  never touched        cross-origin, non-GET, /_vercel/* (analytics), RSC requests
+ *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests
  */
 const VERSION = 'v2';
 const PREFIX = 'json-viewer-';
@@ -28,6 +28,7 @@ const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
 function bypass(url, headers) {
   return (
     url.pathname.startsWith('/_vercel/') ||
+    url.pathname.startsWith('/relay/') ||
     url.pathname === '/sw.js' ||
     url.searchParams.has('_rsc') ||
     (headers && (headers.has('RSC') || headers.has('Next-Router-Prefetch')))
