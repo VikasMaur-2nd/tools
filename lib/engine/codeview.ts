@@ -209,8 +209,13 @@ export class CodeView {
     return (a: number, b: number) => model.slice(a, b);
   }
 
+  /** Scalar patches retain the acknowledged output's fold pairs and depths. */
+  inlineIndex(index: Pick<CodeIndex, 'starts' | 'maxLen'>): CodeIndex {
+    return { ...index, close: this.close, depth: this.depth };
+  }
+
   /** `index` can arrive as transferable arrays from the formatting worker. */
-  setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null, index?: CodeIndex, change?: CodeChange, patch?: string) {
+  setText(text: string, hl: LineHighlighter, json = false, scanner: Scanner | null = null, index?: CodeIndex, change?: CodeChange, patch?: string, inline = false) {
     const seq = ++this.textSeq;
     const same = change ? text.length === this.text.length && change.prefix === text.length : text === this.text;
     if (same && hl === this.hl) {
@@ -222,6 +227,7 @@ export class CodeView {
       soon(() => { if (seq === this.textSeq) this.onReady?.(); });
       return;
     }
+    if (inline && index && change && patch !== undefined && !this.pending && !scanner && !this.scanner && hl === this.hl && json === this.json && this.patchInline(text, index, change, patch, seq)) return;
     this.pending = { text, hl, json, scanner, index, change, patch };
     const model = change && patch !== undefined ? this.model.patch(change.prefix, change.suffix, patch) : TextSlices.from(text);
     const run = index ? null : codeIndexer(text);
@@ -266,6 +272,67 @@ export class CodeView {
       }, change, model);
     };
     prepare();
+  }
+
+  /** A validated scalar changes one line. Keep every other line's wrapping and fold state. */
+  private patchInline(text: string, index: CodeIndex, change: CodeChange, patch: string, seq: number): boolean {
+    if (index.starts.length !== this.ls.length || this.folded.size || this.vis.length !== this.ls.length || this.layoutWrap !== this.wrapper || this.layoutCols !== (this.wrapper?.cols ?? 0) || this.layoutCw !== this.cw || this.width !== this.el.clientWidth) return false;
+    let lo = 0;
+    let hi = this.ls.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (this.ls[mid] <= change.prefix) lo = mid;
+      else hi = mid - 1;
+    }
+    const line = lo;
+    if (this.text.length - change.suffix > this.lineEnd(line)) return false;
+    const end = line + 1 < index.starts.length ? index.starts[line + 1] - 1 : text.length;
+    if (end - index.starts[line] > 65_536) return false;
+    const model = this.model.patch(change.prefix, change.suffix, patch);
+    let rows = 1;
+    let odd = 0;
+    if (this.wrapper?.cols) {
+      const local = model.slice(index.starts[line], end);
+      rows = this.wrapper.rows(local, Int32Array.of(0), Int32Array.of(local.length), [0, this.wrapTextLength, local.length])[0];
+      this.wrapTextLength = local.length;
+      odd = this.wrapper.odd[0];
+    }
+    const delta = rows - (this.rowStart[line + 1] - this.rowStart[line]);
+    const starts = delta ? this.rowStart.slice() : this.rowStart;
+    let i = line + 1;
+    const layout = ++this.layoutSeq;
+    const finish = () => {
+      if (seq !== this.textSeq) return;
+      if (layout !== this.layoutSeq) {
+        this.setText(text, this.hl, this.json, this.scanner, index, change, patch);
+        return;
+      }
+      if (delta) {
+        const until = performance.now() + 8;
+        for (; i < starts.length; i++) {
+          starts[i] += delta;
+          if ((i & 8191) === 8191 && performance.now() >= until) { i++; soon(finish); return; }
+        }
+      }
+      this.text = text;
+      this.model = model;
+      this.ls = index.starts;
+      this.close = index.close;
+      this.depth = index.depth;
+      this.maxLen = index.maxLen;
+      this.rowStart = starts;
+      this.odd[line] = odd;
+      this.lineText.clear();
+      this.states.clear();
+      this.html.clear();
+      this.sc.fit(starts[starts.length - 1] * RH + 24, this.sizer);
+      if (!this.wrapper) this.sizer.style.width = `${Math.ceil((Math.max(3, String(this.ls.length).length) + 5 + index.maxLen + 4) * this.cw + PAD_X * 2)}px`;
+      if (this.q) this.runFind(false);
+      this.render(true);
+      soon(() => { if (seq === this.textSeq) this.onReady?.(); });
+    };
+    finish();
+    return true;
   }
 
   // ── Folding ────────────────────────────────────────────────────────────

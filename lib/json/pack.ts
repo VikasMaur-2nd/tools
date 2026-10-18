@@ -196,7 +196,7 @@ export function unpacker(p: PackedTree, src: string): (until: number) => ParseRe
 }
 
 /** Caret path and nearest container, without allocating or walking the whole tree. */
-export function packedPosition(tree: PackedTree, off: number, src: string) {
+export function packedPosition(tree: PackedTree, off: number, src: Pick<string, 'indexOf'>) {
   const a = tree.nodes;
   const parents = tree.parents;
   const count = a.length / W;

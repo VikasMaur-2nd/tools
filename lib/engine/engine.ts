@@ -15,6 +15,7 @@ import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type 
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
+import { Doc } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -172,6 +173,7 @@ export class Engine {
   private expTimer = 0;
   /** Text that `good` was parsed from (needed by the native formatting fast path). */
   private goodText = '';
+  private goodVer: object | null = null;
   private conv: ConvertModule | null = null;
   private convTimer = 0;
 
@@ -260,7 +262,7 @@ export class Engine {
         this.markOutput = false;
         requestAnimationFrame(() => performance.mark('tk:formatted'));
       }
-      if (this.settings.view === 'format' && this.goodText === this.fmtSrc) this.runFormat();
+      if (this.settings.view === 'format' && this.goodVer !== null && this.goodVer === this.fmtSrcVer) this.runFormat();
     };
     for (const [view, code] of [['format', this.fmt], ['convert', this.code]] as const) code.onFind = (result) => {
       if (this.settings.view === view && this.query) store.set({ find: { ...store.get().find, ...result } });
@@ -302,6 +304,8 @@ export class Engine {
 
   destroy() {
     this.worker?.terminate();
+    this.analysisWorker?.terminate();
+    clearTimeout(this.analysisTimer);
     this.dead = true;
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('dragenter', this.onDragEnter);
@@ -338,13 +342,10 @@ export class Engine {
   private onChange = (kind: ChangeKind) => {
     this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
     this.workerParse = null;
-    if (this.reindentJob && this.worker) {
-      // A synchronous worker parse cannot consume a cancellation message until it finishes.
-      this.worker.terminate();
-      this.worker = undefined;
-      this.workerWarm = false;
-      this.reindentJob = null;
-    }
+    this.reindentJob = null;
+    this.worker?.postMessage({ id: this.loadSeq, cancel: true });
+    this.analysisWorker?.postMessage({ id: this.loadSeq, cancel: true });
+    clearTimeout(this.analysisTimer);
     this.measuredSizes = null;
     this.fmtStatSeq++;
     this.persistEnabled = persistenceAfterChange(this.persistEnabled, kind);
@@ -380,7 +381,7 @@ export class Engine {
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
       clearTimeout(this.timer);
-      this.timer = window.setTimeout(this.analyzeTyped, len < 100_000 ? 60 : len < 250_000 ? 160 : len < 5_000_000 ? 500 : 700);
+      this.timer = window.setTimeout(this.analyzeTyped, len < 100_000 ? 60 : len < 250_000 ? 160 : len < WORKER_MIN ? 500 : 200);
     }
     if (this.persistEnabled) this.persistSoon();
   };
@@ -402,7 +403,7 @@ export class Engine {
     this.toast(`Auto-formatted · ${this.mod}Z to undo`, 'info');
   };
 
-  private packed: { id: number; tree: PackedTree; text: string; metrics?: DocumentMetrics } | null = null;
+  private packed: { id: number; tree: PackedTree; text: string; metrics?: DocumentMetrics; document?: Doc } | null = null;
   private goodPacked: Engine['packed'] = null;
 
   private materializeGood() {
@@ -461,7 +462,8 @@ export class Engine {
     this.parsed = text;
     this.parsedVer = ed.version;
 
-    if (!text.trim()) {
+    if (ed.blank) {
+      this.fmtWorkerId = this.pendingFmtWorkerId = 0;
       this.res = null;
       this.good = null;
       this.goodPacked = null;
@@ -469,6 +471,7 @@ export class Engine {
       this.jwt = null;
       ed.setJwt(null);
       this.goodText = '';
+      this.goodVer = null;
       this.sel = null;
       this.selPath = null;
       this.tablePath = [];
@@ -504,16 +507,18 @@ export class Engine {
       this.goodPacked = this.packed;
       this.good = null;
       this.sel = null;
-      this.selPath = packedPosition(this.packed!.tree, ed.caret, text)?.path ?? null;
+      this.selPath = packedPosition(this.packed!.tree, ed.caret, this.packed!.document ?? text)?.path ?? null;
       this.tree.releaseRoot();
       // Format already has the worker's output. Nodes are needed only by commands and other views.
       this.goodText = src;
+      this.goodVer = ed.version;
       ed.setScope(-1, -1);
     } else if (res.root) {
       this.goodMetrics = metrics ?? null;
       this.goodPacked = null;
       this.good = res;
       this.goodText = src;
+      this.goodVer = ed.version;
       this.tree.setRoot(res.root, reset, res.nodes, this.settings.view === 'tree');
       this.sel = this.selPath ? resolve(res.root, this.selPath) : null;
       this.tree.select(this.sel, { scroll: false });
@@ -522,10 +527,12 @@ export class Engine {
       } else this.table.setNode(null);
       ed.setScope(this.sel && this.sel.t >= ARR ? this.sel.s : -1, this.sel ? this.sel.e : -1);
     } else if (reset || !this.good && !this.goodPacked) {
+      if (reset) this.fmtWorkerId = this.pendingFmtWorkerId = 0;
       this.good = null;
       this.goodPacked = null;
       this.goodMetrics = null;
       this.goodText = '';
+      this.goodVer = null;
       this.tree.setRoot(null, true);
       this.table.setNode(null);
       ed.setScope(-1, -1);
@@ -543,7 +550,7 @@ export class Engine {
     let hint: Hint = null;
     if (jwt || lines) hint = null;
     else if (metrics?.unescape || res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
-    else if (res.error || res.issues.length) hint = sniff(text);
+    else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
 
     store.set({
       empty: false,
@@ -654,7 +661,7 @@ export class Engine {
   /** Caret moved by the user → reveal the node under it in the tree. */
   private onNav = () => {
     if (this.packed?.id === this.loadSeq) {
-      const at = packedPosition(this.packed.tree, this.ed.caret, this.packed.text);
+      const at = packedPosition(this.packed.tree, this.ed.caret, this.packed.document ?? this.packed.text);
       this.selPath = at?.path ?? null;
       store.set({ path: at ? formatPath(at.path) : null });
       this.ed.setScope(-1, -1);
@@ -671,9 +678,9 @@ export class Engine {
   private updateBrackets() {
     if (this.packed?.id === this.loadSeq) {
       const off = this.ed.caret;
-      const at = packedPosition(this.packed.tree, off, this.packed.text);
+      const at = packedPosition(this.packed.tree, off, this.packed.document ?? this.packed.text);
       const close = at ? at.end - 1 : -1;
-      const c = this.packed.text.charCodeAt(close);
+      const c = (this.packed.document ?? this.packed.text).charCodeAt(close);
       const match = at && (c === 125 || c === 93) && (off === at.start || off === at.start + 1 || off === close || off === at.end);
       this.ed.setBrackets(match ? at.start : -1, match ? close : -1);
       return;
@@ -953,6 +960,8 @@ export class Engine {
     const s = this.settings;
     if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || readJwt(text, this.indent)) return false;
     const seq = ++this.loadSeq;
+    const document = typed ? this.ed.version as Doc : Doc.of(text);
+    const fast = text.length >= WORKER_MIN;
     clearTimeout(this.fmtTimer);
     clearTimeout(this.timer);
     const key = this.fmtSettings();
@@ -961,8 +970,8 @@ export class Engine {
     const analyse = (tree?: PackedTree, metrics?: DocumentMetrics) => {
       if (seq !== this.loadSeq) return;
       if (!tree) return next();
-      if (typed && tree.nodes.length && this.fmtSrc === text && this.settings.view === 'format' && text.length >= WORKER_MIN) {
-        this.packed = { id: seq, tree, text, metrics };
+      if (typed && tree.nodes.length && this.fmtSrcVer === document && this.settings.view === 'format' && text.length >= WORKER_MIN) {
+        this.packed = { id: seq, tree, text, metrics, document };
         this.analyze({ ...tree.head, root: null }, metrics, true);
         return;
       }
@@ -975,19 +984,23 @@ export class Engine {
       };
       run();
     };
-    const done = (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string) => {
+    const done = (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline = false) => {
       if (seq !== this.loadSeq) return;
-      if (out === null || key !== this.fmtSettings() || typed && this.settings.view !== 'format') return analyse(tree, metrics);
+      if (typed && fast) this.queueAnalysis(seq, document, name, analyse);
+      if (out === null || key !== this.fmtSettings() || typed && this.settings.view !== 'format') {
+        if (!typed || !fast) analyse(tree, metrics);
+        return;
+      }
       // On a first document the views are still hidden (empty state): show the output now.
       store.set({ empty: false, status: { kind: 'parsing' } });
       this.fmt.el.hidden = false;
       // (Id 0: the output shown was drawn here, so the worker had nothing to compare it with.)
       const base = !!change?.base && change.base === this.fmtWorkerId;
-      this.drawFormat(out, text, key, index, display, base ? change : undefined, base ? patch : undefined);
+      this.drawFormat(out, key, index, display, base ? change : undefined, base ? patch : undefined, base && inline, typed ? document : null);
       this.pendingFmtWorkerId = seq;
       // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
       // the output can be scrolled and searched right away, without that work in the way.
-      setTimeout(() => idle(() => analyse(tree, metrics), 1000), 300);
+      if (!typed || !fast) setTimeout(() => idle(() => analyse(tree, metrics), 1000), 300);
     };
     const here = () => {
       const run = reindenter(text, indent);
@@ -1006,24 +1019,10 @@ export class Engine {
       if (text.length < WORKER_MIN) done(reindent(text, indent));
       else here();
     } else {
-      this.reindentJob = { id: seq, done, fallback: here, baseText: this.fmtText, baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [] };
-      const request = { id: seq, indent, parse: typed, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: this.fmtWorkerId };
-      if (text.length < WORKER_MIN) w.postMessage({ ...request, text });
-      else {
-        w.postMessage({ ...request, start: true });
-        let at = 0;
-        const send = () => {
-          if (this.dead || seq !== this.loadSeq || this.worker !== w) return;
-          const until = performance.now() + 8;
-          do {
-            const end = Math.min(text.length, at + 256_000);
-            w.postMessage({ id: seq, chunk: text.slice(at, end), last: end === text.length });
-            at = end;
-          } while (at < text.length && performance.now() < until);
-          if (at < text.length) soon(send);
-        };
-        soon(send);
-      }
+      this.reindentJob = { id: seq, done, fallback: here, baseText: this.fmt.text, baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [] };
+      const request = { id: seq, indent, parse: typed && !fast, fast, reuseIndex: true, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: this.fmtWorkerId };
+      this.postDocument(w, request, document, false);
+
     }
     return true;
   }
@@ -1038,14 +1037,91 @@ export class Engine {
   private workerFails = 0;
   private measuredSizes: { id: number; sizes: Sizes } | null = null;
   private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
-  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string) => void; fallback: () => void; baseText: string; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[] } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; baseText: string; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[] } | null = null;
+
+  private workerDoc: Doc | null = null;
+  private workerDocId = 0;
+  private analysisWorker: Worker | null = null;
+  private analysisDoc: Doc | null = null;
+  private analysisDocId = 0;
+  private analysisTimer = 0;
+
+  /** Both workers retain their input. Shared document versions send only a bounded replacement. */
+  private postDocument(w: Worker, request: { id: number; [key: string]: unknown }, document: Doc, analysis: boolean, next?: () => void) {
+    const before = analysis ? this.analysisDoc : this.workerDoc;
+    const edit = before && document.changeFrom(before);
+    const remember = () => {
+      if (analysis) { this.analysisDoc = document; this.analysisDocId = request.id; }
+      else { this.workerDoc = document; this.workerDocId = request.id; }
+      next?.();
+    };
+    if (edit) {
+      w.postMessage({ ...request, edit, sourceBase: analysis ? this.analysisDocId : this.workerDocId });
+      remember();
+      return;
+    }
+    if (document.length < WORKER_MIN) {
+      w.postMessage({ ...request, text: document.toString() });
+      remember();
+      return;
+    }
+    w.postMessage({ ...request, start: true });
+    let at = 0;
+    const send = () => {
+      if (this.dead || request.id !== this.loadSeq || (analysis ? this.analysisWorker : this.worker) !== w) return;
+      const until = performance.now() + 8;
+      do {
+        const end = Math.min(document.length, at + 256_000);
+        w.postMessage({ id: request.id, chunk: document.slice(at, end), last: end === document.length });
+        at = end;
+      } while (at < document.length && performance.now() < until);
+      if (at < document.length) soon(send);
+      else remember();
+    };
+    soon(send);
+  }
+
+  /** Full stats and packed nodes may follow output, but must never block its worker. */
+  private queueAnalysis(id: number, document: Doc, name: string | null, done: (tree?: PackedTree, metrics?: DocumentMetrics) => void) {
+    clearTimeout(this.analysisTimer);
+    this.analysisTimer = window.setTimeout(() => {
+      if (id !== this.loadSeq || this.dead) return;
+      try {
+        const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
+        const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
+        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean }>) => {
+          if (e.data.id !== this.loadSeq) return;
+          if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
+          else if (e.data.good && e.data.tree && good) {
+            this.good = null;
+            this.goodVer = good;
+            this.goodText = good.toString();
+            this.goodMetrics = e.data.metrics ?? null;
+            this.goodPacked = { id: -1, tree: e.data.tree, text: this.goodText, metrics: e.data.metrics };
+            this.tree.releaseRoot();
+            if (this.settings.view === 'tree' || this.settings.view === 'table' || this.settings.view === 'convert') this.setView(this.settings.view);
+          }
+          else if (e.data.tree) done(e.data.tree, e.data.metrics);
+          else if (e.data.sizes) { this.measuredSizes = { id, sizes: e.data.sizes }; store.set({ sizes: e.data.sizes }); }
+        };
+        w.onerror = (e) => {
+          e.preventDefault(); w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
+          if (id === this.loadSeq) done();
+        };
+        const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape };
+        const current = () => this.postDocument(w, request, document, true);
+        if (good) this.postDocument(w, { ...request, good: true }, good, true, current);
+        else current();
+      } catch { if (id === this.loadSeq) done(); }
+    }, 2200);
+  }
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; chunkedOut?: boolean; chunkedDisplay?: boolean }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
         if (e.data.id !== this.loadSeq) return;
         if (e.data.sizes) {
@@ -1055,6 +1131,7 @@ export class Engine {
         }
         if (e.data.tree) return void (this.workerParse = { id: e.data.id, tree: e.data.tree, metrics: e.data.metrics });
         const job = this.reindentJob;
+        if (e.data.reset) { this.workerDoc = null; job?.fallback(); return; }
         if (!job || job.id !== e.data.id) return;
         if (e.data.chunk !== undefined) {
           (e.data.field === 'display' ? job.displayParts : job.outParts).push(e.data.chunk);
@@ -1063,13 +1140,14 @@ export class Engine {
         this.reindentJob = null;
         const out = e.data.patch !== undefined && e.data.change ? applyCodeChange(job.baseText, e.data.patch, e.data.change, job.baseSlice) : e.data.chunkedOut ? job.outParts.join('') : e.data.out;
         const display = e.data.chunkedDisplay ? job.displayParts.join('') : e.data.display;
-        job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.index, display, e.data.change, e.data.patch);
+        job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.indexReuse && e.data.index ? this.fmt.inlineIndex(e.data.index) : e.data.index, display, e.data.change, e.data.patch, e.data.inline);
         this.workerParse = null;
       };
       w.onerror = (e) => {
         // It couldn't load (offline before it was ever cached, blocked, or its start cut short by a
         // navigation): work here instead, and start another on a later use, a few times over.
         e.preventDefault();
+        this.workerDoc = null;
         this.worker = ++this.workerFails < 3 ? undefined : null;
         w.terminate();
         const job = this.reindentJob;
@@ -1092,6 +1170,9 @@ export class Engine {
   private finishLoad(text: string, persist: boolean, split = false, keepEdit = false) {
     this.pendingLoad = null;
     this.ed.setValue(text, 0, true, keepEdit);
+    const document = this.ed.version as Doc;
+    if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
+    if (this.fmtSrcVer === null) this.fmtSrcVer = document;
     if (this.refocus) {
       // Pasted in the editor: the user is editing, so it arrives editable (not in the quiet view,
       // where a selection by keyboard would select nothing and the next paste would add to it).
@@ -1506,7 +1587,8 @@ export class Engine {
 
   /** The formatted document for the current settings (from the last valid parse), before any escaping. */
   private formatted(): string {
-    if (this.packed && this.fmtSrc === this.packed.text && this.fmtKey === this.fmtSettings()) return this.fmtText;
+    if ((this.fmtWorkerId || this.pendingFmtWorkerId) && this.fmtKey === this.fmtSettings()) return this.fmtText;
+    if (this.packed && this.fmtSrcVer === this.goodVer && this.fmtKey === this.fmtSettings()) return this.fmtText;
     const r = this.good;
     if (!r?.root) return '';
     const s = this.settings;
@@ -1520,7 +1602,7 @@ export class Engine {
   }
 
   /** What the Format view last drew: the source text and the settings it used. */
-  private fmtSrc = '';
+  private fmtSrcVer: object | null = null;
   private fmtWorkerId = 0;
   private pendingFmtWorkerId = 0;
   private fmtKey = '';
@@ -1532,13 +1614,15 @@ export class Engine {
 
   private runFormat = () => {
     if (this.settings.view !== 'format') return;
+    // A newer accepted output may still be waiting for its tree. Keep it until analysis catches up.
+    if (this.fmtKey !== this.fmtSettings() && this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== this.goodVer && (this.fmtWorkerId || this.pendingFmtWorkerId)) return;
     if (this.packed && this.fmtKey !== this.fmtSettings()) this.fresh();
     if (this.fmtKey !== this.fmtSettings()) this.materializeGood();
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
-    const drawn = this.goodText === this.fmtSrc && key === this.fmtKey;
+    const drawn = key === this.fmtKey && (this.goodVer !== null && this.goodVer === this.fmtSrcVer || !!(this.fmtWorkerId || this.pendingFmtWorkerId) && this.parsedVer === this.ed.version && !this.res?.root);
     const text = drawn ? this.fmtText : this.formatted();
-    if (!drawn) this.drawFormat(text, this.good ? this.goodText : '', key);
+    if (!drawn) this.drawFormat(text, key);
     // Size of the shown variant is measured; the other differs only by whitespace,
     // which is computed from the tree (no second format of big documents).
     const seq = ++this.fmtStatSeq;
@@ -1571,17 +1655,17 @@ export class Engine {
   }
 
   /** Shows `text` (the formatted `src`) in the Format view. */
-  private drawFormat(text: string, src: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string) {
-    this.fmtWorkerId = 0;
+  private drawFormat(text: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+    if (!change) this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;
     this.fmtVersion++;
     this.fmtStatSeq++;
     const { minify, escape } = this.settings;
-    this.fmtSrc = src;
+    this.fmtSrcVer = version;
     this.fmtKey = key;
     this.fmtText = text;
     const out = display ?? (escape && text ? JSON.stringify(text) : text);
-    this.fmt.setText(out, jsonRow, true, null, index, change, patch);
+    this.fmt.setText(out, jsonRow, true, null, index, change, patch, inline);
     this.noteExpiry(minify || escape ? '' : out);
   }
 

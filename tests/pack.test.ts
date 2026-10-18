@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ARR, parse, type JNode, type ParseResult } from '../lib/json/parser';
 import { nodeAt, pathOf } from '../lib/json/path';
 import { packStrings, packTree, packedPosition, unpacker } from '../lib/json/pack';
+import { Doc } from '../lib/engine/doc';
 
 /** Every field of every node, parent links included, must match. */
 function same(a: JNode | null, b: JNode | null, path = '$') {
@@ -126,4 +127,13 @@ test('transferred strings retain empty text, escapes and unpaired UTF-16 surroga
   const res = parse(src);
   const plain = unpacker(packTree(res, src), src)(Infinity)!;
   same(plain.root, res.root);
+});
+
+test('packed navigation reads document pieces without building the complete text', () => {
+  let doc = Doc.of('{"a":[1,2,{"key,comma":"😀"}],"b":true}');
+  doc = doc.edit(3, 3, 'é');
+  const text = doc.toString();
+  const tree = packStrings(packTree(parse(text), text));
+  doc.toString = () => { throw new Error('must not flatten'); };
+  for (let off = 0; off <= text.length; off++) assert.deepEqual(packedPosition(tree, off, doc), packedPosition(tree, off, text));
 });
