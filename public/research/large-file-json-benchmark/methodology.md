@@ -24,7 +24,7 @@ Production `95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a`, served build `YV8u2eNrP_G
 
 Raw and aggregate sources: `results/refresh-2026-10-18T06-23-00-569Z/summary.json`, `editing-summary.json`, `fidelity-summary.json`, `firefox-summary.json`, `completed.jsonl`, `verification/` and `RETRIES.md`. The parser stage measurement is pinned to this commit. Fresh JSON Formatter Online 100 KB/10 MB typing and 10 MB paste results are retained alongside October 17 competitor observations. Nothing is relabeled as same-day evidence when its date differs.
 
-No matched historical Firefox baseline exists. A claimed 3% code regression cannot be established. The follow-up section reports full-output settings checks, Linux WebKit copying/repeat visits, worker recovery and the status-bar switch. Timed structural-output completion remains queued. Safari on Apple hardware is not covered. Size-ladder results above 50 MB remain historical at 925fc3c.
+The later October 18 follow-up adds matched local Firefox controls and complete structural/positional single-edit profiles. Its beforeinput clock is separate from these earlier burst results. Full-output settings and Linux WebKit checks are reported below. Safari on Apple hardware is not covered. Size-ladder results above 50 MB remain historical at 925fc3c.
 <!-- END 95945cd refresh -->
 
 <!-- BEGIN accepted 925fc3c status -->
@@ -514,5 +514,24 @@ Exact numbers, raw hashes, per-position typing, output updates, feature evidence
 <!-- BEGIN follow-up validation -->
 ## Follow-up checks, October 18
 
-Production target `95945cd`. Full-output comparisons completed: 108/108. WebKit profiles with outcomes: 6/6, across separately labeled headless WPE and headed GTK modes. Pending timed jobs: 25. See `results/validation-2026-10-18-followup/validation-summary.json` and `RETRIES.md`. Correctness-only checks supply no benchmark intervals. The initial-results reference and all earlier raw directories stay frozen.
+Production target `95945cd`. Full-output comparisons completed: 108/108. WebKit profiles with outcomes: 6/6, across separately labeled headless WPE and headed GTK modes. Pending timed jobs: 0. See `results/validation-2026-10-18-followup/validation-summary.json` and `RETRIES.md`. Correctness-only checks supply no benchmark intervals. The initial-results reference and all earlier raw directories stay frozen.
+
+The single-edit timing supplement has 24 complete profiles with exact source restoration. Its beforeinput clock stays separate from the original twenty-key burst table. Only complete profiles enter the medians. Earlier readiness, transport and positioning failures remain visible. One partial minified 50 MB sequence recorded 5497.3 ms for a scalar edit after structural insertion and Undo, then failed middle-output positioning without confirming final restoration. That interval remains visible beside the later settled-state profiles.
+
+100kb-pretty: structural-root-member 332.7 ms, scalar-start 325.4 ms, scalar-middle 519.9 ms, scalar-end 1304.9 ms. These are single-edit visible-output medians, not typing latency.
+
+50mb: structural-root-member 3359.7 ms, scalar-start 320.7 ms, scalar-middle 363.2 ms, scalar-end 328.9 ms. These are single-edit visible-output medians, not typing latency.
+
+50mb-pretty: structural-root-member 5065.5 ms, scalar-start 383.3 ms, scalar-middle 372.3 ms, scalar-end 418.2 ms. These are single-edit visible-output medians, not typing latency.
+
+The matched local Firefox control has 18 file-opening outcomes across 925fc3c and 95945cd at 1, 10 and 50 MB. These are local production builds on the same host, not CDN observations. The article retains polled and DOM clocks, ranges and failures.
+
+| Commit | File | Opened / attempts | Polled median | DOM median | Polled range |
+|---|---|---|---|---|---|
+| 925fc3c | 1 MB | 3/3 | 358.4 ms | 271.0 ms | 291.5 ms to 563.1 ms |
+| 925fc3c | 10 MB | 3/3 | 2699.0 ms | 1790.0 ms | 2626.7 ms to 3228.5 ms |
+| 925fc3c | 50 MB | 3/3 | 13866.2 ms | 12402.0 ms | 13626.8 ms to 14271.4 ms |
+| 95945cd | 1 MB | 3/3 | 290.8 ms | 244.0 ms | 287.9 ms to 294.9 ms |
+| 95945cd | 10 MB | 3/3 | 2767.5 ms | 1788.0 ms | 2675.1 ms to 2978.4 ms |
+| 95945cd | 50 MB | 3/3 | 14274.5 ms | 12727.0 ms | 13912.9 ms to 14839.2 ms |
 <!-- END follow-up validation -->

@@ -40,6 +40,12 @@ JSON Beautifier, prettified 1 MB, had lower observed values on these measures: r
 
 The original JSON Formatter Online wins at 1 MB and 10 MB remain in the historical table. The same-hardware local control still shows a 50 MB precise DOM regression from 6.388 s at `19b7ac7` to 8.576 s at `925fc3c`. We did not rebuild that control for this update.
 
+The separate settled single-edit check for minified 50 MB after Edit anyway recorded first/middle/last scalar visible-output medians of 320.7 ms / 363.2 ms / 328.9 ms. Its structural-insertion median was 3359.7 ms. Each median uses three complete profiles with exact source restoration. This beforeinput clock stays separate from the burst table.
+
+The separate settled single-edit check for prettified 50 MB after Edit anyway recorded first/middle/last scalar visible-output medians of 383.3 ms / 372.3 ms / 418.2 ms. Its structural-insertion median was 5065.5 ms. Each median uses three complete profiles with exact source restoration. This beforeinput clock stays separate from the burst table.
+
+Prettified 100 KB still has a slower case. A scalar edit in the last record took 1304.9 ms to reach visible Format output in the single-edit check. This is output completion, not per-key typing latency.
+
 ## Before and after
 
 The first production comparison used a two-core host. The newer rounds used four cores and more RAM. Browser budgets also changed from 2.5 GiB to 6 GiB. Those production differences combine code, host and time effects. The separate local control holds hardware and its 2.5 GiB budget constant.
@@ -106,7 +112,7 @@ Three attempts per current opening cell. Tool Kumar is measured October 18 at `9
 
 ### Firefox opening supplement
 
-These are fresh Firefox observations at `95945cd`. They use the same file hashes, viewport, settle time, done predicate, two frames and 6 GiB browser budget. Firefox has different launch settings and a Playwright transport. Its results stay separate from Chromium. No earlier matched Firefox baseline exists here, so this study cannot confirm or reject a reported 3% code regression.
+These are fresh Firefox observations at `95945cd`. They use the same file hashes, viewport, settle time, done predicate, two frames and 6 GiB browser budget. Firefox has different launch settings and a Playwright transport. Its results stay separate from Chromium. The matched local Firefox comparison appears in the follow-up section. Keep those local production builds separate from these CDN observations.
 
 | Size | Attempts | Outcome | Polled median and range | Precise DOM median | Two-frame median |
 |---|---|---|---|---|---|
@@ -176,7 +182,7 @@ In button-based tools, the public action follows a common 150 ms pause and a sou
 | JSON Formatter Online | 2026-10-17; public site | minified | 1 MB | No | 3/3 | 40.0 ms | 56.0 ms | 22.0 ms | 32.4 ms | start: 284.7 ms in 3/3; middle: unconfirmed; end: unconfirmed | 183.4 ms | 63.0 ms |
 | JSON Formatter Online | 2026-10-17; public site | prettified | 1 MB | No | 3/3 | 32.0 ms | 40.0 ms | 25.3 ms | 29.0 ms | start: unconfirmed; middle: unconfirmed; end: unconfirmed | 100.1 ms | 75.0 ms |
 | JSON Formatter Online | 2026-10-18; public site | minified | 10 MB | No | 3/3 | 64.0 ms | 112.0 ms | 51.6 ms | 83.9 ms | start: 764.1 ms in 3/3; middle: unconfirmed; end: unconfirmed | 150.0 ms | 106.0 ms |
-| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | No | 2/3 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured | start: unconfirmed; middle: unconfirmed; end: unconfirmed | 100.0 ms | 74.0 ms |
+| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | No | 3/4 | 32.0 ms | 32.0 ms | 25.3 ms | 28.2 ms | start: unconfirmed; middle: unconfirmed; end: unconfirmed | 100.0 ms | 74.0 ms |
 | JSONLint | 2026-10-17; public site | minified | 100 KB | No | 2/4 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured | start: unconfirmed; middle: unconfirmed; end: unconfirmed | 149.9 ms | 125.0 ms |
 | JSONLint | 2026-10-17; public site | prettified | 100 KB | No | 0/4 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured | start: unconfirmed; middle: unconfirmed; end: unconfirmed | 166.6 ms | 113.0 ms |
 | JSONLint | 2026-10-17; public site | minified | 1 MB | No | 3/3 | 2040.0 ms | 2912.0 ms | 2019.7 ms | 2870.5 ms | start: unconfirmed; middle: unconfirmed; end: unconfirmed | 2083.2 ms | 1483.0 ms |
@@ -185,6 +191,8 @@ In button-based tools, the public action follows a common 150 ms pause and a sou
 | JSONLint | 2026-10-17; public site | prettified | 10 MB | No | 0/3 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured | start: unconfirmed; middle: unconfirmed; end: unconfirmed | Not measured | Not measured |
 
 [Per-position editing details](publish/editing-details.md) include the editor design, fixture bytes, operation samples and incomplete attempts. Failed profiles remain outcomes. Their missing combined quantiles are not estimates of typing latency.
+
+The one documented JSON Formatter Online prettified 10 MB repeat leaves 3/4 complete profiles. The original failed profile remains visible. Combined typing quantiles use only complete profiles at all three caret positions, with the same nearest-rank and Event Timing censoring rules. The corrected aggregate has rAF median/p95 25.3 ms / 28.2 ms, and Event Timing 32.0 ms / 32.0 ms. Prettified source and formatted output share one CodeMirror editor, so separate formatter completion remains unmeasured. At prettified 10 MB, Tool Kumar has the lower keydown-to-frame median. Tool Kumar records 14.5 ms / 18.4 ms median/p95 beside JSON Formatter Online 25.3 ms / 28.2 ms. Keep the Event Timing and tail results separate.
 
 ## Visible output after an edit
 
@@ -255,7 +263,7 @@ Each independent action starts from the original source and caret. The snippet c
 | JSON Formatter Online | 2026-10-17; public site | minified | 1 MB | 59.0 ms / 90.4 ms | 58.9 ms / 85.3 ms | 67.8 ms / 99.6 ms | 36.1 ms / 66.4 ms | 9 |
 | JSON Formatter Online | 2026-10-17; public site | prettified | 1 MB | 32.3 ms / 43.3 ms | 31.4 ms / 39.2 ms | 31.6 ms / 51.7 ms | 26.8 ms / 27.8 ms | 9 |
 | JSON Formatter Online | 2026-10-18; public site | minified | 10 MB | 47.2 ms / 59.9 ms | 49.3 ms / 60.5 ms | 69.1 ms / 108.2 ms | 35.4 ms / 43.5 ms | 9 |
-| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | 26.6 ms / 45.0 ms | 30.1 ms / 44.2 ms | 31.6 ms / 42.7 ms | 26.4 ms / 28.8 ms | 8 |
+| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | 27.8 ms / 45.0 ms | 30.1 ms / 44.2 ms | 32.1 ms / 42.7 ms | 26.8 ms / 28.8 ms | 11 |
 | JSONLint | 2026-10-17; public site | minified | 100 KB | 14.5 ms / 50.8 ms | 23.6 ms / 120.8 ms | 8.0 ms / 137.9 ms | 30.2 ms / 131.4 ms | 11 |
 | JSONLint | 2026-10-17; public site | prettified | 100 KB | 20.9 ms / 78.5 ms | 70.7 ms / 75.2 ms | 9.8 ms / 15.3 ms | 76.8 ms / 94.9 ms | 0 |
 | JSONLint | 2026-10-17; public site | minified | 1 MB | 276.1 ms / 1460.6 ms | 194.8 ms / 1272.5 ms | 23.1 ms / 1308.4 ms | 391.8 ms / 1579.0 ms | 5 |
@@ -302,7 +310,7 @@ The native input scroller moves through twenty equal steps, 50 ms apart. Frame t
 | JSON Formatter Online | 2026-10-17; public site | minified | 1 MB | Not measured | Not measured | Not measured | Page scroll fallback; no native input range; Page scroll fallback; no native input range; Page scroll fallback; no native input range |
 | JSON Formatter Online | 2026-10-17; public site | prettified | 1 MB | Not measured | Not measured | Not measured | Page scroll fallback; no native input range; Page scroll fallback; no native input range; Page scroll fallback; no native input range |
 | JSON Formatter Online | 2026-10-18; public site | minified | 10 MB | Not measured | Not measured | Not measured | Page scroll fallback; no native input range; Page scroll fallback; no native input range; Page scroll fallback; no native input range |
-| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | Not measured | Not measured | Not measured | Page scroll fallback; no native input range; Page scroll fallback; no native input range; Page scroll fallback; no native input range |
+| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | Not confirmed | Not confirmed | Not confirmed | Page scroll fallback; no native input range; Page scroll fallback; no native input range; Page scroll fallback; no native input range; Page scroll fallback; no native input range |
 | JSONLint | 2026-10-17; public site | minified | 100 KB | 16.7 ms | 16.8 ms | 83.4 ms | measured; measured; measured; measured |
 | JSONLint | 2026-10-17; public site | prettified | 100 KB | 16.7 ms | 16.8 ms | 16.8 ms | measured; measured; measured; measured |
 | JSONLint | 2026-10-17; public site | minified | 1 MB | 16.7 ms | 399.9 ms | 1466.7 ms | measured; measured; measured |
@@ -349,7 +357,7 @@ These opening times come from the editing-profile visits. The timed input and do
 | JSON Formatter Online | 2026-10-17; public site | minified | 1 MB | 999554 | 1 | 362.0 ms | 3/3 | CodeMirror |
 | JSON Formatter Online | 2026-10-17; public site | prettified | 1 MB | 1863123 | 79196 | 353.0 ms | 3/3 | CodeMirror |
 | JSON Formatter Online | 2026-10-18; public site | minified | 10 MB | 9999719 | 1 | 1152.0 ms | 3/3 | CodeMirror |
-| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | 18592911 | 788600 | 1041.0 ms | 2/3 | CodeMirror |
+| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | 18592911 | 788600 | 1041.0 ms | 3/4 | CodeMirror |
 | JSONLint | 2026-10-17; public site | minified | 100 KB | 99638 | 1 | 1029.0 ms | 2/4 | Monaco |
 | JSONLint | 2026-10-17; public site | prettified | 100 KB | 186427 | 7945 | 711.0 ms | 0/4 | Monaco |
 | JSONLint | 2026-10-17; public site | minified | 1 MB | 999554 | 1 | 5929.0 ms | 3/3 | Monaco |
@@ -439,7 +447,7 @@ There is no weighted overall score or direct measure of everyday convenience. Th
 | Tool Kumar | 2026-10-18; 95945cd | minified | 10 MB | 3/3 | 40.0 ms | 56.0 ms | 12.0 ms | 22.2 ms |
 | JSON Formatter Online | 2026-10-18; public site | minified | 10 MB | 3/3 | 64.0 ms | 112.0 ms | 51.6 ms | 83.9 ms |
 | Tool Kumar | 2026-10-18; 95945cd | prettified | 10 MB | 3/3 | 24.0 ms | 32.0 ms | 14.5 ms | 18.4 ms |
-| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | 2/3 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured |
+| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | 3/4 | 32.0 ms | 32.0 ms | 25.3 ms | 28.2 ms |
 
 For everyday minified 100 KB sources, Tool Kumar had the lower keydown-to-frame median, 12.4 ms beside JSON Formatter Online 21.0 ms. Its Event Timing median/p95 was 32.0 ms / 40.0 ms, beside 40.0 ms / 80.0 ms. That measured case supports Tool Kumar over the initial small-file recommendation. Other formats and tail latencies remain separate.
 
@@ -651,7 +659,7 @@ The initial worker attempt timed out on an obsolete message predicate before any
 <!-- BEGIN follow-up validation -->
 ## Follow-up validation on production 95945cd
 
-These October 18 checks address the gaps in the first refresh. Functional checks used the shared lock while the host was busy. They supply no speed samples. Timed supplements require the original load gate and a quiet host. Earlier failures remain in the evidence. [Follow-up data](publish/validation-summary.json) include the raw references and capture hashes.
+These October 18 checks address the gaps in the first refresh. Functional checks used the shared lock while the host was busy. They supply no speed samples. Timed supplements require the original load gate and a quiet host. Earlier failures remain in the evidence. [Follow-up data](publish/validation-summary.json) include the raw references and capture hashes. [Protocol corrections](results/validation-2026-10-18-followup/RETRIES.md) retain the failed preparations and their later controls.
 
 ### Full-output equality across settings
 
@@ -672,7 +680,7 @@ The first worker-sized visits used a fixed one-second wait. Some copied output s
 
 ### WebKit copy and repeat visits
 
-This is Playwright WebKit on Linux, not Safari on macOS or iOS. The clipboard check uses trusted Copy and Paste into an independent textarea and compares the complete source hash. It includes U+00A0 and U+202F. The repeat-visit checks require a real scalar edit, updated visible Format text and a worker reply. The offline visit reloads after the ordinary service worker has cached the page and scripts.
+This is Playwright WebKit on Linux, not Safari on macOS or iOS. The clipboard check uses trusted Copy and Paste into an independent textarea and compares the complete source hash. It includes U+00A0 and U+202F. The repeat-visit checks require a real scalar edit, updated visible Format text and a worker reply. The offline visit reloads after the ordinary service worker has had an online visit in which to cache the page and scripts. Both Linux runtimes failed an independent Cache API storage control, so their online repeats do not confirm cached-worker startup.
 
 | Profile | Clipboard exact | First online | Controlled repeat | Offline repeat | Outcome |
 |---|---|---|---|---|---|
@@ -699,25 +707,83 @@ The separate WebKit cache diagnostic returned diagnostic captured. The headless 
 
 The separate Chromium offline control was passed. It uses the same ordinary service worker, file and real edit. Its cache contents and worker replies are retained. It supplies no Safari or performance result.
 
-The 100kb correctness-only output check was passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
+The 100 KB minified correctness-only output check passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table. Source: raw/output-100kb-adapter-correctness.json.
 
-The 10mb correctness-only output check was partial. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
+The 10 MB minified correctness-only output check partial. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table. Source: raw/output-10mb-correctness-correctness.json.
 
-The 10mb correctness-only output check was passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
+The 10 MB minified correctness-only output check passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table. Source: raw/output-10mb-find-completion-correctness.json.
 
-The 10mb correctness-only output check was failed. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration not confirmed. Its high-load intervals are excluded from the performance table.
+The 10 MB minified correctness-only output check failed. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration not confirmed. Its high-load intervals are excluded from the performance table. Source: raw/output-10mb-position-correction-correctness.json.
 
 ### Structural and positional output updates
 
 The supplement inserts a complete new object member at the start of the root object. Separate scalar edits use the same email values in the first, middle and last records. The clock starts at trusted beforeinput and ends on the frame after the changed marker is fully visible inside the clipped Format pane. The input and output are positioned before the edit. This single-edit protocol is separate from the earlier twenty-key burst clock. No interval is inferred from a later search.
 
-Timed profiles are queued behind the load and memory gates. The separate 100 KB adapter check confirmed the structural change and all three scalar positions, plus exact source restoration. It ran as correctness-only work, so none of its intervals enters the tables.
+| Fixture | Edit | Edit anyway | Complete profiles | Median visible output | Observed range |
+|---|---|---|---|---|---|
+| 100 KB minified | Structural member | No | 3/3 | 179.6 ms | 172.5 ms to 181.2 ms |
+| 100 KB minified | Scalar, start | No | 3/3 | 174.7 ms | 173.7 ms to 179.1 ms |
+| 100 KB minified | Scalar, middle | No | 3/3 | 178.3 ms | 177.6 ms to 244.6 ms |
+| 100 KB minified | Scalar, end | No | 3/3 | 181.4 ms | 165.7 ms to 198.0 ms |
+| 100 KB prettified | Structural member | No | 3/3 | 332.7 ms | 326.5 ms to 357.6 ms |
+| 100 KB prettified | Scalar, start | No | 3/3 | 325.4 ms | 322.9 ms to 328.1 ms |
+| 100 KB prettified | Scalar, middle | No | 3/3 | 519.9 ms | 505.4 ms to 528.5 ms |
+| 100 KB prettified | Scalar, end | No | 3/3 | 1304.9 ms | 1284.9 ms to 1315.3 ms |
+| 1 MB minified | Structural member | No | 3/3 | 741.2 ms | 731.6 ms to 784.5 ms |
+| 1 MB minified | Scalar, start | No | 3/3 | 707.3 ms | 702.0 ms to 710.8 ms |
+| 1 MB minified | Scalar, middle | No | 3/3 | 746.0 ms | 731.9 ms to 751.0 ms |
+| 1 MB minified | Scalar, end | No | 3/3 | 731.7 ms | 729.4 ms to 746.1 ms |
+| 1 MB prettified | Structural member | No | 3/3 | 819.8 ms | 816.0 ms to 824.5 ms |
+| 1 MB prettified | Scalar, start | No | 3/3 | 796.3 ms | 796.1 ms to 811.1 ms |
+| 1 MB prettified | Scalar, middle | No | 3/3 | 759.5 ms | 752.1 ms to 773.2 ms |
+| 1 MB prettified | Scalar, end | No | 3/3 | 765.6 ms | 738.3 ms to 795.8 ms |
+| 10 MB minified | Structural member | No | 3/3 | 962.9 ms | 948.0 ms to 964.4 ms |
+| 10 MB minified | Scalar, start | No | 3/3 | 246.7 ms | 243.3 ms to 259.7 ms |
+| 10 MB minified | Scalar, middle | No | 3/3 | 261.3 ms | 250.2 ms to 321.4 ms |
+| 10 MB minified | Scalar, end | No | 3/3 | 255.9 ms | 243.1 ms to 264.3 ms |
+| 10 MB prettified | Structural member | Yes | 3/4 | 1315.6 ms | 1292.7 ms to 1416.5 ms |
+| 10 MB prettified | Scalar, start | Yes | 3/4 | 265.7 ms | 256.5 ms to 286.0 ms |
+| 10 MB prettified | Scalar, middle | Yes | 3/4 | 271.1 ms | 266.5 ms to 273.4 ms |
+| 10 MB prettified | Scalar, end | Yes | 3/4 | 247.8 ms | 247.5 ms to 264.0 ms |
+| 50 MB minified | Structural member | Yes | 3/4 | 3359.7 ms | 3268.0 ms to 3609.2 ms |
+| 50 MB minified | Scalar, start | Yes | 3/4 | 320.7 ms | 317.3 ms to 321.8 ms |
+| 50 MB minified | Scalar, middle | Yes | 3/4 | 363.2 ms | 330.7 ms to 381.2 ms |
+| 50 MB minified | Scalar, end | Yes | 3/4 | 328.9 ms | 328.7 ms to 331.4 ms |
+| 50 MB prettified | Structural member | Yes | 3/4 | 5065.5 ms | 5047.1 ms to 5933.8 ms |
+| 50 MB prettified | Scalar, start | Yes | 3/4 | 383.3 ms | 378.4 ms to 388.9 ms |
+| 50 MB prettified | Scalar, middle | Yes | 3/4 | 372.3 ms | 371.9 ms to 383.8 ms |
+| 50 MB prettified | Scalar, end | Yes | 3/4 | 418.2 ms | 396.6 ms to 428.7 ms |
+
+Only complete profiles with exact source restoration enter these medians. Earlier preparation failures and their partial intervals remain in the download. Chromium file selection uses a local path through native CDP. Preparation waits for the input or the deferred read-only notice, and for the public Valid JSON status after warm-up and Undo. These intervals describe an edit after prior work settles. They do not describe every edit sent while a previous structural pass is still running. These untimed corrections are documented in RETRIES.md. A frame callback remains a paint cross-check, not proof of compositor presentation.
+
+| Fixture | Profile outcome | Reason | Observed partial intervals | Source |
+|---|---|---|---|---|
+| 10mb-pretty | Preparation failed | page.waitForFunction: Timeout 30000ms exceeded. | None | raw/output-10mb-pretty-1.json |
+| 50mb | Partial profile | page.waitForFunction: Timeout 20000ms exceeded. | structural-root-member: 3341.2 ms; scalar-start: 5497.3 ms | raw/output-50mb-1.json |
+| 50mb-pretty | Preparation failed | locator.setInputFiles: Cannot transfer files larger than 50Mb to a browser not co-located with the server | None | raw/output-50mb-pretty-1.json |
+
+The partial minified 50 MB profile recorded a 5497.3 ms first-record scalar interval after a structural insertion and Undo, then failed while positioning the middle output. It did not confirm final source restoration. The later settled-state profiles do not erase that slow sequence. The Playwright transfer limit prevented the first prettified 50 MB file selection; later native CDP selections completed.
 
 ### Matched Firefox code control
 
 This control builds `925fc3c` and `95945cd` locally on the same host. It uses fresh Firefox profiles, the same file fixtures, viewport, settle time, completion predicate and launch settings. Source order reverses in the middle round. Local production servers start outside the lock. These are local production builds, not CDN measurements.
 
-The builds and timed runs are queued for load below 4 and at least 8,000 MiB available. The existing new-version Firefox supplement cannot establish the claimed 3% code regression.
+| Commit | File | Opened / attempts | Polled median | DOM median | Polled range |
+|---|---|---|---|---|---|
+| 925fc3c | 1 MB | 3/3 | 358.4 ms | 271.0 ms | 291.5 ms to 563.1 ms |
+| 925fc3c | 10 MB | 3/3 | 2699.0 ms | 1790.0 ms | 2626.7 ms to 3228.5 ms |
+| 925fc3c | 50 MB | 3/3 | 13866.2 ms | 12402.0 ms | 13626.8 ms to 14271.4 ms |
+| 95945cd | 1 MB | 3/3 | 290.8 ms | 244.0 ms | 287.9 ms to 294.9 ms |
+| 95945cd | 10 MB | 3/3 | 2767.5 ms | 1788.0 ms | 2675.1 ms to 2978.4 ms |
+| 95945cd | 50 MB | 3/3 | 14274.5 ms | 12727.0 ms | 13912.9 ms to 14839.2 ms |
+
+At 1 MB, the local Firefox polled median changed by -18.9%. The raw ranges remain in the download. Shared-host variation and three samples limit the estimate.
+
+At 10 MB, the local Firefox polled median changed by +2.5%. The raw ranges remain in the download. Shared-host variation and three samples limit the estimate.
+
+At 50 MB, the local Firefox polled median changed by +2.9%. The raw ranges remain in the download. Shared-host variation and three samples limit the estimate.
+
+A local metadata request failed after the first accepted 1 MB profile, before the next browser visit. That batch and its error remain saved. Later metadata requests close their connection before the synchronous browser child runs. The accepted profile was not repeated. This correction changes verification transport, not the browser timing protocol.
 <!-- END follow-up validation -->
 
 ## Why the original native formatter was faster
@@ -831,7 +897,7 @@ A minified source puts much of the document on one huge line. A prettified sourc
 
 ### Does the before-and-after isolate code changes?
 
-The original production comparison includes a host resize and a memory-budget change. The October 17 local control holds hardware and its 2.5 GiB budget constant for `19b7ac7`, `aee1ae3` and `925fc3c`. The October 18 refresh uses the same host and 6 GiB budget as the saved initial results, but shared-host pressure and observation time still vary. No new local or historical Firefox control was run.
+The original production comparison includes a host resize and a memory-budget change. The October 17 local control holds hardware and its 2.5 GiB budget constant for `19b7ac7`, `aee1ae3` and `925fc3c`. The October 18 refresh uses the same host and 6 GiB budget as the saved initial results, but shared-host pressure and observation time still vary. The follow-up section adds an interleaved local Firefox control at 925fc3c and 95945cd.
 
 ### Why is output-update time separate from typing latency?
 

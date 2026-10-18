@@ -20,3 +20,10 @@ Earlier Tool Kumar-only 50 MB data after Edit anyway, 6 GiB browser budget and d
 - `output-update-refresh.svg`: October 17 and October 18 first-caret visible-output medians after scalar bursts at 50 MB, after Edit anyway. Every cell shows its confirmed interval count.
 - `renderer-memory.svg`: Dated renderer peaks to view or stop and across the full feature run. Tool Kumar October 18, JFO 10 MB October 18, other cells October 17.
 - `local-code-opening.svg` remains the historical local 19b7ac7/aee1ae3/925fc3c comparison. It does not contain 95945cd.
+
+<!-- BEGIN follow-up charts -->
+
+- `output-single-edit.svg`: October 18 production 95945cd single-edit visible-output medians for valid structural insertion and scalar edits at first, middle and last records. Minified and prettified fixtures at 100 KB, 1, 10 and 50 MB stay separate. The clock starts at trusted beforeinput. Counts and failed outcomes are explicit. This is separate from twenty-key burst timing.
+- `firefox-local-control.svg`: Matched local production-build Firefox openings on the resized host at 925fc3c and 95945cd. The source order reverses in the middle round. Bars show polled medians and successful/attempted counts at 1, 10 and 50 MB. These are not CDN results.
+
+<!-- END follow-up charts -->

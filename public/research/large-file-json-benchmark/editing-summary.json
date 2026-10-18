@@ -14926,17 +14926,18 @@
       "size": "10mb-pretty",
       "format": "prettified",
       "sourceSize": "10mb",
-      "runs": 3,
-      "completeProfiles": 2,
+      "runs": 4,
+      "completeProfiles": 3,
       "matchedSources": [
         "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing1__2026-10-18T06-46-27-082Z.json",
-        "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing2__2026-10-18T07-10-48-044Z.json"
+        "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing2__2026-10-18T07-10-48-044Z.json",
+        "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json"
       ],
       "opening": {
-        "n": 3,
+        "n": 4,
         "median": 1041,
-        "p95": 1126,
-        "max": 1126
+        "p95": 1334,
+        "max": 1334
       },
       "design": {
         "editor": "CodeMirror",
@@ -15006,33 +15007,41 @@
           "reason": "end: Find did not render the caret target",
           "phase": "source restoration",
           "memoryStop": null
+        },
+        {
+          "source": "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json",
+          "opening": "ok",
+          "rawOpeningStatus": "ok",
+          "editing": "measured",
+          "rawEditingStatus": "measured",
+          "phase": "source restoration",
+          "memoryStop": null
         }
       ],
       "raf": {
-        "n": 120,
-        "median": null,
-        "p95": null,
-        "max": 42.6000000089407,
-        "reason": "Fewer than three complete matched profiles. Use the separate position results. All incomplete attempts remain outcomes."
+        "n": 180,
+        "median": 25.30000001192093,
+        "p95": 28.200000002980232,
+        "max": 42.6000000089407
       },
       "eventTiming": {
-        "median": "Fewer than three complete matched profiles",
-        "p95": "Fewer than three complete matched profiles",
-        "entries": 115,
-        "totalKeys": 120,
+        "median": "32.0 ms",
+        "p95": "32.0 ms",
+        "entries": 175,
+        "totalKeys": 180,
         "censoredBelow16ms": 5,
         "conditional": {
-          "n": 115,
+          "n": 175,
           "median": 32,
           "p95": 32,
-          "max": 48
+          "max": 64
         }
       },
       "positions": [
         {
           "position": "start",
-          "runs": 3,
-          "verifiedRuns": 3,
+          "runs": 4,
+          "verifiedRuns": 4,
           "outcomes": [
             {
               "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing1__2026-10-18T06-46-27-082Z.json",
@@ -15060,19 +15069,28 @@
               "publicCopyMarkerObserved": null,
               "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
               "protocolTimeouts": 0
+            },
+            {
+              "source": "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json",
+              "status": "measured",
+              "nativeInputEvents": 0,
+              "sourceMarkerObserved": true,
+              "publicCopyMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
             }
           ],
           "raf": {
-            "n": 60,
-            "median": 10.700000002980232,
-            "p95": 12.100000008940697,
-            "max": 12.400000005960464
+            "n": 80,
+            "median": 11,
+            "p95": 17.30000001192093,
+            "max": 17.400000005960464
           },
           "eventTimingAboveThreshold": {
-            "n": 55,
+            "n": 75,
             "median": 16,
-            "p95": 16,
-            "max": 24
+            "p95": 24,
+            "max": 32
           },
           "eventTimingMissingOrBelow16ms": 5,
           "outputUpdate": {
@@ -15112,6 +15130,14 @@
               "visibleMarkerConfirmed": true,
               "markerInDOMButNotVisible": false,
               "afterTimeout": null
+            },
+            {
+              "source": "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json",
+              "prepositioningNote": null,
+              "outputNote": null,
+              "visibleMarkerConfirmed": true,
+              "markerInDOMButNotVisible": false,
+              "afterTimeout": null
             }
           ],
           "outputMeasurementNote": "The prettified source is already the formatted view in this same editor. A separate formatted-output update after its button cannot be isolated; raw observer intervals are retained but excluded from this summary.",
@@ -15121,8 +15147,8 @@
         },
         {
           "position": "middle",
-          "runs": 3,
-          "verifiedRuns": 3,
+          "runs": 4,
+          "verifiedRuns": 4,
           "outcomes": [
             {
               "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing1__2026-10-18T06-46-27-082Z.json",
@@ -15150,16 +15176,25 @@
               "publicCopyMarkerObserved": null,
               "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
               "protocolTimeouts": 0
+            },
+            {
+              "source": "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json",
+              "status": "measured",
+              "nativeInputEvents": 0,
+              "sourceMarkerObserved": true,
+              "publicCopyMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
             }
           ],
           "raf": {
-            "n": 60,
+            "n": 80,
             "median": 26.100000008940697,
-            "p95": 27.5,
+            "p95": 30.400000005960464,
             "max": 43.5
           },
           "eventTimingAboveThreshold": {
-            "n": 60,
+            "n": 80,
             "median": 32,
             "p95": 32,
             "max": 64
@@ -15202,6 +15237,14 @@
               "visibleMarkerConfirmed": false,
               "markerInDOMButNotVisible": true,
               "afterTimeout": null
+            },
+            {
+              "source": "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json",
+              "prepositioningNote": null,
+              "outputNote": null,
+              "visibleMarkerConfirmed": false,
+              "markerInDOMButNotVisible": true,
+              "afterTimeout": null
             }
           ],
           "outputMeasurementNote": "The prettified source is already the formatted view in this same editor. A separate formatted-output update after its button cannot be isolated; raw observer intervals are retained but excluded from this summary.",
@@ -15211,8 +15254,8 @@
         },
         {
           "position": "end",
-          "runs": 3,
-          "verifiedRuns": 2,
+          "runs": 4,
+          "verifiedRuns": 3,
           "outcomes": [
             {
               "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing1__2026-10-18T06-46-27-082Z.json",
@@ -15240,19 +15283,28 @@
               "publicCopyMarkerObserved": null,
               "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
               "protocolTimeouts": 0
+            },
+            {
+              "source": "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json",
+              "status": "measured",
+              "nativeInputEvents": 0,
+              "sourceMarkerObserved": true,
+              "publicCopyMarkerObserved": null,
+              "verificationNote": "Latency requires a source or visible-output marker, 20 trusted keydown events and observed frames. Native input events are editor-dependent and are not a separate pass requirement.",
+              "protocolTimeouts": 0
             }
           ],
           "raf": {
-            "n": 40,
+            "n": 60,
             "median": 26.100000008940697,
-            "p95": 27.80000001192093,
-            "max": 32.30000001192093
+            "p95": 32.20000000298023,
+            "max": 38.5
           },
           "eventTimingAboveThreshold": {
-            "n": 40,
+            "n": 60,
             "median": 32,
-            "p95": 32,
-            "max": 40
+            "p95": 40,
+            "max": 64
           },
           "eventTimingMissingOrBelow16ms": 0,
           "outputUpdate": {
@@ -15292,19 +15344,27 @@
               "visibleMarkerConfirmed": false,
               "markerInDOMButNotVisible": false,
               "afterTimeout": null
+            },
+            {
+              "source": "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json",
+              "prepositioningNote": null,
+              "outputNote": null,
+              "visibleMarkerConfirmed": true,
+              "markerInDOMButNotVisible": false,
+              "afterTimeout": null
             }
           ],
           "outputMeasurementNote": "The prettified source is already the formatted view in this same editor. A separate formatted-output update after its button cannot be isolated; raw observer intervals are retained but excluded from this summary.",
           "outputVisibilityNote": null,
           "longestFrameMs": 83.39999999999418,
-          "longestTaskMs": 73
+          "longestTaskMs": 74
         }
       ],
       "operations": {
         "enter": {
           "raf": {
-            "n": 8,
-            "median": 26.599999994039536,
+            "n": 11,
+            "median": 27.799999997019768,
             "p95": 45,
             "max": 45
           },
@@ -15315,11 +15375,11 @@
             "max": null
           },
           "clock": "Trusted keydown to next rAF. If no keydown exists for an Input.insertText fallback, the input-event-to-frame bound is used and the method is recorded. This is not confirmation that the operation completed.",
-          "samples": 8
+          "samples": 11
         },
         "backspace": {
           "raf": {
-            "n": 8,
+            "n": 11,
             "median": 30.100000008940697,
             "p95": 44.19999998807907,
             "max": 44.19999998807907
@@ -15331,12 +15391,12 @@
             "max": null
           },
           "clock": "Trusted keydown to next rAF. If no keydown exists for an Input.insertText fallback, the input-event-to-frame bound is used and the method is recorded. This is not confirmation that the operation completed.",
-          "samples": 8
+          "samples": 11
         },
         "snippet": {
           "raf": {
-            "n": 8,
-            "median": 31.599999994039536,
+            "n": 11,
+            "median": 32.099999994039536,
             "p95": 42.70000000298023,
             "max": 42.70000000298023
           },
@@ -15347,8 +15407,9 @@
             "max": null
           },
           "clock": "Trusted keydown to next rAF. If no keydown exists for an Input.insertText fallback, the input-event-to-frame bound is used and the method is recorded. This is not confirmation that the operation completed.",
-          "samples": 8,
+          "samples": 11,
           "methods": [
+            "Trusted Ctrl+V from browser clipboard",
             "Trusted Ctrl+V from browser clipboard",
             "Trusted Ctrl+V from browser clipboard",
             "Trusted Ctrl+V from browser clipboard"
@@ -15356,8 +15417,8 @@
         },
         "undo": {
           "raf": {
-            "n": 8,
-            "median": 26.399999991059303,
+            "n": 11,
+            "median": 26.80000001192093,
             "p95": 28.799999997019768,
             "max": 28.799999997019768
           },
@@ -15368,8 +15429,8 @@
             "max": null
           },
           "clock": "Trusted keydown to next rAF. If no keydown exists for an Input.insertText fallback, the input-event-to-frame bound is used and the method is recorded. This is not confirmation that the operation completed.",
-          "samples": 8,
-          "confirmedEffects": 8,
+          "samples": 11,
+          "confirmedEffects": 11,
           "effectNotes": [
             {
               "position": "start",
@@ -15406,12 +15467,25 @@
             {
               "position": "end",
               "confirmed": null
+            },
+            {
+              "position": "start",
+              "confirmed": true
+            },
+            {
+              "position": "middle",
+              "confirmed": true
+            },
+            {
+              "position": "end",
+              "confirmed": true
             }
           ]
         }
       },
       "scrolling": {
         "outcomes": [
+          "Page scroll fallback; no native input range",
           "Page scroll fallback; no native input range",
           "Page scroll fallback; no native input range",
           "Page scroll fallback; no native input range"
@@ -15422,18 +15496,19 @@
           "p95": null,
           "max": null
         },
-        "pageFallbackProfiles": 3
+        "pageFallbackProfiles": 4
       },
       "rendererPeakMiB": {
-        "n": 3,
-        "median": 1297,
+        "n": 4,
+        "median": 1217,
         "p95": 1381,
         "max": 1381
       },
       "sources": [
         "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing1__2026-10-18T06-46-27-082Z.json",
         "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing2__2026-10-18T07-10-48-044Z.json",
-        "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T07-38-44-132Z.json"
+        "results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T07-38-44-132Z.json",
+        "results/validation-2026-10-18-followup/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T12-19-22-447Z.json"
       ],
       "observationDate": "2026-10-18",
       "measuredSiteCommit": null
