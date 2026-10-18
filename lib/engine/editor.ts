@@ -551,6 +551,8 @@ export class Editor {
         }
       });
     }
+    // (Switching editors keeps the selection: the status bar is told, as no caret event follows.)
+    const switched = custom !== !!this.surface;
     if (custom && !this.surface) {
       const selection = this.selection;
       this.surface = this.makeSurface();
@@ -579,7 +581,7 @@ export class Editor {
       this.el.classList.toggle('vmode', view);
       this.el.tabIndex = view ? 0 : -1;
       this.ev.caret();
-    }
+    } else if (switched) this.ev.caret();
     this.wrapDirty = true;
     this.layout();
     this.updateCaret();
