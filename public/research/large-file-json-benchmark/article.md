@@ -1,18 +1,12 @@
 # Large JSON benchmark: opening, typing and number fidelity
 
-We first tested six browser JSON tools on October 15, 2026. Tool Kumar at `19b7ac7` opened our 1 MB, 10 MB and 50 MB files in median times of 0.890 s, 2.482 s and 9.857 s. We then changed Tool Kumar and measured it again. This update measures production `95945cd` on October 18, 2026. The October 17 report at `925fc3c` is the saved initial-results reference `TK-LFJSON-INITIAL-2026-10-17`.
+We first tested six browser JSON tools on October 15, 2026. That version of Tool Kumar opened our 1 MB, 10 MB and 50 MB files in median times of 0.890 s, 2.482 s and 9.857 s. The study also showed where Tool Kumar was slow or wrong, so we used its findings to improve it. We measured the improved Tool Kumar on October 17 and again on October 18, 2026. Unless a table says otherwise, Tool Kumar results are from October 18.
 
-Disclosure: Tool Kumar's maker ran this study. We optimized Tool Kumar after the first measurements. We did not change the competitors. Tool Kumar and JSON Formatter Online have fresh October 18 observations where the tables say so. Other competitor results remain dated October 17. Competitor number fidelity remains dated October 15. Historical results are kept under their measured commits. This is a draft for review.
-
-Production deployment `7150826741` succeeded at `2026-10-18T06:16:56Z` for `95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a`. The served build token was `YV8u2eNrP_GoYaUSkqO5C`. Scripts used `/_next/static/immutable/chunks/`. Before and after every accepted batch, the runner checked remote main, deployment status and the served build. A changed batch does not enter the tables. The page itself does not independently expose the commit.
+Disclosure: Tool Kumar's maker ran this study. We optimized Tool Kumar after the first measurements. We did not change the competitors. Tool Kumar and JSON Formatter Online have fresh October 18 observations where the tables say so. Other competitor results remain dated October 17. Competitor number fidelity remains dated October 15. Older Tool Kumar results are labeled with the date of the version measured. This is a draft for review.
 
 ## What we found
 
-Tool Kumar at `95945cd`, 1 MB through the file path: 3/3 opened, 0.336 s [0.331 s to 0.337 s].
-
-Tool Kumar at `95945cd`, 10 MB through the file path: 3/3 opened, 1.433 s [1.421 s to 1.480 s].
-
-Tool Kumar at `95945cd`, 50 MB through the file path: 3/3 opened, 8.307 s [8.269 s to 8.897 s].
+Opening from a file on October 18, Tool Kumar opened 1 MB, 10 MB and 50 MB in 3/3 runs each. The medians were 0.336 s [0.331 s to 0.337 s], 1.433 s [1.421 s to 1.480 s] and 8.307 s [8.269 s to 8.897 s].
 
 At 1 MB through paste, Tool Kumar recorded 0.322 s [0.317 s to 0.338 s]; JSON Formatter Online recorded 0.461 s [0.427 s to 0.574 s]. Tool Kumar's observation is October 18. JSON Formatter Online's is October 17.
 
@@ -20,17 +14,17 @@ At 10 MB through paste, Tool Kumar recorded 1.370 s [1.358 s to 1.413 s]; JSON F
 
 This paste comparison meets the stated tie rule. The lower raw median remains visible. It does not establish a clear speed lead.
 
-At 100 KB, Tool Kumar's minified Event Timing median/p95 changed from 88.0 ms / 216.0 ms at `925fc3c` to 32.0 ms / 40.0 ms at `95945cd`. The rAF medians were 72.5 ms and 12.4 ms. This is a dated shared-host comparison, not an isolated per-commit experiment.
+At 100 KB, Tool Kumar's minified Event Timing median/p95 changed from 88.0 ms / 216.0 ms on October 17 to 32.0 ms / 40.0 ms on October 18. The rAF medians were 72.5 ms and 12.4 ms. These are two dates on a shared host, not an isolated test of each code change.
 
-At 100 KB, Tool Kumar's prettified Event Timing median/p95 changed from 32.0 ms / 40.0 ms at `925fc3c` to 32.0 ms / 48.0 ms at `95945cd`. The rAF medians were 25.5 ms and 25.2 ms. This is a dated shared-host comparison, not an isolated per-commit experiment.
+At 100 KB, Tool Kumar's prettified Event Timing median/p95 changed from 32.0 ms / 40.0 ms on October 17 to 32.0 ms / 48.0 ms on October 18. The rAF medians were 25.5 ms and 25.2 ms. These are two dates on a shared host, not an isolated test of each code change.
 
-For minified 50 MB JSON after Edit anyway, the confirmed first-caret visible-output median was 8987.1 ms at `925fc3c` and 326.8 ms at `95945cd`, in 3/3 new profiles. Other positions and missing intervals stay separate below.
+For minified 50 MB JSON after Edit anyway, the confirmed first-caret visible-output median was 8987.1 ms on October 17 and 326.8 ms on October 18, in 3/3 new profiles. Other positions and missing intervals stay separate below.
 
-Typing in that minified 50 MB source had Event Timing median/p95 40.0 ms / 56.0 ms at `925fc3c` and 40.0 ms / 64.0 ms at `95945cd`. The faster output claim is separate from typing response. Shared-host variation remains.
+Typing in that minified 50 MB source had Event Timing median/p95 40.0 ms / 56.0 ms on October 17 and 40.0 ms / 64.0 ms on October 18. The faster output claim is separate from typing response. Shared-host variation remains.
 
-For prettified 50 MB JSON after Edit anyway, the confirmed first-caret visible-output median was 9918.5 ms at `925fc3c` and 353.1 ms at `95945cd`, in 3/3 new profiles. Other positions and missing intervals stay separate below.
+For prettified 50 MB JSON after Edit anyway, the confirmed first-caret visible-output median was 9918.5 ms on October 17 and 353.1 ms on October 18, in 3/3 new profiles. Other positions and missing intervals stay separate below.
 
-Typing in that prettified 50 MB source had Event Timing median/p95 56.0 ms / 72.0 ms at `925fc3c` and 56.0 ms / 72.0 ms at `95945cd`. The faster output claim is separate from typing response. Shared-host variation remains.
+Typing in that prettified 50 MB source had Event Timing median/p95 56.0 ms / 72.0 ms on October 17 and 56.0 ms / 72.0 ms on October 18. The faster output claim is separate from typing response. Shared-host variation remains.
 
 JSON Beautifier, prettified 100 KB, had lower observed values on these measures: Event Timing median 24.0 ms beside Tool Kumar 32.0 ms; rAF median 10.3 ms beside 25.2 ms; Event Timing p95 40.0 ms beside Tool Kumar 48.0 ms; rAF p95 16.2 ms beside 36.1 ms. 2026-10-17; public site. Both cells have three complete matched profiles. These gaps are not a universal ranking.
 
@@ -38,7 +32,7 @@ JSON Formatter Online, prettified 100 KB, had lower observed values on these mea
 
 JSON Beautifier, prettified 1 MB, had lower observed values on these measures: rAF median 10.4 ms beside 12.2 ms; rAF p95 18.1 ms beside 18.5 ms. 2026-10-17; public site. Both cells have three complete matched profiles. These gaps are not a universal ranking.
 
-The original JSON Formatter Online wins at 1 MB and 10 MB remain in the historical table. The same-hardware local control still shows a 50 MB precise DOM regression from 6.388 s at `19b7ac7` to 8.576 s at `925fc3c`. We did not rebuild that control for this update.
+The original JSON Formatter Online wins at 1 MB and 10 MB remain in the historical table. The same-hardware local control still shows a 50 MB precise DOM regression from 6.388 s in the original version to 8.576 s in the October 17 version. We did not repeat that control with the October 18 version.
 
 The separate settled single-edit check for minified 50 MB after Edit anyway recorded first/middle/last scalar visible-output medians of 320.7 ms / 363.2 ms / 328.9 ms. Its structural-insertion median was 3359.7 ms. Each median uses three complete profiles with exact source restoration. This beforeinput clock stays separate from the burst table.
 
@@ -46,15 +40,38 @@ The separate settled single-edit check for prettified 50 MB after Edit anyway re
 
 Prettified 100 KB still has a slower case. A scalar edit in the last record took 1304.9 ms to reach visible Format output in the single-edit check. This is output completion, not per-key typing latency.
 
+## How this research improved Tool Kumar
+
+Each round of measurements showed us where Tool Kumar was slow or wrong, and we changed it before measuring again. We did not change the competitors. The results describe each dated version as a whole; they do not isolate individual changes or confirm every browser fix.
+
+### Between the October 15 and October 17 measurements
+
+- **Formatted output first.** A large document can show formatted text before the input editor, tree and statistics finish.
+- **Faster file opening.** Opening a file no longer waits for the offline service worker before warming the work it needs.
+- **A virtual input editor.** Large documents draw only their visible rows.
+- **Work moved off the main thread.** Analysis and output for large-document typing run in a background worker. The page rebuilds the worker's parsed tree in short slices between input events.
+- **Editable up to 16 million characters.** Larger sources open read-only until you click Edit anyway. Characters are not bytes, so this is not a 16 MB file limit.
+- **Cheaper typing in huge documents.** Edits to long documents no longer copy the whole document, and the Format view updates in short slices.
+- **Paste and recovery.** A document pasted over everything stays editable. A failed load of the large-document editor is retried, and so is a background worker whose script fails to load. Our follow-up checks found one case that is not retried yet: a worker constructor that throws. Output still updates through a slower fallback in that case.
+- **Last-record search at 50 MB.** Search could find the final match without showing it. The fix is described in the 50 MB search section below.
+
+### Between the October 17 and October 18 measurements
+
+The October 17 round found slow typing in minified 100 KB files and 9 to 10 s output updates after an edit at 50 MB. These changes targeted those cases.
+
+- **Long minified lines use the large-document editor.** A source with a line of at least 5,000 characters uses it even when the file is small.
+- **Incremental formatting.** The Format view can apply a single-value edit without reformatting the whole document. Structural edits, sorting and escaping can still use a full pass; their cost was not measured separately.
+- **Correct cursor status.** The status bar shows the right line and column after switching editors.
+
 ## Before and after
 
 The first production comparison used a two-core host. The newer rounds used four cores and more RAM. Browser budgets also changed from 2.5 GiB to 6 GiB. Those production differences combine code, host and time effects. The separate local control holds hardware and its 2.5 GiB budget constant.
 
 | Tool | Version | Date, UTC | Input path | Host | Browser budget | 1 MB | 10 MB | 50 MB |
 |---|---|---|---|---|---|---|---|---|
-| Tool Kumar | 19b7ac7, historical | 2026-10-15 | file | 2 CPUs; 7,801 MiB RAM | 2.5 GiB | 0.890 s | 2.482 s | 9.857 s |
-| Tool Kumar | 925fc3c | 2026-10-17 | file | 4 CPUs; 15,759 MiB RAM | 6 GiB | 3/3 opened, 0.383 s [0.369 s to 0.498 s] | 3/3 opened, 1.572 s [1.507 s to 1.613 s] | 3/3 opened, 9.051 s [8.925 s to 9.364 s] |
-| Tool Kumar | 95945cd | 2026-10-18 | file | 4 CPUs; 15,759 MiB RAM | 6 GiB | 3/3 opened, 0.336 s [0.331 s to 0.337 s] | 3/3 opened, 1.433 s [1.421 s to 1.480 s] | 3/3 opened, 8.307 s [8.269 s to 8.897 s] |
+| Tool Kumar | Original | 2026-10-15 | file | 2 CPUs; 7,801 MiB RAM | 2.5 GiB | 0.890 s | 2.482 s | 9.857 s |
+| Tool Kumar | Updated | 2026-10-17 | file | 4 CPUs; 15,759 MiB RAM | 6 GiB | 3/3 opened, 0.383 s [0.369 s to 0.498 s] | 3/3 opened, 1.572 s [1.507 s to 1.613 s] | 3/3 opened, 9.051 s [8.925 s to 9.364 s] |
+| Tool Kumar | Current | 2026-10-18 | file | 4 CPUs; 15,759 MiB RAM | 6 GiB | 3/3 opened, 0.336 s [0.331 s to 0.337 s] | 3/3 opened, 1.433 s [1.421 s to 1.480 s] | 3/3 opened, 8.307 s [8.269 s to 8.897 s] |
 | Code Beautify JSON Viewer | Public site | October 17 | file | 4 CPUs; 15,759 MiB RAM | 6 GiB | 3/3 opened, 4.220 s [3.906 s to 6.389 s] | 3/3 opened, 21.888 s [20.511 s to 21.900 s]; 3 browser memory stops overall | 3/3 exceeded memory cap; 3 browser memory stops overall |
 | JSON Beautifier | Public site | October 17 | file | 4 CPUs; 15,759 MiB RAM | 6 GiB | 3/3 opened, 0.803 s [0.751 s to 0.961 s] | 3/3 opened, 5.510 s [5.305 s to 5.640 s] | 3/3 opened, 28.159 s [27.785 s to 29.351 s] |
 | JSON Viewer Stack | Public site | October 17 | paste | 4 CPUs; 15,759 MiB RAM | 6 GiB | 3/3 opened, 0.639 s [0.614 s to 0.714 s] | 2/3 opened, 8.598 s [8.548 s to 8.647 s]; 1/3 view detected, interaction obstructed | 2/3 opened, 49.822 s [49.213 s to 50.430 s]; 1/3 view detected, interaction obstructed |
@@ -63,7 +80,7 @@ The first production comparison used a two-core host. The newer rounds used four
 
 ### Original six-tool opening comparison
 
-These are the October 15, 2026 observations on the two-CPU host with 7,801 MiB RAM and a 2.5 GiB browser budget. Tool Kumar used 19b7ac7. Competitor source commits are unknown. JSON Formatter Online had the lower 1 MB and 10 MB medians. Stack also had a lower 1 MB raw median, within the study tie rule. Failed and obstructed outcomes remain in the counts. These results are historical, separate from the new matched comparison.
+These are the October 15, 2026 observations on the two-CPU host with 7,801 MiB RAM and a 2.5 GiB browser budget. JSON Formatter Online had the lower 1 MB and 10 MB medians. Stack also had a lower 1 MB raw median, within the study tie rule. Failed and obstructed outcomes remain in the counts. These results are historical, separate from the new matched comparison.
 
 | Tool | Input path | 1 MB | 10 MB | 50 MB |
 |---|---|---|---|---|
@@ -78,27 +95,27 @@ These are the October 15, 2026 observations on the two-CPU host with 7,801 MiB R
 
 ### Same-hardware comparison of the code
 
-We built `19b7ac7`, `aee1ae3` and `925fc3c` as clean local production builds on the resized four-CPU host. The table has three file-path rounds per source and size. Source order reverses in the second round. These are local `pnpm build` and `pnpm start` timings, not CDN timings. The original versions retain their accepted first rounds from earlier on October 17. Remaining rounds and the latest version were measured later that day. Every run records load and build identity. Shared-host and time variation remain; the ranges show that variation. Servers start outside the lock. Timed browser runs hold the lock and run alone.
+We built the original October 15 version, an interim build from later that day and the October 17 version, and ran each as a local production server on the resized four-CPU host. The table has three file-path rounds per version and size. Version order reverses in the second round. These are local timings, not timings from the live site. The two older builds keep their first rounds from earlier on October 17; the remaining rounds were measured later that day. Every run records host load. Shared-host and time variation remain; the ranges show that variation.
 
-| Source commit | File size | Opened | Polled output | In-page DOM | In-page two frames |
+| Tool Kumar version | File size | Opened | Polled output | In-page DOM | In-page two frames |
 |---|---|---|---|---|---|
-| 19b7ac7 | 1 MB | 3/3 | 0.866 s [0.834 s to 0.874 s] | 0.748 s [0.721 s to 0.779 s] | 0.821 s [0.795 s to 0.843 s] |
-| 19b7ac7 | 10 MB | 3/3 | 2.031 s [1.983 s to 2.059 s] | 1.487 s [1.434 s to 1.489 s] | 2.014 s [1.963 s to 2.034 s] |
-| 19b7ac7 | 50 MB | 3/3 | 9.127 s [8.915 s to 9.155 s] | 6.388 s [6.270 s to 6.466 s] | 9.097 s [8.901 s to 9.109 s] |
-| aee1ae3 | 1 MB | 3/3 | 2.365 s [2.365 s to 2.369 s] | 1.742 s [1.736 s to 1.743 s] | 2.295 s [2.293 s to 2.300 s] |
-| aee1ae3 | 10 MB | 3/3 | 2.849 s [2.826 s to 3.170 s] | 2.229 s [2.199 s to 2.232 s] | 2.839 s [2.817 s to 2.913 s] |
-| aee1ae3 | 50 MB | 3/3 | 12.421 s [12.395 s to 12.566 s] | 9.364 s [9.228 s to 9.413 s] | 12.389 s [12.341 s to 12.509 s] |
-| 925fc3c | 1 MB | 3/3 | 0.393 s [0.376 s to 0.393 s] | 0.247 s [0.242 s to 0.259 s] | 0.336 s [0.332 s to 0.347 s] |
-| 925fc3c | 10 MB | 3/3 | 1.496 s [1.473 s to 1.510 s] | 1.394 s [1.379 s to 1.398 s] | 1.417 s [1.401 s to 1.422 s] |
-| 925fc3c | 50 MB | 3/3 | 8.649 s [8.566 s to 8.667 s] | 8.576 s [8.491 s to 8.611 s] | 8.607 s [8.516 s to 8.637 s] |
+| October 15, original | 1 MB | 3/3 | 0.866 s [0.834 s to 0.874 s] | 0.748 s [0.721 s to 0.779 s] | 0.821 s [0.795 s to 0.843 s] |
+| October 15, original | 10 MB | 3/3 | 2.031 s [1.983 s to 2.059 s] | 1.487 s [1.434 s to 1.489 s] | 2.014 s [1.963 s to 2.034 s] |
+| October 15, original | 50 MB | 3/3 | 9.127 s [8.915 s to 9.155 s] | 6.388 s [6.270 s to 6.466 s] | 9.097 s [8.901 s to 9.109 s] |
+| October 15, interim | 1 MB | 3/3 | 2.365 s [2.365 s to 2.369 s] | 1.742 s [1.736 s to 1.743 s] | 2.295 s [2.293 s to 2.300 s] |
+| October 15, interim | 10 MB | 3/3 | 2.849 s [2.826 s to 3.170 s] | 2.229 s [2.199 s to 2.232 s] | 2.839 s [2.817 s to 2.913 s] |
+| October 15, interim | 50 MB | 3/3 | 12.421 s [12.395 s to 12.566 s] | 9.364 s [9.228 s to 9.413 s] | 12.389 s [12.341 s to 12.509 s] |
+| October 17 | 1 MB | 3/3 | 0.393 s [0.376 s to 0.393 s] | 0.247 s [0.242 s to 0.259 s] | 0.336 s [0.332 s to 0.347 s] |
+| October 17 | 10 MB | 3/3 | 1.496 s [1.473 s to 1.510 s] | 1.394 s [1.379 s to 1.398 s] | 1.417 s [1.401 s to 1.422 s] |
+| October 17 | 50 MB | 3/3 | 8.649 s [8.566 s to 8.667 s] | 8.576 s [8.491 s to 8.611 s] | 8.607 s [8.516 s to 8.637 s] |
 
-[Local production build evidence](results/2026-10-17-local-code/summary.json) includes source commits, build IDs, disk checks, per-run evidence and scratch cleanup. This compares code versions on one hardware condition. It cannot assign the whole historical CDN timing difference to code changes.
+[Local build data](results/2026-10-17-local-code/summary.json) include every run. This compares versions on one hardware condition. It cannot attribute the whole difference between the live-site timings above to code changes.
 
-The optional intermediate baseline at `aee1ae3` on October 15 exposed a soft-wrap cost. Its file-path medians were 3.028 s, 4.221 s and 21.229 s by polling. Its in-page DOM medians were 2.203 s, 3.087 s and 12.751 s. At 1 MB, turning wrap off reduced the DOM time from about 2.2 s to about 0.9 s in the separate A/B. That baseline is not substituted for the original study. [Baseline source](/home/ubuntu/seo-ops/perf/baseline-aee1ae3/comparison-baseline-aee1ae3.json).
+The interim build was slower because soft wrapping cost time. In a separate October 15 measurement, its file medians were 3.028 s, 4.221 s and 21.229 s by polling, and 2.203 s, 3.087 s and 12.751 s by in-page DOM time. At 1 MB, turning wrap off reduced the DOM time from about 2.2 s to about 0.9 s. The October 17 rows above no longer show that cost. These interim numbers do not replace the original study. [Interim build data](/home/ubuntu/seo-ops/perf/baseline-aee1ae3/comparison-baseline-aee1ae3.json).
 
 ## Fresh opening results
 
-Three attempts per current opening cell. Tool Kumar is measured October 18 at `95945cd`. JSON Formatter Online 10 MB is also October 18. Every other competitor cell remains October 17. No retained observation is relabeled as a new visit. The same 6 GiB browser budget applies. A preview followed by a browser stop is not a usable-size pass.
+Three attempts per current opening cell. Tool Kumar is measured October 18. JSON Formatter Online 10 MB is also October 18. Every other competitor cell remains October 17. No retained observation is relabeled as a new visit. The same 6 GiB browser budget applies. A preview followed by a browser stop is not a usable-size pass.
 
 | Tool | Input path | Date, 2026 UTC | 1 MB | 10 MB | 50 MB |
 |---|---|---|---|---|---|
@@ -112,15 +129,15 @@ Three attempts per current opening cell. Tool Kumar is measured October 18 at `9
 
 ### Firefox opening supplement
 
-These are fresh Firefox observations at `95945cd`. They use the same file hashes, viewport, settle time, done predicate, two frames and 6 GiB browser budget. Firefox has different launch settings and a Playwright transport. Its results stay separate from Chromium. The matched local Firefox comparison appears in the follow-up section. Keep those local production builds separate from these CDN observations.
+These are October 18 Firefox observations of the live site. They use the same file hashes, viewport, settle time, done predicate, two frames and 6 GiB browser budget. Firefox has different launch settings and a Playwright transport. Its results stay separate from Chromium. A local Firefox comparison of the October 17 and October 18 versions appears in the follow-up section. Those local timings are separate from these live-site observations.
 
 | Size | Attempts | Outcome | Polled median and range | Precise DOM median | Two-frame median |
 |---|---|---|---|---|---|
-| 1 MB | 3 | {'ok': 3} | 0.303 s [0.293 s to 0.318 s] | 0.255 s [0.246 s to 0.264 s] | 0.274 s [0.265 s to 0.283 s] |
-| 10 MB | 3 | {'ok': 3} | 2.799 s [2.782 s to 2.873 s] | 1.795 s [1.768 s to 1.850 s] | 1.856 s [1.855 s to 1.881 s] |
-| 50 MB | 3 | {'ok': 3} | 14.172 s [13.981 s to 14.457 s] | 12.714 s [11.824 s to 12.906 s] | 12.723 s [12.511 s to 12.918 s] |
+| 1 MB | 3 | 3/3 opened | 0.303 s [0.293 s to 0.318 s] | 0.255 s [0.246 s to 0.264 s] | 0.274 s [0.265 s to 0.283 s] |
+| 10 MB | 3 | 3/3 opened | 2.799 s [2.782 s to 2.873 s] | 1.795 s [1.768 s to 1.850 s] | 1.856 s [1.855 s to 1.881 s] |
+| 50 MB | 3 | 3/3 opened | 14.172 s [13.981 s to 14.457 s] | 12.714 s [11.824 s to 12.906 s] | 12.723 s [12.511 s to 12.918 s] |
 
-## Formatted output and an editable input are different milestones
+## When does the input become editable?
 
 The next table uses current Chromium file-path runs. The enabled-input observer looks for a populated enabled DOM input. It does not isolate the earliest successful whole-document edit for every editor. Quiet inputs may need a click. Full editing profiles below provide the later input evidence. The 50 MB fixture opens read-only by default and becomes editable after Edit anyway.
 
@@ -149,14 +166,14 @@ In button-based tools, the public action follows a common 150 ms pause and a sou
 
 | Tool | Date and version | Format | Data size | Edit anyway | Complete / attempted | Event median | Event p95 | rAF median | rAF p95 | Visible-output update by position | Longest frame | Longest long task |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Tool Kumar | 2026-10-18; 95945cd | minified | 100 KB | No | 3/3 | 32.0 ms | 40.0 ms | 12.4 ms | 15.5 ms | start: 177.4 ms in 3/3; middle: unconfirmed; end: unconfirmed | 16.8 ms | Not measured |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 100 KB | No | 3/3 | 32.0 ms | 48.0 ms | 25.2 ms | 36.1 ms | start: 300.0 ms in 3/3; middle: 303.4 ms in 3/3; end: 316.7 ms in 3/3 | 33.4 ms | Not measured |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 1 MB | No | 3/3 | 32.0 ms | 48.0 ms | 9.7 ms | 18.2 ms | start: 716.0 ms in 3/3; middle: unconfirmed; end: unconfirmed | 50.1 ms | 1387.0 ms |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 1 MB | No | 3/3 | 24.0 ms | 32.0 ms | 12.2 ms | 18.5 ms | start: 796.1 ms in 3/3; middle: unconfirmed; end: unconfirmed | 16.8 ms | Not measured |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 10 MB | No | 3/3 | 40.0 ms | 56.0 ms | 12.0 ms | 22.2 ms | start: 248.1 ms in 3/3; middle: 274.3 ms in 3/3; end: 248.1 ms in 3/3 | 66.8 ms | 55.0 ms |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 10 MB | Yes | 3/3 | 24.0 ms | 32.0 ms | 14.5 ms | 18.4 ms | start: 252.3 ms in 3/3; middle: 257.4 ms in 3/3; end: 254.1 ms in 3/3 | 33.4 ms | Not measured |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 50 MB | Yes | 3/3 | 40.0 ms | 64.0 ms | 7.6 ms | 28.9 ms | start: 326.8 ms in 3/3; middle: unconfirmed; end: unconfirmed | 99.9 ms | 86.0 ms |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 50 MB | Yes | 3/3 | 56.0 ms | 72.0 ms | 30.8 ms | 51.7 ms | start: 353.1 ms in 3/3; middle: unconfirmed; end: unconfirmed | 116.8 ms | 104.0 ms |
+| Tool Kumar | 2026-10-18; public site | minified | 100 KB | No | 3/3 | 32.0 ms | 40.0 ms | 12.4 ms | 15.5 ms | start: 177.4 ms in 3/3; middle: unconfirmed; end: unconfirmed | 16.8 ms | Not measured |
+| Tool Kumar | 2026-10-18; public site | prettified | 100 KB | No | 3/3 | 32.0 ms | 48.0 ms | 25.2 ms | 36.1 ms | start: 300.0 ms in 3/3; middle: 303.4 ms in 3/3; end: 316.7 ms in 3/3 | 33.4 ms | Not measured |
+| Tool Kumar | 2026-10-18; public site | minified | 1 MB | No | 3/3 | 32.0 ms | 48.0 ms | 9.7 ms | 18.2 ms | start: 716.0 ms in 3/3; middle: unconfirmed; end: unconfirmed | 50.1 ms | 1387.0 ms |
+| Tool Kumar | 2026-10-18; public site | prettified | 1 MB | No | 3/3 | 24.0 ms | 32.0 ms | 12.2 ms | 18.5 ms | start: 796.1 ms in 3/3; middle: unconfirmed; end: unconfirmed | 16.8 ms | Not measured |
+| Tool Kumar | 2026-10-18; public site | minified | 10 MB | No | 3/3 | 40.0 ms | 56.0 ms | 12.0 ms | 22.2 ms | start: 248.1 ms in 3/3; middle: 274.3 ms in 3/3; end: 248.1 ms in 3/3 | 66.8 ms | 55.0 ms |
+| Tool Kumar | 2026-10-18; public site | prettified | 10 MB | Yes | 3/3 | 24.0 ms | 32.0 ms | 14.5 ms | 18.4 ms | start: 252.3 ms in 3/3; middle: 257.4 ms in 3/3; end: 254.1 ms in 3/3 | 33.4 ms | Not measured |
+| Tool Kumar | 2026-10-18; public site | minified | 50 MB | Yes | 3/3 | 40.0 ms | 64.0 ms | 7.6 ms | 28.9 ms | start: 326.8 ms in 3/3; middle: unconfirmed; end: unconfirmed | 99.9 ms | 86.0 ms |
+| Tool Kumar | 2026-10-18; public site | prettified | 50 MB | Yes | 3/3 | 56.0 ms | 72.0 ms | 30.8 ms | 51.7 ms | start: 353.1 ms in 3/3; middle: unconfirmed; end: unconfirmed | 116.8 ms | 104.0 ms |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | No | 0/3 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured | start: unconfirmed; middle: unconfirmed; end: unconfirmed | Not measured | Not measured |
 | Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | No | 0/3 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured | start: unconfirmed; middle: unconfirmed; end: unconfirmed | Not measured | Not measured |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | No | 0/3 | Fewer than three complete matched profiles | Fewer than three complete matched profiles | Not measured | Not measured | start: unconfirmed; middle: unconfirmed; end: unconfirmed | Not measured | Not measured |
@@ -198,31 +215,31 @@ The one documented JSON Formatter Online prettified 10 MB repeat leaves 3/4 comp
 
 The clock starts at the final trusted keydown of a burst. It ends on the frame after the full changed marker appears inside the clipped output viewport. This is a scalar edit inside an email string. It does not measure every structural edit or setting. Input response and output completion are separate. Middle/end markers that remain offscreen do not supply visible-output intervals. Later search diagnostics cannot recover an earlier completion time.
 
-| Tool Kumar version | Date | Format | Data size | Start median and confirmed profiles | Middle median and confirmed profiles | End median and confirmed profiles |
-|---|---|---|---|---|---|---|
-| 95945cd | 2026-10-18 | prettified | 100 KB | 300.0 ms; 3/3 | 303.4 ms; 3/3 | 316.7 ms; 3/3 |
-| 95945cd | 2026-10-18 | minified | 100 KB | 177.4 ms; 3/3 | Unconfirmed | Unconfirmed |
-| 95945cd | 2026-10-18 | prettified | 10 MB | 252.3 ms; 3/3 | 257.4 ms; 3/3 | 254.1 ms; 3/3 |
-| 95945cd | 2026-10-18 | minified | 10 MB | 248.1 ms; 3/3 | 274.3 ms; 3/3 | 248.1 ms; 3/3 |
-| 95945cd | 2026-10-18 | prettified | 1 MB | 796.1 ms; 3/3 | Unconfirmed | Unconfirmed |
-| 95945cd | 2026-10-18 | minified | 1 MB | 716.0 ms; 3/3 | Unconfirmed | Unconfirmed |
-| 95945cd | 2026-10-18 | prettified | 50 MB | 353.1 ms; 3/3 | Unconfirmed | Unconfirmed |
-| 95945cd | 2026-10-18 | minified | 50 MB | 326.8 ms; 3/3 | Unconfirmed | Unconfirmed |
+| Date | Format | Data size | Start median and confirmed profiles | Middle median and confirmed profiles | End median and confirmed profiles |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-18 | prettified | 100 KB | 300.0 ms; 3/3 | 303.4 ms; 3/3 | 316.7 ms; 3/3 |
+| 2026-10-18 | minified | 100 KB | 177.4 ms; 3/3 | Unconfirmed | Unconfirmed |
+| 2026-10-18 | prettified | 10 MB | 252.3 ms; 3/3 | 257.4 ms; 3/3 | 254.1 ms; 3/3 |
+| 2026-10-18 | minified | 10 MB | 248.1 ms; 3/3 | 274.3 ms; 3/3 | 248.1 ms; 3/3 |
+| 2026-10-18 | prettified | 1 MB | 796.1 ms; 3/3 | Unconfirmed | Unconfirmed |
+| 2026-10-18 | minified | 1 MB | 716.0 ms; 3/3 | Unconfirmed | Unconfirmed |
+| 2026-10-18 | prettified | 50 MB | 353.1 ms; 3/3 | Unconfirmed | Unconfirmed |
+| 2026-10-18 | minified | 50 MB | 326.8 ms; 3/3 | Unconfirmed | Unconfirmed |
 
-### Historical output and typing comparison
+### Before and after the editing changes
 
-These October 17 values remain attached to `925fc3c`. They supplied the findings that prompted the new work. No typing baseline exists for `19b7ac7` or `aee1ae3`.
+These October 17 measurements found the slow cases that the October 18 changes targeted. We have no typing measurements for the original October 15 version.
 
 | Version | Date | Format | Data size | Event median / p95 | rAF median / p95 | First-caret output median |
 |---|---|---|---|---|---|---|
-| 925fc3c | 2026-10-17 | minified | 100 KB | 88.0 ms / 216.0 ms | 72.5 ms / 198.2 ms | 262.9 ms |
-| 95945cd | 2026-10-18 | minified | 100 KB | 32.0 ms / 40.0 ms | 12.4 ms / 15.5 ms | 177.4 ms |
-| 925fc3c | 2026-10-17 | prettified | 100 KB | 32.0 ms / 40.0 ms | 25.5 ms / 34.0 ms | 320.2 ms |
-| 95945cd | 2026-10-18 | prettified | 100 KB | 32.0 ms / 48.0 ms | 25.2 ms / 36.1 ms | 300.0 ms |
-| 925fc3c | 2026-10-17 | minified | 50 MB | 40.0 ms / 56.0 ms | 12.7 ms / 26.0 ms | 8987.1 ms |
-| 95945cd | 2026-10-18 | minified | 50 MB | 40.0 ms / 64.0 ms | 7.6 ms / 28.9 ms | 326.8 ms |
-| 925fc3c | 2026-10-17 | prettified | 50 MB | 56.0 ms / 72.0 ms | 30.9 ms / 50.6 ms | 9918.5 ms |
-| 95945cd | 2026-10-18 | prettified | 50 MB | 56.0 ms / 72.0 ms | 30.8 ms / 51.7 ms | 353.1 ms |
+| Before | 2026-10-17 | minified | 100 KB | 88.0 ms / 216.0 ms | 72.5 ms / 198.2 ms | 262.9 ms |
+| After | 2026-10-18 | minified | 100 KB | 32.0 ms / 40.0 ms | 12.4 ms / 15.5 ms | 177.4 ms |
+| Before | 2026-10-17 | prettified | 100 KB | 32.0 ms / 40.0 ms | 25.5 ms / 34.0 ms | 320.2 ms |
+| After | 2026-10-18 | prettified | 100 KB | 32.0 ms / 48.0 ms | 25.2 ms / 36.1 ms | 300.0 ms |
+| Before | 2026-10-17 | minified | 50 MB | 40.0 ms / 56.0 ms | 12.7 ms / 26.0 ms | 8987.1 ms |
+| After | 2026-10-18 | minified | 50 MB | 40.0 ms / 64.0 ms | 7.6 ms / 28.9 ms | 326.8 ms |
+| Before | 2026-10-17 | prettified | 50 MB | 56.0 ms / 72.0 ms | 30.9 ms / 50.6 ms | 9918.5 ms |
+| After | 2026-10-18 | prettified | 50 MB | 56.0 ms / 72.0 ms | 30.8 ms / 51.7 ms | 353.1 ms |
 
 ### Enter, Backspace, paste and Undo
 
@@ -230,14 +247,14 @@ Each independent action starts from the original source and caret. The snippet c
 
 | Tool | Date and version | Format | Data size | Enter rAF median / p95 | Backspace rAF median / p95 | Snippet rAF median / p95 | Undo rAF median / p95 | Confirmed Undo effects |
 |---|---|---|---|---|---|---|---|---|
-| Tool Kumar | 2026-10-18; 95945cd | minified | 100 KB | 11.2 ms / 37.3 ms | 6.6 ms / 37.7 ms | 10.8 ms / 16.9 ms | 11.5 ms / 15.9 ms | 9 |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 100 KB | 73.5 ms / 122.1 ms | 29.2 ms / 48.7 ms | 36.6 ms / 68.2 ms | 345.8 ms / 363.8 ms | 9 |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 1 MB | 9.8 ms / 20.1 ms | 8.9 ms / 16.5 ms | 15.0 ms / 38.5 ms | 15.3 ms / 17.1 ms | 9 |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 1 MB | 15.6 ms / 87.3 ms | 10.4 ms / 84.5 ms | 13.2 ms / 73.2 ms | 12.5 ms / 17.0 ms | 9 |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 10 MB | 18.1 ms / 36.7 ms | 12.8 ms / 13.0 ms | 32.0 ms / 66.6 ms | 30.0 ms / 44.7 ms | 9 |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 10 MB | 37.7 ms / 48.5 ms | 30.9 ms / 55.2 ms | 19.9 ms / 25.7 ms | 23.3 ms / 24.9 ms | 9 |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 50 MB | 17.5 ms / 117.3 ms | 9.3 ms / 18.7 ms | 16.5 ms / 70.9 ms | 12.7 ms / 61.1 ms | 9 |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 50 MB | 119.2 ms / 190.5 ms | 72.4 ms / 136.4 ms | 44.9 ms / 115.4 ms | 34.7 ms / 56.3 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | minified | 100 KB | 11.2 ms / 37.3 ms | 6.6 ms / 37.7 ms | 10.8 ms / 16.9 ms | 11.5 ms / 15.9 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | prettified | 100 KB | 73.5 ms / 122.1 ms | 29.2 ms / 48.7 ms | 36.6 ms / 68.2 ms | 345.8 ms / 363.8 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | minified | 1 MB | 9.8 ms / 20.1 ms | 8.9 ms / 16.5 ms | 15.0 ms / 38.5 ms | 15.3 ms / 17.1 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | prettified | 1 MB | 15.6 ms / 87.3 ms | 10.4 ms / 84.5 ms | 13.2 ms / 73.2 ms | 12.5 ms / 17.0 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | minified | 10 MB | 18.1 ms / 36.7 ms | 12.8 ms / 13.0 ms | 32.0 ms / 66.6 ms | 30.0 ms / 44.7 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | prettified | 10 MB | 37.7 ms / 48.5 ms | 30.9 ms / 55.2 ms | 19.9 ms / 25.7 ms | 23.3 ms / 24.9 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | minified | 50 MB | 17.5 ms / 117.3 ms | 9.3 ms / 18.7 ms | 16.5 ms / 70.9 ms | 12.7 ms / 61.1 ms | 9 |
+| Tool Kumar | 2026-10-18; public site | prettified | 50 MB | 119.2 ms / 190.5 ms | 72.4 ms / 136.4 ms | 44.9 ms / 115.4 ms | 34.7 ms / 56.3 ms | 9 |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | Not measured / Not measured | Not measured / Not measured | Not measured / Not measured | Not measured / Not measured | 0 |
 | Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | Not measured / Not measured | Not measured / Not measured | Not measured / Not measured | Not measured / Not measured | 0 |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | Not measured / Not measured | Not measured / Not measured | Not measured / Not measured | Not measured / Not measured | 0 |
@@ -277,14 +294,14 @@ The native input scroller moves through twenty equal steps, 50 ms apart. Frame t
 
 | Tool | Date and version | Format | Data size | Frame median | Frame p95 | Longest frame | Observed scroll outcomes |
 |---|---|---|---|---|---|---|---|
-| Tool Kumar | 2026-10-18; 95945cd | minified | 100 KB | 16.7 ms | 16.8 ms | 16.8 ms | measured; measured; measured |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 100 KB | 16.7 ms | 50.0 ms | 50.1 ms | measured; measured; measured |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 1 MB | 16.7 ms | 16.7 ms | 16.8 ms | measured; measured; measured |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 1 MB | 16.7 ms | 16.7 ms | 83.3 ms | measured; measured; measured |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 10 MB | 16.7 ms | 83.3 ms | 366.7 ms | measured; measured; measured |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 10 MB | 16.7 ms | 66.7 ms | 499.9 ms | measured; measured; measured |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 50 MB | 49.9 ms | 66.7 ms | 83.4 ms | measured; measured; measured |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 50 MB | 16.7 ms | 66.6 ms | 83.4 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | minified | 100 KB | 16.7 ms | 16.8 ms | 16.8 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | prettified | 100 KB | 16.7 ms | 50.0 ms | 50.1 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | minified | 1 MB | 16.7 ms | 16.7 ms | 16.8 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | prettified | 1 MB | 16.7 ms | 16.7 ms | 83.3 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | minified | 10 MB | 16.7 ms | 83.3 ms | 366.7 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | prettified | 10 MB | 16.7 ms | 66.7 ms | 499.9 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | minified | 50 MB | 49.9 ms | 66.7 ms | 83.4 ms | measured; measured; measured |
+| Tool Kumar | 2026-10-18; public site | prettified | 50 MB | 16.7 ms | 66.6 ms | 83.4 ms | measured; measured; measured |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | Not measured | Not measured | Not measured |  |
 | Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | Not measured | Not measured | Not measured |  |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | Not measured | Not measured | Not measured |  |
@@ -324,14 +341,14 @@ These opening times come from the editing-profile visits. The timed input and do
 
 | Tool | Date and version | Format | Data size | Actual bytes | Lines | Opening median | Complete / attempted typing profiles | Editor design |
 |---|---|---|---|---|---|---|---|---|
-| Tool Kumar | 2026-10-18; 95945cd | minified | 100 KB | 99638 | 1 | 403.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 100 KB | 186427 | 7945 | 337.0 ms | 3/3 | Native textarea with virtual syntax highlighting |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 1 MB | 999554 | 1 | 364.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 1 MB | 1863123 | 79196 | 405.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 10 MB | 9999719 | 1 | 1618.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 10 MB | 18592911 | 788600 | 1580.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 50 MB | 49998859 | 1 | 8622.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 50 MB | 92806317 | 3930172 | 10958.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
+| Tool Kumar | 2026-10-18; public site | minified | 100 KB | 99638 | 1 | 403.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
+| Tool Kumar | 2026-10-18; public site | prettified | 100 KB | 186427 | 7945 | 337.0 ms | 3/3 | Native textarea with virtual syntax highlighting |
+| Tool Kumar | 2026-10-18; public site | minified | 1 MB | 999554 | 1 | 364.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
+| Tool Kumar | 2026-10-18; public site | prettified | 1 MB | 1863123 | 79196 | 405.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
+| Tool Kumar | 2026-10-18; public site | minified | 10 MB | 9999719 | 1 | 1618.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
+| Tool Kumar | 2026-10-18; public site | prettified | 10 MB | 18592911 | 788600 | 1580.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
+| Tool Kumar | 2026-10-18; public site | minified | 50 MB | 49998859 | 1 | 8622.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
+| Tool Kumar | 2026-10-18; public site | prettified | 50 MB | 92806317 | 3930172 | 10958.0 ms | 3/3 | Custom virtual editor with a native textarea passage |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | 99638 | 1 | 2166.0 ms | 0/3 | Ace input, JSONEditor tree output |
 | Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | 186427 | 7945 | 2110.0 ms | 0/3 | Ace input, JSONEditor tree output |
 | Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | 999554 | 1 | 3914.0 ms | 0/3 | Ace input, JSONEditor tree output |
@@ -367,72 +384,72 @@ These opening times come from the editing-profile visits. The timed input and do
 
 ### Failed and incomplete editing attempts
 
-| Tool | Date and version | Format | Data size | Outcome | Reason | Raw source |
-|---|---|---|---|---|---|---|
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__100kb__editing1__2026-10-17T18-59-06-031Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__100kb__editing2__2026-10-17T20-21-42-243Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__100kb__editing3__2026-10-17T21-02-40-101Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__100kb-pretty__editing1__2026-10-17T19-10-34-176Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__100kb-pretty__editing2__2026-10-17T20-12-46-736Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__100kb-pretty__editing3__2026-10-17T21-12-30-963Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__1mb__editing1__2026-10-17T19-22-39-447Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__1mb__editing2__2026-10-17T20-39-51-767Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__1mb__editing3__2026-10-17T21-19-50-826Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__1mb-pretty__editing1__2026-10-17T19-42-18-379Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__1mb-pretty__editing2__2026-10-17T20-28-45-817Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__1mb-pretty__editing3__2026-10-17T21-31-24-518Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 10 MB | Memory watchdog stop during editing preparation | browser memory 6154 MiB exceeded the 6144 MiB cap | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__10mb__editing1__2026-10-17T19-49-59-338Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 10 MB | Memory watchdog stop during editing preparation | browser memory 6148 MiB exceeded the 6144 MiB cap | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__10mb__editing2__2026-10-17T20-59-25-369Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 10 MB | Memory watchdog stop during editing preparation | browser memory 6146 MiB exceeded the 6144 MiB cap | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__10mb__editing3__2026-10-17T21-39-06-960Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__10mb-pretty__editing1__2026-10-17T19-58-45-642Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__10mb-pretty__editing2__2026-10-17T20-50-12-958Z.json |
-| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/code-beautify-json-viewer__10mb-pretty__editing3__2026-10-17T21-50-10-706Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 100 KB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":7945,"requestedLine":1,"requestedColumn":354,"targetLineCharacters":1,"visibleSourcePrefix":"{"} | results/2026-10-17-competitors-6g/results/raw/json-beautifier__100kb__editing2__2026-10-17T20-20-47-751Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 1 MB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":79196,"requestedLine":1,"requestedColumn":355,"targetLineCharacters":1,"visibleSourcePrefix":"{"} | results/2026-10-17-competitors-6g/results/raw/json-beautifier__1mb__editing1__2026-10-17T19-28-09-152Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 1 MB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":79196,"requestedLine":1,"requestedColumn":355,"targetLineCharacters":1,"visibleSourcePrefix":"{"} | results/2026-10-17-competitors-6g/results/raw/json-beautifier__1mb__editing2__2026-10-17T20-38-10-720Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 1 MB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":79196,"requestedLine":1,"requestedColumn":355,"targetLineCharacters":1,"visibleSourcePrefix":"{"} | results/2026-10-17-competitors-6g/results/raw/json-beautifier__1mb__editing3__2026-10-17T21-21-15-854Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__10mb__editing1__2026-10-17T19-51-23-171Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__10mb__editing2__2026-10-17T20-58-34-066Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__10mb__editing3__2026-10-17T21-40-31-129Z.json |
-| JSON Beautifier | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__10mb-pretty__editing1__2026-10-17T20-00-02-692Z.json |
-| JSON Beautifier | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__10mb-pretty__editing2__2026-10-17T20-49-16-758Z.json |
-| JSON Beautifier | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__10mb-pretty__editing3__2026-10-17T21-52-31-313Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 50 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__50mb__editing1__2026-10-17T22-10-06-305Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 50 MB | crashed | Runtime.evaluate: timeout 64586.386442999996ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__50mb__editing2__2026-10-17T22-33-37-144Z.json |
-| JSON Beautifier | 2026-10-17; public site | minified | 50 MB | Memory watchdog stop during editing preparation | browser memory 6145 MiB exceeded the 6144 MiB cap | results/2026-10-17-competitors-6g/results/raw/json-beautifier__50mb__editing3__2026-10-17T22-39-06-305Z.json |
-| JSON Beautifier | 2026-10-17; public site | prettified | 50 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__50mb-pretty__editing1__2026-10-17T22-17-50-729Z.json |
-| JSON Beautifier | 2026-10-17; public site | prettified | 50 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__50mb-pretty__editing2__2026-10-17T22-26-30-958Z.json |
-| JSON Beautifier | 2026-10-17; public site | prettified | 50 MB | unresponsive during editing | Runtime.evaluate: timeout 30000ms | results/2026-10-17-competitors-6g/results/raw/json-beautifier__50mb-pretty__editing3__2026-10-17T22-46-42-714Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | minified | 100 KB | could not be measured | interaction obstructed by another element | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__100kb__editing1__2026-10-17T19-01-09-368Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | minified | 100 KB | could not be measured | interaction obstructed by another element | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__100kb__editing2__2026-10-17T20-20-29-829Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 100 KB | error | error: Runtime.evaluate: timeout 89999.914643ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__100kb-pretty__editing1__2026-10-17T19-14-10-090Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 100 KB | error | error: Runtime.evaluate: timeout 89999.905321ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__100kb-pretty__editing2__2026-10-17T20-09-59-975Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 100 KB | error | error: Runtime.evaluate: timeout 89999.906347ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__100kb-pretty__editing3__2026-10-17T21-14-25-243Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 1 MB | error | error: Runtime.evaluate: timeout 89999.887762ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__1mb-pretty__editing1__2026-10-17T19-44-35-456Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 1 MB | error | error: Runtime.evaluate: timeout 89999.915127ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__1mb-pretty__editing2__2026-10-17T20-25-53-751Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 1 MB | error | error: Runtime.evaluate: timeout 89999.90706900001ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__1mb-pretty__editing3__2026-10-17T21-33-44-430Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__10mb__editing1__2026-10-17T19-52-13-586Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__10mb__editing2__2026-10-17T20-57-10-637Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__10mb__editing3__2026-10-17T21-41-25-129Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 10 MB | error | error: Runtime.evaluate: timeout 89999.901186ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__10mb-pretty__editing1__2026-10-17T20-00-59-280Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 10 MB | error | error: Runtime.evaluate: timeout 89999.907898ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__10mb-pretty__editing2__2026-10-17T20-47-29-275Z.json |
-| JSON Viewer Stack | 2026-10-17; public site | prettified | 10 MB | error | error: Runtime.evaluate: timeout 89999.867241ms | results/2026-10-17-competitors-6g/results/raw/json-viewer-stack__10mb-pretty__editing3__2026-10-17T21-56-19-900Z.json |
-| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | partly measured | end: Find did not render the caret target | results/refresh-2026-10-18T06-23-00-569Z/results/raw/json-formatter-online__10mb-pretty__editing3__2026-10-18T07-38-44-132Z.json |
-| JSONLint | 2026-10-17; public site | minified | 100 KB | partly measured | start: Missing source/output edit marker, unexpected trusted-key count or missing frame | results/2026-10-17-competitors-6g/results/raw/jsonlint__100kb__editing1__2026-10-17T19-03-54-543Z.json |
-| JSONLint | 2026-10-17; public site | minified | 100 KB | partly measured | middle: Missing source/output edit marker, unexpected trusted-key count or missing frame | results/2026-10-17-competitors-6g/results/raw/jsonlint__100kb__editing2__2026-10-17T20-17-32-250Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | end: Missing source/output edit marker, unexpected trusted-key count or missing frame | results/2026-10-17-competitors-6g/results/raw/jsonlint__100kb-pretty__editing1__2026-10-17T19-18-55-416Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | start: Missing source/output edit marker, unexpected trusted-key count or missing frame; middle: Missing source/output edit marker, unexpected trusted-key count or missing frame; end: Missing source/output edit marker, unexpected trusted-key count or missing frame | results/2026-10-17-competitors-6g/results/raw/jsonlint__100kb-pretty__editing1__2026-10-17T19-25-34-801Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | middle: Missing source/output edit marker, unexpected trusted-key count or missing frame; end: Missing source/output edit marker, unexpected trusted-key count or missing frame | results/2026-10-17-competitors-6g/results/raw/jsonlint__100kb-pretty__editing2__2026-10-17T20-07-32-664Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | end: Missing source/output edit marker, unexpected trusted-key count or missing frame | results/2026-10-17-competitors-6g/results/raw/jsonlint__100kb-pretty__editing3__2026-10-17T21-17-00-937Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__1mb-pretty__editing1__2026-10-17T19-47-26-943Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__1mb-pretty__editing2__2026-10-17T20-23-34-311Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__1mb-pretty__editing3__2026-10-17T21-36-34-046Z.json |
-| JSONLint | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__10mb__editing1__2026-10-17T19-55-58-249Z.json |
-| JSONLint | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__10mb__editing2__2026-10-17T20-53-45-737Z.json |
-| JSONLint | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__10mb__editing3__2026-10-17T21-45-02-960Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__10mb-pretty__editing1__2026-10-17T20-06-06-654Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__10mb-pretty__editing2__2026-10-17T20-42-34-338Z.json |
-| JSONLint | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms | results/2026-10-17-competitors-6g/results/raw/jsonlint__10mb-pretty__editing3__2026-10-17T22-03-49-607Z.json |
+| Tool | Date and version | Format | Data size | Outcome | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 100 KB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 10 MB | Memory watchdog stop during editing preparation | browser memory 6154 MiB exceeded the 6144 MiB cap |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 10 MB | Memory watchdog stop during editing preparation | browser memory 6148 MiB exceeded the 6144 MiB cap |
+| Code Beautify JSON Viewer | 2026-10-17; public site | minified | 10 MB | Memory watchdog stop during editing preparation | browser memory 6146 MiB exceeded the 6144 MiB cap |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| Code Beautify JSON Viewer | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| JSON Beautifier | 2026-10-17; public site | minified | 100 KB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":7945,"requestedLine":1,"requestedColumn":354,"targetLineCharacters":1,"visibleSourcePrefix":"{"} |
+| JSON Beautifier | 2026-10-17; public site | minified | 1 MB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":79196,"requestedLine":1,"requestedColumn":355,"targetLineCharacters":1,"visibleSourcePrefix":"{"} |
+| JSON Beautifier | 2026-10-17; public site | minified | 1 MB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":79196,"requestedLine":1,"requestedColumn":355,"targetLineCharacters":1,"visibleSourcePrefix":"{"} |
+| JSON Beautifier | 2026-10-17; public site | minified | 1 MB | partly measured | start: Ace caret clamped before target: {"method":"Ace public gotoLine, caret only","cursor":{"row":0,"column":1},"lines":79196,"requestedLine":1,"requestedColumn":355,"targetLineCharacters":1,"visibleSourcePrefix":"{"} |
+| JSON Beautifier | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| JSON Beautifier | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| JSON Beautifier | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| JSON Beautifier | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSON Beautifier | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSON Beautifier | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSON Beautifier | 2026-10-17; public site | minified | 50 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| JSON Beautifier | 2026-10-17; public site | minified | 50 MB | crashed | Runtime.evaluate: timeout 64586.386442999996ms |
+| JSON Beautifier | 2026-10-17; public site | minified | 50 MB | Memory watchdog stop during editing preparation | browser memory 6145 MiB exceeded the 6144 MiB cap |
+| JSON Beautifier | 2026-10-17; public site | prettified | 50 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSON Beautifier | 2026-10-17; public site | prettified | 50 MB | unresponsive during editing | Input.dispatchKeyEvent: timeout 15000ms |
+| JSON Beautifier | 2026-10-17; public site | prettified | 50 MB | unresponsive during editing | Runtime.evaluate: timeout 30000ms |
+| JSON Viewer Stack | 2026-10-17; public site | minified | 100 KB | could not be measured | interaction obstructed by another element |
+| JSON Viewer Stack | 2026-10-17; public site | minified | 100 KB | could not be measured | interaction obstructed by another element |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 100 KB | error | error: Runtime.evaluate: timeout 89999.914643ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 100 KB | error | error: Runtime.evaluate: timeout 89999.905321ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 100 KB | error | error: Runtime.evaluate: timeout 89999.906347ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 1 MB | error | error: Runtime.evaluate: timeout 89999.887762ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 1 MB | error | error: Runtime.evaluate: timeout 89999.915127ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 1 MB | error | error: Runtime.evaluate: timeout 89999.90706900001ms |
+| JSON Viewer Stack | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSON Viewer Stack | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSON Viewer Stack | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 10 MB | error | error: Runtime.evaluate: timeout 89999.901186ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 10 MB | error | error: Runtime.evaluate: timeout 89999.907898ms |
+| JSON Viewer Stack | 2026-10-17; public site | prettified | 10 MB | error | error: Runtime.evaluate: timeout 89999.867241ms |
+| JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | partly measured | end: Find did not render the caret target |
+| JSONLint | 2026-10-17; public site | minified | 100 KB | partly measured | start: Missing source/output edit marker, unexpected trusted-key count or missing frame |
+| JSONLint | 2026-10-17; public site | minified | 100 KB | partly measured | middle: Missing source/output edit marker, unexpected trusted-key count or missing frame |
+| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | end: Missing source/output edit marker, unexpected trusted-key count or missing frame |
+| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | start: Missing source/output edit marker, unexpected trusted-key count or missing frame; middle: Missing source/output edit marker, unexpected trusted-key count or missing frame; end: Missing source/output edit marker, unexpected trusted-key count or missing frame |
+| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | middle: Missing source/output edit marker, unexpected trusted-key count or missing frame; end: Missing source/output edit marker, unexpected trusted-key count or missing frame |
+| JSONLint | 2026-10-17; public site | prettified | 100 KB | partly measured | end: Missing source/output edit marker, unexpected trusted-key count or missing frame |
+| JSONLint | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | prettified | 1 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | minified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
+| JSONLint | 2026-10-17; public site | prettified | 10 MB | unresponsive during editing | Runtime.evaluate: timeout 5000ms |
 
 ## Everyday use and overall choice
 
@@ -440,13 +457,13 @@ There is no weighted overall score or direct measure of everyday convenience. Th
 
 | Tool | Date and version | Format | Data size | Complete / attempted | Event median | Event p95 | rAF median | rAF p95 |
 |---|---|---|---|---|---|---|---|---|
-| Tool Kumar | 2026-10-18; 95945cd | minified | 100 KB | 3/3 | 32.0 ms | 40.0 ms | 12.4 ms | 15.5 ms |
+| Tool Kumar | 2026-10-18; public site | minified | 100 KB | 3/3 | 32.0 ms | 40.0 ms | 12.4 ms | 15.5 ms |
 | JSON Formatter Online | 2026-10-18; public site | minified | 100 KB | 3/3 | 40.0 ms | 80.0 ms | 21.0 ms | 50.0 ms |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 100 KB | 3/3 | 32.0 ms | 48.0 ms | 25.2 ms | 36.1 ms |
+| Tool Kumar | 2026-10-18; public site | prettified | 100 KB | 3/3 | 32.0 ms | 48.0 ms | 25.2 ms | 36.1 ms |
 | JSON Formatter Online | 2026-10-18; public site | prettified | 100 KB | 3/3 | 16.0 ms | 24.0 ms | 12.4 ms | 17.5 ms |
-| Tool Kumar | 2026-10-18; 95945cd | minified | 10 MB | 3/3 | 40.0 ms | 56.0 ms | 12.0 ms | 22.2 ms |
+| Tool Kumar | 2026-10-18; public site | minified | 10 MB | 3/3 | 40.0 ms | 56.0 ms | 12.0 ms | 22.2 ms |
 | JSON Formatter Online | 2026-10-18; public site | minified | 10 MB | 3/3 | 64.0 ms | 112.0 ms | 51.6 ms | 83.9 ms |
-| Tool Kumar | 2026-10-18; 95945cd | prettified | 10 MB | 3/3 | 24.0 ms | 32.0 ms | 14.5 ms | 18.4 ms |
+| Tool Kumar | 2026-10-18; public site | prettified | 10 MB | 3/3 | 24.0 ms | 32.0 ms | 14.5 ms | 18.4 ms |
 | JSON Formatter Online | 2026-10-18; public site | prettified | 10 MB | 3/4 | 32.0 ms | 32.0 ms | 25.3 ms | 28.2 ms |
 
 For everyday minified 100 KB sources, Tool Kumar had the lower keydown-to-frame median, 12.4 ms beside JSON Formatter Online 21.0 ms. Its Event Timing median/p95 was 32.0 ms / 40.0 ms, beside 40.0 ms / 80.0 ms. That measured case supports Tool Kumar over the initial small-file recommendation. Other formats and tail latencies remain separate.
@@ -457,7 +474,7 @@ A lower median on one task does not establish the best tool for every person. Th
 
 ## How large a file did each tool handle?
 
-The size ladder below is retained from October 17. Tool Kumar was `925fc3c`. It has not been rerun beyond 50 MB for `95945cd`. Its 200 MB success and 400 MB failure must not be treated as new-version measurements. These are tested brackets, not exact maximum sizes.
+The size ladder below is from October 17. We did not repeat sizes above 50 MB with the October 18 version, so its 200 MB success and 400 MB failure describe the October 17 version. These are tested brackets, not exact maximum sizes.
 
 [Minified and prettified fixture hashes](publish/editing-fixtures.sha256.json) include the intermediate sizes. [Extended fixture hashes](publish/extra-fixtures.sha256.jsonl) record the 100 MB, 200 MB and 400 MB sources. The downloadable seeded generator accepts a third argument such as 100 or 200 for decimal MB.
 
@@ -487,7 +504,7 @@ Largest formatted preview includes a view detected before an overlay or later me
 
 ### Earlier Tool Kumar-only 6 GiB capacity test
 
-The resized instance had room to test beyond the old browser cap. On October 17, 2026, we repeated Tool Kumar capacity checks at `925fc3c` with a 6 GiB total-browser budget, instead of 2.5 GiB. The watchdog still stopped below 3,500 MiB of host available memory. Each run required at least 8,000 MiB available at its start. Browser, viewport, fixture generator, six-second settle and opening predicate stayed the same. Production evidence was unchanged before and after every accepted batch.
+The resized instance had room to test beyond the old browser cap. On October 17, 2026, we repeated Tool Kumar capacity checks with a 6 GiB total-browser budget, instead of 2.5 GiB. The watchdog still stopped below 3,500 MiB of host available memory. Each run required at least 8,000 MiB available at its start. Browser, viewport, fixture generator, six-second settle and opening predicate stayed the same.
 
 These are one-attempt exploratory size tests, not repeated performance estimates. They are separate from the earlier comparison and do not establish competitor limits under the larger budget. A formatted preview and completion of all navigation checks remain separate outcomes. Default input at these sizes is read-only. This ladder does not test editing above the original 50 MB data size.
 
@@ -497,7 +514,7 @@ These are one-attempt exploratory size tests, not repeated performance estimates
 | 200 MB | 199999972 | 39.708 s | ok | ok | ok | ok | 5049 MiB | Completed |
 | 400 MB | 399999594 | no formatted view within 90 s | Not reached | Not reached | Not reached | Not reached | 430 MiB | no formatted view within 90 s |
 
-The [public large-file guide](https://tools.vikasmaur.com/tools/large-json-viewer) states a 300 MB safety limit. The pinned source implements 300 MiB, or 314,572,800 bytes. The 400 MB fixture exceeds that guard and produced no formatted view within 90 s. The browser watchdog did not stop that run. The largest successful fixture here is 200 MB; we did not measure the exact boundary between 200 MB and the guard.
+The [public large-file guide](https://tools.vikasmaur.com/tools/large-json-viewer) states a 300 MB safety limit. The code implements 300 MiB, or 314,572,800 bytes. The 400 MB fixture exceeds that guard and produced no formatted view within 90 s. The browser watchdog did not stop that run. The largest successful fixture here is 200 MB; we did not measure the exact boundary between 200 MB and the guard.
 
 ### Earlier Tool Kumar-only 50 MB typing test
 
@@ -512,7 +529,7 @@ The minified start position supplied confirmed visible-output intervals in two o
 
 The separate capacity download includes per-operation frame times, Undo confirmation, source hash checks, scrolling frames, individual caret positions and every incomplete attempt. A failure in caret preparation is not assigned a keystroke latency.
 
-[Supplemental capacity measurements](publish/capacity-summary.json) contain fixture hashes, limits, raw-source references, failed attempts and deployment checks. A stop at the new budget would still be a benchmark stop, not a universal maximum file size.
+[Supplemental capacity measurements](publish/capacity-summary.json) contain fixture hashes, limits, failed attempts and raw references. A stop at the new budget would still be a benchmark stop, not a universal maximum file size.
 
 ## Which features still worked at each size?
 
@@ -520,14 +537,14 @@ The rows identify their measurement date. Current Tool Kumar rows cover 1 MB, 10
 
 | Tool | Date and version | Data size | Opening | Tree | Last-record search | Collapse | Scroll to end | Input probe |
 |---|---|---|---|---|---|---|---|---|
-| Tool Kumar | 2026-10-18; 95945cd | 1 MB | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 verified character edit |
-| Tool Kumar | 2026-10-17; 925fc3c | 5 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 verified character edit |
-| Tool Kumar | 2026-10-18; 95945cd | 10 MB | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 verified character edit |
-| Tool Kumar | 2026-10-17; 925fc3c | 25 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 read-only by default |
-| Tool Kumar | 2026-10-18; 95945cd | 50 MB | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 read-only by default |
-| Tool Kumar | 2026-10-17; 925fc3c | 100 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 read-only by default |
-| Tool Kumar | 2026-10-17; 925fc3c | 200 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 read-only by default |
-| Tool Kumar | 2026-10-17; 925fc3c | 400 MB | 1/1 no formatted view within 90 s | 1/1 not reached | 1/1 not reached | 1/1 not reached | 1/1 not reached | 1/1 not reached |
+| Tool Kumar | 2026-10-18; public site | 1 MB | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 verified character edit |
+| Tool Kumar | 2026-10-17; earlier version | 5 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 verified character edit |
+| Tool Kumar | 2026-10-18; public site | 10 MB | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 verified character edit |
+| Tool Kumar | 2026-10-17; earlier version | 25 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 read-only by default |
+| Tool Kumar | 2026-10-18; public site | 50 MB | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 read-only by default |
+| Tool Kumar | 2026-10-17; earlier version | 100 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 read-only by default |
+| Tool Kumar | 2026-10-17; earlier version | 200 MB | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 ok | 1/1 read-only by default |
+| Tool Kumar | 2026-10-17; earlier version | 400 MB | 1/1 no formatted view within 90 s | 1/1 not reached | 1/1 not reached | 1/1 not reached | 1/1 not reached | 1/1 not reached |
 | Code Beautify JSON Viewer | 2026-10-17; public site | 1 MB | 3/3 ok | 3/3 visible | 3/3 ok | 3/3 ok | 3/3 ok | 3/3 verified character edit |
 | Code Beautify JSON Viewer | 2026-10-17; public site | 5 MB | 1/1 ok | 1/1 visible | 1/1 unresponsive at 30 s | 1/1 not tested after previous feature froze | 1/1 ok | 1/1 could not be checked |
 | Code Beautify JSON Viewer | 2026-10-17; public site | 10 MB | 3/3 ok | 3/3 visible | 3/3 unresponsive at 30 s | 3/3 not tested after previous feature froze | 3/3 ok | 3/3 could not be checked |
@@ -582,26 +599,26 @@ Memory is RSS plus swap from the browser process tree, sampled every 200 ms. Ren
 | JSONLint | 2026-10-17; public site | 25 MB | 1 | 2115 | 6039 | 6390 | 1 |
 | JSONLint | 2026-10-17; public site | 50 MB | 3 | 5705 | 5705 | 6146 | 2 |
 | JSONLint | 2026-10-17; public site | 5 MB | 1 | 1269 | 1544 | 1902 | 0 |
-| Tool Kumar | 2026-10-17; 925fc3c | 100 MB | 1 | 2094 | 2547 | 2838 | 0 |
-| Tool Kumar | 2026-10-17; 925fc3c | 200 MB | 1 | 4767 | 4767 | 5048 | 0 |
-| Tool Kumar | 2026-10-17; 925fc3c | 25 MB | 1 | 788 | 827 | 1117 | 0 |
-| Tool Kumar | 2026-10-17; 925fc3c | 400 MB | 1 | 147 | 147 | 433 | 0 |
-| Tool Kumar | 2026-10-17; 925fc3c | 5 MB | 1 | 232 | 324 | 625 | 0 |
+| Tool Kumar | 2026-10-17; earlier version | 100 MB | 1 | 2094 | 2547 | 2838 | 0 |
+| Tool Kumar | 2026-10-17; earlier version | 200 MB | 1 | 4767 | 4767 | 5048 | 0 |
+| Tool Kumar | 2026-10-17; earlier version | 25 MB | 1 | 788 | 827 | 1117 | 0 |
+| Tool Kumar | 2026-10-17; earlier version | 400 MB | 1 | 147 | 147 | 433 | 0 |
+| Tool Kumar | 2026-10-17; earlier version | 5 MB | 1 | 232 | 324 | 625 | 0 |
 | JSON Formatter Online | 2026-10-18; public site | 10 MB | 3 | 281 | 400 | 695 | 0 |
-| Tool Kumar | 2026-10-18; 95945cd | 10 MB | 3 | 348 | 525 | 820 | 0 |
-| Tool Kumar | 2026-10-18; 95945cd | 1 MB | 3 | 183 | 225 | 518 | 0 |
-| Tool Kumar | 2026-10-18; 95945cd | 50 MB | 3 | 1204 | 1349 | 1636 | 0 |
+| Tool Kumar | 2026-10-18; public site | 10 MB | 3 | 348 | 525 | 820 | 0 |
+| Tool Kumar | 2026-10-18; public site | 1 MB | 3 | 183 | 225 | 518 | 0 |
+| Tool Kumar | 2026-10-18; public site | 50 MB | 3 | 1204 | 1349 | 1636 | 0 |
 
 Tool Kumar memory before and after is shown separately below. The full-run window includes navigation and feature probes. Shared-host variation remains, and this is not an isolated per-key memory cost.
 
 | Version | Date | Data size | Renderer to view median, MiB | Full renderer peak median, MiB | Full browser peak median, MiB |
 |---|---|---|---|---|---|
-| 925fc3c | 2026-10-17 | 1 MB | 182 | 222 | 522 |
-| 95945cd | 2026-10-18 | 1 MB | 183 | 225 | 518 |
-| 925fc3c | 2026-10-17 | 10 MB | 436 | 568 | 869 |
-| 95945cd | 2026-10-18 | 10 MB | 348 | 525 | 820 |
-| 925fc3c | 2026-10-17 | 50 MB | 1168 | 1327 | 1616 |
-| 95945cd | 2026-10-18 | 50 MB | 1204 | 1349 | 1636 |
+| Before | 2026-10-17 | 1 MB | 182 | 222 | 522 |
+| After | 2026-10-18 | 1 MB | 183 | 225 | 518 |
+| Before | 2026-10-17 | 10 MB | 436 | 568 | 869 |
+| After | 2026-10-18 | 10 MB | 348 | 525 | 820 |
+| Before | 2026-10-17 | 50 MB | 1168 | 1327 | 1616 |
+| After | 2026-10-18 | 50 MB | 1204 | 1349 | 1636 |
 
 At 1 MB, lower renderer-to-view medians than Tool Kumar 183 MiB were recorded by JSON Formatter Online 156 MiB, 2026-10-17; public site.
 
@@ -611,11 +628,11 @@ At 10 MB, lower renderer-to-view medians than Tool Kumar 348 MiB were recorded b
 
 The October 18 correctness check sends trusted Ctrl+A, Ctrl+X and Ctrl+V without a DOM read or pause between cut and paste. It copies the restored input and checks the exact fixture SHA-256. The input must remain editable. Each fresh profile contains three sequences. These are sequences, not independent browser runs.
 
-| Size | Edit anyway | Sequences | Outcome | Raw source |
-|---|---|---|---|---|
-| 10 MB | False | 3 | passed | results/refresh-2026-10-18T06-23-00-569Z/results/raw/tool-kumar__10mb__refresh-file1__2026-10-18T06-25-30-840Z.json |
-| 1 MB | False | 3 | passed | results/refresh-2026-10-18T06-23-00-569Z/results/raw/tool-kumar__1mb__refresh-file1__2026-10-18T06-25-15-879Z.json |
-| 50 MB | True | 3 | passed | results/refresh-2026-10-18T06-23-00-569Z/results/raw/tool-kumar__50mb__refresh-file1__2026-10-18T06-25-51-426Z.json |
+| Size | Edit anyway | Sequences | Outcome |
+| --- | --- | --- | --- |
+| 10 MB | No | 3 | passed |
+| 1 MB | No | 3 | passed |
+| 50 MB | Yes | 3 | passed |
 
 ## Number fidelity
 
@@ -638,34 +655,34 @@ Overflow differed. JSON Viewer Stack displayed `1e400` as `Infinity`. Code Beaut
 
 The representation notes are not failures. `1.0` becoming `1`, `1.50` becoming `1.5`, `1e2` or `1E+2` becoming `100`, and `-0` becoming `0` are treated as the same mathematical value for this check. Negative zero can matter to some programs, so its spelling is still recorded. The string `"é"` kept its character; tree labels can omit JSON quote marks. Tool Kumar kept all six spellings. Code Beautify also offers a "Big Num" checkbox, which was unchecked by default. We did not test that optional mode.
 
-The [fixture](fidelity.json), [SHA-256](fidelity.sha256.json), [per-case verdicts](results/fidelity-summary.json) and capture references in the downloadable results make these statements checkable. Tool Kumar production visits recorded remote main `e84bb4295cc1ec0c02e940f78313a2f2aa72ed50` before testing; this is the remote-main reference, not an independent attestation of the deployed bundle's commit. These are small-document observations on one date, not proof that every operation or export preserves every JSON value.
+The [fixture](fidelity.json), [SHA-256](fidelity.sha256.json), [per-case verdicts](results/fidelity-summary.json) and capture references in the downloadable results make these statements checkable. These are small-document observations on one date, not proof that every operation or export preserves every JSON value.
 
 ### Latest Tool Kumar check
 
-The latest checks below target `95945cd`, October 18. Small-file observations and worker-path scalar edits are separate. The worker fixture contains a 2.1-million-character padding string. A trusted edit adds X inside the export string. The seven numeric cases and duplicate members remain in the document. The adapter requires a matching packed-tree response from a parse or analysis request, then grades visible Format and Tree text. Worker messages identify the path; their values do not supply the verdict.
+The latest checks below ran on October 18. Small-file observations and worker-path scalar edits are separate. The worker fixture contains a 2.1-million-character padding string. A trusted edit adds X inside the export string. The seven numeric cases and duplicate members remain in the document. The adapter requires a matching packed-tree response from a parse or analysis request, then grades visible Format and Tree text. Worker messages identify the path; their values do not supply the verdict.
 
-| Path | Rendered view | Number values | Duplicate members | Observation | Raw source |
-|---|---|---|---|---|---|
-| Small document | format | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run1__2026-10-18T06-24-21-248Z.json |
-| Small document | format | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run2__2026-10-18T06-29-28-849Z.json |
-| After edit | No graded capture | Unconfirmed | Unconfirmed | No packed tree observed after the edit | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run3__2026-10-18T06-24-34-810Z.json |
-| Scalar edit and packed-tree reply | format | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run3__2026-10-18T06-30-00-507Z.json |
-| Scalar edit and packed-tree reply | tree | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run3__2026-10-18T06-30-00-507Z.json |
-| Scalar edit and packed-tree reply | format | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run4__2026-10-18T06-29-42-038Z.json |
-| Scalar edit and packed-tree reply | tree | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run4__2026-10-18T06-29-42-038Z.json |
+| Path | Rendered view | Number values | Duplicate members | Observation |
+| --- | --- | --- | --- | --- |
+| Small document | format | 7/7 kept | kept | captured |
+| Small document | format | 7/7 kept | kept | captured |
+| After edit | No graded capture | Unconfirmed | Unconfirmed | No packed tree observed after the edit |
+| Scalar edit and packed-tree reply | format | 7/7 kept | kept | captured |
+| Scalar edit and packed-tree reply | tree | 7/7 kept | kept | captured |
+| Scalar edit and packed-tree reply | format | 7/7 kept | kept | captured |
+| Scalar edit and packed-tree reply | tree | 7/7 kept | kept | captured |
 
 The initial worker attempt timed out on an obsolete message predicate before any graded capture. It remains unconfirmed. One corrected normal-navigation visit is documented in [the refresh correction log](results/refresh-2026-10-18T06-23-00-569Z/RETRIES.md). The original scalar check covers selected literals and operations. The follow-up section adds complete copied-output comparisons across every output setting for two specific data sets. Neither check proves exactness for every document or edit.
 
 <!-- BEGIN follow-up validation -->
-## Follow-up validation on production 95945cd
+## Follow-up correctness checks
 
-These October 18 checks address the gaps in the first refresh. Functional checks used the shared lock while the host was busy. They supply no speed samples. Timed supplements require the original load gate and a quiet host. Earlier failures remain in the evidence. [Follow-up data](publish/validation-summary.json) include the raw references and capture hashes. [Protocol corrections](results/validation-2026-10-18-followup/RETRIES.md) retain the failed preparations and their later controls.
+These October 18 checks cover questions the first refresh left open. Correctness checks ran while the host was busy, so they supply no speed samples. Timed checks waited for a quiet host. Earlier failures remain in the evidence. [Follow-up data](publish/validation-summary.json) include the raw references and capture hashes. [Protocol corrections](results/validation-2026-10-18-followup/RETRIES.md) retain the failed preparations and their later controls.
 
 ### Full-output equality across settings
 
 We completed 108 exact full-output comparisons out of 108 planned. The matrix has two source sizes, three indent choices, sort off/on and Pretty, Minify and String output. Every setting is checked on opening, after a trusted scalar edit and after a valid structural member insertion. The adversarial data include the seven numeric cases, both duplicate members, negative zero, exponent forms and Unicode.
 
-The reference is a complete parse and format using source files pinned to `95945cd`. The observed result is the complete text from the public Copy output control. This compares the live update with a full pass. It does not prove exactness for every possible JSON document.
+The reference is a complete parse and format using the same version's source code. The observed result is the complete text from the public Copy output control. This compares the live update with a full pass. It does not prove exactness for every possible JSON document.
 
 | Source bytes | Indent | Exact comparisons | Attempts in this profile | Result |
 |---|---|---|---|---|
@@ -707,13 +724,13 @@ The separate WebKit cache diagnostic returned diagnostic captured. The headless 
 
 The separate Chromium offline control was passed. It uses the same ordinary service worker, file and real edit. Its cache contents and worker replies are retained. It supplies no Safari or performance result.
 
-The 100 KB minified correctness-only output check passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table. Source: raw/output-100kb-adapter-correctness.json.
+The 100 KB minified correctness-only output check passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
 
-The 10 MB minified correctness-only output check partial. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table. Source: raw/output-10mb-correctness-correctness.json.
+The 10 MB minified correctness-only output check was partial. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
 
-The 10 MB minified correctness-only output check passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table. Source: raw/output-10mb-find-completion-correctness.json.
+The 10 MB minified correctness-only output check passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
 
-The 10 MB minified correctness-only output check failed. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration not confirmed. Its high-load intervals are excluded from the performance table. Source: raw/output-10mb-position-correction-correctness.json.
+The 10 MB minified correctness-only output check failed. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration not confirmed. Its high-load intervals are excluded from the performance table.
 
 ### Structural and positional output updates
 
@@ -756,26 +773,26 @@ The supplement inserts a complete new object member at the start of the root obj
 
 Only complete profiles with exact source restoration enter these medians. Earlier preparation failures and their partial intervals remain in the download. Chromium file selection uses a local path through native CDP. Preparation waits for the input or the deferred read-only notice, and for the public Valid JSON status after warm-up and Undo. These intervals describe an edit after prior work settles. They do not describe every edit sent while a previous structural pass is still running. These untimed corrections are documented in RETRIES.md. A frame callback remains a paint cross-check, not proof of compositor presentation.
 
-| Fixture | Profile outcome | Reason | Observed partial intervals | Source |
-|---|---|---|---|---|
-| 10mb-pretty | Preparation failed | page.waitForFunction: Timeout 30000ms exceeded. | None | raw/output-10mb-pretty-1.json |
-| 50mb | Partial profile | page.waitForFunction: Timeout 20000ms exceeded. | structural-root-member: 3341.2 ms; scalar-start: 5497.3 ms | raw/output-50mb-1.json |
-| 50mb-pretty | Preparation failed | locator.setInputFiles: Cannot transfer files larger than 50Mb to a browser not co-located with the server | None | raw/output-50mb-pretty-1.json |
+| Fixture | Profile outcome | Reason | Observed partial intervals |
+| --- | --- | --- | --- |
+| 10mb-pretty | Preparation failed | page.waitForFunction: Timeout 30000ms exceeded. | None |
+| 50mb | Partial profile | page.waitForFunction: Timeout 20000ms exceeded. | structural-root-member: 3341.2 ms; scalar-start: 5497.3 ms |
+| 50mb-pretty | Preparation failed | locator.setInputFiles: Cannot transfer files larger than 50Mb to a browser not co-located with the server | None |
 
 The partial minified 50 MB profile recorded a 5497.3 ms first-record scalar interval after a structural insertion and Undo, then failed while positioning the middle output. It did not confirm final source restoration. The later settled-state profiles do not erase that slow sequence. The Playwright transfer limit prevented the first prettified 50 MB file selection; later native CDP selections completed.
 
 ### Matched Firefox code control
 
-This control builds `925fc3c` and `95945cd` locally on the same host. It uses fresh Firefox profiles, the same file fixtures, viewport, settle time, completion predicate and launch settings. Source order reverses in the middle round. Local production servers start outside the lock. These are local production builds, not CDN measurements.
+This control builds the October 17 and October 18 versions locally on the same host. It uses fresh Firefox profiles, the same file fixtures, viewport, settle time, completion predicate and launch settings. Source order reverses in the middle round. These are local timings, not live-site measurements.
 
-| Commit | File | Opened / attempts | Polled median | DOM median | Polled range |
+| Version | File | Opened / attempts | Polled median | DOM median | Polled range |
 |---|---|---|---|---|---|
-| 925fc3c | 1 MB | 3/3 | 358.4 ms | 271.0 ms | 291.5 ms to 563.1 ms |
-| 925fc3c | 10 MB | 3/3 | 2699.0 ms | 1790.0 ms | 2626.7 ms to 3228.5 ms |
-| 925fc3c | 50 MB | 3/3 | 13866.2 ms | 12402.0 ms | 13626.8 ms to 14271.4 ms |
-| 95945cd | 1 MB | 3/3 | 290.8 ms | 244.0 ms | 287.9 ms to 294.9 ms |
-| 95945cd | 10 MB | 3/3 | 2767.5 ms | 1788.0 ms | 2675.1 ms to 2978.4 ms |
-| 95945cd | 50 MB | 3/3 | 14274.5 ms | 12727.0 ms | 13912.9 ms to 14839.2 ms |
+| October 17 | 1 MB | 3/3 | 358.4 ms | 271.0 ms | 291.5 ms to 563.1 ms |
+| October 17 | 10 MB | 3/3 | 2699.0 ms | 1790.0 ms | 2626.7 ms to 3228.5 ms |
+| October 17 | 50 MB | 3/3 | 13866.2 ms | 12402.0 ms | 13626.8 ms to 14271.4 ms |
+| October 18 | 1 MB | 3/3 | 290.8 ms | 244.0 ms | 287.9 ms to 294.9 ms |
+| October 18 | 10 MB | 3/3 | 2767.5 ms | 1788.0 ms | 2675.1 ms to 2978.4 ms |
+| October 18 | 50 MB | 3/3 | 14274.5 ms | 12727.0 ms | 13912.9 ms to 14839.2 ms |
 
 At 1 MB, the local Firefox polled median changed by -18.9%. The raw ranges remain in the download. Shared-host variation and three samples limit the estimate.
 
@@ -783,10 +800,9 @@ At 10 MB, the local Firefox polled median changed by +2.5%. The raw ranges remai
 
 At 50 MB, the local Firefox polled median changed by +2.9%. The raw ranges remain in the download. Shared-host variation and three samples limit the estimate.
 
-A local metadata request failed after the first accepted 1 MB profile, before the next browser visit. That batch and its error remain saved. Later metadata requests close their connection before the synchronous browser child runs. The accepted profile was not repeated. This correction changes verification transport, not the browser timing protocol.
 <!-- END follow-up validation -->
 
-## Why the original native formatter was faster
+## Why native formatting was faster
 
 JSON Formatter Online's inspected Format handler used `JSON.parse` and `JSON.stringify`. JavaScript's native number conversion is fast and can round JSON number literals. In the original Node check, that round trip changed 602 of 1,204 unsafe integer account numbers in the hashed 1 MB fixture. This is a script check, not a count from a competitor's large rendered output.
 
@@ -795,9 +811,9 @@ JSON.stringify(JSON.parse('{"id":9007199254756831}'))
 // '{"id":9007199254756832}'
 ```
 
-The October 15 parser comparison pinned Tool Kumar to `e84bb4295cc1ec0c02e940f78313a2f2aa72ed50`. Warm best paired parse-plus-format times were 21.0 ms for native versus 85.3 ms for Tool Kumar at 1 MB, and 296.7 ms versus 1,020.8 ms at 10 MB. The original Tool Kumar code also scheduled formatting after 60 ms for small documents or 250 ms for larger ones. Those facts explain part of the original gap. Node stage times cannot be subtracted from browser times to isolate rendering.
+The October 15 parser comparison used the original Tool Kumar code. Warm best paired parse-plus-format times were 21.0 ms for native versus 85.3 ms for Tool Kumar at 1 MB, and 296.7 ms versus 1,020.8 ms at 10 MB. The original Tool Kumar code also scheduled formatting after 60 ms for small documents or 250 ms for larger ones. Those facts explain part of the original gap. Node stage times cannot be subtracted from browser times to isolate rendering.
 
-We repeated the stage check on October 18 with parser and formatter copies pinned to `95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a`. The table times full formatting paths in Node. It does not measure the new incremental edit-to-output path or explain a browser result by subtraction.
+We repeated the stage check on October 18 with the October 18 parser and formatter. The table times full formatting paths in Node. It does not measure the new incremental edit-to-output path or explain a browser result by subtraction.
 
 | Fixture | Implementation | Cold parse / format / total, ms | Warm best, ms | Warm median, ms |
 |---|---|---|---|---|
@@ -810,40 +826,13 @@ We repeated the stage check on October 18 with parser and formatter copies pinne
 
 Each implementation and fixture runs in a fresh Node process. The first call is cold and the next five are warm. Reads, imports and explicit garbage collection are outside the timed intervals. Best parse, format and paired total can come from different calls. The source re-indenter formats source text directly, before later analysis. [Current parse-cost script](results/refresh-2026-10-18T06-23-00-569Z/parse-cost.mjs).
 
-## What changed for Tool Kumar users?
+## The 50 MB search bug and its fix
 
-The changes below were made after the first benchmark. They make this an optimized follow-up comparison. The retained competitor observations are dated separately. Competitors were not changed by us.
+The original October 15 version of Tool Kumar opened and collapsed 50 MB in all three runs. Its search reported "1 of 1" but did not render the last-record match in any run. Chromium clamped a requested scroll height of about 78.6 million pixels to 33,554,432 pixels. A successful opening had hidden a navigation failure.
 
-- [Output first, `f08ea76`](https://github.com/VikasMaur-2nd/tools/commit/f08ea76), October 15. A large document can show formatted text before the input editor, tree and statistics finish.
-- [Warm the open path, `47a846b`](https://github.com/VikasMaur-2nd/tools/commit/47a846b), October 15. Opening a file no longer waits for the service worker to finish before warming the work it needs.
-- [Virtual input, `de505fd`](https://github.com/VikasMaur-2nd/tools/commit/de505fd), October 15. The editor draws visible rows and uses a bounded native input passage for large documents.
-- [Worker analysis and output, `2dfd33d`](https://github.com/VikasMaur-2nd/tools/commit/2dfd33d), October 15. Large-document typing moves analysis and output work off the page's main thread.
-- [Packed parse, `31b8b6f`](https://github.com/VikasMaur-2nd/tools/commit/31b8b6f), October 16. The worker sends its parsed tree to the page, which rebuilds it in short slices between input events.
-- [Editable up to 16 million characters, `611eea4`](https://github.com/VikasMaur-2nd/tools/commit/611eea4), October 16. The default editable range expands. Characters are not bytes; this does not mean a universal 16 MB limit.
-- [Retry the editor module, `b7157f6`](https://github.com/VikasMaur-2nd/tools/commit/b7157f6), October 16. A failed module load can be retried when the large-document editor is needed.
+Our fix caps the physical scroll height at 15,000,000 pixels. The October 15, 09:39 to 09:40 UTC production repeat rendered the final match and collapsed the file in all three runs. Its opening median was 10.449 s [10.241 s to 13.825 s], beside the original 9.857 s [9.165 s to 9.924 s]. Its renderer median was 1,499 MiB [1,467 to 1,518], beside the original 1,486 MiB [1,468 to 1,512]. The 6.0% slower opening in that shared-host repeat does not isolate the fix's effect. Both sets remain in the evidence. [Failure and re-verification](tool-kumar-scroll-limit.md).
 
-The next changes belong to the October 17 repeat at 925fc3c. The commit links document their implementation. The measured opening, editing, search and correctness results above describe that measured build. They do not isolate each commit or verify every reported browser fix.
-
-- [Share large-document edits, `eacc5c9`](https://github.com/VikasMaur-2nd/tools/commit/eacc5c9), October 16. The editor changes how it stores edits to long documents.
-- [Bound output updates, `e80c71a`](https://github.com/VikasMaur-2nd/tools/commit/e80c71a), October 16. The Format view splits output work across tasks.
-- [Keep pasted documents editable, `94e1da0`](https://github.com/VikasMaur-2nd/tools/commit/94e1da0), October 17. Pasting a replacement source changes its editor activation path. The round-trip check above tests that behavior.
-- [Retry worker startup, `925fc3c`](https://github.com/VikasMaur-2nd/tools/commit/925fc3c), October 17. Worker startup can retry after a failure. The follow-up checks cover Linux WebKit repeat visits. Safari on Apple hardware remains outside this study.
-
-The default size threshold is an implementation detail linked above. Our fixtures test specific character counts; they do not locate the exact threshold boundary. Those October 17 observations stop at 925fc3c. Later changes need another measurement before they can replace its numbers.
-
-- [Long lines use the custom editor, `a45bff4`](https://github.com/VikasMaur-2nd/tools/commit/a45bff4), October 18. A minified source with a line of at least 5,000 characters can use the large-document editor even below 250,000 total characters. The 100 KB profiles above test the actual editor used.
-
-- [Caret status after editor switches, `ba8b1b6`](https://github.com/VikasMaur-2nd/tools/commit/ba8b1b6), October 18. The status bar receives the new editor caret. This study does not independently grade every status-bar switch.
-
-- [Incremental source and formatting, `29d83eb`](https://github.com/VikasMaur-2nd/tools/commit/29d83eb), [retained output patches, `94a5b2d`](https://github.com/VikasMaur-2nd/tools/commit/94a5b2d), and [checkpoint preparation, `95945cd`](https://github.com/VikasMaur-2nd/tools/commit/95945cd), October 18. The Format view can update from a scalar edit. The measured scalar-burst output intervals above test the resulting behavior. Structural edits, sorting and escaping can use a full pass. Their separate end-to-end cost was not isolated here.
-
-## The original 50 MB search failure and its fix
-
-Tool Kumar at `19b7ac7` opened and collapsed 50 MB in all three runs. Its search reported "1 of 1" but did not render the last-record match in any run. Chromium clamped a requested scroll height of about 78.6 million pixels to 33,554,432 pixels. A successful opening had hidden a navigation failure.
-
-Fix [`722ffec`](https://github.com/VikasMaur-2nd/tools/commit/722ffec) bounds the physical scroll height at 15,000,000 pixels. The October 15, 09:39 to 09:40 UTC production repeat rendered the final match and collapsed the file in all three runs. Its opening median was 10.449 s [10.241 s to 13.825 s], beside the original 9.857 s [9.165 s to 9.924 s]. Its renderer median was 1,499 MiB [1,467 to 1,518], beside the original 1,486 MiB [1,468 to 1,512]. The 6.0% slower opening in that shared-host repeat does not isolate the fix's effect. Both sets remain in the evidence. [Failure and re-verification](tool-kumar-scroll-limit.md).
-
-The October 18 production repeat at `95945cd` records {'ok': 3} for last-record search in three primary file-path attempts. The new results remain separate from the original failure and its fix.
+On October 18, last-record search at 50 MB succeeded in all three runs. The original failure and the first check of its fix remain separate.
 
 ## Method and reproducibility
 
@@ -853,11 +842,11 @@ The main browser remains Chromium 145.0.7632.0 headless shell at 1366 by 900, GP
 
 Opening through paste uses the inherited synthetic clipboard-event helper, with the source staged before timing. That is the same helper used for the original comparison. Editing uses trusted CDP key input and trusted Ctrl+V from the browser clipboard. The two input methods describe different tests and are labeled separately.
 
-Every measurement holds the shared benchmark lock through `flock --close`. Load must be below 4 before the lock and before each run. Timed runs run alone. Batches release the lock within about eight minutes. No web server starts inside it. Browser profiles are deleted after their run. Every navigation and provenance request is entered in the page-load ledger. No challenge bypass, ad click or server upload is allowed.
+Timed runs ran one at a time, and only when the host load was below 4. Browser profiles are deleted after their run. Every page load is logged. We did not bypass bot challenges, click ads or upload data to any server.
 
-Only batches with unchanged before/after production evidence enter the new summaries. New Tool Kumar records name `95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a`. Competitor source commits are unknown. Their visit times and served scripts remain recorded. The October 18 JSON Formatter Online visits are new scheduled observations, not retries of old results. The other competitors keep their actual dates and failures. All earlier dated directories and the designated initial-results snapshot are unchanged.
+Before and after each batch, we checked that the live Tool Kumar site had not changed; a batch that saw a change was left out. Competitor visit times and served scripts are recorded. The October 18 JSON Formatter Online visits are new scheduled observations, not retries of old results. The other competitors keep their actual dates and failures. Earlier results are preserved unchanged.
 
-[Full methodology](methodology.md), [fixtures](fixtures.sha256.jsonl), [results](publish/summary.json), [latest refresh](publish/latest-refresh-summary.json), [Firefox supplement](publish/firefox-summary.json), [editing details](publish/editing-details.md) and [corrections](results/refresh-2026-10-18T06-23-00-569Z/RETRIES.md) retain the source references. Run the following command from the study directory for a new dated Tool Kumar series. The `--commit` option pins an expected deployment or labels an alternate URL.
+[Full methodology](methodology.md), [fixtures](fixtures.sha256.jsonl), [results](publish/summary.json), [latest refresh](publish/latest-refresh-summary.json), [Firefox supplement](publish/firefox-summary.json), [editing details](publish/editing-details.md) and [corrections](results/refresh-2026-10-18T06-23-00-569Z/RETRIES.md) retain the source references. To repeat the Tool Kumar series, run this from the study directory:
 
 ```bash
 ./refresh.sh --url https://tools.vikasmaur.com/ --runs 3 --editing-runs 3
@@ -871,13 +860,13 @@ The follow-up section reports full-output setting checks, Linux WebKit coverage,
 
 Some output intervals remain unconfirmed when their marker is outside the visible output. For already-prettified JSON Formatter Online and JSONLint, source and formatted text use the same editor, so a separate formatter-completion instant cannot be isolated. Operation frame bounds do not establish all Enter, Backspace, paste or Undo output-completion times. Page-scroll fallbacks are excluded. No mobile performance or minify/prettify-toggle benchmark was added.
 
-The October 17 size ladder is historical at `925fc3c`. It was not rerun above 50 MB. Browser stops are not universal maximum sizes. Previously blocked tools remain outside the comparison. JSON Hero remains excluded for server upload.
+Sizes above 50 MB were tested only on October 17, with that day's version. Browser stops are not universal maximum sizes. Previously blocked tools remain outside the comparison. JSON Hero remains excluded for server upload.
 
 ## FAQ
 
 ### Which tool should I try for a 50 MB JSON file?
 
-At `95945cd`, Tool Kumar recorded 3/3 opened, 8.307 s [8.269 s to 8.897 s]. Its 50 MB source opens read-only and needs Edit anyway. The typing and scalar-output tables then describe its editable state. The other tools retain their dated opening and size outcomes above.
+On October 18, Tool Kumar opened our 50 MB file in 3/3 runs, with a median of 8.307 s [8.269 s to 8.897 s]. A 50 MB source opens read-only; one click on Edit anyway makes it editable. The typing and scalar-output tables then describe its editable state. The other tools retain their dated opening and size outcomes above.
 
 ### Is JSON Formatter Online faster than Tool Kumar?
 
@@ -897,7 +886,7 @@ A minified source puts much of the document on one huge line. A prettified sourc
 
 ### Does the before-and-after isolate code changes?
 
-The original production comparison includes a host resize and a memory-budget change. The October 17 local control holds hardware and its 2.5 GiB budget constant for `19b7ac7`, `aee1ae3` and `925fc3c`. The October 18 refresh uses the same host and 6 GiB budget as the saved initial results, but shared-host pressure and observation time still vary. The follow-up section adds an interleaved local Firefox control at 925fc3c and 95945cd.
+The original production comparison includes a host resize and a memory-budget change. The October 17 local control holds hardware and its 2.5 GiB budget constant for the original, interim and October 17 versions. The October 18 refresh uses the same host and 6 GiB budget as the saved initial results, but shared-host pressure and observation time still vary. The follow-up section adds an interleaved local Firefox control of the October 17 and October 18 versions.
 
 ### Why is output-update time separate from typing latency?
 
@@ -905,7 +894,7 @@ The editor can accept a key before its formatted output catches up. The new scal
 
 ### Did this benchmark guide Tool Kumar improvements?
 
-Yes. The initial findings included slow minified 100 KB typing and about 9 to 10 s first-caret 50 MB output updates. The owner then changed those paths. The before-and-after tables keep the old commit and the new measurements visible. We did not modify competitors.
+Yes. The initial findings included slow minified 100 KB typing and about 9 to 10 s first-caret 50 MB output updates. The owner then changed those paths. The before-and-after tables keep the old and new measurements visible. We did not modify competitors.
 
 ### Do these results establish privacy?
 
@@ -918,3 +907,4 @@ Chosen headline: Large JSON benchmark: opening, typing and number fidelity
 - Minified vs. prettified JSON: opening and typing in six tools
 
 - Large JSON files: what six browser tools could open and edit
+<!-- reader edit applied -->
