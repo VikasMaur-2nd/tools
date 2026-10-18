@@ -1587,8 +1587,7 @@ export class Engine {
 
   /** The formatted document for the current settings (from the last valid parse), before any escaping. */
   private formatted(): string {
-    if ((this.fmtWorkerId || this.pendingFmtWorkerId) && this.fmtKey === this.fmtSettings()) return this.fmtText;
-    if (this.packed && this.fmtSrcVer === this.goodVer && this.fmtKey === this.fmtSettings()) return this.fmtText;
+    if (this.formatCurrent(this.fmtSettings())) return this.fmtText;
     const r = this.good;
     if (!r?.root) return '';
     const s = this.settings;
@@ -1612,6 +1611,11 @@ export class Engine {
   /** User Timing for DevTools: a file opened (tk:input) → its output painted (tk:formatted). */
   private markOutput = false;
 
+  /** Keep accepted output while analysis catches up, then match the newest good document. */
+  private formatCurrent(key: string): boolean {
+    return key === this.fmtKey && (this.goodVer !== null && this.goodVer === this.fmtSrcVer || !!(this.fmtWorkerId || this.pendingFmtWorkerId) && (this.parsedVer !== this.ed.version || !this.res?.root));
+  }
+
   private runFormat = () => {
     if (this.settings.view !== 'format') return;
     // A newer accepted output may still be waiting for its tree. Keep it until analysis catches up.
@@ -1620,9 +1624,10 @@ export class Engine {
     if (this.fmtKey !== this.fmtSettings()) this.materializeGood();
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
-    const drawn = key === this.fmtKey && (this.goodVer !== null && this.goodVer === this.fmtSrcVer || !!(this.fmtWorkerId || this.pendingFmtWorkerId) && this.parsedVer === this.ed.version && !this.res?.root);
+    const drawn = this.formatCurrent(key);
     const text = drawn ? this.fmtText : this.formatted();
     if (!drawn) this.drawFormat(text, key);
+    if (this.fmtSrcVer !== this.goodVer) return; // This output's metrics are still being analysed.
     // Size of the shown variant is measured; the other differs only by whitespace,
     // which is computed from the tree (no second format of big documents).
     const seq = ++this.fmtStatSeq;

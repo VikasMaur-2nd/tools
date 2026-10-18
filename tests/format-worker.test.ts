@@ -33,7 +33,7 @@ function session() {
       const i = messages.findIndex((m) => m.id === id && !('chunk' in m));
       if (i < 0) return;
       const result = messages.splice(i, 1)[0];
-      clearTimeout(timer); worker.off('message', check); done(result);
+      clearTimeout(timer); worker.off('message', check); worker.off('error', fail); done(result);
     };
     worker.on('message', check); worker.once('error', fail); check();
   });
@@ -115,5 +115,62 @@ test('format worker coalesces output indexing while source patches arrive in ord
     worker.postMessage({ id: 9, chunk: '{"abandoned":' });
     const fixed = await request({ id: 10, edit: { a: 0, b: 0, ins: '' }, sourceBase: 8, base: 8, fast: true, indent: '  ' });
     assert.equal(applyCodeChange(expected, fixed.patch!, fixed.change!), expected);
+  } finally { await worker.terminate(); }
+});
+
+test('random worker edits equal a full format with every output setting', async () => {
+  const { worker, request } = session();
+  let id = 0;
+  let seed = 481;
+  const rnd = (n: number) => ((seed = Math.imul(seed, 1664525) + 1013904223 >>> 0) % n);
+  const original = '{"z":"Zoë 東京 😀 \\u0061 \\ud800","a":9007199254740993123456789,"a":-0,"deep":' + '['.repeat(120) + '[1.2300e+99,true,null]' + ']'.repeat(120) + '}';
+  try {
+    for (const indent of ['  ', '    ', '\t']) for (const minify of [false, true]) for (const sortKeys of [false, true]) for (const escape of [false, true]) {
+      const options = { fast: true, indent: minify || escape ? '' : indent, sortKeys, escape };
+      let text = original;
+      let base = 0;
+      let visible = '';
+      const check = async (a?: number, b = a, ins = '') => {
+        const sourceBase = id;
+        if (a !== undefined) text = text.slice(0, a) + ins + text.slice(b);
+        const reply = await request({ ...options, id: ++id, base, ...(a === undefined ? { text } : { edit: { a, b: b!, ins }, sourceBase }) });
+        const res = parse(text);
+        const expected = res.root ? formatDoc(text, res, options.indent, sortKeys) : null;
+        if (expected === null) {
+          assert.equal(reply.out, null);
+          assert.equal(reply.patch, undefined);
+          return;
+        }
+        const raw = reply.patch === undefined ? reply.out : applyCodeChange(visible, reply.patch, reply.change!);
+        assert.equal(raw, expected, `worker ${id}, ${JSON.stringify(options)}`);
+        assert.equal(reply.display, escape ? JSON.stringify(expected) : undefined);
+        const shown = reply.display ?? raw!;
+        assert.deepEqual(reply.index, codeIndexer(shown)(Infinity));
+        // Sometimes skip an acknowledgement. The next patch must still use the displayed base.
+        if (rnd(4)) { base = id; visible = shown; }
+      };
+      await check();
+      for (let i = 0; i < 40; i++) {
+        if (i % 9 === 0) {
+          const end = text.length;
+          await check(end, end, '"');
+          await check(end, end + 1, '');
+        } else if (i % 11 === 0) {
+          await check(0, 0, '[');
+          await check(text.length, text.length, ']');
+          await check(text.length - 1, text.length, '');
+          await check(0, 1, '');
+        } else if (i % 7 === 0) {
+          const at = rnd(text.length);
+          const old = text.slice(at, at + 1);
+          await check(at, at + 1, '\n');
+          await check(at, at + 1, old);
+        } else {
+          const strings = [...text.matchAll(/"(?:[^"\\]|\\.)*"/g)];
+          const at = strings[rnd(strings.length)].index! + 1;
+          await check(at, at, ['é', '😀', '東京', '\\u0062', '\\"', '\\\\', '\\udfff', '\\t'][rnd(8)]);
+        }
+      }
+    }
   } finally { await worker.terminate(); }
 });
