@@ -100,3 +100,29 @@ test('source checkpoints remain correct after edits on both sides and escaped to
     assert.equal(output, formatDoc(input.toString(), parse(input.toString()), '  '));
   }
 });
+
+test('scalar append after trailing whitespace requires a full format', () => {
+  const input = Doc.of('[1,2]\n');
+  const scalar = new ScalarFormatter(input, Doc.of('[\n  1,\n  2\n]'));
+  assert.equal(scalar.update(input.edit(input.length, input.length, '5')), null);
+});
+
+test('random scalar edits at document boundaries agree with a fresh format', () => {
+  let seed = 731;
+  const rnd = (n: number) => ((seed = Math.imul(seed, 1664525) + 1013904223 >>> 0) % n);
+  for (const trailing of ['', '\n', ' \t\r\n']) for (const leading of ['', '\n \t']) {
+    for (let i = 0; i < 120; i++) {
+      const text = leading + ['[1,2]', '{"a":true}', '123', '"hello"', 'null'][rnd(5)] + trailing;
+      const input = Doc.of(text);
+      const indent = ['', '  ', '\t'][rnd(3)];
+      const scalar = new ScalarFormatter(input, Doc.of(reindent(text, indent)!));
+      const at = rnd(2) ? input.length : 0;
+      const next = input.edit(at, Math.min(input.length, at + rnd(2)), ['5', ' ', '\n', '"', '[', ']', 'false', ''][rnd(8)]);
+      const got = scalar.update(next);
+      if (got) {
+        const res = parse(next.toString());
+        assert.equal(got.output.toString(), res.root ? formatDoc(next.toString(), res, indent) : null, next.toString());
+      }
+    }
+  }
+});

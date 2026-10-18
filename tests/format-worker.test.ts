@@ -37,7 +37,7 @@ function session() {
     };
     worker.on('message', check); worker.once('error', fail); check();
   });
-  return { worker, async request(data: Request) { const reply = receive(data.id); worker.postMessage(data); return reply; } };
+  return { worker, receive, async request(data: Request) { const reply = receive(data.id); worker.postMessage(data); return reply; } };
 }
 
 test('format worker patches an acknowledged output across skipped replies and invalid edits', async () => {
@@ -172,5 +172,49 @@ test('random worker edits equal a full format with every output setting', async 
         }
       }
     }
+  } finally { await worker.terminate(); }
+});
+
+test('non-fast retained edits from 200 KB to 2 MB match fresh output, nodes and metrics', async () => {
+  const { worker, request, receive } = session();
+  let id = 0;
+  let seed = 301;
+  const rnd = (n: number) => ((seed = Math.imul(seed, 1664525) + 1013904223 >>> 0) % n);
+  try {
+    for (const size of [200_000, 250_000, 500_000, 1_999_000]) {
+      let text = '{"value":"start","padding":"' + 'x'.repeat(size - 100) + '"}\n';
+      const initial = await request({ id: ++id, text, indent: '  ' });
+      let output = initial.out!;
+      let base = id;
+      for (let i = 0; i < 8; i++) {
+        const sourceBase = id;
+        const at = i % 3 ? text.indexOf('"value":"') + 9 + rnd(5) : (rnd(2) ? text.length : 0);
+        const ins = i % 3 ? ['é', '東京', '😀', '9'][rnd(4)] : ' ';
+        text = text.slice(0, at) + ins + text.slice(at);
+        const reply = await request({ id: ++id, edit: { a: at, b: at, ins }, sourceBase, base, fast: false, parse: true, indent: '  ' });
+        // Parse and output are separate messages. Collect the output after the tree.
+        const formatted = reply.tree ? await receive(id) : reply;
+        const expected = formatDoc(text, parse(text), '  ');
+        output = formatted.patch === undefined ? formatted.out! : applyCodeChange(output, formatted.patch, formatted.change!);
+        assert.equal(output, expected, `${size} characters, edit ${i}`);
+        assert.ok(reply.tree?.nodes.length);
+        assert.equal(reply.metrics?.min, Buffer.byteLength(formatDoc(text, parse(text), '')));
+        base = id;
+      }
+    }
+  } finally { await worker.terminate(); }
+});
+
+test('clearing a worker releases retained output and source bases', async () => {
+  const { worker, request } = session();
+  try {
+    const text = '{"old":1}';
+    await request({ id: 1, text, fast: true, indent: '  ' });
+    worker.postMessage({ id: 2, clear: true });
+    const fresh = await request({ id: 3, text: '{"new":2}', base: 1, fast: true, indent: '  ' });
+    assert.equal(fresh.change, undefined);
+    assert.equal(fresh.out, '{\n  "new": 2\n}');
+    const stale = await request({ id: 4, sourceBase: 1, edit: { a: 0, b: 0, ins: '' }, fast: true });
+    assert.equal(stale.reset, true);
   } finally { await worker.terminate(); }
 });

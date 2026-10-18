@@ -84,6 +84,7 @@ export class ScalarFormatter {
     const limit = a + 65_536;
     while (a <= edit.a && a < this.input.length && a < limit) {
       a = skip(this.input, a);
+      if (a >= this.input.length) return null;
       b = skip(this.output, b);
       const ae = end(this.input, a);
       const be = end(this.output, b);
