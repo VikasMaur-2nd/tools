@@ -24,7 +24,7 @@ Production `95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a`, served build `YV8u2eNrP_G
 
 Raw and aggregate sources: `results/refresh-2026-10-18T06-23-00-569Z/summary.json`, `editing-summary.json`, `fidelity-summary.json`, `firefox-summary.json`, `completed.jsonl`, `verification/` and `RETRIES.md`. The parser stage measurement is pinned to this commit. Fresh JSON Formatter Online 100 KB/10 MB typing and 10 MB paste results are retained alongside October 17 competitor observations. Nothing is relabeled as same-day evidence when its date differs.
 
-No matched historical Firefox baseline exists. A claimed 3% code regression cannot be established. Safari-specific fixes, all-setting output exactness, structural-edit output completion and the status-bar caret switch were not independently confirmed. Size-ladder results above 50 MB remain historical at 925fc3c.
+No matched historical Firefox baseline exists. A claimed 3% code regression cannot be established. The follow-up section reports full-output settings checks, Linux WebKit copying/repeat visits, worker recovery and the status-bar switch. Timed structural-output completion remains queued. Safari on Apple hardware is not covered. Size-ladder results above 50 MB remain historical at 925fc3c.
 <!-- END 95945cd refresh -->
 
 <!-- BEGIN accepted 925fc3c status -->
@@ -510,3 +510,9 @@ The one-command Tool Kumar refresh now defaults to the same 6 GiB browser budget
 
 Exact numbers, raw hashes, per-position typing, output updates, feature evidence, memory and skip reasons are in `results/2026-10-17-competitors-6g/public-summary.json`. Review tables are in `review-tables.md`. The isolation and adapter changes are in `RETRIES.md`. `comparison-refresh.sh` regenerates the comparison tables. `regenerate-six-tool.sh` at the study root updates the article and page only after the scheduled plan is complete. Safari copying/offline worker behavior remains untested.
 <!-- END six-tool comparison -->
+
+<!-- BEGIN follow-up validation -->
+## Follow-up checks, October 18
+
+Production target `95945cd`. Full-output comparisons completed: 108/108. WebKit profiles with outcomes: 6/6, across separately labeled headless WPE and headed GTK modes. Pending timed jobs: 25. See `results/validation-2026-10-18-followup/validation-summary.json` and `RETRIES.md`. Correctness-only checks supply no benchmark intervals. The initial-results reference and all earlier raw directories stay frozen.
+<!-- END follow-up validation -->

@@ -646,7 +646,79 @@ The latest checks below target `95945cd`, October 18. Small-file observations an
 | Scalar edit and packed-tree reply | format | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run4__2026-10-18T06-29-42-038Z.json |
 | Scalar edit and packed-tree reply | tree | 7/7 kept | kept | captured | results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run4__2026-10-18T06-29-42-038Z.json |
 
-The initial worker attempt timed out on an obsolete message predicate before any graded capture. It remains unconfirmed. One corrected normal-navigation visit is documented in [the refresh correction log](results/refresh-2026-10-18T06-23-00-569Z/RETRIES.md). This check covers selected literals and operations. It does not prove byte-identical output for every setting or every edit.
+The initial worker attempt timed out on an obsolete message predicate before any graded capture. It remains unconfirmed. One corrected normal-navigation visit is documented in [the refresh correction log](results/refresh-2026-10-18T06-23-00-569Z/RETRIES.md). The original scalar check covers selected literals and operations. The follow-up section adds complete copied-output comparisons across every output setting for two specific data sets. Neither check proves exactness for every document or edit.
+
+<!-- BEGIN follow-up validation -->
+## Follow-up validation on production 95945cd
+
+These October 18 checks address the gaps in the first refresh. Functional checks used the shared lock while the host was busy. They supply no speed samples. Timed supplements require the original load gate and a quiet host. Earlier failures remain in the evidence. [Follow-up data](publish/validation-summary.json) include the raw references and capture hashes.
+
+### Full-output equality across settings
+
+We completed 108 exact full-output comparisons out of 108 planned. The matrix has two source sizes, three indent choices, sort off/on and Pretty, Minify and String output. Every setting is checked on opening, after a trusted scalar edit and after a valid structural member insertion. The adversarial data include the seven numeric cases, both duplicate members, negative zero, exponent forms and Unicode.
+
+The reference is a complete parse and format using source files pinned to `95945cd`. The observed result is the complete text from the public Copy output control. This compares the live update with a full pass. It does not prove exactness for every possible JSON document.
+
+| Source bytes | Indent | Exact comparisons | Attempts in this profile | Result |
+|---|---|---|---|---|
+| 425 | 2 | 18 | 18 | passed |
+| 425 | 4 | 18 | 18 | passed |
+| 425 | tab | 18 | 18 | passed |
+| 362132 | 2 | 18 | 18 | passed |
+| 362132 | 4 | 18 | 18 | passed |
+| 362132 | tab | 18 | 18 | passed |
+
+The first worker-sized visits used a fixed one-second wait. Some copied output still represented the previous document. The saved copies kept the numeric literals. The completion-aware correction waits for complete output equality and preserves each intervening hash. An expensive diagnostic interrupted one visit; its partial text and correction are retained. These observations are not benchmark timings.
+
+### WebKit copy and repeat visits
+
+This is Playwright WebKit on Linux, not Safari on macOS or iOS. The clipboard check uses trusted Copy and Paste into an independent textarea and compares the complete source hash. It includes U+00A0 and U+202F. The repeat-visit checks require a real scalar edit, updated visible Format text and a worker reply. The offline visit reloads after the ordinary service worker has cached the page and scripts.
+
+| Profile | Clipboard exact | First online | Controlled repeat | Offline repeat | Outcome |
+|---|---|---|---|---|---|
+| webkit-1 WPE | Pass | Pass | Pass | Failed before edit | page.reload: WebKit encountered an internal error |
+| webkit-2 WPE | Pass | Pass | Pass | Failed before edit | page.reload: WebKit encountered an internal error |
+| webkit-3 WPE | Pass | Pass | Pass | Failed before edit | page.reload: WebKit encountered an internal error |
+| webkit-gtk-1 GTK | Not confirmed | Pass | Pass | Failed before edit | page.reload: WebKit encountered an internal error |
+| webkit-gtk-2 GTK | Not confirmed | Pass | Pass | Failed before edit | page.reload: WebKit encountered an internal error |
+| webkit-gtk-3 GTK | Not confirmed | Pass | Pass | Failed before edit | page.reload: WebKit encountered an internal error |
+
+### Cursor status after switching editors
+
+The status-bar check was passed. It opened a long minified line below 250,000 characters, switched to a small prettified document, then switched back. Trusted Home, End and ArrowRight commands were checked against the public line and column status. This is a correctness check, not a latency measurement.
+
+### Recovery from a worker constructor failure
+
+The targeted Chromium check was failed. We deliberately made the first Worker constructor throw once, then restored ordinary construction. A later worker reply and the edited scalar in the visible Format pane were required. This tests that specific startup failure. It does not cover every asynchronous worker error.
+
+The separate asynchronous script-load failure check was passed. The first worker used a deliberately missing same-origin script. Later workers used the unchanged URL. A trusted edit and a post-edit worker reply were required. This distinguishes the tested script-load recovery from the constructor-exception result above.
+
+### Offline failure diagnostic
+
+The separate WebKit cache diagnostic returned diagnostic captured. The headless WPE profiles had an activated service worker and a cacheable HTTP 200 response, but no cached URLs. An independent temporary Cache API put/match check also returned no entry. Their offline reload failures therefore do not establish a Tool Kumar cache bug. The headed GTK controls are labeled separately and had the same offline reload failure. Linux WebKit does not supply the cached-worker coverage needed to confirm the Safari fix. No entries were manually added to the app cache, and the original failures remain in the results.
+
+The separate Chromium offline control was passed. It uses the same ordinary service worker, file and real edit. Its cache contents and worker replies are retained. It supplies no Safari or performance result.
+
+The 100kb correctness-only output check was passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
+
+The 10mb correctness-only output check was partial. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
+
+The 10mb correctness-only output check was passed. It recorded 4 confirmed structural/scalar changes out of four planned, with source restoration verified. Its high-load intervals are excluded from the performance table.
+
+The 10mb correctness-only output check was failed. It recorded 2 confirmed structural/scalar changes out of four planned, with source restoration not confirmed. Its high-load intervals are excluded from the performance table.
+
+### Structural and positional output updates
+
+The supplement inserts a complete new object member at the start of the root object. Separate scalar edits use the same email values in the first, middle and last records. The clock starts at trusted beforeinput and ends on the frame after the changed marker is fully visible inside the clipped Format pane. The input and output are positioned before the edit. This single-edit protocol is separate from the earlier twenty-key burst clock. No interval is inferred from a later search.
+
+Timed profiles are queued behind the load and memory gates. The separate 100 KB adapter check confirmed the structural change and all three scalar positions, plus exact source restoration. It ran as correctness-only work, so none of its intervals enters the tables.
+
+### Matched Firefox code control
+
+This control builds `925fc3c` and `95945cd` locally on the same host. It uses fresh Firefox profiles, the same file fixtures, viewport, settle time, completion predicate and launch settings. Source order reverses in the middle round. Local production servers start outside the lock. These are local production builds, not CDN measurements.
+
+The builds and timed runs are queued for load below 4 and at least 8,000 MiB available. The existing new-version Firefox supplement cannot establish the claimed 3% code regression.
+<!-- END follow-up validation -->
 
 ## Why the original native formatter was faster
 
@@ -689,7 +761,7 @@ The next changes belong to the October 17 repeat at 925fc3c. The commit links do
 - [Share large-document edits, `eacc5c9`](https://github.com/VikasMaur-2nd/tools/commit/eacc5c9), October 16. The editor changes how it stores edits to long documents.
 - [Bound output updates, `e80c71a`](https://github.com/VikasMaur-2nd/tools/commit/e80c71a), October 16. The Format view splits output work across tasks.
 - [Keep pasted documents editable, `94e1da0`](https://github.com/VikasMaur-2nd/tools/commit/94e1da0), October 17. Pasting a replacement source changes its editor activation path. The round-trip check above tests that behavior.
-- [Retry worker startup, `925fc3c`](https://github.com/VikasMaur-2nd/tools/commit/925fc3c), October 17. Worker startup can retry after a failure. This study has not tested Safari repeat visits.
+- [Retry worker startup, `925fc3c`](https://github.com/VikasMaur-2nd/tools/commit/925fc3c), October 17. Worker startup can retry after a failure. The follow-up checks cover Linux WebKit repeat visits. Safari on Apple hardware remains outside this study.
 
 The default size threshold is an implementation detail linked above. Our fixtures test specific character counts; they do not locate the exact threshold boundary. Those October 17 observations stop at 925fc3c. Later changes need another measurement before they can replace its numbers.
 
@@ -729,7 +801,7 @@ Only batches with unchanged before/after production evidence enter the new summa
 
 Small timing gaps inside the spread, or below 25% for operations under two seconds, are treated as ties. A shared host, advertisements, network and a headless browser limit the result. A viewer, formatter and validator also do different work. Code Beautify optional Big Num mode remains untested. The default-mode competitor fidelity observations remain October 15.
 
-This update has no matched earlier Firefox baseline. It cannot establish a 3% Firefox regression. Safari-specific copying, offline repeat visits and failed-worker recovery were not tested. The new scalar edit checks do not prove byte-identical full output for all settings. Structural-edit output completion, sort/escape costs and a status-bar caret audit remain unconfirmed. Earliest whole-document editability was not isolated fairly for every editor.
+The follow-up section reports full-output setting checks, Linux WebKit coverage, cursor status and the status of the structural-output and matched Firefox tests. Linux WebKit does not establish behavior in Safari on Apple hardware. Sort/escape costs and earliest whole-document editability were not isolated fairly for every editor.
 
 Some output intervals remain unconfirmed when their marker is outside the visible output. For already-prettified JSON Formatter Online and JSONLint, source and formatted text use the same editor, so a separate formatter-completion instant cannot be isolated. Operation frame bounds do not establish all Enter, Backspace, paste or Undo output-completion times. Page-scroll fallbacks are excluded. No mobile performance or minify/prettify-toggle benchmark was added.
 
