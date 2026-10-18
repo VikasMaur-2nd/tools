@@ -33,7 +33,9 @@ function session() {
       const i = messages.findIndex((m) => m.id === id && !('chunk' in m));
       if (i < 0) return;
       const result = messages.splice(i, 1)[0];
-      clearTimeout(timer); worker.off('message', check); worker.off('error', fail); done(result);
+      clearTimeout(timer); worker.off('message', check); worker.off('error', fail);
+      worker.postMessage({ id, prepare: true });
+      done(result);
     };
     worker.on('message', check); worker.once('error', fail); check();
   });

@@ -32,6 +32,7 @@ export interface Request {
   sourceBase?: number;
   cancel?: boolean;
   clear?: boolean;
+  prepare?: boolean;
   reuseIndex?: boolean;
   good?: boolean;
 }
@@ -49,7 +50,16 @@ self.onmessage = (e: MessageEvent<Request>) => {
     sourceId = previousId = 0;
     previous = '';
     scalar = indexed = null;
+    pendingCheckpoints = null;
     outputs.clear();
+    return;
+  }
+  if (data.prepare) {
+    const pending = pendingCheckpoints;
+    if (pending?.id === data.id) {
+      pendingCheckpoints = null;
+      scalar = { key: pending.key, formatter: new ScalarFormatter(pending.input, pending.output) };
+    }
     return;
   }
   if (data.cancel) { latest = data.id; clearTimeout(fastTimer); return; }
@@ -147,6 +157,7 @@ function analyse(data: Request, text: string) {
 }
 
 let scalar: { key: string; formatter: ScalarFormatter } | null = null;
+let pendingCheckpoints: { id: number; key: string; input: Doc; output: Doc } | null = null;
 let shape = 0;
 let indexed: { doc: Doc; index: CodeIndex; shape: number } | null = null;
 const outputs = new Map<number, { doc: Doc; shape: number }>();
@@ -173,6 +184,7 @@ function formatFast(data: Request, input: Doc) {
     shape++;
     output = Doc.of(raw);
     scalar = null;
+    pendingCheckpoints = null;
     checkpoints = strict && !data.escape && !data.sortKeys;
     if (data.escape) { display = JSON.stringify(raw); output = Doc.of(display); }
   }
@@ -205,9 +217,7 @@ function formatFast(data: Request, input: Doc) {
     chunkedOut: patch === undefined && sentOut === undefined,
     chunkedDisplay: display !== undefined && sentDisplay === undefined, index: sent,
   }, [sent.starts.buffer, ...(sent.close && sent.depth ? [sent.close.buffer, sent.depth.buffer] : [])]);
-  // Checkpoints never delay a cold load or full fallback's output. The next edit can use
-  // them once this separate task finishes. Superseded documents release the captured input.
-  if (checkpoints) fastTimer = setTimeout(() => {
-    if (latest === id) scalar = { key, formatter: new ScalarFormatter(input, output) };
-  }, 0);
+  // The viewer acknowledges after drawing. Only then may checkpoints compete for CPU,
+  // so neither a cold load nor a full fallback pays for them before its rows appear.
+  if (checkpoints) pendingCheckpoints = { id, key, input, output };
 }

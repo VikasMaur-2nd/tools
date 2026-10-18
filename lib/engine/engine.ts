@@ -259,6 +259,7 @@ export class Engine {
     this.fmt.onReady = () => {
       this.fmtWorkerId = this.pendingFmtWorkerId;
       this.fmtWorkerText = this.fmt.text;
+      if (this.fmtWorkerId) this.worker?.postMessage({ id: this.fmtWorkerId, prepare: true });
       if (this.markOutput) {
         this.markOutput = false;
         requestAnimationFrame(() => performance.mark('tk:formatted'));
