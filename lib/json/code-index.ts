@@ -57,6 +57,23 @@ export interface CodeChange {
   suffix: number;
 }
 
+/** A scalar replacement cannot add output lines or change any fold pair. */
+export function inlineCodeIndexer(index: CodeIndex, length: number, change: CodeChange, patch: string): (until: number) => CodeIndex | undefined {
+  const starts = new Int32Array(index.starts.length);
+  const delta = patch.length - (length - change.prefix - change.suffix);
+  let i = 0;
+  let maxLen = 0;
+  return (until) => {
+    for (; i < starts.length; i++) {
+      starts[i] = index.starts[i] + (index.starts[i] > change.prefix ? delta : 0);
+      if (i) maxLen = Math.max(maxLen, starts[i] - starts[i - 1] - 1);
+      if ((i & 8191) === 8191 && performance.now() >= until) { i++; return; }
+    }
+    if (starts.length) maxLen = Math.max(maxLen, length + delta - starts[starts.length - 1]);
+    return { starts, close: index.close, depth: index.depth, maxLen };
+  };
+}
+
 /** Compared off-thread: unchanged lines can keep their measured wrapping. */
 export function codeChange(old: string, text: string): CodeChange {
   return codeChanger(old, text)(Infinity)!;

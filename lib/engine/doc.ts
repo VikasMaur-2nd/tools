@@ -25,6 +25,12 @@ interface Base {
   tab: boolean | null;
 }
 
+export interface TextEdit {
+  a: number;
+  b: number;
+  ins: string;
+}
+
 export class Doc {
   readonly length: number;
   /** The whole text, once built. */
@@ -75,6 +81,34 @@ export class Doc {
 
   toString(): string {
     return (this.str ??= this.slice(0, this.length));
+  }
+
+  /** A bounded replacement between versions of the same base, without reading the whole text. */
+  changeFrom(before: Doc, limit = 1 << 20): TextEdit | null {
+    if (this === before) return { a: this.length, b: this.length, ins: '' };
+    if (this.info !== before.info) return null;
+    const same = (i: number, j: number) => this.x[i] === before.x[j] && this.y[i] === before.y[j] && this.m[i] === before.m[j];
+    let first = 0;
+    while (first < this.m.length && first < before.m.length && same(first, first)) first++;
+    let last = this.m.length - 1;
+    let oldLast = before.m.length - 1;
+    while (last >= first && oldLast >= first && same(last, oldLast)) { last--; oldLast--; }
+    if (last < first && oldLast < first) return { a: this.length, b: this.length, ins: '' };
+    const lo = Math.min(last >= first ? this.x[first] : Infinity, oldLast >= first ? before.x[first] : Infinity);
+    const hi = Math.max(last >= first ? this.y[last] : 0, oldLast >= first ? before.y[oldLast] : 0);
+    const shift = (doc: Doc, k: number) => k < 0 ? 0 : doc.at[k] + doc.m[k].length - doc.y[k];
+    let a = lo + shift(this, first - 1);
+    let b = hi + shift(before, oldLast);
+    let end = hi + shift(this, last);
+    if (Math.max(b - a, end - a) > limit) return null;
+    const old = before.slice(a, b);
+    const next = this.slice(a, end);
+    let p = 0;
+    while (p < old.length && p < next.length && old.charCodeAt(p) === next.charCodeAt(p)) p++;
+    let s = 0;
+    while (s < old.length - p && s < next.length - p && old.charCodeAt(old.length - s - 1) === next.charCodeAt(next.length - s - 1)) s++;
+    a += p; b -= s; end -= s;
+    return { a, b, ins: next.slice(p, next.length - s) };
   }
 
   /** The last replacement starting at or before `i` (-1: none). */

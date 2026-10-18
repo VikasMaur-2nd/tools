@@ -78,3 +78,24 @@ test('pieces are visited in order and views are bounded', () => {
   const e = d.edit(0, d.length, 'new');
   assert.equal(e.flat, 'new');
 });
+
+test('document deltas compare arbitrary shared-base versions without flattening', () => {
+  let seed = 71;
+  const rnd = (n: number) => ((seed = Math.imul(seed, 1664525) + 1013904223 >>> 0) % n);
+  let doc = Doc.of('abcé😀\n'.repeat(20_000));
+  const versions = [doc];
+  for (let i = 0; i < 600; i++) {
+    const a = rnd(doc.length + 1);
+    doc = doc.edit(a, Math.min(doc.length, a + rnd(9)), ['hello', '', '😀', '\n', '\\"'][rnd(5)]);
+    for (const before of [versions[versions.length - 1], versions[rnd(versions.length)]]) {
+      const edit = doc.changeFrom(before);
+      if (edit) assert.equal(before.slice(0, edit.a) + edit.ins + before.slice(edit.b), doc.toString());
+    }
+    versions.push(doc);
+  }
+  const base = Doc.of('x'.repeat(50_000_000));
+  const changed = base.edit(49_999_990, 49_999_991, 'é😀');
+  base.toString = changed.toString = () => { throw new Error('must not flatten'); };
+  assert.deepEqual(changed.changeFrom(base), { a: 49_999_990, b: 49_999_991, ins: 'é😀' });
+  assert.equal(changed.changeFrom(Doc.of('different')), null);
+});
