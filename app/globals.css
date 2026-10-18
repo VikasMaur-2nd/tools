@@ -2260,13 +2260,19 @@ a.sb-btn {
   }
 }
 
-/* Narrow panes: the privacy link goes too (Privacy mode stays in the command palette). */
 @media (max-width: 760px) {
   .cursor,
-  .sb-privacy,
   .private,
   .path,
   .indent {
+    display: none;
+  }
+}
+
+/* The status bar's privacy link needs room in every language ("Конфиденциальность" is the longest);
+   below this width Privacy mode stays one tap away in the command palette. */
+@media (max-width: 820px) {
+  .sb-privacy {
     display: none;
   }
 }
