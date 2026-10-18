@@ -5,5 +5,5 @@ import { TestdataPage, testdataMetadata } from '../testdata-page';
 const page = TESTDATA_PAGES[0];
 export const metadata = testdataMetadata(page);
 export default function Page() {
-  return <TestdataPage page={page}><GeneratorPanel /></TestdataPage>;
+  return <TestdataPage page={page}><GeneratorPanel autoFocus /></TestdataPage>;
 }

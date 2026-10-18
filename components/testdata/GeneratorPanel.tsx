@@ -15,7 +15,8 @@ const serverDisk = () => false;
 const PRESETS = [[100_000, '100 KB'], [1_000_000, '1 MB'], [10_000_000, '10 MB'], [50_000_000, '50 MB'], [100_000_000, '100 MB'], [200_000_000, '200 MB'], [400_000_000, '400 MB']] as const;
 const number = (value: number) => value.toLocaleString('en-US');
 
-export function GeneratorPanel() {
+/** `autoFocus` only on the standalone tool page; an article embedding the panel must not move focus or scroll. */
+export function GeneratorPanel({ autoFocus = false }: { autoFocus?: boolean }) {
   const id = useId();
   const ready = useReady();
   const [size, setSize] = useState('1000000');
@@ -111,7 +112,7 @@ export function GeneratorPanel() {
         <fieldset disabled={busy || !ready} className="testdata-fields">
           <legend className="sr-only">File options</legend>
           <label htmlFor={`${id}-size`}>Size of minified data
-            <select id={`${id}-size`} value={size} onChange={event => setSize(event.target.value)} autoFocus>
+            <select id={`${id}-size`} value={size} onChange={event => setSize(event.target.value)} autoFocus={autoFocus}>
               {PRESETS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               <option value="custom">Custom size</option>
             </select>
