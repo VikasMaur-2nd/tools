@@ -178,9 +178,9 @@ export default function PrivacyPage() {
 
         <h2>Where the data goes</h2>
         <p>
-          Your browser sends analytics to this site first (<code>/_vercel/insights</code> for Vercel, <code>/relay</code> for PostHog), which passes
-          it on to Vercel and to PostHog Cloud {eu ? 'EU (stored in Frankfurt, Germany)' : 'US (stored in the United States)'}. PostHog requests are
-          not compressed: they are plain JSON, except the few sent as a page closes, which are base64-encoded JSON. You can read every one of
+          Your browser sends analytics through this site to Vercel and PostHog Cloud{' '}
+          {eu ? 'EU (stored in Frankfurt, Germany)' : 'US (stored in the United States)'}. PostHog requests are not compressed: they are plain JSON,
+          except the few sent as a page closes, which are base64-encoded JSON. You can read every one of
           them in your browser’s developer tools. The{' '}
           <Link href="/tools/secure-json-formatter">secure JSON formatter guide</Link> shows how to check that a marker you paste never appears in a
           request. We use this data only to improve Tool Kumar. We don’t sell it, share it with advertisers or use it for ads.
