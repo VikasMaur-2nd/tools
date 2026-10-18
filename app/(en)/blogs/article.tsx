@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { highlightCode } from '@/lib/convert/highlight';
@@ -52,17 +52,27 @@ export function Code({ children, lang = 'json', error }: { children: string; lan
   );
 }
 
-type Heading = ReactElement<{ id: string; children: ReactNode }>;
+type Heading = ReactElement<{ id: string; children: ReactNode; style?: CSSProperties }>;
 
 const isSection = (node: ReactNode): node is Heading =>
   isValidElement<{ id?: unknown }>(node) && node.type === 'h2' && typeof node.props.id === 'string';
 
+/** The view timeline a section heading names and its contents link follows. */
+const timeline = (i: number) => `--toc-${i}`;
+
 /**
  * Layout for a blog post. The table of contents is built from the `<h2 id>`
- * elements passed directly as children.
+ * elements passed directly as children. Each heading names a view timeline
+ * that highlights its link while that section is being read, with no client JS.
  */
 export function Article({ post, lede, children }: { post: Post; lede: ReactNode; children: ReactNode }) {
   const toc = Children.toArray(children).filter(isSection);
+  let section = 0;
+  const body = Children.map(children, (child) =>
+    isSection(child)
+      ? cloneElement(child, { style: { '--toc-name': timeline(section++) } as CSSProperties })
+      : child,
+  );
   const related = POSTS.filter((p) => p.slug !== post.slug).slice(0, 2);
   return (
     <ContentShell current="blogs" progress>
@@ -100,9 +110,12 @@ export function Article({ post, lede, children }: { post: Post; lede: ReactNode;
           </div>
         </header>
 
-        <div className="article-grid">
+        <div
+          className="article-grid"
+          style={toc.length > 0 ? ({ '--toc-scope': toc.map((_, i) => timeline(i)).join(', ') } as CSSProperties) : undefined}
+        >
           <div className="article-main">
-            <div className="prose">{children}</div>
+            <div className="prose">{body}</div>
             <aside className="cta-card" aria-label="Try the JSON viewer">
               <p className="cta-title">Try it on your own JSON</p>
               <p>
@@ -118,9 +131,14 @@ export function Article({ post, lede, children }: { post: Post; lede: ReactNode;
             <nav className="toc" aria-labelledby="toc-title">
               <p id="toc-title">On this page</p>
               <ol>
-                {toc.map((h) => (
+                {toc.map((h, i) => (
                   <li key={h.props.id}>
-                    <a href={`#${h.props.id}`}>{h.props.children}</a>
+                    <a
+                      href={`#${h.props.id}`}
+                      style={{ '--toc-on': timeline(i), '--toc-off': timeline(i + 1) } as CSSProperties}
+                    >
+                      {h.props.children}
+                    </a>
                   </li>
                 ))}
               </ol>

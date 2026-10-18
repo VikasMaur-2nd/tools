@@ -758,45 +758,153 @@ html:has(.content-page:not([style*='none'])) {
   grid-template-columns: minmax(0, var(--measure)) 220px;
   justify-content: space-between;
   gap: 64px;
+  /* Hoists each section heading's view timeline (set inline) to its contents link. */
+  timeline-scope: var(--toc-scope);
 }
 
+/* Contents: the heading stays put and only the list scrolls, on a thin rail
+   that marks the section being read. */
 .toc {
   position: sticky;
   top: 92px;
   align-self: start;
-  max-height: calc(100vh - 120px);
-  overflow: auto;
-  border-left: 1px solid var(--line);
-  padding-left: 20px;
-  font-size: 13.5px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 124px);
+  font-size: 13px;
 }
 
 .toc p {
+  flex: none;
   margin: 0 0 12px;
-  color: var(--fg);
-  font-weight: 600;
+  color: var(--muted);
+  font: 500 12px/1.4 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .toc ol {
+  min-height: 0;
   margin: 0;
   padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
   list-style: none;
 }
 
-.toc li + li {
-  margin-top: 9px;
+@property --toc-active {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
 }
 
 .toc a {
   display: block;
-  color: var(--muted);
-  line-height: 1.45;
+  padding: 4px 0 4px 16px;
+  box-shadow: inset calc(1px + var(--toc-active, 0) * 1px) 0
+    color-mix(in srgb, var(--fg) calc(var(--toc-active, 0) * 100%), var(--line));
+  color: color-mix(in srgb, var(--fg) calc(var(--toc-active, 0) * 100%), var(--muted));
+  line-height: 1.4;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .toc a:hover {
   color: var(--fg);
+}
+
+/* The list clips overflow, so keep the focus ring inside it. */
+.toc a:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Where scroll-driven animations exist, a link lights up once its heading
+   passes 30% down the viewport and dims when the next heading does. */
+@supports (timeline-scope: none) {
+  .prose h2 {
+    view-timeline: var(--toc-name) block;
+    view-timeline-inset: 0% 70%;
+  }
+
+  .toc a {
+    animation:
+      toc-on linear both,
+      toc-off linear forwards;
+    animation-timeline: var(--toc-on), var(--toc-off);
+    animation-range: entry;
+  }
+
+  /* The last link has no next heading to dim it. */
+  .toc li:last-child a {
+    animation-name: toc-on;
+  }
+
+  @keyframes toc-on {
+    from {
+      --toc-active: 0;
+    }
+    to {
+      --toc-active: 1;
+    }
+  }
+
+  @keyframes toc-off {
+    from {
+      --toc-active: 1;
+    }
+    to {
+      --toc-active: 0;
+    }
+  }
+}
+
+/* A long list hides its scrollbar and fades whichever edge has more to scroll.
+   An unscrollable list has an inactive timeline, so it never fades. With reduced
+   motion the global reset would remove the fade, so the thin scrollbar stays. */
+@property --toc-fade-top {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --toc-fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll(self)) {
+    .toc ol {
+      scrollbar-width: none;
+      mask-image: linear-gradient(
+        transparent,
+        #000 var(--toc-fade-top),
+        #000 calc(100% - var(--toc-fade-end)),
+        transparent
+      );
+      animation: toc-fade linear both;
+      animation-timeline: scroll(self);
+    }
+
+    @keyframes toc-fade {
+      from {
+        --toc-fade-top: 0px;
+        --toc-fade-end: 32px;
+      }
+      10%,
+      90% {
+        --toc-fade-top: 32px;
+        --toc-fade-end: 32px;
+      }
+      to {
+        --toc-fade-top: 32px;
+        --toc-fade-end: 0px;
+      }
+    }
+  }
 }
 
 /* Long-form body text. */
