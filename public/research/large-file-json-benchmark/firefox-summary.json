@@ -1,0 +1,2151 @@
+{
+  "generatedAt": "2026-10-18T08:04:25.962186+00:00",
+  "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+  "method": "Separate Firefox supplement. Same fixtures, viewport, settle and done predicate. Browser-specific launch and Playwright transport. No historical Firefox baseline. Do not pool with Chromium.",
+  "groups": [
+    {
+      "size": "1mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "n": 3,
+        "median": 303.416244,
+        "range": [
+          292.95869400000083,
+          317.72304299999996
+        ]
+      },
+      "preciseDomMs": {
+        "n": 3,
+        "median": 255,
+        "range": [
+          246,
+          264
+        ]
+      },
+      "preciseSecondFrameMs": {
+        "n": 3,
+        "median": 274,
+        "range": [
+          265,
+          283
+        ]
+      },
+      "sources": [
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__1mb__firefox1__2026-10-18T07-50-07-629Z.json",
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__1mb__firefox2__2026-10-18T07-51-02-965Z.json",
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__1mb__firefox3__2026-10-18T07-51-57-695Z.json"
+      ]
+    },
+    {
+      "size": "10mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "n": 3,
+        "median": 2799.188075,
+        "range": [
+          2781.6644479999995,
+          2872.7171990000006
+        ]
+      },
+      "preciseDomMs": {
+        "n": 3,
+        "median": 1795,
+        "range": [
+          1768,
+          1850
+        ]
+      },
+      "preciseSecondFrameMs": {
+        "n": 3,
+        "median": 1856,
+        "range": [
+          1855,
+          1881
+        ]
+      },
+      "sources": [
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__10mb__firefox1__2026-10-18T07-50-21-376Z.json",
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__10mb__firefox2__2026-10-18T07-51-15-946Z.json",
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__10mb__firefox3__2026-10-18T07-52-11-036Z.json"
+      ]
+    },
+    {
+      "size": "50mb",
+      "runs": 3,
+      "outcomes": {
+        "ok": 3
+      },
+      "visibleMs": {
+        "n": 3,
+        "median": 14172.312010000001,
+        "range": [
+          13981.113625,
+          14456.519009
+        ]
+      },
+      "preciseDomMs": {
+        "n": 3,
+        "median": 12714,
+        "range": [
+          11824,
+          12906
+        ]
+      },
+      "preciseSecondFrameMs": {
+        "n": 3,
+        "median": 12723,
+        "range": [
+          12511,
+          12918
+        ]
+      },
+      "sources": [
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__50mb__firefox1__2026-10-18T07-50-37-234Z.json",
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__50mb__firefox2__2026-10-18T07-51-31-716Z.json",
+        "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__50mb__firefox3__2026-10-18T07-52-26-869Z.json"
+      ]
+    }
+  ],
+  "records": [
+    {
+      "site": "Tool Kumar",
+      "size": "10mb",
+      "run": 1,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:50:21.377Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "10mb",
+        "key": "10mb",
+        "format": "minified",
+        "minifiedSourceSha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "file": "bench-10mb.json",
+        "bytes": 9999719,
+        "characters": 9902626,
+        "lines": 1,
+        "sha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user6013@example.com",
+            "offset": 4966740,
+            "line": 1,
+            "column": 4966740
+          },
+          {
+            "name": "end",
+            "email": "user12025@example.com",
+            "offset": 9901805,
+            "line": 1,
+            "column": 9901805
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 2799.188075,
+      "loadAtStart": {
+        "one": 3.22,
+        "five": 3.66,
+        "fifteen": 3.08
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 77.02242099999967,
+      "elapsedAtStopMs": 2799.188075,
+      "precise": {
+        "t0": 7445,
+        "inputEnabledMs": null,
+        "domMs": 1768,
+        "nextFrameMs": 1769,
+        "secondFrameMs": 1855,
+        "treeDomMs": null,
+        "checks": 146,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": null,
+      "inputActivatedByClick": true,
+      "preciseAfterInputWait": {
+        "t0": 7445,
+        "inputEnabledMs": 4106,
+        "domMs": 1768,
+        "nextFrameMs": 1769,
+        "secondFrameMs": 1855,
+        "treeDomMs": null,
+        "checks": 146,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__10mb__firefox1__2026-10-18T07-50-21-376Z.jpg",
+      "memory": {
+        "peakTotal": 1139523584,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 11278958592,
+        "samples": 60,
+        "killed": null,
+        "timeline": [
+          [
+            812,
+            712,
+            0,
+            10966
+          ],
+          [
+            1810,
+            714,
+            0,
+            10954
+          ],
+          [
+            2811,
+            716,
+            0,
+            10940
+          ],
+          [
+            3814,
+            716,
+            0,
+            10885
+          ],
+          [
+            4813,
+            734,
+            0,
+            10883
+          ],
+          [
+            5817,
+            757,
+            0,
+            10979
+          ],
+          [
+            6827,
+            752,
+            0,
+            10962
+          ],
+          [
+            7827,
+            790,
+            0,
+            11000
+          ],
+          [
+            8826,
+            936,
+            0,
+            10815
+          ],
+          [
+            9835,
+            1033,
+            0,
+            10763
+          ],
+          [
+            10830,
+            1027,
+            0,
+            10856
+          ],
+          [
+            11713,
+            1087,
+            0,
+            10756
+          ]
+        ],
+        "startedAt": 1792309824044,
+        "current": {
+          "at": "2026-10-18T07:50:35.757Z",
+          "browserMiB": 1087,
+          "rendererMiB": 0,
+          "memAvailableMiB": 10756
+        }
+      },
+      "finishedAt": "2026-10-18T07:50:36.631Z",
+      "loadAtEnd": {
+        "one": 2.95,
+        "five": 3.57,
+        "fifteen": 3.06
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__10mb__firefox1__2026-10-18T07-50-21-376Z.json",
+      "sha256": "1693b8216e00b075ee05bef18e04cbffec63f1d1445e685155ce8afbf527f781"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "10mb",
+      "run": 2,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:51:15.947Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "10mb",
+        "key": "10mb",
+        "format": "minified",
+        "minifiedSourceSha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "file": "bench-10mb.json",
+        "bytes": 9999719,
+        "characters": 9902626,
+        "lines": 1,
+        "sha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user6013@example.com",
+            "offset": 4966740,
+            "line": 1,
+            "column": 4966740
+          },
+          {
+            "name": "end",
+            "email": "user12025@example.com",
+            "offset": 9901805,
+            "line": 1,
+            "column": 9901805
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 2781.6644479999995,
+      "loadAtStart": {
+        "one": 1.84,
+        "five": 3.21,
+        "fifteen": 2.96
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 77.03040599999986,
+      "elapsedAtStopMs": 2781.6644479999995,
+      "precise": {
+        "t0": 7389,
+        "inputEnabledMs": null,
+        "domMs": 1795,
+        "nextFrameMs": 1796,
+        "secondFrameMs": 1881,
+        "treeDomMs": null,
+        "checks": 154,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": null,
+      "inputActivatedByClick": true,
+      "preciseAfterInputWait": {
+        "t0": 7389,
+        "inputEnabledMs": 4058,
+        "domMs": 1795,
+        "nextFrameMs": 1796,
+        "secondFrameMs": 1881,
+        "treeDomMs": null,
+        "checks": 154,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__10mb__firefox2__2026-10-18T07-51-15-946Z.jpg",
+      "memory": {
+        "peakTotal": 1154023424,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 11662954496,
+        "samples": 59,
+        "killed": null,
+        "timeline": [
+          [
+            808,
+            721,
+            0,
+            11792
+          ],
+          [
+            1811,
+            721,
+            0,
+            11788
+          ],
+          [
+            2811,
+            722,
+            0,
+            11780
+          ],
+          [
+            3812,
+            722,
+            0,
+            11752
+          ],
+          [
+            4815,
+            742,
+            0,
+            11482
+          ],
+          [
+            5818,
+            764,
+            0,
+            11306
+          ],
+          [
+            6818,
+            757,
+            0,
+            11166
+          ],
+          [
+            7822,
+            792,
+            0,
+            11498
+          ],
+          [
+            8820,
+            944,
+            0,
+            11302
+          ],
+          [
+            9819,
+            1046,
+            0,
+            11245
+          ],
+          [
+            10819,
+            1038,
+            0,
+            11245
+          ]
+        ],
+        "startedAt": 1792309878634,
+        "current": {
+          "at": "2026-10-18T07:51:30.242Z",
+          "browserMiB": 1101,
+          "rendererMiB": 0,
+          "memAvailableMiB": 11240
+        }
+      },
+      "finishedAt": "2026-10-18T07:51:31.140Z",
+      "loadAtEnd": {
+        "one": 1.58,
+        "five": 3.09,
+        "fifteen": 2.93
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__10mb__firefox2__2026-10-18T07-51-15-946Z.json",
+      "sha256": "60ea9b39126fbb9434699f51ec7b9783d7f1271a93ebbc5dd75d67fe724ee3dc"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "10mb",
+      "run": 3,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:52:11.037Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "10mb",
+        "key": "10mb",
+        "format": "minified",
+        "minifiedSourceSha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "file": "bench-10mb.json",
+        "bytes": 9999719,
+        "characters": 9902626,
+        "lines": 1,
+        "sha256": "1fc37b1b236e28c4c3aa850ffd9100f2fc08f58f9c7a7d1e7006d034ee73a76d",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user6013@example.com",
+            "offset": 4966740,
+            "line": 1,
+            "column": 4966740
+          },
+          {
+            "name": "end",
+            "email": "user12025@example.com",
+            "offset": 9901805,
+            "line": 1,
+            "column": 9901805
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 2872.7171990000006,
+      "loadAtStart": {
+        "one": 1.56,
+        "five": 2.89,
+        "fifteen": 2.87
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 76.83153700000003,
+      "elapsedAtStopMs": 2872.7171990000006,
+      "precise": {
+        "t0": 7402,
+        "inputEnabledMs": null,
+        "domMs": 1850,
+        "nextFrameMs": 1850,
+        "secondFrameMs": 1856,
+        "treeDomMs": null,
+        "checks": 152,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": null,
+      "inputActivatedByClick": true,
+      "preciseAfterInputWait": {
+        "t0": 7402,
+        "inputEnabledMs": 4157,
+        "domMs": 1850,
+        "nextFrameMs": 1850,
+        "secondFrameMs": 1856,
+        "treeDomMs": null,
+        "checks": 152,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__10mb__firefox3__2026-10-18T07-52-11-036Z.jpg",
+      "memory": {
+        "peakTotal": 1153531904,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 11572969472,
+        "samples": 60,
+        "killed": null,
+        "timeline": [
+          [
+            811,
+            718,
+            0,
+            11609
+          ],
+          [
+            1812,
+            718,
+            0,
+            11594
+          ],
+          [
+            2814,
+            719,
+            0,
+            11350
+          ],
+          [
+            3813,
+            719,
+            0,
+            11230
+          ],
+          [
+            4815,
+            739,
+            0,
+            11072
+          ],
+          [
+            5817,
+            761,
+            0,
+            11352
+          ],
+          [
+            6817,
+            762,
+            0,
+            11385
+          ],
+          [
+            7822,
+            821,
+            0,
+            11468
+          ],
+          [
+            8820,
+            944,
+            0,
+            11358
+          ],
+          [
+            9822,
+            1032,
+            0,
+            11278
+          ],
+          [
+            10823,
+            1037,
+            0,
+            11280
+          ],
+          [
+            11718,
+            1100,
+            0,
+            11274
+          ]
+        ],
+        "startedAt": 1792309933737,
+        "current": {
+          "at": "2026-10-18T07:52:25.455Z",
+          "browserMiB": 1100,
+          "rendererMiB": 0,
+          "memAvailableMiB": 11274
+        }
+      },
+      "finishedAt": "2026-10-18T07:52:26.298Z",
+      "loadAtEnd": {
+        "one": 1.79,
+        "five": 2.88,
+        "fifteen": 2.86
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__10mb__firefox3__2026-10-18T07-52-11-036Z.json",
+      "sha256": "1568ccaa258d276138cc7ba80d29c68f64f28f8f0ec8e97b16eb77a9e4c3457e"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "1mb",
+      "run": 1,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:50:07.629Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "1mb",
+        "key": "1mb",
+        "format": "minified",
+        "minifiedSourceSha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "file": "bench-1mb.json",
+        "bytes": 999554,
+        "characters": 990220,
+        "lines": 1,
+        "sha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 355,
+            "line": 1,
+            "column": 355
+          },
+          {
+            "name": "middle",
+            "email": "user603@example.com",
+            "offset": 495594,
+            "line": 1,
+            "column": 495594
+          },
+          {
+            "name": "end",
+            "email": "user1204@example.com",
+            "offset": 989401,
+            "line": 1,
+            "column": 989401
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 317.72304299999996,
+      "loadAtStart": {
+        "one": 3.72,
+        "five": 3.76,
+        "fifteen": 3.11
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 75.74753699999928,
+      "elapsedAtStopMs": 317.72304299999996,
+      "precise": {
+        "t0": 7424,
+        "inputEnabledMs": null,
+        "domMs": 264,
+        "nextFrameMs": 264,
+        "secondFrameMs": 283,
+        "treeDomMs": null,
+        "checks": 16,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": null,
+      "inputActivatedByClick": true,
+      "preciseAfterInputWait": {
+        "t0": 7424,
+        "inputEnabledMs": 1444,
+        "domMs": 264,
+        "nextFrameMs": 264,
+        "secondFrameMs": 283,
+        "treeDomMs": null,
+        "checks": 16,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__1mb__firefox1__2026-10-18T07-50-07-629Z.jpg",
+      "memory": {
+        "peakTotal": 856453120,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 11509231616,
+        "samples": 47,
+        "killed": null,
+        "timeline": [
+          [
+            810,
+            713,
+            0,
+            10987
+          ],
+          [
+            1809,
+            713,
+            0,
+            10989
+          ],
+          [
+            2812,
+            714,
+            0,
+            10986
+          ],
+          [
+            3815,
+            714,
+            0,
+            10976
+          ],
+          [
+            4816,
+            734,
+            0,
+            10982
+          ],
+          [
+            5816,
+            756,
+            0,
+            11064
+          ],
+          [
+            6818,
+            750,
+            0,
+            11099
+          ],
+          [
+            7818,
+            776,
+            0,
+            11099
+          ],
+          [
+            8824,
+            806,
+            0,
+            11049
+          ]
+        ],
+        "startedAt": 1792309810806,
+        "current": {
+          "at": "2026-10-18T07:50:19.838Z",
+          "browserMiB": 817,
+          "rendererMiB": 0,
+          "memAvailableMiB": 11016
+        }
+      },
+      "finishedAt": "2026-10-18T07:50:20.807Z",
+      "loadAtEnd": {
+        "one": 3.22,
+        "five": 3.66,
+        "fifteen": 3.08
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__1mb__firefox1__2026-10-18T07-50-07-629Z.json",
+      "sha256": "4fecc5e30270248556612f607f5ca85bd6b8037162c799b0131d11edebbe1f9a"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "1mb",
+      "run": 2,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:51:02.965Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "1mb",
+        "key": "1mb",
+        "format": "minified",
+        "minifiedSourceSha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "file": "bench-1mb.json",
+        "bytes": 999554,
+        "characters": 990220,
+        "lines": 1,
+        "sha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 355,
+            "line": 1,
+            "column": 355
+          },
+          {
+            "name": "middle",
+            "email": "user603@example.com",
+            "offset": 495594,
+            "line": 1,
+            "column": 495594
+          },
+          {
+            "name": "end",
+            "email": "user1204@example.com",
+            "offset": 989401,
+            "line": 1,
+            "column": 989401
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 292.95869400000083,
+      "loadAtStart": {
+        "one": 2.17,
+        "five": 3.33,
+        "fifteen": 3
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 77.28426500000023,
+      "elapsedAtStopMs": 292.95869400000083,
+      "precise": {
+        "t0": 7427,
+        "inputEnabledMs": null,
+        "domMs": 246,
+        "nextFrameMs": 247,
+        "secondFrameMs": 265,
+        "treeDomMs": null,
+        "checks": 14,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": null,
+      "inputActivatedByClick": true,
+      "preciseAfterInputWait": {
+        "t0": 7427,
+        "inputEnabledMs": 1413,
+        "domMs": 246,
+        "nextFrameMs": 247,
+        "secondFrameMs": 265,
+        "treeDomMs": null,
+        "checks": 14,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__1mb__firefox2__2026-10-18T07-51-02-965Z.jpg",
+      "memory": {
+        "peakTotal": 859668480,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 12215230464,
+        "samples": 46,
+        "killed": null,
+        "timeline": [
+          [
+            808,
+            717,
+            0,
+            11651
+          ],
+          [
+            1809,
+            718,
+            0,
+            11651
+          ],
+          [
+            2811,
+            719,
+            0,
+            11649
+          ],
+          [
+            3812,
+            719,
+            0,
+            11652
+          ],
+          [
+            4813,
+            738,
+            0,
+            11665
+          ],
+          [
+            5813,
+            760,
+            0,
+            11667
+          ],
+          [
+            6814,
+            761,
+            0,
+            11675
+          ],
+          [
+            7815,
+            774,
+            0,
+            11708
+          ],
+          [
+            8816,
+            808,
+            0,
+            11685
+          ]
+        ],
+        "startedAt": 1792309865501,
+        "current": {
+          "at": "2026-10-18T07:51:14.514Z",
+          "browserMiB": 820,
+          "rendererMiB": 0,
+          "memAvailableMiB": 11684
+        }
+      },
+      "finishedAt": "2026-10-18T07:51:15.390Z",
+      "loadAtEnd": {
+        "one": 1.84,
+        "five": 3.21,
+        "fifteen": 2.96
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__1mb__firefox2__2026-10-18T07-51-02-965Z.json",
+      "sha256": "4e997df19c42df8450da855132bbe5e4d69e5e62556aa222b295675be6ec373d"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "1mb",
+      "run": 3,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:51:57.696Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "1mb",
+        "key": "1mb",
+        "format": "minified",
+        "minifiedSourceSha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "file": "bench-1mb.json",
+        "bytes": 999554,
+        "characters": 990220,
+        "lines": 1,
+        "sha256": "eb614d34851b87cc1fe0eee6e8610b32ed63d750db51891469f1ecd34fce63ed",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 355,
+            "line": 1,
+            "column": 355
+          },
+          {
+            "name": "middle",
+            "email": "user603@example.com",
+            "offset": 495594,
+            "line": 1,
+            "column": 495594
+          },
+          {
+            "name": "end",
+            "email": "user1204@example.com",
+            "offset": 989401,
+            "line": 1,
+            "column": 989401
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 303.416244,
+      "loadAtStart": {
+        "one": 1.57,
+        "five": 2.94,
+        "fifteen": 2.88
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 87.93284099999983,
+      "elapsedAtStopMs": 303.416244,
+      "precise": {
+        "t0": 7482,
+        "inputEnabledMs": null,
+        "domMs": 255,
+        "nextFrameMs": 256,
+        "secondFrameMs": 274,
+        "treeDomMs": null,
+        "checks": 16,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": null,
+      "inputActivatedByClick": true,
+      "preciseAfterInputWait": {
+        "t0": 7482,
+        "inputEnabledMs": 1430,
+        "domMs": 255,
+        "nextFrameMs": 256,
+        "secondFrameMs": 274,
+        "treeDomMs": null,
+        "checks": 16,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__1mb__firefox3__2026-10-18T07-51-57-695Z.jpg",
+      "memory": {
+        "peakTotal": 858066944,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 11275034624,
+        "samples": 47,
+        "killed": null,
+        "timeline": [
+          [
+            811,
+            712,
+            0,
+            11464
+          ],
+          [
+            1809,
+            717,
+            0,
+            11310
+          ],
+          [
+            2820,
+            718,
+            0,
+            10966
+          ],
+          [
+            3819,
+            718,
+            0,
+            10753
+          ],
+          [
+            4821,
+            732,
+            0,
+            10837
+          ],
+          [
+            5822,
+            758,
+            0,
+            10777
+          ],
+          [
+            6821,
+            758,
+            0,
+            11123
+          ],
+          [
+            7821,
+            777,
+            0,
+            11197
+          ],
+          [
+            8821,
+            808,
+            0,
+            11219
+          ]
+        ],
+        "startedAt": 1792309920525,
+        "current": {
+          "at": "2026-10-18T07:52:09.615Z",
+          "browserMiB": 818,
+          "rendererMiB": 0,
+          "memAvailableMiB": 11221
+        }
+      },
+      "finishedAt": "2026-10-18T07:52:10.485Z",
+      "loadAtEnd": {
+        "one": 1.56,
+        "five": 2.89,
+        "fifteen": 2.87
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__1mb__firefox3__2026-10-18T07-51-57-695Z.json",
+      "sha256": "55301ba59829fb3228b565f752fc4cd5ada750db5accada74c56a82e130c59dc"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "50mb",
+      "run": 1,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:50:37.235Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "50mb",
+        "key": "50mb",
+        "format": "minified",
+        "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "file": "bench-50mb.json",
+        "bytes": 49998859,
+        "characters": 49518236,
+        "lines": 1,
+        "sha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user30026@example.com",
+            "offset": 24766824,
+            "line": 1,
+            "column": 24766824
+          },
+          {
+            "name": "end",
+            "email": "user60051@example.com",
+            "offset": 49517415,
+            "line": 1,
+            "column": 49517415
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 13981.113625,
+      "loadAtStart": {
+        "one": 2.87,
+        "five": 3.55,
+        "fifteen": 3.06
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 74.34329999999864,
+      "elapsedAtStopMs": 13981.113625,
+      "precise": {
+        "t0": 7447,
+        "inputEnabledMs": null,
+        "domMs": 11824,
+        "nextFrameMs": 11824,
+        "secondFrameMs": 12511,
+        "treeDomMs": null,
+        "checks": 602,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": "Large document (47.7 MB) is read-only for speed. Everything on the right still works.\nEdit anyway",
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__50mb__firefox1__2026-10-18T07-50-37-234Z.jpg",
+      "memory": {
+        "peakTotal": 2405167104,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 10441211904,
+        "samples": 109,
+        "killed": null,
+        "timeline": [
+          [
+            817,
+            711,
+            0,
+            11018
+          ],
+          [
+            1809,
+            714,
+            0,
+            11086
+          ],
+          [
+            2812,
+            715,
+            0,
+            11030
+          ],
+          [
+            3813,
+            715,
+            0,
+            11059
+          ],
+          [
+            4814,
+            735,
+            0,
+            11525
+          ],
+          [
+            5814,
+            757,
+            0,
+            11536
+          ],
+          [
+            6815,
+            751,
+            0,
+            11551
+          ],
+          [
+            7815,
+            887,
+            0,
+            11482
+          ],
+          [
+            8817,
+            947,
+            0,
+            11212
+          ],
+          [
+            9817,
+            1081,
+            0,
+            11212
+          ],
+          [
+            10817,
+            1482,
+            0,
+            10737
+          ],
+          [
+            11818,
+            1291,
+            0,
+            10789
+          ],
+          [
+            12819,
+            1561,
+            0,
+            10395
+          ],
+          [
+            13819,
+            1406,
+            0,
+            10491
+          ],
+          [
+            14820,
+            1495,
+            0,
+            10505
+          ],
+          [
+            15820,
+            1659,
+            0,
+            10505
+          ],
+          [
+            16820,
+            1788,
+            0,
+            10433
+          ],
+          [
+            17820,
+            1984,
+            0,
+            10236
+          ],
+          [
+            18823,
+            2041,
+            0,
+            10195
+          ],
+          [
+            19821,
+            2050,
+            0,
+            10207
+          ],
+          [
+            20823,
+            2113,
+            0,
+            10148
+          ]
+        ],
+        "startedAt": 1792309839923,
+        "current": {
+          "at": "2026-10-18T07:51:01.519Z",
+          "browserMiB": 2294,
+          "rendererMiB": 0,
+          "memAvailableMiB": 9958
+        }
+      },
+      "finishedAt": "2026-10-18T07:51:02.422Z",
+      "loadAtEnd": {
+        "one": 2.17,
+        "five": 3.33,
+        "fifteen": 3
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__50mb__firefox1__2026-10-18T07-50-37-234Z.json",
+      "sha256": "b0a71c76dc171786a019d42dc27fb3ccf189fa08f5eccec640f00d590214ddae"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "50mb",
+      "run": 2,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:51:31.716Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "50mb",
+        "key": "50mb",
+        "format": "minified",
+        "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "file": "bench-50mb.json",
+        "bytes": 49998859,
+        "characters": 49518236,
+        "lines": 1,
+        "sha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user30026@example.com",
+            "offset": 24766824,
+            "line": 1,
+            "column": 24766824
+          },
+          {
+            "name": "end",
+            "email": "user60051@example.com",
+            "offset": 49517415,
+            "line": 1,
+            "column": 49517415
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 14172.312010000001,
+      "loadAtStart": {
+        "one": 1.58,
+        "five": 3.09,
+        "fifteen": 2.93
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 75.19056500000079,
+      "elapsedAtStopMs": 14172.312010000001,
+      "precise": {
+        "t0": 7404,
+        "inputEnabledMs": null,
+        "domMs": 12714,
+        "nextFrameMs": 12716,
+        "secondFrameMs": 12723,
+        "treeDomMs": null,
+        "checks": 609,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": "Large document (47.7 MB) is read-only for speed. Everything on the right still works.\nEdit anyway",
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__50mb__firefox2__2026-10-18T07-51-31-716Z.jpg",
+      "memory": {
+        "peakTotal": 2411188224,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 10504617984,
+        "samples": 110,
+        "killed": null,
+        "timeline": [
+          [
+            812,
+            717,
+            0,
+            11697
+          ],
+          [
+            1813,
+            718,
+            0,
+            11700
+          ],
+          [
+            2810,
+            719,
+            0,
+            11702
+          ],
+          [
+            3811,
+            719,
+            0,
+            11742
+          ],
+          [
+            4811,
+            739,
+            0,
+            11735
+          ],
+          [
+            5811,
+            761,
+            0,
+            11714
+          ],
+          [
+            6812,
+            754,
+            0,
+            11715
+          ],
+          [
+            7812,
+            961,
+            0,
+            11509
+          ],
+          [
+            8813,
+            954,
+            0,
+            11219
+          ],
+          [
+            9814,
+            1087,
+            0,
+            11207
+          ],
+          [
+            10815,
+            1485,
+            0,
+            10683
+          ],
+          [
+            11818,
+            1286,
+            0,
+            10748
+          ],
+          [
+            12818,
+            1559,
+            0,
+            10401
+          ],
+          [
+            13817,
+            1588,
+            0,
+            10425
+          ],
+          [
+            14817,
+            1681,
+            0,
+            10438
+          ],
+          [
+            15818,
+            1661,
+            0,
+            10479
+          ],
+          [
+            16823,
+            1791,
+            0,
+            10443
+          ],
+          [
+            17821,
+            1985,
+            0,
+            10292
+          ],
+          [
+            18821,
+            2042,
+            0,
+            10274
+          ],
+          [
+            19822,
+            2052,
+            0,
+            10288
+          ],
+          [
+            20823,
+            2106,
+            0,
+            10256
+          ],
+          [
+            21757,
+            2299,
+            0,
+            10029
+          ]
+        ],
+        "startedAt": 1792309894459,
+        "current": {
+          "at": "2026-10-18T07:51:56.216Z",
+          "browserMiB": 2299,
+          "rendererMiB": 0,
+          "memAvailableMiB": 10029
+        }
+      },
+      "finishedAt": "2026-10-18T07:51:57.143Z",
+      "loadAtEnd": {
+        "one": 1.57,
+        "five": 2.94,
+        "fifteen": 2.88
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__50mb__firefox2__2026-10-18T07-51-31-716Z.json",
+      "sha256": "d417563759ce3d3280c4b51d7135438e776e5e82e177d398ebcc3f8a94cad45d"
+    },
+    {
+      "site": "Tool Kumar",
+      "size": "50mb",
+      "run": 3,
+      "inputPath": "file",
+      "purpose": "firefox-opening-supplement",
+      "startedAt": "2026-10-18T07:52:26.869Z",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T07-50-03-673Z",
+      "fixture": {
+        "size": "50mb",
+        "key": "50mb",
+        "format": "minified",
+        "minifiedSourceSha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "file": "bench-50mb.json",
+        "bytes": 49998859,
+        "characters": 49518236,
+        "lines": 1,
+        "sha256": "c3e4ee5212c3500aaaf24c8a518c446ca4004ab6a3ed98b0b5037bdbec4ceb23",
+        "positions": [
+          {
+            "name": "start",
+            "email": "user1@example.com",
+            "offset": 356,
+            "line": 1,
+            "column": 356
+          },
+          {
+            "name": "middle",
+            "email": "user30026@example.com",
+            "offset": 24766824,
+            "line": 1,
+            "column": 24766824
+          },
+          {
+            "name": "end",
+            "email": "user60051@example.com",
+            "offset": 49517415,
+            "line": 1,
+            "column": 49517415
+          }
+        ]
+      },
+      "status": "ok",
+      "visibleMs": 14456.519009,
+      "loadAtStart": {
+        "one": 1.72,
+        "five": 2.85,
+        "fifteen": 2.85
+      },
+      "browserEngine": "Firefox",
+      "method": "Fresh Firefox profile; headless; hardware acceleration disabled; browser disk/memory cache disabled; 1366 x 900; six-second settle and one-second pre-input wait; inherited done predicate, 100 ms polls and two rAFs. Separately labeled from Chromium. No historical Firefox measurement is available for a code-regression estimate.",
+      "harnessSha256": "6a72bd035717668e7ba7a6cbb73adb922981e7c98dc4e3dcb8b269cb360ff34d",
+      "browserVersion": "146.0.1",
+      "buildEvidence": {
+        "scripts": [
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2fit-8iqaeomr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mpy02yim0zkn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3d_skoiftvu63.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3mrc83u51gl38.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0lrr8jq7ebqlr.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3qnxs_p5ukjw9.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3c9ols_k4zaty.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2ecmq-isjn1am.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3f1b7erk1aajs.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+          "https://tools.vikasmaur.com/04beb0917f4f37dc/script.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0mek_9suo7q2m.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3czbtsgpmxhbq.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2vacpt7vg90xv.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3fr822_-14kx7.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2k3qqs47vu14r.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/3n37u1uwe6kke.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/0bz4bll_ucgt6.js",
+          "https://tools.vikasmaur.com/_next/static/immutable/chunks/2tfs2-dt7rhaf.js"
+        ],
+        "title": "Free JSON Viewer & Formatter | Tool Kumar"
+      },
+      "inputDispatchMs": 77.21010899999965,
+      "elapsedAtStopMs": 14456.519009,
+      "precise": {
+        "t0": 7395,
+        "inputEnabledMs": null,
+        "domMs": 12906,
+        "nextFrameMs": 12908,
+        "secondFrameMs": 12918,
+        "treeDomMs": null,
+        "checks": 625,
+        "treeNote": "Hidden Tree DOM only; internal readiness is not observable without switching views."
+      },
+      "readOnlyNotice": "Large document (47.7 MB) is read-only for speed. Everything on the right still works.\nEdit anyway",
+      "requestsAfterInput": [
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/3fe682a82f50d426-s.200l3jur7oygh.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        },
+        {
+          "url": "https://tools.vikasmaur.com/_next/static/immutable/media/89b21bb081cb7469-s.40kcwrf1wub16.woff2",
+          "method": "GET",
+          "postBytes": 0,
+          "marker": false
+        }
+      ],
+      "documentUploadObserved": false,
+      "screenshot": "evidence/firefox/tool-kumar__50mb__firefox3__2026-10-18T07-52-26-869Z.jpg",
+      "memory": {
+        "peakTotal": 2412191744,
+        "peakRenderer": 0,
+        "peakRendererPid": null,
+        "minMemAvailable": 9363632128,
+        "samples": 111,
+        "killed": null,
+        "timeline": [
+          [
+            810,
+            716,
+            0,
+            11586
+          ],
+          [
+            1811,
+            719,
+            0,
+            11391
+          ],
+          [
+            2811,
+            720,
+            0,
+            11285
+          ],
+          [
+            3811,
+            720,
+            0,
+            11152
+          ],
+          [
+            4819,
+            740,
+            0,
+            11042
+          ],
+          [
+            5820,
+            761,
+            0,
+            10980
+          ],
+          [
+            6818,
+            763,
+            0,
+            10976
+          ],
+          [
+            7818,
+            966,
+            0,
+            10759
+          ],
+          [
+            8818,
+            952,
+            0,
+            10537
+          ],
+          [
+            9823,
+            1076,
+            0,
+            10486
+          ],
+          [
+            10831,
+            1480,
+            0,
+            9998
+          ],
+          [
+            11834,
+            1279,
+            0,
+            10080
+          ],
+          [
+            12829,
+            1584,
+            0,
+            9874
+          ],
+          [
+            13832,
+            1583,
+            0,
+            9885
+          ],
+          [
+            14832,
+            1658,
+            0,
+            9807
+          ],
+          [
+            15834,
+            1638,
+            0,
+            9732
+          ],
+          [
+            16832,
+            1768,
+            0,
+            9603
+          ],
+          [
+            17834,
+            1965,
+            0,
+            9537
+          ],
+          [
+            18837,
+            2043,
+            0,
+            9430
+          ],
+          [
+            19835,
+            2054,
+            0,
+            9397
+          ],
+          [
+            20837,
+            2092,
+            0,
+            9284
+          ],
+          [
+            21842,
+            2261,
+            0,
+            8930
+          ]
+        ],
+        "startedAt": 1792309949401,
+        "current": {
+          "at": "2026-10-18T07:52:51.439Z",
+          "browserMiB": 2300,
+          "rendererMiB": 0,
+          "memAvailableMiB": 9084
+        }
+      },
+      "finishedAt": "2026-10-18T07:52:52.371Z",
+      "loadAtEnd": {
+        "one": 2.77,
+        "five": 3,
+        "fifteen": 2.9
+      },
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/firefox/tool-kumar__50mb__firefox3__2026-10-18T07-52-26-869Z.json",
+      "sha256": "b8611dcaa6bff2c7e2733e324d28452fcb3be34c97253612c9a3207ecab11220"
+    }
+  ]
+}

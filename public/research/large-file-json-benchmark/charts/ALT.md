@@ -11,7 +11,12 @@ Earlier Tool Kumar-only 50 MB data after Edit anyway, 6 GiB browser budget and d
 
 ## Current six-tool comparison
 
-- `opening-before-after.svg`: Original Tool Kumar at 19b7ac7 on two CPUs and a 2.5 GiB browser budget, next to 925fc3c on four CPUs with a 6 GiB budget. The table states all three sizes, ranges and run counts. The production difference combines host, budget and code changes. The local code-control chart retains one hardware and memory condition.
-- `outcomes.svg`: Three scheduled attempts per tool and size with the same 6 GiB browser budget. Filled squares count successful formatted/tree views. Full-run cap stops are printed separately. An obstructed page has no successful median.
-- `renderer-memory.svg`: Paired median renderer peaks to the view or stop and over the full run for all six tools, in MiB. Full-run cap counts refer to the total browser tree. Advertising and feature work contribute to the full window.
-- `editing-latency.svg`: Median and p95 trusted keydown-to-next-rAF response, with minified and prettified copies of the same data. Solid and outlined circles distinguish formats. The scale is logarithmic. Incomplete cells show their actual complete/attempted profiles. Event Timing thresholds, output updates and freezes remain in the table.
+
+## October 18 targeted refresh
+
+- `opening-before-after.svg`: Original October 15 Tool Kumar opening, designated October 17 initial results and October 18 production 95945cd. The original host and browser budget differ. This is not a code-only comparison.
+- `outcomes.svg`: Tool Kumar October 18 openings, JSON Formatter Online October 18 at 10 MB and retained October 17 competitor cells. Same 6 GiB budget. First-view medians and later stops stay separate.
+- `editing-latency.svg`: Fresh October 18 Tool Kumar and JSON Formatter Online trusted keydown-to-rAF median and p95 at 100 KB and 10 MB in both formats. Event Timing and output completion remain separate in the table.
+- `output-update-refresh.svg`: October 17 and October 18 first-caret visible-output medians after scalar bursts at 50 MB, after Edit anyway. Every cell shows its confirmed interval count.
+- `renderer-memory.svg`: Dated renderer peaks to view or stop and across the full feature run. Tool Kumar October 18, JFO 10 MB October 18, other cells October 17.
+- `local-code-opening.svg` remains the historical local 19b7ac7/aee1ae3/925fc3c comparison. It does not contain 95945cd.

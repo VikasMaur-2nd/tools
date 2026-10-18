@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-10-17T09:22:35.567833+00:00",
+  "generatedAt": "2026-10-18T07:52:56.934646+00:00",
   "method": "Compare rendered numeric tokens using arbitrary-precision Decimal. Grade Format and packed-tree views separately. Duplicate members are separate from numeric values.",
   "runs": [
     {
-      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run1__2026-10-17T07-55-23-842Z.json",
-      "sha256": "9ee6ae14dae44b75e582bbcc599137b4a395cbc9dc65f6982c474c0140e8a2d4",
-      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
-      "batchId": "2026-10-17T07-55-20-428Z",
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run1__2026-10-18T06-24-21-248Z.json",
+      "sha256": "c1bb5ed4b9da8958cc32d6a68542a83f83ac1103784baebce0047bb5be5e9fa5",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T06-23-53-273Z",
       "workerPath": false,
-      "startedAt": "2026-10-17T07:55:26.030Z",
+      "startedAt": "2026-10-18T06:24:23.431Z",
       "status": "captured",
       "reason": null,
       "workerEvents": null,
@@ -110,8 +110,8 @@
             }
           ],
           "captures": [
-            "tool-kumar__run1__2026-10-17T07-55-23-842Z__capture0.txt",
-            "tool-kumar__run1__2026-10-17T07-55-23-842Z__capture1.txt"
+            "tool-kumar__run1__2026-10-18T06-24-21-248Z__capture0.txt",
+            "tool-kumar__run1__2026-10-18T06-24-21-248Z__capture1.txt"
           ]
         }
       ],
@@ -119,16 +119,15 @@
         "file": "fidelity.json",
         "bytes": 425,
         "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
-      },
-      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run1__2026-10-17T07-55-23-842Z.json"
+      }
     },
     {
-      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run2__2026-10-17T08-00-09-899Z.json",
-      "sha256": "5bf60ce9b8a98709ef57da32bedadec8ca00b2c5a1e493fe8deed3157ed3b684",
-      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
-      "batchId": "2026-10-17T08-00-06-352Z",
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run2__2026-10-18T06-29-28-849Z.json",
+      "sha256": "f2e4e0be90dffdf63f50fe36d4728a9f9dda858adf0b7c6e32f4a570369c8362",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T06-27-33-970Z",
       "workerPath": false,
-      "startedAt": "2026-10-17T08:00:12.108Z",
+      "startedAt": "2026-10-18T06:29:31.040Z",
       "status": "captured",
       "reason": null,
       "workerEvents": null,
@@ -230,8 +229,8 @@
             }
           ],
           "captures": [
-            "tool-kumar__run2__2026-10-17T08-00-09-899Z__capture0.txt",
-            "tool-kumar__run2__2026-10-17T08-00-09-899Z__capture1.txt"
+            "tool-kumar__run2__2026-10-18T06-29-28-849Z__capture0.txt",
+            "tool-kumar__run2__2026-10-18T06-29-28-849Z__capture1.txt"
           ]
         }
       ],
@@ -239,22 +238,45 @@
         "file": "fidelity.json",
         "bytes": 425,
         "sha256": "ef467b7b31d961aba682a2ecd6bc3911ab6cb83e0510ce74e92cad903be0ed4c"
-      },
-      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run2__2026-10-17T08-00-09-899Z.json"
+      }
     },
     {
-      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run3__2026-10-17T07-53-31-023Z.json",
-      "sha256": "78afdb48d3377cf5b3d444e19f5cd478048f3ec3d990f7f239fef9f2b49d731a",
-      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
-      "batchId": "2026-10-17T07-53-27-396Z",
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run3__2026-10-18T06-24-34-810Z.json",
+      "sha256": "1a9a8ac88545bad0437bb45f6d25e6a77f434213cd6fada06cac76659bc06b9e",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T06-23-53-273Z",
       "workerPath": true,
-      "startedAt": "2026-10-17T07:53:33.237Z",
+      "startedAt": "2026-10-18T06:24:37.083Z",
+      "status": "could not be checked",
+      "reason": "No packed tree observed after the edit",
+      "workerEvents": null,
+      "workerEventsBeforeEdit": 25,
+      "trustedEdit": {
+        "method": "CDP Input.insertText",
+        "text": " ",
+        "position": "document start"
+      },
+      "views": [],
+      "fixture": {
+        "file": "fidelity-worker.json",
+        "bytes": 2100438,
+        "sha256": "325a1f6b66fe3a922079329d233e1cd0d07253c50d87c3610e1c578c49d0bdd7"
+      }
+    },
+    {
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run3__2026-10-18T06-30-00-507Z.json",
+      "sha256": "28b46a629a2bd4e354805ba9fb0f9b3fa5a7db50c48c1724b9e38d3ea6b86c90",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T06-27-33-970Z",
+      "workerPath": true,
+      "startedAt": "2026-10-18T06:30:02.704Z",
       "status": "captured",
       "reason": null,
       "workerEvents": [
         {
           "direction": "sent",
           "id": -1,
+          "edit": false,
           "textLength": 36581
         },
         {
@@ -265,61 +287,77 @@
         },
         {
           "direction": "sent",
+          "id": 0,
+          "edit": false
+        },
+        {
+          "direction": "sent",
           "id": 2,
           "parse": false,
+          "fast": true,
+          "edit": false,
           "start": true
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 52437,
           "last": true
         },
@@ -385,61 +423,104 @@
         },
         {
           "direction": "sent",
+          "id": 2,
+          "edit": false
+        },
+        {
+          "direction": "sent",
+          "id": 3,
+          "edit": false
+        },
+        {
+          "direction": "sent",
+          "id": 4,
+          "edit": false
+        },
+        {
+          "direction": "sent",
           "id": 5,
-          "parse": true,
+          "parse": false,
+          "fast": true,
+          "edit": true
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "edit": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "analysis": true,
+          "edit": false,
           "start": true
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 52438,
           "last": true
         },
@@ -454,19 +535,14 @@
           "id": 5,
           "tree": false,
           "output": false
-        },
-        {
-          "direction": "received",
-          "id": 5,
-          "tree": false,
-          "output": false
         }
       ],
-      "workerEventsBeforeEdit": 22,
+      "workerEventsBeforeEdit": 25,
       "trustedEdit": {
         "method": "CDP Input.insertText",
-        "text": " ",
-        "position": "document start"
+        "text": "X",
+        "position": "Inside the export string scalar, after customers",
+        "passageOffset": 21
       },
       "views": [
         {
@@ -564,8 +640,8 @@
             }
           ],
           "captures": [
-            "tool-kumar__run3__2026-10-17T07-53-31-023Z__capture0.txt",
-            "tool-kumar__run3__2026-10-17T07-53-31-023Z__capture1.txt"
+            "tool-kumar__run3__2026-10-18T06-30-00-507Z__capture0.txt",
+            "tool-kumar__run3__2026-10-18T06-30-00-507Z__capture1.txt"
           ]
         },
         {
@@ -663,7 +739,7 @@
             }
           ],
           "captures": [
-            "tool-kumar__run3__2026-10-17T07-53-31-023Z__capture2.txt"
+            "tool-kumar__run3__2026-10-18T06-30-00-507Z__capture2.txt"
           ]
         }
       ],
@@ -671,22 +747,22 @@
         "file": "fidelity-worker.json",
         "bytes": 2100438,
         "sha256": "325a1f6b66fe3a922079329d233e1cd0d07253c50d87c3610e1c578c49d0bdd7"
-      },
-      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run3__2026-10-17T07-53-31-023Z.json"
+      }
     },
     {
-      "source": "results/2026-10-17-925fc3c/results/raw-fidelity/2026-10-17/tool-kumar__run4__2026-10-17T07-55-37-244Z.json",
-      "sha256": "064ddbb3252cb4e84773e5ee05144ba777125c5e2bae43f6c91a091b0b0e20ce",
-      "productionCommit": "925fc3c6f004552a8cdea9628699de9735682d01",
-      "batchId": "2026-10-17T07-55-20-428Z",
+      "source": "results/refresh-2026-10-18T06-23-00-569Z/results/raw-fidelity/2026-10-18/tool-kumar__run4__2026-10-18T06-29-42-038Z.json",
+      "sha256": "34b84e2904f0aee8ed4e1fa5137d55a649327f5e73419517a3039190a2cd7482",
+      "productionCommit": "95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a",
+      "batchId": "2026-10-18T06-27-33-970Z",
       "workerPath": true,
-      "startedAt": "2026-10-17T07:55:39.447Z",
+      "startedAt": "2026-10-18T06:29:44.216Z",
       "status": "captured",
       "reason": null,
       "workerEvents": [
         {
           "direction": "sent",
           "id": -1,
+          "edit": false,
           "textLength": 36581
         },
         {
@@ -697,61 +773,77 @@
         },
         {
           "direction": "sent",
+          "id": 0,
+          "edit": false
+        },
+        {
+          "direction": "sent",
           "id": 2,
           "parse": false,
+          "fast": true,
+          "edit": false,
           "start": true
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 2,
+          "edit": false,
           "chunkLength": 52437,
           "last": true
         },
@@ -817,61 +909,104 @@
         },
         {
           "direction": "sent",
+          "id": 2,
+          "edit": false
+        },
+        {
+          "direction": "sent",
+          "id": 3,
+          "edit": false
+        },
+        {
+          "direction": "sent",
+          "id": 4,
+          "edit": false
+        },
+        {
+          "direction": "sent",
           "id": 5,
-          "parse": true,
+          "parse": false,
+          "fast": true,
+          "edit": true
+        },
+        {
+          "direction": "received",
+          "id": 5,
+          "tree": false,
+          "output": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "edit": false
+        },
+        {
+          "direction": "sent",
+          "id": 5,
+          "analysis": true,
+          "edit": false,
           "start": true
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 256000,
           "last": false
         },
         {
           "direction": "sent",
           "id": 5,
+          "edit": false,
           "chunkLength": 52438,
           "last": true
         },
@@ -886,19 +1021,14 @@
           "id": 5,
           "tree": false,
           "output": false
-        },
-        {
-          "direction": "received",
-          "id": 5,
-          "tree": false,
-          "output": false
         }
       ],
-      "workerEventsBeforeEdit": 22,
+      "workerEventsBeforeEdit": 25,
       "trustedEdit": {
         "method": "CDP Input.insertText",
-        "text": " ",
-        "position": "document start"
+        "text": "X",
+        "position": "Inside the export string scalar, after customers",
+        "passageOffset": 21
       },
       "views": [
         {
@@ -996,8 +1126,8 @@
             }
           ],
           "captures": [
-            "tool-kumar__run4__2026-10-17T07-55-37-244Z__capture0.txt",
-            "tool-kumar__run4__2026-10-17T07-55-37-244Z__capture1.txt"
+            "tool-kumar__run4__2026-10-18T06-29-42-038Z__capture0.txt",
+            "tool-kumar__run4__2026-10-18T06-29-42-038Z__capture1.txt"
           ]
         },
         {
@@ -1095,7 +1225,7 @@
             }
           ],
           "captures": [
-            "tool-kumar__run4__2026-10-17T07-55-37-244Z__capture2.txt"
+            "tool-kumar__run4__2026-10-18T06-29-42-038Z__capture2.txt"
           ]
         }
       ],
@@ -1103,8 +1233,7 @@
         "file": "fidelity-worker.json",
         "bytes": 2100438,
         "sha256": "325a1f6b66fe3a922079329d233e1cd0d07253c50d87c3610e1c578c49d0bdd7"
-      },
-      "sourceRelativeToResultDirectory": "results/raw-fidelity/2026-10-17/tool-kumar__run4__2026-10-17T07-55-37-244Z.json"
+      }
     }
   ],
   "excludedAttempts": []

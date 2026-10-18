@@ -1,5 +1,32 @@
 # Methodology: opening 1 MB, 10 MB and 50 MB JSON in online JSON viewers
 
+<!-- BEGIN 95945cd refresh -->
+## Production 95945cd refresh, October 18, 2026
+
+Production `95945cd06fbc70cfdf1cd85acaa38f1c86a4dc7a`, served build `YV8u2eNrP_GoYaUSkqO5C`. All 70 scheduled jobs have outcomes. Failed observations remain in the new series. The initial-results reference `TK-LFJSON-INITIAL-2026-10-17` and all earlier dated measurement directories are unchanged.
+
+| Size | Runs | Polled formatted output | Precise DOM | Two frames | Enabled populated input | Activation to enabled input |
+|---|---|---|---|---|---|---|
+| 1 MB | 3 | 0.336 s [0.331 s to 0.337 s] | 0.208 s [0.207 s to 0.210 s] | 0.294 s [0.293 s to 0.297 s] | 0.720 s [0.705 s to 0.749 s] | 0.054 s [0.052 s to 0.054 s] |
+| 10 MB | 3 | 1.433 s [1.421 s to 1.480 s] | 1.347 s [1.325 s to 1.420 s] | 1.369 s [1.348 s to 1.441 s] | 2.555 s [2.443 s to 2.647 s] | 0.156 s [0.067 s to 0.161 s] |
+| 50 MB | 3 | 8.307 s [8.269 s to 8.897 s] | 8.205 s [8.203 s to 8.857 s] | 8.236 s [8.230 s to 8.884 s] | Not measured | Not measured |
+
+| Tool Kumar format | Data size | Complete / attempted | Event median / p95 | rAF median / p95 | First-caret output median |
+|---|---|---|---|---|---|
+| prettified | 100 KB | 3/3 | 32.0 ms / 48.0 ms | 25.2 ms / 36.1 ms | 300.0 ms |
+| minified | 100 KB | 3/3 | 32.0 ms / 40.0 ms | 12.4 ms / 15.5 ms | 177.4 ms |
+| prettified | 10 MB | 3/3 | 24.0 ms / 32.0 ms | 14.5 ms / 18.4 ms | 252.3 ms |
+| minified | 10 MB | 3/3 | 40.0 ms / 56.0 ms | 12.0 ms / 22.2 ms | 248.1 ms |
+| prettified | 1 MB | 3/3 | 24.0 ms / 32.0 ms | 12.2 ms / 18.5 ms | 796.1 ms |
+| minified | 1 MB | 3/3 | 32.0 ms / 48.0 ms | 9.7 ms / 18.2 ms | 716.0 ms |
+| prettified | 50 MB | 3/3 | 56.0 ms / 72.0 ms | 30.8 ms / 51.7 ms | 353.1 ms |
+| minified | 50 MB | 3/3 | 40.0 ms / 64.0 ms | 7.6 ms / 28.9 ms | 326.8 ms |
+
+Raw and aggregate sources: `results/refresh-2026-10-18T06-23-00-569Z/summary.json`, `editing-summary.json`, `fidelity-summary.json`, `firefox-summary.json`, `completed.jsonl`, `verification/` and `RETRIES.md`. The parser stage measurement is pinned to this commit. Fresh JSON Formatter Online 100 KB/10 MB typing and 10 MB paste results are retained alongside October 17 competitor observations. Nothing is relabeled as same-day evidence when its date differs.
+
+No matched historical Firefox baseline exists. A claimed 3% code regression cannot be established. Safari-specific fixes, all-setting output exactness, structural-edit output completion and the status-bar caret switch were not independently confirmed. Size-ladder results above 50 MB remain historical at 925fc3c.
+<!-- END 95945cd refresh -->
+
 <!-- BEGIN accepted 925fc3c status -->
 ## Earlier 925fc3c observations with the 2.5 GiB budget
 
@@ -405,7 +432,7 @@ The public guide at https://tools.vikasmaur.com/tools/large-json-viewer says fil
 <!-- END supplemental capacity -->
 
 <!-- BEGIN six-tool comparison -->
-## Latest six-tool comparison at the same memory budget
+## Initial six-tool comparison, October 17, at the same memory budget
 
 Measurement dates, UTC: 2026-10-17. Tool Kumar reference production is `925fc3c6f004552a8cdea9628699de9735682d01`. Every tool has a 6 GiB browser-tree budget, a 3,500 MiB host available-memory floor and an 8,000 MiB starting requirement. All accepted timed runs started below load 4 and ran alone inside flock --close. Source commits of the competitors are unknown; their visit time and scripts are recorded. The original 2.5 GiB series and earlier Tool Kumar-only supplement are preserved separately.
 

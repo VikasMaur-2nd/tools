@@ -27,7 +27,7 @@ export const POSTS: Post[] = [
     excerpt: "Three attempts per opening size, plus editing and size checks. Includes failures and the hardware change between the original and latest study.",
     category: 'Research',
     published: '2026-10-17',
-    updated: "2026-10-17",
+    updated: "2026-10-18",
     minutes: 20,
     keywords: ['large JSON file viewer', 'JSON formatter benchmark', '50 MB JSON file', 'JSON number precision', 'JSON viewer memory'],
     sample: `{
