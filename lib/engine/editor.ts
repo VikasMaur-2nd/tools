@@ -2,7 +2,7 @@ import { Doc } from './doc';
 import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
-import { foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines } from './lines';
+import { foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
 import { LONG_LINE, Wrapper, type Src } from './wrap';
 import { rt } from '../i18n/ui';
 
@@ -59,6 +59,11 @@ const VIEW_LINES = 30_000;
 const LAZY_CHARS = 100_000;
 /** Keep native editing for normal documents. */
 const SURFACE_CHARS = 250_000;
+/**
+ * A line this long gets the big-document editor at any size: the textarea lays out the whole line on
+ * every key, so a minified document is slow to type in long before it is big.
+ */
+const LONG_LINE_CHARS = 5_000;
 /** The big-document editor's module: most visits never need it, so it loads on first need (and when the page is idle, see Engine). */
 let SurfaceClass: typeof Surface | undefined;
 let surfaceLoad: Promise<void> | undefined;
@@ -524,14 +529,15 @@ export class Editor {
     const notice = view && !lazy;
     if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
     this.lazy = view && lazy;
-    // A user edit keeps the big-document editor until the text is well under the threshold (no flip-flopping
-    // at it), and never leaves it mid-composition (see onCompEnd).
-    let custom = !view && (len >= SURFACE_CHARS || (!!this.surface && fromTa && (len >= SURFACE_CHARS * 0.8 || this.compOld !== null)));
-    if (len >= SURFACE_CHARS && !SurfaceClass) {
+    // A user edit keeps the big-document editor until the text (or its longest line) is well under the
+    // threshold (no flip-flopping at it), and never leaves it mid-composition (see onCompEnd).
+    const want = this.wantsSurface(1);
+    let custom = !view && (want || (!!this.surface && fromTa && (this.wantsSurface(0.8) || this.compOld !== null)));
+    if (want && !SurfaceClass) {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
-        if (!SurfaceClass || this.surface || !this.el.isConnected || this.doc.length < SURFACE_CHARS) return;
+        if (!SurfaceClass || this.surface || !this.el.isConnected || !this.wantsSurface(1)) return;
         // Switch to it: from the textarea, from a view that only its line count made read-only, or
         // (asked to edit while it was on its way) from the quiet view, keeping the caret.
         const lines = this.view && !this.lazy && this.doc.length <= VIEW_CHARS;
@@ -661,6 +667,12 @@ export class Editor {
   /** The user is working in the editor: a document waiting in the quiet view becomes editable now. */
   takeOver() {
     if (this.view && this.lazy) this.editAnyway();
+  }
+
+  /** Is the document (by `share` of the thresholds) one for the big-document editor: big, or with a long line? */
+  private wantsSurface(share: number) {
+    const len = this.doc.length;
+    return len >= SURFACE_CHARS * share || widest(this.ls, len) >= LONG_LINE_CHARS * share;
   }
 
   /** Loads a huge document into the textarea anyway (slow once, then editable). */
@@ -1732,7 +1744,7 @@ export class Editor {
       if (old !== null) this.record(old, this.doc, 'insertText', this.compR ?? undefined);
       this.compR = null;
       // The composition shrank the document: now the native editor can take over.
-      if (this.doc.length < SURFACE_CHARS * 0.8) this.model(this.doc, false);
+      if (!this.wantsSurface(0.8)) this.model(this.doc, false);
       return;
     }
     this.compOld = null;

@@ -111,7 +111,7 @@ export function patchLines(ls: number[], old: Chars, next: Chars, a: number, b: 
 }
 
 /** Widest line by line starts alone (no tabs). */
-function widest(ls: number[], len: number) {
+export function widest(ls: number[], len: number) {
   let max = 0;
   for (let ln = 0; ln < ls.length; ln++) max = Math.max(max, lineEndIn(ls, len, ln) - ls[ln]);
   return max;
