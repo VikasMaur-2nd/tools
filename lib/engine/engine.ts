@@ -258,6 +258,7 @@ export class Engine {
     this.fmt = new CodeView(els.fmt);
     this.fmt.onReady = () => {
       this.fmtWorkerId = this.pendingFmtWorkerId;
+      this.fmtWorkerText = this.fmt.text;
       if (this.markOutput) {
         this.markOutput = false;
         requestAnimationFrame(() => performance.mark('tk:formatted'));
@@ -364,6 +365,7 @@ export class Engine {
     this.sizeSeq++;
     // (Per key: length and blank don't build a big document's text, see Editor.text.)
     const len = this.ed.length;
+    if (this.ed.blank || kind === 'paste' && this.ed.pasteFull || len < WORKER_MIN && (this.workerDoc?.length ?? 0) >= WORKER_MIN) this.releaseWorkerDocuments();
     if (kind === 'paste' && this.ed.pasteFull && !this.ed.blank) {
       // A whole document arrived at once: no typing to wait out.
       const text = this.ed.text;
@@ -445,7 +447,7 @@ export class Engine {
    */
   private analyzeTyped = () => {
     const ver = this.ed.version;
-    const text = this.ed.text;
+    const text = this.ed.length >= WORKER_MIN ? ver as Doc : this.ed.text;
     if (!this.outputFirst(text, store.get().fileName, (res, metrics) => this.ed.version === ver && this.analyze(res, metrics), true)) this.analyze();
   };
 
@@ -463,6 +465,7 @@ export class Engine {
     this.parsedVer = ed.version;
 
     if (ed.blank) {
+      this.releaseWorkerDocuments();
       this.fmtWorkerId = this.pendingFmtWorkerId = 0;
       this.res = null;
       this.good = null;
@@ -918,6 +921,7 @@ export class Engine {
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
   load(text: string, name: string | null, persist = true, outputFirst = false, keepEdit = false) {
     this.pendingLoad = null;
+    this.releaseWorkerDocuments();
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
     this.loadSeq++; // drops what an earlier load still has pending
@@ -956,11 +960,15 @@ export class Engine {
    * re-indented straight from the text (in a worker, or here in slices), and
    * calls `next` (its analysis) once that has painted. False if it doesn't apply.
    */
-  private outputFirst(text: string, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void, typed = false): boolean {
+  private outputFirst(text: string | Doc, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void, typed = false, retained?: Doc): boolean {
     const s = this.settings;
-    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || readJwt(text, this.indent)) return false;
+    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || text.length < WORKER_MIN && readJwt(text.toString(), this.indent)) return false;
     const seq = ++this.loadSeq;
-    const document = typed ? this.ed.version as Doc : Doc.of(text);
+    const document = retained ?? (typed ? this.ed.version as Doc : Doc.of(text.toString()));
+    const analysisDocument = typed ? this.ed.version as Doc : document;
+    const analysisInput = analysisDocument === document ? text : analysisDocument;
+    const baseText = this.fmt.text;
+    const baseId = this.fmtWorkerText === baseText ? this.fmtWorkerId : 0;
     const fast = text.length >= WORKER_MIN;
     clearTimeout(this.fmtTimer);
     clearTimeout(this.timer);
@@ -970,12 +978,13 @@ export class Engine {
     const analyse = (tree?: PackedTree, metrics?: DocumentMetrics) => {
       if (seq !== this.loadSeq) return;
       if (!tree) return next();
-      if (typed && tree.nodes.length && this.fmtSrcVer === document && this.settings.view === 'format' && text.length >= WORKER_MIN) {
-        this.packed = { id: seq, tree, text, metrics, document };
+      const analysisText = analysisInput.toString();
+      if (typed && tree.nodes.length && this.fmtSrcVer === analysisDocument && this.settings.view === 'format' && analysisText.length >= WORKER_MIN) {
+        this.packed = { id: seq, tree, text: analysisText, metrics, document: analysisDocument };
         this.analyze({ ...tree.head, root: null }, metrics, true);
         return;
       }
-      const step = unpacker(tree, text);
+      const step = unpacker(tree, analysisText);
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
@@ -986,7 +995,7 @@ export class Engine {
     };
     const done = (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline = false) => {
       if (seq !== this.loadSeq) return;
-      if (typed && fast) this.queueAnalysis(seq, document, name, analyse);
+      if (typed && fast) this.queueAnalysis(seq, analysisDocument, name, analyse);
       if (out === null || key !== this.fmtSettings() || typed && this.settings.view !== 'format') {
         if (!typed || !fast) analyse(tree, metrics);
         return;
@@ -995,7 +1004,7 @@ export class Engine {
       store.set({ empty: false, status: { kind: 'parsing' } });
       this.fmt.el.hidden = false;
       // (Id 0: the output shown was drawn here, so the worker had nothing to compare it with.)
-      const base = !!change?.base && change.base === this.fmtWorkerId;
+      const base = !!change?.base && change.base === baseId && baseText === this.fmt.text;
       this.drawFormat(out, key, index, display, base ? change : undefined, base ? patch : undefined, base && inline, typed ? document : null);
       this.pendingFmtWorkerId = seq;
       // The rest (editor, analysis) a moment after the output has painted, when the page is idle:
@@ -1003,7 +1012,7 @@ export class Engine {
       if (!typed || !fast) setTimeout(() => idle(() => analyse(tree, metrics), 1000), 300);
     };
     const here = () => {
-      const run = reindenter(text, indent);
+      const run = reindenter(text.toString(), indent);
       const step = () => {
         if (seq !== this.loadSeq) return;
         const out = run(performance.now() + 40);
@@ -1016,11 +1025,11 @@ export class Engine {
     // Typing: the worker parses too, so nothing big is left for the page.
     const w = text.length < WORKER_MIN && !this.workerWarm && !typed ? null : this.reindentWorker();
     if (!w) {
-      if (text.length < WORKER_MIN) done(reindent(text, indent));
+      if (text.length < WORKER_MIN) done(reindent(text.toString(), indent));
       else here();
     } else {
-      this.reindentJob = { id: seq, done, fallback: here, baseText: this.fmt.text, baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [] };
-      const request = { id: seq, indent, parse: typed && !fast, fast, reuseIndex: true, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: this.fmtWorkerId };
+      this.reindentJob = { id: seq, done, fallback: here, baseText, baseIndex: this.fmt.inlineIndex({ starts: new Int32Array(0), maxLen: 0 }), baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [] };
+      const request = { id: seq, indent, parse: typed && !fast, fast, reuseIndex: true, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: baseId };
       this.postDocument(w, request, document, false);
 
     }
@@ -1037,14 +1046,28 @@ export class Engine {
   private workerFails = 0;
   private measuredSizes: { id: number; sizes: Sizes } | null = null;
   private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
-  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; baseText: string; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[] } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; baseText: string; baseIndex: CodeIndex; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[] } | null = null;
 
   private workerDoc: Doc | null = null;
   private workerDocId = 0;
   private analysisWorker: Worker | null = null;
+  private analysisFails = 0;
   private analysisDoc: Doc | null = null;
   private analysisDocId = 0;
   private analysisTimer = 0;
+
+  /** A new document keeps the warmed formatter, but drops every old document and analysis task. */
+  private releaseWorkerDocuments() {
+    clearTimeout(this.analysisTimer);
+    this.analysisWorker?.terminate();
+    this.analysisWorker = null;
+    this.analysisDoc = this.workerDoc = null;
+    this.analysisDocId = this.workerDocId = 0;
+    this.reindentJob = this.workerParse = null;
+    this.fmtWorkerId = this.pendingFmtWorkerId = 0;
+    this.fmtWorkerText = '';
+    this.worker?.postMessage({ id: this.loadSeq, clear: true });
+  }
 
   /** Both workers retain their input. Shared document versions send only a bounded replacement. */
   private postDocument(w: Worker, request: { id: number; [key: string]: unknown }, document: Doc, analysis: boolean, next?: () => void) {
@@ -1085,7 +1108,7 @@ export class Engine {
   private queueAnalysis(id: number, document: Doc, name: string | null, done: (tree?: PackedTree, metrics?: DocumentMetrics) => void) {
     clearTimeout(this.analysisTimer);
     this.analysisTimer = window.setTimeout(() => {
-      if (id !== this.loadSeq || this.dead) return;
+      if (id !== this.loadSeq || this.dead || this.analysisFails >= 3) return;
       try {
         const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
         const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
@@ -1105,14 +1128,17 @@ export class Engine {
           else if (e.data.sizes) { this.measuredSizes = { id, sizes: e.data.sizes }; store.set({ sizes: e.data.sizes }); }
         };
         w.onerror = (e) => {
-          e.preventDefault(); w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
-          if (id === this.loadSeq) done();
+          e.preventDefault();
+          // Ignore duplicate failure events and never move this full parse onto the typing thread.
+          if (this.analysisWorker !== w) return;
+          this.analysisFails++;
+          w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
         };
         const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape };
         const current = () => this.postDocument(w, request, document, true);
         if (good) this.postDocument(w, { ...request, good: true }, good, true, current);
         else current();
-      } catch { if (id === this.loadSeq) done(); }
+      } catch { this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; }
     }, 2200);
   }
 
@@ -1140,7 +1166,7 @@ export class Engine {
         this.reindentJob = null;
         const out = e.data.patch !== undefined && e.data.change ? applyCodeChange(job.baseText, e.data.patch, e.data.change, job.baseSlice) : e.data.chunkedOut ? job.outParts.join('') : e.data.out;
         const display = e.data.chunkedDisplay ? job.displayParts.join('') : e.data.display;
-        job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.indexReuse && e.data.index ? this.fmt.inlineIndex(e.data.index) : e.data.index, display, e.data.change, e.data.patch, e.data.inline);
+        job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.indexReuse && e.data.index ? { ...e.data.index, close: job.baseIndex.close, depth: job.baseIndex.depth } : e.data.index, display, e.data.change, e.data.patch, e.data.inline);
         this.workerParse = null;
       };
       w.onerror = (e) => {
@@ -1603,6 +1629,7 @@ export class Engine {
   /** What the Format view last drew: the source text and the settings it used. */
   private fmtSrcVer: object | null = null;
   private fmtWorkerId = 0;
+  private fmtWorkerText = '';
   private pendingFmtWorkerId = 0;
   private fmtKey = '';
   private fmtText = '';
@@ -1618,8 +1645,11 @@ export class Engine {
 
   private runFormat = () => {
     if (this.settings.view !== 'format') return;
-    // A newer accepted output may still be waiting for its tree. Keep it until analysis catches up.
-    if (this.fmtKey !== this.fmtSettings() && this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== this.goodVer && (this.fmtWorkerId || this.pendingFmtWorkerId)) return;
+    // Reformat the accepted source promptly even while its tree is still being analysed.
+    if (this.fmtKey !== this.fmtSettings() && this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== this.goodVer && (this.fmtWorkerId || this.pendingFmtWorkerId)) {
+      const retained = this.fmtSrcVer;
+      if (this.outputFirst(retained, store.get().fileName, (res, metrics) => this.analyze(res, metrics), true, retained)) return;
+    }
     if (this.packed && this.fmtKey !== this.fmtSettings()) this.fresh();
     if (this.fmtKey !== this.fmtSettings()) this.materializeGood();
     // Already drawn for this document and settings (a big load draws it before its analysis).
