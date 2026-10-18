@@ -1172,7 +1172,7 @@ export class Engine {
     this.ed.setValue(text, 0, true, keepEdit);
     const document = this.ed.version as Doc;
     if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
-    if (this.fmtSrcVer === null) this.fmtSrcVer = document;
+    if (this.fmtSrcVer === null && (this.fmtWorkerId || this.pendingFmtWorkerId)) this.fmtSrcVer = document;
     if (this.refocus) {
       // Pasted in the editor: the user is editing, so it arrives editable (not in the quiet view,
       // where a selection by keyboard would select nothing and the next paste would add to it).
