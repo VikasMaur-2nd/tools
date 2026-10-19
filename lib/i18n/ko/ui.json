@@ -739,5 +739,16 @@
   "toast.graphCopied": "이미지를 복사했습니다",
   "toast.graphCopyUnsupported": "이 브라우저는 이미지 복사를 지원하지 않습니다. 대신 다운로드하세요.",
   "toast.graphCopyFailed": "이미지를 복사하지 못했습니다: {error}",
-  "toast.graphCopyDenied": "브라우저가 허용하지 않았습니다"
+  "toast.graphCopyDenied": "브라우저가 허용하지 않았습니다",
+  "toast.graphReduced": "이 기기는 더 작은 이미지만 지원하므로 {width} × {height} px로 줄였습니다.",
+  "toast.graphTooLargeHere": "이 기기에서 이미지로 만들기에는 그래프가 너무 큽니다. 보이는 영역이나 가지를 내보내거나 SVG를 사용해 보세요.",
+  "dlg.exportTry": "대신 다음 중 하나를 사용해 보세요:",
+  "dlg.exportSmall": "이 크기에서는 글자가 작아집니다. 선명한 글자를 원하면:",
+  "dlg.exportSvg": "SVG 사용",
+  "dlg.exportPng": "PNG 사용",
+  "dlg.exportOnlyBranch": "선택한 가지만",
+  "dlg.exportOnlyView": "보이는 영역만",
+  "dlg.exportCollapse": "또는 그래프에서 필요 없는 가지를 접은 뒤 다시 내보내세요.",
+  "dlg.exportTooManyCards": "SVG로 만들기에는 카드가 너무 많습니다: {n}개(최대 {max}개).",
+  "dlg.exportTooLarge": "이미지로 만들기에는 너무 큽니다: 100%에서 {width} × {height} px."
 }

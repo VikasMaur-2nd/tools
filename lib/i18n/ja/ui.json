@@ -739,5 +739,16 @@
   "toast.graphCopied": "画像をコピーしました",
   "toast.graphCopyUnsupported": "このブラウザーは画像のコピーに対応していません。代わりにダウンロードしてください。",
   "toast.graphCopyFailed": "画像をコピーできませんでした: {error}",
-  "toast.graphCopyDenied": "ブラウザーが許可しませんでした"
+  "toast.graphCopyDenied": "ブラウザーが許可しませんでした",
+  "toast.graphReduced": "このデバイスではより小さい画像しか扱えないため、{width} × {height} px に縮小しました。",
+  "toast.graphTooLargeHere": "このデバイスではグラフが大きすぎて画像にできません。表示中の範囲か枝を書き出すか、SVG をお試しください。",
+  "dlg.exportTry": "代わりに次のいずれかをお試しください:",
+  "dlg.exportSmall": "このサイズでは文字が小さくなります。文字を鮮明にするには:",
+  "dlg.exportSvg": "SVG にする",
+  "dlg.exportPng": "PNG にする",
+  "dlg.exportOnlyBranch": "選択した枝のみ",
+  "dlg.exportOnlyView": "表示中の範囲のみ",
+  "dlg.exportCollapse": "または、グラフで不要な枝を折りたたんでから書き出してください。",
+  "dlg.exportTooManyCards": "SVG にはカードが多すぎます: {n} 枚(最大 {max} 枚)。",
+  "dlg.exportTooLarge": "画像にするには大きすぎます: 100% で {width} × {height} px。"
 }

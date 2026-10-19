@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parse } from '../lib/json/parser';
 import { buildModel, G, headText, labelText, valueText } from '../lib/graph/model';
 import { layoutGraph } from '../lib/graph/layout';
-import { EXPORT_LIMITS, exportSize, pngScale, toPNG, toSVG } from '../lib/graph/export';
+import { EXPORT_LIMITS, exportSize, fitRaster, pngScale, toPNG, toSVG } from '../lib/graph/export';
 import type { GraphTheme } from '../lib/graph/theme';
 
 const theme: GraphTheme = {
@@ -220,4 +220,31 @@ test('graph export: a branch, a view rectangle, and background choices', () => {
   assert.match(toSVG(L, theme), /<rect style="fill:#ffffff"/);
   assert.match(toSVG(L, theme, { background: '#123456' }), /<rect style="fill:#123456"/);
   assert.doesNotMatch(toSVG(L, theme, { background: null }), /<rect style="fill:/);
+});
+
+test('graph export: images shrink to the canvas a device really allows (iPhone and iPad limits)', () => {
+  // WebKit's CanvasBase::maxCanvasArea: iOS 4096² before Safari 18, 8192² since; desktop WebKit and Chromium 16384².
+  const area = (max: number) => (w: number, h: number) => w * h <= max;
+  const IOS_17 = 4096 * 4096;
+  const IOS_18 = 8192 * 8192;
+  const DESKTOP = 16384 * 16384;
+  // A tall graph: our own limits allow 1092 × 16384 px (17.9M px).
+  const planned = pngScale(2000, 30_000, 2);
+  assert.ok(Math.ceil(2000 * planned) * Math.ceil(30_000 * planned) > IOS_17);
+  // Desktop and iOS 18: the planned size works.
+  assert.equal(fitRaster(2000, 30_000, planned, area(DESKTOP)), planned);
+  assert.equal(fitRaster(2000, 30_000, planned, area(IOS_18)), planned);
+  // iOS 17 and older: halved area until it fits, never above the device's limit.
+  const s17 = fitRaster(2000, 30_000, planned, area(IOS_17));
+  assert.ok(s17 < planned);
+  assert.ok(Math.ceil(2000 * s17) * Math.ceil(30_000 * s17) <= IOS_17);
+  assert.ok(s17 > planned / 2, 'shrinks by halving the area, not more than needed');
+  // Every attempt is checked by the callback, largest first.
+  const tried: number[] = [];
+  fitRaster(10_000, 10_000, 1, (w, h) => (tried.push(w * h), w * h <= IOS_18));
+  assert.equal(tried[0], 100_000_000);
+  assert.ok(tried.at(-1)! <= IOS_18);
+  assert.ok(tried.every((a, i) => i === 0 || a < tried[i - 1]));
+  // Nothing works down to a quarter size: a clear, toast-ready message.
+  assert.throws(() => fitRaster(2000, 30_000, planned, () => false), /too large for an image on this device\. Export the visible area or a branch, or try SVG\./);
 });

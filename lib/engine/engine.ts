@@ -2139,8 +2139,11 @@ export class Engine {
       if (!this.graph) return;
       track('feature_used', { feature: o.format === 'png' ? 'graph_export_png' : o.format === 'jpeg' ? 'graph_export_jpeg' : 'graph_export_svg' });
       const file = `${name?.trim() || this.docBase()}.${o.format === 'jpeg' ? 'jpg' : o.format}`;
-      void this.graph.exportImage(o).then((blob) => {
-        if (!this.dead) this.saveBlob(blob, file);
+      let reduced: [number, number] | null = null;
+      void this.graph.exportImage(o, (w, h) => (reduced = [w, h])).then((blob) => {
+        if (this.dead) return;
+        this.saveBlob(blob, file);
+        if (reduced) this.reducedToast(reduced);
       }).catch((error) => {
         reportError(error, 'export');
         if (!this.dead) this.toast(rt("Couldn't download graph: {error}", { error: rt.msg(error instanceof Error ? error.message : 'Graph export failed') }), 'err');
@@ -2158,15 +2161,25 @@ export class Engine {
     }
     track('feature_used', { feature: 'graph_copy_image' });
     // The item takes the image's promise right away, which Safari needs to keep the user's permission.
-    const png = graph.exportImage({ ...opts, format: 'png' });
+    let reduced: [number, number] | null = null;
+    const png = graph.exportImage({ ...opts, format: 'png' }, (w, h) => (reduced = [w, h]));
     navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).then(
-      () => !this.dead && this.toast(rt('Copied the image'), 'ok'),
+      () => {
+        if (this.dead) return;
+        if (reduced) this.reducedToast(reduced);
+        else this.toast(rt('Copied the image'), 'ok');
+      },
       (error) => {
         if (this.dead) return;
         const msg = error instanceof Error && error.name !== 'NotAllowedError' ? error.message : "The browser didn't allow it";
         this.toast(rt("Couldn't copy the image: {error}", { error: rt.msg(msg) }), 'err');
       },
     );
+  }
+
+  /** The browser couldn't make the image as big as planned (iPhones and iPads allow smaller canvases). */
+  private reducedToast([width, height]: [number, number]) {
+    this.toast(rt('This device allows smaller images: it was reduced to {width} × {height} px.', { width: rt.num(width), height: rt.num(height) }), 'info');
   }
 
   /** Shows the start (root) or the end (lowest card) of the graph. */

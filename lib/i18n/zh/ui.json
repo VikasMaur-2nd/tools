@@ -739,5 +739,16 @@
   "toast.graphCopied": "已复制图片",
   "toast.graphCopyUnsupported": "此浏览器不支持复制图片，请改为下载。",
   "toast.graphCopyFailed": "无法复制图片：{error}",
-  "toast.graphCopyDenied": "浏览器未允许"
+  "toast.graphCopyDenied": "浏览器未允许",
+  "toast.graphReduced": "此设备只支持更小的图片：已缩小到 {width} × {height} px。",
+  "toast.graphTooLargeHere": "在此设备上，图谱太大，无法导出为图片。请导出可见区域或某个分支，或改用 SVG。",
+  "dlg.exportTry": "可以改用以下方式：",
+  "dlg.exportSmall": "在此尺寸下文字会很小。要让文字清晰：",
+  "dlg.exportSvg": "使用 SVG",
+  "dlg.exportPng": "使用 PNG",
+  "dlg.exportOnlyBranch": "仅所选分支",
+  "dlg.exportOnlyView": "仅可见区域",
+  "dlg.exportCollapse": "也可以先在图谱中折叠不需要的分支，再重新导出。",
+  "dlg.exportTooManyCards": "卡片太多，无法导出 SVG：{n} 张（最多 {max} 张）。",
+  "dlg.exportTooLarge": "太大，无法导出为图片：100% 时为 {width} × {height} px。"
 }

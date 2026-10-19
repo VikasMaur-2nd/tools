@@ -740,7 +740,18 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1483,7 +1494,18 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2226,7 +2248,18 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -2969,7 +3002,18 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3712,7 +3756,18 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4455,7 +4510,18 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -5198,7 +5264,18 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -5941,6 +6018,17 @@
     "toast.graphCopied": "6fd7943b",
     "toast.graphCopyUnsupported": "a30df4d2",
     "toast.graphCopyFailed": "b848920f",
-    "toast.graphCopyDenied": "487c25df"
+    "toast.graphCopyDenied": "487c25df",
+    "toast.graphReduced": "6b3fb5b8",
+    "toast.graphTooLargeHere": "9bc871bc",
+    "dlg.exportTry": "a80a1985",
+    "dlg.exportSmall": "6fe8f9ec",
+    "dlg.exportSvg": "6a8f11c8",
+    "dlg.exportPng": "907924f3",
+    "dlg.exportOnlyBranch": "b4fbcf8a",
+    "dlg.exportOnlyView": "4b747463",
+    "dlg.exportCollapse": "1909effb",
+    "dlg.exportTooManyCards": "3890bf3c",
+    "dlg.exportTooLarge": "af695eef"
   }
 }

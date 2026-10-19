@@ -401,29 +401,78 @@ export interface RasterOptions extends ImageOptions {
   /** Pixels per CSS px (reduced automatically to fit the limits). Default 2. */
   scale?: number;
   type?: 'image/png' | 'image/jpeg';
+  /** The browser refused a canvas this big (iPhones and iPads allow far smaller ones): the image is width × height instead. */
+  onReduced?: (width: number, height: number) => void;
+}
+
+const PNG_TOO_LARGE_HERE = 'The graph is too large for an image on this device. Export the visible area or a branch, or try SVG.';
+
+/**
+ * The scale to draw a w × h export at: `scale` (from pngScale), or smaller
+ * while `works` says the browser can't make a canvas that big (each step
+ * halves the area). Throws when not even MIN_SCALE works.
+ *
+ * Browsers cap a canvas's area below our limits on some devices and don't
+ * say so: WebKit on iPhone and iPad allows 4096² px before Safari 18 and
+ * 8192² since (CanvasBase::maxCanvasArea), and a bigger canvas just draws
+ * nothing. So the canvas itself is checked, not the device guessed.
+ */
+export function fitRaster(width: number, height: number, scale: number, works: (w: number, h: number) => boolean): number {
+  for (let s = scale; s >= MIN_SCALE - 1e-9; s *= Math.SQRT1_2) {
+    if (works(Math.ceil(width * s), Math.ceil(height * s))) return s;
+  }
+  throw new Error(PNG_TOO_LARGE_HERE);
+}
+
+/** Whether drawing into this canvas works: a pixel in its far corner reads back (over-limit canvases read as transparent, or throw). */
+function usable(ctx: Context | null, w: number, h: number) {
+  if (!ctx) return false;
+  try {
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(w - 1, h - 1, 1, 1);
+    const d = ctx.getImageData(w - 1, h - 1, 1, 1).data;
+    ctx.clearRect(w - 1, h - 1, 1, 1);
+    return d[0] === 255 && d[1] === 0 && d[2] === 0 && d[3] === 255;
+  } catch {
+    return false;
+  }
 }
 
 /** Draw directly into one bounded canvas; clipping strips avoids extra full-size bitmaps. */
 export async function toPNG(L: GraphLayout, theme: GraphTheme, opts: RasterOptions = {}): Promise<Blob> {
   const f = frame(L, opts.area);
-  const scale = pngScale(f.w, f.h, opts.scale);
-  const width = Math.ceil(f.w * scale);
-  const height = Math.ceil(f.h * scale);
+  const planned = pngScale(f.w, f.h, opts.scale);
   const jpeg = opts.type === 'image/jpeg';
   // JPEG has no transparency.
   const bg = opts.background === undefined || (jpeg && !opts.background) ? theme.bg : opts.background;
-  let canvas: OffscreenCanvas | HTMLCanvasElement;
-  if (typeof OffscreenCanvas !== 'undefined') canvas = new OffscreenCanvas(width, height);
-  else if (typeof document !== 'undefined') {
-    canvas = document.createElement('canvas');
-    canvas.className = PRIVATE;
-    canvas.width = width;
-    canvas.height = height;
-  } else throw new Error('PNG export needs a browser with canvas support.');
-  try {
+  if (typeof OffscreenCanvas === 'undefined' && typeof document === 'undefined') throw new Error('PNG export needs a browser with canvas support.');
+  // A canvas over the browser's own limit is refused silently: check it, and try smaller.
+  const made: { canvas?: OffscreenCanvas | HTMLCanvasElement; ctx?: Context | null } = {};
+  const scale = fitRaster(f.w, f.h, planned, (w, h) => {
+    let c: OffscreenCanvas | HTMLCanvasElement;
+    if (typeof OffscreenCanvas !== 'undefined') c = new OffscreenCanvas(w, h);
+    else {
+      c = document.createElement('canvas');
+      c.className = PRIVATE;
+      c.width = w;
+      c.height = h;
+    }
     // Software backing avoids GPU texture limits and readback copies during PNG encoding.
-    const ctx = canvas.getContext('2d', { alpha: !bg, willReadFrequently: true }) as Context | null;
-    if (!ctx) throw new Error('PNG export could not create a canvas. Try a smaller graph.');
+    const x = c.getContext('2d', { alpha: !bg, willReadFrequently: true }) as Context | null;
+    if (usable(x, w, h)) {
+      made.canvas = c;
+      made.ctx = x;
+      return true;
+    }
+    c.width = c.height = 0;
+    return false;
+  });
+  const { canvas, ctx } = made;
+  if (!canvas || !ctx) throw new Error('PNG export could not create a canvas. Try a smaller graph.');
+  const width = Math.ceil(f.w * scale);
+  const height = Math.ceil(f.h * scale);
+  if (scale < planned) opts.onReduced?.(width, height);
+  try {
     const painter = new Canvas(ctx, theme, f.x0 - f.margin, f.y0 - f.margin);
     // Keep each paint batch near two million pixels and at most 512 rows.
     const strip = Math.max(1, Math.min(512, Math.floor(2_000_000 / width)));

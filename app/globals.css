@@ -2671,6 +2671,36 @@ dialog[open] {
   font-variant-numeric: tabular-nums;
 }
 
+.gx-info.err {
+  color: var(--err);
+}
+
+.gx-help {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+  font-size: 12.5px;
+}
+
+.gx-help p {
+  margin: 0;
+}
+
+.gx-alts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gx-alts .btn {
+  border-color: var(--line-2);
+  background: var(--bg);
+  color: var(--fg);
+}
+
 .gx-foot {
   display: flex;
   justify-content: flex-end;

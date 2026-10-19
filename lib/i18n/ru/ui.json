@@ -796,5 +796,16 @@
   "toast.graphCopied": "Изображение скопировано",
   "toast.graphCopyUnsupported": "Этот браузер не умеет копировать изображения. Скачайте его.",
   "toast.graphCopyFailed": "Не удалось скопировать изображение: {error}",
-  "toast.graphCopyDenied": "Браузер не разрешил"
+  "toast.graphCopyDenied": "Браузер не разрешил",
+  "toast.graphReduced": "Это устройство поддерживает только изображения поменьше: размер уменьшен до {width} × {height} px.",
+  "toast.graphTooLargeHere": "Граф слишком большой для изображения на этом устройстве. Экспортируйте видимую область или ветвь либо попробуйте SVG.",
+  "dlg.exportTry": "Попробуйте вместо этого:",
+  "dlg.exportSmall": "При таком размере текст будет мелким. Для чёткого текста:",
+  "dlg.exportSvg": "Использовать SVG",
+  "dlg.exportPng": "Использовать PNG",
+  "dlg.exportOnlyBranch": "Только выбранная ветвь",
+  "dlg.exportOnlyView": "Только видимая область",
+  "dlg.exportCollapse": "Или сверните в графе ненужные ветви и экспортируйте снова.",
+  "dlg.exportTooManyCards": "Слишком много карточек для SVG: {n} (не больше {max}).",
+  "dlg.exportTooLarge": "Слишком большое для изображения: {width} × {height} px при 100%."
 }

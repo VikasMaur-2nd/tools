@@ -320,6 +320,47 @@ export function savedGraphExport(): GraphExport {
   return { format: p.format, area: p.area, background: p.bg === 'white' ? '#ffffff' : p.bg === 'custom' ? p.color : p.format === 'jpeg' && p.bg === 'transparent' ? 'theme' : p.bg, scale: p.scale };
 }
 
+/** Below this many image px per graph px, PNG and JPEG text gets hard to read. */
+const SMALL_TEXT = 0.75;
+
+type Alternative = { label: string; patch: Partial<ExportPrefs> };
+
+/**
+ * Exports that would work where the chosen one can't (or would have tiny
+ * text): checked with the same preview, so only options that fit are offered.
+ */
+function useAlternatives(opts: GraphExport, preview: ExportPreview | null, tiny: boolean): Alternative[] {
+  // The alternatives found for a request (key): shown only while that request is current.
+  const [found, setFound] = useState<{ key: string; alts: Alternative[] } | null>(null);
+  const want = !!preview && (!!preview.error || tiny);
+  const branch = !!preview?.branch;
+  const key = `${JSON.stringify(opts)}|${tiny}|${branch}`;
+  useEffect(() => {
+    if (!want) return;
+    const o = JSON.parse(key.split('|')[0]) as GraphExport;
+    const raster = o.format !== 'svg';
+    const options: (Alternative & { opts: GraphExport })[] = [];
+    if (raster) options.push({ label: 'Use SVG', patch: { format: 'svg' }, opts: { ...o, format: 'svg' } });
+    else options.push({ label: 'Use PNG', patch: { format: 'png' }, opts: { ...o, format: 'png' } });
+    if (o.area !== 'branch' && branch) options.push({ label: 'Only the selected branch', patch: { area: 'branch' }, opts: { ...o, area: 'branch' } });
+    if (o.area !== 'view') options.push({ label: 'Only the visible area', patch: { area: 'view' }, opts: { ...o, area: 'view' } });
+    let live = true;
+    void Promise.all(options.map((a) => getEngine()?.graphExportPreview(a.opts) ?? Promise.resolve(null))).then((results) => {
+      if (!live) return;
+      // Usable, and for small text, actually sharper (vector, or at least 100%).
+      const alts = options.filter((a, i) => {
+        const r = results[i];
+        return r && !r.error && (!tiny || a.opts.format === 'svg' || r.scale >= 1);
+      }).map(({ label, patch }) => ({ label, patch }));
+      setFound({ key, alts });
+    }, () => {});
+    return () => {
+      live = false;
+    };
+  }, [key, want, tiny, branch]);
+  return want && found?.key === key ? found.alts : [];
+}
+
 /** A row of mutually exclusive choices (the toolbar's segmented look). */
 function Choice<V extends string | number>({ label, value, options, onPick }: { label: string; value: V; options: { v: V; label: string; disabled?: boolean }[]; onPick: (v: V) => void }) {
   const t = useT();
@@ -375,6 +416,9 @@ function ExportForm() {
       live = false;
     };
   }, [key]);
+  // Text this small (vs the graph at 100%) is hard to read: worth suggesting something sharper.
+  const tiny = !!preview && !preview.error && p.format !== 'svg' && preview.scale < SMALL_TEXT;
+  const alts = useAlternatives(opts, preview, tiny);
   const close = () => store.set({ graphExport: false });
   const ext = p.format === 'jpeg' ? 'jpg' : p.format;
   const download = () => {
@@ -426,13 +470,32 @@ function ExportForm() {
             <span className="muted">.{ext}</span>
           </span>
         </label>
-        <p className="gx-info" aria-live="polite">
+        <p className={`gx-info${preview?.error ? ' err' : ''}`} aria-live="polite">
           {preview?.error
-            ? t.msg(preview.error)
+            ? preview.limit === 'cards'
+              ? t('Too many cards for SVG: {n} (up to {max}).', { n: t.num(preview.cards), max: t.num(preview.maxCards ?? 0) })
+              : preview.limit === 'size'
+                ? t('Too large for an image: {width} × {height} px at 100%.', { width: t.num(preview.width), height: t.num(preview.height) })
+                : t.msg(preview.error)
             : preview
               ? `${t('{width} × {height} px', { width: t.num(preview.width), height: t.num(preview.height) })}${t(' · ')}${t.n(preview.cards, '{n} card', '{n} cards')}${preview.reduced ? t(' · ') + t('reduced to fit') : ''}`
               : ''}
         </p>
+        {(preview?.error || tiny) && (
+          <div className="gx-help">
+            <p>{t(preview?.error ? 'Try one of these instead:' : 'Text will be small at this size. For sharp text:')}</p>
+            {alts.length > 0 && (
+              <div className="gx-alts">
+                {alts.map((a) => (
+                  <button key={a.label} type="button" className="btn sm" onClick={() => set(a.patch)}>
+                    {t(a.label)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="muted">{t("Or collapse branches you don't need in the graph, then export again.")}</p>
+          </div>
+        )}
       </div>
       <footer className="gx-foot">
         <button type="button" className="btn" disabled={!!preview?.error} onClick={() => {

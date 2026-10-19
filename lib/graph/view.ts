@@ -1160,7 +1160,7 @@ export class GraphView implements GraphViewApi {
     }
   }
 
-  async exportImage(opts: GraphExport): Promise<Blob> {
+  async exportImage(opts: GraphExport, onReduced?: (width: number, height: number) => void): Promise<Blob> {
     const L = this.L;
     if (!L) throw new Error('Nothing to export');
     const mod = await this.exporter();
@@ -1168,7 +1168,7 @@ export class GraphView implements GraphViewApi {
     const background = this.background(opts);
     // The document as it is laid out (collapsed branches stay collapsed), without the selection.
     if (opts.format === 'svg') return new Blob([mod.toSVG(L, this.th, { area, background })], { type: 'image/svg+xml' });
-    return mod.toPNG(L, this.th, { area, background, scale: this.exportScale(opts), type: opts.format === 'jpeg' ? 'image/jpeg' : 'image/png' });
+    return mod.toPNG(L, this.th, { area, background, scale: this.exportScale(opts), type: opts.format === 'jpeg' ? 'image/jpeg' : 'image/png', onReduced });
   }
 
   async exportPreview(opts: GraphExport): Promise<ExportPreview | null> {
@@ -1177,9 +1177,13 @@ export class GraphView implements GraphViewApi {
     const mod = await this.exporter();
     const branch = this.branchCard() >= 0;
     const size = mod.exportSize(L, this.exportArea(opts));
-    const preview: ExportPreview = { width: Math.ceil(size.width), height: Math.ceil(size.height), cards: size.cards, reduced: false, branch };
+    const preview: ExportPreview = { width: Math.ceil(size.width), height: Math.ceil(size.height), cards: size.cards, reduced: false, branch, scale: 1 };
     if (opts.format === 'svg') {
-      if (size.cards > mod.EXPORT_LIMITS.svgCards) preview.error = 'The graph is too large for SVG. Collapse some branches or export PNG.';
+      if (size.cards > mod.EXPORT_LIMITS.svgCards) {
+        preview.error = 'The graph is too large for SVG. Collapse some branches or export PNG.';
+        preview.limit = 'cards';
+        preview.maxCards = mod.EXPORT_LIMITS.svgCards;
+      }
       return preview;
     }
     try {
@@ -1188,8 +1192,10 @@ export class GraphView implements GraphViewApi {
       preview.width = Math.ceil(size.width * scale);
       preview.height = Math.ceil(size.height * scale);
       preview.reduced = scale < want - 1e-9;
+      preview.scale = scale;
     } catch (e) {
       preview.error = e instanceof Error ? e.message : 'Graph export failed';
+      if (Number.isFinite(size.width) && Number.isFinite(size.height)) preview.limit = 'size';
     }
     return preview;
   }

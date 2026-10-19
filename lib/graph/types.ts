@@ -49,8 +49,11 @@ export interface GraphViewApi {
   themeChanged(): void;
   /** Selects and shows the root ('start') or the lowest card ('end'). */
   jump(to: 'start' | 'end'): void;
-  /** The graph as an image. Rejects when it is too big for the format. */
-  exportImage(opts: GraphExport): Promise<Blob>;
+  /**
+   * The graph as an image. Rejects when it is too big for the format.
+   * `onReduced`: the browser couldn't make an image that big (iPhones and iPads), so it is width × height px.
+   */
+  exportImage(opts: GraphExport, onReduced?: (width: number, height: number) => void): Promise<Blob>;
   /** What an export would produce (null: no graph). */
   exportPreview(opts: GraphExport): Promise<ExportPreview | null>;
   destroy(): void;
@@ -75,8 +78,13 @@ export interface ExportPreview {
   cards: number;
   /** The requested scale didn't fit and was reduced. */
   reduced: boolean;
+  /** Image px per graph px at 100% (text is unreadably small well below 1). SVG: 1. */
+  scale: number;
   /** A card is selected, so 'branch' is possible. */
   branch: boolean;
   /** Why this export can't be made (a toast-ready English sentence). */
   error?: string;
+  /** Which limit it is over: the image size, or the number of cards an SVG may hold (maxCards). */
+  limit?: 'size' | 'cards';
+  maxCards?: number;
 }
