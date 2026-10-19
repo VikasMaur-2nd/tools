@@ -101,6 +101,7 @@ export class GraphView implements GraphViewApi {
     this.tip = el('div', 'gv-tip ' + PRIVATE);
     this.tip.hidden = true;
     this.ctl = el('div', 'gv-ctl');
+    this.ctl.hidden = true;
     const btn = (cls: string, label: string, html: string, fn: () => void) => {
       const b = el('button', 'gv-btn ' + cls) as HTMLButtonElement;
       b.type = 'button';
@@ -314,7 +315,8 @@ export class GraphView implements GraphViewApi {
       this.cam = initialCam(this.L.width, this.L.height, this.vw, this.vh, this.minZ());
       this.camSet = true;
     }
-    this.redraw();
+    // Resizing clears the canvas: repaint now, not a frame later (no flash).
+    if (this.active) this.draw();
   }
 
   private redraw() {
