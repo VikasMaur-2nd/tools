@@ -709,7 +709,10 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1421,7 +1424,10 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2133,7 +2139,10 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -2845,7 +2854,10 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3557,7 +3569,10 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4269,7 +4284,10 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -4981,7 +4999,10 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -5693,6 +5714,9 @@
     "app.typeBoolean": "bf84d3d6",
     "app.typeArray": "dbe42cc0",
     "app.typeObject": "2958d416",
-    "app.graphItems": "bc231c1c"
+    "app.graphItems": "bc231c1c",
+    "toast.graphPngTooLarge": "4b0e7308",
+    "toast.graphSvgTooLarge": "fbc87b9d",
+    "toast.graphPngMemory": "a78ed5fb"
   }
 }

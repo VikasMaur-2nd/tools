@@ -955,17 +955,17 @@ export class GraphView implements GraphViewApi {
   async exportImage(kind: 'png' | 'svg'): Promise<Blob> {
     const L = this.L;
     if (!L) throw new Error('Nothing to export');
-    let mod: { toSVG(L: GraphLayout, theme: GraphTheme, opts?: { selected?: number }): string; toPNG(L: GraphLayout, theme: GraphTheme, opts?: { scale?: number }): Promise<Blob> };
+    let mod: typeof import('./export');
     try {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore: ./export lands with the export worker's branch.
       mod = await import('./export');
     } catch {
       throw new Error('Export unavailable');
     }
-    if (kind === 'svg') return new Blob([mod.toSVG(L, this.th, { selected: this.card >= 0 ? this.card : undefined })], { type: 'image/svg+xml' });
+    // The document as it is laid out (collapsed branches stay collapsed), without the selection.
+    if (kind === 'svg') return new Blob([mod.toSVG(L, this.th)], { type: 'image/svg+xml' });
     return mod.toPNG(L, this.th);
   }
+
 }
 
 function el(tag: string, cls: string) {

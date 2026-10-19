@@ -708,5 +708,8 @@
   "app.typeBoolean": "불리언",
   "app.typeArray": "배열",
   "app.typeObject": "객체",
-  "app.graphItems.other": "항목 {n}개"
+  "app.graphItems.other": "항목 {n}개",
+  "toast.graphPngTooLarge": "그래프가 너무 커서 PNG로 만들 수 없습니다. 일부 가지를 접고 다시 시도하세요.",
+  "toast.graphSvgTooLarge": "그래프가 너무 커서 SVG로 만들 수 없습니다. 일부 가지를 접거나 PNG로 내보내세요.",
+  "toast.graphPngMemory": "PNG 내보내기 중 캔버스 메모리가 부족합니다. 더 작은 그래프로 시도하세요."
 }

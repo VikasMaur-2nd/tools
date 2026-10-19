@@ -708,5 +708,8 @@
   "app.typeBoolean": "真偽値",
   "app.typeArray": "配列",
   "app.typeObject": "オブジェクト",
-  "app.graphItems.other": "{n} 個の項目"
+  "app.graphItems.other": "{n} 個の項目",
+  "toast.graphPngTooLarge": "グラフが大きすぎて PNG にできません。いくつかの枝を折りたたんでからもう一度お試しください。",
+  "toast.graphSvgTooLarge": "グラフが大きすぎて SVG にできません。いくつかの枝を折りたたむか、PNG で書き出してください。",
+  "toast.graphPngMemory": "PNG の書き出し中に Canvas のメモリが不足しました。より小さいグラフでお試しください。"
 }

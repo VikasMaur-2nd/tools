@@ -744,5 +744,8 @@
   "app.typeObject": "objet",
   "app.graphItems.one": "{n} élément",
   "app.graphItems.many": "{n} éléments",
-  "app.graphItems.other": "{n} éléments"
+  "app.graphItems.other": "{n} éléments",
+  "toast.graphPngTooLarge": "Le graphe est trop grand pour un PNG. Repliez quelques branches et réessayez.",
+  "toast.graphSvgTooLarge": "Le graphe est trop grand pour un SVG. Repliez quelques branches ou exportez en PNG.",
+  "toast.graphPngMemory": "L'export PNG a manqué de mémoire canvas. Essayez avec un graphe plus petit."
 }

@@ -708,5 +708,8 @@
   "app.typeBoolean": "布尔值",
   "app.typeArray": "数组",
   "app.typeObject": "对象",
-  "app.graphItems.other": "{n} 项"
+  "app.graphItems.other": "{n} 项",
+  "toast.graphPngTooLarge": "图谱太大，无法导出 PNG。请折叠部分分支后重试。",
+  "toast.graphSvgTooLarge": "图谱太大，无法导出 SVG。请折叠部分分支，或导出 PNG。",
+  "toast.graphPngMemory": "导出 PNG 时画布内存不足。请尝试更小的图谱。"
 }

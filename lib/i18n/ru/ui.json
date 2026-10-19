@@ -762,5 +762,8 @@
   "app.graphItems.one": "{n} элемент",
   "app.graphItems.few": "{n} элемента",
   "app.graphItems.many": "{n} элементов",
-  "app.graphItems.other": "{n} элемента"
+  "app.graphItems.other": "{n} элемента",
+  "toast.graphPngTooLarge": "Граф слишком большой для PNG. Сверните несколько ветвей и попробуйте снова.",
+  "toast.graphSvgTooLarge": "Граф слишком большой для SVG. Сверните несколько ветвей или экспортируйте PNG.",
+  "toast.graphPngMemory": "При экспорте PNG закончилась память canvas. Попробуйте граф поменьше."
 }
