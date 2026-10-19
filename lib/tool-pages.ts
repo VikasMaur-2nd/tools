@@ -20,6 +20,8 @@ export type ToolPage = {
   /** Error guides (json-errors slugs) to link, with their anchor text. */
   guides?: { slug: string; text: string }[];
   sections?: { heading: string; paragraphs: string[]; code?: string }[];
+  /** Its own social preview: public/og/<image>.png (default: the site-wide image). */
+  image?: string;
 };
 
 const json = '{"name":"Ada","age":36,"active":true,"tags":["json","tools"],"profile":{"city":"London"}}';
@@ -231,7 +233,7 @@ export const TOOL_PAGES: ToolPage[] = [
     heading: 'JSON escape and unescape', intro: 'Paste JSON to get it as one escaped string, the form you need when JSON travels inside another JSON value, an environment variable or a test fixture. Paste an escaped string to turn it back into readable JSON.', modeLabel: 'Escaped string output', preset: { settings: { view: 'format', escape: true }, initialText: escapable, initialFileName: 'payload.json' }, sample: escapable, exampleLabel: 'The document is minified, then written as one JSON string: every inner quote becomes \\" and the escaped line break in the note becomes \\\\n.', steps: ['Paste a JSON document or open a file.', 'Read the escaped string in the Format view, where String is selected. Pretty and Minify show the document itself.', 'To unescape, paste a JSON string that contains JSON, then choose Unescape JSON in the banner. The input becomes the formatted document.'], options: ['Escaping starts from the minified document, so the string carries no extra whitespace.', 'Escaping an already escaped string adds another layer of backslashes. Unescape once for each layer.', 'The input is read as JSON, not run as JavaScript. Loose syntax such as comments or single quotes is repaired before escaping.', 'A string value inside a larger document can be expanded in place: select it in the Tree and choose Expand nested JSON string from the More options menu.', 'Unescape replaces the input, and Ctrl+Z undoes it.'], faqs: [{ question: 'How do I escape a JSON string?', answer: 'Paste the JSON document. The String output shows it as one JSON string literal, with each quote, backslash and line break escaped. Copy it wherever a string is expected.' }, { question: 'How do I unescape JSON?', answer: 'Paste the escaped string, including its outer quotes. Tool Kumar notices that it holds JSON and offers Unescape JSON, which replaces it with the formatted document.' }, { question: 'Why does JSON.stringify add backslashes to my string?', answer: 'The value was already a JSON string, so stringifying it again escapes its quotes. One JSON.parse returns the original JSON text, and parsing that text again returns the object. Or unescape it here to read the document.' }], related: ['json-validator', 'json-minifier', 'home']
   },
   {
-    slug: 'json-visualizer', query: 'json visualizer', secondary: ['json graph viewer', 'visualize json online'],
+    slug: 'json-visualizer', query: 'json visualizer', secondary: ['json graph viewer', 'visualize json online'], image: 'json-visualizer',
     title: 'JSON visualizer with interactive graph view',
     description: 'Visualize JSON as an interactive graph beside the editor. Search paths and values, export PNG, JPEG or SVG locally, and keep documents in your browser.',
     heading: 'JSON visualizer',

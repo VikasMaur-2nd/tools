@@ -16,3 +16,10 @@ function image(name: 'opengraph-image' | 'twitter-image') {
 }
 
 export const englishSocialImages = { openGraph: image('opengraph-image'), twitter: image('twitter-image') };
+
+/** A page's own 1200×630 preview (public/og/<name>.png), versioned by its bytes like the site-wide one. */
+export function pageSocialImage(name: string, alt: string) {
+  const bytes = readFileSync(join(process.cwd(), 'public', 'og', `${name}.png`));
+  const version = createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+  return { url: `/og/${name}.png?v=${version}`, alt, type: 'image/png', width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
