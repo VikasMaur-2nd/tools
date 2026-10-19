@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parse, type JNode } from '../lib/json/parser';
-import { buildModel, cardOf, cardOfRow, fit, fitCols, G, rowOf, valueText } from '../lib/graph/model';
+import { buildModel, cardOf, cardOfRow, fit, fitCols, G, inlineCols, locate, rowOf, valueText } from '../lib/graph/model';
 import { anchorY, cardAt, cardsIn, layoutGraph, portY, rowAt, type GraphLayout } from '../lib/graph/layout';
 
 const CW = 7.2;
@@ -24,25 +24,44 @@ function assertNoOverlap(L: GraphLayout) {
 }
 
 test('graph model: cards, rows, ports and buses', () => {
-  const m = model('{"name":"Ada","age":36,"tags":["json","tools"],"profile":{"city":"London"},"empty":{},"list":[{"a":1},{"a":2}]}');
-  // root, tags, profile, list, list[0], list[1]
-  assert.equal(m.n, 6);
-  assert.deepEqual(Array.from(m.depth), [0, 1, 1, 1, 2, 2]);
-  assert.deepEqual(Array.from(m.parent), [-1, 0, 0, 0, 3, 3]);
-  assert.deepEqual(Array.from(m.end), [6, 2, 3, 6, 5, 6]);
+  const m = model('{"name":"Ada","age":36,"tags":["json","tools",{"x":1}],"profile":{"city":"London"},"empty":{},"list":[{"a":1},{"a":2}]}');
+  // root, tags, tags[2], profile, list, list[0], list[1]
+  assert.equal(m.n, 7);
+  assert.deepEqual(Array.from(m.depth), [0, 1, 2, 1, 1, 2, 2]);
+  assert.deepEqual(Array.from(m.parent), [-1, 0, 1, 0, 0, 4, 4]);
+  assert.deepEqual(Array.from(m.end), [7, 3, 3, 4, 7, 6, 7]);
   // The root lists every entry (6 rows); tags, profile and list are port rows.
   assert.equal(m.rowStart[1] - m.rowStart[0], 6);
   assert.equal(m.rowChild[2], 1);
-  assert.equal(m.rowChild[3], 2);
+  assert.equal(m.rowChild[3], 3);
   assert.equal(m.rowChild[4], -1); // empty object: shown inline
-  assert.equal(m.rowChild[5], 3);
+  assert.equal(m.rowChild[5], 4);
   assert.equal(m.portRow[1], 2);
+  // A mixed array lists its primitives and a port row for the object.
+  assert.equal(m.rowStart[2] - m.rowStart[1], 3);
   // An array of objects uses a bus and lists no rows.
-  assert.equal(m.bus[3], 1);
-  assert.equal(m.rowStart[4] - m.rowStart[3], 0);
-  assert.equal(m.portRow[4], -1);
-  assert.equal(m.h[3], G.head);
-  assert.deepEqual(Array.from(m.kidList.subarray(m.kidStart[0], m.kidStart[1])), [1, 2, 3]);
+  assert.equal(m.bus[4], 1);
+  assert.equal(m.rowStart[5] - m.rowStart[4], 0);
+  assert.equal(m.portRow[5], -1);
+  assert.equal(m.h[4], G.head);
+  assert.deepEqual(Array.from(m.kidList.subarray(m.kidStart[0], m.kidStart[1])), [1, 3, 4]);
+});
+
+test('graph model: small arrays of primitives are shown inline', () => {
+  const r = parse('{"geo":[51.5362,-0.1031],"tags":["a","b"],"long":["' + 'x'.repeat(40) + '"],"many":[1,2,3,4,5,6,7,8,9],"mixed":[1,{"a":1}],"none":[]}');
+  const m = buildModel(r.root!, CW);
+  const list = r.root!.v as JNode[];
+  // root, long, many, mixed, mixed[1]
+  assert.equal(m.n, 5);
+  assert.equal(valueText(list[0]), '[51.5362, -0.1031]');
+  assert.equal(valueText(list[1]), '["a", "b"]');
+  assert.equal(inlineCols(list[1]), 10);
+  assert.equal(valueText(list[2]), '[1]');
+  assert.equal(valueText(list[5]), '[]');
+  assert.equal(m.rowChild[0], -1);
+  assert.deepEqual(locate(m, (list[0].v as JNode[])[1]), { card: -1, row: 0 });
+  assert.deepEqual(locate(m, list[2]), { card: 1, row: 2 });
+  assert.deepEqual(locate(m, r.root!), { card: 0, row: -1 });
 });
 
 test('graph model: lookups', () => {
@@ -107,7 +126,8 @@ test('graph layout: deep, wide and big documents stay linear', () => {
   const deep = '['.repeat(800) + '1' + ']'.repeat(800);
   const md = model(deep);
   const Ld = layoutGraph(md);
-  assert.equal(Ld.levels.length, 800);
+  // The innermost [1] is shown inline.
+  assert.equal(Ld.levels.length, 799);
   assertNoOverlap(Ld);
   // 200,000 records.
   const big = '[' + Array.from({ length: 200000 }, (_, i) => `{"id":${i},"name":"user ${i}","tags":["a","b"],"geo":{"x":${i},"y":2}}`).join(',') + ']';
@@ -118,7 +138,8 @@ test('graph layout: deep, wide and big documents stay linear', () => {
   const t2 = performance.now();
   const Lb = layoutGraph(mb);
   const t3 = performance.now();
-  assert.equal(mb.n, 1 + 200000 * 3);
+  // Each record: its card and geo (tags are shown inline).
+  assert.equal(mb.n, 1 + 200000 * 2);
   assertNoOverlap(Lb);
   console.log(`  200k records: parse ${(t1 - t0).toFixed(0)} ms, model ${(t2 - t1).toFixed(0)} ms, layout ${(t3 - t2).toFixed(0)} ms, ${mb.n} cards`);
 });

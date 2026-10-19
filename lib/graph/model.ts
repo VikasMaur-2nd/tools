@@ -2,9 +2,10 @@
  * The graph view's model: the document as cards and rows, in flat arrays.
  *
  * Every non-empty object or array becomes a card (a primitive root gets one
- * too). A card lists its entries as rows: primitives and empty containers
- * show their value; a nested container is a "port" row that an edge leaves
- * from. When a card has many nested containers, or is an array of nothing
+ * too), except a small array of primitives, which is shown inline as a value
+ * (`[51.5, -0.1]`, see `inlineCols`). A card lists its entries as rows:
+ * primitives, empty and inline containers show their value; a nested
+ * container is a "port" row that an edge leaves from. When a card has many nested containers, or is an array of nothing
  * but containers, its children hang off one "bus" edge instead and the rows
  * list only the primitives (each child card's header names its key/index).
  *
@@ -43,6 +44,8 @@ export const G = {
   sibGap: 14,
   /** More nested containers than this and a card uses a bus. */
   portMax: 32,
+  /** A small array of primitives (up to this many, fitting valMax) is shown inline in its row: `[51.5, -0.1]`. */
+  inlineMax: 8,
 } as const;
 
 export interface GraphModel {
@@ -155,7 +158,29 @@ export function labelText(n: JNode, build = true): string {
   return fit(n.key, G.keyMax, false, build);
 }
 
-/** Value column text of a row: a primitive, `{}`/`[]`, or a nested container's size (`{3}`, `[12]`). */
+/**
+ * Columns of `n` shown inline (`["a", 1]`), or -1 when it isn't: only
+ * arrays of 1 … G.inlineMax primitives whose whole text fits G.valMax.
+ */
+export function inlineCols(n: JNode): number {
+  if (n.t !== ARR) return -1;
+  const list = n.v as JNode[];
+  const len = list.length;
+  if (!len || len > G.inlineMax) return -1;
+  let cols = 2;
+  for (let i = 0; i < len; i++) {
+    const k = list[i];
+    if (k.t >= ARR) return -1;
+    cols += (i ? 2 : 0) + valueCols(k);
+    if (cols > G.valMax) return -1;
+  }
+  return cols;
+}
+
+/** True when `n` gets its own card (a non-empty container that isn't shown inline). */
+export const isCard = (n: JNode) => n.t >= ARR && (n.v as JNode[]).length > 0 && inlineCols(n) < 0;
+
+/** Value column text of a row: a primitive, `{}`/`[]`, an inline array, or a nested container's size (`{3}`, `[12]`). */
 export function valueText(n: JNode, build = true): string {
   let s: string;
   switch (n.t) {
@@ -172,8 +197,21 @@ export function valueText(n: JNode, build = true): string {
     case NUL:
       s = 'null';
       break;
-    default:
-      s = sizeText(n);
+    default: {
+      const cols = inlineCols(n);
+      if (cols < 0) {
+        s = sizeText(n);
+        break;
+      }
+      fitCols = cols;
+      if (!build) return '';
+      // Fits by construction: every item at full length.
+      const list = n.v as JNode[];
+      s = '[';
+      for (let i = 0; i < list.length; i++) s += (i ? ', ' : '') + valueText(list[i], true);
+      fitCols = cols;
+      return s + ']';
+    }
   }
   fitCols = s.length;
   return s;
@@ -216,6 +254,12 @@ function colsOf(s: string, max: number, quoted: boolean): number {
   return fitCols;
 }
 
+/** Columns of sizeText(n). */
+const sizeCols = (n: JNode) => {
+  const c = (n.v as JNode[]).length;
+  return c ? digits(c) + 2 : 2;
+};
+
 const digits = (k: number) => (k < 10 ? 1 : k < 100 ? 2 : k < 1000 ? 3 : k < 10000 ? 4 : k < 100000 ? 5 : String(k).length);
 
 /** Value column width of a row (columns), as valueText would print it. */
@@ -231,7 +275,8 @@ function valueCols(k: JNode): number {
       return 4;
     default: {
       const c = (k.v as JNode[]).length;
-      return c ? digits(c) + 2 : 2;
+      const inline = c && k.t === ARR ? inlineCols(k) : -1;
+      return inline >= 0 ? inline : c ? digits(c) + 2 : 2;
     }
   }
 }
@@ -324,15 +369,12 @@ export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: n
       } else {
         const list = n.v as JNode[];
         const len = list.length;
-        for (let i = 0; i < len; i++) {
-          const k = list[i];
-          if (k.t >= ARR && (k.v as JNode[]).length) nk++;
-        }
+        for (let i = 0; i < len; i++) if (isCard(list[i])) nk++;
         isBus = nk > G.portMax || (n.t === ARR && nk === len);
         const arr = n.t === ARR;
         for (let i = 0; i < len; i++) {
           const k = list[i];
-          const deep = k.t >= ARR && (k.v as JNode[]).length > 0;
+          const deep = nk > 0 && isCard(k);
           if (deep && isBus) continue;
           rowNode[rowsN++] = k;
           rowChild.push(-1);
@@ -346,7 +388,7 @@ export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: n
         if (nk) {
           for (let i = len - 1; i >= 0; i--) {
             const k = list[i];
-            if (k.t < ARR || !(k.v as JNode[]).length) continue;
+            if (!isCard(k)) continue;
             sn.push(k);
             sp.push(c);
             sd.push(d + 1);
@@ -358,7 +400,7 @@ export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: n
       kidsN.push(nk);
       const rows = rowsN - first;
       const key = n.key;
-      const headCols = (typeof key === 'number' ? digits(key) + 2 : key === undefined ? 4 : colsOf(key, G.headMax, false)) + (n.t >= ARR ? 1 + valueCols(n) : 0);
+      const headCols = (typeof key === 'number' ? digits(key) + 2 : key === undefined ? 4 : colsOf(key, G.headMax, false)) + (n.t >= ARR ? 1 + sizeCols(n) : 0);
       const lw = labelCols * charW;
       const body = rows ? G.padX + (lw ? lw + G.gap : 0) + valCols * charW + G.padX + (ports ? G.port : 0) : 0;
       const head = G.padX + headCols * charW + G.padX + (isBus ? G.port : 0);
@@ -461,6 +503,20 @@ export function rowOf(m: GraphModel, n: JNode): number {
   const b = m.rowStart[c + 1];
   const j = a + lowerBound(b - a, (x) => m.rowNode[a + x].s, n.s);
   return j < b && m.rowNode[j] === n ? j : -1;
+}
+
+/**
+ * Where `n` is drawn: `card` is the card showing it whole (a container with
+ * a card), `row` the row showing it in its parent's card (-1: none). A value
+ * inside an inline array resolves to that array's row.
+ */
+export function locate(m: GraphModel, n: JNode): { card: number; row: number } {
+  for (let p: JNode | null = n; p; p = p.u) {
+    const card = p.t >= ARR ? cardOf(m, p) : -1;
+    const row = rowOf(m, p);
+    if (card >= 0 || row >= 0) return { card, row };
+  }
+  return { card: -1, row: -1 };
 }
 
 /** The card a row belongs to (binary search over rowStart). */
