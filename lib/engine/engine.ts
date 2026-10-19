@@ -8,6 +8,7 @@ import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor'
 import { TreeView } from './tree';
 import { TableView } from './table';
 import type { GraphExport, GraphViewApi } from '../graph/types';
+import { exportOptions, loadExportPrefs } from '../graph/export-prefs';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
@@ -2152,7 +2153,7 @@ export class Engine {
   }
 
   /** Copies the graph as a PNG image. Call from the click itself: browsers only allow it during user input. */
-  copyGraphImage(opts: GraphExport) {
+  copyGraphImage(opts: GraphExport = exportOptions(loadExportPrefs())) {
     const graph = this.graph;
     if (!graph || this.settings.view !== 'graph') return;
     if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {

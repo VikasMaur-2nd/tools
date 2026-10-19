@@ -750,5 +750,11 @@
   "dlg.exportOnlyView": "表示中の範囲のみ",
   "dlg.exportCollapse": "または、グラフで不要な枝を折りたたんでから書き出してください。",
   "dlg.exportTooManyCards": "SVG にはカードが多すぎます: {n} 枚(最大 {max} 枚)。",
-  "dlg.exportTooLarge": "画像にするには大きすぎます: 100% で {width} × {height} px。"
+  "dlg.exportTooLarge": "画像にするには大きすぎます: 100% で {width} × {height} px。",
+  "cmd.graphCopy": "グラフを画像でコピー",
+  "cmd.graph.terms": "JSON 可視化 ビジュアライザー グラフ ビューアー 図 ダイアグラム ノード マップ JSON Crack 代替",
+  "cmd.graph-start.terms": "先頭 ルート 最初 上",
+  "cmd.graph-end.terms": "末尾 最後 下",
+  "cmd.graph-export.terms": "ダウンロード png jpeg jpg svg 画像 保存",
+  "cmd.graph-copy.terms": "クリップボード 画像 png スクリーンショット"
 }

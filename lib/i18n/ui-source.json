@@ -751,7 +751,13 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1505,7 +1511,13 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2259,7 +2271,13 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -3013,7 +3031,13 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3767,7 +3791,13 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4521,7 +4551,13 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -5275,7 +5311,13 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -6029,6 +6071,12 @@
     "dlg.exportOnlyView": "4b747463",
     "dlg.exportCollapse": "1909effb",
     "dlg.exportTooManyCards": "3890bf3c",
-    "dlg.exportTooLarge": "af695eef"
+    "dlg.exportTooLarge": "af695eef",
+    "cmd.graphCopy": "092a192b",
+    "cmd.graph.terms": "5fe0c043",
+    "cmd.graph-start.terms": "be4100cf",
+    "cmd.graph-end.terms": "8d8420c9",
+    "cmd.graph-export.terms": "181e621c",
+    "cmd.graph-copy.terms": "4dad3598"
   }
 }

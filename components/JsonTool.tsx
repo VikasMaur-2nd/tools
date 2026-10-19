@@ -13,7 +13,7 @@ import { useT } from '@/lib/i18n/react';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
-import { CommandPalette, GraphExportDialog, ShortcutsDialog, savedGraphExport } from './dialogs';
+import { CommandPalette, GraphExportDialog, ShortcutsDialog } from './dialogs';
 
 function Btn({
   icon,
@@ -433,7 +433,7 @@ function ViewMenu() {
               <MItem label="Go to end" keys="End" onClick={() => act((e) => e.graphJump('end'))} close={close} />
               <MSep />
               <MItem label="Export image…" onClick={() => act((e) => e.openGraphExport())} close={close} />
-              <MItem label="Copy image" onClick={() => act((e) => e.copyGraphImage(savedGraphExport()))} close={close} />
+              <MItem label="Copy image" onClick={() => act((e) => e.copyGraphImage())} close={close} />
             </>
           )}
           {view === 'convert' && (

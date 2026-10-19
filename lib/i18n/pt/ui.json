@@ -788,5 +788,11 @@
   "dlg.exportOnlyView": "Só a área visível",
   "dlg.exportCollapse": "Ou recolha no grafo os ramos de que não precisa e exporte de novo.",
   "dlg.exportTooManyCards": "Cartões demais para SVG: {n} (até {max}).",
-  "dlg.exportTooLarge": "Grande demais para uma imagem: {width} × {height} px a 100%."
+  "dlg.exportTooLarge": "Grande demais para uma imagem: {width} × {height} px a 100%.",
+  "cmd.graphCopy": "Copiar imagem do grafo",
+  "cmd.graph.terms": "visualizador JSON visualizar visualizador de grafo diagrama nós mapa alternativa ao JSON Crack",
+  "cmd.graph-start.terms": "topo raiz primeiro início",
+  "cmd.graph-end.terms": "fim último final",
+  "cmd.graph-export.terms": "baixar png jpeg jpg svg imagem salvar",
+  "cmd.graph-copy.terms": "área de transferência imagem png captura"
 }

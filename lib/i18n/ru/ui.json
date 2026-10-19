@@ -807,5 +807,11 @@
   "dlg.exportOnlyView": "Только видимая область",
   "dlg.exportCollapse": "Или сверните в графе ненужные ветви и экспортируйте снова.",
   "dlg.exportTooManyCards": "Слишком много карточек для SVG: {n} (не больше {max}).",
-  "dlg.exportTooLarge": "Слишком большое для изображения: {width} × {height} px при 100%."
+  "dlg.exportTooLarge": "Слишком большое для изображения: {width} × {height} px при 100%.",
+  "cmd.graphCopy": "Копировать изображение графа",
+  "cmd.graph.terms": "визуализатор JSON визуализация граф просмотр графа диаграмма узлы карта альтернатива JSON Crack",
+  "cmd.graph-start.terms": "верх корень первый начало",
+  "cmd.graph-end.terms": "низ последний конец",
+  "cmd.graph-export.terms": "скачать png jpeg jpg svg изображение сохранить",
+  "cmd.graph-copy.terms": "буфер обмена изображение png скриншот"
 }

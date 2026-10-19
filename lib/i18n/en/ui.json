@@ -869,5 +869,11 @@
   "dlg.exportOnlyView": "Only the visible area",
   "dlg.exportCollapse": "Or collapse branches you don't need in the graph, then export again.",
   "dlg.exportTooManyCards": "Too many cards for SVG: {n} (up to {max}).",
-  "dlg.exportTooLarge": "Too large for an image: {width} × {height} px at 100%."
+  "dlg.exportTooLarge": "Too large for an image: {width} × {height} px at 100%.",
+  "cmd.graphCopy": "Copy graph image",
+  "cmd.graph.terms": "json visualizer visualiser visualize visualise json graph viewer diagram nodes map json crack alternative",
+  "cmd.graph-start.terms": "top root first beginning",
+  "cmd.graph-end.terms": "bottom last end",
+  "cmd.graph-export.terms": "download png jpeg jpg svg picture save",
+  "cmd.graph-copy.terms": "clipboard picture png screenshot"
 }

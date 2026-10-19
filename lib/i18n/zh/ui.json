@@ -750,5 +750,11 @@
   "dlg.exportOnlyView": "仅可见区域",
   "dlg.exportCollapse": "也可以先在图谱中折叠不需要的分支，再重新导出。",
   "dlg.exportTooManyCards": "卡片太多，无法导出 SVG：{n} 张（最多 {max} 张）。",
-  "dlg.exportTooLarge": "太大，无法导出为图片：100% 时为 {width} × {height} px。"
+  "dlg.exportTooLarge": "太大，无法导出为图片：100% 时为 {width} × {height} px。",
+  "cmd.graphCopy": "复制图谱图片",
+  "cmd.graph.terms": "JSON 可视化 可视化工具 图谱 查看器 关系图 图表 节点 JSON Crack 替代",
+  "cmd.graph-start.terms": "顶部 根 第一个 开头",
+  "cmd.graph-end.terms": "底部 最后 结尾",
+  "cmd.graph-export.terms": "下载 png jpeg jpg svg 图片 保存",
+  "cmd.graph-copy.terms": "剪贴板 图片 png 截图"
 }

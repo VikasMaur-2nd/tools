@@ -750,5 +750,11 @@
   "dlg.exportOnlyView": "보이는 영역만",
   "dlg.exportCollapse": "또는 그래프에서 필요 없는 가지를 접은 뒤 다시 내보내세요.",
   "dlg.exportTooManyCards": "SVG로 만들기에는 카드가 너무 많습니다: {n}개(최대 {max}개).",
-  "dlg.exportTooLarge": "이미지로 만들기에는 너무 큽니다: 100%에서 {width} × {height} px."
+  "dlg.exportTooLarge": "이미지로 만들기에는 너무 큽니다: 100%에서 {width} × {height} px.",
+  "cmd.graphCopy": "그래프 이미지 복사",
+  "cmd.graph.terms": "JSON 시각화 시각화 도구 그래프 뷰어 다이어그램 노드 맵 JSON Crack 대안",
+  "cmd.graph-start.terms": "맨 위 루트 처음 시작",
+  "cmd.graph-end.terms": "맨 아래 마지막 끝",
+  "cmd.graph-export.terms": "다운로드 png jpeg jpg svg 이미지 저장",
+  "cmd.graph-copy.terms": "클립보드 이미지 png 스크린샷"
 }

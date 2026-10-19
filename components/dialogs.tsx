@@ -5,6 +5,7 @@ import { COMMANDS, fuzzy, keyLabel, type Command } from '@/lib/engine/commands';
 import { store, useUI } from '@/lib/engine/store';
 import { act, getEngine } from '@/lib/engine/instance';
 import type { ExportPreview, GraphExport } from '@/lib/graph/types';
+import { exportOptions, loadExportPrefs, saveExportPrefs, type ExportPrefs } from '@/lib/graph/export-prefs';
 import { PRIVATE, track, withVia } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
 import { Kbd } from './Kbd';
@@ -295,31 +296,6 @@ export function ShortcutsDialog() {
 
 // ── Graph image export ──────────────────────────────────────────────────────
 
-type ExportPrefs = Omit<GraphExport, 'background'> & { bg: 'theme' | 'white' | 'transparent' | 'custom'; color: string };
-const EXPORT_PREFS = 'jf:graph-export';
-const DEFAULT_EXPORT: ExportPrefs = { format: 'png', area: 'all', bg: 'theme', color: '#ffffff', scale: 2 };
-
-function loadExportPrefs(): ExportPrefs {
-  try {
-    const v = { ...DEFAULT_EXPORT, ...JSON.parse(localStorage.getItem(EXPORT_PREFS) ?? '{}') } as ExportPrefs;
-    // Stored values are only trusted from the known sets.
-    if (!['png', 'jpeg', 'svg'].includes(v.format)) v.format = 'png';
-    if (!['all', 'view', 'branch'].includes(v.area)) v.area = 'all';
-    if (!['theme', 'white', 'transparent', 'custom'].includes(v.bg)) v.bg = 'theme';
-    if (!/^#[0-9a-f]{6}$/i.test(v.color)) v.color = '#ffffff';
-    if (![1, 2, 3].includes(v.scale)) v.scale = 2;
-    return v;
-  } catch {
-    return DEFAULT_EXPORT;
-  }
-}
-
-/** The last export choices, as export options (the menu's Copy image uses them too). */
-export function savedGraphExport(): GraphExport {
-  const p = loadExportPrefs();
-  return { format: p.format, area: p.area, background: p.bg === 'white' ? '#ffffff' : p.bg === 'custom' ? p.color : p.format === 'jpeg' && p.bg === 'transparent' ? 'theme' : p.bg, scale: p.scale };
-}
-
 /** Below this many image px per graph px, PNG and JPEG text gets hard to read. */
 const SMALL_TEXT = 0.75;
 
@@ -397,18 +373,9 @@ function ExportForm() {
   const set = (patch: Partial<ExportPrefs>) => setP((old) => ({ ...old, ...patch }));
   // JPEG has no transparency: it falls back to the theme's colour.
   const bg = p.format === 'jpeg' && p.bg === 'transparent' ? 'theme' : p.bg;
-  const opts: GraphExport = {
-    format: p.format,
-    area: p.area === 'branch' && preview && !preview.branch ? 'all' : p.area,
-    background: bg === 'white' ? '#ffffff' : bg === 'custom' ? p.color : bg,
-    scale: p.scale,
-  };
+  const opts: GraphExport = { ...exportOptions(p), area: p.area === 'branch' && preview && !preview.branch ? 'all' : p.area };
   const key = JSON.stringify(opts);
-  useEffect(() => {
-    try {
-      localStorage.setItem(EXPORT_PREFS, JSON.stringify(p));
-    } catch {}
-  }, [p]);
+  useEffect(() => saveExportPrefs(p), [p]);
   useEffect(() => {
     let live = true;
     void getEngine()?.graphExportPreview(JSON.parse(key) as GraphExport).then((r) => live && setPreview(r), () => {});
