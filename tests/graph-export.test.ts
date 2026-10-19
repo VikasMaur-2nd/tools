@@ -122,7 +122,7 @@ test('graph export: rejects too many shown SVG cards, but permits their collapse
   const collapsed = new Uint8Array(m.n);
   collapsed[0] = 1;
   const svg = toSVG(layoutGraph(m, collapsed), theme);
-  assert.match(svg, new RegExp(`>\\+${EXPORT_LIMITS.svgCards}</text>`));
+  assert.match(svg, />\+20k<\/text>/);
   assert.equal((svg.match(/class="card"/g) ?? []).length, 1);
 });
 
@@ -169,4 +169,20 @@ test('graph export: PNG validates huge coordinates before attempting canvas allo
   const L = layoutGraph(model({ value: 1 }));
   await assert.rejects(toPNG({ ...L, height: 1e8 }, theme), /The graph is too large for PNG\./);
   assert.throws(() => toSVG({ ...L, width: NaN }, theme), /invalid dimensions/);
+});
+
+test('graph export: matches the screen header weight, bus badge offset, bus dot and bordered pill', () => {
+  const m = model(Array.from({ length: 3 }, (_, id) => ({ id })));
+  const svg = toSVG(layoutGraph(m), theme);
+  assert.match(svg, /<text class="strong [^"]*"[^>]*>root<\/text>/);
+  assert.match(svg, /\.strong\{font-weight:600\}/);
+  const w = m.w[0];
+  assert.ok(m.bus[0]);
+  assert.ok(svg.includes(`<text class="muted end ${'ph-no-capture'}" x="${w - G.padX - G.port}"`));
+  assert.ok(svg.includes(`<rect class="dot" x="${w - 3}" y="${G.head / 2 - 3}"`));
+  const collapsed = new Uint8Array(m.n);
+  collapsed[0] = 1;
+  const folded = toSVG(layoutGraph(m, collapsed), theme);
+  assert.match(folded, /<rect class="pill"[^>]*rx="9"\/><text class="muted ph-no-capture"[^>]*>\+3<\/text>/);
+  assert.match(folded, /<path class="chevron"/);
 });
