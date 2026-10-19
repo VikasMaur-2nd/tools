@@ -355,7 +355,8 @@ export async function toPNG(L: GraphLayout, theme: GraphTheme, opts?: { scale?: 
       ctx.restore();
       await pause();
     }
-    if (ctx.isContextLost()) throw new Error('PNG export ran out of canvas memory. Try a smaller graph.');
+    // Safari's OffscreenCanvas context has no isContextLost.
+    if (typeof ctx.isContextLost === 'function' && ctx.isContextLost()) throw new Error('PNG export ran out of canvas memory. Try a smaller graph.');
     if ('convertToBlob' in canvas) return await canvas.convertToBlob({ type: 'image/png' });
     return await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => {
       if (blob) resolve(blob);
