@@ -6,7 +6,7 @@
  * culled, and at low zoom neighbouring cards merge into one block per pixel.
  */
 import { ARR, BOOL, NUL, NUM, STR, type JNode } from '../json/parser';
-import { G, SWATCH_COLS, SWATCH_PX, fitCols, headText, labelText, sizeText, swatch, valueText } from './model';
+import { G, SWATCH_COLS, SWATCH_PX, fitCols, headText, headX, labelText, sizeText, swatch, valueText } from './model';
 import { cardsIn, groupsIn, type GraphLayout } from './layout';
 import type { GraphTheme } from './theme';
 import { lodOf, type Cam } from './camera';
@@ -171,6 +171,16 @@ export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTh
   }
   ctx.stroke();
 
+  // ── The selection's path from the root, over the other edges ──
+  const target = p.row >= 0 && m.rowChild[p.row] >= 0 && L.shown[m.rowChild[p.row]] ? m.rowChild[p.row] : p.card;
+  if (target > 0 && target < m.n && L.shown[target]) {
+    ctx.strokeStyle = th.accent;
+    ctx.lineWidth = Math.max(2, 1.5 * px);
+    ctx.beginPath();
+    for (let c = target; m.parent[c] >= 0; c = m.parent[c]) edgeInto(ctx, L, c, ox, oy);
+    ctx.stroke();
+  }
+
   // ── Cards ──
   ctx.font = th.font;
   ctx.textBaseline = 'middle';
@@ -242,6 +252,40 @@ function kidsIn(L: GraphLayout, p: number, y0: number, y1: number): [number, num
     else hi = mid;
   }
   return [from, lo];
+}
+
+/** The one edge into card `c` (same geometry as edgesOf draws it). */
+function edgeInto(ctx: CanvasRenderingContext2D, L: GraphLayout, c: number, ox: number, oy: number) {
+  const { m, x, y } = L;
+  const p = m.parent[c];
+  const sx = x[p] + m.w[p] - ox;
+  const ex = x[c] - ox;
+  const ey = y[c] + G.head / 2 - oy;
+  if (m.bus[p]) {
+    const py = y[p] + G.head / 2 - oy;
+    const tx = L.colX[m.depth[c]] - G.colGap / 2 - ox;
+    const dy = ey - py;
+    const r = Math.min(R, Math.abs(dy), (ex - tx) / 2);
+    ctx.moveTo(sx, py);
+    if (r > 0.5) {
+      const sg = dy > 0 ? 1 : -1;
+      ctx.lineTo(tx, py);
+      ctx.lineTo(tx, ey - sg * r);
+      ctx.quadraticCurveTo(tx, ey, tx + r, ey);
+    } else {
+      ctx.lineTo(tx, py);
+      ctx.lineTo(tx, ey);
+    }
+    ctx.lineTo(ex, ey);
+    return;
+  }
+  const sy = y[p] + G.head + (m.portRow[c] - m.rowStart[p]) * G.row + G.row / 2 - oy;
+  ctx.moveTo(sx, sy);
+  if (Math.abs(ey - sy) < 0.5) ctx.lineTo(ex, ey);
+  else {
+    const mx = (sx + ex) / 2;
+    ctx.bezierCurveTo(mx, sy, mx, ey, ex, ey);
+  }
 }
 
 function edgesOf(ctx: CanvasRenderingContext2D, L: GraphLayout, p: number, ox: number, oy: number, wy0: number, wy1: number, lod: number, px: number) {
@@ -426,7 +470,7 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
     // Header: label, then the size badge right-aligned.
     ctx.fillStyle = th.fg;
     ctx.font = '600 ' + th.font;
-    ctx.fillText(headText(n), cx + G.padX, cy + G.head / 2);
+    ctx.fillText(headText(n), cx + headX(m, c), cy + G.head / 2);
     ctx.font = th.font;
     if (n.t >= ARR) {
       ctx.fillStyle = th.muted;
@@ -453,7 +497,7 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
     }
     headText(n, false);
     ctx.fillStyle = th.fg;
-    ctx.fillRect(cx + G.padX, cy + (G.head - 8) / 2, fitCols * cw, 8);
+    ctx.fillRect(cx + headX(m, c), cy + (G.head - 8) / 2, fitCols * cw, 8);
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -483,10 +527,11 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
   // Chevron (cards with children) and the collapsed pill.
   if (m.kids[c]) {
     const col = L.collapsed[c];
-    if (lod === 0 && (col || (c === p.hoverCard && p.hoverRow < 0))) {
-      const chx = cx + 4.5;
+    if (lod === 0) {
+      // Always there (collapsing is discoverable), stronger on hover and when collapsed.
+      const chx = cx + G.padX + 1;
       const chy = cy + G.head / 2;
-      ctx.strokeStyle = th.muted;
+      ctx.strokeStyle = col || (c === p.hoverCard && p.hoverRow < 0) ? th.muted : th.faint;
       ctx.lineWidth = 1.25;
       ctx.beginPath();
       if (col) {
@@ -531,7 +576,7 @@ export function compactNum(n: number) {
 /** Where a click lands on a shown card: the header (-1), a row index, or the chevron (-2). */
 export function partAt(L: GraphLayout, c: number, wx: number, wy: number): number {
   const top = L.y[c] + G.head;
-  if (wy < top) return L.m.kids[c] && wx - L.x[c] < G.padX ? -2 : -1;
+  if (wy < top) return L.m.kids[c] && wx - L.x[c] < G.padX + G.chev ? -2 : -1;
   const i = Math.floor((wy - top) / G.row);
   const r0 = L.m.rowStart[c];
   return i >= 0 && r0 + i < L.m.rowStart[c + 1] ? r0 + i : -1;

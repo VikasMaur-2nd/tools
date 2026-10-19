@@ -33,6 +33,8 @@ export const G = {
   gap: 14,
   /** Extra width on cards with port rows (the edge's start dot). */
   port: 10,
+  /** Room before the header label of a card with children (its collapse chevron). */
+  chev: 8,
   minW: 120,
   /** Column limits, in monospace columns (wide characters count 2). */
   keyMax: 24,
@@ -256,6 +258,9 @@ export const sizeText = (n: JNode) => {
 };
 
 /** A card's header label: its key, `[index]`, or `root`. */
+/** x offset of a card's header label (after the chevron of a card with children). */
+export const headX = (m: GraphModel, c: number) => G.padX + (m.kids[c] ? G.chev : 0);
+
 export function headText(n: JNode, build = true): string {
   if (typeof n.key === 'number') {
     const s = `[${n.key}]`;
@@ -467,7 +472,7 @@ function* build(root: JNode, charW: number, hint: number): Generator<void, Graph
       const headCols = (typeof key === 'number' ? digits(key) + 2 : key === undefined ? 4 : colsOf(key, G.headMax, false)) + (n.t >= ARR ? 1 + sizeCols(n) : 0);
       const lw = labelCols * charW;
       const body = rows ? G.padX + (lw ? lw + G.gap : 0) + valCols * charW + G.padX + (ports ? G.port : 0) : 0;
-      const head = G.padX + headCols * charW + G.padX + (bus ? G.port : 0);
+      const head = G.padX + (nk ? G.chev : 0) + headCols * charW + G.padX + (bus ? G.port : 0);
       labelW.push(lw);
       w.push(Math.ceil(Math.max(G.minW, body, head)));
       h.push(G.head + (rows ? rows * G.row + G.padY : 0));

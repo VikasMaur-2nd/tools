@@ -3,7 +3,7 @@ import { PRIVATE } from '../analytics';
 import { ARR, BOOL, NUL, NUM, STR } from '../json/parser';
 import { compactNum } from './render';
 import { anchorY, cardsIn, groupsIn, portY, rowY, type GraphLayout } from './layout';
-import { G, SWATCH_COLS, SWATCH_PX, headText, labelText, sizeText, swatch, valueText } from './model';
+import { G, SWATCH_COLS, SWATCH_PX, headText, headX, labelText, sizeText, swatch, valueText } from './model';
 import type { GraphTheme } from './theme';
 
 export const EXPORT_LIMITS = { svgCards: 20_000, pngPixels: 120_000_000, pngSide: 16_384 };
@@ -153,12 +153,12 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, sel
   }
   p.roundRect(x, y, w, h, 6, 'border');
   if (y + G.head >= y0 && y <= y1) {
-    p.text(x + G.padX, y + G.head / 2, headText(n), 'strong');
+    p.text(x + headX(m, c), y + G.head / 2, headText(n), 'strong');
     if (n.t >= ARR) p.text(x + w - G.padX - (m.bus[c] ? G.port : 0), y + G.head / 2, sizeText(n), 'muted', true);
     if (m.bus[c] && m.kids[c]) p.roundRect(x + w - 3, y + G.head / 2 - 3, 6, 6, 3, 'dot');
     if (L.collapsed[c] && m.kids[c]) {
       const cy = y + G.head / 2;
-      p.path([['M', x + 3, cy - 3], ['L', x + 6, cy], ['L', x + 3, cy + 3]], 'chevron');
+      p.path([['M', x + G.padX - 0.5, cy - 3], ['L', x + G.padX + 2.5, cy], ['L', x + G.padX - 0.5, cy + 3]], 'chevron');
       const px = x + w + 8;
       const py = y + (G.head - 18) / 2;
       p.roundRect(px, py, pillWidth(L, c), 18, 9, 'head');
