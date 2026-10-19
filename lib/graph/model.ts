@@ -279,7 +279,14 @@ const sizeCols = (n: JNode) => {
   return c ? digits(c) + 2 : 2;
 };
 
-const digits = (k: number) => (k < 10 ? 1 : k < 100 ? 2 : k < 1000 ? 3 : k < 10000 ? 4 : k < 100000 ? 5 : String(k).length);
+const digits = (k: number) => {
+  let n = 1;
+  while (k >= 10) {
+    k = Math.floor(k / 10);
+    n++;
+  }
+  return n;
+};
 
 /** Value column width of a row (columns), as valueText would print it. */
 function valueCols(k: JNode): number {
