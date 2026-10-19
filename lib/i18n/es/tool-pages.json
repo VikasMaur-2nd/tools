@@ -1739,5 +1739,80 @@
         "answer": "Sí. NDJSON a JSON lee las líneas y devuelve un único array JSON."
       }
     ]
+  },
+  "json-visualizer": {
+    "hash": "7f4a154f4cbf",
+    "title": "Visualizador JSON con gráfico interactivo",
+    "description": "Visualiza JSON como un gráfico junto al editor. Explora archivos grandes, busca valores y exporta PNG o SVG. Todo en tu navegador, sin subir datos.",
+    "heading": "Visualizador JSON",
+    "query": "visualizador json",
+    "secondary": [
+      "visor de gráficos JSON",
+      "visualizar JSON online"
+    ],
+    "intro": "Pega JSON o abre un archivo para explorarlo como un diagrama de nodos y conexiones junto al editor. Los objetos y arrays aparecen como tarjetas con claves, valores y colores por tipo. Las conexiones enlazan cada objeto o array anidado con su contenedor.",
+    "modeLabel": "Gráfico JSON interactivo",
+    "exampleLabel": "Esta respuesta de API contiene un equipo, dos proyectos con responsables anidados y datos de paginación. Sigue sus conexiones en la vista de gráfico de arriba. El JSON formateado de abajo muestra los mismos datos.",
+    "steps": [
+      "Pega JSON, abre un archivo local o carga una URL. Esta página abre la vista de gráfico.",
+      "Arrastra para desplazarte. Amplía o reduce con Ctrl/⌘+rueda o un gesto de pellizco, ajusta el gráfico a la pantalla y usa el minimapa para orientarte.",
+      "Haz clic en una tarjeta o un valor para ir a su posición en el editor. Mueve el cursor en el editor para resaltar su ubicación en el gráfico.",
+      "Pulsa Ctrl/⌘F para buscar claves y valores, o introduce una ruta como $.data.projects[1].owner. Exporta a PNG o SVG cuando necesites una imagen."
+    ],
+    "options": [
+      "Contrae cualquier rama para centrarte en otra parte del documento y vuelve a expandirla cuando quieras.",
+      "La búsqueda resalta las claves y los valores que coinciden y permite recorrer los resultados.",
+      "Navega con el teclado y copia el valor seleccionado o su ruta.",
+      "Alterna entre las vistas de gráfico, árbol y tabla para inspeccionar conexiones, campos anidados o registros.",
+      "Elige el modo claro u oscuro. El procesamiento JSON y la exportación de imágenes se realizan en tu navegador."
+    ],
+    "faqs": [
+      {
+        "question": "¿Qué es un visualizador JSON?",
+        "answer": "Un visualizador JSON convierte JSON anidado en un diagrama que puedes explorar. Este visor muestra objetos y arrays como tarjetas, enumera sus claves y valores con colores por tipo y conecta los contenedores anidados mediante líneas."
+      },
+      {
+        "question": "¿Cómo visualizo un archivo JSON grande?",
+        "answer": "Abre el archivo y elige la vista de gráfico. El lienzo solo dibuja la parte visible del diagrama, por lo que los documentos con cientos de miles de objetos mantienen la fluidez al desplazarte y cambiar el zoom. Contrae ramas y usa la búsqueda o una ruta $.path para llegar a un valor concreto. El tiempo de carga y la capacidad dependen del dispositivo y del documento."
+      },
+      {
+        "question": "¿Es privado este visualizador JSON?",
+        "answer": "Sí. Tu JSON permanece en el navegador y nunca se sube para procesarlo. El gráfico también funciona sin conexión una vez cargada la aplicación. Cargar una URL requiere una conexión a esa URL."
+      },
+      {
+        "question": "¿Puedo exportar el gráfico JSON como imagen?",
+        "answer": "Sí. Exporta a PNG para obtener una imagen de mapa de bits o a SVG para una imagen vectorial. Ambas exportaciones se realizan localmente en tu navegador."
+      },
+      {
+        "question": "¿En qué se diferencia el gráfico de una vista de árbol JSON?",
+        "answer": "El gráfico distribuye los objetos y arrays anidados en tarjetas conectadas para que puedas seguir varias ramas a la vez. La vista de árbol los presenta como una lista con sangría, útil para leer los campos en orden. Puedes alternar entre gráfico y árbol con el mismo documento."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Comprueba si una respuesta JSON está truncada"
+      },
+      {
+        "slug": "trailing-comma",
+        "text": "Corrige una coma final antes de visualizar JSON"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Cuándo ayuda más un gráfico que un árbol",
+        "paragraphs": [
+          "Una respuesta de API suele agrupar registros en data, añadir metadatos a su lado y anidar otro objeto en cada registro. Las tarjetas conectadas permiten ver esas relaciones sin contar niveles de sangría. En el ejemplo, el equipo, los proyectos, los responsables y la paginación aparecen separados de esta forma.",
+          "Usa el árbol para leer campos en secuencia y la tabla para comparar registros por columna. Si buscas una alternativa a JSON Crack, este gráfico mantiene el diagrama junto al editor, con la selección sincronizada en ambos sentidos y exportación local a PNG y SVG."
+        ]
+      },
+      {
+        "heading": "Cómo se dibujan los gráficos JSON grandes",
+        "paragraphs": [
+          "La vista de gráfico utiliza un lienzo y solo dibuja la parte que puedes ver. Al desplazarte por un documento con cientos de miles de objetos, no necesita dibujar cada tarjeta en cada fotograma. El minimapa y el ajuste a la pantalla te ayudan a mantener la orientación.",
+          "El navegador sigue necesitando memoria para leer el JSON y construir su estructura. El tamaño del archivo, los niveles de anidamiento y la memoria del dispositivo afectan a la carga. Contrae ramas para despejar el gráfico y busca una clave, un valor o una ruta concreta en lugar de seguir cada conexión."
+        ]
+      }
+    ]
   }
 }
