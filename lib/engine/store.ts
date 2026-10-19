@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Seg } from '../json/path';
 
 export type Theme = 'system' | 'light' | 'dark';
-export type View = 'format' | 'tree' | 'table' | 'convert' | 'compare';
+export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
 export type IndentId = '2' | '4' | 'tab';
 export type Hint = 'unescape' | 'yaml' | 'xml' | 'csv' | 'toml' | null;
 

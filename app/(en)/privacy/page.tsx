@@ -19,11 +19,11 @@ export const metadata: Metadata = {
 /** When each event is sent. Its properties are listed straight from lib/analytics/events.ts. */
 const WHEN: Record<EventName, string> = {
   json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL or share link, or the sample), once it has been checked.',
-  view_opened: 'You open Format, Tree, Table, Convert or Compare.',
+  view_opened: 'You open Format, Tree, Table, Graph, Convert or Compare.',
   convert_target_selected: 'You pick a Convert language or format.',
   convert_option_changed: 'You change a Convert option: TypeScript interface or type, or the C# JSON library. The root type name you type is never sent.',
   format_option_changed: 'You change the output style, key sorting or indentation.',
-  feature_used: 'You use a feature: copy, download, share, repair, find, expand or collapse, wrap lines, theme and similar.',
+  feature_used: 'You use a feature: copy, download, share, repair, find, expand or collapse, wrap lines, theme, graph fit and zoom, graph PNG or SVG export and similar.',
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',
 };
 
@@ -149,7 +149,7 @@ export default function PrivacyPage() {
         </p>
         <ul>
           <li>
-            Both editors, file names, the JSON path, the table location and the whole output area (formatted output, tree, table, converted code and
+            Both editors, file names, the JSON path, the table location and the whole output area (formatted output, tree, table, graph, converted code and
             Compare) are left out. They appear as empty boxes, and the recorder never reads inside them.
           </li>
           <li>All other text on the page, every form field and every label and tooltip is replaced with asterisks before anything leaves your browser.</li>
