@@ -63,7 +63,7 @@ function portRel(m: GraphModel, c: number) {
  */
 export function layouter(m: GraphModel, collapsed: Uint8Array = new Uint8Array(m.n)): (deadline: number) => GraphLayout | null {
   const n = m.n;
-  const { parent, depth, kidStart, kidList, h } = m;
+  const { parent, kidStart, kidList, h } = m;
   const shown = new Uint8Array(n);
   if (n) shown[0] = 1;
   for (let c = 1; c < n; c++) shown[c] = shown[parent[c]] && !collapsed[parent[c]] ? 1 : 0;
@@ -79,25 +79,30 @@ export function layouter(m: GraphModel, collapsed: Uint8Array = new Uint8Array(m
       if (!shown[c]) continue;
       const a = kidStart[c];
       const b = kidStart[c + 1];
-      if (collapsed[c] || a === b) {
-        cont[c] = { top: [0], bot: [h[c]], off: 0 };
-        continue;
-      }
+      // A card without shown children keeps no contour (it's just [0, h]).
+      if (collapsed[c] || a === b) continue;
       // Pack the children top to bottom in block coordinates (first child's top = 0).
       const k0 = kidList[a];
-      let acc = cont[k0]!;
+      let acc = cont[k0] ?? { top: [0], bot: [h[k0]], off: 0 };
       cont[k0] = undefined;
       const p0 = portRel(m, k0);
       rel[k0] = 0;
       for (let j = a + 1; j < b; j++) {
         const k = kidList[j];
-        const next = cont[k]!;
-        cont[k] = undefined;
+        const next = cont[k];
         const la = acc.top.length;
-        const lb = next.top.length;
-        const common = la < lb ? la : lb;
         // No higher than its port (edges never climb), then clear of the siblings above.
         let d = m.portRow[k] < 0 ? -Infinity : portRel(m, k) - p0;
+        if (!next) {
+          const need = acc.bot[la - 1] + acc.off + gap;
+          if (need > d) d = need;
+          rel[k] = d;
+          acc.bot[la - 1] = h[k] + d - acc.off;
+          continue;
+        }
+        cont[k] = undefined;
+        const lb = next.top.length;
+        const common = la < lb ? la : lb;
         for (let l = 1; l <= common; l++) {
           const need = acc.bot[la - l] + acc.off - (next.top[lb - l] + next.off) + gap;
           if (need > d) d = need;

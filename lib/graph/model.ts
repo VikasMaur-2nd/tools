@@ -2,9 +2,10 @@
  * The graph view's model: the document as cards and rows, in flat arrays.
  *
  * Every non-empty object or array becomes a card (a primitive root gets one
- * too). A card lists its entries as rows: primitives and empty containers
- * show their value; a nested container is a "port" row that an edge leaves
- * from. When a card has many nested containers, or is an array of nothing
+ * too), except a small array of primitives, which is shown inline as a value
+ * (`[51.5, -0.1]`, see `inlineCols`). A card lists its entries as rows:
+ * primitives, empty and inline containers show their value; a nested
+ * container is a "port" row that an edge leaves from. When a card has many nested containers, or is an array of nothing
  * but containers, its children hang off one "bus" edge instead and the rows
  * list only the primitives (each child card's header names its key/index).
  *
@@ -43,6 +44,8 @@ export const G = {
   sibGap: 14,
   /** More nested containers than this and a card uses a bus. */
   portMax: 32,
+  /** A small array of primitives (up to this many, fitting valMax) is shown inline in its row: `[51.5, -0.1]`. */
+  inlineMax: 8,
 } as const;
 
 export interface GraphModel {
@@ -91,10 +94,29 @@ export interface GraphModel {
 
 const ESC: Record<number, string> = { 8: '\\b', 9: '\\t', 10: '\\n', 12: '\\f', 13: '\\r', 34: '\\"', 92: '\\\\' };
 
-/** Display columns of code point `cp`. */
+/**
+ * Display columns of code point `cp`: East Asian wide/fullwidth and emoji
+ * take two, combining marks and joiners none. Erring wide is safe (a little
+ * spare room); erring narrow would overflow the card.
+ */
 export function cpCols(cp: number): number {
+  if (cp < 0x300) return 1;
+  if (cp <= 0x36f || cp === 0x200b || cp === 0x200c || cp === 0x200d || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef)) return 0;
   if (cp < 0x1100) return 1;
-  return (cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) || (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) || (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1f64f) || (cp >= 0x1f900 && cp <= 0x1f9ff) || (cp >= 0x20000 && cp <= 0x3fffd) ? 2 : 1;
+  return cp <= 0x115f ||
+    (cp >= 0x231a && cp <= 0x23ff) ||
+    (cp >= 0x2600 && cp <= 0x27bf) ||
+    (cp >= 0x2b00 && cp <= 0x2bff) ||
+    (cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) ||
+    (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) ||
+    (cp >= 0xfe30 && cp <= 0xfe4f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f000 && cp <= 0x1faff) ||
+    (cp >= 0x20000 && cp <= 0x3fffd)
+    ? 2
+    : 1;
 }
 
 /**
@@ -155,7 +177,29 @@ export function labelText(n: JNode, build = true): string {
   return fit(n.key, G.keyMax, false, build);
 }
 
-/** Value column text of a row: a primitive, `{}`/`[]`, or a nested container's size (`{3}`, `[12]`). */
+/**
+ * Columns of `n` shown inline (`["a", 1]`), or -1 when it isn't: only
+ * arrays of 1 … G.inlineMax primitives whose whole text fits G.valMax.
+ */
+export function inlineCols(n: JNode): number {
+  if (n.t !== ARR) return -1;
+  const list = n.v as JNode[];
+  const len = list.length;
+  if (!len || len > G.inlineMax) return -1;
+  let cols = 2;
+  for (let i = 0; i < len; i++) {
+    const k = list[i];
+    if (k.t >= ARR) return -1;
+    cols += (i ? 2 : 0) + valueCols(k);
+    if (cols > G.valMax) return -1;
+  }
+  return cols;
+}
+
+/** True when `n` gets its own card (a non-empty container that isn't shown inline). */
+export const isCard = (n: JNode) => n.t >= ARR && (n.v as JNode[]).length > 0 && inlineCols(n) < 0;
+
+/** Value column text of a row: a primitive, `{}`/`[]`, an inline array, or a nested container's size (`{3}`, `[12]`). */
 export function valueText(n: JNode, build = true): string {
   let s: string;
   switch (n.t) {
@@ -172,8 +216,21 @@ export function valueText(n: JNode, build = true): string {
     case NUL:
       s = 'null';
       break;
-    default:
-      s = sizeText(n);
+    default: {
+      const cols = inlineCols(n);
+      if (cols < 0) {
+        s = sizeText(n);
+        break;
+      }
+      fitCols = cols;
+      if (!build) return '';
+      // Fits by construction: every item at full length.
+      const list = n.v as JNode[];
+      s = '[';
+      for (let i = 0; i < list.length; i++) s += (i ? ', ' : '') + valueText(list[i], true);
+      fitCols = cols;
+      return s + ']';
+    }
   }
   fitCols = s.length;
   return s;
@@ -201,45 +258,69 @@ export function headText(n: JNode, build = true): string {
 
 // ── Building ─────────────────────────────────────────────────────────────
 
-class Grow {
-  a: Int32Array;
-  n = 0;
-  constructor(cap: number) {
-    this.a = new Int32Array(Math.max(16, cap));
+/** Columns of `s` cut to `max` (as `fit` counts them), without building the text. */
+function colsOf(s: string, max: number, quoted: boolean): number {
+  const n = s.length;
+  // Fast path: printable ASCII with nothing to escape (most keys and values).
+  const lim = n <= max ? n : max + 1;
+  let i = 0;
+  for (; i < lim; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 32 || c > 126 || (quoted && (c === 34 || c === 92))) break;
   }
-  push(v: number) {
-    if (this.n === this.a.length) {
-      const b = new Int32Array(this.a.length * 2);
-      b.set(this.a);
-      this.a = b;
+  if (i === lim) return n <= max ? n : max;
+  fit(s, max, quoted, false);
+  return fitCols;
+}
+
+/** Columns of sizeText(n). */
+const sizeCols = (n: JNode) => {
+  const c = (n.v as JNode[]).length;
+  return c ? digits(c) + 2 : 2;
+};
+
+const digits = (k: number) => (k < 10 ? 1 : k < 100 ? 2 : k < 1000 ? 3 : k < 10000 ? 4 : k < 100000 ? 5 : String(k).length);
+
+/** Value column width of a row (columns), as valueText would print it. */
+function valueCols(k: JNode): number {
+  switch (k.t) {
+    case STR:
+      return colsOf(k.v as string, G.valMax - 2, true) + 2;
+    case NUM:
+      return colsOf(k.v as string, G.valMax, false);
+    case BOOL:
+      return k.v ? 4 : 5;
+    case NUL:
+      return 4;
+    default: {
+      const c = (k.v as JNode[]).length;
+      const inline = c && k.t === ARR ? inlineCols(k) : -1;
+      return inline >= 0 ? inline : c ? digits(c) + 2 : 2;
     }
-    this.a[this.n++] = v;
-  }
-  done() {
-    return this.a.slice(0, this.n);
   }
 }
 
-class GrowF {
-  a: Float32Array;
+class Grow<T extends Int32Array | Float32Array> {
+  a: T;
   n = 0;
-  constructor(cap: number) {
-    this.a = new Float32Array(Math.max(16, cap));
+  constructor(make: (n: number) => T, cap: number) {
+    this.a = make(Math.max(64, cap));
   }
   push(v: number) {
-    if (this.n === this.a.length) {
-      const b = new Float32Array(this.a.length * 2);
-      b.set(this.a);
-      this.a = b;
-    }
+    if (this.n === this.a.length) this.grow();
     this.a[this.n++] = v;
   }
-  done() {
-    return this.a.slice(0, this.n);
+  private grow() {
+    const b = new (this.a.constructor as new (n: number) => T)(this.a.length * 2);
+    b.set(this.a);
+    this.a = b;
+  }
+  done(): T {
+    return this.a.slice(0, this.n) as T;
   }
 }
-
-const nested = (k: JNode) => k.t >= ARR && (k.v as JNode[]).length > 0;
+const ints = (cap: number) => new Grow((n) => new Int32Array(n), cap);
+const floats = (cap: number) => new Grow((n) => new Float32Array(n), cap);
 
 /**
  * Builds the model in steps: call the returned function with a deadline
@@ -248,96 +329,112 @@ const nested = (k: JNode) => k.t >= ARR && (k.v as JNode[]).length > 0;
  * monospace column at G.font.
  */
 export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: number) => GraphModel | null {
-  const cap = Math.min(hint || 1024, 1 << 20);
-  const node: JNode[] = [];
-  const rowNode: JNode[] = [];
-  const parent = new Grow(cap >> 2);
-  const depth = new Grow(cap >> 2);
-  const rowStart = new Grow(cap >> 2);
-  const portRow = new Grow(cap >> 2);
-  const kidsN = new Grow(cap >> 2);
-  const rowChild = new Grow(cap);
-  const w = new GrowF(cap >> 2);
-  const h = new GrowF(cap >> 2);
-  const labelW = new GrowF(cap >> 2);
-  const busArr: number[] = [];
+  const cap = Math.min(hint || 1024, 1 << 22);
+  // Sized up front: growing million-entry arrays of objects is most of the build's garbage.
+  const node: JNode[] = hint ? new Array(hint) : [];
+  const rowNode: JNode[] = hint ? new Array(hint) : [];
+  let cards = 0;
+  let rowsN = 0;
+  const parent = ints(cap >> 2);
+  const depth = ints(cap >> 2);
+  const rowStart = ints(cap >> 2);
+  const portRow = ints(cap >> 2);
+  const kidsN = ints(cap >> 2);
+  const busA = ints(cap >> 2);
+  const rowChild = ints(cap);
+  const w = floats(cap >> 2);
+  const h = floats(cap >> 2);
+  const labelW = floats(cap >> 2);
   let maxDepth = 0;
 
-  // Pending visits, popped in document order: [node, parent card, depth, port row].
+  // Pending visits, popped in document order: node, parent card, depth, port row.
   const sn: JNode[] = [root];
-  const sp: number[] = [-1];
-  const sd: number[] = [0];
-  const sr: number[] = [-1];
-
-  const visit = (n: JNode, pc: number, d: number, pr: number) => {
-    const c = node.length;
-    node.push(n);
-    parent.push(pc);
-    depth.push(d);
-    portRow.push(pr);
-    rowStart.push(rowNode.length);
-    if (pr >= 0) rowChild.a[pr] = c;
-    if (d > maxDepth) maxDepth = d;
-    let labelCols = 0;
-    let valueCols = 0;
-    let ports = false;
-    let isBus = false;
-    let nk = 0;
-    if (n.t < ARR) {
-      // A primitive root: one row with its value.
-      rowNode.push(n);
-      rowChild.push(-1);
-      valueText(n, false);
-      valueCols = fitCols;
-    } else {
-      const list = n.v as JNode[];
-      for (let i = 0; i < list.length; i++) if (nested(list[i])) nk++;
-      isBus = nk > G.portMax || (n.t === ARR && nk === list.length);
-      for (let i = 0; i < list.length; i++) {
-        const k = list[i];
-        const deep = nested(k);
-        if (deep && isBus) continue;
-        rowNode.push(k);
-        rowChild.push(-1);
-        labelText(k, false);
-        if (fitCols > labelCols) labelCols = fitCols;
-        valueText(k, false);
-        if (fitCols > valueCols) valueCols = fitCols;
-        if (deep) ports = true;
-      }
-      // Children, pushed last-first so they pop in order. Without a bus every entry has a row.
-      const first = rowStart.a[c];
-      for (let i = list.length - 1; i >= 0; i--) {
-        const k = list[i];
-        if (!nested(k)) continue;
-        sn.push(k);
-        sp.push(c);
-        sd.push(d + 1);
-        sr.push(isBus ? -1 : first + i);
-      }
-    }
-    busArr.push(isBus ? 1 : 0);
-    kidsN.push(nk);
-    const rows = rowNode.length - rowStart.a[c];
-    headText(n, false);
-    const headCols = fitCols + (n.t >= ARR ? 1 + sizeText(n).length : 0);
-    const lw = labelCols * charW;
-    const body = rows ? G.padX + (lw ? lw + G.gap : 0) + valueCols * charW + G.padX + (ports ? G.port : 0) : 0;
-    const head = G.padX + headCols * charW + G.padX + (isBus ? G.port : 0);
-    labelW.push(lw);
-    w.push(Math.ceil(Math.max(G.minW, body, head)));
-    h.push(G.head + (rows ? rows * G.row + G.padY : 0));
-  };
+  const sp = ints(256);
+  const sd = ints(256);
+  const sr = ints(256);
+  sp.push(-1);
+  sd.push(0);
+  sr.push(-1);
 
   return (deadline: number) => {
-    let i = 0;
+    let budget = 0;
     while (sn.length) {
       const n = sn.pop() as JNode;
-      visit(n, sp.pop() as number, sd.pop() as number, sr.pop() as number);
-      if ((++i & 1023) === 0 && performance.now() > deadline) return null;
+      const top = --sp.n;
+      sd.n--;
+      sr.n--;
+      const pc = sp.a[top];
+      const d = sd.a[top];
+      const pr = sr.a[top];
+      const c = cards++;
+      const first = rowsN;
+      node[c] = n;
+      parent.push(pc);
+      depth.push(d);
+      portRow.push(pr);
+      rowStart.push(first);
+      if (pr >= 0) rowChild.a[pr] = c;
+      if (d > maxDepth) maxDepth = d;
+      let labelCols = 0;
+      let valCols = 0;
+      let ports = false;
+      let isBus = false;
+      let nk = 0;
+      if (n.t < ARR) {
+        // A primitive root: one row with its value.
+        rowNode[rowsN++] = n;
+        rowChild.push(-1);
+        valCols = valueCols(n);
+      } else {
+        const list = n.v as JNode[];
+        const len = list.length;
+        for (let i = 0; i < len; i++) if (isCard(list[i])) nk++;
+        isBus = nk > G.portMax || (n.t === ARR && nk === len);
+        const arr = n.t === ARR;
+        for (let i = 0; i < len; i++) {
+          const k = list[i];
+          const deep = nk > 0 && isCard(k);
+          if (deep && isBus) continue;
+          rowNode[rowsN++] = k;
+          rowChild.push(-1);
+          const lc = arr ? digits(i) : colsOf(k.key as string, G.keyMax, false);
+          if (lc > labelCols) labelCols = lc;
+          const vc = valueCols(k);
+          if (vc > valCols) valCols = vc;
+          if (deep) ports = true;
+        }
+        // Children, pushed last-first so they pop in order. Without a bus every entry has a row.
+        if (nk) {
+          for (let i = len - 1; i >= 0; i--) {
+            const k = list[i];
+            if (!isCard(k)) continue;
+            sn.push(k);
+            sp.push(c);
+            sd.push(d + 1);
+            sr.push(isBus ? -1 : first + i);
+          }
+        }
+      }
+      busA.push(isBus ? 1 : 0);
+      kidsN.push(nk);
+      const rows = rowsN - first;
+      const key = n.key;
+      const headCols = (typeof key === 'number' ? digits(key) + 2 : key === undefined ? 4 : colsOf(key, G.headMax, false)) + (n.t >= ARR ? 1 + sizeCols(n) : 0);
+      const lw = labelCols * charW;
+      const body = rows ? G.padX + (lw ? lw + G.gap : 0) + valCols * charW + G.padX + (ports ? G.port : 0) : 0;
+      const head = G.padX + headCols * charW + G.padX + (isBus ? G.port : 0);
+      labelW.push(lw);
+      w.push(Math.ceil(Math.max(G.minW, body, head)));
+      h.push(G.head + (rows ? rows * G.row + G.padY : 0));
+      if (++budget === 512) {
+        budget = 0;
+        if (performance.now() > deadline) return null;
+      }
     }
-    const n = node.length;
-    rowStart.push(rowNode.length);
+    const n = cards;
+    node.length = n;
+    rowNode.length = rowsN;
+    rowStart.push(rowsN);
     const par = parent.done();
     const end = new Int32Array(n);
     for (let c = 0; c < n; c++) end[c] = 1;
@@ -359,7 +456,7 @@ export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: n
       rowNode,
       rowChild: rowChild.done(),
       portRow: portRow.done(),
-      bus: Uint8Array.from(busArr),
+      bus: Uint8Array.from(busA.done()),
       kids,
       kidStart,
       kidList,
@@ -425,6 +522,20 @@ export function rowOf(m: GraphModel, n: JNode): number {
   const b = m.rowStart[c + 1];
   const j = a + lowerBound(b - a, (x) => m.rowNode[a + x].s, n.s);
   return j < b && m.rowNode[j] === n ? j : -1;
+}
+
+/**
+ * Where `n` is drawn: `card` is the card showing it whole (a container with
+ * a card), `row` the row showing it in its parent's card (-1: none). A value
+ * inside an inline array resolves to that array's row.
+ */
+export function locate(m: GraphModel, n: JNode): { card: number; row: number } {
+  for (let p: JNode | null = n; p; p = p.u) {
+    const card = p.t >= ARR ? cardOf(m, p) : -1;
+    const row = rowOf(m, p);
+    if (card >= 0 || row >= 0) return { card, row };
+  }
+  return { card: -1, row: -1 };
 }
 
 /** The card a row belongs to (binary search over rowStart). */

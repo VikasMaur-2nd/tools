@@ -1,11 +1,11 @@
 import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
-import { serverT, type UiKey } from '@/lib/i18n/server';
+import { serverT, toolPage, type UiKey } from '@/lib/i18n/server';
 import { POSTS } from './blogs/posts';
 
 export const SITE = 'https://tools.vikasmaur.com';
 export const SITE_NAME = 'Tool Kumar';
 export const JSON_TOOL_DESCRIPTION =
-  'View, format, validate, repair, minify and compare JSON online for free. Tool Kumar runs in your browser, keeps data on your device and works offline.';
+  'View, visualize, format, validate, repair and compare JSON online. Tool Kumar runs in your browser, keeps data on your device and works offline.';
 export const SOCIAL_IMAGE = {
   url: '/opengraph-image.png',
   width: 1200,
@@ -71,7 +71,7 @@ export function homeJsonLd(locale: SiteLocale = 'en') {
         isAccessibleForFree: true,
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
         publisher: { '@id': `${SITE}/#organization` },
-        featureList: ([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((i) => t(`home.feature.${i}`)),
+        featureList: [...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((i) => t(`home.feature.${i}`)), toolPage(locale, 'json-visualizer')?.modeLabel].filter(Boolean),
       },
       {
         '@type': 'FAQPage',
