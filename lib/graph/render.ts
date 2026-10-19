@@ -6,7 +6,7 @@
  * culled, and at low zoom neighbouring cards merge into one block per pixel.
  */
 import { ARR, BOOL, NUL, NUM, STR, type JNode } from '../json/parser';
-import { G, fitCols, headText, labelText, sizeText, valueText } from './model';
+import { G, SWATCH_COLS, SWATCH_PX, fitCols, headText, labelText, sizeText, swatch, valueText } from './model';
 import { cardsIn, groupsIn, type GraphLayout } from './layout';
 import type { GraphTheme } from './theme';
 import { lodOf, type Cam } from './camera';
@@ -381,8 +381,18 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
         ctx.fillStyle = typeof k.key === 'number' ? th.muted : th.key;
         ctx.fillText(labelText(k), cx + G.padX, my);
       }
+      // A colour value: its swatch, then the text after the columns the model reserved for it.
+      let tx = vx;
+      if (swatch(k)) {
+        ctx.fillStyle = k.v as string;
+        ctx.fillRect(vx + 1, my - SWATCH_PX / 2, SWATCH_PX, SWATCH_PX);
+        ctx.strokeStyle = th.border;
+        ctx.lineWidth = px;
+        ctx.strokeRect(vx + 1, my - SWATCH_PX / 2, SWATCH_PX, SWATCH_PX);
+        tx += SWATCH_COLS * m.charW;
+      }
       ctx.fillStyle = valueColor(th, k);
-      ctx.fillText(valueText(k), vx, my);
+      ctx.fillText(valueText(k), tx, my);
     }
     // Header: label, then the size badge right-aligned.
     ctx.fillStyle = th.fg;
@@ -410,7 +420,7 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
       }
       valueText(k, false);
       ctx.fillStyle = valueColor(th, k);
-      ctx.fillRect(vx, by, fitCols * cw, bh);
+      ctx.fillRect(swatch(k) ? vx + SWATCH_COLS * cw : vx, by, fitCols * cw, bh);
     }
     headText(n, false);
     ctx.fillStyle = th.fg;

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parse, type JNode } from '../lib/json/parser';
-import { buildModel, cardOf, cardOfRow, fit, fitCols, G, inlineCols, locate, rowOf, valueText } from '../lib/graph/model';
+import { buildModel, cardOf, cardOfRow, fit, fitCols, G, inlineCols, locate, rowOf, swatch, valueText } from '../lib/graph/model';
 import { anchorY, cardAt, cardsIn, layoutGraph, portY, rowAt, type GraphLayout } from '../lib/graph/layout';
 
 const CW = 7.2;
@@ -145,4 +145,17 @@ test('graph layout: deep, wide and big documents stay linear', () => {
   assert.equal(mb.n, 1 + 200000 * 2);
   assertNoOverlap(Lb);
   console.log(`  200k records: parse ${(t1 - t0).toFixed(0)} ms, model ${(t2 - t1).toFixed(0)} ms, layout ${(t3 - t2).toFixed(0)} ms, ${mb.n} cards`);
+});
+
+test('graph model: colour values reserve room for a swatch', () => {
+  const r = parse('{"a":"#2563eb","b":"#2563ex","c":"rgb(1, 2, 3)","d":["#fff","#000"]}');
+  const m = buildModel(r.root!, CW);
+  const list = r.root!.v as JNode[];
+  assert.equal(swatch(list[0]), true);
+  assert.equal(swatch(list[1]), false);
+  assert.equal(swatch(list[2]), true);
+  // Inline arrays show no swatches and keep their plain width.
+  assert.equal(inlineCols(list[3]), '["#fff", "#000"]'.length);
+  const plain = buildModel(parse('{"a":"#2563ex"}').root!, CW);
+  assert.equal(m.w[0] >= plain.w[0], true);
 });

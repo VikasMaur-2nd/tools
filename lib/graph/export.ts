@@ -3,7 +3,7 @@ import { PRIVATE } from '../analytics';
 import { ARR, BOOL, NUL, NUM, STR } from '../json/parser';
 import { compactNum } from './render';
 import { anchorY, cardsIn, groupsIn, portY, rowY, type GraphLayout } from './layout';
-import { G, headText, labelText, sizeText, valueText } from './model';
+import { G, SWATCH_COLS, SWATCH_PX, headText, labelText, sizeText, swatch, valueText } from './model';
 import type { GraphTheme } from './theme';
 
 export const EXPORT_LIMITS = { svgCards: 20_000, pngPixels: 120_000_000, pngSide: 16_384 };
@@ -83,6 +83,8 @@ interface Painter {
   roundRect(x: number, y: number, w: number, h: number, r: number, ink: Ink): void;
   text(x: number, y: number, text: string, ink: Ink, end?: boolean): void;
   path(commands: Command[], ink: Ink): void;
+  /** A colour value's swatch (`color` passed swatch()'s check). */
+  swatch(x: number, y: number, size: number, color: string): void;
 }
 
 function valueInk(t: number): Ink {
@@ -171,7 +173,12 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, sel
     const entry = m.rowNode[r];
     const cy = rowY(L, c, r);
     if (m.labelW[c]) p.text(x + G.padX, cy, labelText(entry), typeof entry.key === 'number' ? 'muted' : 'key');
-    p.text(x + G.padX + (m.labelW[c] ? m.labelW[c] + G.gap : 0), cy, valueText(entry), valueInk(entry.t));
+    let vx = x + G.padX + (m.labelW[c] ? m.labelW[c] + G.gap : 0);
+    if (swatch(entry)) {
+      p.swatch(vx + 1, cy - SWATCH_PX / 2, SWATCH_PX, entry.v as string);
+      vx += SWATCH_COLS * m.charW;
+    }
+    p.text(vx, cy, valueText(entry), valueInk(entry.t));
     if (m.rowChild[r] >= 0) p.roundRect(x + w - 3, cy - 3, 6, 6, 3, 'dot');
   }
   if (c === selected) p.roundRect(x - 2, y - 2, w + 4, h + 4, 8, 'selected');
@@ -219,6 +226,10 @@ class SVG implements Painter {
       for (let i = 1; i < command.length; i++) d += (i > 1 ? ' ' : '') + half(command[i] as number);
     }
     this.out.push(`<path class="${ink}" d="${d}"/>`);
+  }
+  swatch(x: number, y: number, size: number, color: string) {
+    // Inline style: the class only adds the outline.
+    this.out.push(`<rect class="border" style="fill:${xml(color)}" x="${half(x)}" y="${half(y)}" width="${size}" height="${size}"/>`);
   }
 }
 
@@ -298,6 +309,14 @@ class Canvas implements Painter {
       }
     }
     this.paint(ink);
+  }
+  swatch(x: number, y: number, size: number, color: string) {
+    const ctx = this.ctx;
+    ctx.fillStyle = color;
+    ctx.fillRect(half(x), half(y), size, size);
+    ctx.strokeStyle = this.theme.border;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(half(x), half(y), size, size);
   }
 }
 

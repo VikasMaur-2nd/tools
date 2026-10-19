@@ -186,3 +186,11 @@ test('graph export: matches the screen header weight, bus badge offset, bus dot 
   assert.match(folded, /<rect class="pill"[^>]*rx="9"\/><text class="muted ph-no-capture"[^>]*>\+3<\/text>/);
   assert.match(folded, /<path class="chevron"/);
 });
+
+test('graph export: colour values get a swatch, with the text after it', () => {
+  const m = model({ primary: '#2563eb', name: 'Ocean' });
+  const svg = toSVG(layoutGraph(m), theme);
+  wellFormed(svg);
+  assert.match(svg, /<rect class="border" style="fill:#2563eb"/);
+  assert.equal((svg.match(/style="fill:/g) ?? []).length, 1);
+});

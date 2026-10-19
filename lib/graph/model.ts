@@ -160,6 +160,19 @@ export function fit(s: string, max: number, quoted: boolean, build = true): stri
   return out;
 }
 
+/** A colour value (same rule as the tree view): drawn with a swatch before its text. */
+const COLOR = /^(#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(?:rgb|hsl)a?\(\s*[\d.%\s,/+-]+\))$/i;
+/** Columns reserved for the swatch, and its size in px. */
+export const SWATCH_COLS = 2;
+export const SWATCH_PX = 9;
+
+export function swatch(n: JNode): boolean {
+  if (n.t !== STR) return false;
+  const s = n.v as string;
+  const c = s.charCodeAt(0) | 32;
+  return (c === 35 || c === 114 || c === 104) && s.length < 64 && COLOR.test(s);
+}
+
 /** Number of entries of a container. */
 export const count = (n: JNode) => (n.v as JNode[]).length;
 
@@ -190,7 +203,7 @@ export function inlineCols(n: JNode): number {
   for (let i = 0; i < len; i++) {
     const k = list[i];
     if (k.t >= ARR) return -1;
-    cols += (i ? 2 : 0) + valueCols(k);
+    cols += (i ? 2 : 0) + plainCols(k);
     if (cols > G.valMax) return -1;
   }
   return cols;
@@ -288,8 +301,13 @@ const digits = (k: number) => {
   return n;
 };
 
-/** Value column width of a row (columns), as valueText would print it. */
+/** Value column width of a row (columns): valueText, plus a colour value's swatch. */
 function valueCols(k: JNode): number {
+  return plainCols(k) + (k.t === STR && swatch(k) ? SWATCH_COLS : 0);
+}
+
+/** Columns of valueText(k). */
+function plainCols(k: JNode): number {
   switch (k.t) {
     case STR:
       return colsOf(k.v as string, G.valMax - 2, true) + 2;
