@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parse } from '../lib/json/parser';
 import { buildModel, G, headText, labelText, valueText } from '../lib/graph/model';
 import { layoutGraph } from '../lib/graph/layout';
-import { EXPORT_LIMITS, pngScale, toPNG, toSVG } from '../lib/graph/export';
+import { EXPORT_LIMITS, exportSize, pngScale, toPNG, toSVG } from '../lib/graph/export';
 import type { GraphTheme } from '../lib/graph/theme';
 
 const theme: GraphTheme = {
@@ -59,7 +59,8 @@ test('graph export: standalone SVG escapes document text and preserves the model
   assert.ok(texts.includes('&quot;value &amp; &lt; &gt; \\&quot; &apos;&quot;'));
   for (const expected of ['42', 'true', 'null', '{}', '[]']) assert.ok(texts.includes(expected), expected);
   assert.match(svg, new RegExp(`width="${L.width + 48}" height="${L.height + 48}"`));
-  assert.match(svg, /translate\(24 24\)/);
+  // The 24 px margin: the root card starts at (24, 24).
+  assert.match(svg, /<rect class="card" x="24" y="24"/);
   assert.equal(labelText(m.rowNode[0]), key);
 });
 
@@ -107,7 +108,7 @@ test('graph export: port curves and rounded bus trunks use the layout anchors', 
   wellFormed(svg);
   assert.match(svg, /class="edge" d="M[^"]*C/);
   const trunk = Math.round((L.colX[2] - G.colGap / 2) * 2) / 2;
-  assert.ok(svg.includes(`Q${trunk} `));
+  assert.ok(svg.includes(`Q${trunk + 24} `));
   assert.equal((svg.match(/class="card"/g) ?? []).length, L.shownCount);
   for (const match of svg.matchAll(/\s(?:x|y|width|height)="([\d.-]+)"/g)) {
     assert.ok(Number(match[1]) * 2 % 1 === 0);
@@ -178,8 +179,8 @@ test('graph export: matches the screen header weight, bus badge offset, bus dot 
   assert.match(svg, /\.strong\{font-weight:600\}/);
   const w = m.w[0];
   assert.ok(m.bus[0]);
-  assert.ok(svg.includes(`<text class="muted end ${'ph-no-capture'}" x="${w - G.padX - G.port}"`));
-  assert.ok(svg.includes(`<rect class="dot" x="${w - 3}" y="${G.head / 2 - 3}"`));
+  assert.ok(svg.includes(`<text class="muted end ${'ph-no-capture'}" x="${w - G.padX - G.port + 24}"`));
+  assert.ok(svg.includes(`<rect class="dot" x="${w - 3 + 24}" y="${G.head / 2 - 3 + 24}"`));
   const collapsed = new Uint8Array(m.n);
   collapsed[0] = 1;
   const folded = toSVG(layoutGraph(m, collapsed), theme);
@@ -192,5 +193,31 @@ test('graph export: colour values get a swatch, with the text after it', () => {
   const svg = toSVG(layoutGraph(m), theme);
   wellFormed(svg);
   assert.match(svg, /<rect class="border" style="fill:#2563eb"/);
-  assert.equal((svg.match(/style="fill:/g) ?? []).length, 1);
+  assert.equal((svg.match(/class="border" style="fill:/g) ?? []).length, 1);
+});
+
+test('graph export: a branch, a view rectangle, and background choices', () => {
+  const m = model({ a: { b: { c: 1 }, d: [{ e: 2 }, { e: 3 }] }, f: { g: 4 } });
+  const L = layoutGraph(m);
+  // Branch "a": its card and descendants only, with the 24 px margin.
+  const a = 1;
+  const branch = exportSize(L, { kind: 'branch', card: a });
+  assert.equal(branch.cards, m.end[a] - a);
+  const bsvg = toSVG(L, theme, { area: { kind: 'branch', card: a } });
+  wellFormed(bsvg);
+  assert.equal((bsvg.match(/class="card"/g) ?? []).length, branch.cards);
+  assert.doesNotMatch(bsvg, />root</);
+  assert.match(bsvg, new RegExp(`<rect class="card" x="24" y="24"`));
+  assert.ok(branch.width < exportSize(L).width);
+  // A view rectangle: exactly that size, no margin, coordinates relative to it.
+  const view = exportSize(L, { kind: 'rect', x: L.x[a] - 10, y: L.y[a] - 10, w: 300, h: 200 });
+  assert.equal(view.width, 300);
+  assert.equal(view.height, 200);
+  const vsvg = toSVG(L, theme, { area: { kind: 'rect', x: L.x[a] - 10, y: L.y[a] - 10, w: 300, h: 200 } });
+  assert.match(vsvg, /width="300" height="200"/);
+  assert.match(vsvg, /<rect class="card" x="10" y="10"/);
+  // Backgrounds: the theme's by default, a custom colour, or none.
+  assert.match(toSVG(L, theme), /<rect style="fill:#ffffff"/);
+  assert.match(toSVG(L, theme, { background: '#123456' }), /<rect style="fill:#123456"/);
+  assert.doesNotMatch(toSVG(L, theme, { background: null }), /<rect style="fill:/);
 });

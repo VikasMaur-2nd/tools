@@ -60,19 +60,84 @@ export function pngScale(width: number, height: number, requested = 2): number {
 const pillText = (L: GraphLayout, c: number) => '+' + compactNum(L.m.end[c] - c - 1);
 const pillWidth = (L: GraphLayout, c: number) => half(pillText(L, c).length * L.m.charW + 12);
 
-function bounds(L: GraphLayout): [number, number] {
-  let width = L.width;
-  for (const level of L.levels) {
-    for (const c of level) {
-      if (L.shown[c] && L.collapsed[c] && L.m.kids[c]) {
-        width = Math.max(width, L.x[c] + L.m.w[c] + 8 + pillWidth(L, c));
-      }
+/** What to export: the whole graph, a world rectangle (what's on screen), or one card's branch. */
+export type ExportArea = { kind: 'all' } | { kind: 'rect'; x: number; y: number; w: number; h: number } | { kind: 'branch'; card: number };
+
+export interface ImageOptions {
+  area?: ExportArea;
+  /** A CSS colour, or null for none (transparent). Default: the theme's canvas colour. */
+  background?: string | null;
+  /** Outline this card (SVG). */
+  selected?: number;
+}
+
+/** The world rectangle to draw, the margin around it, and the cards in it ([lo, hi)). */
+interface Frame {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  margin: number;
+  lo: number;
+  hi: number;
+  /** Shown cards in the frame. */
+  cards: number;
+  /** Output size at scale 1. */
+  w: number;
+  h: number;
+}
+
+const invalid = () => new Error('The graph has invalid dimensions. Try opening the graph again.');
+
+function frame(L: GraphLayout, area: ExportArea = { kind: 'all' }): Frame {
+  const m = L.m;
+  let x0 = 0;
+  let y0 = 0;
+  let x1 = 0;
+  let y1 = 0;
+  let margin = MARGIN;
+  let lo = 0;
+  let hi = m.n;
+  let cards = 0;
+  const right = (c: number) => L.x[c] + m.w[c] + (L.collapsed[c] && m.kids[c] ? 8 + pillWidth(L, c) : 0);
+  if (area.kind === 'rect') {
+    ({ x: x0, y: y0 } = area);
+    x1 = x0 + area.w;
+    y1 = y0 + area.h;
+    margin = 0;
+    for (let d = 0; d < L.levels.length; d++) {
+      if (L.colX[d] > x1 || L.colX[d] + L.colW[d] < x0) continue;
+      const [a, b] = cardsIn(L, d, y0, y1);
+      cards += b - a;
     }
+  } else if (area.kind === 'branch' && area.card >= 0 && area.card < m.n && L.shown[area.card]) {
+    lo = area.card;
+    hi = m.end[lo];
+    x0 = L.x[lo];
+    // Descendants never sit above their branch's top (see layout).
+    y0 = L.y[lo];
+    x1 = right(lo);
+    y1 = y0 + m.h[lo];
+    for (let c = lo; c < hi; c++) {
+      if (!L.shown[c]) continue;
+      cards++;
+      x1 = Math.max(x1, right(c));
+      y1 = Math.max(y1, L.y[c] + m.h[c]);
+    }
+  } else {
+    x1 = L.width;
+    y1 = L.height;
+    cards = L.shownCount;
+    for (const level of L.levels) for (const c of level) if (L.collapsed[c] && m.kids[c]) x1 = Math.max(x1, right(c));
   }
-  if (!Number.isFinite(width) || !Number.isFinite(L.height) || width < 0 || L.height < 0) {
-    throw new Error('The graph has invalid dimensions. Try opening the graph again.');
-  }
-  return [half(width) + MARGIN * 2, half(L.height) + MARGIN * 2];
+  if (![x0, y0, x1, y1].every(Number.isFinite) || x1 < x0 || y1 < y0) throw invalid();
+  return { x0, y0, x1, y1, margin, lo, hi, cards, w: half(x1 - x0) + margin * 2, h: half(y1 - y0) + margin * 2 };
+}
+
+/** Size of an export at scale 1, and how many cards it holds (for the export dialog). */
+export function exportSize(L: GraphLayout, area?: ExportArea): { width: number; height: number; cards: number } {
+  const f = frame(L, area);
+  return { width: f.w, height: f.h, cards: f.cards };
 }
 
 type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'chevron' | 'pill' | 'dot' | 'fg' | 'strong' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul' | 'selected';
@@ -184,31 +249,38 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, sel
   if (c === selected) p.roundRect(x - 2, y - 2, w + 4, h + 4, 8, 'selected');
 }
 
-function draw(L: GraphLayout, p: Painter, y0 = -Infinity, y1 = Infinity, selected?: number) {
+/** Edges then cards of frame `f` between world y0 and y1 (a PNG strip, or everything). */
+function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1, selected?: number) {
+  const cols = L.levels.length;
   for (let d = 0; d < L.groups.length; d++) {
+    // A column's edges run through the gap to its right.
+    if (L.colX[d] > f.x1 || (d + 1 < cols ? L.colX[d + 1] : L.colX[d] + L.colW[d]) < f.x0) continue;
     const [a, b] = groupsIn(L, d, y0, y1);
     for (let i = a; i < b; i++) {
       const c = L.groups[d][i];
-      if (L.shown[c] && L.gy1[d][i] >= y0 - 3) edges(L, p, c, y0 - 3, y1 + 3);
+      if (L.shown[c] && c >= f.lo && c < f.hi && L.gy1[d][i] >= y0 - 3) edges(L, p, c, y0 - 3, y1 + 3);
     }
   }
-  for (let d = 0; d < L.levels.length; d++) {
+  for (let d = 0; d < cols; d++) {
+    if (L.colX[d] > f.x1 + 1 || L.colX[d] + L.colW[d] + 120 < f.x0) continue;
     const [a, b] = cardsIn(L, d, y0 - 3, y1 + 3);
     for (let i = a; i < b; i++) {
       const c = L.levels[d][i];
-      if (L.shown[c]) card(L, p, c, y0 - 3, y1 + 3, selected);
+      if (L.shown[c] && c >= f.lo && c < f.hi) card(L, p, c, y0 - 3, y1 + 3, selected);
     }
   }
 }
 
+/** Painters take world coordinates and write them relative to (ox, oy), so huge layouts stay precise. */
 class SVG implements Painter {
   out: string[] = [];
   private escaped = new Map<string, string>();
+  constructor(private ox = 0, private oy = 0) {}
   rect(x: number, y: number, w: number, h: number, ink: Ink) {
-    this.out.push(`<rect class="${ink}" x="${half(x)}" y="${half(y)}" width="${half(w)}" height="${half(h)}"/>`);
+    this.out.push(`<rect class="${ink}" x="${half(x - this.ox)}" y="${half(y - this.oy)}" width="${half(w)}" height="${half(h)}"/>`);
   }
   roundRect(x: number, y: number, w: number, h: number, r: number, ink: Ink) {
-    this.out.push(`<rect class="${ink}" x="${half(x)}" y="${half(y)}" width="${half(w)}" height="${half(h)}" rx="${r}"/>`);
+    this.out.push(`<rect class="${ink}" x="${half(x - this.ox)}" y="${half(y - this.oy)}" width="${half(w)}" height="${half(h)}" rx="${r}"/>`);
   }
   text(x: number, y: number, s: string, ink: Ink, end = false) {
     let escaped = this.escaped.get(s);
@@ -217,19 +289,19 @@ class SVG implements Painter {
       // Keys and common values repeat heavily; keep the cache bounded for unique documents.
       if (this.escaped.size < 2048) this.escaped.set(s, escaped);
     }
-    this.out.push(`<text class="${ink}${end ? ' end' : ''} ${PRIVATE}" x="${half(x)}" y="${half(y)}" dy="-1">${escaped}</text>`);
+    this.out.push(`<text class="${ink}${end ? ' end' : ''} ${PRIVATE}" x="${half(x - this.ox)}" y="${half(y - this.oy)}" dy="-1">${escaped}</text>`);
   }
   path(commands: Command[], ink: Ink) {
     let d = '';
     for (const command of commands) {
       d += command[0];
-      for (let i = 1; i < command.length; i++) d += (i > 1 ? ' ' : '') + half(command[i] as number);
+      for (let i = 1; i < command.length; i++) d += (i > 1 ? ' ' : '') + half((command[i] as number) - (i % 2 ? this.ox : this.oy));
     }
     this.out.push(`<path class="${ink}" d="${d}"/>`);
   }
   swatch(x: number, y: number, size: number, color: string) {
     // Inline style: the class only adds the outline.
-    this.out.push(`<rect class="border" style="fill:${xml(color)}" x="${half(x)}" y="${half(y)}" width="${size}" height="${size}"/>`);
+    this.out.push(`<rect class="border" style="fill:${xml(color)}" x="${half(x - this.ox)}" y="${half(y - this.oy)}" width="${size}" height="${size}"/>`);
   }
 }
 
@@ -246,22 +318,23 @@ function styles(theme: GraphTheme): string {
     `text{font-family:${css(theme.family)};font-size:${G.font}px;dominant-baseline:central;white-space:pre}.end{text-anchor:end}`;
 }
 
-/** A standalone SVG, with a 24 px margin and no external fonts or resources. */
-export function toSVG(L: GraphLayout, theme: GraphTheme, opts?: { selected?: number }): string {
-  if (L.shownCount > EXPORT_LIMITS.svgCards) throw new Error(SVG_TOO_LARGE);
-  const [w, h] = bounds(L);
-  const p = new SVG();
+/** A standalone SVG (a 24 px margin unless it's a view rectangle), with no external fonts or resources. */
+export function toSVG(L: GraphLayout, theme: GraphTheme, opts: ImageOptions = {}): string {
+  const f = frame(L, opts.area);
+  if (f.cards > EXPORT_LIMITS.svgCards) throw new Error(SVG_TOO_LARGE);
+  const { w, h } = f;
+  const p = new SVG(f.x0 - f.margin, f.y0 - f.margin);
+  const bg = opts.background === undefined ? theme.bg : opts.background;
   p.out.push(`<svg xmlns="http://www.w3.org/2000/svg" class="${PRIVATE}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><style>${styles(theme)}</style>`);
-  p.rect(0, 0, w, h, 'bg');
-  p.out.push(`<g transform="translate(${MARGIN} ${MARGIN})">`);
-  draw(L, p, -Infinity, Infinity, opts?.selected);
-  p.out.push('</g></svg>');
+  if (bg) p.out.push(`<rect style="fill:${xml(bg)}" width="${w}" height="${h}"/>`);
+  draw(L, p, f, f.y0 - f.margin, f.y1 + f.margin, opts.selected);
+  p.out.push('</svg>');
   return p.out.join('');
 }
 
 type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 class Canvas implements Painter {
-  constructor(private ctx: Context, private theme: GraphTheme) {
+  constructor(private ctx: Context, private theme: GraphTheme, private ox = 0, private oy = 0) {
     ctx.font = `${G.font}px ${theme.family}`;
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
@@ -280,12 +353,12 @@ class Canvas implements Painter {
   }
   rect(x: number, y: number, w: number, h: number, ink: Ink) {
     this.ctx.beginPath();
-    this.ctx.rect(half(x), half(y), half(w), half(h));
+    this.ctx.rect(half(x - this.ox), half(y - this.oy), half(w), half(h));
     this.paint(ink);
   }
   roundRect(x: number, y: number, w: number, h: number, r: number, ink: Ink) {
     this.ctx.beginPath();
-    this.ctx.roundRect(half(x), half(y), half(w), half(h), r);
+    this.ctx.roundRect(half(x - this.ox), half(y - this.oy), half(w), half(h), r);
     this.paint(ink);
   }
   text(x: number, y: number, s: string, ink: Ink, end = false) {
@@ -294,17 +367,19 @@ class Canvas implements Painter {
     ctx.textAlign = end ? 'right' : 'left';
     ctx.font = (ink === 'strong' ? '600 ' : '') + `${G.font}px ${this.theme.family}`;
     // Apply the same XML-invalid character replacement to both formats.
-    ctx.fillText(s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/gu, '\ufffd'), half(x), half(y));
+    ctx.fillText(s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/gu, '\ufffd'), half(x - this.ox), half(y - this.oy));
   }
   path(commands: Command[], ink: Ink) {
     const ctx = this.ctx;
+    const X = (v: number) => half(v - this.ox);
+    const Y = (v: number) => half(v - this.oy);
     ctx.beginPath();
     for (const command of commands) {
       switch (command[0]) {
-        case 'M': ctx.moveTo(half(command[1]), half(command[2])); break;
-        case 'L': ctx.lineTo(half(command[1]), half(command[2])); break;
-        case 'Q': ctx.quadraticCurveTo(half(command[1]), half(command[2]), half(command[3]), half(command[4])); break;
-        case 'C': ctx.bezierCurveTo(half(command[1]), half(command[2]), half(command[3]), half(command[4]), half(command[5]), half(command[6])); break;
+        case 'M': ctx.moveTo(X(command[1]), Y(command[2])); break;
+        case 'L': ctx.lineTo(X(command[1]), Y(command[2])); break;
+        case 'Q': ctx.quadraticCurveTo(X(command[1]), Y(command[2]), X(command[3]), Y(command[4])); break;
+        case 'C': ctx.bezierCurveTo(X(command[1]), Y(command[2]), X(command[3]), Y(command[4]), X(command[5]), Y(command[6])); break;
         case 'Z': ctx.closePath(); break;
       }
     }
@@ -313,21 +388,30 @@ class Canvas implements Painter {
   swatch(x: number, y: number, size: number, color: string) {
     const ctx = this.ctx;
     ctx.fillStyle = color;
-    ctx.fillRect(half(x), half(y), size, size);
+    ctx.fillRect(half(x - this.ox), half(y - this.oy), size, size);
     ctx.strokeStyle = this.theme.border;
     ctx.lineWidth = 1;
-    ctx.strokeRect(half(x), half(y), size, size);
+    ctx.strokeRect(half(x - this.ox), half(y - this.oy), size, size);
   }
 }
 
 const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+export interface RasterOptions extends ImageOptions {
+  /** Pixels per CSS px (reduced automatically to fit the limits). Default 2. */
+  scale?: number;
+  type?: 'image/png' | 'image/jpeg';
+}
+
 /** Draw directly into one bounded canvas; clipping strips avoids extra full-size bitmaps. */
-export async function toPNG(L: GraphLayout, theme: GraphTheme, opts?: { scale?: number }): Promise<Blob> {
-  const [w, h] = bounds(L);
-  const scale = pngScale(w, h, opts?.scale);
-  const width = Math.ceil(w * scale);
-  const height = Math.ceil(h * scale);
+export async function toPNG(L: GraphLayout, theme: GraphTheme, opts: RasterOptions = {}): Promise<Blob> {
+  const f = frame(L, opts.area);
+  const scale = pngScale(f.w, f.h, opts.scale);
+  const width = Math.ceil(f.w * scale);
+  const height = Math.ceil(f.h * scale);
+  const jpeg = opts.type === 'image/jpeg';
+  // JPEG has no transparency.
+  const bg = opts.background === undefined || (jpeg && !opts.background) ? theme.bg : opts.background;
   let canvas: OffscreenCanvas | HTMLCanvasElement;
   if (typeof OffscreenCanvas !== 'undefined') canvas = new OffscreenCanvas(width, height);
   else if (typeof document !== 'undefined') {
@@ -338,8 +422,9 @@ export async function toPNG(L: GraphLayout, theme: GraphTheme, opts?: { scale?: 
   } else throw new Error('PNG export needs a browser with canvas support.');
   try {
     // Software backing avoids GPU texture limits and readback copies during PNG encoding.
-    const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true }) as Context | null;
+    const ctx = canvas.getContext('2d', { alpha: !bg, willReadFrequently: true }) as Context | null;
     if (!ctx) throw new Error('PNG export could not create a canvas. Try a smaller graph.');
+    const painter = new Canvas(ctx, theme, f.x0 - f.margin, f.y0 - f.margin);
     // Keep each paint batch near two million pixels and at most 512 rows.
     const strip = Math.max(1, Math.min(512, Math.floor(2_000_000 / width)));
     for (let top = 0; top < height; top += strip) {
@@ -348,20 +433,24 @@ export async function toPNG(L: GraphLayout, theme: GraphTheme, opts?: { scale?: 
       ctx.beginPath();
       ctx.rect(0, top, width, sh);
       ctx.clip();
-      ctx.fillStyle = theme.bg;
-      ctx.fillRect(0, top, width, sh);
-      ctx.setTransform(scale, 0, 0, scale, MARGIN * scale, MARGIN * scale);
-      draw(L, new Canvas(ctx, theme), top / scale - MARGIN, (top + sh) / scale - MARGIN);
+      if (bg) {
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, top, width, sh);
+      }
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      const wy = f.y0 - f.margin;
+      draw(L, painter, f, wy + top / scale, wy + (top + sh) / scale);
       ctx.restore();
       await pause();
     }
     // Safari's OffscreenCanvas context has no isContextLost.
     if (typeof ctx.isContextLost === 'function' && ctx.isContextLost()) throw new Error('PNG export ran out of canvas memory. Try a smaller graph.');
-    if ('convertToBlob' in canvas) return await canvas.convertToBlob({ type: 'image/png' });
+    const type = jpeg ? 'image/jpeg' : 'image/png';
+    if ('convertToBlob' in canvas) return await canvas.convertToBlob({ type, quality: 0.92 });
     return await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => {
       if (blob) resolve(blob);
       else reject(new Error('PNG export could not encode the image. Try a smaller graph.'));
-    }, 'image/png'));
+    }, type, 0.92));
   } finally {
     // Release the potentially large backing store once encoding has finished.
     canvas.width = 0;
