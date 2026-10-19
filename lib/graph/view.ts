@@ -51,6 +51,7 @@ export class GraphView implements GraphViewApi {
   private building = false;
   /** Paths of collapsed cards, kept across edits of the same document. */
   private keep: Seg[][] = [];
+  private keepFor: GraphLayout | null = null;
   private m: GraphModel | null = null;
   private L: GraphLayout | null = null;
 
@@ -160,10 +161,12 @@ export class GraphView implements GraphViewApi {
   // ── Document and build ─────────────────────────────────────────────────
 
   setRoot(root: JNode | null, reset: boolean, nodes: number, active: boolean) {
-    if (!reset && this.L) {
-      // Remember collapsed cards by path, to restore them in the edited document.
+    if (!reset && this.L && this.keepFor !== this.L) {
+      // Remember collapsed cards by path, to restore them in the edited document
+      // (once per layout: edits arrive per keystroke, even while the view is hidden).
       const { m, collapsed } = this.L;
       this.keep = [];
+      this.keepFor = this.L;
       for (let c = 0; c < m.n; c++) if (collapsed[c]) this.keep.push(pathOf(m.node[c]));
     } else if (reset) this.keep = [];
     this.reset = this.reset || reset;
@@ -499,6 +502,7 @@ export class GraphView implements GraphViewApi {
       if (!L.shown[card]) {
         // Expand collapsed ancestors, then reveal.
         for (let a = m.parent[card]; a >= 0; a = m.parent[a]) L.collapsed[a] = 0;
+        this.keepFor = null;
         this.relayout(-1, () => this.reveal(!!opts.center));
         return;
       }
@@ -535,6 +539,7 @@ export class GraphView implements GraphViewApi {
     const next = open === undefined ? !L.collapsed[c] : !open;
     if (!!L.collapsed[c] === next) return;
     L.collapsed[c] = next ? 1 : 0;
+    this.keepFor = null;
     this.relayout(c);
   }
 
@@ -543,6 +548,7 @@ export class GraphView implements GraphViewApi {
     if (!L) return;
     const m = L.m;
     for (let c = 0; c < m.n; c++) L.collapsed[c] = m.kids[c] && fn(c, m) ? 1 : 0;
+    this.keepFor = null;
     // The selection's card may become hidden: select its nearest shown ancestor.
     let keep = this.card >= 0 ? this.card : 0;
     for (let a = m.parent[keep]; a >= 0; a = m.parent[a]) if (L.collapsed[a]) keep = a;
@@ -880,8 +886,16 @@ export class GraphView implements GraphViewApi {
     const sib = (dir: 1 | -1) => {
       const p = m.parent[c];
       if (p < 0) return -1;
+      // Children are in card order: binary search (a bus can have a million of them).
       const list = childCards(m, p);
-      const i = list.indexOf(c) + dir;
+      let lo = 0;
+      let hi = list.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid] < c) lo = mid + 1;
+        else hi = mid;
+      }
+      const i = lo + dir;
       return i >= 0 && i < list.length ? list[i] : -1;
     };
     switch (k) {
@@ -907,6 +921,7 @@ export class GraphView implements GraphViewApi {
         if (target < 0) return;
         if (L.collapsed[c]) {
           L.collapsed[c] = 0;
+          this.keepFor = null;
           this.card = target;
           this.row = -1;
           this.relayout(c, () => this.choose(target, -1, 'key'));
