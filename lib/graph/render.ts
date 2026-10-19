@@ -134,16 +134,11 @@ export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTh
     const [a, b] = groupsIn(L, d, wy0, wy1);
     const list = L.groups[d];
     const gy1 = L.gy1[d];
-    let lastY = -Infinity;
-    for (let g = a; g < b; g++) {
-      if (gy1[g] < wy0) continue;
+    for (let g = a; g < b; ) {
       const c = list[g];
-      if (lod === 2) {
-        // One stroke per pixel row is plenty at this scale.
-        if (y[c] - lastY < 1.5 * px) continue;
-        lastY = y[c];
-      }
-      edgesOf(ctx, L, c, ox, oy, wy0, wy1, lod, px);
+      if (gy1[g] >= wy0) edgesOf(ctx, L, c, ox, oy, wy0, wy1, lod, px);
+      // Far out, one parent per pixel row is plenty: jump over the rest (keeps a frame bounded by screen size, not card count).
+      g = lod === 2 ? groupFrom(L, list, g + 1, b, y[c] + 1.5 * px) : g + 1;
     }
   }
   ctx.stroke();
@@ -183,6 +178,21 @@ function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+
+/** First index in [from, to) of `list` (cards top to bottom) whose card top is at or below `at`. */
+function groupFrom(L: GraphLayout, list: Int32Array, from: number, to: number, at: number) {
+  let lo = from;
+  let hi = to;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (L.y[list[mid]] < at) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** First index in [from, to) of kidList whose card top is at or below `at`. */
+const kidFrom = (L: GraphLayout, from: number, to: number, at: number) => groupFrom(L, L.m.kidList, from, to, at);
 
 /** Index range of p's children (in kidList) whose anchors may be within y0 … y1. */
 function kidsIn(L: GraphLayout, p: number, y0: number, y1: number): [number, number] {
@@ -240,12 +250,10 @@ function edgesOf(ctx: CanvasRenderingContext2D, L: GraphLayout, p: number, ox: n
       ctx.moveTo(tx, t0);
       ctx.lineTo(tx, t1);
     }
-    let last = -Infinity;
-    for (let i = a; i < b; i++) {
+    for (let i = a; i < b; ) {
       const c = kidList[i];
+      i = lod === 2 ? kidFrom(L, i + 1, b, y[c] + 1.5 * px) : i + 1;
       const ay = y[c] + G.head / 2 - oy;
-      if (lod === 2 && ay - last < 1.5 * px) continue;
-      last = ay;
       const dy = ay - py;
       const r = Math.min(R, Math.abs(dy), (x[c] - ox - tx) / 2);
       if (r > 0.5 && lod < 2) {
@@ -258,13 +266,11 @@ function edgesOf(ctx: CanvasRenderingContext2D, L: GraphLayout, p: number, ox: n
     return;
   }
   const r0 = rowStart[p];
-  let last = -Infinity;
-  for (let i = a; i < b; i++) {
+  for (let i = a; i < b; ) {
     const c = kidList[i];
+    i = lod === 2 ? kidFrom(L, i + 1, b, y[c] + 1.5 * px) : i + 1;
     const sy = y[p] + G.head + (m.portRow[c] - r0) * G.row + G.row / 2 - oy;
     const ey = y[c] + G.head / 2 - oy;
-    if (lod === 2 && ey - last < 1.5 * px) continue;
-    last = ey;
     const ex = x[c] - ox;
     ctx.moveTo(sx, sy);
     if (Math.abs(ey - sy) < 0.5) ctx.lineTo(ex, ey);
