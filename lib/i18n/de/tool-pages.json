@@ -1755,5 +1755,80 @@
         "answer": "Ja. „NDJSON in JSON konvertieren“ liest die Zeilen und gibt ein JSON-Array zurück."
       }
     ]
+  },
+  "json-visualizer": {
+    "hash": "7f4a154f4cbf",
+    "title": "JSON-Visualisierer mit interaktivem Graphen",
+    "description": "JSON als interaktiven Graphen neben dem Editor anzeigen. Große Dateien erkunden, Werte suchen und PNG oder SVG exportieren. Lokal und offline.",
+    "heading": "JSON-Visualisierer",
+    "query": "json visualisierer",
+    "secondary": [
+      "JSON Graph Viewer",
+      "JSON online visualisieren"
+    ],
+    "intro": "Füge JSON ein oder öffne eine Datei, um die Daten als Knotendiagramm neben dem Editor zu erkunden. Objekte und Arrays erscheinen als Karten mit Schlüsseln, Werten und Farben für die Datentypen. Kanten verbinden verschachtelte Objekte und Arrays mit ihrem übergeordneten Element.",
+    "modeLabel": "Interaktiver JSON-Graph",
+    "exampleLabel": "Diese API-Antwort enthält ein Team, zwei Projekte mit verschachtelten Angaben zu den Verantwortlichen und Daten zur Seitennavigation. Verfolge die Verbindungen in der Graphansicht oben. Das formatierte JSON unten zeigt dieselben Daten.",
+    "steps": [
+      "Füge JSON ein, öffne eine lokale Datei oder lade eine URL. Diese Seite öffnet die Graphansicht.",
+      "Ziehe den Graphen zum Verschieben. Zoome mit Ctrl/⌘+Scrollen oder einer Pinch-Geste, passe den Graphen an den Bildschirm an und nutze die Minimap zur Orientierung.",
+      "Klicke auf eine Karte oder einen Wert, um zur entsprechenden Stelle im Editor zu springen. Bewege den Cursor im Editor, um die Stelle im Graphen hervorzuheben.",
+      "Drücke Ctrl/⌘F, um Schlüssel und Werte zu suchen, oder gib einen Pfad wie $.data.projects[1].owner ein. Exportiere PNG oder SVG, wenn du ein Bild brauchst."
+    ],
+    "options": [
+      "Klappe einen beliebigen Zweig ein, um dich auf einen anderen Teil des Dokuments zu konzentrieren, und öffne ihn später wieder.",
+      "Die Suche hebt passende Schlüssel und Werte hervor und lässt dich durch die Treffer springen.",
+      "Navigiere mit der Tastatur und kopiere einen ausgewählten Wert oder dessen Pfad.",
+      "Wechsle zwischen Graph, Baum und Tabelle, um Verbindungen, verschachtelte Felder oder Datensätze zu untersuchen.",
+      "Nutze den hellen oder dunklen Modus. JSON-Verarbeitung und Bildexport laufen in deinem Browser."
+    ],
+    "faqs": [
+      {
+        "question": "Was ist ein JSON-Visualisierer?",
+        "answer": "Ein JSON-Visualisierer stellt verschachteltes JSON als erkundbares Diagramm dar. Dieser JSON-Graph-Viewer zeigt Objekte und Arrays als Karten, listet ihre Schlüssel und Werte mit Farben für die Datentypen auf und verbindet verschachtelte Container durch Kanten."
+      },
+      {
+        "question": "Wie visualisiere ich eine große JSON-Datei?",
+        "answer": "Öffne die Datei und wähle die Graphansicht. Das Canvas zeichnet nur den sichtbaren Teil des Diagramms. So lassen sich Dokumente mit Hunderttausenden Objekten flüssig verschieben und zoomen. Klappe Zweige ein und nutze die Suche oder einen $.path, um einen bestimmten Wert zu erreichen. Ladezeit und Kapazität hängen weiterhin vom Gerät und vom Dokument ab."
+      },
+      {
+        "question": "Bleiben meine Daten im JSON-Visualisierer privat?",
+        "answer": "Ja. Dein JSON bleibt im Browser und wird zur Verarbeitung nie hochgeladen. Der Graph funktioniert nach dem Laden der App auch offline. Das Laden einer URL erfordert eine Verbindung zu dieser URL."
+      },
+      {
+        "question": "Kann ich den JSON-Graphen als Bild exportieren?",
+        "answer": "Ja. Exportiere PNG für ein Rasterbild oder SVG für eine Vektorgrafik. Beide Exporte laufen lokal in deinem Browser."
+      },
+      {
+        "question": "Wie unterscheidet sich der Graph von einer JSON-Baumansicht?",
+        "answer": "Ein Graph verteilt verschachtelte Objekte und Arrays auf verbundene Karten, sodass du mehrere Zweige gleichzeitig verfolgen kannst. Eine JSON-Baumansicht zeigt sie als eingerückte Liste und eignet sich zum Lesen der Felder in ihrer Reihenfolge. Du kannst mit demselben Dokument zwischen Graph und Baum wechseln."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Prüfen, ob eine JSON-Antwort abgeschnitten wurde"
+      },
+      {
+        "slug": "trailing-comma",
+        "text": "Ein abschließendes Komma vor der JSON-Visualisierung entfernen"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Wann ein Graph hilfreicher ist als ein Baum",
+        "paragraphs": [
+          "Eine API-Antwort verpackt Datensätze oft in data, ergänzt daneben Metadaten und verschachtelt in jedem Datensatz ein weiteres Objekt. Verbundene Karten machen diese Beziehungen sichtbar, ohne dass du Einrückungen zählen musst. Das Beispiel trennt so Team, Projekte, Verantwortliche und Seitennavigation.",
+          "Nutze den Baum, um Felder der Reihe nach zu lesen, und die Tabelle, um Datensätze spaltenweise zu vergleichen. Wenn du eine JSON-Crack-Alternative suchst, bietet dieser Graph ein Diagramm neben dem Editor, eine in beide Richtungen synchronisierte Auswahl sowie lokalen PNG- und SVG-Export."
+        ]
+      },
+      {
+        "heading": "Wie große JSON-Graphen gezeichnet werden",
+        "paragraphs": [
+          "Die Graphansicht zeichnet auf einem Canvas und stellt nur den sichtbaren Ausschnitt dar. Beim Verschieben eines Dokuments mit Hunderttausenden Objekten muss sie nicht in jedem Bild alle Karten zeichnen. Die Minimap und die Funktion zum Einpassen helfen dir bei der Orientierung.",
+          "Der Browser braucht weiterhin Speicher, um das JSON zu lesen und seine Struktur aufzubauen. Dateigröße, Verschachtelung und Gerätespeicher beeinflussen das Laden. Klappe Zweige ein, um die Ansicht übersichtlich zu halten, und suche nach einem Schlüssel, Wert oder konkreten Pfad, statt jeder Kante zu folgen."
+        ]
+      }
+    ]
   }
 }

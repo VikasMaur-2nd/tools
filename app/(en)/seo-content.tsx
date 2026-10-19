@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { localePath, type SiteLocale } from '@/lib/i18n/locales';
 import { rich } from '@/lib/i18n/rich';
-import { serverT } from '@/lib/i18n/server';
+import { serverT, toolPage } from '@/lib/i18n/server';
 import { faqEntries } from './seo';
 
 export default function SeoContent({ locale = 'en' }: { locale?: SiteLocale }) {
   const t = serverT(locale);
+  const graph = toolPage(locale, 'json-visualizer');
   // The blog and resources are English: localized pages mark those links.
   const en = locale === 'en' ? {} : { hrefLang: 'en' };
   const link = (href: string, local = false) => <Link href={local ? localePath(locale, href) : href} {...(local ? {} : en)} />;
@@ -16,6 +17,7 @@ export default function SeoContent({ locale = 'en' }: { locale?: SiteLocale }) {
       <h2>{t('home.toolsH2')}</h2>
       <ul>
         <li>{t('home.tools.1')}</li>
+        {graph && <li><Link href={localePath(locale, '/tools/json-visualizer')}>{graph.heading}</Link>. {graph.intro}</li>}
         <li>{rich(t('home.tools.validator'), { validator: link('/tools/json-validator', true) })}</li>
         {([3, 4, 5, 6] as const).map((i) => (
           <li key={i}>{t(`home.tools.${i}`)}</li>

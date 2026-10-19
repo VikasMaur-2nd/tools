@@ -18,6 +18,7 @@
 ## Dedicated JSON tools
 
 - [All JSON tools](https://tools.vikasmaur.com/tools): the crawlable index of formatter, validator, conversion and import tools.
+- [JSON visualizer](https://tools.vikasmaur.com/tools/json-visualizer): interactive node-link graph beside the editor, connected object and array cards, branch collapse, search, minimap and local PNG/SVG export. Canvas rendering paints only the visible part for large documents.
 - [JSON validator](https://tools.vikasmaur.com/tools/json-validator): find syntax errors and repair common loose JSON.
 - [JSON minifier](https://tools.vikasmaur.com/tools/json-minifier): remove insignificant whitespace.
 - [JSON diff](https://tools.vikasmaur.com/tools/json-diff): compare two JSON documents.
@@ -97,5 +98,5 @@ The JSON viewer, the tools hub and the dedicated tool pages are also available i
 
 - The parser and formatter run in the browser.
 - No account is required to use the viewer.
-- The app supports tree and table views, search, JSON paths, comparison, conversion and local downloads.
+- The app supports graph, tree and table views, search, JSON paths, comparison, conversion and local downloads.
 - Share links keep document data in the URL hash; the service does not process the document on a server.
