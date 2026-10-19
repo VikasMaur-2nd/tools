@@ -18,7 +18,7 @@
 ## Dedicated JSON tools
 
 - [All JSON tools](https://tools.vikasmaur.com/tools): the crawlable index of formatter, validator, conversion and import tools.
-- [JSON visualizer](https://tools.vikasmaur.com/tools/json-visualizer): interactive node-link graph beside the editor, connected object and array cards, branch collapse, search, minimap and local PNG/SVG export. Canvas rendering paints only the visible part for large documents.
+- [JSON visualizer](https://tools.vikasmaur.com/tools/json-visualizer): interactive node-link graph beside the editor, connected object and array cards, branch collapse, search, minimap and local PNG/JPEG/SVG export. Export the whole graph, visible area or selected branch with a theme, white, transparent or custom background and 1×, 2× or 3× resolution. Canvas rendering paints only the visible part for large documents.
 - [JSON validator](https://tools.vikasmaur.com/tools/json-validator): find syntax errors and repair common loose JSON.
 - [JSON minifier](https://tools.vikasmaur.com/tools/json-minifier): remove insignificant whitespace.
 - [JSON diff](https://tools.vikasmaur.com/tools/json-diff): compare two JSON documents.
