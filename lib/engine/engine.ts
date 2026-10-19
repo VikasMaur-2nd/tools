@@ -1618,11 +1618,10 @@ export class Engine {
   setView(view: View, ready?: () => void) {
     this.flushLoad();
     const viewSeq = ++this.viewSeq;
-    if (view === 'graph' && !this.graph) {
-      void this.loadGraph().then(() => {
-        if (!this.dead && viewSeq === this.viewSeq && this.graph) this.setView(view, ready);
-      });
-      return;
+    if (view === 'graph') {
+      this.graphShow = { seq: viewSeq, ready };
+      // The tab opens at once; the graph draws when its code has arrived (usually prefetched already).
+      if (!this.graph) void this.loadGraph().then(() => this.showGraph(viewSeq));
     }
     const packed = this.packed?.id === this.loadSeq ? this.packed : this.goodPacked;
     if (view !== 'format' && view !== 'compare' && packed) {
@@ -1671,14 +1670,20 @@ export class Engine {
         if (!this.ed2.text) this.ed2.focus();
       });
     } else this.compareMarks(null, null);
-    if (view === 'graph') requestAnimationFrame(() => {
-      if (this.dead || viewSeq !== this.viewSeq || this.settings.view !== 'graph') return;
-      this.graph?.activate();
-      this.graph?.select(this.sel, { scroll: true });
-      if (this.query) this.refind(true);
-      ready?.();
-    });
+    if (view === 'graph') requestAnimationFrame(() => this.showGraph(viewSeq));
     else ready?.();
+  }
+
+  /** The Graph view opened by setView call `seq`: draw it once both the view is shown and its code is loaded. */
+  private graphShow: { seq: number; ready?: () => void } | null = null;
+  private showGraph(seq: number) {
+    const show = this.graphShow;
+    if (this.dead || !this.graph || !show || show.seq !== seq || seq !== this.viewSeq || this.settings.view !== 'graph') return;
+    this.graphShow = null;
+    this.graph.activate();
+    this.graph.select(this.sel, { scroll: true });
+    if (this.query) this.refind(true);
+    show.ready?.();
   }
 
   /** Leaves Compare for the view that was open before it. */
@@ -2107,8 +2112,9 @@ export class Engine {
   }
 
   zoomGraph(factor: number) {
+    if (!this.graph || this.settings.view !== 'graph') return;
     track('feature_used', { feature: factor > 1 ? 'graph_zoom_in' : 'graph_zoom_out' });
-    this.graph?.zoomBy(factor);
+    this.graph.zoomBy(factor);
   }
 
   downloadGraph(kind: 'png' | 'svg') {
