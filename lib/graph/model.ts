@@ -94,10 +94,29 @@ export interface GraphModel {
 
 const ESC: Record<number, string> = { 8: '\\b', 9: '\\t', 10: '\\n', 12: '\\f', 13: '\\r', 34: '\\"', 92: '\\\\' };
 
-/** Display columns of code point `cp`. */
+/**
+ * Display columns of code point `cp`: East Asian wide/fullwidth and emoji
+ * take two, combining marks and joiners none. Erring wide is safe (a little
+ * spare room); erring narrow would overflow the card.
+ */
 export function cpCols(cp: number): number {
+  if (cp < 0x300) return 1;
+  if (cp <= 0x36f || cp === 0x200b || cp === 0x200c || cp === 0x200d || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef)) return 0;
   if (cp < 0x1100) return 1;
-  return (cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) || (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) || (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1f64f) || (cp >= 0x1f900 && cp <= 0x1f9ff) || (cp >= 0x20000 && cp <= 0x3fffd) ? 2 : 1;
+  return cp <= 0x115f ||
+    (cp >= 0x231a && cp <= 0x23ff) ||
+    (cp >= 0x2600 && cp <= 0x27bf) ||
+    (cp >= 0x2b00 && cp <= 0x2bff) ||
+    (cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) ||
+    (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) ||
+    (cp >= 0xfe30 && cp <= 0xfe4f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f000 && cp <= 0x1faff) ||
+    (cp >= 0x20000 && cp <= 0x3fffd)
+    ? 2
+    : 1;
 }
 
 /**

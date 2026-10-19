@@ -86,6 +86,9 @@ test('graph text: escapes, wide characters and truncation', () => {
   assert.equal(fit('日本語テキスト', 6, false), '日本…');
   assert.equal(fitCols, 5);
   assert.equal(fit('😀😀', 4, false), '😀😀');
+  assert.equal(fit('🚀🚀🚀', 5, false), '🚀🚀…');
+  assert.equal(fit('👍🏽 e\u0301', 40, false), '👍🏽 e\u0301');
+  assert.equal(fitCols, 6);
   const n = parse('"' + 'x'.repeat(100) + '"').root!;
   assert.equal(valueText(n).length, G.valMax);
 });
