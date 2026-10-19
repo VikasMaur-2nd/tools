@@ -27,6 +27,9 @@ const SLICE = 8;
 const NOTE_AFTER = 150;
 const TIP_DELAY = 450;
 const DRAG = 4;
+/** Edits to a graph this big rebuild after a pause in typing this long. */
+const EDIT_SETTLE_CARDS = 20_000;
+const EDIT_SETTLE_MS = 250;
 
 // Diagonal arrows (out / in), unlike Fit's corner brackets.
 const FULL_ON = 'M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9';
@@ -90,6 +93,7 @@ export class GraphView implements GraphViewApi {
   private pinch: { d: number; cam: Cam; cx: number; cy: number } | null = null;
   private miniDrag = false;
   private tipTimer = 0;
+  private editTimer = 0;
 
   constructor(host: HTMLElement, ev: GraphEvents) {
     this.host = host;
@@ -162,6 +166,7 @@ export class GraphView implements GraphViewApi {
   destroy() {
     this.token++;
     this.active = false;
+    clearTimeout(this.editTimer);
     cancelAnimationFrame(this.raf);
     clearTimeout(this.tipTimer);
     this.ro.disconnect();
@@ -200,7 +205,11 @@ export class GraphView implements GraphViewApi {
     this.building = false;
     this.matches = [];
     this.hitFor = null;
-    if (active) this.activate();
+    clearTimeout(this.editTimer);
+    if (!active) return;
+    // Typing in a big document: rebuild once the edits pause, not on every key.
+    if (!reset && this.L && this.L.m.n > EDIT_SETTLE_CARDS) this.editTimer = window.setTimeout(() => this.active && this.activate(), EDIT_SETTLE_MS);
+    else this.activate();
   }
 
   activate() {
@@ -217,6 +226,7 @@ export class GraphView implements GraphViewApi {
 
   deactivate() {
     this.active = false;
+    clearTimeout(this.editTimer);
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.anim = null;
