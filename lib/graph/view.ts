@@ -9,7 +9,7 @@
  */
 import { ARR, BOOL, NUL, NUM, STR, kids, type JNode } from '../json/parser';
 import { formatPath, parsePath, pathOf, resolve, type Seg } from '../json/path';
-import { soon } from '../engine/idle';
+import { idle, soon } from '../engine/idle';
 import { rt } from '../i18n/ui';
 import { PRIVATE } from '../analytics';
 import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, modelBuilder, valueText, type GraphModel } from './model';
@@ -21,6 +21,8 @@ import { MINI_H, MINI_W, Minimap } from './minimap';
 import type { FindResult, GraphEvents, GraphViewApi } from './types';
 
 const MAX_MATCHES = 100_000;
+let valueHints: ((n: JNode) => { label: string }[]) | null = null;
+let hintsLoading = false;
 const SLICE = 8;
 const NOTE_AFTER = 150;
 const TIP_DELAY = 450;
@@ -202,6 +204,11 @@ export class GraphView implements GraphViewApi {
 
   activate() {
     this.active = true;
+    // Value hints (dates, epoch times) label tooltips; they load once the page is idle.
+    if (!valueHints && !hintsLoading) {
+      hintsLoading = true;
+      idle(() => void import('../json/smart').then((mod) => (valueHints = mod.valueHints), () => (hintsLoading = false)));
+    }
     this.measure();
     if (this.dirty) this.build();
     else this.redraw();
@@ -880,8 +887,12 @@ export class GraphView implements GraphViewApi {
       const val = valueText(n);
       const fullKey = n.key === undefined ? '' : String(n.key);
       const fullVal = n.t === STR ? JSON.stringify(n.v) : n.t >= ARR ? val : String(n.v ?? 'null');
-      if (lab === fullKey && val === fullVal) return;
-      text = (fullKey ? fullKey + ': ' : '') + (fullVal.length > 2000 ? fullVal.slice(0, 2000) + '…' : fullVal);
+      // What a value means (a date, an epoch time…), like the tree's tooltips.
+      const hint = (n.t === STR || n.t === NUM) && valueHints ? (valueHints(n)[0]?.label ?? '') : '';
+      const cut = lab !== fullKey || val !== fullVal;
+      if (!cut && !hint) return;
+      if (cut) text = (fullKey ? fullKey + ': ' : '') + (fullVal.length > 2000 ? fullVal.slice(0, 2000) + '…' : fullVal);
+      if (hint) text = hint + (text ? '\n' + text : '');
     } else {
       const n = m.node[c];
       if (typeof n.key !== 'string' || headText(n) === n.key) return;
