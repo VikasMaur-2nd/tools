@@ -696,5 +696,17 @@
   "dlg.drag": "拖动",
   "toast.graphLoadFailed": "无法加载图谱，请重新打开。",
   "toast.graphExportFailed": "无法下载图谱：{error}",
-  "toast.graphExportError": "图谱导出失败"
+  "toast.graphExportError": "图谱导出失败",
+  "app.graphRole": "图谱",
+  "app.graphLabel": "JSON 图谱。方向键移动，Enter 打开，空格折叠，+ 和 - 缩放。",
+  "app.graphZoom100": "缩放到 100%",
+  "app.graphLayout": "正在排布 {n} 张卡片…",
+  "app.graphBuilding": "正在生成图谱…",
+  "app.graphRoot": "根",
+  "app.typeString": "字符串",
+  "app.typeNumber": "数字",
+  "app.typeBoolean": "布尔值",
+  "app.typeArray": "数组",
+  "app.typeObject": "对象",
+  "app.graphItems.other": "{n} 项"
 }

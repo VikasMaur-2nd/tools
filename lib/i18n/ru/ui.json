@@ -747,5 +747,20 @@
   "dlg.drag": "Перетаскивание",
   "toast.graphLoadFailed": "Не удалось загрузить граф. Попробуйте открыть его снова.",
   "toast.graphExportFailed": "Не удалось скачать граф: {error}",
-  "toast.graphExportError": "Не удалось экспортировать граф"
+  "toast.graphExportError": "Не удалось экспортировать граф",
+  "app.graphRole": "граф",
+  "app.graphLabel": "JSON-граф. Стрелки перемещают, Enter открывает, Пробел сворачивает, + и - меняют масштаб.",
+  "app.graphZoom100": "Масштаб 100%",
+  "app.graphLayout": "Размещение карточек: {n}…",
+  "app.graphBuilding": "Построение графа…",
+  "app.graphRoot": "корень",
+  "app.typeString": "строка",
+  "app.typeNumber": "число",
+  "app.typeBoolean": "логическое значение",
+  "app.typeArray": "массив",
+  "app.typeObject": "объект",
+  "app.graphItems.one": "{n} элемент",
+  "app.graphItems.few": "{n} элемента",
+  "app.graphItems.many": "{n} элементов",
+  "app.graphItems.other": "{n} элемента"
 }

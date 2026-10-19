@@ -696,5 +696,17 @@
   "dlg.drag": "ドラッグ",
   "toast.graphLoadFailed": "グラフを読み込めませんでした。もう一度開いてください。",
   "toast.graphExportFailed": "グラフをダウンロードできませんでした: {error}",
-  "toast.graphExportError": "グラフのエクスポートに失敗しました"
+  "toast.graphExportError": "グラフのエクスポートに失敗しました",
+  "app.graphRole": "グラフ",
+  "app.graphLabel": "JSON グラフ。矢印キーで移動、Enter で開く、Space で折りたたみ、+ と - でズーム。",
+  "app.graphZoom100": "100% にズーム",
+  "app.graphLayout": "{n} 枚のカードを配置中…",
+  "app.graphBuilding": "グラフを作成中…",
+  "app.graphRoot": "ルート",
+  "app.typeString": "文字列",
+  "app.typeNumber": "数値",
+  "app.typeBoolean": "真偽値",
+  "app.typeArray": "配列",
+  "app.typeObject": "オブジェクト",
+  "app.graphItems.other": "{n} 個の項目"
 }

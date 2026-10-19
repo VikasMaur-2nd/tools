@@ -813,5 +813,18 @@
   "dlg.drag": "Drag",
   "toast.graphLoadFailed": "Couldn't load the graph. Try opening it again.",
   "toast.graphExportFailed": "Couldn't download graph: {error}",
-  "toast.graphExportError": "Graph export failed"
+  "toast.graphExportError": "Graph export failed",
+  "app.graphRole": "graph",
+  "app.graphLabel": "JSON graph. Arrow keys move, Enter opens, Space collapses, + and - zoom.",
+  "app.graphZoom100": "Zoom to 100%",
+  "app.graphLayout": "Laying out {n} cards…",
+  "app.graphBuilding": "Building the graph…",
+  "app.graphRoot": "root",
+  "app.typeString": "string",
+  "app.typeNumber": "number",
+  "app.typeBoolean": "boolean",
+  "app.typeArray": "array",
+  "app.typeObject": "object",
+  "app.graphItems.one": "{n} item",
+  "app.graphItems.other": "{n} items"
 }

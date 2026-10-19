@@ -696,5 +696,17 @@
   "dlg.drag": "드래그",
   "toast.graphLoadFailed": "그래프를 불러오지 못했습니다. 다시 열어 보세요.",
   "toast.graphExportFailed": "그래프를 다운로드하지 못했습니다: {error}",
-  "toast.graphExportError": "그래프 내보내기에 실패했습니다"
+  "toast.graphExportError": "그래프 내보내기에 실패했습니다",
+  "app.graphRole": "그래프",
+  "app.graphLabel": "JSON 그래프. 화살표 키로 이동, Enter로 열기, Space로 접기, +와 -로 확대/축소.",
+  "app.graphZoom100": "100%로 확대/축소",
+  "app.graphLayout": "카드 {n}개 배치 중…",
+  "app.graphBuilding": "그래프를 만드는 중…",
+  "app.graphRoot": "루트",
+  "app.typeString": "문자열",
+  "app.typeNumber": "숫자",
+  "app.typeBoolean": "불리언",
+  "app.typeArray": "배열",
+  "app.typeObject": "객체",
+  "app.graphItems.other": "항목 {n}개"
 }

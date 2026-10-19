@@ -43,7 +43,7 @@ const walk = (dir: string, acc: string[] = []): string[] => {
   return acc;
 };
 /** Code that renders strings in the browser, plus the libraries whose English messages it shows. */
-const clientFiles = [...walk('components'), ...walk('lib/engine'), 'lib/i18n/translate.ts', 'lib/json/smart.ts', 'lib/json/parser.ts', 'lib/convert/import.ts', 'lib/convert/xlsx.ts', 'lib/diff/diff.ts'].filter(
+const clientFiles = [...walk('components'), ...walk('lib/engine'), ...walk('lib/graph'), 'lib/i18n/translate.ts', 'lib/json/smart.ts', 'lib/json/parser.ts', 'lib/convert/import.ts', 'lib/convert/xlsx.ts', 'lib/diff/diff.ts'].filter(
   // Server components translate by stable key instead.
   (f) => !read(f).includes("from '@/lib/i18n/server'"),
 );

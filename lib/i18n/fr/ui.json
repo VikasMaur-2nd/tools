@@ -730,5 +730,19 @@
   "dlg.drag": "Glisser",
   "toast.graphLoadFailed": "Impossible de charger le graphe. Réessayez de l'ouvrir.",
   "toast.graphExportFailed": "Impossible de télécharger le graphe : {error}",
-  "toast.graphExportError": "Échec de l'export du graphe"
+  "toast.graphExportError": "Échec de l'export du graphe",
+  "app.graphRole": "graphe",
+  "app.graphLabel": "Graphe JSON. Les flèches déplacent, Entrée ouvre, Espace replie, + et - zooment.",
+  "app.graphZoom100": "Zoom à 100 %",
+  "app.graphLayout": "Disposition de {n} cartes…",
+  "app.graphBuilding": "Création du graphe…",
+  "app.graphRoot": "racine",
+  "app.typeString": "chaîne",
+  "app.typeNumber": "nombre",
+  "app.typeBoolean": "booléen",
+  "app.typeArray": "tableau",
+  "app.typeObject": "objet",
+  "app.graphItems.one": "{n} élément",
+  "app.graphItems.many": "{n} éléments",
+  "app.graphItems.other": "{n} éléments"
 }

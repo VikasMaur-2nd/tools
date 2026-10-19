@@ -697,7 +697,19 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1397,7 +1409,19 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2097,7 +2121,19 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -2797,7 +2833,19 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3497,7 +3545,19 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4197,7 +4257,19 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -4897,7 +4969,19 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -5597,6 +5681,18 @@
     "dlg.drag": "442e96ec",
     "toast.graphLoadFailed": "3d6edcf8",
     "toast.graphExportFailed": "e4ffeb97",
-    "toast.graphExportError": "2b29adc6"
+    "toast.graphExportError": "2b29adc6",
+    "app.graphRole": "eef93e1d",
+    "app.graphLabel": "f1160a28",
+    "app.graphZoom100": "c23bdb43",
+    "app.graphLayout": "270ad0e7",
+    "app.graphBuilding": "de4dcc36",
+    "app.graphRoot": "4813494d",
+    "app.typeString": "473287f8",
+    "app.typeNumber": "12886f9d",
+    "app.typeBoolean": "bf84d3d6",
+    "app.typeArray": "dbe42cc0",
+    "app.typeObject": "2958d416",
+    "app.graphItems": "bc231c1c"
   }
 }

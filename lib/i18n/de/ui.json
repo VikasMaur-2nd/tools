@@ -713,5 +713,18 @@
   "dlg.drag": "Ziehen",
   "toast.graphLoadFailed": "Graph konnte nicht geladen werden. Bitte erneut öffnen.",
   "toast.graphExportFailed": "Graph konnte nicht heruntergeladen werden: {error}",
-  "toast.graphExportError": "Graph-Export fehlgeschlagen"
+  "toast.graphExportError": "Graph-Export fehlgeschlagen",
+  "app.graphRole": "Graph",
+  "app.graphLabel": "JSON-Graph. Pfeiltasten bewegen, Eingabe öffnet, Leertaste klappt ein, + und - zoomen.",
+  "app.graphZoom100": "Auf 100 % zoomen",
+  "app.graphLayout": "{n} Karten werden angeordnet…",
+  "app.graphBuilding": "Graph wird erstellt…",
+  "app.graphRoot": "Wurzel",
+  "app.typeString": "String",
+  "app.typeNumber": "Zahl",
+  "app.typeBoolean": "Boolean",
+  "app.typeArray": "Array",
+  "app.typeObject": "Objekt",
+  "app.graphItems.one": "{n} Eintrag",
+  "app.graphItems.other": "{n} Einträge"
 }

@@ -730,5 +730,19 @@
   "dlg.drag": "Arrastrar",
   "toast.graphLoadFailed": "No se pudo cargar el grafo. Vuelve a abrirlo.",
   "toast.graphExportFailed": "No se pudo descargar el grafo: {error}",
-  "toast.graphExportError": "Error al exportar el grafo"
+  "toast.graphExportError": "Error al exportar el grafo",
+  "app.graphRole": "grafo",
+  "app.graphLabel": "Grafo JSON. Las flechas mueven, Intro abre, Espacio contrae, + y - hacen zoom.",
+  "app.graphZoom100": "Zoom al 100 %",
+  "app.graphLayout": "Distribuyendo {n} tarjetas…",
+  "app.graphBuilding": "Creando el grafo…",
+  "app.graphRoot": "raíz",
+  "app.typeString": "cadena",
+  "app.typeNumber": "número",
+  "app.typeBoolean": "booleano",
+  "app.typeArray": "array",
+  "app.typeObject": "objeto",
+  "app.graphItems.one": "{n} elemento",
+  "app.graphItems.many": "{n} elementos",
+  "app.graphItems.other": "{n} elementos"
 }

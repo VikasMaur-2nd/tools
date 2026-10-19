@@ -730,5 +730,19 @@
   "dlg.drag": "Arrastar",
   "toast.graphLoadFailed": "Não foi possível carregar o grafo. Tente abrir de novo.",
   "toast.graphExportFailed": "Não foi possível baixar o grafo: {error}",
-  "toast.graphExportError": "Falha ao exportar o grafo"
+  "toast.graphExportError": "Falha ao exportar o grafo",
+  "app.graphRole": "grafo",
+  "app.graphLabel": "Grafo JSON. As setas movem, Enter abre, Espaço recolhe, + e - aplicam zoom.",
+  "app.graphZoom100": "Zoom em 100%",
+  "app.graphLayout": "Organizando {n} cartões…",
+  "app.graphBuilding": "Criando o grafo…",
+  "app.graphRoot": "raiz",
+  "app.typeString": "string",
+  "app.typeNumber": "número",
+  "app.typeBoolean": "booleano",
+  "app.typeArray": "array",
+  "app.typeObject": "objeto",
+  "app.graphItems.one": "{n} item",
+  "app.graphItems.many": "{n} itens",
+  "app.graphItems.other": "{n} itens"
 }
