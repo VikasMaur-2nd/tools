@@ -5,6 +5,7 @@ import { G, buildModel } from '../lib/graph/model';
 import { layoutGraph } from '../lib/graph/layout';
 import { LOD_SKEL, LOD_TEXT, ZOOM_MAX, fitCam, fitScale, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt } from '../lib/graph/camera';
 import { compactNum, partAt } from '../lib/graph/render';
+import { isDark } from '../lib/graph/theme';
 
 const near = (a: number, b: number, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≉ ${b}`);
 
@@ -75,4 +76,14 @@ test('graph render: hit-test parts and compact numbers', () => {
   assert.equal(compactNum(1234), '1,234');
   assert.equal(compactNum(56_789), '57k');
   assert.equal(compactNum(1_200_000), '1.2M');
+});
+
+test('graph theme: dark detection reads minified and rgb colours', () => {
+  assert.equal(isDark('#000'), true);
+  assert.equal(isDark('#000000'), true);
+  assert.equal(isDark('#fff'), false);
+  assert.equal(isDark('#fafafa'), false);
+  assert.equal(isDark('rgb(10, 10, 10)'), true);
+  assert.equal(isDark('rgba(250,250,250,1)'), false);
+  assert.equal(isDark('transparent'), false);
 });

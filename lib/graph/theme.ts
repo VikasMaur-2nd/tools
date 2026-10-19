@@ -70,11 +70,24 @@ export function readTheme(el: Element): GraphTheme {
   };
 }
 
-function isDark(color: string) {
-  const m = /^#([0-9a-f]{6})$/i.exec(color);
-  if (!m) return false;
-  const n = parseInt(m[1], 16);
-  return ((n >> 16) & 255) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114 < 128;
+/** True for a dark colour: `#rgb`, `#rrggbb` or `rgb(…)` (minified CSS shortens hex). */
+export function isDark(color: string) {
+  let r: number;
+  let g: number;
+  let b: number;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (hex) {
+    const h = hex[1].length === 3 ? hex[1].replace(/./g, '$&$&') : hex[1];
+    const n = parseInt(h, 16);
+    r = (n >> 16) & 255;
+    g = (n >> 8) & 255;
+    b = n & 255;
+  } else {
+    const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(color.trim());
+    if (!rgb) return false;
+    [r, g, b] = [+rgb[1], +rgb[2], +rgb[3]];
+  }
+  return r * 0.299 + g * 0.587 + b * 0.114 < 128;
 }
 
 /** Advance of one monospace column in `font` (measured once per font). */
