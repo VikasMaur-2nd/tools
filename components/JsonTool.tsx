@@ -13,7 +13,7 @@ import { useT } from '@/lib/i18n/react';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
-import { CommandPalette, GraphExportDialog, ShortcutsDialog } from './dialogs';
+import { CommandPalette, ShortcutsDialog } from './dialogs';
 
 function Btn({
   icon,
@@ -897,6 +897,15 @@ function ViewerPane({
   );
 }
 
+// The graph's export dialog is code-split too: it loads the first time it opens
+// (and is prefetched with Compare, for offline use).
+const GraphExportDialog = dynamic(() => import('./GraphExport'), { ssr: false });
+
+function GraphExportHost() {
+  const open = useUI((s) => s.graphExport);
+  return open ? <GraphExportDialog /> : null;
+}
+
 // Compare is code-split: it loads the first time its tab opens (and is
 // prefetched in the background shortly after startup for offline use).
 const CompareView = dynamic(() => import('./CompareView'), {
@@ -1214,7 +1223,10 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
     // A landing page's sample loads in the next task: hydration and the empty editor
     // paint first, and neither half is one long blocking task on a slow phone.
     const sample = pagePreset?.initialText ? window.setTimeout(() => e.applyPreset(pagePreset), 0) : 0;
-    const warm = window.setTimeout(() => idle(() => void import('./CompareView')), 6000);
+    const warm = window.setTimeout(() => idle(() => {
+      void import('./CompareView');
+      void import('./GraphExport');
+    }), 6000);
     return () => {
       window.clearTimeout(sample);
       window.clearTimeout(warm);
@@ -1245,7 +1257,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <DropOverlay />
       <CommandPalette />
       <ShortcutsDialog />
-      <GraphExportDialog />
+      <GraphExportHost />
       <input ref={fileRef} className={PRIVATE} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />
     </div>
   );

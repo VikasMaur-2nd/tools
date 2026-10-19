@@ -8,7 +8,6 @@ import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor'
 import { TreeView } from './tree';
 import { TableView } from './table';
 import type { GraphExport, GraphViewApi } from '../graph/types';
-import { exportOptions, loadExportPrefs } from '../graph/export-prefs';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
@@ -2153,7 +2152,7 @@ export class Engine {
   }
 
   /** Copies the graph as a PNG image. Call from the click itself: browsers only allow it during user input. */
-  copyGraphImage(opts: GraphExport = exportOptions(loadExportPrefs())) {
+  copyGraphImage(opts?: GraphExport) {
     const graph = this.graph;
     if (!graph || this.settings.view !== 'graph') return;
     if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
@@ -2163,7 +2162,9 @@ export class Engine {
     track('feature_used', { feature: 'graph_copy_image' });
     // The item takes the image's promise right away, which Safari needs to keep the user's permission.
     let reduced: [number, number] | null = null;
-    const png = graph.exportImage({ ...opts, format: 'png' }, (w, h) => (reduced = [w, h]));
+    // Without options (menu, palette): the export dialog's last choices, loaded with the image.
+    const chosen = opts ? Promise.resolve(opts) : import('../graph/export-prefs').then((m) => m.exportOptions(m.loadExportPrefs()));
+    const png = chosen.then((o) => graph.exportImage({ ...o, format: 'png' }, (w, h) => (reduced = [w, h])));
     navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).then(
       () => {
         if (this.dead) return;
