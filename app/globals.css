@@ -3185,7 +3185,8 @@ button.mi:focus-visible {
   min-height: 0;
   overflow: hidden;
   outline: none;
-  background: var(--bg);
+  /* Matches the canvas (lib/graph/theme.ts): off-white in light, the page black in dark. */
+  background: var(--bg-2);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -3315,4 +3316,14 @@ button.mi:focus-visible {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .gv {
+    background: var(--bg);
+  }
+}
+
+:root[data-theme='dark'] .gv {
+  background: var(--bg);
 }

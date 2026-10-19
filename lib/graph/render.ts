@@ -28,6 +28,43 @@ export interface Paint {
   lod?: number;
   /** Skip the background fill. */
   clear?: boolean;
+  /** Dot grid on the background (on screen, not in the minimap or exports). */
+  grid?: boolean;
+}
+
+/** Grid spacing (world px) and the smallest on-screen spacing worth drawing. */
+const GRID = 24;
+const GRID_MIN = 10;
+let gridTile: { canvas: HTMLCanvasElement; size: number; color: string; dpr: number } | null = null;
+
+/** Dots every GRID world px, aligned with the camera (one pattern fill). */
+function grid(ctx: CanvasRenderingContext2D, th: GraphTheme, cam: Cam, vw: number, vh: number, dpr: number) {
+  const step = GRID * cam.s;
+  if (step < GRID_MIN) return;
+  const size = Math.max(2, Math.round(step * dpr));
+  const color = th.grid ?? th.border;
+  if (!gridTile || gridTile.size !== size || gridTile.color !== color || gridTile.dpr !== dpr) {
+    const canvas = gridTile?.canvas ?? document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const g = canvas.getContext('2d');
+    if (!g) return;
+    g.clearRect(0, 0, size, size);
+    g.fillStyle = color;
+    const dot = Math.max(1, Math.round(dpr * Math.min(1.5, cam.s * 1.25)));
+    g.fillRect(0, 0, dot, dot);
+    gridTile = { canvas, size, color, dpr };
+  }
+  const pattern = ctx.createPattern(gridTile.canvas, 'repeat');
+  if (!pattern) return;
+  // Device-pixel offset of the world origin, wrapped to one tile.
+  const ox = ((((-cam.x * cam.s) % step) + step) % step) * dpr;
+  const oy = ((((-cam.y * cam.s) % step) + step) % step) * dpr;
+  pattern.setTransform(new DOMMatrix([step * dpr / size, 0, 0, step * dpr / size, ox, oy]));
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = pattern;
+  ctx.fillRect(0, 0, vw * dpr, vh * dpr);
+  ctx.restore();
 }
 
 /** Colour of a row's value. */
@@ -69,6 +106,7 @@ export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTh
   if (p.clear !== false) {
     ctx.fillStyle = th.bg;
     ctx.fillRect(0, 0, vw, vh);
+    if (p.grid) grid(ctx, th, cam, vw, vh, dpr);
   }
   if (!m.n) return;
   const lod = p.lod ?? lodOf(s);

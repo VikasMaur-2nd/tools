@@ -7,6 +7,8 @@ import { G } from './model';
 export interface GraphTheme {
   /** Canvas background. */
   bg: string;
+  /** Background dots (screen only; defaults to the border colour). */
+  grid?: string;
   /** Card body and header fills. */
   card: string;
   head: string;
@@ -39,11 +41,14 @@ export function readTheme(el: Element): GraphTheme {
   const cs = getComputedStyle(el);
   const v = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
   const family = v('--font-mono', FALLBACK_FAMILY);
-  const bg = v('--bg', '#ffffff');
+  const page = v('--bg', '#ffffff');
+  const dark = isDark(page);
+  // Cards sit a step above the canvas: white on off-white, near-black on black.
   return {
-    bg,
-    card: v('--bg', '#ffffff'),
-    head: v('--bg-2', '#fafafa'),
+    bg: dark ? page : v('--bg-2', '#fafafa'),
+    grid: v('--line-2', '#dcdcdc'),
+    card: dark ? v('--bg-2', '#0a0a0a') : page,
+    head: dark ? v('--bg-3', '#161616') : v('--bg-2', '#fafafa'),
     border: v('--line-2', '#dcdcdc'),
     edge: v('--faint', '#a3a3a3'),
     fg: v('--fg', '#0a0a0a'),
@@ -61,7 +66,7 @@ export function readTheme(el: Element): GraphTheme {
     hitCur: v('--hit-cur', 'rgba(249,115,22,0.45)'),
     font: `${G.font}px ${family}`,
     family,
-    dark: isDark(bg),
+    dark,
   };
 }
 

@@ -12,7 +12,7 @@ import { formatPath, parsePath, pathOf, resolve, type Seg } from '../json/path';
 import { soon } from '../engine/idle';
 import { rt } from '../i18n/ui';
 import { PRIVATE } from '../analytics';
-import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, modelBuilder, rowOf, valueText, type GraphModel } from './model';
+import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, modelBuilder, valueText, type GraphModel } from './model';
 import { cardAt, layouter, type GraphLayout } from './layout';
 import { charWidth, readTheme, type GraphTheme } from './theme';
 import { MARGIN, ZOOM_MAX, clamp, ease, fitCam, follow, initialCam, lerpCam, minZoom, zoomAt, type Cam } from './camera';
@@ -364,6 +364,7 @@ export class GraphView implements GraphViewApi {
     this.ctl.hidden = false;
     this.ensureHits();
     const cur = this.matches[this.mi];
+    const at = cur && this.m ? locate(this.m, cur) : null;
     paint(ctx, L, this.th, this.cam, this.vw, this.vh, {
       card: this.card,
       row: this.row,
@@ -371,9 +372,10 @@ export class GraphView implements GraphViewApi {
       hoverRow: this.hoverRow,
       hitRow: this.hitRow,
       hitCard: this.hitCard,
-      curRow: cur && this.m ? rowOf(this.m, cur) : -1,
-      curCard: cur && this.m && rowOf(this.m, cur) < 0 ? cardOf(this.m, cur) : -1,
+      curRow: at ? at.row : -1,
+      curCard: at && at.row < 0 ? at.card : -1,
       dpr: this.dpr,
+      grid: true,
     });
     this.pct.textContent = Math.round(this.cam.s * 100) + '%';
     // Minimap only when part of the graph is off-screen.
@@ -478,15 +480,16 @@ export class GraphView implements GraphViewApi {
       this.pending = { n, scroll: !!opts.scroll, center: !!opts.center };
       return;
     }
-    let row = rowOf(m, n);
-    let card = row >= 0 ? cardOfRow(m, row) : cardOf(m, n);
-    if (card < 0) {
-      // Not shown as a row or a card (shouldn't happen): fall back to its parent.
-      const p = n.u;
-      card = p ? cardOf(m, p) : -1;
-      row = -1;
-      if (card < 0) return;
+    // A container with a card is outlined; anything else highlights the row
+    // showing it (a value inside an inline array: that array's row).
+    const at = locate(m, n);
+    let card = at.card;
+    let row = -1;
+    if (card < 0 && at.row >= 0) {
+      row = at.row;
+      card = cardOfRow(m, row);
     }
+    if (card < 0) return;
     this.card = card;
     this.row = row;
     this.announce();
@@ -646,12 +649,9 @@ export class GraphView implements GraphViewApi {
     const hr = new Uint8Array(m.rows);
     const hc = new Uint8Array(m.n);
     for (const n of this.matches) {
-      const r = rowOf(m, n);
-      if (r >= 0) hr[r] = 1;
-      else {
-        const c = cardOf(m, n);
-        if (c >= 0) hc[c] = 1;
-      }
+      const { card, row } = locate(m, n);
+      if (row >= 0) hr[row] = 1;
+      else if (card >= 0) hc[card] = 1;
     }
     this.hitRow = hr;
     this.hitCard = hc;
