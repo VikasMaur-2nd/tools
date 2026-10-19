@@ -110,6 +110,8 @@ export class GraphView implements GraphViewApi {
       b.dataset.tip = label;
       b.dataset.tipUp = '';
       b.innerHTML = html;
+      // Clicking keeps the focus where it was (the graph keeps its arrow keys); Tab still reaches the buttons.
+      b.addEventListener('pointerdown', (e) => e.preventDefault());
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         fn();
