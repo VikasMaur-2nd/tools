@@ -60,6 +60,8 @@ export class GraphView implements GraphViewApi {
 
   private cam: Cam = { x: -MARGIN, y: -MARGIN, s: 1 };
   private camSet = false;
+  /** The camera is still where the graph opened (or Fit put it): a resize places it again. */
+  private fitted = false;
   private vw = 0;
   private vh = 0;
   private dpr = 1;
@@ -283,6 +285,7 @@ export class GraphView implements GraphViewApi {
     if (first) {
       this.cam = initialCam(L.width, L.height, this.vw, this.vh, this.minZ());
       this.camSet = this.vw > 0;
+      this.fitted = true;
     }
     if (this.q) this.search(this.q, false);
     const p = this.pending;
@@ -327,7 +330,10 @@ export class GraphView implements GraphViewApi {
   private measure() {
     const r = this.host.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
+    // Hidden (another view is open): keep the last size, so showing it again changes nothing.
+    if (!r.width || !r.height) return;
     if (r.width === this.vw && r.height === this.vh && dpr === this.dpr) return;
+    const [ow, oh] = [this.vw, this.vh];
     this.vw = r.width;
     this.vh = r.height;
     this.dpr = dpr;
@@ -336,9 +342,13 @@ export class GraphView implements GraphViewApi {
     this.cv.style.width = r.width + 'px';
     this.cv.style.height = r.height + 'px';
     this.mini.release();
-    if (this.L && !this.camSet && this.vw > 0) {
+    if (this.L && this.vw > 0 && (!this.camSet || this.fitted)) {
+      this.anim = null;
       this.cam = initialCam(this.L.width, this.L.height, this.vw, this.vh, this.minZ());
       this.camSet = true;
+    } else if (this.camSet && ow > 0 && oh > 0) {
+      // Keep what was in the middle of the view in the middle (full screen, a moved splitter, a rotated phone).
+      this.cam = { x: this.cam.x + (ow - this.vw) / 2 / this.cam.s, y: this.cam.y + (oh - this.vh) / 2 / this.cam.s, s: this.cam.s };
     }
     // Resizing clears the canvas: repaint now, not a frame later (no flash).
     if (this.active) this.draw();
@@ -414,6 +424,7 @@ export class GraphView implements GraphViewApi {
   }
 
   private moveTo(to: Cam, animate = true) {
+    this.fitted = false;
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!animate || reduce || !this.active) {
       this.anim = null;
@@ -425,6 +436,7 @@ export class GraphView implements GraphViewApi {
   }
 
   private setCam(c: Cam) {
+    this.fitted = false;
     this.anim = null;
     this.cam = c;
     this.hideTip();
@@ -435,6 +447,7 @@ export class GraphView implements GraphViewApi {
     const L = this.L;
     if (!L) return;
     this.moveTo(fitCam(L.width, L.height, this.vw, this.vh, this.minZ()));
+    this.fitted = true;
   }
 
   zoomBy(f: number) {
@@ -565,6 +578,7 @@ export class GraphView implements GraphViewApi {
     if (!!L.collapsed[c] === next) return;
     L.collapsed[c] = next ? 1 : 0;
     this.keepFor = null;
+    this.fitted = false;
     this.relayout(c);
   }
 
