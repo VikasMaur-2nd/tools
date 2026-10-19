@@ -22,7 +22,7 @@ Browse the [resource library](https://tools.vikasmaur.com/resources) or [open th
 - **Repair** loose JSON: comments, trailing commas, single quotes, unquoted keys, Python `True/None`, `NaN`, NDJSON, JSONP, code fences, truncated input…
 - **Lossless**: big integers and long decimals are never rounded; duplicate keys are kept and flagged.
 - **Tree view** (virtualized, millions of nodes) with search, JSONPath / JSON Pointer navigation, copy value/path, colour & timestamp previews.
-- **[Graph view](https://tools.vikasmaur.com/tools/json-visualizer)** with connected object and array cards, pan, zoom, minimap, branch collapse, editor sync, search, keyboard navigation and local PNG/SVG export. The canvas paints only the visible part for large documents.
+- **[Graph view](https://tools.vikasmaur.com/tools/json-visualizer)** with connected object and array cards, pan, zoom, minimap, branch collapse, editor sync, search, keyboard navigation and local PNG/JPEG/SVG export. Export the whole graph, visible area or selected branch with a theme, white, transparent or custom background at 1×, 2× or 3× resolution. The canvas paints only the visible part for large documents.
 - **Table view** of any array/object with sorting, drill-down and CSV export.
 - **Convert** to TypeScript, Zod, JSON Schema, C#, Dart, Java, Python, Go, Kotlin, Swift, PHP, Rust, CSV, Excel, YAML, XML and TOML.
 - **Compare** two JSON documents (structural diff, JSON Patch).
