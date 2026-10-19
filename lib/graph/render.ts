@@ -85,6 +85,34 @@ export function valueColor(t: GraphTheme, n: JNode): string {
 
 const R = 6;
 
+/**
+ * Row texts are cut, escaped and (for inline arrays) joined on every frame
+ * otherwise: cache them per model while panning (bounded; a new model or a
+ * full cache starts over).
+ */
+let textsFor: GraphLayout['m'] | null = null;
+const labels = new Map<number, string>();
+const values = new Map<number, string>();
+const TEXT_CACHE = 40_000;
+/** Value text of row r (fills the cache for its label too). */
+function rowValue(m: GraphLayout['m'], r: number): string {
+  if (textsFor !== m || values.size > TEXT_CACHE) {
+    textsFor = m;
+    labels.clear();
+    values.clear();
+  }
+  let v = values.get(r);
+  if (v === undefined) {
+    const k = m.rowNode[r];
+    v = valueText(k);
+    values.set(r, v);
+    labels.set(r, labelText(k));
+  }
+  return v;
+}
+/** Label text of row r (after rowValue). */
+const rowLabel = (r: number) => labels.get(r) as string;
+
 /** Index of the first card in `list` whose top is greater than `y`. */
 function firstBelow(L: GraphLayout, list: Int32Array, from: number, to: number, y: number) {
   let lo = from;
@@ -377,9 +405,10 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
     for (let r = ra; r < rb; r++) {
       const k = m.rowNode[r];
       const my = top + (r - r0) * G.row + G.row / 2;
+      const value = rowValue(m, r);
       if (m.labelW[c]) {
         ctx.fillStyle = typeof k.key === 'number' ? th.muted : th.key;
-        ctx.fillText(labelText(k), cx + G.padX, my);
+        ctx.fillText(rowLabel(r), cx + G.padX, my);
       }
       // A colour value: its swatch, then the text after the columns the model reserved for it.
       let tx = vx;
@@ -392,7 +421,7 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
         tx += SWATCH_COLS * m.charW;
       }
       ctx.fillStyle = valueColor(th, k);
-      ctx.fillText(valueText(k), tx, my);
+      ctx.fillText(value, tx, my);
     }
     // Header: label, then the size badge right-aligned.
     ctx.fillStyle = th.fg;
