@@ -215,7 +215,18 @@ export class GraphView implements GraphViewApi {
       const deadline = performance.now() + SLICE;
       if (!m) {
         m = step(deadline);
-        if (m) lay = layouter(m, this.restoreCollapsed(m));
+        // The model's final pass and the layouter's setup each touch every card: give them their own tasks.
+        if (m && m.n >= 50_000) {
+          soon(run);
+          return;
+        }
+      }
+      if (m && !lay) {
+        lay = layouter(m, this.restoreCollapsed(m));
+        if (m.n >= 50_000) {
+          soon(run);
+          return;
+        }
       }
       if (m && lay) {
         const L = lay(deadline);
