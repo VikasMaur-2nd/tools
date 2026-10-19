@@ -1728,51 +1728,52 @@
     ]
   },
   "json-visualizer": {
-    "hash": "7f4a154f4cbf",
-    "title": "Visualiseur JSON avec graphe interactif",
-    "description": "Visualisez le JSON en graphe à côté de l'éditeur. Explorez de gros fichiers et exportez en PNG ou SVG. En local dans le navigateur, même hors ligne.",
+    "hash": "534e51af307b",
+    "title": "Visualiseur JSON : graphe interactif",
+    "description": "Visualisez le JSON dans un graphe à côté de l’éditeur. Recherchez des chemins et des valeurs, exportez en PNG, JPEG ou SVG localement.",
     "heading": "Visualiseur JSON",
     "query": "visualiseur json",
     "secondary": [
       "visualiseur de graphe JSON",
       "visualiser JSON en ligne"
     ],
-    "intro": "Collez du JSON ou ouvrez un fichier pour l'explorer sous forme de nœuds reliés à côté de l'éditeur. Les objets et tableaux apparaissent dans des cartes avec leurs clés, leurs valeurs et des couleurs par type. Les liens relient chaque objet ou tableau imbriqué à son parent.",
+    "intro": "Collez du JSON ou ouvrez un fichier pour l’explorer sous forme de nœuds reliés à côté de l’éditeur. Les objets et tableaux apparaissent dans des cartes avec leurs clés et leurs valeurs colorées par type. Les petits tableaux de primitives restent en ligne, les couleurs affichent un nuancier, et les liens relient les objets et tableaux imbriqués à leur parent.",
     "modeLabel": "Graphe JSON interactif",
     "exampleLabel": "Cette réponse d'API contient une équipe, deux projets avec des responsables dans des objets imbriqués et des données de pagination. Suivez leurs liens dans la vue graphe ci-dessus. Le JSON formaté ci-dessous présente les mêmes données.",
     "steps": [
       "Collez du JSON, ouvrez un fichier local ou chargez une URL. Cette page ouvre la vue graphe.",
-      "Faites glisser le graphe pour vous déplacer. Zoomez avec Ctrl/⌘+défilement ou un pincement, ajustez le graphe à l'écran et utilisez la mini-carte pour vous orienter.",
-      "Cliquez sur une carte ou une valeur pour la retrouver dans l'éditeur. Déplacez le curseur dans l'éditeur pour mettre en évidence sa position dans le graphe.",
-      "Appuyez sur Ctrl/⌘F pour rechercher des clés et des valeurs, ou saisissez un chemin comme $.data.projects[1].owner. Exportez en PNG ou SVG si vous avez besoin d'une image."
+      "Faites glisser ou défiler pour déplacer le graphe. Zoomez avec Ctrl/⌘+défilement, un pincement, les boutons + et − ou le clavier. Appuyez sur 0 pour ajuster le graphe, sur F pour le plein écran, ou faites glisser la mini-carte pour vous déplacer.",
+      "Cliquez sur une carte ou une valeur pour la sélectionner dans l’éditeur. Déplacez le curseur de l’éditeur pour mettre en évidence la carte correspondante et le chemin depuis la racine.",
+      "Appuyez sur Ctrl/⌘F pour rechercher des clés et des valeurs, ou saisissez un chemin concret comme $.data.projects[1].owner ou un JSON Pointer. La recherche parcourt les correspondances.",
+      "Ouvrez Exporter l’image pour choisir PNG, JPEG ou SVG, le graphe entier, la zone visible ou la branche sélectionnée, un arrière-plan, une résolution 1×, 2× ou 3× et un nom de fichier. Copiez l’image dans le presse-papiers si nécessaire."
     ],
     "options": [
-      "Repliez une branche pour vous concentrer sur une autre partie du document, puis dépliez-la à nouveau.",
-      "La recherche met en évidence les clés et valeurs correspondantes et permet de parcourir les résultats.",
-      "Naviguez au clavier et copiez la valeur sélectionnée ou son chemin.",
-      "Passez du graphe à l'arbre ou au tableau pour examiner les liens, les champs imbriqués ou les enregistrements.",
-      "Utilisez le mode clair ou sombre. Le traitement JSON et l'export d'images se font dans votre navigateur."
+      "Repliez ou dépliez n’importe quelle branche. Utilisez Tout déplier, Tout replier ou dépliez jusqu’à un niveau choisi quand le document est dense.",
+      "La navigation au clavier utilise les flèches, Entrée et Espace. Début et Fin vont au début et à la fin ; Page précédente et Page suivante font défiler la page.",
+      "Les info-bulles affichent les valeurs complètes. Les dates et les heures epoch sont présentées dans un format lisible. Copiez une valeur sélectionnée ou son chemin depuis le graphe ou l’éditeur.",
+      "Passez du Graphe à l’Arbre ou au Tableau pour examiner les relations, les champs imbriqués ou les enregistrements. Utilisez l’arbre pour lire dans l’ordre et le tableau pour comparer les colonnes.",
+      "Utilisez le mode clair ou sombre sur ordinateur, mobile ou écran tactile. Le traitement JSON et l’export d’images se font dans le navigateur et fonctionnent hors ligne après la première visite."
     ],
     "faqs": [
       {
-        "question": "Qu'est-ce qu'un visualiseur JSON ?",
-        "answer": "Un visualiseur JSON transforme du JSON imbriqué en un diagramme à explorer. Ce visualiseur de graphe présente les objets et tableaux dans des cartes, affiche leurs clés et valeurs avec des couleurs par type et relie les conteneurs imbriqués."
+        "question": "Qu’est-ce qu’un visualiseur JSON ?",
+        "answer": "Un visualiseur JSON transforme du JSON imbriqué en diagramme à explorer. Ce visualiseur de graphe JSON présente les objets et tableaux dans des cartes, affiche leurs clés et valeurs avec des couleurs par type, garde les petits tableaux de primitives en ligne et relie les conteneurs imbriqués."
       },
       {
         "question": "Comment visualiser un gros fichier JSON ?",
-        "answer": "Ouvrez le fichier et choisissez la vue graphe. Le canevas ne dessine que la partie visible du diagramme, ce qui permet de déplacer et de zoomer sur des documents de plusieurs centaines de milliers d'objets avec fluidité. Repliez des branches et utilisez la recherche ou un chemin $.path pour atteindre une valeur précise. Le temps de chargement et la capacité dépendent toujours de votre appareil et du document."
+        "answer": "Ouvrez le fichier et choisissez Graphe. Le graphe est dessiné sur un canevas et seule la zone visible est peinte. Sur une machine cloud à 4 cœurs avec une version de production de Chromium, le premier rendu du graphe après l’ouverture de la vue Graphe a mesuré 123 ms pour 1 Mo, 375 ms pour 10 Mo, 1,1 s pour 50 Mo contenant 193 000 objets et 2,3 s pour un fichier de 1 000 001 objets. Les images de déplacement et de zoom ont mesuré au plus 4 ms au p95, environ 9 ms sur un fichier GeoJSON dense de 20 Mo. Ces mesures dépendent de l’appareil. Repliez les branches et utilisez Rechercher ou un chemin concret pour atteindre une valeur."
       },
       {
-        "question": "Ce visualiseur JSON respecte-t-il la confidentialité ?",
-        "answer": "Oui. Votre JSON reste dans votre navigateur et n'est jamais envoyé pour être traité. Le graphe fonctionne aussi hors ligne après le chargement de l'application. Le chargement d'une URL nécessite une connexion à cette URL."
+        "question": "Ce visualiseur JSON est-il privé ?",
+        "answer": "Oui. Votre JSON reste dans le navigateur et n’est jamais envoyé pour être traité. Le graphe fonctionne aussi hors ligne après le chargement de l’application. Le chargement d’une URL nécessite une connexion à cette URL."
       },
       {
         "question": "Puis-je exporter le graphe JSON en image ?",
-        "answer": "Oui. Exportez en PNG pour une image matricielle ou en SVG pour une image vectorielle. Les deux exports s'effectuent localement dans votre navigateur."
+        "answer": "Oui. Exportez en PNG, JPEG ou SVG. Choisissez le graphe entier, la zone visible ou la branche sélectionnée ; définissez la couleur du thème, le blanc, la transparence (PNG/SVG) ou n’importe quelle couleur d’arrière-plan ; choisissez une résolution 1×, 2× ou 3× ; donnez un nom de fichier ; ou copiez l’image dans le presse-papiers. L’export reste local dans le navigateur."
       },
       {
-        "question": "Quelle est la différence entre le graphe et l'arbre JSON ?",
-        "answer": "Le graphe répartit les objets et tableaux imbriqués dans des cartes reliées, ce qui permet de suivre plusieurs branches à la fois. L'arbre JSON les présente dans une liste indentée, pratique pour lire les champs dans l'ordre. Vous pouvez passer du graphe à l'arbre avec le même document."
+        "question": "Quelle est la différence entre le graphe, l’arbre JSON et le tableau ?",
+        "answer": "Le graphe répartit les objets et tableaux imbriqués dans des cartes reliées pour suivre plusieurs branches. L’arbre JSON présente les champs dans l’ordre avec des retraits pour la lecture et les chemins. Le tableau place les enregistrements en lignes et les clés en colonnes pour les comparer. Vous pouvez changer de vue avec le même document."
       }
     ],
     "guides": [
@@ -1787,17 +1788,24 @@
     ],
     "sections": [
       {
-        "heading": "Quand un graphe aide plus qu'un arbre",
+        "heading": "Graphe, arbre ou tableau : quelle vue choisir ?",
         "paragraphs": [
-          "Une réponse d'API regroupe souvent des enregistrements dans data, ajoute des métadonnées à côté et imbrique un autre objet dans chaque enregistrement. Les cartes reliées rendent ces relations visibles sans compter les niveaux d'indentation. L'exemple sépare ainsi l'équipe, les projets, les responsables et la pagination.",
-          "Utilisez l'arbre pour lire les champs dans l'ordre et le tableau pour comparer les enregistrements par colonne. Si vous cherchez une alternative à JSON Crack, ce graphe garde le diagramme à côté de l'éditeur, avec une sélection synchronisée dans les deux sens et un export local en PNG et SVG."
+          "Utilisez le Graphe pour voir les relations parent-enfant dans des réponses d’API imbriquées, des fichiers de configuration ou des données d’événement. Les cartes reliées affichent en même temps les éléments frères, les responsables, les métadonnées et la pagination, et le chemin en surbrillance montre le lien entre la valeur sélectionnée et la racine.",
+          "Utilisez l’Arbre pour lire les champs dans l’ordre du document, copier un JSONPath ou un JSON Pointer concret, ou examiner une branche profonde niveau par niveau. Utilisez le Tableau quand un tableau d’enregistrements se compare mieux par colonne. Toutes les vues utilisent le même document, sans nouveau chargement.",
+          "Si vous comparez des alternatives à JSON Crack, ce graphe reste à côté de l’éditeur, synchronise la sélection dans les deux sens, accepte la navigation au clavier et l’export local PNG, JPEG et SVG, sans compte pour le travail local."
         ]
       },
       {
         "heading": "Comment les grands graphes JSON sont dessinés",
         "paragraphs": [
-          "La vue graphe utilise un canevas et ne dessine que la partie visible. Lorsque vous parcourez un document de plusieurs centaines de milliers d'objets, elle n'a pas besoin de dessiner chaque carte à chaque image. La mini-carte et l'ajustement à l'écran vous aident à vous repérer.",
-          "Le navigateur a toujours besoin de mémoire pour lire le JSON et construire sa structure. La taille du fichier, l'imbrication et la mémoire de l'appareil influencent le chargement. Repliez les branches pour alléger l'affichage et recherchez une clé, une valeur ou un chemin précis au lieu de suivre chaque lien."
+          "La vue graphe utilise un canevas et ne peint que la partie visible. La mise en page est construite par petites tranches afin que la page reste réactive pendant la préparation d’un gros document. La mini-carte et l’ajustement à l’écran aident à se repérer, tandis que les branches repliées réduisent le niveau de détail affiché.",
+          "Le navigateur a toujours besoin de mémoire pour lire le JSON et construire sa structure. La taille du fichier, l’imbrication, le nombre d’objets et la mémoire de l’appareil influencent le chargement. Les temps indiqués viennent d’une seule machine cloud à 4 cœurs et ne garantissent pas le même résultat sur chaque téléphone ou ordinateur. Recherchez une clé, une valeur ou un chemin concret au lieu de suivre chaque lien dans un fichier dense."
+        ]
+      },
+      {
+        "heading": "Exporter une image du graphe",
+        "paragraphs": [
+          "Exportez le graphe entier, la zone visible ou la branche sélectionnée en PNG, JPEG ou SVG. Choisissez l’arrière-plan du thème, le blanc, la transparence (PNG/SVG) ou une couleur, puis une résolution 1×, 2× ou 3× et un nom de fichier. La même boîte de dialogue peut copier l’image dans le presse-papiers ; l’export reste dans le navigateur."
         ]
       }
     ]

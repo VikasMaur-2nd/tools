@@ -1757,51 +1757,52 @@
     ]
   },
   "json-visualizer": {
-    "hash": "7f4a154f4cbf",
-    "title": "JSON-Visualisierer mit interaktivem Graphen",
-    "description": "JSON als interaktiven Graphen neben dem Editor anzeigen. Große Dateien erkunden, Werte suchen und PNG oder SVG exportieren. Lokal und offline.",
+    "hash": "534e51af307b",
+    "title": "JSON-Visualisierer: interaktiver Graph",
+    "description": "JSON als Graph neben dem Editor anzeigen. Pfade und Werte suchen, PNG, JPEG oder SVG lokal exportieren und Dokumente im Browser behalten.",
     "heading": "JSON-Visualisierer",
     "query": "json visualisierer",
     "secondary": [
       "JSON Graph Viewer",
       "JSON online visualisieren"
     ],
-    "intro": "Füge JSON ein oder öffne eine Datei, um die Daten als Knotendiagramm neben dem Editor zu erkunden. Objekte und Arrays erscheinen als Karten mit Schlüsseln, Werten und Farben für die Datentypen. Kanten verbinden verschachtelte Objekte und Arrays mit ihrem übergeordneten Element.",
+    "intro": "Füge JSON ein oder öffne eine Datei, um die Daten als Knotendiagramm neben dem Editor zu erkunden. Objekte und Arrays erscheinen als Karten mit Schlüsseln und Werten in Typfarben. Kleine primitive Arrays bleiben inline, Farbwerte erhalten ein Farbfeld, und Kanten verbinden verschachtelte Objekte und Arrays mit ihrem übergeordneten Element.",
     "modeLabel": "Interaktiver JSON-Graph",
     "exampleLabel": "Diese API-Antwort enthält ein Team, zwei Projekte mit verschachtelten Angaben zu den Verantwortlichen und Daten zur Seitennavigation. Verfolge die Verbindungen in der Graphansicht oben. Das formatierte JSON unten zeigt dieselben Daten.",
     "steps": [
       "Füge JSON ein, öffne eine lokale Datei oder lade eine URL. Diese Seite öffnet die Graphansicht.",
-      "Ziehe den Graphen zum Verschieben. Zoome mit Ctrl/⌘+Scrollen oder einer Pinch-Geste, passe den Graphen an den Bildschirm an und nutze die Minimap zur Orientierung.",
-      "Klicke auf eine Karte oder einen Wert, um zur entsprechenden Stelle im Editor zu springen. Bewege den Cursor im Editor, um die Stelle im Graphen hervorzuheben.",
-      "Drücke Ctrl/⌘F, um Schlüssel und Werte zu suchen, oder gib einen Pfad wie $.data.projects[1].owner ein. Exportiere PNG oder SVG, wenn du ein Bild brauchst."
+      "Ziehe oder scrolle zum Verschieben. Zoome mit Ctrl/⌘+Scrollen, einer Pinch-Geste, den Tasten + und − oder der Tastatur. Drücke 0, um den Graphen einzupassen, F für den Vollbildmodus, oder ziehe die Minimap, um dich zu bewegen.",
+      "Klicke auf eine Karte oder einen Wert, um ihn im Editor auszuwählen. Bewege den Cursor im Editor, um die passende Karte und den Pfad von der Wurzel hervorzuheben.",
+      "Drücke Ctrl/⌘F, um Schlüssel und Werte zu suchen, oder gib einen konkreten Pfad wie $.data.projects[1].owner oder einen JSON Pointer ein. Die Suche führt durch die Treffer.",
+      "Öffne Bild exportieren, um PNG, JPEG oder SVG, den ganzen Graphen, den sichtbaren Bereich oder den ausgewählten Zweig, einen Hintergrund, die Auflösung 1×, 2× oder 3× und einen Dateinamen zu wählen. Kopiere das Bild bei Bedarf in die Zwischenablage."
     ],
     "options": [
-      "Klappe einen beliebigen Zweig ein, um dich auf einen anderen Teil des Dokuments zu konzentrieren, und öffne ihn später wieder.",
-      "Die Suche hebt passende Schlüssel und Werte hervor und lässt dich durch die Treffer springen.",
-      "Navigiere mit der Tastatur und kopiere einen ausgewählten Wert oder dessen Pfad.",
-      "Wechsle zwischen Graph, Baum und Tabelle, um Verbindungen, verschachtelte Felder oder Datensätze zu untersuchen.",
-      "Nutze den hellen oder dunklen Modus. JSON-Verarbeitung und Bildexport laufen in deinem Browser."
+      "Klappe jeden Zweig ein oder aus. Nutze Alle ausklappen, Alle einklappen oder eine gewählte Ebene, wenn ein Dokument dicht ist.",
+      "Die Tastaturnavigation verwendet Pfeiltasten, Enter und Leertaste. Home und End springen zum Anfang und Ende; PageUp und PageDown scrollen.",
+      "Tooltips zeigen vollständige Werte. Datumsangaben und Epoch-Zeiten erscheinen lesbar. Kopiere einen ausgewählten Wert oder seinen Pfad aus Graph oder Editor.",
+      "Wechsle zwischen Graph, Baum und Tabelle, um Beziehungen, verschachtelte Felder oder Datensätze zu prüfen. Nutze den Baum zum Lesen in Reihenfolge und die Tabelle zum Vergleichen von Spalten.",
+      "Nutze den hellen oder dunklen Modus auf Desktop, Mobilgeräten oder Touchscreens. JSON-Verarbeitung und Bildexport laufen im Browser und funktionieren nach dem ersten Besuch offline."
     ],
     "faqs": [
       {
         "question": "Was ist ein JSON-Visualisierer?",
-        "answer": "Ein JSON-Visualisierer stellt verschachteltes JSON als erkundbares Diagramm dar. Dieser JSON-Graph-Viewer zeigt Objekte und Arrays als Karten, listet ihre Schlüssel und Werte mit Farben für die Datentypen auf und verbindet verschachtelte Container durch Kanten."
+        "answer": "Ein JSON-Visualisierer macht aus verschachteltem JSON ein erkundbares Diagramm. Dieser JSON-Graph-Viewer zeigt Objekte und Arrays als Karten, listet Schlüssel und Werte mit Typfarben auf, lässt kleine primitive Arrays inline und verbindet verschachtelte Container mit Kanten."
       },
       {
         "question": "Wie visualisiere ich eine große JSON-Datei?",
-        "answer": "Öffne die Datei und wähle die Graphansicht. Das Canvas zeichnet nur den sichtbaren Teil des Diagramms. So lassen sich Dokumente mit Hunderttausenden Objekten flüssig verschieben und zoomen. Klappe Zweige ein und nutze die Suche oder einen $.path, um einen bestimmten Wert zu erreichen. Ladezeit und Kapazität hängen weiterhin vom Gerät und vom Dokument ab."
+        "answer": "Öffne die Datei und wähle Graph. Der Graph wird auf einem Canvas gezeichnet, und nur der sichtbare Bereich wird gemalt. Auf einer Cloud-Maschine mit 4 Kernen und einem Produktions-Build in Chromium dauerte der erste Graph-Paint nach dem Öffnen der Graphansicht 123 ms bei 1 MB, 375 ms bei 10 MB, 1,1 s bei 50 MB mit 193.000 Objekten und 2,3 s bei einer Datei mit 1.000.001 Objekten. Für Pan und Zoom wurden höchstens 4 ms im p95 gemessen, bei einer dichten 20-MB-GeoJSON-Datei etwa 9 ms. Diese Werte hängen vom Gerät ab. Klappe Zweige ein und nutze Suche oder einen konkreten Pfad, um einen Wert zu erreichen."
       },
       {
-        "question": "Bleiben meine Daten im JSON-Visualisierer privat?",
+        "question": "Bleibt dieser JSON-Visualisierer privat?",
         "answer": "Ja. Dein JSON bleibt im Browser und wird zur Verarbeitung nie hochgeladen. Der Graph funktioniert nach dem Laden der App auch offline. Das Laden einer URL erfordert eine Verbindung zu dieser URL."
       },
       {
         "question": "Kann ich den JSON-Graphen als Bild exportieren?",
-        "answer": "Ja. Exportiere PNG für ein Rasterbild oder SVG für eine Vektorgrafik. Beide Exporte laufen lokal in deinem Browser."
+        "answer": "Ja. Exportiere PNG, JPEG oder SVG. Wähle den ganzen Graphen, den sichtbaren Bereich oder den ausgewählten Zweig, die Designfarbe, Weiß, transparent (PNG/SVG) oder eine beliebige Hintergrundfarbe, die Auflösung 1×, 2× oder 3× und einen Dateinamen, oder kopiere das Bild in die Zwischenablage. Der Export läuft lokal im Browser."
       },
       {
-        "question": "Wie unterscheidet sich der Graph von einer JSON-Baumansicht?",
-        "answer": "Ein Graph verteilt verschachtelte Objekte und Arrays auf verbundene Karten, sodass du mehrere Zweige gleichzeitig verfolgen kannst. Eine JSON-Baumansicht zeigt sie als eingerückte Liste und eignet sich zum Lesen der Felder in ihrer Reihenfolge. Du kannst mit demselben Dokument zwischen Graph und Baum wechseln."
+        "question": "Wie unterscheidet sich der Graph von einem JSON-Baum oder einer Tabelle?",
+        "answer": "Ein Graph verteilt verschachtelte Objekte und Arrays auf verbundene Karten, sodass du mehrere Zweige gleichzeitig verfolgen kannst. Ein JSON-Baum zeigt Felder als eingerückte Reihenfolge zum Lesen und für Pfade. Eine Tabelle stellt Datensätze in Zeilen und Schlüssel in Spalten zum Vergleichen dar. Du kannst mit demselben Dokument zwischen den Ansichten wechseln."
       }
     ],
     "guides": [
@@ -1816,17 +1817,24 @@
     ],
     "sections": [
       {
-        "heading": "Wann ein Graph hilfreicher ist als ein Baum",
+        "heading": "Graph, Baum oder Tabelle: Welche Ansicht passt?",
         "paragraphs": [
-          "Eine API-Antwort verpackt Datensätze oft in data, ergänzt daneben Metadaten und verschachtelt in jedem Datensatz ein weiteres Objekt. Verbundene Karten machen diese Beziehungen sichtbar, ohne dass du Einrückungen zählen musst. Das Beispiel trennt so Team, Projekte, Verantwortliche und Seitennavigation.",
-          "Nutze den Baum, um Felder der Reihe nach zu lesen, und die Tabelle, um Datensätze spaltenweise zu vergleichen. Wenn du eine JSON-Crack-Alternative suchst, bietet dieser Graph ein Diagramm neben dem Editor, eine in beide Richtungen synchronisierte Auswahl sowie lokalen PNG- und SVG-Export."
+          "Nutze Graph, wenn du Eltern-Kind-Beziehungen in verschachtelten API-Antworten, Konfigurationsdateien oder Event-Payloads sehen musst. Verbundene Karten zeigen Geschwister, Verantwortliche, Metadaten und Seitennavigation gleichzeitig, und der hervorgehobene Pfad zeigt die Verbindung eines ausgewählten Werts zur Wurzel.",
+          "Nutze den Baum, wenn du Felder in Quellreihenfolge lesen, einen konkreten JSONPath oder JSON Pointer kopieren oder einen tief verschachtelten Zweig Ebene für Ebene prüfen willst. Nutze die Tabelle, wenn sich ein Array aus Datensätzen besser spaltenweise vergleichen lässt. Alle Ansichten verwenden dasselbe Dokument, du musst es nicht neu laden.",
+          "Wenn du Alternativen zu JSON Crack vergleichst, bleibt der Graph neben dem Editor, verbindet die Auswahl in beide Richtungen, unterstützt Tastaturnavigation und lokalen PNG-, JPEG- und SVG-Export und benötigt für lokale Arbeit kein Konto."
         ]
       },
       {
         "heading": "Wie große JSON-Graphen gezeichnet werden",
         "paragraphs": [
-          "Die Graphansicht zeichnet auf einem Canvas und stellt nur den sichtbaren Ausschnitt dar. Beim Verschieben eines Dokuments mit Hunderttausenden Objekten muss sie nicht in jedem Bild alle Karten zeichnen. Die Minimap und die Funktion zum Einpassen helfen dir bei der Orientierung.",
-          "Der Browser braucht weiterhin Speicher, um das JSON zu lesen und seine Struktur aufzubauen. Dateigröße, Verschachtelung und Gerätespeicher beeinflussen das Laden. Klappe Zweige ein, um die Ansicht übersichtlich zu halten, und suche nach einem Schlüssel, Wert oder konkreten Pfad, statt jeder Kante zu folgen."
+          "Die Graphansicht zeichnet auf einem Canvas und malt nur den sichtbaren Teil. Die Layoutarbeit wird in kleinen Abschnitten aufgebaut, damit die Seite während der Vorbereitung eines großen Dokuments reagieren kann. Minimap und Einpassen helfen bei der Orientierung, während eingeklappte Zweige die Detailmenge auf dem Bildschirm reduzieren.",
+          "Der Browser braucht weiterhin Speicher, um JSON zu lesen und die Struktur aufzubauen. Dateigröße, Verschachtelung, Objektanzahl und Gerätespeicher beeinflussen das Laden. Die genannten Zeiten stammen von einer 4-Kern-Cloud-Maschine und sind keine Zusage für jedes Telefon oder jeden Laptop. Suche nach Schlüssel, Wert oder konkretem Pfad, statt in einer dichten Datei jeder Kante zu folgen."
+        ]
+      },
+      {
+        "heading": "Ein Graphbild exportieren",
+        "paragraphs": [
+          "Exportiere den ganzen Graphen, den sichtbaren Bereich oder den ausgewählten Zweig als PNG, JPEG oder SVG. Wähle den Designhintergrund, Weiß, transparent (PNG/SVG) oder eine beliebige Farbe, dann die Auflösung 1×, 2× oder 3× und einen Dateinamen. Der Dialog kann das Bild auch in die Zwischenablage kopieren; der Export bleibt im Browser."
         ]
       }
     ]
