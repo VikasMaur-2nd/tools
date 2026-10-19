@@ -5,7 +5,7 @@
  * groups come from binary searches per column, rows inside tall cards are
  * culled, and at low zoom neighbouring cards merge into one block per pixel.
  */
-import { ARR, BOOL, NUL, NUM, STR, type JNode } from '../json/parser';
+import { ARR, BOOL, NUL, NUM, OBJ, STR, type JNode } from '../json/parser';
 import { G, SWATCH_COLS, SWATCH_PX, fitCols, headText, headX, labelText, sizeText, swatch, valueText } from './model';
 import { cardsIn, groupsIn, type GraphLayout } from './layout';
 import type { GraphTheme } from './theme';
@@ -68,8 +68,11 @@ export function grid(ctx: CanvasRenderingContext2D, th: GraphTheme, cam: Cam, vw
 }
 
 /** Colour of a row's value. */
-export function valueColor(t: GraphTheme, n: JNode): string {
-  switch (n.t) {
+export const valueColor = (t: GraphTheme, n: JNode) => kindColor(t, n.t);
+
+/** Colour of values of kind `k` (containers and their sizes are muted). */
+function kindColor(t: GraphTheme, k: number): string {
+  switch (k) {
     case STR:
       return t.str;
     case NUM:
@@ -483,17 +486,31 @@ function card(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, c: 
     const cw = m.charW;
     const bh = 6;
     ctx.globalAlpha = 0.45;
-    for (let r = ra; r < rb; r++) {
-      const k = m.rowNode[r];
-      const by = top + (r - r0) * G.row + (G.row - bh) / 2;
-      if (m.labelW[c]) {
-        labelText(k, false);
-        ctx.fillStyle = typeof k.key === 'number' ? th.muted : th.key;
-        ctx.fillRect(cx + G.padX, by, fitCols * cw, bh);
+    // One path per colour (a colour switch per bar is most of a dense frame's cost).
+    // Labels share one: a card's rows are all keys or all indexes.
+    if (m.labelW[c] && ra < rb) {
+      ctx.fillStyle = typeof m.rowNode[ra].key === 'number' ? th.muted : th.key;
+      ctx.beginPath();
+      for (let r = ra; r < rb; r++) {
+        labelText(m.rowNode[r], false);
+        ctx.rect(cx + G.padX, top + (r - r0) * G.row + (G.row - bh) / 2, fitCols * cw, bh);
       }
-      valueText(k, false);
-      ctx.fillStyle = valueColor(th, k);
-      ctx.fillRect(swatch(k) ? vx + SWATCH_COLS * cw : vx, by, fitCols * cw, bh);
+      ctx.fill();
+    }
+    let kinds = 0;
+    for (let r = ra; r < rb; r++) kinds |= 1 << m.rowNode[r].t;
+    for (let t = 0; t <= OBJ; t++) {
+      if (!(kinds & (1 << t)) || (t === ARR && kinds & (1 << OBJ))) continue;
+      // Arrays and objects share the muted colour: one path for both.
+      ctx.fillStyle = kindColor(th, t);
+      ctx.beginPath();
+      for (let r = ra; r < rb; r++) {
+        const k = m.rowNode[r];
+        if (k.t !== t && !(t >= ARR && k.t >= ARR)) continue;
+        valueText(k, false);
+        ctx.rect(swatch(k) ? vx + SWATCH_COLS * cw : vx, top + (r - r0) * G.row + (G.row - bh) / 2, fitCols * cw, bh);
+      }
+      ctx.fill();
     }
     headText(n, false);
     ctx.fillStyle = th.fg;

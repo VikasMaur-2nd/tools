@@ -181,6 +181,10 @@ export const count = (n: JNode) => (n.v as JNode[]).length;
 /** The label of an entry: its key, or its index in an array. */
 export function labelText(n: JNode, build = true): string {
   if (typeof n.key === 'number') {
+    if (!build) {
+      fitCols = digits(n.key);
+      return '';
+    }
     const s = String(n.key);
     fitCols = s.length;
     return s;

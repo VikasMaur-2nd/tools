@@ -12,10 +12,10 @@ import { formatPath, parsePath, pathOf, resolve, type Seg } from '../json/path';
 import { idle, soon } from '../engine/idle';
 import { rt } from '../i18n/ui';
 import { PRIVATE } from '../analytics';
-import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, modelBuilder, valueText, type GraphModel } from './model';
+import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, modelBuilder, sizeText, valueText, type GraphModel } from './model';
 import { cardAt, layouter, type GraphLayout } from './layout';
 import { charWidth, readTheme, type GraphTheme } from './theme';
-import { MARGIN, ZOOM_MAX, clamp, ease, fitCam, follow, initialCam, lerpCam, minZoom, zoomAt, type Cam } from './camera';
+import { MARGIN, ZOOM_MAX, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
 import { grid, paint, partAt } from './render';
 import { MINI_H, MINI_W, Minimap } from './minimap';
 import type { FindResult, GraphEvents, GraphViewApi } from './types';
@@ -28,8 +28,9 @@ const NOTE_AFTER = 150;
 const TIP_DELAY = 450;
 const DRAG = 4;
 
-const FULL_ON = 'M6 2.5H3.5a1 1 0 0 0-1 1V6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M2.5 10v2.5a1 1 0 0 0 1 1H6';
-const FULL_OFF = 'M2.5 6H5a1 1 0 0 0 1-1V2.5M13.5 6H11a1 1 0 0 1-1-1V2.5M10 13.5V11a1 1 0 0 1 1-1h2.5M6 13.5V11a1 1 0 0 0-1-1H2.5';
+// Diagonal arrows (out / in), unlike Fit's corner brackets.
+const FULL_ON = 'M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9';
+const FULL_OFF = 'M13.5 6.5h-4v-4M9.5 6.5l4-4M2.5 9.5h4v4M6.5 9.5l-4 4';
 const ICON = (d: string) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 export class GraphView implements GraphViewApi {
@@ -889,14 +890,16 @@ export class GraphView implements GraphViewApi {
       const fullVal = n.t === STR ? JSON.stringify(n.v) : n.t >= ARR ? val : String(n.v ?? 'null');
       // What a value means (a date, an epoch time…), like the tree's tooltips.
       const hint = (n.t === STR || n.t === NUM) && valueHints ? (valueHints(n)[0]?.label ?? '') : '';
-      const cut = lab !== fullKey || val !== fullVal;
+      // Zoomed out too far for text: the tooltip is the only way to read a row.
+      const cut = lab !== fullKey || val !== fullVal || lodOf(this.cam.s) > 0;
       if (!cut && !hint) return;
       if (cut) text = (fullKey ? fullKey + ': ' : '') + (fullVal.length > 2000 ? fullVal.slice(0, 2000) + '…' : fullVal);
       if (hint) text = hint + (text ? '\n' + text : '');
     } else {
       const n = m.node[c];
-      if (typeof n.key !== 'string' || headText(n) === n.key) return;
-      text = n.key;
+      if (lodOf(this.cam.s) > 0) text = (typeof n.key === 'string' ? n.key : headText(n)) + (n.t >= ARR ? ' ' + sizeText(n) : '');
+      else if (typeof n.key !== 'string' || headText(n) === n.key) return;
+      else text = n.key;
     }
     this.tip.textContent = text;
     this.tip.hidden = false;
