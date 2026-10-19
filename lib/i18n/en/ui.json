@@ -815,7 +815,7 @@
   "toast.graphExportFailed": "Couldn't download graph: {error}",
   "toast.graphExportError": "Graph export failed",
   "app.graphRole": "graph",
-  "app.graphLabel": "JSON graph. Arrow keys move, Enter opens, Space collapses, + and - zoom.",
+  "app.graphLabel": "JSON graph. Arrow keys move, Enter opens, Space collapses, + and - zoom, F full screen.",
   "app.graphZoom100": "Zoom to 100%",
   "app.graphLayout": "Laying out {n} cards…",
   "app.graphBuilding": "Building the graph…",
@@ -829,5 +829,7 @@
   "app.graphItems.other": "{n} items",
   "toast.graphPngTooLarge": "The graph is too large for PNG. Collapse some branches and try again.",
   "toast.graphSvgTooLarge": "The graph is too large for SVG. Collapse some branches or export PNG.",
-  "toast.graphPngMemory": "PNG export ran out of canvas memory. Try a smaller graph."
+  "toast.graphPngMemory": "PNG export ran out of canvas memory. Try a smaller graph.",
+  "app.graphFull": "Full screen",
+  "app.graphFullExit": "Exit full screen"
 }

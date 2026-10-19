@@ -732,7 +732,7 @@
   "toast.graphExportFailed": "Não foi possível baixar o grafo: {error}",
   "toast.graphExportError": "Falha ao exportar o grafo",
   "app.graphRole": "grafo",
-  "app.graphLabel": "Grafo JSON. As setas movem, Enter abre, Espaço recolhe, + e - aplicam zoom.",
+  "app.graphLabel": "Grafo JSON. As setas movem, Enter abre, Espaço recolhe, + e - aplicam zoom, F tela cheia.",
   "app.graphZoom100": "Zoom em 100%",
   "app.graphLayout": "Organizando {n} cartões…",
   "app.graphBuilding": "Criando o grafo…",
@@ -747,5 +747,7 @@
   "app.graphItems.other": "{n} itens",
   "toast.graphPngTooLarge": "O grafo é grande demais para PNG. Recolha alguns ramos e tente novamente.",
   "toast.graphSvgTooLarge": "O grafo é grande demais para SVG. Recolha alguns ramos ou exporte PNG.",
-  "toast.graphPngMemory": "A exportação PNG ficou sem memória de canvas. Tente um grafo menor."
+  "toast.graphPngMemory": "A exportação PNG ficou sem memória de canvas. Tente um grafo menor.",
+  "app.graphFull": "Tela cheia",
+  "app.graphFullExit": "Sair da tela cheia"
 }

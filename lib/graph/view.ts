@@ -26,6 +26,8 @@ const NOTE_AFTER = 150;
 const TIP_DELAY = 450;
 const DRAG = 4;
 
+const FULL_ON = 'M6 2.5H3.5a1 1 0 0 0-1 1V6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M2.5 10v2.5a1 1 0 0 0 1 1H6';
+const FULL_OFF = 'M2.5 6H5a1 1 0 0 0 1-1V2.5M13.5 6H11a1 1 0 0 1-1-1V2.5M10 13.5V11a1 1 0 0 1 1-1h2.5M6 13.5V11a1 1 0 0 0-1-1H2.5';
 const ICON = (d: string) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 export class GraphView implements GraphViewApi {
@@ -38,6 +40,7 @@ export class GraphView implements GraphViewApi {
   private tip: HTMLElement;
   private ctl: HTMLElement;
   private pct: HTMLButtonElement;
+  private full: HTMLButtonElement;
   private mini: Minimap;
   private ro: ResizeObserver;
   private th: GraphTheme;
@@ -89,7 +92,7 @@ export class GraphView implements GraphViewApi {
     host.classList.add('gv');
     if (!host.hasAttribute('tabindex')) host.tabIndex = 0;
     host.setAttribute('aria-roledescription', rt('graph'));
-    host.setAttribute('aria-label', rt('JSON graph. Arrow keys move, Enter opens, Space collapses, + and - zoom.'));
+    host.setAttribute('aria-label', rt('JSON graph. Arrow keys move, Enter opens, Space collapses, + and - zoom, F full screen.'));
     host.textContent = '';
     this.cv = el('canvas', 'gv-canvas ' + PRIVATE) as HTMLCanvasElement;
     this.cv.setAttribute('aria-hidden', 'true');
@@ -123,6 +126,9 @@ export class GraphView implements GraphViewApi {
     this.pct = btn('gv-pct', rt('Zoom to 100%'), '100%', () => this.zoomTo(1));
     btn('gv-in', rt('Zoom in'), ICON('M3.5 8h9M8 3.5v9'), () => this.zoomBy(1.25));
     btn('gv-fit', rt('Fit to screen'), ICON('M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10'), () => this.fit());
+    // Full screen (where the browser allows it on an element): the graph alone, Esc to leave.
+    this.full = btn('gv-full', rt('Full screen'), ICON(FULL_ON), () => this.toggleFull());
+    this.full.hidden = !document.fullscreenEnabled;
     const mc = el('canvas', 'gv-mini ' + PRIVATE) as HTMLCanvasElement;
     mc.style.width = MINI_W + 'px';
     mc.style.height = MINI_H + 'px';
@@ -143,6 +149,7 @@ export class GraphView implements GraphViewApi {
     mc.addEventListener('pointermove', this.onMiniMove);
     mc.addEventListener('pointerup', this.onMiniUp);
     host.addEventListener('keydown', this.onKey);
+    document.addEventListener('fullscreenchange', this.onFull);
     this.ro = new ResizeObserver(() => this.measure());
     this.ro.observe(host);
   }
@@ -154,6 +161,8 @@ export class GraphView implements GraphViewApi {
     clearTimeout(this.tipTimer);
     this.ro.disconnect();
     this.host.removeEventListener('keydown', this.onKey);
+    document.removeEventListener('fullscreenchange', this.onFull);
+    if (document.fullscreenElement === this.host) void document.exitFullscreen().catch(() => {});
     this.host.textContent = '';
     this.mini.release();
     this.m = this.L = null;
@@ -440,6 +449,20 @@ export class GraphView implements GraphViewApi {
   focus() {
     this.host.focus({ preventScroll: true });
   }
+
+  private toggleFull() {
+    if (document.fullscreenElement === this.host) void document.exitFullscreen().catch(() => {});
+    else void this.host.requestFullscreen().then(() => this.focus(), () => {});
+  }
+
+  /** Full screen started or ended (also by Esc): update the button. */
+  private onFull = () => {
+    const on = document.fullscreenElement === this.host;
+    const label = rt(on ? 'Exit full screen' : 'Full screen');
+    this.full.setAttribute('aria-label', label);
+    this.full.dataset.tip = label;
+    this.full.innerHTML = ICON(on ? FULL_OFF : FULL_ON);
+  };
 
   /** Brings the selection into view. */
   private reveal(center: boolean, animate = true) {
@@ -877,6 +900,7 @@ export class GraphView implements GraphViewApi {
     if (!mod && (k === '+' || k === '=')) return done(), this.zoomBy(1.25);
     if (!mod && (k === '-' || k === '_')) return done(), this.zoomBy(1 / 1.25);
     if (!mod && k === '0') return done(), this.fit();
+    if (!mod && (k === 'f' || k === 'F') && document.fullscreenEnabled) return done(), this.toggleFull();
     if (mod) return;
     if (c < 0 && /^Arrow|^Home$|^Enter$|^ $/.test(k)) {
       done();

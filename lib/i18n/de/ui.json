@@ -715,7 +715,7 @@
   "toast.graphExportFailed": "Graph konnte nicht heruntergeladen werden: {error}",
   "toast.graphExportError": "Graph-Export fehlgeschlagen",
   "app.graphRole": "Graph",
-  "app.graphLabel": "JSON-Graph. Pfeiltasten bewegen, Eingabe öffnet, Leertaste klappt ein, + und - zoomen.",
+  "app.graphLabel": "JSON-Graph. Pfeiltasten bewegen, Eingabe öffnet, Leertaste klappt ein, + und - zoomen, F Vollbild.",
   "app.graphZoom100": "Auf 100 % zoomen",
   "app.graphLayout": "{n} Karten werden angeordnet…",
   "app.graphBuilding": "Graph wird erstellt…",
@@ -729,5 +729,7 @@
   "app.graphItems.other": "{n} Einträge",
   "toast.graphPngTooLarge": "Der Graph ist zu groß für PNG. Klappe einige Zweige ein und versuche es erneut.",
   "toast.graphSvgTooLarge": "Der Graph ist zu groß für SVG. Klappe einige Zweige ein oder exportiere PNG.",
-  "toast.graphPngMemory": "Beim PNG-Export ging der Canvas-Speicher aus. Versuche es mit einem kleineren Graphen."
+  "toast.graphPngMemory": "Beim PNG-Export ging der Canvas-Speicher aus. Versuche es mit einem kleineren Graphen.",
+  "app.graphFull": "Vollbild",
+  "app.graphFullExit": "Vollbild beenden"
 }

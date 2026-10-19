@@ -232,6 +232,7 @@ const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
       ['Space', 'Collapse / expand'],
       ['+ / -', 'Zoom in / out'],
       ['0', 'Fit to screen'],
+      ['F', 'Full screen'],
       ['Drag', 'Pan graph'],
       ['mod+Wheel', 'Zoom graph'],
       ['C', 'Copy value'],

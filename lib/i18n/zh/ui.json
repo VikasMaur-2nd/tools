@@ -698,7 +698,7 @@
   "toast.graphExportFailed": "无法下载图谱：{error}",
   "toast.graphExportError": "图谱导出失败",
   "app.graphRole": "图谱",
-  "app.graphLabel": "JSON 图谱。方向键移动，Enter 打开，空格折叠，+ 和 - 缩放。",
+  "app.graphLabel": "JSON 图谱。方向键移动，Enter 打开，空格折叠，+ 和 - 缩放，F 全屏。",
   "app.graphZoom100": "缩放到 100%",
   "app.graphLayout": "正在排布 {n} 张卡片…",
   "app.graphBuilding": "正在生成图谱…",
@@ -711,5 +711,7 @@
   "app.graphItems.other": "{n} 项",
   "toast.graphPngTooLarge": "图谱太大，无法导出 PNG。请折叠部分分支后重试。",
   "toast.graphSvgTooLarge": "图谱太大，无法导出 SVG。请折叠部分分支，或导出 PNG。",
-  "toast.graphPngMemory": "导出 PNG 时画布内存不足。请尝试更小的图谱。"
+  "toast.graphPngMemory": "导出 PNG 时画布内存不足。请尝试更小的图谱。",
+  "app.graphFull": "全屏",
+  "app.graphFullExit": "退出全屏"
 }

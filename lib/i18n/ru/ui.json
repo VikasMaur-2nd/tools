@@ -749,7 +749,7 @@
   "toast.graphExportFailed": "Не удалось скачать граф: {error}",
   "toast.graphExportError": "Не удалось экспортировать граф",
   "app.graphRole": "граф",
-  "app.graphLabel": "JSON-граф. Стрелки перемещают, Enter открывает, Пробел сворачивает, + и - меняют масштаб.",
+  "app.graphLabel": "JSON-граф. Стрелки перемещают, Enter открывает, Пробел сворачивает, + и - меняют масштаб, F — полноэкранный режим.",
   "app.graphZoom100": "Масштаб 100%",
   "app.graphLayout": "Размещение карточек: {n}…",
   "app.graphBuilding": "Построение графа…",
@@ -765,5 +765,7 @@
   "app.graphItems.other": "{n} элемента",
   "toast.graphPngTooLarge": "Граф слишком большой для PNG. Сверните несколько ветвей и попробуйте снова.",
   "toast.graphSvgTooLarge": "Граф слишком большой для SVG. Сверните несколько ветвей или экспортируйте PNG.",
-  "toast.graphPngMemory": "При экспорте PNG закончилась память canvas. Попробуйте граф поменьше."
+  "toast.graphPngMemory": "При экспорте PNG закончилась память canvas. Попробуйте граф поменьше.",
+  "app.graphFull": "Во весь экран",
+  "app.graphFullExit": "Выйти из полноэкранного режима"
 }

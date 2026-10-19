@@ -698,7 +698,7 @@
   "toast.graphExportFailed": "グラフをダウンロードできませんでした: {error}",
   "toast.graphExportError": "グラフのエクスポートに失敗しました",
   "app.graphRole": "グラフ",
-  "app.graphLabel": "JSON グラフ。矢印キーで移動、Enter で開く、Space で折りたたみ、+ と - でズーム。",
+  "app.graphLabel": "JSON グラフ。矢印キーで移動、Enter で開く、Space で折りたたみ、+ と - でズーム、F で全画面表示。",
   "app.graphZoom100": "100% にズーム",
   "app.graphLayout": "{n} 枚のカードを配置中…",
   "app.graphBuilding": "グラフを作成中…",
@@ -711,5 +711,7 @@
   "app.graphItems.other": "{n} 個の項目",
   "toast.graphPngTooLarge": "グラフが大きすぎて PNG にできません。いくつかの枝を折りたたんでからもう一度お試しください。",
   "toast.graphSvgTooLarge": "グラフが大きすぎて SVG にできません。いくつかの枝を折りたたむか、PNG で書き出してください。",
-  "toast.graphPngMemory": "PNG の書き出し中に Canvas のメモリが不足しました。より小さいグラフでお試しください。"
+  "toast.graphPngMemory": "PNG の書き出し中に Canvas のメモリが不足しました。より小さいグラフでお試しください。",
+  "app.graphFull": "全画面表示",
+  "app.graphFullExit": "全画面表示を終了"
 }

@@ -699,7 +699,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -712,7 +712,9 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1414,7 +1416,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -1427,7 +1429,9 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2129,7 +2133,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -2142,7 +2146,9 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -2844,7 +2850,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -2857,7 +2863,9 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3559,7 +3567,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -3572,7 +3580,9 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4274,7 +4284,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -4287,7 +4297,9 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -4989,7 +5001,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -5002,7 +5014,9 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -5704,7 +5718,7 @@
     "toast.graphExportFailed": "e4ffeb97",
     "toast.graphExportError": "2b29adc6",
     "app.graphRole": "eef93e1d",
-    "app.graphLabel": "f1160a28",
+    "app.graphLabel": "83160ccf",
     "app.graphZoom100": "c23bdb43",
     "app.graphLayout": "270ad0e7",
     "app.graphBuilding": "de4dcc36",
@@ -5717,6 +5731,8 @@
     "app.graphItems": "bc231c1c",
     "toast.graphPngTooLarge": "4b0e7308",
     "toast.graphSvgTooLarge": "fbc87b9d",
-    "toast.graphPngMemory": "a78ed5fb"
+    "toast.graphPngMemory": "a78ed5fb",
+    "app.graphFull": "674fe2ac",
+    "app.graphFullExit": "897e0cf7"
   }
 }

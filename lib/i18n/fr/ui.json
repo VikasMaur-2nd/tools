@@ -732,7 +732,7 @@
   "toast.graphExportFailed": "Impossible de télécharger le graphe : {error}",
   "toast.graphExportError": "Échec de l'export du graphe",
   "app.graphRole": "graphe",
-  "app.graphLabel": "Graphe JSON. Les flèches déplacent, Entrée ouvre, Espace replie, + et - zooment.",
+  "app.graphLabel": "Graphe JSON. Les flèches déplacent, Entrée ouvre, Espace replie, + et - zooment, F plein écran.",
   "app.graphZoom100": "Zoom à 100 %",
   "app.graphLayout": "Disposition de {n} cartes…",
   "app.graphBuilding": "Création du graphe…",
@@ -747,5 +747,7 @@
   "app.graphItems.other": "{n} éléments",
   "toast.graphPngTooLarge": "Le graphe est trop grand pour un PNG. Repliez quelques branches et réessayez.",
   "toast.graphSvgTooLarge": "Le graphe est trop grand pour un SVG. Repliez quelques branches ou exportez en PNG.",
-  "toast.graphPngMemory": "L'export PNG a manqué de mémoire canvas. Essayez avec un graphe plus petit."
+  "toast.graphPngMemory": "L'export PNG a manqué de mémoire canvas. Essayez avec un graphe plus petit.",
+  "app.graphFull": "Plein écran",
+  "app.graphFullExit": "Quitter le plein écran"
 }
