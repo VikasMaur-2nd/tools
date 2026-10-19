@@ -1295,7 +1295,8 @@ kbd {
 }
 
 .view.stale .tv,
-.view.stale .tbl {
+.view.stale .tbl,
+.view.stale .gv-canvas {
   opacity: 0.45;
   filter: saturate(0.4);
 }
@@ -3180,6 +3181,8 @@ button.mi:focus-visible {
 /* ── Graph view ── */
 .gv {
   position: relative;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   outline: none;
   background: var(--bg);
