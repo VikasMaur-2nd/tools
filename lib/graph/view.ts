@@ -182,6 +182,13 @@ export class GraphView implements GraphViewApi {
       this.keepFor = this.L;
       for (let c = 0; c < m.n; c++) if (collapsed[c]) this.keep.push(pathOf(m.node[c]));
     } else if (reset) this.keep = [];
+    if (reset && this.L) {
+      // A different document: don't show the old one's graph while the new one builds.
+      this.m = this.L = null;
+      this.card = this.row = -1;
+      this.mini.release();
+      this.redraw();
+    }
     this.reset = this.reset || reset;
     this.root = root;
     this.nodes = nodes;
