@@ -38,7 +38,7 @@ const GRID_MIN = 10;
 let gridTile: { canvas: HTMLCanvasElement; size: number; color: string; dpr: number } | null = null;
 
 /** Dots every GRID world px, aligned with the camera (one pattern fill). */
-function grid(ctx: CanvasRenderingContext2D, th: GraphTheme, cam: Cam, vw: number, vh: number, dpr: number) {
+export function grid(ctx: CanvasRenderingContext2D, th: GraphTheme, cam: Cam, vw: number, vh: number, dpr: number) {
   const step = GRID * cam.s;
   if (step < GRID_MIN) return;
   const size = Math.max(2, Math.round(step * dpr));

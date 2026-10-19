@@ -16,7 +16,7 @@ import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, mod
 import { cardAt, layouter, type GraphLayout } from './layout';
 import { charWidth, readTheme, type GraphTheme } from './theme';
 import { MARGIN, ZOOM_MAX, clamp, ease, fitCam, follow, initialCam, lerpCam, minZoom, zoomAt, type Cam } from './camera';
-import { paint, partAt } from './render';
+import { grid, paint, partAt } from './render';
 import { MINI_H, MINI_W, Minimap } from './minimap';
 import type { FindResult, GraphEvents, GraphViewApi } from './types';
 
@@ -388,6 +388,7 @@ export class GraphView implements GraphViewApi {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       ctx.fillStyle = this.th.bg;
       ctx.fillRect(0, 0, this.vw, this.vh);
+      grid(ctx, this.th, this.cam, this.vw, this.vh, this.dpr);
       this.ctl.hidden = true;
       (this.mini.el as HTMLElement).hidden = true;
       return;
