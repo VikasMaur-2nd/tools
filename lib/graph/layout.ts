@@ -11,7 +11,7 @@
  * (cost = the shorter one), which keeps the whole pass linear in the number
  * of cards, without recursion, for any depth.
  */
-import { G, type GraphModel } from './model';
+import { G, stepper, type GraphModel } from './model';
 
 export interface GraphLayout {
   m: GraphModel;
@@ -58,79 +58,87 @@ function portRel(m: GraphModel, c: number) {
 
 /**
  * Lays out the shown cards in steps: call the returned function with a
- * deadline until it returns the layout. `collapsed` marks cards whose
- * children are hidden (it is kept, not copied).
+ * deadline until it returns the layout. Every loop yields, so even a card
+ * with a million children never blocks for long. `collapsed` marks cards
+ * whose children are hidden (it is kept, not copied).
  */
 export function layouter(m: GraphModel, collapsed: Uint8Array = new Uint8Array(m.n)): (deadline: number) => GraphLayout | null {
-  const n = m.n;
-  const { parent, kidStart, kidList, h } = m;
-  const shown = new Uint8Array(n);
-  if (n) shown[0] = 1;
-  for (let c = 1; c < n; c++) shown[c] = shown[parent[c]] && !collapsed[parent[c]] ? 1 : 0;
-  const rel = new Float64Array(n);
-  const cont: (Contour | undefined)[] = new Array(n);
-  let c = n - 1;
-  const gap = G.sibGap;
-
-  return (deadline: number) => {
-    let i = 0;
-    for (; c >= 0; c--) {
-      if ((++i & 511) === 0 && performance.now() > deadline) return null;
-      if (!shown[c]) continue;
-      const a = kidStart[c];
-      const b = kidStart[c + 1];
-      // A card without shown children keeps no contour (it's just [0, h]).
-      if (collapsed[c] || a === b) continue;
-      // Pack the children top to bottom in block coordinates (first child's top = 0).
-      const k0 = kidList[a];
-      let acc = cont[k0] ?? { top: [0], bot: [h[k0]], off: 0 };
-      cont[k0] = undefined;
-      const p0 = portRel(m, k0);
-      rel[k0] = 0;
-      for (let j = a + 1; j < b; j++) {
-        const k = kidList[j];
-        const next = cont[k];
-        const la = acc.top.length;
-        // No higher than its port (edges never climb), then clear of the siblings above.
-        let d = m.portRow[k] < 0 ? -Infinity : portRel(m, k) - p0;
-        if (!next) {
-          const need = acc.bot[la - 1] + acc.off + gap;
-          if (need > d) d = need;
-          rel[k] = d;
-          acc.bot[la - 1] = h[k] + d - acc.off;
-          continue;
-        }
-        cont[k] = undefined;
-        const lb = next.top.length;
-        const common = la < lb ? la : lb;
-        for (let l = 1; l <= common; l++) {
-          const need = acc.bot[la - l] + acc.off - (next.top[lb - l] + next.off) + gap;
-          if (need > d) d = need;
-        }
-        rel[k] = d;
-        if (la >= lb) {
-          for (let l = 1; l <= lb; l++) acc.bot[la - l] = next.bot[lb - l] + next.off + d - acc.off;
-        } else {
-          for (let l = 1; l <= la; l++) next.top[lb - l] = acc.top[la - l] + acc.off - (next.off + d);
-          next.off += d;
-          acc = next;
-        }
-      }
-      // The parent's top, in block coordinates: its first port level with the first child's header.
-      const pt = G.head / 2 - p0;
-      for (let j = a; j < b; j++) rel[kidList[j]] -= pt;
-      acc.off -= pt;
-      acc.top.push(-acc.off);
-      acc.bot.push(h[c] - acc.off);
-      cont[c] = acc;
-    }
-    return finish(m, collapsed, shown, rel);
-  };
+  return stepper(lay(m, collapsed));
 }
 
-function finish(m: GraphModel, collapsed: Uint8Array, shown: Uint8Array, rel: Float64Array): GraphLayout {
+/** Yields after about this many units of work. */
+const CHUNK = 2048;
+
+function* lay(m: GraphModel, collapsed: Uint8Array): Generator<void, GraphLayout> {
   const n = m.n;
   const { parent, depth, w, h, kidStart, kidList } = m;
+  const gap = G.sibGap;
+  let work = 0;
+  const shown = new Uint8Array(n);
+  if (n) shown[0] = 1;
+  for (let c = 1; c < n; c++) {
+    shown[c] = shown[parent[c]] && !collapsed[parent[c]] ? 1 : 0;
+    if (++work % (CHUNK * 8) === 0) yield;
+  }
+  const rel = new Float64Array(n);
+  const cont: (Contour | undefined)[] = new Array(n);
+
+  // Children before parents: pre-order backwards.
+  for (let c = n - 1; c >= 0; c--) {
+    if (++work % CHUNK === 0) yield;
+    if (!shown[c]) continue;
+    const a = kidStart[c];
+    const b = kidStart[c + 1];
+    // A card without shown children keeps no contour (it's just [0, h]).
+    if (collapsed[c] || a === b) continue;
+    // Pack the children top to bottom in block coordinates (first child's top = 0).
+    const k0 = kidList[a];
+    let acc = cont[k0] ?? { top: [0], bot: [h[k0]], off: 0 };
+    cont[k0] = undefined;
+    const p0 = portRel(m, k0);
+    rel[k0] = 0;
+    for (let j = a + 1; j < b; j++) {
+      if (++work % CHUNK === 0) yield;
+      const k = kidList[j];
+      const next = cont[k];
+      const la = acc.top.length;
+      // No higher than its port (edges never climb), then clear of the siblings above.
+      let d = m.portRow[k] < 0 ? -Infinity : portRel(m, k) - p0;
+      if (!next) {
+        const need = acc.bot[la - 1] + acc.off + gap;
+        if (need > d) d = need;
+        rel[k] = d;
+        acc.bot[la - 1] = h[k] + d - acc.off;
+        continue;
+      }
+      cont[k] = undefined;
+      const lb = next.top.length;
+      const common = la < lb ? la : lb;
+      work += common;
+      for (let l = 1; l <= common; l++) {
+        const need = acc.bot[la - l] + acc.off - (next.top[lb - l] + next.off) + gap;
+        if (need > d) d = need;
+      }
+      rel[k] = d;
+      if (la >= lb) {
+        for (let l = 1; l <= lb; l++) acc.bot[la - l] = next.bot[lb - l] + next.off + d - acc.off;
+      } else {
+        for (let l = 1; l <= la; l++) next.top[lb - l] = acc.top[la - l] + acc.off - (next.off + d);
+        next.off += d;
+        acc = next;
+      }
+    }
+    // The parent's top, in block coordinates: its first port level with the first child's header.
+    const pt = G.head / 2 - p0;
+    for (let j = a; j < b; j++) rel[kidList[j]] -= pt;
+    work += b - a;
+    acc.off -= pt;
+    acc.top.push(-acc.off);
+    acc.bot.push(h[c] - acc.off);
+    cont[c] = acc;
+  }
+
+  // Absolute positions (parents come first in pre-order).
   const x = new Float64Array(n).fill(NaN);
   const y = new Float64Array(n).fill(NaN);
   let cols = 0;
@@ -138,6 +146,7 @@ function finish(m: GraphModel, collapsed: Uint8Array, shown: Uint8Array, rel: Fl
   let shownCount = 0;
   if (n) y[0] = 0;
   for (let c = 0; c < n; c++) {
+    if (++work % (CHUNK * 8) === 0) yield;
     if (!shown[c]) continue;
     shownCount++;
     if (c) y[c] = y[parent[c]] + rel[c];
@@ -149,6 +158,7 @@ function finish(m: GraphModel, collapsed: Uint8Array, shown: Uint8Array, rel: Fl
   const gcounts = new Int32Array(cols);
   let maxY = 0;
   for (let c = 0; c < n; c++) {
+    if (++work % (CHUNK * 8) === 0) yield;
     if (!shown[c]) continue;
     y[c] -= minY;
     const d = depth[c];
@@ -168,21 +178,20 @@ function finish(m: GraphModel, collapsed: Uint8Array, shown: Uint8Array, rel: Fl
   gcounts.fill(0);
   // Pre-order visits each column's cards top to bottom.
   for (let c = 0; c < n; c++) {
+    if (++work % (CHUNK * 8) === 0) yield;
     if (!shown[c]) continue;
     const d = depth[c];
     x[c] = colX[d];
     levels[d][counts[d]++] = c;
-    const a = kidStart[c];
-    const b = kidStart[c + 1];
-    if (collapsed[c] || a === b) continue;
-    const g = gcounts[d]++;
-    groups[d][g] = c;
+    if (collapsed[c] || kidStart[c] === kidStart[c + 1]) continue;
+    groups[d][gcounts[d]++] = c;
   }
   // Group extents need the children's y, which the pass above has finished.
   for (let d = 0; d < cols; d++) {
     const list = groups[d];
     let run = -Infinity;
     for (let g = 0; g < list.length; g++) {
+      if (++work % (CHUNK * 8) === 0) yield;
       const c = list[g];
       const first = kidList[kidStart[c]];
       const last = kidList[kidStart[c + 1] - 1];

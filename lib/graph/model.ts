@@ -322,22 +322,55 @@ class Grow<T extends Int32Array | Float32Array> {
     b.set(this.a);
     this.a = b;
   }
+  /** The filled part, as a view: copying to the exact size at the end of a big build costs a full GC pause. */
   done(): T {
-    return this.a.slice(0, this.n) as T;
+    return this.a.subarray(0, this.n) as T;
   }
 }
 const ints = (cap: number) => new Grow((n) => new Int32Array(n), cap);
 const floats = (cap: number) => new Grow((n) => new Float32Array(n), cap);
 
+/** Runs a generator until it finishes or `deadline` passes (it yields every few hundred units of work). */
+export function stepper<T>(it: Generator<void, T>): (deadline: number) => T | null {
+  return (deadline: number) => {
+    for (;;) {
+      const r = it.next();
+      if (r.done) return r.value;
+      if (performance.now() > deadline) return null;
+    }
+  };
+}
+
+/** A container whose rows are being listed or whose children are being visited. */
+interface Frame {
+  c: number;
+  list: JNode[];
+  d: number;
+  bus: boolean;
+  /** Its first row. */
+  first: number;
+  /** Next entry to look at for a child card. */
+  i: number;
+}
+
 /**
  * Builds the model in steps: call the returned function with a deadline
- * (performance.now() value) until it returns the model. `hint` is the
- * parse's node count (sizes the arrays). `charW` is the advance of one
+ * (performance.now() value) until it returns the model. Every loop yields,
+ * so even a card with a million entries never blocks for long. `hint` is
+ * the parse's node count (sizes the arrays). `charW` is the advance of one
  * monospace column at G.font.
  */
 export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: number) => GraphModel | null {
+  return stepper(build(root, charW, hint));
+}
+
+/** Yields after about this many units of work (entries or cards). */
+const CHUNK = 1024;
+
+function* build(root: JNode, charW: number, hint: number): Generator<void, GraphModel> {
   const cap = Math.min(hint || 1024, 1 << 22);
-  // Sized up front: growing million-entry arrays of objects is most of the build's garbage.
+  // Sized up front (the parse's node count bounds both), then trimmed in place:
+  // growing million-entry arrays leaves copies for a full GC to clean up.
   const node: JNode[] = hint ? new Array(hint) : [];
   const rowNode: JNode[] = hint ? new Array(hint) : [];
   let cards = 0;
@@ -353,39 +386,32 @@ export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: n
   const h = floats(cap >> 2);
   const labelW = floats(cap >> 2);
   let maxDepth = 0;
+  let work = 0;
+  const stack: Frame[] = [];
 
-  // Pending visits, popped in document order: node, parent card, depth, port row.
-  const sn: JNode[] = [root];
-  const sp = ints(256);
-  const sd = ints(256);
-  const sr = ints(256);
-  sp.push(-1);
-  sd.push(0);
-  sr.push(-1);
-
-  return (deadline: number) => {
-    let budget = 0;
-    while (sn.length) {
-      const n = sn.pop() as JNode;
-      const top = --sp.n;
-      sd.n--;
-      sr.n--;
-      const pc = sp.a[top];
-      const d = sd.a[top];
-      const pr = sr.a[top];
+  // Depth-first, in document order: a card's rows are listed before any of its
+  // children is visited, so cards (and their rows) come out in pre-order.
+  // `vn` is the next card to add (null: find one on the stack).
+  let vn: JNode | null = root;
+  let vp = -1;
+  let vd = 0;
+  let vr = -1;
+  for (;;) {
+    if (vn) {
+      const n = vn;
       const c = cards++;
       const first = rowsN;
       node[c] = n;
-      parent.push(pc);
-      depth.push(d);
-      portRow.push(pr);
+      parent.push(vp);
+      depth.push(vd);
+      portRow.push(vr);
       rowStart.push(first);
-      if (pr >= 0) rowChild.a[pr] = c;
-      if (d > maxDepth) maxDepth = d;
+      if (vr >= 0) rowChild.a[vr] = c;
+      if (vd > maxDepth) maxDepth = vd;
       let labelCols = 0;
       let valCols = 0;
       let ports = false;
-      let isBus = false;
+      let bus = false;
       let nk = 0;
       if (n.t < ARR) {
         // A primitive root: one row with its value.
@@ -395,13 +421,17 @@ export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: n
       } else {
         const list = n.v as JNode[];
         const len = list.length;
-        for (let i = 0; i < len; i++) if (isCard(list[i])) nk++;
-        isBus = nk > G.portMax || (n.t === ARR && nk === len);
+        for (let i = 0; i < len; i++) {
+          if (isCard(list[i])) nk++;
+          if (++work % CHUNK === 0) yield;
+        }
+        bus = nk > G.portMax || (n.t === ARR && nk === len);
         const arr = n.t === ARR;
         for (let i = 0; i < len; i++) {
+          if (++work % CHUNK === 0) yield;
           const k = list[i];
           const deep = nk > 0 && isCard(k);
-          if (deep && isBus) continue;
+          if (deep && bus) continue;
           rowNode[rowsN++] = k;
           rowChild.push(-1);
           const lc = arr ? digits(i) : colsOf(k.key as string, G.keyMax, false);
@@ -410,70 +440,85 @@ export function modelBuilder(root: JNode, charW: number, hint = 0): (deadline: n
           if (vc > valCols) valCols = vc;
           if (deep) ports = true;
         }
-        // Children, pushed last-first so they pop in order. Without a bus every entry has a row.
-        if (nk) {
-          for (let i = len - 1; i >= 0; i--) {
-            const k = list[i];
-            if (!isCard(k)) continue;
-            sn.push(k);
-            sp.push(c);
-            sd.push(d + 1);
-            sr.push(isBus ? -1 : first + i);
-          }
-        }
+        if (nk) stack.push({ c, list, d: vd, bus, first, i: 0 });
       }
-      busA.push(isBus ? 1 : 0);
+      busA.push(bus ? 1 : 0);
       kidsN.push(nk);
       const rows = rowsN - first;
       const key = n.key;
       const headCols = (typeof key === 'number' ? digits(key) + 2 : key === undefined ? 4 : colsOf(key, G.headMax, false)) + (n.t >= ARR ? 1 + sizeCols(n) : 0);
       const lw = labelCols * charW;
       const body = rows ? G.padX + (lw ? lw + G.gap : 0) + valCols * charW + G.padX + (ports ? G.port : 0) : 0;
-      const head = G.padX + headCols * charW + G.padX + (isBus ? G.port : 0);
+      const head = G.padX + headCols * charW + G.padX + (bus ? G.port : 0);
       labelW.push(lw);
       w.push(Math.ceil(Math.max(G.minW, body, head)));
       h.push(G.head + (rows ? rows * G.row + G.padY : 0));
-      if (++budget === 512) {
-        budget = 0;
-        if (performance.now() > deadline) return null;
-      }
+      vn = null;
+      if (++work % CHUNK === 0) yield;
     }
-    const n = cards;
-    node.length = n;
-    rowNode.length = rowsN;
-    rowStart.push(rowsN);
-    const par = parent.done();
-    const end = new Int32Array(n);
-    for (let c = 0; c < n; c++) end[c] = 1;
-    for (let c = n - 1; c > 0; c--) end[par[c]] += end[c];
-    for (let c = 0; c < n; c++) end[c] += c;
-    const kids = kidsN.done();
-    const kidStart = new Int32Array(n + 1);
-    for (let c = 0; c < n; c++) kidStart[c + 1] = kidStart[c] + kids[c];
-    const kidList = new Int32Array(Math.max(0, n - 1));
-    const fill = kidStart.slice(0, n);
-    for (let c = 1; c < n; c++) kidList[fill[par[c]]++] = c;
-    return {
-      n,
-      node,
-      parent: par,
-      depth: depth.done(),
-      end,
-      rowStart: rowStart.done(),
-      rowNode,
-      rowChild: rowChild.done(),
-      portRow: portRow.done(),
-      bus: Uint8Array.from(busA.done()),
-      kids,
-      kidStart,
-      kidList,
-      w: w.done(),
-      h: h.done(),
-      labelW: labelW.done(),
-      maxDepth,
-      charW,
-      rows: rowNode.length,
-    };
+    if (!stack.length) break;
+    const f = stack[stack.length - 1];
+    const { list } = f;
+    let i = f.i;
+    while (i < list.length && !isCard(list[i])) {
+      i++;
+      if (++work % CHUNK === 0) yield;
+    }
+    if (i === list.length) {
+      stack.pop();
+      continue;
+    }
+    f.i = i + 1;
+    vn = list[i];
+    vp = f.c;
+    vd = f.d + 1;
+    vr = f.bus ? -1 : f.first + i;
+  }
+
+  const n = cards;
+  node.length = n;
+  rowNode.length = rowsN;
+  rowStart.push(rowsN);
+  const par = parent.done();
+  const end = new Int32Array(n);
+  end.fill(1);
+  for (let c = n - 1; c > 0; c--) {
+    end[par[c]] += end[c];
+    if (c % (CHUNK * 64) === 0) yield;
+  }
+  for (let c = 0; c < n; c++) end[c] += c;
+  yield;
+  const kids = kidsN.done();
+  const kidStart = new Int32Array(n + 1);
+  for (let c = 0; c < n; c++) kidStart[c + 1] = kidStart[c] + kids[c];
+  yield;
+  const kidList = new Int32Array(Math.max(0, n - 1));
+  const fill = kidStart.slice(0, n);
+  for (let c = 1; c < n; c++) {
+    kidList[fill[par[c]]++] = c;
+    if (c % (CHUNK * 64) === 0) yield;
+  }
+  yield;
+  return {
+    n,
+    node,
+    parent: par,
+    depth: depth.done(),
+    end,
+    rowStart: rowStart.done(),
+    rowNode,
+    rowChild: rowChild.done(),
+    portRow: portRow.done(),
+    bus: new Uint8Array(busA.done()),
+    kids,
+    kidStart,
+    kidList,
+    w: w.done(),
+    h: h.done(),
+    labelW: labelW.done(),
+    maxDepth,
+    charW,
+    rows: rowNode.length,
   };
 }
 
