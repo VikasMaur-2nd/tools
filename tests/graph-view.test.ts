@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parse } from '../lib/json/parser';
 import { G, buildModel } from '../lib/graph/model';
 import { layoutGraph } from '../lib/graph/layout';
-import { LOD_SKEL, LOD_TEXT, ZOOM_MAX, fitCam, fitScale, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt } from '../lib/graph/camera';
+import { LOD_SKEL, LOD_TEXT, MARGIN, ZOOM_MAX, bound, fitCam, fitScale, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt } from '../lib/graph/camera';
 import { compactNum, partAt } from '../lib/graph/render';
 import { isDark } from '../lib/graph/theme';
 
@@ -86,4 +86,22 @@ test('graph theme: dark detection reads minified and rgb colours', () => {
   assert.equal(isDark('rgb(10, 10, 10)'), true);
   assert.equal(isDark('rgba(250,250,250,1)'), false);
   assert.equal(isDark('transparent'), false);
+});
+
+test('graph camera: bound keeps the graph in reach and lands exactly on edges', () => {
+  // A tall graph (1000 × 100,000) in an 800 × 600 view at scale 1.
+  const top = bound({ x: 0, y: -5000, s: 1 }, 1000, 100_000, 800, 600, 0);
+  assert.equal(top.y, -MARGIN);
+  const end = bound({ x: 0, y: 1e9, s: 1 }, 1000, 100_000, 800, 600, 0);
+  assert.equal(end.y, 100_000 + MARGIN - 600);
+  // Slack lets the view go half a view past an edge, no further.
+  assert.equal(bound({ x: 0, y: -5000, s: 1 }, 1000, 100_000, 800, 600, 0.5).y, -MARGIN - 300);
+  // A graph smaller than the view stays inside it.
+  const small = bound({ x: 5000, y: -5000, s: 1 }, 200, 100, 800, 600, 0);
+  assert.equal(small.x, -MARGIN);
+  assert.equal(small.y, 100 + MARGIN - 600);
+  // Scale counts: at 0.5 the view covers twice the world.
+  assert.equal(bound({ x: 0, y: 1e9, s: 0.5 }, 1000, 100_000, 800, 600, 0).y, 100_000 + MARGIN - 1200);
+  // In range: unchanged.
+  assert.deepEqual(bound({ x: 10, y: 20, s: 1 }, 1000, 100_000, 800, 600, 0), { x: 10, y: 20, s: 1 });
 });

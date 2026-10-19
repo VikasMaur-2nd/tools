@@ -3271,7 +3271,16 @@ button.mi:focus-visible {
   border-radius: 9px;
   background: var(--bg);
   box-shadow: var(--shadow);
-  cursor: crosshair;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.gv-mini.gv-mini-on {
+  cursor: grab;
+}
+
+.gv-mini.gv-mini-drag {
+  cursor: grabbing;
 }
 
 .gv-note {

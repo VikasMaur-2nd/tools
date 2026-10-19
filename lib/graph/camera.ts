@@ -91,3 +91,18 @@ export function lerpCam(a: Cam, b: Cam, t: number, vw: number, vh: number): Cam 
 }
 
 export const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+
+/**
+ * `c` kept in reach of a w × h graph (plus MARGIN) in a vw × vh view: a graph
+ * bigger than the view can be scrolled to its edges and `slack` views past
+ * them; a smaller one stays inside the view (give or take the slack). So the
+ * graph is never lost off-screen, and slack 0 lands exactly on an edge.
+ */
+export function bound(c: Cam, w: number, h: number, vw: number, vh: number, slack = 0): Cam {
+  const axis = (v: number, size: number, view: number) => {
+    const lo = Math.min(-MARGIN, size + MARGIN - view) - slack * view;
+    const hi = Math.max(-MARGIN, size + MARGIN - view) + slack * view;
+    return Math.min(hi, Math.max(lo, v));
+  };
+  return { x: axis(c.x, w, vw / c.s), y: axis(c.y, h, vh / c.s), s: c.s };
+}

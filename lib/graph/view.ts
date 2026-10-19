@@ -15,7 +15,7 @@ import { PRIVATE } from '../analytics';
 import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, modelBuilder, sizeText, valueText, type GraphModel } from './model';
 import { cardAt, layouter, type GraphLayout } from './layout';
 import { charWidth, readTheme, type GraphTheme } from './theme';
-import { MARGIN, ZOOM_MAX, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
+import { MARGIN, ZOOM_MAX, bound, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
 import { grid, paint, partAt } from './render';
 import { MINI_H, MINI_W, Minimap } from './minimap';
 import type { FindResult, GraphEvents, GraphViewApi } from './types';
@@ -27,6 +27,8 @@ const SLICE = 8;
 const NOTE_AFTER = 150;
 const TIP_DELAY = 450;
 const DRAG = 4;
+/** How far past the graph's edges the view can be pushed, in views. */
+const PAN_SLACK = 0.5;
 /** Edits to a graph this big rebuild after a pause in typing this long. */
 const EDIT_SETTLE_CARDS = 20_000;
 const EDIT_SETTLE_MS = 250;
@@ -91,7 +93,8 @@ export class GraphView implements GraphViewApi {
   private ptrs = new Map<number, { x: number; y: number }>();
   private down: { x: number; y: number; cam: Cam; moved: boolean; id: number } | null = null;
   private pinch: { d: number; cam: Cam; cx: number; cy: number } | null = null;
-  private miniDrag = false;
+  /** Pointer offset from the view's top-left while dragging on the minimap (world px). */
+  private miniGrab: { dx: number; dy: number } | null = null;
   private tipTimer = 0;
   private editTimer = 0;
 
@@ -157,6 +160,9 @@ export class GraphView implements GraphViewApi {
     mc.addEventListener('pointerdown', this.onMiniDown);
     mc.addEventListener('pointermove', this.onMiniMove);
     mc.addEventListener('pointerup', this.onMiniUp);
+    mc.addEventListener('pointercancel', this.onMiniUp);
+    mc.addEventListener('lostpointercapture', this.onMiniUp);
+    mc.addEventListener('wheel', this.onMiniWheel, { passive: false });
     host.addEventListener('keydown', this.onKey);
     document.addEventListener('fullscreenchange', this.onFull);
     this.ro = new ResizeObserver(() => this.measure());
@@ -373,7 +379,7 @@ export class GraphView implements GraphViewApi {
       this.camSet = true;
     } else if (this.camSet && ow > 0 && oh > 0) {
       // Keep what was in the middle of the view in the middle (full screen, a moved splitter, a rotated phone).
-      this.cam = { x: this.cam.x + (ow - this.vw) / 2 / this.cam.s, y: this.cam.y + (oh - this.vh) / 2 / this.cam.s, s: this.cam.s };
+      this.cam = this.bounded({ x: this.cam.x + (ow - this.vw) / 2 / this.cam.s, y: this.cam.y + (oh - this.vh) / 2 / this.cam.s, s: this.cam.s });
     }
     // Resizing clears the canvas: repaint now, not a frame later (no flash).
     if (this.active) this.draw();
@@ -449,8 +455,15 @@ export class GraphView implements GraphViewApi {
     return L ? minZoom(L.width, L.height, this.vw, this.vh) : 0.02;
   }
 
+  /** Keeps a camera in reach of the graph (see bound). */
+  private bounded(c: Cam, slack = PAN_SLACK): Cam {
+    const L = this.L;
+    return L && this.vw > 0 ? bound(c, L.width, L.height, this.vw, this.vh, slack) : c;
+  }
+
   private moveTo(to: Cam, animate = true) {
     this.fitted = false;
+    to = this.bounded(to);
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!animate || reduce || !this.active) {
       this.anim = null;
@@ -461,10 +474,10 @@ export class GraphView implements GraphViewApi {
     this.redraw();
   }
 
-  private setCam(c: Cam) {
+  private setCam(c: Cam, slack = PAN_SLACK) {
     this.fitted = false;
     this.anim = null;
-    this.cam = c;
+    this.cam = this.bounded(c, slack);
     this.hideTip();
     this.redraw();
   }
@@ -474,6 +487,25 @@ export class GraphView implements GraphViewApi {
     if (!L) return;
     this.moveTo(fitCam(L.width, L.height, this.vw, this.vh, this.minZ()));
     this.fitted = true;
+  }
+
+  /** Selects and shows the root ('start') or the lowest card of the graph ('end'). */
+  jump(to: 'start' | 'end') {
+    const L = this.L;
+    if (!L) return;
+    let c = 0;
+    if (to === 'end') {
+      // The lowest card: the last of some column.
+      let bottom = -Infinity;
+      for (const level of L.levels) {
+        const k = level[level.length - 1];
+        if (k !== undefined && L.y[k] + L.m.h[k] > bottom) {
+          bottom = L.y[k] + L.m.h[k];
+          c = k;
+        }
+      }
+    }
+    this.choose(c, -1, 'key');
   }
 
   zoomBy(f: number) {
@@ -866,24 +898,70 @@ export class GraphView implements GraphViewApi {
     this.setCam({ x: base.x + dx / base.s, y: base.y + dy / base.s, s: base.s });
   };
 
-  // Minimap navigation.
+  // Minimap navigation: press on the view's rectangle and drag it, or press
+  // elsewhere to move the view there (then keep dragging). It stops exactly at
+  // the graph's edges, so the top and the end are one click away.
   private onMiniDown = (e: PointerEvent) => {
+    if (e.button > 0 || !this.L) return;
+    e.preventDefault();
     e.stopPropagation();
-    this.miniDrag = true;
+    this.focus();
+    this.hideTip();
+    const [wx, wy] = this.miniPoint(e);
+    const c = this.anim ? this.anim.to : this.cam;
+    const vw = this.vw / c.s;
+    const vh = this.vh / c.s;
+    if (this.onMiniRect(e)) this.miniGrab = { dx: wx - c.x, dy: wy - c.y };
+    else {
+      this.miniGrab = { dx: vw / 2, dy: vh / 2 };
+      this.setCam({ x: wx - vw / 2, y: wy - vh / 2, s: c.s }, 0);
+    }
     this.mini.el.setPointerCapture(e.pointerId);
-    this.miniGo(e);
+    this.mini.el.classList.add('gv-mini-drag');
   };
+
   private onMiniMove = (e: PointerEvent) => {
-    if (this.miniDrag) this.miniGo(e);
+    const g = this.miniGrab;
+    if (!g) {
+      this.mini.el.classList.toggle('gv-mini-on', this.onMiniRect(e));
+      return;
+    }
+    const [wx, wy] = this.miniPoint(e);
+    this.setCam({ x: wx - g.dx, y: wy - g.dy, s: this.cam.s }, 0);
   };
+
   private onMiniUp = () => {
-    this.miniDrag = false;
+    this.miniGrab = null;
+    this.mini.el.classList.remove('gv-mini-drag');
   };
-  private miniGo(e: PointerEvent) {
+
+  /** Wheel over the minimap acts on the view (it would scroll the page otherwise). */
+  private onMiniWheel = (e: WheelEvent) => {
+    if (!this.L) return;
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.vh : 1;
+    if (e.ctrlKey || e.metaKey) this.zoomBy(clamp(Math.exp(-e.deltaY * unit * 0.0025), 0.5, 2));
+    else this.setCam({ x: this.cam.x + (e.deltaX * unit) / this.cam.s, y: this.cam.y + (e.deltaY * unit) / this.cam.s, s: this.cam.s });
+  };
+
+  /** World point under the pointer on the minimap. */
+  private miniPoint(e: { clientX: number; clientY: number }): [number, number] {
     const r = this.mini.el.getBoundingClientRect();
-    const [wx, wy] = this.mini.toWorld(e.clientX - r.left, e.clientY - r.top);
-    const s = this.cam.s;
-    this.setCam({ x: wx - this.vw / 2 / s, y: wy - this.vh / 2 / s, s });
+    return this.mini.toWorld(e.clientX - r.left, e.clientY - r.top);
+  }
+
+  /** Whether the pointer is on the view's rectangle (with a few pixels to spare, it can be thin). */
+  private onMiniRect(e: { clientX: number; clientY: number }) {
+    const r = this.mini.el.getBoundingClientRect();
+    const mx = e.clientX - r.left;
+    const my = e.clientY - r.top;
+    const c = this.cam;
+    const m = this.mini;
+    const x0 = m.ox + c.x * m.sx;
+    const y0 = m.oy + c.y * m.sy;
+    const x1 = x0 + Math.max(3, (this.vw / c.s) * m.sx);
+    const y1 = y0 + Math.max(3, (this.vh / c.s) * m.sy);
+    return mx >= x0 - 3 && mx <= x1 + 3 && my >= y0 - 3 && my <= y1 + 3;
   }
 
   // ── Tooltip ────────────────────────────────────────────────────────────
@@ -948,7 +1026,7 @@ export class GraphView implements GraphViewApi {
     if (!mod && k === '0') return done(), this.fit();
     if (!mod && (k === 'f' || k === 'F') && document.fullscreenEnabled) return done(), this.toggleFull();
     if (mod) return;
-    if (c < 0 && /^Arrow|^Home$|^Enter$|^ $/.test(k)) {
+    if (c < 0 && /^Arrow|^Enter$|^ $/.test(k)) {
       done();
       this.choose(0, -1, 'key');
       return;
@@ -1012,8 +1090,20 @@ export class GraphView implements GraphViewApi {
       }
       case 'Home':
         done();
-        this.choose(0, -1, 'key');
+        this.jump('start');
         return;
+      case 'End':
+        done();
+        this.jump('end');
+        return;
+      case 'PageDown':
+      case 'PageUp': {
+        done();
+        const base = this.anim ? this.anim.to : this.cam;
+        const dy = (this.vh / base.s) * 0.85 * (k === 'PageDown' ? 1 : -1);
+        this.moveTo({ x: base.x, y: base.y + dy, s: base.s });
+        return;
+      }
       case 'Enter': {
         done();
         const n = this.selNode();

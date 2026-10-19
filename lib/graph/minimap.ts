@@ -103,16 +103,17 @@ export class Minimap {
     ctx.clearRect(0, 0, this.el.width, this.el.height);
     ctx.drawImage(this.bmp, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const x = this.ox + cam.x * this.sx;
-    const y = this.oy + cam.y * this.sy;
-    const w = Math.max(3, (vw / cam.s) * this.sx);
-    const h = Math.max(3, (vh / cam.s) * this.sy);
+    // The view's rectangle, kept inside the box (the view can be pushed a little past the graph).
+    const x0 = Math.min(this.w - 4, Math.max(1, this.ox + cam.x * this.sx));
+    const y0 = Math.min(this.h - 4, Math.max(1, this.oy + cam.y * this.sy));
+    const x1 = Math.max(x0 + 3, Math.min(this.w - 1, this.ox + (cam.x + vw / cam.s) * this.sx));
+    const y1 = Math.max(y0 + 3, Math.min(this.h - 1, this.oy + (cam.y + vh / cam.s) * this.sy));
     ctx.fillStyle = th.rowSel;
-    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
     ctx.strokeStyle = th.accent;
     ctx.globalAlpha = 0.55;
     ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
+    ctx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(x1 - x0) - 1, Math.round(y1 - y0) - 1);
     ctx.globalAlpha = 1;
   }
 
