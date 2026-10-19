@@ -7,7 +7,7 @@ import type { DocumentMetrics } from '../json/metrics';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
 import { TableView } from './table';
-import type { GraphViewApi } from '../graph/types';
+import type { GraphExport, GraphViewApi } from '../graph/types';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
@@ -2089,7 +2089,7 @@ export class Engine {
   downloadView() {
     switch (this.settings.view) {
       case 'graph':
-        return void this.downloadGraph('png');
+        return this.openGraphExport();
       case 'table':
         return this.downloadCSV();
       case 'convert':
@@ -2117,17 +2117,63 @@ export class Engine {
     this.graph.zoomBy(factor);
   }
 
-  downloadGraph(kind: 'png' | 'svg') {
+  /** The graph's export dialog (format, area, background, size, name). */
+  openGraphExport() {
+    this.withGraph(() => store.set({ graphExport: true }));
+  }
+
+  /** What an export with these options would produce (for the dialog). */
+  graphExportPreview(opts: GraphExport) {
+    return this.graph && this.settings.view === 'graph' ? this.graph.exportPreview(opts) : Promise.resolve(null);
+  }
+
+  /** The document's name without its extension, for downloads. */
+  private docBase() {
+    return (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
+  }
+
+  /** Downloads the graph as an image; `name` without an extension (default: the document's name). */
+  downloadGraph(opts: GraphExport | 'png' | 'svg', name?: string) {
+    const o: GraphExport = typeof opts === 'string' ? { format: opts, area: 'all', background: 'theme', scale: 2 } : opts;
     this.withGraph(() => {
       if (!this.graph) return;
-      track('feature_used', { feature: kind === 'png' ? 'graph_export_png' : 'graph_export_svg' });
-      const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-      void this.graph.exportImage(kind).then((blob) => {
-        if (!this.dead) this.saveBlob(blob, `${base}.${kind}`);
+      track('feature_used', { feature: o.format === 'png' ? 'graph_export_png' : o.format === 'jpeg' ? 'graph_export_jpeg' : 'graph_export_svg' });
+      const file = `${name?.trim() || this.docBase()}.${o.format === 'jpeg' ? 'jpg' : o.format}`;
+      void this.graph.exportImage(o).then((blob) => {
+        if (!this.dead) this.saveBlob(blob, file);
       }).catch((error) => {
         reportError(error, 'export');
         if (!this.dead) this.toast(rt("Couldn't download graph: {error}", { error: rt.msg(error instanceof Error ? error.message : 'Graph export failed') }), 'err');
       });
+    });
+  }
+
+  /** Copies the graph as a PNG image. Call from the click itself: browsers only allow it during user input. */
+  copyGraphImage(opts: GraphExport) {
+    const graph = this.graph;
+    if (!graph || this.settings.view !== 'graph') return;
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+      this.toast(rt("Copying images isn't supported in this browser. Download it instead."), 'err');
+      return;
+    }
+    track('feature_used', { feature: 'graph_copy_image' });
+    // The item takes the image's promise right away, which Safari needs to keep the user's permission.
+    const png = graph.exportImage({ ...opts, format: 'png' });
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).then(
+      () => !this.dead && this.toast(rt('Copied the image'), 'ok'),
+      (error) => {
+        if (this.dead) return;
+        const msg = error instanceof Error && error.name !== 'NotAllowedError' ? error.message : "The browser didn't allow it";
+        this.toast(rt("Couldn't copy the image: {error}", { error: rt.msg(msg) }), 'err');
+      },
+    );
+  }
+
+  /** Shows the start (root) or the end (lowest card) of the graph. */
+  graphJump(to: 'start' | 'end') {
+    this.withGraph(() => {
+      track('feature_used', { feature: 'graph_jump' });
+      this.graph?.jump(to);
     });
   }
 

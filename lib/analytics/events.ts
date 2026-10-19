@@ -20,7 +20,7 @@ export type Via = 'pointer' | 'keyboard' | 'palette' | 'other';
 export type Feature =
   | 'copy_input' | 'copy_output' | 'copy_convert' | 'copy_value' | 'copy_path' | 'copy_csv'
   | 'download_input' | 'download_output' | 'download_convert' | 'download_csv' | 'export_xlsx'
-  | 'graph_fit' | 'graph_zoom_in' | 'graph_zoom_out' | 'graph_export_png' | 'graph_export_svg'
+  | 'graph_fit' | 'graph_zoom_in' | 'graph_zoom_out' | 'graph_export_png' | 'graph_export_jpeg' | 'graph_export_svg' | 'graph_copy_image' | 'graph_jump'
   | 'share_link' | 'repair' | 'unescape' | 'escape' | 'decode_jwt' | 'expand_nested' | 'use_output'
   | 'format_input' | 'minify_input' | 'sort_input' | 'clear'
   | 'import_yaml' | 'import_xml' | 'import_csv' | 'import_toml'

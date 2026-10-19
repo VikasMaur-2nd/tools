@@ -299,7 +299,7 @@ test('every view that shows the document is kept out of session replay', () => {
 
 test('graph analytics use fixed view and feature values', () => {
   const view: ViewId = 'graph';
-  const features: Feature[] = ['graph_fit', 'graph_zoom_in', 'graph_zoom_out', 'graph_export_png', 'graph_export_svg'];
+  const features: Feature[] = ['graph_fit', 'graph_zoom_in', 'graph_zoom_out', 'graph_export_png', 'graph_export_jpeg', 'graph_export_svg', 'graph_copy_image', 'graph_jump'];
   assert.deepEqual(clean('view_opened', { view, via: 'pointer' }), { view, via: 'pointer' });
   for (const feature of features) {
     assert.deepEqual(clean('feature_used', { feature, view, via: 'palette', filename: 'secret.json' }), { feature, view, via: 'palette' });

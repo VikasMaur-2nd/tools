@@ -2559,6 +2559,137 @@ dialog[open] {
   flex: none;
 }
 
+/* Graph → Export image */
+.gx {
+  width: min(480px, calc(100vw - 24px));
+}
+
+.gx-form header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 6px 22px;
+}
+
+.gx-body {
+  display: grid;
+  gap: 12px;
+  padding: 8px 22px 4px;
+}
+
+.gx-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 28px;
+}
+
+.gx-label {
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.gx .seg button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gx-color {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gx-color.on {
+  background: var(--seg-on);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    0 0 0 1px var(--line);
+}
+
+.gx-color input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.gx-color input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.gx-color input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 50%;
+}
+
+.gx-color input::-moz-color-swatch {
+  border: 0;
+  border-radius: 50%;
+}
+
+/* Not chosen yet: a colour wheel says "any colour" (the swatch shows the colour once chosen). */
+.gx-color:not(.on) input {
+  background: conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444);
+}
+
+.gx-color:not(.on) input::-webkit-color-swatch {
+  opacity: 0;
+}
+
+.gx-color:not(.on) input::-moz-color-swatch {
+  opacity: 0;
+}
+
+.gx-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 12px var(--font-mono);
+}
+
+.gx-name .mi-input {
+  width: 190px;
+  height: 28px;
+}
+
+.gx-info {
+  min-height: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gx-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 22px 18px;
+}
+
+.gx-foot .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 480px) {
+  .gx-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
 /* Narrow viewer pane: the view's controls wrap onto their own row. */
 @container (max-width: 600px) {
   .pane-view > .toolbar {

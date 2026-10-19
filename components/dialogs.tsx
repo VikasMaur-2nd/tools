@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { COMMANDS, fuzzy, keyLabel, type Command } from '@/lib/engine/commands';
 import { store, useUI } from '@/lib/engine/store';
-import { act } from '@/lib/engine/instance';
+import { act, getEngine } from '@/lib/engine/instance';
+import type { ExportPreview, GraphExport } from '@/lib/graph/types';
 import { PRIVATE, track, withVia } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
 import { Kbd } from './Kbd';
@@ -233,6 +234,9 @@ const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
       ['+ / -', 'Zoom in / out'],
       ['0', 'Fit to screen'],
       ['F', 'Full screen'],
+      ['Home', 'Go to start'],
+      ['End', 'Go to end'],
+      ['PgUp+PgDn', 'Scroll a screen'],
       ['Drag', 'Pan graph'],
       ['mod+Wheel', 'Zoom graph'],
       ['C', 'Copy value'],
@@ -286,5 +290,161 @@ export function ShortcutsDialog() {
         ))}
       </div>
     </Modal>
+  );
+}
+
+// ── Graph image export ──────────────────────────────────────────────────────
+
+type ExportPrefs = Omit<GraphExport, 'background'> & { bg: 'theme' | 'white' | 'transparent' | 'custom'; color: string };
+const EXPORT_PREFS = 'jf:graph-export';
+const DEFAULT_EXPORT: ExportPrefs = { format: 'png', area: 'all', bg: 'theme', color: '#ffffff', scale: 2 };
+
+function loadExportPrefs(): ExportPrefs {
+  try {
+    const v = { ...DEFAULT_EXPORT, ...JSON.parse(localStorage.getItem(EXPORT_PREFS) ?? '{}') } as ExportPrefs;
+    // Stored values are only trusted from the known sets.
+    if (!['png', 'jpeg', 'svg'].includes(v.format)) v.format = 'png';
+    if (!['all', 'view', 'branch'].includes(v.area)) v.area = 'all';
+    if (!['theme', 'white', 'transparent', 'custom'].includes(v.bg)) v.bg = 'theme';
+    if (!/^#[0-9a-f]{6}$/i.test(v.color)) v.color = '#ffffff';
+    if (![1, 2, 3].includes(v.scale)) v.scale = 2;
+    return v;
+  } catch {
+    return DEFAULT_EXPORT;
+  }
+}
+
+/** The last export choices, as export options (the menu's Copy image uses them too). */
+export function savedGraphExport(): GraphExport {
+  const p = loadExportPrefs();
+  return { format: p.format, area: p.area, background: p.bg === 'white' ? '#ffffff' : p.bg === 'custom' ? p.color : p.format === 'jpeg' && p.bg === 'transparent' ? 'theme' : p.bg, scale: p.scale };
+}
+
+/** A row of mutually exclusive choices (the toolbar's segmented look). */
+function Choice<V extends string | number>({ label, value, options, onPick }: { label: string; value: V; options: { v: V; label: string; disabled?: boolean }[]; onPick: (v: V) => void }) {
+  const t = useT();
+  return (
+    <div className="gx-row">
+      <span className="gx-label">{t(label)}</span>
+      <div className="seg seg-sm" role="radiogroup" aria-label={t(label)}>
+        {options.map((o) => (
+          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} disabled={o.disabled} onClick={() => onPick(o.v)}>
+            {t(o.label)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function GraphExportDialog() {
+  const open = useUI((s) => s.graphExport);
+  const t = useT();
+  return (
+    <Modal open={open} onClose={() => store.set({ graphExport: false })} className="sheet gx" label={t('Export image')}>
+      <ExportForm />
+    </Modal>
+  );
+}
+
+function ExportForm() {
+  const t = useT();
+  const fileName = useUI((s) => s.fileName);
+  const [p, setP] = useState<ExportPrefs>(loadExportPrefs);
+  const [name, setName] = useState(() => (fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '') || 'graph');
+  const [preview, setPreview] = useState<ExportPreview | null>(null);
+  const set = (patch: Partial<ExportPrefs>) => setP((old) => ({ ...old, ...patch }));
+  // JPEG has no transparency: it falls back to the theme's colour.
+  const bg = p.format === 'jpeg' && p.bg === 'transparent' ? 'theme' : p.bg;
+  const opts: GraphExport = {
+    format: p.format,
+    area: p.area === 'branch' && preview && !preview.branch ? 'all' : p.area,
+    background: bg === 'white' ? '#ffffff' : bg === 'custom' ? p.color : bg,
+    scale: p.scale,
+  };
+  const key = JSON.stringify(opts);
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXPORT_PREFS, JSON.stringify(p));
+    } catch {}
+  }, [p]);
+  useEffect(() => {
+    let live = true;
+    void getEngine()?.graphExportPreview(JSON.parse(key) as GraphExport).then((r) => live && setPreview(r), () => {});
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  const close = () => store.set({ graphExport: false });
+  const ext = p.format === 'jpeg' ? 'jpg' : p.format;
+  const download = () => {
+    act((e) => e.downloadGraph(opts, name));
+    close();
+  };
+  return (
+    <form
+      className="gx-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!preview?.error) download();
+      }}
+    >
+      <header>
+        <h2>
+          <Icon name="download" size={18} /> {t('Export image')}
+        </h2>
+        <button type="button" className="btn icon" aria-label={t('Close')} onClick={close}>
+          <Icon name="x" />
+        </button>
+      </header>
+      <div className="gx-body">
+        <Choice label="File type" value={p.format} onPick={(format) => set({ format })} options={[{ v: 'png', label: 'PNG' }, { v: 'jpeg', label: 'JPEG' }, { v: 'svg', label: 'SVG' }]} />
+        <Choice
+          label="Area"
+          value={opts.area}
+          onPick={(area) => set({ area })}
+          options={[{ v: 'all', label: 'Whole graph' }, { v: 'view', label: 'Visible area' }, { v: 'branch', label: 'Selected branch', disabled: !preview?.branch }]}
+        />
+        <div className="gx-row">
+          <span className="gx-label">{t('Background')}</span>
+          <div className="seg seg-sm" role="radiogroup" aria-label={t('Background')}>
+            {(['theme', 'white', 'transparent'] as const).map((v) => (
+              <button key={v} type="button" role="radio" aria-checked={bg === v} disabled={v === 'transparent' && p.format === 'jpeg'} onClick={() => set({ bg: v })}>
+                {t(v === 'theme' ? 'Theme' : v === 'white' ? 'White' : 'Transparent')}
+              </button>
+            ))}
+            <label className={`gx-color${bg === 'custom' ? ' on' : ''}`} data-tip={t('Any colour')}>
+              <input type="color" value={p.color} aria-label={t('Any colour')} onChange={(e) => set({ bg: 'custom', color: e.target.value })} onClick={() => set({ bg: 'custom' })} />
+            </label>
+          </div>
+        </div>
+        <Choice label="Size" value={p.scale} onPick={(scale) => set({ scale })} options={[1, 2, 3].map((v) => ({ v, label: `${v}×`, disabled: p.format === 'svg' }))} />
+        <label className="gx-row">
+          <span className="gx-label">{t('File name')}</span>
+          <span className="gx-name">
+            <input className={`mi-input ${PRIVATE}`} value={name} onChange={(e) => setName(e.target.value.replace(/[\\/:*?"<>|]/g, ''))} spellCheck={false} autoComplete="off" />
+            <span className="muted">.{ext}</span>
+          </span>
+        </label>
+        <p className="gx-info" aria-live="polite">
+          {preview?.error
+            ? t.msg(preview.error)
+            : preview
+              ? `${t('{width} × {height} px', { width: t.num(preview.width), height: t.num(preview.height) })}${t(' · ')}${t.n(preview.cards, '{n} card', '{n} cards')}${preview.reduced ? t(' · ') + t('reduced to fit') : ''}`
+              : ''}
+        </p>
+      </div>
+      <footer className="gx-foot">
+        <button type="button" className="btn" disabled={!!preview?.error} onClick={() => {
+          act((e) => e.copyGraphImage(opts));
+          close();
+        }}>
+          <Icon name="copy" size={15} /> {t('Copy image')}
+        </button>
+        <button type="submit" className="btn primary" disabled={!!preview?.error} autoFocus>
+          <Icon name="download" size={15} /> {t('Download')}
+        </button>
+      </footer>
+    </form>
   );
 }

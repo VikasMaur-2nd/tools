@@ -13,7 +13,7 @@ import { useT } from '@/lib/i18n/react';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
-import { CommandPalette, ShortcutsDialog } from './dialogs';
+import { CommandPalette, GraphExportDialog, ShortcutsDialog, savedGraphExport } from './dialogs';
 
 function Btn({
   icon,
@@ -429,9 +429,11 @@ function ViewMenu() {
               <MSep />
               <MItem label="Copy path" keys="P" onClick={() => act((e) => e.copyPath())} close={close} />
               <MItem label="Copy value" keys="C" onClick={() => act((e) => e.copyValue())} close={close} />
+              <MItem label="Go to start" keys="Home" onClick={() => act((e) => e.graphJump('start'))} close={close} />
+              <MItem label="Go to end" keys="End" onClick={() => act((e) => e.graphJump('end'))} close={close} />
               <MSep />
-              <MItem label="Download PNG" onClick={() => act((e) => e.downloadGraph('png'))} close={close} />
-              <MItem label="Download SVG" onClick={() => act((e) => e.downloadGraph('svg'))} close={close} />
+              <MItem label="Export image…" onClick={() => act((e) => e.openGraphExport())} close={close} />
+              <MItem label="Copy image" onClick={() => act((e) => e.copyGraphImage(savedGraphExport()))} close={close} />
             </>
           )}
           {view === 'convert' && (
@@ -725,7 +727,7 @@ function ViewToolbar() {
             <Icon name="search" />
           </button>
           <Btn icon="copy" label={view === 'tree' || view === 'graph' ? 'Copy (selected value or all)' : view === 'table' ? 'Copy as CSV' : 'Copy'} hideLabel onClick={() => act((e) => e.copyView())} />
-          <Btn icon="download" label={view === 'graph' ? 'Download PNG' : view === 'table' ? 'Download CSV' : 'Download'} hideLabel onClick={() => act((e) => e.downloadView())} />
+          <Btn icon="download" label={view === 'graph' ? 'Export image' : view === 'table' ? 'Download CSV' : 'Download'} hideLabel onClick={() => act((e) => e.downloadView())} />
           <ViewMenu />
         </div>
       )}
@@ -1243,6 +1245,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <DropOverlay />
       <CommandPalette />
       <ShortcutsDialog />
+      <GraphExportDialog />
       <input ref={fileRef} className={PRIVATE} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />
     </div>
   );

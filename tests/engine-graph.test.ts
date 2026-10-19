@@ -38,7 +38,7 @@ function session() {
   }
   graph.search = (q: string, jump: boolean) => { calls.push(['search', q, jump]); return { total: 2, index: 0 }; };
   graph.step = (dir: number) => { calls.push(['step', dir]); return { total: 2, index: 1 }; };
-  graph.exportImage = (kind: string) => exportsFail ? Promise.reject(new Error('Image is too large')) : Promise.resolve(new Blob([kind]));
+  graph.exportImage = (opts: { format: string }) => exportsFail ? Promise.reject(new Error('Image is too large')) : Promise.resolve(new Blob([opts.format]));
   const out: Dynamic = {};
   runInNewContext(js, {
     exports: out, performance, URL, Blob, Error,
@@ -222,13 +222,19 @@ test('graph exports use the document base name and do not reactivate the graph',
   const s = session();
   await s.open();
   s.calls.length = 0;
+  // The toolbar's download button opens the export dialog.
   s.engine.downloadView();
+  assert.equal(s.state.graphExport, true);
+  s.engine.downloadGraph('png');
   await Promise.resolve();
   assert.equal(s.calls[0][0], 'save');
   assert.equal(s.calls[0][2], 'example.png');
   s.engine.downloadGraph('svg');
   await Promise.resolve();
   assert.equal(s.calls.at(-1)![2], 'example.svg');
+  s.engine.downloadGraph({ format: 'jpeg', area: 'view', background: '#ffffff', scale: 1 }, 'my chart');
+  await Promise.resolve();
+  assert.equal(s.calls.at(-1)![2], 'my chart.jpg');
   assert.ok(!s.calls.some(([name]) => name === 'activate'));
 });
 

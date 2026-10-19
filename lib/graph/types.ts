@@ -47,9 +47,36 @@ export interface GraphViewApi {
   focus(): void;
   /** Colours come from CSS variables; call after the theme changes. */
   themeChanged(): void;
+  /** Selects and shows the root ('start') or the lowest card ('end'). */
+  jump(to: 'start' | 'end'): void;
   /** The graph as an image. Rejects when it is too big for the format. */
-  exportImage(kind: 'png' | 'svg'): Promise<Blob>;
+  exportImage(opts: GraphExport): Promise<Blob>;
+  /** What an export would produce (null: no graph). */
+  exportPreview(opts: GraphExport): Promise<ExportPreview | null>;
   destroy(): void;
 }
 
 export type GraphViewCtor = new (host: HTMLElement, ev: GraphEvents) => GraphViewApi;
+
+export interface GraphExport {
+  format: 'png' | 'jpeg' | 'svg';
+  /** The whole graph, what's on screen, or the selected card's branch. */
+  area: 'all' | 'view' | 'branch';
+  /** The canvas colour, none, or a CSS colour. JPEG has no transparency (it gets the canvas colour). */
+  background: 'theme' | 'transparent' | string;
+  /** Pixels per CSS px for PNG and JPEG (reduced to fit the size limits). */
+  scale: number;
+}
+
+export interface ExportPreview {
+  /** Size of the image in px (SVG: at 1×). */
+  width: number;
+  height: number;
+  cards: number;
+  /** The requested scale didn't fit and was reduced. */
+  reduced: boolean;
+  /** A card is selected, so 'branch' is possible. */
+  branch: boolean;
+  /** Why this export can't be made (a toast-ready English sentence). */
+  error?: string;
+}

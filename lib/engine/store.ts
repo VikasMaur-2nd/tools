@@ -112,6 +112,8 @@ export interface UIState {
   cmpFile: string | null;
   palette: false | 'commands' | 'url';
   shortcuts: boolean;
+  /** The graph's export dialog is open. */
+  graphExport: boolean;
   dragging: boolean;
   toast: Toast | null;
 }
@@ -157,6 +159,7 @@ export const INITIAL: UIState = {
   cmpFile: null,
   palette: false,
   shortcuts: false,
+  graphExport: false,
   dragging: false,
   toast: null,
 };

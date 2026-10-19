@@ -18,7 +18,8 @@ import { charWidth, readTheme, type GraphTheme } from './theme';
 import { MARGIN, ZOOM_MAX, bound, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
 import { grid, paint, partAt } from './render';
 import { MINI_H, MINI_W, Minimap } from './minimap';
-import type { FindResult, GraphEvents, GraphViewApi } from './types';
+import type { ExportPreview, FindResult, GraphEvents, GraphExport, GraphViewApi } from './types';
+import type { ExportArea } from './export';
 
 const MAX_MATCHES = 100_000;
 let valueHints: ((n: JNode) => { label: string }[]) | null = null;
@@ -1129,19 +1130,70 @@ export class GraphView implements GraphViewApi {
 
   // ── Export ─────────────────────────────────────────────────────────────
 
-  async exportImage(kind: 'png' | 'svg'): Promise<Blob> {
-    const L = this.L;
-    if (!L) throw new Error('Nothing to export');
-    let mod: typeof import('./export');
+  /** The card a branch export starts from: the selected card, or a port row's card. */
+  private branchCard() {
+    const m = this.m;
+    if (!m || this.card < 0) return -1;
+    return this.row >= 0 && m.rowChild[this.row] >= 0 ? m.rowChild[this.row] : this.card;
+  }
+
+  private exportArea(opts: GraphExport): ExportArea {
+    if (opts.area === 'view') return { kind: 'rect', x: this.cam.x, y: this.cam.y, w: this.vw / this.cam.s, h: this.vh / this.cam.s };
+    if (opts.area === 'branch' && this.branchCard() >= 0) return { kind: 'branch', card: this.branchCard() };
+    return { kind: 'all' };
+  }
+
+  /** Image px per world px: the visible area keeps its on-screen size (1× = what you see). */
+  private exportScale(opts: GraphExport) {
+    return opts.area === 'view' ? opts.scale * this.cam.s : opts.scale;
+  }
+
+  private background(opts: GraphExport) {
+    return opts.background === 'theme' ? this.th.bg : opts.background === 'transparent' ? null : opts.background;
+  }
+
+  private async exporter() {
     try {
-      mod = await import('./export');
+      return await import('./export');
     } catch {
       throw new Error('Export unavailable');
     }
-    // The document as it is laid out (collapsed branches stay collapsed), without the selection.
-    if (kind === 'svg') return new Blob([mod.toSVG(L, this.th)], { type: 'image/svg+xml' });
-    return mod.toPNG(L, this.th);
   }
+
+  async exportImage(opts: GraphExport): Promise<Blob> {
+    const L = this.L;
+    if (!L) throw new Error('Nothing to export');
+    const mod = await this.exporter();
+    const area = this.exportArea(opts);
+    const background = this.background(opts);
+    // The document as it is laid out (collapsed branches stay collapsed), without the selection.
+    if (opts.format === 'svg') return new Blob([mod.toSVG(L, this.th, { area, background })], { type: 'image/svg+xml' });
+    return mod.toPNG(L, this.th, { area, background, scale: this.exportScale(opts), type: opts.format === 'jpeg' ? 'image/jpeg' : 'image/png' });
+  }
+
+  async exportPreview(opts: GraphExport): Promise<ExportPreview | null> {
+    const L = this.L;
+    if (!L) return null;
+    const mod = await this.exporter();
+    const branch = this.branchCard() >= 0;
+    const size = mod.exportSize(L, this.exportArea(opts));
+    const preview: ExportPreview = { width: Math.ceil(size.width), height: Math.ceil(size.height), cards: size.cards, reduced: false, branch };
+    if (opts.format === 'svg') {
+      if (size.cards > mod.EXPORT_LIMITS.svgCards) preview.error = 'The graph is too large for SVG. Collapse some branches or export PNG.';
+      return preview;
+    }
+    try {
+      const want = this.exportScale(opts);
+      const scale = mod.pngScale(size.width, size.height, want);
+      preview.width = Math.ceil(size.width * scale);
+      preview.height = Math.ceil(size.height * scale);
+      preview.reduced = scale < want - 1e-9;
+    } catch (e) {
+      preview.error = e instanceof Error ? e.message : 'Graph export failed';
+    }
+    return preview;
+  }
+
 
 }
 
