@@ -1,6 +1,7 @@
 /* Framework-free, on-demand graph export. Both formats use the same geometry. */
 import { PRIVATE } from '../analytics';
 import { ARR, BOOL, NUL, NUM, STR } from '../json/parser';
+import { compactNum } from './render';
 import { anchorY, cardsIn, groupsIn, portY, rowY, type GraphLayout } from './layout';
 import { G, headText, labelText, sizeText, valueText } from './model';
 import type { GraphTheme } from './theme';
@@ -56,7 +57,7 @@ export function pngScale(width: number, height: number, requested = 2): number {
   return scale;
 }
 
-const pillText = (L: GraphLayout, c: number) => '+' + (L.m.end[c] - c - 1);
+const pillText = (L: GraphLayout, c: number) => '+' + compactNum(L.m.end[c] - c - 1);
 const pillWidth = (L: GraphLayout, c: number) => half(pillText(L, c).length * L.m.charW + 12);
 
 function bounds(L: GraphLayout): [number, number] {
@@ -74,7 +75,7 @@ function bounds(L: GraphLayout): [number, number] {
   return [half(width) + MARGIN * 2, half(L.height) + MARGIN * 2];
 }
 
-type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'dot' | 'fg' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul' | 'selected';
+type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'chevron' | 'pill' | 'dot' | 'fg' | 'strong' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul' | 'selected';
 type Command = ['M' | 'L', number, number] | ['Q', number, number, number, number] |
   ['C', number, number, number, number, number, number] | ['Z'];
 interface Painter {
@@ -150,14 +151,17 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, sel
   }
   p.roundRect(x, y, w, h, 6, 'border');
   if (y + G.head >= y0 && y <= y1) {
-    p.text(x + G.padX, y + G.head / 2, headText(n), 'fg');
-    if (n.t >= ARR) p.text(x + w - G.padX, y + G.head / 2, sizeText(n), 'muted', true);
+    p.text(x + G.padX, y + G.head / 2, headText(n), 'strong');
+    if (n.t >= ARR) p.text(x + w - G.padX - (m.bus[c] ? G.port : 0), y + G.head / 2, sizeText(n), 'muted', true);
+    if (m.bus[c] && m.kids[c]) p.roundRect(x + w - 3, y + G.head / 2 - 3, 6, 6, 3, 'dot');
     if (L.collapsed[c] && m.kids[c]) {
-      p.path([['M', x + 4, y + 10], ['L', x + 7, y + 13], ['L', x + 4, y + 16]], 'edge');
+      const cy = y + G.head / 2;
+      p.path([['M', x + 3, cy - 3], ['L', x + 6, cy], ['L', x + 3, cy + 3]], 'chevron');
       const px = x + w + 8;
-      const pw = pillWidth(L, c);
-      p.roundRect(px, y + 4, pw, 18, 9, 'head');
-      p.text(px + pw - 6, y + G.head / 2, pillText(L, c), 'muted', true);
+      const py = y + (G.head - 18) / 2;
+      p.roundRect(px, py, pillWidth(L, c), 18, 9, 'head');
+      p.roundRect(px, py, pillWidth(L, c), 18, 9, 'pill');
+      p.text(px + 6, cy, pillText(L, c), 'muted');
     }
   }
   const start = m.rowStart[c];
@@ -178,7 +182,7 @@ function draw(L: GraphLayout, p: Painter, y0 = -Infinity, y1 = Infinity, selecte
     const [a, b] = groupsIn(L, d, y0, y1);
     for (let i = a; i < b; i++) {
       const c = L.groups[d][i];
-      if (L.shown[c] && L.gy1[d][i] >= y0) edges(L, p, c, y0, y1);
+      if (L.shown[c] && L.gy1[d][i] >= y0 - 3) edges(L, p, c, y0 - 3, y1 + 3);
     }
   }
   for (let d = 0; d < L.levels.length; d++) {
@@ -219,10 +223,12 @@ class SVG implements Painter {
 }
 
 function styles(theme: GraphTheme): string {
-  const fills: Ink[] = ['bg', 'card', 'head', 'fg', 'muted', 'key', 'str', 'num', 'bool', 'nul'];
+  const fills: Ink[] = ['bg', 'card', 'head', 'fg', 'strong', 'muted', 'key', 'str', 'num', 'bool', 'nul'];
   // Escape CSS delimiters as well as XML, including in caller-supplied font families.
   const css = (s: string) => xml(s.replace(/[{};<>]/g, (c) => '\\' + c.codePointAt(0)!.toString(16) + ' '));
-  return fills.map((k) => `.${k}{fill:${css(theme[k as keyof GraphTheme] as string)}}`).join('') +
+  return fills.map((k) => `.${k}{fill:${css(theme[(k === 'strong' ? 'fg' : k) as keyof GraphTheme] as string)}}`).join('') +
+    `.strong{font-weight:600}.pill{fill:none;stroke:${css(theme.border)};stroke-width:1}` +
+    `.chevron{fill:none;stroke:${css(theme.muted)};stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}` +
     `.dot{fill:${css(theme.edge)}}.border{fill:none;stroke:${css(theme.border)};stroke-width:1}` +
     `.edge{fill:none;stroke:${css(theme.edge)};stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}` +
     `.selected{fill:none;stroke:${css(theme.accent)};stroke-width:2}` +
@@ -252,12 +258,12 @@ class Canvas implements Painter {
   }
   private paint(ink: Ink) {
     const { ctx, theme } = this;
-    if (ink === 'edge' || ink === 'border' || ink === 'selected') {
-      ctx.strokeStyle = ink === 'selected' ? theme.accent : theme[ink];
-      ctx.lineWidth = ink === 'selected' ? 2 : ink === 'edge' ? 1.25 : 1;
+    if (ink === 'edge' || ink === 'chevron' || ink === 'border' || ink === 'pill' || ink === 'selected') {
+      ctx.strokeStyle = ink === 'selected' ? theme.accent : ink === 'chevron' ? theme.muted : ink === 'edge' ? theme.edge : theme.border;
+      ctx.lineWidth = ink === 'selected' ? 2 : ink === 'edge' || ink === 'chevron' ? 1.25 : 1;
       ctx.stroke();
     } else {
-      ctx.fillStyle = ink === 'dot' ? theme.edge : theme[ink];
+      ctx.fillStyle = ink === 'dot' ? theme.edge : theme[ink === 'strong' ? 'fg' : ink];
       ctx.fill();
     }
   }
@@ -273,8 +279,9 @@ class Canvas implements Painter {
   }
   text(x: number, y: number, s: string, ink: Ink, end = false) {
     const ctx = this.ctx;
-    ctx.fillStyle = this.theme[ink as 'fg'];
+    ctx.fillStyle = this.theme[ink === 'strong' ? 'fg' : ink as 'fg'];
     ctx.textAlign = end ? 'right' : 'left';
+    ctx.font = (ink === 'strong' ? '600 ' : '') + `${G.font}px ${this.theme.family}`;
     // Apply the same XML-invalid character replacement to both formats.
     ctx.fillText(s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/gu, '\ufffd'), half(x), half(y));
   }
