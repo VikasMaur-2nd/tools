@@ -7,6 +7,7 @@ import type { DocumentMetrics } from '../json/metrics';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
 import { TreeView } from './tree';
 import { TableView } from './table';
+import type { GraphViewApi } from '../graph/types';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
@@ -30,6 +31,7 @@ export interface EngineEls {
   editor: HTMLElement;
   tree: HTMLElement;
   table: HTMLElement;
+  graph: HTMLElement;
   file: HTMLInputElement;
   code: HTMLElement;
   fmt: HTMLElement;
@@ -91,8 +93,8 @@ function loadSettings(): Settings {
     out.splitCmp = Math.min(0.85, Math.max(0.4, Number(out.splitCmp) || 0.66));
     if (!['2', '4', 'tab'].includes(out.indent)) out.indent = '2';
     if (!['system', 'light', 'dark'].includes(out.theme)) out.theme = 'system';
-    if (!['format', 'tree', 'table', 'convert', 'compare'].includes(out.view)) out.view = 'format';
-    if (!['format', 'tree', 'table', 'convert'].includes(out.prevView)) out.prevView = 'format';
+    if (!['format', 'tree', 'table', 'graph', 'convert', 'compare'].includes(out.view)) out.view = 'format';
+    if (!['format', 'tree', 'table', 'graph', 'convert'].includes(out.prevView)) out.prevView = 'format';
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
     out.wrap = out.wrap !== false;
@@ -169,6 +171,10 @@ export class Engine {
   private fileTarget: 1 | 2 = 1;
   readonly tree: TreeView;
   readonly table: TableView;
+  private graph: GraphViewApi | null = null;
+  private graphLoad: Promise<void> | null = null;
+  private graphRoot: { root: JNode | null; reset: boolean; nodes: number } = { root: null, reset: true, nodes: 0 };
+  private themeMedia: MediaQueryList;
   readonly code: CodeView;
   readonly fmt: CodeView;
   private els: EngineEls;
@@ -213,6 +219,8 @@ export class Engine {
     this.settings = this.saved = loadSettings();
     const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
     store.set({ settings: this.settings, mac });
+    this.themeMedia = matchMedia('(prefers-color-scheme: dark)');
+    this.themeMedia.addEventListener('change', this.onSystemTheme);
     this.applyTheme(this.settings.theme);
 
     this.ed = new Editor(els.editor, {
@@ -282,6 +290,7 @@ export class Engine {
     }
     store.set({ fileName: read(KEYS.file) });
     this.analyze();
+    if (this.settings.view === 'graph') this.setView('graph');
     if (this.ed2.text) this.analyzeCompare();
     delete document.documentElement.dataset.doc;
 
@@ -333,6 +342,8 @@ export class Engine {
     clearTimeout(this.expTimer);
     this.persistNow();
     this.ed.destroy();
+    this.themeMedia.removeEventListener('change', this.onSystemTheme);
+    this.graph?.destroy();
     this.tree.destroy();
     this.table.destroy();
     this.code.destroy();
@@ -424,6 +435,7 @@ export class Engine {
     this.good = res;
     this.goodPacked = null;
     this.tree.setRoot(this.good.root, false, this.good.nodes, false);
+    this.setGraphRoot(this.good.root, false, this.good.nodes);
     this.sel = this.selPath ? resolve(this.good.root, this.selPath) : null;
     this.tree.select(this.sel, { scroll: false });
   }
@@ -484,6 +496,7 @@ export class Engine {
       this.selPath = null;
       this.tablePath = [];
       this.tree.setRoot(null, true);
+      this.setGraphRoot(null, true);
       this.table.setNode(null);
       ed.setDiagnostics([]);
       ed.setScope(-1, -1);
@@ -517,6 +530,7 @@ export class Engine {
       this.sel = null;
       this.selPath = packedPosition(this.packed!.tree, ed.caret, this.packed!.document ?? text)?.path ?? null;
       this.tree.releaseRoot();
+      this.setGraphRoot(null, true);
       // Format already has the worker's output. Nodes are needed only by commands and other views.
       this.goodText = src;
       this.goodVer = ed.version;
@@ -528,8 +542,10 @@ export class Engine {
       this.goodText = src;
       this.goodVer = ed.version;
       this.tree.setRoot(res.root, reset, res.nodes, this.settings.view === 'tree');
+      this.setGraphRoot(res.root, reset, res.nodes);
       this.sel = this.selPath ? resolve(res.root, this.selPath) : null;
       this.tree.select(this.sel, { scroll: false });
+      if (this.settings.view === 'graph') this.graph?.select(this.sel);
       if (this.settings.view === 'table') {
         this.table.setNode(resolve(res.root, this.tablePath) ?? res.root, true);
       } else this.table.setNode(null);
@@ -542,6 +558,7 @@ export class Engine {
       this.goodText = '';
       this.goodVer = null;
       this.tree.setRoot(null, true);
+      this.setGraphRoot(null, true);
       this.table.setNode(null);
       ed.setScope(-1, -1);
     }
@@ -571,7 +588,7 @@ export class Engine {
     // The tree may have been hidden (empty state) while it was rebuilt; draw it once shown.
     if (this.settings.view === 'tree') requestAnimationFrame(() => this.tree.render(true));
     // Format/convert re-run their find when their text updates; the tree and table do it here.
-    if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table')) this.refind(false);
+    if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table' || this.settings.view === 'graph')) this.refind(false);
     this.syncTableState();
     this.updateBrackets();
     if (metrics && (res.root || lazy && this.packed!.tree.nodes.length) && !jwt) store.set({ sizes: this.measuredSizes?.id === this.loadSeq ? this.measuredSizes.sizes : { min: metrics.min, stale: false } });
@@ -680,6 +697,7 @@ export class Engine {
     if (!n || n === this.sel) return;
     this.setSel(n);
     this.tree.select(n, { scroll: true });
+    if (this.settings.view === 'graph') this.graph?.select(n, { scroll: true });
     this.ed.setScope(-1, -1);
   };
 
@@ -715,9 +733,9 @@ export class Engine {
     store.set({ path: n ? formatPath(this.selPath!) : null });
   }
 
-  private selectFromView(n: JNode, from: 'tree' | 'table' | 'search') {
+  private selectFromView(n: JNode, from: 'tree' | 'table' | 'graph' | 'search') {
     this.setSel(n);
-    if (from === 'table') this.tree.select(n, { scroll: true, center: true });
+    if (from === 'table' || from === 'graph') this.tree.select(n, { scroll: true, center: true });
     if (this.synced) {
       this.ed.setScope(n.s, n.e);
       if (!this.ed.isVisible(n.s)) this.ed.reveal(n.s, true);
@@ -1138,7 +1156,8 @@ export class Engine {
             this.goodMetrics = e.data.metrics ?? null;
             this.goodPacked = { id: -1, tree: e.data.tree, text: this.goodText, metrics: e.data.metrics };
             this.tree.releaseRoot();
-            if (this.settings.view === 'tree' || this.settings.view === 'table' || this.settings.view === 'convert') this.setView(this.settings.view);
+            this.setGraphRoot(null, true);
+            if (this.settings.view === 'tree' || this.settings.view === 'table' || this.settings.view === 'graph' || this.settings.view === 'convert') this.setView(this.settings.view);
           }
           else if (e.data.tree) done(e.data.tree, e.data.metrics);
           else if (e.data.sizes) { this.measuredSizes = { id, sizes: e.data.sizes }; store.set({ sizes: e.data.sizes }); }
@@ -1567,11 +1586,44 @@ export class Engine {
 
   // ── Commands: view ─────────────────────────────────────────────────────
 
+  private setGraphRoot(root: JNode | null, reset: boolean, nodes = 0) {
+    this.graphRoot = { root, reset, nodes };
+    this.graph?.setRoot(root, reset, nodes, this.settings.view === 'graph');
+  }
+
+  private loadGraph() {
+    return this.graphLoad ??= import('../graph/view').then(({ GraphView }) => {
+      if (this.dead) return;
+      const graph = new GraphView(this.els.graph, {
+        select: (n) => this.selectFromView(n, 'graph'),
+        open: (n) => this.openInEditor(n),
+        copy: (n, what) => what === 'path' ? this.copyPath(n) : this.copyValue(n),
+        escape: () => this.focusEditor(),
+      });
+      const { root, reset, nodes } = this.graphRoot;
+      graph.setRoot(root, reset, nodes, false);
+      this.graph = graph;
+    }).catch((error) => {
+      this.graphLoad = null;
+      reportError(error, 'import');
+      if (!this.dead) {
+        this.toast("Couldn't load the graph. Try opening it again.", 'err');
+        if (this.settings.view === 'graph') this.setView('format');
+      }
+    });
+  }
+
   private viewSeq = 0;
 
   setView(view: View, ready?: () => void) {
     this.flushLoad();
     const viewSeq = ++this.viewSeq;
+    if (view === 'graph' && !this.graph) {
+      void this.loadGraph().then(() => {
+        if (!this.dead && viewSeq === this.viewSeq && this.graph) this.setView(view, ready);
+      });
+      return;
+    }
     const packed = this.packed?.id === this.loadSeq ? this.packed : this.goodPacked;
     if (view !== 'format' && view !== 'compare' && packed) {
       const { tree, text, metrics } = packed;
@@ -1586,6 +1638,7 @@ export class Engine {
           this.good = res;
           this.goodPacked = null;
           this.tree.setRoot(res.root, false, res.nodes, false);
+          this.setGraphRoot(res.root, false, res.nodes);
           this.sel = this.selPath ? resolve(res.root, this.selPath) : null;
           this.tree.select(this.sel, { scroll: false });
         }
@@ -1595,6 +1648,7 @@ export class Engine {
       return;
     }
     const prev = this.settings.view;
+    if (prev === 'graph' && view !== 'graph') this.graph?.deactivate();
     if (prev !== view && !this.presetting) track('view_opened', { view, ...(view === 'convert' && { target: targetInfo(this.settings.target).id }) });
     if (this.query && prev !== view) this.findIn(prev, '');
     this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
@@ -1617,7 +1671,14 @@ export class Engine {
         if (!this.ed2.text) this.ed2.focus();
       });
     } else this.compareMarks(null, null);
-    ready?.();
+    if (view === 'graph') requestAnimationFrame(() => {
+      if (this.dead || viewSeq !== this.viewSeq || this.settings.view !== 'graph') return;
+      this.graph?.activate();
+      this.graph?.select(this.sel, { scroll: true });
+      if (this.query) this.refind(true);
+      ready?.();
+    });
+    else ready?.();
   }
 
   /** Leaves Compare for the view that was open before it. */
@@ -1924,19 +1985,21 @@ export class Engine {
 
   private foldView() {
     const v = this.settings.view;
-    if (v !== 'format' && v !== 'convert' && v !== 'tree') this.setView('format');
+    if (v !== 'format' && v !== 'convert' && v !== 'tree' && v !== 'graph') this.setView('format');
     return this.settings.view;
   }
 
   expandAll() {
     const v = this.foldView();
     track('feature_used', { feature: 'expand_all', view: v });
-    if (v === 'tree') this.tree.expandAll();
+    if (v === 'graph') this.graph?.expandAll();
+    else if (v === 'tree') this.tree.expandAll();
     else (v === 'format' ? this.fmt : this.code).unfoldAll();
   }
 
   collapseAll() {
-    this.expandTo(1, false);
+    if (this.settings.view === 'graph') this.graph?.collapseAll();
+    else this.expandTo(1, false);
     track('feature_used', { feature: 'collapse_all', view: this.settings.view });
   }
 
@@ -1944,7 +2007,8 @@ export class Engine {
   expandTo(level: number, report = true) {
     const v = this.foldView();
     if (report) track('feature_used', { feature: 'expand_level', view: v, level });
-    if (v === 'tree') this.tree.expandTo(level);
+    if (v === 'graph') this.graph?.expandTo(level);
+    else if (v === 'tree') this.tree.expandTo(level);
     else (v === 'format' ? this.fmt : this.code).foldLevel(level);
   }
 
@@ -1952,6 +2016,8 @@ export class Engine {
 
   private findIn(view: View, q: string): FindResult {
     switch (view) {
+      case 'graph':
+        return this.graph?.search(q, true) ?? { total: 0, index: -1 };
       case 'tree':
         return this.tree.search(q, true);
       case 'format':
@@ -1976,14 +2042,14 @@ export class Engine {
   /** Re-applies the query to the current view (after data or view changes). */
   private refind(jump: boolean) {
     const v = this.settings.view;
-    const r = v === 'tree' ? this.tree.search(this.query, jump) : this.findIn(v, this.query);
+    const r = v === 'graph' && this.graph ? this.graph.search(this.query, jump) : v === 'tree' ? this.tree.search(this.query, jump) : this.findIn(v, this.query);
     store.set({ find: { ...store.get().find, total: r.total, index: r.index, note: r.note } });
   }
 
   findStep(dir: 1 | -1) {
     const v = this.settings.view;
     const r: FindResult =
-      v === 'tree' ? this.tree.step(dir) : v === 'format' ? this.fmt.step(dir) : v === 'convert' ? this.code.step(dir) : v === 'table' ? this.table.step(dir) : { total: 0, index: -1 };
+      v === 'graph' && this.graph ? this.graph.step(dir) : v === 'tree' ? this.tree.step(dir) : v === 'format' ? this.fmt.step(dir) : v === 'convert' ? this.code.step(dir) : v === 'table' ? this.table.step(dir) : { total: 0, index: -1 };
     store.set({ find: { ...store.get().find, ...r } });
   }
 
@@ -2003,6 +2069,7 @@ export class Engine {
 
   copyView() {
     switch (this.settings.view) {
+      case 'graph':
       case 'tree':
         return this.sel ? this.copyValue(this.sel) : this.copyOutput();
       case 'table':
@@ -2016,6 +2083,8 @@ export class Engine {
 
   downloadView() {
     switch (this.settings.view) {
+      case 'graph':
+        return void this.downloadGraph('png');
       case 'table':
         return this.downloadCSV();
       case 'convert':
@@ -2023,6 +2092,37 @@ export class Engine {
       default:
         return this.downloadOutput();
     }
+  }
+
+  private withGraph(run: () => void) {
+    if (this.settings.view === 'graph' && this.graph) run();
+    else this.setView('graph', run);
+  }
+
+  fitGraph() {
+    this.withGraph(() => {
+      track('feature_used', { feature: 'graph_fit' });
+      this.graph?.fit();
+    });
+  }
+
+  zoomGraph(factor: number) {
+    track('feature_used', { feature: factor > 1 ? 'graph_zoom_in' : 'graph_zoom_out' });
+    this.graph?.zoomBy(factor);
+  }
+
+  downloadGraph(kind: 'png' | 'svg') {
+    this.withGraph(() => {
+      if (!this.graph) return;
+      track('feature_used', { feature: kind === 'png' ? 'graph_export_png' : 'graph_export_svg' });
+      const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
+      void this.graph.exportImage(kind).then((blob) => {
+        if (!this.dead) this.saveBlob(blob, `${base}.${kind}`);
+      }).catch((error) => {
+        reportError(error, 'export');
+        if (!this.dead) this.toast(rt("Couldn't download graph: {error}", { error: rt.msg(error instanceof Error ? error.message : 'Graph export failed') }), 'err');
+      });
+    });
   }
 
   /** Opens the find bar for the open view, prefilled with the editor selection. */
@@ -2046,7 +2146,8 @@ export class Engine {
 
   /** Esc in the editor: move focus to the viewer without changing views. */
   private leaveEditor() {
-    if (this.settings.view === 'tree' && !store.get().empty) this.tree.focus();
+    if (this.settings.view === 'graph' && !store.get().empty) this.graph?.focus();
+    else if (this.settings.view === 'tree' && !store.get().empty) this.tree.focus();
     else document.querySelector<HTMLElement>('.pane-view [role="tab"][aria-selected="true"]')?.focus();
   }
 
@@ -2157,6 +2258,14 @@ export class Engine {
     this.setSettings({ split: Math.min(0.8, Math.max(0.2, split)) });
   }
 
+  private onSystemTheme = () => {
+    if (this.settings.theme === 'system') this.graphThemeChanged();
+  };
+
+  private graphThemeChanged() {
+    requestAnimationFrame(() => { if (!this.dead) this.graph?.themeChanged(); });
+  }
+
   private applyTheme(theme: Theme) {
     const root = document.documentElement;
     if (theme === 'system') delete root.dataset.theme;
@@ -2167,6 +2276,7 @@ export class Engine {
       const own = media.includes('dark') ? THEME_COLORS.dark : THEME_COLORS.light;
       m.content = theme === 'system' ? own : THEME_COLORS[theme];
     });
+    this.graphThemeChanged();
   }
 
   // ── UI helpers ─────────────────────────────────────────────────────────
@@ -2204,8 +2314,8 @@ export class Engine {
     // Alt+Z like VS Code (on macOS, Option+Z types Ω: not while typing).
     else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ' && !(s.mac && typing)) run = () => this.toggleWrap();
     // On macOS, Option+digit types characters (#, €…): never steal it while typing.
-    else if (e.altKey && !mod && /^Digit[1-5]$/.test(e.code) && !(s.mac && typing)) {
-      const views: View[] = ['format', 'tree', 'table', 'convert', 'compare'];
+    else if (e.altKey && !mod && /^Digit[1-6]$/.test(e.code) && !(s.mac && typing)) {
+      const views: View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
       run = () => this.setView(views[Number(e.code.slice(5)) - 1]);
     }
     else if (!typing && !mod && !e.altKey) {
@@ -2337,6 +2447,7 @@ export class Engine {
           },
           () => this.reindentWorker(),
           () => loadSurface(),
+          () => import('../graph/view').catch(() => {}),
         );
         const next = () => {
           const step = steps.shift();
