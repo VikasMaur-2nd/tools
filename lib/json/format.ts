@@ -87,37 +87,58 @@ export function reindent(src: string, indent: string): string | null {
 
 /**
  * Size of strict JSON's minified text (what `reindent(src, '')` makes) without making it: the UTF-8
- * `bytes` of `src`, less the whitespace between tokens, adjusted for the strings it re-quotes.
+ * bytes of its tokens, with the strings it re-quotes (escapes, surrogates) measured as re-quoted.
  * Null if a string doesn't parse (not strict JSON).
  */
-export function minifiedBytes(src: string, bytes: number): number | null {
-  let size = bytes;
+export function minifiedBytes(src: string): number | null {
+  return minifiedBytesIn(src)(Infinity) as number | null;
+}
+
+/** `minifiedBytes` in steps: undefined until done, so a big document is measured between input events. */
+export function minifiedBytesIn(src: string): (until: number) => number | null | undefined {
   const n = src.length;
-  for (let i = 0; i < n; i++) {
-    const c = src.charCodeAt(i);
-    if (c === 34) {
-      let j = i + 1;
-      let special = false;
-      for (; j < n; j++) {
-        const d = src.charCodeAt(j);
-        if (d === 34) break;
-        if (d === 92) {
-          special = true;
-          j++;
-        } else if (d < 32 || (d >= 0xd800 && d <= 0xdfff)) special = true;
-      }
-      if (special) {
-        const token = src.slice(i, j + 1);
-        try {
-          size += byteLength(quote(JSON.parse(token) as string)) - byteLength(token);
-        } catch {
-          return null;
+  let i = 0;
+  let size = 0;
+  return (until) => {
+    while (i < n) {
+      const stop = Math.min(n, i + 65_536);
+      while (i < stop) {
+        const c = src.charCodeAt(i);
+        if (c !== 34) {
+          // Between tokens only ASCII is valid, and whitespace goes.
+          if (c !== 32 && c !== 10 && c !== 13 && c !== 9) size++;
+          i++;
+          continue;
+        }
+        const a = i;
+        let special = false;
+        let bytes = 2;
+        for (i++; i < n; i++) {
+          const d = src.charCodeAt(i);
+          if (d === 34) break;
+          if (d === 92) {
+            special = true;
+            i++;
+          } else if (d < 32) special = true;
+          else if (d < 0x80) bytes++;
+          else if (d < 0x800) bytes += 2;
+          else if (d >= 0xd800 && d <= 0xdfff) special = true;
+          else bytes += 3;
+        }
+        i++;
+        if (!special) size += bytes;
+        else {
+          try {
+            size += byteLength(quote(JSON.parse(src.slice(a, i)) as string));
+          } catch {
+            return null;
+          }
         }
       }
-      i = j;
-    } else if (c === 32 || c === 10 || c === 13 || c === 9) size--;
-  }
-  return size;
+      if (i < n && performance.now() >= until) return undefined;
+    }
+    return size;
+  };
 }
 
 /** Copy of `buf` (its first `len` units) with room for `k` more. */

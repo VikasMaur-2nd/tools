@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyCodeChange, codeChange, codeChanger, codeIndexer } from '../lib/json/code-index';
 import { documentMetrics } from '../lib/json/metrics';
-import { byteLength, formatDoc, minifiedBytes } from '../lib/json/format';
+import { byteLength, formatDoc, minifiedBytes, minifiedBytesIn } from '../lib/json/format';
 import { parse } from '../lib/json/parser';
 
 test('code index preserves empty and trailing lines and nested fold pairs', () => {
@@ -53,7 +53,12 @@ test('the minified size of strict JSON, counted without minifying, matches the m
   for (const text of samples) {
     const res = parse(text);
     assert.ok(res.root && !res.error && !res.issues.length, text.slice(0, 40));
-    assert.equal(minifiedBytes(text, byteLength(text)), byteLength(formatDoc(text, res, '')), text.slice(0, 40));
+    assert.equal(minifiedBytes(text), byteLength(formatDoc(text, res, '')), text.slice(0, 40));
+    // In steps too, however small.
+    const step = minifiedBytesIn(text);
+    let got;
+    while ((got = step(0)) === undefined);
+    assert.equal(got, minifiedBytes(text));
   }
 });
 

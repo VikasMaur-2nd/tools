@@ -1,5 +1,5 @@
 import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
-import { byteLength, copyText, formatDoc, reindent, reindenter, stringify } from '../json/format';
+import { byteLength, copyText, formatDoc, minifiedBytesIn, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
@@ -629,6 +629,20 @@ export class Engine {
    * The minified document for `measure`: a big strict one in short steps (in one go it would block the
    * page for seconds), with the same text formatDoc makes. null if superseded.
    */
+  /** Strict `text`'s minified size, counted in short steps; null if superseded or not strict. */
+  private minifiedSize(text: string, seq: number): Promise<number | null> {
+    const run = minifiedBytesIn(text);
+    return new Promise((done) => {
+      const step = () => {
+        if (seq !== this.sizeSeq) return done(null);
+        const n = run(performance.now() + 8);
+        if (n === undefined) soon(step);
+        else done(n);
+      };
+      step();
+    });
+  }
+
   private minified(text: string, res: ParseResult, seq: number): Promise<string | null> {
     if (text.length < 1_000_000 || res.error || res.issues.length || res.multi) return Promise.resolve(formatDoc(text, res, ''));
     const run = reindenter(text, '');
@@ -655,10 +669,15 @@ export class Engine {
     this.sizeTimer = window.setTimeout(
       () => idle(async () => {
         if (seq !== this.sizeSeq) return;
+        // Beyond 32 MB nothing is compressed: a strict document that big has its size counted in steps,
+        // and the minified copy (decoded at once, a long task) isn't made at all.
+        if (text.length > 32_000_000 && !res.error && !res.issues.length && !res.multi) {
+          const bytes = await this.minifiedSize(text, seq);
+          if (seq !== this.sizeSeq) return;
+          if (bytes !== null && bytes > 32_000_000) return void store.set({ sizes: { min: bytes, stale: false } });
+        }
         const min = await this.minified(text, res, seq);
         if (min === null || seq !== this.sizeSeq) return;
-        // (Beyond 32 MB nothing is compressed: its bytes are counted, as a Blob of it would block the page.)
-        if (min.length > 32_000_000) return void store.set({ sizes: { min: byteLength(min), stale: false } });
         const blob = new Blob([min]);
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.

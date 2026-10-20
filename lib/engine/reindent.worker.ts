@@ -149,7 +149,7 @@ function analyse(data: Request, text: string) {
   // is made after, only for what needs it (compressed sizes, the escaped size).
   const strict = !!res.root && !res.error && !res.issues.length && !res.multi;
   let min = res.root && (!strict || data.escape) ? formatDoc(text, res, '') : null;
-  const metrics = documentMetrics(text, res, min ?? undefined, strict ? minifiedBytes(text, byteLength(text)) ?? undefined : undefined);
+  const metrics = documentMetrics(text, res, min ?? undefined, strict ? minifiedBytes(text) ?? undefined : undefined);
   if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   const tree = packStrings(packTree(res, text));
