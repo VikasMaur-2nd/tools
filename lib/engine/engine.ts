@@ -115,18 +115,27 @@ function loadSettings(): Settings {
  * every object key's colon (all ASCII).
  */
 function prettyExtra(root: JNode, unit: number): number {
-  if (root.t < ARR) return 0;
+  return prettyExtraIn(root, unit)(Infinity)!;
+}
+
+/** prettyExtra in steps: undefined until done (a big tree is walked between input events). */
+function prettyExtraIn(root: JNode, unit: number): (until: number) => number | undefined {
+  if (root.t < ARR) return () => 0;
   let extra = 0;
   const stack: JNode[] = [root];
-  while (stack.length) {
-    const n = stack.pop() as JNode;
-    const list = n.v as JNode[];
-    const k = list.length;
-    if (!k) continue;
-    extra += k * (1 + (n.d + 1) * unit) + 1 + n.d * unit + (n.t === OBJ ? k : 0);
-    for (const c of list) if (c.t >= ARR) stack.push(c);
-  }
-  return extra;
+  return (until) => {
+    for (let i = 1; stack.length; i++) {
+      const n = stack.pop() as JNode;
+      const list = n.v as JNode[];
+      const k = list.length;
+      if (k) {
+        extra += k * (1 + (n.d + 1) * unit) + 1 + n.d * unit + (n.t === OBJ ? k : 0);
+        for (const c of list) if (c.t >= ARR) stack.push(c);
+      }
+      if ((i & 1023) === 0 && stack.length && performance.now() >= until) return undefined;
+    }
+    return extra;
+  };
 }
 
 /** Opened JSON Lines files: even one record reads as a list of records. */
@@ -616,6 +625,24 @@ export class Engine {
    * settles (one minify + native compression per codec, never on the
    * keystroke). Invalid documents have none.
    */
+  /**
+   * The minified document for `measure`: a big strict one in short steps (in one go it would block the
+   * page for seconds), with the same text formatDoc makes. null if superseded.
+   */
+  private minified(text: string, res: ParseResult, seq: number): Promise<string | null> {
+    if (text.length < 1_000_000 || res.error || res.issues.length || res.multi) return Promise.resolve(formatDoc(text, res, ''));
+    const run = reindenter(text, '');
+    return new Promise((done) => {
+      const step = () => {
+        if (seq !== this.sizeSeq) return done(null);
+        const out = run(performance.now() + 8);
+        if (out === undefined) soon(step);
+        else done(out ?? formatDoc(text, res, ''));
+      };
+      step();
+    });
+  }
+
   private measure(res: ParseResult | null, text: string) {
     clearTimeout(this.sizeTimer);
     const seq = ++this.sizeSeq;
@@ -628,7 +655,11 @@ export class Engine {
     this.sizeTimer = window.setTimeout(
       () => idle(async () => {
         if (seq !== this.sizeSeq) return;
-        const blob = new Blob([formatDoc(text, res, '')]);
+        const min = await this.minified(text, res, seq);
+        if (min === null || seq !== this.sizeSeq) return;
+        // (Beyond 32 MB nothing is compressed: its bytes are counted, as a Blob of it would block the page.)
+        if (min.length > 32_000_000) return void store.set({ sizes: { min: byteLength(min), stale: false } });
+        const blob = new Blob([min]);
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
         if (blob.size <= 32_000_000) {
@@ -1139,10 +1170,15 @@ export class Engine {
   }
 
   /** Full stats and packed nodes may follow output, but must never block its worker. */
-  private queueAnalysis(id: number, document: Doc, name: string | null, done: (tree?: PackedTree, metrics?: DocumentMetrics) => void) {
+  /**
+   * Parses `document` in the analysis worker after `wait` ms (a typing pause), then `done(tree, metrics)`.
+   * `failed`: the worker couldn't do it (a load then analyses here; typing never does).
+   */
+  private queueAnalysis(id: number, document: Doc, name: string | null, done: (tree?: PackedTree, metrics?: DocumentMetrics) => void, wait = 2200, failed?: () => void) {
     clearTimeout(this.analysisTimer);
     this.analysisTimer = window.setTimeout(() => {
-      if (id !== this.loadSeq || this.dead || this.analysisFails >= 3) return;
+      if (id !== this.loadSeq || this.dead) return;
+      if (this.analysisFails >= 3) return failed?.();
       try {
         const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
         const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
@@ -1169,13 +1205,14 @@ export class Engine {
           reportError(e.error ?? new Error(), 'worker');
           this.analysisFails++;
           w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
+          if (id === this.loadSeq) failed?.();
         };
         const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape };
         const current = () => this.postDocument(w, request, document, true);
         if (good) this.postDocument(w, { ...request, good: true }, good, true, current);
         else current();
-      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; }
-    }, 2200);
+      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; failed?.(); }
+    }, wait);
   }
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
@@ -1247,7 +1284,33 @@ export class Engine {
     const rest = () => {
       if (seq !== this.loadSeq) return;
       this.loaded = true;
-      this.analyze();
+      // A big document in the Format view is parsed and measured by the analysis worker, its tree kept
+      // packed until a command needs nodes (as after typing): the page would block on it for seconds.
+      // The other views need every node at once; without a worker, the page parses it too.
+      if (text.length >= WORKER_MIN && this.settings.view === 'format' && this.analysisFails < 3) {
+        const here = () => seq === this.loadSeq && this.analyze();
+        // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
+        clearTimeout(this.timer);
+        store.set({ empty: false, status: { kind: 'parsing' } });
+        this.queueAnalysis(seq, document, store.get().fileName, (tree, metrics) => {
+          if (seq !== this.loadSeq) return;
+          if (!tree) return here();
+          if (tree.nodes.length && this.fmtSrcVer === document && this.settings.view === 'format') {
+            this.packed = { id: seq, tree, text, metrics, document };
+            this.analyze({ ...tree.head, root: null }, metrics, true);
+            return;
+          }
+          // (The view changed meanwhile: its nodes, rebuilt in short slices.)
+          const step = unpacker(tree, text);
+          const run = () => {
+            if (seq !== this.loadSeq) return;
+            const res = step(performance.now() + 8);
+            if (res) this.analyze(res, metrics);
+            else soon(run);
+          };
+          run();
+        }, 0, here);
+      } else this.analyze();
       this.ed.el.scrollTop = 0;
       if (persist) this.persistSoon();
     };
@@ -1778,14 +1841,27 @@ export class Engine {
         store.set({ fmt: { lines: this.fmt.lineCount, pretty: cached.pretty, minified: cached.minified, escaped: cached.escaped } });
         return;
       }
+      const metrics = this.goodMetrics;
+      const root = this.good?.root;
+      if (metrics || !root) return counts(metrics ? metrics.extra + metrics.units * this.indent.length : 0);
+      // (No worker measured it: the tree is walked here, a big one in short steps.)
+      const walk = prettyExtraIn(root, this.indent.length);
+      const step = () => {
+        if (seq !== this.fmtStatSeq) return;
+        const extra = walk(text.length > 500_000 ? performance.now() + 8 : Infinity);
+        if (extra === undefined) soon(step);
+        else counts(extra);
+      };
+      step();
+    };
+    const counts = (extra: number) => {
       const { minify, escape } = this.settings;
       const metrics = this.goodMetrics;
-      const extra = metrics ? metrics.extra + metrics.units * this.indent.length : this.good?.root ? prettyExtra(this.good.root, this.indent.length) : 0;
       const bytes = metrics ? metrics.min + (this.settings.minify || this.settings.escape ? 0 : extra) : byteLength(text);
       const min = !text ? 0 : minify || escape ? bytes : bytes - extra;
-      const counts = { pretty: text ? min + extra : 0, minified: min, escaped: escape && text ? metrics?.escaped ?? byteLength(this.fmt.text) : 0 };
-      this.fmtCounts = { version: this.fmtVersion, ...counts };
-      store.set({ fmt: { lines: this.fmt.lineCount, ...counts } });
+      const sizes = { pretty: text ? min + extra : 0, minified: min, escaped: escape && text ? metrics?.escaped ?? byteLength(this.fmt.text) : 0 };
+      this.fmtCounts = { version: this.fmtVersion, ...sizes };
+      store.set({ fmt: { lines: this.fmt.lineCount, ...sizes } });
     };
     // A big document's sizes wait for a quiet moment (they only label the Pretty / Minify buttons).
     if (text.length > 500_000) idle(stats, 1000);
