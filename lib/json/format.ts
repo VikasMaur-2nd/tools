@@ -85,6 +85,41 @@ export function reindent(src: string, indent: string): string | null {
   return reindenter(src, indent)(Infinity) as string | null;
 }
 
+/**
+ * Size of strict JSON's minified text (what `reindent(src, '')` makes) without making it: the UTF-8
+ * `bytes` of `src`, less the whitespace between tokens, adjusted for the strings it re-quotes.
+ * Null if a string doesn't parse (not strict JSON).
+ */
+export function minifiedBytes(src: string, bytes: number): number | null {
+  let size = bytes;
+  const n = src.length;
+  for (let i = 0; i < n; i++) {
+    const c = src.charCodeAt(i);
+    if (c === 34) {
+      let j = i + 1;
+      let special = false;
+      for (; j < n; j++) {
+        const d = src.charCodeAt(j);
+        if (d === 34) break;
+        if (d === 92) {
+          special = true;
+          j++;
+        } else if (d < 32 || (d >= 0xd800 && d <= 0xdfff)) special = true;
+      }
+      if (special) {
+        const token = src.slice(i, j + 1);
+        try {
+          size += byteLength(quote(JSON.parse(token) as string)) - byteLength(token);
+        } catch {
+          return null;
+        }
+      }
+      i = j;
+    } else if (c === 32 || c === 10 || c === 13 || c === 9) size--;
+  }
+  return size;
+}
+
 /** Copy of `buf` (its first `len` units) with room for `k` more. */
 function grown(buf: Uint16Array, len: number, k: number) {
   const next = new Uint16Array(Math.max(buf.length * 2, len + k));

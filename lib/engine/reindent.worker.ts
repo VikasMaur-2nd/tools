@@ -1,5 +1,5 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
-import { byteLength, formatDoc, reindent } from '../json/format';
+import { byteLength, formatDoc, minifiedBytes, reindent } from '../json/format';
 import { packStrings, packTree } from '../json/pack';
 import { parse, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
@@ -145,15 +145,21 @@ self.onmessage = (e: MessageEvent<Request>) => {
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {
   const res = parse(text, { lines: data.lines });
-  const min = res.root ? formatDoc(text, res, '') : null;
-  const metrics = documentMetrics(text, res, min ?? '');
+  // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
+  // is made after, only for what needs it (compressed sizes, the escaped size).
+  const strict = !!res.root && !res.error && !res.issues.length && !res.multi;
+  let min = res.root && (!strict || data.escape) ? formatDoc(text, res, '') : null;
+  const metrics = documentMetrics(text, res, min ?? undefined, strict ? minifiedBytes(text, byteLength(text)) ?? undefined : undefined);
   if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   const tree = packStrings(packTree(res, text));
   (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, [tree.nodes.buffer, tree.parents.buffer, tree.words.text.buffer, tree.words.offsets.buffer]);
-  if (!data.good && min !== null && metrics.min <= 32_000_000) void compressedSizes(new Blob([min]), () => latest === data.id).then((sizes) => {
-    if (latest === data.id) self.postMessage({ id: data.id, sizes: { min: metrics.min, stale: false, ...sizes } });
-  });
+  if (!data.good && res.root && metrics.min <= 32_000_000) {
+    min ??= formatDoc(text, res, '');
+    void compressedSizes(new Blob([min]), () => latest === data.id).then((sizes) => {
+      if (latest === data.id) self.postMessage({ id: data.id, sizes: { min: metrics.min, stale: false, ...sizes } });
+    });
+  }
 }
 
 let scalar: { key: string; formatter: ScalarFormatter } | null = null;

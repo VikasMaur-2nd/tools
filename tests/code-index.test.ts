@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyCodeChange, codeChange, codeChanger, codeIndexer } from '../lib/json/code-index';
 import { documentMetrics } from '../lib/json/metrics';
-import { byteLength, formatDoc } from '../lib/json/format';
+import { byteLength, formatDoc, minifiedBytes } from '../lib/json/format';
 import { parse } from '../lib/json/parser';
 
 test('code index preserves empty and trailing lines and nested fold pairs', () => {
@@ -39,6 +39,21 @@ test('worker size metrics match formatted UTF-8 output for every indent', () => 
     for (const indent of ['  ', '    ', '\t']) {
       assert.equal(metrics.min + metrics.extra + metrics.units * indent.length, byteLength(formatDoc(text, res, indent)));
     }
+  }
+});
+
+test('the minified size of strict JSON, counted without minifying, matches the minified output', () => {
+  const samples = [
+    '{}', '[]', '42', '"a b"', ' { "a" : [ 1 , 2 ] } ', '{\r\n\t"k": "tab\\t and \\" quote",\r\n\t"v": [1e5, -0.5, true, null]\r\n}',
+    JSON.stringify({ é: ['😀 東京', { 'a "b"': 'x\\y', s: '   spaces   ' }], big: 12345678901234567890, n: [1.0, 2.50] }, null, 2),
+    '{"z":["\\u0061\\ud800",1.20e+9],"a":1,"a":900719925474099312345}',
+    '{ "esc": "\\u00e9\\n\\t\\/", "pair": "\\ud83d\\ude00", "raw": "😀", "ctl": "\\u0001" }',
+    '[' + Array.from({ length: 300 }, (_, i) => `{"id": ${i}, "name": "Zoë ${i}\\n", "tags": [ "a" , "b" ]}`).join(' ,\n ') + ']',
+  ];
+  for (const text of samples) {
+    const res = parse(text);
+    assert.ok(res.root && !res.error && !res.issues.length, text.slice(0, 40));
+    assert.equal(minifiedBytes(text, byteLength(text)), byteLength(formatDoc(text, res, '')), text.slice(0, 40));
   }
 });
 
