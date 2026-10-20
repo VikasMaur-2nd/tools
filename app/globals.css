@@ -1295,7 +1295,8 @@ kbd {
 }
 
 .view.stale .tv,
-.view.stale .tbl {
+.view.stale .tbl,
+.view.stale .gv-canvas {
   opacity: 0.45;
   filter: saturate(0.4);
 }
@@ -2558,6 +2559,167 @@ dialog[open] {
   flex: none;
 }
 
+/* Graph → Export image */
+.gx {
+  width: min(480px, calc(100vw - 24px));
+}
+
+.gx-form header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 6px 22px;
+}
+
+.gx-body {
+  display: grid;
+  gap: 12px;
+  padding: 8px 22px 4px;
+}
+
+.gx-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 28px;
+}
+
+.gx-label {
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.gx .seg button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gx-color {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gx-color.on {
+  background: var(--seg-on);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    0 0 0 1px var(--line);
+}
+
+.gx-color input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.gx-color input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.gx-color input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 50%;
+}
+
+.gx-color input::-moz-color-swatch {
+  border: 0;
+  border-radius: 50%;
+}
+
+/* Not chosen yet: a colour wheel says "any colour" (the swatch shows the colour once chosen). */
+.gx-color:not(.on) input {
+  background: conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444);
+}
+
+.gx-color:not(.on) input::-webkit-color-swatch {
+  opacity: 0;
+}
+
+.gx-color:not(.on) input::-moz-color-swatch {
+  opacity: 0;
+}
+
+.gx-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 12px var(--font-mono);
+}
+
+.gx-name .mi-input {
+  width: 190px;
+  height: 28px;
+}
+
+.gx-info {
+  min-height: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gx-info.err {
+  color: var(--err);
+}
+
+.gx-help {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+  font-size: 12.5px;
+}
+
+.gx-help p {
+  margin: 0;
+}
+
+.gx-alts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gx-alts .btn {
+  border-color: var(--line-2);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.gx-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 22px 18px;
+}
+
+.gx-foot .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 480px) {
+  .gx-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
 /* Narrow viewer pane: the view's controls wrap onto their own row. */
 @container (max-width: 600px) {
   .pane-view > .toolbar {
@@ -3175,4 +3337,163 @@ button.mi:focus-visible {
   .ed.focused .ed-ink .c {
     animation: ed-blink 1s step-end infinite;
   }
+}
+
+/* ── Graph view ── */
+.gv {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  outline: none;
+  /* Matches the canvas (lib/graph/theme.ts): off-white in light, the page black in dark. */
+  background: var(--bg-2);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gv-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  cursor: grab;
+}
+
+.gv.gv-hot .gv-canvas {
+  cursor: default;
+}
+
+.gv.gv-drag .gv-canvas {
+  cursor: grabbing;
+}
+
+.gv:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-line);
+}
+
+.gv-ctl {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.gv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-2);
+  font: 500 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.gv-btn:hover {
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.gv-btn:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: -2px;
+}
+
+.gv-pct {
+  min-width: 48px;
+}
+
+.gv-ctl > :first-child::after {
+  left: 0;
+  transform: none;
+}
+
+.gv-mini {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.gv-mini.gv-mini-on {
+  cursor: grab;
+}
+
+.gv-mini.gv-mini-drag {
+  cursor: grabbing;
+}
+
+.gv-note {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font: 12px/1.4 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.gv-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  max-width: min(480px, calc(100% - 16px));
+  max-height: 240px;
+  overflow: hidden;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: var(--tip-bg);
+  color: var(--tip-fg);
+  font: 12px/1.45 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+}
+
+.gv-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .gv {
+    background: var(--bg);
+  }
+}
+
+:root[data-theme='dark'] .gv {
+  background: var(--bg);
 }

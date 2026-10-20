@@ -419,6 +419,23 @@ function ViewMenu() {
               <MItem label="Download Excel (.xlsx)" onClick={() => act((e) => e.exportExcel())} close={close} />
             </>
           )}
+          {view === 'graph' && (
+            <>
+              <MHead>Graph</MHead>
+              <MItem label="Fit to screen" keys="0" onClick={() => act((e) => e.fitGraph())} close={close} />
+              <MItem label="Zoom in" keys="+" onClick={() => act((e) => e.zoomGraph(1.25))} close={close} />
+              <MItem label="Zoom out" keys="-" onClick={() => act((e) => e.zoomGraph(0.8))} close={close} />
+              <FoldItems close={close} />
+              <MSep />
+              <MItem label="Copy path" keys="P" onClick={() => act((e) => e.copyPath())} close={close} />
+              <MItem label="Copy value" keys="C" onClick={() => act((e) => e.copyValue())} close={close} />
+              <MItem label="Go to start" keys="Home" onClick={() => act((e) => e.graphJump('start'))} close={close} />
+              <MItem label="Go to end" keys="End" onClick={() => act((e) => e.graphJump('end'))} close={close} />
+              <MSep />
+              <MItem label="Export image…" onClick={() => act((e) => e.openGraphExport())} close={close} />
+              <MItem label="Copy image" onClick={() => act((e) => e.copyGraphImage())} close={close} />
+            </>
+          )}
           {view === 'convert' && (
             <>
               <MHead>{info.label}</MHead>
@@ -507,7 +524,7 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
           run(e.target.value);
         }}
         onKeyDown={onKey}
-        placeholder={t(view === 'tree' ? 'Find, or $.path' : 'Find')}
+        placeholder={t(view === 'tree' || view === 'graph' ? 'Find, or $.path' : 'Find')}
         aria-label={t('Find in view')}
         spellCheck={false}
         autoComplete="off"
@@ -556,6 +573,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'format', label: 'Format' },
   { id: 'tree', label: 'Tree' },
   { id: 'table', label: 'Table' },
+  { id: 'graph', label: 'Graph' },
   { id: 'convert', label: 'Convert' },
   { id: 'compare', label: 'Compare' },
 ];
@@ -693,7 +711,7 @@ function ViewToolbar() {
       <span className="grow" />
       <div className="vmain">
         {view === 'format' && <OutputStyle />}
-        {view === 'tree' && <TreePath />}
+        {(view === 'tree' || view === 'graph') && <TreePath />}
         {view === 'table' && <Crumbs />}
         {view === 'convert' && <TargetPick />}
       </div>
@@ -708,8 +726,8 @@ function ViewToolbar() {
           >
             <Icon name="search" />
           </button>
-          <Btn icon="copy" label={view === 'tree' ? 'Copy (selected value or all)' : view === 'table' ? 'Copy as CSV' : 'Copy'} hideLabel onClick={() => act((e) => e.copyView())} />
-          <Btn icon="download" label={view === 'table' ? 'Download CSV' : 'Download'} hideLabel onClick={() => act((e) => e.downloadView())} />
+          <Btn icon="copy" label={view === 'tree' || view === 'graph' ? 'Copy (selected value or all)' : view === 'table' ? 'Copy as CSV' : 'Copy'} hideLabel onClick={() => act((e) => e.copyView())} />
+          <Btn icon="download" label={view === 'graph' ? 'Export image' : view === 'table' ? 'Download CSV' : 'Download'} hideLabel onClick={() => act((e) => e.downloadView())} />
           <ViewMenu />
         </div>
       )}
@@ -816,12 +834,14 @@ function ConvertNote() {
 function ViewerPane({
   treeRef,
   tableRef,
+  graphRef,
   codeRef,
   fmtRef,
 }: {
   treeRef: React.RefObject<HTMLDivElement | null>;
   fmtRef: React.RefObject<HTMLDivElement | null>;
   tableRef: React.RefObject<HTMLDivElement | null>;
+  graphRef: React.RefObject<HTMLDivElement | null>;
   codeRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const view = useUI((s) => s.settings.view);
@@ -862,6 +882,7 @@ function ViewerPane({
             {t('Select an array or object in the tree to see it as a table.')}
           </div>
         </div>
+        <div id="view-graph" className="gv" ref={graphRef} tabIndex={0} hidden={view !== 'graph' || empty} />
         <div id="view-convert" className="cv" ref={codeRef} hidden={view !== 'convert' || empty} tabIndex={0} aria-label={t('Converted output')}>
           <div className="cv-sizer">
             <div className="cv-rows" />
@@ -874,6 +895,15 @@ function ViewerPane({
       </div>
     </section>
   );
+}
+
+// The graph's export dialog is code-split too: it loads the first time it opens
+// (and is prefetched with Compare, for offline use).
+const GraphExportDialog = dynamic(() => import('./GraphExport'), { ssr: false });
+
+function GraphExportHost() {
+  const open = useUI((s) => s.graphExport);
+  return open ? <GraphExportDialog /> : null;
 }
 
 // Compare is code-split: it loads the first time its tab opens (and is
@@ -1115,7 +1145,7 @@ function ToastHost() {
   const toast = useUI((s) => s.toast);
   const t = useT();
   return (
-    <div className="toasts" aria-live="polite" role="status">
+    <div className={`toasts ${PRIVATE}`} aria-live="polite" role="status">
       {toast && (
         <div key={toast.id} className={`toast ${toast.kind}`}>
           {toast.kind === 'ok' && <Icon name="check" size={14} />}
@@ -1167,6 +1197,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const edRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  const graphRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLDivElement>(null);
   const fmtRef = useRef<HTMLDivElement>(null);
@@ -1182,6 +1213,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       editor: edRef.current!,
       tree: treeRef.current!,
       table: tableRef.current!,
+      graph: graphRef.current!,
       file: fileRef.current!,
       code: codeRef.current!,
       fmt: fmtRef.current!,
@@ -1191,7 +1223,10 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
     // A landing page's sample loads in the next task: hydration and the empty editor
     // paint first, and neither half is one long blocking task on a slow phone.
     const sample = pagePreset?.initialText ? window.setTimeout(() => e.applyPreset(pagePreset), 0) : 0;
-    const warm = window.setTimeout(() => idle(() => void import('./CompareView')), 6000);
+    const warm = window.setTimeout(() => idle(() => {
+      void import('./CompareView');
+      void import('./GraphExport');
+    }), 6000);
     return () => {
       window.clearTimeout(sample);
       window.clearTimeout(warm);
@@ -1206,7 +1241,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       {!preset && (
         <>
           <h1 className="sr-only">{t('Tool Kumar: JSON Formatter & Viewer')}</h1>
-          <p className="sr-only">{t('Format, validate, repair and explore JSON instantly. Tree, table, convert and compare views. No upload, no ads, works offline.')}</p>
+          <p className="sr-only">{t('Format, validate, repair and explore JSON instantly. Tree, table, graph, convert and compare views. No upload, no ads, works offline.')}</p>
         </>
       )}
       {/* The page supplies the main landmark (home: around the tool and its guide; landing pages: the content below). */}
@@ -1215,13 +1250,14 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
         <ComparePane edRef={ed2Ref} />
         <Splitter />
         <Watermark />
-        <ViewerPane treeRef={treeRef} tableRef={tableRef} codeRef={codeRef} fmtRef={fmtRef} />
+        <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} />
       </div>
       <StatusBar langs={langs} />
       <ToastHost />
       <DropOverlay />
       <CommandPalette />
       <ShortcutsDialog />
+      <GraphExportHost />
       <input ref={fileRef} className={PRIVATE} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />
     </div>
   );

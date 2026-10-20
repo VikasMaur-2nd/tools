@@ -1741,5 +1741,88 @@
         "answer": "Sim. “NDJSON para JSON” lê as linhas e retorna um único array JSON."
       }
     ]
+  },
+  "json-visualizer": {
+    "hash": "534e51af307b",
+    "title": "Visualizador JSON: grafo interativo",
+    "description": "Visualize JSON como um grafo ao lado do editor. Busque caminhos e valores, exporte PNG, JPEG ou SVG e mantenha os documentos no navegador.",
+    "heading": "Visualizador JSON",
+    "query": "visualizador json",
+    "secondary": [
+      "visualizador de grafo JSON",
+      "visualizar JSON online"
+    ],
+    "intro": "Cole JSON ou abra um arquivo para explorá-lo como um diagrama de nós e conexões ao lado do editor. Objetos e arrays aparecem como cartões com chaves e valores em cores por tipo. Arrays pequenos de valores primitivos ficam em linha, valores de cor mostram uma amostra e as conexões ligam objetos e arrays aninhados ao pai.",
+    "modeLabel": "Grafo JSON interativo",
+    "exampleLabel": "Esta resposta de API tem uma equipe, dois projetos com responsáveis em objetos aninhados e dados de paginação. Siga as conexões na visualização de grafo acima. O JSON formatado abaixo mostra os mesmos dados.",
+    "steps": [
+      "Cole JSON, abra um arquivo local ou carregue uma URL. Esta página abre a visualização de grafo.",
+      "Arraste ou role para mover. Use Ctrl/⌘+rolagem, pinça, os botões + e − ou o teclado para dar zoom. Pressione 0 para ajustar o grafo à tela, F para tela cheia ou arraste o minimapa para navegar.",
+      "Clique em um cartão ou valor para selecioná-lo no editor. Mova o cursor do editor para destacar o cartão correspondente e o caminho desde a raiz.",
+      "Pressione Ctrl/⌘F para buscar chaves e valores ou digite um caminho concreto, como $.data.projects[1].owner, ou um JSON Pointer. A busca percorre as correspondências.",
+      "Abra Exportar imagem para escolher PNG, JPEG ou SVG, o grafo inteiro, a área visível ou o ramo selecionado, um fundo, resolução 1×, 2× ou 3× e um nome de arquivo. Copie a imagem para a área de transferência quando precisar."
+    ],
+    "options": [
+      "Recolha ou expanda qualquer ramo. Use Expandir tudo, Recolher tudo ou expanda até um nível escolhido quando o documento for denso.",
+      "A navegação pelo teclado usa as setas, Enter e Espaço. Home e End vão ao início e ao fim; PageUp e PageDown rolam a página.",
+      "As dicas exibem os valores completos. Datas e horários epoch aparecem em formato legível. Copie um valor selecionado ou seu caminho no grafo ou no editor.",
+      "Alterne entre Grafo, Árvore e Tabela para examinar relações, campos aninhados ou registros. Use a árvore para ler em ordem e a tabela para comparar colunas.",
+      "Use o modo claro ou escuro no computador, no celular ou com toque. O processamento JSON e a exportação de imagens acontecem no navegador e funcionam offline após a primeira visita."
+    ],
+    "faqs": [
+      {
+        "question": "O que é um visualizador JSON?",
+        "answer": "Um visualizador JSON transforma JSON aninhado em um diagrama explorável. Este visualizador de grafo mostra objetos e arrays como cartões, lista chaves e valores com cores por tipo, mantém arrays pequenos de valores primitivos em linha e conecta contêineres aninhados com linhas."
+      },
+      {
+        "question": "Como visualizar um arquivo JSON grande?",
+        "answer": "Abra o arquivo e escolha Grafo. O grafo é desenhado em um canvas e apenas a área visível é pintada. Em uma máquina na nuvem com 4 núcleos usando uma compilação de produção do Chromium, a primeira pintura do grafo após abrir a visualização Graph mediu 123 ms para 1 MB, 375 ms para 10 MB, 1,1 s para 50 MB com 193.000 objetos e 2,3 s para um arquivo com 1.000.001 objetos. Os quadros de deslocamento e zoom mediram no máximo 4 ms no p95, cerca de 9 ms em um GeoJSON denso de 20 MB. Essas medidas dependem do dispositivo. Recolha ramos e use Buscar ou um caminho concreto para chegar a um valor."
+      },
+      {
+        "question": "Este visualizador JSON é privado?",
+        "answer": "Sim. Seu JSON fica no navegador e nunca é enviado para processamento. O grafo também funciona offline depois que o aplicativo carrega. Carregar uma URL exige conexão com essa URL."
+      },
+      {
+        "question": "Posso exportar o grafo JSON como imagem?",
+        "answer": "Sim. Exporte PNG, JPEG ou SVG. Escolha o grafo inteiro, a área visível ou o ramo selecionado; defina a cor do tema, branco, transparente (PNG/SVG) ou qualquer cor de fundo; escolha resolução 1×, 2× ou 3×; defina um nome de arquivo; ou copie a imagem para a área de transferência. A exportação é local no navegador."
+      },
+      {
+        "question": "Qual é a diferença entre o grafo, a árvore JSON e a tabela?",
+        "answer": "O grafo distribui objetos e arrays aninhados em cartões conectados para acompanhar vários ramos. A árvore JSON mostra os campos em ordem e com recuo para leitura e caminhos. A tabela coloca registros em linhas e chaves em colunas para comparação. Você pode alternar as visualizações com o mesmo documento."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Confira se uma resposta JSON foi cortada"
+      },
+      {
+        "slug": "trailing-comma",
+        "text": "Corrija uma vírgula final antes de visualizar o JSON"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Grafo, árvore ou tabela: qual usar?",
+        "paragraphs": [
+          "Use o Grafo para ver relações entre pais e filhos em respostas de API aninhadas, arquivos de configuração ou dados de eventos. Os cartões conectados mostram irmãos, responsáveis, metadados e paginação de uma vez, e o caminho destacado mostra como o valor selecionado se liga à raiz.",
+          "Use a Árvore para ler os campos na ordem do documento, copiar um JSONPath ou JSON Pointer concreto ou examinar um ramo profundo nível por nível. Use a Tabela quando uma matriz de registros for mais fácil de comparar por coluna. Todas as visualizações usam o mesmo documento, sem recarregá-lo.",
+          "Ao comparar alternativas ao JSON Crack, este grafo fica ao lado do editor, sincroniza a seleção nos dois sentidos, aceita navegação pelo teclado e exportação local em PNG, JPEG e SVG, sem exigir conta para o trabalho local."
+        ]
+      },
+      {
+        "heading": "Como os grafos JSON grandes são desenhados",
+        "paragraphs": [
+          "A visualização de grafo usa um canvas e pinta apenas a parte visível. O layout é construído em pequenos blocos para que a página continue respondendo enquanto prepara um documento grande. O minimapa e o ajuste à tela ajudam na orientação, e recolher ramos reduz os detalhes na tela.",
+          "O navegador ainda precisa de memória para ler o JSON e construir a estrutura. O tamanho do arquivo, o aninhamento, a quantidade de objetos e a memória do dispositivo afetam o carregamento. Os tempos acima foram medidos em uma máquina na nuvem com 4 núcleos e não são uma promessa para todo celular ou computador. Busque uma chave, um valor ou um caminho concreto em vez de seguir cada conexão de um arquivo denso."
+        ]
+      },
+      {
+        "heading": "Exportar uma imagem do grafo",
+        "paragraphs": [
+          "Exporte o grafo inteiro, a área visível ou o ramo selecionado como PNG, JPEG ou SVG. Escolha o fundo do tema, branco, transparente (PNG/SVG) ou qualquer cor, depois selecione resolução 1×, 2× ou 3× e um nome de arquivo. A mesma caixa de diálogo pode copiar a imagem para a área de transferência; a exportação fica no navegador."
+        ]
+      }
+    ]
   }
 }

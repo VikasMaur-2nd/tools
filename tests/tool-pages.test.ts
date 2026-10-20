@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TOOL_PAGES } from '../lib/tool-pages';
+import { LOCALES } from '../lib/i18n/locales';
 import { persistenceAfterChange, persistenceAfterLoad } from '../lib/engine/rules';
 
 test('dedicated tool pages have unique slugs and working presets', () => {
@@ -105,6 +108,30 @@ test('all pages have distinct search metadata and resolvable related links', () 
     assert.equal(page.preset.settings?.minify, false);
     assert.ok(page.related.includes('privacy-study'));
     assert.ok(page.related.includes(slug === 'offline-json-formatter' ? 'secure-json-formatter' : 'offline-json-formatter'));
+  }
+});
+
+test('JSON visualizer landing page keeps its search-facing coverage', () => {
+  const page = TOOL_PAGES.find((entry) => entry.slug === 'json-visualizer')!;
+  assert.ok(page.title.startsWith('JSON visualizer'));
+  assert.ok(`${page.title} | Tool Kumar`.length <= 60);
+  assert.ok(page.description.length <= 155);
+  assert.equal(page.faqs.length, 5);
+  assert.equal(page.sections?.length, 3);
+  assert.ok(page.sections?.some((section) => /tree|table/i.test(section.heading)));
+  assert.ok(page.sections?.some((section) => /large JSON/i.test(section.heading)));
+  assert.ok(page.sections?.some((section) => /export/i.test(section.heading)));
+  assert.deepEqual(page.related.slice(0, 4), ['large-json-viewer', 'json-path-finder', 'json-to-table', 'json-validator']);
+  assert.ok(page.related.includes('privacy-study'));
+});
+
+test('localized JSON visualizer metadata stays within search snippet limits', () => {
+  for (const { id } of LOCALES) {
+    const pages = JSON.parse(readFileSync(join(process.cwd(), 'lib/i18n', id, 'tool-pages.json'), 'utf8')) as Record<string, { title: string; description: string }>;
+    const page = pages['json-visualizer'];
+    assert.ok(page, id);
+    assert.ok(`${page.title} | Tool Kumar`.length <= 60, `${id} title`);
+    assert.ok(page.description.length <= 155, `${id} description`);
   }
 });
 

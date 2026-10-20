@@ -71,8 +71,16 @@ export const COMMANDS: Command[] = [
   { id: 'format-view', group: 'View', title: 'Format view (formatted output)', keys: 'Alt+1', terms: 'pretty beautify output', active: (s) => s.settings.view === 'format', run: (e) => e.setView('format') },
   { id: 'tree', group: 'View', title: 'Tree view', keys: 'Alt+2', active: (s) => s.settings.view === 'tree', run: (e) => e.setView('tree') },
   { id: 'table', group: 'View', title: 'Table view', keys: 'Alt+3', terms: 'grid csv', active: (s) => s.settings.view === 'table', run: (e) => e.setView('table') },
-  { id: 'convert', group: 'View', title: 'Convert to TypeScript, Zod, Go, YAML, CSV…', keys: 'Alt+4', terms: 'json to typescript interface type schema code generate class struct', active: (s) => s.settings.view === 'convert', run: (e) => e.setView('convert') },
-  { id: 'compare', group: 'View', title: 'Compare (diff) two JSON documents', keys: 'Alt+5', terms: 'diff compare difference', active: (s) => s.settings.view === 'compare', run: (e) => e.setView('compare') },
+  { id: 'graph', group: 'View', title: 'Graph view', keys: 'Alt+4', terms: 'json visualizer visualiser visualize visualise json graph viewer diagram nodes map json crack alternative', active: (s) => s.settings.view === 'graph', run: (e) => e.setView('graph') },
+  { id: 'graph-fit', group: 'View', title: 'Fit graph to screen', run: (e) => e.fitGraph() },
+  { id: 'graph-start', group: 'View', title: 'Go to the start of the graph', keys: 'Home', terms: 'top root first beginning', run: (e) => e.graphJump('start') },
+  { id: 'graph-end', group: 'View', title: 'Go to the end of the graph', keys: 'End', terms: 'bottom last end', run: (e) => e.graphJump('end') },
+  { id: 'graph-export', group: 'File', title: 'Export graph image', terms: 'download png jpeg jpg svg picture save', run: (e) => e.openGraphExport() },
+  { id: 'graph-copy', group: 'File', title: 'Copy graph image', terms: 'clipboard picture png screenshot', run: (e) => e.copyGraphImage() },
+  { id: 'graph-png', group: 'File', title: 'Download graph as PNG', run: (e) => e.downloadGraph('png') },
+  { id: 'graph-svg', group: 'File', title: 'Download graph as SVG', run: (e) => e.downloadGraph('svg') },
+  { id: 'convert', group: 'View', title: 'Convert to TypeScript, Zod, Go, YAML, CSV…', keys: 'Alt+5', terms: 'json to typescript interface type schema code generate class struct', active: (s) => s.settings.view === 'convert', run: (e) => e.setView('convert') },
+  { id: 'compare', group: 'View', title: 'Compare (diff) two JSON documents', keys: 'Alt+6', terms: 'diff compare difference', active: (s) => s.settings.view === 'compare', run: (e) => e.setView('compare') },
   { id: 'excel', group: 'File', title: 'Export to Excel (.xlsx)', terms: 'xlsx spreadsheet download', run: (e) => void e.exportExcel() },
   ...TARGETS.map(
     (t): Command => ({
@@ -131,7 +139,7 @@ export const COMMANDS: Command[] = [
 
 /** Formats a shortcut for display. */
 export function keyLabel(keys: string, mac: boolean): string[] {
-  return keys.split('+').map((k) => {
+  return (keys.startsWith('+') ? [keys] : keys.split('+')).map((k) => {
     if (k === 'mod') return mac ? '⌘' : 'Ctrl';
     if (k === 'Shift') return mac ? '⇧' : 'Shift';
     if (k === 'Alt') return mac ? '⌥' : 'Alt';

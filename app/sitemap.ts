@@ -7,15 +7,17 @@ import { sitemapLanguages } from '@/lib/i18n/server';
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
 // keeps this route free of sync IO so it prerenders under `cacheComponents`.
 const LAST_MODIFIED = '2026-10-13';
-const HOME_LAST_MODIFIED = '2026-10-15';
+const HOME_LAST_MODIFIED = '2026-10-19';
 const RESOURCES_LAST_MODIFIED = '2026-10-14';
 const TOOLS_LAST_MODIFIED = '2026-10-14';
+const TOOLS_INDEX_LAST_MODIFIED = '2026-10-19';
 const ERRORS_LAST_MODIFIED = '2026-10-15';
 const ERROR_GUIDES_LAST_MODIFIED = '2026-10-15';
 /** Tool pages whose content changed after TOOLS_LAST_MODIFIED, and when. */
 const TOOL_UPDATES: Record<string, string> = Object.fromEntries(
   ['json-validator', 'json-minifier', 'json-diff', 'json-schema-generator', 'json-to-go', 'json-to-csv', 'json-to-xml', 'json-to-excel', 'jwt-decoder', 'json-to-toml', 'toml-to-json', 'jsonl-viewer', 'jsonl-to-csv', 'json-escape', 'json-repair'].map((slug) => [slug, '2026-10-15']),
 );
+for (const slug of ['json-visualizer', 'large-json-viewer', 'json-path-finder', 'json-to-table', 'json-validator']) TOOL_UPDATES[slug] = '2026-10-19';
 TOOL_UPDATES['secure-json-formatter'] = '2026-10-18';
 const PRIVACY_LAST_MODIFIED = '2026-10-18';
 const SITE = 'https://tools.vikasmaur.com';
@@ -84,7 +86,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.75,
     },
     ...cluster('/tools', {
-      lastModified: TOOLS_LAST_MODIFIED,
+      lastModified: TOOLS_INDEX_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.9,
     }),

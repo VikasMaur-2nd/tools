@@ -10,7 +10,7 @@ import { Kbd } from './Kbd';
 import { Icon } from './icons';
 
 /** A native <dialog> opened/closed from store state (focus trap + Esc for free). */
-function Modal({ open, onClose, className, label, children }: { open: boolean; onClose: () => void; className: string; label: string; children: ReactNode }) {
+export function Modal({ open, onClose, className, label, children }: { open: boolean; onClose: () => void; className: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -190,8 +190,9 @@ const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
       ['Alt+1', 'Format view'],
       ['Alt+2', 'Tree view'],
       ['Alt+3', 'Table view'],
-      ['Alt+4', 'Convert'],
-      ['Alt+5', 'Compare'],
+      ['Alt+4', 'Graph view'],
+      ['Alt+5', 'Convert'],
+      ['Alt+6', 'Compare'],
       ['Alt+Z', 'Wrap long lines on or off'],
       ['?', 'This help'],
     ],
@@ -218,6 +219,25 @@ const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
       ['Space', 'Toggle · Shift for all'],
       ['*', 'Expand everything below'],
       ['Enter', 'Show in editor'],
+      ['C', 'Copy value'],
+      ['P', 'Copy path'],
+      ['Esc', 'Back to editor'],
+    ],
+  },
+  {
+    title: 'Graph',
+    items: [
+      ['↑+↓+←+→', 'Move selection'],
+      ['Enter', 'Show in editor'],
+      ['Space', 'Collapse / expand'],
+      ['+ / -', 'Zoom in / out'],
+      ['0', 'Fit to screen'],
+      ['F', 'Full screen'],
+      ['Home', 'Go to start'],
+      ['End', 'Go to end'],
+      ['PgUp+PgDn', 'Scroll a screen'],
+      ['Drag', 'Pan graph'],
+      ['mod+Wheel', 'Zoom graph'],
       ['C', 'Copy value'],
       ['P', 'Copy path'],
       ['Esc', 'Back to editor'],

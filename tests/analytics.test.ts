@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EVENT_PROPS, clean, countBucket, errorKind, fileKind, loadedProps, round2, sizeBucket, sizeKb } from '../lib/analytics/events';
+import type { Feature, ViewId } from '../lib/analytics/events';
 import { beforeSend, cleanUrl, maskAttribute } from '../lib/analytics/redact';
 import { ERROR_MESSAGE, exceptionProps } from '../lib/analytics/exceptions';
 import { parse } from '../lib/json/parser';
@@ -278,12 +279,14 @@ test('every view that shows the document is kept out of session replay', () => {
   const tool = readFileSync(join(process.cwd(), 'components/JsonTool.tsx'), 'utf8');
   for (const [what, re] of [
     ['both editors', /className=\{`ed \$\{PRIVATE\}`\}/],
-    ['the viewer (output, tree, table, convert, compare, find, errors)', /className=\{`view \$\{PRIVATE\}/],
+    ['the viewer (output, tree, table, graph, convert, compare, find, errors)', /className=\{`view \$\{PRIVATE\}/],
     ['the tree path', /className=\{`path \$\{PRIVATE\}`\}/],
     ['the table location', /className=\{`crumbs \$\{PRIVATE\}`\}/],
+    ['toasts (file names and export errors)', /className=\{`toasts \$\{PRIVATE\}`\}/],
     ['the file input', /ref=\{fileRef\} className=\{PRIVATE\}/],
   ] as const) assert.match(tool, re, what);
   assert.equal(tool.match(/className=\{`fname \$\{PRIVATE\}`\}/g)?.length, 2, 'both file names');
+  assert.match(tool, /id="view-graph" className="gv" ref=\{graphRef\}/, 'graph is hosted in the private viewer');
   const dialogs = readFileSync(join(process.cwd(), 'components/dialogs.tsx'), 'utf8');
   assert.match(dialogs, /className=\{PRIVATE\}\s+autoFocus\s+type="url"/, 'the Load from URL field');
   const index = readFileSync(join(process.cwd(), 'lib/analytics/index.ts'), 'utf8');
@@ -291,5 +294,14 @@ test('every view that shows the document is kept out of session replay', () => {
   const ph = readFileSync(join(process.cwd(), 'lib/analytics/posthog.ts'), 'utf8');
   for (const opt of ["blockClass: 'ph-no-capture'", "maskTextSelector: '*'", 'maskAllInputs: true', 'recordBody: false', 'recordHeaders: false', 'autocapture: false', 'capture_exceptions: false', 'enable_recording_console_log: false', 'disable_capture_url_hashes: true', 'captureConsoleLogs: false, beforeSend: () => null']) {
     assert.ok(ph.includes(opt), opt);
+  }
+});
+
+test('graph analytics use fixed view and feature values', () => {
+  const view: ViewId = 'graph';
+  const features: Feature[] = ['graph_fit', 'graph_zoom_in', 'graph_zoom_out', 'graph_export_png', 'graph_export_jpeg', 'graph_export_svg', 'graph_copy_image', 'graph_jump'];
+  assert.deepEqual(clean('view_opened', { view, via: 'pointer' }), { view, via: 'pointer' });
+  for (const feature of features) {
+    assert.deepEqual(clean('feature_used', { feature, view, via: 'palette', filename: 'secret.json' }), { feature, view, via: 'palette' });
   }
 });

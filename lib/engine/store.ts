@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Seg } from '../json/path';
 
 export type Theme = 'system' | 'light' | 'dark';
-export type View = 'format' | 'tree' | 'table' | 'convert' | 'compare';
+export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
 export type IndentId = '2' | '4' | 'tab';
 export type Hint = 'unescape' | 'yaml' | 'xml' | 'csv' | 'toml' | null;
 
@@ -112,6 +112,8 @@ export interface UIState {
   cmpFile: string | null;
   palette: false | 'commands' | 'url';
   shortcuts: boolean;
+  /** The graph's export dialog is open. */
+  graphExport: boolean;
   dragging: boolean;
   toast: Toast | null;
 }
@@ -157,6 +159,7 @@ export const INITIAL: UIState = {
   cmpFile: null,
   palette: false,
   shortcuts: false,
+  graphExport: false,
   dragging: false,
   toast: null,
 };

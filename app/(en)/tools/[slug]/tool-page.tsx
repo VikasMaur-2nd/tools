@@ -14,6 +14,7 @@ import { jwtToJson } from '@/lib/json/jwt';
 import { ARR, OBJ, STR, kids, parse, type JNode } from '@/lib/json/parser';
 import { formatPath, pathOf } from '@/lib/json/path';
 import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../../seo';
+import { pageSocialImage } from '../../../social-images';
 import ContentShell from '../../content-shell';
 import { ERROR_GUIDES } from '../../json-errors/errors';
 import { TOOL_PAGE_BY_SLUG, TOOL_PAGES, type ToolPage } from '@/lib/tool-pages';
@@ -156,14 +157,17 @@ export async function generateMetadata({ params }: PageProps<'/tools/[slug]'>): 
   const { page, locale } = await getPage((await params).slug);
   const path = `/tools/${page.slug}`;
   // Localized pages add og:locale (+ alternates) and a translated image description.
-  const og = locale === 'en' ? { images: [SOCIAL_IMAGE] } : { ...ogLocales(path, locale), images: [{ ...SOCIAL_IMAGE, alt: serverT(locale)('site.ogAlt') }] };
+  // A page with its own preview uses it in every language (its title is the description).
+  const own = page.image ? pageSocialImage(page.image, page.title) : null;
+  const image = own ?? (locale === 'en' ? SOCIAL_IMAGE : { ...SOCIAL_IMAGE, alt: serverT(locale)('site.ogAlt') });
+  const og = locale === 'en' ? { images: [image] } : { ...ogLocales(path, locale), images: [image] };
   return {
     title: { absolute: `${page.title} | ${SITE_NAME}` },
     description: page.description,
     keywords: [page.query, ...page.secondary],
     alternates: alternates(path, locale),
     openGraph: { type: 'website', url: localePath(locale, path), siteName: SITE_NAME, title: page.title, description: page.description, ...og },
-    twitter: { card: 'summary_large_image', title: page.title, description: page.description, images: ['/twitter-image.png'] },
+    twitter: { card: 'summary_large_image', title: page.title, description: page.description, images: [own ? own.url : '/twitter-image.png'] },
   };
 }
 
