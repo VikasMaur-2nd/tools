@@ -2,7 +2,7 @@
  * CSV / TSV / YAML / XML / TOML → JSON text. Zero dependencies, browser-safe.
  * Numbers are carried as their source digits, so big integers survive exactly.
  */
-import { normalizeNumber } from '../json/parser';
+import { normalizeNumber, tooDeep } from '../json/parser';
 import { quote } from '../json/format';
 
 export type Format = 'json' | 'csv' | 'tsv' | 'yaml' | 'xml' | 'toml' | 'unknown';
@@ -1144,7 +1144,7 @@ export function importToJson(text: string, format: ImportFormat, indent: string)
       }
       return { error: e.m, line, col: e.p - ls + 1 };
     }
-    if (e instanceof RangeError) return { error: /string length/i.test(e.message) ? 'The result is too large' : 'Nesting is too deep to convert' };
+    if (e instanceof RangeError || tooDeep(e)) return { error: /string length/i.test((e as Error).message) ? 'The result is too large' : 'Nesting is too deep to convert' };
     throw e;
   }
 }

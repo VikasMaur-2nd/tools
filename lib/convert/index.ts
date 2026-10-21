@@ -3,7 +3,7 @@
  * Go, Kotlin, Swift, PHP, Rust) and data formats (CSV, YAML, XML, TOML, JSON Lines).
  * Zero dependencies; meant to be lazy-loaded.
  */
-import type { JNode } from '../json/parser';
+import { tooDeep, type JNode } from '../json/parser';
 import type { ConvertOptions } from './infer';
 import { toCSV, toJSONL, toTOML, toXML, toYAML } from './data';
 import { toCSharp, toDart, toGo, toJava, toKotlin, toPHP, toPython, toRust, toSwift } from './langs';
@@ -75,8 +75,8 @@ export function convert(root: JNode, target: string, opts: ConvertOptions): stri
   try {
     return f(root, { ...opts, rootName });
   } catch (e) {
-    // Stack overflow (V8 reports it as a SyntaxError when it happens inside a RegExp).
-    if (!(e instanceof RangeError || (e instanceof SyntaxError && /stack/i.test(e.message)))) throw e;
+    // Stack overflow (V8 reports it as a SyntaxError when it happens inside a RegExp, Firefox as an InternalError).
+    if (!(e instanceof RangeError || tooDeep(e) || (e instanceof SyntaxError && /stack/i.test(e.message)))) throw e;
     const msg = 'The document is nested too deeply to convert.';
     return target === 'xml' ? `<!-- ${msg} -->\n` : `${COMMENT[target] ?? '// '}${msg}\n`;
   }

@@ -1,4 +1,4 @@
-import { ARR, JNode, OBJ, STR, parse, type ParseResult } from '../json/parser';
+import { ARR, JNode, OBJ, STR, parse, tooDeep, type ParseResult } from '../json/parser';
 import { byteLength, copyText, formatDoc, minifiedBytesIn, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
@@ -995,8 +995,8 @@ export class Engine {
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
       this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), `${base}.xlsx`);
       track('feature_used', { feature: 'export_xlsx' });
-    } catch {
-      this.toast("Couldn't create the Excel file", 'err');
+    } catch (e) {
+      this.toast(tooDeep(e) ? 'Nesting is too deep to convert' : "Couldn't create the Excel file", 'err');
     }
   }
 
@@ -2012,9 +2012,11 @@ export class Engine {
       else this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
-      reportError(e, 'conversion');
+      // The CSV and Excel preview isn't behind convert(), which reports deep nesting itself.
+      const deep = tooDeep(e);
+      if (!deep) reportError(e, 'conversion');
       this.code.setText('', escapeHtml);
-      store.set({ convert: { loading: false, error: e instanceof Error ? e.message : 'Conversion failed', lines: 0, bytes: 0 } });
+      store.set({ convert: { loading: false, error: deep ? 'Nesting is too deep to convert' : e instanceof Error ? e.message : 'Conversion failed', lines: 0, bytes: 0 } });
     }
   }
 
@@ -2041,6 +2043,7 @@ export class Engine {
         const { records, toXlsx } = await import('../convert/xlsx');
         this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
       } catch (error) {
+        if (tooDeep(error)) return this.toast('Nesting is too deep to convert', 'err');
         reportError(error, 'export');
         this.toast("Couldn't create the Excel file", 'err');
       }

@@ -15,7 +15,7 @@ import {
   type ReactNode,
   type UIEvent,
 } from 'react';
-import { ARR, parse, type JNode } from '@/lib/json/parser';
+import { ARR, parse, tooDeep, type JNode } from '@/lib/json/parser';
 import { preview, primText } from '@/lib/json/format';
 import { formatPath } from '@/lib/json/path';
 import { diff, parseIgnoreList, type Change, type DiffKind, type DiffResult } from '@/lib/diff/diff';
@@ -102,7 +102,7 @@ function textModel(l: JNode, r: JNode, sortKeys: boolean): TextModel | string {
     };
     m = { a, b, d, ...pairLines(a.lines, b.lines, d.hunks), wa: width(a.lines), wb: width(b.lines), digits: String(Math.max(a.lines.length, b.lines.length)).length };
   } catch (e) {
-    if (!(e instanceof RangeError)) throw e;
+    if (!(e instanceof RangeError || tooDeep(e))) throw e;
     m = 'Nesting is too deep to compare';
   }
   lastModel = { l, r, k: sortKeys, m };
