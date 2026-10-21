@@ -534,9 +534,9 @@ export class Engine {
       if (res) {
         while (at < text.length && performance.now() < until) {
           let end = Math.min(text.length, at + 1_000_000);
-          // (A surrogate pair is counted whole.)
+          // (A surrogate pair is counted whole. Ranges of the text, not slices: reading those is slower.)
           if ((text.charCodeAt(end - 1) & 0xfc00) === 0xd800) end++;
-          bytes += byteLength(text.slice(at, end));
+          bytes += byteLength(text, at, end);
           at = end;
         }
         if (at >= text.length) {

@@ -464,10 +464,10 @@ export function preview(node: JNode, budget = 90): string {
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
 
-/** Rough UTF-8 byte length without allocating. */
-export function byteLength(s: string): number {
+/** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without allocating. */
+export function byteLength(s: string, from = 0, to = s.length): number {
   let b = 0;
-  for (let i = 0; i < s.length; i++) {
+  for (let i = from; i < to; i++) {
     const c = s.charCodeAt(i);
     if (c < 0x80) b += 1;
     else if (c < 0x800) b += 2;
