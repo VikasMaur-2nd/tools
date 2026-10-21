@@ -1417,6 +1417,18 @@ kbd {
   box-shadow: inset 2px 0 var(--hit-cur);
 }
 
+.tv-deep {
+  /* Keep the true depth in aria-level and the badge; leave room for content on narrow panes. */
+  --tv-indent: min(480px, max(0px, calc(100% - 280px)));
+}
+
+.tv-depth {
+  flex: none;
+  margin-right: 8px;
+  color: var(--faint);
+  font-size: 10px;
+}
+
 .tv-g {
   position: absolute;
   top: 0;
