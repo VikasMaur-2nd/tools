@@ -513,6 +513,7 @@ export class Engine {
     this.ed.setScope(-1, -1);
     store.set({ empty: false, stale: false, status: { kind: 'parsing', progress: 0 }, stats: null, sizes: null, path: null, hint: null });
     let shown = 0;
+    let shownAt = 0;
     let res: ParseResult | undefined;
     let ms = 0;
     // Then its size in UTF-8 bytes for the status bar, counted in steps too (in one go: 200 ms at 50 MB).
@@ -544,10 +545,13 @@ export class Engine {
           this.analyze(res);
           return;
         }
-      } else {
-        // (Whole percents: the status bar redraws only when the number grows; JSON Lines go over their first record twice.)
+      } else if (t0 >= shownAt + 150) {
+        // (A few redraws of the status bar a second, as the whole percent grows; JSON Lines go over their first record twice.)
         const progress = Math.floor((100 * p.at()) / text.length) / 100;
-        if (progress > shown) store.set({ status: { kind: 'parsing', progress: (shown = progress) } });
+        if (progress > shown) {
+          store.set({ status: { kind: 'parsing', progress: (shown = progress) } });
+          shownAt = t0;
+        }
       }
       soon(run);
     };
