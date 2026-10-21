@@ -26,22 +26,51 @@ export interface GraphLayout {
   colX: Float64Array;
   colW: Float64Array;
   /** Shown cards per column, top to bottom. */
-  levels: Int32Array[];
+  levels: PackedInts;
   /**
    * Edge groups per column: shown, expanded cards with children, top to
    * bottom, with the vertical extent of their edges (gy0 … gy1) and the
    * running maximum of gy1 (for binary search).
    */
-  groups: Int32Array[];
-  gy0: Float64Array[];
-  gy1: Float64Array[];
-  gmax: Float64Array[];
+  groups: PackedInts;
+  gy0: PackedFloats;
+  gy1: PackedFloats;
+  gmax: PackedFloats;
   /** Size of the whole drawing; everything lies in [0, width] × [0, height]. */
   width: number;
   height: number;
   /** Shown cards. */
   shownCount: number;
 }
+
+/** Column lists share one backing buffer, so a 100k-deep chain does not retain 500k arrays. */
+export interface PackedInts {
+  readonly length: number;
+  readonly starts: Int32Array;
+  readonly data: Int32Array;
+  at(column: number): Int32Array;
+}
+
+export interface PackedFloats {
+  readonly length: number;
+  readonly starts: Int32Array;
+  readonly data: Float64Array;
+  at(column: number): Float64Array;
+}
+
+const packedInts = (starts: Int32Array, data: Int32Array): PackedInts => ({
+  length: starts.length - 1,
+  starts,
+  data,
+  at: (column) => data.subarray(starts[column], starts[column + 1]),
+});
+
+const packedFloats = (starts: Int32Array, data: Float64Array): PackedFloats => ({
+  length: starts.length - 1,
+  starts,
+  data,
+  at: (column) => data.subarray(starts[column], starts[column + 1]),
+});
 
 /** A subtree's contour: per column, its top and bottom (stored minus `off`), deepest column first. */
 interface Contour {
@@ -169,11 +198,17 @@ function* lay(m: GraphModel, collapsed: Uint8Array): Generator<void, GraphLayout
   }
   const colX = new Float64Array(cols);
   for (let d = 1; d < cols; d++) colX[d] = colX[d - 1] + colW[d - 1] + G.colGap;
-  const levels = Array.from(counts, (k) => new Int32Array(k));
-  const groups = Array.from(gcounts, (k) => new Int32Array(k));
-  const gy0 = Array.from(gcounts, (k) => new Float64Array(k));
-  const gy1 = Array.from(gcounts, (k) => new Float64Array(k));
-  const gmax = Array.from(gcounts, (k) => new Float64Array(k));
+  const levelStarts = new Int32Array(cols + 1);
+  const groupStarts = new Int32Array(cols + 1);
+  for (let d = 0; d < cols; d++) {
+    levelStarts[d + 1] = levelStarts[d] + counts[d];
+    groupStarts[d + 1] = groupStarts[d] + gcounts[d];
+  }
+  const levels = packedInts(levelStarts, new Int32Array(levelStarts[cols]));
+  const groups = packedInts(groupStarts, new Int32Array(groupStarts[cols]));
+  const gy0 = packedFloats(groupStarts, new Float64Array(groupStarts[cols]));
+  const gy1 = packedFloats(groupStarts, new Float64Array(groupStarts[cols]));
+  const gmax = packedFloats(groupStarts, new Float64Array(groupStarts[cols]));
   counts.fill(0);
   gcounts.fill(0);
   // Pre-order visits each column's cards top to bottom.
@@ -182,13 +217,13 @@ function* lay(m: GraphModel, collapsed: Uint8Array): Generator<void, GraphLayout
     if (!shown[c]) continue;
     const d = depth[c];
     x[c] = colX[d];
-    levels[d][counts[d]++] = c;
+    levels.data[levelStarts[d] + counts[d]++] = c;
     if (collapsed[c] || kidStart[c] === kidStart[c + 1]) continue;
-    groups[d][gcounts[d]++] = c;
+    groups.data[groupStarts[d] + gcounts[d]++] = c;
   }
   // Group extents need the children's y, which the pass above has finished.
   for (let d = 0; d < cols; d++) {
-    const list = groups[d];
+    const list = groups.at(d);
     let run = -Infinity;
     for (let g = 0; g < list.length; g++) {
       if (++work % (CHUNK * 8) === 0) yield;
@@ -197,10 +232,11 @@ function* lay(m: GraphModel, collapsed: Uint8Array): Generator<void, GraphLayout
       const last = kidList[kidStart[c + 1] - 1];
       const top = Math.min(y[c], y[first] + G.head / 2);
       const bot = Math.max(y[c] + h[c], y[last] + G.head / 2);
-      gy0[d][g] = top;
-      gy1[d][g] = bot;
+      const index = groupStarts[d] + g;
+      gy0.data[index] = top;
+      gy1.data[index] = bot;
       if (bot > run) run = bot;
-      gmax[d][g] = run;
+      gmax.data[index] = run;
     }
   }
   const width = cols ? colX[cols - 1] + colW[cols - 1] : 0;
@@ -219,7 +255,7 @@ export function layoutGraph(m: GraphModel, collapsed?: Uint8Array): GraphLayout 
 
 /** Range [from, to) of `levels[d]` whose cards overlap y0 … y1. */
 export function cardsIn(L: GraphLayout, d: number, y0: number, y1: number): [number, number] {
-  const list = L.levels[d];
+  const list = L.levels.at(d);
   if (!list) return [0, 0];
   const { y, m } = L;
   let lo = 0;
@@ -242,8 +278,8 @@ export function cardsIn(L: GraphLayout, d: number, y0: number, y1: number): [num
 
 /** Range [from, to) of `groups[d]` that may have edges in y0 … y1 (check gy1[d][g] ≥ y0 for each). */
 export function groupsIn(L: GraphLayout, d: number, y0: number, y1: number): [number, number] {
-  const max = L.gmax[d];
-  const top = L.gy0[d];
+  const max = L.gmax.at(d);
+  const top = L.gy0.at(d);
   if (!max) return [0, 0];
   let lo = 0;
   let hi = max.length;
@@ -282,7 +318,7 @@ export function cardAt(L: GraphLayout, px: number, py: number): number {
   if (d < 0) return -1;
   const [a, b] = cardsIn(L, d, py, py);
   for (let i = a; i < b; i++) {
-    const c = L.levels[d][i];
+    const c = L.levels.at(d)[i];
     if (px <= L.x[c] + L.m.w[c] && py >= L.y[c] && py <= L.y[c] + L.m.h[c]) return c;
   }
   return -1;

@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse } from '../lib/json/parser';
-import { G, buildModel } from '../lib/graph/model';
+import { parse, type JNode } from '../lib/json/parser';
+import { G, buildModel, locate } from '../lib/graph/model';
+import { GraphView } from '../lib/graph/view';
 import { layoutGraph, type GraphLayout } from '../lib/graph/layout';
 import { LOD_SKEL, LOD_TEXT, MARGIN, ZOOM_MAX, bound, fitCam, fitScale, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from '../lib/graph/camera';
 import { blockEnd, column, compactNum, paint, partAt, widest, type Paint } from '../lib/graph/render';
@@ -195,7 +196,7 @@ test('graph render: merged blocks end where card-by-card merging ends', () => {
   const { m, y } = L;
   const bottom = (c: number) => y[c] + m.h[c];
   for (let d = 0; d < L.levels.length; d++) {
-    const list = L.levels[d];
+    const list = L.levels.at(d);
     const col = column(L, d);
     for (const t of [0.7, 5.3, 31.1, 260.9, 4100.3, 1e7]) {
       for (let i = 0; i < list.length; i++) {
@@ -244,4 +245,87 @@ test('graph render: cards paint a layer at a time, a fill per colour whatever th
     }
   }
   assert.ok(L.m.n > 300, `${L.m.n} cards`);
+});
+
+test('graph view: effective collapsed roots and stale selection survive a rebuild by path', () => {
+  const oldRoot = parse('{"a":{"b":{"c":1}},"other":{"x":2}}').root!;
+  const nextRoot = parse('{"a":{"b":{"c":3}},"other":{"x":4}}').root!;
+  const oldModel = buildModel(oldRoot, 7.2);
+  const nextModel = buildModel(nextRoot, 7.2);
+  const collapsed = new Uint8Array(oldModel.n);
+  collapsed.fill(1);
+  const obj = Object.create(GraphView.prototype) as Record<string, unknown>;
+  Object.assign(obj, {
+    m: oldModel,
+    L: { m: oldModel, collapsed },
+    keep: [],
+    keepFor: null,
+    root: oldRoot,
+    reset: false,
+    token: 0,
+    building: false,
+    matches: [],
+    hitFor: null,
+    editTimer: 0,
+    dirty: true,
+  });
+  (obj.setRoot as (root: unknown, reset: boolean, nodes: number, active: boolean) => void)(nextRoot, false, 7, false);
+  assert.equal((obj.keep as unknown[][]).length, 1, 'hidden descendants collapse into one saved root');
+  const restored = (obj.restoreCollapsed as (m: typeof nextModel) => Uint8Array)(nextModel);
+  assert.equal(restored[0], 1);
+  assert.equal(restored.slice(1).some(Boolean), false);
+
+  const stale = (oldRoot.v as JNode[])[0] as never;
+  Object.assign(obj, {
+    m: nextModel,
+    L: { m: nextModel, collapsed: new Uint8Array(nextModel.n), shown: new Uint8Array(nextModel.n).fill(1) },
+    root: nextRoot,
+    card: -1,
+    row: -1,
+    building: false,
+    dirty: false,
+    pending: null,
+    announce: () => {},
+    redraw: () => {},
+    reveal: () => {},
+  });
+  (obj.select as (n: never) => void)(stale);
+  assert.ok((obj.card as number) >= 0, 'stale node resolves to the rebuilt card');
+});
+
+test('graph model and view operations stay depth-safe at 100,000 levels', () => {
+  const depth = 100_000;
+  const text = '{"a":'.repeat(depth) + '0' + '}'.repeat(depth);
+  const oldRoot = parse(text).root!;
+  const nextRoot = parse(text).root!;
+  const m = buildModel(oldRoot, 7.2, depth + 1);
+  const next = buildModel(nextRoot, 7.2, depth + 1);
+  const matches = m.node.filter((n) => n.key === 'a');
+  const obj = Object.create(GraphView.prototype) as Record<string, unknown>;
+  Object.assign(obj, {
+    m,
+    matches,
+    hitFor: null,
+    hitRow: null,
+    hitCard: null,
+  });
+  (obj.ensureHits as () => void)();
+  const hitCount = (obj.hitCard as Uint8Array).reduce((n, v) => n + v, 0) + (obj.hitRow as Uint8Array).reduce((n, v) => n + v, 0);
+  assert.equal(hitCount, matches.length);
+  Object.assign(obj, {
+    L: { m, collapsed: new Uint8Array(m.n).fill(1) },
+    keep: [],
+    keepFor: null,
+    root: oldRoot,
+    reset: false,
+    token: 0,
+    building: false,
+    editTimer: 0,
+  });
+  (obj.setRoot as (root: unknown, reset: boolean, nodes: number, active: boolean) => void)(nextRoot, false, depth + 1, false);
+  const restored = (obj.restoreCollapsed as (model: typeof next) => Uint8Array)(next);
+  assert.equal(restored[0], 1);
+  assert.equal(restored.slice(1).some(Boolean), false);
+  const foreign = parse(text).root!;
+  assert.deepEqual(locate(m, foreign), { card: -1, row: -1 });
 });

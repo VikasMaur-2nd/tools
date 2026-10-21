@@ -87,6 +87,10 @@ export interface GraphModel {
   charW: number;
   /** Total rows. */
   rows: number;
+  /** Direct lookup for every node that belongs to this model. */
+  cardByNode: WeakMap<JNode, number>;
+  /** Direct lookup for every row entry, including primitives inside inline arrays. */
+  rowByNode: WeakMap<JNode, number>;
 }
 
 // ── Display text ─────────────────────────────────────────────────────────
@@ -400,6 +404,8 @@ function* build(root: JNode, charW: number, hint: number): Generator<void, Graph
   // growing million-entry arrays leaves copies for a full GC to clean up.
   const node: JNode[] = hint ? new Array(hint) : [];
   const rowNode: JNode[] = hint ? new Array(hint) : [];
+  const cardByNode = new WeakMap<JNode, number>();
+  const rowByNode = new WeakMap<JNode, number>();
   let cards = 0;
   let rowsN = 0;
   const parent = ints(cap >> 2);
@@ -429,6 +435,7 @@ function* build(root: JNode, charW: number, hint: number): Generator<void, Graph
       const c = cards++;
       const first = rowsN;
       node[c] = n;
+      cardByNode.set(n, c);
       parent.push(vp);
       depth.push(vd);
       portRow.push(vr);
@@ -442,7 +449,8 @@ function* build(root: JNode, charW: number, hint: number): Generator<void, Graph
       let nk = 0;
       if (n.t < ARR) {
         // A primitive root: one row with its value.
-        rowNode[rowsN++] = n;
+        rowNode[rowsN] = n;
+        rowByNode.set(n, rowsN++);
         rowChild.push(-1);
         valCols = valueCols(n);
       } else {
@@ -459,7 +467,14 @@ function* build(root: JNode, charW: number, hint: number): Generator<void, Graph
           const k = list[i];
           const deep = nk > 0 && isCard(k);
           if (deep && bus) continue;
-          rowNode[rowsN++] = k;
+          rowNode[rowsN] = k;
+          rowByNode.set(k, rowsN);
+          // Inline primitives have no row of their own. They are selected by
+          // the row showing their containing inline array.
+          if (k.t === ARR && inlineCols(k) >= 0) {
+            for (const item of k.v as JNode[]) rowByNode.set(item, rowsN);
+          }
+          rowsN++;
           rowChild.push(-1);
           const lc = arr ? digits(i) : colsOf(k.key as string, G.keyMax, false);
           if (lc > labelCols) labelCols = lc;
@@ -546,6 +561,8 @@ function* build(root: JNode, charW: number, hint: number): Generator<void, Graph
     maxDepth,
     charW,
     rows: rowNode.length,
+    cardByNode,
+    rowByNode,
   };
 }
 
@@ -559,48 +576,17 @@ export function buildModel(root: JNode, charW: number, hint = 0): GraphModel {
 
 // ── Lookups ──────────────────────────────────────────────────────────────
 
-/** Index of the first item in `list` whose source start is ≥ `s` (items are in document order). */
-function lowerBound(len: number, at: (i: number) => number, s: number) {
-  let lo = 0;
-  let hi = len;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (at(mid) < s) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
 /** The child cards of `c`, in order. */
 export const childCards = (m: GraphModel, c: number) => m.kidList.subarray(m.kidStart[c], m.kidStart[c + 1]);
 
 /** The card showing container `n` (-1 when `n` is not a card: a primitive, an empty container, or not in this model). */
 export function cardOf(m: GraphModel, n: JNode): number {
-  // The chain from the root, then down one child card per level.
-  const chain: JNode[] = [];
-  for (let p: JNode | null = n; p; p = p.u) chain.push(p);
-  if (chain[chain.length - 1] !== m.node[0]) return -1;
-  let c = 0;
-  for (let i = chain.length - 2; i >= 0; i--) {
-    const want = chain[i];
-    // Children of c are in document order; find the one at want.s.
-    const kids = childCards(m, c);
-    const j = lowerBound(kids.length, (x) => m.node[kids[x]].s, want.s);
-    if (j >= kids.length || m.node[kids[j]] !== want) return -1;
-    c = kids[j];
-  }
-  return c;
+  return m.cardByNode.get(n) ?? -1;
 }
 
 /** The row showing entry `n` (-1 if no row does: the root, or a nested container that hangs off a bus). */
 export function rowOf(m: GraphModel, n: JNode): number {
-  if (!n.u) return m.node[0] === n && n.t < ARR ? 0 : -1;
-  const c = cardOf(m, n.u);
-  if (c < 0) return -1;
-  const a = m.rowStart[c];
-  const b = m.rowStart[c + 1];
-  const j = a + lowerBound(b - a, (x) => m.rowNode[a + x].s, n.s);
-  return j < b && m.rowNode[j] === n ? j : -1;
+  return m.rowByNode.get(n) ?? -1;
 }
 
 /**
@@ -609,12 +595,9 @@ export function rowOf(m: GraphModel, n: JNode): number {
  * inside an inline array resolves to that array's row.
  */
 export function locate(m: GraphModel, n: JNode): { card: number; row: number } {
-  for (let p: JNode | null = n; p; p = p.u) {
-    const card = p.t >= ARR ? cardOf(m, p) : -1;
-    const row = rowOf(m, p);
-    if (card >= 0 || row >= 0) return { card, row };
-  }
-  return { card: -1, row: -1 };
+  const card = n.t >= ARR ? cardOf(m, n) : -1;
+  const row = rowOf(m, n);
+  return card >= 0 || row >= 0 ? { card, row } : { card: -1, row: -1 };
 }
 
 /** The card a row belongs to (binary search over rowStart). */

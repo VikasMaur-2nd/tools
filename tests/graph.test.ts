@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse, type JNode } from '../lib/json/parser';
+import { ARR, parse, kids, type JNode } from '../lib/json/parser';
 import { buildModel, cardOf, cardOfRow, fit, fitCols, G, inlineCols, locate, rowOf, swatch, valueText } from '../lib/graph/model';
 import { anchorY, cardAt, cardsIn, layoutGraph, portY, rowAt, type GraphLayout } from '../lib/graph/layout';
 
@@ -13,7 +13,7 @@ const model = (s: string) => {
 /** No two shown cards in a column overlap, and columns don't overlap. */
 function assertNoOverlap(L: GraphLayout) {
   for (let d = 0; d < L.levels.length; d++) {
-    const list = L.levels[d];
+    const list = L.levels.at(d);
     for (let i = 1; i < list.length; i++) {
       const a = list[i - 1];
       const b = list[i];
@@ -79,6 +79,55 @@ test('graph model: lookups', () => {
   assert.equal(m.rowNode[rowOf(m, inner)], inner);
 });
 
+test('graph model: direct IDs match the old lookup semantics, including inline values and foreign nodes', () => {
+  const r = parse('{"a":[1,2,{"b":true}],"c":{"d":null},"inline":["x",2]}');
+  const m = buildModel(r.root!, CW, r.nodes);
+  const check = (root: JNode, model: ReturnType<typeof buildModel>) => {
+    const all: JNode[] = [];
+    const stack = [root];
+    while (stack.length) {
+      const n = stack.pop()!;
+      all.push(n);
+      if (n.t >= ARR) for (let i = kids(n).length - 1; i >= 0; i--) stack.push(kids(n)[i]);
+    }
+    for (const n of all) {
+      const expectedCard = n.t >= ARR ? model.node.indexOf(n) : -1;
+      let expectedRow = model.rowNode.indexOf(n);
+      if (expectedRow < 0) {
+        for (let row = 0; row < model.rowNode.length; row++) {
+          const shown = model.rowNode[row];
+          if (shown.t === ARR && inlineCols(shown) >= 0 && kids(shown).includes(n)) {
+            expectedRow = row;
+            break;
+          }
+        }
+      }
+      assert.deepEqual(locate(model, n), { card: expectedCard, row: expectedRow });
+      assert.equal(cardOf(model, n), expectedCard);
+      assert.equal(rowOf(model, n), expectedRow);
+    }
+  };
+  check(r.root!, m);
+  let seed = 0x7418b;
+  const random = (n: number) => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed % n;
+  };
+  const make = (depth = 0): unknown => {
+    if (depth > 4 || random(4) === 0) return [null, true, 2, 'leaf'][random(4)];
+    if (random(2)) return Array.from({ length: random(4) }, () => make(depth + 1));
+    return Object.fromEntries(Array.from({ length: random(4) }, (_, i) => ['k' + i, make(depth + 1)]));
+  };
+  for (let i = 0; i < 40; i++) {
+    const parsed = parse(JSON.stringify(make()));
+    check(parsed.root!, buildModel(parsed.root!, CW, parsed.nodes));
+  }
+  const foreign = parse('{"a":[1,2,{"b":true}],"c":{"d":null},"inline":["x",2]}').root!;
+  assert.deepEqual(locate(m, foreign), { card: -1, row: -1 });
+  assert.equal(cardOf(m, foreign), -1);
+  assert.equal(rowOf(m, foreign), -1);
+});
+
 test('graph text: escapes, wide characters and truncation', () => {
   assert.equal(fit('a\nb"', 40, true), 'a\\nb\\"');
   assert.equal(fit('abcdef', 4, false), 'abc…');
@@ -110,7 +159,7 @@ test('graph layout: first edge level, no overlaps, edges never climb', () => {
   assert.equal(c, 2);
   assert.equal(rowAt(L, 2, L.y[2] + G.head + 3), m.rowStart[2]);
   const [from, to] = cardsIn(L, 1, -Infinity, Infinity);
-  assert.equal(to - from, L.levels[1].length);
+  assert.equal(to - from, L.levels.at(1).length);
 });
 
 test('graph layout: collapsing hides descendants', () => {

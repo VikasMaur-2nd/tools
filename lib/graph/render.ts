@@ -97,6 +97,7 @@ let textsFor: GraphLayout['m'] | null = null;
 const labels = new Map<number, string>();
 const values = new Map<number, string>();
 const TEXT_CACHE = 40_000;
+const selectedPath = new WeakMap<GraphLayout, { target: number; cards: Int32Array }>();
 /** Value text of row r (fills the cache for its label too). */
 function rowValue(m: GraphLayout['m'], r: number): string {
   if (textsFor !== m || values.size > TEXT_CACHE) {
@@ -115,6 +116,42 @@ function rowValue(m: GraphLayout['m'], r: number): string {
 }
 /** Label text of row r (after rowValue). */
 const rowLabel = (r: number) => labels.get(r) as string;
+
+function firstColumn(colX: Float64Array, colW: Float64Array, x: number) {
+  let lo = 0;
+  let hi = colX.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (colX[mid] + colW[mid] + G.colGap < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function afterColumn(colX: Float64Array, x: number) {
+  let lo = 0;
+  let hi = colX.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (colX[mid] <= x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function selectedCards(L: GraphLayout, target: number) {
+  const cached = selectedPath.get(L);
+  if (cached?.target === target) return cached.cards;
+  const { parent, depth } = L.m;
+  const cards = new Int32Array(depth[target]);
+  let c = target;
+  for (let i = cards.length - 1; i >= 0; i--) {
+    cards[i] = c;
+    c = parent[c];
+  }
+  selectedPath.set(L, { target, cards });
+  return cards;
+}
 
 /** Paints `L` as seen by `cam` in a vw × vh (CSS px) viewport. */
 export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, cam: Cam, vw: number, vh: number, p: Paint) {
@@ -140,10 +177,8 @@ export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTh
   const px = 1 / s;
   const cols = colX.length;
   // First and last column in view (a column's edges live in the gap to its right).
-  let d0 = 0;
-  while (d0 < cols && colX[d0] + colW[d0] + G.colGap < wx0) d0++;
-  let d1 = d0;
-  while (d1 < cols && colX[d1] <= wx1) d1++;
+  const d0 = firstColumn(colX, colW, wx0);
+  const d1 = afterColumn(colX, wx1);
 
   // ── Edges ──
   ctx.strokeStyle = th.edge;
@@ -155,9 +190,9 @@ export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTh
     const thin = lod === 2 && colX[d + 1] - colX[d] <= px;
     if (thin && column(L, d).ext <= px) continue;
     const [a, b] = groupsIn(L, d, wy0, wy1);
-    const list = L.groups[d];
-    const gy0 = L.gy0[d];
-    const gy1 = L.gy1[d];
+    const list = L.groups.at(d);
+    const gy0 = L.gy0.at(d);
+    const gy1 = L.gy1.at(d);
     for (let g = a; g < b; ) {
       const c = list[g];
       if (gy1[g] >= wy0 && !(thin && gy1[g] - gy0[g] <= px)) edgesOf(ctx, L, c, ox, oy, wy0, wy1, lod, px, thin);
@@ -173,7 +208,10 @@ export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTh
     ctx.strokeStyle = th.accent;
     ctx.lineWidth = Math.max(2, 1.5 * px);
     ctx.beginPath();
-    for (let c = target; m.parent[c] >= 0; c = m.parent[c]) edgeInto(ctx, L, c, ox, oy);
+    const path = selectedCards(L, target);
+    const from = Math.max(1, d0);
+    const to = Math.min(d1, path.length + 1);
+    for (let d = from; d < to; d++) edgeInto(ctx, L, path[d - 1], ox, oy);
     ctx.stroke();
   }
 
@@ -389,7 +427,7 @@ export function column(L: GraphLayout, d: number): Column {
   const known = all[d];
   if (known) return known;
   const { m, y } = L;
-  const list = L.levels[d];
+  const list = L.levels.at(d);
   const n = list.length;
   const gap = new Float32Array(n);
   const gapMax = new Float32Array((n + 63) >> 6);
@@ -404,8 +442,8 @@ export function column(L: GraphLayout, d: number): Column {
     if (m.w[c] > wMax[k]) wMax[k] = m.w[c];
   }
   let ext = 0;
-  const gy0 = L.gy0[d];
-  const gy1 = L.gy1[d];
+  const gy0 = L.gy0.at(d);
+  const gy1 = L.gy1.at(d);
   if (gy0) for (let g = 0; g < gy0.length; g++) ext = Math.max(ext, gy1[g] - gy0[g]);
   return (all[d] = { gap, gapMax, wMax, ext });
 }
@@ -433,7 +471,7 @@ export function widest(m: GraphLayout['m'], col: Column, list: Int32Array, i: nu
 /** Low zoom: card blocks, neighbours closer than ~1.5 px merged (at most one block per pixel row). */
 function blocks(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, d: number, a: number, b: number, ox: number, oy: number, px: number, p: Paint) {
   const { m, y } = L;
-  const list = L.levels[d];
+  const list = L.levels.at(d);
   const cx = L.colX[d] - ox;
   ctx.fillStyle = th.head;
   ctx.strokeStyle = th.border;
@@ -538,7 +576,7 @@ function cards(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme, d0
   const { m, x, y } = L;
   let n = 0;
   for (let d = d0; d < d1; d++) {
-    const list = L.levels[d];
+    const list = L.levels.at(d);
     const [a, b] = cardsIn(L, d, wy0, wy1);
     if (n + b - a > shownCards.length) {
       const size = Math.max(2 * shownCards.length, n + b - a);

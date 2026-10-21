@@ -128,7 +128,10 @@ function frame(L: GraphLayout, area: ExportArea = { kind: 'all' }): Frame {
     x1 = L.width;
     y1 = L.height;
     cards = L.shownCount;
-    for (const level of L.levels) for (const c of level) if (L.collapsed[c] && m.kids[c]) x1 = Math.max(x1, right(c));
+    for (let d = 0; d < L.levels.length; d++) {
+      const level = L.levels.at(d);
+      for (const c of level) if (L.collapsed[c] && m.kids[c]) x1 = Math.max(x1, right(c));
+    }
   }
   if (![x0, y0, x1, y1].every(Number.isFinite) || x1 < x0 || y1 < y0) throw invalid();
   return { x0, y0, x1, y1, margin, lo, hi, cards, w: half(x1 - x0) + margin * 2, h: half(y1 - y0) + margin * 2 };
@@ -257,15 +260,15 @@ function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1, select
     if (L.colX[d] > f.x1 || (d + 1 < cols ? L.colX[d + 1] : L.colX[d] + L.colW[d]) < f.x0) continue;
     const [a, b] = groupsIn(L, d, y0, y1);
     for (let i = a; i < b; i++) {
-      const c = L.groups[d][i];
-      if (L.shown[c] && c >= f.lo && c < f.hi && L.gy1[d][i] >= y0 - 3) edges(L, p, c, y0 - 3, y1 + 3);
+      const c = L.groups.at(d)[i];
+      if (L.shown[c] && c >= f.lo && c < f.hi && L.gy1.at(d)[i] >= y0 - 3) edges(L, p, c, y0 - 3, y1 + 3);
     }
   }
   for (let d = 0; d < cols; d++) {
     if (L.colX[d] > f.x1 + 1 || L.colX[d] + L.colW[d] + 120 < f.x0) continue;
     const [a, b] = cardsIn(L, d, y0 - 3, y1 + 3);
     for (let i = a; i < b; i++) {
-      const c = L.levels[d][i];
+      const c = L.levels.at(d)[i];
       if (L.shown[c] && c >= f.lo && c < f.hi) card(L, p, c, y0 - 3, y1 + 3, selected);
     }
   }
