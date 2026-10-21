@@ -606,7 +606,9 @@ export class Engine {
     const src = jwt ? jwt.json : text;
     const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
     const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
+    // (Used once: it holds that version's text.)
     const counted = this.counted?.ver === ed.version ? this.counted : null;
+    this.counted = null;
     const ms = counted?.ms ?? performance.now() - t0;
     this.res = res;
     this.jwt = jwt;
