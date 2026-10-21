@@ -1,5 +1,5 @@
 import { ARR, JNode, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
-import { byteLength, copyText, formatDoc, minifiedBytesIn, reindent, reindenter, stringify } from '../json/format';
+import { byteLength, copyText, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
@@ -420,8 +420,8 @@ export class Engine {
     // Parse without building views for the minified text: they'd be replaced at once.
     const r = text === this.parsed && this.res ? this.res : parse(text);
     if (!r.root || r.error || r.issues.length) return;
-    const pretty = formatDoc(text, r, this.indent);
-    if (pretty === text) return;
+    const pretty = this.unlessTooLarge(() => formatDoc(text, r, this.indent));
+    if (pretty === null || pretty === text) return;
     clearTimeout(this.timer);
     ed.setValue(pretty);
     this.analyze();
@@ -905,7 +905,8 @@ export class Engine {
     // Keep the caret on the same node across the rewrite.
     const at = jwt ? null : nodeAt(r.root, this.ed.caret, before);
     const path = at ? pathOf(at) : null;
-    const next = fn(r, jwt ? jwt.json : before);
+    const next = this.unlessTooLarge(() => fn(r, jwt ? jwt.json : before));
+    if (next === null) return;
     const msg = done(r) + (jwt ? ` · replaced the JWT with its decoded JSON · ${this.mod}Z to undo` : '');
     if (next === before) {
       this.toast(msg.replace(/ ·.*/, '') + ' · no changes', 'info');
@@ -916,6 +917,17 @@ export class Engine {
     const target = path && this.res?.root ? resolve(this.res.root, path) : null;
     if (target) this.ed.setCaret(target.s);
     this.toast(msg, 'ok');
+  }
+
+  /** `make()`, or null (and a toast, if `report`) when its output would be too large to hold (see MAX_TEXT). */
+  private unlessTooLarge<T>(make: () => T, report = true): T | null {
+    try {
+      return make();
+    } catch (e) {
+      if (!tooLarge(e)) throw e;
+      if (report) this.toast('The result is too large', 'err');
+      return null;
+    }
   }
 
   private fixed = (r: ParseResult) => (r.issues.length ? ` · fixed ${r.issues.length} issue${r.issues.length > 1 ? 's' : ''}` : '');
@@ -981,7 +993,8 @@ export class Engine {
       return;
     }
     const pr = parse(inner);
-    const next = pr.root && !pr.error ? formatDoc(inner, pr, this.indent) : inner;
+    const next = pr.root && !pr.error ? this.unlessTooLarge(() => formatDoc(inner, pr, this.indent)) : inner;
+    if (next === null) return;
     this.ed.setValue(next);
     this.analyze();
     track('feature_used', { feature: 'unescape' });
@@ -1026,7 +1039,9 @@ export class Engine {
     if (!r.root || r.error) return this.toast("Couldn't expand this value", 'err');
     const minified = this.ed.ls.length === 1;
     const path = pathOf(n);
-    this.ed.setValue(formatDoc(next, r, minified ? '' : this.indent));
+    const out = this.unlessTooLarge(() => formatDoc(next, r, minified ? '' : this.indent));
+    if (out === null) return;
+    this.ed.setValue(out);
     this.analyze();
     const target = this.res?.root ? resolve(this.res.root, path) : null;
     if (target) {
@@ -1517,7 +1532,8 @@ export class Engine {
     if (n === this.sel && this.goodPacked && this.selPath) { this.materializeGood(); n = this.sel; }
     if (!n) return this.toast('Select a node first', 'info');
     track('feature_used', { feature: 'copy_value' });
-    void this.copy(copyText(n, this.indent), n.t >= ARR ? 'Copied value as JSON' : 'Copied value');
+    const text = this.unlessTooLarge(() => copyText(n, this.indent));
+    if (text !== null) void this.copy(text, n.t >= ARR ? 'Copied value as JSON' : 'Copied value');
   }
 
   copyPath(n: JNode | null = this.sel) {
@@ -1617,7 +1633,8 @@ export class Engine {
     const r = parse(text);
     if (!r.root) return this.toast("Can't format it yet. Fix the error first.", 'err');
     track('feature_used', { feature: 'compare_format' });
-    this.ed2.setValue(formatDoc(text, r, this.indent));
+    const out = this.unlessTooLarge(() => formatDoc(text, r, this.indent));
+    if (out !== null) this.ed2.setValue(out);
     this.analyzeCompare();
   }
 
@@ -1716,7 +1733,7 @@ export class Engine {
       const had = !!this.ed.text.trim();
       const r = parse(text);
       noteLoad('share_link');
-      this.load(r.root && !r.error ? formatDoc(text, r, this.indent) : text, null);
+      this.load((r.root && !r.error && this.unlessTooLarge(() => formatDoc(text, r, this.indent), false)) || text, null);
       this.toast(had ? `Loaded shared JSON · ${this.mod}Z restores your previous document` : 'Loaded shared JSON', 'ok');
     } catch {
       this.toast('That share link is broken or incomplete', 'err');
@@ -1929,8 +1946,17 @@ export class Engine {
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
     const drawn = this.formatCurrent(key);
-    const text = drawn ? this.fmtText : this.formatted();
-    if (!drawn) this.drawFormat(text, key);
+    let text: string;
+    try {
+      text = drawn ? this.fmtText : this.formatted();
+      if (!drawn) this.drawFormat(text, key);
+    } catch (e) {
+      if (!tooLarge(e)) throw e;
+      // (Pretty-printing very deep nesting: about 2·depth² characters.) The view says so instead.
+      this.drawFormat('', key);
+      store.set({ fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0, tooLarge: true } });
+      return;
+    }
     if (this.fmtSrcVer !== this.goodVer) return; // This output's metrics are still being analysed.
     // Size of the shown variant is measured; the other differs only by whitespace,
     // which is computed from the tree (no second format of big documents).
@@ -1978,6 +2004,7 @@ export class Engine {
 
   /** Shows `text` (the formatted `src`) in the Format view. */
   private drawFormat(text: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+    if (store.get().fmt.tooLarge) store.set({ fmt: { ...store.get().fmt, tooLarge: false } });
     if (!change) this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;
     this.fmtVersion++;
@@ -2025,15 +2052,17 @@ export class Engine {
   }
 
   copyOutput() {
-    const out = this.fmt.text || this.output();
-    if (!out) return this.toast('Nothing to copy yet', 'info');
+    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    if (out === null) return;
+    if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_output' });
     void this.copy(out, this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
   }
 
   downloadOutput() {
-    const out = this.fmt.text || this.output();
-    if (!out) return this.toast('Nothing to download yet', 'info');
+    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    if (out === null) return;
+    if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
     track('feature_used', { feature: 'download_output' });
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
     this.save(out, `${base}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`, 'application/json');

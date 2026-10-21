@@ -102,8 +102,8 @@ export interface UIState {
   /** Huge document shown read-only for speed. */
   viewOnly: boolean;
   convert: { loading: boolean; error: string | null; lines: number; bytes: number };
-  /** Format view output: line count and the byte size of both variants. */
-  fmt: { lines: number; pretty: number; minified: number; escaped: number };
+  /** Format view output: line count and the byte size of both variants; `tooLarge`: none could be made (see MAX_TEXT). */
+  fmt: { lines: number; pretty: number; minified: number; escaped: number; tooLarge?: boolean };
   /** Wire sizes of the valid document: minified, then compressed by each codec the browser has. */
   sizes: Sizes | null;
   /** Current document text, published only while the Compare view is open. */

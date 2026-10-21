@@ -6,6 +6,16 @@ const byKey = (a: JNode, b: JNode) => {
   return x < y ? -1 : x > y ? 1 : 0;
 };
 
+/**
+ * Longest text written here: V8's maximum string length. Firefox and Safari allow longer ones, but such an
+ * output (pretty-printing very deep nesting, 2·depth² characters) would only exhaust memory. Writing more
+ * throws `tooLong()`, a RangeError like the engine's own (see `tooLarge`).
+ */
+export const MAX_TEXT = 2 ** 29 - 24;
+const tooLong = () => new RangeError('Invalid string length');
+/** An output too large to make: past MAX_TEXT, or more than the engine or memory could hold. */
+export const tooLarge = (e: unknown) => e instanceof RangeError && /string length|array buffer|array length|allocation/i.test(e.message);
+
 // Strings that JSON.stringify would escape (quotes, backslash, control chars, lone surrogates).
 const NEEDS_ESCAPE = /["\\\x00-\x1f\ud800-\udfff]/;
 export const quote = (s: string) => (NEEDS_ESCAPE.test(s) ? JSON.stringify(s) : '"' + s + '"');
@@ -31,6 +41,7 @@ export function stringify(root: JNode, indent: string, sortKeys = false): string
   const at: number[] = [];
   let node = root;
   for (;;) {
+    if (out.length > MAX_TEXT) throw tooLong();
     switch (node.t) {
       case NUL:
         out += 'null';
@@ -76,6 +87,7 @@ export function stringify(root: JNode, indent: string, sortKeys = false): string
       lists.pop();
       at.pop();
       out += nl + pad(d - 1) + (objs.pop() ? '}' : ']');
+      if (out.length > MAX_TEXT) throw tooLong();
     }
   }
 }
@@ -172,7 +184,8 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
 
 /** Copy of `buf` (its first `len` units) with room for `k` more. */
 function grown(buf: Uint16Array, len: number, k: number) {
-  const next = new Uint16Array(Math.max(buf.length * 2, len + k));
+  if (len + k > MAX_TEXT) throw tooLong();
+  const next = new Uint16Array(Math.min(MAX_TEXT, Math.max(buf.length * 2, len + k)));
   next.set(buf.subarray(0, len));
   return next;
 }

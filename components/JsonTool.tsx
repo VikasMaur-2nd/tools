@@ -824,6 +824,13 @@ function Watermark() {
   );
 }
 
+function FormatNote() {
+  const tooLarge = useUI((s) => s.fmt.tooLarge);
+  const t = useT();
+  if (!tooLarge) return null;
+  return <div className="cv-note">{t('The result is too large')}</div>;
+}
+
 function ConvertNote() {
   const { error } = useUI((s) => s.convert);
   const t = useT();
@@ -859,6 +866,7 @@ function ViewerPane({
           <div className="cv-sizer">
             <div className="cv-rows" />
           </div>
+          <FormatNote />
         </div>
         <div id="view-tree" className="tv" ref={treeRef} tabIndex={0} role="tree" aria-label={t('JSON tree')} hidden={view !== 'tree' || empty}>
           <div className="tv-sizer">

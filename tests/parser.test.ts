@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ARR, JNode, MAX_DEPTH, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
-import { byteLength, formatDoc, stringify, toValue } from '../lib/json/format';
+import { MAX_TEXT, byteLength, formatDoc, stringify, toValue, tooLarge } from '../lib/json/format';
 import { formatPath, nodeAt, parsePath, pathOf, resolve, type Seg } from '../lib/json/path';
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -843,6 +843,26 @@ describe('robustness', () => {
       ov = ov.a as Record<string, unknown>;
     }
     assert.deepEqual(ov, []);
+  });
+  test('pretty output past MAX_TEXT throws early, as a RangeError tooLarge() recognizes', () => {
+    // 2-space pretty-printing of n nested arrays is about 2·n² characters: 17,000 levels is past MAX_TEXT.
+    const levels = 17_000;
+    const src = '['.repeat(levels) + ']'.repeat(levels);
+    const r = parse(src);
+    assert.ok(2 * levels * levels > MAX_TEXT);
+    for (const sort of [false, true]) {
+      const e = (() => {
+        try {
+          stringify(r.root as JNode, '  ', sort);
+        } catch (err) {
+          return err;
+        }
+      })();
+      assert.ok(e instanceof RangeError && tooLarge(e), `throws: ${e}`);
+      assert.throws(() => formatDoc(src, r, '  ', sort), (err) => tooLarge(err));
+    }
+    assert.equal(formatDoc(src, r, ''), src);
+    assert.equal(tooLarge(new RangeError('Maximum call stack size exceeded')), false);
   });
   test('moderately deep documents parse and pretty-print', () => {
     const d = 1000;

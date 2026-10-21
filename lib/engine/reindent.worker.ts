@@ -1,5 +1,5 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
-import { byteLength, formatDoc, minifiedBytes, reindent } from '../json/format';
+import { byteLength, formatDoc, minifiedBytes, reindent, tooLarge } from '../json/format';
 import { packStrings, packTree } from '../json/pack';
 import { parse, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
@@ -118,8 +118,16 @@ self.onmessage = (e: MessageEvent<Request>) => {
       });
     }
   }
-  const out = data.sortKeys && parsed?.root ? formatDoc(text, parsed, indent, true) : (indent === '' && min !== null ? min : reindent(text, indent)) ?? (parsed?.root ? formatDoc(text, parsed, indent) : null);
-  const display = data.escape && out ? JSON.stringify(out) : undefined;
+  // An output too large to make (see MAX_TEXT) is none: the page then says so.
+  let out: string | null = null;
+  let display: string | undefined;
+  try {
+    out = data.sortKeys && parsed?.root ? formatDoc(text, parsed, indent, true) : (indent === '' && min !== null ? min : reindent(text, indent)) ?? (parsed?.root ? formatDoc(text, parsed, indent) : null);
+    display = data.escape && out ? JSON.stringify(out) : undefined;
+  } catch (e) {
+    if (!tooLarge(e)) throw e;
+    out = null;
+  }
   const change = out === null ? undefined : { ...codeChange(previous, display ?? out), base: previousId };
   const patch = out !== null && !data.escape && change && change.base === data.base && out.length - change.prefix - change.suffix <= 1_000_000
     ? out.slice(change.prefix, out.length - change.suffix) : undefined;
@@ -180,11 +188,18 @@ function formatFast(data: Request, input: Doc) {
   if (small) output = small.output;
   else {
     const text = input.toString();
-    raw = !data.sortKeys && !data.lines ? reindent(text, indent) : null;
-    const strict = raw !== null;
-    if (raw === null) {
-      const res = parse(text, { lines: data.lines });
-      raw = res.root ? formatDoc(text, res, indent, data.sortKeys) : null;
+    let strict = false;
+    try {
+      raw = !data.sortKeys && !data.lines ? reindent(text, indent) : null;
+      strict = raw !== null;
+      if (raw === null) {
+        const res = parse(text, { lines: data.lines });
+        raw = res.root ? formatDoc(text, res, indent, data.sortKeys) : null;
+      }
+    } catch (e) {
+      // Too large to make (see MAX_TEXT): no output, as for invalid input.
+      if (!tooLarge(e)) throw e;
+      raw = null;
     }
     if (raw === null) { self.postMessage({ id, out: null }); return; }
     shape++;
