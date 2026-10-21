@@ -1034,8 +1034,11 @@ function StatusMsg() {
     case 'parsing':
       return (
         <span className="st muted">
-          <i className="spin" /> {t('Parsing…')}
-          {status.progress !== undefined && <span className="st-pct">{percent(status.progress, t.lang)}</span>}
+          <i className="spin" />
+          <span className="st-msg">
+            {t('Parsing…')}
+            {status.progress !== undefined && <span className="st-pct"> {percent(status.progress, t.lang)}</span>}
+          </span>
         </span>
       );
     case 'valid':
