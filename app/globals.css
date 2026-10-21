@@ -184,6 +184,15 @@
   box-sizing: border-box;
 }
 
+/* Every character as typed: JetBrains Mono (--font-code) draws coding ligatures with contextual
+   alternates, so "https://" reads as "https: /" and "!=" as "≠" in URLs, values and code. The
+   `font` shorthand that sets the monospace font everywhere resets this property, hence !important. */
+*,
+*::before,
+*::after {
+  font-variant-ligatures: no-contextual !important;
+}
+
 html,
 body {
   margin: 0;
