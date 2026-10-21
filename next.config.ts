@@ -62,15 +62,15 @@ const nextConfig: NextConfig = {
       // The viewer receives big documents from the site that opened its tab ("View in Tool
       // Kumar", lib/link.ts): only possible while that site keeps its window handle.
       { source: "/", headers: [{ key: "Cross-Origin-Opener-Policy", value: "unsafe-none" }] },
-      // The "View in Tool Kumar" kit other sites embed: readable from any origin, and cached
+      // "View in Tool Kumar" buttons other sites embed: readable from any origin, and cached
       // for a day (not `immutable`: the URLs are stable, so updates must reach them).
-      ...["/toolkumar.js", "/badges/:file*"].map((source) => ({
-        source,
+      {
+        source: "/badges/:file*",
         headers: [
           { key: "Access-Control-Allow-Origin", value: "*" },
           { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
         ],
-      })),
+      },
       {
         // Always revalidate the service worker so new versions roll out immediately.
         source: "/sw.js",

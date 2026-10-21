@@ -1658,7 +1658,7 @@ export class Engine {
 
   /**
    * `/#handoff`: the page that opened this tab sends documents too big for a link
-   * by postMessage (lib/link.ts, public/toolkumar.js). Only that page is heard, once.
+   * by postMessage (lib/link.ts, app/(en)/integrate/snippets.ts). Only that page is heard, once.
    */
   private awaitHandoff() {
     const opener = window.opener as Window | null;

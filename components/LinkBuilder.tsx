@@ -120,7 +120,7 @@ export default function LinkBuilder() {
           if (!live) return;
           const url = `${SITE}/${hash}`;
           setHref(url);
-          setError(url.length > MAX_LINK ? `This link is ${url.length.toLocaleString('en-US')} characters long, too long for many apps. Use toolkumar.js for big documents (below).` : '');
+          setError(url.length > MAX_LINK ? `This link is ${url.length.toLocaleString('en-US')} characters long, too long for many apps. For JSON this big, use the handoff (below).` : '');
         },
         () => live && setError('This browser cannot compress links. Try a current Chrome, Edge, Firefox or Safari.'),
       );

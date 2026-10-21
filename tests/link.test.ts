@@ -1,15 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
 import { LinkTooLarge, MAX_HANDOFF_TEXT, decodeDoc, encodeDoc, linkHash, parseLink, readHandoff, type LinkSource } from '../lib/link';
 
-/** public/toolkumar.js, the helper other sites copy: it must build exactly what the viewer reads. */
-const helper = createRequire(join(process.cwd(), 'package.json'))('./public/toolkumar.js') as {
-  origin: string;
-  link(o: Record<string, unknown>): Promise<string>;
-};
+import { HANDOFF_SNIPPET, LINK_SNIPPET } from '../app/(en)/integrate/snippets';
+
+/** The function /integrate tells other sites to paste: it must build exactly what the viewer reads. */
+type LinkOptions = { compare?: unknown; view?: string; to?: string };
+const toolKumarLink = new Function(`${LINK_SNIPPET}\nreturn toolKumarLink;`)() as (json: unknown, o?: LinkOptions) => Promise<string>;
 
 const data = (s: LinkSource | undefined) => (s && 'data' in s ? s.data : assert.fail('expected encoded data'));
 
@@ -70,27 +68,35 @@ test('our links round-trip: view, compare and convert', async () => {
   assert.deepEqual(conv, { a: { url: 'https://x.test/a.json' }, b: undefined, view: 'convert', to: 'zod' });
 });
 
-test('toolkumar.js builds links the viewer reads', async () => {
-  const url = await helper.link({ json: { id: 1, tags: ['x'] }, view: 'table' });
+test('the published link function builds links the viewer reads', async () => {
+  const url = await toolKumarLink({ id: 1, tags: ['x'] }, { view: 'table' });
   assert.ok(url.startsWith('https://tools.vikasmaur.com/#'));
   const one = parseLink(new URL(url).hash);
   assert.ok(one && typeof one === 'object');
   assert.equal(await decodeDoc(data(one.a)), '{"id":1,"tags":["x"]}');
   assert.equal(one.view, 'table');
 
-  const raw = '{ "kept": "as written" }';
-  const cmp = parseLink(new URL(await helper.link({ json: raw, compare: [1, 2] })).hash);
+  const raw = '{ "kept": "as written", "big": 9007199254740993, "text": "日本語 👋" }';
+  const cmp = parseLink(new URL(await toolKumarLink(raw, { compare: [1, 2] })).hash);
   assert.ok(cmp && typeof cmp === 'object');
   assert.equal(await decodeDoc(data(cmp.a)), raw);
   assert.equal(await decodeDoc(data(cmp.b)), '[1,2]');
+  assert.equal(cmp.view, undefined);
 
-  const remote = parseLink(new URL(await helper.link({ url: 'https://api.example.com/v1?x=1&y=2', compareUrl: 'https://api.example.com/v2', view: 'convert', to: 'go' })).hash);
-  assert.deepEqual(remote, { a: { url: 'https://api.example.com/v1?x=1&y=2' }, b: { url: 'https://api.example.com/v2' }, view: 'convert', to: 'go' });
+  const conv = parseLink(new URL(await toolKumarLink('[]', { view: 'convert', to: 'go' })).hash);
+  assert.ok(conv && typeof conv === 'object');
+  assert.deepEqual([conv.view, conv.to], ['convert', 'go']);
 
-  await assert.rejects(helper.link({}), TypeError);
-  await assert.rejects(helper.link({ json: 1, view: 'nope' }), TypeError);
-  await assert.rejects(helper.link({ url: 'file:///etc/passwd' }), TypeError);
-  await assert.rejects(helper.link({ json: undefined, url: '' }), TypeError);
+  // Bigger than one String.fromCharCode batch (0x8000 bytes) once compressed.
+  const big = JSON.stringify(Array.from({ length: 20_000 }, (_, i) => ({ i, r: Math.random() })));
+  assert.equal(await decodeDoc(data((parseLink(new URL(await toolKumarLink(big)).hash) as { a: LinkSource }).a)), big);
+});
+
+test('the published handoff function is plain JavaScript that sends the documented message', () => {
+  const openInToolKumar = new Function(`${HANDOFF_SNIPPET}\nreturn openInToolKumar;`)();
+  assert.equal(typeof openInToolKumar, 'function');
+  assert.match(HANDOFF_SNIPPET, /postMessage\(\{ toolkumar: 'open', a, b, view, to \}, origin\)/);
+  assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined }));
 });
 
 test('handoff messages: only well-formed requests are accepted', () => {

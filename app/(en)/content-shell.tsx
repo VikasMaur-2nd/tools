@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import IntentLink from '@/components/IntentLink';
+import NavMenu from '@/components/NavMenu';
 import { FooterLangs } from '@/components/LangSwitch';
 import { localePath } from '@/lib/i18n/locales';
 import { getLocale } from '@/lib/i18n/locale';
@@ -16,7 +17,7 @@ export function Logo({ size = 24 }: { size?: number }) {
   );
 }
 
-type Section = 'blogs' | 'resources' | 'about' | 'tools';
+type Section = 'blogs' | 'resources' | 'about' | 'tools' | 'integrate';
 
 export default async function ContentShell({
   children,
@@ -37,6 +38,26 @@ export default async function ContentShell({
   const to = (p: string) => localePath(locale, p);
   // Sections that are not translated link to the English pages, marked as such.
   const en = locale === 'en' ? {} : { hrefLang: 'en', title: t('site.englishOnly') };
+  // Inline on wide screens, in the menu on narrow ones (app/content.css): both carry the same links.
+  const sections = (
+    <>
+      <IntentLink href={to('/tools')} aria-current={here('tools')}>
+        {t('site.nav.tools')}
+      </IntentLink>
+      <IntentLink href="/integrate" aria-current={here('integrate')} {...en}>
+        {t('site.nav.integrate')}
+      </IntentLink>
+      <IntentLink href="/blogs" aria-current={here('blogs')} {...en}>
+        {t('site.nav.blog')}
+      </IntentLink>
+      <IntentLink href="/resources" aria-current={here('resources')} {...en}>
+        {t('site.nav.resources')}
+      </IntentLink>
+      <IntentLink href="/about" aria-current={here('about')} {...en}>
+        {t('site.nav.about')}
+      </IntentLink>
+    </>
+  );
   return (
     <div className="content-page">
       <a className="skip" href="#content">
@@ -49,18 +70,8 @@ export default async function ContentShell({
             <span>Tool Kumar</span>
           </IntentLink>
           <nav className="site-nav" aria-label={t('site.nav.main')}>
-            <IntentLink href={to('/tools')} aria-current={here('tools')}>
-              {t('site.nav.tools')}
-            </IntentLink>
-            <IntentLink href="/blogs" aria-current={here('blogs')} {...en}>
-              {t('site.nav.blog')}
-            </IntentLink>
-            <IntentLink href="/resources" aria-current={here('resources')} {...en}>
-              {t('site.nav.resources')}
-            </IntentLink>
-            <IntentLink href="/about" aria-current={here('about')} {...en}>
-              {t('site.nav.about')}
-            </IntentLink>
+            <div className="nav-links">{sections}</div>
+            <NavMenu label={t('site.nav.menu')}>{sections}</NavMenu>
             <IntentLink className="site-cta" href={to('/')}>
               {t('site.cta')}
             </IntentLink>
@@ -91,6 +102,11 @@ export default async function ContentShell({
                 </li>
                 <li>
                   <IntentLink href={to('/tools')}>{t('site.footer.allTools')}</IntentLink>
+                </li>
+                <li>
+                  <IntentLink href="/integrate" {...en}>
+                    {t('site.footer.integrate')}
+                  </IntentLink>
                 </li>
               </ul>
             </nav>

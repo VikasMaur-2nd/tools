@@ -11,8 +11,8 @@
  * <doc> is the text compressed with raw DEFLATE (RFC 1951) and encoded as
  * base64url without padding, or an http(s) URL (percent-encoded) to fetch the
  * document from. Everything lives in the fragment, which browsers never send to
- * a server. public/toolkumar.js builds these links for other sites, and
- * /integrate documents them: keep all three in step.
+ * a server. /integrate documents this and publishes copy-paste functions that
+ * build links and do the handoff (app/(en)/integrate/snippets.ts): keep them in step.
  */
 import { TARGETS } from './engine/targets';
 import type { View } from './engine/store';

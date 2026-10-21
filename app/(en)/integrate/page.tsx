@@ -5,7 +5,9 @@ import { TARGETS } from '@/lib/engine/targets';
 import { Code } from '../blogs/article';
 import ContentShell from '../content-shell';
 import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import CodeSnippet from './code-snippet';
 import { SAMPLE_COMPARE_LINK, SAMPLE_VIEW_LINK } from './samples';
+import { HANDOFF_SNIPPET, LINK_SNIPPET } from './snippets';
 
 const TITLE = 'Integrate: add "View in Tool Kumar" buttons and links';
 const DESCRIPTION =
@@ -50,12 +52,6 @@ const jsonLd = {
   ],
 };
 
-const POINTS = [
-  { title: 'Nothing is uploaded', text: 'The JSON travels inside the link, after the #. Browsers never send that part to a server.' },
-  { title: 'Compare two documents', text: 'Add a second document and the link opens Compare, with every change listed by JSON path.' },
-  { title: 'Any size', text: 'Too big for a link? toolkumar.js hands the document to a new tab, browser to browser.' },
-];
-
 function Badge({ kind, href }: { kind: 'view' | 'compare'; href: string }) {
   const label = kind === 'view' ? 'View in Tool Kumar' : 'Compare in Tool Kumar';
   return (
@@ -70,7 +66,7 @@ function Badge({ kind, href }: { kind: 'view' | 'compare'; href: string }) {
 
 export default function IntegratePage() {
   return (
-    <ContentShell>
+    <ContentShell current="integrate">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <header className="ig-hero">
         <p className="eyebrow">Integrate</p>
@@ -85,23 +81,29 @@ export default function IntegratePage() {
         </div>
       </header>
 
+      <div className="ig-methods">
+        <a className="ig-method" href="#via-link">
+          <p className="ig-method-kind">Via link</p>
+          <h2>JSON up to about 200 KB</h2>
+          <p>A link with the JSON inside it. Put it in a README, docs, an issue, an email or a chat. Nothing to install; it works anywhere a link does.</p>
+          <span className="ig-method-more">How links work <span className="arrow" aria-hidden="true">→</span></span>
+        </a>
+        <a className="ig-method" href="#handoff">
+          <p className="ig-method-kind">Via handoff</p>
+          <h2>JSON above 200 KB</h2>
+          <p>A short function for your web app: one click opens Tool Kumar in a new tab and passes the JSON to it inside the browser. No size limit.</p>
+          <span className="ig-method-more">How handoff works <span className="arrow" aria-hidden="true">→</span></span>
+        </a>
+      </div>
+
       <section className="ig-section" aria-labelledby="builder">
         <h2 id="builder">Make your button</h2>
         <p className="ig-sub">Paste a document, or the URL of one. Everything is built in this page; nothing you paste is sent anywhere.</p>
         <LinkBuilder />
       </section>
 
-      <ul className="ig-points">
-        {POINTS.map((p) => (
-          <li key={p.title}>
-            <h3>{p.title}</h3>
-            <p>{p.text}</p>
-          </li>
-        ))}
-      </ul>
-
       <div className="ig-docs prose">
-        <h2 id="format">How the link works</h2>
+        <h2 id="via-link">1. Via link</h2>
         <p>
           Every link points to the home page. The documents and options follow the <code>#</code> as <code>name=value</code> pairs joined by{' '}
           <code>&amp;</code>:
@@ -133,28 +135,22 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
             </tbody>
           </table>
         </div>
+        <h3>How big a link can be</h3>
         <p>
-          Valid JSON opens formatted, so compact documents make the shortest links. Invalid JSON opens as written with the error marked, which makes
-          links handy in bug reports. A URL is fetched by the reader&apos;s browser, so its server must allow cross-origin requests (CORS); public
-          GitHub files and most public APIs do.
+          Keep links under about 60,000 characters: chat apps, email clients and some browsers cut longer ones. Compression makes that roughly 200 KB
+          of JSON full of IDs and random values, and 500 KB or more of repetitive data such as logs. The builder above shows the exact length.
+          Valid JSON opens formatted, so compact JSON makes the shortest links.
         </p>
-
-        <h2 id="code">Create links in code</h2>
+        <h3>Make links in your code</h3>
+        <p>Copy this function into your project. It runs in browsers and in Node.js 18 or later, with no dependencies:</p>
+        <CodeSnippet lang="javascript" code={LINK_SNIPPET} name="toolKumarLink" />
+        <Code lang="javascript">{`const link = await toolKumarLink(response, { view: 'tree' });
+const diff = await toolKumarLink(before, { compare: after });`}</Code>
         <p>
-          <a href="/toolkumar.js">toolkumar.js</a> is a 5 KB script with no dependencies (MIT license). Load it from this site or copy it into your
-          project:
+          A link to a URL needs no compression: <code>{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</code>. The reader&apos;s browser
+          fetches it, so its server must allow cross-origin requests (CORS); public GitHub files and most public APIs do. In other languages:
         </p>
-        <Code lang="html">{`<script src="https://tools.vikasmaur.com/toolkumar.js"></script>
-<script>
-  const href = await ToolKumar.link({ json: response, view: 'tree' });
-  const diff = await ToolKumar.link({ json: before, compare: after });
-  const remote = await ToolKumar.link({ url: 'https://api.example.com/v1/users' });
-</script>`}</Code>
-        <p>
-          <code>json</code> and <code>compare</code> take a JSON string, kept exactly as written, or any value, serialized with{' '}
-          <code>JSON.stringify</code>. Without the script:
-        </p>
-        <Code lang="javascript">{`// Node.js
+        <Code lang="javascript">{`// Node.js, synchronous
 import { deflateRawSync } from 'node:zlib';
 const link = 'https://tools.vikasmaur.com/#a=' + deflateRawSync(JSON.stringify(data)).toString('base64url');`}</Code>
         <Code lang="python">{`# Python
@@ -164,35 +160,37 @@ z = zlib.compressobj(9, zlib.DEFLATED, -15)  # -15: raw DEFLATE
 raw = z.compress(json.dumps(data, separators=(",", ":")).encode()) + z.flush()
 link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode().rstrip("=")`}</Code>
 
-        <h2 id="big-documents">Big documents</h2>
+        <h2 id="handoff">2. Via handoff, for bigger JSON</h2>
         <p>
-          Links work best below about 60,000 characters, a few hundred kilobytes of typical JSON; chat apps and some browsers cut longer URLs. For
-          anything bigger, call <code>ToolKumar.open</code> straight from a click. It opens a new tab and hands the document over with{' '}
-          <code>postMessage</code>:
+          When the JSON is too big for a link, open Tool Kumar from your web app and pass the JSON to it directly. Copy this function into your
+          code:
         </p>
+        <CodeSnippet lang="javascript" code={HANDOFF_SNIPPET} name="openInToolKumar" />
+        <p>Call it straight from a click, without awaiting anything first, or the browser blocks the new tab:</p>
         <Code lang="javascript">{`button.addEventListener('click', () => {
-  ToolKumar.open({ json: hugeResponseText, view: 'table' })
+  openInToolKumar(hugeResponseText, { view: 'table' })
     .catch((error) => console.warn(error.message)); // a blocked tab, for example
 });`}</Code>
+        <h3>How it works</h3>
+        <ol>
+          <li>Your page opens <code>https://tools.vikasmaur.com/#handoff</code> in a new tab.</li>
+          <li>When Tool Kumar is ready, it tells your page with <code>{'{ toolkumar: "ready", version: 1 }'}</code>.</li>
+          <li>
+            Your page sends <code>{'{ toolkumar: "open", a, b, view, to }'}</code> to that tab, where <code>a</code> and <code>b</code> are the JSON
+            text.
+          </li>
+          <li>Tool Kumar opens it and answers <code>{'{ toolkumar: "opened" }'}</code>, or <code>{'{ toolkumar: "error", reason }'}</code>.</li>
+        </ol>
         <p>
-          Don&apos;t await anything before calling it, or the browser blocks the tab. If your page sends{' '}
+          The JSON goes from one tab to the other inside the browser, so size is limited only by the reader&apos;s memory. The tab listens only to
+          the page that opened it, accepts one request and stops listening after two minutes. If your page sends{' '}
           <code>Cross-Origin-Opener-Policy: same-origin</code>, use <code>same-origin-allow-popups</code> so the two tabs can talk.
         </p>
-        <details className="ig-more">
-          <summary>The handoff protocol, without the script</summary>
-          <p>
-            Open <code>https://tools.vikasmaur.com/#handoff</code> with <code>window.open</code>. When the tab is ready it posts{' '}
-            <code>{'{ toolkumar: "ready", version: 1 }'}</code> to your page. Reply to that tab with{' '}
-            <code>{'{ toolkumar: "open", a, b, view, to }'}</code>, where <code>a</code> and <code>b</code> are document text. It answers{' '}
-            <code>{'{ toolkumar: "opened" }'}</code> or <code>{'{ toolkumar: "error", reason }'}</code>. The tab listens only to the page that opened
-            it, takes one request and stops listening after two minutes.
-          </p>
-        </details>
 
         <h2 id="privacy">Privacy and security</h2>
         <ul>
           <li>Documents stay in the link&apos;s fragment, which browsers don&apos;t send to servers. Tool Kumar removes it from the address bar once the document is open.</li>
-          <li>A handed-over document goes from one browser tab to another and never touches a server.</li>
+          <li>A handed-over document goes from one browser tab to the other and never touches a server.</li>
           <li>A linked document replaces what the reader had open, and one undo brings that back. Links can&apos;t run code: documents are only shown as text.</li>
           <li>Anyone with a link can read the document in it, so share links to sensitive data only with people who may see it.</li>
           <li>
