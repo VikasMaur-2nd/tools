@@ -112,13 +112,9 @@ function loadSettings(): Settings {
 /**
  * Bytes pretty-printing adds over minified output: per non-empty container a
  * newline + indent before each child and before the closer, and a space after
- * every object key's colon (all ASCII).
+ * every object key's colon (all ASCII). Works in steps: undefined until done
+ * (a big tree is walked between input events).
  */
-function prettyExtra(root: JNode, unit: number): number {
-  return prettyExtraIn(root, unit)(Infinity)!;
-}
-
-/** prettyExtra in steps: undefined until done (a big tree is walked between input events). */
 function prettyExtraIn(root: JNode, unit: number): (until: number) => number | undefined {
   if (root.t < ARR) return () => 0;
   let extra = 0;
