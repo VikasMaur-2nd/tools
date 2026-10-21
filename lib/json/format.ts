@@ -1,4 +1,4 @@
-import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type ParseResult } from './parser';
+import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, tooDeep, type ParseResult } from './parser';
 
 const byKey = (a: JNode, b: JNode) => {
   const x = a.key as string;
@@ -13,49 +13,71 @@ export const quote = (s: string) => (NEEDS_ESCAPE.test(s) ? JSON.stringify(s) : 
 /**
  * Serializes a node tree. `indent` is the indent unit ('' = minified).
  * Numbers are written from their original source text, so nothing is lost.
+ * Open containers are kept on a list rather than the call stack, so any depth the parser accepts can be written.
  */
 export function stringify(root: JNode, indent: string, sortKeys = false): string {
   let out = '';
   const nl = indent ? '\n' : '';
   const colon = indent ? ': ' : ':';
   const pads = [''];
-
-  const w = (node: JNode, d: number) => {
+  const seps: string[] = [];
+  const pad = (d: number) => {
+    while (pads.length <= d) pads.push(pads[pads.length - 1] + indent);
+    return pads[d];
+  };
+  // The open containers: their items, whether they're objects, and the item being written.
+  const lists: JNode[][] = [];
+  const objs: boolean[] = [];
+  const at: number[] = [];
+  let node = root;
+  for (;;) {
     switch (node.t) {
       case NUL:
         out += 'null';
-        return;
+        break;
       case BOOL:
         out += node.v ? 'true' : 'false';
-        return;
+        break;
       case NUM:
         out += node.v as string;
-        return;
+        break;
       case STR:
         out += quote(node.v as string);
-        return;
+        break;
+      default: {
+        let list = kids(node);
+        const isObj = node.t === OBJ;
+        if (!list.length) {
+          out += isObj ? '{}' : '[]';
+          break;
+        }
+        if (isObj && sortKeys) list = list.slice().sort(byKey);
+        out += (isObj ? '{' : '[') + nl + pad(lists.length + 1);
+        lists.push(list);
+        objs.push(isObj);
+        at.push(0);
+        if (isObj) out += quote(list[0].key as string) + colon;
+        node = list[0];
+        continue;
+      }
     }
-    let list = kids(node);
-    const isObj = node.t === OBJ;
-    if (!list.length) {
-      out += isObj ? '{}' : '[]';
-      return;
+    // The node is written: on to the next item, closing the containers that are done.
+    for (;;) {
+      const d = lists.length;
+      if (!d) return out;
+      const list = lists[d - 1];
+      const i = ++at[d - 1];
+      if (i < list.length) {
+        out += seps[d] ?? (seps[d] = ',' + nl + pad(d));
+        if (objs[d - 1]) out += quote(list[i].key as string) + colon;
+        node = list[i];
+        break;
+      }
+      lists.pop();
+      at.pop();
+      out += nl + pad(d - 1) + (objs.pop() ? '}' : ']');
     }
-    if (isObj && sortKeys) list = list.slice().sort(byKey);
-    const inner = pads[d + 1] ?? (pads[d + 1] = pads[d] + indent);
-    const sep = ',' + nl + inner;
-    out += (isObj ? '{' : '[') + nl + inner;
-    for (let i = 0; i < list.length; i++) {
-      const c = list[i];
-      if (i) out += sep;
-      if (isObj) out += quote(c.key as string) + colon;
-      w(c, d + 1);
-    }
-    out += nl + pads[d] + (isObj ? '}' : ']');
-  };
-
-  w(root, 0);
-  return out;
+  }
 }
 
 /**
@@ -63,7 +85,14 @@ export function stringify(root: JNode, indent: string, sortKeys = false): string
  * reproduce the document exactly (≈3× faster on large inputs).
  */
 export function formatDoc(src: string, res: ParseResult, indent: string, sortKeys = false): string {
-  if (res.exact && !sortKeys) return JSON.stringify(JSON.parse(src), null, indent || undefined);
+  if (res.exact && !sortKeys) {
+    try {
+      return JSON.stringify(JSON.parse(src), null, indent || undefined);
+    } catch (e) {
+      // Nesting deeper than the engine can write (a few thousand levels in Chrome and Firefox): written from the tree below.
+      if (!tooDeep(e)) throw e;
+    }
+  }
   // Strict JSON with numbers the engine would round: re-indented straight from the text.
   const fast = !sortKeys && !res.error && !res.issues.length && !res.multi ? reindent(src, indent) : null;
   return fast ?? stringify(res.root as JNode, indent, sortKeys);

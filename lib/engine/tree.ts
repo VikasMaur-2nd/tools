@@ -140,7 +140,12 @@ export class TreeView {
     const rows: JNode[] = [];
     const useT = this.toggles.size > 0;
     const limit = this.limit;
-    const walk = (n: JNode, key: string) => {
+    // Open containers being listed (a list rather than the call stack, so any depth can be shown):
+    // their items, the next item, and their toggle key.
+    const lists: JNode[][] = [];
+    const at: number[] = [];
+    const keys: string[] = [];
+    const visit = (n: JNode, key: string) => {
       rows.push(n);
       if (n.t < ARR) return;
       let open = n.d < limit;
@@ -150,14 +155,27 @@ export class TreeView {
       }
       n.x = open;
       if (open) {
-        const list = kids(n);
-        for (let i = 0; i < list.length; i++) walk(list[i], useT ? key + SEP + String(list[i].key) : '');
+        lists.push(kids(n));
+        at.push(0);
+        keys.push(key);
       }
     };
-    if (self) walk(start, startKey);
+    if (self) visit(start, startKey);
     else {
-      const list = kids(start);
-      for (let i = 0; i < list.length; i++) walk(list[i], useT ? startKey + SEP + String(list[i].key) : '');
+      lists.push(kids(start));
+      at.push(0);
+      keys.push(startKey);
+    }
+    while (lists.length) {
+      const d = lists.length - 1;
+      const list = lists[d];
+      const i = at[d]++;
+      if (i < list.length) visit(list[i], useT ? keys[d] + SEP + String(list[i].key) : '');
+      else {
+        lists.pop();
+        at.pop();
+        keys.pop();
+      }
     }
     return rows;
   }

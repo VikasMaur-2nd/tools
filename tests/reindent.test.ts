@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parse } from '../lib/json/parser';
-import { reindent, stringify } from '../lib/json/format';
+import { ARR, JNode, OBJ, parse, type ParseResult } from '../lib/json/parser';
+import { formatDoc, reindent, stringify } from '../lib/json/format';
 
 let seed = 11;
 const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
@@ -42,4 +42,30 @@ test('reindent leaves anything but strict JSON to the parser', () => {
   for (const bad of ['[1,2,]', '{"a":1,}', '// c\n{}', "{'a':1}", '{a:1}', '[01]', '[1.]', '[+1]', '[NaN]', '[1 2]', '{"a" 1}', '[', '{"a":1', '"un', '[1]]', '[1] 2', '["\\x"]', '["a\nb"]', 'truex', '[True]', '﻿[1]', '[' .repeat(600) + ']'.repeat(600)]) {
     assert.equal(reindent(bad, '  '), null, bad);
   }
+});
+
+test('documents nested deeper than the engine can stringify are written from the tree', () => {
+  // Built directly: the parser's own limit depends on the stack it runs on. Arrays inside objects inside arrays…
+  const depth = 6_000;
+  let src = '';
+  let close = '';
+  const root = new JNode(ARR, [], 0, 0, null, undefined);
+  let n = root;
+  for (let d = 1; d < depth; d++) {
+    const obj = d % 2 === 1;
+    src += n.t === OBJ ? '{"k":' : '[';
+    close = (n.t === OBJ ? '}' : ']') + close;
+    const c = new JNode(obj ? OBJ : ARR, [], src.length, d, n, n.t === OBJ ? 'k' : 0);
+    (n.v as JNode[]).push(c);
+    n = c;
+  }
+  src += (n.t === OBJ ? '{}' : '[]') + close;
+  const res: ParseResult = { root, issues: [], warnings: [], error: null, nodes: depth, depth: depth - 1, exact: true, multi: false };
+  assert.throws(() => JSON.stringify(JSON.parse(src)), RangeError, 'the engine itself overflows, so the fallback is what this tests');
+  assert.equal(formatDoc(src, res, ''), src);
+  const pretty = formatDoc(src, res, ' ');
+  assert.equal(pretty.replace(/\s+/g, ''), src);
+  assert.equal(pretty.split('\n').length, 2 * (depth - 1) + 1);
+  assert.ok(pretty.startsWith('[\n {\n  "k": [\n   {\n'));
+  assert.equal(formatDoc(src, res, '', true), src);
 });

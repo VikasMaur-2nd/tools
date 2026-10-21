@@ -52,6 +52,8 @@ export class JNode {
 
 export const kids = (n: JNode) => n.v as JNode[];
 export const isContainer = (n: JNode) => n.t >= ARR;
+/** A stack overflow: "Maximum call stack size exceeded" (RangeError) in Chrome and Safari, "too much recursion" (InternalError) in Firefox. */
+export const tooDeep = (e: unknown) => (e instanceof RangeError || (e as Error | null)?.name === 'InternalError') && /call stack|recursion/i.test((e as Error).message);
 
 export interface Issue {
   p: number;
