@@ -61,18 +61,3 @@ export async function compressedSizes(blob: Blob, current: () => boolean): Promi
   }
   return sizes;
 }
-
-export async function toBase64Url(s: string): Promise<string> {
-  const stream = new Blob([s]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
-  let bin = '';
-  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-export async function fromBase64Url(b64: string): Promise<string> {
-  const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-  const buf = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Response(stream).text();
-}

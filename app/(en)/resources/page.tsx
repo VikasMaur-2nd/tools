@@ -35,6 +35,12 @@ const resources = [
     description: 'Small, valid documents for API responses, application configuration and nested data, with downloadable files.',
   },
   {
+    href: '/resources/view-in-tool-kumar',
+    kind: 'Integration',
+    title: 'View in Tool Kumar links and buttons',
+    description: 'Link a JSON document, or two to compare, from docs, READMEs and bug reports. The JSON travels in the link; nothing is uploaded.',
+  },
+  {
     href: '/blogs/json-formatting-guide',
     kind: 'Guide',
     title: 'How to format and validate JSON',

@@ -19,7 +19,8 @@ const TOOL_UPDATES: Record<string, string> = Object.fromEntries(
 );
 for (const slug of ['json-visualizer', 'large-json-viewer', 'json-path-finder', 'json-to-table', 'json-validator']) TOOL_UPDATES[slug] = '2026-10-19';
 TOOL_UPDATES['secure-json-formatter'] = '2026-10-18';
-const PRIVACY_LAST_MODIFIED = '2026-10-18';
+const PRIVACY_LAST_MODIFIED = '2026-10-21';
+const LINK_KIT_LAST_MODIFIED = '2026-10-21';
 const SITE = 'https://tools.vikasmaur.com';
 
 /** A page and its translations, each listing the whole hreflang cluster. */
@@ -84,6 +85,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: RESOURCES_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.75,
+    },
+    {
+      url: `${SITE}/resources/view-in-tool-kumar`,
+      lastModified: LINK_KIT_LAST_MODIFIED,
+      changeFrequency: 'monthly',
+      priority: 0.7,
     },
     ...cluster('/tools', {
       lastModified: TOOLS_INDEX_LAST_MODIFIED,

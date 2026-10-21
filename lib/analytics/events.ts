@@ -6,11 +6,13 @@
  *
  * Not measured on purpose (would expose documents or their owners): document
  * text, keys, values and paths; search and JSONPath queries; file names; URLs
- * typed into Load from URL; share links (they contain the document); the root
- * type name; parser messages (they quote the input); exact sizes and counts.
+ * typed into Load from URL or named by a link; share links (they contain the
+ * document); the site that handed a document over; the root type name; parser
+ * messages (they quote the input); exact sizes and counts.
  */
 
-export type InputSource = 'paste' | 'paste_button' | 'file' | 'drop' | 'launch' | 'url' | 'url_param' | 'share_link' | 'sample';
+/** `link`: a link carrying the document; `link_url`: a link naming a URL to fetch it from; `handoff`: sent by the page that opened the tab (lib/link.ts). */
+export type InputSource = 'paste' | 'paste_button' | 'file' | 'drop' | 'launch' | 'url' | 'link' | 'link_url' | 'handoff' | 'sample';
 export type FileKind = 'json' | 'jsonl' | 'geojson' | 'har' | 'map' | 'txt' | 'log' | 'csv' | 'tsv' | 'yaml' | 'xml' | 'toml' | 'other' | 'none';
 export type Validity = 'valid' | 'fixable' | 'invalid' | 'unknown';
 export type ViewId = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
@@ -21,7 +23,7 @@ export type Feature =
   | 'copy_input' | 'copy_output' | 'copy_convert' | 'copy_value' | 'copy_path' | 'copy_csv'
   | 'download_input' | 'download_output' | 'download_convert' | 'download_csv' | 'export_xlsx'
   | 'graph_fit' | 'graph_zoom_in' | 'graph_zoom_out' | 'graph_export_png' | 'graph_export_jpeg' | 'graph_export_svg' | 'graph_copy_image' | 'graph_jump'
-  | 'share_link' | 'repair' | 'unescape' | 'escape' | 'decode_jwt' | 'expand_nested' | 'use_output'
+  | 'share_link' | 'share_compare' | 'repair' | 'unescape' | 'escape' | 'decode_jwt' | 'expand_nested' | 'use_output'
   | 'format_input' | 'minify_input' | 'sort_input' | 'clear'
   | 'import_yaml' | 'import_xml' | 'import_csv' | 'import_toml'
   | 'find' | 'expand_all' | 'collapse_all' | 'expand_level' | 'fold_input'

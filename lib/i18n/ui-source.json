@@ -417,7 +417,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -757,7 +756,15 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1177,7 +1184,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -1517,7 +1523,15 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -1937,7 +1951,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -2277,7 +2290,15 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -2697,7 +2718,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -3037,7 +3057,15 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3457,7 +3485,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -3797,7 +3824,15 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4217,7 +4252,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -4557,7 +4591,15 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -4977,7 +5019,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -5317,7 +5358,15 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -5737,7 +5786,6 @@
     "toast.copiedAll": "d496b952",
     "toast.nothingToDownload": "c0dc28ff",
     "toast.saved": "c62da13c",
-    "toast.onlyValidShare": "1282dcba",
     "toast.shareTooLarge": "3b2835c6",
     "toast.shareCopied": "caa70488",
     "toast.noShare": "635e6950",
@@ -6077,6 +6125,14 @@
     "cmd.graph-start.terms": "be4100cf",
     "cmd.graph-end.terms": "8d8420c9",
     "cmd.graph-export.terms": "181e621c",
-    "cmd.graph-copy.terms": "4dad3598"
+    "cmd.graph-copy.terms": "4dad3598",
+    "app.shareTipCompare": "bdfb7340",
+    "app.copyCompareLink": "db3afbbc",
+    "toast.nothingToShare": "a2fe6e84",
+    "toast.compareLinkCopied": "269012c0",
+    "toast.sharedCompareLoaded": "9994a08d",
+    "toast.handoffOpened": "6e4c41d3",
+    "toast.handoffOpenedAnon": "3dcd93db",
+    "toast.handoffInvalid": "8ffd497e"
   }
 }

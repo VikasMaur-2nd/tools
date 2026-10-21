@@ -10,6 +10,7 @@ import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { store, useUI, type IndentId, type JwtInfo, type View } from '@/lib/engine/store';
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
+import { parseLink } from '@/lib/link';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
@@ -69,7 +70,12 @@ const InputBar = memo(function InputBar() {
         )}
       </span>
       <span className="grow" />
-      <Btn icon="share" label="Share" tip="Copy a link that contains this JSON (nothing is uploaded)" onClick={() => act((e) => e.share())} />
+      <Btn
+        icon="share"
+        label="Share"
+        tip={comparing ? 'Copy a link that contains both documents (nothing is uploaded)' : 'Copy a link that contains this JSON (nothing is uploaded)'}
+        onClick={() => act((e) => e.share())}
+      />
       <Menu label="Input options">
         {(close) => (
           <>
@@ -185,6 +191,7 @@ function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> 
               <MItem label="Open file" onClick={() => act((e) => e.openFile(2))} close={close} />
               <MItem label="Format" keys="mod+Enter" onClick={() => act((e) => e.formatCompare())} close={close} />
               <MItem label="Swap with original" onClick={() => act((e) => e.swapCompare())} close={close} />
+              <MItem label="Copy comparison link" onClick={() => act((e) => e.share())} close={close} />
               <MSep />
               <EditorFoldItems which={2} close={close} />
               <WrapItem />
@@ -1206,7 +1213,8 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const empty = useUI((s) => s.empty);
 
   useEffect(() => {
-    const pagePreset = presetRef.current;
+    // A link to a landing page opens the linked documents instead of the page's sample.
+    const pagePreset = parseLink(location.hash) ? undefined : presetRef.current;
     // Engine DOM code (folds, tooltips, value hints) reads the page's strings from here.
     setRuntime(tRef.current);
     const e = new Engine({

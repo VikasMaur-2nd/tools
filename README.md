@@ -28,7 +28,8 @@ Browse the [resource library](https://tools.vikasmaur.com/resources) or [open th
 - **Compare** two JSON documents (structural diff, JSON Patch).
 - Editor ↔ tree sync, bracket matching, auto-indent, command palette (`Ctrl/⌘ K`), keyboard shortcuts (`?`).
 - Huge files (tens of MB) open instantly in a virtualized read-only view.
-- Open / drop files, paste, load from URL (`?url=`), compressed share links (data stays in the URL hash).
+- Open / drop files, paste, load from URL, compressed share links (data stays in the URL hash).
+- "View in Tool Kumar" links for other sites: `/#a=<doc>&b=<doc>&view=tree` (format in `lib/link.ts`, helper `public/toolkumar.js`, docs at `/resources/view-in-tool-kumar`).
 - Light & dark themes (follows the system, no flash), installable PWA, works offline.
 
 ## Stack
