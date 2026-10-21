@@ -995,6 +995,14 @@ function Splitter() {
 
 // ── Status bar ──────────────────────────────────────────────────────────────
 
+const percentFormats = new Map<string | undefined, Intl.NumberFormat>();
+/** 0.42 → "42%" in the page's language (made on first use: number formats cost a cold phone). */
+function percent(x: number, lang?: string) {
+  let f = percentFormats.get(lang);
+  if (!f) percentFormats.set(lang, (f = new Intl.NumberFormat(lang, { style: 'percent' })));
+  return f.format(x);
+}
+
 function StatusMsg() {
   const status = useUI((s) => s.status);
   const t = useT();
@@ -1005,6 +1013,7 @@ function StatusMsg() {
       return (
         <span className="st muted">
           <i className="spin" /> {t('Parsing…')}
+          {status.progress !== undefined && <span className="st-pct">{percent(status.progress, t.lang)}</span>}
         </span>
       );
     case 'valid':

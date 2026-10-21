@@ -50,7 +50,8 @@ export interface JwtInfo {
 
 export type Status =
   | { kind: 'empty' }
-  | { kind: 'parsing' }
+  /** `progress`: how much of a document parsed here in steps is done (0 to 1). */
+  | { kind: 'parsing'; progress?: number }
   | { kind: 'valid'; warnings: number; msg?: string; p?: number; line?: number; col?: number; jwt?: JwtInfo; jsonl?: number }
   | { kind: 'fixable'; msg: string; p: number; line: number; col: number; count: number }
   | { kind: 'error'; msg: string; p: number; line: number; col: number };

@@ -2063,6 +2063,10 @@ button.tv-x:hover {
   font-weight: 600;
 }
 
+.st-pct {
+  font-variant-numeric: tabular-nums;
+}
+
 .spin {
   width: 10px;
   height: 10px;
