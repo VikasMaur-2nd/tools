@@ -76,6 +76,18 @@ export function maxWidth(t: Chars, ls: number[]) {
   return max;
 }
 
+/** `ls.splice(at, del, ...items)`, without passing a long `items` as arguments (past the engine's limit that throws). */
+function splice(ls: number[], at: number, del: number, items: number[]) {
+  if (items.length < 4096) {
+    ls.splice(at, del, ...items);
+    return;
+  }
+  const tail = ls.slice(at + del);
+  ls.length = at;
+  for (let i = 0; i < items.length; i++) ls.push(items[i]);
+  for (let i = 0; i < tail.length; i++) ls.push(tail[i]);
+}
+
 /**
  * Updates `ls` (in place) and the widest-line width for `old`[a, b) replaced
  * by `ins` (giving `next`). Returns the new width, and the line range that
@@ -96,7 +108,7 @@ export function patchLines(ls: number[], old: Chars, next: Chars, a: number, b: 
   for (let p = ins.indexOf('\n'); p !== -1; p = ins.indexOf('\n', p + 1)) starts.push(a + p + 1);
   const d = ins.length - (b - a);
   if (d) for (let i = lb + 1; i < ls.length; i++) ls[i] += d;
-  if (lb > la || starts.length) ls.splice(la + 1, lb - la, ...starts);
+  if (lb > la || starts.length) splice(ls, la + 1, lb - la, starts);
   const added = starts.length;
   // Widths not wanted (soft wrap: lines are as wide as the view): `max` is then stale, the caller knows.
   if (!widths) return { max, la, lb, added };

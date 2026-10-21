@@ -15,8 +15,8 @@ import {
   type ReactNode,
   type UIEvent,
 } from 'react';
-import { ARR, parse, tooDeep, type JNode } from '@/lib/json/parser';
-import { preview, primText } from '@/lib/json/format';
+import { ARR, MAX_WALK_DEPTH, parse, tooDeep, type JNode } from '@/lib/json/parser';
+import { preview, primText, tooLarge } from '@/lib/json/format';
 import { formatPath } from '@/lib/json/path';
 import { diff, parseIgnoreList, type Change, type DiffKind, type DiffResult } from '@/lib/diff/diff';
 import { patchText, toPatch } from '@/lib/diff/patch';
@@ -85,6 +85,8 @@ const mem = {
   layout: 'unified' as Layout,
 };
 
+const TOO_DEEP = 'Nesting is too deep to compare';
+
 /** Single-entry cache: switching Changes ⇄ Diff doesn't redo the line diff. */
 let lastModel: { l: JNode; r: JNode; k: boolean; m: TextModel | string } | null = null;
 
@@ -103,7 +105,7 @@ function textModel(l: JNode, r: JNode, sortKeys: boolean): TextModel | string {
     m = { a, b, d, ...pairLines(a.lines, b.lines, d.hunks), wa: width(a.lines), wb: width(b.lines), digits: String(Math.max(a.lines.length, b.lines.length)).length };
   } catch (e) {
     if (!(e instanceof RangeError || tooDeep(e))) throw e;
-    m = 'Nesting is too deep to compare';
+    m = TOO_DEEP;
   }
   lastModel = { l, r, k: sortKeys, m };
   return m;
@@ -300,11 +302,14 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   const rp = useMemo(() => (d.r.trim() ? parse(d.r) : null), [d.r]);
   const ignoreKey = useMemo(() => parseIgnoreList(dIgnore).join('\n'), [dIgnore]);
 
+  // Nesting deeper than Compare walks (see MAX_WALK_DEPTH) is refused at once.
+  const deep = !!lp && !!rp && (lp.depth > MAX_WALK_DEPTH || rp.depth > MAX_WALK_DEPTH);
   const result = useMemo<DiffResult | null>(() => {
     if (!lp?.root || !rp?.root) return null;
+    if (deep) return { changes: [], summary: { added: 0, removed: 0, changed: 0, type: 0, total: 0 }, truncated: false, error: TOO_DEEP };
     const o = { ignoreKeyOrder: dOpts.keyOrder, ignoreArrayOrder: dOpts.arrayOrder, caseInsensitiveStrings: dOpts.ci, ignorePaths: ignoreKey ? ignoreKey.split('\n') : [] };
     return diff(lp.root, rp.root, o);
-  }, [lp, rp, dOpts, ignoreKey]);
+  }, [lp, rp, deep, dOpts, ignoreKey]);
 
   // Line marks for both editors after every diff (nulls when there is none).
   useEffect(() => {
@@ -337,7 +342,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   // ── Diff view model ──
 
   const keyOrder = dOpts.keyOrder;
-  const model = useMemo(() => (view === 'diff' && lp?.root && rp?.root ? textModel(lp.root, rp.root, keyOrder) : null), [view, lp, rp, keyOrder]);
+  const model = useMemo(() => (view === 'diff' && lp?.root && rp?.root ? (deep ? TOO_DEEP : textModel(lp.root, rp.root, keyOrder)) : null), [view, lp, rp, deep, keyOrder]);
   const tm = model && typeof model !== 'string' ? model : null;
   const open = openState.m === tm ? openState.set : NO_OPEN;
   const split = layout === 'split' && wide;
@@ -437,7 +442,14 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   const copyPatch = () => {
     if (!result) return;
     const ops = toPatch(result.changes);
-    const text = patchText(ops, indent);
+    let text: string;
+    try {
+      text = patchText(ops, indent);
+    } catch (e) {
+      // A replaced subtree nested too deep to pretty-print (see MAX_TEXT).
+      if (!tooLarge(e)) throw e;
+      return flash(tr('The result is too large'));
+    }
     if (!navigator.clipboard?.writeText) return flash(tr('Copy failed: clipboard access was blocked'));
     navigator.clipboard.writeText(text).then(
       () => flash(result.truncated ? tr('Copied, but incomplete: too many differences') : tr.n(ops.length, 'JSON Patch copied ({n} operation)', 'JSON Patch copied ({n} operations)')),

@@ -547,18 +547,31 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
 
 // ── Viewer toolbar: tabs · one main control · four fixed icons ──────────────
 
+/** Breadcrumbs shown after `$`: a deeper location keeps its last ones, after "…" for the level above them. */
+const CRUMBS = 12;
+const crumb = (k: string | number) => (typeof k === 'number' ? `[${k}]` : k);
+
 function Crumbs() {
   const { segs, rows, cols, ok } = useUI((s) => s.table);
   const t = useT();
   if (!ok) return <span className="muted sm">{t('Select an array or object')}</span>;
+  const from = Math.max(0, segs.length - CRUMBS);
   return (
     <nav className={`crumbs ${PRIVATE}`} aria-label={t('Table location')}>
       <button type="button" onClick={() => act((e) => e.tableGoto([]))}>$</button>
-      {segs.map((k, i) => (
-        <span key={i}>
+      {from > 0 && (
+        <span>
           <Icon name="down" size={12} className="sep" />
-          <button type="button" onClick={() => act((e) => e.tableGoto(segs.slice(0, i + 1)))}>
-            {typeof k === 'number' ? `[${k}]` : k}
+          <button type="button" aria-label={crumb(segs[from - 1])} onClick={() => act((e) => e.tableGoto(segs.slice(0, from)))}>
+            …
+          </button>
+        </span>
+      )}
+      {segs.slice(from).map((k, j) => (
+        <span key={from + j}>
+          <Icon name="down" size={12} className="sep" />
+          <button type="button" onClick={() => act((e) => e.tableGoto(segs.slice(0, from + j + 1)))}>
+            {crumb(k)}
           </button>
         </span>
       ))}
@@ -666,7 +679,8 @@ function TreePath() {
   if (!path) return <span className="muted sm nowrap">{t('Select a node')}</span>;
   return (
     <button type="button" className={`path ${PRIVATE}`} onClick={() => act((e) => e.copyPath())} data-tip={t('Copy path')}>
-      {path}
+      {/* (Its start is what shows: a very deep node's path, hundreds of thousands of characters, isn't laid out whole.) */}
+      {path.length > 300 ? path.slice(0, 300) + '…' : path}
     </button>
   );
 }

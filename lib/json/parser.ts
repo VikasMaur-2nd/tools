@@ -103,6 +103,13 @@ const MAX_ISSUES = 500;
  * stack ran out: 2,200 to 25,000 levels). About 270 bytes of tree per level, so at most ~27 MB.
  */
 export const MAX_DEPTH = 100_000;
+/**
+ * Deepest nesting the features that still walk a tree recursively work on (Convert, Compare and the
+ * spreadsheet exports), the same in every browser and far from any stack limit. Their cost grows with the
+ * square of the depth (2,000 nested objects convert in about 0.2 s in V8), so a deeper document is refused
+ * at once with a clear message rather than after seconds of work or a stack overflow.
+ */
+export const MAX_WALK_DEPTH = 2_000;
 
 const isDigit = (c: number) => c >= 48 && c <= 57;
 const isHex = (c: number) => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);

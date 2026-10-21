@@ -1,4 +1,4 @@
-import { ARR, JNode, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
+import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
 import { byteLength, copyText, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
@@ -1087,6 +1087,7 @@ export class Engine {
     if (!current?.root) this.materializeGood();
     const root = current?.root ?? this.good?.root;
     if (!root) return this.toast('Paste or open valid JSON first', 'info');
+    if ((current?.root ? current : this.good)!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
     try {
       const { records, toXlsx } = await import('../convert/xlsx');
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
@@ -2109,6 +2110,11 @@ export class Engine {
       store.set({ convert: { loading: false, error: 'Paste or open valid JSON on the left to convert it.', lines: 0, bytes: 0 } });
       return;
     }
+    if (this.good!.depth > MAX_WALK_DEPTH) {
+      this.code.setText('', escapeHtml);
+      store.set({ convert: { loading: false, error: 'Nesting is too deep to convert', lines: 0, bytes: 0 } });
+      return;
+    }
     try {
       const mod = await this.loadConverters();
       const s = this.settings;
@@ -2150,6 +2156,7 @@ export class Engine {
     if (info.id === 'xlsx') {
       const root = this.good?.root;
       if (!root) return this.toast('Paste or open valid JSON first', 'info');
+      if (this.good!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
       try {
         const { records, toXlsx } = await import('../convert/xlsx');
         this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
