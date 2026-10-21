@@ -128,6 +128,17 @@ test('graph model: direct IDs match the old lookup semantics, including inline v
   assert.equal(rowOf(m, foreign), -1);
 });
 
+test('graph model: cards are in document order, so lookups can binary-search them', () => {
+  for (const src of ['{"a":[1,2,{"b":true}],"c":{"d":null}}', '{"a":1}\n{"b":{"c":2}}\n[3,[4]]', 'cb({"a":{"b":[1,{"c":2}]}})', '[f([1,[2]]), g({"x":{}})]']) {
+    const r = parse(src);
+    const m = buildModel(r.root!, CW, r.nodes);
+    for (let c = 1; c < m.n; c++) assert.ok(m.node[c - 1].s <= m.node[c].s, `${src}: card ${c}`);
+    // Every card and row is found again, including a JSON Lines wrapper and the first record, which start together.
+    for (let c = 0; c < m.n; c++) assert.equal(cardOf(m, m.node[c]), c);
+    for (let row = 0; row < m.rows; row++) assert.equal(rowOf(m, m.rowNode[row]), row);
+  }
+});
+
 test('graph text: escapes, wide characters and truncation', () => {
   assert.equal(fit('a\nb"', 40, true), 'a\\nb\\"');
   assert.equal(fit('abcdef', 4, false), 'abc…');
