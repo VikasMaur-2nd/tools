@@ -140,8 +140,12 @@ const LINES_FILE = /\.(jsonl|ndjson)$/i;
 const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
 const WORKER_MIN = 2_000_000;
-/** From this size, a new document is parsed here in short steps (see analyzeInSteps). */
+/** From this size, a new document is parsed here in steps (see analyzeInSteps). */
 const STEPS_MIN = 1_000_000;
+/** The first step's length in ms. It runs at once, as a parse in one go did: a document parsed by then is ready as soon. */
+const FIRST_STEP = 100;
+/** The next steps' length in ms: input waits at most about this long. (10 to 50 ms are ready about as soon.) */
+const STEP = 20;
 
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
 const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
@@ -485,9 +489,10 @@ export class Engine {
   private steps: { p: Parser; seq: number; ver: object } | null = null;
 
   /**
-   * Analyses a new document. A big one is parsed here in short steps first: input is handled between
-   * them, the status shows how far it got, and an edit or another load drops it (fresh() finishes it
-   * for a command). Until it is done the views show nothing of the previous document.
+   * Analyses a new document. A big one is parsed here in steps, the first at once (one it finishes is ready
+   * as soon as in one go): input is handled between them, the status shows how far it got, and an edit or
+   * another load drops it (fresh() finishes it for a command). Until it is done the views show nothing of
+   * the previous document.
    */
   private analyzeInSteps() {
     const text = this.ed.length >= STEPS_MIN && this.resetNext ? this.ed.text : '';
@@ -526,7 +531,7 @@ export class Engine {
         return;
       }
       const t0 = performance.now();
-      const until = t0 + 10;
+      const until = t0 + (ms ? STEP : FIRST_STEP);
       if (!res) {
         res = p.step(until);
         ms += performance.now() - t0;
@@ -555,7 +560,7 @@ export class Engine {
       }
       soon(run);
     };
-    soon(run);
+    run();
   }
 
   /** A document version parsed in steps: its UTF-8 size, counted meanwhile, and the time its steps took. */

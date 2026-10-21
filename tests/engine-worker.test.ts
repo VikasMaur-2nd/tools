@@ -212,13 +212,13 @@ const big = JSON.stringify(Array.from({ length: 100_000 }, (_, k) => ({ id: k, n
 test('a big new document is parsed in steps, then analysed with the one-shot result and its byte size', () => {
   const { engine, tick, analysed } = stepsSession(big);
   engine.analyzeInSteps();
-  assert.equal(analysed.length, 0, 'nothing is parsed before the first step');
+  assert.equal(analysed.length, 0, 'the first step, at once, does not finish it');
   let steps = 0;
   while (!analysed.length && steps < 100_000) {
     tick();
     steps++;
   }
-  assert.ok(steps > 3, `parsed in ${steps} steps`);
+  assert.ok(steps > 1, `parsed in ${steps} steps`);
   assert.equal(diffResults(parse(big), analysed[0]!), null);
   assert.equal(engine.steps, null);
   assert.equal(engine.counted.bytes, Buffer.byteLength(big));
@@ -244,6 +244,14 @@ test('a command finishes a parse in steps at once, from where it got to', () => 
   assert.equal(diffResults(parse(big), analysed[0]!), null);
   for (let k = 0; k < 1000; k++) tick();
   assert.equal(analysed.length, 1, 'the dropped steps do nothing more');
+});
+
+test('a big document the first step parses is analysed at once, as in one go', () => {
+  const text = big.slice(0, 1_200_000).replace(/,\{[^{}]*$/, ']');
+  const { engine, analysed } = stepsSession(text);
+  engine.analyzeInSteps();
+  assert.equal(analysed.length, 1);
+  assert.equal(diffResults(parse(text), analysed[0]!), null);
 });
 
 test('small documents and edits are analysed at once', () => {
