@@ -764,7 +764,10 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1531,7 +1534,10 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2298,7 +2304,10 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -3065,7 +3074,10 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3832,7 +3844,10 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4599,7 +4614,10 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -5366,7 +5384,10 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -6133,6 +6154,9 @@
     "toast.sharedCompareLoaded": "9994a08d",
     "toast.handoffOpened": "6e4c41d3",
     "toast.handoffOpenedAnon": "3dcd93db",
-    "toast.handoffInvalid": "8ffd497e"
+    "toast.handoffInvalid": "8ffd497e",
+    "app.integrate": "ef6a2b3e",
+    "cmd.integrate": "15b0740d",
+    "cmd.integrate.terms": "b2678780"
   }
 }

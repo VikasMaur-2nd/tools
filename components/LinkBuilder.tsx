@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent } from 'react';
 import { PRIVATE } from '@/lib/analytics';
 import { TARGETS } from '@/lib/engine/targets';
 import { MAX_LINK, linkHash, type LinkDoc } from '@/lib/link';
@@ -11,7 +11,7 @@ const BADGES = {
   view: { label: 'View in Tool Kumar', width: 158 },
   compare: { label: 'Compare in Tool Kumar', width: 180 },
 } as const;
-const VIEW_LABELS: [View, string][] = [
+const VIEWS: [View, string][] = [
   ['format', 'Format'],
   ['tree', 'Tree'],
   ['table', 'Table'],
@@ -23,39 +23,54 @@ const SAMPLE_B = '{\n  "id": 42,\n  "name": "Ada King",\n  "roles": ["author", "
 
 type Kind = 'json' | 'url';
 type Badge = 'auto' | 'black' | 'white';
+type Format = 'markdown' | 'html' | 'link';
 
 const badgeUrl = (kind: keyof typeof BADGES, white: boolean) => `${SITE}/badges/${kind}-in-tool-kumar${white ? '-dark' : ''}.svg`;
 const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
-function snippets(href: string, kind: keyof typeof BADGES, badge: Badge) {
+function snippet(format: Format, href: string, kind: keyof typeof BADGES, badge: Badge) {
+  if (format === 'link') return href;
   const { label, width } = BADGES[kind];
+  if (format === 'markdown') return `[![${label}](${badgeUrl(kind, badge === 'white')})](${href})`;
   const img = (white: boolean) => `<img src="${badgeUrl(kind, white)}" alt="${label}" width="${width}" height="28">`;
   const a = escapeAttr(href);
-  const html =
-    badge === 'auto'
-      ? `<a href="${a}"><picture><source media="(prefers-color-scheme: dark)" srcset="${badgeUrl(kind, true)}">${img(false)}</picture></a>`
-      : `<a href="${a}">${img(badge === 'white')}</a>`;
-  const markdown = `[![${label}](${badgeUrl(kind, badge === 'white')})](${href})`;
-  return { html, markdown };
+  return badge === 'auto'
+    ? `<a href="${a}"><picture><source media="(prefers-color-scheme: dark)" srcset="${badgeUrl(kind, true)}">${img(false)}</picture></a>`
+    : `<a href="${a}">${img(badge === 'white')}</a>`;
 }
 
-/** One document's input: JSON text or a URL to fetch it from. */
+/** A row of mutually exclusive buttons (radio group): arrow keys move the choice, like native radios. */
+function Seg<T extends string>({ label, value, options, onChange, className }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void; className?: string }) {
+  const move = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const i = (options.findIndex(([v]) => v === value) + step + options.length) % options.length;
+    onChange(options[i][0]);
+    (e.currentTarget.children[i] as HTMLElement | undefined)?.focus();
+  };
+  return (
+    <div className={`lb-seg${className ? ' ' + className : ''}`} role="radiogroup" aria-label={label} onKeyDown={move}>
+      {options.map(([v, l]) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} tabIndex={value === v ? 0 : -1} onClick={() => onChange(v)}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** One document: JSON text or a URL to fetch it from. */
 function DocField({ label, kind, setKind, value, setValue }: { label: string; kind: Kind; setKind: (k: Kind) => void; value: string; setValue: (v: string) => void }) {
   const id = useId();
   return (
-    <div className="lb-doc">
-      <div className="lb-doc-head">
+    <div className="lb-field">
+      <div className="lb-head">
         <label htmlFor={id}>{label}</label>
-        <div className="lb-seg" role="radiogroup" aria-label={`${label}: source`}>
-          {(['json', 'url'] as const).map((k) => (
-            <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)}>
-              {k === 'json' ? 'JSON' : 'URL'}
-            </button>
-          ))}
-        </div>
+        <Seg label={`${label}: source`} value={kind} options={[['json', 'JSON'], ['url', 'URL']]} onChange={setKind} />
       </div>
       {kind === 'json' ? (
-        <textarea id={id} className={PRIVATE} value={value} onChange={(e) => setValue(e.target.value)} rows={7} spellCheck={false} />
+        <textarea id={id} className={PRIVATE} value={value} onChange={(e) => setValue(e.target.value)} rows={8} spellCheck={false} />
       ) : (
         <input id={id} className={PRIVATE} type="url" value={value} onChange={(e) => setValue(e.target.value)} placeholder="https://api.example.com/data.json" spellCheck={false} />
       )}
@@ -63,34 +78,8 @@ function DocField({ label, kind, setKind, value, setValue }: { label: string; ki
   );
 }
 
-function Output({ label, value }: { label: string; value: string }) {
-  const id = useId();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = window.setTimeout(() => setCopied(false), 1600);
-    return () => window.clearTimeout(t);
-  }, [copied]);
-  return (
-    <div className="lb-out">
-      <div className="lb-doc-head">
-        <label htmlFor={id}>{label}</label>
-        <button
-          type="button"
-          className="lb-copy"
-          disabled={!value}
-          onClick={() => navigator.clipboard.writeText(value).then(() => setCopied(true), () => undefined)}
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <textarea id={id} className={PRIVATE} readOnly value={value} rows={value.length > 300 ? 4 : 2} spellCheck={false} onFocus={(e) => e.currentTarget.select()} />
-    </div>
-  );
-}
-
 /**
- * Builds "View in Tool Kumar" and "Compare in Tool Kumar" links and buttons in
+ * Builds "View in Tool Kumar" and "Compare in Tool Kumar" buttons and links in
  * the browser, with the same code the viewer reads them with (lib/link.ts).
  */
 export default function LinkBuilder() {
@@ -104,8 +93,13 @@ export default function LinkBuilder() {
   const [view, setView] = useState<View>('tree');
   const [to, setTo] = useState('typescript');
   const [badge, setBadge] = useState<Badge>('auto');
+  const [format, setFormat] = useState<Format>('markdown');
   const [href, setHref] = useState('');
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const viewId = useId();
+  const toId = useId();
+  const outId = useId();
 
   useEffect(() => {
     let live = true;
@@ -126,9 +120,9 @@ export default function LinkBuilder() {
           if (!live) return;
           const url = `${SITE}/${hash}`;
           setHref(url);
-          setError(url.length > MAX_LINK ? `This link is ${url.length.toLocaleString()} characters long. Chat apps and some browsers cut links this long: open big documents with toolkumar.js instead (see below).` : '');
+          setError(url.length > MAX_LINK ? `This link is ${url.length.toLocaleString('en-US')} characters long, too long for many apps. Use toolkumar.js for big documents (below).` : '');
         },
-        () => live && setError('This browser cannot compress links. Try a current version of Chrome, Edge, Firefox or Safari.'),
+        () => live && setError('This browser cannot compress links. Try a current Chrome, Edge, Firefox or Safari.'),
       );
     }, 120);
     return () => {
@@ -137,78 +131,97 @@ export default function LinkBuilder() {
     };
   }, [compare, kindA, kindB, a, b, urlA, urlB, view, to]);
 
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
   const kind = compare ? 'compare' : 'view';
-  const { html, markdown } = href ? snippets(href, kind, badge) : { html: '', markdown: '' };
   const { label, width } = BADGES[kind];
+  const out = href ? snippet(format, href, kind, badge) : '';
 
   return (
     <div className="link-builder">
-      <div className="lb-seg lb-mode" role="radiogroup" aria-label="What the link opens">
-        <button type="button" role="radio" aria-checked={!compare} onClick={() => setCompare(false)}>
-          One document
-        </button>
-        <button type="button" role="radio" aria-checked={compare} onClick={() => setCompare(true)}>
-          Compare two
-        </button>
-      </div>
-
-      <div className={compare ? 'lb-docs lb-two' : 'lb-docs'}>
+      <div className="lb-input">
+        <Seg
+          label="What the link opens"
+          className="lb-mode"
+          value={compare ? 'compare' : 'one'}
+          options={[['one', 'One document'], ['compare', 'Compare two']]}
+          onChange={(v) => setCompare(v === 'compare')}
+        />
         <DocField label={compare ? 'Original' : 'Document'} kind={kindA} setKind={setKindA} value={kindA === 'json' ? a : urlA} setValue={kindA === 'json' ? setA : setUrlA} />
-        {compare && <DocField label="Modified" kind={kindB} setKind={setKindB} value={kindB === 'json' ? b : urlB} setValue={kindB === 'json' ? setB : setUrlB} />}
-      </div>
-
-      <div className="lb-options">
-        {!compare && (
-          <label>
-            Opens in
-            <select value={view} onChange={(e) => setView(e.target.value as View)}>
-              {VIEW_LABELS.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!compare && view === 'convert' && (
-          <label>
-            Convert to
-            <select value={to} onChange={(e) => setTo(e.target.value)}>
-              {TARGETS.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label>
-          Button
-          <select value={badge} onChange={(e) => setBadge(e.target.value as Badge)}>
-            <option value="auto">Follows light and dark mode</option>
-            <option value="black">Black, for light pages</option>
-            <option value="white">White, for dark pages</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="lb-preview" aria-live="polite">
-        {href ? (
-          <a href={href} target="_blank" rel="noopener" className={PRIVATE}>
-            <picture>
-              {badge === 'auto' && <source media="(prefers-color-scheme: dark)" srcSet={`/badges/${kind}-in-tool-kumar-dark.svg`} />}
-              <img src={`/badges/${kind}-in-tool-kumar${badge === 'white' ? '-dark' : ''}.svg`} alt={label} width={width} height={28} />
-            </picture>
-          </a>
+        {compare ? (
+          <DocField label="Modified" kind={kindB} setKind={setKindB} value={kindB === 'json' ? b : urlB} setValue={kindB === 'json' ? setB : setUrlB} />
         ) : (
-          <span className="lb-empty">Your button appears here.</span>
+          <div className="lb-row">
+            <div className="lb-field">
+              <label htmlFor={viewId}>Opens in</label>
+              <select id={viewId} value={view} onChange={(e) => setView(e.target.value as View)}>
+                {VIEWS.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {view === 'convert' && (
+              <div className="lb-field">
+                <label htmlFor={toId}>Convert to</label>
+                <select id={toId} value={to} onChange={(e) => setTo(e.target.value)}>
+                  {TARGETS.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
         )}
-        {error && <p className="lb-error">{error}</p>}
       </div>
 
-      <Output label="Link" value={href} />
-      <Output label="Markdown (README, docs, issues)" value={markdown} />
-      <Output label="HTML" value={html} />
+      <div className="lb-result">
+        <div className={`lb-preview lb-on-${badge}`} aria-live="polite">
+          {href ? (
+            <a href={href} target="_blank" rel="noopener" className={PRIVATE} aria-label={`${label} (opens the link in a new tab)`}>
+              <picture>
+                {badge === 'auto' && <source media="(prefers-color-scheme: dark)" srcSet={`/badges/${kind}-in-tool-kumar-dark.svg`} />}
+                <img src={`/badges/${kind}-in-tool-kumar${badge === 'white' ? '-dark' : ''}.svg`} alt="" width={width} height={28} />
+              </picture>
+            </a>
+          ) : (
+            <span className="lb-empty">Your button appears here</span>
+          )}
+        </div>
+        <div className="lb-inline">
+          <span aria-hidden="true">Color</span>
+          <Seg label="Button color" value={badge} options={[['auto', 'Auto'], ['black', 'Black'], ['white', 'White']]} onChange={setBadge} className="lb-small" />
+        </div>
+        {error && <p className="lb-error">{error}</p>}
+
+        <div className="lb-out">
+          <div className="lb-head">
+            <Seg label="Code to copy" value={format} options={[['markdown', 'Markdown'], ['html', 'HTML'], ['link', 'Link']]} onChange={setFormat} />
+            <button
+              type="button"
+              className="lb-copy"
+              disabled={!out}
+              onClick={() => navigator.clipboard.writeText(out).then(() => setCopied(true), () => undefined)}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <label htmlFor={outId} className="sr-only">
+            {format === 'link' ? 'Link' : format === 'html' ? 'HTML' : 'Markdown'} to copy
+          </label>
+          <textarea id={outId} className={PRIVATE} readOnly value={out} rows={5} spellCheck={false} onFocus={(e) => e.currentTarget.select()} />
+          <p className="lb-hint">
+            {format === 'markdown' ? 'For READMEs, docs and issues on GitHub or GitLab.' : format === 'html' ? 'For web pages. Auto follows the reader’s light or dark mode.' : 'For chats, emails and your own buttons.'}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

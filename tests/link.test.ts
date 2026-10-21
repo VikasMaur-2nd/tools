@@ -103,8 +103,8 @@ test('handoff messages: only well-formed requests are accepted', () => {
   assert.equal(readHandoff({ toolkumar: 'open', a: { length: MAX_HANDOFF_TEXT + 1 } }), 'invalid');
 });
 
-test('the example links on /resources/view-in-tool-kumar still open their documents', async () => {
-  const { SAMPLE_VIEW_LINK, SAMPLE_COMPARE_LINK } = await import('../app/(en)/resources/view-in-tool-kumar/samples');
+test('the example links on /integrate still open their documents', async () => {
+  const { SAMPLE_VIEW_LINK, SAMPLE_COMPARE_LINK } = await import('../app/(en)/integrate/samples');
   const one = parseLink(new URL(SAMPLE_VIEW_LINK).hash);
   assert.ok(one && typeof one === 'object');
   assert.deepEqual(JSON.parse(await decodeDoc(data(one.a))), { id: 42, name: 'Ada Lovelace', roles: ['author', 'mathematician'], active: true });

@@ -80,7 +80,7 @@ export default function PrivacyPage() {
           </li>
           <li>Load from URL, and a link that names a URL, fetch it straight from your browser. That server sees the request; we don’t.</li>
           <li>
-            A share link, or a <Link href="/resources/view-in-tool-kumar">View in Tool Kumar</Link> link, carries the document in the part after{' '}
+            A share link, or a <Link href="/integrate">View in Tool Kumar</Link> link, carries the document in the part after{' '}
             <code>#</code>. Browsers never send that part to a server, and our analytics remove it.
           </li>
           <li>A site that opens a document in Tool Kumar for you hands it from its tab to ours, inside your browser. It never reaches our server.</li>

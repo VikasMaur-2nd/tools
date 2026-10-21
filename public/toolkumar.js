@@ -1,4 +1,4 @@
-/*! "View in Tool Kumar" links, v1 · https://tools.vikasmaur.com/resources/view-in-tool-kumar · MIT License
+/*! "View in Tool Kumar" links, v1 · https://tools.vikasmaur.com/integrate · MIT License
  *
  * Opens JSON documents, or two of them compared, in Tool Kumar (https://tools.vikasmaur.com).
  * Documents never touch a server: links carry them compressed in the URL fragment, and

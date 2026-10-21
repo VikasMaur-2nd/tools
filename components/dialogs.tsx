@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { COMMANDS, fuzzy, keyLabel, type Command } from '@/lib/engine/commands';
 import { store, useUI } from '@/lib/engine/store';
 import { act } from '@/lib/engine/instance';
@@ -50,6 +51,7 @@ function Commands() {
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
   const t = useT();
+  const router = useRouter();
   // Titles and search terms in the page's language; the English ones stay searchable.
   const names = useMemo(() => {
     const m = new Map<Command, { title: string; group: string; hay: string }>();
@@ -81,7 +83,9 @@ function Commands() {
     // editor's selection) before the command runs: commands may move focus.
     listRef.current?.closest('dialog')?.close();
     track('command_run', { command: c.id });
-    requestAnimationFrame(() => act((e) => withVia('palette', () => c.run(e))));
+    const { href, run } = c;
+    if (href) router.push(href);
+    else if (run) requestAnimationFrame(() => act((e) => withVia('palette', () => run(e))));
   };
 
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {

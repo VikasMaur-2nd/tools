@@ -1019,7 +1019,7 @@ function StatusMsg() {
       return (
         <span className="st ok" title={status.jsonl ? t('One JSON value per line, shown as an array of records') : undefined}>
           <i className="dot" />
-          {status.jsonl ? t.n(status.jsonl, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}
+          <span className="st-msg">{status.jsonl ? t.n(status.jsonl, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}</span>
           {status.warnings > 0 && (
             <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg && t.msg(status.msg)}>
               · {t.n(status.warnings, '{n} duplicate key', '{n} duplicate keys')}
@@ -1120,6 +1120,19 @@ function StatusBar({ langs }: { langs?: ReactNode }) {
       </div>
       <div className="sb-r">
         <Cursor />
+        {/* Narrow screens show an icon instead of the word (app/globals.css). */}
+        <Link
+          className="sb-btn sb-integrate"
+          href="/integrate"
+          prefetch={false}
+          hrefLang={t.lang ? 'en' : undefined}
+          aria-label={t('Integrate')}
+          data-tip={t('Integrate')}
+          data-tip-up=""
+        >
+          <span className="sb-integrate-word">{t('Integrate')}</span>
+          <Icon name="code" size={14} className="sb-integrate-icon" />
+        </Link>
         <Link className="sb-btn" href="/blogs" prefetch={false} hrefLang={t.lang ? 'en' : undefined}>
           {t('Blog')}
         </Link>

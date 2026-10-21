@@ -5,10 +5,10 @@
 ## Primary pages
 
 - [JSON viewer and formatter](https://tools.vikasmaur.com/): format, validate, repair, minify, compare and convert JSON.
+- [Integrate: View in Tool Kumar](https://tools.vikasmaur.com/integrate): links and buttons that open a JSON document, or two compared, in the viewer. The document travels in the URL fragment (`https://tools.vikasmaur.com/#a=<raw DEFLATE, base64url>&view=tree`); [toolkumar.js](https://tools.vikasmaur.com/toolkumar.js) builds the links and hands big documents over by postMessage.
 - [Resource library](https://tools.vikasmaur.com/resources): the site's reference pages and guides.
 - [JSON syntax reference](https://tools.vikasmaur.com/resources/json-reference): values, objects, arrays, strings, numbers and common invalid forms, with links to RFC 8259 and ECMA-404.
 - [JSON examples](https://tools.vikasmaur.com/resources/json-examples): fictional API, configuration and nested-data examples with downloadable files.
-- [View in Tool Kumar](https://tools.vikasmaur.com/resources/view-in-tool-kumar): links and buttons that open a JSON document, or two compared, in the viewer. The document travels in the URL fragment (`https://tools.vikasmaur.com/#a=<raw DEFLATE, base64url>&view=tree`); [toolkumar.js](https://tools.vikasmaur.com/toolkumar.js) builds the links and hands big documents over by postMessage.
 - [Blog](https://tools.vikasmaur.com/blogs): guides, research and the history of JSON.
 - [JSON formatter privacy study](https://tools.vikasmaur.com/blogs/json-formatter-privacy-study): a dated canary test of twelve online JSON tools, with the [raw capture as JSON](https://tools.vikasmaur.com/research/json-formatter-privacy-study.json).
 - [Formatting and validation guide](https://tools.vikasmaur.com/blogs/json-formatting-guide): a practical workflow for finding and fixing syntax errors.

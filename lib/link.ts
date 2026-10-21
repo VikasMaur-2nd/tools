@@ -12,7 +12,7 @@
  * base64url without padding, or an http(s) URL (percent-encoded) to fetch the
  * document from. Everything lives in the fragment, which browsers never send to
  * a server. public/toolkumar.js builds these links for other sites, and
- * /resources/view-in-tool-kumar documents them: keep all three in step.
+ * /integrate documents them: keep all three in step.
  */
 import { TARGETS } from './engine/targets';
 import type { View } from './engine/store';

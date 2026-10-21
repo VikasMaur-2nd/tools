@@ -69,6 +69,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.3,
     },
     {
+      url: `${SITE}/integrate`,
+      lastModified: LINK_KIT_LAST_MODIFIED,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
       url: `${SITE}/resources`,
       lastModified: RESOURCES_LAST_MODIFIED,
       changeFrequency: 'monthly',
@@ -85,12 +91,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: RESOURCES_LAST_MODIFIED,
       changeFrequency: 'monthly',
       priority: 0.75,
-    },
-    {
-      url: `${SITE}/resources/view-in-tool-kumar`,
-      lastModified: LINK_KIT_LAST_MODIFIED,
-      changeFrequency: 'monthly',
-      priority: 0.7,
     },
     ...cluster('/tools', {
       lastModified: TOOLS_INDEX_LAST_MODIFIED,
