@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { CODE_LANG_SCRIPT } from '@/components/CodeLang';
 import LinkBuilder from '@/components/LinkBuilder';
 import { TARGETS } from '@/lib/engine/targets';
 import { Code } from '../blogs/article';
@@ -7,7 +8,7 @@ import ContentShell from '../content-shell';
 import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
 import CodeSnippet from './code-snippet';
 import { SAMPLE_COMPARE_LINK, SAMPLE_VIEW_LINK } from './samples';
-import { HANDOFF_SNIPPET, LINK_SNIPPET } from './snippets';
+import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } from './snippets';
 
 const TITLE = 'Integrate: add "View in Tool Kumar" buttons and links';
 const DESCRIPTION =
@@ -51,6 +52,11 @@ const jsonLd = {
     },
   ],
 };
+
+const LOGOS = [
+  { id: 'black', label: 'Black, for light backgrounds' },
+  { id: 'white', label: 'White, for dark backgrounds' },
+] as const;
 
 function Badge({ kind, href }: { kind: 'view' | 'compare'; href: string }) {
   const label = kind === 'view' ? 'View in Tool Kumar' : 'Compare in Tool Kumar';
@@ -102,6 +108,35 @@ export default function IntegratePage() {
         <LinkBuilder />
       </section>
 
+      <section className="ig-section" aria-labelledby="logo">
+        <h2 id="logo">Logo for your own buttons</h2>
+        <p className="ig-sub">Prefer your own button style? Use the Tool Kumar logo in it, linked to Tool Kumar.</p>
+        <div className="ig-logos">
+          {LOGOS.map((l) => (
+            <div className={`ig-logo ig-logo-${l.id}`} key={l.id}>
+              <div className="ig-logo-tile">
+                {/* The same drawing as public/brand/tool-kumar-logo-*.svg, inline: no request for a preview. */}
+                <svg width="64" height="64" viewBox="0 0 32 32" role="img" aria-label={`Tool Kumar logo, ${l.id}`}>
+                  <rect width="32" height="32" rx="7" fill={l.id === 'black' ? '#0a0a0a' : '#ffffff'} />
+                  <path fill={l.id === 'black' ? '#ffffff' : '#0a0a0a'} d="M4 6H20V12L24 6H28L21.33 16L28 26H24L20 20V26H16V10H12V26H8V10H4Z" />
+                </svg>
+              </div>
+              <div className="ig-logo-info">
+                <p className="ig-logo-name">{l.label}</p>
+                <p className="ig-logo-dl">
+                  {(['svg', 'png', 'webp'] as const).map((f) => (
+                    <a key={f} href={`/brand/tool-kumar-logo-${l.id}.${f}`} download aria-label={`Download the ${l.id} logo as ${f.toUpperCase()}`}>
+                      {f.toUpperCase()}
+                    </a>
+                  ))}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="ig-note">SVG scales to any size; PNG and WebP are 512 × 512 with a transparent background around the rounded tile.</p>
+      </section>
+
       <div className="ig-docs prose">
         <h2 id="via-link">1. Via link</h2>
         <p>
@@ -143,7 +178,9 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
         </p>
         <h3>Make links in your code</h3>
         <p>Copy this function into your project. It runs in browsers and in Node.js 18 or later, with no dependencies:</p>
-        <CodeSnippet lang="javascript" code={LINK_SNIPPET} name="toolKumarLink" />
+        {/* Picks JavaScript or TypeScript for every code block below before they paint. */}
+        <script dangerouslySetInnerHTML={{ __html: CODE_LANG_SCRIPT }} />
+        <CodeSnippet name="toolKumarLink" js={LINK_SNIPPET} ts={LINK_SNIPPET_TS} />
         <Code lang="javascript">{`const link = await toolKumarLink(response, { view: 'tree' });
 const diff = await toolKumarLink(before, { compare: after });`}</Code>
         <p>
@@ -165,7 +202,7 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
           When the JSON is too big for a link, open Tool Kumar from your web app and pass the JSON to it directly. Copy this function into your
           code:
         </p>
-        <CodeSnippet lang="javascript" code={HANDOFF_SNIPPET} name="openInToolKumar" />
+        <CodeSnippet name="openInToolKumar" js={HANDOFF_SNIPPET} ts={HANDOFF_SNIPPET_TS} />
         <p>Call it straight from a click, without awaiting anything first, or the browser blocks the new tab:</p>
         <Code lang="javascript">{`button.addEventListener('click', () => {
   openInToolKumar(hugeResponseText, { view: 'table' })

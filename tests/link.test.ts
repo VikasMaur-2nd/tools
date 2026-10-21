@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 import { LinkTooLarge, MAX_HANDOFF_TEXT, decodeDoc, encodeDoc, linkHash, parseLink, readHandoff, type LinkSource } from '../lib/link';
 
-import { HANDOFF_SNIPPET, LINK_SNIPPET } from '../app/(en)/integrate/snippets';
+import ts from 'typescript';
+import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } from '../app/(en)/integrate/snippets';
 
 /** The function /integrate tells other sites to paste: it must build exactly what the viewer reads. */
 type LinkOptions = { compare?: unknown; view?: string; to?: string };
@@ -97,6 +98,35 @@ test('the published handoff function is plain JavaScript that sends the document
   assert.equal(typeof openInToolKumar, 'function');
   assert.match(HANDOFF_SNIPPET, /postMessage\(\{ toolkumar: 'open', a, b, view, to \}, origin\)/);
   assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined }));
+});
+
+/** Strict type errors in `code` as one browser script (DOM + ES2022 libraries, as a site would compile it). */
+function typeErrors(code: string): string[] {
+  const file = 'snippet.ts';
+  const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'], types: [] };
+  const host = ts.createCompilerHost(options);
+  const getSourceFile = host.getSourceFile;
+  host.getSourceFile = (name, lang, ...rest) => (name === file ? ts.createSourceFile(file, code, lang) : getSourceFile.call(host, name, lang, ...rest));
+  const program = ts.createProgram([file], options, host);
+  return ts.getPreEmitDiagnostics(program).map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
+}
+
+test('the TypeScript versions type-check strictly, alone and pasted together', () => {
+  assert.deepEqual(typeErrors(LINK_SNIPPET_TS), []);
+  assert.deepEqual(typeErrors(HANDOFF_SNIPPET_TS), []);
+  assert.deepEqual(typeErrors(`${LINK_SNIPPET_TS}\n\n${HANDOFF_SNIPPET_TS}`), [], 'both in one file: the options interface merges');
+  // The options are checked: a misspelled view or target is a compile error.
+  assert.ok(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink({}, { view: 'trees' });`).length);
+  assert.ok(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink({}, { view: 'convert', to: 'cobol' });`).length);
+  assert.deepEqual(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink({}, { view: 'convert', to: 'go' });`), []);
+});
+
+test('the TypeScript link function builds the same links as the JavaScript one', async () => {
+  const js = ts.transpileModule(`${LINK_SNIPPET_TS}\nreturn toolKumarLink;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  // transpileModule leaves a top-level return alone; run it as a function body.
+  const tsLink = new Function(js)() as typeof toolKumarLink;
+  const doc = { id: 1, text: '日本語 👋', big: [1, 2, 3] };
+  assert.equal(await tsLink(doc, { compare: [1], view: 'tree' }), await toolKumarLink(doc, { compare: [1], view: 'tree' }));
 });
 
 test('handoff messages: only well-formed requests are accepted', () => {

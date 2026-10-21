@@ -4,6 +4,7 @@
  * small, dependency-free and readable. tests/link.test.ts runs LINK_SNIPPET
  * against lib/link.ts, and the handoff against a real tab in the e2e kit.
  */
+import { TARGETS } from '@/lib/engine/targets';
 
 /** Method 1: builds a link that carries the JSON. Browsers and Node.js 18+. */
 export const LINK_SNIPPET = `// A link that opens \`json\` in Tool Kumar: a JSON string (kept as
@@ -58,6 +59,89 @@ function openInToolKumar(json, { compare, view, to } = {}) {
       } else if (kind === 'opened') done();
       else if (kind === 'error') fail(e.data.reason);
     }
+    addEventListener('message', onMessage);
+  });
+}`;
+
+/*
+ * TypeScript versions. Both declare the same options `interface`, which
+ * TypeScript merges, so pasting both functions into one file still compiles.
+ * tests/link.test.ts type-checks each one alone and both together (strict).
+ */
+const ids = TARGETS.map((t) => `'${t.id}'`);
+const targetLines: string[] = [];
+for (let i = 0; i < ids.length; i += 5) targetLines.push(`    | ${ids.slice(i, i + 5).join(' | ')}`);
+
+const OPTIONS_TS = `interface ToolKumarOptions {
+  /** A second document: the link opens Compare. */
+  compare?: unknown;
+  view?: 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
+  /** Convert target, with view: 'convert'. */
+  to?:
+${targetLines.join('\n')};
+}`;
+
+export const LINK_SNIPPET_TS = `${OPTIONS_TS}
+
+// A link that opens \`json\` in Tool Kumar: a JSON string (kept as
+// written) or any value.
+async function toolKumarLink(
+  json: unknown,
+  { compare, view, to }: ToolKumarOptions = {},
+): Promise<string> {
+  const encode = async (value: unknown): Promise<string> => {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    const stream = new Blob([text]).stream()
+      .pipeThrough(new CompressionStream('deflate-raw'));
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary)
+      .replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  };
+  let hash = 'a=' + (await encode(json));
+  if (compare !== undefined) hash += '&b=' + (await encode(compare));
+  if (view) hash += '&view=' + view;
+  if (to) hash += '&to=' + to;
+  return 'https://tools.vikasmaur.com/#' + hash;
+}`;
+
+export const HANDOFF_SNIPPET_TS = `${OPTIONS_TS}
+
+// Opens \`json\` in a new Tool Kumar tab, any size. Call it straight
+// from a click. Resolves with the tab once Tool Kumar has the document.
+function openInToolKumar(
+  json: unknown,
+  { compare, view, to }: ToolKumarOptions = {},
+): Promise<Window> {
+  const origin = 'https://tools.vikasmaur.com';
+  const text = (value: unknown): string | undefined =>
+    typeof value === 'string' || value === undefined
+      ? value
+      : JSON.stringify(value);
+  const tab = window.open(origin + '/#handoff', '_blank');
+  if (!tab) return Promise.reject(new Error('The browser blocked the tab'));
+  return new Promise<Window>((resolve, reject) => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== tab || e.origin !== origin) return;
+      const data = e.data as { toolkumar?: string; reason?: string } | null;
+      if (data?.toolkumar === 'ready') {
+        const a = text(json);
+        const b = text(compare);
+        tab.postMessage({ toolkumar: 'open', a, b, view, to }, origin);
+      } else if (data?.toolkumar === 'opened') done();
+      else if (data?.toolkumar === 'error') fail(data.reason ?? 'error');
+    };
+    const done = (error?: Error) => {
+      clearTimeout(timer);
+      removeEventListener('message', onMessage);
+      if (error) reject(error);
+      else resolve(tab);
+    };
+    const fail = (why: string) => done(new Error('Tool Kumar: ' + why));
+    const timer = setTimeout(() => fail('no answer'), 60000);
     addEventListener('message', onMessage);
   });
 }`;

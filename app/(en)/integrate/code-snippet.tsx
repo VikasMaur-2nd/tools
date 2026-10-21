@@ -1,12 +1,17 @@
-import CopyButton from '@/components/CopyButton';
+import CodeLangBar from '@/components/CodeLang';
 import { Code } from '../blogs/article';
 
-/** A highlighted code block with a Copy button, for code readers paste into their own projects. */
-export default function CodeSnippet({ code, lang, name }: { code: string; lang: string; name: string }) {
+/** A published function in JavaScript and TypeScript (components/CodeLang.tsx picks which shows), with a Copy button. */
+export default function CodeSnippet({ name, js, ts }: { name: string; js: string; ts: string }) {
   return (
     <div className="ig-snippet">
-      <CopyButton text={code} label="Copy" name={`Copy ${name}`} className="ig-copy" />
-      <Code lang={lang}>{code}</Code>
+      <CodeLangBar name={name} js={js} ts={ts} />
+      <div className="snip-js">
+        <Code lang="javascript">{js}</Code>
+      </div>
+      <div className="snip-ts">
+        <Code lang="typescript">{ts}</Code>
+      </div>
     </div>
   );
 }
