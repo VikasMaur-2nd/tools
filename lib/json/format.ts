@@ -92,16 +92,26 @@ export function stringify(root: JNode, indent: string, sortKeys = false): string
   }
 }
 
+/** Deepest nesting written with the native JSON.stringify (see formatDoc). */
+const NATIVE_DEPTH = 1000;
+/** Widest indentation pretty-printed (see formatDoc): 5,000 levels at two spaces. */
+export const MAX_INDENT = 10_000;
+
 /**
  * Formats a parsed document. Uses the native engine when it is guaranteed to
  * reproduce the document exactly (≈3× faster on large inputs).
  */
 export function formatDoc(src: string, res: ParseResult, indent: string, sortKeys = false): string {
-  if (res.exact && !sortKeys) {
+  // Nesting so deep that its pretty form is unreadable and huge (lines indented by over 10,000 characters,
+  // 2·depth² in all) isn't made: it would take seconds to make and show, if it fits at all.
+  if (res.depth * indent.length > MAX_INDENT) throw tooLong();
+  // (Not for deep nesting: the engines write it recursively, and Firefox runs out of stack from about 5,000
+  // levels, while Safari takes seconds to; written from the tree below instead.)
+  if (res.exact && !sortKeys && res.depth <= NATIVE_DEPTH) {
     try {
       return JSON.stringify(JSON.parse(src), null, indent || undefined);
     } catch (e) {
-      // Nesting deeper than the engine can write (a few thousand levels in Chrome and Firefox): written from the tree below.
+      // Nesting deeper than the engine can write after all: written from the tree below.
       if (!tooDeep(e)) throw e;
     }
   }

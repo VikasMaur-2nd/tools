@@ -29,8 +29,8 @@ describe('readJwt', () => {
     const payload = '['.repeat(levels) + ']'.repeat(levels);
     const j = readJwt(`${H}.${b64u(payload)}.c2ln`, '  ', NOW);
     assert.ok(j);
-    assert.ok(j.json.startsWith('{"header":{"alg":"HS256","typ":"JWT"},"payload":[[['));
-    assert.ok(j.json.includes(payload));
+    assert.ok(j.json.startsWith('{\n  "header": {\n    "alg": "HS256",'));
+    assert.ok(j.json.includes('"payload": ' + payload + ','));
   });
 
   test('offsets account for whitespace and a Bearer prefix', () => {

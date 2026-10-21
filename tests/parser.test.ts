@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ARR, JNode, MAX_DEPTH, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
-import { MAX_TEXT, byteLength, formatDoc, stringify, toValue, tooLarge } from '../lib/json/format';
+import { MAX_INDENT, MAX_TEXT, byteLength, formatDoc, stringify, toValue, tooLarge } from '../lib/json/format';
 import { formatPath, nodeAt, parsePath, pathOf, resolve, type Seg } from '../lib/json/path';
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -863,6 +863,22 @@ describe('robustness', () => {
     }
     assert.equal(formatDoc(src, r, ''), src);
     assert.equal(tooLarge(new RangeError('Maximum call stack size exceeded')), false);
+  });
+  test('formatDoc refuses pretty output indented past MAX_INDENT, at once', () => {
+    const wide = ' '.repeat(MAX_INDENT / 10); // depth 10 is the deepest this indent may reach
+    for (const [levels, ok] of [[11, true], [12, false]] as const) {
+      const src = '['.repeat(levels) + ']'.repeat(levels);
+      const r = parse(src);
+      if (ok) assert.equal(formatDoc(src, r, wide).split('\n').length, 2 * levels - 1);
+      else for (const sort of [false, true]) assert.throws(() => formatDoc(src, r, wide, sort), (e) => tooLarge(e));
+    }
+    // Two spaces: 5,000 levels; a deeper chain is refused before any work.
+    const deep = '['.repeat(5_002) + ']'.repeat(5_002);
+    const r = parse(deep);
+    const t = performance.now();
+    assert.throws(() => formatDoc(deep, r, '  '), (e) => tooLarge(e));
+    assert.ok(performance.now() - t < 20, 'refused at once');
+    assert.equal(formatDoc(deep, r, ''), deep);
   });
   test('moderately deep documents parse and pretty-print', () => {
     const d = 1000;

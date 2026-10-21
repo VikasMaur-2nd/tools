@@ -4,7 +4,7 @@
  * the tree's value hints label string values that hold one.
  */
 import { parse } from './parser';
-import { quote, stringify, tooLarge } from './format';
+import { MAX_INDENT, quote, stringify, tooLarge } from './format';
 
 const isoOf = (ms: number) => (Math.abs(ms) <= 8.64e15 ? new Date(ms).toISOString() : undefined);
 
@@ -143,8 +143,9 @@ function document(d: Decoded, indent: string): string {
   const nl = indent ? '\n' + indent : '';
   const colon = indent ? ': ' : ':';
   const nest = (json: string) => {
-    const root = parse(json).root;
-    const t = root ? stringify(root, indent) : json;
+    const { root, depth } = parse(json);
+    // (Nesting too deep to pretty-print readably, see MAX_INDENT: compact.)
+    const t = root ? stringify(root, depth * indent.length > MAX_INDENT ? '' : indent) : json;
     return indent ? t.split('\n').join(nl) : t;
   };
   let out =
