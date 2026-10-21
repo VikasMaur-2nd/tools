@@ -366,35 +366,42 @@ const sci = (raw: string) => {
 
 /** Converts a node to a plain JS value (numbers that would lose precision stay strings). */
 export function toValue(node: JNode): unknown {
-  switch (node.t) {
-    case NUL:
-      return null;
-    case BOOL:
-      return node.v;
-    case NUM: {
-      const raw = node.v as string;
-      const n = Number(raw);
-      return String(n) === raw || (Number.isFinite(n) && sci(String(n)) === sci(raw)) ? n : raw;
+  if (node.t < ARR) return scalar(node);
+  // Containers with an explicit stack: as deep as the parser goes.
+  const top = node.t === ARR ? [] : {};
+  const open: JNode[] = [node];
+  const into: (unknown[] | Record<string, unknown>)[] = [top];
+  const next: number[] = [0];
+  while (open.length) {
+    const k = open.length - 1;
+    const list = kids(open[k]);
+    if (next[k] === list.length) {
+      open.pop();
+      into.pop();
+      next.pop();
+      continue;
     }
-    case STR:
-      return node.v;
-    case ARR: {
-      // a loop rather than .map(): one stack frame per level, like the parser
-      const out: unknown[] = [];
-      for (const c of kids(node)) out.push(toValue(c));
-      return out;
-    }
-    default: {
-      const o: Record<string, unknown> = {};
-      for (const c of kids(node)) {
-        const k = c.key as string;
-        // a plain assignment to "__proto__" would set the prototype and drop the key (JSON.parse keeps it)
-        if (k === '__proto__') Object.defineProperty(o, k, { value: toValue(c), enumerable: true, writable: true, configurable: true });
-        else o[k] = toValue(c);
-      }
-      return o;
+    const c = list[next[k]++];
+    const v = c.t < ARR ? scalar(c) : c.t === ARR ? [] : {};
+    const o = into[k];
+    if (Array.isArray(o)) o.push(v);
+    // a plain assignment to "__proto__" would set the prototype and drop the key (JSON.parse keeps it)
+    else if (c.key === '__proto__') Object.defineProperty(o, '__proto__', { value: v, enumerable: true, writable: true, configurable: true });
+    else o[c.key as string] = v;
+    if (c.t >= ARR) {
+      open.push(c);
+      into.push(v as unknown[] | Record<string, unknown>);
+      next.push(0);
     }
   }
+  return top;
+}
+
+function scalar(node: JNode): unknown {
+  if (node.t !== NUM) return node.v;
+  const raw = node.v as string;
+  const n = Number(raw);
+  return String(n) === raw || (Number.isFinite(n) && sci(String(n)) === sci(raw)) ? n : raw;
 }
 
 /** Short one-line rendering of a primitive. */

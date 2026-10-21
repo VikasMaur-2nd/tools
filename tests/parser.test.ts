@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ARR, JNode, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
+import { ARR, JNode, MAX_DEPTH, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
 import { byteLength, formatDoc, stringify, toValue } from '../lib/json/format';
 import { formatPath, nodeAt, parsePath, pathOf, resolve, type Seg } from '../lib/json/path';
 
@@ -804,34 +804,54 @@ describe('path.ts', () => {
 // ── 6. robustness & performance ──────────────────────────────────────────
 
 describe('robustness', () => {
-  test('very deep nesting reports an error instead of crashing', () => {
-    for (const src of ['['.repeat(100000), '['.repeat(100000) + ']'.repeat(100000), '{"a":'.repeat(100000), 'f('.repeat(100000) + '1']) {
+  test('nesting deeper than MAX_DEPTH is refused, the same in every engine', () => {
+    const over = MAX_DEPTH + 2; // containers: the root is at depth 0
+    for (const src of ['['.repeat(over), '['.repeat(over) + ']'.repeat(over), '{"a":'.repeat(over) + '1' + '}'.repeat(over), '[{"a":'.repeat(over), '['.repeat(10 * MAX_DEPTH)]) {
       const r = parse(src);
-      assert.ok(r.error, 'expected an error');
       assert.equal(r.root, null);
-      assert.match(r.error.m, /too deep|end of input/);
+      assert.equal(r.error?.m, 'Nesting is too deep to parse');
+      assert.equal(r.depth, MAX_DEPTH);
     }
+    // Calls(…) take their argument's place: they don't nest.
+    const calls = parse('f('.repeat(200_000) + '1');
+    assert.equal(calls.root?.v, '1');
   });
-  test('moderately deep documents parse and serialize', () => {
+  test('documents up to MAX_DEPTH parse and serialize (no recursion)', () => {
+    const levels = MAX_DEPTH + 1;
+    const src = '['.repeat(levels) + ']'.repeat(levels);
+    const r = parse(src);
+    assert.ok(strictOk(r));
+    assert.equal(r.depth, MAX_DEPTH);
+    assert.equal(stringify(r.root as JNode, ''), src);
+    assert.equal(stringify(r.root as JNode, '', true), src);
+    assert.equal(formatDoc(src, r, ''), src);
+    // (Walked in a loop: assert.deepEqual would recurse.)
+    let v = toValue(r.root as JNode) as unknown[];
+    for (let k = 0; k < MAX_DEPTH; k++) {
+      assert.equal(v.length, 1);
+      v = v[0] as unknown[];
+    }
+    assert.deepEqual(v, []);
+    const objects = '{"b":1,"a":'.repeat(MAX_DEPTH) + '[]' + '}'.repeat(MAX_DEPTH);
+    const o = parse(objects);
+    assert.ok(strictOk(o));
+    assert.equal(stringify(o.root as JNode, ''), objects);
+    assert.equal(stringify(o.root as JNode, '', true), '{"a":'.repeat(MAX_DEPTH) + '[]' + ',"b":1}'.repeat(MAX_DEPTH));
+    let ov = toValue(o.root as JNode) as Record<string, unknown>;
+    for (let k = 0; k < MAX_DEPTH; k++) {
+      assert.deepEqual(Object.keys(ov), ['b', 'a']);
+      ov = ov.a as Record<string, unknown>;
+    }
+    assert.deepEqual(ov, []);
+  });
+  test('moderately deep documents parse and pretty-print', () => {
     const d = 1000;
     const src = '['.repeat(d) + '{"a":1}' + ']'.repeat(d);
     const r = parse(src);
     assert.ok(strictOk(r));
     assert.equal(r.depth, d + 1);
     assert.equal(stringify(r.root as JNode, ''), src);
-    assert.ok(stringify(r.root as JNode, '  ').length > src.length);
-  });
-  test('whatever parses also serializes (stack depth)', () => {
-    let lo = 1;
-    let hi = 200000;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (parse('['.repeat(mid) + ']'.repeat(mid)).root) lo = mid;
-      else hi = mid - 1;
-    }
-    const r = parse('['.repeat(lo) + ']'.repeat(lo));
-    assert.doesNotThrow(() => stringify(r.root as JNode, '  ', true));
-    assert.doesNotThrow(() => toValue(r.root as JNode));
+    assert.equal(stringify(r.root as JNode, '  '), JSON.stringify(JSON.parse(src), null, 2));
   });
   test('issue list is capped', () => {
     const r = parse('[' + 'a\n'.repeat(5000) + ']');
