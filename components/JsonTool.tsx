@@ -11,6 +11,7 @@ import { store, useUI, type IndentId, type JwtInfo, type View } from '@/lib/engi
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
+import { startTooltips } from '@/lib/tooltips';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
@@ -1224,6 +1225,9 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const ed2Ref = useRef<HTMLDivElement>(null);
   const comparing = useUI((s) => s.settings.view === 'compare');
   const empty = useUI((s) => s.empty);
+
+  // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views.
+  useEffect(() => startTooltips(), []);
 
   useEffect(() => {
     // A link to a landing page opens the linked documents instead of the page's sample.
