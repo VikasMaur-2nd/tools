@@ -1987,6 +1987,13 @@ html:has(.content-page:not([style*='none'])) {
   font-size: 13px;
 }
 
+.prose .lb-warn,
+.lb-warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: 14px;
+}
+
 .lb-hint {
   margin: 0;
   color: var(--muted);

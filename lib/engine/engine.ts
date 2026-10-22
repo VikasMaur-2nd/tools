@@ -1,5 +1,5 @@
 import { ARR, JNode, OBJ, STR, parse, tooDeep, type ParseResult } from '../json/parser';
-import { byteLength, copyText, formatDoc, minifiedBytesIn, reindent, reindenter, stringify } from '../json/format';
+import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
@@ -21,7 +21,7 @@ import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import type { InputSource } from '../analytics/events';
-import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -1626,10 +1626,20 @@ export class Engine {
         to: this.settings.target,
       });
       track('feature_used', { feature: comparing ? 'share_compare' : 'share_link' });
+      const url = `${location.origin}/${hash}`;
       await this.copy(
-        `${location.origin}/${hash}`,
+        url,
         comparing ? 'Comparison link copied. Both documents live in the link, not on a server.' : 'Share link copied. The data lives in the link, not on a server.',
       );
+      // Always copied, but a link past what browsers open says so (lib/link.ts).
+      const reach = linkReach(url.length);
+      const size = formatBytes(url.length);
+      if (reach === 'not-firefox') {
+        this.toast(`Link copied (${size}). It opens in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB.`, 'info', undefined, 7000);
+      } else if (reach === 'none') {
+        if (comparing) this.toast(`Link copied, but at ${size} it is too long for any browser to open (they stop at about 2 MB). Share the documents as files instead.`, 'err', undefined, 9000);
+        else this.toast(`Link copied, but at ${size} it is too long for any browser to open (they stop at about 2 MB). Share the JSON as a file instead.`, 'err', { label: 'Download', run: () => this.download() });
+      }
     } catch {
       this.toast("Your browser can't create share links", 'err');
     }
@@ -2539,10 +2549,11 @@ export class Engine {
     return store.get().mac ? '⌘' : 'Ctrl+';
   }
 
-  toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info', action?: { label: string; run: () => void }) {
+  /** `ms`: how long it stays, for messages longer than a glance (default 2.2 s, errors 4 s; with an action, until dismissed). */
+  toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info', action?: { label: string; run: () => void }, ms?: number) {
     clearTimeout(this.toastTimer);
     store.set({ toast: { id: ++this.toastId, msg, kind, action } });
-    if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), kind === 'err' ? 4000 : 2200);
+    if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), ms ?? (kind === 'err' ? 4000 : 2200));
   }
 
   openPalette(mode: 'commands' | 'url' = 'commands') {

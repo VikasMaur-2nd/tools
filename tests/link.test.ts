@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { LinkTooLarge, MAX_DOCUMENT, decodeDoc, encodeDoc, linkHash, parseLink, readHandoff, type LinkSource } from '../lib/link';
+import { LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkReach, encodeDoc, linkHash, parseLink, readHandoff, type LinkSource } from '../lib/link';
 
 import ts from 'typescript';
 import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } from '../app/(en)/integrate/snippets';
@@ -127,6 +127,14 @@ test('the TypeScript link function builds the same links as the JavaScript one',
   const tsLink = new Function(js)() as typeof toolKumarLink;
   const doc = { id: 1, text: '日本語 👋', big: [1, 2, 3] };
   assert.equal(await tsLink(doc, { compare: [1], view: 'tree' }), await toolKumarLink(doc, { compare: [1], view: 'tree' }));
+});
+
+test('link reach follows the measured browser limits (warnings only)', () => {
+  assert.equal(linkReach(2_000), 'all');
+  assert.equal(linkReach(1024 * 1024), 'all', 'Firefox opens 1 MiB');
+  assert.equal(linkReach(1024 * 1024 + 1), 'not-firefox');
+  assert.equal(linkReach(2 * 1024 * 1024), 'not-firefox', 'Chrome and Safari open 2 MiB');
+  assert.equal(linkReach(2 * 1024 * 1024 + 1), 'none');
 });
 
 test('handoff messages: only well-formed requests are accepted', () => {

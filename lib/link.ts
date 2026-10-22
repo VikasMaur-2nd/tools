@@ -26,6 +26,19 @@ export const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'conv
  */
 export const MAX_DOCUMENT = 300 * 1024 * 1024;
 
+/**
+ * The longest link browsers open, measured on 2026-10-22 (Playwright 1.64; links clicked
+ * and window.open): Firefox 1 MiB, Chromium and WebKit 2 MiB. Only used to warn: Tool Kumar
+ * never refuses to make a link.
+ */
+const FIREFOX_LINK = 1024 * 1024;
+const BROWSER_LINK = 2 * 1024 * 1024;
+
+/** Which browsers can open a link this many characters long. */
+export function linkReach(length: number): 'all' | 'not-firefox' | 'none' {
+  return length <= FIREFOX_LINK ? 'all' : length <= BROWSER_LINK ? 'not-firefox' : 'none';
+}
+
 /** Where a linked document comes from: its text, or a URL to fetch it from. */
 export type LinkDoc = { text: string } | { url: string };
 

@@ -769,7 +769,10 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1541,7 +1544,10 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2313,7 +2319,10 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -3085,7 +3094,10 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3857,7 +3869,10 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4629,7 +4644,10 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -5401,7 +5419,10 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -6173,6 +6194,9 @@
     "cmd.integrate.terms": "b2678780",
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
-    "site.nav.menu": "99af6606"
+    "site.nav.menu": "99af6606",
+    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkTooLong": "0f501668",
+    "toast.linksTooLong": "f44098d6"
   }
 }
