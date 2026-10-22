@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -207,9 +207,19 @@ function stepsSession(text: string) {
   return { ...s, analysed };
 }
 
+/**
+ * Times a parse in steps by a fake clock, the same on any machine: each reading moves it on by `by` ms
+ * (0: it stands still, so a step never ends early).
+ */
+function clock(t: TestContext, by: number) {
+  let now = 0;
+  t.mock.method(performance, 'now', () => (now += by));
+}
+
 const big = JSON.stringify(Array.from({ length: 100_000 }, (_, k) => ({ id: k, name: 'Zoë ' + k, tags: ['a', 'b'], ok: k % 3 === 0, x: null })));
 
-test('a big new document is parsed in steps, then analysed with the one-shot result and its byte size', () => {
+test('a big new document is parsed in steps, then analysed with the one-shot result and its byte size', (t) => {
+  clock(t, 1);
   const { engine, tick, analysed } = stepsSession(big);
   engine.analyzeInSteps();
   assert.equal(analysed.length, 0, 'the first step, at once, does not finish it');
@@ -224,7 +234,8 @@ test('a big new document is parsed in steps, then analysed with the one-shot res
   assert.equal(engine.counted.bytes, Buffer.byteLength(big));
 });
 
-test('an edit or another load drops a parse in steps at its next step', () => {
+test('an edit or another load drops a parse in steps at its next step', (t) => {
+  clock(t, 1);
   const { engine, tick, analysed } = stepsSession(big);
   engine.analyzeInSteps();
   tick();
@@ -234,7 +245,8 @@ test('an edit or another load drops a parse in steps at its next step', () => {
   assert.equal(engine.steps, null);
 });
 
-test('a command finishes a parse in steps at once, from where it got to', () => {
+test('a command finishes a parse in steps at once, from where it got to', (t) => {
+  clock(t, 1);
   const { engine, tick, analysed } = stepsSession(big);
   engine.analyzeInSteps();
   tick();
@@ -246,7 +258,8 @@ test('a command finishes a parse in steps at once, from where it got to', () => 
   assert.equal(analysed.length, 1, 'the dropped steps do nothing more');
 });
 
-test('a big document the first step parses is analysed at once, as in one go', () => {
+test('a big document the first step parses is analysed at once, as in one go', (t) => {
+  clock(t, 0);
   const text = big.slice(0, 1_200_000).replace(/,\{[^{}]*$/, ']');
   const { engine, analysed } = stepsSession(text);
   engine.analyzeInSteps();
