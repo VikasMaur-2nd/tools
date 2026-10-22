@@ -40,19 +40,6 @@
   padding: 6px 6px 6px 10px;
 }
 
-.cmp-head > [data-tip]:last-child::after,
-.cmp-sum > [data-tip]:last-child::after {
-  left: auto;
-  right: 0;
-  transform: none;
-}
-
-.cmp-head .seg [data-tip]::after,
-.cmp-stat[data-tip]::after {
-  left: 0;
-  transform: none;
-}
-
 .cmp-head .btn:disabled,
 .cmp-sum .btn:disabled {
   opacity: 0.4;

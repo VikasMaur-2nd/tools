@@ -5,6 +5,7 @@
 ## Primary pages
 
 - [JSON viewer and formatter](https://tools.vikasmaur.com/): format, validate, repair, minify, compare and convert JSON.
+- [Integrate: View in Tool Kumar](https://tools.vikasmaur.com/integrate): links and buttons that open a JSON document, or two compared, in the viewer. The document travels in the URL fragment (`https://tools.vikasmaur.com/#a=<raw DEFLATE, base64url>&view=tree`). Browsers open links of roughly 1 MB (Firefox) to 2 MB (Chrome, Safari), which holds a few MB of compressed JSON; for bigger JSON, a web app can hand it to a new tab by postMessage instead. The page has copy-paste functions for both (JavaScript and TypeScript) and the logo as SVG, PNG and WebP.
 - [Resource library](https://tools.vikasmaur.com/resources): the site's reference pages and guides.
 - [JSON syntax reference](https://tools.vikasmaur.com/resources/json-reference): values, objects, arrays, strings, numbers and common invalid forms, with links to RFC 8259 and ECMA-404.
 - [JSON examples](https://tools.vikasmaur.com/resources/json-examples): fictional API, configuration and nested-data examples with downloadable files.

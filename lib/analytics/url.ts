@@ -1,6 +1,6 @@
 /**
- * A URL without its fragment (share links carry the whole document there) and
- * without query parameters (`?url=` can name a private API), except utm_*
+ * A URL without its fragment (links carry whole documents there, lib/link.ts)
+ * and without query parameters (they can hold anything), except utm_*
  * campaign tags. Anything that isn't an http(s) URL is returned unchanged.
  * Its own module: Vercel Web Analytics' wrapper needs it on the critical path.
  */

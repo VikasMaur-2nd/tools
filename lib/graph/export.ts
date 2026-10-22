@@ -315,7 +315,7 @@ function styles(theme: GraphTheme): string {
     `.dot{fill:${css(theme.edge)}}.border{fill:none;stroke:${css(theme.border)};stroke-width:1}` +
     `.edge{fill:none;stroke:${css(theme.edge)};stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}` +
     `.selected{fill:none;stroke:${css(theme.accent)};stroke-width:2}` +
-    `text{font-family:${css(theme.family)};font-size:${G.font}px;dominant-baseline:central;white-space:pre}.end{text-anchor:end}`;
+    `text{font-family:${css(theme.family)};font-size:${G.font}px;dominant-baseline:central;white-space:pre;font-variant-ligatures:none}.end{text-anchor:end}`;
 }
 
 /** A standalone SVG (a 24 px margin unless it's a view rectangle), with no external fonts or resources. */
