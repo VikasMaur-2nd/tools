@@ -184,6 +184,15 @@
   box-sizing: border-box;
 }
 
+/* Every character as typed: JetBrains Mono (--font-code) draws coding ligatures with contextual
+   alternates, so "https://" reads as "https: /" and "!=" as "≠" in URLs, values and code. The
+   `font` shorthand that sets the monospace font everywhere resets this property, hence !important. */
+*,
+*::before,
+*::after {
+  font-variant-ligatures: no-contextual !important;
+}
+
 html,
 body {
   margin: 0;
@@ -807,52 +816,34 @@ kbd {
   font: 500 10.5px/1 var(--font-ui);
 }
 
-/* Tooltips (pure CSS, delayed) */
-[data-tip] {
-  position: relative;
-}
-
-[data-tip]:hover::after,
-[data-tip]:focus-visible::after {
-  content: attr(data-tip);
-  position: absolute;
-  z-index: 60;
-  top: calc(100% + 7px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 5px 8px;
+/* Tooltips: one shared element in the top layer, placed by lib/tooltips.ts. */
+.tip {
+  position: fixed;
+  inset: auto;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  margin: 0;
+  border: 0;
   border-radius: 6px;
+  padding: 5px 8px;
+  overflow: visible;
   background: var(--tip-bg);
   color: var(--tip-fg);
   box-shadow: var(--shadow);
-  font: 500 11.5px/1.2 var(--font-ui);
-  white-space: nowrap;
+  font: 500 11.5px/1.35 var(--font-ui);
   pointer-events: none;
-  animation: tip 0.12s ease-out 0.4s both;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
 }
 
-[data-tip-up]:hover::after,
-[data-tip-up]:focus-visible::after {
-  top: auto;
-  bottom: calc(100% + 7px);
+.tip.in {
+  opacity: 1;
 }
 
-.toolbar > [data-tip]:last-child::after,
-.vt-tree > [data-tip]:last-child::after,
-.vt-table > [data-tip]:last-child::after,
-.sb-r > [data-tip]:nth-last-child(-n + 3)::after {
-  left: auto;
-  right: 0;
-  transform: none;
-}
-
-.tv-acts [data-tip]::after {
-  display: none;
-}
-
-@keyframes tip {
-  from {
-    opacity: 0;
+@media (prefers-reduced-motion: reduce) {
+  .tip {
+    transition: none;
   }
 }
 
@@ -2014,6 +2005,7 @@ button.tv-x:hover {
 }
 
 .st.ok {
+  flex-shrink: 1;
   color: var(--ok);
 }
 
@@ -2286,6 +2278,33 @@ a.sb-btn {
   }
 }
 
+/* The status bar's Integrate link: its word where it fits in the page's language, else an icon (its
+   tooltip shows only then: lib/tooltips.ts skips a tip that repeats a visible label). German and
+   Russian need the most room ("Einbinden", "Интеграция"). */
+.sb-integrate-icon {
+  display: none;
+}
+
+@media (max-width: 519px) {
+  .sb-integrate-word {
+    display: none;
+  }
+  .sb-integrate-icon {
+    display: block;
+  }
+}
+
+@media (max-width: 659px) {
+  :lang(de) .sb-integrate-word,
+  :lang(ru) .sb-integrate-word {
+    display: none;
+  }
+  :lang(de) .sb-integrate-icon,
+  :lang(ru) .sb-integrate-icon {
+    display: block;
+  }
+}
+
 /* The status bar's privacy link needs room in every language ("Конфиденциальность" is the longest);
    below this width Privacy mode stays one tap away in the command palette. */
 @media (max-width: 820px) {
@@ -2305,6 +2324,21 @@ a.sb-btn {
 @media (max-width: 420px) {
   .sz-min,
   .sz-min + .sz::before {
+    display: none;
+  }
+}
+
+/* Russian labels are the longest: minified goes earlier. */
+@media (max-width: 519px) {
+  :lang(ru) .sz-min,
+  :lang(ru) .sz-min + .sz::before {
+    display: none;
+  }
+}
+
+/* Small phones: the validity, the links and the buttons fill the bar; sizes stay in the Format view. */
+@media (max-width: 400px) {
+  .sizes {
     display: none;
   }
 }

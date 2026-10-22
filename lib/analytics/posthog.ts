@@ -59,7 +59,7 @@ export function initPostHog(token: string, ingest: string): PostHog {
     mask_all_element_attributes: true,
     disable_capture_url_hashes: true,
     mask_personal_data_properties: true,
-    custom_personal_data_properties: ['url', 'j'],
+    custom_personal_data_properties: ['a', 'b'],
     // Features we don't use: nothing extra to download.
     disable_surveys: true,
     disable_product_tours: true,

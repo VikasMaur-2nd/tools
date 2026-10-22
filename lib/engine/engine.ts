@@ -1,5 +1,5 @@
 import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
-import { byteLength, copyText, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
+import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
@@ -21,6 +21,7 @@ import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import type { InputSource } from '../analytics/events';
+import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -311,15 +312,14 @@ export class Engine {
     window.addEventListener('dragleave', this.onDragLeave);
     window.addEventListener('drop', this.onDrop);
     window.addEventListener('pagehide', this.persistNow);
-    window.addEventListener('hashchange', this.loadHash);
+    window.addEventListener('hashchange', this.openLink);
     this.ed.el.addEventListener('copy', this.onCopy);
     this.ed2.el.addEventListener('copy', this.onCopy2);
     els.file.addEventListener('change', this.onFile);
 
     store.set({ ready: true });
     watchPastes();
-    void this.loadHash();
-    this.loadQueryUrl();
+    void this.openLink();
     this.handleLaunch();
     if (!matchMedia('(pointer: coarse)').matches || !this.ed.text) this.ed.focus();
     this.registerSW();
@@ -339,7 +339,8 @@ export class Engine {
     window.removeEventListener('dragleave', this.onDragLeave);
     window.removeEventListener('drop', this.onDrop);
     window.removeEventListener('pagehide', this.persistNow);
-    window.removeEventListener('hashchange', this.loadHash);
+    window.removeEventListener('hashchange', this.openLink);
+    this.handoffEnd?.();
     this.ed.el.removeEventListener('copy', this.onCopy);
     this.ed2.el.removeEventListener('copy', this.onCopy2);
     clearTimeout(this.cmpTimer);
@@ -1465,7 +1466,7 @@ export class Engine {
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
     this.markOutput = true;
-    if (f.size > 300 * 1024 * 1024) {
+    if (f.size > MAX_DOCUMENT) {
       this.toast('That file is too large to open in a browser tab', 'err');
       return;
     }
@@ -1718,63 +1719,173 @@ export class Engine {
     this.toast(`Saved ${name}`, 'ok');
   }
 
+  /**
+   * Copies a link to `/` that opens what is on screen: the document in this view,
+   * or both documents in Compare. The documents travel in the link (lib/link.ts).
+   */
   async share() {
+    this.flushLoad();
+    const comparing = this.settings.view === 'compare';
+    const a = this.ed.text;
+    const b = comparing ? this.ed2.text : '';
+    if (!a.trim() && !b.trim()) return this.toast('Nothing to share yet', 'info');
+    // Valid JSON travels minified (a shorter link) and opens formatted; anything else as typed.
     const r = this.fresh();
-    if (!r?.root) return this.toast('Only valid JSON can be shared', 'err');
+    const rb = b.trim() ? parse(b) : null;
+    const compact = (text: string, r: ParseResult | null) => (r?.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text);
     try {
-      const text = this.jwt ? this.ed.text.trim() : formatDoc(this.ed.text, r, '');
-      const { toBase64Url } = await import('./sizes');
-      const data = await toBase64Url(text);
-      if (data.length > 60_000) return this.toast('Too large to share as a link (limit ≈ 60 KB compressed)', 'err');
-      track('feature_used', { feature: 'share_link' });
-      await this.copy(`${location.origin}${location.pathname}#j=${data}`, 'Share link copied. The data lives in the link, not on a server.');
+      const hash = await linkHash({
+        a: a.trim() ? { text: this.jwt ? a.trim() : compact(a, r) } : undefined,
+        b: rb ? { text: compact(b, rb) } : undefined,
+        view: this.settings.view,
+        to: this.settings.target,
+      });
+      track('feature_used', { feature: comparing ? 'share_compare' : 'share_link' });
+      const url = `${location.origin}/${hash}`;
+      await this.copy(
+        url,
+        comparing ? 'Comparison link copied. Both documents live in the link, not on a server.' : 'Share link copied. The data lives in the link, not on a server.',
+      );
+      // Always copied, but a link past what browsers open says so (lib/link.ts).
+      const reach = linkReach(url.length);
+      const size = formatBytes(url.length);
+      if (reach === 'not-firefox') {
+        this.toast(`Link copied (${size}). It opens in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB.`, 'info', undefined, 7000);
+      } else if (reach === 'none') {
+        if (comparing) this.toast(`Link copied, but at ${size} it is too long for any browser to open (they stop at about 2 MB). Share the documents as files instead.`, 'err', undefined, 9000);
+        else this.toast(`Link copied, but at ${size} it is too long for any browser to open (they stop at about 2 MB). Share the JSON as a file instead.`, 'err', { label: 'Download', run: () => this.download() });
+      }
     } catch {
       this.toast("Your browser can't create share links", 'err');
     }
   }
 
-  private loadHash = async () => {
-    const h = location.hash;
-    if (!h.startsWith('#j=')) return;
+  /** Opens what a link's fragment asks for (lib/link.ts), then takes it out of the address bar. */
+  private openLink = async () => {
+    const link = parseLink(location.hash);
+    if (!link) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    if (link === 'handoff') return this.awaitHandoff();
+    if (link === 'broken') return this.toast('That share link is broken or incomplete', 'err');
+    const docs: (LinkDoc | undefined)[] = [];
     try {
-      const { fromBase64Url } = await import('./sizes');
-      const text = await fromBase64Url(h.slice(3));
-      history.replaceState(null, '', location.pathname + location.search);
-      if (this.dead) return;
-      if (text.length > 20_000_000) return this.toast('That share link is too large to open', 'err');
-      const had = !!this.ed.text.trim();
-      const r = parse(text);
-      noteLoad('share_link');
-      this.load((r.root && !r.error && this.unlessTooLarge(() => formatDoc(text, r, this.indent), false)) || text, null);
-      this.toast(had ? `Loaded shared JSON · ${this.mod}Z restores your previous document` : 'Loaded shared JSON', 'ok');
-    } catch {
-      this.toast('That share link is broken or incomplete', 'err');
+      for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data) } : d);
+    } catch (e) {
+      return this.toast(e instanceof LinkTooLarge ? 'That share link is too large to open' : 'That share link is broken or incomplete', 'err');
     }
+    if (!this.dead) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to });
   };
 
-  async fetchUrl(raw: string, source: 'url' | 'url_param' = 'url') {
+  /** Ends the wait for a handoff (see awaitHandoff). */
+  private handoffEnd: (() => void) | null = null;
+
+  /**
+   * `/#handoff`: the page that opened this tab sends documents too big for a link
+   * by postMessage (lib/link.ts, app/(en)/integrate/snippets.ts). Only that page is heard, once.
+   */
+  private awaitHandoff() {
+    const opener = window.opener as Window | null;
+    if (!opener) return;
+    const reply = (m: HandoffReply, origin = '*') => {
+      try {
+        opener.postMessage(m, origin);
+      } catch {
+        // The opener navigated away or closed.
+      }
+    };
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== opener) return;
+      const r = readHandoff(e.data);
+      if (!r) return;
+      if (typeof r === 'string') {
+        this.toast(r === 'too_large' ? 'That file is too large to open in a browser tab' : "Couldn't open what the other page sent", 'err');
+        return reply({ toolkumar: 'error', reason: r }, e.origin);
+      }
+      end();
+      reply({ toolkumar: 'opened' }, e.origin);
+      void this.openRequest(r, /^https?:\/\//.test(e.origin) ? new URL(e.origin).host : '');
+    };
+    const end = () => {
+      removeEventListener('message', onMessage);
+      clearTimeout(timer);
+      this.handoffEnd = null;
+    };
+    const timer = window.setTimeout(end, 120_000);
+    this.handoffEnd?.();
+    this.handoffEnd = end;
+    addEventListener('message', onMessage);
+    reply({ toolkumar: 'ready', version: HANDOFF_VERSION });
+  }
+
+  /**
+   * Loads what a link or a handoff (`from`: the sending site's host, '' if it has none) asks for:
+   * the original, Compare's document, the view. The previous documents stay one undo away.
+   */
+  private async openRequest(r: LinkRequest, from?: string) {
+    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url) : { text: d.text, name: null, host: '' })));
+    if (this.dead || got.includes(null)) return; // (fetchText said why)
+    const [a, b] = got;
+    const source = (d: LinkDoc): InputSource => (from !== undefined ? 'handoff' : 'url' in d ? 'link_url' : 'link');
+    // Small valid JSON opens formatted; a big document opens like a file, output first.
+    const open = (text: string) => {
+      const res = text.length <= 2_000_000 ? parse(text) : null;
+      return res?.root && !res.error && !res.issues.length ? this.unlessTooLarge(() => formatDoc(text, res, this.indent), false) : null;
+    };
+    const had = !!this.ed.text.trim();
+    if (a) {
+      noteLoad(source(r.a!), 1, a.name);
+      const pretty = open(a.text);
+      this.load(pretty ?? a.text, a.name, true, pretty === null);
+    }
+    if (b) {
+      noteLoad(source(r.b!), 2, b.name);
+      this.loadCompare(open(b.text) ?? b.text, b.name);
+    }
+    const view = r.view ?? (b ? 'compare' : undefined);
+    if (view === 'convert') this.setConvert(r.to ? { target: r.to } : {});
+    else if (view && view !== this.settings.view) this.setView(view);
+    const msg =
+      from !== undefined ? (from ? `Opened JSON sent by ${from}` : 'Opened JSON sent by another page')
+      : b ? 'Loaded the shared comparison'
+      : a?.host ? `Loaded ${a.host}`
+      : 'Loaded shared JSON';
+    this.toast(a && had ? `${msg} · ${this.mod}Z restores your previous document` : msg, 'ok');
+  }
+
+  /** Fetches a document from a URL; null, after saying why, when that fails. */
+  private async fetchText(raw: string): Promise<{ text: string; name: string; host: string } | null> {
     let url: URL;
     try {
       url = new URL(raw.trim());
       if (!/^https?:$/.test(url.protocol)) throw new Error();
     } catch {
-      return this.toast('Enter a valid http(s) URL', 'err');
+      this.toast('Enter a valid http(s) URL', 'err');
+      return null;
     }
     this.toast('Fetching…', 'info');
     try {
       const res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' } });
-      if (!res.ok) return this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
+      if (!res.ok) {
+        this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
+        return null;
+      }
       const text = await res.text();
-      if (this.dead) return;
       const name = url.pathname.split('/').pop() || url.hostname;
-      // Auto-format reads the editor right after: only then is the load done in place.
-      noteLoad(source);
-      this.load(text, /\.json$/i.test(name) ? name : name + '.json', true, !this.settings.autoFormat);
-      if (this.settings.autoFormat) this.autoFormat();
-      this.toast(`Loaded ${url.hostname}`, 'ok');
+      return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
       this.toast("Couldn't fetch. The server must allow cross-origin requests (CORS).", 'err');
+      return null;
     }
+  }
+
+  async fetchUrl(raw: string) {
+    const got = await this.fetchText(raw);
+    if (!got || this.dead) return;
+    // Auto-format reads the editor right after: only then is the load done in place.
+    noteLoad('url');
+    this.load(got.text, got.name, true, !this.settings.autoFormat);
+    if (this.settings.autoFormat) this.autoFormat();
+    this.toast(`Loaded ${got.host}`, 'ok');
   }
 
   // ── Commands: view ─────────────────────────────────────────────────────
@@ -2456,14 +2567,6 @@ export class Engine {
     this.toast('Editing enabled. Large documents may feel slower to type in.', 'info');
   }
 
-  /** `?url=https://…` loads remote JSON on open (shareable deep link). */
-  private loadQueryUrl() {
-    const url = new URLSearchParams(location.search).get('url');
-    if (!url) return;
-    history.replaceState(null, '', location.pathname + location.hash);
-    void this.fetchUrl(url, 'url_param');
-  }
-
   /** Files opened from the OS with the installed app (manifest file_handlers). */
   private handleLaunch() {
     type LaunchParams = { files?: { getFile(): Promise<File> }[] };
@@ -2579,10 +2682,11 @@ export class Engine {
     return store.get().mac ? '⌘' : 'Ctrl+';
   }
 
-  toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info', action?: { label: string; run: () => void }) {
+  /** `ms`: how long it stays, for messages longer than a glance (default 2.2 s, errors 4 s; with an action, until dismissed). */
+  toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info', action?: { label: string; run: () => void }, ms?: number) {
     clearTimeout(this.toastTimer);
     store.set({ toast: { id: ++this.toastId, msg, kind, action } });
-    if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), kind === 'err' ? 4000 : 2200);
+    if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), ms ?? (kind === 'err' ? 4000 : 2200));
   }
 
   openPalette(mode: 'commands' | 'url' = 'commands') {

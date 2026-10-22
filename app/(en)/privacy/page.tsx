@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 
 /** When each event is sent. Its properties are listed straight from lib/analytics/events.ts. */
 const WHEN: Record<EventName, string> = {
-  json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL or share link, or the sample), once it has been checked.',
+  json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL, opened from a link, handed over by another site, or the sample), once it has been checked.',
   view_opened: 'You open Format, Tree, Table, Graph, Convert or Compare.',
   convert_target_selected: 'You pick a Convert language or format.',
   convert_option_changed: 'You change a Convert option: TypeScript interface or type, or the C# JSON library. The root type name you type is never sent.',
@@ -78,10 +78,12 @@ export default function PrivacyPage() {
             Your last document, the second document in Compare and your settings are kept in this browser’s local storage, so they are still there when
             you come back. Clearing the site’s data removes them.
           </li>
-          <li>Load from URL fetches the address you enter straight from your browser. That server sees the request; we don’t.</li>
+          <li>Load from URL, and a link that names a URL, fetch it straight from your browser. That server sees the request; we don’t.</li>
           <li>
-            A share link carries the document in the part after <code>#</code>. Browsers never send that part to a server, and our analytics remove it.
+            A share link, or a <Link href="/integrate">View in Tool Kumar</Link> link, carries the document in the part after{' '}
+            <code>#</code>. Browsers never send that part to a server, and our analytics remove it.
           </li>
+          <li>A site that opens a document in Tool Kumar for you hands it from its tab to ours, inside your browser. It never reaches our server.</li>
         </ul>
 
         <h2>What we never collect</h2>

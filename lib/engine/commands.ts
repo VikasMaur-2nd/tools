@@ -3,7 +3,7 @@ import { analyticsAllowed, setAnalyticsEnabled } from '../analytics';
 import { store, type UIState } from './store';
 import { TARGETS } from './targets';
 
-export interface Command {
+export type Command = {
   id: string;
   title: string;
   group: 'Edit' | 'File' | 'View' | 'Convert' | 'Selection' | 'Settings' | 'Help';
@@ -12,8 +12,7 @@ export interface Command {
   /** Extra search terms. */
   terms?: string;
   active?: (s: UIState) => boolean;
-  run: (e: Engine) => void;
-}
+} & ({ run: (e: Engine) => void; href?: never } | { href: string; run?: never });
 
 const LANG_TERMS: Record<string, string> = {
   typescript: 'ts interface type',
@@ -134,6 +133,13 @@ export const COMMANDS: Command[] = [
     },
   },
 
+  {
+    id: 'integrate',
+    group: 'Help',
+    title: 'Integrate Tool Kumar into your site',
+    terms: 'view in tool kumar button badge link embed developers api docs readme',
+    href: '/integrate',
+  },
   { id: 'shortcuts', group: 'Help', title: 'Keyboard shortcuts', keys: '?', terms: 'help keys', run: () => store.set({ shortcuts: true }) },
 ];
 
