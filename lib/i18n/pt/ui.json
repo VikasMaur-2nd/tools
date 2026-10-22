@@ -439,7 +439,6 @@
   "toast.nothingToDownload": "Nada para baixar ainda",
   "toast.saved": "{name} salvo",
   "toast.nothingToShare": "Nada para compartilhar ainda",
-  "toast.shareTooLarge": "Grande demais para compartilhar como link (limite ≈ 60 KB compactado)",
   "toast.shareCopied": "Link de compartilhamento copiado. Os dados ficam no link, não em um servidor.",
   "toast.compareLinkCopied": "Link da comparação copiado. Os dois documentos ficam no link, não em um servidor.",
   "toast.noShare": "Seu navegador não consegue criar links de compartilhamento",

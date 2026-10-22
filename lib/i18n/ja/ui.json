@@ -425,7 +425,6 @@
   "toast.nothingToDownload": "ダウンロードする内容がありません",
   "toast.saved": "{name}を保存しました",
   "toast.nothingToShare": "共有する内容がありません",
-  "toast.shareTooLarge": "サイズが大きすぎるため、リンクで共有できません（上限は圧縮後で約60 KB）",
   "toast.shareCopied": "共有リンクをコピーしました。データはサーバーではなくリンク内にあります。",
   "toast.compareLinkCopied": "比較リンクをコピーしました。両方のドキュメントはサーバーではなくリンク内にあります。",
   "toast.noShare": "このブラウザーでは共有リンクを作成できません",

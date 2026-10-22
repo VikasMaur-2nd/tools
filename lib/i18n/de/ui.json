@@ -432,7 +432,6 @@
   "toast.nothingToDownload": "Noch nichts zum Herunterladen",
   "toast.saved": "{name} gespeichert",
   "toast.nothingToShare": "Noch nichts zu teilen",
-  "toast.shareTooLarge": "Zu groß, um es als Link zu teilen (Limit ≈ 60 KB komprimiert)",
   "toast.shareCopied": "Freigabelink kopiert. Die Daten stecken im Link, nicht auf einem Server.",
   "toast.compareLinkCopied": "Vergleichslink kopiert. Beide Dokumente stecken im Link, nicht auf einem Server.",
   "toast.noShare": "Dein Browser kann keine Freigabelinks erstellen",

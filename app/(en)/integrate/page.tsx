@@ -90,14 +90,14 @@ export default function IntegratePage() {
       <div className="ig-methods">
         <a className="ig-method" href="#via-link">
           <p className="ig-method-kind">Via link</p>
-          <h2>JSON up to about 200 KB</h2>
-          <p>A link with the JSON inside it. Put it in a README, docs, an issue, an email or a chat. Nothing to install; it works anywhere a link does.</p>
+          <h2>Small to large JSON, up to a few MB</h2>
+          <p>A link with the JSON inside it, for READMEs, docs, issues and web pages. Nothing to install. Roughly 1 to 10 MB of JSON fits, depending on how well it compresses.</p>
           <span className="ig-method-more">How links work <span className="arrow" aria-hidden="true">→</span></span>
         </a>
         <a className="ig-method" href="#handoff">
           <p className="ig-method-kind">Via handoff</p>
-          <h2>JSON above 200 KB</h2>
-          <p>A short function for your web app: one click opens Tool Kumar in a new tab and passes the JSON to it inside the browser. No size limit.</p>
+          <h2>JSON of any size</h2>
+          <p>A short function for your web app: one click opens Tool Kumar in a new tab and passes the JSON to it inside the browser. No link to outgrow.</p>
           <span className="ig-method-more">How handoff works <span className="arrow" aria-hidden="true">→</span></span>
         </a>
       </div>
@@ -172,10 +172,39 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
         </div>
         <h3>How big a link can be</h3>
         <p>
-          Keep links under about 60,000 characters: chat apps, email clients and some browsers cut longer ones. Compression makes that roughly 200 KB
-          of JSON full of IDs and random values, and 500 KB or more of repetitive data such as logs. The builder above shows the exact length.
+          Tool Kumar sets no limit on links; browsers do. We measured the longest link each one opens when it is clicked. Because the JSON is
+          compressed, a link holds several times its own length in JSON:
+        </p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th scope="col">Browser</th><th scope="col">Longest link it opens</th><th scope="col">JSON that fits, roughly</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Firefox</th><td>about 1 MB</td><td>1 MB of JSON full of base64 data, 3 to 4 MB of typical API data, up to 9 MB of repetitive logs</td></tr>
+              <tr><th scope="row">Chrome, Edge</th><td>about 2 MB</td><td>about twice as much: 2 to 18 MB</td></tr>
+              <tr><th scope="row">Safari</th><td>about 2 MB (measured on WebKit)</td><td>like Chrome</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          A longer link doesn&apos;t open at all: the browser shows a blank page or ignores the click. The builder above shows each link&apos;s length.
           Valid JSON opens formatted, so compact JSON makes the shortest links.
         </p>
+        <h3>Sharing in chats and email</h3>
+        <p>
+          Chat apps allow far less per message than browsers: about 2,000 characters on Discord and 40,000 on Slack. Two ways to share bigger JSON:
+        </p>
+        <ul>
+          <li>
+            <strong>Link to where the JSON is hosted.</strong> Put it in a GitHub Gist or any file a browser can fetch, then link to its address:{' '}
+            <code>{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</code>. The link stays short whatever the size, and Tool Kumar
+            fetches the file when it opens.
+          </li>
+          <li>
+            <strong>Use the handoff from your web app</strong> (below): a button in your app opens Tool Kumar with the JSON, with no link at all.
+          </li>
+        </ul>
         <h3>Make links in your code</h3>
         <p>Copy this function into your project. It runs in browsers and in Node.js 18 or later, with no dependencies:</p>
         {/* Picks JavaScript or TypeScript for every code block below before they paint. */}
@@ -219,7 +248,7 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
           <li>Tool Kumar opens it and answers <code>{'{ toolkumar: "opened" }'}</code>, or <code>{'{ toolkumar: "error", reason }'}</code>.</li>
         </ol>
         <p>
-          The JSON goes from one tab to the other inside the browser, so size is limited only by the reader&apos;s memory. The tab listens only to
+          The JSON goes from one tab to the other inside the browser, with no link involved, so it can be as big as a browser tab handles: a few hundred MB, the same as opening a file. The tab listens only to
           the page that opened it, accepts one request and stops listening after two minutes. If your page sends{' '}
           <code>Cross-Origin-Opener-Policy: same-origin</code>, use <code>same-origin-allow-popups</code> so the two tabs can talk.
         </p>

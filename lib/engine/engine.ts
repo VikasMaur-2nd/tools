@@ -21,7 +21,7 @@ import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import type { InputSource } from '../analytics/events';
-import { HANDOFF_VERSION, LinkTooLarge, MAX_LINK, MAX_LINK_TEXT, decodeDoc, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -1353,7 +1353,7 @@ export class Engine {
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
     this.markOutput = true;
-    if (f.size > 300 * 1024 * 1024) {
+    if (f.size > MAX_DOCUMENT) {
       this.toast('That file is too large to open in a browser tab', 'err');
       return;
     }
@@ -1614,7 +1614,6 @@ export class Engine {
     const a = this.ed.text;
     const b = comparing ? this.ed2.text : '';
     if (!a.trim() && !b.trim()) return this.toast('Nothing to share yet', 'info');
-    if (a.length + b.length > MAX_LINK_TEXT) return this.toast('Too large to share as a link (limit ≈ 60 KB compressed)', 'err');
     // Valid JSON travels minified (a shorter link) and opens formatted; anything else as typed.
     const r = this.fresh();
     const rb = b.trim() ? parse(b) : null;
@@ -1626,7 +1625,6 @@ export class Engine {
         view: this.settings.view,
         to: this.settings.target,
       });
-      if (hash.length > MAX_LINK) return this.toast('Too large to share as a link (limit ≈ 60 KB compressed)', 'err');
       track('feature_used', { feature: comparing ? 'share_compare' : 'share_link' });
       await this.copy(
         `${location.origin}/${hash}`,

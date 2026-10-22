@@ -18,12 +18,13 @@ import { TARGETS } from './engine/targets';
 import type { View } from './engine/store';
 
 export const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
-/** Links we create stay below this many characters (chat apps and browsers cut longer URLs); bigger documents use the handoff. */
-export const MAX_LINK = 60_000;
-/** A document decompressed from a link may not grow past this (a tiny link can inflate to gigabytes). */
-export const MAX_LINK_TEXT = 20_000_000;
-/** A document received by handoff may not be longer than this, like a file. */
-export const MAX_HANDOFF_TEXT = 300 * 1024 * 1024;
+/**
+ * The largest document a tab opens, however it arrives: a file, a link or a handoff.
+ * Links themselves have no length limit of ours (browsers have theirs: about 2 MB of
+ * address in Chrome, 1 MB in Firefox); this guard stops a tiny link that inflates
+ * to gigabytes while it decompresses.
+ */
+export const MAX_DOCUMENT = 300 * 1024 * 1024;
 
 /** Where a linked document comes from: its text, or a URL to fetch it from. */
 export type LinkDoc = { text: string } | { url: string };
@@ -88,7 +89,7 @@ export async function encodeDoc(text: string): Promise<string> {
 export class LinkTooLarge extends Error {}
 
 /** The text of an encoded document. Throws on broken data, and LinkTooLarge once it inflates past `max` bytes. */
-export async function decodeDoc(data: string, max = MAX_LINK_TEXT): Promise<string> {
+export async function decodeDoc(data: string, max = MAX_DOCUMENT): Promise<string> {
   const bin = atob(data.replace(/-/g, '+').replace(/_/g, '/'));
   const buf = Uint8Array.from(bin, (c) => c.charCodeAt(0));
   const reader = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
@@ -117,7 +118,7 @@ export function readHandoff(data: unknown): LinkRequest | 'invalid' | 'too_large
   const { a, b, view, to } = data as Record<string, unknown>;
   const ok = (v: unknown) => v === undefined || typeof v === 'string';
   if (!ok(a) || !ok(b) || (a === undefined && b === undefined)) return 'invalid';
-  if (((a as string | undefined)?.length ?? 0) > MAX_HANDOFF_TEXT || ((b as string | undefined)?.length ?? 0) > MAX_HANDOFF_TEXT) return 'too_large';
+  if (((a as string | undefined)?.length ?? 0) > MAX_DOCUMENT || ((b as string | undefined)?.length ?? 0) > MAX_DOCUMENT) return 'too_large';
   return {
     a: typeof a === 'string' ? { text: a } : undefined,
     b: typeof b === 'string' ? { text: b } : undefined,

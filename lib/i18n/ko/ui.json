@@ -425,7 +425,6 @@
   "toast.nothingToDownload": "아직 다운로드할 내용이 없습니다",
   "toast.saved": "파일을 저장했습니다: {name}",
   "toast.nothingToShare": "아직 공유할 내용이 없습니다",
-  "toast.shareTooLarge": "링크로 공유하기에는 너무 큽니다. 압축 후 크기 제한은 약 60KB입니다.",
   "toast.shareCopied": "공유 링크를 복사했습니다. 데이터는 서버가 아닌 링크에 포함됩니다.",
   "toast.compareLinkCopied": "비교 링크를 복사했습니다. 두 문서는 서버가 아닌 링크에 포함됩니다.",
   "toast.noShare": "이 브라우저는 공유 링크를 만들 수 없습니다",

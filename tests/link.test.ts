@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { LinkTooLarge, MAX_HANDOFF_TEXT, decodeDoc, encodeDoc, linkHash, parseLink, readHandoff, type LinkSource } from '../lib/link';
+import { LinkTooLarge, MAX_DOCUMENT, decodeDoc, encodeDoc, linkHash, parseLink, readHandoff, type LinkSource } from '../lib/link';
 
 import ts from 'typescript';
 import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } from '../app/(en)/integrate/snippets';
@@ -136,7 +136,7 @@ test('handoff messages: only well-formed requests are accepted', () => {
   assert.equal(readHandoff({ toolkumar: 'open' }), 'invalid');
   assert.equal(readHandoff({ toolkumar: 'open', a: { x: 1 } }), 'invalid');
   assert.deepEqual(readHandoff({ toolkumar: 'open', a: '[1]', b: '[2]', view: 'graph', to: 'nope' }), { a: { text: '[1]' }, b: { text: '[2]' }, view: 'graph', to: undefined });
-  assert.equal(readHandoff({ toolkumar: 'open', a: { length: MAX_HANDOFF_TEXT + 1 } }), 'invalid');
+  assert.equal(readHandoff({ toolkumar: 'open', a: { length: MAX_DOCUMENT + 1 } }), 'invalid');
 });
 
 test('the example links on /integrate still open their documents', async () => {

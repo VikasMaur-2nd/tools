@@ -439,7 +439,6 @@
   "toast.nothingToDownload": "Rien à télécharger pour l'instant",
   "toast.saved": "Fichier enregistré : {name}",
   "toast.nothingToShare": "Rien à partager pour l'instant",
-  "toast.shareTooLarge": "Trop volumineux pour être partagé par lien (limite ≈ 60 Ko compressés)",
   "toast.shareCopied": "Lien de partage copié. Les données se trouvent dans le lien, pas sur un serveur.",
   "toast.compareLinkCopied": "Lien de la comparaison copié. Les deux documents se trouvent dans le lien, pas sur un serveur.",
   "toast.noShare": "Votre navigateur ne peut pas créer de liens de partage",

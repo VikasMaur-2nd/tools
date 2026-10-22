@@ -3,7 +3,7 @@
 import { useEffect, useId, useState, type KeyboardEvent } from 'react';
 import { PRIVATE } from '@/lib/analytics';
 import { TARGETS } from '@/lib/engine/targets';
-import { MAX_LINK, linkHash, type LinkDoc } from '@/lib/link';
+import { linkHash, type LinkDoc } from '@/lib/link';
 import type { View } from '@/lib/engine/store';
 
 const SITE = 'https://tools.vikasmaur.com';
@@ -22,6 +22,8 @@ const SAMPLE_A = '{\n  "id": 42,\n  "name": "Ada Lovelace",\n  "roles": ["author
 const SAMPLE_B = '{\n  "id": 42,\n  "name": "Ada King",\n  "roles": ["author", "mathematician", "translator"],\n  "active": true\n}';
 
 type Kind = 'json' | 'url';
+/** A link's length for people: characters are bytes here (the link is ASCII). */
+const size = (n: number) => (n < 1000 ? `${n} characters` : n < 1_000_000 ? `${Math.round(n / 1000)} KB` : `${(n / 1_000_000).toFixed(1)} MB`);
 type Badge = 'auto' | 'black' | 'white';
 type Format = 'markdown' | 'html' | 'link';
 
@@ -120,7 +122,7 @@ export default function LinkBuilder() {
           if (!live) return;
           const url = `${SITE}/${hash}`;
           setHref(url);
-          setError(url.length > MAX_LINK ? `This link is ${url.length.toLocaleString('en-US')} characters long, too long for many apps. For JSON this big, use the handoff (below).` : '');
+          setError('');
         },
         () => live && setError('This browser cannot compress links. Try a current Chrome, Edge, Firefox or Safari.'),
       );
@@ -220,6 +222,13 @@ export default function LinkBuilder() {
           <p className="lb-hint">
             {format === 'markdown' ? 'For READMEs, docs and issues on GitHub or GitLab.' : format === 'html' ? 'For web pages. Auto follows the reader’s light or dark mode.' : 'For chats, emails and your own buttons.'}
           </p>
+          {href && (
+            <p className="lb-hint">
+              The link is {size(href.length)} long. Browsers open links up to roughly 1 MB (Firefox) to 2 MB (Chrome, Safari). Chat apps allow
+              much less per message: there, link to where the JSON is hosted (choose URL above). From your own web app, the handoff below
+              opens JSON of any size.
+            </p>
+          )}
         </div>
       </div>
     </div>

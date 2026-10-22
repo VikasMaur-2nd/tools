@@ -519,7 +519,6 @@
   "toast.nothingToDownload": "Nothing to download yet",
   "toast.saved": "Saved {name}",
   "toast.nothingToShare": "Nothing to share yet",
-  "toast.shareTooLarge": "Too large to share as a link (limit ≈ 60 KB compressed)",
   "toast.shareCopied": "Share link copied. The data lives in the link, not on a server.",
   "toast.compareLinkCopied": "Comparison link copied. Both documents live in the link, not on a server.",
   "toast.noShare": "Your browser can't create share links",

@@ -425,7 +425,6 @@
   "toast.nothingToDownload": "还没有可下载的内容",
   "toast.saved": "已保存 {name}",
   "toast.nothingToShare": "还没有可分享的内容",
-  "toast.shareTooLarge": "太大，无法作为链接分享（压缩后上限约 60 KB）",
   "toast.shareCopied": "已复制分享链接。数据保存在链接中，而不是服务器上。",
   "toast.compareLinkCopied": "已复制对比链接。两个文档都保存在链接中，而不是服务器上。",
   "toast.noShare": "你的浏览器无法创建分享链接",
