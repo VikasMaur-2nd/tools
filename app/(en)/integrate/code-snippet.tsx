@@ -7,10 +7,10 @@ export default function CodeSnippet({ name, js, ts }: { name: string; js: string
     <div className="ig-snippet">
       <CodeLangBar name={name} js={js} ts={ts} />
       <div className="snip-js">
-        <Code lang="javascript">{js}</Code>
+        <Code lang="javascript" links>{js}</Code>
       </div>
       <div className="snip-ts">
-        <Code lang="typescript">{ts}</Code>
+        <Code lang="typescript" links>{ts}</Code>
       </div>
     </div>
   );

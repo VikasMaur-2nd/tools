@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { CODE_LANG_SCRIPT } from '@/components/CodeLang';
 import LinkBuilder from '@/components/LinkBuilder';
 import { TARGETS } from '@/lib/engine/targets';
+import { codeWithLinks } from '@/lib/link-code';
 import { Code } from '../blogs/article';
 import ContentShell from '../content-shell';
 import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
@@ -57,6 +58,31 @@ const LOGOS = [
   { id: 'black', label: 'Black, for light backgrounds' },
   { id: 'white', label: 'White, for dark backgrounds' },
 ] as const;
+
+/** Inline code holding a Tool Kumar link, coloured by part as everywhere on this page (lib/link-colors.ts). */
+function LinkCode({ children, lang = 'text' }: { children: string; lang?: string }) {
+  return <code dangerouslySetInnerHTML={{ __html: codeWithLinks(children, lang) }} />;
+}
+
+/** A link part named on its own (a name, a value): its colour in links. */
+function Part({ cls, children }: { cls: string; children: string }) {
+  return (
+    <code>
+      <span className={cls}>{children}</span>
+    </code>
+  );
+}
+
+/** A `name=value` pair of a link, coloured as in links. */
+function Pair({ name, value }: { name: string; value: string }) {
+  return (
+    <code>
+      <span className="lk-k">{name}</span>
+      <span className="lk-e">=</span>
+      <span className="lk-v">{value}</span>
+    </code>
+  );
+}
 
 function Badge({ kind, href }: { kind: 'view' | 'compare'; href: string }) {
   const label = kind === 'view' ? 'View in Tool Kumar' : 'Compare in Tool Kumar';
@@ -140,10 +166,11 @@ export default function IntegratePage() {
       <div className="ig-docs prose">
         <h2 id="via-link">1. Via link</h2>
         <p>
-          Every link points to the home page. The documents and options follow the <code>#</code> as <code>name=value</code> pairs joined by{' '}
-          <code>&amp;</code>:
+          Every link points to the home page. The documents and options follow the <Part cls="lk-h">#</Part> as{' '}
+          <Pair name="name" value="value" />{' '}
+          pairs joined by <Part cls="lk-s">&amp;</Part>:
         </p>
-        <Code lang="text">{`https://tools.vikasmaur.com/#a=<document>&view=tree
+        <Code lang="text" links>{`https://tools.vikasmaur.com/#a=<document>&view=tree
 https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
         <div className="table-wrap">
           <table>
@@ -152,20 +179,20 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
             </thead>
             <tbody>
               <tr>
-                <th scope="row"><code>a</code></th>
+                <th scope="row"><Part cls="lk-k">a</Part></th>
                 <td>The document: its text compressed with raw DEFLATE and encoded as base64url without padding, or a percent-encoded <code>http(s)</code> URL to fetch it from.</td>
               </tr>
               <tr>
-                <th scope="row"><code>b</code></th>
+                <th scope="row"><Part cls="lk-k">b</Part></th>
                 <td>Optional. A second document in the same form. Two documents open in Compare.</td>
               </tr>
               <tr>
-                <th scope="row"><code>view</code></th>
-                <td>Optional. <code>format</code>, <code>tree</code>, <code>table</code>, <code>graph</code>, <code>convert</code> or <code>compare</code>. Without it, readers keep the view they last used.</td>
+                <th scope="row"><Part cls="lk-k">view</Part></th>
+                <td>Optional. <Part cls="lk-v">format</Part>, <Part cls="lk-v">tree</Part>, <Part cls="lk-v">table</Part>, <Part cls="lk-v">graph</Part>, <Part cls="lk-v">convert</Part> or <Part cls="lk-v">compare</Part>. Without it, readers keep the view they last used.</td>
               </tr>
               <tr>
-                <th scope="row"><code>to</code></th>
-                <td>Optional, with <code>view=convert</code>: {TARGETS.map((t, i) => <span key={t.id}>{i ? ', ' : ''}<code>{t.id}</code></span>)}.</td>
+                <th scope="row"><Part cls="lk-k">to</Part></th>
+                <td>Optional, with <Pair name="view" value="convert" />: {TARGETS.map((t, i) => <span key={t.id}>{i ? ', ' : ''}<Part cls="lk-v">{t.id}</Part></span>)}.</td>
               </tr>
             </tbody>
           </table>
@@ -198,7 +225,7 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
         <ul>
           <li>
             <strong>Link to where the JSON is hosted.</strong> Put it in a GitHub Gist or any file a browser can fetch, then link to its address:{' '}
-            <code>{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</code>. The link stays short whatever the size, and Tool Kumar
+            <LinkCode lang="javascript">{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</LinkCode>. The link stays short whatever the size, and Tool Kumar
             fetches the file when it opens.
           </li>
           <li>
@@ -210,16 +237,16 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
         {/* Picks JavaScript or TypeScript for every code block below before they paint. */}
         <script dangerouslySetInnerHTML={{ __html: CODE_LANG_SCRIPT }} />
         <CodeSnippet name="toolKumarLink" js={LINK_SNIPPET} ts={LINK_SNIPPET_TS} />
-        <Code lang="javascript">{`const link = await toolKumarLink(response, { view: 'tree' });
+        <Code lang="javascript" links>{`const link = await toolKumarLink(response, { view: 'tree' });
 const diff = await toolKumarLink(before, { compare: after });`}</Code>
         <p>
-          A link to a URL needs no compression: <code>{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</code>. The reader&apos;s browser
+          A link to a URL needs no compression: <LinkCode lang="javascript">{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</LinkCode>. The reader&apos;s browser
           fetches it, so its server must allow cross-origin requests (CORS); public GitHub files and most public APIs do. In other languages:
         </p>
-        <Code lang="javascript">{`// Node.js, synchronous
+        <Code lang="javascript" links>{`// Node.js, synchronous
 import { deflateRawSync } from 'node:zlib';
 const link = 'https://tools.vikasmaur.com/#a=' + deflateRawSync(JSON.stringify(data)).toString('base64url');`}</Code>
-        <Code lang="python">{`# Python
+        <Code lang="python" links>{`# Python
 import base64, json, zlib
 
 z = zlib.compressobj(9, zlib.DEFLATED, -15)  # -15: raw DEFLATE
@@ -239,7 +266,7 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
 });`}</Code>
         <h3>How it works</h3>
         <ol>
-          <li>Your page opens <code>https://tools.vikasmaur.com/#handoff</code> in a new tab.</li>
+          <li>Your page opens <LinkCode>{'https://tools.vikasmaur.com/#handoff'}</LinkCode> in a new tab.</li>
           <li>When Tool Kumar is ready, it tells your page with <code>{'{ toolkumar: "ready", version: 1 }'}</code>.</li>
           <li>
             Your page sends <code>{'{ toolkumar: "open", a, b, view, to }'}</code> to that tab, where <code>a</code> and <code>b</code> are the JSON
