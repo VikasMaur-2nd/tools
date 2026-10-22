@@ -105,6 +105,9 @@ export interface EditorEvents {
   flush?(edit: boolean): void;
 }
 
+/** Colours [a, b) of `text`, which starts at document offset `at`, as escaped HTML: for a document that isn't JSON (see setColors). */
+export type Colors = (text: string, a: number, b: number, at: number) => string;
+
 export interface Diagnostic {
   p: number;
   cls: 'me' | 'mw';
@@ -316,6 +319,10 @@ export class Editor {
   private lineMarks: Uint8Array | null = null;
   /** The input is one JWT: its part offsets (see jwtLine), coloured instead of JSON tokens. */
   private jwt: readonly number[] | null = null;
+  /** Colours for a document that isn't JSON (null: JSON highlighting). */
+  private colors: Colors | null = null;
+  /** Shown, selected and copied, never edited by the user (see setReadOnly). */
+  private locked = false;
   /** Soft wrap (null: off). */
   private wrapper: Wrapper | null = null;
   /** While wrapping: the first visual row of each display line (length rows + 1). */
@@ -627,6 +634,7 @@ export class Editor {
 
   /** The input passage reports a bounded replacement in model offsets. */
   private surfaceEdit(a: number, b: number, ins: string, kind: string) {
+    if (this.locked) return;
     const old = this.doc;
     if (a === b && !ins) return;
     this.selBefore = this.surface!.selection;
@@ -1262,10 +1270,10 @@ export class Editor {
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
         const [t, o] = this.win(sa, sb + 1);
-        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa - o, sb - o, this.jwtAt(o)) : highlightLine(t, sa - o, sb - o, moved(marks, o), sb === b)}${sb === b ? ph : ''}</div>`);
+        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa - o, sb - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, sb - o, o) : highlightLine(t, sa - o, sb - o, moved(marks, o), sb === b)}${sb === b ? ph : ''}</div>`);
       } else {
         const [t, o] = this.win(a, b + 1);
-        html.push(`${open(a)}${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
+        html.push(`${open(a)}${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
       }
     }
     this.draw(html, this.gutterHtml(first, last), offs);
@@ -1331,13 +1339,13 @@ export class Editor {
         const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, odd) : b;
         const [t, o] = this.win(Math.max(a, sa - 64), Math.min(b, ea + 64) + 1);
         const ms = moved(marks, o);
-        let str = this.jwt ? 0 : this.strs.at(doc, a, sa);
+        let str = this.jwt || this.colors ? 0 : this.strs.at(doc, a, sa);
         for (let sub = s0; sub < s1; sub++) {
           const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, odd) : b;
           const end = sb === b;
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa - o, sb - o) + o : sb;
-          let body = this.jwt ? jwtLine(t, sa - o, se - o, this.jwtAt(o)) : highlightLine(t, sa - o, se - o, ms, end, str);
+          let body = this.jwt ? jwtLine(t, sa - o, se - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, se - o, o) : highlightLine(t, sa - o, se - o, ms, end, str);
           if (odd) {
             // Where the browser keeps a word's letters joined across the break, so does the copy.
             const zl = wr.exact && wr.joinsAt(t, sa - o) ? '\u200d' : '';
@@ -1349,13 +1357,13 @@ export class Editor {
           }
           html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`);
           offs?.push(sa);
-          if (!this.jwt) str = stringState(t, sa - o, sb - o, str);
+          if (!this.jwt && !this.colors) str = stringState(t, sa - o, sb - o, str);
           sa = sb;
         }
       } else {
         if (top < 0) top = y;
         const [t, o] = this.win(a, b + 1);
-        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
+        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
         offs?.push(a);
       }
       // Gutter: the number on a line's first row, its bars on every row.
@@ -1542,6 +1550,19 @@ export class Editor {
     this.renderSoon();
   }
 
+  /** Colours the document with `colors` instead of as JSON (null: back to JSON). */
+  setColors(colors: Colors | null) {
+    if (colors === this.colors) return;
+    this.colors = colors;
+    this.renderSoon();
+  }
+
+  /** Read-only: the user can select and copy the document but not change it (setValue and init still do). */
+  setReadOnly(on: boolean) {
+    this.locked = on;
+    this.ta.readOnly = on;
+  }
+
   /** Compare: tint whole lines as added / removed / changed (null clears). */
   setLineMarks(marks: Uint8Array | null) {
     if (!marks && !this.lineMarks) return;
@@ -1617,6 +1638,10 @@ export class Editor {
 
   private onBeforeInput = (e: InputEvent) => {
     if (this.quiet) return;
+    if (this.locked) {
+      if (e.cancelable) e.preventDefault();
+      return;
+    }
     this.ev.flush?.(true);
     // (The document that arrived opened read-only: the textarea no longer edits it.)
     if (this.view) {
@@ -1755,6 +1780,7 @@ export class Editor {
   };
 
   private onPaste = (e: ClipboardEvent) => {
+    if (this.locked) return void e.preventDefault();
     this.ev.flush?.(true);
     // (The document that arrived opened read-only: a paste replaces it, as in the view.)
     if (this.view) return this.viewPaste(e);
@@ -1789,6 +1815,7 @@ export class Editor {
 
   /** Copy / cut with folds: the clipboard gets the hidden lines too. */
   private onCopy = (e: ClipboardEvent) => {
+    if (this.locked && e.type === 'cut') return void e.preventDefault();
     this.ev.flush?.(e.type === 'cut');
     if (this.view) {
       if (e.type === 'cut') e.preventDefault();
@@ -1948,6 +1975,7 @@ export class Editor {
   };
 
   private viewPaste(e: ClipboardEvent) {
+    if (this.locked) return void e.preventDefault();
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
@@ -1970,6 +1998,11 @@ export class Editor {
       return;
     }
     if (this.surface?.key(e)) return;
+    // Read-only: the keys below edit; Tab moves focus. Undo and redo stop here, or the browser's own would undo another box on the page.
+    if (this.locked) {
+      if (mod && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) e.preventDefault();
+      return;
+    }
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) this.redo();
@@ -2056,6 +2089,7 @@ export class Editor {
   }
 
   undo() {
+    if (this.locked) return;
     const ch = this.undo_.pop();
     if (!ch) return;
     this.histChars -= ch.del.length + ch.ins.length;
@@ -2064,6 +2098,7 @@ export class Editor {
   }
 
   redo() {
+    if (this.locked) return;
     const ch = this.redo_.pop();
     if (!ch) return;
     this.push(ch);
