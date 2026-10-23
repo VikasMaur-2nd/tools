@@ -2899,6 +2899,8 @@ export class Engine {
         for (let k = 0; k < 4; k++) steps.push(() => reindent(doc, k & 1 ? '' : '  '), () => parse(doc));
         steps.push(
           () => {
+            // First uses that cost: a number format (a big load's "Parsing… N%", about 20 ms), the fonts' glyphs.
+            new Intl.NumberFormat(document.documentElement.lang || undefined, { style: 'percent' }).format(0);
             const x = document.createElement('canvas').getContext('2d');
             const cs = getComputedStyle(this.ed.el);
             if (!x) return;
