@@ -8,6 +8,7 @@ import { formatDoc } from '../lib/json/format';
 import { parse } from '../lib/json/parser';
 import type { DocumentMetrics } from '../lib/json/metrics';
 import { unpacker, type PackedTree } from '../lib/json/pack';
+import { diffResults } from './oracle/compare';
 
 interface Reply {
   id: number;
@@ -21,16 +22,23 @@ interface Reply {
   good?: boolean;
   tree?: PackedTree;
   metrics?: DocumentMetrics;
+  progress?: number;
+  chunk?: string;
+  field?: 'out' | 'display';
+  size?: number;
+  chunkedOut?: boolean;
 }
 
-function session() {
-  const worker = new Worker(`const {parentPort}=require('node:worker_threads'); global.self={postMessage:(data,transfer)=>parentPort.postMessage(data,transfer)}; parentPort.on('message',data=>self.onmessage({data})); require(${JSON.stringify(resolve(__dirname, '../lib/engine/reindent.worker.js'))});`, { eval: true });
+/** `clock`: the worker's clock moves on by this many ms at each reading (a fake one, the same on any machine). */
+function session({ clock = 0 } = {}) {
+  const fake = clock ? `let now=0; performance.now=()=>(now+=${clock});` : '';
+  const worker = new Worker(`${fake}const {parentPort}=require('node:worker_threads'); global.self={postMessage:(data,transfer)=>parentPort.postMessage(data,transfer)}; parentPort.on('message',data=>self.onmessage({data})); require(${JSON.stringify(resolve(__dirname, '../lib/engine/reindent.worker.js'))});`, { eval: true });
   const messages: Reply[] = [];
   worker.on('message', (data) => messages.push(data));
   const receive = (id: number) => new Promise<Reply>((done, fail) => {
     const timer = setTimeout(() => { worker.terminate(); fail(new Error(`missing worker reply ${id}`)); }, 10_000);
     const check = () => {
-      const i = messages.findIndex((m) => m.id === id && !('chunk' in m));
+      const i = messages.findIndex((m) => m.id === id && !('chunk' in m) && !('progress' in m));
       if (i < 0) return;
       const result = messages.splice(i, 1)[0];
       clearTimeout(timer); worker.off('message', check); worker.off('error', fail);
@@ -39,7 +47,7 @@ function session() {
     };
     worker.on('message', check); worker.once('error', fail); check();
   });
-  return { worker, receive, async request(data: Request) { const reply = receive(data.id); worker.postMessage(data); return reply; } };
+  return { worker, receive, messages, async request(data: Request) { const reply = receive(data.id); worker.postMessage(data); return reply; } };
 }
 
 test('format worker patches an acknowledged output across skipped replies and invalid edits', async () => {
@@ -218,5 +226,57 @@ test('clearing a worker releases retained output and source bases', async () => 
     assert.equal(fresh.out, '{\n  "new": 2\n}');
     const stale = await request({ id: 4, sourceBase: 1, edit: { a: 0, b: 0, ins: '' }, fast: true });
     assert.equal(stale.reset, true);
+  } finally { await worker.terminate(); }
+});
+
+/** The progress a request's work posted, checked to only grow within (0, last]. */
+function progressOf(messages: Reply[], id: number, last: number) {
+  const got = messages.filter((m) => m.id === id && m.progress !== undefined).map((m) => m.progress!);
+  for (let k = 0; k < got.length; k++) {
+    assert.ok(got[k] > 0 && got[k] <= last, `progress ${got[k]} out of range`);
+    if (k) assert.ok(got[k] >= got[k - 1], `progress went back: ${got.join(', ')}`);
+  }
+  if (got.length) assert.equal(got.at(-1), last);
+  return got;
+}
+
+test('a big load asks the worker how far it got: the progress only grows and the results are the same', async () => {
+  const { worker, request, messages } = session({ clock: 25 });
+  try {
+    const item = (i: number) => ({ id: i, name: `Zoë ${i}`, tags: ['a', 'b'], n: 1.5e3, ok: true, x: null, s: 'say "hi"\n' });
+    const text = JSON.stringify(Array.from({ length: 40_000 }, (_, i) => item(i)));
+    assert.ok(text.length > 2_000_000);
+    // Formatting: re-indenting in steps (then indexing the output), its output in chunks that tell its size.
+    const formatted = await request({ id: 1, text, fast: true, indent: '  ', progress: true });
+    const made = progressOf(messages, 1, 0.65);
+    assert.ok(made.length >= 4, `formatting posted ${made.length} times`);
+    const chunks = messages.filter((m) => m.id === 1 && m.field === 'out');
+    const out = chunks.map((m) => m.chunk).join('');
+    assert.equal(formatted.chunkedOut, true);
+    assert.equal(out, formatDoc(text, parse(text), '  '));
+    assert.ok(chunks.every((m) => m.size === out.length));
+    // Analysing: parsing in steps, measuring, packing. (A smaller document: its compressed sizes follow.)
+    const small = JSON.stringify(Array.from({ length: 4_000 }, (_, i) => item(i)));
+    const analysis = await request({ id: 2, text: small, analysis: true, progress: true });
+    const analysed = progressOf(messages, 2, 0.8);
+    assert.ok(analysed.filter((p) => p < 0.58).length >= 4, `parsing posted ${analysed.length} times`);
+    assert.ok(analysed.includes(0.58) && analysed.includes(0.69));
+    assert.equal(diffResults(parse(small), unpacker(analysis.tree!, small)(Infinity)!), null);
+    assert.equal(analysis.metrics!.min, Buffer.byteLength(formatDoc(small, parse(small), '')));
+    // Typing (and anything that doesn't ask) posts none.
+    await request({ id: 3, edit: { a: 1, b: 1, ins: ' ' }, sourceBase: 2, fast: true, indent: '  ' });
+    await request({ id: 4, text: small, analysis: true });
+    assert.deepEqual(progressOf(messages, 3, 0), []);
+    assert.deepEqual(progressOf(messages, 4, 0), []);
+  } finally { await worker.terminate(); }
+});
+
+test('a big load whose text is not strict JSON still ends its progress where formatting does', async () => {
+  const { worker, request, messages } = session({ clock: 5 });
+  try {
+    const text = JSON.stringify(Array.from({ length: 40_000 }, (_, i) => ({ id: i, name: `item ${i}` }))).replace(/\]$/, ',]');
+    const reply = await request({ id: 1, text, fast: true, indent: '  ', progress: true });
+    progressOf(messages, 1, 0.65);
+    assert.equal(messages.filter((m) => m.id === 1 && m.field === 'out').map((m) => m.chunk).join('') || reply.out, formatDoc(text, parse(text), '  '));
   } finally { await worker.terminate(); }
 });

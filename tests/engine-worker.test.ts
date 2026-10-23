@@ -17,9 +17,12 @@ function session() {
   const tasks = new Map<number, () => void>();
   let timer = 0;
   const defer = (fn: () => void) => { tasks.set(++timer, fn); return timer; };
-  const state = { fileName: null };
+  const state: Record<string, unknown> = { fileName: null };
+  // The status bar as shown: what the store holds at the end of each task (see look).
+  const seen: unknown[] = [];
+  const look = () => { if (seen.at(-1) !== state.status) seen.push(state.status); };
   const errors: { error: unknown; source: string }[] = [];
-  const workers: { terminated: boolean; onerror?: (e: { preventDefault(): void }) => void; postMessage(data: unknown): void; terminate(): void }[] = [];
+  const workers: { terminated: boolean; messages: Record<string, unknown>[]; onerror?: (e: { preventDefault(): void }) => void; onmessage?: (e: { data: unknown }) => void; postMessage(data: unknown): void; terminate(): void }[] = [];
   const exports: Record<string, new () => Record<string, any>> = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
   const source = readFileSync(resolve(__dirname, '../../lib/engine/engine.ts'), 'utf8').replaceAll('import.meta.url', '"file:///engine.js"');
   const js = ts.transpileModule(source, {
@@ -33,16 +36,18 @@ function session() {
     exports, performance, URL, console,
     setTimeout: defer, clearTimeout: (id: number) => tasks.delete(id), window: { setTimeout: defer },
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: () => {} } };
+      if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
       if (name === './idle') return { soon: defer, idle: defer };
       if (name === '../analytics') return { reportError: (error: unknown, source: string) => errors.push({ error, source }) };
+      if (name === '../analytics/load') return { noteLoad() {}, watchPastes() {} };
       if (name.startsWith('../json/') || name === './doc' || name === './rules') return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
     Worker: class {
       terminated = false;
+      messages: Record<string, unknown>[] = [];
       constructor() { workers.push(this); }
-      postMessage() {}
+      postMessage(data: Record<string, unknown>) { this.messages.push(data); }
       terminate() { this.terminated = true; }
     },
   });
@@ -50,8 +55,8 @@ function session() {
   engine.settings = { view: 'format', indent: '2', minify: false, escape: false, sortKeys: false };
   engine.ed = { version: Doc.of('{"a":1}'), text: '{"a":1}' };
   engine.fmt = { text: '', el: {}, snapshotText: () => () => '', setText: () => {}, inlineIndex: () => ({ close: new Int32Array(0), depth: new Int32Array(0) }) };
-  const tick = () => { const first = tasks.entries().next().value; if (first) { tasks.delete(first[0]); first[1](); } };
-  return { engine, workers, tick, errors };
+  const tick = () => { const first = tasks.entries().next().value; if (first) { tasks.delete(first[0]); first[1](); } look(); return !!first; };
+  return { engine, workers, tick, errors, state, seen, look };
 }
 
 test('worker patch uses the displayed text when layout commits before onReady', () => {
@@ -275,4 +280,158 @@ test('small documents and edits are analysed at once', () => {
     assert.deepEqual(analysed, [undefined]);
     assert.equal(engine.steps, null);
   }
+});
+
+// ── A big load's progress ("Parsing… N%", see Engine.progress) ──
+
+type Shown = { kind: string; progress?: number } | undefined;
+/** (Objects made in the engine's context have its own prototypes.) */
+const plain = (x: unknown) => JSON.parse(JSON.stringify(x));
+
+/** A session whose editor takes a document as the browser's does: setting its text is a change. */
+function loadSession() {
+  const s = session();
+  const { engine } = s;
+  let version = Doc.of('');
+  engine.ed = {
+    get version() { return version; }, get length() { return version.length; }, get text() { return version.toString(); },
+    blank: false, pasteFull: false, el: {}, setBrackets() {},
+    setValue(text: string) { version = Doc.of(text); engine.onChange('set'); },
+  };
+  engine.persistSoon = () => {};
+  engine.drawFormat = () => {};
+  // (A change schedules a typed analysis much later, by then dropped: the fake queue has no time.)
+  engine.analyzeTyped = () => {};
+  engine.analyze = () => { s.state.status = { kind: 'valid', warnings: 0 }; };
+  return s;
+}
+
+/** Statuses shown with a percent: from 0, never going back, short of 100, and then only the result. */
+function checkShown(seen: unknown[]) {
+  const shown = (seen as Shown[]).filter((st) => st !== undefined);
+  const last = shown.findLastIndex((st) => st!.kind === 'parsing');
+  const percents = shown.slice(0, last + 1).map((st) => st!.progress);
+  assert.ok(percents.every((p) => p !== undefined), `a status without its percent: ${JSON.stringify(shown)}`);
+  assert.equal(percents[0], 0);
+  for (let k = 1; k < percents.length; k++) assert.ok(percents[k]! >= percents[k - 1]!, `went back: ${percents.join(', ')}`);
+  assert.ok(percents.at(-1)! < 1);
+  assert.equal(shown.at(-1)!.kind, 'valid');
+  return percents as number[];
+}
+
+const bigArray = (n: number) => '[' + '1,'.repeat(n) + '1]';
+
+test('a big load in the Format view shows its percent from the start, only growing, through both workers', () => {
+  const { engine, workers, tick, seen, look } = loadSession();
+  const text = bigArray(1_500_000);
+  engine.load(text, 'big.json', false, true);
+  look();
+  assert.deepEqual(plain(seen), [{ kind: 'parsing', progress: 0 }], 'working from the start');
+  // The text goes to the formatting worker in chunks, then it reports how far it got.
+  while (tick());
+  const [formatting] = workers;
+  assert.equal(formatting.messages.find((m) => m.start)?.progress, true);
+  // (Replies to the request being worked on: the editor taking the text is a change, so the analysis has a later id.)
+  const send = (w: (typeof workers)[0], data: object) => { w.onmessage!({ data: { id: engine.loadSeq, ...data } }); look(); };
+  send(formatting, { progress: 0.4 });
+  send(formatting, { progress: 0.75 });
+  send(formatting, { progress: 0.2 }); // (late and lower: ignored)
+  const out = ' '.repeat(2_500_000);
+  for (let i = 0; i < out.length; i += 256_000) send(formatting, { field: 'out', chunk: out.slice(i, i + 256_000), size: out.length });
+  send(formatting, { out: null, chunkedOut: true, index: { starts: new Int32Array(1), close: new Int32Array(1), depth: new Int32Array(1), maxLen: 0 } });
+  // Drawn: then the editor takes the text (its change doesn't show), and the analysis worker gets it.
+  while (tick());
+  const analysis = workers[1];
+  assert.ok(analysis, 'the analysis worker started');
+  assert.equal(analysis.messages.find((m) => m.start)?.progress, true);
+  send(analysis, { progress: 0.3 });
+  send(analysis, { progress: 0.75 });
+  send(analysis, { tree: { nodes: { length: 1 }, head: {} }, metrics: { bytes: text.length, min: text.length, extra: 0, units: 0 } });
+  const percents = [...new Set(checkShown(seen))];
+  assert.ok(percents.length >= 12, `shown ${percents.join(', ')}`);
+  // Each step's share, in order: sending, formatting, receiving, the editor, sending again, analysing.
+  for (const p of [0.05, 0.32, 0.37, 0.5, 0.55, 0.88]) assert.ok(percents.includes(p), `${p} in ${percents.join(', ')}`);
+});
+
+test('a big load in another view goes from reading the file to parsing it here in steps', async (t) => {
+  clock(t, 5);
+  const { engine, tick, seen, look } = loadSession();
+  engine.settings.view = 'tree';
+  engine.tree = { setRoot() {} };
+  engine.table = { setNode() {} };
+  engine.setGraphRoot = () => {};
+  Object.assign(engine.ed, { setDiagnostics() {}, setScope() {} });
+  engine.toast = () => {};
+  const text = JSON.stringify(Array.from({ length: 60_000 }, (_, k) => ({ id: k, name: 'Zoë ' + k })));
+  assert.ok(text.length > 1_000_000 && text.length < 2_000_000);
+  const file = { name: 'big.json', size: text.length, text: () => Promise.resolve(text) };
+  const reading = engine.loadFile(file);
+  look();
+  assert.deepEqual(plain(seen), [{ kind: 'parsing', progress: 0 }], 'working while the file is read');
+  await reading;
+  look();
+  while (tick());
+  const percents = checkShown(seen);
+  assert.ok(percents.at(-1)! >= 0.5, `shown ${percents.join(', ')}`);
+});
+
+test('a file that cannot be read leaves what was shown before', async () => {
+  const { engine, state } = loadSession();
+  engine.toast = () => {};
+  const before = (state.status = { kind: 'valid', warnings: 0 });
+  await engine.loadFile({ name: 'big.json', size: 5_000_000, text: () => Promise.reject(new Error('gone')) });
+  assert.equal(state.status, before);
+});
+
+test('small loads, typing and edits show no percent', () => {
+  const { engine, workers, tick, seen, look } = loadSession();
+  // Under a million characters: as before, "Parsing…" once its output is drawn, then the result.
+  engine.load(JSON.stringify({ padding: 'x'.repeat(500_000) }), null, false, true);
+  look();
+  while (tick());
+  assert.deepEqual(plain(seen), [{ kind: 'parsing' }, { kind: 'valid', warnings: 0 }]);
+  // Typing in a big document: no percent asked of the worker, none shown.
+  const text = bigArray(1_500_000);
+  engine.ed.setValue(text);
+  look();
+  engine.outputFirst(text, null, () => {}, true);
+  while (tick());
+  const typed = workers[0].messages.find((m) => m.start && m.id === engine.loadSeq);
+  assert.equal(typed?.progress, false);
+  workers[0].onmessage!({ data: { id: engine.loadSeq, progress: 0.5 } });
+  look();
+  assert.ok((seen as Shown[]).every((st) => st?.progress === undefined), JSON.stringify(seen));
+});
+
+test('an edit during a big load ends its percent', () => {
+  const { engine, workers, tick, state } = loadSession();
+  engine.load(bigArray(1_500_000), 'big.json', false, true);
+  while (tick());
+  const formatting = workers[0];
+  formatting.onmessage!({ data: { id: engine.loadSeq, progress: 0.4 } });
+  assert.equal((state.status as Shown)?.progress, 0.15);
+  formatting.onmessage!({ data: { id: engine.loadSeq, out: '[]' } });
+  while (tick());
+  const id = engine.loadSeq;
+  assert.equal((state.status as Shown)?.progress, 0.55, 'drawn, in the editor, sent for analysis');
+  engine.onChange('input');
+  assert.deepEqual(plain(state.status), { kind: 'parsing' });
+  // Nothing of the load brings it back.
+  workers[1].onmessage!({ data: { id, progress: 0.9 } });
+  engine.progress(0.9);
+  assert.deepEqual(plain(state.status), { kind: 'parsing' });
+});
+
+test('a parse here in steps goes on from where a big load got to', (t) => {
+  clock(t, 1);
+  const { engine, tick, seen, look } = stepsSession(big);
+  engine.startProgress();
+  engine.progress(0.5);
+  engine.analyzeInSteps();
+  look();
+  while (engine.steps) tick();
+  const percents = (seen as Shown[]).map((st) => st!.progress!);
+  assert.equal(percents[0], 0.5);
+  assert.ok(percents.length > 2, percents.join(', '));
+  for (let k = 1; k < percents.length; k++) assert.ok(percents[k] > percents[k - 1], percents.join(', '));
 });
