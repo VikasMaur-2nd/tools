@@ -1886,6 +1886,12 @@ html:has(.content-page:not([style*='none'])) {
 }
 
 /* The viewer's editor as a form box (components/MiniEditor.tsx): JSON in, code out. */
+/* (A grid item: without this its width followed its content, and an unwrapped 27 MB line grew the box to millions of
+   px; the editor then drew 4 million characters of it, and the page froze for 20 s.) */
+.mini-ed {
+  min-width: 0;
+}
+
 .lb-ed {
   height: 218px;
   min-height: 98px;
