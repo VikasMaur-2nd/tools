@@ -766,7 +766,18 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1535,7 +1546,18 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2304,7 +2326,18 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -3073,7 +3106,18 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3842,7 +3886,18 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4611,7 +4666,18 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -5380,7 +5446,18 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -6149,6 +6226,17 @@
     "site.nav.menu": "99af6606",
     "toast.linkNotFirefox": "2c40c76b",
     "toast.linkTooLong": "0f501668",
-    "toast.linksTooLong": "f44098d6"
+    "toast.linksTooLong": "f44098d6",
+    "app.cut": "1f45f025",
+    "app.copyAll": "96e3f09a",
+    "app.selectAll": "1fc9a387",
+    "app.expand": "07548c2c",
+    "app.collapse": "be6eb1fc",
+    "app.browserMenu": "d6f62e07",
+    "dlg.contextMenu": "f2f73818",
+    "cmp.copyOriginal": "3cb67ff7",
+    "cmp.copyModified": "e3c6d130",
+    "cmp.showInEditors": "f43fcce8",
+    "cmp.showUnchanged": "853a2103"
   }
 }

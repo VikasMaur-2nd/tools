@@ -344,6 +344,21 @@ export class CodeView {
     this.reflow(true, line);
   }
 
+  /** The line drawn at a point's height (-1: none), for the context menu. */
+  lineAt(y: number) {
+    if (!this.vis.length) return -1;
+    return this.lineAtRow(Math.max(0, this.rFirst + Math.floor((y - this.rows.getBoundingClientRect().top) / RH)));
+  }
+
+  /** The block Fold or Unfold acts on at `line`: the innermost one around it (null: none). */
+  foldTarget(line: number): { line: number; folded: boolean } | null {
+    if (line < 0) return null;
+    if (this.folded.has(line)) return { line, folded: true };
+    const close = this.close;
+    for (let o = Math.min(line, close.length - 1); o >= 0; o--) if (close[o] >= line) return { line: o, folded: false };
+    return null;
+  }
+
   /** Folds every block nested `level` deep or deeper (1 keeps only the outermost block open). */
   foldLevel(level: number) {
     this.folded.clear();

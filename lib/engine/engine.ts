@@ -12,7 +12,7 @@ import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type Hint, type IndentId, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
+import { DEFAULT_SETTINGS, store, type ContextMenu, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
@@ -20,6 +20,7 @@ import { Doc } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
+import { getDiffMenu } from './instance';
 import type { InputSource } from '../analytics/events';
 import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
@@ -38,6 +39,8 @@ export interface EngineEls {
   fmt: HTMLElement;
   /** Compare: the second (modified) document's editor. */
   editor2: HTMLElement;
+  /** Compare's differences panel (components/CompareView.tsx draws into it). */
+  compare: HTMLElement;
 }
 
 export type { EnginePreset } from './store';
@@ -316,6 +319,8 @@ export class Engine {
     delete document.documentElement.dataset.doc;
 
     window.addEventListener('keydown', this.onKey, true);
+    window.addEventListener('pointerdown', this.onPress, { capture: true, passive: true });
+    window.addEventListener('contextmenu', this.onContextMenu);
     window.addEventListener('dragenter', this.onDragEnter);
     window.addEventListener('dragover', this.onDragOver);
     window.addEventListener('dragleave', this.onDragLeave);
@@ -343,6 +348,9 @@ export class Engine {
     clearTimeout(this.analysisTimer);
     this.dead = true;
     window.removeEventListener('keydown', this.onKey, true);
+    window.removeEventListener('pointerdown', this.onPress, true);
+    window.removeEventListener('contextmenu', this.onContextMenu);
+    store.set({ menu: null });
     window.removeEventListener('dragenter', this.onDragEnter);
     window.removeEventListener('dragover', this.onDragOver);
     window.removeEventListener('dragleave', this.onDragLeave);
@@ -1625,7 +1633,8 @@ export class Engine {
     void this.copy(formatPath(pathOf(n)), 'Copied path');
   }
 
-  private async copy(text: string, msg: string) {
+  /** Copies `text`, then says `msg` (none: quietly, as the copy key does). */
+  private async copy(text: string, msg?: string) {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -1638,7 +1647,7 @@ export class Engine {
       document.execCommand('copy');
       ta.remove();
     }
-    this.toast(msg, 'ok');
+    if (msg) this.toast(msg, 'ok');
   }
 
   // ── Compare (second editor) ────────────────────────────────────────────
@@ -1990,6 +1999,7 @@ export class Engine {
 
   setView(view: View, ready?: () => void) {
     this.flushLoad();
+    store.set({ menu: null });
     const viewSeq = ++this.viewSeq;
     if (view === 'graph') {
       this.graphShow = { seq: viewSeq, ready };
@@ -2758,13 +2768,19 @@ export class Engine {
 
   private onKey = (e: KeyboardEvent) => {
     const s = store.get();
-    if (s.palette || s.shortcuts || e.isComposing) return;
+    // (The open context menu has the keys.)
+    if (s.palette || s.shortcuts || s.menu || e.isComposing) return;
     const mod = e.metaKey || e.ctrlKey;
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;
     const k = e.key.toLowerCase();
     let run: (() => void) | null = null;
-    if (mod && !e.altKey && (k === 'k' || (e.shiftKey && k === 'p'))) run = () => this.openPalette();
+    // The menu key or Shift+F10 (also on macOS, which has neither): the context menu, at the caret or selection.
+    const area = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey && !mod && !e.altKey) ? this.menuArea(t) : null;
+    if (area) {
+      this.menuKeyAt = e.timeStamp;
+      run = () => this.openMenu(area, t);
+    } else if (mod && !e.altKey && (k === 'k' || (e.shiftKey && k === 'p'))) run = () => this.openPalette();
     else if (mod && !e.altKey && e.key === 'Enter' && this.ed2.hasFocus()) run = () => this.formatCompare();
     else if (mod && !e.altKey && e.key === 'Enter') run = e.shiftKey ? () => this.minify() : () => this.useOutput();
     else if (e.altKey && e.shiftKey && !mod && e.code === 'KeyF') run = () => this.format();
@@ -2788,6 +2804,190 @@ export class Engine {
       run();
     }
   };
+
+  // ── Context menu (components/ContextMenu.tsx) ─────────────────────────
+
+  private menuSeq = 0;
+  /** What the open menu's Copy copies: the selection it opened on (null: none, Copy copies everything). */
+  private menuClip: (() => string) | null = null;
+  /** The node it opened on (tree, table, graph). */
+  private menuNode: JNode | null = null;
+  /** Compare's differences: what it opened on. */
+  private menuDiff: DiffMenu | null = null;
+  /** When a key last opened it: the browser may send its own contextmenu event for that key too. */
+  private menuKeyAt = -Infinity;
+  /** The last press: a long press on a touch screen keeps the phone's own menu. */
+  private press = { type: '', at: -Infinity };
+
+  private onPress = (e: PointerEvent) => {
+    this.press = { type: e.pointerType, at: e.timeStamp };
+  };
+
+  /** The content area at `el` that has a context menu (null: the browser's menu). */
+  private menuArea(el: Element): MenuArea | null {
+    const { editor, editor2, fmt, code, tree, table, graph, compare } = this.els;
+    return editor.contains(el) ? 'input'
+      : editor2.contains(el) ? 'compare'
+      : fmt.contains(el) ? 'format'
+      : code.contains(el) ? 'convert'
+      : tree.contains(el) ? 'tree'
+      : table.contains(el) ? 'table'
+      : graph.contains(el) ? 'graph'
+      // (Its differences, not the options above them: one is a text field.)
+      : compare.contains(el) && el.closest('.cmp-lw') ? 'diff'
+      : null;
+  }
+
+  private onContextMenu = (e: MouseEvent) => {
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const area = this.menuArea(t);
+    if (!area) return;
+    // The browser's own event for the key that just opened the menu.
+    if (store.get().menu?.keyboard && e.timeStamp - this.menuKeyAt < 1000) return void e.preventDefault();
+    // Shift+right-click: the browser's own menu. A touch's long press: the phone's (text selection, copy, paste).
+    if (e.shiftKey || (e as PointerEvent).pointerType === 'touch' || (this.press.type === 'touch' && e.timeStamp - this.press.at < 2000)) return;
+    e.preventDefault();
+    this.openMenu(area, t, { x: e.clientX, y: e.clientY });
+  };
+
+  /** The text selected on screen inside `el`, for Copy (null: none). */
+  private shownClip(el: HTMLElement) {
+    const s = window.getSelection();
+    const text = s?.rangeCount && el.contains(s.anchorNode) ? s.toString() : '';
+    return text ? () => text : null;
+  }
+
+  /**
+   * Opens the context menu for `area`: at a right click's point (which first moves the caret or
+   * selects the node there, as a click would), or from the keyboard at the caret or selected node.
+   */
+  private openMenu(area: MenuArea, target: Element, at?: { x: number; y: number }) {
+    const els = this.els;
+    const host = area === 'input' ? els.editor : area === 'compare' ? els.editor2 : area === 'format' ? els.fmt : area === 'convert' ? els.code : area === 'diff' ? els.compare : els[area];
+    const box = host.getBoundingClientRect();
+    const menu: ContextMenu = {
+      id: ++this.menuSeq, area, keyboard: !at, x: at?.x ?? box.left + 16, y: at?.y ?? box.top + 16, top: at?.y ?? box.top + 16,
+      blank: false, sel: false, cut: false, paste: false, undo: false, redo: false, fold: null, node: null, diff: null,
+    };
+    let clip: (() => string) | null = null;
+    let node: JNode | null = null;
+    if (area === 'input' || area === 'compare') {
+      const ed = area === 'input' ? this.ed : this.ed2;
+      // (A document still on its way arrives first, as for a click.)
+      if (area === 'input') this.flushLoad();
+      const line = at ? ed.menuAt(at.x, at.y) : ed.lineOf(ed.caret);
+      if (!at) {
+        const c = ed.caretBox();
+        Object.assign(menu, { x: c.x, y: c.bottom, top: c.top });
+      }
+      clip = ed.clip();
+      Object.assign(menu, { blank: !ed.length, fold: ed.foldTarget(line), cut: ed.canCut, paste: ed.canPaste, undo: ed.canUndo, redo: ed.canRedo });
+    } else if (area === 'format' || area === 'convert') {
+      const cv = area === 'format' ? this.fmt : this.code;
+      if (at) menu.fold = cv.foldTarget(cv.lineAt(at.y));
+      clip = this.shownClip(cv.el);
+    } else if (area === 'diff') {
+      // (The row under the pointer is selected first, as a click selects it.)
+      const d = getDiffMenu(at ? target : null);
+      if (!d) return;
+      menu.diff = d;
+      if (!at && d.box) Object.assign(menu, { x: d.box.left + 24, y: d.box.bottom, top: d.box.top });
+      clip = this.shownClip(els.compare);
+    } else {
+      // The node under the pointer is selected first, as a click selects it.
+      if (at) node = area === 'tree' ? this.tree.pick(target) : area === 'table' ? this.table.pick(target) : (this.graph?.pickAt(at.x, at.y) ?? null);
+      else if (area === 'tree') {
+        node = this.tree.sel;
+        const r = this.tree.selBox();
+        if (r) Object.assign(menu, { x: r.left + 24, y: r.bottom, top: r.top });
+      } else node = this.sel;
+      if (node) menu.node = { open: area === 'tree' && node.t >= ARR ? !!node.x : null, str: node.t === STR };
+      if (area !== 'graph') clip = this.shownClip(this.els[area]);
+    }
+    this.menuClip = clip;
+    this.menuNode = node;
+    this.menuDiff = menu.diff;
+    menu.sel = !!clip;
+    track('feature_used', { feature: 'context_menu', value: area });
+    store.set({ menu });
+  }
+
+  /** Where focus goes back to when the menu closes. */
+  menuFocus(area: MenuArea) {
+    if (area === 'input') this.ed.focus();
+    else if (area === 'compare') this.ed2.focus();
+    else if (area === 'format' || area === 'convert') (area === 'format' ? this.fmt : this.code).el.focus({ preventScroll: true });
+    else if (area === 'tree') this.tree.focus();
+    else if (area === 'graph') this.graph?.focus();
+    else if (area === 'diff') this.menuDiff?.focus();
+  }
+
+  private menuEditor(area: MenuArea) {
+    return area === 'compare' ? this.ed2 : this.ed;
+  }
+
+  /** Fold or Unfold the block the menu opened on. */
+  menuFold(area: MenuArea, line: number) {
+    if (area === 'input' || area === 'compare') this.menuEditor(area).toggleFold(line);
+    else if (area === 'format' || area === 'convert') (area === 'format' ? this.fmt : this.code).toggle(line);
+  }
+
+  /** Copy: the selection the menu opened on, else everything the area shows. */
+  menuCopy(area: MenuArea) {
+    const clip = this.menuClip;
+    if (clip) return void this.copy(clip());
+    if (area === 'input') void this.copyAll();
+    else if (area === 'compare') {
+      if (!this.ed2.length) return this.toast('Nothing to copy yet', 'info');
+      void this.copy(this.ed2.text, 'Copied the modified document');
+    } else if (area === 'convert') this.copyConvert();
+    else this.copyOutput();
+  }
+
+  menuCut(area: MenuArea) {
+    const ed = this.menuEditor(area);
+    if (!this.menuClip || !ed.canCut) return;
+    void this.copy(this.menuClip());
+    ed.cut();
+  }
+
+  /** Paste: the browser asks to read the clipboard (or shows its own Paste button); without it, the paste key still works. */
+  async menuPaste(area: MenuArea) {
+    const ed = this.menuEditor(area);
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      ed.focus();
+      return this.toast(`Press ${this.mod}V to paste`, 'info');
+    }
+    if (this.dead) return;
+    if (!text) return this.toast('Your clipboard is empty', 'info');
+    noteLoad('paste', area === 'compare' ? 2 : 1);
+    ed.paste(text);
+  }
+
+  menuSelectAll(area: MenuArea) {
+    this.menuEditor(area).selectEverything();
+  }
+
+  menuUndo(area: MenuArea, redo: boolean) {
+    if (area === 'input') return redo ? this.redo() : this.undo();
+    if (redo) this.ed2.redo();
+    else this.ed2.undo();
+  }
+
+  /** Tree: expand or collapse the node the menu opened on. */
+  menuToggle() {
+    const n = this.menuNode;
+    if (n && n.t >= ARR) this.tree.toggle(n, !n.x);
+  }
+
+  /** Tree and graph: select the node's text in the input editor. */
+  menuShow() {
+    if (this.menuNode) this.openInEditor(this.menuNode);
+  }
 
   private hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
 

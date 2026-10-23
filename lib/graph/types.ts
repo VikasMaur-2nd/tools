@@ -32,6 +32,8 @@ export interface GraphViewApi {
   activate(): void;
   /** The view was hidden: stop drawing, drop caches that can be rebuilt. */
   deactivate(): void;
+  /** A right click: selects the card or row at a viewport point and returns its node (null: none there). */
+  pickAt(clientX: number, clientY: number): JNode | null;
   /** Selection from elsewhere (editor caret, tree). `scroll` brings it into view. */
   select(n: JNode | null, opts?: { scroll?: boolean; center?: boolean }): void;
   /** Find: highlights matches in keys and values; `$.path` / `/pointer` jump to a node. */

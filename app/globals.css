@@ -2972,11 +2972,17 @@ dialog[open] {
   white-space: nowrap;
 }
 
-button.mi:hover,
+button.mi:not(:disabled):hover,
 button.mi:focus-visible {
   outline: none;
   background: var(--bg-3);
   color: var(--fg);
+}
+
+button.mi:disabled {
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
 }
 
 .mi .kbd kbd {
@@ -3061,6 +3067,50 @@ button.mi:focus-visible {
   font: 600 10.5px/1 var(--font-ui);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/* Right-click menu (components/ContextMenu.tsx): at the pointer, in the top layer like tooltips */
+.menu.ctx {
+  position: fixed;
+  inset: auto;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  min-width: 220px;
+  max-height: calc(100vh - 16px);
+  margin: 0;
+  overflow-y: auto;
+  color: var(--fg-2);
+  animation: ctx-in 0.08s ease-out;
+}
+
+.menu.ctx:focus {
+  outline: none;
+}
+
+.ctx .mi {
+  min-height: 28px;
+}
+
+.mi-foot {
+  margin: 5px 4px 0;
+  padding: 7px 5px 3px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 11px/1.3 var(--font-ui);
+  white-space: nowrap;
+}
+
+@keyframes ctx-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu.ctx {
+    animation: none;
+  }
 }
 
 /* Find bar (floats over the open view) */

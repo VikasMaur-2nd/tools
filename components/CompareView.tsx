@@ -16,13 +16,15 @@ import {
   type UIEvent,
 } from 'react';
 import { ARR, MAX_WALK_DEPTH, parse, tooDeep, type JNode } from '@/lib/json/parser';
-import { preview, primText, tooLarge } from '@/lib/json/format';
+import { copyText, preview, primText, tooLarge } from '@/lib/json/format';
 import { formatPath } from '@/lib/json/path';
 import { diff, parseIgnoreList, type Change, type DiffKind, type DiffResult } from '@/lib/diff/diff';
 import { patchText, toPatch } from '@/lib/diff/patch';
 import { LineMap, lineMarks } from '@/lib/diff/lines';
 import { buildRows, canonLines, diffLines, pairLines, wordDiff, ROW_DEL, ROW_EQ, ROW_GAP, ROW_MOD, type Canon, type LineDiff, type Pairs, type Row as DRow } from '@/lib/diff/text';
 import { highlightLine, type Mark } from '@/lib/engine/highlight';
+import { setDiffMenu } from '@/lib/engine/instance';
+import type { DiffAction, DiffMenu } from '@/lib/engine/store';
 import { Icon } from './icons';
 import { useT } from '@/lib/i18n/react';
 import type { T } from '@/lib/i18n/ui';
@@ -360,6 +362,9 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
 
   // ── actions ──
 
+  const isDiff = view === 'diff';
+  const navN = isDiff ? starts.length : n;
+
   const flash = (msg: string) => {
     window.clearTimeout(noteTimer.current);
     setNote(msg);
@@ -458,6 +463,78 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   };
 
   const toggleFilter = (f: Filter) => setFilter(eff === f ? 'all' : f);
+
+  const prev = () => (isDiff ? goHunk(-1) : select(sel < 0 ? n - 1 : Math.max(0, sel - 1), true));
+  const next = () => (isDiff ? goHunk(1) : select(sel < 0 ? 0 : Math.min(n - 1, sel + 1), true));
+
+  // The right-click menu's part (Engine.openMenu): the row at `el` is selected first, as a click selects it
+  // (without moving the editors); from the keyboard, the selected row. Its items run with the panel as it
+  // is then (`menuAct`, updated after every render), on the row it opened on.
+  const menuAct = useRef<(a: DiffAction, arg: string | undefined, c: Change | undefined, ri: number) => void>(() => {});
+  useEffect(() => {
+    const copy = (get: () => string, msg: string) => {
+      let text: string;
+      try {
+        text = get();
+      } catch (e) {
+        if (!tooLarge(e)) throw e;
+        return flash(tr('The result is too large'));
+      }
+      navigator.clipboard.writeText(text).then(
+        () => flash(tr(msg)),
+        () => flash(tr('Copy failed: clipboard access was blocked')),
+      );
+    };
+    menuAct.current = (a, arg, c, ri) => {
+      const r = rows[ri];
+      if (a === 'copyPath' && c) copy(() => formatPath(c.path), 'Copied path');
+      else if (a === 'copyLeft' && c?.left) copy(() => copyText(c.left as JNode, indent), 'Copied value');
+      else if (a === 'copyRight' && c?.right) copy(() => copyText(c.right as JNode, indent), 'Copied value');
+      else if (a === 'show' && c) onJump?.((c.left ?? c.leftParent)?.s, (c.right ?? c.rightParent)?.s);
+      else if (a === 'show' && r && tm) onJump?.(tm.a.offs[r.ja], tm.b.offs[r.jb]);
+      else if (a === 'expand') expand(ri);
+      else if (a === 'sub') pickSub(arg as Sub);
+      else if (a === 'layout') pickLayout(arg as Layout);
+      else if (a === 'opt') setOpt(arg as keyof Opts);
+      else if (a === 'prev') prev();
+      else if (a === 'next') next();
+      else if (a === 'patch') copyPatch();
+    };
+    setDiffMenu((el): DiffMenu => {
+      let c: Change | undefined;
+      let ri = -1;
+      let rowEl: Element | null | undefined;
+      let row: DiffMenu['row'] = null;
+      if (view === 'changes') {
+        rowEl = el?.closest('[data-i]');
+        const i = rowEl ? Number(rowEl.getAttribute('data-i')) : sel;
+        if (rowEl) select(i, false);
+        else rowEl = listRef.current?.querySelector(`[data-i="${i}"]`);
+        c = shown[i];
+        if (c) row = { kind: 'change', left: !!c.left, right: !!c.right };
+      } else if (tm) {
+        rowEl = el?.closest('[data-r]');
+        ri = rowEl ? Number(rowEl.getAttribute('data-r')) : selRow;
+        const r = rows[ri];
+        if (r && rowEl && r.k !== ROW_GAP) selectRow(ri, false);
+        if (!rowEl) rowEl = leftPane.current?.querySelector(`[data-r="${ri}"]`);
+        if (r) row = { kind: r.k === ROW_GAP ? 'gap' : 'line' };
+      }
+      return {
+        row,
+        box: rowEl?.getBoundingClientRect() ?? null,
+        sub: view,
+        wide,
+        layout,
+        opts,
+        ok: navN > 0,
+        patch: !!result && !result.error,
+        run: (a, arg) => menuAct.current(a, arg, c, ri),
+        focus: () => (view === 'changes' ? listRef.current : leftPane.current)?.focus({ preventScroll: true }),
+      };
+    });
+  });
+  useEffect(() => () => setDiffMenu(null), []);
 
   // ── list events (delegated: rows carry data-i / data-r) ──
 
@@ -685,8 +762,6 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     body = <div className={`cmp-dv${split ? ' split' : ''}`}>{split ? [pane(1), pane(2)] : pane(0)}</div>;
   }
 
-  const isDiff = view === 'diff';
-  const navN = isDiff ? starts.length : n;
 
   return (
     <div ref={rootRef} className={`cmp${stale ? ' stale' : ''}`} role="region" aria-label={tr('Differences')}>
@@ -784,7 +859,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
           aria-label={tr(isDiff ? 'Previous change' : 'Previous difference')}
           data-tip={tr('Previous')}
           disabled={!navN}
-          onClick={() => (isDiff ? goHunk(-1) : select(sel < 0 ? n - 1 : Math.max(0, sel - 1), true))}
+          onClick={prev}
         >
           <Icon name="up" size={15} />
         </button>
@@ -794,7 +869,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
           aria-label={tr(isDiff ? 'Next change' : 'Next difference')}
           data-tip={tr('Next')}
           disabled={!navN}
-          onClick={() => (isDiff ? goHunk(1) : select(sel < 0 ? 0 : Math.min(n - 1, sel + 1), true))}
+          onClick={next}
         >
           <Icon name="down" size={15} />
         </button>
