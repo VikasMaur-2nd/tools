@@ -35,8 +35,6 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
   const el = useRef<HTMLDivElement>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
   const [ed, setEd] = useState<Editor | null>(null);
-  // Huge documents open read-only for speed, as in the viewer (see Editor.view).
-  const [viewOnly, setViewOnly] = useState(false);
   // The callbacks change with every render; the editor calls the latest.
   const changed = useRef(onChange);
   // What the box held when the page drew it.
@@ -56,20 +54,22 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
       seen.disconnect();
       box.removeEventListener('focusin', load);
       import('@/lib/engine/editor').then(
-        ({ Editor }) => {
+        ({ Editor, loadSurface }) => {
           if (!live) return;
           made = new Editor(box, {
             change: () => changed.current?.(made!),
             caret() {},
             nav() {},
             escape() {},
-            mode: setViewOnly,
             copyAll: () => void navigator.clipboard?.writeText(made!.text).catch(() => undefined),
           });
           setEd(made);
           told.current?.(made);
           // Typed into the plain box before the editor arrived: that's a change too.
           if (made.text !== first) changed.current?.(made);
+          // The big-document editor's module (a few KB) when the page is idle: a big paste, or a long link in the
+          // code box, then doesn't wait for it.
+          (window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300)))(() => void loadSurface());
         },
         // (Offline before the chunk was cached: the plain textarea keeps working.)
         () => undefined,
@@ -101,14 +101,6 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
 
   return (
     <div className="mini-ed">
-      {viewOnly && !readOnly && (
-        <div className="ed-notice" role="status">
-          <span>Large document is read-only for speed.</span>
-          <button type="button" className="btn sm" onClick={() => ed?.editAnyway()}>
-            Edit anyway
-          </button>
-        </div>
-      )}
       <div className={`ed ${PRIVATE} ${className}`} ref={el}>
         <div className="ed-gut" aria-hidden="true">
           <div className="ed-gl" />

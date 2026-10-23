@@ -28,7 +28,7 @@ export type Feature =
   | 'format_input' | 'minify_input' | 'sort_input' | 'clear'
   | 'import_yaml' | 'import_xml' | 'import_csv' | 'import_toml'
   | 'find' | 'expand_all' | 'collapse_all' | 'expand_level' | 'fold_input'
-  | 'compare_swap' | 'compare_format' | 'compare_close' | 'edit_anyway'
+  | 'compare_swap' | 'compare_format' | 'compare_close'
   | 'wrap' | 'auto_format' | 'theme' | 'shortcuts' | 'palette' | 'load_url_dialog' | 'context_menu';
 
 /** Event name → its properties. Optional properties may be left out. */

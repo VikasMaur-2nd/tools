@@ -1293,7 +1293,7 @@
     ]
   },
   "jsonl-viewer": {
-    "hash": "5d02579b43c6",
+    "hash": "891b392414b5",
     "title": "Visualizador JSONL para arquivos JSON Lines e NDJSON",
     "description": "Abra um arquivo .jsonl ou .ndjson e navegue pelos registros em árvore ou tabela. O Tool Kumar lê JSON Lines no navegador, sem upload.",
     "heading": "Visualizador JSONL",
@@ -1316,7 +1316,7 @@
       "Registros divididos em várias linhas ou separados por vírgulas ainda abrem, mas a barra de status os identifica como JSON com sintaxe flexível e um problema a revisar, em vez de JSON Lines.",
       "Um arquivo .jsonl ou .ndjson aberto com um único registro ainda é lido como uma lista de um registro.",
       "Um registro que não pode ser lido interrompe a análise, e a barra de status mostra sua linha e coluna.",
-      "Acima de 2.000.000 de caracteres ou 30.000 linhas, a entrada fica em modo somente leitura para manter as visualizações rápidas. “Editar mesmo assim” reativa a edição."
+      "Entradas grandes continuam editáveis. A partir de 250.000 caracteres ou 30.000 linhas, o editor desenha apenas as linhas visíveis na tela, para que a digitação continue rápida."
     ],
     "faqs": [
       {
@@ -1519,7 +1519,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "641457c4d603",
+    "hash": "951455e0dd15",
     "title": "Visualizar arquivo JSON grande no navegador",
     "description": "Abra JSON grande localmente em árvore, tabela ou texto, sem upload. Em nosso teste, um arquivo de 52,4 MB foi analisado em cerca de 1 s em um navegador desktop.",
     "heading": "Visualizar arquivo JSON grande",
@@ -1529,7 +1529,7 @@
       "visualizador de JSON grande",
       "abrir JSON grande online"
     ],
-    "intro": "Abra um arquivo JSON grande do seu dispositivo e navegue por ele em árvore, tabela ou texto formatado. O arquivo é lido no seu navegador e nunca é enviado ao servidor. Documentos muito grandes passam para um modo somente leitura que mantém a rolagem rápida.",
+    "intro": "Abra um arquivo JSON grande do seu dispositivo e navegue por ele em árvore, tabela ou texto formatado. O arquivo é lido no seu navegador e nunca é enviado ao servidor. Mesmo documentos muito grandes continuam editáveis e rolam com suavidade.",
     "modeLabel": "Visualização em árvore",
     "exampleLabel": "Um exemplo pequeno representa seu arquivo aqui. Abra seu próprio arquivo para ver o tamanho, a quantidade de linhas e a quantidade de nós na barra de status.",
     "steps": [
@@ -1539,7 +1539,7 @@
     ],
     "options": [
       "São aceitos arquivos de até 300 MB. Esse é um limite de segurança, não uma garantia. O tamanho que abre com facilidade depende da memória do dispositivo e da estrutura dos dados.",
-      "Acima de 2.000.000 de caracteres ou 30.000 linhas, a entrada fica em modo somente leitura para manter as visualizações rápidas. “Editar mesmo assim” reativa a edição.",
+      "Entradas grandes continuam editáveis. A partir de 250.000 caracteres ou 30.000 linhas, o editor desenha apenas as linhas visíveis na tela, para que a digitação continue rápida.",
       "A análise acontece na thread principal, então a página pausa durante a leitura de um arquivo muito grande.",
       "Documentos com mais de 2.500.000 caracteres não são salvos para a próxima visita. Abra o arquivo novamente.",
       "Apenas as linhas na tela são renderizadas no editor e nas visualizações em árvore, tabela e texto, para manter a rolagem fluida depois de abrir o arquivo."

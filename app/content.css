@@ -1909,11 +1909,6 @@ html:has(.content-page:not([style*='none'])) {
   outline-offset: 1px;
 }
 
-.mini-ed .ed-notice {
-  margin-bottom: 6px;
-  border-radius: 8px;
-}
-
 /* What checking the JSON found (a button goes to the place). */
 .lb-check {
   min-height: 20px;

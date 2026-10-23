@@ -151,23 +151,39 @@ export function foldSig(t: Chars, s: number, e: number) {
 
 /** Fold structure: for each line, the line its block closes on (-1 if none) and its depth. */
 export function scanFolds(t: Chars, ls: number[]) {
+  return foldScanner(t, ls)(Infinity)!;
+}
+
+/**
+ * scanFolds in steps: each call scans until `until` (a performance.now() value) has passed, and returns
+ * the fold structure once it is done. Lines and text must not change meanwhile.
+ */
+export function foldScanner(t: Chars, ls: number[]) {
   const n = ls.length;
   const close = new Int32Array(n).fill(-1);
   const depth = new Int32Array(n);
   const stack: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const sig = foldSig(t, ls[i], lineEndIn(ls, t.length, i));
-    if (!sig) continue;
-    if (sig & 2 && stack.length) {
-      const o = stack.pop() as number;
-      if (i > o + 1 && sig & 4) close[o] = i;
+  let i = 0;
+  return (until: number): { close: Int32Array; depth: Int32Array } | undefined => {
+    while (i < n) {
+      // (The clock is read every 4096 lines.)
+      const stop = Math.min(n, i + 4096);
+      for (; i < stop; i++) {
+        const sig = foldSig(t, ls[i], lineEndIn(ls, t.length, i));
+        if (!sig) continue;
+        if (sig & 2 && stack.length) {
+          const o = stack.pop() as number;
+          if (i > o + 1 && sig & 4) close[o] = i;
+        }
+        if (sig & 8) {
+          depth[i] = stack.length;
+          stack.push(i);
+        }
+      }
+      if (i < n && performance.now() >= until) return undefined;
     }
-    if (sig & 8) {
-      depth[i] = stack.length;
-      stack.push(i);
-    }
-  }
-  return { close, depth };
+    return { close, depth };
+  };
 }
 
 /**

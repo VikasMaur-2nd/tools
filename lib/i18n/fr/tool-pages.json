@@ -1281,7 +1281,7 @@
     ]
   },
   "jsonl-viewer": {
-    "hash": "5d02579b43c6",
+    "hash": "891b392414b5",
     "title": "JSONL viewer : ouvrir des fichiers JSON Lines et NDJSON",
     "description": "Ouvrez un fichier .jsonl ou .ndjson dans le navigateur. Tool Kumar affiche ses enregistrements en arborescence ou en tableau, sans envoi au serveur.",
     "heading": "Visualiseur JSONL",
@@ -1304,7 +1304,7 @@
       "Les enregistrements répartis sur plusieurs lignes ou séparés par des virgules s'ouvrent aussi. La barre d'état les signale toutefois comme du JSON à syntaxe souple avec un problème à examiner, plutôt que comme du JSON Lines.",
       "Un fichier .jsonl ou .ndjson ouvert avec un seul enregistrement est tout de même lu comme une liste d'un enregistrement.",
       "Un enregistrement illisible interrompt l'analyse, et la barre d'état indique sa ligne et sa colonne.",
-      "Au-delà de 2 000 000 de caractères ou de 30 000 lignes, l'entrée passe en lecture seule pour garder des vues rapides. « Modifier quand même » réactive l'édition."
+      "Les grandes saisies restent modifiables. À partir de 250 000 caractères ou 30 000 lignes, l'éditeur n'affiche que les lignes visibles à l'écran, pour que la saisie reste rapide."
     ],
     "faqs": [
       {
@@ -1506,7 +1506,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "641457c4d603",
+    "hash": "951455e0dd15",
     "title": "Ouvrir un gros fichier JSON dans le navigateur",
     "description": "Ouvrez de gros fichiers JSON dans le navigateur, sans envoi au serveur. Dans notre test sur ordinateur, 52,4 Mo ont été analysés en environ une seconde.",
     "heading": "Visualiseur de gros fichiers JSON",
@@ -1516,7 +1516,7 @@
       "JSON viewer gros fichier",
       "ouvrir gros fichier JSON en ligne"
     ],
-    "intro": "Ouvrez un gros fichier JSON depuis votre appareil et parcourez-le sous forme d'arborescence, de tableau ou de texte formaté. Le fichier est lu dans votre navigateur et n'est jamais envoyé au serveur. Les documents très volumineux passent en lecture seule pour garder un défilement rapide.",
+    "intro": "Ouvrez un gros fichier JSON depuis votre appareil et parcourez-le sous forme d'arborescence, de tableau ou de texte formaté. Le fichier est lu dans votre navigateur et n'est jamais envoyé au serveur. Même les documents très volumineux restent modifiables et défilent sans à-coups.",
     "modeLabel": "Vue arborescente",
     "exampleLabel": "Un petit exemple remplace ici votre fichier. Ouvrez votre propre fichier pour voir sa taille, son nombre de lignes et son nombre de nœuds dans la barre d'état.",
     "steps": [
@@ -1526,7 +1526,7 @@
     ],
     "options": [
       "Les fichiers jusqu'à 300 Mo sont acceptés. C'est une limite de sécurité plutôt qu'une garantie : la taille qui s'ouvre confortablement dépend de la mémoire de l'appareil et de la structure des données.",
-      "Au-delà de 2 000 000 de caractères ou de 30 000 lignes, l'entrée passe en lecture seule pour garder des vues rapides. « Modifier quand même » réactive l'édition.",
+      "Les grandes saisies restent modifiables. À partir de 250 000 caractères ou 30 000 lignes, l'éditeur n'affiche que les lignes visibles à l'écran, pour que la saisie reste rapide.",
       "L'analyse s'exécute sur le thread principal. La page marque donc une pause pendant la lecture d'un très gros fichier.",
       "Les documents de plus de 2 500 000 caractères ne sont pas enregistrés pour votre prochaine visite ; ouvrez à nouveau le fichier.",
       "Seules les lignes visibles à l'écran sont rendues dans l'éditeur et les vues arborescente, tableau et texte. Le défilement reste donc fluide une fois le fichier ouvert."
