@@ -240,15 +240,13 @@ export class Engine {
       caret: this.onCaret,
       nav: this.onNav,
       escape: () => this.leaveEditor(),
-      mode: (viewOnly) => store.set({ viewOnly }),
       copyAll: () => void this.copyAll(),
       flush: this.flushLoad,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
         this.refocus = true;
-        // (Pasted while editing a document that opened in a view: the user chose to edit, so it stays editable.)
-        this.load(text, null, true, true, this.ed.editingAnyway);
+        this.load(text, null, true, true);
         return true;
       },
     });
@@ -258,7 +256,6 @@ export class Engine {
       caret: () => undefined,
       nav: () => undefined,
       escape: () => document.querySelector<HTMLElement>('.pane-view [role="tab"][aria-selected="true"]')?.focus(),
-      mode: () => undefined,
       copyAll: () => void this.copy(this.ed2.text, 'Copied the modified document'),
     });
     this.ed2.indentUnit = INDENTS[this.settings.indent];
@@ -1113,7 +1110,7 @@ export class Engine {
   // ── Commands: documents ────────────────────────────────────────────────
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
-  load(text: string, name: string | null, persist = true, outputFirst = false, keepEdit = false) {
+  load(text: string, name: string | null, persist = true, outputFirst = false) {
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
@@ -1121,16 +1118,16 @@ export class Engine {
     this.loadSeq++; // drops what an earlier load still has pending
     store.set({ fileName: name });
     if (persist) write(KEYS.file, name);
-    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, keepEdit))) {
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) {
       // Until the editor has it, input would act on the old document: the first input hands it over at once.
-      this.pendingLoad = { seq: this.loadSeq, text, persist, keepEdit };
+      this.pendingLoad = { seq: this.loadSeq, text, persist };
       return;
     }
-    this.finishLoad(text, persist, false, keepEdit);
+    this.finishLoad(text, persist, false);
   }
 
   /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
-  private pendingLoad: { seq: number; text: string; persist: boolean; keepEdit: boolean } | null = null;
+  private pendingLoad: { seq: number; text: string; persist: boolean } | null = null;
 
   /**
    * Input arrived in the editor before a pending load reached it (a key, a paste or a cut right after
@@ -1143,7 +1140,7 @@ export class Engine {
     if (p.seq !== this.loadSeq) return;
     // The load's deferred steps are dropped; the analysis draws its output as usual.
     this.loadSeq++;
-    this.finishLoad(p.text, p.persist, true, p.keepEdit);
+    this.finishLoad(p.text, p.persist, true);
     // Arrived for an edit: editable at once, not in the quiet view.
     if (edit) this.ed.takeOver();
     this.onCaret();
@@ -1396,9 +1393,9 @@ export class Engine {
   private refocus = false;
 
   /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
-  private finishLoad(text: string, persist: boolean, split = false, keepEdit = false) {
+  private finishLoad(text: string, persist: boolean, split = false) {
     this.pendingLoad = null;
-    this.ed.setValue(text, 0, true, keepEdit);
+    this.ed.setValue(text, 0, true);
     const document = this.ed.version as Doc;
     if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
     if (this.fmtSrcVer === null && (this.fmtWorkerId || this.pendingFmtWorkerId)) this.fmtSrcVer = document;
@@ -2558,13 +2555,6 @@ export class Engine {
 
   focusEditor() {
     this.ed.focus();
-  }
-
-  /** Makes a huge (view-only) document editable. */
-  editAnyway() {
-    track('feature_used', { feature: 'edit_anyway' });
-    this.ed.editAnyway();
-    this.toast('Editing enabled. Large documents may feel slower to type in.', 'info');
   }
 
   /** Files opened from the OS with the installed app (manifest file_handlers). */

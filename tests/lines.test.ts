@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { foldSig, lineEndIn, lineOfIn, lineStarts, lineWidth, maxWidth, patchLines, scanFolds, shiftFoldLines } from '../lib/engine/lines';
+import { foldScanner, foldSig, lineEndIn, lineOfIn, lineStarts, lineWidth, maxWidth, patchLines, scanFolds, shiftFoldLines } from '../lib/engine/lines';
 
 /** Deterministic PRNG so failures reproduce. */
 function rng(seed: number) {
@@ -179,6 +179,23 @@ describe('lines', () => {
       const { ls } = lineStarts(t);
       const ref = oldScan(t, ls);
       const got = scanFolds(t, ls);
+      assert.deepEqual(got.close, ref.close);
+      assert.deepEqual(got.depth, ref.depth);
+    }
+  });
+
+  test('foldScanner in steps finds what scanFolds finds in one go', () => {
+    const r = rng(17);
+    for (let i = 0; i < 40; i++) {
+      // Several thousand lines, so the scan stops many times (every 4096 lines, the clock always past).
+      const t = Array.from({ length: 12 }, () => piece(r, 2000)).join('\n'.repeat(1 + Math.floor(r() * 900)));
+      const { ls } = lineStarts(t);
+      const scan = foldScanner(t, ls);
+      let got: ReturnType<typeof scan>;
+      let steps = 0;
+      while (!(got = scan(0))) steps++;
+      assert.ok(ls.length <= 4096 || steps > 0, 'stops on the way');
+      const ref = scanFolds(t, ls);
       assert.deepEqual(got.close, ref.close);
       assert.deepEqual(got.depth, ref.depth);
     }

@@ -99,8 +99,6 @@ export interface UIState {
   /** Smart suggestion for input that isn't JSON (yet). */
   hint: Hint;
   fileName: string | null;
-  /** Huge document shown read-only for speed. */
-  viewOnly: boolean;
   convert: { loading: boolean; error: string | null; lines: number; bytes: number };
   /** Format view output: line count and the byte size of both variants; `tooLarge`: none could be made (see MAX_TEXT). */
   fmt: { lines: number; pretty: number; minified: number; escaped: number; tooLarge?: boolean };
@@ -151,7 +149,6 @@ export const INITIAL: UIState = {
   table: { segs: [], rows: 0, cols: 0, ok: false },
   hint: null,
   fileName: null,
-  viewOnly: false,
   convert: { loading: false, error: null, lines: 0, bytes: 0 },
   fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0 },
   sizes: null,

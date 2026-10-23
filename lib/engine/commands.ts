@@ -56,7 +56,6 @@ export const COMMANDS: Command[] = [
   { id: 'from-xml', group: 'Edit', title: 'Convert XML to JSON', terms: 'import', run: (e) => void e.importAs('xml') },
   { id: 'from-csv', group: 'Edit', title: 'Convert CSV to JSON', terms: 'import spreadsheet tsv', run: (e) => void e.importAs('csv') },
   { id: 'from-toml', group: 'Edit', title: 'Convert TOML to JSON', terms: 'import', run: (e) => void e.importAs('toml') },
-  { id: 'edit-anyway', group: 'Edit', title: 'Make large document editable', terms: 'read-only view mode', active: (s) => !s.viewOnly, run: (e) => e.editAnyway() },
 
   { id: 'copy', group: 'File', title: 'Copy input to clipboard', run: (e) => void e.copyAll() },
   { id: 'download', group: 'File', title: 'Download input as .json', keys: 'mod+S', terms: 'save export', run: (e) => e.download() },

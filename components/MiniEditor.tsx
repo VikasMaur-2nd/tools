@@ -35,8 +35,6 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
   const el = useRef<HTMLDivElement>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
   const [ed, setEd] = useState<Editor | null>(null);
-  // Huge documents open read-only for speed, as in the viewer (see Editor.view).
-  const [viewOnly, setViewOnly] = useState(false);
   // The callbacks change with every render; the editor calls the latest.
   const changed = useRef(onChange);
   // What the box held when the page drew it.
@@ -63,7 +61,6 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
             caret() {},
             nav() {},
             escape() {},
-            mode: setViewOnly,
             copyAll: () => void navigator.clipboard?.writeText(made!.text).catch(() => undefined),
           });
           setEd(made);
@@ -101,14 +98,6 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
 
   return (
     <div className="mini-ed">
-      {viewOnly && !readOnly && (
-        <div className="ed-notice" role="status">
-          <span>Large document is read-only for speed.</span>
-          <button type="button" className="btn sm" onClick={() => ed?.editAnyway()}>
-            Edit anyway
-          </button>
-        </div>
-      )}
       <div className={`ed ${PRIVATE} ${className}`} ref={el}>
         <div className="ed-gut" aria-hidden="true">
           <div className="ed-gl" />

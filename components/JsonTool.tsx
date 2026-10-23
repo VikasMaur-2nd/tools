@@ -97,26 +97,6 @@ const InputBar = memo(function InputBar() {
   );
 });
 
-function ViewNotice() {
-  const viewOnly = useUI((s) => s.viewOnly);
-  const bytes = useUI((s) => s.stats?.bytes ?? 0);
-  const t = useT();
-  if (!viewOnly) return null;
-  return (
-    <div className="ed-notice" role="status">
-      <Icon name="lock" size={13} />
-      <span>
-        {bytes
-          ? t('Large document ({size}) is read-only for speed. Everything on the right still works.', { size: t.bytes(bytes) })
-          : t('Large document is read-only for speed. Everything on the right still works.')}
-      </span>
-      <button type="button" className="btn sm" onClick={() => act((e) => e.editAnyway())}>
-        {t('Edit anyway')}
-      </button>
-    </div>
-  );
-}
-
 /** Markup driven by lib/engine/editor.ts (highlighted, virtualized editor). */
 function EditorDom({
   edRef,
@@ -161,7 +141,6 @@ function EditorPane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }
   return (
     <section className="pane pane-ed" aria-label={t('JSON input')}>
       <InputBar />
-      <ViewNotice />
       <EditorDom edRef={edRef} id="input" label={t('JSON input')} placeholder={t("Looks like someone's got a JSON…")} autoFocus />
     </section>
   );
