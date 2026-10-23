@@ -63,6 +63,8 @@ export const COMMANDS: Command[] = [
   { id: 'paste', group: 'File', title: 'Paste from clipboard', run: (e) => void e.paste() },
   { id: 'url', group: 'File', title: 'Load JSON from URL…', terms: 'fetch api http', run: (e) => e.openPalette('url') },
   { id: 'share', group: 'File', title: 'Copy share link', terms: 'url link send', run: (e) => void e.share() },
+  { id: 'share-markdown', group: 'File', title: 'Copy share link as a Markdown button', terms: 'readme github gitlab badge view in tool kumar', run: (e) => void e.share('markdown') },
+  { id: 'share-html', group: 'File', title: 'Copy share link as an HTML button', terms: 'web page site badge embed view in tool kumar', run: (e) => void e.share('html') },
   { id: 'sample', group: 'File', title: 'Load sample JSON', terms: 'example demo', run: (e) => e.sample() },
   { id: 'clear', group: 'File', title: 'Clear editor', terms: 'reset empty new', run: (e) => e.clear() },
 
@@ -138,6 +140,13 @@ export const COMMANDS: Command[] = [
     title: 'Integrate Tool Kumar into your site',
     terms: 'view in tool kumar button badge link embed developers api docs readme',
     href: '/integrate',
+  },
+  {
+    id: 'handoff',
+    group: 'Help',
+    title: 'Handoff docs: open JSON of any size from your web app',
+    terms: 'postmessage big large share integrate developers api',
+    href: '/integrate#handoff',
   },
   { id: 'shortcuts', group: 'Help', title: 'Keyboard shortcuts', keys: '?', terms: 'help keys', run: () => store.set({ shortcuts: true }) },
 ];

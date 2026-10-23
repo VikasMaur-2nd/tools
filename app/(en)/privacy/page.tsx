@@ -23,7 +23,7 @@ const WHEN: Record<EventName, string> = {
   convert_target_selected: 'You pick a Convert language or format.',
   convert_option_changed: 'You change a Convert option: TypeScript interface or type, or the C# JSON library. The root type name you type is never sent.',
   format_option_changed: 'You change the output style, key sorting or indentation.',
-  feature_used: 'You use a feature: copy, download, share, repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), and similar.',
+  feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), and similar.',
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',
 };
 

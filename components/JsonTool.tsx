@@ -17,7 +17,7 @@ import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
 import { CommandPalette, ShortcutsDialog } from './dialogs';
 import ContextMenu from './ContextMenu';
-import { EditorFoldItems, FoldItems, MCheck, MChoice, MHead, MItem, MSep, Menu, WrapItem } from './menu';
+import { EditorFoldItems, FoldItems, MCheck, MChoice, MHead, MItem, MLink, MSep, Menu, WrapItem } from './menu';
 
 function Btn({
   icon,
@@ -73,12 +73,19 @@ const InputBar = memo(function InputBar() {
         )}
       </span>
       <span className="grow" />
-      <Btn
-        icon="share"
-        label="Share"
-        tip={comparing ? 'Copy a link that contains both documents (nothing is uploaded)' : 'Copy a link that contains this JSON (nothing is uploaded)'}
-        onClick={() => act((e) => e.share())}
-      />
+      {/* The link, or a "View in Tool Kumar" button around it as /integrate makes them (lib/badge.ts). */}
+      <Menu label="Share" icon="share" tip={comparing ? 'Share both documents as a link or a button (nothing is uploaded)' : 'Share this JSON as a link or a button (nothing is uploaded)'}>
+        {(close) => (
+          <>
+            <MItem label={comparing ? 'Copy comparison link' : 'Copy link'} onClick={() => act((e) => e.share())} close={close} />
+            <MItem label="Copy Markdown button" onClick={() => act((e) => e.share('markdown'))} close={close} />
+            <MItem label="Copy HTML button" onClick={() => act((e) => e.share('html'))} close={close} />
+            <MSep />
+            <MLink label="Make a button" href="/integrate#builder" close={close} />
+            <MLink label="Handoff docs (JSON of any size)" href="/integrate#handoff" close={close} />
+          </>
+        )}
+      </Menu>
       <Menu label="Input options">
         {(close) => (
           <>
