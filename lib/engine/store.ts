@@ -81,8 +81,29 @@ export interface Toast {
   action?: { label: string; run: () => void };
 }
 
-/** A content area with its own context menu (components/ContextMenu.tsx). */
-export type MenuArea = 'input' | 'compare' | 'format' | 'convert' | 'tree' | 'table' | 'graph';
+/** A content area with its own context menu (components/ContextMenu.tsx); `diff`: Compare's differences. */
+export type MenuArea = 'input' | 'compare' | 'format' | 'convert' | 'tree' | 'table' | 'graph' | 'diff';
+
+export type DiffAction = 'copyPath' | 'copyLeft' | 'copyRight' | 'show' | 'expand' | 'sub' | 'layout' | 'opt' | 'prev' | 'next' | 'patch';
+
+/** What Compare's differences offer the menu, read when it opens (components/CompareView.tsx). */
+export interface DiffMenu {
+  /** The row under the pointer (now selected), or the selected one: a change, a line, or unchanged lines folded away. */
+  row: { kind: 'change'; left: boolean; right: boolean } | { kind: 'line' | 'gap' } | null;
+  /** That row on screen (where a menu opened from the keyboard goes). */
+  box: DOMRect | null;
+  sub: 'changes' | 'diff';
+  /** Wide enough for the side-by-side layout. */
+  wide: boolean;
+  layout: 'unified' | 'split';
+  opts: { keyOrder: boolean; arrayOrder: boolean; ci: boolean };
+  /** There are differences to go to (Previous, Next). */
+  ok: boolean;
+  /** A JSON Patch can be made (the documents could be compared). */
+  patch: boolean;
+  run(action: DiffAction, arg?: string): void;
+  focus(): void;
+}
 
 /** The open context menu: what the area under the right click (or the caret) can do there. */
 export interface ContextMenu {
@@ -109,6 +130,7 @@ export interface ContextMenu {
   fold: { line: number; folded: boolean } | null;
   /** The node under the pointer, now selected: `open` is null for a value that isn't an array or object. */
   node: { open: boolean | null; str: boolean } | null;
+  diff: DiffMenu | null;
 }
 
 export interface UIState {

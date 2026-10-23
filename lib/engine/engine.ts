@@ -12,7 +12,7 @@ import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type ContextMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
+import { DEFAULT_SETTINGS, store, type ContextMenu, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
@@ -20,6 +20,7 @@ import { Doc } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
+import { getDiffMenu } from './instance';
 import type { InputSource } from '../analytics/events';
 import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
@@ -38,6 +39,8 @@ export interface EngineEls {
   fmt: HTMLElement;
   /** Compare: the second (modified) document's editor. */
   editor2: HTMLElement;
+  /** Compare's differences panel (components/CompareView.tsx draws into it). */
+  compare: HTMLElement;
 }
 
 export type { EnginePreset } from './store';
@@ -2747,6 +2750,8 @@ export class Engine {
   private menuClip: (() => string) | null = null;
   /** The node it opened on (tree, table, graph). */
   private menuNode: JNode | null = null;
+  /** Compare's differences: what it opened on. */
+  private menuDiff: DiffMenu | null = null;
   /** When a key last opened it: the browser may send its own contextmenu event for that key too. */
   private menuKeyAt = -Infinity;
   /** The last press: a long press on a touch screen keeps the phone's own menu. */
@@ -2758,7 +2763,7 @@ export class Engine {
 
   /** The content area at `el` that has a context menu (null: the browser's menu). */
   private menuArea(el: Element): MenuArea | null {
-    const { editor, editor2, fmt, code, tree, table, graph } = this.els;
+    const { editor, editor2, fmt, code, tree, table, graph, compare } = this.els;
     return editor.contains(el) ? 'input'
       : editor2.contains(el) ? 'compare'
       : fmt.contains(el) ? 'format'
@@ -2766,6 +2771,8 @@ export class Engine {
       : tree.contains(el) ? 'tree'
       : table.contains(el) ? 'table'
       : graph.contains(el) ? 'graph'
+      // (Its differences, not the options above them: one is a text field.)
+      : compare.contains(el) && el.closest('.cmp-lw') ? 'diff'
       : null;
   }
 
@@ -2794,10 +2801,12 @@ export class Engine {
    * selects the node there, as a click would), or from the keyboard at the caret or selected node.
    */
   private openMenu(area: MenuArea, target: Element, at?: { x: number; y: number }) {
-    const box = this.els[area === 'input' ? 'editor' : area === 'compare' ? 'editor2' : area === 'format' ? 'fmt' : area === 'convert' ? 'code' : area].getBoundingClientRect();
+    const els = this.els;
+    const host = area === 'input' ? els.editor : area === 'compare' ? els.editor2 : area === 'format' ? els.fmt : area === 'convert' ? els.code : area === 'diff' ? els.compare : els[area];
+    const box = host.getBoundingClientRect();
     const menu: ContextMenu = {
       id: ++this.menuSeq, area, keyboard: !at, x: at?.x ?? box.left + 16, y: at?.y ?? box.top + 16, top: at?.y ?? box.top + 16,
-      blank: false, sel: false, cut: false, paste: false, undo: false, redo: false, fold: null, node: null,
+      blank: false, sel: false, cut: false, paste: false, undo: false, redo: false, fold: null, node: null, diff: null,
     };
     let clip: (() => string) | null = null;
     let node: JNode | null = null;
@@ -2816,6 +2825,13 @@ export class Engine {
       const cv = area === 'format' ? this.fmt : this.code;
       if (at) menu.fold = cv.foldTarget(cv.lineAt(at.y));
       clip = this.shownClip(cv.el);
+    } else if (area === 'diff') {
+      // (The row under the pointer is selected first, as a click selects it.)
+      const d = getDiffMenu(at ? target : null);
+      if (!d) return;
+      menu.diff = d;
+      if (!at && d.box) Object.assign(menu, { x: d.box.left + 24, y: d.box.bottom, top: d.box.top });
+      clip = this.shownClip(els.compare);
     } else {
       // The node under the pointer is selected first, as a click selects it.
       if (at) node = area === 'tree' ? this.tree.pick(target) : area === 'table' ? this.table.pick(target) : (this.graph?.pickAt(at.x, at.y) ?? null);
@@ -2829,6 +2845,7 @@ export class Engine {
     }
     this.menuClip = clip;
     this.menuNode = node;
+    this.menuDiff = menu.diff;
     menu.sel = !!clip;
     track('feature_used', { feature: 'context_menu', value: area });
     store.set({ menu });
@@ -2841,6 +2858,7 @@ export class Engine {
     else if (area === 'format' || area === 'convert') (area === 'format' ? this.fmt : this.code).el.focus({ preventScroll: true });
     else if (area === 'tree') this.tree.focus();
     else if (area === 'graph') this.graph?.focus();
+    else if (area === 'diff') this.menuDiff?.focus();
   }
 
   private menuEditor(area: MenuArea) {

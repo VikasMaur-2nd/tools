@@ -706,12 +706,14 @@ function ViewerPane({
   graphRef,
   codeRef,
   fmtRef,
+  cmpRef,
 }: {
   treeRef: React.RefObject<HTMLDivElement | null>;
   fmtRef: React.RefObject<HTMLDivElement | null>;
   tableRef: React.RefObject<HTMLDivElement | null>;
   graphRef: React.RefObject<HTMLDivElement | null>;
   codeRef: React.RefObject<HTMLDivElement | null>;
+  cmpRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const view = useUI((s) => s.settings.view);
   const stale = useUI((s) => s.stale);
@@ -759,7 +761,7 @@ function ViewerPane({
           </div>
           <ConvertNote />
         </div>
-        <div id="view-compare" className="cmp-host" hidden={view !== 'compare'}>
+        <div id="view-compare" className="cmp-host" ref={cmpRef} hidden={view !== 'compare'}>
           {view === 'compare' && <CompareHost />}
         </div>
       </div>
@@ -1097,6 +1099,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const codeRef = useRef<HTMLDivElement>(null);
   const fmtRef = useRef<HTMLDivElement>(null);
   const ed2Ref = useRef<HTMLDivElement>(null);
+  const cmpRef = useRef<HTMLDivElement>(null);
   const comparing = useUI((s) => s.settings.view === 'compare');
   const empty = useUI((s) => s.empty);
 
@@ -1117,6 +1120,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       code: codeRef.current!,
       fmt: fmtRef.current!,
       editor2: ed2Ref.current!,
+      compare: cmpRef.current!,
     }, { preserveDocument: !!pagePreset?.initialText });
     setEngine(e);
     // A landing page's sample loads in the next task: hydration and the empty editor
@@ -1149,7 +1153,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
         <ComparePane edRef={ed2Ref} />
         <Splitter />
         <Watermark />
-        <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} />
+        <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} />
       </div>
       <StatusBar langs={langs} />
       <ToastHost />

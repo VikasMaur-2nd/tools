@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { withVia } from '@/lib/analytics';
 import type { Engine } from '@/lib/engine/engine';
 import { act } from '@/lib/engine/instance';
-import { store, useUI, type ContextMenu as Open, type MenuArea } from '@/lib/engine/store';
+import { store, useUI, type ContextMenu as Open, type DiffAction, type DiffMenu, type MenuArea } from '@/lib/engine/store';
 import { useT } from '@/lib/i18n/react';
 import { LEVELS, MCheck, MChoice, MItem, MSep, menuKeys, menuLetter } from './menu';
 
@@ -18,6 +18,14 @@ import { LEVELS, MCheck, MChoice, MItem, MSep, menuKeys, menuLetter } from './me
  */
 
 const EDGE = 8;
+const SUBS = [
+  { v: 'changes', label: 'Changes' },
+  { v: 'diff', label: 'Diff' },
+];
+const LAYOUTS = [
+  { v: 'unified', label: 'Unified' },
+  { v: 'split', label: 'Split' },
+];
 
 /** The menu's name for screen readers: the area it is for (strings the areas use already). */
 const NAMES: Record<MenuArea, string> = {
@@ -28,6 +36,7 @@ const NAMES: Record<MenuArea, string> = {
   tree: 'JSON tree',
   table: 'Table',
   graph: 'Graph',
+  diff: 'Differences',
 };
 
 export default function ContextMenu() {
@@ -196,6 +205,36 @@ function Items({ m, close }: { m: Open; close: () => void }) {
         [item('Fit to screen', (e) => e.fitGraph(), '0'), item('Zoom in', (e) => e.zoomGraph(1.25), '+'), item('Zoom out', (e) => e.zoomGraph(0.8), '-'), ...folds],
         [item('Export image…', (e) => e.openGraphExport()), item('Copy image', (e) => e.copyGraphImage())],
       ];
+      break;
+    case 'diff': {
+      // Compare's differences: the row's own items, then the panel's (components/CompareView.tsx).
+      const d = m.diff!;
+      const r = d.row;
+      const changes = d.sub === 'changes';
+      const run = (action: DiffAction, arg?: string) => go(() => d.run(action, arg));
+      const check = (label: string, k: keyof DiffMenu['opts']) => <MCheck key={k} label={label} checked={d.opts[k]} onClick={run('opt', k)} close={close} />;
+      groups = [
+        r?.kind === 'change'
+          ? [
+              item('Copy path', () => d.run('copyPath')),
+              r.left && item('Copy original value', () => d.run('copyLeft')),
+              r.right && item('Copy modified value', () => d.run('copyRight')),
+              item('Show in editors', () => d.run('show'), 'Enter'),
+            ]
+          : r?.kind === 'gap'
+            ? [item('Show unchanged lines', () => d.run('expand'), 'Enter')]
+            : [r && item('Show in editors', () => d.run('show'), 'Enter')],
+        [
+          <MChoice key="sub" label="View" value={d.sub} options={SUBS} onPick={(v) => run('sub', v)()} close={close} />,
+          !changes && d.wide && <MChoice key="layout" label="Diff layout" value={d.layout} options={LAYOUTS} onPick={(v) => run('layout', v)()} close={close} />,
+          item(changes ? 'Previous difference' : 'Previous change', () => d.run('prev'), undefined, !d.ok),
+          item(changes ? 'Next difference' : 'Next change', () => d.run('next'), undefined, !d.ok),
+        ],
+        [check('Ignore key order', 'keyOrder'), changes && check('Ignore array order', 'arrayOrder'), changes && check('Ignore case', 'ci')],
+        [item('Swap original and modified', (e) => e.swapCompare()), item('Copy JSON Patch', () => d.run('patch'), undefined, !d.patch)],
+        [m.sel && copy],
+      ];
+    }
   }
   groups.push([item('All commands', (e) => e.openPalette(), 'mod+K')]);
 
