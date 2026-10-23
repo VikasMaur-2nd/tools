@@ -1915,6 +1915,67 @@ html:has(.content-page:not([style*='none'])) {
   outline-offset: 1px;
 }
 
+/* Open file and the JSON / URL choice, at a box's head. */
+.lb-field .lb-head {
+  flex-wrap: wrap;
+}
+
+.lb-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.lb-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: none;
+  color: var(--muted);
+  font: 500 13px/1.4 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lb-file:hover {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+/* A box while files are dragged over the page: where one can go; the box under the pointer takes it. */
+.lb-drop {
+  position: relative;
+}
+
+.lb-drop-hint {
+  position: absolute;
+  inset: -8px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 2px dashed var(--line-2);
+  border-radius: 12px;
+  background: var(--overlay);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  color: var(--muted);
+  font: 600 14px var(--font-ui);
+  pointer-events: none;
+}
+
+.lb-over .lb-drop-hint {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* What checking the JSON found (a button goes to the place). */
 .lb-check {
   min-height: 20px;
