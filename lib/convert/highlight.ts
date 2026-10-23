@@ -5,7 +5,7 @@
  */
 
 /** Marks `src[a, b)` with a token class; calls must be ordered and non-overlapping. */
-type Emit = (a: number, b: number, cls: string) => void;
+export type Emit = (a: number, b: number, cls: string) => void;
 
 const ESC_RE = /[&<>"]/g;
 const E: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
@@ -363,6 +363,14 @@ export function csvLine(src: string, state: number): string {
   return out;
 }
 
+/** Reports `src`'s tokens to `emit` in order, as highlightCode colours them (`lang` is a `Target.lang`). */
+export function codeTokens(src: string, lang: string, emit: Emit): void {
+  if (lang === 'yaml') yaml(src, emit);
+  else if (lang === 'xml') xml(src, emit);
+  else if (lang === 'csv') csv(src, emit);
+  else if (LANGS[lang]) code(src, LANGS[lang], emit);
+}
+
 /** Highlights converter output as HTML (`lang` is a `Target.lang`). */
 export function highlightCode(src: string, lang: string): string {
   // Small pieces are joined in batches: far less GC work than one huge rope.
@@ -384,10 +392,7 @@ export function highlightCode(src: string, lang: string): string {
     if (s.indexOf('\n') < 0) put(open + esc(s) + '</span>');
     else put(s.split('\n').map((p) => (p ? open + esc(p) + '</span>' : '')).join('\n'));
   };
-  if (lang === 'yaml') yaml(src, emit);
-  else if (lang === 'xml') xml(src, emit);
-  else if (lang === 'csv') csv(src, emit);
-  else if (LANGS[lang]) code(src, LANGS[lang], emit);
+  codeTokens(src, lang, emit);
   if (pend < src.length) put(esc(src.slice(pend)));
   chunks.push(parts.join(''));
   return chunks.join('');

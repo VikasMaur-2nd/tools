@@ -147,6 +147,18 @@ const STEPS_MIN = 1_000_000;
 const FIRST_STEP = 100;
 /** The next steps' length in ms: input waits at most about this long. (10 to 50 ms are ready about as soon.) */
 const STEP = 20;
+/**
+ * A big load (from STEPS_MIN) shows "Parsing… N%" from its start to its result (see progress). In the
+ * Format view its steps take these shares of it, as measured on 70 MB in Chromium, Firefox and Safari:
+ * the text goes to the formatting worker (to FORMAT_SENT), which makes the output (FORMAT_MADE), the page
+ * receives and draws it (FORMATTED), the editor takes the text once that has painted (EDITOR), then the
+ * analysis worker gets it (ANALYSIS_SENT of the rest) and parses it (the rest, see queueAnalysis).
+ */
+const FORMAT_SENT = 0.05;
+const FORMAT_MADE = 0.32;
+const FORMATTED = 0.37;
+const EDITOR = 0.5;
+const ANALYSIS_SENT = 0.1;
 
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
 const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
@@ -240,15 +252,13 @@ export class Engine {
       caret: this.onCaret,
       nav: this.onNav,
       escape: () => this.leaveEditor(),
-      mode: (viewOnly) => store.set({ viewOnly }),
       copyAll: () => void this.copyAll(),
       flush: this.flushLoad,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
         this.refocus = true;
-        // (Pasted while editing a document that opened in a view: the user chose to edit, so it stays editable.)
-        this.load(text, null, true, true, this.ed.editingAnyway);
+        this.load(text, null, true, true);
         return true;
       },
     });
@@ -258,7 +268,6 @@ export class Engine {
       caret: () => undefined,
       nav: () => undefined,
       escape: () => document.querySelector<HTMLElement>('.pane-view [role="tab"][aria-selected="true"]')?.focus(),
-      mode: () => undefined,
       copyAll: () => void this.copy(this.ed2.text, 'Copied the modified document'),
     });
     this.ed2.indentUnit = INDENTS[this.settings.indent];
@@ -370,6 +379,7 @@ export class Engine {
 
   private onChange = (kind: ChangeKind) => {
     this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
+    this.progressStatus = null; // (and a big load's progress: what follows says nothing of it)
     this.workerParse = null;
     this.reindentJob = null;
     this.worker?.postMessage({ id: this.loadSeq, cancel: true });
@@ -517,8 +527,10 @@ export class Engine {
     this.table.setNode(null);
     this.ed.setDiagnostics([]);
     this.ed.setScope(-1, -1);
-    store.set({ empty: false, stale: false, status: { kind: 'parsing', progress: 0 }, stats: null, sizes: null, path: null, hint: null });
-    let shown = 0;
+    // (The load this parse is part of goes on from where it got to.)
+    const from = Math.max(0, this.progressShown());
+    store.set({ empty: false, stale: false, status: (this.progressStatus = { kind: 'parsing', progress: from }), stats: null, sizes: null, path: null, hint: null });
+    const show = this.span(from, 1);
     let shownAt = 0;
     let res: ParseResult | undefined;
     let ms = 0;
@@ -553,15 +565,38 @@ export class Engine {
         }
       } else if (t0 >= shownAt + 150) {
         // (A few redraws of the status bar a second, as the whole percent grows; JSON Lines go over their first record twice.)
-        const progress = Math.floor((100 * p.at()) / text.length) / 100;
-        if (progress > shown) {
-          store.set({ status: { kind: 'parsing', progress: (shown = progress) } });
-          shownAt = t0;
-        }
+        show(p.at() / text.length);
+        shownAt = t0;
       }
       soon(run);
     };
     run();
+  }
+
+  /** The status a big load shows, "Parsing… N%" (see startProgress). Any other status ends it. */
+  private progressStatus: Status | null = null;
+
+  /** A big document starts loading: from now to its result, the status bar shows it working. */
+  private startProgress() {
+    store.set({ status: (this.progressStatus = { kind: 'parsing', progress: 0 }) });
+  }
+
+  /** How far the big load shown got (0 to 1), or -1 if none is (another status replaced it). */
+  private progressShown(): number {
+    const s = store.get().status;
+    return s === this.progressStatus && s.kind === 'parsing' ? s.progress ?? 0 : -1;
+  }
+
+  /** Moves the big load shown on to `p` (0 to 1 of it): forward only, by whole percents, short of 100. */
+  private progress(p: number) {
+    const shown = this.progressShown();
+    const next = Math.floor(100 * Math.min(0.99, p) + 1e-9) / 100;
+    if (shown >= 0 && next > shown) store.set({ status: (this.progressStatus = { kind: 'parsing', progress: next }) });
+  }
+
+  /** `progress` for a step of a load that goes from `from` to `to` of it: `f` (0 to 1) of the step done. */
+  private span(from: number, to: number) {
+    return (f: number) => this.progress(from + (to - from) * f);
   }
 
   /** A document version parsed in steps: its UTF-8 size, counted meanwhile, and the time its steps took. */
@@ -1113,7 +1148,7 @@ export class Engine {
   // ── Commands: documents ────────────────────────────────────────────────
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
-  load(text: string, name: string | null, persist = true, outputFirst = false, keepEdit = false) {
+  load(text: string, name: string | null, persist = true, outputFirst = false) {
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
@@ -1121,16 +1156,17 @@ export class Engine {
     this.loadSeq++; // drops what an earlier load still has pending
     store.set({ fileName: name });
     if (persist) write(KEYS.file, name);
-    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, keepEdit))) {
+    if (text.length >= STEPS_MIN) this.startProgress();
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) {
       // Until the editor has it, input would act on the old document: the first input hands it over at once.
-      this.pendingLoad = { seq: this.loadSeq, text, persist, keepEdit };
+      this.pendingLoad = { seq: this.loadSeq, text, persist };
       return;
     }
-    this.finishLoad(text, persist, false, keepEdit);
+    this.finishLoad(text, persist, false);
   }
 
   /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
-  private pendingLoad: { seq: number; text: string; persist: boolean; keepEdit: boolean } | null = null;
+  private pendingLoad: { seq: number; text: string; persist: boolean } | null = null;
 
   /**
    * Input arrived in the editor before a pending load reached it (a key, a paste or a cut right after
@@ -1143,7 +1179,7 @@ export class Engine {
     if (p.seq !== this.loadSeq) return;
     // The load's deferred steps are dropped; the analysis draws its output as usual.
     this.loadSeq++;
-    this.finishLoad(p.text, p.persist, true, p.keepEdit);
+    this.finishLoad(p.text, p.persist, true);
     // Arrived for an edit: editable at once, not in the quiet view.
     if (edit) this.ed.takeOver();
     this.onCaret();
@@ -1158,12 +1194,15 @@ export class Engine {
     const s = this.settings;
     if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || text.length < WORKER_MIN && readJwt(text.toString(), this.indent)) return false;
     const seq = ++this.loadSeq;
+    const fast = text.length >= WORKER_MIN;
+    // A big load (not typing) shows how far it got, here its output's steps (see FORMAT_SENT).
+    if (!typed && text.length >= STEPS_MIN && this.progressShown() < 0) this.startProgress();
+    const showing = !typed && fast && this.progressShown() >= 0;
     const document = retained ?? (typed ? this.ed.version as Doc : Doc.of(text.toString()));
     const analysisDocument = typed ? this.ed.version as Doc : document;
     const analysisInput = analysisDocument === document ? text : analysisDocument;
     const baseText = this.fmt.text;
     const baseId = this.fmtWorkerText === baseText ? this.fmtWorkerId : 0;
-    const fast = text.length >= WORKER_MIN;
     clearTimeout(this.fmtTimer);
     clearTimeout(this.timer);
     const key = this.fmtSettings();
@@ -1195,7 +1234,11 @@ export class Engine {
         return;
       }
       // On a first document the views are still hidden (empty state): show the output now.
-      store.set({ empty: false, status: { kind: 'parsing' } });
+      if (this.progressShown() < 0) store.set({ empty: false, status: { kind: 'parsing' } });
+      else {
+        store.set({ empty: false });
+        if (showing) this.progress(FORMATTED);
+      }
       this.fmt.el.hidden = false;
       // (Id 0: the output shown was drawn here, so the worker had nothing to compare it with.)
       const base = !!change?.base && change.base === baseId && baseText === this.fmt.text;
@@ -1205,13 +1248,16 @@ export class Engine {
       // the output can be scrolled and searched right away, without that work in the way.
       if (!typed || !fast) setTimeout(() => idle(() => analyse(tree, metrics), 1000), 300);
     };
+    const made = showing ? this.span(FORMAT_SENT, FORMAT_MADE) : undefined;
     const here = () => {
       const run = reindenter(text.toString(), indent);
       const step = () => {
         if (seq !== this.loadSeq) return;
         const out = run(performance.now() + 40);
-        if (out === undefined) soon(step);
-        else soon(() => done(out));
+        if (out === undefined) {
+          made?.(run.at() / text.length);
+          soon(step);
+        } else soon(() => done(out));
       };
       step();
     };
@@ -1222,10 +1268,11 @@ export class Engine {
       if (text.length < WORKER_MIN) done(reindent(text.toString(), indent));
       else here();
     } else {
-      this.reindentJob = { id: seq, done, fallback: here, baseText, baseIndex: this.fmt.inlineIndex({ starts: new Int32Array(0), maxLen: 0 }), baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [] };
-      const request = { id: seq, indent, parse: typed && !fast, fast, reuseIndex: true, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: baseId };
-      this.postDocument(w, request, document, false);
-
+      let got = 0;
+      const arrived = showing ? (chars: number, size: number) => this.progress(FORMAT_MADE + ((FORMATTED - FORMAT_MADE) * (got += chars)) / size) : undefined;
+      this.reindentJob = { id: seq, done, fallback: here, baseText, baseIndex: this.fmt.inlineIndex({ starts: new Int32Array(0), maxLen: 0 }), baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [], made, arrived };
+      const request = { id: seq, indent, parse: typed && !fast, fast, reuseIndex: true, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: baseId, progress: showing };
+      this.postDocument(w, request, document, false, undefined, showing ? this.span(0, FORMAT_SENT) : undefined);
     }
     return true;
   }
@@ -1240,7 +1287,8 @@ export class Engine {
   private workerFails = 0;
   private measuredSizes: { id: number; sizes: Sizes } | null = null;
   private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
-  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; baseText: string; baseIndex: CodeIndex; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[] } | null = null;
+  /** `made`, `arrived`: a big load shows how far the worker got, then how much of its output arrived. */
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; baseText: string; baseIndex: CodeIndex; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[]; made?: (f: number) => void; arrived?: (chars: number, size: number) => void } | null = null;
 
   private workerDoc: Doc | null = null;
   private workerDocId = 0;
@@ -1263,8 +1311,8 @@ export class Engine {
     this.worker?.postMessage({ id: this.loadSeq, clear: true });
   }
 
-  /** Both workers retain their input. Shared document versions send only a bounded replacement. */
-  private postDocument(w: Worker, request: { id: number; [key: string]: unknown }, document: Doc, analysis: boolean, next?: () => void) {
+  /** Both workers retain their input. Shared document versions send only a bounded replacement. `sent`: how much of a big one went. */
+  private postDocument(w: Worker, request: { id: number; [key: string]: unknown }, document: Doc, analysis: boolean, next?: () => void, sent?: (f: number) => void) {
     const before = analysis ? this.analysisDoc : this.workerDoc;
     const edit = before && document.changeFrom(before);
     const remember = () => {
@@ -1292,6 +1340,7 @@ export class Engine {
         w.postMessage({ id: request.id, chunk: document.slice(at, end), last: end === document.length });
         at = end;
       } while (at < document.length && performance.now() < until);
+      sent?.(at / document.length);
       if (at < document.length) soon(send);
       else remember();
     };
@@ -1301,19 +1350,25 @@ export class Engine {
   /** Full stats and packed nodes may follow output, but must never block its worker. */
   /**
    * Parses `document` in the analysis worker after `wait` ms (a typing pause), then `done(tree, metrics)`.
-   * `failed`: the worker couldn't do it (a load then analyses here; typing never does).
+   * `failed`: the worker couldn't do it (a load then analyses here; typing never does). `showing`: a big
+   * load, whose percent goes on from where it got to (ANALYSIS_SENT of the rest to send the text).
    */
-  private queueAnalysis(id: number, document: Doc, name: string | null, done: (tree?: PackedTree, metrics?: DocumentMetrics) => void, wait = 2200, failed?: () => void) {
+  private queueAnalysis(id: number, document: Doc, name: string | null, done: (tree?: PackedTree, metrics?: DocumentMetrics) => void, wait = 2200, failed?: () => void, showing = false) {
     clearTimeout(this.analysisTimer);
     this.analysisTimer = window.setTimeout(() => {
       if (id !== this.loadSeq || this.dead) return;
       if (this.analysisFails >= 3) return failed?.();
+      const from = showing ? this.progressShown() : -1;
+      const sentTo = from + ANALYSIS_SENT * (1 - from);
+      const sent = from >= 0 ? this.span(from, sentTo) : undefined;
+      const worked = from >= 0 ? this.span(sentTo, 1) : undefined;
       try {
         const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
         const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
-        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean }>) => {
+        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number }>) => {
           if (e.data.id !== this.loadSeq) return;
           if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
+          else if (e.data.progress !== undefined) worked?.(e.data.progress);
           else if (e.data.good && e.data.tree && good) {
             this.good = null;
             this.goodVer = good;
@@ -1336,9 +1391,9 @@ export class Engine {
           w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
           if (id === this.loadSeq) failed?.();
         };
-        const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape };
-        const current = () => this.postDocument(w, request, document, true);
-        if (good) this.postDocument(w, { ...request, good: true }, good, true, current);
+        const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape, progress: !!worked };
+        const current = () => this.postDocument(w, request, document, true, undefined, sent);
+        if (good) this.postDocument(w, { ...request, good: true, progress: false }, good, true, current);
         else current();
       } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; failed?.(); }
     }, wait);
@@ -1349,7 +1404,7 @@ export class Engine {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; size?: number; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean; progress?: number }>) => {
         if (e.data.id === -1) return void (this.workerWarm = true);
         if (e.data.id !== this.loadSeq) return;
         if (e.data.sizes) {
@@ -1361,8 +1416,10 @@ export class Engine {
         const job = this.reindentJob;
         if (e.data.reset) { this.workerDoc = null; job?.fallback(); return; }
         if (!job || job.id !== e.data.id) return;
+        if (e.data.progress !== undefined) return void job.made?.(e.data.progress);
         if (e.data.chunk !== undefined) {
           (e.data.field === 'display' ? job.displayParts : job.outParts).push(e.data.chunk);
+          if (e.data.field === 'out' && e.data.size) job.arrived?.(e.data.chunk.length, e.data.size);
           return;
         }
         this.reindentJob = null;
@@ -1396,9 +1453,15 @@ export class Engine {
   private refocus = false;
 
   /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
-  private finishLoad(text: string, persist: boolean, split = false, keepEdit = false) {
+  private finishLoad(text: string, persist: boolean, split = false) {
     this.pendingLoad = null;
-    this.ed.setValue(text, 0, true, keepEdit);
+    const loading = this.progressShown() >= 0 ? this.progressStatus : null;
+    this.ed.setValue(text, 0, true);
+    if (loading) {
+      // (The editor's change said "Parsing…": the load goes on. With its output shown first, the editor's step is done too.)
+      store.set({ status: (this.progressStatus = loading) });
+      if (this.progressShown() >= FORMATTED) this.progress(EDITOR);
+    }
     const document = this.ed.version as Doc;
     if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
     if (this.fmtSrcVer === null && (this.fmtWorkerId || this.pendingFmtWorkerId)) this.fmtSrcVer = document;
@@ -1420,7 +1483,8 @@ export class Engine {
         const here = () => seq === this.loadSeq && this.analyzeInSteps();
         // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
         clearTimeout(this.timer);
-        store.set({ empty: false, status: { kind: 'parsing' } });
+        const showing = this.progressShown() >= 0;
+        store.set(showing ? { empty: false } : { empty: false, status: { kind: 'parsing' } });
         this.queueAnalysis(seq, document, store.get().fileName, (tree, metrics) => {
           if (seq !== this.loadSeq) return;
           if (!tree) return here();
@@ -1438,7 +1502,7 @@ export class Engine {
             else soon(run);
           };
           run();
-        }, 0, here);
+        }, 0, here, showing);
       } else this.analyzeInSteps();
       this.ed.el.scrollTop = 0;
       if (persist) this.persistSoon();
@@ -1470,6 +1534,9 @@ export class Engine {
       this.toast('That file is too large to open in a browser tab', 'err');
       return;
     }
+    // A big file shows it is being opened while it is read too.
+    const before = store.get().status;
+    if (f.size >= STEPS_MIN) this.startProgress();
     try {
       const text = await f.text();
       if (this.dead) return;
@@ -1491,6 +1558,8 @@ export class Engine {
       this.load(text, f.name, true, true);
       this.toast(`Opened ${f.name}`, 'ok');
     } catch {
+      // (Not opened: what was shown before stays, a load still running included.)
+      if (this.progressShown() === 0) store.set({ status: (this.progressStatus = before) });
       this.toast(`Couldn't read ${f.name}`, 'err');
     }
   }
@@ -2560,13 +2629,6 @@ export class Engine {
     this.ed.focus();
   }
 
-  /** Makes a huge (view-only) document editable. */
-  editAnyway() {
-    track('feature_used', { feature: 'edit_anyway' });
-    this.ed.editAnyway();
-    this.toast('Editing enabled. Large documents may feel slower to type in.', 'info');
-  }
-
   /** Files opened from the OS with the installed app (manifest file_handlers). */
   private handleLaunch() {
     type LaunchParams = { files?: { getFile(): Promise<File> }[] };
@@ -2837,6 +2899,8 @@ export class Engine {
         for (let k = 0; k < 4; k++) steps.push(() => reindent(doc, k & 1 ? '' : '  '), () => parse(doc));
         steps.push(
           () => {
+            // First uses that cost: a number format (a big load's "Parsing… N%", about 20 ms), the fonts' glyphs.
+            new Intl.NumberFormat(document.documentElement.lang || undefined, { style: 'percent' }).format(0);
             const x = document.createElement('canvas').getContext('2d');
             const cs = getComputedStyle(this.ed.el);
             if (!x) return;

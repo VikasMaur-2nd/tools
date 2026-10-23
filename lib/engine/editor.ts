@@ -2,7 +2,7 @@ import { Doc } from './doc';
 import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
-import { foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
+import { foldScanner, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
 import { LONG_LINE, Wrapper, type Src } from './wrap';
 import { rt } from '../i18n/ui';
 
@@ -13,12 +13,14 @@ import { rt } from '../i18n/ui';
  *    sized to its full content, layered over a virtualized syntax-highlighted
  *    copy of the visible lines. Both share one scroll container, so they move
  *    together natively: no scroll lag.
- *  - Large editable documents: Surface captures input in a bounded textarea,
- *    maps it into the model, and draws the selection over the virtual rows.
- *  - View mode (huge documents): browsers lay out every line of a textarea,
- *    which takes seconds at hundreds of thousands of lines. We drop the
- *    textarea and show only the virtualized highlighted view: instant at any
- *    size, still selectable, formattable and undoable. "Edit anyway" opts in.
+ *  - Big documents (and long or many lines, which the textarea lays out on
+ *    every key): Surface captures input in a bounded textarea, maps it into
+ *    the model, and draws the selection over the virtual rows. Every document
+ *    is editable, at any size.
+ *  - The quiet view: the virtualized copy alone, no textarea. A loaded document
+ *    the textarea would hold opens in it (laying out that textarea is most of
+ *    the time opening it takes), as does a big one while Surface's module is on
+ *    its way; the first click, key or paste goes on in the editor (see `wake`).
  *
  * Undo/redo is ours (browser undo is lost on programmatic changes and is tied
  * to slow DOM editing commands).
@@ -43,22 +45,21 @@ const OVERSCAN = 40;
 /** Right padding while wrapping (the textarea's text ends this far from the edge). */
 const PAD_RW = 12;
 const H_OVERSCAN = 600;
-/**
- * Above these sizes the editor switches to read-only view mode (Edit anyway still edits). The
- * big-document editor costs a key about the same up to here (see Surface); the native textarea,
- * which lays out every line, only takes NATIVE_CHARS / VIEW_LINES.
- */
-const VIEW_CHARS = 16_000_000;
+/** The most the native textarea takes, while the big-document editor's module is on its way (see `wait`). */
 const NATIVE_CHARS = 2_000_000;
-const VIEW_LINES = 30_000;
 /**
- * Loaded documents this big open in view mode too, quietly: laying out a
- * textarea that holds them is most of the time it takes to open them. The
- * first click, edit key or paste loads the textarea (see `wake`).
+ * Loaded documents this big that the textarea would hold open in the quiet view: laying out a
+ * textarea that holds them is most of the time it takes to open them (see `wake`).
  */
 const LAZY_CHARS = 100_000;
-/** Keep native editing for normal documents. */
+/** Keep native editing for normal documents: from this size, or this many lines, the big-document editor. */
 const SURFACE_CHARS = 250_000;
+const SURFACE_LINES = 30_000;
+/**
+ * From this many lines, a new document's fold structure is found in slices after it shows (see scanFoldsLater):
+ * in one go it took 0.3 to 1.2 s of the freeze opening a pretty-printed document of 2 to 4 million lines.
+ */
+const FOLD_STEP_LINES = 200_000;
 /**
  * A line this long gets the big-document editor at any size: the textarea lays out the whole line on
  * every key, so a minified document is slow to type in long before it is big.
@@ -92,8 +93,6 @@ export interface EditorEvents {
   /** Caret moved by the user (click / keyboard navigation), not by typing. */
   nav(): void;
   escape(): void;
-  /** Entered / left view mode. */
-  mode(view: boolean): void;
   /** Copy the whole document (view mode has no textarea to copy from). */
   copyAll(): void;
   /** A paste replaces the whole document with `text`: true if the listener loads it instead (see Engine.load). */
@@ -104,6 +103,9 @@ export interface EditorEvents {
    */
   flush?(edit: boolean): void;
 }
+
+/** Colours [a, b) of `text`, which starts at document offset `at`, as escaped HTML: for a document that isn't JSON (see setColors). */
+export type Colors = (text: string, a: number, b: number, at: number) => string;
 
 export interface Diagnostic {
   p: number;
@@ -259,10 +261,6 @@ export class Editor {
   private get src(): Src {
     return this.doc.flat ?? this.doc;
   }
-  /** Editing a document that opened read-only, after Edit anyway (not one woken from the quiet view). */
-  get editingAnyway() {
-    return this.anyway && this.forceEdit && !this.view;
-  }
   /** The document's version: a new object after every edit (compare by identity, without building the text). */
   get version(): object {
     return this.doc;
@@ -279,17 +277,16 @@ export class Editor {
   }
   /** Line start offsets. */
   ls: number[] = [0];
-  /** Read-only virtualized presentation for huge documents. */
+  /** The quiet view (see the top of this file): the virtualized copy without a textarea. */
   view = false;
   indentUnit = '  ';
   /** Last paste replaced the whole document. */
   pasteFull = false;
 
   private surface: Surface | null = null;
+  /** Asked to edit (a click, key or paste in the quiet view): it ends, unless the module it waits for is still coming. */
   private forceEdit = false;
-  /** Edit anyway was chosen in the read-only view (see editingAnyway). */
-  private anyway = false;
-  /** In view mode only until the first edit (see LAZY_CHARS); `loading`: setValue is loading a document. */
+  /** In the quiet view (see LAZY_CHARS); `loading`: setValue is loading a document. */
   private lazy = false;
   private loading = false;
   private vcaret = 0;
@@ -316,6 +313,10 @@ export class Editor {
   private lineMarks: Uint8Array | null = null;
   /** The input is one JWT: its part offsets (see jwtLine), coloured instead of JSON tokens. */
   private jwt: readonly number[] | null = null;
+  /** Colours for a document that isn't JSON (null: JSON highlighting). */
+  private colors: Colors | null = null;
+  /** Shown, selected and copied, never edited by the user (see setReadOnly). */
+  private locked = false;
   /** Soft wrap (null: off). */
   private wrapper: Wrapper | null = null;
   /** While wrapping: the first visual row of each display line (length rows + 1). */
@@ -504,6 +505,10 @@ export class Editor {
         if (now.length === was.length && now.every((s, k) => s === was[k])) folds = { close: this.close, depth: this.depth };
         else if (was.every(plain) && now.every(plain)) folds = shiftFoldLines(this.close, this.depth, la, lb, r.added);
       }
+    } else if (doc === old) {
+      // The same document, presented another way (the quiet view ends, the big-document editor arrives): its
+      // lines and folds stand. Scanning them again took 0.1 to 0.5 s on documents of a million lines and more.
+      folds = { close: this.close, depth: this.depth };
     } else {
       const { ls, max, tabs } = lineStarts(doc.toString());
       doc.knowTabs(tabs);
@@ -511,38 +516,43 @@ export class Editor {
       this.ls = ls;
       this.maxCols = max;
     }
-    const ls = this.ls;
+    if (doc !== old) {
+      // A big new document's folds are found after it shows; an edit meanwhile starts that over. (An edit of a
+      // document whose folds are known finds them at once, as before: folds the user made survive it.)
+      const pending = this.foldsFor !== null;
+      const fresh = !edit || this.loading || (edit.a === 0 && edit.b === old.length);
+      if (this.ls.length >= FOLD_STEP_LINES && (pending || (!folds && fresh))) folds = this.scanFoldsLater(doc);
+      else if (pending) {
+        this.foldsFor = null;
+        folds = null;
+      }
+    }
     this.extraW = 0;
     this.scanFolds(folds);
     this.buildDisplay();
     if (this.diagList.length) this.buildDiag();
 
-    // Typing never flips an open editor into view mode; loads and big pastes do.
-    // Many lines only slow the native textarea down; the big-document editor draws just the rows on screen.
+    // Every document is editable. The quiet view is only for a loaded document the textarea would hold (see
+    // LAZY_CHARS), or that waits for the big-document editor's module (it is usually cached already; see
+    // loadSurface below): laying a long line out in the textarea meanwhile took seconds. Typing never enters it.
     const len = doc.length;
-    const big = len > VIEW_CHARS || (ls.length > VIEW_LINES && len < SURFACE_CHARS);
-    // A document the textarea can't take waits in the quiet view, even when asked to edit, until the
-    // big-document editor's module arrives (it is usually cached already; see loadSurface below).
+    const want = this.wantsSurface(1);
     const wait = len > NATIVE_CHARS && !SurfaceClass;
-    const lazy = !big && (wait || (this.view ? this.lazy : this.loading && len > LAZY_CHARS));
-    const view = (wait || !this.forceEdit) && (big || lazy) && !(fromTa && !this.view);
-    const notice = view && !lazy;
-    if (notice !== (this.view && !this.lazy)) this.ev.mode(notice);
-    this.lazy = view && lazy;
+    const quiet = wait || ((!want || !SurfaceClass) && (this.view ? this.lazy : this.loading && len > LAZY_CHARS));
+    const view = (wait || !this.forceEdit) && quiet && !(fromTa && !this.view);
+    this.lazy = view;
     // A user edit keeps the big-document editor until the text (or its longest line) is well under the
     // threshold (no flip-flopping at it), and never leaves it mid-composition (see onCompEnd).
-    const want = this.wantsSurface(1);
     let custom = !view && (want || (!!this.surface && fromTa && (this.wantsSurface(0.8) || this.compOld !== null)));
     if (want && !SurfaceClass) {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
         if (!SurfaceClass || this.surface || !this.el.isConnected || !this.wantsSurface(1)) return;
-        // Switch to it: from the textarea, from a view that only its line count made read-only, or
-        // (asked to edit while it was on its way) from the quiet view, keeping the caret.
-        const lines = this.view && !this.lazy && this.doc.length <= VIEW_CHARS;
-        const asked = this.view && this.forceEdit;
-        if (this.view && !lines && !asked) return;
+        // Switch to it, from the textarea or from the quiet view it was waiting in. Focus in that view (a big
+        // paste moves it there) goes on in the editor at its caret, as when the user asked to edit meanwhile:
+        // keys would otherwise land on the scroller and be lost.
+        const asked = this.view && (this.forceEdit || document.activeElement === this.el);
         const at = this.vcaret;
         this.model(this.doc, false);
         if (asked) {
@@ -627,6 +637,7 @@ export class Editor {
 
   /** The input passage reports a bounded replacement in model offsets. */
   private surfaceEdit(a: number, b: number, ins: string, kind: string) {
+    if (this.locked) return;
     const old = this.doc;
     if (a === b && !ins) return;
     this.selBefore = this.surface!.selection;
@@ -653,10 +664,10 @@ export class Editor {
     this.model(lf(text), false);
   }
 
-  /** Leaves a quiet view mode (see LAZY_CHARS) for the textarea, caret at `at`. True if it did. */
+  /** Leaves the quiet view for the editor, caret at `at`. True if it did. */
   private wake(at: number) {
-    if (!this.view || !this.lazy) return false;
-    this.editAnyway();
+    if (!this.view) return false;
+    this.edit();
     this.setCaret(at);
     return true;
   }
@@ -668,18 +679,17 @@ export class Editor {
 
   /** The user is working in the editor: a document waiting in the quiet view becomes editable now. */
   takeOver() {
-    if (this.view && this.lazy) this.editAnyway();
+    if (this.view) this.edit();
   }
 
-  /** Is the document (by `share` of the thresholds) one for the big-document editor: big, or with a long line? */
+  /** Is the document (by `share` of the thresholds) one for the big-document editor: big, or with many or long lines? */
   private wantsSurface(share: number) {
     const len = this.doc.length;
-    return len >= SURFACE_CHARS * share || widest(this.ls, len) >= LONG_LINE_CHARS * share;
+    return len >= SURFACE_CHARS * share || this.ls.length >= SURFACE_LINES * share || widest(this.ls, len) >= LONG_LINE_CHARS * share;
   }
 
-  /** Loads a huge document into the textarea anyway (slow once, then editable). */
-  editAnyway() {
-    if (this.view && !this.lazy) this.anyway = true;
+  /** Leaves the quiet view for the editor (see `wake`), caret where it was. */
+  private edit() {
     this.forceEdit = true;
     const caret = this.vcaret;
     this.model(this.doc, false);
@@ -745,6 +755,31 @@ export class Editor {
         this.foldsLost = true;
       }
     }
+  }
+
+  /** The document version whose fold structure is still being found (see scanFoldsLater); null: known. */
+  private foldsFor: Doc | null = null;
+
+  /**
+   * Finds `doc`'s fold structure in slices, then shows its fold markers. Until then the document has no folds:
+   * returns that structure (the arrays already in place when they still fit, as while typing meanwhile).
+   */
+  private scanFoldsLater(doc: Doc) {
+    const n = this.ls.length;
+    const reuse = this.foldsFor !== null && this.close.length === n;
+    this.foldsFor = doc;
+    const scan = foldScanner(doc, this.ls);
+    const run = () => {
+      // (An edit or another document since: this scan is stale, and the lines it reads may have changed.)
+      if (this.foldsFor !== doc || !this.el.isConnected) return;
+      const res = scan(performance.now() + 8);
+      if (!res) return void setTimeout(run, 0);
+      this.foldsFor = null;
+      this.scanFolds(res);
+      this.renderSoon();
+    };
+    setTimeout(run, 0);
+    return reuse ? { close: this.close, depth: this.depth } : { close: new Int32Array(n).fill(-1), depth: new Int32Array(n) };
   }
 
   /** Rebuilds the visible-line map and the textarea text from the folds. */
@@ -1262,10 +1297,10 @@ export class Editor {
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
         const [t, o] = this.win(sa, sb + 1);
-        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa - o, sb - o, this.jwtAt(o)) : highlightLine(t, sa - o, sb - o, moved(marks, o), sb === b)}${sb === b ? ph : ''}</div>`);
+        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa - o, sb - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, sb - o, o) : highlightLine(t, sa - o, sb - o, moved(marks, o), sb === b)}${sb === b ? ph : ''}</div>`);
       } else {
         const [t, o] = this.win(a, b + 1);
-        html.push(`${open(a)}${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
+        html.push(`${open(a)}${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
       }
     }
     this.draw(html, this.gutterHtml(first, last), offs);
@@ -1331,13 +1366,13 @@ export class Editor {
         const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, odd) : b;
         const [t, o] = this.win(Math.max(a, sa - 64), Math.min(b, ea + 64) + 1);
         const ms = moved(marks, o);
-        let str = this.jwt ? 0 : this.strs.at(doc, a, sa);
+        let str = this.jwt || this.colors ? 0 : this.strs.at(doc, a, sa);
         for (let sub = s0; sub < s1; sub++) {
           const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, odd) : b;
           const end = sb === b;
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa - o, sb - o) + o : sb;
-          let body = this.jwt ? jwtLine(t, sa - o, se - o, this.jwtAt(o)) : highlightLine(t, sa - o, se - o, ms, end, str);
+          let body = this.jwt ? jwtLine(t, sa - o, se - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, se - o, o) : highlightLine(t, sa - o, se - o, ms, end, str);
           if (odd) {
             // Where the browser keeps a word's letters joined across the break, so does the copy.
             const zl = wr.exact && wr.joinsAt(t, sa - o) ? '\u200d' : '';
@@ -1349,13 +1384,13 @@ export class Editor {
           }
           html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`);
           offs?.push(sa);
-          if (!this.jwt) str = stringState(t, sa - o, sb - o, str);
+          if (!this.jwt && !this.colors) str = stringState(t, sa - o, sb - o, str);
           sa = sb;
         }
       } else {
         if (top < 0) top = y;
         const [t, o] = this.win(a, b + 1);
-        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
+        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
         offs?.push(a);
       }
       // Gutter: the number on a line's first row, its bars on every row.
@@ -1542,6 +1577,19 @@ export class Editor {
     this.renderSoon();
   }
 
+  /** Colours the document with `colors` instead of as JSON (null: back to JSON). */
+  setColors(colors: Colors | null) {
+    if (colors === this.colors) return;
+    this.colors = colors;
+    this.renderSoon();
+  }
+
+  /** Read-only: the user can select and copy the document but not change it (setValue and init still do). */
+  setReadOnly(on: boolean) {
+    this.locked = on;
+    this.ta.readOnly = on;
+  }
+
   /** Compare: tint whole lines as added / removed / changed (null clears). */
   setLineMarks(marks: Uint8Array | null) {
     if (!marks && !this.lineMarks) return;
@@ -1617,8 +1665,12 @@ export class Editor {
 
   private onBeforeInput = (e: InputEvent) => {
     if (this.quiet) return;
+    if (this.locked) {
+      if (e.cancelable) e.preventDefault();
+      return;
+    }
     this.ev.flush?.(true);
-    // (The document that arrived opened read-only: the textarea no longer edits it.)
+    // (The quiet view's textarea is empty: nothing in it is the document. Keys wake it first, see onKey.)
     if (this.view) {
       if (e.cancelable) e.preventDefault();
       return;
@@ -1755,8 +1807,9 @@ export class Editor {
   };
 
   private onPaste = (e: ClipboardEvent) => {
+    if (this.locked) return void e.preventDefault();
     this.ev.flush?.(true);
-    // (The document that arrived opened read-only: a paste replaces it, as in the view.)
+    // (The quiet view: the paste goes in at its caret, in the editor.)
     if (this.view) return this.viewPaste(e);
     const ta = this.ta;
     if (this.surface) {
@@ -1789,6 +1842,7 @@ export class Editor {
 
   /** Copy / cut with folds: the clipboard gets the hidden lines too. */
   private onCopy = (e: ClipboardEvent) => {
+    if (this.locked && e.type === 'cut') return void e.preventDefault();
     this.ev.flush?.(e.type === 'cut');
     if (this.view) {
       if (e.type === 'cut') e.preventDefault();
@@ -1922,25 +1976,28 @@ export class Editor {
       this.wake(this.vcaret);
       return;
     }
+    // The start or the end of the document (⌘↑ ⌘↓ on macOS): the caret the editor goes on at.
+    if ((mod && !e.altKey && (e.key === 'Home' || e.key === 'End')) || (e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown'))) {
+      e.preventDefault();
+      this.vcaret = e.key === 'Home' || e.key === 'ArrowUp' ? 0 : this.doc.length;
+      this.reveal(this.vcaret);
+      if (this.updateCaret()) this.render(true);
+      this.ev.caret();
+      this.ev.nav();
+      return;
+    }
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) this.redo();
       else this.undo();
-    } else if (mod && !e.altKey && e.code === 'KeyA') {
-      // Only the visible lines exist in the DOM: "select all" means the document.
-      e.preventDefault();
-      window.getSelection()?.removeAllRanges();
-      this.selectAll = true;
-    } else if (mod && !e.altKey && e.code === 'KeyC' && (this.selectAll || !window.getSelection()?.toString())) {
+    } else if (mod && !e.altKey && e.code === 'KeyC' && !window.getSelection()?.toString()) {
+      // (Nothing selected in the drawn rows: the document.)
       e.preventDefault();
       this.ev.copyAll();
     } else if (e.key === 'Escape') this.ev.escape();
-    else if (!mod) this.selectAll = false;
   };
 
-  private selectAll = false;
-
-  /** View mode: pasting replaces the document (there is no caret to insert at). */
+  /** The quiet view: a paste goes in at its caret, in the editor. */
   private onViewPaste = (e: ClipboardEvent) => {
     if (e.target === this.ta) return;
     this.ev.flush?.(false);
@@ -1948,14 +2005,13 @@ export class Editor {
   };
 
   private viewPaste(e: ClipboardEvent) {
+    if (this.locked) return void e.preventDefault();
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
-    // Quiet view mode is an editor: paste at the caret.
     const at = this.vcaret;
-    if (this.wake(at)) return this.replace(at, at, text.replace(/\r\n?/g, '\n'));
-    this.pasteFull = true;
-    this.apply(0, this.doc.length, text, 0, 0, 'paste');
+    this.wake(at);
+    this.replace(at, at, text.replace(/\r\n?/g, '\n'));
   }
 
   private onKey = (e: KeyboardEvent) => {
@@ -1963,13 +2019,15 @@ export class Editor {
     // (A document still on its way arrives first: the key acts on what is shown.)
     this.ev.flush?.(true);
     const mod = e.metaKey || e.ctrlKey;
-    // It opened read-only: only undo and redo still apply, the view takes the rest.
-    if (this.view && !(mod && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) && e.target === this.ta) {
-      e.preventDefault();
-      this.el.focus({ preventScroll: true });
+    // The quiet view shows while the textarea has focus (a document arrived meanwhile): the editor takes over, and
+    // the key acts there.
+    if (this.view && e.target === this.ta) this.wake(this.vcaret);
+    if (this.surface?.key(e)) return;
+    // Read-only: the keys below edit; Tab moves focus. Undo and redo stop here, or the browser's own would undo another box on the page.
+    if (this.locked) {
+      if (mod && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) e.preventDefault();
       return;
     }
-    if (this.surface?.key(e)) return;
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) this.redo();
@@ -2056,6 +2114,7 @@ export class Editor {
   }
 
   undo() {
+    if (this.locked) return;
     const ch = this.undo_.pop();
     if (!ch) return;
     this.histChars -= ch.del.length + ch.ins.length;
@@ -2064,6 +2123,7 @@ export class Editor {
   }
 
   redo() {
+    if (this.locked) return;
     const ch = this.redo_.pop();
     if (!ch) return;
     this.push(ch);
@@ -2137,15 +2197,12 @@ export class Editor {
     return this.surface ? d.edit(a, b, text) : Doc.of(d.slice(0, a) + text + d.slice(b));
   }
 
-  /**
-   * Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS).
-   * `keepEdit`: one pasted while editing a document opened with Edit anyway, so it stays editable too.
-   */
-  setValue(next: string, caret = 0, load = false, keepEdit = false) {
+  /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
+  setValue(next: string, caret = 0, load = false) {
     next = lf(next);
     if (next.length !== this.doc.length || next !== this.text) {
-      this.forceEdit = keepEdit && this.forceEdit;
-      if (!this.forceEdit) this.anyway = false;
+      // (A new document may open in the quiet view: see LAZY_CHARS.)
+      this.forceEdit = false;
       this.loading = load;
       try {
         this.apply(0, this.doc.length, next, caret, caret, 'set');

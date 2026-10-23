@@ -200,12 +200,19 @@ function grown(buf: Uint16Array, len: number, k: number) {
   return next;
 }
 
+/** A re-indent in steps (see `reindenter`). */
+export interface Reindenter {
+  (until: number): string | null | undefined;
+  /** The source offset reached so far (how far a big document got, for a progress bar). */
+  at(): number;
+}
+
 /**
  * `reindent` in steps: each call works until the time `until` (from
  * performance.now()) and returns undefined if there's more to do, so a big
  * document is re-indented without one long freeze.
  */
-export function reindenter(src: string, indent: string): (until: number) => string | null | undefined {
+export function reindenter(src: string, indent: string): Reindenter {
   const n = src.length;
   const unit = indent.length;
   const iu = unit ? indent.charCodeAt(0) : 0;
@@ -217,7 +224,7 @@ export function reindenter(src: string, indent: string): (until: number) => stri
   // close (object start), 3 key, 4 colon, 5 comma or close, 6 end of text.
   // special: the next backslash, control character or surrogate (one forward search overall).
   const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1 };
-  return (until: number) => step(st, until);
+  return Object.assign((until: number) => step(st, until), { at: () => st.i });
 }
 
 interface Reindent {

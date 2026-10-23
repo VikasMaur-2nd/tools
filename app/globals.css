@@ -1116,7 +1116,7 @@ kbd {
   display: none !important;
 }
 
-/* View mode: huge documents are shown without a textarea (instant at any size). */
+/* The quiet view (lib/engine/editor.ts): the highlighted copy without a textarea, until the first click, key or paste. */
 .ed.vmode {
   outline: none;
 }
@@ -1134,35 +1134,6 @@ kbd {
 
 .ed.vmode:focus .ed-cur {
   display: block;
-}
-
-.ed-notice {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 5px 8px 5px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-2);
-  color: var(--fg-2);
-  font-size: 12px;
-}
-
-.ed-notice span {
-  flex: 1;
-  min-width: 0;
-}
-
-.ed-notice span:not(.kbd) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ed-notice .btn {
-  border-color: var(--line-2);
-  background: var(--bg);
 }
 
 /* Returning visitors: their saved document is restored, so skip the empty states. */

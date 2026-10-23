@@ -1,7 +1,7 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
-import { byteLength, formatDoc, minifiedBytes, reindent, tooLarge } from '../json/format';
+import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
 import { packStrings, packTree } from '../json/pack';
-import { parse, type ParseResult } from '../json/parser';
+import { parse, parser, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
 import { compressedSizes } from './sizes';
@@ -35,7 +35,28 @@ export interface Request {
   prepare?: boolean;
   reuseIndex?: boolean;
   good?: boolean;
+  /** A big load: post how far this request's work got (see showing). */
+  progress?: boolean;
 }
+
+/**
+ * A big load's work in the worker posts how far it got, `{ id, progress }` (0 to 1 of this worker's part),
+ * about this often in ms: the page shows it as "Parsing… N%" (see Engine.progress).
+ */
+const PROGRESS_EVERY = 100;
+// Where each step of the worker's part ends (its measured share of the part, on 70 MB in Chromium, Firefox and Safari).
+/** Formatting: re-indenting, then indexing the output's lines and sending it. */
+const REINDENTED = 0.65;
+/** Analysing: parsing, measuring (the minified size, then the rest), then packing the tree and sending it. */
+const PARSED = 0.58;
+const MINIFIED = 0.69;
+const MEASURED = 0.8;
+
+/** Posts how far the work for `data` got, if it asked (see PROGRESS_EVERY). */
+const showing = (data: Request, progress: number) => {
+  if (data.progress) self.postMessage({ id: data.id, progress });
+};
+
 let source = Doc.of('');
 let sourceId = 0;
 let fastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -152,14 +173,18 @@ self.onmessage = (e: MessageEvent<Request>) => {
 
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {
-  const res = parse(text, { lines: data.lines });
+  const res = data.progress ? parseShowing(data, text) : parse(text, { lines: data.lines });
+  showing(data, PARSED);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
   // is made after, only for what needs it (compressed sizes, the escaped size).
   const strict = !!res.root && !res.error && !res.issues.length && !res.multi;
   let min = res.root && (!strict || data.escape) ? formatDoc(text, res, '') : null;
-  const metrics = documentMetrics(text, res, min ?? undefined, strict ? minifiedBytes(text) ?? undefined : undefined);
+  const minBytes = strict ? minifiedBytes(text) ?? undefined : undefined;
+  showing(data, MINIFIED);
+  const metrics = documentMetrics(text, res, min ?? undefined, minBytes);
   if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
+  showing(data, MEASURED);
   const tree = packStrings(packTree(res, text));
   (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, [tree.nodes.buffer, tree.parents.buffer, tree.words.text.buffer, tree.words.offsets.buffer]);
   if (!data.good && res.root && metrics.min <= 32_000_000) {
@@ -167,6 +192,26 @@ function analyse(data: Request, text: string) {
     void compressedSizes(new Blob([min]), () => latest === data.id).then((sizes) => {
       if (latest === data.id) self.postMessage({ id: data.id, sizes: { min: metrics.min, stale: false, ...sizes } });
     });
+  }
+}
+
+/** `parse` in steps, posting how far it got (it costs the same as in one go). */
+function parseShowing(data: Request, text: string): ParseResult {
+  const p = parser(text, { lines: data.lines });
+  for (;;) {
+    const res = p.step(performance.now() + PROGRESS_EVERY);
+    if (res) return res;
+    showing(data, (PARSED * p.at()) / text.length);
+  }
+}
+
+/** `reindent` in steps, posting how far it got (it costs the same as in one go). */
+function reindentShowing(data: Request, text: string, indent: string): string | null {
+  const run = reindenter(text, indent);
+  for (;;) {
+    const out = run(performance.now() + PROGRESS_EVERY);
+    if (out !== undefined) return out;
+    showing(data, (REINDENTED * run.at()) / text.length);
   }
 }
 
@@ -190,7 +235,7 @@ function formatFast(data: Request, input: Doc) {
     const text = input.toString();
     let strict = false;
     try {
-      raw = !data.sortKeys && !data.lines ? reindent(text, indent) : null;
+      raw = !data.sortKeys && !data.lines ? (data.progress ? reindentShowing(data, text, indent) : reindent(text, indent)) : null;
       strict = raw !== null;
       if (raw === null) {
         const res = parse(text, { lines: data.lines });
@@ -202,6 +247,7 @@ function formatFast(data: Request, input: Doc) {
       raw = null;
     }
     if (raw === null) { self.postMessage({ id, out: null }); return; }
+    showing(data, REINDENTED);
     shape++;
     output = Doc.of(raw);
     scalar = null;
@@ -227,9 +273,10 @@ function formatFast(data: Request, input: Doc) {
   // Keep the worker's index; only the page's copy is transferred.
   const indexReuse = inline && data.reuseIndex;
   const sent = { ...index, starts: index.starts.slice(), close: indexReuse ? undefined : index.close.slice(), depth: indexReuse ? undefined : index.depth.slice() };
+  // (`size`: the page shows how much of a big load's output has arrived.)
   const send = (field: 'out' | 'display', value: Doc | string) => {
     if (value.length < 2_000_000) return typeof value === 'string' ? value : value.toString();
-    for (let i = 0; i < value.length; i += 256_000) self.postMessage({ id, field, chunk: value.slice(i, i + 256_000) });
+    for (let i = 0; i < value.length; i += 256_000) self.postMessage({ id, field, chunk: value.slice(i, i + 256_000), size: value.length });
     return undefined;
   };
   const sentOut = patch === undefined ? send('out', raw ?? output) : null;

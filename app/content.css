@@ -1874,7 +1874,6 @@ html:has(.content-page:not([style*='none'])) {
   font-weight: 550;
 }
 
-.link-builder textarea,
 .link-builder input,
 .link-builder select {
   width: 100%;
@@ -1886,18 +1885,94 @@ html:has(.content-page:not([style*='none'])) {
   font: 13px/1.55 var(--font-mono);
 }
 
-.link-builder textarea {
+/* The viewer's editor as a form box (components/MiniEditor.tsx): JSON in, code out. */
+.lb-ed {
+  height: 218px;
+  min-height: 98px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
   resize: vertical;
 }
 
-.lb-field textarea {
-  white-space: pre;
-  overflow-wrap: normal;
+.lb-ed-out {
+  height: 158px;
 }
 
-.lb-out textarea {
+/* The editor's soft-wrap class is also these pages' container class (.wrap above): not for the editor. */
+.mini-ed .ed.wrap {
+  width: auto;
+  margin-inline: 0;
+}
+
+.lb-ed:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* What checking the JSON found (a button goes to the place). */
+.lb-check {
+  min-height: 20px;
+  margin: 0;
+  color: var(--muted);
+  font: 13px/1.5 var(--font-ui);
+}
+
+.lb-check button {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lb-check button:hover {
+  text-decoration: underline;
+}
+
+.lb-check-ok {
+  color: var(--ok);
+}
+
+.lb-check-warn {
+  color: var(--warn);
+}
+
+.lb-check-err {
+  color: var(--err);
+}
+
+/* Tool Kumar links by part (lib/link-colors.ts): the same colours in the builder and in the code on /integrate. */
+.lk-o {
+  color: var(--muted);
+}
+.lk-h,
+.lk-e,
+.lk-s,
+.lk-p {
+  color: var(--c-punct);
+}
+.lk-k {
+  color: var(--c-key);
+}
+.lk-d {
+  color: var(--c-str);
+}
+.lk-u {
+  color: var(--c-num);
+}
+.lk-v {
+  color: var(--c-bool);
+}
+.lk-ph {
+  color: var(--c-str);
+  font-style: italic;
+}
+.lk-n {
+  color: var(--c-null);
+}
+.lk-t {
   color: var(--fg-2);
-  word-break: break-all;
 }
 
 .link-builder select {
@@ -1905,7 +1980,7 @@ html:has(.content-page:not([style*='none'])) {
   font: 14px/1.4 var(--font-ui);
 }
 
-.link-builder :is(textarea, input, select, button):focus-visible {
+.link-builder :is(input, select, button):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

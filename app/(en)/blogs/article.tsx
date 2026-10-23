@@ -2,6 +2,7 @@ import { Children, isValidElement, type ReactElement, type ReactNode } from 'rea
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { highlightCode } from '@/lib/convert/highlight';
+import { codeWithLinks } from '@/lib/link-code';
 import ContentShell, { Logo } from '../content-shell';
 import { jsonLdScript, postJsonLd, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 import { Arrow, PostCard } from './post-card';
@@ -34,11 +35,12 @@ export function postMetadata(post: Post): Metadata {
 
 /**
  * A syntax-highlighted, line-numbered code block, rendered on the server (no
- * client JS). `error` marks a 1-based line the text refers to.
+ * client JS). `error` marks a 1-based line the text refers to; `links` colours
+ * Tool Kumar links in it by part (lib/link-colors.ts).
  */
-export function Code({ children, lang = 'json', error }: { children: string; lang?: string; error?: number }) {
-  // highlightCode never lets a span cross a line break, so lines split cleanly.
-  const html = highlightCode(children, lang)
+export function Code({ children, lang = 'json', error, links }: { children: string; lang?: string; error?: number; links?: boolean }) {
+  // Neither lets a span cross a line break, so lines split cleanly. (`links`: Tool Kumar links coloured by part.)
+  const html = (links ? codeWithLinks : highlightCode)(children, lang)
     .split('\n')
     .map((line, i) => `<span class="${i + 1 === error ? 'ln ln-err' : 'ln'}">${line}</span>`)
     .join('\n');
