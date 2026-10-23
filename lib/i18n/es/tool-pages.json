@@ -1295,7 +1295,7 @@
     ]
   },
   "jsonl-viewer": {
-    "hash": "5d02579b43c6",
+    "hash": "891b392414b5",
     "title": "Visor JSONL para archivos JSON Lines y NDJSON",
     "description": "Abre un archivo .jsonl o .ndjson y explora sus registros en árbol o tabla. Tool Kumar lee JSON Lines en tu navegador sin subir el archivo.",
     "heading": "Visor JSONL",
@@ -1317,7 +1317,7 @@
       "Los registros repartidos en varias líneas o separados por comas también se abren, pero la barra de estado los identifica como JSON con sintaxis no estricta y un problema que revisar, en lugar de como JSON Lines.",
       "Al abrir un archivo .jsonl o .ndjson con un solo registro, también se lee como una lista de un registro.",
       "Un registro que no se pueda leer detiene el análisis y la barra de estado muestra su línea y columna.",
-      "Si se superan los 2,000,000 caracteres o las 30,000 líneas, la entrada pasa a ser de solo lectura para mantener la rapidez de las vistas. Editar de todos modos vuelve a activar la edición."
+      "Las entradas grandes siguen siendo editables. A partir de 250,000 caracteres o 30,000 líneas, el editor dibuja solo las líneas visibles, así que escribir sigue siendo rápido."
     ],
     "faqs": [
       {
@@ -1520,7 +1520,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "641457c4d603",
+    "hash": "951455e0dd15",
     "title": "Visor de archivos JSON grandes en tu navegador",
     "description": "Abre archivos JSON grandes en árbol, tabla o texto sin subirlos. En nuestra prueba, analizar 52.4 MB tardó cerca de un segundo en un navegador de escritorio.",
     "heading": "Visor de archivos JSON grandes",
@@ -1529,7 +1529,7 @@
       "abrir JSON grande online",
       "ver archivos JSON pesados"
     ],
-    "intro": "Abre un archivo JSON grande de tu dispositivo y explóralo como árbol, tabla o texto con formato. El archivo se lee en tu navegador y nunca se sube; los documentos muy grandes pasan a un modo de solo lectura que mantiene rápido el desplazamiento.",
+    "intro": "Abre un archivo JSON grande de tu dispositivo y explóralo como árbol, tabla o texto con formato. El archivo se lee en tu navegador y nunca se sube; incluso los documentos muy grandes siguen siendo editables y se desplazan con fluidez.",
     "modeLabel": "Vista de árbol",
     "exampleLabel": "Aquí se muestra un pequeño ejemplo en lugar de tu archivo. Abre tu propio archivo para ver su tamaño, número de líneas y número de nodos en la barra de estado.",
     "steps": [
@@ -1539,7 +1539,7 @@
     ],
     "options": [
       "Se aceptan archivos de hasta 300 MB. Es un límite de seguridad, no una garantía. El tamaño que se puede abrir con comodidad depende de la memoria del dispositivo y de la estructura de los datos.",
-      "Si se superan los 2,000,000 caracteres o las 30,000 líneas, la entrada pasa a ser de solo lectura para mantener la rapidez de las vistas. Editar de todos modos vuelve a activar la edición.",
+      "Las entradas grandes siguen siendo editables. A partir de 250,000 caracteres o 30,000 líneas, el editor dibuja solo las líneas visibles, así que escribir sigue siendo rápido.",
       "El análisis se ejecuta en el hilo principal, así que la página se pausa mientras se lee un archivo muy grande.",
       "Los documentos de más de 2,500,000 caracteres no se guardan para tu próxima visita; tendrás que volver a abrir el archivo.",
       "En el editor y las vistas de árbol, tabla y texto solo se dibujan las filas que aparecen en pantalla, por lo que el desplazamiento sigue siendo fluido una vez abierto el archivo."

@@ -1305,7 +1305,7 @@
     ]
   },
   "jsonl-viewer": {
-    "hash": "5d02579b43c6",
+    "hash": "891b392414b5",
     "title": "JSONL-Viewer für JSON-Lines- und NDJSON-Dateien",
     "description": "Öffne .jsonl- oder .ndjson-Dateien und durchsuche Datensätze als Baum oder Tabelle. Tool Kumar liest JSON Lines lokal im Browser, ohne Upload.",
     "heading": "JSONL-Viewer",
@@ -1328,7 +1328,7 @@
       "Auch Datensätze, die über mehrere Zeilen verteilt oder durch Kommas getrennt sind, lassen sich öffnen. Die Statusleiste meldet sie jedoch als JSON mit Syntaxabweichungen und einem zu prüfenden Problem, nicht als JSON Lines.",
       "Eine geöffnete .jsonl- oder .ndjson-Datei mit nur einem Datensatz wird ebenfalls als Liste mit einem Datensatz gelesen.",
       "Ein nicht lesbarer Datensatz stoppt das Parsing. Die Statusleiste zeigt seine Zeile und Spalte an.",
-      "Bei mehr als 2.000.000 Zeichen oder 30.000 Zeilen wird die Eingabe schreibgeschützt, damit die Ansichten schnell bleiben. „Trotzdem bearbeiten“ aktiviert die Bearbeitung wieder."
+      "Große Eingaben bleiben bearbeitbar. Ab 250.000 Zeichen oder 30.000 Zeilen zeichnet der Editor nur die sichtbaren Zeilen, damit das Tippen schnell bleibt."
     ],
     "faqs": [
       {
@@ -1533,7 +1533,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "641457c4d603",
+    "hash": "951455e0dd15",
     "title": "Große JSON-Datei öffnen: direkt im Browser ansehen",
     "description": "Öffne große JSON-Dateien lokal im Browser als Baum, Tabelle oder Text, ohne Upload. In unserem Desktoptest war eine 52,4-MB-Datei in etwa einer Sekunde geparst.",
     "heading": "Große JSON-Datei öffnen",
@@ -1543,7 +1543,7 @@
       "large json viewer",
       "json viewer für große dateien"
     ],
-    "intro": "Öffne eine große JSON-Datei von deinem Gerät und sieh sie als Baum, Tabelle oder formatierten Text an. Die Datei wird im Browser gelesen und niemals hochgeladen. Sehr große Dokumente wechseln in einen schreibgeschützten Modus, damit das Scrollen schnell bleibt.",
+    "intro": "Öffne eine große JSON-Datei von deinem Gerät und sieh sie als Baum, Tabelle oder formatierten Text an. Die Datei wird im Browser gelesen und niemals hochgeladen. Auch sehr große Dokumente bleiben bearbeitbar und lassen sich flüssig scrollen.",
     "modeLabel": "Baumansicht",
     "exampleLabel": "Hier steht ein kleines Beispiel stellvertretend für deine Datei. Öffne deine eigene Datei, um Größe, Zeilenanzahl und Knotenanzahl in der Statusleiste zu sehen.",
     "steps": [
@@ -1553,7 +1553,7 @@
     ],
     "options": [
       "Dateien bis 300 MB werden akzeptiert. Das ist eine Sicherheitsgrenze, keine Zusage. Welche Dateien sich gut öffnen lassen, hängt vom Gerätespeicher und der Datenstruktur ab.",
-      "Bei mehr als 2.000.000 Zeichen oder 30.000 Zeilen wird die Eingabe schreibgeschützt, damit die Ansichten schnell bleiben. „Trotzdem bearbeiten“ aktiviert die Bearbeitung wieder.",
+      "Große Eingaben bleiben bearbeitbar. Ab 250.000 Zeichen oder 30.000 Zeilen zeichnet der Editor nur die sichtbaren Zeilen, damit das Tippen schnell bleibt.",
       "Das Parsing läuft auf dem Hauptthread. Deshalb reagiert die Seite während des Einlesens einer sehr großen Datei vorübergehend nicht.",
       "Dokumente mit mehr als 2.500.000 Zeichen werden nicht für deinen nächsten Besuch gespeichert. Öffne die Datei stattdessen erneut.",
       "In Editor, Baum-, Tabellen- und Textansicht werden nur die sichtbaren Zeilen gerendert. So bleibt das Scrollen flüssig, sobald die Datei geöffnet ist."
