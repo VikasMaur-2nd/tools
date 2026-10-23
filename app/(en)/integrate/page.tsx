@@ -218,6 +218,11 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
           A longer link doesn&apos;t open at all: the browser shows a blank page or ignores the click. The builder above shows each link&apos;s length.
           Valid JSON opens formatted, so compact JSON makes the shortest links.
         </p>
+        <p>
+          Pasting a link into the address bar has a lower limit: Chrome and Edge keep only the first 500 KB (512,000 characters) of what is
+          pasted there and drop the rest, so a longer link arrives cut and can&apos;t open. Clicked, the same link opens. Firefox takes a pasted
+          link whole. To try a long link, use the builder&apos;s Open link button.
+        </p>
         <h3>Sharing in chats and email</h3>
         <p>
           Chat apps allow far less per message than browsers: about 2,000 characters on Discord and 40,000 on Slack. Two ways to share bigger JSON:

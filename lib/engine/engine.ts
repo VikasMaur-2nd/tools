@@ -22,7 +22,7 @@ import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu } from './instance';
 import type { InputSource } from '../analytics/events';
-import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -1827,8 +1827,15 @@ export class Engine {
       // Always copied, but a link past what browsers open says so (lib/link.ts).
       const reach = linkReach(url.length);
       const size = formatBytes(url.length);
-      if (reach === 'not-firefox') {
-        this.toast(`Link copied (${size}). It opens in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB.`, 'info', undefined, 7000);
+      if (reach === 'click') {
+        this.toast(`Link copied (${size}). It opens when clicked, but pasted into Chrome's or Edge's address bar it gets cut at 500 KB.`, 'info', undefined, 7000);
+      } else if (reach === 'not-firefox') {
+        this.toast(
+          `Link copied (${size}). It opens when clicked in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB. Pasted into Chrome's or Edge's address bar, it gets cut at 500 KB.`,
+          'info',
+          undefined,
+          9000,
+        );
       } else if (reach === 'none') {
         if (comparing) this.toast(`Link copied, but at ${size} it is too long for any browser to open (they stop at about 2 MB). Share the documents as files instead.`, 'err', undefined, 9000);
         else this.toast(`Link copied, but at ${size} it is too long for any browser to open (they stop at about 2 MB). Share the JSON as a file instead.`, 'err', { label: 'Download', run: () => this.download() });
@@ -1842,14 +1849,20 @@ export class Engine {
   private openLink = async () => {
     const link = parseLink(location.hash);
     if (!link) return;
+    // Exactly as long as Chrome's and Edge's address bar keeps of a paste: the rest of it was dropped (lib/link.ts).
+    const cut = location.href.length === PASTED_LINK;
     history.replaceState(null, '', location.pathname + location.search);
     if (link === 'handoff') return this.awaitHandoff();
-    if (link === 'broken') return this.toast('That share link is broken or incomplete', 'err');
+    const broken = () =>
+      cut
+        ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
+        : this.toast('That share link is broken or incomplete', 'err');
+    if (link === 'broken') return broken();
     const docs: (LinkDoc | undefined)[] = [];
     try {
       for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data) } : d);
     } catch (e) {
-      return this.toast(e instanceof LinkTooLarge ? 'That share link is too large to open' : 'That share link is broken or incomplete', 'err');
+      return e instanceof LinkTooLarge ? this.toast('That share link is too large to open', 'err') : broken();
     }
     if (!this.dead) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to });
   };

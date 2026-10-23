@@ -33,10 +33,17 @@ export const MAX_DOCUMENT = 300 * 1024 * 1024;
  */
 const FIREFOX_LINK = 1024 * 1024;
 const BROWSER_LINK = 2 * 1024 * 1024;
+/**
+ * The longest link Chrome and Edge take pasted into the address bar: they keep the first
+ * 500 × 1024 characters of a paste and drop the rest (Chromium's kMaxClipboardTextLength,
+ * chrome/browser/ui/omnibox/clipboard_utils.cc). Clicked, the same link opens. Firefox's
+ * address bar takes a paste whole.
+ */
+export const PASTED_LINK = 500 * 1024;
 
-/** Which browsers can open a link this many characters long. */
-export function linkReach(length: number): 'all' | 'not-firefox' | 'none' {
-  return length <= FIREFOX_LINK ? 'all' : length <= BROWSER_LINK ? 'not-firefox' : 'none';
+/** Which browsers can open a link this many characters long ('click': all, but not pasted into Chrome's or Edge's address bar). */
+export function linkReach(length: number): 'all' | 'click' | 'not-firefox' | 'none' {
+  return length <= PASTED_LINK ? 'all' : length <= FIREFOX_LINK ? 'click' : length <= BROWSER_LINK ? 'not-firefox' : 'none';
 }
 
 /** Where a linked document comes from: its text, or a URL to fetch it from. */

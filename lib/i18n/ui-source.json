@@ -764,7 +764,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -777,7 +777,9 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -1544,7 +1546,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -1557,7 +1559,9 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -2324,7 +2328,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -2337,7 +2341,9 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -3104,7 +3110,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -3117,7 +3123,9 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -3884,7 +3892,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -3897,7 +3905,9 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -4664,7 +4674,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -4677,7 +4687,9 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -5444,7 +5456,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -5457,7 +5469,9 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -6224,7 +6238,7 @@
     "site.nav.integrate": "ef6a2b3e",
     "site.footer.integrate": "78b90e07",
     "site.nav.menu": "99af6606",
-    "toast.linkNotFirefox": "2c40c76b",
+    "toast.linkNotFirefox": "c93df611",
     "toast.linkTooLong": "0f501668",
     "toast.linksTooLong": "f44098d6",
     "app.cut": "1f45f025",
@@ -6237,6 +6251,8 @@
     "cmp.copyOriginal": "3cb67ff7",
     "cmp.copyModified": "e3c6d130",
     "cmp.showInEditors": "f43fcce8",
-    "cmp.showUnchanged": "853a2103"
+    "cmp.showUnchanged": "853a2103",
+    "toast.linkClickOnly": "134328ac",
+    "toast.linkCut": "321aae10"
   }
 }

@@ -131,7 +131,9 @@ test('the TypeScript link function builds the same links as the JavaScript one',
 
 test('link reach follows the measured browser limits (warnings only)', () => {
   assert.equal(linkReach(2_000), 'all');
-  assert.equal(linkReach(1024 * 1024), 'all', 'Firefox opens 1 MiB');
+  assert.equal(linkReach(512_000), 'all', "Chrome's and Edge's address bar keeps 512,000 pasted characters");
+  assert.equal(linkReach(512_001), 'click', 'longer: it opens when clicked, not pasted');
+  assert.equal(linkReach(1024 * 1024), 'click', 'Firefox opens 1 MiB');
   assert.equal(linkReach(1024 * 1024 + 1), 'not-firefox');
   assert.equal(linkReach(2 * 1024 * 1024), 'not-firefox', 'Chrome and Safari open 2 MiB');
   assert.equal(linkReach(2 * 1024 * 1024 + 1), 'none');

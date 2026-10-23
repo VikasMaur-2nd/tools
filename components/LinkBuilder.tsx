@@ -376,14 +376,26 @@ export default function LinkBuilder() {
         <div className="lb-out">
           <div className="lb-head">
             <Seg label="Code to copy" value={format} options={[['markdown', 'Markdown'], ['html', 'HTML'], ['link', 'Link']]} onChange={setFormat} />
-            <button
-              type="button"
-              className="lb-copy"
-              disabled={!out}
-              onClick={() => navigator.clipboard.writeText(out).then(() => setCopied(true), () => undefined)}
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </button>
+            <div className="lb-acts">
+              {/* (Clicked, a long link opens where pasting it into Chrome's address bar would cut it: lib/link.ts PASTED_LINK.) */}
+              {href ? (
+                <a href={href} target="_blank" rel="noopener" className={`lb-open ${PRIVATE}`} aria-label="Open link (opens in a new tab)">
+                  Open link
+                </a>
+              ) : (
+                <button type="button" className="lb-open" disabled>
+                  Open link
+                </button>
+              )}
+              <button
+                type="button"
+                className="lb-copy"
+                disabled={!out}
+                onClick={() => navigator.clipboard.writeText(out).then(() => setCopied(true), () => undefined)}
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
           </div>
           <label htmlFor={outId} className="sr-only">
             {format === 'link' ? 'Link' : format === 'html' ? 'HTML' : 'Markdown'} to copy
@@ -392,9 +404,15 @@ export default function LinkBuilder() {
           <p className="lb-hint">
             {format === 'markdown' ? 'For READMEs, docs and issues on GitHub or GitLab.' : format === 'html' ? 'For web pages. Auto follows the reader’s light or dark mode.' : 'For chats, emails and your own buttons.'}
           </p>
+          {href && linkReach(href.length) === 'click' && (
+            <p className="lb-warn" role="status">
+              At {formatBytes(href.length)}, this link opens when clicked, but pasted into Chrome&apos;s or Edge&apos;s address bar it gets cut at 500 KB.
+            </p>
+          )}
           {href && linkReach(href.length) === 'not-firefox' && (
             <p className="lb-warn" role="status">
-              At {formatBytes(href.length)}, this link opens in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB.
+              At {formatBytes(href.length)}, this link opens when clicked in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB. Pasted into
+              Chrome&apos;s or Edge&apos;s address bar, it gets cut at 500 KB.
             </p>
           )}
           {href && linkReach(href.length) === 'none' && (
@@ -405,9 +423,9 @@ export default function LinkBuilder() {
           )}
           {href && (
             <p className="lb-hint">
-              The link is {formatBytes(href.length)} long. Browsers open links up to roughly 1 MB (Firefox) to 2 MB (Chrome, Safari). Chat apps
-              allow much less per message: there, link to where the JSON is hosted (choose URL above). From your own web app, the handoff below
-              opens JSON of any size.
+              The link is {formatBytes(href.length)} long. Browsers open links up to roughly 1 MB (Firefox) to 2 MB (Chrome, Safari) when they are clicked,
+              but Chrome and Edge cut a pasted link at 500 KB. Chat apps allow much less per message: there, link to where the JSON is hosted
+              (choose URL above). From your own web app, the handoff below opens JSON of any size.
             </p>
           )}
         </div>
