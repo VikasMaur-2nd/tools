@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent, type RefObject } from 'react';
 import { PRIVATE } from '@/lib/analytics';
 import type { Diagnostic, Editor } from '@/lib/engine/editor';
 import { TARGETS } from '@/lib/engine/targets';
 import { formatBytes } from '@/lib/json/format';
 import { parser, type ParseResult } from '@/lib/json/parser';
-import { linkHash, linkReach, type LinkDoc, type LinkRequest } from '@/lib/link';
+import { MAX_DOCUMENT, linkHash, linkReach, type LinkDoc, type LinkRequest } from '@/lib/link';
 import { partsHtml, snippetParts } from '@/lib/link-colors';
 import type { View } from '@/lib/engine/store';
+import { Icon } from './icons';
 import MiniEditor from './MiniEditor';
 
 const SITE = 'https://tools.vikasmaur.com';
@@ -148,10 +149,9 @@ function marks(res: ParseResult): Diagnostic[] {
  * JSON in the viewer's editor, checked as the viewer will read it. A big document is read
  * and checked when typing pauses, in steps (the page keeps responding).
  */
-function JsonField({ id, value, setValue }: { id: string; value: string; setValue: (v: string) => void }) {
+function JsonField({ id, value, setValue, edRef }: { id: string; value: string; setValue: (v: string) => void; edRef: RefObject<Editor | null> }) {
   // The last check's result (kept while the next one runs: no flicker as you type).
   const [found, setFound] = useState<{ check: Check | null; diags: Diagnostic[] }>({ check: null, diags: NONE });
-  const ed = useRef<Editor | null>(null);
   const timer = useRef(0);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   // (Reading a big edited document builds its text: wait for a pause.)
@@ -191,8 +191,8 @@ function JsonField({ id, value, setValue }: { id: string; value: string; setValu
   const empty = !value.trim();
   const check = empty ? null : found.check;
   const go = (p: number) => {
-    ed.current?.focus();
-    ed.current?.select(p, p);
+    edRef.current?.focus();
+    edRef.current?.select(p, p);
   };
 
   return (
@@ -202,7 +202,7 @@ function JsonField({ id, value, setValue }: { id: string; value: string; setValu
         defaultValue={value}
         diagnostics={empty ? NONE : found.diags}
         onChange={changed}
-        onEditor={(e) => (ed.current = e)}
+        onEditor={(e) => (edRef.current = e)}
         className="lb-ed"
       />
       <p className="lb-check" aria-live="polite">
@@ -225,20 +225,114 @@ function JsonField({ id, value, setValue }: { id: string; value: string; setValu
   );
 }
 
-/** One document: JSON text or a URL to fetch it from. */
-function DocField({ label, kind, setKind, value, setValue }: { label: string; kind: Kind; setKind: (k: Kind) => void; value: string; setValue: (v: string) => void }) {
+/** Files a box opens, as the viewer's Open file does: JSON, and the formats it converts to JSON. */
+const FILE_TYPES = '.json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain';
+
+/** A file's text as the viewer opens it: CSV, TSV, YAML, XML and TOML become JSON (lib/convert/import.ts). */
+async function fileText(f: File) {
+  const text = await f.text();
+  if (!/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) return text;
+  const { detectFormat, importToJson } = await import('@/lib/convert/import');
+  const fmt = detectFormat(text, f.name);
+  if (fmt === 'json' || fmt === 'unknown') return text;
+  const r = importToJson(text, fmt, '  ');
+  return 'json' in r ? r.json : text;
+}
+
+const hasFiles = (e: DragEvent | ReactDragEvent) => !!e.dataTransfer?.types.includes('Files');
+
+/**
+ * One document: JSON text or a URL to fetch it from. A file opens into it from Open file, or
+ * dropped on it (`dragging`: files are over the page, so the box shows where they go).
+ */
+function DocField(props: { label: string; kind: Kind; setKind: (k: Kind) => void; text: string; setText: (v: string) => void; url: string; setUrl: (v: string) => void; dragging: boolean }) {
+  const { label, kind, setKind, text, setText, url, setUrl, dragging } = props;
   const id = useId();
+  const ed = useRef<Editor | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  // How deep the drag is in this box (enter and leave fire for every element in it).
+  const [over, setOver] = useState(0);
+  const [note, setNote] = useState('');
+  if (!dragging && over) setOver(0);
+
+  const open = async (f: File) => {
+    setNote('');
+    if (f.size > MAX_DOCUMENT) return setNote(`${f.name} is too large to open in a browser tab.`);
+    let doc: string;
+    try {
+      doc = await fileText(f);
+    } catch {
+      return setNote(`Couldn't read ${f.name}.`);
+    }
+    const e = kind === 'json' ? ed.current : null;
+    if (e) {
+      // One undoable step, opened as the viewer opens a file (a big one in steps).
+      e.setValue(doc, 0, true);
+      e.focus();
+    } else if (kind === 'json') {
+      // (The editor is on its way: it takes what the plain box holds.)
+      const ta = document.getElementById(id) as HTMLTextAreaElement | null;
+      if (ta) ta.value = doc;
+    } else setKind('json');
+    setText(doc);
+  };
+
   return (
-    <div className="lb-field">
+    <div
+      className={`lb-field lb-drop${over ? ' lb-over' : ''}`}
+      onDragEnter={(e) => hasFiles(e) && setOver((n) => n + 1)}
+      onDragLeave={(e) => hasFiles(e) && setOver((n) => Math.max(0, n - 1))}
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        setOver(0);
+        const f = e.dataTransfer.files[0];
+        if (f) void open(f);
+      }}
+    >
       <div className="lb-head">
         <label htmlFor={id}>{label}</label>
-        <Seg label={`${label}: source`} value={kind} options={[['json', 'JSON'], ['url', 'URL']]} onChange={setKind} />
+        <div className="lb-tools">
+          <button type="button" className="lb-file" onClick={() => picker.current?.click()} aria-label={`${label}: open a file`}>
+            <Icon name="open" size={15} />
+            Open file
+          </button>
+          <Seg label={`${label}: source`} value={kind} options={[['json', 'JSON'], ['url', 'URL']]} onChange={setKind} />
+        </div>
       </div>
       {kind === 'json' ? (
-        <JsonField id={id} value={value} setValue={setValue} />
+        <JsonField id={id} value={text} setValue={setText} edRef={ed} />
       ) : (
-        <input id={id} className={PRIVATE} type="url" value={value} onChange={(e) => setValue(e.target.value)} placeholder="https://api.example.com/data.json" spellCheck={false} />
+        <input id={id} className={PRIVATE} type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://api.example.com/data.json" spellCheck={false} />
       )}
+      {note && (
+        <p className="lb-error" role="alert">
+          {note}
+        </p>
+      )}
+      {dragging && (
+        <div className="lb-drop-hint" aria-hidden="true">
+          <Icon name="open" size={24} />
+          Drop a file to open it here
+        </div>
+      )}
+      <input
+        ref={picker}
+        className={PRIVATE}
+        type="file"
+        accept={FILE_TYPES}
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) void open(f);
+        }}
+      />
     </div>
   );
 }
@@ -267,6 +361,46 @@ export default function LinkBuilder() {
   const outId = useId();
   const [maker] = useState(linkMaker);
   useEffect(() => () => maker.stop(), [maker]);
+
+  // Files dragged over the page: the boxes show where they go. Dropped anywhere else, a file does
+  // nothing (rather than the browser leaving this page, and what was typed, to show the file).
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    let depth = 0;
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth++;
+      setDragging(true);
+    };
+    const leave = (e: DragEvent) => {
+      if (hasFiles(e) && --depth <= 0) {
+        depth = 0;
+        setDragging(false);
+      }
+    };
+    const over = (e: DragEvent) => {
+      // (A box took it: it said copy.)
+      if (!hasFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'none';
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+    };
+    addEventListener('dragenter', enter);
+    addEventListener('dragleave', leave);
+    addEventListener('dragover', over);
+    addEventListener('drop', drop);
+    return () => {
+      removeEventListener('dragenter', enter);
+      removeEventListener('dragleave', leave);
+      removeEventListener('dragover', over);
+      removeEventListener('drop', drop);
+    };
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -323,9 +457,9 @@ export default function LinkBuilder() {
           options={[['one', 'One document'], ['compare', 'Compare two']]}
           onChange={(v) => setCompare(v === 'compare')}
         />
-        <DocField label={compare ? 'Original' : 'Document'} kind={kindA} setKind={setKindA} value={kindA === 'json' ? a : urlA} setValue={kindA === 'json' ? setA : setUrlA} />
+        <DocField label={compare ? 'Original' : 'Document'} kind={kindA} setKind={setKindA} text={a} setText={setA} url={urlA} setUrl={setUrlA} dragging={dragging} />
         {compare ? (
-          <DocField label="Modified" kind={kindB} setKind={setKindB} value={kindB === 'json' ? b : urlB} setValue={kindB === 'json' ? setB : setUrlB} />
+          <DocField label="Modified" kind={kindB} setKind={setKindB} text={b} setText={setB} url={urlB} setUrl={setUrlB} dragging={dragging} />
         ) : (
           <div className="lb-row">
             <div className="lb-field">
