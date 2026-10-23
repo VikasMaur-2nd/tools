@@ -16,7 +16,8 @@ export type InputSource = 'paste' | 'paste_button' | 'file' | 'drop' | 'launch' 
 export type FileKind = 'json' | 'jsonl' | 'geojson' | 'har' | 'map' | 'txt' | 'log' | 'csv' | 'tsv' | 'yaml' | 'xml' | 'toml' | 'other' | 'none';
 export type Validity = 'valid' | 'fixable' | 'invalid' | 'unknown';
 export type ViewId = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
-export type Via = 'pointer' | 'keyboard' | 'palette' | 'other';
+/** `context_menu`: an item of the right-click menu (components/ContextMenu.tsx). */
+export type Via = 'pointer' | 'keyboard' | 'palette' | 'context_menu' | 'other';
 
 /** Discrete actions, reported as `feature_used { feature }`. */
 export type Feature =
@@ -28,7 +29,7 @@ export type Feature =
   | 'import_yaml' | 'import_xml' | 'import_csv' | 'import_toml'
   | 'find' | 'expand_all' | 'collapse_all' | 'expand_level' | 'fold_input'
   | 'compare_swap' | 'compare_format' | 'compare_close' | 'edit_anyway'
-  | 'wrap' | 'auto_format' | 'theme' | 'shortcuts' | 'palette' | 'load_url_dialog';
+  | 'wrap' | 'auto_format' | 'theme' | 'shortcuts' | 'palette' | 'load_url_dialog' | 'context_menu';
 
 /** Event name → its properties. Optional properties may be left out. */
 export interface Events {

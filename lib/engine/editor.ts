@@ -607,15 +607,7 @@ export class Editor {
       line: (off) => { const ln = this.lineOf(off); return [this.ls[ln], this.lineEnd(ln)]; },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
       moved: (nav, reveal) => this.surfaceMoved(nav, reveal),
-      point: (x, y) => {
-        const exact = this.offsetAt(x, y);
-        if (exact !== null) return exact;
-        const box = this.body.getBoundingClientRect();
-        const row = Math.max(0, Math.min(this.vrows - 1, Math.floor((y - box.top - this.sc.shift - PAD_T) / LH)));
-        const k = this.kAt(row);
-        const [a, b] = this.rowSpan(k, row - this.yOf(k));
-        return Math.min(b, a + Math.max(0, Math.round((x - box.left - PAD_L) / this.cw)));
-      },
+      point: (x, y) => this.pointAt(x, y),
       row: (off) => { const r = this.vrowOf(off); const k = this.kAt(r); return [r, ...this.rowSpan(k, r - this.yOf(k))]; },
       span: (row) => { row = Math.max(0, Math.min(this.vrows - 1, row)); const k = this.kAt(row); return this.rowSpan(k, row - this.yOf(k)); },
       reveal: (off) => this.reveal(off),
@@ -730,6 +722,151 @@ export class Editor {
     if (this.view) return window.getSelection()?.toString() ?? '';
     const [a, b] = this.selection;
     return this.doc.slice(a, b);
+  }
+
+  // ── Context menu (components/ContextMenu.tsx): what the keys would do ───
+
+  get canUndo() {
+    return !this.locked && this.undo_.length > 0;
+  }
+
+  get canRedo() {
+    return !this.locked && this.redo_.length > 0;
+  }
+
+  /** Cut can remove the selection: an editable document with one. */
+  get canCut() {
+    if (this.locked || this.view) return false;
+    const [a, b] = this.selection;
+    return a < b;
+  }
+
+  /** Paste can land (in the read-only view it replaces the document, as Ctrl+V does). */
+  get canPaste() {
+    return !this.locked;
+  }
+
+  /** Model offset of the character nearest a point over the rows. */
+  private pointAt(x: number, y: number) {
+    const exact = this.offsetAt(x, y);
+    if (exact !== null) return exact;
+    const box = this.body.getBoundingClientRect();
+    const row = Math.max(0, Math.min(this.vrows - 1, Math.floor((y - box.top - this.sc.shift - PAD_T) / LH)));
+    const k = this.kAt(row);
+    const [a, b] = this.rowSpan(k, row - this.yOf(k));
+    return Math.min(b, a + Math.max(0, Math.round((x - box.left - PAD_L) / this.cw)));
+  }
+
+  /**
+   * A right click at a point: returns the model line under it. Like a textarea's own right click, it
+   * moves the caret there unless it lands in the selection (the big-document editor and the view leave
+   * right presses to this). The quiet view stays asleep: Paste and the edit keys wake it.
+   */
+  menuAt(x: number, y: number) {
+    const off = this.pointAt(x, y);
+    if (this.surface) {
+      const [a, b] = this.surface.selection;
+      if (off < a || off > b) {
+        this.surface.select(off);
+        this.surfaceMoved(true, false);
+      }
+    } else if (this.view && !this.shownSelection()) {
+      this.vcaret = off;
+      if (this.updateCaret()) this.render(true);
+      this.ev.caret();
+    }
+    return this.lineOf(off);
+  }
+
+  /** View mode: the text selected on screen in this editor. */
+  private shownSelection() {
+    const s = window.getSelection();
+    return s?.rangeCount && this.el.contains(s.anchorNode) ? s.toString() : '';
+  }
+
+  /** The caret's row on screen: where a menu opened from the keyboard goes. */
+  caretBox() {
+    const box = this.body.getBoundingClientRect();
+    const view = this.el.getBoundingClientRect();
+    const row = this.cur.getBoundingClientRect();
+    const [s] = this.selection;
+    const ln = this.lineOf(s);
+    const k = this.rowOf(ln);
+    // (A line wrapped onto more rows: its row's start, the column being the line's.)
+    const x = box.left + PAD_L + (this.wy && this.wy[k + 1] - this.wy[k] > 1 ? 0 : (s - this.ls[ln]) * this.cw);
+    const top = Math.max(view.top, Math.min(row.top, view.bottom - LH));
+    return { x: Math.max(view.left + this.gutW, Math.min(x, view.right - 24)), top, bottom: top + LH };
+  }
+
+  /** The block Fold or Unfold acts on at model line `ln`: the innermost one around it (null: none). */
+  foldTarget(ln: number): { line: number; folded: boolean } | null {
+    if (this.folded.has(ln)) return { line: ln, folded: true };
+    const close = this.close;
+    for (let o = Math.min(ln, close.length - 1); o >= 0; o--) if (close[o] >= ln) return { line: o, folded: false };
+    return null;
+  }
+
+  /** What Copy copies, read when the menu opens (null: nothing is selected). */
+  clip(): (() => string) | null {
+    if (this.view) {
+      const text = this.shownSelection();
+      return text ? () => text : this.selectAll ? () => this.text : null;
+    }
+    const [a, b] = this.selection;
+    return a < b ? () => this.doc.slice(a, b) : null;
+  }
+
+  /** Removes the selection as one undoable step (the caller copied it). */
+  cut() {
+    if (!this.canCut) return;
+    const [a, b] = this.selection;
+    this.replace(a, b, '');
+  }
+
+  /** Pastes `text` where Ctrl+V would put it (see onPaste and viewPaste). */
+  paste(text: string) {
+    if (this.locked || !text) return;
+    this.ev.flush?.(true);
+    text = lf(text);
+    if (this.view) {
+      const at = this.vcaret;
+      if (this.wake(at)) return this.replace(at, at, text);
+      this.pasteFull = true;
+      return this.apply(0, this.doc.length, text, 0, 0, 'paste');
+    }
+    const [a, b] = this.selection;
+    this.pasteFull = (a === 0 && b === this.doc.length) || (!this.surface && this.blank);
+    if (this.pasteFull && this.ev.fullPaste?.(text)) return;
+    // A whole big document opens quietly in view mode, like a loaded file (see LAZY_CHARS).
+    this.loading = this.pasteFull && !this.surface;
+    try {
+      this.apply(a, b, text, undefined, undefined, 'paste');
+    } finally {
+      this.loading = false;
+    }
+    if (this.view) this.el.focus({ preventScroll: true });
+  }
+
+  /** Selects the whole document as Ctrl+A does, without scrolling. */
+  selectEverything() {
+    this.ev.flush?.(false);
+    if (this.view && this.lazy) {
+      this.wake(this.vcaret);
+      this.select(0, this.doc.length, false);
+      this.ev.caret();
+    } else if (this.view) {
+      // Only the visible lines exist in the DOM: "select all" means the document (see onViewKey).
+      window.getSelection()?.removeAllRanges();
+      this.selectAll = true;
+      this.el.focus({ preventScroll: true });
+    } else if (this.surface) {
+      this.ta.focus({ preventScroll: true });
+      this.surface.select(0, this.doc.length);
+      this.surfaceMoved(true, false);
+    } else {
+      this.ta.focus({ preventScroll: true });
+      this.ta.select();
+    }
   }
 
   // ── Folding ────────────────────────────────────────────────────────────
@@ -1888,7 +2025,8 @@ export class Editor {
 
   /** View mode: clicking a line moves the (virtual) caret there. */
   private onViewClick = (e: MouseEvent) => {
-    if (!this.view) return;
+    // (A right click opens the context menu, which places the caret: see menuAt.)
+    if (!this.view || e.button === 2) return;
     const pill = (e.target as HTMLElement).closest('.ed-fold') as HTMLElement | null;
     if (pill) return this.toggleFold(Number(pill.dataset.f));
     if (window.getSelection()?.toString()) return;

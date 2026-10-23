@@ -361,6 +361,21 @@ export class TableView {
     this.ev.select(c);
   }
 
+  /** The value of the cell at `el` (a right click), selected as a click selects it. */
+  pick(el: Element): JNode | null {
+    const row = el.closest('.tb-r') as HTMLElement | null;
+    const it = row ? this.items[Number(row.dataset.r)] : undefined;
+    if (!it) return null;
+    const cellEl = el.closest('[data-c]') as HTMLElement | null;
+    const ci = cellEl ? Number(cellEl.dataset.c) : 0;
+    const c = ci > 0 ? this.cell(it, this.cols[ci]) : it;
+    if (!c) return null;
+    this.sel = it;
+    this.render(true);
+    this.ev.select(c);
+    return c;
+  }
+
   toCSV(): string {
     if (!this.node) return '';
     const cols = this.cols.slice(this.node.t === OBJ ? 0 : 1);

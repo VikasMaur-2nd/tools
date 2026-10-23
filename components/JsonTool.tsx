@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { PRIVATE } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
@@ -16,6 +16,8 @@ import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
 import { CommandPalette, ShortcutsDialog } from './dialogs';
+import ContextMenu from './ContextMenu';
+import { EditorFoldItems, FoldItems, MCheck, MChoice, MHead, MItem, MSep, Menu, WrapItem } from './menu';
 
 function Btn({
   icon,
@@ -210,169 +212,7 @@ function ComparePane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> 
 
 // ── Viewer pane ─────────────────────────────────────────────────────────────
 
-// ── Menus (⋯) ────────────────────────────────────────────────────────────────
-
-/** A small popover menu anchored to an icon button. Keyboard: ↑ ↓ to move, Esc to close. */
-function Menu({ label, children }: { label: string; children: (close: () => void) => React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-  const id = useId();
-  const name = useT()(label);
-
-  useEffect(() => {
-    if (!open) return;
-    const pop = wrap.current?.querySelector<HTMLElement>('.menu');
-    pop?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
-    const onDown = (e: MouseEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  const close = () => {
-    setOpen(false);
-    document.getElementById(id)?.focus();
-  };
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      close();
-      return;
-    }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const items = [...(e.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])];
-    const i = items.indexOf(document.activeElement as HTMLElement);
-    items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
-  };
-  return (
-    <div className="menu-wrap" ref={wrap}>
-      <button
-        id={id}
-        type="button"
-        className={`btn icon${open ? ' on' : ''}`}
-        aria-label={name}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        data-tip={open ? undefined : name}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Icon name="more" />
-      </button>
-      {open && (
-        <div className="menu" role="menu" aria-label={name} onKeyDown={onKey}>
-          {children(close)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MItem({ label, keys, onClick, close }: { label: string; keys?: string; onClick: () => void; close: () => void }) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className="mi"
-      onClick={() => {
-        close();
-        onClick();
-      }}
-    >
-      <span>{useT()(label)}</span>
-      {keys && <Kbd k={keys} />}
-    </button>
-  );
-}
-
-function MCheck({ label, keys, checked, onClick }: { label: string; keys?: string; checked: boolean; onClick: () => void }) {
-  return (
-    <button type="button" role="menuitemcheckbox" aria-checked={checked} className="mi" onClick={onClick}>
-      <span>{useT()(label)}</span>
-      <span className="mi-end">
-        {keys && <Kbd k={keys} />}
-        <span className="mi-check">{checked && <Icon name="check" size={14} />}</span>
-      </span>
-    </button>
-  );
-}
-
-/** Soft wrap: one setting for the editors and the code views. */
-function WrapItem() {
-  const wrap = useUI((s) => s.settings.wrap);
-  return <MCheck label="Wrap lines" keys="Alt+Z" checked={wrap} onClick={() => act((e) => e.toggleWrap())} />;
-}
-
-/** A row with a few mutually exclusive options (indent 2 · 4 · Tab, levels 1 · 2 · 3). */
-function MChoice<T extends string | number>({
-  label,
-  options,
-  value,
-  onPick,
-  close,
-}: {
-  label: string;
-  options: { v: T; label: string }[];
-  value?: T;
-  onPick: (v: T) => void;
-  /** Close the menu after picking (actions); omit to keep it open (settings). */
-  close?: () => void;
-}) {
-  const t = useT();
-  return (
-    <div className="mi mi-row" role="group" aria-label={t(label)}>
-      <span>{t(label)}</span>
-      <span className="mi-opts">
-        {options.map((o) => (
-          <button
-            key={String(o.v)}
-            type="button"
-            role="menuitemradio"
-            aria-checked={value === o.v}
-            onClick={() => {
-              close?.();
-              onPick(o.v);
-            }}
-          >
-            {t(o.label)}
-          </button>
-        ))}
-      </span>
-    </div>
-  );
-}
-
-const MSep = () => <div className="mi-sep" role="separator" />;
-const MHead = ({ children }: { children: string }) => <div className="mi-head">{useT()(children)}</div>;
-
-const LEVELS = [
-  { v: 1, label: '1' },
-  { v: 2, label: '2' },
-  { v: 3, label: '3' },
-];
-
-/** Folding for an editor (the gutter chevrons do the same per block). */
-function EditorFoldItems({ which, close }: { which: 1 | 2; close: () => void }) {
-  return (
-    <>
-      <MItem label="Collapse all" onClick={() => act((e) => e.foldEditor(which, 1))} close={close} />
-      <MItem label="Expand all" onClick={() => act((e) => e.foldEditor(which, 0))} close={close} />
-      <MChoice label="Show levels" options={LEVELS} onPick={(l) => act((e) => e.foldEditor(which, l))} close={close} />
-    </>
-  );
-}
-
-function FoldItems({ close }: { close: () => void }) {
-  return (
-    <>
-      <MItem label="Collapse all" onClick={() => act((e) => e.collapseAll())} close={close} />
-      <MItem label="Expand all" onClick={() => act((e) => e.expandAll())} close={close} />
-      <MChoice label="Show levels" options={LEVELS} onPick={(l) => act((e) => e.expandTo(l))} close={close} />
-    </>
-  );
-}
+// ── Menus (⋯): pieces in ./menu ──────────────────────────────────────────────
 
 function ViewMenu() {
   const view = useUI((s) => s.settings.view);
@@ -1316,6 +1156,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <DropOverlay />
       <CommandPalette />
       <ShortcutsDialog />
+      <ContextMenu />
       <GraphExportHost />
       <input ref={fileRef} className={PRIVATE} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />
     </div>

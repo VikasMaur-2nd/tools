@@ -585,6 +585,22 @@ export class TreeView {
     }
   };
 
+  /** The node of the row at `el` (a right click), selected as a click selects it, without toggling. */
+  pick(el: Element): JNode | null {
+    const r = el.closest('.tv-r') as HTMLElement | null;
+    const n = r ? this.rows[Number(r.dataset.i)] : undefined;
+    if (!n) return null;
+    this.el.focus({ preventScroll: true });
+    if (n !== this.sel) this.choose(n, 'pointer');
+    return n;
+  }
+
+  /** Where the selected node's row is on screen (null: not drawn). */
+  selBox() {
+    const i = this.sel ? this.indexOf(this.sel) : -1;
+    return i < 0 ? null : (this.rowsEl.querySelector(`.tv-r[data-i="${i}"]`)?.getBoundingClientRect() ?? null);
+  }
+
   private onDbl = (e: MouseEvent) => {
     const r = (e.target as HTMLElement).closest('.tv-r') as HTMLElement | null;
     const n = r && this.rows[Number(r.dataset.i)];

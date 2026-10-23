@@ -632,6 +632,19 @@ export class GraphView implements GraphViewApi {
     } else this.redraw();
   }
 
+  pickAt(clientX: number, clientY: number): JNode | null {
+    const m = this.m;
+    if (!m) return null;
+    const p = this.local({ clientX, clientY });
+    const [c, part] = this.pick(p.x, p.y);
+    if (c < 0) return null;
+    // (The chevron and the header pick the card.)
+    const r = part >= 0 ? part : -1;
+    this.focus();
+    this.choose(c, r, 'pointer');
+    return r >= 0 ? m.rowNode[r] : m.node[c];
+  }
+
   /** Selects card c / row r (from the pointer or keyboard) and tells the engine. */
   private choose(c: number, r: number, how: 'pointer' | 'key') {
     const m = this.m;

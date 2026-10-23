@@ -81,6 +81,36 @@ export interface Toast {
   action?: { label: string; run: () => void };
 }
 
+/** A content area with its own context menu (components/ContextMenu.tsx). */
+export type MenuArea = 'input' | 'compare' | 'format' | 'convert' | 'tree' | 'table' | 'graph';
+
+/** The open context menu: what the area under the right click (or the caret) can do there. */
+export interface ContextMenu {
+  /** Each opening has its own. */
+  id: number;
+  area: MenuArea;
+  /**
+   * Where it opens (viewport px): at the pointer, or under the caret or the selected node when opened
+   * from the keyboard (`top`: that row's top, for opening above it when there is no room below).
+   */
+  x: number;
+  y: number;
+  top: number;
+  keyboard: boolean;
+  /** The editor holds no document. */
+  blank: boolean;
+  /** Something is selected for Copy (without it, Copy all). */
+  sel: boolean;
+  cut: boolean;
+  paste: boolean;
+  undo: boolean;
+  redo: boolean;
+  /** The innermost block around the line under the pointer: Fold or Unfold acts on it. */
+  fold: { line: number; folded: boolean } | null;
+  /** The node under the pointer, now selected: `open` is null for a value that isn't an array or object. */
+  node: { open: boolean | null; str: boolean } | null;
+}
+
 export interface UIState {
   ready: boolean;
   mac: boolean;
@@ -115,6 +145,7 @@ export interface UIState {
   shortcuts: boolean;
   /** The graph's export dialog is open. */
   graphExport: boolean;
+  menu: ContextMenu | null;
   dragging: boolean;
   toast: Toast | null;
 }
@@ -161,6 +192,7 @@ export const INITIAL: UIState = {
   palette: false,
   shortcuts: false,
   graphExport: false,
+  menu: null,
   dragging: false,
   toast: null,
 };
