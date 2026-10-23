@@ -1976,23 +1976,26 @@ export class Editor {
       this.wake(this.vcaret);
       return;
     }
+    // The start or the end of the document (⌘↑ ⌘↓ on macOS): the caret the editor goes on at.
+    if ((mod && !e.altKey && (e.key === 'Home' || e.key === 'End')) || (e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown'))) {
+      e.preventDefault();
+      this.vcaret = e.key === 'Home' || e.key === 'ArrowUp' ? 0 : this.doc.length;
+      this.reveal(this.vcaret);
+      if (this.updateCaret()) this.render(true);
+      this.ev.caret();
+      this.ev.nav();
+      return;
+    }
     if (mod && !e.altKey && (e.code === 'KeyZ' || (e.code === 'KeyY' && !e.metaKey))) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) this.redo();
       else this.undo();
-    } else if (mod && !e.altKey && e.code === 'KeyA') {
-      // Only the visible lines exist in the DOM: "select all" means the document.
-      e.preventDefault();
-      window.getSelection()?.removeAllRanges();
-      this.selectAll = true;
-    } else if (mod && !e.altKey && e.code === 'KeyC' && (this.selectAll || !window.getSelection()?.toString())) {
+    } else if (mod && !e.altKey && e.code === 'KeyC' && !window.getSelection()?.toString()) {
+      // (Nothing selected in the drawn rows: the document.)
       e.preventDefault();
       this.ev.copyAll();
     } else if (e.key === 'Escape') this.ev.escape();
-    else if (!mod) this.selectAll = false;
   };
-
-  private selectAll = false;
 
   /** The quiet view: a paste goes in at its caret, in the editor. */
   private onViewPaste = (e: ClipboardEvent) => {

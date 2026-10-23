@@ -54,7 +54,7 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
       seen.disconnect();
       box.removeEventListener('focusin', load);
       import('@/lib/engine/editor').then(
-        ({ Editor }) => {
+        ({ Editor, loadSurface }) => {
           if (!live) return;
           made = new Editor(box, {
             change: () => changed.current?.(made!),
@@ -67,6 +67,9 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
           told.current?.(made);
           // Typed into the plain box before the editor arrived: that's a change too.
           if (made.text !== first) changed.current?.(made);
+          // The big-document editor's module (a few KB) when the page is idle: a big paste, or a long link in the
+          // code box, then doesn't wait for it.
+          (window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300)))(() => void loadSurface());
         },
         // (Offline before the chunk was cached: the plain textarea keeps working.)
         () => undefined,
