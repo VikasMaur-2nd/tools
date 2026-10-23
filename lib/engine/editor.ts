@@ -533,12 +533,12 @@ export class Editor {
     if (this.diagList.length) this.buildDiag();
 
     // Every document is editable. The quiet view is only for a loaded document the textarea would hold (see
-    // LAZY_CHARS), and for one the textarea can't take, until the big-document editor's module arrives (it is
-    // usually cached already; see loadSurface below); typing never enters it.
+    // LAZY_CHARS), or that waits for the big-document editor's module (it is usually cached already; see
+    // loadSurface below): laying a long line out in the textarea meanwhile took seconds. Typing never enters it.
     const len = doc.length;
     const want = this.wantsSurface(1);
     const wait = len > NATIVE_CHARS && !SurfaceClass;
-    const quiet = wait || (!want && (this.view ? this.lazy : this.loading && len > LAZY_CHARS));
+    const quiet = wait || ((!want || !SurfaceClass) && (this.view ? this.lazy : this.loading && len > LAZY_CHARS));
     const view = (wait || !this.forceEdit) && quiet && !(fromTa && !this.view);
     this.lazy = view;
     // A user edit keeps the big-document editor until the text (or its longest line) is well under the
@@ -549,9 +549,10 @@ export class Editor {
       custom = false;
       void loadSurface().then(() => {
         if (!SurfaceClass || this.surface || !this.el.isConnected || !this.wantsSurface(1)) return;
-        // Switch to it, from the textarea or from the quiet view it was waiting in (keeping the caret when the
-        // user had asked to edit meanwhile).
-        const asked = this.view && this.forceEdit;
+        // Switch to it, from the textarea or from the quiet view it was waiting in. Focus in that view (a big
+        // paste moves it there) goes on in the editor at its caret, as when the user asked to edit meanwhile:
+        // keys would otherwise land on the scroller and be lost.
+        const asked = this.view && (this.forceEdit || document.activeElement === this.el);
         const at = this.vcaret;
         this.model(this.doc, false);
         if (asked) {
