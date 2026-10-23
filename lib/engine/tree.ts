@@ -6,6 +6,7 @@ import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
 import { rt } from '../i18n/ui';
+import { PRIVATE } from '../analytics';
 
 /** Value hints (dates, JWTs, nested JSON…) load after first paint: they're just tooltips. */
 let valueHints: ((n: JNode) => ValueHint[]) | null = null;
@@ -19,6 +20,7 @@ let hintsLoading = false;
 
 export const RH = 24;
 const IND = 16;
+const IND_DEPTH = 30;
 const OVERSCAN = 24;
 const MAX_MATCHES = 100_000;
 const SEP = String.fromCharCode(1);
@@ -35,11 +37,29 @@ export interface TreeEvents {
   nested(node: JNode): void;
 }
 
-const keyOf = (n: JNode) => {
-  let k = '';
-  for (let p: JNode | null = n; p && p.u; p = p.u) k = SEP + String(p.key) + k;
-  return k;
-};
+/** Persistent path overrides, shared by successive parses without retaining JNodes. */
+interface Expansion {
+  open?: boolean;
+  children?: Map<string, Expansion>;
+}
+
+function childExpansion(parent: Expansion | undefined, n: JNode, create = false): Expansion | undefined {
+  if (!parent) return;
+  const key = String(n.key);
+  // Preserve the old SEP-joined path identity, including duplicate keys, numeric/string
+  // keys and property names containing SEP. Ordinary keys need just one lookup.
+  const parts = key.includes(SEP) ? key.split(SEP) : [key];
+  for (const part of parts) {
+    let child: Expansion | undefined = parent.children?.get(part);
+    if (!child) {
+      if (!create) return;
+      child = {};
+      (parent.children ??= new Map()).set(part, child);
+    }
+    parent = child;
+  }
+  return parent;
+}
 
 export class TreeView {
   readonly el: HTMLElement;
@@ -56,7 +76,7 @@ export class TreeView {
   sel: JNode | null = null;
   private limit = Infinity;
   private dirty = false;
-  private toggles = new Map<string, boolean>();
+  private toggles: Expansion = {};
   private q = '';
   private qn = '';
   private cs = false;
@@ -102,7 +122,7 @@ export class TreeView {
 
   setRoot(root: JNode | null, reset: boolean, nodes = 0, active = true) {
     if (reset) {
-      this.toggles.clear();
+      this.toggles = {};
       this.limit = nodes <= 50_000 ? Infinity : nodes <= 500_000 ? 3 : 2;
       this.sc.top = 0;
     }
@@ -131,50 +151,46 @@ export class TreeView {
   }
 
   private rebuild() {
-    this.rows = this.root ? this.flatten(this.root, '', true) : [];
+    this.rows = this.root ? this.flatten(this.root, this.toggles, true) : [];
     this.sc.fit(this.rows.length * RH, this.sizer);
     this.render(true);
   }
 
-  private flatten(start: JNode, startKey: string, self: boolean): JNode[] {
+  private flatten(start: JNode, startExpansion: Expansion | undefined, self: boolean): JNode[] {
     const rows: JNode[] = [];
-    const useT = this.toggles.size > 0;
+    const useT = !!startExpansion?.children;
     const limit = this.limit;
     // Open containers being listed (a list rather than the call stack, so any depth can be shown):
-    // their items, the next item, and their toggle key.
+    // their items, the next item, and their position in the override trie.
     const lists: JNode[][] = [];
     const at: number[] = [];
-    const keys: string[] = [];
-    const visit = (n: JNode, key: string) => {
+    const expansions: (Expansion | undefined)[] = [];
+    const visit = (n: JNode, expansion: Expansion | undefined) => {
       rows.push(n);
       if (n.t < ARR) return;
-      let open = n.d < limit;
-      if (useT) {
-        const t = this.toggles.get(key);
-        if (t !== undefined) open = t;
-      }
+      const open = expansion?.open ?? n.d < limit;
       n.x = open;
       if (open) {
         lists.push(kids(n));
         at.push(0);
-        keys.push(key);
+        expansions.push(expansion);
       }
     };
-    if (self) visit(start, startKey);
+    if (self) visit(start, startExpansion);
     else {
       lists.push(kids(start));
       at.push(0);
-      keys.push(startKey);
+      expansions.push(startExpansion);
     }
     while (lists.length) {
       const d = lists.length - 1;
       const list = lists[d];
       const i = at[d]++;
-      if (i < list.length) visit(list[i], useT ? keys[d] + SEP + String(list[i].key) : '');
+      if (i < list.length) visit(list[i], useT ? childExpansion(expansions[d], list[i]) : undefined);
       else {
         lists.pop();
         at.pop();
-        keys.pop();
+        expansions.pop();
       }
     }
     return rows;
@@ -196,15 +212,25 @@ export class TreeView {
 
   toggle(n: JNode, open = !n.x, deep = false) {
     if (n.t < ARR) return;
+    // Find the branch once, then carry its trie entry alongside each descendant.
+    const ancestors: JNode[] = [];
+    for (let p = n; p.u; p = p.u) ancestors.push(p);
+    let expansion = this.toggles;
+    for (let i = ancestors.length - 1; i >= 0; i--) expansion = childExpansion(expansion, ancestors[i], true)!;
     if (deep) {
       const stack = [n];
+      const expansions = [expansion];
       while (stack.length) {
         const c = stack.pop() as JNode;
-        if (c.t < ARR) continue;
-        this.toggles.set(keyOf(c), open);
-        for (const k of kids(c)) if (k.t >= ARR) stack.push(k);
+        const entry = expansions.pop()!;
+        entry.open = open;
+        for (const k of kids(c)) {
+          if (k.t < ARR) continue;
+          stack.push(k);
+          expansions.push(childExpansion(entry, k, true)!);
+        }
       }
-    } else this.toggles.set(keyOf(n), open);
+    } else expansion.open = open;
     n.x = open;
     const i = this.indexOf(n);
     if (i < 0) {
@@ -213,7 +239,7 @@ export class TreeView {
     }
     let j = i + 1;
     while (j < this.rows.length && this.rows[j].d > n.d) j++;
-    const sub = open ? this.flatten(n, keyOf(n), false) : [];
+    const sub = open ? this.flatten(n, expansion, false) : [];
     this.rows = this.rows.slice(0, i + 1).concat(sub, this.rows.slice(j));
     this.sc.fit(this.rows.length * RH, this.sizer);
     this.render(true);
@@ -221,35 +247,42 @@ export class TreeView {
 
   expandAll() {
     this.limit = Infinity;
-    this.toggles.clear();
+    this.toggles = {};
     this.rebuild();
     this.scrollToSel(true);
   }
 
   collapseAll() {
     this.limit = 1;
-    this.toggles.clear();
+    this.toggles = {};
     this.rebuild();
     this.sc.top = 0;
   }
 
   expandTo(level: number) {
     this.limit = level;
-    this.toggles.clear();
+    this.toggles = {};
     this.rebuild();
   }
 
   /** Expands every collapsed ancestor of `n`. */
   reveal(n: JNode) {
     let changed = false;
+    const ancestors: JNode[] = [];
     for (let p = n.u; p; p = p.u) {
-      if (!p.x) {
-        p.x = true;
-        this.toggles.set(keyOf(p), true);
-        changed = true;
-      }
+      ancestors.push(p);
+      if (!p.x) changed = true;
     }
-    if (changed) this.rebuild();
+    if (!changed) return;
+    let expansion = this.toggles;
+    for (let i = ancestors.length - 1; i >= 0; i--) {
+      const p = ancestors[i];
+      if (p.u) expansion = childExpansion(expansion, p, true)!;
+      if (p.x) continue;
+      p.x = true;
+      expansion.open = true;
+    }
+    this.rebuild();
   }
 
   select(n: JNode | null, opts: { scroll?: boolean; center?: boolean } = {}) {
@@ -418,6 +451,8 @@ export class TreeView {
   private row(n: JNode, i: number): string {
     const sel = n === this.sel;
     let cls = 'tv-r';
+    const deep = n.d > IND_DEPTH;
+    if (deep) cls += ' tv-deep';
     if (sel) cls += ' sel';
     if (this.matchSet?.has(n)) cls += n === this.matches[this.mi] ? ' hit cur' : ' hit';
     const cont = n.t >= ARR;
@@ -425,9 +460,10 @@ export class TreeView {
     if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : kids(n.u).indexOf(n) + 1}"`;
     if (cont) h += ` aria-expanded="${n.x}"`;
     if (sel) h += ' id="tv-sel" aria-selected="true"';
-    h += ` style="padding-left:${n.d * IND + 6}px">`;
-    if (n.d) h += `<i class="tv-g" style="width:${n.d * IND}px"></i>`;
+    h += ` style="padding-left:${deep ? 'calc(var(--tv-indent) + 6px)' : n.d * IND + 6 + 'px'}">`;
+    if (n.d) h += `<i class="tv-g" style="width:${deep ? 'var(--tv-indent)' : n.d * IND + 'px'}"></i>`;
     h += cont ? `<b class="tv-t${n.x ? ' o' : ''}"></b>` : '<b class="tv-t n"></b>';
+    if (deep) h += `<span class="tv-depth ${PRIVATE}" aria-hidden="true">↳${n.d}</span>`;
     if (!n.u) h += '<span class="tv-root">root</span>';
     else if (typeof n.key === 'number') h += `<span class="tv-i">${n.key}</span><span class="tv-c">:</span>`;
     else if (n.key === '') h += '<span class="tv-k empty">""</span><span class="tv-c">:</span>';

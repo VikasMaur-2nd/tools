@@ -4,7 +4,7 @@
  * the tree's value hints label string values that hold one.
  */
 import { parse } from './parser';
-import { quote, stringify } from './format';
+import { MAX_INDENT, quote, stringify, tooLarge } from './format';
 
 const isoOf = (ms: number) => (Math.abs(ms) <= 8.64e15 ? new Date(ms).toISOString() : undefined);
 
@@ -130,11 +130,22 @@ export function jwtToJson(token: string, indent: string, now = Date.now()): stri
 }
 
 function toJson(d: Decoded, indent: string): string {
+  try {
+    return document(d, indent);
+  } catch (e) {
+    // A payload nested so deep that its pretty form can't be made (see MAX_TEXT): shown compact.
+    if (indent && tooLarge(e)) return document(d, '');
+    throw e;
+  }
+}
+
+function document(d: Decoded, indent: string): string {
   const nl = indent ? '\n' + indent : '';
   const colon = indent ? ': ' : ':';
   const nest = (json: string) => {
-    const root = parse(json).root;
-    const t = root ? stringify(root, indent) : json;
+    const { root, depth } = parse(json);
+    // (Nesting too deep to pretty-print readably, see MAX_INDENT: compact.)
+    const t = root ? stringify(root, depth * indent.length > MAX_INDENT ? '' : indent) : json;
     return indent ? t.split('\n').join(nl) : t;
   };
   let out =

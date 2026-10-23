@@ -24,6 +24,15 @@ describe('readJwt', () => {
     assert.equal(TOKEN.slice(s, end), 'c2ln');
   });
 
+  test('a payload too deep to pretty-print is shown compact', () => {
+    const levels = 17_000; // pretty: about 2·levels² characters, past MAX_TEXT
+    const payload = '['.repeat(levels) + ']'.repeat(levels);
+    const j = readJwt(`${H}.${b64u(payload)}.c2ln`, '  ', NOW);
+    assert.ok(j);
+    assert.ok(j.json.startsWith('{\n  "header": {\n    "alg": "HS256",'));
+    assert.ok(j.json.includes('"payload": ' + payload + ','));
+  });
+
   test('offsets account for whitespace and a Bearer prefix', () => {
     const text = '\n  Bearer   ' + TOKEN + '\n';
     const j = readJwt(text, '  ', NOW);

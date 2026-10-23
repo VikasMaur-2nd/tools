@@ -76,6 +76,19 @@ describe('lines', () => {
     }
   });
 
+  test('patchLines inserts and removes hundreds of thousands of lines (no argument-count limit)', () => {
+    const many = '\n'.repeat(300_000);
+    for (const [t, a, b, ins] of [['{"a":1}', 3, 3, many], ['x\ny\nz', 2, 3, many + 'q'], [many + 'end', 5, 250_000, 'y\n'.repeat(5000)]] as const) {
+      const { ls, max } = lineStarts(t);
+      const next = t.slice(0, a) + ins + t.slice(b);
+      // (No tabs: the editor says so, and each line's width is its length.)
+      const res = patchLines(ls, t, next, a, b, ins, max, true, false);
+      const full = lineStarts(next);
+      assert.ok(ls.length === full.ls.length && ls.every((v, k) => v === full.ls[k]), 'line starts');
+      assert.equal(res.max, full.max);
+    }
+  });
+
   test('patchLines keeps the widest line without rescanning', () => {
     for (let seed = 100; seed <= 140; seed++) {
       const r = rng(seed);

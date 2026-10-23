@@ -6,6 +6,16 @@ const byKey = (a: JNode, b: JNode) => {
   return x < y ? -1 : x > y ? 1 : 0;
 };
 
+/**
+ * Longest text written here: V8's maximum string length. Firefox and Safari allow longer ones, but such an
+ * output (pretty-printing very deep nesting, 2·depth² characters) would only exhaust memory. Writing more
+ * throws `tooLong()`, a RangeError like the engine's own (see `tooLarge`).
+ */
+export const MAX_TEXT = 2 ** 29 - 24;
+const tooLong = () => new RangeError('Invalid string length');
+/** An output too large to make: past MAX_TEXT, or more than the engine or memory could hold. */
+export const tooLarge = (e: unknown) => e instanceof RangeError && /string length|array buffer|array length|allocation/i.test(e.message);
+
 // Strings that JSON.stringify would escape (quotes, backslash, control chars, lone surrogates).
 const NEEDS_ESCAPE = /["\\\x00-\x1f\ud800-\udfff]/;
 export const quote = (s: string) => (NEEDS_ESCAPE.test(s) ? JSON.stringify(s) : '"' + s + '"');
@@ -31,6 +41,7 @@ export function stringify(root: JNode, indent: string, sortKeys = false): string
   const at: number[] = [];
   let node = root;
   for (;;) {
+    if (out.length > MAX_TEXT) throw tooLong();
     switch (node.t) {
       case NUL:
         out += 'null';
@@ -76,20 +87,31 @@ export function stringify(root: JNode, indent: string, sortKeys = false): string
       lists.pop();
       at.pop();
       out += nl + pad(d - 1) + (objs.pop() ? '}' : ']');
+      if (out.length > MAX_TEXT) throw tooLong();
     }
   }
 }
+
+/** Deepest nesting written with the native JSON.stringify (see formatDoc). */
+const NATIVE_DEPTH = 1000;
+/** Widest indentation pretty-printed (see formatDoc): 5,000 levels at two spaces. */
+export const MAX_INDENT = 10_000;
 
 /**
  * Formats a parsed document. Uses the native engine when it is guaranteed to
  * reproduce the document exactly (≈3× faster on large inputs).
  */
 export function formatDoc(src: string, res: ParseResult, indent: string, sortKeys = false): string {
-  if (res.exact && !sortKeys) {
+  // Nesting so deep that its pretty form is unreadable and huge (lines indented by over 10,000 characters,
+  // 2·depth² in all) isn't made: it would take seconds to make and show, if it fits at all.
+  if (res.depth * indent.length > MAX_INDENT) throw tooLong();
+  // (Not for deep nesting: the engines write it recursively, and Firefox runs out of stack from about 5,000
+  // levels, while Safari takes seconds to; written from the tree below instead.)
+  if (res.exact && !sortKeys && res.depth <= NATIVE_DEPTH) {
     try {
       return JSON.stringify(JSON.parse(src), null, indent || undefined);
     } catch (e) {
-      // Nesting deeper than the engine can write (a few thousand levels in Chrome and Firefox): written from the tree below.
+      // Nesting deeper than the engine can write after all: written from the tree below.
       if (!tooDeep(e)) throw e;
     }
   }
@@ -172,7 +194,8 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
 
 /** Copy of `buf` (its first `len` units) with room for `k` more. */
 function grown(buf: Uint16Array, len: number, k: number) {
-  const next = new Uint16Array(Math.max(buf.length * 2, len + k));
+  if (len + k > MAX_TEXT) throw tooLong();
+  const next = new Uint16Array(Math.min(MAX_TEXT, Math.max(buf.length * 2, len + k)));
   next.set(buf.subarray(0, len));
   return next;
 }
@@ -366,35 +389,42 @@ const sci = (raw: string) => {
 
 /** Converts a node to a plain JS value (numbers that would lose precision stay strings). */
 export function toValue(node: JNode): unknown {
-  switch (node.t) {
-    case NUL:
-      return null;
-    case BOOL:
-      return node.v;
-    case NUM: {
-      const raw = node.v as string;
-      const n = Number(raw);
-      return String(n) === raw || (Number.isFinite(n) && sci(String(n)) === sci(raw)) ? n : raw;
+  if (node.t < ARR) return scalar(node);
+  // Containers with an explicit stack: as deep as the parser goes.
+  const top = node.t === ARR ? [] : {};
+  const open: JNode[] = [node];
+  const into: (unknown[] | Record<string, unknown>)[] = [top];
+  const next: number[] = [0];
+  while (open.length) {
+    const k = open.length - 1;
+    const list = kids(open[k]);
+    if (next[k] === list.length) {
+      open.pop();
+      into.pop();
+      next.pop();
+      continue;
     }
-    case STR:
-      return node.v;
-    case ARR: {
-      // a loop rather than .map(): one stack frame per level, like the parser
-      const out: unknown[] = [];
-      for (const c of kids(node)) out.push(toValue(c));
-      return out;
-    }
-    default: {
-      const o: Record<string, unknown> = {};
-      for (const c of kids(node)) {
-        const k = c.key as string;
-        // a plain assignment to "__proto__" would set the prototype and drop the key (JSON.parse keeps it)
-        if (k === '__proto__') Object.defineProperty(o, k, { value: toValue(c), enumerable: true, writable: true, configurable: true });
-        else o[k] = toValue(c);
-      }
-      return o;
+    const c = list[next[k]++];
+    const v = c.t < ARR ? scalar(c) : c.t === ARR ? [] : {};
+    const o = into[k];
+    if (Array.isArray(o)) o.push(v);
+    // a plain assignment to "__proto__" would set the prototype and drop the key (JSON.parse keeps it)
+    else if (c.key === '__proto__') Object.defineProperty(o, '__proto__', { value: v, enumerable: true, writable: true, configurable: true });
+    else o[c.key as string] = v;
+    if (c.t >= ARR) {
+      open.push(c);
+      into.push(v as unknown[] | Record<string, unknown>);
+      next.push(0);
     }
   }
+  return top;
+}
+
+function scalar(node: JNode): unknown {
+  if (node.t !== NUM) return node.v;
+  const raw = node.v as string;
+  const n = Number(raw);
+  return String(n) === raw || (Number.isFinite(n) && sci(String(n)) === sci(raw)) ? n : raw;
 }
 
 /** Short one-line rendering of a primitive. */
@@ -434,10 +464,10 @@ export function preview(node: JNode, budget = 90): string {
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
 
-/** Rough UTF-8 byte length without allocating. */
-export function byteLength(s: string): number {
+/** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without allocating. */
+export function byteLength(s: string, from = 0, to = s.length): number {
   let b = 0;
-  for (let i = 0; i < s.length; i++) {
+  for (let i = from; i < to; i++) {
     const c = s.charCodeAt(i);
     if (c < 0x80) b += 1;
     else if (c < 0x800) b += 2;

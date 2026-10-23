@@ -1,5 +1,5 @@
-import { ARR, JNode, OBJ, STR, parse, tooDeep, type ParseResult } from '../json/parser';
-import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify } from '../json/format';
+import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
+import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import { packedPosition, unpacker, type PackedTree } from '../json/pack';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
@@ -141,6 +141,12 @@ const LINES_FILE = /\.(jsonl|ndjson)$/i;
 const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
 const WORKER_MIN = 2_000_000;
+/** From this size, a new document is parsed here in steps (see analyzeInSteps). */
+const STEPS_MIN = 1_000_000;
+/** The first step's length in ms. It runs at once, as a parse in one go did: a document parsed by then is ready as soon. */
+const FIRST_STEP = 100;
+/** The next steps' length in ms: input waits at most about this long. (10 to 50 ms are ready about as soon.) */
+const STEP = 20;
 
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
 const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
@@ -295,7 +301,7 @@ export class Engine {
       if (saved) this.ed.init(saved);
     }
     store.set({ fileName: read(KEYS.file) });
-    this.analyze();
+    this.analyzeInSteps();
     if (this.settings.view === 'graph') this.setView('graph');
     if (this.ed2.text) this.analyzeCompare();
     delete document.documentElement.dataset.doc;
@@ -393,7 +399,7 @@ export class Engine {
       const text = this.ed.text;
       const now = () => {
         this.loaded = true;
-        this.analyze();
+        this.analyzeInSteps();
       };
       if (!this.outputFirst(text, null, now)) {
         this.loadSeq++;
@@ -419,8 +425,8 @@ export class Engine {
     // Parse without building views for the minified text: they'd be replaced at once.
     const r = text === this.parsed && this.res ? this.res : parse(text);
     if (!r.root || r.error || r.issues.length) return;
-    const pretty = formatDoc(text, r, this.indent);
-    if (pretty === text) return;
+    const pretty = this.unlessTooLarge(() => formatDoc(text, r, this.indent));
+    if (pretty === null || pretty === text) return;
     clearTimeout(this.timer);
     ed.setValue(pretty);
     this.analyze();
@@ -450,6 +456,12 @@ export class Engine {
   private fresh(): ParseResult | null {
     // (A document still on its way arrives first: commands act on what is shown.)
     this.flushLoad();
+    // A parse in steps is finished now, from where it got to.
+    const steps = this.steps;
+    if (steps?.seq === this.loadSeq && steps.ver === this.ed.version) {
+      this.steps = null;
+      this.analyze(steps.p.step(Infinity));
+    }
     if (this.packed?.id === this.loadSeq) {
       const { tree, text, metrics } = this.packed;
       this.viewSeq++;
@@ -474,11 +486,93 @@ export class Engine {
     if (!this.outputFirst(text, store.get().fileName, (res, metrics) => this.ed.version === ver && this.analyze(res, metrics), true)) this.analyze();
   };
 
+  /** A new document being parsed in steps (see analyzeInSteps). */
+  private steps: { p: Parser; seq: number; ver: object } | null = null;
+
+  /**
+   * Analyses a new document. A big one is parsed here in steps, the first at once (one it finishes is ready
+   * as soon as in one go): input is handled between them, the status shows how far it got, and an edit or
+   * another load drops it (fresh() finishes it for a command). Until it is done the views show nothing of
+   * the previous document.
+   */
+  private analyzeInSteps() {
+    const text = this.ed.length >= STEPS_MIN && this.resetNext ? this.ed.text : '';
+    if (!text || readJwt(text, this.indent)) return this.analyze();
+    const seq = this.loadSeq;
+    const ver = this.ed.version;
+    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? '') });
+    this.steps = { p, seq, ver };
+    // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
+    clearTimeout(this.timer);
+    this.packed = this.goodPacked = null;
+    this.res = this.good = null;
+    this.goodMetrics = null;
+    this.goodText = '';
+    this.goodVer = null;
+    this.sel = null;
+    this.selPath = null;
+    this.tablePath = [];
+    this.tree.setRoot(null, true);
+    this.setGraphRoot(null, true);
+    this.table.setNode(null);
+    this.ed.setDiagnostics([]);
+    this.ed.setScope(-1, -1);
+    store.set({ empty: false, stale: false, status: { kind: 'parsing', progress: 0 }, stats: null, sizes: null, path: null, hint: null });
+    let shown = 0;
+    let shownAt = 0;
+    let res: ParseResult | undefined;
+    let ms = 0;
+    // Then its size in UTF-8 bytes for the status bar, counted in steps too (in one go: 200 ms at 50 MB).
+    let bytes = 0;
+    let at = 0;
+    const run = () => {
+      if (this.steps?.p !== p) return;
+      if (seq !== this.loadSeq || this.dead) {
+        this.steps = null;
+        return;
+      }
+      const t0 = performance.now();
+      const until = t0 + (ms ? STEP : FIRST_STEP);
+      if (!res) {
+        res = p.step(until);
+        ms += performance.now() - t0;
+      }
+      if (res) {
+        while (at < text.length && performance.now() < until) {
+          let end = Math.min(text.length, at + 1_000_000);
+          // (A surrogate pair is counted whole. Ranges of the text, not slices: reading those is slower.)
+          if ((text.charCodeAt(end - 1) & 0xfc00) === 0xd800) end++;
+          bytes += byteLength(text, at, end);
+          at = end;
+        }
+        if (at >= text.length) {
+          this.steps = null;
+          this.counted = { ver, bytes, ms };
+          this.analyze(res);
+          return;
+        }
+      } else if (t0 >= shownAt + 150) {
+        // (A few redraws of the status bar a second, as the whole percent grows; JSON Lines go over their first record twice.)
+        const progress = Math.floor((100 * p.at()) / text.length) / 100;
+        if (progress > shown) {
+          store.set({ status: { kind: 'parsing', progress: (shown = progress) } });
+          shownAt = t0;
+        }
+      }
+      soon(run);
+    };
+    run();
+  }
+
+  /** A document version parsed in steps: its UTF-8 size, counted meanwhile, and the time its steps took. */
+  private counted: { ver: object; bytes: number; ms: number } | null = null;
+
   private goodMetrics: DocumentMetrics | null = null;
 
   /** Publish analysis; a Format-only result can retain its packed tree until needed. */
   analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
     if (!lazy) this.packed = null;
+    this.steps = null;
     clearTimeout(this.timer);
     const ed = this.ed;
     const text = ed.text;
@@ -518,7 +612,10 @@ export class Engine {
     const src = jwt ? jwt.json : text;
     const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
     const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
-    const ms = performance.now() - t0;
+    // (Used once: it holds that version's text.)
+    const counted = this.counted?.ver === ed.version ? this.counted : null;
+    this.counted = null;
+    const ms = counted?.ms ?? performance.now() - t0;
     this.res = res;
     this.jwt = jwt;
     ed.setJwt(jwt ? jwt.at : null);
@@ -587,7 +684,7 @@ export class Engine {
       empty: false,
       stale: !lazy && !res.root && !!(this.good || this.goodPacked),
       status: jwt ? this.jwtStatus(jwt) : lines ? this.linesStatus(res, metrics?.records) : text.length <= 1_000_000 && JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
-      stats: { bytes: metrics?.bytes ?? byteLength(text), lines: ed.ls.length, nodes: res.nodes, depth: res.depth, ms },
+      stats: { bytes: metrics?.bytes ?? counted?.bytes ?? byteLength(text), lines: ed.ls.length, nodes: res.nodes, depth: res.depth, ms },
       path: lazy && this.selPath ? formatPath(this.selPath) : this.sel ? formatPath(pathOf(this.sel)) : null,
       hint,
     });
@@ -820,7 +917,8 @@ export class Engine {
     // Keep the caret on the same node across the rewrite.
     const at = jwt ? null : nodeAt(r.root, this.ed.caret, before);
     const path = at ? pathOf(at) : null;
-    const next = fn(r, jwt ? jwt.json : before);
+    const next = this.unlessTooLarge(() => fn(r, jwt ? jwt.json : before));
+    if (next === null) return;
     const msg = done(r) + (jwt ? ` · replaced the JWT with its decoded JSON · ${this.mod}Z to undo` : '');
     if (next === before) {
       this.toast(msg.replace(/ ·.*/, '') + ' · no changes', 'info');
@@ -831,6 +929,17 @@ export class Engine {
     const target = path && this.res?.root ? resolve(this.res.root, path) : null;
     if (target) this.ed.setCaret(target.s);
     this.toast(msg, 'ok');
+  }
+
+  /** `make()`, or null (and a toast, if `report`) when its output would be too large to hold (see MAX_TEXT). */
+  private unlessTooLarge<T>(make: () => T, report = true): T | null {
+    try {
+      return make();
+    } catch (e) {
+      if (!tooLarge(e)) throw e;
+      if (report) this.toast('The result is too large', 'err');
+      return null;
+    }
   }
 
   private fixed = (r: ParseResult) => (r.issues.length ? ` · fixed ${r.issues.length} issue${r.issues.length > 1 ? 's' : ''}` : '');
@@ -896,7 +1005,8 @@ export class Engine {
       return;
     }
     const pr = parse(inner);
-    const next = pr.root && !pr.error ? formatDoc(inner, pr, this.indent) : inner;
+    const next = pr.root && !pr.error ? this.unlessTooLarge(() => formatDoc(inner, pr, this.indent)) : inner;
+    if (next === null) return;
     this.ed.setValue(next);
     this.analyze();
     track('feature_used', { feature: 'unescape' });
@@ -941,7 +1051,9 @@ export class Engine {
     if (!r.root || r.error) return this.toast("Couldn't expand this value", 'err');
     const minified = this.ed.ls.length === 1;
     const path = pathOf(n);
-    this.ed.setValue(formatDoc(next, r, minified ? '' : this.indent));
+    const out = this.unlessTooLarge(() => formatDoc(next, r, minified ? '' : this.indent));
+    if (out === null) return;
+    this.ed.setValue(out);
     this.analyze();
     const target = this.res?.root ? resolve(this.res.root, path) : null;
     if (target) {
@@ -987,6 +1099,7 @@ export class Engine {
     if (!current?.root) this.materializeGood();
     const root = current?.root ?? this.good?.root;
     if (!root) return this.toast('Paste or open valid JSON first', 'info');
+    if ((current?.root ? current : this.good)!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
     try {
       const { records, toXlsx } = await import('../convert/xlsx');
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
@@ -1304,7 +1417,7 @@ export class Engine {
       // packed until a command needs nodes (as after typing): the page would block on it for seconds.
       // The other views need every node at once; without a worker, the page parses it too.
       if (text.length >= WORKER_MIN && this.settings.view === 'format' && this.analysisFails < 3) {
-        const here = () => seq === this.loadSeq && this.analyze();
+        const here = () => seq === this.loadSeq && this.analyzeInSteps();
         // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
         clearTimeout(this.timer);
         store.set({ empty: false, status: { kind: 'parsing' } });
@@ -1326,7 +1439,7 @@ export class Engine {
           };
           run();
         }, 0, here);
-      } else this.analyze();
+      } else this.analyzeInSteps();
       this.ed.el.scrollTop = 0;
       if (persist) this.persistSoon();
     };
@@ -1432,7 +1545,8 @@ export class Engine {
     if (n === this.sel && this.goodPacked && this.selPath) { this.materializeGood(); n = this.sel; }
     if (!n) return this.toast('Select a node first', 'info');
     track('feature_used', { feature: 'copy_value' });
-    void this.copy(copyText(n, this.indent), n.t >= ARR ? 'Copied value as JSON' : 'Copied value');
+    const text = this.unlessTooLarge(() => copyText(n, this.indent));
+    if (text !== null) void this.copy(text, n.t >= ARR ? 'Copied value as JSON' : 'Copied value');
   }
 
   copyPath(n: JNode | null = this.sel) {
@@ -1532,7 +1646,8 @@ export class Engine {
     const r = parse(text);
     if (!r.root) return this.toast("Can't format it yet. Fix the error first.", 'err');
     track('feature_used', { feature: 'compare_format' });
-    this.ed2.setValue(formatDoc(text, r, this.indent));
+    const out = this.unlessTooLarge(() => formatDoc(text, r, this.indent));
+    if (out !== null) this.ed2.setValue(out);
     this.analyzeCompare();
   }
 
@@ -1714,7 +1829,7 @@ export class Engine {
     // Small valid JSON opens formatted; a big document opens like a file, output first.
     const open = (text: string) => {
       const res = text.length <= 2_000_000 ? parse(text) : null;
-      return res?.root && !res.error && !res.issues.length ? formatDoc(text, res, this.indent) : null;
+      return res?.root && !res.error && !res.issues.length ? this.unlessTooLarge(() => formatDoc(text, res, this.indent), false) : null;
     };
     const had = !!this.ed.text.trim();
     if (a) {
@@ -1954,8 +2069,17 @@ export class Engine {
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
     const drawn = this.formatCurrent(key);
-    const text = drawn ? this.fmtText : this.formatted();
-    if (!drawn) this.drawFormat(text, key);
+    let text: string;
+    try {
+      text = drawn ? this.fmtText : this.formatted();
+      if (!drawn) this.drawFormat(text, key);
+    } catch (e) {
+      if (!tooLarge(e)) throw e;
+      // (Pretty-printing very deep nesting: about 2·depth² characters.) The view says so instead.
+      this.drawFormat('', key);
+      store.set({ fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0, tooLarge: true } });
+      return;
+    }
     if (this.fmtSrcVer !== this.goodVer) return; // This output's metrics are still being analysed.
     // Size of the shown variant is measured; the other differs only by whitespace,
     // which is computed from the tree (no second format of big documents).
@@ -2003,6 +2127,7 @@ export class Engine {
 
   /** Shows `text` (the formatted `src`) in the Format view. */
   private drawFormat(text: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+    if (store.get().fmt.tooLarge) store.set({ fmt: { ...store.get().fmt, tooLarge: false } });
     if (!change) this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;
     this.fmtVersion++;
@@ -2050,15 +2175,17 @@ export class Engine {
   }
 
   copyOutput() {
-    const out = this.fmt.text || this.output();
-    if (!out) return this.toast('Nothing to copy yet', 'info');
+    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    if (out === null) return;
+    if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_output' });
     void this.copy(out, this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
   }
 
   downloadOutput() {
-    const out = this.fmt.text || this.output();
-    if (!out) return this.toast('Nothing to download yet', 'info');
+    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    if (out === null) return;
+    if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
     track('feature_used', { feature: 'download_output' });
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
     this.save(out, `${base}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`, 'application/json');
@@ -2105,6 +2232,11 @@ export class Engine {
       store.set({ convert: { loading: false, error: 'Paste or open valid JSON on the left to convert it.', lines: 0, bytes: 0 } });
       return;
     }
+    if (this.good!.depth > MAX_WALK_DEPTH) {
+      this.code.setText('', escapeHtml);
+      store.set({ convert: { loading: false, error: 'Nesting is too deep to convert', lines: 0, bytes: 0 } });
+      return;
+    }
     try {
       const mod = await this.loadConverters();
       const s = this.settings;
@@ -2146,6 +2278,7 @@ export class Engine {
     if (info.id === 'xlsx') {
       const root = this.good?.root;
       if (!root) return this.toast('Paste or open valid JSON first', 'info');
+      if (this.good!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
       try {
         const { records, toXlsx } = await import('../convert/xlsx');
         this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);

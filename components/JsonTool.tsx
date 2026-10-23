@@ -555,18 +555,31 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
 
 // ── Viewer toolbar: tabs · one main control · four fixed icons ──────────────
 
+/** Breadcrumbs shown after `$`: a deeper location keeps its last ones, after "…" for the level above them. */
+const CRUMBS = 12;
+const crumb = (k: string | number) => (typeof k === 'number' ? `[${k}]` : k);
+
 function Crumbs() {
   const { segs, rows, cols, ok } = useUI((s) => s.table);
   const t = useT();
   if (!ok) return <span className="muted sm">{t('Select an array or object')}</span>;
+  const from = Math.max(0, segs.length - CRUMBS);
   return (
     <nav className={`crumbs ${PRIVATE}`} aria-label={t('Table location')}>
       <button type="button" onClick={() => act((e) => e.tableGoto([]))}>$</button>
-      {segs.map((k, i) => (
-        <span key={i}>
+      {from > 0 && (
+        <span>
           <Icon name="down" size={12} className="sep" />
-          <button type="button" onClick={() => act((e) => e.tableGoto(segs.slice(0, i + 1)))}>
-            {typeof k === 'number' ? `[${k}]` : k}
+          <button type="button" aria-label={crumb(segs[from - 1])} onClick={() => act((e) => e.tableGoto(segs.slice(0, from)))}>
+            …
+          </button>
+        </span>
+      )}
+      {segs.slice(from).map((k, j) => (
+        <span key={from + j}>
+          <Icon name="down" size={12} className="sep" />
+          <button type="button" onClick={() => act((e) => e.tableGoto(segs.slice(0, from + j + 1)))}>
+            {crumb(k)}
           </button>
         </span>
       ))}
@@ -674,7 +687,8 @@ function TreePath() {
   if (!path) return <span className="muted sm nowrap">{t('Select a node')}</span>;
   return (
     <button type="button" className={`path ${PRIVATE}`} onClick={() => act((e) => e.copyPath())} data-tip={t('Copy path')}>
-      {path}
+      {/* (Its start is what shows: a very deep node's path, hundreds of thousands of characters, isn't laid out whole.) */}
+      {path.length > 300 ? path.slice(0, 300) + '…' : path}
     </button>
   );
 }
@@ -832,6 +846,13 @@ function Watermark() {
   );
 }
 
+function FormatNote() {
+  const tooLarge = useUI((s) => s.fmt.tooLarge);
+  const t = useT();
+  if (!tooLarge) return null;
+  return <div className="cv-note">{t('The result is too large')}</div>;
+}
+
 function ConvertNote() {
   const { error } = useUI((s) => s.convert);
   const t = useT();
@@ -867,6 +888,7 @@ function ViewerPane({
           <div className="cv-sizer">
             <div className="cv-rows" />
           </div>
+          <FormatNote />
         </div>
         <div id="view-tree" className="tv" ref={treeRef} tabIndex={0} role="tree" aria-label={t('JSON tree')} hidden={view !== 'tree' || empty}>
           <div className="tv-sizer">
@@ -1003,6 +1025,14 @@ function Splitter() {
 
 // ── Status bar ──────────────────────────────────────────────────────────────
 
+const percentFormats = new Map<string | undefined, Intl.NumberFormat>();
+/** 0.42 → "42%" in the page's language (made on first use: number formats cost a cold phone). */
+function percent(x: number, lang?: string) {
+  let f = percentFormats.get(lang);
+  if (!f) percentFormats.set(lang, (f = new Intl.NumberFormat(lang, { style: 'percent' })));
+  return f.format(x);
+}
+
 function StatusMsg() {
   const status = useUI((s) => s.status);
   const t = useT();
@@ -1012,7 +1042,11 @@ function StatusMsg() {
     case 'parsing':
       return (
         <span className="st muted">
-          <i className="spin" /> {t('Parsing…')}
+          <i className="spin" />
+          <span className="st-msg">
+            {t('Parsing…')}
+            {status.progress !== undefined && <span className="st-pct"> {percent(status.progress, t.lang)}</span>}
+          </span>
         </span>
       );
     case 'valid':

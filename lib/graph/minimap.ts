@@ -140,7 +140,7 @@ function overview(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme,
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let d = 0; d < L.levels.length; d++) {
-    const list = L.levels[d];
+    const list = L.levels.at(d);
     const x = ox + colX[d] * sx;
     let i = 0;
     while (i < list.length) {

@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -6,6 +6,8 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { Doc } from '../lib/engine/doc';
+import { parse, type ParseResult } from '../lib/json/parser';
+import { diffResults } from './oracle/compare';
 
 const load = createRequire(__filename);
 
@@ -183,4 +185,94 @@ test('worker patch uses pinned fold arrays when the viewer changes before the re
   worker.onmessage({ data: { id: engine.loadSeq, out: 'result', indexReuse: true, index: { starts: new Int32Array([0, 1, 2, 3]), maxLen: 1 } } });
   assert.equal(index?.close, close);
   assert.equal(index?.depth, depth);
+});
+
+// ── A new big document parsed in steps (analyzeInSteps) ──
+
+function stepsSession(text: string) {
+  const s = session();
+  const { engine } = s;
+  const version = Doc.of(text);
+  engine.ed = { version, length: text.length, text, setDiagnostics() {}, setScope() {} };
+  engine.tree = { setRoot() {} };
+  engine.table = { setNode() {} };
+  engine.resetNext = true;
+  engine.loadSeq = 3;
+  const analysed: (ParseResult | undefined)[] = [];
+  engine.analyze = (res?: ParseResult) => {
+    analysed.push(res);
+    engine.parsed = text;
+    engine.res = res;
+  };
+  return { ...s, analysed };
+}
+
+/**
+ * Times a parse in steps by a fake clock, the same on any machine: each reading moves it on by `by` ms
+ * (0: it stands still, so a step never ends early).
+ */
+function clock(t: TestContext, by: number) {
+  let now = 0;
+  t.mock.method(performance, 'now', () => (now += by));
+}
+
+const big = JSON.stringify(Array.from({ length: 100_000 }, (_, k) => ({ id: k, name: 'Zoë ' + k, tags: ['a', 'b'], ok: k % 3 === 0, x: null })));
+
+test('a big new document is parsed in steps, then analysed with the one-shot result and its byte size', (t) => {
+  clock(t, 1);
+  const { engine, tick, analysed } = stepsSession(big);
+  engine.analyzeInSteps();
+  assert.equal(analysed.length, 0, 'the first step, at once, does not finish it');
+  let steps = 0;
+  while (!analysed.length && steps < 100_000) {
+    tick();
+    steps++;
+  }
+  assert.ok(steps > 1, `parsed in ${steps} steps`);
+  assert.equal(diffResults(parse(big), analysed[0]!), null);
+  assert.equal(engine.steps, null);
+  assert.equal(engine.counted.bytes, Buffer.byteLength(big));
+});
+
+test('an edit or another load drops a parse in steps at its next step', (t) => {
+  clock(t, 1);
+  const { engine, tick, analysed } = stepsSession(big);
+  engine.analyzeInSteps();
+  tick();
+  engine.loadSeq++;
+  for (let k = 0; k < 1000; k++) tick();
+  assert.equal(analysed.length, 0);
+  assert.equal(engine.steps, null);
+});
+
+test('a command finishes a parse in steps at once, from where it got to', (t) => {
+  clock(t, 1);
+  const { engine, tick, analysed } = stepsSession(big);
+  engine.analyzeInSteps();
+  tick();
+  const res = engine.fresh();
+  assert.equal(analysed.length, 1);
+  assert.equal(res, analysed[0]);
+  assert.equal(diffResults(parse(big), analysed[0]!), null);
+  for (let k = 0; k < 1000; k++) tick();
+  assert.equal(analysed.length, 1, 'the dropped steps do nothing more');
+});
+
+test('a big document the first step parses is analysed at once, as in one go', (t) => {
+  clock(t, 0);
+  const text = big.slice(0, 1_200_000).replace(/,\{[^{}]*$/, ']');
+  const { engine, analysed } = stepsSession(text);
+  engine.analyzeInSteps();
+  assert.equal(analysed.length, 1);
+  assert.equal(diffResults(parse(text), analysed[0]!), null);
+});
+
+test('small documents and edits are analysed at once', () => {
+  for (const [text, reset] of [['{"a":1}', true], [big, false]] as const) {
+    const { engine, analysed } = stepsSession(text);
+    engine.resetNext = reset;
+    engine.analyzeInSteps();
+    assert.deepEqual(analysed, [undefined]);
+    assert.equal(engine.steps, null);
+  }
 });

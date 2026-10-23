@@ -39,6 +39,16 @@ const FULL_ON = 'M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9';
 const FULL_OFF = 'M13.5 6.5h-4v-4M9.5 6.5l4-4M2.5 9.5h4v4M6.5 9.5l-4 4';
 const ICON = (d: string) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+/** Keep live-region updates bounded for deep documents. Copy path still uses the full path. */
+const ANNOUNCE_SEGMENTS = 4;
+function announcePath(n: JNode) {
+  const tail: Seg[] = [];
+  for (let p: JNode | null = n; p?.u && tail.length < ANNOUNCE_SEGMENTS; p = p.u) tail.push(p.key as Seg);
+  tail.reverse();
+  const path = formatPath(tail);
+  return n.d > tail.length ? '$…' + path.slice(1) : path;
+}
+
 export class GraphView implements GraphViewApi {
   private host: HTMLElement;
   private ev: GraphEvents;
@@ -195,7 +205,12 @@ export class GraphView implements GraphViewApi {
       const { m, collapsed } = this.L;
       this.keep = [];
       this.keepFor = this.L;
-      for (let c = 0; c < m.n; c++) if (collapsed[c]) this.keep.push(pathOf(m.node[c]));
+      // Hidden descendants carry the same flag as their collapsed ancestor.
+      // Save only the effective roots, so Show levels on a 100k chain keeps one
+      // path instead of copying every suffix.
+      for (let c = 0; c < m.n; c++) {
+        if (collapsed[c] && (m.parent[c] < 0 || !collapsed[m.parent[c]])) this.keep.push(pathOf(m.node[c]));
+      }
     } else if (reset) this.keep = [];
     if (reset && this.L) {
       // A different document: don't show the old one's graph while the new one builds.
@@ -498,7 +513,8 @@ export class GraphView implements GraphViewApi {
     if (to === 'end') {
       // The lowest card: the last of some column.
       let bottom = -Infinity;
-      for (const level of L.levels) {
+      for (let d = 0; d < L.levels.length; d++) {
+        const level = L.levels.at(d);
         const k = level[level.length - 1];
         if (k !== undefined && L.y[k] + L.m.h[k] > bottom) {
           bottom = L.y[k] + L.m.h[k];
@@ -582,7 +598,16 @@ export class GraphView implements GraphViewApi {
     }
     // A container with a card is outlined; anything else highlights the row
     // showing it (a value inside an inline array: that array's row).
-    const at = locate(m, n);
+    let at = locate(m, n);
+    // Selection objects from the previous parse are stale after an edit. Their
+    // path is resolved once against the new root, then direct model IDs handle
+    // all subsequent lookups.
+    if (at.card < 0 && at.row < 0 && this.root) {
+      const current = resolve(this.root, pathOf(n));
+      if (current) {
+        at = locate(m, current);
+      }
+    }
     let card = at.card;
     let row = -1;
     if (card < 0 && at.row >= 0) {
@@ -625,7 +650,7 @@ export class GraphView implements GraphViewApi {
     const type = n.t === STR ? rt('string') : n.t === NUM ? rt('number') : n.t === BOOL ? rt('boolean') : n.t === NUL ? 'null' : n.t === ARR ? rt('array') : rt('object');
     const key = n.key === undefined ? rt('root') : typeof n.key === 'number' ? `[${n.key}]` : fit(n.key, 60, false);
     const val = n.t >= ARR ? rt.n(kids(n).length, '{n} item', '{n} items') : valueText(n);
-    this.live.textContent = `${key}, ${type}, ${val}, ${formatPath(pathOf(n))}`;
+    this.live.textContent = `${key}, ${type}, ${val}, ${announcePath(n)}`;
   }
 
   // ── Collapse ───────────────────────────────────────────────────────────
