@@ -51,7 +51,20 @@ const reportedErrors = new WeakSet<object>();
 let errorWindow = 0;
 let errorCount = 0;
 
+/**
+ * The choice made on this page (undefined: none yet). Storage only keeps it for
+ * the next pages: a private window or a full quota can refuse to, and the
+ * choice must hold here all the same. Another tab's choice replaces it.
+ */
+let chosen: string | null | undefined;
+if (typeof window !== 'undefined') {
+  addEventListener('storage', (e) => {
+    if (e.key === PREF || e.key === null) chosen = undefined;
+  });
+}
+
 const pref = () => {
+  if (chosen !== undefined) return chosen;
   try {
     return localStorage.getItem(PREF);
   } catch {
@@ -67,12 +80,15 @@ export type AnalyticsState = 'on' | 'off' | 'browser' | 'unavailable';
  * Self-contained (the literal 'jf:analytics' is PREF), because the
  * privacy page also inlines its source to run before first paint, so the note
  * under the switch never changes size (tests/error-tracking.test.ts runs both).
+ * `choice`: the one made on this page, if any (storage may not have kept it).
  */
-export function stateFrom(configured: boolean): AnalyticsState {
-  let p: string | null = null;
-  try {
-    p = localStorage.getItem('jf:analytics');
-  } catch {}
+export function stateFrom(configured: boolean, choice?: string | null): AnalyticsState {
+  let p: string | null = choice ?? null;
+  if (choice === undefined) {
+    try {
+      p = localStorage.getItem('jf:analytics');
+    } catch {}
+  }
   if (p === 'off') return 'off';
   if (!configured) return 'unavailable';
   const n = navigator as Navigator & { globalPrivacyControl?: boolean; msDoNotTrack?: string };
@@ -87,7 +103,7 @@ export function stateFrom(configured: boolean): AnalyticsState {
 /** Whether a project token and ingestion host are configured (build-time). */
 export const analyticsConfigured = !!TOKEN && !!INGEST;
 
-export const analyticsState = (): AnalyticsState => stateFrom(analyticsConfigured);
+export const analyticsState = (): AnalyticsState => stateFrom(analyticsConfigured, chosen);
 
 /** Calls `cb` when the analytics choice changes (this tab or another). */
 export function onAnalyticsChange(cb: () => void) {
@@ -112,6 +128,7 @@ function stop() {
 
 /** Turns analytics on or off in this browser (both PostHog and Vercel Web Analytics). */
 export function setAnalyticsEnabled(on: boolean) {
+  chosen = on ? null : 'off';
   try {
     if (on) localStorage.removeItem(PREF);
     else localStorage.setItem(PREF, 'off');
