@@ -117,6 +117,18 @@ function rowValue(m: GraphLayout['m'], r: number): string {
 /** Label text of row r (after rowValue). */
 const rowLabel = (r: number) => labels.get(r) as string;
 
+/**
+ * Lets go of what painting keeps between frames: the last model's texts and the
+ * last frame's strings (pieces of the document, which can hold all of it). For a
+ * view that is hidden, emptied or gone; the next frame builds them again.
+ */
+export function releasePaint() {
+  textsFor = null;
+  labels.clear();
+  values.clear();
+  for (const r of [TEXT.key, TEXT.index, TEXT.head, TEXT.size, ...TEXT.value]) r.x.length = r.y.length = r.t.length = r.n = 0;
+}
+
 function firstColumn(colX: Float64Array, colW: Float64Array, x: number) {
   let lo = 0;
   let hi = colX.length;

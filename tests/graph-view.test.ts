@@ -5,7 +5,9 @@ import { G, buildModel, locate } from '../lib/graph/model';
 import { GraphView } from '../lib/graph/view';
 import { layoutGraph, type GraphLayout } from '../lib/graph/layout';
 import { LOD_SKEL, LOD_TEXT, MARGIN, ZOOM_MAX, bound, fitCam, fitScale, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from '../lib/graph/camera';
-import { blockEnd, column, compactNum, paint, partAt, widest, type Paint } from '../lib/graph/render';
+import { blockEnd, column, compactNum, paint, partAt, releasePaint, widest, type Paint } from '../lib/graph/render';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { isDark, type GraphTheme } from '../lib/graph/theme';
 import { overview } from '../lib/graph/minimap';
 
@@ -312,6 +314,57 @@ test('graph view: effective collapsed roots and stale selection survive a rebuil
   });
   (obj.select as (n: never) => void)(stale);
   assert.ok((obj.card as number) >= 0, 'stale node resolves to the rebuilt card');
+});
+
+/** Whether nothing keeps `ref`'s target alive any more (after a full collection). */
+async function collected(ref: WeakRef<object>) {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc') as () => void;
+  // (A WeakRef keeps its target until the job that made it ends.)
+  await new Promise((done) => setImmediate(done));
+  gc();
+  return ref.deref() === undefined;
+}
+
+test('graph render: a painted document is let go once painting is released', async () => {
+  const paintOne = () => {
+    const root = parse(JSON.stringify({ users: [{ name: 'Ada', roles: ['author'] }, { name: 'Grace', id: 7 }] })).root!;
+    paint(fakeCtx, layoutGraph(buildModel(root, 7.2)), fakeTheme, { x: -MARGIN, y: -MARGIN, s: 1 }, 1200, 800, noSelection());
+    return new WeakRef(root);
+  };
+  const kept = paintOne();
+  assert.equal(await collected(kept), false, 'the texts of the last frame are kept for the next');
+  releasePaint();
+  assert.equal(await collected(kept), true);
+  // And painting again after a release works as before.
+  const L = features(20);
+  const before = count(L, { x: -MARGIN, y: -MARGIN, s: 1 }, 4000, 4000).text;
+  releasePaint();
+  assert.equal(count(L, { x: -MARGIN, y: -MARGIN, s: 1 }, 4000, 4000).text, before);
+});
+
+test('graph view: an adopted layout lets go of the one collapsed cards were read from', () => {
+  const root = parse('{"a":{"b":1},"c":{"d":2}}').root!;
+  const m = buildModel(root, 7.2);
+  const collapsed = new Uint8Array(m.n);
+  collapsed[1] = 1;
+  const L = layoutGraph(m, collapsed);
+  const obj = Object.create(GraphView.prototype) as Record<string, unknown>;
+  Object.assign(obj, { m, L, keep: [], keepFor: null, root, reset: false, token: 0, building: false, matches: [], hitFor: null, editTimer: 0, dirty: false });
+  (obj.setRoot as (root: unknown, reset: boolean, nodes: number, active: boolean) => void)(parse('{"a":{"b":3},"c":{"d":2}}').root!, false, 5, false);
+  assert.equal(obj.keepFor, L);
+  assert.equal((obj.keep as unknown[]).length, 1);
+  const next = layoutGraph(buildModel(obj.root as JNode, 7.2), (obj.restoreCollapsed as (m: unknown) => Uint8Array)(buildModel(obj.root as JNode, 7.2)));
+  Object.assign(obj, { card: -1, row: -1, pending: null, q: '', camSet: true, vw: 800, vh: 600, redraw: () => {} });
+  (obj.adopt as (L: unknown) => void)(next);
+  assert.equal(obj.L, next);
+  assert.equal(obj.keepFor, null);
+  assert.deepEqual(obj.keep, []);
+  // A different document forgets the old one's collapsed cards and layout at once.
+  Object.assign(obj, { keepFor: next, keep: [['a']], mini: { release() {} } });
+  (obj.setRoot as (root: unknown, reset: boolean, nodes: number, active: boolean) => void)(parse('[1]').root!, true, 2, false);
+  assert.equal(obj.keepFor, null);
+  assert.equal(obj.L, null);
 });
 
 test('graph model and view operations stay depth-safe at 100,000 levels', () => {

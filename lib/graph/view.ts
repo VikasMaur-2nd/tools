@@ -16,7 +16,7 @@ import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, mod
 import { cardAt, layouter, type GraphLayout } from './layout';
 import { charWidth, readTheme, type GraphTheme } from './theme';
 import { MARGIN, ZOOM_MAX, bound, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
-import { grid, paint, partAt } from './render';
+import { grid, paint, partAt, releasePaint } from './render';
 import { MINI_H, MINI_W, Minimap } from './minimap';
 import type { ExportPreview, FindResult, GraphEvents, GraphExport, GraphViewApi } from './types';
 import type { ExportArea } from './export';
@@ -193,8 +193,12 @@ export class GraphView implements GraphViewApi {
     if (document.fullscreenElement === this.host) void document.exitFullscreen().catch(() => {});
     this.host.textContent = '';
     this.mini.release();
-    this.m = this.L = null;
+    releasePaint();
+    this.m = this.L = this.keepFor = null;
     this.root = null;
+    this.matches = [];
+    this.keep = [];
+    this.pending = null;
   }
 
   // ── Document and build ─────────────────────────────────────────────────
@@ -212,12 +216,16 @@ export class GraphView implements GraphViewApi {
       for (let c = 0; c < m.n; c++) {
         if (collapsed[c] && (m.parent[c] < 0 || !collapsed[m.parent[c]])) this.keep.push(pathOf(m.node[c]));
       }
-    } else if (reset) this.keep = [];
+    } else if (reset) {
+      this.keep = [];
+      this.keepFor = null;
+    }
     if (reset && this.L) {
       // A different document: don't show the old one's graph while the new one builds.
       this.m = this.L = null;
       this.card = this.row = -1;
       this.mini.release();
+      releasePaint();
       this.redraw();
     }
     this.reset = this.reset || reset;
@@ -254,6 +262,7 @@ export class GraphView implements GraphViewApi {
     this.raf = 0;
     this.anim = null;
     this.mini.release();
+    releasePaint();
     this.hideTip();
   }
 
@@ -262,7 +271,9 @@ export class GraphView implements GraphViewApi {
     const token = ++this.token;
     const root = this.root;
     if (!root) {
-      this.m = this.L = null;
+      this.m = this.L = this.keepFor = null;
+      this.keep = [];
+      releasePaint();
       this.card = this.row = -1;
       this.note.hidden = true;
       this.redraw();
@@ -328,6 +339,9 @@ export class GraphView implements GraphViewApi {
     this.reset = false;
     this.m = L.m;
     this.L = L;
+    // The collapsed cards it restored are in it now: the next edit reads them from it (and nothing keeps the old layout).
+    this.keep = [];
+    this.keepFor = null;
     this.card = this.row = -1;
     if (prevSel && !this.pending) this.pending = { n: prevSel, scroll: false, center: false };
     if (first) {
