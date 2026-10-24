@@ -7,8 +7,15 @@
  * Shown after a short hover with a mouse or pen (never for touch) and on keyboard
  * focus; hidden on leave, blur, any press, Esc, scroll and resize. Not shown when
  * the element already shows the same text (a label that fits) or inside `.tv-acts`.
+ *
+ * A tooltip can state facts about the document ("34% smaller", counts): when its
+ * element has PRIVATE_LABELS or sits inside a PRIVATE element, the shared one is
+ * PRIVATE too (session replay never reads it) for as long as it holds that text.
  */
+import { PRIVATE, PRIVATE_LABELS } from './analytics';
+
 const DELAY = 400;
+const SECRET = `.${PRIVATE}, .${PRIVATE_LABELS}`;
 const GAP = 7;
 const EDGE = 8;
 
@@ -48,6 +55,12 @@ export function startTooltips(): () => void {
   const show = (el: HTMLElement) => {
     const text = textOf(el);
     if (!text || !el.isConnected) return;
+    // Protected before the text goes in; the last private text gone before protection comes off.
+    if (el.closest(SECRET)) tip.classList.add(PRIVATE);
+    else if (tip.classList.contains(PRIVATE)) {
+      tip.textContent = '';
+      tip.classList.remove(PRIVATE);
+    }
     tip.textContent = text;
     tip.classList.remove('in');
     if (popover) {
