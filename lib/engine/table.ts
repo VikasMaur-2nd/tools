@@ -447,15 +447,17 @@ export class TableView {
     this.ev.select(c);
   }
 
-  /** Tab lands on the active cell; one scrolled out of view gives way to the first row in view. */
+  /**
+   * Tab lands on the active cell (drawn already); one scrolled out of view gives way to the first row in
+   * view. A press focuses the table too: its click places the active cell, and the rows under the pointer
+   * stay (drawn again, the click would miss them).
+   */
   private onFocus = () => {
-    if (!this.node) return;
-    if (this.ar >= 0) {
-      const top = Math.ceil(this.sc.top / TRH);
-      const rows = Math.max(1, Math.floor((this.el.clientHeight - 32) / TRH));
-      if (this.ar < top || this.ar >= top + rows) this.ar = Math.min(this.order.length - 1, top);
-    }
-    if (this.ar < 0) this.renderHead();
+    if (!this.node || this.ar < 0 || !this.el.matches(':focus-visible')) return;
+    const top = Math.ceil(this.sc.top / TRH);
+    const rows = Math.max(1, Math.floor((this.el.clientHeight - 32) / TRH));
+    if (this.ar >= top && this.ar < top + rows) return;
+    this.ar = Math.min(this.order.length - 1, top);
     this.render(true);
   };
 

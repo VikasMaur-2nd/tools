@@ -126,9 +126,12 @@ export class FakeElement extends FakeEvents {
   closest(sel: string): FakeElement | null {
     return this.matches(sel) ? this : (this.parentElement?.closest(sel) ?? null);
   }
+  /** Focused from the keyboard (`:focus-visible`), not by a press. */
+  focusVisible = true;
   matches(sel: string) {
     return sel.split(',').some((s) => {
       s = s.trim();
+      if (s === ':focus-visible') return this.focusVisible && fakeDocument.activeElement === this;
       if (s.startsWith('.')) return this.classList.contains(s.slice(1));
       if (s.startsWith('#')) return this.id === s.slice(1);
       return this.tagName === s.toUpperCase();

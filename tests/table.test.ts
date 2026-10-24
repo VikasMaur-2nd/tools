@@ -145,3 +145,24 @@ test('Enter sorts from a header cell and drills into a cell that holds an array 
   assert.equal(drilled.length, 1);
   assert.deepEqual(drilled[0].v && (drilled[0].v as JNode[]).length, 2, 'into b');
 });
+
+test('a press that focuses the table leaves the rows under the pointer alone', () => {
+  const { el, view } = table(JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ n: i }))));
+  const rows = el.querySelector('.tb-rows')!;
+  const sc = (view as unknown as { sc: { top: number } }).sc;
+  // The active cell scrolled out of view.
+  sc.top = 150 * 30;
+  view.render(false);
+  const drawn = rows.innerHTML;
+  // A press: focus without :focus-visible. The click that follows places the active cell.
+  el.focusVisible = false;
+  el.focus();
+  el.dispatchEvent({ type: 'focus', target: el } as unknown as Event);
+  assert.equal(rows.innerHTML, drawn, 'not redrawn');
+  // Tab: the active cell moves into view.
+  el.blur();
+  el.focusVisible = true;
+  el.focus();
+  el.dispatchEvent({ type: 'focus', target: el } as unknown as Event);
+  assert.match(el.getAttribute('aria-activedescendant') ?? '', /^tb-15\d-0$/);
+});
