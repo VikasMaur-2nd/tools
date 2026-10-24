@@ -2307,8 +2307,12 @@ export class Engine {
 
   private scheduleConvert(delay: number) {
     clearTimeout(this.convTimer);
+    this.convSeq++;
     this.convTimer = window.setTimeout(() => void this.runConvert(), delay);
   }
+
+  /** Bumped by each conversion asked for: one still loading its code then is dropped (the newer one shows). */
+  private convSeq = 0;
 
   private async loadConverters(): Promise<ConvertModule> {
     if (!this.conv) {
@@ -2323,6 +2327,9 @@ export class Engine {
 
   private async runConvert() {
     if (this.settings.view !== 'convert') return;
+    const seq = ++this.convSeq;
+    // (The view closed or changed meanwhile: opening it again converts what it shows then.)
+    const current = () => seq === this.convSeq && !this.dead && this.settings.view === 'convert';
     const root = this.good?.root;
     if (!root) {
       this.code.setText('', escapeHtml);
@@ -2336,11 +2343,13 @@ export class Engine {
     }
     try {
       const mod = await this.loadConverters();
+      if (!current()) return;
       const s = this.settings;
       const info = targetInfo(s.target);
       // CSV and Excel share one flattening (dotted columns) over the main array of
       // records; Excel is a binary download, so its preview is the same table.
       const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
+      if (!current()) return;
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
         : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
@@ -2348,6 +2357,7 @@ export class Engine {
       else this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
+      if (!current()) return;
       // The CSV and Excel preview isn't behind convert(), which reports deep nesting itself.
       const deep = tooDeep(e);
       if (!deep) reportError(e, 'conversion');
