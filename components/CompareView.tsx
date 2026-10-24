@@ -89,12 +89,8 @@ const mem = {
 
 const TOO_DEEP = 'Nesting is too deep to compare';
 
-/** Single-entry cache: switching Changes ⇄ Diff doesn't redo the line diff. */
-let lastModel: { l: JNode; r: JNode; k: boolean; m: TextModel | string } | null = null;
-
+/** The Diff view's model: both documents as canonical lines and their line diff. */
 function textModel(l: JNode, r: JNode, sortKeys: boolean): TextModel | string {
-  if (lastModel && lastModel.l === l && lastModel.r === r && lastModel.k === sortKeys) return lastModel.m;
-  let m: TextModel | string;
   try {
     const a = canonLines(l, sortKeys);
     const b = canonLines(r, sortKeys);
@@ -104,13 +100,11 @@ function textModel(l: JNode, r: JNode, sortKeys: boolean): TextModel | string {
       for (const s of lines) if (s.length > w) w = s.length;
       return Math.min(w, MAX_SHOW + 30);
     };
-    m = { a, b, d, ...pairLines(a.lines, b.lines, d.hunks), wa: width(a.lines), wb: width(b.lines), digits: String(Math.max(a.lines.length, b.lines.length)).length };
+    return { a, b, d, ...pairLines(a.lines, b.lines, d.hunks), wa: width(a.lines), wb: width(b.lines), digits: String(Math.max(a.lines.length, b.lines.length)).length };
   } catch (e) {
     if (!(e instanceof RangeError || tooDeep(e))) throw e;
-    m = TOO_DEEP;
+    return TOO_DEEP;
   }
-  lastModel = { l, r, k: sortKeys, m };
-  return m;
 }
 
 const valueText = (n: JNode) => (n.t >= ARR ? preview(n, 90) : primText(n, 160));
@@ -262,6 +256,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   const [selState, setSelState] = useState<{ list: Change[]; i: number }>({ list: EMPTY, i: -1 });
   const [dsel, setDSel] = useState<RowKey>(null);
   const [openState, setOpenState] = useState<{ m: TextModel | null; set: ReadonlySet<number> }>({ m: null, set: NO_OPEN });
+  const [keptFor, setKeptFor] = useState<{ l: JNode; r: JNode; k: boolean } | null>(null);
   const [scroll, setScroll] = useState(0);
   const [dscroll, setDScroll] = useState(0);
   const [viewH, setViewH] = useState(600);
@@ -340,14 +335,26 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
     return eff === 'all' ? result.changes : result.changes.filter((c) => matches(c, eff));
   }, [result, eff]);
 
+  // (a selection in an older list goes: it holds the documents it was made in)
+  if (selState.list !== EMPTY && selState.list !== shown) setSelState({ list: EMPTY, i: -1 });
   const sel = selState.list === shown && selState.i < shown.length ? selState.i : -1;
   const n = shown.length;
 
   // ── Diff view model ──
 
+  // Made when the Diff view shows and kept while its documents and key order stay, so switching
+  // Changes ⇄ Diff doesn't redo the line diff; other or emptied documents (or closing) let it go.
   const keyOrder = dOpts.keyOrder;
-  const model = useMemo(() => (view === 'diff' && lp?.root && rp?.root ? (deep ? TOO_DEEP : textModel(lp.root, rp.root, keyOrder)) : null), [view, lp, rp, deep, keyOrder]);
+  const lr = lp?.root;
+  const rr = rp?.root;
+  const kept = !!keptFor && keptFor.l === lr && keptFor.r === rr && keptFor.k === keyOrder;
+  if (view === 'diff' && lr && rr) {
+    if (!kept) setKeptFor({ l: lr, r: rr, k: keyOrder });
+  } else if (keptFor && !kept) setKeptFor(null);
+  const want = view === 'diff' || kept;
+  const model = useMemo(() => (want && lr && rr ? (deep ? TOO_DEEP : textModel(lr, rr, keyOrder)) : null), [want, lr, rr, deep, keyOrder]);
   const tm = model && typeof model !== 'string' ? model : null;
+  if (openState.m && openState.m !== tm) setOpenState({ m: null, set: NO_OPEN });
   const open = openState.m === tm ? openState.set : NO_OPEN;
   const split = layout === 'split' && wide;
   const rows = useMemo(() => (tm ? buildRows(tm.d, tm.a.lines.length, tm.b.lines.length, tm, open, split) : NO_ROWS), [tm, open, split]);
