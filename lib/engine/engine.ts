@@ -369,7 +369,14 @@ export class Engine {
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('pointerdown', this.onPress, true);
     window.removeEventListener('contextmenu', this.onContextMenu);
-    store.set({ menu: null });
+    // What this tool showed for itself closes with it (a client navigation mounts another). A notice with
+    // an action stays until dismissed: the next tool shows it (its timer, a plain one's, is cleared below).
+    const { toast, find } = store.get();
+    store.set({
+      menu: null, palette: false, shortcuts: false, graphExport: false, dragging: false,
+      find: { open: false, q: '', total: 0, index: -1, seq: find.seq + 1 },
+      ...(toast && !toast.action && { toast: null }),
+    });
     window.removeEventListener('dragenter', this.onDragEnter);
     window.removeEventListener('dragover', this.onDragOver);
     window.removeEventListener('dragleave', this.onDragLeave);

@@ -390,6 +390,24 @@ test('a save waiting for an idle moment is dropped by destroy, which saves the d
   assert.equal(s.storage.get('jf:doc'), '{"new":1}');
 });
 
+test('destroy closes what the tool showed for itself; a notice with an action stays', () => {
+  for (const action of [false, true]) {
+    const s = session();
+    closable(s.engine);
+    const toast = { id: 1, msg: 'Copied', kind: 'ok', ...(action && { action: { label: 'Reload', run() {} } }) };
+    Object.assign(s.state, { toast, find: { open: true, q: 'abc', total: 3, index: 0, seq: 4 }, dragging: true, palette: 'commands', shortcuts: true, graphExport: true });
+    s.engine.destroy();
+    assert.equal(s.state.toast, action ? toast : null);
+    assert.equal(s.state.find.open, false);
+    assert.equal(s.state.find.q, '');
+    assert.ok(s.state.find.seq > 4, 'the find bar starts over');
+    assert.equal(s.state.dragging, false);
+    assert.equal(s.state.palette, false);
+    assert.equal(s.state.shortcuts, false);
+    assert.equal(s.state.graphExport, false);
+  }
+});
+
 test('the service worker is registered once per page; its update notice goes to the tool open then', async () => {
   const s = session();
   const first = s.engine;
