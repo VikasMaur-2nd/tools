@@ -348,6 +348,8 @@ export class Engine {
     this.analysisWorker?.terminate();
     clearTimeout(this.analysisTimer);
     this.dead = true;
+    this.requests[1]?.abort();
+    this.requests[2]?.abort();
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('pointerdown', this.onPress, true);
     window.removeEventListener('contextmenu', this.onContextMenu);
@@ -1520,6 +1522,29 @@ export class Engine {
     else rest();
   }
 
+  /**
+   * The newest document asked for in each editor (1: the input, 2: Compare's) by a file, a link, a URL or
+   * the clipboard: a newer request aborts it (a download stops), so one that arrives late is dropped
+   * instead of replacing a newer one, and says nothing. destroy() aborts both.
+   */
+  private requests: Record<1 | 2, AbortController | null> = { 1: null, 2: null };
+
+  /** A new request for a document in `editors` (see requests): its signal aborts once it is superseded. */
+  private request(...editors: (1 | 2)[]): AbortSignal {
+    const c = new AbortController();
+    for (const k of editors) {
+      this.requests[k]?.abort();
+      this.requests[k] = c;
+    }
+    if (this.dead) c.abort();
+    return c.signal;
+  }
+
+  /** The request for what a link or a handoff asks for: the editors it fills. */
+  private requestFor(r: { a?: unknown; b?: unknown }) {
+    return this.request(...(r.a ? [1 as const] : []), ...(r.b ? [2 as const] : []));
+  }
+
   openFile(target: 1 | 2 = 1) {
     this.reindentWorker();
     void loadSurface();
@@ -1536,6 +1561,7 @@ export class Engine {
   };
 
   async loadFile(f: File, source: InputSource = 'file') {
+    const signal = this.request(1);
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
     this.markOutput = true;
@@ -1545,12 +1571,21 @@ export class Engine {
     }
     // A big file shows it is being opened while it is read too.
     const before = store.get().status;
-    if (f.size >= STEPS_MIN) this.startProgress();
+    let reading: Status | null = null;
+    if (f.size >= STEPS_MIN) {
+      this.startProgress();
+      reading = this.progressStatus;
+    }
+    // (Not opened: what was shown before stays, a load still running included.)
+    const unshow = () => {
+      if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
+    };
     try {
       const text = await f.text();
-      if (this.dead) return;
+      if (signal.aborted) return unshow();
       if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
         const { detectFormat, importToJson } = await import('../convert/import');
+        if (signal.aborted) return unshow();
         const fmt = detectFormat(text, f.name);
         if (fmt !== 'json' && fmt !== 'unknown') {
           const r = importToJson(text, fmt, this.indent);
@@ -1567,15 +1602,16 @@ export class Engine {
       this.load(text, f.name, true, true);
       this.toast(`Opened ${f.name}`, 'ok');
     } catch {
-      // (Not opened: what was shown before stays, a load still running included.)
-      if (this.progressShown() === 0) store.set({ status: (this.progressStatus = before) });
-      this.toast(`Couldn't read ${f.name}`, 'err');
+      unshow();
+      if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
   }
 
   async paste() {
+    const signal = this.request(1);
     try {
       const text = await navigator.clipboard.readText();
+      if (signal.aborted) return;
       if (!text) {
         this.toast('Your clipboard is empty', 'info');
         return;
@@ -1584,16 +1620,19 @@ export class Engine {
       this.load(text, null);
       if (this.settings.autoFormat) this.autoFormat();
     } catch {
+      if (signal.aborted) return;
       this.ed.focus();
       this.toast(`Press ${this.mod}V to paste`, 'info');
     }
   }
 
   async sample() {
-    const seq = this.sizeSeq;
+    const signal = this.request(1);
+    // (Typing meanwhile keeps what was typed.)
+    const ver = this.ed.version;
     try {
       const { SAMPLE } = await import('./sample');
-      if (this.dead || seq !== this.sizeSeq) return;
+      if (signal.aborted || ver !== this.ed.version) return;
       noteLoad('sample', 1, 'sample.json');
       this.load(SAMPLE, 'sample.json');
       this.toast('Loaded a sample. Try the tree, table and search.', 'info');
@@ -1604,6 +1643,8 @@ export class Engine {
 
   clear() {
     track('feature_used', { feature: 'clear' });
+    // (A document still on its way isn't wanted any more.)
+    this.request(1);
     this.resetNext = true;
     store.set({ fileName: null });
     write(KEYS.file, null);
@@ -1695,25 +1736,29 @@ export class Engine {
   }
 
   async loadCompareFile(f: File, source: InputSource = 'file') {
+    const signal = this.request(2);
     try {
       const text = await f.text();
-      if (this.dead) return;
+      if (signal.aborted) return;
       this.loadCompare(text, f.name);
       noteLoad(source, 2, f.name);
       if (this.settings.view !== 'compare') this.setView('compare');
       this.toast(`Comparing with ${f.name}`, 'ok');
     } catch {
-      this.toast(`Couldn't read ${f.name}`, 'err');
+      if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
   }
 
   async pasteCompare() {
+    const signal = this.request(2);
     try {
       const text = await navigator.clipboard.readText();
+      if (signal.aborted) return;
       if (!text) return this.toast('Your clipboard is empty', 'info');
       this.loadCompare(text, null);
       noteLoad('paste_button', 2);
     } catch {
+      if (signal.aborted) return;
       this.ed2.focus();
       this.toast(`Press ${this.mod}V to paste`, 'info');
     }
@@ -1731,6 +1776,7 @@ export class Engine {
   }
 
   clearCompare() {
+    this.request(2);
     store.set({ cmpFile: null });
     this.ed2.setValue('');
     this.analyzeCompare();
@@ -1863,13 +1909,15 @@ export class Engine {
         ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
         : this.toast('That share link is broken or incomplete', 'err');
     if (link === 'broken') return broken();
+    const signal = this.requestFor(link);
     const docs: (LinkDoc | undefined)[] = [];
     try {
       for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data) } : d);
     } catch (e) {
+      if (signal.aborted) return;
       return e instanceof LinkTooLarge ? this.toast('That share link is too large to open', 'err') : broken();
     }
-    if (!this.dead) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to });
+    if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
   };
 
   /** Ends the wait for a handoff (see awaitHandoff). */
@@ -1899,7 +1947,7 @@ export class Engine {
       }
       end();
       reply({ toolkumar: 'opened' }, e.origin);
-      void this.openRequest(r, /^https?:\/\//.test(e.origin) ? new URL(e.origin).host : '');
+      void this.openRequest(r, this.requestFor(r), /^https?:\/\//.test(e.origin) ? new URL(e.origin).host : '');
     };
     const end = () => {
       removeEventListener('message', onMessage);
@@ -1916,10 +1964,11 @@ export class Engine {
   /**
    * Loads what a link or a handoff (`from`: the sending site's host, '' if it has none) asks for:
    * the original, Compare's document, the view. The previous documents stay one undo away.
+   * `signal`: its request (see requests).
    */
-  private async openRequest(r: LinkRequest, from?: string) {
-    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url) : { text: d.text, name: null, host: '' })));
-    if (this.dead || got.includes(null)) return; // (fetchText said why)
+  private async openRequest(r: LinkRequest, signal: AbortSignal, from?: string) {
+    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '' })));
+    if (signal.aborted || this.dead || got.includes(null)) return; // (fetchText said why)
     const [a, b] = got;
     const source = (d: LinkDoc): InputSource => (from !== undefined ? 'handoff' : 'url' in d ? 'link_url' : 'link');
     // Small valid JSON opens formatted; a big document opens like a file, output first.
@@ -1948,8 +1997,8 @@ export class Engine {
     this.toast(a && had ? `${msg} · ${this.mod}Z restores your previous document` : msg, 'ok');
   }
 
-  /** Fetches a document from a URL; null, after saying why, when that fails. */
-  private async fetchText(raw: string): Promise<{ text: string; name: string; host: string } | null> {
+  /** Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). */
+  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string } | null> {
     let url: URL;
     try {
       url = new URL(raw.trim());
@@ -1960,7 +2009,8 @@ export class Engine {
     }
     this.toast('Fetching…', 'info');
     try {
-      const res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' } });
+      const res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, signal });
+      if (signal.aborted) return null;
       if (!res.ok) {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
         return null;
@@ -1969,14 +2019,15 @@ export class Engine {
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
-      this.toast("Couldn't fetch. The server must allow cross-origin requests (CORS).", 'err');
+      if (!signal.aborted) this.toast("Couldn't fetch. The server must allow cross-origin requests (CORS).", 'err');
       return null;
     }
   }
 
   async fetchUrl(raw: string) {
-    const got = await this.fetchText(raw);
-    if (!got || this.dead) return;
+    const signal = this.request(1);
+    const got = await this.fetchText(raw, signal);
+    if (!got || signal.aborted) return;
     // Auto-format reads the editor right after: only then is the load done in place.
     noteLoad('url');
     this.load(got.text, got.name, true, !this.settings.autoFormat);

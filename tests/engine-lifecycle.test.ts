@@ -199,3 +199,117 @@ test('a conversion finishing after the view changed or the tool closed draws not
     assert.equal(state.convert.lines, 0, leave);
   }
 });
+
+// ── Documents asked for: files, links, URLs ──
+
+const file = (name: string, text: Promise<string>, size = 10) => ({ name, size, text: () => text });
+
+/** A session whose loads are recorded instead of shown. */
+function loading() {
+  const s = session();
+  const loads: string[] = [];
+  s.engine.load = (_text: string, name: string | null) => loads.push(`1:${name}`);
+  s.engine.loadCompare = (_text: string, name: string | null) => loads.push(`2:${name}`);
+  s.engine.setView = (view: string) => { s.engine.settings.view = view; };
+  s.engine.ed = { text: '', version: Doc.of(''), setValue() {}, focus() {} };
+  s.engine.ed2 = { text: '', setValue() {}, focus() {} };
+  s.engine.analyze = () => {};
+  return { ...s, loads };
+}
+
+test('files open in the order they were asked for, whichever is read first', async () => {
+  for (const target of [1, 2]) {
+    const { engine, loads, toasts } = loading();
+    const open = (f: ReturnType<typeof file>) => (target === 1 ? engine.loadFile(f) : engine.loadCompareFile(f));
+    const a = later<string>();
+    const b = later<string>();
+    const first = open(file('a.json', a.promise));
+    const second = open(file('b.json', b.promise));
+    b.settle('{"b":1}');
+    await second;
+    a.settle('{"a":1}');
+    await first;
+    assert.deepEqual(loads, [`${target}:b.json`]);
+    assert.deepEqual(toasts, [target === 1 ? 'Opened b.json' : 'Comparing with b.json']);
+  }
+});
+
+test('a file that fails to read after a newer one was asked for says nothing', async () => {
+  for (const target of [1, 2]) {
+    const { engine, toasts } = loading();
+    const open = (f: ReturnType<typeof file>) => (target === 1 ? engine.loadFile(f) : engine.loadCompareFile(f));
+    const a = later<string>();
+    const first = open(file('a.json', a.promise));
+    void open(file('b.json', new Promise(() => {})));
+    a.fail(new Error('gone'));
+    await first;
+    assert.deepEqual(toasts, []);
+  }
+});
+
+test('a file asked for in one editor leaves a file on its way to the other one', async () => {
+  const { engine, loads } = loading();
+  const a = later<string>();
+  const first = engine.loadFile(file('a.json', a.promise));
+  await engine.loadCompareFile(file('b.json', Promise.resolve('{}')));
+  a.settle('{}');
+  await first;
+  assert.deepEqual(loads, ['2:b.json', '1:a.json']);
+});
+
+test('a URL asked for stops the download of the one before, which says nothing', async () => {
+  const { engine, loads, toasts, fetches } = loading();
+  const first = engine.fetchUrl('https://a.example/a.json');
+  const second = engine.fetchUrl('https://b.example/b.json');
+  assert.equal(fetches[0].signal?.aborted, true);
+  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"b":1}') });
+  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}') });
+  await Promise.all([first, second]);
+  assert.deepEqual(loads, ['1:b.json']);
+  assert.deepEqual(toasts, ['Fetching…', 'Fetching…', 'Loaded b.example']);
+});
+
+test("a file opened while a link's document downloads wins, and the link stays quiet", async () => {
+  const { engine, loads, toasts, fetches, location } = loading();
+  location.hash = '#a=' + encodeURIComponent('https://a.example/data.json');
+  location.href = 'https://tools.example/' + location.hash;
+  const opening = engine.openLink();
+  await settled();
+  await engine.loadFile(file('b.json', Promise.resolve('{"b":1}')));
+  assert.equal(fetches[0].signal?.aborted, true);
+  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}') });
+  await opening;
+  await settled();
+  assert.deepEqual(loads, ['1:b.json']);
+  assert.deepEqual(toasts, ['Fetching…', 'Opened b.json']);
+});
+
+test('a big file still being read gives back the status it showed when a URL is asked for instead', async () => {
+  const { engine, state } = loading();
+  const before = (state.status = { kind: 'valid', warnings: 0 });
+  const a = later<string>();
+  const first = engine.loadFile(file('a.json', a.promise, 5_000_000));
+  assert.equal(state.status.kind, 'parsing');
+  void engine.fetchUrl('https://b.example/b.json');
+  a.settle('{}');
+  await first;
+  assert.equal(state.status, before);
+  // Another big file's percent is left alone.
+  const c = later<string>();
+  const third = engine.loadFile(file('c.json', c.promise, 5_000_000));
+  void engine.loadFile(file('d.json', new Promise(() => {}), 5_000_000));
+  const shown = state.status;
+  c.settle('{}');
+  await third;
+  assert.equal(state.status, shown);
+});
+
+test('Clear drops a file still being read', async () => {
+  const { engine, loads } = loading();
+  const a = later<string>();
+  const first = engine.loadFile(file('a.json', a.promise));
+  engine.clear();
+  a.settle('{}');
+  await first;
+  assert.deepEqual(loads, []);
+});
