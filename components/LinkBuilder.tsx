@@ -415,10 +415,11 @@ export default function LinkBuilder() {
   const fresh = current(made?.inputs);
   // The link for what the boxes hold now: only it can be copied or opened.
   const href = fresh ? made!.href : '';
-  const error = fresh ? made!.error : '';
-  // While the next one is made, the last link stays in view (typing doesn't flash it away), until that takes a while.
+  // While the next one is made, the last link (or why there was none) stays in view, so typing doesn't flash
+  // it away, until that takes a while.
   const making = !fresh && current(slow);
   const shown = fresh ? href : making ? '' : (made?.href ?? '');
+  const error = making ? '' : (made?.error ?? '');
 
   useEffect(() => {
     if (!copied) return;
