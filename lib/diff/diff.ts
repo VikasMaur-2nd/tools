@@ -115,26 +115,46 @@ export function canonNum(raw: string): string {
     neg = s[0] === '-';
     s = s.slice(1);
   }
-  let exp = 0;
   const ei = s.search(/[eE]/);
-  if (ei >= 0) {
-    exp = parseInt(s.slice(ei + 1), 10) || 0;
-    s = s.slice(0, ei);
-  }
-  const dot = s.indexOf('.');
+  let m = ei < 0 ? s : s.slice(0, ei);
+  let off = 0;
+  const dot = m.indexOf('.');
   if (dot >= 0) {
-    exp -= s.length - dot - 1;
-    s = s.slice(0, dot) + s.slice(dot + 1);
+    off -= m.length - dot - 1;
+    m = m.slice(0, dot) + m.slice(dot + 1);
   }
   let a = 0;
-  let b = s.length;
-  while (a < b && s.charCodeAt(a) === 48) a++;
-  while (b > a && s.charCodeAt(b - 1) === 48) {
+  let b = m.length;
+  while (a < b && m.charCodeAt(a) === 48) a++;
+  while (b > a && m.charCodeAt(b - 1) === 48) {
     b--;
-    exp++;
+    off++;
   }
   if (a === b) return '0';
-  return (neg ? '-' : '') + s.slice(a, b) + (exp ? 'e' + exp : '');
+  const exp = ei < 0 ? off : expPlus(s, ei + 1, off);
+  return (neg ? '-' : '') + m.slice(a, b) + (exp ? 'e' + exp : '');
+}
+
+const MAX_EXP = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * The exponent written at `raw[p…]` (optional sign, digits) plus `off`,
+ * exactly: a number within ±(2^53 − 1), else its decimal text. Exponents of
+ * up to 15 digits are read without allocating.
+ */
+function expPlus(raw: string, p: number, off: number): number | string {
+  const n = raw.length;
+  const c = raw.charCodeAt(p);
+  const neg = c === 45;
+  if (neg || c === 43) p++;
+  while (p < n - 1 && raw.charCodeAt(p) === 48) p++;
+  if (n - p <= 15) {
+    let x = 0;
+    for (; p < n; p++) x = x * 10 + raw.charCodeAt(p) - 48;
+    return (neg ? -x : x) + off;
+  }
+  const t = BigInt((neg ? '-' : '') + raw.slice(p)) + BigInt(off);
+  return t >= -MAX_EXP && t <= MAX_EXP ? Number(t) : t.toString();
 }
 
 // ── Hashing ──────────────────────────────────────────────────────────────
@@ -168,7 +188,7 @@ const strHash = (s: string, seed: number) => {
   return pack(fmix(a ^ s.length), fmix(b + s.length));
 };
 
-/** Hash of a number's exact value (equal for `1.0`, `1`, `1e0`) without allocating. */
+/** Hash of a number's exact value (equal for `1.0`, `1`, `1e0`), without allocating unless its exponent has 16+ digits. */
 export const numHash = (raw: string, seed: number) => {
   const n = raw.length;
   let i = 0;
@@ -200,8 +220,23 @@ export const numHash = (raw: string, seed: number) => {
     b = Math.imul(b + c, 0x5bd1e995) ^ (b >>> 15);
   }
   // decimal exponent of the last significant digit
-  const exp = (last < dot ? dot - last - 1 : dot - last) + (e < n ? parseInt(raw.slice(e + 1), 10) || 0 : 0);
-  return pack(fmix(a ^ Math.imul(exp, 0x27d4eb2f)), fmix(b + exp));
+  const off = last < dot ? dot - last - 1 : dot - last;
+  const exp = e < n ? expPlus(raw, e + 1, off) : off;
+  if (typeof exp === 'string') {
+    // beyond ±2^53: its digits
+    for (let p = -1; p < exp.length; p++) {
+      const c = p < 0 ? 101 : exp.charCodeAt(p);
+      a = Math.imul(a ^ c, 0x01000193);
+      b = Math.imul(b + c, 0x5bd1e995) ^ (b >>> 15);
+    }
+    return pack(fmix(a), fmix(b));
+  }
+  // both 32-bit halves of the exponent count (exponents equal mod 2^32 must not collide)
+  const lo = exp | 0;
+  const hi = (exp - lo) / TWO32;
+  a = Math.imul(a ^ hi, 0x01000193);
+  b = Math.imul(b + hi, 0x5bd1e995) ^ (b >>> 15);
+  return pack(fmix(a ^ Math.imul(lo, 0x27d4eb2f)), fmix(b + lo));
 };
 
 const H_NUL = pack(0x2f0b3c1d, 0x6c62272e);

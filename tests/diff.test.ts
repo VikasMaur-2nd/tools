@@ -292,6 +292,86 @@ describe('diff: numbers and strings', () => {
     assert.equal(numHash('0', 1), numHash('-0.000e5', 1));
   });
 
+  test('exponents beyond 32 and 53 bits are compared exactly', () => {
+    const differ = [
+      ['1', '1e4294967296'],
+      ['1', '1e-4294967296'],
+      ['25', '2.5e4294967297'],
+      ['1e9007199254740992', '1e9007199254740993'],
+      ['1e-9007199254740992', '1e-9007199254740993'],
+      ['1e18446744073709551616', '1e0'],
+      ['1e123456789012345678901234567890', '1e123456789012345678901234567891'],
+      ['1e4294967296', '1e8589934592'],
+    ];
+    for (const [a, b] of differ) {
+      assert.notEqual(canonNum(a), canonNum(b), `${a} vs ${b}`);
+      assert.notEqual(numHash(a, 7), numHash(b, 7), `${a} vs ${b}`);
+      assert.deepEqual(lines(run(`[${a}]`, `[${b}]`)), ['changed $[0]'], `${a} vs ${b}`);
+      assert.deepEqual(lines(run(`{"x":[${a},true,{"v":${a}}]}`, `{"x":[${b},true,{"v":${b}}]}`, { ignoreArrayOrder: true })), ['changed $.x[0]', 'changed $.x[2].v']);
+    }
+    const same = [
+      ['1e9007199254740993', '10e9007199254740992'],
+      ['1e9007199254740993', '0.01e9007199254740995'],
+      ['1e4294967296', '0.1e4294967297'],
+      ['1e5', '1e00000000000000000000000005'],
+      ['-2.5e-18446744073709551617', '-25e-18446744073709551618'],
+      ['1e123456789012345678901234567890', '1000e123456789012345678901234567887'],
+    ];
+    for (const [a, b] of same) {
+      assert.equal(canonNum(a), canonNum(b), `${a} vs ${b}`);
+      assert.equal(numHash(a, 7), numHash(b, 7), `${a} vs ${b}`);
+      assert.deepEqual(lines(run(`[${a}]`, `[${b}]`)), [], `${a} vs ${b}`);
+    }
+    assert.equal(canonNum('1e9007199254740993'), '1e9007199254740993');
+    assert.equal(canonNum('-12.5e-123456789012345678901234567890'), '-125e-123456789012345678901234567891');
+  });
+
+  test('numHash is equal exactly when canonNum is (any exponent size)', () => {
+    const rng = prng(23);
+    // exponents near the 32- and 53-bit wrap points, and far beyond
+    const bases = [0n, 1n << 31n, 1n << 32n, 1n << 52n, 1n << 53n, 1n << 64n, 10n ** 20n];
+    const pick = () => {
+      const b = bases[rng.int(bases.length)];
+      const e = b + BigInt(rng.int(7) - 3);
+      return rng.chance(0.5) ? e : -e;
+    };
+    /** D × 10^E in a random JSON spelling (mantissa shifted, padded with zeros, exponent zero-padded). */
+    const render = (neg: boolean, d: string, e: bigint): string => {
+      const z = rng.int(3);
+      let m = d + '0'.repeat(z);
+      let x = e - BigInt(z);
+      const shift = rng.int(m.length + 2);
+      if (shift && shift <= m.length) {
+        m = m.slice(0, m.length - shift) + '.' + m.slice(m.length - shift);
+        if (m[0] === '.') m = '0' + m;
+        x += BigInt(shift);
+      }
+      let es = (x < 0n ? -x : x).toString();
+      if (rng.chance(0.2)) es = '00' + es;
+      const sign = x < 0n ? '-' : rng.chance(0.3) ? '+' : '';
+      return (neg ? '-' : '') + m + (rng.chance(0.5) ? 'e' : 'E') + sign + es;
+    };
+    const pool: string[] = [];
+    for (let k = 0; k < 400; k++) {
+      const d = String(1 + rng.int(9)) + (rng.chance(0.5) ? String(rng.int(1000)).padStart(3, '0').replace(/0+$/, '') : '');
+      const e = pick();
+      const neg = rng.chance(0.3);
+      for (const x of [e, e, e + 1n, e + (1n << 32n), e - (1n << 32n)]) {
+        const s = render(neg, d, x);
+        // the exact canonical form, worked out with big integers
+        assert.equal(canonNum(s), (neg ? '-' : '') + d + (x ? 'e' + x : ''), s);
+        pool.push(s);
+      }
+    }
+    for (let i = 0; i < pool.length; i++) {
+      const ci = canonNum(pool[i]);
+      const hi = numHash(pool[i], 5);
+      for (let j = i + 1; j < pool.length; j++) {
+        assert.equal(ci === canonNum(pool[j]), hi === numHash(pool[j], 5), `${pool[i]} vs ${pool[j]}`);
+      }
+    }
+  });
+
   test('numeric tolerance and case-insensitive strings', () => {
     assert.deepEqual(lines(run('[1.0001, 5]', '[1, 5.0004]', { numericTolerance: 0.001 })), []);
     assert.deepEqual(lines(run('[1.1]', '[1]', { numericTolerance: 0.001 })), ['changed $[0]']);
