@@ -137,7 +137,7 @@ function converting(engine: Dynamic, json = '{"a":1}') {
   return code;
 }
 
-const converters = { convert: (root: JNode) => `OUTPUT ${(root.v as JNode[]).map((n) => n.key).join()}`, highlightCode: () => '' };
+const converters = { convert: (root: JNode) => `OUTPUT ${(root.v as JNode[]).map((n) => n.key).join()}`, highlightCode: () => '', codeRows: () => ({ hl: () => '', scanner: null }) };
 
 test('a conversion still loading its code is dropped when the document is cleared meanwhile', async () => {
   const { engine, state } = session();

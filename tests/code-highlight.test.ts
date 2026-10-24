@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { codeRows, highlightCode } from '../lib/convert/highlight';
 import { highlightCode as frozen } from './oracle/highlight';
-import { convert, TARGETS } from '../lib/convert';
+import { convert } from '../lib/convert';
+import { TARGETS } from '../lib/engine/targets';
 import { parse } from '../lib/json/parser';
 
 // The output views colour converted code a row at a time (wrapped rows, the rows on screen), carrying the
