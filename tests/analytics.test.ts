@@ -7,6 +7,9 @@ import type { Feature, ViewId } from '../lib/analytics/events';
 import { beforeSend, cleanUrl, maskAttribute } from '../lib/analytics/redact';
 import { ERROR_MESSAGE, exceptionProps } from '../lib/analytics/exceptions';
 import { parse } from '../lib/json/parser';
+import { TARGETS } from '../lib/engine/targets';
+import type { IndentId, MenuArea, Theme, View } from '../lib/engine/store';
+import type { SnippetFormat } from '../lib/badge';
 
 /*
  * Analytics must never carry document content: these pin the allow-lists, the
@@ -30,6 +33,60 @@ test('clean keeps listed tokens, numbers and booleans, nothing else', () => {
   assert.deepEqual(clean('format_option_changed', { option: 'style', value: '/home/me/secret.json' }), { option: 'style' });
   assert.deepEqual(clean('format_option_changed', { option: 'style', value: 'x'.repeat(41) }), { option: 'style' });
   assert.deepEqual(clean('json_loaded', { source: 'file', size_kb: NaN, depth: Infinity }), { source: 'file' });
+});
+
+test('clean lets through only values from each property\'s fixed list, and rounds every number', () => {
+  // Plain tokens that aren't on the property's list never pass: an ID, a key or a word from the document.
+  assert.deepEqual(clean('command_run', { command: 'customer-4521' }), {});
+  assert.deepEqual(clean('command_run', { command: 'to-typescript' }), { command: 'to-typescript' });
+  assert.deepEqual(clean('feature_used', { feature: 'password', via: 'mouse', view: 'secret', value: 'acme', on: 'true', jsonpath: 1 }), {});
+  assert.deepEqual(clean('feature_used', { feature: 'theme', value: 'dark' }), { feature: 'theme', value: 'dark' });
+  assert.deepEqual(clean('view_opened', { view: 'convert', via: 'pointer', target: 'acme_corp' }), { view: 'convert', via: 'pointer' });
+  assert.deepEqual(clean('convert_option_changed', { option: 'root_name', value: 'Customer' }), {});
+  assert.deepEqual(
+    clean('json_loaded', { source: 'clipboard', editor: 3, file_kind: 'secret', size: '12345', validity: 'ok', error_kind: 'password', issues: '17', nodes: 'abc', jsonl: 'yes' }),
+    {},
+  );
+  // Numbers keep two significant digits whatever the call site sends; a list of numbers takes only those.
+  assert.deepEqual(clean('json_loaded', { editor: 2, size_kb: 123_456, depth: 7.4, parse_ms: 12.345 }), { editor: 2, size_kb: 120_000, depth: 7, parse_ms: 12 });
+  assert.deepEqual(clean('feature_used', { feature: 'expand_level', level: 1234 }), { feature: 'expand_level', level: 1200 });
+  assert.deepEqual(clean('feature_used', { feature: 'expand_level', level: -3 }), { feature: 'expand_level', level: 0 });
+  // Booleans only where a property is a yes or no.
+  assert.deepEqual(clean('feature_used', { feature: 'wrap', on: true, level: true, value: false }), { feature: 'wrap', on: true });
+});
+
+test('every value the site sends is on its property\'s list', () => {
+  // (lib/engine/commands.ts imports the engine's types: read its IDs from the source.)
+  const commands = [...readFileSync(join(process.cwd(), 'lib/engine/commands.ts'), 'utf8').matchAll(/\bid: '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(commands.length > 50, `${commands.length} commands`);
+  for (const id of [...commands, ...TARGETS.map((t) => `to-${t.id}`)]) assert.deepEqual(clean('command_run', { command: id }), { command: id }, id);
+  for (const t of TARGETS) {
+    const group = t.group === 'Types' ? 'types' : 'data';
+    assert.deepEqual(clean('convert_target_selected', { target: t.id, group, via: 'palette' }), { target: t.id, group, via: 'palette' });
+    assert.deepEqual(clean('view_opened', { view: 'convert', via: 'keyboard', target: t.id }), { view: 'convert', via: 'keyboard', target: t.id });
+  }
+  const values: [string, Record<string, unknown>][] = [
+    ...(['interface', 'type'] as const).map((value): [string, Record<string, unknown>] => ['convert_option_changed', { option: 'ts_style', value }]),
+    ...(['stj', 'newtonsoft'] as const).map((value): [string, Record<string, unknown>] => ['convert_option_changed', { option: 'csharp_lib', value }]),
+    ...['pretty', 'minify', 'string'].map((value): [string, Record<string, unknown>] => ['format_option_changed', { option: 'style', value }]),
+    ...[true, false].map((on): [string, Record<string, unknown>] => ['format_option_changed', { option: 'sort_keys', value: String(on) }]),
+    ...(['2', '4', 'tab'] satisfies IndentId[]).map((value): [string, Record<string, unknown>] => ['format_option_changed', { option: 'indent', value }]),
+    ...(['link', 'markdown', 'html'] satisfies SnippetFormat[]).map((value): [string, Record<string, unknown>] => ['feature_used', { feature: 'share_link', value }]),
+    ...(['system', 'light', 'dark'] satisfies Theme[]).map((value): [string, Record<string, unknown>] => ['feature_used', { feature: 'theme', value }]),
+    ...(['input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff'] satisfies MenuArea[]).map((value): [string, Record<string, unknown>] => ['feature_used', { feature: 'context_menu', value }]),
+    ...(['format', 'tree', 'table', 'graph', 'convert', 'compare'] satisfies View[]).map((view): [string, Record<string, unknown>] => ['view_opened', { view, via: 'other' }]),
+  ];
+  for (const [event, props] of values) assert.deepEqual(clean(event, props), props, JSON.stringify(props));
+  // Whatever a document is like, its json_loaded event passes whole.
+  for (const status of ['valid', 'fixable', 'error', 'parsing']) {
+    for (const bytes of [0, 5000, 3e6, 2e9]) {
+      for (const msg of ['Unexpected end of input', 'Duplicate key "a"', 'something else', undefined]) {
+        const p = loadedProps({ source: 'drop', editor: 1, file: 'x.yml', bytes, status, msg, count: bytes, warnings: 1, stats: { nodes: bytes, depth: 80, ms: bytes / 7 }, jsonl: true, jwt: false });
+        const sent = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
+        assert.deepEqual(clean('json_loaded', p), sent, JSON.stringify(p));
+      }
+    }
+  }
 });
 
 test('every event lists its properties', () => {

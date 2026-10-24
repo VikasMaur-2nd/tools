@@ -12,24 +12,31 @@
  */
 
 /** `link`: a link carrying the document; `link_url`: a link naming a URL to fetch it from; `handoff`: sent by the page that opened the tab (lib/link.ts). */
-export type InputSource = 'paste' | 'paste_button' | 'file' | 'drop' | 'launch' | 'url' | 'link' | 'link_url' | 'handoff' | 'sample';
-export type FileKind = 'json' | 'jsonl' | 'geojson' | 'har' | 'map' | 'txt' | 'log' | 'csv' | 'tsv' | 'yaml' | 'xml' | 'toml' | 'other' | 'none';
-export type Validity = 'valid' | 'fixable' | 'invalid' | 'unknown';
-export type ViewId = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
+const INPUT_SOURCES = ['paste', 'paste_button', 'file', 'drop', 'launch', 'url', 'link', 'link_url', 'handoff', 'sample'] as const;
+export type InputSource = (typeof INPUT_SOURCES)[number];
+const FILE_KIND_LIST = ['json', 'jsonl', 'geojson', 'har', 'map', 'txt', 'log', 'csv', 'tsv', 'yaml', 'xml', 'toml', 'other', 'none'] as const;
+export type FileKind = (typeof FILE_KIND_LIST)[number];
+const VALIDITIES = ['valid', 'fixable', 'invalid', 'unknown'] as const;
+export type Validity = (typeof VALIDITIES)[number];
+const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare'] as const;
+export type ViewId = (typeof VIEW_IDS)[number];
 /** `context_menu`: an item of the right-click menu (components/ContextMenu.tsx). */
-export type Via = 'pointer' | 'keyboard' | 'palette' | 'context_menu' | 'other';
+const VIAS = ['pointer', 'keyboard', 'palette', 'context_menu', 'other'] as const;
+export type Via = (typeof VIAS)[number];
 
 /** Discrete actions, reported as `feature_used { feature }`. */
-export type Feature =
-  | 'copy_input' | 'copy_output' | 'copy_convert' | 'copy_value' | 'copy_path' | 'copy_csv'
-  | 'download_input' | 'download_output' | 'download_convert' | 'download_csv' | 'export_xlsx'
-  | 'graph_fit' | 'graph_zoom_in' | 'graph_zoom_out' | 'graph_export_png' | 'graph_export_jpeg' | 'graph_export_svg' | 'graph_copy_image' | 'graph_jump'
-  | 'share_link' | 'share_compare' | 'repair' | 'unescape' | 'escape' | 'decode_jwt' | 'expand_nested' | 'use_output'
-  | 'format_input' | 'minify_input' | 'sort_input' | 'clear'
-  | 'import_yaml' | 'import_xml' | 'import_csv' | 'import_toml'
-  | 'find' | 'expand_all' | 'collapse_all' | 'expand_level' | 'fold_input'
-  | 'compare_swap' | 'compare_format' | 'compare_close'
-  | 'wrap' | 'auto_format' | 'theme' | 'shortcuts' | 'palette' | 'load_url_dialog' | 'context_menu';
+const FEATURES = [
+  'copy_input', 'copy_output', 'copy_convert', 'copy_value', 'copy_path', 'copy_csv',
+  'download_input', 'download_output', 'download_convert', 'download_csv', 'export_xlsx',
+  'graph_fit', 'graph_zoom_in', 'graph_zoom_out', 'graph_export_png', 'graph_export_jpeg', 'graph_export_svg', 'graph_copy_image', 'graph_jump',
+  'share_link', 'share_compare', 'repair', 'unescape', 'escape', 'decode_jwt', 'expand_nested', 'use_output',
+  'format_input', 'minify_input', 'sort_input', 'clear',
+  'import_yaml', 'import_xml', 'import_csv', 'import_toml',
+  'find', 'expand_all', 'collapse_all', 'expand_level', 'fold_input',
+  'compare_swap', 'compare_format', 'compare_close',
+  'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
+] as const;
+export type Feature = (typeof FEATURES)[number];
 
 /** Event name → its properties. Optional properties may be left out. */
 export interface Events {
@@ -60,37 +67,6 @@ export interface Events {
 }
 
 export type EventName = keyof Events;
-
-/** Allowed properties per event, checked at runtime too (see `clean`). */
-export const EVENT_PROPS: { [K in EventName]: readonly (keyof Events[K])[] } = {
-  json_loaded: ['source', 'editor', 'file_kind', 'size', 'size_kb', 'validity', 'error_kind', 'issues', 'nodes', 'depth', 'parse_ms', 'jsonl', 'jwt'],
-  view_opened: ['view', 'via', 'target'],
-  convert_target_selected: ['target', 'group', 'via'],
-  convert_option_changed: ['option', 'value'],
-  format_option_changed: ['option', 'value'],
-  feature_used: ['feature', 'via', 'view', 'level', 'on', 'value', 'jsonpath'],
-  command_run: ['command'],
-};
-
-/** A token from a fixed list: short, no spaces, nothing that could be a sentence or a path. */
-const TOKEN = /^[a-z0-9][a-z0-9_.+#-]{0,39}$/i;
-
-/**
- * Drops any property that isn't on the event's list or isn't a plain token,
- * finite number or boolean. Returns null for an unknown event.
- */
-export function clean(event: string, props: Record<string, unknown>): Record<string, string | number | boolean> | null {
-  const allowed = (EVENT_PROPS as Record<string, readonly string[]>)[event];
-  if (!allowed) return null;
-  const out: Record<string, string | number | boolean> = {};
-  for (const k of allowed) {
-    const v = props[k];
-    if (typeof v === 'boolean') out[k] = v;
-    else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
-    else if (typeof v === 'string' && TOKEN.test(v)) out[k] = v;
-  }
-  return out;
-}
 
 // ── Rounding: shapes and sizes, never exact values ───────────────────────────
 
@@ -181,6 +157,68 @@ export function errorKind(msg: string | undefined): string | undefined {
   if (!msg) return undefined;
   for (const [re, kind] of ERROR_KINDS) if (re.test(msg)) return kind;
   return 'other';
+}
+
+// ── What each property may hold ──────────────────────────────────────────────
+
+/** Convert targets (lib/engine/targets.ts) and the palette's commands (lib/engine/commands.ts): tests/analytics.test.ts checks every one passes. */
+const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'];
+const COMMAND_IDS = [
+  'undo', 'redo', 'use-output', 'format', 'minify', 'sort', 'out-pretty', 'out-minify', 'out-string', 'out-sort', 'copy-output', 'download-output',
+  'repair', 'escape', 'unescape', 'error', 'jwt', 'from-yaml', 'from-xml', 'from-csv', 'from-toml', 'copy', 'download', 'open', 'paste', 'url',
+  'share', 'share-markdown', 'share-html', 'sample', 'clear', 'format-view', 'tree', 'table', 'graph', 'graph-fit', 'graph-start', 'graph-end',
+  'graph-export', 'graph-copy', 'graph-png', 'graph-svg', 'convert', 'compare', 'excel', 'copy-convert', 'download-convert', 'search', 'expand',
+  'collapse', 'level1', 'level2', 'level3', 'fold-input', 'unfold-input', 'close-compare', 'focus-tree', 'focus-editor', 'nested', 'copy-value',
+  'copy-path', 'csv', 'csv-download', 'indent-2', 'indent-4', 'indent-tab', 'theme-system', 'theme-light', 'theme-dark', 'autoformat', 'wrap',
+  'privacy-mode', 'integrate', 'handoff', 'shortcuts', ...TARGET_IDS.map((t) => `to-${t}`),
+];
+const SIZES = [...SIZE_EDGES.map(([, label]) => label), '100MB+'];
+const ERROR_KIND_LIST = [...ERROR_KINDS.map(([, kind]) => kind), 'other'];
+const COUNTS = ['0', '1-9', '10-99', '100-999', '1k-9.9k', '10k-99k', '100k-999k', '1M+'];
+
+/** What a property may hold: a value from a fixed list, a boolean ('flag'), or a number (sent rounded to two significant digits). */
+type Rule = readonly (string | number)[] | 'flag' | 'number';
+
+/** Every event's properties and what each may hold, enforced at runtime by `clean`. */
+const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } = {
+  json_loaded: {
+    source: INPUT_SOURCES, editor: [1, 2], file_kind: FILE_KIND_LIST, size: SIZES, size_kb: 'number', validity: VALIDITIES, error_kind: ERROR_KIND_LIST,
+    issues: COUNTS, nodes: COUNTS, depth: 'number', parse_ms: 'number', jsonl: 'flag', jwt: 'flag',
+  },
+  view_opened: { view: VIEW_IDS, via: VIAS, target: TARGET_IDS },
+  convert_target_selected: { target: TARGET_IDS, group: ['types', 'data'], via: VIAS },
+  convert_option_changed: { option: ['ts_style', 'csharp_lib'], value: ['interface', 'type', 'stj', 'newtonsoft'] },
+  format_option_changed: { option: ['style', 'sort_keys', 'indent'], value: ['pretty', 'minify', 'string', 'true', 'false', '2', '4', 'tab'] },
+  feature_used: {
+    feature: FEATURES, via: VIAS, view: VIEW_IDS, level: 'number', on: 'flag', jsonpath: 'flag',
+    // Share formats, themes, and the right-click menu's areas.
+    value: ['link', 'markdown', 'html', 'system', 'light', 'dark', 'input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff'],
+  },
+  command_run: { command: COMMAND_IDS },
+};
+
+/** Allowed properties per event (see `clean`). */
+export const EVENT_PROPS = Object.fromEntries(Object.entries(RULES).map(([e, r]) => [e, Object.keys(r)])) as unknown as { [K in EventName]: readonly (keyof Events[K])[] };
+
+/**
+ * Keeps the event's listed properties that hold what their rule allows: a value
+ * from the property's fixed list, a boolean, or a finite number (rounded to two
+ * significant digits). Drops everything else. Returns null for an unknown event.
+ */
+export function clean(event: string, props: Record<string, unknown>): Record<string, string | number | boolean> | null {
+  const rules = (RULES as Record<string, Record<string, Rule>>)[event];
+  if (!rules) return null;
+  const out: Record<string, string | number | boolean> = {};
+  for (const k in rules) {
+    const rule = rules[k];
+    const v = props[k];
+    if (rule === 'flag') {
+      if (typeof v === 'boolean') out[k] = v;
+    } else if (rule === 'number') {
+      if (typeof v === 'number' && Number.isFinite(v)) out[k] = round2(v);
+    } else if ((typeof v === 'string' || typeof v === 'number') && rule.includes(v)) out[k] = v;
+  }
+  return out;
 }
 
 /**
