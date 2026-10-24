@@ -247,4 +247,12 @@ test('graph export: images shrink to the canvas a device really allows (iPhone a
   assert.ok(tried.every((a, i) => i === 0 || a < tried[i - 1]));
   // Nothing works down to a quarter size: a clear, toast-ready message.
   assert.throws(() => fitRaster(2000, 30_000, planned, () => false), /too large for an image on this device\. Export the visible area or a branch, or try SVG\./);
+  // The last step lands on a quarter size exactly, never past it: from 0.3, 0.25 is tried, not skipped.
+  const steps: number[] = [];
+  assert.equal(fitRaster(1000, 1000, 0.3, (w) => (steps.push(w), w <= 250)), 0.25);
+  assert.deepEqual(steps, [300, 250]);
+  const all: number[] = [];
+  assert.throws(() => fitRaster(1000, 1000, 2, (w) => (all.push(w), false)));
+  assert.equal(all.at(-1), 250);
+  assert.ok(all.every((w) => w >= 250));
 });

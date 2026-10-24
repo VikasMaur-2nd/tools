@@ -421,8 +421,10 @@ const PNG_TOO_LARGE_HERE = 'The graph is too large for an image on this device. 
  * nothing. So the canvas itself is checked, not the device guessed.
  */
 export function fitRaster(width: number, height: number, scale: number, works: (w: number, h: number) => boolean): number {
-  for (let s = scale; s >= MIN_SCALE - 1e-9; s *= Math.SQRT1_2) {
+  // (The last step is MIN_SCALE itself, whatever the halving lands on before it.)
+  for (let s = scale; ; s = Math.max(MIN_SCALE, s * Math.SQRT1_2)) {
     if (works(Math.ceil(width * s), Math.ceil(height * s))) return s;
+    if (s <= MIN_SCALE) break;
   }
   throw new Error(PNG_TOO_LARGE_HERE);
 }
