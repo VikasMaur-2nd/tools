@@ -27,8 +27,8 @@ export interface MiniEditorProps {
   colors?: Colors | null;
   /** Marks at document offsets (errors, warnings). */
   diagnostics?: Diagnostic[];
-  /** The document changed; read `ed.text` when needed (a big one is built when read). */
-  onChange?: (ed: Editor) => void;
+  /** The document changed; read `doc.text` when needed (a big one is built when read). The editor, or the plain box while it has none. */
+  onChange?: (doc: Pick<Editor, 'text' | 'length'>) => void;
   /** The editor took over the box (null: it went away). */
   onEditor?: (ed: Editor | null) => void;
   className?: string;
@@ -38,6 +38,8 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
   const el = useRef<HTMLDivElement>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
   const [ed, setEd] = useState<Editor | null>(null);
+  // The editor has taken over the box (from then on its textarea holds what the editor puts there, not the document).
+  const taken = useRef(false);
   // The callbacks change with every render; the editor calls the latest.
   const changed = useRef(onChange);
   // What the box held when the page drew it.
@@ -73,6 +75,7 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
               return true;
             },
           });
+          taken.current = true;
           setEd(made);
           told.current?.(made);
           // Typed into the plain box before the editor arrived: that's a change too.
@@ -132,6 +135,11 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
             // (The editor sets this too, once it takes over the box: see Editor.setWrap.)
             wrap={wrap ? 'soft' : 'off'}
             aria-label={label}
+            // Until the editor arrives (or for good, if its code can't load), typing here changes the document too.
+            onChange={(e) => {
+              const text = e.currentTarget.value;
+              if (!taken.current) changed.current?.({ text, length: text.length });
+            }}
           />
         </div>
       </div>

@@ -134,7 +134,7 @@ function JsonField({ id, value, setValue, edRef }: { id: string; value: string; 
   const timer = useRef(0);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   // (Reading a big edited document builds its text: wait for a pause.)
-  const changed = (e: Editor) => {
+  const changed = (e: Pick<Editor, 'text' | 'length'>) => {
     window.clearTimeout(timer.current);
     const n = e.length;
     timer.current = window.setTimeout(() => setValue(e.text), n < 100_000 ? 60 : n < 2_000_000 ? 250 : 600);
