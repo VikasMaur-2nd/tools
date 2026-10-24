@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse } from '../lib/json/parser';
-import { convert, highlightCode, TARGETS, type ConvertOptions } from '../lib/convert';
+import { parse, type JNode } from '../lib/json/parser';
+import { convert, highlightCode, type ConvertOptions } from '../lib/convert';
 import { infer, singular } from '../lib/convert/infer';
+import { records, toCsv } from '../lib/convert/xlsx';
+import { TARGETS } from '../lib/engine/targets';
 
 const doc = (src: string) => {
   const r = parse(src);
@@ -10,6 +12,8 @@ const doc = (src: string) => {
   return r.root;
 };
 const conv = (src: string, target: string, opts: Partial<ConvertOptions> = {}) => convert(doc(src), target, { rootName: 'Root', ...opts });
+/** What the Convert view shows for a target: CSV and Excel show the main records as CSV. */
+const shown = (root: JNode, target: string) => (target === 'csv' || target === 'xlsx' ? toCsv(records(root)) : convert(root, target, { rootName: 'Root' }));
 const has = (out: string, ...parts: string[]) => {
   for (const p of parts) assert.ok(out.includes(p), `expected to find:\n${p}\n--- in ---\n${out}`);
 };
@@ -39,9 +43,14 @@ const API = JSON.stringify({
 test('TARGETS are ordered and complete', () => {
   assert.deepEqual(
     TARGETS.map((t) => t.id),
-    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'yaml', 'xml', 'toml', 'jsonl'],
+    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'],
   );
-  assert.ok(TARGETS.every((t) => t.group === (['csv', 'yaml', 'xml', 'toml', 'jsonl'].includes(t.id) ? 'Data' : 'Types')));
+  assert.ok(TARGETS.every((t) => t.group === (['csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'].includes(t.id) ? 'Data' : 'Types')));
+  // every target but CSV and Excel (xlsx.ts) has a converter
+  for (const t of TARGETS) {
+    if (t.id === 'csv' || t.id === 'xlsx') assert.throws(() => conv('1', t.id));
+    else assert.equal(typeof conv('1', t.id), 'string', t.id);
+  }
   assert.throws(() => conv('1', 'cobol'));
 });
 
@@ -316,17 +325,6 @@ test('YAML quotes ambiguous strings and keeps numbers exact', () => {
   assert.equal(conv('{"a":1,"a":2}', 'yaml'), 'a: 2\n');
 });
 
-test('CSV', () => {
-  assert.equal(
-    conv('[{"id":1,"name":"Smith, J","q":"say \\"hi\\""},{"id":2,"tags":["a"],"name":null,"x":"l1\\nl2"}]', 'csv'),
-    'id,name,q,tags,x\n1,"Smith, J","say ""hi""",,\n2,,,"[""a""]","l1\nl2"\n',
-  );
-  assert.equal(conv('{"a":1,"b":{"c":true}}', 'csv'), 'a,b\n1,"{""c"":true}"\n');
-  assert.equal(conv('[[1,2],[3,4]]', 'csv'), '1,2\n3,4\n');
-  assert.equal(conv('[1,"x"]', 'csv'), 'value\n1\nx\n');
-  assert.equal(conv('12345678901234567890', 'csv'), 'value\n12345678901234567890\n');
-});
-
 test('XML', () => {
   assert.equal(
     conv('{"a & b":"<x> & \\"y\\"","list":[1,2],"1st":null,"o":{"@id":"7","#text":"t"},"m":[[1],[2]]}', 'xml', { rootName: 'Data' }),
@@ -382,7 +380,7 @@ test('TOML', () => {
 test('highlightCode round-trips every target and never spans lines', () => {
   const src = API.replace('"Ada"', '"<b>Ada</b> & \\"co\\"\\nline2"');
   for (const t of TARGETS) {
-    const out = conv(src, t.id);
+    const out = shown(doc(src), t.id);
     const html = highlightCode(out, t.lang);
     const text = html
       .replace(/<[^>]*>/g, '')
@@ -454,7 +452,7 @@ test('Java: the root is the only public top-level type', () => {
 test('deep nesting does not throw', () => {
   const depth = 2000;
   const root = doc('['.repeat(depth) + '{"a":1}' + ']'.repeat(depth));
-  for (const t of TARGETS) assert.equal(typeof convert(root, t.id, { rootName: 'Root' }), 'string');
+  for (const t of TARGETS) assert.equal(typeof shown(root, t.id), 'string');
 });
 
 // Record components cannot shadow Object methods, even when they are valid identifiers.

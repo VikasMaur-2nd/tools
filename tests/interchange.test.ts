@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32, inflateRawSync } from 'node:zlib';
 import { JNode, parse } from '../lib/json/parser';
-import { tabulate, toCsv, toXlsx } from '../lib/convert/xlsx';
+import { records, tabulate, toCsv, toXlsx } from '../lib/convert/xlsx';
 import { detectFormat, importToJson, type ImportFormat } from '../lib/convert/import';
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -256,6 +256,19 @@ describe('toCsv', () => {
     const r = root('[{"a": "1;2", "b": "t\\tab"}]');
     assert.equal(toCsv(r, { delimiter: ';' }), 'a;b\r\n"1;2";t\tab\r\n');
     assert.equal(toCsv(r, { delimiter: '\t', bom: true }), '\ufeffa\tb\r\n1;2\t"t\tab"\r\n');
+  });
+
+  test('records, objects, matrices, primitives and scalars', () => {
+    const csv = (json: string) => toCsv(records(root(json)));
+    assert.equal(
+      csv('[{"id":1,"name":"Smith, J","q":"say \\"hi\\""},{"id":2,"tags":["a"],"name":null,"x":"l1\\nl2"}]'),
+      'id,name,q,tags,x\r\n1,"Smith, J","say ""hi""",,\r\n2,,,a,"l1\nl2"\r\n',
+    );
+    assert.equal(csv('{"a":1,"b":{"c":true}}'), 'key,value\r\na,1\r\nb.c,true\r\n');
+    assert.equal(csv('{"meta":{"n":2},"rows":[{"a":1},{"a":2,"b":[1,2]}]}'), 'a,b\r\n1,\r\n2,"1, 2"\r\n');
+    assert.equal(csv('[[1,2],[3,4]]'), '1,2\r\n1,2\r\n3,4\r\n');
+    assert.equal(csv('[1,"x"]'), 'value\r\n1\r\nx\r\n');
+    assert.equal(csv('12345678901234567890'), 'value\r\n12345678901234567890\r\n');
   });
 
   test('round-trips through the CSV importer', () => {
