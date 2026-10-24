@@ -196,6 +196,54 @@ describe('tabulate', () => {
     assert.deepEqual(tabulate(root('[{"a": 1}, 5, null]')), { headers: ['a', 'value'], rows: [[1, null], [null, 5], [null, null]] });
     assert.deepEqual(tabulate(root('[]')), { headers: [], rows: [] });
   });
+
+  test('paths that would read alike keep their own columns', () => {
+    // a dotted key and the same path through a nested object: escaped only because they clash
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "a": {"b": 2}}]')), { headers: ['a\\.b', 'a.b'], rows: [[1, 2]] });
+    assert.deepEqual(tabulate(root('[{"a": {"b": 2}}, {"a.b": 1}]')), { headers: ['a.b', 'a\\.b'], rows: [[2, null], [null, 1]] });
+    // escaping never makes a new clash
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "a": {"b": 2}, "a\\\\.b": 3}]')).headers, ['a\\.b', 'a.b', 'a\\\\\\.b']);
+    assert.deepEqual(tabulate(root('[{"a\\\\": {"b": 1}, "a\\\\.b": 2}]')).headers, ['a\\\\.b', 'a\\\\\\.b']);
+    // dotted keys that don't clash stay as they are
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "c\\\\d": {"e.f": 2}}]')).headers, ['a.b', 'c\\d.e.f']);
+    // same depth, split differently
+    assert.deepEqual(tabulate(root('[{"a.b": {"c": 1}}, {"a": {"b.c": 2}}]')).headers, ['a\\.b.c', 'a.b\\.c']);
+    // 'json' flattening has no paths to confuse
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "a": {"b": 2}}]'), 'json').headers, ['a.b', 'a']);
+    // key / value listing
+    assert.deepEqual(tabulate(root('{"a.b": 1, "a": {"b": 2}, "c.d": 3}')), {
+      headers: ['key', 'value'],
+      rows: [
+        ['a\\.b', 1],
+        ['a.b', 2],
+        ['c.d', 3],
+      ],
+    });
+    assert.deepEqual(tabulate(root('{"a.b": 1, "x": {"y.z": 2}, "x.y": {"z": 3}}')).rows, [
+      ['a.b', 1],
+      ['x.y\\.z', 2],
+      ['x\\.y.z', 3],
+    ]);
+    assert.deepEqual(tabulate(root('{"a.b": 1, "x": {"y": 2}, "a.b": 3}')).rows, [
+      ['a.b', 1],
+      ['x.y', 2],
+      ['a.b', 3],
+    ]);
+  });
+
+  test('the "key" and "value" columns it adds never take a name from the data', () => {
+    assert.deepEqual(tabulate(root('[{"value": 1}, 2]')), { headers: ['value', '_value'], rows: [[1, null], [null, 2]] });
+    assert.deepEqual(tabulate(root('[{"value": 1, "_value": 3}, 2]')).headers, ['value', '_value', '__value']);
+    assert.deepEqual(tabulate(root('[{"value": 1}, 2]'), 'json').headers, ['value', '_value']);
+    assert.deepEqual(tabulate(root('{"x": {"key": 1, "v": 2}, "y": {"v": 3}}')), {
+      headers: ['_key', 'key', 'v'],
+      rows: [
+        ['x', 1, 2],
+        ['y', null, 3],
+      ],
+    });
+    assert.equal(toCsv(root('[{"value": 1}, 2]')), 'value,_value\r\n1,\r\n,2\r\n');
+  });
 });
 
 describe('toCsv', () => {

@@ -26,24 +26,105 @@ const nested = (n: JNode, dot: boolean): Cell => {
   return stringify(n, '');
 };
 
+const DOTTED = { dotted: true };
+const ESC = /[\\.]/g;
+
+/**
+ * What escaped paths (`a\.b`: the key "a.b"; `a.b`: b inside a) read as: plain
+ * dotted text, except where different paths would read alike.
+ */
+function readable(ids: string[]): string[] {
+  let out: string[] | null = null;
+  // plain names of the escaped ids → their id ('' when several share it)
+  const own = new Map<string, string>();
+  for (let j = 0; j < ids.length; j++) {
+    if (ids[j].indexOf('\\') < 0) continue;
+    const s = ids[j].replace(/\\(.)/g, '$1');
+    (out ??= ids.slice())[j] = s;
+    const o = own.get(s);
+    own.set(s, o === undefined || o === ids[j] ? ids[j] : '');
+  }
+  if (!out) return ids;
+  let clash = false;
+  for (const o of own.values()) if (!o) clash = true;
+  for (let j = 0; j < ids.length && !clash; j++) if (out[j] === ids[j] && own.has(ids[j])) clash = true;
+  // escape whatever reads like another path until nothing does (each id is escaped at most once)
+  for (let again = clash; again; ) {
+    again = false;
+    const owner = new Map<string, string>();
+    const dup = new Set<string>();
+    for (let j = 0; j < ids.length; j++) {
+      const o = owner.get(out[j]);
+      if (o === undefined) owner.set(out[j], ids[j]);
+      else if (o !== ids[j]) dup.add(out[j]);
+    }
+    for (let j = 0; j < ids.length; j++) {
+      if (out[j] !== ids[j] && dup.has(out[j])) {
+        out[j] = ids[j];
+        again = true;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The grid of `tabulate`. Dotted paths name one place each as long as no key
+ * has a dot of its own; when one does, the table is made again with keys
+ * escaped (`\.`, `\\`), so values that would share a column keep their own.
+ */
 function table(root: JNode, flatten: Flatten): Table {
-  const dot = flatten === 'dot';
-  const h: string[] = [];
+  if (flatten !== 'dot') return grid(root, false, false);
+  try {
+    return grid(root, true, false);
+  } catch (e) {
+    if (e !== DOTTED) throw e;
+    return grid(root, true, true);
+  }
+}
+
+/** `esc`: keys escaped in dotted paths; without it, a key with a dot throws DOTTED (see table). */
+function grid(root: JNode, dot: boolean, esc: boolean): Table {
+  // column ids: dotted paths or keys, named once the table is complete
+  let h: string[] = [];
   const r: Cell[][] = [];
   const idx = new Map<string, number>();
-  const col = (k: string) => {
+  // Unescaped, a path of d keys without dots has d - 1 dots; a key with a dot
+  // changes that count or meets a column made by a path of another length. So
+  // column depths spot dotted keys without looking at every key of every record.
+  const depth: number[] = [];
+  const check = dot && !esc;
+  const col = (k: string, d: number) => {
     let j = idx.get(k);
-    if (j === undefined) idx.set(k, (j = h.push(k) - 1));
+    if (j === undefined) {
+      if (check) {
+        let dots = 0;
+        for (let p = k.indexOf('.'); p >= 0; p = k.indexOf('.', p + 1)) dots++;
+        if (dots !== d - 1) throw DOTTED;
+      }
+      idx.set(k, (j = h.push(k) - 1));
+      depth[j] = d;
+    } else if (check && depth[j] !== d) throw DOTTED;
     return j;
   };
+  const escaped = new Map<string, string>();
+  /** A key as one segment of a dotted path. */
+  const seg = (k: string): string => {
+    if (!esc || (k.indexOf('.') < 0 && k.indexOf('\\') < 0)) return k;
+    let s = escaped.get(k);
+    if (s === undefined) escaped.set(k, (s = k.replace(ESC, '\\$&')));
+    return s;
+  };
+  // the columns added for object keys / non-object items, named after the data's own
+  let kc = -1;
   let vc = -1;
   const valCol = () => (vc < 0 ? (vc = h.push('value') - 1) : vc);
-  const put = (row: Cell[], n: JNode, path: string) => {
-    if (dot && n.t === OBJ && kids(n).length) for (const c of kids(n)) put(row, c, path + '.' + c.key);
-    else row[col(path)] = nested(n, dot);
+  const put = (row: Cell[], n: JNode, path: string, d: number) => {
+    if (dot && n.t === OBJ && kids(n).length) for (const c of kids(n)) put(row, c, path + '.' + seg(c.key as string), d + 1);
+    else row[col(path, d)] = nested(n, dot);
   };
   const props = (row: Cell[], o: JNode) => {
-    for (const c of kids(o)) put(row, c, c.key as string);
+    for (const c of kids(o)) put(row, c, seg(c.key as string), 1);
   };
 
   if (root.t === ARR) {
@@ -57,6 +138,7 @@ function table(root: JNode, flatten: Flatten): Table {
       const hasHead = items.length > 1 && first.length === w && first.every((c) => c.t === STR);
       for (let j = 0; j < w; j++) h.push(hasHead ? (first[j].v as string) : String(j + 1));
       for (let i = hasHead ? 1 : 0; i < items.length; i++) r.push(kids(items[i]).map((c) => nested(c, dot)));
+      return { h, r };
     } else if (items.some((c) => c.t === OBJ)) {
       for (const it of items) {
         const row: Cell[] = [];
@@ -67,27 +149,58 @@ function table(root: JNode, flatten: Flatten): Table {
     } else {
       h.push('value');
       for (const it of items) r.push([nested(it, dot)]);
+      return { h, r };
     }
   } else if (root.t === OBJ) {
     const list = kids(root);
     if (list.length && list.every((c) => c.t === OBJ)) {
-      h.push('key');
+      kc = h.push('key') - 1;
       for (const c of list) {
         const row: Cell[] = [c.key as string];
         props(row, c);
         r.push(row);
       }
     } else {
-      h.push('key', 'value');
-      const walk = (n: JNode, path: string) => {
-        if (dot && n.t === OBJ && kids(n).length) for (const c of kids(n)) walk(c, path + '.' + c.key);
-        else r.push([path, nested(n, dot)]);
+      // Key / value rows, one per value: dotted keys only matter where two paths read alike,
+      // which takes a key with a dot and a path below the top level.
+      let dotted = false;
+      let deep = false;
+      const key = (k: string) => {
+        if (!dotted && k.indexOf('.') >= 0) dotted = true;
+        return seg(k);
       };
-      for (const c of list) walk(c, c.key as string);
+      const walk = (n: JNode, path: string) => {
+        if (dot && n.t === OBJ && kids(n).length) {
+          deep = true;
+          for (const c of kids(n)) walk(c, path + '.' + key(c.key as string));
+        } else r.push([path, nested(n, dot)]);
+      };
+      for (const c of list) walk(c, dot ? key(c.key as string) : (c.key as string));
+      if (dotted && deep && !esc) {
+        const seen = new Set<string>();
+        for (const row of r) {
+          if (seen.has(row[0] as string)) throw DOTTED;
+          seen.add(row[0] as string);
+        }
+      }
+      if (esc) {
+        const keys = readable(r.map((row) => row[0] as string));
+        for (let i = 0; i < r.length; i++) r[i][0] = keys[i];
+      }
+      return { h: ['key', 'value'], r };
     }
   } else {
     h.push('value');
     r.push([root]);
+    return { h, r };
+  }
+  if (esc) h = readable(h);
+  if (kc >= 0 || vc >= 0) {
+    const j = kc >= 0 ? kc : vc;
+    const taken = new Set(h.filter((_, k) => k !== j));
+    let name = h[j];
+    while (taken.has(name)) name = '_' + name;
+    h[j] = name;
   }
   return { h, r };
 }
@@ -120,8 +233,10 @@ export function records(root: JNode): JNode {
  * Array of objects → union of keys (first-seen order); array of primitives →
  * "value"; array of arrays → columns by position; object of objects → "key"
  * column + union of keys; other objects → key/value rows. Nested objects become
- * dot paths (`flatten: 'dot'`) or minified JSON (`'json'`). Missing → null;
- * numbers that a JS number can't hold exactly stay strings.
+ * dot paths (`flatten: 'dot'`; `\.` for a dot in a key where two paths would
+ * read alike) or minified JSON (`'json'`). The added "key" / "value" columns
+ * give way to the data's own (`_value`). Missing → null; numbers that a JS
+ * number can't hold exactly stay strings.
  */
 export function tabulate(root: JNode, flatten: Flatten = 'dot'): { headers: string[]; rows: CellValue[][] } {
   const { h, r } = table(root, flatten);
