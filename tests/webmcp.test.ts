@@ -6,6 +6,7 @@ import { formatDoc } from '../lib/json/format';
 import { readJwt } from '../lib/json/jwt';
 import { parse } from '../lib/json/parser';
 import { decodeDoc, linkHash, parseLink } from '../lib/link';
+import { descriptor } from '../lib/webmcp/descriptor';
 import { MAX_RESULT, TOOLS, cap, cleanName, locator, type Doc, type Page } from '../lib/webmcp/tools';
 
 const b64u = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
@@ -417,5 +418,18 @@ describe('helpers', () => {
     assert.equal(at(8), 'line 4, column 2');
     assert.equal(at(2), 'line 1, column 3');
     assert.equal(at(3), 'line 2, column 1');
+  });
+});
+
+describe('/.well-known/mcp.json', () => {
+  test('lists every tool the page registers, with no endpoint (they run in the page)', () => {
+    const d = descriptor('https://tools.vikasmaur.com');
+    assert.deepEqual(d.tools.map((t) => t.name), TOOLS.map((t) => t.name));
+    for (const t of d.tools) {
+      assert.ok(t.description.length > 40 && t.title, t.name);
+      assert.ok(!('endpoint' in t), t.name);
+    }
+    assert.equal(d.homepage, 'https://tools.vikasmaur.com');
+    assert.deepEqual(JSON.parse(JSON.stringify(d)), d, 'plain JSON');
   });
 });
