@@ -47,3 +47,11 @@ test('a TOML multi-line string stays a string on wrapped rows', async () => {
   for (const row of got.slice(1, -3)) assert.match(row, /^\[ts\][^[]*$/, row);
   assert.equal(got.at(-2), '[tk]next [tp]= [tn]1');
 });
+
+test('find reports each match by line and column', async () => {
+  const { code, rows } = view();
+  code.setText('ab\ncab\n\nxab ab', (t) => t);
+  for (let k = 0; k < 20 && !rows.innerHTML; k++) await tick();
+  assert.deepEqual(code.find('ab'), { total: 4, index: 0 });
+  assert.deepEqual((code as unknown as { hits: number[] }).hits, [0, 0, 1, 1, 3, 1, 3, 4]);
+});

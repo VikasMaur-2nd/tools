@@ -720,19 +720,11 @@ export class Editor {
   }
 
   lineEnd(ln: number) {
-    return ln + 1 < this.ls.length ? this.ls[ln + 1] - 1 : this.doc.length;
+    return lineEndIn(this.ls, this.doc.length, ln);
   }
 
   lineOf(off: number) {
-    const ls = this.ls;
-    let lo = 0;
-    let hi = ls.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (ls[mid] <= off) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo;
+    return lineOfIn(this.ls, off);
   }
 
   lineCol(off: number) {

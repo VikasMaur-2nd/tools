@@ -14,11 +14,11 @@ export interface Chars {
   indexOf(s: string, from?: number, to?: number): number;
 }
 
-/** End (exclusive, before the '\n') of line `ln`. */
-export const lineEndIn = (ls: number[], len: number, ln: number) => (ln + 1 < ls.length ? ls[ln + 1] - 1 : len);
+/** End (exclusive, before the '\n') of line `ln`, in a text of `len` characters with line starts `ls`. */
+export const lineEndIn = (ls: ArrayLike<number>, len: number, ln: number) => (ln + 1 < ls.length ? ls[ln + 1] - 1 : len);
 
-/** Line holding offset `off`. */
-export function lineOfIn(ls: number[], off: number) {
+/** Line holding offset `off` (the last of the ascending starts `ls` at or before it). */
+export function lineOfIn(ls: ArrayLike<number>, off: number) {
   let lo = 0;
   let hi = ls.length - 1;
   while (lo < hi) {

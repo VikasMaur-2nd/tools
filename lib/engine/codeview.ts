@@ -1,4 +1,5 @@
 import { bidiContext, escapeHtml, StringStates, stringState, trimWs } from './highlight';
+import { lineEndIn, lineOfIn } from './lines';
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
@@ -193,7 +194,7 @@ export class CodeView {
   }
 
   private lineEnd(i: number) {
-    return i + 1 < this.ls.length ? this.ls[i + 1] - 1 : this.text.length;
+    return lineEndIn(this.ls, this.text.length, i);
   }
 
   private line(i: number) {
@@ -280,14 +281,7 @@ export class CodeView {
   /** A validated scalar changes one line. Keep every other line's wrapping and fold state. */
   private patchInline(text: string, index: CodeIndex, change: CodeChange, patch: string, seq: number): boolean {
     if (index.starts.length !== this.ls.length || this.folded.size || this.vis.length !== this.ls.length || this.layoutWrap !== this.wrapper || this.layoutCols !== (this.wrapper?.cols ?? 0) || this.layoutCw !== this.cw || this.width !== this.el.clientWidth) return false;
-    let lo = 0;
-    let hi = this.ls.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >>> 1;
-      if (this.ls[mid] <= change.prefix) lo = mid;
-      else hi = mid - 1;
-    }
-    const line = lo;
+    const line = lineOfIn(this.ls, change.prefix);
     if (this.text.length - change.suffix > this.lineEnd(line)) return false;
     const end = line + 1 < index.starts.length ? index.starts[line + 1] - 1 : text.length;
     if (end - index.starts[line] > 65_536) return false;
@@ -750,17 +744,11 @@ export class CodeView {
       if (at < next) return;
       next = at + qn.length;
       // The line holding offset `at` (a query has no line break, so a match stays in one line).
-      let lo = 0;
-      let hi = ls.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (ls[mid] <= at) lo = mid;
-        else hi = mid - 1;
-      }
-      hits.push(lo, at - ls[lo]);
-      let cols = this.hitLines.get(lo);
-      if (!cols) this.hitLines.set(lo, (cols = []));
-      cols.push(at - ls[lo]);
+      const ln = lineOfIn(ls, at);
+      hits.push(ln, at - ls[ln]);
+      let cols = this.hitLines.get(ln);
+      if (!cols) this.hitLines.set(ln, (cols = []));
+      cols.push(at - ls[ln]);
     };
     // Big chunks of the whole text with the native search (a line at a time costs a slice and a
     // lowercase copy per line); in 8 ms steps for a big output, so typing is never held up.
