@@ -31,6 +31,23 @@ class FakeEvents {
 
 export const CW = 7.8;
 
+/** `html` cut into its top-level elements (text between them goes with the element before; tags all close). */
+function topLevel(html: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (const m of html.matchAll(/<(\/?)[a-z][^>]*>/g)) {
+    if (m[1]) depth--;
+    else {
+      if (!depth && m.index > start) out.push(html.slice(start, m.index));
+      if (!depth) start = m.index;
+      depth++;
+    }
+  }
+  if (start < html.length) out.push(html.slice(start));
+  return out.filter(Boolean);
+}
+
 export class FakeElement extends FakeEvents {
   tagName: string;
   className = '';
@@ -51,7 +68,6 @@ export class FakeElement extends FakeEvents {
       delete this[k];
     },
   });
-  private html = '';
   clientHeight = 600;
   clientWidth = 800;
   scrollHeight = 0;
@@ -90,22 +106,31 @@ export class FakeElement extends FakeEvents {
     };
   }
 
-  /** The HTML last set (innerHTML) with what was inserted since. */
+  /** The HTML last set (innerHTML) with what was inserted since, as its top-level elements. */
+  private parts: string[] = [];
   get innerHTML() {
-    return this.html;
+    return this.parts.join('');
   }
   set innerHTML(v: string) {
-    this.html = v;
+    this.parts = topLevel(v);
   }
-  insertAdjacentHTML(_where: string, v: string) {
-    this.html += v;
+  insertAdjacentHTML(where: string, v: string) {
+    if (where === 'afterbegin') this.parts.unshift(...topLevel(v));
+    else this.parts.push(...topLevel(v));
   }
   /** Children made with appendChild (HTML set as text makes none: see `children`). */
   get children(): FakeElement[] {
     return [];
   }
+  /** Elements of the HTML set, by count, and the first and last (to remove). */
+  get childElementCount() {
+    return this.parts.length;
+  }
   get firstElementChild() {
-    return this.kids[0] ?? null;
+    return this.parts.length ? { remove: () => void this.parts.shift() } : null;
+  }
+  get lastElementChild() {
+    return this.parts.length ? { remove: () => void this.parts.pop() } : null;
   }
 
   appendChild<T extends FakeElement>(c: T): T {

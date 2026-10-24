@@ -338,8 +338,25 @@ export class TableView {
     if (!force && vf >= this.rFirst && vl <= this.rLast) return this.place();
     const first = Math.max(0, vf - OVERSCAN);
     const last = Math.min(n, vl + OVERSCAN);
+    const a = this.rFirst;
+    const b = this.rLast;
     this.rFirst = first;
     this.rLast = last;
+    const el = this.rowsEl;
+    // Scrolled on: the rows still in range stay as they are (anything else that changes them draws all of
+    // them), and only the rows coming into range are drawn, some two fifths of them.
+    if (!force && first < b && last > a && el.childElementCount === b - a) {
+      for (let r = b; r > last; r--) el.lastElementChild!.remove();
+      for (let r = a; r < first; r++) el.firstElementChild!.remove();
+      if (first < a) el.insertAdjacentHTML('afterbegin', this.rowsHtml(first, Math.min(a, last)));
+      if (last > b) el.insertAdjacentHTML('beforeend', this.rowsHtml(Math.max(b, first), last));
+    } else el.innerHTML = this.rowsHtml(first, last);
+    this.markActive();
+    this.place();
+  }
+
+  /** Rows [first, last) of `order` as HTML. */
+  private rowsHtml(first: number, last: number) {
     const isObj = this.node?.t === OBJ;
     let html = '';
     for (let r = first; r < last; r++) {
@@ -367,9 +384,7 @@ export class TableView {
       }
       html += '</div>';
     }
-    this.rowsEl.innerHTML = html;
-    this.markActive();
-    this.place();
+    return html;
   }
 
   /** Points aria-activedescendant at the active cell, while it is drawn. */
