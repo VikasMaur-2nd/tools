@@ -10,6 +10,9 @@ import type { Colors, Diagnostic, Editor } from '@/lib/engine/editor';
  * view; until then the box is a plain textarea that already works (the editor adopts what it holds).
  */
 
+/** A paste over the whole box from this size opens like a file, caret at the top (as in the viewer: Engine.load). */
+const LOAD_PASTE = 200_000;
+
 export interface MiniEditorProps {
   id: string;
   /** The box's accessible name when no <label htmlFor> names it. */
@@ -62,6 +65,13 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
             nav() {},
             escape() {},
             copyAll: () => void navigator.clipboard?.writeText(made!.text).catch(() => undefined),
+            // (At its end, a wrapped one-line document is laid out row by row first: 27 MB froze the page for
+            // 0.7 s in Chromium and 1.5 s in Firefox, against 0.3 s for the same paste opened at the top.)
+            fullPaste: (text) => {
+              if (text.length < LOAD_PASTE) return false;
+              made!.setValue(text, 0, true);
+              return true;
+            },
           });
           setEd(made);
           told.current?.(made);
@@ -119,7 +129,8 @@ export default function MiniEditor({ id, label, defaultValue, value, readOnly = 
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
-            wrap="off"
+            // (The editor sets this too, once it takes over the box: see Editor.setWrap.)
+            wrap={wrap ? 'soft' : 'off'}
             aria-label={label}
           />
         </div>

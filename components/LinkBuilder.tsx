@@ -203,6 +203,7 @@ function JsonField({ id, value, setValue, edRef }: { id: string; value: string; 
         diagnostics={empty ? NONE : found.diags}
         onChange={changed}
         onEditor={(e) => (edRef.current = e)}
+        wrap
         className="lb-ed"
       />
       <p className="lb-check" aria-live="polite">
