@@ -7,7 +7,7 @@ import { codeWithLinks } from '@/lib/link-code';
 import { Code } from '../blogs/article';
 import ContentShell from '../content-shell';
 import { PAGE_DATES } from '../dates';
-import { SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { SOCIAL_IMAGE_URL, jsonLdScript } from '../seo';
 import { pageMetadata } from '../../page-metadata';
 import { SITE } from '@/lib/site';
 import CodeSnippet from './code-snippet';
@@ -31,7 +31,7 @@ const jsonLd = {
       description: DESCRIPTION,
       url: `${SITE}${PATH}`,
       mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${PATH}` },
-      image: `${SITE}${SOCIAL_IMAGE.url}`,
+      image: SOCIAL_IMAGE_URL,
       datePublished: PAGE_DATES[PATH].published,
       dateModified: PAGE_DATES[PATH].updated,
       author: { '@id': `${SITE}/#organization` },
