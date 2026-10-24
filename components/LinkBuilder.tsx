@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type RefObject } from 'react';
 import { PRIVATE } from '@/lib/analytics';
+import { radioKeys, tabStop } from '@/lib/radio';
 import type { Diagnostic, Editor } from '@/lib/engine/editor';
 import { TARGETS } from '@/lib/engine/targets';
 import { formatBytes } from '@/lib/json/format';
@@ -82,20 +83,13 @@ function linkMaker() {
   };
 }
 
-/** A row of mutually exclusive buttons (radio group): arrow keys move the choice, like native radios. */
+/** A row of mutually exclusive buttons (radio group): arrow keys move the choice, like native radios (lib/radio.ts). */
 function Seg<T extends string>({ label, value, options, onChange, className }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void; className?: string }) {
-  const move = (e: KeyboardEvent<HTMLDivElement>) => {
-    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const i = (options.findIndex(([v]) => v === value) + step + options.length) % options.length;
-    onChange(options[i][0]);
-    (e.currentTarget.children[i] as HTMLElement | undefined)?.focus();
-  };
+  const stop = tabStop(options.map(([v]) => ({ checked: v === value })));
   return (
-    <div className={`lb-seg${className ? ' ' + className : ''}`} role="radiogroup" aria-label={label} onKeyDown={move}>
-      {options.map(([v, l]) => (
-        <button key={v} type="button" role="radio" aria-checked={value === v} tabIndex={value === v ? 0 : -1} onClick={() => onChange(v)}>
+    <div className={`lb-seg${className ? ' ' + className : ''}`} role="radiogroup" aria-label={label} onKeyDown={(e) => radioKeys(e, (i) => onChange(options[i][0]))}>
+      {options.map(([v, l], i) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} tabIndex={i === stop ? 0 : -1} onClick={() => onChange(v)}>
           {l}
         </button>
       ))}
