@@ -313,3 +313,79 @@ test('Clear drops a file still being read', async () => {
   await first;
   assert.deepEqual(loads, []);
 });
+
+// ── Closing the tool (a client navigation) while work is pending ──
+
+test('the warm-up never starts a worker once the engine is gone', async () => {
+  for (let steps = 0; steps < 14; steps++) {
+    const s = session();
+    closable(s.engine);
+    s.engine.warmUp();
+    await settled();
+    for (let k = 0; k < steps; k++) {
+      s.tick();
+      await settled();
+    }
+    const started = s.workers();
+    s.engine.destroy();
+    await s.drain();
+    assert.equal(s.workers(), started, `destroyed after ${steps} steps`);
+  }
+});
+
+test('destroy cancels a warm-up still waiting for the page to load', async () => {
+  for (const loaded of [false, true]) {
+    const s = session();
+    closable(s.engine);
+    s.document.readyState = 'loading';
+    s.engine.warmUp();
+    assert.equal(s.listeners.get('load')?.size, 1);
+    if (loaded) for (const fn of s.listeners.get('load')!) fn();
+    s.engine.destroy();
+    for (const fn of s.listeners.get('load') ?? []) fn();
+    await s.drain();
+    assert.equal(s.workers(), 0, loaded ? 'loaded, then destroyed' : 'destroyed while loading');
+  }
+});
+
+test('sizes still being measured when the engine goes are never published', async () => {
+  for (const at of [0, 1, 2]) {
+    const s = session();
+    closable(s.engine);
+    const text = '{"a":[1,2,3]}';
+    const prev = (s.state.sizes = { min: 5, stale: false });
+    s.engine.measure(parse(text), text);
+    for (let k = 0; k < at; k++) s.tick();
+    s.engine.destroy();
+    await s.drain();
+    assert.deepEqual({ ...s.state.sizes }, { ...prev, stale: true }, `destroyed after ${at} steps`);
+  }
+});
+
+test('a deferred analysis after a big load is dropped when the engine goes', async () => {
+  const s = session();
+  closable(s.engine);
+  const { engine } = s;
+  engine.fmt = { text: '', el: { hidden: true }, inlineIndex: () => ({}), snapshotText: () => () => '', destroy() {} };
+  engine.drawFormat = () => {};
+  let analysed = 0;
+  assert.ok(engine.outputFirst(JSON.stringify({ pad: 'x'.repeat(300_000) }), null, () => { analysed++; }));
+  engine.destroy();
+  await s.drain();
+  assert.equal(analysed, 0);
+});
+
+test('a save waiting for an idle moment is dropped by destroy, which saves the document itself', async () => {
+  const s = session();
+  const doc = closable(s.engine, '{"old":1}');
+  s.engine.persistEnabled = true;
+  s.engine.persistSoon();
+  s.tick(); // (the 800 ms wait: the save now waits for an idle moment)
+  doc.setText('{"old":2}');
+  s.engine.destroy();
+  assert.equal(s.storage.get('jf:doc'), '{"old":2}');
+  // The next tool saves its own document; the old engine's queued save must not replace it.
+  s.storage.set('jf:doc', '{"new":1}');
+  await s.drain();
+  assert.equal(s.storage.get('jf:doc'), '{"new":1}');
+});

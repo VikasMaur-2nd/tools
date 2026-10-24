@@ -348,8 +348,18 @@ export class Engine {
     this.analysisWorker?.terminate();
     clearTimeout(this.analysisTimer);
     this.dead = true;
+    // Whatever is still on its way drops itself (each step checks its sequence), and nothing more starts.
+    this.loadSeq++;
+    this.sizeSeq++;
+    this.fmtStatSeq++;
+    this.convSeq++;
+    this.viewSeq++;
+    clearTimeout(this.sizeTimer);
     this.requests[1]?.abort();
     this.requests[2]?.abort();
+    window.removeEventListener('load', this.warmSoon);
+    clearTimeout(this.warmTimer);
+    if (this.persistIdle) cancelIdleCallback(this.persistIdle);
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('pointerdown', this.onPress, true);
     window.removeEventListener('contextmenu', this.onContextMenu);
@@ -389,6 +399,7 @@ export class Engine {
   // ── Pipeline ───────────────────────────────────────────────────────────
 
   private onChange = (kind: ChangeKind) => {
+    if (this.dead) return;
     this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
     this.progressStatus = null; // (and a big load's progress: what follows says nothing of it)
     this.workerParse = null;
@@ -439,6 +450,7 @@ export class Engine {
 
   /** Pretty-prints compact JSON right after it is pasted (one undo step reverts it). */
   private autoFormat = () => {
+    if (this.dead) return;
     const ed = this.ed;
     const text = ed.text;
     const lines = ed.ls.length;
@@ -735,7 +747,7 @@ export class Engine {
       hint,
     });
     // The tree may have been hidden (empty state) while it was rebuilt; draw it once shown.
-    if (this.settings.view === 'tree') requestAnimationFrame(() => this.tree.render(true));
+    if (this.settings.view === 'tree') requestAnimationFrame(() => { if (!this.dead) this.tree.render(true); });
     // Format/convert re-run their find when their text updates; the tree and table do it here.
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table' || this.settings.view === 'graph')) this.refind(false);
     this.syncTableState();
@@ -866,7 +878,7 @@ export class Engine {
   // ── Selection sync ─────────────────────────────────────────────────────
 
   private onCaret = () => {
-    if (!this.ed) return; // fired while the editor itself is still being constructed
+    if (!this.ed || this.dead) return; // fired while the editor itself is still being constructed
     const [s, e] = this.ed.selection;
     const { line, col } = this.ed.lineCol(s);
     store.set({ cursor: { line, col, sel: Math.abs(e - s) } });
@@ -1068,6 +1080,7 @@ export class Engine {
     }
     try {
       const { importToJson } = await import('../convert/import');
+      if (this.dead) return;
       const r = importToJson(this.ed.text, fmt, this.indent);
       if ('error' in r) {
         this.toast(`Couldn't read ${fmt.toUpperCase()}: ${r.error}${r.line ? ` (line ${r.line})` : ''}`, 'err');
@@ -1412,6 +1425,7 @@ export class Engine {
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
+    if (this.dead) return null;
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
@@ -2103,7 +2117,7 @@ export class Engine {
     if (prev !== view && !this.presetting) track('view_opened', { view, ...(view === 'convert' && { target: targetInfo(this.settings.target).id }) });
     if (this.query && prev !== view) this.findIn(prev, '');
     this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
-    if (this.query) requestAnimationFrame(() => (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
+    if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
       const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
@@ -2111,13 +2125,14 @@ export class Engine {
     } else this.table.setNode(null);
     if (view === 'tree') {
       this.tree.activate();
-      requestAnimationFrame(() => this.tree.render(true));
+      requestAnimationFrame(() => { if (!this.dead) this.tree.render(true); });
     }
     if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
     if (view === 'compare') {
       store.set({ docText: this.ed.text, cmpText: this.ed2.text });
       requestAnimationFrame(() => {
+        if (this.dead) return;
         this.ed2.render(true);
         if (!this.ed2.text) this.ed2.focus();
       });
@@ -2724,7 +2739,8 @@ export class Engine {
     const lq = (window as unknown as { launchQueue?: { setConsumer(cb: (p: LaunchParams) => void): void } }).launchQueue;
     lq?.setConsumer(async (p) => {
       const h = p.files?.[0];
-      if (h) void this.loadFile(await h.getFile(), 'launch');
+      const f = await h?.getFile();
+      if (f && !this.dead) void this.loadFile(f, 'launch');
     });
   }
 
@@ -2757,7 +2773,7 @@ export class Engine {
     } finally {
       this.presetting = false;
     }
-    if (p.initialImport) window.setTimeout(() => void this.importAs(p.initialImport!), 0);
+    if (p.initialImport) window.setTimeout(() => { if (!this.dead) void this.importAs(p.initialImport!); }, 0);
   }
 
   setIndent(indent: IndentId) {
@@ -2835,6 +2851,8 @@ export class Engine {
 
   /** `ms`: how long it stays, for messages longer than a glance (default 2.2 s, errors 4 s; with an action, until dismissed). */
   toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info', action?: { label: string; run: () => void }, ms?: number) {
+    // (Gone: a late confirmation would show in the next tool, without the timer that hides it.)
+    if (this.dead) return;
     clearTimeout(this.toastTimer);
     store.set({ toast: { id: ++this.toastId, msg, kind, action } });
     if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), ms ?? (kind === 'err' ? 4000 : 2200));
@@ -3105,13 +3123,18 @@ export class Engine {
 
   // ── Persistence & offline ──────────────────────────────────────────────
 
+  /** A save waiting for an idle moment (see persistSoon); destroy() saves at once instead. */
+  private persistIdle = 0;
+
   private persistSoon() {
     if (!this.persistEnabled) return;
     clearTimeout(this.persistTimer);
     // Big synchronous localStorage writes happen when the user is idle.
     this.persistTimer = window.setTimeout(() => {
-      if ('requestIdleCallback' in window) requestIdleCallback(this.persistNow, { timeout: 3000 });
-      else this.persistNow();
+      if ('requestIdleCallback' in window) {
+        cancelIdleCallback(this.persistIdle);
+        this.persistIdle = requestIdleCallback(this.persistNow, { timeout: 3000 });
+      } else this.persistNow();
     }, 800);
   }
 
@@ -3173,6 +3196,7 @@ export class Engine {
     if (process.env.NODE_ENV !== 'production') return;
     const go = () =>
       import('./sample').then(({ SAMPLE }) => {
+        if (this.dead) return;
         const doc = `[${Array(150).fill(SAMPLE).join(',')},"Zürich – 東京"]`;
         const steps: (() => unknown)[] = [];
         for (let k = 0; k < 4; k++) steps.push(() => reindent(doc, k & 1 ? '' : '  '), () => parse(doc));
@@ -3192,13 +3216,20 @@ export class Engine {
         );
         const next = () => {
           const step = steps.shift();
-          if (!step) return;
+          if (!step || this.dead) return;
           step();
           idle(next);
         };
         idle(next);
       });
-    if (document.readyState === 'complete') setTimeout(go, 4000);
-    else window.addEventListener('load', () => setTimeout(go, 4000), { once: true });
+    this.warmSoon = () => {
+      this.warmTimer = window.setTimeout(go, 4000);
+    };
+    if (document.readyState === 'complete') this.warmSoon();
+    else window.addEventListener('load', this.warmSoon, { once: true });
   }
+
+  /** The warm-up's wait for the page to settle (see warmUp): destroy() cancels it, and the steps left stop. */
+  private warmTimer = 0;
+  private warmSoon = () => {};
 }
