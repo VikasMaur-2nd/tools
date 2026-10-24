@@ -166,3 +166,42 @@ test('a press that focuses the table leaves the rows under the pointer alone', (
   el.dispatchEvent({ type: 'focus', target: el } as unknown as Event);
   assert.match(el.getAttribute('aria-activedescendant') ?? '', /^tb-15\d-0$/);
 });
+
+test('scrolling on draws only the rows coming into view, and they read as a full redraw does', () => {
+  const { el, view } = table(JSON.stringify(Array.from({ length: 500 }, (_, i) => ({ n: i, s: 'v' + i, o: i % 3 ? null : [i] }))));
+  const rows = el.querySelector('.tb-rows')!;
+  const sc = (view as unknown as { sc: { top: number } }).sc;
+  // How many rows were drawn, all told, and would have been with every range drawn whole.
+  let drawn = 0;
+  let full = 0;
+  const count = (html: string) => (html.match(/role="row"/g) ?? []).length;
+  const set = Object.getOwnPropertyDescriptor(FakeElement.prototype, 'innerHTML')!;
+  Object.defineProperty(rows, 'innerHTML', { get: set.get, set(v: string) { drawn += count(v); set.set!.call(this, v); } });
+  const add = rows.insertAdjacentHTML.bind(rows);
+  rows.insertAdjacentHTML = (w: string, v: string) => { drawn += count(v); add(w, v); };
+  let r = 7;
+  const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) % 1000) / 1000;
+  view.find('v1');
+  for (let k = 0; k < 300; k++) {
+    // Mostly small steps either way, now and then a jump.
+    sc.top = Math.max(0, Math.min(500 * 30, sc.top + (rnd() < 0.1 ? (rnd() - 0.5) * 9000 : (rnd() - 0.45) * 400)));
+    const v = view as unknown as { rFirst: number; rLast: number; rowsHtml(a: number, b: number): string };
+    const range = `${v.rFirst}-${v.rLast}`;
+    view.render(false);
+    if (`${v.rFirst}-${v.rLast}` !== range) full += v.rLast - v.rFirst;
+    // The same rows drawn in one go.
+    assert.equal(rows.innerHTML, v.rowsHtml(v.rFirst, v.rLast), `step ${k} at ${sc.top}`);
+  }
+  // Scrolling down smoothly, a wheel's worth at a time: about two fifths of the rows a whole redraw would draw.
+  sc.top = 0;
+  view.render(true);
+  drawn = full = 0;
+  for (let k = 0; k < 100; k++) {
+    const v = view as unknown as { rFirst: number; rLast: number };
+    const range = `${v.rFirst}-${v.rLast}`;
+    sc.top += 120;
+    view.render(false);
+    if (`${v.rFirst}-${v.rLast}` !== range) full += v.rLast - v.rFirst;
+  }
+  assert.ok(full > 800 && drawn < full / 2, `${drawn} rows drawn, ${full} redrawn whole`);
+});
