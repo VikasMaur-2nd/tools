@@ -1664,22 +1664,25 @@ export class Engine {
     clearTimeout(this.cmpTimer);
     const text = this.ed2.text;
     const diags: Diagnostic[] = [];
+    let r: ParseResult | null = null;
     if (text.trim()) {
-      const r = parse(text);
+      r = parse(text);
       for (let i = 0; i < r.issues.length && i < 300; i++) diags.push({ p: r.issues[i].p, cls: 'me' });
       if (r.error) diags.push({ p: r.error.p, cls: 'me' });
       for (let i = 0; i < r.warnings.length && i < 300; i++) diags.push({ p: r.warnings[i].p, cls: 'mw' });
     }
     this.ed2.setDiagnostics(diags);
-    store.set({ cmpText: text });
+    // The open panel diffs this parse instead of parsing the text again (closed, nothing holds the tree).
+    store.set({ cmpText: text, cmpParsed: r && this.settings.view === 'compare' ? { text, result: r } : null });
     write(KEYS.cmp, text && text.length <= MAX_PERSIST ? text : null);
   };
 
-  /** Called by the Compare panel with per-line marks for both editors. */
+  /** Called by the Compare panel with per-line marks for both editors (nulls also when it closes). */
   compareMarks(left: Uint8Array | null, right: Uint8Array | null) {
     const on = this.settings.view === 'compare';
     this.ed.setLineMarks(on ? left : null);
     this.ed2.setLineMarks(on ? right : null);
+    if (!on && store.get().cmpParsed) store.set({ cmpParsed: null });
   }
 
   /** Reveal a difference in both documents without moving focus. */

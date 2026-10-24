@@ -15,7 +15,7 @@ import {
   type ReactNode,
   type UIEvent,
 } from 'react';
-import { ARR, MAX_WALK_DEPTH, parse, tooDeep, type JNode } from '@/lib/json/parser';
+import { ARR, MAX_WALK_DEPTH, parse, tooDeep, type JNode, type ParseResult } from '@/lib/json/parser';
 import { clip, copyText, preview, primText, tooLarge } from '@/lib/json/format';
 import { formatPath } from '@/lib/json/path';
 import { diff, parseIgnoreList, type Change, type DiffKind, type DiffResult } from '@/lib/diff/diff';
@@ -34,6 +34,8 @@ export interface CompareViewProps {
   leftText: string;
   /** Modified document (second editor). */
   rightText: string;
+  /** The modified document as the engine parsed it, with the text it parsed: used instead of parsing `rightText` again when they match. */
+  rightParsed?: { text: string; result: ParseResult } | null;
   /** Indent unit for the JSON Patch output ('  ' | '    ' | '\t'). */
   indent: string;
   /** Reveal a change in both editors: offsets of the change's node (or its parent container for added/removed items) in each document; undefined if that side has none. */
@@ -106,6 +108,9 @@ function textModel(l: JNode, r: JNode, sortKeys: boolean): TextModel | string {
     return TOO_DEEP;
   }
 }
+
+/** The engine's parse when it is of `text`. */
+const parsedFor = (p: CompareViewProps['rightParsed'], text: string) => (p && p.text === text ? p.result : null);
 
 const valueText = (n: JNode) => (n.t >= ARR ? preview(n, 90) : primText(n, 160));
 /** A change's path as its row shows it (keys can be any length). */
@@ -237,7 +242,7 @@ const DiffLine = memo(function DiffLine({ r, i, side, sel, m }: { r: DRow; i: nu
   );
 });
 
-function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: CompareViewProps) {
+function CompareView({ leftText, rightText, rightParsed, indent, onJump, onMarks, onSwap }: CompareViewProps) {
   const tr = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const lwRef = useRef<HTMLDivElement>(null);
@@ -247,7 +252,7 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   const marksRef = useRef(onMarks);
   const noteTimer = useRef(0);
 
-  const [deb, setDeb] = useState({ l: leftText, r: rightText });
+  const [deb, setDeb] = useState(() => ({ l: leftText, r: rightText, rp: parsedFor(rightParsed, rightText) }));
   const [ignoreText, setIgnoreText] = useState(mem.ignore);
   const [opts, setOpts] = useState<Opts>(mem.opts);
   const [sub, setSub] = useState<Sub>(mem.sub);
@@ -267,9 +272,9 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   // typing and toggles stay responsive.
   useEffect(() => {
     if (leftText === deb.l && rightText === deb.r) return;
-    const t = window.setTimeout(() => setDeb({ l: leftText, r: rightText }), DEBOUNCE);
+    const t = window.setTimeout(() => setDeb({ l: leftText, r: rightText, rp: parsedFor(rightParsed, rightText) }), DEBOUNCE);
     return () => window.clearTimeout(t);
-  }, [leftText, rightText, deb]);
+  }, [leftText, rightText, rightParsed, deb]);
 
   useEffect(() => {
     const nt = noteTimer;
@@ -298,7 +303,8 @@ function CompareView({ leftText, rightText, indent, onJump, onMarks, onSwap }: C
   const stale = d !== deb || deb.l !== leftText || deb.r !== rightText || dIgnore !== ignoreText || dOpts !== opts || view !== sub;
 
   const lp = useMemo(() => (d.l.trim() ? parse(d.l) : null), [d.l]);
-  const rp = useMemo(() => (d.r.trim() ? parse(d.r) : null), [d.r]);
+  // (the engine parsed the modified document already, for its squiggles)
+  const rp = useMemo(() => (d.r.trim() ? (d.rp ?? parse(d.r)) : null), [d.r, d.rp]);
   const ignoreKey = useMemo(() => parseIgnoreList(dIgnore).join('\n'), [dIgnore]);
 
   // Nesting deeper than Compare walks (see MAX_WALK_DEPTH) is refused at once.
