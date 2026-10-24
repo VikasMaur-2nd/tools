@@ -196,11 +196,11 @@ function ToolContent({ page, locale, Link }: { page: ToolPage; locale: SiteLocal
   const output = exampleOutput(page);
   const t = serverT(locale);
   return (
-    <ContentShell current="tools" path={`/tools/${page.slug}`}>
+    <ContentShell current="tools" path={`/tools/${page.slug}`} labelledBy="tool-title">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(pageJsonLd(page, locale)) }} />
       <header className="page-head tool-page-head">
         <p className="eyebrow">{t('tool.eyebrow')}</p>
-        <h1>{page.heading}</h1>
+        <h1 id="tool-title">{page.heading}</h1>
         <p className="lede">{page.intro}</p>
       </header>
 
@@ -250,5 +250,6 @@ export default async function ToolPageRoute(
   const { page, locale } = await getPage((await params).slug);
   const langs = <StatusLangs path={`/tools/${page.slug}`} locale={locale} />;
   const tool = renderTool({ preset: page.preset, langs }, locale);
-  return <div className="home-page landing-page"><section className="landing-tool" aria-label={serverT(locale)('tool.section', { heading: page.heading })}>{tool}</section><ToolContent page={page} locale={locale} Link={Link} /></div>;
+  // The app is the page's main landmark; the guide below the site header is a region named by its heading.
+  return <div className="home-page landing-page"><main className="landing-tool" aria-label={serverT(locale)('tool.section', { heading: page.heading })}>{tool}</main><ToolContent page={page} locale={locale} Link={Link} /></div>;
 }

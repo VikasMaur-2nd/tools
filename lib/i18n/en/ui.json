@@ -133,7 +133,7 @@
   "tool.feature.local": "Local browser processing",
   "tool.feature.copy": "Copy and download output",
   "tool.section": "{heading} tool",
-  "tool.section._context": "Accessible name of the region that holds the app on a tool page, e.g. \"JSON validator tool\". {heading} is the tool name.",
+  "tool.section._context": "Accessible name of the main landmark that holds the app on a tool page, e.g. \"JSON validator tool\". {heading} is the tool name.",
   "notFound.title": "Page not found",
   "notFound.text": "This page does not exist in this language. The JSON viewer and the translated tools are one click away.",
   "notFound.home": "Open the JSON viewer",
