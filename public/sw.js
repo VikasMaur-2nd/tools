@@ -9,8 +9,9 @@
  *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests
  *
  * What a page needs offline, its files: what its HTML names (scripts, styles,
- * fonts, icons), and every chunk those scripts can load later ("static/chunks/…"
- * names inside them: features loaded on first use, workers), followed on.
+ * fonts, icons), every chunk those scripts can load later ("static/chunks/…"
+ * names inside them: features loaded on first use, workers), followed on, and
+ * the fonts its stylesheets name (subsets only some text loads).
  *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
@@ -41,8 +42,9 @@ const STATIC_RE = /\/_next\/static\/[^"'\\\s)<>]+/g;
 // Root-relative href/src attributes (icons, manifest, preloads).
 const ATTR_RE = /\s(?:href|src)="(\/(?!\/)[^"]*)"/g;
 const FILE_RE = /\.(?:m?js|css|json|webmanifest|ico|png|svg|jpe?g|webp|avif|gif|woff2?)(?:\?.*)?$/i;
-// Chunks a script loads later, named relative to /_next/.
+// Chunks a script loads later, named relative to /_next/; files a stylesheet names (font subsets for some scripts).
 const CHUNK_RE = /["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g;
+const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 
 const isStatic = (path) => path.startsWith('/_next/static/');
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
@@ -77,16 +79,24 @@ function extractAssets(html) {
   return Array.from(out);
 }
 
-/** The /_next/static files a script names (hashed files never change: remembered while the SW runs). */
+/** The /_next/static files a script or stylesheet names (hashed files never change: remembered while the SW runs). */
 const named = new Map();
-function chunksIn(url, js) {
+function filesIn(url, text) {
   let out = named.get(url);
   if (!out) {
     const found = new Set();
     let m;
-    CHUNK_RE.lastIndex = 0;
-    while ((m = CHUNK_RE.exec(js))) found.add(ORIGIN + '/_next/' + m[1]);
-    (js.match(STATIC_RE) || []).forEach((p) => found.add(ORIGIN + p));
+    if (/\.css$/.test(url)) {
+      CSS_URL_RE.lastIndex = 0;
+      while ((m = CSS_URL_RE.exec(text))) {
+        const u = new URL(m[1], url);
+        if (u.origin === ORIGIN && isStatic(u.pathname)) found.add(u.href);
+      }
+    } else {
+      CHUNK_RE.lastIndex = 0;
+      while ((m = CHUNK_RE.exec(text))) found.add(ORIGIN + '/_next/' + m[1]);
+      (text.match(STATIC_RE) || []).forEach((p) => found.add(ORIGIN + p));
+    }
     out = Array.from(found);
     named.set(url, out);
   }
@@ -118,9 +128,10 @@ async function pageFiles(cache, html, fetchMissing) {
         return false; // (storage full)
       }
     }
-    if (!/\.js$/.test(new URL(url).pathname) || !isStatic(new URL(url).pathname)) return true;
-    const js = named.has(url) ? '' : await res.text();
-    const results = await Promise.all(chunksIn(url, js).map((u) => visit(u, false)));
+    const path = new URL(url).pathname;
+    if (!/\.(?:js|css)$/.test(path) || !isStatic(path)) return true;
+    const text = named.has(url) ? '' : await res.text();
+    const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
   };
   const results = await Promise.all(extractAssets(html).map((u) => visit(u, isStatic(new URL(u).pathname))));

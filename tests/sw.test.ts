@@ -21,7 +21,9 @@ function build(tag: string): Files {
   return {
     '/': page('Home ' + tag),
     '/tools/json-graph': page('Graph ' + tag),
-    [`/_next/static/chunks/${tag}-app.css`]: 'body{}',
+    // A font subset only some text uses: named by the stylesheet, never by the HTML.
+    [`/_next/static/chunks/${tag}-app.css`]: `@font-face{font-family:M;src:url(../media/${tag}-greek.woff2)format("woff2");unicode-range:U+370-3FF}body{}`,
+    [`/_next/static/media/${tag}-greek.woff2`]: 'font',
     [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-graph.js");y("static/chunks/not-a-file.js")`,
     [`/_next/static/chunks/${tag}-page.js`]: 'page()',
     // A lazily loaded feature that loads one more chunk of its own, and a font.
@@ -111,7 +113,7 @@ test('service worker: installing caches the shell with every chunk it can load l
   sw.serve(build('a'));
   await sw.install();
   assert.match(sw.cached('/')!, /Home a/);
-  // The lazily loaded graph, the chunk it loads in turn, and its font: offline from the first visit.
+  // The lazily loaded graph, the chunk it loads in turn, its font, and the stylesheet's font subsets: offline from the first visit.
   assert.deepEqual(sw.statics(), filesOf('a'));
   assert.ok(sw.has('/icon.svg'));
   // A name inside a script that is no file holds nothing back, and isn't kept.
