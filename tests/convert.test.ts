@@ -492,3 +492,23 @@ test('C#: properties never hide the members of object', () => {
   }
   has(out, ' Name { get; set; }');
 });
+
+test("Python: fields never shadow BaseModel's members", () => {
+  const out = conv('{"model_dump":1,"model_validate":"v","model_fields":[1],"model_config":true,"model_name":"m","parse_obj":2,"copy":3,"name":"n"}', 'python');
+  has(
+    out,
+    'from pydantic import BaseModel, ConfigDict, Field\n',
+    'class Root(BaseModel):\n    model_config = ConfigDict(protected_namespaces=())\n\n    model_dump_: int = Field(alias="model_dump")\n',
+    '    model_validate_: str = Field(alias="model_validate")',
+    '    model_fields_: List[int] = Field(alias="model_fields")',
+    '    model_config_: bool = Field(alias="model_config")',
+    '    model_name: str\n',
+    '    parse_obj_: int = Field(alias="parse_obj")',
+    '    copy_: int = Field(alias="copy")',
+    '    name: str\n',
+  );
+  // no protected names: no config
+  const plain = conv('{"name":"n","copy":1}', 'python');
+  assert.ok(!plain.includes('ConfigDict'), plain);
+  has(plain, 'from pydantic import BaseModel, Field\n');
+});

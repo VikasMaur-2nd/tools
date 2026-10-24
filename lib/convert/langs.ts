@@ -58,12 +58,17 @@ export function toGo(root: JNode, o: ConvertOptions): string {
 /* ---------- Python (Pydantic v2) ---------- */
 
 const PY_RES = set(
-  'False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield str int float bool list dict Any Dict List Optional Union Field BaseModel RootModel copy json schema construct validate model_config',
+  'False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield str int float bool list dict Any Dict List Optional Union Field BaseModel RootModel ConfigDict',
 );
+// BaseModel's own members: a field can't take their names (model_dump, model_validate… fail outright).
+const PY_MODEL = set(
+  'construct copy dict from_orm json model_computed_fields model_config model_construct model_copy model_dump model_dump_json model_extra model_fields model_fields_set model_json_schema model_parametrized_name model_post_init model_rebuild model_validate model_validate_json model_validate_strings parse_file parse_obj parse_raw schema schema_json update_forward_refs validate',
+);
+const pyReserved = (n: string) => PY_RES.has(n) || PY_MODEL.has(n);
 const PY_ID = new RegExp('^[\\p{L}_][\\p{L}\\p{Nd}_]*$', 'u');
 
 export function toPython(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, 'BaseModel Field RootModel Any Dict List Optional Union None True False');
+  const m = infer(root, o, 'BaseModel ConfigDict Field RootModel Any Dict List Optional Union None True False');
   const P: Prim = {
     bool: 'bool',
     int: 'int',
@@ -79,15 +84,19 @@ export function toPython(root: JNode, o: ConvertOptions): string {
   const out: string[] = [];
   for (const t of m.deps) {
     const u = uniq();
+    let ns = false;
     const lines = props(t).map((p) => {
-      const ok = PY_ID.test(p.key) && !PY_RES.has(p.key) && p.key[0] !== '_';
+      const ok = PY_ID.test(p.key) && !pyReserved(p.key) && p.key[0] !== '_';
       let f = ok ? p.key : snake(p.key) || 'field';
-      if (!ok && PY_RES.has(f)) f += '_';
+      if (!ok && pyReserved(f)) f += '_';
       f = u(f);
+      if (f.startsWith('model_')) ns = true;
       const alias = f !== p.key ? `alias=${lit(p.key)}` : '';
       const def = p.opt ? (alias ? ` = Field(default=None, ${alias})` : ' = None') : alias ? ` = Field(${alias})` : '';
       return `    ${f}: ${typeOf(p.s, P, p.opt)}${def}`;
     });
+    // Pydantic warns about (or, for its own members, refuses) fields named model_…
+    if (ns) lines.unshift('    model_config = ConfigDict(protected_namespaces=())', '');
     out.push(`class ${t.name}(BaseModel):\n${lines.join('\n')}`);
   }
   if (!m.obj) {
@@ -96,7 +105,7 @@ export function toPython(root: JNode, o: ConvertOptions): string {
   }
   const body = out.join('\n\n\n');
   const typing = ['Any', 'Dict', 'List', 'Optional', 'Union'].filter((n) => has(body, `\\b${n}\\b`));
-  const pyd = ['BaseModel', 'Field', 'RootModel'].filter((n) => body.includes(n === 'Field' ? '= Field(' : `(${n}`));
+  const pyd = ['BaseModel', 'ConfigDict', 'Field', 'RootModel'].filter((n) => body.includes(n === 'Field' || n === 'ConfigDict' ? `= ${n}(` : `(${n}`));
   return (typing.length ? `from typing import ${typing.join(', ')}\n\n` : '') + `from pydantic import ${pyd.join(', ')}\n\n\n${body}\n`;
 }
 
