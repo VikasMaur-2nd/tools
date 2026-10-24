@@ -2105,6 +2105,10 @@ export class Engine {
         open: (n) => this.openInEditor(n),
         copy: (n, what) => what === 'path' ? this.copyPath(n) : this.copyValue(n),
         escape: () => this.focusEditor(),
+        // A big document's search finishes in steps: its final count arrives here (like the code views' onFind).
+        found: (r) => {
+          if (this.settings.view === 'graph' && this.query) store.set({ find: { ...store.get().find, ...r } });
+        },
       });
       const { root, reset, nodes } = this.graphRoot;
       graph.setRoot(root, reset, nodes, false);
