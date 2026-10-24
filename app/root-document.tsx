@@ -6,7 +6,7 @@ import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
 import { serverT } from '@/lib/i18n/server';
 import { SITE } from '@/lib/site';
 import { jsonLdScript, siteJsonLd } from './(en)/seo';
-import { socialImages } from './page-metadata';
+import { socialImage } from './page-metadata';
 import './globals.css';
 import './content.css';
 
@@ -52,14 +52,10 @@ export function rootMetadata(locale: SiteLocale): Metadata {
       title,
       description,
       locale: localeInfo(locale).og,
-      images: [socialImages(locale).openGraph],
+      images: [socialImage(locale)],
     },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: [socialImages(locale).twitter],
-    },
+    // X reads the Open Graph image (app/page-metadata.ts).
+    twitter: { card: 'summary_large_image', images: [] },
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 } },
     formatDetection: { telephone: false, email: false, address: false },
     appleWebApp: { capable: true, title: 'Tool Kumar', statusBarStyle: 'black-translucent' },
