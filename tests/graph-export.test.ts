@@ -127,6 +127,29 @@ test('graph export: rejects too many shown SVG cards, but permits their collapse
   assert.equal((svg.match(/class="card"/g) ?? []).length, 1);
 });
 
+test('graph export: SVG limits count the rows drawn, not only cards', () => {
+  // One card holding a long array of numbers: a card under the card limit, rows far over the row limit.
+  const L = layoutGraph(model(Array.from({ length: EXPORT_LIMITS.svgRows * 2 }, (_, i) => i * 1.5)));
+  assert.equal(L.shownCount, 1);
+  assert.ok(exportSize(L).rows > EXPORT_LIMITS.svgRows);
+  const t0 = performance.now();
+  assert.throws(() => toSVG(L, theme), /The graph is too large for SVG\. Collapse some branches or export PNG\./);
+  // Refused before drawing a row (drawing them all took seconds).
+  assert.ok(performance.now() - t0 < 100, `${(performance.now() - t0).toFixed(0)} ms`);
+  // What's on screen of it is small: only the rows in view count, and it exports.
+  const view = { kind: 'rect', x: 0, y: 0, w: 1200, h: 800 } as const;
+  const rows = exportSize(L, view).rows;
+  assert.ok(rows > 0 && rows < 50, `${rows} rows in view`);
+  assert.equal((toSVG(L, theme, { area: view }).match(/class="num /g) ?? []).length, rows);
+  // Rows of collapsed branches aren't drawn, so they don't count.
+  const m = model({ big: Array.from({ length: EXPORT_LIMITS.svgRows * 2 }, (_, i) => i), small: [{ a: 1 }] });
+  const collapsed = new Uint8Array(m.n);
+  collapsed[0] = 1;
+  assert.ok(exportSize(layoutGraph(m)).rows > EXPORT_LIMITS.svgRows);
+  assert.equal(exportSize(layoutGraph(m, collapsed)).rows, 2);
+  assert.match(toSVG(layoutGraph(m, collapsed), theme), /^<svg/);
+});
+
 test('graph export: 5k cards export in less than 300 ms', () => {
   const L = layoutGraph(model(Array.from({ length: 4999 }, (_, id) => ({ id }))));
   assert.equal(L.shownCount, 5000);

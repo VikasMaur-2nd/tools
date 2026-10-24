@@ -6,7 +6,8 @@ import { anchorY, cardsIn, groupsIn, portY, rowY, type GraphLayout } from './lay
 import { G, SWATCH_COLS, SWATCH_PX, headText, headX, labelText, sizeText, swatch, valueText } from './model';
 import type { GraphTheme } from './theme';
 
-export const EXPORT_LIMITS = { svgCards: 20_000, pngPixels: 120_000_000, pngSide: 16_384 };
+/** SVG: cards and rows drawn (a long array is one card with a row per item: 20k cards or 100k rows are about 15 MB each). */
+export const EXPORT_LIMITS = { svgCards: 20_000, svgRows: 100_000, pngPixels: 120_000_000, pngSide: 16_384 };
 
 const MARGIN = 24;
 const MIN_SCALE = 0.25;
@@ -137,10 +138,35 @@ function frame(L: GraphLayout, area: ExportArea = { kind: 'all' }): Frame {
   return { x0, y0, x1, y1, margin, lo, hi, cards, w: half(x1 - x0) + margin * 2, h: half(y1 - y0) + margin * 2 };
 }
 
-/** Size of an export at scale 1, and how many cards it holds (for the export dialog). */
-export function exportSize(L: GraphLayout, area?: ExportArea): { width: number; height: number; cards: number } {
+/**
+ * Rows an SVG of frame `f` draws, counted as `draw` and `card` pick them (cards in
+ * the frame, their rows cut to its height) and only up to just past `cap`.
+ */
+function rowsIn(L: GraphLayout, f: Frame, cap: number): number {
+  const m = L.m;
+  const y0 = f.y0 - f.margin - 3;
+  const y1 = f.y1 + f.margin + 3;
+  let rows = 0;
+  for (let d = 0; d < L.levels.length && rows <= cap; d++) {
+    if (L.colX[d] > f.x1 + 1 || L.colX[d] + L.colW[d] + 120 < f.x0) continue;
+    const [a, b] = cardsIn(L, d, y0, y1);
+    const list = L.levels.at(d);
+    for (let i = a; i < b && rows <= cap; i++) {
+      const c = list[i];
+      if (c < f.lo || c >= f.hi) continue;
+      const start = m.rowStart[c];
+      const from = Math.max(start, start + Math.floor((y0 - L.y[c] - G.head) / G.row));
+      const to = Math.min(m.rowStart[c + 1], start + Math.ceil((y1 - L.y[c] - G.head) / G.row));
+      if (to > from) rows += to - from;
+    }
+  }
+  return rows;
+}
+
+/** Size of an export at scale 1, and how many cards and SVG rows it holds (for the export dialog; rows counted up to just past the limit). */
+export function exportSize(L: GraphLayout, area?: ExportArea): { width: number; height: number; cards: number; rows: number } {
   const f = frame(L, area);
-  return { width: f.w, height: f.h, cards: f.cards };
+  return { width: f.w, height: f.h, cards: f.cards, rows: rowsIn(L, f, EXPORT_LIMITS.svgRows) };
 }
 
 type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'chevron' | 'pill' | 'dot' | 'fg' | 'strong' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul' | 'selected';
@@ -324,7 +350,7 @@ function styles(theme: GraphTheme): string {
 /** A standalone SVG (a 24 px margin unless it's a view rectangle), with no external fonts or resources. */
 export function toSVG(L: GraphLayout, theme: GraphTheme, opts: ImageOptions = {}): string {
   const f = frame(L, opts.area);
-  if (f.cards > EXPORT_LIMITS.svgCards) throw new Error(SVG_TOO_LARGE);
+  if (f.cards > EXPORT_LIMITS.svgCards || rowsIn(L, f, EXPORT_LIMITS.svgRows) > EXPORT_LIMITS.svgRows) throw new Error(SVG_TOO_LARGE);
   const { w, h } = f;
   const p = new SVG(f.x0 - f.margin, f.y0 - f.margin);
   const bg = opts.background === undefined ? theme.bg : opts.background;

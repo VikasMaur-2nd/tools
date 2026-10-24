@@ -1218,10 +1218,13 @@ export class GraphView implements GraphViewApi {
     const size = mod.exportSize(L, this.exportArea(opts));
     const preview: ExportPreview = { width: Math.ceil(size.width), height: Math.ceil(size.height), cards: size.cards, reduced: false, branch, scale: 1 };
     if (opts.format === 'svg') {
-      if (size.cards > mod.EXPORT_LIMITS.svgCards) {
+      if (size.cards > mod.EXPORT_LIMITS.svgCards || size.rows > mod.EXPORT_LIMITS.svgRows) {
         preview.error = 'The graph is too large for SVG. Collapse some branches or export PNG.';
-        preview.limit = 'cards';
-        preview.maxCards = mod.EXPORT_LIMITS.svgCards;
+        // (Too many rows, in long arrays: the sentence says it all.)
+        if (size.cards > mod.EXPORT_LIMITS.svgCards) {
+          preview.limit = 'cards';
+          preview.maxCards = mod.EXPORT_LIMITS.svgCards;
+        }
       }
       return preview;
     }
