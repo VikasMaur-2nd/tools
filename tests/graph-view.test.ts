@@ -7,6 +7,7 @@ import { layoutGraph, type GraphLayout } from '../lib/graph/layout';
 import { LOD_SKEL, LOD_TEXT, MARGIN, ZOOM_MAX, bound, fitCam, fitScale, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from '../lib/graph/camera';
 import { blockEnd, column, compactNum, paint, partAt, widest, type Paint } from '../lib/graph/render';
 import { isDark, type GraphTheme } from '../lib/graph/theme';
+import { overview } from '../lib/graph/minimap';
 
 const near = (a: number, b: number, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≉ ${b}`);
 
@@ -211,6 +212,26 @@ test('graph render: merged blocks end where card-by-card merging ends', () => {
       }
     }
   }
+});
+
+test('graph minimap: a merged block is as wide as its widest card', () => {
+  // A wide card between two narrow ones, so close on the minimap that all three are one block.
+  const L = layoutGraph(buildModel(parse(JSON.stringify([{ a: 1 }, { ['k'.repeat(40)]: 'v'.repeat(30) }, { a: 1 }])).root!, 7.2));
+  const list = L.levels.at(1);
+  const widths = [...list].map((c) => L.m.w[c]);
+  assert.equal(widths.length, 3);
+  assert.ok(widths[1] > widths[0] && widths[1] > widths[2], widths.join(' '));
+  const rects: number[][] = [];
+  const ctx = Object.assign(Object.create(fakeCtx), { rect: (x: number, y: number, w: number, h: number) => void rects.push([x, y, w, h]) });
+  // 1 px across per world px (widths read as they are), 1 px down per 1000.
+  overview(ctx, L, fakeTheme, 1, 0.001, 0, 0);
+  const col = rects.filter(([x]) => x === L.colX[1]);
+  assert.equal(col.length, 1);
+  assert.equal(col[0][2], Math.max(...widths));
+  // Far enough apart, each card is its own block with its own width.
+  rects.length = 0;
+  overview(ctx, L, fakeTheme, 1, 1, 0, 0);
+  assert.deepEqual(rects.filter(([x]) => x === L.colX[1]).map((r) => r[2]), widths);
 });
 
 test('graph render: cards paint a layer at a time, a fill per colour whatever their number', () => {
