@@ -499,6 +499,8 @@ export class Editor {
     let folds: { close: Int32Array; depth: Int32Array } | null = null;
     /** The edit may have opened or closed blocks in a long document: `folds` is what stands, the rest is found later. */
     let around = false;
+    /** The edit kept every line's part in the fold structure, and the line count. */
+    let kept = false;
     if (edit && fits && edit.ins.length <= PATCH_CHARS) {
       // A bounded edit: patch the line starts and the widest line instead of rescanning the document.
       const { a, b, ins } = edit;
@@ -520,7 +522,10 @@ export class Editor {
       if (few && r.added <= 64) {
         const now = Array.from({ length: r.added + 1 }, (_, k) => foldSig(doc, ls[la + k], lineEndIn(ls, doc.length, la + k)));
         const plain = (s: number) => (s & 10) === 0;
-        if (now.length === was.length && now.every((s, k) => s === was[k])) folds = { close: this.close, depth: this.depth };
+        if (now.length === was.length && now.every((s, k) => s === was[k])) {
+          folds = { close: this.close, depth: this.depth };
+          kept = true;
+        }
         else if (was.every(plain) && now.every(plain)) folds = shiftFoldLines(this.close, this.depth, la, lb, r.added);
       }
       if (!folds && !fresh && known && ls.length >= FOLD_EDIT_LINES) {
@@ -548,11 +553,12 @@ export class Editor {
     }
     if (doc !== old) {
       // A big new document's folds are found after it shows, as are the blocks around an edit of a long one
-      // that may have opened or closed some; an edit meanwhile starts that over, from what it leaves standing.
-      // (Folds the user made in blocks the edit can't change survive it.)
+      // that may have opened or closed some; an edit meanwhile starts that over, from what it leaves standing,
+      // unless it kept the structure (then the scan goes on). (Folds the user made in blocks the edit can't
+      // change survive it.)
       const pending = this.foldsFor !== null;
-      if (fresh ? this.ls.length >= FOLD_STEP_LINES && (pending || !folds) : around || (pending && folds)) folds = this.scanFoldsLater(doc, fresh ? null : folds);
-      else if (pending) {
+      if (fresh ? this.ls.length >= FOLD_STEP_LINES && (pending || !folds) : around || (pending && folds && !kept)) folds = this.scanFoldsLater(fresh ? null : folds);
+      else if (pending && !kept) {
         this.foldsFor = null;
         folds = null;
       }
@@ -911,24 +917,36 @@ export class Editor {
     }
   }
 
-  /** The document version whose fold structure is still being found (see scanFoldsLater); null: known. */
-  private foldsFor: Doc | null = null;
+  /** The scan finding the fold structure (see scanFoldsLater); null: it is known. */
+  private foldsFor: object | null = null;
+  /** The arrays of the scan in progress, and those of one given up (the next one fills them: no megabytes per key). */
+  private scanning: { close: Int32Array; depth: Int32Array } | null = null;
+  private spare: { close: Int32Array; depth: Int32Array } | null = null;
 
   /**
-   * Finds `doc`'s fold structure in slices, then shows its fold markers. Returns the structure until then:
-   * `known` (what an edit leaves standing), else no blocks at all.
+   * Finds the document's fold structure in slices, then shows its fold markers. Returns the structure until
+   * then: `known` (what an edit leaves standing), else no blocks at all.
    */
-  private scanFoldsLater(doc: Doc, known: { close: Int32Array; depth: Int32Array } | null) {
+  private scanFoldsLater(known: { close: Int32Array; depth: Int32Array } | null) {
     const n = this.ls.length;
-    this.foldsFor = doc;
-    // (Made when it starts: typing restarts it at every key.)
+    const scanFor = {};
+    if (this.scanning) this.spare = this.scanning;
+    this.scanning = null;
+    this.foldsFor = scanFor;
+    // (Made when it starts: typing restarts it at every key that opens or closes a block.)
     let scan: ReturnType<typeof foldScanner> | null = null;
     const run = () => {
       // (An edit or another document since: this scan is stale, and the lines it reads may have changed.)
-      if (this.gone || this.foldsFor !== doc || !this.el.isConnected) return;
-      const res = (scan ??= foldScanner(doc, this.ls))(performance.now() + 8);
+      if (this.gone || this.foldsFor !== scanFor || !this.el.isConnected) return;
+      if (!scan) {
+        this.scanning = this.spare?.close.length === n ? this.spare : { close: new Int32Array(n), depth: new Int32Array(n) };
+        this.spare = null;
+        scan = foldScanner(this.doc, this.ls, this.scanning);
+      }
+      const res = scan(performance.now() + 8, this.doc);
       if (!res) return void setTimeout(run, 0);
       this.foldsFor = null;
+      this.scanning = null;
       const had = this.folded.size;
       this.scanFolds(res);
       // (A fold that no longer matches its block opens.)

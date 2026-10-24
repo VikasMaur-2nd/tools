@@ -234,6 +234,32 @@ describe('lines', () => {
     }
   });
 
+  test('foldScanner fills arrays it is given, and goes on through edits that keep every signature', () => {
+    // (Over 4096 lines: a step with its time already up stops there.)
+    const t = '{\n  "a": [\n' + '    1,\n'.repeat(5000) + '    2\n  ],\n  "b": {\n    "c": 3\n  }\n}';
+    const { ls } = lineStarts(t);
+    const into = { close: new Int32Array(ls.length).fill(7), depth: new Int32Array(ls.length).fill(7) };
+    const scan = foldScanner(t, ls, into);
+    let got = scan(-Infinity);
+    assert.equal(got, undefined, 'not done yet');
+    // Edit a value (same line count, same signatures): the scan reads the text as it is now.
+    const next = t.replace('"c": 3', '"c": 345');
+    patchLines(ls, t, next, t.indexOf('3\n'), t.indexOf('3\n') + 1, '345', 0, false);
+    got = scan(Infinity, next);
+    assert.ok(got && got.close === into.close && got.depth === into.depth);
+    assert.deepEqual([...got.close], [...scanFolds(next, ls).close]);
+    assert.deepEqual([...got.depth], [...scanFolds(next, ls).depth]);
+  });
+
+  test('foldsAround updates the arrays it is given when the line count stays', () => {
+    const t = '{\n  "a": [\n    1\n  ],\n  "b": 2\n}';
+    const { ls } = lineStarts(t);
+    const f = scanFolds(t, ls);
+    const got = foldsAround(f.close, f.depth, 2, 2, 0);
+    assert.equal(got.close, f.close);
+    assert.deepEqual([...got.close], [-1, -1, -1, -1, -1, -1], 'blocks around line 2 unknown');
+  });
+
   test('scanFolds finds blocks whose closer is alone on its line', () => {
     const t = '{\n  "a": [\n    1\n  ],\n  // x {\n  "b": 2\n}';
     const { ls } = lineStarts(t);

@@ -138,3 +138,21 @@ test('a short document finds its new structure at once', () => {
   assert.equal(f.foldsFor, null);
   assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
 });
+
+test('typing that keeps the structure lets the scan in progress go on', async (t) => {
+  // (A clock always past each slice's end: a slice scans 4096 lines.)
+  let clock = 0;
+  t.mock.method(performance, 'now', () => (clock += 100));
+  const { ed } = editor(objects(7_000));
+  const f = folds(ed);
+  ed.replace(1, 1, 'x');
+  const scan = f.foldsFor;
+  assert.ok(scan);
+  await tick();
+  // Typing inside a value: the scan goes on (it reads the document as it is now).
+  const at = ed.text.indexOf('"k": 5') + 5;
+  for (const c of '123') ed.replace(at, at, c);
+  assert.equal(f.foldsFor, scan, 'not started over');
+  for (let k = 0; k < 100 && f.foldsFor; k++) await tick();
+  assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
+});
