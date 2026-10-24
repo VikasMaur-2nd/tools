@@ -1,40 +1,47 @@
 {
   "json-validator": {
-    "hash": "a1c439c2d927",
-    "title": "JSON-Validator online mit genauer Fehlerposition",
-    "description": "Validiere JSON online im Browser. Finde Syntaxfehler, überflüssige Kommas und reparierbare Probleme, ohne sensible Daten hochzuladen.",
-    "heading": "JSON-Validator",
+    "hash": "f808b40ea2e6",
+    "title": "JSON-Validator und Linter online",
+    "description": "Prüfe JSON online mit genauer Zeile und Spalte. Finde überflüssige Kommas, kontrolliere Reparaturen und validiere die Syntax lokal ohne Upload.",
+    "heading": "JSON-Validator und Linter",
     "query": "json validator",
     "secondary": [
-      "json validieren online",
-      "json online prüfen",
-      "json syntax prüfen"
+      "json linter",
+      "json objekt online validieren"
     ],
-    "intro": "Füge JSON ein, um seine Syntax auf Standardkonformität zu prüfen. Tool Kumar zeigt die genaue Zeile und Spalte an und bietet Reparaturen für häufige Syntaxabweichungen an.",
-    "modeLabel": "Validierung und Fehleransicht",
+    "intro": "Füge ein JSON-Objekt, Array oder einen skalaren Wert ein, um die Syntax zu prüfen. Der JSON-Linter zeigt die genaue Zeile und Spalte des Fehlers und bietet Reparaturen für häufige Fehler an.",
+    "modeLabel": "JSON-Syntaxprüfung",
     "exampleLabel": "Dieses Beispiel enthält ein überflüssiges Komma am Ende. Der Validator markiert das Komma nach 36.",
     "steps": [
       "Füge das Dokument in den Eingabebereich ein.",
       "Lies die Fehlermeldung und springe zur angegebenen Stelle.",
-      "Korrigiere das Zeichen oder wähle „Eingabe reparieren“, wenn sich das Problem sicher beheben lässt."
+      "Korrigiere das Zeichen oder wähle Eingabe reparieren und prüfe anschließend das formatierte Ergebnis."
     ],
     "options": [
       "Prüft Objekte, Arrays, Strings, Zahlen, boolesche Werte und null.",
       "Zeigt überflüssige Kommas am Ende, Kommentare und andere behebbare Eingabeprobleme gesondert an.",
-      "Prüfe das reparierte Ergebnis in der formatierten Ansicht."
+      "Reparaturen ändern die Eingabe. Prüfe das Ergebnis und mache eine Reparatur mit Ctrl+Z oder Cmd+Z rückgängig."
     ],
     "faqs": [
       {
-        "question": "Was prüft ein JSON-Validator?",
-        "answer": "Er prüft die JSON-Syntax, darunter Anführungszeichen, Kommas, Klammern, Zahlen und die zulässigen Werttypen."
+        "question": "Was prüft ein JSON-Linter?",
+        "answer": "Er prüft die JSON-Syntax, darunter Anführungszeichen, Kommas, Klammern, Zahlen und zulässige Werttypen. Dieses Tool zeigt Zeile und Spalte an, damit du den Fehler findest."
       },
       {
-        "question": "Kann er ungültiges JSON reparieren?",
-        "answer": "Er kann häufige Probleme wie überflüssige Kommas am Ende und einfache Anführungszeichen beheben. Die Reparatur erscheint als Änderung, die du rückgängig machen kannst."
+        "question": "Kann ich ein JSON-Objekt online validieren?",
+        "answer": "Ja. Füge ein Objekt ein oder öffne eine JSON-Datei, um sie lokal zu prüfen. Auch Arrays und skalare Werte wie Strings, Zahlen, true, false und null sind gültige JSON-Wurzelwerte."
       },
       {
-        "question": "Wo findet die Validierung statt?",
-        "answer": "Der Parser läuft lokal in deinem Browser. Tool Kumar benötigt dafür keine Serveranfrage."
+        "question": "Validiert das Tool JSON gegen ein Schema?",
+        "answer": "Nein. Diese Seite prüft die JSON-Syntax. Sie validiert keine Pflichtfelder, Feldtypen oder sonstigen Regeln eines JSON Schema."
+      },
+      {
+        "question": "Kann es ungültiges JSON reparieren?",
+        "answer": "Es kann häufige Fehler wie abschließende Kommas und einfache Anführungszeichen beheben. Prüfe die Änderungen vor dem Kopieren; Reparaturen lassen sich rückgängig machen."
+      },
+      {
+        "question": "Wo erfolgt die Validierung?",
+        "answer": "Der Parser läuft lokal in deinem Browser. Dein JSON wird zur Prüfung nicht hochgeladen."
       }
     ],
     "guides": [
@@ -49,6 +56,15 @@
       {
         "slug": "unexpected-token-html",
         "text": "Unexpected token '<': Prüfe, ob die Antwort HTML enthält"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Ein überflüssiges Komma in einem JSON-Objekt entfernen",
+        "paragraphs": [
+          "Ein JSON-Linter prüft Anführungszeichen, Kommas und Klammern. Entferne in diesem Beispiel das Komma nach 36, um das unten gezeigte gültige Objekt zu erhalten. JSON verlangt doppelte Anführungszeichen für Schlüssel und Strings; Kommentare und abschließende Kommas gehören nicht zur Syntax.",
+          "Die Syntaxprüfung kontrolliert keine Pflichtfelder oder Anwendungsregeln. Eine als String geschriebene Altersangabe kann gültiges JSON sein, obwohl deine API eine Zahl verlangt. Solche Regeln prüfst du mit einem JSON-Schema-Validator oder Anwendungscode."
+        ]
       }
     ]
   },
@@ -314,41 +330,53 @@
     ]
   },
   "json-to-python": {
-    "hash": "fafa568e5334",
-    "title": "Pydantic-Modell aus JSON generieren für Python",
-    "description": "Wandle JSON in Python-Pydantic-Modelle um. Tool Kumar leitet verschachtelte Felder lokal im Browser ab und generiert Code, ohne deine Daten hochzuladen.",
-    "heading": "Pydantic-Modell aus JSON generieren",
-    "query": "pydantic modell aus json generieren",
+    "hash": "6f9ec5dbf694",
+    "title": "Pydantic-Modelle aus JSON generieren",
+    "description": "Wandle JSON im Browser in Pydantic-2-Modelle um. Erzeuge Python-Typen für verschachtelte Objekte, Listen und nullable Felder mit Aliasnamen für umbenannte Schlüssel.",
+    "heading": "JSON in Pydantic-Modelle umwandeln",
+    "query": "json zu pydantic",
     "secondary": [
-      "json to pydantic",
-      "json to python",
-      "json in python klasse umwandeln"
+      "json zu python",
+      "pydantic modell aus json generieren"
     ],
-    "intro": "Erstelle Python-Pydantic-Modelldefinitionen aus einer JSON-Antwort. Nutze den generierten Code als typisierte Grundlage und ergänze anschließend die fachliche Validierung.",
-    "modeLabel": "Python-Ausgabe",
-    "exampleLabel": "Die folgenden Python-Modelle werden aus dem JSON-Beispiel generiert.",
+    "intro": "Erzeuge Python-Modelle für Pydantic 2 aus einem JSON-Beispiel. Prüfe die abgeleiteten Typen, verschachtelten Modelle und Feld-Aliase. Kopiere danach den Code und ergänze deine Anwendungsregeln.",
+    "modeLabel": "Python-Pydantic-Ausgabe",
+    "exampleLabel": "Der Schlüssel user-id erhält einen Field-Alias. Die Datensätze in items erzeugen ein verschachteltes Modell, dessen Feld note einen String oder null akzeptiert. Beide Datensätze enthalten note, daher bleibt das Feld erforderlich.",
     "steps": [
-      "Füge ein JSON-Objekt oder eine API-Antwort ein.",
-      "Wähle in der Ansicht „Konvertieren“ die Option „Python (Pydantic)“.",
-      "Lege einen Stammnamen fest und kopiere die Modelldefinitionen."
+      "Füge repräsentatives JSON mit Datensätzen ein, deren Felder sich unterscheiden.",
+      "Wähle Python (Pydantic) in der Konvertierungsansicht und lege den Wurzelnamen fest.",
+      "Kopiere die erzeugten Modelle in dein Python-Projekt und prüfe die abgeleiteten Typen."
     ],
     "options": [
-      "Verschachtelte Objekte werden zu verschachtelten BaseModel-Klassen.",
-      "Listen und optionale Werte richten sich nach dem vorliegenden Beispiel.",
-      "Prüfe Regeln für Datumswerte, Dezimalwerte und Union-Typen, bevor du die Modelle mit Produktionsdaten verwendest."
+      "Verschachtelte Objekte werden zu BaseModel-Klassen. Arrays führen die beobachteten Elementstrukturen in Listentypen zusammen.",
+      "Wurzelwerte, die keine Objekte sind, etwa eine Liste auf oberster Ebene, verwenden RootModel aus Pydantic 2.",
+      "Datumswerte bleiben Strings. Bruchzahlen ergeben float. Prüfe Regeln für Geldbeträge, Datumswerte und Validierung vor dem Produktionseinsatz."
     ],
     "faqs": [
       {
-        "question": "Generiert das Tool Pydantic-Modelle?",
-        "answer": "Ja. Das Ausgabeformat „Python“ erzeugt Pydantic-BaseModel-Definitionen mit typisierten Feldern."
+        "question": "Welche Pydantic-Version verwendet der erzeugte Code?",
+        "answer": "Die Ausgabe ist für Pydantic 2 bestimmt. Objektmodelle erben von BaseModel; Listen und andere Wurzelwerte verwenden RootModel. Das Beispiel nutzt die Pydantic-2-Methoden model_validate_json und model_dump_json."
       },
       {
-        "question": "Was passiert mit JSON-Schlüsseln, die Bindestriche enthalten?",
-        "answer": "Der Konverter erstellt einen gültigen Python-Feldnamen und erhält den ursprünglichen Schlüssel bei Bedarf über einen Alias."
+        "question": "Wie unterscheiden sich fehlende Felder und null?",
+        "answer": "Ein null-Wert ergänzt einen Typ, der null zulässt. Fehlt ein Feld in einigen Beispielobjekten, erhält es zusätzlich None als Standardwert. In Pydantic 2 verlangt Optional[str] ohne Standardwert weiterhin den Schlüssel, obwohl der Wert null sein darf."
       },
       {
-        "question": "Reicht ein einzelner JSON-Datensatz?",
-        "answer": "Ja. Ein einzelnes Objekt genügt, um ein Modell abzuleiten. Verwende ein möglichst umfassendes Beispiel, wenn die Felder variieren."
+        "question": "Was passiert mit JSON-Schlüsseln mit Bindestrichen?",
+        "answer": "Der Konverter erzeugt einen Python-Feldnamen und verwendet beim Umbenennen Field mit einem Alias. Aus user-id wird etwa user_id mit dem Alias user-id. Mit by_alias=True bleiben beim Export die ursprünglichen JSON-Schlüssel erhalten."
+      },
+      {
+        "question": "Kann ich aus einem einzelnen JSON-Datensatz ein Modell erzeugen?",
+        "answer": "Ja, aber ein Datensatz zeigt nicht, welche Felder fehlen oder andere Typen haben können. Verwende unterschiedliche Datensätze und prüfe Pflichtfelder, nullable Typen und Anwendungsregeln."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Die erzeugten Modelle mit Pydantic 2 verwenden",
+        "paragraphs": [
+          "Verwende Pydantic 2 in deinem Python-Projekt. Speichere die erzeugten Definitionen als models.py und die JSON-Eingabe als response.json. Root.model_validate_json liest den JSON-Text und validiert ihn anhand der erzeugten Typen.",
+          "model_dump_json mit by_alias=True schreibt JSON mit den ursprünglichen Schlüsseln, einschließlich user-id. Die erzeugten Typen beschreiben das Beispiel. Ergänze bei Bedarf Einschränkungen wie einen zulässigen Altersbereich oder einen präzisen Dezimaltyp."
+        ]
       }
     ]
   },
