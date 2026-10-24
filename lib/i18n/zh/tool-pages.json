@@ -1,40 +1,47 @@
 {
   "json-validator": {
-    "hash": "a1c439c2d927",
-    "title": "JSON 校验工具：语法错误精确到行和列",
-    "description": "在浏览器中在线校验 JSON，找出语法错误、尾随逗号和可以修复的问题，并定位到具体的行和列。敏感数据无需上传。",
-    "heading": "JSON 校验工具",
+    "hash": "f808b40ea2e6",
+    "title": "在线 JSON 验证器与 Linter",
+    "description": "在线验证 JSON 语法，精确定位错误行列。检查末尾逗号并审阅修复结果，所有操作均在浏览器本地完成，无需上传数据。",
+    "heading": "JSON 验证器与 Linter",
     "query": "JSON 校验",
     "secondary": [
-      "JSON 在线校验",
-      "JSON 格式验证",
-      "JSON 语法检查"
+      "json linter",
+      "在线验证 json 对象"
     ],
-    "intro": "粘贴 JSON，检查它是否符合标准语法。Tool Kumar 会标出错误所在的具体行和列，并为常见的不规范 JSON 提供修复。",
-    "modeLabel": "校验与错误视图",
+    "intro": "粘贴 JSON 对象、数组或标量值，检查其语法。JSON Linter 会指出错误的准确行列，并提供常见错误的修复建议。",
+    "modeLabel": "JSON 语法验证",
     "exampleLabel": "这个示例带有一个尾随逗号，校验工具会指向 36 后面的那个逗号。",
     "steps": [
       "把文档粘贴到输入面板。",
       "查看错误提示栏，并跳转到出错位置。",
-      "修改出错的字符；如果问题可以安全修正，也可以选择“修复输入”。"
+      "修改相应字符，或选择修复输入，然后检查格式化结果。"
     ],
     "options": [
       "检查对象、数组、字符串、数字、布尔值和 null。",
       "尾随逗号、注释等可修复的输入问题会单独列出。",
-      "在“格式化”视图中确认修复后的结果。"
+      "修复会修改输入。请检查结果，并使用 Ctrl+Z 或 Cmd+Z 撤销修复。"
     ],
     "faqs": [
       {
-        "question": "JSON 校验工具会检查什么？",
-        "answer": "检查 JSON 语法，包括引号、逗号、括号、数字以及允许的值类型。"
+        "question": "JSON Linter 检查什么？",
+        "answer": "它检查 JSON 语法，包括引号、逗号、括号、数字和允许的值类型。此工具会报告行列位置，帮助你找到问题。"
+      },
+      {
+        "question": "可以在线验证 JSON 对象吗？",
+        "answer": "可以。粘贴对象或打开 JSON 文件即可在本地检查。数组以及字符串、数字、true、false、null 等标量值也可以作为有效的 JSON 根值。"
+      },
+      {
+        "question": "它会根据 Schema 验证 JSON 吗？",
+        "answer": "不会。此页面检查 JSON 语法，不验证 JSON Schema 中的必填属性、字段类型或其他规则。"
       },
       {
         "question": "能修复无效的 JSON 吗？",
-        "answer": "可以修复尾随逗号、单引号等常见问题，修复结果会作为一次可撤销的编辑显示出来。"
+        "answer": "可以修复末尾逗号、单引号等常见错误。复制结果前请审阅修改内容；修复可以撤销。"
       },
       {
-        "question": "校验在哪里进行？",
-        "answer": "解析器在你的浏览器本地运行，Tool Kumar 不需要向服务器发送请求。"
+        "question": "验证在哪里进行？",
+        "answer": "解析器在浏览器本地运行。不会为了验证而上传你的 JSON。"
       }
     ],
     "guides": [
@@ -49,6 +56,15 @@
       {
         "slug": "unexpected-token-html",
         "text": "Unexpected token '<'：检查返回的是不是 HTML 响应"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "修复 JSON 对象末尾的逗号",
+        "paragraphs": [
+          "JSON Linter 检查引号、逗号和括号等语法。本例中，删除 36 后的逗号即可得到下方的有效对象。JSON 的键和字符串必须使用双引号；注释和末尾逗号不属于 JSON 语法。",
+          "语法验证不检查必填字段或应用规则。例如，将年龄写成字符串仍可能是有效 JSON，但 API 可能要求数字。检查这些规则需要 JSON Schema 验证器或应用代码。"
+        ]
       }
     ]
   },
@@ -311,40 +327,53 @@
     ]
   },
   "json-to-python": {
-    "hash": "fafa568e5334",
-    "title": "JSON 转 Python 类：生成 Pydantic 模型",
-    "description": "把 JSON 转换成 Python Pydantic 模型。Tool Kumar 会推断嵌套字段，生成代码时你的示例数据始终留在浏览器中。",
-    "heading": "JSON 转 Python 类",
-    "query": "JSON 转 Python 类",
+    "hash": "6f9ec5dbf694",
+    "title": "JSON 转 Pydantic 模型生成器",
+    "description": "在浏览器中将 JSON 转换为 Pydantic 2 模型。生成嵌套对象、列表和可空字段的 Python 类型，并为重命名的键保留别名。",
+    "heading": "JSON 转 Pydantic 模型",
+    "query": "json 转 pydantic",
     "secondary": [
-      "JSON 转 Pydantic 模型",
-      "JSON 生成 Python 模型"
+      "json 转 python",
+      "json 生成 pydantic 模型"
     ],
-    "intro": "把 JSON 响应转换成 Python Pydantic 模型定义。你可以在生成的类型定义基础上，再添加业务校验。",
-    "modeLabel": "Python 输出",
-    "exampleLabel": "下面的 Python 模型根据示例 JSON 生成。",
+    "intro": "根据 JSON 示例生成 Python Pydantic 2 模型。检查推断的类型、嵌套模型和字段别名，然后复制代码并添加应用规则。",
+    "modeLabel": "Python Pydantic 输出",
+    "exampleLabel": "user-id 键会获得 Field 别名。items 中的记录会生成嵌套模型，其中 note 接受字符串或 null。两条记录都包含 note，因此该字段仍然必填。",
     "steps": [
-      "粘贴一个 JSON 对象或 API 响应。",
-      "在“转换”视图中选择 Python (Pydantic)。",
-      "设置根名称，然后复制模型定义。"
+      "粘贴有代表性的 JSON，并包含字段不同的记录。",
+      "在转换视图中选择 Python (Pydantic)，并设置根名称。",
+      "将生成的模型复制到 Python 项目，检查推断的类型。"
     ],
     "options": [
-      "嵌套对象会生成嵌套的 BaseModel 类。",
-      "列表和可选值根据示例中的数据推断。",
-      "用于生产数据之前，请检查日期、小数和联合类型的规则。"
+      "嵌套对象生成 BaseModel 类，数组会合并观察到的元素结构，生成列表类型。",
+      "对于顶层列表等非对象根值，使用 Pydantic 2 的 RootModel。",
+      "日期保留为字符串。小数推断为 float；在生产环境使用前，请检查金额、日期和验证规则。"
     ],
     "faqs": [
       {
-        "question": "会生成 Pydantic 模型吗？",
-        "answer": "会。选择 Python 作为转换目标后，会输出带类型字段的 Pydantic BaseModel 定义。"
+        "question": "生成的代码使用哪个 Pydantic 版本？",
+        "answer": "输出面向 Pydantic 2。对象模型继承 BaseModel；列表等非对象根值使用 RootModel。使用示例调用 Pydantic 2 的 model_validate_json 和 model_dump_json。"
       },
       {
-        "question": "带连字符的 JSON 键会怎样？",
-        "answer": "转换器会生成合法的 Python 字段名，并在需要时通过别名（alias）保留源键名。"
+        "question": "字段缺失与 null 有什么区别？",
+        "answer": "null 值会添加可空类型。若某字段在部分示例对象中缺失，还会设置默认值 None。在 Pydantic 2 中，没有默认值的 Optional[str] 仍要求键存在，即使其值允许为 null。"
       },
       {
-        "question": "只用一条 JSON 记录可以吗？",
-        "answer": "可以。一个对象就足以推断出模型。如果字段会变化，请使用覆盖面更广的示例。"
+        "question": "包含连字符的 JSON 键如何处理？",
+        "answer": "转换器会创建 Python 字段名，并在重命名键时使用 Field 别名。例如 user-id 会变成 user_id，别名为 user-id。导出时使用 by_alias=True 可保留原始 JSON 键。"
+      },
+      {
+        "question": "可以只用一条 JSON 记录生成模型吗？",
+        "answer": "可以，但一条记录无法说明哪些字段可能缺失或具有其他类型。请提供多样的记录，并检查必填字段、可空类型和应用约束。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "在 Pydantic 2 中使用生成的模型",
+        "paragraphs": [
+          "请在 Python 项目中使用 Pydantic 2。将生成的定义保存为 models.py，将输入 JSON 保存为 response.json。Root.model_validate_json 读取 JSON 文本，并根据生成的类型进行验证。",
+          "model_dump_json 配合 by_alias=True 会使用原始键输出 JSON，包括 user-id。生成的类型描述的是示例；请按应用需求添加允许的年龄范围、精确小数类型等约束。"
+        ]
       }
     ]
   },

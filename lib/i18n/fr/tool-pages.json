@@ -1,39 +1,47 @@
 {
   "json-validator": {
-    "hash": "a1c439c2d927",
-    "title": "Validateur JSON avec erreurs par ligne et colonne",
-    "description": "Validez votre JSON dans le navigateur, sans envoi au serveur. Repérez les erreurs de syntaxe, les virgules finales et les problèmes réparables.",
-    "heading": "Validateur JSON",
+    "hash": "f808b40ea2e6",
+    "title": "Validateur et linter JSON en ligne",
+    "description": "Validez JSON en ligne avec la ligne et la colonne des erreurs. Repérez les virgules finales et vérifiez les corrections localement, sans envoyer vos données.",
+    "heading": "Validateur et linter JSON",
     "query": "validateur JSON",
     "secondary": [
-      "valider JSON en ligne",
-      "vérifier syntaxe JSON"
+      "linter json",
+      "valider objet json en ligne"
     ],
-    "intro": "Collez du JSON pour vérifier qu'il respecte la syntaxe standard. Tool Kumar indique la ligne et la colonne exactes des erreurs et propose de réparer les écarts de syntaxe courants.",
-    "modeLabel": "Validation et affichage des erreurs",
+    "intro": "Collez un objet, un tableau ou une valeur scalaire JSON pour vérifier sa syntaxe. Le linter JSON indique la ligne et la colonne exactes de l'erreur et propose des corrections pour les erreurs courantes.",
+    "modeLabel": "Validation de la syntaxe JSON",
     "exampleLabel": "Cet exemple contient une virgule finale. Le validateur signale la virgule après 36.",
     "steps": [
       "Collez le document dans le volet d'entrée.",
       "Lisez le bandeau d'erreur et accédez à l'emplacement indiqué.",
-      "Corrigez le caractère ou choisissez « Réparer l'entrée » si le problème peut être corrigé sans risque."
+      "Corrigez le caractère ou choisissez Réparer l'entrée, puis vérifiez le résultat formaté."
     ],
     "options": [
       "Vérifie les objets, tableaux, chaînes, nombres, booléens et valeurs null.",
       "Signale séparément les virgules finales, les commentaires et les autres problèmes réparables dans l'entrée.",
-      "Utilisez la vue formatée pour vérifier le résultat de la réparation."
+      "Les corrections modifient l'entrée. Vérifiez le résultat et utilisez Ctrl+Z ou Cmd+Z pour annuler une correction."
     ],
     "faqs": [
       {
-        "question": "Que vérifie un validateur JSON ?",
-        "answer": "Il vérifie la syntaxe JSON, notamment les guillemets, les virgules, les crochets et accolades, les nombres et les types de valeurs autorisés."
+        "question": "Que vérifie un linter JSON ?",
+        "answer": "Il vérifie la syntaxe JSON, notamment les guillemets, les virgules, les crochets, les nombres et les types de valeurs autorisés. Cet outil indique la ligne et la colonne pour localiser le problème."
       },
       {
-        "question": "Peut-il réparer du JSON invalide ?",
-        "answer": "Il peut réparer des erreurs courantes comme les virgules finales et les guillemets simples, puis affiche le résultat sous forme de modification annulable."
+        "question": "Puis-je valider un objet JSON en ligne ?",
+        "answer": "Oui. Collez un objet ou ouvrez un fichier JSON pour le vérifier localement. Les tableaux et les valeurs scalaires comme les chaînes, les nombres, true, false et null sont aussi des racines JSON valides."
       },
       {
-        "question": "Où s'effectue la validation ?",
-        "answer": "L'analyseur s'exécute en local dans votre navigateur. Tool Kumar n'a pas besoin d'envoyer de requête à un serveur."
+        "question": "L'outil valide-t-il JSON selon un schéma ?",
+        "answer": "Non. Cette page vérifie la syntaxe JSON. Elle ne valide ni les propriétés obligatoires, ni les types de champs, ni les autres règles d'un JSON Schema."
+      },
+      {
+        "question": "Peut-il réparer du JSON invalide ?",
+        "answer": "Il peut corriger des erreurs courantes comme les virgules finales et les guillemets simples. Vérifiez les changements avant de copier le résultat ; les corrections sont annulables."
+      },
+      {
+        "question": "Où s'effectue la validation ?",
+        "answer": "L'analyseur s'exécute localement dans votre navigateur. Votre JSON n'est pas envoyé pour la validation."
       }
     ],
     "guides": [
@@ -48,6 +56,15 @@
       {
         "slug": "unexpected-token-html",
         "text": "Unexpected token '<' : vérifiez si la réponse est du HTML"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Supprimer une virgule finale dans un objet JSON",
+        "paragraphs": [
+          "Un linter JSON vérifie les guillemets, les virgules et les crochets. Dans cet exemple, supprimez la virgule après 36 pour obtenir l'objet valide ci-dessous. JSON exige des guillemets doubles pour les clés et les chaînes ; les commentaires et les virgules finales ne font pas partie de sa syntaxe.",
+          "La validation syntaxique ne vérifie ni les champs obligatoires ni les règles de l'application. Par exemple, un âge écrit comme une chaîne peut être du JSON valide alors que votre API exige un nombre. Ces règles nécessitent un validateur JSON Schema ou du code applicatif."
+        ]
       }
     ]
   },
@@ -309,40 +326,53 @@
     ]
   },
   "json-to-python": {
-    "hash": "fafa568e5334",
-    "title": "JSON to Python : générer des modèles Pydantic",
-    "description": "Convertissez du JSON en modèles Python Pydantic dans le navigateur, sans envoi au serveur. Tool Kumar déduit les champs imbriqués.",
-    "heading": "JSON vers Python",
-    "query": "JSON to Python",
+    "hash": "6f9ec5dbf694",
+    "title": "Générateur de modèles Pydantic à partir de JSON",
+    "description": "Convertissez JSON en modèles Pydantic 2 dans le navigateur. Générez des types Python imbriqués, des listes et des champs nullables avec des alias de clés.",
+    "heading": "JSON vers des modèles Pydantic",
+    "query": "json vers pydantic",
     "secondary": [
-      "JSON to Pydantic",
-      "générer classe Python depuis JSON"
+      "json vers python",
+      "générer modèle pydantic depuis json"
     ],
-    "intro": "Transformez une réponse JSON en définitions de modèles Python Pydantic. Utilisez le code généré comme base typée, puis ajoutez la validation métier.",
-    "modeLabel": "Sortie Python",
-    "exampleLabel": "Les modèles Python ci-dessous sont générés à partir de l'exemple JSON.",
+    "intro": "Générez des modèles Python Pydantic 2 à partir d'un exemple JSON. Vérifiez les types déduits, les modèles imbriqués et les alias de champs, puis copiez le code et ajoutez les règles de votre application.",
+    "modeLabel": "Sortie Python Pydantic",
+    "exampleLabel": "La clé user-id reçoit un alias Field. Les enregistrements de items produisent un modèle imbriqué dont le champ note accepte une chaîne ou null. Les deux enregistrements contiennent note ; le champ reste donc obligatoire.",
     "steps": [
-      "Collez un objet JSON ou une réponse d'API.",
-      "Choisissez Python (Pydantic) dans la vue « Convertir ».",
-      "Définissez un nom racine et copiez les définitions des modèles."
+      "Collez du JSON représentatif, avec des enregistrements dont les champs diffèrent.",
+      "Choisissez Python (Pydantic) dans la vue de conversion et définissez le nom racine.",
+      "Copiez les modèles générés dans votre projet Python et vérifiez les types déduits."
     ],
     "options": [
-      "Les objets imbriqués deviennent des classes BaseModel imbriquées.",
-      "Les listes et les valeurs facultatives dépendent de l'exemple observé.",
-      "Vérifiez les règles sur les dates, les décimaux et les unions pour les données de production."
+      "Les objets imbriqués deviennent des classes BaseModel et les tableaux combinent les structures observées de leurs éléments en types de listes.",
+      "Les racines qui ne sont pas des objets, comme une liste au premier niveau, utilisent RootModel de Pydantic 2.",
+      "Les dates restent des chaînes. Les nombres fractionnaires donnent float ; vérifiez les règles monétaires, les dates et la validation avant d'utiliser les modèles en production."
     ],
     "faqs": [
       {
-        "question": "L'outil génère-t-il des modèles Pydantic ?",
-        "answer": "Oui. La cible Python produit des définitions BaseModel de Pydantic avec des champs typés."
+        "question": "Quelle version de Pydantic le code généré utilise-t-il ?",
+        "answer": "La sortie cible Pydantic 2. Les modèles d'objets héritent de BaseModel ; les listes et autres racines utilisent RootModel. L'exemple emploie les méthodes model_validate_json et model_dump_json de Pydantic 2."
       },
       {
-        "question": "Que deviennent les clés JSON contenant des traits d'union ?",
-        "answer": "Le convertisseur crée un nom de champ Python valide et conserve la clé source au moyen d'un alias si nécessaire."
+        "question": "Quelle différence entre un champ absent et null ?",
+        "answer": "Une valeur null ajoute un type nullable. Un champ absent de certains objets reçoit aussi None comme valeur par défaut. Dans Pydantic 2, Optional[str] sans valeur par défaut exige toujours la clé, même si sa valeur peut être null."
       },
       {
-        "question": "Puis-je utiliser un seul enregistrement JSON ?",
-        "answer": "Oui. Un seul objet suffit pour déduire un modèle. Utilisez un exemple plus complet si les champs varient."
+        "question": "Que deviennent les clés JSON avec des tirets ?",
+        "answer": "Le convertisseur crée un nom de champ Python et utilise Field avec un alias lorsqu'il renomme une clé. Par exemple, user-id devient user_id avec l'alias user-id. Utilisez by_alias=True à l'export pour conserver les clés d'origine."
+      },
+      {
+        "question": "Puis-je générer un modèle à partir d'un seul enregistrement JSON ?",
+        "answer": "Oui, mais un enregistrement ne montre pas quels champs peuvent manquer ou avoir d'autres types. Fournissez des enregistrements variés et vérifiez les champs obligatoires, les types nullables et les contraintes de l'application."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Utiliser les modèles générés avec Pydantic 2",
+        "paragraphs": [
+          "Utilisez Pydantic 2 dans votre projet Python. Enregistrez les définitions générées dans models.py et le JSON d'entrée dans response.json. Root.model_validate_json lit le texte JSON et le valide selon les types générés.",
+          "model_dump_json avec by_alias=True produit du JSON avec les clés d'origine, dont user-id. Les types générés décrivent l'exemple ; ajoutez les contraintes utiles à votre application, comme une plage d'âge autorisée ou un type décimal précis."
+        ]
       }
     ]
   },

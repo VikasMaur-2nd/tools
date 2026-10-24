@@ -1,39 +1,47 @@
 {
   "json-validator": {
-    "hash": "a1c439c2d927",
-    "title": "Validar JSON: detecta errores por línea y columna",
-    "description": "Valida JSON en tu navegador sin subir datos sensibles. Detecta errores de sintaxis, comas finales y problemas que se pueden reparar.",
-    "heading": "Validador JSON",
+    "hash": "f808b40ea2e6",
+    "title": "Validador y linter JSON online",
+    "description": "Valida JSON online con errores de línea y columna. Detecta comas finales, revisa las reparaciones y comprueba la sintaxis sin subir tus datos.",
+    "heading": "Validador y linter JSON",
     "query": "validar JSON",
     "secondary": [
-      "validador JSON online",
-      "comprobar sintaxis JSON"
+      "linter json",
+      "validar objeto json online"
     ],
-    "intro": "Pega JSON para comprobar si cumple la sintaxis estándar. Tool Kumar señala la línea y la columna exactas y ofrece reparaciones para los errores habituales del JSON no estricto.",
-    "modeLabel": "Vista de validación y errores",
+    "intro": "Pega un objeto, array o valor escalar JSON para comprobar su sintaxis. El linter JSON indica la línea y columna exactas del error y ofrece reparaciones para fallos comunes.",
+    "modeLabel": "Validación de sintaxis JSON",
     "exampleLabel": "Este ejemplo tiene una coma final. El validador señala la coma que aparece después de 36.",
     "steps": [
       "Pega el documento en el panel de entrada.",
       "Lee el aviso de error y ve a la ubicación indicada.",
-      "Corrige el carácter o elige Reparar entrada cuando el problema se pueda corregir con seguridad."
+      "Corrige el carácter o elige Reparar entrada y revisa el resultado formateado."
     ],
     "options": [
       "Comprueba objetos, arrays, cadenas, números, booleanos y null.",
       "Informa por separado de las comas finales, los comentarios y otros problemas de entrada que se pueden corregir.",
-      "Usa la vista con formato para confirmar el resultado reparado."
+      "Las reparaciones modifican la entrada. Revisa el resultado y usa Ctrl+Z o Cmd+Z para deshacerlas."
     ],
     "faqs": [
       {
-        "question": "¿Qué comprueba un validador JSON?",
-        "answer": "Comprueba la sintaxis JSON, incluidas las comillas, las comas, los corchetes, las llaves, los números y los tipos de valor permitidos."
+        "question": "¿Qué comprueba un linter JSON?",
+        "answer": "Comprueba la sintaxis JSON, incluidas comillas, comas, corchetes, números y tipos de valor permitidos. Esta herramienta indica la línea y columna para localizar el problema."
+      },
+      {
+        "question": "¿Puedo validar un objeto JSON online?",
+        "answer": "Sí. Pega un objeto o abre un archivo JSON para comprobarlo localmente. Los arrays y valores escalares como cadenas, números, true, false y null también son raíces JSON válidas."
+      },
+      {
+        "question": "¿Valida JSON frente a un esquema?",
+        "answer": "No. Esta página comprueba la sintaxis JSON. No valida propiedades obligatorias, tipos de campo ni otras reglas de un JSON Schema."
       },
       {
         "question": "¿Puede reparar JSON inválido?",
-        "answer": "Puede reparar errores habituales, como comas finales y comillas simples, y mostrar el resultado como una edición que puedes deshacer."
+        "answer": "Puede corregir errores comunes como comas finales y comillas simples. Revisa los cambios antes de copiar el resultado; las reparaciones se pueden deshacer."
       },
       {
         "question": "¿Dónde se realiza la validación?",
-        "answer": "El analizador se ejecuta localmente en tu navegador. Tool Kumar no necesita hacer una solicitud a un servidor."
+        "answer": "El analizador se ejecuta localmente en tu navegador. Tu JSON no se sube para validarlo."
       }
     ],
     "guides": [
@@ -48,6 +56,15 @@
       {
         "slug": "unexpected-token-html",
         "text": "Unexpected token '<': comprueba si la respuesta es HTML"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Corregir una coma final en un objeto JSON",
+        "paragraphs": [
+          "Un linter JSON comprueba comillas, comas y corchetes. En este ejemplo, elimina la coma después de 36 para obtener el objeto válido que aparece abajo. JSON exige comillas dobles en las claves y cadenas; no admite comentarios ni comas finales.",
+          "Validar la sintaxis no comprueba campos obligatorios ni reglas de la aplicación. Por ejemplo, una edad escrita como cadena puede ser JSON válido aunque tu API exija un número. Para comprobar esas reglas necesitas un validador JSON Schema o código de la aplicación."
+        ]
       }
     ]
   },
@@ -312,40 +329,53 @@
     ]
   },
   "json-to-python": {
-    "hash": "fafa568e5334",
-    "title": "JSON a Python: genera modelos Pydantic",
-    "description": "Convierte JSON a modelos Pydantic de Python sin subir datos. Tool Kumar infiere campos anidados y genera el código en tu navegador.",
-    "heading": "JSON a Python",
-    "query": "JSON a Python",
+    "hash": "6f9ec5dbf694",
+    "title": "Generador de modelos Pydantic a partir de JSON",
+    "description": "Convierte JSON a modelos Pydantic 2 en tu navegador. Genera tipos Python para objetos anidados, listas y campos anulables, con alias para claves renombradas.",
+    "heading": "JSON a modelos Pydantic",
+    "query": "json a pydantic",
     "secondary": [
-      "JSON a Pydantic",
-      "generar clases Python desde JSON"
+      "json a python",
+      "generar modelo pydantic desde json"
     ],
-    "intro": "Convierte una respuesta JSON en definiciones de modelos Pydantic de Python. Usa el código generado como punto de partida con tipos y añade después las validaciones del dominio.",
-    "modeLabel": "Salida de Python",
-    "exampleLabel": "Los modelos de Python que aparecen abajo se generan a partir del JSON de ejemplo.",
+    "intro": "Genera modelos Python de Pydantic 2 a partir de un ejemplo JSON. Revisa los tipos inferidos, modelos anidados y alias de campos; después copia el código y añade las reglas de tu aplicación.",
+    "modeLabel": "Salida Python Pydantic",
+    "exampleLabel": "La clave user-id recibe un alias de Field. Los registros de items generan un modelo anidado cuyo campo note acepta una cadena o null. Ambos registros contienen note, por lo que el campo sigue siendo obligatorio.",
     "steps": [
-      "Pega un objeto JSON o una respuesta de API.",
-      "Elige Python (Pydantic) en la vista Convertir.",
-      "Define un nombre raíz y copia las definiciones de los modelos."
+      "Pega JSON representativo, incluidos registros con campos diferentes.",
+      "Elige Python (Pydantic) en la vista de conversión y establece el nombre raíz.",
+      "Copia los modelos generados a tu proyecto Python y revisa los tipos inferidos."
     ],
     "options": [
-      "Los objetos anidados se convierten en clases BaseModel anidadas.",
-      "Las listas y los valores opcionales se basan en el ejemplo observado.",
-      "Revisa las reglas de fechas, decimales y tipos de unión para los datos de producción."
+      "Los objetos anidados se convierten en clases BaseModel y los arrays combinan las formas observadas de sus elementos en tipos de lista.",
+      "Las raíces que no son objetos, como una lista de nivel superior, usan RootModel de Pydantic 2.",
+      "Las fechas siguen siendo cadenas. Los números fraccionarios infieren float; revisa las reglas de dinero, fechas y validación antes de usar los modelos en producción."
     ],
     "faqs": [
       {
-        "question": "¿Genera modelos Pydantic?",
-        "answer": "Sí. La opción de Python genera definiciones de Pydantic BaseModel con campos tipados."
+        "question": "¿Qué versión de Pydantic usa el código generado?",
+        "answer": "La salida está diseñada para Pydantic 2. Los modelos de objetos extienden BaseModel; una lista u otra raíz que no sea un objeto usa RootModel. El ejemplo usa model_validate_json y model_dump_json de Pydantic 2."
       },
       {
-        "question": "¿Qué ocurre con las claves JSON que contienen guiones?",
-        "answer": "El conversor crea un nombre de campo válido en Python y conserva la clave original mediante un alias cuando es necesario."
+        "question": "¿En qué se diferencian los campos ausentes y null?",
+        "answer": "Un valor null añade un tipo anulable. Un campo ausente en algunos objetos del ejemplo también recibe None como valor predeterminado. En Pydantic 2, Optional[str] sin valor predeterminado sigue exigiendo la clave, aunque su valor pueda ser null."
       },
       {
-        "question": "¿Puedo usar un solo registro JSON?",
-        "answer": "Sí. Un solo objeto basta para inferir un modelo. Usa un ejemplo más amplio cuando los campos varíen."
+        "question": "¿Qué ocurre con las claves JSON que tienen guiones?",
+        "answer": "El conversor crea un nombre de campo Python y usa Field con un alias al renombrar una clave. Por ejemplo, user-id se convierte en user_id con alias user-id. Usa by_alias=True al exportar para conservar las claves originales."
+      },
+      {
+        "question": "¿Puedo generar un modelo con un solo registro JSON?",
+        "answer": "Sí, pero un registro no muestra qué campos pueden faltar o tener otros tipos. Incluye registros variados y revisa los campos obligatorios, tipos anulables y restricciones de la aplicación."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Usar los modelos generados con Pydantic 2",
+        "paragraphs": [
+          "Usa Pydantic 2 en tu proyecto Python. Guarda las definiciones generadas como models.py y el JSON de entrada como response.json. Root.model_validate_json lee el texto JSON y lo valida con los tipos generados.",
+          "model_dump_json con by_alias=True escribe JSON con las claves originales, incluida user-id. Los tipos generados describen el ejemplo; añade restricciones como un rango de edad permitido o un tipo decimal preciso cuando tu aplicación lo necesite."
+        ]
       }
     ]
   },

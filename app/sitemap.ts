@@ -19,6 +19,7 @@ const TOOL_UPDATES: Record<string, string> = Object.fromEntries(
 );
 for (const slug of ['json-visualizer', 'large-json-viewer', 'json-path-finder', 'json-to-table', 'json-validator']) TOOL_UPDATES[slug] = '2026-10-19';
 TOOL_UPDATES['secure-json-formatter'] = '2026-10-18';
+for (const slug of ['json-validator', 'json-to-python']) TOOL_UPDATES[slug] = '2026-10-24';
 const PRIVACY_LAST_MODIFIED = '2026-10-21';
 const LINK_KIT_LAST_MODIFIED = '2026-10-21';
 const SITE = 'https://tools.vikasmaur.com';

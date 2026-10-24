@@ -1,40 +1,47 @@
 {
   "json-validator": {
-    "hash": "a1c439c2d927",
-    "title": "Validador JSON com erros por linha e coluna",
-    "description": "Valide JSON online no navegador. Encontre erros de sintaxe, vírgulas no final e problemas que podem ser corrigidos, sem enviar dados sensíveis.",
-    "heading": "Validador JSON",
+    "hash": "f808b40ea2e6",
+    "title": "Validador e linter JSON online",
+    "description": "Valide JSON online com erros de linha e coluna. Encontre vírgulas finais, revise os reparos e confira a sintaxe localmente sem enviar seus dados.",
+    "heading": "Validador e linter JSON",
     "query": "validador JSON",
     "secondary": [
-      "validar JSON online",
-      "validador de JSON",
-      "verificar sintaxe JSON"
+      "linter json",
+      "validar objeto json online"
     ],
-    "intro": "Cole um JSON para verificar se ele segue a sintaxe padrão. O Tool Kumar indica a linha e a coluna exatas e oferece correções para problemas comuns de sintaxe flexível.",
-    "modeLabel": "Validação e visualização de erros",
+    "intro": "Cole um objeto, array ou valor escalar JSON para conferir a sintaxe. O linter JSON indica a linha e a coluna exatas do erro e oferece reparos para problemas comuns.",
+    "modeLabel": "Validação de sintaxe JSON",
     "exampleLabel": "Este exemplo tem uma vírgula no final. O validador aponta para a vírgula após 36.",
     "steps": [
       "Cole o documento no painel de entrada.",
       "Leia o aviso de erro e vá até o local indicado.",
-      "Corrija o caractere ou escolha “Corrigir entrada” quando for seguro corrigir o problema."
+      "Corrija o caractere ou escolha Reparar entrada e revise o resultado formatado."
     ],
     "options": [
       "Verifica objetos, arrays, strings, números, booleanos e null.",
       "Indica separadamente vírgulas no final, comentários e outros problemas de entrada que podem ser corrigidos.",
-      "Use a visualização formatada para conferir o resultado corrigido."
+      "Os reparos alteram a entrada. Revise o resultado e use Ctrl+Z ou Cmd+Z para desfazer um reparo."
     ],
     "faqs": [
       {
-        "question": "O que um validador JSON verifica?",
-        "answer": "Ele verifica a sintaxe JSON, incluindo aspas, vírgulas, colchetes, chaves, números e os tipos de valor permitidos."
+        "question": "O que um linter JSON verifica?",
+        "answer": "Ele verifica a sintaxe JSON, incluindo aspas, vírgulas, colchetes, números e tipos de valor permitidos. Esta ferramenta informa a linha e a coluna para localizar o problema."
       },
       {
-        "question": "Ele pode corrigir JSON inválido?",
-        "answer": "Ele pode corrigir problemas comuns, como vírgulas no final e aspas simples, e apresenta o resultado como uma edição que você pode desfazer."
+        "question": "Posso validar um objeto JSON online?",
+        "answer": "Sim. Cole um objeto ou abra um arquivo JSON para verificá-lo localmente. Arrays e valores escalares como strings, números, true, false e null também são raízes JSON válidas."
+      },
+      {
+        "question": "Ele valida JSON contra um schema?",
+        "answer": "Não. Esta página verifica a sintaxe JSON. Ela não valida propriedades obrigatórias, tipos de campos nem outras regras de um JSON Schema."
+      },
+      {
+        "question": "Ele pode reparar JSON inválido?",
+        "answer": "Ele corrige problemas comuns, como vírgulas finais e aspas simples. Revise as alterações antes de copiar o resultado; os reparos podem ser desfeitos."
       },
       {
         "question": "Onde a validação acontece?",
-        "answer": "O analisador é executado localmente no seu navegador. O Tool Kumar não precisa fazer uma requisição ao servidor."
+        "answer": "O parser roda localmente no seu navegador. Seu JSON não é enviado para validação."
       }
     ],
     "guides": [
@@ -49,6 +56,15 @@
       {
         "slug": "unexpected-token-html",
         "text": "Unexpected token '<': verifique se a resposta é HTML"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Corrigir uma vírgula final em um objeto JSON",
+        "paragraphs": [
+          "Um linter JSON verifica aspas, vírgulas e colchetes. Neste exemplo, remova a vírgula depois de 36 para obter o objeto válido abaixo. JSON exige aspas duplas em chaves e strings; comentários e vírgulas finais não fazem parte da sintaxe.",
+          "Validar a sintaxe não verifica campos obrigatórios nem regras da aplicação. Por exemplo, uma idade escrita como string pode ser JSON válido mesmo que sua API exija um número. Para conferir essas regras, é necessário um validador JSON Schema ou código da aplicação."
+        ]
       }
     ]
   },
@@ -313,40 +329,53 @@
     ]
   },
   "json-to-python": {
-    "hash": "fafa568e5334",
-    "title": "JSON para Python: gere modelos Pydantic",
-    "description": "Converta JSON em modelos Python Pydantic. O Tool Kumar infere campos aninhados e gera código no navegador, sem enviar os dados do exemplo.",
-    "heading": "JSON para Python",
-    "query": "JSON para Python",
+    "hash": "6f9ec5dbf694",
+    "title": "Gerador de modelos Pydantic a partir de JSON",
+    "description": "Converta JSON em modelos Pydantic 2 no navegador. Gere tipos Python para objetos aninhados, listas e campos anuláveis, com aliases para chaves renomeadas.",
+    "heading": "JSON para modelos Pydantic",
+    "query": "json para pydantic",
     "secondary": [
-      "JSON para Pydantic",
-      "JSON para classe Python"
+      "json para python",
+      "gerar modelo pydantic de json"
     ],
-    "intro": "Transforme uma resposta JSON em definições de modelos Python Pydantic. Use o código gerado como ponto de partida com tipos definidos e depois adicione a validação de domínio.",
-    "modeLabel": "Saída Python",
-    "exampleLabel": "Os modelos Python abaixo são gerados a partir do JSON de exemplo.",
+    "intro": "Gere modelos Python do Pydantic 2 a partir de um exemplo JSON. Revise os tipos inferidos, modelos aninhados e aliases dos campos; depois copie o código e adicione as regras da aplicação.",
+    "modeLabel": "Saída Python Pydantic",
+    "exampleLabel": "A chave user-id recebe um alias de Field. Os registros de items geram um modelo aninhado cujo campo note aceita string ou null. Ambos os registros contêm note, portanto o campo continua obrigatório.",
     "steps": [
-      "Cole um objeto JSON ou uma resposta de API.",
-      "Escolha “Python (Pydantic)” na visualização “Converter”.",
-      "Defina um nome raiz e copie as definições dos modelos."
+      "Cole JSON representativo, incluindo registros com campos diferentes.",
+      "Escolha Python (Pydantic) na visualização de conversão e defina o nome raiz.",
+      "Copie os modelos gerados para seu projeto Python e revise os tipos inferidos."
     ],
     "options": [
-      "Objetos aninhados viram classes BaseModel aninhadas.",
-      "Listas e valores opcionais seguem o exemplo observado.",
-      "Revise as regras de datas, decimais e uniões para os dados de produção."
+      "Objetos aninhados viram classes BaseModel e arrays combinam as estruturas observadas dos elementos em tipos de lista.",
+      "Raízes que não são objetos, como uma lista no nível superior, usam RootModel do Pydantic 2.",
+      "Datas continuam como strings. Números fracionários inferem float; revise regras de valores monetários, datas e validação antes de usar os modelos em produção."
     ],
     "faqs": [
       {
-        "question": "Ele gera modelos Pydantic?",
-        "answer": "Sim. A opção Python gera definições Pydantic BaseModel com campos tipados."
+        "question": "Qual versão do Pydantic o código gerado usa?",
+        "answer": "A saída é feita para Pydantic 2. Modelos de objetos estendem BaseModel; listas e outras raízes que não são objetos usam RootModel. O exemplo usa os métodos model_validate_json e model_dump_json do Pydantic 2."
       },
       {
-        "question": "O que acontece com chaves JSON que contêm hífens?",
-        "answer": "O conversor cria um nome de campo válido em Python e mantém a chave de origem com um alias quando necessário."
+        "question": "Qual a diferença entre campos ausentes e null?",
+        "answer": "Um valor null adiciona um tipo anulável. Um campo ausente em alguns objetos da amostra também recebe None como padrão. No Pydantic 2, Optional[str] sem valor padrão ainda exige a chave, mesmo que seu valor possa ser null."
       },
       {
-        "question": "Posso usar um único registro JSON?",
-        "answer": "Sim. Um único objeto basta para inferir um modelo. Use um exemplo mais abrangente quando os campos variarem."
+        "question": "O que acontece com chaves JSON que têm hífens?",
+        "answer": "O conversor cria um nome de campo Python e usa Field com um alias ao renomear uma chave. Por exemplo, user-id vira user_id com o alias user-id. Use by_alias=True ao exportar para manter as chaves originais."
+      },
+      {
+        "question": "Posso gerar um modelo com um único registro JSON?",
+        "answer": "Sim, mas um registro não mostra quais campos podem faltar ou ter outros tipos. Inclua registros variados e revise campos obrigatórios, tipos anuláveis e restrições da aplicação."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Usar os modelos gerados com Pydantic 2",
+        "paragraphs": [
+          "Use Pydantic 2 no seu projeto Python. Salve as definições geradas como models.py e o JSON de entrada como response.json. Root.model_validate_json lê o texto JSON e o valida com os tipos gerados.",
+          "model_dump_json com by_alias=True escreve JSON usando as chaves originais, incluindo user-id. Os tipos gerados descrevem o exemplo; adicione restrições como uma faixa de idade permitida ou um tipo decimal preciso quando a aplicação precisar."
+        ]
       }
     ]
   },
