@@ -131,8 +131,8 @@ export function toRust(root: JNode, o: ConvertOptions): string {
       f = u(f);
       return { p, f, bare: f.replace(/^r#/, '') };
     });
-    // Use rename_all when it saves attributes.
-    const ca = fs.filter((x) => serdeCamel(x.bare) !== x.p.key).length + 1 < fs.filter((x) => x.bare !== x.p.key).length;
+    // Use rename_all when it saves attributes (serde_derive panics camelCasing a field that starts with a non-ASCII letter).
+    const ca = fs.filter((x) => serdeCamel(x.bare) !== x.p.key).length + 1 < fs.filter((x) => x.bare !== x.p.key).length && fs.every((x) => x.bare.charCodeAt(0) < 128);
     const lines = fs.map(({ p, f, bare }) => {
       const at: string[] = [];
       if ((ca ? serdeCamel(bare) : bare) !== p.key) at.push(`rename = ${lit(p.key, '"', true)}`);
@@ -199,6 +199,9 @@ export function toJava(root: JNode, o: ConvertOptions): string {
 
 /* ---------- C# (System.Text.Json or Newtonsoft.Json) ---------- */
 
+// Members of object a property would hide.
+const CS_OBJECT = set('Equals Finalize GetHashCode GetType MemberwiseClone ReferenceEquals ToString');
+
 export function toCSharp(root: JNode, o: ConvertOptions): string {
   const nj = o.csharpLib === 'newtonsoft';
   const m = inferNU(
@@ -224,7 +227,7 @@ export function toCSharp(root: JNode, o: ConvertOptions): string {
     const u = uniq();
     const ps = props(t).map((p) => {
       let f = pascal(p.key) || 'Field';
-      if (f === t.name) f += 'Value'; // members can't share the class name
+      if (f === t.name || CS_OBJECT.has(f)) f += 'Value'; // members can't share the class name or hide object's
       return `    [${nj ? 'JsonProperty' : 'JsonPropertyName'}(${lit(p.key)})]\n    public ${p.opt ? '' : 'required '}${typeOf(p.s, P, p.opt)} ${u(f)} { get; set; }`;
     });
     out.push(`public class ${t.name}\n{\n${ps.join('\n\n')}\n}`);

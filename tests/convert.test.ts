@@ -465,3 +465,30 @@ test('Java record components preserve keys that name Object methods', () => {
     assert.match(out, new RegExp(`\\b${name}_[,)\\s]`), name);
   }
 });
+
+test('Zod: a "__proto__" key is a field, not the prototype of the shape', () => {
+  const out = conv('{"__proto__":1,"constructor":"c","a":true}', 'zod');
+  has(out, '  ["__proto__"]: z.number().int(),', '  constructor: z.string(),');
+  // what the object literal makes, with a stand-in for z
+  const chain: unknown = new Proxy(function () {}, { get: () => chain, apply: () => chain });
+  const body = /z\.object\((\{[\s\S]*?\n\})\)/.exec(out)![1];
+  const shape = new Function('z', `return ${body};`)(chain) as object;
+  assert.deepEqual(Object.keys(shape), ['__proto__', 'constructor', 'a']);
+  assert.equal(Object.getPrototypeOf(shape), Object.prototype);
+});
+
+test('Rust: no rename_all over a field serde cannot camelCase', () => {
+  // serde_derive panics camelCasing a field that starts with a non-ASCII letter
+  const out = conv('{"日本":1,"firstName":"a","lastName":"b","userId":2}', 'rust');
+  assert.ok(!out.includes('rename_all'), out);
+  has(out, '    pub 日本: i64,', '    #[serde(rename = "firstName")]\n    pub first_name: String,');
+});
+
+test('C#: properties never hide the members of object', () => {
+  const out = conv('{"toString":"x","equals":1,"getHashCode":2,"getType":"t","memberwiseClone":3,"referenceEquals":4,"finalize":5,"name":"n"}', 'csharp');
+  for (const name of ['ToString', 'Equals', 'GetHashCode', 'GetType', 'MemberwiseClone', 'ReferenceEquals', 'Finalize']) {
+    const key = name[0].toLowerCase() + name.slice(1);
+    has(out, `    [JsonPropertyName("${key}")]\n    public required `, ` ${name}Value { get; set; }`);
+  }
+  has(out, ' Name { get; set; }');
+});

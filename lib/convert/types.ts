@@ -6,6 +6,8 @@ import { type ConvertOptions, type Obj, type Shape, KA, KB, KF, KI, KN, KO, KS, 
 const TS_RESERVED = 'Record Array Object String Number Boolean Date Map Set Promise Error Function Symbol JSON';
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 const tsKey = (k: string) => (IDENT.test(k) ? k : quote(k));
+// In an object literal `__proto__: x` sets the prototype instead of adding a key.
+const objKey = (k: string) => (k === '__proto__' ? '["__proto__"]' : tsKey(k));
 const BIG = ' // exceeds Number.MAX_SAFE_INTEGER: precision is lost as a JS number';
 const props = (t: Obj) => [...t.props.values()];
 
@@ -74,7 +76,7 @@ export function toZod(root: JNode, o: ConvertOptions): string {
   const decl = (n: string, schema: string) => `export const ${n}Schema = ${schema};\nexport type ${n} = z.infer<typeof ${n}Schema>;`;
   for (const t of m.deps) {
     const body = props(t)
-      .map((p) => `  ${tsKey(p.key)}: ${field(p.s, p.opt)},${hasBig(p.s) ? BIG : ''}`)
+      .map((p) => `  ${objKey(p.key)}: ${field(p.s, p.opt)},${hasBig(p.s) ? BIG : ''}`)
       .join('\n');
     out.push(decl(t.name, `z.object({\n${body}\n})`));
   }
