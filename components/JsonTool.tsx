@@ -743,10 +743,11 @@ function ViewerPane({
             </div>
           </div>
         </div>
+        {/* A grid while it shows an array or object: TableView sets its role, label and tab stop. */}
         <div id="view-table" className="tbl" ref={tableRef} hidden={view !== 'table' || empty}>
-          <div className="tb-head" />
-          <div className="tb-sizer">
-            <div className="tb-rows" />
+          <div className="tb-head" role="row" aria-rowindex={1} />
+          <div className="tb-sizer" role="none">
+            <div className="tb-rows" role="none" />
           </div>
           <div className="tb-empty" hidden>
             {t('Select an array or object in the tree to see it as a table.')}

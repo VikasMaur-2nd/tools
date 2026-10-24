@@ -11,7 +11,7 @@ import { toCSharp, toDart, toGo, toJava, toKotlin, toPHP, toPython, toRust, toSw
 import { toJSONSchema, toTypeScript, toZod } from './types';
 
 export type { ConvertOptions } from './infer';
-export { CSV_START, csvLine, csvScan, highlightCode } from './highlight';
+export { codeRows, CSV_START, csvLine, csvScan, highlightCode } from './highlight';
 
 type Emitter = (root: JNode, o: ConvertOptions) => string;
 

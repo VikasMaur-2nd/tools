@@ -3,6 +3,12 @@ import { describe, test } from 'node:test';
 import { asciiCells, asciiRows, leadOf, Wrapper } from '../lib/engine/wrap';
 import { highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 
+/** Row starts the wrapper adds up for the long line `t[a, b)`, as an array. */
+function breaks(w: object, t: string, a: number, b: number) {
+  const st = (w as { rowsOf(t: string, a: number, b: number): { length: number; get(r: number): number } }).rowsOf(t, a, b);
+  return Int32Array.from({ length: st.length }, (_, r) => st.get(r));
+}
+
 describe('soft wrap arithmetic', () => {
   test('printable ASCII takes one cell per character', () => {
     assert.equal(asciiCells('  "a": 1', 0, 8), 8);
@@ -182,7 +188,7 @@ describe('row breaks added up for long lines', () => {
     for (const [cols, cw] of [[8, 8], [37, 7.5], [60, 6.25], [120, 7.75]] as const) {
       const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
       w.fit(cols * cw + cw / 2 + 0.25, cw);
-      const internals = w as unknown as { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+      const internals = w as unknown as { glyphs: Map<number, number>; joins: Set<number> };
       internals.glyphs.set(0x200d, 0);
       internals.joins.add(0x200d);
       for (let k = 0; k < 400; k++) {
@@ -191,7 +197,7 @@ describe('row breaks added up for long lines', () => {
           const r = rnd(40);
           s += r === 0 ? '\t' : r === 1 ? '‍' : String.fromCharCode(32 + rnd(95));
         }
-        assert.deepEqual([...internals.sum(s, 0, s.length)], reference(s, cw, w.width), `cols ${cols}, ${JSON.stringify(s.slice(0, 40))}`);
+        assert.deepEqual([...breaks(internals, s, 0, s.length)], reference(s, cw, w.width), `cols ${cols}, ${JSON.stringify(s.slice(0, 40))}`);
       }
     }
   });
@@ -201,7 +207,7 @@ describe('row breaks added up for long lines', () => {
     const make = (cols: number, cw: number) => {
       const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
       w.fit(cols * cw + cw / 2 + 0.25, cw);
-      const x = w as unknown as { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+      const x = w as unknown as { glyphs: Map<number, number>; joins: Set<number> };
       for (const [c, g] of [[0x200d, 0], [0x301, 0], [0xe9, cw], [0x4e2d, 2 * cw], [0x1f1ee, 1.5 * cw], [0x1f1f3, 1.5 * cw], [0x2028, 0]]) x.glyphs.set(c, g);
       x.joins.add(0x200d);
       x.joins.add(0x301);
@@ -225,15 +231,15 @@ describe('row breaks added up for long lines', () => {
         if (low(end)) end++;
         s = s.slice(0, at) + (rnd(5) ? pick() : '') + s.slice(end);
         const t = pre + s;
-        const fresh = make(cols, cw).sum(s, 0, s.length);
-        assert.deepEqual([...typed.sum(t, pre.length, t.length)], [...fresh], `cols ${cols}, edit ${k} at ${at}`);
+        const fresh = breaks(make(cols, cw), s, 0, s.length);
+        assert.deepEqual([...breaks(typed, t, pre.length, t.length)], [...fresh], `cols ${cols}, edit ${k} at ${at}`);
       }
     }
   });
   test('a huge line split or joined: rows near the edit exact at once, all of them once settled', () => {
     let seed = 5;
     const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
-    type X = Pick<Wrapper, 'rows' | 'rowStart' | 'settle' | 'onRows'> & { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+    type X = Pick<Wrapper, 'rows' | 'rowStart' | 'settle' | 'onRows'> & { glyphs: Map<number, number>; joins: Set<number> };
     const make = () => {
       const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
       w.fit(80 * 8 + 4 + 0.25, 8);
@@ -264,7 +270,7 @@ describe('row breaks added up for long lines', () => {
       const [A, B] = lines(t);
       f.rows(t, A, B);
       f.settle();
-      return { rows: [...f.rows(t, A, B)], sums: Array.from(A, (a, i) => [...f.sum(t, a, B[i])]) };
+      return { rows: [...f.rows(t, A, B)], sums: Array.from(A, (a, i) => [...breaks(f, t, a, B[i])]) };
     };
     const w = make();
     let refined = 0;
@@ -272,7 +278,7 @@ describe('row breaks added up for long lines', () => {
     let t = s;
     w.rows(t, ...lines(t));
     w.settle();
-    assert.deepEqual([...w.sum(t, 0, t.length)], exact(t).sums[0], 'first layout, settled');
+    assert.deepEqual([...breaks(w, t, 0, t.length)], exact(t).sums[0], 'first layout, settled');
     for (const at of [3500, 400_000]) {
       // Enter: split, then Backspace: join again.
       for (const [next, edit] of [
@@ -283,7 +289,7 @@ describe('row breaks added up for long lines', () => {
         w.rows(next, A, B, edit);
         const want = exact(next);
         for (let i = 0; i < A.length; i++) {
-          const got = w.sum(next, A[i], B[i]);
+          const got = breaks(w, next, A[i], B[i]);
           // Exact at once up to the window past the edit (where the view and the caret are).
           const near = want.sums[i].filter((x) => A[i] + x <= at + 30_000);
           const gotN = [...got.subarray(0, near.length)];
@@ -294,7 +300,7 @@ describe('row breaks added up for long lines', () => {
         w.settle();
         assert.ok(refined >= before, 'told when refined');
         assert.deepEqual([...w.rows(next, A, B)], want.rows, `rows once settled, edit at ${at}`);
-        for (let i = 0; i < A.length; i++) assert.deepEqual([...w.sum(next, A[i], B[i])], want.sums[i], `breaks once settled: line ${i}, edit at ${at}`);
+        for (let i = 0; i < A.length; i++) assert.deepEqual([...breaks(w, next, A[i], B[i])], want.sums[i], `breaks once settled: line ${i}, edit at ${at}`);
         t = next;
       }
     }
@@ -303,7 +309,7 @@ describe('row breaks added up for long lines', () => {
   test('rows() after an edit, told or not where it was, matches a fresh count on long lines', () => {
     let seed = 11;
     const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
-    type X = Pick<Wrapper, 'rows' | 'rowStart' | 'odd'> & { sum(t: string, a: number, b: number): Int32Array; glyphs: Map<number, number>; joins: Set<number> };
+    type X = Pick<Wrapper, 'rows' | 'rowStart' | 'odd'> & { glyphs: Map<number, number>; joins: Set<number> };
     const make = (cols: number, cw: number) => {
       const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
       w.fit(cols * cw + cw / 2 + 0.25, cw);
@@ -360,9 +366,9 @@ describe('row breaks added up for long lines', () => {
         assert.deepEqual([...g], [...f], `guessed: cols ${cols}, edit ${k} at ${at}`);
         for (let i = 0; i < A.length; i++) {
           if (B[i] - A[i] <= 3000 || !fresh.odd[i]) continue;
-          const want = [...fresh.sum(t, A[i], B[i])];
-          assert.deepEqual([...told.sum(t, A[i], B[i])], want, `told breaks: line ${i}, edit ${k}`);
-          assert.deepEqual([...guessed.sum(t, A[i], B[i])], want, `guessed breaks: line ${i}, edit ${k}`);
+          const want = [...breaks(fresh, t, A[i], B[i])];
+          assert.deepEqual([...breaks(told, t, A[i], B[i])], want, `told breaks: line ${i}, edit ${k}`);
+          assert.deepEqual([...breaks(guessed, t, A[i], B[i])], want, `guessed breaks: line ${i}, edit ${k}`);
           const r = rnd(want.length);
           assert.equal(told.rowStart(t, A[i], B[i], r, true), want[r]);
         }

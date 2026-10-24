@@ -1,4 +1,5 @@
 import { bidiContext, escapeHtml, StringStates, stringState, trimWs } from './highlight';
+import { lineEndIn, lineOfIn } from './lines';
 import { TallScroll } from './tall';
 import { LONG_LINE, Wrapper } from './wrap';
 import { rt } from '../i18n/ui';
@@ -27,14 +28,16 @@ const H_OVERSCAN = 400;
 /**
  * Highlights a slice of a line. `inString` is set when the slice starts inside
  * a JSON string (a wrapped continuation row), `esc` when that string's previous
- * character was a backslash.
+ * character was a backslash. `src` and `at`: the whole text and where the slice
+ * starts in it (for highlighters that read around it).
  */
-export type LineHighlighter = (text: string, inString: boolean, esc: boolean, state: number) => string;
+export type LineHighlighter = (text: string, inString: boolean, esc: boolean, state: number, src?: string, at?: number) => string;
 
 /**
  * Tracks a highlighter's state through the text (CSV: the column and whether
- * it's inside quotes), so a row that starts mid-record is coloured right.
- * `scan` returns the state after `s[a, b)`.
+ * it's inside quotes; code: a block scalar, a multi-line string), so a row that
+ * starts mid-record or mid-string is coloured right. `scan` returns the state
+ * after `s[a, b)`, `s` being the whole text (a line is scanned with its line break).
  */
 export interface Scanner {
   start: number;
@@ -161,6 +164,7 @@ export class CodeView {
     this.el.removeEventListener('scroll', this.onScroll);
     this.el.removeEventListener('click', this.onClick);
     this.ro.disconnect();
+    this.sc.destroy();
     cancelAnimationFrame(this.raf);
     document.fonts?.removeEventListener('loadingdone', this.onFonts);
     this.wrapper?.destroy();
@@ -192,7 +196,7 @@ export class CodeView {
   }
 
   private lineEnd(i: number) {
-    return i + 1 < this.ls.length ? this.ls[i + 1] - 1 : this.text.length;
+    return lineEndIn(this.ls, this.text.length, i);
   }
 
   private line(i: number) {
@@ -279,14 +283,7 @@ export class CodeView {
   /** A validated scalar changes one line. Keep every other line's wrapping and fold state. */
   private patchInline(text: string, index: CodeIndex, change: CodeChange, patch: string, seq: number): boolean {
     if (index.starts.length !== this.ls.length || this.folded.size || this.vis.length !== this.ls.length || this.layoutWrap !== this.wrapper || this.layoutCols !== (this.wrapper?.cols ?? 0) || this.layoutCw !== this.cw || this.width !== this.el.clientWidth) return false;
-    let lo = 0;
-    let hi = this.ls.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >>> 1;
-      if (this.ls[mid] <= change.prefix) lo = mid;
-      else hi = mid - 1;
-    }
-    const line = lo;
+    const line = lineOfIn(this.ls, change.prefix);
     if (this.text.length - change.suffix > this.lineEnd(line)) return false;
     const end = line + 1 < index.starts.length ? index.starts[line + 1] - 1 : text.length;
     if (end - index.starts[line] > 65_536) return false;
@@ -434,14 +431,14 @@ export class CodeView {
           if (!small && batch.length && endOf(i) - base > 64_000) break;
           if (scanner) {
             states[i] = state;
-            state = scanner.scan('\n', 0, 1, scanner.scan(text, index.starts[i], endOf(i), state));
+            state = scanner.scan(text, index.starts[i], Math.min(text.length, endOf(i) + 1), state);
           }
           batch.push(i);
           if (folded.has(i)) {
             const close = index.close[i];
             if (scanner) for (let k = i + 1; k <= close; k++) {
               states[k] = state;
-              state = scanner.scan('\n', 0, 1, scanner.scan(text, index.starts[k], endOf(k), state));
+              state = scanner.scan(text, index.starts[k], Math.min(text.length, endOf(k) + 1), state);
             }
             i = close;
           }
@@ -568,10 +565,11 @@ export class CodeView {
     let st = this.states.get(ln);
     if (!st) this.states.set(ln, (st = [sc ? this.lineStates[ln] : 0]));
     const line = this.line(ln);
+    const at = this.ls[ln];
     for (let k = st.length; k <= sub; k++) {
       const a = this.subStart(vi, k - 1);
       const b = this.subStart(vi, k);
-      st.push(sc ? sc.scan(line, a, b, st[k - 1]) : stringState(line, a, b, st[k - 1]));
+      st.push(sc ? sc.scan(this.text, at + a, at + b, st[k - 1]) : stringState(line, a, b, st[k - 1]));
     }
     return st[sub];
   }
@@ -641,10 +639,10 @@ export class CodeView {
       if (h === undefined) {
         const sc = this.scanner;
         const s = sc
-          ? rows > 1 ? this.stateAt(vi, sub) : sc.scan(line, 0, a, this.lineStates[ln])
+          ? rows > 1 ? this.stateAt(vi, sub) : sc.scan(this.text, this.ls[ln], this.ls[ln] + a, this.lineStates[ln])
           : !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : this.strs.at(line, 0, a);
         const se = ctx && b < line.length ? trimWs(line, a, b) : b;
-        h = this.hl(a || se < line.length ? line.slice(a, se) : line, (s & 1) === 1, (s & 2) === 2, s);
+        h = this.hl(a || se < line.length ? line.slice(a, se) : line, (s & 1) === 1, (s & 2) === 2, s, this.text, this.ls[ln] + a);
         if (ctx) h = `${bidiContext(line, Math.max(0, a - 64), a)}${h}${bidiContext(line, b, Math.min(line.length, b + 64))}${escapeHtml(line.slice(se, b))}`;
         if (foldedHere) {
           const end = this.close[ln];
@@ -748,17 +746,11 @@ export class CodeView {
       if (at < next) return;
       next = at + qn.length;
       // The line holding offset `at` (a query has no line break, so a match stays in one line).
-      let lo = 0;
-      let hi = ls.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (ls[mid] <= at) lo = mid;
-        else hi = mid - 1;
-      }
-      hits.push(lo, at - ls[lo]);
-      let cols = this.hitLines.get(lo);
-      if (!cols) this.hitLines.set(lo, (cols = []));
-      cols.push(at - ls[lo]);
+      const ln = lineOfIn(ls, at);
+      hits.push(ln, at - ls[ln]);
+      let cols = this.hitLines.get(ln);
+      if (!cols) this.hitLines.set(ln, (cols = []));
+      cols.push(at - ls[ln]);
     };
     // Big chunks of the whole text with the native search (a line at a time costs a slice and a
     // lowercase copy per line); in 8 ms steps for a big output, so typing is never held up.

@@ -308,7 +308,7 @@ export class Engine {
       }
       if (this.settings.view === 'format' && this.goodVer !== null && this.goodVer === this.fmtSrcVer) this.runFormat();
     };
-    for (const [view, code] of [['format', this.fmt], ['convert', this.code]] as const) code.onFind = (result) => {
+    for (const [view, code] of [['format', this.fmt], ['convert', this.code], ['table', this.table]] as const) code.onFind = (result) => {
       if (this.settings.view === view && this.query) store.set({ find: { ...store.get().find, ...result } });
     };
     this.applyWrap();
@@ -2468,7 +2468,11 @@ export class Engine {
         ? xlsx.toCsv(xlsx.records(root))
         : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
-      else this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
+      else {
+        // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)
+        const rows = mod.codeRows(info.lang);
+        this.code.setText(out, rows.hl, false, rows.scanner);
+      }
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
       if (!current()) return;

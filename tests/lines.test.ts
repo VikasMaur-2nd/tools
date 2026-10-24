@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { foldScanner, foldSig, lineEndIn, lineOfIn, lineStarts, lineWidth, maxWidth, patchLines, scanFolds, shiftFoldLines } from '../lib/engine/lines';
+import { foldScanner, foldsAround, foldSig, lineEndIn, lineOfIn, lineStarts, lineWidth, maxWidth, patchLines, scanFolds, shiftFoldLines } from '../lib/engine/lines';
 
 /** Deterministic PRNG so failures reproduce. */
 function rng(seed: number) {
@@ -172,6 +172,39 @@ describe('lines', () => {
     assert.ok(shifted > 500, `the fast path should be common (${shifted})`);
   });
 
+  test('after any edit, the blocks it cannot have changed keep their structure and the rest is unknown', () => {
+    let known = 0;
+    for (let seed = 400; seed <= 440; seed++) {
+      const r = rng(seed);
+      let t = piece(r, 400);
+      const { ls } = lineStarts(t);
+      let folds = scanFolds(t, ls);
+      for (let step = 0; step < 150; step++) {
+        const a = Math.floor(r() * (t.length + 1));
+        const b = Math.min(t.length, a + Math.floor(r() * (r() < 0.8 ? 6 : 80)));
+        const ins = r() < 0.3 ? '\n' + ' '.repeat(Math.floor(r() * 3)) : piece(r, r() < 0.8 ? 3 : 40);
+        const next = t.slice(0, a) + ins + t.slice(b);
+        const la = lineOfIn(ls, a);
+        const lb = lineOfIn(ls, b);
+        const { added } = patchLines(ls, t, next, a, b, ins, 0, false);
+        const full = scanFolds(next, ls);
+        const got = foldsAround(folds.close, folds.depth, la, lb, added);
+        const at = `seed ${seed} step ${step}`;
+        assert.equal(got.close.length, full.close.length, `${at}: lines`);
+        for (let i = 0; i < full.close.length; i++) {
+          // Blocks that close before the edit, and blocks that open after it, are as a scan finds them.
+          const want = i < la ? (full.close[i] < la ? full.close[i] : -1) : i <= la + added ? -1 : full.close[i];
+          assert.equal(got.close[i], want, `${at}: close of line ${i} (edit ${la}-${lb} +${added})`);
+          if (i < la) assert.equal(got.depth[i], full.depth[i], `${at}: depth of line ${i}`);
+          if (want >= 0) known++;
+        }
+        folds = full;
+        t = next;
+      }
+    }
+    assert.ok(known > 300, `blocks kept (${known})`);
+  });
+
   test('scanFolds matches the editor loop it replaced', () => {
     const r = rng(9);
     for (let i = 0; i < 300; i++) {
@@ -199,6 +232,32 @@ describe('lines', () => {
       assert.deepEqual(got.close, ref.close);
       assert.deepEqual(got.depth, ref.depth);
     }
+  });
+
+  test('foldScanner fills arrays it is given, and goes on through edits that keep every signature', () => {
+    // (Over 4096 lines: a step with its time already up stops there.)
+    const t = '{\n  "a": [\n' + '    1,\n'.repeat(5000) + '    2\n  ],\n  "b": {\n    "c": 3\n  }\n}';
+    const { ls } = lineStarts(t);
+    const into = { close: new Int32Array(ls.length).fill(7), depth: new Int32Array(ls.length).fill(7) };
+    const scan = foldScanner(t, ls, into);
+    let got = scan(-Infinity);
+    assert.equal(got, undefined, 'not done yet');
+    // Edit a value (same line count, same signatures): the scan reads the text as it is now.
+    const next = t.replace('"c": 3', '"c": 345');
+    patchLines(ls, t, next, t.indexOf('3\n'), t.indexOf('3\n') + 1, '345', 0, false);
+    got = scan(Infinity, next);
+    assert.ok(got && got.close === into.close && got.depth === into.depth);
+    assert.deepEqual([...got.close], [...scanFolds(next, ls).close]);
+    assert.deepEqual([...got.depth], [...scanFolds(next, ls).depth]);
+  });
+
+  test('foldsAround updates the arrays it is given when the line count stays', () => {
+    const t = '{\n  "a": [\n    1\n  ],\n  "b": 2\n}';
+    const { ls } = lineStarts(t);
+    const f = scanFolds(t, ls);
+    const got = foldsAround(f.close, f.depth, 2, 2, 0);
+    assert.equal(got.close, f.close);
+    assert.deepEqual([...got.close], [-1, -1, -1, -1, -1, -1], 'blocks around line 2 unknown');
   });
 
   test('scanFolds finds blocks whose closer is alone on its line', () => {

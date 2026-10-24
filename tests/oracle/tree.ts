@@ -1,15 +1,18 @@
 /**
  * Tree expansion model frozen from 5e5fac3 for differential tests. Keep the old
  * path strings, traversal and row splicing unchanged. Only the browser renderer
- * and constructor are replaced with no-ops and a supplied scroll model.
+ * and constructor are replaced with no-ops and a supplied scroll model. One
+ * deliberate change since: a path segment is quoted, so a key holding SEP is one
+ * segment (it used to read as a nested path: "a\u0001b" aliased a.b).
  */
 import { ARR, JNode, kids } from '../../lib/json/parser';
 
 const RH = 24;
 const SEP = String.fromCharCode(1);
+const seg = (n: JNode) => SEP + JSON.stringify(String(n.key));
 const keyOf = (n: JNode) => {
   let k = '';
-  for (let p: JNode | null = n; p && p.u; p = p.u) k = SEP + String(p.key) + k;
+  for (let p: JNode | null = n; p && p.u; p = p.u) k = seg(p) + k;
   return k;
 };
 
@@ -96,7 +99,7 @@ export class OldTreeView {
       const d = lists.length - 1;
       const list = lists[d];
       const i = at[d]++;
-      if (i < list.length) visit(list[i], useT ? keys[d] + SEP + String(list[i].key) : '');
+      if (i < list.length) visit(list[i], useT ? keys[d] + seg(list[i]) : '');
       else {
         lists.pop();
         at.pop();

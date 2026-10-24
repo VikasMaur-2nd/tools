@@ -21,12 +21,11 @@
 
 import type { Doc } from './doc';
 import { samePrefix } from './highlight';
+import { TAB } from './lines';
 
 /** The text rows are found for: a string, or the editor's document (read a slice at a time, see Doc). */
 export type Src = string | Doc;
 
-/** Must match `tab-size` in CSS. */
-const TAB = 4;
 /** Text nodes of a mirror end at the first ASCII character after this many characters. */
 const CHUNK = 128;
 /** Mirrors kept laid out (least recently used are dropped). */
@@ -52,7 +51,7 @@ const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\
 /** A run of printable ASCII (sticky), and what ends one. */
 const RUN = /[\x20-\x7e]+/y;
 const NOT_PRINTABLE = /[^\x20-\x7e]/g;
-/** Long lines whose breaks were added up (see `sum`). */
+/** Long lines whose breaks were added up (see `rowsOf`). */
 const SUMS = 4;
 /**
  * Characters past an edit whose rows are found at once (hundreds of rows: the view and the caret are
@@ -218,16 +217,6 @@ class Starts {
     }
     return lo;
   }
-
-  array(): Int32Array {
-    const a = new Int32Array(this.length);
-    let o = 0;
-    for (const x of this.segs) {
-      for (let k = 0; k < x.n; k++) a[o + k] = x.a[x.i + k] + x.d;
-      o += x.n;
-    }
-    return a;
-  }
 }
 
 interface SumEntry {
@@ -349,7 +338,7 @@ export class Wrapper {
   cols = 0;
   /** Per line of the last `rows()` call: 1 where the browser decides the breaks. */
   odd = new Uint8Array(0);
-  /** Rows must break exactly where a textarea's do (else long lines are summed: see `sum`). */
+  /** Rows must break exactly where a textarea's do (else long lines are summed: see `rowsOf`). */
   exact: boolean;
   private cw = 0;
   private readonly lh: number;
@@ -365,8 +354,6 @@ export class Wrapper {
   private range: Range | null = null;
   private readonly lead = [0, 0];
   private trust = true;
-  /** An edit announced by `edited()`, for the next `rows()` call. */
-  private hint: readonly [number, number, number] | null = null;
   /** How the last `rows()` text differs from the one before: same first `p` and last `q` characters. */
   private diff: { old: Src; text: Src; p: number; q: number } | null = null;
   /** The last `rows()` call, whose unchanged lines the next one reuses. */
@@ -471,15 +458,6 @@ export class Wrapper {
   }
 
   /**
-   * Announces that the next `rows()` text is the last one with `[a, oldEnd)`
-   * replaced by what is now `[a, newEnd)` (same as passing it to `rows()`).
-   * Spares `rows()` and long-line breaking from comparing the texts.
-   */
-  edited(a: number, oldEnd: number, newEnd: number) {
-    this.hint = [a, oldEnd, newEnd];
-  }
-
-  /**
    * Rows taken by each line `text[A[i], B[i])`. Lines the arithmetic can't
    * size are measured together. Also sets `odd`. With an `edit`, `lines` can
    * say which lines [lo, hi) it rewrote (the others only moved): no comparing
@@ -487,8 +465,6 @@ export class Wrapper {
    */
   rows(text: Src, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number], lines?: readonly [number, number]): Int32Array {
     const n = A.length;
-    const hint = edit ?? this.hint;
-    this.hint = null;
     this.flip ^= 1;
     const f = this.flip;
     const out = this.recycle && this.outs[f]?.length === n ? this.outs[f].fill(0) : (this.outs[f] = new Int32Array(n));
@@ -509,10 +485,10 @@ export class Wrapper {
       let p: number;
       let q: number;
       // A known edit `[a, oldEnd, newEnd)` spares comparing the texts (two passes over the document).
-      const told = !!hint && hint[0] >= 0 && hint[0] <= hint[1] && hint[0] <= hint[2] && hint[1] <= old.length && hint[2] <= text.length && text.length - old.length === hint[2] - hint[1];
+      const told = !!edit && edit[0] >= 0 && edit[0] <= edit[1] && edit[0] <= edit[2] && edit[1] <= old.length && edit[2] <= text.length && text.length - old.length === edit[2] - edit[1];
       if (told) {
-        p = hint![0];
-        q = text.length - hint![2];
+        p = edit![0];
+        q = text.length - edit![2];
       } else if (old === text) {
         p = text.length;
         q = 0;
@@ -540,8 +516,8 @@ export class Wrapper {
       // brought some (or, rarely, until the line is next laid out afresh, held some it deleted). Only
       // where line counts show no fold opened or closed, and the views draw every row (they break such
       // lines the same either way; a textarea's rows are measured exactly).
-      if (told && !this.exact && hi > lo && dk === breaksIn(text, hint![0], hint![2]) - breaksIn(old, hint![0], hint![1])) {
-        inherit = nonAscii(text, hint![0], hint![2]) >= 0 ? 1 : 0;
+      if (told && !this.exact && hi > lo && dk === breaksIn(text, edit![0], edit![2]) - breaksIn(old, edit![0], edit![1])) {
+        inherit = nonAscii(text, edit![0], edit![2]) >= 0 ? 1 : 0;
         for (let k = lo; k < hi - dk && !inherit; k++) inherit = last.odd[k];
       }
     }
@@ -811,13 +787,13 @@ export class Wrapper {
       if (e.b < p) next = { ...e, t: text, v: this.ver };
       else if (e.a > oldEnd) next = { ...e, t: text, a: e.a + d, b: e.b + d, v: this.ver };
       if (!next) continue;
-      // (lastSum stays the old entry: the edited line's rows are worked out from it, see sum.)
+      // (lastSum stays the old entry: the edited line's rows are worked out from it, see rowsOf.)
       for (const job of this.pending) if (job.e === e) job.e = next;
       this.sums[k] = next;
     }
   }
 
-  /** The last line `sum` added up: found again by identity, and the start of the next one (see `sum`). */
+  /** The last line `rowsOf` added up: found again by identity, and the start of the next one (see `rowsOf`). */
   private lastSum: SumEntry | null = null;
 
   /**
@@ -828,13 +804,9 @@ export class Wrapper {
    * are kept, and once a row after it starts where an old row did (shifted),
    * the rest are the old rows, so a key costs a row or two, not the line.
    * Never copies the line, nor keys anything by its text: the edit comes from
-   * `rows()` (or `edited()`), else the line is compared with the last one in place.
+   * `rows()`, else the line is compared with the last one in place. As runs
+   * shared with the line's earlier rows (see Starts).
    */
-  private sum(t: Src, a: number, b: number): Int32Array {
-    return this.rowsOf(t, a, b).array();
-  }
-
-  /** `sum`, as runs shared with the line's earlier rows (see Starts). */
   private rowsOf(t: Src, a: number, b: number): Starts {
     const last = this.lastSum;
     // (By version, not by text. A text rows() wasn't given, from a direct caller, is a version of its own.)
@@ -1075,7 +1047,7 @@ export class Wrapper {
     if (changed) this.onRows?.();
   }
 
-  /** Remembers `st` as the row starts of `t[a, b)` (see `sum`); rows from `exact` on are estimated. `from`: the entry it replaces, whose pending refinement it takes over. */
+  /** Remembers `st` as the row starts of `t[a, b)` (see `rowsOf`); rows from `exact` on are estimated. `from`: the entry it replaces, whose pending refinement it takes over. */
   private keepSum(t: Src, a: number, b: number, st: Starts, exact: number, from?: SumEntry): SumEntry {
     const e: SumEntry = { t, a, b, st, exact, v: this.ver };
     if (from) for (const job of this.pending) if (job.e === from) job.e = e;
@@ -1165,7 +1137,6 @@ export class Wrapper {
     this.sums.length = 0;
     this.lastSum = null;
     this.diff = null;
-    this.hint = null;
     this.pending = [];
     clearTimeout(this.refineTimer);
   }
