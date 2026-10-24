@@ -10,8 +10,8 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
     console.error(error);
   }, [error]);
   return (
-    <div className="hero" role="alert">
-      <div className="hero-in">
+    <div className="error-screen" role="alert">
+      <div className="error-screen-in">
         <h1>Something went wrong</h1>
         <p className="lead">Your JSON is saved in this browser. Try again, and if it keeps happening, reload the page.</p>
         <div className="hero-actions">

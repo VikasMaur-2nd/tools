@@ -1136,8 +1136,7 @@ kbd {
   display: block;
 }
 
-/* Returning visitors: their saved document is restored, so skip the empty states. */
-[data-doc] .hero,
+/* Returning visitors: their saved document is restored, so the editor's placeholder never flashes. */
 [data-doc] .ed textarea::placeholder {
   visibility: hidden;
 }
@@ -1803,8 +1802,8 @@ button.tv-x:hover {
   overflow: auto;
 }
 
-/* Empty state */
-.hero {
+/* Error screen (app/(en)/error.tsx, app/[lang]/error.tsx) */
+.error-screen {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -1817,7 +1816,7 @@ button.tv-x:hover {
     var(--bg);
 }
 
-.hero-in {
+.error-screen-in {
   max-width: 580px;
   text-align: center;
 }
@@ -1867,7 +1866,7 @@ button.tv-x:hover {
   }
 }
 
-.hero h1 {
+.error-screen h1 {
   margin: 0 0 10px;
   font: 650 27px/1.2 var(--font-ui);
   letter-spacing: -0.02em;
@@ -1932,9 +1931,6 @@ button.tv-x:hover {
 @container (max-width: 480px) {
   .features {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .hero h1 {
-    font-size: 22px;
   }
 }
 

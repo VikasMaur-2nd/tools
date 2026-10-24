@@ -12,8 +12,8 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
     console.error(error);
   }, [error]);
   return (
-    <div className="hero" role="alert">
-      <div className="hero-in">
+    <div className="error-screen" role="alert">
+      <div className="error-screen-in">
         <h1>{s.title}</h1>
         <p className="lead">{s.text}</p>
         <div className="hero-actions">
