@@ -105,6 +105,7 @@
   "notFound.tools": "Tous les outils JSON",
   "err.title": "Une erreur s'est produite",
   "err.text": "Votre JSON est enregistré dans ce navigateur. Réessayez et, si le problème persiste, rechargez la page.",
+  "err.unsaved": "Réessayez et, si le problème persiste, rechargez la page. Le JSON que vous aviez ouvert ici n'est pas enregistré dans ce navigateur : vous devrez peut-être le coller ou l'ouvrir à nouveau.",
   "err.retry": "Réessayer",
   "err.reload": "Recharger",
   "app.h1": "Tool Kumar : formateur et visualiseur JSON",

@@ -105,6 +105,7 @@
   "notFound.tools": "Alle JSON-Tools",
   "err.title": "Etwas ist schiefgelaufen",
   "err.text": "Dein JSON ist in diesem Browser gespeichert. Versuche es erneut und lade die Seite neu, falls das Problem weiterhin auftritt.",
+  "err.unsaved": "Versuche es erneut und lade die Seite neu, falls das Problem weiterhin auftritt. JSON, das du hier geöffnet hattest, ist nicht in diesem Browser gespeichert. Füge es also gegebenenfalls erneut ein oder öffne es noch einmal.",
   "err.retry": "Erneut versuchen",
   "err.reload": "Neu laden",
   "app.h1": "Tool Kumar: JSON-Formatter und -Viewer",

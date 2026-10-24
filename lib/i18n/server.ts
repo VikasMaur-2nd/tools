@@ -126,7 +126,7 @@ export function clientUi(locale: SiteLocale): UiDict | undefined {
 /** The error boundary's strings for a localized root layout. */
 export function errorText(locale: SiteLocale) {
   const t = serverT(locale);
-  return { title: t('err.title'), text: t('err.text'), retry: t('err.retry'), reload: t('err.reload') };
+  return { title: t('err.title'), text: t('err.text'), unsaved: t('err.unsaved'), retry: t('err.retry'), reload: t('err.reload') };
 }
 
 // ── tool pages ────────────────────────────────────────────────────────────

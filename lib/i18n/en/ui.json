@@ -140,6 +140,8 @@
   "notFound.tools": "All JSON tools",
   "err.title": "Something went wrong",
   "err.text": "Your JSON is saved in this browser. Try again, and if it keeps happening, reload the page.",
+  "err.unsaved": "Try again, and if it keeps happening, reload the page. JSON you had open here isn't saved in this browser, so you may need to paste or open it again.",
+  "err.unsaved._context": "Error screen text when no document is saved in this browser: none was open, it was over 2.5 million characters, or storage failed. (err.text is shown when one is saved.)",
   "err.retry": "Try again",
   "err.reload": "Reload",
   "app.h1": "Tool Kumar: JSON Formatter & Viewer",
