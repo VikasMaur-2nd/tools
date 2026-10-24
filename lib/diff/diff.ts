@@ -14,7 +14,7 @@
  * - With `ignoreArrayOrder`, arrays are compared as multisets (by id or hash).
  * - Numbers are compared by exact decimal value from their source text
  *   (`1.0` = `1`, `1e2` = `100`, big integers / long decimals never lose
- *   precision), optionally within an absolute tolerance.
+ *   precision).
  *
  * The output is a flat change list in document order. Every change also
  * carries a JSON Pointer that is valid when the changes are applied in list
@@ -39,8 +39,6 @@ export interface DiffOptions {
    * `$..etag`) matches at any depth. `*` matches any key or index.
    */
   ignorePaths?: readonly string[];
-  /** Numbers whose absolute difference is ≤ this are equal (default 0). */
-  numericTolerance?: number;
   /** Compare strings case-insensitively (default false). */
   caseInsensitiveStrings?: boolean;
   /** Stop after this many changes (default 100 000); sets `truncated`. */
@@ -242,7 +240,6 @@ export const numHash = (raw: string, seed: number) => {
 const H_NUL = pack(0x2f0b3c1d, 0x6c62272e);
 const H_TRUE = pack(0x5be0cd19, 0x1b873593);
 const H_FALSE = pack(0x1f83d9ab, 0x0b4b9e7f);
-const H_NUM = pack(0x7a3c91e5, 0x3a8f05c5);
 const S_NUM = 0x6a09e667 | 0;
 const S_STR = 0x3c6ef372 | 0;
 const S_KEY = 0x510e527f;
@@ -382,7 +379,6 @@ class Differ {
   private readonly hc = new Map<JNode, number>();
   private readonly keyFree: boolean;
   private readonly unordered: boolean;
-  private readonly tol: number;
   private readonly ci: boolean;
   private readonly max: number;
   private readonly anyRoot: Trie | null;
@@ -391,19 +387,11 @@ class Differ {
   private lcsLeft = LCS_TOTAL_BUDGET;
   /** Hash seed (see `DiffOptions.seed`). */
   private readonly salt: number;
-  /**
-   * Equal hash tokens imply equal values (a false match is ~2^-52 per pair),
-   * so hash-matched elements are not walked again. Not with a numeric
-   * tolerance, where all numbers hash alike.
-   */
-  private readonly trustHash: boolean;
 
   constructor(o: DiffOptions) {
     this.keyFree = o.ignoreKeyOrder ?? true;
     this.unordered = o.ignoreArrayOrder ?? false;
-    this.tol = o.numericTolerance && o.numericTolerance > 0 ? o.numericTolerance : 0;
     this.ci = o.caseInsensitiveStrings ?? false;
-    this.trustHash = this.tol === 0;
     this.max = o.maxChanges ?? 100000;
     this.salt = o.seed ?? (Math.random() * TWO32) | 0;
     const { abs, any } = compileIgnore(o.ignorePaths ?? []);
@@ -456,8 +444,7 @@ class Differ {
   // ── equality & hashing ──
 
   private numEq(a: string, b: string): boolean {
-    if (a === b || canonNum(a) === canonNum(b)) return true;
-    return this.tol > 0 && Math.abs(Number(a) - Number(b)) <= this.tol;
+    return a === b || canonNum(a) === canonNum(b);
   }
 
   private strEq(a: string, b: string): boolean {
@@ -472,7 +459,7 @@ class Differ {
       case BOOL:
         return n.v ? H_TRUE : H_FALSE;
       case NUM:
-        return this.tol > 0 ? H_NUM : numHash(n.v as string, this.salt ^ S_NUM);
+        return numHash(n.v as string, this.salt ^ S_NUM);
       case STR:
         return strHash(this.ci ? (n.v as string).toLowerCase() : (n.v as string), this.salt ^ S_STR);
     }
@@ -683,7 +670,8 @@ class Differ {
     // a single edited element is always paired (unless matching by id): no alignment needed
     if (!byId && n - p - s === 1 && m - p - s === 1) s++;
     // (pairs are compared inline: one stack frame less per nesting level)
-    const same = !byId && this.trustHash;
+    // Equal hash tokens imply equal values (a false match is ~2^-52 per pair): hash-matched pairs aren't walked again.
+    const same = !byId;
     let k = same ? p : 0;
     for (; k < p; k++) {
       const sl = this.step(il, k);
@@ -733,7 +721,6 @@ class Differ {
       }
     }
 
-    const same = !byId && this.trustHash;
     // Pair the unaligned runs (edits in place) unless elements are matched by id.
     if (!byId) {
       const fa: number[] = [];
@@ -785,7 +772,7 @@ class Differ {
       if (i >= 0 && j >= 0) {
         const sl = this.step(il, i);
         const sr = sl && this.step(ir, j);
-        if (sr && !(same && ta[i] === tb[j])) {
+        if (sr && (byId || ta[i] !== tb[j])) {
           this.path.push(i);
           this.at.push(k);
           const x = a[i];
@@ -850,14 +837,13 @@ class Differ {
         used[ins[pairs[p + 1]]] = 1;
       }
     }
-    const same = !byId && this.trustHash;
     let removed = 0;
     for (let i = 0; i < n; i++) {
       const sl = this.step(il, i);
       const j = pairOf[i];
       if (j >= 0) {
         const sr = sl && this.step(ir, j);
-        if (sl && sr && !(same && ta[i] === tb[j])) {
+        if (sl && sr && (byId || ta[i] !== tb[j])) {
           this.path.push(i);
           this.at.push(i - removed);
           const x = a[i];

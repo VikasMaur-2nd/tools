@@ -372,9 +372,7 @@ describe('diff: numbers and strings', () => {
     }
   });
 
-  test('numeric tolerance and case-insensitive strings', () => {
-    assert.deepEqual(lines(run('[1.0001, 5]', '[1, 5.0004]', { numericTolerance: 0.001 })), []);
-    assert.deepEqual(lines(run('[1.1]', '[1]', { numericTolerance: 0.001 })), ['changed $[0]']);
+  test('case-insensitive strings', () => {
     assert.deepEqual(lines(run('{"s":"Hello"}', '{"s":"hELLO"}', { caseInsensitiveStrings: true })), []);
     assert.deepEqual(lines(run('{"s":"Hello"}', '{"s":"hELLO"}')), ['changed $.s']);
     // case-insensitive ids still align
