@@ -2,9 +2,9 @@ import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { parse, type JNode } from '../lib/json/parser';
 import { formatPath } from '../lib/json/path';
-import { align, canonNum, diff, leftOffset, numHash, parseIgnoreList, type DiffOptions, type DiffResult } from '../lib/diff/diff';
+import { align, canonNum, diff, numHash, parseIgnoreList, type Change, type DiffOptions, type DiffResult } from '../lib/diff/diff';
 import { patchText, pointer, toPatch } from '../lib/diff/patch';
-import { LineMap, MARK_ADDED, MARK_CHANGED, MARK_REMOVED, changeLines, lineMarks } from '../lib/diff/lines';
+import { LineMap, MARK_ADDED, MARK_CHANGED, MARK_REMOVED, lineMarks } from '../lib/diff/lines';
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -621,13 +621,14 @@ describe('diff: limits and line mapping', () => {
     assert.equal(lm.line(left.indexOf('"c"')), 4);
     assert.equal(lm.col(left.indexOf('"c"')), 5);
     assert.equal(lm.offset(2), 2);
-    assert.deepEqual(changeLines(r.changes[0], 'left', lm), [3, 5]);
-    assert.equal(changeLines(r.changes[0], 'right', rm), null);
-    assert.deepEqual(changeLines(r.changes[2], 'right', rm), [4, 6]);
+    assert.deepEqual(lm.range(r.changes[0].left!), [3, 5]);
+    assert.equal(r.changes[0].right, undefined);
+    assert.deepEqual(rm.range(r.changes[2].right!), [4, 6]);
     assert.deepEqual(Array.from(lineMarks(r.changes, 'left', lm)), [0, 0, MARK_REMOVED, MARK_REMOVED, MARK_REMOVED, MARK_CHANGED, 0]);
     assert.deepEqual(Array.from(lineMarks(r.changes, 'right', rm)), [0, 0, MARK_CHANGED, MARK_ADDED, MARK_ADDED, MARK_ADDED, 0]);
-    // jump targets: the node itself, or the container an addition belongs in
-    assert.equal(leftOffset(r.changes[0]), left.indexOf('{', 1));
-    assert.equal(leftOffset(r.changes[2]), 0);
+    // jump targets (as Compare reveals them): the node itself, or the container an addition belongs in
+    const leftAt = (c: Change) => (c.left ?? c.leftParent)?.s;
+    assert.equal(leftAt(r.changes[0]), left.indexOf('{', 1));
+    assert.equal(leftAt(r.changes[2]), 0);
   });
 });

@@ -1269,13 +1269,3 @@ export function diff(left: JNode, right: JNode, options: DiffOptions = {}): Diff
   }
   return { changes: d.changes, summary: d.sum, truncated, error };
 }
-
-/** Offset in the left document to reveal for a change (the node, or the container an addition belongs in). */
-export function leftOffset(c: Change): number {
-  return (c.left ?? c.leftParent)?.s ?? 0;
-}
-
-/** Offset in the right document to reveal for a change. */
-export function rightOffset(c: Change): number {
-  return (c.right ?? c.rightParent)?.s ?? 0;
-}
