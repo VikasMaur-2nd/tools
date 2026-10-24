@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { PRIVATE } from '@/lib/analytics';
+import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
@@ -486,21 +486,22 @@ function OutputStyle() {
     <div className="seg seg-sm" role="radiogroup" aria-label={t('Output style')}>
       <button type="button" role="radio" aria-checked={!minify && !escape} onClick={() => act((e) => e.setFormat({ minify: false, escape: false }))} data-tip={t('Indented and readable')}>
         {t('Pretty')}
-        {pretty > 0 && <span className="seg-size">{t.bytes(pretty)}</span>}
+        {pretty > 0 && <span className={`seg-size ${PRIVATE}`}>{t.bytes(pretty)}</span>}
       </button>
       <button
         type="button"
         role="radio"
         aria-checked={minify && !escape}
+        className={PRIVATE_LABELS}
         onClick={() => act((e) => e.setFormat({ minify: true, escape: false }))}
         data-tip={saved > 0 ? t('{percent}% smaller', { percent: saved }) : t('One line, no whitespace')}
       >
         {t('Minify')}
-        {minified > 0 && <span className="seg-size">{t.bytes(minified)}</span>}
+        {minified > 0 && <span className={`seg-size ${PRIVATE}`}>{t.bytes(minified)}</span>}
       </button>
       <button type="button" role="radio" aria-checked={escape} onClick={() => act((e) => e.setFormat({ escape: true }))} data-tip={t('Minified, then escaped as one JSON string')}>
         {t('String')}
-        {escaped > 0 && <span className="seg-size">{t.bytes(escaped)}</span>}
+        {escaped > 0 && <span className={`seg-size ${PRIVATE}`}>{t.bytes(escaped)}</span>}
       </button>
     </div>
   );
@@ -962,7 +963,7 @@ function Cursor() {
   const { line, col, sel } = useUI((s) => s.cursor);
   const t = useT();
   return (
-    <span className="cursor muted">
+    <span className={`cursor muted ${PRIVATE}`}>
       {t('Ln {line}, Col {col}', { line, col })}
       {sel > 0 && ' ' + t.n(sel, '({n} selected)', '({n} selected)')}
     </span>
@@ -976,7 +977,8 @@ function StatusBar({ langs }: { langs?: ReactNode }) {
   const themeLabel = t(theme === 'light' ? 'Theme: light' : theme === 'dark' ? 'Theme: dark' : 'Theme: system');
   return (
     <footer className="statusbar">
-      <div className="sb-l">
+      {/* Status, sizes and counts all describe the document. */}
+      <div className={`sb-l ${PRIVATE}`}>
         <StatusMsg />
         <Sizes />
         <Stats />

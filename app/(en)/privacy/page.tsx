@@ -132,7 +132,7 @@ export default function PrivacyPage() {
             rendering failures and failures reported by our conversion, import, export and background processing code. Reports contain a standard
             error category, the part of the app that reported it, and available application script locations with line and column numbers. Every
             original error message is replaced with a fixed privacy message before sending. We remove arbitrary error details, function names,
-            source snippets, local variables and error breadcrumbs. Reports can be linked to the same anonymous visit and masked recording.
+            source snippets, local variables and error breadcrumbs. Reports can be linked to the same anonymous visit and its recording.
             Normal JSON validation errors are counted by category in the document events below.
           </li>
           <li>
@@ -151,10 +151,12 @@ export default function PrivacyPage() {
         </p>
         <ul>
           <li>
-            Both editors, file names, the JSON path, the table location and the whole output area (formatted output, tree, table, graph, converted code and
-            Compare) are left out. They appear as empty boxes, and the recorder never reads inside them.
+            Both editors, file names, the JSON path, the table location, the whole output area (formatted output, tree, table, graph, converted code and
+            Compare) and everything that describes your document (error messages, sizes, line and node counts, the cursor position and notifications)
+            are left out. They appear as empty boxes, and the recorder never reads inside them.
           </li>
-          <li>All other text on the page, every form field and every label and tooltip is replaced with asterisks before anything leaves your browser.</li>
+          <li>Whatever you type into a field (search, URLs, names) is replaced with asterisks before anything leaves your browser.</li>
+          <li>The site’s own text stays readable: buttons, menus, labels, tooltips and the articles and guides you read.</li>
           <li>Recordings contain no network requests, no console messages and no canvas drawings.</li>
         </ul>
 

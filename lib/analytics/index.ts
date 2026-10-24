@@ -11,11 +11,19 @@ import type { EventName, Events, Via } from './events';
 import type { ErrorSource } from './exceptions';
 
 /**
- * Class for every element that shows document content (editors, file names,
- * outputs, paths). Session replay records it as an empty box and never reads
- * inside it; autocapture (off anyway) ignores it.
+ * Class for every element that shows document content or facts about it
+ * (editors, file names, outputs, paths, error messages, sizes and counts).
+ * Session replay records it as an empty box and never reads inside it;
+ * autocapture (off anyway) ignores it. Everything else, the site's own text,
+ * shows in recordings as it is.
  */
 export const PRIVATE = 'ph-no-capture';
+
+/**
+ * Class for a site control whose tooltip or accessible name mentions the
+ * document ("34% smaller"): its text shows in recordings, those labels don't.
+ */
+export const PRIVATE_LABELS = 'ph-private-labels';
 
 const TOKEN = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ?? '';
 const INGEST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '';

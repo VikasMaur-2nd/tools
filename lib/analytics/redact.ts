@@ -6,6 +6,7 @@
 import { EVENT_PROPS } from './events';
 import { cleanUrl } from './url';
 import { exceptionProps } from './exceptions';
+import { PRIVATE_LABELS } from './index';
 
 export { cleanUrl };
 
@@ -77,27 +78,32 @@ export function beforeSend<T extends CaptureLike>(e: T | null, scripts: Readonly
 export const stars = (s: string) => s.replace(/\S/g, '*');
 
 /**
- * Attributes that are readable text (tooltips, accessible names, placeholders,
- * values). Masked in recordings like the text itself, because some carry a
- * document's content (a duplicate key's name in a tooltip, a file name in a title).
+ * Readable attributes that hold the site's own wording (tooltips, accessible
+ * names, placeholders): kept, like the text, unless the element is marked
+ * PRIVATE_LABELS (its tooltip mentions the document, e.g. "34% smaller").
+ * Attributes of elements that show the document are never recorded (PRIVATE).
  */
-const TEXT_ATTRS = new Set([
-  'title', 'alt', 'placeholder', 'value', 'label', 'download', 'srcdoc', 'content',
+const LABEL_ATTRS = new Set([
+  'title', 'alt', 'placeholder', 'label', 'data-tip',
   'aria-label', 'aria-description', 'aria-valuetext', 'aria-placeholder', 'aria-roledescription', 'aria-keyshortcuts',
 ]);
+
+/** Masked: what a visitor typed (value, except a dropdown's own options), a file name to save (download), embedded documents. */
+const DATA_ATTRS = new Set(['value', 'download', 'srcdoc', 'content']);
 
 /** Data attributes the page's CSS needs to draw a recording correctly. */
 const SAFE_DATA = new Set(['data-theme', 'data-doc', 'data-tip-up', 'data-a', 'data-state', 'data-side']);
 
 /**
- * `session_recording.maskAttributeFn`: keeps the attributes that only shape the
- * page (class, style, role, ARIA states, SVG geometry…) and masks the ones that
- * can be read. Links keep their path; data:, blob: and javascript: URLs, query
- * strings and fragments never survive.
+ * `session_recording.maskAttributeFn`: keeps the attributes that shape the page
+ * (class, style, role, ARIA states, SVG geometry…) and the site's labels, and
+ * masks the ones that can carry a visitor's data. Links keep their path; data:,
+ * blob: and javascript: URLs, query strings and fragments never survive.
  */
-export function maskAttribute(name: string, value: string): string {
+export function maskAttribute(name: string, value: string, el?: Element | null): string {
   const n = name.toLowerCase();
-  if (TEXT_ATTRS.has(n)) return stars(value);
+  if (LABEL_ATTRS.has(n)) return el?.closest?.(`.${PRIVATE_LABELS}`) ? stars(value) : value;
+  if (DATA_ATTRS.has(n)) return n === 'value' && (el?.tagName === 'OPTION' || el?.tagName === 'SELECT') ? value : stars(value);
   if (n.startsWith('data-')) return SAFE_DATA.has(n) ? value : stars(value);
   if (n === 'href' || n === 'src' || n === 'action' || n === 'poster' || n === 'xlink:href') {
     const v = value.trim();

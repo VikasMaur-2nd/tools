@@ -4,12 +4,15 @@
  * project token is configured and the visitor hasn't turned analytics off.
  *
  * Session replay is a DOM recording, so it gets three layers:
- *  1. Every element that shows document data (both editors, file names, the
- *     whole viewer, the tree path, the table breadcrumbs, the file input) has
- *     the `ph-no-capture` class (PRIVATE in ./index.ts): the recorder replaces
- *     it with an empty box of the same size and never reads inside it.
- *  2. All other text is masked to '*' in the browser (maskTextSelector '*'),
- *     inputs too, and readable attributes (title, aria-label…) the same way.
+ *  1. Every element that shows document data or facts about it (both editors,
+ *     file names, the whole viewer, the tree path, the table breadcrumbs, the
+ *     status bar's messages, sizes and counts, toasts, the file input) has the
+ *     `ph-no-capture` class (PRIVATE in ./index.ts): the recorder replaces it
+ *     with an empty box of the same size and never reads inside it. The site's
+ *     own text (labels, menus, articles) shows as it is.
+ *  2. Everything typed into a field is masked to '*' in the browser, and so
+ *     are attributes that can carry it (value, download, data-*); a control
+ *     whose tooltip mentions the document has PRIVATE_LABELS.
  *  3. No network bodies, headers or console logs, no canvas.
  * Events go through `beforeSend`: only our own allow-listed events and a few
  * SDK ones survive, with URL fragments and query strings removed.
@@ -70,9 +73,13 @@ export function initPostHog(token: string, ingest: string): PostHog {
     session_recording: {
       blockClass: 'ph-no-capture',
       blockSelector: 'input[type="file"]',
-      maskAllInputs: true,
-      maskTextSelector: '*',
-      maskAttributeFn: (name: string, value: string) => maskAttribute(name, value),
+      // Every field a visitor types into is masked; dropdowns only offer the site's own choices.
+      maskAllInputs: false,
+      maskInputOptions: {
+        color: true, date: true, 'datetime-local': true, email: true, month: true, number: true, range: true, search: true,
+        tel: true, text: true, time: true, url: true, week: true, textarea: true, password: true, select: false,
+      },
+      maskAttributeFn: (name: string, value: string, el?: Element) => maskAttribute(name, value, el),
       recordHeaders: false,
       recordBody: false,
       captureCanvas: { recordCanvas: false },

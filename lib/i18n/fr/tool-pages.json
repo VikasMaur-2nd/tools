@@ -1203,7 +1203,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "6aa134126011",
+    "hash": "3fc3151510e2",
     "title": "Formateur JSON sécurisé : traitement dans le navigateur",
     "description": "Inspectez du JSON dans le navigateur, sans envoi du document ni compte. Vérifiez les requêtes, la mesure d'audience, le stockage et les limites de CSP.",
     "heading": "Formateur JSON sécurisé",
@@ -1260,7 +1260,7 @@
         "heading": "Mesure d'audience et requêtes tierces",
         "paragraphs": [
           "Le site utilise Vercel Web Analytics pour compter les pages vues et PostHog pour voir quelles fonctionnalités sont utilisées, avec des plages arrondies de taille des documents et des enregistrements d'écran. Les deux envoient leurs requêtes à cette même origine (/_vercel/insights et /relay), et aucun ne reçoit le contenu des documents. Les fragments d'URL et les paramètres de requête, à l'exception des balises de campagne utm_, sont supprimés avant l'envoi des événements. Évitez de placer des secrets dans les chemins d'URL.",
-          "Les enregistrements excluent entièrement les éditeurs, les noms de fichiers, les chemins et toutes les vues de sortie, et le navigateur remplace tout le reste du texte de la page par des astérisques avant tout envoi. Les charges utiles de PostHog sont du JSON non compressé (les quelques-unes envoyées à la fermeture d'une page sont encodées en base64), vous pouvez donc y rechercher le marqueur aussi. Vous pouvez désactiver la mesure d'audience sur la page de confidentialité. La police du code est intégrée aux ressources hébergées par le site lors de la compilation, et le chargement d'une URL distante demandé par l'utilisateur est la seule exception au fonctionnement habituel avec une entrée locale."
+          "Les enregistrements excluent entièrement les éditeurs, les noms de fichiers, les chemins, toutes les vues de sortie et tout ce qui décrit votre document (messages d'erreur, tailles, décomptes), et le navigateur remplace par des astérisques ce que vous saisissez dans un champ avant tout envoi ; le texte propre au site, comme les boutons et les menus, reste lisible. Les charges utiles de PostHog sont du JSON non compressé (les quelques-unes envoyées à la fermeture d'une page sont encodées en base64), vous pouvez donc y rechercher le marqueur aussi. Vous pouvez désactiver la mesure d'audience sur la page de confidentialité. La police du code est intégrée aux ressources hébergées par le site lors de la compilation, et le chargement d'une URL distante demandé par l'utilisateur est la seule exception au fonctionnement habituel avec une entrée locale."
         ]
       },
       {

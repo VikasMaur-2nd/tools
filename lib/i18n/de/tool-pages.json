@@ -1226,7 +1226,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "6aa134126011",
+    "hash": "3fc3151510e2",
     "title": "Sicherer JSON-Formatter mit Verarbeitung im Browser",
     "description": "Prüfe JSON lokal ohne Dokument-Upload und Konto. Kontrolliere die Netzwerkanfragen selbst und lies vor sensiblen Daten zu Analytics, Speicher und CSP.",
     "heading": "Sicherer JSON-Formatter",
@@ -1284,7 +1284,7 @@
         "heading": "Analytics und Anfragen an Dritte",
         "paragraphs": [
           "Die Website verwendet Vercel Web Analytics, um Seitenaufrufe zu zählen, und PostHog, um zu sehen, welche Funktionen genutzt werden, mit gerundeten Bereichen für die Dokumentgröße und Bildschirmaufzeichnungen. Beide senden ihre Anfragen an dieselbe Origin (/_vercel/insights und /relay), und keines der beiden Tools erhält Dokumentinhalte. URL-Fragmente und Abfrageparameter werden vor dem Senden von Ereignissen entfernt, mit Ausnahme von utm_-Kampagnen-Tags. Schreibe keine Geheimnisse in URL-Pfade.",
-          "Die Aufzeichnungen lassen die Editoren, Dateinamen, Pfade und sämtliche Ausgabeansichten vollständig aus. Der Browser ersetzt den gesamten übrigen Seitentext durch Sternchen, bevor etwas gesendet wird. PostHog-Payloads sind unkomprimiertes JSON (die wenigen, die beim Schließen einer Seite gesendet werden, sind base64-kodiert), sodass du auch sie auf die Markierung prüfen kannst. Du kannst Analytics auf der Datenschutzseite ausschalten. Die Code-Schriftart wird beim Build selbst gehostet. Ein von dir angeforderter Abruf einer entfernten URL ist die einzige Ausnahme vom üblichen Ablauf mit lokaler Eingabe."
+          "Die Aufzeichnungen lassen die Editoren, Dateinamen, Pfade, sämtliche Ausgabeansichten und alles, was dein Dokument beschreibt (Fehlermeldungen, Größen, Zählungen), vollständig aus. Der Browser ersetzt alles, was du in ein Feld eingibst, durch Sternchen, bevor etwas gesendet wird; der eigene Text der Website, etwa Schaltflächen und Menüs, bleibt lesbar. PostHog-Payloads sind unkomprimiertes JSON (die wenigen, die beim Schließen einer Seite gesendet werden, sind base64-kodiert), sodass du auch sie auf die Markierung prüfen kannst. Du kannst Analytics auf der Datenschutzseite ausschalten. Die Code-Schriftart wird beim Build selbst gehostet. Ein von dir angeforderter Abruf einer entfernten URL ist die einzige Ausnahme vom üblichen Ablauf mit lokaler Eingabe."
         ]
       },
       {

@@ -1214,7 +1214,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "6aa134126011",
+    "hash": "3fc3151510e2",
     "title": "Formatador JSON seguro com processamento local",
     "description": "Inspecione JSON localmente, sem upload nem conta. Confira as requisições em Network e os limites de analytics, armazenamento e CSP antes de usar segredos.",
     "heading": "Formatador JSON seguro",
@@ -1272,7 +1272,7 @@
         "heading": "Analytics e requisições a terceiros",
         "paragraphs": [
           "O site usa Vercel Web Analytics para contar visualizações de página e PostHog para ver quais recursos são usados, com faixas arredondadas de tamanho dos documentos e gravações de tela. Ambos enviam suas requisições para esta mesma origem (/_vercel/insights e /relay), e nenhum recebe o conteúdo dos documentos. Os fragmentos de URL e os parâmetros de consulta, exceto as tags de campanha utm_, são removidos antes do envio dos eventos. Evite colocar segredos em caminhos de URL.",
-          "As gravações excluem por completo os editores, os nomes de arquivos, os caminhos e todas as visualizações de saída, e o navegador substitui todo o restante do texto da página por asteriscos antes de enviar qualquer coisa. Os payloads do PostHog são JSON sem compressão (os poucos enviados quando uma página é fechada vão codificados em base64), então você também pode procurar o marcador neles. Você pode desativar o analytics na página de privacidade. A fonte usada no código é preparada durante o build para ser hospedada no próprio site, e uma busca de URL remota solicitada pelo usuário é a única exceção ao fluxo normal de entrada local."
+          "As gravações excluem por completo os editores, os nomes de arquivos, os caminhos, todas as visualizações de saída e tudo o que descreve o seu documento (mensagens de erro, tamanhos, contagens), e o navegador substitui por asteriscos o que você digita em qualquer campo antes de enviar qualquer coisa; o texto do próprio site, como botões e menus, continua legível. Os payloads do PostHog são JSON sem compressão (os poucos enviados quando uma página é fechada vão codificados em base64), então você também pode procurar o marcador neles. Você pode desativar o analytics na página de privacidade. A fonte usada no código é preparada durante o build para ser hospedada no próprio site, e uma busca de URL remota solicitada pelo usuário é a única exceção ao fluxo normal de entrada local."
         ]
       },
       {
