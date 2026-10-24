@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
 import { EVENT_PROPS, clean, countBucket, errorKind, fileKind, loadedProps, round2, sizeBucket, sizeKb } from '../lib/analytics/events';
 import type { Feature, ViewId } from '../lib/analytics/events';
 import { beforeSend, cleanUrl, maskAttribute } from '../lib/analytics/redact';
@@ -379,4 +381,77 @@ test('graph analytics use fixed view and feature values', () => {
   for (const feature of features) {
     assert.deepEqual(clean('feature_used', { feature, view, via: 'palette', filename: 'secret.json' }), { feature, view, via: 'palette' });
   }
+});
+
+/** lib/analytics/load.ts against a stand-in UI store: what `json_loaded` events it sends, and when. */
+function loads() {
+  type State = { status: { kind: string; warnings?: number }; stats: { bytes: number; lines: number; nodes: number; depth: number; ms: number } | null; cmpText: string };
+  let state: State = { status: { kind: 'empty' }, stats: null, cmpText: '' };
+  const subs = new Set<() => void>();
+  const store = {
+    get: () => state,
+    set: (patch: Partial<State>) => {
+      state = { ...state, ...patch };
+      for (const f of [...subs]) f();
+    },
+    subscribe: (f: () => void) => (subs.add(f), () => void subs.delete(f)),
+  };
+  const sent: Record<string, unknown>[] = [];
+  const timers = new Map<number, () => void>();
+  let id = 0;
+  const window = { setTimeout: (f: () => void) => (timers.set(++id, f), id), clearTimeout: (t: number) => void timers.delete(t) };
+  const exports: { noteLoad?: (source: string, editor?: 1 | 2, fileName?: string | null) => void } = {};
+  const source = readFileSync(join(process.cwd(), 'lib/analytics/load.ts'), 'utf8');
+  const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  const modules: Record<string, unknown> = {
+    './index': { collecting: () => true, emit: (event: string, props: Record<string, unknown>) => sent.push({ event, ...props }) },
+    '../engine/store': { store },
+  };
+  runInNewContext(js, { exports, require: (m: string) => modules[m], window, performance: { now: () => 0 }, addEventListener() {} });
+  const later = () => {
+    for (const [t, f] of [...timers]) {
+      timers.delete(t);
+      f();
+    }
+  };
+  return { noteLoad: exports.noteLoad!, store, sent, later };
+}
+
+const checked = (bytes: number) => ({ status: { kind: 'valid', warnings: 0 }, stats: { bytes, lines: 1, nodes: 3, depth: 2, ms: 40 } });
+
+test('a document in one editor waits for its own check, whatever arrives in the other', () => {
+  // A comparison link: the original goes in, then the modified document, before the original's check is done.
+  const l = loads();
+  l.noteLoad('link', 1, null);
+  l.store.set({ status: { kind: 'parsing' }, stats: null });
+  l.noteLoad('link', 2, null);
+  l.store.set({ cmpText: 'x'.repeat(2048) });
+  l.later();
+  assert.deepEqual(l.sent.map((e) => [e.editor, e.bytes, e.status]), [[2, 2048, 'unknown']]);
+  l.store.set(checked(3_000_000));
+  assert.deepEqual(l.sent.map((e) => [e.editor, e.bytes, e.status]), [[2, 2048, 'unknown'], [1, 3_000_000, 'valid']]);
+  const p = clean('json_loaded', loadedProps(l.sent[1] as unknown as Parameters<typeof loadedProps>[0]))!;
+  assert.equal(p.size, '1-10MB');
+  assert.equal(p.validity, 'valid');
+});
+
+test('a document replaced before its check is reported without a size or validity it never had', () => {
+  const l = loads();
+  l.store.set(checked(10));
+  l.noteLoad('file', 1, 'a.json');
+  l.store.set({ status: { kind: 'parsing' }, stats: null });
+  // A second file dropped while the first is still being read.
+  l.noteLoad('drop', 1, 'b.json');
+  l.store.set({ status: { kind: 'parsing' }, stats: null });
+  l.store.set(checked(50_000));
+  assert.deepEqual(l.sent.map((e) => [e.source, e.bytes, e.status]), [['file', undefined, 'unknown'], ['drop', 50_000, 'valid']]);
+  assert.deepEqual(clean('json_loaded', loadedProps(l.sent[0] as unknown as Parameters<typeof loadedProps>[0])), {
+    source: 'file', editor: 1, file_kind: 'json', validity: 'unknown',
+  });
+  // Compare's document too: the one replaced within the moment it takes to publish.
+  l.noteLoad('paste_button', 2);
+  l.noteLoad('file', 2, 'c.json');
+  l.store.set({ cmpText: '[1]' });
+  l.later();
+  assert.deepEqual(l.sent.slice(2).map((e) => [e.source, e.bytes]), [['paste_button', undefined], ['file', 3]]);
 });

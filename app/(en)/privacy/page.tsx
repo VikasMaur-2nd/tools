@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 /** When each event is sent. Its properties are listed straight from lib/analytics/events.ts. */
 const WHEN: Record<EventName, string> = {
-  json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL, opened from a link, handed over by another site, or the sample), once it has been checked.',
+  json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL, opened from a link, handed over by another site, or the sample), once it has been checked (or, without its size and validity, when another document replaces it first).',
   view_opened: 'You open Format, Tree, Table, Graph, Convert or Compare.',
   convert_target_selected: 'You pick a Convert language or format.',
   convert_option_changed: 'You change a Convert option: TypeScript interface or type, or the C# JSON library. The root type name you type is never sent.',

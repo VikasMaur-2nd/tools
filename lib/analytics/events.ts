@@ -46,8 +46,9 @@ export interface Events {
     /** 1 = the input editor, 2 = Compare's modified document. */
     editor: 1 | 2;
     file_kind: FileKind;
-    size: string;
-    size_kb: number;
+    /** (Left out for a document replaced before it was checked.) */
+    size?: string;
+    size_kb?: number;
     validity: Validity;
     error_kind?: string;
     issues?: string;
@@ -230,7 +231,8 @@ export interface RawLoad {
   source: InputSource;
   editor: 1 | 2;
   file: string | null;
-  bytes: number;
+  /** (Unknown for a document replaced before it was checked.) */
+  bytes?: number;
   status: string;
   msg?: string;
   count?: number;
@@ -247,8 +249,8 @@ export function loadedProps(r: RawLoad): Events['json_loaded'] {
     source: r.source,
     editor: r.editor,
     file_kind: fileKind(r.file),
-    size: sizeBucket(r.bytes),
-    size_kb: sizeKb(r.bytes),
+    size: r.bytes === undefined ? undefined : sizeBucket(r.bytes),
+    size_kb: r.bytes === undefined ? undefined : sizeKb(r.bytes),
     validity: st === 'valid' ? 'valid' : st === 'fixable' ? 'fixable' : st === 'error' ? 'invalid' : 'unknown',
     error_kind: st === 'error' || st === 'fixable' || (st === 'valid' && r.warnings) ? errorKind(r.msg) : undefined,
     issues: r.count !== undefined ? countBucket(r.count) : undefined,
