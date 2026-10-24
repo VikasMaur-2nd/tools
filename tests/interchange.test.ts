@@ -317,6 +317,15 @@ describe('toXlsx', () => {
     }
   });
 
+  test('numbers Excel cannot hold exactly are written as text', async () => {
+    const numbers = ['0.123456789012345678901', '3.14159265358979323846', '0.10000000000000001', '1e-999', '1e999', '-1e-400', '1e308', '-1e-308', '10000000000000001e-1'];
+    const kept = ['1.5e3', '0.1', '123456789012345', '1.23456789012345', '1.234567890123456', '0.30000000000000004', '123456789012345.5', '-0.000012345678901234', '9.99999999999999e307', '2.2251e-308', '-2.5e-300', '0', '-0', '0.000', '0e999', '1.50', '1.00000000000000000000'];
+    const rows = [...numbers, ...kept].map((n) => `{"n": ${n}}`).join(',');
+    const { sheet } = await xlsxParts(`[${rows}]`);
+    numbers.forEach((n, i) => assert.match(sheet, new RegExp(`<c r="A${i + 2}" t="inlineStr"><is><t>${n.replace(/[.+]/g, '\\$&')}</t>`), n));
+    kept.forEach((n, i) => assert.match(sheet, new RegExp(`<c r="A${numbers.length + i + 2}"><v>${n.replace(/[.+]/g, '\\$&')}</v>`), n));
+  });
+
   test('empty and scalar inputs still produce valid workbooks', async () => {
     const e = await xlsxParts('[]');
     assert.match(e.sheet, /<dimension ref="A1"\/>.*<sheetData><\/sheetData><\/worksheet>$/s);

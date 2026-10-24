@@ -311,15 +311,42 @@ const colName = (j: number) => {
   return s;
 };
 
-/** Excel keeps 15 significant digits: longer integer parts (IDs, big ints) and non-finite values are written as text. */
-const numeric = (raw: string) => {
+/**
+ * Excel holds doubles from about 2.2251e-308 to 9.99999999999999e307 (showing 15
+ * digits): numbers a double can't hold exactly, values out of that range and
+ * integer parts longer than 15 digits (IDs, big ints) are written as text.
+ */
+const numeric = (c: JNode) => {
+  const raw = c.v as string;
   let k = 0;
   const neg = raw.charCodeAt(0) === 45 ? 1 : 0;
   for (k = neg; k < raw.length; k++) {
-    const c = raw.charCodeAt(k);
-    if (c < 48 || c > 57) break;
+    const ch = raw.charCodeAt(k);
+    if (ch < 48 || ch > 57) break;
   }
-  return k - neg <= 15 && (k === raw.length || Number.isFinite(Number(raw)));
+  if (k - neg > 15) return false;
+  if (k === raw.length) return true;
+  // significant digits: up to 15 always survive a double (as in any number of 16 characters or
+  // fewer, sign aside); 16 or 17 only for some values; more never
+  let sig = 0;
+  if (raw.length - neg > 16) {
+    let zeros = 0;
+    for (let p = neg; p < raw.length; p++) {
+      const ch = raw.charCodeAt(p);
+      if (ch === 46) continue;
+      if (ch < 48 || ch > 57) break;
+      if (ch !== 48) {
+        sig += zeros + 1;
+        zeros = 0;
+      } else if (sig) zeros++;
+    }
+    if (sig > 17) return false;
+  }
+  const v = sig > 15 ? toValue(c) : Number(raw);
+  if (typeof v !== 'number') return false;
+  const a = Math.abs(v);
+  // (0 from a non-zero mantissa is an underflow: 1e-999)
+  return a === 0 ? /^-?[0.]+(?:[eE]|$)/.test(raw) : a >= 2.2251e-308 && a <= 9.99999999999999e307;
 };
 
 const sheetName = (s: string | undefined) => {
@@ -386,7 +413,7 @@ export async function toXlsx(root: JNode, opts: XlsxOptions = {}): Promise<Blob>
           t = c.v ? 'TRUE' : 'FALSE';
         } else {
           t = c.v as string;
-          s += numeric(t) ? P[j] + rn + '"><v>' + t + '</v></c>' : P[j] + rn + '" t="inlineStr">' + istr(t) + '</c>';
+          s += numeric(c) ? P[j] + rn + '"><v>' + t + '</v></c>' : P[j] + rn + '" t="inlineStr">' + istr(t) + '</c>';
         }
       } else {
         t = typeof c === 'string' ? c : (c.v as string);
