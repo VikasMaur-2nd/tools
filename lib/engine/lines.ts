@@ -207,3 +207,24 @@ export function shiftFoldLines(close: Int32Array, depth: Int32Array, la: number,
   for (let i = 0; i < n; i++) if (c[i] > la) c[i] += d;
   return { close: c, depth: dp };
 }
+
+/**
+ * The fold structure after lines [la, lb] became lines [la, la + added], as far as it is known without
+ * a scan when the edit may have opened or closed blocks: a block that closes before the edit, or opens
+ * after it, pairs with the same lines (those after only move, though their depth may change). Blocks
+ * around the edit or in it are unknown (-1) until scanFolds finds them.
+ */
+export function foldsAround(close: Int32Array, depth: Int32Array, la: number, lb: number, added: number) {
+  const d = added - (lb - la);
+  const n = close.length + d;
+  const c = new Int32Array(n);
+  const dp = new Int32Array(n);
+  c.set(close.subarray(0, la));
+  dp.set(depth.subarray(0, la));
+  for (let i = 0; i < la; i++) if (c[i] >= la) c[i] = -1;
+  c.fill(-1, la, la + added + 1);
+  c.set(close.subarray(lb + 1), la + added + 1);
+  dp.set(depth.subarray(lb + 1), la + added + 1);
+  if (d) for (let i = la + added + 1; i < n; i++) if (c[i] >= 0) c[i] += d;
+  return { close: c, depth: dp };
+}

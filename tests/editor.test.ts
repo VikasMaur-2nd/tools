@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { editorElement, frames, installDom } from './dom';
 import { Editor } from '../lib/engine/editor';
+import { lineStarts, scanFolds } from '../lib/engine/lines';
 
 installDom();
 
@@ -60,4 +61,80 @@ test('the undo history keeps its count while dropping its oldest steps', () => {
   assert.equal(h.histChars, stored(h));
   while (h.undo_.length) ed.undo();
   assert.equal(h.histChars, 0);
+});
+
+interface Folds {
+  close: Int32Array;
+  folded: Map<number, number>;
+  foldsFor: object | null;
+}
+const folds = (ed: object) => ed as unknown as Folds;
+const tick = () => new Promise((r) => setTimeout(r, 0));
+/** `n` objects of three lines each in an array. */
+const objects = (n: number) => '[\n' + Array.from({ length: n }, (_, i) => `  {\n    "k": ${i}\n  }`).join(',\n') + '\n]';
+
+test('an edit that opens or closes blocks in a long document finds them after it shows, keeping folds', async () => {
+  const { ed } = editor(objects(7_000));
+  const f = folds(ed);
+  const lines = ed.lineCol(ed.length).line;
+  assert.equal(f.close[0], lines - 1, 'the array spans the document');
+  ed.toggleFold(1);
+  ed.toggleFold(lines - 4);
+  assert.deepEqual([...f.folded.keys()], [1, lines - 4]);
+  // "[" becomes "[x": the array no longer opens a block.
+  ed.replace(1, 1, 'x');
+  assert.equal(ed.text.slice(0, 3), '[x\n');
+  assert.ok(f.foldsFor, 'the structure around the edit is being found');
+  assert.equal(f.close[0], -1);
+  assert.equal(f.close[1], 3, 'blocks after the edit are known at once');
+  assert.deepEqual([...f.folded.keys()], [1, lines - 4], 'folds the edit cannot change stay');
+  for (let k = 0; k < 100 && f.foldsFor; k++) await tick();
+  assert.equal(f.foldsFor, null);
+  assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
+  assert.deepEqual([...f.folded.keys()], [1, lines - 4]);
+  ed.undo();
+  for (let k = 0; k < 100 && f.foldsFor; k++) await tick();
+  assert.equal(f.close[0], lines - 1, 'undo brings the block back');
+  assert.deepEqual([...f.folded.keys()], [1, lines - 4]);
+});
+
+test('typing while the structure is being found keeps what is known', async () => {
+  const { ed } = editor(objects(7_000));
+  const f = folds(ed);
+  ed.replace(1, 1, 'x');
+  assert.ok(f.foldsFor);
+  // A new line before the second object's: the lines after it move.
+  const at = ed.text.indexOf('},\n') + 3;
+  ed.replace(at, at, '\n');
+  assert.ok(f.foldsFor);
+  assert.equal(f.close[1], 3);
+  assert.equal(f.close[5], -1, 'the line edited is found later');
+  assert.equal(f.close[8], 10, 'the third object moved down a line');
+  for (let k = 0; k < 100 && f.foldsFor; k++) await tick();
+  assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
+});
+
+test('a long paste into a long document finds the blocks around it after it shows', async () => {
+  const { ed } = editor(objects(7_000));
+  const f = folds(ed);
+  const lines = ed.lineCol(ed.length).line;
+  ed.toggleFold(1);
+  ed.toggleFold(lines - 4);
+  // Over 64K characters: the line starts are found again; a stray "{" opens a block.
+  const at = ed.text.indexOf('},\n', ed.length >> 1) + 3;
+  ed.replace(at, at, '{\n' + objects(3_000).slice(2, -2) + ',\n');
+  assert.ok(f.foldsFor);
+  const added = 9_000 + 1;
+  assert.deepEqual([...f.folded.keys()], [1, lines - 4 + added], 'folds the edit cannot change stay');
+  for (let k = 0; k < 200 && f.foldsFor; k++) await tick();
+  assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
+  assert.deepEqual([...f.folded.keys()], [1, lines - 4 + added]);
+});
+
+test('a short document finds its new structure at once', () => {
+  const { ed } = editor(objects(10));
+  const f = folds(ed);
+  ed.replace(1, 1, 'x');
+  assert.equal(f.foldsFor, null);
+  assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
 });

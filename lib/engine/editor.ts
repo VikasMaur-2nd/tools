@@ -2,7 +2,7 @@ import { Doc } from './doc';
 import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
-import { foldScanner, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
+import { foldScanner, foldsAround, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
 import { LONG_LINE, Wrapper, type Src } from './wrap';
 import { rt } from '../i18n/ui';
 
@@ -60,6 +60,11 @@ const SURFACE_LINES = 30_000;
  * in one go it took 0.3 to 1.2 s of the freeze opening a pretty-printed document of 2 to 4 million lines.
  */
 const FOLD_STEP_LINES = 200_000;
+/**
+ * From this many lines, an edit that may open or close blocks finds the blocks around it that way too (the
+ * others stand, see foldsAround): a scan for each such key took 0.4 to 0.5 s on a document of 400K lines.
+ */
+const FOLD_EDIT_LINES = 20_000;
 /**
  * A line this long gets the big-document editor at any size: the textarea lays out the whole line on
  * every key, so a minified document is slow to type in long before it is big.
@@ -483,6 +488,8 @@ export class Editor {
     const old = this.doc;
     const doc = typeof t === 'string' ? Doc.of(t) : t;
     const fits = !!edit && old.length - (edit.b - edit.a) + edit.ins.length === doc.length;
+    /** A new document (loaded, or all of it replaced), not an edit of this one. */
+    const fresh = !edit || this.loading || (edit.a === 0 && edit.b === old.length);
     this.lineEdit = null;
     // The wrapper may reuse rows outside this edit, in the rows() call this model() makes (see rewrap).
     this.wrapEdit = edit && fits && old === this.wrapText ? [edit.a, edit.b, edit.a + edit.ins.length] : null;
@@ -490,6 +497,8 @@ export class Editor {
     // String states before the edit stand (see StringStates).
     if (edit && fits) this.strs.edited(old.flat ?? old, this.src, edit.a);
     let folds: { close: Int32Array; depth: Int32Array } | null = null;
+    /** The edit may have opened or closed blocks in a long document: `folds` is what stands, the rest is found later. */
+    let around = false;
     if (edit && fits && edit.ins.length <= PATCH_CHARS) {
       // A bounded edit: patch the line starts and the widest line instead of rescanning the document.
       const { a, b, ins } = edit;
@@ -499,7 +508,8 @@ export class Editor {
       const lb = lineOfIn(ls, b);
       // The fold structure stands if the edited lines keep their parts in it, or neither open nor close a block
       // before or after the edit (then the lines after them only move).
-      const few = lb - la <= 64 && this.close.length === n0;
+      const known = this.close.length === n0;
+      const few = lb - la <= 64 && known;
       const was = few ? Array.from({ length: lb - la + 1 }, (_, k) => foldSig(old, ls[la + k], lineEndIn(ls, old.length, la + k))) : [];
       // Soft-wrapped, the widest line only matters once wrapping is off (see layout): skip measuring it.
       const widths = !this.el.classList.contains('wrap');
@@ -513,23 +523,35 @@ export class Editor {
         if (now.length === was.length && now.every((s, k) => s === was[k])) folds = { close: this.close, depth: this.depth };
         else if (was.every(plain) && now.every(plain)) folds = shiftFoldLines(this.close, this.depth, la, lb, r.added);
       }
+      if (!folds && !fresh && known && ls.length >= FOLD_EDIT_LINES) {
+        folds = foldsAround(this.close, this.depth, la, lb, r.added);
+        around = true;
+      }
     } else if (doc === old) {
       // The same document, presented another way (the quiet view ends, the big-document editor arrives): its
       // lines and folds stand. Scanning them again took 0.1 to 0.5 s on documents of a million lines and more.
       folds = { close: this.close, depth: this.depth };
     } else {
+      // (A long edit of a long document: its lines are found again, the blocks around it after it shows.)
+      const near = edit && fits && !fresh && this.close.length === this.ls.length;
+      const la = near ? lineOfIn(this.ls, edit.a) : -1;
+      const lb = near ? lineOfIn(this.ls, edit.b) : -1;
       const { ls, max, tabs } = lineStarts(doc.toString());
       doc.knowTabs(tabs);
       this.maxStale = false;
+      if (near && ls.length >= FOLD_EDIT_LINES) {
+        folds = foldsAround(this.close, this.depth, la, lb, countLines(edit.ins, Infinity));
+        around = true;
+      }
       this.ls = ls;
       this.maxCols = max;
     }
     if (doc !== old) {
-      // A big new document's folds are found after it shows; an edit meanwhile starts that over. (An edit of a
-      // document whose folds are known finds them at once, as before: folds the user made survive it.)
+      // A big new document's folds are found after it shows, as are the blocks around an edit of a long one
+      // that may have opened or closed some; an edit meanwhile starts that over, from what it leaves standing.
+      // (Folds the user made in blocks the edit can't change survive it.)
       const pending = this.foldsFor !== null;
-      const fresh = !edit || this.loading || (edit.a === 0 && edit.b === old.length);
-      if (this.ls.length >= FOLD_STEP_LINES && (pending || (!folds && fresh))) folds = this.scanFoldsLater(doc);
+      if (fresh ? this.ls.length >= FOLD_STEP_LINES && (pending || !folds) : around || (pending && folds)) folds = this.scanFoldsLater(doc, fresh ? null : folds);
       else if (pending) {
         this.foldsFor = null;
         folds = null;
@@ -901,25 +923,28 @@ export class Editor {
   private foldsFor: Doc | null = null;
 
   /**
-   * Finds `doc`'s fold structure in slices, then shows its fold markers. Until then the document has no folds:
-   * returns that structure (the arrays already in place when they still fit, as while typing meanwhile).
+   * Finds `doc`'s fold structure in slices, then shows its fold markers. Returns the structure until then:
+   * `known` (what an edit leaves standing), else no blocks at all.
    */
-  private scanFoldsLater(doc: Doc) {
+  private scanFoldsLater(doc: Doc, known: { close: Int32Array; depth: Int32Array } | null) {
     const n = this.ls.length;
-    const reuse = this.foldsFor !== null && this.close.length === n;
     this.foldsFor = doc;
-    const scan = foldScanner(doc, this.ls);
+    // (Made when it starts: typing restarts it at every key.)
+    let scan: ReturnType<typeof foldScanner> | null = null;
     const run = () => {
       // (An edit or another document since: this scan is stale, and the lines it reads may have changed.)
       if (this.gone || this.foldsFor !== doc || !this.el.isConnected) return;
-      const res = scan(performance.now() + 8);
+      const res = (scan ??= foldScanner(doc, this.ls))(performance.now() + 8);
       if (!res) return void setTimeout(run, 0);
       this.foldsFor = null;
+      const had = this.folded.size;
       this.scanFolds(res);
-      this.renderSoon();
+      // (A fold that no longer matches its block opens.)
+      if (this.folded.size !== had) this.refold(-1);
+      else this.renderSoon();
     };
     setTimeout(run, 0);
-    return reuse ? { close: this.close, depth: this.depth } : { close: new Int32Array(n).fill(-1), depth: new Int32Array(n) };
+    return known ?? { close: new Int32Array(n).fill(-1), depth: new Int32Array(n) };
   }
 
   /** Rebuilds the visible-line map and the textarea text from the folds. */
