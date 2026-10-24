@@ -45,13 +45,12 @@ test('graph export: standalone SVG escapes document text and preserves the model
   const key = 'key&<>"\'';
   const m = model({ [key]: 'value & < > " \'', number: 42, boolean: true, nothing: null, empty: {}, array: [] });
   const L = layoutGraph(m);
-  const svg = toSVG(L, theme, { selected: 0 });
+  const svg = toSVG(L, theme);
   const texts = wellFormed(svg);
   assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
   assert.match(svg, /<style>/);
   assert.match(svg, /font-size:12px/);
   assert.match(svg, /font-family:&apos;Test Mono&apos;, monospace/);
-  assert.match(svg, /class="selected"/);
   assert.match(svg, /class="key ph-no-capture"/);
   assert.ok(texts.includes('root'));
   assert.ok(texts.includes('{6}'));
@@ -90,10 +89,10 @@ test('graph export: collapse hides descendants, retains port dots and includes a
   const collapsed = new Uint8Array(m.n);
   collapsed[1] = 1;
   const L = layoutGraph(m, collapsed);
-  const svg = toSVG(L, theme, { selected: 2 });
+  const svg = toSVG(L, theme);
   wellFormed(svg);
   assert.match(svg, />\+2<\/text>/);
-  assert.doesNotMatch(svg, /hiddenValue|invisible|>deeper<|class="selected"/);
+  assert.doesNotMatch(svg, /hiddenValue|invisible|>deeper</);
   assert.equal((svg.match(/class="card"/g) ?? []).length, 2);
   assert.equal((svg.match(/class="dot"/g) ?? []).length, 2);
   const width = Number(/<svg[^>]* width="([\d.]+)"/.exec(svg)![1]);

@@ -61,8 +61,6 @@ export interface GraphViewApi {
   destroy(): void;
 }
 
-export type GraphViewCtor = new (host: HTMLElement, ev: GraphEvents) => GraphViewApi;
-
 export interface GraphExport {
   format: 'png' | 'jpeg' | 'svg';
   /** The whole graph, what's on screen, or the selected card's branch. */

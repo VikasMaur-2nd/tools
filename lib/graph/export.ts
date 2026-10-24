@@ -68,8 +68,6 @@ export interface ImageOptions {
   area?: ExportArea;
   /** A CSS colour, or null for none (transparent). Default: the theme's canvas colour. */
   background?: string | null;
-  /** Outline this card (SVG). */
-  selected?: number;
 }
 
 /** The world rectangle to draw, the margin around it, and the cards in it ([lo, hi)). */
@@ -169,7 +167,7 @@ export function exportSize(L: GraphLayout, area?: ExportArea): { width: number; 
   return { width: f.w, height: f.h, cards: f.cards, rows: rowsIn(L, f, EXPORT_LIMITS.svgRows) };
 }
 
-type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'chevron' | 'pill' | 'dot' | 'fg' | 'strong' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul' | 'selected';
+type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'chevron' | 'pill' | 'dot' | 'fg' | 'strong' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul';
 type Command = ['M' | 'L', number, number] | ['Q', number, number, number, number] |
   ['C', number, number, number, number, number, number] | ['Z'];
 interface Painter {
@@ -232,7 +230,7 @@ function edges(L: GraphLayout, p: Painter, c: number, y0: number, y1: number) {
   }
 }
 
-function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, selected?: number) {
+function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number) {
   const m = L.m;
   const x = L.x[c];
   const y = L.y[c];
@@ -275,11 +273,10 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, sel
     p.text(vx, cy, valueText(entry), valueInk(entry.t));
     if (m.rowChild[r] >= 0) p.roundRect(x + w - 3, cy - 3, 6, 6, 3, 'dot');
   }
-  if (c === selected) p.roundRect(x - 2, y - 2, w + 4, h + 4, 8, 'selected');
 }
 
 /** Edges then cards of frame `f` between world y0 and y1 (a PNG strip, or everything). */
-function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1, selected?: number) {
+function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1) {
   const cols = L.levels.length;
   for (let d = 0; d < L.groups.length; d++) {
     // A column's edges run through the gap to its right.
@@ -295,7 +292,7 @@ function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1, select
     const [a, b] = cardsIn(L, d, y0 - 3, y1 + 3);
     for (let i = a; i < b; i++) {
       const c = L.levels.at(d)[i];
-      if (L.shown[c] && c >= f.lo && c < f.hi) card(L, p, c, y0 - 3, y1 + 3, selected);
+      if (L.shown[c] && c >= f.lo && c < f.hi) card(L, p, c, y0 - 3, y1 + 3);
     }
   }
 }
@@ -343,7 +340,6 @@ function styles(theme: GraphTheme): string {
     `.chevron{fill:none;stroke:${css(theme.muted)};stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}` +
     `.dot{fill:${css(theme.edge)}}.border{fill:none;stroke:${css(theme.border)};stroke-width:1}` +
     `.edge{fill:none;stroke:${css(theme.edge)};stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}` +
-    `.selected{fill:none;stroke:${css(theme.accent)};stroke-width:2}` +
     `text{font-family:${css(theme.family)};font-size:${G.font}px;dominant-baseline:central;white-space:pre;font-variant-ligatures:none}.end{text-anchor:end}`;
 }
 
@@ -356,7 +352,7 @@ export function toSVG(L: GraphLayout, theme: GraphTheme, opts: ImageOptions = {}
   const bg = opts.background === undefined ? theme.bg : opts.background;
   p.out.push(`<svg xmlns="http://www.w3.org/2000/svg" class="${PRIVATE}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><style>${styles(theme)}</style>`);
   if (bg) p.out.push(`<rect style="fill:${xml(bg)}" width="${w}" height="${h}"/>`);
-  draw(L, p, f, f.y0 - f.margin, f.y1 + f.margin, opts.selected);
+  draw(L, p, f, f.y0 - f.margin, f.y1 + f.margin);
   p.out.push('</svg>');
   return p.out.join('');
 }
@@ -371,9 +367,9 @@ class Canvas implements Painter {
   }
   private paint(ink: Ink) {
     const { ctx, theme } = this;
-    if (ink === 'edge' || ink === 'chevron' || ink === 'border' || ink === 'pill' || ink === 'selected') {
-      ctx.strokeStyle = ink === 'selected' ? theme.accent : ink === 'chevron' ? theme.muted : ink === 'edge' ? theme.edge : theme.border;
-      ctx.lineWidth = ink === 'selected' ? 2 : ink === 'edge' || ink === 'chevron' ? 1.25 : 1;
+    if (ink === 'edge' || ink === 'chevron' || ink === 'border' || ink === 'pill') {
+      ctx.strokeStyle = ink === 'chevron' ? theme.muted : ink === 'edge' ? theme.edge : theme.border;
+      ctx.lineWidth = ink === 'edge' || ink === 'chevron' ? 1.25 : 1;
       ctx.stroke();
     } else {
       ctx.fillStyle = ink === 'dot' ? theme.edge : theme[ink === 'strong' ? 'fg' : ink];
