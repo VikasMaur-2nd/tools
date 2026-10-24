@@ -4,7 +4,7 @@
  * and state; painting is in ./render, camera math in ./camera.
  *
  * Builds are time-sliced (model, then layout, ~8 ms per task) and cancelled
- * by a newer document. The canvas only redraws on rAF when something
+ * by a newer document; so are searches (by a newer query too). The canvas only redraws on rAF when something
  * changed, and only what is in view.
  */
 import { ARR, BOOL, NUL, NUM, STR, kids, type JNode } from '../json/parser';
@@ -38,6 +38,57 @@ const EDIT_SETTLE_MS = 250;
 const FULL_ON = 'M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9';
 const FULL_OFF = 'M13.5 6.5h-4v-4M9.5 6.5l4-4M2.5 9.5h4v4M6.5 9.5l-4 4';
 const ICON = (d: string) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/**
+ * Find in keys and values, in document order, up to `max` hits: smart case (a
+ * lowercase query matches any case), numbers by their text, true, false and
+ * null by name. `step` runs until `deadline` and says whether it is done; `hits`
+ * holds what it found so far. It keeps an index into each open container, so
+ * a wide array's children are never copied, and looks at the clock every 1024
+ * entries, deep or wide.
+ */
+export function textSearch(root: JNode, q: string, max: number): { hits: JNode[]; step: (deadline: number) => boolean } {
+  const cs = q !== q.toLowerCase();
+  const qn = cs ? q : q.toLowerCase();
+  const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
+  const yes = { t: has('true'), f: has('false'), n: has('null') };
+  const hit = (n: JNode) => {
+    if (typeof n.key === 'string' && has(n.key)) return true;
+    if (n.t === STR || n.t === NUM) return has(n.v as string);
+    return n.t === BOOL ? (n.v ? yes.t : yes.f) : n.t === NUL && yes.n;
+  };
+  const hits: JNode[] = hit(root) ? [root] : [];
+  // The open containers, outermost first, and the index of the next child in each.
+  const lists: JNode[][] = root.t >= ARR ? [kids(root)] : [];
+  const next = [0];
+  let depth = lists.length;
+  const step = (deadline: number) => {
+    let k = 0;
+    while (depth && hits.length < max) {
+      const d = depth - 1;
+      const list = lists[d];
+      let i = next[d];
+      let late = false;
+      while (i < list.length) {
+        const n = list[i++];
+        if (hit(n) && hits.push(n) >= max) break;
+        const open = n.t >= ARR && kids(n).length > 0;
+        if (open) {
+          lists[depth] = kids(n);
+          next[depth++] = 0;
+        }
+        if (!(++k & 1023) && performance.now() >= deadline) late = true;
+        if (open || late) break;
+      }
+      next[d] = i;
+      // (Done with this container, unless one of its children was just opened.)
+      if (i === list.length && depth === d + 1) depth--;
+      if (late) return false;
+    }
+    return true;
+  };
+  return { hits, step };
+}
 
 /** Keep live-region updates bounded for deep documents. Copy path still uses the full path. */
 const ANNOUNCE_SEGMENTS = 4;
@@ -95,6 +146,8 @@ export class GraphView implements GraphViewApi {
   private pending: { n: JNode; scroll: boolean; center: boolean } | null = null;
 
   private q = '';
+  /** Bumped by every search (and a new document): a search still running in steps stops. */
+  private findSeq = 0;
   private matches: JNode[] = [];
   private mi = -1;
   private hitRow: Uint8Array | null = null;
@@ -183,6 +236,7 @@ export class GraphView implements GraphViewApi {
 
   destroy() {
     this.token++;
+    this.findSeq++;
     this.active = false;
     clearTimeout(this.editTimer);
     cancelAnimationFrame(this.raf);
@@ -233,6 +287,7 @@ export class GraphView implements GraphViewApi {
     this.nodes = nodes;
     this.dirty = true;
     this.token++;
+    this.findSeq++;
     this.building = false;
     this.matches = [];
     this.hitFor = null;
@@ -732,11 +787,18 @@ export class GraphView implements GraphViewApi {
 
   // ── Find ───────────────────────────────────────────────────────────────
 
+  /**
+   * Find: a path jumps to its node; text is searched in steps of SLICE ms, so a big
+   * document never holds up typing in the find bar. One that takes more than a
+   * step answers with what it found so far (no current match yet), then tells
+   * the engine the result (`found`); an engine that doesn't listen gets it at once.
+   */
   search(q: string, jump: boolean): FindResult {
     this.q = q;
     this.matches = [];
     this.mi = -1;
     this.hitFor = null;
+    const seq = ++this.findSeq;
     const root = this.root;
     let note: string | undefined;
     if (q && root) {
@@ -747,33 +809,34 @@ export class GraphView implements GraphViewApi {
       }
       if (hit) this.matches = [hit];
       else {
-        const cs = q !== q.toLowerCase();
-        const qn = cs ? q : q.toLowerCase();
-        const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
-        const stack: JNode[] = [root];
-        while (stack.length && this.matches.length < MAX_MATCHES) {
-          const n = stack.pop() as JNode;
-          let h = typeof n.key === 'string' && has(n.key);
-          if (!h) {
-            if (n.t === STR || n.t === NUM) h = has(n.v as string);
-            else if (n.t === BOOL) h = has(n.v ? 'true' : 'false');
-            else if (n.t === NUL) h = has('null');
-          }
-          if (h) this.matches.push(n);
-          if (n.t >= ARR) {
-            const list = kids(n);
-            for (let i = list.length - 1; i >= 0; i--) stack.push(list[i]);
-          }
+        const find = textSearch(root, q, MAX_MATCHES);
+        const later = this.ev.found;
+        this.matches = find.hits;
+        if (!find.step(later ? performance.now() + SLICE : Infinity)) {
+          const run = () => {
+            if (seq !== this.findSeq) return;
+            if (!find.step(performance.now() + SLICE)) return void soon(run);
+            later!(this.settle(jump, note));
+          };
+          soon(run);
+          // (The engine shows this count meanwhile, as for a long search in the code views.)
+          return { total: find.hits.length, index: -1 };
         }
       }
-      if (this.matches.length) {
-        const sel = this.selNode();
-        const from = sel ? sel.s : 0;
-        let idx = this.matches.findIndex((x) => x.s >= from);
-        if (idx < 0) idx = 0;
-        this.mi = idx;
-        if (jump) this.gotoMatch();
-      }
+    }
+    return this.settle(jump, note);
+  }
+
+  /** The search is done: the current match is the first at or after the selection. */
+  private settle(jump: boolean, note?: string): FindResult {
+    this.hitFor = null;
+    if (this.matches.length) {
+      const sel = this.selNode();
+      const from = sel ? sel.s : 0;
+      let idx = this.matches.findIndex((x) => x.s >= from);
+      if (idx < 0) idx = 0;
+      this.mi = idx;
+      if (jump) this.gotoMatch();
     }
     this.redraw();
     return { total: this.matches.length, index: this.mi, note: this.matches.length ? undefined : note };

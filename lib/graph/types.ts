@@ -12,6 +12,11 @@ export interface GraphEvents {
   copy(n: JNode, what: 'value' | 'path'): void;
   /** Escape: back to the editor. */
   escape(): void;
+  /**
+   * A search that took more than a step (a big document) is done: its result, after
+   * `search` answered with the count found by then. Without it, `search` runs to the end.
+   */
+  found?(r: FindResult): void;
 }
 
 export interface FindResult {
@@ -36,7 +41,7 @@ export interface GraphViewApi {
   pickAt(clientX: number, clientY: number): JNode | null;
   /** Selection from elsewhere (editor caret, tree). `scroll` brings it into view. */
   select(n: JNode | null, opts?: { scroll?: boolean; center?: boolean }): void;
-  /** Find: highlights matches in keys and values; `$.path` / `/pointer` jump to a node. */
+  /** Find: highlights matches in keys and values; `$.path` / `/pointer` jump to a node. A big document's result can follow (GraphEvents.found). */
   search(q: string, jump: boolean): FindResult;
   step(dir: 1 | -1): FindResult;
   expandAll(): void;
