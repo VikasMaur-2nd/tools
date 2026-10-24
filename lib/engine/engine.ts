@@ -988,6 +988,23 @@ export class Engine {
 
   private fixed = (r: ParseResult) => (r.issues.length ? ` · fixed ${r.issues.length} issue${r.issues.length > 1 ? 's' : ''}` : '');
 
+  // ── AI agents (WebMCP tools, lib/webmcp) ───────────────────────────────
+
+  /** The open document as a command sees it, its parse finished now if it was still on its way. */
+  agentDoc() {
+    const res = this.fresh();
+    const text = this.ed.text;
+    return { text, res, src: this.jwt ? this.jwt.json : text, jwt: this.jwt };
+  }
+
+  /** Replaces the input with `next` as one undoable edit, and says so (`msg`). */
+  replaceText(next: string, msg: string) {
+    this.flushLoad();
+    this.ed.setValue(next);
+    this.analyze();
+    this.toast(`${msg} · ${this.mod}Z to undo`, 'ok');
+  }
+
   format(report = true) {
     if (report) track('feature_used', { feature: 'format_input' });
     this.transform(

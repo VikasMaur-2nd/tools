@@ -95,6 +95,21 @@ The JSON viewer, the tools hub and the dedicated tool pages are also available i
 - [Jackson: Unrecognized field, not marked as ignorable](https://tools.vikasmaur.com/json-errors/jackson-unrecognized-field): Fix Jackson UnrecognizedPropertyException: map renamed keys, ignore unknown properties on purpose, and know the Jackson 3 and Spring defaults.
 - [Go JSON: cannot unmarshal string, object or array into Go value](https://tools.vikasmaur.com/json-errors/go-cannot-unmarshal): Fix Go UnmarshalTypeError when JSON strings, numbers, objects or arrays do not match your struct fields. Read the field path, then use string tags or json.Number.
 
+## For AI agents in the browser (WebMCP)
+
+In browsers with [WebMCP](https://webmachinelearning.github.io/webmcp/), the viewer and every /tools page register these functions with `document.modelContext`, so a browser agent can call them instead of clicking. They work on the document open in the page's editor, show their result in the page and return text; edits can be undone by the user.
+
+- `open_json`: open JSON, JSON Lines, a JWT, or YAML, XML, CSV or TOML text in the editor.
+- `check_json`: validity, each error's line and column, size, values and depth.
+- `get_json_value`: one value by JSONPath or JSON Pointer, with its keys (for large documents).
+- `repair_json`: fix trailing commas, comments, single quotes, unquoted keys, Python literals and similar, in place.
+- `format_json`: pretty (2, 4 or tab), minified or escaped, optionally with sorted keys.
+- `convert_json`: TypeScript, Zod, JSON Schema, C#, Dart, Java, Python (Pydantic), Go, Kotlin, Swift, PHP, Rust, CSV, YAML, XML, TOML or JSON Lines.
+- `import_to_json`: turn YAML, XML, CSV, TSV or TOML into JSON, in place.
+- `compare_json`: differences with paths, and an RFC 6902 JSON Patch.
+- `decode_jwt`: header, payload and times of a JWT (signature not verified).
+- `show_view`: show the format, tree, table or graph view.
+
 ## Site facts
 
 - The parser and formatter run in the browser.

@@ -26,6 +26,11 @@ const securityHeaders = [
 const posthogHost = (process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "").replace(/\/$/, "");
 const posthogAssets = posthogHost.replace(/^https:\/\/(us|eu)\.i\.posthog\.com$/, "https://$1-assets.i.posthog.com");
 
+// Origin-trial tokens for WebMCP (comma-separated: Chrome's, Edge's), which lets AI agents in those
+// browsers use the JSON tool through named functions (lib/webmcp). Without one, only browsers that
+// turned WebMCP on themselves see the tools.
+const webmcpTrial = (process.env.WEBMCP_ORIGIN_TRIAL ?? "").trim();
+
 const nextConfig: NextConfig = {
   turbopack: { root: process.cwd() },
   cacheComponents: true,
@@ -59,6 +64,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      // On pages only: scripts, assets and the analytics relay don't need it.
+      ...(webmcpTrial ? [{ source: "/:path((?!_next/|relay/).*)", headers: [{ key: "Origin-Trial", value: webmcpTrial }] }] : []),
       // The viewer receives big documents from the site that opened its tab ("View in Tool
       // Kumar", lib/link.ts): only possible while that site keeps its window handle.
       { source: "/", headers: [{ key: "Cross-Origin-Opener-Policy", value: "unsafe-none" }] },

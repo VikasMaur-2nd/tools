@@ -184,6 +184,8 @@ test('beforeSend drops unexpected events and strips URLs', () => {
   const snap = { event: '$snapshot', properties: { $snapshot_data: [1] } };
   assert.equal(beforeSend(snap), snap);
   assert.ok(beforeSend({ event: 'feature_used', properties: { feature: 'repair' } }));
+  // PostHog's own WebMCP capture (off in our config) carries an agent's free-text intent: never sent.
+  assert.equal(beforeSend({ event: '$mcp_tool_call', properties: { $mcp_tool_name: 'format_json', $mcp_intent: 'SECRET' } }), null);
 });
 
 test("replay shows the site's labels and masks attributes that can carry a visitor's data", () => {

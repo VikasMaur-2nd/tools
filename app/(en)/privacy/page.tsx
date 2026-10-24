@@ -26,6 +26,7 @@ const WHEN: Record<EventName, string> = {
   format_option_changed: 'You change the output style, key sorting or indentation.',
   feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), and similar.',
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',
+  agent_tool_used: 'An AI agent in your browser uses one of the JSON tool’s functions for you. What it sent and what it got back are never included.',
 };
 
 const PROPS: Record<string, string> = {
@@ -43,7 +44,7 @@ const PROPS: Record<string, string> = {
   jsonl: 'is JSON Lines',
   jwt: 'is a JWT',
   view: 'view',
-  via: 'mouse, keyboard, palette or right-click menu',
+  via: 'mouse, keyboard, palette, right-click menu or AI agent',
   target: 'language',
   group: 'types or data',
   option: 'which option',
@@ -53,6 +54,8 @@ const PROPS: Record<string, string> = {
   on: 'on or off',
   jsonpath: 'query starts with $',
   command: 'command ID',
+  tool: 'which function',
+  ok: 'whether it did what was asked',
 };
 
 const eu = /\beu\./.test(process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '');
@@ -109,6 +112,12 @@ export default function PrivacyPage() {
             <code>#</code>. Browsers never send that part to a server, and our analytics remove it.
           </li>
           <li>A site that opens a document in Tool Kumar for you hands it from its tab to ours, inside your browser. It never reaches our server.</li>
+          <li>
+            An AI agent in your browser, such as the one in ChatGPT’s desktop app, can use the JSON tool for you through named functions (
+            <a href="https://webmachinelearning.github.io/webmcp/">WebMCP</a>): open, check, repair, format, convert or compare a document. The
+            functions run in your browser like the buttons do. What they return goes to that agent and its provider, under their privacy terms, as
+            anything else the agent reads on the page does. It never reaches us.
+          </li>
         </ul>
 
         <h2>What we never collect</h2>

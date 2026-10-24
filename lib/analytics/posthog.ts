@@ -57,6 +57,9 @@ export function initPostHog(token: string, ingest: string, seenHidden = false): 
     autocapture: false,
     capture_dead_clicks: false,
     rageclick: false,
+    // Off too: it would add "context" and "llm_model" fields to the WebMCP tools (lib/webmcp) for agents to
+    // fill in, free text that can quote the document. ($mcp_tool_call isn't on the event list either.)
+    capture_webmcp: false,
     // Our early browser listeners call captureException(), covering startup errors too.
     // Keep SDK listeners off to avoid duplicates, and never capture console.error.
     capture_exceptions: false,

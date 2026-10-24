@@ -16,8 +16,13 @@ export type InputSource = 'paste' | 'paste_button' | 'file' | 'drop' | 'launch' 
 export type FileKind = 'json' | 'jsonl' | 'geojson' | 'har' | 'map' | 'txt' | 'log' | 'csv' | 'tsv' | 'yaml' | 'xml' | 'toml' | 'other' | 'none';
 export type Validity = 'valid' | 'fixable' | 'invalid' | 'unknown';
 export type ViewId = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
-/** `context_menu`: an item of the right-click menu (components/ContextMenu.tsx). */
-export type Via = 'pointer' | 'keyboard' | 'palette' | 'context_menu' | 'other';
+/** `context_menu`: an item of the right-click menu (components/ContextMenu.tsx); `agent`: an AI agent's WebMCP tool (lib/webmcp). */
+export type Via = 'pointer' | 'keyboard' | 'palette' | 'context_menu' | 'agent' | 'other';
+
+/** The JSON tool's functions an AI agent in the browser can call through WebMCP (lib/webmcp/tools.ts). */
+export type AgentToolName =
+  | 'open_json' | 'check_json' | 'get_json_value' | 'repair_json' | 'format_json'
+  | 'convert_json' | 'import_to_json' | 'compare_json' | 'decode_jwt' | 'show_view';
 
 /** Discrete actions, reported as `feature_used { feature }`. */
 export type Feature =
@@ -57,6 +62,8 @@ export interface Events {
   format_option_changed: { option: 'style' | 'sort_keys' | 'indent'; value: string };
   feature_used: { feature: Feature; via: Via; view?: ViewId; level?: number; on?: boolean; value?: string; jsonpath?: boolean };
   command_run: { command: string };
+  /** An AI agent called one of the tool's functions (`ok`: it did what was asked). What it sent and got back is never included. */
+  agent_tool_used: { tool: AgentToolName; ok: boolean };
 }
 
 export type EventName = keyof Events;
@@ -70,6 +77,7 @@ export const EVENT_PROPS: { [K in EventName]: readonly (keyof Events[K])[] } = {
   format_option_changed: ['option', 'value'],
   feature_used: ['feature', 'via', 'view', 'level', 'on', 'value', 'jsonpath'],
   command_run: ['command'],
+  agent_tool_used: ['tool', 'ok'],
 };
 
 /** A token from a fixed list: short, no spaces, nothing that could be a sentence or a path. */
