@@ -688,6 +688,7 @@
   "import.tabs": "Tabulações não são permitidas na indentação. Use espaços",
   "import.anchor": "Esperado um nome de âncora após &",
   "import.alias": "Alias desconhecido *{name}: as âncoras precisam ser definidas (&{name}) antes do uso",
+  "import.aliasSize": "Os aliases do YAML repetem dados demais: o resultado ficaria grande demais",
   "import.unterminatedQuoted": "String entre aspas não terminada",
   "import.escape": "Escape inválido \\{char}",
   "import.plainStart": "Valores simples não podem começar com '{char}'. Coloque o valor entre aspas",

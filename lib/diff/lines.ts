@@ -54,12 +54,6 @@ export class LineMap {
 
 export type Side = 'left' | 'right';
 
-/** Lines a change covers on one side, or null when it has no node there. */
-export function changeLines(c: Change, side: Side, map: LineMap): [number, number] | null {
-  const n = side === 'left' ? c.left : c.right;
-  return n ? map.range(n) : null;
-}
-
 export const MARK_ADDED = 1;
 export const MARK_REMOVED = 2;
 export const MARK_CHANGED = 3;

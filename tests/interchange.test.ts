@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32, inflateRawSync } from 'node:zlib';
 import { JNode, parse } from '../lib/json/parser';
-import { tabulate, toCsv, toXlsx } from '../lib/convert/xlsx';
+import { records, tabulate, toCsv, toXlsx } from '../lib/convert/xlsx';
 import { detectFormat, importToJson, type ImportFormat } from '../lib/convert/import';
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -196,6 +196,54 @@ describe('tabulate', () => {
     assert.deepEqual(tabulate(root('[{"a": 1}, 5, null]')), { headers: ['a', 'value'], rows: [[1, null], [null, 5], [null, null]] });
     assert.deepEqual(tabulate(root('[]')), { headers: [], rows: [] });
   });
+
+  test('paths that would read alike keep their own columns', () => {
+    // a dotted key and the same path through a nested object: escaped only because they clash
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "a": {"b": 2}}]')), { headers: ['a\\.b', 'a.b'], rows: [[1, 2]] });
+    assert.deepEqual(tabulate(root('[{"a": {"b": 2}}, {"a.b": 1}]')), { headers: ['a.b', 'a\\.b'], rows: [[2, null], [null, 1]] });
+    // escaping never makes a new clash
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "a": {"b": 2}, "a\\\\.b": 3}]')).headers, ['a\\.b', 'a.b', 'a\\\\\\.b']);
+    assert.deepEqual(tabulate(root('[{"a\\\\": {"b": 1}, "a\\\\.b": 2}]')).headers, ['a\\\\.b', 'a\\\\\\.b']);
+    // dotted keys that don't clash stay as they are
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "c\\\\d": {"e.f": 2}}]')).headers, ['a.b', 'c\\d.e.f']);
+    // same depth, split differently
+    assert.deepEqual(tabulate(root('[{"a.b": {"c": 1}}, {"a": {"b.c": 2}}]')).headers, ['a\\.b.c', 'a.b\\.c']);
+    // 'json' flattening has no paths to confuse
+    assert.deepEqual(tabulate(root('[{"a.b": 1, "a": {"b": 2}}]'), 'json').headers, ['a.b', 'a']);
+    // key / value listing
+    assert.deepEqual(tabulate(root('{"a.b": 1, "a": {"b": 2}, "c.d": 3}')), {
+      headers: ['key', 'value'],
+      rows: [
+        ['a\\.b', 1],
+        ['a.b', 2],
+        ['c.d', 3],
+      ],
+    });
+    assert.deepEqual(tabulate(root('{"a.b": 1, "x": {"y.z": 2}, "x.y": {"z": 3}}')).rows, [
+      ['a.b', 1],
+      ['x.y\\.z', 2],
+      ['x\\.y.z', 3],
+    ]);
+    assert.deepEqual(tabulate(root('{"a.b": 1, "x": {"y": 2}, "a.b": 3}')).rows, [
+      ['a.b', 1],
+      ['x.y', 2],
+      ['a.b', 3],
+    ]);
+  });
+
+  test('the "key" and "value" columns it adds never take a name from the data', () => {
+    assert.deepEqual(tabulate(root('[{"value": 1}, 2]')), { headers: ['value', '_value'], rows: [[1, null], [null, 2]] });
+    assert.deepEqual(tabulate(root('[{"value": 1, "_value": 3}, 2]')).headers, ['value', '_value', '__value']);
+    assert.deepEqual(tabulate(root('[{"value": 1}, 2]'), 'json').headers, ['value', '_value']);
+    assert.deepEqual(tabulate(root('{"x": {"key": 1, "v": 2}, "y": {"v": 3}}')), {
+      headers: ['_key', 'key', 'v'],
+      rows: [
+        ['x', 1, 2],
+        ['y', null, 3],
+      ],
+    });
+    assert.equal(toCsv(root('[{"value": 1}, 2]')), 'value,_value\r\n1,\r\n,2\r\n');
+  });
 });
 
 describe('toCsv', () => {
@@ -208,6 +256,19 @@ describe('toCsv', () => {
     const r = root('[{"a": "1;2", "b": "t\\tab"}]');
     assert.equal(toCsv(r, { delimiter: ';' }), 'a;b\r\n"1;2";t\tab\r\n');
     assert.equal(toCsv(r, { delimiter: '\t', bom: true }), '\ufeffa\tb\r\n1;2\t"t\tab"\r\n');
+  });
+
+  test('records, objects, matrices, primitives and scalars', () => {
+    const csv = (json: string) => toCsv(records(root(json)));
+    assert.equal(
+      csv('[{"id":1,"name":"Smith, J","q":"say \\"hi\\""},{"id":2,"tags":["a"],"name":null,"x":"l1\\nl2"}]'),
+      'id,name,q,tags,x\r\n1,"Smith, J","say ""hi""",,\r\n2,,,a,"l1\nl2"\r\n',
+    );
+    assert.equal(csv('{"a":1,"b":{"c":true}}'), 'key,value\r\na,1\r\nb.c,true\r\n');
+    assert.equal(csv('{"meta":{"n":2},"rows":[{"a":1},{"a":2,"b":[1,2]}]}'), 'a,b\r\n1,\r\n2,"1, 2"\r\n');
+    assert.equal(csv('[[1,2],[3,4]]'), '1,2\r\n1,2\r\n3,4\r\n');
+    assert.equal(csv('[1,"x"]'), 'value\r\n1\r\nx\r\n');
+    assert.equal(csv('12345678901234567890'), 'value\r\n12345678901234567890\r\n');
   });
 
   test('round-trips through the CSV importer', () => {
@@ -267,6 +328,15 @@ describe('toXlsx', () => {
         rmSync(dir, { recursive: true, force: true });
       }
     }
+  });
+
+  test('numbers Excel cannot hold exactly are written as text', async () => {
+    const numbers = ['0.123456789012345678901', '3.14159265358979323846', '0.10000000000000001', '1e-999', '1e999', '-1e-400', '1e308', '-1e-308', '10000000000000001e-1'];
+    const kept = ['1.5e3', '0.1', '123456789012345', '1.23456789012345', '1.234567890123456', '0.30000000000000004', '123456789012345.5', '-0.000012345678901234', '9.99999999999999e307', '2.2251e-308', '-2.5e-300', '0', '-0', '0.000', '0e999', '1.50', '1.00000000000000000000'];
+    const rows = [...numbers, ...kept].map((n) => `{"n": ${n}}`).join(',');
+    const { sheet } = await xlsxParts(`[${rows}]`);
+    numbers.forEach((n, i) => assert.match(sheet, new RegExp(`<c r="A${i + 2}" t="inlineStr"><is><t>${n.replace(/[.+]/g, '\\$&')}</t>`), n));
+    kept.forEach((n, i) => assert.match(sheet, new RegExp(`<c r="A${numbers.length + i + 2}"><v>${n.replace(/[.+]/g, '\\$&')}</v>`), n));
   });
 
   test('empty and scalar inputs still produce valid workbooks', async () => {
@@ -668,6 +738,28 @@ seqs:
     assert.deepEqual(val('a: 1\r\nb:\r\n  - x\r\n', 'yaml'), { a: 1, b: ['x'] });
     assert.deepEqual(val('Resources:\n  B:\n    Type: !Ref Bucket\n    Arn: !GetAtt [B, Arn]\n', 'yaml'), { Resources: { B: { Type: 'Bucket', Arn: ['B', 'Arn'] } } });
     assert.deepEqual(val('- &x 1\n- *x\n- &obj\n  a: 1\n- *obj\n', 'yaml'), [1, 1, { a: 1 }, { a: 1 }]);
+    // anchors belong to their document
+    assert.deepEqual(val('---\na: &x 1\nb: *x\n---\nc: &x 2\nd: *x\n', 'yaml'), [{ a: 1, b: 1 }, { c: 2, d: 2 }]);
+  });
+
+  test('aliases that repeat too much data fail at once instead of hanging', () => {
+    // each level refers to the previous one twice: 2^40 copies of [x, y]
+    let bomb = 'a0: &a0 [x, y]\n';
+    for (let i = 1; i <= 40; i++) bomb += `a${i}: &a${i} [*a${i - 1}, *a${i - 1}]\n`;
+    const t0 = performance.now();
+    const e = err(bomb, 'yaml');
+    assert.ok(performance.now() - t0 < 1000, `took ${performance.now() - t0} ms`);
+    assert.equal(e.error, 'YAML aliases repeat too much data: the result would be too large');
+    assert.ok(e.line! > 1 && e.line! <= 41, `at line ${e.line}`);
+    // one long string repeated
+    const big = 'x'.repeat(1e6);
+    assert.match(err(`s: &s ${big}\nl: [${'*s, '.repeat(20)}*s]\n`, 'yaml').error, /aliases repeat too much data/);
+    // ordinary reuse converts, also many times over
+    let ok = 'defaults: &d {image: node, retries: 2, tags: [a, b]}\n';
+    for (let i = 0; i < 2000; i++) ok += `job${i}:\n  <<: *d\n  name: j${i}\n  base: *d\n`;
+    const v = val(ok, 'yaml') as Record<string, { image: string; base: { retries: number } }>;
+    assert.equal(v.job1999.image, 'node');
+    assert.equal(v.job1999.base.retries, 2);
   });
 
   test('errors carry line and column', () => {
@@ -675,6 +767,8 @@ seqs:
       ['a: 1\n  b: 2\n', /Bad indentation of a mapping entry/, 2, 3],
       ['a:\n\tb: 1\n', /Tabs are not allowed/, 2, 2],
       ['a: *nope\n', /Unknown alias \*nope/, 1, 4],
+      ['---\na: &x 1\n---\nb: *x\n', /Unknown alias \*x/, 4, 4],
+      ['a: &x 1\n...\nb: [*x]\n', /Unknown alias \*x/, 3, 5],
       ['a: 1\nb: 2\na: 3\n', /Duplicate key "a"/, 3, 1],
       ['a: "unterminated\n', /Unterminated quoted string/, 1, 4],
       ['a: b: c\n', /Mapping values are not allowed here/, 1, 5],

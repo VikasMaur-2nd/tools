@@ -792,8 +792,9 @@ const onSwap = () => act((e) => e.swapCompare());
 function CompareHost() {
   const leftText = useUI((s) => s.docText);
   const rightText = useUI((s) => s.cmpText);
+  const rightParsed = useUI((s) => s.cmpParsed);
   const indent = useUI((s) => s.settings.indent);
-  return <CompareView leftText={leftText} rightText={rightText} indent={UNITS[indent]} onJump={onJump} onMarks={onMarks} onSwap={onSwap} />;
+  return <CompareView leftText={leftText} rightText={rightText} rightParsed={rightParsed} indent={UNITS[indent]} onJump={onJump} onMarks={onMarks} onSwap={onSwap} />;
 }
 
 // ── Split handle ────────────────────────────────────────────────────────────

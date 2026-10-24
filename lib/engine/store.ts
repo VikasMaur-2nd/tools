@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { ParseResult } from '../json/parser';
 import type { Seg } from '../json/path';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -160,6 +161,8 @@ export interface UIState {
   docText: string;
   /** Compare: the modified document (second editor). */
   cmpText: string;
+  /** Compare: the engine's parse of the modified document and the text it parsed, while Compare is open (the panel diffs it). */
+  cmpParsed: { text: string; result: ParseResult } | null;
   cmpFile: string | null;
   palette: false | 'commands' | 'url';
   shortcuts: boolean;
@@ -207,6 +210,7 @@ export const INITIAL: UIState = {
   sizes: null,
   docText: '',
   cmpText: '',
+  cmpParsed: null,
   cmpFile: null,
   palette: false,
   shortcuts: false,

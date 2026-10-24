@@ -434,7 +434,10 @@ function scalar(node: JNode): unknown {
   return String(n) === raw || (Number.isFinite(n) && sci(String(n)) === sci(raw)) ? n : raw;
 }
 
-/** Short one-line rendering of a primitive. */
+/** `s` cut to `max` characters plus "…" (a surrogate pair stays whole). */
+export const clip = (s: string, max: number) => (s.length > max ? s.slice(0, (s.charCodeAt(max - 1) & 0xfc00) === 0xd800 ? max - 1 : max) + '…' : s);
+
+/** Short one-line rendering of a primitive (strings and numbers cut to `max` characters). */
 export function primText(node: JNode, max = 300): string {
   switch (node.t) {
     case NUL:
@@ -442,16 +445,14 @@ export function primText(node: JNode, max = 300): string {
     case BOOL:
       return node.v ? 'true' : 'false';
     case NUM:
-      return node.v as string;
-    case STR: {
-      const s = node.v as string;
-      return JSON.stringify(s.length > max ? s.slice(0, max) + '…' : s);
-    }
+      return clip(node.v as string, max);
+    case STR:
+      return JSON.stringify(clip(node.v as string, max));
   }
   return '';
 }
 
-/** Collapsed preview such as `{id: 1, name: "Ada", …}`. */
+/** Collapsed preview such as `{id: 1, name: "Ada", …}`: keys and values are cut short, so it stays near `budget`. */
 export function preview(node: JNode, budget = 90): string {
   const isObj = node.t === OBJ;
   const list = kids(node);
@@ -463,7 +464,7 @@ export function preview(node: JNode, budget = 90): string {
     }
     const c = list[i];
     const v = c.t === OBJ ? (kids(c).length ? '{…}' : '{}') : c.t === ARR ? (kids(c).length ? '[…]' : '[]') : primText(c, 40);
-    s += (i ? ', ' : '') + (isObj ? keyLabel(c.key as string) + ': ' + v : v);
+    s += (i ? ', ' : '') + (isObj ? keyLabel(clip(c.key as string, 40)) + ': ' + v : v);
   }
   return s + (isObj ? '}' : ']');
 }

@@ -688,6 +688,7 @@
   "import.tabs": "No se permiten tabulaciones para la sangría. Usa espacios",
   "import.anchor": "Se esperaba un nombre de ancla después de &",
   "import.alias": "Alias desconocido *{name}: las anclas deben definirse (&{name}) antes de usarse",
+  "import.aliasSize": "Los alias de YAML repiten demasiados datos: el resultado sería demasiado grande",
   "import.unterminatedQuoted": "Cadena entre comillas sin terminar",
   "import.escape": "Escape no válido \\{char}",
   "import.plainStart": "Los valores sin comillas no pueden empezar con '{char}'. Pon el valor entre comillas",

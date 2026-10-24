@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse } from '../lib/json/parser';
-import { convert, highlightCode, TARGETS, type ConvertOptions } from '../lib/convert';
+import { parse, type JNode } from '../lib/json/parser';
+import { convert, highlightCode, type ConvertOptions } from '../lib/convert';
 import { infer, singular } from '../lib/convert/infer';
+import { records, toCsv } from '../lib/convert/xlsx';
+import { TARGETS } from '../lib/engine/targets';
 
 const doc = (src: string) => {
   const r = parse(src);
@@ -10,6 +12,8 @@ const doc = (src: string) => {
   return r.root;
 };
 const conv = (src: string, target: string, opts: Partial<ConvertOptions> = {}) => convert(doc(src), target, { rootName: 'Root', ...opts });
+/** What the Convert view shows for a target: CSV and Excel show the main records as CSV. */
+const shown = (root: JNode, target: string) => (target === 'csv' || target === 'xlsx' ? toCsv(records(root)) : convert(root, target, { rootName: 'Root' }));
 const has = (out: string, ...parts: string[]) => {
   for (const p of parts) assert.ok(out.includes(p), `expected to find:\n${p}\n--- in ---\n${out}`);
 };
@@ -39,9 +43,14 @@ const API = JSON.stringify({
 test('TARGETS are ordered and complete', () => {
   assert.deepEqual(
     TARGETS.map((t) => t.id),
-    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'yaml', 'xml', 'toml', 'jsonl'],
+    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'],
   );
-  assert.ok(TARGETS.every((t) => t.group === (['csv', 'yaml', 'xml', 'toml', 'jsonl'].includes(t.id) ? 'Data' : 'Types')));
+  assert.ok(TARGETS.every((t) => t.group === (['csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'].includes(t.id) ? 'Data' : 'Types')));
+  // every target but CSV and Excel (xlsx.ts) has a converter
+  for (const t of TARGETS) {
+    if (t.id === 'csv' || t.id === 'xlsx') assert.throws(() => conv('1', t.id));
+    else assert.equal(typeof conv('1', t.id), 'string', t.id);
+  }
   assert.throws(() => conv('1', 'cobol'));
 });
 
@@ -316,17 +325,6 @@ test('YAML quotes ambiguous strings and keeps numbers exact', () => {
   assert.equal(conv('{"a":1,"a":2}', 'yaml'), 'a: 2\n');
 });
 
-test('CSV', () => {
-  assert.equal(
-    conv('[{"id":1,"name":"Smith, J","q":"say \\"hi\\""},{"id":2,"tags":["a"],"name":null,"x":"l1\\nl2"}]', 'csv'),
-    'id,name,q,tags,x\n1,"Smith, J","say ""hi""",,\n2,,,"[""a""]","l1\nl2"\n',
-  );
-  assert.equal(conv('{"a":1,"b":{"c":true}}', 'csv'), 'a,b\n1,"{""c"":true}"\n');
-  assert.equal(conv('[[1,2],[3,4]]', 'csv'), '1,2\n3,4\n');
-  assert.equal(conv('[1,"x"]', 'csv'), 'value\n1\nx\n');
-  assert.equal(conv('12345678901234567890', 'csv'), 'value\n12345678901234567890\n');
-});
-
 test('XML', () => {
   assert.equal(
     conv('{"a & b":"<x> & \\"y\\"","list":[1,2],"1st":null,"o":{"@id":"7","#text":"t"},"m":[[1],[2]]}', 'xml', { rootName: 'Data' }),
@@ -382,7 +380,7 @@ test('TOML', () => {
 test('highlightCode round-trips every target and never spans lines', () => {
   const src = API.replace('"Ada"', '"<b>Ada</b> & \\"co\\"\\nline2"');
   for (const t of TARGETS) {
-    const out = conv(src, t.id);
+    const out = shown(doc(src), t.id);
     const html = highlightCode(out, t.lang);
     const text = html
       .replace(/<[^>]*>/g, '')
@@ -454,7 +452,7 @@ test('Java: the root is the only public top-level type', () => {
 test('deep nesting does not throw', () => {
   const depth = 2000;
   const root = doc('['.repeat(depth) + '{"a":1}' + ']'.repeat(depth));
-  for (const t of TARGETS) assert.equal(typeof convert(root, t.id, { rootName: 'Root' }), 'string');
+  for (const t of TARGETS) assert.equal(typeof shown(root, t.id), 'string');
 });
 
 // Record components cannot shadow Object methods, even when they are valid identifiers.
@@ -464,4 +462,51 @@ test('Java record components preserve keys that name Object methods', () => {
     assert.ok(out.includes(`@JsonProperty("${name}")`), name);
     assert.match(out, new RegExp(`\\b${name}_[,)\\s]`), name);
   }
+});
+
+test('Zod: a "__proto__" key is a field, not the prototype of the shape', () => {
+  const out = conv('{"__proto__":1,"constructor":"c","a":true}', 'zod');
+  has(out, '  ["__proto__"]: z.number().int(),', '  constructor: z.string(),');
+  // what the object literal makes, with a stand-in for z
+  const chain: unknown = new Proxy(function () {}, { get: () => chain, apply: () => chain });
+  const body = /z\.object\((\{[\s\S]*?\n\})\)/.exec(out)![1];
+  const shape = new Function('z', `return ${body};`)(chain) as object;
+  assert.deepEqual(Object.keys(shape), ['__proto__', 'constructor', 'a']);
+  assert.equal(Object.getPrototypeOf(shape), Object.prototype);
+});
+
+test('Rust: no rename_all over a field serde cannot camelCase', () => {
+  // serde_derive panics camelCasing a field that starts with a non-ASCII letter
+  const out = conv('{"日本":1,"firstName":"a","lastName":"b","userId":2}', 'rust');
+  assert.ok(!out.includes('rename_all'), out);
+  has(out, '    pub 日本: i64,', '    #[serde(rename = "firstName")]\n    pub first_name: String,');
+});
+
+test('C#: properties never hide the members of object', () => {
+  const out = conv('{"toString":"x","equals":1,"getHashCode":2,"getType":"t","memberwiseClone":3,"referenceEquals":4,"finalize":5,"name":"n"}', 'csharp');
+  for (const name of ['ToString', 'Equals', 'GetHashCode', 'GetType', 'MemberwiseClone', 'ReferenceEquals', 'Finalize']) {
+    const key = name[0].toLowerCase() + name.slice(1);
+    has(out, `    [JsonPropertyName("${key}")]\n    public required `, ` ${name}Value { get; set; }`);
+  }
+  has(out, ' Name { get; set; }');
+});
+
+test("Python: fields never shadow BaseModel's members", () => {
+  const out = conv('{"model_dump":1,"model_validate":"v","model_fields":[1],"model_config":true,"model_name":"m","parse_obj":2,"copy":3,"name":"n"}', 'python');
+  has(
+    out,
+    'from pydantic import BaseModel, ConfigDict, Field\n',
+    'class Root(BaseModel):\n    model_config = ConfigDict(protected_namespaces=())\n\n    model_dump_: int = Field(alias="model_dump")\n',
+    '    model_validate_: str = Field(alias="model_validate")',
+    '    model_fields_: List[int] = Field(alias="model_fields")',
+    '    model_config_: bool = Field(alias="model_config")',
+    '    model_name: str\n',
+    '    parse_obj_: int = Field(alias="parse_obj")',
+    '    copy_: int = Field(alias="copy")',
+    '    name: str\n',
+  );
+  // no protected names: no config
+  const plain = conv('{"name":"n","copy":1}', 'python');
+  assert.ok(!plain.includes('ConfigDict'), plain);
+  has(plain, 'from pydantic import BaseModel, Field\n');
 });

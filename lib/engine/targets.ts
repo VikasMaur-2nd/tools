@@ -1,4 +1,4 @@
-/** Convert targets (metadata only: the converters themselves are lazy-loaded). */
+/** Convert targets, the one list of them (metadata only: the converters, lib/convert, are lazy-loaded; CSV and Excel are lib/convert/xlsx.ts). */
 export interface TargetInfo {
   id: string;
   label: string;
