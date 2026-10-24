@@ -27,13 +27,11 @@ export const PRIVATE_LABELS = 'ph-private-labels';
 
 const TOKEN = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ?? '';
 const INGEST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '';
-const SITE_HOST = 'tools.vikasmaur.com';
 /** 'off' = the visitor turned analytics off; 'debug' = send from any host (local testing). */
 const PREF = 'jf:analytics';
 const CHANGE = 'jf:analytics-change';
 /** How long the visitor has to pause before PostHog loads. */
 const QUIET = 2500;
-const BOTS = /bot\/|bot;|crawl|spider|slurp|lighthouse|headless|prerender|pagespeed/i;
 
 type Lazy = typeof import('./posthog');
 type Ph = ReturnType<Lazy['initPostHog']>;
@@ -59,25 +57,35 @@ const pref = () => {
   }
 };
 
-/** The browser asks sites not to track (Global Privacy Control, or the older Do Not Track). */
-export function browserOptOut(): boolean {
-  const n = navigator as Navigator & { globalPrivacyControl?: boolean; msDoNotTrack?: string };
-  const w = window as Window & { doNotTrack?: string };
-  return n.globalPrivacyControl === true || n.doNotTrack === '1' || w.doNotTrack === '1' || n.msDoNotTrack === '1';
-}
-
 export type AnalyticsState = 'on' | 'off' | 'browser' | 'unavailable';
 
-/** What the privacy page shows: on, turned off here, refused by the browser, or not set up on this host. */
-export function analyticsState(): AnalyticsState {
-  const p = pref();
+/**
+ * What the privacy page shows: on, turned off here, refused by the browser
+ * (Global Privacy Control or Do Not Track), or not set up on this host.
+ * Self-contained (the literal 'jf:analytics' is PREF), because the
+ * privacy page also inlines its source to run before first paint, so the note
+ * under the switch never changes size (tests/error-tracking.test.ts runs both).
+ */
+export function stateFrom(configured: boolean): AnalyticsState {
+  let p: string | null = null;
+  try {
+    p = localStorage.getItem('jf:analytics');
+  } catch {}
   if (p === 'off') return 'off';
-  if (!TOKEN || !INGEST) return 'unavailable';
-  if (browserOptOut()) return 'browser';
+  if (!configured) return 'unavailable';
+  const n = navigator as Navigator & { globalPrivacyControl?: boolean; msDoNotTrack?: string };
+  const w = window as Window & { doNotTrack?: string };
+  if (n.globalPrivacyControl === true || n.doNotTrack === '1' || w.doNotTrack === '1' || n.msDoNotTrack === '1') return 'browser';
   // PostHog drops crawler, audit and automation traffic anyway: don't download it for them.
-  if (p !== 'debug' && (location.hostname !== SITE_HOST || navigator.webdriver || BOTS.test(navigator.userAgent))) return 'unavailable';
+  const bot = /bot\/|bot;|crawl|spider|slurp|lighthouse|headless|prerender|pagespeed/i.test(n.userAgent);
+  if (p !== 'debug' && (location.hostname !== 'tools.vikasmaur.com' || n.webdriver || bot)) return 'unavailable';
   return 'on';
 }
+
+/** Whether a project token and ingestion host are configured (build-time). */
+export const analyticsConfigured = !!TOKEN && !!INGEST;
+
+export const analyticsState = (): AnalyticsState => stateFrom(analyticsConfigured);
 
 /** Calls `cb` when the analytics choice changes (this tab or another). */
 export function onAnalyticsChange(cb: () => void) {

@@ -1531,6 +1531,19 @@ html:has(.content-page:not([style*='none'])) {
   line-height: 1.6;
 }
 
+/* One note shows: the state <html data-analytics> names, set before first paint. */
+.consent-note [data-note] {
+  display: none;
+}
+
+:root:not([data-analytics]) .consent-note [data-note=''],
+:root[data-analytics='on'] .consent-note [data-note='on'],
+:root[data-analytics='off'] .consent-note [data-note='off'],
+:root[data-analytics='browser'] .consent-note [data-note='browser'],
+:root[data-analytics='unavailable'] .consent-note [data-note='unavailable'] {
+  display: inline;
+}
+
 .switch {
   position: relative;
   flex: none;
@@ -1544,13 +1557,19 @@ html:has(.content-page:not([style*='none'])) {
   transition: background-color 0.15s ease;
 }
 
-.switch[aria-checked='true'] {
+.switch[aria-checked='true'],
+:root[data-analytics]:not([data-analytics='off']) .switch:not([aria-checked]) {
   background: var(--ok);
 }
 
 .switch:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+/* The state is known before the page starts: look ready rather than greyed out. */
+:root[data-analytics] .switch:disabled {
+  opacity: 1;
 }
 
 .switch-knob {
@@ -1565,7 +1584,8 @@ html:has(.content-page:not([style*='none'])) {
   transition: transform 0.15s ease;
 }
 
-.switch[aria-checked='true'] .switch-knob {
+.switch[aria-checked='true'] .switch-knob,
+:root[data-analytics]:not([data-analytics='off']) .switch:not([aria-checked]) .switch-knob {
   transform: translateX(18px);
 }
 

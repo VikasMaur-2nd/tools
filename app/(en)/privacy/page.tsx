@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import AnalyticsSwitch from '@/components/AnalyticsSwitch';
+import { analyticsConfigured, stateFrom } from '@/lib/analytics';
 import { EVENT_PROPS, type EventName } from '@/lib/analytics/events';
 import ContentShell from '../content-shell';
 import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
@@ -90,6 +91,8 @@ export default function PrivacyPage() {
         </p>
       </header>
 
+      {/* Names this browser's analytics state before first paint, so the switch shows its note at once (components/AnalyticsSwitch.tsx). */}
+      <script dangerouslySetInnerHTML={{ __html: `try{document.documentElement.dataset.analytics=(${stateFrom})(${analyticsConfigured})}catch(e){}` }} />
       <AnalyticsSwitch />
 
       <div className="prose">
