@@ -84,6 +84,13 @@ export function loadSurface() {
 }
 /** Edits inserting at most this much patch the line state (see model); bigger ones rescan. */
 const PATCH_CHARS = 1 << 16;
+/**
+ * The document an editor leaves to the next editor on the same textarea. Next.js keeps a page's DOM while the
+ * visitor is on another page (hidden in an <Activity>) and the app starts again on it when they come back: the
+ * document reopens from here as it was. Written into the hidden textarea instead, a 7 MB document had to be laid
+ * out natively on the way back, and the tab died.
+ */
+const kept = new WeakMap<HTMLTextAreaElement, Doc>();
 
 export type ChangeKind = 'input' | 'paste' | 'set';
 
@@ -394,12 +401,19 @@ export class Editor {
     el.addEventListener('paste', this.onViewPaste);
     document.addEventListener('selectionchange', this.onSel);
     this.ro = new ResizeObserver(() => {
+      // Hidden (display: none): nothing to lay out, and no width would rewrap the whole document into one
+      // column. Shown again, the observer fires again.
+      if (!el.getClientRects().length) return;
       if (!this.measured) this.measure();
       this.layout();
       this.render(true);
     });
     this.ro.observe(el);
-    this.model(ta.value, true);
+    const left = kept.get(ta);
+    kept.delete(ta);
+    // A document left on this textarea by the editor before (see kept) opens like a restored one.
+    if (left?.length) this.model(left, false);
+    else this.model(ta.value, true);
     // The code font may arrive after first paint, and its subsets for other
     // scripts when such text appears: re-measure glyphs (and wrapped rows) then.
     document.fonts?.ready.then(this.onFonts);
@@ -447,7 +461,9 @@ export class Editor {
     this.wrapper?.destroy();
     this.surface?.destroy();
     this.el.classList.remove('hl-on', 'vmode', 'wrap');
-    if (this.view || this.vis || this.surface) ta.value = this.text;
+    // The next editor on this textarea takes the document from memory (see kept), not from the textarea.
+    kept.set(ta, this.doc);
+    ta.value = '';
   }
 
   private measured = false;
