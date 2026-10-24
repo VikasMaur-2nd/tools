@@ -249,6 +249,9 @@ class FakeDocument extends FakeEvents {
 
 export const fakeDocument = new FakeDocument();
 
+/** ResizeObservers observing something (not disconnected). */
+export const observing = new Set<object>();
+
 let queue: FrameRequestCallback[] = [];
 let ids = 0;
 
@@ -270,16 +273,25 @@ export function installDom() {
   g.window = globalThis;
   g.getSelection = () => null;
   g.Node = { TEXT_NODE: 3 };
-  g.ResizeObserver ??= class {
-    observe() {}
+  g.ResizeObserver = class {
+    observe() {
+      observing.add(this);
+    }
     unobserve() {}
-    disconnect() {}
+    disconnect() {
+      observing.delete(this);
+    }
   };
   g.requestAnimationFrame = (f: FrameRequestCallback) => {
     queue.push(f);
     return ++ids;
   };
   g.cancelAnimationFrame = () => {};
+  // (Node's own keeps the process alive once listened to.)
+  g.MessageChannel = class {
+    port1: { onmessage: ((e: unknown) => void) | null } = { onmessage: null };
+    port2 = { postMessage: () => void setImmediate(() => this.port1.onmessage?.({})) };
+  };
   g.getComputedStyle = () => ({ fontStyle: 'normal', fontWeight: '400', fontSize: '13px', fontFamily: 'monospace' });
 }
 

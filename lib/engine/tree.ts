@@ -115,6 +115,7 @@ export class TreeView {
     this.el.removeEventListener('mouseover', this.onOver);
     this.el.removeEventListener('mouseleave', this.onLeave);
     this.ro.disconnect();
+    this.sc.destroy();
     cancelAnimationFrame(this.raf);
   }
 

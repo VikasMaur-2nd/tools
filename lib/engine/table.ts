@@ -87,6 +87,7 @@ export class TableView {
     this.el.removeEventListener('scroll', this.onScroll);
     this.el.removeEventListener('click', this.onClick);
     this.ro.disconnect();
+    this.sc.destroy();
     cancelAnimationFrame(this.raf);
   }
 

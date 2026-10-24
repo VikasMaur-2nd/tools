@@ -104,3 +104,29 @@ test('scrollTop is read once until the element scrolls', () => {
   el.scrollTop = (MAX_H - el.clientHeight) / 4;
   assert.ok(Math.abs(sc.top - (80_000_000 - el.clientHeight) / 4) < 10);
 });
+
+test('destroy lets go of the element: no listeners, no observer', () => {
+  const live = new Set<object>();
+  const g = globalThis as { ResizeObserver?: unknown };
+  const had = g.ResizeObserver;
+  g.ResizeObserver = class {
+    observe() {
+      live.add(this);
+    }
+    disconnect() {
+      live.delete(this);
+    }
+  };
+  try {
+    const { el, spacer, sc } = scroller();
+    assert.equal(live.size, 1);
+    // Scaled: the wheel and the keys are listened to as well.
+    sc.fit(80_000_000, spacer);
+    assert.ok(el.listeners.has('wheel') && el.listeners.has('keydown'));
+    sc.destroy();
+    assert.equal(el.listeners.size, 0, [...el.listeners.keys()].join());
+    assert.equal(live.size, 0);
+  } finally {
+    g.ResizeObserver = had;
+  }
+});

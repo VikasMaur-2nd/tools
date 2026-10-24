@@ -450,6 +450,7 @@ export class Editor {
     document.removeEventListener('selectionchange', this.onSel);
     document.fonts?.removeEventListener('loadingdone', this.onFonts);
     this.ro.disconnect();
+    this.sc.destroy();
     cancelAnimationFrame(this.raf);
     this.wrapper?.destroy();
     this.surface?.destroy();
