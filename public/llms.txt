@@ -97,7 +97,7 @@ The JSON viewer, the tools hub and the dedicated tool pages are also available i
 
 ## For AI agents in the browser (WebMCP)
 
-In browsers with [WebMCP](https://webmachinelearning.github.io/webmcp/), the viewer and every /tools page register these functions with `document.modelContext`, so a browser agent can call them instead of clicking. They work on the document open in the page's editor, show their result in the page and return text; edits can be undone by the user.
+In browsers with [WebMCP](https://webmachinelearning.github.io/webmcp/), the viewer and every /tools page register these functions with `document.modelContext`, so a browser agent can call them instead of clicking. They work on the document open in the page's editor, show their result in the page and return text; edits can be undone by the user. The same list, as JSON: [/.well-known/mcp.json](https://tools.vikasmaur.com/.well-known/mcp.json).
 
 - `open_json`: open JSON, JSON Lines, a JWT, or YAML, XML, CSV or TOML text in the editor.
 - `check_json`: validity, each error's line and column, size, values and depth.
