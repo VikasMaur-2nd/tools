@@ -7,16 +7,12 @@ import { TARGETS } from '@/lib/engine/targets';
 import { formatBytes } from '@/lib/json/format';
 import { parser, type ParseResult } from '@/lib/json/parser';
 import { MAX_DOCUMENT, linkHash, linkReach, type LinkDoc, type LinkRequest } from '@/lib/link';
+import { BADGES, SITE, snippet, type BadgeColor, type SnippetFormat } from '@/lib/badge';
 import { partsHtml, snippetParts } from '@/lib/link-colors';
 import type { View } from '@/lib/engine/store';
 import { Icon } from './icons';
 import MiniEditor from './MiniEditor';
 
-const SITE = 'https://tools.vikasmaur.com';
-const BADGES = {
-  view: { label: 'View in Tool Kumar', width: 158 },
-  compare: { label: 'Compare in Tool Kumar', width: 180 },
-} as const;
 const VIEWS: [View, string][] = [
   ['format', 'Format'],
   ['tree', 'Tree'],
@@ -28,23 +24,6 @@ const SAMPLE_A = '{\n  "id": 42,\n  "name": "Ada Lovelace",\n  "roles": ["author
 const SAMPLE_B = '{\n  "id": 42,\n  "name": "Ada King",\n  "roles": ["author", "mathematician", "translator"],\n  "active": true\n}';
 
 type Kind = 'json' | 'url';
-
-type Badge = 'auto' | 'black' | 'white';
-type Format = 'markdown' | 'html' | 'link';
-
-const badgeUrl = (kind: keyof typeof BADGES, white: boolean) => `${SITE}/badges/${kind}-in-tool-kumar${white ? '-dark' : ''}.svg`;
-const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-
-function snippet(format: Format, href: string, kind: keyof typeof BADGES, badge: Badge) {
-  if (format === 'link') return href;
-  const { label, width } = BADGES[kind];
-  if (format === 'markdown') return `[![${label}](${badgeUrl(kind, badge === 'white')})](${href})`;
-  const img = (white: boolean) => `<img src="${badgeUrl(kind, white)}" alt="${label}" width="${width}" height="28">`;
-  const a = escapeAttr(href);
-  return badge === 'auto'
-    ? `<a href="${a}"><picture><source media="(prefers-color-scheme: dark)" srcset="${badgeUrl(kind, true)}">${img(false)}</picture></a>`
-    : `<a href="${a}">${img(badge === 'white')}</a>`;
-}
 
 /** Documents from this size are compressed in a worker (lib/link.worker.ts): on the page's thread it takes a second at 10 MB. */
 const WORKER_TEXT = 500_000;
@@ -352,8 +331,8 @@ export default function LinkBuilder() {
   const [urlB, setUrlB] = useState('');
   const [view, setView] = useState<View>('tree');
   const [to, setTo] = useState('typescript');
-  const [badge, setBadge] = useState<Badge>('auto');
-  const [format, setFormat] = useState<Format>('markdown');
+  const [badge, setBadge] = useState<BadgeColor>('auto');
+  const [format, setFormat] = useState<SnippetFormat>('markdown');
   const [href, setHref] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);

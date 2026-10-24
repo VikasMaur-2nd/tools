@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboard
 import { act } from '@/lib/engine/instance';
 import { useUI } from '@/lib/engine/store';
 import { useT } from '@/lib/i18n/react';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
 
 /*
@@ -39,12 +39,16 @@ export function menuLetter(e: ReactKeyboardEvent<HTMLElement>) {
   next.focus();
 }
 
-/** A small popover menu anchored to an icon button. Keyboard: ↑ ↓ to move, Esc to close. */
-export function Menu({ label, children }: { label: string; children: (close: () => void) => ReactNode }) {
+/**
+ * A small popover menu anchored to a button: ⋯, or `icon` with the label shown (Share). Keyboard:
+ * ↑ ↓ to move, Esc to close.
+ */
+export function Menu({ label, icon, tip, children }: { label: string; icon?: IconName; tip?: string; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const id = useId();
-  const name = useT()(label);
+  const t = useT();
+  const name = t(label);
 
   useEffect(() => {
     if (!open) return;
@@ -75,14 +79,15 @@ export function Menu({ label, children }: { label: string; children: (close: () 
       <button
         id={id}
         type="button"
-        className={`btn icon${open ? ' on' : ''}`}
+        className={`btn${icon ? '' : ' icon'}${open ? ' on' : ''}`}
         aria-label={name}
         aria-haspopup="menu"
         aria-expanded={open}
-        data-tip={open ? undefined : name}
+        data-tip={open ? undefined : tip ? t(tip) : name}
         onClick={() => setOpen((o) => !o)}
       >
-        <Icon name="more" />
+        <Icon name={icon ?? 'more'} />
+        {icon && <span className="lbl">{name}</span>}
       </button>
       {open && (
         <div className="menu" role="menu" aria-label={name} onKeyDown={onKey}>
@@ -108,6 +113,16 @@ export function MItem({ label, keys, onClick, close, disabled }: { label: string
       <span>{useT()(label)}</span>
       {keys && <Kbd k={keys} />}
     </button>
+  );
+}
+
+/** An item that opens a page in a new tab. */
+export function MLink({ label, href, close }: { label: string; href: string; close: () => void }) {
+  return (
+    <a role="menuitem" className="mi" href={href} target="_blank" rel="noopener" onClick={close}>
+      <span>{useT()(label)}</span>
+      <Icon name="external" size={14} />
+    </a>
   );
 }
 

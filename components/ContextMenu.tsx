@@ -3,6 +3,7 @@
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { withVia } from '@/lib/analytics';
+import type { SnippetFormat } from '@/lib/badge';
 import type { Engine } from '@/lib/engine/engine';
 import { act } from '@/lib/engine/instance';
 import { store, useUI, type ContextMenu as Open, type DiffAction, type DiffMenu, type MenuArea } from '@/lib/engine/store';
@@ -25,6 +26,12 @@ const SUBS = [
 const LAYOUTS = [
   { v: 'unified', label: 'Unified' },
   { v: 'split', label: 'Split' },
+];
+/** The share link, or a button around it (Engine.share). */
+const SHARE_AS: { v: SnippetFormat; label: string }[] = [
+  { v: 'link', label: 'Link' },
+  { v: 'markdown', label: 'Markdown' },
+  { v: 'html', label: 'HTML' },
 ];
 
 /** The menu's name for screen readers: the area it is for (strings the areas use already). */
@@ -174,6 +181,8 @@ function Items({ m, close }: { m: Open; close: () => void }) {
         a === 'input'
           ? [item('Format', (e) => e.format(), 'Shift+Alt+F', m.blank), item('Download input', (e) => e.download(), 'mod+S', m.blank)]
           : [item('Format', (e) => e.formatCompare(), 'mod+Enter', m.blank), item('Swap with original', (e) => e.swapCompare())],
+        // (What is on screen: both documents in Compare. The toast says which was copied.)
+        [<MChoice key="share" label="Share" options={SHARE_AS} onPick={(v) => go((e) => e.share(v))()} close={close} />],
         [item('Undo', (e) => e.menuUndo(a, false), 'mod+Z', !m.undo), item('Redo', (e) => e.menuUndo(a, true), 'mod+Shift+Z', !m.redo)],
         [
           item('Cut', (e) => e.menuCut(a), 'mod+X', !m.cut),

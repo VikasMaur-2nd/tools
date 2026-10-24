@@ -22,6 +22,7 @@ import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu } from './instance';
 import type { InputSource } from '../analytics/events';
+import { snippet, type SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -1800,8 +1801,10 @@ export class Engine {
   /**
    * Copies a link to `/` that opens what is on screen: the document in this view,
    * or both documents in Compare. The documents travel in the link (lib/link.ts).
+   * `as`: the link alone, or a "View in Tool Kumar" ("Compare in Tool Kumar")
+   * button around it in Markdown or HTML, as /integrate's builder makes them (lib/badge.ts).
    */
-  async share() {
+  async share(as: SnippetFormat = 'link') {
     this.flushLoad();
     const comparing = this.settings.view === 'compare';
     const a = this.ed.text;
@@ -1818,12 +1821,14 @@ export class Engine {
         view: this.settings.view,
         to: this.settings.target,
       });
-      track('feature_used', { feature: comparing ? 'share_compare' : 'share_link' });
+      track('feature_used', { feature: comparing ? 'share_compare' : 'share_link', value: as });
       const url = `${location.origin}/${hash}`;
-      await this.copy(
-        url,
-        comparing ? 'Comparison link copied. Both documents live in the link, not on a server.' : 'Share link copied. The data lives in the link, not on a server.',
-      );
+      const copied = {
+        link: comparing ? 'Comparison link copied. Both documents live in the link, not on a server.' : 'Share link copied. The data lives in the link, not on a server.',
+        markdown: comparing ? 'Markdown button copied. Both documents live in its link, not on a server.' : 'Markdown button copied. The data lives in its link, not on a server.',
+        html: comparing ? 'HTML button copied. Both documents live in its link, not on a server.' : 'HTML button copied. The data lives in its link, not on a server.',
+      };
+      await this.copy(snippet(as, url, comparing ? 'compare' : 'view', 'auto', location.origin), copied[as]);
       // Always copied, but a link past what browsers open says so (lib/link.ts).
       const reach = linkReach(url.length);
       const size = formatBytes(url.length);
