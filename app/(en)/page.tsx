@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import JsonTool from '@/components/JsonTool';
 import { StatusLangs } from '@/components/LangSwitch';
-import { alternates } from '@/lib/i18n/server';
+import { serverT } from '@/lib/i18n/server';
+import { pageMetadata } from '../page-metadata';
 import { homeJsonLd, jsonLdScript } from './seo';
 import SeoContent from './seo-content';
 
-export const metadata: Metadata = { alternates: alternates('/', 'en') };
+const t = serverT('en');
+export const metadata: Metadata = pageMetadata({ path: '/', title: t('home.title'), fullTitle: true, description: t('home.description') });
 
 export default function Page() {
   return (

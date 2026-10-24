@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PAGE_DATES } from '../../dates';
 import { Code, ResourceArticle, resourceMetadata } from '../resource';
 
 const TITLE = 'JSON examples for APIs, configuration and tests';
@@ -6,7 +7,7 @@ const DESCRIPTION =
   'Copyable, valid JSON examples for API responses, application configuration and nested data. Download the files or inspect them in the private browser viewer.';
 const PATH = '/resources/json-examples';
 
-export const metadata = resourceMetadata({ title: TITLE, description: DESCRIPTION, path: PATH });
+export const metadata = resourceMetadata({ title: TITLE, description: DESCRIPTION, path: PATH, ...PAGE_DATES[PATH] });
 
 export default function JsonExamplesPage() {
   return (

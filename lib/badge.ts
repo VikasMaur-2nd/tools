@@ -11,7 +11,9 @@ export type BadgeKind = 'view' | 'compare';
 /** Auto follows the reader's light or dark mode (HTML only; Markdown gets black). */
 export type BadgeColor = 'auto' | 'black' | 'white';
 
-export const SITE = 'https://tools.vikasmaur.com';
+import { SITE } from './site';
+
+export { SITE };
 
 export const BADGES = {
   view: { label: 'View in Tool Kumar', width: 158 },

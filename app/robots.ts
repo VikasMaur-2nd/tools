@@ -1,6 +1,5 @@
 import type { MetadataRoute } from 'next';
-
-const SITE = 'https://tools.vikasmaur.com';
+import { SITE } from '@/lib/site';
 
 // Static: prerendered at build time to /robots.txt.
 export default function robots(): MetadataRoute.Robots {

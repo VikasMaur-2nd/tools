@@ -7,9 +7,9 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SITE } from '../lib/site.ts';
 
 const BASE = (process.argv[2] || process.env.BASE || 'http://localhost:3000').replace(/\/$/, '');
-const SITE = 'https://tools.vikasmaur.com';
 const failures = [];
 const fail = (where, what) => {
   failures.push(`${where}: ${what}`);
@@ -208,8 +208,8 @@ for (const path of ['/', '/tools/json-validator', '/es']) {
     document.documentElement.dataset.doc = '';
     const box = document.createElement('div');
     box.setAttribute('role', 'alert');
-    box.className = 'hero error-screen';
-    box.innerHTML = '<div class="hero-in"><h2>x</h2></div>';
+    box.className = 'error-screen';
+    box.innerHTML = '<div class="error-screen-in"><h2>x</h2></div>';
     document.body.append(box);
     const v = getComputedStyle(box).visibility;
     box.remove();

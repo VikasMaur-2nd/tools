@@ -6,7 +6,10 @@ import { TARGETS } from '@/lib/engine/targets';
 import { codeWithLinks } from '@/lib/link-code';
 import { Code } from '../blogs/article';
 import ContentShell from '../content-shell';
-import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { PAGE_DATES } from '../dates';
+import { SOCIAL_IMAGE_URL, jsonLdScript } from '../seo';
+import { pageMetadata } from '../../page-metadata';
+import { SITE } from '@/lib/site';
 import CodeSnippet from './code-snippet';
 import { SAMPLE_COMPARE_LINK, SAMPLE_VIEW_LINK } from './samples';
 import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } from './snippets';
@@ -15,15 +18,8 @@ const TITLE = 'Integrate: add "View in Tool Kumar" buttons and links';
 const DESCRIPTION =
   'Add a "View in Tool Kumar" or "Compare in Tool Kumar" button to docs, READMEs, bug reports and apps. The link carries the JSON itself, so nothing is uploaded. Free, no sign-up, no API key.';
 const PATH = '/integrate';
-const UPDATED = '2026-10-21';
 
-export const metadata: Metadata = {
-  title: TITLE,
-  description: DESCRIPTION,
-  alternates: { canonical: PATH },
-  openGraph: { type: 'website', url: PATH, siteName: SITE_NAME, title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
-  twitter: { card: 'summary_large_image', title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: ['/twitter-image.png'] },
-};
+export const metadata: Metadata = pageMetadata({ path: PATH, title: TITLE, description: DESCRIPTION });
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -35,9 +31,9 @@ const jsonLd = {
       description: DESCRIPTION,
       url: `${SITE}${PATH}`,
       mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${PATH}` },
-      image: `${SITE}${SOCIAL_IMAGE.url}`,
-      datePublished: UPDATED,
-      dateModified: UPDATED,
+      image: SOCIAL_IMAGE_URL,
+      datePublished: PAGE_DATES[PATH].published,
+      dateModified: PAGE_DATES[PATH].updated,
       author: { '@id': `${SITE}/#organization` },
       publisher: { '@id': `${SITE}/#organization` },
       keywords: ['View in Tool Kumar', 'open JSON in viewer link', 'JSON viewer button', 'share JSON link', 'JSON diff link', 'embed JSON viewer'],

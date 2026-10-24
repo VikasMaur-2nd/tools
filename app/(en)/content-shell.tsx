@@ -24,6 +24,7 @@ export default async function ContentShell({
   current,
   progress = false,
   path,
+  labelledBy,
 }: {
   children: ReactNode;
   current?: Section;
@@ -31,8 +32,11 @@ export default async function ContentShell({
   progress?: boolean;
   /** The page's English path, for the language switcher (pages that exist in one language leave it out). */
   path?: string;
+  /** The page's main landmark is above the header (a tool page's app): the content is a region labelled by this element. */
+  labelledBy?: string;
 }) {
   const here = (s: Section) => (current === s ? ('page' as const) : undefined);
+  const Content = labelledBy ? 'section' : 'main';
   const locale = await getLocale();
   const t = serverT(locale);
   const to = (p: string) => localePath(locale, p);
@@ -64,7 +68,7 @@ export default async function ContentShell({
         {t('site.skip')}
       </a>
       <header className="site-header">
-        <div className="wrap site-header-in">
+        <div className="container site-header-in">
           <IntentLink className="site-brand" href={to('/')} aria-label={t('site.brand')}>
             <Logo />
             <span>Tool Kumar</span>
@@ -80,12 +84,12 @@ export default async function ContentShell({
         {progress && <div className="progress" aria-hidden="true" />}
       </header>
 
-      <main id="content" className="wrap site-main">
+      <Content id="content" className="container site-main" aria-labelledby={labelledBy}>
         {children}
-      </main>
+      </Content>
 
       <footer className="site-footer">
-        <div className="wrap">
+        <div className="container">
           <div className="foot-grid">
             <div className="foot-brand">
               <IntentLink className="site-brand" href={to('/')}>

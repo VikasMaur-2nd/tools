@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
-import { RESOURCE_DATE, resourceMetadata } from '../../resources/resource';
+import { resourceMetadata } from '../../resources/resource';
 import ErrorArticle from '../error-article';
-import { ERROR_GUIDES, GUIDES_UPDATED } from '../errors';
+import { ERROR_GUIDES } from '../errors';
 
 export function generateStaticParams() {
   return ERROR_GUIDES.map(({ slug }) => ({ slug }));
@@ -16,11 +16,7 @@ async function getGuide(params: Promise<{ slug: string }>) {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const guide = await getGuide(params);
-  const metadata = resourceMetadata({ title: guide.title, description: guide.description, path: `/json-errors/${guide.slug}` });
-  return {
-    ...metadata,
-    openGraph: { ...metadata.openGraph, type: 'article' as const, publishedTime: guide.published ?? RESOURCE_DATE, modifiedTime: GUIDES_UPDATED },
-  };
+  return resourceMetadata({ title: guide.title, description: guide.description, path: `/json-errors/${guide.slug}`, published: guide.published, updated: guide.updated });
 }
 
 export default async function JsonErrorPage({ params }: { params: Promise<{ slug: string }> }) {

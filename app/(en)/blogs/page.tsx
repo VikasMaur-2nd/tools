@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import ContentShell from '../content-shell';
-import { blogPageLd, jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { blogPageLd, jsonLdScript } from '../seo';
+import { pageMetadata } from '../../page-metadata';
 import { Arrow, PostCard } from './post-card';
 import { POSTS } from './posts';
 
@@ -9,20 +10,7 @@ const TITLE = 'JSON blog: guides, tips and history';
 const DESCRIPTION =
   'Practical JSON guides for developers: format and validate JSON, fix syntax errors and learn where the format came from. Free from Tool Kumar.';
 
-export const metadata: Metadata = {
-  title: TITLE,
-  description: DESCRIPTION,
-  alternates: { canonical: '/blogs' },
-  openGraph: {
-    type: 'website',
-    url: '/blogs',
-    siteName: SITE_NAME,
-    title: `${TITLE} | ${SITE_NAME}`,
-    description: DESCRIPTION,
-    images: [SOCIAL_IMAGE],
-  },
-  twitter: { card: 'summary_large_image', title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: ['/twitter-image.png'] },
-};
+export const metadata: Metadata = pageMetadata({ path: '/blogs', title: TITLE, description: DESCRIPTION });
 
 export default function BlogsPage() {
   return (

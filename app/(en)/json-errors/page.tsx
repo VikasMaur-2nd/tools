@@ -1,17 +1,15 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import ContentShell from '../content-shell';
-import { jsonLdScript, SITE, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { jsonLdScript } from '../seo';
+import { pageMetadata } from '../../page-metadata';
+import { SITE } from '@/lib/site';
 import { ERROR_GUIDES, HUB_FAQ } from './errors';
 import { Faq, faqJsonLd } from './error-article';
 
 const TITLE = 'JSON errors: exact messages, causes and fixes';
 const DESCRIPTION = 'Find the cause of JSON parse, serialization and type errors in JavaScript, Python, Java, Go, PHP and .NET, with exact messages by runtime and code to fix them.';
-export const metadata: Metadata = {
-  title: TITLE, description: DESCRIPTION, alternates: { canonical: '/json-errors' },
-  openGraph: { type: 'website', url: '/json-errors', siteName: SITE_NAME, title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
-  twitter: { card: 'summary_large_image', title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: ['/twitter-image.png'] },
-};
+export const metadata: Metadata = pageMetadata({ path: '/json-errors', title: TITLE, description: DESCRIPTION });
 
 export default function JsonErrorsHub() {
   const url = `${SITE}/json-errors`;

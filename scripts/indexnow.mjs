@@ -1,4 +1,5 @@
-const SITE = 'https://tools.vikasmaur.com';
+import { SITE } from '../lib/site.ts';
+
 const KEY = '8aed511326b3f7044318fed745c91048';
 const SITEMAP_URL = `${SITE}/sitemap.xml`;
 const KEY_LOCATION = `${SITE}/${KEY}.txt`;

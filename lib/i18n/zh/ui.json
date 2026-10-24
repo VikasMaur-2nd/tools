@@ -105,6 +105,7 @@
   "notFound.tools": "全部 JSON 工具",
   "err.title": "出错了",
   "err.text": "你的 JSON 已保存在这个浏览器中。请重试；如果问题仍然出现，请重新加载页面。",
+  "err.unsaved": "请重试；如果问题仍然出现，请重新加载页面。你在这里打开的 JSON 没有保存在这个浏览器中，可能需要重新粘贴或打开。",
   "err.retry": "重试",
   "err.reload": "重新加载",
   "app.h1": "Tool Kumar：JSON 格式化工具与查看器",

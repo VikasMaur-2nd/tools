@@ -16,16 +16,13 @@ export type ErrorGuide = {
   kind?: 'serialize' | 'binding';
   /** Byline note on how the examples were checked, when not reproduced in Node and Python. */
   checked?: string;
-  /** First publication date; defaults to RESOURCE_DATE. */
-  published?: string;
+  /** ISO dates (YYYY-MM-DD): first publication, and the last change to the guide's text (sitemap, dateModified, byline). */
+  published: string;
+  updated: string;
   tools?: { href: string; label: string }[];
   /** Documentation and source links beyond the per-message citations. */
   docs?: { href: string; label: string }[];
 };
-
-/** Last content change across the error guides (sitemap, dateModified and byline). */
-export const GUIDES_UPDATED = '2026-10-15';
-export const GUIDES_UPDATED_LABEL = 'October 15, 2026';
 
 const FIREFOX = 'https://github.com/mozilla-firefox/firefox/blob/FIREFOX_158_0_RELEASE/js';
 const JSC = 'https://github.com/WebKit/WebKit/blob/webkitgtk-2.54.1/Source/JavaScriptCore/runtime';
@@ -146,6 +143,8 @@ const python = 'Reproduced in Python 3.14.4';
 export const ERROR_GUIDES: ErrorGuide[] = [
   {
     slug: 'unexpected-token-html',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: "Unexpected token '<' / DOCTYPE is not valid JSON",
     description: 'Fix JSON parsing failures caused by HTML responses. Inspect the response status, content type and body before parsing in JavaScript, Python or Go.',
     queries: ['unexpected token < in json at position 0', 'doctype is not valid json', 'unexpected token < json fetch', "json parse error: unrecognized token '<'"],
@@ -185,6 +184,8 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   },
   {
     slug: 'unexpected-end-of-json-input',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: 'Unexpected end of JSON input: empty or truncated data',
     description: 'Find and fix empty responses and truncated JSON behind Unexpected end of JSON input, Python Expecting value at char 0 and Go EOF errors.',
     queries: ['unexpected end of json input how to fix', 'unexpected end of json input while parsing empty string', 'json.decoder.jsondecodeerror expecting value line 1 column 1 char 0', 'json.parse: unexpected end of data at line 1 column 1 of the json data', 'unterminated string starting at', 'no content to map due to end-of-input'],
@@ -229,6 +230,8 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   },
   {
     slug: 'undefined-is-not-valid-json',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: '"undefined" or "[object Object]" is not valid JSON',
     description: 'Fix JSON.parse calls that receive undefined or an already-parsed object. Learn when to parse, when to stringify and how to guard missing storage values.',
     queries: ['undefined is not valid json', '[object Object] is not valid json', 'unexpected token u in json at position 0', 'unexpected token o in json at position 1', 'the json object must be str, bytes or bytearray, not dict', 'json parse error: unexpected identifier "undefined"'],
@@ -267,6 +270,8 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   },
   {
     slug: 'single-quotes-unquoted-keys',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: 'Expecting property name enclosed in double quotes',
     description: 'Fix single-quoted strings and unquoted keys in JSON. Compare exact Python and JavaScript errors and serialize objects without unsafe quote replacement.',
     queries: ['expecting property name enclosed in double quotes', 'expecting property name enclosed in double quotes line 1 column 2 char 1', "unexpected token ' in json", "json parse error: single quotes (') are not allowed in json"],
@@ -305,6 +310,8 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   },
   {
     slug: 'trailing-comma',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: 'JSON trailing comma errors in objects and arrays',
     description: 'Remove trailing commas that strict JSON parsers reject. See version-specific JavaScript, Python and .NET messages and generate valid JSON with serializers.',
     queries: ['json trailing comma', 'json trailing comma allowed', 'json trailing comma error', 'python json trailing comma'],
@@ -346,6 +353,8 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   },
   {
     slug: 'extra-data',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: 'JSONDecodeError: Extra data and multiple JSON values',
     description: 'Fix Python JSONDecodeError: Extra data and JavaScript Unexpected non-whitespace character after JSON. Tell one JSON document from NDJSON and parse each correctly.',
     queries: ['jsondecodeerror extra data', 'json decoder jsondecodeerror extra data line 1', 'python json extra data ndjson', 'unexpected non-whitespace character after json at position'],
@@ -389,6 +398,8 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   },
   {
     slug: 'bad-control-character',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: 'Bad control character in string literal in JSON',
     description: 'Fix unescaped newlines, tabs and other control characters inside JSON strings. See exact JavaScript and Python errors and use serializers to escape values.',
     queries: ['bad control character in string literal in json', 'json unescaped newline', 'invalid control character json python'],
@@ -426,6 +437,8 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   },
   {
     slug: 'go-invalid-character',
+    published: '2026-10-14',
+    updated: '2026-10-15',
     title: "Go JSON: invalid character looking for beginning of value",
     description: 'Diagnose unexpected prefixes, plain-text errors and byte-order marks in Go JSON input. Check HTTP bodies and use SyntaxError.Offset to locate the bad byte.',
     queries: ["invalid character '<' looking for beginning of value", 'invalid character looking for beginning of value golang', 'go json invalid character BOM'],
@@ -465,6 +478,7 @@ export const ERROR_GUIDES: ErrorGuide[] = [
   {
     slug: 'expecting-comma-delimiter',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: "Expecting ',' delimiter / Expected ',' or '}' after property value",
     description: "Fix missing commas and unescaped double quotes behind Python Expecting ',' delimiter and JavaScript Expected ',' or '}' errors, with exact messages by runtime.",
     queries: ["expecting ',' delimiter", "json.decoder.jsondecodeerror expecting ',' delimiter", "expected ',' or '}' after property value in json at position", "json.parse expected ',' or '}' after property value in object", 'unexpected string in json at position'],
@@ -529,6 +543,7 @@ except json.JSONDecodeError as error:
   {
     slug: 'invalid-escape',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'Bad escaped character in JSON / Invalid \\escape',
     description: "Fix backslashes JSON cannot read, such as Windows paths, regex patterns and \\' escapes. Exact JavaScript, Python, Firefox, Go and .NET messages, with fixes.",
     queries: ['bad escaped character in json at position', 'json.decoder.jsondecodeerror: invalid \\escape', 'json.parse: bad escaped character', 'invalid \\uxxxx escape', 'bad unicode escape in json at position'],
@@ -585,6 +600,7 @@ assert json.loads(text) == value` },
   {
     slug: 'firefox-unexpected-character',
     published: '2026-10-15',
+    updated: '2026-10-24',
     title: 'JSON.parse: unexpected character at line 1 column 1 of the JSON data',
     description: 'Decode the Firefox JSON.parse error: what the first character means, how line and column are counted, and the Chrome, Safari and Node wording for the same input.',
     queries: ['json.parse: unexpected character at line 1 column 1 of the json data', 'syntaxerror: json.parse: unexpected character', 'json.parse: unexpected character at line 1 column 2 of the json data', 'json.parse: unexpected keyword at line 1 column 1 of the json data'],
@@ -612,21 +628,28 @@ JSON.parse(readFileSync('bom.json', 'utf8'));
     ],
     steps: [
       'Look at the raw text. In DevTools, open the failing request in the Network panel and check its status, Content-Type and response body.',
-      'Make invisible characters visible by logging JSON.stringify(text.slice(0, 80)). A byte-order mark shows as \\ufeff, and HTML or a PHP warning shows its first tag.',
-      'Use the first character: < means HTML, a letter means plain text or undefined, and \\ufeff means a byte-order mark. An empty body gives unexpected end of data instead.',
+      'Log the start of the text: console.log(text.slice(0, 80)) shows HTML or a PHP warning by its first tag. Invisible characters need their code points: [...text.slice(0, 8)].map((c) => c.codePointAt(0).toString(16)) lists feff first for a byte-order mark, which JSON.stringify leaves unescaped.',
+      'Use the first character: < (3c) means HTML, a letter means plain text or undefined, and feff means a byte-order mark. An empty body gives unexpected end of data instead.',
       'Fix the source: the URL, the session, the server error or the PHP warning. If the column is greater than 1, the text starts as JSON and breaks later, so match the rest of the message to the related guides.',
     ],
     fixes: [
-      { title: 'Read the body once and report what arrived', text: 'The error message then shows the first characters, with invisible ones escaped, instead of a bare position.', lang: 'javascript', code: `async function readJson(response) {
+      { title: 'Read the body once and report what arrived', text: 'The error message then shows the first characters instead of a bare position. JSON.stringify escapes quotes and control characters but leaves a byte-order mark and other invisible format characters as they are, so the preview escapes those too.', lang: 'javascript', code: `async function readJson(response) {
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(\`HTTP \${response.status}: \${JSON.stringify(text.slice(0, 80))}\`);
+    throw new Error(\`HTTP \${response.status}: \${preview(text)}\`);
   }
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(\`Expected JSON, got \${JSON.stringify(text.slice(0, 80))}\`, { cause: error });
+    throw new Error(\`Expected JSON, got \${preview(text)}\`, { cause: error });
   }
+}
+
+// The first characters, quoted, with invisible ones written as escapes:
+// a byte-order mark shows as \\u{feff}.
+function preview(text) {
+  return JSON.stringify(text.slice(0, 80))
+    .replace(/[\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]/gu, (c) => \`\\\\u{\${c.codePointAt(0).toString(16)}}\`);
 }` },
       { title: 'Remove one byte-order mark from a file in Node.js', text: 'Strip only a leading U+FEFF, and only where you read the file.', lang: 'javascript', code: `import { readFileSync } from 'node:fs';
 const raw = readFileSync('bom.json', 'utf8');
@@ -635,7 +658,7 @@ console.log(JSON.parse(text)); // { a: 1 }` },
     ],
     faq: [
       { question: 'Is this error specific to Firefox?', answer: 'The wording is. Chrome, Edge and Node.js say Unexpected token followed by the character, and Safari says JSON Parse error: Unrecognized token. The input and the fix are the same.' },
-      { question: 'Why line 1 column 1 when the response looks like JSON?', answer: 'You may be looking at a different request, or the JSON is preceded by something you cannot see, such as a byte-order mark. Log JSON.stringify of the first characters of the exact text you pass to JSON.parse.' },
+      { question: 'Why line 1 column 1 when the response looks like JSON?', answer: 'You may be looking at a different request, or the JSON is preceded by something you cannot see, such as a byte-order mark. Log the code points of the first characters of the exact text you pass to JSON.parse: a byte-order mark is feff.' },
       { question: 'What does unexpected keyword mean?', answer: 'The text starts with t, f or n, but the word is not true, false or null. A plain-text reply such as not found, or a typo such as nul, causes it.' },
       { question: 'What do the other Firefox JSON.parse messages mean?', answer: "expected property name or '}' points to quoting or a trailing comma. expected ',' or '}' after property value in object points to a missing comma or an unescaped quote. bad escaped character and bad control character in string literal point to string escaping. unexpected non-whitespace character after JSON data means extra data, and unexpected end of data means empty or truncated input." },
     ],
@@ -644,6 +667,7 @@ console.log(JSON.parse(text)); // { a: 1 }` },
   {
     slug: 'php-json-decode-null',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'PHP json_decode returns null: Syntax error and other causes',
     description: 'Find out why json_decode returns null with JSON_THROW_ON_ERROR or json_last_error_msg, then fix syntax errors, BOMs, invalid UTF-8 and depth limits.',
     queries: ['json_decode returns null', 'php json_decode null', 'json_last_error_msg syntax error', 'json_decode syntax error valid json', 'jsonexception syntax error'],
@@ -711,6 +735,7 @@ $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);` },
   {
     slug: 'dotnet-invalid-start-of-value',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: "C# JSON: '<' is an invalid start of a value / Unexpected character",
     description: "Fix System.Text.Json '<' is an invalid start of a value and Json.NET Unexpected character encountered while parsing value, including Blazor and HttpClient cases.",
     queries: ["'<' is an invalid start of a value", 'system.text.json.jsonexception is an invalid start of a value', 'unexpected character encountered while parsing value', "unexpected character encountered while parsing value: <. path '', line 0, position 0", 'invalid json primitive'],
@@ -767,6 +792,7 @@ var item = JsonSerializer.Deserialize<Item>(json);` },
   {
     slug: 'jackson-unrecognized-token',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: "Jackson: Unrecognized token / Unexpected character ('<' (code 60))",
     description: "Diagnose Jackson JsonParseException messages such as Unrecognized token 'abc' and Unexpected character ('<' (code 60)), including Spring JSON parse error responses.",
     queries: ['jsonparseexception unrecognized token was expecting', "unexpected character ('<' (code 60)): expected a valid value", 'json parse error: unrecognized token', "unrecognized token was expecting (json string, number, array, object or token 'null', 'true' or 'false')"],
@@ -826,6 +852,7 @@ JsonNode data = new ObjectMapper().readTree(response.body());` },
     slug: 'circular-structure',
     kind: 'serialize',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'TypeError: Converting circular structure to JSON',
     description: 'Read the V8 circular path, find the property that closes the loop and serialize plain data instead. Covers Firefox, Safari, Python, Go, .NET and Jackson.',
     queries: ['typeerror: converting circular structure to json', "converting circular structure to json --> starting at object with constructor 'object'", "converting circular structure to json starting at object with constructor 'clientrequest'", 'typeerror: cyclic object value', 'valueerror: circular reference detected'],
@@ -935,6 +962,7 @@ print(json.dumps(payload))
     slug: 'bigint-serialize',
     kind: 'serialize',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'TypeError: Do not know how to serialize a BigInt',
     description: 'Serialize BigInt values without losing precision. Choose strings, JSON.rawJSON or a replacer, and read large integer IDs back safely in JavaScript.',
     queries: ['typeerror: do not know how to serialize a bigint', 'prisma do not know how to serialize a bigint', "bigint value can't be serialized in json", 'json.stringify bigint'],
@@ -994,6 +1022,7 @@ console.log(data.id); // 9007199254740993n` },
     slug: 'not-json-serializable',
     kind: 'serialize',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'TypeError: Object of type … is not JSON serializable',
     description: 'Fix Python json.dumps errors for datetime, Decimal, set, bytes, UUID, NumPy values and custom classes, plus NaN values rejected with allow_nan=False.',
     queries: ['object of type datetime is not json serializable', 'typeerror: object of type is not json serializable', 'object of type decimal is not json serializable', 'object of type int64 is not json serializable', 'out of range float values are not json compliant'],
@@ -1080,6 +1109,7 @@ print(json.dumps(clean, allow_nan=False))  # {"score": null, "total": 3.5}` },
     slug: 'jackson-cannot-deserialize',
     kind: 'binding',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'Jackson: Cannot deserialize value of type from Array or Object value',
     description: 'Fix Jackson MismatchedInputException when JSON arrays, objects and strings do not match your Java types, including the older START_ARRAY and START_OBJECT messages.',
     queries: ['cannot deserialize value of type from object value (token jsontoken.start_object)', 'cannot deserialize value of type java.util.arraylist from object value', 'mismatchedinputexception cannot deserialize', 'cannot deserialize instance of out of start_array token', 'can not deserialize instance of java.util.arraylist out of start_object token'],
@@ -1147,6 +1177,7 @@ Order order = mapper.readValue("{\\"tags\\":\\"new\\"}", Order.class); // tags =
     slug: 'jackson-unrecognized-field',
     kind: 'binding',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'Jackson: Unrecognized field, not marked as ignorable',
     description: 'Fix Jackson UnrecognizedPropertyException: map renamed keys, ignore unknown properties on purpose, and know the Jackson 3 and Spring defaults.',
     queries: ['unrecognized field not marked as ignorable', 'unrecognizedpropertyexception unrecognized field', 'jackson ignore unknown properties', 'unrecognized property not marked as ignorable'],
@@ -1206,6 +1237,7 @@ record Repo(String name) {}` },
     slug: 'go-cannot-unmarshal',
     kind: 'binding',
     published: '2026-10-15',
+    updated: '2026-10-15',
     title: 'Go JSON: cannot unmarshal string, object or array into Go value',
     description: 'Fix Go UnmarshalTypeError when JSON strings, numbers, objects or arrays do not match your struct fields. Read the field path, then use string tags or json.Number.',
     queries: ['json: cannot unmarshal string into go value of type int', 'json: cannot unmarshal object into go value of type', 'cannot unmarshal array into go value of type', 'cannot unmarshal string into go struct field', 'json: cannot unmarshal number into go struct field of type string'],

@@ -105,6 +105,7 @@
   "notFound.tools": "Todas as ferramentas JSON",
   "err.title": "Algo deu errado",
   "err.text": "Seu JSON está salvo neste navegador. Tente de novo e, se o problema continuar, recarregue a página.",
+  "err.unsaved": "Tente de novo e, se o problema continuar, recarregue a página. O JSON que você tinha aberto aqui não está salvo neste navegador, então talvez seja preciso colá-lo ou abri-lo de novo.",
   "err.retry": "Tentar novamente",
   "err.reload": "Recarregar",
   "app.h1": "Tool Kumar: formatador e visualizador JSON",

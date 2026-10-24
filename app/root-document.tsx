@@ -4,8 +4,9 @@ import { JetBrains_Mono } from 'next/font/google';
 import { Analytics } from '@/components/Analytics';
 import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
 import { serverT } from '@/lib/i18n/server';
+import { SITE } from '@/lib/site';
 import { jsonLdScript, siteJsonLd } from './(en)/seo';
-import { englishSocialImages } from './social-images';
+import { socialImage } from './page-metadata';
 import './globals.css';
 import './content.css';
 
@@ -15,8 +16,6 @@ import './content.css';
  * analytics, metadata defaults and the site-wide JSON-LD. Keep them here so
  * the languages cannot drift apart.
  */
-
-const SITE = 'https://tools.vikasmaur.com';
 
 // Code font: self-hosted at build time (no requests to Google), preloaded, and
 // cached offline by the service worker like every other asset.
@@ -53,21 +52,10 @@ export function rootMetadata(locale: SiteLocale): Metadata {
       title,
       description,
       locale: localeInfo(locale).og,
-      images: locale === 'en' ? [englishSocialImages.openGraph] : [
-        {
-          url: '/opengraph-image.png',
-          width: 1200,
-          height: 630,
-          alt: t('site.ogAlt'),
-        },
-      ],
+      images: [socialImage(locale)],
     },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: locale === 'en' ? [englishSocialImages.twitter] : ['/twitter-image.png'],
-    },
+    // X reads the Open Graph image (app/page-metadata.ts).
+    twitter: { card: 'summary_large_image', images: [] },
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 } },
     formatDetection: { telephone: false, email: false, address: false },
     appleWebApp: { capable: true, title: 'Tool Kumar', statusBarStyle: 'black-translucent' },

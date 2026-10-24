@@ -4,18 +4,13 @@ import AnalyticsSwitch from '@/components/AnalyticsSwitch';
 import { analyticsConfigured, stateFrom } from '@/lib/analytics';
 import { EVENT_PROPS, type EventName } from '@/lib/analytics/events';
 import ContentShell from '../content-shell';
-import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { PAGE_DATES, formatDate } from '../dates';
+import { pageMetadata } from '../../page-metadata';
 
 const DESCRIPTION =
   'Tool Kumar processes JSON in your browser and never receives it. See exactly what our analytics measure, what screen recordings leave out and how to turn analytics off.';
 
-export const metadata: Metadata = {
-  title: { absolute: `Privacy | ${SITE_NAME}` },
-  description: DESCRIPTION,
-  alternates: { canonical: '/privacy' },
-  openGraph: { type: 'website', url: '/privacy', siteName: SITE_NAME, title: `Privacy | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
-  twitter: { card: 'summary_large_image', title: `Privacy | ${SITE_NAME}`, description: DESCRIPTION, images: ['/twitter-image.png'] },
-};
+export const metadata: Metadata = pageMetadata({ path: '/privacy', title: 'Privacy', description: DESCRIPTION });
 
 /** When each event is sent. Its properties are listed straight from lib/analytics/events.ts. */
 const WHEN: Record<EventName, string> = {
@@ -254,7 +249,9 @@ export default function PrivacyPage() {
           loaded at all and Vercel counts nothing. In the JSON tool, the same choice is <strong>Privacy mode</strong> in the command palette (Ctrl+K, or
           ⌘K on a Mac). If your browser sends Global Privacy Control or Do Not Track, PostHog never loads, without you doing anything.
         </p>
-        <p className="muted">Last updated 24 October 2026.</p>
+        <p className="muted">
+          Last updated <time dateTime={PAGE_DATES['/privacy'].updated}>{formatDate(PAGE_DATES['/privacy'].updated)}</time>.
+        </p>
       </div>
     </ContentShell>
   );
