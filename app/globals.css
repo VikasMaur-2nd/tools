@@ -1605,7 +1605,7 @@ button.tv-x:hover {
   border-right: 1px solid var(--line);
   background: var(--bg-2);
   color: var(--fg-2);
-  font: 600 12px/1 var(--font-ui);
+  font: 600 12px/32px var(--font-ui);
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -1694,6 +1694,12 @@ button.tv-x:hover {
 
 .tb-dr:hover {
   box-shadow: 0 0 0 1px var(--accent-line);
+}
+
+/* The grid's active cell, for keyboard users (see TableView). */
+.tbl:focus-visible .act {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .tb-empty {
