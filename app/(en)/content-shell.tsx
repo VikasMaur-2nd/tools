@@ -64,7 +64,7 @@ export default async function ContentShell({
         {t('site.skip')}
       </a>
       <header className="site-header">
-        <div className="wrap site-header-in">
+        <div className="container site-header-in">
           <IntentLink className="site-brand" href={to('/')} aria-label={t('site.brand')}>
             <Logo />
             <span>Tool Kumar</span>
@@ -80,12 +80,12 @@ export default async function ContentShell({
         {progress && <div className="progress" aria-hidden="true" />}
       </header>
 
-      <main id="content" className="wrap site-main">
+      <main id="content" className="container site-main">
         {children}
       </main>
 
       <footer className="site-footer">
-        <div className="wrap">
+        <div className="container">
           <div className="foot-grid">
             <div className="foot-brand">
               <IntentLink className="site-brand" href={to('/')}>
