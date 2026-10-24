@@ -43,6 +43,9 @@ const isCap = (c: number) => c >= 65 && c <= 90;
 
 /** Where the scanned text next has what can open a token that goes on past its line, from an offset on (-1: nowhere; see codeRows). */
 type Find = (i: number) => number;
+/** Where `src` next has `s` from offset `i` on (-1: nowhere): indexOf, or one that remembers (see codeRows). */
+type Seek = (src: string, s: string, i: number) => number;
+const seekAll: Seek = (src, s, i) => src.indexOf(s, i);
 
 /** A language's flags and word lists, made once (see LANGS). */
 interface Lang {
@@ -108,7 +111,8 @@ const tokenState = (mode: number, cls: string, q = 34, flags = 0) => mode | (CLS
  * Colours `src[from, to)` from `state` (the start of a document: C_LINE), reporting tokens to `emit`
  * (cut to the piece); returns the state at `to`.
  */
-function code(src: string, l: Lang, emit: Emit | null, from = 0, to = src.length, state = C_LINE, find?: Find): number {
+function code(src: string, l: Lang, emit: Emit | null, from = 0, to = src.length, state = C_LINE, find?: Find, seek = seekAll): number {
+  if (from >= to) return state;
   const { lc, bc, sq, bt, tq, dollar, colon, eq, capT, goF, csP, hdr, dash, kw, ty } = l;
   const n = src.length;
   const isId = (c: number, start: boolean) =>
@@ -204,7 +208,7 @@ function code(src: string, l: Lang, emit: Emit | null, from = 0, to = src.length
     let next = state & ~FLAG & ~(3 << 12) & ~(3 << OPEN);
     if (mode === C_LC) j = eol(i);
     else if (mode === C_BC) {
-      const e = flag && src.charCodeAt(i) === 47 ? i - 1 : src.indexOf('*/', i + skip);
+      const e = flag && src.charCodeAt(i) === 47 ? i - 1 : seek(src, '*/', i + skip);
       j = e < 0 ? n : e + 2;
       if (e === to - 1) next |= FLAG;
       if (i + skip > to) next |= (i + skip - to) << OPEN;
@@ -218,7 +222,7 @@ function code(src: string, l: Lang, emit: Emit | null, from = 0, to = src.length
         while (src.charCodeAt(j) === q) j++;
         next = state;
       } else {
-        [j, next] = tqEnd(pend ? i - pend : src.indexOf(String.fromCharCode(q, q, q), i + skip), q, cls, i + skip);
+        [j, next] = tqEnd(pend ? i - pend : seek(src, String.fromCharCode(q, q, q), i + skip), q, cls, i + skip);
       }
     } else if (mode === C_HDR) {
       j = eol(i);
@@ -260,7 +264,7 @@ function code(src: string, l: Lang, emit: Emit | null, from = 0, to = src.length
       cls = 'tc';
       mode = C_LC;
     } else if (bc && src.startsWith('/*', i)) {
-      const e = src.indexOf('*/', i + 2);
+      const e = seek(src, '*/', i + 2);
       j = e < 0 ? n : e + 2;
       cls = 'tc';
       mode = C_BC;
@@ -279,7 +283,7 @@ function code(src: string, l: Lang, emit: Emit | null, from = 0, to = src.length
     } else if (c === 34 || (sq && c === 39) || (bt && c === 96)) {
       q = c;
       if (tq && c !== 96 && src.charCodeAt(i + 1) === c && src.charCodeAt(i + 2) === c) {
-        const e = src.indexOf(src.slice(i, i + 3), i + 3);
+        const e = seek(src, src.slice(i, i + 3), i + 3);
         j = e < 0 ? n : e + 3;
         while (src.charCodeAt(j) === c) j++;
         cls = keyAt(j) ? 'tk' : 'ts';
@@ -342,6 +346,7 @@ const Y_REST = 2; // the rest of the line in one class (bits 7+: the block scala
 const yState = (mode: number, cls: string, block: number) => mode | (CLS.indexOf(cls) << 3) | ((block + 1) << 7);
 
 function yaml(src: string, emit: Emit | null, from = 0, to = src.length, state = Y_LINE, find?: Find): number {
+  if (from >= to) return state;
   const n = src.length;
   const put = (a: number, b: number, cls: string) => {
     if (a < from) a = from;
@@ -656,9 +661,16 @@ export function codeRows(lang: string) {
     }
     return found;
   };
+  // The closing quotes (or "*/") of a token over many lines: found once, not again from each of its lines.
+  const sought = new Map<string, [string, number, number]>();
+  const seek: Seek = (src, s, i) => {
+    let x = sought.get(s);
+    if (!x || x[0] !== src || i < x[1] || (x[2] >= 0 && x[2] < i)) sought.set(s, (x = [src, i, src.indexOf(s, i)]));
+    return x[2];
+  };
   const run = (src: string, emit: Emit | null, a: number, b: number, state: number) => {
     scanned = src;
-    return l ? code(src, l, emit, a, b, state, find) : yaml(src, emit, a, b, state, find);
+    return l ? code(src, l, emit, a, b, state, find, seek) : yaml(src, emit, a, b, state, find);
   };
   return {
     hl: (row: string, _str: boolean, _esc: boolean, state: number, src = row, at = 0) => {

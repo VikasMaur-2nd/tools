@@ -149,3 +149,21 @@ test('rows colour as the whole document for any text (fuzz)', () => {
     }
   }
 });
+
+test('a long multi-line string is scanned in linear time', () => {
+  // A TOML string of 50,000 lines: each line's scan must not look for the closing quotes all over again.
+  const doc = 'text = """\n' + 'some words = and more words\n'.repeat(50_000) + '"""\nafter = 1\n';
+  const { scanner, hl } = codeRows('toml');
+  assert.ok(scanner);
+  const t0 = performance.now();
+  let st = scanner.start;
+  for (let at = 0; at < doc.length; ) {
+    const e = doc.indexOf('\n', at);
+    st = scanner.scan(doc, at, e + 1, st);
+    // A row drawn on the way: inside the string.
+    if (at > 1000 && at < 1100) assert.match(hl(doc.slice(at, e), false, false, st, doc, at), /^<span class="ts">/);
+    at = e + 1;
+  }
+  const ms = performance.now() - t0;
+  assert.ok(ms < 1500, `${ms.toFixed(0)} ms`);
+});
