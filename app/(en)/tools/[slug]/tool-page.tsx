@@ -23,8 +23,6 @@ import { localeInfo, localePath, type SiteLocale } from '@/lib/i18n/locales';
 import { getLocale } from '@/lib/i18n/locale';
 import { alternates, ogLocales, serverT, toolPage } from '@/lib/i18n/server';
 
-export const ensureStatic = 'navigation';
-
 export function generateStaticParams() {
   return TOOL_PAGES.map(({ slug }) => ({ slug }));
 }

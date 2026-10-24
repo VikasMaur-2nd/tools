@@ -1880,24 +1880,6 @@ html:has(.content-page:not([style*='none'])) {
   margin-top: 0;
 }
 
-.ig-more {
-  margin: 0 0 26px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 12px 16px;
-}
-
-.ig-more summary {
-  color: var(--fg);
-  font-weight: 550;
-  cursor: pointer;
-}
-
-.prose .ig-more p {
-  margin: 12px 0 0;
-  font-size: 16px;
-}
-
 /* The builder: inputs on the left, the button and its code on the right. */
 .link-builder {
   display: grid;
