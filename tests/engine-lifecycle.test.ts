@@ -389,3 +389,30 @@ test('a save waiting for an idle moment is dropped by destroy, which saves the d
   await s.drain();
   assert.equal(s.storage.get('jf:doc'), '{"new":1}');
 });
+
+test('the service worker is registered once per page; its update notice goes to the tool open then', async () => {
+  const s = session();
+  const first = s.engine;
+  closable(first);
+  first.registerSW();
+  first.destroy();
+  const second = s.make();
+  second.registerSW();
+  s.setCurrent(second);
+  await s.drain();
+  assert.equal(s.sw.listeners.length, 1);
+  assert.equal(s.sw.registered, 1);
+  const shown: Dynamic[] = [];
+  first.toast = () => shown.push({ by: 'first' });
+  second.toast = (msg: string) => shown.push({ by: 'second', msg });
+  for (const fn of s.sw.listeners) fn({ data: { type: 'updated' } });
+  assert.deepEqual(shown, [{ by: 'second', msg: 'A new version is ready' }]);
+  // Between two tools (a page without one): the next tool shows it.
+  s.setCurrent(null);
+  for (const fn of s.sw.listeners) fn({ data: { type: 'updated' } });
+  const third = s.make();
+  third.toast = (msg: string) => shown.push({ by: 'third', msg });
+  third.registerSW();
+  assert.deepEqual(shown.at(-1), { by: 'third', msg: 'A new version is ready' });
+  assert.equal(shown.length, 2);
+});

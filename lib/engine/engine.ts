@@ -20,7 +20,7 @@ import { Doc } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
-import { getDiffMenu } from './instance';
+import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import { snippet, type SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
@@ -189,6 +189,12 @@ function sniff(text: string): Hint {
   return null;
 }
 
+/**
+ * The service worker is registered once per page (a client navigation mounts the tool again, with a new
+ * engine), and its news of a new version goes to the tool open then, or to the next one (see registerSW).
+ */
+let swStarted = false;
+let updateWaiting = false;
 
 export class Engine {
   readonly ed: Editor;
@@ -3145,12 +3151,25 @@ export class Engine {
     write(KEYS.doc, n && n <= MAX_PERSIST ? this.ed.text : null);
   };
 
+  /** Offers to reload into the new version the service worker has cached. */
+  private offerUpdate() {
+    this.toast('A new version is ready', 'info', { label: 'Reload', run: () => location.reload() });
+  }
+
+  /** Once per page (see swStarted): offline caching, and a notice when a new version is ready. */
   private registerSW() {
-    if (process.env.NODE_ENV !== 'production' || !('serviceWorker' in navigator)) return;
+    // (One became ready while no tool was open: this one says so.)
+    if (updateWaiting) {
+      updateWaiting = false;
+      this.offerUpdate();
+    }
+    if (swStarted || process.env.NODE_ENV !== 'production' || !('serviceWorker' in navigator)) return;
+    swStarted = true;
     navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
-      if ((e.data as { type?: string } | null)?.type === 'updated') {
-        this.toast('A new version is ready', 'info', { label: 'Reload', run: () => location.reload() });
-      }
+      if ((e.data as { type?: string } | null)?.type !== 'updated') return;
+      const open = getEngine();
+      if (open) open.offerUpdate();
+      else updateWaiting = true;
     });
     const go = () => {
       navigator.serviceWorker
