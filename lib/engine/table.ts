@@ -1,6 +1,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
+import type { FindResult } from './codeview';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
 import { rt } from '../i18n/ui';
@@ -183,9 +184,12 @@ export class TableView {
   // ── Find (rows whose key or any cell contains the query) ────────────────
 
   private fq = '';
-  private fhits: number[] = []; // display positions in `order`
+  /** Rows holding a match: display positions in `order`, and items (which a sort doesn't move). */
+  private fhits: number[] = [];
   private fi = -1;
   private fset: Set<number> | null = null;
+  /** A sort moved the current match (the find bar shows where it is now). */
+  onFind: ((result: FindResult) => void) | null = null;
 
   find(q: string) {
     this.fq = q;
@@ -206,7 +210,7 @@ export class TableView {
         }
         if (hit) this.fhits.push(r);
       }
-      this.fset = new Set(this.fhits);
+      this.fset = new Set(this.fhits.map((r) => this.order[r]));
       if (this.fhits.length) {
         this.fi = 0;
         this.gotoHit();
@@ -262,6 +266,16 @@ export class TableView {
     this.order = order;
   }
 
+  /** The matches in their new order after a sort; item `cur` stays the current one. */
+  private resorted(set: Set<number>, cur: number) {
+    const hits: number[] = [];
+    for (let r = 0; r < this.order.length; r++) if (set.has(this.order[r])) hits.push(r);
+    this.fhits = hits;
+    this.fi = hits.findIndex((r) => this.order[r] === cur);
+    if (this.fi < 0 && hits.length) this.fi = 0;
+    this.onFind?.({ total: hits.length, index: this.fi });
+  }
+
   private renderHead() {
     let h = '';
     this.cols.forEach((c, i) => {
@@ -297,7 +311,7 @@ export class TableView {
     for (let r = first; r < last; r++) {
       const idx = this.order[r];
       const it = this.items[idx];
-      const hit = this.fset?.has(r) ? (r === this.fhits[this.fi] ? ' hit cur' : ' hit') : '';
+      const hit = this.fset?.has(idx) ? (r === this.fhits[this.fi] ? ' hit cur' : ' hit') : '';
       html += `<div class="tb-r${it === this.sel ? ' sel' : ''}${hit}" data-r="${idx}">`;
       html += `<div class="tb-td tb-c0" data-c="0">${escapeHtml(isObj ? String(it.key) : String(idx))}</div>`;
       for (let ci = 1; ci < this.cols.length; ci++) {
@@ -340,8 +354,10 @@ export class TableView {
         this.sortCol = c;
         this.sortDir = 1;
       }
+      const cur = this.fi >= 0 ? this.order[this.fhits[this.fi]] : -1;
       this.renderHead();
       this.applySort();
+      if (this.fset) this.resorted(this.fset, cur);
       this.render(true);
       return;
     }

@@ -302,7 +302,7 @@ export class Engine {
       }
       if (this.settings.view === 'format' && this.goodVer !== null && this.goodVer === this.fmtSrcVer) this.runFormat();
     };
-    for (const [view, code] of [['format', this.fmt], ['convert', this.code]] as const) code.onFind = (result) => {
+    for (const [view, code] of [['format', this.fmt], ['convert', this.code], ['table', this.table]] as const) code.onFind = (result) => {
       if (this.settings.view === view && this.query) store.set({ find: { ...store.get().find, ...result } });
     };
     this.applyWrap();
