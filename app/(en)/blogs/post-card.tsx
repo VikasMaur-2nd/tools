@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { highlightCode } from '@/lib/convert/highlight';
-import { formatDate, type Post } from './posts';
+import { formatDate } from '../dates';
+import type { Post } from './posts';
 
 export function Arrow() {
   return (

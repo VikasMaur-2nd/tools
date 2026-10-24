@@ -87,8 +87,3 @@ export function getPost(slug: string): Post {
   if (!post) throw new Error(`Unknown post: ${slug}`);
   return post;
 }
-
-const DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' });
-
-/** `2026-10-13` → `October 13, 2026`. */
-export const formatDate = (iso: string) => DATE.format(new Date(`${iso}T00:00:00Z`));

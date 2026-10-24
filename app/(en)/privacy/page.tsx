@@ -4,6 +4,7 @@ import AnalyticsSwitch from '@/components/AnalyticsSwitch';
 import { analyticsConfigured, stateFrom } from '@/lib/analytics';
 import { EVENT_PROPS, type EventName } from '@/lib/analytics/events';
 import ContentShell from '../content-shell';
+import { PAGE_DATES, formatDate } from '../dates';
 import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
 
 const DESCRIPTION =
@@ -245,7 +246,9 @@ export default function PrivacyPage() {
           loaded at all and Vercel counts nothing. In the JSON tool, the same choice is <strong>Privacy mode</strong> in the command palette (Ctrl+K, or
           ⌘K on a Mac). If your browser sends Global Privacy Control or Do Not Track, PostHog never loads, without you doing anything.
         </p>
-        <p className="muted">Last updated 24 October 2026.</p>
+        <p className="muted">
+          Last updated <time dateTime={PAGE_DATES['/privacy'].updated}>{formatDate(PAGE_DATES['/privacy'].updated)}</time>.
+        </p>
       </div>
     </ContentShell>
   );

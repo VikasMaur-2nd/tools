@@ -6,6 +6,7 @@ import { TARGETS } from '@/lib/engine/targets';
 import { codeWithLinks } from '@/lib/link-code';
 import { Code } from '../blogs/article';
 import ContentShell from '../content-shell';
+import { PAGE_DATES } from '../dates';
 import { SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
 import { SITE } from '@/lib/site';
 import CodeSnippet from './code-snippet';
@@ -16,7 +17,6 @@ const TITLE = 'Integrate: add "View in Tool Kumar" buttons and links';
 const DESCRIPTION =
   'Add a "View in Tool Kumar" or "Compare in Tool Kumar" button to docs, READMEs, bug reports and apps. The link carries the JSON itself, so nothing is uploaded. Free, no sign-up, no API key.';
 const PATH = '/integrate';
-const UPDATED = '2026-10-21';
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -37,8 +37,8 @@ const jsonLd = {
       url: `${SITE}${PATH}`,
       mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${PATH}` },
       image: `${SITE}${SOCIAL_IMAGE.url}`,
-      datePublished: UPDATED,
-      dateModified: UPDATED,
+      datePublished: PAGE_DATES[PATH].published,
+      dateModified: PAGE_DATES[PATH].updated,
       author: { '@id': `${SITE}/#organization` },
       publisher: { '@id': `${SITE}/#organization` },
       keywords: ['View in Tool Kumar', 'open JSON in viewer link', 'JSON viewer button', 'share JSON link', 'JSON diff link', 'embed JSON viewer'],

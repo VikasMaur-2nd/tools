@@ -6,7 +6,8 @@ import { codeWithLinks } from '@/lib/link-code';
 import ContentShell, { Logo } from '../content-shell';
 import { jsonLdScript, postJsonLd, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 import { Arrow, PostCard } from './post-card';
-import { POSTS, formatDate, type Post } from './posts';
+import { formatDate } from '../dates';
+import { POSTS, type Post } from './posts';
 
 export function postMetadata(post: Post): Metadata {
   const url = `/blogs/${post.slug}`;

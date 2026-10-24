@@ -3,12 +3,14 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Code } from '../blogs/article';
 import ContentShell, { Logo } from '../content-shell';
+import { PAGE_DATES, formatDate } from '../dates';
 import { jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 import { SITE } from '@/lib/site';
 
-export const RESOURCE_DATE = '2026-10-14';
+type Dates = { published: string; updated: string };
+type ResourcePath = '/resources/json-reference' | '/resources/json-examples';
 
-export function resourceMetadata({ title, description, path }: { title: string; description: string; path: string }): Metadata {
+export function resourceMetadata({ title, description, path, published, updated }: { title: string; description: string; path: string } & Dates): Metadata {
   return {
     title,
     description,
@@ -19,8 +21,8 @@ export function resourceMetadata({ title, description, path }: { title: string; 
       siteName: SITE_NAME,
       title: `${title} | ${SITE_NAME}`,
       description,
-      publishedTime: RESOURCE_DATE,
-      modifiedTime: RESOURCE_DATE,
+      publishedTime: published,
+      modifiedTime: updated,
       authors: [SITE_NAME],
       images: [SOCIAL_IMAGE],
     },
@@ -28,7 +30,7 @@ export function resourceMetadata({ title, description, path }: { title: string; 
   };
 }
 
-export function resourceJsonLd({ title, description, path, keywords }: { title: string; description: string; path: string; keywords: string[] }) {
+export function resourceJsonLd({ title, description, path, keywords, published, updated }: { title: string; description: string; path: string; keywords: string[] } & Dates) {
   return (
     <script
       type="application/ld+json"
@@ -44,8 +46,8 @@ export function resourceJsonLd({ title, description, path, keywords }: { title: 
               url: `${SITE}${path}`,
               mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${path}` },
               image: `${SITE}${SOCIAL_IMAGE.url}`,
-              datePublished: RESOURCE_DATE,
-              dateModified: RESOURCE_DATE,
+              datePublished: published,
+              dateModified: updated,
               author: { '@id': `${SITE}/#organization` },
               publisher: { '@id': `${SITE}/#organization` },
               keywords,
@@ -78,14 +80,15 @@ export function ResourceArticle({
 }: {
   title: string;
   lede: string;
-  path: string;
+  path: ResourcePath;
   keywords: string[];
   toc: { id: string; label: string }[];
   children: ReactNode;
 }) {
+  const dates = PAGE_DATES[path];
   return (
     <ContentShell current="resources" progress>
-      {resourceJsonLd({ title, description: lede, path, keywords })}
+      {resourceJsonLd({ title, description: lede, path, keywords, ...dates })}
       <article className="article">
         <header className="article-head">
           <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -101,7 +104,7 @@ export function ResourceArticle({
             <Logo size={36} />
             <p>
               <span className="byline-name">{SITE_NAME}</span>
-              <span className="byline-meta"><time dateTime={RESOURCE_DATE}>October 13, 2026</time> · Maintained reference</span>
+              <span className="byline-meta"><time dateTime={dates.updated}>{formatDate(dates.updated)}</time> · Maintained reference</span>
             </p>
           </div>
         </header>

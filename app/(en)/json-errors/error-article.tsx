@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import ContentShell, { Logo } from '../content-shell';
 import { Code } from '../blogs/article';
-import { RESOURCE_DATE } from '../resources/resource';
+import { formatDate } from '../dates';
 import { jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
 import { SITE } from '@/lib/site';
-import { ERROR_GUIDES, GUIDES_UPDATED, GUIDES_UPDATED_LABEL, SOURCES, type ErrorGuide } from './errors';
+import { ERROR_GUIDES, SOURCES, type ErrorGuide } from './errors';
 import HttpExamples from './http-examples';
 
 export function Faq({ entries }: { entries: ErrorGuide['faq'] }) {
@@ -59,7 +59,7 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
       {
         '@type': 'TechArticle', '@id': `${url}#article`, headline: guide.title, description: guide.description,
         url, mainEntityOfPage: { '@type': 'WebPage', '@id': url }, image: `${SITE}${SOCIAL_IMAGE.url}`,
-        datePublished: guide.published ?? RESOURCE_DATE, dateModified: GUIDES_UPDATED,
+        datePublished: guide.published, dateModified: guide.updated,
         author: { '@id': `${SITE}/#organization` }, publisher: { '@id': `${SITE}/#organization` },
         isPartOf: { '@id': `${SITE}/json-errors#page` }, inLanguage: 'en-US',
         citation: [...citations, SOURCES.rfc, SOURCES.ecma],
@@ -89,7 +89,7 @@ export default function ErrorArticle({ guide }: { guide: ErrorGuide }) {
           <p className="lede">{guide.description}</p>
           <div className="byline"><Logo size={36} /><p>
             <span className="byline-name">{SITE_NAME}</span>
-            <span className="byline-meta"><time dateTime={GUIDES_UPDATED}>{GUIDES_UPDATED_LABEL}</time> · {guide.checked ?? 'Examples checked in Node 24 and Python 3.14'}</span>
+            <span className="byline-meta"><time dateTime={guide.updated}>{formatDate(guide.updated)}</time> · {guide.checked ?? 'Examples checked in Node 24 and Python 3.14'}</span>
           </p></div>
         </header>
         <div className="article-grid">
