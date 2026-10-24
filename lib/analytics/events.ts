@@ -22,7 +22,7 @@ export type Via = 'pointer' | 'keyboard' | 'palette' | 'context_menu' | 'agent' 
 /** The JSON tool's functions an AI agent in the browser can call through WebMCP (lib/webmcp/tools.ts). */
 export type AgentToolName =
   | 'open_json' | 'check_json' | 'get_json_value' | 'repair_json' | 'format_json'
-  | 'convert_json' | 'import_to_json' | 'compare_json' | 'decode_jwt' | 'show_view';
+  | 'convert_json' | 'import_to_json' | 'compare_json' | 'decode_jwt' | 'download_file' | 'share_link' | 'show_view';
 
 /** Discrete actions, reported as `feature_used { feature }`. */
 export type Feature =

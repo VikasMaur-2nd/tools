@@ -11,7 +11,7 @@ import type { GraphExport, GraphViewApi } from '../graph/types';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
-import { targetInfo } from './targets';
+import { convertFileName, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type ContextMenu, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
@@ -1805,7 +1805,8 @@ export class Engine {
     this.saveBlob(new Blob([text], { type }), name);
   }
 
-  private saveBlob(blob: Blob, name: string) {
+  /** Downloads `blob` as `name` (no prompt: the browser saves it where downloads go). */
+  saveBlob(blob: Blob, name: string) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1822,24 +1823,11 @@ export class Engine {
    * button around it in Markdown or HTML, as /integrate's builder makes them (lib/badge.ts).
    */
   async share(as: SnippetFormat = 'link') {
-    this.flushLoad();
-    const comparing = this.settings.view === 'compare';
-    const a = this.ed.text;
-    const b = comparing ? this.ed2.text : '';
-    if (!a.trim() && !b.trim()) return this.toast('Nothing to share yet', 'info');
-    // Valid JSON travels minified (a shorter link) and opens formatted; anything else as typed.
-    const r = this.fresh();
-    const rb = b.trim() ? parse(b) : null;
-    const compact = (text: string, r: ParseResult | null) => (r?.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text);
     try {
-      const hash = await linkHash({
-        a: a.trim() ? { text: this.jwt ? a.trim() : compact(a, r) } : undefined,
-        b: rb ? { text: compact(b, rb) } : undefined,
-        view: this.settings.view,
-        to: this.settings.target,
-      });
+      const link = await this.shareUrl();
+      if (!link) return this.toast('Nothing to share yet', 'info');
+      const { url, comparing } = link;
       track('feature_used', { feature: comparing ? 'share_compare' : 'share_link', value: as });
-      const url = `${location.origin}/${hash}`;
       const copied = {
         link: comparing ? 'Comparison link copied. Both documents live in the link, not on a server.' : 'Share link copied. The data lives in the link, not on a server.',
         markdown: comparing ? 'Markdown button copied. Both documents live in its link, not on a server.' : 'Markdown button copied. The data lives in its link, not on a server.',
@@ -1865,6 +1853,26 @@ export class Engine {
     } catch {
       this.toast("Your browser can't create share links", 'err');
     }
+  }
+
+  /** The link `share` makes (null: nothing to share). Rejects where the browser can't compress. */
+  async shareUrl(): Promise<{ url: string; comparing: boolean } | null> {
+    this.flushLoad();
+    const comparing = this.settings.view === 'compare';
+    const a = this.ed.text;
+    const b = comparing ? this.ed2.text : '';
+    if (!a.trim() && !b.trim()) return null;
+    // Valid JSON travels minified (a shorter link) and opens formatted; anything else as typed.
+    const r = this.fresh();
+    const rb = b.trim() ? parse(b) : null;
+    const compact = (text: string, r: ParseResult | null) => (r?.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text);
+    const hash = await linkHash({
+      a: a.trim() ? { text: this.jwt ? a.trim() : compact(a, r) } : undefined,
+      b: rb ? { text: compact(b, rb) } : undefined,
+      view: this.settings.view,
+      to: this.settings.target,
+    });
+    return { url: `${location.origin}/${hash}`, comparing };
   }
 
   /** Opens what a link's fragment asks for (lib/link.ts), then takes it out of the address bar. */
@@ -2383,12 +2391,7 @@ export class Engine {
     const s0 = this.settings;
     const info = targetInfo(s0.target);
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    const name =
-      info.id === 'java'
-        ? `${s0.rootName || 'Root'}.java` // a public Java class must live in a file of the same name
-        : info.id === 'typescript' || info.id === 'zod'
-          ? `${base}.${info.id === 'zod' ? 'schema.' : ''}ts`
-          : `${base}.${info.ext}`;
+    const name = convertFileName(info, base, s0.rootName);
     if (info.id === 'xlsx') {
       const root = this.good?.root;
       if (!root) return this.toast('Paste or open valid JSON first', 'info');
@@ -2585,22 +2588,25 @@ export class Engine {
   }
 
   /** Downloads the graph as an image; `name` without an extension (default: the document's name). */
-  downloadGraph(opts: GraphExport | 'png' | 'svg', name?: string) {
+  downloadGraph(opts: GraphExport | 'png' | 'svg' | 'jpeg', name?: string): Promise<{ file: string; size: number } | null> {
     const o: GraphExport = typeof opts === 'string' ? { format: opts, area: 'all', background: 'theme', scale: 2 } : opts;
-    this.withGraph(() => {
-      if (!this.graph) return;
+    // Settles with the saved file, or null (no graph, or the export failed).
+    return new Promise((settle) => this.withGraph(() => {
+      if (!this.graph) return settle(null);
       track('feature_used', { feature: o.format === 'png' ? 'graph_export_png' : o.format === 'jpeg' ? 'graph_export_jpeg' : 'graph_export_svg' });
       const file = `${name?.trim() || this.docBase()}.${o.format === 'jpeg' ? 'jpg' : o.format}`;
       let reduced: [number, number] | null = null;
       void this.graph.exportImage(o, (w, h) => (reduced = [w, h])).then((blob) => {
-        if (this.dead) return;
+        if (this.dead) return settle(null);
         this.saveBlob(blob, file);
         if (reduced) this.reducedToast(reduced);
+        settle({ file, size: blob.size });
       }).catch((error) => {
         reportError(error, 'export');
         if (!this.dead) this.toast(rt("Couldn't download graph: {error}", { error: rt.msg(error instanceof Error ? error.message : 'Graph export failed') }), 'err');
+        settle(null);
       });
-    });
+    }));
   }
 
   /** Copies the graph as a PNG image. Call from the click itself: browsers only allow it during user input. */

@@ -1,19 +1,26 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { EVENT_PROPS, clean } from '../lib/analytics/events';
+import type { Settings } from '../lib/engine/store';
 import { formatDoc } from '../lib/json/format';
 import { readJwt } from '../lib/json/jwt';
 import { parse } from '../lib/json/parser';
-import { MAX_RESULT, TOOLS, cap, locator, type Doc, type Page } from '../lib/webmcp/tools';
+import { decodeDoc, linkHash, parseLink } from '../lib/link';
+import { MAX_RESULT, TOOLS, cap, cleanName, locator, type Doc, type Page } from '../lib/webmcp/tools';
 
 const b64u = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
 const JWT = `${b64u('{"alg":"HS256","typ":"JWT"}')}.${b64u('{"sub":"u1","name":"Ada","exp":1822348800}')}.c2ln`;
 
 /** The page as the engine would act on it: the real parser and formatter, actions recorded. */
-function fakePage(initial = '') {
+function fakePage(initial = '', fileName: string | null = null) {
   let text = initial;
   let indent = '  ';
   const calls: string[] = [];
+  const files: { name: string; file: Blob }[] = [];
+  const settings: ReturnType<Page['settings']> & Pick<Settings, 'view'> = {
+    minify: false, escape: false, sortKeys: false, target: 'typescript', rootName: 'Root', tsStyle: 'interface', csharpLib: 'stj', view: 'format',
+  };
+  let shareFails = false;
   const page: Page = {
     doc(): Doc {
       const jwt = readJwt(text, indent);
@@ -40,8 +47,25 @@ function fakePage(initial = '') {
       text = json;
     },
     compare: () => void calls.push('compare'),
+    fileName: () => fileName,
+    settings: () => settings,
+    save(file, name, feature) {
+      calls.push(`save ${name} ${feature}`);
+      files.push({ name, file });
+    },
+    async graphImage(format, name) {
+      calls.push(`graph ${format} ${name ?? '-'}`);
+      return { file: `${name ?? 'data'}.${format === 'jpeg' ? 'jpg' : format}`, size: 2048 };
+    },
+    async shareUrl() {
+      if (shareFails) throw new Error('no CompressionStream');
+      if (!text.trim()) return null;
+      const r = parse(text);
+      const compact = r.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text;
+      return { url: `https://tools.vikasmaur.com/${await linkHash({ a: { text: compact }, view: settings.view })}`, comparing: false };
+    },
   };
-  return { page, calls, text: () => text };
+  return { page, calls, files, settings, text: () => text, failShare: () => (shareFails = true) };
 }
 
 const tool = (name: string) => {
@@ -70,7 +94,7 @@ describe('definitions', () => {
       if (t.name !== 'show_view') assert.equal(t.annotations.untrustedContentHint, true, t.name);
     }
     const readOnly = TOOLS.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort();
-    assert.deepEqual(readOnly, ['check_json', 'decode_jwt', 'get_json_value', 'show_view']);
+    assert.deepEqual(readOnly, ['check_json', 'decode_jwt', 'get_json_value', 'share_link', 'show_view']);
   });
 
   test("analytics carries each tool's name and nothing else from the call", () => {
@@ -263,6 +287,118 @@ describe('decode_jwt', () => {
     const doc = JSON.parse(r.text.slice(r.text.indexOf('\n') + 1));
     assert.deepEqual(doc.payload, { sub: 'u1', name: 'Ada', exp: 1822348800 });
     assert.match((await run('decode_jwt', fakePage('{"a":1}').page)).text, /not a JWT/);
+  });
+});
+
+describe('download_file', () => {
+  const doc = '{"b":1,"a":[{"id":1,"name":"Ada"}]}';
+  const body = (f: { file: Blob }) => f.file.text();
+
+  test('the document as it is, under its own name or one the agent gives', async () => {
+    const f = fakePage('name: Ada\n', 'people.yaml');
+    const r = await run('download_file', f.page, { what: 'document' });
+    assert.equal(r.ok, true);
+    assert.match(r.text, /^Downloading people\.yaml \(10 B\)\. It goes where this browser saves downloads\. If the browser asks/);
+    await run('download_file', f.page, { what: 'document', name: '../secret/Team List.yaml' });
+    assert.deepEqual(f.calls, ['save people.yaml download_input', 'save Team List.yaml download_input']);
+    assert.equal(await body(f.files[0]), 'name: Ada\n');
+    const g = fakePage(doc);
+    await run('download_file', g.page, { what: 'document' });
+    assert.deepEqual(g.calls, ['save data.json download_input']);
+  });
+
+  test('the formatted output, as the Format view settings make it', async () => {
+    const f = fakePage(doc, 'orders.json');
+    Object.assign(f.settings, { minify: true, sortKeys: true });
+    await run('download_file', f.page, { what: 'formatted' });
+    assert.equal(f.calls[0], 'save orders.min.json download_output');
+    assert.equal(await body(f.files[0]), '{"a":[{"id":1,"name":"Ada"}],"b":1}');
+    Object.assign(f.settings, { minify: false, sortKeys: false });
+    await run('download_file', f.page, { what: 'formatted', name: 'pretty.json' });
+    assert.equal(f.calls[1], 'save pretty.json download_output');
+    assert.equal(await body(f.files[1]), formatDoc(doc, parse(doc), '  '));
+  });
+
+  test('converted code: the target asked for (shown in the page too), named as the page names it', async () => {
+    const f = fakePage(doc, 'orders.json');
+    await run('download_file', f.page, { what: 'converted' });
+    await run('download_file', f.page, { what: 'converted', to: 'zod' });
+    await run('download_file', f.page, { what: 'converted', to: 'java' });
+    await run('download_file', f.page, { what: 'converted', to: 'csv', name: 'rows.csv' });
+    assert.deepEqual(f.calls, [
+      'save orders.ts download_convert',
+      'convert zod - - -', 'save orders.schema.ts download_convert',
+      'convert java - - -', 'save Root.java download_convert',
+      'convert csv - - -', 'save rows.csv download_convert',
+    ]);
+    assert.match(await body(f.files[0]), /export interface Root \{/);
+    assert.match(await body(f.files[1]), /z\.object/);
+    assert.equal(f.files[3].file.type, 'text/csv');
+  });
+
+  test('an Excel workbook of the records', async () => {
+    const f = fakePage(doc);
+    const r = await run('download_file', f.page, { what: 'excel' });
+    assert.equal(r.ok, true);
+    assert.deepEqual(f.calls, ['save data.xlsx export_xlsx']);
+    const bytes = new Uint8Array(await f.files[0].file.arrayBuffer());
+    assert.deepEqual([...bytes.slice(0, 2)], [0x50, 0x4b], 'a zip (PK) file');
+  });
+
+  test('a graph image, waiting for it to be made', async () => {
+    const f = fakePage(doc);
+    assert.equal((await run('download_file', f.page, { what: 'graph', image_format: 'svg', name: 'chart.svg' })).text, 'Downloading chart.svg (2.0 KB). It goes where this browser saves downloads.');
+    await run('download_file', f.page, { what: 'graph' });
+    assert.deepEqual(f.calls, ['graph svg chart', 'graph png -']);
+  });
+
+  test('nothing to download, a broken document and bad arguments are explained', async () => {
+    assert.match((await run('download_file', fakePage('').page, { what: 'document' })).text, /editor is empty/);
+    assert.match((await run('download_file', fakePage('{"a":').page, { what: 'converted' })).text, /isn't valid JSON/);
+    assert.match((await run('download_file', fakePage(doc).page, { what: 'pdf' })).text, /^Error: what must be one of "document", "formatted", "converted", "excel", "graph"/);
+    assert.match((await run('download_file', fakePage(doc).page, { what: 'graph', image_format: 'gif' })).text, /^Error: image_format/);
+    assert.match((await run('download_file', fakePage(doc).page, { what: 'converted', to: 'xlsx' })).text, /^Error: to must be one of/);
+  });
+
+  test('file names from the agent lose folders and characters file systems refuse', () => {
+    assert.equal(cleanName('../../etc/passwd'), 'passwd');
+    assert.equal(cleanName('C:\\Users\\me\\re:port?.json'), 'report.json');
+    assert.equal(cleanName('  .hidden  '), 'hidden');
+    assert.equal(cleanName('a\u0000b\nc'), 'abc');
+    assert.equal(cleanName('x'.repeat(300)).length, 100);
+  });
+});
+
+describe('share_link', () => {
+  test('a link that opens the document, the data inside it', async () => {
+    const r = await run('share_link', fakePage('{ "a": [1, 2] }').page);
+    assert.equal(r.ok, true);
+    const url = r.text.split('\n')[1];
+    assert.match(url, /^https:\/\/tools\.vikasmaur\.com\/#/);
+    const link = parseLink(new URL(url).hash);
+    assert.ok(link && typeof link === 'object' && link.a && 'data' in link.a);
+    assert.equal(await decodeDoc(link.a.data), '{"a":[1,2]}');
+    assert.equal(link.view, 'format');
+  });
+
+  test('as a Markdown or HTML button', async () => {
+    const { page } = fakePage('{"a":1}');
+    assert.match((await run('share_link', page, { as: 'markdown' })).text, /\n\[!\[View in Tool Kumar\]\(https:\/\/tools\.vikasmaur\.com\/badges\/[^)]+\)\]\(https:\/\/tools\.vikasmaur\.com\/#/);
+    assert.match((await run('share_link', page, { as: 'html' })).text, /\n<a href="https:\/\/tools\.vikasmaur\.com\/#[^"]+"><picture>/);
+    assert.match((await run('share_link', page, { as: 'qr' })).text, /^Error: as must be one of "link", "markdown", "html"/);
+  });
+
+  test('nothing open, a link too long to hand over, and a browser without compression', async () => {
+    assert.match((await run('share_link', fakePage('').page)).text, /editor is empty/);
+    // Random text barely compresses: a link far past what a tool returns.
+    let big = '';
+    for (let i = 0; big.length < 80_000; i++) big += ((i * 2654435761) >>> 0).toString(36);
+    const long = await run('share_link', fakePage(JSON.stringify({ big })).page);
+    assert.equal(long.ok, false);
+    assert.match(long.text, /^The link is [\d.]+ KB, too long to hand over here\. The user can copy it with Share in the page/);
+    const f = fakePage('{"a":1}');
+    f.failShare();
+    assert.equal((await run('share_link', f.page)).text, "This browser can't make share links.");
   });
 });
 

@@ -114,7 +114,7 @@ export default function PrivacyPage() {
           <li>A site that opens a document in Tool Kumar for you hands it from its tab to ours, inside your browser. It never reaches our server.</li>
           <li>
             An AI agent in your browser, such as the one in ChatGPT’s desktop app, can use the JSON tool for you through named functions (
-            <a href="https://webmachinelearning.github.io/webmcp/">WebMCP</a>): open, check, repair, format, convert or compare a document. The
+            <a href="https://webmachinelearning.github.io/webmcp/">WebMCP</a>): open, check, repair, format, convert, compare, download or share a document. The
             functions run in your browser like the buttons do. What they return goes to that agent and its provider, under their privacy terms, as
             anything else the agent reads on the page does. It never reaches us.
           </li>

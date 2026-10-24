@@ -5,6 +5,7 @@
 import { reportError, track, withVia } from '../analytics';
 import type { Engine } from '../engine/engine';
 import { getEngine } from '../engine/instance';
+import { store } from '../engine/store';
 import { TOOLS, type AgentTool, type Page } from './tools';
 
 /** The browser's WebMCP object: `document.modelContext`, or `navigator.modelContext` in Chrome's first origin-trial builds. */
@@ -50,6 +51,19 @@ const page: Page = {
       e.loadCompare(modified, null);
       e.setView('compare');
     }),
+  fileName: () => store.get().fileName,
+  settings: () => store.get().settings,
+  save: (file, name, feature) =>
+    agent((e) => {
+      e.saveBlob(file, name);
+      track('feature_used', { feature });
+    }),
+  graphImage: (format, name) => withVia('agent', () => engine().downloadGraph(format, name)),
+  shareUrl: async (as) => {
+    const link = await engine().shareUrl();
+    if (link) withVia('agent', () => track('feature_used', { feature: link.comparing ? 'share_compare' : 'share_link', value: as }));
+    return link;
+  },
 };
 
 /** Runs a tool for the agent. Its answer is text, failures included: the agent never sees why a call rejected. */

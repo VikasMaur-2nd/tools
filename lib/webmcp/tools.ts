@@ -6,11 +6,12 @@
  * undoable); the answer is text for the agent. Nothing here touches the DOM: ./register.ts
  * connects the tools to the live engine, and tests run them against a fake page.
  */
-import type { AgentToolName } from '../analytics/events';
+import type { AgentToolName, Feature } from '../analytics/events';
+import { snippet, type SnippetFormat } from '../badge';
 import type { Change } from '../diff/diff';
 import { jsonLines } from '../engine/rules';
-import type { IndentId } from '../engine/store';
-import { TARGETS } from '../engine/targets';
+import type { IndentId, Settings } from '../engine/store';
+import { TARGETS, convertFileName, targetInfo } from '../engine/targets';
 import { byteLength, copyText, formatBytes, formatDoc, preview, primText, tooLarge } from '../json/format';
 import type { JwtInput } from '../json/jwt';
 import { ARR, BOOL, kids, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, parse, tooDeep, type Issue, type JNode, type ParseResult } from '../json/parser';
@@ -50,7 +51,20 @@ export interface Page {
   imported(json: string, from: ImportFrom): void;
   /** Opens Compare with `modified` beside the document. */
   compare(modified: string): void;
+  /** The open document's file name, if it has one. */
+  fileName(): string | null;
+  /** The Format and Convert settings the page shows its output with. */
+  settings(): Pick<Settings, 'minify' | 'escape' | 'sortKeys' | 'target' | 'rootName' | 'tsStyle' | 'csharpLib'>;
+  /** Downloads `file` as `name`; `feature` is the download's analytics name. */
+  save(file: Blob, name: string, feature: DownloadFeature): void;
+  /** Downloads the graph as an image (the Graph view opens for it): the file, or null if it couldn't be made. */
+  graphImage(format: ImageFormat, name: string | undefined): Promise<{ file: string; size: number } | null>;
+  /** The share link for what is on screen (both documents in Compare), or null when there is nothing. Rejects where links can't be made. */
+  shareUrl(as: SnippetFormat): Promise<{ url: string; comparing: boolean } | null>;
 }
+
+export type DownloadFeature = Extract<Feature, 'download_input' | 'download_output' | 'download_convert' | 'export_xlsx'>;
+export type ImageFormat = 'png' | 'jpeg' | 'svg';
 
 export interface Result {
   text: string;
@@ -82,6 +96,11 @@ const FROM: ImportFrom[] = ['yaml', 'xml', 'csv', 'tsv', 'toml'];
 /** Convert targets an agent can ask for (Excel is a binary download; CSV has the same table). */
 const TARGET_IDS = TARGETS.map((t) => t.id).filter((id) => id !== 'xlsx');
 const CSHARP: Record<string, 'stj' | 'newtonsoft'> = { 'System.Text.Json': 'stj', 'Newtonsoft.Json': 'newtonsoft' };
+const DOWNLOADS = ['document', 'formatted', 'converted', 'excel', 'graph'] as const;
+const IMAGES: ImageFormat[] = ['png', 'jpeg', 'svg'];
+const SHARE_AS: SnippetFormat[] = ['link', 'markdown', 'html'];
+/** How long a graph image may take before the tool answers without it (it still downloads when ready). */
+const GRAPH_WAIT = 60_000;
 
 const done = (text: string): Result => ({ text, ok: true });
 const fail = (text: string): Result => ({ text, ok: false });
@@ -197,6 +216,26 @@ const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | undefin
   v === undefined || v === null ? undefined : allowed.includes(v as T) ? (v as T) : null;
 
 const NO_INPUT = { type: 'object', properties: {} };
+
+/** A file name from the agent: no folders or characters file systems refuse, at most 100 characters ('' if nothing is left). */
+export function cleanName(name: string): string {
+  const last = name.split(/[\\/]/).pop() ?? '';
+  return last.replace(/[\x00-\x1f\x7f<>:"|?*]/g, '').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 100).trim();
+}
+
+/** `name` without `.ext` at its end (the tool adds the extension itself). */
+const stem = (name: string, ext: string) => (name.toLowerCase().endsWith('.' + ext.toLowerCase()) ? name.slice(0, -ext.length - 1) : name);
+
+/** The document's file name without its extension (default `data`). */
+const baseOf = (fileName: string | null) => (fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
+
+function saved(page: Page, file: Blob, name: string, feature: DownloadFeature): Result {
+  page.save(file, name, feature);
+  return done(
+    `Downloading ${name} (${formatBytes(file.size)}). It goes where this browser saves downloads. ` +
+      'If the browser asks whether this site may download files, the user has to allow it.',
+  );
+}
 
 export const TOOLS: AgentTool[] = [
   {
@@ -455,6 +494,116 @@ export const TOOLS: AgentTool[] = [
       if (!d.text.trim()) return EMPTY;
       if (!d.jwt) return fail('The open document is not a JWT. Open one with open_json first.');
       return done(`The decoded JWT (its signature was not verified):\n${cap(d.jwt.json)}`);
+    },
+  },
+  {
+    name: 'download_file',
+    title: 'Download a file',
+    description:
+      "Save a file to the user's device, made from the open document: the document itself, the formatted output (as the Format view shows it), " +
+      'converted code or data (as the Convert view makes it), an Excel workbook of its records, or an image of its graph. ' +
+      'Use it for results too long to hand over as text, and for Excel and images, which have no text form.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        what: { type: 'string', enum: DOWNLOADS, description: 'document, formatted, converted, excel (.xlsx) or graph (an image)' },
+        to: { type: 'string', enum: TARGET_IDS, description: 'converted only: what to convert to (default: the Convert view\'s current choice)' },
+        image_format: { type: 'string', enum: IMAGES, description: 'graph only: png (default), jpeg or svg' },
+        name: { type: 'string', description: 'A file name without the extension (default: the document\'s own name, or data)' },
+      },
+      required: ['what'],
+    },
+    annotations: { untrustedContentHint: true },
+    async run(input, page) {
+      const what = oneOf(input.what, DOWNLOADS);
+      const to = oneOf(input.to, TARGET_IDS);
+      const format = oneOf(input.image_format, IMAGES);
+      if (!what) return fail(`Error: what must be one of ${list(DOWNLOADS)}.`);
+      if (to === null) return fail(`Error: to must be one of ${list(TARGET_IDS)}.`);
+      if (format === null) return fail(`Error: image_format must be one of ${list(IMAGES)}.`);
+      const custom = cleanName(str(input.name) ?? '');
+      const d = page.doc();
+      if (what === 'document') {
+        if (!d.text.trim()) return EMPTY;
+        const own = page.fileName() || 'data.json';
+        const ext = /\.([a-z0-9]+)$/i.exec(own)?.[1] ?? 'json';
+        const name = custom ? `${stem(custom, ext)}.${ext}` : /\.[a-z0-9]+$/i.test(own) ? own : `${own}.json`;
+        return saved(page, new Blob([d.text], { type: 'application/json' }), name, 'download_input');
+      }
+      const p = parsed(d);
+      if ('result' in p) return p.result;
+      const base = custom || baseOf(page.fileName());
+      if (what === 'graph') {
+        const f = format ?? 'png';
+        const ext = f === 'jpeg' ? 'jpg' : f;
+        const r = await Promise.race([page.graphImage(f, custom ? stem(stem(custom, ext), f) : undefined), new Promise<'wait'>((r) => setTimeout(() => r('wait'), GRAPH_WAIT))]);
+        if (r === 'wait') return done('The graph image is still being made; it downloads when it is ready.');
+        if (!r) return fail("The graph image couldn't be made.");
+        return done(`Downloading ${r.file} (${formatBytes(r.size)}). It goes where this browser saves downloads.`);
+      }
+      const s = page.settings();
+      if (what === 'formatted') {
+        const out = attempt(() => {
+          const t = formatDoc(d.src, p.res, s.minify || s.escape ? '' : page.indent(), s.sortKeys);
+          return s.escape ? JSON.stringify(t) : t;
+        });
+        if (typeof out !== 'string') return out;
+        const name = custom ? `${stem(custom, 'json')}.json` : `${base}${s.escape ? '.escaped' : s.minify ? '.min' : ''}.json`;
+        return saved(page, new Blob([out], { type: 'application/json' }), name, 'download_output');
+      }
+      if (p.res.depth > MAX_WALK_DEPTH) return fail('The document is nested too deeply to convert.');
+      const info = targetInfo(what === 'excel' ? 'xlsx' : to ?? s.target);
+      if (to && to !== s.target) page.convert({ target: to });
+      if (info.id === 'xlsx') {
+        const xlsx = await import('../convert/xlsx');
+        let file: Blob;
+        try {
+          file = await xlsx.toXlsx(xlsx.records(p.res.root), { sheetName: base.slice(0, 31) || 'Sheet1' });
+        } catch (e) {
+          if (tooDeep(e)) return fail('The document is nested too deeply to convert.');
+          // (Its own limits, such as too many columns for Excel.)
+          return fail(`The Excel file couldn't be made: ${e instanceof Error ? e.message : 'unknown error'}.`);
+        }
+        return saved(page, file, `${stem(base, 'xlsx')}.xlsx`, 'export_xlsx');
+      }
+      const [mod, xlsx] = await Promise.all([import('../convert'), info.id === 'csv' ? import('../convert/xlsx') : null]);
+      const out = attempt(() => (xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib })));
+      if (typeof out !== 'string') return out;
+      const name = convertFileName(info, stem(base, info.id === 'zod' ? 'schema.ts' : info.ext), s.rootName);
+      return saved(page, new Blob([out], { type: info.mime }), name, 'download_convert');
+    },
+  },
+  {
+    name: 'share_link',
+    title: 'Make a share link',
+    description:
+      'Make a link that opens the open document in this site, in the view open now (with both documents when Compare is open), ' +
+      'for the user to keep or send. The document travels inside the link, after the #, so it never passes through a server. ' +
+      'Returns the link, or a "View in Tool Kumar" button around it as Markdown or HTML. Nothing is copied to the clipboard.',
+    inputSchema: {
+      type: 'object',
+      properties: { as: { type: 'string', enum: SHARE_AS, description: 'link (default), or a button as markdown or html' } },
+    },
+    annotations: { readOnlyHint: true, untrustedContentHint: true },
+    async run(input, page) {
+      const as = oneOf(input.as, SHARE_AS);
+      if (as === null) return fail(`Error: as must be one of ${list(SHARE_AS)}.`);
+      let link: { url: string; comparing: boolean } | null;
+      try {
+        link = await page.shareUrl(as ?? 'link');
+      } catch {
+        return fail("This browser can't make share links.");
+      }
+      if (!link) return EMPTY;
+      const { url, comparing } = link;
+      if (url.length > MAX_RESULT) {
+        return fail(
+          `The link is ${formatBytes(url.length)}, too long to hand over here. The user can copy it with Share in the page ` +
+            '(browsers open links up to about 2 MB), or the document can be sent as a file made with download_file.',
+        );
+      }
+      const opens = comparing ? 'both documents, compared,' : 'the document';
+      return done(`This link opens ${opens} in Tool Kumar; the data is inside the link, not on a server:\n${snippet(as ?? 'link', url, comparing ? 'compare' : 'view', 'auto', new URL(url).origin)}`);
     },
   },
   {
