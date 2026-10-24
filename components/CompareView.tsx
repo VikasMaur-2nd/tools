@@ -16,7 +16,7 @@ import {
   type UIEvent,
 } from 'react';
 import { ARR, MAX_WALK_DEPTH, parse, tooDeep, type JNode } from '@/lib/json/parser';
-import { copyText, preview, primText, tooLarge } from '@/lib/json/format';
+import { clip, copyText, preview, primText, tooLarge } from '@/lib/json/format';
 import { formatPath } from '@/lib/json/path';
 import { diff, parseIgnoreList, type Change, type DiffKind, type DiffResult } from '@/lib/diff/diff';
 import { patchText, toPatch } from '@/lib/diff/patch';
@@ -114,11 +114,13 @@ function textModel(l: JNode, r: JNode, sortKeys: boolean): TextModel | string {
 }
 
 const valueText = (n: JNode) => (n.t >= ARR ? preview(n, 90) : primText(n, 160));
+/** A change's path as its row shows it (keys can be any length). */
+const pathText = (c: Change) => clip(formatPath(c.path), 300);
 
 const describe = (c: Change, tr: T) =>
   c.order
-    ? tr('Key order differs at {path}', { path: formatPath(c.path) })
-    : `${tr(KIND_LABEL[c.kind])} ${formatPath(c.path)}${c.left ? ': ' + valueText(c.left) : ''}${c.right ? (c.left ? ' → ' : ': ') + valueText(c.right) : ''}`;
+    ? tr('Key order differs at {path}', { path: pathText(c) })
+    : `${tr(KIND_LABEL[c.kind])} ${pathText(c)}${c.left ? ': ' + valueText(c.left) : ''}${c.right ? (c.left ? ' → ' : ': ') + valueText(c.right) : ''}`;
 
 const matches = (c: Change, f: Filter) => f === 'all' || c.kind === f || (f === 'changed' && c.kind === 'type');
 
@@ -157,7 +159,7 @@ const Row = memo(function Row({ c, i, sel }: { c: Change; i: number; sel: boolea
         {KIND_MARK[kind]}
       </span>
       <span className="cmp-body" aria-hidden="true">
-        <span className="cmp-path">{formatPath(c.path)}</span>
+        <span className="cmp-path">{pathText(c)}</span>
         <span className="cmp-vals">{vals}</span>
       </span>
     </div>
