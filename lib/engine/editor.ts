@@ -1204,15 +1204,6 @@ export class Editor {
     return !!this.vis && this.vis[this.rowOf(this.lineOf(off))] !== this.lineOf(off);
   }
 
-  /** Can model line `ln` be folded? */
-  canFold(ln: number) {
-    return this.close[ln] >= 0;
-  }
-
-  get hasFolds() {
-    return this.folded.size > 0;
-  }
-
   /** Folds or unfolds the block opened on model line `ln`. */
   toggleFold(ln: number) {
     const c = this.close[ln];
