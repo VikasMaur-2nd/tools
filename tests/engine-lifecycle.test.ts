@@ -89,7 +89,7 @@ function session() {
       if (name === './sizes') return { compressedSizes: () => Promise.resolve({ gzip: 1 }) };
       if (name === './editor') return { loadSurface: () => Promise.resolve() };
       if (name === '../json/smart') return { embeddedJson: (s: string) => s };
-      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
+      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
   });
@@ -232,6 +232,14 @@ test('files open in the order they were asked for, whichever is read first', asy
     assert.deepEqual(loads, [`${target}:b.json`]);
     assert.deepEqual(toasts, [target === 1 ? 'Opened b.json' : 'Comparing with b.json']);
   }
+});
+
+test('a file that fails to convert opens as text, and its error stays in view', async () => {
+  const { engine, loads, toasts } = loading();
+  await engine.loadFile(file('bad.yaml', Promise.resolve('a: [1, 2\nb: c\n')));
+  assert.deepEqual(loads, ['1:bad.yaml']);
+  assert.equal(toasts.length, 1, JSON.stringify(toasts));
+  assert.match(toasts[0], /^Couldn't read bad\.yaml: /);
 });
 
 test('a file that fails to read after a newer one was asked for says nothing', async () => {

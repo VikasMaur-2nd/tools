@@ -1630,6 +1630,8 @@ export class Engine {
     try {
       const text = await f.text();
       if (signal.aborted) return unshow();
+      // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
+      let failed = false;
       if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
         const { detectFormat, importToJson } = await import('../convert/import');
         if (signal.aborted) return unshow();
@@ -1643,11 +1645,12 @@ export class Engine {
             return;
           }
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
+          failed = true;
         }
       }
       noteLoad(source, 1, f.name);
       this.load(text, f.name, true, true);
-      this.toast(`Opened ${f.name}`, 'ok');
+      if (!failed) this.toast(`Opened ${f.name}`, 'ok');
     } catch {
       unshow();
       if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
