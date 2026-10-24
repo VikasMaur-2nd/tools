@@ -10,7 +10,7 @@ export interface Cam {
   s: number;
 }
 
-export const ZOOM_MIN = 0.02;
+const ZOOM_MIN = 0.02;
 export const ZOOM_MAX = 3;
 /** Margin around fitted graphs and followed selections (CSS px). */
 export const MARGIN = 24;

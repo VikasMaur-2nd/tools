@@ -13,7 +13,7 @@ export { cleanUrl };
 /** PostHog's own events that we allow; exceptions have a separate, stricter sanitizer. */
 const SDK_EVENTS = new Set(['$pageview', '$pageleave', '$web_vitals', '$$heatmap', '$snapshot', '$opt_in', '$exception']);
 
-export const allowedEvent = (name: string) => SDK_EVENTS.has(name) || name in EVENT_PROPS;
+const allowedEvent = (name: string) => SDK_EVENTS.has(name) || name in EVENT_PROPS;
 
 /** Properties that may hold element text or attributes; we never want them, whatever enables them. */
 const DROP_PROPS = new Set(['$elements', '$elements_chain', '$el_text', '$external_click_url', '$copy_type', '$selected_content',
@@ -75,7 +75,7 @@ export function beforeSend<T extends CaptureLike>(e: T | null, scripts: Readonly
 }
 
 /** Same as rrweb's own masking: every non-space character becomes '*'. */
-export const stars = (s: string) => s.replace(/\S/g, '*');
+const stars = (s: string) => s.replace(/\S/g, '*');
 
 /**
  * Readable attributes that hold the site's own wording (tooltips, accessible

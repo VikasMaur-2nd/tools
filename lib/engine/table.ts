@@ -14,7 +14,7 @@ import { rt } from '../i18n/ui';
  * header cell or opens an array or object cell as the table.
  */
 
-export const TRH = 30;
+const TRH = 30;
 const OVERSCAN = 20;
 const MAX_COLS = 120;
 

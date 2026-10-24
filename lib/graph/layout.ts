@@ -44,14 +44,14 @@ export interface GraphLayout {
 }
 
 /** Column lists share one backing buffer, so a 100k-deep chain does not retain 500k arrays. */
-export interface PackedInts {
+interface PackedInts {
   readonly length: number;
   readonly starts: Int32Array;
   readonly data: Int32Array;
   at(column: number): Int32Array;
 }
 
-export interface PackedFloats {
+interface PackedFloats {
   readonly length: number;
   readonly starts: Int32Array;
   readonly data: Float64Array;
@@ -299,7 +299,7 @@ export function groupsIn(L: GraphLayout, d: number, y0: number, y1: number): [nu
 }
 
 /** Column at x (-1 outside every column). */
-export function columnAt(L: GraphLayout, px: number): number {
+function columnAt(L: GraphLayout, px: number): number {
   const { colX, colW } = L;
   let lo = 0;
   let hi = colX.length - 1;

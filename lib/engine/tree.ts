@@ -18,7 +18,7 @@ let hintsLoading = false;
  * splices that array instead of rebuilding it.
  */
 
-export const RH = 24;
+const RH = 24;
 const IND = 16;
 const IND_DEPTH = 30;
 const OVERSCAN = 24;

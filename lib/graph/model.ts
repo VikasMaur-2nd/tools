@@ -101,7 +101,7 @@ const ESC: Record<number, string> = { 8: '\\b', 9: '\\t', 10: '\\n', 12: '\\f', 
  * take two, combining marks and joiners none. Erring wide is safe (a little
  * spare room); erring narrow would overflow the card.
  */
-export function cpCols(cp: number): number {
+function cpCols(cp: number): number {
   if (cp < 0x300) return 1;
   if (cp <= 0x36f || cp === 0x200b || cp === 0x200c || cp === 0x200d || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef)) return 0;
   if (cp < 0x1100) return 1;
@@ -176,7 +176,7 @@ export function swatch(n: JNode): boolean {
 }
 
 /** Number of entries of a container. */
-export const count = (n: JNode) => (n.v as JNode[]).length;
+const count = (n: JNode) => (n.v as JNode[]).length;
 
 /** The label of an entry: its key, or its index in an array. */
 export function labelText(n: JNode, build = true): string {
@@ -216,7 +216,7 @@ export function inlineCols(n: JNode): number {
 }
 
 /** True when `n` gets its own card (a non-empty container that isn't shown inline). */
-export const isCard = (n: JNode) => n.t >= ARR && (n.v as JNode[]).length > 0 && inlineCols(n) < 0;
+const isCard = (n: JNode) => n.t >= ARR && (n.v as JNode[]).length > 0 && inlineCols(n) < 0;
 
 /** Value column text of a row: a primitive, `{}`/`[]`, an inline array, or a nested container's size (`{3}`, `[12]`). */
 export function valueText(n: JNode, build = true): string {

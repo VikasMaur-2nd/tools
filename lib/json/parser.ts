@@ -114,7 +114,7 @@ export const MAX_WALK_DEPTH = 2_000;
 const isDigit = (c: number) => c >= 48 && c <= 57;
 const isHex = (c: number) => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 const isSmartQuote = (c: number) => c === 0x201c || c === 0x201d || c === 0x2018 || c === 0x2019;
-export const isExoticSpace = (c: number) =>
+const isExoticSpace = (c: number) =>
   c === 0xa0 ||
   c === 0xfeff ||
   c === 0x1680 ||

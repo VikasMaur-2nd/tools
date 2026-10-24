@@ -17,7 +17,7 @@ export type InputSource = (typeof INPUT_SOURCES)[number];
 const FILE_KIND_LIST = ['json', 'jsonl', 'geojson', 'har', 'map', 'txt', 'log', 'csv', 'tsv', 'yaml', 'xml', 'toml', 'other', 'none'] as const;
 export type FileKind = (typeof FILE_KIND_LIST)[number];
 const VALIDITIES = ['valid', 'fixable', 'invalid', 'unknown'] as const;
-export type Validity = (typeof VALIDITIES)[number];
+type Validity = (typeof VALIDITIES)[number];
 const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare'] as const;
 export type ViewId = (typeof VIEW_IDS)[number];
 /** `context_menu`: an item of the right-click menu (components/ContextMenu.tsx); `agent`: an AI agent's WebMCP tool (lib/webmcp). */

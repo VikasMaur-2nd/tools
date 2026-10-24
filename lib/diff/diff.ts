@@ -71,7 +71,7 @@ export interface Change {
   order?: boolean;
 }
 
-export interface DiffSummary {
+interface DiffSummary {
   added: number;
   removed: number;
   changed: number;

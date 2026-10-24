@@ -67,7 +67,7 @@ export interface Sizes {
   stale: boolean;
 }
 
-export interface Stats {
+interface Stats {
   bytes: number;
   lines: number;
   nodes: number;
@@ -75,7 +75,7 @@ export interface Stats {
   ms: number;
 }
 
-export interface Toast {
+interface Toast {
   id: number;
   msg: string;
   kind: 'ok' | 'err' | 'info';
@@ -191,7 +191,7 @@ export const DEFAULT_SETTINGS: Settings = {
   csharpLib: 'stj',
 };
 
-export const INITIAL: UIState = {
+const INITIAL: UIState = {
   ready: false,
   mac: false,
   settings: DEFAULT_SETTINGS,

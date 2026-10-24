@@ -41,7 +41,7 @@ export interface Shape {
   obj?: Obj;
 }
 
-export interface Prop {
+interface Prop {
   key: string;
   s: Shape;
   /** Number of instances that have the key. */
@@ -199,7 +199,7 @@ const SPLIT = new RegExp('[^\\p{L}\\p{Nd}]+', 'u');
 const DIGIT0 = new RegExp('^\\p{Nd}', 'u');
 
 /** Splits a key into words: `firstName`, `first_name`, `XMLHttp2` ... */
-export function words(s: string): string[] {
+function words(s: string): string[] {
   const w = s
     .replace(/([a-z\d])([A-Z])/g, '$1 $2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')

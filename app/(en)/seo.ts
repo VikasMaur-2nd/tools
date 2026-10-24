@@ -4,7 +4,7 @@ import { SITE } from '@/lib/site';
 import { POSTS } from './blogs/posts';
 
 export const SITE_NAME = 'Tool Kumar';
-export const JSON_TOOL_DESCRIPTION =
+const JSON_TOOL_DESCRIPTION =
   'View, visualize, format, validate, repair and compare JSON online. Tool Kumar runs in your browser, keeps data on your device and works offline.';
 /** The site-wide preview image, for structured data (the <head> uses its versioned URL: app/page-metadata.ts). */
 export const SOCIAL_IMAGE_URL = `${SITE}/opengraph-image.png`;
@@ -15,7 +15,7 @@ export const faqEntries = (locale: SiteLocale = 'en') => {
   return ([1, 2, 3, 4] as const).map((i) => ({ question: t(`home.faq.${i}.q`), answer: t(`home.faq.${i}.a`) }));
 };
 
-export const ORGANIZATION = {
+const ORGANIZATION = {
   '@type': 'Organization',
   '@id': `${SITE}/#organization`,
   name: SITE_NAME,

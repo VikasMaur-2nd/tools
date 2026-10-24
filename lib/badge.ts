@@ -20,7 +20,7 @@ export const BADGES = {
   compare: { label: 'Compare in Tool Kumar', width: 180 },
 } as const;
 
-export const badgeUrl = (kind: BadgeKind, white: boolean, site = SITE) => `${site}/badges/${kind}-in-tool-kumar${white ? '-dark' : ''}.svg`;
+const badgeUrl = (kind: BadgeKind, white: boolean, site = SITE) => `${site}/badges/${kind}-in-tool-kumar${white ? '-dark' : ''}.svg`;
 
 const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
