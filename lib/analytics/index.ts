@@ -40,6 +40,8 @@ let ph: Ph | null = null;
 let send: ((event: string, props: Record<string, unknown>, at?: Date) => void) | null = null;
 let started = false;
 let booting = false;
+/** The page has been visible (prerendered and background-opened tabs start hidden). */
+let seen = false;
 /** Whether events are being collected on this page (./load.ts checks it before watching the editor). */
 export const collecting = () => started;
 /** Events before PostHog loads. Only kept in memory, and cleaned like every other event before sending. */
@@ -194,7 +196,7 @@ async function boot() {
   try {
     const lazy = await import('./posthog');
     if (analyticsState() !== 'on') return;
-    ph = lazy.initPostHog(TOKEN, INGEST);
+    ph = lazy.initPostHog(TOKEN, INGEST, seen && document.visibilityState === 'hidden');
     // PostHog keeps its own opt-out from an earlier page; the site's choice (now on) is what counts.
     if (ph.has_opted_out_capturing()) ph.opt_in_capturing();
     // Local testing (see .env.example): the instance is reachable from the console.
@@ -212,7 +214,11 @@ async function boot() {
  * PostHog itself loads at least `delay` ms after the page has loaded, once the
  * visitor has paused (no click or key for QUIET ms) and the browser is idle.
  * Starting it costs a few long tasks on a slow phone (the SDK, then the first
- * replay snapshot), so they never land on the first paint or mid-typing.
+ * replay snapshot, about 400 ms each at 4x CPU throttling), so they never land
+ * on the first paint or mid-typing: loading it after a fixed time instead puts
+ * them on the next keystrokes. Queued events only live in memory, so a hidden
+ * page (another tab or app) loads it at once: nobody is waiting on the page
+ * then, and it may never be shown again.
  */
 export function startAnalytics(delay = 3000) {
   if (started || typeof window === 'undefined' || analyticsState() !== 'on') return;
@@ -232,10 +238,18 @@ export function startAnalytics(delay = 3000) {
   };
   addEventListener('pointerdown', input, { capture: true, passive: true });
   addEventListener('keydown', input, { capture: true, passive: true });
+  const run = () => void boot().catch(() => {});
+  const visibility = () => {
+    if (document.visibilityState === 'visible') seen = true;
+    // Chrome prerenders pages it expects the visitor to open (hidden until then): those wait as before.
+    else if (!(document as Document & { prerendering?: boolean }).prerendering) run();
+  };
+  document.addEventListener('visibilitychange', visibility);
+  visibility();
   const go = () => {
     const t0 = performance.now();
-    const run = () => void boot().catch(() => {});
     const tick = () => {
+      if (ph) return;
       const now = performance.now();
       if (now - t0 < delay || now - lastInput.at < QUIET) return void window.setTimeout(tick, 500);
       if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2000 });

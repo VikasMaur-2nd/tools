@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 
 /** Run the real startup/opt-out logic with a deferred SDK and browser events. */
-function session() {
+function session(visibilityState = 'visible', prerendering = false) {
   const target = new EventTarget();
   const storage = new Map<string, string>();
   const timers: (() => void)[] = [];
@@ -22,7 +22,14 @@ function session() {
     opt_in_capturing: () => calls.push('opt_in'), startSessionRecording: () => calls.push('start_recording'),
   };
   const sent: string[] = [];
-  const sdk = { initPostHog: () => { loads++; return ph; }, sender: () => (event: string) => { sent.push(event); } };
+  const sdk = {
+    initPostHog: (_token: string, _ingest: string, seenHidden?: boolean) => {
+      loads++;
+      if (seenHidden) sent.push('$pageview');
+      return ph;
+    },
+    sender: () => (event: string) => { sent.push(event); },
+  };
   const exports: {
     startAnalytics?: () => void;
     setAnalyticsEnabled?: (on: boolean) => void;
@@ -33,10 +40,12 @@ function session() {
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   const navigator = { userAgent: 'Browser', webdriver: false, globalPrivacyControl: false };
   const window = { setTimeout: (fn: () => void) => timers.push(fn), requestIdleCallback: (fn: () => void) => fn() };
+  const page = new EventTarget();
+  const document = { readyState: 'loading', visibilityState, prerendering, addEventListener: page.addEventListener.bind(page) };
   runInNewContext(js, {
     exports, require: () => sdk, window, navigator, Event, Date,
     performance: { now: () => clock }, requestIdleCallback: window.requestIdleCallback,
-    document: { readyState: 'loading' }, location: { hostname: 'tools.vikasmaur.com' },
+    document, location: { hostname: 'tools.vikasmaur.com' },
     process: { env: { NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: 'phc_test', NEXT_PUBLIC_POSTHOG_HOST: 'https://us.i.posthog.com' } },
     localStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => storage.set(k, v), removeItem: (k: string) => storage.delete(k) },
     addEventListener: target.addEventListener.bind(target),
@@ -51,7 +60,20 @@ function session() {
     // The dynamic import is compiled into a promise and a deferred require.
     await new Promise<void>((done) => setImmediate(done));
   };
-  return { api: exports as Required<typeof exports>, reports, ready, fire, navigator, loads: () => loads, calls, sdkState, sent };
+  const settle = () => new Promise<void>((done) => setImmediate(done));
+  const hide = async () => {
+    document.visibilityState = 'hidden';
+    document.prerendering = false;
+    page.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+  };
+  const show = async () => {
+    document.visibilityState = 'visible';
+    document.prerendering = false;
+    page.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+  };
+  return { api: exports as Required<typeof exports>, reports, ready, fire, hide, show, navigator, loads: () => loads, calls, sdkState, sent };
 }
 
 test('early errors and rejections wait for the SDK, and duplicate errors report once', async () => {
@@ -166,4 +188,47 @@ test("the privacy page's inline copy of the analytics state gives the same answe
     };
     assert.equal(runInNewContext(`(${inline})(${c.configured ?? true})`, globals), want, what);
   }
+});
+
+test('a page that is hidden loads PostHog at once and sends what was queued', async () => {
+  const s = session();
+  s.api.startAnalytics();
+  s.api.track('feature_used', { feature: 'copy_output' });
+  assert.equal(s.loads(), 0);
+  await s.hide();
+  assert.equal(s.loads(), 1);
+  // PostHog itself skips the page view of a hidden page; this one was seen, so it is sent.
+  assert.deepEqual(s.sent, ['$pageview', 'feature_used']);
+});
+
+test('a tab opened in the background loads PostHog without claiming a page view', async () => {
+  const s = session('hidden');
+  s.api.startAnalytics();
+  await new Promise<void>((done) => setImmediate(done));
+  assert.equal(s.loads(), 1);
+  assert.deepEqual(s.sent, []);
+});
+
+test('a page Chrome is prerendering waits, then counts once the visitor opens and leaves it', async () => {
+  const s = session('hidden', true);
+  s.api.startAnalytics();
+  await new Promise<void>((done) => setImmediate(done));
+  assert.equal(s.loads(), 0);
+  await s.show();
+  await s.hide();
+  assert.equal(s.loads(), 1);
+  assert.deepEqual(s.sent, ['$pageview']);
+});
+
+test('hiding the page loads nothing once analytics is off', async () => {
+  const s = session();
+  s.api.startAnalytics();
+  s.api.setAnalyticsEnabled(false);
+  await s.hide();
+  assert.equal(s.loads(), 0);
+  const optedOut = session();
+  optedOut.navigator.globalPrivacyControl = true;
+  optedOut.api.startAnalytics();
+  await optedOut.hide();
+  assert.equal(optedOut.loads(), 0);
 });
