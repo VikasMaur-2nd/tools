@@ -360,8 +360,13 @@ test('every view that shows the document is kept out of session replay', () => {
   const dialogs = readFileSync(join(process.cwd(), 'components/dialogs.tsx'), 'utf8');
   assert.match(dialogs, /className=\{PRIVATE\}\s+autoFocus\s+type="url"/, 'the Load from URL field');
   const builder = readFileSync(join(process.cwd(), 'components/LinkBuilder.tsx'), 'utf8');
-  assert.equal(builder.match(/className=\{`lb-error \$\{PRIVATE\}`\}/g)?.length, 2, 'builder messages (file names)');
+  assert.equal(builder.match(/className=\{`lb-error \$\{PRIVATE\}`\}/g)?.length, 3, 'builder messages (file names, the link too long to open)');
   assert.equal(builder.match(/className=\{`lb-warn \$\{PRIVATE\}`\}/g)?.length, 2, 'builder link-size warnings');
+  assert.match(builder, /className=\{`lb-hint \$\{PRIVATE\}`\}>\s+The link is \{formatBytes/, "builder link size (\"The link is 2.1 MB long\")");
+  // Every line that states the link's size is private.
+  const sized = [...builder.matchAll(/<p ([^>]*)>\s+[^<]*\{formatBytes\(/g)];
+  assert.equal(sized.length, 4);
+  for (const m of sized) assert.match(m[1], /className=\{`[^`]*\$\{PRIVATE\}`\}/, m[0]);
   assert.match(builder, /className=\{`lb-check \$\{PRIVATE\}`\}/, "builder check line (\"Ln 1, Col 8: Unexpected 'T'\")");
   const graphExport = readFileSync(join(process.cwd(), 'components/GraphExport.tsx'), 'utf8');
   assert.match(graphExport, /gx-info\$\{preview\?\.error \? ' err' : ''\} \$\{PRIVATE\}/, 'image size and card count');

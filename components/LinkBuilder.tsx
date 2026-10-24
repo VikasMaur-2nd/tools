@@ -531,13 +531,13 @@ export default function LinkBuilder() {
             </p>
           )}
           {href && linkReach(href.length) === 'none' && (
-            <p className="lb-error" role="status">
+            <p className={`lb-error ${PRIVATE}`} role="status">
               At {formatBytes(href.length)}, no browser can open this link: they stop at about 2 MB. Link to where the JSON is hosted (choose URL
               above), or use the handoff below from your web app.
             </p>
           )}
           {href && (
-            <p className="lb-hint">
+            <p className={`lb-hint ${PRIVATE}`}>
               The link is {formatBytes(href.length)} long. Browsers open links up to roughly 1 MB (Firefox) to 2 MB (Chrome, Safari) when they are clicked,
               but Chrome and Edge cut a pasted link at 500 KB. Chat apps allow much less per message: there, link to where the JSON is hosted
               (choose URL above). From your own web app, the handoff below opens JSON of any size.

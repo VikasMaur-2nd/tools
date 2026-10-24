@@ -120,7 +120,8 @@ export class GraphView implements GraphViewApi {
     this.cv = el('canvas', 'gv-canvas ' + PRIVATE) as HTMLCanvasElement;
     this.cv.setAttribute('aria-hidden', 'true');
     this.ctx = this.cv.getContext('2d', { alpha: false });
-    this.note = el('div', 'gv-note');
+    // ("Laying out 12,345 cards…")
+    this.note = el('div', 'gv-note ' + PRIVATE);
     this.note.hidden = true;
     this.note.setAttribute('role', 'status');
     this.live = el('div', 'gv-live ' + PRIVATE);
