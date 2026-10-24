@@ -5,18 +5,12 @@ import { analyticsConfigured, stateFrom } from '@/lib/analytics';
 import { EVENT_PROPS, type EventName } from '@/lib/analytics/events';
 import ContentShell from '../content-shell';
 import { PAGE_DATES, formatDate } from '../dates';
-import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { pageMetadata } from '../../page-metadata';
 
 const DESCRIPTION =
   'Tool Kumar processes JSON in your browser and never receives it. See exactly what our analytics measure, what screen recordings leave out and how to turn analytics off.';
 
-export const metadata: Metadata = {
-  title: { absolute: `Privacy | ${SITE_NAME}` },
-  description: DESCRIPTION,
-  alternates: { canonical: '/privacy' },
-  openGraph: { type: 'website', url: '/privacy', siteName: SITE_NAME, title: `Privacy | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
-  twitter: { card: 'summary_large_image', title: `Privacy | ${SITE_NAME}`, description: DESCRIPTION, images: ['/twitter-image.png'] },
-};
+export const metadata: Metadata = pageMetadata({ path: '/privacy', title: 'Privacy', description: DESCRIPTION });
 
 /** When each event is sent. Its properties are listed straight from lib/analytics/events.ts. */
 const WHEN: Record<EventName, string> = {

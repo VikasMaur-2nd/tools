@@ -1,20 +1,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import ContentShell from '../content-shell';
-import { SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { jsonLdScript } from '../seo';
+import { pageMetadata } from '../../page-metadata';
 import { SITE } from '@/lib/site';
 
 const TITLE = 'JSON developer resources: reference, examples and guides';
 const DESCRIPTION =
   'Citable JSON resources for developers: a syntax reference, reusable API examples, formatting guidance and the history of the format.';
 
-export const metadata: Metadata = {
-  title: TITLE,
-  description: DESCRIPTION,
-  alternates: { canonical: '/resources' },
-  openGraph: { type: 'website', url: '/resources', siteName: SITE_NAME, title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: [SOCIAL_IMAGE] },
-  twitter: { card: 'summary_large_image', title: `${TITLE} | ${SITE_NAME}`, description: DESCRIPTION, images: ['/twitter-image.png'] },
-};
+export const metadata: Metadata = pageMetadata({ path: '/resources', title: TITLE, description: DESCRIPTION });
 
 const resources = [
   {

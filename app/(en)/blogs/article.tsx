@@ -4,34 +4,20 @@ import Link from 'next/link';
 import { highlightCode } from '@/lib/convert/highlight';
 import { codeWithLinks } from '@/lib/link-code';
 import ContentShell, { Logo } from '../content-shell';
-import { jsonLdScript, postJsonLd, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { jsonLdScript, postJsonLd, SITE_NAME } from '../seo';
+import { pageMetadata } from '../../page-metadata';
 import { Arrow, PostCard } from './post-card';
 import { formatDate } from '../dates';
 import { POSTS, type Post } from './posts';
 
 export function postMetadata(post: Post): Metadata {
-  const url = `/blogs/${post.slug}`;
-  const title = `${post.title} | ${SITE_NAME}`;
-  return {
+  return pageMetadata({
+    path: `/blogs/${post.slug}`,
     title: post.title,
     description: post.description,
     keywords: post.keywords,
-    alternates: { canonical: url },
-    openGraph: {
-      type: 'article',
-      url,
-      siteName: SITE_NAME,
-      title,
-      description: post.description,
-      publishedTime: post.published,
-      modifiedTime: post.updated,
-      authors: [SITE_NAME],
-      section: post.category,
-      tags: post.keywords,
-      images: [SOCIAL_IMAGE],
-    },
-    twitter: { card: 'summary_large_image', title, description: post.description, images: ['/twitter-image.png'] },
-  };
+    article: { published: post.published, updated: post.updated, section: post.category, tags: post.keywords },
+  });
 }
 
 /**

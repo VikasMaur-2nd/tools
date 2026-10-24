@@ -1,25 +1,17 @@
 import type { Metadata } from 'next';
 import IntentLink from '@/components/IntentLink';
 import ContentShell from '../content-shell';
-import { SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { jsonLdScript } from '../seo';
+import { pageMetadata } from '../../page-metadata';
 import { SITE } from '@/lib/site';
 import { localeInfo, localePath } from '@/lib/i18n/locales';
 import { getLocale } from '@/lib/i18n/locale';
-import { alternates, ogLocales, serverT, toolPages } from '@/lib/i18n/server';
+import { serverT, toolPages } from '@/lib/i18n/server';
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
   const t = serverT(locale);
-  const TITLE = t('hub.title');
-  const DESCRIPTION = t('hub.description');
-  const og = locale === 'en' ? { images: [SOCIAL_IMAGE] } : { ...ogLocales('/tools', locale), images: [{ ...SOCIAL_IMAGE, alt: t('site.ogAlt') }] };
-  return {
-    title: { absolute: `${TITLE} | ${SITE_NAME}` },
-    description: DESCRIPTION,
-    alternates: alternates('/tools', locale),
-    openGraph: { type: 'website', url: localePath(locale, '/tools'), siteName: SITE_NAME, title: TITLE, description: DESCRIPTION, ...og },
-    twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, images: ['/twitter-image.png'] },
-  };
+  return pageMetadata({ path: '/tools', locale, title: t('hub.title'), description: t('hub.description') });
 }
 
 export default async function ToolsPage() {

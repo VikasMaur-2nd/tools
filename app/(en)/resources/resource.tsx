@@ -5,29 +5,14 @@ import { Code } from '../blogs/article';
 import ContentShell, { Logo } from '../content-shell';
 import { PAGE_DATES, formatDate } from '../dates';
 import { jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { pageMetadata } from '../../page-metadata';
 import { SITE } from '@/lib/site';
 
 type Dates = { published: string; updated: string };
 type ResourcePath = '/resources/json-reference' | '/resources/json-examples';
 
 export function resourceMetadata({ title, description, path, published, updated }: { title: string; description: string; path: string } & Dates): Metadata {
-  return {
-    title,
-    description,
-    alternates: { canonical: path },
-    openGraph: {
-      type: 'article',
-      url: path,
-      siteName: SITE_NAME,
-      title: `${title} | ${SITE_NAME}`,
-      description,
-      publishedTime: published,
-      modifiedTime: updated,
-      authors: [SITE_NAME],
-      images: [SOCIAL_IMAGE],
-    },
-    twitter: { card: 'summary_large_image', title: `${title} | ${SITE_NAME}`, description, images: ['/twitter-image.png'] },
-  };
+  return pageMetadata({ path, title, description, article: { published, updated } });
 }
 
 export function resourceJsonLd({ title, description, path, keywords, published, updated }: { title: string; description: string; path: string; keywords: string[] } & Dates) {
