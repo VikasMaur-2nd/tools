@@ -1655,7 +1655,7 @@ export class Engine {
 
   private onCompareChange = () => {
     clearTimeout(this.cmpTimer);
-    const len = this.ed2.text.length;
+    const len = this.ed2.length; // (not .text: no need to join an edited document's pieces for this)
     this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
   };
 
