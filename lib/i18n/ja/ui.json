@@ -653,6 +653,7 @@
   "import.tabs": "インデントにタブは使用できません。スペースを使ってください。",
   "import.anchor": "&の後にアンカー名が必要です。",
   "import.alias": "不明なエイリアス*{name}です。アンカーは使用前に定義する必要があります（&{name}）。",
+  "import.aliasSize": "YAML のエイリアスが繰り返すデータが多すぎるため、結果が大きくなりすぎます。",
   "import.unterminatedQuoted": "引用符付き文字列が閉じられていません。",
   "import.escape": "不正なエスケープ\\{char}です。",
   "import.plainStart": "プレーンな値を'{char}'で始めることはできません。値を引用符で囲んでください。",

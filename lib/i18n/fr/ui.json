@@ -687,6 +687,7 @@
   "import.tabs": "Les tabulations ne sont pas autorisées pour l'indentation. Utilisez des espaces",
   "import.anchor": "Nom d'ancre attendu après &",
   "import.alias": "Alias inconnu *{name} : les ancres doivent être définies (&{name}) avant leur utilisation",
+  "import.aliasSize": "Les alias YAML répètent trop de données : le résultat serait trop volumineux",
   "import.unterminatedQuoted": "Chaîne entre guillemets non terminée",
   "import.escape": "Séquence d'échappement non valide \\{char}",
   "import.plainStart": "Les valeurs simples ne peuvent pas commencer par '{char}'. Placez la valeur entre guillemets",

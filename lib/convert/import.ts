@@ -288,10 +288,58 @@ function yScalar(t: string): V {
   return t;
 }
 
-function yaml(src: string): V {
+/** Most JSON (characters) a YAML document that uses aliases may expand to: this, or 8× the document's length if more. */
+const ALIAS_OUTPUT = 16 * 1024 * 1024;
+
+/**
+ * Length of `emit(v, indent)` (strings counted without escapes) without making
+ * it. A container at depth d takes a + b·d characters; containers aliases may
+ * repeat (`shared`: anchored) or big enough to matter are sized once.
+ */
+function emitSize(v: V, indent: string, shared: Set<object>): number {
+  const nl = indent ? 1 : 0;
+  const w = indent.length;
+  const memo = new Map<object, number[]>();
+  let b = 0; // b of what size() measured last
+  const size = (v: V): number => {
+    b = 0;
+    if (v === null || typeof v === 'boolean') return v === false ? 5 : 4;
+    if (typeof v === 'string') return v.length + 2;
+    if (v instanceof Num) return v.r.length;
+    const known = memo.get(v);
+    if (known) {
+      b = known[1];
+      return known[0];
+    }
+    const m = Array.isArray(v) ? v.length : v.size;
+    // brackets, one line per entry (commas between) and the closing line; entries sit one level deeper
+    let sa = m ? 2 + m * (nl + w) + (m - 1) + nl : 2;
+    let sb = m ? w * (m + 1) : 0;
+    if (Array.isArray(v)) {
+      for (let j = 0; j < m; j++) {
+        sa += size(v[j]) + b;
+        sb += b;
+      }
+    } else {
+      for (const [k, x] of v) {
+        sa += k.length + 3 + nl + size(x) + b;
+        sb += b;
+      }
+    }
+    if (sa > 4096 || shared.has(v)) memo.set(v, [sa, sb]);
+    b = sb;
+    return sa;
+  };
+  return size(v);
+}
+
+function yaml(src: string, indent: string): V {
   const n = src.length;
   let i = 0;
   const anchors = new Map<string, V>();
+  /** Where the first alias is (-1: none), and what aliases may repeat. */
+  let aliased = -1;
+  const anchored = new Set<object>();
   const at = (p: number) => src.charCodeAt(p);
   function f(m: string, p = i): never {
     return fail(m, p);
@@ -384,6 +432,7 @@ function yaml(src: string): V {
     const name = src.slice(s, i);
     const v = anchors.get(name);
     if (v === undefined) f(`Unknown alias *${name} : anchors must be defined (&${name}) before use`, s - 1);
+    if (aliased < 0) aliased = s - 1;
     return v as V;
   };
   const quoted = (q: number): string => {
@@ -563,7 +612,10 @@ function yaml(src: string): V {
       rawKey = t;
       v = tag === '!!str' ? t : yScalar(t);
     }
-    if (anchor) anchors.set(anchor, v);
+    if (anchor) {
+      anchors.set(anchor, v);
+      if (v instanceof Map || Array.isArray(v)) anchored.add(v);
+    }
     return v;
   };
   const keyOf = (v: V, p: number): string => {
@@ -646,7 +698,10 @@ function yaml(src: string): V {
         eolRest();
       } else v = plain(ind, tag === '!!str');
     }
-    if (anchor) anchors.set(anchor, v);
+    if (anchor) {
+      anchors.set(anchor, v);
+      if (v instanceof Map || Array.isArray(v)) anchored.add(v);
+    }
     return v;
   };
   const map = (c: number): Map<string, V> => {
@@ -719,7 +774,10 @@ function yaml(src: string): V {
     skip();
     if (i < n && !docMark(i)) f(col(i) ? 'Bad indentation: this line is indented more than its block' : 'Unexpected content after the document');
   }
-  return docs.length > 1 ? docs : (docs[0] ?? null);
+  const out = docs.length > 1 ? docs : (docs[0] ?? null);
+  // A few lines of aliases can stand for gigabytes of JSON.
+  if (aliased >= 0 && emitSize(out, indent, anchored) > Math.max(ALIAS_OUTPUT, 8 * n)) f('YAML aliases repeat too much data: the result would be too large', aliased);
+  return out;
 }
 
 // ── XML ──────────────────────────────────────────────────────────────────
@@ -1133,7 +1191,7 @@ export function importToJson(text: string, format: ImportFormat, indent: string)
   try {
     if (format === 'csv' || format === 'tsv') return { json: csv(src, format === 'tsv' ? '\t' : null, indent) };
     src = src.replace(/\r\n?/g, '\n');
-    const v = format === 'yaml' ? yaml(src) : format === 'xml' ? xml(src) : toml(src);
+    const v = format === 'yaml' ? yaml(src, indent) : format === 'xml' ? xml(src) : toml(src);
     return { json: emit(v, indent) };
   } catch (e) {
     if (e instanceof PErr) {

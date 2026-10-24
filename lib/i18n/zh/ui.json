@@ -653,6 +653,7 @@
   "import.tabs": "缩进不允许使用制表符，请使用空格",
   "import.anchor": "& 之后应为锚点名称",
   "import.alias": "未知的别名 *{name}：锚点必须先定义（&{name}）才能使用",
+  "import.aliasSize": "YAML 别名重复的数据过多：结果会过大",
   "import.unterminatedQuoted": "带引号的字符串未结束",
   "import.escape": "无效的转义 \\{char}",
   "import.plainStart": "普通值不能以 '{char}' 开头，请为该值加上引号",

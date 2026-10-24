@@ -793,6 +793,7 @@
   "import.tabs": "Tabs are not allowed for indentation. Use spaces",
   "import.anchor": "Expected an anchor name after &",
   "import.alias": "Unknown alias *{name} : anchors must be defined (&{name}) before use",
+  "import.aliasSize": "YAML aliases repeat too much data: the result would be too large",
   "import.unterminatedQuoted": "Unterminated quoted string",
   "import.escape": "Invalid escape \\{char}",
   "import.plainStart": "Plain values cannot start with '{char}'. Wrap the value in quotes",

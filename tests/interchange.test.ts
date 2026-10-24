@@ -729,6 +729,26 @@ seqs:
     assert.deepEqual(val('---\na: &x 1\nb: *x\n---\nc: &x 2\nd: *x\n', 'yaml'), [{ a: 1, b: 1 }, { c: 2, d: 2 }]);
   });
 
+  test('aliases that repeat too much data fail at once instead of hanging', () => {
+    // each level refers to the previous one twice: 2^40 copies of [x, y]
+    let bomb = 'a0: &a0 [x, y]\n';
+    for (let i = 1; i <= 40; i++) bomb += `a${i}: &a${i} [*a${i - 1}, *a${i - 1}]\n`;
+    const t0 = performance.now();
+    const e = err(bomb, 'yaml');
+    assert.ok(performance.now() - t0 < 1000, `took ${performance.now() - t0} ms`);
+    assert.equal(e.error, 'YAML aliases repeat too much data: the result would be too large');
+    assert.ok(e.line! > 1 && e.line! <= 41, `at line ${e.line}`);
+    // one long string repeated
+    const big = 'x'.repeat(1e6);
+    assert.match(err(`s: &s ${big}\nl: [${'*s, '.repeat(20)}*s]\n`, 'yaml').error, /aliases repeat too much data/);
+    // ordinary reuse converts, also many times over
+    let ok = 'defaults: &d {image: node, retries: 2, tags: [a, b]}\n';
+    for (let i = 0; i < 2000; i++) ok += `job${i}:\n  <<: *d\n  name: j${i}\n  base: *d\n`;
+    const v = val(ok, 'yaml') as Record<string, { image: string; base: { retries: number } }>;
+    assert.equal(v.job1999.image, 'node');
+    assert.equal(v.job1999.base.retries, 2);
+  });
+
   test('errors carry line and column', () => {
     const cases: [string, RegExp, number, number][] = [
       ['a: 1\n  b: 2\n', /Bad indentation of a mapping entry/, 2, 3],

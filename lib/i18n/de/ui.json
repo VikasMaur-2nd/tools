@@ -670,6 +670,7 @@
   "import.tabs": "Tabs sind zum Einrücken nicht erlaubt. Verwende Leerzeichen",
   "import.anchor": "Nach & wurde ein Ankername erwartet",
   "import.alias": "Unbekannter Alias *{name}: Anker müssen vor der Verwendung definiert werden (&{name})",
+  "import.aliasSize": "YAML-Aliasse wiederholen zu viele Daten: Das Ergebnis wäre zu groß",
   "import.unterminatedQuoted": "Nicht abgeschlossener String in Anführungszeichen",
   "import.escape": "Ungültige Escape-Sequenz \\{char}",
   "import.plainStart": "Werte ohne Anführungszeichen dürfen nicht mit '{char}' beginnen. Setze den Wert in Anführungszeichen",
