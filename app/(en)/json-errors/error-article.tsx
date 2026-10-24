@@ -2,7 +2,8 @@ import Link from 'next/link';
 import ContentShell, { Logo } from '../content-shell';
 import { Code } from '../blogs/article';
 import { RESOURCE_DATE } from '../resources/resource';
-import { jsonLdScript, SITE, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { SITE } from '@/lib/site';
 import { ERROR_GUIDES, GUIDES_UPDATED, GUIDES_UPDATED_LABEL, SOURCES, type ErrorGuide } from './errors';
 import HttpExamples from './http-examples';
 

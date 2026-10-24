@@ -1,8 +1,8 @@
 import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
 import { serverT, toolPage, type UiKey } from '@/lib/i18n/server';
+import { SITE } from '@/lib/site';
 import { POSTS } from './blogs/posts';
 
-export const SITE = 'https://tools.vikasmaur.com';
 export const SITE_NAME = 'Tool Kumar';
 export const JSON_TOOL_DESCRIPTION =
   'View, visualize, format, validate, repair and compare JSON online. Tool Kumar runs in your browser, keeps data on your device and works offline.';

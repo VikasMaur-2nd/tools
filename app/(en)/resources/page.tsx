@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import ContentShell from '../content-shell';
-import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { SITE } from '@/lib/site';
 
 const TITLE = 'JSON developer resources: reference, examples and guides';
 const DESCRIPTION =

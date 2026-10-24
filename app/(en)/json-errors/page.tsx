@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import ContentShell from '../content-shell';
-import { jsonLdScript, SITE, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { SITE } from '@/lib/site';
 import { ERROR_GUIDES, HUB_FAQ } from './errors';
 import { Faq, faqJsonLd } from './error-article';
 

@@ -4,6 +4,7 @@ import { JetBrains_Mono } from 'next/font/google';
 import { Analytics } from '@/components/Analytics';
 import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
 import { serverT } from '@/lib/i18n/server';
+import { SITE } from '@/lib/site';
 import { jsonLdScript, siteJsonLd } from './(en)/seo';
 import { englishSocialImages } from './social-images';
 import './globals.css';
@@ -15,8 +16,6 @@ import './content.css';
  * analytics, metadata defaults and the site-wide JSON-LD. Keep them here so
  * the languages cannot drift apart.
  */
-
-const SITE = 'https://tools.vikasmaur.com';
 
 // Code font: self-hosted at build time (no requests to Google), preloaded, and
 // cached offline by the service worker like every other asset.

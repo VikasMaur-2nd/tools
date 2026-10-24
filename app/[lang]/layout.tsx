@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { ErrorTextProvider } from '@/lib/i18n/errors';
 import { LOCALES, isLocale, type Locale } from '@/lib/i18n/locales';
 import { errorText, liveLocales } from '@/lib/i18n/server';
+import { SITE } from '@/lib/site';
 import { RootDocument, rootMetadata, rootViewport } from '../root-document';
 
 // Translated pages: prerendered per language, never rendered per request.
@@ -18,7 +19,7 @@ const live = (lang: string): lang is Locale => isLocale(lang) && liveLocales().i
 
 export async function generateMetadata({ params }: LayoutProps<'/[lang]'>): Promise<Metadata> {
   const { lang } = await params;
-  return live(lang) ? rootMetadata(lang) : { metadataBase: new URL('https://tools.vikasmaur.com') };
+  return live(lang) ? rootMetadata(lang) : { metadataBase: new URL(SITE) };
 }
 
 export const viewport: Viewport = rootViewport;

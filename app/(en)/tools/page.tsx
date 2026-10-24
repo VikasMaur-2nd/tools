@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import IntentLink from '@/components/IntentLink';
 import ContentShell from '../content-shell';
-import { SITE, SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { SITE_NAME, SOCIAL_IMAGE, jsonLdScript } from '../seo';
+import { SITE } from '@/lib/site';
 import { localeInfo, localePath } from '@/lib/i18n/locales';
 import { getLocale } from '@/lib/i18n/locale';
 import { alternates, ogLocales, serverT, toolPages } from '@/lib/i18n/server';

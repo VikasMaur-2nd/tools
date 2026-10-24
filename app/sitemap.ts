@@ -3,6 +3,7 @@ import { POSTS } from './(en)/blogs/posts';
 import { ERROR_GUIDES } from './(en)/json-errors/errors';
 import { TOOL_PAGES } from '@/lib/tool-pages';
 import { sitemapLanguages } from '@/lib/i18n/server';
+import { SITE } from '@/lib/site';
 
 // Bump when the page content meaningfully changes. A literal (not `new Date()`)
 // keeps this route free of sync IO so it prerenders under `cacheComponents`.
@@ -22,7 +23,6 @@ TOOL_UPDATES['secure-json-formatter'] = '2026-10-18';
 for (const slug of ['json-validator', 'json-to-python']) TOOL_UPDATES[slug] = '2026-10-24';
 const PRIVACY_LAST_MODIFIED = '2026-10-21';
 const LINK_KIT_LAST_MODIFIED = '2026-10-21';
-const SITE = 'https://tools.vikasmaur.com';
 
 /** A page and its translations, each listing the whole hreflang cluster. */
 const cluster = (path: string, entry: Omit<MetadataRoute.Sitemap[number], 'url'>) => {

@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Code } from '../blogs/article';
 import ContentShell, { Logo } from '../content-shell';
-import { jsonLdScript, SITE, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { SITE } from '@/lib/site';
 
 export const RESOURCE_DATE = '2026-10-14';
 

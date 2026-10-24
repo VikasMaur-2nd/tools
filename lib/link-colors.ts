@@ -13,13 +13,14 @@
  * names, lk-t text. A link can be megabytes long; reading it is one pass.
  * (The code on the page is coloured on the server: lib/link-code.ts.)
  */
+import { SITE as ORIGIN } from './site';
+
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 export const escapeHtml = (s: string) => (/[&<>"]/.test(s) ? s.replace(/[&<>"]/g, (c) => ESC[c]) : s);
 
 /** [start, end, class]. */
 export type Part = [number, number, string];
 
-const ORIGIN = 'https://tools.vikasmaur.com';
 const NAMES = ['view', 'to', 'a', 'b'];
 
 const isPath = (c: number) => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 47 || c === 46 || c === 95 || c === 45;

@@ -6,6 +6,7 @@
  * process.
  */
 import 'server-only';
+import { SITE } from '@/lib/site';
 import { TOOL_PAGES, TOOL_PAGE_BY_SLUG, type ToolPage } from '@/lib/tool-pages';
 import { ENGLISH, LOCALES, localeInfo, localePath, type Locale, type SiteLocale } from './locales';
 import { fill, type Forms, type Params, type UiDict } from './ui';
@@ -26,8 +27,6 @@ import jaPages from './ja/tool-pages.json';
 import koPages from './ko/tool-pages.json';
 import zhPages from './zh/tool-pages.json';
 import ruPages from './ru/tool-pages.json';
-
-export const SITE = 'https://tools.vikasmaur.com';
 
 /** The translatable text of a tool page, as exported for translators (scripts/export-tool-pages.mjs). */
 export type PageText = Pick<ToolPage, 'title' | 'description' | 'heading' | 'query' | 'secondary' | 'intro' | 'modeLabel' | 'exampleLabel' | 'steps' | 'options' | 'faqs' | 'guides'> & {
