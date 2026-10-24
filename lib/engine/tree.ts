@@ -23,7 +23,6 @@ const IND = 16;
 const IND_DEPTH = 30;
 const OVERSCAN = 24;
 const MAX_MATCHES = 100_000;
-const SEP = String.fromCharCode(1);
 
 const COLOR = /^(#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(?:rgb|hsl)a?\(\s*[\d.%\s,/+-]+\))$/i;
 const URL_RE = /^https?:\/\/[^\s"<>]+$/i;
@@ -45,20 +44,12 @@ interface Expansion {
 
 function childExpansion(parent: Expansion | undefined, n: JNode, create = false): Expansion | undefined {
   if (!parent) return;
+  // One edge per property name, whatever it holds. Duplicate keys share a path, as do an index and the
+  // same digits as a key (an edit that turns an array into an object keeps its items' state).
   const key = String(n.key);
-  // Preserve the old SEP-joined path identity, including duplicate keys, numeric/string
-  // keys and property names containing SEP. Ordinary keys need just one lookup.
-  const parts = key.includes(SEP) ? key.split(SEP) : [key];
-  for (const part of parts) {
-    let child: Expansion | undefined = parent.children?.get(part);
-    if (!child) {
-      if (!create) return;
-      child = {};
-      (parent.children ??= new Map()).set(part, child);
-    }
-    parent = child;
-  }
-  return parent;
+  let child = parent.children?.get(key);
+  if (!child && create) (parent.children ??= new Map()).set(key, (child = {}));
+  return child;
 }
 
 export class TreeView {
