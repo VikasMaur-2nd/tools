@@ -12,6 +12,7 @@ import { TARGETS, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
 import { startTooltips } from '@/lib/tooltips';
+import { startAgentTools } from '@/lib/webmcp';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
@@ -1111,6 +1112,8 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       compare: cmpRef.current!,
     }, { preserveDocument: !!pagePreset?.initialText });
     setEngine(e);
+    // AI agents in browsers with WebMCP can use the tool through named functions (costs nothing elsewhere).
+    const stopAgentTools = startAgentTools();
     // A landing page's sample loads in the next task: hydration and the empty editor
     // paint first, and neither half is one long blocking task on a slow phone.
     const sample = pagePreset?.initialText ? window.setTimeout(() => e.applyPreset(pagePreset), 0) : 0;
@@ -1121,6 +1124,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
     return () => {
       window.clearTimeout(sample);
       window.clearTimeout(warm);
+      stopAgentTools();
       e.destroy();
       if (getEngine() === e) setEngine(null);
       store.set({ ready: false });

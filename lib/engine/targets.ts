@@ -31,3 +31,11 @@ export const TARGETS: TargetInfo[] = [
 ];
 
 export const targetInfo = (id: string) => TARGETS.find((t) => t.id === id) ?? TARGETS[0];
+
+/** The file a conversion downloads as, for a document named `base` (no extension). */
+export function convertFileName(info: TargetInfo, base: string, rootName: string): string {
+  // A public Java class must live in a file of the same name.
+  if (info.id === 'java') return `${rootName || 'Root'}.java`;
+  if (info.id === 'zod') return `${base}.schema.ts`;
+  return `${base}.${info.ext}`;
+}
