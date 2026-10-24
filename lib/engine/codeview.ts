@@ -129,6 +129,8 @@ export class CodeView {
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
     this.ro = new ResizeObserver(() => {
+      // Hidden (display: none): no width to wrap to; the observer fires again when shown.
+      if (!el.getClientRects().length) return;
       if (this.el.clientWidth !== this.width) this.reflow(true);
       else this.render(true);
     });
