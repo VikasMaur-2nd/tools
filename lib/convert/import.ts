@@ -714,6 +714,7 @@ function yaml(src: string): V {
         continue;
       }
     }
+    anchors.clear(); // anchors belong to their document
     docs.push(node(-1, 0));
     skip();
     if (i < n && !docMark(i)) f(col(i) ? 'Bad indentation: this line is indented more than its block' : 'Unexpected content after the document');

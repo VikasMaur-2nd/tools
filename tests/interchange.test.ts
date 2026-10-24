@@ -725,6 +725,8 @@ seqs:
     assert.deepEqual(val('a: 1\r\nb:\r\n  - x\r\n', 'yaml'), { a: 1, b: ['x'] });
     assert.deepEqual(val('Resources:\n  B:\n    Type: !Ref Bucket\n    Arn: !GetAtt [B, Arn]\n', 'yaml'), { Resources: { B: { Type: 'Bucket', Arn: ['B', 'Arn'] } } });
     assert.deepEqual(val('- &x 1\n- *x\n- &obj\n  a: 1\n- *obj\n', 'yaml'), [1, 1, { a: 1 }, { a: 1 }]);
+    // anchors belong to their document
+    assert.deepEqual(val('---\na: &x 1\nb: *x\n---\nc: &x 2\nd: *x\n', 'yaml'), [{ a: 1, b: 1 }, { c: 2, d: 2 }]);
   });
 
   test('errors carry line and column', () => {
@@ -732,6 +734,8 @@ seqs:
       ['a: 1\n  b: 2\n', /Bad indentation of a mapping entry/, 2, 3],
       ['a:\n\tb: 1\n', /Tabs are not allowed/, 2, 2],
       ['a: *nope\n', /Unknown alias \*nope/, 1, 4],
+      ['---\na: &x 1\n---\nb: *x\n', /Unknown alias \*x/, 4, 4],
+      ['a: &x 1\n...\nb: [*x]\n', /Unknown alias \*x/, 3, 5],
       ['a: 1\nb: 2\na: 3\n', /Duplicate key "a"/, 3, 1],
       ['a: "unterminated\n', /Unterminated quoted string/, 1, 4],
       ['a: b: c\n', /Mapping values are not allowed here/, 1, 5],
