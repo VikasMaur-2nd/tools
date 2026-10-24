@@ -336,6 +336,8 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => act((e) => e.find(v)), v.length > 2 ? 80 : 150);
   };
+  // A query still waiting when the bar closes (Compare, the tool closing) would open it again: dropped.
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   const onKey = (ev: ReactKeyboardEvent<HTMLInputElement>) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
@@ -373,7 +375,15 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
       <button type="button" className="btn icon sm" aria-label={t('Next match')} onClick={() => act((e) => e.findStep(1))}>
         <Icon name="down" size={14} />
       </button>
-      <button type="button" className="btn icon sm" aria-label={t('Close find')} onClick={() => act((e) => e.closeFind())}>
+      <button
+        type="button"
+        className="btn icon sm"
+        aria-label={t('Close find')}
+        onClick={() => {
+          window.clearTimeout(timer.current);
+          act((e) => e.closeFind());
+        }}
+      >
         <Icon name="x" size={14} />
       </button>
     </div>
