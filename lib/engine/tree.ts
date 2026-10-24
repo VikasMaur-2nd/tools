@@ -52,6 +52,21 @@ function childExpansion(parent: Expansion | undefined, n: JNode, create = false)
   return child;
 }
 
+/** `n`'s place among its parent's items, which are in document order: found by offset, not by a scan (wide objects). */
+function siblingIndex(n: JNode) {
+  const list = kids(n.u as JNode);
+  let lo = 0;
+  let hi = list.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const x = list[mid];
+    if (x === n) return mid;
+    if (x.s < n.s) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return list.indexOf(n);
+}
+
 export class TreeView {
   readonly el: HTMLElement;
   private sizer: HTMLElement;
@@ -449,7 +464,7 @@ export class TreeView {
     if (this.matchSet?.has(n)) cls += n === this.matches[this.mi] ? ' hit cur' : ' hit';
     const cont = n.t >= ARR;
     let h = `<div class="${cls}" data-i="${i}" role="treeitem" aria-level="${n.d + 1}"`;
-    if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : kids(n.u).indexOf(n) + 1}"`;
+    if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : siblingIndex(n) + 1}"`;
     if (cont) h += ` aria-expanded="${n.x}"`;
     if (sel) h += ' id="tv-sel" aria-selected="true"';
     h += ` style="padding-left:${deep ? 'calc(var(--tv-indent) + 6px)' : n.d * IND + 6 + 'px'}">`;

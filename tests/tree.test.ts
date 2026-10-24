@@ -229,3 +229,22 @@ test('A key holding the path separator is one key, not a nested path', () => {
     assert.equal(find(next.all, ...other).x, true, `${other.join('.')} stays open`);
   }
 });
+
+test('Tree rows give their place among their siblings', () => {
+  const res = document('{"a":1,"b":{"c":2,"d":[3,4]},"a":5,"e":{}}');
+  const { tree } = view();
+  const render = tree as unknown as { row(n: JNode, i: number): string };
+  for (const n of res.all) {
+    if (!n.u) continue;
+    const html = render.row(n, 0);
+    assert.ok(html.includes(`aria-posinset="${kids(n.u).indexOf(n) + 1}"`), html);
+    assert.ok(html.includes(`aria-setsize="${kids(n.u).length}"`), html);
+  }
+  // Items made without offsets of their own (all at 0) are still found.
+  const p = res.all[0];
+  const made = kids(p).map((k) => Object.assign(Object.create(Object.getPrototypeOf(k)), k, { s: 0, u: p }) as JNode);
+  const saved = p.v;
+  p.v = made;
+  for (const n of made) assert.ok(render.row(n, 0).includes(`aria-posinset="${made.indexOf(n) + 1}"`));
+  p.v = saved;
+});
