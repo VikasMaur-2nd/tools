@@ -407,7 +407,7 @@ export class Editor {
   }
 
   private onFonts = () => {
-    if (!this.el.isConnected) return;
+    if (this.gone || !this.el.isConnected) return;
     const cw = this.cw;
     this.measure();
     // Rows only move if a width changed (always re-measured while matching a textarea).
@@ -419,7 +419,14 @@ export class Editor {
     this.render(true);
   };
 
+  /**
+   * Destroyed: work it started that ends later (the big-document editor's module, the code font, a fold
+   * scan) must leave the element alone, which a new editor may have by then.
+   */
+  private gone = false;
+
   destroy() {
+    this.gone = true;
     const ta = this.ta;
     ta.removeEventListener('beforeinput', this.onBeforeInput);
     ta.removeEventListener('input', this.onInput);
@@ -548,7 +555,7 @@ export class Editor {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
-        if (!SurfaceClass || this.surface || !this.el.isConnected || !this.wantsSurface(1)) return;
+        if (this.gone || !SurfaceClass || this.surface || !this.el.isConnected || !this.wantsSurface(1)) return;
         // Switch to it, from the textarea or from the quiet view it was waiting in. Focus in that view (a big
         // paste moves it there) goes on in the editor at its caret, as when the user asked to edit meanwhile:
         // keys would otherwise land on the scroller and be lost.
@@ -903,7 +910,7 @@ export class Editor {
     const scan = foldScanner(doc, this.ls);
     const run = () => {
       // (An edit or another document since: this scan is stale, and the lines it reads may have changed.)
-      if (this.foldsFor !== doc || !this.el.isConnected) return;
+      if (this.gone || this.foldsFor !== doc || !this.el.isConnected) return;
       const res = scan(performance.now() + 8);
       if (!res) return void setTimeout(run, 0);
       this.foldsFor = null;
