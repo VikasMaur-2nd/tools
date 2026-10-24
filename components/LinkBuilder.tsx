@@ -185,7 +185,8 @@ function JsonField({ id, value, setValue, edRef }: { id: string; value: string; 
         wrap
         className="lb-ed"
       />
-      <p className="lb-check" aria-live="polite">
+      {/* "Ln 3, Col 5: …" quotes the document. */}
+      <p className={`lb-check ${PRIVATE}`} aria-live="polite">
         {check?.kind === 'checking' && <span className="muted">Checking… {check.percent}%</span>}
         {check?.kind === 'valid' &&
           (check.fixed ? (
@@ -291,7 +292,7 @@ function DocField(props: { label: string; kind: Kind; setKind: (k: Kind) => void
         <input id={id} className={PRIVATE} type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://api.example.com/data.json" spellCheck={false} />
       )}
       {note && (
-        <p className="lb-error" role="alert">
+        <p className={`lb-error ${PRIVATE}`} role="alert">
           {note}
         </p>
       )}
@@ -485,7 +486,7 @@ export default function LinkBuilder() {
           <span aria-hidden="true">Color</span>
           <Seg label="Button color" value={badge} options={[['auto', 'Auto'], ['black', 'Black'], ['white', 'White']]} onChange={setBadge} className="lb-small" />
         </div>
-        {error && <p className="lb-error">{error}</p>}
+        {error && <p className={`lb-error ${PRIVATE}`}>{error}</p>}
 
         <div className="lb-out">
           <div className="lb-head">
@@ -519,12 +520,12 @@ export default function LinkBuilder() {
             {format === 'markdown' ? 'For READMEs, docs and issues on GitHub or GitLab.' : format === 'html' ? 'For web pages. Auto follows the reader’s light or dark mode.' : 'For chats, emails and your own buttons.'}
           </p>
           {href && linkReach(href.length) === 'click' && (
-            <p className="lb-warn" role="status">
+            <p className={`lb-warn ${PRIVATE}`} role="status">
               At {formatBytes(href.length)}, this link opens when clicked, but pasted into Chrome&apos;s or Edge&apos;s address bar it gets cut at 500 KB.
             </p>
           )}
           {href && linkReach(href.length) === 'not-firefox' && (
-            <p className="lb-warn" role="status">
+            <p className={`lb-warn ${PRIVATE}`} role="status">
               At {formatBytes(href.length)}, this link opens when clicked in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB. Pasted into
               Chrome&apos;s or Edge&apos;s address bar, it gets cut at 500 KB.
             </p>

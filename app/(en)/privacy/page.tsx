@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import AnalyticsSwitch from '@/components/AnalyticsSwitch';
+import { analyticsConfigured, stateFrom } from '@/lib/analytics';
 import { EVENT_PROPS, type EventName } from '@/lib/analytics/events';
 import ContentShell from '../content-shell';
 import { SITE_NAME, SOCIAL_IMAGE } from '../seo';
@@ -56,6 +57,28 @@ const PROPS: Record<string, string> = {
 
 const eu = /\beu\./.test(process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '');
 
+/** One screenshot in the page theme: both are in the page, CSS shows one, and only that one loads (lazy), at the width the screen needs. */
+function Shot({ name, alt }: { name: 'seen' | 'recorded'; alt: string }) {
+  return (
+    <>
+      {(['light', 'dark'] as const).map((theme) => (
+        <picture key={theme} className={`replay-shot ${theme}`}>
+          <img
+            src={`/privacy/${name}-${theme}.webp`}
+            srcSet={`/privacy/${name}-${theme}-700.webp 700w, /privacy/${name}-${theme}.webp 1400w`}
+            sizes="(max-width: 740px) 100vw, 700px"
+            alt={alt}
+            width={1400}
+            height={814}
+            loading="lazy"
+            decoding="async"
+          />
+        </picture>
+      ))}
+    </>
+  );
+}
+
 export default function PrivacyPage() {
   return (
     <ContentShell>
@@ -68,6 +91,8 @@ export default function PrivacyPage() {
         </p>
       </header>
 
+      {/* Names this browser's analytics state before first paint, so the switch shows its note at once (components/AnalyticsSwitch.tsx). */}
+      <script dangerouslySetInnerHTML={{ __html: `try{document.documentElement.dataset.analytics=(${stateFrom})(${analyticsConfigured})}catch(e){}` }} />
       <AnalyticsSwitch />
 
       <div className="prose">
@@ -132,7 +157,7 @@ export default function PrivacyPage() {
             rendering failures and failures reported by our conversion, import, export and background processing code. Reports contain a standard
             error category, the part of the app that reported it, and available application script locations with line and column numbers. Every
             original error message is replaced with a fixed privacy message before sending. We remove arbitrary error details, function names,
-            source snippets, local variables and error breadcrumbs. Reports can be linked to the same anonymous visit and masked recording.
+            source snippets, local variables and error breadcrumbs. Reports can be linked to the same anonymous visit and its recording.
             Normal JSON validation errors are counted by category in the document events below.
           </li>
           <li>
@@ -151,12 +176,29 @@ export default function PrivacyPage() {
         </p>
         <ul>
           <li>
-            Both editors, file names, the JSON path, the table location and the whole output area (formatted output, tree, table, graph, converted code and
-            Compare) are left out. They appear as empty boxes, and the recorder never reads inside them.
+            Both editors, file names, the JSON path, the table location, the whole output area (formatted output, tree, table, graph, converted code and
+            Compare) and everything that describes your document (error messages, sizes, line and node counts, the cursor position and notifications)
+            are left out. They appear as empty boxes, and the recorder never reads inside them.
           </li>
-          <li>All other text on the page, every form field and every label and tooltip is replaced with asterisks before anything leaves your browser.</li>
+          <li>Whatever you type into a field (search, URLs, names) is replaced with asterisks before anything leaves your browser.</li>
+          <li>The site’s own text stays readable: buttons, menus, labels, tooltips and the articles and guides you read.</li>
           <li>Recordings contain no network requests, no console messages and no canvas drawings.</li>
         </ul>
+        <div className="replay-figure">
+          <figure>
+            <figcaption>What you see</figcaption>
+            <Shot name="seen" alt="The JSON tool with a sample document open: the file name, the editor, the tree view and the status bar are all readable." />
+          </figure>
+          <figure>
+            <figcaption>
+              What a recording keeps <span>(striped areas are left out entirely)</span>
+            </figcaption>
+            <Shot
+              name="recorded"
+              alt="The same screen as a recording keeps it: the file name, the editor, the tree view, the status message and the cursor position are empty boxes, while the toolbar, the Tree menu and the Integrate, Blog and Privacy links stay readable."
+            />
+          </figure>
+        </div>
 
         <h2>Every event, and what it carries</h2>
         <p>
@@ -203,7 +245,7 @@ export default function PrivacyPage() {
           loaded at all and Vercel counts nothing. In the JSON tool, the same choice is <strong>Privacy mode</strong> in the command palette (Ctrl+K, or
           ⌘K on a Mac). If your browser sends Global Privacy Control or Do Not Track, PostHog never loads, without you doing anything.
         </p>
-        <p className="muted">Last updated 18 October 2026.</p>
+        <p className="muted">Last updated 24 October 2026.</p>
       </div>
     </ContentShell>
   );

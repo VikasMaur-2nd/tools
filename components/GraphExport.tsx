@@ -156,7 +156,8 @@ function ExportForm() {
             <span className="muted">.{ext}</span>
           </span>
         </label>
-        <p className={`gx-info${preview?.error ? ' err' : ''}`} aria-live="polite">
+        {/* The image's size and card count describe the document. */}
+        <p className={`gx-info${preview?.error ? ' err' : ''} ${PRIVATE}`} aria-live="polite">
           {preview?.error
             ? preview.limit === 'cards'
               ? t('Too many cards for SVG: {n} (up to {max}).', { n: t.num(preview.cards), max: t.num(preview.maxCards ?? 0) })

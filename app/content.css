@@ -1063,6 +1063,65 @@ html:has(.content-page:not([style*='none'])) {
   border-radius: 12px;
 }
 
+/* Privacy page: the same moment in the browser and in a recording. The light
+   and dark screenshots follow the page theme; the hidden one is never fetched
+   (lazy images that are not displayed don't load). */
+.replay-figure {
+  display: grid;
+  gap: 18px;
+  margin: 28px 0 30px;
+}
+
+.replay-figure figure {
+  margin: 0;
+}
+
+.replay-figure figcaption {
+  margin-bottom: 8px;
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.replay-figure figcaption span {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.replay-shot {
+  display: block;
+}
+
+.replay-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.replay-shot.dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .replay-shot.light {
+    display: none;
+  }
+
+  :root:not([data-theme='light']) .replay-shot.dark {
+    display: block;
+  }
+}
+
+:root[data-theme='dark'] .replay-shot.light {
+  display: none;
+}
+
+:root[data-theme='dark'] .replay-shot.dark {
+  display: block;
+}
+
 .prose table {
   width: 100%;
   border-collapse: collapse;
@@ -1472,6 +1531,19 @@ html:has(.content-page:not([style*='none'])) {
   line-height: 1.6;
 }
 
+/* One note shows: the state <html data-analytics> names, set before first paint. */
+.consent-note [data-note] {
+  display: none;
+}
+
+:root:not([data-analytics]) .consent-note [data-note=''],
+:root[data-analytics='on'] .consent-note [data-note='on'],
+:root[data-analytics='off'] .consent-note [data-note='off'],
+:root[data-analytics='browser'] .consent-note [data-note='browser'],
+:root[data-analytics='unavailable'] .consent-note [data-note='unavailable'] {
+  display: inline;
+}
+
 .switch {
   position: relative;
   flex: none;
@@ -1485,13 +1557,19 @@ html:has(.content-page:not([style*='none'])) {
   transition: background-color 0.15s ease;
 }
 
-.switch[aria-checked='true'] {
+.switch[aria-checked='true'],
+:root[data-analytics]:not([data-analytics='off']) .switch:not([aria-checked]) {
   background: var(--ok);
 }
 
 .switch:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+/* The state is known before the page starts: look ready rather than greyed out. */
+:root[data-analytics] .switch:disabled {
+  opacity: 1;
 }
 
 .switch-knob {
@@ -1506,7 +1584,8 @@ html:has(.content-page:not([style*='none'])) {
   transition: transform 0.15s ease;
 }
 
-.switch[aria-checked='true'] .switch-knob {
+.switch[aria-checked='true'] .switch-knob,
+:root[data-analytics]:not([data-analytics='off']) .switch:not([aria-checked]) .switch-knob {
   transform: translateX(18px);
 }
 

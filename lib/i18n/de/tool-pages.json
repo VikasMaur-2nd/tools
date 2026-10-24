@@ -1226,7 +1226,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "6aa134126011",
+    "hash": "86ea7550ad64",
     "title": "Sicherer JSON-Formatter mit Verarbeitung im Browser",
     "description": "Prüfe JSON lokal ohne Dokument-Upload und Konto. Kontrolliere die Netzwerkanfragen selbst und lies vor sensiblen Daten zu Analytics, Speicher und CSP.",
     "heading": "Sicherer JSON-Formatter",
@@ -1246,7 +1246,7 @@
     ],
     "options": [
       "Parser, Codegeneratoren und das Erstellen von Downloads laufen lokal. Eine lokale Datei wird beim Öffnen nicht hochgeladen.",
-      "Vercel Web Analytics zählt Seitenaufrufe über /_vercel/insights. PostHog erfasst Seitenaufrufe, Ereignisse zur Nutzung von Funktionen und Bildschirmaufzeichnungen über /relay. Beide Pfade liegen auf dieser Origin. Die Aufzeichnungen lassen die Editoren, Dateinamen und sämtliche Ausgabeansichten aus. Der Browser maskiert den gesamten übrigen Seitentext. Kein Ereignis enthält Dokumentinhalte.",
+      "Vercel Web Analytics zählt Seitenaufrufe über /_vercel/insights. PostHog erfasst Seitenaufrufe, Ereignisse zur Nutzung von Funktionen und Bildschirmaufzeichnungen über /relay. Beide Pfade liegen auf dieser Origin. Die Aufzeichnungen lassen die Editoren, Dateinamen, sämtliche Ausgabeansichten und alles aus, was dein Dokument beschreibt. Der Browser maskiert, was du in Felder eingibst. Kein Ereignis enthält Dokumentinhalte.",
       "Ein Freigabelink enthält JSON im URL-Fragment. Das Fragment wird nicht in einer HTTP-Anfrage gesendet. Wer den vollständigen Link hat, kann das Dokument aber lesen. Teile keine Geheimnisse über solche Links.",
       "„Von URL laden“ ruft den gewählten Endpunkt ausdrücklich in deinem Browser ab. Dieser Endpunkt erhält eine Anfrage. Auch ein Link mit ?url= kann das Laden entfernter Daten auslösen. Verwende für sensible Daten das Einfügen oder eine lokale Datei."
     ],
@@ -1257,7 +1257,7 @@
       },
       {
         "question": "Verwendet die Website Analytics?",
-        "answer": "Ja. Vercel Web Analytics zählt Seitenaufrufe, und PostHog erfasst die Nutzung von Funktionen und Bildschirmaufzeichnungen. Die Aufzeichnungen lassen die Editoren, Dateinamen und Ausgaben aus. Der Browser maskiert den gesamten übrigen Text. Kein Ereignis enthält Dokumentinhalte. Du kannst Analytics auf der Datenschutzseite ausschalten."
+        "answer": "Ja. Vercel Web Analytics zählt Seitenaufrufe, und PostHog erfasst die Nutzung von Funktionen und Bildschirmaufzeichnungen. Die Aufzeichnungen lassen die Editoren, Dateinamen, Ausgaben und alles aus, was dein Dokument beschreibt. Der Browser maskiert, was du in Felder eingibst. Kein Ereignis enthält Dokumentinhalte. Du kannst Analytics auf der Datenschutzseite ausschalten."
       },
       {
         "question": "Was schützt die Content Security Policy?",
@@ -1284,7 +1284,7 @@
         "heading": "Analytics und Anfragen an Dritte",
         "paragraphs": [
           "Die Website verwendet Vercel Web Analytics, um Seitenaufrufe zu zählen, und PostHog, um zu sehen, welche Funktionen genutzt werden, mit gerundeten Bereichen für die Dokumentgröße und Bildschirmaufzeichnungen. Beide senden ihre Anfragen an dieselbe Origin (/_vercel/insights und /relay), und keines der beiden Tools erhält Dokumentinhalte. URL-Fragmente und Abfrageparameter werden vor dem Senden von Ereignissen entfernt, mit Ausnahme von utm_-Kampagnen-Tags. Schreibe keine Geheimnisse in URL-Pfade.",
-          "Die Aufzeichnungen lassen die Editoren, Dateinamen, Pfade und sämtliche Ausgabeansichten vollständig aus. Der Browser ersetzt den gesamten übrigen Seitentext durch Sternchen, bevor etwas gesendet wird. PostHog-Payloads sind unkomprimiertes JSON (die wenigen, die beim Schließen einer Seite gesendet werden, sind base64-kodiert), sodass du auch sie auf die Markierung prüfen kannst. Du kannst Analytics auf der Datenschutzseite ausschalten. Die Code-Schriftart wird beim Build selbst gehostet. Ein von dir angeforderter Abruf einer entfernten URL ist die einzige Ausnahme vom üblichen Ablauf mit lokaler Eingabe."
+          "Die Aufzeichnungen lassen die Editoren, Dateinamen, Pfade, sämtliche Ausgabeansichten und alles, was dein Dokument beschreibt (Fehlermeldungen, Größen, Zählungen), vollständig aus. Der Browser ersetzt alles, was du in ein Feld eingibst, durch Sternchen, bevor etwas gesendet wird; der eigene Text der Website, etwa Schaltflächen und Menüs, bleibt lesbar. PostHog-Payloads sind unkomprimiertes JSON (die wenigen, die beim Schließen einer Seite gesendet werden, sind base64-kodiert), sodass du auch sie auf die Markierung prüfen kannst. Du kannst Analytics auf der Datenschutzseite ausschalten. Die Code-Schriftart wird beim Build selbst gehostet. Ein von dir angeforderter Abruf einer entfernten URL ist die einzige Ausnahme vom üblichen Ablauf mit lokaler Eingabe."
         ]
       },
       {

@@ -1216,7 +1216,7 @@
     ]
   },
   "secure-json-formatter": {
-    "hash": "6aa134126011",
+    "hash": "86ea7550ad64",
     "title": "Formateador JSON seguro: procesamiento local en tu navegador",
     "description": "Inspecciona JSON en tu navegador sin subir documentos ni crear cuenta. Comprueba tú mismo las solicitudes y lee los límites de analítica, almacenamiento y CSP.",
     "heading": "Formateador JSON seguro",
@@ -1236,7 +1236,7 @@
     ],
     "options": [
       "El analizador, los generadores de código y la creación de descargas se ejecutan localmente. Abrir un archivo local no lo sube.",
-      "Vercel Web Analytics cuenta las visitas a las páginas a través de /_vercel/insights. PostHog registra visitas a las páginas, eventos de uso de funciones y grabaciones de pantalla a través de /relay. Ambas rutas pertenecen a este origen. Las grabaciones excluyen los editores, los nombres de archivo y todas las vistas de salida, el navegador enmascara el resto del texto de la página y ningún evento contiene el contenido de los documentos.",
+      "Vercel Web Analytics cuenta las visitas a las páginas a través de /_vercel/insights. PostHog registra visitas a las páginas, eventos de uso de funciones y grabaciones de pantalla a través de /relay. Ambas rutas pertenecen a este origen. Las grabaciones excluyen los editores, los nombres de archivo, todas las vistas de salida y todo lo que describe tu documento, el navegador enmascara lo que escribes en los campos y ningún evento contiene el contenido de los documentos.",
       "Un enlace para compartir coloca el JSON en el fragmento de la URL. El fragmento no se envía en una solicitud HTTP, pero cualquiera que tenga el enlace completo puede leer el documento. Evita compartir secretos.",
       "Cargar desde URL solicita expresamente el endpoint elegido desde tu navegador. Ese endpoint recibe una solicitud. Un enlace ?url= también puede activar la carga remota; pega los datos o usa un archivo local para trabajar con información sensible."
     ],
@@ -1247,7 +1247,7 @@
       },
       {
         "question": "¿El sitio usa analítica?",
-        "answer": "Sí. Vercel Web Analytics cuenta las visitas a las páginas y PostHog registra el uso de funciones y grabaciones de pantalla. Las grabaciones excluyen los editores, los nombres de archivo y las salidas, el navegador enmascara el resto del texto y ningún evento contiene el contenido de los documentos. Puedes desactivar la analítica en la página de privacidad."
+        "answer": "Sí. Vercel Web Analytics cuenta las visitas a las páginas y PostHog registra el uso de funciones y grabaciones de pantalla. Las grabaciones excluyen los editores, los nombres de archivo, las salidas y todo lo que describe tu documento, el navegador enmascara lo que escribes en los campos y ningún evento contiene el contenido de los documentos. Puedes desactivar la analítica en la página de privacidad."
       },
       {
         "question": "¿Qué protege la política de seguridad de contenido?",
@@ -1274,7 +1274,7 @@
         "heading": "Analítica y solicitudes a terceros",
         "paragraphs": [
           "El sitio usa Vercel Web Analytics para contar las visitas a las páginas y PostHog para ver qué funciones se usan, con rangos redondeados del tamaño de los documentos y grabaciones de pantalla. Ambos envían sus solicitudes a este mismo origen (/_vercel/insights y /relay) y ninguno recibe el contenido de los documentos. Los fragmentos de URL y los parámetros de consulta, salvo las etiquetas de campaña utm_, se eliminan antes de enviar los eventos. Evita poner secretos en las rutas de las URL.",
-          "Las grabaciones excluyen por completo los editores, los nombres de archivo, las rutas y todas las vistas de salida, y el navegador sustituye el resto del texto de la página por asteriscos antes de enviar nada. Las cargas útiles de PostHog son JSON sin comprimir (las pocas que se envían al cerrar una página van codificadas en base64), así que también puedes revisarlas en busca del marcador. Puedes desactivar la analítica en la página de privacidad. La tipografía del código se prepara durante la compilación para servirla desde el propio sitio, y la carga de una URL remota solicitada por el usuario es la única excepción al flujo normal de entrada local."
+          "Las grabaciones excluyen por completo los editores, los nombres de archivo, las rutas, todas las vistas de salida y todo lo que describe tu documento (mensajes de error, tamaños, recuentos), y el navegador sustituye por asteriscos lo que escribes en cualquier campo antes de enviar nada; el texto propio del sitio, como botones y menús, sigue siendo legible. Las cargas útiles de PostHog son JSON sin comprimir (las pocas que se envían al cerrar una página van codificadas en base64), así que también puedes revisarlas en busca del marcador. Puedes desactivar la analítica en la página de privacidad. La tipografía del código se prepara durante la compilación para servirla desde el propio sitio, y la carga de una URL remota solicitada por el usuario es la única excepción al flujo normal de entrada local."
         ]
       },
       {

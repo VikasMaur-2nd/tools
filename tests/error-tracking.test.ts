@@ -161,6 +161,35 @@ test('actions while analytics is off are never sent, even after turning it back 
   assert.deepEqual(s.sent, []);
 });
 
+test("the privacy page's inline copy of the analytics state gives the same answers on its own", () => {
+  const source = readFileSync(resolve(process.cwd(), 'lib/analytics/index.ts'), 'utf8');
+  const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  const exports: { stateFrom?: (configured: boolean) => string } = {};
+  runInNewContext(js, { exports, require: () => ({}), process: { env: {} } });
+  const inline = String(exports.stateFrom);
+  const cases: [string, { pref?: string; host?: string; ua?: string; gpc?: boolean; dnt?: string; webdriver?: boolean; configured?: boolean }, string][] = [
+    ['on', {}, 'on'],
+    ['turned off here', { pref: 'off' }, 'off'],
+    ['not configured', { configured: false }, 'unavailable'],
+    ['Global Privacy Control', { gpc: true }, 'browser'],
+    ['Do Not Track', { dnt: '1' }, 'browser'],
+    ['another host', { host: 'preview.vercel.app' }, 'unavailable'],
+    ['a crawler', { ua: 'Googlebot/2.1 (+http://www.google.com/bot.html)' }, 'unavailable'],
+    ['automation', { webdriver: true }, 'unavailable'],
+    ['local testing', { pref: 'debug', host: 'localhost' }, 'on'],
+  ];
+  for (const [what, c, want] of cases) {
+    // Only browser globals: the inline script has nothing else.
+    const globals = {
+      localStorage: { getItem: () => c.pref ?? null },
+      navigator: { userAgent: c.ua ?? 'Mozilla/5.0', webdriver: c.webdriver ?? false, globalPrivacyControl: c.gpc ?? false, doNotTrack: c.dnt ?? null },
+      window: {},
+      location: { hostname: c.host ?? 'tools.vikasmaur.com' },
+    };
+    assert.equal(runInNewContext(`(${inline})(${c.configured ?? true})`, globals), want, what);
+  }
+});
+
 test('a page that is hidden loads PostHog at once and sends what was queued', async () => {
   const s = session();
   s.api.startAnalytics();

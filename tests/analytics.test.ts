@@ -186,10 +186,17 @@ test('beforeSend drops unexpected events and strips URLs', () => {
   assert.ok(beforeSend({ event: 'feature_used', properties: { feature: 'repair' } }));
 });
 
-test('replay masks readable attributes and keeps layout ones', () => {
-  assert.equal(maskAttribute('title', 'Duplicate key "password"'), '********* *** **********');
-  assert.equal(maskAttribute('aria-label', 'Copy'), '****');
-  assert.equal(maskAttribute('data-tip', 'Copy path'), '**** ****');
+test("replay shows the site's labels and masks attributes that can carry a visitor's data", () => {
+  const el = (tagName: string, labelsPrivate = false) => ({ tagName, closest: () => (labelsPrivate ? {} : null) }) as unknown as Element;
+  assert.equal(maskAttribute('aria-label', 'Copy', el('BUTTON')), 'Copy');
+  assert.equal(maskAttribute('data-tip', 'Copy path', el('BUTTON')), 'Copy path');
+  assert.equal(maskAttribute('placeholder', 'Find', el('INPUT')), 'Find');
+  // A site control whose tooltip mentions the document (PRIVATE_LABELS).
+  assert.equal(maskAttribute('data-tip', '34% smaller', el('BUTTON', true)), '*** *******');
+  assert.equal(maskAttribute('value', 'TKSECRET', el('INPUT')), '********');
+  assert.equal(maskAttribute('value', 'typescript', el('OPTION')), 'typescript');
+  assert.equal(maskAttribute('value', 'go', el('SELECT')), 'go');
+  assert.equal(maskAttribute('download', 'customers.json', el('A')), '**************');
   assert.equal(maskAttribute('data-path', '$.users[0].email'), '****************');
   assert.equal(maskAttribute('data-theme', 'dark'), 'dark');
   assert.equal(maskAttribute('class', 'btn icon'), 'btn icon');
@@ -284,15 +291,26 @@ test('every view that shows the document is kept out of session replay', () => {
     ['the table location', /className=\{`crumbs \$\{PRIVATE\}`\}/],
     ['toasts (file names and export errors)', /className=\{`toasts \$\{PRIVATE\}`\}/],
     ['the file input', /ref=\{fileRef\} className=\{PRIVATE\}/],
+    ['the status bar (errors, JWT, sizes, counts)', /className=\{`sb-l \$\{PRIVATE\}`\}/],
+    ['the caret position', /className=\{`cursor muted \$\{PRIVATE\}`\}/],
+    ['the Minify tooltip ("34% smaller")', /className=\{PRIVATE_LABELS\}/],
   ] as const) assert.match(tool, re, what);
+  assert.equal(tool.match(/className=\{`seg-size \$\{PRIVATE\}`\}/g)?.length, 3, 'the output sizes');
   assert.equal(tool.match(/className=\{`fname \$\{PRIVATE\}`\}/g)?.length, 2, 'both file names');
   assert.match(tool, /id="view-graph" className="gv" ref=\{graphRef\}/, 'graph is hosted in the private viewer');
   const dialogs = readFileSync(join(process.cwd(), 'components/dialogs.tsx'), 'utf8');
   assert.match(dialogs, /className=\{PRIVATE\}\s+autoFocus\s+type="url"/, 'the Load from URL field');
+  const builder = readFileSync(join(process.cwd(), 'components/LinkBuilder.tsx'), 'utf8');
+  assert.equal(builder.match(/className=\{`lb-error \$\{PRIVATE\}`\}/g)?.length, 2, 'builder messages (file names)');
+  assert.equal(builder.match(/className=\{`lb-warn \$\{PRIVATE\}`\}/g)?.length, 2, 'builder link-size warnings');
+  assert.match(builder, /className=\{`lb-check \$\{PRIVATE\}`\}/, "builder check line (\"Ln 1, Col 8: Unexpected 'T'\")");
+  const graphExport = readFileSync(join(process.cwd(), 'components/GraphExport.tsx'), 'utf8');
+  assert.match(graphExport, /gx-info\$\{preview\?\.error \? ' err' : ''\} \$\{PRIVATE\}/, 'image size and card count');
   const index = readFileSync(join(process.cwd(), 'lib/analytics/index.ts'), 'utf8');
   assert.match(index, /export const PRIVATE = 'ph-no-capture';/);
   const ph = readFileSync(join(process.cwd(), 'lib/analytics/posthog.ts'), 'utf8');
-  for (const opt of ["blockClass: 'ph-no-capture'", "maskTextSelector: '*'", 'maskAllInputs: true', 'recordBody: false', 'recordHeaders: false', 'autocapture: false', 'capture_exceptions: false', 'enable_recording_console_log: false', 'disable_capture_url_hashes: true', 'captureConsoleLogs: false, beforeSend: () => null']) {
+  assert.ok(!ph.includes('maskTextSelector'), "the site's own text is not masked");
+  for (const opt of ["blockClass: 'ph-no-capture'", 'text: true', 'textarea: true', 'search: true', 'url: true', 'select: false', 'recordBody: false', 'recordHeaders: false', 'autocapture: false', 'capture_exceptions: false', 'enable_recording_console_log: false', 'disable_capture_url_hashes: true', 'captureConsoleLogs: false, beforeSend: () => null']) {
     assert.ok(ph.includes(opt), opt);
   }
 });
