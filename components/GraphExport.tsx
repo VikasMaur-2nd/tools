@@ -12,11 +12,13 @@ import { PRIVATE } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
 import type { ExportPreview, GraphExport } from '@/lib/graph/types';
 import { exportOptions, loadExportPrefs, saveExportPrefs, type ExportPrefs } from '@/lib/graph/export-prefs';
+import { radioKeys, tabStop } from '@/lib/radio';
 import { Modal } from './dialogs';
 import { Icon } from './icons';
 
 /** Below this many image px per graph px, PNG and JPEG text gets hard to read. */
 const SMALL_TEXT = 0.75;
+const BACKGROUNDS = ['theme', 'white', 'transparent'] as const;
 
 type Alternative = { label: string; patch: Partial<ExportPrefs> };
 
@@ -56,15 +58,16 @@ function useAlternatives(opts: GraphExport, preview: ExportPreview | null, tiny:
   return want && found?.key === key ? found.alts : [];
 }
 
-/** A row of mutually exclusive choices (the toolbar's segmented look). */
+/** A row of mutually exclusive choices (the toolbar's segmented look), with the keys of native radios (lib/radio.ts). */
 function Choice<V extends string | number>({ label, value, options, onPick }: { label: string; value: V; options: { v: V; label: string; disabled?: boolean }[]; onPick: (v: V) => void }) {
   const t = useT();
+  const stop = tabStop(options.map((o) => ({ checked: o.v === value, disabled: o.disabled })));
   return (
     <div className="gx-row">
       <span className="gx-label">{t(label)}</span>
-      <div className="seg seg-sm" role="radiogroup" aria-label={t(label)}>
-        {options.map((o) => (
-          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} disabled={o.disabled} onClick={() => onPick(o.v)}>
+      <div className="seg seg-sm" role="radiogroup" aria-label={t(label)} onKeyDown={(e) => radioKeys(e, (i) => onPick(options[i].v))}>
+        {options.map((o, i) => (
+          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} tabIndex={i === stop ? 0 : -1} disabled={o.disabled} onClick={() => onPick(o.v)}>
             {t(o.label)}
           </button>
         ))}
@@ -92,6 +95,8 @@ function ExportForm() {
   const set = (patch: Partial<ExportPrefs>) => setP((old) => ({ ...old, ...patch }));
   // JPEG has no transparency: it falls back to the theme's colour.
   const bg = p.format === 'jpeg' && p.bg === 'transparent' ? 'theme' : p.bg;
+  // (A custom colour is its own field, after the group.)
+  const bgStop = tabStop(BACKGROUNDS.map((v) => ({ checked: bg === v, disabled: v === 'transparent' && p.format === 'jpeg' })));
   const opts: GraphExport = { ...exportOptions(p), area: p.area === 'branch' && preview && !preview.branch ? 'all' : p.area };
   const key = JSON.stringify(opts);
   useEffect(() => saveExportPrefs(p), [p]);
@@ -137,9 +142,17 @@ function ExportForm() {
         />
         <div className="gx-row">
           <span className="gx-label">{t('Background')}</span>
-          <div className="seg seg-sm" role="radiogroup" aria-label={t('Background')}>
-            {(['theme', 'white', 'transparent'] as const).map((v) => (
-              <button key={v} type="button" role="radio" aria-checked={bg === v} disabled={v === 'transparent' && p.format === 'jpeg'} onClick={() => set({ bg: v })}>
+          <div className="seg seg-sm" role="radiogroup" aria-label={t('Background')} onKeyDown={(e) => radioKeys(e, (i) => set({ bg: BACKGROUNDS[i] }))}>
+            {BACKGROUNDS.map((v, i) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={bg === v}
+                tabIndex={i === bgStop ? 0 : -1}
+                disabled={v === 'transparent' && p.format === 'jpeg'}
+                onClick={() => set({ bg: v })}
+              >
                 {t(v === 'theme' ? 'Theme' : v === 'white' ? 'White' : 'Transparent')}
               </button>
             ))}

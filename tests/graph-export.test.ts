@@ -45,13 +45,12 @@ test('graph export: standalone SVG escapes document text and preserves the model
   const key = 'key&<>"\'';
   const m = model({ [key]: 'value & < > " \'', number: 42, boolean: true, nothing: null, empty: {}, array: [] });
   const L = layoutGraph(m);
-  const svg = toSVG(L, theme, { selected: 0 });
+  const svg = toSVG(L, theme);
   const texts = wellFormed(svg);
   assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
   assert.match(svg, /<style>/);
   assert.match(svg, /font-size:12px/);
   assert.match(svg, /font-family:&apos;Test Mono&apos;, monospace/);
-  assert.match(svg, /class="selected"/);
   assert.match(svg, /class="key ph-no-capture"/);
   assert.ok(texts.includes('root'));
   assert.ok(texts.includes('{6}'));
@@ -90,10 +89,10 @@ test('graph export: collapse hides descendants, retains port dots and includes a
   const collapsed = new Uint8Array(m.n);
   collapsed[1] = 1;
   const L = layoutGraph(m, collapsed);
-  const svg = toSVG(L, theme, { selected: 2 });
+  const svg = toSVG(L, theme);
   wellFormed(svg);
   assert.match(svg, />\+2<\/text>/);
-  assert.doesNotMatch(svg, /hiddenValue|invisible|>deeper<|class="selected"/);
+  assert.doesNotMatch(svg, /hiddenValue|invisible|>deeper</);
   assert.equal((svg.match(/class="card"/g) ?? []).length, 2);
   assert.equal((svg.match(/class="dot"/g) ?? []).length, 2);
   const width = Number(/<svg[^>]* width="([\d.]+)"/.exec(svg)![1]);
@@ -125,6 +124,29 @@ test('graph export: rejects too many shown SVG cards, but permits their collapse
   const svg = toSVG(layoutGraph(m, collapsed), theme);
   assert.match(svg, />\+20k<\/text>/);
   assert.equal((svg.match(/class="card"/g) ?? []).length, 1);
+});
+
+test('graph export: SVG limits count the rows drawn, not only cards', () => {
+  // One card holding a long array of numbers: a card under the card limit, rows far over the row limit.
+  const L = layoutGraph(model(Array.from({ length: EXPORT_LIMITS.svgRows * 2 }, (_, i) => i * 1.5)));
+  assert.equal(L.shownCount, 1);
+  assert.ok(exportSize(L).rows > EXPORT_LIMITS.svgRows);
+  const t0 = performance.now();
+  assert.throws(() => toSVG(L, theme), /The graph is too large for SVG\. Collapse some branches or export PNG\./);
+  // Refused before drawing a row (drawing them all took seconds).
+  assert.ok(performance.now() - t0 < 100, `${(performance.now() - t0).toFixed(0)} ms`);
+  // What's on screen of it is small: only the rows in view count, and it exports.
+  const view = { kind: 'rect', x: 0, y: 0, w: 1200, h: 800 } as const;
+  const rows = exportSize(L, view).rows;
+  assert.ok(rows > 0 && rows < 50, `${rows} rows in view`);
+  assert.equal((toSVG(L, theme, { area: view }).match(/class="num /g) ?? []).length, rows);
+  // Rows of collapsed branches aren't drawn, so they don't count.
+  const m = model({ big: Array.from({ length: EXPORT_LIMITS.svgRows * 2 }, (_, i) => i), small: [{ a: 1 }] });
+  const collapsed = new Uint8Array(m.n);
+  collapsed[0] = 1;
+  assert.ok(exportSize(layoutGraph(m)).rows > EXPORT_LIMITS.svgRows);
+  assert.equal(exportSize(layoutGraph(m, collapsed)).rows, 2);
+  assert.match(toSVG(layoutGraph(m, collapsed), theme), /^<svg/);
 });
 
 test('graph export: 5k cards export in less than 300 ms', () => {
@@ -247,4 +269,12 @@ test('graph export: images shrink to the canvas a device really allows (iPhone a
   assert.ok(tried.every((a, i) => i === 0 || a < tried[i - 1]));
   // Nothing works down to a quarter size: a clear, toast-ready message.
   assert.throws(() => fitRaster(2000, 30_000, planned, () => false), /too large for an image on this device\. Export the visible area or a branch, or try SVG\./);
+  // The last step lands on a quarter size exactly, never past it: from 0.3, 0.25 is tried, not skipped.
+  const steps: number[] = [];
+  assert.equal(fitRaster(1000, 1000, 0.3, (w) => (steps.push(w), w <= 250)), 0.25);
+  assert.deepEqual(steps, [300, 250]);
+  const all: number[] = [];
+  assert.throws(() => fitRaster(1000, 1000, 2, (w) => (all.push(w), false)));
+  assert.equal(all.at(-1), 250);
+  assert.ok(all.every((w) => w >= 250));
 });

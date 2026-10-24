@@ -6,7 +6,8 @@ import { anchorY, cardsIn, groupsIn, portY, rowY, type GraphLayout } from './lay
 import { G, SWATCH_COLS, SWATCH_PX, headText, headX, labelText, sizeText, swatch, valueText } from './model';
 import type { GraphTheme } from './theme';
 
-export const EXPORT_LIMITS = { svgCards: 20_000, pngPixels: 120_000_000, pngSide: 16_384 };
+/** SVG: cards and rows drawn (a long array is one card with a row per item: 20k cards or 100k rows are about 15 MB each). */
+export const EXPORT_LIMITS = { svgCards: 20_000, svgRows: 100_000, pngPixels: 120_000_000, pngSide: 16_384 };
 
 const MARGIN = 24;
 const MIN_SCALE = 0.25;
@@ -67,8 +68,6 @@ export interface ImageOptions {
   area?: ExportArea;
   /** A CSS colour, or null for none (transparent). Default: the theme's canvas colour. */
   background?: string | null;
-  /** Outline this card (SVG). */
-  selected?: number;
 }
 
 /** The world rectangle to draw, the margin around it, and the cards in it ([lo, hi)). */
@@ -137,13 +136,38 @@ function frame(L: GraphLayout, area: ExportArea = { kind: 'all' }): Frame {
   return { x0, y0, x1, y1, margin, lo, hi, cards, w: half(x1 - x0) + margin * 2, h: half(y1 - y0) + margin * 2 };
 }
 
-/** Size of an export at scale 1, and how many cards it holds (for the export dialog). */
-export function exportSize(L: GraphLayout, area?: ExportArea): { width: number; height: number; cards: number } {
-  const f = frame(L, area);
-  return { width: f.w, height: f.h, cards: f.cards };
+/**
+ * Rows an SVG of frame `f` draws, counted as `draw` and `card` pick them (cards in
+ * the frame, their rows cut to its height) and only up to just past `cap`.
+ */
+function rowsIn(L: GraphLayout, f: Frame, cap: number): number {
+  const m = L.m;
+  const y0 = f.y0 - f.margin - 3;
+  const y1 = f.y1 + f.margin + 3;
+  let rows = 0;
+  for (let d = 0; d < L.levels.length && rows <= cap; d++) {
+    if (L.colX[d] > f.x1 + 1 || L.colX[d] + L.colW[d] + 120 < f.x0) continue;
+    const [a, b] = cardsIn(L, d, y0, y1);
+    const list = L.levels.at(d);
+    for (let i = a; i < b && rows <= cap; i++) {
+      const c = list[i];
+      if (c < f.lo || c >= f.hi) continue;
+      const start = m.rowStart[c];
+      const from = Math.max(start, start + Math.floor((y0 - L.y[c] - G.head) / G.row));
+      const to = Math.min(m.rowStart[c + 1], start + Math.ceil((y1 - L.y[c] - G.head) / G.row));
+      if (to > from) rows += to - from;
+    }
+  }
+  return rows;
 }
 
-type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'chevron' | 'pill' | 'dot' | 'fg' | 'strong' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul' | 'selected';
+/** Size of an export at scale 1, and how many cards and SVG rows it holds (for the export dialog; rows counted up to just past the limit). */
+export function exportSize(L: GraphLayout, area?: ExportArea): { width: number; height: number; cards: number; rows: number } {
+  const f = frame(L, area);
+  return { width: f.w, height: f.h, cards: f.cards, rows: rowsIn(L, f, EXPORT_LIMITS.svgRows) };
+}
+
+type Ink = 'bg' | 'card' | 'head' | 'border' | 'edge' | 'chevron' | 'pill' | 'dot' | 'fg' | 'strong' | 'muted' | 'key' | 'str' | 'num' | 'bool' | 'nul';
 type Command = ['M' | 'L', number, number] | ['Q', number, number, number, number] |
   ['C', number, number, number, number, number, number] | ['Z'];
 interface Painter {
@@ -206,7 +230,7 @@ function edges(L: GraphLayout, p: Painter, c: number, y0: number, y1: number) {
   }
 }
 
-function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, selected?: number) {
+function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number) {
   const m = L.m;
   const x = L.x[c];
   const y = L.y[c];
@@ -249,11 +273,10 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number, sel
     p.text(vx, cy, valueText(entry), valueInk(entry.t));
     if (m.rowChild[r] >= 0) p.roundRect(x + w - 3, cy - 3, 6, 6, 3, 'dot');
   }
-  if (c === selected) p.roundRect(x - 2, y - 2, w + 4, h + 4, 8, 'selected');
 }
 
 /** Edges then cards of frame `f` between world y0 and y1 (a PNG strip, or everything). */
-function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1, selected?: number) {
+function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1) {
   const cols = L.levels.length;
   for (let d = 0; d < L.groups.length; d++) {
     // A column's edges run through the gap to its right.
@@ -269,7 +292,7 @@ function draw(L: GraphLayout, p: Painter, f: Frame, y0 = f.y0, y1 = f.y1, select
     const [a, b] = cardsIn(L, d, y0 - 3, y1 + 3);
     for (let i = a; i < b; i++) {
       const c = L.levels.at(d)[i];
-      if (L.shown[c] && c >= f.lo && c < f.hi) card(L, p, c, y0 - 3, y1 + 3, selected);
+      if (L.shown[c] && c >= f.lo && c < f.hi) card(L, p, c, y0 - 3, y1 + 3);
     }
   }
 }
@@ -317,20 +340,19 @@ function styles(theme: GraphTheme): string {
     `.chevron{fill:none;stroke:${css(theme.muted)};stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}` +
     `.dot{fill:${css(theme.edge)}}.border{fill:none;stroke:${css(theme.border)};stroke-width:1}` +
     `.edge{fill:none;stroke:${css(theme.edge)};stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}` +
-    `.selected{fill:none;stroke:${css(theme.accent)};stroke-width:2}` +
     `text{font-family:${css(theme.family)};font-size:${G.font}px;dominant-baseline:central;white-space:pre;font-variant-ligatures:none}.end{text-anchor:end}`;
 }
 
 /** A standalone SVG (a 24 px margin unless it's a view rectangle), with no external fonts or resources. */
 export function toSVG(L: GraphLayout, theme: GraphTheme, opts: ImageOptions = {}): string {
   const f = frame(L, opts.area);
-  if (f.cards > EXPORT_LIMITS.svgCards) throw new Error(SVG_TOO_LARGE);
+  if (f.cards > EXPORT_LIMITS.svgCards || rowsIn(L, f, EXPORT_LIMITS.svgRows) > EXPORT_LIMITS.svgRows) throw new Error(SVG_TOO_LARGE);
   const { w, h } = f;
   const p = new SVG(f.x0 - f.margin, f.y0 - f.margin);
   const bg = opts.background === undefined ? theme.bg : opts.background;
   p.out.push(`<svg xmlns="http://www.w3.org/2000/svg" class="${PRIVATE}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><style>${styles(theme)}</style>`);
   if (bg) p.out.push(`<rect style="fill:${xml(bg)}" width="${w}" height="${h}"/>`);
-  draw(L, p, f, f.y0 - f.margin, f.y1 + f.margin, opts.selected);
+  draw(L, p, f, f.y0 - f.margin, f.y1 + f.margin);
   p.out.push('</svg>');
   return p.out.join('');
 }
@@ -345,9 +367,9 @@ class Canvas implements Painter {
   }
   private paint(ink: Ink) {
     const { ctx, theme } = this;
-    if (ink === 'edge' || ink === 'chevron' || ink === 'border' || ink === 'pill' || ink === 'selected') {
-      ctx.strokeStyle = ink === 'selected' ? theme.accent : ink === 'chevron' ? theme.muted : ink === 'edge' ? theme.edge : theme.border;
-      ctx.lineWidth = ink === 'selected' ? 2 : ink === 'edge' || ink === 'chevron' ? 1.25 : 1;
+    if (ink === 'edge' || ink === 'chevron' || ink === 'border' || ink === 'pill') {
+      ctx.strokeStyle = ink === 'chevron' ? theme.muted : ink === 'edge' ? theme.edge : theme.border;
+      ctx.lineWidth = ink === 'edge' || ink === 'chevron' ? 1.25 : 1;
       ctx.stroke();
     } else {
       ctx.fillStyle = ink === 'dot' ? theme.edge : theme[ink === 'strong' ? 'fg' : ink];
@@ -421,8 +443,10 @@ const PNG_TOO_LARGE_HERE = 'The graph is too large for an image on this device. 
  * nothing. So the canvas itself is checked, not the device guessed.
  */
 export function fitRaster(width: number, height: number, scale: number, works: (w: number, h: number) => boolean): number {
-  for (let s = scale; s >= MIN_SCALE - 1e-9; s *= Math.SQRT1_2) {
+  // (The last step is MIN_SCALE itself, whatever the halving lands on before it.)
+  for (let s = scale; ; s = Math.max(MIN_SCALE, s * Math.SQRT1_2)) {
     if (works(Math.ceil(width * s), Math.ceil(height * s))) return s;
+    if (s <= MIN_SCALE) break;
   }
   throw new Error(PNG_TOO_LARGE_HERE);
 }

@@ -6,23 +6,27 @@ import type { InputSource, RawLoad } from './events';
 import { collecting, emit } from './index';
 import { store } from '../engine/store';
 
-let pending: { source: InputSource; editor: 1 | 2; file: string | null; unsub: () => void } | null = null;
+/** Per editor: the document on its way in, until it is reported (`stop` ends the wait for it). */
+const pending: { [E in 1 | 2]?: { source: InputSource; file: string | null; stop: () => void } } = {};
 let watching = false;
 
 const SETTLED = new Set(['valid', 'fixable', 'error']);
 
-/** Facts about the document as it is now; ./events.ts `loadedProps` turns them into ranges and categories before sending. */
-function report() {
-  if (!pending) return;
-  const { source, editor, file, unsub } = pending;
-  pending = null;
-  unsub();
+const send = (raw: RawLoad) => emit('json_loaded', raw as unknown as Record<string, unknown>);
+
+/** Facts about editor `editor`'s document as it is now; ./events.ts `loadedProps` turns them into ranges and categories before sending. */
+function report(editor: 1 | 2) {
+  const p = pending[editor];
+  if (!p) return;
+  delete pending[editor];
+  p.stop();
   const s = store.get();
+  if (editor === 2) return send({ source: p.source, editor, file: p.file, bytes: s.cmpText.length, status: 'unknown' });
   const st = s.status;
-  const raw: RawLoad = {
-    source,
+  send({
+    source: p.source,
     editor,
-    file,
+    file: p.file,
     bytes: s.stats?.bytes ?? 0,
     status: st.kind,
     msg: 'msg' in st ? st.msg : undefined,
@@ -31,24 +35,30 @@ function report() {
     stats: s.stats ?? undefined,
     jsonl: st.kind === 'valid' && !!st.jsonl,
     jwt: st.kind === 'valid' && !!st.jwt,
-  };
-  emit('json_loaded', raw as unknown as Record<string, unknown>);
+  });
 }
 
 /**
  * A document is arriving in an editor (`source` says how). Call it just before
- * the document goes in: it is reported once the editor's next check settles,
- * with its size range, validity and the error category.
+ * the document goes in: it is reported once that editor's next check settles,
+ * with its size range, validity and the error category. Each editor waits on its
+ * own (a comparison link loads both); a newer document in the same editor
+ * replaces the one before, which is reported without the size and validity it
+ * never had checked.
  */
 export function noteLoad(source: InputSource, editor: 1 | 2 = 1, fileName?: string | null) {
   if (!collecting()) return;
-  if (pending) report();
+  const old = pending[editor];
+  if (old) {
+    delete pending[editor];
+    old.stop();
+    send({ source: old.source, editor, file: old.file, status: 'unknown' });
+  }
+  const file = fileName ?? null;
   if (editor === 2) {
     // Compare's document has no status of its own; its size is published a moment after it changes.
-    window.setTimeout(() => {
-      const raw: RawLoad = { source, editor, file: fileName ?? null, bytes: store.get().cmpText.length, status: 'unknown' };
-      emit('json_loaded', raw as unknown as Record<string, unknown>);
-    }, 500);
+    const t = window.setTimeout(() => report(2), 500);
+    pending[2] = { source, file, stop: () => window.clearTimeout(t) };
     return;
   }
   const since = performance.now();
@@ -56,9 +66,9 @@ export function noteLoad(source: InputSource, editor: 1 | 2 = 1, fileName?: stri
   // Every check publishes a new status object; the one already shown belongs to the previous document.
   const check = () => {
     const st = store.get().status;
-    if (st !== before && (SETTLED.has(st.kind) || performance.now() - since > 60_000)) report();
+    if (st !== before && (SETTLED.has(st.kind) || performance.now() - since > 60_000)) report(1);
   };
-  pending = { source, editor, file: fileName ?? null, unsub: store.subscribe(check) };
+  pending[1] = { source, file, stop: store.subscribe(check) };
 }
 
 /** Pastes straight into an editor (the most common way in), reported once the editor has checked them. Once per page. */

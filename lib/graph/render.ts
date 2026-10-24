@@ -5,7 +5,7 @@
  * groups come from binary searches per column, rows inside tall cards are
  * culled, and at low zoom neighbouring cards merge into one block per pixel.
  */
-import { ARR, BOOL, NUL, NUM, STR, type JNode } from '../json/parser';
+import { ARR, BOOL, NUL, NUM, STR } from '../json/parser';
 import { G, SWATCH_COLS, SWATCH_PX, fitCols, headText, headX, labelText, sizeText, swatch, valueText } from './model';
 import { cardsIn, groupsIn, type GraphLayout } from './layout';
 import type { GraphTheme } from './theme';
@@ -24,10 +24,6 @@ export interface Paint {
   curCard: number;
   /** Device pixels per CSS px. */
   dpr: number;
-  /** Force a level of detail (minimap: 2). */
-  lod?: number;
-  /** Skip the background fill. */
-  clear?: boolean;
   /** Dot grid on the background (on screen, not in the minimap or exports). */
   grid?: boolean;
 }
@@ -67,25 +63,6 @@ export function grid(ctx: CanvasRenderingContext2D, th: GraphTheme, cam: Cam, vw
   ctx.restore();
 }
 
-/** Colour of a row's value. */
-export const valueColor = (t: GraphTheme, n: JNode) => kindColor(t, n.t);
-
-/** Colour of values of kind `k` (containers and their sizes are muted). */
-function kindColor(t: GraphTheme, k: number): string {
-  switch (k) {
-    case STR:
-      return t.str;
-    case NUM:
-      return t.num;
-    case BOOL:
-      return t.bool;
-    case NUL:
-      return t.nul;
-    default:
-      return t.muted;
-  }
-}
-
 const R = 6;
 
 /**
@@ -116,6 +93,18 @@ function rowValue(m: GraphLayout['m'], r: number): string {
 }
 /** Label text of row r (after rowValue). */
 const rowLabel = (r: number) => labels.get(r) as string;
+
+/**
+ * Lets go of what painting keeps between frames: the last model's texts and the
+ * last frame's strings (pieces of the document, which can hold all of it). For a
+ * view that is hidden, emptied or gone; the next frame builds them again.
+ */
+export function releasePaint() {
+  textsFor = null;
+  labels.clear();
+  values.clear();
+  for (const r of [TEXT.key, TEXT.index, TEXT.head, TEXT.size, ...TEXT.value]) r.x.length = r.y.length = r.t.length = r.n = 0;
+}
 
 function firstColumn(colX: Float64Array, colW: Float64Array, x: number) {
   let lo = 0;
@@ -159,13 +148,11 @@ export function paint(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTh
   const s = cam.s;
   const dpr = p.dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (p.clear !== false) {
-    ctx.fillStyle = th.bg;
-    ctx.fillRect(0, 0, vw, vh);
-    if (p.grid) grid(ctx, th, cam, vw, vh, dpr);
-  }
+  ctx.fillStyle = th.bg;
+  ctx.fillRect(0, 0, vw, vh);
+  if (p.grid) grid(ctx, th, cam, vw, vh, dpr);
   if (!m.n) return;
-  const lod = p.lod ?? lodOf(s);
+  const lod = lodOf(s);
   // World units from here on, relative to the camera origin (Float64 math in JS, small numbers for canvas).
   ctx.setTransform(dpr * s, 0, 0, dpr * s, 0, 0);
   const ox = cam.x;
