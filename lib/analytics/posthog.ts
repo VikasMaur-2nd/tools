@@ -29,7 +29,13 @@ function uiHost(ingest: string) {
   return m ? `https://${m[1]}.posthog.com` : undefined;
 }
 
-export function initPostHog(token: string, ingest: string): PostHog {
+/**
+ * `seenHidden`: the page is hidden now but the visitor has seen it (they went
+ * to another tab or app). The SDK holds the first page view until a page is
+ * visible, so prerendered and unseen background tabs aren't counted; this one
+ * may never be shown again, so its page view is sent here instead.
+ */
+export function initPostHog(token: string, ingest: string, seenHidden = false): PostHog {
   const config: Partial<PostHogConfig> = {
     api_host: RELAY,
     ui_host: uiHost(ingest),
@@ -40,7 +46,7 @@ export function initPostHog(token: string, ingest: string): PostHog {
     // Payloads stay readable in DevTools, so anyone can check them for their own data.
     disable_compression: true,
     // Page views and leaves (SPA route changes included), web vitals and heatmap clicks (x/y only).
-    capture_pageview: 'history_change',
+    capture_pageview: seenHidden ? false : 'history_change',
     capture_pageleave: true,
     capture_performance: { web_vitals: true, network_timing: false },
     capture_heatmaps: true,
@@ -91,6 +97,10 @@ export function initPostHog(token: string, ingest: string): PostHog {
     color_scheme: (html.dataset.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark' ? 'dark' : 'light',
     pointer: matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine',
   });
+  if (seenHidden) {
+    posthog.capture('$pageview', { title: document.title }, { send_instantly: true });
+    posthog.set_config({ capture_pageview: 'history_change' });
+  }
   return posthog;
 }
 
