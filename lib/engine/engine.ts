@@ -3069,6 +3069,7 @@ export class Engine {
     else if (area === 'compare') this.ed2.focus();
     else if (area === 'format' || area === 'convert') (area === 'format' ? this.fmt : this.code).el.focus({ preventScroll: true });
     else if (area === 'tree') this.tree.focus();
+    else if (area === 'table') this.table.el.focus({ preventScroll: true });
     else if (area === 'graph') this.graph?.focus();
     else if (area === 'diff') this.menuDiff?.focus();
   }
