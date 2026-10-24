@@ -2228,18 +2228,25 @@ export class Editor {
       last.ins += ch.ins;
       last.selA = ch.selA;
       last.t = ch.t;
+      this.grew(ch.ins.length);
     } else if (recent && ch.kind === 'del' && last.kind === 'del' && !ch.ins && !last.ins && ch.a + ch.del.length === last.a) {
       last.a = ch.a;
       last.del = ch.del + last.del;
       last.selA = ch.selA;
       last.t = ch.t;
+      this.grew(ch.del.length);
     } else this.push(ch);
     this.redo_ = [];
   }
 
   private push(ch: Change) {
     this.undo_.push(ch);
-    this.histChars += ch.del.length + ch.ins.length;
+    this.grew(ch.del.length + ch.ins.length);
+  }
+
+  /** The undo steps hold `n` more characters: the oldest go past 500 steps or 60M characters. */
+  private grew(n: number) {
+    this.histChars += n;
     while (this.undo_.length > 1 && (this.undo_.length > 500 || this.histChars > 60_000_000)) {
       const x = this.undo_.shift() as Change;
       this.histChars -= x.del.length + x.ins.length;
