@@ -1114,7 +1114,10 @@ export class Engine {
     this.flushLoad();
     if (n === this.sel && this.packed && this.selPath) { this.fresh(); n = this.sel; }
     if (!n || n.t !== STR || !this.synced) return this.toast('Select a string that contains JSON', 'info');
+    // (Its offsets are into this version of the document: an edit while the code loads drops the expansion.)
+    const ver = this.ed.version;
     const { embeddedJson } = await import('../json/smart');
+    if (this.dead || ver !== this.ed.version) return;
     const inner = embeddedJson(n.v as string);
     if (inner === null) return this.toast("This string doesn't contain JSON", 'info');
     const text = this.ed.text;

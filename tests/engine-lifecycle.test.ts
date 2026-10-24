@@ -434,3 +434,20 @@ test('the service worker is registered once per page; its update notice goes to 
   assert.deepEqual(shown.at(-1), { by: 'third', msg: 'A new version is ready' });
   assert.equal(shown.length, 2);
 });
+
+test('expanding nested JSON is dropped if the document changed while its code loaded', async () => {
+  const { engine, toasts } = session();
+  const text = '{"s":"{\\"x\\":1}"}';
+  const version = Doc.of(text);
+  const res = parse(text);
+  let set: string | null = null;
+  engine.ed = { version, text, ls: [text], setValue: (t: string) => { set = t; }, setCaret() {} };
+  Object.assign(engine, { res, parsed: text, parsedVer: version, sel: null, analyze() {}, tree: { select() {} } });
+  const node = (res.root!.v as JNode[])[0];
+  const expanding = engine.expandNested(node);
+  // An edit lands before the code arrives: the node's offsets no longer point into the text.
+  engine.ed.version = Doc.of(text + ' ');
+  await expanding;
+  assert.equal(set, null);
+  assert.deepEqual(toasts, []);
+});
