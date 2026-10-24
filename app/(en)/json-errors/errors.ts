@@ -612,21 +612,28 @@ JSON.parse(readFileSync('bom.json', 'utf8'));
     ],
     steps: [
       'Look at the raw text. In DevTools, open the failing request in the Network panel and check its status, Content-Type and response body.',
-      'Make invisible characters visible by logging JSON.stringify(text.slice(0, 80)). A byte-order mark shows as \\ufeff, and HTML or a PHP warning shows its first tag.',
-      'Use the first character: < means HTML, a letter means plain text or undefined, and \\ufeff means a byte-order mark. An empty body gives unexpected end of data instead.',
+      'Log the start of the text: console.log(text.slice(0, 80)) shows HTML or a PHP warning by its first tag. Invisible characters need their code points: [...text.slice(0, 8)].map((c) => c.codePointAt(0).toString(16)) lists feff first for a byte-order mark, which JSON.stringify leaves unescaped.',
+      'Use the first character: < (3c) means HTML, a letter means plain text or undefined, and feff means a byte-order mark. An empty body gives unexpected end of data instead.',
       'Fix the source: the URL, the session, the server error or the PHP warning. If the column is greater than 1, the text starts as JSON and breaks later, so match the rest of the message to the related guides.',
     ],
     fixes: [
-      { title: 'Read the body once and report what arrived', text: 'The error message then shows the first characters, with invisible ones escaped, instead of a bare position.', lang: 'javascript', code: `async function readJson(response) {
+      { title: 'Read the body once and report what arrived', text: 'The error message then shows the first characters instead of a bare position. JSON.stringify escapes quotes and control characters but leaves a byte-order mark and other invisible format characters as they are, so the preview escapes those too.', lang: 'javascript', code: `async function readJson(response) {
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(\`HTTP \${response.status}: \${JSON.stringify(text.slice(0, 80))}\`);
+    throw new Error(\`HTTP \${response.status}: \${preview(text)}\`);
   }
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(\`Expected JSON, got \${JSON.stringify(text.slice(0, 80))}\`, { cause: error });
+    throw new Error(\`Expected JSON, got \${preview(text)}\`, { cause: error });
   }
+}
+
+// The first characters, quoted, with invisible ones written as escapes:
+// a byte-order mark shows as \\u{feff}.
+function preview(text) {
+  return JSON.stringify(text.slice(0, 80))
+    .replace(/[\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]/gu, (c) => \`\\\\u{\${c.codePointAt(0).toString(16)}}\`);
 }` },
       { title: 'Remove one byte-order mark from a file in Node.js', text: 'Strip only a leading U+FEFF, and only where you read the file.', lang: 'javascript', code: `import { readFileSync } from 'node:fs';
 const raw = readFileSync('bom.json', 'utf8');
@@ -635,7 +642,7 @@ console.log(JSON.parse(text)); // { a: 1 }` },
     ],
     faq: [
       { question: 'Is this error specific to Firefox?', answer: 'The wording is. Chrome, Edge and Node.js say Unexpected token followed by the character, and Safari says JSON Parse error: Unrecognized token. The input and the fix are the same.' },
-      { question: 'Why line 1 column 1 when the response looks like JSON?', answer: 'You may be looking at a different request, or the JSON is preceded by something you cannot see, such as a byte-order mark. Log JSON.stringify of the first characters of the exact text you pass to JSON.parse.' },
+      { question: 'Why line 1 column 1 when the response looks like JSON?', answer: 'You may be looking at a different request, or the JSON is preceded by something you cannot see, such as a byte-order mark. Log the code points of the first characters of the exact text you pass to JSON.parse: a byte-order mark is feff.' },
       { question: 'What does unexpected keyword mean?', answer: 'The text starts with t, f or n, but the word is not true, false or null. A plain-text reply such as not found, or a typo such as nul, causes it.' },
       { question: 'What do the other Firefox JSON.parse messages mean?', answer: "expected property name or '}' points to quoting or a trailing comma. expected ',' or '}' after property value in object points to a missing comma or an unescaped quote. bad escaped character and bad control character in string literal point to string escaping. unexpected non-whitespace character after JSON data means extra data, and unexpected end of data means empty or truncated input." },
     ],
