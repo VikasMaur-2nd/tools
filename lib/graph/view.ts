@@ -4,8 +4,8 @@
  * and state; painting is in ./render, camera math in ./camera.
  *
  * Builds are time-sliced (model, then layout, ~8 ms per task) and cancelled
- * by a newer document; so are searches (by a newer query too). The canvas only redraws on rAF when something
- * changed, and only what is in view.
+ * by a newer document; so are searches (by a newer query too). The canvas
+ * only redraws on rAF when something changed, and only what is in view.
  */
 import { ARR, BOOL, NUL, NUM, STR, kids, type JNode } from '../json/parser';
 import { formatPath, parsePath, pathOf, resolve, type Seg } from '../json/path';
