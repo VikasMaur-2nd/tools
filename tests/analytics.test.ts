@@ -303,6 +303,7 @@ test('every view that shows the document is kept out of session replay', () => {
   const builder = readFileSync(join(process.cwd(), 'components/LinkBuilder.tsx'), 'utf8');
   assert.equal(builder.match(/className=\{`lb-error \$\{PRIVATE\}`\}/g)?.length, 2, 'builder messages (file names)');
   assert.equal(builder.match(/className=\{`lb-warn \$\{PRIVATE\}`\}/g)?.length, 2, 'builder link-size warnings');
+  assert.match(builder, /className=\{`lb-check \$\{PRIVATE\}`\}/, "builder check line (\"Ln 1, Col 8: Unexpected 'T'\")");
   const graphExport = readFileSync(join(process.cwd(), 'components/GraphExport.tsx'), 'utf8');
   assert.match(graphExport, /gx-info\$\{preview\?\.error \? ' err' : ''\} \$\{PRIVATE\}/, 'image size and card count');
   const index = readFileSync(join(process.cwd(), 'lib/analytics/index.ts'), 'utf8');

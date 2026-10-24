@@ -185,7 +185,8 @@ function JsonField({ id, value, setValue, edRef }: { id: string; value: string; 
         wrap
         className="lb-ed"
       />
-      <p className="lb-check" aria-live="polite">
+      {/* "Ln 3, Col 5: …" quotes the document. */}
+      <p className={`lb-check ${PRIVATE}`} aria-live="polite">
         {check?.kind === 'checking' && <span className="muted">Checking… {check.percent}%</span>}
         {check?.kind === 'valid' &&
           (check.fixed ? (
