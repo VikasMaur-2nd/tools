@@ -61,9 +61,9 @@ function context(job, target, outDir, signal) {
     assert(cond, what, detail) {
       if (!t.check(cond, what, detail)) throw new Failure(what);
     },
-    /** Records a measurement (perf). Several values per name are kept. */
-    metric(name, value, unit = 'ms') {
-      if (!t._finished) (metrics[name] ||= { unit, values: [] }).values.push(value);
+    /** Records a measurement (perf). Several values per name are kept. `better: 'higher'` for scores. */
+    metric(name, value, unit = 'ms', { better = 'lower' } = {}) {
+      if (!t._finished) (metrics[name] ||= { unit, better, values: [] }).values.push(value);
     },
     /**
      * A time budget for responsiveness checks, stretched on an overloaded machine (load above the core

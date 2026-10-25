@@ -213,7 +213,7 @@ function collect(rs) {
   for (const r of rs)
     for (const [name, m] of Object.entries(r.metrics)) {
       const k = `${r.id} [${r.engine}] ${name}`;
-      ((by[k] ||= { unit: m.unit, sides: {} }).sides[r.target] ||= []).push(...m.values);
+      ((by[k] ||= { unit: m.unit, better: m.better || 'lower', sides: {} }).sides[r.target] ||= []).push(...m.values);
     }
   return by;
 }
@@ -235,7 +235,7 @@ function perfReport(rs) {
     const s = summary(cand);
     let change = '';
     if (base?.length) {
-      const c = compare(base, cand);
+      const c = compare(base, cand, { higherIsBetter: m.better === 'higher' });
       change = `${c.change > 0 ? '+' : ''}${round(c.change * 100)} % vs ${round(c.base)} (${c.verdict}, noise ±${round(c.noise * 100)} %)`;
       rows.push({ metric: k, unit: m.unit, ...c });
     } else rows.push({ metric: k, unit: m.unit, cand: s.p50 });
@@ -249,7 +249,7 @@ function saveBaseline(name, rs) {
   const out = {};
   for (const [k, m] of Object.entries(by)) {
     const cand = Object.entries(m.sides).find(([n]) => !n.startsWith('base '))?.[1];
-    if (cand) out[k] = { unit: m.unit, values: cand, at: new Date().toISOString() };
+    if (cand) out[k] = { unit: m.unit, better: m.better, values: cand, at: new Date().toISOString() };
   }
   mkdirSync(join(CACHE, 'baselines'), { recursive: true });
   writeFileSync(join(CACHE, 'baselines', `${name}.json`), JSON.stringify(out, null, 1));

@@ -26,9 +26,12 @@ const EXCLUDE = new Set(['lib/engine/store.ts', 'lib/engine/instance.ts']);
 const IMPORTS_REACT = /\bfrom\s+['"]react(?:-dom)?(?:\/[^'"]*)?['"]|\brequire\(\s*['"]react(?:-dom)?(?:\/[^'"]*)?['"]/;
 
 const args = process.argv.slice(2);
-const filters = args.filter((a) => !a.startsWith('-'));
+// node --test options whose value may follow as the next argument ("--test-name-pattern parser").
+const TAKES_VALUE = /^--test-(name-pattern|skip-pattern|concurrency|reporter|reporter-destination|timeout|shard|isolation)$/;
+const valueOf = new Set(args.flatMap((a, i) => (TAKES_VALUE.test(a) && args[i + 1] && !args[i + 1].startsWith('-') ? [i + 1] : [])));
+const filters = args.filter((a, i) => !a.startsWith('-') && !valueOf.has(i));
 const slow = args.includes('--slow');
-const nodeArgs = args.filter((a) => a.startsWith('-') && a !== '--slow');
+const nodeArgs = args.filter((a, i) => (a.startsWith('-') && a !== '--slow') || valueOf.has(i));
 
 const walk = (dir, filter, acc = []) => {
   if (!existsSync(dir)) return acc;

@@ -23,10 +23,11 @@ export function mad(values) {
 }
 
 /**
- * Compares two samples of the same measurement (lower is better). `change` is the relative change of
- * the median; `noise` is the larger relative MAD of the two, so |change| well above `noise` is real.
+ * Compares two samples of the same measurement (lower is better unless higherIsBetter, e.g. scores).
+ * `change` is the relative change of the median; `noise` is the larger relative MAD of the two, so
+ * |change| well above `noise` is real. Verdict: same, better or worse.
  */
-export function compare(base, cand) {
+export function compare(base, cand, { higherIsBetter = false } = {}) {
   const b = median(base);
   const c = median(cand);
   if (!Number.isFinite(b) || !Number.isFinite(c) || b === 0) {
@@ -34,7 +35,8 @@ export function compare(base, cand) {
   }
   const noise = Math.max(mad(base) / b, mad(cand) / c);
   const change = (c - b) / b;
-  return { base: b, cand: c, change, noise, verdict: Math.abs(change) <= Math.max(noise * 2, 0.03) ? 'same' : change < 0 ? 'faster' : 'slower' };
+  const improved = higherIsBetter ? change > 0 : change < 0;
+  return { base: b, cand: c, change, noise, verdict: Math.abs(change) <= Math.max(noise * 2, 0.03) ? 'same' : improved ? 'better' : 'worse' };
 }
 
 export const round = (x, digits = 1) => (Number.isFinite(x) ? Math.round(x * 10 ** digits) / 10 ** digits : x);

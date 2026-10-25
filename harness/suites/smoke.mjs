@@ -51,7 +51,7 @@ async function settle(t, page, path) {
   const tool = TOOL.test(path);
   await t.app.open(page, t.base, path, { tool });
   // Content pages: hydration has run once the page is idle after load.
-  if (!tool) await page.evaluate(() => new Promise((r) => requestIdleCallback(() => r(), { timeout: 2000 })));
+  if (!tool) await page.evaluate(() => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 2000 }) : setTimeout(r, 50))));
 }
 
 for (const path of PAGES) {

@@ -68,7 +68,7 @@ test('the tools load only where the browser has WebMCP', async (t) => {
   await Promise.all([t.app.open(plain.page, t.base, '/'), t.open('/')]);
   await waitTools(t.page);
   // Without WebMCP the page schedules nothing for agents; give it the same idle moment the tools wait for.
-  await plain.page.evaluate(() => new Promise((r) => requestIdleCallback(() => r(), { timeout: 2000 })));
+  await plain.page.evaluate(() => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 2000 }) : setTimeout(r, 50))));
   t.check(await plain.page.evaluate(() => !document.modelContext && !navigator.modelContext), 'the plain browser has no WebMCP');
   const extra = [...on].filter((u) => !off.has(u));
   t.log(`scripts without WebMCP: ${off.size}, with: ${on.size}, extra: ${extra.join(' ')}`);

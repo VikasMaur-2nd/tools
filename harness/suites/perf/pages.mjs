@@ -67,7 +67,7 @@ for (const path of ['/', '/tools/json-validator', '/blogs/origin-of-json']) {
       p.on('close', (code) => (code === 0 ? resolve(json) : reject(new Error(`lighthouse exit ${code}: ${err.slice(-500)}`))));
     });
     const lh = JSON.parse(out);
-    for (const [k, c] of Object.entries(lh.categories)) t.metric(`${k} score`, Math.round(c.score * 100), '');
+    for (const [k, c] of Object.entries(lh.categories)) t.metric(`${k} score`, Math.round(c.score * 100), '', { better: 'higher' });
     const a = lh.audits;
     t.metric('LCP ms', a['largest-contentful-paint'].numericValue);
     t.metric('TBT ms', a['total-blocking-time'].numericValue);
