@@ -1,9 +1,9 @@
 // What a visitor downloads and waits for: first-load JavaScript per page (exact bytes, one round),
 // paint timings and layout shift in a cold context, and Lighthouse.
 import { spawn } from 'node:child_process';
-import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import { defaults, test } from '../../lib/api.mjs';
 import { ensureBrowsers } from '../../lib/browsers.mjs';
+import { firstLoadJs } from '../../lib/perf.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { chromium } from 'playwright-core';
 
@@ -11,30 +11,15 @@ defaults({ tags: ['perf'], engines: ['chromium'] });
 
 const PAGES = ['/', '/tools/json-validator', '/integrate', '/blogs/origin-of-json'];
 
-// Every script the page loads before it is idle, compressed the way a CDN serves it. Byte counts are
-// exact, so one round settles it and any change against the base is real.
+// First-load JavaScript (what the HTML references), compressed as a CDN serves it. Byte counts are exact,
+// so one round settles it and any change against the base is real. The per-PR gate is suites/budget.mjs.
 for (const path of PAGES) {
-  test(`first-load JS ${path}`, { rounds: 1 }, async (t) => {
-    const scripts = new Map();
-    t.page.on('response', async (r) => {
-      if (r.request().resourceType() !== 'script' || !r.ok()) return;
-      scripts.set(r.url(), r.body().catch(() => null));
-    });
-    await t.open(path, { tool: path !== '/blogs/origin-of-json' && path !== '/integrate' });
-    await t.page.waitForLoadState('networkidle');
-    let gz = 0;
-    let br = 0;
-    let raw = 0;
-    for (const body of await Promise.all(scripts.values())) {
-      if (!body) continue;
-      raw += body.length;
-      gz += gzipSync(body, { level: 9 }).length;
-      br += brotliCompressSync(body, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
-    }
-    t.metric('JS gzip bytes', gz, 'B');
-    t.metric('JS brotli bytes', br, 'B');
-    t.metric('JS raw bytes', raw, 'B');
-    t.metric('script requests', scripts.size, '');
+  test(`first-load JS ${path}`, { rounds: 1, page: false }, async (t) => {
+    const m = await firstLoadJs(t.fetch, t.base, path);
+    t.metric('JS gzip bytes', m.gzip, 'B');
+    t.metric('JS brotli bytes', m.brotli, 'B');
+    t.metric('JS raw bytes', m.raw, 'B');
+    t.metric('script files', m.files, '');
   });
 }
 

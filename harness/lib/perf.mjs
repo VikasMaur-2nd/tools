@@ -143,3 +143,25 @@ export async function heapAfterGC(t) {
   await cdp.detach().catch(() => {});
   return usedSize / 1e6;
 }
+
+/**
+ * First-load JavaScript of a page, the way Next.js counts it: every script the server-rendered HTML
+ * references, fetched and compressed like a CDN serves them. Exact bytes, no browser, no noise.
+ * `fetcher` is t.fetch (it adds the target's extra headers). Returns { gzip, brotli, raw, files };
+ * brotli (quality 11, slow) only unless { brotli: false }.
+ */
+export async function firstLoadJs(fetcher, base, path, { brotli: withBrotli = true } = {}) {
+  const { gzipSync, brotliCompressSync, constants } = await import('node:zlib');
+  const html = await (await fetcher(base + path)).text();
+  const srcs = [...new Set([...html.matchAll(/<script[^>]+src="([^"]+\.js[^"]*)"/g)].map((m) => new URL(m[1].replace(/&amp;/g, '&'), base + path).href))];
+  const bodies = await Promise.all(srcs.map(async (u) => Buffer.from(await (await fetcher(u)).arrayBuffer())));
+  let gzip = 0;
+  let brotli = 0;
+  let raw = 0;
+  for (const b of bodies) {
+    raw += b.length;
+    gzip += gzipSync(b, { level: 9 }).length;
+    if (withBrotli) brotli += brotliCompressSync(b, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
+  }
+  return { gzip, brotli, raw, files: srcs.length };
+}
