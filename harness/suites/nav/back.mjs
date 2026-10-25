@@ -32,7 +32,7 @@ for (const [name, doc] of Object.entries(DOCS)) {
     page.on('close', () => (closed = true));
     await t.open('/');
     await t.app.openFile(page, doc);
-    const s0 = await t.app.waitValid(page, { timeout: 120_000 });
+    const s0 = await t.app.waitValid(page, { timeout: t.budget(big ? 300_000 : 120_000) });
     t.assert(/^Valid JSON/.test(s0), `${name}: loaded`, s0);
     const h0 = await t.app.docHash(page);
     t.check(!!h0, `${name}: read the document`, h0);
@@ -41,18 +41,15 @@ for (const [name, doc] of Object.entries(DOCS)) {
       const gap = await stallOver(page, 2500);
       t.check(gap < t.budget(1500), `${name} #${round}: /privacy stays responsive`, `longest stall ${Math.round(gap)} ms`);
       await backTo(t, '/');
-      const s1 = await t.app.waitValid(page, { timeout: 120_000 }).catch((e) => String(e).slice(0, 100));
-      // Seen once on 2026-10-25 (after PR #25): Firefox's 25 MB document wasn't valid again within 2 min
-      // of the second Back (15 of 16 checks passed). A slow re-parse or a Firefox-only hang: investigate.
-      const ff25 = t.engine === 'firefox' && name === '25mb' && round === 2 ? { known: 'Firefox: 25 MB not valid again after the second Back within 2 min (investigate)' } : {};
-      t.check(!closed && /^Valid JSON/.test(s1), `${name} #${round}: back on / and valid`, s1, ff25);
+      const s1 = await t.app.waitValid(page, { timeout: t.budget(big ? 300_000 : 120_000) }).catch((e) => String(e).slice(0, 100));
+      t.check(!closed && /^Valid JSON/.test(s1), `${name} #${round}: back on / and valid`, s1);
       if (closed) return;
       t.check((await t.app.docHash(page)) === h0, `${name} #${round}: same document after Back`);
       if (round === 1) {
         await page.evaluate(() => history.forward());
         await page.waitForURL('**/privacy', { timeout: 60_000 });
         await backTo(t, '/');
-        const s2 = await t.app.waitValid(page, { timeout: 120_000 }).catch((e) => String(e).slice(0, 100));
+        const s2 = await t.app.waitValid(page, { timeout: t.budget(big ? 300_000 : 120_000) }).catch((e) => String(e).slice(0, 100));
         t.check(/^Valid JSON/.test(s2), `${name} #${round}: Forward then Back`, s2);
       }
     }
@@ -89,7 +86,7 @@ test('Compare keeps the modified document after /privacy and Back', async (t) =>
   const { page } = t;
   await t.open('/');
   await t.app.openFile(page, 'rows-15000');
-  await t.app.waitValid(page, { timeout: 120_000 });
+  await t.app.waitValid(page, { timeout: t.budget(big ? 300_000 : 120_000) });
   await t.app.view(page, 'compare');
   await page.locator('#input2').waitFor({ state: 'attached' });
   await t.app.setText(page, JSON.stringify({ hello: 'compare', n: [1, 2, 3] }), 'input2');
@@ -110,7 +107,7 @@ test('a tool page with a 6.9 MB document: /privacy stays responsive and Back wor
   page.on('close', () => (closed = true));
   await t.open('/tools/json-validator');
   await t.app.openFile(page, 'rows-60000');
-  await t.app.waitValid(page, { timeout: 120_000 });
+  await t.app.waitValid(page, { timeout: t.budget(big ? 300_000 : 120_000) });
   await t.app.navigate(page, '/privacy');
   const gap = await stallOver(page, 2500);
   t.check(gap < t.budget(1500), '/privacy responsive', `longest stall ${Math.round(gap)} ms`);
