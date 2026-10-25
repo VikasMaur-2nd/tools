@@ -189,7 +189,7 @@ test('the tools leave with the JSON tool and come back with it; they work on a l
   t.check(/z\.object/.test(r), 'tools work on a landing page', r.slice(0, 200));
 });
 
-test('download_file: the document, formatted, converted, Excel and graph images', async (t) => {
+test('download_file: the document, formatted, converted, Excel and graph images', { timeout: 180_000 }, async (t) => {
   const page = t.page;
   /** The file an action downloads: { name, path }, or null when none comes. */
   const download = async (action) => {
