@@ -63,7 +63,14 @@ test('the JSON box checks as you type, the code box is read-only and coloured, e
 
   // The code box is read-only: typing, Enter, Backspace, undo, paste and cut change nothing (nor the JSON box).
   const json0 = await page.evaluate(() => document.querySelector('.link-builder .ed textarea').value);
-  const before2 = await outText(page);
+  // The link is rebuilt (compressed, async) after earlier edits: take the baseline once it holds still.
+  let before2 = await outText(page);
+  for (let same = 0, end = Date.now() + t.budget(10_000); same < 3 && Date.now() < end; ) {
+    await page.waitForTimeout(100);
+    const now = await outText(page);
+    same = now === before2 ? same + 1 : 0;
+    before2 = now;
+  }
   await page.locator('.link-builder .ed').nth(1).click({ position: { x: 200, y: 30 } });
   await page.keyboard.type('xyz');
   await page.keyboard.press('Enter');
