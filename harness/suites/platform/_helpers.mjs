@@ -270,6 +270,26 @@ export async function waitVisible(page, sel, { text, timeout = 15_000 } = {}) {
 
 export { MOD, POLL };
 
+/** Dispatches a paste after selecting the visible editor in the same page turn. */
+export async function pasteSelected(page, text, which = 'input') {
+  await page.evaluate(
+    ([t, w]) => {
+      const ta = window.__vis(`#${w}`);
+      ta.focus();
+      ta.select();
+      const dt = new DataTransfer();
+      dt.setData('text/plain', t);
+      const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+      if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt });
+      if (ta.dispatchEvent(ev)) {
+        ta.setRangeText(t, ta.selectionStart, ta.selectionEnd, 'end');
+        ta.dispatchEvent(new InputEvent('input', { inputType: 'insertFromPaste', data: t, bubbles: true }));
+      }
+    },
+    [text, which],
+  );
+}
+
 // ══ Offline: the service worker against a proxy that can deploy, 404 and go offline ══════════════
 
 const servers = new Map();

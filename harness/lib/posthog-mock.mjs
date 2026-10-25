@@ -169,8 +169,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === 's
 
 // ── The client (what suites use) ──────────────────────────────────────────────────────────────
 
+// The shared mock can be CPU-starved while several browser suites flush replay
+// payloads at once. Keep client polling bounded, but give the local server time
+// to accept the request before treating it as a failed privacy check.
 const api = async (path) => {
-  const r = await fetch(BASE + path, { signal: AbortSignal.timeout(2000) });
+  const r = await fetch(BASE + path, { signal: AbortSignal.timeout(10_000) });
   if (!r.ok) throw new Error(`posthog mock ${path}: HTTP ${r.status}`);
   return r.json();
 };

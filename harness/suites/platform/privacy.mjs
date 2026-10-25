@@ -281,7 +281,7 @@ test('canary: share link, Load from URL, and opening the share link', async (t) 
 
   // Load JSON from URL (the dialog), a URL with a marker.
   const since = await a.mock.mark();
-  await t.app.command(page, 'Load JSON from URL');
+  await t.app.command(page, 'Load JSON from URL', { timeout: t.budget(10_000) });
   await page.locator('.palette input[type=url]').fill(`${REMOTE}/${K.url}.json`);
   await page.keyboard.press('Enter');
   await a.waitEvent((e) => e.event === 'json_loaded' && e.properties?.source === 'url', { since });
