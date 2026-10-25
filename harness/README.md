@@ -60,6 +60,7 @@ Environment settings:
 - `HARNESS_TIMEOUT_SCALE` multiplies every timeout, for slow machines.
 - `HARNESS_HEAVY_LOCK=/path/lock` runs builds under `flock` with other jobs on a shared machine.
 - `HEADED=1` is the same as `--headed`.
+- `HARNESS_HEADERS` is JSON for extra headers on every request to the target. Example for a protected Vercel preview: `{"x-vercel-protection-bypass":"…","x-vercel-set-bypass-cookie":"true"}`. HTTP-level checks should use `t.fetch`.
 
 ## Writing a check
 
@@ -87,6 +88,7 @@ test('a 7 MB document survives /privacy and Back', { tags: ['slow'], slots: 'all
 |---|---|
 | `t.page`, `t.context` | A fresh Playwright page and context, closed after the test. |
 | `t.base` | The target URL. |
+| `t.fetch(url, init)` | `fetch` with the target's extra headers, for HTTP-level checks. |
 | `t.engine` | The engine name. |
 | `t.open(path, { tool })` | Opens a path. It waits for the engine unless you pass `tool: false`. |
 | `t.check(cond, what, detail, { known })` | A soft check: the test continues. `known: "PR #26: …"` marks a failure an open PR already fixes: it is reported but does not fail the run, and the report says when it starts passing. |

@@ -9,7 +9,7 @@ const PAGES = ['/', '/tools/json-validator', '/es', '/ja/tools/json-to-python', 
 const TOOL = /^\/(?:[a-z]{2}(?:\/|$))?(?:tools\/[\w-]+)?$/; // pages with the JSON tool: /, /es, /tools/x, /ja/tools/x
 
 test('every sitemap URL answers 200 with one title, canonical, h1, main, lang and a description', { page: false, engines: ['chromium'] }, async (t) => {
-  const sitemap = await fetch(`${t.base}/sitemap.xml`).then((r) => r.text());
+  const sitemap = await t.fetch(`${t.base}/sitemap.xml`).then((r) => r.text());
   const paths = [...new Set([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]).pathname))];
   t.check(paths.length >= 10, `sitemap lists ${paths.length} URLs`);
   const one = (html, re) => (html.match(re) || []).length;
@@ -18,7 +18,7 @@ test('every sitemap URL answers 200 with one title, canonical, h1, main, lang an
     Array.from({ length: 16 }, async () => {
       while (next < paths.length) {
         const path = paths[next++];
-        const res = await fetch(t.base + path, { redirect: 'manual' });
+        const res = await t.fetch(t.base + path, { redirect: 'manual' });
         if (!t.check(res.status === 200, `${path}: HTTP 200`, res.status)) continue;
         const html = await res.text();
         t.check(one(html, /<title>[^<]+<\/title>/g) === 1, `${path}: one <title>`);
@@ -30,7 +30,7 @@ test('every sitemap URL answers 200 with one title, canonical, h1, main, lang an
       }
     }),
   );
-  const missing = await fetch(`${t.base}/no-such-page-${Date.now()}`);
+  const missing = await t.fetch(`${t.base}/no-such-page-${Date.now()}`);
   t.check(missing.status === 404, 'unknown URL answers 404', missing.status);
 });
 

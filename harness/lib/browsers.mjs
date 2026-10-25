@@ -5,7 +5,7 @@ import { cpSync, existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DIRS } from './env.mjs';
+import { DIRS, EXTRA_HEADERS } from './env.mjs';
 import { chromium, firefox, webkit } from 'playwright-core';
 
 const TYPES = { chromium, firefox, webkit };
@@ -100,6 +100,7 @@ export async function openPage(engine, opts = {}) {
     locale: opts.locale || 'en-US',
     serviceWorkers: opts.serviceWorkers || 'block',
     acceptDownloads: true,
+    ...(Object.keys(EXTRA_HEADERS).length ? { extraHTTPHeaders: EXTRA_HEADERS } : {}),
     ...opts.context,
   });
   await context.addInitScript(HELPERS);

@@ -32,3 +32,9 @@ export const load = () => loadavg()[0];
 
 export const ENGINES = ['chromium', 'firefox', 'webkit'];
 export const hasFile = (p) => existsSync(p);
+
+/**
+ * Extra HTTP headers for every request to the target, as JSON in HARNESS_HEADERS. For a protected Vercel
+ * preview: {"x-vercel-protection-bypass":"<secret>","x-vercel-set-bypass-cookie":"true"}.
+ */
+export const EXTRA_HEADERS = process.env.HARNESS_HEADERS ? JSON.parse(process.env.HARNESS_HEADERS) : {};

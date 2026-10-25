@@ -5,7 +5,7 @@ import { loadavg } from 'node:os';
 import { join } from 'node:path';
 import * as app from './app.mjs';
 import { openPage } from './browsers.mjs';
-import { CORES, DIRS } from './env.mjs';
+import { CORES, DIRS, EXTRA_HEADERS } from './env.mjs';
 import { fixture, fixtureText } from './fixtures.mjs';
 
 const DURATIONS = join(DIRS.results, 'durations.json');
@@ -40,6 +40,8 @@ function context(job, target, outDir) {
     checks,
     metrics,
     outDir,
+    /** fetch() from Node with the target's extra headers (HARNESS_HEADERS), for HTTP-level checks. */
+    fetch: (url, init = {}) => fetch(url, { ...init, headers: { ...EXTRA_HEADERS, ...init.headers } }),
     /** Opens a path of the target and (unless tool: false) waits for the tool. */
     open: (path = '/', opts) => app.open(t.page, target.base, path, opts),
     /**
