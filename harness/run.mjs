@@ -32,6 +32,8 @@ const { values: o, positionals: filters } = parseArgs({
     json: { type: 'string' },
     headed: { type: 'boolean' },
     base: { type: 'string' },
+    ref: { type: 'string' },
+    legacy: { type: 'boolean' },
     rounds: { type: 'string' },
     baseline: { type: 'string' },
     'save-baseline': { type: 'string' },
@@ -101,21 +103,22 @@ if (pages) {
 const variants = [...new Set(selected.map((t) => t.opts.variant || 'default'))];
 const targets = {};
 if (o.url) {
-  targets.default = { name: 'url', base: o.url.replace(/\/$/, '') };
+  targets.default = { name: 'url', base: o.url.replace(/\/$/, ''), legacy: !!o.legacy };
   const skipped = variants.filter((v) => v !== 'default');
   if (skipped.length) console.log(`  --url: skipping tests that need the ${skipped.join(', ')} build`);
 } else {
   for (const variant of variants) {
-    const b = await ensureBuild({ variant, log: (m) => console.log(m) });
+    const b = await ensureBuild({ ref: o.ref, variant, log: (m) => console.log(m) });
     const s = await serve(b.dir);
-    targets[variant] = { name: variant === 'default' ? 'current' : variant, base: s.base, dir: b.dir, key: b.key, reused: b.reused };
+    if (b.legacy) console.log(`  build ${b.key} predates the tk:engine mark: checks wait the old way for the tool`);
+    targets[variant] = { legacy: b.legacy, name: o.ref ? `${variant === 'default' ? '' : variant + ' '}${describeRef(o.ref)}` : variant === 'default' ? 'current' : variant, base: s.base, dir: b.dir, key: b.key, reused: b.reused };
   }
 }
 let baseTarget = null;
 if (PERF && o.base) {
   const b = await ensureBuild({ ref: o.base, log: (m) => console.log(m) });
   const s = await serve(b.dir);
-  baseTarget = { name: `base ${describeRef(o.base)}`, base: s.base, dir: b.dir, key: b.key };
+  baseTarget = { name: `base ${describeRef(o.base)}`, base: s.base, dir: b.dir, key: b.key, legacy: b.legacy };
 }
 const setupMs = Date.now() - t0;
 const describeTarget = (t) => `${t.name} ${t.base}${t.key ? ` (build ${t.key}${t.reused ? ', reused' : ''})` : ''}`;
@@ -147,7 +150,7 @@ const outDir = join(DIRS.results, runId);
 const loadStart = loadavg()[0];
 console.log(`  ${jobs.length} jobs, ${PERF ? 'serial' : `${slots} at a time`}, load ${loadStart.toFixed(1)} on ${CORES} cores${PERF && loadStart > CORES ? '  (busy machine: compare medians, not single runs)' : ''}`);
 
-const ICON = { pass: '✓', fail: '✗', flaky: '~' };
+const ICON = { pass: '✓', fail: '✗', flaky: '~', known: '·' };
 let done = 0;
 const results = await runJobs(jobs, {
   slots,
@@ -159,9 +162,10 @@ const results = await runJobs(jobs, {
     done++;
     const extra = PERF ? `${r.target}  ` : '';
     console.log(`${ICON[r.status]} ${r.engine.padEnd(8)} ${extra}${r.id}  (${r.checks} checks, ${(r.ms / 1000).toFixed(1)} s)  [${done}/${jobs.length}]`);
-    for (const f of r.failures) console.log(`    ✗ ${f.what}${f.detail === undefined ? '' : '  ' + JSON.stringify(f.detail).slice(0, 600)}`);
+    for (const f of r.status === 'known' ? r.failures.slice(0, 2) : r.failures) console.log(`    ✗ ${f.what}${f.detail === undefined ? '' : '  ' + JSON.stringify(f.detail).slice(0, 600)}`);
     for (const k of r.known) console.log(`    · known: ${k.what} (${k.known})`);
     for (const k of r.knownFixed) console.log(`    ! passes now, drop "known": ${k.what} (${k.known})`);
+    if (r.knownTest) console.log(r.status === 'known' ? `    · known failure: ${r.knownTest}` : `    ! passes now, drop the test's "known": ${r.knownTest}`);
     if (r.status === 'fail' && r.logs.length) console.log('    log: ' + r.logs.slice(-8).join('\n         '));
     if (r.screenshot) console.log(`    screenshot: ${r.screenshot}`);
   },
@@ -171,6 +175,7 @@ await closeBrowsers();
 // ── Report ──────────────────────────────────────────────────────────────────────────────────────
 const failed = results.filter((r) => r.status === 'fail');
 const flaky = results.filter((r) => r.status === 'flaky');
+const knownTests = results.filter((r) => r.status === 'known');
 const checks = results.reduce((s, r) => s + r.checks, 0);
 const knownCount = results.reduce((s, r) => s + r.known.length, 0);
 const wall = (Date.now() - t0) / 1000;
@@ -185,7 +190,7 @@ if (o.json) writeFileSync(o.json, JSON.stringify(report, null, 1));
 if (o['save-baseline']) saveBaseline(o['save-baseline'], results);
 
 console.log(
-  `\n${failed.length ? '✗' : '✓'} ${results.length - failed.length - flaky.length} passed, ${failed.length} failed${flaky.length ? `, ${flaky.length} flaky` : ''} · ${checks} checks${knownCount ? ` (${knownCount} known failures)` : ''} · ${wall.toFixed(1)} s (setup ${(setupMs / 1000).toFixed(1)} s) · results ${relative(process.cwd(), outDir) || outDir}`,
+  `\n${failed.length ? '✗' : '✓'} ${results.length - failed.length - flaky.length - knownTests.length} passed, ${failed.length} failed${flaky.length ? `, ${flaky.length} flaky` : ''}${knownTests.length ? `, ${knownTests.length} known` : ''} · ${checks} checks${knownCount ? ` (${knownCount} known failures)` : ''} · ${wall.toFixed(1)} s (setup ${(setupMs / 1000).toFixed(1)} s) · results ${relative(process.cwd(), outDir) || outDir}`,
 );
 if (process.env.GITHUB_STEP_SUMMARY) githubSummary();
 process.exit(failed.length ? 1 : 0);
