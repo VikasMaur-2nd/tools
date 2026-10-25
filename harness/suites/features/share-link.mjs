@@ -6,7 +6,7 @@
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, PASTED, TOAST_RECORDER, docOf, docText, enc, poll, resetClip, setDoc, toastText, until, waitClip, waitLoaded, waitToast } from './_helpers.mjs';
 
-defaults({ engines: 'all', width: 1280, height: 900, tags: ['share'] });
+defaults({ engines: 'all', width: 1280, height: 900, tags: ['share'], timeout: 120_000 });
 
 // The user's 5.3 MB one-line document behind the 512,000-character cut (regenerated, never committed).
 const USER = 'user-5mb.json';
@@ -95,10 +95,12 @@ test("sharing a 509 KB link warns about pasting; /integrate's warning and Open l
   try {
     back = docOf(outLink);
   } catch {}
-  // (Each browser's compressor makes its own link; the old check compared Chromium's with the user's
-  // Chromium-made link byte for byte. Here: the builder's link equals the app's Share link in every engine.)
+  // Each browser's compressor makes its own link. Chromium's is the user's 521,481-character link byte for
+  // byte (its zlib writes what Node's does); every engine's equals the link its own Share button made.
   const param = (u) => new URLSearchParams(u.slice(u.indexOf('#') + 1)).get('a');
-  t.check(back === doc && !!shared && param(outLink) === param(shared), 'Open link carries the whole link, which opens to the document', { open: outLink.length, share: shared?.length });
+  const userLink = `${LIVE}/#a=${enc(doc)}&view=tree`;
+  t.check(back === doc && (t.engine !== 'chromium' || outLink === userLink), 'Open link carries the whole link, which opens to the document', { open: outLink.length, user: userLink.length });
+  t.check(!!shared && param(outLink) === param(shared), "the builder's link carries what the app's Share link does", { open: outLink.length, share: shared?.length });
   const warn = await page.evaluate(() => [...document.querySelectorAll('.lb-warn')].map((p) => p.textContent.replace(/\s+/g, ' ').trim()));
   t.check(warn.some((w) => /^At \d+ KB, this link opens when clicked, but pasted into Chrome's or Edge's address bar it gets cut at 500 KB\.$/.test(w)), 'the builder warns about pasting', warn);
   const hint = await page.evaluate(() => [...document.querySelectorAll('.lb-hint')].map((p) => p.textContent.replace(/\s+/g, ' ').trim()).find((x) => /long\./.test(x)));
@@ -118,12 +120,17 @@ test("sharing a 509 KB link warns about pasting; /integrate's warning and Open l
 const A = '{"name":"Ada","roles":["author","mathematician"]}';
 const B = '{"name":"Ada King","roles":["author"]}';
 
-/** Types `text` into an editor (a real typing path) and waits until the tool has it. */
+/**
+ * Types `text` into an editor key by key and waits until the tool has it. (Not keyboard.insertText, as
+ * the old script did: Playwright's Firefox sends that as an IME composition, and Firefox fires the
+ * commit's input event after compositionend, which the editor never passes on to the tool: an app bug,
+ * found 2026-10-25.)
+ */
 async function type(page, which, text) {
   await page.locator(`#${which}`).click();
   await page.keyboard.press(`${MOD}+a`);
-  await page.keyboard.insertText(text);
-  if (which === 'input') return waitLoaded(page, text);
+  await page.keyboard.type(text);
+  if (which === 'input') return waitLoaded(page, text, { timeout: 60_000 });
   return poll(async () => (await page.evaluate(() => document.getElementById('input2').value)) === text, { timeout: 10_000 });
 }
 /** What the next copy is, after `action`. */

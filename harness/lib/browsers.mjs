@@ -80,7 +80,9 @@ const HELPERS = () => {
   window.__vis = (sel) => [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length > 0) || null;
 };
 
-const IGNORED_CONSOLE = /_vercel\/|favicon/;
+// chrome://juggler/ is Playwright's own Firefox instrumentation (it logs NS_BINDING_ABORTED when a navigation
+// cuts off a worker's load), not the page.
+const IGNORED_CONSOLE = /_vercel\/|favicon|chrome:\/\/juggler\//;
 // The spec's benign notice when a ResizeObserver callback resizes what it observes (WebKit reports it
 // as an uncaught error on opening Compare, on main as on every branch); not an application failure.
 const BENIGN_ERRORS = /ResizeObserver loop (completed with undelivered notifications|limit exceeded)/;

@@ -2,48 +2,12 @@
 // fixes, error screens). Every wait polls inside the page for a condition, never a fixed sleep.
 import { mkdirSync, statSync, existsSync, writeFileSync, renameSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { availableParallelism, loadavg } from 'node:os';
 import { join } from 'node:path';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { DIRS } from '../../lib/env.mjs';
 
 export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const SCALE = Number(process.env.HARNESS_TIMEOUT_SCALE || 1);
-
-/**
- * How much slower than usual wall-clock times are right now: HARNESS_TIMEOUT_SCALE, times the CPU
- * oversubscription past 2 runnable tasks per core (load 40 on 4 cores makes a 100 ms task take ~1 s).
- * For checks of responsiveness ("no freeze longer than 400 ms"), which a shared, overloaded machine
- * would otherwise fail without the page doing anything wrong. 1 on a machine that isn't overloaded.
- */
-export const loadScale = () => SCALE * Math.max(1, loadavg()[0] / availableParallelism());
-
-/**
- * Chromium only: traces the page's renderer main thread until stop(), which returns its longest task,
- * in CPU time (`cpu`, what the page itself spent: the same on a busy machine) and wall time (`wall`).
- */
-export async function traceTasks(page) {
-  const cdp = await page.context().newCDPSession(page);
-  const { frameTree } = await cdp.send('Page.getFrameTree');
-  const events = [];
-  cdp.on('Tracing.dataCollected', (d) => events.push(...d.value));
-  await cdp.send('Tracing.start', { traceConfig: { includedCategories: ['toplevel', 'devtools.timeline'] }, transferMode: 'ReportEvents' });
-  return async function stop() {
-    const done = new Promise((r) => cdp.once('Tracing.tracingComplete', r));
-    await cdp.send('Tracing.end');
-    await done;
-    await cdp.detach().catch(() => {});
-    const started = events.find((e) => e.name === 'TracingStartedInBrowser');
-    const pid = started?.args?.data?.frames?.find((f) => f.frame === frameTree.frame.id)?.processId;
-    const main = events.find((e) => e.name === 'thread_name' && e.args?.name === 'CrRendererMain' && e.pid === pid);
-    if (!main) return null;
-    const tasks = events.filter((e) => e.ph === 'X' && e.name === 'RunTask' && e.pid === main.pid && e.tid === main.tid);
-    const ms = (us) => Math.round((us ?? 0) / 1000);
-    const byCpu = tasks.reduce((a, e) => ((e.tdur ?? 0) > (a?.tdur ?? -1) ? e : a), null);
-    const byWall = tasks.reduce((a, e) => (e.dur > (a?.dur ?? -1) ? e : a), null);
-    return { cpu: ms(byCpu?.tdur), wall: ms(byWall?.dur), tasks: tasks.length };
-  };
-}
 
 /**
  * Waits until `fn(arg)` is truthy in the page and returns its value; on timeout returns the last value

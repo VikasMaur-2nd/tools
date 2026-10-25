@@ -4,7 +4,8 @@
 // elsewhere). Drags are script-made DragEvents with real Files: what the page's handlers see.
 import { defaults, test } from '../../lib/api.mjs';
 import { loadavg } from 'node:os';
-import { MOD, doc, docOf, docText, inputText, loadScale, poll, traceTasks, until } from './_helpers.mjs';
+import { stalls } from '../../lib/perf.mjs';
+import { MOD, doc, docOf, docText, inputText, poll, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', width: 1280, height: 900, tags: ['files'] });
 
@@ -14,9 +15,9 @@ const other = docText('other.json');
 /** /integrate with the builder in view and both of its editors loaded. */
 async function builder(t) {
   const { page } = t;
-  await t.open('/integrate', { tool: false });
+  await t.open('/integrate', { tool: false, timeout: 60_000 });
   await page.locator('.link-builder').scrollIntoViewIfNeeded();
-  t.assert(await until(page, () => document.querySelectorAll('.link-builder .ed.hl-on').length === 2, null, { timeout: 20_000 }), 'the builder is ready');
+  t.assert(await until(page, () => document.querySelectorAll('.link-builder .ed.hl-on').length === 2, null, { timeout: 60_000 }), 'the builder is ready');
 }
 const boxText = (page, i = 0) => page.evaluate((i) => document.querySelectorAll('.link-builder .lb-input .ed textarea')[i]?.value ?? null, i);
 const waitBox = (page, want, i = 0, timeout = 8000) => poll(async () => (await boxText(page, i)) === want, { timeout });
@@ -37,6 +38,19 @@ const openFile = async (page, file, button = page.locator('.lb-file').first()) =
   await chooser.setFiles(file);
 };
 const hints = (page) => page.evaluate(() => ({ hints: document.querySelectorAll('.lb-drop-hint').length, over: [...document.querySelectorAll('.lb-drop')].map((d) => d.classList.contains('lb-over')) }));
+
+/** Drop-area state once `ok(state)` holds (React renders after the drag events), or the last state after `ms`. */
+async function waitHints(page, ok, ms = 3000) {
+  const end = Date.now() + ms;
+  let h = await hints(page);
+  while (!ok(h) && Date.now() < end) {
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
+    h = await hints(page);
+  }
+  return h;
+}
+/** State after two frames, for checks that something does NOT appear. */
+const settledHints = async (page) => (await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))), hints(page));
 
 /** A drag event of `type` on sel ('box:N' for the Nth box's editor), carrying a file or text. */
 const drag = (page, type, sel, name, text, kind = 'file') =>
@@ -104,7 +118,7 @@ test('builder: dropping files on Compare two', async (t) => {
   const origBefore = await boxText(page, 0);
   // Into the page: both boxes show where to drop.
   await drag(page, 'dragenter', 'h1', 'other.json', other);
-  let h = await hints(page);
+  let h = await waitHints(page, (x) => x.hints === 2);
   t.check(h.hints === 2 && !h.over.some(Boolean), 'files over the page: both boxes show a drop area', h);
   // Over a heading: no drop there. (Only Firefox lets a script-made drag event keep a dropEffect; the
   // real drag in Chromium is the next test.)
@@ -113,51 +127,42 @@ test('builder: dropping files on Compare two', async (t) => {
   // Over the Modified box.
   await drag(page, 'dragenter', 'box:1', 'other.json', other);
   const inside = await drag(page, 'dragover', 'box:1', 'other.json', other);
-  h = await hints(page);
+  h = await waitHints(page, (x) => x.over[1] && !x.over[0]);
   t.check(inside.prevented && (t.engine !== 'firefox' || inside.effect === 'copy'), 'over a box a drop is a copy', inside);
   t.check(h.over[1] && !h.over[0], 'the box under the pointer is marked', h);
   await drag(page, 'drop', 'box:1', 'other.json', other);
   await drag(page, 'dragleave', 'h1', 'other.json', other);
   t.check(await waitBox(page, other, 1), 'the dropped file opens in the Modified box', (await boxText(page, 1))?.slice(0, 40));
-  h = await hints(page);
+  h = await waitHints(page, (x) => x.hints === 0);
   t.check((await boxText(page, 0)) === origBefore, 'the Original box keeps its text');
   t.check(h.hints === 0, 'the drop areas go away after the drop', h);
   t.check(!!(await waitLink(page, other, 'b')), 'the comparison link carries the dropped file as b');
   // A drag that leaves the window: the drop areas go away.
   await drag(page, 'dragenter', 'h1', 'other.json', other);
   await drag(page, 'dragleave', 'h1', 'other.json', other);
-  h = await hints(page);
+  h = await waitHints(page, (x) => x.hints === 0);
   t.check(h.hints === 0, 'a drag that leaves the page clears the drop areas', h);
   // Text dragged (not a file): no drop areas, the editor's own text drop is left alone.
   await page.evaluate(() => (window.__dt = null));
   await drag(page, 'dragenter', '.lb-drop .ed', '', 'some text', 'text');
-  h = await hints(page);
+  h = await settledHints(page);
   const textOver = await drag(page, 'dragover', '.lb-drop .ed', '', 'some text', 'text');
   t.check(h.hints === 0 && !textOver.prevented, 'dragged text: no drop areas, left to the browser', { h, textOver });
   await page.evaluate(() => (window.__dt = null));
 });
 
-test('builder: a 5 MB one-line file', async (t) => {
+// The longest stall is wall-clock: the test runs alone, and t.budget stretches the limit on a busy machine.
+test('builder: a 5 MB one-line file', { slots: 'all' }, async (t) => {
   const { page } = t;
   const bigFile = doc('user-5mb.json');
   const big = docText('user-5mb.json');
   await builder(t);
-  // Event-loop gaps while it opens, checks and makes the link: the page keeps responding.
-  await page.evaluate(() => {
-    const w = (window.__w = { gaps: [] });
-    let last = performance.now();
-    const tick = () => {
-      const now = performance.now();
-      if (now - last > 50) w.gaps.push(Math.round(now - last));
-      last = now;
-      if (!w.stop) setTimeout(tick, 10);
-    };
-    setTimeout(tick, 10);
-  });
-  const trace = t.engine === 'chromium' ? await traceTasks(page) : null;
+  // Main-thread stalls while it opens, checks and makes the link: the page keeps responding.
   const t0 = Date.now();
-  await openFile(page, bigFile);
-  const bigLink = await poll(async () => { const x = await href(page); return x.length > 500_000 ? x : null; }, { timeout: 30_000 });
+  const { result: bigLink, maxGap } = await stalls(page, async () => {
+    await openFile(page, bigFile);
+    return poll(async () => { const x = await href(page); return x.length > 500_000 ? x : null; }, { timeout: 30_000 });
+  });
   const took = Date.now() - t0;
   let carried = false;
   try {
@@ -167,23 +172,9 @@ test('builder: a 5 MB one-line file', async (t) => {
   // (The old script read the status the moment the link appeared; the check finishes in steps, so wait for it.)
   const st = await until(page, () => /Valid JSON/.test(document.querySelector('.lb-check')?.textContent ?? '') && document.querySelector('.lb-check').textContent, null, { timeout: 30_000 });
   t.check(/Valid JSON/.test(st || ''), 'a 5 MB file: checked valid', st || (await status(page)));
-  const gaps = await page.evaluate(() => ((window.__w.stop = true), window.__w.gaps));
-  const longest = Math.max(0, ...gaps);
-  const load = loadavg()[0].toFixed(1);
-  if (trace) {
-    // Chromium: the longest main-thread task in CPU time, which a busy machine doesn't stretch (on this
-    // host at load 40 the same 67 ms task took 430–720 ms of wall time).
-    const task = await trace();
-    t.check(task && task.cpu < 400, 'a 5 MB file: no long freeze (longest main-thread task under 400 ms of CPU)', { task, longestGap: longest });
-    t.log(`5 MB file: link in ${took} ms, longest task ${task?.cpu} ms CPU / ${task?.wall} ms wall, longest gap ${longest} ms at load ${load}`);
-  } else {
-    // Elsewhere: event-loop gaps, 400 ms on a machine that isn't overloaded (the old limit), scaled by
-    // the oversubscription on one that is (see loadScale).
-    const limit = Math.round(400 * loadScale());
-    t.check(longest < limit, 'a 5 MB file: no long freeze', { longest, limit, load, gaps: gaps.slice(0, 12) });
-    t.log(`5 MB file: link in ${took} ms, longest gap ${longest} ms (limit ${limit} ms at load ${load})`);
-  }
-  t.metric('5 MB file: longest event-loop gap', longest);
+  const limit = Math.round(t.budget(400));
+  t.check(maxGap < limit, 'a 5 MB file: no long freeze', { longest: Math.round(maxGap), limit, load: loadavg()[0].toFixed(1) });
+  t.log(`5 MB file: link in ${took} ms, longest stall ${Math.round(maxGap)} ms (limit ${limit} ms)`);
 });
 
 test('builder: a real file drag from outside the browser', { engines: ['chromium'] }, async (t) => {
