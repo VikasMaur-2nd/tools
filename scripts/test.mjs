@@ -80,6 +80,7 @@ try {
 if (cache.version !== VERSION) rmSync(out, { recursive: true, force: true });
 const files = cache.files || {};
 const seen = new Set();
+const outputs = new Set();
 const queue = seeds.map((file) => ({ file, imported: false }));
 let transpiled = 0;
 const t0 = performance.now();
@@ -92,6 +93,7 @@ while (queue.length) {
   seen.add(file);
   if (file.endsWith('.json')) {
     const dest = join(out, rel(file));
+    outputs.add(dest);
     const hash = createHash('sha1').update(src).digest('hex');
     if (files[rel(file)]?.hash !== hash || !existsSync(dest)) {
       mkdirSync(dirname(dest), { recursive: true });
@@ -101,6 +103,7 @@ while (queue.length) {
     continue;
   }
   const dest = join(out, rel(file)).replace(/\.tsx?$/, '.js');
+  outputs.add(dest);
   const hash = createHash('sha1').update(src).digest('hex');
   const known = files[rel(file)];
   const fresh = known?.hash === hash && existsSync(dest);
@@ -126,7 +129,8 @@ while (queue.length) {
 // Outputs of deleted sources would still be importable: drop them.
 for (const f of Object.keys(files)) {
   if (!seen.has(join(root, f))) {
-    rmSync(join(out, f).replace(/\.tsx?$/, '.js'), { force: true });
+    const dest = join(out, f).replace(/\.tsx?$/, '.js');
+    if (!outputs.has(dest)) rmSync(dest, { force: true });
     delete files[f];
   }
 }
