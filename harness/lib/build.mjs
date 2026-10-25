@@ -219,34 +219,68 @@ for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130)
 
 /** `next start` for a build directory on a free port; stops when the harness exits. Returns { base, stop }. */
 export async function serve(dir, { port } = {}) {
-  port ||= await freePort();
+  const requestedPort = port;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await startServer(dir, requestedPort || await freePort());
+    } catch (e) {
+      if (requestedPort || attempt >= 4 || !String(e).includes('EADDRINUSE')) throw e;
+    }
+  }
+}
+
+async function startServer(dir, port) {
   const base = `http://127.0.0.1:${port}`;
   // Start next directly, not through pnpm: a killed pnpm wrapper leaves the server holding the port.
   const p = spawn(process.execPath, [join(dir, 'node_modules/next/dist/bin/next'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: dir,
     env: { ...process.env, NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1' },
-    stdio: ['ignore', 'ignore', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
   servers.add(p);
   let err = '';
-  p.stderr.on('data', (d) => (err += d));
+  let output = '';
+  let spawnError = null;
+  p.on('error', (e) => (spawnError = e));
+  p.stdout.on('data', (d) => (output = (output + d).slice(-4000)));
+  p.stderr.on('data', (d) => (err = (err + d).slice(-4000)));
+  const closed = new Promise((resolve) => p.once('close', () => {
+    servers.delete(p);
+    resolve();
+  }));
+  const stop = async () => {
+    if (p.exitCode !== null || p.signalCode !== null || spawnError) return closed;
+    // Keep the child registered until it exits, including when stop() isn't awaited.
+    const timer = setTimeout(() => p.kill('SIGKILL'), 2000);
+    timer.unref();
+    p.kill('SIGTERM');
+    await closed;
+    clearTimeout(timer);
+  };
   const t0 = Date.now();
-  for (;;) {
-    if (p.exitCode !== null) throw new Error(`next start exited (${p.exitCode}): ${err.slice(-2000)}`);
-    try {
-      const r = await fetch(`${base}/robots.txt`);
-      if (r.ok) break;
-    } catch {}
-    if (Date.now() - t0 > 60_000) throw new Error(`next start did not answer within 60 s: ${err.slice(-2000)}`);
-    await new Promise((r) => setTimeout(r, 50));
+  try {
+    for (;;) {
+      if (spawnError) throw spawnError;
+      if (p.exitCode !== null || p.signalCode !== null) throw new Error(`next start exited (${p.exitCode ?? p.signalCode}): ${err.slice(-2000)}`);
+      // Only probe after our child is ready. A different process may have won the port.
+      if (/Ready in/.test(output)) {
+        try {
+          const r = await fetch(`${base}/robots.txt`, { signal: AbortSignal.timeout(2000) });
+          await r.body?.cancel();
+          if (r.ok) break;
+        } catch {}
+      }
+      if (Date.now() - t0 > 60_000) throw new Error(`next start did not answer within 60 s: ${err.slice(-2000)}`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  } catch (e) {
+    await stop();
+    throw e;
   }
   return {
     base,
     dir,
-    stop() {
-      servers.delete(p);
-      p.kill('SIGTERM');
-    },
+    stop,
   };
 }
 
