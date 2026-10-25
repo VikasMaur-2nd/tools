@@ -134,6 +134,7 @@ if (!PERF) {
   for (let r = 0; r < rounds; r++)
     for (const test of runnable)
       for (const engine of enginesOf(test)) {
+        if (r >= (test.opts.rounds ?? Infinity)) continue; // e.g. deterministic byte counts need one round
         const sides = baseTarget ? [baseTarget, targets[test.opts.variant || 'default']] : [targets[test.opts.variant || 'default']];
         if (r % 2) sides.reverse();
         for (const target of sides) jobs.push({ test, engine, target, round: r });

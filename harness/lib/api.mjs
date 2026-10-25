@@ -18,6 +18,7 @@
 //   timeout   ms, default 60 000 (WebKit gets twice as long)
 //   slots     how many of the run's parallel slots the test takes; 'all' runs it alone (big documents)
 //   allowErrors   don't fail on page errors / console errors
+//   rounds    perf: at most this many rounds (1 for deterministic measurements such as byte counts)
 const registry = [];
 let current = null;
 

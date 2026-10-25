@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
+import { cpuNow } from './timing';
 import { parse, type JNode } from '../lib/json/parser';
 import { stringify } from '../lib/json/format';
 import {
@@ -184,20 +185,20 @@ describe('textdiff: line diff', () => {
     items.splice(100, 5);
     const b = JSON.stringify(items, null, 2).split('\n');
     assert.ok(a.length > 50000);
-    let t = performance.now();
+    let t = cpuNow();
     const d = diffLines(a, b);
-    const scattered = performance.now() - t;
+    const scattered = cpuNow() - t;
     check(a, b, d);
     assert.ok(d.exact);
     assert.ok(d.removed < 500 && d.added < 500, `small diff (${d.removed} / ${d.added})`);
 
     // nothing in common, and unique lines in reverse order (patience's worst case)
     const c = a.map((s) => s + ' ');
-    t = performance.now();
+    t = cpuNow();
     check(a, c, diffLines(a, c));
     check(a, a.slice().reverse(), diffLines(a, a.slice().reverse()));
-    const worst = performance.now() - t;
-    assert.ok(scattered < 400 && worst < 1500, `scattered ${scattered.toFixed(0)} ms, worst cases ${worst.toFixed(0)} ms`);
+    const worst = cpuNow() - t;
+    assert.ok(scattered < 400 && worst < 1500, `CPU time: scattered ${scattered.toFixed(0)} ms, worst cases ${worst.toFixed(0)} ms`);
   });
 });
 

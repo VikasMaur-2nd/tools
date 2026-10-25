@@ -88,6 +88,7 @@ test('a 7 MB document survives /privacy and Back', { tags: ['slow'], slots: 'all
 | `t.open(path, { tool })` | Opens a path. It waits for the engine unless you pass `tool: false`. |
 | `t.check(cond, what, detail, { known })` | A soft check: the test continues. `known: "PR #26: …"` marks a failure an open PR already fixes: it is reported but does not fail the run, and the report says when it starts passing. |
 | `t.assert(cond, what, detail)` | A hard check: the test stops. |
+| `t.budget(ms)` | A time limit for responsiveness checks. It is stretched when the machine's load is above its core count, and by `HARNESS_TIMEOUT_SCALE`. |
 | `t.metric(name, value, unit)` | Records a measurement for perf runs. |
 | `t.log(...)` | Shown when the test fails. |
 | `t.newPage(opts)` | A second page in its own context (a phone layout, a second tab). |

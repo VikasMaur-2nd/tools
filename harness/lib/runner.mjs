@@ -1,10 +1,11 @@
 // Runs jobs (test × engine × target) on a pool of parallel slots, longest first, using each test's
 // duration from earlier runs, so the run ends when its longest chain does instead of on a straggler.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { loadavg } from 'node:os';
 import { join } from 'node:path';
 import * as app from './app.mjs';
 import { openPage } from './browsers.mjs';
-import { DIRS } from './env.mjs';
+import { CORES, DIRS } from './env.mjs';
 import { fixture, fixtureText } from './fixtures.mjs';
 
 const DURATIONS = join(DIRS.results, 'durations.json');
@@ -57,6 +58,11 @@ function context(job, target, outDir) {
     metric(name, value, unit = 'ms') {
       (metrics[name] ||= { unit, values: [] }).values.push(value);
     },
+    /**
+     * A time budget for responsiveness checks, stretched on an overloaded machine (load above the core
+     * count) and by HARNESS_TIMEOUT_SCALE, so a busy host doesn't fail checks that a real bug still trips.
+     */
+    budget: (ms) => ms * TIMEOUT_SCALE * Math.max(1, loadavg()[0] / CORES),
     log: (...a) => job.logs.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')),
     /** Another page in a new context of the same browser; closed after the test. */
     async newPage(opts = {}) {

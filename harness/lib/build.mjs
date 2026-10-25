@@ -20,8 +20,13 @@ const KEEP_BUILDS = Number(process.env.HARNESS_KEEP_BUILDS || 6);
  */
 export const VARIANTS = {
   default: {},
-  // PostHog pointed at the local mock in harness/lib/posthog-mock.mjs (privacy suite).
-  'posthog-mock': { NEXT_PUBLIC_POSTHOG_KEY: 'phc_harness_canary', NEXT_PUBLIC_POSTHOG_HOST: 'http://127.0.0.1:4610' },
+  // PostHog pointed at the local mock in harness/lib/posthog-mock.mjs (privacy suites). lib/analytics reads
+  // the token and the host; next.config.ts rewrites /relay/* to the host, so the mock's port is fixed here.
+  'posthog-mock': { NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: 'phc_harness_canary', NEXT_PUBLIC_POSTHOG_HOST: 'http://127.0.0.1:4610' },
+  // A redeploy of `default` (offline suite): nothing a visitor sees changes, but the value is inlined into
+  // the lazily loaded PostHog chunk (lib/analytics/posthog.ts), so that chunk and the chunks naming it get
+  // new hashes, like a real deploy. Identical code alone gives byte-identical chunks (only BUILD_ID differs).
+  redeploy: { NEXT_PUBLIC_POSTHOG_UI_HOST: 'https://redeploy.harness.invalid' },
 };
 const SCRUB = /^(NEXT_PUBLIC_|WEBMCP_ORIGIN_TRIAL$|POSTHOG_|VERCEL)/;
 

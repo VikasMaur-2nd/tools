@@ -5,6 +5,7 @@ import { formatPath } from '../lib/json/path';
 import { align, canonNum, diff, leftOffset, numHash, parseIgnoreList, type DiffOptions, type DiffResult } from '../lib/diff/diff';
 import { patchText, pointer, toPatch } from '../lib/diff/patch';
 import { LineMap, MARK_ADDED, MARK_CHANGED, MARK_REMOVED, changeLines, lineMarks } from '../lib/diff/lines';
+import { cpuNow } from './timing';
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -359,13 +360,13 @@ describe('diff: arrays', () => {
     for (const i of removed) b.splice(i, 1);
     b.splice(4000, 0, { k: -1, s: 'new' });
     b[7000] = { k: b[7000].k, s: 'edited' };
-    const t0 = Date.now();
+    const t0 = cpuNow();
     const r = assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(b));
-    const ms = Date.now() - t0;
+    const ms = cpuNow() - t0;
     assert.equal(r.summary.removed, 3);
     assert.equal(r.summary.added, 1);
     assert.equal(r.summary.changed, 1);
-    assert.ok(ms < 3000, `took ${ms} ms`);
+    assert.ok(ms < 3000, `took ${ms.toFixed(0)} ms of CPU time`);
     void rng;
   });
 
@@ -378,17 +379,18 @@ describe('diff: arrays', () => {
       const j = rng.int(i + 1);
       [b[i], b[j]] = [b[j], b[i]];
     }
-    let t0 = Date.now();
+    let t0 = cpuNow();
     assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(b));
-    assert.ok(Date.now() - t0 < 4000, `shuffle took ${Date.now() - t0} ms`);
-    t0 = Date.now();
+    const shuffle = cpuNow() - t0;
+    assert.ok(shuffle < 4000, `shuffle took ${shuffle.toFixed(0)} ms of CPU time`);
+    t0 = cpuNow();
     const r = run(JSON.stringify(a), JSON.stringify(b), { ignoreArrayOrder: true });
     assert.equal(r.changes.length, 0);
-    assert.ok(Date.now() - t0 < 2000);
+    assert.ok(cpuNow() - t0 < 2000);
     // completely disjoint arrays
-    t0 = Date.now();
+    t0 = cpuNow();
     assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(a.map((x) => x + n)));
-    assert.ok(Date.now() - t0 < 4000);
+    assert.ok(cpuNow() - t0 < 4000);
   });
 
   test('align() produces a valid edit script', () => {
