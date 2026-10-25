@@ -130,7 +130,11 @@ test('consecutive palette commands finish closing and the URL command opens its 
   }
   await t.app.command(page, 'Load JSON from URL', { timeout: t.budget(10_000) });
   const prompt = page.locator('.palette:visible input[type=url]');
-  t.check(await prompt.waitFor({ state: 'visible', timeout: t.budget(10_000) }).then(() => true, () => false), 'the URL prompt opens after its palette command');
+  // Real bug (2026-10-25, Firefox 2 of 3 runs): the palette's dialog.close() queues its close event, the
+  // command runs on the next frame and reopens the palette as the URL prompt, then the late close event
+  // sets palette: false and the prompt closes at once (components/dialogs.tsx Commands.run).
+  const known = t.engine === 'firefox' ? { known: 'bug: the URL prompt closes right after opening (dialog close event races the command frame)' } : {};
+  t.check(await prompt.waitFor({ state: 'visible', timeout: t.budget(10_000) }).then(() => true, () => false), 'the URL prompt opens after its palette command', undefined, known);
   await closePalette(page, { timeout: t.budget(10_000) });
   await t.app.command(page, 'Copy input to clipboard', { timeout: t.budget(10_000) });
   t.check(await t.app.clipboard(page) === text, 'commands still run after closing the URL prompt');

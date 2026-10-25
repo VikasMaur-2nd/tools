@@ -72,7 +72,10 @@ async function fuzz(t, docName, mode, seed0, opsN) {
   const pointerRandom = () => ((pointerSeed = (Math.imul(pointerSeed, 1664525) + 1013904223) >>> 0), pointerSeed / 4294967296);
   const r = (n) => ((seed = (seed * 1103515245 + 12345) >>> 0), Math.floor((seed / 4294967296) * n));
   let curOp = 'setup';
-  const fail = (what, detail) => t.check(false, `[${curOp}] ${what}`, detail);
+  // WebKit clicks in the big-document editor land late on main (broken seed 31: 63 characters after the
+  // pointer); PR #26's editor fixes make the same run pass (checked 2026-10-25 with --ref).
+  const knownClick = t.engine === 'webkit' ? { known: 'PR #26: WebKit clicks in the big-document editor land on the wrong character' } : {};
+  const fail = (what, detail) => t.check(false, `[${curOp}] ${what}`, detail, what === 'click lands on the character' ? knownClick : {});
   const ok = (cond, what, detail) => t.check(cond, `[${curOp}] ${what}`, cond ? undefined : detail);
 
   const { page } = await H.isolatedPage(t, { width: 1280, height: 800 });
