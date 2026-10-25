@@ -2070,8 +2070,9 @@ export class Engine {
       return null;
     }
     this.toast('Fetching…', 'info');
+    let res: Response | null = null;
     try {
-      const res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, signal });
+      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, signal });
       if (signal.aborted) return null;
       if (!res.ok) {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
@@ -2081,8 +2082,34 @@ export class Engine {
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
-      if (!signal.aborted) this.toast("Couldn't fetch. The server must allow cross-origin requests (CORS).", 'err');
+      if (signal.aborted) return null;
+      const why = res ? 'The connection dropped before the whole file arrived. Try again.' : await this.fetchFailure(url, signal);
+      if (why && !signal.aborted) this.toast(why, 'err');
       return null;
+    }
+  }
+
+  /**
+   * Why a request for `url` got no reply the page may read. The browser says the same for a server that doesn't
+   * allow cross-origin reads, a blocked http:// link and one it can't reach, so this asks once more for a reply
+   * the page may not read: one arrives only if the server is there. null once `signal` aborts.
+   */
+  private async fetchFailure(url: URL, signal: AbortSignal): Promise<string | null> {
+    if (navigator.onLine === false) return "You're offline. Connect to the internet and try again.";
+    // (An https page may only ask this device over http.)
+    if (url.protocol === 'http:' && location.protocol === 'https:' && !/^(?:(?:.+\.)?localhost|127(?:\.\d+){3}|\[::1\])$/.test(url.hostname))
+      return 'Browsers block http:// links on an https page. Try the https:// address.';
+    const probe = new AbortController();
+    const stop = () => probe.abort();
+    signal.addEventListener('abort', stop);
+    try {
+      await fetch(url, { mode: 'no-cors', signal: probe.signal });
+      return "Couldn't fetch. The server must allow cross-origin requests (CORS).";
+    } catch {
+      return signal.aborted ? null : "Couldn't reach the server. Check the address or try again later.";
+    } finally {
+      probe.abort(); // (the headers tell enough: the body isn't wanted)
+      signal.removeEventListener('abort', stop);
     }
   }
 

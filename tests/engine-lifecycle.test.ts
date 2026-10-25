@@ -47,12 +47,13 @@ function session() {
   const on = (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn); };
   const off = (type: string, fn: () => void) => { listeners.get(type)?.delete(fn); };
   const storage = new Map<string, string>();
-  const fetches: { url: string; signal?: AbortSignal; reply: ReturnType<typeof later<unknown>> }[] = [];
+  const fetches: { url: string; mode?: string; signal?: AbortSignal; reply: ReturnType<typeof later<unknown>> }[] = [];
   const sw: Dynamic = { listeners: [] as ((e: { data: unknown }) => void)[], registered: 0 };
   let current: Dynamic | null = null;
   const window: Dynamic = { setTimeout: defer, requestIdleCallback: defer, cancelIdleCallback: cancel, addEventListener: on, removeEventListener: off };
   const document = { readyState: 'complete', documentElement: { lang: 'en', dataset: {} }, createElement: () => ({ getContext: () => null }) };
-  const location = { hash: '', href: 'https://tools.example/', pathname: '/', search: '', origin: 'https://tools.example', reload() {} };
+  const location = { hash: '', href: 'https://tools.example/', pathname: '/', search: '', origin: 'https://tools.example', protocol: 'https:', reload() {} };
+  const navigator: Dynamic = { onLine: true };
   const exports: Dynamic = {};
   runInNewContext(js, {
     exports, performance, URL, console, AbortController, Intl, Blob,
@@ -62,16 +63,16 @@ function session() {
     getComputedStyle: () => ({}),
     history: { replaceState() {} },
     localStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => storage.set(k, v), removeItem: (k: string) => storage.delete(k) },
-    navigator: {
+    navigator: Object.assign(navigator, {
       serviceWorker: {
         addEventListener: (_type: string, fn: (e: { data: unknown }) => void) => sw.listeners.push(fn),
         register: () => { sw.registered++; return new Promise(() => {}); },
       },
-    },
-    fetch: (url: unknown, init?: { signal?: AbortSignal }) => {
+    }),
+    fetch: (url: unknown, init?: { mode?: string; signal?: AbortSignal }) => {
       const reply = later<unknown>();
       init?.signal?.addEventListener('abort', () => reply.fail(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })));
-      fetches.push({ url: String(url), signal: init?.signal, reply });
+      fetches.push({ url: String(url), mode: init?.mode, signal: init?.signal, reply });
       return reply.promise;
     },
     Worker: class {
@@ -108,7 +109,7 @@ function session() {
       while (tick());
     }
   };
-  return { engine, make, state, errors, toasts, tasks, tick, drain, storage, fetches, sw, listeners, document, location, setCurrent: (e: Dynamic | null) => { current = e; }, workers: () => workers };
+  return { engine, make, state, errors, toasts, tasks, tick, drain, storage, fetches, sw, listeners, document, location, navigator, setCurrent: (e: Dynamic | null) => { current = e; }, workers: () => workers };
 }
 
 /** Fakes for what destroy() lets go of. */
@@ -310,6 +311,61 @@ test('a big file still being read gives back the status it showed when a URL is 
   c.settle('{}');
   await third;
   assert.equal(state.status, shown);
+});
+
+test("a URL that can't be read says why: no CORS, no server, cut off, http:// on https, or offline", async () => {
+  const { engine, toasts, fetches, navigator } = loading();
+  const failed = () => new TypeError('Failed to fetch');
+  const said = () => toasts.filter((t) => t !== 'Fetching…').at(-1);
+  // The server answers but doesn't let other sites read it: a reply the page may not read still arrives.
+  let got = engine.fetchUrl('https://a.example/a.json');
+  fetches[0].reply.fail(failed());
+  await settled();
+  assert.equal(fetches[1].mode, 'no-cors');
+  assert.equal(fetches[1].url, 'https://a.example/a.json');
+  fetches[1].reply.settle({ type: 'opaque' });
+  await got;
+  assert.equal(said(), "Couldn't fetch. The server must allow cross-origin requests (CORS).");
+  assert.equal(fetches[1].signal?.aborted, true, 'the second request stops once it has answered');
+  // No reply at all.
+  got = engine.fetchUrl('https://b.example/b.json');
+  fetches[2].reply.fail(failed());
+  await settled();
+  fetches[3].reply.fail(failed());
+  await got;
+  assert.equal(said(), "Couldn't reach the server. Check the address or try again later.");
+  // The headers came; the rest didn't.
+  got = engine.fetchUrl('https://c.example/c.json');
+  fetches[4].reply.settle({ ok: true, text: () => Promise.reject(failed()) });
+  await got;
+  assert.equal(said(), 'The connection dropped before the whole file arrived. Try again.');
+  // http:// from this https page is blocked, except on this device; offline needs no second request either.
+  got = engine.fetchUrl('http://d.example/d.json');
+  fetches[5].reply.fail(failed());
+  await got;
+  assert.equal(said(), 'Browsers block http:// links on an https page. Try the https:// address.');
+  got = engine.fetchUrl('http://localhost:8080/e.json');
+  fetches[6].reply.fail(failed());
+  await settled();
+  assert.equal(fetches[7].mode, 'no-cors');
+  fetches[7].reply.fail(failed());
+  await got;
+  navigator.onLine = false;
+  got = engine.fetchUrl('https://f.example/f.json');
+  fetches[8].reply.fail(failed());
+  await got;
+  assert.equal(said(), "You're offline. Connect to the internet and try again.");
+  assert.equal(fetches.length, 9);
+  // A newer request while the second one is out: the first says nothing.
+  navigator.onLine = true;
+  const before = toasts.length;
+  got = engine.fetchUrl('https://g.example/g.json');
+  fetches[9].reply.fail(failed());
+  await settled();
+  void engine.fetchUrl('https://h.example/h.json');
+  assert.equal(fetches[10].signal?.aborted, true);
+  await got;
+  assert.deepEqual(toasts.slice(before), ['Fetching…', 'Fetching…']);
 });
 
 test('typing or pasting in an editor drops the document still on its way to it, quietly', async () => {
