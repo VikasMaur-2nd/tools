@@ -63,10 +63,13 @@ for (const file of walk(SUITES).sort()) {
   await import(file);
 }
 
+// A filter that names a suite or a suite folder ("editor", "perf/pages") selects exactly that; any other
+// filter is a case-insensitive substring of "suite › test name".
+const suiteNames = new Set(registered().flatMap((t) => t.suite.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))));
 const match = (t) => {
   if (!filters.length) return true;
   const id = t.id.toLowerCase();
-  return filters.some((f) => t.suite === f || t.suite.startsWith(f + '/') || id.includes(f.toLowerCase()));
+  return filters.some((f) => (suiteNames.has(f) ? t.suite === f || t.suite.startsWith(f + '/') : id.includes(f.toLowerCase())));
 };
 const selected = registered().filter((t) => {
   const tt = t.opts.tags;
