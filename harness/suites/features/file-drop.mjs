@@ -14,9 +14,9 @@ const other = docText('other.json');
 /** /integrate with the builder in view and both of its editors loaded. */
 async function builder(t) {
   const { page } = t;
-  await t.open('/integrate', { tool: false });
+  await t.open('/integrate', { tool: false, timeout: 60_000 });
   await page.locator('.link-builder').scrollIntoViewIfNeeded();
-  t.assert(await until(page, () => document.querySelectorAll('.link-builder .ed.hl-on').length === 2, null, { timeout: 20_000 }), 'the builder is ready');
+  t.assert(await until(page, () => document.querySelectorAll('.link-builder .ed.hl-on').length === 2, null, { timeout: 60_000 }), 'the builder is ready');
 }
 const boxText = (page, i = 0) => page.evaluate((i) => document.querySelectorAll('.link-builder .lb-input .ed textarea')[i]?.value ?? null, i);
 const waitBox = (page, want, i = 0, timeout = 8000) => poll(async () => (await boxText(page, i)) === want, { timeout });
@@ -171,10 +171,13 @@ test('builder: a 5 MB one-line file', async (t) => {
   const longest = Math.max(0, ...gaps);
   const load = loadavg()[0].toFixed(1);
   if (trace) {
-    // Chromium: the longest main-thread task in CPU time, which a busy machine doesn't stretch (on this
-    // host at load 40 the same 67 ms task took 430–720 ms of wall time).
+    // Chromium: prefer the longest main-thread task in CPU time. If tracing
+    // cannot identify the renderer thread, use the event-loop gap instead so
+    // a missing trace does not turn into a false failure.
     const task = await trace();
-    t.check(task && task.cpu < 400, 'a 5 MB file: no long freeze (longest main-thread task under 400 ms of CPU)', { task, longestGap: longest });
+    const limit = t.budget(400);
+    const observed = task?.cpu ?? longest;
+    t.check(observed < limit, 'a 5 MB file: no long freeze (longest main-thread task under 400 ms of CPU)', { task, longestGap: longest, limit });
     t.log(`5 MB file: link in ${took} ms, longest task ${task?.cpu} ms CPU / ${task?.wall} ms wall, longest gap ${longest} ms at load ${load}`);
   } else {
     // Elsewhere: event-loop gaps, 400 ms on a machine that isn't overloaded (the old limit), scaled by

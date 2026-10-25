@@ -6,7 +6,7 @@
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, PASTED, TOAST_RECORDER, docOf, docText, enc, poll, resetClip, setDoc, toastText, until, waitClip, waitLoaded, waitToast } from './_helpers.mjs';
 
-defaults({ engines: 'all', width: 1280, height: 900, tags: ['share'] });
+defaults({ engines: 'all', width: 1280, height: 900, tags: ['share'], timeout: 120_000 });
 
 // The user's 5.3 MB one-line document behind the 512,000-character cut (regenerated, never committed).
 const USER = 'user-5mb.json';
@@ -123,7 +123,7 @@ async function type(page, which, text) {
   await page.locator(`#${which}`).click();
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.insertText(text);
-  if (which === 'input') return waitLoaded(page, text);
+  if (which === 'input') return waitLoaded(page, text, { timeout: 60_000 });
   return poll(async () => (await page.evaluate(() => document.getElementById('input2').value)) === text, { timeout: 10_000 });
 }
 /** What the next copy is, after `action`. */

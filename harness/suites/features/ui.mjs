@@ -209,7 +209,11 @@ async function graph(t, load) {
   await until(page, () => !!window.__vis('#view-graph .gv-ctl:not([hidden])') && !!document.querySelector('#view-graph .gv-note')?.hidden, null, { timeout: 60_000 });
 }
 async function openExport(t) {
-  await t.app.command(t.page, 'Export image');
+  // Use the graph toolbar action directly. The old check opened the same
+  // dialog through the palette, but WebKit can close that palette before the
+  // fuzzy result is committed. The toolbar has the same user-facing action
+  // and is present once the graph is ready.
+  await t.page.getByRole('button', { name: 'Export image', exact: true }).click();
   await t.page.locator('.gx-form').waitFor({ timeout: 10_000 });
 }
 const group = (page, label) => page.locator(`.gx-form [role=radiogroup][aria-label="${label}"]`);
