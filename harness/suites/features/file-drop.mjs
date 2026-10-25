@@ -4,7 +4,8 @@
 // elsewhere). Drags are script-made DragEvents with real Files: what the page's handlers see.
 import { defaults, test } from '../../lib/api.mjs';
 import { loadavg } from 'node:os';
-import { MOD, doc, docOf, docText, inputText, loadScale, poll, traceTasks, until } from './_helpers.mjs';
+import { stalls } from '../../lib/perf.mjs';
+import { MOD, doc, docOf, docText, inputText, poll, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', width: 1280, height: 900, tags: ['files'] });
 
@@ -137,27 +138,18 @@ test('builder: dropping files on Compare two', async (t) => {
   await page.evaluate(() => (window.__dt = null));
 });
 
-test('builder: a 5 MB one-line file', async (t) => {
+// The longest stall is wall-clock: the test runs alone, and t.budget stretches the limit on a busy machine.
+test('builder: a 5 MB one-line file', { slots: 'all' }, async (t) => {
   const { page } = t;
   const bigFile = doc('user-5mb.json');
   const big = docText('user-5mb.json');
   await builder(t);
-  // Event-loop gaps while it opens, checks and makes the link: the page keeps responding.
-  await page.evaluate(() => {
-    const w = (window.__w = { gaps: [] });
-    let last = performance.now();
-    const tick = () => {
-      const now = performance.now();
-      if (now - last > 50) w.gaps.push(Math.round(now - last));
-      last = now;
-      if (!w.stop) setTimeout(tick, 10);
-    };
-    setTimeout(tick, 10);
-  });
-  const trace = t.engine === 'chromium' ? await traceTasks(page) : null;
+  // Main-thread stalls while it opens, checks and makes the link: the page keeps responding.
   const t0 = Date.now();
-  await openFile(page, bigFile);
-  const bigLink = await poll(async () => { const x = await href(page); return x.length > 500_000 ? x : null; }, { timeout: 30_000 });
+  const { result: bigLink, maxGap } = await stalls(page, async () => {
+    await openFile(page, bigFile);
+    return poll(async () => { const x = await href(page); return x.length > 500_000 ? x : null; }, { timeout: 30_000 });
+  });
   const took = Date.now() - t0;
   let carried = false;
   try {
@@ -167,26 +159,9 @@ test('builder: a 5 MB one-line file', async (t) => {
   // (The old script read the status the moment the link appeared; the check finishes in steps, so wait for it.)
   const st = await until(page, () => /Valid JSON/.test(document.querySelector('.lb-check')?.textContent ?? '') && document.querySelector('.lb-check').textContent, null, { timeout: 30_000 });
   t.check(/Valid JSON/.test(st || ''), 'a 5 MB file: checked valid', st || (await status(page)));
-  const gaps = await page.evaluate(() => ((window.__w.stop = true), window.__w.gaps));
-  const longest = Math.max(0, ...gaps);
-  const load = loadavg()[0].toFixed(1);
-  if (trace) {
-    // Chromium: prefer the longest main-thread task in CPU time. If tracing
-    // cannot identify the renderer thread, use the event-loop gap instead so
-    // a missing trace does not turn into a false failure.
-    const task = await trace();
-    const limit = t.budget(400);
-    const observed = task?.cpu ?? longest;
-    t.check(observed < limit, 'a 5 MB file: no long freeze (longest main-thread task under 400 ms of CPU)', { task, longestGap: longest, limit });
-    t.log(`5 MB file: link in ${took} ms, longest task ${task?.cpu} ms CPU / ${task?.wall} ms wall, longest gap ${longest} ms at load ${load}`);
-  } else {
-    // Elsewhere: event-loop gaps, 400 ms on a machine that isn't overloaded (the old limit), scaled by
-    // the oversubscription on one that is (see loadScale).
-    const limit = Math.round(400 * loadScale());
-    t.check(longest < limit, 'a 5 MB file: no long freeze', { longest, limit, load, gaps: gaps.slice(0, 12) });
-    t.log(`5 MB file: link in ${took} ms, longest gap ${longest} ms (limit ${limit} ms at load ${load})`);
-  }
-  t.metric('5 MB file: longest event-loop gap', longest);
+  const limit = Math.round(t.budget(400));
+  t.check(maxGap < limit, 'a 5 MB file: no long freeze', { longest: Math.round(maxGap), limit, load: loadavg()[0].toFixed(1) });
+  t.log(`5 MB file: link in ${took} ms, longest stall ${Math.round(maxGap)} ms (limit ${limit} ms)`);
 });
 
 test('builder: a real file drag from outside the browser', { engines: ['chromium'] }, async (t) => {
