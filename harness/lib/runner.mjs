@@ -42,7 +42,11 @@ function context(job, target, outDir, signal) {
     metrics,
     outDir,
     /** fetch() from Node with the target's extra headers (HARNESS_HEADERS), for HTTP-level checks. */
-    fetch: (url, init = {}) => fetch(url, { ...init, headers: { ...EXTRA_HEADERS, ...init.headers } }),
+    fetch: (url, init = {}) => {
+      const headers = new Headers(EXTRA_HEADERS);
+      new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+      return fetch(url, { ...init, headers });
+    },
     /** Opens a path of the target and (unless tool: false) waits for the tool. */
     open: (path = '/', opts) => app.open(t.page, target.base, path, opts),
     /**
