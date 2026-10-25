@@ -39,6 +39,19 @@ const openFile = async (page, file, button = page.locator('.lb-file').first()) =
 };
 const hints = (page) => page.evaluate(() => ({ hints: document.querySelectorAll('.lb-drop-hint').length, over: [...document.querySelectorAll('.lb-drop')].map((d) => d.classList.contains('lb-over')) }));
 
+/** Drop-area state once `ok(state)` holds (React renders after the drag events), or the last state after `ms`. */
+async function waitHints(page, ok, ms = 3000) {
+  const end = Date.now() + ms;
+  let h = await hints(page);
+  while (!ok(h) && Date.now() < end) {
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
+    h = await hints(page);
+  }
+  return h;
+}
+/** State after two frames, for checks that something does NOT appear. */
+const settledHints = async (page) => (await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))), hints(page));
+
 /** A drag event of `type` on sel ('box:N' for the Nth box's editor), carrying a file or text. */
 const drag = (page, type, sel, name, text, kind = 'file') =>
   page.evaluate(
@@ -105,7 +118,7 @@ test('builder: dropping files on Compare two', async (t) => {
   const origBefore = await boxText(page, 0);
   // Into the page: both boxes show where to drop.
   await drag(page, 'dragenter', 'h1', 'other.json', other);
-  let h = await hints(page);
+  let h = await waitHints(page, (x) => x.hints === 2);
   t.check(h.hints === 2 && !h.over.some(Boolean), 'files over the page: both boxes show a drop area', h);
   // Over a heading: no drop there. (Only Firefox lets a script-made drag event keep a dropEffect; the
   // real drag in Chromium is the next test.)
@@ -114,25 +127,25 @@ test('builder: dropping files on Compare two', async (t) => {
   // Over the Modified box.
   await drag(page, 'dragenter', 'box:1', 'other.json', other);
   const inside = await drag(page, 'dragover', 'box:1', 'other.json', other);
-  h = await hints(page);
+  h = await waitHints(page, (x) => x.over[1] && !x.over[0]);
   t.check(inside.prevented && (t.engine !== 'firefox' || inside.effect === 'copy'), 'over a box a drop is a copy', inside);
   t.check(h.over[1] && !h.over[0], 'the box under the pointer is marked', h);
   await drag(page, 'drop', 'box:1', 'other.json', other);
   await drag(page, 'dragleave', 'h1', 'other.json', other);
   t.check(await waitBox(page, other, 1), 'the dropped file opens in the Modified box', (await boxText(page, 1))?.slice(0, 40));
-  h = await hints(page);
+  h = await waitHints(page, (x) => x.hints === 0);
   t.check((await boxText(page, 0)) === origBefore, 'the Original box keeps its text');
   t.check(h.hints === 0, 'the drop areas go away after the drop', h);
   t.check(!!(await waitLink(page, other, 'b')), 'the comparison link carries the dropped file as b');
   // A drag that leaves the window: the drop areas go away.
   await drag(page, 'dragenter', 'h1', 'other.json', other);
   await drag(page, 'dragleave', 'h1', 'other.json', other);
-  h = await hints(page);
+  h = await waitHints(page, (x) => x.hints === 0);
   t.check(h.hints === 0, 'a drag that leaves the page clears the drop areas', h);
   // Text dragged (not a file): no drop areas, the editor's own text drop is left alone.
   await page.evaluate(() => (window.__dt = null));
   await drag(page, 'dragenter', '.lb-drop .ed', '', 'some text', 'text');
-  h = await hints(page);
+  h = await settledHints(page);
   const textOver = await drag(page, 'dragover', '.lb-drop .ed', '', 'some text', 'text');
   t.check(h.hints === 0 && !textOver.prevented, 'dragged text: no drop areas, left to the browser', { h, textOver });
   await page.evaluate(() => (window.__dt = null));
