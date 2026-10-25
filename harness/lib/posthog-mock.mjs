@@ -14,7 +14,7 @@
 //   await mock.waitFor(tag, (reqs) => reqs.some(…));     // polls the mock every 25 ms
 //   await mock.search('TKCANARY…')                        // every request (any tag) holding the text
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,7 +26,7 @@ export const PORT = 4610;
 export const BASE = `http://127.0.0.1:${PORT}`;
 export const TAG_HEADER = 'x-harness-tag';
 /** Bump when the mock's behaviour or API changes: a running mock of another version is replaced once idle. */
-const VERSION = 1;
+const VERSION = 3;
 const IDLE_MS = 5 * 60_000;
 /** Requests older than this are dropped (a run's tests read theirs within seconds). */
 const KEEP_MS = 30 * 60_000;
@@ -73,14 +73,26 @@ const decode = (buf) => {
   let s = buf.toString('utf8');
   if (s.startsWith('data=')) {
     try {
-      s = '[base64] ' + Buffer.from(decodeURIComponent(s.slice(5)), 'base64').toString('utf8');
+      s = '[base64] ' + Buffer.from(new URLSearchParams(s).get('data') ?? '', 'base64').toString('utf8');
     } catch {}
   }
   return s;
 };
 
 function serveMock(port, dist) {
+  // Builds can be pruned while a mock is shared by other worktrees. Keep the SDK scripts
+  // in memory so deleting the build directory cannot break an active canary.
+  const scripts = new Map(readdirSync(dist).filter((name) => name.endsWith('.js')).map((name) => [name, readFileSync(join(dist, name))]));
   const log = [];
+  // Chromium can omit Playwright's extra headers on unload beacons. The SDK's
+  // window ID still identifies the originating test, including after navigation.
+  const windows = new Map();
+  const ids = (entry) => eventsIn([entry]).map((e) => e.properties?.$window_id).filter((id) => typeof id === 'string');
+  const tagOf = (entry) => {
+    if (entry.tag) return entry.tag;
+    const tags = new Set(ids(entry).map((id) => windows.get(id)?.tag).filter(Boolean));
+    return tags.size === 1 ? [...tags][0] : null;
+  };
   let next = 0;
   let last = Date.now();
   const json = (res, status, data) => {
@@ -99,16 +111,17 @@ function serveMock(port, dist) {
       if (path.startsWith('/__harness/')) {
         const cut = Date.now() - KEEP_MS;
         while (log.length && log[0].t < cut) log.shift();
+        for (const [id, value] of windows) if (value.t < cut) windows.delete(id);
         if (path === '/__harness/ping') return json(res, 200, { version: VERSION, pid: process.pid, last: Math.max(0, ...log.map((l) => l.t)) });
         if (path === '/__harness/requests') {
           const tag = u.searchParams.get('tag');
           const since = Number(u.searchParams.get('since') || 0);
-          return json(res, 200, { next, items: log.filter((l) => l.i >= since && l.tag === tag) });
+          return json(res, 200, { next, items: log.filter((l) => l.i >= since && tagOf(l) === tag) });
         }
         if (path === '/__harness/search') {
           const needles = u.searchParams.getAll('needle').filter(Boolean);
           const hits = [];
-          for (const l of log) for (const n of needles) if (l.url.includes(n) || l.body.includes(n)) hits.push({ i: l.i, tag: l.tag, method: l.method, path: l.path, needle: n, at: l.body.indexOf(n) });
+          for (const l of log) for (const n of needles) if ((l.url + l.body + JSON.stringify(l.headers)).includes(n)) hits.push({ i: l.i, tag: tagOf(l), method: l.method, path: l.path, needle: n, at: l.body.indexOf(n) });
           return json(res, 200, hits);
         }
         if (path === '/__harness/quit') {
@@ -118,13 +131,15 @@ function serveMock(port, dist) {
         return json(res, 404, {});
       }
       const tag = req.headers[TAG_HEADER] || null;
-      log.push({ i: next++, t: Date.now(), tag: Array.isArray(tag) ? tag[0] : tag, method: req.method, url, path, ct: req.headers['content-type'], body: decode(Buffer.concat(chunks)) });
+      const entry = { i: next++, t: Date.now(), tag: Array.isArray(tag) ? tag[0] : tag, method: req.method, url, path, headers: req.headers, ct: req.headers['content-type'], body: decode(Buffer.concat(chunks)) };
+      if (entry.tag) for (const id of ids(entry)) windows.set(id, { tag: entry.tag, t: entry.t });
+      log.push(entry);
       const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
       if (path.startsWith('/static/')) {
-        const file = join(dist, path.split('/').pop());
-        if (existsSync(file)) {
+        const script = scripts.get(path.split('/').pop());
+        if (script) {
           res.writeHead(200, { ...cors, 'Content-Type': 'application/javascript' });
-          return res.end(readFileSync(file));
+          return res.end(script);
         }
         res.writeHead(404, cors);
         return res.end();
@@ -168,7 +183,8 @@ let ready = null;
  * The machine's mock, started if no run has one (under a lock, so two runs don't both start one). `dist` is
  * posthog-js/dist of the build under test: its lazy scripts are served from there.
  */
-export function ensureMock({ dist }) {
+export async function ensureMock({ dist }) {
+  if ((await ping())?.version === VERSION) return client();
   return (ready ||= (async () => {
     let p = await ping();
     if (p?.version === VERSION) return client();
@@ -194,9 +210,8 @@ export function ensureMock({ dist }) {
       }
     });
     return client();
-  })().catch((e) => {
+  })().finally(() => {
     ready = null;
-    throw e;
   }));
 }
 
