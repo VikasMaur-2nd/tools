@@ -80,7 +80,9 @@ const HELPERS = () => {
   window.__vis = (sel) => [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length > 0) || null;
 };
 
-const IGNORED_CONSOLE = /_vercel\/|favicon/;
+// chrome://juggler/ is Playwright's own Firefox instrumentation (it logs NS_BINDING_ABORTED when a navigation
+// cuts off a worker's load), not the page.
+const IGNORED_CONSOLE = /_vercel\/|favicon|chrome:\/\/juggler\//;
 
 /**
  * A fresh context and page. Options: width, height, mobile, dark, locale, serviceWorkers ('block' by
