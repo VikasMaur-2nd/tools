@@ -257,6 +257,10 @@ async function updateWorker(page) {
     if (!reg) throw new Error('The first visit did not register a worker');
     await reg.update();
   });
+  await swVersion(page, 'A2', { active: true });
+  // Adoption of a replacement and controllerchange can straddle navigation.
+  // The old upgrade script also reloads until the new worker's shell is served.
+  await page.reload({ waitUntil: 'load' });
   await swVersion(page, 'A2');
   await swIdle(page);
 }
@@ -305,7 +309,6 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
     await visitor.goto(proxy.origin + '/', { waitUntil: 'load' });
     await updateWorker(visitor);
     t.check(await newShell(t, visitor, a2.named), 'upgrade: the new worker brings in the new shell');
-    await visitor.reload({ waitUntil: 'load' });
     await swIdle(visitor, { posted: true });
     const missing = await missingFromCache(visitor, a2.all);
     proxy.offline();

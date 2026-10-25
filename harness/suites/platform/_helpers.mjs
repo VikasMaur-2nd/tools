@@ -408,17 +408,22 @@ export async function swIdle(page, { posted = false, timeout = 60_000 } = {}) {
 }
 
 /** Wait for the worker installed after a proxy deploy, rather than a registration's old active worker. */
-export async function swVersion(page, version, { timeout = 30_000 } = {}) {
-  await until(() => page.evaluate(async (version) => {
-    const sw = navigator.serviceWorker?.controller;
-    if (!sw) return false;
-    return new Promise((resolve) => {
+export async function swVersion(page, version, { timeout = 30_000, active = false } = {}) {
+  await until(() => page.evaluate(async ([version, active]) => {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const sw = active ? reg?.active : navigator.serviceWorker?.controller;
+    if (!sw || (active && sw.state !== 'activated')) return false;
+    const matches = await new Promise((resolve) => {
       const ch = new MessageChannel();
       const timer = setTimeout(() => { ch.port1.close(); resolve(false); }, 1000);
       ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); resolve(e.data === version); };
       sw.postMessage({ type: 'harness-version' }, [ch.port2]);
     });
-  }, version), { timeout: budget(page, timeout), what: `service worker ${version}` });
+    // A page's own register() can coalesce the explicit update check. Retry that
+    // check only when no replacement is installing or waiting.
+    if (!matches && active && !reg.installing && !reg.waiting) await reg.update();
+    return matches;
+  }, [version, active]), { timeout: budget(page, timeout), what: `service worker ${version}${active ? ' to activate' : ' to control the page'}` });
 }
 
 /** In every page of an offline test: notes when the page posts its 'cache' message to the worker. */
