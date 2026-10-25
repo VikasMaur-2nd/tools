@@ -4,6 +4,7 @@
 // edits only tests never rebuilds. Builds live in CACHE/builds/<key>, never in the checkout's .next,
 // so a server keeps working while another run builds newer code next to it.
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -93,7 +94,10 @@ export const describeRef = (ref) => (ref ? git(['rev-parse', '--short', ref]) : 
 export async function ensureBuild({ ref, variant = 'default', log = console.log } = {}) {
   if (!Object.hasOwn(VARIANTS, variant)) throw new Error(`unknown build variant: ${variant}`);
   const tree = treeOf(ref);
-  const key = `${tree.slice(0, 16)}-${variant}`;
+  // Variant definitions live in the excluded harness tree, but their values affect bundles.
+  const settings = Object.entries(VARIANTS[variant]).sort(([a], [b]) => a.localeCompare(b));
+  const suffix = settings.length ? `-${createHash('sha256').update(JSON.stringify(settings)).digest('hex').slice(0, 12)}` : '';
+  const key = `${tree.slice(0, 16)}-${variant}${suffix}`;
   const dir = join(DIRS.builds, key);
   const done = () => existsSync(join(dir, '.next', 'BUILD_ID')) && existsSync(join(dir, '.harness-built'));
   const reused = await withLock(CACHE_LOCK, () => {
