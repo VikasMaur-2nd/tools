@@ -193,7 +193,10 @@ test('download_file: the document, formatted, converted, Excel and graph images'
   const page = t.page;
   /** The file an action downloads: { name, path }, or null when none comes. */
   const download = async (action) => {
-    const [d] = await Promise.all([page.waitForEvent('download', { timeout: t.budget(15_000) }).catch(() => null), action()]);
+    // A tool call that never settles fails this check in 30 s instead of hanging the test (seen once on
+    // 2026-10-25: the graph PNG export's promise never resolved, graph drawn, nothing else running).
+    const call = Promise.race([action(), new Promise((resolve) => setTimeout(() => resolve('tool call did not return within the time limit'), t.budget(30_000)))]);
+    const [d] = await Promise.all([page.waitForEvent('download', { timeout: t.budget(15_000) }).catch(() => null), call]);
     return d && { name: d.suggestedFilename(), path: await d.path() };
   };
   await t.open('/');
