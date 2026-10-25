@@ -66,7 +66,7 @@ function context(job, target, outDir) {
     log: (...a) => job.logs.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')),
     /** Another page in a new context of the same browser; closed after the test. */
     async newPage(opts = {}) {
-      const p = await openPage(job.engine, { ...job.test.opts, ...opts });
+      const p = await openPage(job.engine, { ...job.test.opts, legacy: target.legacy, ...opts });
       extra.push(p);
       return p;
     },
@@ -86,7 +86,7 @@ async function runOne(job, target, outDir) {
   let timer;
   try {
     if (o.page !== false) {
-      pageSet = await openPage(engine, o);
+      pageSet = await openPage(engine, { ...o, legacy: target.legacy });
       Object.assign(t, { page: pageSet.page, context: pageSet.context, errors: pageSet.errors });
     }
     await Promise.race([
@@ -113,11 +113,14 @@ async function runOne(job, target, outDir) {
     await pageSet.page.screenshot({ path: shot, timeout: 5000 }).catch(() => (shot = null));
   }
   await Promise.all([pageSet, ...t._extra].filter(Boolean).map((p) => p.context.close().catch(() => {})));
+  // A whole test can be known to fail on this code (opts.known: 'PR #25: …'), e.g. a hang an open PR fixes.
+  const status = failed.length ? (o.known ? 'known' : 'fail') : 'pass';
   return {
     id: test.id,
     engine,
     target: target.name,
-    status: failed.length ? 'fail' : 'pass',
+    status,
+    knownTest: o.known || undefined,
     ms: Math.round(performance.now() - t0),
     checks: t.checks.length,
     failures: failed,
@@ -157,7 +160,7 @@ export async function runJobs(jobs, { slots, outDir, onResult, retries = 0, bail
           for (let attempt = 0; ; attempt++) {
             job.logs = [];
             r = await runOne(job, job.target, outDir);
-            if (r.status === 'pass' || attempt >= retries) {
+            if (r.status !== 'fail' || attempt >= retries) {
               if (attempt > 0 && r.status === 'pass') r.status = 'flaky';
               break;
             }

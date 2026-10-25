@@ -12,7 +12,7 @@ for (const doc of ['bench-1mb', 'mix-3mb', 'bench-10mb', 'bench-50mb']) {
   test(`open ${doc}`, { ...(big ? { tags: ['slow'], slots: 'all', engines: ['chromium'] } : {}) }, async (t) => {
     await t.open('/');
     const { result: ph, cpu, maxGap, stalls: blocked } = await stallsAndCpu(t, () => phases(t.page, OPEN_PHASES, () => t.app.openFile(t.page, doc)));
-    for (const [k, v] of Object.entries(ph)) t.check(v != null, `${k} reached`) && t.metric(`${k} ms`, v);
+    for (const [k, v] of Object.entries(ph)) if (t.check(v != null, `${k} reached`)) t.metric(`${k} ms`, v);
     t.metric('main-thread CPU ms', cpu);
     t.metric('longest stall ms', maxGap);
     t.metric('blocking ms', blocked);

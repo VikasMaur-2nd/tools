@@ -100,6 +100,7 @@ export async function openPage(engine, opts = {}) {
     ...opts.context,
   });
   await context.addInitScript(HELPERS);
+  if (opts.legacy) await context.addInitScript(() => (window.__tkLegacy = true));
   if (opts.clipboard !== false) await context.addInitScript(CLIPBOARD_STUB);
   const errors = [];
   const watched = new WeakSet();
