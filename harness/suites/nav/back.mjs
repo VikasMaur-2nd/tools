@@ -86,7 +86,7 @@ test('Compare keeps the modified document after /privacy and Back', async (t) =>
   const { page } = t;
   await t.open('/');
   await t.app.openFile(page, 'rows-15000');
-  await t.app.waitValid(page, { timeout: t.budget(big ? 300_000 : 120_000) });
+  await t.app.waitValid(page, { timeout: t.budget(120_000) });
   await t.app.view(page, 'compare');
   await page.locator('#input2').waitFor({ state: 'attached' });
   await t.app.setText(page, JSON.stringify({ hello: 'compare', n: [1, 2, 3] }), 'input2');
@@ -107,7 +107,7 @@ test('a tool page with a 6.9 MB document: /privacy stays responsive and Back wor
   page.on('close', () => (closed = true));
   await t.open('/tools/json-validator');
   await t.app.openFile(page, 'rows-60000');
-  await t.app.waitValid(page, { timeout: t.budget(big ? 300_000 : 120_000) });
+  await t.app.waitValid(page, { timeout: t.budget(120_000) });
   await t.app.navigate(page, '/privacy');
   const gap = await stallOver(page, 2500);
   t.check(gap < t.budget(1500), '/privacy responsive', `longest stall ${Math.round(gap)} ms`);
