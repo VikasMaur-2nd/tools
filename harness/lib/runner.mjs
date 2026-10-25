@@ -10,6 +10,7 @@ import { fixture, fixtureText } from './fixtures.mjs';
 
 const DURATIONS = join(DIRS.results, 'durations.json');
 const TIMEOUT_SCALE = Number(process.env.HARNESS_TIMEOUT_SCALE || 1);
+if (!Number.isFinite(TIMEOUT_SCALE) || TIMEOUT_SCALE <= 0) throw new Error('HARNESS_TIMEOUT_SCALE must be positive and finite');
 const ENGINE_SLOWNESS = { chromium: 1, firefox: 1.5, webkit: 2 };
 
 let durations = {};

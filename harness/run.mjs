@@ -51,6 +51,16 @@ const list = (s) => (s ? s.flatMap((x) => x.split(',')).map((x) => x.trim()).fil
 const onlyEngines = o.smoke && !o.engine ? ['chromium'] : list(o.engine && [o.engine]);
 const tags = o.smoke ? ['smoke', ...list(o.tag)] : list(o.tag);
 const skipTags = list(o['skip-tag']);
+const integer = (name, value, min = 1) => {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min) throw new Error(`${name} must be an integer >= ${min}`);
+  return n;
+};
+const workers = integer('workers', o.workers ?? process.env.HARNESS_WORKERS ?? CORES);
+const retries = integer('retries', o.retries ?? 0, 0);
+const repeat = integer('repeat', o.repeat ?? 1);
+const rounds = integer('rounds', o.rounds ?? 5);
+for (const engine of onlyEngines) if (!ENGINES.includes(engine)) throw new Error(`unknown engine: ${engine}`);
 
 // ── Suites ──────────────────────────────────────────────────────────────────────────────────────
 const SUITES = join(ROOT, 'harness/suites');
@@ -71,7 +81,12 @@ const match = (t) => {
   const id = t.id.toLowerCase();
   return filters.some((f) => (suiteNames.has(f) ? t.suite === f || t.suite.startsWith(f + '/') : id.includes(f.toLowerCase())));
 };
+const enginesOf = (t) => {
+  const e = t.opts.engines === 'all' ? ENGINES : t.opts.engines || ['chromium'];
+  return onlyEngines.length ? e.filter((x) => onlyEngines.includes(x)) : e;
+};
 const selected = registered().filter((t) => {
+  if (!enginesOf(t).length) return false;
   const tt = t.opts.tags;
   if (PERF !== tt.includes('perf')) return false;
   if (tt.includes('slow') && !o.slow && !filters.length) return false;
@@ -79,10 +94,6 @@ const selected = registered().filter((t) => {
   if (skipTags.some((x) => tt.includes(x))) return false;
   return match(t);
 });
-const enginesOf = (t) => {
-  const e = t.opts.engines === 'all' ? ENGINES : t.opts.engines || ['chromium'];
-  return onlyEngines.length ? e.filter((x) => onlyEngines.includes(x)) : e;
-};
 
 if (o.list) {
   for (const t of selected) console.log(`${t.id}  [${enginesOf(t).join(', ')}]${t.opts.tags.length ? '  #' + t.opts.tags.join(' #') : ''}`);
@@ -91,7 +102,7 @@ if (o.list) {
 }
 if (!selected.length) {
   console.log('No tests match.');
-  process.exit(filters.length || tags.length ? 1 : 0);
+  process.exit(filters.length || tags.length || onlyEngines.length ? 1 : 0);
 }
 
 // ── Targets ─────────────────────────────────────────────────────────────────────────────────────
@@ -131,12 +142,10 @@ console.log(`  targets: ${Object.values(targets).map(describeTarget).join('; ')}
 const jobs = [];
 const runnable = selected.filter((t) => targets[t.opts.variant || 'default']);
 if (!PERF) {
-  const repeat = Number(o.repeat || 1);
   for (const test of runnable) for (const engine of enginesOf(test)) for (let i = 0; i < repeat; i++) jobs.push({ test, engine, target: targets[test.opts.variant || 'default'] });
 } else {
   // Interleaved: every round runs each test on every target, alternating which target goes first,
   // so a busy minute on the machine hits both sides alike.
-  const rounds = Number(o.rounds || 5);
   for (let r = 0; r < rounds; r++)
     for (const test of runnable)
       for (const engine of enginesOf(test)) {
@@ -147,7 +156,7 @@ if (!PERF) {
       }
 }
 
-const slots = PERF ? 1 : Number(o.workers || process.env.HARNESS_WORKERS || CORES);
+const slots = PERF ? 1 : workers;
 const runId = new Date().toISOString().replace(/[:.]/g, '-');
 const outDir = join(DIRS.results, runId);
 const loadStart = loadavg()[0];
@@ -159,7 +168,7 @@ const results = await runJobs(jobs, {
   slots,
   outDir,
   ordered: PERF,
-  retries: Number(o.retries || 0),
+  retries,
   bail: !!o.bail,
   onResult(r) {
     done++;
