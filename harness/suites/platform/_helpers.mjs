@@ -6,11 +6,51 @@ import { join } from 'node:path';
 import { ensureBuild, freePort, serve } from '../../lib/build.mjs';
 import { ROOT } from '../../lib/env.mjs';
 import { ensureMock, eventsIn, TAG_HEADER } from '../../lib/posthog-mock.mjs';
+import { test as registerTest } from '../../lib/api.mjs';
 
 export { eventsIn, snapshotsIn } from '../../lib/posthog-mock.mjs';
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const POLL = { polling: 25 };
+const budgets = new WeakMap();
+export const budget = (page, ms) => budgets.get(page)?.(ms) ?? ms;
+
+/** Apply the runner's busy-machine budget to page and condition waits. */
+export function test(name, opts, fn) {
+  if (typeof opts === 'function') [fn, opts] = [opts, {}];
+  registerTest(name, opts, async (t) => {
+    const prepare = (page) => {
+      budgets.set(page, t.budget);
+      page.setDefaultTimeout(t.budget(15_000));
+      page.setDefaultNavigationTimeout(t.budget(30_000));
+      page.on('response', (r) => {
+        if (r.status() >= 400) t.log(`HTTP ${r.status()} ${r.request().method()} ${r.url()}`);
+      });
+      page.on('requestfailed', (r) => t.log(`request failed ${r.url()}: ${r.failure()?.errorText}`));
+    };
+    prepare(t.page);
+    t.context.on('page', prepare);
+    const newPage = t.newPage;
+    t.newPage = async (opts) => {
+      const p = await newPage(opts);
+      prepare(p.page);
+      p.context.on('page', prepare);
+      return p;
+    };
+    await fn(t);
+  });
+}
+
+/** Poll an asynchronous condition. Playwright 1.64's waitForFunction treats a Promise as truthy. */
+export async function until(read, { timeout = 30_000, what = 'condition' } = {}) {
+  const end = performance.now() + timeout;
+  for (;;) {
+    const value = await read();
+    if (value) return value;
+    if (performance.now() >= end) throw new Error(`Timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
 
 // ══ Privacy: PostHog against the mock ════════════════════════════════════════════════════════════
 
@@ -18,14 +58,19 @@ const POLL = { polling: 25 };
 export const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
 /** Test options for the privacy suites: the build whose PostHog talks to the mock, and a person's user agent. */
-export const ANALYTICS = { variant: 'posthog-mock', engines: ['chromium'], context: { userAgent: UA } };
+export const ANALYTICS = { variant: 'posthog-mock', engines: ['chromium'], launch: { channel: 'chromium' }, context: { userAgent: UA } };
 
 const distOf = (dir) => [dir && join(dir, 'node_modules/posthog-js/dist'), join(ROOT, 'node_modules/posthog-js/dist')].find((d) => d && existsSync(d));
 
 /** Runs in every page: PostHog must treat the browser as a person's, and load on this host (the 'debug' choice). */
-const PERSON = ({ pref, gpc }) => {
+const PERSON = ({ pref, gpc, ua }) => {
   Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => false });
   Object.defineProperty(Navigator.prototype, 'userAgentData', { get: () => undefined });
+  // Chromium restores its protocol UA override before pagehide. Pin the JS value
+  // too, or PostHog suddenly sees HeadlessChrome and drops the unload events.
+  Object.defineProperty(navigator, 'userAgent', { get: () => ua });
+  Object.defineProperty(navigator, 'webdriver', { get: () => false });
+  Object.defineProperty(navigator, 'userAgentData', { get: () => undefined });
   if (gpc) Object.defineProperty(Navigator.prototype, 'globalPrivacyControl', { get: () => true });
   try {
     // (Not again once a test turned analytics off: the next pages must keep that choice.)
@@ -43,7 +88,7 @@ export async function analytics(t, { context = t.context, pref = 'debug', gpc = 
   const mock = await ensureMock({ dist: distOf(t.target.dir) });
   const tag = `${name}-${randomBytes(6).toString('hex')}`;
   await context.setExtraHTTPHeaders({ [TAG_HEADER]: tag });
-  await context.addInitScript(PERSON, { pref, gpc });
+  await context.addInitScript(PERSON, { pref, gpc, ua: UA });
   t.log(`mock tag ${tag}`);
   return {
     mock,
@@ -53,7 +98,7 @@ export async function analytics(t, { context = t.context, pref = 'debug', gpc = 
     /** Waits for an event matching `pred` (an event name or a function) at the mock. */
     waitEvent: (pred, { since = 0, timeout = 30_000 } = {}) => {
       const match = typeof pred === 'string' ? (e) => e.event === pred : pred;
-      return mock.waitFor(tag, (rs) => eventsIn(rs).find(match), { since, timeout, what: typeof pred === 'string' ? pred : 'an event' });
+      return mock.waitFor(tag, (rs) => eventsIn(rs).find(match), { since, timeout: t.budget(timeout), what: typeof pred === 'string' ? pred : 'an event' });
     },
   };
 }
@@ -63,8 +108,8 @@ export async function analytics(t, { context = t.context, pref = 'debug', gpc = 
  * at least 3 s after load) and its recorder runs. The 'debug' choice exposes it as window.posthog.
  */
 export async function waitPostHog(page, { recording = true, timeout = 60_000 } = {}) {
-  await page.waitForFunction(() => !!window.posthog, null, { ...POLL, timeout });
-  if (recording) await page.waitForFunction(() => window.posthog.sessionRecordingStarted?.() ?? true, null, { ...POLL, timeout });
+  await page.waitForFunction(() => !!window.posthog, null, { ...POLL, timeout: budget(page, timeout) });
+  if (recording) await page.waitForFunction(() => window.posthog.sessionRecordingStarted?.() === true, null, { ...POLL, timeout: budget(page, timeout) });
 }
 
 let flushes = 0;
@@ -81,7 +126,7 @@ export async function flushRecording(page, a, { timeout = 30_000 } = {}) {
     i.hidden = true;
     document.body.append(i);
   }, id);
-  await a.mock.waitFor(a.tag, (rs) => rs.some((r) => r.path.startsWith('/s') && r.body.includes(id)), { timeout, what: 'the recording to catch up' });
+  await a.mock.waitFor(a.tag, (rs) => rs.some((r) => r.path.startsWith('/s') && r.body.includes(id)), { timeout: budget(page, timeout), what: 'the recording to catch up' });
 }
 
 /**
@@ -93,7 +138,7 @@ export async function leavePage(page, a) {
   await flushRecording(page, a);
   const before = (await a.events()).filter((e) => e.event === '$pageleave').length;
   await page.goto('about:blank');
-  await a.mock.waitFor(a.tag, (rs) => eventsIn(rs).filter((e) => e.event === '$pageleave').length > before, { what: 'the $pageleave of the page left' });
+  await a.mock.waitFor(a.tag, (rs) => eventsIn(rs).filter((e) => e.event === '$pageleave').length > before, { timeout: budget(page, 30_000), what: 'the $pageleave of the page left' });
 }
 
 /** Marker strings for a test: TKCANARY<NAME><run>, so no marker is a substring of another and runs don't mix. */
@@ -108,15 +153,17 @@ export function markers(names) {
  */
 export async function checkNoLeaks(t, a, K, extra = {}) {
   const all = { ...K, ...extra };
-  const hits = await a.mock.search(...Object.values(all), 'TKCANARY');
+  const forms = Object.values(K).flatMap((k) => [k.toLowerCase(), k[0] + k.slice(1).toLowerCase()]);
+  const hits = await a.mock.search(...Object.values(all), ...forms, 'TKCANARY', 'Tkcanary', 'tkcanary');
   for (const [what, needle] of Object.entries(all)) {
-    const mine = hits.filter((h) => h.needle === needle);
+    const mine = hits.filter((h) => h.needle.toLowerCase() === needle.toLowerCase());
     t.check(!mine.length, `${what} (${what in K ? 'marker' : 'needle'}) never reaches PostHog`, mine.slice(0, 5).map((h) => `${h.method} ${h.path} @${h.at}`));
   }
   // A marker PostHog changed on the way (cut, re-cased…): any TKCANARY in this test's own requests.
-  const known = new Set(Object.values(all));
+  const knownMarkers = new Set(Object.values(all).map((k) => k.toLowerCase()));
   const reqs = await a.requests();
-  const odd = reqs.filter((r) => /TKCANARY/.test(r.url + r.body) && ![...known].some((k) => (r.url + r.body).includes(k)));
+  const hay = (r) => r.url + r.body + JSON.stringify(r.headers);
+  const odd = reqs.filter((r) => /TKCANARY/i.test(hay(r)) && ![...knownMarkers].some((k) => hay(r).toLowerCase().includes(k)));
   t.check(!odd.length, 'no altered marker reaches PostHog', odd.slice(0, 3).map((r) => `${r.method} ${r.path}: ${(r.url + r.body).match(/.{0,40}TKCANARY.{0,40}/)?.[0]}`));
 }
 
@@ -194,7 +241,7 @@ export async function waitTip(page, re, { timeout = 10_000 } = {}) {
       return tip && tip.classList.contains('in') && new RegExp(src, flags).test(tip.textContent) && [tip.textContent, tip.className];
     },
     [re.source, re.flags],
-    { ...POLL, timeout },
+    { ...POLL, timeout: budget(page, timeout) },
   );
   return h.jsonValue();
 }
@@ -202,12 +249,12 @@ export async function waitTip(page, re, { timeout = 10_000 } = {}) {
 /** Waits until the visible element matching `sel` exists (and, with `text`, its text matches). */
 export async function waitVisible(page, sel, { text, timeout = 15_000 } = {}) {
   await page.waitForFunction(
-    ([s, src]) => {
+    ([s, src, flags]) => {
       const e = window.__vis(s);
-      return e && (!src || new RegExp(src).test(e.textContent));
+      return e && (!src || new RegExp(src, flags).test(e.textContent));
     },
-    [sel, text ? text.source : null],
-    { ...POLL, timeout },
+    [sel, text ? text.source : null, text?.flags],
+    { ...POLL, timeout: budget(page, timeout) },
   );
 }
 
@@ -239,9 +286,9 @@ export function serveVariant(variant) {
  * It also adds a probe to /sw.js that counts the worker's unfinished waitUntil() work, so tests can wait
  * for the worker to be idle instead of for time (`swIdle`).
  */
-export async function startProxy(upstreams) {
+export async function startProxy(upstreams, { initial = 'A', workerVersions = false, legacyWorker } = {}) {
   const port = await freePort();
-  const net = { up: 'A', offline: false, fail: new Set(), sockets: new Set(), inFlight: 0, requests: [] };
+  const net = { up: initial, offline: false, fail: new Set(), sockets: new Set(), inFlight: 0, requests: [] };
   const server = http.createServer((req, res) => {
     if (net.offline) return req.socket.destroy();
     const path = req.url.split('?')[0];
@@ -250,20 +297,26 @@ export async function startProxy(upstreams) {
       res.writeHead(404, { 'content-type': 'text/plain' });
       return res.end('not found');
     }
-    const target = new URL(upstreams[net.up]);
+    const upstream = net.up;
+    const target = new URL(upstreams[upstream]);
     const sw = path === '/sw.js';
     const headers = { ...req.headers, host: target.host };
-    if (sw) delete headers['accept-encoding'];
+    if (sw) for (const h of ['accept-encoding', 'if-none-match', 'if-modified-since']) delete headers[h];
     net.inFlight++;
     const up = http.request({ host: target.hostname, port: target.port, path: req.url, method: req.method, headers }, (r) => {
       if (sw && r.statusCode === 200) {
         const chunks = [];
         r.on('data', (c) => chunks.push(c));
         r.on('end', () => {
-          const body = SW_PROBE + Buffer.concat(chunks).toString('utf8');
+          const version = workerVersions ? upstream : 'stable';
+          const source = upstream === 'BASE' && legacyWorker ? legacyWorker : Buffer.concat(chunks).toString('utf8');
+          const body = `self.__harnessVersion = ${JSON.stringify(version)};\n` + SW_PROBE + source;
           const h = { ...r.headers, 'content-length': Buffer.byteLength(body) };
           delete h['content-encoding'];
           delete h['transfer-encoding'];
+          delete h.etag;
+          delete h['last-modified'];
+          h['cache-control'] = 'no-store';
           res.writeHead(200, h);
           res.end(body);
           net.inFlight--;
@@ -318,6 +371,7 @@ const SW_PROBE = `(() => {
   };
   self.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'harness-idle' && e.ports[0]) e.ports[0].postMessage(pending);
+    if (e.data && e.data.type === 'harness-version' && e.ports[0]) e.ports[0].postMessage(self.__harnessVersion);
   });
 })();
 `;
@@ -327,25 +381,39 @@ const SW_PROBE = `(() => {
  * posted) and, with `posted`, until this page has posted its 'cache' message (after its warm-up).
  */
 export async function swIdle(page, { posted = false, timeout = 60_000 } = {}) {
-  await page.waitForFunction(
+  await until(() => page.evaluate(
     async (posted) => {
       const sw = navigator.serviceWorker?.controller;
       if (!sw || (posted && !window.__swPosted)) return false;
       const n = await new Promise((resolve) => {
         const ch = new MessageChannel();
-        ch.port1.onmessage = (e) => resolve(e.data);
+        const timer = setTimeout(() => { ch.port1.close(); resolve(-1); }, 1000);
+        ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); resolve(e.data); };
         sw.postMessage({ type: 'harness-idle' }, [ch.port2]);
-        setTimeout(() => resolve(-1), 1000);
       });
       return n === 0;
     },
     posted,
-    { ...POLL, timeout },
-  );
+  ), { timeout: budget(page, timeout), what: 'the service worker to finish its cache work' });
+}
+
+/** Wait for the worker installed after a proxy deploy, rather than a registration's old active worker. */
+export async function swVersion(page, version, { timeout = 30_000 } = {}) {
+  await until(() => page.evaluate(async (version) => {
+    const sw = navigator.serviceWorker?.controller;
+    if (!sw) return false;
+    return new Promise((resolve) => {
+      const ch = new MessageChannel();
+      const timer = setTimeout(() => { ch.port1.close(); resolve(false); }, 1000);
+      ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); resolve(e.data === version); };
+      sw.postMessage({ type: 'harness-version' }, [ch.port2]);
+    });
+  }, version), { timeout: budget(page, timeout), what: `service worker ${version}` });
 }
 
 /** In every page of an offline test: notes when the page posts its 'cache' message to the worker. */
 export const WATCH_POSTS = () => {
+  if (typeof ServiceWorker === 'undefined') return; // about:blank and download frames
   const post = ServiceWorker.prototype.postMessage;
   ServiceWorker.prototype.postMessage = function (msg, ...rest) {
     if (msg && msg.type === 'cache') window.__swPosted = (window.__swPosted || 0) + 1;
@@ -373,16 +441,14 @@ export const cachedText = (page, path) =>
 
 /** Waits until the cache holds every path (true) or `timeout` passes (false). */
 export async function waitInCache(page, paths, { timeout = 30_000 } = {}) {
-  return page
-    .waitForFunction(
+  return until(() => page.evaluate(
       async ([name, ps]) => {
         const c = await caches.open(name);
         const have = new Set((await c.keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
         return ps.every((p) => have.has(p));
       },
       [CACHE_NAME, paths],
-      { ...POLL, timeout },
-    )
+    ), { timeout: budget(page, timeout), what: 'paths to be cached' })
     .then(
       () => true,
       () => false,
