@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
@@ -1095,6 +1095,12 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views.
   useEffect(() => startTooltips(), []);
 
+  // Stops the engine below, once. Leaving the page, Next.js keeps its DOM, hidden (an <Activity>): this layout
+  // effect's cleanup runs as it hides, before the browser lays the hidden tool out. The effect cleanup below
+  // comes after that frame, too late: the engine's observers would meanwhile rewrap a big document to no width.
+  const stopRef = useRef<() => void>(null);
+  useLayoutEffect(() => () => stopRef.current?.(), []);
+
   useEffect(() => {
     // A link to a landing page opens the linked documents instead of the page's sample.
     const pagePreset = parseLink(location.hash) ? undefined : presetRef.current;
@@ -1121,7 +1127,9 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       void import('./CompareView');
       void import('./GraphExport');
     }), 6000);
-    return () => {
+    const stop = () => {
+      if (stopRef.current !== stop) return;
+      stopRef.current = null;
       window.clearTimeout(sample);
       window.clearTimeout(warm);
       stopAgentTools();
@@ -1129,6 +1137,8 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       if (getEngine() === e) setEngine(null);
       store.set({ ready: false });
     };
+    stopRef.current = stop;
+    return stop;
   }, []);
 
   return (
