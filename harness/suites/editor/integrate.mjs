@@ -38,8 +38,11 @@ test('the JSON box checks as you type, the code box is read-only and coloured, e
   const box = await openBuilder(t);
   const hl = await page.evaluate(() => document.querySelector('.link-builder .ed-hl')?.innerHTML ?? '');
   t.check(/class="tk"/.test(hl) && /class="ts"/.test(hl), 'the JSON box has syntax colours');
-  const oh = await outHtml(page);
-  t.check(/class="lk-d"/.test(oh) && /class="lk-k"/.test(oh) && /class="lk-p"/.test(oh), 'the code box colours Markdown and link parts');
+  // The code box's colours come from a lazily loaded module: wait for them rather than reading at once.
+  const coloured = (h) => /class="lk-d"/.test(h) && /class="lk-k"/.test(h) && /class="lk-p"/.test(h);
+  let oh = await outHtml(page);
+  for (const end = Date.now() + t.budget(10_000); !coloured(oh) && Date.now() < end; oh = await outHtml(page)) await page.waitForTimeout(50);
+  t.check(coloured(oh), 'the code box colours Markdown and link parts');
   const before = await outText(page);
   t.check(before.startsWith('[![View in Tool Kumar]'), 'the code box holds the Markdown', before.slice(0, 40));
 
@@ -99,7 +102,7 @@ test('the JSON box checks as you type, the code box is read-only and coloured, e
   t.check(docs.pre >= 8 && docs.inline >= 6 && docs.ph === 3, "links in the page's code and text are coloured by part", docs);
 });
 
-test('a 6 MB paste into the JSON box: progress, the link, then typing at the start', async (t) => {
+test('a 10 MB paste into the JSON box: progress, the link, then typing at the start', { tags: ['slow'] }, async (t) => {
   const { page } = t;
   const k = slow(t);
   const box = await openBuilder(t);
@@ -159,7 +162,7 @@ test('a 6 MB paste into the JSON box: progress, the link, then typing at the sta
   t.check(follows, 'and the check follows the edit', await status(page));
 });
 
-test('a 3 MB minified line keeps the JSON box at its width and draws only what shows', async (t) => {
+test('a 1.6 MB minified line keeps the JSON box at its width and draws only what shows', async (t) => {
   const { page } = t;
   const box = await openBuilder(t);
   await box.click({ position: { x: 300, y: 40 } });

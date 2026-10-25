@@ -17,7 +17,8 @@ async function startParsing(t, what) {
   const parsing = await t.page.waitForFunction(() => /^Parsing/.test(window.__vis('.statusbar .st')?.textContent.trim() ?? ''), null, { timeout: 30_000 * slow(t), polling: 25 }).then(() => true, () => false);
   t.check(parsing, `${what}: the status says Parsing… while the document parses`, await st(t.page));
   // Mid-parse: once a percentage shows, the parse is under way (the old check waited 300 ms).
-  await t.page.waitForFunction(() => /^Parsing…\s*\d/.test(window.__vis('.statusbar .st')?.textContent.trim() ?? ''), null, { timeout: 30_000 * slow(t), polling: 25 }).catch(() => {});
+  const progressing = await t.page.waitForFunction(() => /^Parsing…\s*[1-9]\d?\s*%/.test(window.__vis('.statusbar .st')?.textContent.trim() ?? ''), null, { timeout: t.budget(10_000), polling: 25 }).then(() => true, () => false);
+  t.assert(progressing, `${what}: the action starts during a partial parse`, await st(t.page));
   t.log(`acting at: ${await st(t.page)}`);
 }
 
@@ -25,7 +26,7 @@ async function startParsing(t, what) {
 const waitFinal = (t, ms) =>
   t.page.waitForFunction(() => {
     const s = window.__vis('.statusbar .st')?.textContent.trim() ?? '';
-    return s && !/^Parsing/.test(s) && s;
+    return s && !/^(Parsing|Ready)/.test(s) && s;
   }, null, { timeout: ms * slow(t), polling: 25 }).then((h) => h.jsonValue(), () => 'TIMEOUT');
 
 test('switching to Table mid-parse ends valid with the 50 MB document', async (t) => {
@@ -68,7 +69,7 @@ test('another file loaded mid-parse replaces the 50 MB one', async (t) => {
 
 test('a command that needs nodes (Collapse all) finishes the parse at once', async (t) => {
   await startParsing(t, 'command');
-  await t.app.command(t.page, 'Collapse all');
+  await t.app.command(t.page, 'Collapse all', { timeout: t.budget(10_000) });
   const s = await waitFinal(t, 30_000);
   t.check(/Valid JSON/.test(s), 'Collapse all mid-parse ends valid', s);
 });

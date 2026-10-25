@@ -11,9 +11,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { CACHE, DIRS, ROOT } from '../../lib/env.mjs';
-import { delay, hashText } from '../../lib/app.mjs';
+import { command, hashText } from '../../lib/app.mjs';
 
-export { delay, hashText };
+export { hashText };
 
 /** Rough speed of each engine on this kind of work (headless WebKit is 100–350 ms per key here). */
 const SLOWNESS = { chromium: 1, firefox: 1.5, webkit: 3 };
@@ -147,6 +147,8 @@ const PAGE_HELPERS = () => {
           rg.setEnd(n, off - at + 1);
           const b = rg.getClientRects()[0];
           if (!b || !b.width || b.top < er.top + 4 || b.bottom > er.bottom - 4 || b.left < er.left + 56 || b.right > er.right - 16) return null;
+          const rb = row.getBoundingClientRect();
+          window.__edPoint = { off, row: +row.dataset.o, rowRect: [rb.left, rb.top, rb.width, rb.height], glyph: [b.left, b.top, b.width, b.height] };
           return b;
         }
         at += n.length;
@@ -162,6 +164,9 @@ const PAGE_HELPERS = () => {
     ta().dispatchEvent(ce);
     return d.getData('text/plain');
   };
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target.closest?.('.ed-body')) window.__edPress = { x: e.clientX, y: e.clientY, at: e.timeStamp };
+  }, { capture: true });
   window.__ed = {
     fnv,
     ta,
@@ -175,6 +180,16 @@ const PAGE_HELPERS = () => {
     cursor: () => [...document.querySelectorAll('.statusbar .cursor')].find(visible)?.textContent.match(/Ln ([\d,]+), Col ([\d,]+)/)?.slice(1).map((x) => +x.replace(/,/g, '')) ?? null,
     copyEvent,
     nativeText: () => ta().value,
+    // Model inspection uses the editor's own select-all and copy handlers. Running them in one task
+    // keeps a polling read from sending shortcuts to a palette or tab that just took focus.
+    modelText: () => {
+      const t = ta();
+      if (!ed().classList.contains('surface')) return t.value;
+      t.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', ctrlKey: true, bubbles: true, cancelable: true }));
+      const text = copyEvent();
+      t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', bubbles: true, cancelable: true }));
+      return text;
+    },
     /** Drawn rows: model offset, own text, and layout facts. */
     rows: () => {
       const e = ed();
@@ -184,7 +199,7 @@ const PAGE_HELPERS = () => {
         const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
         for (let n = walk.nextNode(); n; n = walk.nextNode()) if (own(n)) text += n.data;
         const b = row.getBoundingClientRect();
-        return { o: +row.dataset.o, text, fold: !!row.querySelector('.ed-fold'), visible: b.bottom > er.top && b.top < er.bottom, over: row.scrollWidth > row.clientWidth + 2 };
+        return { o: +row.dataset.o, text, fold: !!row.querySelector('.ed-fold'), visible: b.bottom > er.top && b.top < er.bottom, over: row.scrollWidth > row.clientWidth + 2, rect: [b.left, b.top, b.width, b.height] };
       });
     },
     /** A point that puts the caret before (or after) the character at model offset `off`, or null when it isn't drawn in full. */
@@ -252,52 +267,34 @@ export const rows = (page) => page.evaluate(() => window.__ed.rows());
  * the caret ends at the start in the big-document editor.
  */
 export async function model(page) {
-  const m = await edMode(page);
-  if (m.quiet) return quietText(page);
-  if (!m.surface) return page.evaluate(() => window.__ed.nativeText());
-  await page.keyboard.press('Control+a');
-  const t = await page.evaluate(() => window.__ed.copyEvent());
-  await page.keyboard.press('ArrowLeft');
-  return t;
+  if ((await edMode(page)).quiet) return quietText(page);
+  return page.evaluate(() => window.__ed.modelText());
 }
 
-/** As model(), but only "length:hash" crosses over (for big documents). */
+/** As model(), but only "length:hash" crosses over for big documents. */
 export async function modelHash(page) {
-  const m = await edMode(page);
-  if (m.quiet) return hashText(await quietText(page));
-  if (!m.surface) return page.evaluate(() => window.__ed.fnv(window.__ed.nativeText()));
-  await page.keyboard.press('Control+a');
-  const h = await page.evaluate(() => window.__ed.fnv(window.__ed.copyEvent()));
-  await page.keyboard.press('ArrowLeft');
-  return h;
+  if ((await edMode(page)).quiet) return hashText(await quietText(page));
+  return page.evaluate(() => window.__ed.fnv(window.__ed.modelText()));
 }
 
 /** The quiet view keeps the textarea empty: read the document through the tool's Copy input command. */
 async function quietText(page) {
   await page.evaluate(() => (window.__clip = null));
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Control+k');
-  const box = page.locator('.palette input');
-  await box.waitFor({ state: 'visible', timeout: 10_000 });
-  await box.fill('Copy input to clipboard');
-  await page.waitForFunction(() => document.querySelector('.palette input')?.getAttribute('aria-activedescendant') === 'pl-copy', null, { timeout: 10_000, polling: 25 });
-  await page.keyboard.press('Enter');
-  const h = await page.waitForFunction(() => window.__clip, null, { timeout: 30_000, polling: 25 });
-  return h.jsonValue();
+  await command(page, 'Copy input to clipboard');
+  const h = await page.waitForFunction(() => window.__clip !== null && { text: window.__clip }, null, { timeout: 30_000, polling: 25 });
+  return (await h.jsonValue()).text;
 }
 
-/**
- * Polls the model until its hash is `want`'s (a pending big paste reaches the editor a little after its
- * output is drawn). Returns { ok, ms }.
- */
+/** Polls the editor's model until it matches the predicted document. */
 export async function waitModel(page, want, { timeout = 15_000 } = {}) {
-  const h = hashText(want);
   const t0 = Date.now();
-  for (;;) {
-    if ((await modelHash(page)) === h) return { ok: true, ms: Date.now() - t0 };
-    if (Date.now() - t0 > timeout) return { ok: false, ms: Date.now() - t0 };
-    await delay(50);
-  }
+  if ((await edMode(page)).quiet) await focusEditor(page, { timeout });
+  const ok = await page.waitForFunction(
+    (hash) => window.__ed.fnv(window.__ed.modelText()) === hash,
+    hashText(want),
+    { timeout, polling: 25 },
+  ).then(() => true, () => false);
+  return { ok, ms: Date.now() - t0 };
 }
 
 /** Where two strings first differ, with a little context, for failure details. */
@@ -330,17 +327,16 @@ export async function waitCursor(page, want, { timeout = 2000 } = {}) {
  * after the last action may still be on its way. Returns the rows (the last reading after `timeout`).
  */
 export async function stableRows(page, t, { timeout = 3000 } = {}) {
-  const t0 = Date.now();
-  let prev = null;
-  for (;;) {
-    const rs = await rows(page);
-    const key = JSON.stringify(rs.map((r) => [r.o, r.text.length, r.visible]));
-    const matches = t === null || rs.every((r) => t.slice(r.o, r.o + r.text.length) === r.text);
-    if (matches && key === prev) return rs;
-    if (Date.now() - t0 > timeout) return rs;
-    prev = matches ? key : null;
-    await delay(25);
-  }
+  await page.evaluate(() => { window.__rowsBefore = null; });
+  const h = await page.waitForFunction((text) => {
+    const rs = window.__ed.rows();
+    const key = JSON.stringify(rs.map((r) => [r.o, r.text, r.visible, r.rect]));
+    const matches = text === null || rs.every((r) => text.slice(r.o, r.o + r.text.length) === r.text);
+    const done = matches && document.fonts.status === 'loaded' && key === window.__rowsBefore;
+    window.__rowsBefore = matches ? key : null;
+    return done && rs;
+  }, t, { timeout, polling: 25 }).catch(() => null);
+  return h ? h.jsonValue() : rows(page);
 }
 
 /**
@@ -384,17 +380,20 @@ export function statsOf(status) {
  */
 export async function waitOutput(page, want, { timeout = 30_000 } = {}) {
   const t0 = Date.now();
-  let got = null;
-  for (;;) {
-    const clicked = await page.evaluate(() => window.__ed.copyOutput());
-    if (clicked) {
-      // (Nothing is copied while there is no output yet: try again rather than wait it out.)
-      got = await page.waitForFunction(() => window.__ed.clipHash(), null, { timeout: Math.min(10_000, Math.max(2000, timeout - (Date.now() - t0))), polling: 25 }).then((h) => h.jsonValue(), () => null);
+  await page.evaluate(() => { window.__outputPoll = { pending: false, got: null }; });
+  const ok = await page.waitForFunction((hash) => {
+    const poll = window.__outputPoll;
+    if (poll.pending && window.__clip === null) poll.pending = false;
+    if (poll.pending) {
+      poll.got = window.__ed.clipHash();
+      poll.pending = false;
+      if (poll.got === hash) return true;
     }
-    if (got === want) return { ok: true, got, ms: Date.now() - t0 };
-    if (Date.now() - t0 > timeout) return { ok: false, got, ms: Date.now() - t0 };
-    await delay(200);
-  }
+    poll.pending = window.__ed.copyOutput();
+    return false;
+  }, want, { timeout, polling: 25 }).then(() => true, () => false);
+  const got = await page.evaluate(() => window.__outputPoll.got);
+  return { ok, got, ms: Date.now() - t0 };
 }
 
 /** The Format output's text (copied with the output pane's Copy button). */
@@ -410,7 +409,7 @@ export async function focusEditor(page, { x = 220, y = 140, timeout = 15_000 } =
     return { x: b.left, y: b.top };
   });
   await page.mouse.click(box.x + x, box.y + y);
-  await page.waitForFunction(() => !window.__ed.mode().quiet, null, { timeout, polling: 25 }).catch(() => {});
+  await page.waitForFunction(() => !window.__ed.mode().quiet, null, { timeout, polling: 25 });
 }
 
 /** Waits until the big-document editor has taken over (its module may still be loading). */

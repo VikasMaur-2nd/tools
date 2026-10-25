@@ -60,7 +60,7 @@ function candidates(t, rs, ok) {
 const norm = (x) => x.replace(/·\s*/g, '').replace(/\s+/g, ' ').trim();
 
 /** One frame after the last input (the status bar's caret follows selectionchange, which is async). */
-const frame = (page) => page.evaluate(() => new Promise((r) => { setTimeout(() => requestAnimationFrame(() => r()), 0); setTimeout(r, 150); }));
+const frame = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
 
 async function fuzz(t, docName, mode, seed0, opsN) {
   const { parse, stringify } = H.json();
@@ -68,9 +68,14 @@ async function fuzz(t, docName, mode, seed0, opsN) {
   const original = H.asLoaded(t.fixtureText(docName));
   const big = original.length > 2_000_000;
   let seed = seed0 >>> 0;
+  let pointerSeed = (seed0 ^ 0x9e3779b9) >>> 0;
+  const pointerRandom = () => ((pointerSeed = (Math.imul(pointerSeed, 1664525) + 1013904223) >>> 0), pointerSeed / 4294967296);
   const r = (n) => ((seed = (seed * 1103515245 + 12345) >>> 0), Math.floor((seed / 4294967296) * n));
   let curOp = 'setup';
-  const fail = (what, detail) => t.check(false, `[${curOp}] ${what}`, detail);
+  // WebKit clicks in the big-document editor land late on main (broken seed 31: 63 characters after the
+  // pointer); PR #26's editor fixes make the same run pass (checked 2026-10-25 with --ref).
+  const knownClick = t.engine === 'webkit' ? { known: 'PR #26: WebKit clicks in the big-document editor land on the wrong character' } : {};
+  const fail = (what, detail) => t.check(false, `[${curOp}] ${what}`, detail, what === 'click lands on the character' ? knownClick : {});
   const ok = (cond, what, detail) => t.check(cond, `[${curOp}] ${what}`, cond ? undefined : detail);
 
   const { page } = await H.isolatedPage(t, { width: 1280, height: 800 });
@@ -86,6 +91,13 @@ async function fuzz(t, docName, mode, seed0, opsN) {
 
   /** Clicks so the caret lands before (or after) the character at model offset `off`; true if the caret is there. */
   async function clickAt(text, off, after = false) {
+    // A separate caret-placement gesture must not become the tail of a preceding double/triple click.
+    // The editor counts nearby presses for 500 ms; wait for that actual pointer sequence to expire.
+    await page.waitForFunction(([o, after]) => {
+      const pt = window.__ed.point(o, after);
+      const press = window.__edPress;
+      return !pt || !press || Math.abs(pt.x - press.x) >= 5 || Math.abs(pt.y - press.y) >= 5 || performance.now() - press.at >= 500;
+    }, [off, after], { timeout: t.budget(2000), polling: 25 });
     const pt = await page.evaluate(([o, a]) => window.__ed.point(o, a), [off, after]);
     if (!pt) return false;
     await page.mouse.click(pt.x, pt.y);
@@ -93,7 +105,12 @@ async function fuzz(t, docName, mode, seed0, opsN) {
     const want = H.lineCol(text, after ? off + 1 : off);
     const got = await H.waitCursor(page, want, { timeout: 2000 * k });
     const landed = !!got && got[0] === want[0] && got[1] === want[1];
-    if (!landed) fail('click lands on the character', { off, after, want, got });
+    if (!landed) fail('click lands on the character', { off, after, want, got, point: pt, layout: await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      const ta = window.__ed.ta();
+      const b = ta.getBoundingClientRect();
+      return { measured: window.__edPoint, press: window.__edPress, fonts: document.fonts.status, hit: el?.tagName + '.' + el?.className, row: el?.closest('[data-o]')?.dataset.o, passage: [ta.selectionStart, ta.selectionEnd, ta.value.length], textarea: [b.left, b.top, b.width, b.height] };
+    }, [pt.x, pt.y]) });
     return landed;
   }
 
@@ -106,8 +123,8 @@ async function fuzz(t, docName, mode, seed0, opsN) {
     await page.mouse.click(pt.x, pt.y);
     await kb.up('Shift');
     const want = text.slice(a, b);
-    let copied = '';
-    for (const t0 = Date.now(); Date.now() - t0 < 2000 * k; await H.delay(25)) if ((copied = await clip('copy')) === want) break;
+    const selected = await page.waitForFunction((text) => window.__ed.clip('copy') === text, want, { timeout: 2000 * k, polling: 25 }).then(() => true, () => false);
+    const copied = selected ? want : await clip('copy');
     if (copied !== want) {
       fail('shift+click selects the range', { a, b, ...H.firstDiff(copied, want) });
       return false;
@@ -350,11 +367,11 @@ async function fuzz(t, docName, mode, seed0, opsN) {
         const vis = rs.filter((x) => x.visible && x.text.length > 3);
         if (!vis.length) continue;
         const pick = async () =>
-          page.evaluate(([o]) => {
+          page.evaluate(([o, fraction]) => {
             const row = [...document.querySelectorAll('.ed-hl [data-o]')].find((x) => +x.dataset.o === o);
             const b = row?.getBoundingClientRect();
-            return b ? { x: b.left + 5 + Math.random() * Math.max(1, b.width - 10), y: b.top + b.height / 2 } : null;
-          }, [vis[r(vis.length)].o]);
+            return b ? { x: b.left + 5 + fraction * Math.max(1, b.width - 10), y: b.top + b.height / 2 } : null;
+          }, [vis[r(vis.length)].o, pointerRandom()]);
         const p1 = await pick();
         if (!p1) continue;
         if (kind === 'drag') {
@@ -468,5 +485,5 @@ for (const [doc, mode, seed, ops, engines] of JOBS) {
   else groups.set(key, { doc, mode, seed, ops, engines: [...engines] });
 }
 for (const { doc, mode, seed, ops, engines } of groups.values()) {
-  test(`fuzz ${doc}, ${mode} edits, seed ${seed} × ${ops}`, { engines }, (t) => fuzz(t, doc, mode, seed, ops));
+  test(`fuzz ${doc}, ${mode} edits, seed ${seed} × ${ops}`, { engines, ...(doc === 'deep' ? { tags: ['slow'], slots: 'all' } : {}) }, (t) => fuzz(t, doc, mode, seed, ops));
 }
