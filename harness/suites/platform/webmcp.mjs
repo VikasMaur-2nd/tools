@@ -3,15 +3,18 @@
 // agent's browser does, through document.modelContext.executeTool.
 // Ported from ~/.cache/webmcp-test/e2e.mjs (27 checks) and e2e-dl.mjs (12 checks) as parallel tests.
 import { readFileSync } from 'node:fs';
-import { defaults, test } from '../../lib/api.mjs';
-import { MOD, POLL, waitVisible } from './_helpers.mjs';
+import { defaults } from '../../lib/api.mjs';
+import { MOD, POLL, budget, test, until } from './_helpers.mjs';
 
 const WEBMCP = { channel: 'chromium', args: ['--enable-features=WebMCPTesting', '--enable-blink-features=WebMCP'] };
 defaults({ engines: ['chromium'], launch: WEBMCP, tags: ['webmcp'], timeout: 90_000 });
 
 /** Waits until the page offers `n` tools (they register once the page is idle). */
 const waitTools = (page, n = 12, timeout = 20_000) =>
-  page.waitForFunction(async (n) => (await document.modelContext?.getTools?.())?.length === n, n, { ...POLL, timeout });
+  until(() => page.evaluate(async (n) => {
+    const tools = await document.modelContext?.getTools?.();
+    return tools?.length === n && (n === 0 || tools.some((t) => t.name === 'open_json'));
+  }, n), { timeout: budget(page, timeout), what: `${n} WebMCP tools` });
 const toolCount = (page) => page.evaluate(async () => (await document.modelContext.getTools()).length);
 
 /** Calls a tool as an agent would; returns its text (Chrome passes string results through as they are). */
@@ -32,28 +35,25 @@ const exec = (page, name, args = {}) =>
 
 /** Polls a tool until its answer matches `re` (an action's effect lands a moment after the key press). */
 async function untilTool(page, name, re, timeout = 10_000) {
-  const t0 = Date.now();
-  let r;
-  while (!re.test((r = await exec(page, name)))) {
-    if (Date.now() - t0 > timeout) break;
-    await new Promise((res) => setTimeout(res, 25));
-  }
-  return r;
+  return until(async () => {
+    const r = await exec(page, name);
+    return re.test(r) && r;
+  }, { timeout: budget(page, timeout), what: `${name} to match ${re}` });
 }
 
 const selectedView = (page) => page.evaluate(() => window.__vis('.pane-view [role="tab"][aria-selected="true"]')?.textContent?.trim() ?? '');
 /** Waits until the selected view's tab reads `re`; returns whether it did. */
 const waitView = (page, re, timeout = 10_000) =>
   page
-    .waitForFunction(([s, f]) => new RegExp(s, f).test(window.__vis('.pane-view [role="tab"][aria-selected="true"]')?.textContent ?? ''), [re.source, re.flags], { ...POLL, timeout })
+    .waitForFunction(([s, f]) => new RegExp(s, f).test(window.__vis('.pane-view [role="tab"][aria-selected="true"]')?.textContent ?? ''), [re.source, re.flags], { ...POLL, timeout: budget(page, timeout) })
     .then(() => true, () => false);
 const waitToast = (page, re, timeout = 10_000) =>
   page
-    .waitForFunction(([s, f]) => new RegExp(s, f).test(window.__vis('.toast')?.textContent ?? ''), [re.source, re.flags], { ...POLL, timeout })
+    .waitForFunction(([s, f]) => new RegExp(s, f).test(window.__vis('.toast')?.textContent ?? ''), [re.source, re.flags], { ...POLL, timeout: budget(page, timeout) })
     .then(() => true, () => false);
 const viewText = (page) => page.evaluate(() => window.__vis('.pane-view')?.textContent ?? '');
 const waitViewText = (page, needle, timeout = 10_000) =>
-  page.waitForFunction((n) => (window.__vis('.pane-view')?.textContent ?? '').includes(n), needle, { ...POLL, timeout }).then(() => true, () => false);
+  page.waitForFunction((n) => (window.__vis('.pane-view')?.textContent ?? '').includes(n), needle, { ...POLL, timeout: budget(page, timeout) }).then(() => true, () => false);
 
 test('the tools load only where the browser has WebMCP', async (t) => {
   // The same page in a browser without WebMCP (the shared headless shell) and in this one.
@@ -127,7 +127,7 @@ test('open, undo, redo, repair, format, convert, read, compare and show', async 
 
   r = await exec(page, 'compare_json', { modified: '{"a":[1,3],"b":1}' });
   t.check(/changed \$\.a\[1\]: 2 → 3/.test(r), 'compare_json lists the change', r);
-  const comparing = await page.waitForFunction(() => window.__vis('.app')?.classList.contains('comparing'), null, { ...POLL, timeout: 10_000 }).then(() => true, () => false);
+  const comparing = await page.waitForFunction(() => window.__vis('.app')?.classList.contains('comparing'), null, { ...POLL, timeout: t.budget(10_000) }).then(() => true, () => false);
   t.check(comparing, 'compare_json opens Compare');
 
   r = await exec(page, 'show_view', { view: 'graph' });
@@ -193,12 +193,13 @@ test('download_file: the document, formatted, converted, Excel and graph images'
   const page = t.page;
   /** The file an action downloads: { name, path }, or null when none comes. */
   const download = async (action) => {
-    const [d] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }).catch(() => null), action()]);
+    const [d] = await Promise.all([page.waitForEvent('download', { timeout: t.budget(15_000) }).catch(() => null), action()]);
     return d && { name: d.suggestedFilename(), path: await d.path() };
   };
   await t.open('/');
   await waitTools(page);
   const doc = '[{"id":1,"name":"Ada","role":"admin"},{"id":2,"name":"Lin","role":"editor"}]';
+  t.check((await toolCount(page)) === 12, '12 tools registered for downloads');
   await exec(page, 'open_json', { text: doc, name: 'team.json', view: 'tree' });
 
   let r;
@@ -236,7 +237,7 @@ test("share_link: the page's own link, a Markdown button, and the link opens the
 
   await page.evaluate(() => (window.__clip = null));
   await t.app.command(page, 'Copy share link');
-  const copied = await (await page.waitForFunction(() => window.__clip, null, { ...POLL, timeout: 10_000 })).jsonValue();
+  const copied = await (await page.waitForFunction(() => window.__clip, null, { ...POLL, timeout: t.budget(10_000) })).jsonValue();
   t.check(copied === toolUrl, "the page's own Share still works and makes the same link", `${copied?.slice(0, 80)} vs ${toolUrl?.slice(0, 80)}`);
   t.check(await waitToast(page, /Share link copied\. The data lives in the link, not on a server\./), 'its toast is unchanged', await page.evaluate(() => window.__vis('.toast')?.textContent));
   r = await exec(page, 'share_link', { as: 'markdown' });
