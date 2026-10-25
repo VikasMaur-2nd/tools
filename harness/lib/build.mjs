@@ -111,7 +111,7 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     // Snapshot of exactly the hashed tree: no untracked secrets (.env.local), no stale .next.
-    const tar = spawnSync('sh', ['-c', `git archive --format=tar ${tree} | tar -x -C "${dir}"`], { cwd: ROOT, encoding: 'utf8' });
+    const tar = spawnSync('sh', ['-c', 'git archive --format=tar "$1" | tar -x -C "$2"', 'harness-archive', tree, dir], { cwd: ROOT, encoding: 'utf8' });
     if (tar.status !== 0) throw new Error(`git archive: ${tar.stderr}`);
     // A completed seed cannot be pruned while it is copied.
     await withLock(CACHE_LOCK, () => seedCache(dir));
