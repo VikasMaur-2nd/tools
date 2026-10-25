@@ -114,8 +114,13 @@ export async function command(page, label, { timeout = 10_000 } = {}) {
     label,
     { timeout, polling: 25 },
   );
+  const input = await box.elementHandle();
   await box.press('Enter');
-  await page.waitForFunction(() => !window.__vis('.app')?.querySelector('.palette input'), null, { timeout, polling: 25 });
+  // URL commands can mount a new prompt in the same dialog. Wait for this invocation's input only.
+  await page.waitForFunction((el) => !el.isConnected, input, { timeout, polling: 25 });
+  await input.dispose();
+  // Commands themselves run in requestAnimationFrame after the native close event.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
 }
 
 /** Clipboard text the page wrote last (the clipboard is stubbed: see browsers.mjs). */

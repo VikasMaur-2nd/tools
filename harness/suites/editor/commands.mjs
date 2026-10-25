@@ -44,8 +44,11 @@ async function command(page, label, timeout) {
     await page.keyboard.press('Escape');
     return `the palette offers "${top.slice(0, 60)}" first`;
   }
+  const input = await box.elementHandle();
   await box.press('Enter');
-  await page.waitForFunction(() => !window.__vis('.app')?.querySelector('.palette input'), null, { timeout, polling: 25 });
+  await page.waitForFunction((el) => !el.isConnected, input, { timeout, polling: 25 });
+  await input.dispose();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
   return null;
 }
 
@@ -66,8 +69,15 @@ const inputHash = async (t) => /^Ready/.test(await t.app.status(t.page)) ? hashT
 
 const DOCS = ['small-mix', 'mid-mix', 'lines', 'broken', 'mix-one-line', 'crlf-bom'];
 
-for (const doc of DOCS) {
-  test(`every command on ${doc}`, async (t) => {
+const GROUPS = [
+  ['output', STEPS.slice(0, 8)],
+  ['views and search', STEPS.slice(8, 21)],
+  ['converters and Compare', STEPS.slice(21, 44)],
+  ['input edits', STEPS.slice(44)],
+];
+
+for (const doc of DOCS) for (const [group, steps] of GROUPS) {
+  test(`${doc}: ${group}`, async (t) => {
     const { page } = t;
     const k = slow(t);
     const errs = stepErrors(t);
@@ -82,10 +92,11 @@ for (const doc of DOCS) {
     let before = null;
     let edit = null;
     let changed = false;
-    for (const step of STEPS) {
+    for (const step of steps) {
+      t.log(`step | ${step}`);
       const t0 = Date.now();
       if (UNDONE.has(step)) [before, edit] = [await inputHash(t), step];
-      const problem = step.startsWith('find:') ? await find(page, step.slice(5), 10_000 * k) : await command(page, step, 10_000 * k);
+      const problem = step.startsWith('find:') ? await find(page, step.slice(5), t.budget(10_000)) : await command(page, step, t.budget(10_000));
       if (!t.check(problem === null, `${step}: offered by the palette`, problem)) continue;
       const st = await waitSettled(page, { quiet: 250, timeout: 30_000 * k, empty: true }).catch(() => null);
       const ms = Date.now() - t0;
@@ -105,3 +116,22 @@ for (const doc of DOCS) {
     errs.done();
   });
 }
+
+test('consecutive palette commands finish closing and the URL command opens its prompt', async (t) => {
+  const { page } = t;
+  const text = '{"palette":"unchanged"}';
+  await t.open('/');
+  await t.app.setText(page, text);
+  await t.app.waitValid(page);
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(() => { window.__clip = null; });
+    await t.app.command(page, 'Copy input to clipboard', { timeout: t.budget(10_000) });
+    t.check(await t.app.clipboard(page) === text, `consecutive command ${i + 1} copies the document`);
+  }
+  await t.app.command(page, 'Load JSON from URL', { timeout: t.budget(10_000) });
+  const prompt = page.locator('.palette:visible input[type=url]');
+  t.check(await prompt.waitFor({ state: 'visible', timeout: t.budget(10_000) }).then(() => true, () => false), 'the URL prompt opens after its palette command');
+  await closePalette(page, { timeout: t.budget(10_000) });
+  await t.app.command(page, 'Copy input to clipboard', { timeout: t.budget(10_000) });
+  t.check(await t.app.clipboard(page) === text, 'commands still run after closing the URL prompt');
+});
