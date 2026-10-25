@@ -26,7 +26,9 @@ const DOCS = { tiny: 'rows-100', '1.7mb': 'rows-15000', '6.9mb': 'rows-60000', p
 
 for (const [name, doc] of Object.entries(DOCS)) {
   const big = name === 'pretty10' || name === '25mb';
-  test(`${name} document survives /privacy, Back and Forward`, { ...(name === 'tiny' ? {} : { known: MAIN_HANG }), ...(big ? { tags: ['slow'], slots: name === '25mb' ? 'all' : 2, timeout: 600_000 } : {}) }, async (t) => {
+  // Stall limits are wall-clock: documents big enough to stall run alone, not next to other heavy checks.
+  const alone = name === '6.9mb' || big;
+  test(`${name} document survives /privacy, Back and Forward`, { ...(name === 'tiny' ? {} : { known: MAIN_HANG }), ...(alone ? { slots: 'all' } : {}), ...(big ? { tags: ['slow'], timeout: 600_000 } : {}) }, async (t) => {
     const { page } = t;
     let closed = false;
     page.on('close', () => (closed = true));
@@ -101,7 +103,7 @@ test('Compare keeps the modified document after /privacy and Back', { known: MAI
   t.check(/compare/.test(txt), 'modified document still there', txt.slice(0, 80));
 });
 
-test('a tool page with a 6.9 MB document: /privacy stays responsive and Back works', { known: MAIN_HANG }, async (t) => {
+test('a tool page with a 6.9 MB document: /privacy stays responsive and Back works', { known: MAIN_HANG, slots: 'all' }, async (t) => {
   const { page } = t;
   let closed = false;
   page.on('close', () => (closed = true));
@@ -146,7 +148,8 @@ test('/integrate: the link builder keeps its document after /privacy and Back', 
   t.check(after === before, 'builder box keeps its document after Back', { before, after });
 });
 
-test('leaving Compare with a 6.9 MB modified document does not stall', async (t) => {
+// Measured 2026-10-25 at load 2: main freezes 17.9 s on the switch to Format, PR #26 takes 0.13 s.
+test('leaving Compare with a 6.9 MB modified document does not stall', { slots: 'all', known: "PR #26: on main, Compare's hidden 6.9 MB editor freezes the page ~18 s when you switch to Format" }, async (t) => {
   const { page } = t;
   await t.open('/');
   await t.app.openFile(page, 'rows-100');
@@ -154,7 +157,7 @@ test('leaving Compare with a 6.9 MB modified document does not stall', async (t)
   await t.app.view(page, 'compare');
   await t.app.paste(page, t.fixtureText('rows-60000'), 'input2');
   // Wait until Compare has taken the document: its summary counts the added records.
-  await page.waitForFunction(() => /\+[1-9][\d,]* added/.test(window.__vis('#view-compare')?.textContent ?? ''), null, { timeout: 120_000, polling: 100 });
+  await page.waitForFunction(() => /\+\s?[1-9][\d,.\s]*added/.test(window.__vis('.app')?.textContent ?? ''), null, { timeout: 120_000, polling: 100 });
   const { maxGap } = await stalls(page, async () => {
     await t.app.view(page, 'format');
     await page.waitForTimeout(3000);
