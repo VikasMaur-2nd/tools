@@ -85,22 +85,37 @@ export async function openFile(page, nameOrPath) {
   return file;
 }
 
-/** Runs a command from the command palette by its label, e.g. 'Copy input to clipboard'. */
-export async function command(page, label) {
-  await page.keyboard.press('Escape');
+/** Waits for the native dialog's close event and React's child cleanup before another shortcut. */
+export async function closePalette(page, { timeout = 10_000 } = {}) {
+  if (await page.locator('.palette:visible').count()) await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !window.__vis('.app')?.querySelector('.palette input'), null, { timeout, polling: 25 });
+}
+
+/** Opens the visible tool's command palette after the previous invocation finished closing. */
+export async function openPalette(page, { timeout = 10_000 } = {}) {
+  await closePalette(page, { timeout });
   await page.keyboard.press(`${MOD}+k`);
-  const box = page.locator('.palette input');
-  await box.waitFor({ state: 'visible', timeout: 10_000 });
+  const box = page.locator('.palette:visible input');
+  await box.waitFor({ state: 'visible', timeout });
+  await box.focus();
+  return box;
+}
+
+/** Runs a command from the command palette by its label, e.g. 'Copy input to clipboard'. */
+export async function command(page, label, { timeout = 10_000 } = {}) {
+  const box = await openPalette(page, { timeout });
   await box.fill(label);
   await page.waitForFunction(
     (l) => {
-      const id = document.querySelector('.palette input')?.getAttribute('aria-activedescendant');
-      return id && document.getElementById(id)?.textContent.toLowerCase().includes(l.toLowerCase());
+      const input = window.__vis('.palette input');
+      const option = input?.closest('dialog')?.querySelector('[role=option][aria-selected=true]');
+      return option?.textContent.toLowerCase().includes(l.toLowerCase());
     },
     label,
-    { timeout: 10_000, polling: 25 },
+    { timeout, polling: 25 },
   );
-  await page.keyboard.press('Enter');
+  await box.press('Enter');
+  await page.waitForFunction(() => !window.__vis('.app')?.querySelector('.palette input'), null, { timeout, polling: 25 });
 }
 
 /** Clipboard text the page wrote last (the clipboard is stubbed: see browsers.mjs). */
