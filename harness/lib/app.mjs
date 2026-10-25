@@ -158,7 +158,7 @@ export const clipboard = (page) => page.evaluate(() => window.__clip);
  */
 export async function docHash(page, which = 'input', { timeout = 30_000 } = {}) {
   await page.evaluate(() => (window.__clip = null));
-  await command(page, which === 'input' ? 'Copy input to clipboard' : 'Copy modified JSON');
+  await command(page, which === 'input' ? 'Copy input to clipboard' : 'Copy modified JSON', { timeout });
   const h = await page.waitForFunction(
     () => {
       const t = window.__clip;

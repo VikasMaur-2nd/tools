@@ -128,24 +128,32 @@ test('/integrate: the link builder keeps its document after /privacy and Back', 
   await page.keyboard.press(`${MOD}+a`);
   const big = t.fixtureText('rows-15000');
   await page.evaluate((text) => {
+    const ta = document.querySelector('.link-builder .ed textarea');
     const dt = new DataTransfer();
     dt.setData('text/plain', text);
     const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
     if (!e.clipboardData) Object.defineProperty(e, 'clipboardData', { value: dt });
-    document.querySelector('.link-builder .ed textarea').dispatchEvent(e);
+    // A synthetic paste doesn't insert text by itself: do what the browser would when nothing handled it.
+    if (ta.dispatchEvent(e)) {
+      ta.setRangeText(text, 0, ta.value.length, 'end');
+      ta.dispatchEvent(new InputEvent('input', { inputType: 'insertFromPaste', data: text, bubbles: true }));
+    }
   }, big);
-  await page.waitForFunction(() => /"id":\s*0/.test(document.querySelector('.link-builder .ed')?.innerText ?? ''), null, { timeout: 30_000 });
-  const before = await page.evaluate(() => document.querySelector('.link-builder .ed')?.innerText.slice(0, 60));
+  // The builder's link encodes its whole document (its textarea holds only a passage of a big one, and
+  // innerText changes with line wrapping), so the link is the document's identity here.
+  const link = () => (window.__vis('.link-builder')?.textContent.match(/#a=[\w-]{200,}/) || [''])[0];
+  const before = await page.waitForFunction(link, null, { timeout: t.budget(30_000), polling: 100 }).then((h) => h.jsonValue(), () => '');
+  t.assert(before, 'the builder made a link for the pasted document');
   await t.app.navigate(page, '/privacy');
   await page.evaluate(() => history.back());
   await page.waitForFunction(() => location.pathname === '/integrate', null, { timeout: 60_000 });
   const after = await page
     .waitForFunction((b) => {
-      const t = window.__vis('.link-builder .ed')?.innerText.slice(0, 60);
-      return t === b && t;
-    }, before, { timeout: 30_000 })
-    .then((h) => h.jsonValue(), () => page.evaluate(() => window.__vis('.link-builder .ed')?.innerText.slice(0, 60)));
-  t.check(after === before, 'builder box keeps its document after Back', { before, after });
+      const l = (window.__vis('.link-builder')?.textContent.match(/#a=[\w-]{200,}/) || [''])[0];
+      return l === b && l;
+    }, before, { timeout: t.budget(30_000), polling: 100 })
+    .then((h) => h.jsonValue(), () => page.evaluate(link));
+  t.check(after === before, 'builder box keeps its document after Back', { before: before.slice(0, 40), after: after.slice(0, 40), same: after === before });
 });
 
 // Measured 2026-10-25 at load 2: main freezes 17.9 s on the switch to Format, PR #26 takes 0.13 s.
