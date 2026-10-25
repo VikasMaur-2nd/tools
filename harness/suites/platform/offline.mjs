@@ -289,6 +289,7 @@ test('swupdate: a worker update first seen on a tool page installs the new shell
     t.check(!lost.length, 'swupdate offline: the old tab still gets every file of its build', lost, { known: RETIRE });
     await checkErrors(t, 'swupdate', lost.length ? RETIRE : undefined);
   } finally {
+    t.log('worker responses', proxy.net.workers);
     proxy.close();
   }
 });
@@ -320,6 +321,7 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
     await features(t, fresh, 'upgrade offline', missing.length ? FOLLOW : undefined);
     await checkErrors(t, 'upgrade', lost.length ? RETIRE : missing.length ? FOLLOW : undefined);
   } finally {
+    t.log('worker responses', proxy.net.workers);
     proxy.close();
   }
 });

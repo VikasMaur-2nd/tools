@@ -298,7 +298,7 @@ export function serveVariant(variant) {
  */
 export async function startProxy(upstreams, { initial = 'A', workerVersions = false, legacyWorker } = {}) {
   const port = await freePort();
-  const net = { up: initial, offline: false, fail: new Set(), sockets: new Set(), inFlight: 0, requests: [] };
+  const net = { up: initial, offline: false, fail: new Set(), sockets: new Set(), inFlight: 0, requests: [], workers: [] };
   const server = http.createServer((req, res) => {
     if (net.offline) return req.socket.destroy();
     const path = req.url.split('?')[0];
@@ -321,6 +321,7 @@ export async function startProxy(upstreams, { initial = 'A', workerVersions = fa
           const version = workerVersions ? upstream : 'stable';
           const source = upstream === 'BASE' && legacyWorker ? legacyWorker : Buffer.concat(chunks).toString('utf8');
           const body = `self.__harnessVersion = ${JSON.stringify(version)};\n` + SW_PROBE + source;
+          net.workers.push({ upstream, version, bytes: Buffer.byteLength(body) });
           const h = { ...r.headers, 'content-length': Buffer.byteLength(body) };
           delete h['content-encoding'];
           delete h['transfer-encoding'];
@@ -409,14 +410,15 @@ export async function swIdle(page, { posted = false, timeout = 60_000 } = {}) {
 
 /** Wait for the worker installed after a proxy deploy, rather than a registration's old active worker. */
 export async function swVersion(page, version, { timeout = 30_000, active = false } = {}) {
-  await until(() => page.evaluate(async ([version, active]) => {
+  try { await until(() => page.evaluate(async ([version, active]) => {
     const reg = await navigator.serviceWorker?.getRegistration();
     const sw = active ? reg?.active : navigator.serviceWorker?.controller;
+    window.__harnessWorkerState = { active: reg?.active?.state, installing: reg?.installing?.state, waiting: reg?.waiting?.state, controller: navigator.serviceWorker?.controller?.state };
     if (!sw || (active && sw.state !== 'activated')) return false;
     const matches = await new Promise((resolve) => {
       const ch = new MessageChannel();
       const timer = setTimeout(() => { ch.port1.close(); resolve(false); }, 1000);
-      ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); resolve(e.data === version); };
+        ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); window.__harnessWorkerState.version = e.data; resolve(e.data === version); };
       sw.postMessage({ type: 'harness-version' }, [ch.port2]);
     });
     // A page's own register() can coalesce the explicit update check. Retry that
@@ -424,6 +426,10 @@ export async function swVersion(page, version, { timeout = 30_000, active = fals
     if (!matches && active && !reg.installing && !reg.waiting) await reg.update();
     return matches;
   }, [version, active]), { timeout: budget(page, timeout), what: `service worker ${version}${active ? ' to activate' : ' to control the page'}` });
+  } catch (e) {
+    const state = await page.evaluate(() => window.__harnessWorkerState).catch(() => null);
+    throw new Error(`${e.message}; registration ${JSON.stringify(state)}`);
+  }
 }
 
 /** In every page of an offline test: notes when the page posts its 'cache' message to the worker. */
