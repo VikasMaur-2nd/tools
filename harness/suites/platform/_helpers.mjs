@@ -409,23 +409,28 @@ export async function swIdle(page, { posted = false, timeout = 60_000 } = {}) {
 }
 
 /** Wait for the worker installed after a proxy deploy, rather than a registration's old active worker. */
-export async function swVersion(page, version, { timeout = 30_000, active = false } = {}) {
-  try { await until(() => page.evaluate(async ([version, active]) => {
+export async function swVersion(page, version, { timeout = 30_000, active = false, candidate = false } = {}) {
+  try { await until(() => page.evaluate(async ([version, active, candidate]) => {
     const reg = await navigator.serviceWorker?.getRegistration();
-    const sw = active ? reg?.active : navigator.serviceWorker?.controller;
+    const workers = active
+      ? [reg?.active, reg?.waiting, reg?.installing].filter((sw, i, all) => sw && all.indexOf(sw) === i)
+      : [navigator.serviceWorker?.controller];
     window.__harnessWorkerState = { active: reg?.active?.state, installing: reg?.installing?.state, waiting: reg?.waiting?.state, controller: navigator.serviceWorker?.controller?.state };
-    if (!sw || (active && sw.state !== 'activated')) return false;
-    const matches = await new Promise((resolve) => {
-      const ch = new MessageChannel();
-      const timer = setTimeout(() => { ch.port1.close(); resolve(false); }, 1000);
+    for (const sw of workers) {
+      if (!sw || (active && !candidate && sw.state !== 'activated') || sw.state === 'redundant') continue;
+      const matches = await new Promise((resolve) => {
+        const ch = new MessageChannel();
+        const timer = setTimeout(() => { ch.port1.close(); resolve(false); }, 1000);
         ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); window.__harnessWorkerState.version = e.data; resolve(e.data === version); };
-      sw.postMessage({ type: 'harness-version' }, [ch.port2]);
-    });
+        sw.postMessage({ type: 'harness-version' }, [ch.port2]);
+      });
+      if (matches) return true;
+    }
     // A page's own register() can coalesce the explicit update check. Retry that
     // check only when no replacement is installing or waiting.
-    if (!matches && active && !reg.installing && !reg.waiting) await reg.update();
-    return matches;
-  }, [version, active]), { timeout: budget(page, timeout), what: `service worker ${version}${active ? ' to activate' : ' to control the page'}` });
+    if (active && reg && !reg.installing && !reg.waiting) await reg.update();
+    return false;
+  }, [version, active, candidate]), { timeout: budget(page, timeout), what: `service worker ${version}${active ? candidate ? ' to install' : ' to activate' : ' to control the page'}` });
   } catch (e) {
     const state = await page.evaluate(() => window.__harnessWorkerState).catch(() => null);
     throw new Error(`${e.message}; registration ${JSON.stringify(state)}`);

@@ -252,12 +252,25 @@ test('fail404: a deploy with a file missing leaves the cached build whole offlin
 });
 
 async function updateWorker(page) {
+  // A navigation through the old worker can still have a refresh/cache event in
+  // flight when the page reaches `load`.  The browser keeps a replacement in
+  // `waiting` until those old-worker events finish, even though the new script
+  // called skipWaiting().  Drain that work before asking for the update so the
+  // activation wait observes the lifecycle rather than an unrelated fetch race.
+  await swIdle(page, { posted: true, timeout: 90_000 });
   await page.evaluate(async () => {
     const reg = await navigator.serviceWorker.getRegistration();
     if (!reg) throw new Error('The first visit did not register a worker');
     await reg.update();
   });
-  await swVersion(page, 'A2', { active: true });
+  // The update promise can resolve as soon as the replacement is installed;
+  // the old worker may still be finishing a fetch event from the navigation.
+  // Let that event drain before waiting for the replacement to activate.
+  await swIdle(page);
+  // Observe the replacement even if this engine reports it as waiting or
+  // activating for a while; a navigation below makes the controller change
+  // observable and the following check still requires A2 to control the page.
+  await swVersion(page, 'A2', { active: true, candidate: true });
   // Adoption of a replacement and controllerchange can straddle navigation.
   // The old upgrade script also reloads until the new worker's shell is served.
   await page.reload({ waitUntil: 'load' });
@@ -281,7 +294,10 @@ test('swupdate: a worker update first seen on a tool page installs the new shell
     const oldTab = t.page;
     proxy.deploy('A2');
     const visitor = await t.context.newPage();
-    await visitor.goto(proxy.origin + '/tools/json-validator', { waitUntil: 'load' });
+    // Commit is enough to begin the app warm-up.  Waiting for `load` here lets
+    // the delayed service-worker registration activate during provisional
+    // navigation in WebKit, which can cancel that navigation.
+    await visitor.goto(proxy.origin + '/tools/json-validator', { waitUntil: 'commit' });
     await updateWorker(visitor);
     t.check(await newShell(t, visitor, a2.named), 'swupdate: the new worker brings in the new shell');
     proxy.offline();
@@ -307,7 +323,7 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
     const oldFiles = (await cacheKeys(oldTab)).filter((p) => p.startsWith('/_next/static/'));
     proxy.deploy('A2');
     const visitor = await t.context.newPage();
-    await visitor.goto(proxy.origin + '/', { waitUntil: 'load' });
+    await visitor.goto(proxy.origin + '/', { waitUntil: 'commit' });
     await updateWorker(visitor);
     t.check(await newShell(t, visitor, a2.named), 'upgrade: the new worker brings in the new shell');
     await swIdle(visitor, { posted: true });
