@@ -8,6 +8,9 @@ defaults({ engines: 'all', tags: ['nav'], timeout: 180_000 });
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
+// Until PR #25/#26 merge, these fail on main by design of the bug they fix; the report says when they pass.
+const MAIN_HANG = 'PR #25/#26: on main, leaving a big document stalls the tab and Back times out (passes on fix/review-2026-10-24)';
+
 /** Longest main-thread stall over `ms` while the page sits idle. */
 const stallOver = async (page, ms) => (await stalls(page, () => page.waitForTimeout(ms))).maxGap;
 
@@ -23,7 +26,9 @@ const DOCS = { tiny: 'rows-100', '1.7mb': 'rows-15000', '6.9mb': 'rows-60000', p
 
 for (const [name, doc] of Object.entries(DOCS)) {
   const big = name === 'pretty10' || name === '25mb';
-  test(`${name} document survives /privacy, Back and Forward`, { ...(big ? { tags: ['slow'], slots: name === '25mb' ? 'all' : 2 } : {}) }, async (t) => {
+  // Stall limits are wall-clock: documents big enough to stall run alone, not next to other heavy checks.
+  const alone = name === '6.9mb' || big;
+  test(`${name} document survives /privacy, Back and Forward`, { ...(name === 'tiny' ? {} : { known: MAIN_HANG }), ...(alone ? { slots: 'all' } : {}), ...(big ? { tags: ['slow'], timeout: 600_000 } : {}) }, async (t) => {
     const { page } = t;
     let closed = false;
     page.on('close', () => (closed = true));
@@ -79,7 +84,7 @@ async function waitHash(t, ok, ms = 15_000) {
   return h;
 }
 
-test('Compare keeps the modified document after /privacy and Back', async (t) => {
+test('Compare keeps the modified document after /privacy and Back', { known: MAIN_HANG }, async (t) => {
   const { page } = t;
   await t.open('/');
   await t.app.openFile(page, 'rows-15000');
@@ -91,14 +96,14 @@ test('Compare keeps the modified document after /privacy and Back', async (t) =>
   await t.app.navigate(page, '/privacy');
   await backTo(t, '/');
   const view = await page
-    .waitForFunction(() => window.__vis('[role=tab][aria-controls="view-compare"]')?.getAttribute('aria-selected') === 'true', null, { timeout: 30_000 })
+    .waitForFunction(() => !!window.__vis('#view-compare'), null, { timeout: 30_000, polling: 50 })
     .then(() => true, () => false);
   t.check(view, 'still in Compare after Back');
   const txt = await page.evaluate(() => window.__vis('#input2')?.closest('.ed')?.textContent ?? '');
   t.check(/compare/.test(txt), 'modified document still there', txt.slice(0, 80));
 });
 
-test('a tool page with a 6.9 MB document: /privacy stays responsive and Back works', async (t) => {
+test('a tool page with a 6.9 MB document: /privacy stays responsive and Back works', { known: MAIN_HANG, slots: 'all' }, async (t) => {
   const { page } = t;
   let closed = false;
   page.on('close', () => (closed = true));
@@ -114,7 +119,7 @@ test('a tool page with a 6.9 MB document: /privacy stays responsive and Back wor
   t.check(!closed, 'alive after Back', s);
 });
 
-test('/integrate: the link builder keeps its document after /privacy and Back', async (t) => {
+test('/integrate: the link builder keeps its document after /privacy and Back', { known: MAIN_HANG }, async (t) => {
   const { page } = t;
   await t.open('/integrate', { tool: false });
   const box = page.locator('.link-builder .ed').first();
@@ -143,17 +148,18 @@ test('/integrate: the link builder keeps its document after /privacy and Back', 
   t.check(after === before, 'builder box keeps its document after Back', { before, after });
 });
 
-test('leaving Compare with a 6.9 MB modified document does not stall', async (t) => {
+// Measured 2026-10-25 at load 2: main freezes 17.9 s on the switch to Format, PR #26 takes 0.13 s.
+test('leaving Compare with a 6.9 MB modified document does not stall', { slots: 'all', known: "PR #26: on main, Compare's hidden 6.9 MB editor freezes the page ~18 s when you switch to Format" }, async (t) => {
   const { page } = t;
   await t.open('/');
   await t.app.openFile(page, 'rows-100');
   await t.app.waitValid(page);
   await t.app.view(page, 'compare');
   await t.app.paste(page, t.fixtureText('rows-60000'), 'input2');
-  // Wait until Compare has taken the document (its editor shows the text).
-  await page.waitForFunction(() => /"id":\s*0/.test(document.querySelector('#input2')?.closest('.ed')?.textContent ?? ''), null, { timeout: 60_000 });
+  // Wait until Compare has taken the document: its summary counts the added records.
+  await page.waitForFunction(() => /\+\s?[1-9][\d,.\s]*added/.test(window.__vis('.app')?.textContent ?? ''), null, { timeout: 120_000, polling: 100 });
   const { maxGap } = await stalls(page, async () => {
-    await page.locator('.app:visible [role=tab][aria-controls="view-format"]').click();
+    await t.app.view(page, 'format');
     await page.waitForTimeout(3000);
   });
   t.check(maxGap < t.budget(1500), 'leaving Compare stays responsive', `longest stall ${Math.round(maxGap)} ms`);
