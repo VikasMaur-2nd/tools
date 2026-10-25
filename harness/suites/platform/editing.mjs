@@ -1,6 +1,6 @@
 // Browser regressions for the shared helpers needed by the privacy ports.
 import { defaults } from '../../lib/api.mjs';
-import { test, waitVisible } from './_helpers.mjs';
+import { pasteSelected, test, waitVisible } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['platform'] });
 
@@ -12,10 +12,7 @@ test('paste replaces native text and Compare can switch back through its narrow 
   await t.app.waitValid(t.page);
   t.check(await t.app.docHash(t.page) === t.app.hashText(first), 'a small paste inserts the whole document');
   const next = '{"answer":43,"name":"Ada"}';
-  // Activity keeps prior tool DOM hidden in the document; focus the editor in
-  // the visible app so Ctrl+A selects the text being checked.
-  await t.page.locator('.app:visible #input').evaluate((el) => { el.focus(); el.select(); });
-  await t.app.paste(t.page, next);
+  await pasteSelected(t.page, next);
   await t.app.waitValid(t.page);
   t.check(await t.app.docHash(t.page) === t.app.hashText(next), 'a selected document is replaced once');
   await t.app.view(t.page, 'compare');
