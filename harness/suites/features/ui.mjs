@@ -168,7 +168,8 @@ test('builder: a compression failure shows its error and leaves no old link', { 
   errorsOk(t, 'builder (compression): no page errors', /no compression/);
 });
 
-test("builder: the plain box works when the editor's code can't load", async (t) => {
+// (Chromium logs each aborted script load as a console error: those are this test's doing.)
+test("builder: the plain box works when the editor's code can't load", { allowErrors: true }, async (t) => {
   const { page } = t;
   await t.context.addInitScript(STATE);
   await t.open('/integrate', { tool: false });
@@ -195,6 +196,7 @@ test("builder: the plain box works when the editor's code can't load", async (t)
   t.check(plain, 'builder (no editor): the box stayed plain');
   t.check(bad.check !== before.check && /fixes|Ln \d/.test(bad.check) && /Valid JSON/.test(good.check), 'builder (no editor): typing in it is checked', `${before.check} | ${bad.check} | ${good.check}`, { known: PR26_PLAIN });
   t.check(good.copy && good.href !== before.href && out.includes(good.href.slice(0, 40)), 'builder (no editor): and makes its link', good.href.slice(0, 60), { known: PR26_PLAIN });
+  errorsOk(t, 'builder (no editor): no page errors', /Failed to load resource/);
 });
 
 // ── Graph: the export dialog, every export, big graphs, find ───────────────────────────────────
@@ -208,12 +210,9 @@ async function graph(t, load) {
   await page.getByRole('tab', { name: 'Graph' }).click();
   await until(page, () => !!window.__vis('#view-graph .gv-ctl:not([hidden])') && !!document.querySelector('#view-graph .gv-note')?.hidden, null, { timeout: 60_000 });
 }
+/** Opens the export dialog from the palette ("Export graph image"), as the old check did. */
 async function openExport(t) {
-  // Use the graph toolbar action directly. The old check opened the same
-  // dialog through the palette, but WebKit can close that palette before the
-  // fuzzy result is committed. The toolbar has the same user-facing action
-  // and is present once the graph is ready.
-  await t.page.getByRole('button', { name: 'Export image', exact: true }).click();
+  await t.app.command(t.page, 'Export graph image');
   await t.page.locator('.gx-form').waitFor({ timeout: 10_000 });
 }
 const group = (page, label) => page.locator(`.gx-form [role=radiogroup][aria-label="${label}"]`);
