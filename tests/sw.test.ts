@@ -108,12 +108,17 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
 
 const filesOf = (tag: string) => Object.keys(build(tag)).filter((p) => p.startsWith('/_next/static/')).sort();
 
-test('service worker: installing caches the shell with every chunk it can load later', async () => {
+test('service worker: installing caches what the shell names, and every chunk it can load later once the page settles', async () => {
   const sw = worker();
   sw.serve(build('a'));
   await sw.install();
   assert.match(sw.cached('/')!, /Home a/);
-  // The lazily loaded graph, the chunk it loads in turn, its font, and the stylesheet's font subsets: offline from the first visit.
+  // A first visit's own loading has the network to itself: only what the HTML names comes now.
+  assert.deepEqual(sw.statics(), ['/_next/static/chunks/a-app.css', '/_next/static/chunks/a-main.js', '/_next/static/chunks/a-page.js']);
+  assert.ok(!sw.fetched.some((u) => u.includes('a-graph')));
+  // The page reports in after its warm-up: the lazily loaded graph, the chunk it loads in turn, its font, and the
+  // stylesheet's font subsets follow, so the visit works offline from then on.
+  await sw.post(['/']);
   assert.deepEqual(sw.statics(), filesOf('a'));
   assert.ok(sw.has('/icon.svg'));
   // A name inside a script that is no file holds nothing back, and isn't kept.
@@ -124,6 +129,7 @@ test('service worker: a shell whose files fail to arrive never replaces the one 
   const sw = worker();
   sw.serve(build('a'));
   await sw.install();
+  await sw.post(['/']);
   // A deploy whose main script 404s (a half-done deploy), then one the cache can't store: the old shell stays, whole.
   sw.serve({ ...build('b'), '/_next/static/chunks/b-main.js': 404 });
   assert.match((await sw.visit('/'))!, /Home a/);
@@ -144,10 +150,12 @@ test("service worker: a deploy keeps the old build's chunks while a tab of it is
   sw.serve(build('a'));
   await sw.install();
   // A tab runs build a; then build b is deployed and the next visit to '/' (served the old shell) brings it in.
+  await sw.post(['/'], 'old-tab');
   sw.tabs(['old-tab']);
   sw.serve(build('b'));
   assert.match((await sw.visit('/', 'opening'))!, /Home a/);
   assert.match(sw.cached('/')!, /Home b/);
+  await sw.post(['/'], 'opening');
   // Both builds whole: the open tabs can still open the graph (and its export) offline.
   assert.deepEqual(sw.statics(), [...filesOf('a'), ...filesOf('b')].sort());
   // A visit while they are open changes nothing.
@@ -166,10 +174,12 @@ test('service worker: a cached page keeps the files of the build it was saved wi
   sw.serve(build('a'));
   await sw.install();
   await sw.visit('/tools/json-graph');
+  await sw.post(['/tools/json-graph']);
   assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
   sw.tabs([]);
   sw.serve(build('b'));
   await sw.visit('/');
+  await sw.post(['/']);
   // No tab of build a is open, but the cached tool page still names it: its files stay, lazy ones included.
   assert.deepEqual(sw.statics(), [...filesOf('a'), ...filesOf('b')].sort());
   sw.offline();
@@ -191,6 +201,7 @@ test('service worker: a page is replaced only once its files are cached', async 
   sw.serve(build('b'));
   await sw.visit('/tools/json-graph');
   assert.match(sw.cached('/tools/json-graph')!, /Graph b/);
+  await sw.post(['/tools/json-graph']);
   for (const f of filesOf('b')) assert.ok(sw.has(f), f);
 });
 

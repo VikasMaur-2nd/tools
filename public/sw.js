@@ -11,7 +11,11 @@
  * What a page needs offline, its files: what its HTML names (scripts, styles,
  * fonts, icons), every chunk those scripts can load later ("static/chunks/…"
  * names inside them: features loaded on first use, workers), followed on, and
- * the fonts its stylesheets name (subsets only some text loads).
+ * the fonts its stylesheets name (subsets only some text loads). What the HTML
+ * names comes with the page; the rest is followed when the page reports in after
+ * its warm-up (its 'cache' message), so a first visit's own loading (and a big
+ * document opened at once) never shares the network or the device with 1.5 MB of
+ * chunks it may not need yet.
  *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
@@ -105,10 +109,10 @@ function filesIn(url, text) {
 
 /**
  * The files of a page (see the header), cached as they are found unless `fetchMissing`
- * is false (then only what the cache holds is followed). `ok`: every file that had to
- * make it is cached; `files`: the URLs found.
+ * is false (then only what the cache holds is followed); with `deep` false, only what
+ * its HTML names. `ok`: every file that had to make it is cached; `files`: the URLs found.
  */
-async function pageFiles(cache, html, fetchMissing) {
+async function pageFiles(cache, html, fetchMissing, deep = true) {
   const files = new Set();
   const visit = async (url, required) => {
     if (files.has(url) || files.size >= MAX_FILES) return true;
@@ -129,7 +133,7 @@ async function pageFiles(cache, html, fetchMissing) {
       }
     }
     const path = new URL(url).pathname;
-    if (!/\.(?:js|css)$/.test(path) || !isStatic(path)) return true;
+    if (!deep || !/\.(?:js|css)$/.test(path) || !isStatic(path)) return true;
     const text = named.has(url) ? '' : await res.text();
     const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
@@ -153,7 +157,7 @@ async function storePage(cache, key, res) {
     const html = await res.clone().text();
     const old = await cache.match(key, MATCH);
     const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
-    if (!same && !(await pageFiles(cache, html, true)).ok) return false;
+    if (!same && !(await pageFiles(cache, html, true, false)).ok) return false;
   }
   await cache.put(key, res);
   return true;
@@ -231,7 +235,7 @@ async function refreshShell(opening) {
   if (prev && sameFiles(prev, now)) {
     // The same build: its files came with it (pages post what they load); anything its HTML names that is missing, again.
     await Promise.all(now.map((u) => cacheIfMissing(cache, u)));
-  } else if (!(await pageFiles(cache, html, true)).ok && prev) return; // flaky network or a half-done deploy: keep the consistent old shell
+  } else if (!(await pageFiles(cache, html, true, false)).ok && prev) return; // flaky network or a half-done deploy: keep the consistent old shell
   await cache.put('/', res);
   const deployed = !!prev && !prev.every((u) => now.indexOf(u) !== -1);
   await serially(() => tidy(cache, deployed, opening));
@@ -269,12 +273,29 @@ self.addEventListener('message', (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) =>
       Promise.all(urls.map((u) => cacheIfMissing(cache, u)))
+        // The page has settled: now the chunks its pages' scripts can load later (see the header).
+        .then(() => Promise.all(urls.map((u) => followPage(cache, u))))
         // Tabs of an old build may have closed since: their files can go.
         .then(() => serially(() => tidy(cache, false)))
         .catch(() => {}),
     ),
   );
 });
+
+/** Pages whose chunks were followed while this worker runs (one per page and build). */
+const followed = new Set();
+
+/** Caches every file a cached page (`url`) can load later, once per build of it. */
+async function followPage(cache, url) {
+  const path = new URL(url).pathname;
+  if (isStatic(path) || FILE_RE.test(path)) return;
+  const page = await cache.match(url, MATCH);
+  if (!page || !isHTML(page)) return;
+  const html = await page.text();
+  const key = url + ' ' + extractAssets(html).join(' ');
+  if (followed.has(key)) return;
+  if ((await pageFiles(cache, html, true)).ok) followed.add(key);
+}
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
