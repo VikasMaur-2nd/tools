@@ -628,6 +628,18 @@ describe('YAML import', () => {
     });
   });
 
+  test('merge keys in flow mappings', () => {
+    assert.equal(conv('default: &a {x: 1, y: 2}\nresult: {<<: *a, x: 3}\n', 'yaml').text, '{"default":{"x":1,"y":2},"result":{"x":3,"y":2}}');
+    assert.deepEqual(val('a: &a {x: 1}\nb: &b {x: 2, y: 2}\nc: {z: 3, <<: [*a, *b]}\nd: {"<<": 1}\n', 'yaml'), {
+      a: { x: 1 },
+      b: { x: 2, y: 2 },
+      c: { z: 3, x: 1, y: 2 },
+      d: { '<<': 1 },
+    });
+    assert.match(err('a: {<<: 1}', 'yaml').error, /merge key/);
+    assert.match(err('a: &a {x: 1}\nb: {x: 2, x: 3, <<: *a}', 'yaml').error, /Duplicate key "x"/);
+  });
+
   test('YAML 1.2 core schema scalars, exact big integers', () => {
     const src = String.raw`n1: ~
 n2: null

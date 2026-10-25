@@ -50,6 +50,36 @@ const csvEscape = (s: string) => (/[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""
 
 const typeRank = (n: JNode | undefined) => (n === undefined ? 9 : n.t === NUM ? 0 : n.t === STR ? 1 : n.t === BOOL ? 2 : n.t === NUL ? 3 : 4);
 
+const JSON_NUM = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
+/** A JSON number's text as sign × 0.digits × 10^lead, digits without leading or trailing zeros (0: sign 0). */
+function decimal(raw: string) {
+  const e = raw.search(/[eE]/);
+  const m = raw.slice(raw[0] === '-' ? 1 : 0, e < 0 ? raw.length : e);
+  const dot = m.indexOf('.');
+  const all = dot < 0 ? m : m.slice(0, dot) + m.slice(dot + 1);
+  const z = all.search(/[^0]/);
+  if (z < 0) return { sign: 0, lead: 0n, digits: '' };
+  const lead = BigInt((dot < 0 ? m.length : dot) - z) + (e < 0 ? 0n : BigInt(raw.slice(e + 1)));
+  return { sign: raw[0] === '-' ? -1 : 1, lead, digits: all.slice(z).replace(/0+$/, '') };
+}
+
+/**
+ * Number texts in value order, exactly: doubles first, and only when two different texts read as the same
+ * double (huge or tiny exponents, more digits than a double holds) their decimal digits.
+ */
+function compareNumbers(a: string, b: string): number {
+  const p = Number(a);
+  const q = Number(b);
+  if (p !== q) return p < q ? -1 : 1;
+  if (a === b || !JSON_NUM.test(a) || !JSON_NUM.test(b)) return 0;
+  const x = decimal(a);
+  const y = decimal(b);
+  if (x.sign !== y.sign) return x.sign - y.sign;
+  const c = x.lead !== y.lead ? (x.lead < y.lead ? -1 : 1) : x.digits === y.digits ? 0 : x.digits < y.digits ? -1 : 1;
+  return c * x.sign;
+}
+
 export class TableView {
   readonly el: HTMLElement;
   private head: HTMLElement;
@@ -288,7 +318,7 @@ export class TableView {
         if (rx !== ry) return rx - ry; // missing values always last
         if (!x || !y) return 0;
         let c = 0;
-        if (x.t === NUM) c = Number(x.v) - Number(y.v);
+        if (x.t === NUM) c = compareNumbers(x.v as string, y.v as string);
         else if (x.t === STR) c = coll.compare(x.v as string, y.v as string);
         else if (x.t === BOOL) c = Number(x.v) - Number(y.v);
         else if (x.t >= ARR) c = kids(x).length - kids(y).length;

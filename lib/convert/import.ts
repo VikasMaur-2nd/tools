@@ -588,6 +588,17 @@ function yaml(src: string, indent: string): V {
       else return;
     }
   };
+  /** A merge key (<<): the mappings `v` names fill in the keys `m` doesn't have yet, noted in `merged` (a later key may replace them). */
+  const mergeInto = (m: Map<string, V>, v: V, merged: Set<string>, kp: number) => {
+    for (const s of Array.isArray(v) ? v : [v]) {
+      if (!(s instanceof Map)) f('A merge key (<<) needs a mapping or a list of mappings', kp);
+      for (const [x, y] of s)
+        if (!m.has(x)) {
+          m.set(x, y);
+          merged.add(x);
+        }
+    }
+  };
   let rawKey: string | null = null;
   const flowNode = (): V => {
     fws();
@@ -629,6 +640,7 @@ function yaml(src: string, indent: string): V {
     const close = isMap ? 125 : 93;
     const a: V[] = [];
     const m = new Map<string, V>();
+    let merged: Set<string> | null = null;
     for (;;) {
       fws();
       if (i >= n || docMark(i)) f(`Unterminated flow ${isMap ? "mapping: missing '}'" : "sequence: missing ']'"}`, s);
@@ -646,10 +658,12 @@ function yaml(src: string, indent: string): V {
         const v = at(i) === 44 || at(i) === close ? null : flowNode();
         rawKey = key;
         const ks = keyOf(k, kp);
-        if (isMap) {
-          if (m.has(ks)) f(`Duplicate key "${ks}"`, kp);
+        if (!isMap) a.push(new Map([[ks, v]]));
+        else if (key === '<<') mergeInto(m, v, (merged ??= new Set()), kp);
+        else {
+          if (m.has(ks) && !merged?.delete(ks)) f(`Duplicate key "${ks}"`, kp);
           m.set(ks, v);
-        } else a.push(new Map([[ks, v]]));
+        }
       } else if (isMap) {
         const ks = keyOf(k, kp);
         if (m.has(ks)) f(`Duplicate key "${ks}"`, kp);
@@ -717,17 +731,8 @@ function yaml(src: string, indent: string): V {
       while (isWs(at(ke - 1))) ke--;
       const k = q === 34 || q === 39 ? quoted(q) : src.slice(i, ke);
       i = ce + 1;
-      if (k === '<<' && q !== 34 && q !== 39) {
-        const v = node(c, MAP);
-        for (const s of Array.isArray(v) ? v : [v]) {
-          if (!(s instanceof Map)) return f('A merge key (<<) needs a mapping or a list of mappings', kp);
-          for (const [x, y] of s)
-            if (!m.has(x)) {
-              m.set(x, y);
-              (merged ??= new Set()).add(x);
-            }
-        }
-      } else {
+      if (k === '<<' && q !== 34 && q !== 39) mergeInto(m, node(c, MAP), (merged ??= new Set()), kp);
+      else {
         if (m.has(k) && !merged?.delete(k)) f(`Duplicate key "${k}"`, kp);
         m.set(k, node(c, MAP));
       }

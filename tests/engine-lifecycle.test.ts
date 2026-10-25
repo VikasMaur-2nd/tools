@@ -312,6 +312,28 @@ test('a big file still being read gives back the status it showed when a URL is 
   assert.equal(state.status, shown);
 });
 
+test('typing or pasting in an editor drops the document still on its way to it, quietly', async () => {
+  const { engine, loads, toasts, fetches } = loading();
+  Object.assign(engine.ed, { text: '{}', length: 2, blank: false, setBrackets() {} });
+  const url = engine.fetchUrl('https://a.example/a.json');
+  const b = later<string>();
+  const compare = engine.loadCompareFile(file('b.json', b.promise));
+  engine.onChange('input');
+  assert.equal(fetches[0].signal?.aborted, true);
+  await url;
+  engine.onCompareChange('paste');
+  b.settle('{}');
+  await compare;
+  assert.deepEqual(loads, []);
+  assert.deepEqual(toasts, ['Fetching…']);
+  // What the tool writes into the editor itself leaves a document on its way alone.
+  const c = engine.fetchUrl('https://c.example/c.json');
+  engine.onChange('set');
+  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"c":1}') });
+  await c;
+  assert.deepEqual(loads, ['1:c.json']);
+});
+
 test('Clear drops a file still being read', async () => {
   const { engine, loads } = loading();
   const a = later<string>();

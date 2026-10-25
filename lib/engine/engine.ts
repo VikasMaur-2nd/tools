@@ -268,6 +268,7 @@ export class Engine {
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
         this.refocus = true;
+        this.request(1);
         this.load(text, null, true, true);
         return true;
       },
@@ -413,6 +414,7 @@ export class Engine {
 
   private onChange = (kind: ChangeKind) => {
     if (this.dead) return;
+    if (kind !== 'set') this.requests[1]?.abort(); // (what was typed or pasted is newer than a document on its way)
     this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
     this.progressStatus = null; // (and a big load's progress: what follows says nothing of it)
     this.workerParse = null;
@@ -1571,8 +1573,8 @@ export class Engine {
 
   /**
    * The newest document asked for in each editor (1: the input, 2: Compare's) by a file, a link, a URL or
-   * the clipboard: a newer request aborts it (a download stops), so one that arrives late is dropped
-   * instead of replacing a newer one, and says nothing. destroy() aborts both.
+   * the clipboard: a newer request, Clear, or typing or pasting in that editor aborts it (a download stops),
+   * so one that arrives late is dropped instead of replacing a newer one, and says nothing. destroy() aborts both.
    */
   private requests: Record<1 | 2, AbortController | null> = { 1: null, 2: null };
 
@@ -1678,11 +1680,9 @@ export class Engine {
 
   async sample() {
     const signal = this.request(1);
-    // (Typing meanwhile keeps what was typed.)
-    const ver = this.ed.version;
     try {
       const { SAMPLE } = await import('./sample');
-      if (signal.aborted || ver !== this.ed.version) return;
+      if (signal.aborted) return;
       noteLoad('sample', 1, 'sample.json');
       this.load(SAMPLE, 'sample.json');
       this.toast('Loaded a sample. Try the tree, table and search.', 'info');
@@ -1744,7 +1744,8 @@ export class Engine {
 
   // ── Compare (second editor) ────────────────────────────────────────────
 
-  private onCompareChange = () => {
+  private onCompareChange = (kind: ChangeKind) => {
+    if (kind !== 'set') this.requests[2]?.abort();
     clearTimeout(this.cmpTimer);
     const len = this.ed2.length; // (not .text: no need to join an edited document's pieces for this)
     this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);

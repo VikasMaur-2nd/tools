@@ -46,6 +46,16 @@ test('table search hits stay on their rows through a sort', () => {
   assert.equal(cur(), 2);
 });
 
+test('numbers sort by their exact value, beyond what a double holds', () => {
+  const { drawn, sort } = table(
+    '[1e400, 9007199254740993, -1e-400, 2e400, 9007199254740992, 0, 1e-400, -0, 1e9007199254740993, 1e9007199254740992, 0.1, 0.10000000000000001]',
+  );
+  sort(1);
+  assert.deepEqual(drawn().map((x) => x.r), [2, 5, 7, 6, 10, 11, 4, 1, 0, 3, 9, 8]);
+  sort(1);
+  assert.deepEqual(drawn().map((x) => x.r), [8, 9, 3, 0, 1, 4, 11, 10, 6, 5, 7, 2], 'descending; equal values keep their order');
+});
+
 test('a sort tells the find bar where the current hit went', () => {
   const { view, sort } = table('["zebra", "apple", "zebu"]');
   const told: unknown[] = [];
