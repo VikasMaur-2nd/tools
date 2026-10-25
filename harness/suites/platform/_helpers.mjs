@@ -19,6 +19,7 @@ export const budget = (page, ms) => budgets.get(page)?.(ms) ?? ms;
 export function test(name, opts, fn) {
   if (typeof opts === 'function') [fn, opts] = [opts, {}];
   registerTest(name, opts, async (t) => {
+    t.platformConsoleErrors = [];
     const prepare = (page) => {
       budgets.set(page, t.budget);
       page.setDefaultTimeout(t.budget(15_000));
@@ -27,6 +28,15 @@ export function test(name, opts, fn) {
         if (r.status() >= 400) t.log(`HTTP ${r.status()} ${r.request().method()} ${r.url()}`);
       });
       page.on('requestfailed', (r) => t.log(`request failed ${r.url()}: ${r.failure()?.errorText}`));
+      // Firefox's console text can be only "Error" for a rejected chunk import.
+      // Read its actual Error argument so it can be classified without ignoring
+      // unrelated errors that happen to have the same console label.
+      page.on('console', (m) => {
+        if (m.type() !== 'error' || m.text() !== 'Error' || /_vercel\/|favicon/.test(m.location()?.url || '')) return;
+        t.platformConsoleErrors.push(Promise.all(m.args().map((arg) => arg.evaluate((v) =>
+          v && typeof v.message === 'string' && v.message ? `${v.name || 'Error'}: ${v.message}` : null,
+        ).catch(() => null))).then((parts) => parts.filter(Boolean).join(' | ') || 'Error'));
+      });
     };
     prepare(t.page);
     t.context.on('page', prepare);

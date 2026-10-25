@@ -22,11 +22,14 @@ const DOC = JSON.stringify({ users: [{ id: 1, name: 'Ada', tags: ['a', 'b'] }, {
 /** Errors of an offline page that are just the network being gone. */
 const NETWORK = /_vercel\/insights|ERR_INTERNET_DISCONNECTED|ERR_EMPTY_RESPONSE|ERR_CONNECTION|Failed to load resource|NetworkError|net::|fetch|Load failed|Cannot load https?:|The network connection was lost|Could not connect/i;
 
-function checkErrors(t, scenario, known) {
-  const relevant = t.errors.filter((e) => !NETWORK.test(e));
+async function checkErrors(t, scenario, known) {
+  const details = await Promise.all(t.platformConsoleErrors);
+  let at = 0;
+  const errors = t.errors.map((e) => e === 'console: Error' ? `console: ${details[at++] || 'Error'}` : e);
+  const relevant = errors.filter((e) => !NETWORK.test(e));
   // A missing cached module can also surface as an unhandled ChunkLoadError or a
   // WebKit blob-worker error. Keep these failures visible under their causal PR.
-  const missingChunk = relevant.length && relevant.every((e) => /ChunkLoadError: Failed to load chunk|Cannot load blob:https?:.*due to access control checks/.test(e));
+  const missingChunk = relevant.length && relevant.every((e) => /(?:ChunkLoadError|Error): Failed to load chunk|Cannot load blob:https?:.*due to access control checks/.test(e));
   t.check(!relevant.length, `${scenario}: no page errors`, relevant.slice(0, 3), known && missingChunk ? { known } : undefined);
 }
 
@@ -143,7 +146,7 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
     const other = await opened(p3, proxy.origin, '/tools/json-diff');
     t.check(other.ok && other.tool === 1, 'fresh offline: an unvisited page falls back to the shell', other);
     await features(t, p3, 'fresh offline (fallback page)', lazyKnown);
-    checkErrors(t, 'fresh', lazyKnown);
+    await checkErrors(t, 'fresh', lazyKnown);
   } finally {
     proxy.close();
   }
@@ -213,7 +216,7 @@ test("deploy: a tab open during a deploy keeps its build offline; new tabs get t
     const o3 = await opened(last, proxy.origin, '/');
     t.check(o3.ok && o3.tool === 1, 'deploy offline after cleanup: the new build opens', o3);
     await features(t, last, 'deploy offline after cleanup', missingA2.length ? FOLLOW : lazyKnown);
-    checkErrors(t, 'deploy', lost.length ? RETIRE : missingA2.length ? FOLLOW : undefined);
+    await checkErrors(t, 'deploy', lost.length ? RETIRE : missingA2.length ? FOLLOW : undefined);
   } finally {
     proxy.close();
   }
@@ -242,7 +245,7 @@ test('fail404: a deploy with a file missing leaves the cached build whole offlin
     const o = await opened(p3, proxy.origin, '/');
     t.check(o.ok && o.tool === 1, 'fail404 offline: / opens (old build)', o, kept ? undefined : { known: WHOLE });
     await features(t, p3, 'fail404 offline', kept ? lazyKnown : WHOLE);
-    checkErrors(t, 'fail404', kept ? lazyKnown : WHOLE);
+    await checkErrors(t, 'fail404', kept ? lazyKnown : WHOLE);
   } finally {
     proxy.close();
   }
@@ -280,7 +283,7 @@ test('swupdate: a worker update first seen on a tool page installs the new shell
     proxy.offline();
     const lost = await unreachable(oldTab, a.all);
     t.check(!lost.length, 'swupdate offline: the old tab still gets every file of its build', lost, { known: RETIRE });
-    checkErrors(t, 'swupdate', lost.length ? RETIRE : undefined);
+    await checkErrors(t, 'swupdate', lost.length ? RETIRE : undefined);
   } finally {
     proxy.close();
   }
@@ -312,7 +315,7 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
     const o = await opened(fresh, proxy.origin, '/');
     t.check(o.ok && o.tool === 1, 'upgrade offline: a new tab opens the new build', o);
     await features(t, fresh, 'upgrade offline', missing.length ? FOLLOW : undefined);
-    checkErrors(t, 'upgrade', lost.length ? RETIRE : missing.length ? FOLLOW : undefined);
+    await checkErrors(t, 'upgrade', lost.length ? RETIRE : missing.length ? FOLLOW : undefined);
   } finally {
     proxy.close();
   }
