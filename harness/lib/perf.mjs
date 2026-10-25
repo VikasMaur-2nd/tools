@@ -24,14 +24,21 @@ export async function phases(page, phases, action, { timeout = 120_000 } = {}) {
         if (window.__ph[n] == null && tests[i]()) window.__ph[n] = now;
         if (window.__ph[n] == null) left++;
       });
-      if (left) requestAnimationFrame(tick);
+      if (left) window.__phFrame = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    window.__phFrame = requestAnimationFrame(tick);
   })()`);
-  await page.evaluate(() => (window.__phT0 = performance.now()));
-  await action();
-  await page.waitForFunction(() => Object.values(window.__ph).every((v) => v != null), null, { timeout, polling: 100 }).catch(() => {});
-  return page.evaluate(() => window.__ph);
+  try {
+    await action();
+    await page.waitForFunction(() => Object.values(window.__ph).every((v) => v != null), null, { timeout, polling: 100 }).then((h) => h.dispose()).catch(() => {});
+    return await page.evaluate(() => {
+      cancelAnimationFrame(window.__phFrame);
+      return window.__ph;
+    });
+  } catch (e) {
+    await page.evaluate(() => cancelAnimationFrame(window.__phFrame)).catch(() => {});
+    throw e;
+  }
 }
 
 /** Phase tests for opening a document in the tool. */
@@ -72,7 +79,13 @@ export async function stalls(page, fn) {
       if (gap > 50) window.__hb.sum += gap - 50;
     }, 10);
   });
-  const result = await fn();
+  let result;
+  try {
+    result = await fn();
+  } catch (e) {
+    await page.evaluate(() => clearInterval(window.__hbTimer)).catch(() => {});
+    throw e;
+  }
   const hb = await page.evaluate(() => {
     clearInterval(window.__hbTimer);
     const now = performance.now();
@@ -90,13 +103,16 @@ export async function stalls(page, fn) {
 export async function cpuDuring(t, fn) {
   if (t.engine === 'chromium') {
     const cdp = await t.page.context().newCDPSession(t.page);
-    await cdp.send('Performance.enable');
-    const task = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'TaskDuration').value * 1000;
-    const before = await task();
-    const result = await fn();
-    const cpu = (await task()) - before;
-    await cdp.detach().catch(() => {});
-    return { result, cpu };
+    try {
+      await cdp.send('Performance.enable');
+      const task = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'TaskDuration').value * 1000;
+      const before = await task();
+      const result = await fn();
+      const cpu = (await task()) - before;
+      return { result, cpu };
+    } finally {
+      await cdp.detach().catch(() => {});
+    }
   }
   const before = browserCpu();
   const result = await fn();
@@ -138,8 +154,11 @@ export function browserCpu() {
 export async function heapAfterGC(t) {
   if (t.engine !== 'chromium') return null;
   const cdp = await t.page.context().newCDPSession(t.page);
-  await cdp.send('HeapProfiler.collectGarbage');
-  const { usedSize } = await cdp.send('Runtime.getHeapUsage');
-  await cdp.detach().catch(() => {});
-  return usedSize / 1e6;
+  try {
+    await cdp.send('HeapProfiler.collectGarbage');
+    const { usedSize } = await cdp.send('Runtime.getHeapUsage');
+    return usedSize / 1e6;
+  } finally {
+    await cdp.detach().catch(() => {});
+  }
 }
