@@ -133,13 +133,14 @@ async function runOne(job, target, outDir) {
   controller.abort();
   await Promise.all([pageSet, ...t._extra].filter(Boolean).map((p) => p.context.close().catch(() => {})));
   // A whole test can be known to fail on this code (opts.known: 'PR #25: …'), e.g. a hang an open PR fixes.
-  const status = failed.length ? (o.known ? 'known' : 'fail') : 'pass';
+  const knownTest = typeof o.known === 'function' ? o.known(engine) : o.known;
+  const status = failed.length ? (knownTest ? 'known' : 'fail') : 'pass';
   return {
     id: test.id,
     engine,
     target: target.name,
     status,
-    knownTest: o.known || undefined,
+    knownTest: knownTest || undefined,
     ms: Math.round(performance.now() - t0),
     checks: t.checks.length,
     failures: failed,
