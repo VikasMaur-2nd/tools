@@ -1,10 +1,10 @@
 // One browser process per engine (and launch flavour) for the whole run; every test gets its own
 // context in it, which takes milliseconds instead of the second or more a browser launch costs.
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { DIRS, EXTRA_HEADERS } from './env.mjs';
 import { chromium, firefox, webkit } from 'playwright-core';
 
@@ -12,6 +12,25 @@ const TYPES = { chromium, firefox, webkit };
 const require = createRequire(import.meta.url);
 const PW_DIR = dirname(require.resolve('playwright-core/package.json'));
 export const HEADED = !!process.env.HEADED;
+
+// Stage a complete tree before publishing it. Never copy over existing hard links.
+function seedBrowser(source, dest) {
+  mkdirSync(dest, { recursive: true });
+  for (const e of readdirSync(source, { withFileTypes: true })) {
+    const src = join(source, e.name);
+    const target = join(dest, e.name);
+    if (e.isDirectory()) seedBrowser(src, target);
+    else if (e.isSymbolicLink()) symlinkSync(readlinkSync(src), target);
+    else {
+      try {
+        linkSync(src, target);
+      } catch (e) {
+        if (!['EXDEV', 'EPERM', 'ENOTSUP'].includes(e.code)) throw e;
+        copyFileSync(src, target);
+      }
+    }
+  }
+}
 
 /** Browser downloads each engine needs (Playwright's names). */
 const NEEDS = { chromium: ['chromium-headless-shell'], 'chromium:full': ['chromium'], firefox: ['firefox'], webkit: ['webkit'] };
@@ -25,17 +44,27 @@ export function ensureBrowsers(keys) {
   const names = [...new Set(keys.flatMap((k) => NEEDS[k] || []))].filter((n) => !installed.has(n));
   if (!names.length) return;
   const spec = JSON.parse(readFileSync(join(PW_DIR, 'browsers.json'), 'utf8')).browsers;
-  const shared = join(homedir(), '.cache', 'ms-playwright');
+  const shared = join(process.platform === 'darwin' ? join(homedir(), 'Library/Caches') : process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'ms-playwright');
   const missing = [];
   for (const name of [...names, 'ffmpeg']) {
     const b = spec.find((x) => x.name === name);
     if (!b) continue;
-    const dir = `${name.replace(/-/g, '_')}-${b.revision}`;
+    // Playwright knows platform-specific revision overrides, including WebKit on macOS.
+    const dir = b.revisionOverrides
+      ? basename(require('playwright-core/lib/coreBundle').registry.registry.findExecutable(name).directory)
+      : `${name.replace(/-/g, '_')}-${b.revision}`;
     const done = (root) => existsSync(join(root, dir, 'INSTALLATION_COMPLETE'));
     if (done(DIRS.browsers)) continue;
-    if (shared !== DIRS.browsers && done(shared)) {
-      const r = spawnSync('cp', ['-al', join(shared, dir), join(DIRS.browsers, dir)]);
-      if (r.status !== 0) cpSync(join(shared, dir), join(DIRS.browsers, dir), { recursive: true });
+    if (resolve(shared) !== resolve(DIRS.browsers) && done(shared) && !existsSync(join(DIRS.browsers, dir))) {
+      const staging = mkdtempSync(join(DIRS.browsers, '.seed-'));
+      try {
+        seedBrowser(join(shared, dir), join(staging, dir));
+        renameSync(join(staging, dir), join(DIRS.browsers, dir));
+      } catch {
+        // A competing seed/install may have published it; otherwise let Playwright install it.
+      } finally {
+        rmSync(staging, { recursive: true, force: true });
+      }
       if (done(DIRS.browsers)) continue;
     }
     missing.push(name);
@@ -53,9 +82,12 @@ const launched = new Map();
 export function getBrowser(engine, launch = {}) {
   const key = `${engine}:${JSON.stringify(launch)}`;
   if (!launched.has(key)) {
-    ensureBrowsers([launch.channel === 'chromium' ? 'chromium:full' : engine]);
+    const headless = launch.headless ?? !process.env.HEADED;
+    ensureBrowsers([engine === 'chromium' && (!headless || launch.channel === 'chromium') ? 'chromium:full' : engine]);
     const args = [...(engine === 'chromium' ? ['--disable-dev-shm-usage', '--disable-background-networking'] : []), ...(launch.args || [])];
-    launched.set(key, TYPES[engine].launch({ headless: !HEADED, ...launch, args }));
+    const pending = TYPES[engine].launch({ headless, ...launch, args });
+    launched.set(key, pending);
+    pending.catch(() => { if (launched.get(key) === pending) launched.delete(key); });
   }
   return launched.get(key);
 }
@@ -94,6 +126,7 @@ const BENIGN_ERRORS = /ResizeObserver loop (completed with undelivered notificat
  */
 export async function openPage(engine, opts = {}) {
   const browser = await getBrowser(engine, opts.launch);
+  opts.signal?.throwIfAborted();
   const mobile = !!opts.mobile;
   const context = await browser.newContext({
     viewport: { width: opts.width || (mobile ? 390 : 1280), height: opts.height || (mobile ? 844 : 800) },
@@ -105,24 +138,35 @@ export async function openPage(engine, opts = {}) {
     ...(Object.keys(EXTRA_HEADERS).length ? { extraHTTPHeaders: EXTRA_HEADERS } : {}),
     ...opts.context,
   });
-  await context.addInitScript(HELPERS);
-  if (opts.legacy) await context.addInitScript(() => (window.__tkLegacy = true));
-  if (opts.clipboard !== false) await context.addInitScript(CLIPBOARD_STUB);
-  const errors = [];
-  const watched = new WeakSet();
-  const watch = (page) => {
-    if (watched.has(page)) return;
-    watched.add(page);
-    page.on('pageerror', (e) => {
-      if (!BENIGN_ERRORS.test(String(e))) errors.push(String(e.stack || e).split('\n').slice(0, 3).join(' | ').slice(0, 400));
-    });
-    page.on('console', (m) => {
-      if (m.type() === 'error' && !IGNORED_CONSOLE.test(m.text() + ' ' + (m.location()?.url || '')) && !BENIGN_ERRORS.test(m.text())) errors.push('console: ' + m.text().slice(0, 300));
-    });
-    page.on('crash', () => errors.push('CRASH'));
-  };
-  context.on('page', watch);
-  const page = await context.newPage();
-  watch(page);
-  return { context, page, errors, browser };
+  const abort = () => { void context.close().catch(() => {}); };
+  opts.signal?.addEventListener('abort', abort, { once: true });
+  context.once('close', () => opts.signal?.removeEventListener('abort', abort));
+  try {
+    opts.signal?.throwIfAborted();
+    await Promise.all([
+      context.addInitScript(HELPERS),
+      ...(opts.legacy ? [context.addInitScript(() => (window.__tkLegacy = true))] : []),
+      ...(opts.clipboard !== false ? [context.addInitScript(CLIPBOARD_STUB)] : []),
+    ]);
+    const errors = [];
+    const watched = new WeakSet();
+    const watch = (page) => {
+      if (watched.has(page)) return;
+      watched.add(page);
+      page.on('pageerror', (e) => {
+        if (!BENIGN_ERRORS.test(String(e))) errors.push(String(e.stack || e).split('\n').slice(0, 3).join(' | ').slice(0, 400));
+      });
+      page.on('console', (m) => {
+        if (m.type() === 'error' && !IGNORED_CONSOLE.test(m.text() + ' ' + (m.location()?.url || '')) && !BENIGN_ERRORS.test(m.text())) errors.push('console: ' + m.text().slice(0, 300));
+      });
+      page.on('crash', () => errors.push('CRASH'));
+    };
+    context.on('page', watch);
+    const page = await context.newPage();
+    watch(page);
+    return { context, page, errors, browser };
+  } catch (e) {
+    await context.close().catch(() => {});
+    throw e;
+  }
 }

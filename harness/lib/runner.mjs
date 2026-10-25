@@ -10,6 +10,7 @@ import { fixture, fixtureText } from './fixtures.mjs';
 
 const DURATIONS = join(DIRS.results, 'durations.json');
 const TIMEOUT_SCALE = Number(process.env.HARNESS_TIMEOUT_SCALE || 1);
+if (!Number.isFinite(TIMEOUT_SCALE) || TIMEOUT_SCALE <= 0) throw new Error('HARNESS_TIMEOUT_SCALE must be positive and finite');
 const ENGINE_SLOWNESS = { chromium: 1, firefox: 1.5, webkit: 2 };
 
 let durations = {};
@@ -23,7 +24,7 @@ const expected = (job) => durations[jobKey(job)] ?? 5000 * (ENGINE_SLOWNESS[job.
 class Failure extends Error {}
 
 /** The object a test function receives. */
-function context(job, target, outDir) {
+function context(job, target, outDir, signal) {
   const checks = [];
   const metrics = {};
   const extra = [];
@@ -41,7 +42,11 @@ function context(job, target, outDir) {
     metrics,
     outDir,
     /** fetch() from Node with the target's extra headers (HARNESS_HEADERS), for HTTP-level checks. */
-    fetch: (url, init = {}) => fetch(url, { ...init, headers: { ...EXTRA_HEADERS, ...init.headers } }),
+    fetch: (url, init = {}) => {
+      const headers = new Headers(EXTRA_HEADERS);
+      new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+      return fetch(url, { ...init, headers });
+    },
     /** Opens a path of the target and (unless tool: false) waits for the tool. */
     open: (path = '/', opts) => app.open(t.page, target.base, path, opts),
     /**
@@ -49,7 +54,7 @@ function context(job, target, outDir) {
      * failure that is already tracked (an open PR fixes it): reported, but the test doesn't fail.
      */
     check(cond, what, detail, { known } = {}) {
-      checks.push({ ok: !!cond, what, detail: cond ? undefined : detail, known: known || undefined });
+      if (!t._finished) checks.push({ ok: !!cond, what, detail: cond ? undefined : detail, known: known || undefined });
       return !!cond;
     },
     /** A hard check: stops the test. */
@@ -58,17 +63,22 @@ function context(job, target, outDir) {
     },
     /** Records a measurement (perf). Several values per name are kept. */
     metric(name, value, unit = 'ms') {
-      (metrics[name] ||= { unit, values: [] }).values.push(value);
+      if (!t._finished) (metrics[name] ||= { unit, values: [] }).values.push(value);
     },
     /**
      * A time budget for responsiveness checks, stretched on an overloaded machine (load above the core
      * count) and by HARNESS_TIMEOUT_SCALE, so a busy host doesn't fail checks that a real bug still trips.
      */
     budget: (ms) => ms * TIMEOUT_SCALE * Math.max(1, loadavg()[0] / CORES),
-    log: (...a) => job.logs.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')),
+    log: (...a) => { if (!t._finished) job.logs.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')); },
     /** Another page in a new context of the same browser; closed after the test. */
     async newPage(opts = {}) {
-      const p = await openPage(job.engine, { ...job.test.opts, legacy: target.legacy, ...opts });
+      if (t._finished) throw new Error('test already finished');
+      const p = await openPage(job.engine, { ...job.test.opts, legacy: target.legacy, ...opts, signal });
+      if (t._finished) {
+        await p.context.close().catch(() => {});
+        throw new Error('test already finished');
+      }
       extra.push(p);
       return p;
     },
@@ -80,19 +90,24 @@ function context(job, target, outDir) {
 async function runOne(job, target, outDir) {
   const { test, engine } = job;
   const o = test.opts;
-  const t = context(job, target, outDir);
+  const controller = new AbortController();
+  const t = context(job, target, outDir, controller.signal);
   const t0 = performance.now();
   let error = null;
   let pageSet = null;
   const timeout = (o.timeout || 60_000) * (ENGINE_SLOWNESS[engine] > 1.5 ? 2 : 1) * TIMEOUT_SCALE;
   let timer;
   try {
-    if (o.page !== false) {
-      pageSet = await openPage(engine, { ...o, legacy: target.legacy });
-      Object.assign(t, { page: pageSet.page, context: pageSet.context, errors: pageSet.errors });
-    }
+    const execute = async () => {
+      if (o.page !== false) {
+        pageSet = await openPage(engine, { ...o, legacy: target.legacy, signal: controller.signal });
+        Object.assign(t, { page: pageSet.page, context: pageSet.context, errors: pageSet.errors });
+      }
+      if (t._finished) throw new Error('test already finished');
+      await test.fn(t);
+    };
     await Promise.race([
-      test.fn(t),
+      execute(),
       new Promise((_, rej) => {
         timer = setTimeout(() => rej(new Error(`timed out after ${Math.round(timeout / 1000)} s`)), timeout);
       }),
@@ -102,6 +117,7 @@ async function runOne(job, target, outDir) {
     if (error) t.checks.push({ ok: false, what: 'threw', detail: String(error.stack || error).split('\n').slice(0, 4).join('\n') });
   } finally {
     clearTimeout(timer);
+    t._finished = true;
   }
   const extraErrors = t._extra.flatMap((p) => p.errors);
   const errs = [...t.errors, ...extraErrors];
@@ -114,6 +130,7 @@ async function runOne(job, target, outDir) {
     shot = join(outDir, `${test.id.replace(/[^\w.-]+/g, '_')}-${engine}.png`);
     await pageSet.page.screenshot({ path: shot, timeout: 5000 }).catch(() => (shot = null));
   }
+  controller.abort();
   await Promise.all([pageSet, ...t._extra].filter(Boolean).map((p) => p.context.close().catch(() => {})));
   // A whole test can be known to fail on this code (opts.known: 'PR #25: …'), e.g. a hang an open PR fixes.
   const status = failed.length ? (o.known ? 'known' : 'fail') : 'pass';
@@ -139,19 +156,27 @@ async function runOne(job, target, outDir) {
  * finishes. Jobs with opts.slots === 'all' run alone.
  */
 export async function runJobs(jobs, { slots, outDir, onResult, retries = 0, bail = false, ordered = false }) {
+  if (!Number.isInteger(slots) || slots < 1) throw new Error('slots must be a positive integer');
+  if (!Number.isInteger(retries) || retries < 0) throw new Error('retries must be a nonnegative integer');
+  for (const job of jobs) {
+    const n = job.test.opts.slots;
+    if (n !== undefined && n !== 'all' && (!Number.isInteger(n) || n < 1)) throw new Error(`invalid slots for ${job.test.id}`);
+  }
   mkdirSync(outDir, { recursive: true });
   const queue = ordered ? [...jobs] : [...jobs].sort((a, b) => expected(b) - expected(a));
   const results = [];
   let free = slots;
   let stop = false;
   const need = (job) => (job.test.opts.slots === 'all' ? slots : Math.min(slots, job.test.opts.slots || 1));
-  await new Promise((resolve) => {
+  await new Promise((resolve, reject) => {
     let running = 0;
     const pump = () => {
       if ((stop || !queue.length) && running === 0) return resolve();
       while (!stop && queue.length) {
         // Take the longest job that fits; a job that needs every slot waits for the pool to drain.
-        const i = queue.findIndex((j) => need(j) <= free);
+        const barrier = queue.findIndex((j) => j.test.opts.slots === 'all');
+        const candidates = ordered ? queue.slice(0, 1) : barrier < 0 ? queue : queue.slice(0, barrier + 1);
+        const i = candidates.findIndex((j) => need(j) <= free);
         if (i < 0) break;
         const job = queue.splice(i, 1)[0];
         const n = need(job);
@@ -174,7 +199,7 @@ export async function runJobs(jobs, { slots, outDir, onResult, retries = 0, bail
           free += n;
           running--;
           pump();
-        })();
+        })().catch(reject);
       }
     };
     pump();

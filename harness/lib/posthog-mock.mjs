@@ -170,7 +170,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === 's
 // ── The client (what suites use) ──────────────────────────────────────────────────────────────
 
 const api = async (path) => {
-  const r = await fetch(BASE + path);
+  const r = await fetch(BASE + path, { signal: AbortSignal.timeout(2000) });
   if (!r.ok) throw new Error(`posthog mock ${path}: HTTP ${r.status}`);
   return r.json();
 };
@@ -196,17 +196,34 @@ export async function ensureMock({ dist }) {
           await sleep(1000);
           p = await ping();
         }
-        if (p && p.version !== VERSION) await api('/__harness/quit').catch(() => {});
-        for (let i = 0; i < 100 && (await ping()); i++) await sleep(50);
-        p = null;
+        if (p?.version === VERSION) return;
+        if (p) {
+          await api('/__harness/quit').catch(() => {});
+          for (let i = 0; i < 100; i++) {
+            p = await ping();
+            if (!p || p.version === VERSION) break;
+            await sleep(50);
+          }
+          if (p && p.version !== VERSION) throw new Error(`old posthog mock did not stop on port ${PORT}`);
+        }
       }
       if (p) return;
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'serve', String(PORT), dist], { detached: true, stdio: 'ignore' });
+      let error = null;
+      child.on('error', (e) => (error = e));
       child.unref();
       const t0 = Date.now();
-      while (!(await ping())) {
-        if (Date.now() - t0 > 15_000) throw new Error(`posthog mock did not start on port ${PORT}`);
-        await sleep(25);
+      try {
+        for (;;) {
+          if (error) throw error;
+          if (child.exitCode !== null || child.signalCode !== null) throw new Error(`posthog mock exited before startup on port ${PORT}`);
+          if ((await ping())?.version === VERSION) break;
+          if (Date.now() - t0 > 15_000) throw new Error(`posthog mock did not start on port ${PORT}`);
+          await sleep(25);
+        }
+      } catch (e) {
+        child.kill('SIGTERM');
+        throw e;
       }
     });
     return client();

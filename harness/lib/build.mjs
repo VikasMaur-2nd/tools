@@ -4,6 +4,7 @@
 // edits only tests never rebuilds. Builds live in CACHE/builds/<key>, never in the checkout's .next,
 // so a server keeps working while another run builds newer code next to it.
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -13,6 +14,35 @@ import { withLock } from './lock.mjs';
 /** Paths that never change what `next build` produces. */
 const NOT_BUILT = ['harness', 'tests', 'docs', 'scripts', '.github', 'README.md', 'AGENTS.md', 'CLAUDE.md'];
 const KEEP_BUILDS = Number(process.env.HARNESS_KEEP_BUILDS || 6);
+const CACHE_LOCK = join(DIRS.builds, '.cache.lock');
+const leases = new Set();
+process.on('exit', () => {
+  for (const file of leases) rmSync(file, { force: true });
+});
+
+// Protect builds from lookup until process exit, including the gap before serve().
+function pin(key) {
+  const file = join(DIRS.builds, `${key}.use-${process.pid}`);
+  writeFileSync(file, '');
+  leases.add(file);
+}
+
+function inUse(key) {
+  const prefix = `${key}.use-`;
+  let used = false;
+  for (const name of readdirSync(DIRS.builds).filter((n) => n.startsWith(prefix))) {
+    const pid = Number(name.slice(prefix.length));
+    try {
+      if (!Number.isInteger(pid) || pid <= 0) continue;
+      process.kill(pid, 0);
+      used = true;
+    } catch (e) {
+      if (e.code === 'ESRCH') rmSync(join(DIRS.builds, name), { force: true });
+      else used = true;
+    }
+  }
+  return used;
+}
 
 /**
  * Build-time settings. `default` is what a visitor gets minus analytics and origin-trial tokens.
@@ -44,8 +74,9 @@ export function treeOf(ref) {
     if (ref) git(['read-tree', ref], { env });
     else {
       // Start from the real index so `git add` only hashes files whose stat changed.
-      cpSync(resolve(ROOT, git(['rev-parse', '--git-path', 'index'])), index);
-      git(['add', '-A', '--', '.'], { env });
+      // Preserve the index time: Git uses it to detect same-timestamp, same-size edits.
+      cpSync(resolve(ROOT, git(['rev-parse', '--git-path', 'index'])), index, { preserveTimestamps: true });
+      git(['add', '-A', '--', '.', ...NOT_BUILT.map((p) => `:(top,exclude)${p}`)], { env });
     }
     git(['rm', '-r', '--cached', '-q', '-f', '--ignore-unmatch', '--', ...NOT_BUILT], { env }); // -f: only the temporary index changes
     return git(['write-tree'], { env });
@@ -61,12 +92,21 @@ export const describeRef = (ref) => (ref ? git(['rev-parse', '--short', ref]) : 
  * Returns { dir, key }.
  */
 export async function ensureBuild({ ref, variant = 'default', log = console.log } = {}) {
+  if (!Object.hasOwn(VARIANTS, variant)) throw new Error(`unknown build variant: ${variant}`);
   const tree = treeOf(ref);
-  const key = `${tree.slice(0, 16)}-${variant}`;
+  // Variant definitions live in the excluded harness tree, but their values affect bundles.
+  const settings = Object.entries(VARIANTS[variant]).sort(([a], [b]) => a.localeCompare(b));
+  const suffix = settings.length ? `-${createHash('sha256').update(JSON.stringify(settings)).digest('hex').slice(0, 12)}` : '';
+  const key = `${tree.slice(0, 16)}-${variant}${suffix}`;
   const dir = join(DIRS.builds, key);
   const done = () => existsSync(join(dir, '.next', 'BUILD_ID')) && existsSync(join(dir, '.harness-built'));
-  if (done()) {
+  const reused = await withLock(CACHE_LOCK, () => {
+    pin(key);
+    if (!done()) return false;
     touch(dir);
+    return true;
+  });
+  if (reused) {
     return { dir, key, reused: true, legacy: legacy(dir) };
   }
   await withLock(join(DIRS.builds, `${key}.lock`), async () => {
@@ -75,11 +115,12 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     // Snapshot of exactly the hashed tree: no untracked secrets (.env.local), no stale .next.
-    const tar = spawnSync('sh', ['-c', `git archive --format=tar ${tree} | tar -x -C "${dir}"`], { cwd: ROOT, encoding: 'utf8' });
+    const tar = spawnSync('sh', ['-c', 'git archive --format=tar "$1" | tar -x -C "$2"', 'harness-archive', tree, dir], { cwd: ROOT, encoding: 'utf8' });
     if (tar.status !== 0) throw new Error(`git archive: ${tar.stderr}`);
-    seedCache(dir);
+    // A completed seed cannot be pruned while it is copied.
+    await withLock(CACHE_LOCK, () => seedCache(dir));
     log(`  build ${key}: installing`);
-    run('pnpm', ['install', '--frozen-lockfile', '--offline', '--reporter=silent'], dir, {});
+    run('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--reporter=silent'], dir, {});
     log(`  build ${key}: next build (${describeRef(ref)})`);
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !SCRUB.test(k)));
     Object.assign(env, VARIANTS[variant], { NEXT_TELEMETRY_DISABLED: '1' });
@@ -91,7 +132,7 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
     await runAsync(cmd, args, dir, env, join(dir, 'build.log'));
     writeFileSync(join(dir, '.harness-built'), JSON.stringify({ ref: ref || null, tree, variant, ms: Date.now() - t0 }));
     log(`  build ${key}: done in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-    prune(key);
+    await withLock(CACHE_LOCK, () => prune(key));
   });
   return { dir, key, reused: false, legacy: legacy(dir) };
 }
@@ -119,7 +160,7 @@ function legacy(dir) {
 
 /** Turbopack's cache from the newest earlier build makes this one incremental (about half the time). */
 function seedCache(dir) {
-  const prev = builds().find((b) => existsSync(join(b.dir, '.next', 'cache')));
+  const prev = builds().find((b) => b.dir !== dir && existsSync(join(b.dir, '.harness-built')) && existsSync(join(b.dir, '.next', 'cache')));
   if (!prev) return;
   try {
     cpSync(join(prev.dir, '.next', 'cache'), join(dir, '.next', 'cache'), { recursive: true });
@@ -139,7 +180,7 @@ const touch = (dir) => {
   utimesSync(dir, now, now);
 };
 function prune(keep) {
-  for (const b of builds().slice(KEEP_BUILDS)) if (b.key !== keep) rmSync(b.dir, { recursive: true, force: true });
+  for (const b of builds().slice(KEEP_BUILDS)) if (b.key !== keep && !inUse(b.key)) rmSync(b.dir, { recursive: true, force: true });
 }
 
 function run(cmd, args, cwd, env) {
@@ -152,6 +193,7 @@ function runAsync(cmd, args, cwd, env, logFile) {
     let out = '';
     p.stdout.on('data', (d) => (out += d));
     p.stderr.on('data', (d) => (out += d));
+    p.on('error', reject);
     p.on('close', (code) => {
       writeFileSync(logFile, out);
       if (code === 0) resolve();
@@ -181,34 +223,68 @@ for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130)
 
 /** `next start` for a build directory on a free port; stops when the harness exits. Returns { base, stop }. */
 export async function serve(dir, { port } = {}) {
-  port ||= await freePort();
+  const requestedPort = port;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await startServer(dir, requestedPort || await freePort());
+    } catch (e) {
+      if (requestedPort || attempt >= 4 || !String(e).includes('EADDRINUSE')) throw e;
+    }
+  }
+}
+
+async function startServer(dir, port) {
   const base = `http://127.0.0.1:${port}`;
   // Start next directly, not through pnpm: a killed pnpm wrapper leaves the server holding the port.
   const p = spawn(process.execPath, [join(dir, 'node_modules/next/dist/bin/next'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: dir,
     env: { ...process.env, NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1' },
-    stdio: ['ignore', 'ignore', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
   servers.add(p);
   let err = '';
-  p.stderr.on('data', (d) => (err += d));
+  let output = '';
+  let spawnError = null;
+  p.on('error', (e) => (spawnError = e));
+  p.stdout.on('data', (d) => (output = (output + d).slice(-4000)));
+  p.stderr.on('data', (d) => (err = (err + d).slice(-4000)));
+  const closed = new Promise((resolve) => p.once('close', () => {
+    servers.delete(p);
+    resolve();
+  }));
+  const stop = async () => {
+    if (p.exitCode !== null || p.signalCode !== null || spawnError) return closed;
+    // Keep the child registered until it exits, including when stop() isn't awaited.
+    const timer = setTimeout(() => p.kill('SIGKILL'), 2000);
+    timer.unref();
+    p.kill('SIGTERM');
+    await closed;
+    clearTimeout(timer);
+  };
   const t0 = Date.now();
-  for (;;) {
-    if (p.exitCode !== null) throw new Error(`next start exited (${p.exitCode}): ${err.slice(-2000)}`);
-    try {
-      const r = await fetch(`${base}/robots.txt`);
-      if (r.ok) break;
-    } catch {}
-    if (Date.now() - t0 > 60_000) throw new Error(`next start did not answer within 60 s: ${err.slice(-2000)}`);
-    await new Promise((r) => setTimeout(r, 50));
+  try {
+    for (;;) {
+      if (spawnError) throw spawnError;
+      if (p.exitCode !== null || p.signalCode !== null) throw new Error(`next start exited (${p.exitCode ?? p.signalCode}): ${err.slice(-2000)}`);
+      // Only probe after our child is ready. A different process may have won the port.
+      if (/Ready in/.test(output)) {
+        try {
+          const r = await fetch(`${base}/robots.txt`, { signal: AbortSignal.timeout(2000) });
+          await r.body?.cancel();
+          if (r.ok) break;
+        } catch {}
+      }
+      if (Date.now() - t0 > 60_000) throw new Error(`next start did not answer within 60 s: ${err.slice(-2000)}`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  } catch (e) {
+    await stop();
+    throw e;
   }
   return {
     base,
     dir,
-    stop() {
-      servers.delete(p);
-      p.kill('SIGTERM');
-    },
+    stop,
   };
 }
 

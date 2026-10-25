@@ -23,7 +23,7 @@ let tsModule;
 const ts = () => (tsModule ||= createRequire(import.meta.url)('typescript'));
 
 const EXCLUDE = new Set(['lib/engine/store.ts', 'lib/engine/instance.ts']);
-const IMPORTS_REACT = /\bfrom\s+['"]react(?:-dom)?(?:\/[^'"]*)?['"]|\brequire\(\s*['"]react['"]/;
+const IMPORTS_REACT = /\bfrom\s+['"]react(?:-dom)?(?:\/[^'"]*)?['"]|\brequire\(\s*['"]react(?:-dom)?(?:\/[^'"]*)?['"]/;
 
 const args = process.argv.slice(2);
 const filters = args.filter((a) => !a.startsWith('-'));
@@ -53,7 +53,7 @@ if (!tests.length) {
 const options = { target: 9, module: 1, esModuleInterop: true, jsx: 4, inlineSourceMap: true };
 const tsVersion = JSON.parse(readFileSync(join(root, 'node_modules/typescript/package.json'), 'utf8')).version;
 // Changing these options or this file's transpile step must invalidate the cache.
-const VERSION = `${tsVersion} ${JSON.stringify(options)} 3`;
+const VERSION = `${tsVersion} ${JSON.stringify(options)} 4`;
 
 // Every non-React TypeScript file in lib/ (tests load some of them by path, e.g. worker modules),
 // all of tests/, and whatever else those import (app/ snippets).
@@ -67,7 +67,7 @@ const isFile = (p) => {
 };
 const resolveImport = (from, spec) => {
   const base = spec.startsWith('@/') ? join(root, spec.slice(2)) : spec.startsWith('.') ? resolve(dirname(from), spec) : null;
-  return base && ([base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts')].find(isFile) ?? null);
+  return base && ([base, ...(base.endsWith('.js') ? [base.slice(0, -3) + '.ts', base.slice(0, -3) + '.tsx'] : []), `${base}.ts`, `${base}.tsx`, `${base}.json`, join(base, 'index.ts'), join(base, 'index.tsx'), join(base, 'index.json')].find(isFile) ?? null);
 };
 
 const cacheFile = join(out, '.cache.json');
@@ -76,52 +76,61 @@ try {
   cache = JSON.parse(readFileSync(cacheFile, 'utf8'));
   if (cache.version !== VERSION) cache = {};
 } catch {}
+// A lost or incompatible manifest cannot tell us which old outputs to remove.
+if (cache.version !== VERSION) rmSync(out, { recursive: true, force: true });
 const files = cache.files || {};
 const seen = new Set();
-const seedSet = new Set(seeds);
-const queue = [...seeds];
+const outputs = new Set();
+const queue = seeds.map((file) => ({ file, imported: false }));
 let transpiled = 0;
 const t0 = performance.now();
 while (queue.length) {
-  const file = queue.pop();
+  const { file, imported } = queue.pop();
   if (seen.has(file)) continue;
-  seen.add(file);
   const src = readFileSync(file, 'utf8');
+  // A skipped seed may still be needed later through an explicit import.
+  if (!imported && IMPORTS_REACT.test(src) && !rel(file).startsWith('tests/')) continue;
+  seen.add(file);
   if (file.endsWith('.json')) {
     const dest = join(out, rel(file));
+    outputs.add(dest);
     const hash = createHash('sha1').update(src).digest('hex');
     if (files[rel(file)]?.hash !== hash || !existsSync(dest)) {
       mkdirSync(dirname(dest), { recursive: true });
       copyFileSync(file, dest);
-      files[rel(file)] = { hash, deps: [] };
+      files[rel(file)] = { hash, imports: [] };
     }
     continue;
   }
-  // React components aren't unit-tested here, unless a test imports one.
-  if (seedSet.has(file) && IMPORTS_REACT.test(src) && !rel(file).startsWith('tests/')) continue;
   const dest = join(out, rel(file)).replace(/\.tsx?$/, '.js');
+  outputs.add(dest);
   const hash = createHash('sha1').update(src).digest('hex');
   const known = files[rel(file)];
   const fresh = known?.hash === hash && existsSync(dest);
-  const deps = fresh ? known.deps : ts().preProcessFile(src, true, true).importedFiles.map((i) => resolveImport(file, i.fileName)).filter(Boolean).map(rel);
-  for (const d of deps) if (!seen.has(join(root, d))) queue.push(join(root, d));
+  const imports = fresh ? known.imports : ts().preProcessFile(src, true, true).importedFiles.map((i) => i.fileName);
+  // Resolve again even when the importer is unchanged: files may have moved or been deleted.
+  for (const spec of imports) {
+    const dep = resolveImport(file, spec);
+    if (dep && !seen.has(dep)) queue.push({ file: dep, imported: true });
+  }
   if (fresh) continue;
   let text = ts().transpileModule(src, { compilerOptions: options, fileName: file }).outputText;
   // Emitted CommonJS can't resolve the `@/` alias at runtime: rewrite it to a relative path.
-  text = text.replace(/require\("@\/([^"]+)"\)/g, (_, p) => {
+  text = text.replace(/require\((['"])@\/([^'"]+)\1\)/g, (_, quote, p) => {
     let r = relative(dirname(dest), join(out, p)).split(sep).join('/');
     if (!r.startsWith('.')) r = './' + r;
     return `require(${JSON.stringify(r)})`;
   });
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, text);
-  files[rel(file)] = { hash, deps };
+  files[rel(file)] = { hash, imports };
   transpiled++;
 }
 // Outputs of deleted sources would still be importable: drop them.
 for (const f of Object.keys(files)) {
   if (!seen.has(join(root, f))) {
-    rmSync(join(out, f).replace(/\.tsx?$/, '.js'), { force: true });
+    const dest = join(out, f).replace(/\.tsx?$/, '.js');
+    if (!outputs.has(dest)) rmSync(dest, { force: true });
     delete files[f];
   }
 }

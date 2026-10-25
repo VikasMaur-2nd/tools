@@ -18,15 +18,21 @@ export const engineCount = (page) => page.evaluate(() => performance.getEntriesB
  */
 export async function waitEngine(page, { after = 0, timeout = 30_000 } = {}) {
   await page.waitForFunction(
-    (n) => {
+    (state) => {
+      const n = state.after;
       if (performance.getEntriesByName('tk:engine').length > n) return true;
-      if (!window.__tkLegacy || document.readyState !== 'complete' || !window.__vis('#input')) return false;
-      window.__tkSince ??= performance.now();
-      if (performance.now() - window.__tkSince < 1500) return false;
-      window.__tkSince = undefined;
-      return true;
+      const input = window.__vis('#input');
+      if (!window.__tkLegacy || document.readyState !== 'complete' || !input) {
+        state.since = null;
+        return false;
+      }
+      if (state.input !== input || state.since == null) {
+        state.input = input;
+        state.since = performance.now();
+      }
+      return performance.now() - state.since >= 1500;
     },
-    after,
+    { after, since: null },
     { timeout, polling: 25 },
   );
 }
@@ -66,7 +72,7 @@ export const waitParsed = (page, opts) => waitStatus(page, /^(?!Parsing)(?!Ready
 export async function setText(page, text, which = 'input') {
   await page.evaluate(
     ([t, w]) => {
-      const ta = document.getElementById(w);
+      const ta = window.__vis(`#${w}`);
       ta.focus();
       ta.value = t;
       ta.dispatchEvent(new InputEvent('input', { inputType: 'insertFromPaste', bubbles: true }));
@@ -79,7 +85,7 @@ export async function setText(page, text, which = 'input') {
 export async function paste(page, text, which = 'input') {
   await page.evaluate(
     ([t, w]) => {
-      const ta = document.getElementById(w);
+      const ta = window.__vis(`#${w}`);
       ta.focus();
       const dt = new DataTransfer();
       dt.setData('text/plain', t);

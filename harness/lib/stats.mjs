@@ -29,6 +29,9 @@ export function mad(values) {
 export function compare(base, cand) {
   const b = median(base);
   const c = median(cand);
+  if (!Number.isFinite(b) || !Number.isFinite(c) || b === 0) {
+    return { base: b, cand: c, change: NaN, noise: NaN, verdict: 'unavailable' };
+  }
   const noise = Math.max(mad(base) / b, mad(cand) / c);
   const change = (c - b) / b;
   return { base: b, cand: c, change, noise, verdict: Math.abs(change) <= Math.max(noise * 2, 0.03) ? 'same' : change < 0 ? 'faster' : 'slower' };
