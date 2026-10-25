@@ -333,6 +333,8 @@ export class Engine {
     els.file.addEventListener('change', this.onFile);
 
     store.set({ ready: true });
+    // Tests and timing scripts wait for this instead of guessing when the tool answers input.
+    performance.mark('tk:engine');
     watchPastes();
     void this.openLink();
     this.handleLaunch();
