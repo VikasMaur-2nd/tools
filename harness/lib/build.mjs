@@ -47,7 +47,7 @@ export function treeOf(ref) {
       cpSync(resolve(ROOT, git(['rev-parse', '--git-path', 'index'])), index);
       git(['add', '-A', '--', '.'], { env });
     }
-    git(['rm', '-r', '--cached', '-q', '--ignore-unmatch', '--', ...NOT_BUILT], { env });
+    git(['rm', '-r', '--cached', '-q', '-f', '--ignore-unmatch', '--', ...NOT_BUILT], { env }); // -f: only the temporary index changes
     return git(['write-tree'], { env });
   } finally {
     rmSync(index, { force: true });
@@ -67,7 +67,7 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
   const done = () => existsSync(join(dir, '.next', 'BUILD_ID')) && existsSync(join(dir, '.harness-built'));
   if (done()) {
     touch(dir);
-    return { dir, key, reused: true };
+    return { dir, key, reused: true, legacy: legacy(dir) };
   }
   await withLock(join(DIRS.builds, `${key}.lock`), async () => {
     if (done()) return;
@@ -93,7 +93,28 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
     log(`  build ${key}: done in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
     prune(key);
   });
-  return { dir, key, reused: false };
+  return { dir, key, reused: false, legacy: legacy(dir) };
+}
+
+/**
+ * True for builds of code older than the engine's `tk:engine` performance mark (commits before the
+ * harness, e.g. `--base origin/main` until it merges): checks then wait the old way for the tool.
+ */
+function legacy(dir) {
+  const chunks = join(dir, '.next', 'static', 'chunks');
+  const files = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(d, e.name));
+      else if (e.name.endsWith('.js')) files.push(join(d, e.name));
+    }
+  };
+  try {
+    walk(chunks);
+  } catch {
+    return false;
+  }
+  return !files.some((f) => readFileSync(f, 'latin1').includes('tk:engine'));
 }
 
 /** Turbopack's cache from the newest earlier build makes this one incremental (about half the time). */

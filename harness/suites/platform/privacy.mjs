@@ -4,10 +4,10 @@
 // Ported from ~/.cache/rv/c/canary.mjs (one 23-step script) as parallel tests. Each test ends its page
 // visits with the recording delivered up to the last step (leavePage), so a clean verdict is never just a
 // recording that didn't arrive; positive checks (site text and events do arrive) guard the same way.
-import { defaults, test } from '../../lib/api.mjs';
+import { defaults } from '../../lib/api.mjs';
 import {
   ANALYTICS, MOD, POLL, REMOTE, analytics, checkNoLeaks, checkPrivateBoxes, checkTooltipFacts, eventsIn, leavePage, markers, recordingText,
-  remoteJson, snapshotsIn, waitPostHog, waitTip, waitVisible, watchRelay,
+  flushRecording, remoteJson, snapshotsIn, test, waitPostHog, waitTip, waitVisible, watchRelay,
 } from './_helpers.mjs';
 
 defaults({ ...ANALYTICS, tags: ['privacy'], timeout: 120_000 });
@@ -55,6 +55,7 @@ test('canary: editor, file, tree, table, Find, Convert, copy and Compare', async
   await pasteDoc(t, `{"${K.dup}": 1, "${K.dup}": 2, "x": ${K.err}}`);
   await t.app.waitStatus(page, /Ln \d+, Col \d+/);
   await page.hover('.statusbar .st');
+  await page.waitForFunction(() => document.querySelector('.statusbar .st-link')?.getAttribute('title') === 'Go to error', null, POLL);
 
   // A file with a marker in its name and its body.
   await page.setInputFiles('.app:visible input[type=file]', {
@@ -127,6 +128,8 @@ test('canary: status-bar warning, JWT, context menu, graph export dialog and Min
   await pasteDoc(t, `{"${K.dupWarn}": 1, "${K.dupWarn}": 2, "ok": true}`);
   await t.app.waitValid(page);
   await page.hover('.statusbar .st-link');
+  await page.waitForFunction((k) => document.querySelector('.statusbar .st-link')?.getAttribute('title')?.includes(k), K.dupWarn, POLL);
+  await flushRecording(page, a);
 
   // A JWT with markers in its header and payload.
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -146,7 +149,7 @@ test('canary: status-bar warning, JWT, context menu, graph export dialog and Min
   // The graph and its Export image dialog.
   await t.app.view(page, 'graph');
   await waitVisible(page, '#view-graph .gv-ctl');
-  await t.app.command(page, 'Export image');
+  await t.app.command(page, 'Export graph image');
   await waitVisible(page, '.gx');
   await page.keyboard.press('Escape');
   await t.app.view(page, 'format');
@@ -188,6 +191,7 @@ test('canary: tooltips with document facts stay out of recordings, site tooltips
   await page.hover('.cmp-chip.cmp-k-changed');
   tips.compare = await waitTip(page, /type change/);
   await page.hover('.cmp-chip.cmp-k-added');
+  await waitTip(page, /Show only additions/);
   await page.mouse.move(5, 400);
   await page.hover('button[aria-label="All commands"]');
   tips.site2 = await waitTip(page, /All commands/);
@@ -204,17 +208,14 @@ test('canary: tooltips with document facts stay out of recordings, site tooltips
 });
 
 /** Pastes into the builder's nth editor once its editor has taken over the box (it loads on first sight). */
-async function builderPaste(page, i, text) {
+async function builderPaste(t, i, text) {
+  const page = t.page;
   const ta = page.locator('.link-builder .ed').nth(i).locator('textarea');
   await ta.focus();
   await page.waitForFunction((i) => document.querySelectorAll('.link-builder .ed')[i]?.classList.contains('hl-on'), i, POLL);
   await ta.focus();
   await page.keyboard.press(`${MOD}+a`);
-  await ta.evaluate((el, t) => {
-    const dt = new DataTransfer();
-    dt.setData('text/plain', t);
-    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-  }, text);
+  await t.app.paste(page, text, await ta.getAttribute('id'));
 }
 
 const builderOutput = (page) => page.evaluate(() => document.querySelector('.link-builder .lb-ed-out textarea')?.value ?? '');
@@ -226,10 +227,10 @@ test('canary: /integrate builder (invalid and valid JSON, file, Compare two, URL
   await t.open('/integrate', { tool: false });
   await waitPostHog(page);
 
-  await builderPaste(page, 0, `[1, 2]]${K.lbErr}`);
+  await builderPaste(t, 0, `[1, 2]]${K.lbErr}`);
   await waitVisible(page, '.link-builder .lb-check-err');
   await page.locator('.lb-check').first().hover();
-  await builderPaste(page, 0, JSON.stringify({ [K.lbJson]: K.lbJson }));
+  await builderPaste(t, 0, JSON.stringify({ [K.lbJson]: K.lbJson }));
   await waitVisible(page, '.link-builder .lb-check-ok');
   const before = await builderOutput(page);
   await page.locator('.link-builder input[type=file]').first().setInputFiles({ name: `${K.lbFile}.json`, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ [K.lbFile]: 1 })) });
@@ -241,13 +242,14 @@ test('canary: /integrate builder (invalid and valid JSON, file, Compare two, URL
   }
   await page.getByRole('radio', { name: 'Compare two' }).click();
   await page.waitForFunction(() => document.querySelectorAll('.link-builder .lb-ed:not(.lb-ed-out)').length >= 2, null, POLL);
-  await builderPaste(page, 1, JSON.stringify({ [K.lbCmp]: K.lbCmp }));
+  await builderPaste(t, 1, JSON.stringify({ [K.lbCmp]: K.lbCmp }));
   await page.waitForFunction(() => document.querySelectorAll('.link-builder .lb-check-ok').length >= 2, null, POLL);
   const urls = page.getByRole('radio', { name: 'URL', exact: true });
   await urls.nth(0).click();
   await page.locator('.link-builder input[type=url]').first().fill(`https://example.com/${K.lbUrl}.json`);
   await urls.nth(1).click();
   await page.locator('.link-builder input[type=url]').nth(1).fill(`https://example.com/${K.lbUrlB}.json`);
+  await page.waitForFunction((k) => document.querySelector('.link-builder .lb-ed-out textarea')?.value.includes(k), K.lbUrlB, POLL);
   await waitVisible(page, 'a.lb-open');
   await page.mouse.move(400, 300, { steps: 5 });
   await page.locator('a.lb-open').hover();
@@ -255,6 +257,8 @@ test('canary: /integrate builder (invalid and valid JSON, file, Compare two, URL
   await leavePage(page, a);
   const snap = await recordingText(a);
   t.check(snap.includes('Make your button'), 'site text "Make your button" shows in the recording');
+  // JSX splits the prefix, size and suffix into separate rrweb text nodes.
+  t.check(!snap.includes('The link is '), 'the builder link length stays out of recordings', 'Unblocked link-length hint text', { known: 'PR #26: the builder link-length hint gets PRIVATE' });
   checkPrivateBoxes(t, snap);
   await checkNoLeaks(t, a, K);
 });
@@ -301,6 +305,20 @@ test('canary: a ?url= link naming a URL with a marker', async (t) => {
   await remoteJson(t.context, { [`${K.urlParam}.json`]: JSON.stringify({ [K.urlParam]: [1, 2, 3] }) });
   await t.open(`/?url=${encodeURIComponent(`${REMOTE}/${K.urlParam}.json`)}`);
   await waitPostHog(page);
+  // The old script used a query canary. Imports use the fragment API; a query
+  // must still be stripped from analytics even when it does not load a document.
+  await a.waitEvent('$pageview');
+  await leavePage(page, a);
+  await checkNoLeaks(t, a, K);
+});
+
+test('canary: a #a= link imports JSON without recording its URL or content', async (t) => {
+  const K = markers(['urlFragment']);
+  const a = await analytics(t);
+  const page = t.page;
+  await remoteJson(t.context, { [`${K.urlFragment}.json`]: JSON.stringify({ [K.urlFragment]: [1, 2, 3] }) });
+  await t.open(`/#a=${encodeURIComponent(`${REMOTE}/${K.urlFragment}.json`)}`);
+  await waitPostHog(page);
   await t.app.waitValid(page);
   await a.waitEvent((e) => e.event === 'json_loaded' && e.properties?.source === 'link_url');
   await leavePage(page, a);
@@ -317,14 +335,14 @@ test('the privacy switch turns analytics off, and nothing is sent while off', as
   const sw = page.locator('.switch');
   await page.waitForFunction(() => document.querySelector('.switch')?.getAttribute('aria-checked') === 'true', null, POLL);
   await sw.click();
-  await page.waitForFunction(() => document.querySelector('.switch').getAttribute('aria-checked') === 'false', null, { ...POLL, timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelector('.switch').getAttribute('aria-checked') === 'false', null, { ...POLL, timeout: t.budget(5000) }).catch(() => {});
   const after = await sw.getAttribute('aria-checked');
   const pref = await page.evaluate(() => localStorage.getItem('jf:analytics'));
   t.check(after === 'false', 'the switch turns off', after);
   t.check(pref === 'off', 'the choice is kept in this browser', pref);
   await page.evaluate(() => sessionStorage.setItem('harness-optout', '1'));
   // From here on nothing may leave: wait for what was already on its way, then mark.
-  await relay.idle();
+  await relay.idle(t.budget(30_000));
   const sentBefore = relay.started.length;
   const mark = await a.mock.mark();
 

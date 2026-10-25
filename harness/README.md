@@ -10,6 +10,9 @@ pnpm e2e back menu            # suites or tests whose name contains "back" or "m
 pnpm e2e -e firefox,webkit    # only these engines
 pnpm e2e --slow               # include big-document checks (25–50 MB)
 pnpm e2e --url https://tools.vikasmaur.com --smoke   # a running site instead of a local build
+pnpm e2e --ref fix/some-branch back                   # today's checks against another branch's code
+                              # (code older than the tk:engine mark is detected and waited for the old way;
+                              #  add --legacy with --url for such a site)
 pnpm e2e --list               # what would run
 
 pnpm perf                     # timing checks, one at a time, 5 rounds

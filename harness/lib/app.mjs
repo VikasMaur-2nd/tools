@@ -12,9 +12,23 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 /** Engines started on this page so far (the tool remounts on every client navigation back to it). */
 export const engineCount = (page) => page.evaluate(() => performance.getEntriesByName('tk:engine').length);
 
-/** Waits until the tool's engine has started more than `after` times. */
+/**
+ * Waits until the tool's engine has started more than `after` times. Builds older than the mark
+ * (window.__tkLegacy, set by the runner) get the old rule instead: page loaded, editor present, 1.5 s.
+ */
 export async function waitEngine(page, { after = 0, timeout = 30_000 } = {}) {
-  await page.waitForFunction((n) => performance.getEntriesByName('tk:engine').length > n, after, { timeout, polling: 25 });
+  await page.waitForFunction(
+    (n) => {
+      if (performance.getEntriesByName('tk:engine').length > n) return true;
+      if (!window.__tkLegacy || document.readyState !== 'complete' || !window.__vis('#input')) return false;
+      window.__tkSince ??= performance.now();
+      if (performance.now() - window.__tkSince < 1500) return false;
+      window.__tkSince = undefined;
+      return true;
+    },
+    after,
+    { timeout, polling: 25 },
+  );
 }
 
 /**
@@ -71,7 +85,13 @@ export async function paste(page, text, which = 'input') {
       dt.setData('text/plain', t);
       const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
       if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt }); // Firefox drops it
-      ta.dispatchEvent(ev);
+      // dispatchEvent does not perform a browser's default text insertion. The
+      // editor cancels pastes it handles itself; emulate the native textarea path
+      // only when it leaves the event uncancelled.
+      if (ta.dispatchEvent(ev)) {
+        ta.setRangeText(t, ta.selectionStart, ta.selectionEnd, 'end');
+        ta.dispatchEvent(new InputEvent('input', { inputType: 'insertFromPaste', data: t, bubbles: true }));
+      }
     },
     [text, which],
   );
@@ -156,15 +176,20 @@ export function hashText(t) {
 
 export const VIEWS = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
 
-/** Switches the output view and waits until its panel shows. */
+/**
+ * Switches the output view and waits until its panel shows. Narrow output panes (phones, the three
+ * columns of Compare) show a dropdown instead of the tabs; both are handled.
+ */
 export async function view(page, name, { timeout = 30_000 } = {}) {
-  const tab = page.locator(`.app:visible [role=tab][aria-controls="view-${name}"]`);
-  await tab.click();
+  const tab = page.locator(`.app:visible [role=tab][aria-controls="view-${name}"]:visible`);
+  if (await tab.count()) await tab.first().click();
+  else await page.locator('.app:visible .tabs-pick select:visible').first().selectOption(name);
   await page.waitForFunction(
     (n) => {
-      const t = window.__vis(`[role=tab][aria-controls="view-${n}"]`);
-      const panel = document.getElementById(`view-${n}`);
-      return t?.getAttribute('aria-selected') === 'true' && panel && !panel.hidden;
+      const app = window.__vis('.app');
+      const panel = app?.querySelector(`#view-${n}`);
+      const selected = app?.querySelector(`[role=tab][aria-controls="view-${n}"]`)?.getAttribute('aria-selected') === 'true' || app?.querySelector('.tabs-pick select')?.value === n;
+      return !!panel && !panel.hidden && selected;
     },
     name,
     { timeout, polling: 25 },

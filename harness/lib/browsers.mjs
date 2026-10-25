@@ -81,6 +81,9 @@ const HELPERS = () => {
 };
 
 const IGNORED_CONSOLE = /_vercel\/|favicon/;
+// The spec's benign notice when a ResizeObserver callback resizes what it observes (WebKit reports it
+// as an uncaught error on opening Compare, on main as on every branch); not an application failure.
+const BENIGN_ERRORS = /ResizeObserver loop (completed with undelivered notifications|limit exceeded)/;
 
 /**
  * A fresh context and page. Options: width, height, mobile, dark, locale, serviceWorkers ('block' by
@@ -100,15 +103,18 @@ export async function openPage(engine, opts = {}) {
     ...opts.context,
   });
   await context.addInitScript(HELPERS);
+  if (opts.legacy) await context.addInitScript(() => (window.__tkLegacy = true));
   if (opts.clipboard !== false) await context.addInitScript(CLIPBOARD_STUB);
   const errors = [];
   const watched = new WeakSet();
   const watch = (page) => {
     if (watched.has(page)) return;
     watched.add(page);
-    page.on('pageerror', (e) => errors.push(String(e.stack || e).split('\n').slice(0, 3).join(' | ').slice(0, 400)));
+    page.on('pageerror', (e) => {
+      if (!BENIGN_ERRORS.test(String(e))) errors.push(String(e.stack || e).split('\n').slice(0, 3).join(' | ').slice(0, 400));
+    });
     page.on('console', (m) => {
-      if (m.type() === 'error' && !IGNORED_CONSOLE.test(m.text() + ' ' + (m.location()?.url || ''))) errors.push('console: ' + m.text().slice(0, 300));
+      if (m.type() === 'error' && !IGNORED_CONSOLE.test(m.text() + ' ' + (m.location()?.url || '')) && !BENIGN_ERRORS.test(m.text())) errors.push('console: ' + m.text().slice(0, 300));
     });
     page.on('crash', () => errors.push('CRASH'));
   };
