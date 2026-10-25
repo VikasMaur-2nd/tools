@@ -85,7 +85,13 @@ export async function paste(page, text, which = 'input') {
       dt.setData('text/plain', t);
       const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
       if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt }); // Firefox drops it
-      ta.dispatchEvent(ev);
+      // dispatchEvent does not perform a browser's default text insertion. The
+      // editor cancels pastes it handles itself; emulate the native textarea path
+      // only when it leaves the event uncancelled.
+      if (ta.dispatchEvent(ev)) {
+        ta.setRangeText(t, ta.selectionStart, ta.selectionEnd, 'end');
+        ta.dispatchEvent(new InputEvent('input', { inputType: 'insertFromPaste', data: t, bubbles: true }));
+      }
     },
     [text, which],
   );
@@ -160,8 +166,10 @@ export async function view(page, name, { timeout = 30_000 } = {}) {
   else await page.locator('.app:visible .tabs-pick select:visible').first().selectOption(name);
   await page.waitForFunction(
     (n) => {
-      const panel = window.__vis(`#view-${n}`);
-      return !!panel && !panel.hidden;
+      const app = window.__vis('.app');
+      const panel = app?.querySelector(`#view-${n}`);
+      const selected = app?.querySelector(`[role=tab][aria-controls="view-${n}"]`)?.getAttribute('aria-selected') === 'true' || app?.querySelector('.tabs-pick select')?.value === n;
+      return !!panel && !panel.hidden && selected;
     },
     name,
     { timeout, polling: 25 },
