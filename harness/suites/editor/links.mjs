@@ -63,13 +63,20 @@ test('a 10 MB handoff into the Tree view shows progress, then the document', { t
     document.body.append(b);
   });
   // Every status the new tab shows, from its first paint (so a quick "Parsing…" can't be missed between polls).
+  // Chromium runs init scripts in a popup's first about:blank document and then reuses that window for
+  // the site, so the observer is re-attached whenever the document changes.
   await t.context.addInitScript(() => {
-    if (location.hash !== '#handoff') return;
     window.__seen = [];
-    new MutationObserver(() => {
-      const s = document.querySelector('.statusbar .st')?.textContent.trim();
-      if (s && window.__seen[window.__seen.length - 1] !== s) window.__seen.push(s);
-    }).observe(document, { subtree: true, childList: true, characterData: true });
+    const attach = () => {
+      if (window.__seenDoc === document) return;
+      window.__seenDoc = document;
+      new MutationObserver(() => {
+        const s = document.querySelector('.statusbar .st')?.textContent.trim();
+        if (s && window.__seen[window.__seen.length - 1] !== s) window.__seen.push(s);
+      }).observe(document, { subtree: true, childList: true, characterData: true });
+    };
+    attach();
+    const timer = setInterval(() => (attach(), document.readyState === 'complete' && window.__seenDoc === document && location.protocol !== 'about:' && clearInterval(timer)), 5);
   });
   const [popup] = await Promise.all([t.context.waitForEvent('page'), page.click('#go')]);
   const done = await popup
