@@ -63,6 +63,19 @@ const S_AFTER: u32 = 5;
 const S_DONE: u32 = 6;
 
 const ODD: u64 = 0xAAAA_AAAA_AAAA_AAAA;
+
+/// Bytes that can follow a number or literal (anything else makes it something else): whitespace,
+/// brackets, comma, colon, quote.
+static ENDS: [bool; 256] = {
+    let mut t = [false; 256];
+    let mut k = 0;
+    let ends = b" \n\r\t,:\"{}[]";
+    while k < ends.len() {
+        t[ends[k] as usize] = true;
+        k += 1;
+    }
+    t
+};
 /** Nodes per batch. */
 const OCAP: usize = 32768;
 /** u32 per open container (STACK). */
@@ -72,6 +85,8 @@ const F: usize = 5;
 
 static mut TOP: usize = 0;
 
+#[cold]
+#[inline(never)]
 unsafe fn alloc(bytes: usize) -> usize {
     let p = (TOP + 15) & !15;
     let end = p + bytes;
@@ -103,10 +118,13 @@ impl Buf {
     unsafe fn set(&self, i: usize, v: u32) {
         *(self.p as *mut u32).add(i) = v;
     }
+    #[inline(always)]
     unsafe fn reserve(&mut self, extra: usize) -> bool {
-        if self.len + extra <= self.cap {
-            return true;
-        }
+        self.len + extra <= self.cap || self.grow(extra)
+    }
+    #[cold]
+    #[inline(never)]
+    unsafe fn grow(&mut self, extra: usize) -> bool {
         let mut cap = if self.cap < 64 { 64 } else { self.cap * 2 };
         while cap < self.len + extra {
             cap *= 2;
@@ -598,6 +616,8 @@ unsafe fn any(t: usize, a: usize, e: usize) -> bool {
 }
 
 /// Whether window bytes [a, e) are valid UTF-8 (no surrogates, no overlong forms).
+#[cold]
+#[inline(never)]
 unsafe fn utf8(a: usize, e: usize) -> bool {
     let mut i = a;
     while i < e {
@@ -756,6 +776,7 @@ unsafe fn wtf8(at: &mut usize, cp: u32) {
 
 /// Decodes the escapes of window bytes [a, e) (stage 1 checked them) into the scratch buffer, as
 /// WTF-8: equal names as JS strings are equal bytes. Returns the length, or usize::MAX if out of memory.
+#[inline(never)]
 unsafe fn unescape(a: usize, e: usize) -> usize {
     if e - a > SCAP {
         SCAP = (e - a).next_power_of_two();
@@ -832,6 +853,7 @@ unsafe fn int_like(p: *const u8, len: usize) -> bool {
 }
 
 /// The property name whose quotes are at window offsets `p` and `q`: its key, or u32::MAX (FAIL).
+#[inline(never)]
 unsafe fn name(p: usize, q: usize) -> u32 {
     let (a, e) = (p + 1, q);
     let esc = any(BSM, a, e);
@@ -1035,7 +1057,14 @@ pub unsafe extern "C" fn run() -> i32 {
                 tundo = STACK.get(f + 3);
                 tlast = STACK.get(f + 4);
             }
-            state = if depth == 0 { S_DONE } else { S_AFTER };
+            state = if depth == 0 {
+                S_DONE
+            } else if ii < n && w.byte(*idx.add(ii) as usize) == b',' {
+                ii += 1;
+                if tkind == OBJ { S_KEY } else { S_VALUE }
+            } else {
+                S_AFTER
+            };
         }};
     }
     let r = loop {
@@ -1114,7 +1143,7 @@ pub unsafe extern "C" fn run() -> i32 {
                     // The window's last token may go on in the next one.
                     if ii + 1 == n && !last {
                         let mut j = p;
-                        while j < wlen && !matches!(w.byte(j), b' ' | b'\n' | b'\r' | b'\t' | b',' | b':' | b'"' | b'{' | b'}' | b'[' | b']') {
+                        while j < wlen && !ENDS[w.byte(j) as usize] {
                             j += 1;
                         }
                         if j == wlen {
@@ -1129,15 +1158,22 @@ pub unsafe extern "C" fn run() -> i32 {
                     if !canon {
                         exact = false;
                     }
-                    let f = w.byte(e);
-                    if !(f == b' ' || f == b'\n' || f == b'\r' || f == b'\t' || f == b',' || f == b']' || f == b'}' || f == b':' || f == b'"' || f == b'{' || f == b'[') {
+                    if !ENDS[w.byte(e) as usize] {
                         break FAIL;
                     }
                     // (Scalars are ASCII.)
                     emit!(kind, vk, p, w.u16(p) + (e - p) as u32);
                     ii += 1;
                 }
-                state = if depth == 0 { S_DONE } else { S_AFTER };
+                // What follows, without going round: mostly a comma, then the next item or name.
+                state = if depth == 0 {
+                    S_DONE
+                } else if ii < n && w.byte(*idx.add(ii) as usize) == b',' {
+                    ii += 1;
+                    if tkind == OBJ { S_KEY } else { S_VALUE }
+                } else {
+                    S_AFTER
+                };
             }
             S_AFTER => {
                 let obj = tkind == OBJ;
@@ -1206,7 +1242,12 @@ pub unsafe extern "C" fn run() -> i32 {
                 }
                 pend = k;
                 ii += 2;
-                state = S_COLON;
+                state = if ii < n && w.byte(*idx.add(ii) as usize) == b':' {
+                    ii += 1;
+                    S_VALUE
+                } else {
+                    S_COLON
+                };
             }
             S_COLON => {
                 if c != b':' {
