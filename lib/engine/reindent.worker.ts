@@ -1,7 +1,10 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
 import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
-import { packStrings, packTree } from '../json/pack';
-import { parse, parser, type ParseResult } from '../json/parser';
+import { packedTransfer, packTape, packTree } from '../json/pack';
+import { lazyResult } from '../json/lazy';
+import { parse as parseTape, parser as tapeParser } from '../json/tape-parser';
+import type { Tape } from '../json/tape';
+import { MAX_DEPTH, parse, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
 import { compressedSizes } from './sizes';
@@ -130,8 +133,8 @@ self.onmessage = (e: MessageEvent<Request>) => {
     const metrics = documentMetrics(text, res, min ?? '');
     if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
     if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
-    const tree = packStrings(packTree(res, text));
-    (self as unknown as Worker).postMessage({ id, tree, metrics }, [tree.nodes.buffer, tree.parents.buffer, tree.words.text.buffer, tree.words.offsets.buffer]);
+    const tree = packTree(res, text);
+    (self as unknown as Worker).postMessage({ id, tree, metrics }, packedTransfer(tree));
     // Compression consumes the same minified variant, entirely off the page's thread.
     if (res.root && metrics.min <= 32_000_000) {
       if (min !== null) void compressedSizes(new Blob([min]), () => latest === id).then((sizes) => {
@@ -173,31 +176,40 @@ self.onmessage = (e: MessageEvent<Request>) => {
 
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {
-  const res = data.progress ? parseShowing(data, text) : parse(text, { lines: data.lines });
+  // Parsed straight to a tape: no node objects here (the page makes the ones it shows).
+  const tape = data.progress ? parseShowing(data, text) : parseTape(text, { lines: data.lines, maxDepth: MAX_DEPTH });
+  const res = lazyResult(tape, text);
   showing(data, PARSED);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
   // is made after, only for what needs it (compressed sizes, the escaped size).
   const strict = !!res.root && !res.error && !res.issues.length && !res.multi;
-  let min = res.root && (!strict || data.escape) ? formatDoc(text, res, '') : null;
+  // (After the tape is sent this parse can't be read: a copy that needs it (loose JSON, nesting deeper than
+  // reindent goes) is made before.)
+  const later = !data.good && !!res.root;
+  let min = res.root && (!strict || data.escape || (later && res.depth >= REINDENT_DEPTH)) ? formatDoc(text, res, '') : null;
   const minBytes = strict ? minifiedBytes(text) ?? undefined : undefined;
   showing(data, MINIFIED);
   const metrics = documentMetrics(text, res, min ?? undefined, minBytes);
   if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   showing(data, MEASURED);
-  const tree = packStrings(packTree(res, text));
-  (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, [tree.nodes.buffer, tree.parents.buffer, tree.words.text.buffer, tree.words.offsets.buffer]);
-  if (!data.good && res.root && metrics.min <= 32_000_000) {
-    min ??= formatDoc(text, res, '');
+  const tree = packTape(tape);
+  (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, packedTransfer(tree));
+  if (later && metrics.min <= 32_000_000) {
+    min ??= reindent(text, '');
+    if (min === null) return;
     void compressedSizes(new Blob([min]), () => latest === data.id).then((sizes) => {
       if (latest === data.id) self.postMessage({ id: data.id, sizes: { min: metrics.min, stale: false, ...sizes } });
     });
   }
 }
 
-/** `parse` in steps, posting how far it got (it costs the same as in one go). */
-function parseShowing(data: Request, text: string): ParseResult {
-  const p = parser(text, { lines: data.lines });
+/** Nesting reindent leaves to the parser (see format.ts). */
+const REINDENT_DEPTH = 500;
+
+/** The tape parse in steps, posting how far it got (it costs the same as in one go). */
+function parseShowing(data: Request, text: string): Tape {
+  const p = tapeParser(text, { lines: data.lines, maxDepth: MAX_DEPTH });
   for (;;) {
     const res = p.step(performance.now() + PROGRESS_EVERY);
     if (res) return res;
@@ -214,6 +226,9 @@ function reindentShowing(data: Request, text: string, indent: string): string | 
     showing(data, (REINDENTED * run.at()) / text.length);
   }
 }
+
+/** Outputs longer than this (characters) aren't kept for patching the next one (see formatFast). */
+const RETAIN_MAX = 48_000_000;
 
 let scalar: { key: string; formatter: ScalarFormatter } | null = null;
 let pendingCheckpoints: { id: number; key: string; input: Doc; output: Doc } | null = null;
@@ -285,6 +300,13 @@ function formatFast(data: Request, input: Doc) {
     chunkedOut: patch === undefined && sentOut === undefined,
     chunkedDisplay: display !== undefined && sentDisplay === undefined, index: sent,
   }, [sent.starts.buffer, ...(sent.close && sent.depth ? [sent.close.buffer, sent.depth.buffer] : [])]);
+  // A huge output isn't kept here as well as on the page (hundreds of MB): the next edit's output is sent whole.
+  if (output.length > RETAIN_MAX) {
+    outputs.clear();
+    indexed = null;
+    scalar = null;
+    return;
+  }
   // The viewer acknowledges after drawing. Only then may checkpoints compete for CPU,
   // so neither a cold load nor a full fallback pays for them before its rows appear.
   if (checkpoints) pendingCheckpoints = { id, key, input, output };

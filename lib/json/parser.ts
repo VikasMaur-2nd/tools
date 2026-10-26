@@ -27,8 +27,8 @@ export type Val = null | boolean | string | JNode[];
 export class JNode {
   /** kind */
   t: Kind;
-  /** value: raw number text, decoded string, boolean, null or children */
-  v: Val;
+  /** `v`, or undefined for a container made from a tape whose children aren't made yet (see lazy.ts) */
+  _v: Val | undefined;
   /** source start / end offsets */
   s: number;
   e: number;
@@ -40,16 +40,36 @@ export class JNode {
   key: Key;
   /** expanded in the tree view */
   x = false;
+  /** Made from a tape: its tape and source (see lazy.ts), else null. */
+  z: TapeLink | null = null;
+  /** Its node index in that tape. */
+  zi = 0;
 
-  constructor(t: Kind, v: Val, s: number, d: number, u: JNode | null, key: Key) {
+  constructor(t: Kind, v: Val | undefined, s: number, d: number, u: JNode | null, key: Key) {
     this.t = t;
-    this.v = v;
+    this._v = v;
     this.s = s;
     this.e = s;
     this.d = d;
     this.u = u;
     this.key = key;
   }
+
+  /** value: raw number text, decoded string, boolean, null or children */
+  get v(): Val {
+    const v = this._v;
+    return v === undefined ? this.z!.fill(this) : v;
+  }
+
+  set v(v: Val) {
+    this._v = v;
+  }
+}
+
+/** What a node made from a tape knows of it (see lazy.ts). */
+export interface TapeLink {
+  /** Makes `n`'s children and returns them. */
+  fill(n: JNode): JNode[];
 }
 
 export const kids = (n: JNode) => n.v as JNode[];
@@ -723,7 +743,7 @@ const skipTail = () => {
 
 /** JSON Lines: true if another top-level value is next (in `wrap`), false at the end. */
 const nextLine = (): boolean => {
-  const list = wrap!.v as JNode[];
+  const list = wrap!._v as JNode[];
   ws();
   while (src.charCodeAt(i) === 44 || src.charCodeAt(i) === 59) {
     i++;
@@ -742,7 +762,7 @@ const nextLine = (): boolean => {
 /** A finished top-level value: true if the parse is complete. */
 const topLevel = (r: JNode): boolean => {
   if (phase === 2) {
-    (wrap!.v as JNode[]).push(r);
+    (wrap!._v as JNode[]).push(r);
     return !nextLine();
   }
   root = r;
@@ -851,7 +871,7 @@ const closeCalls = (v: JNode): JNode => {
  * containers are filled recursively up to `levels` deeper; one deeper still is returned for run().
  */
 const fillObj = (p: JNode, levels: number): JNode | null | undefined => {
-  const list = p.v as JNode[];
+  const list = p._v as JNode[];
   const d = p.d + 1;
   // (Created at its 16th key, so a set at this depth with fewer keys is an earlier object's.)
   let set = list.length >= 16 ? sets[p.d] : null;
@@ -960,7 +980,7 @@ const fillObj = (p: JNode, levels: number): JNode | null | undefined => {
 
 /** The recursive parser's arr() loop for array `p`, from `mode` (as fillObj). */
 const fillArr = (p: JNode, levels: number): JNode | null | undefined => {
-  const list = p.v as JNode[];
+  const list = p._v as JNode[];
   const d = p.d + 1;
   let after = mode === AFTER;
   if (after) {
@@ -1041,7 +1061,7 @@ const run = (): boolean => {
       else {
         if (--left < 0) return false;
         const d = p === null ? 0 : 1;
-        const key = p === null ? undefined : (p.v as JNode[]).length;
+        const key = p === null ? undefined : (p._v as JNode[]).length;
         x = value(d, p, key);
         while (x === null) x = value(d, p, key);
         if (!opened) x = closeCalls(x);

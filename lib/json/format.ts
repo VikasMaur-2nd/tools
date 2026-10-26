@@ -193,12 +193,23 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
 }
 
 /** Copy of `buf` (its first `len` units) with room for `k` more. */
-function grown(buf: Uint16Array, len: number, k: number) {
+function grown<B extends Uint8Array | Uint16Array>(buf: B, len: number, k: number): B {
   if (len + k > MAX_TEXT) throw tooLong();
-  const next = new Uint16Array(Math.min(MAX_TEXT, Math.max(buf.length * 2, len + k)));
+  const size = Math.min(MAX_TEXT, Math.max(buf.length * 2, len + k));
+  const next = (buf instanceof Uint8Array ? new Uint8Array(size) : new Uint16Array(size)) as B;
   next.set(buf.subarray(0, len));
   return next;
 }
+
+/** `buf` (its first `len` units) as UTF-16, for a character an ASCII buffer can't hold. */
+function widened(buf: Uint8Array, len: number): Uint16Array {
+  const next = new Uint16Array(buf.length);
+  for (let k = 0; k < len; k++) next[k] = buf[k];
+  return next;
+}
+
+/** The text of the first `len` units of `buf`: one byte a character while it is ASCII (half the memory of UTF-16, here and wherever it is sent). */
+const decoded = (buf: Uint8Array | Uint16Array, len: number) => new TextDecoder(buf instanceof Uint8Array ? 'utf-8' : 'utf-16le').decode(buf.subarray(0, len));
 
 /** A re-indent in steps (see `reindenter`). */
 export interface Reindenter {
@@ -223,7 +234,8 @@ export function reindenter(src: string, indent: string): Reindenter {
   // What may come next (want): 0 value, 1 value or close (array start), 2 key or
   // close (object start), 3 key, 4 colon, 5 comma or close, 6 end of text.
   // special: the next backslash, control character or surrogate (one forward search overall).
-  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1 };
+  // ASCII is written one byte a unit until a string holds more (see `decoded`).
+  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint8Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1 };
   return Object.assign((until: number) => step(st, until), { at: () => st.i });
 }
 
@@ -235,7 +247,7 @@ interface Reindent {
   iu: number;
   same: boolean;
   stack: number[];
-  buf: Uint16Array;
+  buf: Uint8Array | Uint16Array;
   len: number;
   i: number;
   want: number;
@@ -258,7 +270,7 @@ function step(st: Reindent, until: number): string | null | undefined {
       }
       let c = src.charCodeAt(i);
       while (c === 32 || c === 10 || c === 13 || c === 9) c = src.charCodeAt(++i);
-      if (i >= n) return want === 6 ? new TextDecoder('utf-16le').decode(buf.subarray(0, len)) : null;
+      if (i >= n) return want === 6 ? decoded(buf, len) : null;
       if (want === 6) return null;
       // Room for any punctuation plus a line break and its indent.
       const depth = stack.length + 1;
@@ -335,8 +347,17 @@ function step(st: Reindent, until: number): string | null | undefined {
         }
         const k = s ? s.length : j + 1 - i;
         if (len + k > buf.length) buf = grown(buf, len, k);
-        if (s) for (let m = 0; m < k; m++) buf[len++] = s.charCodeAt(m);
-        else for (let m = i; m <= j; m++) buf[len++] = src.charCodeAt(m);
+        const from = len;
+        let hi = 0;
+        if (s) for (let m = 0; m < k; m++) hi |= buf[len++] = s.charCodeAt(m);
+        else for (let m = i; m <= j; m++) hi |= buf[len++] = src.charCodeAt(m);
+        if (hi > 0x7f && buf instanceof Uint8Array) {
+          // The first character past ASCII: the output goes on as UTF-16, this string written again.
+          buf = widened(buf, from);
+          len = from;
+          if (s) for (let m = 0; m < k; m++) buf[len++] = s.charCodeAt(m);
+          else for (let m = i; m <= j; m++) buf[len++] = src.charCodeAt(m);
+        }
         i = j + 1;
         want = want === 2 || want === 3 ? 4 : stack.length ? 5 : 6;
         continue;

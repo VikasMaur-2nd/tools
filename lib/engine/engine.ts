@@ -708,7 +708,7 @@ export class Engine {
       this.good = null;
       this.sel = null;
       this.selPath = packedPosition(this.packed!.tree, ed.caret, this.packed!.document ?? text)?.path ?? null;
-      this.tree.releaseRoot();
+      this.tree.releaseRoot(reset);
       this.setGraphRoot(null, true);
       // Format already has the worker's output. Nodes are needed only by commands and other views.
       this.goodText = src;

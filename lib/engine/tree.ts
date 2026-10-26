@@ -1,6 +1,9 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { preview } from '../json/format';
 import { parsePath, resolve } from '../json/path';
+import { nodeAtIndex, tapeOfNode } from '../json/lazy';
+import { keyKindOf, KEY_NAME, kindOf, nextOf, startOf, valueOf, W, type Tape } from '../json/tape';
+import { nodesWithin } from '../json/tape';
 import { idle } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
@@ -67,6 +70,52 @@ function siblingIndex(n: JNode) {
   return list.indexOf(n);
 }
 
+/** Rows a new big document opens with at most (levels open from the root while they fit; the root's always). */
+const OPEN_ROWS = 100_000;
+
+/** How many levels a new document opens with: all of a small one, else as many as keep its rows few. */
+function openLevels(root: JNode | null, nodes: number): number {
+  if (nodes <= 50_000) return Infinity;
+  const at = root && tapeOfNode(root);
+  // (A tree from the parser on the page: nodes are made already, so only rows cost.)
+  if (!at) return nodes <= 500_000 ? 3 : 2;
+  let levels = 1;
+  while (levels < 8 && nodesWithin(at.tape, at.i, levels + 1) <= OPEN_ROWS) levels++;
+  return levels;
+}
+
+/**
+ * Tree search on a tape: the indexes of the nodes under `from` whose property name or value contains
+ * `qn` (lowercased unless `cs`), in document order, at most `max`. The same test as on nodes
+ * (TreeView.search), each property name tested once.
+ */
+export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: boolean, max: number): number[] {
+  const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
+  const keyHit = new Int8Array(t.keys.length);
+  const nul = has('null');
+  const t1 = has('true');
+  const f1 = has('false');
+  const out: number[] = [];
+  const end = nextOf(t, from);
+  const a = t.nodes;
+  for (let i = from; i < end && out.length < max; i++) {
+    let hit = false;
+    if (keyKindOf(t, i) === KEY_NAME) {
+      const k = a[i * W + 4];
+      if (!keyHit[k]) keyHit[k] = has(t.keys[k]) ? 1 : 2;
+      hit = keyHit[k] === 1;
+    }
+    if (!hit) {
+      const kind = kindOf(t, i);
+      if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
+      else if (kind === BOOL) hit = valueOf(t, i, src) ? t1 : f1;
+      else if (kind === NUL) hit = nul;
+    }
+    if (hit) out.push(i);
+  }
+  return out;
+}
+
 export class TreeView {
   readonly el: HTMLElement;
   private sizer: HTMLElement;
@@ -81,6 +130,8 @@ export class TreeView {
   rows: JNode[] = [];
   sel: JNode | null = null;
   private limit = Infinity;
+  /** The next root is a new document's: how many levels it opens with is still to decide. */
+  private newDoc = false;
   private dirty = false;
   private toggles: Expansion = {};
   private q = '';
@@ -88,6 +139,9 @@ export class TreeView {
   private cs = false;
   matches: JNode[] = [];
   private matchSet: Set<JNode> | null = null;
+  /** A search on a tree made from a tape: its matches' tape indexes, in document order (else null: `matches`). */
+  private hits: number[] | null = null;
+  private hitSet: Set<number> | null = null;
   mi = -1;
   private rFirst = -1;
   private rLast = -1;
@@ -130,8 +184,12 @@ export class TreeView {
   setRoot(root: JNode | null, reset: boolean, nodes = 0, active = true) {
     if (reset) {
       this.toggles = {};
-      this.limit = nodes <= 50_000 ? Infinity : nodes <= 500_000 ? 3 : 2;
       this.sc.top = 0;
+    }
+    // (A new document's first tree may come after a release: see releaseRoot.)
+    if (reset || this.newDoc) {
+      this.limit = openLevels(root, nodes);
+      this.newDoc = false;
     }
     this.root = root;
     this.sel = null;
@@ -139,13 +197,19 @@ export class TreeView {
     if (active || !root) this.activate();
   }
 
-  /** Drop obsolete node objects while Format retains the newer packed tree. Keep expansion and scroll. */
-  releaseRoot() {
+  /** Drop obsolete node objects while Format retains the newer packed tree. Keep expansion and scroll, unless it is a new document (`reset`). */
+  releaseRoot(reset = false) {
+    if (reset) {
+      this.toggles = {};
+      this.sc.top = 0;
+      this.newDoc = true;
+    }
     this.root = null;
     this.rows = [];
     this.sel = null;
     this.matches = [];
     this.matchSet = null;
+    this.hits = this.hitSet = null;
     this.dirty = true;
   }
 
@@ -327,6 +391,7 @@ export class TreeView {
     this.qn = this.cs ? q : q.toLowerCase();
     this.matches = [];
     this.matchSet = null;
+    this.hits = this.hitSet = null;
     this.mi = -1;
     const root = this.root;
     let note: string | undefined;
@@ -338,8 +403,13 @@ export class TreeView {
       if (!hit && q[0] === '$' && /\*|\.\.|\?|@|\[-?\d*:-?\d*\]/.test(q)) {
         note = 'Wildcards, filters and slices are not supported. Use a concrete path such as $.users[0].name';
       }
+      const at = tapeOfNode(root);
       if (hit) this.matches = [hit];
-      else {
+      else if (at) {
+        // On the tape: no node is made for a document's values, only for the matches gone to (see matchAt).
+        this.hits = tapeSearch(at.tape, at.src, at.i, this.qn, this.cs, MAX_MATCHES);
+        this.hitSet = new Set(this.hits);
+      } else {
         const qn = this.qn;
         const cs = this.cs;
         const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
@@ -359,22 +429,45 @@ export class TreeView {
           }
         }
       }
-      this.matchSet = new Set(this.matches);
-      if (this.matches.length) {
+      if (!this.hits) this.matchSet = new Set(this.matches);
+      if (this.matchCount) {
         // Prefer the first match at or after the current selection.
         const from = this.sel ? this.sel.s : 0;
-        let idx = this.matches.findIndex((m) => m.s >= from);
+        let idx = -1;
+        if (this.hits) {
+          const t = at!.tape;
+          idx = this.hits.findIndex((h) => startOf(t, h) >= from);
+        } else idx = this.matches.findIndex((m) => m.s >= from);
         if (idx < 0) idx = 0;
         this.mi = idx;
         if (jump) this.gotoMatch();
       }
     }
     this.render(true);
-    return { total: this.matches.length, index: this.mi, note: this.matches.length ? undefined : note };
+    return { total: this.matchCount, index: this.mi, note: this.matchCount ? undefined : note };
+  }
+
+  /** How many matches the search found. */
+  get matchCount() {
+    return this.hits ? this.hits.length : this.matches.length;
+  }
+
+  /** Match `k` (made from the tape when the search ran there). */
+  private matchAt(k: number): JNode | null {
+    if (!this.hits) return this.matches[k] ?? null;
+    return this.root && k >= 0 && k < this.hits.length ? nodeAtIndex(this.root, this.hits[k]) : null;
+  }
+
+  private isMatch(n: JNode) {
+    return this.hits ? n.z !== null && n.z === this.root?.z && this.hitSet!.has(n.zi) : !!this.matchSet?.has(n);
+  }
+
+  private isCurrent(n: JNode) {
+    return this.hits ? n.z === this.root?.z && this.hits[this.mi] === n.zi : n === this.matches[this.mi];
   }
 
   step(dir: 1 | -1) {
-    const n = this.matches.length;
+    const n = this.matchCount;
     if (!n) return { total: 0, index: -1 };
     this.mi = (this.mi + dir + n) % n;
     this.gotoMatch();
@@ -382,7 +475,7 @@ export class TreeView {
   }
 
   private gotoMatch() {
-    const m = this.matches[this.mi];
+    const m = this.matchAt(this.mi);
     if (!m) return;
     this.select(m, { center: true });
     this.ev.select(m, 'search');
@@ -440,7 +533,7 @@ export class TreeView {
   }
 
   private mark(raw: string): string {
-    if (!this.q || !this.matchSet) return escapeHtml(raw);
+    if (!this.q || !(this.matchSet || this.hitSet)) return escapeHtml(raw);
     const hay = this.cs ? raw : raw.toLowerCase();
     const q = this.qn;
     let i = hay.indexOf(q);
@@ -461,7 +554,7 @@ export class TreeView {
     const deep = n.d > IND_DEPTH;
     if (deep) cls += ' tv-deep';
     if (sel) cls += ' sel';
-    if (this.matchSet?.has(n)) cls += n === this.matches[this.mi] ? ' hit cur' : ' hit';
+    if (this.isMatch(n)) cls += this.isCurrent(n) ? ' hit cur' : ' hit';
     const cont = n.t >= ARR;
     let h = `<div class="${cls}" data-i="${i}" role="treeitem" aria-level="${n.d + 1}"`;
     if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : siblingIndex(n) + 1}"`;
