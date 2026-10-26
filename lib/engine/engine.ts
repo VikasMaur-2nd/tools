@@ -2370,6 +2370,8 @@ export class Engine {
   private pendingFmtWorkerId = 0;
   private fmtKey = '';
   private fmtText = '';
+  /** The output drawn (empty) is the one too large to make: the view and Copy say so. */
+  private fmtTooLarge = false;
   private fmtVersion = 0;
   private fmtCounts: { version: number; pretty: number; minified: number; escaped: number } | null = null;
   /** User Timing for DevTools: a file opened (tk:input) → its output painted (tk:formatted). */
@@ -2392,6 +2394,8 @@ export class Engine {
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
     const drawn = this.formatCurrent(key);
+    // (Already found too large to make: the view keeps saying so.)
+    if (drawn && this.fmtTooLarge) return;
     let text: string;
     try {
       text = drawn ? this.fmtText : this.formatted();
@@ -2400,6 +2404,7 @@ export class Engine {
       if (!tooLarge(e)) throw e;
       // (Pretty-printing very deep nesting: about 2·depth² characters.) The view says so instead.
       this.drawFormat('', key);
+      this.fmtTooLarge = true;
       store.set({ fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0, tooLarge: true } });
       return;
     }
@@ -2450,6 +2455,7 @@ export class Engine {
 
   /** Shows `text` (the formatted `src`) in the Format view. */
   private drawFormat(text: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+    this.fmtTooLarge = false;
     if (store.get().fmt.tooLarge) store.set({ fmt: { ...store.get().fmt, tooLarge: false } });
     if (!change) this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;

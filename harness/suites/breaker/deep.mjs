@@ -62,12 +62,11 @@ test('5,200 nested arrays: Pretty is too large to make, and the view and Copy sa
   t.check(st?.msg === 'Valid JSON' && /depth 5200$/.test(st.stats ?? ''), 'valid, depth 5200', st);
   await view(page, 'format');
   const shown = await until(page, () => window.__vis('#view-format')?.innerText.trim() || null, null, { timeout: 20_000 });
-  const known = 'bug: Format view blank and Copy silent past ~5,100 levels (BREAKER-REPORT F2)';
-  t.check(/too large/i.test(shown ?? '') || (shown ?? '').length > 1000, 'the Format view shows the output or says it is too large', shown?.slice(0, 80) ?? 'blank', { known });
+  t.check(/too large/i.test(shown ?? '') || (shown ?? '').length > 1000, 'the Format view shows the output or says it is too large', shown?.slice(0, 80) ?? 'blank');
   await watchToasts(page);
   const c = await copied(page, 'Copy formatted output', { timeout: 5000 });
   const toasts = await seenToasts(page);
-  t.check(c !== null || toasts.some((x) => /too large/i.test(x)), 'Copy formatted output copies it or says it is too large', { copied: c?.length ?? null, toasts }, { known });
+  t.check(c !== null || toasts.some((x) => /too large/i.test(x)), 'Copy formatted output copies it or says it is too large', { copied: c?.length ?? null, toasts });
   await command(page, 'Output: minified');
   t.check((await copied(page, 'Copy formatted output')) === arrays(5200), 'minified output still works');
 });
