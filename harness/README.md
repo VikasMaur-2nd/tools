@@ -20,6 +20,20 @@ pnpm perf --base origin/main  # A/B: same checks on a build of main, interleaved
 pnpm perf --save-baseline mybox / --baseline mybox   # compare with an earlier run on this machine
 ```
 
+On GitHub Actions, on demand and within 1,000 billed minutes a month (`CI.md` has the levels and costs):
+
+```sh
+pnpm ci:usage                                         # minutes used this month and what's left; --runs lists them
+gh workflow run check.yml -f level=unit               # unit tests (-f suites="parser diff" for some files)
+gh workflow run check.yml -f level=e2e -f engines=firefox,webkit -f suites=editor   # suites in other engines
+gh workflow run check.yml -f level=full -f engines=chromium,firefox,webkit         # everything, one job per engine
+                                                      # -f ref=<branch> checks another branch; on a PR, add the
+                                                      # ci:quick, ci:smoke or ci:full label instead
+```
+
+Big-document checks (tag `slow`) and perf runs stay on our machine. The workflow runs `pnpm e2e --skip-tag slow`,
+and `--build-only` builds what the selected checks need without running them.
+
 Other options:
 - `-j N` sets how many checks run at once. The default is the number of cores.
 - `--retries N` reruns failures and reports any that pass on a retry as flaky.

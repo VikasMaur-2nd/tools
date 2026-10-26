@@ -109,9 +109,10 @@ jobs:
       - name: Unit tests
         id: unit
         if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_CODE != '' }}
+        # node --test runs cores - 1 files at once by default: one at a time on this 2-core runner.
         run: |
           set -f
-          if [ "$CHECK_CODE" = unit ]; then pnpm test $CHECK_SUITES; else pnpm test; fi
+          if [ "$CHECK_CODE" = unit ]; then pnpm test $CHECK_SUITES --test-concurrency=$(nproc); else pnpm test --test-concurrency=$(nproc); fi
 
       # Production builds are cached by the harness's content key: the same code is never built twice, and
       # new code builds from the last build's Turbopack cache. Their node_modules are reinstalled from the
@@ -145,7 +146,9 @@ jobs:
       - name: Build
         id: build
         if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_BUILD_ONLY == 'true' }}
-        run: pnpm e2e -e "$CHECK_ALL_ENGINES" --skip-tag slow --build-only
+        run: |
+          set -f
+          pnpm e2e $CHECK_SUITES -e "$CHECK_ALL_ENGINES" --skip-tag slow --build-only
 
       - &deps
         name: Browser packages
