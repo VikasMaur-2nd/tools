@@ -44,9 +44,10 @@ async function layoutChecks(t, page, where, dark) {
     const bg = getComputedStyle(document.body).backgroundColor.match(/\d+/g).slice(0, 3).map(Number);
     return { overflow: d.scrollWidth - width, light: bg.reduce((a, b) => a + b, 0) / 3, h1: document.querySelectorAll('h1').length, main: document.querySelectorAll('main').length };
   }, width);
-  // Real bug (2026-10-25, every engine, main and PR #26): /integrate's link-format line
-  // "https://tools.vikasmaur.com/#a=<document>&view=tree" is one unbreakable 480 px <code> on a 375 px phone.
-  const known = where.startsWith('phone') && t.path === '/integrate' ? { known: 'bug: /integrate link-format <code> line overflows phones by ~160 px' } : {};
+  // Real bug (2026-10-25, every engine, main and PR #26): /integrate's inline snippet
+  // "'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)" (twice in the prose) is a ~500 px <code> on a
+  // 375 px phone, kept on one line by `.prose :not(pre) > code { white-space: nowrap }` in app/content.css.
+  const known = where.startsWith('phone') && t.path === '/integrate' ? { known: "bug: /integrate's inline encodeURIComponent(url) snippet overflows phones by ~160-180 px" } : {};
   t.check(r.overflow <= 1, `${where}: no sideways scrolling`, `${r.overflow}px wider than the window`, known);
   t.check(dark ? r.light <= 60 : r.light >= 190, `${where}: ${dark ? 'dark' : 'light'} background`, Math.round(r.light));
   t.check(r.h1 === 1, `${where}: one <h1> after hydration`, r.h1);
