@@ -95,7 +95,7 @@ export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOpt
     while ((r = x.run()) === FULL || r === DONE) {
       // A batch of nodes.
       const n = x.out_len();
-      if ((count + n) * W > nodes.length) nodes = grow(nodes, count, count + n, done(x.pos()));
+      if ((count + n) * W > nodes.length) nodes = grow(nodes, count, count + n, done(x.pos()), total);
       nodes.set(new Int32Array(x.memory.buffer, x.out_ptr(), n * W), count * W);
       count += n;
       x.drain();
@@ -113,9 +113,15 @@ export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOpt
   }
 }
 
-/** `nodes` with room for `need` nodes (`used` in use), grown to about what the whole document needs: `need` nodes are its share `done`. */
-function grow(nodes: Int32Array<ArrayBuffer>, used: number, need: number, done: number): Int32Array<ArrayBuffer> {
-  const want = Math.max(need, Math.ceil((need / Math.max(done, 1e-6)) * 1.04) + 1024, Math.ceil((nodes.length / W) * 1.125));
+/**
+ * `nodes` with room for `need` nodes (`used` in use), grown to about what the whole document needs:
+ * `need` nodes are its share `done` (of `size` bytes). A small document gets more room to spare:
+ * its density varies more, and growing again costs more than the room (big allocations are slow in
+ * WebKit).
+ */
+function grow(nodes: Int32Array<ArrayBuffer>, used: number, need: number, done: number, size: number): Int32Array<ArrayBuffer> {
+  const margin = 1.04 + Math.min(0.2, 4e6 / size);
+  const want = Math.max(need, Math.ceil((need / Math.max(done, 1e-6)) * margin) + 1024, Math.ceil((nodes.length / W) * 1.125));
   const next = new Int32Array(want * W);
   next.set(nodes.subarray(0, used * W));
   return next;

@@ -261,7 +261,7 @@ pub unsafe extern "C" fn init(text: u32, max_depth: u32, wcap: usize) -> u32 {
 pub unsafe extern "C" fn window(wcap: usize) -> u32 {
     let blocks = wcap / 64 + 2;
     WIN = alloc(wcap + 128);
-    IDX = alloc((wcap + 64) * 4);
+    IDX = alloc((wcap + 64 + 16) * 4);
     BASE = alloc(blocks * 4);
     NONC = alloc(blocks * 8);
     FOUR = alloc(blocks * 8);
@@ -523,11 +523,28 @@ pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32) -> i32 {
         let starts = scalar & !((scalar << 1) | prev_scalar);
         prev_scalar = scalar >> 63;
         let mut s = (op & !in_str) | quote | starts;
-        while s != 0 {
-            *idx.add(n) = (p + s.trailing_zeros() as usize) as u32;
-            n += 1;
-            s &= s - 1;
+        // (As simdjson: 8 at a time without a branch each; the extra writes are overwritten. IDX has room.)
+        let count = s.count_ones() as usize;
+        let to = idx.add(n);
+        let mut k = 0;
+        while k < 8 {
+            *to.add(k) = (p + s.trailing_zeros() as usize) as u32;
+            s &= s.wrapping_sub(1);
+            k += 1;
         }
+        if count > 8 {
+            while k < 16 {
+                *to.add(k) = (p + s.trailing_zeros() as usize) as u32;
+                s &= s.wrapping_sub(1);
+                k += 1;
+            }
+            while s != 0 {
+                *to.add(k) = (p + s.trailing_zeros() as usize) as u32;
+                s &= s - 1;
+                k += 1;
+            }
+        }
+        n += count;
     }
     *base.add(blocks) = units;
     // (Failures in the padding, or in a token the window cuts, are the next window's.)
