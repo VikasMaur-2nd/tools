@@ -7,8 +7,8 @@
  * Every node made here keeps its tape (`z`) and index (`zi`): code that only needs to count or scan
  * a big subtree reads the tape instead of making its nodes (see `tapeOfNode`).
  */
-import { ARR, JNode, type ParseResult, type TapeLink } from './parser';
-import { endOf, kindOf, keyOf, nextOf, startOf, valueOf, type Tape } from './tape';
+import { ARR, BOOL, JNode, NUL, NUM, STR, type ParseResult, type TapeLink } from './parser';
+import { endOf, kindOf, KEY_NAME, keyKindOf, keyOf, nextOf, nodesWithin, startOf, valueOf, W, type Tape } from './tape';
 import type { Key } from './parser';
 
 /** Makes the nodes of one tape over one source text. */
@@ -27,6 +27,26 @@ export class Filler implements TapeLink {
     n.z = this;
     n.zi = i;
     return n;
+  }
+
+  within(n: JNode, levels: number): number {
+    return nodesWithin(this.tape, n.zi, levels);
+  }
+
+  childKeys(n: JNode, f: (key: Key) => void) {
+    eachChildKey(n, f);
+  }
+
+  search(n: JNode, qn: string, cs: boolean, max: number): number[] {
+    return tapeSearch(this.tape, this.src, n.zi, qn, cs, max);
+  }
+
+  nodeAt(root: JNode, i: number): JNode | null {
+    return nodeAtIndex(root, i);
+  }
+
+  start(i: number): number {
+    return startOf(this.tape, i);
   }
 
   fill(n: JNode): JNode[] {
@@ -99,4 +119,36 @@ export function nodeAtIndex(root: JNode, i: number): JNode | null {
     n = list[lo];
   }
   return n;
+}
+
+/**
+ * Tree search on a tape: the indexes of the nodes under `from` whose property name or value contains
+ * `qn` (lowercased unless `cs`), in document order, at most `max`. The same test as on nodes
+ * (TreeView.search), each property name tested once.
+ */
+export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: boolean, max: number): number[] {
+  const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
+  const keyHit = new Int8Array(t.keys.length);
+  const nul = has('null');
+  const yes = has('true');
+  const no = has('false');
+  const out: number[] = [];
+  const end = nextOf(t, from);
+  const a = t.nodes;
+  for (let i = from; i < end && out.length < max; i++) {
+    let hit = false;
+    if (keyKindOf(t, i) === KEY_NAME) {
+      const k = a[i * W + 4];
+      if (!keyHit[k]) keyHit[k] = has(t.keys[k]) ? 1 : 2;
+      hit = keyHit[k] === 1;
+    }
+    if (!hit) {
+      const kind = kindOf(t, i);
+      if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
+      else if (kind === BOOL) hit = valueOf(t, i, src) ? yes : no;
+      else if (kind === NUL) hit = nul;
+    }
+    if (hit) out.push(i);
+  }
+  return out;
 }

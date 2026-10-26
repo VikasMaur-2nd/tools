@@ -1,9 +1,6 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { preview } from '../json/format';
 import { parsePath, resolve } from '../json/path';
-import { nodeAtIndex, tapeOfNode } from '../json/lazy';
-import { keyKindOf, KEY_NAME, kindOf, nextOf, startOf, valueOf, W, type Tape } from '../json/tape';
-import { nodesWithin } from '../json/tape';
 import { idle } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
@@ -76,44 +73,12 @@ const OPEN_ROWS = 100_000;
 /** How many levels a new document opens with: all of a small one, else as many as keep its rows few. */
 function openLevels(root: JNode | null, nodes: number): number {
   if (nodes <= 50_000) return Infinity;
-  const at = root && tapeOfNode(root);
+  const z = root?.z;
   // (A tree from the parser on the page: nodes are made already, so only rows cost.)
-  if (!at) return nodes <= 500_000 ? 3 : 2;
+  if (!z) return nodes <= 500_000 ? 3 : 2;
   let levels = 1;
-  while (levels < 8 && nodesWithin(at.tape, at.i, levels + 1) <= OPEN_ROWS) levels++;
+  while (levels < 8 && z.within(root!, levels + 1) <= OPEN_ROWS) levels++;
   return levels;
-}
-
-/**
- * Tree search on a tape: the indexes of the nodes under `from` whose property name or value contains
- * `qn` (lowercased unless `cs`), in document order, at most `max`. The same test as on nodes
- * (TreeView.search), each property name tested once.
- */
-export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: boolean, max: number): number[] {
-  const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
-  const keyHit = new Int8Array(t.keys.length);
-  const nul = has('null');
-  const t1 = has('true');
-  const f1 = has('false');
-  const out: number[] = [];
-  const end = nextOf(t, from);
-  const a = t.nodes;
-  for (let i = from; i < end && out.length < max; i++) {
-    let hit = false;
-    if (keyKindOf(t, i) === KEY_NAME) {
-      const k = a[i * W + 4];
-      if (!keyHit[k]) keyHit[k] = has(t.keys[k]) ? 1 : 2;
-      hit = keyHit[k] === 1;
-    }
-    if (!hit) {
-      const kind = kindOf(t, i);
-      if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
-      else if (kind === BOOL) hit = valueOf(t, i, src) ? t1 : f1;
-      else if (kind === NUL) hit = nul;
-    }
-    if (hit) out.push(i);
-  }
-  return out;
 }
 
 export class TreeView {
@@ -403,11 +368,11 @@ export class TreeView {
       if (!hit && q[0] === '$' && /\*|\.\.|\?|@|\[-?\d*:-?\d*\]/.test(q)) {
         note = 'Wildcards, filters and slices are not supported. Use a concrete path such as $.users[0].name';
       }
-      const at = tapeOfNode(root);
+      const z = root.z;
       if (hit) this.matches = [hit];
-      else if (at) {
+      else if (z) {
         // On the tape: no node is made for a document's values, only for the matches gone to (see matchAt).
-        this.hits = tapeSearch(at.tape, at.src, at.i, this.qn, this.cs, MAX_MATCHES);
+        this.hits = z.search(root, this.qn, this.cs, MAX_MATCHES);
         this.hitSet = new Set(this.hits);
       } else {
         const qn = this.qn;
@@ -434,10 +399,8 @@ export class TreeView {
         // Prefer the first match at or after the current selection.
         const from = this.sel ? this.sel.s : 0;
         let idx = -1;
-        if (this.hits) {
-          const t = at!.tape;
-          idx = this.hits.findIndex((h) => startOf(t, h) >= from);
-        } else idx = this.matches.findIndex((m) => m.s >= from);
+        if (this.hits) idx = this.hits.findIndex((h) => z!.start(h) >= from);
+        else idx = this.matches.findIndex((m) => m.s >= from);
         if (idx < 0) idx = 0;
         this.mi = idx;
         if (jump) this.gotoMatch();
@@ -455,7 +418,7 @@ export class TreeView {
   /** Match `k` (made from the tape when the search ran there). */
   private matchAt(k: number): JNode | null {
     if (!this.hits) return this.matches[k] ?? null;
-    return this.root && k >= 0 && k < this.hits.length ? nodeAtIndex(this.root, this.hits[k]) : null;
+    return this.root?.z && k >= 0 && k < this.hits.length ? this.root.z.nodeAt(this.root, this.hits[k]) : null;
   }
 
   private isMatch(n: JNode) {

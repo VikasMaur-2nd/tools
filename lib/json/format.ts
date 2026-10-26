@@ -178,8 +178,8 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
         }
         i++;
         if (!special) size += bytes;
-        else if (i - a > REQUOTE_MIN) {
-          const k = requoteBytes(src, a, i - 1);
+        else if (requoter && i - a > requoter.min) {
+          const k = requoter.bytes(src, a, i - 1);
           if (k < 0) return null;
           size += k;
         } else {
@@ -215,96 +215,24 @@ function decoded(buf: Uint16Array, len: number, hi: number): string {
   return new TextDecoder().decode(bytes);
 }
 
-/** Strings this long (characters) are re-quoted in place (see requote); shorter ones natively, which is faster. */
-const REQUOTE_MIN = 65_536;
-const HEX = '0123456789abcdef';
-/** The highest unit and the UTF-8 bytes the last `requote` wrote. */
-let requotedHi = 0;
-let requotedBytes = 0;
-
 /**
- * The JSON string token src[a..b] (quotes included) as `quote(JSON.parse(token))` writes it, into `out` from
- * `at` (just counted when `out` is null): its length, or -1 if JSON.parse would refuse it. No string is made,
- * so a string of hundreds of MB costs no copies (`requotedHi`: its highest unit).
+ * Re-quoting long strings in place (requote.ts, which installs itself where it is imported: the workers).
+ * Without it, as on the page (documents under 2 MB), strings are re-quoted natively.
  */
-function requote(src: string, a: number, b: number, out: Uint16Array | null, at: number): number {
-  let len = 0;
-  let hi = 0;
-  let bytes = 0;
-  let k = at;
-  const put = (u: number) => {
-    if (out) out[k++] = u;
-    len++;
-    hi |= u;
-    // (Surrogates are written in pairs: 4 bytes for the pair.)
-    bytes += u < 0x80 ? 1 : u < 0x800 ? 2 : u >= 0xd800 && u <= 0xdfff ? (u <= 0xdbff ? 4 : 0) : 3;
-  };
-  const esc = (u: number) => {
-    put(92);
-    put(117);
-    put(HEX.charCodeAt((u >> 12) & 15));
-    put(HEX.charCodeAt((u >> 8) & 15));
-    put(HEX.charCodeAt((u >> 4) & 15));
-    put(HEX.charCodeAt(u & 15));
-  };
-  put(34);
-  // A high surrogate waiting for its low half.
-  let high = -1;
-  for (let i = a + 1; i < b; ) {
-    let u = src.charCodeAt(i++);
-    if (u === 92) {
-      const e = src.charCodeAt(i++);
-      switch (e) {
-        case 34: case 92: case 47: u = e; break;
-        case 98: u = 8; break;
-        case 102: u = 12; break;
-        case 110: u = 10; break;
-        case 114: u = 13; break;
-        case 116: u = 9; break;
-        case 117: {
-          u = 0;
-          for (let d = 0; d < 4; d++) {
-            const h = src.charCodeAt(i++);
-            const v = h >= 48 && h <= 57 ? h - 48 : h >= 97 && h <= 102 ? h - 87 : h >= 65 && h <= 70 ? h - 55 : -1;
-            if (v < 0) return -1;
-            u = (u << 4) | v;
-          }
-          break;
-        }
-        default:
-          return -1;
-      }
-    } else if (u < 32) return -1;
-    if (high >= 0) {
-      if (u >= 0xdc00 && u <= 0xdfff) {
-        put(high);
-        put(u);
-        high = -1;
-        continue;
-      }
-      esc(high);
-      high = -1;
-    }
-    if (u >= 0xd800 && u <= 0xdbff) high = u;
-    else if (u >= 0xdc00 && u <= 0xdfff) esc(u);
-    else if (u === 34 || u === 92) { put(92); put(u); }
-    else if (u < 32) {
-      const short = u === 8 ? 98 : u === 12 ? 102 : u === 10 ? 110 : u === 13 ? 114 : u === 9 ? 116 : 0;
-      if (short) { put(92); put(short); } else esc(u);
-    } else put(u);
-  }
-  if (high >= 0) esc(high);
-  put(34);
-  requotedHi = hi;
-  requotedBytes = bytes;
-  return len;
+export interface Requoter {
+  /** Strings this long (characters) are re-quoted in place; shorter ones natively, which is faster. */
+  min: number;
+  /** Writes token src[a..b] as quote(JSON.parse(token)) would into `out` from `at` (only counts if null): its length, or -1 if JSON.parse would refuse it. */
+  write(src: string, a: number, b: number, out: Uint16Array | null, at: number): number;
+  /** The highest unit the last `write` wrote. */
+  hi: number;
+  /** UTF-8 bytes of what `write` writes for src[a..b], or -1. */
+  bytes(src: string, a: number, b: number): number;
 }
-
-/** UTF-8 bytes of what `requote` writes for src[a..b], or -1. */
-function requoteBytes(src: string, a: number, b: number): number {
-  // (A string that runs to the end of the text has no closing quote.)
-  return src.charCodeAt(b) !== 34 || requote(src, a, b, null, 0) < 0 ? -1 : requotedBytes;
-}
+let requoter: Requoter | null = null;
+export const installRequoter = (r: Requoter) => {
+  requoter = r;
+};
 
 /** A re-indent in steps (see `reindenter`). */
 export interface Reindenter {
@@ -434,14 +362,14 @@ function step(st: Reindent, until: number): string | null | undefined {
           SPECIAL.lastIndex = i;
           special = SPECIAL.exec(src)?.index ?? n;
         }
-        if (special < j && j - i >= REQUOTE_MIN) {
+        if (special < j && requoter && j - i >= requoter.min) {
           // A big string with escapes, control characters or surrogates: re-quoted as JSON.stringify writes it
           // (counted first), without the copies the native way makes (hundreds of MB for one long string).
-          const k = requote(src, i, j, null, 0);
+          const k = requoter.write(src, i, j, null, 0);
           if (k < 0) return null;
           if (len + k > buf.length) buf = grown(buf, len, k);
-          len += requote(src, i, j, buf, len);
-          hi |= requotedHi;
+          len += requoter.write(src, i, j, buf, len);
+          hi |= requoter.hi;
         } else if (special < j) {
           let s: string;
           try {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, JNode, OBJ, parse, type ParseResult } from '../lib/json/parser';
 import { formatDoc, minifiedBytes, reindent, stringify } from '../lib/json/format';
+import '../lib/json/requote';
 
 let seed = 11;
 const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);

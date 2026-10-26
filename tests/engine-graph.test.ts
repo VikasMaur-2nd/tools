@@ -142,6 +142,7 @@ test('graph root updates track whether the view is active and preserve the reset
 test('graph receives packed documents through the deferred node path', async () => {
   const s = session();
   await s.engine.loadGraph();
+  await s.engine.tapeCode();
   const text = '{"nested":{"value":1}}';
   const parsed = parse(text);
   s.engine.goodPacked = { id: -1, tree: packTree(parsed, text), text };

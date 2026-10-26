@@ -1,4 +1,5 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
+import '../json/requote';
 import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
 import { packedTransfer, packTape, packTree } from '../json/pack-send';
 import { lazyResult } from '../json/lazy';

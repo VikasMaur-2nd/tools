@@ -1,7 +1,6 @@
-import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
+import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Key } from '../json/parser';
 import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
-import { eachChildKey } from '../json/lazy';
 import type { FindResult } from './codeview';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
@@ -190,10 +189,12 @@ export class TableView {
       const it = items[r];
       // (Keys read from the tape when the item's members aren't made: a big array's rows stay unmade.)
       if (it.t === OBJ) {
-        eachChildKey(it, (key) => {
+        const add = (key: Key) => {
           const k = key as string;
           if (seen.size < MAX_COLS && !seen.has(k)) seen.set(k, 0);
-        });
+        };
+        if (it.z && it._v === undefined) it.z.childKeys(it, add);
+        else for (const c of kids(it)) add(c.key);
       } else hasValue = true;
     }
     const cols: Col[] = [{ key: null, idx: true, label: isObj ? 'key' : '#', w: 0 }];

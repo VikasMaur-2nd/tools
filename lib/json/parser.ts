@@ -66,10 +66,23 @@ export class JNode {
   }
 }
 
-/** What a node made from a tape knows of it (see lazy.ts). */
+/**
+ * What a node made from a tape knows of it (see lazy.ts). Code that walks a big tree asks it instead:
+ * the tape's code loads only when a worker sends a tape, so the views don't import it.
+ */
 export interface TapeLink {
   /** Makes `n`'s children and returns them. */
   fill(n: JNode): JNode[];
+  /** How many nodes of `n`'s subtree are at most `levels` below it. */
+  within(n: JNode, levels: number): number;
+  /** Calls `f` with the key of each of `n`'s children, without making them. */
+  childKeys(n: JNode, f: (key: Key) => void): void;
+  /** The tree search (TreeView) under `n`: matching tape indexes, in document order, at most `max`. */
+  search(n: JNode, qn: string, cs: boolean, max: number): number[];
+  /** The node at tape index `i` under `root` (made with its ancestors), or null. */
+  nodeAt(root: JNode, i: number): JNode | null;
+  /** Source start of tape index `i`. */
+  start(i: number): number;
 }
 
 export const kids = (n: JNode) => n.v as JNode[];
