@@ -27,9 +27,9 @@ function stepped(src: string, options: TapeOptions, every: number): Tape {
   let back = 0;
   for (let k = 0; ; k++) {
     const t = step(0);
-    // (Several top-level values: it starts over at the first one, once; repairing, it starts over
-    // from the start, and may again for several values.)
-    if (at() < pos) assert.ok(++back <= (options.repair ? 3 : 1), `progress went back ${back} times`);
+    // (Several top-level values: it starts over at the first one, once; repairing, each of up to 3
+    // more passes starts over from the start, and may again for several values.)
+    if (at() < pos) assert.ok(++back <= (options.repair ? 7 : 1), `progress went back ${back} times`);
     pos = at();
     if (t) {
       assert.equal(step(0), t, 'a finished parse keeps its tape');
@@ -278,6 +278,8 @@ describe('repairs (repair: true): the same in both parsers, and only for documen
     ['escapes in a string cut at the end of a line', '{"a": "x\\ny\\u0041\n, "b": 1}', { a: 'x\nyA', b: 1 }],
     ['a backslash at the end', '["ab\\', ['ab']],
     ['a cut name', '{"a": 1, "b\n: 2}', { a: 1, b: 2 }],
+    ['stringified JSON', '{\\"a\\": \\"b\\"}', { a: 'b' }],
+    ['stringified JSON with escapes in it', JSON.stringify('{"a": "x\\ny \\"q\\"", "b": [1, 2.5], "c": {"d": null}}').slice(1, -1), { a: 'x\ny "q"', b: [1, 2.5], c: { d: null } }],
   ];
   test('the repairs pbench scores, and more: values, issues at exact positions', () => {
     for (const [name, src, want] of CASES) {
@@ -295,8 +297,32 @@ describe('repairs (repair: true): the same in both parsers, and only for documen
     ]);
     assert.deepEqual(parse('[1, ...]', { repair: true }).head.issues, [{ p: 4, m: "Placeholder '...' was skipped" }]);
     assert.deepEqual(parse('{"a": "x" + "y"}', { repair: true }).head.issues, [{ p: 10, m: "Strings joined with '+' (not valid JSON)" }]);
+    const sj = '{\\"a\\": \\"b\\"}';
+    const st = parse(sj, { repair: true });
+    assert.deepEqual(st.head.issues, [{ p: 1, m: 'JSON written as a string (escaped quotes): read with its escapes undone' }]);
+    // Offsets are the source's: "b" is \"b\".
+    assert.deepEqual([st.nodes[W + 1], st.nodes[W + 2]], [sj.indexOf('\\"b'), sj.lastIndexOf('}')]);
     // What can't be repaired keeps its error.
     assert.deepEqual(parse('{"a": 1 @}', { repair: true }).head.error, { p: 8, m: "Expected ',' or '}' after property value, found '@'" });
+  });
+
+  test(`stringified JSON reads back as the document it was (${cases(3000)} cases)`, () => {
+    const r = rng((SEED || 1) + 22);
+    let read = 0;
+    for (let it = 0, total = cases(3000); it < total; it++) {
+      const doc = genStrict(r, 4);
+      const src = JSON.stringify(doc).slice(1, -1);
+      if (!oldParse(src).error) continue;
+      try {
+        const t = same(src, { repair: true }, it % 8 === 0 ? [1 + r.int(5)] : []);
+        if (t.head.error) continue;
+        assert.deepEqual(val(t, src), val(parse(doc), doc));
+        read++;
+      } catch (e) {
+        throw new Error(`iteration ${it}: ${(e as Error).message}\ninput: ${show(src)}`, { cause: e });
+      }
+    }
+    assert.ok(read > cases(1500), `read: ${read}`);
   });
 
   test(`a document that parses without repairs parses the same with them; one that fails, the same in both parsers (${cases(20000)} cases)`, () => {

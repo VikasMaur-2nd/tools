@@ -229,13 +229,23 @@ const AFTER = 2;
 
 /** Parses `text` in one go. */
 export function parse(text: string, { lines: jsonLines = false, repair = false }: ParseOptions = {}): ParseResult {
-  begin(text, jsonLines, STEP);
-  const res = steps(Infinity)!;
+  const once = (t: string, fix: boolean) => {
+    begin(t, jsonLines, STEP);
+    fixing = fix;
+    return steps(Infinity)!;
+  };
+  const res = once(text, false);
   if (!repair || !res.error) return res;
-  begin(text, jsonLines, STEP);
-  fixing = true;
-  const fixed = steps(Infinity)!;
-  return fixed.error ? res : fixed;
+  const fixed = once(text, true);
+  if (!fixed.error) return fixed;
+  // JSON written as a string (`{\"a\": 1}`): read again with that level of escapes undone.
+  const u = unescaped(text);
+  if (u) {
+    let r = once(u.d, false);
+    if (r.error) r = once(u.d, true);
+    if (!r.error) return remap(r, u);
+  }
+  return res;
 }
 
 /**
@@ -244,29 +254,126 @@ export function parse(text: string, { lines: jsonLines = false, repair = false }
  * the call stack, so nesting is limited only by memory and a step can stop between any two
  * values. Each step mirrors the recursive-descent parser this replaced (tests/oracle/parser.ts)
  * in the same order, so the tree, issues, counts and errors are exactly what it gave. `every`:
- * values (and closed containers) between looks at the clock; tests stop after each one.
+ * values (and closed containers) between looks at the clock; tests stop after each one. With
+ * `repair`, the passes of parse() one after the other (at() starts over with each).
  */
 export function parser(text: string, { lines: jsonLines = false, repair = false }: ParseOptions = {}, every = STEP): Parser {
   begin(text, jsonLines, every);
   const state = save();
   let result: ParseResult | undefined;
-  // With `repair`: the first result if it is an error, while the parse runs again repairing.
+  // The passes (see parse()): 0 as is, 1 repairing, 2 and 3 the same with escapes undone.
+  let pass = 0;
+  let u: Unescaped | null = null;
   let failed: ParseResult | undefined;
+  const next = (): boolean => {
+    if (++pass === 2 && !(u = unescaped(text))) return false;
+    if (pass > 3) return false;
+    begin(pass < 2 ? text : u!.d, jsonLines, every);
+    fixing = pass !== 2;
+    save(state);
+    return true;
+  };
   const step = (until: number): ParseResult | undefined => {
     if (result) return result;
     load(state);
-    result = steps(until);
-    if (!result) save(state);
-    else if (repair && result.error && !failed) {
-      failed = result;
-      result = undefined;
-      begin(text, jsonLines, every);
-      fixing = true;
+    const r = steps(until);
+    if (!r) {
       save(state);
-    } else if (failed && result.error) result = failed;
-    return result;
+      return undefined;
+    }
+    if (!r.error) return (result = pass >= 2 ? remap(r, u!) : r);
+    failed ??= r;
+    if (repair && next()) return undefined;
+    return (result = failed);
   };
-  return { step, at: () => (result ? state.n : state.i) };
+  return { step, at: () => (result ? text.length : pass >= 2 ? u!.map[state.i] : state.i) };
+}
+
+/** `text` read as the content of a JSON string (with escapes undone), and where each of its characters (and its end) comes from. */
+export interface Unescaped {
+  d: string;
+  map: Int32Array;
+  /** The first escaped quote. */
+  at: number;
+}
+
+/** `text` with one level of escapes undone, if it has escaped quotes and every escape is valid; else null. */
+export function unescaped(text: string): Unescaped | null {
+  const at = text.indexOf('\\"');
+  if (at < 0) return null;
+  const map = new Int32Array(text.length + 1);
+  let d = '';
+  let k = 0;
+  let seg = 0;
+  for (let j = 0; j < text.length; ) {
+    if (text.charCodeAt(j) !== 92) {
+      map[k++] = j++;
+      continue;
+    }
+    d += text.slice(seg, j);
+    const e = text.charCodeAt(j + 1);
+    let c: string;
+    let len = 2;
+    switch (e) {
+      case 34:
+        c = '"';
+        break;
+      case 92:
+        c = '\\';
+        break;
+      case 47:
+        c = '/';
+        break;
+      case 98:
+        c = '\b';
+        break;
+      case 102:
+        c = '\f';
+        break;
+      case 110:
+        c = '\n';
+        break;
+      case 114:
+        c = '\r';
+        break;
+      case 116:
+        c = '\t';
+        break;
+      case 117:
+        if (!(isHex(text.charCodeAt(j + 2)) && isHex(text.charCodeAt(j + 3)) && isHex(text.charCodeAt(j + 4)) && isHex(text.charCodeAt(j + 5)))) return null;
+        c = String.fromCharCode(parseInt(text.slice(j + 2, j + 6), 16));
+        len = 6;
+        break;
+      default:
+        return null;
+    }
+    d += c;
+    map[k++] = j;
+    j += len;
+    seg = j;
+  }
+  d += text.slice(seg);
+  map[k] = text.length;
+  return { d, map, at };
+}
+
+/** Result `r` of `u.d`, with its offsets in the source, and the issue that says how it was read. */
+function remap(r: ParseResult, u: Unescaped): ParseResult {
+  const m = u.map;
+  const todo = r.root ? [r.root] : [];
+  while (todo.length) {
+    const x = todo.pop()!;
+    x.s = m[x.s];
+    x.e = m[x.e];
+    if (x.t >= ARR) for (const c of x.v as JNode[]) todo.push(c);
+  }
+  for (const x of r.issues) x.p = m[x.p];
+  for (const x of r.warnings) x.p = m[x.p];
+  r.issues.push({ p: u.at, m: 'JSON written as a string (escaped quotes): read with its escapes undone' });
+  r.issues.sort((a, b) => a.p - b.p);
+  if (r.issues.length > MAX_ISSUES) r.issues.length = MAX_ISSUES;
+  r.exact = false;
+  return r;
 }
 
 // ── The parse being run ──────────────────────────────────────────────────

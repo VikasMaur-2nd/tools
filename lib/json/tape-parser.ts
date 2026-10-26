@@ -17,7 +17,7 @@
  * level), unless `maxDepth` says otherwise.
  */
 import { decodeNumber, decodeString } from './decode';
-import { ARR, BOOL, NUL, NUM, OBJ, STR, type Issue, type ParseOptions } from './parser';
+import { ARR, BOOL, NUL, NUM, OBJ, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
 import {
   KEY_INDEX,
   KEY_NAME,
@@ -33,6 +33,7 @@ import {
   VALUE_TRUE,
   W,
   emptyTape,
+  valueOf,
   type Tape,
 } from './tape';
 
@@ -159,40 +160,85 @@ function intKeyAt(s: string, a: number, e: number): boolean {
 export function parse(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}): Tape {
   // (In runs all the same: the engine then optimizes the fast path as a function, rather than only
   // the loop it is in, which takes longer and is less sure.)
-  begin(text, jsonLines, 65536, deepest);
-  const tape = steps(Infinity)!;
+  const once = (t: string, fix: boolean) => {
+    begin(t, jsonLines, 65536, deepest);
+    fixing = fix;
+    return steps(Infinity)!;
+  };
+  const tape = once(text, false);
   if (!repair || !tape.head.error) return tape;
-  begin(text, jsonLines, 65536, deepest);
-  fixing = true;
-  const fixed = steps(Infinity)!;
-  return fixed.head.error ? tape : fixed;
+  const fixed = once(text, true);
+  if (!fixed.head.error) return fixed;
+  // parser.ts: JSON written as a string (`{\"a\": 1}`), read again with that level of escapes undone.
+  const u = unescaped(text);
+  if (u) {
+    let t = once(u.d, false);
+    if (t.head.error) t = once(u.d, true);
+    if (!t.head.error) return remap(t, u);
+  }
+  return tape;
 }
 
 /**
  * Parses `text` in steps: call `step` with a deadline until it returns the tape. `every`: values
- * (and closed containers) between looks at the clock; tests stop after each one.
+ * (and closed containers) between looks at the clock; tests stop after each one. With `repair`,
+ * the passes of parse() one after the other (at() starts over with each).
  */
 export function parser(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}, every = STEP): TapeParser {
   begin(text, jsonLines, every, deepest);
   const state = save();
   let result: Tape | undefined;
-  // With `repair`: the first result if it is an error, while the parse runs again repairing.
+  // The passes (see parse()): 0 as is, 1 repairing, 2 and 3 the same with escapes undone.
+  let pass = 0;
+  let u: Unescaped | null = null;
   let failed: Tape | undefined;
+  const next = (): boolean => {
+    if (++pass === 2 && !(u = unescaped(text))) return false;
+    if (pass > 3) return false;
+    begin(pass < 2 ? text : u!.d, jsonLines, every, deepest);
+    fixing = pass !== 2;
+    save(state);
+    return true;
+  };
   const step = (until: number): Tape | undefined => {
     if (result) return result;
     load(state);
-    result = steps(until);
-    if (!result) save(state);
-    else if (repair && result.head.error && !failed) {
-      failed = result;
-      result = undefined;
-      begin(text, jsonLines, every, deepest);
-      fixing = true;
+    const t = steps(until);
+    if (!t) {
       save(state);
-    } else if (failed && result.head.error) result = failed;
-    return result;
+      return undefined;
+    }
+    if (!t.head.error) return (result = pass >= 2 ? remap(t, u!) : t);
+    failed ??= t;
+    if (repair && next()) return undefined;
+    return (result = failed);
   };
-  return { step, at: () => (result ? state.n : state.i) };
+  return { step, at: () => (result ? text.length : pass >= 2 ? u!.map[state.i] : state.i) };
+}
+
+/** parser.ts's remap(): tape `t` of `u.d` with its offsets in the source (values it can't read back from there in `extra`). */
+function remap(t: Tape, u: Unescaped): Tape {
+  const m = u.map;
+  const T = t.nodes;
+  let extra = t.extra;
+  for (let k = 0; k < t.count; k++) {
+    const o = k * W;
+    const vk = (T[o] >> 5) & 7;
+    if (vk === VALUE_SLICE || vk === VALUE_RAW || vk === VALUE_DECODE) {
+      (extra ??= new Map()).set(k, valueOf(t, k, u.d) as string);
+      T[o] = (T[o] & ~(7 << 5)) | (VALUE_EXTRA << 5);
+    }
+    T[o + 1] = m[T[o + 1]];
+    T[o + 2] = m[T[o + 2]];
+  }
+  const head = t.head;
+  for (const x of head.issues) x.p = m[x.p];
+  for (const x of head.warnings) x.p = m[x.p];
+  head.issues.push({ p: u.at, m: 'JSON written as a string (escaped quotes): read with its escapes undone' });
+  head.issues.sort((a, b) => a.p - b.p);
+  if (head.issues.length > MAX_ISSUES) head.issues.length = MAX_ISSUES;
+  head.exact = false;
+  return { ...t, extra };
 }
 
 /** A small document that takes every path of the fast path. */
