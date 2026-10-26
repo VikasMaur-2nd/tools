@@ -47,7 +47,7 @@ function plan({ level = 'smoke', engines = 'chromium', suites = '', url = '' }) 
   if (browsers && !list.length) throw new Error(`level ${level} needs engines`);
   const code = url || level === 'e2e' ? null : level === 'unit' ? 'unit' : 'quick';
   // The whole functional set in several engines runs as one job per engine, after a job that builds.
-  const split = browsers && !suites && list.length > 1;
+  const split = browsers && list.length > 1; // TEMP: split with a filter too, to test the engine jobs
   return { level, engines: list, suites, url, code, split };
 }
 
