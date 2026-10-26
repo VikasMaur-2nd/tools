@@ -38,7 +38,8 @@ async function compare(page, left, right) {
     const c = window.__vis('.cmp');
     if (!c || c.classList.contains('stale')) return null;
     const rows = [...c.querySelectorAll('.cmp-list [data-i]')];
-    const empty = c.querySelector('.cmp-empty');
+    // (A plain .cmp-empty is the prompt shown before both documents are in; .ok / .err are results.)
+    const empty = c.querySelector('.cmp-empty.ok, .cmp-empty.err');
     if (!rows.length && !empty) return null;
     return { rows: rows.map((r) => r.textContent.replace(/\s+/g, ' ').trim()), empty: empty?.textContent.replace(/\s+/g, ' ').trim() ?? null };
   }, null, { timeout: 20_000 });
