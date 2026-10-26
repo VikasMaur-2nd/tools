@@ -155,7 +155,7 @@ test('/integrate: the link builder keeps its document after /privacy and Back', 
 });
 
 // Measured 2026-10-25 at load 2: main freezes 17.9 s on the switch to Format, PR #26 takes 0.13 s.
-test('leaving Compare with a 6.9 MB modified document does not stall', { slots: 'all', known: (engine) => (engine === 'webkit' ? undefined : "PR #26: on main, Compare's hidden 6.9 MB editor freezes the page ~18 s when you switch to Format") }, async (t) => {
+test('leaving Compare with a 6.9 MB modified document does not stall', { slots: 'all', known: (engine) => (engine === 'webkit' ? undefined : "bug: leaving Compare with a 6.9 MB modified document freezes the page ~9-11 s (Chromium, Firefox; also before PR #26)") }, async (t) => {
   const { page } = t;
   await t.open('/');
   await t.app.openFile(page, 'rows-100');

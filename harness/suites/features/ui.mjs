@@ -8,11 +8,6 @@ import { loadText, setDoc, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', width: 1280, height: 800, tags: ['ui'] });
 
-const PR26_TIP = 'PR #26: tooltips that state document facts become PRIVATE';
-const PR26_BUILDER = 'PR #26: the builder never offers a link made for older inputs';
-const PR26_PLAIN = "PR #26: the builder's plain box (no editor) changes the document";
-const PR26_EXPORT = 'PR #26: one Tab stop per choice in the export dialog, arrows move it';
-const PR26_SVG = 'PR #26: SVG export refuses a graph too large for it, with a reason';
 
 /** Settles after a key press: React has committed and focus effects have run. */
 const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -42,10 +37,10 @@ test('tooltips: document facts are PRIVATE, site text is not', { allowErrors: tr
   await until(page, () => !!window.__vis('.sb-l .sz-min'), null, { timeout: 10_000 });
   await page.getByRole('radio', { name: /Minify/ }).hover();
   const m = await tipFor(page, /% smaller/);
-  t.check(!!m && /% smaller/.test(m.text) && m.priv && m.shown, 'tooltips: Minify\'s "N% smaller" is PRIVATE', m, { known: PR26_TIP });
+  t.check(!!m && /% smaller/.test(m.text) && m.priv && m.shown, 'tooltips: Minify\'s "N% smaller" is PRIVATE', m);
   await page.hover('.statusbar .sz-min');
   const s = await tipFor(page, /smaller than the input/);
-  t.check(!!s && /smaller than the input/.test(s.text) && s.priv, 'tooltips: a size tooltip ("…% smaller than the input") is PRIVATE', s, { known: PR26_TIP });
+  t.check(!!s && /smaller than the input/.test(s.text) && s.priv, 'tooltips: a size tooltip ("…% smaller than the input") is PRIVATE', s);
   await page.getByRole('radio', { name: /Pretty/ }).hover();
   const p = await tipFor(page, /^Indented and readable$/);
   t.check(!!p && p.text === 'Indented and readable' && !p.priv, 'tooltips: a site tooltip right after is public again', p);
@@ -55,7 +50,7 @@ test('tooltips: document facts are PRIVATE, site text is not', { allowErrors: tr
   await until(page, () => !!window.__vis('.cmp-k-changed'), null, { timeout: 10_000 });
   await page.hover('.cmp-k-changed');
   const c = await tipFor(page, /type change/);
-  t.check(!!c && /type change/.test(c.text) && c.priv, 'tooltips: a Compare count tooltip ("1 type change") is PRIVATE', c, { known: PR26_TIP });
+  t.check(!!c && /type change/.test(c.text) && c.priv, 'tooltips: a Compare count tooltip ("1 type change") is PRIVATE', c);
   // Keyboard focus shows tooltips too.
   await page.mouse.move(2, 2);
   await page.locator('button[aria-label="All commands"]').focus();
@@ -65,7 +60,7 @@ test('tooltips: document facts are PRIVATE, site text is not', { allowErrors: tr
   t.check(!!k && k.text === 'All commands' && !k.priv, 'tooltips: a site tooltip on keyboard focus is public', k);
   const states = await page.evaluate(() => window.__tipStates);
   const bad = states.filter((x) => /% smaller|type change/.test(x.text) && !x.priv);
-  t.check(states.length > 4 && !bad.length, 'tooltips: no observed moment shows private text without PRIVATE', `${states.length} states, ${bad.length} bad`, { known: PR26_TIP });
+  t.check(states.length > 4 && !bad.length, 'tooltips: no observed moment shows private text without PRIVATE', `${states.length} states, ${bad.length} bad`);
   errorsOk(t, 'tooltips: no page errors');
 });
 
@@ -132,7 +127,7 @@ test('builder: the link stays tied to its inputs', async (t) => {
   const seen = await stopRecording(page);
   const last = await state(page);
   const blocked = seen.filter((x) => !x.copy && !x.open).length;
-  t.check(blocked > 0, 'builder: while a new link is made, Copy and Open are off', `${blocked} of ${seen.length} states blocked`, { known: PR26_BUILDER });
+  t.check(blocked > 0, 'builder: while a new link is made, Copy and Open are off', `${blocked} of ${seen.length} states blocked`);
   t.check(last.copy && last.open && last.href !== first.href && last.href.length > 30, 'builder: then the new link is usable', last);
   t.check(seen.every((x) => x.badge !== null || x.empty === 'Making the link…'), 'builder: the old link stays in view meanwhile (no flash)', seen.filter((x) => x.badge === null).slice(0, 2));
   // A big document (compressed in a worker): once it is in the box, the old link is never usable again.
@@ -145,7 +140,7 @@ test('builder: the link stays tied to its inputs', async (t) => {
   const stale = inAt < 0 ? -1 : samples.slice(inAt).filter((x) => (x.copy || x.open) && x.href === last.href).length;
   const making = samples.some((x) => x.empty === 'Making the link…');
   const done = samples[samples.length - 1];
-  t.check(inAt >= 0 && stale === 0, 'builder: once a big document is in, its old link is never usable', `in at state ${inAt}, ${stale} stale-usable, "Making the link…" ${making ? 'shown' : 'not needed'}`, { known: PR26_BUILDER });
+  t.check(inAt >= 0 && stale === 0, 'builder: once a big document is in, its old link is never usable', `in at state ${inAt}, ${stale} stale-usable, "Making the link…" ${making ? 'shown' : 'not needed'}`);
   t.check(done.copy && done.open && done.href !== last.href, 'builder: then its link is usable', { copy: done.copy, open: done.open });
 });
 
@@ -164,7 +159,7 @@ test('builder: a compression failure shows its error and leaves no old link', { 
   await page.keyboard.type(' ');
   await until(page, () => /cannot compress links/.test(window.__bstate().error), null, { timeout: 5000 });
   const st = await state(page);
-  t.check(/cannot compress links/.test(st.error) && !st.copy && !st.open && st.badge === null, 'builder: a failed compression shows its error and leaves no old link to use', st, { known: PR26_BUILDER });
+  t.check(/cannot compress links/.test(st.error) && !st.copy && !st.open && st.badge === null, 'builder: a failed compression shows its error and leaves no old link to use', st);
   errorsOk(t, 'builder (compression): no page errors', /no compression/);
 });
 
@@ -194,8 +189,8 @@ test("builder: the plain box works when the editor's code can't load", { allowEr
   const good = await state(page);
   const out = await page.locator('.link-builder .lb-ed-out textarea').inputValue();
   t.check(plain, 'builder (no editor): the box stayed plain');
-  t.check(bad.check !== before.check && /fixes|Ln \d/.test(bad.check) && /Valid JSON/.test(good.check), 'builder (no editor): typing in it is checked', `${before.check} | ${bad.check} | ${good.check}`, { known: PR26_PLAIN });
-  t.check(good.copy && good.href !== before.href && out.includes(good.href.slice(0, 40)), 'builder (no editor): and makes its link', good.href.slice(0, 60), { known: PR26_PLAIN });
+  t.check(bad.check !== before.check && /fixes|Ln \d/.test(bad.check) && /Valid JSON/.test(good.check), 'builder (no editor): typing in it is checked', `${before.check} | ${bad.check} | ${good.check}`);
+  t.check(good.copy && good.href !== before.href && out.includes(good.href.slice(0, 40)), 'builder (no editor): and makes its link', good.href.slice(0, 60));
   errorsOk(t, 'builder (no editor): no page errors', /Failed to load resource/);
 });
 
@@ -227,7 +222,7 @@ test('graph export dialog: one Tab stop per choice, arrows move it', async (t) =
   await graph(t, () => setDoc(page, SMALL));
   await openExport(t);
   const stops = await page.evaluate(() => [...document.querySelectorAll('.gx-form [role=radio]')].filter((b) => !b.disabled && b.tabIndex >= 0).map((b) => b.closest('[role=radiogroup]').getAttribute('aria-label')));
-  t.check(JSON.stringify(stops) === JSON.stringify([...new Set(stops)]) && stops.length === 4, 'export dialog: one Tab stop per choice', stops, { known: PR26_EXPORT });
+  t.check(JSON.stringify(stops) === JSON.stringify([...new Set(stops)]) && stops.length === 4, 'export dialog: one Tab stop per choice', stops);
   await group(page, 'File type').locator('[aria-checked=true]').focus();
   const start = await active(page);
   await press(page, 'ArrowRight');
@@ -235,22 +230,22 @@ test('graph export dialog: one Tab stop per choice, arrows move it', async (t) =
   await press(page, 'ArrowRight');
   await press(page, 'ArrowRight');
   const a3 = await active(page);
-  t.check(a1.checked === 'true' && a1.text !== start.text && a3.text === start.text && a3.checked === 'true', 'export dialog: arrows move the choice and the focus, wrapping round', `${start.text} → ${a1.text} → … → ${a3.text}`, { known: PR26_EXPORT });
+  t.check(a1.checked === 'true' && a1.text !== start.text && a3.text === start.text && a3.checked === 'true', 'export dialog: arrows move the choice and the focus, wrapping round', `${start.text} → ${a1.text} → … → ${a3.text}`);
   await press(page, 'Tab');
   const t1 = await active(page);
-  t.check(t1.group === 'Area' && t1.checked === 'true', 'export dialog: Tab goes to the next choice, on its chosen option', t1, { known: PR26_EXPORT });
+  t.check(t1.group === 'Area' && t1.checked === 'true', 'export dialog: Tab goes to the next choice, on its chosen option', t1);
   // No card selected: "Selected branch" is disabled, and the arrows skip it.
   const branchOff = await group(page, 'Area').getByRole('radio', { name: 'Selected branch' }).isDisabled();
   await press(page, 'ArrowLeft');
   const t2 = await active(page);
-  t.check(branchOff && t2.text === 'Visible area' && t2.checked === 'true', 'export dialog: arrows skip a disabled option', t2, { known: PR26_EXPORT });
+  t.check(branchOff && t2.text === 'Visible area' && t2.checked === 'true', 'export dialog: arrows skip a disabled option', t2);
   await press(page, 'ArrowRight');
   // JPEG: Transparent is disabled.
   await group(page, 'File type').getByRole('radio', { name: 'JPEG' }).click();
   await group(page, 'Background').getByRole('radio', { name: 'White' }).click();
   await press(page, 'ArrowRight');
   const t3 = await active(page);
-  t.check(t3.group === 'Background' && t3.text === 'Theme', 'export dialog: with JPEG, arrows skip Transparent', t3, { known: PR26_EXPORT });
+  t.check(t3.group === 'Background' && t3.text === 'Theme', 'export dialog: with JPEG, arrows skip Transparent', t3);
 });
 
 test('graph export: every format and area downloads an image', async (t) => {
@@ -297,7 +292,7 @@ for (const [what, make] of [
     const info = await page.locator('.gx-info').innerText();
     const off = await page.getByRole('button', { name: 'Download' }).isDisabled();
     const ok = off && /too large for SVG|Too many cards/.test(info);
-    t.check(ok, `export (${what}): SVG refused with a reason`, `${info} (${Date.now() - t0} ms)`, what.includes('array') ? { known: PR26_SVG } : {});
+    t.check(ok, `export (${what}): SVG refused with a reason`, `${info} (${Date.now() - t0} ms)`);
     await group(page, 'File type').getByRole('radio', { name: 'PNG' }).click();
     await group(page, 'Area').getByRole('radio', { name: 'Visible area' }).click();
     // (The click waits for Download to be enabled again: the PNG preview is ready.)

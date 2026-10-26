@@ -12,7 +12,6 @@ import {
 
 defaults({ ...ANALYTICS, tags: ['privacy'], timeout: 120_000 });
 
-const TIP_FACTS = 'PR #26: the shared tooltip shows document facts to session replay (it gets PRIVATE there)';
 
 /** Replaces the input editor's document the way Ctrl+A, Ctrl+V does. */
 async function pasteDoc(t, text, which = 'input') {
@@ -163,7 +162,7 @@ test('canary: status-bar warning, JWT, context menu, graph export dialog and Min
   const snap = await recordingText(a);
   t.check(snap.length > 0, 'PostHog gets the recording');
   checkPrivateBoxes(t, snap);
-  checkTooltipFacts(t, snap, TIP_FACTS);
+  checkTooltipFacts(t, snap);
   // The JWT's own text (its segments are base64, so a marker inside wouldn't show as is).
   await checkNoLeaks(t, a, K, { 'the JWT header': header, 'the JWT payload': payload });
 });
@@ -203,7 +202,7 @@ test('canary: tooltips with document facts stay out of recordings, site tooltips
   const snap = await recordingText(a);
   t.check(snap.includes('Indented and readable'), 'a site tooltip ("Indented and readable") shows in the recording');
   t.check(snap.includes('All commands'), 'a site tooltip ("All commands") shows in the recording after a private one');
-  checkTooltipFacts(t, snap, TIP_FACTS);
+  checkTooltipFacts(t, snap);
   checkPrivateBoxes(t, snap);
 });
 
@@ -258,7 +257,7 @@ test('canary: /integrate builder (invalid and valid JSON, file, Compare two, URL
   const snap = await recordingText(a);
   t.check(snap.includes('Make your button'), 'site text "Make your button" shows in the recording');
   // JSX splits the prefix, size and suffix into separate rrweb text nodes.
-  t.check(!snap.includes('The link is '), 'the builder link length stays out of recordings', 'Unblocked link-length hint text', { known: 'PR #26: the builder link-length hint gets PRIVATE' });
+  t.check(!snap.includes('The link is '), 'the builder link length stays out of recordings', 'Unblocked link-length hint text');
   checkPrivateBoxes(t, snap);
   await checkNoLeaks(t, a, K);
 });

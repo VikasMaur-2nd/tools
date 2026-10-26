@@ -8,7 +8,6 @@ import { until } from './_helpers.mjs';
 // The forced crash logs errors on purpose.
 defaults({ engines: 'all', width: 1280, height: 900, tags: ['errors'], allowErrors: true, timeout: 120_000 });
 
-const PR26 = 'PR #26: the error screen says the JSON is saved only when it is';
 const SAVED = 'Your JSON is saved in this browser. Try again, and if it keeps happening, reload the page.';
 const UNSAVED = "Try again, and if it keeps happening, reload the page. JSON you had open here isn't saved in this browser, so you may need to paste or open it again.";
 // About 3.2 MB: over the 2.5 million characters the tool saves.
@@ -55,7 +54,7 @@ test('a 3 MB paste over a saved document: the screen says the JSON is not saved'
   // The empty editor's save removes the old copy; 3 MB is too big to save.
   const n = await stored(t.page, null);
   t.check(n === null, 'nothing is saved afterwards', n);
-  t.check(r.lead === UNSAVED, "the screen says the JSON you had open isn't saved", r.lead, { known: PR26 });
+  t.check(r.lead === UNSAVED, "the screen says the JSON you had open isn't saved", r.lead);
 });
 
 test('a small first paste: the screen says the JSON is saved, and it is', async (t) => {

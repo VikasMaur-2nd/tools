@@ -148,7 +148,8 @@ test('a 10 MB paste into the JSON box: progress, the link, then typing at the st
   t.log(`took ${took} ms, longest freeze ${Math.max(0, ...w.gaps)} ms, gaps ${JSON.stringify(w.gaps.slice(0, 14))}`);
   const rowsDrawn = await page.evaluate(() => document.querySelector('.link-builder .ed textarea').closest('.ed').querySelectorAll('.ed-gl > div').length);
   t.check(rowsDrawn > 5, 'the big document shows with line numbers', rowsDrawn);
-  t.check(/lk-d/.test(await outHtml(page)), 'the long link is coloured in the code box');
+  // (Coloured a moment after the link appears: up to ~200 ms in WebKit.)
+  t.check(await until(page, () => /lk-d/.test(document.querySelectorAll('.link-builder .ed-hl')[1]?.innerHTML ?? ''), null, 5000 * k), 'the long link is coloured in the code box');
 
   // Typing in the big document: every key is taken (and how long each waited for its frame is logged).
   await page.keyboard.press('Control+Home');

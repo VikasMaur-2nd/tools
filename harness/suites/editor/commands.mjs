@@ -134,8 +134,7 @@ test('consecutive palette commands finish closing and the URL command opens its 
   // the command runs on the next frame and reopens the palette as the URL prompt, then the late close event
   // sets palette: false and the prompt closes at once (components/dialogs.tsx Commands.run). PR #26 runs the
   // command after the close event: 6 of 6 Firefox runs passed on its head 5ca9fb8.
-  const known = t.engine === 'firefox' ? { known: 'PR #26: on main the URL prompt closes right after opening (dialog close event races the command frame)' } : {};
-  t.check(await prompt.waitFor({ state: 'visible', timeout: t.budget(10_000) }).then(() => true, () => false), 'the URL prompt opens after its palette command', undefined, known);
+  t.check(await prompt.waitFor({ state: 'visible', timeout: t.budget(10_000) }).then(() => true, () => false), 'the URL prompt opens after its palette command');
   await closePalette(page, { timeout: t.budget(10_000) });
   await t.app.command(page, 'Copy input to clipboard', { timeout: t.budget(10_000) });
   t.check(await t.app.clipboard(page) === text, 'commands still run after closing the URL prompt');

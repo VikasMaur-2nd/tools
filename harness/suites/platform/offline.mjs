@@ -14,34 +14,26 @@ import {
 
 defaults({ engines: 'all', serviceWorkers: 'allow', allowErrors: true, tags: ['offline'], timeout: 300_000 });
 
-const FOLLOW = 'PR #26: the worker caches every chunk a page can load once it has settled (main caches only what pages loaded)';
-const RETIRE = "PR #26: a deploy retires the old build's files until its tabs close (main deletes them at once)";
-const WHOLE = 'PR #26: a new shell replaces the old one only once every file it names is cached (main swaps it in when one 404s)';
-
 const DOC = JSON.stringify({ users: [{ id: 1, name: 'Ada', tags: ['a', 'b'] }, { id: 2, name: 'Grace', tags: [] }], total: 2 }, null, 2);
 /** Errors of an offline page that are just the network being gone. */
 const NETWORK = /_vercel\/insights|ERR_INTERNET_DISCONNECTED|ERR_EMPTY_RESPONSE|ERR_CONNECTION|Failed to load resource|NetworkError|net::|fetch|Load failed|Cannot load https?:|The network connection was lost|Could not connect/i;
 
-async function checkErrors(t, scenario, known) {
+async function checkErrors(t, scenario) {
   const details = await Promise.all(t.platformConsoleErrors);
   let at = 0;
   const errors = t.errors.map((e) => e === 'console: Error' ? `console: ${details[at++] || 'Error'}` : e);
   const relevant = errors.filter((e) => !NETWORK.test(e));
-  // A missing cached module can also surface as an unhandled ChunkLoadError or a
-  // WebKit blob-worker error. Keep these failures visible under their causal PR.
-  const missingChunk = relevant.length && relevant.every((e) => /(?:ChunkLoadError|Error): Failed to load chunk|Cannot load blob:https?:.*due to access control checks/.test(e));
-  t.check(!relevant.length, `${scenario}: no page errors`, relevant.slice(0, 3), known && missingChunk ? { known } : undefined);
+  t.check(!relevant.length, `${scenario}: no page errors`, relevant.slice(0, 3));
 }
 
 /**
  * The lazily loaded features in a page that has just opened (before its warm-up loads them): the graph,
  * Convert to every format, the Excel writer and the YAML importer are each their own chunk.
- * `known`: these fail because of that known bug (a chunk the worker should have cached).
  */
-async function features(t, page, label, known) {
+async function features(t, page, label) {
   const unavailable = (detail) => {
     for (const feature of ['graph view', 'Convert to every format', 'Excel download', 'YAML import']) {
-      t.check(false, `${label}: ${feature}`, detail, known ? { known } : undefined);
+      t.check(false, `${label}: ${feature}`, detail);
     }
   };
   // Checking a document proves hydration completed and also works on pre-harness
@@ -59,11 +51,10 @@ async function features(t, page, label, known) {
     if (!closed) return unavailable('The saved Compare view could not hydrate or close with the cached chunks');
   }
   const errToast = () => page.locator('.toast.err').count();
-  const opts = known ? { known } : undefined;
 
   await t.app.view(page, 'graph');
   const graph = await page.waitForFunction(() => window.__vis('#view-graph .gv-ctl') ? 'ready' : window.__vis('.toast.err') ? 'error' : false, null, { ...POLL, timeout: t.budget(15_000) }).then(async (h) => (await h.jsonValue()) === 'ready', () => false);
-  t.check(graph && !(await errToast()), `${label}: graph view`, undefined, opts);
+  t.check(graph && !(await errToast()), `${label}: graph view`);
 
   await t.app.view(page, 'convert');
   const select = page.locator('.app:visible .vmain select');
@@ -94,16 +85,16 @@ async function features(t, page, label, known) {
     shown = target;
   }
   if (bad.length) t.log(label, 'failed Convert targets', bad);
-  t.check(targets.length >= 15 && !bad.length && !(await errToast()), `${label}: Convert to every format (${targets.length})`, bad.join(' '), opts);
+  t.check(targets.length >= 15 && !bad.length && !(await errToast()), `${label}: Convert to every format (${targets.length})`, bad.join(' '));
 
   const dl = page.waitForEvent('download', { timeout: t.budget(15_000) }).then((d) => d.suggestedFilename(), () => null);
   await t.app.command(page, 'Export to Excel');
   const name = await dl;
-  t.check(!!name && name.endsWith('.xlsx') && !(await errToast()), `${label}: Excel download`, String(name), opts);
+  t.check(!!name && name.endsWith('.xlsx') && !(await errToast()), `${label}: Excel download`, String(name));
 
   await page.setInputFiles('.app:visible input[type=file]', { name: 'people.yaml', mimeType: 'text/yaml', buffer: Buffer.from('people:\n  - name: Ada\n    born: 1815\n  - name: Grace\n') });
   const yaml = await page.waitForFunction(() => /"born": 1815/.test(document.getElementById('input').value), null, { ...POLL, timeout: t.budget(15_000) }).then(() => true, () => false);
-  t.check(yaml && !(await errToast()), `${label}: YAML import`, undefined, opts);
+  t.check(yaml && !(await errToast()), `${label}: YAML import`);
 }
 
 /** Opens '/' through the proxy and waits until the worker has cached what this first visit gives it. */
@@ -121,8 +112,7 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
     await firstVisit(t, proxy);
     const page = t.page;
     const missing = await missingFromCache(page, ['/', ...home.all]);
-    t.check(!missing.length, 'fresh: the shell and every chunk it can load are cached', `${missing.length} of ${home.all.length + 1} missing: ${missing.slice(0, 4).join(' ')}`, { known: FOLLOW });
-    const lazyKnown = missing.length ? FOLLOW : undefined;
+    t.check(!missing.length, 'fresh: the shell and every chunk it can load are cached', `${missing.length} of ${home.all.length + 1} missing: ${missing.slice(0, 4).join(' ')}`);
     for (const path of ['/tools/json-validator', '/es']) {
       await page.goto(proxy.origin + path, { waitUntil: 'load' });
       t.assert(await waitInCache(page, [path]), `fresh: the visited ${path} page is cached`);
@@ -135,7 +125,7 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
     const p2 = await t.context.newPage();
     const home2 = await opened(p2, proxy.origin, '/');
     t.check(home2.ok && home2.tool === 1, 'fresh offline: / opens', home2);
-    await features(t, p2, 'fresh offline /', lazyKnown);
+    await features(t, p2, 'fresh offline /');
     const tool = await opened(p2, proxy.origin, '/tools/json-validator');
     t.check(tool.ok && tool.tool === 1, 'fresh offline: a visited tool page opens', tool);
     const es = await opened(p2, proxy.origin, '/es');
@@ -145,8 +135,8 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
     t.check(es2.ok && es2.lang === 'es', 'fresh offline: an unvisited localized tool page falls back to its home', es2);
     const other = await opened(p3, proxy.origin, '/tools/json-diff');
     t.check(other.ok && other.tool === 1, 'fresh offline: an unvisited page falls back to the shell', other);
-    await features(t, p3, 'fresh offline (fallback page)', lazyKnown);
-    await checkErrors(t, 'fresh', lazyKnown);
+    await features(t, p3, 'fresh offline (fallback page)');
+    await checkErrors(t, 'fresh');
   } finally {
     proxy.close();
   }
@@ -164,7 +154,6 @@ test("deploy: a tab open during a deploy keeps its build offline; new tabs get t
 
     await firstVisit(t, proxy);
     const oldTab = t.page;
-    const lazyKnown = (await missingFromCache(oldTab, a.all)).length ? FOLLOW : undefined;
     const updateNotice = oldTab.locator('.toast', { hasText: 'A new version is ready' }).waitFor({ timeout: t.budget(60_000) }).then(() => true, () => false);
 
     proxy.deploy('A2');
@@ -185,21 +174,21 @@ test("deploy: a tab open during a deploy keeps its build offline; new tabs get t
     await visitor.reload({ waitUntil: 'load' });
     await swIdle(visitor, { posted: true, timeout: 90_000 });
     const missingA2 = await missingFromCache(visitor, a2.all);
-    t.check(!missingA2.length, 'deploy: every file of the new build, lazy ones included, is cached', missingA2.slice(0, 3), { known: FOLLOW });
+    t.check(!missingA2.length, 'deploy: every file of the new build, lazy ones included, is cached', missingA2.slice(0, 3));
     const told = await updateNotice;
     t.check(told, 'deploy: the open tab is told a new version is ready');
 
     proxy.offline();
     const lost = await unreachable(oldTab, a.all);
-    t.check(!lost.length, 'deploy offline: the old tab still gets every file of its build (lazy ones included)', `${lost.length} missing ${lost.slice(0, 3).join(' ')}`, { known: RETIRE });
+    t.check(!lost.length, 'deploy offline: the old tab still gets every file of its build (lazy ones included)', `${lost.length} missing ${lost.slice(0, 3).join(' ')}`);
     // The old tab opens a feature it hadn't loaded yet.
     await oldTab.getByRole('tab', { name: 'Compare' }).click();
     const cmp = await oldTab.locator('#input2').first().waitFor({ timeout: t.budget(15_000) }).then(() => true, () => false);
-    t.check(cmp, 'deploy offline: the old tab opens Compare', undefined, lost.length ? { known: RETIRE } : undefined);
+    t.check(cmp, 'deploy offline: the old tab opens Compare');
     const fresh = await t.context.newPage();
     const o2 = await opened(fresh, proxy.origin, '/');
     t.check(o2.ok && o2.tool === 1, 'deploy offline: a new tab opens the new build', o2);
-    await features(t, fresh, 'deploy offline, new build', missingA2.length ? FOLLOW : lazyKnown);
+    await features(t, fresh, 'deploy offline, new build');
 
     // The old tabs close: the old build's files go (checked when a page posts what it loaded, or on a visit).
     await oldTab.close();
@@ -209,14 +198,14 @@ test("deploy: a tab open during a deploy keeps its build offline; new tabs get t
     await later.goto(proxy.origin + '/', { waitUntil: 'load' });
     await swIdle(later, { posted: true });
     const left = (await cacheKeys(later)).filter((p) => onlyA.includes(p));
-    t.check(!left.length, "deploy: once the old tabs are closed, the old build's files are deleted", `${left.length} left of ${onlyA.length}`, { known: RETIRE });
+    t.check(!left.length, "deploy: once the old tabs are closed, the old build's files are deleted", `${left.length} left of ${onlyA.length}`);
     t.check(!(await cacheKeys(later)).includes('/sw.js?retired'), 'deploy: the retired record is gone with them');
     proxy.offline();
     const last = await t.context.newPage();
     const o3 = await opened(last, proxy.origin, '/');
     t.check(o3.ok && o3.tool === 1, 'deploy offline after cleanup: the new build opens', o3);
-    await features(t, last, 'deploy offline after cleanup', missingA2.length ? FOLLOW : lazyKnown);
-    await checkErrors(t, 'deploy', lost.length ? RETIRE : missingA2.length ? FOLLOW : undefined);
+    await features(t, last, 'deploy offline after cleanup');
+    await checkErrors(t, 'deploy');
   } finally {
     proxy.close();
   }
@@ -228,7 +217,6 @@ test('fail404: a deploy with a file missing leaves the cached build whole offlin
   try {
     const [a, a2] = await Promise.all([closure(A), closure(t.base)]);
     await firstVisit(t, proxy);
-    const lazyKnown = (await missingFromCache(t.page, a.all)).length ? FOLLOW : undefined;
     // A deploy whose HTML names a file the server doesn't have (yet).
     const broken = a2.named.find((p) => p.endsWith('.js') && !a.all.includes(p));
     t.assert(broken, "the redeploy's HTML names a script build A doesn't have");
@@ -239,13 +227,13 @@ test('fail404: a deploy with a file missing leaves the cached build whole offlin
     await swIdle(v); // the shell refresh this visit started has finished (or given up)
     const shell = (await cachedText(v, '/')) || '';
     const kept = a.named.every((p) => shell.includes(p)) && !shell.includes(broken);
-    t.check(kept, 'fail404: the old shell stays when a file of the new one 404s', broken, { known: WHOLE });
+    t.check(kept, 'fail404: the old shell stays when a file of the new one 404s', broken);
     proxy.offline();
     const p3 = await t.context.newPage();
     const o = await opened(p3, proxy.origin, '/');
-    t.check(o.ok && o.tool === 1, 'fail404 offline: / opens (old build)', o, kept ? undefined : { known: WHOLE });
-    await features(t, p3, 'fail404 offline', kept ? lazyKnown : WHOLE);
-    await checkErrors(t, 'fail404', kept ? lazyKnown : WHOLE);
+    t.check(o.ok && o.tool === 1, 'fail404 offline: / opens (old build)', o);
+    await features(t, p3, 'fail404 offline');
+    await checkErrors(t, 'fail404');
   } finally {
     proxy.close();
   }
@@ -302,8 +290,8 @@ test('swupdate: a worker update first seen on a tool page installs the new shell
     t.check(await newShell(t, visitor, a2.named), 'swupdate: the new worker brings in the new shell');
     proxy.offline();
     const lost = await unreachable(oldTab, a.all);
-    t.check(!lost.length, 'swupdate offline: the old tab still gets every file of its build', lost, { known: RETIRE });
-    await checkErrors(t, 'swupdate', lost.length ? RETIRE : undefined);
+    t.check(!lost.length, 'swupdate offline: the old tab still gets every file of its build', lost);
+    await checkErrors(t, 'swupdate');
   } finally {
     t.log('worker responses', proxy.net.workers);
     proxy.close();
@@ -328,14 +316,15 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
     t.check(await newShell(t, visitor, a2.named), 'upgrade: the new worker brings in the new shell');
     await swIdle(visitor, { posted: true });
     const missing = await missingFromCache(visitor, a2.all);
+    t.log(`new build files not cached yet: ${missing.length}`);
     proxy.offline();
     const lost = await unreachable(oldTab, oldFiles);
-    t.check(!lost.length, 'upgrade offline: the old tab still gets every file it had cached', lost, { known: RETIRE });
+    t.check(!lost.length, 'upgrade offline: the old tab still gets every file it had cached', lost, t.engine === 'webkit' ? { known: 'bug: in WebKit the old tab loses one cached chunk after the worker upgrade (also after PR #26)' } : undefined);
     const fresh = await t.context.newPage();
     const o = await opened(fresh, proxy.origin, '/');
     t.check(o.ok && o.tool === 1, 'upgrade offline: a new tab opens the new build', o);
-    await features(t, fresh, 'upgrade offline', missing.length ? FOLLOW : undefined);
-    await checkErrors(t, 'upgrade', lost.length ? RETIRE : missing.length ? FOLLOW : undefined);
+    await features(t, fresh, 'upgrade offline');
+    await checkErrors(t, 'upgrade');
   } finally {
     t.log('worker responses', proxy.net.workers);
     proxy.close();

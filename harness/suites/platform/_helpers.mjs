@@ -195,9 +195,9 @@ export function checkPrivateBoxes(t, snap) {
 }
 
 /** Tooltips that state facts about the document ("34% smaller", "1 type change") must stay out of recordings. */
-export function checkTooltipFacts(t, snap, known) {
+export function checkTooltipFacts(t, snap) {
   for (const [what, re] of [['the Minify / size tooltip', /\d+% smaller/], ['a Compare count tooltip', /\d+ type changes?\)/]]) {
-    t.check(!re.test(snap), `${what} is not in the recording`, snap.match(re)?.[0], { known });
+    t.check(!re.test(snap), `${what} is not in the recording`, snap.match(re)?.[0]);
   }
 }
 
