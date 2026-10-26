@@ -106,6 +106,13 @@ export interface ParseResult {
 export interface ParseOptions {
   /** JSON Lines input (a .jsonl / .ndjson file): wrap the values in an array even when there is only one. */
   lines?: boolean;
+  /**
+   * When the document can't be parsed (an error), parse it again repairing what is left (see
+   * `fixing`): strings missing their closing quote, members cut off at the end, missing values,
+   * `...` placeholders, strings joined with `+`. Each repair is an issue. A document that parses
+   * without repairs gives the same result either way.
+   */
+  repair?: boolean;
 }
 
 class ParseError {
@@ -166,6 +173,8 @@ const startsValue = (c: number) =>
   isSmartQuote(c);
 
 const INT_KEY = /^(?:0|[1-9]\d{0,9})$/;
+/** JSON whitespace. */
+const isSpace = (c: number) => c === 32 || c === 10 || c === 13 || c === 9;
 
 /** Whether `String(Number(raw)) === raw`, decided without converting. */
 function isCanonical(raw: string): boolean {
@@ -219,9 +228,14 @@ const VALUE = 1;
 const AFTER = 2;
 
 /** Parses `text` in one go. */
-export function parse(text: string, { lines: jsonLines = false }: ParseOptions = {}): ParseResult {
+export function parse(text: string, { lines: jsonLines = false, repair = false }: ParseOptions = {}): ParseResult {
   begin(text, jsonLines, STEP);
-  return steps(Infinity)!;
+  const res = steps(Infinity)!;
+  if (!repair || !res.error) return res;
+  begin(text, jsonLines, STEP);
+  fixing = true;
+  const fixed = steps(Infinity)!;
+  return fixed.error ? res : fixed;
 }
 
 /**
@@ -232,15 +246,24 @@ export function parse(text: string, { lines: jsonLines = false }: ParseOptions =
  * in the same order, so the tree, issues, counts and errors are exactly what it gave. `every`:
  * values (and closed containers) between looks at the clock; tests stop after each one.
  */
-export function parser(text: string, { lines: jsonLines = false }: ParseOptions = {}, every = STEP): Parser {
+export function parser(text: string, { lines: jsonLines = false, repair = false }: ParseOptions = {}, every = STEP): Parser {
   begin(text, jsonLines, every);
   const state = save();
   let result: ParseResult | undefined;
+  // With `repair`: the first result if it is an error, while the parse runs again repairing.
+  let failed: ParseResult | undefined;
   const step = (until: number): ParseResult | undefined => {
     if (result) return result;
     load(state);
     result = steps(until);
     if (!result) save(state);
+    else if (repair && result.error && !failed) {
+      failed = result;
+      result = undefined;
+      begin(text, jsonLines, every);
+      fixing = true;
+      save(state);
+    } else if (failed && result.error) result = failed;
     return result;
   };
   return { step, at: () => (result ? state.n : state.i) };
@@ -286,6 +309,8 @@ let root: JNode | null = null;
 let wrap: JNode | null = null;
 /** 0: not started, 1: the top-level value, 2: JSON Lines (every top-level value, wrapped in an array). */
 let phase = 0;
+/** Repairing (ParseOptions.repair, after the parse failed without). */
+let fixing = false;
 
 function begin(text: string, jsonLines: boolean, perRun: number) {
   src = text;
@@ -303,6 +328,7 @@ function begin(text: string, jsonLines: boolean, perRun: number) {
   sets = [];
   callD = [];
   callS = [];
+  fixing = false;
 }
 
 interface State {
@@ -330,16 +356,17 @@ interface State {
   root: JNode | null;
   wrap: JNode | null;
   phase: number;
+  fixing: boolean;
 }
 
 /** The running parse's state, into `state` (a new object without it). */
 function save(state?: State): State {
-  const s: State = { src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase };
+  const s: State = { src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing };
   return state ? Object.assign(state, s) : s;
 }
 
 function load(s: State) {
-  ({ src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase } = s);
+  ({ src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing } = s);
   opened = false;
 }
 
@@ -472,7 +499,14 @@ const esc = (): string => {
       fix(i - 2, 'Invalid unicode escape: expected \\u followed by 4 hex digits');
       return 'u';
   }
-  if (i > n) fail(i - 2, 'Unterminated string: missing closing quote');
+  if (i > n) {
+    // (Repairing: the string ends with this backslash, at the end of the input.)
+    if (fixing) {
+      i = n;
+      return '';
+    }
+    fail(i - 2, 'Unterminated string: missing closing quote');
+  }
   if (c === 120 && isHex(src.charCodeAt(i)) && isHex(src.charCodeAt(i + 1))) {
     fix(i - 2, 'Invalid escape \\x: use \\u00XX instead');
     const v = parseInt(src.slice(i, i + 2), 16);
@@ -493,12 +527,27 @@ const str = (q: number, q2 = q): string => {
   const s = i;
   let seg = ++i;
   let out = '';
+  let plain = true;
   for (;;) {
-    if (i >= n) fail(s, 'Unterminated string: missing closing quote');
+    if (i >= n) {
+      if (fixing) {
+        fix(n, 'Missing closing quote: the string was closed at the end of the input');
+        return out + src.slice(seg, i);
+      }
+      fail(s, 'Unterminated string: missing closing quote');
+    }
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
       out += src.slice(seg, i);
       i++;
+      if (fixing && plain) {
+        const k = unclosed(s + 1, i - 1);
+        if (k >= 0) {
+          fix(k, `Missing closing quote: the string was closed before the '${src[k]}'`);
+          i = k;
+          return src.slice(s + 1, k);
+        }
+      }
       return out;
     }
     if (c === 92) {
@@ -506,13 +555,39 @@ const str = (q: number, q2 = q): string => {
       i++;
       out += esc();
       seg = i;
+      plain = false;
       continue;
     }
     if (c < 32) {
+      if (fixing && (c === 10 || c === 13)) {
+        fix(i, 'Missing closing quote: the string was closed at the end of the line');
+        return out + src.slice(seg, i);
+      }
       fix(i, c === 10 || c === 13 ? 'Line breaks inside strings must be escaped as \\n' : 'Control characters inside strings must be escaped');
     }
     i++;
   }
+};
+
+/**
+ * Repairing, a string without escapes whose text is [a, e) and closing quote at e: if what follows
+ * the quote can't follow a string (another string or a name: its closing quote was missing, and this
+ * quote opened the next string), where the string should end: at its first , } or ]. Else -1.
+ */
+const unclosed = (a: number, e: number): number => {
+  let j = e + 1;
+  while (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9) j++;
+  const f = src.charCodeAt(j);
+  if (!(f === 34 || f === 39 || f === 96 || isSmartQuote(f) || isIdent(f))) return -1;
+  for (let k = a; k < e; k++) {
+    const c = src.charCodeAt(k);
+    if (c === 44 || c === 125 || c === 93) {
+      // (Nothing past it was reported: the text has no escapes, and line breaks end it.)
+      while (issues.length && issues[issues.length - 1].p >= k) issues.pop();
+      return k;
+    }
+  }
+  return -1;
 };
 
 const num = (): string => {
@@ -634,6 +709,11 @@ const loose = (c: number, d: number, u: JNode | null, key: Key): JNode | null =>
     return leaf(STR, str(96), s, d, u, key);
   }
   if (c === 43 || c === 45 || c === 46) {
+    if (fixing && c === 46 && typeof key === 'string' && src.startsWith('...', i)) {
+      fix(s, "Placeholder '...' (null)");
+      i += 3;
+      return leaf(NUL, null, s, d, u, key);
+    }
     if (c !== 46 && src.startsWith('Infinity', i + 1)) {
       fix(s, 'Infinity is not valid JSON (replaced with null)');
       i += 9;
@@ -719,6 +799,17 @@ const loose = (c: number, d: number, u: JNode | null, key: Key): JNode | null =>
     const nd = new JNode(STR, text, s, d, u, key);
     nd.e = e;
     return nd;
+  }
+  // Repairing, a property's missing value: null.
+  if (fixing && typeof key === 'string') {
+    if (i >= n) {
+      fix(n, 'Unexpected end of input: the value is missing (null)');
+      return leaf(NUL, null, s, d, u, key);
+    }
+    if (c === 44 || c === 125 || c === 93) {
+      fix(i, 'The value is missing (null)');
+      return leaf(NUL, null, s, d, u, key);
+    }
   }
   if (i >= n) fail(i, 'Unexpected end of input: expected a value');
   return fail(i, `Unexpected ${describe(i)}: expected a value`);
@@ -840,7 +931,7 @@ const value = (d: number, u: JNode | null, key: Key): JNode | null => {
     if (d > MAX_DEPTH) fail(i, 'Nesting is too deep to parse');
     depth = d;
   }
-  if (c === 34) return leaf(STR, str(34), s, d, u, key);
+  if (c === 34) return leaf(STR, fixing ? joined(str(34)) : str(34), s, d, u, key);
   if (c === 123) return openObj(d, u, key);
   if (c === 91) return openArr(d, u, key);
   if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, key);
@@ -848,6 +939,21 @@ const value = (d: number, u: JNode | null, key: Key): JNode | null => {
   if (c === 102 && word('false')) return leaf(BOOL, false, s, d, u, key);
   if (c === 110 && word('null')) return leaf(NUL, null, s, d, u, key);
   return loose(c, d, u, key);
+};
+
+/** Repairing, string `v` just read: with the strings that follow it joined by `+`. */
+const joined = (v: string): string => {
+  for (;;) {
+    let j = i;
+    while (isSpace(src.charCodeAt(j))) j++;
+    if (src.charCodeAt(j) !== 43) return v;
+    let k = j + 1;
+    while (isSpace(src.charCodeAt(k))) k++;
+    if (src.charCodeAt(k) !== 34) return v;
+    fix(j, "Strings joined with '+' (not valid JSON)");
+    i = k;
+    v += str(34);
+  }
 };
 
 /** A finished value at depth `v.d` is the argument of the calls(…) open there: it becomes their value. */
@@ -928,6 +1034,13 @@ const fillObj = (p: JNode, levels: number): JNode | null | undefined => {
         } else fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
       } else c = src.charCodeAt(i);
       // A property name and its colon.
+      // Repairing: a `...` placeholder for members is skipped.
+      if (fixing && c === 46 && src.startsWith('...', i)) {
+        fix(i, "Placeholder '...' was skipped");
+        i += 3;
+        m = AFTER;
+        continue;
+      }
       const ks = i;
       key = c === 34 ? str(34) : looseKey(c);
       // Not natively reproducible: integer-like keys (JS reorders them) and keys written with
@@ -949,7 +1062,13 @@ const fillObj = (p: JNode, levels: number): JNode | null | undefined => {
       ws();
       c = src.charCodeAt(i);
       if (c === 58) i++;
-      else if (i >= n) fail(i, "Unexpected end of input: expected ':' after property name");
+      else if (i >= n) {
+        if (!fixing) fail(i, "Unexpected end of input: expected ':' after property name");
+        // Repairing: a property cut off after its name is left out.
+        fix(ks, `Unexpected end of input: "${key.length > 40 ? key.slice(0, 40) + '…' : key}" has no value (left out)`);
+        fix(n, "Unexpected end of input: missing '}'");
+        return null;
+      }
       else if (c === 61) {
         fix(i, "Expected ':' after property name");
         i++;
@@ -1028,6 +1147,16 @@ const fillArr = (p: JNode, levels: number): JNode | null | undefined => {
       cur = p;
       mode = VALUE;
       return undefined;
+    }
+    // Repairing: a `...` placeholder for items is skipped.
+    if (fixing) {
+      ws();
+      if (src.startsWith('...', i)) {
+        fix(i, "Placeholder '...' was skipped");
+        i += 3;
+        after = true;
+        continue;
+      }
     }
     const k = list.length;
     let v = value(d, p, k);

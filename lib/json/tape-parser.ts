@@ -76,6 +76,7 @@ const PAUSED = -4;
 // str(): what a string has.
 const ESCAPED = 1;
 const CONTROL = 2;
+const CUT = 4;
 /** Tolerant values at most between two tries of the fast path. */
 const MAX_TOLERANT = 4096;
 
@@ -116,6 +117,8 @@ const startsValue = (c: number) =>
 const startsStrict = (c: number) => c === 34 || c === 123 || c === 91 || c === 45 || (c >= 48 && c <= 57) || c === 116 || c === 102 || c === 110;
 
 const INT_KEY = /^(?:0|[1-9]\d{0,9})$/;
+/** JSON whitespace. */
+const isSpace = (c: number) => c === 32 || c === 10 || c === 13 || c === 9;
 
 /** parser.ts's isCanonical(src.slice(a, e)) (`String(Number(raw)) === raw`), without the slice. */
 function canonicalAt(s: string, a: number, e: number): boolean {
@@ -153,26 +156,40 @@ function intKeyAt(s: string, a: number, e: number): boolean {
 // ── API ──────────────────────────────────────────────────────────────────
 
 /** Parses `text` in one go. */
-export function parse(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED }: TapeOptions = {}): Tape {
+export function parse(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}): Tape {
   // (In runs all the same: the engine then optimizes the fast path as a function, rather than only
   // the loop it is in, which takes longer and is less sure.)
   begin(text, jsonLines, 65536, deepest);
-  return steps(Infinity)!;
+  const tape = steps(Infinity)!;
+  if (!repair || !tape.head.error) return tape;
+  begin(text, jsonLines, 65536, deepest);
+  fixing = true;
+  const fixed = steps(Infinity)!;
+  return fixed.head.error ? tape : fixed;
 }
 
 /**
  * Parses `text` in steps: call `step` with a deadline until it returns the tape. `every`: values
  * (and closed containers) between looks at the clock; tests stop after each one.
  */
-export function parser(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED }: TapeOptions = {}, every = STEP): TapeParser {
+export function parser(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}, every = STEP): TapeParser {
   begin(text, jsonLines, every, deepest);
   const state = save();
   let result: Tape | undefined;
+  // With `repair`: the first result if it is an error, while the parse runs again repairing.
+  let failed: Tape | undefined;
   const step = (until: number): Tape | undefined => {
     if (result) return result;
     load(state);
     result = steps(until);
     if (!result) save(state);
+    else if (repair && result.head.error && !failed) {
+      failed = result;
+      result = undefined;
+      begin(text, jsonLines, every, deepest);
+      fixing = true;
+      save(state);
+    } else if (failed && result.head.error) result = failed;
     return result;
   };
   return { step, at: () => (result ? state.n : state.i) };
@@ -243,6 +260,8 @@ let wrap = -1;
 let phase = 0;
 /** Values the tolerant parser takes before the fast path tries again (more while it keeps stopping at once). */
 let tol = 1;
+/** Repairing (ParseOptions.repair, after the parse failed without): the tolerant parser only. */
+let fixing = false;
 
 // The tape: W numbers per node in T (see tape.ts), `count` in use.
 let T: Int32Array<ArrayBuffer> = NONE;
@@ -300,6 +319,7 @@ function begin(text: string, jsonLines: boolean, perRun: number, deepest: number
   callD = [];
   callS = [];
   tol = 1;
+  fixing = false;
   T = NONE;
   count = grownAt = grownCount = 0;
   keys = [];
@@ -356,6 +376,7 @@ interface State {
   wrap: number;
   phase: number;
   tol: number;
+  fixing: boolean;
   T: Int32Array<ArrayBuffer>;
   count: number;
   keys: string[];
@@ -404,6 +425,7 @@ function save(state?: State): State {
     wrap,
     phase,
     tol,
+    fixing,
     T,
     count,
     keys,
@@ -453,6 +475,7 @@ function load(s: State) {
     wrap,
     phase,
     tol,
+    fixing,
     T,
     count,
     keys,
@@ -510,7 +533,7 @@ function steps(until: number): Tape | undefined {
 /** Parses `left` values (or closes as many containers), or less if the document is done (true): the fast path wherever it can, the tolerant parser elsewhere. */
 function drive(): boolean {
   for (;;) {
-    if (mode !== AFTER || cur >= 0) {
+    if (!fixing && (mode !== AFTER || cur >= 0)) {
       const was = left;
       fast();
       if (left < 0) return false;
@@ -1107,6 +1130,17 @@ const word = (w: string) => {
 /** A leaf ending here. */
 const leaf = (t: number, vk: number, s: number, d: number, u: number, kk: number, key: number) => node(t, vk, s, i, d, u, kk, key);
 
+/** A leaf ending here whose value `v` the source can't give back (repairs): kept in `extra`. */
+const kept = (t: number, v: string, s: number, d: number, u: number, kk: number, key: number) => {
+  const nd = leaf(t, VALUE_EXTRA, s, d, u, kk, key);
+  (extra ??= new Map()).set(nd, v);
+  return nd;
+};
+
+/** The leaf of a string from `s` that str() just read (`found`). */
+const strLeaf = (found: number, s: number, d: number, u: number, kk: number, key: number) =>
+  found & CUT ? kept(STR, textOf(s, found), s, d, u, kk, key) : leaf(STR, found & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+
 /** Goes over an escape (i is after the backslash), reporting what parser.ts does. */
 const esc = () => {
   const c = src.charCodeAt(i++);
@@ -1128,7 +1162,14 @@ const esc = () => {
       fix(i - 2, 'Invalid unicode escape: expected \\u followed by 4 hex digits');
       return;
   }
-  if (i > n) fail(i - 2, 'Unterminated string: missing closing quote');
+  if (i > n) {
+    // (Repairing: the string ends with this backslash, at the end of the input.)
+    if (fixing) {
+      i = n;
+      return;
+    }
+    fail(i - 2, 'Unterminated string: missing closing quote');
+  }
   if (c === 120 && isHex(src.charCodeAt(i)) && isHex(src.charCodeAt(i + 1))) {
     fix(i - 2, 'Invalid escape \\x: use \\u00XX instead');
     i += 2;
@@ -1142,16 +1183,34 @@ const esc = () => {
   fix(i - 2, `Invalid escape sequence \\${String.fromCharCode(c)}`);
 };
 
-/** Goes over a string starting at the opening quote; `q`/`q2` are the accepted closing quotes. ESCAPED if it has escapes (its value is not the text between the quotes), | CONTROL if it has control characters. */
+/**
+ * Goes over a string starting at the opening quote; `q`/`q2` are the accepted closing quotes.
+ * ESCAPED if it has escapes (its value is not the text between the quotes), | CONTROL if it has
+ * control characters, | CUT if repairing closed it where it has no closing quote (it ends at i).
+ */
 const str = (q: number, q2: number): number => {
   const s = i;
   let found = 0;
   i++;
   for (;;) {
-    if (i >= n) fail(s, 'Unterminated string: missing closing quote');
+    if (i >= n) {
+      if (fixing) {
+        fix(n, 'Missing closing quote: the string was closed at the end of the input');
+        return found | CUT;
+      }
+      fail(s, 'Unterminated string: missing closing quote');
+    }
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
       i++;
+      if (fixing && !(found & ESCAPED)) {
+        const k = unclosed(s + 1, i - 1);
+        if (k >= 0) {
+          fix(k, `Missing closing quote: the string was closed before the '${src[k]}'`);
+          i = k;
+          return found | CUT;
+        }
+      }
       return found;
     }
     if (c === 92) {
@@ -1161,6 +1220,10 @@ const str = (q: number, q2: number): number => {
       continue;
     }
     if (c < 32) {
+      if (fixing && (c === 10 || c === 13)) {
+        fix(i, 'Missing closing quote: the string was closed at the end of the line');
+        return found | CUT;
+      }
       fix(i, c === 10 || c === 13 ? 'Line breaks inside strings must be escaped as \\n' : 'Control characters inside strings must be escaped');
       found |= CONTROL;
     }
@@ -1168,10 +1231,92 @@ const str = (q: number, q2: number): number => {
   }
 };
 
+/** parser.ts's unclosed(): repairing, where a string without escapes ([a, e), closing quote at e) should end, or -1. */
+const unclosed = (a: number, e: number): number => {
+  let j = e + 1;
+  while (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9) j++;
+  const f = src.charCodeAt(j);
+  if (!(f === 34 || f === 39 || f === 96 || isSmartQuote(f) || isIdent(f))) return -1;
+  for (let k = a; k < e; k++) {
+    const c = src.charCodeAt(k);
+    if (c === 44 || c === 125 || c === 93) {
+      while (issues.length && issues[issues.length - 1].p >= k) issues.pop();
+      return k;
+    }
+  }
+  return -1;
+};
+
+/** The value of the string str() just read from `s` (`found`: what str() returned). */
+const textOf = (s: number, found: number): string =>
+  found & CUT ? (found & ESCAPED ? decodeUntil(s, i) : src.slice(s + 1, i)) : found & ESCAPED ? decodeString(src, s) : src.slice(s + 1, i - 1);
+
+/** decodeString() of a string that repairing cut at `end` (it has no closing quote): parser.ts's str() and esc() up to there. */
+function decodeUntil(start: number, end: number): string {
+  let k = start + 1;
+  let seg = k;
+  let out = '';
+  while (k < end) {
+    if (src.charCodeAt(k) !== 92) {
+      k++;
+      continue;
+    }
+    out += src.slice(seg, k);
+    const e = src.charCodeAt(k + 1);
+    k += 2;
+    // (A backslash that ends the input stands for nothing.)
+    if (k > end) {
+      seg = k = end;
+      break;
+    }
+    switch (e) {
+      case 34:
+        out += '"';
+        break;
+      case 92:
+        out += '\\';
+        break;
+      case 47:
+        out += '/';
+        break;
+      case 98:
+        out += '\b';
+        break;
+      case 102:
+        out += '\f';
+        break;
+      case 110:
+        out += '\n';
+        break;
+      case 114:
+        out += '\r';
+        break;
+      case 116:
+        out += '\t';
+        break;
+      case 117:
+        if (isHex(src.charCodeAt(k)) && isHex(src.charCodeAt(k + 1)) && isHex(src.charCodeAt(k + 2)) && isHex(src.charCodeAt(k + 3))) {
+          out += String.fromCharCode(parseInt(src.slice(k, k + 4), 16));
+          k += 4;
+        } else out += 'u';
+        break;
+      default:
+        if (e === 120 && isHex(src.charCodeAt(k)) && isHex(src.charCodeAt(k + 1))) {
+          out += String.fromCharCode(parseInt(src.slice(k, k + 2), 16));
+          k += 2;
+        } else if (e === 10 || e === 13) {
+          if (e === 13 && src.charCodeAt(k) === 10) k++;
+        } else out += String.fromCharCode(e);
+    }
+    seg = k;
+  }
+  return out + src.slice(seg, end);
+}
+
 /** A string's value (a property name). */
 const strText = (q: number, q2: number): string => {
   const s = i;
-  return str(q, q2) & ESCAPED ? decodeString(src, s) : src.slice(s + 1, i - 1);
+  return textOf(s, str(q, q2));
 };
 
 /** Goes over a number: VALUE_SLICE if its value is its text, VALUE_DECODE if it is written loosely. */
@@ -1278,21 +1423,26 @@ const loose = (c: number, d: number, u: number, kk: number, key: number): number
   const s = i;
   if (c === 39) {
     fix(i, 'Strings must use double quotes');
-    return leaf(STR, str(39, 39) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(39, 39), s, d, u, kk, key);
   }
   if (c === 0x201c || c === 0x201d) {
     fix(i, 'Strings must use straight double quotes (")');
-    return leaf(STR, str(0x201d, 0x201c) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(0x201d, 0x201c), s, d, u, kk, key);
   }
   if (c === 0x2018 || c === 0x2019) {
     fix(i, 'Strings must use straight double quotes (")');
-    return leaf(STR, str(0x2019, 0x2018) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(0x2019, 0x2018), s, d, u, kk, key);
   }
   if (c === 96) {
     fix(i, 'Strings must use double quotes');
-    return leaf(STR, str(96, 96) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(96, 96), s, d, u, kk, key);
   }
   if (c === 43 || c === 45 || c === 46) {
+    if (fixing && c === 46 && kk === KEY_NAME && src.startsWith('...', i)) {
+      fix(s, "Placeholder '...' (null)");
+      i += 3;
+      return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+    }
     if (c !== 46 && src.startsWith('Infinity', i + 1)) {
       fix(s, 'Infinity is not valid JSON (replaced with null)');
       i += 9;
@@ -1376,6 +1526,17 @@ const loose = (c: number, d: number, u: number, kk: number, key: number): number
     const text = src.slice(s, e);
     fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
     return node(STR, VALUE_RAW, s, e, d, u, kk, key);
+  }
+  // Repairing, a property's missing value: null.
+  if (fixing && kk === KEY_NAME) {
+    if (i >= n) {
+      fix(n, 'Unexpected end of input: the value is missing (null)');
+      return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+    }
+    if (c === 44 || c === 125 || c === 93) {
+      fix(i, 'The value is missing (null)');
+      return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+    }
   }
   if (i >= n) fail(i, 'Unexpected end of input: expected a value');
   return fail(i, `Unexpected ${describe(i)}: expected a value`);
@@ -1496,7 +1657,28 @@ const value = (d: number, u: number, kk: number, key: number): number => {
     if (d > maxDepth) fail(i, 'Nesting is too deep to parse');
     depth = d;
   }
-  if (c === 34) return leaf(STR, str(34, 34) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+  if (c === 34) {
+    const found = str(34, 34);
+    if (fixing) {
+      // parser.ts's joined(): strings that follow joined by `+`.
+      let v: string | undefined;
+      for (;;) {
+        let j = i;
+        while (isSpace(src.charCodeAt(j))) j++;
+        if (src.charCodeAt(j) !== 43) break;
+        let k = j + 1;
+        while (isSpace(src.charCodeAt(k))) k++;
+        if (src.charCodeAt(k) !== 34) break;
+        v ??= textOf(s, found);
+        fix(j, "Strings joined with '+' (not valid JSON)");
+        i = k;
+        const s2 = i;
+        v += textOf(s2, str(34, 34));
+      }
+      if (v !== undefined) return kept(STR, v, s, d, u, kk, key);
+    }
+    return strLeaf(found, s, d, u, kk, key);
+  }
   if (c === 123) return openObj(d, u, kk, key);
   if (c === 91) return openArr(d, u, kk, key);
   if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, kk, key);
@@ -1576,12 +1758,20 @@ const fillObj = (p: number, pd: number): number => {
           fix(i, "Expected ',' between properties");
         } else fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
       } else c = src.charCodeAt(i);
+      // Repairing: a `...` placeholder for members is skipped.
+      if (fixing && c === 46 && src.startsWith('...', i)) {
+        fix(i, "Placeholder '...' was skipped");
+        i += 3;
+        m = AFTER;
+        continue;
+      }
       // A property name and its colon.
       const ks = i;
+      const had = keys.length;
       if (c === 34) {
         const found = str(34, 34);
         // (Only a name written in strict JSON is kept as source text: the fast path matches others against it.)
-        key = found & ESCAPED ? internText(decodeString(src, ks)) : found ? internText(src.slice(ks + 1, i - 1)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1));
+        key = found & (ESCAPED | CUT) ? internText(textOf(ks, found)) : found ? internText(src.slice(ks + 1, i - 1)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1));
       } else key = internText(looseKey(c));
       const name = keys[key];
       // Not natively reproducible: integer-like keys (JS reorders them) and keys written with
@@ -1593,7 +1783,14 @@ const fillObj = (p: number, pd: number): number => {
       ws();
       c = src.charCodeAt(i);
       if (c === 58) i++;
-      else if (i >= n) fail(i, "Unexpected end of input: expected ':' after property name");
+      else if (i >= n) {
+        if (!fixing) fail(i, "Unexpected end of input: expected ':' after property name");
+        // Repairing: a property cut off after its name is left out (and so is its name, if new).
+        fix(ks, `Unexpected end of input: "${name.length > 40 ? name.slice(0, 40) + '…' : name}" has no value (left out)`);
+        fix(n, "Unexpected end of input: missing '}'");
+        keys.length = had;
+        return CLOSED;
+      }
       else if (c === 61) {
         fix(i, "Expected ':' after property name");
         i++;
@@ -1658,6 +1855,16 @@ const fillArr = (p: number, pd: number): number => {
     if (--left < 0) {
       mode = VALUE;
       return PAUSED;
+    }
+    // Repairing: a `...` placeholder for items is skipped.
+    if (fixing) {
+      ws();
+      if (src.startsWith('...', i)) {
+        fix(i, "Placeholder '...' was skipped");
+        i += 3;
+        after = true;
+        continue;
+      }
     }
     const k = cc[pd];
     let v = value(d, p, KEY_INDEX, k);

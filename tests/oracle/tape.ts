@@ -11,8 +11,8 @@ import { mutate, type Rng } from './compare';
 /**
  * The first difference between the tape parser's tape and the tape of parser.ts's tree (null if
  * none): the head, every node (kind, size, offsets, parent, key) and its value as JNode.v has it.
- * Value kinds may differ only where tapeOf keeps the value aside (VALUE_EXTRA) and the tape parser
- * reads it back from the source.
+ * Value kinds may differ only where one side keeps the value aside (VALUE_EXTRA) and the other reads
+ * it back from the source.
  */
 export function diffTape(want: Tape, got: Tape, src: string): string | null {
   const a = want.head;
@@ -40,7 +40,8 @@ export function diffTape(want: Tape, got: Tape, src: string): string | null {
     }
     const vw = valueKindOf(want, i);
     const vg = valueKindOf(got, i);
-    if (vw !== vg && vw !== VALUE_EXTRA) return `node ${i} value kind: ${vw} vs ${vg}`;
+    // (A value kept in `extra` is the same value, whichever side keeps it there.)
+    if (vw !== vg && vw !== VALUE_EXTRA && vg !== VALUE_EXTRA) return `node ${i} value kind: ${vw} vs ${vg}`;
     const v1 = valueOf(want, i, src);
     const v2 = valueOf(got, i, src);
     if (v1 !== v2) return `node ${i} value: ${JSON.stringify(v1)} vs ${JSON.stringify(v2)}`;

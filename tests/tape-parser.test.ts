@@ -27,7 +27,9 @@ function stepped(src: string, options: TapeOptions, every: number): Tape {
   let back = 0;
   for (let k = 0; ; k++) {
     const t = step(0);
-    if (at() < pos) assert.ok(++back === 1, 'progress went back twice');
+    // (Several top-level values: it starts over at the first one, once; repairing, it starts over
+    // from the start, and may again for several values.)
+    if (at() < pos) assert.ok(++back <= (options.repair ? 3 : 1), `progress went back ${back} times`);
     pos = at();
     if (t) {
       assert.equal(step(0), t, 'a finished parse keeps its tape');
@@ -243,6 +245,77 @@ describe('tape parser: the same as parser.ts', () => {
       count++;
     }
     assert.ok(count > 300, `files: ${count}`);
+  });
+});
+
+describe('repairs (repair: true): the same in both parsers, and only for documents that fail without', () => {
+  const val = (t: Tape, src: string, k = 0): unknown => {
+    const kind = t.nodes[k * W] & 7;
+    if (kind === 4 || kind === 5) {
+      const out: unknown[] = [];
+      const names: [string, unknown][] = [];
+      for (let c = k + 1; c < k + sizeOf(t, k); c += sizeOf(t, c)) {
+        if (kind === 4) out.push(val(t, src, c));
+        else names.push([t.keys[t.nodes[c * W + 4]], val(t, src, c)]);
+      }
+      return kind === 4 ? out : Object.fromEntries(names);
+    }
+    const v = valueOf(t, k, src);
+    return kind === 2 ? Number(v) : v;
+  };
+  const CASES: [string, string, unknown][] = [
+    ['truncated inside a nested string', '{"a": [1, 2], "b": {"c": "hel', { a: [1, 2], b: { c: 'hel' } }],
+    ['truncated after a key', '{"a": 1, "b', { a: 1 }],
+    ['truncated after a colon', '{"a": 1, "b":', { a: 1, b: null }],
+    ['ellipsis in array', '[1, 2, 3, ...]', [1, 2, 3]],
+    ['ellipsis in object', '{"a": 1, ...}', { a: 1 }],
+    ['ellipsis as a value', '{"a": ..., "b": 2}', { a: null, b: 2 }],
+    ['string concatenation', '{"a": "x" + "y" +\n "z"}', { a: 'xyz' }],
+    ['missing value', '{"a": , "b": 2}', { a: null, b: 2 }],
+    ['missing value before }', '{"a": 1, "b": }', { a: 1, b: null }],
+    ['missing closing quote before the next key', '{"a": "b, "c": 1}', { a: 'b', c: 1 }],
+    ['missing closing quote at the end of a line', '{"a": "hello\n "b": 2}', { a: 'hello', b: 2 }],
+    ['escapes in a string cut at the end of a line', '{"a": "x\\ny\\u0041\n, "b": 1}', { a: 'x\nyA', b: 1 }],
+    ['a backslash at the end', '["ab\\', ['ab']],
+    ['a cut name', '{"a": 1, "b\n: 2}', { a: 1, b: 2 }],
+  ];
+  test('the repairs pbench scores, and more: values, issues at exact positions', () => {
+    for (const [name, src, want] of CASES) {
+      assert.ok(oldParse(src).error, `${name}: fails without repairs`);
+      const t = same(src, { repair: true }, [1, 3]);
+      assert.equal(t.head.error, null, `${name}: ${JSON.stringify(t.head.error)}`);
+      assert.deepEqual(val(t, src), want, name);
+      assert.ok(t.head.issues.length > 0, name);
+    }
+    const t = parse('{"a": "b, "c": 1}', { repair: true });
+    assert.deepEqual(t.head.issues, [{ p: 8, m: "Missing closing quote: the string was closed before the ','" }]);
+    assert.deepEqual(parse('{"a": 1, "b":', { repair: true }).head.issues, [
+      { p: 13, m: 'Unexpected end of input: the value is missing (null)' },
+      { p: 13, m: "Unexpected end of input: missing '}'" },
+    ]);
+    assert.deepEqual(parse('[1, ...]', { repair: true }).head.issues, [{ p: 4, m: "Placeholder '...' was skipped" }]);
+    assert.deepEqual(parse('{"a": "x" + "y"}', { repair: true }).head.issues, [{ p: 10, m: "Strings joined with '+' (not valid JSON)" }]);
+    // What can't be repaired keeps its error.
+    assert.deepEqual(parse('{"a": 1 @}', { repair: true }).head.error, { p: 8, m: "Expected ',' or '}' after property value, found '@'" });
+  });
+
+  test(`a document that parses without repairs parses the same with them; one that fails, the same in both parsers (${cases(20000)} cases)`, () => {
+    const r = rng((SEED || 1) + 21);
+    let repaired = 0;
+    for (let it = 0, total = cases(20000); it < total; it++) {
+      let src = r.chance(0.5) ? genLoose(r, 1 + r.int(5)) : genStrict(r, 4);
+      src = r.chance(0.5) ? mutate(r, src) : loosen(r, src);
+      const options = r.chance(0.1) ? { lines: true } : {};
+      try {
+        const plain = oldParse(src, options);
+        const t = same(src, { ...options, repair: true }, it % 16 === 0 ? [1] : it % 16 === 8 ? [1 + r.int(7)] : []);
+        if (!plain.error) assert.equal(diffTape(tapeOf(plain, src), t, src), null, 'repairs changed a document that parses');
+        else if (!t.head.error) repaired++;
+      } catch (e) {
+        throw new Error(`iteration ${it}: ${(e as Error).message}\ninput: ${show(src)}`, { cause: e });
+      }
+    }
+    assert.ok(repaired > cases(1000), `repaired: ${repaired}`);
   });
 });
 
