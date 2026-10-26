@@ -1,6 +1,8 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { preview } from '../json/format';
 import { parsePath, resolve } from '../json/path';
+import { tapeOfNode } from '../json/lazy';
+import { nodesWithin } from '../json/tape';
 import { idle } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
@@ -67,6 +69,20 @@ function siblingIndex(n: JNode) {
   return list.indexOf(n);
 }
 
+/** Rows a new big document opens with at most (levels open from the root while they fit; the root's always). */
+const OPEN_ROWS = 100_000;
+
+/** How many levels a new document opens with: all of a small one, else as many as keep its rows few. */
+function openLevels(root: JNode | null, nodes: number): number {
+  if (nodes <= 50_000) return Infinity;
+  const at = root && tapeOfNode(root);
+  // (A tree from the parser on the page: nodes are made already, so only rows cost.)
+  if (!at) return nodes <= 500_000 ? 3 : 2;
+  let levels = 1;
+  while (levels < 8 && nodesWithin(at.tape, at.i, levels + 1) <= OPEN_ROWS) levels++;
+  return levels;
+}
+
 export class TreeView {
   readonly el: HTMLElement;
   private sizer: HTMLElement;
@@ -81,6 +97,8 @@ export class TreeView {
   rows: JNode[] = [];
   sel: JNode | null = null;
   private limit = Infinity;
+  /** The next root is a new document's: how many levels it opens with is still to decide. */
+  private newDoc = false;
   private dirty = false;
   private toggles: Expansion = {};
   private q = '';
@@ -130,8 +148,12 @@ export class TreeView {
   setRoot(root: JNode | null, reset: boolean, nodes = 0, active = true) {
     if (reset) {
       this.toggles = {};
-      this.limit = nodes <= 50_000 ? Infinity : nodes <= 500_000 ? 3 : 2;
       this.sc.top = 0;
+    }
+    // (A new document's first tree may come after a release: see releaseRoot.)
+    if (reset || this.newDoc) {
+      this.limit = openLevels(root, nodes);
+      this.newDoc = false;
     }
     this.root = root;
     this.sel = null;
@@ -139,8 +161,13 @@ export class TreeView {
     if (active || !root) this.activate();
   }
 
-  /** Drop obsolete node objects while Format retains the newer packed tree. Keep expansion and scroll. */
-  releaseRoot() {
+  /** Drop obsolete node objects while Format retains the newer packed tree. Keep expansion and scroll, unless it is a new document (`reset`). */
+  releaseRoot(reset = false) {
+    if (reset) {
+      this.toggles = {};
+      this.sc.top = 0;
+      this.newDoc = true;
+    }
     this.root = null;
     this.rows = [];
     this.sel = null;

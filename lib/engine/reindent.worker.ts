@@ -1,6 +1,6 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
 import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
-import { packStrings, packTree } from '../json/pack';
+import { packedTransfer, packTree } from '../json/pack';
 import { parse, parser, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
@@ -130,8 +130,8 @@ self.onmessage = (e: MessageEvent<Request>) => {
     const metrics = documentMetrics(text, res, min ?? '');
     if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
     if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
-    const tree = packStrings(packTree(res, text));
-    (self as unknown as Worker).postMessage({ id, tree, metrics }, [tree.nodes.buffer, tree.parents.buffer, tree.words.text.buffer, tree.words.offsets.buffer]);
+    const tree = packTree(res, text);
+    (self as unknown as Worker).postMessage({ id, tree, metrics }, packedTransfer(tree));
     // Compression consumes the same minified variant, entirely off the page's thread.
     if (res.root && metrics.min <= 32_000_000) {
       if (min !== null) void compressedSizes(new Blob([min]), () => latest === id).then((sizes) => {
@@ -185,8 +185,8 @@ function analyse(data: Request, text: string) {
   if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   showing(data, MEASURED);
-  const tree = packStrings(packTree(res, text));
-  (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, [tree.nodes.buffer, tree.parents.buffer, tree.words.text.buffer, tree.words.offsets.buffer]);
+  const tree = packTree(res, text);
+  (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, packedTransfer(tree));
   if (!data.good && res.root && metrics.min <= 32_000_000) {
     min ??= formatDoc(text, res, '');
     void compressedSizes(new Blob([min]), () => latest === data.id).then((sizes) => {

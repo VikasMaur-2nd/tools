@@ -293,3 +293,21 @@ export function tapeOf(res: ParseResult, src: string): Tape {
   }
   return { nodes, count, keys, big, extra, head };
 }
+
+/** How many nodes of `i`'s subtree are at most `levels` below it (deeper subtrees are skipped, not walked). */
+export function nodesWithin(t: Tape, i: number, levels: number): number {
+  let k = 0;
+  // Ends of the open containers above the current node.
+  const ends: number[] = [];
+  const last = nextOf(t, i);
+  for (let c = i; c < last; ) {
+    while (ends.length && c >= ends[ends.length - 1]) ends.pop();
+    k++;
+    const size = sizeOf(t, c);
+    if (size > 1 && ends.length < levels) {
+      ends.push(c + size);
+      c++;
+    } else c += size;
+  }
+  return k;
+}
