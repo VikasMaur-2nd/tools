@@ -1,0 +1,142 @@
+// Every view and command from the palette on awkward documents (port of selftest/deep/cmds.mjs): each step
+// must be found by the palette, run without page errors, and leave a status that settles (no hang, no size
+// readout stuck at "…"). The in-place edits (minify, format, sort) must come back exactly with Undo.
+import { defaults, test } from '../../lib/api.mjs';
+import { closePalette, openPalette } from '../../lib/app.mjs';
+import { hashText, installHelpers, slow, stepErrors, waitSettled } from './_helpers.mjs';
+
+defaults({ engines: 'all', allowErrors: true, timeout: 240_000 });
+
+const TARGETS = ['TypeScript', 'Zod schema', 'JSON Schema', 'C#', 'Dart', 'Java', 'Python (Pydantic)', 'Go', 'Kotlin', 'Swift', 'PHP', 'Rust (serde)', 'CSV', 'Excel (.xlsx)', 'YAML', 'XML', 'TOML', 'JSON Lines (NDJSON)'];
+const STEPS = [
+  'Output: minified', 'Output: pretty', 'Output: sort keys', 'Output: escaped JSON string', 'Output: pretty', 'Output: sort keys',
+  'Copy formatted output', 'Download formatted output',
+  'Tree view', 'Expand all', 'Collapse all', 'Expand to level 3', 'Expand all', 'find:a',
+  'Table view', 'find:1', 'Graph view', 'Fit graph to screen', 'Go to the end of the graph', 'Download graph as SVG', 'Download graph as PNG',
+  ...TARGETS.map((t) => 'JSON to ' + t), 'Copy converted output', 'Download converted output',
+  'Compare (diff) two JSON documents', 'Close compare', 'Format view (formatted output)',
+  'Collapse all in input', 'Expand all in input', 'Expand nested JSON string',
+  'Minify input in place', 'Undo', 'Format input in place', 'Undo', 'Sort input keys A to Z', 'Undo',
+  'Repair JSON', 'Escape: convert to a JSON string', 'Unescape: parse stringified JSON',
+  'Export to Excel (.xlsx)', 'Copy share link',
+];
+/** In-place edits whose Undo (the next step) must give the document back exactly. */
+const UNDONE = new Set(['Minify input in place', 'Format input in place', 'Sort input keys A to Z']);
+
+/** Runs a palette command; false if the palette never offered it first. */
+async function command(page, label, timeout) {
+  const box = await openPalette(page, { timeout }).then((x) => x, () => null);
+  if (!box) return 'the palette did not open';
+  await box.fill(label);
+  const top = await page
+    .waitForFunction(
+      (l) => {
+        const input = [...document.querySelectorAll('.palette input')].find((x) => x.getClientRects().length);
+        const id = input?.getAttribute('aria-activedescendant');
+        const text = id && document.getElementById(id)?.textContent;
+        return text && text.toLowerCase().includes(l.toLowerCase()) && text;
+      },
+      label,
+      { timeout, polling: 25 },
+    )
+    .then(() => null, () => page.evaluate(() => [...document.querySelectorAll('.palette [role=option]')].find((x) => x.getClientRects().length)?.textContent ?? '(no options)'));
+  if (top !== null) {
+    await page.keyboard.press('Escape');
+    return `the palette offers "${top.slice(0, 60)}" first`;
+  }
+  const input = await box.elementHandle();
+  await box.press('Enter');
+  await page.waitForFunction((el) => !el.isConnected, input, { timeout, polling: 25 });
+  await input.dispose();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+  return null;
+}
+
+async function find(page, q, timeout) {
+  await closePalette(page, { timeout: Math.min(2000, timeout) });
+  await page.keyboard.press('Control+f');
+  const ok = await page
+    .waitForFunction(() => document.activeElement?.matches('.findbar input'), null, { timeout, polling: 25 })
+    .then(() => true, () => false);
+  if (!ok) return 'the find bar did not take focus';
+  await page.keyboard.type(q);
+  await page.keyboard.press('Enter');
+  return null;
+}
+
+// Copy input deliberately writes nothing for an empty document.
+const inputHash = async (t) => /^Ready/.test(await t.app.status(t.page)) ? hashText('') : t.app.docHash(t.page);
+
+const DOCS = ['small-mix', 'mid-mix', 'lines', 'broken', 'mix-one-line', 'crlf-bom'];
+
+const GROUPS = [
+  ['output', STEPS.slice(0, 8)],
+  ['views and search', STEPS.slice(8, 21)],
+  ['converters and Compare', STEPS.slice(21, 44)],
+  ['input edits', STEPS.slice(44)],
+];
+
+for (const doc of DOCS) for (const [group, steps] of GROUPS) {
+  test(`${doc}: ${group}`, async (t) => {
+    const { page } = t;
+    const k = slow(t);
+    const errs = stepErrors(t);
+    page.on('download', (d) => d.cancel().catch(() => {}));
+    await installHelpers(page);
+    await t.open('/');
+    await t.app.openFile(page, doc);
+    const first = await waitSettled(page, { quiet: 300, timeout: 60_000 * k }).catch((e) => `TIMEOUT ${String(e).slice(0, 60)}`);
+    t.log(`start | ${first.slice(0, 110)}`);
+    t.assert(!/^TIMEOUT/.test(first), 'the document loads and its status settles', first);
+    errs.check('open');
+    let before = null;
+    let edit = null;
+    let changed = false;
+    for (const step of steps) {
+      t.log(`step | ${step}`);
+      const t0 = Date.now();
+      if (UNDONE.has(step)) [before, edit] = [await inputHash(t), step];
+      const problem = step.startsWith('find:') ? await find(page, step.slice(5), t.budget(10_000)) : await command(page, step, t.budget(10_000));
+      if (!t.check(problem === null, `${step}: offered by the palette`, problem)) continue;
+      const st = await waitSettled(page, { quiet: 250, timeout: 30_000 * k, empty: true }).catch(() => null);
+      const ms = Date.now() - t0;
+      t.check(st !== null, `${step}: the status settles (no hang, no "…" readout)`, (await t.app.status(page)).slice(0, 120));
+      if (ms > 6000) t.log(`${step} took ${ms} ms | ${(st ?? '').slice(0, 100)}`);
+      errs.check(step);
+      if (UNDONE.has(step)) changed = await inputHash(t) !== before;
+      if (step === 'Undo' && before && changed) {
+        const after = await inputHash(t);
+        t.check(after === before, `Undo after ${edit} restores the document exactly`, { before, after });
+        before = null;
+      }
+    }
+    const end = await waitSettled(page, { quiet: 1000, timeout: 30_000 * k, empty: true }).catch(() => 'TIMEOUT');
+    t.log(`end | ${end.slice(0, 110)}`);
+    t.check(end !== 'TIMEOUT', 'the status settles at the end', end);
+    errs.done();
+  });
+}
+
+test('consecutive palette commands finish closing and the URL command opens its prompt', async (t) => {
+  const { page } = t;
+  const text = '{"palette":"unchanged"}';
+  await t.open('/');
+  await t.app.setText(page, text);
+  await t.app.waitValid(page);
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(() => { window.__clip = null; });
+    await t.app.command(page, 'Copy input to clipboard', { timeout: t.budget(10_000) });
+    t.check(await t.app.clipboard(page) === text, `consecutive command ${i + 1} copies the document`);
+  }
+  await t.app.command(page, 'Load JSON from URL', { timeout: t.budget(10_000) });
+  const prompt = page.locator('.palette:visible input[type=url]');
+  // Real bug on main (2026-10-25, Firefox 2 of 3 runs): the palette's dialog.close() queues its close event,
+  // the command runs on the next frame and reopens the palette as the URL prompt, then the late close event
+  // sets palette: false and the prompt closes at once (components/dialogs.tsx Commands.run). PR #26 runs the
+  // command after the close event: 6 of 6 Firefox runs passed on its head 5ca9fb8.
+  const known = t.engine === 'firefox' ? { known: 'PR #26: on main the URL prompt closes right after opening (dialog close event races the command frame)' } : {};
+  t.check(await prompt.waitFor({ state: 'visible', timeout: t.budget(10_000) }).then(() => true, () => false), 'the URL prompt opens after its palette command', undefined, known);
+  await closePalette(page, { timeout: t.budget(10_000) });
+  await t.app.command(page, 'Copy input to clipboard', { timeout: t.budget(10_000) });
+  t.check(await t.app.clipboard(page) === text, 'commands still run after closing the URL prompt');
+});
