@@ -8,7 +8,11 @@
  * (about 0.25 s more per 100 MB, for half the memory of every copy).
  */
 
-const GECKO = typeof navigator !== 'undefined' && /\bFirefox\//.test(navigator.userAgent);
+let GECKO = typeof navigator !== 'undefined' && /\bFirefox\//.test(navigator.userAgent);
+/** Tests: run Firefox's way. */
+export const geckoForTests = (on: boolean) => {
+  GECKO = on;
+};
 /** Characters per String.fromCharCode call (well inside every engine's argument limit). */
 const CHUNK = 32_768;
 
@@ -33,18 +37,49 @@ function ascii(bytes: Uint8Array): boolean {
 }
 
 /**
- * The text of a file's bytes, the same in every browser: UTF-16 when it starts with a UTF-16 byte order
- * mark (as Windows tools write JSON), else UTF-8 (a UTF-8 byte order mark dropped, as Blob.text() does;
- * invalid bytes become U+FFFD).
+ * The text of a file or response body, the same in every browser: UTF-16 when it starts with a UTF-16 byte
+ * order mark (as Windows tools write JSON), else UTF-8 (a UTF-8 byte order mark dropped, as Blob.text()
+ * does; invalid bytes become U+FFFD). Decoded chunk by chunk as the bytes arrive (each chunk in its own
+ * task: the page never freezes on a big file, and its bytes aren't held whole).
  */
-export function bytesText(bytes: Uint8Array): string {
-  const b0 = bytes[0];
-  const b1 = bytes[1];
-  if (b0 === 0xff && b1 === 0xfe) return new TextDecoder('utf-16le').decode(bytes);
-  if (b0 === 0xfe && b1 === 0xff) return new TextDecoder('utf-16be').decode(bytes);
-  if (GECKO && ascii(bytes)) return asciiText(bytes);
-  return new TextDecoder().decode(bytes);
+export async function readText(body: Blob | Response): Promise<string> {
+  const stream = 'stream' in body ? body.stream() : body.body;
+  if (!stream) return '';
+  const reader = stream.getReader();
+  const parts: string[] = [];
+  let decoder: TextDecoder | null = null;
+  // (A chunk can end inside a character: the decoder keeps it, so ASCII made here waits for it to finish.)
+  let pending = false;
+  for (let first = true; ; first = false) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    let bytes = value;
+    if (first) {
+      // A byte order mark that came alone (a stream may start with a 1-byte chunk): read on to see it whole.
+      while (bytes.length < 3) {
+        const more = await reader.read();
+        if (more.done) break;
+        const joined = new Uint8Array(bytes.length + more.value.length);
+        joined.set(bytes);
+        joined.set(more.value, bytes.length);
+        bytes = joined;
+      }
+      const utf16 = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : '';
+      // (A UTF-8 byte order mark is dropped here, so a decoder flushed later doesn't drop a U+FEFF in the text.)
+      if (!utf16 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) bytes = bytes.subarray(3);
+      decoder = new TextDecoder(utf16 || 'utf-8', { ignoreBOM: !utf16 });
+    }
+    if (GECKO && decoder!.encoding === 'utf-8' && ascii(bytes)) {
+      if (pending) {
+        parts.push(decoder!.decode());
+        pending = false;
+      }
+      parts.push(asciiText(bytes));
+    } else {
+      parts.push(decoder!.decode(bytes, { stream: true }));
+      pending = true;
+    }
+  }
+  if (decoder && pending) parts.push(decoder.decode());
+  return parts.join('');
 }
-
-/** The text of a file or response body (see `bytesText`). */
-export const readText = async (body: Blob | Response) => bytesText(new Uint8Array(await body.arrayBuffer()));

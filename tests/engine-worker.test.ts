@@ -9,8 +9,17 @@ import { Doc } from '../lib/engine/doc';
 import { parse, type ParseResult } from '../lib/json/parser';
 import { diffResults } from './oracle/compare';
 
-/** A body's bytes, as File and Response give them (`arrayBuffer`), from its text. */
-const bytesOf = (text: string | Promise<string>) => Promise.resolve(text).then((t) => new TextEncoder().encode(t).buffer);
+/** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
+const streamOf = (text: string | Promise<string>) => new ReadableStream<Uint8Array>({
+  async start(c) {
+    try {
+      c.enqueue(new TextEncoder().encode(await text));
+      c.close();
+    } catch (e) {
+      c.error(e);
+    }
+  },
+});
 
 const load = createRequire(__filename);
 
@@ -404,7 +413,7 @@ test('a big load in another view goes from reading the file to parsing it here i
   engine.toast = () => {};
   const text = JSON.stringify(Array.from({ length: 60_000 }, (_, k) => ({ id: k, name: 'Zoë ' + k })));
   assert.ok(text.length > 1_000_000 && text.length < 2_000_000);
-  const file = { name: 'big.json', size: text.length, text: () => Promise.resolve(text), arrayBuffer: () => bytesOf(Promise.resolve(text)) };
+  const file = { name: 'big.json', size: text.length, text: () => Promise.resolve(text), stream: () => streamOf(Promise.resolve(text)) };
   const reading = engine.loadFile(file);
   look();
   assert.deepEqual(plain(seen), [{ kind: 'parsing', progress: 0 }], 'working while the file is read');
@@ -419,7 +428,7 @@ test('a file that cannot be read leaves what was shown before', async () => {
   const { engine, state } = loadSession();
   engine.toast = () => {};
   const before = (state.status = { kind: 'valid', warnings: 0 });
-  await engine.loadFile({ name: 'big.json', size: 5_000_000, text: () => Promise.reject(new Error('gone')), arrayBuffer: () => bytesOf(Promise.reject(new Error('gone'))) });
+  await engine.loadFile({ name: 'big.json', size: 5_000_000, text: () => Promise.reject(new Error('gone')), stream: () => streamOf(Promise.reject(new Error('gone'))) });
   assert.equal(state.status, before);
 });
 
