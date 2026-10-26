@@ -17,6 +17,9 @@ const PAIRS = {
   dupes: ['{"a":1,"a":2,"b":1}', '{"a":2,"b":1}'],
   'array-insert': ['[{"id":1},{"id":2},{"id":3}]', '[{"id":1},{"id":9},{"id":2},{"id":3}]'],
   scalars: ['"text"', '["text"]'],
+  // Several removals and inserts in one array: patch indices must account for the earlier operations.
+  'array-remove': ['[1,2,3,4,5,6]', '[2,4,"x",6]'],
+  'array-reorder': ['[{"id":1},{"id":2},{"id":3}]', '[{"id":3},{"id":1},{"id":2}]'],
 };
 
 /** Opens Compare with `left` in the input and `right` in the second editor; waits for its result. */
