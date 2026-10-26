@@ -24,5 +24,4 @@ jobs:
       pull-requests: write
     with:
       level: ${{ github.event.label.name == 'ci:full' && 'full' || github.event.label.name == 'ci:smoke' && 'smoke' || 'quick' }}
-      engines: ${{ github.event.label.name == 'ci:full' && 'firefox,webkit' || 'chromium' }}
-      suites: ${{ github.event.label.name == 'ci:full' && 'smoke' || '' }} # TEMP: test the engine jobs cheaply
+      engines: ${{ github.event.label.name == 'ci:full' && 'chromium,firefox,webkit' || 'chromium' }}
