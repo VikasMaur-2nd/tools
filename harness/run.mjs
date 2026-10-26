@@ -34,6 +34,7 @@ const { values: o, positionals: filters } = parseArgs({
     base: { type: 'string' },
     ref: { type: 'string' },
     legacy: { type: 'boolean' },
+    'build-only': { type: 'boolean' },
     rounds: { type: 'string' },
     baseline: { type: 'string' },
     'save-baseline': { type: 'string' },
@@ -110,11 +111,19 @@ const t0 = Date.now();
 const engines = [...new Set(selected.flatMap(enginesOf))];
 const pages = selected.some((t) => t.opts.page !== false);
 // Browsers start while the build runs.
-if (pages) {
+if (pages && !o['build-only']) {
   ensureBrowsers(engines);
   for (const e of engines) getBrowser(e).catch(() => {});
 }
 const variants = [...new Set(selected.map((t) => t.opts.variant || 'default'))];
+if (o['build-only']) {
+  // Builds what the selected checks need, then stops: CI builds once for several engine jobs. The default
+  // build always, since the offline suite serves it next to its own variant.
+  const all = o.url ? [] : [...new Set(['default', ...variants])];
+  for (const variant of all) await ensureBuild({ ref: o.ref, variant, log: (m) => console.log(m) });
+  console.log(`  built ${all.join(', ') || 'nothing (--url)'} in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  process.exit(0);
+}
 const targets = {};
 if (o.url) {
   targets.default = { name: 'url', base: o.url.replace(/\/$/, ''), legacy: !!o.legacy };

@@ -1,0 +1,224 @@
+# Checks on GitHub's 2-core Linux runners, on demand only and within a 1,000-minute monthly budget.
+# Never on push. Start it by hand (Actions → check → Run workflow, or gh workflow run check.yml -f level=smoke)
+# or with a ci:quick, ci:smoke or ci:full label on a PR (check-label.yml). harness/CI.md has the levels and costs.
+#
+# Every job starts with scripts/ci-usage.mjs --guard: it stops the job when this month's billed minutes plus
+# this run's estimate would pass 1,000, and otherwise writes what the job runs (CHECK_CODE, CHECK_BUILD,
+# CHECK_BUILD_ONLY, CHECK_RUN_ENGINES) for the steps below. Big-document checks (tag slow) stay on our machine.
+name: check
+run-name: "check · ${{ inputs.level }} · ${{ inputs.engines }} · ${{ inputs.suites || 'all' }} · ${{ inputs.url || inputs.ref || github.ref_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: 'unit: unit tests · quick: lint, typecheck, unit tests · smoke: quick + smoke checks · e2e: browser checks · full: quick + browser checks'
+        type: choice
+        options: [smoke, quick, unit, e2e, full]
+        default: smoke
+      engines:
+        description: 'Browsers for e2e and full: chromium, firefox, webkit, or a list like firefox,webkit (smoke is Chromium)'
+        default: chromium
+      suites:
+        description: 'Only these suites or tests for e2e and full, like "editor features"; test files for unit, like "parser diff". Blank: all'
+        default: ''
+      ref:
+        description: 'Branch, tag or commit to check. Blank: the branch this runs from'
+        default: ''
+      url:
+        description: 'Check this running site instead of a build (smoke, e2e, full; no code checks), like https://tools.vikasmaur.com'
+        default: ''
+  workflow_call:
+    inputs:
+      level: { type: string, default: smoke }
+      engines: { type: string, default: chromium }
+      suites: { type: string, default: '' }
+      ref: { type: string, default: '' }
+      url: { type: string, default: '' }
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  CHECK_LEVEL: ${{ inputs.level }}
+  CHECK_ENGINES: ${{ inputs.engines }}
+  CHECK_SUITES: ${{ inputs.suites }}
+  CHECK_URL: ${{ inputs.url }}
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  main:
+    name: ${{ inputs.level }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ contains(fromJSON('["smoke","e2e","full"]'), inputs.level) && 60 || 20 }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write # removes the ci:* label that started the run
+    outputs:
+      engines: ${{ steps.guard.outputs.engines }}
+      # The whole browser set in several engines runs as one job per engine, on the builds made here.
+      ready: ${{ steps.guard.outputs.split == 'true' && (inputs.url != '' || steps.build.outcome == 'success') }}
+    steps:
+      - name: Remove the label
+        if: github.event_name == 'pull_request'
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/$LABEL" --silent || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          LABEL: ${{ github.event.label.name }}
+      # The guard comes from this workflow's own commit; the code to check from `ref`.
+      - &checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - &guard
+        name: Budget
+        id: guard
+        run: node scripts/ci-usage.mjs --guard
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - &checkout-ref
+        name: Check out ${{ inputs.ref }}
+        if: inputs.ref != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - &pnpm
+        uses: pnpm/action-setup@v6
+      - &node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - &install
+        name: Install
+        id: install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        id: lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_CODE == 'quick' }}
+        run: pnpm lint
+      - name: Typecheck
+        id: typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_CODE == 'quick' }}
+        run: pnpm typecheck
+      - name: Unit tests
+        id: unit
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_CODE != '' }}
+        run: |
+          set -f
+          if [ "$CHECK_CODE" = unit ]; then pnpm test $CHECK_SUITES; else pnpm test; fi
+
+      # Production builds are cached by the harness's content key: the same code is never built twice, and
+      # new code builds from the last build's Turbopack cache. Their node_modules are reinstalled from the
+      # pnpm store instead of being cached.
+      - &tree
+        name: Build key
+        id: tree
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_BUILD == 'true' }}
+        run: echo "key=$(node --input-type=module -e 'import { treeOf } from "./harness/lib/build.mjs"; console.log(treeOf().slice(0, 16))')" >> "$GITHUB_OUTPUT"
+      - &restore
+        name: Restore builds
+        id: restore
+        if: ${{ !cancelled() && steps.tree.outputs.key != '' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/tool-kumar-harness/builds
+          key: builds-${{ steps.tree.outputs.key }}
+          restore-keys: |
+            builds-${{ steps.tree.outputs.key }}-
+            builds-
+      - &prepare
+        name: Install the restored builds' packages
+        if: ${{ !cancelled() && steps.restore.outputs.cache-matched-key != '' }}
+        run: |
+          shopt -s nullglob
+          for d in "$HOME/.cache/tool-kumar-harness/builds/$TREE"-*/; do
+            if [ -f "$d.harness-built" ]; then (cd "$d" && pnpm install --frozen-lockfile --prefer-offline --reporter=silent); fi
+          done
+        env:
+          TREE: ${{ steps.tree.outputs.key }}
+      - name: Build
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_BUILD_ONLY == 'true' }}
+        run: pnpm e2e -e "$CHECK_ALL_ENGINES" --skip-tag slow --build-only
+
+      - &deps
+        name: Browser packages
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_RUN_ENGINES != '' }}
+        run: node node_modules/playwright-core/cli.js install-deps ${CHECK_RUN_ENGINES//,/ }
+      - &e2e
+        name: Browser checks
+        id: e2e
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_RUN_ENGINES != '' }}
+        run: |
+          set -f
+          args=(-e "$CHECK_RUN_ENGINES" --skip-tag slow)
+          if [ -n "$CHECK_URL" ]; then args+=(--url "$CHECK_URL"); fi
+          if [ "$CHECK_LEVEL" = smoke ]; then pnpm e2e --smoke "${args[@]}"; else pnpm e2e $CHECK_SUITES "${args[@]}"; fi
+      - &screenshots
+        name: Failure screenshots
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: failures-${{ env.CHECK_JOB_ENGINE || 'main' }}
+          path: |
+            ~/.cache/tool-kumar-harness/results/*/*.png
+            ~/.cache/tool-kumar-harness/results/*/results.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Keep the builds
+        id: keep
+        if: ${{ !cancelled() && steps.tree.outputs.key != '' }}
+        run: |
+          shopt -s nullglob
+          cd "$HOME/.cache/tool-kumar-harness/builds"
+          find . -maxdepth 1 -type f -delete
+          built=()
+          for d in */; do
+            d=${d%/}
+            if [[ $d == "$TREE"-* && -f $d/.harness-built ]]; then rm -rf "$d/node_modules"; built+=("${d#"$TREE"-}"); else rm -rf "$d"; fi
+          done
+          if [ ${#built[@]} -gt 0 ]; then echo "key=builds-$TREE-$(printf '%s\n' "${built[@]}" | sort | paste -sd+)" >> "$GITHUB_OUTPUT"; fi
+        env:
+          TREE: ${{ steps.tree.outputs.key }}
+      - name: Save builds
+        if: ${{ !cancelled() && steps.keep.outputs.key != '' && steps.keep.outputs.key != steps.restore.outputs.cache-matched-key }}
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/tool-kumar-harness/builds
+          key: ${{ steps.keep.outputs.key }}
+      - name: Summary
+        if: ${{ always() && env.CHECK_CODE != '' }}
+        run: echo "Code checks — lint ${{ steps.lint.outcome }}, typecheck ${{ steps.typecheck.outcome }}, unit tests ${{ steps.unit.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+
+  engine:
+    name: ${{ inputs.level }} · ${{ matrix.engine }}
+    needs: main
+    if: ${{ !cancelled() && needs.main.outputs.ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: ${{ fromJSON(needs.main.outputs.engines || '["-"]') }}
+    env:
+      CHECK_JOB_ENGINE: ${{ matrix.engine }}
+    steps:
+      - *checkout
+      - *guard
+      - *checkout-ref
+      - *pnpm
+      - *node
+      - *install
+      - *tree
+      - *restore
+      - *prepare
+      - *deps
+      - *e2e
+      - *screenshots
