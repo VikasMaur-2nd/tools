@@ -71,6 +71,9 @@ const AFTER = 2;
 const CALL = -2;
 const CLOSED = -3;
 const PAUSED = -4;
+// str(): what a string has.
+const ESCAPED = 1;
+const CONTROL = 2;
 /** Tolerant values at most between two tries of the fast path. */
 const MAX_TOLERANT = 4096;
 
@@ -230,7 +233,9 @@ decoders.number = decodeNumber;
 
 /** Parses `text` in one go. */
 export function parse(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED }: TapeOptions = {}): Tape {
-  begin(text, jsonLines, 0x40000000, deepest);
+  // (In runs all the same: the engine then optimizes the fast path as a function, rather than only
+  // the loop it is in, which takes longer and is less sure.)
+  begin(text, jsonLines, 65536, deepest);
   return steps(Infinity)!;
 }
 
@@ -314,9 +319,16 @@ let kHash = NONE;
 let kLen = NONE;
 let kPos = NONE;
 let lastSeen = NONE;
+// The fast path guesses each property name before reading it, from the name that followed the
+// previous one last time (or came first at that depth): per key, that next name (-1: none yet).
+let follows = NONE;
 
-// Per depth: children so far of the open container there, and the key sets of wide objects (see dup()).
+// Per depth: children so far of the open container there, the first property name of the last
+// object there and, while a member's value is a container, the member's name (for the guesses), and
+// the key sets of wide objects (see dup()).
 let cc = NONE;
+let firsts = NONE;
+let kd = NONE;
 let sets: Map<number, KeySet> = new Map();
 
 interface KeySet {
@@ -349,11 +361,13 @@ function begin(text: string, jsonLines: boolean, perRun: number, deepest: number
   count = grownAt = grownCount = 0;
   keys = [];
   big = extra = null;
-  kTable = kHash = kLen = kPos = lastSeen = cc = NONE;
+  kTable = kHash = kLen = kPos = lastSeen = follows = cc = firsts = kd = NONE;
   sets = new Map();
   if (text) {
-    restart();
     cc = new Int32Array(64);
+    firsts = new Int32Array(64);
+    kd = new Int32Array(64);
+    restart();
   }
 }
 
@@ -367,6 +381,8 @@ function restart() {
   kLen = new Int32Array(32);
   kPos = new Int32Array(32);
   lastSeen = new Int32Array(32);
+  follows = new Int32Array(32);
+  firsts.fill(-1);
   sets = new Map();
 }
 
@@ -409,7 +425,10 @@ interface State {
   kLen: Int32Array<ArrayBuffer>;
   kPos: Int32Array<ArrayBuffer>;
   lastSeen: Int32Array<ArrayBuffer>;
+  follows: Int32Array<ArrayBuffer>;
   cc: Int32Array<ArrayBuffer>;
+  firsts: Int32Array<ArrayBuffer>;
+  kd: Int32Array<ArrayBuffer>;
   sets: Map<number, KeySet>;
 }
 
@@ -454,7 +473,10 @@ function save(state?: State): State {
     kLen,
     kPos,
     lastSeen,
+    follows,
     cc,
+    firsts,
+    kd,
     sets,
   };
   return state ? Object.assign(state, s) : s;
@@ -500,7 +522,10 @@ function load(s: State) {
     kLen,
     kPos,
     lastSeen,
+    follows,
     cc,
+    firsts,
+    kd,
     sets,
   } = s);
   opened = false;
@@ -608,9 +633,15 @@ function node(kind: number, vk: number, s: number, e: number, d: number, u: numb
 /** A container at depth `d` opened: its children are counted from 0. */
 function enter(d: number) {
   if (d >= cc.length) {
-    const next = new Int32Array(Math.max(cc.length * 2, d + 1));
-    next.set(cc);
-    cc = next;
+    const size = Math.max(cc.length * 2, d + 1);
+    const grown = (a: Int32Array<ArrayBuffer>, fill: number) => {
+      const b = new Int32Array(size).fill(fill, a.length);
+      b.set(a);
+      return b;
+    };
+    cc = grown(cc, 0);
+    firsts = grown(firsts, -1);
+    kd = grown(kd, -1);
   }
   cc[d] = 0;
 }
@@ -720,11 +751,13 @@ function addKey(t: string, h: number, pos: number, slot: number): number {
     kLen = grown(kLen);
     kPos = grown(kPos);
     lastSeen = grown(lastSeen);
+    follows = grown(follows);
   }
   kHash[k] = h;
   kLen[k] = t.length;
   kPos[k] = pos;
   lastSeen[k] = -1;
+  follows[k] = -1;
   kTable[slot] = k + 1;
   if ((k + 1) * 2 > kTable.length) {
     const table = new Int32Array(kTable.length * 2);
@@ -795,77 +828,46 @@ function fast(): void {
   let ex = exact;
   let budget = left;
   let depths = cc;
+  let names = kd;
+  let first = firsts;
   let obj = p >= 0 && (t[p * W] & 7) === OBJ;
   let kb = p < 0 ? 0 : obj ? KEY_NAME << 3 : KEY_INDEX << 3;
   let m = pd >= 0 ? depths[pd] : 0;
 
-  main: for (;;) {
+  for (;;) {
     if (md === VALUE) {
       if (--budget < 0) break;
       let c = s.charCodeAt(at);
-      while (c === 32 || c === 10 || c === 13 || c === 9) c = s.charCodeAt(++at);
+      while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = s.charCodeAt(++at);
       const d = pd + 1;
       if (d > deepest) {
         budget++;
         break;
       }
-      let o = cnt * W;
+      const o = cnt * W;
       if (o + W > t.length) t = grow(o + W, at, cnt);
+      let meta: number;
+      let e: number;
       if (c === 34) {
-        let j = at + 1;
-        let esc = false;
-        for (;;) {
-          const ch = s.charCodeAt(j);
-          if (ch === 34) break;
-          if (ch === 92) {
-            const e = s.charCodeAt(j + 1);
-            if (e === 117) {
-              let h = s.charCodeAt(j + 2);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              h = s.charCodeAt(j + 3);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              h = s.charCodeAt(j + 4);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              h = s.charCodeAt(j + 5);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              j += 6;
-            } else if (e === 34 || e === 92 || e === 47 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) j += 2;
-            else {
-              budget++;
-              break main;
-            }
-            esc = true;
-            continue;
-          }
-          // (NaN past the end, too.)
-          if (!(ch >= 32)) {
-            budget++;
-            break main;
-          }
-          j++;
+        const r = strictString(s, at + 1);
+        if (r === -1) {
+          budget++;
+          break;
         }
-        t[o] = STR | kb | ((esc ? VALUE_DECODE : VALUE_SLICE) << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = j + 1;
-        at = j + 1;
+        if (r >= 0) {
+          meta = STR | (VALUE_SLICE << 5);
+          e = r + 1;
+        } else {
+          meta = STR | (VALUE_DECODE << 5);
+          e = ~r + 1;
+        }
       } else if ((c >= 48 && c <= 57) || c === 45) {
         let j = at;
         let ch = c;
         if (ch === 45) ch = s.charCodeAt(++j);
         if (ch === 48) {
           ch = s.charCodeAt(++j);
+          // (Leading zeros, hexadecimal.)
           if ((ch >= 48 && ch <= 57) || ch === 120 || ch === 88) {
             budget++;
             break;
@@ -897,21 +899,16 @@ function fast(): void {
           while (ch >= 48 && ch <= 57);
         }
         if (ex && !canonicalAt(s, at, j)) ex = false;
-        t[o] = NUM | kb | (VALUE_SLICE << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = j;
-        at = j;
+        meta = NUM | (VALUE_SLICE << 5);
+        e = j;
       } else if (c === 123 || c === 91) {
         let j = at + 1;
         let ch = s.charCodeAt(j);
-        while (ch === 32 || ch === 10 || ch === 13 || ch === 9) ch = s.charCodeAt(++j);
-        const close = c === 123 ? 125 : 93;
-        if (ch === close) {
+        while (ch <= 32 && (ch === 32 || ch === 10 || ch === 13 || ch === 9)) ch = s.charCodeAt(++j);
+        if (ch === (c === 123 ? 125 : 93)) {
           // Empty: finished at once.
-          t[o] = (c === 123 ? OBJ : ARR) | kb | (VALUE_NONE << 5) | 256;
-          t[o + 1] = at;
-          t[o + 2] = j + 1;
-          at = j + 1;
+          meta = (c === 123 ? OBJ : ARR) | (VALUE_NONE << 5);
+          e = j + 1;
         } else if (c === 123 ? ch === 34 : startsStrict(ch)) {
           // Open: its first property name or item comes next.
           t[o] = (c === 123 ? OBJ : ARR) | kb | (VALUE_NONE << 5) | 256;
@@ -921,10 +918,15 @@ function fast(): void {
           t[o + 4] = obj ? k : m;
           nd++;
           if (d > mx) mx = d;
-          if (pd >= 0) depths[pd] = m + 1;
+          if (pd >= 0) {
+            depths[pd] = m + 1;
+            names[pd] = k;
+          }
           if (d >= depths.length) {
             enter(d);
             depths = cc;
+            names = kd;
+            first = firsts;
           }
           p = cnt++;
           pd = d;
@@ -938,48 +940,26 @@ function fast(): void {
           budget++;
           break;
         }
-      } else if (c === 116) {
-        const ch = s.charCodeAt(at + 4);
-        if (s.charCodeAt(at + 1) !== 114 || s.charCodeAt(at + 2) !== 117 || s.charCodeAt(at + 3) !== 101 || ch > 127 || isIdent(ch)) {
-          budget++;
-          break;
-        }
-        t[o] = BOOL | kb | (VALUE_TRUE << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = at += 4;
-      } else if (c === 102) {
-        const ch = s.charCodeAt(at + 5);
-        if (
-          s.charCodeAt(at + 1) !== 97 ||
-          s.charCodeAt(at + 2) !== 108 ||
-          s.charCodeAt(at + 3) !== 115 ||
-          s.charCodeAt(at + 4) !== 101 ||
-          ch > 127 ||
-          isIdent(ch)
-        ) {
-          budget++;
-          break;
-        }
-        t[o] = BOOL | kb | (VALUE_FALSE << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = at += 5;
-      } else if (c === 110) {
-        const ch = s.charCodeAt(at + 4);
-        if (s.charCodeAt(at + 1) !== 117 || s.charCodeAt(at + 2) !== 108 || s.charCodeAt(at + 3) !== 108 || ch > 127 || isIdent(ch)) {
-          budget++;
-          break;
-        }
-        t[o] = NUL | kb | (VALUE_NULL << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = at += 4;
+      } else if (c === 116 && s.charCodeAt(at + 1) === 114 && s.charCodeAt(at + 2) === 117 && s.charCodeAt(at + 3) === 101 && ends(s.charCodeAt(at + 4))) {
+        meta = BOOL | (VALUE_TRUE << 5);
+        e = at + 4;
+      } else if (c === 102 && s.charCodeAt(at + 1) === 97 && s.charCodeAt(at + 2) === 108 && s.charCodeAt(at + 3) === 115 && s.charCodeAt(at + 4) === 101 && ends(s.charCodeAt(at + 5))) {
+        meta = BOOL | (VALUE_FALSE << 5);
+        e = at + 5;
+      } else if (c === 110 && s.charCodeAt(at + 1) === 117 && s.charCodeAt(at + 2) === 108 && s.charCodeAt(at + 3) === 108 && ends(s.charCodeAt(at + 4))) {
+        meta = NUL | (VALUE_NULL << 5);
+        e = at + 4;
       } else {
         budget++;
         break;
       }
-      // A finished leaf (or empty container): its parent and key.
-      o = cnt * W;
+      // A finished leaf (or empty container).
+      t[o] = meta | kb | 256;
+      t[o + 1] = at;
+      t[o + 2] = e;
       t[o + 3] = p;
       t[o + 4] = obj ? k : m;
+      at = e;
       cnt++;
       nd++;
       m++;
@@ -992,42 +972,40 @@ function fast(): void {
       // A property name of object p at `at`, and its colon.
       const q = at;
       if (s.charCodeAt(q) !== 34) break;
-      let j = q + 1;
-      let h = 0;
+      let key = -1;
+      let j = 0;
       let esc = false;
-      for (;;) {
-        const ch = s.charCodeAt(j);
-        if (ch === 34) break;
-        if (ch === 92) {
-          const e = s.charCodeAt(j + 1);
-          if (e === 117) {
-            let x = s.charCodeAt(j + 2);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            x = s.charCodeAt(j + 3);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            x = s.charCodeAt(j + 4);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            x = s.charCodeAt(j + 5);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            j += 6;
-          } else if (e === 34 || e === 92 || e === 47 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) j += 2;
-          else break main;
-          esc = true;
-          continue;
+      // The guess: the name that followed the previous member's last time (or came first here).
+      const guess = m === 0 ? first[pd] : k >= 0 && k < keys.length ? follows[k] : -1;
+      if (guess >= 0) {
+        const b = kPos[guess];
+        const len = kLen[guess];
+        if (b >= 0 && s.charCodeAt(q + 1 + len) === 34) {
+          let x = 0;
+          while (x < len && s.charCodeAt(q + 1 + x) === s.charCodeAt(b + x)) x++;
+          if (x === len) {
+            key = guess;
+            j = q + 1 + len;
+          }
         }
-        if (!(ch >= 32)) break main;
-        h = (Math.imul(h, 31) + ch) | 0;
-        j++;
+      }
+      if (key < 0) {
+        const r = strictString(s, q + 1);
+        if (r === -1) break;
+        esc = r < 0;
+        j = esc ? ~r : r;
       }
       let r = j + 1;
       let ch = s.charCodeAt(r);
-      while (ch === 32 || ch === 10 || ch === 13 || ch === 9) ch = s.charCodeAt(++r);
+      while (ch <= 32 && (ch === 32 || ch === 10 || ch === 13 || ch === 9)) ch = s.charCodeAt(++r);
       if (ch !== 58) break;
-      const key = esc ? internText(decodeString(s, q)) : internRange(s, q + 1, j, h);
+      if (key < 0) key = esc ? internText(decodeString(s, q)) : internRange(s, q + 1, j, hashRange(s, q + 1, j));
       if (ex && (esc || (s.charCodeAt(q + 1) >= 48 && s.charCodeAt(q + 1) <= 57 && intKeyAt(s, q + 1, j)))) ex = false;
       const last = lastSeen[key];
       if (last > p && (t[last * W + 3] === p || dup(p, pd, m, key))) duplicate(q, key);
       lastSeen[key] = cnt;
+      if (m === 0) first[pd] = key;
+      else if (k >= 0 && k < keys.length) follows[k] = key;
       k = key;
       at = r + 1;
       md = VALUE;
@@ -1037,7 +1015,7 @@ function fast(): void {
     // AFTER a value in p.
     let j = at;
     let c = s.charCodeAt(j);
-    while (c === 32 || c === 10 || c === 13 || c === 9) c = s.charCodeAt(++j);
+    while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = s.charCodeAt(++j);
     if (p === top) {
       // JSON Lines: the next line's value (the tolerant parser takes the second one: it reports the wrapping).
       if (top < 0 || m < 2 || !startsStrict(c)) {
@@ -1051,7 +1029,7 @@ function fast(): void {
     if (c === 44) {
       let q = j + 1;
       let ch = s.charCodeAt(q);
-      while (ch === 32 || ch === 10 || ch === 13 || ch === 9) ch = s.charCodeAt(++q);
+      while (ch <= 32 && (ch === 32 || ch === 10 || ch === 13 || ch === 9)) ch = s.charCodeAt(++q);
       if (obj ? ch !== 34 : !startsStrict(ch)) break;
       at = q;
       md = obj ? FIRST : VALUE;
@@ -1067,7 +1045,10 @@ function fast(): void {
       else sized(p, cnt);
       p = t[po + 3];
       pd--;
-      m = pd >= 0 ? depths[pd] : 0;
+      if (pd >= 0) {
+        m = depths[pd];
+        k = names[pd];
+      } else m = 0;
       obj = p >= 0 && (t[p * W] & 7) === OBJ;
       kb = p < 0 ? 0 : obj ? KEY_NAME << 3 : KEY_INDEX << 3;
       continue;
@@ -1087,6 +1068,34 @@ function fast(): void {
   exact = ex;
   left = budget;
 }
+
+/**
+ * The strict JSON string whose text starts at `j`: the index of its closing quote, or its
+ * complement (~index, negative) if it has escapes; -1 if it isn't strict JSON (or doesn't end).
+ */
+function strictString(s: string, j: number): number {
+  let esc = false;
+  for (;;) {
+    const c = s.charCodeAt(j);
+    if (c === 34) return esc ? ~j : j;
+    if (c === 92) {
+      const e = s.charCodeAt(j + 1);
+      if (e === 117) {
+        if (!(isHex(s.charCodeAt(j + 2)) && isHex(s.charCodeAt(j + 3)) && isHex(s.charCodeAt(j + 4)) && isHex(s.charCodeAt(j + 5)))) return -1;
+        j += 6;
+      } else if (e === 34 || e === 92 || e === 47 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) j += 2;
+      else return -1;
+      esc = true;
+      continue;
+    }
+    // (NaN past the end, too.)
+    if (!(c >= 32)) return -1;
+    j++;
+  }
+}
+
+/** Whether `c` can follow true, false or null (parser.ts's word(): not part of a longer name; anything non-ASCII is left to the tolerant parser). */
+const ends = (c: number) => !(c > 127 || (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95 || c === 36);
 
 // ── The tolerant parser (parser.ts, writing the tape) ────────────────────
 
@@ -1182,26 +1191,27 @@ const esc = () => {
   fix(i - 2, `Invalid escape sequence \\${String.fromCharCode(c)}`);
 };
 
-/** Goes over a string starting at the opening quote; `q`/`q2` are the accepted closing quotes. True if it has escapes (its value is not the text between the quotes). */
-const str = (q: number, q2: number): boolean => {
+/** Goes over a string starting at the opening quote; `q`/`q2` are the accepted closing quotes. ESCAPED if it has escapes (its value is not the text between the quotes), | CONTROL if it has control characters. */
+const str = (q: number, q2: number): number => {
   const s = i;
-  let escaped = false;
+  let found = 0;
   i++;
   for (;;) {
     if (i >= n) fail(s, 'Unterminated string: missing closing quote');
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
       i++;
-      return escaped;
+      return found;
     }
     if (c === 92) {
       i++;
       esc();
-      escaped = true;
+      found |= ESCAPED;
       continue;
     }
     if (c < 32) {
       fix(i, c === 10 || c === 13 ? 'Line breaks inside strings must be escaped as \\n' : 'Control characters inside strings must be escaped');
+      found |= CONTROL;
     }
     i++;
   }
@@ -1210,7 +1220,7 @@ const str = (q: number, q2: number): boolean => {
 /** A string's value (a property name). */
 const strText = (q: number, q2: number): string => {
   const s = i;
-  return str(q, q2) ? decodeString(src, s) : src.slice(s + 1, i - 1);
+  return str(q, q2) & ESCAPED ? decodeString(src, s) : src.slice(s + 1, i - 1);
 };
 
 /** Goes over a number: VALUE_SLICE if its value is its text, VALUE_DECODE if it is written loosely. */
@@ -1317,19 +1327,19 @@ const loose = (c: number, d: number, u: number, kk: number, key: number): number
   const s = i;
   if (c === 39) {
     fix(i, 'Strings must use double quotes');
-    return leaf(STR, str(39, 39) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return leaf(STR, str(39, 39) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
   }
   if (c === 0x201c || c === 0x201d) {
     fix(i, 'Strings must use straight double quotes (")');
-    return leaf(STR, str(0x201d, 0x201c) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return leaf(STR, str(0x201d, 0x201c) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
   }
   if (c === 0x2018 || c === 0x2019) {
     fix(i, 'Strings must use straight double quotes (")');
-    return leaf(STR, str(0x2019, 0x2018) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return leaf(STR, str(0x2019, 0x2018) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
   }
   if (c === 96) {
     fix(i, 'Strings must use double quotes');
-    return leaf(STR, str(96, 96) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return leaf(STR, str(96, 96) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
   }
   if (c === 43 || c === 45 || c === 46) {
     if (c !== 46 && src.startsWith('Infinity', i + 1)) {
@@ -1535,7 +1545,7 @@ const value = (d: number, u: number, kk: number, key: number): number => {
     if (d > maxDepth) fail(i, 'Nesting is too deep to parse');
     depth = d;
   }
-  if (c === 34) return leaf(STR, str(34, 34) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+  if (c === 34) return leaf(STR, str(34, 34) & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
   if (c === 123) return openObj(d, u, kk, key);
   if (c === 91) return openArr(d, u, kk, key);
   if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, kk, key);
@@ -1617,7 +1627,11 @@ const fillObj = (p: number, pd: number): number => {
       } else c = src.charCodeAt(i);
       // A property name and its colon.
       const ks = i;
-      key = c === 34 ? (str(34, 34) ? internText(decodeString(src, ks)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1))) : internText(looseKey(c));
+      if (c === 34) {
+        const found = str(34, 34);
+        // (Only a name written in strict JSON is kept as source text: the fast path matches others against it.)
+        key = found & ESCAPED ? internText(decodeString(src, ks)) : found ? internText(src.slice(ks + 1, i - 1)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1));
+      } else key = internText(looseKey(c));
       const name = keys[key];
       // Not natively reproducible: integer-like keys (JS reorders them) and keys written with
       // escapes (V8 13.x JSON.parse can misread "\n" as "\" after seeing a key containing "\").
