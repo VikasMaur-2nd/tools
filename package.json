@@ -16,7 +16,8 @@
     "indexnow": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/indexnow.mjs",
     "i18n:pages": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/export-tool-pages.mjs",
     "i18n:sync": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/i18n-sync.mjs",
-    "i18n:verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-i18n.mjs"
+    "i18n:verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-i18n.mjs",
+    "wasm": "cd lib/json/wasm && cargo build --release --target-dir ../../../node_modules/.cache/tape-wasm && node -e \"require('fs').copyFileSync('../../../node_modules/.cache/tape-wasm/wasm32-unknown-unknown/release/tape.wasm', '../tape.wasm')\""
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
