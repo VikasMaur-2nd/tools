@@ -178,7 +178,11 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
         }
         i++;
         if (!special) size += bytes;
-        else {
+        else if (i - a > REQUOTE_MIN) {
+          const k = requoteBytes(src, a, i - 1);
+          if (k < 0) return null;
+          size += k;
+        } else {
           try {
             size += byteLength(quote(JSON.parse(src.slice(a, i)) as string));
           } catch {
@@ -193,23 +197,114 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
 }
 
 /** Copy of `buf` (its first `len` units) with room for `k` more. */
-function grown<B extends Uint8Array | Uint16Array>(buf: B, len: number, k: number): B {
+function grown(buf: Uint16Array, len: number, k: number) {
   if (len + k > MAX_TEXT) throw tooLong();
-  const size = Math.min(MAX_TEXT, Math.max(buf.length * 2, len + k));
-  const next = (buf instanceof Uint8Array ? new Uint8Array(size) : new Uint16Array(size)) as B;
+  const next = new Uint16Array(Math.min(MAX_TEXT, Math.max(buf.length * 2, len + k)));
   next.set(buf.subarray(0, len));
   return next;
 }
 
-/** `buf` (its first `len` units) as UTF-16, for a character an ASCII buffer can't hold. */
-function widened(buf: Uint8Array, len: number): Uint16Array {
-  const next = new Uint16Array(buf.length);
-  for (let k = 0; k < len; k++) next[k] = buf[k];
-  return next;
+/**
+ * The text of the first `len` units of `buf`. ASCII (`hi` < 0x80) is made one byte a character: half the
+ * memory of UTF-16, here and wherever the text is sent (the native typed-array copy narrows it).
+ */
+function decoded(buf: Uint16Array, len: number, hi: number): string {
+  if (hi > 0x7f) return new TextDecoder('utf-16le').decode(buf.subarray(0, len));
+  const bytes = new Uint8Array(len);
+  bytes.set(buf.subarray(0, len));
+  return new TextDecoder().decode(bytes);
 }
 
-/** The text of the first `len` units of `buf`: one byte a character while it is ASCII (half the memory of UTF-16, here and wherever it is sent). */
-const decoded = (buf: Uint8Array | Uint16Array, len: number) => new TextDecoder(buf instanceof Uint8Array ? 'utf-8' : 'utf-16le').decode(buf.subarray(0, len));
+/** Strings this long (characters) are re-quoted in place (see requote); shorter ones natively, which is faster. */
+const REQUOTE_MIN = 65_536;
+const HEX = '0123456789abcdef';
+/** The highest unit and the UTF-8 bytes the last `requote` wrote. */
+let requotedHi = 0;
+let requotedBytes = 0;
+
+/**
+ * The JSON string token src[a..b] (quotes included) as `quote(JSON.parse(token))` writes it, into `out` from
+ * `at` (just counted when `out` is null): its length, or -1 if JSON.parse would refuse it. No string is made,
+ * so a string of hundreds of MB costs no copies (`requotedHi`: its highest unit).
+ */
+function requote(src: string, a: number, b: number, out: Uint16Array | null, at: number): number {
+  let len = 0;
+  let hi = 0;
+  let bytes = 0;
+  let k = at;
+  const put = (u: number) => {
+    if (out) out[k++] = u;
+    len++;
+    hi |= u;
+    // (Surrogates are written in pairs: 4 bytes for the pair.)
+    bytes += u < 0x80 ? 1 : u < 0x800 ? 2 : u >= 0xd800 && u <= 0xdfff ? (u <= 0xdbff ? 4 : 0) : 3;
+  };
+  const esc = (u: number) => {
+    put(92);
+    put(117);
+    put(HEX.charCodeAt((u >> 12) & 15));
+    put(HEX.charCodeAt((u >> 8) & 15));
+    put(HEX.charCodeAt((u >> 4) & 15));
+    put(HEX.charCodeAt(u & 15));
+  };
+  put(34);
+  // A high surrogate waiting for its low half.
+  let high = -1;
+  for (let i = a + 1; i < b; ) {
+    let u = src.charCodeAt(i++);
+    if (u === 92) {
+      const e = src.charCodeAt(i++);
+      switch (e) {
+        case 34: case 92: case 47: u = e; break;
+        case 98: u = 8; break;
+        case 102: u = 12; break;
+        case 110: u = 10; break;
+        case 114: u = 13; break;
+        case 116: u = 9; break;
+        case 117: {
+          u = 0;
+          for (let d = 0; d < 4; d++) {
+            const h = src.charCodeAt(i++);
+            const v = h >= 48 && h <= 57 ? h - 48 : h >= 97 && h <= 102 ? h - 87 : h >= 65 && h <= 70 ? h - 55 : -1;
+            if (v < 0) return -1;
+            u = (u << 4) | v;
+          }
+          break;
+        }
+        default:
+          return -1;
+      }
+    } else if (u < 32) return -1;
+    if (high >= 0) {
+      if (u >= 0xdc00 && u <= 0xdfff) {
+        put(high);
+        put(u);
+        high = -1;
+        continue;
+      }
+      esc(high);
+      high = -1;
+    }
+    if (u >= 0xd800 && u <= 0xdbff) high = u;
+    else if (u >= 0xdc00 && u <= 0xdfff) esc(u);
+    else if (u === 34 || u === 92) { put(92); put(u); }
+    else if (u < 32) {
+      const short = u === 8 ? 98 : u === 12 ? 102 : u === 10 ? 110 : u === 13 ? 114 : u === 9 ? 116 : 0;
+      if (short) { put(92); put(short); } else esc(u);
+    } else put(u);
+  }
+  if (high >= 0) esc(high);
+  put(34);
+  requotedHi = hi;
+  requotedBytes = bytes;
+  return len;
+}
+
+/** UTF-8 bytes of what `requote` writes for src[a..b], or -1. */
+function requoteBytes(src: string, a: number, b: number): number {
+  // (A string that runs to the end of the text has no closing quote.)
+  return src.charCodeAt(b) !== 34 || requote(src, a, b, null, 0) < 0 ? -1 : requotedBytes;
+}
 
 /** A re-indent in steps (see `reindenter`). */
 export interface Reindenter {
@@ -234,8 +329,8 @@ export function reindenter(src: string, indent: string): Reindenter {
   // What may come next (want): 0 value, 1 value or close (array start), 2 key or
   // close (object start), 3 key, 4 colon, 5 comma or close, 6 end of text.
   // special: the next backslash, control character or surrogate (one forward search overall).
-  // ASCII is written one byte a unit until a string holds more (see `decoded`).
-  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint8Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1 };
+  // `hi`: the highest unit written (ASCII output is made one byte a character: see `decoded`).
+  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1, hi: 0 };
   return Object.assign((until: number) => step(st, until), { at: () => st.i });
 }
 
@@ -247,18 +342,19 @@ interface Reindent {
   iu: number;
   same: boolean;
   stack: number[];
-  buf: Uint8Array | Uint16Array;
+  buf: Uint16Array;
   len: number;
   i: number;
   want: number;
   special: number;
+  hi: number;
 }
 
 /** Runs a reindent until `until`; the loop works on locals (closure or object reads per character are slow). */
 function step(st: Reindent, until: number): string | null | undefined {
   {
     const { src, indent, n, unit, iu, same, stack } = st;
-    let { buf, len, i, want, special } = st;
+    let { buf, len, i, want, special, hi } = st;
     for (let steps = 1; ; steps++) {
       if ((steps & 4095) === 0 && performance.now() > until) {
         st.buf = buf;
@@ -266,11 +362,12 @@ function step(st: Reindent, until: number): string | null | undefined {
         st.i = i;
         st.want = want;
         st.special = special;
+        st.hi = hi;
         return undefined;
       }
       let c = src.charCodeAt(i);
       while (c === 32 || c === 10 || c === 13 || c === 9) c = src.charCodeAt(++i);
-      if (i >= n) return want === 6 ? decoded(buf, len) : null;
+      if (i >= n) return want === 6 ? decoded(buf, len, hi) : null;
       if (want === 6) return null;
       // Room for any punctuation plus a line break and its indent.
       const depth = stack.length + 1;
@@ -337,26 +434,28 @@ function step(st: Reindent, until: number): string | null | undefined {
           SPECIAL.lastIndex = i;
           special = SPECIAL.exec(src)?.index ?? n;
         }
-        let s: string | null = null;
-        if (special < j) {
+        if (special < j && j - i >= REQUOTE_MIN) {
+          // A big string with escapes, control characters or surrogates: re-quoted as JSON.stringify writes it
+          // (counted first), without the copies the native way makes (hundreds of MB for one long string).
+          const k = requote(src, i, j, null, 0);
+          if (k < 0) return null;
+          if (len + k > buf.length) buf = grown(buf, len, k);
+          len += requote(src, i, j, buf, len);
+          hi |= requotedHi;
+        } else if (special < j) {
+          let s: string;
           try {
             s = quote(JSON.parse(src.slice(i, j + 1)) as string);
           } catch {
             return null;
           }
-        }
-        const k = s ? s.length : j + 1 - i;
-        if (len + k > buf.length) buf = grown(buf, len, k);
-        const from = len;
-        let hi = 0;
-        if (s) for (let m = 0; m < k; m++) hi |= buf[len++] = s.charCodeAt(m);
-        else for (let m = i; m <= j; m++) hi |= buf[len++] = src.charCodeAt(m);
-        if (hi > 0x7f && buf instanceof Uint8Array) {
-          // The first character past ASCII: the output goes on as UTF-16, this string written again.
-          buf = widened(buf, from);
-          len = from;
-          if (s) for (let m = 0; m < k; m++) buf[len++] = s.charCodeAt(m);
-          else for (let m = i; m <= j; m++) buf[len++] = src.charCodeAt(m);
+          const k = s.length;
+          if (len + k > buf.length) buf = grown(buf, len, k);
+          for (let m = 0; m < k; m++) hi |= buf[len++] = s.charCodeAt(m);
+        } else {
+          const k = j + 1 - i;
+          if (len + k > buf.length) buf = grown(buf, len, k);
+          for (let m = i; m <= j; m++) hi |= buf[len++] = src.charCodeAt(m);
         }
         i = j + 1;
         want = want === 2 || want === 3 ? 4 : stack.length ? 5 : 6;
