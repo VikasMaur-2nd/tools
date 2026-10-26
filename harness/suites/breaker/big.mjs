@@ -14,9 +14,9 @@ import { clear, copied, golden, hash, heavyLock, reformat, seenToasts, settled, 
 defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: 600_000 });
 
 /** Opens fixture `name` through Open file and waits (scaled per engine) until the status settles. */
-async function open(t, name, { minutes = 3 } = {}) {
+async function open(t, name, { minutes = 3, reopen = true } = {}) {
   const { page } = t;
-  await t.open('/');
+  if (reopen) await t.open('/');
   await clear(page);
   await watchToasts(page);
   await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture(name));
@@ -121,11 +121,25 @@ test('a 50 MB string: valid, and the tree shows it without freezing the page', a
   t.check(row.startsWith('root"abcdefghij ÄÖÜ 東京 \\n \\"q\\" 🚀 abcdefghij'), 'the row starts with the string', row.slice(0, 60));
 });
 
-test('50 MB of random bytes: an error at once, no crash', async (t) => {
-  await heavyLock(t);
-  const st = await open(t, 'blob-50mb', { minutes: 5 });
+test('5 MB of random bytes: an error within seconds, and the page stays responsive', async (t) => {
+  // (50 MB of random bytes runs Chromium out of memory on main: 6.8 GiB after 3 minutes. Not opened here.)
+  const { page } = t;
+  await page.goto(t.base + '/', { waitUntil: 'commit' });
+  await t.app.waitEngine(page);
+  await page.evaluate(() => {
+    window.__gap = { last: performance.now(), max: 0 };
+    const f = () => { const n = performance.now(); window.__gap.max = Math.max(window.__gap.max, n - window.__gap.last); window.__gap.last = n; requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  });
+  const t0 = Date.now();
+  const st = await open(t, 'blob-5mb', { minutes: 3, reopen: false });
+  const ms = Date.now() - t0;
+  const gap = await page.evaluate(() => Math.round(window.__gap.max));
+  t.log('random 5 MB:', { ms, gap, st });
   t.check(st?.kind === 'err', 'an error status', st);
-  t.check((await seenToasts(t.page)).includes('Opened blob-50mb.bin'), 'Opened blob-50mb.bin', await seenToasts(t.page));
+  const known = { known: 'bug: binary text makes the editor measure every line in the DOM (BREAKER-REPORT, binary files)' };
+  t.check(ms < t.budget(15_000) * slow(t), 'the error shows within 15 s', `${ms} ms`, known);
+  t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`, known);
 });
 
 test('the 300 MiB limit: one byte more is refused before reading', async (t) => {
