@@ -16,6 +16,7 @@ import {
   cardOf,
   cardPath,
   cardSizeText,
+  entryCount,
   fitCols,
   headText,
   labelText,
@@ -111,6 +112,7 @@ function check(text: string, label: string, opts?: ParseOptions, queries: string
     assert.equal(rowIsItem(tm, r), typeof n.key === 'number', at);
     assert.equal(rowKey(tm, r), n.key, at);
     assert.equal(rowValue(tm, r), n.t >= ARR ? null : n.v, at);
+    if (n.t >= ARR) assert.equal(entryCount(tm, -1, r), (n.v as JNode[]).length, at);
     // The accessors read the node model the same way.
     assert.equal(rowValueText(m, r), valueText(n), at);
     assert.equal(rowColor(m, r), swatch(n) ? n.v : null, at);
@@ -124,6 +126,7 @@ function check(text: string, label: string, opts?: ParseOptions, queries: string
     assert.equal(fitCols, want, `${at}: head cols`);
     assert.equal(cardSizeText(tm, c), n.t >= ARR ? sizeText(n) : null, at);
     assert.equal(cardKey(tm, c), n.key, at);
+    if (n.t >= ARR) assert.equal(entryCount(tm, c, -1), (n.v as JNode[]).length, at);
     if (m.n < 20_000 || c % 97 === 0) assert.deepEqual(cardPath(tm, c), pathOf(n), at);
   }
   assert.equal(madeCount(root), 1, `${label}: texts made nodes`);
@@ -401,6 +404,23 @@ test('graph view on a tape: find, matches, selection and kept collapsed cards, m
   const v_ = v as unknown as Record<string, unknown>;
   const ref_ = ref as unknown as Record<string, unknown>;
 
+  // Selecting the root (what the engine does first) and announcing it makes nothing.
+  const live = { textContent: '' };
+  const refLive = { textContent: '' };
+  delete (v as unknown as { announce?: unknown }).announce;
+  delete (ref as unknown as { announce?: unknown }).announce;
+  Object.assign(v, { live });
+  Object.assign(ref, { live: refLive });
+  v.select(root);
+  ref.select(res.root!);
+  assert.equal(live.textContent, refLive.textContent);
+  assert.match(live.textContent, /^root, object, 2 items/);
+  v.select(nodeAtIndex(root, 1));
+  ref.select(preorder(res.root!)[1]);
+  assert.equal(live.textContent, refLive.textContent);
+  assert.match(live.textContent, /3,000 items/);
+  assert.equal(madeCount(root), 3, 'selecting the root and users made their nodes only');
+
   // Find: the same count and hits, nothing made.
   for (const q of ['special', 'Plain', 'deep', 'x', '42', 'zzz']) {
     const got = v.search(q, false);
@@ -411,7 +431,7 @@ test('graph view on a tape: find, matches, selection and kept collapsed cards, m
     assert.deepEqual(v_.hitRow, ref_.hitRow, `${q}: rows hit`);
     assert.deepEqual(v_.hitCard, ref_.hitCard, `${q}: cards hit`);
   }
-  assert.equal(madeCount(root), 1, 'find made nodes');
+  assert.equal(madeCount(root), 3, 'find made nodes');
 
   // Going to a match makes that node (and its ancestors' children), selects it and tells the engine.
   v.search('special', false);

@@ -14,7 +14,7 @@ import { KEY_NAME, W, nextOf, startOf, valueOf, type Tape } from '../json/tape';
 import { idle, soon } from '../engine/idle';
 import { rt } from '../i18n/ui';
 import { PRIVATE } from '../analytics';
-import { G, cardFinder, cardHeadText, cardKey, cardNode, cardOfRow, cardPath, cardSizeText, childCards, fit, locate, locateIndex, modelBuilder, rowEntry, rowKey, rowKind, rowLabelText, rowValue, rowValueText, valueText, type GraphModel } from './model';
+import { G, cardFinder, cardHeadText, cardKey, cardNode, cardOfRow, cardPath, cardSizeText, childCards, entryCount, fit, locate, locateIndex, modelBuilder, rowEntry, rowKey, rowKind, rowLabelText, rowValue, rowValueText, valueText, type GraphModel } from './model';
 import { cardAt, layouter, type GraphLayout } from './layout';
 import { charWidth, readTheme, type GraphTheme } from './theme';
 import { MARGIN, ZOOM_MAX, bound, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
@@ -781,7 +781,8 @@ export class GraphView implements GraphViewApi {
     if (!n) return;
     const type = n.t === STR ? rt('string') : n.t === NUM ? rt('number') : n.t === BOOL ? rt('boolean') : n.t === NUL ? 'null' : n.t === ARR ? rt('array') : rt('object');
     const key = n.key === undefined ? rt('root') : typeof n.key === 'number' ? `[${n.key}]` : fit(n.key, 60, false);
-    const val = n.t >= ARR ? rt.n(kids(n).length, '{n} item', '{n} items') : valueText(n);
+    // (Counted off the model: kids() would make all of a big container's children.)
+    const val = n.t >= ARR ? rt.n(entryCount(this.m!, this.card, this.row), '{n} item', '{n} items') : valueText(n);
     this.live.textContent = `${key}, ${type}, ${val}, ${announcePath(n)}`;
   }
 

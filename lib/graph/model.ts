@@ -1070,6 +1070,18 @@ export function rowEntry(m: GraphModel, r: number): JNode {
 /** Entries of card `c` (a container): its rows, and the child cards on its bus. */
 const cardEntries = (m: GraphModel, c: number) => m.rowStart[c + 1] - m.rowStart[c] + (m.bus[c] ? m.kids[c] : 0);
 
+/**
+ * Entries of the container card `c` shows (`r` < 0) or row `r` shows, without making them (a tape model's
+ * are counted off the model, or the tape for a small inline array).
+ */
+export function entryCount(m: GraphModel, c: number, r: number): number {
+  if (r < 0) return cardEntries(m, c);
+  const k = m.rowChild[r];
+  if (k >= 0) return cardEntries(m, k);
+  const z = m.tape;
+  return z ? childCount(z.doc.t, z.row[r]) : (m.rowNode[r].v as JNode[]).length;
+}
+
 /** labelText of row `r`'s entry. */
 export function rowLabelText(m: GraphModel, r: number, build = true): string {
   const z = m.tape;
