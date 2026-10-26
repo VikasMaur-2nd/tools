@@ -653,7 +653,7 @@ export class CodeView {
           : !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : this.strs.at(line, 0, a);
         const se = ctx && b < line.length ? trimWs(line, a, b) : b;
         h = this.hl(a || se < line.length ? line.slice(a, se) : line, (s & 1) === 1, (s & 2) === 2, s, this.text, this.ls[ln] + a);
-        if (ctx) h = `${bidiContext(line, Math.max(0, a - 64), a)}${h}${bidiContext(line, b, Math.min(line.length, b + 64))}${escapeHtml(line.slice(se, b))}`;
+        if (ctx) h = `${bidiContext(line, Math.max(0, a - 64), a, true)}${h}${bidiContext(line, b, Math.min(line.length, b + 64), false)}${escapeHtml(line.slice(se, b))}`;
         if (foldedHere) {
           const end = this.close[ln];
           const n = end - ln - 1;

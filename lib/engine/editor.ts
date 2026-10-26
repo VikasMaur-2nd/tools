@@ -1577,7 +1577,7 @@ export class Editor {
             // (Only right-to-left text orders by its neighbours: without any, the context changes nothing, and
             // laying it out costs as much again as the row.)
             const ctx = mayReorder(t, Math.max(a, sa - 64) - o, Math.min(b, sb + 64) - o);
-            body = `${ctx ? bidiContext(t, Math.max(a, sa - 64) - o, sa - o) : ''}${zl}${body}${zr}${ctx ? bidiContext(t, sb - o, Math.min(b, sb + 64) - o) : ''}${escapeHtml(t.slice(se - o, sb - o))}`;
+            body = `${ctx ? bidiContext(t, Math.max(a, sa - 64) - o, sa - o, true) : ''}${zl}${body}${zr}${ctx ? bidiContext(t, sb - o, Math.min(b, sb + 64) - o, false) : ''}${escapeHtml(t.slice(se - o, sb - o))}`;
           }
           html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`);
           offs?.push(sa);

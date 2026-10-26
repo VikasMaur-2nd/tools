@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { asciiCells, asciiRows, leadOf, Wrapper } from '../lib/engine/wrap';
-import { highlightLine, StringStates, stringState } from '../lib/engine/highlight';
+import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 
 /** Row starts the wrapper adds up for the long line `t[a, b)`, as an array. */
 function breaks(w: object, t: string, a: number, b: number) {
@@ -375,4 +375,21 @@ describe('row breaks added up for long lines', () => {
       }
     }
   });
+});
+
+test("a row's bidi context stops at a forced break, which would break the drawn row", () => {
+  // The row after a line separator starts right after it: its context before is the text after the break.
+  const t = 'name: עברית, note: a\u2028b, x: 1';
+  const at = t.indexOf('b');
+  assert.equal(bidiContext(t, 0, at, true), '');
+  assert.equal(bidiContext(t, 0, at - 2, true), '<span class="ctx">name: עברית, note: </span>');
+  // After a row: up to the next break.
+  const u = 'x, y: שלום\u2029z';
+  assert.equal(bidiContext(u, 0, u.length, false), '<span class="ctx">x, y: שלום</span>');
+  for (const c of ['\v', '\f', '\u0085', '\u2028', '\u2029']) {
+    assert.equal(bidiContext(`a${c}b`, 0, 3, true), '<span class="ctx">b</span>', JSON.stringify(c));
+    assert.equal(bidiContext(`a${c}b`, 0, 3, false), '<span class="ctx">a</span>', JSON.stringify(c));
+  }
+  // Without one, the whole range (whole code points).
+  assert.equal(bidiContext('ab😀', 0, 3, true), '<span class="ctx">ab</span>');
 });

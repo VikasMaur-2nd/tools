@@ -45,12 +45,23 @@ const RTL = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefe\u061c\u200f\u202a-\u202e\u
 /** Can text order differently in `t[a, b)` than it is stored (does it hold anything right-to-left)? */
 export const mayReorder = (t: string, a: number, b: number) => RTL.test(t.slice(a, b));
 
+/** A vertical tab, form feed, next line, line or paragraph separator: ends a row (see wrap.ts FORCED). */
+const forced = (c: number) => c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029;
+
 /**
  * `t[a, b)` as invisible, zero-size context for a row of a long line drawn on
  * its own: right-to-left text orders by its neighbours on the line, so this
  * makes the row read as it does wrapped whole. Whole code points only.
+ * `before`: it comes before the row (else after). It stops at a forced break,
+ * which would still break the drawn row at size 0 (WebKit put the row's text
+ * on a second line, under the next row), and past which nothing reorders it.
  */
-export function bidiContext(t: string, a: number, b: number) {
+export function bidiContext(t: string, a: number, b: number, before: boolean) {
+  if (before) {
+    for (let i = b - 1; i >= a; i--) if (forced(t.charCodeAt(i))) { a = i + 1; break; }
+  } else {
+    for (let i = a; i < b; i++) if (forced(t.charCodeAt(i))) { b = i; break; }
+  }
   if ((t.charCodeAt(a) & 0xfc00) === 0xdc00) a++;
   if ((t.charCodeAt(b - 1) & 0xfc00) === 0xd800) b--;
   return b > a ? `<span class="ctx">${escapeHtml(t.slice(a, b))}</span>` : '';
