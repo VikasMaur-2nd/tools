@@ -198,7 +198,6 @@ jobs:
         run: echo "Code checks — lint ${{ steps.lint.outcome }}, typecheck ${{ steps.typecheck.outcome }}, unit tests ${{ steps.unit.outcome }}" >> "$GITHUB_STEP_SUMMARY"
 
   engine:
-    name: ${{ inputs.level }} · ${{ matrix.engine }}
     needs: main
     if: ${{ !cancelled() && needs.main.outputs.ready == 'true' }}
     runs-on: ubuntu-24.04

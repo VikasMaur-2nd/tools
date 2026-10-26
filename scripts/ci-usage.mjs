@@ -27,7 +27,7 @@ const COST = {
   quick: 3.5, // lint, typecheck, unit tests
   build: 3, // the first production build of the code, from the last build's Turbopack cache
   variant: 1.5, // each further build variant (analytics mock, redeploy)
-  browsers: { chromium: 0.5, firefox: 0.7, webkit: 1 }, // browsers from the cache, OS packages
+  browsers: { chromium: 0.5, firefox: 0.7, webkit: 1 }, // browser downloads, OS packages
   smoke: 1.5,
   suites: { chromium: 12, firefox: 14, webkit: 14 }, // every functional check (no big documents) in one engine
 };
@@ -38,7 +38,7 @@ if (o.help) {
   process.exit(0);
 }
 
-/** What a check run does, from check.yml's inputs. Mirrors the workflow's job conditions. */
+/** What a check run does, from check.yml's inputs. The workflow's steps follow it (--guard writes it for them). */
 function plan({ level = 'smoke', engines = 'chromium', suites = '', url = '' }) {
   if (!LEVELS.includes(level)) throw new Error(`unknown level "${level}" (${LEVELS.join(', ')})`);
   const browsers = ['e2e', 'full'].includes(level);
@@ -113,20 +113,20 @@ async function api(path) {
   }
 }
 
-const RATE = { UBUNTU: 1, WINDOWS: 2, MACOS: 10 }; // GitHub's minute multipliers
 const minutes = (ms) => Math.ceil(Math.max(0, ms) / 60_000);
 
-/** Billed minutes of a run: each job rounded up to a whole minute, times its OS's multiplier. */
+/**
+ * Billed minutes of a run: each job's time on its runner, rounded up to a whole minute, as GitHub bills
+ * Linux runners. (The run timing API's `billable` reports 0 ms for finished runs here, so it can't be used.)
+ */
 async function billed(run) {
   if (run.conclusion === 'skipped') return 0;
-  if (run.status === 'completed') {
-    const { billable = {} } = await api(`/actions/runs/${run.id}/timing`);
-    const os = Object.entries(billable);
-    if (os.length) return os.reduce((s, [k, v]) => s + (RATE[k] ?? 1) * (v.job_runs?.length ? v.job_runs.reduce((a, j) => a + minutes(j.duration_ms), 0) : minutes(v.total_ms)), 0);
+  let total = 0;
+  for (let page = 1; ; page++) {
+    const { jobs } = await api(`/actions/runs/${run.id}/jobs?filter=all&per_page=100&page=${page}`);
+    for (const j of jobs) if (j.started_at) total += minutes((j.completed_at ? Date.parse(j.completed_at) : Date.now()) - Date.parse(j.started_at));
+    if (jobs.length < 100) return total;
   }
-  // Running, or no billing data: the jobs' own times, which is what the bill counts.
-  const { jobs } = await api(`/actions/runs/${run.id}/jobs?filter=all&per_page=100`);
-  return jobs.reduce((s, j) => s + (j.started_at ? minutes((j.completed_at ? Date.parse(j.completed_at) : Date.now()) - Date.parse(j.started_at)) : 0), 0);
 }
 
 /** Every run since the 1st of this month (UTC) and its minutes; runs still going count their estimate. */
