@@ -1,0 +1,9 @@
+{
+ "rows": [
+  "~$.role\"admin\"→\"editor\"",
+  "+$.tags[1]\"staff\"",
+  "~$.meta.updatedAt\"2026-10-14T09:00:00Z\"→\"2026-10-15T08:30:00Z\""
+ ],
+ "empty": null,
+ "patch": "[\n  {\n    \"op\": \"replace\",\n    \"path\": \"/role\",\n    \"value\": \"editor\"\n  },\n  {\n    \"op\": \"add\",\n    \"path\": \"/tags/1\",\n    \"value\": \"staff\"\n  },\n  {\n    \"op\": \"replace\",\n    \"path\": \"/meta/updatedAt\",\n    \"value\": \"2026-10-15T08:30:00Z\"\n  }\n]"
+}

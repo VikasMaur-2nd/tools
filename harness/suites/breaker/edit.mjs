@@ -1,0 +1,146 @@
+// Edits that rewrite the input (Format, Minify, Sort keys, Escape, Unescape, Repair, Use output) give
+// exact text, and Undo / Redo walk back and forth through every step. Downloads save exact bytes under
+// the expected names. Copy path / Copy value give exact text for awkward keys. CSV exports of
+// formula-like values.
+import { defaults, test } from '../../lib/api.mjs';
+import { command, view } from '../../lib/app.mjs';
+import { copied, downloaded, inputText, load, seenToasts, until, watchToasts } from './_helpers.mjs';
+
+defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
+
+const DOC = '{"b":[1,2,{"z":null,"a":"é"}],"a":1e400,"c":"x\\ny"}';
+const PRETTY = '{\n  "b": [\n    1,\n    2,\n    {\n      "z": null,\n      "a": "é"\n    }\n  ],\n  "a": 1e400,\n  "c": "x\\ny"\n}';
+const SORTED = '{\n  "a": 1e400,\n  "b": [\n    1,\n    2,\n    {\n      "a": "é",\n      "z": null\n    }\n  ],\n  "c": "x\\ny"\n}';
+const ESCAPED = JSON.stringify('{"a":1e400,"b":[1,2,{"a":"é","z":null}],"c":"x\\ny"}');
+
+test('Format, Minify, Sort keys, Escape and Unescape in place are exact, and Undo / Redo walk every step', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.assert(await load(page, DOC), 'the document loads');
+  const steps = [
+    ['Format input in place', PRETTY],
+    ['Minify input in place', DOC],
+    ['Sort input keys A to Z', SORTED],
+    ['Escape: convert to a JSON string', ESCAPED],
+    ['Unescape: parse stringified JSON', SORTED],
+  ];
+  const seen = [DOC];
+  for (const [label, want] of steps) {
+    await command(page, label);
+    const got = await until(page, (w) => (window.__vis('#input')?.value === w ? w : null), want, { timeout: 5000 }).then(() => inputText(page));
+    t.check(got === want, `${label}: exact input`, got);
+    seen.push(want);
+  }
+  // Back through every step, then forward again.
+  for (let i = seen.length - 2; i >= 0; i--) {
+    await command(page, 'Undo');
+    const got = await inputText(page);
+    t.check(got === seen[i], `Undo to step ${i}`, got);
+  }
+  for (let i = 1; i < seen.length; i++) {
+    await command(page, 'Redo');
+    const got = await inputText(page);
+    t.check(got === seen[i], `Redo to step ${i}`, got);
+  }
+});
+
+test('Repair JSON fixes a loose document exactly, Undo restores it, and a valid one is left alone', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const loose = "{\n  // c\n  name: 'Ada',\n  ok: True,\n  n: NaN,\n  list: [1, 2,],\n}";
+  t.assert(await load(page, loose), 'the loose document loads');
+  await command(page, 'Repair JSON');
+  const fixed = await inputText(page);
+  t.check(fixed === '{\n  "name": "Ada",\n  "ok": true,\n  "n": null,\n  "list": [\n    1,\n    2\n  ]\n}', 'the repaired text', fixed);
+  await command(page, 'Undo');
+  t.check((await inputText(page)) === loose, 'Undo restores the loose text');
+  await command(page, 'Redo');
+  t.check((await inputText(page)) === fixed, 'Redo repairs again');
+  await watchToasts(page);
+  await command(page, 'Repair JSON');
+  const toasts = await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 5000 });
+  t.check(toasts?.includes('Already valid JSON, nothing to repair'), 'a valid document is not repaired', toasts);
+  t.check((await inputText(page)) === fixed, 'and its text is unchanged');
+});
+
+test('Use formatted output as input takes the sorted, minified output exactly', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.assert(await load(page, DOC), 'the document loads');
+  await view(page, 'format');
+  await command(page, 'Output: minified');
+  await command(page, 'Output: sort keys');
+  await command(page, 'Use formatted output as input');
+  t.check((await inputText(page)) === JSON.parse(ESCAPED), 'the input is the sorted, minified output');
+  await command(page, 'Undo');
+  t.check((await inputText(page)) === DOC, 'Undo brings the original back');
+});
+
+test('downloads: input, formatted output, converted code and CSV are exact files with the right names', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.assert(await load(page, DOC, 'orders.json'), 'the document loads');
+  const input = await downloaded(page, () => command(page, 'Download input as .json'));
+  t.check(input?.name === 'orders.json' && input.bytes?.toString() === DOC, 'Download input: orders.json, the exact text', input && { name: input.name, text: input.bytes?.toString().slice(0, 80) });
+  await view(page, 'format');
+  const out = await downloaded(page, () => command(page, 'Download formatted output'));
+  t.check(out?.bytes?.toString() === PRETTY, 'Download formatted output: the pretty text', out && { name: out.name, text: out.bytes?.toString().slice(0, 80) });
+  t.check(/^orders.*\.json$/.test(out?.name ?? ''), 'its name comes from the file', out?.name);
+  await view(page, 'convert');
+  for (const [target, name] of [['typescript', 'orders.ts'], ['java', 'Root.java'], ['zod', 'orders.schema.ts'], ['yaml', 'orders.yaml'], ['csv', 'orders.csv']]) {
+    const select = page.locator('.app:visible .pane-view select').filter({ has: page.locator('option[value="typescript"]') });
+    await select.first().selectOption(target);
+    await until(page, () => !window.__vis('.pane-view .spin') && (window.__vis('#view-convert .cv-rows')?.textContent.length ?? 0) > 0 || null, null, { timeout: 20_000 });
+    const shown = await copied(page, 'Copy converted output');
+    const file = await downloaded(page, () => command(page, 'Download converted output'));
+    t.check(file?.name === name, `${target}: saved as ${name}`, file?.name);
+    t.check(file?.bytes?.toString() === shown, `${target}: the file is what Copy gives`, file?.bytes?.toString().slice(0, 80));
+  }
+  const xlsx = await (async () => {
+    const select = page.locator('.app:visible .pane-view select').filter({ has: page.locator('option[value="typescript"]') });
+    await select.first().selectOption('xlsx');
+    return downloaded(page, () => command(page, 'Export to Excel (.xlsx)'));
+  })();
+  t.check(xlsx?.name === 'orders.xlsx' && xlsx.bytes?.subarray(0, 2).toString() === 'PK' && xlsx.bytes.includes('xl/worksheets/sheet1.xml'), 'Excel: orders.xlsx, a zip with a worksheet', xlsx && { name: xlsx.name, size: xlsx.bytes?.length });
+});
+
+test('Copy path and Copy value of awkward keys in the tree are exact', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const doc = '{"a.b":{"c\\"d":[{"é 1":[10,{"":"deep"}]}]}}';
+  t.assert(await load(page, doc), 'the document loads');
+  await view(page, 'tree');
+  await command(page, 'Expand all');
+  await until(page, () => [...(window.__vis('#view-tree')?.querySelectorAll('[role=treeitem]') ?? [])].some((r) => r.textContent.startsWith(':"deep"') || r.textContent.includes('"deep"')) || null);
+  // The deepest row (the empty key) is selected by a click.
+  await page.locator('#view-tree:visible [role=treeitem]').filter({ hasText: '"deep"' }).first().click();
+  const path = await copied(page, 'Copy selected path');
+  t.check(path === '$["a.b"]["c\\"d"][0]["é 1"][1][""]', 'Copy path', path);
+  const value = await copied(page, 'Copy selected value');
+  t.check(value === 'deep', 'Copy value of a string is its text', value);
+  await page.locator('#view-tree:visible [role=treeitem]').filter({ hasText: /^é 1/ }).first().click();
+  t.check((await copied(page, 'Copy selected value')) === '[\n  10,\n  {\n    "": "deep"\n  }\n]', 'Copy value of an array is pretty JSON');
+});
+
+test('CSV exports of formula-like text: what a spreadsheet would run', async (t) => {
+  // OWASP "CSV injection": a cell starting with = + - @ (or a tab / CR before them) runs as a formula when
+  // the CSV is opened in Excel or Sheets, unless it is prefixed (usually with ').
+  const { page } = t;
+  await t.open('/');
+  const doc = JSON.stringify([{ v: '=HYPERLINK("http://x.invalid","click")' }, { v: '+1+1' }, { v: '-2+3' }, { v: '@SUM(A1)' }, { v: '\t=1' }, { v: 'plain' }, { v: -5 }]);
+  t.assert(await load(page, doc), 'the document loads');
+  await view(page, 'table');
+  await until(page, () => (window.__vis('#view-table .tb-rows')?.childElementCount ?? 0) > 0 || null);
+  const table = await copied(page, 'Copy table as CSV');
+  await view(page, 'convert');
+  const select = page.locator('.app:visible .pane-view select').filter({ has: page.locator('option[value="typescript"]') });
+  await select.first().selectOption('csv');
+  await until(page, () => !window.__vis('.pane-view .spin') && (window.__vis('#view-convert .cv-rows')?.textContent.length ?? 0) > 0 || null, null, { timeout: 20_000 });
+  const conv = await copied(page, 'Copy converted output');
+  const live = (csv) => (csv ?? '').split(/\r?\n/).slice(1).filter((l) => /^"?[\t\r]?[=+@-]/.test(l) && !/^-?\d/.test(l));
+  t.log('table CSV', table, 'convert CSV', conv);
+  const known = 'bug: CSV exports keep formula-like cells live (BREAKER-REPORT, CSV injection)';
+  t.check(!live(table).length, 'Copy table as CSV neutralises formula cells', live(table), { known });
+  t.check(!live(conv).length, 'Convert → CSV neutralises formula cells', live(conv), { known });
+  t.check((table ?? '').includes('plain') && (conv ?? '').includes('plain'), 'other cells are unchanged');
+});
