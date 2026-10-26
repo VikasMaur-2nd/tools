@@ -1,0 +1,75 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "183 B raw",
+  "min": "183 B min",
+  "stats": "1 line · 23 nodes · depth 4"
+ },
+ "pretty": "[\n  {\n    \"id\": 1,\n    \"name\": \"Ada\",\n    \"tags\": [\n      \"x\",\n      \"y\"\n    ],\n    \"addr\": {\n      \"city\": \"London\",\n      \"zip\": \"N1\"\n    }\n  },\n  {\n    \"id\": 2,\n    \"name\": \"Lin\",\n    \"active\": false\n  },\n  {\n    \"id\": 3,\n    \"name\": null,\n    \"addr\": {\n      \"city\": \"Oslo\"\n    },\n    \"extra\": [\n      1,\n      {\n        \"deep\": true\n      }\n    ]\n  }\n]",
+ "minified": "[{\"id\":1,\"name\":\"Ada\",\"tags\":[\"x\",\"y\"],\"addr\":{\"city\":\"London\",\"zip\":\"N1\"}},{\"id\":2,\"name\":\"Lin\",\"active\":false},{\"id\":3,\"name\":null,\"addr\":{\"city\":\"Oslo\"},\"extra\":[1,{\"deep\":true}]}]",
+ "string": "\"[{\\\"id\\\":1,\\\"name\\\":\\\"Ada\\\",\\\"tags\\\":[\\\"x\\\",\\\"y\\\"],\\\"addr\\\":{\\\"city\\\":\\\"London\\\",\\\"zip\\\":\\\"N1\\\"}},{\\\"id\\\":2,\\\"name\\\":\\\"Lin\\\",\\\"active\\\":false},{\\\"id\\\":3,\\\"name\\\":null,\\\"addr\\\":{\\\"city\\\":\\\"Oslo\\\"},\\\"extra\\\":[1,{\\\"deep\\\":true}]}]\"",
+ "sorted": "[\n  {\n    \"addr\": {\n      \"city\": \"London\",\n      \"zip\": \"N1\"\n    },\n    \"id\": 1,\n    \"name\": \"Ada\",\n    \"tags\": [\n      \"x\",\n      \"y\"\n    ]\n  },\n  {\n    \"active\": false,\n    \"id\": 2,\n    \"name\": \"Lin\"\n  },\n  {\n    \"addr\": {\n      \"city\": \"Oslo\"\n    },\n    \"extra\": [\n      1,\n      {\n        \"deep\": true\n      }\n    ],\n    \"id\": 3,\n    \"name\": null\n  }\n]",
+ "tree": [
+  "root[3]",
+  "  0:{4}",
+  "    id:1",
+  "    name:\"Ada\"",
+  "    tags:[2]",
+  "      0:\"x\"",
+  "      1:\"y\"",
+  "    addr:{2}",
+  "      city:\"London\"",
+  "      zip:\"N1\"",
+  "  1:{3}",
+  "    id:2",
+  "    name:\"Lin\"",
+  "    active:false",
+  "  2:{4}",
+  "    id:3",
+  "    name:null",
+  "    addr:{1}",
+  "      city:\"Oslo\"",
+  "    extra:[2]",
+  "      0:1",
+  "      1:{1}",
+  "        deep:true"
+ ],
+ "table": {
+  "head": [
+   "#",
+   "id",
+   "name",
+   "tags",
+   "addr",
+   "active",
+   "extra"
+  ],
+  "rows": [
+   "0 | 1 | Ada | [2] | {2} | · | ·",
+   "1 | 2 | Lin | · | · | false | ·",
+   "2 | 3 | null | · | {1} | · | [2]"
+  ],
+  "empty": false
+ },
+ "csv": "id,name,tags,addr,active,extra\r\n1,Ada,\"[\"\"x\"\",\"\"y\"\"]\",\"{\"\"city\"\":\"\"London\"\",\"\"zip\"\":\"\"N1\"\"}\",,\r\n2,Lin,,,false,\r\n3,,,\"{\"\"city\"\":\"\"Oslo\"\"}\",,\"[1,{\"\"deep\"\":true}]\"",
+ "convert": {
+  "typescript": "export type Root = RootItem[];\n\nexport interface RootItem {\n  id: number;\n  name: string | null;\n  tags?: string[];\n  addr?: Addr;\n  active?: boolean;\n  extra?: (number | ExtraItem)[];\n}\n\nexport interface Addr {\n  city: string;\n  zip?: string;\n}\n\nexport interface ExtraItem {\n  deep: boolean;\n}\n",
+  "zod": "import { z } from \"zod\";\n\nexport const AddrSchema = z.object({\n  city: z.string(),\n  zip: z.string().optional(),\n});\nexport type Addr = z.infer<typeof AddrSchema>;\n\nexport const ExtraItemSchema = z.object({\n  deep: z.boolean(),\n});\nexport type ExtraItem = z.infer<typeof ExtraItemSchema>;\n\nexport const RootItemSchema = z.object({\n  id: z.number().int(),\n  name: z.string().nullable(),\n  tags: z.array(z.string()).optional(),\n  addr: AddrSchema.optional(),\n  active: z.boolean().optional(),\n  extra: z.array(z.union([z.number().int(), ExtraItemSchema])).optional(),\n});\nexport type RootItem = z.infer<typeof RootItemSchema>;\n\nexport const RootSchema = z.array(RootItemSchema);\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"array\",\n  \"items\": {\n    \"$ref\": \"#/$defs/RootItem\"\n  },\n  \"$defs\": {\n    \"RootItem\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"name\": {\n          \"type\": [\"string\", \"null\"]\n        },\n        \"tags\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"addr\": {\n          \"$ref\": \"#/$defs/Addr\"\n        },\n        \"active\": {\n          \"type\": \"boolean\"\n        },\n        \"extra\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"anyOf\": [\n              {\n                \"$ref\": \"#/$defs/ExtraItem\"\n              },\n              {\n                \"type\": \"integer\"\n              }\n            ]\n          }\n        }\n      },\n      \"required\": [\"id\", \"name\"]\n    },\n    \"Addr\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"city\": {\n          \"type\": \"string\"\n        },\n        \"zip\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\"city\"]\n    },\n    \"ExtraItem\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"deep\": {\n          \"type\": \"boolean\"\n        }\n      },\n      \"required\": [\"deep\"]\n    }\n  }\n}\n",
+  "csharp": "using System.Collections.Generic;\nusing System.Text.Json;\nusing System.Text.Json.Serialization;\n\n// Root: List<RootItem>\n\npublic class RootItem\n{\n    [JsonPropertyName(\"id\")]\n    public required long Id { get; set; }\n\n    [JsonPropertyName(\"name\")]\n    public required string? Name { get; set; }\n\n    [JsonPropertyName(\"tags\")]\n    public List<string>? Tags { get; set; }\n\n    [JsonPropertyName(\"addr\")]\n    public Addr? Addr { get; set; }\n\n    [JsonPropertyName(\"active\")]\n    public bool? Active { get; set; }\n\n    [JsonPropertyName(\"extra\")]\n    public List<JsonElement>? Extra { get; set; }\n}\n\npublic class Addr\n{\n    [JsonPropertyName(\"city\")]\n    public required string City { get; set; }\n\n    [JsonPropertyName(\"zip\")]\n    public string? Zip { get; set; }\n}\n",
+  "dart": "typedef Root = List<RootItem>;\n\nclass RootItem {\n  final int id;\n  final String? name;\n  final List<String>? tags;\n  final Addr? addr;\n  final bool? active;\n  final List<dynamic>? extra;\n\n  const RootItem({\n    required this.id,\n    this.name,\n    this.tags,\n    this.addr,\n    this.active,\n    this.extra,\n  });\n\n  factory RootItem.fromJson(Map<String, dynamic> json) => RootItem(\n    id: json['id'] as int,\n    name: json['name'] as String?,\n    tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),\n    addr: json['addr'] == null ? null : Addr.fromJson(json['addr'] as Map<String, dynamic>),\n    active: json['active'] as bool?,\n    extra: json['extra'] as List<dynamic>?,\n  );\n\n  Map<String, dynamic> toJson() => {\n    'id': id,\n    'name': name,\n    if (tags != null) 'tags': tags,\n    if (addr != null) 'addr': addr?.toJson(),\n    if (active != null) 'active': active,\n    if (extra != null) 'extra': extra,\n  };\n}\n\nclass Addr {\n  final String city;\n  final String? zip;\n\n  const Addr({\n    required this.city,\n    this.zip,\n  });\n\n  factory Addr.fromJson(Map<String, dynamic> json) => Addr(\n    city: json['city'] as String,\n    zip: json['zip'] as String?,\n  );\n\n  Map<String, dynamic> toJson() => {\n    'city': city,\n    if (zip != null) 'zip': zip,\n  };\n}\n",
+  "java": "import java.util.List;\n\n// Root: List<RootItem>\npublic final class Root {\n    private Root() {}\n\n    public record RootItem(\n        long id,\n        String name,\n        List<String> tags,\n        Addr addr,\n        Boolean active,\n        List<Object> extra\n    ) {}\n\n    public record Addr(String city, String zip) {}\n}\n",
+  "python": "from typing import List, Optional, Union\n\nfrom pydantic import BaseModel, RootModel\n\n\nclass Addr(BaseModel):\n    city: str\n    zip: Optional[str] = None\n\n\nclass ExtraItem(BaseModel):\n    deep: bool\n\n\nclass RootItem(BaseModel):\n    id: int\n    name: Optional[str]\n    tags: Optional[List[str]] = None\n    addr: Optional[Addr] = None\n    active: Optional[bool] = None\n    extra: Optional[List[Union[int, ExtraItem]]] = None\n\n\nclass Root(RootModel[List[RootItem]]):\n    root: List[RootItem]\n",
+  "go": "package main\n\ntype Root []RootItem\n\ntype RootItem struct {\n\tID     int64    `json:\"id\"`\n\tName   *string  `json:\"name\"`\n\tTags   []string `json:\"tags,omitempty\"`\n\tAddr   *Addr    `json:\"addr,omitempty\"`\n\tActive bool     `json:\"active,omitempty\"`\n\tExtra  []any    `json:\"extra,omitempty\"`\n}\n\ntype Addr struct {\n\tCity string `json:\"city\"`\n\tZip  string `json:\"zip,omitempty\"`\n}\n",
+  "kotlin": "import kotlinx.serialization.Serializable\nimport kotlinx.serialization.json.JsonElement\n\ntypealias Root = List<RootItem>\n\n@Serializable\ndata class RootItem(\n    val id: Long,\n    val name: String? = null,\n    val tags: List<String>? = null,\n    val addr: Addr? = null,\n    val active: Boolean? = null,\n    val extra: List<JsonElement>? = null,\n)\n\n@Serializable\ndata class Addr(\n    val city: String,\n    val zip: String? = null,\n)\n",
+  "swift": "import Foundation\n\ntypealias Root = [RootItem]\n\nstruct RootItem: Codable {\n    let id: Int\n    let name: String?\n    let tags: [String]?\n    let addr: Addr?\n    let active: Bool?\n    let extra: [JSONValue]?\n}\n\nstruct Addr: Codable {\n    let city: String\n    let zip: String?\n}\n\n/// Any JSON value (used where the type is unknown or mixed).\nenum JSONValue: Codable {\n    case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null\n\n    init(from decoder: Decoder) throws {\n        let c = try decoder.singleValueContainer()\n        if c.decodeNil() { self = .null }\n        else if let v = try? c.decode(Bool.self) { self = .bool(v) }\n        else if let v = try? c.decode(Double.self) { self = .number(v) }\n        else if let v = try? c.decode(String.self) { self = .string(v) }\n        else if let v = try? c.decode([JSONValue].self) { self = .array(v) }\n        else { self = .object(try c.decode([String: JSONValue].self)) }\n    }\n\n    func encode(to encoder: Encoder) throws {\n        var c = encoder.singleValueContainer()\n        switch self {\n        case .string(let v): try c.encode(v)\n        case .number(let v): try c.encode(v)\n        case .bool(let v): try c.encode(v)\n        case .object(let v): try c.encode(v)\n        case .array(let v): try c.encode(v)\n        case .null: try c.encodeNil()\n        }\n    }\n}\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: RootItem[]\n\nfinal class RootItem\n{\n    public function __construct(\n        public readonly int $id,\n        public readonly ?string $name,\n        /** @var string[]|null */\n        public readonly ?array $tags,\n        public readonly ?Addr $addr,\n        public readonly ?bool $active,\n        /** @var mixed[]|null */\n        public readonly ?array $extra,\n    ) {\n    }\n\n    public static function fromArray(array $data): self\n    {\n        return new self(\n            id: $data['id'],\n            name: $data['name'],\n            tags: $data['tags'] ?? null,\n            addr: isset($data['addr']) ? Addr::fromArray($data['addr']) : null,\n            active: $data['active'] ?? null,\n            extra: $data['extra'] ?? null,\n        );\n    }\n}\n\nfinal class Addr\n{\n    public function __construct(\n        public readonly string $city,\n        public readonly ?string $zip,\n    ) {\n    }\n\n    public static function fromArray(array $data): self\n    {\n        return new self(\n            city: $data['city'],\n            zip: $data['zip'] ?? null,\n        );\n    }\n}\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = Vec<RootItem>;\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct RootItem {\n    pub id: i64,\n    pub name: Option<String>,\n    #[serde(skip_serializing_if = \"Option::is_none\")]\n    pub tags: Option<Vec<String>>,\n    #[serde(skip_serializing_if = \"Option::is_none\")]\n    pub addr: Option<Addr>,\n    #[serde(skip_serializing_if = \"Option::is_none\")]\n    pub active: Option<bool>,\n    #[serde(skip_serializing_if = \"Option::is_none\")]\n    pub extra: Option<Vec<serde_json::Value>>,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct Addr {\n    pub city: String,\n    #[serde(skip_serializing_if = \"Option::is_none\")]\n    pub zip: Option<String>,\n}\n",
+  "csv": "id,name,tags,addr.city,addr.zip,active,extra\r\n1,Ada,\"x, y\",London,N1,,\r\n2,Lin,,,,false,\r\n3,,,Oslo,,,\"[1,{\"\"deep\"\":true}]\"\r\n",
+  "yaml": "- id: 1\n  name: Ada\n  tags:\n    - x\n    - \"y\"\n  addr:\n    city: London\n    zip: N1\n- id: 2\n  name: Lin\n  active: false\n- id: 3\n  name: null\n  addr:\n    city: Oslo\n  extra:\n    - 1\n    - deep: true\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>\n    <id>1</id>\n    <name>Ada</name>\n    <tags>x</tags>\n    <tags>y</tags>\n    <addr>\n      <city>London</city>\n      <zip>N1</zip>\n    </addr>\n  </item>\n  <item>\n    <id>2</id>\n    <name>Lin</name>\n    <active>false</active>\n  </item>\n  <item>\n    <id>3</id>\n    <name/>\n    <addr>\n      <city>Oslo</city>\n    </addr>\n    <extra>1</extra>\n    <extra>\n      <deep>true</deep>\n    </extra>\n  </item>\n</root>\n",
+  "toml": "# A TOML document must be a table: the top-level array is stored under \"root\".\n\n[[root]]\nid = 1\nname = \"Ada\"\ntags = [\"x\", \"y\"]\n\n[root.addr]\ncity = \"London\"\nzip = \"N1\"\n\n[[root]]\nid = 2\nname = \"Lin\"\nactive = false\n\n[[root]]\nid = 3\n# name = null (omitted: TOML has no null)\nextra = [1, { deep = true }]\n\n[root.addr]\ncity = \"Oslo\"\n",
+  "jsonl": "{\"id\":1,\"name\":\"Ada\",\"tags\":[\"x\",\"y\"],\"addr\":{\"city\":\"London\",\"zip\":\"N1\"}}\n{\"id\":2,\"name\":\"Lin\",\"active\":false}\n{\"id\":3,\"name\":null,\"addr\":{\"city\":\"Oslo\"},\"extra\":[1,{\"deep\":true}]}\n"
+ }
+}

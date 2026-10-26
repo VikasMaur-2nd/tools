@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "183 B raw",
+  "min": "110 B min",
+  "stats": "19 lines · 15 nodes · depth 2"
+ },
+ "toasts": [
+  "Converted data.yaml to JSON"
+ ],
+ "input": "{\n  \"a\": {\n    \"b\": 1\n  },\n  \"c\": {\n    \"b\": 1\n  },\n  \"d\": [\n    1,\n    2,\n    \"3\"\n  ],\n  \"e\": 31,\n  \"f\": null,\n  \"g\": \"2026-10-26\",\n  \"h\": \"yes\",\n  \"i\": null,\n  \"j\": \"two\\nlines\\n\"\n}",
+ "formatted": "{\n  \"a\": {\n    \"b\": 1\n  },\n  \"c\": {\n    \"b\": 1\n  },\n  \"d\": [\n    1,\n    2,\n    \"3\"\n  ],\n  \"e\": 31,\n  \"f\": null,\n  \"g\": \"2026-10-26\",\n  \"h\": \"yes\",\n  \"i\": null,\n  \"j\": \"two\\nlines\\n\"\n}"
+}

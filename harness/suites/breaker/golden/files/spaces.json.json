@@ -1,0 +1,13 @@
+{
+ "status": {
+  "msg": "Ready",
+  "kind": "",
+  "raw": "",
+  "min": null,
+  "stats": null
+ },
+ "toasts": [
+  "Opened spaces.json"
+ ],
+ "input": " \n\t \n"
+}

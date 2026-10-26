@@ -1,0 +1,51 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "140 B raw",
+  "min": "140 B min",
+  "stats": "1 line · 4 nodes · depth 1"
+ },
+ "pretty": "{\n  \"<img src=x onerror=window.__xss=1>\": \"<script>window.__xss=2</script>\",\n  \"a\\\"b\": \"</textarea><svg onload=window.__xss=3>\",\n  \"&amp;\": \"&lt;b&gt;\"\n}",
+ "minified": "{\"<img src=x onerror=window.__xss=1>\":\"<script>window.__xss=2</script>\",\"a\\\"b\":\"</textarea><svg onload=window.__xss=3>\",\"&amp;\":\"&lt;b&gt;\"}",
+ "string": "\"{\\\"<img src=x onerror=window.__xss=1>\\\":\\\"<script>window.__xss=2</script>\\\",\\\"a\\\\\\\"b\\\":\\\"</textarea><svg onload=window.__xss=3>\\\",\\\"&amp;\\\":\\\"&lt;b&gt;\\\"}\"",
+ "sorted": "{\n  \"&amp;\": \"&lt;b&gt;\",\n  \"<img src=x onerror=window.__xss=1>\": \"<script>window.__xss=2</script>\",\n  \"a\\\"b\": \"</textarea><svg onload=window.__xss=3>\"\n}",
+ "tree": [
+  "root{3}",
+  "  <img src=x onerror=window.__xss=1>:\"<script>window.__xss=2</script>\"",
+  "  a\"b:\"</textarea><svg onload=window.__xss=3>\"",
+  "  &amp;:\"&lt;b&gt;\""
+ ],
+ "table": {
+  "head": [
+   "key",
+   "value"
+  ],
+  "rows": [
+   "<img src=x onerror=window.__xss=1> | <script>window.__xss=2</script>",
+   "a\"b | </textarea><svg onload=window.__xss=3>",
+   "&amp; | &lt;b&gt;"
+  ],
+  "empty": false
+ },
+ "csv": "key,value\r\n<img src=x onerror=window.__xss=1>,<script>window.__xss=2</script>\r\n\"a\"\"b\",</textarea><svg onload=window.__xss=3>\r\n&amp;,&lt;b&gt;",
+ "convert": {
+  "typescript": "export interface Root {\n  \"<img src=x onerror=window.__xss=1>\": string;\n  \"a\\\"b\": string;\n  \"&amp;\": string;\n}\n",
+  "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.object({\n  \"<img src=x onerror=window.__xss=1>\": z.string(),\n  \"a\\\"b\": z.string(),\n  \"&amp;\": z.string(),\n});\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"<img src=x onerror=window.__xss=1>\": {\n      \"type\": \"string\"\n    },\n    \"a\\\"b\": {\n      \"type\": \"string\"\n    },\n    \"&amp;\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\"<img src=x onerror=window.__xss=1>\", \"a\\\"b\", \"&amp;\"]\n}\n",
+  "csharp": "using System.Text.Json.Serialization;\n\npublic class Root\n{\n    [JsonPropertyName(\"<img src=x onerror=window.__xss=1>\")]\n    public required string ImgSrcXOnerrorWindowXss1 { get; set; }\n\n    [JsonPropertyName(\"a\\\"b\")]\n    public required string AB { get; set; }\n\n    [JsonPropertyName(\"&amp;\")]\n    public required string Amp { get; set; }\n}\n",
+  "dart": "class Root {\n  final String imgSrcXOnerrorWindowXss1;\n  final String aB;\n  final String amp;\n\n  const Root({\n    required this.imgSrcXOnerrorWindowXss1,\n    required this.aB,\n    required this.amp,\n  });\n\n  factory Root.fromJson(Map<String, dynamic> json) => Root(\n    imgSrcXOnerrorWindowXss1: json['<img src=x onerror=window.__xss=1>'] as String,\n    aB: json['a\"b'] as String,\n    amp: json['&amp;'] as String,\n  );\n\n  Map<String, dynamic> toJson() => {\n    '<img src=x onerror=window.__xss=1>': imgSrcXOnerrorWindowXss1,\n    'a\"b': aB,\n    '&amp;': amp,\n  };\n}\n",
+  "java": "import com.fasterxml.jackson.annotation.JsonProperty;\n\npublic record Root(\n    @JsonProperty(\"<img src=x onerror=window.__xss=1>\") String imgSrcXOnerrorWindowXss1,\n    @JsonProperty(\"a\\\"b\") String aB,\n    @JsonProperty(\"&amp;\") String amp\n) {}\n",
+  "python": "from pydantic import BaseModel, Field\n\n\nclass Root(BaseModel):\n    img_src_x_onerror_window_xss_1: str = Field(alias=\"<img src=x onerror=window.__xss=1>\")\n    a_b: str = Field(alias=\"a\\\"b\")\n    amp: str = Field(alias=\"&amp;\")\n",
+  "go": "package main\n\ntype Root struct {\n\tImgSrcXOnerrorWindowXSS1 string `json:\"<img src=x onerror=window.__xss=1>\"`\n\tAB                       string `json:\"-\"` // key \"a\\\"b\" can't be expressed in a tag\n\tAmp                      string `json:\"&amp;\"`\n}\n",
+  "kotlin": "import kotlinx.serialization.SerialName\nimport kotlinx.serialization.Serializable\n\n@Serializable\ndata class Root(\n    @SerialName(\"<img src=x onerror=window.__xss=1>\") val imgSrcXOnerrorWindowXss1: String,\n    @SerialName(\"a\\\"b\") val aB: String,\n    @SerialName(\"&amp;\") val amp: String,\n)\n",
+  "swift": "import Foundation\n\nstruct Root: Codable {\n    let imgSrcXOnerrorWindowXss1: String\n    let aB: String\n    let amp: String\n\n    enum CodingKeys: String, CodingKey {\n        case imgSrcXOnerrorWindowXss1 = \"<img src=x onerror=window.__xss=1>\"\n        case aB = \"a\\\"b\"\n        case amp = \"&amp;\"\n    }\n}\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\nfinal class Root\n{\n    public function __construct(\n        public readonly string $imgSrcXOnerrorWindowXss1,\n        public readonly string $aB,\n        public readonly string $amp,\n    ) {\n    }\n\n    public static function fromArray(array $data): self\n    {\n        return new self(\n            imgSrcXOnerrorWindowXss1: $data['<img src=x onerror=window.__xss=1>'],\n            aB: $data['a\"b'],\n            amp: $data['&amp;'],\n        );\n    }\n}\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct Root {\n    #[serde(rename = \"<img src=x onerror=window.__xss=1>\")]\n    pub img_src_x_onerror_window_xss_1: String,\n    #[serde(rename = \"a\\\"b\")]\n    pub a_b: String,\n    #[serde(rename = \"&amp;\")]\n    pub amp: String,\n}\n",
+  "csv": "key,value\r\n<img src=x onerror=window.__xss=1>,<script>window.__xss=2</script>\r\n\"a\"\"b\",</textarea><svg onload=window.__xss=3>\r\n&amp;,&lt;b&gt;\r\n",
+  "yaml": "<img src=x onerror=window.__xss=1>: <script>window.__xss=2</script>\na\"b: </textarea><svg onload=window.__xss=3>\n\"&amp;\": \"&lt;b&gt;\"\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <_img_src_x_onerror_window.__xss_1_>&lt;script&gt;window.__xss=2&lt;/script&gt;</_img_src_x_onerror_window.__xss_1_>\n  <a_b>&lt;/textarea&gt;&lt;svg onload=window.__xss=3&gt;</a_b>\n  <_amp_>&amp;lt;b&amp;gt;</_amp_>\n</root>\n",
+  "toml": "\"<img src=x onerror=window.__xss=1>\" = \"<script>window.__xss=2</script>\"\n\"a\\\"b\" = \"</textarea><svg onload=window.__xss=3>\"\n\"&amp;\" = \"&lt;b&gt;\"\n",
+  "jsonl": "{\"<img src=x onerror=window.__xss=1>\":\"<script>window.__xss=2</script>\",\"a\\\"b\":\"</textarea><svg onload=window.__xss=3>\",\"&amp;\":\"&lt;b&gt;\"}\n"
+ }
+}

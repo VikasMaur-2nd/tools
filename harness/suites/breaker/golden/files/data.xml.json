@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "102 B raw",
+  "min": "51 B min",
+  "stats": "11 lines · 8 nodes · depth 3"
+ },
+ "toasts": [
+  "Converted data.xml to JSON"
+ ],
+ "input": "{\n  \"r\": {\n    \"@a\": \"1\",\n    \"x\": [\n      \"&e;\",\n      \"2\"\n    ],\n    \"y\": null,\n    \"z\": \"<b>\"\n  }\n}",
+ "formatted": "{\n  \"r\": {\n    \"@a\": \"1\",\n    \"x\": [\n      \"&e;\",\n      \"2\"\n    ],\n    \"y\": null,\n    \"z\": \"<b>\"\n  }\n}"
+}

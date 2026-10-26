@@ -1,0 +1,71 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "152 B raw",
+  "min": "152 B min",
+  "stats": "1 line · 14 nodes · depth 1"
+ },
+ "pretty": "[\n  1e400,\n  -0,\n  1.0000000000000000000001,\n  123456789012345678901234567890123,\n  9007199254740993,\n  -1e-400,\n  0.1e1,\n  1E+2,\n  0,\n  -0.0,\n  5e-324,\n  1.5e-10,\n  100000000000000000000000\n]",
+ "minified": "[1e400,-0,1.0000000000000000000001,123456789012345678901234567890123,9007199254740993,-1e-400,0.1e1,1E+2,0,-0.0,5e-324,1.5e-10,100000000000000000000000]",
+ "string": "\"[1e400,-0,1.0000000000000000000001,123456789012345678901234567890123,9007199254740993,-1e-400,0.1e1,1E+2,0,-0.0,5e-324,1.5e-10,100000000000000000000000]\"",
+ "sorted": "[\n  1e400,\n  -0,\n  1.0000000000000000000001,\n  123456789012345678901234567890123,\n  9007199254740993,\n  -1e-400,\n  0.1e1,\n  1E+2,\n  0,\n  -0.0,\n  5e-324,\n  1.5e-10,\n  100000000000000000000000\n]",
+ "tree": [
+  "root[13]",
+  "  0:1e400",
+  "  1:-0",
+  "  2:1.0000000000000000000001",
+  "  3:123456789012345678901234567890123",
+  "  4:9007199254740993",
+  "  5:-1e-400",
+  "  6:0.1e1",
+  "  7:1E+2",
+  "  8:0",
+  "  9:-0.0",
+  "  10:5e-324",
+  "  11:1.5e-10",
+  "  12:100000000000000000000000"
+ ],
+ "table": {
+  "head": [
+   "#",
+   "value"
+  ],
+  "rows": [
+   "0 | 1e400",
+   "1 | -0",
+   "2 | 1.0000000000000000000001",
+   "3 | 123456789012345678901234567890123",
+   "4 | 9007199254740993",
+   "5 | -1e-400",
+   "6 | 0.1e1",
+   "7 | 1E+2",
+   "8 | 0",
+   "9 | -0.0",
+   "10 | 5e-324",
+   "11 | 1.5e-10",
+   "12 | 100000000000000000000000"
+  ],
+  "empty": false
+ },
+ "csv": "value\r\n1e400\r\n-0\r\n1.0000000000000000000001\r\n123456789012345678901234567890123\r\n9007199254740993\r\n-1e-400\r\n0.1e1\r\n1E+2\r\n0\r\n-0.0\r\n5e-324\r\n1.5e-10\r\n100000000000000000000000",
+ "convert": {
+  "typescript": "export type Root = number[]; // exceeds Number.MAX_SAFE_INTEGER: precision is lost as a JS number\n",
+  "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.array(z.number());\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"number\"\n  }\n}\n",
+  "csharp": "using System.Collections.Generic;\nusing System.Text.Json.Serialization;\n\n// Root: List<double>\n",
+  "dart": "typedef Root = List<double>;\n",
+  "java": "import java.util.List;\n\n// Root: List<Double>\n",
+  "python": "from typing import List\n\nfrom pydantic import RootModel\n\n\nclass Root(RootModel[List[float]]):\n    root: List[float]\n",
+  "go": "package main\n\ntype Root []float64\n",
+  "kotlin": "typealias Root = List<Double>\n",
+  "swift": "import Foundation\n\ntypealias Root = [Double]\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: float[]\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = Vec<f64>;\n",
+  "csv": "value\r\n1e400\r\n-0\r\n1.0000000000000000000001\r\n123456789012345678901234567890123\r\n9007199254740993\r\n-1e-400\r\n0.1e1\r\n1E+2\r\n0\r\n-0.0\r\n5e-324\r\n1.5e-10\r\n100000000000000000000000\r\n",
+  "yaml": "- 1.0e+400\n- -0\n- 1.0000000000000000000001\n- 123456789012345678901234567890123\n- 9007199254740993\n- -1.0e-400\n- 0.1e+1\n- 1.0e+2\n- 0\n- -0.0\n- 5.0e-324\n- 1.5e-10\n- 100000000000000000000000\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>1e400</item>\n  <item>-0</item>\n  <item>1.0000000000000000000001</item>\n  <item>123456789012345678901234567890123</item>\n  <item>9007199254740993</item>\n  <item>-1e-400</item>\n  <item>0.1e1</item>\n  <item>1E+2</item>\n  <item>0</item>\n  <item>-0.0</item>\n  <item>5e-324</item>\n  <item>1.5e-10</item>\n  <item>100000000000000000000000</item>\n</root>\n",
+  "toml": "# A TOML document must be a table: the top-level array is stored under \"root\".\nroot = [\n  1e400,\n  -0,\n  1.0000000000000000000001,\n  \"123456789012345678901234567890123\",\n  9007199254740993,\n  -1e-400,\n  0.1e1,\n  1E+2,\n  0,\n  -0.0,\n  5e-324,\n  1.5e-10,\n  \"100000000000000000000000\",\n]  # beyond the 64-bit integer range, written as a string\n",
+  "jsonl": "1e400\n-0\n1.0000000000000000000001\n123456789012345678901234567890123\n9007199254740993\n-1e-400\n0.1e1\n1E+2\n0\n-0.0\n5e-324\n1.5e-10\n100000000000000000000000\n"
+ }
+}

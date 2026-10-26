@@ -1,0 +1,13 @@
+{
+ "status": {
+  "msg": "Ln 2, Col 1: Multiple top-level values (wrapped in an array)",
+  "kind": "err",
+  "raw": "23 B raw",
+  "min": null,
+  "stats": "4 lines · 7 nodes · depth 2"
+ },
+ "toasts": [
+  "Opened broken.jsonl"
+ ],
+ "input": "{\"a\":1}\n{\"a\":2,}\n{\"a\":\n"
+}

@@ -1,0 +1,81 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "70 B raw",
+  "min": "70 B min",
+  "stats": "1 line · 21 nodes · depth 2"
+ },
+ "pretty": "[\n  1,\n  \"a\",\n  null,\n  true,\n  false,\n  {\n    \"a\": 1\n  },\n  [\n    1,\n    2\n  ],\n  {\n    \"b\": []\n  },\n  [],\n  {},\n  [\n    []\n  ],\n  [\n    {}\n  ],\n  -0.5,\n  \"\"\n]",
+ "minified": "[1,\"a\",null,true,false,{\"a\":1},[1,2],{\"b\":[]},[],{},[[]],[{}],-0.5,\"\"]",
+ "string": "\"[1,\\\"a\\\",null,true,false,{\\\"a\\\":1},[1,2],{\\\"b\\\":[]},[],{},[[]],[{}],-0.5,\\\"\\\"]\"",
+ "sorted": "[\n  1,\n  \"a\",\n  null,\n  true,\n  false,\n  {\n    \"a\": 1\n  },\n  [\n    1,\n    2\n  ],\n  {\n    \"b\": []\n  },\n  [],\n  {},\n  [\n    []\n  ],\n  [\n    {}\n  ],\n  -0.5,\n  \"\"\n]",
+ "tree": [
+  "root[14]",
+  "  0:1",
+  "  1:\"a\"",
+  "  2:null",
+  "  3:true",
+  "  4:false",
+  "  5:{1}",
+  "    a:1",
+  "  6:[2]",
+  "    0:1",
+  "    1:2",
+  "  7:{1}",
+  "    b:[0]",
+  "  8:[0]",
+  "  9:{0}",
+  "  10:[1]",
+  "    0:[0]",
+  "  11:[1]",
+  "    0:{0}",
+  "  12:-0.5",
+  "  13:\"\""
+ ],
+ "table": {
+  "head": [
+   "#",
+   "value",
+   "a",
+   "b"
+  ],
+  "rows": [
+   "0 | 1 | · | ·",
+   "1 | a | · | ·",
+   "2 | null | · | ·",
+   "3 | true | · | ·",
+   "4 | false | · | ·",
+   "5 | · | 1 | ·",
+   "6 | [2] | · | ·",
+   "7 | · | · | [0]",
+   "8 | [0] | · | ·",
+   "9 | · | · | ·",
+   "10 | [1] | · | ·",
+   "11 | [1] | · | ·",
+   "12 | -0.5 | · | ·",
+   "13 |  | · | ·"
+  ],
+  "empty": false
+ },
+ "csv": "value,a,b\r\n1,,\r\na,,\r\n,,\r\ntrue,,\r\nfalse,,\r\n,1,\r\n\"[1,2]\",,\r\n,,[]\r\n[],,\r\n,,\r\n[[]],,\r\n[{}],,\r\n-0.5,,\r\n,,",
+ "convert": {
+  "typescript": "export type Root = (boolean | number | string | (number | unknown[] | Record<string, unknown>)[] | RootItem | null)[];\n\nexport interface RootItem {\n  a?: number;\n  b?: unknown[];\n}\n",
+  "zod": "import { z } from \"zod\";\n\nexport const RootItemSchema = z.object({\n  a: z.number().int().optional(),\n  b: z.array(z.unknown()).optional(),\n});\nexport type RootItem = z.infer<typeof RootItemSchema>;\n\nexport const RootSchema = z.array(z.union([z.boolean(), z.number(), z.string(), z.array(z.union([z.number().int(), z.array(z.unknown()), z.record(z.string(), z.unknown())])), RootItemSchema]).nullable());\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"array\",\n  \"items\": {\n    \"anyOf\": [\n      {\n        \"$ref\": \"#/$defs/RootItem\"\n      },\n      {\n        \"type\": [\"boolean\", \"number\", \"string\", \"array\", \"null\"],\n        \"items\": {\n          \"type\": [\"integer\", \"array\", \"object\"]\n        }\n      }\n    ]\n  },\n  \"$defs\": {\n    \"RootItem\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"a\": {\n          \"type\": \"integer\"\n        },\n        \"b\": {\n          \"type\": \"array\"\n        }\n      }\n    }\n  }\n}\n",
+  "csharp": "using System.Collections.Generic;\nusing System.Text.Json;\nusing System.Text.Json.Serialization;\n\n// Root: List<JsonElement?>\n",
+  "dart": "typedef Root = List<dynamic>;\n",
+  "java": "import java.util.List;\n\n// Root: List<Object>\n",
+  "python": "from typing import Any, Dict, List, Optional, Union\n\nfrom pydantic import BaseModel, RootModel\n\n\nclass RootItem(BaseModel):\n    a: Optional[int] = None\n    b: Optional[List[Any]] = None\n\n\nclass Root(RootModel[List[Optional[Union[bool, float, str, List[Union[int, List[Any], Dict[str, Any]]], RootItem]]]]):\n    root: List[Optional[Union[bool, float, str, List[Union[int, List[Any], Dict[str, Any]]], RootItem]]]\n",
+  "go": "package main\n\ntype Root []any\n",
+  "kotlin": "import kotlinx.serialization.json.JsonElement\n\ntypealias Root = List<JsonElement?>\n",
+  "swift": "import Foundation\n\ntypealias Root = [JSONValue?]\n\n/// Any JSON value (used where the type is unknown or mixed).\nenum JSONValue: Codable {\n    case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null\n\n    init(from decoder: Decoder) throws {\n        let c = try decoder.singleValueContainer()\n        if c.decodeNil() { self = .null }\n        else if let v = try? c.decode(Bool.self) { self = .bool(v) }\n        else if let v = try? c.decode(Double.self) { self = .number(v) }\n        else if let v = try? c.decode(String.self) { self = .string(v) }\n        else if let v = try? c.decode([JSONValue].self) { self = .array(v) }\n        else { self = .object(try c.decode([String: JSONValue].self)) }\n    }\n\n    func encode(to encoder: Encoder) throws {\n        var c = encoder.singleValueContainer()\n        switch self {\n        case .string(let v): try c.encode(v)\n        case .number(let v): try c.encode(v)\n        case .bool(let v): try c.encode(v)\n        case .object(let v): try c.encode(v)\n        case .array(let v): try c.encode(v)\n        case .null: try c.encodeNil()\n        }\n    }\n}\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: mixed[]\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = Vec<serde_json::Value>;\n",
+  "csv": "value,a,b\r\n1,,\r\na,,\r\n,,\r\ntrue,,\r\nfalse,,\r\n,1,\r\n\"1, 2\",,\r\n,,\"\"\r\n\"\",,\r\n,,\r\n[[]],,\r\n[{}],,\r\n-0.5,,\r\n\"\",,\r\n",
+  "yaml": "- 1\n- a\n- null\n- true\n- false\n- a: 1\n- - 1\n  - 2\n- b: []\n- []\n- {}\n- - []\n- - {}\n- -0.5\n- \"\"\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>1</item>\n  <item>a</item>\n  <item/>\n  <item>true</item>\n  <item>false</item>\n  <item>\n    <a>1</a>\n  </item>\n  <item>\n    <item>1</item>\n    <item>2</item>\n  </item>\n  <item>\n    <b/>\n  </item>\n  <item>\n    <item/>\n  </item>\n  <item/>\n  <item>\n    <item>\n      <item/>\n    </item>\n  </item>\n  <item>\n    <item/>\n  </item>\n  <item>-0.5</item>\n  <item></item>\n</root>\n",
+  "toml": "# A TOML document must be a table: the top-level array is stored under \"root\".\nroot = [\n  1,\n  \"a\",\n  true,\n  false,\n  { a = 1 },\n  [1, 2],\n  { b = [] },\n  [],\n  {},\n  [[]],\n  [{}],\n  -0.5,\n  \"\",\n]  # null values omitted (TOML has no null)\n",
+  "jsonl": "1\n\"a\"\nnull\ntrue\nfalse\n{\"a\":1}\n[1,2]\n{\"b\":[]}\n[]\n{}\n[[]]\n[{}]\n-0.5\n\"\"\n"
+ }
+}
