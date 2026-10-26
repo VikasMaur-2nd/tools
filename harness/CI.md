@@ -50,28 +50,32 @@ gh run list -w check.yml                                             # then: gh 
 | `ref` | The branch, tag or commit to check | the branch the run starts from (`main`) |
 | `url` | Check a running site instead of a build. Only browser checks run; tests that need a special build are skipped | |
 
-**Levels**, with billed minutes on the 2-core runner (`pnpm ci:usage` prints the current estimates):
+**Levels**, with billed minutes on the 2-core runner. `pnpm ci:usage` prints the guard's current
+estimates.
 
-| Level | Runs | Billed minutes |
-|---|---|---|
-| `unit` | unit tests | ~3 |
-| `quick` (`ci:quick`) | lint, typecheck, unit tests | ~5 |
-| `smoke` (`ci:smoke`) | `quick` + build + the smoke checks in Chromium (incl. the first-load JS budget) | ~10 |
-| `e2e` | build + the browser checks in `engines` (no lint or unit tests) | ~20 per engine |
-| `full` | `quick` + `e2e` | ~23 in Chromium; ~57 in three engines (`ci:full`) |
-| with `url` | the level's browser checks against the site, no build | smoke ~3 |
+| Level | Runs | Billed minutes | Wall time |
+|---|---|---|---|
+| `unit` | unit tests | 3 | ~2.5 min |
+| `quick` (`ci:quick`) | lint, typecheck, unit tests | 3 | ~2.5 min |
+| `smoke` (`ci:smoke`) | `quick` + build + the smoke checks in Chromium (incl. the first-load JS budget) | 5 | ~4 min |
+| `e2e` | build + the browser checks in `engines` (no lint or unit tests) | ~14 per engine | |
+| `full` | `quick` + `e2e` | ~16 in Chromium; ~40 in three engines (`ci:full`) | ~15 min in three engines |
+| with `url` | the level's browser checks against the site, no build | smoke 2 | |
 
-A `suites` filter costs less than the table: setup and the build are about 5 minutes, the rest scales
-with the tests the filter matches.
+Measured on PR #29: setup takes about 35 s per job, lint 15 s, typecheck 10 s, the unit tests 1.5 min, a
+production build 41 s without any cache, the OS packages 12 s (Chromium), 18 s (Firefox) and 34 s (WebKit),
+and the smoke checks 18 s. The browser checks run at about the speed of our machine, so a whole engine is
+9–10 minutes. A `suites` filter costs only the tests it matches plus about 2 minutes, though the guard
+counts it as the whole set.
 
 ### Jobs
 
 A run is **one job**, because GitHub rounds every job up to a whole minute and each job pays for its own
 setup. The exception is the whole browser set in two or three engines (`ci:full`, or `full`/`e2e` with
 several engines and no `suites`): then a first job runs the code checks and makes the builds, and **one job
-per engine** runs the browser checks in parallel on those builds. That costs about 2 minutes more per
-extra engine and finishes in about a third of the time, instead of an hour. With a `suites` filter the
-engines share one job, since setup would be most of each job.
+per engine** runs the browser checks in parallel on those builds. That costs about a minute more per engine
+(setup and rounding: ~40 instead of ~38 for `ci:full`) and takes about 15 minutes instead of 40. With a
+`suites` filter the engines share one job, since setup would be a large part of each job.
 
 ### The budget
 
@@ -96,7 +100,9 @@ starting something large late in the month.
 - **Production builds**: cached by the harness's content key, so the same code is never built twice, even
   across runs (`ci:smoke` then `ci:full` on the same commit builds once), and new code builds from the last
   build's Turbopack cache. The builds' `node_modules` aren't cached; they're reinstalled from the pnpm store.
-- **Browsers** are downloaded by the harness as each job needs them, which is as fast as a cache here.
+- **Browsers** are downloaded by the harness as each job needs them: about 5 s each, as fast as a cache.
+- **Unit tests** run two files at a time (`--test-concurrency=$(nproc)`); `node --test` would run one at a
+  time on 2 cores.
 - **Timeouts**: 20 minutes for code-only levels, 60 for the first job of a browser run, 40 per engine job.
 - **Cancelled when superseded**: a newer label run of the same PR and label cancels the older one.
 
@@ -116,7 +122,7 @@ Agents add the label and end their turn; T3's `watch_pull_request` wakes them wh
 
 ### A typical month
 
-- `ci:smoke` on most PRs: 50 × 10 ≈ 500 minutes.
-- `ci:full` on a few risky PRs: 5 × 57 ≈ 285 minutes.
-- Offloaded unit tests and single suites: 20 × 5 ≈ 100 minutes.
-- That's about 900 of the 1,000; the guard stops anything past it.
+- `ci:smoke` on most PRs: 60 × 5 ≈ 300 minutes.
+- `ci:full` on the editor, engine, parser, service-worker and perf PRs: 10 × 40 ≈ 400 minutes.
+- Offloaded unit tests and Firefox/WebKit suites: 50 × 4 ≈ 200 minutes.
+- That's about 900 of the 1,000. The guard stops anything past it, and the rest runs on our machine.

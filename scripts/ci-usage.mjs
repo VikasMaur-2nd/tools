@@ -18,18 +18,19 @@ const BUDGET = 1000;
 const ENGINES = ['chromium', 'firefox', 'webkit'];
 const LEVELS = ['unit', 'quick', 'smoke', 'e2e', 'full'];
 
-// Billed minutes of each part of a job on GitHub's 2-core Linux runner, measured October 2026 (harness/CI.md).
+// Minutes of each part of a job on GitHub's 2-core Linux runner, measured on PR #29's runs (October 2026);
+// the browser sets are this machine's recorded test times on two slots, which the runner matched, plus 10 %.
 // A suites filter is costed as the whole set: the guard runs before anything is installed, so it can't
 // count the tests a filter matches. Each job is rounded up to a whole minute, like the bill.
 const COST = {
-  setup: 1, // checkout, this guard, pnpm install
-  unit: 2, // unit tests
-  quick: 3.5, // lint, typecheck, unit tests
-  build: 3, // the first production build of the code, from the last build's Turbopack cache
-  variant: 1.5, // each further build variant (analytics mock, redeploy)
-  browsers: { chromium: 0.5, firefox: 0.7, webkit: 1 }, // browser downloads, OS packages
-  smoke: 1.5,
-  suites: { chromium: 12, firefox: 14, webkit: 14 }, // every functional check (no big documents) in one engine
+  setup: 0.6, // job setup, checkout, this guard, pnpm and Node from the cache, pnpm install
+  unit: 1.5, // unit tests, two files at a time
+  quick: 2, // lint (~15 s), typecheck (~10 s), unit tests
+  build: 1, // a production build without a cache (41 s), or restoring and saving the cached one
+  variant: 0.6, // each further build variant (analytics mock, redeploy)
+  browsers: { chromium: 0.4, firefox: 0.4, webkit: 0.7 }, // OS packages (12, 18, 34 s) and the browser download
+  smoke: 0.4, // 18 smoke checks in Chromium
+  suites: { chromium: 10, firefox: 11, webkit: 10.5 }, // every browser check except big documents, one engine
 };
 
 const { values: o } = parseArgs({ options: { guard: { type: 'boolean' }, runs: { type: 'boolean' }, help: { type: 'boolean', short: 'h' } } });
