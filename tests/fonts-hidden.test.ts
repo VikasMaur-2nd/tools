@@ -47,7 +47,7 @@ test("a font arriving while an editor is hidden waits until it shows", () => {
   ed.init('{"a": 1}');
   const calls = spy(ed, ['measure', 'layout', 'render']);
   for (const f of fontsArrived) f();
-  assert.deepEqual(calls, [], 'hidden: nothing measured, laid out or drawn');
+  assert.equal(calls.length, 0, `hidden: nothing measured, laid out or drawn (${calls})`);
   show(el);
   for (const fire of observers) fire();
   assert.deepEqual(calls, ['measure', 'layout', 'render'], 'shown: the font is measured, then the rows laid out');
@@ -69,7 +69,7 @@ test('a font arriving while the output view is hidden waits until it shows', () 
   code.setText('{\n  "a": 1\n}', (s) => s, true, null);
   const calls = spy(code, ['measure', 'reflow', 'render']);
   for (const f of fontsArrived) f();
-  assert.deepEqual(calls, [], 'hidden: nothing measured or laid out');
+  assert.equal(calls.length, 0, `hidden: nothing measured or laid out (${calls})`);
   show(el);
   for (const fire of observers) fire();
   assert.equal(calls[0], 'measure', 'shown: the font is measured');
