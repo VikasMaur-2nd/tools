@@ -47,6 +47,11 @@ const FULL = 2;
 
 /** Window size in bytes (a token longer than that doubles it). */
 const WINDOW = 1 << 18;
+/** An instance is kept for the next parse while its memory is at most this (Wasm memory never shrinks). */
+const KEEP = 16 << 20;
+
+/** An idle instance per module (making one costs ~0.5 ms in WebKit). */
+const idle = new WeakMap<WebAssembly.Module, Exports>();
 
 const encoder = new TextEncoder();
 
@@ -59,7 +64,14 @@ export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOpt
   if (options.lines || !text) return null;
   // TextDecoder drops a byte order mark: the bytes must be the text's.
   if (bytes && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf && text.charCodeAt(0) !== 0xfeff) bytes = bytes.subarray(3);
-  const x = new WebAssembly.Instance(mod, {}).exports as unknown as Exports;
+  const x = idle.get(mod) ?? (new WebAssembly.Instance(mod, {}).exports as unknown as Exports);
+  idle.delete(mod);
+  const tape = run(x, text, options, bytes, window);
+  if (x.memory.buffer.byteLength <= KEEP) idle.set(mod, x);
+  return tape;
+}
+
+function run(x: Exports, text: string, options: TapeOptions, bytes: Uint8Array | undefined, window: number): Tape | null {
   const maxDepth = Math.min(options.maxDepth ?? 0xffffffff, 0xffffffff);
   if (!x.init(bytes ? 0 : 1, maxDepth >>> 0, window)) return null;
   const total = bytes ? bytes.length : text.length;
