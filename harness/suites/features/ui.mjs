@@ -306,13 +306,28 @@ for (const [what, make] of [
   });
 }
 
+const FIND_WORDS = ['Alpha', 'beta', 'Gamma', 'delta', 'EPSILON'];
+const findRecords = () => Array.from({ length: 6000 }, (_, i) => ({ id: i, name: `${FIND_WORDS[i % 5]} item ${i}`, ok: i % 3 === 0, v: i % 7 ? null : 'Straße İstanbul ' + i, n: i * 1.5 }));
+// What PR #26's build and main both answered, in every engine (the old script compared them).
+const FIND_WANT = { alpha: '1 of 1,200', Alpha: '1 of 1,200', 'item 12': '1 of 111', true: '5 of 2,000', null: '11 of 5,142', straße: '3 of 858', i̇stanbul: '3 of 858', '1.5': '2 of 300', zzz: 'No results', '$[3].name': '1 of 1', '$[*].name': 'Concrete paths only' };
+
 test('graph find: counts for a set of queries', async (t) => {
   const { page } = t;
-  const words = ['Alpha', 'beta', 'Gamma', 'delta', 'EPSILON'];
-  const doc = JSON.stringify(Array.from({ length: 6000 }, (_, i) => ({ id: i, name: `${words[i % 5]} item ${i}`, ok: i % 3 === 0, v: i % 7 ? null : 'Straße İstanbul ' + i, n: i * 1.5 })));
-  await graph(t, () => loadText(page, 'find.json', doc));
-  // What PR #26's build and main both answered, in every engine (the old script compared them).
-  const want = { alpha: '1 of 1,200', Alpha: '1 of 1,200', 'item 12': '1 of 111', true: '5 of 2,000', null: '11 of 5,142', straße: '3 of 858', i̇stanbul: '3 of 858', '1.5': '2 of 300', zzz: 'No results', '$[3].name': '1 of 1', '$[*].name': 'Concrete paths only' };
+  await graph(t, () => loadText(page, 'find.json', JSON.stringify(findRecords())));
+  await findCounts(t, FIND_WANT);
+});
+
+test('graph find on a document the worker parsed (a tape): the same counts', async (t) => {
+  const { page } = t;
+  // Over 2 MB, so a worker parses it and the graph is built from its tape. The padding matches no query.
+  const doc = JSON.stringify([...findRecords(), ...Array.from({ length: 9000 }, () => ({ q: 'x'.repeat(200) }))]);
+  await graph(t, () => loadText(page, 'find-big.json', doc));
+  await findCounts(t, FIND_WANT);
+  errorsOk(t);
+});
+
+async function findCounts(t, want) {
+  const { page } = t;
   for (const [q, count] of Object.entries(want)) {
     await page.keyboard.press('Control+f');
     const input = page.locator('.findbar input');
@@ -322,4 +337,4 @@ test('graph find: counts for a set of queries', async (t) => {
     await page.keyboard.press('Escape');
     await page.locator('#view-graph').focus();
   }
-});
+}

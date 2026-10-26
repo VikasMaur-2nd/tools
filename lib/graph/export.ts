@@ -1,9 +1,9 @@
 /* Framework-free, on-demand graph export. Both formats use the same geometry. */
 import { PRIVATE } from '../analytics';
-import { ARR, BOOL, NUL, NUM, STR } from '../json/parser';
+import { BOOL, NUL, NUM, STR } from '../json/parser';
 import { compactNum } from './render';
 import { anchorY, cardsIn, groupsIn, portY, rowY, type GraphLayout } from './layout';
-import { G, SWATCH_COLS, SWATCH_PX, headText, headX, labelText, sizeText, swatch, valueText } from './model';
+import { G, SWATCH_COLS, SWATCH_PX, cardHeadText, cardSizeText, headX, rowColor, rowIsItem, rowKind, rowLabelText, rowValueText } from './model';
 import type { GraphTheme } from './theme';
 
 /** SVG: cards and rows drawn (a long array is one card with a row per item: 20k cards or 100k rows are about 15 MB each). */
@@ -236,7 +236,6 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number) {
   const y = L.y[c];
   const w = m.w[c];
   const h = m.h[c];
-  const n = m.node[c];
   p.roundRect(x, y, w, h, 6, 'card');
   p.roundRect(x, y, w, G.head, 6, 'head');
   if (h > G.head) {
@@ -245,8 +244,9 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number) {
   }
   p.roundRect(x, y, w, h, 6, 'border');
   if (y + G.head >= y0 && y <= y1) {
-    p.text(x + headX(m, c), y + G.head / 2, headText(n), 'strong');
-    if (n.t >= ARR) p.text(x + w - G.padX - (m.bus[c] ? G.port : 0), y + G.head / 2, sizeText(n), 'muted', true);
+    p.text(x + headX(m, c), y + G.head / 2, cardHeadText(m, c), 'strong');
+    const size = cardSizeText(m, c);
+    if (size !== null) p.text(x + w - G.padX - (m.bus[c] ? G.port : 0), y + G.head / 2, size, 'muted', true);
     if (m.bus[c] && m.kids[c]) p.roundRect(x + w - 3, y + G.head / 2 - 3, 6, 6, 3, 'dot');
     if (L.collapsed[c] && m.kids[c]) {
       const cy = y + G.head / 2;
@@ -262,15 +262,15 @@ function card(L: GraphLayout, p: Painter, c: number, y0: number, y1: number) {
   const from = Math.max(start, start + Math.floor((y0 - y - G.head) / G.row));
   const to = Math.min(m.rowStart[c + 1], start + Math.ceil((y1 - y - G.head) / G.row));
   for (let r = from; r < to; r++) {
-    const entry = m.rowNode[r];
     const cy = rowY(L, c, r);
-    if (m.labelW[c]) p.text(x + G.padX, cy, labelText(entry), typeof entry.key === 'number' ? 'muted' : 'key');
+    if (m.labelW[c]) p.text(x + G.padX, cy, rowLabelText(m, r), rowIsItem(m, r) ? 'muted' : 'key');
     let vx = x + G.padX + (m.labelW[c] ? m.labelW[c] + G.gap : 0);
-    if (swatch(entry)) {
-      p.swatch(vx + 1, cy - SWATCH_PX / 2, SWATCH_PX, entry.v as string);
+    const color = rowColor(m, r);
+    if (color !== null) {
+      p.swatch(vx + 1, cy - SWATCH_PX / 2, SWATCH_PX, color);
       vx += SWATCH_COLS * m.charW;
     }
-    p.text(vx, cy, valueText(entry), valueInk(entry.t));
+    p.text(vx, cy, rowValueText(m, r), valueInk(rowKind(m, r)));
     if (m.rowChild[r] >= 0) p.roundRect(x + w - 3, cy - 3, 6, 6, 3, 'dot');
   }
 }

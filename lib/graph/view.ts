@@ -7,12 +7,14 @@
  * by a newer document; so are searches (by a newer query too). The canvas
  * only redraws on rAF when something changed, and only what is in view.
  */
-import { ARR, BOOL, NUL, NUM, STR, kids, type JNode } from '../json/parser';
+import { ARR, BOOL, JNode, NUL, NUM, STR, kids } from '../json/parser';
 import { formatPath, parsePath, pathOf, resolve, type Seg } from '../json/path';
+import { nodeAtIndex, tapeOfNode } from '../json/lazy';
+import { KEY_NAME, W, nextOf, startOf, valueOf, type Tape } from '../json/tape';
 import { idle, soon } from '../engine/idle';
 import { rt } from '../i18n/ui';
 import { PRIVATE } from '../analytics';
-import { G, cardOf, cardOfRow, childCards, fit, headText, labelText, locate, modelBuilder, sizeText, valueText, type GraphModel } from './model';
+import { G, cardFinder, cardHeadText, cardKey, cardNode, cardOfRow, cardPath, cardSizeText, childCards, fit, locate, locateIndex, modelBuilder, rowEntry, rowKey, rowKind, rowLabelText, rowValue, rowValueText, valueText, type GraphModel } from './model';
 import { cardAt, layouter, type GraphLayout } from './layout';
 import { charWidth, readTheme, type GraphTheme } from './theme';
 import { MARGIN, ZOOM_MAX, bound, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
@@ -90,6 +92,49 @@ export function textSearch(root: JNode, q: string, max: number): { hits: JNode[]
   return { hits, step };
 }
 
+/**
+ * `textSearch` on a tape (a document a worker parsed): the same hits, as tape indexes, under node
+ * `from` (the root). The nodes are in document order on the tape, so it is one pass, and nothing is
+ * made: values are read from the source, each property name is tested once.
+ */
+export function tapeTextSearch(t: Tape, src: string, from: number, q: string, max: number): { hits: number[]; step: (deadline: number) => boolean } {
+  const cs = q !== q.toLowerCase();
+  const qn = cs ? q : q.toLowerCase();
+  const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
+  const yes = { t: has('true'), f: has('false'), n: has('null') };
+  // Per property name: 0 not tested yet, 1 a hit, 2 not.
+  const keyHit = new Int8Array(t.keys.length);
+  const a = t.nodes;
+  const hits: number[] = [];
+  const end = nextOf(t, from);
+  let i = from;
+  const step = (deadline: number) => {
+    let k = 0;
+    for (; i < end && hits.length < max; i++) {
+      const meta = a[i * W];
+      let hit = false;
+      if (((meta >> 3) & 3) === KEY_NAME) {
+        const key = a[i * W + 4];
+        if (!keyHit[key]) keyHit[key] = has(t.keys[key]) ? 1 : 2;
+        hit = keyHit[key] === 1;
+      }
+      if (!hit) {
+        const kind = meta & 7;
+        if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
+        else if (kind === BOOL) hit = valueOf(t, i, src) ? yes.t : yes.f;
+        else hit = kind === NUL && yes.n;
+      }
+      if (hit) hits.push(i);
+      if (!(++k & 1023) && performance.now() >= deadline) {
+        i++;
+        return false;
+      }
+    }
+    return true;
+  };
+  return { hits, step };
+}
+
 /** Keep live-region updates bounded for deep documents. Copy path still uses the full path. */
 const ANNOUNCE_SEGMENTS = 4;
 function announcePath(n: JNode) {
@@ -149,6 +194,9 @@ export class GraphView implements GraphViewApi {
   /** Bumped by every search (and a new document): a search still running in steps stops. */
   private findSeq = 0;
   private matches: JNode[] = [];
+  /** A text search's matches on a tape (see tapeTextSearch): indexes under `matchOn`, the root searched; `matches` is empty then. */
+  private matchAt: number[] | null = null;
+  private matchOn: JNode | null = null;
   private mi = -1;
   private hitRow: Uint8Array | null = null;
   private hitCard: Uint8Array | null = null;
@@ -251,6 +299,7 @@ export class GraphView implements GraphViewApi {
     this.m = this.L = this.keepFor = null;
     this.root = null;
     this.matches = [];
+    this.matchAt = this.matchOn = null;
     this.keep = [];
     this.pending = null;
   }
@@ -268,7 +317,7 @@ export class GraphView implements GraphViewApi {
       // Save only the effective roots, so Show levels on a 100k chain keeps one
       // path instead of copying every suffix.
       for (let c = 0; c < m.n; c++) {
-        if (collapsed[c] && (m.parent[c] < 0 || !collapsed[m.parent[c]])) this.keep.push(pathOf(m.node[c]));
+        if (collapsed[c] && (m.parent[c] < 0 || !collapsed[m.parent[c]])) this.keep.push(cardPath(m, c));
       }
     } else if (reset) {
       this.keep = [];
@@ -290,6 +339,7 @@ export class GraphView implements GraphViewApi {
     this.findSeq++;
     this.building = false;
     this.matches = [];
+    this.matchAt = this.matchOn = null;
     this.hitFor = null;
     clearTimeout(this.editTimer);
     if (!active) return;
@@ -379,9 +429,9 @@ export class GraphView implements GraphViewApi {
   private restoreCollapsed(m: GraphModel) {
     const col = new Uint8Array(m.n);
     if (!this.reset && this.keep.length && this.root) {
+      const find = cardFinder(m, this.root);
       for (const segs of this.keep) {
-        const n = resolve(this.root, segs);
-        const c = n ? cardOf(m, n) : -1;
+        const c = find(segs);
         if (c >= 0) col[c] = 1;
       }
     }
@@ -505,8 +555,7 @@ export class GraphView implements GraphViewApi {
     }
     this.ctl.hidden = false;
     this.ensureHits();
-    const cur = this.matches[this.mi];
-    const at = cur && this.m ? locate(this.m, cur) : null;
+    const at = this.m && this.mi >= 0 && this.mi < this.matchCount() ? this.locateMatch(this.m, this.mi) : null;
     paint(ctx, L, this.th, this.cam, this.vw, this.vh, {
       card: this.card,
       row: this.row,
@@ -652,7 +701,7 @@ export class GraphView implements GraphViewApi {
   private selNode(): JNode | null {
     const m = this.m;
     if (!m || this.card < 0) return null;
-    return this.row >= 0 ? m.rowNode[this.row] : m.node[this.card];
+    return this.row >= 0 ? rowEntry(m, this.row) : cardNode(m, this.card);
   }
 
   select(n: JNode | null, opts: { scroll?: boolean; center?: boolean } = {}) {
@@ -712,7 +761,7 @@ export class GraphView implements GraphViewApi {
     const r = part >= 0 ? part : -1;
     this.focus();
     this.choose(c, r, 'pointer');
-    return r >= 0 ? m.rowNode[r] : m.node[c];
+    return r >= 0 ? rowEntry(m, r) : cardNode(m, c);
   }
 
   /** Selects card c / row r (from the pointer or keyboard) and tells the engine. */
@@ -724,7 +773,7 @@ export class GraphView implements GraphViewApi {
     this.announce();
     if (how === 'key') this.reveal(false);
     else this.redraw();
-    this.ev.select(r >= 0 ? m.rowNode[r] : m.node[c], how);
+    this.ev.select(r >= 0 ? rowEntry(m, r) : cardNode(m, c), how);
   }
 
   private announce() {
@@ -796,6 +845,7 @@ export class GraphView implements GraphViewApi {
   search(q: string, jump: boolean): FindResult {
     this.q = q;
     this.matches = [];
+    this.matchAt = this.matchOn = null;
     this.mi = -1;
     this.hitFor = null;
     const seq = ++this.findSeq;
@@ -809,9 +859,14 @@ export class GraphView implements GraphViewApi {
       }
       if (hit) this.matches = [hit];
       else {
-        const find = textSearch(root, q, MAX_MATCHES);
+        // A document a worker parsed is searched on its tape: no node is made for what doesn't match.
+        const z = tapeOfNode(root);
+        const find = z ? tapeTextSearch(z.tape, z.src, z.i, q, MAX_MATCHES) : textSearch(root, q, MAX_MATCHES);
         const later = this.ev.found;
-        this.matches = find.hits;
+        if (z) {
+          this.matchAt = find.hits as number[];
+          this.matchOn = root;
+        } else this.matches = find.hits as JNode[];
         if (!find.step(later ? performance.now() + SLICE : Infinity)) {
           const run = () => {
             if (seq !== this.findSeq) return;
@@ -827,23 +882,47 @@ export class GraphView implements GraphViewApi {
     return this.settle(jump, note);
   }
 
+  private matchCount() {
+    return this.matchAt ? this.matchAt.length : this.matches.length;
+  }
+
+  /** Match k's node (one found on a tape is made now). */
+  private matchNode(k: number): JNode | null {
+    const at = this.matchAt;
+    if (!at) return this.matches[k] ?? null;
+    return k < at.length && this.matchOn ? nodeAtIndex(this.matchOn, at[k]) : null;
+  }
+
+  /** Where match k is drawn in model `m` (-1s: not in it, such as a match in a newer document). */
+  private locateMatch(m: GraphModel, k: number): { card: number; row: number } {
+    const at = this.matchAt;
+    if (!at) return locate(m, this.matches[k]);
+    return m.tape && m.tape.root === this.matchOn ? locateIndex(m, at[k]) : { card: -1, row: -1 };
+  }
+
   /** The search is done: the current match is the first at or after the selection. */
   private settle(jump: boolean, note?: string): FindResult {
     this.hitFor = null;
-    if (this.matches.length) {
+    const total = this.matchCount();
+    if (total) {
       const sel = this.selNode();
       const from = sel ? sel.s : 0;
-      let idx = this.matches.findIndex((x) => x.s >= from);
+      const at = this.matchAt;
+      let idx = -1;
+      if (at) {
+        const t = tapeOfNode(this.matchOn!)!.tape;
+        idx = at.findIndex((i) => startOf(t, i) >= from);
+      } else idx = this.matches.findIndex((x) => x.s >= from);
       if (idx < 0) idx = 0;
       this.mi = idx;
       if (jump) this.gotoMatch();
     }
     this.redraw();
-    return { total: this.matches.length, index: this.mi, note: this.matches.length ? undefined : note };
+    return { total, index: this.mi, note: total ? undefined : note };
   }
 
   step(dir: 1 | -1): FindResult {
-    const n = this.matches.length;
+    const n = this.matchCount();
     if (!n) return { total: 0, index: -1 };
     this.mi = (this.mi + dir + n) % n;
     this.gotoMatch();
@@ -851,7 +930,7 @@ export class GraphView implements GraphViewApi {
   }
 
   private gotoMatch() {
-    const hit = this.matches[this.mi];
+    const hit = this.matchNode(this.mi);
     if (!hit) return;
     this.select(hit, { center: true });
     this.ev.select(hit, 'search');
@@ -862,14 +941,15 @@ export class GraphView implements GraphViewApi {
     const m = this.m;
     if (!m || this.hitFor === m) return;
     this.hitFor = m;
-    if (!this.matches.length) {
+    const count = this.matchCount();
+    if (!count) {
       this.hitRow = this.hitCard = null;
       return;
     }
     const hr = new Uint8Array(m.rows);
     const hc = new Uint8Array(m.n);
-    for (const n of this.matches) {
-      const { card, row } = locate(m, n);
+    for (let k = 0; k < count; k++) {
+      const { card, row } = this.locateMatch(m, k);
       if (row >= 0) hr[row] = 1;
       else if (card >= 0) hc[card] = 1;
     }
@@ -985,7 +1065,7 @@ export class GraphView implements GraphViewApi {
     if (c < 0 || !this.m) return;
     if (part === -2) return;
     if (part < 0) this.toggle(c);
-    else if (this.m.rowChild[part] < 0) this.ev.open(this.m.rowNode[part]);
+    else if (this.m.rowChild[part] < 0) this.ev.open(rowEntry(this.m, part));
     else {
       // A port row: go to its card.
       const k = this.m.rowChild[part];
@@ -1087,24 +1167,29 @@ export class GraphView implements GraphViewApi {
     const m = this.m;
     if (!m || this.down) return;
     let text = '';
+    // (Read off the model: a tape model's tooltip makes no node.)
     if (r >= 0) {
-      const n = m.rowNode[r];
-      const lab = labelText(n);
-      const val = valueText(n);
-      const fullKey = n.key === undefined ? '' : String(n.key);
-      const fullVal = n.t === STR ? JSON.stringify(n.v) : n.t >= ARR ? val : String(n.v ?? 'null');
+      const t = rowKind(m, r);
+      const key = rowKey(m, r);
+      const v = rowValue(m, r);
+      const lab = rowLabelText(m, r);
+      const val = rowValueText(m, r);
+      const fullKey = key === undefined ? '' : String(key);
+      const fullVal = t === STR ? JSON.stringify(v) : t >= ARR ? val : String(v ?? 'null');
       // What a value means (a date, an epoch time…), like the tree's tooltips.
-      const hint = (n.t === STR || n.t === NUM) && valueHints ? (valueHints(n)[0]?.label ?? '') : '';
+      const hint = (t === STR || t === NUM) && valueHints ? (valueHints(m.tape ? new JNode(t, v, 0, 0, null, key) : m.rowNode[r])[0]?.label ?? '') : '';
       // Zoomed out too far for text: the tooltip is the only way to read a row.
       const cut = lab !== fullKey || val !== fullVal || lodOf(this.cam.s) > 0;
       if (!cut && !hint) return;
       if (cut) text = (fullKey ? fullKey + ': ' : '') + (fullVal.length > 2000 ? fullVal.slice(0, 2000) + '…' : fullVal);
       if (hint) text = hint + (text ? '\n' + text : '');
     } else {
-      const n = m.node[c];
-      if (lodOf(this.cam.s) > 0) text = (typeof n.key === 'string' ? n.key : headText(n)) + (n.t >= ARR ? ' ' + sizeText(n) : '');
-      else if (typeof n.key !== 'string' || headText(n) === n.key) return;
-      else text = n.key;
+      const key = cardKey(m, c);
+      const head = cardHeadText(m, c);
+      const size = cardSizeText(m, c);
+      if (lodOf(this.cam.s) > 0) text = (typeof key === 'string' ? key : head) + (size !== null ? ' ' + size : '');
+      else if (typeof key !== 'string' || head === key) return;
+      else text = key;
     }
     this.tip.textContent = text;
     this.tip.hidden = false;

@@ -5,8 +5,8 @@
  * groups come from binary searches per column, rows inside tall cards are
  * culled, and at low zoom neighbouring cards merge into one block per pixel.
  */
-import { ARR, BOOL, NUL, NUM, STR } from '../json/parser';
-import { G, SWATCH_COLS, SWATCH_PX, fitCols, headText, headX, labelText, sizeText, swatch, valueText } from './model';
+import { BOOL, NUL, NUM, STR } from '../json/parser';
+import { G, SWATCH_COLS, SWATCH_PX, cardHeadText, cardSizeText, fitCols, headX, rowColor, rowIsItem, rowKind, rowLabelText, rowValueText } from './model';
 import { cardsIn, groupsIn, type GraphLayout } from './layout';
 import type { GraphTheme } from './theme';
 import { lodOf, type Cam } from './camera';
@@ -84,10 +84,9 @@ function rowValue(m: GraphLayout['m'], r: number): string {
   }
   let v = values.get(r);
   if (v === undefined) {
-    const k = m.rowNode[r];
-    v = valueText(k);
+    v = rowValueText(m, r);
     values.set(r, v);
-    labels.set(r, labelText(k));
+    labels.set(r, rowLabelText(m, r));
   }
   return v;
 }
@@ -764,25 +763,25 @@ function cardTexts(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme
     const top = cy + G.head;
     const vx = cx + G.padX + (m.labelW[c] ? m.labelW[c] + G.gap : 0);
     for (let r = rowsFrom[i]; r < rowsTo[i]; r++) {
-      const k = m.rowNode[r];
       const my = top + (r - r0) * G.row + G.row / 2;
       const value = rowValue(m, r);
-      if (m.labelW[c]) put(typeof k.key === 'number' ? TEXT.index : TEXT.key, cx + G.padX, my, rowLabel(r));
+      if (m.labelW[c]) put(rowIsItem(m, r) ? TEXT.index : TEXT.key, cx + G.padX, my, rowLabel(r));
       // A colour value: its swatch, then the text after the columns the model reserved for it.
       let tx = vx;
-      if (swatch(k)) {
-        ctx.fillStyle = k.v as string;
+      const color = rowColor(m, r);
+      if (color !== null) {
+        ctx.fillStyle = color;
         ctx.fillRect(vx + 1, my - SWATCH_PX / 2, SWATCH_PX, SWATCH_PX);
         ctx.strokeStyle = th.border;
         ctx.lineWidth = px;
         ctx.strokeRect(vx + 1, my - SWATCH_PX / 2, SWATCH_PX, SWATCH_PX);
         tx += SWATCH_COLS * m.charW;
       }
-      put(TEXT.value[kindSlot(k.t)], tx, my, value);
+      put(TEXT.value[kindSlot(rowKind(m, r))], tx, my, value);
     }
-    const nd = m.node[c];
-    put(TEXT.head, cx + headX(m, c), cy + G.head / 2, headText(nd));
-    if (nd.t >= ARR) put(TEXT.size, cx + m.w[c] - G.padX - (m.bus[c] ? G.port : 0), cy + G.head / 2, sizeText(nd));
+    put(TEXT.head, cx + headX(m, c), cy + G.head / 2, cardHeadText(m, c));
+    const size = cardSizeText(m, c);
+    if (size !== null) put(TEXT.size, cx + m.w[c] - G.padX - (m.bus[c] ? G.port : 0), cy + G.head / 2, size);
   }
   flush(ctx, TEXT.key, th.key);
   flush(ctx, TEXT.index, th.muted);
@@ -818,19 +817,20 @@ function skeletons(ctx: CanvasRenderingContext2D, L: GraphLayout, th: GraphTheme
     const top = cy + G.head;
     const vx = cx + G.padX + (m.labelW[c] ? m.labelW[c] + G.gap : 0);
     for (let r = rowsFrom[i]; r < rowsTo[i]; r++) {
-      const k = m.rowNode[r];
       const by = top + (r - r0) * G.row + (G.row - bh) / 2;
       if (m.labelW[c]) {
-        labelText(k, false);
-        (typeof k.key === 'number' ? value[4] : key).rect(cx + G.padX, by, fitCols * cw, bh);
-        used |= typeof k.key === 'number' ? 1 << 4 : 1 << 5;
+        const item = rowIsItem(m, r);
+        rowLabelText(m, r, false);
+        (item ? value[4] : key).rect(cx + G.padX, by, fitCols * cw, bh);
+        used |= item ? 1 << 4 : 1 << 5;
       }
-      valueText(k, false);
-      const slot = kindSlot(k.t);
-      value[slot].rect(swatch(k) ? vx + SWATCH_COLS * cw : vx, by, fitCols * cw, bh);
+      const sw = rowColor(m, r) !== null;
+      rowValueText(m, r, false);
+      const slot = kindSlot(rowKind(m, r));
+      value[slot].rect(sw ? vx + SWATCH_COLS * cw : vx, by, fitCols * cw, bh);
       used |= 1 << slot;
     }
-    headText(m.node[c], false);
+    cardHeadText(m, c, false);
     head.rect(cx + headX(m, c), cy + (G.head - 8) / 2, fitCols * cw, 8);
   }
   ctx.globalAlpha = 0.45;
