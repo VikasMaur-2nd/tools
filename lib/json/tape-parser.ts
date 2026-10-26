@@ -178,6 +178,28 @@ export function parser(text: string, { lines: jsonLines = false, maxDepth: deepe
   return { step, at: () => (result ? state.n : state.i) };
 }
 
+/** A small document that takes every path of the fast path. */
+const WARM =
+  '{"id":1,"name":"a b","esc":"q\\"\\\\\\/\\b\\f\\n\\r\\t\\u00e9","ok":true,"no":false,"x":null,"n":-1.5e3,"f":0.25,"z":0,"E":1E+2,"e2":2e-1,' +
+  '"o":{},"l":[],"t":[1,"s",[2,3],{"a":{"a":1},"a":2}],"\\u0041":1,"7":2,"id":3,"w":{"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,' +
+  '"k8":8,"k9":9,"k10":{"k1":0},"k11":1,"k12":2,"k13":3,"k14":4,"k15":5,"k16":6,"k17":7,"k1":8}}';
+
+/**
+ * Runs every path of the parser on small documents (a few milliseconds), with both kinds of strings
+ * engines keep (Latin-1 and UTF-16), so that the engine then optimizes it knowing them all. Call it
+ * when idle, before the first big parse: else that parse runs slower code for a while each time it
+ * takes a path for the first time.
+ */
+export function warmUp(): void {
+  for (const doc of ['[' + WARM + ',\n ' + WARM + ' ]', '[' + WARM + ',\n "\u0100", ' + WARM + ' ]']) {
+    parse(doc);
+    parse(WARM + '\n' + WARM + '\r\n' + WARM + '\n');
+    parse('{"a": [1,, 2], // c\n b: NaN, "c": f({"d": [1, 2]})}');
+    const p = parser(doc, {}, 5);
+    while (!p.step(0));
+  }
+}
+
 // ── The parse being run ──────────────────────────────────────────────────
 // As in parser.ts, one parse runs at a time and its state lives in these variables while it
 // runs; a parse in steps keeps them in a State object in between.
@@ -934,19 +956,25 @@ function fast(): void {
     }
 
     // AFTER a value in p.
-    let j = at;
-    let c = s.charCodeAt(j);
-    while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = s.charCodeAt(++j);
     if (p === top) {
-      // JSON Lines: the next line's value (the tolerant parser takes the second one: it reports the wrapping).
-      if (top < 0 || m < 2 || !startsStrict(c)) {
-        if (top < 0) ret = 0;
+      // The top-level value is done: the tolerant parser looks at what follows. (Not reading past the
+      // end here keeps the engine from optimizing for that only to undo it at the end of every parse.)
+      if (top < 0) {
+        ret = 0;
         break;
       }
+      // JSON Lines: the next line's value (the tolerant parser takes the second one: it reports the wrapping).
+      let j = at;
+      let c = j < s.length ? s.charCodeAt(j) : -1;
+      while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = ++j < s.length ? s.charCodeAt(j) : -1;
+      if (m < 2 || !startsStrict(c)) break;
       at = j;
       md = VALUE;
       continue;
     }
+    let j = at;
+    let c = s.charCodeAt(j);
+    while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = s.charCodeAt(++j);
     if (c === 44) {
       let q = j + 1;
       let ch = s.charCodeAt(q);
