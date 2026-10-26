@@ -16,6 +16,7 @@
  * Nesting is limited only by memory (open containers are in the tape itself, plus 4 bytes per
  * level), unless `maxDepth` says otherwise.
  */
+import { decodeNumber, decodeString } from './decode';
 import { ARR, BOOL, NUL, NUM, OBJ, STR, type Issue, type ParseOptions } from './parser';
 import {
   KEY_INDEX,
@@ -34,6 +35,8 @@ import {
   emptyTape,
   type Tape,
 } from './tape';
+
+export { decodeNumber, decodeString };
 
 export interface TapeOptions extends ParseOptions {
   /** Deepest nesting parsed (the root is 0): deeper fails with "Nesting is too deep to parse". Default: as deep as memory allows. */
@@ -146,10 +149,6 @@ function intKeyAt(s: string, a: number, e: number): boolean {
   }
   return true;
 }
-
-import { decodeNumber, decodeString } from './decode';
-
-export { decodeNumber, decodeString };
 
 // ── API ──────────────────────────────────────────────────────────────────
 
