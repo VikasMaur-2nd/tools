@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { MAX_DEPTH, parse as oldParse, type ParseOptions } from '../lib/json/parser';
-import { parse, parser, type TapeOptions } from '../lib/json/tape-parser';
+import { parse, parser, warmUp, type TapeOptions } from '../lib/json/tape-parser';
 import { KEY_NAME, VALUE_EXTRA, W, keyKindOf, sizeOf, tapeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
 import { MESSAGES, genDeep, genLoose, mutate, rng, type Rng } from './oracle/compare';
 
@@ -391,6 +391,18 @@ describe('tape parser: beyond parser.ts', () => {
       }
     }
     docs.forEach((d, k) => assert.equal(diffTape(tapeOf(oldParse(d), d), out[k]!, d), null));
+  });
+
+  test('warmUp() leaves nothing behind, also in the middle of a parse in steps', () => {
+    const src = '{"a":[1,"x",{"b":null}],"c":true}';
+    const p = parser(src, {}, 1);
+    p.step(0);
+    warmUp();
+    let t: Tape | undefined;
+    while (!(t = p.step(0)));
+    assert.equal(diffTape(tapeOf(oldParse(src), src), t, src), null);
+    warmUp();
+    same(src, {}, [1]);
   });
 
   test('values are read back from the source: no string per value', () => {
