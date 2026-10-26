@@ -75,3 +75,28 @@ export function eachChildKey(n: JNode, f: (key: Key) => void) {
     for (let c = n.zi + 1; c < end; c = nextOf(t, c)) f(keyOf(t, c));
   } else for (const c of n.v as JNode[]) f(c.key);
 }
+
+/**
+ * The node at tape index `i` of the tree whose root is `root` (made from that tape), made with its
+ * ancestors' children (the same objects every time), or null if `i` isn't in it.
+ */
+export function nodeAtIndex(root: JNode, i: number): JNode | null {
+  const z = root.z;
+  if (!(z instanceof Filler)) return null;
+  const t = z.tape;
+  if (i < root.zi || i >= nextOf(t, root.zi)) return null;
+  let n = root;
+  while (n.zi !== i) {
+    const list = n.v as JNode[];
+    // The last child starting at or before `i` holds it (children are in tape order).
+    let lo = 0;
+    let hi = list.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (list[mid].zi <= i) lo = mid;
+      else hi = mid - 1;
+    }
+    n = list[lo];
+  }
+  return n;
+}
