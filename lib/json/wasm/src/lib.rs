@@ -995,14 +995,16 @@ pub unsafe extern "C" fn run() -> i32 {
     let mut exact = EXACT;
     // The innermost open container, in locals (its STACK frame is written when another opens).
     let mut depth = STACK.len / F;
+    // (STACK in locals too: its length is written back at the end.)
+    let mut stk = STACK.p as *mut u32;
     let (mut tnode, mut tkind, mut tcount, mut tundo, mut tlast) = (0u32, 0u32, 0u32, 0u32, u32::MAX);
     if depth > 0 {
         let f = (depth - 1) * F;
-        tnode = STACK.get(f);
-        tkind = STACK.get(f + 1);
-        tcount = STACK.get(f + 2);
-        tundo = STACK.get(f + 3);
-        tlast = STACK.get(f + 4);
+        tnode = *stk.add(f);
+        tkind = *stk.add(f + 1);
+        tcount = *stk.add(f + 2);
+        tundo = *stk.add(f + 3);
+        tlast = *stk.add(f + 4);
     }
     // A node at window offset $p ending at UTF-16 offset $e (containers: set when they close).
     macro_rules! emit {
@@ -1065,14 +1067,13 @@ pub unsafe extern "C" fn run() -> i32 {
                 break FAIL;
             }
             depth -= 1;
-            STACK.len = depth * F;
             if depth > 0 {
                 let f = (depth - 1) * F;
-                tnode = STACK.get(f);
-                tkind = STACK.get(f + 1);
-                tcount = STACK.get(f + 2);
-                tundo = STACK.get(f + 3);
-                tlast = STACK.get(f + 4);
+                tnode = *stk.add(f);
+                tkind = *stk.add(f + 1);
+                tcount = *stk.add(f + 2);
+                tundo = *stk.add(f + 3);
+                tlast = *stk.add(f + 4);
             }
             state = if depth == 0 {
                 S_DONE
@@ -1118,13 +1119,17 @@ pub unsafe extern "C" fn run() -> i32 {
                     let kind = if c == b'{' { OBJ } else { ARR };
                     emit!(kind, V_NONE, p, 0);
                     // Push: the old innermost container to its frame, the new one to locals.
-                    if !STACK.reserve(F) {
-                        break FAIL;
+                    if (depth + 1) * F > STACK.cap {
+                        STACK.len = depth * F;
+                        if !STACK.reserve(F) {
+                            break FAIL;
+                        }
+                        stk = STACK.p as *mut u32;
                     }
                     if depth > 0 {
                         let f = (depth - 1) * F;
-                        STACK.set(f + 2, tcount);
-                        STACK.set(f + 4, tlast);
+                        *stk.add(f + 2) = tcount;
+                        *stk.add(f + 4) = tlast;
                     }
                     let f = depth * F;
                     tnode = (count - 1) as u32;
@@ -1132,11 +1137,10 @@ pub unsafe extern "C" fn run() -> i32 {
                     tcount = 0;
                     tundo = UNDO.len as u32;
                     tlast = u32::MAX;
-                    STACK.set(f, tnode);
-                    STACK.set(f + 1, tkind);
-                    STACK.set(f + 3, tundo);
+                    *stk.add(f) = tnode;
+                    *stk.add(f + 1) = tkind;
+                    *stk.add(f + 3) = tundo;
                     depth += 1;
-                    STACK.len = depth * F;
                     if kind == OBJ {
                         while FIRSTS.len < depth {
                             if !FIRSTS.push(u32::MAX) {
@@ -1276,10 +1280,11 @@ pub unsafe extern "C" fn run() -> i32 {
             _ => break FAIL,
         }
     };
+    STACK.len = depth * F;
     if depth > 0 {
         let f = (depth - 1) * F;
-        STACK.set(f + 2, tcount);
-        STACK.set(f + 4, tlast);
+        *stk.add(f + 2) = tcount;
+        *stk.add(f + 4) = tlast;
     }
     II = ii;
     STATE = state;
