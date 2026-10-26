@@ -166,3 +166,14 @@ test('two tabs: a document opened in one is what the other restores, and editing
   t.check(h === hashText(SMALL) || h === hashText(doc), 'a reload restores one of the two documents, whole', h);
   await second.close();
 });
+
+test('a phone: a 10 MB file opens, every view shows it through the view menu, and the page fits the screen', { mobile: true, width: 390, height: 844 }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const want = readFileSync(fixture('bench-10mb'), 'utf8');
+  await page.locator('.app:visible input[type=file]').setInputFiles(fixture('bench-10mb'));
+  await holds(t, want, 'the 10 MB file');
+  await viewsShow(t, 'on a phone');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - 390);
+  t.check(overflow <= 1, 'no sideways scrolling', `${overflow}px wider`);
+});
