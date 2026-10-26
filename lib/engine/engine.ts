@@ -368,6 +368,7 @@ export class Engine {
   destroy() {
     this.worker?.terminate();
     this.analysisWorker?.terminate();
+    this.sizesWorker?.terminate();
     clearTimeout(this.analysisTimer);
     this.dead = true;
     // Whatever is still on its way drops itself (each step checks its sequence), and nothing more starts.
@@ -865,14 +866,39 @@ export class Engine {
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
         if (blob.size <= 32_000_000) {
-          const encoders = await import('./sizes').catch(() => null);
-          if (seq !== this.sizeSeq) return;
-          if (encoders) Object.assign(sizes, await encoders.compressedSizes(blob, () => seq === this.sizeSeq));
+          Object.assign(sizes, await this.compressed(blob, seq));
         }
         if (seq === this.sizeSeq) store.set({ sizes });
       }),
       text.length > 1_000_000 ? 700 : 200,
     );
+  }
+
+  /** Compresses in the sizes worker (encoders can run seconds on the thread that calls them), or here without one. */
+  private sizesWorker: Worker | null | undefined;
+
+  private compressed(blob: Blob, seq: number): Promise<Partial<Record<string, number>>> {
+    if (this.sizesWorker === undefined) {
+      try {
+        this.sizesWorker = new Worker(new URL('./sizes.worker.ts', import.meta.url));
+      } catch {
+        this.sizesWorker = null;
+      }
+    }
+    const w = this.sizesWorker;
+    if (!w) return import('./sizes').then((m) => m.compressedSizes(blob, () => seq === this.sizeSeq), () => ({}));
+    return new Promise((done) => {
+      w.onmessage = (e: MessageEvent<{ seq: number; sizes: Partial<Record<string, number>> }>) => {
+        if (e.data.seq === seq) done(e.data.sizes);
+      };
+      // (A worker that can't start or fails measures nothing: the minified size still shows.)
+      w.onerror = (e) => {
+        e.preventDefault();
+        this.sizesWorker = null;
+        done({});
+      };
+      w.postMessage({ seq, blob });
+    });
   }
 
   /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
