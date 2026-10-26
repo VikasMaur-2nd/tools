@@ -127,12 +127,12 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: Uint8Array |
 
 /**
  * `nodes` with room for `need` nodes (`used` in use), grown to about what the whole document needs:
- * `need` nodes are its share `done` (of `size` bytes). A small document gets more room to spare:
+ * `need` nodes are its share `done` (of `size` bytes). A small document gets more room to spare (up to 24%):
  * its density varies more, and growing again costs more than the room (big allocations are slow in
  * WebKit).
  */
 function grow(nodes: Int32Array<ArrayBuffer>, used: number, need: number, done: number, size: number): Int32Array<ArrayBuffer> {
-  const margin = 1.04 + Math.min(0.2, 4e6 / size);
+  const margin = 1.04 + Math.min(0.2, 1e6 / size);
   const want = Math.max(need, Math.ceil((need / Math.max(done, 1e-6)) * margin) + 1024, Math.ceil((nodes.length / W) * 1.125));
   const next = new Int32Array(want * W);
   next.set(nodes.subarray(0, used * W));

@@ -550,7 +550,7 @@ function grow(need: number, at: number, used: number): Int32Array<ArrayBuffer> {
     const rate = Math.max(used / Math.max(at, 1), (used - grownCount) / Math.max(at - grownAt, 1));
     // (A small document gets more room to spare: its density varies more, and growing again costs
     // more than the room: big allocations are slow in WebKit.)
-    want = Math.max(Math.ceil(used + (n - at) * rate * (1.04 + Math.min(0.2, 4e6 / n))) + 1024, Math.ceil(have * 1.125));
+    want = Math.max(Math.ceil(used + (n - at) * rate * (1.04 + Math.min(0.2, 1e6 / n))) + 1024, Math.ceil(have * 1.125));
   }
   // At most one node per character, plus the array JSON Lines are wrapped in.
   want = Math.max(Math.min(want, n + 2), Math.ceil(need / W));
