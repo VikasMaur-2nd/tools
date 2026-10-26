@@ -17,6 +17,7 @@ import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
+import { readText } from '../json/text';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
@@ -1674,7 +1675,7 @@ export class Engine {
       if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
     };
     try {
-      const text = await f.text();
+      const text = await readText(f);
       if (signal.aborted) return unshow();
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
       let failed = false;
@@ -1836,7 +1837,7 @@ export class Engine {
   async loadCompareFile(f: File, source: InputSource = 'file') {
     const signal = this.request(2);
     try {
-      const text = await f.text();
+      const text = await readText(f);
       if (signal.aborted) return;
       this.loadCompare(text, f.name);
       noteLoad(source, 2, f.name);
@@ -2122,7 +2123,7 @@ export class Engine {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
         return null;
       }
-      const text = await res.text();
+      const text = await readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {

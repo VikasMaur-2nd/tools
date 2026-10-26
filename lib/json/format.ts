@@ -1,3 +1,4 @@
+import { asciiText } from './text';
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, tooDeep, type ParseResult } from './parser';
 
 const byKey = (a: JNode, b: JNode) => {
@@ -206,13 +207,10 @@ function grown(buf: Uint16Array, len: number, k: number) {
 
 /**
  * The text of the first `len` units of `buf`. ASCII (`hi` < 0x80) is made one byte a character: half the
- * memory of UTF-16, here and wherever the text is sent (the native typed-array copy narrows it).
+ * memory of UTF-16, here and wherever the text is sent (see text.ts).
  */
 function decoded(buf: Uint16Array, len: number, hi: number): string {
-  if (hi > 0x7f) return new TextDecoder('utf-16le').decode(buf.subarray(0, len));
-  const bytes = new Uint8Array(len);
-  bytes.set(buf.subarray(0, len));
-  return new TextDecoder().decode(bytes);
+  return hi > 0x7f ? new TextDecoder('utf-16le').decode(buf.subarray(0, len)) : asciiText(buf.subarray(0, len));
 }
 
 /**
