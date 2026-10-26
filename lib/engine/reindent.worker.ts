@@ -215,6 +215,9 @@ function reindentShowing(data: Request, text: string, indent: string): string | 
   }
 }
 
+/** Outputs longer than this (characters) aren't kept for patching the next one (see formatFast). */
+const RETAIN_MAX = 48_000_000;
+
 let scalar: { key: string; formatter: ScalarFormatter } | null = null;
 let pendingCheckpoints: { id: number; key: string; input: Doc; output: Doc } | null = null;
 let shape = 0;
@@ -285,6 +288,13 @@ function formatFast(data: Request, input: Doc) {
     chunkedOut: patch === undefined && sentOut === undefined,
     chunkedDisplay: display !== undefined && sentDisplay === undefined, index: sent,
   }, [sent.starts.buffer, ...(sent.close && sent.depth ? [sent.close.buffer, sent.depth.buffer] : [])]);
+  // A huge output isn't kept here as well as on the page (hundreds of MB): the next edit's output is sent whole.
+  if (output.length > RETAIN_MAX) {
+    outputs.clear();
+    indexed = null;
+    scalar = null;
+    return;
+  }
   // The viewer acknowledges after drawing. Only then may checkpoints compete for CPU,
   // so neither a cold load nor a full fallback pays for them before its rows appear.
   if (checkpoints) pendingCheckpoints = { id, key, input, output };
