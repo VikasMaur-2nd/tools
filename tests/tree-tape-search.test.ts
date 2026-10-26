@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, BOOL, NUL, NUM, STR, parse, type JNode } from '../lib/json/parser';
-import { lazyResult, madeCount, nodeAtIndex } from '../lib/json/lazy';
+import { lazyResult, madeCount, nodeAtIndex, tapeOfNode } from '../lib/json/lazy';
 import { tapeOf } from '../lib/json/tape';
 import { tapeSearch } from '../lib/engine/tree';
 
@@ -40,7 +40,7 @@ test('tree search on a tape finds the same nodes as on nodes, in order, making o
     for (const q of queries) {
       const lazy = lazyResult(tapeOf(res, text), text);
       const cs = q !== q.toLowerCase();
-      const hits = tapeSearch(lazy.root!.z && (lazy.root!.z as unknown as { tape: never }).tape, text, 0, cs ? q : q.toLowerCase(), cs, 100_000);
+      const hits = tapeSearch(tapeOfNode(lazy.root!)!.tape, text, 0, cs ? q : q.toLowerCase(), cs, 100_000);
       assert.equal(madeCount(lazy.root), 1, 'nothing made');
       const want = nodeSearch(res.root!, q);
       assert.equal(hits.length, want.length, `${q} in ${text.slice(0, 30)}`);

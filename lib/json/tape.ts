@@ -17,6 +17,7 @@
  * string or number costs nothing beyond its node. Those that can't be read back with a slice
  * or the parser's own decoding are kept in `extra`.
  */
+import { decodeNumber, decodeString } from './decode';
 import { ARR, NUM, STR, type JNode, type Key, type Kind, type ParseResult } from './parser';
 
 /** Int32 per node. */
@@ -61,21 +62,6 @@ export interface Tape {
   head: Omit<ParseResult, 'root'>;
 }
 
-/** The parser's decoding of values from the source (set by tape-parser.ts, which owns it). */
-export const decoders: {
-  /** The string value whose opening quote is at `start`. */
-  string: (src: string, start: number) => string;
-  /** The value of the loosely written number src.slice(start, end). */
-  number: (src: string, start: number, end: number) => string;
-} = {
-  string: () => {
-    throw new Error('tape decoders not installed');
-  },
-  number: () => {
-    throw new Error('tape decoders not installed');
-  },
-};
-
 export const kindOf = (t: Tape, i: number) => (t.nodes[i * W] & 7) as Kind;
 export const keyKindOf = (t: Tape, i: number) => (t.nodes[i * W] >> 3) & 3;
 export const valueKindOf = (t: Tape, i: number) => (t.nodes[i * W] >> 5) & 7;
@@ -114,7 +100,7 @@ export function valueOf(t: Tape, i: number, src: string): string | boolean | nul
     case VALUE_RAW:
       return src.slice(t.nodes[o + 1], t.nodes[o + 2]);
     case VALUE_DECODE:
-      return (meta & 7) === NUM ? decoders.number(src, t.nodes[o + 1], t.nodes[o + 2]) : decoders.string(src, t.nodes[o + 1]);
+      return (meta & 7) === NUM ? decodeNumber(src, t.nodes[o + 1], t.nodes[o + 2]) : decodeString(src, t.nodes[o + 1]);
     case VALUE_EXTRA:
       return t.extra!.get(i)!;
     default:

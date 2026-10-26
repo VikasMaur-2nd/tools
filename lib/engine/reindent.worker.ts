@@ -1,7 +1,10 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
 import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
-import { packedTransfer, packTree } from '../json/pack';
-import { parse, parser, type ParseResult } from '../json/parser';
+import { packedTransfer, packTape, packTree } from '../json/pack';
+import { lazyResult } from '../json/lazy';
+import { parse as parseTape, parser as tapeParser } from '../json/tape-parser';
+import type { Tape } from '../json/tape';
+import { MAX_DEPTH, parse, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
 import { compressedSizes } from './sizes';
@@ -173,31 +176,40 @@ self.onmessage = (e: MessageEvent<Request>) => {
 
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {
-  const res = data.progress ? parseShowing(data, text) : parse(text, { lines: data.lines });
+  // Parsed straight to a tape: no node objects here (the page makes the ones it shows).
+  const tape = data.progress ? parseShowing(data, text) : parseTape(text, { lines: data.lines, maxDepth: MAX_DEPTH });
+  const res = lazyResult(tape, text);
   showing(data, PARSED);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
   // is made after, only for what needs it (compressed sizes, the escaped size).
   const strict = !!res.root && !res.error && !res.issues.length && !res.multi;
-  let min = res.root && (!strict || data.escape) ? formatDoc(text, res, '') : null;
+  // (After the tape is sent this parse can't be read: a copy that needs it (loose JSON, nesting deeper than
+  // reindent goes) is made before.)
+  const later = !data.good && !!res.root;
+  let min = res.root && (!strict || data.escape || (later && res.depth >= REINDENT_DEPTH)) ? formatDoc(text, res, '') : null;
   const minBytes = strict ? minifiedBytes(text) ?? undefined : undefined;
   showing(data, MINIFIED);
   const metrics = documentMetrics(text, res, min ?? undefined, minBytes);
   if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   showing(data, MEASURED);
-  const tree = packTree(res, text);
+  const tree = packTape(tape);
   (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, packedTransfer(tree));
-  if (!data.good && res.root && metrics.min <= 32_000_000) {
-    min ??= formatDoc(text, res, '');
+  if (later && metrics.min <= 32_000_000) {
+    min ??= reindent(text, '');
+    if (min === null) return;
     void compressedSizes(new Blob([min]), () => latest === data.id).then((sizes) => {
       if (latest === data.id) self.postMessage({ id: data.id, sizes: { min: metrics.min, stale: false, ...sizes } });
     });
   }
 }
 
-/** `parse` in steps, posting how far it got (it costs the same as in one go). */
-function parseShowing(data: Request, text: string): ParseResult {
-  const p = parser(text, { lines: data.lines });
+/** Nesting reindent leaves to the parser (see format.ts). */
+const REINDENT_DEPTH = 500;
+
+/** The tape parse in steps, posting how far it got (it costs the same as in one go). */
+function parseShowing(data: Request, text: string): Tape {
+  const p = tapeParser(text, { lines: data.lines, maxDepth: MAX_DEPTH });
   for (;;) {
     const res = p.step(performance.now() + PROGRESS_EVERY);
     if (res) return res;
