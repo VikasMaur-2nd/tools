@@ -1,0 +1,11 @@
+{
+ "rows": [
+  "≠$.astring\"1\"→number1",
+  "≠$.bnullnull→booleanfalse",
+  "≠$.carray[]→object{}",
+  "≠$.dobject{}→array[]",
+  "≠$.ebooleantrue→string\"true\""
+ ],
+ "empty": null,
+ "patch": "[\n  {\n    \"op\": \"replace\",\n    \"path\": \"/a\",\n    \"value\": 1\n  },\n  {\n    \"op\": \"replace\",\n    \"path\": \"/b\",\n    \"value\": false\n  },\n  {\n    \"op\": \"replace\",\n    \"path\": \"/c\",\n    \"value\": {}\n  },\n  {\n    \"op\": \"replace\",\n    \"path\": \"/d\",\n    \"value\": []\n  },\n  {\n    \"op\": \"replace\",\n    \"path\": \"/e\",\n    \"value\": \"true\"\n  }\n]"
+}

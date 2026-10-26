@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "41 B raw",
+  "min": "41 B min",
+  "stats": "1 line · 3 nodes · depth 1"
+ },
+ "toasts": [
+  "Opened bad-utf8.json"
+ ],
+ "input": "{\"a\":\"x�(�������y\",\"b\":1}",
+ "formatted": "{\n  \"a\": \"x�(�������y\",\n  \"b\": 1\n}"
+}

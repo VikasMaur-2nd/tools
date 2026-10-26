@@ -1,0 +1,13 @@
+{
+ "status": {
+  "msg": "Ln 1, Col 1: Unexpected 'PK\u0003\u0004\u0014\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000…': strings must be wrapped in double quotes",
+  "kind": "err",
+  "raw": "65 B raw",
+  "min": null,
+  "stats": "1 line · 1 node · depth 0"
+ },
+ "toasts": [
+  "Opened a.zip"
+ ],
+ "input": "PK\u0003\u0004\u0014\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0006\u0000\u0000\u0000a.json{\"a\":1}PK\u0005\u0006\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+}
