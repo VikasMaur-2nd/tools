@@ -227,3 +227,87 @@ export function hash(t) {
   for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 0x01000193);
   return `${t.length}:${(h >>> 0).toString(16)}`;
 }
+
+// ── An independent formatter for expected outputs of big documents ──────────────────────────────
+
+/**
+ * Strict JSON `text` re-indented with `indent` ('' minifies), keeping every number, string and key
+ * exactly as written: what the Format view must show, computed without the app's code. Empty
+ * containers stay `[]` / `{}`; a key is followed by ": " when indenting. Works on Buffers of any size
+ * (returns a hash when `hashOnly`, so a 200 MB output never has to exist as one string).
+ */
+export function reformat(text, indent, { hashOnly = false } = {}) {
+  const parts = [];
+  let h = 0x811c9dc5;
+  let len = 0;
+  const put = (s) => {
+    if (hashOnly) {
+      for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+      len += s.length;
+    } else parts.push(s);
+  };
+  const nl = (d) => (indent ? '\n' + indent.repeat(d) : '');
+  let depth = 0;
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      put(text.slice(i, j + 1));
+      i = j + 1;
+    } else if (c === '{' || c === '[') {
+      // An empty container stays on one line.
+      let j = i + 1;
+      while (j < n && /\s/.test(text[j])) j++;
+      if (text[j] === (c === '{' ? '}' : ']')) {
+        put(c === '{' ? '{}' : '[]');
+        i = j + 1;
+      } else {
+        depth++;
+        put(c + nl(depth));
+        i++;
+      }
+    } else if (c === '}' || c === ']') {
+      depth--;
+      put(nl(depth) + c);
+      i++;
+    } else if (c === ',') {
+      put(',' + nl(depth));
+      i++;
+    } else if (c === ':') {
+      put(indent ? ': ' : ':');
+      i++;
+    } else if (c === ' ' || c === '\n' || c === '\r' || c === '\t') i++;
+    else {
+      let j = i;
+      while (j < n && !/[\s,:\]}]/.test(text[j])) j++;
+      put(text.slice(i, j));
+      i = j;
+    }
+  }
+  return hashOnly ? `${len}:${(h >>> 0).toString(16)}` : parts.join('');
+}
+
+// ── The shared heavy-document lock ──────────────────────────────────────────────────────────────
+
+/**
+ * Holds the host's heavy-document lock (flock on BREAKER_HEAVY_LOCK, e.g. ~/.cache/mem-work/heavy.lock)
+ * until the test ends, so two big-document browsers never run at once on a shared machine. A no-op
+ * without the variable (or when the whole run is already wrapped in `flock` on the same file: don't set
+ * it then, a second flock on the file would wait for the first).
+ */
+export async function heavyLock(t) {
+  const file = process.env.BREAKER_HEAVY_LOCK;
+  if (!file) return;
+  const { spawn } = await import('node:child_process');
+  const p = spawn('flock', [file, 'sh', '-c', 'echo locked; read x'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  await new Promise((resolve, reject) => {
+    p.stdout.on('data', (d) => String(d).includes('locked') && resolve());
+    p.on('error', reject);
+    p.on('exit', (code) => reject(new Error(`flock exited (${code})`)));
+  });
+  // Released with the test's pages (the runner closes every extra context after the test).
+  t._extra.push({ context: { close: async () => { p.stdin.end(); p.kill(); } }, errors: [] });
+}
