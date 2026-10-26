@@ -880,6 +880,8 @@ html:has(.content-page:not([style*='none'])) {
   color: var(--fg-2);
   font-size: 17px;
   line-height: 1.75;
+  /* (A name longer than a phone's line, such as DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, breaks.) */
+  overflow-wrap: break-word;
 }
 
 .prose > :first-child {
@@ -957,6 +959,17 @@ html:has(.content-page:not([style*='none'])) {
   color: var(--fg);
   font: 0.84em var(--font-mono);
   white-space: nowrap;
+}
+
+/* A phone's line is shorter than some snippets: they wrap (at spaces, else anywhere) instead of
+   widening the page. */
+@media (max-width: 720px) {
+  .prose :not(pre) > code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
 }
 
 .code {

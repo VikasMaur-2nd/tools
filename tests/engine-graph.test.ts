@@ -238,6 +238,30 @@ test('graph exports use the document base name and do not reactivate the graph',
   assert.ok(!s.calls.some(([name]) => name === 'activate'));
 });
 
+test('a graph download asked for before the graph shows settles, also when it never does', async () => {
+  const s = session();
+  await s.engine.loadGraph();
+  // Another view before the graph showed: nothing is saved, and the caller hears so.
+  const first = s.engine.downloadGraph('png');
+  s.engine.setView('format');
+  s.frame();
+  assert.equal(await first, null);
+  assert.ok(!s.calls.some(([name]) => name === 'save'));
+  // Two asked for while it opens both run once it shows.
+  const second = s.engine.downloadGraph('png');
+  const third = s.engine.downloadGraph('svg');
+  s.frame();
+  assert.deepEqual({ ...(await second) }, { file: 'example.png', size: 3 });
+  assert.deepEqual({ ...(await third) }, { file: 'example.svg', size: 3 });
+  // The graph's code doesn't load: the view goes back to Format, and the download settles.
+  const t = session();
+  t.fail(true);
+  const fourth = t.engine.downloadGraph('png');
+  await t.engine.loadGraph();
+  assert.equal(t.state.settings.view, 'format');
+  assert.equal(await fourth, null);
+});
+
 test('graph export rejections become a translated toast and a sanitized error report', async () => {
   const s = session();
   await s.open();

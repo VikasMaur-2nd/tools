@@ -361,6 +361,7 @@ export class Engine {
     this.fmtStatSeq++;
     this.convSeq++;
     this.viewSeq++;
+    this.dropGraphWaiters();
     clearTimeout(this.sizeTimer);
     this.requests[1]?.abort();
     this.requests[2]?.abort();
@@ -2163,6 +2164,7 @@ export class Engine {
     this.flushLoad();
     store.set({ menu: null });
     const viewSeq = ++this.viewSeq;
+    if (view !== 'graph') this.dropGraphWaiters();
     if (view === 'graph') {
       this.graphShow = { seq: viewSeq, ready };
       // The tab opens at once; the graph draws when its code has arrived (usually prefetched already).
@@ -2230,6 +2232,15 @@ export class Engine {
     this.graph.select(this.sel, { scroll: true });
     if (this.query) this.refind(true);
     show.ready?.();
+    for (const w of this.graphWaiters.splice(0)) w.run();
+  }
+
+  /** Commands waiting for the Graph view to show (see withGraph). */
+  private graphWaiters: { run: () => void; dropped?: () => void }[] = [];
+
+  /** Another view, a graph whose code didn't load, or the tool closing: what waited for the graph never runs. */
+  private dropGraphWaiters() {
+    for (const w of this.graphWaiters.splice(0)) w.dropped?.();
   }
 
   /** Leaves Compare for the view that was open before it. */
@@ -2688,9 +2699,11 @@ export class Engine {
     }
   }
 
-  private withGraph(run: () => void) {
-    if (this.settings.view === 'graph' && this.graph) run();
-    else this.setView('graph', run);
+  /** Runs `run` in the Graph view, opening it first; `dropped` if it never shows (see dropGraphWaiters). */
+  private withGraph(run: () => void, dropped?: () => void) {
+    if (this.settings.view === 'graph' && this.graph) return run();
+    this.graphWaiters.push({ run, dropped });
+    this.setView('graph');
   }
 
   fitGraph() {
@@ -2724,7 +2737,7 @@ export class Engine {
   /** Downloads the graph as an image; `name` without an extension (default: the document's name). */
   downloadGraph(opts: GraphExport | 'png' | 'svg' | 'jpeg', name?: string): Promise<{ file: string; size: number } | null> {
     const o: GraphExport = typeof opts === 'string' ? { format: opts, area: 'all', background: 'theme', scale: 2 } : opts;
-    // Settles with the saved file, or null (no graph, or the export failed).
+    // Settles with the saved file, or null (no graph, the view changed before it showed, or the export failed).
     return new Promise((settle) => this.withGraph(() => {
       if (!this.graph) return settle(null);
       track('feature_used', { feature: o.format === 'png' ? 'graph_export_png' : o.format === 'jpeg' ? 'graph_export_jpeg' : 'graph_export_svg' });
@@ -2740,7 +2753,7 @@ export class Engine {
         if (!this.dead) this.toast(rt("Couldn't download graph: {error}", { error: rt.msg(error instanceof Error ? error.message : 'Graph export failed') }), 'err');
         settle(null);
       });
-    }));
+    }, () => settle(null)));
   }
 
   /** Copies the graph as a PNG image. Call from the click itself: browsers only allow it during user input. */
