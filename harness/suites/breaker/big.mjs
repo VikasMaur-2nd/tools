@@ -9,7 +9,7 @@ import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
-import { clear, copied, golden, hash, heavyLock, reformat, seenToasts, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
+import { clear, golden, hash, heavyLock, reformat, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: 600_000 });
 
