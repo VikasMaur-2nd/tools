@@ -113,9 +113,9 @@ export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOpt
   }
 }
 
-/** `nodes` with room for `need` nodes (`used` in use), grown to about what the whole document needs from the share of it done. */
+/** `nodes` with room for `need` nodes (`used` in use), grown to about what the whole document needs: `need` nodes are its share `done`. */
 function grow(nodes: Int32Array<ArrayBuffer>, used: number, need: number, done: number): Int32Array<ArrayBuffer> {
-  const want = Math.max(need, Math.ceil((used / Math.max(done, 1e-6)) * 1.04) + 1024, Math.ceil((nodes.length / W) * 1.125));
+  const want = Math.max(need, Math.ceil((need / Math.max(done, 1e-6)) * 1.04) + 1024, Math.ceil((nodes.length / W) * 1.125));
   const next = new Int32Array(want * W);
   next.set(nodes.subarray(0, used * W));
   return next;
