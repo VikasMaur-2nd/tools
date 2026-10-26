@@ -7,22 +7,9 @@
  */
 import { OBJ, type ParseResult } from './parser';
 import { lazyResult } from './lazy';
-import { emptyTape, KEY_INDEX, receiver, sendable, tapeOf, W, type SentTape, type Tape } from './tape';
+import { emptyTape, KEY_INDEX, receiver, W, type SentTape, type Tape } from './tape';
 
 export type PackedTree = SentTape;
-
-/** Packs `res` (parsed from `src`); post it with `packedTransfer(tree)`. */
-export function packTree(res: ParseResult, src: string): PackedTree {
-  return sendable(tapeOf(res, src)).sent;
-}
-
-/** A tape ready to post. */
-export function packTape(tape: Tape): PackedTree {
-  return sendable(tape).sent;
-}
-
-/** The buffers to transfer with a packed tree. */
-export const packedTransfer = (p: PackedTree): ArrayBuffer[] => [p.nodes.buffer, p.text.buffer, p.offsets.buffer, p.extraAt.buffer];
 
 const received = new WeakMap<PackedTree, Tape>();
 

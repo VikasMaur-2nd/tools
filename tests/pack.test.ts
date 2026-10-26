@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, parse, type JNode, type ParseResult } from '../lib/json/parser';
 import { nodeAt, pathOf } from '../lib/json/path';
-import { packTree, packedPosition, unpacker } from '../lib/json/pack';
+import { packedPosition, unpacker } from '../lib/json/pack';
+import { packTree } from '../lib/json/pack-send';
 import { madeCount } from '../lib/json/lazy';
 import { Doc } from '../lib/engine/doc';
 

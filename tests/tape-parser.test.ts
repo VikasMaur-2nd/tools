@@ -5,7 +5,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { MAX_DEPTH, parse as oldParse, type ParseOptions } from '../lib/json/parser';
 import { parse, parser, type TapeOptions } from '../lib/json/tape-parser';
-import { KEY_NAME, VALUE_EXTRA, W, keyKindOf, sizeOf, tapeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
+import { KEY_NAME, VALUE_EXTRA, W, keyKindOf, sizeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
+import { tapeOf } from '../lib/json/tape-send';
 import { MESSAGES, genDeep, genLoose, mutate, rng, type Rng } from './oracle/compare';
 
 // FUZZ_SEED=<n> / FUZZ_SCALE=<x> (env) re-run with another seed / more cases; `pnpm test --slow` runs
