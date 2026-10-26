@@ -10,9 +10,10 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node scripts/test.mjs",
+    "smoke": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke.mjs",
     "e2e": "node harness/run.mjs",
     "perf": "node harness/run.mjs --perf",
-    "indexnow": "node scripts/indexnow.mjs",
+    "indexnow": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/indexnow.mjs",
     "i18n:pages": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/export-tool-pages.mjs",
     "i18n:sync": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/i18n-sync.mjs",
     "i18n:verify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-i18n.mjs"

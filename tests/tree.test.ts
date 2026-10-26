@@ -116,15 +116,18 @@ test('Tree expansion matches the frozen path-string model through random actions
   }
 });
 
-test('Tree restores overrides through absent paths, separator aliases, duplicate keys and array/object edits', () => {
+test('Tree restores overrides through absent paths, duplicate keys and array/object edits', () => {
   const { tree } = view();
   const first = document('{"a\\u0001b":{},"a":{"b":{}},"a":{"b":{}},"0":{"child":{}}}');
   tree.setRoot(first.root, true, first.nodes);
   tree.toggle(first.all[1], false);
   tree.setRoot(document('{}').root, false);
+  tree.setRoot(document('{"a\\u0001b":{"new":{}}}').root, false);
+  assert.equal(tree.rows.at(-1)?.key, 'a\u0001b');
+  assert.equal(tree.rows.at(-1)?.x, false, 'a collapsed key survives a reparse without it');
   tree.setRoot(document('{"a":{"b":{"new":{}}}}').root, false);
-  assert.equal(tree.rows.at(-1)?.key, 'b');
-  assert.equal(tree.rows.at(-1)?.x, false, 'old separator collision survives a reparse');
+  assert.equal(tree.rows.at(-1)?.key, 'new');
+  assert.equal(tree.rows.at(-2)?.x, true, 'a key holding the separator is not the path a.b');
   tree.setRoot(first.root, false);
   tree.toggle(first.all.find(n => n.key === '0')!, false);
   tree.setRoot(document('[{"new":{}}]').root, false);
@@ -207,4 +210,42 @@ test('Tree row indentation is unchanged through depth 30 and deeper rows expose 
       assert.ok(html.includes(`class="tv-depth ${PRIVATE}" aria-hidden="true">↳${n.d}</span>`));
     }
   }
+});
+
+test('A key holding the path separator is one key, not a nested path', () => {
+  const text = '{"a\\u0001b":{"x":{}},"a":{"b":{"y":{}}}}';
+  const find = (all: JNode[], ...path: string[]) => all.find((n) => {
+    let p: JNode | null = n;
+    for (let i = path.length - 1; i >= 0; i--, p = p.u) if (!p || p.key !== path[i]) return false;
+    return !!p && !p.u;
+  })!;
+  for (const [collapse, other] of [[['a\u0001b'], ['a', 'b']], [['a', 'b'], ['a\u0001b']]]) {
+    const { tree } = view();
+    const first = document(text);
+    tree.setRoot(first.root, true, first.nodes);
+    tree.toggle(find(first.all, ...collapse), false);
+    const next = document(text);
+    tree.setRoot(next.root, false);
+    assert.equal(find(next.all, ...collapse).x, false, `${collapse.join('.')} stays collapsed`);
+    assert.equal(find(next.all, ...other).x, true, `${other.join('.')} stays open`);
+  }
+});
+
+test('Tree rows give their place among their siblings', () => {
+  const res = document('{"a":1,"b":{"c":2,"d":[3,4]},"a":5,"e":{}}');
+  const { tree } = view();
+  const render = tree as unknown as { row(n: JNode, i: number): string };
+  for (const n of res.all) {
+    if (!n.u) continue;
+    const html = render.row(n, 0);
+    assert.ok(html.includes(`aria-posinset="${kids(n.u).indexOf(n) + 1}"`), html);
+    assert.ok(html.includes(`aria-setsize="${kids(n.u).length}"`), html);
+  }
+  // Items made without offsets of their own (all at 0) are still found.
+  const p = res.all[0];
+  const made = kids(p).map((k) => Object.assign(Object.create(Object.getPrototypeOf(k)), k, { s: 0, u: p }) as JNode);
+  const saved = p.v;
+  p.v = made;
+  for (const n of made) assert.ok(render.row(n, 0).includes(`aria-posinset="${made.indexOf(n) + 1}"`));
+  p.v = saved;
 });

@@ -14,11 +14,11 @@ export interface Chars {
   indexOf(s: string, from?: number, to?: number): number;
 }
 
-/** End (exclusive, before the '\n') of line `ln`. */
-export const lineEndIn = (ls: number[], len: number, ln: number) => (ln + 1 < ls.length ? ls[ln + 1] - 1 : len);
+/** End (exclusive, before the '\n') of line `ln`, in a text of `len` characters with line starts `ls`. */
+export const lineEndIn = (ls: ArrayLike<number>, len: number, ln: number) => (ln + 1 < ls.length ? ls[ln + 1] - 1 : len);
 
-/** Line holding offset `off`. */
-export function lineOfIn(ls: number[], off: number) {
+/** Line holding offset `off` (the last of the ascending starts `ls` at or before it). */
+export function lineOfIn(ls: ArrayLike<number>, off: number) {
   let lo = 0;
   let hi = ls.length - 1;
   while (lo < hi) {
@@ -156,20 +156,22 @@ export function scanFolds(t: Chars, ls: number[]) {
 
 /**
  * scanFolds in steps: each call scans until `until` (a performance.now() value) has passed, and returns
- * the fold structure once it is done. Lines and text must not change meanwhile.
+ * the fold structure once it is done. Meanwhile lines may change only as edits that keep every line's
+ * signature do (no line added or removed): a step is given the text as it is then (`text`, with `ls`
+ * kept up to date). `into`: arrays of `ls.length` to fill (they are cleared), else new ones.
  */
-export function foldScanner(t: Chars, ls: number[]) {
+export function foldScanner(t: Chars, ls: number[], into?: { close: Int32Array; depth: Int32Array }) {
   const n = ls.length;
-  const close = new Int32Array(n).fill(-1);
-  const depth = new Int32Array(n);
+  const close = into ? into.close.fill(-1) : new Int32Array(n).fill(-1);
+  const depth = into ? into.depth.fill(0) : new Int32Array(n);
   const stack: number[] = [];
   let i = 0;
-  return (until: number): { close: Int32Array; depth: Int32Array } | undefined => {
+  return (until: number, text = t): { close: Int32Array; depth: Int32Array } | undefined => {
     while (i < n) {
       // (The clock is read every 4096 lines.)
       const stop = Math.min(n, i + 4096);
       for (; i < stop; i++) {
-        const sig = foldSig(t, ls[i], lineEndIn(ls, t.length, i));
+        const sig = foldSig(text, ls[i], lineEndIn(ls, text.length, i));
         if (!sig) continue;
         if (sig & 2 && stack.length) {
           const o = stack.pop() as number;
@@ -205,5 +207,32 @@ export function shiftFoldLines(close: Int32Array, depth: Int32Array, la: number,
   dp.set(depth.subarray(lb + 1), la + added + 1);
   // (No block closes on an edited line: every one closing after line la closes after lb.)
   for (let i = 0; i < n; i++) if (c[i] > la) c[i] += d;
+  return { close: c, depth: dp };
+}
+
+/**
+ * The fold structure after lines [la, lb] became lines [la, la + added], as far as it is known without
+ * a scan when the edit may have opened or closed blocks: a block that closes before the edit, or opens
+ * after it, pairs with the same lines (those after only move, though their depth may change). Blocks
+ * around the edit or in it are unknown (-1) until scanFolds finds them. When the line count stays, the
+ * arrays given are updated (no copying millions of lines per key).
+ */
+export function foldsAround(close: Int32Array, depth: Int32Array, la: number, lb: number, added: number) {
+  const d = added - (lb - la);
+  if (!d) {
+    for (let i = 0; i < la; i++) if (close[i] >= la) close[i] = -1;
+    close.fill(-1, la, lb + 1);
+    return { close, depth };
+  }
+  const n = close.length + d;
+  const c = new Int32Array(n);
+  const dp = new Int32Array(n);
+  c.set(close.subarray(0, la));
+  dp.set(depth.subarray(0, la));
+  for (let i = 0; i < la; i++) if (c[i] >= la) c[i] = -1;
+  c.fill(-1, la, la + added + 1);
+  c.set(close.subarray(lb + 1), la + added + 1);
+  dp.set(depth.subarray(lb + 1), la + added + 1);
+  if (d) for (let i = la + added + 1; i < n; i++) if (c[i] >= 0) c[i] += d;
   return { close: c, depth: dp };
 }

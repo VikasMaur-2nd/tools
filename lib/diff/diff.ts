@@ -14,7 +14,7 @@
  * - With `ignoreArrayOrder`, arrays are compared as multisets (by id or hash).
  * - Numbers are compared by exact decimal value from their source text
  *   (`1.0` = `1`, `1e2` = `100`, big integers / long decimals never lose
- *   precision), optionally within an absolute tolerance.
+ *   precision).
  *
  * The output is a flat change list in document order. Every change also
  * carries a JSON Pointer that is valid when the changes are applied in list
@@ -39,8 +39,6 @@ export interface DiffOptions {
    * `$..etag`) matches at any depth. `*` matches any key or index.
    */
   ignorePaths?: readonly string[];
-  /** Numbers whose absolute difference is ≤ this are equal (default 0). */
-  numericTolerance?: number;
   /** Compare strings case-insensitively (default false). */
   caseInsensitiveStrings?: boolean;
   /** Stop after this many changes (default 100 000); sets `truncated`. */
@@ -73,7 +71,7 @@ export interface Change {
   order?: boolean;
 }
 
-export interface DiffSummary {
+interface DiffSummary {
   added: number;
   removed: number;
   changed: number;
@@ -115,26 +113,46 @@ export function canonNum(raw: string): string {
     neg = s[0] === '-';
     s = s.slice(1);
   }
-  let exp = 0;
   const ei = s.search(/[eE]/);
-  if (ei >= 0) {
-    exp = parseInt(s.slice(ei + 1), 10) || 0;
-    s = s.slice(0, ei);
-  }
-  const dot = s.indexOf('.');
+  let m = ei < 0 ? s : s.slice(0, ei);
+  let off = 0;
+  const dot = m.indexOf('.');
   if (dot >= 0) {
-    exp -= s.length - dot - 1;
-    s = s.slice(0, dot) + s.slice(dot + 1);
+    off -= m.length - dot - 1;
+    m = m.slice(0, dot) + m.slice(dot + 1);
   }
   let a = 0;
-  let b = s.length;
-  while (a < b && s.charCodeAt(a) === 48) a++;
-  while (b > a && s.charCodeAt(b - 1) === 48) {
+  let b = m.length;
+  while (a < b && m.charCodeAt(a) === 48) a++;
+  while (b > a && m.charCodeAt(b - 1) === 48) {
     b--;
-    exp++;
+    off++;
   }
   if (a === b) return '0';
-  return (neg ? '-' : '') + s.slice(a, b) + (exp ? 'e' + exp : '');
+  const exp = ei < 0 ? off : expPlus(s, ei + 1, off);
+  return (neg ? '-' : '') + m.slice(a, b) + (exp ? 'e' + exp : '');
+}
+
+const MAX_EXP = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * The exponent written at `raw[p…]` (optional sign, digits) plus `off`,
+ * exactly: a number within ±(2^53 − 1), else its decimal text. Exponents of
+ * up to 15 digits are read without allocating.
+ */
+function expPlus(raw: string, p: number, off: number): number | string {
+  const n = raw.length;
+  const c = raw.charCodeAt(p);
+  const neg = c === 45;
+  if (neg || c === 43) p++;
+  while (p < n - 1 && raw.charCodeAt(p) === 48) p++;
+  if (n - p <= 15) {
+    let x = 0;
+    for (; p < n; p++) x = x * 10 + raw.charCodeAt(p) - 48;
+    return (neg ? -x : x) + off;
+  }
+  const t = BigInt((neg ? '-' : '') + raw.slice(p)) + BigInt(off);
+  return t >= -MAX_EXP && t <= MAX_EXP ? Number(t) : t.toString();
 }
 
 // ── Hashing ──────────────────────────────────────────────────────────────
@@ -168,7 +186,7 @@ const strHash = (s: string, seed: number) => {
   return pack(fmix(a ^ s.length), fmix(b + s.length));
 };
 
-/** Hash of a number's exact value (equal for `1.0`, `1`, `1e0`) without allocating. */
+/** Hash of a number's exact value (equal for `1.0`, `1`, `1e0`), without allocating unless its exponent has 16+ digits. */
 export const numHash = (raw: string, seed: number) => {
   const n = raw.length;
   let i = 0;
@@ -200,14 +218,28 @@ export const numHash = (raw: string, seed: number) => {
     b = Math.imul(b + c, 0x5bd1e995) ^ (b >>> 15);
   }
   // decimal exponent of the last significant digit
-  const exp = (last < dot ? dot - last - 1 : dot - last) + (e < n ? parseInt(raw.slice(e + 1), 10) || 0 : 0);
-  return pack(fmix(a ^ Math.imul(exp, 0x27d4eb2f)), fmix(b + exp));
+  const off = last < dot ? dot - last - 1 : dot - last;
+  const exp = e < n ? expPlus(raw, e + 1, off) : off;
+  if (typeof exp === 'string') {
+    // beyond ±2^53: its digits
+    for (let p = -1; p < exp.length; p++) {
+      const c = p < 0 ? 101 : exp.charCodeAt(p);
+      a = Math.imul(a ^ c, 0x01000193);
+      b = Math.imul(b + c, 0x5bd1e995) ^ (b >>> 15);
+    }
+    return pack(fmix(a), fmix(b));
+  }
+  // both 32-bit halves of the exponent count (exponents equal mod 2^32 must not collide)
+  const lo = exp | 0;
+  const hi = (exp - lo) / TWO32;
+  a = Math.imul(a ^ hi, 0x01000193);
+  b = Math.imul(b + hi, 0x5bd1e995) ^ (b >>> 15);
+  return pack(fmix(a ^ Math.imul(lo, 0x27d4eb2f)), fmix(b + lo));
 };
 
 const H_NUL = pack(0x2f0b3c1d, 0x6c62272e);
 const H_TRUE = pack(0x5be0cd19, 0x1b873593);
 const H_FALSE = pack(0x1f83d9ab, 0x0b4b9e7f);
-const H_NUM = pack(0x7a3c91e5, 0x3a8f05c5);
 const S_NUM = 0x6a09e667 | 0;
 const S_STR = 0x3c6ef372 | 0;
 const S_KEY = 0x510e527f;
@@ -347,7 +379,6 @@ class Differ {
   private readonly hc = new Map<JNode, number>();
   private readonly keyFree: boolean;
   private readonly unordered: boolean;
-  private readonly tol: number;
   private readonly ci: boolean;
   private readonly max: number;
   private readonly anyRoot: Trie | null;
@@ -356,19 +387,11 @@ class Differ {
   private lcsLeft = LCS_TOTAL_BUDGET;
   /** Hash seed (see `DiffOptions.seed`). */
   private readonly salt: number;
-  /**
-   * Equal hash tokens imply equal values (a false match is ~2^-52 per pair),
-   * so hash-matched elements are not walked again. Not with a numeric
-   * tolerance, where all numbers hash alike.
-   */
-  private readonly trustHash: boolean;
 
   constructor(o: DiffOptions) {
     this.keyFree = o.ignoreKeyOrder ?? true;
     this.unordered = o.ignoreArrayOrder ?? false;
-    this.tol = o.numericTolerance && o.numericTolerance > 0 ? o.numericTolerance : 0;
     this.ci = o.caseInsensitiveStrings ?? false;
-    this.trustHash = this.tol === 0;
     this.max = o.maxChanges ?? 100000;
     this.salt = o.seed ?? (Math.random() * TWO32) | 0;
     const { abs, any } = compileIgnore(o.ignorePaths ?? []);
@@ -421,8 +444,7 @@ class Differ {
   // ── equality & hashing ──
 
   private numEq(a: string, b: string): boolean {
-    if (a === b || canonNum(a) === canonNum(b)) return true;
-    return this.tol > 0 && Math.abs(Number(a) - Number(b)) <= this.tol;
+    return a === b || canonNum(a) === canonNum(b);
   }
 
   private strEq(a: string, b: string): boolean {
@@ -437,7 +459,7 @@ class Differ {
       case BOOL:
         return n.v ? H_TRUE : H_FALSE;
       case NUM:
-        return this.tol > 0 ? H_NUM : numHash(n.v as string, this.salt ^ S_NUM);
+        return numHash(n.v as string, this.salt ^ S_NUM);
       case STR:
         return strHash(this.ci ? (n.v as string).toLowerCase() : (n.v as string), this.salt ^ S_STR);
     }
@@ -648,7 +670,8 @@ class Differ {
     // a single edited element is always paired (unless matching by id): no alignment needed
     if (!byId && n - p - s === 1 && m - p - s === 1) s++;
     // (pairs are compared inline: one stack frame less per nesting level)
-    const same = !byId && this.trustHash;
+    // Equal hash tokens imply equal values (a false match is ~2^-52 per pair): hash-matched pairs aren't walked again.
+    const same = !byId;
     let k = same ? p : 0;
     for (; k < p; k++) {
       const sl = this.step(il, k);
@@ -698,7 +721,6 @@ class Differ {
       }
     }
 
-    const same = !byId && this.trustHash;
     // Pair the unaligned runs (edits in place) unless elements are matched by id.
     if (!byId) {
       const fa: number[] = [];
@@ -750,7 +772,7 @@ class Differ {
       if (i >= 0 && j >= 0) {
         const sl = this.step(il, i);
         const sr = sl && this.step(ir, j);
-        if (sr && !(same && ta[i] === tb[j])) {
+        if (sr && (byId || ta[i] !== tb[j])) {
           this.path.push(i);
           this.at.push(k);
           const x = a[i];
@@ -815,14 +837,13 @@ class Differ {
         used[ins[pairs[p + 1]]] = 1;
       }
     }
-    const same = !byId && this.trustHash;
     let removed = 0;
     for (let i = 0; i < n; i++) {
       const sl = this.step(il, i);
       const j = pairOf[i];
       if (j >= 0) {
         const sr = sl && this.step(ir, j);
-        if (sl && sr && !(same && ta[i] === tb[j])) {
+        if (sl && sr && (byId || ta[i] !== tb[j])) {
           this.path.push(i);
           this.at.push(i - removed);
           const x = a[i];
@@ -1247,14 +1268,4 @@ export function diff(left: JNode, right: JNode, options: DiffOptions = {}): Diff
     else throw e;
   }
   return { changes: d.changes, summary: d.sum, truncated, error };
-}
-
-/** Offset in the left document to reveal for a change (the node, or the container an addition belongs in). */
-export function leftOffset(c: Change): number {
-  return (c.left ?? c.leftParent)?.s ?? 0;
-}
-
-/** Offset in the right document to reveal for a change. */
-export function rightOffset(c: Change): number {
-  return (c.right ?? c.rightParent)?.s ?? 0;
 }

@@ -36,10 +36,18 @@ export class TallScroll {
   /** Spacer height last set (-1: none yet), and the viewport height it was scaled for. */
   private sh = -1;
   private fh = -1;
+  private ro: ResizeObserver | null = null;
 
   constructor(private readonly el: HTMLElement) {
     el.addEventListener('scroll', this.onScroll, { passive: true });
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(this.onResize).observe(el);
+    if (typeof ResizeObserver !== 'undefined') (this.ro = new ResizeObserver(this.onResize)).observe(el);
+  }
+
+  /** Lets go of the element (its view is destroyed). */
+  destroy() {
+    this.el.removeEventListener('scroll', this.onScroll);
+    this.ro?.disconnect();
+    if (this.scaled) this.listen(false);
   }
 
   private onScroll = () => {
@@ -85,12 +93,15 @@ export class TallScroll {
     // A shorter spacer may have clamped scrollTop.
     if (sh < this.sh) this.st = null;
     this.sh = sh;
-    if (scaled !== was) {
-      const on = scaled ? 'addEventListener' : 'removeEventListener';
-      this.el[on]('wheel', this.onWheel as EventListener, { passive: false });
-      this.el[on]('keydown', this.onKey as EventListener);
-    }
+    if (scaled !== was) this.listen(scaled);
     if (scaled || was) this.top = top;
+  }
+
+  /** While scaled, the wheel and the scrolling keys move the content (see onWheel). */
+  private listen(on: boolean) {
+    const f = on ? 'addEventListener' : 'removeEventListener';
+    this.el[f]('wheel', this.onWheel as EventListener, { passive: false });
+    this.el[f]('keydown', this.onKey as EventListener);
   }
 
   /** Content px per scrolled px. */

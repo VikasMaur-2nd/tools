@@ -17,7 +17,7 @@
 import { TARGETS } from './engine/targets';
 import type { View } from './engine/store';
 
-export const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
+const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
 /**
  * The largest document a tab opens, however it arrives: a file, a link or a handoff.
  * Links themselves have no length limit of ours (browsers have theirs: about 2 MB of

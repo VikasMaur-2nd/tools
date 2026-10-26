@@ -502,7 +502,7 @@ export interface Row {
 }
 
 /** Context lines kept around each hunk; longer unchanged runs collapse. */
-export const CONTEXT = 3;
+const CONTEXT = 3;
 
 /**
  * Rows for a diff of `na` → `nb` lines. Unchanged runs longer than

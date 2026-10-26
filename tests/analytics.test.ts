@@ -2,11 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
 import { EVENT_PROPS, clean, countBucket, errorKind, fileKind, loadedProps, round2, sizeBucket, sizeKb } from '../lib/analytics/events';
 import type { Feature, ViewId } from '../lib/analytics/events';
 import { beforeSend, cleanUrl, maskAttribute } from '../lib/analytics/redact';
 import { ERROR_MESSAGE, exceptionProps } from '../lib/analytics/exceptions';
 import { parse } from '../lib/json/parser';
+import { TARGETS } from '../lib/engine/targets';
+import type { IndentId, MenuArea, Theme, View } from '../lib/engine/store';
+import type { SnippetFormat } from '../lib/badge';
 
 /*
  * Analytics must never carry document content: these pin the allow-lists, the
@@ -30,6 +35,60 @@ test('clean keeps listed tokens, numbers and booleans, nothing else', () => {
   assert.deepEqual(clean('format_option_changed', { option: 'style', value: '/home/me/secret.json' }), { option: 'style' });
   assert.deepEqual(clean('format_option_changed', { option: 'style', value: 'x'.repeat(41) }), { option: 'style' });
   assert.deepEqual(clean('json_loaded', { source: 'file', size_kb: NaN, depth: Infinity }), { source: 'file' });
+});
+
+test('clean lets through only values from each property\'s fixed list, and rounds every number', () => {
+  // Plain tokens that aren't on the property's list never pass: an ID, a key or a word from the document.
+  assert.deepEqual(clean('command_run', { command: 'customer-4521' }), {});
+  assert.deepEqual(clean('command_run', { command: 'to-typescript' }), { command: 'to-typescript' });
+  assert.deepEqual(clean('feature_used', { feature: 'password', via: 'mouse', view: 'secret', value: 'acme', on: 'true', jsonpath: 1 }), {});
+  assert.deepEqual(clean('feature_used', { feature: 'theme', value: 'dark' }), { feature: 'theme', value: 'dark' });
+  assert.deepEqual(clean('view_opened', { view: 'convert', via: 'pointer', target: 'acme_corp' }), { view: 'convert', via: 'pointer' });
+  assert.deepEqual(clean('convert_option_changed', { option: 'root_name', value: 'Customer' }), {});
+  assert.deepEqual(
+    clean('json_loaded', { source: 'clipboard', editor: 3, file_kind: 'secret', size: '12345', validity: 'ok', error_kind: 'password', issues: '17', nodes: 'abc', jsonl: 'yes' }),
+    {},
+  );
+  // Numbers keep two significant digits whatever the call site sends; a list of numbers takes only those.
+  assert.deepEqual(clean('json_loaded', { editor: 2, size_kb: 123_456, depth: 7.4, parse_ms: 12.345 }), { editor: 2, size_kb: 120_000, depth: 7, parse_ms: 12 });
+  assert.deepEqual(clean('feature_used', { feature: 'expand_level', level: 1234 }), { feature: 'expand_level', level: 1200 });
+  assert.deepEqual(clean('feature_used', { feature: 'expand_level', level: -3 }), { feature: 'expand_level', level: 0 });
+  // Booleans only where a property is a yes or no.
+  assert.deepEqual(clean('feature_used', { feature: 'wrap', on: true, level: true, value: false }), { feature: 'wrap', on: true });
+});
+
+test('every value the site sends is on its property\'s list', () => {
+  // (lib/engine/commands.ts imports the engine's types: read its IDs from the source.)
+  const commands = [...readFileSync(join(process.cwd(), 'lib/engine/commands.ts'), 'utf8').matchAll(/\bid: '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(commands.length > 50, `${commands.length} commands`);
+  for (const id of [...commands, ...TARGETS.map((t) => `to-${t.id}`)]) assert.deepEqual(clean('command_run', { command: id }), { command: id }, id);
+  for (const t of TARGETS) {
+    const group = t.group === 'Types' ? 'types' : 'data';
+    assert.deepEqual(clean('convert_target_selected', { target: t.id, group, via: 'palette' }), { target: t.id, group, via: 'palette' });
+    assert.deepEqual(clean('view_opened', { view: 'convert', via: 'keyboard', target: t.id }), { view: 'convert', via: 'keyboard', target: t.id });
+  }
+  const values: [string, Record<string, unknown>][] = [
+    ...(['interface', 'type'] as const).map((value): [string, Record<string, unknown>] => ['convert_option_changed', { option: 'ts_style', value }]),
+    ...(['stj', 'newtonsoft'] as const).map((value): [string, Record<string, unknown>] => ['convert_option_changed', { option: 'csharp_lib', value }]),
+    ...['pretty', 'minify', 'string'].map((value): [string, Record<string, unknown>] => ['format_option_changed', { option: 'style', value }]),
+    ...[true, false].map((on): [string, Record<string, unknown>] => ['format_option_changed', { option: 'sort_keys', value: String(on) }]),
+    ...(['2', '4', 'tab'] satisfies IndentId[]).map((value): [string, Record<string, unknown>] => ['format_option_changed', { option: 'indent', value }]),
+    ...(['link', 'markdown', 'html'] satisfies SnippetFormat[]).map((value): [string, Record<string, unknown>] => ['feature_used', { feature: 'share_link', value }]),
+    ...(['system', 'light', 'dark'] satisfies Theme[]).map((value): [string, Record<string, unknown>] => ['feature_used', { feature: 'theme', value }]),
+    ...(['input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff'] satisfies MenuArea[]).map((value): [string, Record<string, unknown>] => ['feature_used', { feature: 'context_menu', value }]),
+    ...(['format', 'tree', 'table', 'graph', 'convert', 'compare'] satisfies View[]).map((view): [string, Record<string, unknown>] => ['view_opened', { view, via: 'other' }]),
+  ];
+  for (const [event, props] of values) assert.deepEqual(clean(event, props), props, JSON.stringify(props));
+  // Whatever a document is like, its json_loaded event passes whole.
+  for (const status of ['valid', 'fixable', 'error', 'parsing']) {
+    for (const bytes of [0, 5000, 3e6, 2e9]) {
+      for (const msg of ['Unexpected end of input', 'Duplicate key "a"', 'something else', undefined]) {
+        const p = loadedProps({ source: 'drop', editor: 1, file: 'x.yml', bytes, status, msg, count: bytes, warnings: 1, stats: { nodes: bytes, depth: 80, ms: bytes / 7 }, jsonl: true, jwt: false });
+        const sent = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
+        assert.deepEqual(clean('json_loaded', p), sent, JSON.stringify(p));
+      }
+    }
+  }
 });
 
 test('every event lists its properties', () => {
@@ -303,8 +362,13 @@ test('every view that shows the document is kept out of session replay', () => {
   const dialogs = readFileSync(join(process.cwd(), 'components/dialogs.tsx'), 'utf8');
   assert.match(dialogs, /className=\{PRIVATE\}\s+autoFocus\s+type="url"/, 'the Load from URL field');
   const builder = readFileSync(join(process.cwd(), 'components/LinkBuilder.tsx'), 'utf8');
-  assert.equal(builder.match(/className=\{`lb-error \$\{PRIVATE\}`\}/g)?.length, 2, 'builder messages (file names)');
+  assert.equal(builder.match(/className=\{`lb-error \$\{PRIVATE\}`\}/g)?.length, 3, 'builder messages (file names, the link too long to open)');
   assert.equal(builder.match(/className=\{`lb-warn \$\{PRIVATE\}`\}/g)?.length, 2, 'builder link-size warnings');
+  assert.match(builder, /className=\{`lb-hint \$\{PRIVATE\}`\}>\s+The link is \{formatBytes/, "builder link size (\"The link is 2.1 MB long\")");
+  // Every line that states the link's size is private.
+  const sized = [...builder.matchAll(/<p ([^>]*)>\s+[^<]*\{formatBytes\(/g)];
+  assert.equal(sized.length, 4);
+  for (const m of sized) assert.match(m[1], /className=\{`[^`]*\$\{PRIVATE\}`\}/, m[0]);
   assert.match(builder, /className=\{`lb-check \$\{PRIVATE\}`\}/, "builder check line (\"Ln 1, Col 8: Unexpected 'T'\")");
   const graphExport = readFileSync(join(process.cwd(), 'components/GraphExport.tsx'), 'utf8');
   assert.match(graphExport, /gx-info\$\{preview\?\.error \? ' err' : ''\} \$\{PRIVATE\}/, 'image size and card count');
@@ -324,4 +388,77 @@ test('graph analytics use fixed view and feature values', () => {
   for (const feature of features) {
     assert.deepEqual(clean('feature_used', { feature, view, via: 'palette', filename: 'secret.json' }), { feature, view, via: 'palette' });
   }
+});
+
+/** lib/analytics/load.ts against a stand-in UI store: what `json_loaded` events it sends, and when. */
+function loads() {
+  type State = { status: { kind: string; warnings?: number }; stats: { bytes: number; lines: number; nodes: number; depth: number; ms: number } | null; cmpText: string };
+  let state: State = { status: { kind: 'empty' }, stats: null, cmpText: '' };
+  const subs = new Set<() => void>();
+  const store = {
+    get: () => state,
+    set: (patch: Partial<State>) => {
+      state = { ...state, ...patch };
+      for (const f of [...subs]) f();
+    },
+    subscribe: (f: () => void) => (subs.add(f), () => void subs.delete(f)),
+  };
+  const sent: Record<string, unknown>[] = [];
+  const timers = new Map<number, () => void>();
+  let id = 0;
+  const window = { setTimeout: (f: () => void) => (timers.set(++id, f), id), clearTimeout: (t: number) => void timers.delete(t) };
+  const exports: { noteLoad?: (source: string, editor?: 1 | 2, fileName?: string | null) => void } = {};
+  const source = readFileSync(join(process.cwd(), 'lib/analytics/load.ts'), 'utf8');
+  const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  const modules: Record<string, unknown> = {
+    './index': { collecting: () => true, emit: (event: string, props: Record<string, unknown>) => sent.push({ event, ...props }) },
+    '../engine/store': { store },
+  };
+  runInNewContext(js, { exports, require: (m: string) => modules[m], window, performance: { now: () => 0 }, addEventListener() {} });
+  const later = () => {
+    for (const [t, f] of [...timers]) {
+      timers.delete(t);
+      f();
+    }
+  };
+  return { noteLoad: exports.noteLoad!, store, sent, later };
+}
+
+const checked = (bytes: number) => ({ status: { kind: 'valid', warnings: 0 }, stats: { bytes, lines: 1, nodes: 3, depth: 2, ms: 40 } });
+
+test('a document in one editor waits for its own check, whatever arrives in the other', () => {
+  // A comparison link: the original goes in, then the modified document, before the original's check is done.
+  const l = loads();
+  l.noteLoad('link', 1, null);
+  l.store.set({ status: { kind: 'parsing' }, stats: null });
+  l.noteLoad('link', 2, null);
+  l.store.set({ cmpText: 'x'.repeat(2048) });
+  l.later();
+  assert.deepEqual(l.sent.map((e) => [e.editor, e.bytes, e.status]), [[2, 2048, 'unknown']]);
+  l.store.set(checked(3_000_000));
+  assert.deepEqual(l.sent.map((e) => [e.editor, e.bytes, e.status]), [[2, 2048, 'unknown'], [1, 3_000_000, 'valid']]);
+  const p = clean('json_loaded', loadedProps(l.sent[1] as unknown as Parameters<typeof loadedProps>[0]))!;
+  assert.equal(p.size, '1-10MB');
+  assert.equal(p.validity, 'valid');
+});
+
+test('a document replaced before its check is reported without a size or validity it never had', () => {
+  const l = loads();
+  l.store.set(checked(10));
+  l.noteLoad('file', 1, 'a.json');
+  l.store.set({ status: { kind: 'parsing' }, stats: null });
+  // A second file dropped while the first is still being read.
+  l.noteLoad('drop', 1, 'b.json');
+  l.store.set({ status: { kind: 'parsing' }, stats: null });
+  l.store.set(checked(50_000));
+  assert.deepEqual(l.sent.map((e) => [e.source, e.bytes, e.status]), [['file', undefined, 'unknown'], ['drop', 50_000, 'valid']]);
+  assert.deepEqual(clean('json_loaded', loadedProps(l.sent[0] as unknown as Parameters<typeof loadedProps>[0])), {
+    source: 'file', editor: 1, file_kind: 'json', validity: 'unknown',
+  });
+  // Compare's document too: the one replaced within the moment it takes to publish.
+  l.noteLoad('paste_button', 2);
+  l.noteLoad('file', 2, 'c.json');
+  l.store.set({ cmpText: '[1]' });
+  l.later();
+  assert.deepEqual(l.sent.slice(2).map((e) => [e.source, e.bytes]), [['paste_button', undefined], ['file', 3]]);
 });

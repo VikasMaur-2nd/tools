@@ -6,8 +6,9 @@
  * process.
  */
 import 'server-only';
+import { SITE } from '@/lib/site';
 import { TOOL_PAGES, TOOL_PAGE_BY_SLUG, type ToolPage } from '@/lib/tool-pages';
-import { ENGLISH, LOCALES, localeInfo, localePath, type Locale, type SiteLocale } from './locales';
+import { LOCALES, localeInfo, localePath, type Locale, type SiteLocale } from './locales';
 import { fill, type Forms, type Params, type UiDict } from './ui';
 import en from './en/ui.json';
 import esUi from './es/ui.json';
@@ -27,10 +28,8 @@ import koPages from './ko/tool-pages.json';
 import zhPages from './zh/tool-pages.json';
 import ruPages from './ru/tool-pages.json';
 
-export const SITE = 'https://tools.vikasmaur.com';
-
 /** The translatable text of a tool page, as exported for translators (scripts/export-tool-pages.mjs). */
-export type PageText = Pick<ToolPage, 'title' | 'description' | 'heading' | 'query' | 'secondary' | 'intro' | 'modeLabel' | 'exampleLabel' | 'steps' | 'options' | 'faqs' | 'guides'> & {
+type PageText = Pick<ToolPage, 'title' | 'description' | 'heading' | 'query' | 'secondary' | 'intro' | 'modeLabel' | 'exampleLabel' | 'steps' | 'options' | 'faqs' | 'guides'> & {
   hash: string;
   sections?: { heading: string; paragraphs: string[] }[];
 };
@@ -61,13 +60,13 @@ const ACCENT: Record<string, string> = Object.fromEntries(
   [...'abcdeghiklmnorstuwyzABCDEGHIKLNORSTUWYZ'].map((c, i) => [c, [...'àƀçđéĝĥîķļɱñöŕšŧûŵýžÀßÇĐÉĜĤÎĶĻÑÖŔŠŦÛŴÝŽ'][i]]),
 );
 /** Accented, bracketed and ~35% longer, with {placeholders}, <tags> and `code` untouched. */
-export function pseudo(s: string) {
+function pseudo(s: string) {
   const out = s.replace(/(\{\w+\}|<\/?\w+>|`[^`]*`|https?:\S+)|./g, (m, keep) => keep ?? ACCENT[m] ?? m);
   return `⟦${out}${'·'.repeat(Math.ceil(s.length * 0.35))}⟧`;
 }
 
 /** A locale is published once its interface strings have arrived (draft builds publish all). */
-export const hasUi = (l: Locale) => Object.keys(CATALOG[l].ui).length > 0 || PSEUDO === l;
+const hasUi = (l: Locale) => Object.keys(CATALOG[l].ui).length > 0 || PSEUDO === l;
 export const liveLocales = (): Locale[] => LOCALES.map((l) => l.id).filter((l) => DRAFT || hasUi(l));
 
 const cache = new Map<string, unknown>();
@@ -127,7 +126,7 @@ export function clientUi(locale: SiteLocale): UiDict | undefined {
 /** The error boundary's strings for a localized root layout. */
 export function errorText(locale: SiteLocale) {
   const t = serverT(locale);
-  return { title: t('err.title'), text: t('err.text'), retry: t('err.retry'), reload: t('err.reload') };
+  return { title: t('err.title'), text: t('err.text'), unsaved: t('err.unsaved'), retry: t('err.retry'), reload: t('err.reload') };
 }
 
 // ── tool pages ────────────────────────────────────────────────────────────
@@ -224,4 +223,3 @@ export function ogLocales(path: string, locale: SiteLocale) {
   return { locale: localeInfo(locale).og, alternateLocale: pathLocales(path).filter((l) => l !== locale).map((l) => localeInfo(l).og) };
 }
 
-export { ENGLISH };

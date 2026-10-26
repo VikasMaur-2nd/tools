@@ -56,6 +56,7 @@ pnpm dev         # http://localhost:3000
 pnpm test        # parser, converter, diff and interchange test suites
 pnpm lint
 pnpm build && pnpm start
+pnpm smoke       # with the build running: every sitemap URL, then pages and the app in headless Chrome
 ```
 
 ## Layout

@@ -79,13 +79,21 @@ function Commands() {
   }, [active]);
 
   const run = (c: Command) => {
-    // Close the native dialog first so the browser restores focus (and the
-    // editor's selection) before the command runs: commands may move focus.
-    listRef.current?.closest('dialog')?.close();
     track('command_run', { command: c.id });
     const { href, run } = c;
-    if (href) router.push(href);
-    else if (run) requestAnimationFrame(() => act((e) => withVia('palette', () => run(e))));
+    const go = () => {
+      if (href) router.push(href);
+      else if (run) requestAnimationFrame(() => act((e) => withVia('palette', () => run(e))));
+    };
+    // Close the native dialog first so the browser restores focus (and the
+    // editor's selection) before the command runs: commands may move focus.
+    // Wait for its close event too: a command may open the palette again (Load
+    // from URL), and Firefox and Safari can fire it after the next frame, closing that.
+    const d = listRef.current?.closest('dialog');
+    if (d?.open) {
+      d.addEventListener('close', go, { once: true });
+      d.close();
+    } else go();
   };
 
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {

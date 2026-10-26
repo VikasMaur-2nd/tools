@@ -20,7 +20,7 @@ import { Doc } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
-import { getDiffMenu } from './instance';
+import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import { snippet, type SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
@@ -189,6 +189,12 @@ function sniff(text: string): Hint {
   return null;
 }
 
+/**
+ * The service worker is registered once per page (a client navigation mounts the tool again, with a new
+ * engine), and its news of a new version goes to the tool open then, or to the next one (see registerSW).
+ */
+let swStarted = false;
+let updateWaiting = false;
 
 export class Engine {
   readonly ed: Editor;
@@ -262,6 +268,7 @@ export class Engine {
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
         this.refocus = true;
+        this.request(1);
         this.load(text, null, true, true);
         return true;
       },
@@ -302,7 +309,7 @@ export class Engine {
       }
       if (this.settings.view === 'format' && this.goodVer !== null && this.goodVer === this.fmtSrcVer) this.runFormat();
     };
-    for (const [view, code] of [['format', this.fmt], ['convert', this.code]] as const) code.onFind = (result) => {
+    for (const [view, code] of [['format', this.fmt], ['convert', this.code], ['table', this.table]] as const) code.onFind = (result) => {
       if (this.settings.view === view && this.query) store.set({ find: { ...store.get().find, ...result } });
     };
     this.applyWrap();
@@ -350,10 +357,30 @@ export class Engine {
     this.analysisWorker?.terminate();
     clearTimeout(this.analysisTimer);
     this.dead = true;
+    // Whatever is still on its way drops itself (each step checks its sequence), and nothing more starts.
+    this.loadSeq++;
+    this.sizeSeq++;
+    this.fmtStatSeq++;
+    this.convSeq++;
+    this.viewSeq++;
+    this.dropGraphWaiters();
+    clearTimeout(this.sizeTimer);
+    this.requests[1]?.abort();
+    this.requests[2]?.abort();
+    window.removeEventListener('load', this.warmSoon);
+    clearTimeout(this.warmTimer);
+    if (this.persistIdle) cancelIdleCallback(this.persistIdle);
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('pointerdown', this.onPress, true);
     window.removeEventListener('contextmenu', this.onContextMenu);
-    store.set({ menu: null });
+    // What this tool showed for itself closes with it (a client navigation mounts another). A notice with
+    // an action stays until dismissed: the next tool shows it (its timer, a plain one's, is cleared below).
+    const { toast, find } = store.get();
+    store.set({
+      menu: null, palette: false, shortcuts: false, graphExport: false, dragging: false,
+      find: { open: false, q: '', total: 0, index: -1, seq: find.seq + 1 },
+      ...(toast && !toast.action && { toast: null }),
+    });
     window.removeEventListener('dragenter', this.onDragEnter);
     window.removeEventListener('dragover', this.onDragOver);
     window.removeEventListener('dragleave', this.onDragLeave);
@@ -389,6 +416,8 @@ export class Engine {
   // ── Pipeline ───────────────────────────────────────────────────────────
 
   private onChange = (kind: ChangeKind) => {
+    if (this.dead) return;
+    if (kind !== 'set') this.requests[1]?.abort(); // (what was typed or pasted is newer than a document on its way)
     this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
     this.progressStatus = null; // (and a big load's progress: what follows says nothing of it)
     this.workerParse = null;
@@ -439,6 +468,7 @@ export class Engine {
 
   /** Pretty-prints compact JSON right after it is pasted (one undo step reverts it). */
   private autoFormat = () => {
+    if (this.dead) return;
     const ed = this.ed;
     const text = ed.text;
     const lines = ed.ls.length;
@@ -735,7 +765,7 @@ export class Engine {
       hint,
     });
     // The tree may have been hidden (empty state) while it was rebuilt; draw it once shown.
-    if (this.settings.view === 'tree') requestAnimationFrame(() => this.tree.render(true));
+    if (this.settings.view === 'tree') requestAnimationFrame(() => { if (!this.dead) this.tree.render(true); });
     // Format/convert re-run their find when their text updates; the tree and table do it here.
     if (this.query && (this.settings.view === 'tree' || this.settings.view === 'table' || this.settings.view === 'graph')) this.refind(false);
     this.syncTableState();
@@ -866,7 +896,7 @@ export class Engine {
   // ── Selection sync ─────────────────────────────────────────────────────
 
   private onCaret = () => {
-    if (!this.ed) return; // fired while the editor itself is still being constructed
+    if (!this.ed || this.dead) return; // fired while the editor itself is still being constructed
     const [s, e] = this.ed.selection;
     const { line, col } = this.ed.lineCol(s);
     store.set({ cursor: { line, col, sel: Math.abs(e - s) } });
@@ -1085,6 +1115,7 @@ export class Engine {
     }
     try {
       const { importToJson } = await import('../convert/import');
+      if (this.dead) return;
       const r = importToJson(this.ed.text, fmt, this.indent);
       if ('error' in r) {
         this.toast(`Couldn't read ${fmt.toUpperCase()}: ${r.error}${r.line ? ` (line ${r.line})` : ''}`, 'err');
@@ -1105,7 +1136,10 @@ export class Engine {
     this.flushLoad();
     if (n === this.sel && this.packed && this.selPath) { this.fresh(); n = this.sel; }
     if (!n || n.t !== STR || !this.synced) return this.toast('Select a string that contains JSON', 'info');
+    // (Its offsets are into this version of the document: an edit while the code loads drops the expansion.)
+    const ver = this.ed.version;
     const { embeddedJson } = await import('../json/smart');
+    if (this.dead || ver !== this.ed.version) return;
     const inner = embeddedJson(n.v as string);
     if (inner === null) return this.toast("This string doesn't contain JSON", 'info');
     const text = this.ed.text;
@@ -1429,6 +1463,7 @@ export class Engine {
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
+    if (this.dead) return null;
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
@@ -1539,6 +1574,29 @@ export class Engine {
     else rest();
   }
 
+  /**
+   * The newest document asked for in each editor (1: the input, 2: Compare's) by a file, a link, a URL or
+   * the clipboard: a newer request, Clear, or typing or pasting in that editor aborts it (a download stops),
+   * so one that arrives late is dropped instead of replacing a newer one, and says nothing. destroy() aborts both.
+   */
+  private requests: Record<1 | 2, AbortController | null> = { 1: null, 2: null };
+
+  /** A new request for a document in `editors` (see requests): its signal aborts once it is superseded. */
+  private request(...editors: (1 | 2)[]): AbortSignal {
+    const c = new AbortController();
+    for (const k of editors) {
+      this.requests[k]?.abort();
+      this.requests[k] = c;
+    }
+    if (this.dead) c.abort();
+    return c.signal;
+  }
+
+  /** The request for what a link or a handoff asks for: the editors it fills. */
+  private requestFor(r: { a?: unknown; b?: unknown }) {
+    return this.request(...(r.a ? [1 as const] : []), ...(r.b ? [2 as const] : []));
+  }
+
   openFile(target: 1 | 2 = 1) {
     this.reindentWorker();
     void loadSurface();
@@ -1555,6 +1613,7 @@ export class Engine {
   };
 
   async loadFile(f: File, source: InputSource = 'file') {
+    const signal = this.request(1);
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
     this.markOutput = true;
@@ -1564,12 +1623,23 @@ export class Engine {
     }
     // A big file shows it is being opened while it is read too.
     const before = store.get().status;
-    if (f.size >= STEPS_MIN) this.startProgress();
+    let reading: Status | null = null;
+    if (f.size >= STEPS_MIN) {
+      this.startProgress();
+      reading = this.progressStatus;
+    }
+    // (Not opened: what was shown before stays, a load still running included.)
+    const unshow = () => {
+      if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
+    };
     try {
       const text = await f.text();
-      if (this.dead) return;
+      if (signal.aborted) return unshow();
+      // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
+      let failed = false;
       if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
         const { detectFormat, importToJson } = await import('../convert/import');
+        if (signal.aborted) return unshow();
         const fmt = detectFormat(text, f.name);
         if (fmt !== 'json' && fmt !== 'unknown') {
           const r = importToJson(text, fmt, this.indent);
@@ -1580,21 +1650,23 @@ export class Engine {
             return;
           }
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
+          failed = true;
         }
       }
       noteLoad(source, 1, f.name);
       this.load(text, f.name, true, true);
-      this.toast(`Opened ${f.name}`, 'ok');
+      if (!failed) this.toast(`Opened ${f.name}`, 'ok');
     } catch {
-      // (Not opened: what was shown before stays, a load still running included.)
-      if (this.progressShown() === 0) store.set({ status: (this.progressStatus = before) });
-      this.toast(`Couldn't read ${f.name}`, 'err');
+      unshow();
+      if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
   }
 
   async paste() {
+    const signal = this.request(1);
     try {
       const text = await navigator.clipboard.readText();
+      if (signal.aborted) return;
       if (!text) {
         this.toast('Your clipboard is empty', 'info');
         return;
@@ -1603,16 +1675,17 @@ export class Engine {
       this.load(text, null);
       if (this.settings.autoFormat) this.autoFormat();
     } catch {
+      if (signal.aborted) return;
       this.ed.focus();
       this.toast(`Press ${this.mod}V to paste`, 'info');
     }
   }
 
   async sample() {
-    const seq = this.sizeSeq;
+    const signal = this.request(1);
     try {
       const { SAMPLE } = await import('./sample');
-      if (this.dead || seq !== this.sizeSeq) return;
+      if (signal.aborted) return;
       noteLoad('sample', 1, 'sample.json');
       this.load(SAMPLE, 'sample.json');
       this.toast('Loaded a sample. Try the tree, table and search.', 'info');
@@ -1623,6 +1696,8 @@ export class Engine {
 
   clear() {
     track('feature_used', { feature: 'clear' });
+    // (A document still on its way isn't wanted any more.)
+    this.request(1);
     this.resetNext = true;
     store.set({ fileName: null });
     write(KEYS.file, null);
@@ -1672,9 +1747,10 @@ export class Engine {
 
   // ── Compare (second editor) ────────────────────────────────────────────
 
-  private onCompareChange = () => {
+  private onCompareChange = (kind: ChangeKind) => {
+    if (kind !== 'set') this.requests[2]?.abort();
     clearTimeout(this.cmpTimer);
-    const len = this.ed2.text.length;
+    const len = this.ed2.length; // (not .text: no need to join an edited document's pieces for this)
     this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
   };
 
@@ -1683,22 +1759,25 @@ export class Engine {
     clearTimeout(this.cmpTimer);
     const text = this.ed2.text;
     const diags: Diagnostic[] = [];
+    let r: ParseResult | null = null;
     if (text.trim()) {
-      const r = parse(text);
+      r = parse(text);
       for (let i = 0; i < r.issues.length && i < 300; i++) diags.push({ p: r.issues[i].p, cls: 'me' });
       if (r.error) diags.push({ p: r.error.p, cls: 'me' });
       for (let i = 0; i < r.warnings.length && i < 300; i++) diags.push({ p: r.warnings[i].p, cls: 'mw' });
     }
     this.ed2.setDiagnostics(diags);
-    store.set({ cmpText: text });
+    // The open panel diffs this parse instead of parsing the text again (closed, nothing holds the tree).
+    store.set({ cmpText: text, cmpParsed: r && this.settings.view === 'compare' ? { text, result: r } : null });
     write(KEYS.cmp, text && text.length <= MAX_PERSIST ? text : null);
   };
 
-  /** Called by the Compare panel with per-line marks for both editors. */
+  /** Called by the Compare panel with per-line marks for both editors (nulls also when it closes). */
   compareMarks(left: Uint8Array | null, right: Uint8Array | null) {
     const on = this.settings.view === 'compare';
     this.ed.setLineMarks(on ? left : null);
     this.ed2.setLineMarks(on ? right : null);
+    if (!on && store.get().cmpParsed) store.set({ cmpParsed: null });
   }
 
   /** Reveal a difference in both documents without moving focus. */
@@ -1714,25 +1793,29 @@ export class Engine {
   }
 
   async loadCompareFile(f: File, source: InputSource = 'file') {
+    const signal = this.request(2);
     try {
       const text = await f.text();
-      if (this.dead) return;
+      if (signal.aborted) return;
       this.loadCompare(text, f.name);
       noteLoad(source, 2, f.name);
       if (this.settings.view !== 'compare') this.setView('compare');
       this.toast(`Comparing with ${f.name}`, 'ok');
     } catch {
-      this.toast(`Couldn't read ${f.name}`, 'err');
+      if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
   }
 
   async pasteCompare() {
+    const signal = this.request(2);
     try {
       const text = await navigator.clipboard.readText();
+      if (signal.aborted) return;
       if (!text) return this.toast('Your clipboard is empty', 'info');
       this.loadCompare(text, null);
       noteLoad('paste_button', 2);
     } catch {
+      if (signal.aborted) return;
       this.ed2.focus();
       this.toast(`Press ${this.mod}V to paste`, 'info');
     }
@@ -1750,6 +1833,7 @@ export class Engine {
   }
 
   clearCompare() {
+    this.request(2);
     store.set({ cmpFile: null });
     this.ed2.setValue('');
     this.analyzeCompare();
@@ -1890,13 +1974,15 @@ export class Engine {
         ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
         : this.toast('That share link is broken or incomplete', 'err');
     if (link === 'broken') return broken();
+    const signal = this.requestFor(link);
     const docs: (LinkDoc | undefined)[] = [];
     try {
       for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data) } : d);
     } catch (e) {
+      if (signal.aborted) return;
       return e instanceof LinkTooLarge ? this.toast('That share link is too large to open', 'err') : broken();
     }
-    if (!this.dead) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to });
+    if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
   };
 
   /** Ends the wait for a handoff (see awaitHandoff). */
@@ -1926,7 +2012,7 @@ export class Engine {
       }
       end();
       reply({ toolkumar: 'opened' }, e.origin);
-      void this.openRequest(r, /^https?:\/\//.test(e.origin) ? new URL(e.origin).host : '');
+      void this.openRequest(r, this.requestFor(r), /^https?:\/\//.test(e.origin) ? new URL(e.origin).host : '');
     };
     const end = () => {
       removeEventListener('message', onMessage);
@@ -1943,10 +2029,11 @@ export class Engine {
   /**
    * Loads what a link or a handoff (`from`: the sending site's host, '' if it has none) asks for:
    * the original, Compare's document, the view. The previous documents stay one undo away.
+   * `signal`: its request (see requests).
    */
-  private async openRequest(r: LinkRequest, from?: string) {
-    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url) : { text: d.text, name: null, host: '' })));
-    if (this.dead || got.includes(null)) return; // (fetchText said why)
+  private async openRequest(r: LinkRequest, signal: AbortSignal, from?: string) {
+    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '' })));
+    if (signal.aborted || this.dead || got.includes(null)) return; // (fetchText said why)
     const [a, b] = got;
     const source = (d: LinkDoc): InputSource => (from !== undefined ? 'handoff' : 'url' in d ? 'link_url' : 'link');
     // Small valid JSON opens formatted; a big document opens like a file, output first.
@@ -1975,8 +2062,8 @@ export class Engine {
     this.toast(a && had ? `${msg} · ${this.mod}Z restores your previous document` : msg, 'ok');
   }
 
-  /** Fetches a document from a URL; null, after saying why, when that fails. */
-  private async fetchText(raw: string): Promise<{ text: string; name: string; host: string } | null> {
+  /** Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). */
+  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string } | null> {
     let url: URL;
     try {
       url = new URL(raw.trim());
@@ -1986,8 +2073,10 @@ export class Engine {
       return null;
     }
     this.toast('Fetching…', 'info');
+    let res: Response | null = null;
     try {
-      const res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' } });
+      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, signal });
+      if (signal.aborted) return null;
       if (!res.ok) {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
         return null;
@@ -1996,14 +2085,41 @@ export class Engine {
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
-      this.toast("Couldn't fetch. The server must allow cross-origin requests (CORS).", 'err');
+      if (signal.aborted) return null;
+      const why = res ? 'The connection dropped before the whole file arrived. Try again.' : await this.fetchFailure(url, signal);
+      if (why && !signal.aborted) this.toast(why, 'err');
       return null;
     }
   }
 
+  /**
+   * Why a request for `url` got no reply the page may read. The browser says the same for a server that doesn't
+   * allow cross-origin reads, a blocked http:// link and one it can't reach, so this asks once more for a reply
+   * the page may not read: one arrives only if the server is there. null once `signal` aborts.
+   */
+  private async fetchFailure(url: URL, signal: AbortSignal): Promise<string | null> {
+    if (navigator.onLine === false) return "You're offline. Connect to the internet and try again.";
+    // (An https page may only ask this device over http.)
+    if (url.protocol === 'http:' && location.protocol === 'https:' && !/^(?:(?:.+\.)?localhost|127(?:\.\d+){3}|\[::1\])$/.test(url.hostname))
+      return 'Browsers block http:// links on an https page. Try the https:// address.';
+    const probe = new AbortController();
+    const stop = () => probe.abort();
+    signal.addEventListener('abort', stop);
+    try {
+      await fetch(url, { mode: 'no-cors', signal: probe.signal });
+      return "Couldn't fetch. The server must allow cross-origin requests (CORS).";
+    } catch {
+      return signal.aborted ? null : "Couldn't reach the server. Check the address or try again later.";
+    } finally {
+      probe.abort(); // (the headers tell enough: the body isn't wanted)
+      signal.removeEventListener('abort', stop);
+    }
+  }
+
   async fetchUrl(raw: string) {
-    const got = await this.fetchText(raw);
-    if (!got || this.dead) return;
+    const signal = this.request(1);
+    const got = await this.fetchText(raw, signal);
+    if (!got || signal.aborted) return;
     // Auto-format reads the editor right after: only then is the load done in place.
     noteLoad('url');
     this.load(got.text, got.name, true, !this.settings.autoFormat);
@@ -2026,6 +2142,10 @@ export class Engine {
         open: (n) => this.openInEditor(n),
         copy: (n, what) => what === 'path' ? this.copyPath(n) : this.copyValue(n),
         escape: () => this.focusEditor(),
+        // A big document's search finishes in steps: its final count arrives here (like the code views' onFind).
+        found: (r) => {
+          if (this.settings.view === 'graph' && this.query) store.set({ find: { ...store.get().find, ...r } });
+        },
       });
       const { root, reset, nodes } = this.graphRoot;
       graph.setRoot(root, reset, nodes, false);
@@ -2046,6 +2166,7 @@ export class Engine {
     this.flushLoad();
     store.set({ menu: null });
     const viewSeq = ++this.viewSeq;
+    if (view !== 'graph') this.dropGraphWaiters();
     if (view === 'graph') {
       this.graphShow = { seq: viewSeq, ready };
       // The tab opens at once; the graph draws when its code has arrived (usually prefetched already).
@@ -2079,7 +2200,7 @@ export class Engine {
     if (prev !== view && !this.presetting) track('view_opened', { view, ...(view === 'convert' && { target: targetInfo(this.settings.target).id }) });
     if (this.query && prev !== view) this.findIn(prev, '');
     this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
-    if (this.query) requestAnimationFrame(() => (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
+    if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
       const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
@@ -2087,13 +2208,14 @@ export class Engine {
     } else this.table.setNode(null);
     if (view === 'tree') {
       this.tree.activate();
-      requestAnimationFrame(() => this.tree.render(true));
+      requestAnimationFrame(() => { if (!this.dead) this.tree.render(true); });
     }
     if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
     if (view === 'compare') {
       store.set({ docText: this.ed.text, cmpText: this.ed2.text });
       requestAnimationFrame(() => {
+        if (this.dead) return;
         this.ed2.render(true);
         if (!this.ed2.text) this.ed2.focus();
       });
@@ -2112,6 +2234,15 @@ export class Engine {
     this.graph.select(this.sel, { scroll: true });
     if (this.query) this.refind(true);
     show.ready?.();
+    for (const w of this.graphWaiters.splice(0)) w.run();
+  }
+
+  /** Commands waiting for the Graph view to show (see withGraph). */
+  private graphWaiters: { run: () => void; dropped?: () => void }[] = [];
+
+  /** Another view, a graph whose code didn't load, or the tool closing: what waited for the graph never runs. */
+  private dropGraphWaiters() {
+    for (const w of this.graphWaiters.splice(0)) w.dropped?.();
   }
 
   /** Leaves Compare for the view that was open before it. */
@@ -2334,8 +2465,12 @@ export class Engine {
 
   private scheduleConvert(delay: number) {
     clearTimeout(this.convTimer);
+    this.convSeq++;
     this.convTimer = window.setTimeout(() => void this.runConvert(), delay);
   }
+
+  /** Bumped by each conversion asked for: one still loading its code then is dropped (the newer one shows). */
+  private convSeq = 0;
 
   private async loadConverters(): Promise<ConvertModule> {
     if (!this.conv) {
@@ -2350,6 +2485,9 @@ export class Engine {
 
   private async runConvert() {
     if (this.settings.view !== 'convert') return;
+    const seq = ++this.convSeq;
+    // (The view closed or changed meanwhile: opening it again converts what it shows then.)
+    const current = () => seq === this.convSeq && !this.dead && this.settings.view === 'convert';
     const root = this.good?.root;
     if (!root) {
       this.code.setText('', escapeHtml);
@@ -2363,18 +2501,25 @@ export class Engine {
     }
     try {
       const mod = await this.loadConverters();
+      if (!current()) return;
       const s = this.settings;
       const info = targetInfo(s.target);
       // CSV and Excel share one flattening (dotted columns) over the main array of
       // records; Excel is a binary download, so its preview is the same table.
       const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
+      if (!current()) return;
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
         : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
-      else this.code.setText(out, (line) => mod.highlightCode(line, info.lang));
+      else {
+        // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)
+        const rows = mod.codeRows(info.lang);
+        this.code.setText(out, rows.hl, false, rows.scanner);
+      }
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
+      if (!current()) return;
       // The CSV and Excel preview isn't behind convert(), which reports deep nesting itself.
       const deep = tooDeep(e);
       if (!deep) reportError(e, 'conversion');
@@ -2556,9 +2701,11 @@ export class Engine {
     }
   }
 
-  private withGraph(run: () => void) {
-    if (this.settings.view === 'graph' && this.graph) run();
-    else this.setView('graph', run);
+  /** Runs `run` in the Graph view, opening it first; `dropped` if it never shows (see dropGraphWaiters). */
+  private withGraph(run: () => void, dropped?: () => void) {
+    if (this.settings.view === 'graph' && this.graph) return run();
+    this.graphWaiters.push({ run, dropped });
+    this.setView('graph');
   }
 
   fitGraph() {
@@ -2592,7 +2739,7 @@ export class Engine {
   /** Downloads the graph as an image; `name` without an extension (default: the document's name). */
   downloadGraph(opts: GraphExport | 'png' | 'svg' | 'jpeg', name?: string): Promise<{ file: string; size: number } | null> {
     const o: GraphExport = typeof opts === 'string' ? { format: opts, area: 'all', background: 'theme', scale: 2 } : opts;
-    // Settles with the saved file, or null (no graph, or the export failed).
+    // Settles with the saved file, or null (no graph, the view changed before it showed, or the export failed).
     return new Promise((settle) => this.withGraph(() => {
       if (!this.graph) return settle(null);
       track('feature_used', { feature: o.format === 'png' ? 'graph_export_png' : o.format === 'jpeg' ? 'graph_export_jpeg' : 'graph_export_svg' });
@@ -2608,7 +2755,7 @@ export class Engine {
         if (!this.dead) this.toast(rt("Couldn't download graph: {error}", { error: rt.msg(error instanceof Error ? error.message : 'Graph export failed') }), 'err');
         settle(null);
       });
-    }));
+    }, () => settle(null)));
   }
 
   /** Copies the graph as a PNG image. Call from the click itself: browsers only allow it during user input. */
@@ -2688,7 +2835,8 @@ export class Engine {
     const lq = (window as unknown as { launchQueue?: { setConsumer(cb: (p: LaunchParams) => void): void } }).launchQueue;
     lq?.setConsumer(async (p) => {
       const h = p.files?.[0];
-      if (h) void this.loadFile(await h.getFile(), 'launch');
+      const f = await h?.getFile();
+      if (f && !this.dead) void this.loadFile(f, 'launch');
     });
   }
 
@@ -2721,7 +2869,7 @@ export class Engine {
     } finally {
       this.presetting = false;
     }
-    if (p.initialImport) window.setTimeout(() => void this.importAs(p.initialImport!), 0);
+    if (p.initialImport) window.setTimeout(() => { if (!this.dead) void this.importAs(p.initialImport!); }, 0);
   }
 
   setIndent(indent: IndentId) {
@@ -2799,6 +2947,8 @@ export class Engine {
 
   /** `ms`: how long it stays, for messages longer than a glance (default 2.2 s, errors 4 s; with an action, until dismissed). */
   toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info', action?: { label: string; run: () => void }, ms?: number) {
+    // (Gone: a late confirmation would show in the next tool, without the timer that hides it.)
+    if (this.dead) return;
     clearTimeout(this.toastTimer);
     store.set({ toast: { id: ++this.toastId, msg, kind, action } });
     if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), ms ?? (kind === 'err' ? 4000 : 2200));
@@ -2962,6 +3112,7 @@ export class Engine {
     else if (area === 'compare') this.ed2.focus();
     else if (area === 'format' || area === 'convert') (area === 'format' ? this.fmt : this.code).el.focus({ preventScroll: true });
     else if (area === 'tree') this.tree.focus();
+    else if (area === 'table') this.table.el.focus({ preventScroll: true });
     else if (area === 'graph') this.graph?.focus();
     else if (area === 'diff') this.menuDiff?.focus();
   }
@@ -3069,13 +3220,18 @@ export class Engine {
 
   // ── Persistence & offline ──────────────────────────────────────────────
 
+  /** A save waiting for an idle moment (see persistSoon); destroy() saves at once instead. */
+  private persistIdle = 0;
+
   private persistSoon() {
     if (!this.persistEnabled) return;
     clearTimeout(this.persistTimer);
     // Big synchronous localStorage writes happen when the user is idle.
     this.persistTimer = window.setTimeout(() => {
-      if ('requestIdleCallback' in window) requestIdleCallback(this.persistNow, { timeout: 3000 });
-      else this.persistNow();
+      if ('requestIdleCallback' in window) {
+        cancelIdleCallback(this.persistIdle);
+        this.persistIdle = requestIdleCallback(this.persistNow, { timeout: 3000 });
+      } else this.persistNow();
     }, 800);
   }
 
@@ -3086,12 +3242,25 @@ export class Engine {
     write(KEYS.doc, n && n <= MAX_PERSIST ? this.ed.text : null);
   };
 
+  /** Offers to reload into the new version the service worker has cached. */
+  private offerUpdate() {
+    this.toast('A new version is ready', 'info', { label: 'Reload', run: () => location.reload() });
+  }
+
+  /** Once per page (see swStarted): offline caching, and a notice when a new version is ready. */
   private registerSW() {
-    if (process.env.NODE_ENV !== 'production' || !('serviceWorker' in navigator)) return;
+    // (One became ready while no tool was open: this one says so.)
+    if (updateWaiting) {
+      updateWaiting = false;
+      this.offerUpdate();
+    }
+    if (swStarted || process.env.NODE_ENV !== 'production' || !('serviceWorker' in navigator)) return;
+    swStarted = true;
     navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
-      if ((e.data as { type?: string } | null)?.type === 'updated') {
-        this.toast('A new version is ready', 'info', { label: 'Reload', run: () => location.reload() });
-      }
+      if ((e.data as { type?: string } | null)?.type !== 'updated') return;
+      const open = getEngine();
+      if (open) open.offerUpdate();
+      else updateWaiting = true;
     });
     const go = () => {
       navigator.serviceWorker
@@ -3137,6 +3306,7 @@ export class Engine {
     if (process.env.NODE_ENV !== 'production') return;
     const go = () =>
       import('./sample').then(({ SAMPLE }) => {
+        if (this.dead) return;
         const doc = `[${Array(150).fill(SAMPLE).join(',')},"Zürich – 東京"]`;
         const steps: (() => unknown)[] = [];
         for (let k = 0; k < 4; k++) steps.push(() => reindent(doc, k & 1 ? '' : '  '), () => parse(doc));
@@ -3156,13 +3326,20 @@ export class Engine {
         );
         const next = () => {
           const step = steps.shift();
-          if (!step) return;
+          if (!step || this.dead) return;
           step();
           idle(next);
         };
         idle(next);
       });
-    if (document.readyState === 'complete') setTimeout(go, 4000);
-    else window.addEventListener('load', () => setTimeout(go, 4000), { once: true });
+    this.warmSoon = () => {
+      this.warmTimer = window.setTimeout(go, 4000);
+    };
+    if (document.readyState === 'complete') this.warmSoon();
+    else window.addEventListener('load', this.warmSoon, { once: true });
   }
+
+  /** The warm-up's wait for the page to settle (see warmUp): destroy() cancels it, and the steps left stop. */
+  private warmTimer = 0;
+  private warmSoon = () => {};
 }

@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ARR, JNode, MAX_DEPTH, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
-import { MAX_INDENT, MAX_TEXT, byteLength, formatDoc, stringify, toValue, tooLarge } from '../lib/json/format';
+import { MAX_INDENT, MAX_TEXT, byteLength, formatDoc, preview, primText, stringify, toValue, tooLarge } from '../lib/json/format';
 import { formatPath, nodeAt, parsePath, pathOf, resolve, type Seg } from '../lib/json/path';
 import { cpuNow } from './timing';
 
@@ -934,5 +934,27 @@ describe('format helpers', () => {
     assert.equal(r.root?.t, ARR);
     assert.equal(kids(r.root as JNode)[0].t, STR);
     assert.equal(kids(r.root as JNode)[1].t, OBJ);
+  });
+  test('primText and preview stay short whatever the values and keys', () => {
+    const big = '9'.repeat(1e6);
+    const key = 'k'.repeat(1e6);
+    const at = (src: string) => parse(src).root as JNode;
+    assert.equal(primText(at(big), 160), '9'.repeat(160) + '…');
+    assert.equal(primText(at('-1.5e-7')), '-1.5e-7');
+    assert.equal(primText(at(`"${'x'.repeat(500)}"`), 160), `"${'x'.repeat(160)}…"`);
+    // a cut never splits a surrogate pair
+    assert.equal(primText(at(`"${'x'.repeat(159)}😀"`), 160), `"${'x'.repeat(159)}…"`);
+    for (const [src, budget] of [
+      [`{"${key}": 1}`, 90],
+      [`{"a": ${big}}`, 90],
+      [`[${big}, 1]`, 90],
+      [`{"${key}": "${key}", "b": [${big}]}`, 40],
+      [`{"${'\\u0001'.repeat(5000)}": 1}`, 90],
+    ] as [string, number][]) {
+      const s = preview(at(src), budget);
+      assert.ok(s.length <= budget + 300, `${s.length} chars: ${s.slice(0, 120)}`);
+    }
+    assert.equal(preview(at(`{"${key}": 1, "b": 2}`)), `{"${'k'.repeat(40)}…": 1, b: 2}`);
+    assert.equal(preview(at('{"id": 1, "name": "Ada", "tags": ["a"], "n": null}')), '{id: 1, name: "Ada", tags: […], n: null}');
   });
 });

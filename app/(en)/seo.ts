@@ -1,17 +1,13 @@
 import { localeInfo, type SiteLocale } from '@/lib/i18n/locales';
 import { serverT, toolPage, type UiKey } from '@/lib/i18n/server';
+import { SITE } from '@/lib/site';
 import { POSTS } from './blogs/posts';
 
-export const SITE = 'https://tools.vikasmaur.com';
 export const SITE_NAME = 'Tool Kumar';
-export const JSON_TOOL_DESCRIPTION =
+const JSON_TOOL_DESCRIPTION =
   'View, visualize, format, validate, repair and compare JSON online. Tool Kumar runs in your browser, keeps data on your device and works offline.';
-export const SOCIAL_IMAGE = {
-  url: '/opengraph-image.png',
-  width: 1200,
-  height: 630,
-  alt: 'Tool Kumar JSON viewer and formatter',
-} as const;
+/** The site-wide preview image, for structured data (the <head> uses its versioned URL: app/page-metadata.ts). */
+export const SOCIAL_IMAGE_URL = `${SITE}/opengraph-image.png`;
 
 /** The homepage FAQ (visible content and FAQPage data) in a language. */
 export const faqEntries = (locale: SiteLocale = 'en') => {
@@ -19,7 +15,7 @@ export const faqEntries = (locale: SiteLocale = 'en') => {
   return ([1, 2, 3, 4] as const).map((i) => ({ question: t(`home.faq.${i}.q`), answer: t(`home.faq.${i}.a`) }));
 };
 
-export const ORGANIZATION = {
+const ORGANIZATION = {
   '@type': 'Organization',
   '@id': `${SITE}/#organization`,
   name: SITE_NAME,
@@ -107,38 +103,71 @@ export const blogPageLd = {
   },
 };
 
+/**
+ * An article and its breadcrumb trail (Home › the page that lists it › the
+ * article), the same for blog posts, resources and error guides. `fields`
+ * adds the article type's own properties (keywords, citations…).
+ */
+export function articleJsonLd({ type, path, title, description, published, updated, parent, fields }: {
+  type: 'BlogPosting' | 'TechArticle';
+  path: string;
+  title: string;
+  description: string;
+  published: string;
+  updated: string;
+  parent: { name: string; path: string };
+  fields?: Record<string, unknown>;
+}) {
+  const url = SITE + path;
+  return [
+    {
+      '@type': type,
+      '@id': `${url}#article`,
+      headline: title,
+      description,
+      url,
+      mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+      image: SOCIAL_IMAGE_URL,
+      datePublished: published,
+      dateModified: updated,
+      author: { '@id': `${SITE}/#organization` },
+      publisher: { '@id': `${SITE}/#organization` },
+      isPartOf: { '@id': `${SITE}${parent.path}#page` },
+      inLanguage: 'en-US',
+      ...fields,
+    },
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${url}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: SITE },
+        { '@type': 'ListItem', position: 2, name: parent.name, item: SITE + parent.path },
+        { '@type': 'ListItem', position: 3, name: title, item: url },
+      ],
+    },
+  ];
+}
+
+/** Blog posts' place in the breadcrumbs and structured data. */
+export const BLOG_PARENT = { name: 'Blog', path: '/blogs' };
+
 export const postJsonLd = (post: (typeof POSTS)[number]) => ({
   '@context': 'https://schema.org',
-  '@graph': [
-  {
-    '@type': 'BlogPosting',
-    '@id': `${postUrl(post.slug)}#article`,
-    headline: post.title,
+  '@graph': articleJsonLd({
+    type: 'BlogPosting',
+    path: `/blogs/${post.slug}`,
+    title: post.title,
     description: post.description,
-    url: postUrl(post.slug),
-    mainEntityOfPage: { '@type': 'WebPage', '@id': postUrl(post.slug) },
-    image: `${SITE}/opengraph-image.png`,
-    articleSection: post.category,
-    keywords: post.keywords,
-    timeRequired: `PT${post.minutes}M`,
-    datePublished: post.published,
-    dateModified: post.updated,
-    author: { '@id': `${SITE}/#organization` },
-    publisher: { '@id': `${SITE}/#organization` },
-    isPartOf: { '@id': `${BLOG}#page` },
-    inLanguage: 'en-US',
-    ...(post.citations && { citation: post.citations }),
-  },
-  {
-    '@type': 'BreadcrumbList',
-    '@id': `${postUrl(post.slug)}#breadcrumb`,
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE },
-      { '@type': 'ListItem', position: 2, name: 'Blog', item: BLOG },
-      { '@type': 'ListItem', position: 3, name: post.title, item: postUrl(post.slug) },
-    ],
-  },
-  ],
+    published: post.published,
+    updated: post.updated,
+    parent: BLOG_PARENT,
+    fields: {
+      articleSection: post.category,
+      keywords: post.keywords,
+      timeRequired: `PT${post.minutes}M`,
+      ...(post.citations && { citation: post.citations }),
+    },
+  }),
 });
 
 export const aboutPageLd = {

@@ -11,14 +11,16 @@ export type BadgeKind = 'view' | 'compare';
 /** Auto follows the reader's light or dark mode (HTML only; Markdown gets black). */
 export type BadgeColor = 'auto' | 'black' | 'white';
 
-export const SITE = 'https://tools.vikasmaur.com';
+import { SITE } from './site';
+
+export { SITE };
 
 export const BADGES = {
   view: { label: 'View in Tool Kumar', width: 158 },
   compare: { label: 'Compare in Tool Kumar', width: 180 },
 } as const;
 
-export const badgeUrl = (kind: BadgeKind, white: boolean, site = SITE) => `${site}/badges/${kind}-in-tool-kumar${white ? '-dark' : ''}.svg`;
+const badgeUrl = (kind: BadgeKind, white: boolean, site = SITE) => `${site}/badges/${kind}-in-tool-kumar${white ? '-dark' : ''}.svg`;
 
 const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 

@@ -6,9 +6,14 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 
 /** Run the real startup/opt-out logic with a deferred SDK and browser events. */
-function session(visibilityState = 'visible', prerendering = false) {
+function session(visibilityState = 'visible', prerendering = false, storageFails = false) {
   const target = new EventTarget();
   const storage = new Map<string, string>();
+  // (A private window or a full quota: reading works, writing throws.)
+  const write = (fn: () => void) => {
+    if (storageFails) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    fn();
+  };
   const timers: (() => void)[] = [];
   const reports: { error: unknown; props: { error_source: string } }[] = [];
   let clock = 0;
@@ -35,6 +40,8 @@ function session(visibilityState = 'visible', prerendering = false) {
     setAnalyticsEnabled?: (on: boolean) => void;
     reportError?: (error: unknown, source?: string) => void;
     track?: (event: string, props: Record<string, unknown>) => void;
+    analyticsAllowed?: () => boolean;
+    analyticsState?: () => string;
   } = {};
   const source = readFileSync(resolve(process.cwd(), 'lib/analytics/index.ts'), 'utf8');
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
@@ -47,7 +54,11 @@ function session(visibilityState = 'visible', prerendering = false) {
     performance: { now: () => clock }, requestIdleCallback: window.requestIdleCallback,
     document, location: { hostname: 'tools.vikasmaur.com' },
     process: { env: { NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: 'phc_test', NEXT_PUBLIC_POSTHOG_HOST: 'https://us.i.posthog.com' } },
-    localStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => storage.set(k, v), removeItem: (k: string) => storage.delete(k) },
+    localStorage: {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => write(() => storage.set(k, v)),
+      removeItem: (k: string) => write(() => storage.delete(k)),
+    },
     addEventListener: target.addEventListener.bind(target),
     removeEventListener: target.removeEventListener.bind(target),
     dispatchEvent: target.dispatchEvent.bind(target),
@@ -73,7 +84,7 @@ function session(visibilityState = 'visible', prerendering = false) {
     page.dispatchEvent(new Event('visibilitychange'));
     await settle();
   };
-  return { api: exports as Required<typeof exports>, reports, ready, fire, hide, show, navigator, loads: () => loads, calls, sdkState, sent };
+  return { api: exports as Required<typeof exports>, reports, ready, fire, hide, show, navigator, loads: () => loads, calls, sdkState, sent, storage };
 }
 
 test('early errors and rejections wait for the SDK, and duplicate errors report once', async () => {
@@ -141,6 +152,52 @@ test('turning analytics off in another tab stops this one', async () => {
   await s.ready();
   s.fire('storage', { key: 'jf:analytics', newValue: 'off' });
   assert.deepEqual(s.calls, ['opt_out', 'stop_recording']);
+});
+
+test('turning analytics off holds on this page when the browser refuses to store it', async () => {
+  const s = session('visible', false, true);
+  s.api.startAnalytics();
+  s.api.track('feature_used', { feature: 'copy_output' });
+  s.api.setAnalyticsEnabled(false);
+  assert.equal(s.storage.get('jf:analytics'), undefined, 'storage refused it');
+  // Vercel Web Analytics asks analyticsAllowed() before every page view.
+  assert.equal(s.api.analyticsAllowed(), false);
+  assert.equal(s.api.analyticsState(), 'off');
+  s.api.track('feature_used', { feature: 'copy_input' });
+  s.api.reportError(new Error('private input'));
+  await s.ready();
+  assert.equal(s.loads(), 0, 'PostHog never starts');
+  assert.equal(s.reports.length, 0);
+  assert.deepEqual(s.sent, []);
+  // And back on, still without storage.
+  s.api.setAnalyticsEnabled(true);
+  assert.equal(s.api.analyticsAllowed(), true);
+  await s.ready();
+  assert.equal(s.loads(), 1);
+});
+
+test('turning analytics on holds on this page when the browser refuses to forget the old choice', async () => {
+  const s = session('visible', false, true);
+  s.storage.set('jf:analytics', 'off');
+  assert.equal(s.api.analyticsAllowed(), false);
+  s.api.setAnalyticsEnabled(true);
+  assert.equal(s.storage.get('jf:analytics'), 'off', 'storage refused it');
+  assert.equal(s.api.analyticsAllowed(), true);
+  assert.equal(s.api.analyticsState(), 'on');
+  await s.ready();
+  assert.equal(s.loads(), 1);
+});
+
+test('a choice made in another tab replaces the one kept on this page', async () => {
+  const s = session();
+  s.api.setAnalyticsEnabled(false);
+  assert.equal(s.api.analyticsAllowed(), false);
+  s.storage.delete('jf:analytics');
+  s.fire('storage', { key: 'jf:analytics', newValue: null });
+  assert.equal(s.api.analyticsAllowed(), true);
+  s.storage.set('jf:analytics', 'off');
+  s.fire('storage', { key: 'jf:analytics', newValue: 'off' });
+  assert.equal(s.api.analyticsAllowed(), false);
 });
 
 test("PostHog's opt-out stored by an earlier page gives way to the site's choice", async () => {

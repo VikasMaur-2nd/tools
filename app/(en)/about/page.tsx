@@ -1,23 +1,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import ContentShell from '../content-shell';
-import { aboutPageLd, jsonLdScript, SITE_NAME, SOCIAL_IMAGE } from '../seo';
+import { aboutPageLd, jsonLdScript } from '../seo';
+import { pageMetadata } from '../../page-metadata';
 
-export const metadata: Metadata = {
-  title: { absolute: 'About Tool Kumar' },
-  description:
-    'Learn how Tool Kumar works, why JSON stays in your browser and what to expect from this private developer tool.',
-  alternates: { canonical: '/about' },
-  openGraph: {
-    type: 'website',
-    url: '/about',
-    siteName: SITE_NAME,
-    title: `About ${SITE_NAME}`,
-    description: 'A private, browser-based JSON viewer and developer tool from Tool Kumar.',
-    images: [SOCIAL_IMAGE],
-  },
-  twitter: { card: 'summary_large_image', title: `About ${SITE_NAME}`, description: 'A private, browser-based JSON viewer and developer tool from Tool Kumar.', images: ['/twitter-image.png'] },
-};
+export const metadata: Metadata = pageMetadata({
+  path: '/about',
+  title: 'About Tool Kumar',
+  fullTitle: true,
+  description: 'Learn how Tool Kumar works, why JSON stays in your browser and what to expect from this private developer tool.',
+});
 
 export default function AboutPage() {
   return (

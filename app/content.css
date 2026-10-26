@@ -99,7 +99,7 @@ html:has(.content-page:not([style*='none'])) {
   background: var(--sel);
 }
 
-.wrap {
+.container {
   width: min(100% - 48px, 1080px);
   margin-inline: auto;
 }
@@ -880,6 +880,8 @@ html:has(.content-page:not([style*='none'])) {
   color: var(--fg-2);
   font-size: 17px;
   line-height: 1.75;
+  /* (A name longer than a phone's line, such as DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, breaks.) */
+  overflow-wrap: break-word;
 }
 
 .prose > :first-child {
@@ -957,6 +959,17 @@ html:has(.content-page:not([style*='none'])) {
   color: var(--fg);
   font: 0.84em var(--font-mono);
   white-space: nowrap;
+}
+
+/* A phone's line is shorter than some snippets: they wrap (at spaces, else anywhere) instead of
+   widening the page. */
+@media (max-width: 720px) {
+  .prose :not(pre) > code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
 }
 
 .code {
@@ -1346,7 +1359,7 @@ html:has(.content-page:not([style*='none'])) {
 }
 
 @media (max-width: 720px) {
-  .wrap {
+  .container {
     width: min(100% - 40px, 1080px);
   }
 
@@ -1880,24 +1893,6 @@ html:has(.content-page:not([style*='none'])) {
   margin-top: 0;
 }
 
-.ig-more {
-  margin: 0 0 26px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 12px 16px;
-}
-
-.ig-more summary {
-  color: var(--fg);
-  font-weight: 550;
-  cursor: pointer;
-}
-
-.prose .ig-more p {
-  margin: 12px 0 0;
-  font-size: 16px;
-}
-
 /* The builder: inputs on the left, the button and its code on the right. */
 .link-builder {
   display: grid;
@@ -1981,12 +1976,6 @@ html:has(.content-page:not([style*='none'])) {
 
 .lb-ed-out {
   height: 158px;
-}
-
-/* The editor's soft-wrap class is also these pages' container class (.wrap above): not for the editor. */
-.mini-ed .ed.wrap {
-  width: auto;
-  margin-inline: 0;
 }
 
 .lb-ed:focus-within {

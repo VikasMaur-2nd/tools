@@ -336,6 +336,8 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => act((e) => e.find(v)), v.length > 2 ? 80 : 150);
   };
+  // A query still waiting when the bar closes (Compare, the tool closing) would open it again: dropped.
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   const onKey = (ev: ReactKeyboardEvent<HTMLInputElement>) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
@@ -373,7 +375,15 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
       <button type="button" className="btn icon sm" aria-label={t('Next match')} onClick={() => act((e) => e.findStep(1))}>
         <Icon name="down" size={14} />
       </button>
-      <button type="button" className="btn icon sm" aria-label={t('Close find')} onClick={() => act((e) => e.closeFind())}>
+      <button
+        type="button"
+        className="btn icon sm"
+        aria-label={t('Close find')}
+        onClick={() => {
+          window.clearTimeout(timer.current);
+          act((e) => e.closeFind());
+        }}
+      >
         <Icon name="x" size={14} />
       </button>
     </div>
@@ -733,10 +743,11 @@ function ViewerPane({
             </div>
           </div>
         </div>
+        {/* A grid while it shows an array or object: TableView sets its role, label and tab stop. */}
         <div id="view-table" className="tbl" ref={tableRef} hidden={view !== 'table' || empty}>
-          <div className="tb-head" />
-          <div className="tb-sizer">
-            <div className="tb-rows" />
+          <div className="tb-head" role="row" aria-rowindex={1} />
+          <div className="tb-sizer" role="none">
+            <div className="tb-rows" role="none" />
           </div>
           <div className="tb-empty" hidden>
             {t('Select an array or object in the tree to see it as a table.')}
@@ -782,8 +793,9 @@ const onSwap = () => act((e) => e.swapCompare());
 function CompareHost() {
   const leftText = useUI((s) => s.docText);
   const rightText = useUI((s) => s.cmpText);
+  const rightParsed = useUI((s) => s.cmpParsed);
   const indent = useUI((s) => s.settings.indent);
-  return <CompareView leftText={leftText} rightText={rightText} indent={UNITS[indent]} onJump={onJump} onMarks={onMarks} onSwap={onSwap} />;
+  return <CompareView leftText={leftText} rightText={rightText} rightParsed={rightParsed} indent={UNITS[indent]} onJump={onJump} onMarks={onMarks} onSwap={onSwap} />;
 }
 
 // ── Split handle ────────────────────────────────────────────────────────────

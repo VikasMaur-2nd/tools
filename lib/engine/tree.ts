@@ -18,12 +18,11 @@ let hintsLoading = false;
  * splices that array instead of rebuilding it.
  */
 
-export const RH = 24;
+const RH = 24;
 const IND = 16;
 const IND_DEPTH = 30;
 const OVERSCAN = 24;
 const MAX_MATCHES = 100_000;
-const SEP = String.fromCharCode(1);
 
 const COLOR = /^(#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(?:rgb|hsl)a?\(\s*[\d.%\s,/+-]+\))$/i;
 const URL_RE = /^https?:\/\/[^\s"<>]+$/i;
@@ -45,20 +44,27 @@ interface Expansion {
 
 function childExpansion(parent: Expansion | undefined, n: JNode, create = false): Expansion | undefined {
   if (!parent) return;
+  // One edge per property name, whatever it holds. Duplicate keys share a path, as do an index and the
+  // same digits as a key (an edit that turns an array into an object keeps its items' state).
   const key = String(n.key);
-  // Preserve the old SEP-joined path identity, including duplicate keys, numeric/string
-  // keys and property names containing SEP. Ordinary keys need just one lookup.
-  const parts = key.includes(SEP) ? key.split(SEP) : [key];
-  for (const part of parts) {
-    let child: Expansion | undefined = parent.children?.get(part);
-    if (!child) {
-      if (!create) return;
-      child = {};
-      (parent.children ??= new Map()).set(part, child);
-    }
-    parent = child;
+  let child = parent.children?.get(key);
+  if (!child && create) (parent.children ??= new Map()).set(key, (child = {}));
+  return child;
+}
+
+/** `n`'s place among its parent's items, which are in document order: found by offset, not by a scan (wide objects). */
+function siblingIndex(n: JNode) {
+  const list = kids(n.u as JNode);
+  let lo = 0;
+  let hi = list.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const x = list[mid];
+    if (x === n) return mid;
+    if (x.s < n.s) lo = mid + 1;
+    else hi = mid - 1;
   }
-  return parent;
+  return list.indexOf(n);
 }
 
 export class TreeView {
@@ -115,6 +121,7 @@ export class TreeView {
     this.el.removeEventListener('mouseover', this.onOver);
     this.el.removeEventListener('mouseleave', this.onLeave);
     this.ro.disconnect();
+    this.sc.destroy();
     cancelAnimationFrame(this.raf);
   }
 
@@ -457,7 +464,7 @@ export class TreeView {
     if (this.matchSet?.has(n)) cls += n === this.matches[this.mi] ? ' hit cur' : ' hit';
     const cont = n.t >= ARR;
     let h = `<div class="${cls}" data-i="${i}" role="treeitem" aria-level="${n.d + 1}"`;
-    if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : kids(n.u).indexOf(n) + 1}"`;
+    if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : siblingIndex(n) + 1}"`;
     if (cont) h += ` aria-expanded="${n.x}"`;
     if (sel) h += ' id="tv-sel" aria-selected="true"';
     h += ` style="padding-left:${deep ? 'calc(var(--tv-indent) + 6px)' : n.d * IND + 6 + 'px'}">`;

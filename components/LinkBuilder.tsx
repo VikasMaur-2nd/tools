@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type RefObject } from 'react';
 import { PRIVATE } from '@/lib/analytics';
+import { radioKeys, tabStop } from '@/lib/radio';
 import type { Diagnostic, Editor } from '@/lib/engine/editor';
 import { TARGETS } from '@/lib/engine/targets';
 import { formatBytes } from '@/lib/json/format';
@@ -82,20 +83,13 @@ function linkMaker() {
   };
 }
 
-/** A row of mutually exclusive buttons (radio group): arrow keys move the choice, like native radios. */
+/** A row of mutually exclusive buttons (radio group): arrow keys move the choice, like native radios (lib/radio.ts). */
 function Seg<T extends string>({ label, value, options, onChange, className }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void; className?: string }) {
-  const move = (e: KeyboardEvent<HTMLDivElement>) => {
-    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const i = (options.findIndex(([v]) => v === value) + step + options.length) % options.length;
-    onChange(options[i][0]);
-    (e.currentTarget.children[i] as HTMLElement | undefined)?.focus();
-  };
+  const stop = tabStop(options.map(([v]) => ({ checked: v === value })));
   return (
-    <div className={`lb-seg${className ? ' ' + className : ''}`} role="radiogroup" aria-label={label} onKeyDown={move}>
-      {options.map(([v, l]) => (
-        <button key={v} type="button" role="radio" aria-checked={value === v} tabIndex={value === v ? 0 : -1} onClick={() => onChange(v)}>
+    <div className={`lb-seg${className ? ' ' + className : ''}`} role="radiogroup" aria-label={label} onKeyDown={(e) => radioKeys(e, (i) => onChange(options[i][0]))}>
+      {options.map(([v, l], i) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} tabIndex={i === stop ? 0 : -1} onClick={() => onChange(v)}>
           {l}
         </button>
       ))}
@@ -134,7 +128,7 @@ function JsonField({ id, value, setValue, edRef }: { id: string; value: string; 
   const timer = useRef(0);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   // (Reading a big edited document builds its text: wait for a pause.)
-  const changed = (e: Editor) => {
+  const changed = (e: Pick<Editor, 'text' | 'length'>) => {
     window.clearTimeout(timer.current);
     const n = e.length;
     timer.current = window.setTimeout(() => setValue(e.text), n < 100_000 ? 60 : n < 2_000_000 ? 250 : 600);
@@ -334,8 +328,10 @@ export default function LinkBuilder() {
   const [to, setTo] = useState('typescript');
   const [badge, setBadge] = useState<BadgeColor>('auto');
   const [format, setFormat] = useState<SnippetFormat>('markdown');
-  const [href, setHref] = useState('');
-  const [error, setError] = useState('');
+  // The last link made (or why none could be), with the inputs it was made from.
+  const [made, setMade] = useState<{ inputs: unknown[]; href: string; error: string } | null>(null);
+  // Inputs whose link is taking a while (a big document).
+  const [slow, setSlow] = useState<unknown[] | null>(null);
   const [copied, setCopied] = useState(false);
   const viewId = useId();
   const toId = useId();
@@ -383,8 +379,11 @@ export default function LinkBuilder() {
     };
   }, []);
 
+  const inputs = [compare, kindA, kindB, a, b, urlA, urlB, view, to];
   useEffect(() => {
     let live = true;
+    let late = 0;
+    const req = [compare, kindA, kindB, a, b, urlA, urlB, view, to];
     const doc = (kind: Kind, v: string): LinkDoc | null => {
       if (kind === 'json') return v.trim() ? { text: v } : null;
       return /^https?:\/\/\S+$/i.test(v.trim()) ? { url: v.trim() } : null;
@@ -393,25 +392,34 @@ export default function LinkBuilder() {
     const db = compare ? doc(kindB, kindB === 'json' ? b : urlB) : undefined;
     const t = window.setTimeout(() => {
       if (!da || db === null) {
-        setHref('');
-        setError((da ? kindB : kindA) === 'url' ? 'Enter an http(s) URL.' : 'Paste a document.');
+        setMade({ inputs: req, href: '', error: (da ? kindB : kindA) === 'url' ? 'Enter an http(s) URL.' : 'Paste a document.' });
         return;
       }
+      late = window.setTimeout(() => live && setSlow(req), 300);
       maker.make({ a: da, b: db, view: compare ? 'compare' : view, to }).then(
         (hash) => {
           if (!live || hash === null) return;
-          const url = `${SITE}/${hash}`;
-          setHref(url);
-          setError('');
+          setMade({ inputs: req, href: `${SITE}/${hash}`, error: '' });
         },
-        () => live && setError('This browser cannot compress links. Try a current Chrome, Edge, Firefox or Safari.'),
+        () => live && setMade({ inputs: req, href: '', error: 'This browser cannot compress links. Try a current Chrome, Edge, Firefox or Safari.' }),
       );
     }, 120);
     return () => {
       live = false;
       window.clearTimeout(t);
+      window.clearTimeout(late);
     };
   }, [maker, compare, kindA, kindB, a, b, urlA, urlB, view, to]);
+
+  const current = (x: unknown[] | null | undefined) => !!x && x.every((v, i) => v === inputs[i]);
+  const fresh = current(made?.inputs);
+  // The link for what the boxes hold now: only it can be copied or opened.
+  const href = fresh ? made!.href : '';
+  // While the next one is made, the last link (or why there was none) stays in view, so typing doesn't flash
+  // it away, until that takes a while.
+  const making = !fresh && current(slow);
+  const shown = fresh ? href : making ? '' : (made?.href ?? '');
+  const error = making ? '' : (made?.error ?? '');
 
   useEffect(() => {
     if (!copied) return;
@@ -421,7 +429,7 @@ export default function LinkBuilder() {
 
   const kind = compare ? 'compare' : 'view';
   const { label, width } = BADGES[kind];
-  const out = href ? snippet(format, href, kind, badge) : '';
+  const out = shown ? snippet(format, shown, kind, badge) : '';
   // The code box colours the link's parts (lib/link-colors.ts), as the code on the page does.
   const colors = useMemo(() => {
     const parts = snippetParts(out);
@@ -470,16 +478,17 @@ export default function LinkBuilder() {
       </div>
 
       <div className="lb-result">
-        <div className={`lb-preview lb-on-${badge}`} aria-live="polite">
-          {href ? (
-            <a href={href} target="_blank" rel="noopener" className={PRIVATE} aria-label={`${label} (opens the link in a new tab)`}>
+        <div className={`lb-preview lb-on-${badge}`} aria-live="polite" aria-busy={!fresh}>
+          {shown ? (
+            // (The last link, while the next is made: not a link until it is current.)
+            <a href={href || undefined} target="_blank" rel="noopener" className={PRIVATE} aria-label={href ? `${label} (opens the link in a new tab)` : undefined}>
               <picture>
                 {badge === 'auto' && <source media="(prefers-color-scheme: dark)" srcSet={`/badges/${kind}-in-tool-kumar-dark.svg`} />}
                 <img src={`/badges/${kind}-in-tool-kumar${badge === 'white' ? '-dark' : ''}.svg`} alt="" width={width} height={28} />
               </picture>
             </a>
           ) : (
-            <span className="lb-empty">Your button appears here</span>
+            <span className="lb-empty">{making ? 'Making the link…' : 'Your button appears here'}</span>
           )}
         </div>
         <div className="lb-inline">
@@ -505,8 +514,8 @@ export default function LinkBuilder() {
               <button
                 type="button"
                 className="lb-copy"
-                disabled={!out}
-                onClick={() => navigator.clipboard.writeText(out).then(() => setCopied(true), () => undefined)}
+                disabled={!href}
+                onClick={() => navigator.clipboard.writeText(snippet(format, href, kind, badge)).then(() => setCopied(true), () => undefined)}
               >
                 {copied ? 'Copied' : 'Copy'}
               </button>
@@ -519,26 +528,26 @@ export default function LinkBuilder() {
           <p className="lb-hint">
             {format === 'markdown' ? 'For READMEs, docs and issues on GitHub or GitLab.' : format === 'html' ? 'For web pages. Auto follows the reader’s light or dark mode.' : 'For chats, emails and your own buttons.'}
           </p>
-          {href && linkReach(href.length) === 'click' && (
+          {shown && linkReach(shown.length) === 'click' && (
             <p className={`lb-warn ${PRIVATE}`} role="status">
-              At {formatBytes(href.length)}, this link opens when clicked, but pasted into Chrome&apos;s or Edge&apos;s address bar it gets cut at 500 KB.
+              At {formatBytes(shown.length)}, this link opens when clicked, but pasted into Chrome&apos;s or Edge&apos;s address bar it gets cut at 500 KB.
             </p>
           )}
-          {href && linkReach(href.length) === 'not-firefox' && (
+          {shown && linkReach(shown.length) === 'not-firefox' && (
             <p className={`lb-warn ${PRIVATE}`} role="status">
-              At {formatBytes(href.length)}, this link opens when clicked in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB. Pasted into
+              At {formatBytes(shown.length)}, this link opens when clicked in Chrome, Edge and Safari, but not Firefox, which stops at about 1 MB. Pasted into
               Chrome&apos;s or Edge&apos;s address bar, it gets cut at 500 KB.
             </p>
           )}
-          {href && linkReach(href.length) === 'none' && (
-            <p className="lb-error" role="status">
-              At {formatBytes(href.length)}, no browser can open this link: they stop at about 2 MB. Link to where the JSON is hosted (choose URL
+          {shown && linkReach(shown.length) === 'none' && (
+            <p className={`lb-error ${PRIVATE}`} role="status">
+              At {formatBytes(shown.length)}, no browser can open this link: they stop at about 2 MB. Link to where the JSON is hosted (choose URL
               above), or use the handoff below from your web app.
             </p>
           )}
-          {href && (
-            <p className="lb-hint">
-              The link is {formatBytes(href.length)} long. Browsers open links up to roughly 1 MB (Firefox) to 2 MB (Chrome, Safari) when they are clicked,
+          {shown && (
+            <p className={`lb-hint ${PRIVATE}`}>
+              The link is {formatBytes(shown.length)} long. Browsers open links up to roughly 1 MB (Firefox) to 2 MB (Chrome, Safari) when they are clicked,
               but Chrome and Edge cut a pasted link at 500 KB. Chat apps allow much less per message: there, link to where the JSON is hosted
               (choose URL above). From your own web app, the handoff below opens JSON of any size.
             </p>

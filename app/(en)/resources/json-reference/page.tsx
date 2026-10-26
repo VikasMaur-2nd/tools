@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PAGE_DATES } from '../../dates';
 import { Code, ResourceArticle, resourceMetadata } from '../resource';
 
 const TITLE = 'JSON syntax reference: values, strings, numbers and objects';
@@ -6,7 +7,7 @@ const DESCRIPTION =
   'A practical JSON syntax reference based on RFC 8259 and ECMA-404. Learn the value types, string escapes, number rules and common invalid forms.';
 const PATH = '/resources/json-reference';
 
-export const metadata = resourceMetadata({ title: TITLE, description: DESCRIPTION, path: PATH });
+export const metadata = resourceMetadata({ title: TITLE, description: DESCRIPTION, path: PATH, ...PAGE_DATES[PATH] });
 
 export default function JsonReferencePage() {
   return (

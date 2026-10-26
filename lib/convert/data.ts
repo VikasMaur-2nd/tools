@@ -1,4 +1,4 @@
-/** Data-format emitters: YAML, CSV, XML, TOML. Values are written from the raw tree (exact numbers). */
+/** Data-format emitters: YAML, XML, TOML, JSON Lines. Values are written from the raw tree (exact numbers). */
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { stringify } from '../json/format';
 
@@ -100,43 +100,6 @@ export function toYAML(root: JNode): string {
   if (s) b.add(s);
   else block(root, '', true);
   return b.done() + '\n';
-}
-
-/* ---------- CSV (RFC 4180 quoting) ---------- */
-
-export function toCSV(root: JNode): string {
-  const cell = (n: JNode | undefined) =>
-    !n || n.t === NUL ? '' : n.t === BOOL ? (n.v ? 'true' : 'false') : n.t === STR || n.t === NUM ? (n.v as string) : stringify(n, '');
-  const esc = (s: string) => (/[",\r\n]|^\s|\s$/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
-  const row = (cells: string[]) => cells.map(esc).join(',');
-  if (root.t === OBJ) {
-    const es = entries(root);
-    if (!es.length) return '';
-    return row(es.map((c) => c.key as string)) + '\n' + row(es.map(cell)) + '\n';
-  }
-  if (root.t !== ARR) return 'value\n' + esc(cell(root)) + '\n';
-  const items = kids(root);
-  if (!items.length) return '';
-  // Array of arrays: rows as-is.
-  if (items.every((c) => c.t === ARR)) return items.map((c) => row(kids(c).map(cell))).join('\n') + '\n';
-  // Array of objects: header = union of keys in first-seen order.
-  const cols = new Map<string, number>();
-  for (const c of items) if (c.t === OBJ) for (const p of kids(c)) if (!cols.has(p.key as string)) cols.set(p.key as string, cols.size);
-  let vc = -1; // column for non-object items
-  if (items.some((c) => c.t !== OBJ && c.t !== NUL)) {
-    let v = 'value';
-    while (cols.has(v)) v = '_' + v;
-    vc = cols.size;
-    cols.set(v, vc);
-  }
-  const out = [row([...cols.keys()])];
-  for (const c of items) {
-    const cells: string[] = new Array(cols.size).fill('');
-    if (c.t === OBJ) for (const p of kids(c)) cells[cols.get(p.key as string)!] = cell(p);
-    else if (vc >= 0) cells[vc] = cell(c);
-    out.push(row(cells));
-  }
-  return out.join('\n') + '\n';
 }
 
 /* ---------- XML ---------- */
