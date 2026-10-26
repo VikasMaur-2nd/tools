@@ -30,6 +30,11 @@ process.env.GTK_A11Y ??= 'none';
 export const CORES = availableParallelism();
 export const load = () => loadavg()[0];
 
+export const TIMEOUT_SCALE = Number(process.env.HARNESS_TIMEOUT_SCALE || 1);
+if (!Number.isFinite(TIMEOUT_SCALE) || TIMEOUT_SCALE <= 0) throw new Error('HARNESS_TIMEOUT_SCALE must be positive and finite');
+/** `ms` scaled by HARNESS_TIMEOUT_SCALE and by host load per core, so a busy host doesn't fail waits a real bug still trips. */
+export const budget = (ms) => ms * TIMEOUT_SCALE * Math.max(1, load() / CORES);
+
 export const ENGINES = ['chromium', 'firefox', 'webkit'];
 export const hasFile = (p) => existsSync(p);
 

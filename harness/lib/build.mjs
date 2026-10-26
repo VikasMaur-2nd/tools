@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
-import { DIRS, ROOT } from './env.mjs';
+import { budget, DIRS, ROOT } from './env.mjs';
 import { withLock } from './lock.mjs';
 
 /** Paths that never change what `next build` produces. */
@@ -262,6 +262,7 @@ async function startServer(dir, port) {
     clearTimeout(timer);
   };
   const t0 = Date.now();
+  const limit = budget(60_000);
   try {
     for (;;) {
       if (spawnError) throw spawnError;
@@ -274,7 +275,7 @@ async function startServer(dir, port) {
           if (r.ok) break;
         } catch {}
       }
-      if (Date.now() - t0 > 60_000) throw new Error(`next start did not answer within 60 s: ${err.slice(-2000)}`);
+      if (Date.now() - t0 > limit) throw new Error(`next start did not answer within ${Math.round(limit / 1000)} s: ${err.slice(-2000)}`);
       await new Promise((r) => setTimeout(r, 50));
     }
   } catch (e) {
