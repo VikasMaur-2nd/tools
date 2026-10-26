@@ -319,7 +319,7 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
     t.log(`new build files not cached yet: ${missing.length}`);
     proxy.offline();
     const lost = await unreachable(oldTab, oldFiles);
-    t.check(!lost.length, 'upgrade offline: the old tab still gets every file it had cached', lost, t.engine === 'webkit' ? { known: 'bug: in WebKit the old tab loses one cached chunk after the worker upgrade (also after PR #26)' } : undefined);
+    t.check(!lost.length, 'upgrade offline: the old tab still gets every file it had cached', lost, t.engine === 'webkit' ? { known: "legacy: the pre-PR #26 worker deletes the old build's later-loaded chunks as soon as it sees a new shell; in WebKit it does so before the new worker takes over (fixed in today's worker, which retires them)" } : undefined);
     const fresh = await t.context.newPage();
     const o = await opened(fresh, proxy.origin, '/');
     t.check(o.ok && o.tool === 1, 'upgrade offline: a new tab opens the new build', o);

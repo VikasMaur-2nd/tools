@@ -409,7 +409,8 @@ export class Editor {
       // Hidden (display: none): nothing to lay out, and no width would rewrap the whole document into one
       // column. Shown again, the observer fires again.
       if (!el.getClientRects().length) return;
-      if (!this.measured) this.measure();
+      if (this.fontsStale) this.fontsChanged();
+      else if (!this.measured) this.measure();
       this.layout();
       this.render(true);
     });
@@ -427,16 +428,30 @@ export class Editor {
 
   private onFonts = () => {
     if (this.gone || !this.el.isConnected) return;
+    // Hidden (Compare's editor in another view): it has no width to wrap to, so a long line would be laid
+    // out as one row and drawn whole. Shown again, the observer applies the font.
+    if (!this.el.getClientRects().length) {
+      this.fontsStale = true;
+      return;
+    }
+    if (this.fontsChanged()) this.layout();
+    this.render(true);
+  };
+
+  /** A font arrived while the editor was hidden (see onFonts). */
+  private fontsStale = false;
+
+  /** Re-measures glyphs for a font that arrived: true if rows must be laid out again. */
+  private fontsChanged() {
+    this.fontsStale = false;
     const cw = this.cw;
     this.measure();
     // Rows only move if a width changed (always re-measured while matching a textarea).
-    if (this.cw !== cw || !this.wrapper || this.wrapper.fontsLoaded()) {
-      if (this.cw !== cw) this.wrapper?.reset();
-      this.wrapDirty = true;
-      this.layout();
-    }
-    this.render(true);
-  };
+    if (this.cw === cw && this.wrapper && !this.wrapper.fontsLoaded()) return false;
+    if (this.cw !== cw) this.wrapper?.reset();
+    this.wrapDirty = true;
+    return true;
+  }
 
   /**
    * Destroyed: work it started that ends later (the big-document editor's module, the code font, a fold
@@ -1562,7 +1577,7 @@ export class Editor {
             // (Only right-to-left text orders by its neighbours: without any, the context changes nothing, and
             // laying it out costs as much again as the row.)
             const ctx = mayReorder(t, Math.max(a, sa - 64) - o, Math.min(b, sb + 64) - o);
-            body = `${ctx ? bidiContext(t, Math.max(a, sa - 64) - o, sa - o) : ''}${zl}${body}${zr}${ctx ? bidiContext(t, sb - o, Math.min(b, sb + 64) - o) : ''}${escapeHtml(t.slice(se - o, sb - o))}`;
+            body = `${ctx ? bidiContext(t, Math.max(a, sa - 64) - o, sa - o, true) : ''}${zl}${body}${zr}${ctx ? bidiContext(t, sb - o, Math.min(b, sb + 64) - o, false) : ''}${escapeHtml(t.slice(se - o, sb - o))}`;
           }
           html.push(`<div class="ed-row${lm ? ' ' + LINE_MARK[lm] : ''}">${body}${end ? ph : ''}</div>`);
           offs?.push(sa);

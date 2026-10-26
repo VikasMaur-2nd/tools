@@ -134,7 +134,8 @@ export class CodeView {
     this.ro = new ResizeObserver(() => {
       // Hidden (display: none): no width to wrap to; the observer fires again when shown.
       if (!el.getClientRects().length) return;
-      if (this.el.clientWidth !== this.width) this.reflow(true);
+      if (this.fontsStale) this.onFonts();
+      else if (this.el.clientWidth !== this.width) this.reflow(true);
       else this.render(true);
     });
     this.ro.observe(el);
@@ -144,17 +145,26 @@ export class CodeView {
 
   /** The code font (or its subset for another script) arrived: glyph widths and wrapped rows change. */
   private onFonts = () => {
+    // Hidden (another view is open): no width to wrap to. Shown again, the observer applies the font.
+    if (this.el.isConnected && !this.el.getClientRects().length) {
+      this.fontsStale = true;
+      return;
+    }
+    this.fontsStale = false;
     if (this.pending) return this.reflow(true);
     if (!this.el.isConnected || !this.ls.length) return void this.wrapper?.reset();
     const cw = this.cw;
     this.measure();
     // Rows only move if a width changed; otherwise just redraw in the new glyphs.
-    if (this.cw !== cw || this.wrapper?.fontsLoaded()) this.reflow(true);
+    if (this.cw !== cw || this.wrapper?.fontsLoaded() || this.el.clientWidth !== this.width) this.reflow(true);
     else {
       this.html.clear();
       this.render(true);
     }
   };
+
+  /** A font arrived while the view was hidden (see onFonts). */
+  private fontsStale = false;
 
   destroy() {
     this.pending = null;
@@ -643,7 +653,7 @@ export class CodeView {
           : !this.json || !a ? 0 : rows > 1 ? this.stateAt(vi, sub) : this.strs.at(line, 0, a);
         const se = ctx && b < line.length ? trimWs(line, a, b) : b;
         h = this.hl(a || se < line.length ? line.slice(a, se) : line, (s & 1) === 1, (s & 2) === 2, s, this.text, this.ls[ln] + a);
-        if (ctx) h = `${bidiContext(line, Math.max(0, a - 64), a)}${h}${bidiContext(line, b, Math.min(line.length, b + 64))}${escapeHtml(line.slice(se, b))}`;
+        if (ctx) h = `${bidiContext(line, Math.max(0, a - 64), a, true)}${h}${bidiContext(line, b, Math.min(line.length, b + 64), false)}${escapeHtml(line.slice(se, b))}`;
         if (foldedHere) {
           const end = this.close[ln];
           const n = end - ln - 1;
