@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { ARR, JNode, MAX_DEPTH, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
 import { MAX_INDENT, MAX_TEXT, byteLength, formatDoc, preview, primText, stringify, toValue, tooLarge } from '../lib/json/format';
 import { formatPath, nodeAt, parsePath, pathOf, resolve, type Seg } from '../lib/json/path';
+import { cpuNow } from './timing';
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -875,9 +876,9 @@ describe('robustness', () => {
     // Two spaces: 5,000 levels; a deeper chain is refused before any work.
     const deep = '['.repeat(5_002) + ']'.repeat(5_002);
     const r = parse(deep);
-    const t = performance.now();
+    const t = cpuNow();
     assert.throws(() => formatDoc(deep, r, '  '), (e) => tooLarge(e));
-    assert.ok(performance.now() - t < 20, 'refused at once');
+    assert.ok(cpuNow() - t < 20, 'refused at once');
     assert.equal(formatDoc(deep, r, ''), deep);
   });
   test('moderately deep documents parse and pretty-print', () => {
@@ -907,13 +908,13 @@ describe('performance (smoke)', () => {
       size += row.length + 1;
     }
     const src = '[' + rows.join(',') + ']';
-    const t0 = performance.now();
+    const t0 = cpuNow();
     const res = parse(src);
     const out = stringify(res.root as JNode, '  ');
-    const ms = performance.now() - t0;
+    const ms = cpuNow() - t0;
     assert.ok(strictOk(res));
     assert.ok(out.length > src.length);
-    assert.ok(ms < 3000, `took ${ms.toFixed(0)}ms`);
+    assert.ok(ms < 3000, `took ${ms.toFixed(0)} ms of CPU time`);
   });
 });
 

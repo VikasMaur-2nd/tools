@@ -4,6 +4,7 @@ import { TreeView, type TreeEvents } from '../lib/engine/tree';
 import { ARR, MAX_DEPTH, type JNode, kids, parse } from '../lib/json/parser';
 import { PRIVATE } from '../lib/analytics';
 import { OldTreeView } from './oracle/tree';
+import { cpuNow } from './timing';
 
 // Run the real constructor and model with a hidden viewport. No browser globals or
 // renderer are needed for expansion, selection, scrolling or edit restoration.
@@ -145,11 +146,11 @@ for (const shape of ['array', 'object', 'mixed'] as const) {
     const { tree, el } = view();
     tree.setRoot(res.root, true, res.nodes);
     const timed = (name: string, fn: () => void) => {
-      const start = performance.now();
+      const start = cpuNow();
       fn();
-      const ms = performance.now() - start;
+      const ms = cpuNow() - start;
       t.diagnostic(`${name}: ${ms.toFixed(1)} ms`);
-      assert.ok(ms < 2000, `${name} took ${ms.toFixed(1)} ms`);
+      assert.ok(ms < 2000, `${name} took ${ms.toFixed(1)} ms of CPU time`);
     };
     timed('flatten / expand all', () => tree.expandAll());
     assert.equal(tree.rows.length, depth + 1);

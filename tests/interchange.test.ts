@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
+import { cpuNow } from './timing';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -380,29 +381,31 @@ describe('toXlsx', () => {
     }
   });
 
-  test('100k rows × 20 columns in a couple of seconds', async () => {
+  // 10k rows by default; the full 100k with `pnpm test --slow` (about ten times as long).
+  const N = process.env.TEST_SLOW ? 100_000 : 10_000;
+  test(`${N / 1000}k rows × 20 columns in a couple of seconds`, async () => {
     const rows: string[] = [];
-    for (let r = 0; r < 100000; r++) {
+    for (let r = 0; r < N; r++) {
       let s = '{';
       for (let c = 0; c < 20; c++) s += (c ? ',' : '') + `"col${c}":` + (c % 4 === 0 ? r * c : c % 4 === 1 ? `"name ${r}-${c}"` : c % 4 === 2 ? (r % 2 ? 'true' : 'null') : r / 7);
       rows.push(s + '}');
     }
     const r = root('[' + rows.join(',') + ']');
-    const t0 = performance.now();
+    const t0 = cpuNow();
     const blob = await toXlsx(r);
-    const ms = performance.now() - t0;
+    const ms = cpuNow() - t0;
     const parts = unzip(Buffer.from(await blob.arrayBuffer()));
     const sheet = parts.get('xl/worksheets/sheet1.xml')?.data.toString('utf8') ?? '';
-    assert.match(sheet, /<autoFilter ref="A1:T100001"\/>/);
-    assert.match(sheet, /<row r="100001">/);
-    console.log(`  toXlsx 100k×20: ${ms.toFixed(0)} ms, ${(blob.size / 1e6).toFixed(1)} MB zipped, ${(sheet.length / 1e6).toFixed(0)} MB sheet XML`);
-    assert.ok(ms < 20000, `took ${ms} ms`); // generous: shared CI boxes; typically ~1-3 s
+    assert.match(sheet, new RegExp(`<autoFilter ref="A1:T${N + 1}"/>`));
+    assert.match(sheet, new RegExp(`<row r="${N + 1}">`));
+    console.log(`  toXlsx ${N / 1000}k×20: ${ms.toFixed(0)} ms CPU, ${(blob.size / 1e6).toFixed(1)} MB zipped, ${(sheet.length / 1e6).toFixed(0)} MB sheet XML`);
+    assert.ok(ms < N / 5, `took ${ms.toFixed(0)} ms of CPU time`); // generous; typically ~1-3 s for 100k
     const t1 = performance.now();
     const csv = toCsv(r);
-    console.log(`  toCsv 100k×20: ${(performance.now() - t1).toFixed(0)} ms`);
+    console.log(`  toCsv ${N / 1000}k×20: ${(performance.now() - t1).toFixed(0)} ms`);
     const t2 = performance.now();
     const back = importToJson(csv, 'csv', '');
-    console.log(`  CSV→JSON 100k×20: ${(performance.now() - t2).toFixed(0)} ms`);
+    console.log(`  CSV→JSON ${N / 1000}k×20: ${(performance.now() - t2).toFixed(0)} ms`);
     assert.ok('json' in back);
   });
 });

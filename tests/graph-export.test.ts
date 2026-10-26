@@ -5,6 +5,7 @@ import { buildModel, G, headText, labelText, valueText } from '../lib/graph/mode
 import { layoutGraph } from '../lib/graph/layout';
 import { EXPORT_LIMITS, exportSize, fitRaster, pngScale, toPNG, toSVG } from '../lib/graph/export';
 import type { GraphTheme } from '../lib/graph/theme';
+import { cpuNow } from './timing';
 
 const theme: GraphTheme = {
   bg: '#ffffff', card: '#ffffff', head: '#fafafa', border: '#dcdcdc', edge: '#a3a3a3',
@@ -154,14 +155,14 @@ test('graph export: 5k cards export in less than 300 ms', () => {
   assert.equal(L.shownCount, 5000);
   let elapsed = Infinity;
   let svg = '';
-  // A busy shared host can deschedule this process. Allow at most three attempts.
+  // CPU time (tests/timing.ts); the best of three absorbs a garbage collection landing inside.
   for (let attempt = 0; attempt < 3 && elapsed >= 300; attempt++) {
-    const t0 = performance.now();
+    const t0 = cpuNow();
     svg = toSVG(L, theme);
-    elapsed = Math.min(elapsed, performance.now() - t0);
+    elapsed = Math.min(elapsed, cpuNow() - t0);
   }
   assert.equal((svg.match(/class="card"/g) ?? []).length, 5000);
-  assert.ok(elapsed < 300, `SVG took ${elapsed.toFixed(1)} ms`);
+  assert.ok(elapsed < 300, `SVG took ${elapsed.toFixed(1)} ms of CPU time`);
   console.log(`  graph export: 5000 cards in ${elapsed.toFixed(1)} ms, ${(svg.length / 1e6).toFixed(2)} MB SVG`);
 });
 

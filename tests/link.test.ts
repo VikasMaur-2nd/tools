@@ -100,13 +100,20 @@ test('the published handoff function is plain JavaScript that sends the document
   assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined }));
 });
 
+/** Parsed library files (lib.dom.d.ts alone is ~2 MB), shared by every typeErrors call. */
+const libFiles = new Map<string, ts.SourceFile | undefined>();
+
 /** Strict type errors in `code` as one browser script (DOM + ES2022 libraries, as a site would compile it). */
 function typeErrors(code: string): string[] {
   const file = 'snippet.ts';
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'], types: [] };
   const host = ts.createCompilerHost(options);
   const getSourceFile = host.getSourceFile;
-  host.getSourceFile = (name, lang, ...rest) => (name === file ? ts.createSourceFile(file, code, lang) : getSourceFile.call(host, name, lang, ...rest));
+  host.getSourceFile = (name, lang, ...rest) => {
+    if (name === file) return ts.createSourceFile(file, code, lang);
+    if (!libFiles.has(name)) libFiles.set(name, getSourceFile.call(host, name, lang, ...rest));
+    return libFiles.get(name);
+  };
   const program = ts.createProgram([file], options, host);
   return ts.getPreEmitDiagnostics(program).map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
 }
