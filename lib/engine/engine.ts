@@ -368,7 +368,6 @@ export class Engine {
   destroy() {
     this.worker?.terminate();
     this.analysisWorker?.terminate();
-    this.sizesWorker?.terminate();
     clearTimeout(this.analysisTimer);
     this.dead = true;
     // Whatever is still on its way drops itself (each step checks its sequence), and nothing more starts.
@@ -874,30 +873,18 @@ export class Engine {
     );
   }
 
-  /** Compresses in the sizes worker (encoders can run seconds on the thread that calls them), or here without one. */
-  private sizesWorker: Worker | null | undefined;
+  /** Compressed sizes waiting for the formatting worker, by measure() sequence. */
+  private sizesWanted = new Map<number, (sizes: Partial<Record<string, number>>) => void>();
 
+  /** Compresses in the formatting worker (encoders can run seconds on the thread that calls them: Firefox's), or here without one. */
   private compressed(blob: Blob, seq: number): Promise<Partial<Record<string, number>>> {
-    if (this.sizesWorker === undefined) {
-      try {
-        this.sizesWorker = new Worker(new URL('./sizes.worker.ts', import.meta.url));
-      } catch {
-        this.sizesWorker = null;
-      }
-    }
-    const w = this.sizesWorker;
+    const w = this.reindentWorker();
     if (!w) return import('./sizes').then((m) => m.compressedSizes(blob, () => seq === this.sizeSeq), () => ({}));
+    // (Only the newest is answered: older ones stop.)
+    this.sizesWanted.clear();
     return new Promise((done) => {
-      w.onmessage = (e: MessageEvent<{ seq: number; sizes: Partial<Record<string, number>> }>) => {
-        if (e.data.seq === seq) done(e.data.sizes);
-      };
-      // (A worker that can't start or fails measures nothing: the minified size still shows.)
-      w.onerror = (e) => {
-        e.preventDefault();
-        this.sizesWorker = null;
-        done({});
-      };
-      w.postMessage({ seq, blob });
+      this.sizesWanted.set(seq, done);
+      w.postMessage({ id: 0, measure: blob, seq });
     });
   }
 
@@ -1530,7 +1517,12 @@ export class Engine {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; size?: number; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean; progress?: number }>) => this.withPack(!!e.data.tree, () => {
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; size?: number; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean; progress?: number; measured?: number }>) => this.withPack(!!e.data.tree, () => {
+        if (e.data.measured !== undefined) {
+          const done = this.sizesWanted.get(e.data.measured);
+          this.sizesWanted.delete(e.data.measured);
+          return void done?.((e.data.sizes ?? {}) as Partial<Record<string, number>>);
+        }
         if (e.data.id === -1) {
           this.workerWarm = true;
           // A warm worker means a big document may come: its tape's code next, when the page is idle.
@@ -3344,6 +3336,7 @@ export class Engine {
           // Load the lazy features once so they're cached for offline use and survive a
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
+            () => loadPack(),
             () => import('./sizes'),
             () => import('../convert'),
             () => import('../convert/import'),

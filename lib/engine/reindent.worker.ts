@@ -41,6 +41,9 @@ export interface Request {
   good?: boolean;
   /** A big load: post how far this request's work got (see showing). */
   progress?: boolean;
+  /** Measure this minified document's compressed sizes (`seq`: the page's request). */
+  measure?: Blob;
+  seq?: number;
 }
 
 /**
@@ -65,8 +68,19 @@ let source = Doc.of('');
 let sourceId = 0;
 let fastTimer: ReturnType<typeof setTimeout> | undefined;
 let incoming: { options: Request; chunks: string[] } | null = null;
+/** The newest compressed-size request (see Request.measure): an older one stops after its current encoder. */
+let measuring = 0;
+
 self.onmessage = (e: MessageEvent<Request>) => {
   let data = e.data;
+  if (data.measure) {
+    // Compressed sizes for the page (Firefox runs the encoders on the thread that calls them).
+    const seq = (measuring = data.seq!);
+    void compressedSizes(data.measure, () => measuring === seq).then((sizes) => {
+      if (measuring === seq) self.postMessage({ id: 0, measured: seq, sizes });
+    });
+    return;
+  }
   if (data.clear) {
     latest = 0;
     clearTimeout(fastTimer);
