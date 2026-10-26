@@ -154,8 +154,9 @@ test('/integrate: the link builder keeps its document after /privacy and Back', 
   t.check(after === before, 'builder box keeps its document after Back', { before: before.slice(0, 40), after: after.slice(0, 40), same: after === before });
 });
 
-// Measured 2026-10-25 at load 2: main freezes 17.9 s on the switch to Format, PR #26 takes 0.13 s.
-test('leaving Compare with a 6.9 MB modified document does not stall', { slots: 'all', known: (engine) => (engine === 'webkit' ? undefined : "bug: leaving Compare with a 6.9 MB modified document freezes the page ~9-11 s (Chromium, Firefox; also before PR #26)") }, async (t) => {
+// The code font's subset for the Format view's text arrives after Compare's editor is hidden: measured with
+// no width, its 7 MB line was laid out as one row and drawn whole (9-11 s frozen in Chromium and Firefox).
+test('leaving Compare with a 6.9 MB modified document does not stall', { slots: 'all' }, async (t) => {
   const { page } = t;
   await t.open('/');
   await t.app.openFile(page, 'rows-100');
