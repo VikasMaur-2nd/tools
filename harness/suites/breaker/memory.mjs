@@ -9,6 +9,7 @@
 //                                 footprint; RSS counts shared pages per process), MiB
 //   open-pss                      what it holds once settled
 //   tree-ms / table-ms / graph-ms time to show each view after the switch; *-pss after it, *-peak during it
+//   find-hit-* / find-miss-*      Find in the tree: "e" (many matches), then a query matching nothing
 // Run it alone, under the shared heavy-document lock, e.g.:
 //   flock ~/.cache/mem-work/heavy.lock pnpm perf breaker/memory -e chromium --rounds 1
 //   flock ~/.cache/mem-work/heavy.lock pnpm perf "breaker/memory › records 100mb" --base origin/main --rounds 3
@@ -109,6 +110,23 @@ for (const size of SIZES) {
         t.metric(`${v}-stall`, Math.round(await frameGap(page)));
         t.metric(`${v}-peak`, MiB(r.peak.pss), 'MiB');
         t.metric(`${v}-pss`, MiB(r.last.pss), 'MiB');
+      }
+      // Find in the tree: a query with many matches, then one matching nothing (a whole-document search).
+      // Enter runs a query at once; the count keeps the previous total until the new search is done.
+      await view(page, 'tree');
+      await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+f`);
+      const box = page.locator('.findbar:visible input');
+      for (const [metric, q, done] of [['find-hit', 'e', /\d of /], ['find-miss', 'no-such-needle-7f3a', /No results/]]) {
+        await watchFrames(page);
+        await box.fill(q);
+        const f0 = Date.now();
+        await box.press('Enter');
+        const ok = await page
+          .waitForFunction((src) => new RegExp(src).test(window.__vis('.findbar .count')?.textContent ?? ''), done.source, { timeout: 300_000, polling: 100 })
+          .then(() => true, () => false);
+        t.check(ok, `${metric}: find answers`);
+        t.metric(`${metric}-ms`, Date.now() - f0);
+        t.metric(`${metric}-stall`, Math.round(await frameGap(page)));
       }
       t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
     });

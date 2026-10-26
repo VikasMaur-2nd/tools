@@ -121,6 +121,16 @@ test('a 50 MB string: valid, and the tree shows it without freezing the page', a
   t.check(row.startsWith('root"abcdefghij ÄÖÜ 東京 \\n \\"q\\" 🚀 abcdefghij'), 'the row starts with the string', row.slice(0, 60));
 });
 
+test('a 200 MB string of non-ASCII text opens as valid JSON', { known: (engine) => (engine === 'chromium' ? 'bug: V8 Zone OOM in a worker kills the tab (BREAKER-REPORT F3)' : undefined) }, async (t) => {
+  await heavyLock(t);
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  const st = await open(t, 'one-text-200mb', { minutes: 5 }).catch((e) => ({ error: String(e).slice(0, 120) }));
+  t.check(!crashed, 'the tab survives');
+  t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 1 node · depth 0', 'valid, one node', st);
+});
+
 test('5 MB of random bytes: an error within seconds, and the page stays responsive', async (t) => {
   // (50 MB of random bytes runs Chromium out of memory on main: 6.8 GiB after 3 minutes. Not opened here.)
   const { page } = t;
