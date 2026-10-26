@@ -69,3 +69,13 @@ test('documents nested deeper than the engine can stringify are written from the
   assert.ok(pretty.startsWith('[\n {\n  "k": [\n   {\n'));
   assert.equal(formatDoc(src, res, '', true), src);
 });
+
+test('reindent switches from one-byte to UTF-16 output where the first wide character appears', () => {
+  const ascii = JSON.stringify(Array.from({ length: 2000 }, (_, i) => ({ id: i, s: 'plain ' + i })));
+  for (const tail of ['"é"', '"\\u00e9"', '"😀"', '"\\ud83d\\ude00"', '"\\ud800"', '"\\u0080"', '"a\\nb"', '"\\u007f"']) {
+    const doc = `{"a": ${ascii}, "tail": ${tail}, "more": ${ascii}}`;
+    for (const indent of ['', '  ', '\t']) assert.equal(reindent(doc, indent), JSON.stringify(JSON.parse(doc), null, indent), `${tail} ${JSON.stringify(indent)}`);
+  }
+  // A wide character first, in a key.
+  assert.equal(reindent('{"ключ": [1, 2]}', ''), '{"ключ":[1,2]}');
+});
