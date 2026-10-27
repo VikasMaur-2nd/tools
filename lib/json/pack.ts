@@ -11,6 +11,10 @@ import { containerOf, emptyTape, KEY_INDEX, nodeAtOffset, receiver, W, type Sent
 
 export type PackedTree = SentTape;
 
+// (The Format view reads a big document's pretty text off its tape: with the tape's code, not the first load.)
+export { tapeOfNode } from './lazy';
+export { PrettyText, prettyIndexer } from './pretty';
+
 const received = new WeakMap<PackedTree, Tape>();
 
 /** The tape of a packed tree, its property names read in steps (see `unpacker`). */

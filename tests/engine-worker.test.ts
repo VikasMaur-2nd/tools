@@ -45,7 +45,7 @@ function session() {
     }) as ts.SourceFile] },
   }).outputText;
   runInNewContext(js, {
-    exports, performance, URL, console, AbortController,
+    exports, performance, URL, console, AbortController, queueMicrotask,
     setTimeout: defer, clearTimeout: (id: number) => tasks.delete(id), window: { setTimeout: defer },
     require: (name: string) => {
       if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
@@ -68,7 +68,7 @@ function session() {
   engine.ed = { version: Doc.of('{"a":1}'), text: '{"a":1}' };
   engine.fmt = { text: '', el: {}, snapshotText: () => () => '', setText: () => {}, inlineIndex: () => ({ close: new Int32Array(0), depth: new Int32Array(0) }) };
   const tick = () => { const first = tasks.entries().next().value; if (first) { tasks.delete(first[0]); first[1](); } look(); return !!first; };
-  return { engine, workers, tick, errors, state, seen, look };
+  return { engine, workers, tick, errors, state, seen, look, tasks };
 }
 
 test('worker patch uses the displayed text when layout commits before onReady', () => {
@@ -174,6 +174,8 @@ for (const kind of ['blank', 'paste', 'shrink']) {
 
 test('large typed requests send bounded edits without flattening the document on the page', () => {
   const { engine } = session();
+  // (Minified: the formatting worker makes the output. Pretty is read off the tape: see the test below.)
+  engine.settings.minify = true;
   const before = Doc.of('{"a":"' + 'x'.repeat(2_000_000) + '"}');
   const document = before.edit(6, 6, 'typed');
   document.toString = () => { throw new Error('flattened the full document while typing'); };
@@ -375,6 +377,8 @@ const bigArray = (n: number) => '[' + '1,'.repeat(n) + '1]';
 
 test('a big load in the Format view shows its percent from the start, only growing, through both workers', async () => {
   const { engine, workers, tick, seen, look } = loadSession();
+  // (Minified: the formatting worker makes the output. Pretty is read off the tape: see the test below.)
+  engine.settings.minify = true;
   await engine.tapeCode();
   const text = bigArray(1_500_000);
   engine.load(text, 'big.json', false, true);
@@ -408,6 +412,7 @@ test('a big load in the Format view shows its percent from the start, only growi
 
 test('a tape that arrives before its code loads waits for it, and messages after it keep their order', async () => {
   const { engine, workers, tick, seen, look } = loadSession();
+  engine.settings.minify = true;
   const text = bigArray(1_500_000);
   engine.load(text, 'big.json', false, true);
   look();
@@ -494,6 +499,7 @@ test('small loads, typing and edits show no percent', () => {
 
 test('an edit during a big load ends its percent', () => {
   const { engine, workers, tick, state } = loadSession();
+  engine.settings.minify = true;
   engine.load(bigArray(1_500_000), 'big.json', false, true);
   while (tick());
   const formatting = workers[0];
@@ -538,4 +544,70 @@ test('a big JSON Lines file with CRLF reaches the editor and the analysis worker
   assert.ok(sent.length > 0, 'the text went to a worker');
   assert.ok(sent.every((t) => !t.includes('\r')), 'no worker gets a CR: its offsets are the editor\'s');
   assert.equal(sent.join('').length >= lf.length, true);
+});
+
+test('a big document shown Pretty is read off its tape a line at a time, and Copy waits for its lines', async () => {
+  const { engine, tick, state, tasks } = session();
+  await engine.tapeCode();
+  const { parse: parseTape } = load(resolve(__dirname, '../lib/json/tape-parser'));
+  const { lazyResult } = load(resolve(__dirname, '../lib/json/lazy'));
+  const { stringify } = load(resolve(__dirname, '../lib/json/format'));
+  const text = JSON.stringify(Array.from({ length: 50_000 }, (_, i) => ({ id: i, name: `Zoë ${i} 😀`, tags: ['a', i, {}], ok: i % 2 === 0, s: 'say "hi"\n' })));
+  assert.ok(text.length >= 2_000_000);
+  engine.settings.view = 'format';
+  engine.good = lazyResult(parseTape(text), text);
+  engine.goodText = text;
+  engine.goodVer = {};
+  engine.goodMetrics = { min: text.length, extra: 123, units: 10, bytes: text.length };
+  state.fmt = {};
+  type Lines = { slice(): string; length: number; index: { starts: Int32Array } };
+  const view: { shown: Lines | null } = { shown: null };
+  engine.fmt.setLines = (lines: Lines) => { view.shown = lines; };
+  engine.fmt.setNotes = () => {};
+  engine.runFormat();
+  // Its lines are indexed in short steps: Copy and Download wait for them meanwhile.
+  const waiting = engine.outputPending();
+  assert.ok(waiting, 'Copy waits');
+  // (Its time limit is the newest task: the fake queue has no time, so it would run before the steps.)
+  tasks.delete(Math.max(...tasks.keys()));
+  while (tick());
+  const shown = view.shown;
+  assert.ok(shown, 'drawn');
+  const want = stringify(parse(text).root!, '  ');
+  assert.equal(shown.length, want.length);
+  assert.equal(shown.slice(), want);
+  assert.equal(await waiting, want);
+  assert.deepEqual(plain(state.fmt), { lines: shown.index.starts.length, pretty: text.length + 123 + 20, minified: text.length, escaped: 0 });
+  // The engine keeps no text of it, and a second run draws nothing new.
+  assert.equal(engine.fmtOut, '');
+  assert.equal(engine.fmtText, '');
+  engine.runFormat();
+  while (tick());
+  assert.equal(view.shown, shown);
+  // Minified isn't read off the tape: the view gets a made text again.
+  let made: string | null = null;
+  engine.fmt.setText = (t: string) => { made = t; };
+  engine.settings.minify = true;
+  engine.runFormat();
+  while (tick());
+  assert.equal(made, JSON.stringify(JSON.parse(text)));
+});
+
+test('switching a big document to Minify formats it in the worker, not on the page', () => {
+  const { engine, workers, tick } = session();
+  const text = '[' + '1,'.repeat(1_100_000) + '1]';
+  const ver = Doc.of(text);
+  engine.settings.view = 'format';
+  engine.settings.minify = true;
+  engine.good = parse(text);
+  engine.goodText = text;
+  engine.goodVer = ver;
+  engine.ed = { version: ver, length: ver.length, text };
+  engine.fmtKey = 'falsefalsefalse  ';
+  engine.fmt.setText = () => assert.fail('formatted on the page');
+  engine.runFormat();
+  while (tick());
+  const sent = workers.flatMap((w) => w.messages).find((m) => m.start && m.fast);
+  assert.ok(sent, 'the formatting worker got the document');
+  assert.equal(sent.indent, '');
 });

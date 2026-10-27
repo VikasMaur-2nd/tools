@@ -14,6 +14,7 @@ import { jsonLines } from './rules';
 import type { JNode } from '../json/parser';
 import { Doc, type TextEdit } from './doc';
 import { ScalarFormatter } from '../json/incremental-format';
+import { prettyIndexer } from '../json/pretty';
 
 let latest = 0;
 let previous = '';
@@ -27,6 +28,8 @@ export interface Request {
   sortKeys?: boolean;
   lines?: boolean;
   escape?: boolean;
+  /** An analysis whose document the Format view shows Pretty off its tape: its pretty lines, for this indent unit (see pretty.ts). */
+  pretty?: string;
   base?: number;
   start?: boolean;
   chunk?: string;
@@ -232,8 +235,11 @@ function analyse(data: Request, text: string) {
   if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   showing(data, MEASURED);
+  // The Format view's lines are indexed here, off the page's thread, before the tape goes (it moves, not copied).
+  const pretty = data.pretty && res.root ? prettyIndexer(tape, text, data.pretty)(Infinity) : null;
   const tree = packTape(tape);
-  (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, packedTransfer(tree));
+  const lines = pretty ? [pretty.starts.buffer, pretty.close.buffer, pretty.depth.buffer, pretty.node.buffer, pretty.ascii.buffer] : [];
+  (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good, pretty: pretty && { indent: data.pretty, index: pretty } }, [...packedTransfer(tree), ...lines]);
   // A huge document isn't kept here as well (hundreds of MB): an edit then asks the page for all of it again.
   if (text.length > RETAIN_MAX && !data.good) {
     source = Doc.of('');
@@ -344,8 +350,13 @@ function formatFast(data: Request, input: Doc) {
     chunkedOut: patch === undefined && sentOut === undefined,
     chunkedDisplay: display !== undefined && sentDisplay === undefined, index: sent,
   }, [sent.starts.buffer, ...(sent.close && sent.depth ? [sent.close.buffer, sent.depth.buffer] : [])]);
-  // A huge output isn't kept here as well as on the page (hundreds of MB): the next edit's output is sent whole.
-  if (output.length > RETAIN_MAX) {
+  // A huge document isn't kept here as well as on the page (hundreds of MB): an edit then asks the page for
+  // all of it again (see analyse), and a huge output's next one is sent whole.
+  if (input.length > RETAIN_MAX && source === input) {
+    source = Doc.of('');
+    sourceId = -1;
+  }
+  if (output.length > RETAIN_MAX || input.length > RETAIN_MAX) {
     outputs.clear();
     indexed = null;
     scalar = null;

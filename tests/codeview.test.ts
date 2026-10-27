@@ -55,3 +55,35 @@ test('find reports each match by line and column', async () => {
   assert.deepEqual(code.find('ab'), { total: 4, index: 0 });
   assert.deepEqual((code as unknown as { hits: number[] }).hits, [0, 0, 1, 1, 3, 1, 3, 4]);
 });
+
+test('lines read one at a time wrap, draw and are found exactly as the same text given whole', async () => {
+  const { parse } = await import('../lib/json/parser');
+  const { stringify } = await import('../lib/json/format');
+  const { tapeOf } = await import('../lib/json/tape-send');
+  const { PrettyText, prettyIndexer } = await import('../lib/json/pretty');
+  // (Lines past ASCII short enough not to be measured, which needs a browser: see Wrapper.rows.)
+  const doc = JSON.stringify({
+    short: 1, long: 'word '.repeat(40), w: '東京', e: '😀',
+    list: Array.from({ length: 30 }, (_, i) => ({ i, s: i % 3 ? 'ascii text '.repeat(i) : 'é' + 'x'.repeat(i % 5) })),
+  });
+  const res = parse(doc);
+  const text = stringify(res.root!, '  ');
+  const tape = tapeOf(res, doc);
+  const lines = new PrettyText(tape, doc, '  ', prettyIndexer(tape, doc, '  ')(Infinity)!);
+  for (const width of [800, 1400]) {
+    const a = view(width);
+    const b = view(width);
+    a.code.setText(text, (t) => t, true);
+    b.code.setLines(lines, (t) => t, true);
+    for (let k = 0; k < 50 && (!a.rows.innerHTML || !b.rows.innerHTML); k++) await tick();
+    const inner = (v: CodeView) => v as unknown as { vis: Int32Array; rowStart: Int32Array; odd: Uint8Array; ls: Int32Array };
+    assert.deepEqual(Array.from(inner(b.code).vis), Array.from(inner(a.code).vis), `vis at ${width}`);
+    assert.deepEqual(Array.from(inner(b.code).rowStart), Array.from(inner(a.code).rowStart), `rows at ${width}`);
+    assert.deepEqual(Array.from(inner(b.code).odd), Array.from(inner(a.code).odd), `odd at ${width}`);
+    assert.equal(b.rows.innerHTML, a.rows.innerHTML, `drawn at ${width}`);
+    for (const q of ['word', 'ascii', '"i": 2']) {
+      assert.deepEqual(b.code.find(q), a.code.find(q), q);
+      assert.deepEqual((b.code as unknown as { hits: number[] }).hits, (a.code as unknown as { hits: number[] }).hits, q);
+    }
+  }
+});

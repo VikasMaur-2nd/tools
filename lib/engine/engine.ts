@@ -1,7 +1,9 @@
 import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
 import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
-import type { PackedTree } from '../json/pack';
+import type { PackedTree, PrettyText } from '../json/pack';
+import type { PrettyIndex } from '../json/pretty';
+import type { Tape } from '../json/tape';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
 import type { DocumentMetrics } from '../json/metrics';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
@@ -197,7 +199,26 @@ function sniff(text: string): Hint {
  * The tape's code (pack.ts and what it imports): only documents a worker parsed need it, so it isn't in
  * the first load. Loaded when the page is idle, and waited for by a worker message that brings a tape.
  */
+/**
+ * Waits in `list` for an output still being made (see outputPending): resolved by its maker, or with null
+ * after two minutes (one that never comes, the document turned invalid say: nothing to copy).
+ */
+function waitIn(list: ((out: string | null) => void)[]): Promise<string | null> {
+  return new Promise((done) => {
+    list.push(done);
+    setTimeout(() => {
+      const i = list.indexOf(done);
+      if (i >= 0) {
+        list.splice(i, 1);
+        done(null);
+      }
+    }, 120_000);
+  });
+}
+
 type Pack = typeof import('../json/pack');
+/** Pretty lines a worker indexed with a tape (see drawPretty), by the tape's nodes. */
+const prettyIndexes = new WeakMap<Int32Array, { indent: string; index: PrettyIndex }>();
 let pack: Pack | null = null;
 let packLoad: Promise<Pack> | null = null;
 const loadPack = () => (packLoad ??= import('../json/pack').then((m) => (pack = m), (e: unknown) => {
@@ -1258,6 +1279,8 @@ export class Engine {
     store.set({ fileName: name });
     if (persist) write(KEYS.file, name);
     if (text.length >= STEPS_MIN) this.startProgress();
+    // (Its output, read off its tape, comes with its analysis: until then the view shows nothing of the one before.)
+    if (this.settings.view === 'format' && this.prettyFromTape(text.length)) this.blankFormat();
     if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) {
       // Until the editor has it, input would act on the old document: the first input hands it over at once.
       this.pendingLoad = { seq: this.loadSeq, text, persist };
@@ -1294,6 +1317,9 @@ export class Engine {
   private outputFirst(text: string | Doc, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void, typed = false, retained?: Doc): boolean {
     const s = this.settings;
     if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || text.length < WORKER_MIN && readJwt(text.toString(), this.indent)) return false;
+    // A big document's Pretty output is read off its tape (see runFormat): nothing to make here. A load goes
+    // on to the editor and the analysis (finishLoad); after typing, only the analysis runs.
+    if (this.prettyFromTape(text.length)) return typed && this.analyzeOnly(retained ?? (typeof text === 'string' ? Doc.of(text) : text), name, next);
     const seq = ++this.loadSeq;
     const fast = text.length >= WORKER_MIN;
     // A big load (not typing) shows how far it got, here its output's steps (see FORMAT_SENT).
@@ -1371,10 +1397,40 @@ export class Engine {
     } else {
       let got = 0;
       const arrived = showing ? (chars: number, size: number) => this.progress(FORMAT_MADE + ((FORMATTED - FORMAT_MADE) * (got += chars)) / size) : undefined;
-      this.reindentJob = { id: seq, done, fallback: here, baseText, baseIndex: this.fmt.inlineIndex({ starts: new Int32Array(0), maxLen: 0 }), baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [], made, arrived };
       const request = { id: seq, indent, parse: typed && !fast, fast, reuseIndex: true, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: baseId, progress: showing };
+      // (A worker that let go of a huge document answers an edit with "reset": it gets all of it again.)
+      const resend = () => this.postDocument(w, request, document, false);
+      this.reindentJob = { id: seq, done, fallback: here, resend, baseText, baseIndex: this.fmt.inlineIndex({ starts: new Int32Array(0), maxLen: 0 }), baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [], made, arrived };
       this.postDocument(w, request, document, false, undefined, showing ? this.span(0, FORMAT_SENT) : undefined);
     }
+    return true;
+  }
+
+  /**
+   * Whether the Format view reads a document of `length` characters off its tape (see pretty.ts), never making its
+   * output whole: a big one (parsed in the worker) shown Pretty, not sorted, not escaped.
+   */
+  private prettyFromTape(length: number) {
+    const s = this.settings;
+    return length >= WORKER_MIN && !s.minify && !s.escape && !s.sortKeys;
+  }
+
+  /** After typing in a big document shown Pretty (see prettyFromTape): its analysis in the worker, then `next`. */
+  private analyzeOnly(document: Doc, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void) {
+    const seq = ++this.loadSeq;
+    clearTimeout(this.timer);
+    this.queueAnalysis(seq, document, name, (tree, metrics) => {
+      if (seq !== this.loadSeq) return;
+      if (!tree) return next();
+      const step = pack!.unpacker(tree, document.toString());
+      const run = () => {
+        if (seq !== this.loadSeq) return;
+        const res = step(performance.now() + 8);
+        if (res) next(res, metrics);
+        else soon(run);
+      };
+      run();
+    }, 0, () => seq === this.loadSeq && next());
     return true;
   }
 
@@ -1389,7 +1445,7 @@ export class Engine {
   private measuredSizes: { id: number; sizes: Sizes } | null = null;
   private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
   /** `made`, `arrived`: a big load shows how far the worker got, then how much of its output arrived. */
-  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; baseText: string; baseIndex: CodeIndex; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[]; made?: (f: number) => void; arrived?: (chars: number, size: number) => void } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; resend?: () => void; baseText: string; baseIndex: CodeIndex; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[]; made?: (f: number) => void; arrived?: (chars: number, size: number) => void } | null = null;
 
   private workerDoc: Doc | null = null;
   private workerDocId = 0;
@@ -1466,8 +1522,9 @@ export class Engine {
       try {
         const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
         const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
-        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number }>) => this.withPack(!!e.data.tree, () => {
+        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number; pretty?: { indent: string; index: PrettyIndex } }>) => this.withPack(!!e.data.tree, () => {
           if (e.data.id !== this.loadSeq) return;
+          if (e.data.tree && e.data.pretty) prettyIndexes.set(e.data.tree.nodes, e.data.pretty);
           if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
           else if (e.data.good && e.data.tree && good) {
@@ -1492,7 +1549,9 @@ export class Engine {
           w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
           if (id === this.loadSeq) failed?.();
         };
-        const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape, progress: !!worked };
+        // (The Format view shown Pretty off the tape: the worker indexes its lines too, see drawPretty.)
+        const pretty = this.settings.view === 'format' && this.prettyFromTape(document.length) ? this.indent : undefined;
+        const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape, progress: !!worked, pretty };
         const current = () => this.postDocument(w, request, document, true, undefined, sent);
         if (good) this.postDocument(w, { ...request, good: true, progress: false }, good, true, current);
         else current();
@@ -1550,7 +1609,12 @@ export class Engine {
         }
         if (e.data.tree) return void (this.workerParse = { id: e.data.id, tree: e.data.tree, metrics: e.data.metrics });
         const job = this.reindentJob;
-        if (e.data.reset) { this.workerDoc = null; job?.fallback(); return; }
+        if (e.data.reset) {
+          this.workerDoc = null;
+          if (job?.resend && job.id === e.data.id) job.resend();
+          else job?.fallback();
+          return;
+        }
         if (!job || job.id !== e.data.id) return;
         if (e.data.progress !== undefined) return void job.made?.(e.data.progress);
         if (e.data.chunk !== undefined) {
@@ -2356,7 +2420,7 @@ export class Engine {
 
   /** The formatted document for the current settings (from the last valid parse), before any escaping. */
   private formatted(): string {
-    if (this.formatCurrent(this.fmtSettings())) return this.fmtText;
+    if (this.formatCurrent(this.fmtSettings())) return this.fmtPretty ? this.fmtPretty.slice() : this.fmtText;
     const r = this.good;
     if (!r?.root) return '';
     const s = this.settings;
@@ -2378,6 +2442,12 @@ export class Engine {
   private fmtText = '';
   /** What drawFormat last gave the view (the output as shown: escaped when it is). */
   private fmtOut = '';
+  /** Or the pretty text read off a big document's tape it gave the view (see drawPretty): never made whole. */
+  private fmtPretty: PrettyText | null = null;
+  /** Bumped when the Format view is drawn: a pretty index still being made (see drawPretty) is dropped. */
+  private prettySeq = 0;
+  /** The pretty index being made (see drawPretty), while it is prettySeq's. */
+  private prettyMaking = -1;
   /** The output drawn (empty) is the one too large to make: the view and Copy say so. */
   private fmtTooLarge = false;
   private fmtVersion = 0;
@@ -2397,10 +2467,18 @@ export class Engine {
       const retained = this.fmtSrcVer;
       if (this.outputFirst(retained, store.get().fileName, (res, metrics) => this.analyze(res, metrics), true, retained)) return;
     }
+    // A big document's output for other settings (Minify, sorted, escaped) is made in the worker too: here it
+    // would hold the page for seconds.
+    const ver = this.goodVer;
+    if (this.fmtKey !== this.fmtSettings() && ver instanceof Doc && ver.length >= WORKER_MIN && !this.prettyFromTape(ver.length)) {
+      if (this.outputFirst(ver, store.get().fileName, (res, metrics) => this.analyze(res, metrics), true, ver)) return;
+    }
     if (this.packed && this.fmtKey !== this.fmtSettings()) this.fresh();
     if (this.fmtKey !== this.fmtSettings()) this.materializeGood();
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
+    const pretty = this.prettySource();
+    if (pretty) return this.drawPretty(pretty.tape, pretty.src, key);
     const drawn = this.formatCurrent(key);
     // (Already found too large to make: the view keeps saying so.)
     if (drawn && this.fmtTooLarge) return;
@@ -2461,24 +2539,82 @@ export class Engine {
     return `${minify}${escape}${sortKeys}${this.indent}`;
   }
 
-  /** Shows `text` (the formatted `src`) in the Format view. */
-  private drawFormat(text: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+  /** Shows `text` (the formatted `src`, or its pretty text read off its tape) in the Format view. */
+  private drawFormat(text: string | PrettyText, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
     this.fmtTooLarge = false;
     if (store.get().fmt.tooLarge) store.set({ fmt: { ...store.get().fmt, tooLarge: false } });
     if (!change) this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;
     this.fmtVersion++;
     this.fmtStatSeq++;
+    this.prettySeq++;
     const { minify, escape } = this.settings;
     this.fmtSrcVer = version;
     this.fmtKey = key;
-    this.fmtText = text;
-    const out = display ?? (escape && text ? JSON.stringify(text) : text);
+    const pretty = typeof text === 'string' ? null : text;
+    this.fmtPretty = pretty;
+    this.fmtText = pretty ? '' : (text as string);
+    const out = pretty ? '' : display ?? (escape && text ? JSON.stringify(text) : (text as string));
     this.fmtOut = out;
-    this.fmt.setText(out, jsonRow, true, null, index, change, patch, inline);
+    if (pretty) this.fmt.setLines(pretty, jsonRow, true);
+    else this.fmt.setText(out, jsonRow, true, null, index, change, patch, inline);
     this.noteExpiry(minify || escape ? '' : out);
     // (After the caller has said whether it is the too-large note: see runFormat.)
     if (this.outputWaiters.length) queueMicrotask(() => this.outputDrawn());
+  }
+
+  /** The Format view shows nothing, and nothing is current there (a big new document's output comes with its analysis). */
+  private blankFormat() {
+    this.prettySeq++;
+    this.fmtKey = '';
+    this.fmtSrcVer = null;
+    this.fmtPretty = null;
+    this.fmtText = this.fmtOut = '';
+    this.fmt.setText('', jsonRow, true);
+  }
+
+  /** The newest good document's tape and text, when the Format view reads its output off them (see prettyFromTape). */
+  private prettySource(): { tape: Tape; src: string } | null {
+    if (!pack || !this.prettyFromTape(this.goodText.length)) return null;
+    if (this.goodPacked) return { tape: pack.tapeOfPacked(this.goodPacked.tree), src: this.goodPacked.text };
+    const z = this.good?.root ? pack.tapeOfNode(this.good.root) : null;
+    return z && z.i === 0 ? { tape: z.tape, src: z.src } : null;
+  }
+
+  /** Shows the pretty text of `tape` (of `src`), its lines indexed first in short steps. */
+  private drawPretty(tape: Tape, src: string, key: string) {
+    const ver = this.goodVer;
+    if (this.fmtPretty && this.formatCurrent(key)) return this.prettyStats(this.fmtPretty);
+    const seq = ++this.prettySeq;
+    this.prettyMaking = seq;
+    const indent = this.indent;
+    // (Indexed by the worker that parsed it, for this indent, when the Format view was shown: else here, in steps.)
+    const made = prettyIndexes.get(tape.nodes);
+    const run = made?.indent === indent ? () => made.index : pack!.prettyIndexer(tape, src, indent);
+    const step = () => {
+      if (seq !== this.prettySeq || this.dead || ver !== this.goodVer || key !== this.fmtSettings()) return;
+      const index = run(performance.now() + 8);
+      if (index === undefined) return void soon(step);
+      if (index === null) {
+        // (Nesting so deep its indentation alone would be huge.) The view says so, as runFormat does.
+        this.drawFormat('', key, undefined, undefined, undefined, undefined, false, ver);
+        this.fmtTooLarge = true;
+        store.set({ fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0, tooLarge: true } });
+        return;
+      }
+      const text = new pack!.PrettyText(tape, src, indent, index);
+      this.drawFormat(text, key, undefined, undefined, undefined, undefined, false, ver);
+      this.prettyStats(text);
+    };
+    step();
+  }
+
+  /** The Format view's line count and sizes for pretty text read off a tape (its document was measured in the worker). */
+  private prettyStats(text: PrettyText) {
+    const m = this.goodMetrics;
+    if (!m) return;
+    const extra = m.extra + m.units * this.indent.length;
+    store.set({ fmt: { lines: text.index.starts.length, pretty: m.min + extra, minified: m.min, escaped: 0 } });
   }
 
   /**
@@ -2557,33 +2693,24 @@ export class Engine {
   }
 
   /** Copy/Download waiting for the Format output of the current settings (see outputPending). */
-  private outputWaiters: ((out: string | null) => void)[] = [];
+  private readonly outputWaiters: ((out: string | null) => void)[] = [];
 
   /**
    * The output the Format view is still making for the current settings (it shows the last settings' until
    * then), or null when what it shows is current. Resolves with the output, or null if it couldn't be made.
    */
   private outputPending(): Promise<string | null> | null {
-    if (this.settings.view !== 'format' || this.fmtKey === this.fmtSettings() || !this.fmtOut) return null;
-    return new Promise((done) => {
-      this.outputWaiters.push(done);
-      // (A format that never comes, the document turned invalid say: nothing to copy.)
-      setTimeout(() => {
-        const i = this.outputWaiters.indexOf(done);
-        if (i >= 0) {
-          this.outputWaiters.splice(i, 1);
-          done(null);
-        }
-      }, 120_000);
-    });
+    const making = this.prettyMaking === this.prettySeq;
+    if (this.settings.view !== 'format' || !making && (this.fmtKey === this.fmtSettings() || !this.fmtOut && !this.fmtPretty)) return null;
+    return waitIn(this.outputWaiters);
   }
 
   /** Hands waiting copies and downloads the output once it matches the settings (after drawFormat). */
   private outputDrawn() {
     if (!this.outputWaiters.length || this.fmtKey !== this.fmtSettings()) return;
-    const waiting = this.outputWaiters;
-    this.outputWaiters = [];
-    const out = this.fmtTooLarge ? null : this.fmtOut;
+    const waiting = this.outputWaiters.splice(0);
+    const pretty = this.fmtPretty;
+    const out = this.fmtTooLarge ? null : pretty ? this.unlessTooLarge(() => pretty.slice(), false) : this.fmtOut;
     for (const done of waiting) done(out);
   }
 
@@ -2638,13 +2765,11 @@ export class Engine {
   private convDone = { seq: 0, out: '' };
 
   /** Copy/Download waiting for the conversion asked for last (see convPending). */
-  private convWaiters: ((out: string | null) => void)[] = [];
+  private readonly convWaiters: ((out: string | null) => void)[] = [];
 
   private convFinished(seq: number, out: string) {
     this.convDone = { seq, out };
-    const waiting = this.convWaiters;
-    this.convWaiters = [];
-    for (const done of waiting) done(out);
+    for (const done of this.convWaiters.splice(0)) done(out);
   }
 
   /**
@@ -2653,17 +2778,7 @@ export class Engine {
    */
   private convPending(): Promise<string | null> | null {
     if (this.settings.view !== 'convert' || this.convDone.seq === this.convSeq) return null;
-    return new Promise((done) => {
-      this.convWaiters.push(done);
-      // (A conversion that never comes: nothing to copy.)
-      setTimeout(() => {
-        const i = this.convWaiters.indexOf(done);
-        if (i >= 0) {
-          this.convWaiters.splice(i, 1);
-          done(null);
-        }
-      }, 120_000);
-    });
+    return waitIn(this.convWaiters);
   }
 
   /** The output the Convert view shows or is making for the current settings. */

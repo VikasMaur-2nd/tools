@@ -30,13 +30,13 @@ interface Reply {
 }
 
 /** `clock`: the worker's clock moves on by this many ms at each reading (a fake one, the same on any machine). */
-function session({ clock = 0 } = {}) {
+function session({ clock = 0, wait = 10_000 } = {}) {
   const fake = clock ? `let now=0; performance.now=()=>(now+=${clock});` : '';
   const worker = new Worker(`${fake}const {parentPort}=require('node:worker_threads'); global.self={postMessage:(data,transfer)=>parentPort.postMessage(data,transfer)}; parentPort.on('message',data=>self.onmessage({data})); require(${JSON.stringify(resolve(__dirname, '../lib/engine/reindent.worker.js'))});`, { eval: true });
   const messages: Reply[] = [];
   worker.on('message', (data) => messages.push(data));
   const receive = (id: number) => new Promise<Reply>((done, fail) => {
-    const timer = setTimeout(() => { worker.terminate(); fail(new Error(`missing worker reply ${id}`)); }, 10_000);
+    const timer = setTimeout(() => { worker.terminate(); fail(new Error(`missing worker reply ${id}`)); }, wait);
     const check = () => {
       const i = messages.findIndex((m) => m.id === id && !('chunk' in m) && !('progress' in m));
       if (i < 0) return;
@@ -309,7 +309,8 @@ test('the formatting worker measures compressed sizes for the page, answering on
 });
 
 test('the analysis worker lets go of a huge document after analysing it, and an edit then asks for all of it again', async () => {
-  const { worker, request } = session();
+  // (Over 48M characters: seconds of work, longer on a busy machine.)
+  const { worker, request } = session({ wait: 120_000 });
   try {
     // Over the worker's 48M-character limit: an array of short numbers.
     const text = '[' + '1,'.repeat(24_100_000) + '1]';
@@ -323,6 +324,43 @@ test('the analysis worker lets go of a huge document after analysing it, and an 
     const small = await request({ id: 4, edit: { a: 1, b: 1, ins: ' ' }, sourceBase: 3, analysis: true });
     assert.equal(small.reset, undefined);
     assert.ok(small.tree, 'the edit was analysed');
+  } finally {
+    await worker.terminate();
+  }
+});
+
+test('the formatting worker lets go of a huge document after formatting it, and an edit then asks for all of it again', async () => {
+  const { worker, request } = session({ wait: 120_000 });
+  try {
+    // Over the worker's 48M-character limit: minified (indent ''), so the output is as long.
+    const text = '[' + '1,'.repeat(24_100_000) + '1]';
+    const first = await request({ id: 1, text, fast: true, indent: '' });
+    assert.ok(first.chunkedOut, 'formatted (and sent in chunks)');
+    const edited = await request({ id: 2, edit: { a: 1, b: 1, ins: ' ' }, sourceBase: 1, base: 1, fast: true, indent: '' });
+    assert.equal(edited.reset, true);
+    // A small document is kept: an edit against it is formatted.
+    await request({ id: 3, text: '[1,2]', fast: true, indent: '' });
+    const small = await request({ id: 4, edit: { a: 1, b: 1, ins: ' ' }, sourceBase: 3, base: 3, fast: true, indent: '' });
+    assert.equal(small.reset, undefined);
+    assert.ok(small.out === '[1,2]' || small.patch !== undefined, 'the edit was formatted');
+  } finally {
+    await worker.terminate();
+  }
+});
+
+test('an analysis for the Format view shown Pretty indexes its pretty lines with the tape', async () => {
+  const { worker, request } = session();
+  try {
+    const text = JSON.stringify({ a: [1, 'é😀', { b: null }], c: {}, d: 'say "hi"' });
+    const want = codeIndexer(formatDoc(text, parse(text), '    '))(Infinity)!;
+    const reply = await request({ id: 1, text, analysis: true, pretty: '    ' }) as Reply & { pretty?: { indent: string; index: CodeIndex & { node: Int32Array } } };
+    assert.equal(reply.pretty?.indent, '    ');
+    assert.deepEqual(Array.from(reply.pretty!.index.starts), Array.from(want.starts));
+    assert.deepEqual(Array.from(reply.pretty!.index.close), Array.from(want.close));
+    assert.equal(reply.pretty!.index.node.length, want.starts.length);
+    // Not asked for: none.
+    const plain = await request({ id: 2, text, analysis: true }) as Reply & { pretty?: unknown };
+    assert.equal(plain.pretty, null);
   } finally {
     await worker.terminate();
   }
