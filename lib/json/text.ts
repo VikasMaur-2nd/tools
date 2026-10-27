@@ -29,6 +29,21 @@ export function asciiText(units: Uint8Array | Uint16Array): string {
   return parts.join('');
 }
 
+/** Work (ms) between yields to the page while reading. */
+const SLICE = 12;
+/** Bytes decoded at a time. */
+const PIECE = 1 << 20;
+
+/** Resolves in a new task (a MessageChannel message: timers would be clamped). */
+const nextTask = () => new Promise<void>((done) => {
+  const ch = new MessageChannel();
+  ch.port1.onmessage = () => {
+    ch.port1.close();
+    done();
+  };
+  ch.port2.postMessage(0);
+});
+
 /** Whether every byte is below 0x80. */
 function ascii(bytes: Uint8Array): boolean {
   let hi = 0;
@@ -50,7 +65,14 @@ export async function readText(body: Blob | Response): Promise<string> {
   let decoder: TextDecoder | null = null;
   // (A chunk can end inside a character: the decoder keeps it, so ASCII made here waits for it to finish.)
   let pending = false;
+  // A stream whose bytes are all there already (a file) hands them over without a task in between: the
+  // page gets one back about every frame.
+  let until = performance.now() + SLICE;
   for (let first = true; ; first = false) {
+    if (performance.now() >= until) {
+      await nextTask();
+      until = performance.now() + SLICE;
+    }
     const { done, value } = await reader.read();
     if (done) break;
     let bytes = value;
@@ -69,15 +91,23 @@ export async function readText(body: Blob | Response): Promise<string> {
       if (!utf16 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) bytes = bytes.subarray(3);
       decoder = new TextDecoder(utf16 || 'utf-8', { ignoreBOM: !utf16 });
     }
-    if (GECKO && decoder!.encoding === 'utf-8' && ascii(bytes)) {
-      if (pending) {
-        parts.push(decoder!.decode());
-        pending = false;
+    // (A stream may hand over a whole file as one chunk, as Firefox's does: it is decoded a slice at a time.)
+    for (let at = 0; at < bytes.length; at += PIECE) {
+      if (at && performance.now() >= until) {
+        await nextTask();
+        until = performance.now() + SLICE;
       }
-      parts.push(asciiText(bytes));
-    } else {
-      parts.push(decoder!.decode(bytes, { stream: true }));
-      pending = true;
+      const piece = bytes.length > PIECE ? bytes.subarray(at, at + PIECE) : bytes;
+      if (GECKO && decoder!.encoding === 'utf-8' && ascii(piece)) {
+        if (pending) {
+          parts.push(decoder!.decode());
+          pending = false;
+        }
+        parts.push(asciiText(piece));
+      } else {
+        parts.push(decoder!.decode(piece, { stream: true }));
+        pending = true;
+      }
     }
   }
   if (decoder && pending) parts.push(decoder.decode());
