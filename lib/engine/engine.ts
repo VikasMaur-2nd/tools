@@ -163,8 +163,9 @@ const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
 const WORKER_MIN = 2_000_000;
 /**
- * WebKit (Safari, and every browser on iOS): its worker lets a loaded file's 16 MB reads go late, ~11% more
- * peak memory at 100 MB (measured twice), so there the analysis worker is sent the text (see postDocument).
+ * WebKit (Safari, and every browser on iOS): reading a loaded file in the analysis worker raises its peak memory
+ * at 100 MB (pretty-printed: +7% and +10%; records about even), though it opens ~20% sooner, so there the
+ * analysis worker is sent the text (see postDocument).
  */
 const WEBKIT = typeof navigator !== 'undefined' && /AppleWebKit\//.test(navigator.userAgent) && !/(Chrome|Chromium)\//.test(navigator.userAgent);
 /** From this size, a new document is parsed here in steps (see analyzeInSteps). */

@@ -274,10 +274,13 @@ const WARM =
  * takes a path for the first time.
  */
 export function warmUp(): void {
+  // (Strings made here, as documents are: a literal is an internalized string, and parsing one with the
+  // others leaves V8's code for the parser ~2.5x slower on every document after.)
+  const broken = ['{"a": [1,, 2]', '// c\n b: NaN', '"c": f({"d": [1, 2]})}'].join(', ');
   for (const doc of ['[' + WARM + ',\n ' + WARM + ' ]', '[' + WARM + ',\n "\u0100", ' + WARM + ' ]']) {
     parse(doc);
     parse(WARM + '\n' + WARM + '\r\n' + WARM + '\n');
-    parse('{"a": [1,, 2], // c\n b: NaN, "c": f({"d": [1, 2]})}');
+    parse(broken);
     const p = parser(doc, {}, 5);
     while (!p.step(0));
   }
