@@ -17,7 +17,6 @@ import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
-import { looksBinary } from './binary';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
@@ -1733,54 +1732,41 @@ export class Engine {
     };
     this.reading = signal;
     try {
-      const text = await (await import('../json/read')).readText(f);
+      // (Whether it is text at all is asked of what was read: see binary.ts.)
+      const [text, { looksBinary }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./binary')]);
       if (this.reading === signal) this.reading = null;
       if (signal.aborted) return unshow();
       // Undone while it was read: it opens, and is undone at once (Redo brings it back).
       const undone = this.undoLoad === signal;
       this.undoLoad = null;
-      const undo = () => {
-        if (!undone) return;
-        this.flushLoad();
-        this.ed.undo();
+      // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
+      const open = (json: string, name: string, said: string | false) => {
+        noteLoad(source, 1, f.name);
+        this.load(json, name, true, json === text);
+        if (undone) {
+          this.flushLoad();
+          this.ed.undo();
+        } else if (said) this.toast(said, 'ok');
       };
       // Not text (a zip, an image, a video opened by mistake): said so, and opened only when asked.
-      if (undone && looksBinary(text)) return unshow();
       if (looksBinary(text)) {
         unshow();
-        return this.toast(`${f.name} looks like a binary file, not JSON`, 'err', {
-          label: 'Open as text',
-          run: () => {
-            this.request(1);
-            noteLoad(source, 1, f.name);
-            this.load(text, f.name, true, true);
-            this.toast(`Opened ${f.name}`, 'ok');
-          },
-        });
+        if (!undone) this.toast(`${f.name} looks like a binary file, not JSON`, 'err', { label: 'Open as text', run: () => (this.request(1), open(text, f.name, `Opened ${f.name}`)) });
+        return;
       }
-      // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
-      let failed = false;
+      let said: string | false = `Opened ${f.name}`;
       if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
         const { detectFormat, importToJson } = await import('../convert/import');
         if (signal.aborted) return unshow();
         const fmt = detectFormat(text, f.name);
         if (fmt !== 'json' && fmt !== 'unknown') {
           const r = importToJson(text, fmt, this.indent);
-          if ('json' in r) {
-            noteLoad(source, 1, f.name);
-            this.load(r.json, f.name.replace(/\.[^.]+$/, '.json'));
-            if (undone) return undo();
-            this.toast(`Converted ${f.name} to JSON`, 'ok');
-            return;
-          }
+          if ('json' in r) return open(r.json, f.name.replace(/\.[^.]+$/, '.json'), `Converted ${f.name} to JSON`);
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
-          failed = true;
+          said = false;
         }
       }
-      noteLoad(source, 1, f.name);
-      this.load(text, f.name, true, true);
-      if (undone) return undo();
-      if (!failed) this.toast(`Opened ${f.name}`, 'ok');
+      open(text, f.name, said);
     } catch {
       if (this.reading === signal) this.reading = null;
       unshow();
@@ -1923,7 +1909,7 @@ export class Engine {
   async loadCompareFile(f: File, source: InputSource = 'file') {
     const signal = this.request(2);
     try {
-      const text = await (await import('../json/read')).readText(f);
+      const [text, { looksBinary }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./binary')]);
       if (signal.aborted) return;
       const open = () => {
         this.loadCompare(text, f.name);

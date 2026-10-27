@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { asciiCells, asciiRows, CUT, leadOf, SUMMED, Wrapper } from '../lib/engine/wrap';
+import { asciiCells, asciiRows, CUT, leadOf, Wrapper } from '../lib/engine/wrap';
 import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 import { Doc } from '../lib/engine/doc';
 
@@ -464,10 +464,10 @@ test("a row's bidi context stops at a forced break, which would break the drawn 
   assert.equal(bidiContext('ab😀', 0, 3, true), '<span class="ctx">ab</span>');
 });
 
-describe('garbage and documents of many glyphs', () => {
+describe('binary text', () => {
   const el = () => ({ className: '', style: {}, setAttribute() {}, appendChild() {}, remove() {}, replaceChildren() {} });
   (globalThis as { document?: unknown }).document ??= { createElement: el };
-  type X = Pick<Wrapper, 'rows' | 'rowStart' | 'rowAt' | 'odd' | 'fit'> & { ctx: unknown; font: string; glyphs: Map<number, number>; guess: Map<number, number> };
+  type X = Pick<Wrapper, 'rows' | 'rowStart' | 'rowAt' | 'odd' | 'fit'> & { ctx: unknown; font: string; glyphs: Map<number, number> };
   /** A wrapper whose canvas measures `width(c)` and counts its measurements; laying out lines in the DOM throws. */
   const make = (exact: boolean, width: (c: number) => number, cols = 40, cw = 8) => {
     const w = new Wrapper(el() as unknown as HTMLElement, 20, exact) as unknown as X;
@@ -500,8 +500,11 @@ describe('garbage and documents of many glyphs', () => {
 
   test('views that draw their rows cut binary lines every few code units: no layout, no glyph measured', () => {
     const t = binary(200_000);
-    const { w, seen } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
+    const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
     const [A, B] = linesOf(t);
+    // (A random line without a control character is text, laid out as such.)
+    const laidOut: string[] = [];
+    (w as unknown as { measure(lines: string[]): number[] }).measure = (lines) => (laidOut.push(...lines), lines.map(() => 1));
     const rows = w.rows(t, A, B);
     const per = 20;
     let cut = 0;
@@ -529,49 +532,14 @@ describe('garbage and documents of many glyphs', () => {
       for (let r = 1; r < st.length; r++) assert.equal(w.rowAt(t, A[k], B[k], A[k] + st[r], CUT, st.length), r);
     }
     assert.ok(cut > A.length * 0.9, `most lines are binary (${cut} of ${A.length})`);
-    assert.equal(seen.length, 0, `${seen.length} glyphs measured`);
-  });
-
-  test('a line whose only oddity is undecodable bytes has its rows added up, its new glyphs estimated', () => {
-    const { w, seen } = make(false, () => 8);
-    const t = Array.from({ length: 40 }, (_, i) => `{"name":"Fran\ufffdois ${i} 東京${String.fromCodePoint(0x4e00 + i)}","note":"caf\ufffd au lait, tr\ufffds bien"}`).join('\n');
-    const [A, B] = linesOf(t);
-    const rows = w.rows(t, A, B);
-    for (let k = 0; k < A.length; k++) {
-      assert.equal(w.odd[k], SUMMED);
-      const st = breaksOf(w, t, A[k], B[k]);
-      assert.equal(rows[k], st.length);
-      for (let r = 1; r < st.length; r++) assert.equal(w.rowStart(t, A[k], B[k], r, SUMMED), st[r]);
-    }
-    assert.equal(seen.length, 0);
-    assert.ok(w.guess.size >= 40);
-  });
-
-  test('an estimated glyph is as wide as the widest measured in its block', () => {
-    const { w } = make(false, (c) => (c >= 0x4e00 && c < 0xa000 ? 13 + (c % 3) : 8));
-    // Past the budget: more Han than it measures, then one more of a block measured, and one of a block that isn't.
-    // (A line over LONG_LINE: its rows are added up, glyph by glyph.)
-    const han = Array.from({ length: 4000 }, (_, i) => String.fromCodePoint(0x4e00 + i)).join('');
-    w.rows(han, Int32Array.of(0), Int32Array.of(han.length));
-    const g = (c: number) => w.glyphs.get(c) ?? w.guess.get(c);
-    const block = (c: number) => Math.max(...[...w.glyphs].filter(([k]) => k >> 8 === c >> 8).map(([, v]) => v));
-    // 512, then two of each further block of 256.
-    const blocks = Math.ceil((0x4e00 + 4000) / 256) - Math.ceil((0x4e00 + 512) / 256);
-    assert.equal(w.glyphs.size, 512 + 2 * blocks);
-    assert.equal(w.guess.size, 4000 - w.glyphs.size);
-    for (const c of [0x4e00 + 511, 0x4e00 + 600, 0x4e00 + 3999]) assert.equal(g(c), w.glyphs.has(c) ? 13 + (c % 3) + 0.05 : block(c), c.toString(16));
-    // Measured up to the cap, then neither the block nor a cap left: the widest measured, at least two cells.
-    const x = w as unknown as { glyph(c: number): number };
-    for (let c = 0x20000; w.glyphs.size < 1024; c += 256) x.glyph(c);
-    assert.equal(x.glyph(0x10400), 16);
-    assert.equal(w.glyphs.size, 1024);
+    assert.ok(laidOut.every((l) => !/[\0-\x08\x0e-\x1f\x7f-\x9f]/.test(l)), 'no binary line laid out');
   });
 
   test('a textarea editor still measures garbage exactly (its rows must match the textarea)', () => {
     const { w } = make(true, () => 8);
     const t = 'ab\u0000cd�' + 'x'.repeat(100);
     assert.throws(() => w.rows(t, Int32Array.of(0), Int32Array.of(t.length)), /laid out in the DOM/);
-    assert.ok(w.odd[0] < SUMMED);
+    assert.notEqual(w.odd[0], CUT);
   });
 
   test('text without garbage is laid out as before', () => {
@@ -582,9 +550,3 @@ describe('garbage and documents of many glyphs', () => {
     }
   });
 });
-
-/** Row starts the wrapper adds up for the line `t[a, b)`. */
-function breaksOf(w: object, t: string, a: number, b: number) {
-  const st = (w as { rowsOf(t: string, a: number, b: number): { length: number; get(r: number): number } }).rowsOf(t, a, b);
-  return Array.from({ length: st.length }, (_, r) => st.get(r));
-}
