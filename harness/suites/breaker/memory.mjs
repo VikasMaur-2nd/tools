@@ -97,6 +97,8 @@ for (const size of SIZES) {
       try {
         ({ result: ph, cpu } = await cpuDuring(t, async () => {
           const run = phases(page, { ...OPEN_PHASES, settled: SETTLED }, () => page.locator('.app:visible input[type=file]').setInputFiles(file), { timeout: 600_000 });
+          // (When the run is stopped for memory, the page closes under it: that rejection is no crash of the runner.)
+          run.catch(() => {});
           // Done once the status settles, valid or not: phases not reached by then are -1.
           await page.waitForFunction(() => window.__ph?.settled != null, null, { timeout: 600_000, polling: 250 });
           await page.evaluate(() => { for (const k in window.__ph) window.__ph[k] ??= -1; });
