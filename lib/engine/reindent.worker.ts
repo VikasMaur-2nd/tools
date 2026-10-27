@@ -10,7 +10,7 @@ import { childCount, W, type Tape } from '../json/tape';
 import { MAX_DEPTH, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
-import { compressedSizes } from './sizes';
+import { compressedSizes, minifiedBytesStream } from './sizes';
 import { jsonLines } from './rules';
 import { Doc, lf, type TextEdit } from './doc';
 import { ScalarFormatter } from '../json/incremental-format';
@@ -305,7 +305,7 @@ function analyse(data: Request, text: string) {
   // (After the tape is sent this parse can't be read: a copy that needs it (loose JSON, nesting deeper than
   // reindent goes) is made before.)
   const later = !data.good && !!res.root;
-  let min = res.root && (!strict || data.escape || (later && res.depth >= REINDENT_DEPTH)) ? formatDoc(text, res, '') : null;
+  const min = res.root && (!strict || data.escape || (later && res.depth >= REINDENT_DEPTH)) ? formatDoc(text, res, '') : null;
   const minBytes = strict ? minifiedBytes(text) ?? undefined : undefined;
   showing(data, MINIFIED);
   const metrics = documentMetrics(text, res, min ?? undefined, minBytes);
@@ -323,9 +323,9 @@ function analyse(data: Request, text: string) {
     sourceId = -1;
   }
   if (later && metrics.min <= 32_000_000) {
-    min ??= reindent(text, '');
-    if (min === null) return;
-    void compressedSizes(new Blob([min]), () => latest === data.id).then((sizes) => {
+    // (Strict JSON's minified text isn't made for this: its bytes go to each encoder as they are written.)
+    const source = min !== null ? new Blob([min]) : () => minifiedBytesStream(text);
+    void compressedSizes(source, () => latest === data.id, metrics.min).then((sizes) => {
       if (latest === data.id) self.postMessage({ id: data.id, sizes: { min: metrics.min, stale: false, ...sizes } });
     });
   }

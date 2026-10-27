@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, JNode, OBJ, parse, type ParseResult } from '../lib/json/parser';
-import { formatDoc, minifiedBytes, reindent, stringify } from '../lib/json/format';
+import { formatDoc, minifiedBytes, reindent, reindenter, stringify } from '../lib/json/format';
+import { compressedSize, minifiedBytesStream } from '../lib/engine/sizes';
 import '../lib/json/requote';
 
 let seed = 11;
@@ -136,4 +137,51 @@ test('strings over 64K characters are re-quoted in place with the same result an
     }
   }
   assert.equal(minifiedBytes('"' + 'x\\n'.repeat(40_000) + '\\'), null, 'unterminated');
+});
+
+/** `reindenter` into a sink, run in short steps: its pieces as one text, its result, and how many pieces there were. */
+function sunk(src: string, indent: string) {
+  const pieces: string[] = [];
+  const run = reindenter(src, indent, (units) => pieces.push(new TextDecoder('utf-16le').decode(units)));
+  let out: string | null | undefined;
+  while ((out = run(performance.now() + 1)) === undefined);
+  return { out, text: pieces.join(''), pieces: pieces.length };
+}
+
+/** A strict document of `n` records long enough to be written in many pieces, wide characters and re-quoted strings across them. */
+const long = (n: number) =>
+  '[\n' + Array.from({ length: n }, (_, i) => `  {"i": ${i}, "s": "${['😀 é', '\\u00e9\\/', 'plain', '中文 😀😀', 'x\\ud83d\\ude00'][i % 5]}", "big": ${9007199254740993n + BigInt(i)}}`).join(',\n') + '\n]\n';
+
+test('a reindent into a sink gives the same text in pieces, never the whole, and the same refusals', () => {
+  for (let k = 0; k < 1500; k++) {
+    const src = ws() + value(0) + ws();
+    for (const indent of ['  ', '']) {
+      const { out, text } = sunk(src, indent);
+      const want = reindent(src, indent);
+      assert.equal(out === null, want === null, src);
+      if (want !== null) assert.equal(text, want, src);
+    }
+  }
+  for (const src of [long(20_000), '{"k": "' + 'x\\n'.repeat(70_000) + '😀", "b": [1, 2]}']) {
+    for (const indent of ['', '\t']) {
+      const { out, text, pieces } = sunk(src, indent);
+      assert.equal(out, '');
+      assert.ok(pieces > 1, `${pieces} pieces`);
+      assert.equal(text, reindent(src, indent));
+    }
+  }
+  assert.equal(sunk('[1, 2', '').out, null);
+  assert.equal(sunk('{"a": tru}', '').out, null);
+});
+
+test('the minified bytes stream is the minified text in UTF-8, and compresses to the same size', async () => {
+  const read = async (s: ReadableStream<Uint8Array>) => new Uint8Array(await new Response(s).arrayBuffer());
+  for (const src of [long(30_000), '{"a": [1, 2.50, "é😀"], "b": null}', '"' + '\\u0041'.repeat(90_000) + '"']) {
+    const min = reindent(src, '')!;
+    const bytes = new TextEncoder().encode(min);
+    assert.deepEqual(await read(minifiedBytesStream(src)), bytes);
+    assert.equal(minifiedBytes(src), bytes.length);
+    for (const codec of ['gzip', 'deflate']) assert.equal(await compressedSize(() => minifiedBytesStream(src), codec), await compressedSize(new Blob([min]), codec), codec);
+  }
+  await assert.rejects(read(minifiedBytesStream('[1, 2')), /not JSON/);
 });

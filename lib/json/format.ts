@@ -252,9 +252,11 @@ export interface Reindenter {
 /**
  * `reindent` in steps: each call works until the time `until` (from
  * performance.now()) and returns undefined if there's more to do, so a big
- * document is re-indented without one long freeze.
+ * document is re-indented without one long freeze. With a `sink`, the output goes
+ * to it in pieces as they are written (a view of a buffer used again after: read
+ * it at once) and is never held whole; the result is then '' (or null).
  */
-export function reindenter(src: string, indent: string): Reindenter {
+export function reindenter(src: string, indent: string, sink?: (units: Uint16Array) => void): Reindenter {
   const n = src.length;
   const unit = indent.length;
   const iu = unit ? indent.charCodeAt(0) : 0;
@@ -266,7 +268,9 @@ export function reindenter(src: string, indent: string): Reindenter {
   // close (object start), 3 key, 4 colon, 5 comma or close, 6 end of text.
   // special: the next backslash, control character or surrogate (one forward search overall).
   // `hi`: the highest unit written (ASCII output is made one byte a character: see `decoded`).
-  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1, hi: 0 };
+  // (Minified, the output is at most the input bar a few re-quoted strings, which grow the buffer as they come.)
+  const size = sink ? SINK_UNITS : unit ? n + (n >> 1) + 64 : n + 64;
+  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(size), len: 0, i: 0, want: 0, special: -1, hi: 0, sink };
   return Object.assign((until: number) => step(st, until), { at: () => st.i });
 }
 
@@ -284,6 +288,20 @@ interface Reindent {
   want: number;
   special: number;
   hi: number;
+  sink?: (units: Uint16Array) => void;
+}
+
+/** The output buffer of a reindent into a sink (see reindenter): what it hands on at a time, at most (bar a longer string). */
+const SINK_UNITS = 1 << 16;
+
+/** Room for `k` more units after `len`: the buffer grown, or with a sink what it holds handed on first. */
+function room(st: Reindent, buf: Uint16Array, len: number, k: number): [Uint16Array, number] {
+  if (st.sink && len) {
+    st.sink(buf.subarray(0, len));
+    if (k <= buf.length) return [buf, 0];
+    len = 0;
+  }
+  return [grown(buf, len, k), len];
 }
 
 /** Runs a reindent until `until`; the loop works on locals (closure or object reads per character are slow). */
@@ -303,11 +321,16 @@ function step(st: Reindent, until: number): string | null | undefined {
       }
       let c = src.charCodeAt(i);
       while (c === 32 || c === 10 || c === 13 || c === 9) c = src.charCodeAt(++i);
-      if (i >= n) return want === 6 ? decoded(buf, len, hi) : null;
+      if (i >= n) {
+        if (want !== 6) return null;
+        if (!st.sink) return decoded(buf, len, hi);
+        if (len) st.sink(buf.subarray(0, len));
+        return '';
+      }
       if (want === 6) return null;
       // Room for any punctuation plus a line break and its indent.
       const depth = stack.length + 1;
-      if (len + 8 + depth * unit > buf.length) buf = grown(buf, len, 8 + depth * unit);
+      if (len + 8 + depth * unit > buf.length) [buf, len] = room(st, buf, len, 8 + depth * unit);
       let br = -1; // write a line break and indent for this depth after the punctuation
       if (want === 4) {
         if (c !== 58) return null;
@@ -375,7 +398,7 @@ function step(st: Reindent, until: number): string | null | undefined {
           // (counted first), without the copies the native way makes (hundreds of MB for one long string).
           const k = requoter.write(src, i, j, null, 0);
           if (k < 0) return null;
-          if (len + k > buf.length) buf = grown(buf, len, k);
+          if (len + k > buf.length) [buf, len] = room(st, buf, len, k);
           len += requoter.write(src, i, j, buf, len);
           hi |= requoter.hi;
         } else if (special < j) {
@@ -386,11 +409,11 @@ function step(st: Reindent, until: number): string | null | undefined {
             return null;
           }
           const k = s.length;
-          if (len + k > buf.length) buf = grown(buf, len, k);
+          if (len + k > buf.length) [buf, len] = room(st, buf, len, k);
           for (let m = 0; m < k; m++) hi |= buf[len++] = s.charCodeAt(m);
         } else {
           const k = j + 1 - i;
-          if (len + k > buf.length) buf = grown(buf, len, k);
+          if (len + k > buf.length) [buf, len] = room(st, buf, len, k);
           for (let m = i; m <= j; m++) hi |= buf[len++] = src.charCodeAt(m);
         }
         i = j + 1;
@@ -418,7 +441,7 @@ function step(st: Reindent, until: number): string | null | undefined {
       // A literal ends at whitespace or a delimiter (not "truex" or "1x").
       const d = src.charCodeAt(end);
       if (end < n && !(d === 32 || d === 10 || d === 13 || d === 9 || d === 44 || d === 93 || d === 125)) return null;
-      if (len + end - i > buf.length) buf = grown(buf, len, end - i);
+      if (len + end - i > buf.length) [buf, len] = room(st, buf, len, end - i);
       for (let m = i; m < end; m++) buf[len++] = src.charCodeAt(m);
       i = end;
       want = stack.length ? 5 : 6;
