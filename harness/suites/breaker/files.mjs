@@ -186,8 +186,8 @@ for (const utf16 of [false, true]) {
 
 for (const [eol, label] of [['\r\n', 'CRLF'], ['\n', 'LF']]) {
   test(`3 MB of JSON Lines with ${label} line ends and multi-byte text: every record, exactly, in every view`, async (t) => {
-    // From 2 MB the records are analysed in the worker. On main and t3/optimize-json-memory-performance a
-    // CRLF file then gets every value shifted by one character per line before it (BREAKER-REPORT F16).
+    // From 2 MB the records are analysed in the worker, over the text with its line ends as the editor keeps
+    // them: a CRLF file once got every value shifted by one character per line before it (BREAKER-REPORT F16).
     const { page } = t;
     await t.open('/');
     const lines = [];
@@ -197,14 +197,13 @@ for (const [eol, label] of [['\r\n', 'CRLF'], ['\n', 'LF']]) {
       size += Buffer.byteLength(line) + 2;
     }
     const file = Buffer.from(lines.join(eol) + eol, 'utf8');
-    const known = label === 'CRLF' ? { known: 'bug (main and branch): a 2 MB+ JSON Lines file with CRLF gets shifted values in every view (BREAKER-REPORT F16)' } : {};
     const st = await loadAny(page, file, 'records.jsonl', { timeout: 120_000 });
     t.check(st?.kind === 'ok' && st.msg === `JSON Lines · ${lines.length.toLocaleString('en-US')} records`, 'JSON Lines with every record', st);
     const out = await copied(page, 'Copy formatted output', { timeout: 60_000 });
-    t.check(out !== null && hash(out) === hash(JSON.stringify(lines.map((l) => JSON.parse(l)), null, 2)), 'the Format view holds the records as one exact array', out?.length, known);
+    t.check(out !== null && hash(out) === hash(JSON.stringify(lines.map((l) => JSON.parse(l)), null, 2)), 'the Format view holds the records as one exact array', out?.length);
     await view(page, 'tree');
     const rows = await until(page, () => (window.__vis('#view-tree .tv-rows')?.childElementCount ?? 0) > 8 || null, null, { timeout: 30_000 }).then(() => treeRows(page));
-    t.check(rows[6] === '  1:{4}' && rows[7] === '    i:1' && rows[9] === '    n:1.5', 'the tree shows record 1 exactly', rows.slice(6, 10), known);
+    t.check(rows[6] === '  1:{4}' && rows[7] === '    i:1' && rows[9] === '    n:1.5', 'the tree shows record 1 exactly', rows.slice(6, 10));
     await view(page, 'convert');
     const select = page.locator('.app:visible .pane-view select').filter({ has: page.locator('option[value="typescript"]') });
     await select.first().selectOption('csv');
@@ -214,7 +213,7 @@ for (const [eol, label] of [['\r\n', 'CRLF'], ['\n', 'LF']]) {
       if (!csv?.startsWith('i,s,n,ok')) await page.waitForTimeout(1000);
     }
     const row1 = csv?.split(/\r?\n/)[2];
-    t.check(row1 === `1,${JSON.parse(lines[1]).s},1.5,false`, 'Convert → CSV writes record 1 exactly', row1, known);
+    t.check(row1 === `1,${JSON.parse(lines[1]).s},1.5,false`, 'Convert → CSV writes record 1 exactly', row1);
   });
 }
 
