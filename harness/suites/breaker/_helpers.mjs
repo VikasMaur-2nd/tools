@@ -232,11 +232,12 @@ export function hash(t) {
 
 /**
  * Strict JSON `text` re-indented with `indent` ('' minifies), keeping every number, string and key
- * exactly as written: what the Format view must show, computed without the app's code. Empty
+ * exactly as written (`canonical`: strings as JSON.stringify writes their value, as the app does): what the
+ * Format view must show, computed without the app's code. Empty
  * containers stay `[]` / `{}`; a key is followed by ": " when indenting. Works on Buffers of any size
  * (returns a hash when `hashOnly`, so a 200 MB output never has to exist as one string).
  */
-export function reformat(text, indent, { hashOnly = false } = {}) {
+export function reformat(text, indent, { hashOnly = false, canonical = false } = {}) {
   const parts = [];
   let h = 0x811c9dc5;
   let len = 0;
@@ -255,7 +256,9 @@ export function reformat(text, indent, { hashOnly = false } = {}) {
     if (c === '"') {
       let j = i + 1;
       while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
-      put(text.slice(i, j + 1));
+      // The app writes strings canonically (JSON.stringify of the decoded value: "\u0063" becomes "c").
+      const lit = text.slice(i, j + 1);
+      put(canonical && lit.includes('\\') ? JSON.stringify(JSON.parse(lit)) : lit);
       i = j + 1;
     } else if (c === '{' || c === '[') {
       // An empty container stays on one line.
