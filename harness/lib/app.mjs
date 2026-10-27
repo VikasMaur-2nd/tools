@@ -202,6 +202,30 @@ export async function view(page, name, { timeout = 30_000 } = {}) {
   );
 }
 
+/**
+ * Hovers `locator`'s element at a point no other element covers, from its centre outwards. Playwright
+ * hovers the centre, and in a crowded toolbar (a wider system font, a narrower window) a neighbour can
+ * lie over it, so the pointer would rest on the neighbour and show its tooltip. Throws when the element
+ * is covered everywhere.
+ */
+export async function hoverExposed(page, locator) {
+  await locator.scrollIntoViewIfNeeded();
+  const pt = await locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const xs = [];
+    for (let d = 0; d < r.width / 2 - 1; d += 2) xs.push(r.left + r.width / 2 - d, r.left + r.width / 2 + d);
+    for (const f of [0.5, 0.35, 0.65]) {
+      for (const x of xs) {
+        const hit = document.elementFromPoint(x, r.top + r.height * f);
+        if (hit && (hit === el || el.contains(hit))) return { x, y: r.top + r.height * f };
+      }
+    }
+    return null;
+  });
+  if (!pt) throw new Error('hoverExposed: other elements cover the whole element');
+  await page.mouse.move(pt.x, pt.y);
+}
+
 /** Text of the visible element matching `sel`. */
 export const text = (page, sel) => page.evaluate((s) => window.__vis(s)?.textContent ?? null, sel);
 
