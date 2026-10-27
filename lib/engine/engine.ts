@@ -1492,6 +1492,10 @@ export class Engine {
   private workerDoc: Doc | null = null;
   private workerDocId = 0;
   private analysisWorker: Worker | null = null;
+  /** The analysis worker was warmed up (see warmAnalysis) and has had no document yet: it holds nothing. */
+  private analysisFresh = false;
+  /** The analysis worker has a document to analyse whose tree hasn't come back yet. */
+  private analysisBusy = false;
   private analysisFails = 0;
   private analysisDoc: Doc | null = null;
   private analysisDocId = 0;
@@ -1500,8 +1504,12 @@ export class Engine {
   /** A new document keeps the warmed formatter, but drops every old document and analysis task. */
   private releaseWorkerDocuments() {
     clearTimeout(this.analysisTimer);
-    this.analysisWorker?.terminate();
-    this.analysisWorker = null;
+    // (A warmed worker that has had no document holds nothing: it stays, warm, for the next big one.)
+    if (!this.analysisFresh) {
+      this.analysisWorker?.terminate();
+      this.analysisWorker = null;
+      this.analysisBusy = false;
+    }
     this.analysisDoc = this.workerDoc = null;
     this.analysisDocId = this.workerDocId = 0;
     this.reindentJob = this.workerParse = null;
@@ -1566,6 +1574,7 @@ export class Engine {
         const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
         w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number; pretty?: { indent: string; index: PrettyIndex } }>) => this.withPack(!!e.data.tree, () => {
           if (e.data.id !== this.loadSeq) return;
+          if (e.data.tree && !e.data.good) this.analysisBusy = false;
           if (e.data.tree && e.data.pretty) prettyIndexes.set(e.data.tree.nodes, e.data.pretty);
           if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
@@ -1588,17 +1597,55 @@ export class Engine {
           if (this.analysisWorker !== w) return;
           reportError(e.error ?? new Error(), 'worker');
           this.analysisFails++;
-          w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
+          w.terminate(); this.analysisWorker = null; this.analysisDoc = null; this.analysisBusy = false;
           if (id === this.loadSeq) failed?.();
         };
         // (The Format view shown Pretty off the tape: the worker indexes its lines too, see drawPretty.)
         const pretty = this.settings.view === 'format' && this.prettyFromTape(document.length) ? this.indent : undefined;
         const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape, progress: !!worked, pretty };
         const current = () => this.postDocument(w, request, document, true, undefined, sent);
+        this.analysisFresh = false;
+        this.analysisBusy = true;
         if (good) this.postDocument(w, { ...request, good: true, progress: false }, good, true, current);
         else current();
-      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; failed?.(); }
+      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; this.analysisBusy = false; failed?.(); }
     }, wait);
+  }
+
+  /**
+   * Makes the analysis worker before a big document comes (when the page is idle, the file picker opens or
+   * a file is dragged in), and warms it up: WebAssembly compiled and run a while, so the first big
+   * document parses at full speed (see reindent.worker.ts warmTape). `replace`: a document is coming, so a
+   * worker that had one (and isn't still analysing it) makes way for a warm one.
+   */
+  private warmAnalysis(replace = false) {
+    if (this.dead || this.analysisFails >= 3) return;
+    if (this.analysisWorker) {
+      if (!replace || this.analysisFresh || this.analysisBusy) return;
+      this.analysisWorker.terminate();
+      this.analysisDoc = null;
+      this.analysisDocId = 0;
+    }
+    try {
+      const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
+      w.onerror = (e) => {
+        e.preventDefault();
+        if (this.analysisWorker !== w) return;
+        reportError(e.error ?? new Error(), 'worker');
+        this.analysisFails++;
+        w.terminate();
+        this.analysisWorker = null;
+        this.analysisFresh = false;
+      };
+      w.postMessage({ id: -2, warmTape: true });
+      this.analysisWorker = w;
+      this.analysisFresh = true;
+    } catch (error) {
+      reportError(error, 'worker');
+      this.analysisFails++;
+      this.analysisWorker = null;
+      this.analysisFresh = false;
+    }
   }
 
   /** Loads the tape's code now (the page does when idle, or when a tape comes). */
@@ -1780,6 +1827,7 @@ export class Engine {
 
   openFile(target: 1 | 2 = 1) {
     this.reindentWorker();
+    this.warmAnalysis(true);
     void loadSurface();
     this.fileTarget = target;
     this.els.file.value = '';
@@ -3714,6 +3762,7 @@ export class Engine {
   private onDragEnter = (e: DragEvent) => {
     if (!this.hasFiles(e)) return;
     this.reindentWorker();
+    this.warmAnalysis(true);
     this.dragDepth++;
     store.set({ dragging: true });
   };
@@ -3862,6 +3911,7 @@ export class Engine {
             for (const c of 'é Я α 中 あ 한 ب א ह ไ ✓ 😀'.split(' ')) x.measureText(c);
           },
           () => this.reindentWorker(),
+          () => this.warmAnalysis(),
           () => loadSurface(),
           () => import('../graph/view').catch(() => {}),
         );

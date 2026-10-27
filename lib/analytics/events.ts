@@ -159,6 +159,7 @@ const ERROR_KINDS: [RegExp, string][] = [
   [/^Multiple top-level values/, 'multiple_values'],
   [/code fence/, 'code_fence'],
   [/^Nesting is too deep/, 'too_deep'],
+  [/^No JSON value$/, 'no_value'],
   [/^Duplicate key/, 'duplicate_key'],
   [/^Unexpected .*: expected a value$/, 'unexpected_token'],
 ];

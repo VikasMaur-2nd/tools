@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { Doc } from '../lib/engine/doc';
-import { parse, type ParseResult } from '../lib/json/parser';
+import { NO_VALUE, parse, type ParseResult } from '../lib/json/parser';
 import { diffResults } from './oracle/compare';
 
 /** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
@@ -206,6 +206,43 @@ test('worker patch uses pinned fold arrays when the viewer changes before the re
   assert.equal(index?.depth, depth);
 });
 
+test('the analysis worker warmed up before a big document analyses it; a file picker or a drag replaces a used one, never one still analysing', async () => {
+  const { engine, workers, tick } = session();
+  const sent = (w: (typeof workers)[0]) => w.messages.map((m) => JSON.parse(JSON.stringify(m)));
+  // Idle (twice): one worker, warming up.
+  engine.warmAnalysis();
+  engine.warmAnalysis();
+  assert.equal(workers.length, 1);
+  assert.deepEqual(sent(workers[0]), [{ id: -2, warmTape: true }]);
+  // A new document comes: the warm worker holds nothing, so it stays, and analyses it.
+  engine.releaseWorkerDocuments();
+  assert.equal(workers[0].terminated, false);
+  let trees = 0;
+  engine.queueAnalysis(0, Doc.of('{"a":1}'), null, () => trees++, 0);
+  tick();
+  assert.equal(workers.length, 1, 'no other worker');
+  assert.equal(workers[0].messages.at(-1)!.analysis, true);
+  // Still analysing it: a file picker or a drag leaves it be.
+  engine.warmAnalysis(true);
+  assert.equal(workers.length, 1);
+  workers[0].onmessage!({ data: { id: 0, tree: { nodes: { length: 1 }, head: {} }, metrics: { bytes: 7, min: 7, extra: 0, units: 0 } } });
+  await engine.tapeCode();
+  assert.equal(trees, 1);
+  // Done: idle leaves it, a file picker or a drag makes a warm one in its place.
+  engine.warmAnalysis();
+  assert.equal(workers.length, 1);
+  engine.warmAnalysis(true);
+  assert.equal(workers.length, 2);
+  assert.equal(workers[0].terminated, true);
+  assert.deepEqual(sent(workers[1]), [{ id: -2, warmTape: true }]);
+  // Once it has had a document, a new one lets it go, as before.
+  engine.queueAnalysis(0, Doc.of('{"b":2}'), null, () => trees++, 0);
+  tick();
+  engine.releaseWorkerDocuments();
+  assert.equal(workers[1].terminated, true);
+  assert.equal(engine.analysisWorker, null);
+});
+
 // ── A new big document parsed in steps (analyzeInSteps) ──
 
 function stepsSession(text: string) {
@@ -294,6 +331,46 @@ test('small documents and edits are analysed at once', () => {
     assert.deepEqual(analysed, [undefined]);
     assert.equal(engine.steps, null);
   }
+});
+
+// ── A document with no value ──
+
+/** The real analyze() on `text`, with fakes for the views it updates. */
+function analyzeSession(text: string) {
+  const s = session();
+  const { engine } = s;
+  const diagnostics: unknown[][] = [];
+  engine.ed = { version: Doc.of(text), length: text.length, text, ls: [0], blank: !/\S/.test(text), setDiagnostics: (d: unknown[]) => diagnostics.push(d), setScope() {}, setJwt() {} };
+  engine.tree = { setRoot() {} };
+  engine.table = { setNode() {} };
+  engine.setGraphRoot = engine.measure = engine.syncTableState = engine.afterDoc = engine.releaseWorkerDocuments = () => {};
+  engine.resetNext = true;
+  engine.loadSeq = 3;
+  return { ...s, diagnostics };
+}
+
+test('a blank document shows the empty state, not "No JSON value", whether analysed at once or parsed in steps', (t) => {
+  clock(t, 1);
+  for (const text of ['', ' \n\t', '\ufeff', '\u00a0\n', ' '.repeat(1_000_100), '\n'.repeat(1_000_100)]) {
+    const { engine, state, tick } = analyzeSession(text);
+    engine.analyzeInSteps();
+    for (let k = 0; k < 100_000 && engine.steps; k++) tick();
+    const label = `${text.length} chars`;
+    assert.equal(engine.steps, null, label);
+    assert.equal((state.status as { kind: string }).kind, 'empty', label);
+    assert.equal(state.empty, true, label);
+    assert.equal(engine.res, null, label);
+  }
+});
+
+test('a document with only a comment is not blank: parsed in steps, its error is "No JSON value" at its end', (t) => {
+  clock(t, 1);
+  const text = '// ' + 'x'.repeat(1_000_100) + '\n';
+  const { engine, tick, analysed } = stepsSession(text);
+  engine.analyzeInSteps();
+  for (let k = 0; k < 100_000 && !analysed.length; k++) tick();
+  assert.deepEqual(analysed[0]!.error, { p: text.length, m: NO_VALUE });
+  assert.equal(analysed[0]!.root, null);
 });
 
 // ── A big load's progress ("Parsing… N%", see Engine.progress) ──

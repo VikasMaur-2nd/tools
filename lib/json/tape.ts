@@ -47,8 +47,21 @@ export const VALUE_EXTRA = 7;
 /** Sizes from this up are in `big`. */
 export const SIZE_BIG = 0xffffff;
 
+/** A parser's tape of up to this many bytes is cut to its exact size when the parse ends (see `fitted`). */
+export const TRIM_MAX = 64 << 20;
+
+/**
+ * `nodes` cut to its first `count` nodes: the room a parser kept to grow into doesn't stay with the
+ * tape. It is a copy, so a tape bigger than TRIM_MAX keeps its room (~5% there, and copying would add
+ * the whole tape again to the peak).
+ */
+export function fitted(nodes: Int32Array<ArrayBuffer>, count: number): Int32Array<ArrayBuffer> {
+  const used = count * W;
+  return used < nodes.length && used * 4 <= TRIM_MAX ? nodes.slice(0, used) : nodes;
+}
+
 export interface Tape {
-  /** W numbers per node; its buffer may be longer (see `count`). */
+  /** W numbers per node; its buffer may be longer (see `count`) above TRIM_MAX bytes. */
   nodes: Int32Array<ArrayBuffer>;
   /** Nodes in use. */
   count: number;

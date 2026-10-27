@@ -1,6 +1,9 @@
 import { Doc } from '../engine/doc';
 import { formatDoc } from './format';
-import { ARR, STR, parse } from './parser';
+import { lazyResult } from './lazy';
+import { ARR, STR } from './parser';
+import { kindOf } from './tape';
+import { parse } from './tape-parser';
 import type { CodeChange } from './code-index';
 
 interface Text {
@@ -92,10 +95,10 @@ export class ScalarFormatter {
       if (edit.a <= ae && edit.b <= ae) {
         if (edit.a < a || punctuation(this.input.charCodeAt(a))) return null;
         const raw = this.input.slice(a, edit.a) + edit.ins + this.input.slice(edit.b, ae);
-        const parsed = parse(raw);
+        const t = parse(raw);
         const key = this.input.charCodeAt(skip(this.input, ae)) === 58;
-        if (!parsed.root || parsed.error || parsed.issues.length || parsed.multi || parsed.root.t >= ARR || key && parsed.root.t !== STR) return null;
-        const patch = formatDoc(raw, parsed, '');
+        if (!t.count || t.head.error || t.head.issues.length || t.head.multi || kindOf(t, 0) >= ARR || key && kindOf(t, 0) !== STR) return null;
+        const patch = formatDoc(raw, lazyResult(t, raw), '');
         const change = { prefix: b, suffix: this.output.length - be };
         this.output = this.output.edit(b, be, patch);
         const ds = edit.ins.length - (edit.b - edit.a);
