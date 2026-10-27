@@ -1152,12 +1152,12 @@ export class Engine {
 
   // ── AI agents (WebMCP tools, lib/webmcp) ───────────────────────────────
 
-  /** The open document as a command sees it, its parse finished now if it was still on its way. */
   /** Before an agent's tool runs: the JWT reader is loaded, so a JWT is read as one at once (it loads when idle otherwise). */
   agentReady(): Promise<void> {
     return this.loadJwt();
   }
 
+  /** The open document as a command sees it, its parse finished now if it was still on its way. */
   agentDoc() {
     const res = this.fresh();
     const text = this.ed.text;
