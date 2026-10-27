@@ -253,46 +253,58 @@ export class Filler implements TapeLink {
     let out = new Int32Array(Math.min(sizeOf(t, n.zi), 1 << 16));
     let len = 0;
     // As TreeView.flatten: the open containers being listed, where each is in them, its end and depth, and
-    // its place in the overrides.
+    // its place in the overrides; and which it is and how many items it has had (its count once listed).
     const useT = !!exp?.children;
+    const ps: number[] = [];
     const at: number[] = [];
     const ends: number[] = [];
     const depths: number[] = [];
     const exps: (Expansion | undefined)[] = [];
+    const ks: number[] = [];
     /** Lists container `i` (at depth `d`, overrides `e`): open or not, and its items next if open. */
     const container = (i: number, d: number, e: Expansion | undefined, next: number) => {
       const open = e?.open ?? (d < limit || (first > 0 && len + 1 < first && len + 1 + this.childrenUpToAt(i, first) < first));
       out[len++] = i * 2 + (open ? 1 : 0);
       if (open) {
+        ps.push(i);
         at.push(i + 1);
         ends.push(next);
         depths.push(d + 1);
         exps.push(e);
+        ks.push(0);
       }
     };
     if (self) {
       if (isContainerAt(t, n.zi)) container(n.zi, n.d, exp, nextOf(t, n.zi));
       else out[len++] = n.zi * 2;
     } else {
+      ps.push(n.zi);
       at.push(n.zi + 1);
       ends.push(nextOf(t, n.zi));
       depths.push(n.d + 1);
       exps.push(exp);
+      ks.push(0);
     }
     while (at.length) {
       const q = at.length - 1;
       const c = at[q];
       if (c >= ends[q]) {
+        // (A big container's count kept, as count() keeps it: the rows' setsize would walk its items again,
+        // a cache miss each.)
+        if (ends[q] - ps[q] > 64) this.counts.set(ps[q], ks[q]);
+        ps.pop();
         at.pop();
         ends.pop();
         depths.pop();
         exps.pop();
+        ks.pop();
         continue;
       }
       const meta = a[c * W];
       const s = meta >>> 8;
       const next = c + (s < SIZE_BIG ? s : t.big!.get(c)!);
       at[q] = next;
+      ks[q]++;
       if (len === out.length) {
         const grown = new Int32Array(len * 2);
         grown.set(out);
@@ -309,10 +321,12 @@ export class Filler implements TapeLink {
       const open = e?.open ?? (d < limit || (first > 0 && len + 1 < first && len + 1 + this.childrenUpToAt(c, first) < first));
       out[len++] = c * 2 + (open ? 1 : 0);
       if (open) {
+        ps.push(c);
         at.push(c + 1);
         ends.push(next);
         depths.push(d + 1);
         exps.push(e);
+        ks.push(0);
       }
     }
     return len === out.length ? out : out.slice(0, len);
@@ -327,8 +341,8 @@ export class Filler implements TapeLink {
     return k;
   }
 
-  within(n: JNode, levels: number): number {
-    return nodesWithin(this.tape, n.zi, levels);
+  within(n: JNode, levels: number, max?: number): number {
+    return nodesWithin(this.tape, n.zi, levels, max);
   }
 
   childrenUpTo(n: JNode, max: number): number {

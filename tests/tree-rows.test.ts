@@ -169,3 +169,23 @@ test('path.ts on a tree from a tape: nodeAt at every offset and resolve of any p
     for (const segs of [['nope'], [99], ['0', 'x'], [-1]] as (string | number)[][]) assert.ok((resolve(lazy.root, segs) === null) === (resolve(res.root, segs) === null), JSON.stringify(segs));
   }
 });
+
+test('within counts a subtree\'s nodes to a depth, no further than just past a cap', () => {
+  const r = rng(53);
+  for (let it = 0; it < 120; it++) {
+    const text = genStrict(r, 4);
+    const res = parse(text);
+    if (!res.root) continue;
+    const lazy = lazyResult(tapeOf(res, text), text);
+    const z = lazy.root!.z!;
+    const pre = preorder(res.root);
+    for (const levels of [1, 2, 3]) {
+      const all = pre.filter((n) => n.d <= levels).length;
+      assert.equal(z.within(lazy.root!, levels), all, text);
+      for (const max of [0, 1, all - 1, all, all + 5]) {
+        const got = z.within(lazy.root!, levels, max);
+        assert.ok(all <= max ? got === all : got > max && got <= all, `${levels} levels, cap ${max}: ${got} of ${all} in ${text}`);
+      }
+    }
+  }
+});

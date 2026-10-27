@@ -79,7 +79,7 @@ function openLevels(root: JNode | null, nodes: number): [number, boolean] {
   const most = nodes <= 500_000 ? 3 : 2;
   let levels = most;
   const z = root?.z;
-  if (z) while (levels > 1 && z.within(root!, levels) > OPEN_ROWS) levels--;
+  if (z) while (levels > 1 && z.within(root!, levels, OPEN_ROWS) > OPEN_ROWS) levels--;
   return [levels, levels < most];
 }
 

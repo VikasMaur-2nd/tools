@@ -75,8 +75,8 @@ export interface TapeLink {
   fill(n: JNode): Val;
   /** The first `max` units of string `n`'s value, decoding no more of it than that. */
   head(n: JNode, max: number): string;
-  /** How many nodes of `n`'s subtree are at most `levels` below it. */
-  within(n: JNode, levels: number): number;
+  /** How many nodes of `n`'s subtree are at most `levels` below it (counted no further than past `max`). */
+  within(n: JNode, levels: number, max?: number): number;
   /** How many children `n` has, counted up to `max` (more: max + 1). */
   childrenUpTo(n: JNode, max: number): number;
   /** Calls `f` with the key of each of `n`'s children, without making them. */
