@@ -68,8 +68,7 @@ for (const [name, data, mime] of FILES) {
       const f = await copied(page, 'Copy formatted output', { timeout: 10_000 });
       out.formatted = f === null ? null : f.length > 2000 ? hash(f) : f;
     }
-    const known = name === 'utf16-bom.json' && t.engine === 'firefox' ? 'bug: Firefox opens a UTF-16 file with a BOM as garbage (BREAKER-REPORT F3)' : undefined;
-    golden(t, `files/${name}`, out, `${name}: outputs match the golden file`, { known });
+    golden(t, `files/${name}`, out, `${name}: outputs match the golden file`);
     t.check((await page.evaluate(() => window.__xss)) === 0, 'no markup from the file ran');
   });
 }
