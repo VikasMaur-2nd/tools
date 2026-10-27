@@ -1,7 +1,7 @@
-import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
+import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Expansion, type Key, type TreeRows } from '../json/parser';
 import { preview } from '../json/format';
 import { parsePath, resolve } from '../json/path';
-import { idle, soon } from './idle';
+import { idle } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
@@ -36,17 +36,13 @@ export interface TreeEvents {
   nested(node: JNode): void;
 }
 
-/** Persistent path overrides, shared by successive parses without retaining JNodes. */
-interface Expansion {
-  open?: boolean;
-  children?: Map<string, Expansion>;
-}
+// (Expansion: persistent path overrides, shared by successive parses without retaining JNodes.)
 
-function childExpansion(parent: Expansion | undefined, n: JNode, create = false): Expansion | undefined {
+function childExpansion(parent: Expansion | undefined, k: Key, create = false): Expansion | undefined {
   if (!parent) return;
   // One edge per property name, whatever it holds. Duplicate keys share a path, as do an index and the
   // same digits as a key (an edit that turns an array into an object keeps its items' state).
-  const key = String(n.key);
+  const key = String(k);
   let child = parent.children?.get(key);
   if (!child && create) (parent.children ??= new Map()).set(key, (child = {}));
   return child;
@@ -54,6 +50,7 @@ function childExpansion(parent: Expansion | undefined, n: JNode, create = false)
 
 /** `n`'s place among its parent's items, which are in document order: found by offset, not by a scan (wide objects). */
 function siblingIndex(n: JNode) {
+  if (n.z) return n.z.pos(n.zi);
   const list = kids(n.u as JNode);
   let lo = 0;
   let hi = list.length - 1;
@@ -65,27 +62,6 @@ function siblingIndex(n: JNode) {
     else hi = mid - 1;
   }
   return list.indexOf(n);
-}
-
-/** Containers with more children than this are filled in steps before a view lays them out (see bigFill). */
-export const BIG_FILL = 100_000;
-
-/**
- * For a container from a tape whose children aren't made yet and are many: makes them in short tasks and then
- * calls `done` (true), so a view never makes millions of nodes in one task. False (nothing to wait for) otherwise.
- */
-export function bigFill(n: JNode | null, done: () => void, wanted: () => boolean = () => true): boolean {
-  const z = n?.z;
-  if (!n || !z || n.t < ARR || n._v !== undefined || z.childrenUpTo(n, BIG_FILL) <= BIG_FILL) return false;
-  const step = z.fillSteps(n);
-  // (Dropped once no longer `wanted`: another document or node came meanwhile.)
-  const run = () => {
-    if (!wanted()) return;
-    if (step(performance.now() + 8)) done();
-    else soon(run);
-  };
-  soon(run);
-  return true;
 }
 
 /** Rows a new big document opens with at most (fewer levels open when they would be more; the root's always). */
@@ -103,9 +79,12 @@ function openLevels(root: JNode | null, nodes: number): [number, boolean] {
   const most = nodes <= 500_000 ? 3 : 2;
   let levels = most;
   const z = root?.z;
-  if (z) while (levels > 1 && z.within(root!, levels) > OPEN_ROWS) levels--;
+  if (z) while (levels > 1 && z.within(root!, levels, OPEN_ROWS) > OPEN_ROWS) levels--;
   return [levels, levels < most];
 }
+
+/** How many items container `n` has (one from a tape: counted there, none made). */
+const sizeOf = (n: JNode) => (n.z ? n.z.count(n.zi) : kids(n).length);
 
 export class TreeView {
   readonly el: HTMLElement;
@@ -118,7 +97,10 @@ export class TreeView {
   private ro: ResizeObserver;
 
   root: JNode | null = null;
+  /** The rows of a tree the page parsed. */
   rows: JNode[] = [];
+  /** The rows of a tree from a tape: tape indexes (see TreeRows), a node made only for a row drawn or used. */
+  private tr: TreeRows | null = null;
   sel: JNode | null = null;
   private limit = Infinity;
   /** The first containers one level past `limit` open too (see FIRST_ROWS). */
@@ -199,6 +181,7 @@ export class TreeView {
     }
     this.root = null;
     this.rows = [];
+    this.tr = null;
     this.sel = null;
     this.matches = [];
     this.matchSet = null;
@@ -209,32 +192,44 @@ export class TreeView {
   /** A hidden view retains its settings and selection without flattening the new tree. */
   activate() {
     if (!this.dirty) return;
-    // (A root of millions from a tape: its children are made in steps first; the view draws once they are.)
-    const root = this.root;
-    if (this.filling === root && root) return;
-    if (bigFill(root, () => {
-      if (this.filling !== root) return;
-      this.filling = null;
-      if (this.root === root && !this.el.hidden) {
-        this.activate();
-        this.render(true);
-      }
-    }, () => this.root === root)) {
-      this.filling = root;
-      return;
-    }
     this.dirty = false;
     this.rebuild();
     if (this.sel) this.reveal(this.sel);
   }
 
-  /** The root whose children are being made in steps (see activate). */
-  private filling: JNode | null = null;
-
   private rebuild() {
-    this.rows = this.root ? this.flatten(this.root, this.toggles, true) : [];
-    this.sc.fit(this.rows.length * RH, this.sizer);
+    const root = this.root;
+    // A tree from a tape lists its rows there: a root of millions makes no node for its rows.
+    this.tr = root?.z && !root.u ? root.z.rows(root, this.toggles, true, this.limit, this.first ? FIRST_ROWS : 0) : null;
+    this.rows = root && !this.tr ? this.flatten(root, this.toggles, true) : [];
+    this.sc.fit(this.count * RH, this.sizer);
     this.render(true);
+  }
+
+  /** How many rows there are. */
+  get count() {
+    return this.tr ? this.tr.length : this.rows.length;
+  }
+
+  /** Row `r`'s node (from a tape: made now, its `x` as its row says). */
+  rowNode(r: number): JNode {
+    const tr = this.tr;
+    if (!tr) return this.rows[r];
+    const n = this.root!.z!.at(tr[r] >> 1);
+    if (n.t >= ARR) n.x = (tr[r] & 1) === 1;
+    return n;
+  }
+
+  /** The node of the row drawn at `i` (a data-i), if there is one. */
+  private nodeOf(i: number) {
+    return i >= 0 && i < this.count ? this.rowNode(i) : undefined;
+  }
+
+  /** Is container `n` open (in a tree from a tape: an open row)? */
+  isOpen(n: JNode) {
+    if (!this.tr) return n.x;
+    const r = this.indexOf(n);
+    return r >= 0 && (this.tr[r] & 1) === 1;
   }
 
   private flatten(start: JNode, startExpansion: Expansion | undefined, self: boolean): JNode[] {
@@ -252,7 +247,7 @@ export class TreeView {
       if (n.t < ARR) return;
       // (Past the levels: a container opens only if its items too fit the first rows, so one huge array in the
       // first record isn't listed whole.)
-      const open = expansion?.open ?? (n.d < limit || (first && rows.length < FIRST_ROWS && rows.length + (n.z ? n.z.childrenUpTo(n, FIRST_ROWS) : kids(n).length) < FIRST_ROWS));
+      const open = expansion?.open ?? (n.d < limit || (first && rows.length < FIRST_ROWS && rows.length + kids(n).length < FIRST_ROWS));
       n.x = open;
       if (open) {
         lists.push(kids(n));
@@ -270,7 +265,7 @@ export class TreeView {
       const d = lists.length - 1;
       const list = lists[d];
       const i = at[d]++;
-      if (i < list.length) visit(list[i], useT ? childExpansion(expansions[d], list[i]) : undefined);
+      if (i < list.length) visit(list[i], useT ? childExpansion(expansions[d], list[i].key) : undefined);
       else {
         lists.pop();
         at.pop();
@@ -281,6 +276,8 @@ export class TreeView {
   }
 
   indexOf(n: JNode) {
+    // (From a tape: found there; a node of another tree is in none.)
+    if (this.tr) return n.z === this.root?.z ? n.z!.rowOf(this.tr, n.zi) : -1;
     const r = this.rows;
     let lo = 0;
     let hi = r.length - 1;
@@ -294,38 +291,42 @@ export class TreeView {
     return r.indexOf(n);
   }
 
-  toggle(n: JNode, open = !n.x, deep = false) {
+  toggle(n: JNode, open = !this.isOpen(n), deep = false) {
     if (n.t < ARR) return;
     // Find the branch once, then carry its trie entry alongside each descendant.
     const ancestors: JNode[] = [];
     for (let p = n; p.u; p = p.u) ancestors.push(p);
     let expansion = this.toggles;
-    for (let i = ancestors.length - 1; i >= 0; i--) expansion = childExpansion(expansion, ancestors[i], true)!;
-    if (deep) {
-      const stack = [n];
-      const expansions = [expansion];
-      while (stack.length) {
-        const c = stack.pop() as JNode;
-        const entry = expansions.pop()!;
-        entry.open = open;
-        for (const k of kids(c)) {
-          if (k.t < ARR) continue;
-          stack.push(k);
-          expansions.push(childExpansion(entry, k, true)!);
-        }
-      }
-    } else expansion.open = open;
+    for (let i = ancestors.length - 1; i >= 0; i--) expansion = childExpansion(expansion, ancestors[i].key, true)!;
     n.x = open;
-    const i = this.indexOf(n);
-    if (i < 0) {
-      this.rebuild();
-      return;
+    if (this.tr && n.z) {
+      // (On the tape: no node made for the containers below, or for its rows.)
+      const tr = n.z.toggle(n.z === this.root!.z ? this.tr : null, n, open, deep, expansion, this.limit, this.first ? FIRST_ROWS : 0);
+      if (!tr) return this.rebuild();
+      this.tr = tr;
+    } else {
+      if (deep) {
+        const stack = [n];
+        const expansions = [expansion];
+        while (stack.length) {
+          const c = stack.pop() as JNode;
+          const entry = expansions.pop()!;
+          entry.open = open;
+          for (const k of kids(c)) {
+            if (k.t < ARR) continue;
+            stack.push(k);
+            expansions.push(childExpansion(entry, k.key, true)!);
+          }
+        }
+      } else expansion.open = open;
+      const i = this.indexOf(n);
+      if (i < 0) return this.rebuild();
+      let j = i + 1;
+      while (j < this.rows.length && this.rows[j].d > n.d) j++;
+      const sub = open ? this.flatten(n, expansion, false) : [];
+      this.rows = this.rows.slice(0, i + 1).concat(sub, this.rows.slice(j));
     }
-    let j = i + 1;
-    while (j < this.rows.length && this.rows[j].d > n.d) j++;
-    const sub = open ? this.flatten(n, expansion, false) : [];
-    this.rows = this.rows.slice(0, i + 1).concat(sub, this.rows.slice(j));
-    this.sc.fit(this.rows.length * RH, this.sizer);
+    this.sc.fit(this.count * RH, this.sizer);
     this.render(true);
   }
 
@@ -354,18 +355,18 @@ export class TreeView {
 
   /** Expands every collapsed ancestor of `n`. */
   reveal(n: JNode) {
-    let changed = false;
     const ancestors: JNode[] = [];
-    for (let p = n.u; p; p = p.u) {
-      ancestors.push(p);
-      if (!p.x) changed = true;
-    }
-    if (!changed) return;
+    for (let p = n.u; p; p = p.u) ancestors.push(p);
+    // From the top: below the first ancestor that is closed, the others open too, whatever their x says (kept
+    // from before that one closed: after Expand all, then Collapse all, a deep node stayed hidden).
+    let k = ancestors.length - 1;
+    while (k >= 0 && this.isOpen(ancestors[k])) k--;
+    if (k < 0) return;
     let expansion = this.toggles;
     for (let i = ancestors.length - 1; i >= 0; i--) {
       const p = ancestors[i];
-      if (p.u) expansion = childExpansion(expansion, p, true)!;
-      if (p.x) continue;
+      if (p.u) expansion = childExpansion(expansion, p.key, true)!;
+      if (i > k) continue;
       p.x = true;
       expansion.open = true;
     }
@@ -396,7 +397,7 @@ export class TreeView {
 
   focus() {
     this.el.focus({ preventScroll: true });
-    if (!this.sel && this.rows.length) this.choose(this.rows[0], 'key');
+    if (!this.sel && this.count) this.choose(this.rowNode(0), 'key');
   }
 
   // ── Search ─────────────────────────────────────────────────────────────
@@ -508,7 +509,7 @@ export class TreeView {
     // A hidden tree draws when it is shown (the engine renders it on a view change
     // and after a load); measuring it while hidden would force a page layout.
     if (this.el.hidden || this.dirty) return;
-    if (!valueHints && !hintsLoading && this.rows.length) {
+    if (!valueHints && !hintsLoading && this.count) {
       // Hints decorate rows that are already readable, so they load when the page is idle.
       hintsLoading = true;
       idle(() =>
@@ -521,18 +522,18 @@ export class TreeView {
     const st = this.sc.top;
     const vh = this.el.clientHeight;
     const vf = Math.floor(st / RH);
-    const vl = Math.min(this.rows.length, Math.ceil((st + vh) / RH));
+    const vl = Math.min(this.count, Math.ceil((st + vh) / RH));
     if (!force && vf >= this.rFirst && vl <= this.rLast) {
       // Scaled scrolling (see TallScroll) moves the drawn rows too.
       if (this.sc.shift + this.rFirst * RH !== this.y) this.placeRows();
       return;
     }
     const first = Math.max(0, vf - OVERSCAN);
-    const last = Math.min(this.rows.length, vl + OVERSCAN);
+    const last = Math.min(this.count, vl + OVERSCAN);
     this.rFirst = first;
     this.rLast = last;
     let html = '';
-    for (let i = first; i < last; i++) html += this.row(this.rows[i], i);
+    for (let i = first; i < last; i++) html += this.row(this.rowNode(i), i);
     this.rowsEl.innerHTML = html;
     const si = this.sel ? this.indexOf(this.sel) : -1;
     if (si >= first && si < last) this.el.setAttribute('aria-activedescendant', 'tv-sel');
@@ -571,7 +572,7 @@ export class TreeView {
     if (this.isMatch(n)) cls += this.isCurrent(n) ? ' hit cur' : ' hit';
     const cont = n.t >= ARR;
     let h = `<div class="${cls}" data-i="${i}" role="treeitem" aria-level="${n.d + 1}"`;
-    if (n.u) h += ` aria-setsize="${kids(n.u).length}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : siblingIndex(n) + 1}"`;
+    if (n.u) h += ` aria-setsize="${sizeOf(n.u)}" aria-posinset="${typeof n.key === 'number' ? n.key + 1 : siblingIndex(n) + 1}"`;
     if (cont) h += ` aria-expanded="${n.x}"`;
     if (sel) h += ' id="tv-sel" aria-selected="true"';
     h += ` style="padding-left:${deep ? 'calc(var(--tv-indent) + 6px)' : n.d * IND + 6 + 'px'}">`;
@@ -584,10 +585,10 @@ export class TreeView {
     else h += `<span class="tv-k">${this.mark(n.key as string)}</span><span class="tv-c">:</span>`;
 
     if (cont) {
-      const len = kids(n).length;
+      const len = sizeOf(n);
       const isObj = n.t === OBJ;
       h += `<span class="tv-b">${isObj ? '{' : '['}${len}${isObj ? '}' : ']'}</span>`;
-      if (!n.x && len) h += `<span class="tv-p">${escapeHtml(preview(n))}</span>`;
+      if (!n.x && len) h += `<span class="tv-p">${escapeHtml(n.z ? n.z.preview(n) : preview(n))}</span>`;
       return h + '</div>';
     }
     switch (n.t) {
@@ -631,7 +632,7 @@ export class TreeView {
   private placeActs() {
     let i = this.hover;
     if (i < 0 && this.sel) i = this.indexOf(this.sel);
-    if (i < 0 || i >= this.rows.length) {
+    if (i < 0 || i >= this.count) {
       this.acts.hidden = true;
       return;
     }
@@ -647,7 +648,7 @@ export class TreeView {
     if (i !== this.hover) {
       this.hover = i;
       this.placeActs();
-      this.hintTitle(r, this.rows[i]);
+      this.hintTitle(r, this.nodeOf(i));
     }
   };
 
@@ -701,13 +702,13 @@ export class TreeView {
     const t = e.target as HTMLElement;
     const btn = t.closest('button[data-a]') as HTMLElement | null;
     if (btn) {
-      const n = this.rows[Number(this.acts.dataset.i)];
+      const n = this.nodeOf(Number(this.acts.dataset.i));
       if (n) this.ev.copy(n, btn.dataset.a === 'path' ? 'path' : 'value');
       return;
     }
     const r = t.closest('.tv-r') as HTMLElement | null;
     if (!r) return;
-    const n = this.rows[Number(r.dataset.i)];
+    const n = this.nodeOf(Number(r.dataset.i));
     if (!n) return;
     if (t.dataset.n) {
       this.ev.nested(n);
@@ -727,7 +728,7 @@ export class TreeView {
   /** The node of the row at `el` (a right click), selected as a click selects it, without toggling. */
   pick(el: Element): JNode | null {
     const r = el.closest('.tv-r') as HTMLElement | null;
-    const n = r ? this.rows[Number(r.dataset.i)] : undefined;
+    const n = r ? this.nodeOf(Number(r.dataset.i)) : undefined;
     if (!n) return null;
     this.el.focus({ preventScroll: true });
     if (n !== this.sel) this.choose(n, 'pointer');
@@ -742,28 +743,28 @@ export class TreeView {
 
   private onDbl = (e: MouseEvent) => {
     const r = (e.target as HTMLElement).closest('.tv-r') as HTMLElement | null;
-    const n = r && this.rows[Number(r.dataset.i)];
+    const n = r && this.nodeOf(Number(r.dataset.i));
     if (n && n.t < ARR) this.ev.open(n);
   };
 
   private onKey = (e: KeyboardEvent) => {
     if (e.target !== this.el) return;
-    const rows = this.rows;
-    if (!rows.length) return;
+    const count = this.count;
+    if (!count) return;
     let i = this.sel ? this.indexOf(this.sel) : -1;
-    const n = i >= 0 ? rows[i] : null;
+    const n = i >= 0 ? this.rowNode(i) : null;
     const page = Math.max(1, Math.floor(this.el.clientHeight / RH) - 1);
     const mod = e.metaKey || e.ctrlKey;
     let handled = true;
     switch (e.key) {
       case 'ArrowDown':
-        i = Math.min(rows.length - 1, i + 1);
+        i = Math.min(count - 1, i + 1);
         break;
       case 'ArrowUp':
         i = Math.max(0, i - 1);
         break;
       case 'PageDown':
-        i = Math.min(rows.length - 1, i + page);
+        i = Math.min(count - 1, i + page);
         break;
       case 'PageUp':
         i = Math.max(0, i - page);
@@ -772,12 +773,12 @@ export class TreeView {
         i = 0;
         break;
       case 'End':
-        i = rows.length - 1;
+        i = count - 1;
         break;
       case 'ArrowRight':
         if (n && n.t >= ARR) {
           if (!n.x) this.toggle(n, true);
-          else if (kids(n).length) i++;
+          else if (sizeOf(n)) i++;
         }
         break;
       case 'ArrowLeft':
@@ -817,7 +818,7 @@ export class TreeView {
     if (!handled) return;
     e.preventDefault();
     if (i < 0) i = 0;
-    const next = this.rows[i];
+    const next = this.nodeOf(i);
     if (next && next !== this.sel) this.choose(next, 'key');
   };
 }
