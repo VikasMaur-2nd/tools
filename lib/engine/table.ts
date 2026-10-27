@@ -158,7 +158,7 @@ export class TableView {
       if (this.pending !== node) return;
       this.setNode(node, keepSort);
       this.onFilled?.();
-    })) return;
+    }, () => this.pending === node)) return;
     const key = node ? pathOf(node).join('\u0001') : null;
     const same = key !== null && key === this.nodeKey;
     this.nodeKey = key;

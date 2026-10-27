@@ -74,11 +74,16 @@ export const BIG_FILL = 100_000;
  * For a container from a tape whose children aren't made yet and are many: makes them in short tasks and then
  * calls `done` (true), so a view never makes millions of nodes in one task. False (nothing to wait for) otherwise.
  */
-export function bigFill(n: JNode | null, done: () => void): boolean {
+export function bigFill(n: JNode | null, done: () => void, wanted: () => boolean = () => true): boolean {
   const z = n?.z;
   if (!n || !z || n.t < ARR || n._v !== undefined || z.childrenUpTo(n, BIG_FILL) <= BIG_FILL) return false;
   const step = z.fillSteps(n);
-  const run = () => (step(performance.now() + 8) ? done() : soon(run));
+  // (Dropped once no longer `wanted`: another document or node came meanwhile.)
+  const run = () => {
+    if (!wanted()) return;
+    if (step(performance.now() + 8)) done();
+    else soon(run);
+  };
   soon(run);
   return true;
 }
@@ -214,7 +219,7 @@ export class TreeView {
         this.activate();
         this.render(true);
       }
-    })) {
+    }, () => this.root === root)) {
       this.filling = root;
       return;
     }
