@@ -25,7 +25,8 @@ const load = createRequire(__filename);
 
 // Exercise the real Engine methods without its browser-only constructor. A fake task queue
 // lets a layout commit land before its deferred onReady callback, exactly as in the browser.
-function session() {
+/** `userAgent`: the page's navigator.userAgent (none: no navigator). */
+function session(userAgent?: string) {
   const tasks = new Map<number, () => void>();
   let timer = 0;
   const defer = (fn: () => void) => { tasks.set(++timer, fn); return timer; };
@@ -45,7 +46,7 @@ function session() {
     }) as ts.SourceFile] },
   }).outputText;
   runInNewContext(js, {
-    exports, performance, URL, console, AbortController, queueMicrotask,
+    exports, performance, URL, console, AbortController, queueMicrotask, ...(userAgent ? { navigator: { userAgent } } : {}),
     setTimeout: defer, clearTimeout: (id: number) => tasks.delete(id), window: { setTimeout: defer },
     require: (name: string) => {
       if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
@@ -380,8 +381,8 @@ type Shown = { kind: string; progress?: number } | undefined;
 const plain = (x: unknown) => JSON.parse(JSON.stringify(x));
 
 /** A session whose editor takes a document as the browser's does: setting its text is a change. */
-function loadSession() {
-  const s = session();
+function loadSession(userAgent?: string) {
+  const s = session(userAgent);
   const { engine } = s;
   let version = Doc.of('');
   engine.ed = {
@@ -598,6 +599,22 @@ test('a big file loaded goes to the analysis worker as the file, not its text; a
   const after = workers.flatMap((w, i) => w.messages.slice(before[i] ?? 0));
   assert.ok(after.some((m) => m.analysis && m.start), 'the text goes');
   assert.ok(!after.some((m) => m.file), 'no file');
+});
+
+test('in WebKit a big file loaded goes to the analysis worker as its text (its worker lets big file reads go late)', async () => {
+  const safari = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+  const chrome = 'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
+  for (const [ua, file] of [[safari, false], [chrome, true]] as const) {
+    const { engine, workers, tick } = loadSession(ua);
+    await engine.tapeCode();
+    const body = bigArray(1_200_000);
+    engine.load(body, 'big.json', false, true, new Blob([body]));
+    for (let k = 0; k < 1000 && tick(); k++);
+    const asked = workers.flatMap((w) => w.messages).filter((m) => m.analysis);
+    assert.equal(asked.length, 1, ua);
+    assert.equal(!!asked[0].file, file, ua);
+    assert.equal(!!asked[0].start, !file, ua);
+  }
 });
 
 test('a big JSON Lines file with CRLF reaches the editor and the analysis worker with the same LF text', async () => {
