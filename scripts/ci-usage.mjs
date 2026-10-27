@@ -7,7 +7,9 @@
 //   node scripts/ci-usage.mjs --guard   (CI) fails the job when this run would take the month past the budget,
 //                                       else writes what the job runs for the workflow's steps. The run is
 //                                       CHECK_LEVEL, CHECK_ENGINES, CHECK_SUITES and CHECK_URL (check.yml's
-//                                       inputs); CHECK_JOB_ENGINE in the per-engine jobs.
+//                                       inputs); CHECK_JOB_ENGINE in the per-engine jobs. perf.yml's runs are
+//                                       level perf: CHECK_SUITES its checks (";"-separated), CHECK_PERF_MINUTES
+//                                       what one of its jobs takes.
 //
 // The token is GITHUB_TOKEN or GH_TOKEN, else `gh auth token` for the repository's owner.
 import { execFileSync } from 'node:child_process';
@@ -16,7 +18,7 @@ import { parseArgs } from 'node:util';
 
 const BUDGET = 1000;
 const ENGINES = ['chromium', 'firefox', 'webkit'];
-const LEVELS = ['unit', 'quick', 'smoke', 'e2e', 'full'];
+const LEVELS = ['unit', 'quick', 'smoke', 'e2e', 'full', 'perf'];
 
 // Minutes of each part of a job on GitHub's 2-core Linux runner, measured on PR #29's runs (October 2026);
 // the browser sets are this machine's recorded test times on two slots, which the runner matched, plus 10 %.
@@ -31,6 +33,7 @@ const COST = {
   browsers: { chromium: 0.4, firefox: 0.4, webkit: 0.7 }, // OS packages (12, 18, 34 s) and the browser download
   smoke: 0.4, // 18 smoke checks in Chromium
   suites: { chromium: 10, firefox: 11, webkit: 10.5 }, // every browser check except big documents, one engine
+  perf: 12, // a perf.yml job past its setup: two builds and one check run for each (inputs.minutes overrides)
 };
 
 const { values: o } = parseArgs({ options: { guard: { type: 'boolean' }, runs: { type: 'boolean' }, help: { type: 'boolean', short: 'h' } } });
@@ -40,8 +43,16 @@ if (o.help) {
 }
 
 /** What a check run does, from check.yml's inputs. The workflow's steps follow it (--guard writes it for them). */
-function plan({ level = 'smoke', engines = 'chromium', suites = '', url = '' }) {
+function plan({ level = 'smoke', engines = 'chromium', suites = '', url = '', perfMinutes = '' }) {
   if (!LEVELS.includes(level)) throw new Error(`unknown level "${level}" (${LEVELS.join(', ')})`);
+  if (level === 'perf') {
+    // perf.yml: a job per engine and check, after a job that plans them.
+    const list = [...new Set(engines.split(/[\s,]+/).filter(Boolean))];
+    for (const e of list) if (!ENGINES.includes(e)) throw new Error(`unknown engine "${e}" (${ENGINES.join(', ')})`);
+    const checks = suites.split(';').map((c) => c.trim()).filter(Boolean);
+    if (!list.length || !checks.length) throw new Error('level perf needs engines and checks');
+    return { level, engines: list, suites, url: '', code: null, split: false, checks: checks.length, minutes: Number(perfMinutes) || COST.perf };
+  }
   const browsers = ['e2e', 'full'].includes(level);
   const list = level === 'smoke' ? ['chromium'] : browsers ? [...new Set(engines.split(/[\s,]+/).filter(Boolean))] : [];
   for (const e of list) if (!ENGINES.includes(e)) throw new Error(`unknown engine "${e}" (${ENGINES.join(', ')})`);
@@ -53,6 +64,7 @@ function plan({ level = 'smoke', engines = 'chromium', suites = '', url = '' }) 
 }
 
 function estimate(p) {
+  if (p.level === 'perf') return Math.ceil(COST.setup) + p.engines.reduce((s, e) => s + p.checks * Math.ceil(COST.setup + COST.browsers[e] + p.minutes), 0);
   const builds = p.url || !p.engines.length ? 0 : COST.build + (p.level === 'smoke' ? 0 : COST.variant * (p.engines.includes('chromium') ? 2 : 1));
   const checks = (engines) => engines.reduce((s, e) => s + COST.browsers[e] + (p.level === 'smoke' ? COST.smoke : COST.suites[e]), 0);
   const jobs = [COST.setup + (p.code ? COST[p.code] : 0) + builds + (p.split ? 0 : checks(p.engines))];
@@ -62,6 +74,7 @@ function estimate(p) {
 
 /** The same checks on our own machine. */
 function localCommand(p) {
+  if (p.level === 'perf') return `pnpm perf ${p.suites.split(';').map((c) => JSON.stringify(c.trim())).join(' ')} --ref <ref> --base <base> -e ${p.engines}`;
   if (p.url) return `pnpm e2e ${p.level === 'smoke' ? '--smoke' : `${p.suites} -e ${p.engines}`} --url ${p.url}`.replace(/  +/g, ' ');
   const code = p.code === 'unit' ? `pnpm test ${p.suites}`.trim() : p.code ? 'pnpm lint && pnpm typecheck && pnpm test' : '';
   const e2e = !p.engines.length ? '' : p.level === 'smoke' ? 'pnpm e2e --smoke' : `pnpm e2e ${p.suites} -e ${p.engines}`.replace(/  +/g, ' ');
@@ -167,7 +180,7 @@ if (o.guard) {
   const summary = (md) => env.GITHUB_STEP_SUMMARY && appendFileSync(env.GITHUB_STEP_SUMMARY, md + '\n');
   let p;
   try {
-    p = plan({ level: env.CHECK_LEVEL, engines: env.CHECK_ENGINES || 'chromium', suites: (env.CHECK_SUITES || '').trim(), url: (env.CHECK_URL || '').trim() });
+    p = plan({ level: env.CHECK_LEVEL, engines: env.CHECK_ENGINES || 'chromium', suites: (env.CHECK_SUITES || '').trim(), url: (env.CHECK_URL || '').trim(), perfMinutes: env.CHECK_PERF_MINUTES });
   } catch (e) {
     console.log(`::error::${e.message}`);
     process.exit(1);
@@ -222,6 +235,8 @@ for (const [what, inputs] of [
   ['e2e webkit     every browser check in WebKit', { level: 'e2e', engines: 'webkit' }],
   ['full           quick + every browser check, Chromium', { level: 'full', engines: 'chromium' }],
   ['full (ci:full) quick + every browser check, 3 engines', { level: 'full', engines: ENGINES.join(',') }],
+  ['perf           one perf check A/B (perf.yml), one engine, 12-minute job', { level: 'perf', engines: 'chromium', suites: 'a check' }],
 ])
   console.log(`  ${String(estimate(plan(inputs))).padStart(4)}  ${what}`);
 console.log('\nDispatch: gh workflow run check.yml -f level=<level> [-f engines=firefox,webkit] [-f suites="editor features"] [-f ref=<branch>]');
+console.log('          gh workflow run perf.yml -f checks="<check>; <check>" -f ref=<branch> [-f base=main] [-f engines=chromium,firefox] [-f minutes=12]');
