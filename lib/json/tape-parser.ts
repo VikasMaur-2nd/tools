@@ -33,6 +33,7 @@ import {
   VALUE_TRUE,
   W,
   emptyTape,
+  fitted,
   valueOf,
   type Tape,
 } from './tape';
@@ -643,7 +644,7 @@ function finish(error: Issue | null): Tape {
   // A wrapped document is not the source text, so the native formatting fast path can't apply.
   exact = exact && root >= 0 && !issues.length && !warnings.length && !multi;
   const head = { issues, warnings, error, nodes, depth, exact, multi: multi && root >= 0 };
-  const tape: Tape = root >= 0 ? { nodes: T, count, keys, big, extra, head } : emptyTape(head);
+  const tape: Tape = root >= 0 ? { nodes: fitted(T, count), count, keys, big, extra, head } : emptyTape(head);
   turnedLast = turned;
   // Nothing of it stays here.
   begin('', false, STEP, UNLIMITED);

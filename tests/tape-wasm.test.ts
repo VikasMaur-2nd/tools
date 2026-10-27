@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { MAX_DEPTH } from '../lib/json/parser';
 import { parse, type TapeOptions } from '../lib/json/tape-parser';
 import { wasmTape } from '../lib/json/tape-wasm';
-import { W, sizeOf, type Tape } from '../lib/json/tape';
+import { TRIM_MAX, W, sizeOf, type Tape } from '../lib/json/tape';
 import { genLoose, mutate, rng, type Rng } from './oracle/compare';
 import { CORPUS, FIXTURES, diffTape, files, genStrict, loosen } from './oracle/tape';
 
@@ -270,6 +270,25 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
     }
     const levels = 1_000_000;
     same('['.repeat(levels) + '1' + ']'.repeat(levels));
+  });
+
+  test('a tape of up to TRIM_MAX bytes keeps no room to grow; a bigger one keeps it (no copy)', () => {
+    const r = rng((SEED || 1) + 41);
+    for (let it = 0; it < cases(300); it++) {
+      const src = genStrict(r, 5);
+      const t = wasmTape(mod, src, {}, r.chance(0.5) ? encoder.encode(src) : undefined);
+      assert.ok(t, show(src));
+      assert.equal(t.nodes.length, t.count * W, show(src));
+    }
+    for (const n of [1, 2, 4095, 4096, 4097, 9000, 100_000, 400_000]) {
+      const t = wasmTape(mod, '[' + '0,'.repeat(n - 1) + '0]')!;
+      assert.equal(t.count, n + 1);
+      assert.equal(t.nodes.length, t.count * W);
+    }
+    const n = Math.ceil(TRIM_MAX / 4 / W) + 1000;
+    const big = wasmTape(mod, '[' + '0,'.repeat(n - 2) + '0]')!;
+    assert.equal(big.count, n);
+    assert.ok(big.nodes.length > big.count * W, `${big.nodes.length} for ${big.count} nodes`);
   });
 
   test('JSONTestSuite, the simdjson corpus and the harness fixtures (where present)', (t) => {

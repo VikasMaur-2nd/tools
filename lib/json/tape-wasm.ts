@@ -9,7 +9,7 @@
  * document is never copied whole, and the nodes come back in batches.
  */
 import { decodeString } from './decode';
-import { SIZE_BIG, W, type Tape } from './tape';
+import { fitted, SIZE_BIG, W, type Tape } from './tape';
 import type { TapeOptions } from './tape-parser';
 
 interface Exports {
@@ -167,5 +167,5 @@ function finish(x: Exports, text: string, nodes: Int32Array<ArrayBuffer>, count:
     warnings.push({ p: dups[k], m: `Duplicate key "${key.length > 40 ? key.slice(0, 40) + '…' : key}"` });
   }
   const head = { issues: [], warnings, error: null, nodes: count, depth: x.depth(), exact: x.exact() === 1 && !warnings.length, multi: false };
-  return { nodes, count, keys, big, extra: null, head };
+  return { nodes: fitted(nodes, count), count, keys, big, extra: null, head };
 }

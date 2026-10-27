@@ -4,7 +4,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MAX_DEPTH, parse as oldParse, type ParseOptions } from '../lib/json/parser';
 import { parse, parser, warmUp, type TapeOptions } from '../lib/json/tape-parser';
-import { KEY_NAME, W, keyKindOf, sizeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
+import { KEY_NAME, TRIM_MAX, W, keyKindOf, sizeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
 import { tapeOf } from '../lib/json/tape-send';
 import { MESSAGES, genDeep, genLoose, mutate, rng } from './oracle/compare';
 import { CORPUS, FIXTURES, diffTape, files, genStrict, loosen } from './oracle/tape';
@@ -461,6 +461,31 @@ describe('tape parser: beyond parser.ts', () => {
     assert.equal(diffTape(tapeOf(oldParse(src), src), t, src), null);
     warmUp();
     same(src, {}, [1]);
+  });
+
+  test('a tape of up to TRIM_MAX bytes keeps no room to grow; a bigger one keeps it (no copy)', () => {
+    const stepped = (src: string, options: TapeOptions) => {
+      const p = parser(src, options, 1);
+      let t: Tape | undefined;
+      while (!(t = p.step(0)));
+      return t;
+    };
+    const r = rng((SEED || 1) + 31);
+    for (let it = 0; it < cases(300); it++) {
+      const src = r.chance(0.5) ? genStrict(r, 5) : mutate(r, genLoose(r, 4));
+      const options = r.chance(0.2) ? { lines: true } : r.chance(0.5) ? { repair: true } : {};
+      for (const t of [parse(src, options), stepped(src, options)]) assert.equal(t.nodes.length, t.count * W, show(src));
+    }
+    // Around the growth steps (the first tape has room for 4,096 nodes).
+    for (const n of [1, 2, 4095, 4096, 4097, 9000, 100_000]) {
+      const t = parse('[' + '0,'.repeat(n - 1) + '0]');
+      assert.equal(t.count, n + 1);
+      assert.equal(t.nodes.length, t.count * W);
+    }
+    const n = Math.ceil(TRIM_MAX / 4 / W) + 1000;
+    const big = parse('[' + '0,'.repeat(n - 2) + '0]');
+    assert.equal(big.count, n);
+    assert.ok(big.nodes.length > big.count * W, `${big.nodes.length} for ${big.count} nodes`);
   });
 
   test('values are read back from the source: no string per value', () => {
