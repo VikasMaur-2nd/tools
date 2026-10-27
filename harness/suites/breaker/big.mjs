@@ -10,7 +10,7 @@ import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
-import { clear, golden, hash, heavyLock, reformat, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
+import { clear, golden, hash, heavyLock, openAsText, reformat, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
 
 // (With the heavy lock a check may first wait in its queue for a long time: an hour then.)
 defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: process.env.BREAKER_HEAVY_LOCK ? 3_600_000 : 600_000 });
@@ -234,10 +234,15 @@ test('5 MB of random bytes: an error within seconds, and the page stays responsi
     requestAnimationFrame(f);
   });
   const t0 = Date.now();
-  const st = await open(t, 'blob-5mb', { minutes: 3, reopen: false });
+  await clear(page);
+  await watchToasts(page);
+  await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture('blob-5mb'));
+  // The branch says it looks binary and opens it as text when asked (main opens it at once).
+  const asked = await openAsText(page, 15_000);
+  const st = await settled(page, { timeout: 3 * 60_000 * slow(t) });
   const ms = Date.now() - t0;
   const gap = await page.evaluate(() => Math.round(window.__gap.max));
-  t.log('random 5 MB:', { ms, gap, st });
+  t.log('random 5 MB:', { ms, gap, st, asked: !!asked });
   t.check(st?.kind === 'err', 'an error status', st);
   const known = { known: 'bug: binary text makes the editor measure every line in the DOM (BREAKER-REPORT, binary files)' };
   t.check(ms < t.budget(15_000) * slow(t), 'the error shows within 15 s', `${ms} ms`, known);
@@ -274,4 +279,24 @@ test('a 26 KB share link that inflates to 10 million values opens', async (t) =>
   await t.app.waitEngine(page);
   const st = await settled(page, { raw: text.length, timeout: 180_000 * slow(t) });
   t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 10,000,002 nodes · depth 1', 'valid, 10,000,002 nodes', st);
+});
+
+test('a 130 KB share link that inflates to 100 MB: asked about before it opens, and the tab lives', async (t) => {
+  await heavyLock(t); // (Main inflates it all: 100 MB.)
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  const { fragment } = zeroLink(100);
+  t.log(`link fragment ${fragment.length} chars`);
+  const known = { known: 'bug (main): a share link opens at once whatever it inflates to; at 100 MB Chromium\'s tab crashes (BREAKER-REPORT F3c)' };
+  let asked = null;
+  let st = null;
+  try {
+    await page.goto(t.base + '/' + fragment, { waitUntil: 'commit' });
+    await t.app.waitEngine(page, { timeout: 60_000 });
+    asked = await until(page, () => [...document.querySelectorAll('.toast')].map((x) => x.textContent).find((x) => /link's document is over 32 MB/.test(x)) || null, null, { timeout: 60_000 * slow(t) });
+    st = await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? null);
+  } catch {}
+  t.check(!!asked, 'it asks before opening the document', asked, known);
+  t.check(!crashed && /^Ready/.test(st ?? ''), 'nothing is opened until asked, and the tab lives', { crashed, st: st?.slice(0, 60) }, known);
 });
