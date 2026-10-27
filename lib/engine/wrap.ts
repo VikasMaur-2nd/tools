@@ -688,7 +688,11 @@ export class Wrapper {
         if (this.glyphs.has(c)) continue;
         this.glyphs.set(c, 0);
         todo.push(c);
-        if (JOINS.test(String.fromCodePoint(c))) this.joins.add(c);
+        if (JOINS.test(String.fromCodePoint(c))) {
+          this.joins.add(c);
+          // (U+FE0F is in breakIn's tables before it is learned: it now never starts a row.)
+          if (c < 0x10000 && this.ft) this.ft[c] = 0;
+        }
       }
     }
     if (!todo.length) return;
@@ -1079,9 +1083,10 @@ export class Wrapper {
 
   /** Puts BMP code point `c` in the tables (learning it if new); its flags. */
   private cache(c: number) {
-    const g = this.glyphs.get(c) ?? this.glyph(c);
-    // (A variation selector can turn the character before it into a wider emoji.)
-    (this.wt as Float32Array)[c] = c === 0xfe0f ? 2.5 * this.cw : g;
+    // (A variation selector can turn the character before it into a wider emoji: it counts for that, and may
+    // start a row until a line holding it is measured, as it always did here.)
+    const g = c === 0xfe0f ? 2.5 * this.cw : (this.glyphs.get(c) ?? this.glyph(c));
+    (this.wt as Float32Array)[c] = g;
     return ((this.ft as Uint8Array)[c] = 4 | (this.joins.has(c) ? 1 : 0) | (c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029 ? 2 : 0));
   }
 

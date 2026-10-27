@@ -445,6 +445,22 @@ describe('row breaks added up for long lines', () => {
       assert.deepEqual([...breaks(make(), doc as unknown as string, 0, doc.length)], [...breaks(make(), flat, 0, flat.length)], `edit ${k}`);
     }
   });
+  test('a variation selector may start a row until a line holding it is measured, then joins', () => {
+    const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+    w.fit(10 * 8 + 4 + 0.25, 8);
+    const x = w as unknown as { glyphs: Map<number, number>; ctx: unknown; font: string; learn(lines: string[]): void };
+    x.glyphs.set(0x263a, 8);
+    x.ctx = { font: '', measureText: () => ({ width: 8 }) };
+    x.font = 'test';
+    // Nine cells, the smiley's tenth, then U+FE0F's 2.5 cells don't fit.
+    const s = 'aaaaaaaaa☺️bb';
+    assert.deepEqual([...breaks(w, s, 0, s.length)], [0, 10]);
+    assert.deepEqual([...breaks(w, s, 0, s.length)], [0, 10], 'read from the tables');
+    x.learn([s]);
+    // (Another line: rows of one seen before are reused.)
+    const t = 'ccccccccc☺️dd';
+    assert.deepEqual([...breaks(w, t, 0, t.length)], [0, 11]);
+  });
 });
 
 test("a row's bidi context stops at a forced break, which would break the drawn row", () => {
