@@ -391,7 +391,14 @@ export class Wrapper {
   /** How the last `rows()` text differs from the one before: same first `p` and last `q` characters. */
   private diff: { old: Src; text: Src; p: number; q: number } | null = null;
   /** The last `rows()` call, whose unchanged lines the next one reuses. */
-  private last: { text: Src; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array } | null = null;
+  private last: { text: Src; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array; tabs: boolean } | null = null;
+  /** Whether a string text has a tab, told by whoever found out anyway (see knowTabs). */
+  private told: { text: string; tabs: boolean } | null = null;
+
+  /** Tells rows() whether `text` has a tab (the editor finds out while counting its lines). */
+  knowTabs(text: string, tabs: boolean) {
+    this.told = { text, tabs };
+  }
   /**
    * rows() reuses its arrays two calls later (the last call's are read by the next): for a caller that
    * keeps neither `odd` nor the counts past the next call. A document of a million lines would
@@ -564,7 +571,9 @@ export class Wrapper {
       this.ver++;
     }
     this.verText = text;
-    this.last = { text, A, B, out, odd };
+    // (A string's tab, looked for over 100 MB, took 0.1 s in Firefox: the same text keeps its answer.)
+    const tabs = typeof text !== 'string' ? text.tabs : last?.text === text ? last.tabs : this.told?.text === text ? this.told.tabs : text.indexOf('\t') !== -1;
+    this.last = { text, A, B, out, odd, tabs };
     // (Lines cut in another text would keep it alive.)
     if (text !== this.cutText) {
       this.cutLines = [];
@@ -596,7 +605,6 @@ export class Wrapper {
         k0 = k1;
       }
     }
-    const tabs = typeof text === 'string' ? text.indexOf('\t') !== -1 : text.tabs;
     const lead = this.lead;
     // Whole documents prune counts of lines that are gone; edits only add.
     const keep = lo === 0 && hi === n ? new Map<string, number>() : this.sized;

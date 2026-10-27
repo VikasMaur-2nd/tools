@@ -101,13 +101,10 @@ for (const [label, eol] of EOLS) {
       if (hash(out ?? '') !== hash(edited)) await page.waitForTimeout(1000);
     }
     t.check(hash(out ?? '') === hash(edited), 'the edit reaches the Format output', out?.length);
-    // Typing over a selection is two Undo steps (the first typed character, then the rest: BREAKER-REPORT F19).
-    let back = null;
-    for (let k = 0; k < 2 && hash(back ?? '') !== hash(want); k++) {
-      await command(page, 'Undo');
-      back = await inputText(page);
-    }
-    t.check(hash(back ?? '') === hash(want), 'Undo brings the text back');
+    // (Typing over a selection is one Undo step: BREAKER-REPORT F19.)
+    await command(page, 'Undo');
+    const back = await inputText(page);
+    t.check(hash(back ?? '') === hash(want), 'one Undo brings the text back');
     await validNow(page, /^Valid JSON/);
     await view(page, 'tree');
     const undoneRow = await treeFind(page, `$[${LAST}].tag`, `tag:"k${LAST}"`, 30_000);

@@ -9,7 +9,7 @@
  * context (./react) and to engine DOM code through `rt`.
  */
 import { formatBytes } from '../json/format';
-import { compact, duration } from '../json/jwt';
+import { compact, duration } from './duration';
 
 export type Forms = Partial<Record<Intl.LDMLPluralRule, string>>;
 /** English text → translation; a plural string maps both English forms to the same forms object. */

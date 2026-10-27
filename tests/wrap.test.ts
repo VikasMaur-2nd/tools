@@ -597,6 +597,30 @@ describe('binary text', () => {
     }
   });
 
+  test("a string's tab is looked for once: told by the editor, or kept from the call before", () => {
+    const { w } = make(false, () => 8);
+    const t = 'x'.repeat(3_000_000) + '\n' + '{}';
+    const [A, B] = linesOf(t);
+    const indexOf = String.prototype.indexOf;
+    let looks = 0;
+    String.prototype.indexOf = function (this: string, ...a: Parameters<string['indexOf']>) {
+      if (this.length >= t.length && a[0] === '\t') looks++;
+      return indexOf.apply(this, a);
+    };
+    try {
+      w.rows(t, A, B);
+      w.rows(t, A, B);
+      assert.equal(looks, 1, 'kept from the call before');
+      const u = t + ' ';
+      const [A2, B2] = linesOf(u);
+      (w as unknown as Wrapper).knowTabs(u, false);
+      w.rows(u, A2, B2);
+      assert.equal(looks, 1, 'told');
+    } finally {
+      String.prototype.indexOf = indexOf;
+    }
+  });
+
   test('a textarea editor still measures garbage exactly (its rows must match the textarea)', () => {
     const { w } = make(true, () => 8);
     const t = 'ab\u0000cd�' + 'x'.repeat(100);

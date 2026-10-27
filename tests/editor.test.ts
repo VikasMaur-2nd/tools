@@ -39,6 +39,28 @@ test('the undo history counts the characters merged typing stores', () => {
   assert.equal(h.histChars, stored(h));
 });
 
+test('typing over a selection is one undo step with the typing that follows', () => {
+  const { ed, ta } = editor('{"tag": "b", "n": 5}');
+  const h = history(ed);
+  ta.setSelectionRange(8, 11);
+  for (const c of '"EDITED"') ta.type(c);
+  assert.equal(ed.text, '{"tag": "EDITED", "n": 5}');
+  assert.equal(h.undo_.length, 1);
+  assert.equal(h.histChars, stored(h));
+  ed.undo();
+  assert.equal(ed.text, '{"tag": "b", "n": 5}');
+  assert.deepEqual([ta.selectionStart, ta.selectionEnd], [8, 11], 'the selection is back');
+  ed.redo();
+  assert.equal(ed.text, '{"tag": "EDITED", "n": 5}');
+  // Typing elsewhere afterwards is a step of its own.
+  ta.setSelectionRange(23, 24);
+  for (const c of '7778') ta.type(c);
+  assert.equal(ed.text, '{"tag": "EDITED", "n": 7778}');
+  assert.equal(h.undo_.length, 2);
+  ed.undo();
+  assert.equal(ed.text, '{"tag": "EDITED", "n": 5}');
+});
+
 test('the undo history counts the characters merged deleting stores', () => {
   const { ed, ta } = editor('{"abcdef": 1}');
   const h = history(ed);

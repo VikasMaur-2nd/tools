@@ -174,6 +174,53 @@ for (const pad of [0, 3_000_000]) {
   });
 }
 
+test('the tree: a click selects a row, a double-click on a value shows it in the editor', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const doc = JSON.stringify([{ id: 1, tag: 'a' }, { id: 2, tag: 'b' }], null, 2);
+  t.assert(await load(page, doc, 'tags.json'), 'the document loads');
+  await view(page, 'tree');
+  const row = page.locator('#view-tree .tv-rows [role=treeitem]').filter({ hasText: /^tag:"b"$/ });
+  await row.click();
+  t.check((await row.getAttribute('aria-selected')) === 'true', 'a click selects the row');
+  t.check((await page.evaluate(() => document.activeElement?.id)) !== 'input', 'a click leaves the focus in the tree');
+  await row.dblclick();
+  const moved = await until(page, () => document.activeElement?.id === 'input' || null, null, { timeout: 5000 });
+  t.check(!!moved, 'a double-click moves to the editor (BREAKER-REPORT F17)');
+  // The value is what the editor selected: typing replaces exactly it.
+  if (moved) await page.keyboard.type('"Z"');
+  t.check((await inputText(page)) === doc.replace('"b"', '"Z"'), 'the editor selected the value', await inputText(page));
+});
+
+test('a JWT opened as the page loads is read as one (its reader loads on first use)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const exp = Math.floor(Date.now() / 1000) + 7200;
+  const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'abc', exp })}.c2lnbmF0dXJl`;
+  t.assert(await load(page, jwt, 'token.txt'), 'the token loads');
+  const st = await until(page, () => (/^JWT · HS256/.test(window.__vis('.sb-l')?.textContent ?? '') ? window.__vis('.sb-l').textContent : null), null, { timeout: 10_000 });
+  t.check(!!st, 'the status says JWT · HS256', st ?? (await page.evaluate(() => window.__vis('.sb-l')?.textContent)));
+  const out = await copied(page, 'Copy formatted output');
+  t.check(!!out && out.includes('"alg": "HS256"') && out.includes('"sub": "abc"'), 'the output is the decoded token', out?.slice(0, 200));
+});
+
+test('typing over a selection is one Undo step with the typing that follows', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const doc = JSON.stringify([{ id: 1, tag: 'a' }, { id: 2, tag: 'b' }], null, 2);
+  t.assert(await load(page, doc, 'tags.json'), 'the document loads');
+  await view(page, 'tree');
+  await page.locator('#view-tree .tv-rows [role=treeitem]').filter({ hasText: /^tag:"b"$/ }).dblclick();
+  t.assert(!!(await until(page, () => document.activeElement?.id === 'input' || null, null, { timeout: 5000 })), 'the value is selected in the editor');
+  await page.keyboard.type('"EDITED"');
+  t.check((await inputText(page)) === doc.replace('"b"', '"EDITED"'), 'typed over the value');
+  await command(page, 'Undo');
+  t.check((await inputText(page)) === doc, 'one Undo brings the value back (BREAKER-REPORT F19)', await inputText(page));
+  await command(page, 'Redo');
+  t.check((await inputText(page)) === doc.replace('"b"', '"EDITED"'), 'Redo types it again');
+});
+
 test('an edit made while the Tree shows: Copy formatted output, Copy converted output and Download formatted output give the edited document', async (t) => {
   const { page } = t;
   await t.open('/');

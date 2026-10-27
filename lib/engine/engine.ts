@@ -15,7 +15,7 @@ import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { convertFileName, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type ContextMenu, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
-import { readJwt, type JwtInput } from '../json/jwt';
+import type { JwtInput, readJwt } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
@@ -24,7 +24,7 @@ import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
-import { snippet, type SnippetFormat } from '../badge';
+import type { SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
@@ -143,6 +143,18 @@ function prettyExtraIn(root: JNode, unit: number): (until: number) => number | u
 
 /** Opened JSON Lines files: even one record reads as a list of records. */
 const LINES_FILE = /\.(jsonl|ndjson)$/i;
+
+/**
+ * Could the input be a JWT (see readJwt, loaded once one may be)? As readJwt, looks at its first character
+ * only: anything but "e" (eyJ…) or "Bearer" isn't.
+ */
+function mayBeJwt(t: { length: number; charCodeAt(i: number): number }) {
+  if (t.length > 1_000_000) return false;
+  let i = 0;
+  while (i < t.length && t.charCodeAt(i) <= 32) i++;
+  const c = t.charCodeAt(i);
+  return c === 101 || c === 66 || c === 98;
+}
 /** From this size, a load in the Format view draws its output before the editor (see `load`). */
 const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
@@ -276,6 +288,11 @@ export class Engine {
   private good: ParseResult | null = null;
   /** The input is a JWT: `res` and the views describe its decoded document. */
   private jwt: JwtInput | null = null;
+  /** The JWT reader (lib/json/jwt.ts): loaded when an input may be a JWT, or when the page is idle. */
+  private jwtReader: typeof readJwt | null = null;
+  private jwtLoad: Promise<void> | null = null;
+  /** An analysis waits for the JWT reader (see waitForJwt). */
+  private jwtWait = false;
   private sel: JNode | null = null;
   private selPath: Seg[] | null = null;
   private tablePath: Seg[] = [];
@@ -596,6 +613,31 @@ export class Engine {
   /** A new document being parsed in steps (see analyzeInSteps). */
   private steps: { p: Parser; seq: number; ver: object } | null = null;
 
+  /** Loads the JWT reader, once (a page offline without it reads every input as plain text). */
+  private loadJwt() {
+    return (this.jwtLoad ??= import('../json/jwt').then(
+      (m) => void (this.jwtReader = m.readJwt),
+      () => void (this.jwtReader = () => null),
+    ));
+  }
+
+  /**
+   * An input that may be a JWT before the JWT reader has loaded: says "Parsing…" and analyses again once it
+   * has. True if the analysis must wait.
+   */
+  private waitForJwt() {
+    if (this.jwtReader || !mayBeJwt(this.ed.version as Doc)) return false;
+    store.set({ status: { kind: 'parsing' } });
+    if (!this.jwtWait) {
+      this.jwtWait = true;
+      void this.loadJwt().then(() => {
+        this.jwtWait = false;
+        if (!this.dead) this.analyze();
+      });
+    }
+    return true;
+  }
+
   /**
    * Analyses a new document. A big one is parsed here in steps, the first at once (one it finishes is ready
    * as soon as in one go): input is handled between them, the status shows how far it got, and an edit or
@@ -604,7 +646,7 @@ export class Engine {
    */
   private analyzeInSteps() {
     const text = this.ed.length >= STEPS_MIN && this.resetNext ? this.ed.text : '';
-    if (!text || readJwt(text, this.indent)) return this.analyze();
+    if (!text || mayBeJwt(text)) return this.analyze();
     const seq = this.loadSeq;
     const ver = this.ed.version;
     const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
@@ -703,6 +745,7 @@ export class Engine {
 
   /** Publish analysis; a Format-only result can retain its packed tree until needed. */
   analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
+    if (this.waitForJwt()) return;
     // (Outputs asked for meanwhile are made once this analysis has published: see whenAnalysed.)
     if (this.analysed.length) queueMicrotask(() => { for (const f of this.analysed.splice(0)) f(); });
     if (!lazy) this.packed = null;
@@ -742,7 +785,7 @@ export class Engine {
     }
 
     const t0 = performance.now();
-    const jwt = readJwt(text, this.indent);
+    const jwt = this.jwtReader && mayBeJwt(text) ? this.jwtReader(text, this.indent) : null;
     const src = jwt ? jwt.json : text;
     const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
@@ -1362,7 +1405,7 @@ export class Engine {
    */
   private outputFirst(text: string | Doc, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void, typed = false, retained?: Doc): boolean {
     const s = this.settings;
-    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || text.length < WORKER_MIN && readJwt(text.toString(), this.indent)) return false;
+    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || mayBeJwt(text)) return false;
     // A big document's Pretty output is read off its tape (see runFormat): nothing to make here. A load goes
     // on to the editor and the analysis (finishLoad); after typing, only the analysis runs.
     if (this.prettyFromTape(text.length)) return typed && this.analyzeOnly(retained ?? (typeof text === 'string' ? Doc.of(text) : text), name, next);
@@ -2169,7 +2212,8 @@ export class Engine {
    */
   async share(as: SnippetFormat = 'link') {
     try {
-      const link = await this.shareUrl();
+      // (The button's markup loads meanwhile: shared rarely, it isn't part of the first load.)
+      const [link, { snippet }] = await Promise.all([this.shareUrl(), import('../badge')]);
       if (!link) return this.toast('Nothing to share yet', 'info');
       const { url, comparing } = link;
       track('feature_used', { feature: comparing ? 'share_compare' : 'share_link', value: as });
@@ -3918,6 +3962,7 @@ export class Engine {
           () => this.reindentWorker(),
           () => this.warmAnalysis(),
           () => loadSurface(),
+          () => this.loadJwt(),
           () => import('../graph/view').catch(() => {}),
         );
         const next = () => {

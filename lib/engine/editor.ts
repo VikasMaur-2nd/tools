@@ -577,6 +577,7 @@ export class Editor {
       const lb = near ? lineOfIn(this.ls, edit.b) : -1;
       const { ls, max, tabs } = lineStarts(doc.toString());
       doc.knowTabs(tabs);
+      if (doc.flat !== null) this.wrapper?.knowTabs(doc.flat, tabs);
       this.maxStale = false;
       if (near && ls.length >= FOLD_EDIT_LINES) {
         folds = foldsAround(this.close, this.depth, la, lb, countLines(edit.ins, Infinity));
@@ -2294,7 +2295,8 @@ export class Editor {
     };
     const last = this.undo_[this.undo_.length - 1];
     const recent = last && ch.t - last.t < 1200;
-    if (recent && ch.kind === 'type' && last.kind === 'type' && !ch.del && !last.del && last.a + last.ins.length === ch.a && !ch.ins.includes('\n')) {
+    // (Typing on after replacing a selection by typing joins that step too: one Undo brings the selection back.)
+    if (recent && ch.kind === 'type' && last.kind === 'type' && !ch.del && last.a + last.ins.length === ch.a && !ch.ins.includes('\n')) {
       last.ins += ch.ins;
       last.selA = ch.selA;
       last.t = ch.t;
