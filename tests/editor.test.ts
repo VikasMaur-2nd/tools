@@ -228,3 +228,47 @@ test("an input method's commit reaches the tool once, whichever comes first: its
     assert.equal(ed.text, '{}', `${order}: one Undo step`);
   }
 });
+
+test('a paste over the whole document leaves its file: Undo tells the name back, Redo takes it away again', () => {
+  const { el, ta } = editorElement();
+  const names: (string | null)[] = [];
+  let name: string | null = 'a.json';
+  const ed = new Editor(el as unknown as HTMLElement, { ...events, renamed: (n: string | null) => names.push((name = n)), name: () => name });
+  ed.init('{"a":1}');
+  frames();
+  const inner = ed as unknown as { onPaste(e: unknown): void; onBeforeInput(e: unknown): void; onInput(e: unknown): void };
+  /** A paste of `text` over `[a, b)` as the browser makes it: the paste event, then (if not taken) its insertion. */
+  const paste = (text: string, a = 0, b = ta.value.length) => {
+    ta.setSelectionRange(a, b);
+    let taken = false;
+    inner.onPaste({ clipboardData: { getData: () => text }, preventDefault: () => (taken = true) });
+    if (taken) return;
+    inner.onBeforeInput({ inputType: 'insertFromPaste', cancelable: true, preventDefault() {} });
+    ta.value = ta.value.slice(0, a) + text + ta.value.slice(b);
+    ta.setSelectionRange(a + text.length, a + text.length);
+    inner.onInput({ inputType: 'insertFromPaste' });
+  };
+  paste('[1]');
+  name = null; // (the engine's part: see Engine.onChange)
+  assert.equal(ed.text, '[1]');
+  paste('2', 1, 2);
+  assert.equal(ed.text, '[2]');
+  ed.undo();
+  assert.deepEqual(names, [], 'a paste over part of it carries no name');
+  ed.undo();
+  assert.equal(ed.text, '{"a":1}');
+  assert.deepEqual(names, ['a.json'], 'Undo: the name of the document it brings back');
+  ed.redo();
+  assert.equal(ed.text, '[1]');
+  assert.deepEqual(names, ['a.json', null]);
+  // A big paste, which the editor puts in itself (no browser insertion), the same.
+  ed.undo();
+  const big = JSON.stringify(Array.from({ length: 6000 }, (_, i) => i));
+  assert.ok(big.length > 20_000);
+  paste(big);
+  name = null;
+  assert.equal(ed.text, big);
+  ed.undo();
+  assert.equal(ed.text, '{"a":1}');
+  assert.deepEqual(names, ['a.json', null, 'a.json', 'a.json']);
+});

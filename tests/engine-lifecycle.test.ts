@@ -600,6 +600,40 @@ test('the file name is saved with the document kept: a load still on its way whe
   assert.equal(s.storage.get('jf:file'), undefined);
 });
 
+test("the Compare editor's file name goes with its document: a load, a clear, a swap and a paste over it tell its undo steps", () => {
+  const s = session();
+  type Names = [string | null, string | null];
+  /** An editor that keeps the file names each whole-document step carries (Editor.undo/redo tell them back: see editor.test). */
+  const editor = (text: string) => ({
+    text, pasteFull: false, steps: [] as (Names | undefined)[], el: { removeEventListener() {} },
+    get length() { return this.text.length; },
+    setValue(t: string, ...[, , names]: [number?, boolean?, Names?]) { this.text = t; this.steps.push(names); },
+    setDiagnostics() {}, focus() {}, setBrackets() {}, destroy() {},
+  });
+  const ed = editor('{"a":1}');
+  const ed2 = editor('');
+  Object.assign(s.engine, { ed, ed2, edName: 'a.json', analyze() {}, persistSoon() {} });
+  Object.assign(s.state, { fileName: 'a.json', cmpFile: null });
+  s.engine.loadCompare('{"b":1}', 'b.json');
+  s.engine.clearCompare();
+  assert.equal(s.state.cmpFile, null);
+  s.engine.loadCompare('{"c":1}', 'c.json');
+  s.engine.swapCompare();
+  assert.deepEqual([s.state.fileName, s.state.cmpFile], ['c.json', 'a.json']);
+  // (Made in the engine's realm: compared as JSON.)
+  assert.equal(JSON.stringify(ed2.steps), JSON.stringify([[null, 'b.json'], ['b.json', null], [null, 'c.json'], ['c.json', 'a.json']]));
+  assert.equal(JSON.stringify(ed.steps), JSON.stringify([['a.json', 'c.json']]));
+  // Undo or Redo bringing a name back, and the name a paste over everything leaves.
+  s.engine.cmpRenamed('b.json');
+  assert.equal(s.state.cmpFile, 'b.json');
+  assert.equal(s.engine.cmpName(), 'b.json');
+  s.engine.onCompareChange('paste');
+  assert.equal(s.state.cmpFile, 'b.json', 'a paste into part of it keeps the name');
+  ed2.pasteFull = true;
+  s.engine.onCompareChange('paste');
+  assert.equal(s.state.cmpFile, null, 'a paste over everything leaves the file');
+});
+
 test('Undo while a file is being read undoes that file once it arrives, not the document before it', async () => {
   const { engine, loads, toasts } = loading();
   let undone = 0;
