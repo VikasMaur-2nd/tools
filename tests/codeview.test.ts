@@ -127,3 +127,33 @@ test('wrap turned off and on over a big document draws the rows on screen until 
     performance.now = now;
   }
 });
+
+test('laid out again inside a long wrapped line, the view keeps its text and the current match (F20)', async () => {
+  const { code, rows, el } = view(400);
+  const text = ['{', '  "a": 1,', `  "long": "MARKA${'R'.repeat(4990)}MARKB",`, ...Array.from({ length: 200 }, (_, i) => `  "k${i}": ${i},`), '  "z": 0', '}'].join('\n');
+  code.setText(text, (t) => t, true);
+  for (let k = 0; k < 50 && !rows.innerHTML; k++) await tick();
+  type Inner = { sc: { top: number }; rowStart: Int32Array; hi: number; rFirst: number; reflow(keep: boolean): void };
+  const inner = code as unknown as Inner;
+  const RH = 20;
+  // The current match is drawn in the 600 px view (rows are drawn in order from rFirst).
+  const inView = () => {
+    const k = rows.innerHTML.split('<div class="cv-l').findIndex((r) => r.includes('cv-hit cur')) - 1;
+    const y = (inner.rFirst + k) * RH;
+    return k >= 0 && y >= inner.sc.top && y + RH <= inner.sc.top + 600;
+  };
+  // One match, at the end of the long line; then two, the current one the second.
+  for (const [q, total] of [['markb', 1], ['mark', 2]] as const) {
+    assert.deepEqual(code.find(q), { total, index: 0 });
+    if (total === 2) assert.deepEqual(code.step(1), { total, index: 1 });
+    assert.ok(inner.rowStart[3] - inner.rowStart[2] > 60, 'the long line takes many rows');
+    assert.ok(inView(), `${q}: MARKB, at the end of the long line, in view`);
+    for (const width of [500, 400, 300, 400]) {
+      // (A width, a font, or a long line measured when idle: the view is laid out again.)
+      el.clientWidth = width;
+      inner.reflow(true);
+      assert.equal(inner.hi, total - 1, `${q}, ${width}: MARKB is still the current match`);
+      assert.ok(inView(), `${q}, ${width}: and still in view`);
+    }
+  }
+});

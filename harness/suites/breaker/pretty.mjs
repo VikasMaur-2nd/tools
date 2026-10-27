@@ -380,6 +380,7 @@ for (const mb of [0.9, 3]) {
   test(`find on long lines (${mb} MB): the highlight sits on the matched text, wrap on and off`, async (t) => {
     // Lines of 2,000 and 5,000 characters, each with a match at its end. On main the highlight drifted right
     // with the column: with wrap off 320 px at column 2,000, its text scrolled out of view (BREAKER-REPORT F20).
+    // Wrap on, a 5,000-character line's rows made exact when idle moved the view back to its first row.
     const { page } = t;
     await t.open('/');
     const recs = [];
@@ -392,7 +393,6 @@ for (const mb of [0.9, 3]) {
     recs[5] = { id: 5, long: 'R'.repeat(4990) + 'MARKB' };
     t.assert((await loadAny(page, Buffer.from(JSON.stringify(recs)), 'long.json', { timeout: 120_000 }))?.msg === 'Valid JSON', 'the document is valid');
     await until(page, () => (window.__vis('#view-format .cv-l') ? true : null), null, { timeout: 60_000 });
-    const known = { known: 'bug (main): find highlights drift right on long lines (BREAKER-REPORT F20)' };
     for (const wrap of ['on', 'off']) {
       if (wrap === 'off') {
         await command(page, 'Wrap long lines');
@@ -423,7 +423,7 @@ for (const mb of [0.9, 3]) {
           }
           return { off: null, seen: false };
         }, null, { timeout: 10_000 }).catch(() => null);
-        t.check(count === '1 of 1' && at !== null && at.off !== null && Math.abs(at.off) <= 2 && at.seen, `wrap ${wrap}, ${q}: the highlight is on the match, which is in view`, { count, ...at }, known);
+        t.check(count === '1 of 1' && at !== null && at.off !== null && Math.abs(at.off) <= 2 && at.seen, `wrap ${wrap}, ${q}: the highlight is on the match, which is in view`, { count, ...at });
       }
     }
     await closeFind(page);
