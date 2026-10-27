@@ -200,20 +200,34 @@ function sniff(text: string): Hint {
  * the first load. Loaded when the page is idle, and waited for by a worker message that brings a tape.
  */
 /**
- * Waits in `list` for an output still being made (see outputPending): resolved by its maker, or with null
- * after two minutes (one that never comes, the document turned invalid say: nothing to copy).
+ * Copies and downloads waiting for an output still being made (see outputPending): one wait, shared by every
+ * one asked for meanwhile (a key held down asks dozens of times), until its maker hands the output over, or
+ * with null after two minutes (one that never comes, the document turned invalid say: nothing to copy).
  */
-function waitIn(list: ((out: string | null) => void)[]): Promise<string | null> {
-  return new Promise((done) => {
-    list.push(done);
+class Waiting {
+  private wait: { promise: Promise<string | null>; done: (out: string | null) => void } | null = null;
+
+  get pending() {
+    return !!this.wait;
+  }
+
+  get(): Promise<string | null> {
+    if (this.wait) return this.wait.promise;
+    let done!: (out: string | null) => void;
+    const w = { promise: new Promise<string | null>((r) => (done = r)), done: (out: string | null) => done(out) };
+    this.wait = w;
     setTimeout(() => {
-      const i = list.indexOf(done);
-      if (i >= 0) {
-        list.splice(i, 1);
-        done(null);
-      }
+      if (this.wait === w) this.give(null);
     }, 120_000);
-  });
+    return w.promise;
+  }
+
+  /** Hands `out` to whoever waits. */
+  give(out: string | null) {
+    const w = this.wait;
+    this.wait = null;
+    w?.done(out);
+  }
 }
 
 type Pack = typeof import('../json/pack');
@@ -2631,7 +2645,7 @@ export class Engine {
     else this.fmt.setText(out, jsonRow, true, null, index, change, patch, inline);
     this.noteExpiry(minify || escape ? '' : out);
     // (After the caller has said whether it is the too-large note: see runFormat.)
-    if (this.outputWaiters.length) queueMicrotask(() => this.outputDrawn());
+    if (this.outputWait.pending) queueMicrotask(() => this.outputDrawn());
   }
 
   /** The Format view shows nothing, and nothing is current there (a big new document's output comes with its analysis). */
@@ -2756,17 +2770,25 @@ export class Engine {
 
   /** `text` as Blob parts, made in short steps (see PrettyText.parts). */
   private prettyParts(text: PrettyText): Promise<string[] | null> {
+    // (Asked again while they are made, Copy held down say: the same ones.)
+    if (this.partsFor?.text === text) return this.partsFor.parts;
     const run = text.parts();
-    return new Promise((done) => {
+    const parts = new Promise<string[] | null>((done) => {
       const step = () => {
         if (this.dead) return done(null);
-        const parts = run(performance.now() + 8);
-        if (parts) done(parts);
+        const got = run(performance.now() + 8);
+        if (got) done(got);
         else soon(step);
       };
       step();
     });
+    this.partsFor = { text, parts };
+    void parts.then(() => {
+      if (this.partsFor?.parts === parts) this.partsFor = null;
+    });
+    return parts;
   }
+  private partsFor: { text: PrettyText; parts: Promise<string[] | null> } | null = null;
 
   downloadOutput() {
     const name = () => `${(store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '')}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`;
@@ -2801,7 +2823,7 @@ export class Engine {
   }
 
   /** Copy/Download waiting for the Format output of the current settings (see outputPending). */
-  private readonly outputWaiters: ((out: string | null) => void)[] = [];
+  private readonly outputWait = new Waiting();
 
   /** Run once the editor's text is analysed: at once if it is, else after the analysis on its way publishes. */
   private readonly analysed: (() => void)[] = [];
@@ -2817,7 +2839,9 @@ export class Engine {
   private outputLater(): Promise<string | null> | null {
     const pending = this.outputPending();
     if (pending || this.parsedVer === this.ed.version && this.formatCurrent(this.fmtSettings())) return pending;
-    const later = waitIn(this.outputWaiters);
+    // (Asked again before it came: the same wait, and nothing made twice.)
+    if (this.outputWait.pending) return this.outputWait.get();
+    const later = this.outputWait.get();
     this.whenAnalysed(() => (this.formatCurrent(this.fmtSettings()) && this.prettyMaking !== this.prettySeq ? this.outputDrawn() : this.makeFormat()));
     return later;
   }
@@ -2829,20 +2853,27 @@ export class Engine {
   private outputPending(): Promise<string | null> | null {
     const making = this.prettyMaking === this.prettySeq;
     if (this.settings.view !== 'format' || !making && (this.fmtKey === this.fmtSettings() || !this.fmtOut && !this.fmtPretty)) return null;
-    return waitIn(this.outputWaiters);
+    return this.outputWait.get();
   }
 
   /** Hands waiting copies and downloads the output once it matches the settings (after drawFormat). */
   private outputDrawn() {
-    if (!this.outputWaiters.length || this.fmtKey !== this.fmtSettings()) return;
-    const waiting = this.outputWaiters.splice(0);
+    if (!this.outputWait.pending || this.fmtKey !== this.fmtSettings()) return;
     const pretty = this.fmtPretty;
-    const out = this.fmtTooLarge ? null : pretty ? this.unlessTooLarge(() => pretty.slice(), false) : this.fmtOut;
-    for (const done of waiting) done(out);
+    this.outputWait.give(this.fmtTooLarge ? null : pretty ? this.unlessTooLarge(() => pretty.slice(), false) : this.fmtOut);
   }
+
+  /** The text a copy waits for (see copyLater). */
+  private copying: Promise<unknown> | null = null;
 
   /** Copies text that is still on its way, keeping the click's permission to write the clipboard where the browser allows. */
   private async copyLater(text: Promise<string | string[] | null>, msg: string, none: () => void) {
+    // (Asked again for the same text while it comes: that copy is already on its way.)
+    if (this.copying === text) return;
+    this.copying = text;
+    void text.finally(() => {
+      if (this.copying === text) this.copying = null;
+    });
     const blob = text.then((t) => {
       if (!t || !t.length) throw new Error('no output');
       return new Blob(typeof t === 'string' ? [t] : t, { type: 'text/plain' });
@@ -2895,11 +2926,11 @@ export class Engine {
   private convDone: { seq: number; out: string; ver: object | null } = { seq: 0, out: '', ver: null };
 
   /** Copy/Download waiting for the conversion asked for last (see convPending). */
-  private readonly convWaiters: ((out: string | null) => void)[] = [];
+  private readonly convWait = new Waiting();
 
   private convFinished(seq: number, out: string, ver: object | null) {
     this.convDone = { seq, out, ver };
-    for (const done of this.convWaiters.splice(0)) done(out);
+    this.convWait.give(out);
   }
 
   /**
@@ -2910,7 +2941,8 @@ export class Engine {
     const pending = this.convPending();
     const d = this.convDone;
     if (pending || this.parsedVer === this.ed.version && d.seq === this.convSeq && d.ver === this.goodVer) return pending;
-    const later = waitIn(this.convWaiters);
+    if (this.convWait.pending) return this.convWait.get();
+    const later = this.convWait.get();
     this.whenAnalysed(() => {
       const c = this.convDone;
       // (One already on its way, e.g. the Convert view's after the analysis, hands it over.)
@@ -2927,7 +2959,7 @@ export class Engine {
    */
   private convPending(): Promise<string | null> | null {
     if (this.settings.view !== 'convert' || this.convDone.seq === this.convSeq) return null;
-    return waitIn(this.convWaiters);
+    return this.convWait.get();
   }
 
   /** The output the Convert view shows or is making for the current settings. */
