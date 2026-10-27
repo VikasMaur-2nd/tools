@@ -326,6 +326,25 @@ describe('repairs (repair: true): the same in both parsers, and only for documen
     assert.ok(read > cases(1500), `read: ${read}`);
   });
 
+  test(`ordinary JSON holding an escaped quote is never read as JSON written as a string (${cases(4000)} cases)`, () => {
+    // (BREAKER-REPORT R3: undoing its escapes cut values apart and made up keys.)
+    const AS_STRING = 'JSON written as a string (escaped quotes): read with its escapes undone';
+    for (const src of ['{"a":"q\\"x"} @', '{"a": "\\"", "b": ~}', '[{"tag":"a \\"b\\""}, @]', '{"c":"x\\"y\\nd" "e": 1']) {
+      for (const t of [same(src, { repair: true }), oldParse(src, { repair: true })]) {
+        const issues = 'head' in t ? t.head.issues : t.issues;
+        assert.ok(!issues.some((i) => i.m === AS_STRING), `${show(src)}: ${JSON.stringify(issues)}`);
+      }
+    }
+    const r = rng((SEED || 1) + 23);
+    for (let it = 0, total = cases(4000); it < total; it++) {
+      const doc = JSON.stringify({ s: 'say "hi" ' + it, t: [genStrict(r, 3), 'q"'], u: '\\"' });
+      const at = r.int(doc.length + 1);
+      const src = doc.slice(0, at) + r.pick(['@', '~', ',', '}', '"', ':', 'x', '\\']) + doc.slice(at);
+      const t = same(src, { repair: true });
+      assert.ok(!t.head.issues.some((i) => i.m === AS_STRING), `iteration ${it}: ${show(src)}`);
+    }
+  });
+
   test(`a document that parses without repairs parses the same with them; one that fails, the same in both parsers (${cases(20000)} cases)`, () => {
     const r = rng((SEED || 1) + 21);
     let repaired = 0;
