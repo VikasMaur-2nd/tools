@@ -141,7 +141,12 @@ const closeFind = async (page) => {
 };
 /** The view's wrap: off (rows compare whole). */
 async function wrapOff(page) {
-  if (!(await page.evaluate(() => !!window.__vis('#view-format')?.querySelector('.cv-nowrap') || !!window.__vis('#view-format.cv-nowrap, #view-format .cv.cv-nowrap')))) await command(page, 'Wrap long lines');
+  const off = () => page.evaluate(() => !!window.__vis('#view-format')?.querySelector('.cv-nowrap') || !!window.__vis('#view-format.cv-nowrap, #view-format .cv.cv-nowrap'));
+  if (await off()) return;
+  await command(page, 'Wrap long lines');
+  // (Searching while the view lays out again can throw: F21, checked on its own.)
+  for (const end = Date.now() + 10_000; !(await off()) && Date.now() < end; ) await page.waitForTimeout(100);
+  await page.waitForTimeout(1000);
 }
 
 async function open(t) {
@@ -162,24 +167,26 @@ test('3 MB in the Format view: the rows drawn, find counts and where each lands,
   const b = badRows(top, LINES['  ']);
   t.check(!b.bad.length && b.seen > 10 && top[0][0] === '1', 'the first rows are the pretty lines, numbered from 1', b);
   const text = LINES['  '].join('\n');
-  const lineOf = (s) => String(LINES['  '].findIndex((l) => l.includes(s)) + 1);
-  for (const [q, nexts, lineWant] of [
-    ['zoë', 0, lineOf('"Zoë 1"')],
-    ['Zoë', 3, String(LINES['  '].filter((l) => l.includes('Zoë')).map((l) => LINES['  '].indexOf(l))[3] + 1)],
-    ['rec-0-15000-mark', 0, lineOf('rec-0-15000-mark')],
-    ['👩🏽‍💻', 0, null],
-    ['مرحبا', 0, null],
-    ['istanbul', 0, null],
-    ['straße', 0, null],
-    ['\\ud800', 0, null],
-    ['long-line-mark-1000', 0, lineOf('long-line-mark-1000')],
-    ['"l17": [', 0, null],
-    ['rec-0-777-mark', 0, lineOf('rec-0-777-mark')],
-  ]) {
+  // The line of the k-th match from the top (1-based), counted as the view counts them (see findCount).
+  const lineOfMatch = (q, k) => {
+    const cs = q !== q.toLowerCase();
+    const fold = (t) => (cs ? t : t.replace(/İ/g, 'i').toLowerCase());
+    const needle = fold(q);
+    for (let n = 0, i = 0; i < LINES['  '].length; i++) {
+      const hay = fold(LINES['  '][i]);
+      for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length)) if (++n === k) return String(i + 1);
+    }
+    return null;
+  };
+  for (const [q, nexts] of [['zoë', 0], ['Zoë', 3], ['rec-0-15000-mark', 0], ['👩🏽‍💻', 0], ['مرحبا', 0], ['istanbul', 0], ['straße', 0], ['\\ud800', 0], ['long-line-mark-1000', 0], ['"l17": [', 0], ['rec-0-777-mark', 0]]) {
     const total = findCount(text, q);
     const [count, line] = await find(page, q, total, nexts);
     t.check(count?.endsWith(` of ${total.toLocaleString('en-US')}`), `find ${q}: ${total} matches`, count);
-    if (lineWant) t.check(line === lineWant, `find ${q}${nexts ? ` (+${nexts})` : ''}: the current match is on line ${lineWant}`, line);
+    // (Typing finds a match and Enter goes to the next, depending on how fast the search was: the match the
+    // count names is the one that must be shown.)
+    const k = Number(count?.split(' of ')[0].replace(/,/g, ''));
+    const want = k ? lineOfMatch(q, k) : null;
+    t.check(!!want && line === want, `find ${q}${nexts ? ` (+${nexts})` : ''}: the current match (${count}) is drawn on its line`, { line, want });
   }
   await closeFind(page);
   // Rows where the last find landed are the pretty lines too.
