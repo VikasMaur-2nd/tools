@@ -364,6 +364,32 @@ test('a blank document shows the empty state, not "No JSON value", whether analy
   }
 });
 
+test('once the tape\'s code has loaded, the page parses with the tape parser: parser.ts\'s results, nodes made when read', async (t) => {
+  clock(t, 1);
+  const { tapeOfNode } = load(resolve(__dirname, '../lib/json/lazy'));
+  // In steps (a big document in another view).
+  const steps = stepsSession(big);
+  await steps.engine.tapeCode();
+  steps.engine.analyzeInSteps();
+  for (let k = 0; k < 100_000 && !steps.analysed.length; k++) steps.tick();
+  const res = steps.analysed[0]!;
+  assert.equal(diffResults(parse(big, { repair: true }), res), null);
+  assert.ok(tapeOfNode(res.root!), 'made from a tape');
+  // At once (small documents, typing): valid, loose and broken ones.
+  for (const text of ['{"a":[1,2,{"b":"x\\u00e9"}],"a":2}', "{a: 'x', b: [1,,2], // c\n}", '[1, 2', '{"say "hi" now": 1}']) {
+    const { engine } = analyzeSession(text);
+    await engine.tapeCode();
+    // (What analyze() updates besides the result: the views, the status.)
+    engine.tree = { setRoot() {}, select() {}, render() {}, releaseRoot() {} };
+    engine.ed.lineCol = () => ({ line: 1, col: 1 });
+    engine.updateBrackets = engine.refind = engine.closeFind = engine.waitForJwt = () => {};
+    engine.analyze();
+    const got = engine.res as ParseResult;
+    assert.equal(diffResults(parse(text, { repair: true }), got), null, text);
+    if (got.root) assert.ok(tapeOfNode(got.root), `${text}: made from a tape`);
+  }
+});
+
 test('a document with only a comment is not blank: parsed in steps, its error is "No JSON value" at its end', (t) => {
   clock(t, 1);
   const text = '// ' + 'x'.repeat(1_000_100) + '\n';
