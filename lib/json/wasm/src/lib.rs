@@ -153,14 +153,6 @@ impl Buf {
 
 /** Input came from a JS string (encodeInto: a lone surrogate became U+FFFD), not from bytes (validated as UTF-8 here). */
 static mut FROM_TEXT: bool = false;
-/**
- * The window came as the string's UTF-16 units at WIDE_BUF (copied by JS), one byte per unit at WIN
- * (a unit above 0xFF as 0xFF): byte offsets are UTF-16 offsets, and names with units above 0x7F are
- * read from the units (unescape).
- */
-static mut WIDE: bool = false;
-static mut WIDE_BUF: usize = 0;
-static mut WIDE_CAP: usize = 0;
 static mut MAX_DEPTH: u32 = u32::MAX;
 
 // The window: WLEN bytes at WIN (+ 64 bytes of spaces), from UTF-16 offset WU16 of the document.
@@ -250,7 +242,6 @@ pub unsafe extern "C" fn init(text: u32, max_depth: u32, wcap: usize) -> u32 {
     FOLLOWS = Buf::new();
     FIRSTS = Buf::new();
     KTAB = Buf::new();
-    WIDE_CAP = 0;
     ALEN = 0;
     ACAP = 1 << 16;
     ARENA = alloc(ACAP);
@@ -286,16 +277,6 @@ pub unsafe extern "C" fn window(wcap: usize) -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn win_ptr() -> usize {
     WIN
-}
-/** Where JS copies a window's UTF-16 units (room for win_cap() of them); 0 if out of memory. */
-#[no_mangle]
-pub unsafe extern "C" fn wide_ptr() -> usize {
-    if WIDE_CAP < WCAP {
-        // (+ 32 units: the last 16 are read whole.)
-        WIDE_BUF = alloc(WCAP * 2 + 64);
-        WIDE_CAP = if WIDE_BUF == 0 { 0 } else { WCAP };
-    }
-    WIDE_BUF
 }
 #[no_mangle]
 pub unsafe extern "C" fn win_cap() -> usize {
@@ -432,27 +413,14 @@ fn below(bit: usize) -> u64 {
 
 /// Takes the `len` bytes written at the window (the document from UTF-16 offset `u16_start`;
 /// `last` 1 if they end it; `cr` 1 if the byte before them is a carriage return) and runs stage 1.
-/// `wide` 1: `len` UTF-16 units were written at wide_ptr() instead. Returns FAIL if they aren't strict
-/// JSON, else 0.
+/// Returns FAIL if they aren't strict JSON, else 0.
 #[no_mangle]
-pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32, cr: u32, wide: u32) -> i32 {
+pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32, cr: u32) -> i32 {
     WLEN = len;
     FINAL = last != 0;
     WU16 = u16_start;
     II = 0;
-    WIDE = wide != 0;
     let inp = WIN;
-    if WIDE {
-        // One byte per unit (no unit above 0xFF can be one that JSON's syntax uses).
-        let (from, cap) = (WIDE_BUF, u16x8_splat(255));
-        let mut k = 0;
-        while k < len {
-            let a = u16x8_min(v128_load((from + k * 2) as *const v128), cap);
-            let b = u16x8_min(v128_load((from + k * 2 + 16) as *const v128), cap);
-            v128_store((inp + k) as *mut v128, u8x16_narrow_i16x8(a, b));
-            k += 16;
-        }
-    }
     core::ptr::write_bytes((inp + len) as *mut u8, b' ', 128);
     let idx = IDX as *mut u32;
     let base = BASE as *mut u32;
@@ -516,7 +484,7 @@ pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32, cr: u32, wi
         *base.add(b) = units;
         *bs_t.add(b) = bs;
         *hi_t.add(b) = hi;
-        if hi != 0 && !WIDE {
+        if hi != 0 {
             hi_any |= hi;
             let cont = m4(&vs, |v| i8x16_bitmask(i8x16_lt(v, i8x16_splat(-64))) as u64);
             let four = m4(&vs, |v| i8x16_bitmask(u8x16_ge(v, u8x16_splat(0xF0))) as u64);
@@ -823,7 +791,6 @@ unsafe fn put(at: &mut usize, b: u8) {
 }
 
 /// Writes code point (or lone surrogate) `cp` as WTF-8 to the scratch buffer.
-#[inline(never)]
 unsafe fn wtf8(at: &mut usize, cp: u32) {
     if cp < 0x80 {
         put(at, cp as u8);
@@ -842,66 +809,51 @@ unsafe fn wtf8(at: &mut usize, cp: u32) {
     }
 }
 
-/// The name at window offsets [a, e) (stage 1 checked its escapes), escapes decoded, as WTF-8 in the
-/// scratch buffer: equal names as JS strings are equal bytes (a surrogate pair, escaped or not, is one
-/// character). From UTF-8 its other bytes are copied; WIDE, its UTF-16 units are encoded. Returns the
-/// length, or usize::MAX if out of memory.
+/// Decodes the escapes of window bytes [a, e) (stage 1 checked them) into the scratch buffer, as
+/// WTF-8: equal names as JS strings are equal bytes. Returns the length, or usize::MAX if out of memory.
 #[inline(never)]
 unsafe fn unescape(a: usize, e: usize) -> usize {
-    if (e - a) * 3 > SCAP {
-        SCAP = ((e - a) * 3).next_power_of_two();
+    if e - a > SCAP {
+        SCAP = (e - a).next_power_of_two();
         SCRATCH = alloc(SCAP);
         if SCRATCH == 0 {
             return usize::MAX;
         }
     }
-    let wide = WIDE;
-    let at_ = |i: usize| if wide { *((WIDE_BUF + i * 2) as *const u16) as u32 } else { byte(i) as u32 };
     let mut at = 0usize;
-    // A high surrogate waiting for what follows.
-    let mut high = 0u32;
     let mut i = a;
     while i < e {
-        let mut c = at_(i);
-        i += 1;
-        let esc = c == b'\\' as u32;
-        if esc {
-            let x = at_(i) as u8;
+        let c = byte(i);
+        if c != b'\\' {
+            put(&mut at, c);
             i += 1;
-            c = match x {
-                b'b' => 8,
-                b'f' => 12,
-                b'n' => 10,
-                b'r' => 13,
-                b't' => 9,
-                b'u' => {
-                    let h = |k: usize| hexv(at_(i + k) as u8);
-                    let v = (h(0) << 12) | (h(1) << 8) | (h(2) << 4) | h(3);
-                    i += 4;
-                    v
-                }
-                _ => x as u32,
-            };
+            continue;
         }
-        if high != 0 {
-            if (0xDC00..0xE000).contains(&c) {
-                wtf8(&mut at, 0x10000 + ((high - 0xD800) << 10) + (c - 0xDC00));
-                high = 0;
+        let x = byte(i + 1);
+        i += 2;
+        let v = match x {
+            b'b' => 8,
+            b'f' => 12,
+            b'n' => 10,
+            b'r' => 13,
+            b't' => 9,
+            b'u' => {
+                let mut cp = (hexv(byte(i)) << 12) | (hexv(byte(i + 1)) << 8) | (hexv(byte(i + 2)) << 4) | hexv(byte(i + 3));
+                i += 4;
+                // A pair written as two escapes is one character.
+                if (0xD800..0xDC00).contains(&cp) && i + 6 <= e && byte(i) == b'\\' && byte(i + 1) == b'u' {
+                    let lo = (hexv(byte(i + 2)) << 12) | (hexv(byte(i + 3)) << 8) | (hexv(byte(i + 4)) << 4) | hexv(byte(i + 5));
+                    if (0xDC00..0xE000).contains(&lo) {
+                        cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                        i += 6;
+                    }
+                }
+                wtf8(&mut at, cp);
                 continue;
             }
-            wtf8(&mut at, high);
-            high = 0;
-        }
-        if (0xD800..0xDC00).contains(&c) {
-            high = c;
-        } else if esc || wide {
-            wtf8(&mut at, c);
-        } else {
-            put(&mut at, c as u8);
-        }
-    }
-    if high != 0 {
-        wtf8(&mut at, high);
+            _ => x as u32,
+        };
+        put(&mut at, v as u8);
     }
     at
 }
@@ -944,7 +896,7 @@ unsafe fn name(p: usize, q: usize) -> u32 {
     if hi && !FROM_TEXT && !utf8(a, e) {
         return u32::MAX;
     }
-    let (ptr, len) = if esc || (WIDE && any(HIM, a, e)) {
+    let (ptr, len) = if esc {
         let len = unescape(a, e);
         if len == usize::MAX {
             return u32::MAX;
@@ -1054,7 +1006,6 @@ pub unsafe extern "C" fn run() -> i32 {
     let mut pend = PENDING_KEY;
     let w = Win::now();
     let (bsm, him) = (BSM, HIM);
-    let wide = WIDE;
     let wlen = WLEN;
     let last = FINAL;
     let max_depth = MAX_DEPTH;
@@ -1297,8 +1248,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 if guess != u32::MAX {
                     let g = guess as usize;
                     let len = q - p - 1;
-                    // (A name with units above 0x7F isn't its bytes here: name() reads it.)
-                    if KLEN.get(g) as usize == len && !any(bsm, p + 1, q) && !(wide && any(him, p + 1, q)) {
+                    if KLEN.get(g) as usize == len && !any(bsm, p + 1, q) {
                         let a = (WIN + p + 1) as *const u8;
                         let b = (ARENA + KOFF.get(g) as usize) as *const u8;
                         if (0..len).all(|j| *a.add(j) == *b.add(j)) {
