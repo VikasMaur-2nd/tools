@@ -630,8 +630,31 @@ export class TreeView {
   private choose(n: JNode, how: 'pointer' | 'key') {
     this.sel = n;
     this.scrollToSel(false);
-    this.render(true);
+    if (!this.markSel()) this.render(true);
     this.ev.select(n, how);
+  }
+
+  /**
+   * Moves the selection's mark to its row in place, if that row is drawn: a row redrawn under the pointer
+   * keeps the browser from pairing two clicks into a double-click (see onDbl). False if it isn't drawn.
+   */
+  private markSel() {
+    const i = this.sel ? this.indexOf(this.sel) : -1;
+    const to = i >= this.rFirst && i < this.rLast ? this.rowsEl.querySelector<HTMLElement>(`.tv-r[data-i="${i}"]`) : null;
+    if (!to) return false;
+    const from = this.rowsEl.querySelector<HTMLElement>('#tv-sel');
+    if (from !== to) {
+      if (from) {
+        from.classList.remove('sel');
+        from.removeAttribute('id');
+        from.removeAttribute('aria-selected');
+      }
+      to.classList.add('sel');
+      to.id = 'tv-sel';
+      to.setAttribute('aria-selected', 'true');
+    }
+    this.el.setAttribute('aria-activedescendant', 'tv-sel');
+    return true;
   }
 
   private onClick = (e: MouseEvent) => {

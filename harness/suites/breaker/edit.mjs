@@ -174,6 +174,24 @@ for (const pad of [0, 3_000_000]) {
   });
 }
 
+test('the tree: a click selects a row, a double-click on a value shows it in the editor', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const doc = JSON.stringify([{ id: 1, tag: 'a' }, { id: 2, tag: 'b' }], null, 2);
+  t.assert(await load(page, doc, 'tags.json'), 'the document loads');
+  await view(page, 'tree');
+  const row = page.locator('#view-tree .tv-rows [role=treeitem]').filter({ hasText: /^tag:"b"$/ });
+  await row.click();
+  t.check((await row.getAttribute('aria-selected')) === 'true', 'a click selects the row');
+  t.check((await page.evaluate(() => document.activeElement?.id)) !== 'input', 'a click leaves the focus in the tree');
+  await row.dblclick();
+  const moved = await until(page, () => document.activeElement?.id === 'input' || null, null, { timeout: 5000 });
+  t.check(!!moved, 'a double-click moves to the editor (BREAKER-REPORT F17)');
+  // The value is what the editor selected: typing replaces exactly it.
+  if (moved) await page.keyboard.type('"Z"');
+  t.check((await inputText(page)) === doc.replace('"b"', '"Z"'), 'the editor selected the value', await inputText(page));
+});
+
 test('an edit made while the Tree shows: Copy formatted output, Copy converted output and Download formatted output give the edited document', async (t) => {
   const { page } = t;
   await t.open('/');
