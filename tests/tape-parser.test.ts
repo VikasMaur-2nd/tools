@@ -249,7 +249,9 @@ describe('tape parser: the same as parser.ts', () => {
   });
 });
 
-describe('repairs (repair: true): the same in both parsers, and only for documents that fail without', () => {
+const PROSE_OR_QUOTE = /^(Unescaped quote inside a string \(kept in it\)|Text after the JSON value was ignored|Text before the code fence was ignored)$/;
+
+describe('repairs (repair: true): the same in both parsers; documents that parse change only for unescaped quotes and prose', () => {
   const val = (t: Tape, src: string, k = 0): unknown => {
     const kind = t.nodes[k * W] & 7;
     if (kind === 4 || kind === 5) {
@@ -307,6 +309,39 @@ describe('repairs (repair: true): the same in both parsers, and only for documen
     assert.deepEqual(parse('{"a": 1 @}', { repair: true }).head.error, { p: 8, m: "Expected ',' or '}' after property value, found '@'" });
   });
 
+  test('unescaped quotes and prose around the value (most parse without repairs, differently)', () => {
+    const docs: [string, unknown][] = [
+      ['{"a": "say "hi" now"}', { a: 'say "hi" now' }],
+      ['["a "b" c", "d"]', ['a "b" c', 'd']],
+      ['{"a": 1} that is all', { a: 1 }],
+      ['[1, 2]\nThat was the list.', [1, 2]],
+      ['{"a": 1} (end)', { a: 1 }],
+      ['Here you go:\n```json\n{"a": 1}\n```\nHope this helps', { a: 1 }],
+      ['Sure! The data:\n\n  ```\n[true, null]\n  ```', [true, null]],
+    ];
+    for (const [src, want] of docs) {
+      const t = same(src, { repair: true }, [1, 2]);
+      assert.equal(t.head.error, null, src);
+      assert.deepEqual(val(t, src), want, src);
+    }
+    assert.deepEqual(parse('{"a": "say "hi" now"}', { repair: true }).head.issues, [
+      { p: 11, m: 'Unescaped quote inside a string (kept in it)' },
+      { p: 14, m: 'Unescaped quote inside a string (kept in it)' },
+    ]);
+    assert.deepEqual(parse('{"a": 1} that is all', { repair: true }).head.issues, [{ p: 9, m: 'Text after the JSON value was ignored' }]);
+    const llm = 'Here you go:\n```json\n{"a": 1}\n```\nHope this helps';
+    assert.deepEqual(parse(llm, { repair: true }).head.issues, [
+      { p: 0, m: 'Text before the code fence was ignored' },
+      { p: 13, m: 'Markdown code fences are not part of JSON' },
+      { p: 34, m: 'Text after the closing code fence was ignored' },
+    ]);
+    // JSON Lines stay JSON Lines, and so do calls and literals after a value; strings followed by a string or a number end where they end.
+    for (const src of ['{"a":1}\n{"a":2}\n[3]', '1\n2\n"x"', '{"a":1}\ntrue\nnull', '{"a":1} cb({"b":2})', '["a" "b", "c" 1]', '{"a":1}\nNaN']) {
+      const plain = oldParse(src);
+      assert.equal(diffTape(tapeOf(plain, src), same(src, { repair: true }, [1]), src), null, src);
+    }
+  });
+
   test(`stringified JSON reads back as the document it was (${cases(3000)} cases)`, () => {
     const r = rng((SEED || 1) + 22);
     let read = 0;
@@ -326,9 +361,10 @@ describe('repairs (repair: true): the same in both parsers, and only for documen
     assert.ok(read > cases(1500), `read: ${read}`);
   });
 
-  test(`a document that parses without repairs parses the same with them; one that fails, the same in both parsers (${cases(20000)} cases)`, () => {
+  test(`the same in both parsers; a document that parses without repairs changes only for an unescaped quote or prose (${cases(20000)} cases)`, () => {
     const r = rng((SEED || 1) + 21);
     let repaired = 0;
+    let turned = 0;
     for (let it = 0, total = cases(20000); it < total; it++) {
       let src = r.chance(0.5) ? genLoose(r, 1 + r.int(5)) : genStrict(r, 4);
       src = r.chance(0.5) ? mutate(r, src) : loosen(r, src);
@@ -336,13 +372,16 @@ describe('repairs (repair: true): the same in both parsers, and only for documen
       try {
         const plain = oldParse(src, options);
         const t = same(src, { ...options, repair: true }, it % 16 === 0 ? [1] : it % 16 === 8 ? [1 + r.int(7)] : []);
-        if (!plain.error) assert.equal(diffTape(tapeOf(plain, src), t, src), null, 'repairs changed a document that parses');
-        else if (!t.head.error) repaired++;
+        // A document that parses without repairs changes only where an unescaped quote or prose is repaired (and never if it has no issues).
+        if (!plain.error && diffTape(tapeOf(plain, src), t, src) !== null) {
+          assert.ok(plain.issues.length && t.head.issues.some((x) => PROSE_OR_QUOTE.test(x.m)), 'repairs changed a document that parses');
+          turned++;
+        } else if (plain.error && !t.head.error) repaired++;
       } catch (e) {
         throw new Error(`iteration ${it}: ${(e as Error).message}\ninput: ${show(src)}`, { cause: e });
       }
     }
-    assert.ok(repaired > cases(1000), `repaired: ${repaired}`);
+    assert.ok(repaired > cases(1000) && turned > cases(100), `repaired: ${repaired}, turned: ${turned}`);
   });
 });
 
