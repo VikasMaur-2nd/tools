@@ -2,8 +2,10 @@
 // and after expanding, the table at the root and inside the records array, table sorting of lossless
 // numbers, the graph as an SVG export (every card's text), and find results. The rework of the views
 // (reading nodes from the packed tree) must keep all of it.
+import { readFileSync } from 'node:fs';
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
+import { bigFixture } from './_gen.mjs';
 import { downloaded, golden, load, settled, svgTexts, tableRows, treeRows, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
@@ -105,3 +107,24 @@ test('graph: 100 records lay out, and the SVG has a card per object', async (t) 
   const texts = svgTexts(svg?.bytes?.toString() ?? '');
   golden(t, 'views/graph-rows-100', { count: texts.length, first: texts.slice(0, 40), last: texts.slice(-20) }, 'the cards match the golden file');
 });
+
+for (const mb of [1, 3]) {
+  test(`a ${mb} MB string as the whole document: the tree shows it and the table explains itself`, async (t) => {
+    // From 2 MB a document is analysed in the worker (a packed tree): the views read it from there.
+    const { page } = t;
+    await t.open('/');
+    // (Escapes in it: a string with none takes another path and shows the message.)
+    const text = readFileSync(bigFixture(`one-string-${mb}mb`), 'utf8');
+    t.assert(await load(page, text, `string-${mb}mb.json`), 'the document loads');
+    await view(page, 'tree');
+    await waitRows(page, '#view-tree .tv-rows');
+    const row = (await treeRows(page))[0] ?? '';
+    t.check(row.startsWith('root"abcdefghij ÄÖÜ 東京 \\n \\"q\\" 🚀 abcdefghij'), 'the tree row starts with the string', row.slice(0, 50));
+    await view(page, 'table');
+    const msg = await until(page, () => {
+      const e = window.__vis('#view-table .tb-empty');
+      return e && !e.hidden ? e.textContent : null;
+    }, null, { timeout: 10_000 });
+    t.check(msg === 'Select an array or object in the tree to see it as a table.', 'the table says to pick an array or object', msg ?? 'blank', mb >= 2 ? { known: 'bug: the Table is blank for a 2 MB+ string document with escapes (BREAKER-REPORT, blank table)' } : {});
+  });
+}
