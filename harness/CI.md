@@ -4,7 +4,8 @@
 - **GitHub Actions runs only when asked**, to take work off our machine: the unit tests, the Firefox and
   WebKit suites, a full run before merging, or a check on a fresh machine.
 - **Actions may use at most 1,000 billed minutes a month** for this repository, half of the 2,000 that
-  GitHub Free gives a private repository. Past that, everything runs on our machine. Nothing runs on push.
+  GitHub Free gives a private repository (October 2026: 2,000, raised by the user; `RAISED` in
+  scripts/ci-usage.mjs). Past that, everything runs on our machine. Nothing runs on push.
 
 ## On our machine
 
@@ -18,8 +19,10 @@
 | | `pnpm perf --base origin/main` (interleaved A/B; Lighthouse: `pnpm perf lighthouse`) | ~30–40 min |
 | Another branch's code | `pnpm e2e --ref <branch>` | |
 
-Big-document checks (`--slow`, 25–50 MB) and perf runs always stay here: GitHub's runners have 2 cores
-and 7 GB of memory, and their timings are too noisy to compare.
+Big-document checks (`--slow`, 25–50 MB) stay here, and so do perf runs compared across machines or days.
+A before/after of two commits can run on Actions (`perf.yml`, below): both builds run in the same job on the
+same runner, one after the other, so they are compared under the same conditions. GitHub's runners have 2
+cores and 7 GB of memory: their timings are slower and noisier than ours, memory figures are not.
 
 ## GitHub Actions
 
@@ -67,6 +70,34 @@ production build 41 s without any cache, the OS packages 12 s (Chromium), 18 s (
 and the smoke checks 18 s. The browser checks run at about the speed of our machine, so a whole engine is
 9–10 minutes. A `suites` filter costs only the tests it matches plus about 2 minutes, though the guard
 counts it as the whole set.
+
+### Before/after on Actions (`perf.yml`)
+
+`pnpm perf <check> --ref <candidate> --base <base>` in a job of its own per engine and check: the job builds
+both commits and runs the check on each, one after the other. The table the runner prints goes into the job
+summary; `results.json` and each run's metrics as JSON lines (`BREAKER_MEM_OUT`) are kept as an artifact for
+30 days. A `ci:perf` label on a PR runs a quick one (opening `bench-1mb` in Chromium, the PR against `main`).
+
+```sh
+gh workflow run perf.yml -f checks="perf/editor › open bench-10mb" -f ref=my-branch            # against main, Chromium
+gh workflow run perf.yml -f checks="breaker/memory › records 100mb; breaker/memory › strings 100mb" \
+  -f ref=t3/optimize-json-memory-performance -f engines=chromium,firefox,webkit \
+  -f settings="BREAKER_MEM_SIZES=100 BREAKER_MEM_VIEWS=tree BREAKER_MEM_FIND=0" -f minutes=15
+```
+
+| Input | What it does | Default |
+|---|---|---|
+| `checks` | Perf checks, separated by `;` (a job each, per engine) | |
+| `ref` | The candidate: branch, tag or commit | |
+| `base` | What it is compared with | `main` |
+| `harness` | Where the checks come from, when not from the candidate (a check main doesn't have yet) | the candidate |
+| `engines` | `chromium`, `firefox`, `webkit` or a list (a job each) | `chromium` |
+| `settings` | Settings for the checks, `NAME=value` words | |
+| `minutes` | What one job is expected to take, for the budget guard | 12 |
+
+A job costs its setup, the browser's OS packages, two production builds (~1.5 min) and the check on both
+builds. A document of 100 MB or more may not fit in the runner's 7 GB: the memory check stops a run when less
+than 1.5 GiB is left (it fails, saying so), which is itself a result.
 
 ### Jobs
 
