@@ -116,7 +116,9 @@ async function find(page, q, total, nexts = 0) {
   const box = page.locator('.findbar:visible input');
   if (!(await box.count())) await page.keyboard.press(`${MOD}+f`);
   await box.fill(q);
-  await box.press('Enter');
+  // The typed query runs by itself 80–150 ms later. (Not Enter: before that it runs the query, after it it goes to
+  // the next match, so which match is current would depend on the host's speed.)
+  await page.waitForTimeout(300);
   const counted = (k) => until(page, ([src]) => { const c = window.__vis('.findbar .count')?.textContent ?? ''; return new RegExp(src).test(c) ? c : null; },
     [total ? `^${k === null ? '[1-9][\\d,]*' : k.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}$` : '^No results$'], { timeout: 60_000 }).catch(() => null);
   let count = await counted(null);
@@ -380,6 +382,7 @@ for (const mb of [0.9, 3]) {
   test(`find on long lines (${mb} MB): the highlight sits on the matched text, wrap on and off`, async (t) => {
     // Lines of 2,000 and 5,000 characters, each with a match at its end. On main the highlight drifted right
     // with the column: with wrap off 320 px at column 2,000, its text scrolled out of view (BREAKER-REPORT F20).
+    // Wrap on, a 5,000-character line's rows made exact when idle moved the view back to its first row.
     const { page } = t;
     await t.open('/');
     const recs = [];
@@ -392,7 +395,6 @@ for (const mb of [0.9, 3]) {
     recs[5] = { id: 5, long: 'R'.repeat(4990) + 'MARKB' };
     t.assert((await loadAny(page, Buffer.from(JSON.stringify(recs)), 'long.json', { timeout: 120_000 }))?.msg === 'Valid JSON', 'the document is valid');
     await until(page, () => (window.__vis('#view-format .cv-l') ? true : null), null, { timeout: 60_000 });
-    const known = { known: 'bug (main): find highlights drift right on long lines (BREAKER-REPORT F20)' };
     for (const wrap of ['on', 'off']) {
       if (wrap === 'off') {
         await command(page, 'Wrap long lines');
@@ -423,7 +425,7 @@ for (const mb of [0.9, 3]) {
           }
           return { off: null, seen: false };
         }, null, { timeout: 10_000 }).catch(() => null);
-        t.check(count === '1 of 1' && at !== null && at.off !== null && Math.abs(at.off) <= 2 && at.seen, `wrap ${wrap}, ${q}: the highlight is on the match, which is in view`, { count, ...at }, known);
+        t.check(count === '1 of 1' && at !== null && at.off !== null && Math.abs(at.off) <= 2 && at.seen, `wrap ${wrap}, ${q}: the highlight is on the match, which is in view`, { count, ...at });
       }
     }
     await closeFind(page);
@@ -431,8 +433,8 @@ for (const mb of [0.9, 3]) {
 }
 
 test('toggling wrap while a find is open on long lines: no page errors, and the find still lands', { allowErrors: true }, async (t) => {
-  // Firefox and WebKit, main and branch: "this.wrapper is null" (subStart in render) when the view lays out
-  // again under an open find (BREAKER-REPORT F21).
+  // Firefox and WebKit on main: "this.wrapper is null" (subStart in render) when the view lays out again under an
+  // open find (BREAKER-REPORT F21): drawing read the new wrapper while the rows on screen were the old one's.
   const { page } = t;
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 160)));
@@ -458,8 +460,7 @@ test('toggling wrap while a find is open on long lines: no page errors, and the 
     }
   }
   last = await until(page, () => (window.__vis('.findbar .count')?.textContent === '1 of 1' && window.__vis('#view-format .cv-hit.cur') ? 'ok' : null), null, { timeout: 15_000 }).catch(() => null);
-  const known = t.engine === 'chromium' ? {} : { known: 'bug (main): toggling wrap under an open find throws "wrapper is null" (BREAKER-REPORT F21)' };
-  t.check(!errors.length, 'no page errors', errors.slice(0, 2), known);
+  t.check(!errors.length, 'no page errors', errors.slice(0, 2));
   t.check(last === 'ok', 'the last find shows 1 of 1 with its highlight', await page.evaluate(() => window.__vis('.findbar .count')?.textContent));
 });
 
