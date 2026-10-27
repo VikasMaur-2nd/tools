@@ -116,7 +116,9 @@ async function find(page, q, total, nexts = 0) {
   const box = page.locator('.findbar:visible input');
   if (!(await box.count())) await page.keyboard.press(`${MOD}+f`);
   await box.fill(q);
-  await box.press('Enter');
+  // The typed query runs by itself 80–150 ms later. (Not Enter: before that it runs the query, after it it goes to
+  // the next match, so which match is current would depend on the host's speed.)
+  await page.waitForTimeout(300);
   const counted = (k) => until(page, ([src]) => { const c = window.__vis('.findbar .count')?.textContent ?? ''; return new RegExp(src).test(c) ? c : null; },
     [total ? `^${k === null ? '[1-9][\\d,]*' : k.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}$` : '^No results$'], { timeout: 60_000 }).catch(() => null);
   let count = await counted(null);

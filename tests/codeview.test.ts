@@ -133,7 +133,7 @@ test('laid out again inside a long wrapped line, the view keeps its text and the
   const text = ['{', '  "a": 1,', `  "long": "MARKA${'R'.repeat(4990)}MARKB",`, ...Array.from({ length: 200 }, (_, i) => `  "k${i}": ${i},`), '  "z": 0', '}'].join('\n');
   code.setText(text, (t) => t, true);
   for (let k = 0; k < 50 && !rows.innerHTML; k++) await tick();
-  type Inner = { sc: { top: number }; rowStart: Int32Array; hi: number; rFirst: number; reflow(keep: boolean): void };
+  type Inner = { sc: { top: number }; rowStart: Int32Array; hi: number; rFirst: number; wrapper: { reset(): void }; reflow(keep: boolean): void };
   const inner = code as unknown as Inner;
   const RH = 20;
   // The current match is drawn in the 600 px view (rows are drawn in order from rFirst).
@@ -148,12 +148,47 @@ test('laid out again inside a long wrapped line, the view keeps its text and the
     if (total === 2) assert.deepEqual(code.step(1), { total, index: 1 });
     assert.ok(inner.rowStart[3] - inner.rowStart[2] > 60, 'the long line takes many rows');
     assert.ok(inView(), `${q}: MARKB, at the end of the long line, in view`);
-    for (const width of [500, 400, 300, 400]) {
-      // (A width, a font, or a long line measured when idle: the view is laid out again.)
-      el.clientWidth = width;
+    for (const width of [500, 400, 300, 'font', 400] as const) {
+      // (A width, a font, or a long line measured when idle: the view is laid out again. A font arriving resets
+      // the wrapper's measurements before the layout: see onFonts.)
+      if (width === 'font') inner.wrapper.reset();
+      else el.clientWidth = width;
       inner.reflow(true);
       assert.equal(inner.hi, total - 1, `${q}, ${width}: MARKB is still the current match`);
       assert.ok(inView(), `${q}, ${width}: and still in view`);
     }
+  }
+});
+
+test('Find going to a match while a big document is laid out again lands on it in the new rows (F21)', async () => {
+  const { code, rows, el } = view(400);
+  // Over 2 MB: layouts and searches run in steps. One match, far down.
+  const text = Array.from({ length: 2000 }, (_, i) => '"' + 'x'.repeat(1200) + (i === 1500 ? 'MARKB' : '') + '"').join('\n');
+  type Inner = { vis: Int32Array; rowStart: Int32Array; sc: { top: number }; rFirst: number; hi: number };
+  const inner = code as unknown as Inner;
+  const total = () => inner.rowStart[inner.vis.length];
+  const inView = () => {
+    const k = rows.innerHTML.split('<div class="cv-l').findIndex((r) => r.includes('cv-hit cur')) - 1;
+    const y = (inner.rFirst + k) * 20;
+    return k >= 0 && y >= inner.sc.top && y + 20 <= inner.sc.top + el.clientHeight;
+  };
+  code.setText(text, (t) => t);
+  for (let k = 0; k < 500 && !(inner.vis.length === 2000 && rows.innerHTML); k++) await tick();
+  const wrapped = total();
+  code.setWrap(false);
+  for (let k = 0; k < 500 && total() !== 2000; k++) await tick();
+  const now = performance.now;
+  let t = now.call(performance);
+  // Each step finds its time spent: the search ends long before the layout.
+  performance.now = () => (t += 10);
+  try {
+    // Wrap on again: a new wrapper, fitted to the width, while Find goes to MARKB in the rows still on screen.
+    code.setWrap(true);
+    code.find('markb');
+    for (let k = 0; k < 2000 && !(total() === wrapped && inner.hi === 0); k++) await tick();
+    assert.equal(total(), wrapped, 'wrapped again');
+    assert.ok(inView(), 'MARKB is in view');
+  } finally {
+    performance.now = now;
   }
 });
