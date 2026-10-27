@@ -6,9 +6,10 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { defaults, test } from '../../lib/api.mjs';
+import { view } from '../../lib/app.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
-import { copied, golden, hash, loadAny, seenToasts, until } from './_helpers.mjs';
+import { copied, golden, hash, loadAny, seenToasts, treeRows, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
 
@@ -180,5 +181,64 @@ for (const utf16 of [false, true]) {
     let at = -1;
     if (got !== null && got !== want) for (at = 0; at < want.length && got[at] === want[at]; ) at++;
     t.check(got === want, 'the editor holds exactly the text', got === null ? null : { at, got: JSON.stringify(got.slice(Math.max(0, at - 10), at + 10)), want: JSON.stringify(want.slice(Math.max(0, at - 10), at + 10)) }, known);
+  });
+}
+
+for (const [eol, label] of [['\r\n', 'CRLF'], ['\n', 'LF']]) {
+  test(`3 MB of JSON Lines with ${label} line ends and multi-byte text: every record, exactly, in every view`, async (t) => {
+    // From 2 MB the records are analysed in the worker. On main and t3/optimize-json-memory-performance a
+    // CRLF file then gets every value shifted by one character per line before it (BREAKER-REPORT F16).
+    const { page } = t;
+    await t.open('/');
+    const lines = [];
+    for (let i = 0, size = 0; size < 3_000_000; i++) {
+      const line = JSON.stringify({ i, s: `${'é東😀'.repeat(1 + (i % 7))}\u2028${i}`, n: i * 1.5, ok: i % 2 === 0 });
+      lines.push(line);
+      size += Buffer.byteLength(line) + 2;
+    }
+    const file = Buffer.from(lines.join(eol) + eol, 'utf8');
+    const known = label === 'CRLF' ? { known: 'bug (main and branch): a 2 MB+ JSON Lines file with CRLF gets shifted values in every view (BREAKER-REPORT F16)' } : {};
+    const st = await loadAny(page, file, 'records.jsonl', { timeout: 120_000 });
+    t.check(st?.kind === 'ok' && st.msg === `JSON Lines · ${lines.length.toLocaleString('en-US')} records`, 'JSON Lines with every record', st);
+    const out = await copied(page, 'Copy formatted output', { timeout: 60_000 });
+    t.check(out !== null && hash(out) === hash(JSON.stringify(lines.map((l) => JSON.parse(l)), null, 2)), 'the Format view holds the records as one exact array', out?.length, known);
+    await view(page, 'tree');
+    const rows = await until(page, () => (window.__vis('#view-tree .tv-rows')?.childElementCount ?? 0) > 8 || null, null, { timeout: 30_000 }).then(() => treeRows(page));
+    t.check(rows[6] === '  1:{4}' && rows[7] === '    i:1' && rows[9] === '    n:1.5', 'the tree shows record 1 exactly', rows.slice(6, 10), known);
+    await view(page, 'convert');
+    const select = page.locator('.app:visible .pane-view select').filter({ has: page.locator('option[value="typescript"]') });
+    await select.first().selectOption('csv');
+    let csv = null;
+    for (let k = 0; k < 60 && !csv?.startsWith('i,s,n,ok'); k++) {
+      csv = await copied(page, 'Copy converted output', { timeout: 30_000 });
+      if (!csv?.startsWith('i,s,n,ok')) await page.waitForTimeout(1000);
+    }
+    const row1 = csv?.split(/\r?\n/)[2];
+    t.check(row1 === `1,${JSON.parse(lines[1]).s},1.5,false`, 'Convert → CSV writes record 1 exactly', row1, known);
+  });
+}
+
+for (const ext of ['json', 'jsonl']) {
+  test(`3 MB .${ext} with invalid UTF-8 in every record: decoded as the WHATWG decoder does`, async (t) => {
+    // Truncated sequences, a lone 0xFF, an encoded surrogate, an overlong form: each becomes U+FFFD(s)
+    // exactly as TextDecoder makes them, wherever the file's read chunks split it.
+    const { page } = t;
+    await t.open('/');
+    const BAD = [[0xc3, 0x28], [0xe2, 0x82], [0xf0, 0x9f, 0x98], [0xff], [0xed, 0xa0, 0x80], [0xc0, 0xaf]].map((b) => Buffer.from(b));
+    const parts = [Buffer.from(ext === 'json' ? '[' : '')];
+    for (let i = 0, n = 0; n < 3_000_000; i++) {
+      // (Padded so the bad bytes stay a few percent of the text, as in a real file: not a binary file.)
+      const rec = Buffer.concat([Buffer.from(`${i && ext === 'json' ? ',' : ''}{"i":${i},"pad":"${'text '.repeat(8)}","s":"a`), BAD[i % BAD.length], Buffer.from(`b"}${ext === 'jsonl' ? '\n' : ''}`)]);
+      parts.push(rec);
+      n += rec.length;
+    }
+    if (ext === 'json') parts.push(Buffer.from(']'));
+    const file = Buffer.concat(parts);
+    const text = new TextDecoder().decode(file);
+    const records = ext === 'json' ? JSON.parse(text) : text.trim().split('\n').map((l) => JSON.parse(l));
+    const st = await loadAny(page, file, `bad.${ext}`, { timeout: 120_000 });
+    t.check(st?.kind === 'ok', 'it parses', st);
+    const out = await copied(page, 'Copy formatted output', { timeout: 60_000 });
+    t.check(out !== null && hash(out) === hash(JSON.stringify(records, null, 2)), 'the Format output holds exactly the decoded text');
   });
 }

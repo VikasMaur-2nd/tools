@@ -108,5 +108,25 @@
  "typescript": {
   "hash": "2284:cb908709",
   "head": "export type Root = RootItem[];\n\nexport interface RootItem {\n  r?: number;\n  case?: string;\n  v?: number | string | (boolean | number | string | (number | unknown[] | Record<string, unknown>)[] | VItem | null)[] | V | null; // exceeds Number.MAX_SAFE_INTEGER: precision is lost as a JS number\n  long?: string;\n}\n\nexport interface VItem {\n  a?: number;\n  b?: unknown[];\n  id?: number;\n  name?: string | null;\n  tags?: string[];\n  addr?: Addr;\n  active?: boolean;\n  extra?: (number | ExtraItem)[];\n}\n\nexport interface Addr {\n  city: string;\n  zip?: string;\n}\n\nexport interface ExtraItem {\n  deep: boolea"
+ },
+ "json-schema": {
+  "hash": "9296:129ad3c1",
+  "head": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"array\",\n  \"items\": {\n    \"$ref\": \"#/$defs/RootItem\"\n  },\n  \"$defs\": {\n    \"RootItem\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"r\": {\n          \"type\": \"integer\"\n        },\n        \"case\": {\n "
+ },
+ "csv": {
+  "hash": "2667549:d467a924",
+  "head": "r,case,v.__proto__.polluted,v.constructor.prototype.x,v.toString,v.hasOwnProperty,v.valueOf,v.__defineGetter__,v,v.a,v.b.c,v.b.c.d,v.10,v.2,v.-1,v.01,v.,v. ,v.b,v.k‮RLO,v.👨‍👩‍👧‍👦,v.ls,v.esc,v.ctl,v.astral,v.lone,v.nul,v.<img src=x onerror=window.__xss=1>,\"v.a\"\"b\",v.&amp;,v.l0,long\r\n0,proto-keys,"
+ },
+ "yaml": {
+  "hash": "4958714:11a21801",
+  "head": "- r: 0\n  case: proto-keys\n  v:\n    __proto__:\n      polluted: 1\n    constructor:\n      prototype:\n        x: 1\n    toString: s\n    hasOwnProperty: null\n    valueOf: []\n    __defineGetter__: 0\n- r: 0\n  case: numbers\n  v:\n    - 1.0e+400\n    - -0\n    - 1.0000000000000000000001\n    - 1234567890123456789"
+ },
+ "xml": {
+  "hash": "7261617:deb0e49e",
+  "head": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>\n    <r>0</r>\n    <case>proto-keys</case>\n    <v>\n      <__proto__>\n        <polluted>1</polluted>\n      </__proto__>\n      <constructor>\n        <prototype>\n          <x>1</x>\n        </prototype>\n      </constructor>\n      <toString>s</toString"
+ },
+ "jsonl": {
+  "hash": "2959550:f3fd6e2b",
+  "head": "{\"r\":0,\"case\":\"proto-keys\",\"v\":{\"__proto__\":{\"polluted\":1},\"constructor\":{\"prototype\":{\"x\":1}},\"toString\":\"s\",\"hasOwnProperty\":null,\"valueOf\":[],\"__defineGetter__\":0}}\n{\"r\":0,\"case\":\"numbers\",\"v\":[1e400,-0,1.0000000000000000000001,123456789012345678901234567890123,9007199254740993,-1e-400,0.1e1,1E+2"
  }
 }

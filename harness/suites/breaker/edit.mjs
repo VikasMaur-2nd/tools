@@ -144,3 +144,33 @@ test('CSV exports of formula-like text: what a spreadsheet would run', async (t)
   t.check(!live(conv).length, 'Convert → CSV neutralises formula cells', live(conv), { known });
   t.check((table ?? '').includes('plain') && (conv ?? '').includes('plain'), 'other cells are unchanged');
 });
+
+for (const pad of [0, 3_000_000]) {
+  test(`Expand nested JSON string${pad ? ' in a 3 MB document' : ''}: the string becomes its JSON, digits kept, and Undo restores it`, async (t) => {
+    const { page } = t;
+    await t.open('/');
+    const inner = '{"deep":{"list":[1,2,{"x":"y"}],"big":9007199254740993,"e":1e400,"f":1.0000000000000000000001}}';
+    const items = [`{"id":1,"payload":${JSON.stringify(inner)}}`, '{"id":2,"payload":"not json {"}'];
+    for (let i = 0, s = 0; s < pad; i++) {
+      items.push(`{"id":${3 + i},"filler":"${'x'.repeat(100)}"}`);
+      s += 120;
+    }
+    const text = `[${items.join(',')}]`;
+    t.assert(await load(page, text, 'nested.json', { timeout: 120_000 }), 'the document loads');
+    await view(page, 'tree');
+    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+f`);
+    const box = page.locator('.findbar:visible input');
+    await box.fill('$[0].payload');
+    await box.press('Enter');
+    await until(page, () => /payload/.test(window.__vis('#view-tree .tv-rows [aria-selected=true]')?.textContent ?? '') || null, null, { timeout: 10_000 });
+    await watchToasts(page);
+    await command(page, 'Expand nested JSON string');
+    const toasts = await until(page, () => (window.__toasts?.some((x) => /Expanded nested JSON/.test(x)) ? window.__toasts : null), null, { timeout: 30_000 });
+    t.check(!!toasts, 'it says it expanded the value', await page.evaluate(() => window.__toasts));
+    const want = text.replace(JSON.stringify(inner), inner);
+    const got = await until(page, (n) => (window.__vis('.sb-l')?.textContent.startsWith('Valid JSON') ? n : null), want.length, { timeout: 60_000 }).then(() => inputText(page));
+    t.check(got === want, 'the input holds the expanded JSON with every digit', got?.slice(0, 160));
+    await command(page, 'Undo');
+    t.check((await inputText(page)) === text, 'Undo brings the string back');
+  });
+}

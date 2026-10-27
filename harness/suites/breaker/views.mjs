@@ -167,3 +167,22 @@ for (const [name, want] of [
     }
   });
 }
+
+test('a 3 MB records array in the table: rows, and sorting by number, text and big integers', async (t) => {
+  // From 2 MB the table reads the worker's tree (on t3/optimize-json-memory-performance, the tape, lazily).
+  const { page } = t;
+  await t.open('/');
+  const text = readFileSync(bigFixture('big-records-3mb'), 'utf8');
+  t.assert(await load(page, text, 'records-3mb.json', { timeout: 120_000 }), 'the document loads');
+  await view(page, 'table');
+  await waitRows(page, '#view-table .tb-rows');
+  const out = { first: (await tableRows(page)).rows.slice(0, 5) };
+  for (const [col, clicks] of [['score', 2], ['name', 1], ['big', 2]]) {
+    const th = page.locator('#view-table:visible [role=columnheader]', { hasText: new RegExp(`^${col}$`) });
+    for (let i = 0; i < clicks; i++) await th.click();
+    const dir = clicks === 2 ? 'descending' : 'ascending';
+    await until(page, (d) => window.__vis(`#view-table [aria-sort="${d}"]`) || null, dir, { timeout: 30_000 });
+    out[`${col} ${dir}`] = (await tableRows(page)).rows.slice(0, 6);
+  }
+  golden(t, 'views/table-3mb', out, 'rows and sorted rows match the golden file');
+});
