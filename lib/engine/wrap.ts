@@ -684,13 +684,14 @@ export class Wrapper {
 
   /**
    * Offset (from the line start) of the first character on row `r` of the
-   * line `text[a, b)`. `odd` as set by `rows()`.
+   * line `text[a, b)`. `odd` as set by `rows()`. `cols`: the row width the
+   * rows were counted at (a font or a width may have changed it since).
    */
-  rowStart(text: Src, a: number, b: number, r: number, odd: number): number {
+  rowStart(text: Src, a: number, b: number, r: number, odd: number, cols = this.cols): number {
     if (r <= 0) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
-      return Math.min(b - a, r * this.cols - cells + chars);
+      return Math.min(b - a, r * cols - cells + chars);
     }
     if (odd === CUT && !this.exact) {
       const c = this.cuts(text, a, b);

@@ -83,6 +83,8 @@ export class CodeView {
   private model: TextModel | LineModel = TextSlices.from('');
   private lineText = new Map<number, string>();
   private layoutSeq = 0;
+  /** The layout in progress when Find last went to a match (see goto). */
+  private jumpSeq = -1;
   private textSeq = 0;
   private wrapTextLength = 0;
   /**
@@ -594,7 +596,8 @@ export class CodeView {
       this.sc.fit(rows * RH + 24, this.sizer);
       this.sizer.style.width = wr ? '' : `${Math.ceil(gutter + (index.maxLen + 4) * this.cw + PAD_X * 2)}px`;
       if (at) this.scrollBack(at);
-      if (this.q) this.runFind(false);
+      // (Find went to a match while these rows were made: it goes to it again in them.)
+      if (this.q) this.runFind(this.jumpSeq === seq, true);
       this.render(true);
     };
     step();
@@ -690,7 +693,8 @@ export class CodeView {
     if (sub <= 0) return 0;
     if (sub >= this.rowStart[vi + 1] - this.rowStart[vi]) return len;
     const line = this.line(ln);
-    return (this.layoutWrap as Wrapper).rowStart(line, 0, len, sub, this.odd[vi]);
+    // (With the row width the rows on screen were counted at: the wrapper may already have a new one.)
+    return (this.layoutWrap as Wrapper).rowStart(line, 0, len, sub, this.odd[vi], this.layoutCols);
   }
 
   /** Is visible line `vi` drawn as one block the browser wraps (wide glyphs, not long, not garbage: see Wrapper.summed)? */
@@ -866,10 +870,10 @@ export class CodeView {
     return { total: n, index: this.hi };
   }
 
-  private runFind(jump: boolean) {
+  /** `keep`: run again (a new layout or text), the match that was current stays so if it is still there. */
+  private runFind(jump: boolean, keep = !jump) {
     const seq = ++this.findSeq;
-    // (Run again for a new layout or text, the match that was current stays so if it is still there.)
-    const was = !jump && this.hi >= 0 ? this.hits.slice(this.hi * 2, this.hi * 2 + 2) : null;
+    const was = keep && this.hi >= 0 ? this.hits.slice(this.hi * 2, this.hi * 2 + 2) : null;
     this.hits = [];
     this.hitLines.clear();
     this.hi = -1;
@@ -929,6 +933,7 @@ export class CodeView {
   }
 
   private goto() {
+    this.jumpSeq = this.layoutSeq;
     const ln = this.hits[this.hi * 2];
     const col = this.hits[this.hi * 2 + 1];
     this.reveal(ln);
