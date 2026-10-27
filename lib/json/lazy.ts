@@ -73,6 +73,27 @@ export class Filler implements TapeLink {
     return decodeString(this.src, n.s, max);
   }
 
+  /**
+   * Makes container `n`'s children in steps (call with a deadline until it returns true), so a container
+   * of millions doesn't make them all in one task when a view first reads them.
+   */
+  fillSteps(n: JNode): (until: number) => boolean {
+    if (n.t < ARR || n._v !== undefined) return () => true;
+    const t = this.tape;
+    const end = nextOf(t, n.zi);
+    const list: JNode[] = [];
+    let c = n.zi + 1;
+    return (until) => {
+      while (c < end) {
+        for (let k = 0; k < 4096 && c < end; k++, c = nextOf(t, c)) list.push(this.make(c, n));
+        if (c < end && performance.now() >= until) return false;
+      }
+      // (Read in one go meanwhile: those are the children.)
+      if (n._v === undefined) n._v = list;
+      return true;
+    };
+  }
+
   fill(n: JNode): Val {
     const t = this.tape;
     const i = n.zi;

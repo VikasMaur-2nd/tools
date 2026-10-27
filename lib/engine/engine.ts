@@ -1386,7 +1386,7 @@ export class Engine {
         this.analyze({ ...tree.head, root: null }, metrics, true);
         return;
       }
-      const step = pack!.unpacker(tree, analysisText);
+      const step = pack!.unpacker(tree, analysisText, { fill: this.settings.view === 'tree' || this.settings.view === 'table' });
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
@@ -1464,7 +1464,7 @@ export class Engine {
     this.queueAnalysis(seq, document, name, (tree, metrics) => {
       if (seq !== this.loadSeq) return;
       if (!tree) return next();
-      const step = pack!.unpacker(tree, document.toString());
+      const step = pack!.unpacker(tree, document.toString(), { fill: this.settings.view === 'tree' || this.settings.view === 'table' });
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
@@ -1785,7 +1785,7 @@ export class Engine {
             return;
           }
           // (The view changed meanwhile: its nodes, rebuilt in short slices.)
-          const step = pack!.unpacker(tree, text);
+          const step = pack!.unpacker(tree, text, { fill: this.settings.view === 'tree' || this.settings.view === 'table' });
           const run = () => {
             if (seq !== this.loadSeq) return;
             const res = step(performance.now() + 8);
@@ -2441,7 +2441,8 @@ export class Engine {
     if (view !== 'format' && view !== 'compare' && packed) {
       const { tree, text, metrics } = packed;
       const seq = this.loadSeq;
-      const step = pack!.unpacker(tree, text);
+      // (The Tree and the Table read the root's children at once: they are made in the steps too.)
+      const step = pack!.unpacker(tree, text, { fill: view === 'tree' || view === 'table' });
       const run = () => {
         if (this.dead || seq !== this.loadSeq || viewSeq !== this.viewSeq) return;
         const res = step(performance.now() + 8);
