@@ -50,7 +50,6 @@ const MAX_WARN: usize = 500;
 // run() results.
 const DONE: i32 = 0;
 const NEED: i32 = 1;
-const FULL: i32 = 2;
 const FAIL: i32 = -1;
 
 // What stage 2 expects next.
@@ -76,10 +75,11 @@ static ENDS: [bool; 256] = {
     }
     t
 };
-/** Nodes per batch. */
+/** Nodes a batch has room for at first (it grows to a window's tokens: see load()). */
 const OCAP: usize = 32768;
 /** u32 per open container (STACK). */
-const F: usize = 5;
+const F: usize = 6;
+const NONE: u32 = u32::MAX;
 
 // ── Memory: a bump allocator (one parse per instance) and growable arrays ─────
 
@@ -178,10 +178,14 @@ static mut RESUME: usize = 0;
 static mut PENDING_KEY: u32 = 0;
 static mut DEPTH_SEEN: u32 = 0;
 static mut EXACT: bool = true;
-/** Open containers: node, kind, children so far, undo log length when opened, the last member's key. */
+/**
+ * Open containers: node, kind, children so far, undo log length when opened, the last member's key, and
+ * (kept after it closes) the first name of the last object open at that depth: the next one's guess.
+ */
 static mut STACK: Buf = Buf::new();
 // Output: a batch of nodes from node OBASE, containers to patch (node, size, end) and big sizes (node, size).
 static mut OUT: usize = 0;
+static mut OUTCAP: usize = 0;
 static mut OBASE: usize = 0;
 static mut COUNT: usize = 0;
 static mut PATCH: Buf = Buf::new();
@@ -204,10 +208,11 @@ static mut ALEN: usize = 0;
 static mut ACAP: usize = 0;
 /** (key, previous MARK) for each name an open object took: undone when it closes. */
 static mut UNDO: Buf = Buf::new();
-// Guesses of the next property name: per key, the name that followed it last time; per depth, the
-// first name of the last object there.
+// Guesses of the next property name: per key, the name that followed it last time (per depth, the first
+// name of the last object there: in STACK).
 static mut FOLLOWS: Buf = Buf::new();
-static mut FIRSTS: Buf = Buf::new();
+/** STACK frames whose guess of a first name is set (frames past it hold what an earlier parse left). */
+static mut FRAMES: usize = 0;
 static mut SCRATCH: usize = 0;
 static mut SCAP: usize = 0;
 
@@ -240,14 +245,16 @@ pub unsafe extern "C" fn init(text: u32, max_depth: u32, wcap: usize) -> u32 {
     MARK = Buf::new();
     UNDO = Buf::new();
     FOLLOWS = Buf::new();
-    FIRSTS = Buf::new();
+    FRAMES = 0;
     KTAB = Buf::new();
     ALEN = 0;
     ACAP = 1 << 16;
-    ARENA = alloc(ACAP);
+    // (+ 8: names are compared 8 bytes at a time.)
+    ARENA = alloc(ACAP + 8);
     SCAP = 1 << 12;
     SCRATCH = alloc(SCAP);
     OUT = alloc(OCAP * W * 4);
+    OUTCAP = OCAP;
     if ARENA == 0 || SCRATCH == 0 || OUT == 0 || !KTAB.reserve(1024) || !STACK.reserve(256) {
         return 0;
     }
@@ -574,6 +581,19 @@ pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32, cr: u32) ->
         n -= 1;
     }
     NIDX = n;
+    // Room in the batch for a node per token, so stage 2 never stops for room (JS takes each window's
+    // nodes, so the batch is mostly empty here).
+    let held = COUNT - OBASE;
+    if held + n > OUTCAP {
+        let cap = held + n;
+        let p = alloc(cap * W * 4);
+        if p == 0 {
+            return FAIL;
+        }
+        core::ptr::copy_nonoverlapping(OUT as *const u8, p as *mut u8, held * W * 4);
+        OUT = p;
+        OUTCAP = cap;
+    }
     // (The padding is spaces: any high bit is the window's.) One byte is one unit only without both.
     ASCII = hi_any == 0 && drop_any == 0;
     0
@@ -937,7 +957,7 @@ unsafe fn name(p: usize, q: usize) -> u32 {
     let k = KHASH.len;
     if ALEN + len > ACAP {
         let cap = ((ALEN + len) * 2).next_power_of_two();
-        let p2 = alloc(cap);
+        let p2 = alloc(cap + 8);
         if p2 == 0 {
             return u32::MAX;
         }
@@ -976,24 +996,44 @@ unsafe fn name(p: usize, q: usize) -> u32 {
     k as u32
 }
 
-/// Whether the open object (node `obj`) already has a member named `k`; marks that it has (UNDO has
-/// room for 2). Exact: MARK[k] names the open object that took `k` last, and an object closing gives
-/// back the marks of the names it took, so it is `obj` exactly when `obj` has one.
+/// Whether the `len` bytes at `a` and `b` are the same, 8 at a time (both have 8 readable bytes past `len`).
 #[inline(always)]
-unsafe fn dup(obj: u32, k: u32) -> bool {
-    let id = obj + 1;
-    let was = MARK.get(k as usize);
-    if was == id {
-        return true;
+unsafe fn same(a: usize, b: usize, len: usize) -> bool {
+    let mut j = 0;
+    while j + 8 <= len {
+        if ((a + j) as *const u64).read_unaligned() != ((b + j) as *const u64).read_unaligned() {
+            return false;
+        }
+        j += 8;
     }
-    UNDO.push(k);
-    UNDO.push(was);
-    MARK.set(k as usize, id);
-    false
+    let rest = len - j;
+    rest == 0 || (((a + j) as *const u64).read_unaligned() ^ ((b + j) as *const u64).read_unaligned()) & (!0u64 >> (64 - rest * 8)) == 0
 }
 
-/// Parses the window's tokens from where it stopped: DONE, NEED (load the window from resume()),
-/// FULL (copy the batch, drain(), call again) or FAIL.
+/// The property-name tables stage 2 reads all the time, in locals (statics are read again after every
+/// store). name() may move them (they grow), so they are read again after it.
+#[derive(Clone, Copy)]
+struct Keys {
+    len: *const u32,
+    off: *const u32,
+    flag: *const u32,
+    follows: *mut u32,
+    mark: *mut u32,
+    arena: usize,
+}
+
+impl Keys {
+    #[inline(always)]
+    unsafe fn now() -> Keys {
+        Keys { len: KLEN.p as *const u32, off: KOFF.p as *const u32, flag: KFLAG.p as *const u32, follows: FOLLOWS.p as *mut u32, mark: MARK.p as *mut u32, arena: ARENA }
+    }
+}
+
+/// Parses the window's tokens from where it stopped: DONE, NEED (load the window from resume()) or FAIL;
+/// the nodes so far are the batch (copy it, then drain()).
+///
+/// One pass of the loop takes a whole member of an object (its name, the colon, its value and the comma
+/// after it) or a whole item of an array, so what comes next is mostly known without going round.
 #[no_mangle]
 pub unsafe extern "C" fn run() -> i32 {
     let idx = IDX as *const u32;
@@ -1006,16 +1046,26 @@ pub unsafe extern "C" fn run() -> i32 {
     let mut pend = PENDING_KEY;
     let w = Win::now();
     let (bsm, him) = (BSM, HIM);
+    let from_text = FROM_TEXT;
     let wlen = WLEN;
     let last = FINAL;
     let max_depth = MAX_DEPTH;
     let mut deepest = DEPTH_SEEN;
     let mut exact = EXACT;
+    // The undo log (see the duplicate check below), in locals: its length is written back at the end.
+    let mut undo = UNDO.p as *mut u32;
+    let mut ucap = UNDO.cap;
+    let mut ul = UNDO.len;
+    // Frames whose guess of a first name (field 5) has been set.
+    let mut frames = FRAMES;
     // The innermost open container, in locals (its STACK frame is written when another opens).
     let mut depth = STACK.len / F;
     // (STACK in locals too: its length is written back at the end.)
     let mut stk = STACK.p as *mut u32;
-    let (mut tnode, mut tkind, mut tcount, mut tundo, mut tlast) = (0u32, 0u32, 0u32, 0u32, u32::MAX);
+    // Top level: no parent, no key.
+    let (mut tnode, mut tkind, mut tcount, mut tundo, mut tlast) = (NONE, 0u32, 0u32, 0u32, NONE);
+    // The key kind of its children, as it goes in a node (<< 3).
+    let mut tkk = KEY_NONE << 3;
     if depth > 0 {
         let f = (depth - 1) * F;
         tnode = *stk.add(f);
@@ -1023,35 +1073,34 @@ pub unsafe extern "C" fn run() -> i32 {
         tcount = *stk.add(f + 2);
         tundo = *stk.add(f + 3);
         tlast = *stk.add(f + 4);
+        tkk = if tkind == OBJ { KEY_NAME << 3 } else { KEY_INDEX << 3 };
     }
-    // A node at window offset $p ending at UTF-16 offset $e (containers: set when they close).
+    // A node at window offset $p ending at UTF-16 offset $e (containers: set when they close). (Depth is
+    // checked when a container closes: its children's depth is the deepest so far.)
     macro_rules! emit {
         ($kind:expr, $vk:expr, $p:expr, $e:expr) => {{
-            let d = depth as u32;
-            if d > max_depth {
-                break FAIL;
-            }
-            if d > deepest {
-                deepest = d;
-            }
-            let (parent, kk, key) = if depth == 0 {
-                (u32::MAX, KEY_NONE, 0)
-            } else {
-                let c = tcount;
-                tcount += 1;
-                if tkind == OBJ {
-                    (tnode, KEY_NAME, pend)
-                } else {
-                    (tnode, KEY_INDEX, c)
-                }
-            };
+            let key = if tkind == OBJ { pend } else { tcount };
+            tcount += 1;
             let o = out.add((count - obase) * W);
-            *o = $kind | (kk << 3) | ($vk << 5) | (1 << 8);
+            *o = $kind | tkk | ($vk << 5) | (1 << 8);
             *o.add(1) = w.u16($p);
             *o.add(2) = $e;
-            *o.add(3) = parent;
+            *o.add(3) = tnode;
             *o.add(4) = key;
             count += 1;
+        }};
+    }
+    // What follows a value (or a closed container), without going round: mostly a comma.
+    macro_rules! after {
+        () => {{
+            state = if depth == 0 {
+                S_DONE
+            } else if ii < n && w.byte(*idx.add(ii) as usize) == b',' {
+                ii += 1;
+                if tkind == OBJ { S_KEY } else { S_VALUE }
+            } else {
+                S_AFTER
+            };
         }};
     }
     // The innermost container closes at $p.
@@ -1060,12 +1109,17 @@ pub unsafe extern "C" fn run() -> i32 {
             if tkind == OBJ {
                 // Its names are no longer an open object's.
                 let from = tundo as usize;
-                let mut u = UNDO.len;
-                while u > from {
-                    u -= 2;
-                    MARK.set(UNDO.get(u) as usize, UNDO.get(u + 1));
+                while ul > from {
+                    ul -= 2;
+                    *(MARK.p as *mut u32).add(*undo.add(ul) as usize) = *undo.add(ul + 1);
                 }
-                UNDO.len = from;
+            }
+            // Its children are the deepest nodes so far, or not.
+            if tcount != 0 && depth as u32 > deepest {
+                deepest = depth as u32;
+                if deepest > max_depth {
+                    break FAIL;
+                }
             }
             let id = tnode as usize;
             let size = (count - id) as u32;
@@ -1092,15 +1146,11 @@ pub unsafe extern "C" fn run() -> i32 {
                 tcount = *stk.add(f + 2);
                 tundo = *stk.add(f + 3);
                 tlast = *stk.add(f + 4);
-            }
-            state = if depth == 0 {
-                S_DONE
-            } else if ii < n && w.byte(*idx.add(ii) as usize) == b',' {
-                ii += 1;
-                if tkind == OBJ { S_KEY } else { S_VALUE }
+                tkk = if tkind == OBJ { KEY_NAME << 3 } else { KEY_INDEX << 3 };
             } else {
-                S_AFTER
-            };
+                (tnode, tkind, tkk) = (NONE, 0, KEY_NONE << 3);
+            }
+            after!();
         }};
     }
     let r = loop {
@@ -1111,129 +1161,125 @@ pub unsafe extern "C" fn run() -> i32 {
             RESUME = wlen;
             break NEED;
         }
-        if count - obase >= OCAP {
-            break FULL;
-        }
-        let p = *idx.add(ii) as usize;
-        let c = w.byte(p);
-        match state {
-            S_VALUE | S_ARR_FIRST => {
-                if c == b'"' {
-                    if ii + 1 >= n {
-                        if last {
-                            break FAIL;
-                        }
-                        RESUME = p;
-                        break NEED;
-                    }
-                    let q = *idx.add(ii + 1) as usize;
-                    if !w.ascii && !FROM_TEXT && any(him, p + 1, q) && !utf8(p + 1, q) {
-                        break FAIL;
-                    }
-                    let vk = if any(bsm, p + 1, q) { V_DECODE } else { V_SLICE };
-                    emit!(STR, vk, p, w.u16(q) + 1);
-                    ii += 2;
-                } else if c == b'{' || c == b'[' {
-                    let kind = if c == b'{' { OBJ } else { ARR };
-                    emit!(kind, V_NONE, p, 0);
-                    // Push: the old innermost container to its frame, the new one to locals.
-                    if (depth + 1) * F > STACK.cap {
-                        STACK.len = depth * F;
-                        if !STACK.reserve(F) {
-                            break FAIL;
-                        }
-                        stk = STACK.p as *mut u32;
-                    }
-                    if depth > 0 {
-                        let f = (depth - 1) * F;
-                        *stk.add(f + 2) = tcount;
-                        *stk.add(f + 4) = tlast;
-                    }
-                    let f = depth * F;
-                    tnode = (count - 1) as u32;
-                    tkind = kind;
-                    tcount = 0;
-                    tundo = UNDO.len as u32;
-                    tlast = u32::MAX;
-                    *stk.add(f) = tnode;
-                    *stk.add(f + 1) = tkind;
-                    *stk.add(f + 3) = tundo;
-                    depth += 1;
-                    if kind == OBJ {
-                        while FIRSTS.len < depth {
-                            if !FIRSTS.push(u32::MAX) {
-                                break;
-                            }
-                        }
-                        if FIRSTS.len < depth {
-                            break FAIL;
-                        }
-                    }
-                    ii += 1;
-                    state = if c == b'{' { S_OBJ_FIRST } else { S_ARR_FIRST };
-                    continue;
-                } else if c == b']' && state == S_ARR_FIRST {
-                    ii += 1;
-                    close!(p);
-                    continue;
-                } else if c == b'}' || c == b']' || c == b',' || c == b':' {
-                    break FAIL;
-                } else {
-                    // The window's last token may go on in the next one.
-                    if ii + 1 == n && !last {
-                        let mut j = p;
-                        while j < wlen && !ENDS[w.byte(j) as usize] {
-                            j += 1;
-                        }
-                        if j == wlen {
-                            RESUME = p;
-                            break NEED;
-                        }
-                    }
-                    let (kind, vk, e, canon) = scalar(&w, p, exact);
-                    if e == 0 {
-                        break FAIL;
-                    }
-                    if !canon {
-                        exact = false;
-                    }
-                    if !ENDS[w.byte(e) as usize] {
-                        break FAIL;
-                    }
-                    // (Scalars are ASCII.)
-                    emit!(kind, vk, p, w.u16(p) + (e - p) as u32);
-                    ii += 1;
-                }
-                // What follows, without going round: mostly a comma, then the next item or name.
-                state = if depth == 0 {
-                    S_DONE
-                } else if ii < n && w.byte(*idx.add(ii) as usize) == b',' {
-                    ii += 1;
-                    if tkind == OBJ { S_KEY } else { S_VALUE }
-                } else {
-                    S_AFTER
-                };
-            }
-            S_AFTER => {
-                let obj = tkind == OBJ;
+        let mut p = *idx.add(ii) as usize;
+        let mut c = w.byte(p);
+        if state >= S_OBJ_FIRST {
+            if state == S_AFTER {
                 ii += 1;
                 if c == b',' {
-                    state = if obj { S_KEY } else { S_VALUE };
-                } else if c == if obj { b'}' } else { b']' } {
+                    state = if tkind == OBJ { S_KEY } else { S_VALUE };
+                } else if c == if tkind == OBJ { b'}' } else { b']' } {
                     close!(p);
                 } else {
                     break FAIL;
                 }
+                continue;
             }
-            S_OBJ_FIRST | S_KEY => {
-                if c == b'}' && state == S_OBJ_FIRST {
-                    ii += 1;
-                    close!(p);
-                    continue;
-                }
-                if c != b'"' {
+            if state == S_COLON {
+                if c != b':' {
                     break FAIL;
                 }
+                ii += 1;
+                state = S_VALUE;
+                continue;
+            }
+            if state == S_DONE {
+                break FAIL;
+            }
+            // A property name (or the end of an empty object).
+            if c == b'}' && state == S_OBJ_FIRST {
+                ii += 1;
+                close!(p);
+                continue;
+            }
+            if c != b'"' {
+                break FAIL;
+            }
+            if ii + 1 >= n {
+                if last {
+                    break FAIL;
+                }
+                RESUME = p;
+                break NEED;
+            }
+            let q = *idx.add(ii + 1) as usize;
+            // The guess: the name that followed the previous member's last time (or came first here, the
+            // last time an object was open at this depth).
+            let mut keys = Keys::now();
+            let first = stk.add((depth - 1) * F + 5);
+            let guess = if tlast == NONE { *first } else { *keys.follows.add(tlast as usize) };
+            let mut k = NONE;
+            if guess != NONE {
+                let g = guess as usize;
+                let len = q - p - 1;
+                if *keys.len.add(g) as usize == len && !any(bsm, p + 1, q) {
+                    let a = w.p + p + 1;
+                    let b = keys.arena + *keys.off.add(g) as usize;
+                    if same(a, b, len) {
+                        k = guess;
+                        if *keys.flag.add(g) & 2 != 0 {
+                            exact = false;
+                        }
+                    }
+                }
+            }
+            if k == NONE {
+                EXACT = exact;
+                k = name(p, q);
+                exact = EXACT;
+                if k == NONE {
+                    break FAIL;
+                }
+                keys = Keys::now();
+            }
+            if tlast == NONE {
+                *first = k;
+            } else {
+                *keys.follows.add(tlast as usize) = k;
+            }
+            tlast = k;
+            // Twice in this object? MARK[k] names the open object that took `k` last (node + 1); an object
+            // closing gives back the marks of the names it took (the undo log), so it is this one exactly
+            // when this one has it.
+            let id = tnode + 1;
+            let was = *keys.mark.add(k as usize);
+            if was == id {
+                if WARN.len < MAX_WARN * 2 && !(WARN.push(w.u16(p)) && WARN.push(k)) {
+                    break FAIL;
+                }
+            } else {
+                if ul + 2 > ucap {
+                    UNDO.len = ul;
+                    if !UNDO.reserve(2) {
+                        break FAIL;
+                    }
+                    undo = UNDO.p as *mut u32;
+                    ucap = UNDO.cap;
+                }
+                *undo.add(ul) = k;
+                *undo.add(ul + 1) = was;
+                ul += 2;
+                *keys.mark.add(k as usize) = id;
+            }
+            pend = k;
+            ii += 2;
+            // The colon, and the value in this same pass if it is in the window.
+            if ii < n && w.byte(*idx.add(ii) as usize) == b':' {
+                ii += 1;
+                state = S_VALUE;
+                if ii >= n {
+                    continue;
+                }
+                p = *idx.add(ii) as usize;
+                c = w.byte(p);
+            } else {
+                state = S_COLON;
+                continue;
+            }
+        }
+        // A value (or the end of an empty array).
+        match c {
+            b'"' => {
                 if ii + 1 >= n {
                     if last {
                         break FAIL;
@@ -1242,61 +1288,87 @@ pub unsafe extern "C" fn run() -> i32 {
                     break NEED;
                 }
                 let q = *idx.add(ii + 1) as usize;
-                // The guess: the name that followed the previous member's last time (or came first here).
-                let guess = if tlast == u32::MAX { FIRSTS.get(depth - 1) } else { FOLLOWS.get(tlast as usize) };
-                let mut k = u32::MAX;
-                if guess != u32::MAX {
-                    let g = guess as usize;
-                    let len = q - p - 1;
-                    if KLEN.get(g) as usize == len && !any(bsm, p + 1, q) {
-                        let a = (WIN + p + 1) as *const u8;
-                        let b = (ARENA + KOFF.get(g) as usize) as *const u8;
-                        if (0..len).all(|j| *a.add(j) == *b.add(j)) {
-                            k = guess;
-                            if KFLAG.get(g) & 2 != 0 {
-                                exact = false;
-                            }
-                        }
-                    }
+                if !w.ascii && !from_text && any(him, p + 1, q) && !utf8(p + 1, q) {
+                    break FAIL;
                 }
-                if k == u32::MAX {
-                    EXACT = exact;
-                    k = name(p, q);
-                    exact = EXACT;
-                    if k == u32::MAX {
+                let vk = if any(bsm, p + 1, q) { V_DECODE } else { V_SLICE };
+                emit!(STR, vk, p, w.u16(q) + 1);
+                ii += 2;
+            }
+            b'{' | b'[' => {
+                let kind = if c == b'{' { OBJ } else { ARR };
+                emit!(kind, V_NONE, p, 0);
+                // Push: the old innermost container to its frame, the new one to locals.
+                if (depth + 1) * F > STACK.cap {
+                    STACK.len = depth * F;
+                    if !STACK.reserve(F) {
                         break FAIL;
                     }
+                    stk = STACK.p as *mut u32;
+                    // (Frames past `depth` weren't copied: their guesses are set again.)
+                    frames = frames.min(depth);
                 }
-                if tlast == u32::MAX {
-                    FIRSTS.set(depth - 1, k);
-                } else {
-                    FOLLOWS.set(tlast as usize, k);
+                if depth > 0 {
+                    let f = (depth - 1) * F;
+                    *stk.add(f + 2) = tcount;
+                    *stk.add(f + 4) = tlast;
                 }
-                tlast = k;
-                if !UNDO.reserve(2) {
-                    break FAIL;
+                let f = depth * F;
+                if depth >= frames {
+                    *stk.add(f + 5) = NONE;
+                    frames = depth + 1;
                 }
-                if dup(tnode, k) && WARN.len < MAX_WARN * 2 && !(WARN.push(w.u16(p)) && WARN.push(k)) {
-                    break FAIL;
-                }
-                pend = k;
-                ii += 2;
-                state = if ii < n && w.byte(*idx.add(ii) as usize) == b':' {
-                    ii += 1;
-                    S_VALUE
-                } else {
-                    S_COLON
-                };
+                tnode = (count - 1) as u32;
+                tkind = kind;
+                tkk = if kind == OBJ { KEY_NAME << 3 } else { KEY_INDEX << 3 };
+                tcount = 0;
+                tundo = ul as u32;
+                tlast = NONE;
+                *stk.add(f) = tnode;
+                *stk.add(f + 1) = tkind;
+                *stk.add(f + 3) = tundo;
+                depth += 1;
+                ii += 1;
+                state = if kind == OBJ { S_OBJ_FIRST } else { S_ARR_FIRST };
+                continue;
             }
-            S_COLON => {
-                if c != b':' {
+            b']' => {
+                if state != S_ARR_FIRST {
                     break FAIL;
                 }
                 ii += 1;
-                state = S_VALUE;
+                close!(p);
+                continue;
             }
-            _ => break FAIL,
+            b'}' | b',' | b':' => break FAIL,
+            _ => {
+                // The window's last token may go on in the next one.
+                if ii + 1 == n && !last {
+                    let mut j = p;
+                    while j < wlen && !ENDS[w.byte(j) as usize] {
+                        j += 1;
+                    }
+                    if j == wlen {
+                        RESUME = p;
+                        break NEED;
+                    }
+                }
+                let (kind, vk, e, canon) = scalar(&w, p, exact);
+                if e == 0 {
+                    break FAIL;
+                }
+                if !canon {
+                    exact = false;
+                }
+                if !ENDS[w.byte(e) as usize] {
+                    break FAIL;
+                }
+                // (Scalars are ASCII.)
+                emit!(kind, vk, p, w.u16(p) + (e - p) as u32);
+                ii += 1;
+            }
         }
+        after!();
     };
     STACK.len = depth * F;
     if depth > 0 {
@@ -1304,6 +1376,8 @@ pub unsafe extern "C" fn run() -> i32 {
         *stk.add(f + 2) = tcount;
         *stk.add(f + 4) = tlast;
     }
+    UNDO.len = ul;
+    FRAMES = frames;
     II = ii;
     STATE = state;
     COUNT = count;

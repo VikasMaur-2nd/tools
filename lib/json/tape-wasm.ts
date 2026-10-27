@@ -6,7 +6,7 @@
  *
  * The input is the document's text or, better, its bytes as read from a file (UTF-8, then not
  * encoded again; invalid UTF-8 returns null). It goes to WebAssembly a window at a time, so the
- * document is never copied whole, and the nodes come back in batches.
+ * document is never copied whole, and each window's nodes come back to JS.
  */
 import { decodeString } from './decode';
 import { fitted, SIZE_BIG, W, type Tape } from './tape';
@@ -43,7 +43,6 @@ interface Exports {
 // run() results (else -1: not strict JSON).
 const DONE = 0;
 const NEED = 1;
-const FULL = 2;
 
 /** Window size in bytes (a token longer than that doubles it). */
 const WINDOW = 1 << 18;
@@ -125,17 +124,17 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource |
       done = (p) => (u16 + (p * r.read) / Math.max(len, 1)) / total;
     }
     if (x.load(len, last ? 1 : 0, u16, cr) < 0) return null;
-    let r: number;
-    while ((r = x.run()) === FULL || r === DONE) {
-      // A batch of nodes.
-      const n = x.out_len();
+    const r = x.run();
+    if (r !== DONE && r !== NEED) return null;
+    // The window's nodes.
+    const n = x.out_len();
+    if (n) {
       if ((count + n) * W > nodes.length) nodes = grow(nodes, count, count + n, done(x.pos()), total);
       nodes.set(new Int32Array(x.memory.buffer, x.out_ptr(), n * W), count * W);
       count += n;
       x.drain();
-      if (r === DONE) return finish(x, text, nodes, count);
     }
-    if (r !== NEED) return null;
+    if (r === DONE) return finish(x, text, nodes, count);
     const next = x.resume();
     // A token longer than the window: a bigger one, from the same place.
     if (next === 0) {
