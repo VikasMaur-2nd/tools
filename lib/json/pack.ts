@@ -5,38 +5,11 @@
  * task is long) and gives a ParseResult whose nodes are made only when read (lazy.ts). Caret paths
  * are found on the tape itself (`packedPosition`), without making any node.
  */
-import { MAX_DEPTH, type ParseOptions, type ParseResult, type Parser } from './parser';
+import type { ParseResult } from './parser';
 import { Filler, lazyResult } from './lazy';
-import { parse as tapeParse, parser as tapeParser, warmUp } from './tape-parser';
 import { containerOf, emptyTape, KEY_INDEX, nodeAtOffset, receiver, W, type SentTape, type Tape } from './tape';
 
 export type PackedTree = SentTape;
-
-/**
- * The page's parse once this chunk is loaded: parser.ts's result (its depth limit too), from the tape parser,
- * read through nodes made when read (lazy.ts). Before, the page parses with parser.ts (in the first load).
- */
-export const parseLazy = (src: string, options: ParseOptions = {}): ParseResult => lazyResult(tapeParse(src, { ...options, maxDepth: MAX_DEPTH }), src);
-
-/** parseLazy() in steps, as parser.ts's parser(). */
-export function parserLazy(src: string, options: ParseOptions = {}): Parser {
-  const p = tapeParser(src, { ...options, maxDepth: MAX_DEPTH });
-  let res: ParseResult | undefined;
-  return {
-    step(until) {
-      if (!res) {
-        const t = p.step(until);
-        if (t) res = lazyResult(t, src);
-      }
-      return res;
-    },
-    at: () => p.at(),
-  };
-}
-
-// The page parses with the tape parser once this is loaded: warmed up when the page is next idle (its first
-// parses in a page would run before the engine optimizes it).
-if (typeof requestIdleCallback === 'function') requestIdleCallback(() => warmUp());
 
 // (The Format view reads a big document's pretty text off its tape: with the tape's code, not the first load.)
 export { tapeOfNode } from './lazy';

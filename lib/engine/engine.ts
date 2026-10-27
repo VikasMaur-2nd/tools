@@ -1,4 +1,4 @@
-import { ARR, JNode, MAX_ISSUES, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseOptions, type ParseResult, type Parser } from '../json/parser';
+import { ARR, JNode, MAX_ISSUES, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
 import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import type { PackedTree, PrettyText } from '../json/pack';
@@ -251,9 +251,6 @@ const loadPack = () => (packLoad ??= import('../json/pack').then((m) => (pack = 
   packLoad = null;
   throw e;
 }));
-
-/** The page's parse: the tape parser's once the tape's code has loaded (pack.ts parseLazy), parser.ts's until then. The same result. */
-const parseHere = (src: string, options: ParseOptions) => (pack?.parseLazy ?? parse)(src, options);
 
 let swStarted = false;
 let updateWaiting = false;
@@ -652,7 +649,7 @@ export class Engine {
     if (!text || mayBeJwt(text)) return this.analyze();
     const seq = this.loadSeq;
     const ver = this.ed.version;
-    const p = (pack?.parserLazy ?? parser)(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
+    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     this.steps = { p, seq, ver };
     // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
     clearTimeout(this.timer);
@@ -790,7 +787,7 @@ export class Engine {
     const t0 = performance.now();
     const jwt = this.jwtReader && mayBeJwt(text) ? this.jwtReader(text, this.indent) : null;
     const src = jwt ? jwt.json : text;
-    const res = parsed ?? parseHere(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
+    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
     // (Used once: it holds that version's text.)
     const counted = this.counted?.ver === ed.version ? this.counted : null;
