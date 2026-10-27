@@ -22,11 +22,21 @@ export interface PrettyIndex extends CodeIndex {
   length: number;
 }
 
-/** Characters a string's text may need escaped for (see `plain`): quotes, backslashes, control characters, surrogates. */
-const SPECIAL = /["\\\x00-\x1f\ud800-\udfff]/g;
+/**
+ * Characters a string's text may need escaped for (see `plain`): quotes, backslashes, control characters, and a
+ * surrogate that isn't in a pair (a pair is matched whole, then passed over: see `special`).
+ */
+const SPECIAL = /["\\\x00-\x1f]|[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g;
 /** Characters past printable ASCII, searched forward (see `ascii`). */
 const WIDER = /[^\x20-\x7e]/g;
 const PRINTABLE = /^[\x20-\x7e]*$/;
+
+/** Where the first character from `at` that may need escaping is (see SPECIAL), or src.length. */
+function special(src: string, at: number): number {
+  SPECIAL.lastIndex = at;
+  for (let m; (m = SPECIAL.exec(src)); ) if (m[0].length === 1) return m.index;
+  return src.length;
+}
 
 /**
  * Whether the string token src[a, b) is written as it stands: in double quotes (a string cut off at the end
@@ -46,6 +56,18 @@ function plain(src: string, a: number, b: number): boolean {
     }
   }
   return true;
+}
+
+/** Where prettyIndexer got to (its loop works on locals, written back here between steps). */
+interface Indexing {
+  i: number;
+  line: number;
+  pos: number;
+  maxLen: number;
+  /** The open containers with items: how many, and each one's node, opening line and subtree end. */
+  top: number;
+  special: number;
+  wider: number;
 }
 
 /**
@@ -73,44 +95,41 @@ export function prettyIndexer(t: Tape, src: string, indent: string): (until: num
   const keyLen = new Int32Array(t.keys.length).fill(-1);
   const keyAscii = new Uint8Array(t.keys.length);
   const padAscii = PRINTABLE.test(indent);
-  // The open containers with items: node, its opening line, the end of its subtree.
-  const open: number[] = [];
-  const openLine: number[] = [];
-  const openEnd: number[] = [];
-  const size = (i: number) => {
-    const s = nodes[i * W] >>> 8;
-    return s < SIZE_BIG ? s : t.big!.get(i)!;
-  };
-  // A comma after `i`: it has a next sibling (it isn't the last of its parent's subtree).
-  const comma = (i: number) => (open.length && i + size(i) < openEnd[open.length - 1] ? 1 : 0);
-  let i = 0;
-  let line = 0;
-  let pos = 0;
-  let maxLen = 0;
-  let special = -1;
-  let wider = -1;
-  const shut = () => {
-    const c = open.pop()!;
-    const ol = openLine.pop()!;
-    openEnd.pop();
-    close[ol] = line;
-    const len = open.length * unit + 1 + comma(c);
-    starts[line] = pos;
-    ascii[line] = padAscii || !open.length ? 1 : 0;
-    node[line++] = -1 - c;
-    if (len > maxLen) maxLen = len;
-    pos += len + 1;
-  };
+  const levels = t.head.depth + 2;
+  const openNode = new Int32Array(levels);
+  const openLine = new Int32Array(levels);
+  const openEnd = new Int32Array(levels);
+  const big = t.big;
+  const st: Indexing = { i: 0, line: 0, pos: 0, maxLen: 0, top: 0, special: -1, wider: -1 };
   return (until) => {
+    let { i, line, pos, maxLen, top, special: sp, wider } = st;
     for (let k = 0; i < n; i++, k++) {
-      if ((k & 4095) === 4095 && performance.now() >= until) return undefined;
-      while (open.length && i >= openEnd[open.length - 1]) shut();
+      if ((k & 4095) === 4095 && performance.now() >= until) {
+        Object.assign(st, { i, line, pos, maxLen, top, special: sp, wider });
+        return undefined;
+      }
+      // Containers whose subtree ended: each closes on its own line (with a comma when it has a next sibling).
+      while (top && i >= openEnd[top - 1]) {
+        top--;
+        const c = openNode[top];
+        const end = openEnd[top];
+        close[openLine[top]] = line;
+        const len = top * unit + 1 + (top && end < openEnd[top - 1] ? 1 : 0);
+        starts[line] = pos;
+        ascii[line] = padAscii || !top ? 1 : 0;
+        node[line++] = -1 - c;
+        if (len > maxLen) maxLen = len;
+        pos += len + 1;
+      }
       const o = i * W;
       const m = nodes[o];
       const kind = m & 7;
-      const d = open.length;
-      let len = d * unit;
-      let plainLine = padAscii || !d;
+      let size = m >>> 8;
+      if (size >= SIZE_BIG) size = big!.get(i)!;
+      // (A comma after it: its subtree isn't the last of its parent's.)
+      const comma = top && i + size < openEnd[top - 1] ? 1 : 0;
+      let len = top * unit;
+      let plainLine = padAscii || !top;
       if (((m >> 3) & 3) === KEY_NAME) {
         const key = nodes[o + 4];
         let q = keyLen[key];
@@ -124,13 +143,13 @@ export function prettyIndexer(t: Tape, src: string, indent: string): (until: num
       }
       const vk = (m >> 5) & 7;
       if (kind >= ARR) {
-        if ((m >>> 8) === 1) len += 2 + comma(i);
+        if (size === 1) len += 2 + comma;
         else {
           len += 1;
-          depth[line] = d;
-          open.push(i);
-          openLine.push(line);
-          openEnd.push(i + size(i));
+          depth[line] = top;
+          openNode[top] = i;
+          openLine[top] = line;
+          openEnd[top++] = i + size;
         }
       } else {
         if (kind === NUL) len += 4;
@@ -141,12 +160,8 @@ export function prettyIndexer(t: Tape, src: string, indent: string): (until: num
           if (kind === NUM) len += b - a;
           else {
             // (Read forward through the text once: the next character that may need escaping.)
-            if (special <= a) {
-              SPECIAL.lastIndex = a + 1;
-              special = SPECIAL.exec(src)?.index ?? src.length;
-            }
-            const quoted = b - a >= 2 && src.charCodeAt(a) === 34 && src.charCodeAt(b - 1) === 34 && special >= b - 1;
-            if (quoted || plain(src, a, b)) {
+            if (sp <= a) sp = special(src, a + 1);
+            if ((b - a >= 2 && src.charCodeAt(a) === 34 && src.charCodeAt(b - 1) === 34 && sp >= b - 1) || plain(src, a, b)) {
               len += b - a;
               if (plainLine) {
                 if (wider < a) {
@@ -167,7 +182,7 @@ export function prettyIndexer(t: Tape, src: string, indent: string): (until: num
           len += q.length;
           plainLine &&= PRINTABLE.test(q);
         }
-        len += comma(i);
+        len += comma;
       }
       starts[line] = pos;
       ascii[line] = plainLine ? 1 : 0;
@@ -176,7 +191,19 @@ export function prettyIndexer(t: Tape, src: string, indent: string): (until: num
       pos += len + 1;
       if (pos > 0x7fff0000) return null;
     }
-    while (open.length) shut();
+    while (top) {
+      top--;
+      const c = openNode[top];
+      const end = openEnd[top];
+      close[openLine[top]] = line;
+      const len = top * unit + 1 + (top && end < openEnd[top - 1] ? 1 : 0);
+      starts[line] = pos;
+      ascii[line] = padAscii || !top ? 1 : 0;
+      node[line++] = -1 - c;
+      if (len > maxLen) maxLen = len;
+      pos += len + 1;
+    }
+    Object.assign(st, { i, line, pos, maxLen, top, special: sp, wider });
     return { starts, close, depth, node, ascii, maxLen, length: pos - 1 };
   };
 }
