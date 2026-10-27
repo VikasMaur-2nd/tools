@@ -6,7 +6,9 @@
  *
  * The input is the document's text or, better, its bytes as read from a file (UTF-8, then not
  * encoded again; invalid UTF-8 returns null). It goes to WebAssembly a window at a time, so the
- * document is never copied whole, and the nodes come back in batches.
+ * document is never copied whole, and the nodes come back in batches. Text with characters beyond
+ * ASCII goes as its UTF-16 units where the engine lets WebAssembly read a string (JS String
+ * Builtins), not encoded to UTF-8.
  */
 import { decodeString } from './decode';
 import { fitted, SIZE_BIG, W, type Tape } from './tape';
@@ -17,8 +19,9 @@ interface Exports {
   init(text: number, maxDepth: number, window: number): number;
   window(size: number): number;
   win_ptr(): number;
+  wide_ptr(): number;
   win_cap(): number;
-  load(len: number, last: number, u16: number, cr: number): number;
+  load(len: number, last: number, u16: number, cr: number, wide: number): number;
   run(): number;
   out_ptr(): number;
   out_len(): number;
@@ -55,6 +58,32 @@ const idle = new WeakMap<WebAssembly.Module, Exports>();
 
 const encoder = new TextEncoder();
 
+/**
+ * A module that copies a string's UTF-16 units into an instance's memory, calling the engine's own
+ * charCodeAt (JS String Builtins: no call into JS per unit). Faster than encodeInto for a string of
+ * two-byte characters (Chromium: ~2.5 against ~3.7 ns a unit), much slower for an ASCII one (~0.1).
+ * Its one function: copy(string, start, count, at), imports: wasm:js-string charCodeAt, e.m (memory).
+ */
+const COPY = Uint8Array.from(atob(
+  'AGFzbQEAAAABDgJgAm9/AX9gBG9/f38AAiQCDndhc206anMtc3RyaW5nCmNoYXJDb2RlQXQAAAFlAW0CAAEDAgEBBwgBBGNvcHkAAQowAS4BAX8CQANAIAQgAk8NASADIARBAXRqIAAgASAEahAAOwEAIARBAWohBAwACwsL'
+), (c) => c.charCodeAt(0));
+/** Per instance: its copy function, or null where the engine has no JS String Builtins. */
+const copiers = new WeakMap<Exports, ((s: string, start: number, count: number, at: number) => void) | null>();
+
+function copier(x: Exports) {
+  let copy = copiers.get(x);
+  if (copy === undefined) {
+    try {
+      const m = new (WebAssembly.Module as unknown as new (b: BufferSource, o: object) => WebAssembly.Module)(COPY, { builtins: ['js-string'] });
+      copy = new WebAssembly.Instance(m, { e: { m: x.memory } }).exports.copy as never;
+    } catch {
+      copy = null;
+    }
+    copiers.set(x, copy!);
+  }
+  return copy!;
+}
+
 /** A file's bytes, read a window at a time (a worker reads a File so, with FileReaderSync: never all of it at once). */
 export interface ByteSource {
   size: number;
@@ -67,9 +96,10 @@ export interface ByteSource {
  * JSON with one top-level value (or `lines` is set): parse it with tape-parser.ts then. `bytes`, if given,
  * are the file `text` was read from (UTF-8), whole or read a window at a time: `text` is them decoded with
  * their line ends as \n (doc.ts lf(), as Engine.load keeps a document), and the offsets count \r\n as one
- * unit. `window`: input bytes per window (tests make it small).
+ * unit. `window`: input bytes per window (tests make it small); `units`: false to encode text to UTF-8 even
+ * where it could go as UTF-16 units (tests).
  */
-export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOptions = {}, bytes?: Uint8Array | ByteSource, window = WINDOW): Tape | null {
+export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOptions = {}, bytes?: Uint8Array | ByteSource, window = WINDOW, units = true): Tape | null {
   if (options.lines || !text) return null;
   let src: ByteSource | undefined;
   if (bytes instanceof Uint8Array) {
@@ -86,12 +116,12 @@ export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOpt
   }
   const x = idle.get(mod) ?? (new WebAssembly.Instance(mod, {}).exports as unknown as Exports);
   idle.delete(mod);
-  const tape = run(x, text, options, src, window);
+  const tape = run(x, text, options, src, window, units);
   if (x.memory.buffer.byteLength <= KEEP) idle.set(mod, x);
   return tape;
 }
 
-function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource | undefined, window: number): Tape | null {
+function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource | undefined, window: number, units: boolean): Tape | null {
   const maxDepth = Math.min(options.maxDepth ?? 0xffffffff, 0xffffffff);
   if (!x.init(bytes ? 0 : 1, maxDepth >>> 0, window)) return null;
   const total = bytes ? bytes.size : text.length;
@@ -102,29 +132,44 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource |
   let u16 = 0;
   // From bytes: whether the byte before the window is a \r (a \r\n the window cuts is one unit).
   let cr = 0;
+  // Text goes as its UTF-16 units (see COPY) once it has a character beyond ASCII: in its first 4096
+  // units, or in a window encoded before.
+  const copy = bytes || !units ? null : copier(x);
+  let wide = !!copy && /[^\0-\x7f]/.test(text.length > 4096 ? text.slice(0, 4096) : text);
+  let encoded = false;
   for (;;) {
     const cap = x.win_cap();
-    const win = new Uint8Array(x.memory.buffer, x.win_ptr(), cap);
     let len: number;
     let last: boolean;
     // The share of the document done at offset `p` of the window (estimates the tape's size).
     let done: (p: number) => number;
     if (bytes) {
       len = Math.min(cap, total - at);
-      win.set(bytes.read(at, len));
+      new Uint8Array(x.memory.buffer, x.win_ptr(), cap).set(bytes.read(at, len));
       last = at + len === total;
       done = (p) => (at + p) / total;
+    } else if (wide) {
+      const to = x.wide_ptr();
+      if (!to) return null;
+      const end = Math.min(total, u16 + cap);
+      copy!(text, u16, end - u16, to);
+      len = end - u16;
+      last = end === total;
+      done = (p) => (u16 + p) / total;
     } else {
       // (Not between the halves of a surrogate pair: each half would become U+FFFD.)
       let end = Math.min(total, u16 + cap);
       if (end < total && (text.charCodeAt(end - 1) & 0xfc00) === 0xd800) end--;
-      const r = encoder.encodeInto(u16 === 0 && end === total ? text : text.substring(u16, end), win);
+      const r = encoder.encodeInto(u16 === 0 && end === total ? text : text.substring(u16, end), new Uint8Array(x.memory.buffer, x.win_ptr(), cap));
       len = r.written;
       last = u16 + r.read === total;
+      // (The windows after go as UTF-16: see `wide`.)
+      encoded = !!copy && len > r.read;
       // (UTF-8 bytes for UTF-16 units: close enough for an estimate.)
       done = (p) => (u16 + (p * r.read) / Math.max(len, 1)) / total;
     }
-    if (x.load(len, last ? 1 : 0, u16, cr) < 0) return null;
+    if (x.load(len, last ? 1 : 0, u16, cr, wide ? 1 : 0) < 0) return null;
+    wide ||= encoded;
     let r: number;
     while ((r = x.run()) === FULL || r === DONE) {
       // A batch of nodes.
