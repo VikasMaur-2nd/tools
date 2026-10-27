@@ -577,6 +577,7 @@ export class Editor {
       const lb = near ? lineOfIn(this.ls, edit.b) : -1;
       const { ls, max, tabs } = lineStarts(doc.toString());
       doc.knowTabs(tabs);
+      if (doc.flat !== null) this.wrapper?.knowTabs(doc.flat, tabs);
       this.maxStale = false;
       if (near && ls.length >= FOLD_EDIT_LINES) {
         folds = foldsAround(this.close, this.depth, la, lb, countLines(edit.ins, Infinity));
