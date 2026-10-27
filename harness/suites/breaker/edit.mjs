@@ -198,7 +198,7 @@ test('an edit made while the Tree shows: Copy formatted output, Copy converted o
   const want = doc.replace('"b"', '"EDITED"');
   t.check(!!(await until(page, () => [...document.querySelectorAll('#view-tree .tv-rows [role=treeitem]')].some((r) => r.textContent === 'tag:"EDITED"') || null, null, { timeout: 10_000 })), 'the tree shows the edit');
   t.check((await inputText(page)) === want, 'the input holds the edit');
-  const known = { known: 'bug (main and branch): from a view other than Format/Convert, output commands give the output from before the edit (BREAKER-REPORT F18)' };
+  const known = { known: 'bug (main; fixed on t3/optimize-json-memory-performance at a744c16): from a view other than Format/Convert, output commands give the output from before the edit (BREAKER-REPORT F18)' };
   const out = await copied(page, 'Copy formatted output');
   t.check(out === want, 'Copy formatted output, from the Tree: the edited document', out?.slice(0, 80), known);
   const csv = await copied(page, 'Copy converted output');
