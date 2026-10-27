@@ -27,6 +27,9 @@ import type { InputSource } from '../analytics/events';
 import type { SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
+/** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
+export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
+
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
 const MAX_PERSIST = 2_500_000;
@@ -160,8 +163,9 @@ const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
 const WORKER_MIN = 2_000_000;
 /**
- * WebKit (Safari, and every browser on iOS): its worker lets a loaded file's 16 MB reads go late, ~11% more
- * peak memory at 100 MB (measured twice), so there the analysis worker is sent the text (see postDocument).
+ * WebKit (Safari, and every browser on iOS): reading a loaded file in the analysis worker raises its peak memory
+ * at 100 MB (pretty-printed: +7% and +10%; records about even), though it opens ~20% sooner, so there the
+ * analysis worker is sent the text (see postDocument).
  */
 const WEBKIT = typeof navigator !== 'undefined' && /AppleWebKit\//.test(navigator.userAgent) && !/(Chrome|Chromium)\//.test(navigator.userAgent);
 /** From this size, a new document is parsed here in steps (see analyzeInSteps). */
@@ -369,9 +373,6 @@ export class Engine {
       drill: (n) => this.tableShow(n),
     });
     // (Items of millions are made in steps before the table lays them out: its counts change then.)
-    this.table.onFilled = () => {
-      if (!this.dead) this.syncTableState();
-    };
     this.code = new CodeView(els.code);
     this.fmt = new CodeView(els.fmt);
     this.fmt.onReady = () => {
@@ -1448,7 +1449,7 @@ export class Engine {
         this.analyze({ ...tree.head, root: null }, metrics, true);
         return;
       }
-      const step = pack!.unpacker(tree, analysisText, { fill: this.settings.view === 'tree' || this.settings.view === 'table' });
+      const step = pack!.unpacker(tree, analysisText);
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
@@ -1526,7 +1527,7 @@ export class Engine {
     this.queueAnalysis(seq, document, name, (tree, metrics) => {
       if (seq !== this.loadSeq) return;
       if (!tree) return next();
-      const step = pack!.unpacker(tree, document.toString(), { fill: this.settings.view === 'tree' || this.settings.view === 'table' });
+      const step = pack!.unpacker(tree, document.toString());
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
@@ -1856,7 +1857,7 @@ export class Engine {
             return;
           }
           // (The view changed meanwhile: its nodes, rebuilt in short slices.)
-          const step = pack!.unpacker(tree, text, { fill: this.settings.view === 'tree' || this.settings.view === 'table' });
+          const step = pack!.unpacker(tree, text);
           const run = () => {
             if (seq !== this.loadSeq) return;
             const res = step(performance.now() + 8);
@@ -2515,7 +2516,7 @@ export class Engine {
       const { tree, text, metrics } = packed;
       const seq = this.loadSeq;
       // (The Tree and the Table read the root's children at once: they are made in the steps too.)
-      const step = pack!.unpacker(tree, text, { fill: view === 'tree' || view === 'table' });
+      const step = pack!.unpacker(tree, text);
       const run = () => {
         if (this.dead || seq !== this.loadSeq || viewSeq !== this.viewSeq) return;
         const res = step(performance.now() + 8);
@@ -3602,6 +3603,36 @@ export class Engine {
     if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), ms ?? (kind === 'err' ? 4000 : 2200));
   }
 
+  /** Keys pressed after the palette, the shortcuts or a context menu was asked for, before it showed (see holdKeys). */
+  private held: HeldKey[] = [];
+  /** What is open shows and has the keys (see takeKeys). */
+  private keysTaken = false;
+
+  /**
+   * A key pressed while the palette, the shortcuts or a context menu loads (they load when the page is idle):
+   * kept for it, out of the editor (Esc closes it). Only keys they use: the browser keeps its own.
+   */
+  private holdKeys(e: KeyboardEvent) {
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (e.key !== 'Escape' && !(plain && (e.key.length === 1 || /^(Backspace|Enter|Tab|Arrow(Up|Down)|Home|End)$/.test(e.key))) && !((e.ctrlKey || e.metaKey) && /^[knp]$/i.test(e.key))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') store.set({ palette: false, shortcuts: false, menu: null });
+    else this.held.push(e);
+  }
+
+  /** The keys held for the palette, the shortcuts or the menu now shown (see holdKeys): it has the keys from now. */
+  takeKeys(): HeldKey[] {
+    this.keysTaken = true;
+    return this.held.splice(0);
+  }
+
+  /** What was shown is gone: keys are held again while the next one loads. */
+  releaseKeys() {
+    this.keysTaken = false;
+    this.held = [];
+  }
+
   openPalette(mode: 'commands' | 'url' = 'commands') {
     track('feature_used', { feature: mode === 'url' ? 'load_url_dialog' : 'palette' });
     store.set({ palette: mode, shortcuts: false });
@@ -3609,8 +3640,13 @@ export class Engine {
 
   private onKey = (e: KeyboardEvent) => {
     const s = store.get();
-    // (The open context menu has the keys.)
-    if (s.palette || s.shortcuts || s.menu || e.isComposing) return;
+    // (The open palette, shortcuts or context menu has the keys; until it shows, they wait for it.)
+    if (s.palette || s.shortcuts || s.menu || e.isComposing) {
+      if (!this.keysTaken && !e.isComposing) this.holdKeys(e);
+      return;
+    }
+    // (Keys held for what closed before it showed (Esc, a click away) are for nothing now: never replayed.)
+    if (this.held.length) this.held = [];
     const mod = e.metaKey || e.ctrlKey;
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;
@@ -3823,7 +3859,7 @@ export class Engine {
   /** Tree: expand or collapse the node the menu opened on. */
   menuToggle() {
     const n = this.menuNode;
-    if (n && n.t >= ARR) this.tree.toggle(n, !n.x);
+    if (n && n.t >= ARR) this.tree.toggle(n);
   }
 
   /** Tree and graph: select the node's text in the input editor. */

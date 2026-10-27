@@ -251,7 +251,7 @@ test('Tree rows give their place among their siblings', () => {
 });
 
 test('A big array of records opens with its first records open, the rest collapsed, under the row budget', async () => {
-  const { lazyResult } = await import('../lib/json/lazy');
+  const { lazyResult, madeCount } = await import('../lib/json/lazy');
   const { tapeOf } = await import('../lib/json/tape-send');
   // 60,000 records of 9 fields: two levels would be 600,000 rows, over the budget: only the root's level
   // opens, and the first records whole (as a smaller document opens every record).
@@ -260,8 +260,10 @@ test('A big array of records opens with its first records open, the rest collaps
   const lazy = lazyResult(tapeOf(res, text), text);
   const { tree } = view();
   tree.setRoot(lazy.root, true, res.nodes);
-  const rows = tree.rows;
-  assert.equal(rows[0], lazy.root);
+  assert.equal(madeCount(lazy.root), 1, 'its rows are tape indexes: no node made for a row not drawn');
+  const rows = Array.from({ length: tree.count }, (_, r) => tree.rowNode(r));
+  // (assert.ok: a failed equal would print a node with its whole tape.)
+  assert.ok(rows[0] === lazy.root);
   assert.equal(rows[1].x, true, 'the first record is open');
   assert.deepEqual(rows.slice(2, 11).map((n) => n.key), ['id', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
   assert.equal(rows[10].x, true, 'with everything in it');
@@ -273,9 +275,9 @@ test('A big array of records opens with its first records open, the rest collaps
   assert.ok(rows.length < 60_000 + 2_100, `${rows.length} rows`);
   // Expand to a level: the levels asked for, nothing more.
   tree.expandTo(1);
-  assert.equal(tree.rows.length, 60_001);
+  assert.equal(tree.count, 60_001);
   tree.collapseAll();
-  assert.equal(tree.rows.length, 60_001);
+  assert.equal(tree.count, 60_001);
 });
 
 test('A huge array in a big document’s first record stays collapsed: the first rows stay few', async () => {
@@ -288,7 +290,7 @@ test('A huge array in a big document’s first record stays collapsed: the first
   const lazy = lazyResult(tapeOf(res, text), text);
   const { tree } = view();
   tree.setRoot(lazy.root, true, res.nodes);
-  const rows = tree.rows;
+  const rows = Array.from({ length: tree.count }, (_, r) => tree.rowNode(r));
   assert.ok(rows.length < 60_000 + 2_100, `${rows.length} rows`);
   assert.equal(rows[1].x, true, 'the first record is open');
   const many = rows.find((n) => n.key === 'many')!;

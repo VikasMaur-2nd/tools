@@ -203,3 +203,28 @@ test('Undo and Redo past a load tell the file name of the document they bring ba
   assert.equal(ed.text, '{"a":1}');
   assert.deepEqual(names, ['a.json', 'b.json', 'a.json']);
 });
+
+test("an input method's commit reaches the tool once, whichever comes first: its input event or compositionend (F22)", () => {
+  // Chromium fires the commit's input event before compositionend, Firefox after it.
+  for (const order of ['input first', 'compositionend first']) {
+    const changes: string[] = [];
+    const { el, ta } = editorElement();
+    const ed = new Editor(el as unknown as HTMLElement, { ...events, change: (kind: string) => changes.push(kind) });
+    ed.init('{}');
+    frames();
+    ta.setSelectionRange(1, 1);
+    ta.dispatchEvent(new Event('compositionstart'));
+    // The commit, with no composition update before it (as Playwright's insertText in Firefox).
+    ta.dispatchEvent(Object.assign(new Event('beforeinput'), { inputType: 'insertCompositionText', data: '"é"' }));
+    ta.value = '{"é"}';
+    ta.setSelectionRange(4, 4);
+    const input = () => ta.dispatchEvent(Object.assign(new Event('input'), { inputType: 'insertCompositionText', data: '"é"' }));
+    if (order === 'input first') input();
+    ta.dispatchEvent(new Event('compositionend'));
+    if (order !== 'input first') input();
+    assert.equal(ed.text, '{"é"}', order);
+    assert.equal(changes.length, 1, `${order}: the tool is told once`);
+    ed.undo();
+    assert.equal(ed.text, '{}', `${order}: one Undo step`);
+  }
+});

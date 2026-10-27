@@ -153,6 +153,8 @@ jobs:
       - &deps
         name: Browser packages
         if: ${{ !cancelled() && steps.install.outcome == 'success' && env.CHECK_RUN_ENGINES != '' }}
+        # (Usually 1-2 min. A stalled Ubuntu mirror once took 46 of a run's 50 billed minutes: fail fast instead.)
+        timeout-minutes: 8
         run: node node_modules/playwright-core/cli.js install-deps ${CHECK_RUN_ENGINES//,/ }
       - &e2e
         name: Browser checks

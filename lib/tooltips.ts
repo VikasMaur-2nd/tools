@@ -107,6 +107,12 @@ export function startTooltips(): () => void {
     if (e.key === 'Escape') hide();
   };
 
+  // Hovered or focused before these listeners came (they load when the page is idle): as if met just now.
+  const hovered = matchMedia('(hover: hover)').matches ? [...document.querySelectorAll(':hover')].pop() : undefined;
+  const focused = document.activeElement?.matches(':focus-visible') ? document.activeElement : null;
+  const first = hovered?.closest<HTMLElement>('[data-tip]') ?? focused?.closest<HTMLElement>('[data-tip]');
+  if (first) arm(first);
+
   document.addEventListener('pointerover', onOver);
   document.addEventListener('pointerout', onOut);
   document.addEventListener('pointerdown', hide, true);

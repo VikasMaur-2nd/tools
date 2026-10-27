@@ -2005,8 +2005,11 @@ export class Editor {
       return;
     }
     this.compOld = null;
-    this.sync();
+    const changed = this.sync();
     if (old !== null) this.record(old, this.doc, 'insertText');
+    // (Firefox fires the commit's input event after this one, Chromium before: a change only this sync finds
+    // is passed on here, and the input event then finds nothing to pass on.)
+    if (changed) this.ev.change('input');
   };
 
   private onPaste = (e: ClipboardEvent) => {

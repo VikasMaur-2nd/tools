@@ -138,9 +138,8 @@ test('the pointer already on a button when the page loads: its tooltip shows', a
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   // Not moved again: the tooltip has to come for a pointer that was already there.
   const shown = await soon(page, (want) => { const t = document.querySelector('.tip'); return (t?.classList.contains('in') && t.textContent.includes(want)) || null; }, tip, 15_000);
-  // Firefox passes on the branch too (not looked into).
-  const known = t.engine === 'firefox' ? {} : { known: 'bug (branch; fixed on fix/breaker-findings b2f6fb3): tooltips load when the page is idle, and a pointer already on a button never gets its tooltip (BREAKER-REPORT R8)' };
-  t.check(!!shown, `the tooltip "${tip}" shows without moving the pointer again`, await page.evaluate(() => ({ made: !!document.querySelector('.tip'), in: document.querySelector('.tip')?.classList.contains('in') ?? false })), known);
+  // (Tooltips load when the page is idle: a pointer already on a button got none, BREAKER-REPORT R8, fixed in b2f6fb3.)
+  t.check(!!shown, `the tooltip "${tip}" shows without moving the pointer again`, await page.evaluate(() => ({ made: !!document.querySelector('.tip'), in: document.querySelector('.tip')?.classList.contains('in') ?? false })));
   t.check(!errors.length, 'no page errors', errors);
 });
 

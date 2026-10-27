@@ -85,6 +85,11 @@ export function resolve(root: JNode | null, segs: Seg[]): JNode | null {
   let n = root;
   for (const k of segs) {
     if (!n || !isContainer(n)) return null;
+    // (A container from a tape whose children aren't made: found there, without making them.)
+    if (n.z && n._v === undefined) {
+      n = n.z.child(n, k);
+      continue;
+    }
     const list = kids(n);
     if (n.t === OBJ) {
       const key = String(k);
@@ -102,6 +107,8 @@ export function resolve(root: JNode | null, segs: Seg[]): JNode | null {
  */
 export function nodeAt(root: JNode | null, off: number, src: string): JNode | null {
   if (!root || off < root.s || off > root.e) return null;
+  // (A tree from a tape: found there, making only that node and its ancestors.)
+  if (root.z && !root.u) return root.z.nodeAtOffset(off);
   let n = root;
   for (;;) {
     if (!isContainer(n)) return n;

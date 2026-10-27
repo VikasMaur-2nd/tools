@@ -188,13 +188,13 @@ export function receiver(s: SentTape): (until: number) => Tape | undefined {
   };
 }
 
-/** How many nodes of `i`'s subtree are at most `levels` below it (deeper subtrees are skipped, not walked). */
-export function nodesWithin(t: Tape, i: number, levels: number): number {
+/** How many nodes of `i`'s subtree are at most `levels` below it (deeper subtrees are skipped, not walked; past `max` it stops counting). */
+export function nodesWithin(t: Tape, i: number, levels: number, max = Infinity): number {
   let k = 0;
   // Ends of the open containers above the current node.
   const ends: number[] = [];
   const last = nextOf(t, i);
-  for (let c = i; c < last; ) {
+  for (let c = i; c < last && k <= max; ) {
     while (ends.length && c >= ends[ends.length - 1]) ends.pop();
     k++;
     const size = sizeOf(t, c);

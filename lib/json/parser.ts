@@ -75,12 +75,8 @@ export interface TapeLink {
   fill(n: JNode): Val;
   /** The first `max` units of string `n`'s value, decoding no more of it than that. */
   head(n: JNode, max: number): string;
-  /** How many nodes of `n`'s subtree are at most `levels` below it. */
-  within(n: JNode, levels: number): number;
-  /** How many children `n` has, counted up to `max` (more: max + 1). */
-  childrenUpTo(n: JNode, max: number): number;
-  /** Calls `f` with the key of each of `n`'s children, without making them. */
-  childKeys(n: JNode, f: (key: Key) => void): void;
+  /** How many nodes of `n`'s subtree are at most `levels` below it (counted no further than past `max`). */
+  within(n: JNode, levels: number, max?: number): number;
   /** The tree search (TreeView) under `n`: matching tape indexes, in document order, at most `max`. */
   search(n: JNode, qn: string, cs: boolean, max: number): number[];
   /** The node at tape index `i` under `root` (made with its ancestors), or null. */
@@ -91,6 +87,56 @@ export interface TapeLink {
   fillSteps(n: JNode): (until: number) => boolean;
   /** Start and end offsets of the container `nodeAt(root, off)` is or is in (null: none), making no node. */
   containerAt(off: number): [number, number] | null;
+  /** The node at tape index `i`, made with its ancestors (not its siblings): the same object while anything holds it. */
+  at(i: number): JNode;
+  /** Container `i`'s children, as tape indexes. */
+  kids(i: number): Int32Array;
+  /** The Table's columns of container `i`: its object items' member names (first seen first, `max` at most), and whether an item isn't an object. */
+  columns(i: number, max: number): [string[], boolean];
+  /** TableView.cells of the items `items` (tape indexes), read on the tape: no node made for a row. */
+  cells(items: Int32Array, idxs: ArrayLike<number>, keys: (string | null)[], each: CellFn, row?: (r: number) => void): void;
+  /** How many children `i` has. */
+  count(i: number): number;
+  /** `i`'s place among its parent's children (0: the first). */
+  pos(i: number): number;
+  key(i: number): Key;
+  /** format.ts preview of container `n`, read from its first children only. */
+  preview(n: JNode): string;
+  /** `n`'s child at path segment `k` as path.ts resolve finds it, or null. */
+  child(n: JNode, k: string | number): JNode | null;
+  /** The node path.ts nodeAt finds at offset `off` (read off the tape), or null. */
+  nodeAtOffset(off: number): JNode | null;
+  /** format.ts stringify(node at `i`, ''), from nodes nothing keeps. */
+  json(i: number): string;
+  /** The Tree's rows under `n` (and `n`, `self`), by TreeView.flatten's rules, no node made: see TreeRows. */
+  rows(n: JNode, exp: Expansion | undefined, self: boolean, limit: number, first: number): Int32Array;
+  /** The row of tape index `i` in the Tree's rows `tr`, or -1. */
+  rowOf(tr: TreeRows, i: number): number;
+  /**
+   * TreeView.toggle on the tape: container `n` opened or closed in its overrides `exp` (`deep`: every container
+   * below it too, as TreeView marks them), and the Tree's rows `tr` with its rows below listed again (see
+   * rows), or null when it has no row there.
+   */
+  toggle(tr: TreeRows | null, n: JNode, open: boolean, deep: boolean, exp: Expansion, limit: number, first: number): TreeRows | null;
+}
+
+/**
+ * A cell the Table reads in a pass over its items (column widths, find, sort, CSV): the pass's row `r`, its `k`th
+ * column, the cell's kind (-1: none), a primitive's value as JNode.v has it, and the cell (a node, or from a
+ * tape its index). True: on to the next row.
+ */
+export type CellFn = (r: number, k: number, t: number, v: string | boolean | null, c: JNode | number) => unknown;
+
+/**
+ * The Tree's rows of a tree made from a tape: tape indexes in document order, each `i * 2`, plus 1 for a
+ * container that is open.
+ */
+export type TreeRows = Int32Array;
+
+/** The Tree's open and closed containers that differ from its rules, by path (see tree.ts). */
+export interface Expansion {
+  open?: boolean;
+  children?: Map<string, Expansion>;
 }
 
 export const kids = (n: JNode) => n.v as JNode[];
