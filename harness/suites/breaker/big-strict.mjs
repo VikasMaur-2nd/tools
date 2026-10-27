@@ -65,11 +65,21 @@ test('the tricky cases at 3 MB: exact status, outputs, tree, table, find and Con
       return `${c.length}:${(h >>> 0).toString(16)}`;
     }, null, { timeout: 60_000 });
   };
-  t.check((await hashOf()) === reformat(DOC.text, '  ', { hashOnly: true, canonical: true }), 'pretty output is exact (independent re-indenter)');
+  const pretty = reformat(DOC.text, '  ', { hashOnly: true, canonical: true });
+  const minified = reformat(DOC.text, '', { hashOnly: true, canonical: true });
+  /** Waits until the Format view draws the output `fn` recognises in its first rows. */
+  const drawn = (fn) => until(page, fn, null, { timeout: 60_000 });
+  const rows = () => window.__vis('#view-format .cv-rows')?.textContent.slice(0, 400) ?? '';
+  t.check((await hashOf()) === pretty, 'pretty output is exact (independent re-indenter)');
   await command(page, 'Output: minified');
-  t.check((await hashOf()) === reformat(DOC.text, '', { hashOnly: true, canonical: true }), 'minified output is exact');
+  await drawn(`(${rows})().includes('[{"r":0,')`);
+  t.check((await hashOf()) === minified, 'minified output is exact');
+  // Copy right after switching back to Pretty must give Pretty, not the output still on screen.
   await command(page, 'Output: pretty');
+  t.check((await hashOf()) === pretty, 'Copy right after switching to Pretty copies the pretty output', null, { known: 'bug: Copy formatted output copies the previous style until the re-format is done (BREAKER-REPORT, stale copy)' });
+  await drawn(`(${rows})().includes('"r": 0')`);
   await command(page, 'Output: sort keys');
+  await drawn(`(() => { const r = (${rows})(); const c = r.indexOf('"case": "proto-keys"'); return c >= 0 && c < r.indexOf('"r": 0'); })()`);
   out.sorted = await hashOf();
   await command(page, 'Output: sort keys');
 
