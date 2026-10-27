@@ -1,7 +1,11 @@
 // The first second after the page loads, before its idle loads finish (the command palette, the context menu,
-// tooltips, the JWT reader, the file reader and WebMCP's tools come in then). Each check acts as soon as the editor
-// is in the page, without waiting for the tool to be ready; in Chromium the CPU is slowed down (6×) so the window
-// is wide. Whatever was asked for must still happen (a moment later is fine), and nothing may throw.
+// tooltips, the JWT reader, the file reader and WebMCP's tools come in then), as it comes: nothing is held back
+// (features/first-use holds each idle module back instead). Each check acts as soon as the editor is in the page,
+// or as soon as the tool's engine answers; in Chromium the CPU is slowed down (6×) so the window is wide. And
+// before any script has arrived (a slow network): the scripts are held back while the check types and presses
+// keys. Whatever was asked for must still happen (a moment later is fine), and nothing may throw. Text is typed
+// key by key: Playwright's insertText is an IME commit in Firefox, which the editor never passes on at any time
+// (BREAKER-REPORT F22, checked in breaker/edit).
 import { defaults, test } from '../../lib/api.mjs';
 import { paste, view } from '../../lib/app.mjs';
 import { until } from './_helpers.mjs';
@@ -10,6 +14,8 @@ defaults({ engines: 'all', tags: ['breaker', 'early'], timeout: 120_000, allowEr
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const DOC = JSON.stringify({ name: 'early', list: [1, 2, { deep: true }], note: 'x' }, null, 2);
+/** DOC on one line, typed key by key (the editor closes brackets and quotes as they open, and types over them). */
+const LINE = JSON.stringify(JSON.parse(DOC));
 // HS256, exp in 2027-09.
 const JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFkYSBMb3ZlbGFjZSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc5MDgxMjgwMCwiZXhwIjoxODIyMzQ4ODAwfQ.8cC1krME5G5HZQKPQy8oBEQueQ60R5UgQLB1iXcLpBs';
 
@@ -30,6 +36,20 @@ async function early(t, path = '/') {
   return errors;
 }
 
+/** Holds the page's scripts back until the returned release(): till then the page is its server-rendered HTML. */
+async function holdScripts(page) {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  await page.route('**/_next/static/**/*.js', async (route) => {
+    await gate;
+    await route.continue();
+  });
+  return release;
+}
+
+/** Waits until the tool's engine answers input (its tk:engine mark). */
+const engineUp = (page) => until(page, () => performance.getEntriesByName('tk:engine').length > 0 || null, null, { timeout: 60_000 });
+
 const status = (page) => page.evaluate(() => window.__vis('.sb-l .st')?.textContent ?? window.__vis('.sb-l')?.textContent ?? '');
 /** Waits up to `timeout` for `fn` (in the page) to be truthy; null when it never was. */
 const soon = (page, fn, arg, timeout = 20_000) => until(page, fn, arg, { timeout }).catch(() => null);
@@ -38,19 +58,39 @@ test('typed before the tool is ready: the text is kept and read', async (t) => {
   const { page } = t;
   const errors = await early(t);
   await page.locator('#input').focus();
-  await page.keyboard.insertText(DOC);
+  await page.keyboard.type(LINE);
   const st = await soon(page, () => /^Valid JSON/.test(window.__vis('.sb-l .st')?.textContent ?? '') || null);
   t.check(!!st, 'the status says Valid JSON', await status(page));
   const text = await page.evaluate(() => document.getElementById('input').value);
-  t.check(text === DOC, 'the editor holds exactly what was typed', text.slice(0, 80));
+  t.check(text === LINE, 'the editor holds exactly what was typed', text.slice(0, 80));
   t.check(!errors.length, 'no page errors', errors);
 });
 
-test('shortcuts in the first second: the palette, a view, Find and Format in place', async (t) => {
+test('typed and pressed before any script has arrived: the text is read, the shortcut happens once the tool is in', async (t) => {
+  const { page } = t;
+  const release = await holdScripts(page);
+  const errors = await early(t);
+  await page.locator('#input').focus();
+  await page.keyboard.type(LINE);
+  await page.keyboard.press(`${MOD}+k`);
+  release();
+  const st = await soon(page, () => /^Valid JSON/.test(window.__vis('.sb-l .st')?.textContent ?? '') || null, null, 30_000);
+  t.check(!!st, 'the status says Valid JSON', await status(page));
+  const text = await page.evaluate(() => document.getElementById('input').value);
+  t.check(text === LINE, 'the editor holds exactly what was typed', text.slice(0, 80));
+  const palette = await soon(page, () => !!window.__vis('.palette input') || null);
+  t.check(!!palette, 'mod+K pressed before the scripts came opens the command palette once they are in', null, {
+    known: 'bug (main and branch): keys pressed before the engine runs are lost: nothing in the page catches them (BREAKER-REPORT F23)',
+  });
+  t.check(!errors.length, 'no page errors', errors);
+});
+
+test('shortcuts as soon as the engine answers, before the idle loads: the palette, a view, Find and Format in place', async (t) => {
   const { page } = t;
   const errors = await early(t);
   await page.locator('#input').focus();
-  await page.keyboard.insertText(DOC.replace(/\s+/g, ''));
+  await page.keyboard.type(LINE);
+  await engineUp(page);
   // The command palette at once.
   await page.keyboard.press(`${MOD}+k`);
   const palette = await soon(page, () => !!window.__vis('.palette input') || null);
@@ -78,7 +118,7 @@ test('right-click in the first second: the editor menu opens with its items', as
   const { page } = t;
   const errors = await early(t);
   await page.locator('#input').focus();
-  await page.keyboard.insertText(DOC);
+  await page.keyboard.type(LINE);
   const box = await page.locator('#input').boundingBox();
   await page.mouse.click(box.x + 40, box.y + 20, { button: 'right' });
   const items = await soon(page, () => { const m = document.querySelector('.menu.ctx'); return m && m.querySelectorAll('.mi').length ? m.querySelectorAll('.mi').length : null; });
@@ -98,7 +138,9 @@ test('the pointer already on a button when the page loads: its tooltip shows', a
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   // Not moved again: the tooltip has to come for a pointer that was already there.
   const shown = await soon(page, (want) => { const t = document.querySelector('.tip'); return (t?.classList.contains('in') && t.textContent.includes(want)) || null; }, tip, 15_000);
-  t.check(!!shown, `the tooltip "${tip}" shows without moving the pointer again`, await page.evaluate(() => ({ made: !!document.querySelector('.tip'), in: document.querySelector('.tip')?.classList.contains('in') ?? false })));
+  // Firefox passes on the branch too (not looked into).
+  const known = t.engine === 'firefox' ? {} : { known: 'bug (branch; fixed on fix/breaker-findings b2f6fb3): tooltips load when the page is idle, and a pointer already on a button never gets its tooltip (BREAKER-REPORT R8)' };
+  t.check(!!shown, `the tooltip "${tip}" shows without moving the pointer again`, await page.evaluate(() => ({ made: !!document.querySelector('.tip'), in: document.querySelector('.tip')?.classList.contains('in') ?? false })), known);
   t.check(!errors.length, 'no page errors', errors);
 });
 
@@ -122,14 +164,24 @@ test('a share link holding a JWT, opened cold: its JWT status', async (t) => {
   t.check(!errors.length, 'no page errors', errors);
 });
 
-test('a file opened in the first second: it loads (the file reader comes in on first use)', async (t) => {
+// (Choosing a file needs the tool: the file input is hidden and only its Open file opens it, so a file can't arrive
+// before the tool listens. mod+O pressed before the engine runs is lost like mod+K: F23, above.)
+test('mod+O as soon as the engine answers: the file chooser opens and the file loads', async (t) => {
   const { page } = t;
   const errors = await early(t);
-  await page.locator('.app input[type=file]').first().setInputFiles({ name: 'early.json', mimeType: 'application/json', buffer: Buffer.from(DOC) });
-  const st = await soon(page, () => /^Valid JSON/.test(window.__vis('.sb-l .st')?.textContent ?? '') || null, null, 30_000);
-  t.check(!!st, 'the status says Valid JSON', await status(page));
-  const text = await page.evaluate(() => document.getElementById('input').value);
-  t.check(text === DOC, 'the editor holds the file', text.slice(0, 80));
+  await engineUp(page);
+  const chooser = page.waitForEvent('filechooser', { timeout: 20_000 }).catch(() => null);
+  await page.locator('#input').focus();
+  await page.keyboard.press(`${MOD}+o`);
+  const fc = await chooser;
+  t.check(!!fc, 'the file chooser opens', null);
+  if (fc) {
+    await fc.setFiles({ name: 'early.json', mimeType: 'application/json', buffer: Buffer.from(DOC) });
+    const st = await soon(page, () => /^Valid JSON/.test(window.__vis('.sb-l .st')?.textContent ?? '') || null, null, 30_000);
+    t.check(!!st, 'the status says Valid JSON', await status(page));
+    const text = await page.evaluate(() => document.getElementById('input').value);
+    t.check(text === DOC, 'the editor holds the file', text.slice(0, 80));
+  }
   t.check(!errors.length, 'no page errors', errors);
 });
 
@@ -169,9 +221,9 @@ test('views clicked in the first second: Tree, Table and Graph each show the doc
   const { page } = t;
   const errors = await early(t);
   await page.locator('#input').focus();
-  await page.keyboard.insertText(DOC);
+  await page.keyboard.type(LINE);
   for (const v of ['tree', 'table', 'graph']) {
-    await view(page, v, { timeout: 60_000 }).catch(() => null);
+    await view(page, v, { timeout: 20_000 }).catch(() => null);
     const shown = await soon(page, (v) => {
       const el = window.__vis(`#view-${v}`);
       if (!el) return null;
