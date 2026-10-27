@@ -16,7 +16,9 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
-const BUDGET = 1000;
+/** Billed minutes a month: 1,000, except where a month was raised (the user allowed 2,000 for October 2026). */
+const RAISED = { '2026-10': 2000 };
+const BUDGET = RAISED[new Date().toISOString().slice(0, 7)] ?? 1000;
 const ENGINES = ['chromium', 'firefox', 'webkit'];
 const LEVELS = ['unit', 'quick', 'smoke', 'e2e', 'full', 'perf'];
 
@@ -38,7 +40,7 @@ const COST = {
 
 const { values: o } = parseArgs({ options: { guard: { type: 'boolean' }, runs: { type: 'boolean' }, help: { type: 'boolean', short: 'h' } } });
 if (o.help) {
-  console.log('pnpm ci:usage [--runs]   this month\'s GitHub Actions minutes against the 1,000-minute budget');
+  console.log(`pnpm ci:usage [--runs]   this month's GitHub Actions minutes against the ${BUDGET.toLocaleString('en-US')}-minute budget`);
   process.exit(0);
 }
 

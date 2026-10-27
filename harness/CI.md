@@ -4,7 +4,8 @@
 - **GitHub Actions runs only when asked**, to take work off our machine: the unit tests, the Firefox and
   WebKit suites, a full run before merging, or a check on a fresh machine.
 - **Actions may use at most 1,000 billed minutes a month** for this repository, half of the 2,000 that
-  GitHub Free gives a private repository. Past that, everything runs on our machine. Nothing runs on push.
+  GitHub Free gives a private repository (October 2026: 2,000, raised by the user; `RAISED` in
+  scripts/ci-usage.mjs). Past that, everything runs on our machine. Nothing runs on push.
 
 ## On our machine
 
