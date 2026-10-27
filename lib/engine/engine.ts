@@ -258,7 +258,7 @@ const loadPack = () => (packLoad ??= import('../json/pack').then((m) => (pack = 
 }));
 
 /** The page's parse: the tape parser's once the tape's code has loaded (pack.ts parseLazy), parser.ts's until then. The same result. */
-const parseHere = (src: string, options: ParseOptions) => (pack ? pack.parseLazy(src, options) : parse(src, options));
+const parseHere = (src: string, options: ParseOptions) => (pack?.parseLazy ?? parse)(src, options);
 
 let swStarted = false;
 let updateWaiting = false;
@@ -657,7 +657,7 @@ export class Engine {
     if (!text || mayBeJwt(text)) return this.analyze();
     const seq = this.loadSeq;
     const ver = this.ed.version;
-    const p = (pack ? pack.parserLazy : parser)(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
+    const p = (pack?.parserLazy ?? parser)(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     this.steps = { p, seq, ver };
     // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
     clearTimeout(this.timer);
@@ -3984,9 +3984,6 @@ export class Engine {
           },
           () => this.reindentWorker(),
           () => this.warmAnalysis(),
-          // The tape's code, whose parser parses the page's documents from then on, warmed up (its first parses
-          // in a page would run before the engine optimizes it).
-          () => void loadPack().then((m) => idle(() => m.warmUp()), () => {}),
           () => loadSurface(),
           () => this.loadJwt(),
           () => import('../graph/view').catch(() => {}),

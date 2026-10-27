@@ -34,8 +34,9 @@ export function parserLazy(src: string, options: ParseOptions = {}): Parser {
   };
 }
 
-/** The tape parser's warm-up (tape-parser.ts warmUp): its first parses in a page run before the engine optimizes it. */
-export { warmUp };
+// The page parses with the tape parser once this is loaded: warmed up when the page is next idle (its first
+// parses in a page would run before the engine optimizes it).
+if (typeof requestIdleCallback === 'function') requestIdleCallback(() => warmUp());
 
 // (The Format view reads a big document's pretty text off its tape: with the tape's code, not the first load.)
 export { tapeOfNode } from './lazy';
