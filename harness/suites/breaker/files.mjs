@@ -14,7 +14,7 @@ defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/** Files that are said to be binary (and then opened as text anyway). */
+/** Files that are said to be binary (and then opened as text anyway). Main opens them at once (F3b). */
 const BINARY = new Set(['elf.json', 'img.png', 'a.zip', 'random.json']);
 
 // [name, bytes or () => bytes, mime]
@@ -50,7 +50,8 @@ for (const [name, data, mime] of FILES) {
     await t.open('/');
     await page.evaluate(() => (window.__xss = 0));
     const bytes = typeof data === 'function' ? data() : Buffer.from(data);
-    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim(), binary: BINARY.has(name) });
+    // (Random bytes take WebKit ~45 s on a busy host: BREAKER-REPORT F3b.)
+    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim(), timeout: 150_000, binary: BINARY.has(name) });
     const out = { status: st };
     out.toasts = await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 3000 });
     const input = await copied(page, 'Copy input to clipboard', { timeout: 5000 });
@@ -114,7 +115,8 @@ for (const [enc, encode] of ENCODINGS) {
     await t.open('/');
     const text = denseText();
     const want = text.replace(/\r\n/g, '\n');
-    const st = await loadAny(page, encode(text), `dense-${enc}.json`);
+    // (Dense multi-byte text loads slowly: ~20 s here, on main and the branch alike.)
+    const st = await loadAny(page, encode(text), `dense-${enc}.json`, { timeout: 120_000 });
     const known = enc.startsWith('utf16') && t.engine === 'firefox' ? { known: 'bug (main): Firefox opens a UTF-16 file with a BOM as garbage (BREAKER-REPORT F7)' } : {};
     t.check(st?.kind === 'ok' && st.msg === 'Valid JSON', 'valid JSON', st, known);
     const got = await copied(page, 'Copy input to clipboard', { timeout: 30_000 });

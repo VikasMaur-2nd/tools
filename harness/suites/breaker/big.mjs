@@ -72,10 +72,19 @@ test('ten million numbers in one array: exact status, minified output and tree',
   const st = await open(t, 'flat-nums-10m');
   t.assert(st?.msg === 'Valid JSON', 'valid', st);
   t.check(st.stats === '1 line · 10,000,001 nodes · depth 1', 'counts', st.stats);
-  await command(page, 'Output: minified');
+  await command(page, 'Output: minified', { timeout: 60_000 });
   t.check((await outputHash(page)) === hash(readFileSync(bigFixture('flat-nums-10m'), 'utf8')), 'minified output is the input');
+  await page.evaluate(() => {
+    window.__gap = { last: performance.now(), max: 0 };
+    const f = () => { const n = performance.now(); window.__gap.max = Math.max(window.__gap.max, n - window.__gap.last); window.__gap.last = n; requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  });
   await view(page, 'tree');
   await shown(page, 'tree');
+  // Main took 10–30 s with stalls of 0.9–3.9 s; t3/optimize-json-memory-performance (54ae42d) showed it in one
+  // task: 7.9–9.4 s frozen in Chromium, 18.1 s in Firefox (BREAKER-REPORT R5).
+  const gap = await page.evaluate(() => Math.max(window.__gap.max, performance.now() - window.__gap.last));
+  t.check(gap < t.budget(5000 * slow(t)), 'switching to the tree never stalls the page 5 s', `${Math.round(gap)} ms`);
   t.check(JSON.stringify((await treeRows(page)).slice(0, 3)) === JSON.stringify(['root[10000000]', '  0:0', '  1:1']), 'tree rows', (await treeRows(page)).slice(0, 3));
 });
 

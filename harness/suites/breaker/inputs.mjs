@@ -47,7 +47,7 @@ for (const [name, text] of Object.entries(CASES)) {
     out.convert = {};
     for (const target of TARGETS) out.convert[target] = await converted(page, target);
 
-    golden(t, `inputs/${name}`, out, `${name}: outputs match the golden file`);
+    golden(t, `inputs/${name}`, out, `${name}: outputs match the golden file`, name === 'dupes' ? { known: 'bug (main): the Table shows the first of duplicate keys, the rest the last (BREAKER-REPORT F11)' } : {});
     t.check((await page.evaluate(() => window.__xss)) === 0, 'no markup from the document ran');
   });
 }

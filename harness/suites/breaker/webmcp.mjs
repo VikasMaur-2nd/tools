@@ -77,7 +77,7 @@ test('malformed arguments get exact error texts, never a throw', async (t) => {
     t.check((r.text ?? '').length <= MAX_RESULT + 400, `${name}: answer within MAX_RESULT`, r.text?.length);
     out.push([name, JSON.stringify(args).slice(0, 80), short(r)]);
   }
-  golden(t, 'webmcp/malformed', out, 'every answer matches the golden file');
+  golden(t, 'webmcp/malformed', out, 'every answer matches the golden file', { known: 'bug (main): WebMCP answers past MAX_RESULT, paths unchecked (BREAKER-REPORT F9)' });
   t.check((await page.evaluate(() => window.__xss ?? 0)) === 0, 'no markup from a file name ran');
 });
 
