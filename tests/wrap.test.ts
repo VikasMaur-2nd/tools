@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { asciiCells, asciiRows, leadOf, Wrapper } from '../lib/engine/wrap';
+import { asciiCells, asciiRows, leadOf, SUMMED, Wrapper } from '../lib/engine/wrap';
 import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
+import { Doc } from '../lib/engine/doc';
 
 /** Row starts the wrapper adds up for the long line `t[a, b)`, as an array. */
 function breaks(w: object, t: string, a: number, b: number) {
@@ -370,9 +371,78 @@ describe('row breaks added up for long lines', () => {
           assert.deepEqual([...breaks(told, t, A[i], B[i])], want, `told breaks: line ${i}, edit ${k}`);
           assert.deepEqual([...breaks(guessed, t, A[i], B[i])], want, `guessed breaks: line ${i}, edit ${k}`);
           const r = rnd(want.length);
-          assert.equal(told.rowStart(t, A[i], B[i], r, true), want[r]);
+          assert.equal(told.rowStart(t, A[i], B[i], r, 1), want[r]);
         }
       }
+    }
+  });
+
+  test('a huge new text in place of the old: rows near the start at once, all of them when idle, no task long', () => {
+    let seed = 13;
+    const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+    type X = Pick<Wrapper, 'rows' | 'settle'> & { glyphs: Map<number, number>; joins: Set<number> };
+    const make = () => {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false) as unknown as X;
+      (w as unknown as Wrapper).fit(60 * 8 + 4 + 0.25, 8);
+      for (const [c, g] of [[0xc4, 8], [0x6771, 16], [0x4eac, 16], [0x1f680, 16], [0x200d, 0]]) w.glyphs.set(c, g);
+      w.joins.add(0x200d);
+      return w;
+    };
+    const parts = ['abcdefghij ', 'Ä', '東京 ', '\\n ', '🚀', '\u200d', 'x'];
+    const huge = (n: number) => {
+      let s = '"';
+      while (s.length < n) s += parts[rnd(parts.length)];
+      return s + '"';
+    };
+    // As the output view does: the whole text replaced, one line before and after.
+    const w = make();
+    const first = huge(5000);
+    w.rows(first, Int32Array.of(0), Int32Array.of(first.length));
+    const t = huge(600_000);
+    const one = (s: string) => [Int32Array.of(0), Int32Array.of(s.length)] as const;
+    const t0 = performance.now();
+    const est = w.rows(t, ...one(t), [0, first.length, t.length])[0];
+    const ms = performance.now() - t0;
+    const fresh = make();
+    fresh.rows(t, ...one(t));
+    fresh.settle();
+    const want = [...breaks(fresh, t, 0, t.length)];
+    const got = [...breaks(w, t, 0, t.length)];
+    const near = want.filter((x) => x <= 32_768);
+    assert.deepEqual(got.slice(0, near.length), near, 'exact near the start');
+    assert.equal((w as unknown as { pending: unknown[] }).pending.length, 1, 'the rest estimated, to be refined');
+    assert.ok(est > 0 && ms < 100, `${ms.toFixed(0)} ms for the first rows`);
+    w.settle();
+    assert.deepEqual([...breaks(w, t, 0, t.length)], want, 'exact once settled');
+  });
+
+  test('a document of pieces breaks exactly as the same text in one string', () => {
+    let seed = 17;
+    const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+    const make = () => {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+      w.fit(37 * 7.5 + 3.75 + 0.25, 7.5);
+      const x = w as unknown as { glyphs: Map<number, number>; joins: Set<number> };
+      for (const [c, g] of [[0x200d, 0], [0x301, 0], [0xe9, 7.5], [0x4e2d, 15], [0x1f600, 15], [0x2028, 0]]) x.glyphs.set(c, g);
+      x.joins.add(0x200d);
+      x.joins.add(0x301);
+      return w;
+    };
+    const pick = () => {
+      const r = rnd(30);
+      return r === 0 ? '\t' : r === 1 ? '\u200d' : r === 2 ? 'e\u0301' : r === 3 ? '中' : r === 4 ? '😀' : r === 5 ? '\u2028' : r === 6 ? 'é' : String.fromCharCode(32 + rnd(95));
+    };
+    let s = '';
+    for (let n = 20_000; n > 0; n--) s += pick();
+    let doc = Doc.of(s);
+    for (let k = 0; k < 30; k++) {
+      // Edits at code point boundaries, as the editor makes them.
+      let at = rnd(doc.length);
+      if ((doc.charCodeAt(at) & 0xfc00) === 0xdc00) at--;
+      doc = doc.edit(at, at, pick() + pick());
+      const flat = doc.toString();
+      assert.equal(doc.flat, null);
+      assert.deepEqual([...breaks(make(), doc as unknown as string, 0, doc.length)], [...breaks(make(), flat, 0, flat.length)], `edit ${k}`);
     }
   });
 });
@@ -393,3 +463,102 @@ test("a row's bidi context stops at a forced break, which would break the drawn 
   // Without one, the whole range (whole code points).
   assert.equal(bidiContext('ab😀', 0, 3, true), '<span class="ctx">ab</span>');
 });
+
+describe('garbage and documents of many glyphs', () => {
+  const el = () => ({ className: '', style: {}, setAttribute() {}, appendChild() {}, remove() {}, replaceChildren() {} });
+  (globalThis as { document?: unknown }).document ??= { createElement: el };
+  type X = Pick<Wrapper, 'rows' | 'rowStart' | 'rowAt' | 'odd' | 'fit'> & { ctx: unknown; font: string; glyphs: Map<number, number>; guess: Map<number, number> };
+  /** A wrapper whose canvas measures `width(c)` and counts its measurements; laying out lines in the DOM throws. */
+  const make = (exact: boolean, width: (c: number) => number, cols = 40, cw = 8) => {
+    const w = new Wrapper(el() as unknown as HTMLElement, 20, exact) as unknown as X;
+    w.fit(cols * cw + cw / 2 + 0.25, cw);
+    const seen: number[] = [];
+    w.ctx = { font: '', measureText: (s: string) => (seen.push(s.codePointAt(0)!), { width: width(s.codePointAt(0)!) }) };
+    w.font = 'test';
+    (w as unknown as { measure(lines: string[]): number[] }).measure = () => {
+      throw new Error('laid out in the DOM');
+    };
+    return { w, seen };
+  };
+  let seed = 9;
+  // (32-bit arithmetic: every byte value comes up.)
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  /** Random bytes decoded as UTF-8 (as a binary file opened by mistake reads). */
+  const binary = (bytes: number) => new TextDecoder().decode(Uint8Array.from({ length: bytes }, () => rnd(256)));
+  const linesOf = (t: string) => {
+    const A: number[] = [];
+    const B: number[] = [];
+    for (let a = 0; ; ) {
+      const e = t.indexOf('\n', a);
+      A.push(a);
+      B.push(e < 0 ? t.length : e);
+      if (e < 0) break;
+      a = e + 1;
+    }
+    return [Int32Array.from(A), Int32Array.from(B)] as const;
+  };
+
+  test('views that draw their rows add up garbage lines: no layout, no glyph measured', () => {
+    const t = binary(200_000);
+    const { w, seen } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
+    const [A, B] = linesOf(t);
+    const rows = w.rows(t, A, B);
+    let summed = 0;
+    for (let k = 0; k < A.length; k++) {
+      if (w.odd[k] !== SUMMED) continue;
+      summed++;
+      // The rows are the breaks added up (see rowsOf), and rowStart/rowAt agree with them.
+      const st = breaksOf(w, t, A[k], B[k]);
+      assert.equal(rows[k], st.length, `line ${k}`);
+      for (let r = 1; r < st.length; r++) {
+        assert.equal(w.rowStart(t, A[k], B[k], r, SUMMED), st[r]);
+        assert.equal(w.rowAt(t, A[k], B[k], A[k] + st[r], SUMMED, st.length), r);
+      }
+    }
+    assert.ok(summed > A.length * 0.9, `most lines are garbage (${summed} of ${A.length})`);
+    // (Garbage needn't be tight: its glyphs are estimated, none measured.)
+    assert.equal(seen.length, 0, `${seen.length} glyphs measured`);
+    assert.ok(w.guess.size > 1000, `${w.guess.size} estimated`);
+  });
+
+  test('an estimated glyph is as wide as the widest measured in its block', () => {
+    const { w } = make(false, (c) => (c >= 0x4e00 && c < 0xa000 ? 13 + (c % 3) : 8));
+    // Past the budget: more Han than it measures, then one more of a block measured, and one of a block that isn't.
+    // (A line over LONG_LINE: its rows are added up, glyph by glyph.)
+    const han = Array.from({ length: 4000 }, (_, i) => String.fromCodePoint(0x4e00 + i)).join('');
+    w.rows(han, Int32Array.of(0), Int32Array.of(han.length));
+    const g = (c: number) => w.glyphs.get(c) ?? w.guess.get(c);
+    const block = (c: number) => Math.max(...[...w.glyphs].filter(([k]) => k >> 8 === c >> 8).map(([, v]) => v));
+    // 512, then two of each further block of 256.
+    const blocks = Math.ceil((0x4e00 + 4000) / 256) - Math.ceil((0x4e00 + 512) / 256);
+    assert.equal(w.glyphs.size, 512 + 2 * blocks);
+    assert.equal(w.guess.size, 4000 - w.glyphs.size);
+    for (const c of [0x4e00 + 511, 0x4e00 + 600, 0x4e00 + 3999]) assert.equal(g(c), w.glyphs.has(c) ? 13 + (c % 3) + 0.05 : block(c), c.toString(16));
+    // Measured up to the cap, then neither the block nor a cap left: the widest measured, at least two cells.
+    const x = w as unknown as { glyph(c: number): number };
+    for (let c = 0x20000; w.glyphs.size < 1024; c += 256) x.glyph(c);
+    assert.equal(x.glyph(0x10400), 16);
+    assert.equal(w.glyphs.size, 1024);
+  });
+
+  test('a textarea editor still measures garbage exactly (its rows must match the textarea)', () => {
+    const { w } = make(true, () => 8);
+    const t = 'ab\u0000cd�' + 'x'.repeat(100);
+    assert.throws(() => w.rows(t, Int32Array.of(0), Int32Array.of(t.length)), /laid out in the DOM/);
+    assert.notEqual(w.odd[0], SUMMED);
+  });
+
+  test('text without garbage is laid out as before', () => {
+    const { w } = make(false, () => 8);
+    for (const s of ['"é ü 東京 🚀 עברית"'.repeat(8), '\t"tab\tmid"'.repeat(12)]) {
+      assert.throws(() => w.rows(s, Int32Array.of(0), Int32Array.of(s.length)), /laid out in the DOM/, s.slice(0, 20));
+      assert.equal(w.odd[0], 1);
+    }
+  });
+});
+
+/** Row starts the wrapper adds up for the line `t[a, b)`. */
+function breaksOf(w: object, t: string, a: number, b: number) {
+  const st = (w as { rowsOf(t: string, a: number, b: number): { length: number; get(r: number): number } }).rowsOf(t, a, b);
+  return Array.from({ length: st.length }, (_, r) => st.get(r));
+}

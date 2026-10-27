@@ -16,7 +16,12 @@
  *   nodes (in one huge text node every probe walks the whole line).
  * - Views that draw every row themselves (the code views, the editor without
  *   its textarea) needn't match a textarea: a long line of other text is
- *   broken by adding up its glyphs' widths, which is instant at any size.
+ *   broken by adding up its glyphs' widths, which is instant at any size. So is
+ *   a line of garbage (control characters, bytes that weren't UTF-8: a binary
+ *   file opened as text), which the browser takes seconds a megabyte to lay out.
+ * - Glyphs are measured once each, up to a budget; past it a glyph's width is
+ *   estimated from those measured in its block (random bytes hold tens of
+ *   thousands of distinct code points, and each measurement costs ~0.3 ms).
  */
 
 import type { Doc } from './doc';
@@ -48,11 +53,23 @@ const JOINS_NEXT = /[\u0620\u0626\u0628\u062a-\u062e\u0633-\u0647\u0649\u064a\u0
 const JOINS_PREV = /[\u0620\u0622-\u064a\u066e\u066f\u0671-\u0673\u0675-\u06d3\u06d5\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u077f\u07ca-\u07ea\u07fa\u0840-\u0858\u0860\u0862-\u0865\u0867-\u086a\u0870-\u0886\u0889-\u088f\u08a0-\u08ac\u08ae-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua871\u{10ac0}-\u{10ac5}\u{10ac7}\u{10ac9}\u{10aca}\u{10ace}-\u{10ad6}\u{10ad8}-\u{10ae1}\u{10ae4}\u{10aeb}-\u{10aef}\u{10b80}-\u{10b91}\u{10ba9}-\u{10bae}\u{10d01}-\u{10d23}\u{10ec2}-\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f44}\u{10f51}-\u{10f54}\u{10f70}-\u{10f81}\u{10fb0}\u{10fb2}-\u{10fb6}\u{10fb8}-\u{10fbf}\u{10fc1}-\u{10fc4}\u{10fc9}\u{10fca}\u{1e900}-\u{1e943}]/u;
 /** Characters that can be over four cells wide (ligatures, cuneiform, hieroglyphs, musical symbols). */
 const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
-/** A run of printable ASCII (sticky), and what ends one. */
+/** A run of printable ASCII (sticky). */
 const RUN = /[\x20-\x7e]+/y;
-const NOT_PRINTABLE = /[^\x20-\x7e]/g;
 /** Long lines whose breaks were added up (see `rowsOf`). */
 const SUMS = 4;
+/**
+ * What no text file holds: control characters (but tabs and line breaks), bytes that weren't UTF-8 (U+FFFD),
+ * noncharacters and lone surrogates. A line with any is garbage: its rows are added up (see `rows`).
+ */
+const GARBAGE = /[\0-\x08\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufffd\ufffe\uffff]/u;
+/** Per `rows()` flag: the line's rows are added up and it is drawn row by row (garbage, see GARBAGE). */
+export const SUMMED = 2;
+/** Glyphs measured per font; past them, the first PER_BLOCK of each block of 256 code points up to MEASURE_CAP; the rest are estimated (see `estimate`). */
+const MEASURE_MAX = 512;
+const PER_BLOCK = 2;
+const MEASURE_CAP = 1024;
+/** Estimated glyphs count this much wider where an estimate too narrow would cost a wrong row (see `fits`). */
+const GUESS_MARGIN = 1.2;
 /**
  * Characters past an edit whose rows are found at once (hundreds of rows: the view and the caret are
  * among them); the rest of a longer line when idle (see refine).
@@ -77,20 +94,6 @@ function nonAscii(t: Src, from: number, to: number): number {
   const s = flatOf(t);
   if (s !== null) look(s, Math.max(0, from), Math.min(s.length, to));
   else (t as Doc).each(from, to, look);
-  return r;
-}
-
-/** End of the run of printable ASCII in `t` from `from` (at most `to`), searched in views of its pieces. */
-function endOfRun(t: Doc, from: number, to: number): number {
-  let r = to;
-  let at = from;
-  t.each(from, to, (x, i, j) => {
-    NOT_PRINTABLE.lastIndex = 0;
-    const m = NOT_PRINTABLE.exec(i === 0 && j === x.length ? x : x.slice(i, j));
-    if (m) r = at + m.index;
-    at += j - i;
-    return !!m;
-  });
   return r;
 }
 
@@ -230,9 +233,27 @@ interface SumEntry {
   exact: number;
 }
 
+/**
+ * A line whose rows from `e.exact` on are estimated, being broken from state `s` (`starts`: the rows found
+ * so far). `old`: the rows it had before an edit ending at `tail`, `d` characters shorter, which its rows
+ * may meet again from there (`j`: the old row looked at; `from`: the old row after the one met).
+ */
+interface Refining {
+  e: SumEntry;
+  s: BreakState;
+  starts: number[];
+  old: Starts | null;
+  d: number;
+  tail: number;
+  j: number;
+  from: number;
+}
+
 /** Where breaking a line into rows stopped (see breakRows). */
 interface BreakState {
   i: number;
+  /** Where the run of printable ASCII at `i` ends, if a call stopped inside it (else at most `i`). */
+  run: number;
   lastStart: number;
   w: number;
   joined: boolean;
@@ -336,7 +357,7 @@ export const asciiRows = (cells: number, cols: number) => (cells > cols ? Math.c
 export class Wrapper {
   /** Cells per row (0 until the view has a width). */
   cols = 0;
-  /** Per line of the last `rows()` call: 1 where the browser decides the breaks. */
+  /** Per line of the last `rows()` call: 1 where the browser decides the breaks, SUMMED where they're added up. */
   odd = new Uint8Array(0);
   /** Rows must break exactly where a textarea's do (else long lines are summed: see `rowsOf`). */
   exact: boolean;
@@ -345,7 +366,11 @@ export class Wrapper {
   private readonly box: HTMLElement;
   private readonly scratch: HTMLElement;
   private sized = new Map<string, number>();
+  /** Measured glyph widths, then estimated ones (see `learn`), and the widest measured per block of 256 code points. */
   private glyphs = new Map<number, number>();
+  private guess = new Map<number, number>();
+  private blockMax = new Map<number, number>();
+  private blockN = new Map<number, number>();
   private mirrors = new Map<string, Mirror>();
   private sums: SumEntry[] = [];
   private joins = new Set<number>();
@@ -395,7 +420,7 @@ export class Wrapper {
     const cols = space > 0 && cw > 0 ? Math.max(8, Math.floor((space - cw / 2) / cw)) : 0;
     if (cols === this.cols && cw === this.cw) return false;
     if (cw !== this.cw) {
-      this.glyphs.clear();
+      this.dropGlyphs();
       this.font = '';
     }
     this.cols = cols;
@@ -438,13 +463,19 @@ export class Wrapper {
     const x = this.ctx;
     x.font = this.font;
     let changed = false;
+    this.blockMax.clear();
     for (const [c, w] of this.glyphs) {
       const n = x.measureText(String.fromCodePoint(c)).width + 0.05;
       if (Math.abs(n - w) > 0.01) this.glyphs.set(c, n);
+      this.noteWidth(c, n);
       // A font swapped for one of nearly the same widths moves no break that matters here.
       if (Math.abs(n - w) >= 0.2) changed = true;
     }
-    if (changed) this.forget();
+    this.ft?.fill(0);
+    if (changed) {
+      this.guess.clear();
+      this.forget();
+    }
     return changed;
   }
 
@@ -452,7 +483,7 @@ export class Wrapper {
   reset() {
     this.cols = 0;
     this.cw = 0;
-    this.glyphs.clear();
+    this.dropGlyphs();
     this.across = null;
     this.forget();
   }
@@ -484,8 +515,9 @@ export class Wrapper {
       const old = last.text;
       let p: number;
       let q: number;
-      // A known edit `[a, oldEnd, newEnd)` spares comparing the texts (two passes over the document).
-      const told = !!edit && edit[0] >= 0 && edit[0] <= edit[1] && edit[0] <= edit[2] && edit[1] <= old.length && edit[2] <= text.length && text.length - old.length === edit[2] - edit[1];
+      // A known edit `[a, oldEnd, newEnd)` spares comparing the texts (two passes over the document). One of
+      // all of a text as long as before says nothing: it may be the same text (laid out again).
+      const told = !!edit && edit[0] >= 0 && edit[0] <= edit[1] && edit[0] <= edit[2] && edit[1] <= old.length && edit[2] <= text.length && text.length - old.length === edit[2] - edit[1] && !(edit[0] === 0 && edit[2] === text.length && old.length === text.length);
       if (told) {
         p = edit![0];
         q = text.length - edit![2];
@@ -518,7 +550,7 @@ export class Wrapper {
       // lines the same either way; a textarea's rows are measured exactly).
       if (told && !this.exact && hi > lo && dk === breaksIn(text, edit![0], edit![2]) - breaksIn(old, edit![0], edit![1])) {
         inherit = nonAscii(text, edit![0], edit![2]) >= 0 ? 1 : 0;
-        for (let k = lo; k < hi - dk && !inherit; k++) inherit = last.odd[k];
+        for (let k = lo; k < hi - dk && !inherit; k++) inherit = last.odd[k] ? 1 : 0;
       }
     }
     if (!last) {
@@ -575,6 +607,12 @@ export class Wrapper {
         continue;
       }
       const s = text.slice(a, b);
+      // Garbage is added up too (and drawn row by row): laid out, every script in it needs a font found.
+      if (!this.exact && GARBAGE.test(s)) {
+        odd[k] = SUMMED;
+        out[k] = this.countGarbage(text, a, b);
+        continue;
+      }
       let r = this.sized.get(s) ?? keep.get(s);
       // A long line is laid out once, as the mirror its rows are later read from.
       if (r === undefined && s.length > LONG_LINE) r = this.mirror(s).rows;
@@ -620,18 +658,23 @@ export class Wrapper {
     return out;
   }
 
+  /** Are the rows of a line flagged `odd` by `rows()`, `b - a` long, added up (else laid out by the browser)? */
+  summed(odd: number, len: number) {
+    return !this.exact && (odd === SUMMED || (odd !== 0 && len > LONG_LINE));
+  }
+
   /**
    * Offset (from the line start) of the first character on row `r` of the
    * line `text[a, b)`. `odd` as set by `rows()`.
    */
-  rowStart(text: Src, a: number, b: number, r: number, odd: boolean): number {
+  rowStart(text: Src, a: number, b: number, r: number, odd: number): number {
     if (r <= 0) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
       return Math.min(b - a, r * this.cols - cells + chars);
     }
-    if (!this.exact && b - a > LONG_LINE) {
-      const st = this.rowsOf(text, a, b);
+    if (this.summed(odd, b - a)) {
+      const st = odd === SUMMED ? this.garbageRows(text, a, b) : this.rowsOf(text, a, b);
       return r < st.length ? st.get(r) : b - a;
     }
     const m = this.mirror(text.slice(a, b));
@@ -639,7 +682,7 @@ export class Wrapper {
   }
 
   /** Row of the line `text[a, b)` (taking `rows` rows) that shows offset `off`: the caret before that character. */
-  rowAt(text: Src, a: number, b: number, off: number, odd: boolean, rows: number): number {
+  rowAt(text: Src, a: number, b: number, off: number, odd: number, rows: number): number {
     if (rows <= 1 || off <= a) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
@@ -647,7 +690,7 @@ export class Wrapper {
       const col = cells === chars ? off - a : off - a <= chars ? 0 : cells + off - a - chars;
       return Math.min(rows - 1, Math.floor(col / this.cols));
     }
-    if (!this.exact && b - a > LONG_LINE) return this.rowsOf(text, a, b).floor(off - a);
+    if (this.summed(odd, b - a)) return (odd === SUMMED ? this.garbageRows(text, a, b) : this.rowsOf(text, a, b)).floor(off - a);
     const m = this.mirror(text.slice(a, b));
     const o = Math.min(b - a - 1, off - a);
     return Math.min(m.rows - 1, this.probeRow(m, o, m.el.getBoundingClientRect().top));
@@ -655,9 +698,13 @@ export class Wrapper {
 
   // ── Measuring ──────────────────────────────────────────────────────────
 
-  /** Learns the width of each code point in `lines` not seen yet (one layout). */
+  /**
+   * Learns the width of each code point in `lines` not seen yet: measured up to a budget (see MEASURE_MAX;
+   * the WIDE few always), else estimated (see `estimate`).
+   */
   private learn(lines: string[]) {
     const todo: number[] = [];
+    let later: number[] | null = null;
     for (const s of lines) {
       for (let i = 0; i < s.length; i++) {
         let c = s.charCodeAt(i);
@@ -666,24 +713,91 @@ export class Wrapper {
           c = s.codePointAt(i) as number;
           if (c > 0xffff) i++;
         }
-        if (this.glyphs.has(c)) continue;
-        this.glyphs.set(c, 0);
-        todo.push(c);
-        if (JOINS.test(String.fromCodePoint(c))) this.joins.add(c);
+        if (this.glyphs.has(c) || this.guess.has(c)) continue;
+        const ch = String.fromCodePoint(c);
+        if (JOINS.test(ch)) this.joins.add(c);
+        const n = this.glyphs.size;
+        if (!this.guessing && (n < MEASURE_MAX || (n < MEASURE_CAP && (this.blockN.get(c >> 8) ?? 0) < PER_BLOCK) || WIDE.test(ch))) {
+          this.glyphs.set(c, 0);
+          this.blockN.set(c >> 8, (this.blockN.get(c >> 8) ?? 0) + 1);
+          todo.push(c);
+        } else {
+          this.guess.set(c, 0);
+          (later ??= []).push(c);
+        }
       }
     }
-    if (!todo.length) return;
-    // Measured on a canvas in the same fonts: no layout (a forced one would also lay
-    // out whatever else just changed on the page). A hair over, as both uses need.
-    const x = (this.ctx ??= document.createElement('canvas').getContext('2d'));
-    if (!x) return;
-    if (!this.font) {
-      // Read once per cell width (a style read here would restyle the whole changed page).
-      const cs = getComputedStyle(this.scratch);
-      this.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    if (todo.length) {
+      // Measured on a canvas in the same fonts: no layout (a forced one would also lay
+      // out whatever else just changed on the page). A hair over, as both uses need.
+      const x = (this.ctx ??= document.createElement('canvas').getContext('2d'));
+      if (!x) return;
+      if (!this.font) {
+        // Read once per cell width (a style read here would restyle the whole changed page).
+        const cs = getComputedStyle(this.scratch);
+        this.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      }
+      x.font = this.font;
+      for (const c of todo) {
+        const w = x.measureText(String.fromCodePoint(c)).width + 0.05;
+        this.glyphs.set(c, w);
+        this.noteWidth(c, w);
+      }
     }
-    x.font = this.font;
-    for (const c of todo) this.glyphs.set(c, x.measureText(String.fromCodePoint(c)).width + 0.05);
+    if (later) for (const c of later) this.guess.set(c, this.estimate(c));
+  }
+
+  /** Glyphs new to `learn` are estimated, not measured (see garbageRows). */
+  private guessing = false;
+
+  /**
+   * rowsOf for a line of garbage: glyphs new in it are estimated (at least two cells where none of their
+   * block was measured), not measured. Its rows needn't be tight, and random bytes hold thousands of glyphs.
+   */
+  private garbageRows(t: Src, a: number, b: number): Starts {
+    this.guessing = true;
+    try {
+      return this.rowsOf(t, a, b);
+    } finally {
+      this.guessing = false;
+    }
+  }
+
+  /** How many rows garbageRows finds for `t[a, b)`, counted (only the lines drawn need their starts). */
+  private countGarbage(t: Src, a: number, b: number) {
+    let n = 1;
+    const count = () => (n++, false);
+    this.guessing = true;
+    try {
+      this.breakRows(t, a, b - a, { i: 0, run: 0, lastStart: 0, w: 0, joined: false, flags: 0, forced: false }, b - a, count, count);
+    } finally {
+      this.guessing = false;
+    }
+    return n;
+  }
+
+  /** Remembers the widest glyph measured in `c`'s block (and the widest of all but the WIDE ones, block -1). */
+  private noteWidth(c: number, w: number) {
+    const k = c >> 8;
+    if (w > (this.blockMax.get(k) ?? 0)) this.blockMax.set(k, w);
+    if (w > (this.blockMax.get(-1) ?? 0) && !WIDE.test(String.fromCodePoint(c))) this.blockMax.set(-1, w);
+  }
+
+  /**
+   * A glyph's width past the budget: the widest measured in its block (fonts draw a block alike: CJK,
+   * Hangul, a script), else the widest measured anywhere and at least two cells.
+   */
+  private estimate(c: number) {
+    return this.blockMax.get(c >> 8) ?? Math.max(2 * this.cw, this.blockMax.get(-1) ?? 0);
+  }
+
+  /** Forgets glyph widths (another font or cell width). */
+  private dropGlyphs() {
+    this.glyphs.clear();
+    this.guess.clear();
+    this.blockMax.clear();
+    this.blockN.clear();
+    this.ft?.fill(0);
   }
 
   private ctx: CanvasRenderingContext2D | null = null;
@@ -709,7 +823,7 @@ export class Wrapper {
           c = s.codePointAt(i) as number;
           if (c > 0xffff) i++;
         }
-        w += this.glyphs.get(c) ?? Infinity;
+        w += this.glyphs.get(c) ?? (this.guess.get(c) ?? Infinity) * GUESS_MARGIN;
       }
     }
     return w <= max;
@@ -872,23 +986,31 @@ export class Wrapper {
       from = j + 1;
       return true;
     };
-    const st: BreakState = { i: at, lastStart: at, w: 0, joined: false, flags: 0, forced: false };
-    // A huge line split or joined far from its end: rows near the edit now, the rest when idle (see refine).
+    const st: BreakState = { i: at, run: 0, lastStart: at, w: 0, joined: false, flags: 0, forced: false };
+    // Rows near the edit now (the view and the caret are there); past LAZY_ROWS characters without meeting
+    // the old rows again (a huge line split, joined or new), the rest when idle (see refine).
     const near = Math.max(p, at, edit);
-    const stop = tail === Infinity && len - near > LAZY_ROWS ? near + LAZY_ROWS : len;
+    const stop = len - near > LAZY_ROWS ? near + LAZY_ROWS : len;
     const resynced = this.breakRows(t, a, len, st, stop, brk, (x) => void starts.push(x));
     const runs = old ? old.part(0, keep, 0) : [{ a: Int32Array.of(0), i: 0, n: 1, d: 0 }];
     if (!resynced && st.i < len) {
-      // Estimated: whole rows of printable ASCII (JSON is mostly that) from the last exact start.
-      const full = Math.max(1, Math.floor(this.width / this.cw));
-      const more = Math.max(0, Math.ceil((len - st.lastStart) / full) - 1);
       const head = keep + starts.length;
-      const est = new Int32Array(starts.length + more);
-      est.set(starts);
-      for (let k = 0; k < more; k++) est[starts.length + k] = st.lastStart + (k + 1) * full;
-      runs.push({ a: est, i: 0, n: est.length, d: 0 });
+      runs.push({ a: Int32Array.from(starts), i: 0, n: starts.length, d: 0 });
+      if (old && tail !== Infinity && old.length && old.get(old.length - 1) + d > st.lastStart) {
+        // Estimated: the old rows, shifted (where the rows meet them again, they are exact).
+        old.part(old.lower(st.lastStart - d + 1, 0, old.length), old.length, d, runs);
+      } else {
+        // Estimated: rows as long as those found so far are on average (whole rows of printable ASCII
+        // without enough of them), from the last exact start.
+        const n = starts.length;
+        const full = Math.max(1, Math.floor(n >= 16 ? (st.lastStart - starts[0]) / (n - 1) : this.width / this.cw));
+        const more = Math.max(0, Math.ceil((len - st.lastStart) / full) - 1);
+        const est = new Int32Array(more);
+        for (let k = 0; k < more; k++) est[k] = st.lastStart + (k + 1) * full;
+        runs.push({ a: est, i: 0, n: more, d: 0 });
+      }
       const e = this.keepSum(t, a, b, Starts.join(runs), head);
-      this.refine(e, st);
+      this.refine({ e, s: st, starts: [], old: tail === Infinity ? null : old, d, tail, j, from: -1 });
       return e.st;
     }
     runs.push({ a: Int32Array.from(starts), i: 0, n: starts.length, d: 0 });
@@ -900,28 +1022,59 @@ export class Wrapper {
   /**
    * Breaks `t[a, a + len)` into rows from state `s` until the line ends, `stop`
    * characters in, or `brk` (told each row start) returns true. True if it did.
+   * A document of pieces is read a piece at a time (see Doc.each).
    */
   private breakRows(src: Src, a: number, len: number, s: BreakState, stop: number, brk: (x: number) => boolean, push: (x: number) => void): boolean {
+    const flat = flatOf(src);
+    if (flat !== null) return this.breakIn(flat, a, len, len, s, stop, brk, push);
+    let done = false;
+    let at = s.i;
+    (src as Doc).each(a + s.i, a + Math.min(len, stop), (x, i, j) => {
+      // (Line offset `at` is x[i]: the line starts at x[i - at].)
+      done = this.breakIn(x, i - at, at + j - i, len, s, stop, brk, push);
+      at += j - i;
+      return done;
+    });
+    return done;
+  }
+
+  /**
+   * breakRows on the text `x` holding the line from `x[base]`, up to line offset `end` (where it
+   * or the piece of it in `x` ends). Printable ASCII is counted a run at a time (one cell a character);
+   * other glyphs' widths and flags in the BMP come from tables, filled as they are met (see `cache`).
+   */
+  private breakIn(x: string, base: number, end: number, len: number, s: BreakState, stop: number, brk: (x: number) => boolean, push: (x: number) => void): boolean {
     const cw = this.cw;
     const max = this.width;
     /** Printable ASCII characters a row holds from its start. */
     const full = Math.floor(max / cw);
-    const b = a + len;
-    const flat = flatOf(src);
-    const t = flat ?? src;
+    const F = this.ft ?? this.tables();
+    const W = this.wt as Float32Array;
+    const until = Math.min(end, stop);
     let { i, lastStart, w, joined, flags, forced } = s;
     let done = false;
-    while (i < len && i < stop && !done) {
-      let c = t.charCodeAt(a + i);
-      if (c >= 32 && c < 127 && !joined) {
-        // A run of printable ASCII is one cell a character: its breaks are arithmetic. (Taken whole
-        // however far it runs past `stop`: the breaks then don't depend on where a call stopped.)
-        let e: number;
-        if (flat !== null) {
-          RUN.lastIndex = a + i;
-          RUN.test(flat);
-          e = Math.min(RUN.lastIndex, b) - a;
-        } else e = endOfRun(src as Doc, a + i, b) - a;
+    while (i < until && !done) {
+      let c = x.charCodeAt(base + i);
+      // (Printable ASCII: c - 32 < 95, unsigned.)
+      if (((c - 32) >>> 0) < 95 && !joined) {
+        // A run of printable ASCII is one cell a character: its breaks are arithmetic (a run cut at
+        // `stop` goes on from there just the same).
+        // (Short runs, as in text mixing scripts, are read here; a long one natively, once: where it ends past
+        // `stop` is kept for the next call.)
+        let e = i + 1;
+        if (i < s.run) e = Math.min(s.run, until);
+        else {
+          const short = Math.min(until, i + 16);
+          for (let o = base + e; e < short && ((x.charCodeAt(o) - 32) >>> 0) < 95; o++) e++;
+          if (e === short && e < until) {
+            RUN.lastIndex = base + e;
+            if (RUN.test(x)) {
+              const r = Math.min(RUN.lastIndex - base, end);
+              if (r > until) s.run = r;
+              e = Math.min(r, until);
+            }
+          }
+        }
         // (A row can already be over full: nothing breaks before a joined character.)
         let k = i + Math.max(0, Math.floor((max - w) / cw));
         if (k === lastStart) k++;
@@ -939,19 +1092,27 @@ export class Wrapper {
       if (c === 9) g = tabTo(w, cw);
       else if (c >= 32 && c < 127) g = cw;
       else {
-        if (c >= 0xd800 && c < 0xdc00 && i + 1 < len) {
-          const lo = t.charCodeAt(a + i + 1);
+        if (c >= 0xd800 && c < 0xdc00 && i + 1 < end) {
+          const lo = x.charCodeAt(base + i + 1);
           if (lo >= 0xdc00 && lo < 0xe000) {
             c = (c - 0xd800) * 0x400 + lo - 0xdc00 + 0x10000;
             n = 2;
           }
         }
-        g = c === 0xfe0f ? 2.5 * cw : (this.glyphs.get(c) ?? this.glyph(c));
-        if (this.joins.has(c)) join = true;
-        if (c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029) forced = true;
-        // Regional indicators pair into flags.
-        if (c >= 0x1f1e6 && c <= 0x1f1ff) join ||= flags++ % 2 === 1;
-        else flags = 0;
+        if (c < 0x10000) {
+          let f = F[c];
+          if (!f) f = this.cache(c);
+          g = W[c];
+          if (f & 1) join = true;
+          if (f & 2) forced = true;
+          flags = 0;
+        } else {
+          g = this.astral(c);
+          if (this.joins.has(c)) join = true;
+          // Regional indicators pair into flags.
+          if (c >= 0x1f1e6 && c <= 0x1f1ff) join ||= flags++ % 2 === 1;
+          else flags = 0;
+        }
       }
       if (!join && w + g > max && i > lastStart) {
         // (A flag's half can't resynchronize: which half it is depends on what came before.)
@@ -970,18 +1131,51 @@ export class Wrapper {
       }
       forced = false;
     }
-    Object.assign(s, { i, lastStart, w, joined, flags, forced });
+    s.i = i;
+    s.lastStart = lastStart;
+    s.w = w;
+    s.joined = joined;
+    s.flags = flags;
+    s.forced = forced;
     return done;
   }
 
+  /** Width of `c` past the BMP (out of breakIn's loop: rarer, and Map lookups). */
+  private astral(c: number) {
+    return this.glyphs.get(c) ?? this.guess.get(c) ?? this.glyph(c);
+  }
+
+  /** BMP glyph widths for breakIn, and flags: 4 looked up (else 0), 1 never starts a row, 2 ends one. */
+  private wt: Float32Array | null = null;
+  private ft: Uint8Array | null = null;
+
+  private tables() {
+    this.wt = new Float32Array(0x10000);
+    return (this.ft = new Uint8Array(0x10000));
+  }
+
+  /** Puts BMP code point `c` in the tables (learning it if new); its flags. */
+  private cache(c: number) {
+    let g = this.glyphs.get(c) ?? this.guess.get(c);
+    if (g === undefined) {
+      if (this.guessing) {
+        if (JOINS.test(String.fromCodePoint(c))) this.joins.add(c);
+        this.guess.set(c, (g = this.estimate(c)));
+      } else g = this.glyph(c);
+    }
+    // (A variation selector can turn the character before it into a wider emoji.)
+    (this.wt as Float32Array)[c] = c === 0xfe0f ? 2.5 * this.cw : g;
+    return ((this.ft as Uint8Array)[c] = 4 | (this.joins.has(c) ? 1 : 0) | (c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029 ? 2 : 0));
+  }
+
   /** Lines whose rows past an edit are estimated, finished a slice at a time when the page is idle. */
-  private pending: { e: SumEntry; s: BreakState; starts: number[] }[] = [];
+  private pending: Refining[] = [];
   private refineTimer = 0;
   /** Called when estimated rows were replaced by exact ones (the view relayouts). */
   onRows: (() => void) | null = null;
 
-  private refine(e: SumEntry, s: BreakState) {
-    this.pending.push({ e, s, starts: [] });
+  private refine(job: Refining) {
+    this.pending.push(job);
     clearTimeout(this.refineTimer);
     this.refineTimer = setTimeout(this.refineStep, 50) as unknown as number;
   }
@@ -992,15 +1186,26 @@ export class Wrapper {
   }
 
   /** Advances `job` by up to `budget` ms (Infinity: to the end). True when its rows are all exact. */
-  private advance(job: { e: SumEntry; s: BreakState; starts: number[] }, budget: number) {
-    const { e, s } = job;
+  private advance(job: Refining, budget: number) {
+    const { e, s, old, d, tail } = job;
     const len = e.b - e.a;
     const until = performance.now() + budget;
     const add = (x: number) => void job.starts.push(x);
-    while (s.i < len && performance.now() < until) this.breakRows(e.t, e.a, len, s, s.i + 20_000, (x) => (add(x), false), add);
-    if (s.i < len) return false;
+    // Where a row starts where an old one did (shifted), the rest are the old rows (see rowsOf).
+    const brk = (x: number) => {
+      job.starts.push(x);
+      if (!old || x < tail) return false;
+      while (job.j < old.length && old.get(job.j) + d < x) job.j++;
+      if (job.j >= old.length || old.get(job.j) + d !== x) return false;
+      job.from = job.j + 1;
+      return true;
+    };
+    let met = false;
+    while (!met && s.i < len && performance.now() < until) met = this.breakRows(e.t, e.a, len, s, s.i + 20_000, brk, add);
+    if (!met && s.i < len) return false;
     const runs = e.st.part(0, e.exact, 0);
     runs.push({ a: Int32Array.from(job.starts), i: 0, n: job.starts.length, d: 0 });
+    if (met && old) old.part(job.from, old.length, d, runs);
     const st = Starts.join(runs);
     e.st = st;
     e.exact = st.length;
@@ -1057,10 +1262,10 @@ export class Wrapper {
     return e;
   }
 
-  /** Width of code point `c`, measured now (see `learn`). */
+  /** Width of code point `c`, learned now (see `learn`). */
   private glyph(c: number) {
     this.learn([String.fromCodePoint(c)]);
-    return this.glyphs.get(c) ?? this.cw;
+    return this.glyphs.get(c) ?? this.guess.get(c) ?? this.cw;
   }
 
   /** Where the last patch changed its mirror (rows starting before it are kept). */

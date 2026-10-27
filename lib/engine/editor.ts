@@ -3,7 +3,7 @@ import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStat
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
 import { foldScanner, foldsAround, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
-import { LONG_LINE, Wrapper, type Src } from './wrap';
+import { LONG_LINE, SUMMED, Wrapper, type Src } from './wrap';
 import { rt } from '../i18n/ui';
 
 /*
@@ -333,7 +333,7 @@ export class Editor {
   private wrapper: Wrapper | null = null;
   /** While wrapping: the first visual row of each display line (length rows + 1). */
   private wy: Int32Array | null = null;
-  /** While wrapping: 1 for display lines whose breaks the browser decides (Wrapper.odd). */
+  /** While wrapping: 1 for display lines whose breaks the browser decides, SUMMED for garbage (Wrapper.odd). */
   private wodd = new Uint8Array(0);
   /** Text or folds changed since rows were last wrapped. */
   private wrapDirty = true;
@@ -1090,7 +1090,7 @@ export class Editor {
     const k = this.rowOf(ln);
     const wy = this.wy;
     if (!wy || !this.wrapper || this.lineAt(k) !== ln) return this.yOf(k);
-    return wy[k] + this.wrapper.rowAt(this.src, this.ls[ln], this.lineEnd(ln), off, this.wodd[k] === 1, wy[k + 1] - wy[k]);
+    return wy[k] + this.wrapper.rowAt(this.src, this.ls[ln], this.lineEnd(ln), off, this.wodd[k], wy[k + 1] - wy[k]);
   }
 
   /** Model offsets [start, end) of wrapped row `sub` of display row `k`. */
@@ -1101,7 +1101,7 @@ export class Editor {
     const wr = this.wrapper;
     if (!wr || !this.wy) return [a, b];
     const rows = this.wy[k + 1] - this.wy[k];
-    const odd = this.wodd[k] === 1;
+    const odd = this.wodd[k];
     const t = this.src;
     return [a + wr.rowStart(t, a, b, sub, odd), sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b];
   }
@@ -1553,19 +1553,21 @@ export class Editor {
       const marks = this.marksFor(ln);
       const lm = this.lineMarks ? this.lineMarks[ln] : 0;
       const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
-      if (rows > 1 && b - a > LONG_LINE) {
-        const odd = this.wodd[k] === 1;
+      // (Garbage, too, is drawn as its rows: see Wrapper.summed.)
+      if (rows > 1 && (b - a > LONG_LINE || this.wodd[k] === SUMMED)) {
+        const flag = this.wodd[k];
+        const odd = flag !== 0;
         const s0 = Math.max(0, r0 - y);
         const s1 = Math.min(rows, r1 - y);
         if (top < 0) top = y + s0;
-        let sa = a + wr.rowStart(doc, a, b, s0, odd);
+        let sa = a + wr.rowStart(doc, a, b, s0, flag);
         // The rows on screen and the neighbours read around them, from one string at offset `o`.
-        const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, odd) : b;
+        const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, flag) : b;
         const [t, o] = this.win(Math.max(a, sa - 64), Math.min(b, ea + 64) + 1);
         const ms = moved(marks, o);
         let str = this.jwt || this.colors ? 0 : this.strs.at(doc, a, sa);
         for (let sub = s0; sub < s1; sub++) {
-          const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, odd) : b;
+          const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, flag) : b;
           const end = sb === b;
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa - o, sb - o) + o : sb;
