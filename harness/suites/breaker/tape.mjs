@@ -226,7 +226,9 @@ test('the Tree on a tape and by the page: Expand all, levels, Collapse all, reve
   // And what they should be.
   t.check(tape['find TKNEEDLE-777']?.path === '$.data[15400].needle', 'Find reveals the needle at $.data[15400].needle', tape['find TKNEEDLE-777']);
   t.check(tape['find TKDEEP']?.path === `$.deep${'.d'.repeat(60)}.leaf`, 'Find reveals the deepest leaf', tape['find TKDEEP']?.path);
-  t.check(tape.revealDeep?.path === `$.deep${'.d'.repeat(60)}.leaf` && /leaf:"TKDEEP"$/.test(tape.revealDeep.row ?? ''), 'after Expand all and Collapse all, Find reveals the deepest leaf and its row shows', tape.revealDeep);
+  t.check(tape.revealDeep?.path === `$.deep${'.d'.repeat(60)}.leaf` && /leaf:"TKDEEP"$/.test(tape.revealDeep.row ?? ''), 'after Expand all and Collapse all, Find reveals the deepest leaf and its row shows', tape.revealDeep, {
+    known: 'bug (main; fixed on t3/optimize-json-memory-performance at 1d6f20a): after Expand all then Collapse all, Find selects a deep match but leaves it hidden (BREAKER-REPORT F24)',
+  });
   t.check(tape['find $.dup']?.value === '{\n  "a": 1,\n  "b": {\n    "a": 2\n  },\n  "a": 3\n}', 'Copy selected value keeps both duplicate keys, in order', tape['find $.dup']?.value);
   t.check(tape['find $.flat[29999]']?.path === '$.flat[29999]', 'a path query to the last of 30,000 items selects it', tape['find $.flat[29999]']);
 });

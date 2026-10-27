@@ -287,7 +287,7 @@ test('text an input method commits is read: the status follows it', async (t) =>
   await t.open('/');
   await page.locator('#input').focus();
   await page.keyboard.insertText(DOC);
-  const known = t.engine === 'firefox' ? { known: 'bug (main and branch): an IME commit in Firefox never reaches the tool (BREAKER-REPORT F22)' } : {};
+  const known = t.engine === 'firefox' ? { known: 'bug (main; fixed on t3/optimize-json-memory-performance at 59023db): an IME commit in Firefox never reaches the tool (BREAKER-REPORT F22)' } : {};
   const st = await until(page, () => (/^Valid JSON/.test(window.__vis('.sb-l .st')?.textContent ?? '') ? true : null), null, { timeout: 10_000 });
   t.check(!!st, 'the status says Valid JSON', await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? ''), known);
   t.check((await inputText(page)) === DOC, 'the editor holds the text', null);
