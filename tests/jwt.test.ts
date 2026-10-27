@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { duration, readJwt } from '../lib/json/jwt';
+import { readJwt } from '../lib/json/jwt';
+import { duration } from '../lib/i18n/duration';
 import { jwtLine } from '../lib/engine/highlight';
 
 const b64u = (s: string) => Buffer.from(s, 'utf8').toString('base64url');

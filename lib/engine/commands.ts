@@ -151,17 +151,6 @@ export const COMMANDS: Command[] = [
   { id: 'shortcuts', group: 'Help', title: 'Keyboard shortcuts', keys: '?', terms: 'help keys', run: () => store.set({ shortcuts: true }) },
 ];
 
-/** Formats a shortcut for display. */
-export function keyLabel(keys: string, mac: boolean): string[] {
-  return (keys.startsWith('+') ? [keys] : keys.split('+')).map((k) => {
-    if (k === 'mod') return mac ? '⌘' : 'Ctrl';
-    if (k === 'Shift') return mac ? '⇧' : 'Shift';
-    if (k === 'Alt') return mac ? '⌥' : 'Alt';
-    if (k === 'Enter') return '↵';
-    return k;
-  });
-}
-
 /** Subsequence fuzzy match score (higher is better), or -1. */
 export function fuzzy(q: string, text: string): number {
   if (!q) return 0;

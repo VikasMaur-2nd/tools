@@ -192,6 +192,19 @@ test('the tree: a click selects a row, a double-click on a value shows it in the
   t.check((await inputText(page)) === doc.replace('"b"', '"Z"'), 'the editor selected the value', await inputText(page));
 });
 
+test('a JWT opened as the page loads is read as one (its reader loads on first use)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const exp = Math.floor(Date.now() / 1000) + 7200;
+  const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'abc', exp })}.c2lnbmF0dXJl`;
+  t.assert(await load(page, jwt, 'token.txt'), 'the token loads');
+  const st = await until(page, () => (/^JWT · HS256/.test(window.__vis('.sb-l')?.textContent ?? '') ? window.__vis('.sb-l').textContent : null), null, { timeout: 10_000 });
+  t.check(!!st, 'the status says JWT · HS256', st ?? (await page.evaluate(() => window.__vis('.sb-l')?.textContent)));
+  const out = await copied(page, 'Copy formatted output');
+  t.check(!!out && out.includes('"alg": "HS256"') && out.includes('"sub": "abc"'), 'the output is the decoded token', out?.slice(0, 200));
+});
+
 test('typing over a selection is one Undo step with the typing that follows', async (t) => {
   const { page } = t;
   await t.open('/');

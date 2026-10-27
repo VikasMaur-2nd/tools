@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { withVia } from '@/lib/analytics';
 import type { SnippetFormat } from '@/lib/badge';
 import type { Engine } from '@/lib/engine/engine';
@@ -46,12 +45,8 @@ const NAMES: Record<MenuArea, string> = {
   diff: 'Differences',
 };
 
-export default function ContextMenu() {
-  const open = useUI((s) => s.menu);
-  return open ? createPortal(<Popup key={open.id} m={open} />, document.body) : null;
-}
-
-function Popup({ m }: { m: Open }) {
+/** The open menu `m` (in a portal of JsonTool's: react-dom isn't loaded with this module). */
+export default function Popup({ m }: { m: Open }) {
   const ref = useRef<HTMLDivElement>(null);
   const done = useRef(false);
   const t = useT();

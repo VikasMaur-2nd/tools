@@ -26,7 +26,9 @@ const tipFor = (page, re) => until(page, ([s, f]) => { const t = document.queryS
 test('tooltips: document facts are PRIVATE, site text is not', { allowErrors: true }, async (t) => {
   const { page } = t;
   await t.open('/');
-  // Every state a session recorder could see (it reads the DOM on MutationObserver callbacks).
+  // Every state a session recorder could see (it reads the DOM on MutationObserver callbacks), from when the
+  // tooltip element is made (once the page is idle).
+  t.assert(await until(page, () => !!document.querySelector('.tip'), null, { timeout: 10_000 }), 'the tooltip element is made');
   await page.evaluate(() => {
     window.__tipStates = [];
     const t = document.querySelector('.tip');
