@@ -14,6 +14,9 @@ defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/** Files that are said to be binary (and then opened as text anyway). Main opens them at once (F3b). */
+const BINARY = new Set(['elf.json', 'img.png', 'a.zip', 'random.json']);
+
 // [name, bytes or () => bytes, mime]
 const FILES = [
   // An ELF header, then seeded random bytes (a real binary would differ per machine).
@@ -48,7 +51,7 @@ for (const [name, data, mime] of FILES) {
     await page.evaluate(() => (window.__xss = 0));
     const bytes = typeof data === 'function' ? data() : Buffer.from(data);
     // (Random bytes take WebKit ~45 s on a busy host: BREAKER-REPORT F3b.)
-    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim(), timeout: 150_000 });
+    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim(), timeout: 150_000, binary: BINARY.has(name) });
     const out = { status: st };
     out.toasts = await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 3000 });
     const input = await copied(page, 'Copy input to clipboard', { timeout: 5000 });
@@ -58,20 +61,24 @@ for (const [name, data, mime] of FILES) {
       const f = await copied(page, 'Copy formatted output', { timeout: 10_000 });
       out.formatted = f === null ? null : f.length > 2000 ? hash(f) : f;
     }
-    const known = name === 'utf16-bom.json' && t.engine === 'firefox' ? 'bug: Firefox opens a UTF-16 file with a BOM as garbage (BREAKER-REPORT F7)' : undefined;
+    const known = name === 'utf16-bom.json' && t.engine === 'firefox' ? 'bug: Firefox opens a UTF-16 file with a BOM as garbage (BREAKER-REPORT F7)'
+      : BINARY.has(name) ? 'bug (main): a binary file opens without asking, its every line laid out for seconds to minutes (BREAKER-REPORT F3b)'
+      : name === 'broken.jsonl' ? 'main: a JSON Lines record cut off is an error; the branch completes it (round 2, R2)' : undefined;
     golden(t, `files/${name}`, out, `${name}: outputs match the golden file`, { known });
     t.check((await page.evaluate(() => window.__xss)) === 0, 'no markup from the file ran');
   });
 }
 
-test('video.mp4: a real video opens as text with a clear error, no page errors', async (t) => {
+test('video.mp4: a real video is said to be binary, and opens as text with a clear error when asked', async (t) => {
   // A 1-second 160×120 H.264 test pattern (ffmpeg testsrc), committed: 11 KB, the same on every machine.
   const { page } = t;
   const bytes = readFileSync(join(HERE, 'fixtures', 'test-pattern.mp4'));
   await t.open('/');
-  const st = await loadAny(page, bytes, 'video.mp4', { mimeType: 'video/mp4' });
+  const st = await loadAny(page, bytes, 'video.mp4', { mimeType: 'video/mp4', binary: true });
   t.check(st?.kind === 'err' && /^Ln 1, Col 1: Unexpected control character U\+0000/.test(st.msg), 'an error at the first byte', st);
-  t.check((await seenToasts(page)).includes('Opened video.mp4'), 'Opened video.mp4', await seenToasts(page));
+  const seen = await seenToasts(page);
+  t.check(seen.includes('video.mp4 looks like a binary file, not JSONOpen as text'), 'said to be binary first', seen, { known: 'bug (main): a binary file opens without asking (BREAKER-REPORT F3b)' });
+  t.check(seen.includes('Opened video.mp4'), 'Opened video.mp4', seen);
 });
 
 // ── Encodings across read chunks ────────────────────────────────────────────────────────────────

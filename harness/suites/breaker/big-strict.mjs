@@ -234,7 +234,7 @@ test('WebMCP tools on a 3 MB document answer exactly', { engines: ['chromium'], 
     const r = await exec(name, args);
     out.push([name, JSON.stringify(args).slice(0, 60), r.length > 1500 ? { hash: hash(r), head: r.slice(0, 1500) } : r]);
   }
-  golden(t, 'big-strict/webmcp', out, 'every answer matches the golden file');
+  golden(t, 'big-strict/webmcp', out, 'every answer matches the golden file', { known: 'bug (main): WebMCP answers past MAX_RESULT (BREAKER-REPORT F9)' });
 });
 
 test('typing into a 3 MB document: the status, tree and output follow each edit, and Undo restores it', async (t) => {

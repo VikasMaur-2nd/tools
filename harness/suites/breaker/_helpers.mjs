@@ -106,10 +106,12 @@ export async function clear(page) {
 }
 
 /** Opens bytes as `name` after clearing the input and waits until the tool settled on them (any raw size). */
-export async function loadAny(page, data, name, { timeout = 30_000, mimeType, ready = false } = {}) {
+export async function loadAny(page, data, name, { timeout = 30_000, mimeType, ready = false, binary = false } = {}) {
   await clear(page);
   await watchToasts(page);
   await openBytes(page, name, data, mimeType);
+  // (The branch asks before opening a file that looks binary; main opens it at once.)
+  if (binary) await openAsText(page, 10_000);
   // (An empty file leaves "Ready": wait for its toast first.)
   if (ready) await until(page, () => (window.__toasts?.length ?? 0) > 0 || null, null, { timeout: 5000 });
   return settled(page, { timeout, ready });
@@ -119,6 +121,13 @@ export async function loadAny(page, data, name, { timeout = 30_000, mimeType, re
 export async function load(page, text, name = 'doc.json', { timeout = 30_000 } = {}) {
   await openBytes(page, name, text);
   return settled(page, { raw: Buffer.byteLength(asLoaded(text)), timeout });
+}
+
+/** Waits for the "looks like a binary file" toast and opens the file as text anyway; returns the toast's text (null: none came). */
+export async function openAsText(page, timeout = 30_000) {
+  const msg = await waitToast(page, /looks like a binary file, not JSON/, timeout);
+  if (msg) await page.locator('.toast:visible .toast-act').click();
+  return msg;
 }
 
 /** The status bar's left text right now. */
