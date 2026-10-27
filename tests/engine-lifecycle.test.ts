@@ -102,7 +102,7 @@ function session() {
       if (name === './sizes') return { compressedSizes: () => Promise.resolve({ gzip: 1 }) };
       if (name === './editor') return { loadSurface: () => Promise.resolve() };
       if (name === '../json/smart') return { embeddedJson: (s: string) => s };
-      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
+      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === './binary' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
   });

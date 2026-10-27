@@ -9,17 +9,19 @@ import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
-import { clear, golden, hash, heavyLock, reformat, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
+import { clear, golden, hash, heavyLock, openAsText, reformat, seenToasts, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: 600_000 });
 
 /** Opens fixture `name` through Open file and waits (scaled per engine) until the status settles. */
-async function open(t, name, { minutes = 3, reopen = true } = {}) {
+async function open(t, name, { minutes = 3, reopen = true, binary = false } = {}) {
   const { page } = t;
   if (reopen) await t.open('/');
   await clear(page);
   await watchToasts(page);
   await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture(name));
+  // (A binary file is said to be one first: then opened as text anyway.)
+  if (binary) await openAsText(page, 60_000 * slow(t));
   return settled(page, { timeout: minutes * 60_000 * slow(t) });
 }
 
@@ -131,26 +133,41 @@ test('a 200 MB string of non-ASCII text opens as valid JSON', { known: (engine) 
   t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 1 node · depth 0', 'valid, one node', st);
 });
 
-test('5 MB of random bytes: an error within seconds, and the page stays responsive', async (t) => {
-  // (50 MB of random bytes runs Chromium out of memory on main: 6.8 GiB after 3 minutes. Not opened here.)
-  const { page } = t;
-  await page.goto(t.base + '/', { waitUntil: 'commit' });
-  await t.app.waitEngine(page);
-  await page.evaluate(() => {
+/** Starts recording the longest gap between frames (window.__gap.max). */
+const watchGaps = (page) =>
+  page.evaluate(() => {
     window.__gap = { last: performance.now(), max: 0 };
     const f = () => { const n = performance.now(); window.__gap.max = Math.max(window.__gap.max, n - window.__gap.last); window.__gap.last = n; requestAnimationFrame(f); };
     requestAnimationFrame(f);
   });
-  const t0 = Date.now();
-  const st = await open(t, 'blob-5mb', { minutes: 3, reopen: false });
-  const ms = Date.now() - t0;
-  const gap = await page.evaluate(() => Math.round(window.__gap.max));
-  t.log('random 5 MB:', { ms, gap, st });
-  t.check(st?.kind === 'err', 'an error status', st);
-  const known = { known: 'bug: binary text makes the editor measure every line in the DOM (BREAKER-REPORT, binary files)' };
-  t.check(ms < t.budget(15_000) * slow(t), 'the error shows within 15 s', `${ms} ms`, known);
-  t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`, known);
-});
+
+for (const [mb, seconds, lock] of [[5, 15, false], [50, 90, true]]) {
+  test(`${mb} MB of random bytes: said to be binary at once; opened as text, an error within ${seconds} s and the page stays responsive`, async (t) => {
+    if (lock) await heavyLock(t);
+    const { page } = t;
+    let crashed = false;
+    page.on('crash', () => (crashed = true));
+    await t.open('/');
+    await clear(page);
+    await watchToasts(page);
+    let t0 = Date.now();
+    await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture(`blob-${mb}mb`));
+    const said = await openAsText(page, 60_000 * slow(t));
+    t.check(said === `blob-${mb}mb.bin looks like a binary file, not JSONOpen as text`, 'said to be binary', said);
+    t.log('binary toast after', Date.now() - t0, 'ms');
+    await watchGaps(page);
+    t0 = Date.now();
+    const st = await settled(page, { timeout: 5 * 60_000 * slow(t) });
+    const ms = Date.now() - t0;
+    const gap = await page.evaluate(() => Math.round(window.__gap.max)).catch(() => -1);
+    t.log(`random ${mb} MB opened as text:`, { ms, gap, st });
+    t.check(!crashed, 'the tab survives');
+    t.check(st?.kind === 'err', 'an error status', st);
+    t.check((await seenToasts(page)).includes(`Opened blob-${mb}mb.bin`), `Opened blob-${mb}mb.bin`, await seenToasts(page));
+    t.check(ms < t.budget(seconds * 1000) * slow(t), `the error shows within ${seconds} s`, `${ms} ms`);
+    t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`);
+  });
+}
 
 test('the 300 MiB limit: one byte more is refused before reading', async (t) => {
   // A sparse file: 314,572,801 bytes on paper, almost nothing on disk.

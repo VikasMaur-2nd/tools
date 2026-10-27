@@ -7,6 +7,7 @@
   "stats": "1,594 lines · 1 node · depth 0"
  },
  "toasts": [
+  "elf.json looks like a binary file, not JSONOpen as text",
   "Opened elf.json"
  ],
  "input": "189465:59df1a11"

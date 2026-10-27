@@ -22,6 +22,9 @@ function video() {
   return r.status === 0 ? readFileSync(file) : null;
 }
 
+/** Files that are said to be binary (and then opened as text anyway). */
+const BINARY = new Set(['elf.json', 'img.png', 'a.zip', 'random.json']);
+
 // [name, bytes or () => bytes, mime]
 const FILES = [
   // An ELF header, then seeded random bytes (a real binary would differ per machine).
@@ -55,7 +58,7 @@ for (const [name, data, mime] of FILES) {
     await t.open('/');
     await page.evaluate(() => (window.__xss = 0));
     const bytes = typeof data === 'function' ? data() : Buffer.from(data);
-    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim() });
+    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim(), binary: BINARY.has(name) });
     const out = { status: st };
     out.toasts = await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 3000 });
     const input = await copied(page, 'Copy input to clipboard', { timeout: 5000 });
@@ -71,12 +74,14 @@ for (const [name, data, mime] of FILES) {
   });
 }
 
-test('video.mp4: a real video opens as text with a clear error, no page errors', async (t) => {
+test('video.mp4: a real video is said to be binary, and opens as text with a clear error when asked', async (t) => {
   const { page } = t;
   const bytes = video();
   if (!t.check(!!bytes, 'ffmpeg made a test video')) return;
   await t.open('/');
-  const st = await loadAny(page, bytes, 'video.mp4', { mimeType: 'video/mp4' });
+  const st = await loadAny(page, bytes, 'video.mp4', { mimeType: 'video/mp4', binary: true });
   t.check(st?.kind === 'err' && /^Ln 1, Col 1: Unexpected control character U\+0000/.test(st.msg), 'an error at the first byte', st);
-  t.check((await seenToasts(page)).includes('Opened video.mp4'), 'Opened video.mp4', await seenToasts(page));
+  const seen = await seenToasts(page);
+  t.check(seen.includes('video.mp4 looks like a binary file, not JSONOpen as text'), 'said to be binary first', seen);
+  t.check(seen.includes('Opened video.mp4'), 'Opened video.mp4', seen);
 });

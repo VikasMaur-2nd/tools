@@ -18,6 +18,7 @@ import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
 import { readText } from '../json/text';
+import { looksBinary } from './binary';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
@@ -1705,6 +1706,19 @@ export class Engine {
     try {
       const text = await readText(f);
       if (signal.aborted) return unshow();
+      // Not text (a zip, an image, a video opened by mistake): said so, and opened only when asked.
+      if (looksBinary(text)) {
+        unshow();
+        return this.toast(`${f.name} looks like a binary file, not JSON`, 'err', {
+          label: 'Open as text',
+          run: () => {
+            this.request(1);
+            noteLoad(source, 1, f.name);
+            this.load(text, f.name, true, true);
+            this.toast(`Opened ${f.name}`, 'ok');
+          },
+        });
+      }
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
       let failed = false;
       if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
@@ -1867,10 +1881,14 @@ export class Engine {
     try {
       const text = await readText(f);
       if (signal.aborted) return;
-      this.loadCompare(text, f.name);
-      noteLoad(source, 2, f.name);
-      if (this.settings.view !== 'compare') this.setView('compare');
-      this.toast(`Comparing with ${f.name}`, 'ok');
+      const open = () => {
+        this.loadCompare(text, f.name);
+        noteLoad(source, 2, f.name);
+        if (this.settings.view !== 'compare') this.setView('compare');
+        this.toast(`Comparing with ${f.name}`, 'ok');
+      };
+      if (!looksBinary(text)) return open();
+      this.toast(`${f.name} looks like a binary file, not JSON`, 'err', { label: 'Open as text', run: () => (this.request(2), open()) });
     } catch {
       if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
