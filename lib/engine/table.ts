@@ -1,7 +1,6 @@
-import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Key } from '../json/parser';
+import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Key, type TapeLink } from '../json/parser';
 import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
-import { bigFill } from './tree';
 import type { FindResult } from './codeview';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
@@ -50,7 +49,14 @@ const cellText = (n: JNode): string => {
 
 const csvEscape = (s: string) => ((s = formulaSafe(s)), /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
 
-const typeRank = (n: JNode | undefined) => (n === undefined ? 9 : n.t === NUM ? 0 : n.t === STR ? 1 : n.t === BOOL ? 2 : n.t === NUL ? 3 : 4);
+/** Sort rank of a cell of kind `t` (-1: none): numbers, text, booleans, null, arrays and objects, then missing. */
+const typeRank = (t: number) => (t < 0 ? 9 : t === NUM ? 0 : t === STR ? 1 : t === BOOL ? 2 : t === NUL ? 3 : 4);
+
+/** cellText of tape node `c`. */
+const tapeText = (z: TapeLink, c: number) => {
+  const t = z.kind(c);
+  return t === NUL ? 'null' : t === BOOL ? (z.value(c) ? 'true' : 'false') : t >= ARR ? '' : (z.value(c) as string);
+};
 
 const JSON_NUM = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
@@ -94,8 +100,11 @@ export class TableView {
 
   node: JNode | null = null;
   private nodeKey: string | null = null;
+  /** Its items (rows) as nodes; for a node from a tape, as tape indexes (`ti`): no node made for a row not drawn. */
   private items: JNode[] = [];
-  private order: number[] = [];
+  private ti: Int32Array | null = null;
+  /** Items in display order. */
+  private order = new Int32Array(0);
   private cols: Col[] = [];
   private sortCol = -1;
   private sortDir = 1;
@@ -140,30 +149,44 @@ export class TableView {
   }
 
   get rowCount() {
-    return this.items.length;
+    return this.ti ? this.ti.length : this.items.length;
+  }
+
+  /** Item `idx` (from a tape: made now, the same object while anything holds it). */
+  private item(idx: number): JNode {
+    return this.ti ? this.node!.z!.at(this.ti[idx]) : this.items[idx];
+  }
+
+  /** The tape node of item `it`'s cell in `col` (see cell), or -1. */
+  private tcell(z: TapeLink, it: number, col: Col, wide?: Map<string, number> | null): number {
+    const obj = z.kind(it) === OBJ;
+    if (col.key === null) return obj ? -1 : it;
+    if (!obj) return -1;
+    return wide ? (wide.get(col.key) ?? -1) : z.member(it, col.key);
+  }
+
+  /** Item `it`'s members by name (the last of a name), for an item read cell by cell; null for a narrow one. */
+  private members(z: TapeLink, it: number): Map<string, number> | null {
+    if (z.kind(it) !== OBJ || z.count(it) <= 12) return null;
+    const m = new Map<string, number>();
+    for (let c = it + 1, end = z.next(it); c < end; c = z.next(c)) m.set(z.key(c) as string, c);
+    return m;
   }
 
   get colCount() {
     return this.cols.length;
   }
 
-  /** Called when a node whose children were made in steps is laid out (the counts the engine shows change). */
-  onFilled: (() => void) | null = null;
-
   setNode(node: JNode | null, keepSort = false) {
     if (!node && !this.node) return; // already empty: nothing to lay out
-    // (Items of millions from a tape are made in steps first; until then the table keeps what it showed.)
-    this.pending = node;
-    if (bigFill(node && node.t >= ARR ? node : null, () => {
-      if (this.pending !== node) return;
-      this.setNode(node, keepSort);
-      this.onFilled?.();
-    }, () => this.pending === node)) return;
     const key = node ? pathOf(node).join('\u0001') : null;
     const same = key !== null && key === this.nodeKey;
     this.nodeKey = key;
     this.node = node && node.t >= ARR ? node : null;
-    this.items = this.node ? kids(this.node) : [];
+    // (Items of millions from a tape stay on the tape.)
+    const z = this.node?.z;
+    this.ti = z ? z.kids(this.node!.zi) : null;
+    this.items = this.node && !z ? kids(this.node) : [];
     if (!keepSort || !same) {
       this.sortCol = -1;
       this.sortDir = 1;
@@ -197,14 +220,22 @@ export class TableView {
     const isObj = this.node?.t === OBJ;
     const seen = new Map<string, number>();
     let hasValue = false;
+    const add = (key: Key) => {
+      const k = key as string;
+      if (seen.size < MAX_COLS && !seen.has(k)) seen.set(k, 0);
+    };
+    const ti = this.ti;
+    if (ti) {
+      // (Keys read from the tape: a big array's rows stay unmade.)
+      const z = this.node!.z!;
+      for (const it of ti) {
+        if (z.kind(it) === OBJ) for (let c = it + 1, end = z.next(it); c < end; c = z.next(c)) add(z.key(c));
+        else hasValue = true;
+      }
+    }
     for (let r = 0; r < items.length; r++) {
       const it = items[r];
-      // (Keys read from the tape when the item's members aren't made: a big array's rows stay unmade.)
       if (it.t === OBJ) {
-        const add = (key: Key) => {
-          const k = key as string;
-          if (seen.size < MAX_COLS && !seen.has(k)) seen.set(k, 0);
-        };
         if (it.z && it._v === undefined) it.z.childKeys(it, add);
         else for (const c of kids(it)) add(c.key);
       } else hasValue = true;
@@ -213,17 +244,20 @@ export class TableView {
     if (hasValue) cols.push({ key: null, label: 'value', w: 0 });
     for (const k of seen.keys()) cols.push({ key: k, label: k, w: 0 });
 
-    // Width from a sample of content.
-    const sample = Math.min(items.length, 400);
+    // Width from a sample of content (from a tape, read there).
+    const sample = Math.min(this.rowCount, 400);
+    const z = this.node?.z;
     for (let ci = 0; ci < cols.length; ci++) {
       const col = cols[ci];
       let len = col.label.length + 2;
       for (let r = 0; r < sample; r++) {
-        const it = items[r];
         let l: number;
-        if (ci === 0) l = isObj ? String(it.key).length : String(r).length;
+        if (ti) {
+          const c = ci ? this.tcell(z!, ti[r], col) : -1;
+          l = ci === 0 ? (isObj ? String(z!.key(ti[r])).length : String(r).length) : c < 0 ? 1 : z!.kind(c) >= ARR ? 6 : tapeText(z!, c).length;
+        } else if (ci === 0) l = isObj ? String(items[r].key).length : String(r).length;
         else {
-          const c = this.cell(it, col);
+          const c = this.cell(items[r], col);
           l = !c ? 1 : c.t >= ARR ? 6 : cellText(c).length;
         }
         if (l > len) len = l;
@@ -258,9 +292,6 @@ export class TableView {
 
   private maps = new WeakMap<JNode, Map<string, JNode>>();
 
-  /** The node asked for last (one being filled in steps may be replaced by another meanwhile). */
-  private pending: JNode | null = null;
-
   // ── Find (rows whose key or any cell contains the query) ────────────────
 
   private fq = '';
@@ -281,12 +312,27 @@ export class TableView {
       const qn = cs ? q : q.toLowerCase();
       const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
       const isObj = this.node.t === OBJ;
+      const ti = this.ti;
+      const z = this.node.z!;
       for (let r = 0; r < this.order.length; r++) {
-        const it = this.items[this.order[r]];
-        let hit = has(isObj ? String(it.key) : String(this.order[r]));
-        for (let ci = 1; !hit && ci < this.cols.length; ci++) {
-          const c = this.cell(it, this.cols[ci]);
-          if (c && c.t < ARR) hit = has(cellText(c));
+        const idx = this.order[r];
+        let hit: boolean;
+        if (ti) {
+          // (Read off the tape: no node made for a row.)
+          const it = ti[idx];
+          hit = has(isObj ? String(z.key(it)) : String(idx));
+          const wide = hit ? null : this.members(z, it);
+          for (let ci = 1; !hit && ci < this.cols.length; ci++) {
+            const c = this.tcell(z, it, this.cols[ci], wide);
+            if (c >= 0 && z.kind(c) < ARR) hit = has(tapeText(z, c));
+          }
+        } else {
+          const it = this.items[idx];
+          hit = has(isObj ? String(it.key) : String(idx));
+          for (let ci = 1; !hit && ci < this.cols.length; ci++) {
+            const c = this.cell(it, this.cols[ci]);
+            if (c && c.t < ARR) hit = has(cellText(c));
+          }
         }
         if (hit) this.fhits.push(r);
       }
@@ -312,7 +358,7 @@ export class TableView {
 
   private gotoHit() {
     const r = this.fhits[this.fi];
-    this.sel = this.items[this.order[r]];
+    this.sel = this.item(this.order[r]);
     this.ar = r;
     const y = r * TRH;
     const vh = this.el.clientHeight - 32;
@@ -321,27 +367,54 @@ export class TableView {
   }
 
   private applySort() {
-    const n = this.items.length;
-    const order = new Array<number>(n);
+    const n = this.rowCount;
+    const order = new Int32Array(n);
     for (let i = 0; i < n; i++) order[i] = i;
     if (this.sortCol > 0) {
       const col = this.cols[this.sortCol];
-      const vals = this.items.map((it) => this.cell(it, col));
+      // Each row's cell read once (from a tape, there): its rank, and a number or text to compare.
+      const rank = new Uint8Array(n);
+      const num = new Float64Array(n);
+      const text: (string | undefined)[] = new Array(n);
+      const ti = this.ti;
+      const z = this.node?.z;
+      for (let i = 0; i < n; i++) {
+        let t = -1;
+        let v: string | boolean | null = null;
+        if (ti) {
+          const c = this.tcell(z!, ti[i], col);
+          if (c >= 0) {
+            t = z!.kind(c);
+            v = t >= ARR ? null : z!.value(c);
+            if (t >= ARR) num[i] = z!.count(c);
+          }
+        } else {
+          const c = this.cell(this.items[i], col);
+          if (c) {
+            t = c.t;
+            v = t >= ARR ? null : (c.v as string | boolean | null);
+            if (t >= ARR) num[i] = kids(c).length;
+          }
+        }
+        rank[i] = typeRank(t);
+        if (t === NUM) {
+          text[i] = v as string;
+          num[i] = Number(v);
+        } else if (t === STR) text[i] = v as string;
+        else if (t === BOOL) num[i] = Number(v);
+      }
       const dir = this.sortDir;
       const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
       order.sort((a, b) => {
-        const x = vals[a];
-        const y = vals[b];
-        const rx = typeRank(x);
-        const ry = typeRank(y);
-        if (rx !== ry) return rx - ry; // missing values always last
-        if (!x || !y) return 0;
+        const rx = rank[a];
+        if (rx !== rank[b]) return rx - rank[b]; // missing values always last
         let c = 0;
-        if (x.t === NUM) c = compareNumbers(x.v as string, y.v as string);
-        else if (x.t === STR) c = coll.compare(x.v as string, y.v as string);
-        else if (x.t === BOOL) c = Number(x.v) - Number(y.v);
-        else if (x.t >= ARR) c = kids(x).length - kids(y).length;
-        return c * dir;
+        // (Numbers: as compareNumbers, its doubles read once.)
+        if (rx === 0) c = num[a] !== num[b] ? (num[a] < num[b] ? -1 : 1) : compareNumbers(text[a]!, text[b]!);
+        else if (rx === 1) c = coll.compare(text[a]!, text[b]!);
+        else if (rx === 2 || rx === 4) c = num[a] - num[b];
+        // (Ties in the document's order, in every engine.)
+        return c * dir || a - b;
       });
     } else if (this.sortCol === 0 && this.sortDir < 0) order.reverse();
     this.order = order;
@@ -410,7 +483,7 @@ export class TableView {
     let html = '';
     for (let r = first; r < last; r++) {
       const idx = this.order[r];
-      const it = this.items[idx];
+      const it = this.item(idx);
       const hit = this.fset?.has(idx) ? (r === this.fhits[this.fi] ? ' hit cur' : ' hit') : '';
       const sel = it === this.sel;
       // The active cell gets a class, and the id aria-activedescendant names.
@@ -490,7 +563,7 @@ export class TableView {
     }
     const row = t.closest('.tb-r') as HTMLElement | null;
     if (!row) return;
-    const it = this.items[Number(row.dataset.r)];
+    const it = this.itemAt(row);
     if (!it) return;
     const cellEl = t.closest('[data-c]') as HTMLElement | null;
     const ci = cellEl ? Number(cellEl.dataset.c) : 0;
@@ -565,7 +638,7 @@ export class TableView {
         e.preventDefault();
         if (r < 0) return this.sortBy(c);
         if (e.key === 'Enter') {
-          const v = this.cell(this.items[this.order[r]], this.cols[c]);
+          const v = this.cell(this.item(this.order[r]), this.cols[c]);
           if (c > 0 && v && v.t >= ARR) return this.ev.drill(v);
         }
         return this.activate(r, c);
@@ -598,16 +671,22 @@ export class TableView {
     else if (x + w > sl + this.el.clientWidth) this.el.scrollLeft = x + w - this.el.clientWidth;
     if (head) this.renderHead();
     if (r < 0) return this.render(true);
-    const it = this.items[this.order[r]];
+    const it = this.item(this.order[r]);
     this.sel = it;
     this.render(true);
     this.ev.select(this.target(it, c));
   }
 
+  /** The item of drawn row `row` (its data-r), if there is one. */
+  private itemAt(row: HTMLElement) {
+    const idx = Number(row.dataset.r);
+    return idx >= 0 && idx < this.rowCount ? this.item(idx) : undefined;
+  }
+
   /** The value of the cell at `el` (a right click), selected as a click selects it. */
   pick(el: Element): JNode | null {
     const row = el.closest('.tb-r') as HTMLElement | null;
-    const it = row ? this.items[Number(row.dataset.r)] : undefined;
+    const it = row ? this.itemAt(row) : undefined;
     if (!it) return null;
     const cellEl = el.closest('[data-c]') as HTMLElement | null;
     const ci = cellEl ? Number(cellEl.dataset.c) : 0;
@@ -627,7 +706,25 @@ export class TableView {
     if (!this.node) return '';
     const cols = this.cols.slice(this.node.t === OBJ ? 0 : 1);
     const lines = [cols.map((c) => csvEscape(c.idx ? 'key' : c.label)).join(',')];
+    const ti = this.ti;
+    const z = this.node.z!;
     for (const idx of this.order) {
+      if (ti) {
+        // (Read off the tape: no node kept for a row.)
+        const it = ti[idx];
+        const wide = this.members(z, it);
+        lines.push(
+          cols
+            .map((col) => {
+              if (col.idx) return csvEscape(String(z.key(it)));
+              const c = this.tcell(z, it, col, wide);
+              if (c < 0 || z.kind(c) === NUL) return '';
+              return csvEscape(z.kind(c) >= ARR ? z.json(c) : tapeText(z, c));
+            })
+            .join(','),
+        );
+        continue;
+      }
       const it = this.items[idx];
       lines.push(
         cols

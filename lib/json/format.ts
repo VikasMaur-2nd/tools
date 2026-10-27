@@ -526,7 +526,7 @@ export function preview(node: JNode, budget = 90): string {
 }
 
 const IDENT = /^[A-Za-z_$][\w$]*$/;
-const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
+export const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
 
 /** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without allocating. */
 /** Runs of characters past ASCII (see byteLength). */

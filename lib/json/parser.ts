@@ -91,6 +91,44 @@ export interface TapeLink {
   fillSteps(n: JNode): (until: number) => boolean;
   /** Start and end offsets of the container `nodeAt(root, off)` is or is in (null: none), making no node. */
   containerAt(off: number): [number, number] | null;
+  /** The node at tape index `i`, made with its ancestors (not its siblings): the same object while anything holds it. */
+  at(i: number): JNode;
+  /** Container `i`'s children, as tape indexes. */
+  kids(i: number): Int32Array;
+  /** How many children `i` has. */
+  count(i: number): number;
+  /** `i`'s place among its parent's children (0: the first). */
+  pos(i: number): number;
+  /** The node after `i`'s subtree (its next sibling, if it has one). */
+  next(i: number): number;
+  kind(i: number): Kind;
+  key(i: number): Key;
+  /** Leaf `i`'s value as JNode.v has it (null for a container). */
+  value(i: number): string | boolean | null;
+  /** The last member of object `i` named `key` (the value every view reads), or -1. */
+  member(i: number, key: string): number;
+  /** format.ts preview of container `n`, read from its first children only. */
+  preview(n: JNode): string;
+  /** `n`'s child at path segment `k` as path.ts resolve finds it, or null. */
+  child(n: JNode, k: string | number): JNode | null;
+  /** The node path.ts nodeAt finds at offset `off` (read off the tape), or null. */
+  nodeAtOffset(off: number): JNode | null;
+  /** format.ts stringify(node at `i`, ''), from nodes nothing keeps. */
+  json(i: number): string;
+  /** The Tree's rows under `n` (and `n`, `self`), by TreeView.flatten's rules, no node made: see TreeRows. */
+  rows(n: JNode, exp: Expansion | undefined, self: boolean, limit: number, first: number): Int32Array;
+}
+
+/**
+ * The Tree's rows of a tree made from a tape: tape indexes in document order, each `i * 2`, plus 1 for a
+ * container that is open.
+ */
+export type TreeRows = Int32Array;
+
+/** The Tree's open and closed containers that differ from its rules, by path (see tree.ts). */
+export interface Expansion {
+  open?: boolean;
+  children?: Map<string, Expansion>;
 }
 
 export const kids = (n: JNode) => n.v as JNode[];

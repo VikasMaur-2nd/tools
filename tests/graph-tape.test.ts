@@ -323,8 +323,10 @@ test('graph on a tape: a whole document resolves to the tree, node for node', ()
     const text = object(r, 0, 60);
     const out = check(text, `resolve ${i}`)!;
     checkResolve(out.m, out.tm, out.pre, out.root, `resolve ${i}`);
-    // Every node made once: the tree's own count.
-    for (let k = 0; k < out.pre.length; k++) nodeAtIndex(out.root, k);
+    // Every node made once, the same object while held: the tree's own count.
+    const nodes = Array.from(out.pre, (_, k) => nodeAtIndex(out.root, k)!);
+    assert.equal(new Set(nodes).size, out.pre.length);
+    for (let k = 0; k < nodes.length; k++) assert.equal(nodeAtIndex(out.root, k), nodes[k]);
     assert.equal(madeCount(out.root), out.pre.length);
   }
 });
@@ -415,11 +417,13 @@ test('graph view on a tape: find, matches, selection and kept collapsed cards, m
   ref.select(res.root!);
   assert.equal(live.textContent, refLive.textContent);
   assert.match(live.textContent, /^root, object, 2 items/);
-  v.select(nodeAtIndex(root, 1));
+  // (Held here: a node nothing holds can go, see Filler.at.)
+  const users = nodeAtIndex(root, 1)!;
+  v.select(users);
   ref.select(preorder(res.root!)[1]);
   assert.equal(live.textContent, refLive.textContent);
   assert.match(live.textContent, /3,000 items/);
-  assert.equal(madeCount(root), 3, 'selecting the root and users made their nodes only');
+  assert.equal(madeCount(root), 2, 'selecting the root and users made their nodes only (not meta)');
 
   // Find: the same count and hits, nothing made.
   for (const q of ['special', 'Plain', 'deep', 'x', '42', 'zzz']) {
@@ -431,7 +435,8 @@ test('graph view on a tape: find, matches, selection and kept collapsed cards, m
     assert.deepEqual(v_.hitRow, ref_.hitRow, `${q}: rows hit`);
     assert.deepEqual(v_.hitCard, ref_.hitCard, `${q}: cards hit`);
   }
-  assert.equal(madeCount(root), 3, 'find made nodes');
+  assert.equal(madeCount(root), 2, 'find made nodes');
+  assert.equal(nodeAtIndex(root, 1), users);
 
   // Going to a match makes that node (and its ancestors' children), selects it and tells the engine.
   v.search('special', false);

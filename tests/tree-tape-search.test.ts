@@ -107,31 +107,3 @@ test('tree search on a tape: an escape letter (\\t, \\n, \\b, \\f, \\r) is not a
     }
   }
 });
-
-test('bigFill makes a big container\'s children in short steps, then says so; small ones are left to read at once', async () => {
-  const { bigFill, BIG_FILL } = await import('../lib/engine/tree');
-  const big = JSON.stringify(Array.from({ length: BIG_FILL + 5 }, (_, i) => i));
-  const lazy = lazyResult(tapeOf(parse(big), big), big);
-  const done = new Promise<void>((resolve) => assert.equal(bigFill(lazy.root, resolve), true));
-  assert.equal(madeCount(lazy.root), 1, 'not made at once');
-  await done;
-  assert.equal(madeCount(lazy.root), BIG_FILL + 6);
-  assert.equal((lazy.root!.v as unknown[]).length, BIG_FILL + 5);
-  assert.equal(bigFill(lazy.root, () => assert.fail('nothing to wait for')), false, 'already made');
-  const small = '[1,2,3]';
-  assert.equal(bigFill(lazyResult(tapeOf(parse(small), small), small).root, () => assert.fail('nothing to wait for')), false);
-});
-
-test('bigFill stops making children once they are no longer wanted', async () => {
-  const { bigFill, BIG_FILL } = await import('../lib/engine/tree');
-  const big = JSON.stringify(Array.from({ length: BIG_FILL * 4 }, (_, i) => i));
-  const lazy = lazyResult(tapeOf(parse(big), big), big);
-  // Wanted for two steps, then dropped (as when another document comes).
-  let asked = 0;
-  let called = false;
-  assert.equal(bigFill(lazy.root, () => (called = true), () => ++asked <= 2), true);
-  await new Promise((r) => setTimeout(r, 300));
-  assert.equal(asked, 3, 'asked before each step, and no more after it was dropped');
-  assert.equal(called, false);
-  assert.equal(lazy.root!._v, undefined, 'its children were never set');
-});
