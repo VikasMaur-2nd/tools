@@ -606,9 +606,13 @@ export class Wrapper {
       }
     }
     const lead = this.lead;
-    // Whole documents prune counts of lines that are gone; edits only add.
+    // Whole documents prune counts of lines that are gone; edits only add. Only counts that were measured
+    // are kept: one found as cheaply again isn't (a million lines of a big document held a million strings).
     const keep = lo === 0 && hi === n ? new Map<string, number>() : this.sized;
     const unsized: number[] = [];
+    // Rows drawn by these views needn't match a textarea: a line a quarter of a row long can't wrap (no
+    // character but the widest few is over four cells), so isn't measured.
+    const quarter = this.exact ? -1 : cols >> 2;
     for (let k = lo; k < hi; k++) {
       const a = A[k];
       const b = B[k];
@@ -637,6 +641,10 @@ export class Wrapper {
         out[k] = this.cut(s, 0, s.length);
         continue;
       }
+      if (s.length <= quarter && !FORCED.test(s) && !WIDE.test(s)) {
+        out[k] = 1;
+        continue;
+      }
       let r = this.sized.get(s) ?? keep.get(s);
       // A long line is laid out once, as the mirror its rows are later read from.
       if (r === undefined && s.length > LONG_LINE) r = this.mirror(s).rows;
@@ -646,29 +654,13 @@ export class Wrapper {
         keep.set(s, r);
       }
     }
-    if (unsized.length && !this.exact) {
-      // Rows drawn by these views needn't match a textarea: a line a quarter of a row long
-      // can't wrap (no character but the widest few is over four cells), so isn't measured.
-      const quarter = cols >> 2;
-      let w = 0;
-      for (const k of unsized) {
-        const s = B[k] - A[k] <= quarter ? text.slice(A[k], B[k]) : '';
-        if (s && !FORCED.test(s) && !WIDE.test(s)) {
-          out[k] = 1;
-          keep.set(s, 1);
-        } else unsized[w++] = k;
-      }
-      unsized.length = w;
-    }
     if (unsized.length) {
       const lines = unsized.map((k) => text.slice(A[k], B[k]));
       this.learn(lines);
       const big: number[] = [];
       for (let j = 0; j < lines.length; j++) {
-        if (this.fits(lines[j])) {
-          out[unsized[j]] = 1;
-          keep.set(lines[j], 1);
-        } else big.push(j);
+        if (this.fits(lines[j])) out[unsized[j]] = 1;
+        else big.push(j);
       }
       const sizes = this.measure(big.map((j) => lines[j]));
       big.forEach((j, x) => {

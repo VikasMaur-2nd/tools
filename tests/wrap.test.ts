@@ -534,6 +534,26 @@ describe('binary text', () => {
     return st;
   };
 
+  test('a whole layout keeps the counts it measured, not those found as cheaply again: the same rows next time', () => {
+    const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
+    const lines: string[] = [];
+    for (let i = 0; i < 3000; i++) lines.push(`é${i}`, `  "name": "Zoë ${i}",`);
+    // Lines past a row (40 columns): laid out (measured), their counts kept.
+    for (let i = 0; i < 3; i++) lines.push(`  "note": "${'Олег '.repeat(12 + i)}"`);
+    const t = lines.join('\n');
+    const laidOut: string[] = [];
+    (w as unknown as { measure(lines: string[]): number[] }).measure = (ls) => (laidOut.push(...ls), ls.map((l) => Math.ceil(l.length / 40)));
+    const [A, B] = linesOf(t);
+    const rows = [...w.rows(t, A, B)];
+    assert.equal(laidOut.length, 3);
+    assert.equal((w as unknown as { sized: Map<string, number> }).sized.size, 3, 'only the measured lines kept');
+    // Another document with the same lines: the same rows, nothing laid out again.
+    const t2 = 'x\n' + t;
+    const [A2, B2] = linesOf(t2);
+    assert.deepEqual([...w.rows(t2, A2, B2)].slice(1), rows);
+    assert.equal(laidOut.length, 3);
+  });
+
   test('views that draw their rows cut binary lines every few code units: no layout, no glyph measured', () => {
     const t = binary(200_000);
     const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
