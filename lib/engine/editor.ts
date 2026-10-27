@@ -114,6 +114,10 @@ export interface EditorEvents {
    * `edit`: the input edits, so the document is editable at once (else it arrives as it would have).
    */
   flush?(edit: boolean): void;
+  /** Undo or Redo went past a load (see setValue): the file name of the document shown now. */
+  renamed?(name: string | null): void;
+  /** Undo is about to be applied: true if the listener takes it instead (a document still being read, undone once it arrives). */
+  undoing?(): boolean;
 }
 
 /** Colours [a, b) of `text`, which starts at document offset `at`, as escaped HTML: for a document that isn't JSON (see setColors). */
@@ -132,6 +136,8 @@ interface Change {
   selA: [number, number];
   t: number;
   kind: 'type' | 'del' | 'other';
+  /** A load's file names, before and after it (see setValue): told on undo and redo. */
+  names?: [string | null, string | null];
 }
 
 const LINE_MARK = ['', 'dla', 'dld', 'dlc'];
@@ -2321,12 +2327,13 @@ export class Editor {
   }
 
   undo() {
-    if (this.locked) return;
+    if (this.locked || this.ev.undoing?.()) return;
     const ch = this.undo_.pop();
     if (!ch) return;
     this.histChars -= ch.del.length + ch.ins.length;
     this.redo_.push(ch);
     this.write(ch.a, ch.a + ch.ins.length, ch.del, ch.selB);
+    if (ch.names) this.ev.renamed?.(ch.names[0]);
   }
 
   redo() {
@@ -2335,6 +2342,7 @@ export class Editor {
     if (!ch) return;
     this.push(ch);
     this.write(ch.a, ch.a + ch.del.length, ch.ins, ch.selA);
+    if (ch.names) this.ev.renamed?.(ch.names[1]);
   }
 
   /** Low-level replace without recording history. */
@@ -2379,13 +2387,13 @@ export class Editor {
     this.apply(a, b, text, selA, selB, 'input');
   }
 
-  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind) {
+  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind, names?: [string | null, string | null]) {
     text = lf(text);
     const sb = this.selection;
     const del = this.doc.slice(a, b);
     const s1 = selA ?? a + text.length;
     const s2 = selB ?? s1;
-    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other' });
+    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names });
     this.redo_ = [];
     this.typing = true;
     this.shiftFolds(a, b, text, true);
@@ -2405,14 +2413,15 @@ export class Editor {
   }
 
   /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
-  setValue(next: string, caret = 0, load = false) {
+  /** `names`: the file names before and after, when the document comes from or leaves a file (see EditorEvents.renamed). */
+  setValue(next: string, caret = 0, load = false, names?: [string | null, string | null]) {
     next = lf(next);
     if (next.length !== this.doc.length || next !== this.text) {
       // (A new document may open in the quiet view: see LAZY_CHARS.)
       this.forceEdit = false;
       this.loading = load;
       try {
-        this.apply(0, this.doc.length, next, caret, caret, 'set');
+        this.apply(0, this.doc.length, next, caret, caret, 'set', names);
       } finally {
         this.loading = false;
       }

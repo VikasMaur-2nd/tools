@@ -512,6 +512,55 @@ test('a save waiting for an idle moment is dropped by destroy, which saves the d
   assert.equal(s.storage.get('jf:doc'), '{"new":1}');
 });
 
+test('the file name is saved with the document kept: a load still on its way when the page is left, or the one before', () => {
+  for (const [pending, doc, file] of [
+    ['{"new":1}', '{"new":1}', 'new.json'],
+    // Too big to keep: the document before stays, under its own name.
+    ['[' + '0,'.repeat(1_300_000) + '0]', '{"old":1}', 'old.json'],
+  ]) {
+    const s = session();
+    closable(s.engine, '{"old":1}');
+    Object.assign(s.engine, { persistEnabled: true, edName: 'old.json' });
+    s.storage.set('jf:file', 'old.json');
+    s.engine.pendingLoad = { seq: s.engine.loadSeq, text: pending, persist: true, names: ['old.json', 'new.json'] };
+    s.engine.destroy();
+    assert.equal(s.storage.get('jf:doc'), doc);
+    assert.equal(s.storage.get('jf:file'), file);
+  }
+  // A document too big to keep is saved as none, and so is its name.
+  const s = session();
+  closable(s.engine, '[' + '0,'.repeat(1_300_000) + '0]');
+  Object.assign(s.engine, { persistEnabled: true, edName: 'big.json' });
+  s.engine.destroy();
+  assert.equal(s.storage.get('jf:doc'), undefined);
+  assert.equal(s.storage.get('jf:file'), undefined);
+});
+
+test('Undo while a file is being read undoes that file once it arrives, not the document before it', async () => {
+  const { engine, loads, toasts } = loading();
+  let undone = 0;
+  engine.ed.undo = () => undone++;
+  assert.equal(engine.undoing(), false, 'nothing on its way: the editor undoes');
+  const a = later<string>();
+  const opening = engine.loadFile(file('big.json', a.promise));
+  assert.equal(engine.undoing(), true, 'taken');
+  a.settle('{"big":1}');
+  await opening;
+  assert.deepEqual(loads, ['1:big.json']);
+  assert.equal(undone, 1, 'opened, then undone');
+  assert.deepEqual(toasts, []);
+  assert.equal(engine.undoing(), false);
+  // Typing meanwhile drops the file (and the Undo with it).
+  const b = later<string>();
+  const next = engine.loadFile(file('c.json', b.promise));
+  assert.equal(engine.undoing(), true);
+  engine.requests[1].abort();
+  b.settle('{"c":1}');
+  await next;
+  assert.deepEqual(loads, ['1:big.json']);
+  assert.equal(undone, 1);
+});
+
 test('destroy closes what the tool showed for itself; a notice with an action stays', () => {
   for (const action of [false, true]) {
     const s = session();
