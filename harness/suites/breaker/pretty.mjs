@@ -5,7 +5,7 @@
 // nesting too deep to pretty-print. Expected values come from the document's own values (JSON.stringify).
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
-import { loadAny, MOD, openBytes, settled, until } from './_helpers.mjs';
+import { downloaded, loadAny, MOD, openBytes, settled, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 300_000 });
 
@@ -461,4 +461,17 @@ test('toggling wrap while a find is open on long lines: no page errors, and the 
   const known = t.engine === 'chromium' ? {} : { known: 'bug (main): toggling wrap under an open find throws "wrapper is null" (BREAKER-REPORT F21)' };
   t.check(!errors.length, 'no page errors', errors.slice(0, 2), known);
   t.check(last === 'ok', 'the last find shows 1 of 1 with its highlight', await page.evaluate(() => window.__vis('.findbar .count')?.textContent));
+});
+
+test('3 MB in the Format view: Download formatted output saves the exact UTF-8 bytes, indent 2 and tabs', async (t) => {
+  // (The branch makes a big Pretty output in ~1M-character parts, fc1ac96: emoji and astral characters on every
+  // part's lines must come out whole.)
+  const page = await open(t);
+  for (const [cmd, indent] of [['Indent with 2 spaces', '  '], ['Indent with tabs', '\t']]) {
+    await command(page, cmd);
+    const want = Buffer.from(LINES[indent].join('\n'), 'utf8');
+    await copyIs(page, hash(LINES[indent].join('\n')));
+    const file = await downloaded(page, () => command(page, 'Download formatted output'), { timeout: 120_000 });
+    t.check(!!file?.bytes && file.bytes.equals(want), `${cmd}: the file is the pretty text in UTF-8`, file && { name: file.name, size: file.bytes?.length, want: want.length });
+  }
 });
