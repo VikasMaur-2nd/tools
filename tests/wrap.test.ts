@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { asciiCells, asciiRows, CUT, leadOf, Wrapper } from '../lib/engine/wrap';
+import { asciiCells, asciiRows, BINARY, CUT, FORCED, leadOf, plainLine, WIDE, Wrapper } from '../lib/engine/wrap';
 import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 import { Doc } from '../lib/engine/doc';
 
@@ -32,6 +32,22 @@ describe('soft wrap arithmetic', () => {
     assert.equal(asciiRows(81, 80), 2);
     assert.equal(asciiRows(800, 80), 10);
   });
+});
+
+test('a line told plain in place is one the patterns find nothing in (and most lines of other scripts are)', () => {
+  let seed = 3;
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  const units = [0, 8, 9, 10, 11, 12, 13, 14, 0x1f, 0x20, 0x41, 0x7e, 0x7f, 0x80, 0x84, 0x85, 0x86, 0x9f, 0xa0, 0xe9, 0x2028, 0x2029, 0x4e2d, 0xa9c0, 0xa9c1, 0xa9cd, 0xa9ce, 0xfdf9, 0xfdfa, 0xfdfd, 0xfdfe, 0xfffd, 0xfffe, 0xffff, 0xd800, 0xdbff, 0xdc00, 0xdfff];
+  const pairs = [0x1f600, 0x11fff, 0x12000, 0x1254f, 0x12550, 0x13000, 0x1345f, 0x1d000, 0x1d24f, 0x1d250, 0x10ffff];
+  for (let k = 0; k < 20_000; k++) {
+    let t = '';
+    for (let n = rnd(8); n >= 0; n--) t += rnd(3) ? String.fromCharCode(units[rnd(units.length)]) : String.fromCodePoint(pairs[rnd(pairs.length)]);
+    const a = rnd(2);
+    const b = t.length - rnd(2);
+    const s = t.slice(a, Math.max(a, b));
+    if (plainLine(t, a, Math.max(a, b))) assert.ok(!BINARY.test(s) && !FORCED.test(s) && !WIDE.test(s), JSON.stringify(s));
+  }
+  for (const s of ['"Zoë 12": "東京",', '  "name": "Олег — café",', 'tab\there', 'हिन्दी', 'ｶﾀｶﾅ']) assert.ok(plainLine(s, 0, s.length), s);
 });
 
 describe('rows that start inside a string', () => {
@@ -533,6 +549,37 @@ describe('binary text', () => {
     }
     return st;
   };
+
+  test('rows counted in steps are those of rows() in one go; a new width meanwhile drops them', () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 30_000; i++) lines.push(i % 9 === 4 ? `"${'é中'.repeat(i % 50)}",` : i % 7 === 3 ? `"${'ab'.repeat(i % 60)}",` : `${i},`);
+    const t = lines.join('\n') + '\n' + binary(3000);
+    const [A, B] = linesOf(t);
+    const measure = (ls: string[]) => ls.map((l) => Math.ceil(l.length / 40));
+    const once = make(false, (c) => (c >= 0x1100 ? 16 : 8)).w;
+    (once as unknown as { measure: typeof measure }).measure = measure;
+    const want = [...once.rows(t, A, B)];
+    const wantOdd = [...once.odd];
+    const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
+    (w as unknown as { measure: typeof measure }).measure = measure;
+    const run = (w as unknown as Wrapper).rowsInSteps(t, A, B);
+    let got: Int32Array | null | undefined;
+    let steps = 0;
+    while ((got = run(performance.now() + 1)) === undefined) steps++;
+    assert.ok(steps > 1, `${steps} steps`);
+    assert.deepEqual([...got!], want);
+    assert.deepEqual([...w.odd], wantOdd);
+    // Then an edit reuses them, as after rows().
+    const t2 = t.replace('\n10,\n', '\n10é,\n');
+    const [A2, B2] = linesOf(t2);
+    const at = t.indexOf('\n10,\n') + 3;
+    assert.deepEqual([...w.rows(t2, A2, B2, [at, at, at + 1])], [...(once as unknown as Wrapper).rows(t2, A2, B2)]);
+    // Dropped when the width changes meanwhile.
+    const again = (w as unknown as Wrapper).rowsInSteps(t, A, B);
+    again(performance.now());
+    w.fit(30 * 8 + 4 + 0.25, 8);
+    assert.equal(again(performance.now() + 1000), null);
+  });
 
   test('a whole layout keeps the counts it measured, not those found as cheaply again: the same rows next time', () => {
     const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
