@@ -83,6 +83,8 @@ export interface TapeLink {
   nodeAt(root: JNode, i: number): JNode | null;
   /** Source start of tape index `i`. */
   start(i: number): number;
+  /** Start and end offsets of the container `nodeAt(root, off)` is or is in (null: none), making no node. */
+  containerAt(off: number): [number, number] | null;
 }
 
 export const kids = (n: JNode) => n.v as JNode[];

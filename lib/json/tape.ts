@@ -18,7 +18,7 @@
  * or the parser's own decoding are kept in `extra`.
  */
 import { decodeNumber, decodeString } from './decode';
-import { ARR, NUM, type Key, type Kind, type ParseResult } from './parser';
+import { ARR, NUM, OBJ, type Key, type Kind, type ParseResult } from './parser';
 
 /** Int32 per node. */
 export const W = 5;
@@ -191,4 +191,45 @@ export function nodesWithin(t: Tape, i: number, levels: number): number {
     } else c += size;
   }
   return k;
+}
+
+/**
+ * The node path.ts `nodeAt` finds at offset `off`, read off the tape: the deepest whose range holds it (a caret
+ * on a property name: that property's value), or -1.
+ */
+export function nodeAtOffset(t: Tape, off: number, src: Pick<string, 'indexOf'>): number {
+  const count = t.count;
+  const a = t.nodes;
+  if (!count || off < a[1] || off > a[2]) return -1;
+  const parent = (i: number) => a[i * W + 3];
+  // The last node starting at or before `off` (nodes are in document order).
+  let lo = 0;
+  let hi = count - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >>> 1;
+    if (a[mid * W + 1] <= off) lo = mid;
+    else hi = mid - 1;
+  }
+  const before = lo;
+  let node = before;
+  while (node >= 0 && off > a[node * W + 2]) node = parent(node);
+  if (node < 0) return -1;
+  // Between two members of an object: the member whose key the caret is in or before.
+  if ((a[node * W] & 7) === OBJ && off > a[node * W + 1] && before + 1 < count) {
+    let next = before + 1;
+    while (parent(next) >= 0 && parent(next) !== node) next = parent(next);
+    if (parent(next) === node && off < a[next * W + 1]) {
+      let prev = before;
+      while (parent(prev) >= 0 && parent(prev) !== node) prev = parent(prev);
+      const comma = prev === node ? -1 : src.indexOf(',', a[prev * W + 2]);
+      if (comma < 0 || comma >= a[next * W + 1] || comma < off) node = next;
+    }
+  }
+  return node;
+}
+
+/** `i` if it is a container, else its parent: the nearest container, or -1. */
+export function containerOf(t: Tape, i: number): number {
+  while (i >= 0 && (t.nodes[i * W] & 7) < ARR) i = t.nodes[i * W + 3];
+  return i;
 }

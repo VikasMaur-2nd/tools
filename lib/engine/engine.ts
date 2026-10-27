@@ -960,6 +960,16 @@ export class Engine {
     if (!this.synced) return;
     const off = this.ed.caret;
     const t = this.ed.text;
+    // A tree from a tape: its brackets are found on the tape (nodeAt would make the root's children).
+    const z = this.res!.root!.z;
+    if (z) {
+      const at = z.containerAt(off);
+      const close = at ? at[1] - 1 : -1;
+      const c = t.charCodeAt(close);
+      const match = at && (c === 125 || c === 93) && (off === at[0] || off === at[0] + 1 || off === close || off === at[1]);
+      this.ed.setBrackets(match ? at[0] : -1, match ? close : -1);
+      return;
+    }
     for (let n: JNode | null = nodeAt(this.res!.root, off, t); n; n = n.u) {
       if (n.t < ARR) continue;
       const close = n.e - 1;

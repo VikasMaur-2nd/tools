@@ -8,7 +8,7 @@
  * a big subtree reads the tape instead of making its nodes (see `tapeOfNode`).
  */
 import { ARR, BOOL, JNode, NUL, NUM, STR, type ParseResult, type TapeLink } from './parser';
-import { endOf, kindOf, KEY_NAME, keyKindOf, keyOf, nextOf, nodesWithin, startOf, valueOf, W, type Tape } from './tape';
+import { containerOf, endOf, kindOf, KEY_NAME, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, startOf, valueOf, W, type Tape } from './tape';
 import type { Key } from './parser';
 
 /** Makes the nodes of one tape over one source text. */
@@ -47,6 +47,11 @@ export class Filler implements TapeLink {
 
   start(i: number): number {
     return startOf(this.tape, i);
+  }
+
+  containerAt(off: number): [number, number] | null {
+    const c = containerOf(this.tape, nodeAtOffset(this.tape, off, this.src));
+    return c < 0 ? null : [startOf(this.tape, c), endOf(this.tape, c)];
   }
 
   fill(n: JNode): JNode[] {
