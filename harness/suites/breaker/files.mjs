@@ -3,25 +3,16 @@
 // HTML), JSON Lines variants and wrappers (JSONP, code fences, XSSI prefix). Each gives an exact status,
 // toast, input text and (when it parses) Format output, the same in every engine, and no page errors.
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defaults, test } from '../../lib/api.mjs';
 import { view } from '../../lib/app.mjs';
-import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
 import { copied, golden, hash, loadAny, seenToasts, treeRows, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
 
-/** A 3-second test-pattern MP4 made by ffmpeg when it is installed (else a fixed MP4-like header). */
-function video() {
-  const file = join(DIRS.fixtures, 'breaker-v1', 'video.mp4');
-  try {
-    return readFileSync(file);
-  } catch {}
-  const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=3:size=320x240:rate=15', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'ultrafast', '-bitexact', '-map_metadata', '-1', file]);
-  return r.status === 0 ? readFileSync(file) : null;
-}
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** Files that are said to be binary (and then opened as text anyway). */
 const BINARY = new Set(['elf.json', 'img.png', 'a.zip', 'random.json']);
@@ -75,9 +66,9 @@ for (const [name, data, mime] of FILES) {
 }
 
 test('video.mp4: a real video is said to be binary, and opens as text with a clear error when asked', async (t) => {
+  // A 1-second 160×120 H.264 test pattern (ffmpeg testsrc), committed: 11 KB, the same on every machine.
   const { page } = t;
-  const bytes = video();
-  if (!t.check(!!bytes, 'ffmpeg made a test video')) return;
+  const bytes = readFileSync(join(HERE, 'fixtures', 'test-pattern.mp4'));
   await t.open('/');
   const st = await loadAny(page, bytes, 'video.mp4', { mimeType: 'video/mp4', binary: true });
   t.check(st?.kind === 'err' && /^Ln 1, Col 1: Unexpected control character U\+0000/.test(st.msg), 'an error at the first byte', st);

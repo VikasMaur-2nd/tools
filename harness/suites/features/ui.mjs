@@ -35,13 +35,14 @@ test('tooltips: document facts are PRIVATE, site text is not', { allowErrors: tr
   t.assert(await setDoc(page, JSON.stringify({ a: 1, b: 'x', list: Array.from({ length: 40 }, (_, i) => ({ i, v: 'some value ' + i })) }, null, 2)), 'the document is in');
   await page.getByRole('tab', { name: 'Format' }).click();
   await until(page, () => !!window.__vis('.sb-l .sz-min'), null, { timeout: 10_000 });
-  await page.getByRole('radio', { name: /Minify/ }).hover();
+  // (Where the button is exposed: in a crowded toolbar the Find icon can lie over its centre.)
+  await t.app.hoverExposed(page, page.getByRole('radio', { name: /Minify/ }));
   const m = await tipFor(page, /% smaller/);
   t.check(!!m && /% smaller/.test(m.text) && m.priv && m.shown, 'tooltips: Minify\'s "N% smaller" is PRIVATE', m);
   await page.hover('.statusbar .sz-min');
   const s = await tipFor(page, /smaller than the input/);
   t.check(!!s && /smaller than the input/.test(s.text) && s.priv, 'tooltips: a size tooltip ("…% smaller than the input") is PRIVATE', s);
-  await page.getByRole('radio', { name: /Pretty/ }).hover();
+  await t.app.hoverExposed(page, page.getByRole('radio', { name: /Pretty/ }));
   const p = await tipFor(page, /^Indented and readable$/);
   t.check(!!p && p.text === 'Indented and readable' && !p.priv, 'tooltips: a site tooltip right after is public again', p);
   await page.getByRole('tab', { name: 'Compare' }).click();
