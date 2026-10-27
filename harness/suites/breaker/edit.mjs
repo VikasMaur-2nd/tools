@@ -229,3 +229,27 @@ test('Repair keeps ordinary JSON\'s escaped quotes: an error elsewhere is not re
     t.check(after === doc || kept(value), `${doc}: Repair leaves it alone or keeps every string's value`, after);
   }
 });
+
+test('Repair of JSON written as a string: read exactly, or left alone', async (t) => {
+  // Main leaves these alone; t3/optimize-json-memory-performance reads them with their escapes undone. Either
+  // is fine, anything else isn't (a half-undone escape, a lost character).
+  const { page } = t;
+  await t.open('/');
+  for (const [doc, value] of [
+    ['{\\"a\\": 1, \\"b\\": [true, null]}', { a: 1, b: [true, null] }],
+    ['[\\"x\\", \\"y z\\"]', ['x', 'y z']],
+    ['{\\"s\\": \\"l1\\\\nl2 \\\\u00e9 \\\\\\"q\\\\\\"\\", \\"p\\": \\"C:\\\\\\\\dir\\"}', { s: 'l1\nl2 é "q"', p: 'C:\\dir' }],
+    ['{\\"a\\": 1,}', { a: 1 }],
+  ]) {
+    await loadAny(page, doc, 'doc.json');
+    await watchToasts(page);
+    await command(page, 'Repair JSON');
+    await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 5000 });
+    const after = await inputText(page);
+    let got;
+    try {
+      got = JSON.parse(after);
+    } catch {}
+    t.check(after === doc || JSON.stringify(got) === JSON.stringify(value), `${doc}: read exactly or left alone`, after);
+  }
+});

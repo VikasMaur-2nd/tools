@@ -111,7 +111,8 @@ for (const [enc, encode] of ENCODINGS) {
     await t.open('/');
     const text = denseText();
     const want = text.replace(/\r\n/g, '\n');
-    const st = await loadAny(page, encode(text), `dense-${enc}.json`);
+    // (Dense multi-byte text loads slowly: ~20 s here, on main and the branch alike.)
+    const st = await loadAny(page, encode(text), `dense-${enc}.json`, { timeout: 120_000 });
     const known = enc.startsWith('utf16') && t.engine === 'firefox' ? { known: 'bug (main): Firefox opens a UTF-16 file with a BOM as garbage (BREAKER-REPORT F7)' } : {};
     t.check(st?.kind === 'ok' && st.msg === 'Valid JSON', 'valid JSON', st, known);
     const got = await copied(page, 'Copy input to clipboard', { timeout: 30_000 });
