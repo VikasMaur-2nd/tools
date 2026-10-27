@@ -1,8 +1,9 @@
 # A ci:quick, ci:smoke or ci:full label on a PR runs check.yml at that level on the PR's code (ci:full in
-# Chromium, Firefox and WebKit). The label is removed as the run starts: add it again to check new commits,
-# and a newer run of the same label cancels the older one. See harness/CI.md.
+# Chromium, Firefox and WebKit); ci:perf runs perf.yml's quick A/B of the PR's code against main (opening
+# bench-1mb, Chromium). The label is removed as the run starts: add it again to check new commits, and a newer
+# run of the same label cancels the older one. See harness/CI.md.
 name: check (label)
-run-name: "${{ contains(fromJSON('[\"ci:quick\",\"ci:smoke\",\"ci:full\"]'), github.event.label.name) && format('check · {0} · {1} · all · #{2}', github.event.label.name == 'ci:full' && 'full' || github.event.label.name == 'ci:smoke' && 'smoke' || 'quick', github.event.label.name == 'ci:full' && 'chromium,firefox,webkit' || 'chromium', github.event.pull_request.number) || format('label {0} · #{1} (no check)', github.event.label.name, github.event.pull_request.number) }}"
+run-name: "${{ github.event.label.name == 'ci:perf' && format('check · perf · chromium · perf/editor › open bench-1mb · #{0}', github.event.pull_request.number) || contains(fromJSON('[\"ci:quick\",\"ci:smoke\",\"ci:full\"]'), github.event.label.name) && format('check · {0} · {1} · all · #{2}', github.event.label.name == 'ci:full' && 'full' || github.event.label.name == 'ci:smoke' && 'smoke' || 'quick', github.event.label.name == 'ci:full' && 'chromium,firefox,webkit' || 'chromium', github.event.pull_request.number) || format('label {0} · #{1} (no check)', github.event.label.name, github.event.pull_request.number) }}"
 
 on:
   pull_request:
@@ -25,3 +26,17 @@ jobs:
     with:
       level: ${{ github.event.label.name == 'ci:full' && 'full' || github.event.label.name == 'ci:smoke' && 'smoke' || 'quick' }}
       engines: ${{ github.event.label.name == 'ci:full' && 'chromium,firefox,webkit' || 'chromium' }}
+
+  perf:
+    if: github.event.label.name == 'ci:perf'
+    uses: ./.github/workflows/perf.yml
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    with:
+      checks: perf/editor › open bench-1mb
+      ref: ${{ github.event.pull_request.head.sha }}
+      base: main
+      engines: chromium
+      minutes: '8'

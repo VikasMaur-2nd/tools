@@ -1,0 +1,171 @@
+# Before/after timing and memory in real browsers (pnpm perf --ref/--base) on GitHub's 2-core runners, on demand
+# only. One job per engine and check: each builds the candidate and the base and runs them in the same job, one
+# after the other (interleaved, alternating which goes first), so both share the runner. Start it by hand
+# (gh workflow run perf.yml -f checks=… -f ref=…) or with a ci:perf label on a PR (check-label.yml). The
+# results (the runner's table, results.json, and each run's metrics as JSON lines) are kept as artifacts and
+# shown in the job summary. harness/CI.md has examples and costs.
+#
+# Each job starts with scripts/ci-usage.mjs --guard (level perf): it stops the job when this month's billed
+# minutes plus this run's estimate would pass 1,000.
+name: perf
+run-name: "check · perf · ${{ inputs.engines }} · ${{ inputs.checks }} · ${{ inputs.ref }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      checks:
+        description: 'Perf checks, separated by ";", like "breaker/memory › records 100mb; breaker/memory › strings 100mb"'
+        required: true
+      ref:
+        description: 'The candidate: branch, tag or commit'
+        required: true
+      base:
+        description: 'What it is compared with'
+        default: main
+      harness:
+        description: 'Where the checks come from (branch, tag or commit). Blank: the candidate'
+        default: ''
+      engines:
+        description: 'chromium, firefox, webkit, or a list like chromium,firefox,webkit (a job each)'
+        default: chromium
+      settings:
+        description: 'Settings for the checks, like "BREAKER_MEM_SIZES=100 BREAKER_MEM_VIEWS=tree BREAKER_MEM_FIND=0"'
+        default: ''
+      minutes:
+        description: 'Billed minutes one job is expected to take (the budget guard counts jobs × this)'
+        default: '12'
+  workflow_call:
+    inputs:
+      checks: { type: string, required: true }
+      ref: { type: string, required: true }
+      base: { type: string, default: main }
+      harness: { type: string, default: '' }
+      engines: { type: string, default: chromium }
+      settings: { type: string, default: '' }
+      minutes: { type: string, default: '12' }
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  CHECK_LEVEL: perf
+  CHECK_ENGINES: ${{ inputs.engines }}
+  CHECK_SUITES: ${{ inputs.checks }}
+  CHECK_PERF_MINUTES: ${{ inputs.minutes }}
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write # removes the ci:perf label that started the run
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - name: Remove the label
+        if: github.event_name == 'pull_request'
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/$LABEL" --silent || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          LABEL: ${{ github.event.label.name }}
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Budget
+        run: node scripts/ci-usage.mjs --guard
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Jobs
+        id: plan
+        # One job per engine and check: [{ engine, check }, …].
+        run: |
+          node -e '
+            const checks = process.env.CHECK_SUITES.split(";").map((s) => s.trim()).filter(Boolean);
+            const engines = [...new Set(process.env.CHECK_ENGINES.split(/[\s,]+/).filter(Boolean))];
+            const jobs = engines.flatMap((engine) => checks.map((check) => ({ engine, check })));
+            if (!jobs.length) { console.log("::error::no checks or engines"); process.exit(1); }
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `jobs=${JSON.stringify(jobs)}\n`);
+            console.log(jobs.map((j) => `${j.engine} · ${j.check}`).join("\n"));
+          '
+
+  perf:
+    needs: plan
+    name: ${{ matrix.engine }} · ${{ matrix.check }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.jobs) }}
+    steps:
+      # The guard comes from this workflow's own commit; the checks from `harness` (default: the candidate).
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Budget
+        run: node scripts/ci-usage.mjs --guard
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Check out the checks (${{ inputs.harness || inputs.ref }})
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.harness || inputs.ref }}
+          # The candidate and the base are built from their commits (git archive): every branch is needed.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Browser packages
+        run: node node_modules/playwright-core/cli.js install-deps ${{ matrix.engine }}
+      - name: Run ${{ matrix.check }} (${{ inputs.ref }} against ${{ inputs.base }})
+        id: run
+        run: |
+          set -f
+          commit() { git rev-parse --verify -q "origin/$1^{commit}" || git rev-parse --verify "$1^{commit}"; }
+          REF_COMMIT=$(commit "$REF") && BASE_COMMIT=$(commit "$BASE") || { echo "::error::unknown ref or base"; exit 1; }
+          echo "candidate $REF = $REF_COMMIT, base $BASE = $BASE_COMMIT"
+          # Settings: words like NAME=value only.
+          for kv in $SETTINGS; do
+            [[ $kv =~ ^[A-Z][A-Z0-9_]*=[A-Za-z0-9.,_/:-]*$ ]] || { echo "::error::setting not of the form NAME=value: $kv"; exit 1; }
+            export "$kv"
+          done
+          export BREAKER_MEM_OUT="$RUNNER_TEMP/perf/metrics.jsonl"
+          mkdir -p "$RUNNER_TEMP/perf"
+          free -m
+          pnpm perf "$CHECK" --ref "$REF_COMMIT" --base "$BASE_COMMIT" -e "$ENGINE" 2>&1 | tee "$RUNNER_TEMP/perf/run.log"
+          status=${PIPESTATUS[0]}
+          # The runner's table (after its last check line) into the summary.
+          {
+            echo "### $ENGINE · $CHECK"
+            echo "candidate \`$REF\` ($REF_COMMIT) against base \`$BASE\` ($BASE_COMMIT), runner memory: $(free -g | awk '/Mem:/ { print $2 }') GB"
+            echo '```'
+            sed -n '/^metric /,$p' "$RUNNER_TEMP/perf/run.log" | head -80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          set +f
+          cp ~/.cache/tool-kumar-harness/results/*/results.json "$RUNNER_TEMP/perf/" 2>/dev/null || true
+          exit $status
+        env:
+          CHECK: ${{ matrix.check }}
+          ENGINE: ${{ matrix.engine }}
+          REF: ${{ inputs.ref }}
+          BASE: ${{ inputs.base }}
+          SETTINGS: ${{ inputs.settings }}
+      - name: Keep the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-${{ matrix.engine }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/perf/
+          retention-days: 30
+          if-no-files-found: ignore

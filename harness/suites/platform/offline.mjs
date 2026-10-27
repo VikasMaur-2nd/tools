@@ -97,6 +97,9 @@ async function features(t, page, label) {
   t.check(yaml && !(await errToast()), `${label}: YAML import`);
 }
 
+/** Waits until the page has loaded nothing for half a second (at most 15 s). */
+const quiet = (page) => page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+
 /** Opens '/' through the proxy and waits until the worker has cached what this first visit gives it. */
 async function firstVisit(t, proxy) {
   await t.context.addInitScript(WATCH_POSTS);
@@ -114,6 +117,9 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
     const missing = await missingFromCache(page, ['/', ...home.all]);
     t.check(!missing.length, 'fresh: the shell and every chunk it can load are cached', `${missing.length} of ${home.all.length + 1} missing: ${missing.slice(0, 4).join(' ')}`);
     for (const path of ['/tools/json-validator', '/es']) {
+      // (What the page loads when idle (tooltips, the sample) is let finish: leaving cancels it, which Firefox
+      // reports as an error from the worker's fetch.)
+      await quiet(page);
       await page.goto(proxy.origin + path, { waitUntil: 'load' });
       t.assert(await waitInCache(page, [path]), `fresh: the visited ${path} page is cached`);
       await swIdle(page);
