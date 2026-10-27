@@ -305,12 +305,20 @@ export async function heavyLock(t) {
   const file = process.env.BREAKER_HEAVY_LOCK;
   if (!file) return;
   const { spawn } = await import('node:child_process');
-  const p = spawn('flock', [file, 'sh', '-c', 'echo locked; read x'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  // -o: the lock stays with flock itself (not its child), so killing flock always releases it.
+  const p = spawn('flock', ['-o', file, 'sh', '-c', 'echo locked; read x'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const release = () => {
+    try {
+      p.stdin.end();
+    } catch {}
+    p.kill('SIGKILL');
+  };
+  // Released with the test's pages, also when the test ends (or times out) while still waiting for it.
+  t._extra.push({ context: { close: async () => release() }, errors: [] });
+  process.once('exit', release);
   await new Promise((resolve, reject) => {
     p.stdout.on('data', (d) => String(d).includes('locked') && resolve());
     p.on('error', reject);
     p.on('exit', (code) => reject(new Error(`flock exited (${code})`)));
   });
-  // Released with the test's pages (the runner closes every extra context after the test).
-  t._extra.push({ context: { close: async () => { p.stdin.end(); p.kill(); } }, errors: [] });
 }

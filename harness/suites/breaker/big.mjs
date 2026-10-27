@@ -12,7 +12,8 @@ import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
 import { clear, golden, hash, heavyLock, reformat, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
 
-defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: 600_000 });
+// (With the heavy lock a check may first wait in its queue for a long time: an hour then.)
+defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: process.env.BREAKER_HEAVY_LOCK ? 3_600_000 : 600_000 });
 
 /** Opens fixture `name` through Open file and waits (scaled per engine) until the status settles. */
 async function open(t, name, { minutes = 3, reopen = true } = {}) {
