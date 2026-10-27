@@ -1,4 +1,4 @@
-import { Doc } from './doc';
+import { Doc, lf } from './doc';
 import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
@@ -141,9 +141,6 @@ interface Change {
 }
 
 const LINE_MARK = ['', 'dla', 'dld', 'dlc'];
-
-/** Textareas normalize line endings; the model must match them offset for offset. */
-const lf = (s: string) => (s.indexOf('\r') === -1 ? s : s.replace(/\r\n?/g, '\n'));
 
 /** Smallest changed range between two strings: [start, oldEnd, newEnd]. `hint` is a likely start. */
 function diffRange(old: string, now: string, hint: number): [number, number, number] {

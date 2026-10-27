@@ -11,6 +11,12 @@
  * returns a new version, so versions compare by identity.
  */
 
+/**
+ * `s` with its line ends as \n. Textareas normalize line endings, so the editor's text never holds \r\n or a
+ * lone \r, and every offset into a document (a worker's tree, a position) must count as the editor does.
+ */
+export const lf = (s: string) => (s.indexOf('\r') === -1 ? s : s.replace(/\r\n?/g, '\n'));
+
 /** An edit this close (characters) to a replacement joins it, copying the text between. */
 const GAP = 4096;
 /** ... unless that makes a replacement longer than this. */

@@ -16,7 +16,7 @@ import { DEFAULT_SETTINGS, store, type ContextMenu, type DiffMenu, type Hint, ty
 import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
-import { Doc } from './doc';
+import { Doc, lf } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
@@ -1252,6 +1252,9 @@ export class Engine {
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
   load(text: string, name: string | null, persist = true, outputFirst = false) {
+    // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
+    // worker, over this text) must match the editor's, or values and positions shift a character a line.
+    text = lf(text);
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);

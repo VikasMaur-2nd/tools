@@ -484,3 +484,18 @@ test('a parse here in steps goes on from where a big load got to', (t) => {
   assert.ok(percents.length > 2, percents.join(', '));
   for (let k = 1; k < percents.length; k++) assert.ok(percents[k] > percents[k - 1], percents.join(', '));
 });
+
+test('a big JSON Lines file with CRLF reaches the editor and the analysis worker with the same LF text', async () => {
+  const { engine, workers, tick } = loadSession();
+  await engine.tapeCode();
+  const lines: string[] = [];
+  for (let i = 0, size = 0; size < 2_600_000; i++) { const line = JSON.stringify({ i, s: 'é東😀'.repeat(1 + (i % 7)) }); lines.push(line); size += line.length + 2; }
+  engine.load(lines.join('\r\n') + '\r\n', 'records.jsonl', false, true);
+  for (let k = 0; k < 1000 && tick(); k++);
+  const lf = lines.join('\n') + '\n';
+  assert.equal(engine.ed.text, lf, 'the editor holds the text with LF line ends');
+  const sent = workers.flatMap((w) => w.messages).map((m) => [m.text, m.chunk].find((t) => typeof t === 'string') as string | undefined).filter((t) => t !== undefined);
+  assert.ok(sent.length > 0, 'the text went to a worker');
+  assert.ok(sent.every((t) => !t.includes('\r')), 'no worker gets a CR: its offsets are the editor\'s');
+  assert.equal(sent.join('').length >= lf.length, true);
+});

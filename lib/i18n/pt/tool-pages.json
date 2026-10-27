@@ -1602,7 +1602,7 @@
     ]
   },
   "json-repair": {
-    "hash": "37e9857866ee",
+    "hash": "f51759b8072f",
     "title": "Corrigir JSON inválido online",
     "description": "Corrija JSON com aspas simples, chaves sem aspas, comentários e vírgulas no final ou ausentes, sem upload. Revise cada correção e copie o JSON válido.",
     "heading": "Corrigir JSON",
@@ -1621,9 +1621,9 @@
       "Confira o documento corrigido na visualização “Formatar” e escolha “Corrigir entrada” para aplicá-lo. Ctrl+Z desfaz a ação."
     ],
     "options": [
-      "Corrige comentários, chaves sem aspas, strings com aspas simples, vírgulas no final, vírgulas ausentes entre propriedades, True, False e None de Python e delimitadores de blocos de código Markdown ao redor do JSON colado.",
+      "Corrige comentários, chaves sem aspas, strings com aspas simples, vírgulas no final, vírgulas ausentes, True, False e None de Python, delimitadores de blocos de código Markdown ao redor do JSON colado e JSON colado como uma string com escapes.",
       "NaN e Infinity não têm representação em JSON, então viram null. Confira a saída quando esses valores forem importantes.",
-      "Algumas entradas não podem ser corrigidas, como uma string sem aspas de fechamento. Nesse caso, o aviso informa um erro e sua localização.",
+      "Uma entrada cortada no final é completada: uma string sem aspas de fechamento é fechada no fim da linha, um valor ausente vira null e colchetes e chaves abertos são fechados. O editor sublinha cada uma dessas correções. Confira cada uma, porque o texto perdido não pode ser adivinhado.",
       "A correção mantém os dígitos dos números e a ordem das chaves."
     ],
     "faqs": [
@@ -1633,11 +1633,11 @@
       },
       {
         "question": "Todo erro de JSON pode ser corrigido?",
-        "answer": "Não. Erros de aspas, vírgulas e comentários são corrigidos automaticamente. Texto ausente, como uma string interrompida antes das aspas de fechamento, precisa ser corrigido manualmente."
+        "answer": "A maioria, sim. Erros de aspas, vírgulas e comentários são corrigidos automaticamente, e uma entrada cortada no final é completada: uma string aberta é fechada e um valor ausente vira null. O texto perdido não pode ser recuperado, então confira esses pontos. Se o documento ainda não puder ser lido, o aviso mostra o erro e sua localização."
       },
       {
         "question": "A correção altera meus valores?",
-        "answer": "Os valores continuam iguais, exceto NaN e Infinity, que JSON não consegue representar e que viram null. Revise a saída antes de usá-la."
+        "answer": "Os valores continuam iguais, exceto NaN e Infinity, que JSON não consegue representar, e valores ausentes. Todos viram null. Revise a saída antes de usá-la."
       }
     ],
     "guides": [

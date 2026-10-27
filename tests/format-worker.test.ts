@@ -307,3 +307,23 @@ test('the formatting worker measures compressed sizes for the page, answering on
     await worker.terminate();
   }
 });
+
+test('the analysis worker lets go of a huge document after analysing it, and an edit then asks for all of it again', async () => {
+  const { worker, request } = session();
+  try {
+    // Over the worker's 48M-character limit: an array of short numbers.
+    const text = '[' + '1,'.repeat(24_100_000) + '1]';
+    const first = await request({ id: 1, text, analysis: true });
+    assert.ok(first.tree && first.tree.count > 24_000_000, 'analysed');
+    // An edit against that version: the worker no longer has it, so it says so (the page then sends it whole).
+    const edited = await request({ id: 2, edit: { a: 1, b: 1, ins: ' ' }, sourceBase: 1, analysis: true });
+    assert.equal(edited.reset, true);
+    // A small document is kept: an edit against it is applied.
+    await request({ id: 3, text: '[1,2]', analysis: true });
+    const small = await request({ id: 4, edit: { a: 1, b: 1, ins: ' ' }, sourceBase: 3, analysis: true });
+    assert.equal(small.reset, undefined);
+    assert.ok(small.tree, 'the edit was analysed');
+  } finally {
+    await worker.terminate();
+  }
+});
