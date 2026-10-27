@@ -109,13 +109,13 @@ test('the tricky cases at 3 MB: exact status, outputs, tree, table, find and Con
   await until(page, () => !window.__vis('.pane-view .spin') && (window.__vis('#view-convert .cv-rows')?.textContent.length ?? 0) > 0 || null, null, { timeout: 60_000 });
   const ts = await copied(page, 'Copy converted output', { timeout: 30_000 });
   out.typescript = ts && { hash: hash(ts), head: ts.slice(0, 600) };
-  // Each target's output starts its own way; a big document converts for a while, so Copy is retried until
-  // it gives this target's output. (Copy at once gives the previous target's: known, BREAKER-REPORT F14.)
+  // Each target's output starts its own way. A big document converts for a while: Copy right after the switch
+  // waits for this target's output (it once gave the previous target's, BREAKER-REPORT F14), and is retried.
   const START = { 'json-schema': '{\n  "$schema"', csv: 'r,case,', yaml: '- r: 0', xml: '<?xml', jsonl: '{"r":0' };
   for (const [target, start] of Object.entries(START)) {
     await select.first().selectOption(target);
     let c = await copied(page, 'Copy converted output', { timeout: 60_000 });
-    if (target === 'csv') t.check(c?.startsWith(start), 'Copy right after choosing CSV copies CSV', c?.slice(0, 30), { known: 'bug: Copy converted output copies the previous target until the conversion is done (BREAKER-REPORT F14)' });
+    t.check(c?.startsWith(start), `Copy right after choosing ${target} copies ${target}`, c?.slice(0, 30));
     for (let i = 0; i < 60 && !c?.startsWith(start); i++) {
       await page.waitForTimeout(1000);
       c = await copied(page, 'Copy converted output', { timeout: 60_000 });

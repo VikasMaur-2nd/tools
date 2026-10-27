@@ -2521,7 +2521,7 @@ export class Engine {
       // The output for these settings is still being made (a big document, after a style change): the copy
       // waits for it, handing the clipboard a promise so the click still counts when the text arrives.
       track('feature_used', { feature: 'copy_output' });
-      void this.copyLater(later, msg, 'Nothing to copy yet');
+      void this.copyLater(later, msg, () => (store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info')));
       return;
     }
     const out = this.drawnOutput() || this.unlessTooLarge(() => this.output());
@@ -2588,7 +2588,7 @@ export class Engine {
   }
 
   /** Copies text that is still on its way, keeping the click's permission to write the clipboard where the browser allows. */
-  private async copyLater(text: Promise<string | null>, msg: string, none: string) {
+  private async copyLater(text: Promise<string | null>, msg: string, none: () => void) {
     const blob = text.then((t) => {
       if (!t) throw new Error('no output');
       return new Blob([t], { type: 'text/plain' });
@@ -2600,7 +2600,7 @@ export class Engine {
     } catch {
       const t = await text;
       if (this.dead) return;
-      if (!t) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast(none, 'info');
+      if (!t) return none();
       await this.copy(t, msg);
     }
   }
@@ -2631,6 +2631,46 @@ export class Engine {
   /** Bumped by each conversion asked for: one still loading its code then is dropped (the newer one shows). */
   private convSeq = 0;
 
+  /**
+   * The last conversion made: its sequence and output ('' for none). The code view may still be taking a big
+   * output in, in steps, so Copy and Download take it from here.
+   */
+  private convDone = { seq: -1, out: '' };
+
+  /** Copy/Download waiting for the conversion asked for last (see convPending). */
+  private convWaiters: ((out: string | null) => void)[] = [];
+
+  private convFinished(seq: number, out: string) {
+    this.convDone = { seq, out };
+    const waiting = this.convWaiters;
+    this.convWaiters = [];
+    for (const done of waiting) done(out);
+  }
+
+  /**
+   * The output of the conversion asked for last while it is still being made (the view shows the one
+   * before until then), or null when the view's output is current.
+   */
+  private convPending(): Promise<string | null> | null {
+    if (this.settings.view !== 'convert' || this.convDone.seq === this.convSeq) return null;
+    return new Promise((done) => {
+      this.convWaiters.push(done);
+      // (A conversion that never comes: nothing to copy.)
+      setTimeout(() => {
+        const i = this.convWaiters.indexOf(done);
+        if (i >= 0) {
+          this.convWaiters.splice(i, 1);
+          done(null);
+        }
+      }, 120_000);
+    });
+  }
+
+  /** The output the Convert view shows or is making for the current settings. */
+  private convOutput() {
+    return this.convDone.seq === this.convSeq ? this.convDone.out : this.code.text;
+  }
+
   private async loadConverters(): Promise<ConvertModule> {
     if (!this.conv) {
       store.set({ convert: { ...store.get().convert, loading: true } });
@@ -2650,17 +2690,25 @@ export class Engine {
     const root = this.good?.root;
     if (!root) {
       this.code.setText('', escapeHtml);
+      this.convFinished(seq, '');
       store.set({ convert: { loading: false, error: 'Paste or open valid JSON on the left to convert it.', lines: 0, bytes: 0 } });
       return;
     }
     if (this.good!.depth > MAX_WALK_DEPTH) {
       this.code.setText('', escapeHtml);
+      this.convFinished(seq, '');
       store.set({ convert: { loading: false, error: 'Nesting is too deep to convert', lines: 0, bytes: 0 } });
       return;
     }
     try {
       const mod = await this.loadConverters();
       if (!current()) return;
+      if (this.good!.nodes >= 50_000 && !store.get().convert.loading) {
+        // A big document converts for a while: the spinner shows first.
+        store.set({ convert: { ...store.get().convert, loading: true } });
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+        if (!current()) return;
+      }
       const s = this.settings;
       const info = targetInfo(s.target);
       // CSV and Excel share one flattening (dotted columns) over the main array of
@@ -2676,6 +2724,7 @@ export class Engine {
         const rows = mod.codeRows(info.lang);
         this.code.setText(out, rows.hl, false, rows.scanner);
       }
+      this.convFinished(seq, out);
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
       if (!current()) return;
@@ -2683,14 +2732,24 @@ export class Engine {
       const deep = tooDeep(e);
       if (!deep) reportError(e, 'conversion');
       this.code.setText('', escapeHtml);
+      this.convFinished(seq, '');
       store.set({ convert: { loading: false, error: deep ? 'Nesting is too deep to convert' : e instanceof Error ? e.message : 'Conversion failed', lines: 0, bytes: 0 } });
     }
   }
 
   copyConvert() {
-    if (!this.code.text) return this.toast('Nothing to copy yet', 'info');
+    const msg = `Copied ${targetInfo(this.settings.target).label}`;
+    const later = this.convPending();
+    if (later) {
+      // (A big document's conversion after a target change: the copy waits for it, as copyOutput does.)
+      track('feature_used', { feature: 'copy_convert' });
+      void this.copyLater(later, msg, () => this.toast('Nothing to copy yet', 'info'));
+      return;
+    }
+    const out = this.convOutput();
+    if (!out) return this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_convert' });
-    void this.copy(this.code.text, `Copied ${targetInfo(this.settings.target).label}`);
+    void this.copy(out, msg);
   }
 
   async downloadConvert() {
@@ -2712,8 +2771,18 @@ export class Engine {
       }
       return;
     }
-    if (!this.code.text) return this.toast('Nothing to download yet', 'info');
-    this.save(this.code.text, name, info.mime);
+    const later = this.convPending();
+    if (later) {
+      void later.then((out) => {
+        if (this.dead) return;
+        if (!out) return this.toast('Nothing to download yet', 'info');
+        this.save(out, name, info.mime);
+      });
+      return;
+    }
+    const out = this.convOutput();
+    if (!out) return this.toast('Nothing to download yet', 'info');
+    this.save(out, name, info.mime);
   }
 
   tableShow(n: JNode | null) {
