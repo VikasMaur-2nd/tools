@@ -92,6 +92,7 @@ for (const size of SIZES) {
       const mem = memorySampler({ onLow: () => void t.context.close().catch(() => {}) });
       const before = mem.now();
       t.log(`${name}: ${fixtureSize(name)} bytes; browser before: ${MiB(before.pss)} MiB PSS in ${before.n} processes`);
+      const opened = Date.now();
       let ph = null;
       let cpu = NaN;
       try {
@@ -108,6 +109,10 @@ for (const size of SIZES) {
         t.log('open failed:', String(e).slice(0, 200));
       }
       const open = mem.stop();
+      // (Recorded before the asserts: a run stopped for memory still says how far it got, and after how long.)
+      t.metric('peak-pss', MiB(open.peak.pss), 'MiB');
+      t.metric('peak-rss', MiB(open.peak.rss), 'MiB');
+      if (mem.low) t.metric('stopped-after', Date.now() - opened);
       t.assert(!mem.low, 'the host kept 1.5 GiB available (the run was stopped)', `peak ${MiB(open.peak.pss)} MiB PSS`);
       t.assert(!crashed && ph, 'the tab survived opening it', { crashed, peakPss: MiB(open.peak.pss) });
       const status = await page.evaluate(() => window.__vis('.sb-l .st')?.textContent ?? '');
@@ -115,8 +120,6 @@ for (const size of SIZES) {
       for (const [k, v] of Object.entries(ph)) if (v >= 0) t.metric(k, Math.round(v));
       t.metric('open-cpu', Math.round(cpu));
       t.metric('max-stall', Math.round(await frameGap(page)));
-      t.metric('peak-pss', MiB(open.peak.pss), 'MiB');
-      t.metric('peak-rss', MiB(open.peak.rss), 'MiB');
       t.metric('open-pss', MiB(open.last.pss), 'MiB');
       for (const v of VIEWS) {
         const m = memorySampler({ onLow: () => void t.context.close().catch(() => {}) });
@@ -132,11 +135,11 @@ for (const size of SIZES) {
         }
         const ms = Date.now() - t0;
         const r = m.stop();
+        t.metric(`${v}-peak`, MiB(r.peak.pss), 'MiB');
         t.assert(!m.low && !crashed, `the host kept 1.5 GiB available and the tab survived the ${v} view`, `peak ${MiB(r.peak.pss)} MiB PSS`);
         t.check(ok, `the ${v} view shows it`);
         t.metric(`${v}-ms`, ms);
         t.metric(`${v}-stall`, Math.round(await frameGap(page)));
-        t.metric(`${v}-peak`, MiB(r.peak.pss), 'MiB');
         t.metric(`${v}-pss`, MiB(r.last.pss), 'MiB');
       }
       // Find in the tree: a query with many matches, then one matching nothing (a whole-document search).
