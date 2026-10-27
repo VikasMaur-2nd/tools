@@ -141,3 +141,29 @@ for (const [name, mb] of [['big-records-1mb', 1], ['big-records-3mb', 3]]) {
     t.check(JSON.stringify(rows.slice(0, 4)) === JSON.stringify([`root[${mb === 1 ? 3440 : 10286}]`, '  0:{9}', '    id:0', '    uuid:"ce15b37f-1dc67309"']), 'root, the first record open, its first fields', rows.slice(0, 4));
   });
 }
+
+for (const [name, want] of [
+  ['big-records-1mb', ['["["]', '["{","}"]', '["{","}"]', '[]']],
+  ['big-records-3mb', ['["["]', '["{","}"]', '["{","}"]', '[]']],
+  ['big-pretty-3mb', ['["["]', '["["]', '[]', '["{","}"]']],
+]) {
+  test(`${name}: the brackets around the caret are marked`, async (t) => {
+    // From 2 MB the match comes from the worker's tree (on t3/optimize-json-memory-performance, the tape).
+    const { page } = t;
+    await t.open('/');
+    const text = readFileSync(bigFixture(name), 'utf8');
+    t.assert(await load(page, text, `${name}.json`, { timeout: 120_000 }), 'the document loads');
+    await page.locator('.app:visible .ed').first().click({ position: { x: 300, y: 60 } });
+    const marks = () => page.evaluate(() => JSON.stringify([...(window.__vis('.ed')?.querySelectorAll('.mbr') ?? [])].map((m) => m.textContent)));
+    const steps = [['Control+Home'], ['ArrowRight'], ['ArrowRight'], ['Control+Home', 'ArrowDown', 'End']];
+    const labels = ['at the start', 'after the first bracket', 'one more character', 'at the end of line 2'];
+    for (let i = 0; i < steps.length; i++) {
+      for (const k of steps[i]) await page.keyboard.press(k.replace('Control', process.platform === 'darwin' ? 'Meta' : 'Control'));
+      const got = await until(page, ([sel, w]) => {
+        const m = JSON.stringify([...(window.__vis(sel)?.querySelectorAll('.mbr') ?? [])].map((x) => x.textContent));
+        return m === w ? m : null;
+      }, ['.ed', want[i]], { timeout: 5000 }).then((m) => m ?? marks());
+      t.check(got === want[i], `${labels[i]}: ${want[i]} marked`, got);
+    }
+  });
+}
