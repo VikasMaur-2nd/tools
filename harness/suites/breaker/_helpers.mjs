@@ -317,6 +317,7 @@ export async function heavyLock(t) {
   // -o: the lock stays with flock itself (not its child), so killing flock always releases it.
   const p = spawn('flock', ['-o', file, 'sh', '-c', 'echo locked; read x'], { stdio: ['pipe', 'pipe', 'inherit'] });
   const release = () => {
+    process.off('exit', release);
     try {
       p.stdin.end();
     } catch {}
