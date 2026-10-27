@@ -55,33 +55,53 @@ const idle = new WeakMap<WebAssembly.Module, Exports>();
 
 const encoder = new TextEncoder();
 
+/** A file's bytes, read a window at a time (a worker reads a File so, with FileReaderSync: never all of it at once). */
+export interface ByteSource {
+  size: number;
+  /** `len` bytes from `at` (fewer at the end). */
+  read(at: number, len: number): Uint8Array;
+}
+
 /**
  * The tape of `text` from WebAssembly module `mod` (compiled from tape.wasm), or null if it isn't strict
  * JSON with one top-level value (or `lines` is set): parse it with tape-parser.ts then. `bytes`, if given,
- * are the file `text` was read from (UTF-8): `text` is them decoded with their line ends as \n (doc.ts
- * lf(), as Engine.load keeps a document), and the offsets count \r\n as one unit. `window`: input bytes
- * per window (tests make it small).
+ * are the file `text` was read from (UTF-8), whole or read a window at a time: `text` is them decoded with
+ * their line ends as \n (doc.ts lf(), as Engine.load keeps a document), and the offsets count \r\n as one
+ * unit. `window`: input bytes per window (tests make it small).
  */
-export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOptions = {}, bytes?: Uint8Array, window = WINDOW): Tape | null {
+export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOptions = {}, bytes?: Uint8Array | ByteSource, window = WINDOW): Tape | null {
   if (options.lines || !text) return null;
+  let src: ByteSource | undefined;
+  if (bytes instanceof Uint8Array) {
+    const all = bytes;
+    src = { size: all.length, read: (at, len) => all.subarray(at, at + len) };
+  } else src = bytes;
   // TextDecoder drops a byte order mark: the bytes must be the text's.
-  if (bytes && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf && text.charCodeAt(0) !== 0xfeff) bytes = bytes.subarray(3);
+  if (src && text.charCodeAt(0) !== 0xfeff) {
+    const head = src.read(0, 3);
+    if (head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf) {
+      const whole = src;
+      src = { size: whole.size - 3, read: (at, len) => whole.read(at + 3, len) };
+    }
+  }
   const x = idle.get(mod) ?? (new WebAssembly.Instance(mod, {}).exports as unknown as Exports);
   idle.delete(mod);
-  const tape = run(x, text, options, bytes, window);
+  const tape = run(x, text, options, src, window);
   if (x.memory.buffer.byteLength <= KEEP) idle.set(mod, x);
   return tape;
 }
 
-function run(x: Exports, text: string, options: TapeOptions, bytes: Uint8Array | undefined, window: number): Tape | null {
+function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource | undefined, window: number): Tape | null {
   const maxDepth = Math.min(options.maxDepth ?? 0xffffffff, 0xffffffff);
   if (!x.init(bytes ? 0 : 1, maxDepth >>> 0, window)) return null;
-  const total = bytes ? bytes.length : text.length;
+  const total = bytes ? bytes.size : text.length;
   let nodes = new Int32Array(0);
   let count = 0;
   // Where the next window starts: in bytes (from bytes) or UTF-16 code units (both, from bytes).
   let at = 0;
   let u16 = 0;
+  // From bytes: whether the byte before the window is a \r (a \r\n the window cuts is one unit).
+  let cr = 0;
   for (;;) {
     const cap = x.win_cap();
     const win = new Uint8Array(x.memory.buffer, x.win_ptr(), cap);
@@ -91,7 +111,7 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: Uint8Array |
     let done: (p: number) => number;
     if (bytes) {
       len = Math.min(cap, total - at);
-      win.set(bytes.subarray(at, at + len));
+      win.set(bytes.read(at, len));
       last = at + len === total;
       done = (p) => (at + p) / total;
     } else {
@@ -104,7 +124,7 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: Uint8Array |
       // (UTF-8 bytes for UTF-16 units: close enough for an estimate.)
       done = (p) => (u16 + (p * r.read) / Math.max(len, 1)) / total;
     }
-    if (x.load(len, last ? 1 : 0, u16, bytes && at > 0 && bytes[at - 1] === 13 ? 1 : 0) < 0) return null;
+    if (x.load(len, last ? 1 : 0, u16, cr) < 0) return null;
     let r: number;
     while ((r = x.run()) === FULL || r === DONE) {
       // A batch of nodes.
@@ -122,7 +142,10 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: Uint8Array |
       if (!x.window(cap * 2)) return null;
       continue;
     }
-    if (bytes) at += next;
+    if (bytes) {
+      cr = new Uint8Array(x.memory.buffer, x.win_ptr() + next - 1, 1)[0] === 13 ? 1 : 0;
+      at += next;
+    }
     u16 = x.resume_u16();
   }
 }

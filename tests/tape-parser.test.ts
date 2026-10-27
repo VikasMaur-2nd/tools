@@ -278,6 +278,11 @@ describe('repairs (repair: true): the same in both parsers; documents that parse
     ['missing value before }', '{"a": 1, "b": }', { a: 1, b: null }],
     ['missing closing quote before the next key', '{"a": "b, "c": 1}', { a: 'b', c: 1 }],
     ['missing closing quote at the end of a line', '{"a": "hello\n "b": 2}', { a: 'hello', b: 2 }],
+    // (BREAKER-REPORT R7: a single-quoted string left open swallowed the members after it, an apostrophe in one made up a key.)
+    ['an apostrophe inside a single-quoted string', `{"name": 'O'Brien', "age": 3}`, { name: "O'Brien", age: 3 }],
+    ['a single-quoted string left open before the next member', `{"a": 'x, "b": 2, "c": [1, 2]}`, { a: 'x', b: 2, c: [1, 2] }],
+    ['a string left open before an unquoted member', '{"a": "x, b: 1}', { a: 'x', b: 1 }],
+    ['a string left open before a member on its line, then another line', `{"a": 'x, 'b': 2\n, "c": 3}`, { a: 'x', b: 2, c: 3 }],
     ['escapes in a string cut at the end of a line', '{"a": "x\\ny\\u0041\n, "b": 1}', { a: 'x\nyA', b: 1 }],
     ['a backslash at the end', '["ab\\', ['ab']],
     ['a cut name', '{"a": 1, "b\n: 2}', { a: 1, b: 2 }],

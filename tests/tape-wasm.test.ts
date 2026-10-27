@@ -33,8 +33,8 @@ const strictOf = (t: Tape) => t.count > 0 && !t.head.issues.length && !t.head.er
 const mayRefuse = (t: Tape) => t.keys.some((k) => /[�\ud800-\udfff]/.test(k));
 
 interface Check {
-  /** Give it the UTF-8 bytes (and the text decoded from them) instead of the text. */
-  bytes?: boolean;
+  /** Give it the UTF-8 bytes (and the text decoded from them) instead of the text: whole, or read a window at a time ('read'). */
+  bytes?: boolean | 'read';
   window?: number;
   options?: TapeOptions;
 }
@@ -48,7 +48,7 @@ function same(src: string, { bytes = false, window, options = {} }: Check = {}):
     src = lf(new TextDecoder().decode(b));
   }
   const js = parse(src, options);
-  const w = wasmTape(mod, src, options, b, window);
+  const w = wasmTape(mod, src, options, bytes === 'read' ? { size: b!.length, read: (at, len) => b!.slice(at, at + len) } : b, window);
   const where = `\ninput: ${show(src)} ${JSON.stringify({ bytes, window, options })}`;
   if (!strictOf(js) || options.lines) {
     assert.equal(w, null, `Wasm took what isn't strict JSON${where}`);
@@ -68,7 +68,7 @@ function same(src: string, { bytes = false, window, options = {} }: Check = {}):
 
 /** Every way: text and bytes, the default window and a few small ones (tokens cut at every place). */
 function everyWay(src: string, windows = [64, 100, 257], options: TapeOptions = {}) {
-  for (const bytes of [false, true]) {
+  for (const bytes of [false, true, 'read'] as const) {
     same(src, { bytes, options });
     for (const window of windows) same(src, { bytes, window, options });
   }
@@ -301,14 +301,14 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
       const end = r.chance(0.5) ? r.pick(ENDS) : '';
       const src = (r.chance(0.2) ? end : '') + doc.replace(/\n/g, () => (end || r.pick(ENDS))) + (r.chance(0.3) ? r.pick(ENDS) : '');
       for (const window of [undefined, 64, 65 + r.int(100), 64 + r.int(400)]) {
-        assert.equal(same(src, { bytes: true, window }), 'strict', show(src));
+        assert.equal(same(src, { bytes: r.chance(0.5) || 'read', window }), 'strict', show(src));
         same(src, { window });
       }
     }
     // A pair cut by a block (64 bytes) or a window, at every place: the \r last in one, the \n first in the next.
     for (let pad = 0; pad < 140; pad++) {
       const src = '[' + '1,'.repeat(pad >> 1) + (pad & 1 ? ' ' : '') + '\r\n"é",\r\r\n\r 2]';
-      for (const window of [64, 65, 66, 128, 129]) assert.equal(same(src, { bytes: true, window }), 'strict');
+      for (const window of [64, 65, 66, 128, 129]) for (const bytes of [true, 'read'] as const) assert.equal(same(src, { bytes, window }), 'strict');
     }
   });
 

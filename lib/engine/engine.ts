@@ -159,6 +159,11 @@ function mayBeJwt(t: { length: number; charCodeAt(i: number): number }) {
 const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
 const WORKER_MIN = 2_000_000;
+/**
+ * WebKit (Safari, and every browser on iOS): its worker lets a loaded file's 16 MB reads go late, ~11% more
+ * peak memory at 100 MB (measured twice), so there the analysis worker is sent the text (see postDocument).
+ */
+const WEBKIT = typeof navigator !== 'undefined' && /AppleWebKit\//.test(navigator.userAgent) && !/(Chrome|Chromium)\//.test(navigator.userAgent);
 /** From this size, a new document is parsed here in steps (see analyzeInSteps). */
 const STEPS_MIN = 1_000_000;
 /** The first step's length in ms. It runs at once, as a parse in one go did: a document parsed by then is ready as soon. */
@@ -1335,10 +1340,12 @@ export class Engine {
   // ── Commands: documents ────────────────────────────────────────────────
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
-  load(text: string, name: string | null, persist = true, outputFirst = false) {
+  /** `file`: the file `text` was read from, as is (readText), which the analysis worker then reads itself. */
+  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File) {
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
     // worker, over this text) must match the editor's, or values and positions shift a character a line.
     text = lf(text);
+    this.fromFile = file ? { file, text, doc: null } : null;
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
@@ -1358,6 +1365,9 @@ export class Engine {
     }
     this.finishLoad(text, persist, false, names);
   }
+
+  /** The file the document was loaded from (see load) and, once the editor has it, its version: until it changes, the analysis worker reads the file instead of being sent the text. */
+  private fromFile: { file: File; text: string; doc: Doc | null } | null = null;
 
   /** Undo or Redo brought back a document with its file name (see Editor.setValue). */
   private renamed = (name: string | null) => {
@@ -1584,6 +1594,14 @@ export class Engine {
       remember();
       return;
     }
+    // A big file just loaded: the analysis worker reads it itself (reindent.worker.ts readFile), so its text
+    // isn't copied over in chunks. (A reset, if the file changed since, sends the text then. Not in WebKit.)
+    if (analysis && !WEBKIT && this.fromFile?.doc === document) {
+      w.postMessage({ ...request, file: this.fromFile.file, size: document.length });
+      sent?.(1);
+      remember();
+      return;
+    }
     w.postMessage({ ...request, start: true });
     let at = 0;
     const send = () => {
@@ -1623,7 +1641,7 @@ export class Engine {
           if (e.data.id !== this.loadSeq) return;
           if (e.data.tree && !e.data.good) this.analysisBusy = false;
           if (e.data.tree && e.data.pretty) prettyIndexes.set(e.data.tree.nodes, e.data.pretty);
-          if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
+          if (e.data.reset) { this.analysisDoc = null; this.fromFile = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
           else if (e.data.good && e.data.tree && good) {
             this.good = null;
@@ -1801,6 +1819,7 @@ export class Engine {
       if (this.progressShown() >= FORMATTED) this.progress(EDITOR);
     }
     const document = this.ed.version as Doc;
+    if (this.fromFile?.text === text) this.fromFile.doc = document;
     if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
     if (this.fmtSrcVer === null && (this.fmtWorkerId || this.pendingFmtWorkerId)) this.fmtSrcVer = document;
     if (this.refocus) {
@@ -1924,7 +1943,8 @@ export class Engine {
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
       const open = (json: string, name: string, said: string | false) => {
         noteLoad(source, 1, f.name);
-        this.load(json, name, true, json === text);
+        // (The file itself goes to the analysis worker only for its own text, not a conversion.)
+        this.load(json, name, true, json === text, json === text ? f : undefined);
         if (undone) {
           this.flushLoad();
           this.ed.undo();

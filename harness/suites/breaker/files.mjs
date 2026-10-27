@@ -213,6 +213,41 @@ for (const [eol, label] of [['\r\n', 'CRLF'], ['\n', 'LF']]) {
   });
 }
 
+for (const [eol, label] of [['\r\n', 'CRLF'], ['\r', 'CR'], [null, 'mixed']]) {
+  test(`3 MB of JSON with ${label} line ends and multi-byte text, opened as a file: every value at its place, in every view`, async (t) => {
+    // From 2 MB the worker reads the file itself and parses its bytes (WebAssembly), whose offsets must be
+    // the editor's text's, line ends as \n: a \r\n is one character, a lone \r one (BREAKER-REPORT F16).
+    const { page } = t;
+    await t.open('/');
+    const records = [];
+    for (let i = 0, size = 0; size < 3_000_000; i++) {
+      const r = { i, s: `${'é東😀'.repeat(1 + (i % 7))}\u2028${i}`, n: i * 1.5, ok: i % 2 === 0 };
+      records.push(r);
+      size += Buffer.byteLength(JSON.stringify(r)) + 40;
+    }
+    const lines = JSON.stringify(records, null, 2).split('\n');
+    const ends = ['\r\n', '\r', '\n'];
+    const file = Buffer.from(lines.map((l, k) => l + (k === lines.length - 1 ? '' : eol ?? ends[k % 3])).join(''), 'utf8');
+    const st = await loadAny(page, file, 'records.json', { timeout: 120_000 });
+    t.check(st?.kind === 'ok' && st.msg === 'Valid JSON', 'valid JSON', st);
+    const out = await copied(page, 'Copy formatted output', { timeout: 60_000 });
+    t.check(out !== null && hash(out) === hash(lines.join('\n')), 'the Format view holds every record exactly', out?.length);
+    await view(page, 'tree');
+    const rows = await until(page, () => (window.__vis('#view-tree .tv-rows')?.childElementCount ?? 0) > 8 || null, null, { timeout: 30_000 }).then(() => treeRows(page));
+    t.check(rows[6] === '  1:{4}' && rows[7] === '    i:1' && rows[9] === '    n:1.5', 'the tree shows record 1 exactly', rows.slice(6, 10));
+    await view(page, 'convert');
+    const select = page.locator('.app:visible .pane-view select').filter({ has: page.locator('option[value="typescript"]') });
+    await select.first().selectOption('csv');
+    let csv = null;
+    for (let k = 0; k < 60 && !csv?.startsWith('i,s,n,ok'); k++) {
+      csv = await copied(page, 'Copy converted output', { timeout: 30_000 });
+      if (!csv?.startsWith('i,s,n,ok')) await page.waitForTimeout(1000);
+    }
+    const row1 = csv?.split(/\r?\n/)[2];
+    t.check(row1 === `1,${records[1].s},1.5,false`, 'Convert → CSV writes record 1 exactly', row1);
+  });
+}
+
 for (const ext of ['json', 'jsonl']) {
   test(`3 MB .${ext} with invalid UTF-8 in every record: decoded as the WHATWG decoder does`, async (t) => {
     // Truncated sequences, a lone 0xFF, an encoded surrogate, an overlong form: each becomes U+FFFD(s)
