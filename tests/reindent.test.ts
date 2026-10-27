@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, JNode, OBJ, parse, type ParseResult } from '../lib/json/parser';
-import { formatDoc, reindent, stringify } from '../lib/json/format';
+import { formatDoc, minifiedBytes, reindent, stringify } from '../lib/json/format';
+import '../lib/json/requote';
 
 let seed = 11;
 const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
@@ -78,4 +79,61 @@ test('reindent switches from one-byte to UTF-16 output where the first wide char
   }
   // A wide character first, in a key.
   assert.equal(reindent('{"ключ": [1, 2]}', ''), '{"ключ":[1,2]}');
+});
+
+test('strings with escapes are re-quoted in place exactly as quote(JSON.parse(token)), and refused where JSON.parse refuses', () => {
+  let r = 99;
+  const rnd = (n: number) => ((r = (r * 1103515245 + 12345) & 0x7fffffff), r % n);
+  const atoms = ['a', 'é', '東', '😀', '\\n', '\\"', '\\\\', '\\/', '\\b', '\\f', '\\r', '\\t', '\\u0000', '\\u001f', '\\u0041', '\\u00e9', '\\uD83D', '\\uDE00', '\\ud83d\\ude00', '\\uDBFF', '\\uDC00', '\ud83d', '\ude00', ' ', '\u007f', '"', '\\x', '\\u12', '\\uZZZZ', '\u0001', '\t', '\\', ' '];
+  for (let k = 0; k < 20000; k++) {
+    let body = '';
+    for (let n = rnd(8); n >= 0; n--) body += atoms[rnd(atoms.length)];
+    const token = '"' + body + '"';
+    const doc = '[' + token + ', "x\\n"]';
+    let want: string | null;
+    try {
+      want = JSON.stringify(JSON.parse(doc));
+    } catch {
+      want = null;
+    }
+    // A raw quote or trailing backslash ends the token early: reindent then sees other text, as the parser would.
+    const got = reindent(doc, '');
+    if (want !== null) assert.equal(got, want, doc);
+    else assert.equal(got, null, doc);
+    // (minifiedBytes checks strings, not the grammar around them.)
+    if (want !== null) assert.equal(minifiedBytes(doc), new TextEncoder().encode(want).length, doc);
+    let token1: string | null;
+    try {
+      token1 = JSON.stringify(JSON.parse(token));
+    } catch {
+      token1 = null;
+    }
+    // A token alone (a raw quote inside ends it early: then it isn't one token).
+    if (!body.includes('"') || token1 !== null) assert.equal(minifiedBytes(token), token1 === null ? null : new TextEncoder().encode(token1).length, token);
+  }
+});
+
+test('strings over 64K characters are re-quoted in place with the same result and the same refusals', () => {
+  let r = 5;
+  const rnd = (n: number) => ((r = (r * 1103515245 + 12345) & 0x7fffffff), r % n);
+  const atoms = ['a', 'é', '東', '😀', '\\n', '\\"', '\\\\', '\\/', '\\b', '\\u0000', '\\u00e9', '\\uD83D', '\\uDE00', '\\ud83d\\ude00', '\ud83d', '\ude00', ' ', '\\x', '\\u12', '\u0001', '\t', ' '];
+  for (let k = 0; k < 120; k++) {
+    let body = '';
+    for (let n = rnd(6); n >= 0; n--) body += atoms[rnd(atoms.length)];
+    // A valid filler around the random part, so only that part decides.
+    const filler = 'x\\n'.repeat(22_000 + rnd(1000));
+    const token = '"' + filler + body + filler + '"';
+    for (const doc of [token, '{"k": ' + token + '}', '[' + token + ', "é"]']) {
+      let want: string | null;
+      try {
+        want = JSON.stringify(JSON.parse(doc));
+      } catch {
+        want = null;
+      }
+      assert.equal(reindent(doc, ''), want, body);
+      if (want !== null) assert.equal(minifiedBytes(doc), new TextEncoder().encode(want).length, body);
+      else if (doc === token) assert.equal(minifiedBytes(doc), null, body);
+    }
+  }
+  assert.equal(minifiedBytes('"' + 'x\\n'.repeat(40_000) + '\\'), null, 'unterminated');
 });

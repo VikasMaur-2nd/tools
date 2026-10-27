@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, BOOL, NUL, NUM, STR, parse, type JNode } from '../lib/json/parser';
-import { lazyResult, madeCount, nodeAtIndex, tapeOfNode } from '../lib/json/lazy';
-import { tapeOf } from '../lib/json/tape';
-import { tapeSearch } from '../lib/engine/tree';
+import { lazyResult, madeCount, nodeAtIndex, tapeOfNode, tapeSearch } from '../lib/json/lazy';
+import { tapeOf } from '../lib/json/tape-send';
 
 /** The tree view's search on nodes (TreeView.search), as the reference. */
 function nodeSearch(root: JNode, q: string): JNode[] {

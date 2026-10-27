@@ -1,0 +1,61 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "202 B raw",
+  "min": "189 B min",
+  "stats": "1 line · 9 nodes · depth 1"
+ },
+ "pretty": "{\n  \"k‮RLO\": \"v‮evil‬\",\n  \"👨‍👩‍👧‍👦\": \"Z͓͑͒ ǟ é\",\n  \"ls\": \"a b c\",\n  \"esc\": \"\\b\\f\\n\\r\\t\\\"\\\\/\",\n  \"ctl\": \"\\u0001\\u001f\",\n  \"astral\": \"😀𝓐\",\n  \"lone\": \"\\ud800 \\udfff\",\n  \"nul\": \"\\u0000\"\n}",
+ "minified": "{\"k‮RLO\":\"v‮evil‬\",\"👨‍👩‍👧‍👦\":\"Z͓͑͒ ǟ é\",\"ls\":\"a b c\",\"esc\":\"\\b\\f\\n\\r\\t\\\"\\\\/\",\"ctl\":\"\\u0001\\u001f\",\"astral\":\"😀𝓐\",\"lone\":\"\\ud800 \\udfff\",\"nul\":\"\\u0000\"}",
+ "string": "\"{\\\"k‮RLO\\\":\\\"v‮evil‬\\\",\\\"👨‍👩‍👧‍👦\\\":\\\"Z͓͑͒ ǟ é\\\",\\\"ls\\\":\\\"a b c\\\",\\\"esc\\\":\\\"\\\\b\\\\f\\\\n\\\\r\\\\t\\\\\\\"\\\\\\\\/\\\",\\\"ctl\\\":\\\"\\\\u0001\\\\u001f\\\",\\\"astral\\\":\\\"😀𝓐\\\",\\\"lone\\\":\\\"\\\\ud800 \\\\udfff\\\",\\\"nul\\\":\\\"\\\\u0000\\\"}\"",
+ "sorted": "{\n  \"astral\": \"😀𝓐\",\n  \"ctl\": \"\\u0001\\u001f\",\n  \"esc\": \"\\b\\f\\n\\r\\t\\\"\\\\/\",\n  \"k‮RLO\": \"v‮evil‬\",\n  \"lone\": \"\\ud800 \\udfff\",\n  \"ls\": \"a b c\",\n  \"nul\": \"\\u0000\",\n  \"👨‍👩‍👧‍👦\": \"Z͓͑͒ ǟ é\"\n}",
+ "tree": [
+  "root{8}",
+  "  k‮RLO:\"v‮evil‬\"",
+  "  👨‍👩‍👧‍👦:\"Z͓͑͒ ǟ é\"",
+  "  ls:\"a b c\"",
+  "  esc:\"\\b\\f\\n\\r\\t\\\"\\\\/\"",
+  "  ctl:\"\\u0001\\u001f\"",
+  "  astral:\"😀𝓐\"",
+  "  lone:\"\\ud800 \\udfff\"",
+  "  nul:\"\\u0000\""
+ ],
+ "table": {
+  "head": [
+   "key",
+   "value"
+  ],
+  "rows": [
+   "k‮RLO | v‮evil‬",
+   "👨‍👩‍👧‍👦 | Z͓͑͒ ǟ é",
+   "ls | a b c",
+   "esc | \b\f\n\n\t\"\\/",
+   "ctl | \u0001\u001f",
+   "astral | 😀𝓐",
+   "lone | \ud800 \udfff",
+   "nul | "
+  ],
+  "empty": false
+ },
+ "csv": "key,value\r\nk‮RLO,v‮evil‬\r\n👨‍👩‍👧‍👦,Z͓͑͒ ǟ é\r\nls,a b c\r\nesc,\"\b\f\n\r\t\"\"\\/\"\r\nctl,\u0001\u001f\r\nastral,😀𝓐\r\nlone,\ud800 \udfff\r\nnul,\u0000",
+ "convert": {
+  "typescript": "export interface Root {\n  \"k‮RLO\": string;\n  \"👨‍👩‍👧‍👦\": string;\n  ls: string;\n  esc: string;\n  ctl: string;\n  astral: string;\n  lone: string;\n  nul: string;\n}\n",
+  "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.object({\n  \"k‮RLO\": z.string(),\n  \"👨‍👩‍👧‍👦\": z.string(),\n  ls: z.string(),\n  esc: z.string(),\n  ctl: z.string(),\n  astral: z.string(),\n  lone: z.string(),\n  nul: z.string(),\n});\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"k‮RLO\": {\n      \"type\": \"string\"\n    },\n    \"👨‍👩‍👧‍👦\": {\n      \"type\": \"string\"\n    },\n    \"ls\": {\n      \"type\": \"string\"\n    },\n    \"esc\": {\n      \"type\": \"string\"\n    },\n    \"ctl\": {\n      \"type\": \"string\"\n    },\n    \"astral\": {\n      \"type\": \"string\"\n    },\n    \"lone\": {\n      \"type\": \"string\"\n    },\n    \"nul\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\"k‮RLO\", \"👨‍👩‍👧‍👦\", \"ls\", \"esc\", \"ctl\", \"astral\", \"lone\", \"nul\"]\n}\n",
+  "csharp": "using System.Text.Json.Serialization;\n\npublic class Root\n{\n    [JsonPropertyName(\"k‮RLO\")]\n    public required string KRLO { get; set; }\n\n    [JsonPropertyName(\"👨‍👩‍👧‍👦\")]\n    public required string Field { get; set; }\n\n    [JsonPropertyName(\"ls\")]\n    public required string Ls { get; set; }\n\n    [JsonPropertyName(\"esc\")]\n    public required string Esc { get; set; }\n\n    [JsonPropertyName(\"ctl\")]\n    public required string Ctl { get; set; }\n\n    [JsonPropertyName(\"astral\")]\n    public required string Astral { get; set; }\n\n    [JsonPropertyName(\"lone\")]\n    public required string Lone { get; set; }\n\n    [JsonPropertyName(\"nul\")]\n    public required string Nul { get; set; }\n}\n",
+  "dart": "class Root {\n  final String kRLO;\n  final String field;\n  final String ls;\n  final String esc;\n  final String ctl;\n  final String astral;\n  final String lone;\n  final String nul;\n\n  const Root({\n    required this.kRLO,\n    required this.field,\n    required this.ls,\n    required this.esc,\n    required this.ctl,\n    required this.astral,\n    required this.lone,\n    required this.nul,\n  });\n\n  factory Root.fromJson(Map<String, dynamic> json) => Root(\n    kRLO: json['k‮RLO'] as String,\n    field: json['👨‍👩‍👧‍👦'] as String,\n    ls: json['ls'] as String,\n    esc: json['esc'] as String,\n    ctl: json['ctl'] as String,\n    astral: json['astral'] as String,\n    lone: json['lone'] as String,\n    nul: json['nul'] as String,\n  );\n\n  Map<String, dynamic> toJson() => {\n    'k‮RLO': kRLO,\n    '👨‍👩‍👧‍👦': field,\n    'ls': ls,\n    'esc': esc,\n    'ctl': ctl,\n    'astral': astral,\n    'lone': lone,\n    'nul': nul,\n  };\n}\n",
+  "java": "import com.fasterxml.jackson.annotation.JsonProperty;\n\npublic record Root(\n    @JsonProperty(\"k‮RLO\") String kRLO,\n    @JsonProperty(\"👨‍👩‍👧‍👦\") String field,\n    String ls,\n    String esc,\n    String ctl,\n    String astral,\n    String lone,\n    String nul\n) {}\n",
+  "python": "from pydantic import BaseModel, Field\n\n\nclass Root(BaseModel):\n    k_rlo: str = Field(alias=\"k‮RLO\")\n    field: str = Field(alias=\"👨‍👩‍👧‍👦\")\n    ls: str\n    esc: str\n    ctl: str\n    astral: str\n    lone: str\n    nul: str\n",
+  "go": "package main\n\ntype Root struct {\n\tKRLO   string `json:\"-\"` // key \"k‮RLO\" can't be expressed in a tag\n\tField  string `json:\"-\"` // key \"👨‍👩‍👧‍👦\" can't be expressed in a tag\n\tLs     string `json:\"ls\"`\n\tEsc    string `json:\"esc\"`\n\tCtl    string `json:\"ctl\"`\n\tAstral string `json:\"astral\"`\n\tLone   string `json:\"lone\"`\n\tNul    string `json:\"nul\"`\n}\n",
+  "kotlin": "import kotlinx.serialization.SerialName\nimport kotlinx.serialization.Serializable\n\n@Serializable\ndata class Root(\n    @SerialName(\"k‮RLO\") val kRLO: String,\n    @SerialName(\"👨‍👩‍👧‍👦\") val field: String,\n    val ls: String,\n    val esc: String,\n    val ctl: String,\n    val astral: String,\n    val lone: String,\n    val nul: String,\n)\n",
+  "swift": "import Foundation\n\nstruct Root: Codable {\n    let kRLO: String\n    let field: String\n    let ls: String\n    let esc: String\n    let ctl: String\n    let astral: String\n    let lone: String\n    let nul: String\n\n    enum CodingKeys: String, CodingKey {\n        case kRLO = \"k‮RLO\"\n        case field = \"👨‍👩‍👧‍👦\"\n        case ls, esc, ctl, astral, lone, nul\n    }\n}\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\nfinal class Root\n{\n    public function __construct(\n        public readonly string $kRLO,\n        public readonly string $field,\n        public readonly string $ls,\n        public readonly string $esc,\n        public readonly string $ctl,\n        public readonly string $astral,\n        public readonly string $lone,\n        public readonly string $nul,\n    ) {\n    }\n\n    public static function fromArray(array $data): self\n    {\n        return new self(\n            kRLO: $data['k‮RLO'],\n            field: $data['👨‍👩‍👧‍👦'],\n            ls: $data['ls'],\n            esc: $data['esc'],\n            ctl: $data['ctl'],\n            astral: $data['astral'],\n            lone: $data['lone'],\n            nul: $data['nul'],\n        );\n    }\n}\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct Root {\n    #[serde(rename = \"k‮RLO\")]\n    pub k_rlo: String,\n    #[serde(rename = \"👨‍👩‍👧‍👦\")]\n    pub field: String,\n    pub ls: String,\n    pub esc: String,\n    pub ctl: String,\n    pub astral: String,\n    pub lone: String,\n    pub nul: String,\n}\n",
+  "csv": "key,value\r\nk‮RLO,v‮evil‬\r\n👨‍👩‍👧‍👦,Z͓͑͒ ǟ é\r\nls,a b c\r\nesc,\"\b\f\n\r\t\"\"\\/\"\r\nctl,\u0001\u001f\r\nastral,😀𝓐\r\nlone,\ud800 \udfff\r\nnul,\u0000\r\n",
+  "yaml": "k‮RLO: v‮evil‬\n👨‍👩‍👧‍👦: Z͓͑͒ ǟ é\nls: \"a\\u2028b\\u2029c\"\nesc: \"\\b\\f\\n\\r\\t\\\"\\\\/\"\nctl: \"\\u0001\\u001f\"\nastral: 😀𝓐\nlone: \"\\ud800 \\udfff\"\nnul: \"\\0\"\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <k_RLO>v‮evil‬</k_RLO>\n  <_______>Z͓͑͒ ǟ é</_______>\n  <ls>a b c</ls>\n  <esc>��\n&#13;\t\"\\/</esc>\n  <ctl>��</ctl>\n  <astral>😀𝓐</astral>\n  <lone>� �</lone>\n  <nul>�</nul>\n</root>\n",
+  "toml": "\"k‮RLO\" = \"v‮evil‬\"\n\"👨‍👩‍👧‍👦\" = \"Z͓͑͒ ǟ é\"\nls = \"a b c\"\nesc = \"\"\"\n\\b\\f\n\\r\t\\\"\\\\/\"\"\"\nctl = \"\\u0001\\u001f\"\nastral = \"😀𝓐\"\nlone = \"\ud800 \udfff\"\nnul = \"\\u0000\"\n",
+  "jsonl": "{\"k‮RLO\":\"v‮evil‬\",\"👨‍👩‍👧‍👦\":\"Z͓͑͒ ǟ é\",\"ls\":\"a b c\",\"esc\":\"\\b\\f\\n\\r\\t\\\"\\\\/\",\"ctl\":\"\\u0001\\u001f\",\"astral\":\"😀𝓐\",\"lone\":\"\\ud800 \\udfff\",\"nul\":\"\\u0000\"}\n"
+ }
+}

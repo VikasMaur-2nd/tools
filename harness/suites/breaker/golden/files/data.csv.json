@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "220 B raw",
+  "min": "147 B min",
+  "stats": "17 lines · 13 nodes · depth 2"
+ },
+ "toasts": [
+  "Converted data.csv to JSON"
+ ],
+ "input": "[\n  {\n    \"id\": 1,\n    \"name\": \"Zoë, the \\\"great\\\"\",\n    \"note\": \"=cmd|\\\"/c calc\\\"!A0\"\n  },\n  {\n    \"id\": 2,\n    \"name\": null,\n    \"note\": null\n  },\n  {\n    \"id\": 3,\n    \"name\": \"東京\",\n    \"note\": \"multi\\nline\"\n  }\n]",
+ "formatted": "[\n  {\n    \"id\": 1,\n    \"name\": \"Zoë, the \\\"great\\\"\",\n    \"note\": \"=cmd|\\\"/c calc\\\"!A0\"\n  },\n  {\n    \"id\": 2,\n    \"name\": null,\n    \"note\": null\n  },\n  {\n    \"id\": 3,\n    \"name\": \"東京\",\n    \"note\": \"multi\\nline\"\n  }\n]"
+}

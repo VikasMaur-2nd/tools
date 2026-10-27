@@ -48,11 +48,18 @@ export async function compressedSize(blob: Blob, name: string): Promise<number> 
   }
 }
 
+/**
+ * Brotli is measured up to this size (bytes). Firefox's encoder (the only browser offering it) runs at
+ * about 0.35 MB/s: a 32 MB document would cost 90 s of CPU after every typing pause.
+ */
+const BROTLI_MAX = 2_000_000;
+
 /** Stop measuring an obsolete document after the current encoder finishes. */
 export async function compressedSizes(blob: Blob, current: () => boolean): Promise<Partial<Record<Codec, number>>> {
   const sizes: Partial<Record<Codec, number>> = {};
   for (const [codec, name] of codecs()) {
     if (!current()) break;
+    if (codec === 'brotli' && blob.size > BROTLI_MAX) continue;
     try {
       sizes[codec] = await compressedSize(blob, name);
     } catch {

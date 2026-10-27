@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "37 B raw",
+  "min": "37 B min",
+  "stats": "1 line · 4 nodes · depth 1"
+ },
+ "toasts": [
+  "Opened utf16-bom.json"
+ ],
+ "input": "{\"name\":\"Zoë\",\"city\":\"東京\",\"n\":1}",
+ "formatted": "{\n  \"name\": \"Zoë\",\n  \"city\": \"東京\",\n  \"n\": 1\n}"
+}

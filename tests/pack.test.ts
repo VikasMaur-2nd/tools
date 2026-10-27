@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, parse, type JNode, type ParseResult } from '../lib/json/parser';
 import { nodeAt, pathOf } from '../lib/json/path';
-import { packTree, packedPosition, unpacker } from '../lib/json/pack';
+import { packedPosition, unpacker } from '../lib/json/pack';
+import { packTree } from '../lib/json/pack-send';
 import { madeCount } from '../lib/json/lazy';
 import { Doc } from '../lib/engine/doc';
 
@@ -142,4 +143,17 @@ test('packed navigation reads document pieces without building the complete text
   const tree = packTree(parse(text), text);
   doc.toString = () => { throw new Error('must not flatten'); };
   for (let off = 0; off <= text.length; off++) assert.deepEqual(packedPosition(tree, off, doc), packedPosition(tree, off, text));
+});
+
+test('containerAt on a tape finds the container nodeAt does, at every offset, making no node', () => {
+  for (const text of ['{"a":[1,2,{"b":true}], "c": "v", "empty":{}}', '[1,2,{"key,comma": [[],{}]}]', '{a:1,b:[2,3,]}', '{"a":1}\n{"b":2}', '"s"', '[[[[]]]]']) {
+    const res = parse(text);
+    const lazy = unpacker(packTree(res, text), text)(Infinity)!;
+    for (let off = -1; off <= text.length + 1; off++) {
+      let n = nodeAt(res.root, off, text);
+      while (n && n.t < ARR) n = n.u;
+      assert.deepEqual(lazy.root!.z!.containerAt(off), n ? [n.s, n.e] : null, `${text} @ ${off}`);
+    }
+    assert.equal(madeCount(lazy.root), 1);
+  }
 });

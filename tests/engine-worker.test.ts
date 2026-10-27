@@ -9,6 +9,18 @@ import { Doc } from '../lib/engine/doc';
 import { parse, type ParseResult } from '../lib/json/parser';
 import { diffResults } from './oracle/compare';
 
+/** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
+const streamOf = (text: string | Promise<string>) => new ReadableStream<Uint8Array>({
+  async start(c) {
+    try {
+      c.enqueue(new TextEncoder().encode(await text));
+      c.close();
+    } catch (e) {
+      c.error(e);
+    }
+  },
+});
+
 const load = createRequire(__filename);
 
 // Exercise the real Engine methods without its browser-only constructor. A fake task queue
@@ -321,8 +333,9 @@ function checkShown(seen: unknown[]) {
 
 const bigArray = (n: number) => '[' + '1,'.repeat(n) + '1]';
 
-test('a big load in the Format view shows its percent from the start, only growing, through both workers', () => {
+test('a big load in the Format view shows its percent from the start, only growing, through both workers', async () => {
   const { engine, workers, tick, seen, look } = loadSession();
+  await engine.tapeCode();
   const text = bigArray(1_500_000);
   engine.load(text, 'big.json', false, true);
   look();
@@ -353,6 +366,42 @@ test('a big load in the Format view shows its percent from the start, only growi
   for (const p of [0.05, 0.32, 0.37, 0.5, 0.55, 0.88]) assert.ok(percents.includes(p), `${p} in ${percents.join(', ')}`);
 });
 
+test('a tape that arrives before its code loads waits for it, and messages after it keep their order', async () => {
+  const { engine, workers, tick, seen, look } = loadSession();
+  const text = bigArray(1_500_000);
+  engine.load(text, 'big.json', false, true);
+  look();
+  assert.deepEqual(plain(seen), [{ kind: 'parsing', progress: 0 }], 'working from the start');
+  // The text goes to the formatting worker in chunks, then it reports how far it got.
+  while (tick());
+  const [formatting] = workers;
+  assert.equal(formatting.messages.find((m) => m.start)?.progress, true);
+  // (Replies to the request being worked on: the editor taking the text is a change, so the analysis has a later id.)
+  const send = (w: (typeof workers)[0], data: object) => { w.onmessage!({ data: { id: engine.loadSeq, ...data } }); look(); };
+  send(formatting, { progress: 0.4 });
+  send(formatting, { progress: 0.75 });
+  send(formatting, { progress: 0.2 }); // (late and lower: ignored)
+  const out = ' '.repeat(2_500_000);
+  for (let i = 0; i < out.length; i += 256_000) send(formatting, { field: 'out', chunk: out.slice(i, i + 256_000), size: out.length });
+  send(formatting, { out: null, chunkedOut: true, index: { starts: new Int32Array(1), close: new Int32Array(1), depth: new Int32Array(1), maxLen: 0 } });
+  // Drawn: then the editor takes the text (its change doesn't show), and the analysis worker gets it.
+  while (tick());
+  const analysis = workers[1];
+  assert.ok(analysis, 'the analysis worker started');
+  assert.equal(analysis.messages.find((m) => m.start)?.progress, true);
+  send(analysis, { progress: 0.3 });
+  send(analysis, { progress: 0.75 });
+  send(analysis, { tree: { nodes: { length: 1 }, head: {} }, metrics: { bytes: text.length, min: text.length, extra: 0, units: 0 } });
+  // (A late progress report after the tape: it must not be handled before it.)
+  send(analysis, { progress: 0.9 });
+  assert.equal((plain(seen).at(-1) as { kind: string }).kind, 'parsing', 'held until the code is here');
+  await engine.tapeCode();
+  await new Promise((r) => setTimeout(r, 0));
+  look();
+  checkShown(seen);
+});
+
+
 test('a big load in another view goes from reading the file to parsing it here in steps', async (t) => {
   clock(t, 5);
   const { engine, tick, seen, look } = loadSession();
@@ -364,7 +413,7 @@ test('a big load in another view goes from reading the file to parsing it here i
   engine.toast = () => {};
   const text = JSON.stringify(Array.from({ length: 60_000 }, (_, k) => ({ id: k, name: 'Zoë ' + k })));
   assert.ok(text.length > 1_000_000 && text.length < 2_000_000);
-  const file = { name: 'big.json', size: text.length, text: () => Promise.resolve(text) };
+  const file = { name: 'big.json', size: text.length, text: () => Promise.resolve(text), stream: () => streamOf(Promise.resolve(text)) };
   const reading = engine.loadFile(file);
   look();
   assert.deepEqual(plain(seen), [{ kind: 'parsing', progress: 0 }], 'working while the file is read');
@@ -379,7 +428,7 @@ test('a file that cannot be read leaves what was shown before', async () => {
   const { engine, state } = loadSession();
   engine.toast = () => {};
   const before = (state.status = { kind: 'valid', warnings: 0 });
-  await engine.loadFile({ name: 'big.json', size: 5_000_000, text: () => Promise.reject(new Error('gone')) });
+  await engine.loadFile({ name: 'big.json', size: 5_000_000, text: () => Promise.reject(new Error('gone')), stream: () => streamOf(Promise.reject(new Error('gone'))) });
   assert.equal(state.status, before);
 });
 

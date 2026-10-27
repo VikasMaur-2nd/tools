@@ -1,0 +1,9 @@
+{
+ "rows": [
+  "~$.k\"café\"→\"café\"",
+  "−$[\"café\"]1",
+  "+$[\"café\"]1"
+ ],
+ "empty": null,
+ "patch": "[\n  {\n    \"op\": \"replace\",\n    \"path\": \"/k\",\n    \"value\": \"café\"\n  },\n  {\n    \"op\": \"remove\",\n    \"path\": \"/café\"\n  },\n  {\n    \"op\": \"add\",\n    \"path\": \"/café\",\n    \"value\": 1\n  }\n]"
+}

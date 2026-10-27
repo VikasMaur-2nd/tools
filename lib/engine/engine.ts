@@ -1,7 +1,7 @@
 import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
 import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
-import { packedPosition, unpacker, type PackedTree } from '../json/pack';
+import type { PackedTree } from '../json/pack';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
 import type { DocumentMetrics } from '../json/metrics';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
@@ -17,6 +17,7 @@ import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
+import { readText } from '../json/text';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
@@ -193,6 +194,18 @@ function sniff(text: string): Hint {
  * The service worker is registered once per page (a client navigation mounts the tool again, with a new
  * engine), and its news of a new version goes to the tool open then, or to the next one (see registerSW).
  */
+/**
+ * The tape's code (pack.ts and what it imports): only documents a worker parsed need it, so it isn't in
+ * the first load. Loaded when the page is idle, and waited for by a worker message that brings a tape.
+ */
+type Pack = typeof import('../json/pack');
+let pack: Pack | null = null;
+let packLoad: Promise<Pack> | null = null;
+const loadPack = () => (packLoad ??= import('../json/pack').then((m) => (pack = m), (e: unknown) => {
+  packLoad = null;
+  throw e;
+}));
+
 let swStarted = false;
 let updateWaiting = false;
 
@@ -490,7 +503,7 @@ export class Engine {
   private materializeGood() {
     if (!this.goodPacked) return;
     const { tree, text } = this.goodPacked;
-    const res = unpacker(tree, text)(Infinity)!;
+    const res = pack!.unpacker(tree, text)(Infinity)!;
     if (this.packed?.id === this.loadSeq && this.packed.text === text) {
       this.analyze(res, this.goodMetrics ?? undefined);
       return;
@@ -517,7 +530,7 @@ export class Engine {
       const { tree, text, metrics } = this.packed;
       this.viewSeq++;
       this.packed = null;
-      this.analyze(unpacker(tree, text)(Infinity), metrics);
+      this.analyze(pack!.unpacker(tree, text)(Infinity), metrics);
     }
     if (this.ed.text !== this.parsed || (!this.res && this.ed.text.trim())) {
       clearTimeout(this.timer);
@@ -707,7 +720,7 @@ export class Engine {
       this.goodPacked = this.packed;
       this.good = null;
       this.sel = null;
-      this.selPath = packedPosition(this.packed!.tree, ed.caret, this.packed!.document ?? text)?.path ?? null;
+      this.selPath = pack!.packedPosition(this.packed!.tree, ed.caret, this.packed!.document ?? text)?.path ?? null;
       this.tree.releaseRoot(reset);
       this.setGraphRoot(null, true);
       // Format already has the worker's output. Nodes are needed only by commands and other views.
@@ -753,7 +766,8 @@ export class Engine {
 
     let hint: Hint = null;
     if (jwt || lines) hint = null;
-    else if (metrics?.unescape || res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
+    // (A worker measured it: a long root string isn't decoded here just for this.)
+    else if (metrics ? metrics.unescape : res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
     else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
 
     store.set({
@@ -852,14 +866,27 @@ export class Engine {
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
         if (blob.size <= 32_000_000) {
-          const encoders = await import('./sizes').catch(() => null);
-          if (seq !== this.sizeSeq) return;
-          if (encoders) Object.assign(sizes, await encoders.compressedSizes(blob, () => seq === this.sizeSeq));
+          Object.assign(sizes, await this.compressed(blob, seq));
         }
         if (seq === this.sizeSeq) store.set({ sizes });
       }),
       text.length > 1_000_000 ? 700 : 200,
     );
+  }
+
+  /** Compressed sizes waiting for the formatting worker, by measure() sequence. */
+  private sizesWanted = new Map<number, (sizes: Partial<Record<string, number>>) => void>();
+
+  /** Compresses in the formatting worker (encoders can run seconds on the thread that calls them: Firefox's), or here without one. */
+  private compressed(blob: Blob, seq: number): Promise<Partial<Record<string, number>>> {
+    const w = this.reindentWorker();
+    if (!w) return import('./sizes').then((m) => m.compressedSizes(blob, () => seq === this.sizeSeq), () => ({}));
+    // (Only the newest is answered: older ones stop.)
+    this.sizesWanted.clear();
+    return new Promise((done) => {
+      this.sizesWanted.set(seq, done);
+      w.postMessage({ id: 0, measure: blob, seq });
+    });
   }
 
   /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
@@ -906,7 +933,7 @@ export class Engine {
   /** Caret moved by the user → reveal the node under it in the tree. */
   private onNav = () => {
     if (this.packed?.id === this.loadSeq) {
-      const at = packedPosition(this.packed.tree, this.ed.caret, this.packed.document ?? this.packed.text);
+      const at = pack!.packedPosition(this.packed.tree, this.ed.caret, this.packed.document ?? this.packed.text);
       this.selPath = at?.path ?? null;
       store.set({ path: at ? formatPath(at.path) : null });
       this.ed.setScope(-1, -1);
@@ -924,7 +951,7 @@ export class Engine {
   private updateBrackets() {
     if (this.packed?.id === this.loadSeq) {
       const off = this.ed.caret;
-      const at = packedPosition(this.packed.tree, off, this.packed.document ?? this.packed.text);
+      const at = pack!.packedPosition(this.packed.tree, off, this.packed.document ?? this.packed.text);
       const close = at ? at.end - 1 : -1;
       const c = (this.packed.document ?? this.packed.text).charCodeAt(close);
       const match = at && (c === 125 || c === 93) && (off === at.start || off === at.start + 1 || off === close || off === at.end);
@@ -934,6 +961,16 @@ export class Engine {
     if (!this.synced) return;
     const off = this.ed.caret;
     const t = this.ed.text;
+    // A tree from a tape: its brackets are found on the tape (nodeAt would make the root's children).
+    const z = this.res!.root!.z;
+    if (z) {
+      const at = z.containerAt(off);
+      const close = at ? at[1] - 1 : -1;
+      const c = t.charCodeAt(close);
+      const match = at && (c === 125 || c === 93) && (off === at[0] || off === at[0] + 1 || off === close || off === at[1]);
+      this.ed.setBrackets(match ? at[0] : -1, match ? close : -1);
+      return;
+    }
     for (let n: JNode | null = nodeAt(this.res!.root, off, t); n; n = n.u) {
       if (n.t < ARR) continue;
       const close = n.e - 1;
@@ -1279,7 +1316,7 @@ export class Engine {
         this.analyze({ ...tree.head, root: null }, metrics, true);
         return;
       }
-      const step = unpacker(tree, analysisText);
+      const step = pack!.unpacker(tree, analysisText);
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
@@ -1427,7 +1464,7 @@ export class Engine {
       try {
         const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
         const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
-        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number }>) => {
+        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number }>) => this.withPack(!!e.data.tree, () => {
           if (e.data.id !== this.loadSeq) return;
           if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
@@ -1443,7 +1480,7 @@ export class Engine {
           }
           else if (e.data.tree) done(e.data.tree, e.data.metrics);
           else if (e.data.sizes) { this.measuredSizes = { id, sizes: e.data.sizes }; store.set({ sizes: e.data.sizes }); }
-        };
+        });
         w.onerror = (e) => {
           e.preventDefault();
           // Ignore duplicate failure events and never move this full parse onto the typing thread.
@@ -1461,14 +1498,48 @@ export class Engine {
     }, wait);
   }
 
+  /** Loads the tape's code now (the page does when idle, or when a tape comes). */
+  tapeCode(): Promise<unknown> {
+    return loadPack();
+  }
+
+  /** Workers' messages waiting for the tape's code (see loadPack), in the order they came. */
+  private waiting: (() => void)[] | null = null;
+
+  /** Runs a worker's message handler `f`, after the tape's code has loaded if the message brings a tape (`tape`), or one before it did. */
+  private withPack(tape: boolean, f: () => void) {
+    if (!this.waiting && (pack || !tape)) return f();
+    if (this.waiting) return void this.waiting.push(f);
+    this.waiting = [f];
+    const run = () => void loadPack().then(() => {
+      const list = this.waiting ?? [];
+      this.waiting = null;
+      if (!this.dead) for (const g of list) g();
+    }, () => {
+      // (Offline before it was ever cached, or a network error: tried again shortly.)
+      if (!this.dead) setTimeout(run, 1000);
+    });
+    run();
+  }
+
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
   private reindentWorker(): Worker | null {
     if (this.dead) return null;
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; size?: number; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean; progress?: number }>) => {
-        if (e.data.id === -1) return void (this.workerWarm = true);
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; size?: number; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean; progress?: number; measured?: number }>) => this.withPack(!!e.data.tree, () => {
+        if (e.data.measured !== undefined) {
+          const done = this.sizesWanted.get(e.data.measured);
+          this.sizesWanted.delete(e.data.measured);
+          return void done?.((e.data.sizes ?? {}) as Partial<Record<string, number>>);
+        }
+        if (e.data.id === -1) {
+          this.workerWarm = true;
+          // A warm worker means a big document may come: its tape's code next, when the page is idle.
+          idle(() => void loadPack().catch(() => {}), 2000);
+          return;
+        }
         if (e.data.id !== this.loadSeq) return;
         if (e.data.sizes) {
           this.measuredSizes = { id: e.data.id, sizes: e.data.sizes };
@@ -1490,7 +1561,7 @@ export class Engine {
         const display = e.data.chunkedDisplay ? job.displayParts.join('') : e.data.display;
         job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.indexReuse && e.data.index ? { ...e.data.index, close: job.baseIndex.close, depth: job.baseIndex.depth } : e.data.index, display, e.data.change, e.data.patch, e.data.inline);
         this.workerParse = null;
-      };
+      });
       w.onerror = (e) => {
         // It couldn't load (offline before it was ever cached, blocked, or its start cut short by a
         // navigation): work here instead, and start another on a later use, a few times over.
@@ -1557,7 +1628,7 @@ export class Engine {
             return;
           }
           // (The view changed meanwhile: its nodes, rebuilt in short slices.)
-          const step = unpacker(tree, text);
+          const step = pack!.unpacker(tree, text);
           const run = () => {
             if (seq !== this.loadSeq) return;
             const res = step(performance.now() + 8);
@@ -1633,7 +1704,7 @@ export class Engine {
       if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
     };
     try {
-      const text = await f.text();
+      const text = await readText(f);
       if (signal.aborted) return unshow();
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
       let failed = false;
@@ -1795,7 +1866,7 @@ export class Engine {
   async loadCompareFile(f: File, source: InputSource = 'file') {
     const signal = this.request(2);
     try {
-      const text = await f.text();
+      const text = await readText(f);
       if (signal.aborted) return;
       this.loadCompare(text, f.name);
       noteLoad(source, 2, f.name);
@@ -2081,7 +2152,7 @@ export class Engine {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
         return null;
       }
-      const text = await res.text();
+      const text = await readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
@@ -2176,7 +2247,7 @@ export class Engine {
     if (view !== 'format' && view !== 'compare' && packed) {
       const { tree, text, metrics } = packed;
       const seq = this.loadSeq;
-      const step = unpacker(tree, text);
+      const step = pack!.unpacker(tree, text);
       const run = () => {
         if (this.dead || seq !== this.loadSeq || viewSeq !== this.viewSeq) return;
         const res = step(performance.now() + 8);
@@ -2203,7 +2274,8 @@ export class Engine {
     if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
-      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
+      // (A selected primitive root has no container: the table says what it can show, as for an unselected one.)
+      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u ?? this.sel) : root;
       this.tableShow(base);
     } else this.table.setNode(null);
     if (view === 'tree') {
@@ -2302,6 +2374,8 @@ export class Engine {
   private pendingFmtWorkerId = 0;
   private fmtKey = '';
   private fmtText = '';
+  /** The output drawn (empty) is the one too large to make: the view and Copy say so. */
+  private fmtTooLarge = false;
   private fmtVersion = 0;
   private fmtCounts: { version: number; pretty: number; minified: number; escaped: number } | null = null;
   /** User Timing for DevTools: a file opened (tk:input) → its output painted (tk:formatted). */
@@ -2324,6 +2398,8 @@ export class Engine {
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
     const drawn = this.formatCurrent(key);
+    // (Already found too large to make: the view keeps saying so.)
+    if (drawn && this.fmtTooLarge) return;
     let text: string;
     try {
       text = drawn ? this.fmtText : this.formatted();
@@ -2332,6 +2408,7 @@ export class Engine {
       if (!tooLarge(e)) throw e;
       // (Pretty-printing very deep nesting: about 2·depth² characters.) The view says so instead.
       this.drawFormat('', key);
+      this.fmtTooLarge = true;
       store.set({ fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0, tooLarge: true } });
       return;
     }
@@ -2382,6 +2459,7 @@ export class Engine {
 
   /** Shows `text` (the formatted `src`) in the Format view. */
   private drawFormat(text: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+    this.fmtTooLarge = false;
     if (store.get().fmt.tooLarge) store.set({ fmt: { ...store.get().fmt, tooLarge: false } });
     if (!change) this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;
@@ -3270,6 +3348,7 @@ export class Engine {
           // Load the lazy features once so they're cached for offline use and survive a
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
+            () => loadPack(),
             () => import('./sizes'),
             () => import('../convert'),
             () => import('../convert/import'),

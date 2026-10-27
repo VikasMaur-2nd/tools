@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { parse } from '../lib/json/parser';
-import { packTree } from '../lib/json/pack';
+import { packTree } from '../lib/json/pack-send';
 import { EN } from '../lib/i18n/ui';
 
 // Run the real engine methods with a controlled import and animation-frame queue.
@@ -142,6 +142,7 @@ test('graph root updates track whether the view is active and preserve the reset
 test('graph receives packed documents through the deferred node path', async () => {
   const s = session();
   await s.engine.loadGraph();
+  await s.engine.tapeCode();
   const text = '{"nested":{"value":1}}';
   const parsed = parse(text);
   s.engine.goodPacked = { id: -1, tree: packTree(parsed, text), text };

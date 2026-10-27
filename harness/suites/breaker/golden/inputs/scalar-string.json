@@ -1,0 +1,43 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "42 B raw",
+  "min": "38 B min",
+  "stats": "1 line · 1 node · depth 0"
+ },
+ "pretty": "\"just a string with \\\"quotes\\\" and é\"",
+ "minified": "\"just a string with \\\"quotes\\\" and é\"",
+ "string": "\"\\\"just a string with \\\\\\\"quotes\\\\\\\" and é\\\"\"",
+ "sorted": "\"just a string with \\\"quotes\\\" and é\"",
+ "tree": [
+  "root\"just a string with \\\"quotes\\\" and é\""
+ ],
+ "table": {
+  "head": [
+   "#"
+  ],
+  "rows": [],
+  "empty": true
+ },
+ "csv": null,
+ "convert": {
+  "typescript": "export type Root = string;\n",
+  "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.string();\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"string\"\n}\n",
+  "csharp": "using System.Text.Json.Serialization;\n\n// Root: string\n",
+  "dart": "typedef Root = String;\n",
+  "java": "// Root: String\n",
+  "python": "from pydantic import RootModel\n\n\nclass Root(RootModel[str]):\n    root: str\n",
+  "go": "package main\n\ntype Root string\n",
+  "kotlin": "typealias Root = String\n",
+  "swift": "import Foundation\n\ntypealias Root = String\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: string\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = String;\n",
+  "csv": "value\r\n\"just a string with \"\"quotes\"\" and é\"\r\n",
+  "yaml": "just a string with \"quotes\" and é\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>just a string with \"quotes\" and é</root>\n",
+  "toml": "# A TOML document must be a table: the top-level value is stored under \"root\".\nroot = \"just a string with \\\"quotes\\\" and é\"\n",
+  "jsonl": "\"just a string with \\\"quotes\\\" and é\"\n"
+ }
+}

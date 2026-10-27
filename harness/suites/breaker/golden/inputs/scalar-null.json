@@ -1,0 +1,43 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "4 B raw",
+  "min": "4 B min",
+  "stats": "1 line · 1 node · depth 0"
+ },
+ "pretty": "null",
+ "minified": "null",
+ "string": "\"null\"",
+ "sorted": "null",
+ "tree": [
+  "rootnull"
+ ],
+ "table": {
+  "head": [
+   "#"
+  ],
+  "rows": [],
+  "empty": true
+ },
+ "csv": null,
+ "convert": {
+  "typescript": "export type Root = null;\n",
+  "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.null();\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"null\"\n}\n",
+  "csharp": "using System.Text.Json;\nusing System.Text.Json.Serialization;\n\n// Root: JsonElement?\n",
+  "dart": "typedef Root = dynamic;\n",
+  "java": "// Root: Object\n",
+  "python": "from typing import Any\n\nfrom pydantic import RootModel\n\n\nclass Root(RootModel[Any]):\n    root: Any\n",
+  "go": "package main\n\ntype Root any\n",
+  "kotlin": "import kotlinx.serialization.json.JsonElement\n\ntypealias Root = JsonElement?\n",
+  "swift": "import Foundation\n\ntypealias Root = JSONValue?\n\n/// Any JSON value (used where the type is unknown or mixed).\nenum JSONValue: Codable {\n    case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null\n\n    init(from decoder: Decoder) throws {\n        let c = try decoder.singleValueContainer()\n        if c.decodeNil() { self = .null }\n        else if let v = try? c.decode(Bool.self) { self = .bool(v) }\n        else if let v = try? c.decode(Double.self) { self = .number(v) }\n        else if let v = try? c.decode(String.self) { self = .string(v) }\n        else if let v = try? c.decode([JSONValue].self) { self = .array(v) }\n        else { self = .object(try c.decode([String: JSONValue].self)) }\n    }\n\n    func encode(to encoder: Encoder) throws {\n        var c = encoder.singleValueContainer()\n        switch self {\n        case .string(let v): try c.encode(v)\n        case .number(let v): try c.encode(v)\n        case .bool(let v): try c.encode(v)\n        case .object(let v): try c.encode(v)\n        case .array(let v): try c.encode(v)\n        case .null: try c.encodeNil()\n        }\n    }\n}\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: mixed\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = serde_json::Value;\n",
+  "csv": "value\r\n\r\n",
+  "yaml": "null\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root/>\n",
+  "toml": "# A TOML document must be a table: the top-level value is stored under \"root\".\n# root = null (omitted: TOML has no null)\n",
+  "jsonl": "null\n"
+ }
+}

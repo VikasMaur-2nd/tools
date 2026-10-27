@@ -1,0 +1,13 @@
+{
+ "status": {
+  "msg": "Ln 1, Col 8: Unexpected control character U+0000 after the JSON value",
+  "kind": "err",
+  "raw": "10 B raw",
+  "min": null,
+  "stats": "1 line · 2 nodes · depth 1"
+ },
+ "toasts": [
+  "Opened nul-tail.json"
+ ],
+ "input": "{\"a\":1}\u0000\u0000\u0000"
+}

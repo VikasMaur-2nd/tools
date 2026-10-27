@@ -280,3 +280,30 @@ test('a big load whose text is not strict JSON still ends its progress where for
     assert.equal(messages.filter((m) => m.id === 1 && m.field === 'out').map((m) => m.chunk).join('') || reply.out, formatDoc(text, parse(text), '  '));
   } finally { await worker.terminate(); }
 });
+
+test('the formatting worker measures compressed sizes for the page, answering only the newest request', async () => {
+  const { worker, messages } = session();
+  try {
+    const doc = JSON.stringify(Array.from({ length: 2000 }, (_, i) => ({ id: i, s: 'value ' + i })));
+    const blob = new Blob([doc]);
+    worker.postMessage({ id: 0, measure: blob, seq: 1 });
+    worker.postMessage({ id: 0, measure: blob, seq: 2 });
+    const reply = await new Promise<{ measured: number; sizes: Record<string, number> }>((done, fail) => {
+      const timer = setTimeout(() => fail(new Error('no sizes')), 10_000);
+      const check = () => {
+        const m = messages.find((x) => (x as unknown as { measured?: number }).measured === 2);
+        if (m) { clearTimeout(timer); done(m as unknown as { measured: number; sizes: Record<string, number> }); }
+      };
+      worker.on('message', check);
+      check();
+    });
+    assert.equal(reply.measured, 2);
+    const { gzipSync } = await import('node:zlib');
+    // (CompressionStream's gzip and zlib's agree within a few bytes: headers.)
+    assert.ok(Math.abs(reply.sizes.gzip - gzipSync(doc).length) < 64, `gzip ${reply.sizes.gzip}`);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(!messages.some((x) => (x as unknown as { measured?: number }).measured === 1), 'the older request is not answered');
+  } finally {
+    await worker.terminate();
+  }
+});

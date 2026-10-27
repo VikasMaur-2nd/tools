@@ -8,6 +8,18 @@ import ts from 'typescript';
 import { Doc } from '../lib/engine/doc';
 import { parse, type JNode } from '../lib/json/parser';
 
+/** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
+const streamOf = (text: string | Promise<string>) => new ReadableStream<Uint8Array>({
+  async start(c) {
+    try {
+      c.enqueue(new TextEncoder().encode(await text));
+      c.close();
+    } catch (e) {
+      c.error(e);
+    }
+  },
+});
+
 // The engine's asynchronous work against its lifecycle: requests that finish out of order, work still
 // pending when the tool is closed (a client navigation) and another one opens. The real Engine methods
 // run without the browser-only constructor; timers, idle callbacks and steps share one fake task queue.
@@ -203,7 +215,7 @@ test('a conversion finishing after the view changed or the tool closed draws not
 
 // ── Documents asked for: files, links, URLs ──
 
-const file = (name: string, text: Promise<string>, size = 10) => ({ name, size, text: () => text });
+const file = (name: string, text: Promise<string>, size = 10) => ({ name, size, text: () => text, stream: () => streamOf(text) });
 
 /** A session whose loads are recorded instead of shown. */
 function loading() {
@@ -271,8 +283,8 @@ test('a URL asked for stops the download of the one before, which says nothing',
   const first = engine.fetchUrl('https://a.example/a.json');
   const second = engine.fetchUrl('https://b.example/b.json');
   assert.equal(fetches[0].signal?.aborted, true);
-  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"b":1}') });
-  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}') });
+  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"b":1}'), get body() { return streamOf(Promise.resolve('{"b":1}')); } });
+  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}'), get body() { return streamOf(Promise.resolve('{"a":1}')); } });
   await Promise.all([first, second]);
   assert.deepEqual(loads, ['1:b.json']);
   assert.deepEqual(toasts, ['Fetching…', 'Fetching…', 'Loaded b.example']);
@@ -286,7 +298,7 @@ test("a file opened while a link's document downloads wins, and the link stays q
   await settled();
   await engine.loadFile(file('b.json', Promise.resolve('{"b":1}')));
   assert.equal(fetches[0].signal?.aborted, true);
-  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}') });
+  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}'), get body() { return streamOf(Promise.resolve('{"a":1}')); } });
   await opening;
   await settled();
   assert.deepEqual(loads, ['1:b.json']);
@@ -336,7 +348,7 @@ test("a URL that can't be read says why: no CORS, no server, cut off, http:// on
   assert.equal(said(), "Couldn't reach the server. Check the address or try again later.");
   // The headers came; the rest didn't.
   got = engine.fetchUrl('https://c.example/c.json');
-  fetches[4].reply.settle({ ok: true, text: () => Promise.reject(failed()) });
+  fetches[4].reply.settle({ ok: true, text: () => Promise.reject(failed()), get body() { return streamOf(Promise.reject(failed())); } });
   await got;
   assert.equal(said(), 'The connection dropped before the whole file arrived. Try again.');
   // http:// from this https page is blocked, except on this device; offline needs no second request either.
@@ -385,7 +397,7 @@ test('typing or pasting in an editor drops the document still on its way to it, 
   // What the tool writes into the editor itself leaves a document on its way alone.
   const c = engine.fetchUrl('https://c.example/c.json');
   engine.onChange('set');
-  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"c":1}') });
+  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"c":1}'), get body() { return streamOf(Promise.resolve('{"c":1}')); } });
   await c;
   assert.deepEqual(loads, ['1:c.json']);
 });

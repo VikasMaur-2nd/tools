@@ -4,7 +4,8 @@ import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MAX_DEPTH, parse as oldParse, type ParseOptions } from '../lib/json/parser';
 import { parse, parser, warmUp, type TapeOptions } from '../lib/json/tape-parser';
-import { KEY_NAME, W, keyKindOf, sizeOf, tapeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
+import { KEY_NAME, W, keyKindOf, sizeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
+import { tapeOf } from '../lib/json/tape-send';
 import { MESSAGES, genDeep, genLoose, mutate, rng } from './oracle/compare';
 import { CORPUS, FIXTURES, diffTape, files, genStrict, loosen } from './oracle/tape';
 
@@ -421,4 +422,26 @@ describe('tape parser: beyond parser.ts', () => {
     ]);
     assert.deepEqual([...t.extra!.keys()], [7]);
   });
+});
+
+test('decodeString with a limit gives the start of the full decode, for every limit', async () => {
+  const { decodeString } = await import('../lib/json/decode');
+  for (const body of ['plain text', 'a\\nb\\"c\\\\d\\u00e9e\\ud83d\\ude00f\\/g', "\\x41 'quoted' \\\nnext", '']) {
+    for (const quote of ['"', "'"]) {
+      const src = quote + body + quote + ' tail';
+      const full = decodeString(src, 0);
+      for (let max = 0; max <= full.length + 2; max++) assert.equal(decodeString(src, 0, max), full.slice(0, max), `${src} ${max}`);
+    }
+  }
+});
+
+test('a long string with escapes from a tape is decoded only when read, and its head without decoding the rest', async () => {
+  const { lazyResult } = await import('../lib/json/lazy');
+  const text = JSON.stringify('line\n"quoted" é '.repeat(10_000));
+  const res = lazyResult(parse(text), text);
+  const root = res.root!;
+  assert.equal(root._v, undefined, 'not decoded yet');
+  assert.equal(root.z!.head(root, 30), JSON.parse(text).slice(0, 30));
+  assert.equal(root._v, undefined, 'still not decoded');
+  assert.equal(root.v, JSON.parse(text));
 });

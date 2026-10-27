@@ -1,0 +1,9 @@
+{
+ "rows": [
+  "−$[0]1",
+  "−$[2]3",
+  "≠$[4]number5→string\"x\""
+ ],
+ "empty": null,
+ "patch": "[\n  {\n    \"op\": \"remove\",\n    \"path\": \"/0\"\n  },\n  {\n    \"op\": \"remove\",\n    \"path\": \"/1\"\n  },\n  {\n    \"op\": \"replace\",\n    \"path\": \"/2\",\n    \"value\": \"x\"\n  }\n]"
+}

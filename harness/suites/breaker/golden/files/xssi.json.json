@@ -1,0 +1,13 @@
+{
+ "status": {
+  "msg": "Ln 1, Col 1: Unexpected ')': expected a value",
+  "kind": "err",
+  "raw": "13 B raw",
+  "min": null,
+  "stats": "2 lines · 1 node · depth 0"
+ },
+ "toasts": [
+  "Opened xssi.json"
+ ],
+ "input": ")]}',\n{\"a\":1}"
+}

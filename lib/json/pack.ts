@@ -5,24 +5,11 @@
  * task is long) and gives a ParseResult whose nodes are made only when read (lazy.ts). Caret paths
  * are found on the tape itself (`packedPosition`), without making any node.
  */
-import { OBJ, type ParseResult } from './parser';
+import type { ParseResult } from './parser';
 import { lazyResult } from './lazy';
-import { emptyTape, KEY_INDEX, receiver, sendable, tapeOf, W, type SentTape, type Tape } from './tape';
+import { containerOf, emptyTape, KEY_INDEX, nodeAtOffset, receiver, W, type SentTape, type Tape } from './tape';
 
 export type PackedTree = SentTape;
-
-/** Packs `res` (parsed from `src`); post it with `packedTransfer(tree)`. */
-export function packTree(res: ParseResult, src: string): PackedTree {
-  return sendable(tapeOf(res, src)).sent;
-}
-
-/** A tape ready to post. */
-export function packTape(tape: Tape): PackedTree {
-  return sendable(tape).sent;
-}
-
-/** The buffers to transfer with a packed tree. */
-export const packedTransfer = (p: PackedTree): ArrayBuffer[] => [p.nodes.buffer, p.text.buffer, p.offsets.buffer, p.extraAt.buffer];
 
 const received = new WeakMap<PackedTree, Tape>();
 
@@ -59,41 +46,17 @@ export function unpacker(p: PackedTree, src: string): (until: number) => ParseRe
 
 /** Caret path and nearest container, without making nodes or walking the whole tree. */
 export function packedPosition(tree: PackedTree, off: number, src: Pick<string, 'indexOf'>) {
-  const count = tree.count;
-  const a = tree.nodes;
-  if (!count || off < a[1] || off > a[2]) return null;
+  if (!tree.count) return null;
   const t = tapeOfPacked(tree);
-  const parent = (i: number) => a[i * W + 3];
-  // The last node starting at or before `off` (nodes are in document order).
-  let lo = 0;
-  let hi = count - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >>> 1;
-    if (a[mid * W + 1] <= off) lo = mid;
-    else hi = mid - 1;
-  }
-  const before = lo;
-  let node = before;
-  while (node >= 0 && off > a[node * W + 2]) node = parent(node);
+  const node = nodeAtOffset(t, off, src);
   if (node < 0) return null;
-  // Between two members of an object: the member whose key the caret is in or before.
-  if ((a[node * W] & 7) === OBJ && off > a[node * W + 1] && before + 1 < count) {
-    let next = before + 1;
-    while (parent(next) >= 0 && parent(next) !== node) next = parent(next);
-    if (parent(next) === node && off < a[next * W + 1]) {
-      let prev = before;
-      while (parent(prev) >= 0 && parent(prev) !== node) prev = parent(prev);
-      const comma = prev === node ? -1 : src.indexOf(',', a[prev * W + 2]);
-      if (comma < 0 || comma >= a[next * W + 1] || comma < off) node = next;
-    }
-  }
+  const a = t.nodes;
   const path: (string | number)[] = [];
-  for (let i = node; parent(i) >= 0; i = parent(i)) {
+  for (let i = node; a[i * W + 3] >= 0; i = a[i * W + 3]) {
     const o = i * W;
     path.push(((a[o] >> 3) & 3) === KEY_INDEX ? a[o + 4] : t.keys[a[o + 4]]);
   }
   path.reverse();
-  let container = node;
-  while (container >= 0 && (a[container * W] & 7) < 4) container = parent(container);
+  const container = containerOf(t, node);
   return { path, start: container >= 0 ? a[container * W + 1] : -1, end: container >= 0 ? a[container * W + 2] : -1 };
 }
