@@ -585,7 +585,8 @@ export class CodeView {
     const probe = document.createElement('span');
     probe.className = 'cv-c';
     probe.textContent = '0'.repeat(200);
-    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+    // (Without the code's right padding, which is no character's width: counted in, every column drifted.)
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;padding:0';
     this.rows.appendChild(probe);
     const w = probe.getBoundingClientRect().width / 200;
     probe.remove();
