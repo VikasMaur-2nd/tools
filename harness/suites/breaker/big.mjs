@@ -1,5 +1,5 @@
 // Extreme documents, exact results: a million keys, ten million numbers, a million duplicate keys, 50 MB
-// one-line and pretty records, a 50 MB string, 50 MB of random bytes, and the 300 MiB size limit. The
+// one-line and pretty records, a 50 MB string, 50 MB of random bytes and of NUL bytes, and the 300 MiB size limit. The
 // expected Format output comes from an independent re-indenter (reformat in _helpers), not the app.
 // Tagged slow: `pnpm e2e breaker/big --slow` (documents from 50 MB take the heavy lock when
 // BREAKER_HEAVY_LOCK names it; run alone on a shared machine).
@@ -170,6 +170,42 @@ for (const [mb, seconds, lock] of [[5, 15, false], [50, 90, true]]) {
     t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`);
   });
 }
+
+test('50 MB of NUL bytes in one line (a disk image): opened as text, it scrolls end to end without a long frame', async (t) => {
+  await heavyLock(t);
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  await t.open('/');
+  await clear(page);
+  await watchToasts(page);
+  await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture('zeros-50mb'));
+  const said = await openAsText(page, 60_000 * slow(t));
+  t.check(said === 'zeros-50mb.img looks like a binary file, not JSONOpen as text', 'said to be binary', said);
+  const st = await settled(page, { timeout: 5 * 60_000 * slow(t) });
+  t.check(st?.kind === 'err', 'an error status', st);
+  await watchGaps(page);
+  // A sweep from the top to the end, a screen a frame further each time, then jumps all over.
+  const scrolled = await page.evaluate(async () => {
+    const el = window.__vis('.pane-ed .ed');
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const max = el.scrollHeight - el.clientHeight;
+    const gaps = [];
+    for (let i = 0; i < 160; i++) {
+      el.scrollTop = i < 80 ? (max * i) / 79 : (max * ((i * 7919) % 80)) / 80;
+      const t0 = performance.now();
+      await frame();
+      gaps.push(performance.now() - t0);
+    }
+    gaps.sort((a, b) => a - b);
+    return { max, median: Math.round(gaps[80]), worst: Math.round(gaps[159]) };
+  });
+  const gap = await page.evaluate(() => Math.round(window.__gap.max)).catch(() => -1);
+  t.log('NUL bytes scrolled:', { ...scrolled, gap });
+  t.check(!crashed, 'the tab survives');
+  t.check(scrolled.max > 0, 'rows to scroll through', scrolled);
+  t.check(gap < t.budget(500), 'no frame over 500 ms while scrolling', `${gap} ms`);
+});
 
 test('the 300 MiB limit: one byte more is refused before reading', async (t) => {
   // A sparse file: 314,572,801 bytes on paper, almost nothing on disk.

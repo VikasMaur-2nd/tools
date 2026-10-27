@@ -514,6 +514,26 @@ describe('binary text', () => {
     return [Int32Array.from(A), Int32Array.from(B)] as const;
   };
 
+  /** Row starts of binary line `s`, a character at a time: `per` code units, after a forced break, never inside a pair. */
+  const cutStarts = (s: string, per: number) => {
+    const st = [0];
+    for (let i = 0, n = 0; i < s.length; ) {
+      const c = s.charCodeAt(i);
+      const step = (c & 0xfc00) === 0xd800 && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+      if (n >= per) {
+        st.push(i);
+        n = 0;
+      }
+      n += step;
+      i += step;
+      if (/[\v\f\x85\u2028\u2029]/.test(String.fromCharCode(c)) && i < s.length) {
+        st.push(i);
+        n = 0;
+      }
+    }
+    return st;
+  };
+
   test('views that draw their rows cut binary lines every few code units: no layout, no glyph measured', () => {
     const t = binary(200_000);
     const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
@@ -528,27 +548,53 @@ describe('binary text', () => {
       if (w.odd[k] !== CUT) continue;
       cut++;
       // Rows of 20 code units (40 columns, two cells a glyph at most), after a forced break, never inside a pair.
-      const s = t.slice(A[k], B[k]);
-      const st = [0];
-      for (let i = 0, n = 0; i < s.length; ) {
-        const c = s.charCodeAt(i);
-        const step = (c & 0xfc00) === 0xd800 && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00 ? 2 : 1;
-        if (n >= per) {
-          st.push(i);
-          n = 0;
-        }
-        n += step;
-        i += step;
-        if (/[\v\f\x85\u2028\u2029]/.test(String.fromCharCode(c)) && i < s.length) {
-          st.push(i);
-          n = 0;
-        }
-      }
+      const st = cutStarts(t.slice(A[k], B[k]), per);
       assert.deepEqual([...Array(rows[k]).keys()].map((r) => w.rowStart(t, A[k], B[k], r, CUT)), st, `line ${k}`);
       for (let r = 1; r < st.length; r++) assert.equal(w.rowAt(t, A[k], B[k], A[k] + st[r], CUT, st.length), r);
     }
     assert.ok(cut > A.length * 0.9, `most lines are binary (${cut} of ${A.length})`);
     assert.ok(laidOut.every((l) => !/[\0-\x08\x0e-\x1f\x7f-\x9f]/.test(l)), 'no binary line laid out');
+  });
+
+  test('a 10M-character binary line: cut without measuring, its rows looked up fast and as cut one by one', () => {
+    // NUL bytes (a disk image), with a few forced breaks and pairs across where rows would be cut.
+    const parts: string[] = [];
+    for (let k = 0; k < 40; k++) parts.push('\0'.repeat(250_000 - 41 + k), k % 3 ? '😀' : '\f');
+    const t = 'x\n' + parts.join('') + '\n{}';
+    const [A, B] = linesOf(t);
+    const a = A[1];
+    const b = B[1];
+    for (const src of [t, Doc.of(t).edit(5, 6, '\0').edit(3_000_000, 3_000_001, '\0')]) {
+      const { w, seen } = make(false, () => 8);
+      const text = src as unknown as string;
+      const rows = w.rows(text, A, B);
+      assert.equal(w.odd[1], CUT);
+      assert.equal(seen.length, 0, 'no glyph measured');
+      const st = cutStarts(src.slice(a, b), 20);
+      assert.equal(rows[1], st.length);
+      /** The row showing offset `o` of the line: the last starting at or before it. */
+      const rowOf = (o: number) => {
+        let lo = 0;
+        for (let hi = st.length - 1; lo < hi; ) {
+          const mid = (lo + hi + 1) >> 1;
+          if (st[mid] <= o) lo = mid;
+          else hi = mid - 1;
+        }
+        return lo;
+      };
+      let seed = 5;
+      const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 8) % n);
+      const t0 = performance.now();
+      for (let i = 0; i < 100_000; i++) {
+        const r = rnd(st.length);
+        assert.equal(w.rowStart(text, a, b, r, CUT), st[r]);
+        const o = 1 + rnd(b - a);
+        assert.equal(w.rowAt(text, a, b, a + o, CUT, st.length), rowOf(o));
+      }
+      const ms = performance.now() - t0;
+      // (Cut again for every lookup, as before, a hundred took seconds.)
+      assert.ok(ms < 2000, `100,000 lookups each way in ${Math.round(ms)} ms`);
+    }
   });
 
   test('a textarea editor still measures garbage exactly (its rows must match the textarea)', () => {

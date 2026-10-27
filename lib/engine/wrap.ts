@@ -68,6 +68,34 @@ const FORCED_ALL = /[\v\f\x85\u2028\u2029]/g;
  * browser (every script in it needs a font found, which takes seconds a megabyte).
  */
 export const CUT = 2;
+/** A line longer than LONG_LINE is binary if its first this many characters are (as a file is: see asks.ts). */
+const BINARY_LOOK = 65_536;
+/** Binary lines whose rows are kept for lookups (see cuts): the few a frame draws. */
+const CUTS = 32;
+
+/** The rows of a binary line `t[a, b)` (see Wrapper.cut): from row `row[k]`, they start `per` code units apart from `off[k]`. */
+interface Cuts {
+  t: Src;
+  a: number;
+  b: number;
+  per: number;
+  /** Rows in all. */
+  n: number;
+  off: Int32Array;
+  row: Int32Array;
+}
+
+/** Last index of the ascending `v` whose value is at most `x` (v[0] is). */
+function lastAtMost(v: Int32Array, x: number) {
+  let lo = 0;
+  let hi = v.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (v[mid] <= x) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
 /**
  * Characters past an edit whose rows are found at once (hundreds of rows: the view and the caret are
  * among them); the rest of a longer line when idle (see refine).
@@ -78,13 +106,16 @@ const LAZY_ROWS = 32_768;
 const flatOf = (t: Src): string | null => (typeof t === 'string' ? t : t.flat);
 
 /** First character in t[from, to) that isn't printable ASCII, a tab or a line break, or -1. */
-function nonAscii(t: Src, from: number, to: number): number {
+const nonAscii = (t: Src, from: number, to: number) => search(NON_ASCII, t, from, to);
+
+/** First match of the global `re` (one character long) in t[from, to), or -1. */
+function search(re: RegExp, t: Src, from: number, to: number): number {
   let r = -1;
   let at = from;
   const look = (x: string, i: number, j: number) => {
     // In a view: a search on from `i` in the whole string would run on past `j`.
-    NON_ASCII.lastIndex = 0;
-    const m = NON_ASCII.exec(i === 0 && j === x.length ? x : x.slice(i, j));
+    re.lastIndex = 0;
+    const m = re.exec(i === 0 && j === x.length ? x : x.slice(i, j));
     if (m) r = at + m.index;
     at += j - i;
     return !!m;
@@ -534,6 +565,11 @@ export class Wrapper {
     }
     this.verText = text;
     this.last = { text, A, B, out, odd };
+    // (Lines cut in another text would keep it alive.)
+    if (text !== this.cutText) {
+      this.cutLines = [];
+      this.cutText = text;
+    }
     if (!this.trust) odd.fill(1, lo, hi);
     else {
       const long = (k: number) => inherit >= 0 && B[k] - A[k] > LONG_LINE;
@@ -578,13 +614,19 @@ export class Wrapper {
         odd[k] = 1;
       }
       if (!this.exact && b - a > LONG_LINE) {
-        out[k] = this.rowsOf(text, a, b).length;
+        // (Not split between the halves of a pair, which would read as a lone surrogate.)
+        let e = Math.min(b, a + BINARY_LOOK);
+        if (e < b && (text.charCodeAt(e - 1) & 0xfc00) === 0xd800) e--;
+        if (BINARY.test(text.slice(a, e))) {
+          odd[k] = CUT;
+          out[k] = this.cuts(text, a, b).n;
+        } else out[k] = this.rowsOf(text, a, b).length;
         continue;
       }
       const s = text.slice(a, b);
       if (!this.exact && BINARY.test(s)) {
         odd[k] = CUT;
-        out[k] = this.cut(s);
+        out[k] = this.cut(s, 0, s.length);
         continue;
       }
       let r = this.sized.get(s) ?? keep.get(s);
@@ -642,7 +684,12 @@ export class Wrapper {
       const [cells, chars] = leadOf(text, a, b, this.lead);
       return Math.min(b - a, r * this.cols - cells + chars);
     }
-    if (odd === CUT && !this.exact) return this.cutStarts(text, a, b)[r] ?? b - a;
+    if (odd === CUT && !this.exact) {
+      const c = this.cuts(text, a, b);
+      if (r >= c.n) return b - a;
+      const k = lastAtMost(c.row, r);
+      return c.off[k] + (r - c.row[k]) * c.per;
+    }
     if (!this.exact && b - a > LONG_LINE) {
       const st = this.rowsOf(text, a, b);
       return r < st.length ? st.get(r) : b - a;
@@ -661,10 +708,10 @@ export class Wrapper {
       return Math.min(rows - 1, Math.floor(col / this.cols));
     }
     if (odd === CUT && !this.exact) {
-      const st = this.cutStarts(text, a, b);
-      let r = 0;
-      while (st[r + 1] <= off - a) r++;
-      return r;
+      const c = this.cuts(text, a, b);
+      const k = lastAtMost(c.off, off - a);
+      // (A row a pair's half made one longer ends where the next run starts.)
+      return Math.min(c.row[k] + Math.floor((off - a - c.off[k]) / c.per), (k + 1 < c.row.length ? c.row[k + 1] : c.n) - 1);
     }
     if (!this.exact && b - a > LONG_LINE) return this.rowsOf(text, a, b).floor(off - a);
     const m = this.mirror(text.slice(a, b));
@@ -710,36 +757,53 @@ export class Wrapper {
   }
 
   /**
-   * Rows of the binary line `s` (see BINARY): perRow code units each, two cells or less a glyph (so a row never
-   * runs over, a rare wider glyph aside), a row ended after a character that ends one, never between the halves
-   * of a surrogate pair. Counted; and their starts pushed to `out` if given.
+   * Rows of the binary line `t[a, b)` (see BINARY): perRow code units each, two cells or less a glyph (so a row
+   * never runs over, a rare wider glyph aside), a row ended after a character that ends one, never between the
+   * halves of a surrogate pair. Counted, reading only where a row may end; where rows stop running perRow
+   * apart from the line start (a row ended early, or one longer by a pair's half) is pushed to `off` and `row`
+   * if given (see Cuts).
    */
-  private cut(s: string, out?: number[]): number {
+  private cut(t: Src, a: number, b: number, off?: number[], row?: number[]): number {
     const per = Math.max(1, this.cols >> 1);
-    const len = s.length;
+    const len = b - a;
     let n = 0;
-    FORCED_ALL.lastIndex = 0;
     for (let x = 0; ; ) {
-      const m = FORCED_ALL.exec(s);
-      const end = m ? m.index + 1 : len;
+      const f = search(FORCED_ALL, t, a + x, b);
+      const end = f < 0 ? len : f - a + 1;
       for (;;) {
-        out?.push(x);
         n++;
         let y = x + per;
-        if (y < end && (s.charCodeAt(y) & 0xfc00) === 0xdc00 && (s.charCodeAt(y - 1) & 0xfc00) === 0xd800) y++;
         if (y >= end) break;
+        if ((t.charCodeAt(a + y) & 0xfc00) === 0xdc00 && (t.charCodeAt(a + y - 1) & 0xfc00) === 0xd800) {
+          if (++y >= end) break;
+          off?.push(y);
+          row?.push(n);
+        }
         x = y;
       }
       if (end >= len) return n;
       x = end;
+      off?.push(x);
+      row?.push(n);
     }
   }
 
-  /** Row starts of the binary line `t[a, b)` (see cut). */
-  private cutStarts(t: Src, a: number, b: number) {
-    const st: number[] = [];
-    this.cut(t.slice(a, b), st);
-    return st;
+  /** Binary lines cut for lookups since rows() was last given another text, the latest first. */
+  private cutLines: Cuts[] = [];
+  private cutText: Src | null = null;
+
+  /** The rows of the binary line `t[a, b)` (see cut): cut once for the text and row width, then looked up. */
+  private cuts(t: Src, a: number, b: number): Cuts {
+    const per = Math.max(1, this.cols >> 1);
+    const all = this.cutLines;
+    for (const c of all) if (c.a === a && c.b === b && c.per === per && c.t === t) return c;
+    const off = [0];
+    const row = [0];
+    const n = this.cut(t, a, b, off, row);
+    const c = { t, a, b, per, n, off: Int32Array.from(off), row: Int32Array.from(row) };
+    if (all.length >= CUTS) all.pop();
+    all.unshift(c);
+    return c;
   }
 
   private ctx: CanvasRenderingContext2D | null = null;
@@ -1252,6 +1316,7 @@ export class Wrapper {
     this.mirrors.clear();
     this.sums.length = 0;
     this.lastSum = null;
+    this.cutLines = [];
     this.diff = null;
     this.pending = [];
     clearTimeout(this.refineTimer);
