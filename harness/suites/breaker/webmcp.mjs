@@ -3,7 +3,7 @@
 // full Chromium with WebMCP switched on (as platform/webmcp.mjs).
 import { defaults, test } from '../../lib/api.mjs';
 import { command } from '../../lib/app.mjs';
-import { copied, golden, settled, until } from './_helpers.mjs';
+import { copied, golden, settled } from './_helpers.mjs';
 
 const WEBMCP = { channel: 'chromium', args: ['--enable-features=WebMCPTesting', '--enable-blink-features=WebMCP'] };
 defaults({ engines: ['chromium'], launch: WEBMCP, tags: ['breaker', 'webmcp'], timeout: 180_000 });

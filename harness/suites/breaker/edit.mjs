@@ -4,7 +4,7 @@
 // formula-like values.
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
-import { copied, downloaded, inputText, load, seenToasts, until, watchToasts } from './_helpers.mjs';
+import { copied, downloaded, inputText, load, until, watchToasts } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
 

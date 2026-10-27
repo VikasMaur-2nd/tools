@@ -10,7 +10,8 @@
 //                            numbers  one flat array of numbers (integers, decimals, exponents, big ints)
 //   wide-keys-<n>k         one object with n thousand keys
 //   flat-nums-<n>m         one array of n million small integers
-//   one-string-<n>mb       a single JSON string of n MB
+//   one-string-<n>mb       a single JSON string of n MB (escapes and non-ASCII text)
+//   one-text-<n>mb         a single JSON string of n MB of non-ASCII text without escapes (a two-byte string)
 //   nest-<n>k              n thousand levels of [ ... ]
 //   dupes-<n>k             one object whose n thousand keys are all "k"
 //   lines-<n>k             n thousand JSON Lines records (.jsonl)
@@ -159,6 +160,15 @@ const GEN = {
     write(unit.repeat(count % 10_000));
     write('"');
   },
+  'one-text'(write, [n]) {
+    const unit = 'abcdefghij ÄÖÜ 東京 🚀 ';
+    const count = Math.floor((Number(n) * MB - 2) / Buffer.byteLength(unit));
+    write('"');
+    const block = unit.repeat(10_000);
+    for (let i = 0; i < Math.floor(count / 10_000); i++) write(block);
+    write(unit.repeat(count % 10_000));
+    write('"');
+  },
   nest(write, [n]) {
     const k = Number(n) * 1000;
     write('['.repeat(k) + '1' + ']'.repeat(k));
@@ -192,7 +202,7 @@ const EXT = { lines: 'jsonl', blob: 'bin' };
 
 /** Path of a breaker fixture, generated on first use. */
 export function bigFixture(name) {
-  const m = /^(big|wide-keys|flat-nums|one-string|nest|dupes|lines|blob|utf16-bom|bad-utf8)(?:-(.+))?$/.exec(name);
+  const m = /^(big|wide-keys|flat-nums|one-string|one-text|nest|dupes|lines|blob|utf16-bom|bad-utf8)(?:-(.+))?$/.exec(name);
   if (!m) throw new Error(`unknown breaker fixture "${name}"`);
   const args = (m[2] || '').replace(/(mb|k|m)$/, '').split('-');
   const file = join(DIR, `${name}.${EXT[m[1]] || 'json'}`);

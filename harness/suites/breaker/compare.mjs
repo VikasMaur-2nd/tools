@@ -65,7 +65,10 @@ function apply(doc, ops) {
       parent = parent[key];
       key = Array.isArray(parent) && p !== '-' ? Number(p) : p;
     }
-    if (op.op === 'remove') Array.isArray(parent) ? parent.splice(key, 1) : delete parent[key];
+    if (op.op === 'remove') {
+      if (Array.isArray(parent)) parent.splice(key, 1);
+      else delete parent[key];
+    }
     else if (op.op === 'add' && Array.isArray(parent)) parent.splice(key === '-' ? parent.length : key, 0, op.value);
     else parent[key] = op.value;
   }
