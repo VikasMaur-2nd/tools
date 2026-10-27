@@ -3644,6 +3644,8 @@ export class Engine {
       if (!this.keysTaken && !e.isComposing) this.holdKeys(e);
       return;
     }
+    // (Keys held for what closed before it showed (Esc, a click away) are for nothing now: never replayed.)
+    if (this.held.length) this.held = [];
     const mod = e.metaKey || e.ctrlKey;
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;

@@ -18,14 +18,18 @@ async function openHeld(t, marker, path = '/') {
   const gate = new Promise((r) => (release = r));
   let held = 0;
   await t.page.route('**/_next/static/chunks/**/*.js', async (route) => {
-    if (first.has(new URL(route.request().url()).pathname)) return route.continue();
-    const res = await route.fetch();
-    const body = await res.text();
-    if (marker.test(body)) {
-      held++;
-      await gate;
+    try {
+      if (first.has(new URL(route.request().url()).pathname)) return await route.continue();
+      const res = await route.fetch();
+      const body = await res.text();
+      if (marker.test(body)) {
+        held++;
+        await gate;
+      }
+      await route.fulfill({ response: res, body });
+    } catch {
+      // (The check ended, and its page closed, with a chunk still on its way: nothing to answer.)
     }
-    await route.fulfill({ response: res, body });
   });
   await t.open(path);
   return { release: () => release(), held: () => held };
