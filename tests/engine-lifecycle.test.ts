@@ -305,6 +305,30 @@ test("a file opened while a link's document downloads wins, and the link stays q
   assert.deepEqual(toasts, ['Fetching…', 'Opened b.json']);
 });
 
+test('a share link whose document inflates past 32 MB opens only when asked', async () => {
+  const { engine, loads, location } = loading();
+  const said: [string, { label: string; run: () => void } | undefined][] = [];
+  engine.toast = (msg: string, _kind: string, action?: { label: string; run: () => void }) => said.push([msg, action]);
+  const { encodeDoc, LINK_DOCUMENT } = load(resolve(__dirname, '../lib/link'));
+  const link = async (text: string) => {
+    location.hash = '#a=' + (await encodeDoc(text));
+    location.href = 'https://tools.example/' + location.hash;
+    await engine.openLink();
+    for (let i = 0; i < 20; i++) await settled();
+  };
+  await link('[' + '0,'.repeat(1000) + '0]');
+  assert.deepEqual(loads, ['1:null'], 'a small one opens');
+  loads.length = 0;
+  said.length = 0;
+  // (About 33 KB of link.)
+  await link('[' + '0,'.repeat(LINK_DOCUMENT / 2) + '0]');
+  assert.deepEqual(loads, []);
+  assert.deepEqual(said.map(([m, a]) => [m, a?.label]), [["This link's document is over 32 MB: opening it can slow down or crash this tab", 'Open anyway']]);
+  said[0][1]!.run();
+  for (let i = 0; i < 200 && !loads.length; i++) await new Promise((r) => setTimeout(r, 25));
+  assert.deepEqual(loads, ['1:null'], 'opened when asked');
+});
+
 test('a big file still being read gives back the status it showed when a URL is asked for instead', async () => {
   const { engine, state } = loading();
   const before = (state.status = { kind: 'valid', warnings: 0 });

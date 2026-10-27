@@ -5,6 +5,7 @@
 // BREAKER_HEAVY_LOCK names it; run alone on a shared machine).
 import { closeSync, ftruncateSync, openSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { DIRS } from '../../lib/env.mjs';
@@ -184,4 +185,33 @@ test('the 300 MiB limit: one byte more is refused before reading', async (t) => 
   t.check(/^Ready/.test(await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? '')), 'nothing was opened');
 });
 
+/** A share link (#a=…) whose document inflates to `mb` MB of "0," (half a million values per MB). */
+function zeroLink(mb) {
+  const text = '[' + '0,'.repeat(Math.floor((mb * 1e6) / 2)) + '0]';
+  const data = deflateRawSync(Buffer.from(text), { level: 9 }).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return { text, fragment: `#a=${data}` };
+}
 
+test('a 26 KB share link that inflates to 10 million values opens', async (t) => {
+  const { page } = t;
+  const { text, fragment } = zeroLink(20);
+  t.log(`link fragment ${fragment.length} chars`);
+  await page.goto(t.base + '/' + fragment, { waitUntil: 'commit' });
+  await t.app.waitEngine(page);
+  const st = await settled(page, { raw: text.length, timeout: 180_000 * slow(t) });
+  t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 10,000,002 nodes · depth 1', 'valid, 10,000,002 nodes', st);
+});
+
+test('a 130 KB share link that inflates to 50 million values asks first, and the tab survives', async (t) => {
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  const { fragment } = zeroLink(100);
+  t.log(`link fragment ${fragment.length} chars`);
+  await page.goto(t.base + '/' + fragment, { waitUntil: 'commit' });
+  await t.app.waitEngine(page);
+  const asked = await until(page, () => [...document.querySelectorAll('.toast')].map((x) => x.textContent).find((x) => /over 32 MB/.test(x)) || null, null, { timeout: 60_000 * slow(t) });
+  t.check(asked === "This link's document is over 32 MB: opening it can slow down or crash this tabOpen anyway", 'asked before opening it', asked);
+  t.check(/^Ready/.test(await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? '')), 'nothing opened meanwhile');
+  t.check(!crashed, 'the tab survives');
+});

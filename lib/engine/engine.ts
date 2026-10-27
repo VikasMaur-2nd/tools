@@ -25,7 +25,7 @@ import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import { snippet, type SnippetFormat } from '../badge';
-import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -2062,15 +2062,21 @@ export class Engine {
         ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
         : this.toast('That share link is broken or incomplete', 'err');
     if (link === 'broken') return broken();
-    const signal = this.requestFor(link);
-    const docs: (LinkDoc | undefined)[] = [];
-    try {
-      for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data) } : d);
-    } catch (e) {
-      if (signal.aborted) return;
-      return e instanceof LinkTooLarge ? this.toast('That share link is too large to open', 'err') : broken();
-    }
-    if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
+    // A document past LINK_DOCUMENT opens only when asked (a small link can hold more than a tab can).
+    const open = async (max: number) => {
+      const signal = this.requestFor(link);
+      const docs: (LinkDoc | undefined)[] = [];
+      try {
+        for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data, max) } : d);
+      } catch (e) {
+        if (signal.aborted) return;
+        if (!(e instanceof LinkTooLarge)) return broken();
+        if (max < MAX_DOCUMENT) return this.toast("This link's document is over 32 MB: opening it can slow down or crash this tab", 'err', { label: 'Open anyway', run: () => void open(MAX_DOCUMENT) });
+        return this.toast('That share link is too large to open', 'err');
+      }
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
+    };
+    await open(LINK_DOCUMENT);
   };
 
   /** Ends the wait for a handoff (see awaitHandoff). */

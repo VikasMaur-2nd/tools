@@ -529,6 +529,8 @@
   "toast.opened": "Opened {name}",
   "toast.binaryFile": "{name} looks like a binary file, not JSON",
   "toast.openAsText": "Open as text",
+  "toast.linkBig": "This link's document is over 32 MB: opening it can slow down or crash this tab",
+  "toast.openAnyway": "Open anyway",
   "toast.clipboardEmpty": "Your clipboard is empty",
   "toast.pressPaste": "Press {mod}V to paste",
   "toast.sampleLoaded": "Loaded a sample. Try the tree, table and search.",
