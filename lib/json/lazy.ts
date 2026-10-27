@@ -73,6 +73,27 @@ export class Filler implements TapeLink {
     return decodeString(this.src, n.s, max);
   }
 
+  /**
+   * Makes container `n`'s children in steps (call with a deadline until it returns true), so a container
+   * of millions doesn't make them all in one task when a view first reads them.
+   */
+  fillSteps(n: JNode): (until: number) => boolean {
+    if (n.t < ARR || n._v !== undefined) return () => true;
+    const t = this.tape;
+    const end = nextOf(t, n.zi);
+    const list: JNode[] = [];
+    let c = n.zi + 1;
+    return (until) => {
+      while (c < end) {
+        for (let k = 0; k < 4096 && c < end; k++, c = nextOf(t, c)) list.push(this.make(c, n));
+        if (c < end && performance.now() >= until) return false;
+      }
+      // (Read in one go meanwhile: those are the children.)
+      if (n._v === undefined) n._v = list;
+      return true;
+    };
+  }
+
   fill(n: JNode): Val {
     const t = this.tape;
     const i = n.zi;
@@ -204,9 +225,11 @@ export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: b
             find!.lastIndex = s;
             next = find!.exec(src)?.index ?? Infinity;
           }
-          // (A match of ASCII characters only is one in the string's value, as written there; one through İ or
-          // the Kelvin sign is checked on the value.)
-          hit = next + qn.length <= e && (PRINTABLE_RUN.test(src.slice(next, next + qn.length)) || has(valueOf(t, i, src) as string));
+          // (A match of ASCII characters only in a string without escapes is one in its value, as written there.
+          // In a string with escapes it may take an escape's letter (\t's t): the value is checked, as is a
+          // match through İ or the Kelvin sign. A match in the value is always one in the text: printable
+          // characters other than quotes and slashes come from no escape.)
+          hit = next + qn.length <= e && (vk === VALUE_SLICE && PRINTABLE_RUN.test(src.slice(next, next + qn.length)) || has(valueOf(t, i, src) as string));
         }
       } else if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
       else if (kind === BOOL) hit = valueOf(t, i, src) ? yes : no;

@@ -13,14 +13,21 @@
 // Run it alone, under the shared heavy-document lock, e.g.:
 //   flock ~/.cache/mem-work/heavy.lock pnpm perf breaker/memory -e chromium --rounds 1
 //   flock ~/.cache/mem-work/heavy.lock pnpm perf "breaker/memory › records 100mb" --base origin/main --rounds 3
-// A run stops (and fails) when the host's available memory falls under 1.5 GiB.
+// or with BREAKER_HEAVY_LOCK=~/.cache/mem-work/heavy.lock, each run takes the lock itself (others' runs go
+// between). BREAKER_MEM_VIEWS=tree,table picks the views switched to (default tree,table,graph; empty for
+// none), BREAKER_MEM_FIND=0 skips Find. A run stops (and fails) when the host's available memory falls
+// under 1.5 GiB.
 import { defaults, test } from '../../lib/api.mjs';
 import { view } from '../../lib/app.mjs';
 import { OPEN_PHASES, cpuDuring, phases } from '../../lib/perf.mjs';
 import { bigFixture, fixtureSize } from './_gen.mjs';
 import { MiB, memorySampler } from './_mem.mjs';
+import { heavyLock } from './_helpers.mjs';
 
-defaults({ engines: 'all', tags: ['perf', 'slow', 'breaker'], slots: 'all', rounds: 1, timeout: 900_000, allowErrors: true });
+defaults({ engines: 'all', tags: ['perf', 'slow', 'breaker'], slots: 'all', rounds: 1, timeout: process.env.BREAKER_HEAVY_LOCK ? 3_600_000 : 900_000, allowErrors: true });
+
+const VIEWS = (process.env.BREAKER_MEM_VIEWS ?? 'tree,table,graph').split(',').filter(Boolean);
+const FIND = process.env.BREAKER_MEM_FIND !== '0';
 
 const SHAPES = ['records', 'pretty', 'deep', 'strings', 'numbers'];
 // BREAKER_MEM_SIZES=5,20 for other sizes (MB), e.g. a quick try of the check itself.
@@ -59,6 +66,7 @@ for (const size of SIZES) {
       const { page } = t;
       const name = `big-${shape}-${size}mb`;
       const file = bigFixture(name); // generated (streamed) before anything is timed
+      await heavyLock(t);
       await t.open('/');
       await watchFrames(page);
       let crashed = false;
@@ -90,7 +98,7 @@ for (const size of SIZES) {
       t.metric('peak-pss', MiB(open.peak.pss), 'MiB');
       t.metric('peak-rss', MiB(open.peak.rss), 'MiB');
       t.metric('open-pss', MiB(open.last.pss), 'MiB');
-      for (const v of ['tree', 'table', 'graph']) {
+      for (const v of VIEWS) {
         const m = memorySampler({ onLow: () => void t.context.close().catch(() => {}) });
         await watchFrames(page);
         const t0 = Date.now();
@@ -113,10 +121,10 @@ for (const size of SIZES) {
       }
       // Find in the tree: a query with many matches, then one matching nothing (a whole-document search).
       // Enter runs a query at once; the count keeps the previous total until the new search is done.
-      await view(page, 'tree');
-      await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+f`);
+      if (FIND) await view(page, 'tree');
+      if (FIND) await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+f`);
       const box = page.locator('.findbar:visible input');
-      for (const [metric, q, done] of [['find-hit', 'e', /\d of /], ['find-miss', 'no-such-needle-7f3a', /No results/]]) {
+      for (const [metric, q, done] of FIND ? [['find-hit', 'e', /\d of /], ['find-miss', 'no-such-needle-7f3a', /No results/]] : []) {
         await watchFrames(page);
         await box.fill(q);
         const f0 = Date.now();

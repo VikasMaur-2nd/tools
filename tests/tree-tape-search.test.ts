@@ -78,3 +78,32 @@ test('tree search on a tape agrees with the nodes on fuzzed documents and querie
     }
   }
 });
+
+test('tree search on a tape: an escape letter (\\t, \\n, \\b, \\f, \\r) is not a match, and nothing is missed', () => {
+  const values = ['a\tb', 'x\ny', 'Line 1\nName: Bob', '\b\f\r', 'say "hi"\ttab', 'path/to\\file\n', 'plain text', 'é\nü'];
+  const text = JSON.stringify(values.map((v, i) => ({ k: i, v })));
+  const res = parse(text);
+  const lazy = lazyResult(tapeOf(res, text), text);
+  const t = tapeOfNode(lazy.root!)!.tape;
+  // [query, values that hold it]
+  const cases: [string, string[]][] = [['t', ['plain text', 'say "hi"\ttab', 'path/to\\file\n']], ['tb', []], ['n', ['Line 1\nName: Bob', 'plain text']], ['nname', []], ['b', ['a\tb', 'say "hi"\ttab', 'Line 1\nName: Bob']], ['f', ['path/to\\file\n']], ['r', []], ['name', ['Line 1\nName: Bob']]];
+  for (const [q, want] of cases) {
+    const hits = tapeSearch(t, text, 0, q, false, 1000).map((i) => nodeAtIndex(lazy.root!, i)!).filter((n) => n.key === 'v').map((n) => n.v);
+    assert.deepEqual(hits.sort(), want.sort(), q);
+  }
+  // Fuzz: the same hits as a plain search of the decoded values.
+  let r = 3;
+  const rnd = (n: number) => ((r = (r * 1103515245 + 12345) & 0x7fffffff), r % n);
+  const atoms = ['a', 'b', 'n', 't', 'r', 'f', 'N', 'T', ' ', '\t', '\n', '\r', '\b', '\f', '"', '\\', '/', 'é', 'İ', 'K'];
+  for (let k = 0; k < 200; k++) {
+    const vals = Array.from({ length: 30 }, () => Array.from({ length: rnd(12) }, () => atoms[rnd(atoms.length)]).join(''));
+    const doc = JSON.stringify(vals);
+    const lz = lazyResult(tapeOf(parse(doc), doc), doc);
+    const tp = tapeOfNode(lz.root!)!.tape;
+    for (const q of ['t', 'n', 'b', 'ab', 'tn', 'nt', 'a b', 'k', 'i', 'rf']) {
+      const got = tapeSearch(tp, doc, 0, q, false, 1000).filter((i) => i > 0);
+      const want = vals.map((v, i) => (v.toLowerCase().includes(q) ? i + 1 : -1)).filter((i) => i > 0);
+      assert.deepEqual(got, want, `${q} in ${doc}`);
+    }
+  }
+});

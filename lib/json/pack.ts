@@ -6,7 +6,7 @@
  * are found on the tape itself (`packedPosition`), without making any node.
  */
 import type { ParseResult } from './parser';
-import { lazyResult } from './lazy';
+import { Filler, lazyResult } from './lazy';
 import { containerOf, emptyTape, KEY_INDEX, nodeAtOffset, receiver, W, type SentTape, type Tape } from './tape';
 
 export type PackedTree = SentTape;
@@ -34,17 +34,27 @@ export const tapeOfPacked = (p: PackedTree): Tape => (p.count ? tapeIn(p)(Infini
 
 /**
  * The tree of a packed tree over `src`: call the returned function with a deadline (performance.now()
- * value) until it returns the ParseResult. Its nodes are made when read.
+ * value) until it returns the ParseResult. Its nodes are made when read; with `fill` (for the Tree and
+ * Table, which read the root's children at once) the root's children are made here, in steps.
  */
-export function unpacker(p: PackedTree, src: string): (until: number) => ParseResult | undefined {
+export function unpacker(p: PackedTree, src: string, { fill = false } = {}): (until: number) => ParseResult | undefined {
   if (!p.count) {
     const done = { ...p.head, root: null } as ParseResult;
     return () => done;
   }
   const read = tapeIn(p);
+  let res: ParseResult | undefined;
+  let filling: ((until: number) => boolean) | null = null;
   return (until) => {
-    const t = read(until);
-    return t && lazyResult(t, src);
+    if (!res) {
+      const t = read(until);
+      if (!t) return undefined;
+      res = lazyResult(t, src);
+      if (fill && res.root?.z instanceof Filler) filling = res.root.z.fillSteps(res.root);
+    }
+    if (filling && !filling(until)) return undefined;
+    filling = null;
+    return res;
   };
 }
 

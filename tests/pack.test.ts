@@ -157,3 +157,19 @@ test('containerAt on a tape finds the container nodeAt does, at every offset, ma
     assert.equal(madeCount(lazy.root), 1);
   }
 });
+
+test('unpacker with fill makes the root\'s children in steps, before it gives the tree', () => {
+  const src = JSON.stringify(Array.from({ length: 30_000 }, (_, i) => (i % 3 ? i : { i })));
+  const res = parse(src);
+  const step = unpacker(packTree(res, src), src, { fill: true });
+  let calls = 0;
+  let out: ParseResult | undefined;
+  // (A deadline already passed: each call does one batch.)
+  while (!(out = step(0))) calls++;
+  assert.ok(calls >= 7, `in steps (${calls})`);
+  assert.equal(madeCount(out.root), 30_001, 'the root and its children, no deeper');
+  same(res.root, out.root);
+  // Without fill, only the root.
+  const plain = unpacker(packTree(res, src), src)(Infinity)!;
+  assert.equal(madeCount(plain.root), 1);
+});

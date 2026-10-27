@@ -110,7 +110,8 @@ export async function loadAny(page, data, name, { timeout = 30_000, mimeType, re
   await clear(page);
   await watchToasts(page);
   await openBytes(page, name, data, mimeType);
-  if (binary) await openAsText(page);
+  // (The branch asks before opening a file that looks binary; main opens it at once.)
+  if (binary) await openAsText(page, 10_000);
   // (An empty file leaves "Ready": wait for its toast first.)
   if (ready) await until(page, () => (window.__toasts?.length ?? 0) > 0 || null, null, { timeout: 5000 });
   return settled(page, { timeout, ready });

@@ -228,3 +228,51 @@ test('Repair keeps ordinary JSON\'s escaped quotes: an error elsewhere is not re
     t.check(after === doc || kept(value), `${doc}: Repair leaves it alone or keeps every string's value`, after);
   }
 });
+
+test('Repair of JSON written as a string: read exactly, or left alone', async (t) => {
+  // Main leaves these alone; t3/optimize-json-memory-performance reads them with their escapes undone. Either
+  // is fine, anything else isn't (a half-undone escape, a lost character).
+  const { page } = t;
+  await t.open('/');
+  for (const [doc, value] of [
+    ['{\\"a\\": 1, \\"b\\": [true, null]}', { a: 1, b: [true, null] }],
+    ['[\\"x\\", \\"y z\\"]', ['x', 'y z']],
+    ['{\\"s\\": \\"l1\\\\nl2 \\\\u00e9 \\\\\\"q\\\\\\"\\", \\"p\\": \\"C:\\\\\\\\dir\\"}', { s: 'l1\nl2 é "q"', p: 'C:\\dir' }],
+    ['{\\"a\\": 1,}', { a: 1 }],
+  ]) {
+    await loadAny(page, doc, 'doc.json');
+    await watchToasts(page);
+    await command(page, 'Repair JSON');
+    await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 5000 });
+    const after = await inputText(page);
+    let got;
+    try {
+      got = JSON.parse(after);
+    } catch {}
+    t.check(after === doc || JSON.stringify(got) === JSON.stringify(value), `${doc}: read exactly or left alone`, after);
+  }
+});
+
+test('Repair of a single-quoted string left open: the members after it survive, or it is left alone', async (t) => {
+  // Main says "Unterminated string" and leaves it. The branch (since c355336) closes the string at the end of the
+  // input, swallowing every member after it, and an apostrophe inside a single-quoted string makes up a key
+  // (BREAKER-REPORT R7). Double quotes are closed before the next ',' instead, which keeps them.
+  const { page } = t;
+  await t.open('/');
+  for (const [doc, kept] of [
+    ["{\"name\": 'O'Brien', \"age\": 3}", (v) => v?.age === 3 && Object.keys(v).length === 2],
+    ["{\"a\": 'x, \"b\": 2, \"c\": [1, 2]}", (v) => v?.b === 2 && JSON.stringify(v.c) === '[1,2]'],
+    ['{"a": 1, "b": "unclosed, "c": 3}', (v) => v?.c === 3 && v.a === 1],
+  ]) {
+    await loadAny(page, doc, 'doc.json');
+    await watchToasts(page);
+    await command(page, 'Repair JSON');
+    await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 5000 });
+    const after = await inputText(page);
+    let value;
+    try {
+      value = JSON.parse(after);
+    } catch {}
+    t.check(after === doc || kept(value), `${doc}: the members after it survive, or it is left alone`, after);
+  }
+});
