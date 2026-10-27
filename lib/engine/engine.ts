@@ -564,7 +564,7 @@ export class Engine {
     if (!text || readJwt(text, this.indent)) return this.analyze();
     const seq = this.loadSeq;
     const ver = this.ed.version;
-    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? '') });
+    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     this.steps = { p, seq, ver };
     // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
     clearTimeout(this.timer);
@@ -699,7 +699,7 @@ export class Engine {
     const t0 = performance.now();
     const jwt = readJwt(text, this.indent);
     const src = jwt ? jwt.json : text;
-    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
+    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
     // (Used once: it holds that version's text.)
     const counted = this.counted?.ver === ed.version ? this.counted : null;
