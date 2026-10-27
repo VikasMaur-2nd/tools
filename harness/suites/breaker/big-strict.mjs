@@ -76,7 +76,7 @@ test('the tricky cases at 3 MB: exact status, outputs, tree, table, find and Con
   t.check((await hashOf()) === minified, 'minified output is exact');
   // Copy right after switching back to Pretty must give Pretty, not the output still on screen.
   await command(page, 'Output: pretty');
-  t.check((await hashOf()) === pretty, 'Copy right after switching to Pretty copies the pretty output', null, { known: 'bug: Copy formatted output copies the previous style until the re-format is done (BREAKER-REPORT, stale copy)' });
+  t.check((await hashOf()) === pretty, 'Copy right after switching to Pretty copies the pretty output');
   await drawn(`(${rows})().includes('"r": 0')`);
   await command(page, 'Output: sort keys');
   await drawn(`(() => { const r = (${rows})(); const c = r.indexOf('"case": "proto-keys"'); return c >= 0 && c < r.indexOf('"r": 0'); })()`);
