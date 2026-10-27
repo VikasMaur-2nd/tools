@@ -23,15 +23,15 @@ export function formatPath(segs: Seg[]): string {
   return s;
 }
 
-/** Parses `$.a.b[0]["c d"]`, `a.b[0]`, `.a.b` or `/a/b/0` (JSON Pointer). Returns null if malformed. */
+/** Parses `$.a.b[0]["c d"]`, `a.b[0]`, `.a.b` or `/a/b/0` (JSON Pointer). Returns null if malformed (a JSON Pointer's ~ not ~0 or ~1 included). */
 export function parsePath(q: string): Seg[] | null {
   let s = q.trim();
   if (s.startsWith('/') || s === '') {
     if (!s) return [];
-    return s
-      .slice(1)
-      .split('/')
-      .map((p) => seg(p.replace(/~1/g, '/').replace(/~0/g, '~')));
+    const parts = s.slice(1).split('/');
+    // (RFC 6901: ~ only as ~0 or ~1.)
+    if (parts.some((p) => /~(?![01])/.test(p))) return null;
+    return parts.map((p) => seg(p.replace(/~1/g, '/').replace(/~0/g, '~')));
   }
   if (s[0] === '$') s = s.slice(1);
   const segs: Seg[] = [];

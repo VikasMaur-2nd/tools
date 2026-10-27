@@ -178,6 +178,15 @@ describe('get_json_value', () => {
     assert.match((await run('get_json_value', page, { path: '$.users[5]' })).text, /\$\.users has no item 5\. It has 2 items\./);
     assert.match((await run('get_json_value', page, { path: '$.users[' })).text, /^Error: can't read the path/);
   });
+
+  test('a path that is not text, or not a JSON Pointer, is refused; a huge one is quoted back short', async () => {
+    const { page } = fakePage(doc);
+    for (const path of [12, null, ['$'], { a: 1 }]) assert.equal((await run('get_json_value', page, { path })).text, 'Error: path must be text, such as $.users[0].name or /users/0/name.');
+    assert.match((await run('get_json_value', page, { path: '/users/~2' })).text, /^Error: can't read the path "\/users\/~2"\. .*~ is written ~0 and \/ is ~1/);
+    const huge = await run('get_json_value', page, { path: '$' + '.a'.repeat(50_000) });
+    assert.equal(huge.ok, false);
+    assert.ok(huge.text.length < 1000, `${huge.text.length} characters`);
+  });
 });
 
 describe('repair_json', () => {
@@ -272,6 +281,15 @@ describe('compare_json', () => {
     assert.match(r.text, /- added \$\.tags\[1\]: "staff"/);
     const patch = JSON.parse(r.text.slice(r.text.indexOf('JSON Patch:\n') + 12));
     assert.deepEqual(patch, [{ op: 'replace', path: '/role', value: 'editor' }, { op: 'add', path: '/tags/1', value: 'staff' }]);
+  });
+
+  test('the listed changes and the patch share MAX_RESULT', async () => {
+    const rows = Array.from({ length: 20_000 }, (_, i) => ({ id: i, name: `user ${i}`, note: 'x'.repeat(40) }));
+    const f = fakePage(JSON.stringify(rows));
+    const r = await run('compare_json', f.page, { modified: '[]' });
+    assert.match(r.text, /^20,000 differences( at least)?: 20,000 removed\./);
+    assert.ok(r.text.length <= MAX_RESULT + 300, `${r.text.length} characters`);
+    assert.match(r.text, /JSON Patch:\n\[/);
   });
 
   test('same documents, and an invalid other document', async () => {
