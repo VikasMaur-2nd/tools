@@ -337,6 +337,7 @@ export class Engine {
       copyAll: () => void this.copyAll(),
       flush: this.flushLoad,
       renamed: this.renamed,
+      name: () => this.edName,
       undoing: this.undoing,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
@@ -354,6 +355,8 @@ export class Engine {
       nav: () => undefined,
       escape: () => document.querySelector<HTMLElement>('.pane-view [role="tab"][aria-selected="true"]')?.focus(),
       copyAll: () => void this.copy(this.ed2.text, 'Copied the modified document'),
+      renamed: this.cmpRenamed,
+      name: this.cmpName,
     });
     this.ed2.indentUnit = INDENTS[this.settings.indent];
     if (!this.ed2.text) {
@@ -2071,6 +2074,8 @@ export class Engine {
 
   private onCompareChange = (kind: ChangeKind) => {
     if (kind !== 'set') this.requests[2]?.abort();
+    // (A paste over everything leaves the file it held, as in the input editor.)
+    if (kind === 'paste' && this.ed2.pasteFull) store.set({ cmpFile: null });
     clearTimeout(this.cmpTimer);
     const len = this.ed2.length; // (not .text: no need to join an edited document's pieces for this)
     this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
@@ -2109,10 +2114,15 @@ export class Engine {
   }
 
   loadCompare(text: string, name: string | null) {
+    const before = this.cmpName();
     store.set({ cmpFile: name });
-    this.ed2.setValue(text, 0);
+    this.ed2.setValue(text, 0, false, [before, name]);
     this.analyzeCompare();
   }
+
+  /** The Compare editor's file name, and Undo or Redo bringing one back (see Editor.setValue). */
+  private cmpName = () => store.get().cmpFile;
+  private cmpRenamed = (name: string | null) => store.set({ cmpFile: name });
 
   /** `asText`: as loadFile's. */
   async loadCompareFile(f: File, source: InputSource = 'file', asText = false) {
@@ -2160,8 +2170,9 @@ export class Engine {
 
   clearCompare() {
     this.request(2);
+    const before = this.cmpName();
     store.set({ cmpFile: null });
-    this.ed2.setValue('');
+    this.ed2.setValue('', 0, false, [before, null]);
     this.analyzeCompare();
     this.ed2.focus();
   }
@@ -2177,7 +2188,7 @@ export class Engine {
     this.resetNext = true;
     this.edName = fb;
     this.ed.setValue(b, 0, false, [fa, fb]);
-    this.ed2.setValue(a);
+    this.ed2.setValue(a, 0, false, [fb, fa]);
     store.set({ fileName: fb, cmpFile: fa });
     write(KEYS.file, fb);
     this.analyze();
