@@ -2294,7 +2294,8 @@ export class Editor {
     };
     const last = this.undo_[this.undo_.length - 1];
     const recent = last && ch.t - last.t < 1200;
-    if (recent && ch.kind === 'type' && last.kind === 'type' && !ch.del && !last.del && last.a + last.ins.length === ch.a && !ch.ins.includes('\n')) {
+    // (Typing on after replacing a selection by typing joins that step too: one Undo brings the selection back.)
+    if (recent && ch.kind === 'type' && last.kind === 'type' && !ch.del && last.a + last.ins.length === ch.a && !ch.ins.includes('\n')) {
       last.ins += ch.ins;
       last.selA = ch.selA;
       last.t = ch.t;

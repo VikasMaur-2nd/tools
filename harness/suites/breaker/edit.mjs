@@ -192,6 +192,22 @@ test('the tree: a click selects a row, a double-click on a value shows it in the
   t.check((await inputText(page)) === doc.replace('"b"', '"Z"'), 'the editor selected the value', await inputText(page));
 });
 
+test('typing over a selection is one Undo step with the typing that follows', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const doc = JSON.stringify([{ id: 1, tag: 'a' }, { id: 2, tag: 'b' }], null, 2);
+  t.assert(await load(page, doc, 'tags.json'), 'the document loads');
+  await view(page, 'tree');
+  await page.locator('#view-tree .tv-rows [role=treeitem]').filter({ hasText: /^tag:"b"$/ }).dblclick();
+  t.assert(!!(await until(page, () => document.activeElement?.id === 'input' || null, null, { timeout: 5000 })), 'the value is selected in the editor');
+  await page.keyboard.type('"EDITED"');
+  t.check((await inputText(page)) === doc.replace('"b"', '"EDITED"'), 'typed over the value');
+  await command(page, 'Undo');
+  t.check((await inputText(page)) === doc, 'one Undo brings the value back (BREAKER-REPORT F19)', await inputText(page));
+  await command(page, 'Redo');
+  t.check((await inputText(page)) === doc.replace('"b"', '"EDITED"'), 'Redo types it again');
+});
+
 test('an edit made while the Tree shows: Copy formatted output, Copy converted output and Download formatted output give the edited document', async (t) => {
   const { page } = t;
   await t.open('/');

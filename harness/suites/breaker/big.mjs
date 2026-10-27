@@ -171,7 +171,8 @@ test('over 48M characters: two quick edits reach the tree and the output, and Un
     if (got !== want) await page.waitForTimeout(2000);
   }
   t.check(got === want, 'both edits reach the Format output');
-  // (Typing over a selection is two Undo steps: BREAKER-REPORT F19.)
+  // (Typing over a selection is one Undo step with the typing that follows, BREAKER-REPORT F19; two here if
+  // this big document took the keys over 1.2 s apart.)
   let back = null;
   for (let k = 0; k < 2 && back !== 'id:5'; k++) {
     await command(page, 'Undo');
