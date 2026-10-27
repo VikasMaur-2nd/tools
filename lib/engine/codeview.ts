@@ -67,6 +67,13 @@ export interface FindResult {
   note?: string;
 }
 
+/** A place in the view kept across layouts: offset `col` of `line`, and `dy` px below the start of its row. */
+interface ViewAt {
+  line: number;
+  col: number;
+  dy: number;
+}
+
 export class CodeView {
   readonly el: HTMLElement;
   private sizer: HTMLElement;
@@ -78,6 +85,10 @@ export class CodeView {
   private layoutSeq = 0;
   private textSeq = 0;
   private wrapTextLength = 0;
+  /**
+   * The wrapper the rows on screen were laid out with. Drawing reads it, not `wrapper`: a big document's
+   * next layout takes several steps, and until it is published the rows are still the old wrapper's.
+   */
   private layoutWrap: Wrapper | null = null;
   private layoutCols = -1;
   private layoutCw = 0;
@@ -192,6 +203,7 @@ export class CodeView {
     cancelAnimationFrame(this.raf);
     document.fonts?.removeEventListener('loadingdone', this.onFonts);
     this.wrapper?.destroy();
+    if (this.layoutWrap !== this.wrapper) this.layoutWrap?.destroy();
   }
 
   /** A huge line's estimated rows become exact when idle (see Wrapper.refine): lay out again then. */
@@ -204,12 +216,11 @@ export class CodeView {
   /** Soft-wraps long lines at the view's width, or lets them run on. */
   setWrap(on: boolean) {
     if (on === !!this.wrapper) return;
-    const top = this.ls.length ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
-    this.wrapper?.destroy();
-    this.wrapper = on ? this.makeWrapper() : null;
-    this.el.classList.toggle('cv-nowrap', !on);
+    // (The rows on screen keep their wrapper until the new layout is published: see layoutWrap.)
+    if (this.wrapper !== this.layoutWrap) this.wrapper?.destroy();
+    this.wrapper = on ? this.layoutWrap ?? this.makeWrapper() : null;
     this.el.scrollLeft = 0;
-    this.reflow(true, top);
+    this.reflow(true);
   }
 
   /** Puts a small label after each given line (line index → HTML), or clears them. */
@@ -450,8 +461,9 @@ export class CodeView {
   /** Prepare a replacement away from the live model, then publish it in one short task. */
   private layout(text: string, index: CodeIndex, folded: Set<number>, scanner: Scanner | null, keepPosition: boolean, anchor: number, commit = () => true, change?: CodeChange, model: TextModel = this.model) {
     const seq = ++this.layoutSeq;
-    const firstLine = anchor >= 0 ? anchor : keepPosition ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
-    const anchorTop = anchor >= 0 ? this.rowOfLine(anchor) * RH - this.sc.top : 0;
+    // Where the view is, read before the wrapper is fitted to a new width: the rows on screen are its.
+    const top = this.sc.top;
+    let at = keepPosition || anchor >= 0 ? this.viewAt(anchor) : null;
     this.width = this.el.clientWidth;
     this.measure();
     const gutter = (Math.max(3, String(index.starts.length).length) + 5) * this.cw;
@@ -564,9 +576,13 @@ export class CodeView {
         }
       } while (i < n && performance.now() < until);
       if (i < n) return soon(step);
+      // (Scrolled while this layout was made, at the same width: kept from where it is now.)
+      if (at && !resized && this.sc.top !== top) at = this.viewAt(anchor);
       if (!commit()) return;
       rs[count] = rows;
+      if (this.layoutWrap !== wr && this.layoutWrap !== this.wrapper) this.layoutWrap?.destroy();
       this.layoutWrap = wr;
+      this.el.classList.toggle('cv-nowrap', !wr);
       this.layoutCols = cols;
       this.layoutCw = cw;
       this.vis = vis.subarray(0, count);
@@ -577,7 +593,7 @@ export class CodeView {
       this.html.clear();
       this.sc.fit(rows * RH + 24, this.sizer);
       this.sizer.style.width = wr ? '' : `${Math.ceil(gutter + (index.maxLen + 4) * this.cw + PAD_X * 2)}px`;
-      if (firstLine >= 0) this.sc.top = Math.max(0, this.rowOfLine(firstLine) * RH - anchorTop);
+      if (at) this.scrollBack(at);
       if (this.q) this.runFind(false);
       this.render(true);
     };
@@ -631,6 +647,42 @@ export class CodeView {
     return this.rowStart[this.visIndex(line)] ?? 0;
   }
 
+  /** The wrapped row of visible line `vi` holding offset `col`: the last row starting at or before it. */
+  private subOf(vi: number, col: number) {
+    let sub = 0;
+    let hi = this.rowStart[vi + 1] - this.rowStart[vi] - 1;
+    while (sub < hi && col > 0) {
+      const mid = (sub + hi + 1) >> 1;
+      if (this.subStart(vi, mid) <= col) sub = mid;
+      else hi = mid - 1;
+    }
+    return sub;
+  }
+
+  /**
+   * Where the view is, to keep across a new layout: line `anchor` where it is on screen; else the character
+   * the top row starts with (rows above it inside a wrapped line may change) and how far into that row.
+   */
+  private viewAt(anchor: number): ViewAt | null {
+    const top = this.sc.top;
+    if (anchor >= 0) return { line: anchor, col: 0, dy: top - this.rowOfLine(anchor) * RH };
+    if (!this.vis.length) return null;
+    const row = Math.floor(top / RH);
+    const vi = this.visOfRow(row);
+    const sub = row - this.rowStart[vi];
+    // (A block's rows are the browser's: kept by height.)
+    if (sub > 0 && this.isBlock(vi)) return { line: this.vis[vi], col: 0, dy: top - this.rowStart[vi] * RH };
+    return { line: this.vis[vi], col: sub > 0 ? this.subStart(vi, sub) : 0, dy: top - row * RH };
+  }
+
+  /** Scrolls to `at` (see viewAt) in the rows now laid out. */
+  private scrollBack(at: ViewAt) {
+    const vi = this.visIndex(at.line);
+    const sub = this.subOf(vi, at.col);
+    const rest = (this.rowStart[vi + 1] - this.rowStart[vi] - sub) * RH;
+    this.sc.top = Math.max(0, (this.rowStart[vi] + sub) * RH + Math.min(at.dy, rest));
+  }
+
   /** Offset in visible line `vi` where its wrapped row `sub` starts. */
   private subStart(vi: number, sub: number) {
     const ln = this.vis[vi];
@@ -638,7 +690,7 @@ export class CodeView {
     if (sub <= 0) return 0;
     if (sub >= this.rowStart[vi + 1] - this.rowStart[vi]) return len;
     const line = this.line(ln);
-    return (this.wrapper as Wrapper).rowStart(line, 0, len, sub, this.odd[vi]);
+    return (this.layoutWrap as Wrapper).rowStart(line, 0, len, sub, this.odd[vi]);
   }
 
   /** Is visible line `vi` drawn as one block the browser wraps (wide glyphs, not long, not garbage: see Wrapper.summed)? */
@@ -684,7 +736,7 @@ export class CodeView {
     const vf = Math.floor(st / RH);
     const vl = Math.min(total, Math.ceil((st + vh) / RH));
     // Not wrapping: long lines are drawn only around the columns in view.
-    const wide = !this.wrapper && this.maxLen > LONG_LINE;
+    const wide = !this.layoutWrap && this.maxLen > LONG_LINE;
     const vcA = wide ? Math.max(0, Math.floor(el.scrollLeft / this.cw) - 12) : 0;
     const vcB = vcA + Math.ceil(el.clientWidth / this.cw) + 12;
     if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return this.place();
@@ -751,7 +803,7 @@ export class CodeView {
           const from = Math.max(col, a);
           const to = Math.min(col + qn, b);
           const cls = `cv-hit${ln === cur && col === curCol ? ' cur' : ''}`;
-          if (this.odd[vi] !== 0 && this.wrapper) {
+          if (this.odd[vi] !== 0 && this.layoutWrap) {
             marks += `<i class="${cls}" data-h="${from - a}" data-n="${to - from}"></i>`;
             place = true;
           } else marks += `<i class="${cls}" style="left:${(pad + (from - a) * this.cw).toFixed(1)}px;width:${((to - from) * this.cw).toFixed(1)}px"></i>`;
@@ -816,6 +868,8 @@ export class CodeView {
 
   private runFind(jump: boolean) {
     const seq = ++this.findSeq;
+    // (Run again for a new layout or text, the match that was current stays so if it is still there.)
+    const was = !jump && this.hi >= 0 ? this.hits.slice(this.hi * 2, this.hi * 2 + 2) : null;
     this.hits = [];
     this.hitLines.clear();
     this.hi = -1;
@@ -857,10 +911,14 @@ export class CodeView {
         if (performance.now() >= until) return void soon(run);
       }
       if (hits.length) {
-        // Start from the first match at or below the top of the view.
-        const top = this.lineAtRow(Math.floor(this.sc.top / RH));
         let i = 0;
-        while (i * 2 < hits.length && hits[i * 2] < top) i++;
+        if (was) while (i * 2 < hits.length && (hits[i * 2] < was[0] || (hits[i * 2] === was[0] && hits[i * 2 + 1] < was[1]))) i++;
+        if (!was || hits[i * 2] !== was[0] || hits[i * 2 + 1] !== was[1]) {
+          // Start from the first match at or below the top of the view.
+          const top = this.lineAtRow(Math.floor(this.sc.top / RH));
+          i = 0;
+          while (i * 2 < hits.length && hits[i * 2] < top) i++;
+        }
         this.hi = i * 2 < hits.length ? i : 0;
         if (jump) this.goto();
       }
@@ -875,23 +933,12 @@ export class CodeView {
     const col = this.hits[this.hi * 2 + 1];
     this.reveal(ln);
     const vi = this.visIndex(ln);
-    // The wrapped row holding the match: the last row starting at or before it.
-    let sub = 0;
-    const rows = this.rowStart[vi + 1] - this.rowStart[vi];
-    if (rows > 1) {
-      let hi = rows - 1;
-      while (sub < hi) {
-        const mid = (sub + hi + 1) >> 1;
-        if (this.subStart(vi, mid) <= col) sub = mid;
-        else hi = mid - 1;
-      }
-    }
-    const y = (this.rowStart[vi] + sub) * RH;
+    const y = (this.rowStart[vi] + this.subOf(vi, col)) * RH;
     const el = this.el;
     const vh = el.clientHeight;
     const st = this.sc.top;
     if (y < st || y + RH > st + vh) this.sc.top = Math.max(0, y - vh / 2 + RH);
-    if (!this.wrapper) {
+    if (!this.layoutWrap) {
       const x = col * this.cw;
       const view = el.clientWidth - 80;
       if (x < el.scrollLeft || x > el.scrollLeft + view) el.scrollLeft = Math.max(0, x - view / 3);
