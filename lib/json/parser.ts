@@ -558,7 +558,7 @@ function steps(until: number): ParseResult | undefined {
       // With repairs: prose before a code fence (an LLM's reply) is ignored.
       if (prose && i < n && !src.startsWith('```', i) && isText(i)) {
         const f = fenceLine(i);
-        if (f >= 0) {
+        if (f >= 0 && proseUntil(i, f)) {
           fix(i, 'Text before the code fence was ignored');
           turned = true;
           i = f;
@@ -716,6 +716,8 @@ const str = (q: number, q2 = q): string => {
   let seg = ++i;
   let out = '';
   let plain = true;
+  // (With repairs: where a string with quotes inside closes, see innerClose().)
+  let inner = -1;
   for (;;) {
     if (i >= n) {
       if (fixing) {
@@ -727,7 +729,7 @@ const str = (q: number, q2 = q): string => {
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
       // With repairs: a quote followed by a word (`"say "hi" now"`) is inside the string.
-      if (quoting && q === 34 && wordAfter(i + 1)) {
+      if (quoting && q === 34 && (i < inner || (inner = innerClose(i)) > i)) {
         fix(i, 'Unescaped quote inside a string (kept in it)');
         turned = true;
         i++;
@@ -794,6 +796,51 @@ const fenceLine = (p: number): number => {
     if (j < 0 || src.charCodeAt(j) === 10 || src.charCodeAt(j) === 13) return k;
   }
   return -1;
+};
+
+/**
+ * With repairs, if the quote at `p` is inside its string (`"say "hi" now"`), where the string closes; else -1.
+ * Inside: a word follows it, the string goes on to the next quote on the same line with no JSON between
+ * (no , : [ ] { } and no escape), and so on until a quote that is followed by what can follow a string
+ * (, } ] : or the line's end). Else the quote closes the string as without repairs: `["x" y, "z"]` is three
+ * values, `{a: "x" b: "y"}` two members, `"hi "x""` a string and an empty one.
+ */
+const innerClose = (p: number): number => {
+  if (!wordAfter(p + 1)) return -1;
+  for (let k = p + 1; k < n; k++) {
+    const c = src.charCodeAt(k);
+    if (c === 34) {
+      if (wordAfter(k + 1)) continue;
+      let j = k + 1;
+      while (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9) j++;
+      const d = src.charCodeAt(j);
+      return j >= n || d === 44 || d === 125 || d === 93 || d === 58 || d === 10 || d === 13 ? k : -1;
+    }
+    if (c === 10 || c === 13 || c === 44 || c === 58 || c === 91 || c === 93 || c === 123 || c === 125 || c === 92) return -1;
+  }
+  return -1;
+};
+
+/**
+ * With repairs, whether [p, end) is prose to ignore (around the value): it starts with text that isn't a
+ * comment, is text (no control characters or U+FFFD: a binary file isn't prose), opens no container,
+ * and none of its lines starts with a value. (`{"a": 1}\nhello\n{"b": 2}`
+ * stays three values, `"a"\nb\n"c"` too.)
+ */
+const proseUntil = (p: number, end: number): boolean => {
+  if (!isText(p) || (src.charCodeAt(p) === 47 && (src.charCodeAt(p + 1) === 47 || src.charCodeAt(p + 1) === 42))) return false;
+  for (let k = p; k < end; k++) {
+    const c = src.charCodeAt(k);
+    // (Not a container, nor bytes that aren't text: control characters, U+FFFD from bytes that weren't UTF-8.)
+    if (c === 123 || c === 91 || (c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 127 || c === 0xfffd) return false;
+    if (c === 10 || c === 13) {
+      let j = k + 1;
+      while (j < end && (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9 || src.charCodeAt(j) === 10 || src.charCodeAt(j) === 13)) j++;
+      if (j < end && !isText(j)) return false;
+      k = j - 1;
+    }
+  }
+  return true;
 };
 
 /**
@@ -1086,7 +1133,7 @@ const topLevel = (r: JNode): boolean => {
   root = r;
   skipTail();
   // With repairs: prose after the value (`{"a": 1} that is all`) is ignored, rather than read as JSON Lines.
-  if (prose && !lines && i < n && isText(i)) {
+  if (prose && !lines && i < n && proseUntil(i, n)) {
     fix(i, 'Text after the JSON value was ignored');
     turned = true;
     i = n;

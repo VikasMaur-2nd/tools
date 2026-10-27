@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_DEPTH, parse as oldParse, type ParseOptions } from '../lib/json/parser';
+import { MAX_DEPTH, parse as oldParse, type JNode, type ParseOptions } from '../lib/json/parser';
 import { parse, parser, warmUp, type TapeOptions } from '../lib/json/tape-parser';
 import { KEY_NAME, TRIM_MAX, W, keyKindOf, sizeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
 import { tapeOf } from '../lib/json/tape-send';
@@ -401,6 +401,125 @@ describe('repairs (repair: true): the same in both parsers; documents that parse
       }
     }
     assert.ok(repaired > cases(1000) && turned > cases(100), `repaired: ${repaired}, turned: ${turned}`);
+  });
+
+  test('loose documents that parse are read as without repairs where their JSON goes on after a quote or around the value', () => {
+    // (Missing commas, unquoted words, several values: the repairs for unescaped quotes and prose must not
+    // merge values, cut them apart or drop one; see innerQuote() and proseUntil().)
+    const docs = [
+      '["x" y, "z"]',
+      '{a: "x" b: "y"}',
+      '{"a": "x" b: "y", "c": "z" d: "w"}',
+      '{"name": "Ada" age: 36, "tags": ["a" b, "c"]}',
+      '["one" two, "three" four]',
+      '{"a": "x" b: 1, "c": 2}',
+      '["hi Ada "Ada"", "x"]',
+      '{"a": "x\\ny" z: 1}',
+      '{"a":1}\nhello\n{"b":2}',
+      '"a"\nb\n"c"',
+      '{"a":1}\n{"b":2}\nthe end',
+      '[1, 2]\n3\nnote',
+      'true\nfalse\nnull\nmaybe',
+      '{"a": "x"} {"b": "y"} done',
+      '{"a":1} // done\n{"b":2}',
+      '{"a":1} /* done */',
+    ];
+    for (const src of docs) {
+      const plain = oldParse(src);
+      assert.equal(plain.error, null, `${show(src)} parses without repairs`);
+      const t = same(src, { repair: true }, [1, 2]);
+      assert.deepEqual(val(t, src), val(tapeOf(plain, src), src), show(src));
+      assert.ok(!t.head.issues.some((x) => PROSE_OR_QUOTE.test(x.m)), `${show(src)}: ${JSON.stringify(t.head.issues)}`);
+    }
+    // Neither is text that opens a value before a code fence, nor bytes that aren't text (a binary file),
+    // whether or not the document parses.
+    for (const src of ['note {"x": 1}\n```json\n{"a": 1}\n```', '{"a": 1}\u0000\u0000\u0000', '{"a": 1} PNG\r\n\u001a\n', '1 ab\ufffdcd', 'x\u0001y\n```json\n{"a": 1}\n```']) {
+      const t = same(src, { repair: true });
+      assert.ok(!t.head.issues.some((x) => PROSE_OR_QUOTE.test(x.m)), `${show(src)}: ${JSON.stringify(t.head.issues)}`);
+    }
+    // What they still repair (the lead's examples): prose, and quotes with only words between.
+    const kept: [string, unknown][] = [
+      ['{"title": "The "Best" Movie", "year": 2020}', { title: 'The "Best" Movie', year: 2020 }],
+      ['{"a": "say "hi" now"}', { a: 'say "hi" now' }],
+      ['{"q": "it"s", "r": 1}', { q: 'it"s', r: 1 }],
+      ['{"a": 1} that is all', { a: 1 }],
+      ['{"a": 1}\nHope this helps!\nCheers', { a: 1 }],
+      ['Here you go:\n```json\n{"a": 1}\n```\nHope this helps', { a: 1 }],
+    ];
+    for (const [src, want] of kept) assert.deepEqual(val(same(src, { repair: true }, [1]), src), want, show(src));
+  });
+
+  test(`R3 in spirit: what the repairs change in loose documents that parse is only what they say (${cases(6000)} cases)`, () => {
+    // Documents as people write them by hand or get them from a model: missing commas, unquoted names and
+    // words, quotes in text, several values on lines, prose and code fences around. Each repair is checked
+    // against the text itself, not against the parser's code.
+    const r = rng((SEED || 1) + 25);
+    const WORDS = ['x', 'y', 'Ada', 'it', 'say', 'hi', 'now', 'b', 'note', 'done', 'true', 'null', 'NaN', 'f'];
+    const word = () => r.pick(WORDS);
+    const text = () => Array.from({ length: 1 + r.int(3) }, () => (r.chance(0.2) ? `"${word()}"` : word())).join(' ');
+    const value = (d: number): string => {
+      const k = r.int(d > 2 ? 4 : 6);
+      if (k === 0) return String(r.int(100));
+      if (k === 1) return r.chance(0.3) ? word() : `"${text()}"`;
+      if (k === 2) return r.pick(['true', 'null', 'false']);
+      if (k === 3) return `"${word()}"`;
+      const sep = () => (r.chance(0.2) ? ' ' : r.chance(0.2) ? ',\n' : ', ');
+      const items = Array.from({ length: r.int(4) }, () => (k === 4 ? value(d + 1) : `${r.chance(0.3) ? word() : `"${word()}"`}: ${value(d + 1)}`));
+      return k === 4 ? `[${items.map((x, j) => (j ? sep() : '') + x).join('')}]` : `{${items.map((x, j) => (j ? sep() : '') + x).join('')}}`;
+    };
+    /** Members as name@value offset; with `written`, only those whose value has a ':' before it in the text. */
+    const members = (t: Tape, written?: string) => {
+      const out = new Set<string>();
+      for (let k = 0; k < t.count; k++) {
+        if (keyKindOf(t, k) !== KEY_NAME) continue;
+        const at = t.nodes[k * W + 1];
+        if (written !== undefined && !/:[ \t\n\r]*$/.test(written.slice(Math.max(0, at - 8), at))) continue;
+        out.add(`${t.keys[t.nodes[k * W + 4]]}@${at}`);
+      }
+      return out;
+    };
+    let changed = 0;
+    for (let it = 0, total = cases(6000); it < total; it++) {
+      let src = Array.from({ length: 1 + (r.chance(0.3) ? r.int(3) : 0) }, () => value(0)).join(r.pick(['\n', ' ', '\n\n']));
+      if (r.chance(0.2)) src += r.pick([' ', '\n']) + text() + r.pick(['', '.', '!']);
+      if (r.chance(0.1)) src = `${text()}:\n\`\`\`json\n${src}\n\`\`\`` + (r.chance(0.5) ? `\n${text()}` : '');
+      const plain = oldParse(src);
+      if (plain.error) continue;
+      try {
+        const t = same(src, { repair: true }, it % 32 === 0 ? [1] : []);
+        assert.equal(t.head.error, null);
+        if (diffTape(tapeOf(plain, src), t, src) === null) continue;
+        changed++;
+        let dropped = false;
+        for (const x of t.head.issues) {
+          if (x.m === 'Unescaped quote inside a string (kept in it)') {
+            // A word follows it, and the next quote on its line comes with no JSON in between.
+            assert.match(src.slice(x.p + 1), /^[ \t]*[A-Za-z_$\u0080-￿][^"\n\r,:[\]{}\\]*"/, `quote at ${x.p}`);
+          } else if (x.m === 'Text after the JSON value was ignored') {
+            const rest = src.slice(x.p);
+            assert.ok(!/[[{]/.test(rest) && !/(^|[\n\r])[ \t]*(["'\d-]|true|false|null)/.test(rest), `ignored: ${show(rest)}`);
+            // What comes before it reads as without repairs (unless a quote in it was repaired too).
+            if (!t.head.issues.some((y) => y.m.startsWith('Unescaped quote'))) {
+              const first = plain.multi ? (plain.root!.v as JNode[])[0] : plain.root!;
+              assert.deepEqual(val(t, src), val(tapeOf({ ...plain, root: first, multi: false }, src), src));
+            }
+            dropped = true;
+          } else if (x.m === 'Text before the code fence was ignored') {
+            assert.ok(!/[[{]/.test(src.slice(x.p, src.indexOf('```', x.p))), `ignored before the fence at ${x.p}`);
+            dropped = true;
+          }
+        }
+        // No member the text writes (a name, then ':' before its value) is lost to a merged string: members go
+        // only with ignored text. (Names the reading without repairs made up from a word after a quote may go.)
+        if (!dropped) {
+          const kept = members(t);
+          for (const m of members(tapeOf(plain, src), src)) assert.ok(kept.has(m), `member ${m} lost`);
+        }
+      } catch (e) {
+        throw new Error(`iteration ${it}: ${(e as Error).message}\ninput: ${show(src)}`, { cause: e });
+      }
+    }
+    assert.ok(changed > cases(100), `changed: ${changed}`);
   });
 });
 
