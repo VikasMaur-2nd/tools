@@ -375,3 +375,90 @@ test('3 MB of JSON Lines in the Format view: the rows and Copy are the records a
   const [count, at] = await find(page, last, 1);
   t.check(count === '1 of 1' && at === String(lines.findIndex((l) => l.includes(last)) + 1), 'find lands on the last record\'s line', { count, at });
 });
+
+for (const mb of [0.9, 3]) {
+  test(`find on long lines (${mb} MB): the highlight sits on the matched text, wrap on and off`, async (t) => {
+    // Lines of 2,000 and 5,000 characters, each with a match at its end. On main the highlight drifted right
+    // with the column: with wrap off 320 px at column 2,000, its text scrolled out of view (BREAKER-REPORT F20).
+    const { page } = t;
+    await t.open('/');
+    const recs = [];
+    for (let i = 0, s = 0; s < mb * 1_000_000; i++) {
+      const r = { id: i, t: 'filler text ' + i, n: i };
+      recs.push(r);
+      s += JSON.stringify(r).length + 1;
+    }
+    recs[3] = { id: 3, mid: 'Q'.repeat(1990) + 'MARKA' };
+    recs[5] = { id: 5, long: 'R'.repeat(4990) + 'MARKB' };
+    t.assert((await loadAny(page, Buffer.from(JSON.stringify(recs)), 'long.json', { timeout: 120_000 }))?.msg === 'Valid JSON', 'the document is valid');
+    await until(page, () => (window.__vis('#view-format .cv-l') ? true : null), null, { timeout: 60_000 });
+    const known = { known: 'bug (main): find highlights drift right on long lines (BREAKER-REPORT F20)' };
+    for (const wrap of ['on', 'off']) {
+      if (wrap === 'off') {
+        await command(page, 'Wrap long lines');
+        // (Searching while the view lays out again can throw: F21, checked below on its own.)
+        await until(page, () => !!window.__vis('#view-format')?.querySelector('.cv-nowrap') || !!window.__vis('#view-format.cv-nowrap') || null, null, { timeout: 10_000 }).catch(() => null);
+        await page.waitForTimeout(1000);
+      }
+      for (const q of ['MARKA', 'MARKB']) {
+        const [count] = await find(page, q, 1);
+        // The current match's box vs the box of the first character it marks, in the same row.
+        const at = await until(page, () => {
+          const v = window.__vis('#view-format');
+          const m = v?.querySelector('.cv-hit.cur');
+          if (!m) return null;
+          const c = m.closest('.cv-l').querySelector('.cv-c');
+          const walk = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+          // (The match may straddle two rows of a wrapped line: its first character, the line's only capital M, is in this one.)
+          for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+            if (n.parentElement.closest('.cv-hit, .cv-sp')) continue;
+            const i = n.data.indexOf('M');
+            if (i < 0) continue;
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + 1);
+            const tb = r.getClientRects()[0];
+            const vb = v.getBoundingClientRect();
+            return { off: Math.round(m.getBoundingClientRect().left - tb.left), seen: tb.left >= vb.left && tb.right <= vb.right };
+          }
+          return { off: null, seen: false };
+        }, null, { timeout: 10_000 }).catch(() => null);
+        t.check(count === '1 of 1' && at !== null && at.off !== null && Math.abs(at.off) <= 2 && at.seen, `wrap ${wrap}, ${q}: the highlight is on the match, which is in view`, { count, ...at }, known);
+      }
+    }
+    await closeFind(page);
+  });
+}
+
+test('toggling wrap while a find is open on long lines: no page errors, and the find still lands', { allowErrors: true }, async (t) => {
+  // Firefox and WebKit, main and branch: "this.wrapper is null" (subStart in render) when the view lays out
+  // again under an open find (BREAKER-REPORT F21).
+  const { page } = t;
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e).slice(0, 160)));
+  await t.open('/');
+  const recs = [];
+  for (let i = 0, s = 0; s < 3_000_000; i++) {
+    const r = { id: i, t: 'filler text ' + i, n: i };
+    recs.push(r);
+    s += JSON.stringify(r).length + 1;
+  }
+  recs[3] = { id: 3, mid: 'Q'.repeat(1990) + 'MARKA' };
+  recs[5] = { id: 5, long: 'R'.repeat(4990) + 'MARKB' };
+  t.assert((await loadAny(page, Buffer.from(JSON.stringify(recs)), 'long.json', { timeout: 120_000 }))?.msg === 'Valid JSON', 'the document is valid');
+  await until(page, () => (window.__vis('#view-format .cv-l') ? true : null), null, { timeout: 60_000 });
+  const box = page.locator('.findbar:visible input');
+  let last = null;
+  for (let round = 0; round < 4; round++) {
+    for (const q of ['MARKA', 'MARKB']) {
+      await command(page, 'Wrap long lines');
+      if (!(await box.count())) await page.keyboard.press(`${MOD}+f`);
+      await box.fill(q);
+      await box.press('Enter');
+    }
+  }
+  last = await until(page, () => (window.__vis('.findbar .count')?.textContent === '1 of 1' && window.__vis('#view-format .cv-hit.cur') ? 'ok' : null), null, { timeout: 15_000 }).catch(() => null);
+  const known = t.engine === 'chromium' ? {} : { known: 'bug (main): toggling wrap under an open find throws "wrapper is null" (BREAKER-REPORT F21)' };
+  t.check(!errors.length, 'no page errors', errors.slice(0, 2), known);
+  t.check(last === 'ok', 'the last find shows 1 of 1 with its highlight', await page.evaluate(() => window.__vis('.findbar .count')?.textContent));
+});

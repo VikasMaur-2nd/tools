@@ -186,3 +186,30 @@ test('a 3 MB records array in the table: rows, and sorting by number, text and b
   }
   golden(t, 'views/table-3mb', out, 'rows and sorted rows match the golden file');
 });
+
+test('Tree find on 3 MB of strings escaped with \\t, \\n, \\b, \\f, \\r: only values that hold the query count', { timeout: 300_000 }, async (t) => {
+  // The values hold control characters, not the escapes' letters: "t" is in none of them. Smart case: a lower-case
+  // query matches any case.
+  const { page } = t;
+  await t.open('/');
+  const recs = [];
+  for (let i = 0, s = 0; s < 3_000_000; i++) {
+    const r = { id: i, s: i % 2 ? 'a\tb' : 'x\ny', w: `Line ${i}\nName: Bob`, c: '\b\f\r' };
+    recs.push(r);
+    s += JSON.stringify(r).length;
+  }
+  t.assert(await load(page, JSON.stringify(recs), 'escapes.json', { timeout: 120_000 }), 'the document loads');
+  await view(page, 'tree');
+  await waitRows(page, '#view-tree .tv-rows', 3);
+  for (const q of ['t', 'tb', 'nname', 'f', 'bob', 'name: bob']) {
+    const want = recs.reduce((n, r) => n + Object.values(r).filter((v) => String(v).toLowerCase().includes(q)).length, 0);
+    const box = page.locator('.findbar:visible input');
+    if (!(await box.count())) await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+f`);
+    await box.fill(q);
+    await box.press('Enter');
+    const re = want ? `^[1-9][\\d,]* of ${want.toLocaleString('en-US')}$` : '^No results$';
+    const count = await until(page, (src) => (new RegExp(src).test(window.__vis('.findbar .count')?.textContent ?? '') ? window.__vis('.findbar .count').textContent : null), re, { timeout: 15_000 })
+      .catch(() => null) ?? (await page.evaluate(() => window.__vis('.findbar .count')?.textContent ?? null));
+    t.check(new RegExp(re).test(count ?? ''), `find "${q}": ${want ? `${want.toLocaleString('en-US')} values` : 'no results'}`, count);
+  }
+});
