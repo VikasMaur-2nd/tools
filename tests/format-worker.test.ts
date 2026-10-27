@@ -115,6 +115,32 @@ test("parser.ts's parser stays out of the worker: nothing it imports calls it", 
   assert.deepEqual(callers, []);
 });
 
+test('the analysis worker reads a loaded file itself: the text as the page has it, then edits; a changed file asks for the text', async () => {
+  const { worker, request, receive } = session();
+  try {
+    const body = '[\r\n' + Array.from({ length: 3000 }, (_, i) => `  {"id": ${i}, "s": "é東😀 ${i}"}`).join(',\r\n') + '\r\n]\r\n';
+    const text = body.replace(/\r\n?/g, '\n');
+    const tree = (reply: { tree?: PackedTree }, src: string) => diffResults(parse(src, { repair: true }), unpacker(reply.tree!, src)(Infinity)!);
+    // UTF-8 with a byte order mark and CRLF: the text is the page's (no BOM, LF).
+    const utf8 = new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), body]);
+    assert.equal(tree(await request({ id: 1, analysis: true, file: utf8, size: text.length }), text), null);
+    // UTF-16 LE with its byte order mark: read as UTF-16, as the page reads it.
+    const le = new Uint8Array(2 + body.length * 2);
+    le.set([0xff, 0xfe]);
+    for (let i = 0; i < body.length; i++) { le[2 + 2 * i] = body.charCodeAt(i) & 0xff; le[3 + 2 * i] = body.charCodeAt(i) >> 8; }
+    assert.equal(tree(await request({ id: 2, analysis: true, file: new Blob([le]), size: text.length }), text), null);
+    // An edit sent while the file is read waits for it, then applies to its text.
+    const at = text.indexOf('"id": 7,') + 6;
+    const edited = text.slice(0, at) + '70' + text.slice(at + 1);
+    worker.postMessage({ id: 3, analysis: true, file: utf8, size: text.length });
+    const next = request({ id: 4, analysis: true, edit: { a: at, b: at + 1, ins: '70' }, sourceBase: 3 });
+    assert.equal(tree(await receive(3), text), null);
+    assert.equal(tree(await next, edited), null);
+    // Not the page's text (the file changed on disk since): the page is asked for it.
+    assert.equal((await request({ id: 5, analysis: true, file: utf8, size: text.length + 1 })).reset, true);
+  } finally { await worker.terminate(); }
+});
+
 test('the analysis worker warmed up before a document analyses it as a fresh one does', async () => {
   const { worker, request, messages } = session();
   try {

@@ -1267,10 +1267,12 @@ export class Engine {
   // ── Commands: documents ────────────────────────────────────────────────
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
-  load(text: string, name: string | null, persist = true, outputFirst = false) {
+  /** `file`: the file `text` was read from, as is (readText), which the analysis worker then reads itself. */
+  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File) {
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
     // worker, over this text) must match the editor's, or values and positions shift a character a line.
     text = lf(text);
+    this.fromFile = file ? { file, text, doc: null } : null;
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
@@ -1288,6 +1290,9 @@ export class Engine {
     }
     this.finishLoad(text, persist, false);
   }
+
+  /** The file the document was loaded from (see load) and, once the editor has it, its version: until it changes, the analysis worker reads the file instead of being sent the text. */
+  private fromFile: { file: File; text: string; doc: Doc | null } | null = null;
 
   /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
   private pendingLoad: { seq: number; text: string; persist: boolean } | null = null;
@@ -1495,6 +1500,14 @@ export class Engine {
       remember();
       return;
     }
+    // A big file just loaded: the analysis worker reads it itself (reindent.worker.ts readFile), so its text
+    // isn't copied over in chunks. (A reset, if the file changed since, sends the text then.)
+    if (analysis && this.fromFile?.doc === document) {
+      w.postMessage({ ...request, file: this.fromFile.file, size: document.length });
+      sent?.(1);
+      remember();
+      return;
+    }
     w.postMessage({ ...request, start: true });
     let at = 0;
     const send = () => {
@@ -1534,7 +1547,7 @@ export class Engine {
           if (e.data.id !== this.loadSeq) return;
           if (e.data.tree && !e.data.good) this.analysisBusy = false;
           if (e.data.tree && e.data.pretty) prettyIndexes.set(e.data.tree.nodes, e.data.pretty);
-          if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
+          if (e.data.reset) { this.analysisDoc = null; this.fromFile = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
           else if (e.data.good && e.data.tree && good) {
             this.good = null;
@@ -1710,6 +1723,7 @@ export class Engine {
       if (this.progressShown() >= FORMATTED) this.progress(EDITOR);
     }
     const document = this.ed.version as Doc;
+    if (this.fromFile?.text === text) this.fromFile.doc = document;
     if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
     if (this.fmtSrcVer === null && (this.fmtWorkerId || this.pendingFmtWorkerId)) this.fmtSrcVer = document;
     if (this.refocus) {
@@ -1839,7 +1853,7 @@ export class Engine {
         }
       }
       noteLoad(source, 1, f.name);
-      this.load(text, f.name, true, true);
+      this.load(text, f.name, true, true, f);
       if (!failed) this.toast(`Opened ${f.name}`, 'ok');
     } catch {
       unshow();

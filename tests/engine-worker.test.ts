@@ -568,6 +568,38 @@ test('a parse here in steps goes on from where a big load got to', (t) => {
   for (let k = 1; k < percents.length; k++) assert.ok(percents[k] > percents[k - 1], percents.join(', '));
 });
 
+test('a big file loaded goes to the analysis worker as the file, not its text; after a reset, as its text', async () => {
+  const { engine, workers, tick } = loadSession();
+  await engine.tapeCode();
+  const body = bigArray(1_200_000).replace(/,/g, ',\r\n');
+  const file = new Blob([body]);
+  engine.load(body, 'big.json', false, true, file);
+  for (let k = 0; k < 1000 && tick(); k++);
+  const text = body.replace(/\r\n/g, '\n');
+  assert.equal(engine.ed.text, text);
+  const analysis = workers.find((w) => w.messages.some((m) => m.analysis));
+  assert.ok(analysis, 'the analysis worker got the document');
+  const asked = analysis.messages.filter((m) => m.analysis);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].file, file);
+  assert.equal(asked[0].size, text.length);
+  assert.ok(!analysis.messages.some((m) => m.start || m.chunk !== undefined || m.text !== undefined), 'no text sent');
+  // The worker couldn't read it as the page did (changed on disk since): then the page sends the text.
+  analysis.onmessage!({ data: { id: engine.loadSeq, reset: true } });
+  for (let k = 0; k < 1000 && tick(); k++);
+  const now = workers.find((w) => w.messages.some((m) => m.start));
+  assert.ok(now, 'the text goes after a reset');
+  assert.equal(now.messages.filter((m) => m.chunk !== undefined).map((m) => m.chunk).join(''), text);
+  assert.ok(!now.messages.some((m) => m.file && m !== asked[0]), 'the file is not sent again');
+  // Text that came another way (pasted, a link): sent as text.
+  const before = workers.map((w) => w.messages.length);
+  engine.load(body, null, false, true);
+  for (let k = 0; k < 1000 && tick(); k++);
+  const after = workers.flatMap((w, i) => w.messages.slice(before[i] ?? 0));
+  assert.ok(after.some((m) => m.analysis && m.start), 'the text goes');
+  assert.ok(!after.some((m) => m.file), 'no file');
+});
+
 test('a big JSON Lines file with CRLF reaches the editor and the analysis worker with the same LF text', async () => {
   const { engine, workers, tick } = loadSession();
   await engine.tapeCode();

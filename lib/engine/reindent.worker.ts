@@ -4,14 +4,15 @@ import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } 
 import { packedTransfer, packTape } from '../json/pack-send';
 import { lazyResult } from '../json/lazy';
 import { parse as parseTape, parser as tapeParser, warmUp } from '../json/tape-parser';
-import { wasmTape } from '../json/tape-wasm';
+import { wasmTape, type ByteSource } from '../json/tape-wasm';
+import { readText } from '../json/read';
 import { childCount, W, type Tape } from '../json/tape';
 import { MAX_DEPTH, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
 import { compressedSizes } from './sizes';
 import { jsonLines } from './rules';
-import { Doc, type TextEdit } from './doc';
+import { Doc, lf, type TextEdit } from './doc';
 import { ScalarFormatter } from '../json/incremental-format';
 import { prettyIndexer } from '../json/pretty';
 
@@ -25,6 +26,11 @@ export interface Request {
   warm?: number;
   /** The analysis worker's warm-up before a document comes (see warmTape). */
   warmTape?: boolean;
+  /** The file a document was loaded from, instead of its text: read here (see readFile). `size`: the text's length on the page. */
+  file?: Blob;
+  size?: number;
+  /** (Here: that file's bytes for WebAssembly.) */
+  bytes?: ByteSource;
   parse?: boolean;
   sortKeys?: boolean;
   lines?: boolean;
@@ -73,11 +79,18 @@ let source = Doc.of('');
 let sourceId = 0;
 let fastTimer: ReturnType<typeof setTimeout> | undefined;
 let incoming: { options: Request; chunks: string[] } | null = null;
+/** Messages that came while a file is read (see readFile): handled after it, in order. */
+let queued: Request[] | null = null;
 /** The newest compressed-size request (see Request.measure): an older one stops after its current encoder. */
 let measuring = 0;
 
-self.onmessage = (e: MessageEvent<Request>) => {
-  let data = e.data;
+self.onmessage = (e: MessageEvent<Request>) => receive(e.data);
+
+function receive(data: Request) {
+  if (queued) {
+    queued.push(data);
+    return;
+  }
   if (data.measure) {
     // Compressed sizes for the page (Firefox runs the encoders on the thread that calls them).
     const seq = (measuring = data.seq!);
@@ -121,6 +134,7 @@ self.onmessage = (e: MessageEvent<Request>) => {
     incoming = null;
   }
   incoming = null;
+  if (data.file) return readFile(data);
   const { id, indent = '', warm } = data;
   // A warm-up: the engine optimizes the loop now, so a first big document runs at full speed.
   if (warm) {
@@ -197,7 +211,7 @@ self.onmessage = (e: MessageEvent<Request>) => {
     chunkedOut: patch === undefined && out !== null && sentOut === undefined,
     chunkedDisplay: display !== undefined && sentDisplay === undefined,
   }, index ? [index.starts.buffer, index.close.buffer, index.depth.buffer] : []);
-};
+}
 
 
 /**
@@ -232,6 +246,39 @@ function warmTape() {
   wasmTape(wasm, text);
 }
 
+/** (Workers only, so not among the DOM's types.) */
+declare const FileReaderSync: { new (): { readAsArrayBuffer(blob: Blob): ArrayBuffer } } | undefined;
+
+/**
+ * A request with the file the page loaded its document from, instead of the text: read here as the page
+ * read it (readText(), then lf() as Engine.load does), so the text is the editor's without the page sending
+ * it in chunks, and its bytes go to WebAssembly a window at a time (never all at once). If it can't be read
+ * (it changed on disk since) or its text isn't the page's length, the reply is a reset: the page sends the
+ * text then. Messages that come meanwhile wait for it.
+ */
+function readFile(data: Request) {
+  const file = data.file!;
+  latest = data.id;
+  queued = [];
+  void readText(file).then(lf, () => null).then((text) => {
+    const later = queued!;
+    queued = null;
+    if (text !== null && text.length === data.size) receive({ ...data, file: undefined, text, bytes: fileBytes(file) });
+    else self.postMessage({ id: data.id, reset: true });
+    for (const d of later) receive(d);
+  });
+}
+
+/** A file's bytes for WebAssembly, a window at a time, if read.ts reads it as UTF-8 (not with a UTF-16 byte order mark). */
+function fileBytes(file: Blob): ByteSource | undefined {
+  if (typeof FileReaderSync === 'undefined') return undefined;
+  const reader = new FileReaderSync();
+  const read = (at: number, len: number) => new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + len)));
+  const head = read(0, 2);
+  if ((head[0] === 0xff && head[1] === 0xfe) || (head[0] === 0xfe && head[1] === 0xff)) return undefined;
+  return { size: file.size, read };
+}
+
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {
   // (The first document may come before WebAssembly is compiled: a few ms.)
@@ -239,7 +286,7 @@ function analyse(data: Request, text: string) {
   // Parsed straight to a tape: no node objects here (the page makes the ones it shows). Strict JSON goes
   // through WebAssembly; anything else (or no WebAssembly) through the JavaScript parser.
   const options = { lines: data.lines, maxDepth: MAX_DEPTH, repair: true };
-  const tape = (wasm && !data.lines ? wasmTape(wasm, text, options) : null) ?? (data.progress ? parseShowing(data, text) : parseTape(text, options));
+  const tape = (wasm && !data.lines ? wasmTape(wasm, text, options, data.bytes) : null) ?? (data.progress ? parseShowing(data, text) : parseTape(text, options));
   const res = lazyResult(tape, text);
   showing(data, PARSED);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
