@@ -102,7 +102,7 @@ function session() {
       if (name === './sizes') return { compressedSizes: () => Promise.resolve({ gzip: 1 }) };
       if (name === './editor') return { loadSurface: () => Promise.resolve() };
       if (name === '../json/smart') return { embeddedJson: (s: string) => s };
-      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
+      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === './asks' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
   });
@@ -295,6 +295,30 @@ test('a file that fails to convert opens as text, and its error stays in view', 
   assert.match(toasts[0], /^Couldn't read bad\.yaml: /);
 });
 
+test('a binary file is said to be one, and read again (not kept meanwhile) when opened as text anyway', async () => {
+  for (const [target, name] of [[1, 'disk.img'], [1, 'data.csv'], [2, 'disk.img']] as const) {
+    const { engine, loads } = loading();
+    const said: string[] = [];
+    let run: (() => void) | undefined;
+    engine.toast = (msg: string, _kind: string, action?: { run: () => void }) => {
+      said.push(msg);
+      run = action?.run ?? run;
+    };
+    let reads = 0;
+    const bytes = 'PK\x03\x04\0\0\x14\0' + 'x'.repeat(100);
+    const f = { name, size: bytes.length, text: () => Promise.resolve(bytes), stream: () => (reads++, streamOf(bytes)) };
+    await (target === 1 ? engine.loadFile(f) : engine.loadCompareFile(f));
+    assert.deepEqual(said, [`${name} looks like a binary file, not JSON`]);
+    assert.deepEqual(loads, []);
+    run!();
+    for (let i = 0; i < 5; i++) await settled();
+    assert.equal(reads, 2, 'read again');
+    // (As text: a .csv isn't converted.)
+    assert.deepEqual(loads, [`${target}:${name}`]);
+    assert.equal(said[1], target === 1 ? `Opened ${name}` : `Comparing with ${name}`);
+  }
+});
+
 test('a file that fails to read after a newer one was asked for says nothing', async () => {
   for (const target of [1, 2]) {
     const { engine, toasts } = loading();
@@ -343,6 +367,30 @@ test("a file opened while a link's document downloads wins, and the link stays q
   await settled();
   assert.deepEqual(loads, ['1:b.json']);
   assert.deepEqual(toasts, ['Fetching…', 'Opened b.json']);
+});
+
+test('a share link whose document inflates past 32 MB opens only when asked', async () => {
+  const { engine, loads, location } = loading();
+  const said: [string, { label: string; run: () => void } | undefined][] = [];
+  engine.toast = (msg: string, _kind: string, action?: { label: string; run: () => void }) => said.push([msg, action]);
+  const { encodeDoc, LINK_DOCUMENT } = load(resolve(__dirname, '../lib/link'));
+  const link = async (text: string) => {
+    location.hash = '#a=' + (await encodeDoc(text));
+    location.href = 'https://tools.example/' + location.hash;
+    await engine.openLink();
+    for (let i = 0; i < 20; i++) await settled();
+  };
+  await link('[' + '0,'.repeat(1000) + '0]');
+  assert.deepEqual(loads, ['1:null'], 'a small one opens');
+  loads.length = 0;
+  said.length = 0;
+  // (About 33 KB of link.)
+  await link('[' + '0,'.repeat(LINK_DOCUMENT / 2) + '0]');
+  assert.deepEqual(loads, []);
+  assert.deepEqual(said.map(([m, a]) => [m, a?.label]), [["This link's document is over 32 MB: opening it can slow down or crash this tab", 'Open anyway']]);
+  said[0][1]!.run();
+  for (let i = 0; i < 200 && !loads.length; i++) await new Promise((r) => setTimeout(r, 25));
+  assert.deepEqual(loads, ['1:null'], 'opened when asked');
 });
 
 test('a big file still being read gives back the status it showed when a URL is asked for instead', async () => {
@@ -528,6 +576,55 @@ test('a save waiting for an idle moment is dropped by destroy, which saves the d
   assert.equal(s.storage.get('jf:doc'), '{"new":1}');
 });
 
+test('the file name is saved with the document kept: a load still on its way when the page is left, or the one before', () => {
+  for (const [pending, doc, file] of [
+    ['{"new":1}', '{"new":1}', 'new.json'],
+    // Too big to keep: the document before stays, under its own name.
+    ['[' + '0,'.repeat(1_300_000) + '0]', '{"old":1}', 'old.json'],
+  ]) {
+    const s = session();
+    closable(s.engine, '{"old":1}');
+    Object.assign(s.engine, { persistEnabled: true, edName: 'old.json' });
+    s.storage.set('jf:file', 'old.json');
+    s.engine.pendingLoad = { seq: s.engine.loadSeq, text: pending, persist: true, names: ['old.json', 'new.json'] };
+    s.engine.destroy();
+    assert.equal(s.storage.get('jf:doc'), doc);
+    assert.equal(s.storage.get('jf:file'), file);
+  }
+  // A document too big to keep is saved as none, and so is its name.
+  const s = session();
+  closable(s.engine, '[' + '0,'.repeat(1_300_000) + '0]');
+  Object.assign(s.engine, { persistEnabled: true, edName: 'big.json' });
+  s.engine.destroy();
+  assert.equal(s.storage.get('jf:doc'), undefined);
+  assert.equal(s.storage.get('jf:file'), undefined);
+});
+
+test('Undo while a file is being read undoes that file once it arrives, not the document before it', async () => {
+  const { engine, loads, toasts } = loading();
+  let undone = 0;
+  engine.ed.undo = () => undone++;
+  assert.equal(engine.undoing(), false, 'nothing on its way: the editor undoes');
+  const a = later<string>();
+  const opening = engine.loadFile(file('big.json', a.promise));
+  assert.equal(engine.undoing(), true, 'taken');
+  a.settle('{"big":1}');
+  await opening;
+  assert.deepEqual(loads, ['1:big.json']);
+  assert.equal(undone, 1, 'opened, then undone');
+  assert.deepEqual(toasts, []);
+  assert.equal(engine.undoing(), false);
+  // Typing meanwhile drops the file (and the Undo with it).
+  const b = later<string>();
+  const next = engine.loadFile(file('c.json', b.promise));
+  assert.equal(engine.undoing(), true);
+  engine.requests[1].abort();
+  b.settle('{"c":1}');
+  await next;
+  assert.deepEqual(loads, ['1:big.json']);
+  assert.equal(undone, 1);
+});
+
 test('destroy closes what the tool showed for itself; a notice with an action stays', () => {
   for (const action of [false, true]) {
     const s = session();
@@ -649,4 +746,14 @@ test('Copy formatted output from another view after an edit gives the edited doc
   for (const f of engine.analysed.splice(0)) f();
   await settled();
   assert.deepEqual(copied, ['{\n  "b": 2\n}', '{\n  "c": 3\n}']);
+});
+
+test('past the 500 duplicate keys a parse lists, the status says there are more', () => {
+  const { engine } = session();
+  closable(engine);
+  engine.ed.lineCol = () => ({ line: 1, col: 1 });
+  const st = engine.statusOf(parse('{' + Array.from({ length: 600 }, (_, i) => `"k":${i}`).join(',') + '}'));
+  assert.equal(st.warnings, 500);
+  assert.equal(st.more, true);
+  assert.equal(engine.statusOf(parse('{"k":0,"k":1}')).more, false);
 });

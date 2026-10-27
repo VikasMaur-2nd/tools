@@ -59,7 +59,7 @@
   "get_json_value",
   "{\"path\":\"/a/~2\"}",
   {
-   "text": "Nothing at $.a[\"~2\"]: $.a has no key \"~2\". It has the keys \"b\"."
+   "text": "Error: can't read the path \"/a/~2\". Write it as $.users[0].name or /users/0/name (in a JSON Pointer, ~ is written ~0 and / is ~1)."
   }
  ],
  [
@@ -87,14 +87,14 @@
   "get_json_value",
   "{\"path\":\"$.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a",
   {
-   "text": "Nothing at $.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a…[100054]"
+   "text": "Nothing at $.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.…: $.a has no key \"a\". It has the keys \"b\"."
   }
  ],
  [
   "get_json_value",
   "{\"path\":12}",
   {
-   "text": "$ is an object with 2 keys:\n- \"a\": object\n- \"__proto__\": object\n\nValue:\n{\n  \"a\": {\n    \"b\": [\n      1,\n      2,\n      {\n        \"c\": \"d\"\n      }\n    ]\n  },\n  \"__proto__\": {\n    \"x\": 1\n  }\n}"
+   "text": "Error: path must be text, such as $.users[0].name or /users/0/name."
   }
  ],
  [
@@ -129,7 +129,7 @@
   "convert_json",
   "{\"to\":\"typescript\",\"root_name\":\"<script>RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
   {
-   "text": "export interface ScriptRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR {\n  a: A;\n  __proto__: Proto;\n}\n\nexport interface A {\n  b: (number | BItem)[];\n}\n\nexport interface BItem {\n  c: string;\n}\n\nexport interface Proto {\n  x: number;\n}\n"
+   "text": "export interface ScriptRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR {\n  a: A;\n  __proto__: Proto;\n}\n\nexport interface A {\n  b: (number | BItem)[];\n}\n\nexport interface BItem {\n  c: string;\n}\n\nexport interface Proto {\n  x: number;\n}\n"
   }
  ],
  [

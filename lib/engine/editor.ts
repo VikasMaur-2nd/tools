@@ -3,7 +3,7 @@ import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStat
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
 import { foldScanner, foldsAround, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
-import { LONG_LINE, Wrapper, type Src } from './wrap';
+import { CUT, LONG_LINE, Wrapper, type Src } from './wrap';
 import { rt } from '../i18n/ui';
 
 /*
@@ -114,6 +114,10 @@ export interface EditorEvents {
    * `edit`: the input edits, so the document is editable at once (else it arrives as it would have).
    */
   flush?(edit: boolean): void;
+  /** Undo or Redo went past a load (see setValue): the file name of the document shown now. */
+  renamed?(name: string | null): void;
+  /** Undo is about to be applied: true if the listener takes it instead (a document still being read, undone once it arrives). */
+  undoing?(): boolean;
 }
 
 /** Colours [a, b) of `text`, which starts at document offset `at`, as escaped HTML: for a document that isn't JSON (see setColors). */
@@ -132,6 +136,8 @@ interface Change {
   selA: [number, number];
   t: number;
   kind: 'type' | 'del' | 'other';
+  /** A load's file names, before and after it (see setValue): told on undo and redo. */
+  names?: [string | null, string | null];
 }
 
 const LINE_MARK = ['', 'dla', 'dld', 'dlc'];
@@ -330,7 +336,7 @@ export class Editor {
   private wrapper: Wrapper | null = null;
   /** While wrapping: the first visual row of each display line (length rows + 1). */
   private wy: Int32Array | null = null;
-  /** While wrapping: 1 for display lines whose breaks the browser decides (Wrapper.odd). */
+  /** While wrapping: 1 for display lines whose breaks the browser decides, CUT for binary (Wrapper.odd). */
   private wodd = new Uint8Array(0);
   /** Text or folds changed since rows were last wrapped. */
   private wrapDirty = true;
@@ -1087,7 +1093,7 @@ export class Editor {
     const k = this.rowOf(ln);
     const wy = this.wy;
     if (!wy || !this.wrapper || this.lineAt(k) !== ln) return this.yOf(k);
-    return wy[k] + this.wrapper.rowAt(this.src, this.ls[ln], this.lineEnd(ln), off, this.wodd[k] === 1, wy[k + 1] - wy[k]);
+    return wy[k] + this.wrapper.rowAt(this.src, this.ls[ln], this.lineEnd(ln), off, this.wodd[k], wy[k + 1] - wy[k]);
   }
 
   /** Model offsets [start, end) of wrapped row `sub` of display row `k`. */
@@ -1098,7 +1104,7 @@ export class Editor {
     const wr = this.wrapper;
     if (!wr || !this.wy) return [a, b];
     const rows = this.wy[k + 1] - this.wy[k];
-    const odd = this.wodd[k] === 1;
+    const odd = this.wodd[k];
     const t = this.src;
     return [a + wr.rowStart(t, a, b, sub, odd), sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b];
   }
@@ -1550,19 +1556,21 @@ export class Editor {
       const marks = this.marksFor(ln);
       const lm = this.lineMarks ? this.lineMarks[ln] : 0;
       const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
-      if (rows > 1 && b - a > LONG_LINE) {
-        const odd = this.wodd[k] === 1;
+      // (Garbage, too, is drawn as its rows: see Wrapper.summed.)
+      if (rows > 1 && (b - a > LONG_LINE || this.wodd[k] === CUT)) {
+        const flag = this.wodd[k];
+        const odd = flag !== 0;
         const s0 = Math.max(0, r0 - y);
         const s1 = Math.min(rows, r1 - y);
         if (top < 0) top = y + s0;
-        let sa = a + wr.rowStart(doc, a, b, s0, odd);
+        let sa = a + wr.rowStart(doc, a, b, s0, flag);
         // The rows on screen and the neighbours read around them, from one string at offset `o`.
-        const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, odd) : b;
+        const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, flag) : b;
         const [t, o] = this.win(Math.max(a, sa - 64), Math.min(b, ea + 64) + 1);
         const ms = moved(marks, o);
         let str = this.jwt || this.colors ? 0 : this.strs.at(doc, a, sa);
         for (let sub = s0; sub < s1; sub++) {
-          const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, odd) : b;
+          const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, flag) : b;
           const end = sb === b;
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa - o, sb - o) + o : sb;
@@ -2316,12 +2324,13 @@ export class Editor {
   }
 
   undo() {
-    if (this.locked) return;
+    if (this.locked || this.ev.undoing?.()) return;
     const ch = this.undo_.pop();
     if (!ch) return;
     this.histChars -= ch.del.length + ch.ins.length;
     this.redo_.push(ch);
     this.write(ch.a, ch.a + ch.ins.length, ch.del, ch.selB);
+    if (ch.names) this.ev.renamed?.(ch.names[0]);
   }
 
   redo() {
@@ -2330,6 +2339,7 @@ export class Editor {
     if (!ch) return;
     this.push(ch);
     this.write(ch.a, ch.a + ch.del.length, ch.ins, ch.selA);
+    if (ch.names) this.ev.renamed?.(ch.names[1]);
   }
 
   /** Low-level replace without recording history. */
@@ -2374,13 +2384,13 @@ export class Editor {
     this.apply(a, b, text, selA, selB, 'input');
   }
 
-  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind) {
+  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind, names?: [string | null, string | null]) {
     text = lf(text);
     const sb = this.selection;
     const del = this.doc.slice(a, b);
     const s1 = selA ?? a + text.length;
     const s2 = selB ?? s1;
-    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other' });
+    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names });
     this.redo_ = [];
     this.typing = true;
     this.shiftFolds(a, b, text, true);
@@ -2400,14 +2410,15 @@ export class Editor {
   }
 
   /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
-  setValue(next: string, caret = 0, load = false) {
+  /** `names`: the file names before and after, when the document comes from or leaves a file (see EditorEvents.renamed). */
+  setValue(next: string, caret = 0, load = false, names?: [string | null, string | null]) {
     next = lf(next);
     if (next.length !== this.doc.length || next !== this.text) {
       // (A new document may open in the quiet view: see LAZY_CHARS.)
       this.forceEdit = false;
       this.loading = load;
       try {
-        this.apply(0, this.doc.length, next, caret, caret, 'set');
+        this.apply(0, this.doc.length, next, caret, caret, 'set', names);
       } finally {
         this.loading = false;
       }

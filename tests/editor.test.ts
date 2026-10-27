@@ -156,3 +156,28 @@ test('typing that keeps the structure lets the scan in progress go on', async (t
   for (let k = 0; k < 100 && f.foldsFor; k++) await tick();
   assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
 });
+
+test('Undo and Redo past a load tell the file name of the document they bring back; Undo can be taken instead', () => {
+  const { el } = editorElement();
+  const names: (string | null)[] = [];
+  let take = false;
+  const ed = new Editor(el as unknown as HTMLElement, { ...events, renamed: (n: string | null) => names.push(n), undoing: () => take });
+  ed.init('{"a":1}');
+  frames();
+  ed.setValue('{"b":2}', 0, true, ['a.json', 'b.json']);
+  ed.replace(1, 1, ' ');
+  ed.undo();
+  assert.deepEqual(names, [], 'an edit carries no name');
+  ed.undo();
+  assert.equal(ed.text, '{"a":1}');
+  ed.redo();
+  assert.equal(ed.text, '{"b":2}');
+  assert.deepEqual(names, ['a.json', 'b.json']);
+  take = true;
+  ed.undo();
+  assert.equal(ed.text, '{"b":2}', 'taken by the listener');
+  take = false;
+  ed.undo();
+  assert.equal(ed.text, '{"a":1}');
+  assert.deepEqual(names, ['a.json', 'b.json', 'a.json']);
+});

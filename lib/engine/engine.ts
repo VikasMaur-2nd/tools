@@ -1,4 +1,4 @@
-import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
+import { ARR, JNode, MAX_ISSUES, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
 import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import type { PackedTree, PrettyText } from '../json/pack';
@@ -25,7 +25,7 @@ import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import { snippet, type SnippetFormat } from '../badge';
-import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -297,6 +297,8 @@ export class Engine {
       escape: () => this.leaveEditor(),
       copyAll: () => void this.copyAll(),
       flush: this.flushLoad,
+      renamed: this.renamed,
+      undoing: this.undoing,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
@@ -353,7 +355,7 @@ export class Engine {
       const saved = read(KEYS.doc);
       if (saved) this.ed.init(saved);
     }
-    store.set({ fileName: read(KEYS.file) });
+    store.set({ fileName: (this.edName = read(KEYS.file)) });
     this.analyzeInSteps();
     if (this.settings.view === 'graph') this.setView('graph');
     if (this.ed2.text) this.analyzeCompare();
@@ -386,6 +388,8 @@ export class Engine {
   }
 
   destroy() {
+    // (Saved below: the document still on its way is the one kept, see persist.)
+    const pending = this.pendingNow();
     this.worker?.terminate();
     this.analysisWorker?.terminate();
     clearTimeout(this.analysisTimer);
@@ -432,7 +436,7 @@ export class Engine {
     clearTimeout(this.convTimer);
     clearTimeout(this.fmtTimer);
     clearTimeout(this.expTimer);
-    this.persistNow();
+    this.persist(pending);
     this.ed.destroy();
     this.themeMedia.removeEventListener('change', this.onSystemTheme);
     this.graph?.destroy();
@@ -463,6 +467,7 @@ export class Engine {
     this.persistEnabled = persistenceAfterChange(this.persistEnabled, kind);
     if (kind === 'paste' && this.ed.pasteFull) {
       this.resetNext = true;
+      this.edName = null;
       if (store.get().fileName) {
         store.set({ fileName: null });
         write(KEYS.file, null);
@@ -815,7 +820,7 @@ export class Engine {
   private linesStatus(res: ParseResult, records?: number): Status {
     const w = res.warnings[0];
     const jsonl = records ?? (res.root!.v as JNode[]).length;
-    return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
+    return w ? { kind: 'valid', warnings: res.warnings.length, more: res.warnings.length >= MAX_ISSUES, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
   }
 
   /** A decoded JWT (signature not verified); the UI shows its expiry live. */
@@ -930,7 +935,7 @@ export class Engine {
     const at = (p: number) => this.ed.lineCol(p);
     if (!first && !err) {
       const w = res.warnings[0];
-      return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...at(w.p) } : { kind: 'valid', warnings: 0 };
+      return w ? { kind: 'valid', warnings: res.warnings.length, more: res.warnings.length >= MAX_ISSUES, msg: w.m, p: w.p, ...at(w.p) } : { kind: 'valid', warnings: 0 };
     }
     if (err && (!first || err.p <= first.p)) return { kind: 'error', msg: err.m, p: err.p, ...at(err.p) };
     if (err) return { kind: 'error', msg: first.m, p: first.p, ...at(first.p) };
@@ -1278,21 +1283,42 @@ export class Engine {
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
     this.loadSeq++; // drops what an earlier load still has pending
-    store.set({ fileName: name });
-    if (persist) write(KEYS.file, name);
+    // (The name shows at once; it is saved with the document, once the editor has it: see persistNow. The
+    // sizes and counts shown were the document before's.)
+    store.set({ fileName: name, sizes: null, stats: null });
+    const names: [string | null, string | null] = [this.edName, name];
     if (text.length >= STEPS_MIN) this.startProgress();
     // (Its output, read off its tape, comes with its analysis: until then the view shows nothing of the one before.)
     if (this.settings.view === 'format' && this.prettyFromTape(text.length)) this.blankFormat();
-    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) {
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, names))) {
       // Until the editor has it, input would act on the old document: the first input hands it over at once.
-      this.pendingLoad = { seq: this.loadSeq, text, persist };
+      this.pendingLoad = { seq: this.loadSeq, text, persist, names };
       return;
     }
-    this.finishLoad(text, persist, false);
+    this.finishLoad(text, persist, false, names);
   }
 
+  /** Undo or Redo brought back a document with its file name (see Editor.setValue). */
+  private renamed = (name: string | null) => {
+    this.edName = name;
+    store.set({ fileName: name });
+  };
+
+  /** Undo while a file is still being read: that file is undone once it arrives (see loadFile), not the document before it. */
+  private undoing = () => {
+    const r = this.reading;
+    if (!r || r.aborted) return false;
+    this.undoLoad = r;
+    return true;
+  };
+
   /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
-  private pendingLoad: { seq: number; text: string; persist: boolean } | null = null;
+  private pendingLoad: { seq: number; text: string; persist: boolean; names: [string | null, string | null] } | null = null;
+  /** The file name of the document the editor holds (the store's is a loading document's at once). */
+  private edName: string | null = null;
+  /** The file being read for the input editor (its request), and one an Undo asked to undo once it arrives. */
+  private reading: AbortSignal | null = null;
+  private undoLoad: AbortSignal | null = null;
 
   /**
    * Input arrived in the editor before a pending load reached it (a key, a paste or a cut right after
@@ -1305,7 +1331,7 @@ export class Engine {
     if (p.seq !== this.loadSeq) return;
     // The load's deferred steps are dropped; the analysis draws its output as usual.
     this.loadSeq++;
-    this.finishLoad(p.text, p.persist, true);
+    this.finishLoad(p.text, p.persist, true, p.names);
     // Arrived for an edit: editable at once, not in the quiet view.
     if (edit) this.ed.takeOver();
     this.onCaret();
@@ -1655,10 +1681,12 @@ export class Engine {
   private refocus = false;
 
   /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
-  private finishLoad(text: string, persist: boolean, split = false) {
+  private finishLoad(text: string, persist: boolean, split: boolean, names: [string | null, string | null]) {
     this.pendingLoad = null;
     const loading = this.progressShown() >= 0 ? this.progressStatus : null;
-    this.ed.setValue(text, 0, true);
+    this.edName = names[1];
+    // (Undo and Redo bring the file names back with the documents.)
+    this.ed.setValue(text, 0, true, names);
     if (loading) {
       // (The editor's change said "Parsing…": the load goes on. With its output shown first, the editor's step is done too.)
       store.set({ status: (this.progressStatus = loading) });
@@ -1751,7 +1779,8 @@ export class Engine {
     else void this.loadFile(f, 'file');
   };
 
-  async loadFile(f: File, source: InputSource = 'file') {
+  /** `asText`: opened as it reads, binary or not, no format converted (see asks.ts). */
+  async loadFile(f: File, source: InputSource = 'file', asText = false) {
     const signal = this.request(1);
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
@@ -1771,31 +1800,49 @@ export class Engine {
     const unshow = () => {
       if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
     };
+    // A binary file's toast reads it again if asked (made here, where no text is in scope: a closure made
+    // where one is can keep it alive, and the toast stays until dismissed).
+    const again = () => void this.loadFile(f, source, true);
+    this.reading = signal;
     try {
-      const text = await (await import('../json/read')).readText(f);
+      // (Whether it is text at all is asked of what was read: see asks.ts.)
+      const [text, { looksBinary, binaryFile }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./asks')]);
+      if (this.reading === signal) this.reading = null;
       if (signal.aborted) return unshow();
+      // Undone while it was read: it opens, and is undone at once (Redo brings it back).
+      const undone = this.undoLoad === signal;
+      this.undoLoad = null;
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
-      let failed = false;
-      if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
+      const open = (json: string, name: string, said: string | false) => {
+        noteLoad(source, 1, f.name);
+        this.load(json, name, true, json === text);
+        if (undone) {
+          this.flushLoad();
+          this.ed.undo();
+        } else if (said) this.toast(said, 'ok');
+      };
+      // Not text (a zip, an image, a video opened by mistake): said so, and read again only when asked (the
+      // text, up to hundreds of megabytes, isn't held for as long as the toast stays).
+      if (!asText && looksBinary(text)) {
+        unshow();
+        if (!undone) this.toast(...binaryFile(f.name, again));
+        return;
+      }
+      let said: string | false = `Opened ${f.name}`;
+      if (!asText && /\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
         const { detectFormat, importToJson } = await import('../convert/import');
         if (signal.aborted) return unshow();
         const fmt = detectFormat(text, f.name);
         if (fmt !== 'json' && fmt !== 'unknown') {
           const r = importToJson(text, fmt, this.indent);
-          if ('json' in r) {
-            noteLoad(source, 1, f.name);
-            this.load(r.json, f.name.replace(/\.[^.]+$/, '.json'));
-            this.toast(`Converted ${f.name} to JSON`, 'ok');
-            return;
-          }
+          if ('json' in r) return open(r.json, f.name.replace(/\.[^.]+$/, '.json'), `Converted ${f.name} to JSON`);
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
-          failed = true;
+          said = false;
         }
       }
-      noteLoad(source, 1, f.name);
-      this.load(text, f.name, true, true);
-      if (!failed) this.toast(`Opened ${f.name}`, 'ok');
+      open(text, f.name, said);
     } catch {
+      if (this.reading === signal) this.reading = null;
       unshow();
       if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
@@ -1838,9 +1885,11 @@ export class Engine {
     // (A document still on its way isn't wanted any more.)
     this.request(1);
     this.resetNext = true;
+    const before = this.edName;
+    this.edName = null;
     store.set({ fileName: null });
     write(KEYS.file, null);
-    this.ed.setValue('');
+    this.ed.setValue('', 0, false, [before, null]);
     this.analyze();
     this.ed.focus();
   }
@@ -1931,11 +1980,15 @@ export class Engine {
     this.analyzeCompare();
   }
 
-  async loadCompareFile(f: File, source: InputSource = 'file') {
+  /** `asText`: as loadFile's. */
+  async loadCompareFile(f: File, source: InputSource = 'file', asText = false) {
     const signal = this.request(2);
+    // (Read again when asked, as in loadFile.)
+    const again = () => void this.loadCompareFile(f, source, true);
     try {
-      const text = await (await import('../json/read')).readText(f);
+      const [text, { looksBinary, binaryFile }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./asks')]);
       if (signal.aborted) return;
+      if (!asText && looksBinary(text)) return this.toast(...binaryFile(f.name, again));
       this.loadCompare(text, f.name);
       noteLoad(source, 2, f.name);
       if (this.settings.view !== 'compare') this.setView('compare');
@@ -1985,10 +2038,11 @@ export class Engine {
     this.flushLoad();
     const a = this.ed.text;
     const b = this.ed2.text;
-    const fa = store.get().fileName;
+    const fa = this.edName;
     const fb = store.get().cmpFile;
     this.resetNext = true;
-    this.ed.setValue(b);
+    this.edName = fb;
+    this.ed.setValue(b, 0, false, [fa, fb]);
     this.ed2.setValue(a);
     store.set({ fileName: fb, cmpFile: fa });
     write(KEYS.file, fb);
@@ -2113,15 +2167,25 @@ export class Engine {
         ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
         : this.toast('That share link is broken or incomplete', 'err');
     if (link === 'broken') return broken();
-    const signal = this.requestFor(link);
-    const docs: (LinkDoc | undefined)[] = [];
-    try {
-      for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data) } : d);
-    } catch (e) {
-      if (signal.aborted) return;
-      return e instanceof LinkTooLarge ? this.toast('That share link is too large to open', 'err') : broken();
-    }
-    if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
+    // A document past LINK_DOCUMENT opens only when asked (a small link can hold more than a tab can).
+    const open = async (max: number) => {
+      const signal = this.requestFor(link);
+      const docs: (LinkDoc | undefined)[] = [];
+      try {
+        for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data, max) } : d);
+      } catch (e) {
+        if (signal.aborted) return;
+        if (!(e instanceof LinkTooLarge)) return broken();
+        if (max < MAX_DOCUMENT) {
+          const { bigLink } = await import('./asks');
+          if (!signal.aborted) this.toast(...bigLink(() => void open(MAX_DOCUMENT)));
+          return;
+        }
+        return this.toast('That share link is too large to open', 'err');
+      }
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
+    };
+    await open(LINK_DOCUMENT);
   };
 
   /** Ends the wait for a handoff (see awaitHandoff). */
@@ -3631,12 +3695,25 @@ export class Engine {
     }, 800);
   }
 
-  private persistNow = () => {
+  private persistNow = () => this.persist(this.pendingNow());
+
+  /** The load still on its way to the editor (see flushLoad), if it is the latest. */
+  private pendingNow() {
+    const p = this.pendingLoad;
+    return p && p.seq === this.loadSeq ? p : null;
+  }
+
+  /** Saves the document, or `pending` (one on its way to the editor as the page is left) when it fits. */
+  private persist(pending: Engine['pendingLoad']) {
     clearTimeout(this.persistTimer);
     if (!this.persistEnabled) return;
-    const n = this.ed.length;
-    write(KEYS.doc, n && n <= MAX_PERSIST ? this.ed.text : null);
-  };
+    const p = pending?.persist && pending.text.length <= MAX_PERSIST ? pending : null;
+    const n = p ? p.text.length : this.ed.length;
+    const keep = n > 0 && n <= MAX_PERSIST;
+    write(KEYS.doc, keep ? (p ? p.text : this.ed.text) : null);
+    // The file name goes with the document kept (a name over nothing, or over the one before, would mislead).
+    write(KEYS.file, keep ? (p ? p.names[1] : this.edName) : null);
+  }
 
   /** Offers to reload into the new version the service worker has cached. */
   private offerUpdate() {

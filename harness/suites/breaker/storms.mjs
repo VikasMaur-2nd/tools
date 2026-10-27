@@ -117,9 +117,9 @@ test('Undo during the load cancels it: the earlier document and its name come ba
   // The load is dropped and the small document is back (Redo would bring the big one).
   const st = await settled(page, { ready: true, timeout: 240_000 * slow(t) });
   const empty = /^Ready/.test(st?.msg ?? '');
-  t.check(!empty, 'the editor is not left empty', st, { known: 'bug, timing-dependent (main: Chromium 2 of 4 runs; t3/optimize-json-memory-performance: Firefox 4 of 4): Undo during a load can leave the editor empty (BREAKER-REPORT F5)' });
+  t.check(!empty, 'the editor is not left empty', st);
   if (!empty) await holds(t, SMALL, 'the earlier document');
-  t.check((await fileName(page)) === 'small.json', 'the file name is the earlier one again', await fileName(page), { known: 'bug: Undo during a load keeps the new file name (BREAKER-REPORT F5)' });
+  t.check((await fileName(page)) === 'small.json', 'the file name is the earlier one again', await fileName(page));
   await command(page, 'Redo');
   const want = readFileSync(fixture(BIG), 'utf8');
   if (!empty) await holds(t, want, 'Redo: the big file');
@@ -139,9 +139,15 @@ test('leaving for /privacy during the load and coming back: the file, or the ear
   const big = st?.raw && st.raw.replace(/\D/g, '') === '238';
   const name = await fileName(page);
   t.log('after Back:', st, name);
-  t.check(big, 'the opened file arrives after Back', st, { known: 'bug: leaving the page during a load drops the file (BREAKER-REPORT F5)' });
+  // (A tab keeps documents up to 2.5M characters across pages: this one, 25 MB, can't come back.)
+  t.check(big, 'the opened file arrives after Back', st, { known: 'limit: a document over 2.5M characters is not kept across pages (localStorage)' });
   if (big) await holds(t, want, 'the big file after Back');
-  else t.check(name === 'small.json', 'otherwise the earlier document keeps its own name', name, { known: 'bug: the dropped file\'s name stays on the earlier document (BREAKER-REPORT F5)' });
+  else {
+    // The earlier document under its own name, or (the file had replaced it already) an empty editor with none.
+    const empty = /^Ready/.test(st?.msg ?? '');
+    t.check(empty ? name === 'Input' : name === 'small.json', 'what comes back carries its own name', { st, name });
+    if (!empty) await holds(t, SMALL, 'the earlier document after Back');
+  }
 });
 
 test('two tabs: a document opened in one is what the other restores, and editing one never changes the other', async (t) => {

@@ -1,5 +1,5 @@
 // Extreme documents, exact results: a million keys, ten million numbers, a million duplicate keys, 50 MB
-// one-line and pretty records, a 50 MB string, 50 MB of random bytes, and the 300 MiB size limit. The
+// one-line and pretty records, a 50 MB string, 50 MB of random bytes and of NUL bytes, and the 300 MiB size limit. The
 // expected Format output comes from an independent re-indenter (reformat in _helpers), not the app.
 // Tagged slow: `pnpm e2e breaker/big --slow` (documents from 50 MB take the heavy lock when
 // BREAKER_HEAVY_LOCK names it; run alone on a shared machine).
@@ -10,18 +10,20 @@ import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
-import { clear, golden, hash, heavyLock, reformat, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
+import { clear, golden, hash, heavyLock, openAsText, reformat, seenToasts, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
 
 // (With the heavy lock a check may first wait in its queue for a long time: an hour then.)
 defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: process.env.BREAKER_HEAVY_LOCK ? 3_600_000 : 600_000 });
 
 /** Opens fixture `name` through Open file and waits (scaled per engine) until the status settles. */
-async function open(t, name, { minutes = 3, reopen = true } = {}) {
+async function open(t, name, { minutes = 3, reopen = true, binary = false } = {}) {
   const { page } = t;
   if (reopen) await t.open('/');
   await clear(page);
   await watchToasts(page);
   await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture(name));
+  // (A binary file is said to be one first: then opened as text anyway.)
+  if (binary) await openAsText(page, 60_000 * slow(t));
   return settled(page, { timeout: minutes * 60_000 * slow(t) });
 }
 
@@ -80,7 +82,7 @@ test('ten million numbers in one array: exact status, minified output and tree',
 test('a million duplicate keys: the status counts them', async (t) => {
   const st = await open(t, 'dupes-1000k');
   t.assert(st?.kind === 'ok', 'valid', st);
-  t.check(st.msg === 'Valid JSON· 999,999 duplicate keys', 'the status counts every duplicate (or says it stopped counting)', st.msg, { known: 'bug: the duplicate count stops at 500 and reads as exact (BREAKER-REPORT F10)' });
+  t.check(st.msg === 'Valid JSON· 999,999 duplicate keys' || st.msg === 'Valid JSON· 500+ duplicate keys', 'the status counts every duplicate (or says it stopped counting)', st.msg);
 });
 
 for (const [shape, indent] of [['records', '  '], ['pretty', '']]) {
@@ -214,25 +216,76 @@ test('a 200 MB string of non-ASCII text opens as valid JSON', { known: (engine) 
   t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 1 node · depth 0', 'valid, one node', st);
 });
 
-test('5 MB of random bytes: an error within seconds, and the page stays responsive', async (t) => {
-  // (50 MB of random bytes runs Chromium out of memory on main: 6.8 GiB after 3 minutes. Not opened here.)
-  const { page } = t;
-  await page.goto(t.base + '/', { waitUntil: 'commit' });
-  await t.app.waitEngine(page);
-  await page.evaluate(() => {
+/** Starts recording the longest gap between frames (window.__gap.max). */
+const watchGaps = (page) =>
+  page.evaluate(() => {
     window.__gap = { last: performance.now(), max: 0 };
     const f = () => { const n = performance.now(); window.__gap.max = Math.max(window.__gap.max, n - window.__gap.last); window.__gap.last = n; requestAnimationFrame(f); };
     requestAnimationFrame(f);
   });
-  const t0 = Date.now();
-  const st = await open(t, 'blob-5mb', { minutes: 3, reopen: false });
-  const ms = Date.now() - t0;
-  const gap = await page.evaluate(() => Math.round(window.__gap.max));
-  t.log('random 5 MB:', { ms, gap, st });
+
+for (const [mb, seconds, lock] of [[5, 15, false], [50, 90, true]]) {
+  test(`${mb} MB of random bytes: said to be binary at once; opened as text, an error within ${seconds} s and the page stays responsive`, async (t) => {
+    if (lock) await heavyLock(t);
+    const { page } = t;
+    let crashed = false;
+    page.on('crash', () => (crashed = true));
+    await t.open('/');
+    await clear(page);
+    await watchToasts(page);
+    let t0 = Date.now();
+    await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture(`blob-${mb}mb`));
+    const said = await openAsText(page, 60_000 * slow(t));
+    t.check(said === `blob-${mb}mb.bin looks like a binary file, not JSONOpen as text`, 'said to be binary', said);
+    t.log('binary toast after', Date.now() - t0, 'ms');
+    await watchGaps(page);
+    t0 = Date.now();
+    const st = await settled(page, { timeout: 5 * 60_000 * slow(t) });
+    const ms = Date.now() - t0;
+    const gap = await page.evaluate(() => Math.round(window.__gap.max)).catch(() => -1);
+    t.log(`random ${mb} MB opened as text:`, { ms, gap, st });
+    t.check(!crashed, 'the tab survives');
+    t.check(st?.kind === 'err', 'an error status', st);
+    t.check((await seenToasts(page)).includes(`Opened blob-${mb}mb.bin`), `Opened blob-${mb}mb.bin`, await seenToasts(page));
+    t.check(ms < t.budget(seconds * 1000) * slow(t), `the error shows within ${seconds} s`, `${ms} ms`);
+    t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`);
+  });
+}
+
+test('50 MB of NUL bytes in one line (a disk image): opened as text, it scrolls end to end without a long frame', async (t) => {
+  await heavyLock(t);
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  await t.open('/');
+  await clear(page);
+  await watchToasts(page);
+  await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture('zeros-50mb'));
+  const said = await openAsText(page, 60_000 * slow(t));
+  t.check(said === 'zeros-50mb.img looks like a binary file, not JSONOpen as text', 'said to be binary', said);
+  const st = await settled(page, { timeout: 5 * 60_000 * slow(t) });
   t.check(st?.kind === 'err', 'an error status', st);
-  const known = { known: 'bug: binary text makes the editor measure every line in the DOM (BREAKER-REPORT, binary files)' };
-  t.check(ms < t.budget(15_000) * slow(t), 'the error shows within 15 s', `${ms} ms`, known);
-  t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`, known);
+  await watchGaps(page);
+  // A sweep from the top to the end, a screen a frame further each time, then jumps all over.
+  const scrolled = await page.evaluate(async () => {
+    const el = window.__vis('.pane-ed .ed');
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const max = el.scrollHeight - el.clientHeight;
+    const gaps = [];
+    for (let i = 0; i < 160; i++) {
+      el.scrollTop = i < 80 ? (max * i) / 79 : (max * ((i * 7919) % 80)) / 80;
+      const t0 = performance.now();
+      await frame();
+      gaps.push(performance.now() - t0);
+    }
+    gaps.sort((a, b) => a - b);
+    return { max, median: Math.round(gaps[80]), worst: Math.round(gaps[159]) };
+  });
+  const gap = await page.evaluate(() => Math.round(window.__gap.max)).catch(() => -1);
+  t.log('NUL bytes scrolled:', { ...scrolled, gap });
+  t.check(!crashed, 'the tab survives');
+  t.check(scrolled.max > 0, 'rows to scroll through', scrolled);
+  t.check(gap < t.budget(500), 'no frame over 500 ms while scrolling', `${gap} ms`);
 });
 
 test('the 300 MiB limit: one byte more is refused before reading', async (t) => {
@@ -265,4 +318,18 @@ test('a 26 KB share link that inflates to 10 million values opens', async (t) =>
   await t.app.waitEngine(page);
   const st = await settled(page, { raw: text.length, timeout: 180_000 * slow(t) });
   t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 10,000,002 nodes · depth 1', 'valid, 10,000,002 nodes', st);
+});
+
+test('a 130 KB share link that inflates to 50 million values asks first, and the tab survives', async (t) => {
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  const { fragment } = zeroLink(100);
+  t.log(`link fragment ${fragment.length} chars`);
+  await page.goto(t.base + '/' + fragment, { waitUntil: 'commit' });
+  await t.app.waitEngine(page);
+  const asked = await until(page, () => [...document.querySelectorAll('.toast')].map((x) => x.textContent).find((x) => /over 32 MB/.test(x)) || null, null, { timeout: 60_000 * slow(t) });
+  t.check(asked === "This link's document is over 32 MB: opening it can slow down or crash this tabOpen anyway", 'asked before opening it', asked);
+  t.check(/^Ready/.test(await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? '')), 'nothing opened meanwhile');
+  t.check(!crashed, 'the tab survives');
 });
