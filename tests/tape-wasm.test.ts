@@ -29,7 +29,7 @@ const show = (s: string) => {
 /** Strict JSON with one top-level value: what the Wasm parser takes. */
 const strictOf = (t: Tape) => t.count > 0 && !t.head.issues.length && !t.head.error && !t.head.multi;
 
-/** From a JS string, a name with U+FFFD or a lone surrogate can't be told from another (encodeInto makes both U+FFFD): it may refuse those. */
+/** From a JS string encoded to UTF-8, a name with U+FFFD or a lone surrogate can't be told from another (encodeInto makes both U+FFFD): it may refuse those. */
 const mayRefuse = (t: Tape) => t.keys.some((k) => /[�\ud800-\udfff]/.test(k));
 
 interface Check {
@@ -37,10 +37,12 @@ interface Check {
   bytes?: boolean | 'read';
   window?: number;
   options?: TapeOptions;
+  /** Text: true to send it as its UTF-16 units where it has characters beyond ASCII (WebKit's way), false to encode it (wasmTape's `units`). */
+  units?: boolean;
 }
 
 /** The Wasm parser gives the JS tape parser's tape, or null where that one finds anything not strict. */
-function same(src: string, { bytes = false, window, options = {} }: Check = {}): 'strict' | 'not strict' | 'refused' {
+function same(src: string, { bytes = false, window, options = {}, units = true }: Check = {}): 'strict' | 'not strict' | 'refused' {
   let b: Uint8Array | undefined;
   if (bytes) {
     b = encoder.encode(src);
@@ -48,14 +50,15 @@ function same(src: string, { bytes = false, window, options = {} }: Check = {}):
     src = lf(new TextDecoder().decode(b));
   }
   const js = parse(src, options);
-  const w = wasmTape(mod, src, options, bytes === 'read' ? { size: b!.length, read: (at, len) => b!.slice(at, at + len) } : b, window);
-  const where = `\ninput: ${show(src)} ${JSON.stringify({ bytes, window, options })}`;
+  const w = wasmTape(mod, src, options, bytes === 'read' ? { size: b!.length, read: (at, len) => b!.slice(at, at + len) } : b, window, units);
+  const where = `\ninput: ${show(src)} ${JSON.stringify({ bytes, window, options, units })}`;
   if (!strictOf(js) || options.lines) {
     assert.equal(w, null, `Wasm took what isn't strict JSON${where}`);
     return 'not strict';
   }
   if (!w) {
-    if (!bytes && mayRefuse(js)) return 'refused';
+    // (As UTF-16 units, names are read as they are: none refused.)
+    if (!bytes && mayRefuse(js) && !(units && /[^\0-\x7f]/.test(src.slice(0, 4096)))) return 'refused';
     assert.fail(`Wasm refused strict JSON${where}`);
   }
   const d = diffTape(js, w, src);
@@ -66,11 +69,14 @@ function same(src: string, { bytes = false, window, options = {} }: Check = {}):
   return 'strict';
 }
 
-/** Every way: text and bytes, the default window and a few small ones (tokens cut at every place). */
+/** A way in at random: bytes, or text as UTF-16 units or encoded. */
+const way = (r: Rng): Check => (r.chance(0.5) ? { bytes: true } : { units: r.chance(0.5) });
+
+/** Every way: text (as UTF-16 units and encoded) and bytes, the default window and a few small ones (tokens cut at every place). */
 function everyWay(src: string, windows = [64, 100, 257], options: TapeOptions = {}) {
-  for (const bytes of [false, true, 'read'] as const) {
-    same(src, { bytes, options });
-    for (const window of windows) same(src, { bytes, window, options });
+  for (const [bytes, units] of [[false, true], [false, false], [true, true], ['read', true]] as const) {
+    same(src, { bytes, options, units });
+    for (const window of windows) same(src, { bytes, window, options, units });
   }
 }
 
@@ -153,7 +159,7 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
       if (r.chance(0.4)) src = loosen(r, src);
       const window = r.chance(0.3) ? undefined : 64 + r.int(400);
       try {
-        if (same(src, { bytes: r.chance(0.5), window }) === 'strict') strict++;
+        if (same(src, { ...way(r), window }) === 'strict') strict++;
       } catch (e) {
         throw new Error(`iteration ${it}: ${(e as Error).message}`, { cause: e });
       }
@@ -167,7 +173,7 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
       let src = genLoose(r, 1 + r.int(5));
       if (r.chance(0.4)) src = mutate(r, src);
       try {
-        same(src, { bytes: r.chance(0.5), window: r.chance(0.5) ? undefined : 64 + r.int(200) });
+        same(src, { ...way(r), window: r.chance(0.5) ? undefined : 64 + r.int(200) });
       } catch (e) {
         throw new Error(`iteration ${it}: ${(e as Error).message}`, { cause: e });
       }
@@ -180,7 +186,7 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
     for (let it = 0, total = cases(3000); it < total; it++) {
       const src = genNames(r);
       try {
-        same(src, { bytes: r.chance(0.5), window: r.chance(0.5) ? undefined : 64 + r.int(300) });
+        same(src, { ...way(r), window: r.chance(0.5) ? undefined : 64 + r.int(300) });
       } catch (e) {
         throw new Error(`iteration ${it}: ${(e as Error).message}`, { cause: e });
       }
@@ -196,8 +202,8 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
     const docs = ['{"a":[1,2.5e3,"x\\ny",true,null],"b":{"c":"d","e":[]},"f":{}}', '[{"id":1,"name":"é😀"},{"id":2,"name":"b","id":3}]'];
     for (let k = 0; k < cases(20); k++) docs.push(genStrict(r, 4));
     for (const doc of docs) {
-      for (let p = 0; p <= doc.length; p++) same(doc.slice(0, p), { bytes: p % 2 === 0, window: 64 + (p % 7) });
-      for (let p = 0; p < doc.length; p++) same(doc.slice(0, p) + doc.slice(p + 1), { bytes: p % 2 === 1 });
+      for (let p = 0; p <= doc.length; p++) same(doc.slice(0, p), { bytes: p % 2 === 0, units: p % 4 === 1, window: 64 + (p % 7) });
+      for (let p = 0; p < doc.length; p++) same(doc.slice(0, p) + doc.slice(p + 1), { bytes: p % 2 === 1, units: p % 4 === 0 });
     }
   });
 
@@ -256,6 +262,31 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
     assert.ok(valid > cases(300) && invalid > cases(300), `valid ${valid}, invalid ${invalid}`);
   });
 
+  test(`text as UTF-16 units: names beyond ASCII, raw or escaped, lone surrogates and pairs split across escapes, every window (${cases(1500)} cases)`, () => {
+    const r = rng((SEED || 1) + 23);
+    // Raw (as the text has them: lone surrogates too) and escaped.
+    const PIECES = ['a', 'A', 'é', 'ÿ', 'Ā', '東', '😀', '\ud83d', '\ude00', '\ud800', '\udc00', '�', '\\u00e9', '\\u00E9', '\\ud83d\\ude00', '\\uD83D', '\\uDE00', '\\ud800', '\\n', '\\\\', '\\"', '\\u0041', '\\u00ff', '\\u0100', '\\/'];
+    const piece = () => r.pick(PIECES);
+    let strict = 0;
+    for (let it = 0; it < cases(1500); it++) {
+      const name = () => Array.from({ length: 1 + r.int(3) }, piece).join('');
+      const obj = (d: number): string => {
+        const parts: string[] = [];
+        for (let k = 1 + r.int(5); k > 0; k--) parts.push(`"${name()}":${d < 2 && r.chance(0.3) ? obj(d + 1) : `"${name()}"`}`);
+        return '{' + parts.join(r.pick([',', ', ', ',\n '])) + '}';
+      };
+      // (Starting beyond ASCII, so the text goes as units from its first window.)
+      const doc = `{"é":0,"l":[${Array.from({ length: 1 + r.int(4) }, () => obj(0)).join(',')}]}`;
+      for (const window of [undefined, 64, 100, 257]) {
+        const res = same(doc, { window });
+        // (Names that encoding can't tell apart are read as they are.)
+        assert.equal(res, 'strict', `refused as units: ${show(doc)}`);
+        strict++;
+      }
+    }
+    assert.ok(strict > 0);
+  });
+
   test('tokens longer than the window (it grows), and windows ending in a surrogate pair', () => {
     everyWay('["' + 'x'.repeat(10_000) + '"]', [64]);
     everyWay('{"' + 'k'.repeat(5000) + '":' + '1'.repeat(3000) + '}', [64]);
@@ -302,7 +333,7 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
       const src = (r.chance(0.2) ? end : '') + doc.replace(/\n/g, () => (end || r.pick(ENDS))) + (r.chance(0.3) ? r.pick(ENDS) : '');
       for (const window of [undefined, 64, 65 + r.int(100), 64 + r.int(400)]) {
         assert.equal(same(src, { bytes: r.chance(0.5) || 'read', window }), 'strict', show(src));
-        same(src, { window });
+        same(src, { window, units: r.chance(0.5) });
       }
     }
     // A pair cut by a block (64 bytes) or a window, at every place: the \r last in one, the \n first in the next.
