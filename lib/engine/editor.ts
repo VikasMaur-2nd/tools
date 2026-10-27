@@ -114,8 +114,10 @@ export interface EditorEvents {
    * `edit`: the input edits, so the document is editable at once (else it arrives as it would have).
    */
   flush?(edit: boolean): void;
-  /** Undo or Redo went past a load (see setValue): the file name of the document shown now. */
+  /** Undo or Redo went past a load (see setValue), or a paste over everything: the file name of the document shown now. */
   renamed?(name: string | null): void;
+  /** The file name of the document it holds: a paste over all of it leaves that file (Undo tells it again, see renamed). */
+  name?(): string | null;
   /** Undo is about to be applied: true if the listener takes it instead (a document still being read, undone once it arrives). */
   undoing?(): boolean;
 }
@@ -136,7 +138,7 @@ interface Change {
   selA: [number, number];
   t: number;
   kind: 'type' | 'del' | 'other';
-  /** A load's file names, before and after it (see setValue): told on undo and redo. */
+  /** The file names before and after a load (see setValue) or a paste over everything: told on undo and redo. */
   names?: [string | null, string | null];
 }
 
@@ -2005,8 +2007,11 @@ export class Editor {
       return;
     }
     this.compOld = null;
-    this.sync();
+    const changed = this.sync();
     if (old !== null) this.record(old, this.doc, 'insertText');
+    // (Firefox fires the commit's input event after this one, Chromium before: a change only this sync finds
+    // is passed on here, and the input event then finds nothing to pass on.)
+    if (changed) this.ev.change('input');
   };
 
   private onPaste = (e: ClipboardEvent) => {
@@ -2292,6 +2297,7 @@ export class Editor {
       selA: this.selAfter,
       t: Date.now(),
       kind: kind === 'insertText' || kind === 'insertCompositionText' ? 'type' : kind.startsWith('delete') ? 'del' : 'other',
+      names: kind === 'insertFromPaste' ? this.leaving() : undefined,
     };
     const last = this.undo_[this.undo_.length - 1];
     const recent = last && ch.t - last.t < 1200;
@@ -2309,6 +2315,12 @@ export class Editor {
       this.grew(ch.del.length);
     } else this.push(ch);
     this.redo_ = [];
+  }
+
+  /** The file names of a paste's step (see Change.names): a paste over everything leaves the document's file. */
+  private leaving(): [string | null, string | null] | undefined {
+    const name = this.pasteFull ? (this.ev.name?.() ?? null) : null;
+    return name === null ? undefined : [name, null];
   }
 
   private push(ch: Change) {
@@ -2392,7 +2404,7 @@ export class Editor {
     const del = this.doc.slice(a, b);
     const s1 = selA ?? a + text.length;
     const s2 = selB ?? s1;
-    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names });
+    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names: names ?? (kind === 'paste' ? this.leaving() : undefined) });
     this.redo_ = [];
     this.typing = true;
     this.shiftFolds(a, b, text, true);
