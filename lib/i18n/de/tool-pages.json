@@ -1615,7 +1615,7 @@
     ]
   },
   "json-repair": {
-    "hash": "37e9857866ee",
+    "hash": "f51759b8072f",
     "title": "JSON reparieren und Syntaxfehler online beheben",
     "description": "Repariere JSON-Fehler wie einfache Anführungszeichen, Schlüssel ohne Anführungszeichen, Kommentare und fehlende oder überflüssige Kommas. Prüfe jede Korrektur.",
     "heading": "JSON reparieren",
@@ -1634,9 +1634,9 @@
       "Prüfe das reparierte Dokument in der Ansicht „Formatieren“. Wähle dann „Eingabe reparieren“, um es zu übernehmen. Ctrl+Z macht die Änderung rückgängig."
     ],
     "options": [
-      "Behebt Kommentare, Schlüssel ohne Anführungszeichen, Strings in einfachen Anführungszeichen, überflüssige Kommas am Ende, fehlende Kommas zwischen Eigenschaften, die Python-Werte True, False und None sowie Markdown-Codeblock-Markierungen um eingefügtes JSON.",
+      "Behebt Kommentare, Schlüssel ohne Anführungszeichen, Strings in einfachen Anführungszeichen, überflüssige Kommas am Ende, fehlende Kommas, die Python-Werte True, False und None, Markdown-Codeblock-Markierungen um eingefügtes JSON sowie JSON, das als maskierter String eingefügt wurde.",
       "NaN und Infinity haben keine JSON-Darstellung und werden deshalb zu null. Prüfe die Ausgabe, wenn diese Werte wichtig sind.",
-      "Manche Eingaben lassen sich nicht reparieren, etwa ein String ohne schließendes Anführungszeichen. Die Hinweisleiste meldet dann stattdessen einen Fehler und seine Position.",
+      "Am Ende abgeschnittene Eingaben werden vervollständigt: Ein String ohne schließendes Anführungszeichen wird am Zeilenende geschlossen, ein fehlender Wert wird zu null, und offene Klammern werden geschlossen. Der Editor unterstreicht jede dieser Reparaturen. Prüfe sie, denn verlorener Text lässt sich nicht erraten.",
       "Die Reparatur erhält die Ziffern deiner Zahlen und die Reihenfolge deiner Schlüssel."
     ],
     "faqs": [
@@ -1646,11 +1646,11 @@
       },
       {
         "question": "Lässt sich jeder JSON-Fehler reparieren?",
-        "answer": "Nein. Fehler bei Anführungszeichen, Kommas und Kommentaren werden automatisch behoben. Fehlenden Text musst du von Hand ergänzen, etwa bei einem String, der vor dem schließenden Anführungszeichen abgeschnitten wurde."
+        "answer": "Die meisten schon. Fehler bei Anführungszeichen, Kommas und Kommentaren werden automatisch behoben, und am Ende abgeschnittene Eingaben werden vervollständigt: Ein offener String wird geschlossen, und ein fehlender Wert wird zu null. Verlorenen Text kann niemand wiederherstellen, prüfe also diese Stellen. Lässt sich das Dokument trotzdem nicht lesen, zeigt die Hinweisleiste den Fehler und seine Position."
       },
       {
         "question": "Verändert die Reparatur meine Werte?",
-        "answer": "Die Werte bleiben gleich, mit Ausnahme von NaN und Infinity. JSON kann sie nicht darstellen, deshalb werden sie zu null. Prüfe die Ausgabe, bevor du sie verwendest."
+        "answer": "Die Werte bleiben gleich, mit Ausnahme von NaN und Infinity, die JSON nicht darstellen kann, und fehlenden Werten. Sie alle werden zu null. Prüfe die Ausgabe, bevor du sie verwendest."
       }
     ],
     "guides": [

@@ -1603,7 +1603,7 @@
     ]
   },
   "json-repair": {
-    "hash": "37e9857866ee",
+    "hash": "f51759b8072f",
     "title": "Reparar JSON: corrige errores y revisa cada cambio",
     "description": "Repara JSON en tu navegador sin subir datos. Corrige comillas simples, claves sin comillas, comentarios y comas finales o ausentes; revisa cada cambio.",
     "heading": "Reparar JSON",
@@ -1622,9 +1622,9 @@
       "Comprueba el documento reparado en la vista Formatear y elige Reparar entrada para aplicarlo. Ctrl+Z deshace el cambio."
     ],
     "options": [
-      "Corrige comentarios, claves sin comillas, cadenas con comillas simples, comas finales, comas ausentes entre propiedades, True, False y None de Python y bloques de código Markdown que rodean el JSON pegado.",
+      "Corrige comentarios, claves sin comillas, cadenas con comillas simples, comas finales, comas ausentes, True, False y None de Python, bloques de código Markdown que rodean el JSON pegado y JSON pegado como una cadena escapada.",
       "NaN e Infinity no tienen representación en JSON, así que se convierten en null. Comprueba la salida cuando esos valores importen.",
-      "Algunas entradas no se pueden reparar, como una cadena sin comilla de cierre. En ese caso, el aviso informa de un error y su ubicación.",
+      "La entrada cortada al final se completa: una cadena sin comilla de cierre se cierra al final de su línea, un valor que falta se convierte en null y se cierran los corchetes y llaves abiertos. El editor subraya cada una de estas reparaciones. Revísalas, porque el texto perdido no se puede adivinar.",
       "La reparación conserva los dígitos de tus números y el orden de tus claves."
     ],
     "faqs": [
@@ -1634,11 +1634,11 @@
       },
       {
         "question": "¿Se pueden reparar todos los errores JSON?",
-        "answer": "No. Los errores de comillas, comas y comentarios se corrigen automáticamente. El texto que falta, como una cadena cortada antes de su comilla de cierre, debe corregirse a mano."
+        "answer": "La mayoría sí. Los errores de comillas, comas y comentarios se corrigen automáticamente, y la entrada cortada al final se completa: una cadena abierta se cierra y un valor que falta se convierte en null. El texto perdido no se puede recuperar, así que revisa esos puntos. Si el documento sigue sin poder leerse, el aviso muestra el error y su ubicación."
       },
       {
         "question": "¿La reparación cambia mis valores?",
-        "answer": "Los valores se mantienen, salvo NaN e Infinity, que JSON no puede representar y que se convierten en null. Revisa la salida antes de usarla."
+        "answer": "Los valores se mantienen, salvo NaN e Infinity, que JSON no puede representar, y los valores que faltan. Todos se convierten en null. Revisa la salida antes de usarla."
       }
     ],
     "guides": [
