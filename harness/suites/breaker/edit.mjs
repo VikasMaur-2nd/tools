@@ -244,7 +244,7 @@ test('an edit made while the Tree shows: Copy formatted output, Copy converted o
   const want = doc.replace('"b"', '"EDITED"');
   t.check(!!(await until(page, () => [...document.querySelectorAll('#view-tree .tv-rows [role=treeitem]')].some((r) => r.textContent === 'tag:"EDITED"') || null, null, { timeout: 10_000 })), 'the tree shows the edit');
   t.check((await inputText(page)) === want, 'the input holds the edit');
-  const known = { known: 'bug (main and branch): from a view other than Format/Convert, output commands give the output from before the edit (BREAKER-REPORT F18)' };
+  const known = { known: 'bug (main; fixed on t3/optimize-json-memory-performance at a744c16): from a view other than Format/Convert, output commands give the output from before the edit (BREAKER-REPORT F18)' };
   const out = await copied(page, 'Copy formatted output');
   t.check(out === want, 'Copy formatted output, from the Tree: the edited document', out?.slice(0, 80), known);
   const csv = await copied(page, 'Copy converted output');
@@ -333,7 +333,7 @@ test('text an input method commits is read: the status follows it', async (t) =>
   await t.open('/');
   await page.locator('#input').focus();
   await page.keyboard.insertText(DOC);
-  const known = t.engine === 'firefox' ? { known: 'bug (main; fixed on t3/optimize-json-memory-performance): an IME commit in Firefox never reaches the tool (BREAKER-REPORT F22)' } : {};
+  const known = t.engine === 'firefox' ? { known: 'bug (main; fixed on t3/optimize-json-memory-performance at 59023db): an IME commit in Firefox never reaches the tool (BREAKER-REPORT F22)' } : {};
   const st = await until(page, () => (/^Valid JSON/.test(window.__vis('.sb-l .st')?.textContent ?? '') ? true : null), null, { timeout: 10_000 });
   t.check(!!st, 'the status says Valid JSON', await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? ''), known);
   t.check((await inputText(page)) === DOC, 'the editor holds the text', null);
