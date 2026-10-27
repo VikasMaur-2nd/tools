@@ -10,7 +10,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, type Expansion, type Kind, type ParseResult, type TapeLink, type Val } from './parser';
 import { decodeString } from './decode';
 import { clip, keyLabel, primText, stringify } from './format';
-import { childCount, containerOf, endOf, isContainerAt, kindOf, KEY_INDEX, KEY_NAME, VALUE_DECODE, VALUE_SLICE, valueKindOf, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, parentOf, sizeOf, startOf, valueOf, W, type Tape } from './tape';
+import { childCount, containerOf, endOf, isContainerAt, kindOf, KEY_INDEX, KEY_NAME, SIZE_BIG, VALUE_DECODE, VALUE_SLICE, valueKindOf, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, parentOf, sizeOf, startOf, valueOf, W, type Tape } from './tape';
 import type { Key } from './parser';
 
 /** Strings with escapes longer than this (source characters) are decoded only when read. */
@@ -108,10 +108,30 @@ export class Filler implements TapeLink {
 
   kids(i: number): Int32Array {
     const t = this.tape;
-    const end = nextOf(t, i);
-    const out = new Int32Array(this.count(i));
-    for (let c = i + 1, k = 0; c < end; c = nextOf(t, c)) out[k++] = c;
-    return out;
+    const a = t.nodes;
+    // One walk (a container has fewer children than nodes below it), its count kept.
+    const size = sizeOf(t, i);
+    const out = new Int32Array(Math.max(0, size - 1));
+    let k = 0;
+    for (let c = i + 1, end = i + size; c < end; ) {
+      out[k++] = c;
+      const s = a[c * W] >>> 8;
+      c += s < SIZE_BIG ? s : t.big!.get(c)!;
+    }
+    if (size > 64) this.counts.set(i, k);
+    return k === out.length ? out : out.slice(0, k);
+  }
+
+  columns(i: number, max: number): [string[], boolean] {
+    const t = this.tape;
+    const a = t.nodes;
+    const seen = new Set<string>();
+    let value = false;
+    for (let c = i + 1, end = nextOf(t, i); c < end; c = nextOf(t, c)) {
+      if ((a[c * W] & 7) !== OBJ) value = true;
+      else if (seen.size < max) for (let m = c + 1, e = nextOf(t, c); m < e && seen.size < max; m = nextOf(t, m)) seen.add(keyOf(t, m) as string);
+    }
+    return [[...seen], value];
   }
 
   count(i: number): number {
@@ -212,16 +232,9 @@ export class Filler implements TapeLink {
 
   rows(n: JNode, exp: Expansion | undefined, self: boolean, limit: number, first: number): Int32Array {
     const t = this.tape;
-    let out = new Int32Array(1024);
+    const a = t.nodes;
+    let out = new Int32Array(Math.min(sizeOf(t, n.zi), 1 << 16));
     let len = 0;
-    const push = (x: number) => {
-      if (len === out.length) {
-        const grown = new Int32Array(len * 2);
-        grown.set(out);
-        out = grown;
-      }
-      out[len++] = x;
-    };
     // As TreeView.flatten: the open containers being listed, where each is in them, its end and depth, and
     // its place in the overrides.
     const useT = !!exp?.children;
@@ -229,19 +242,21 @@ export class Filler implements TapeLink {
     const ends: number[] = [];
     const depths: number[] = [];
     const exps: (Expansion | undefined)[] = [];
-    const visit = (i: number, d: number, e: Expansion | undefined) => {
-      if (!isContainerAt(t, i)) return push(i * 2);
+    /** Lists container `i` (at depth `d`, overrides `e`): open or not, and its items next if open. */
+    const container = (i: number, d: number, e: Expansion | undefined, next: number) => {
       const open = e?.open ?? (d < limit || (first > 0 && len + 1 < first && len + 1 + this.childrenUpToAt(i, first) < first));
-      push(i * 2 + (open ? 1 : 0));
+      out[len++] = i * 2 + (open ? 1 : 0);
       if (open) {
         at.push(i + 1);
-        ends.push(nextOf(t, i));
+        ends.push(next);
         depths.push(d + 1);
         exps.push(e);
       }
     };
-    if (self) visit(n.zi, n.d, exp);
-    else {
+    if (self) {
+      if (isContainerAt(t, n.zi)) container(n.zi, n.d, exp, nextOf(t, n.zi));
+      else out[len++] = n.zi * 2;
+    } else {
       at.push(n.zi + 1);
       ends.push(nextOf(t, n.zi));
       depths.push(n.d + 1);
@@ -250,17 +265,27 @@ export class Filler implements TapeLink {
     while (at.length) {
       const q = at.length - 1;
       const c = at[q];
-      if (c < ends[q]) {
-        at[q] = nextOf(t, c);
-        visit(c, depths[q], useT ? exps[q]?.children?.get(String(keyOf(t, c))) : undefined);
-      } else {
+      if (c >= ends[q]) {
         at.pop();
         ends.pop();
         depths.pop();
         exps.pop();
+        continue;
       }
+      const meta = a[c * W];
+      const s = meta >>> 8;
+      const next = c + (s < SIZE_BIG ? s : t.big!.get(c)!);
+      at[q] = next;
+      if (len === out.length) {
+        const grown = new Int32Array(len * 2);
+        grown.set(out);
+        out = grown;
+      }
+      // (A leaf: a row, no more to decide.)
+      if ((meta & 7) < ARR) out[len++] = c * 2;
+      else container(c, depths[q], useT ? exps[q]?.children?.get(String(keyOf(t, c))) : undefined, next);
     }
-    return out.slice(0, len);
+    return len === out.length ? out : out.slice(0, len);
   }
 
   /** childrenUpTo by index. */

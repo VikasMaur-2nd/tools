@@ -95,6 +95,8 @@ export interface TapeLink {
   at(i: number): JNode;
   /** Container `i`'s children, as tape indexes. */
   kids(i: number): Int32Array;
+  /** The Table's columns of container `i`: its object items' member names (first seen first, `max` at most), and whether an item isn't an object. */
+  columns(i: number, max: number): [string[], boolean];
   /** How many children `i` has. */
   count(i: number): number;
   /** `i`'s place among its parent's children (0: the first). */

@@ -226,12 +226,10 @@ export class TableView {
     };
     const ti = this.ti;
     if (ti) {
-      // (Keys read from the tape: a big array's rows stay unmade.)
-      const z = this.node!.z!;
-      for (const it of ti) {
-        if (z.kind(it) === OBJ) for (let c = it + 1, end = z.next(it); c < end; c = z.next(c)) add(z.key(c));
-        else hasValue = true;
-      }
+      // (Read off the tape: a big array's rows stay unmade.)
+      const [keys, value] = this.node!.z!.columns(this.node!.zi, MAX_COLS);
+      for (const k of keys) add(k);
+      hasValue = value;
     }
     for (let r = 0; r < items.length; r++) {
       const it = items[r];
