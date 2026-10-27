@@ -1300,6 +1300,8 @@ const str = (q: number, q2: number): number => {
   for (;;) {
     if (i >= n) {
       if (fixing) {
+        const k = found & ESCAPED ? -1 : memberCut(s + 1, n);
+        if (k >= 0) return cutAt(k, found);
         fix(n, 'Missing closing quote: the string was closed at the end of the input');
         return found | CUT;
       }
@@ -1308,7 +1310,7 @@ const str = (q: number, q2: number): number => {
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
       // parser.ts: with repairs, a quote followed by a word is inside the string.
-      if (quoting && q === 34 && (i < inner || (inner = innerClose(i)) > i)) {
+      if (quoting && (q === 34 || q === 39) && q2 === q && (i < inner || (inner = innerClose(i, q)) > i)) {
         fix(i, 'Unescaped quote inside a string (kept in it)');
         turned = true;
         found |= INNER;
@@ -1334,6 +1336,8 @@ const str = (q: number, q2: number): number => {
     }
     if (c < 32) {
       if (fixing && (c === 10 || c === 13)) {
+        const k = found & ESCAPED ? -1 : memberCut(s + 1, i);
+        if (k >= 0) return cutAt(k, found);
         fix(i, 'Missing closing quote: the string was closed at the end of the line');
         return found | CUT;
       }
@@ -1342,6 +1346,44 @@ const str = (q: number, q2: number): number => {
     }
     i++;
   }
+};
+
+/**
+ * parser.ts's memberCut(): repairing, a string without its closing quote whose text runs over [a, e): the first ',' in it that is followed
+ * by a member (a name and ':'), where it should end, or -1. (`{"a": 'x, "b": 2}` keeps "b": the line's or the
+ * input's end would swallow it.)
+ */
+const memberCut = (a: number, e: number): number => {
+  for (let k = a; k < e; k++) {
+    if (src.charCodeAt(k) !== 44) continue;
+    let p = k + 1;
+    while (src.charCodeAt(p) === 32 || src.charCodeAt(p) === 9) p++;
+    const c = src.charCodeAt(p);
+    if (c === 34 || c === 39) {
+      // A quoted name on the same line (not a long one: this runs at each comma).
+      let q = p + 1;
+      const end = Math.min(n, p + 256);
+      while (q < end && src.charCodeAt(q) !== c && src.charCodeAt(q) !== 10 && src.charCodeAt(q) !== 13) q++;
+      if (src.charCodeAt(q) !== c) continue;
+      p = q + 1;
+    } else if (isIdentStart(c)) {
+      while (isIdent(src.charCodeAt(p))) p++;
+    } else continue;
+    while (src.charCodeAt(p) === 32 || src.charCodeAt(p) === 9) p++;
+    if (src.charCodeAt(p) === 58) {
+      // (Nothing past it was reported: the text has no escapes.)
+      while (issues.length && issues[issues.length - 1].p >= k) issues.pop();
+      return k;
+    }
+  }
+  return -1;
+};
+
+/** parser.ts's cutAt(): repairing, the string str() reads closed before `k`. */
+const cutAt = (k: number, found: number): number => {
+  fix(k, `Missing closing quote: the string was closed before the '${src[k]}'`);
+  i = k;
+  return found | CUT;
 };
 
 /** parser.ts's unclosed(): repairing, where a string without escapes ([a, e), closing quote at e) should end, or -1. */
@@ -1411,11 +1453,11 @@ const fenceLine = (p: number): number => {
  * (, } ] : or the line's end). Else the quote closes the string as without repairs: `["x" y, "z"]` is three
  * values, `{a: "x" b: "y"}` two members, `"hi "x""` a string and an empty one.
  */
-const innerClose = (p: number): number => {
+const innerClose = (p: number, q: number): number => {
   if (!wordAfter(p + 1)) return -1;
   for (let k = p + 1; k < n; k++) {
     const c = src.charCodeAt(k);
-    if (c === 34) {
+    if (c === q) {
       if (wordAfter(k + 1)) continue;
       let j = k + 1;
       while (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9) j++;
