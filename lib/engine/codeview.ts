@@ -78,6 +78,10 @@ export class CodeView {
   private layoutSeq = 0;
   private textSeq = 0;
   private wrapTextLength = 0;
+  /**
+   * The wrapper the rows on screen were laid out with. Drawing reads it, not `wrapper`: a big document's
+   * next layout takes several steps, and until it is published the rows are still the old wrapper's.
+   */
   private layoutWrap: Wrapper | null = null;
   private layoutCols = -1;
   private layoutCw = 0;
@@ -192,6 +196,7 @@ export class CodeView {
     cancelAnimationFrame(this.raf);
     document.fonts?.removeEventListener('loadingdone', this.onFonts);
     this.wrapper?.destroy();
+    if (this.layoutWrap !== this.wrapper) this.layoutWrap?.destroy();
   }
 
   /** A huge line's estimated rows become exact when idle (see Wrapper.refine): lay out again then. */
@@ -205,9 +210,9 @@ export class CodeView {
   setWrap(on: boolean) {
     if (on === !!this.wrapper) return;
     const top = this.ls.length ? this.lineAtRow(Math.floor(this.sc.top / RH)) : -1;
-    this.wrapper?.destroy();
-    this.wrapper = on ? this.makeWrapper() : null;
-    this.el.classList.toggle('cv-nowrap', !on);
+    // (The rows on screen keep their wrapper until the new layout is published: see layoutWrap.)
+    if (this.wrapper !== this.layoutWrap) this.wrapper?.destroy();
+    this.wrapper = on ? this.layoutWrap ?? this.makeWrapper() : null;
     this.el.scrollLeft = 0;
     this.reflow(true, top);
   }
@@ -566,7 +571,9 @@ export class CodeView {
       if (i < n) return soon(step);
       if (!commit()) return;
       rs[count] = rows;
+      if (this.layoutWrap !== wr && this.layoutWrap !== this.wrapper) this.layoutWrap?.destroy();
       this.layoutWrap = wr;
+      this.el.classList.toggle('cv-nowrap', !wr);
       this.layoutCols = cols;
       this.layoutCw = cw;
       this.vis = vis.subarray(0, count);
@@ -638,7 +645,7 @@ export class CodeView {
     if (sub <= 0) return 0;
     if (sub >= this.rowStart[vi + 1] - this.rowStart[vi]) return len;
     const line = this.line(ln);
-    return (this.wrapper as Wrapper).rowStart(line, 0, len, sub, this.odd[vi]);
+    return (this.layoutWrap as Wrapper).rowStart(line, 0, len, sub, this.odd[vi]);
   }
 
   /** Is visible line `vi` drawn as one block the browser wraps (wide glyphs, not long, not garbage: see Wrapper.summed)? */
@@ -684,7 +691,7 @@ export class CodeView {
     const vf = Math.floor(st / RH);
     const vl = Math.min(total, Math.ceil((st + vh) / RH));
     // Not wrapping: long lines are drawn only around the columns in view.
-    const wide = !this.wrapper && this.maxLen > LONG_LINE;
+    const wide = !this.layoutWrap && this.maxLen > LONG_LINE;
     const vcA = wide ? Math.max(0, Math.floor(el.scrollLeft / this.cw) - 12) : 0;
     const vcB = vcA + Math.ceil(el.clientWidth / this.cw) + 12;
     if (!force && vf >= this.rFirst && vl <= this.rLast && (!wide || (vcA >= this.rColA && vcB <= this.rColB))) return this.place();
@@ -751,7 +758,7 @@ export class CodeView {
           const from = Math.max(col, a);
           const to = Math.min(col + qn, b);
           const cls = `cv-hit${ln === cur && col === curCol ? ' cur' : ''}`;
-          if (this.odd[vi] !== 0 && this.wrapper) {
+          if (this.odd[vi] !== 0 && this.layoutWrap) {
             marks += `<i class="${cls}" data-h="${from - a}" data-n="${to - from}"></i>`;
             place = true;
           } else marks += `<i class="${cls}" style="left:${(pad + (from - a) * this.cw).toFixed(1)}px;width:${((to - from) * this.cw).toFixed(1)}px"></i>`;
@@ -891,7 +898,7 @@ export class CodeView {
     const vh = el.clientHeight;
     const st = this.sc.top;
     if (y < st || y + RH > st + vh) this.sc.top = Math.max(0, y - vh / 2 + RH);
-    if (!this.wrapper) {
+    if (!this.layoutWrap) {
       const x = col * this.cw;
       const view = el.clientWidth - 80;
       if (x < el.scrollLeft || x > el.scrollLeft + view) el.scrollLeft = Math.max(0, x - view / 3);
