@@ -79,6 +79,7 @@ async function call(tool: AgentTool, input: unknown): Promise<string> {
         args = {};
       }
     }
+    await engine().agentReady();
     const r = await tool.run(args && typeof args === 'object' ? (args as Record<string, unknown>) : {}, page);
     ok = r.ok;
     // (Each tool keeps its answer within MAX_RESULT; this makes sure.)
