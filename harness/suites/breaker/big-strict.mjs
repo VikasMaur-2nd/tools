@@ -132,3 +132,26 @@ test('a 2.6 MB document with few cards: the graph and its SVG export are exact',
   // (Not its size: coordinates come from each engine's text measuring.)
   golden(t, 'big-strict/graph-cards', { name: svg.name, count: texts.length, texts }, 'the cards match the golden file');
 });
+
+test('different big documents one after another each come out exact (nothing left from the one before)', async (t) => {
+  // The worker (and on t3/optimize-json-memory-performance its WebAssembly instance) is reused between loads.
+  const { page } = t;
+  await t.open('/');
+  const { readFileSync } = await import('node:fs');
+  const { bigFixture } = await import('./_gen.mjs');
+  const records = readFileSync(bigFixture('big-records-3mb'), 'utf8');
+  const deep = readFileSync(bigFixture('big-deep-3mb'), 'utf8');
+  // Just under 2 MB (the page's own parser): records cut at a top-level boundary.
+  const small = records.slice(0, records.indexOf(',{"id":', 1_900_000)) + ']';
+  const steps = [['strict', DOC.text], ['records', records], ['deep', deep], ['small', small], ['strict again', DOC.text], ['records again', records]];
+  for (const [name, text] of steps) {
+    const st = await load(page, text, `${name}.json`, { timeout: 120_000 });
+    t.check(st?.kind === 'ok', `${name}: valid`, st);
+    await view(page, 'format');
+    const out = await copied(page, 'Copy formatted output', { timeout: 60_000 });
+    // (On main, right after a big document settles, Copy can still give the previous document's output: the deep
+    // one, whose 95 MB pretty output takes longest, shows it.)
+    const known = name === 'deep' ? { known: 'bug (main; fixed on t3/optimize-json-memory-performance): the Format view and Copy keep the previous document for seconds after the next settles (BREAKER-REPORT F15)' } : {};
+    t.check(out !== null && hash(out) === reformat(text, '  ', { hashOnly: true, canonical: true }), `${name}: the pretty output is exactly this document's`, out === null ? null : `${out.length} chars`, known);
+  }
+});
