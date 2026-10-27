@@ -323,3 +323,18 @@ test('Repair of a single-quoted string left open: the members after it survive, 
     t.check(after === doc || kept(value), `${doc}: the members after it survive, or it is left alone`, after);
   }
 });
+
+test('text an input method commits is read: the status follows it', async (t) => {
+  // Playwright's insertText commits through an IME composition in Firefox, in Firefox's order: compositionend, then
+  // the input event. The editor brings its text up to date on compositionend without passing the change on, and the
+  // input event after it then finds nothing changed: the editor shows the text, the tool stays "Ready" (or on the
+  // document before) until the next key (BREAKER-REPORT F22). Chromium and WebKit insert it as plain text.
+  const { page } = t;
+  await t.open('/');
+  await page.locator('#input').focus();
+  await page.keyboard.insertText(DOC);
+  const known = t.engine === 'firefox' ? { known: 'bug (main and branch): an IME commit in Firefox never reaches the tool (BREAKER-REPORT F22)' } : {};
+  const st = await until(page, () => (/^Valid JSON/.test(window.__vis('.sb-l .st')?.textContent ?? '') ? true : null), null, { timeout: 10_000 });
+  t.check(!!st, 'the status says Valid JSON', await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? ''), known);
+  t.check((await inputText(page)) === DOC, 'the editor holds the text', null);
+});
