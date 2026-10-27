@@ -253,3 +253,27 @@ test('Repair of JSON written as a string: read exactly, or left alone', async (t
     t.check(after === doc || JSON.stringify(got) === JSON.stringify(value), `${doc}: read exactly or left alone`, after);
   }
 });
+
+test('Repair of a single-quoted string left open: the members after it survive, or it is left alone', async (t) => {
+  // Main says "Unterminated string" and leaves it. The branch (since c355336) closes the string at the end of the
+  // input, swallowing every member after it, and an apostrophe inside a single-quoted string makes up a key
+  // (BREAKER-REPORT R7). Double quotes are closed before the next ',' instead, which keeps them.
+  const { page } = t;
+  await t.open('/');
+  for (const [doc, kept] of [
+    ["{\"name\": 'O'Brien', \"age\": 3}", (v) => v?.age === 3 && Object.keys(v).length === 2],
+    ["{\"a\": 'x, \"b\": 2, \"c\": [1, 2]}", (v) => v?.b === 2 && JSON.stringify(v.c) === '[1,2]'],
+    ['{"a": 1, "b": "unclosed, "c": 3}', (v) => v?.c === 3 && v.a === 1],
+  ]) {
+    await loadAny(page, doc, 'doc.json');
+    await watchToasts(page);
+    await command(page, 'Repair JSON');
+    await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 5000 });
+    const after = await inputText(page);
+    let value;
+    try {
+      value = JSON.parse(after);
+    } catch {}
+    t.check(after === doc || kept(value), `${doc}: the members after it survive, or it is left alone`, after);
+  }
+});
