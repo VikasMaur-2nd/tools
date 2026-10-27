@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { looksBinary } from '../lib/engine/binary';
+import { looksBinary } from '../lib/engine/asks';
 
 const utf8 = (bytes: Uint8Array | number[]) => new TextDecoder().decode(Uint8Array.from(bytes));
 const hex = (h: string) => utf8(Buffer.from(h, 'hex'));

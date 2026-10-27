@@ -1735,8 +1735,8 @@ export class Engine {
     };
     this.reading = signal;
     try {
-      // (Whether it is text at all is asked of what was read: see binary.ts.)
-      const [text, { looksBinary }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./binary')]);
+      // (Whether it is text at all is asked of what was read: see asks.ts.)
+      const [text, { looksBinary, binaryFile }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./asks')]);
       if (this.reading === signal) this.reading = null;
       if (signal.aborted) return unshow();
       // Undone while it was read: it opens, and is undone at once (Redo brings it back).
@@ -1754,7 +1754,7 @@ export class Engine {
       // Not text (a zip, an image, a video opened by mistake): said so, and opened only when asked.
       if (looksBinary(text)) {
         unshow();
-        if (!undone) this.toast(`${f.name} looks like a binary file, not JSON`, 'err', { label: 'Open as text', run: () => (this.request(1), open(text, f.name, `Opened ${f.name}`)) });
+        if (!undone) this.toast(...binaryFile(f.name, () => (this.request(1), open(text, f.name, `Opened ${f.name}`))));
         return;
       }
       let said: string | false = `Opened ${f.name}`;
@@ -1912,7 +1912,7 @@ export class Engine {
   async loadCompareFile(f: File, source: InputSource = 'file') {
     const signal = this.request(2);
     try {
-      const [text, { looksBinary }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./binary')]);
+      const [text, { looksBinary, binaryFile }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./asks')]);
       if (signal.aborted) return;
       const open = () => {
         this.loadCompare(text, f.name);
@@ -1921,7 +1921,7 @@ export class Engine {
         this.toast(`Comparing with ${f.name}`, 'ok');
       };
       if (!looksBinary(text)) return open();
-      this.toast(`${f.name} looks like a binary file, not JSON`, 'err', { label: 'Open as text', run: () => (this.request(2), open()) });
+      this.toast(...binaryFile(f.name, () => (this.request(2), open())));
     } catch {
       if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
@@ -2105,7 +2105,11 @@ export class Engine {
       } catch (e) {
         if (signal.aborted) return;
         if (!(e instanceof LinkTooLarge)) return broken();
-        if (max < MAX_DOCUMENT) return this.toast("This link's document is over 32 MB: opening it can slow down or crash this tab", 'err', { label: 'Open anyway', run: () => void open(MAX_DOCUMENT) });
+        if (max < MAX_DOCUMENT) {
+          const { bigLink } = await import('./asks');
+          if (!signal.aborted) this.toast(...bigLink(() => void open(MAX_DOCUMENT)));
+          return;
+        }
         return this.toast('That share link is too large to open', 'err');
       }
       if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
