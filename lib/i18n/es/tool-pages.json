@@ -457,7 +457,7 @@
     ]
   },
   "json-to-csv": {
-    "hash": "7f15407a3074",
+    "hash": "d51feb471099",
     "title": "JSON a CSV con columnas para campos anidados",
     "description": "Convierte registros JSON a CSV sin subir datos. Tool Kumar aplana los campos anidados en columnas con nombres separados por puntos, en tu navegador.",
     "heading": "JSON a CSV",
@@ -491,7 +491,7 @@
       },
       {
         "question": "¿Se escapan las comas y las comillas?",
-        "answer": "Sí. Los campos CSV se entrecomillan y las comillas internas se duplican según las reglas estándar de CSV."
+        "answer": "Sí. Los campos CSV se entrecomillan y las comillas internas se duplican según las reglas estándar de CSV. El texto que empieza como una fórmula de hoja de cálculo (=, +, - o @) recibe un apóstrofo delante, para que Excel o Sheets lo muestre en lugar de ejecutarlo."
       }
     ]
   },
@@ -1428,7 +1428,7 @@
     ]
   },
   "jsonl-to-csv": {
-    "hash": "efc51c1e4f45",
+    "hash": "d6e71d204e72",
     "title": "JSONL a CSV para registros NDJSON",
     "description": "Convierte registros JSON Lines o NDJSON a CSV en tu navegador, sin subir datos. Los objetos anidados crean columnas como profile.city.",
     "heading": "JSONL a CSV",
@@ -1449,7 +1449,7 @@
       "Las columnas son las claves encontradas en todos los registros, en el orden en que aparecen por primera vez.",
       "Los objetos anidados se convierten en columnas con nombres separados por puntos. Un array de valores simples se escribe en una sola celda, con sus valores separados por comas; un array de objetos se mantiene en una sola celda como JSON compacto.",
       "Tanto los campos ausentes como los valores null se convierten en celdas vacías, por lo que al volver a JSON no se pueden distinguir.",
-      "Las celdas que contienen comas, comillas o saltos de línea se entrecomillan según las reglas de CSV. Los números conservan sus dígitos originales.",
+      "Las celdas que contienen comas, comillas o saltos de línea se entrecomillan según las reglas de CSV. Los números conservan sus dígitos originales. El texto que empieza como una fórmula (=, +, - o @) recibe un apóstrofo delante, para que una hoja de cálculo nunca lo ejecute.",
       "Un solo registro en un archivo .jsonl abierto también produce una fila de encabezados y una fila de datos."
     ],
     "faqs": [

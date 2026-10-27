@@ -453,7 +453,7 @@
     ]
   },
   "json-to-csv": {
-    "hash": "7f15407a3074",
+    "hash": "d51feb471099",
     "title": "JSON vers CSV : convertir des enregistrements",
     "description": "Convertissez un tableau JSON en CSV dans le navigateur, sans envoi au serveur. Tool Kumar aplatit les champs imbriqués en colonnes, comme profile.city.",
     "heading": "JSON vers CSV",
@@ -486,7 +486,7 @@
       },
       {
         "question": "Les virgules et guillemets sont-ils échappés ?",
-        "answer": "Oui. Les champs CSV sont placés entre guillemets, et les guillemets qu'ils contiennent sont doublés conformément aux règles CSV standard."
+        "answer": "Oui. Les champs CSV sont placés entre guillemets, et les guillemets qu'ils contiennent sont doublés conformément aux règles CSV standard. Un texte qui commence comme une formule de tableur (=, +, - ou @) reçoit une apostrophe devant lui, afin qu'Excel ou Sheets l'affiche au lieu de l'exécuter."
       }
     ]
   },
@@ -1415,7 +1415,7 @@
     ]
   },
   "jsonl-to-csv": {
-    "hash": "efc51c1e4f45",
+    "hash": "d6e71d204e72",
     "title": "JSONL vers CSV : convertir des enregistrements NDJSON",
     "description": "Convertissez des lignes JSONL ou NDJSON en CSV dans le navigateur, sans envoi au serveur. Les objets imbriqués deviennent des colonnes, comme profile.city.",
     "heading": "JSONL vers CSV",
@@ -1436,7 +1436,7 @@
       "Les colonnes correspondent aux clés trouvées dans l'ensemble des enregistrements, dans leur ordre de première apparition.",
       "Les objets imbriqués deviennent des colonnes dont les noms utilisent des points. Un tableau de valeurs simples est écrit dans une seule cellule, avec ses valeurs séparées par des virgules ; un tableau d'objets reste dans une cellule sous forme de JSON compact.",
       "Les champs absents et les valeurs null deviennent tous deux des cellules vides. Une reconversion en JSON ne permet donc pas de les distinguer.",
-      "Les cellules contenant des virgules, des guillemets ou des sauts de ligne sont placées entre guillemets, conformément aux règles CSV. Les nombres conservent leurs chiffres d'origine.",
+      "Les cellules contenant des virgules, des guillemets ou des sauts de ligne sont placées entre guillemets, conformément aux règles CSV. Les nombres conservent leurs chiffres d'origine. Un texte qui commence comme une formule (=, +, - ou @) reçoit une apostrophe devant lui, afin qu'un tableur ne l'exécute jamais.",
       "Un fichier .jsonl ouvert contenant un seul enregistrement produit tout de même une ligne d'en-tête et une ligne de données."
     ],
     "faqs": [

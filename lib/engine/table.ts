@@ -5,6 +5,7 @@ import type { FindResult } from './codeview';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
 import { rt } from '../i18n/ui';
+import { formulaSafe } from '../convert/formula';
 
 /*
  * Virtualized grid of an array (rows = items) or object (rows = properties).
@@ -46,7 +47,7 @@ const cellText = (n: JNode): string => {
   return '';
 };
 
-const csvEscape = (s: string) => (/[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
+const csvEscape = (s: string) => ((s = formulaSafe(s)), /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
 
 const typeRank = (n: JNode | undefined) => (n === undefined ? 9 : n.t === NUM ? 0 : n.t === STR ? 1 : n.t === BOOL ? 2 : n.t === NUL ? 3 : 4);
 

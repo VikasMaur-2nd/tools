@@ -139,8 +139,7 @@ test('CSV exports of formula-like text: what a spreadsheet would run', async (t)
   const conv = await copied(page, 'Copy converted output');
   const live = (csv) => (csv ?? '').split(/\r?\n/).slice(1).filter((l) => /^"?[\t\r]?[=+@-]/.test(l) && !/^-?\d/.test(l));
   t.log('table CSV', table, 'convert CSV', conv);
-  const known = 'bug: CSV exports keep formula-like cells live (BREAKER-REPORT, CSV injection)';
-  t.check(!live(table).length, 'Copy table as CSV neutralises formula cells', live(table), { known });
-  t.check(!live(conv).length, 'Convert → CSV neutralises formula cells', live(conv), { known });
+  t.check(!live(table).length, 'Copy table as CSV neutralises formula cells', live(table));
+  t.check(!live(conv).length, 'Convert → CSV neutralises formula cells', live(conv));
   t.check((table ?? '').includes('plain') && (conv ?? '').includes('plain'), 'other cells are unchanged');
 });

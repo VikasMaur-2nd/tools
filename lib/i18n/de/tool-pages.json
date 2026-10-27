@@ -459,7 +459,7 @@
     ]
   },
   "json-to-csv": {
-    "hash": "7f15407a3074",
+    "hash": "d51feb471099",
     "title": "JSON in CSV konvertieren für tabellarische Datensätze",
     "description": "Konvertiere ein Array aus JSON-Datensätzen online in CSV. Tool Kumar löst verschachtelte Felder in Spalten mit Punktnotation auf, lokal und ohne Upload.",
     "heading": "JSON in CSV konvertieren",
@@ -493,7 +493,7 @@
       },
       {
         "question": "Werden Kommas und Anführungszeichen maskiert?",
-        "answer": "Ja. CSV-Felder werden in Anführungszeichen gesetzt. Enthaltene Anführungszeichen werden gemäß den üblichen CSV-Regeln verdoppelt."
+        "answer": "Ja. CSV-Felder werden in Anführungszeichen gesetzt. Enthaltene Anführungszeichen werden gemäß den üblichen CSV-Regeln verdoppelt. Text, der wie eine Tabellenformel beginnt (=, +, - oder @), erhält einen vorangestellten Apostroph, damit Excel oder Sheets ihn anzeigt, statt ihn auszuführen."
       }
     ]
   },
@@ -1438,7 +1438,7 @@
     ]
   },
   "jsonl-to-csv": {
-    "hash": "efc51c1e4f45",
+    "hash": "d6e71d204e72",
     "title": "JSONL in CSV konvertieren für NDJSON-Datensätze",
     "description": "Konvertiere JSON Lines oder NDJSON lokal im Browser ohne Upload in CSV. Verschachtelte Objekte werden zu Spalten mit Punktnotation wie profile.city.",
     "heading": "JSONL in CSV konvertieren",
@@ -1460,7 +1460,7 @@
       "Die Spalten entsprechen den Schlüsseln aller Datensätze, in der Reihenfolge ihres ersten Auftretens.",
       "Verschachtelte Objekte werden zu Spalten mit Punktnotation. Ein Array aus einfachen Werten wird in eine einzelne Zelle geschrieben, seine Werte durch Kommas getrennt. Ein Array aus Objekten bleibt als kompaktes JSON in einer Zelle erhalten.",
       "Fehlende Felder und null-Werte werden beide zu leeren Zellen. Beim Zurückkonvertieren in JSON lassen sie sich daher nicht unterscheiden.",
-      "Zellen mit Kommas, Anführungszeichen oder Zeilenumbrüchen werden gemäß den CSV-Regeln in Anführungszeichen gesetzt. Zahlen behalten ihre ursprünglichen Ziffern.",
+      "Zellen mit Kommas, Anführungszeichen oder Zeilenumbrüchen werden gemäß den CSV-Regeln in Anführungszeichen gesetzt. Zahlen behalten ihre ursprünglichen Ziffern. Text, der wie eine Formel beginnt (=, +, - oder @), erhält einen vorangestellten Apostroph, damit eine Tabellenkalkulation ihn nie ausführt.",
       "Auch ein einzelner Datensatz in einer geöffneten .jsonl-Datei ergibt eine Kopfzeile und eine Datenzeile."
     ],
     "faqs": [
