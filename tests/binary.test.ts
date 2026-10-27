@@ -30,4 +30,7 @@ test('text, odd as it may be, is not binary', () => {
 test('a NUL inside the text is binary; NUL padding at its end is not', () => {
   assert.equal(looksBinary('{"a":\u00001}'), true);
   assert.equal(looksBinary('{"a":1}' + '\u0000'.repeat(4096)), false);
+  // Nothing but NUL bytes: a zeroed disk image or a sparse file.
+  assert.equal(looksBinary('\u0000'), true);
+  assert.equal(looksBinary('\u0000'.repeat(100_000)), true);
 });

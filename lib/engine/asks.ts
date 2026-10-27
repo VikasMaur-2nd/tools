@@ -10,11 +10,14 @@ type Ask = [msg: string, kind: 'err', action: { label: string; run: () => void }
 /**
  * Is this text a binary file read as UTF-8 (a zip, an image, a video or a PDF opened by mistake)? No text
  * file holds NUL, and where the bytes aren't text most past ASCII decode to U+FFFD, with control characters
- * among them. Looks at the first 64K characters; NUL padding at the very end (as some tools write) doesn't count.
+ * among them. Looks at the first 64K characters; NUL padding at the very end (as some tools write) doesn't
+ * count, unless it is all there is.
  */
 export function looksBinary(text: string): boolean {
   let end = text.length;
   while (end > 0 && text.charCodeAt(end - 1) === 0) end--;
+  // (Padding all the way: a zeroed disk image, a sparse file.)
+  if (end === 0) return text.length > 0;
   const n = Math.min(end, 65_536);
   let odd = 0;
   for (let i = 0; i < n; i++) {
