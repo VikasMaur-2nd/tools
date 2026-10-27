@@ -184,13 +184,16 @@ test('a conversion is dropped once a newer one is asked for, and the newer one s
 });
 
 test("Copy and Download right after the Convert target changes give the new target's output", async () => {
-  const { engine, tick, navigator } = session();
+  const { engine, tick, navigator, toasts } = session();
   const code = converting(engine, '{"a":1}');
   const copied: string[] = [];
   const saved: string[] = [];
   navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
   engine.save = (text: string) => saved.push(text);
   engine.loadConverters = async () => ({ ...converters, convert: (_root: JNode, id: string) => `${id} output` });
+  // (Nothing converted yet and nothing asked for: Copy says so at once, it doesn't wait.)
+  engine.copyConvert();
+  assert.deepEqual(toasts, ['Nothing to copy yet']);
   await engine.runConvert();
   assert.equal(code.text, 'typescript output');
   engine.copyConvert();

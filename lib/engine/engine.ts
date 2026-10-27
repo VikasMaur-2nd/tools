@@ -2635,7 +2635,7 @@ export class Engine {
    * The last conversion made: its sequence and output ('' for none). The code view may still be taking a big
    * output in, in steps, so Copy and Download take it from here.
    */
-  private convDone = { seq: -1, out: '' };
+  private convDone = { seq: 0, out: '' };
 
   /** Copy/Download waiting for the conversion asked for last (see convPending). */
   private convWaiters: ((out: string | null) => void)[] = [];
