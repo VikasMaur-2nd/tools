@@ -39,6 +39,14 @@ export class Filler implements TapeLink {
     return nodesWithin(this.tape, n.zi, levels);
   }
 
+  childrenUpTo(n: JNode, max: number): number {
+    const t = this.tape;
+    const end = nextOf(t, n.zi);
+    let k = 0;
+    for (let c = n.zi + 1; c < end && k <= max; c = nextOf(t, c)) k++;
+    return k;
+  }
+
   childKeys(n: JNode, f: (key: Key) => void) {
     eachChildKey(n, f);
   }

@@ -77,6 +77,8 @@ export interface TapeLink {
   head(n: JNode, max: number): string;
   /** How many nodes of `n`'s subtree are at most `levels` below it. */
   within(n: JNode, levels: number): number;
+  /** How many children `n` has, counted up to `max` (more: max + 1). */
+  childrenUpTo(n: JNode, max: number): number;
   /** Calls `f` with the key of each of `n`'s children, without making them. */
   childKeys(n: JNode, f: (key: Key) => void): void;
   /** The tree search (TreeView) under `n`: matching tape indexes, in document order, at most `max`. */

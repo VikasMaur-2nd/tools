@@ -277,3 +277,21 @@ test('A big array of records opens with its first records open, the rest collaps
   tree.collapseAll();
   assert.equal(tree.rows.length, 60_001);
 });
+
+test('A huge array in a big document’s first record stays collapsed: the first rows stay few', async () => {
+  const { lazyResult } = await import('../lib/json/lazy');
+  const { tapeOf } = await import('../lib/json/tape-send');
+  const records: unknown[] = Array.from({ length: 60_000 }, (_, i) => ({ id: i, a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 }));
+  records[0] = { id: 0, many: Array.from({ length: 300_000 }, (_, i) => i), after: { x: 1 } };
+  const text = JSON.stringify(records);
+  const res = parse(text);
+  const lazy = lazyResult(tapeOf(res, text), text);
+  const { tree } = view();
+  tree.setRoot(lazy.root, true, res.nodes);
+  const rows = tree.rows;
+  assert.ok(rows.length < 60_000 + 2_100, `${rows.length} rows`);
+  assert.equal(rows[1].x, true, 'the first record is open');
+  const many = rows.find((n) => n.key === 'many')!;
+  assert.equal(many.x, false, 'its huge array is not');
+  assert.equal(rows[rows.indexOf(many) + 1].key, 'after');
+});
