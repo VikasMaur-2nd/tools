@@ -17,7 +17,7 @@
  * level), unless `maxDepth` says otherwise.
  */
 import { decodeNumber, decodeString } from './decode';
-import { ARR, BOOL, NUL, NUM, OBJ, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
+import { ARR, BOOL, NO_VALUE, NUL, NUM, OBJ, PASSES, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
 import {
   KEY_INDEX,
   KEY_NAME,
@@ -33,6 +33,7 @@ import {
   VALUE_TRUE,
   W,
   emptyTape,
+  fitted,
   valueOf,
   type Tape,
 } from './tape';
@@ -78,6 +79,7 @@ const PAUSED = -4;
 const ESCAPED = 1;
 const CONTROL = 2;
 const CUT = 4;
+const INNER = 8;
 /** Tolerant values at most between two tries of the fast path. */
 const MAX_TOLERANT = 4096;
 
@@ -160,23 +162,14 @@ function intKeyAt(s: string, a: number, e: number): boolean {
 export function parse(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}): Tape {
   // (In runs all the same: the engine then optimizes the fast path as a function, rather than only
   // the loop it is in, which takes longer and is less sure.)
-  const once = (t: string, fix: boolean) => {
-    begin(t, jsonLines, 65536, deepest);
-    fixing = fix;
-    return steps(Infinity)!;
-  };
-  const tape = once(text, false);
-  if (!repair || !tape.head.error) return tape;
-  const fixed = once(text, true);
-  if (!fixed.head.error) return fixed;
-  // parser.ts: JSON written as a string (`{\"a\": 1}`), read again with that level of escapes undone.
-  const u = unescaped(text);
-  if (u) {
-    let t = once(u.d, false);
-    if (t.head.error) t = once(u.d, true);
-    if (!t.head.error) return remap(t, u);
+  begin(text, jsonLines, 65536, deepest);
+  if (!repair) return steps(Infinity)!;
+  const ps = new Passes(text, jsonLines, 65536, deepest);
+  for (let t: Tape | null = null; ps.next(t); ) {
+    t = steps(Infinity)!;
+    if (!t.head.error) return ps.done(t);
   }
-  return tape;
+  return ps.plain!;
 }
 
 /**
@@ -186,34 +179,61 @@ export function parse(text: string, { lines: jsonLines = false, maxDepth: deepes
  */
 export function parser(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}, every = STEP): TapeParser {
   begin(text, jsonLines, every, deepest);
+  const ps = repair ? new Passes(text, jsonLines, every, deepest) : null;
+  ps?.next(null);
   const state = save();
   let result: Tape | undefined;
-  // The passes (see parse()): 0 as is, 1 repairing, 2 and 3 the same with escapes undone.
-  let pass = 0;
-  let u: Unescaped | null = null;
-  let failed: Tape | undefined;
-  const next = (): boolean => {
-    if (++pass === 2 && !(u = unescaped(text))) return false;
-    if (pass > 3) return false;
-    begin(pass < 2 ? text : u!.d, jsonLines, every, deepest);
-    fixing = pass !== 2;
-    save(state);
-    return true;
-  };
   const step = (until: number): Tape | undefined => {
     if (result) return result;
     load(state);
     const t = steps(until);
-    if (!t) {
-      save(state);
-      return undefined;
-    }
-    if (!t.head.error) return (result = pass >= 2 ? remap(t, u!) : t);
-    failed ??= t;
-    if (repair && next()) return undefined;
-    return (result = failed);
+    if (!t) save(state);
+    else if (!ps || !t.head.error) result = ps ? ps.done(t) : t;
+    else if (ps.next(t)) save(state);
+    else result = ps.plain!;
+    return result;
   };
-  return { step, at: () => (result ? text.length : pass >= 2 ? u!.map[state.i] : state.i) };
+  return { step, at: () => (result ? text.length : ps?.u && PASSES[ps.k][0] ? ps.u.map[state.i] : state.i) };
+}
+
+/** parser.ts's Passes: the passes of one parse with `repair` (PASSES). */
+class Passes {
+  k = -1;
+  u: Unescaped | null | undefined = undefined;
+  /** The tape of the text as is. */
+  plain: Tape | undefined;
+  constructor(
+    readonly text: string,
+    readonly lines: boolean,
+    readonly every: number,
+    readonly deepest: number,
+  ) {}
+
+  /** Begins the next pass after one that failed with `t` (null: the first): false if none is left. */
+  next(t: Tape | null): boolean {
+    for (;;) {
+      this.k++;
+      // (The text as is gives what the first pass gave if it repaired nothing.)
+      if (this.k === 1 && !turnedLast) {
+        this.plain = t!;
+        continue;
+      }
+      if (this.k === 2) this.plain ??= t!;
+      if (this.k >= PASSES.length) return false;
+      const [esc, fix, quote, text] = PASSES[this.k];
+      if (esc && (this.u ??= unescaped(this.text)) === null) return false;
+      begin(esc ? this.u!.d : this.text, this.lines, this.every, this.deepest);
+      fixing = fix;
+      quoting = quote;
+      prose = text;
+      return true;
+    }
+  }
+
+  /** Tape `t` of the current pass, as the tape of the parse. */
+  done(t: Tape): Tape {
+    return PASSES[this.k][0] ? remap(t, this.u!) : t;
+  }
 }
 
 /** parser.ts's remap(): tape `t` of `u.d` with its offsets in the source (values it can't read back from there in `extra`). */
@@ -308,6 +328,11 @@ let phase = 0;
 let tol = 1;
 /** Repairing (ParseOptions.repair, after the parse failed without): the tolerant parser only. */
 let fixing = false;
+/** parser.ts's `quoting`, `prose`, `turned` and `turnedLast`. */
+let quoting = false;
+let prose = false;
+let turned = false;
+let turnedLast = false;
 
 // The tape: W numbers per node in T (see tape.ts), `count` in use.
 let T: Int32Array<ArrayBuffer> = NONE;
@@ -365,7 +390,7 @@ function begin(text: string, jsonLines: boolean, perRun: number, deepest: number
   callD = [];
   callS = [];
   tol = 1;
-  fixing = false;
+  fixing = quoting = prose = turned = false;
   T = NONE;
   count = grownAt = grownCount = 0;
   keys = [];
@@ -423,6 +448,9 @@ interface State {
   phase: number;
   tol: number;
   fixing: boolean;
+  quoting: boolean;
+  prose: boolean;
+  turned: boolean;
   T: Int32Array<ArrayBuffer>;
   count: number;
   keys: string[];
@@ -472,6 +500,9 @@ function save(state?: State): State {
     phase,
     tol,
     fixing,
+    quoting,
+    prose,
+    turned,
     T,
     count,
     keys,
@@ -522,6 +553,9 @@ function load(s: State) {
     phase,
     tol,
     fixing,
+    quoting,
+    prose,
+    turned,
     T,
     count,
     keys,
@@ -552,6 +586,15 @@ function steps(until: number): Tape | undefined {
         i = 1;
       }
       ws();
+      // parser.ts: with repairs, prose before a code fence is ignored.
+      if (prose && i < n && !src.startsWith('```', i) && isText(i)) {
+        const f = fenceLine(i);
+        if (f >= 0 && proseUntil(i, f)) {
+          fix(i, 'Text before the code fence was ignored');
+          turned = true;
+          i = f;
+        }
+      }
       if (src.startsWith('```', i)) {
         fix(i, 'Markdown code fences are not part of JSON');
         i = eol(i);
@@ -596,12 +639,14 @@ function drive(): boolean {
 }
 
 function finish(error: Issue | null): Tape {
+  if (!error && root < 0) error = { p: n, m: NO_VALUE };
   if (error) root = -1;
   issues.sort((a, b) => a.p - b.p);
   // A wrapped document is not the source text, so the native formatting fast path can't apply.
   exact = exact && root >= 0 && !issues.length && !warnings.length && !multi;
   const head = { issues, warnings, error, nodes, depth, exact, multi: multi && root >= 0 };
-  const tape: Tape = root >= 0 ? { nodes: T, count, keys, big, extra, head } : emptyTape(head);
+  const tape: Tape = root >= 0 ? { nodes: fitted(T, count), count, keys, big, extra, head } : emptyTape(head);
+  turnedLast = turned;
   // Nothing of it stays here.
   begin('', false, STEP, UNLIMITED);
   return tape;
@@ -830,6 +875,7 @@ function fast(): void {
   // a leaf with it, so only a container argument still has its calls open while it fills.)
   const callTop = callD.length !== 0 ? callD[callD.length - 1] : -2;
   const deepest = maxDepth;
+  const quote = quoting;
   let t = T;
   let at = i;
   let cnt = count;
@@ -874,6 +920,16 @@ function fast(): void {
         } else {
           meta = STR | (VALUE_DECODE << 5);
           e = ~r + 1;
+        }
+        // Repairing unescaped quotes: one followed by a word is the tolerant parser's.
+        if (quote) {
+          let x = e;
+          let f = s.charCodeAt(x);
+          while (f === 32 || f === 9) f = s.charCodeAt(++x);
+          if ((f >= 65 && f <= 90) || (f >= 97 && f <= 122) || f === 95 || f === 36 || f > 127) {
+            budget++;
+            break;
+          }
         }
       } else if ((c >= 48 && c <= 57) || c === 45) {
         let j = at;
@@ -1185,7 +1241,7 @@ const kept = (t: number, v: string, s: number, d: number, u: number, kk: number,
 
 /** The leaf of a string from `s` that str() just read (`found`). */
 const strLeaf = (found: number, s: number, d: number, u: number, kk: number, key: number) =>
-  found & CUT ? kept(STR, textOf(s, found), s, d, u, kk, key) : leaf(STR, found & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+  found & (CUT | INNER) ? kept(STR, textOf(s, found), s, d, u, kk, key) : leaf(STR, found & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
 
 /** Goes over an escape (i is after the backslash), reporting what parser.ts does. */
 const esc = () => {
@@ -1232,11 +1288,14 @@ const esc = () => {
 /**
  * Goes over a string starting at the opening quote; `q`/`q2` are the accepted closing quotes.
  * ESCAPED if it has escapes (its value is not the text between the quotes), | CONTROL if it has
- * control characters, | CUT if repairing closed it where it has no closing quote (it ends at i).
+ * control characters, | CUT if repairing closed it where it has no closing quote (it ends at i),
+ * | INNER if repairing kept quotes inside it.
  */
 const str = (q: number, q2: number): number => {
   const s = i;
   let found = 0;
+  // (parser.ts: where a string with quotes inside closes.)
+  let inner = -1;
   i++;
   for (;;) {
     if (i >= n) {
@@ -1248,6 +1307,14 @@ const str = (q: number, q2: number): number => {
     }
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
+      // parser.ts: with repairs, a quote followed by a word is inside the string.
+      if (quoting && q === 34 && (i < inner || (inner = innerClose(i)) > i)) {
+        fix(i, 'Unescaped quote inside a string (kept in it)');
+        turned = true;
+        found |= INNER;
+        i++;
+        continue;
+      }
       i++;
       if (fixing && !(found & ESCAPED)) {
         const k = unclosed(s + 1, i - 1);
@@ -1295,7 +1362,92 @@ const unclosed = (a: number, e: number): number => {
 
 /** The value of the string str() just read from `s` (`found`: what str() returned). */
 const textOf = (s: number, found: number): string =>
-  found & CUT ? (found & ESCAPED ? decodeUntil(s, i) : src.slice(s + 1, i)) : found & ESCAPED ? decodeString(src, s) : src.slice(s + 1, i - 1);
+  found & CUT
+    ? found & ESCAPED
+      ? decodeUntil(s, i)
+      : src.slice(s + 1, i)
+    : found & INNER
+      ? decodeUntil(s, i - 1)
+      : found & ESCAPED
+        ? decodeString(src, s)
+        : src.slice(s + 1, i - 1);
+
+/** parser.ts's wordAfter(): whether a word starts at `p`, after spaces or tabs on the same line. */
+const wordAfter = (p: number): boolean => {
+  while (src.charCodeAt(p) === 32 || src.charCodeAt(p) === 9) p++;
+  return isIdentStart(src.charCodeAt(p));
+};
+
+/** parser.ts's LITERALS: words that stand for values. */
+const LITERALS = new Set(['true', 'false', 'null', 'True', 'TRUE', 'False', 'FALSE', 'None', 'NULL', 'Null', 'nil', 'undefined', 'NaN', 'Infinity', 'tru', 'ture', 'treu', 'rtue', 'fals', 'flase', 'fasle', 'fales', 'nul', 'nulll', 'nill', 'nll']);
+
+/** parser.ts's isText(): whether the text at `p` is prose rather than a value. */
+const isText = (p: number): boolean => {
+  const c = src.charCodeAt(p);
+  if (c === 125 || c === 93) return false;
+  if (!startsValue(c)) return true;
+  if (!isIdentStart(c)) return false;
+  let e = p;
+  while (e < n && isIdent(src.charCodeAt(e))) e++;
+  if (LITERALS.has(src.slice(p, e))) return false;
+  while (src.charCodeAt(e) === 32 || src.charCodeAt(e) === 9) e++;
+  return src.charCodeAt(e) !== 40;
+};
+
+/** parser.ts's fenceLine(): where a line starting with ``` begins from `p` on, or -1. */
+const fenceLine = (p: number): number => {
+  for (let k = src.indexOf('```', p); k >= 0; k = src.indexOf('```', k + 3)) {
+    let j = k - 1;
+    while (j >= 0 && (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9)) j--;
+    if (j < 0 || src.charCodeAt(j) === 10 || src.charCodeAt(j) === 13) return k;
+  }
+  return -1;
+};
+
+/**
+ * parser.ts's innerClose(): with repairs, if the quote at `p` is inside its string (`"say "hi" now"`), where the string closes; else -1.
+ * Inside: a word follows it, the string goes on to the next quote on the same line with no JSON between
+ * (no , : [ ] { } and no escape), and so on until a quote that is followed by what can follow a string
+ * (, } ] : or the line's end). Else the quote closes the string as without repairs: `["x" y, "z"]` is three
+ * values, `{a: "x" b: "y"}` two members, `"hi "x""` a string and an empty one.
+ */
+const innerClose = (p: number): number => {
+  if (!wordAfter(p + 1)) return -1;
+  for (let k = p + 1; k < n; k++) {
+    const c = src.charCodeAt(k);
+    if (c === 34) {
+      if (wordAfter(k + 1)) continue;
+      let j = k + 1;
+      while (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9) j++;
+      const d = src.charCodeAt(j);
+      return j >= n || d === 44 || d === 125 || d === 93 || d === 58 || d === 10 || d === 13 ? k : -1;
+    }
+    if (c === 10 || c === 13 || c === 44 || c === 58 || c === 91 || c === 93 || c === 123 || c === 125 || c === 92) return -1;
+  }
+  return -1;
+};
+
+/**
+ * parser.ts's proseUntil(): with repairs, whether [p, end) is prose to ignore (around the value): it starts with text that isn't a
+ * comment, is text (no control characters or U+FFFD: a binary file isn't prose), opens no container,
+ * and none of its lines starts with a value. (`{"a": 1}\nhello\n{"b": 2}`
+ * stays three values, `"a"\nb\n"c"` too.)
+ */
+const proseUntil = (p: number, end: number): boolean => {
+  if (!isText(p) || (src.charCodeAt(p) === 47 && (src.charCodeAt(p + 1) === 47 || src.charCodeAt(p + 1) === 42))) return false;
+  for (let k = p; k < end; k++) {
+    const c = src.charCodeAt(k);
+    // (Not a container, nor bytes that aren't text: control characters, U+FFFD from bytes that weren't UTF-8.)
+    if (c === 123 || c === 91 || (c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 127 || c === 0xfffd) return false;
+    if (c === 10 || c === 13) {
+      let j = k + 1;
+      while (j < end && (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9 || src.charCodeAt(j) === 10 || src.charCodeAt(j) === 13)) j++;
+      if (j < end && !isText(j)) return false;
+      k = j - 1;
+    }
+  }
+  return true;
+};
 
 /** decodeString() of a string that repairing cut at `end` (it has no closing quote): parser.ts's str() and esc() up to there. */
 function decodeUntil(start: number, end: number): string {
@@ -1628,6 +1780,13 @@ const topLevel = (r: number): boolean => {
   if (phase === 2) return !nextLine();
   root = r;
   skipTail();
+  // parser.ts: with repairs, prose after the value is ignored, rather than read as JSON Lines.
+  if (prose && !lines && i < n && proseUntil(i, n)) {
+    fix(i, 'Text after the JSON value was ignored');
+    turned = true;
+    i = n;
+    return true;
+  }
   if ((i < n && startsValue(src.charCodeAt(i))) || lines) {
     // Several top-level values (NDJSON / JSON Lines): re-parse them into one array.
     multi = true;
@@ -1817,7 +1976,7 @@ const fillObj = (p: number, pd: number): number => {
       if (c === 34) {
         const found = str(34, 34);
         // (Only a name written in strict JSON is kept as source text: the fast path matches others against it.)
-        key = found & (ESCAPED | CUT) ? internText(textOf(ks, found)) : found ? internText(src.slice(ks + 1, i - 1)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1));
+        key = found & (ESCAPED | CUT | INNER) ? internText(textOf(ks, found)) : found ? internText(src.slice(ks + 1, i - 1)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1));
       } else key = internText(looseKey(c));
       const name = keys[key];
       // Not natively reproducible: integer-like keys (JS reorders them) and keys written with

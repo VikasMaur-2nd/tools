@@ -1,17 +1,16 @@
 /** Re-indents big documents off the main thread (see Engine.outputFirst), and parses them after typing. */
 import '../json/requote';
 import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
-import { packedTransfer, packTape, packTree } from '../json/pack-send';
+import { packedTransfer, packTape } from '../json/pack-send';
 import { lazyResult } from '../json/lazy';
 import { parse as parseTape, parser as tapeParser, warmUp } from '../json/tape-parser';
 import { wasmTape } from '../json/tape-wasm';
-import type { Tape } from '../json/tape';
-import { MAX_DEPTH, parse, type ParseResult } from '../json/parser';
+import { childCount, W, type Tape } from '../json/tape';
+import { MAX_DEPTH, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
 import { documentMetrics } from '../json/metrics';
 import { compressedSizes } from './sizes';
 import { jsonLines } from './rules';
-import type { JNode } from '../json/parser';
 import { Doc, type TextEdit } from './doc';
 import { ScalarFormatter } from '../json/incremental-format';
 import { prettyIndexer } from '../json/pretty';
@@ -24,6 +23,8 @@ export interface Request {
   text?: string;
   indent?: string;
   warm?: number;
+  /** The analysis worker's warm-up before a document comes (see warmTape). */
+  warmTape?: boolean;
   parse?: boolean;
   sortKeys?: boolean;
   lines?: boolean;
@@ -106,6 +107,7 @@ self.onmessage = (e: MessageEvent<Request>) => {
     return;
   }
   if (data.cancel) { latest = data.id; clearTimeout(fastTimer); return; }
+  if (data.warmTape) { void loadWasm().then(warmTape); return; }
   if (data.start) {
     latest = data.id;
     incoming = { options: data, chunks: [] };
@@ -147,12 +149,17 @@ self.onmessage = (e: MessageEvent<Request>) => {
   let min: string | null = null;
   let parsed: ParseResult | null = null;
   if (data.parse) {
-    const res = parsed = parse(text, { lines: data.lines, repair: true });
+    const tape = parseTape(text, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true });
+    const res = lazyResult(tape, text);
     min = res.root ? formatDoc(text, res, '') : null;
     const metrics = documentMetrics(text, res, min ?? '');
-    if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
+    if (jsonLines(text, res)) metrics.records = childCount(tape, 0);
     if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
-    const tree = packTree(res, text);
+    // (A sent tape can't be read here. The output below reads the parse only for sorted keys, loose JSON
+    // and nesting deeper than reindent goes: then a copy of the tape goes instead.)
+    const reads = !!res.root && (!!data.sortKeys || !!res.error || !!res.issues.length || res.multi || res.depth >= REINDENT_DEPTH);
+    if (reads) parsed = res;
+    const tree = packTape(reads ? { ...tape, nodes: tape.nodes.slice(0, tape.count * W) } : tape);
     (self as unknown as Worker).postMessage({ id, tree, metrics }, packedTransfer(tree));
     // Compression consumes the same minified variant, entirely off the page's thread.
     if (res.root && metrics.min <= 32_000_000) {
@@ -212,6 +219,19 @@ const loadWasm = () => (wasmReady ??= (async () => {
   warmUp();
 })());
 
+/**
+ * The analysis worker's warm-up (Engine.warmAnalysis): one WebAssembly parse of ~256 KB, from bytes and from
+ * text. The engines optimize a module only once it has run a while: after the 4 KB warmUp() alone, the first
+ * 1 MB document parsed 30-60% slower than the next (Node: 13 ms against 8.5; WebKit 2x).
+ */
+function warmTape() {
+  if (!wasm) return;
+  const records = Array.from({ length: 1700 }, (_, i) => `{"id":${i},"name":"item ${i} — café","tags":["a","b\\n","c"],"price":${(i * 1.37).toFixed(2)},"ok":${i % 2 === 0},"n":null,"geo":{"lat":${(i % 90) + 0.5},"lon":-${(i % 180) + 0.25}}}`);
+  const text = '[' + records.join(',\n') + ']';
+  wasmTape(wasm, text, {}, new TextEncoder().encode(text));
+  wasmTape(wasm, text);
+}
+
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {
   // (The first document may come before WebAssembly is compiled: a few ms.)
@@ -232,7 +252,7 @@ function analyse(data: Request, text: string) {
   const minBytes = strict ? minifiedBytes(text) ?? undefined : undefined;
   showing(data, MINIFIED);
   const metrics = documentMetrics(text, res, min ?? undefined, minBytes);
-  if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
+  if (jsonLines(text, res)) metrics.records = childCount(tape, 0);
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   showing(data, MEASURED);
   // The Format view's lines are indexed here, off the page's thread, before the tape goes (it moves, not copied).
@@ -303,7 +323,7 @@ function formatFast(data: Request, input: Doc) {
       raw = !data.sortKeys && !data.lines ? (data.progress ? reindentShowing(data, text, indent) : reindent(text, indent)) : null;
       strict = raw !== null;
       if (raw === null) {
-        const res = parse(text, { lines: data.lines, repair: true });
+        const res = lazyResult(parseTape(text, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true }), text);
         raw = res.root ? formatDoc(text, res, indent, data.sortKeys) : null;
       }
     } catch (e) {

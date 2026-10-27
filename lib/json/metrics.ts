@@ -1,38 +1,46 @@
 import { ARR, OBJ, STR, type JNode, type ParseResult } from './parser';
 import { byteLength, formatDoc } from './format';
 import { tapeOfNode } from './lazy';
-import { sizeOf, W, type Tape } from './tape';
+import { SIZE_BIG, sizeOf, W, type Tape } from './tape';
 
 /** documentMetrics' whitespace counts, read off a tape: per container with k children at depth d, k + 1 (+ k for an object's colons) and k(d + 1) + d indent units. */
 function tapeMetrics(t: Tape): { extra: number; units: number } {
   let extra = 0;
   let units = 0;
   const a = t.nodes;
-  // Children seen so far per open container, and where each ends.
-  const ends: number[] = [];
-  const counts: number[] = [];
-  const kinds: number[] = [];
-  const close = () => {
-    const k = counts.pop()!;
-    const kind = kinds.pop()!;
-    ends.pop();
-    const d = ends.length;
-    if (k) {
-      extra += k + 1 + (kind === OBJ ? k : 0);
-      units += k * (d + 1) + d;
+  const n = t.count;
+  // Per open container: where it ends, its children so far, whether it is an object.
+  const levels = t.head.depth + 2;
+  const ends = new Int32Array(levels);
+  const counts = new Int32Array(levels);
+  const objs = new Uint8Array(levels);
+  let top = 0;
+  for (let i = 0; i < n; i++) {
+    while (top && i >= ends[top - 1]) {
+      const k = counts[--top];
+      if (k) {
+        extra += k + 1 + (objs[top] ? k : 0);
+        units += k * (top + 1) + top;
+      }
     }
-  };
-  for (let i = 0; i < t.count; i++) {
-    while (ends.length && i >= ends[ends.length - 1]) close();
-    if (counts.length) counts[counts.length - 1]++;
-    const kind = a[i * W] & 7;
+    if (top) counts[top - 1]++;
+    const m = a[i * W];
+    const kind = m & 7;
     if (kind >= ARR) {
-      ends.push(i + sizeOf(t, i));
-      counts.push(0);
-      kinds.push(kind);
+      let size = m >>> 8;
+      if (size >= SIZE_BIG) size = sizeOf(t, i);
+      ends[top] = i + size;
+      counts[top] = 0;
+      objs[top++] = kind === OBJ ? 1 : 0;
     }
   }
-  while (ends.length) close();
+  while (top) {
+    const k = counts[--top];
+    if (k) {
+      extra += k + 1 + (objs[top] ? k : 0);
+      units += k * (top + 1) + top;
+    }
+  }
   return { extra, units };
 }
 

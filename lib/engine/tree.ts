@@ -212,7 +212,9 @@ export class TreeView {
     const visit = (n: JNode, expansion: Expansion | undefined) => {
       rows.push(n);
       if (n.t < ARR) return;
-      const open = expansion?.open ?? (n.d < limit || (first && rows.length < FIRST_ROWS));
+      // (Past the levels: a container opens only if its items too fit the first rows, so one huge array in the
+      // first record isn't listed whole.)
+      const open = expansion?.open ?? (n.d < limit || (first && rows.length < FIRST_ROWS && rows.length + (n.z ? n.z.childrenUpTo(n, FIRST_ROWS) : kids(n).length) < FIRST_ROWS));
       n.x = open;
       if (open) {
         lists.push(kids(n));

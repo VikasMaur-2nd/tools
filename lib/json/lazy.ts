@@ -39,6 +39,14 @@ export class Filler implements TapeLink {
     return nodesWithin(this.tape, n.zi, levels);
   }
 
+  childrenUpTo(n: JNode, max: number): number {
+    const t = this.tape;
+    const end = nextOf(t, n.zi);
+    let k = 0;
+    for (let c = n.zi + 1; c < end && k <= max; c = nextOf(t, c)) k++;
+    return k;
+  }
+
   childKeys(n: JNode, f: (key: Key) => void) {
     eachChildKey(n, f);
   }
@@ -143,6 +151,18 @@ export function nodeAtIndex(root: JNode, i: number): JNode | null {
  * `qn` (lowercased unless `cs`), in document order, at most `max`. The same test as on nodes
  * (TreeView.search), each property name tested once.
  */
+const PRINTABLE_RUN = /^[\x20-\x7e]+$/;
+
+/** Escapes, read in pairs: group 1 is set for one that can make a printable character or join two parts of a string (see tapeSearch). */
+const ESCAPE = /\\(?:["\\/bfnrt']|([\s\S]))/g;
+
+/** Where the first escape in `src` from `at` (a string's text) that isn't a quote, slash or control character starts. */
+function riskyEscape(src: string, at: number): number {
+  ESCAPE.lastIndex = at;
+  for (let m; (m = ESCAPE.exec(src)); ) if (m[1] !== undefined) return m.index;
+  return Infinity;
+}
+
 export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: boolean, max: number): number[] {
   const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
   // A query of printable ASCII is looked for in the source text itself, one search forward through it, so a
@@ -152,6 +172,10 @@ export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: b
     ? new RegExp(qn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/i/g, '(?:i|\u0130)').replace(/k/g, '[k\u212a]'), cs ? 'g' : 'gi')
     : null;
   let next = -1;
+  // A string with escapes is found the same way when none can make the query's characters or join two parts
+  // of it: escapes of quotes, slashes and control characters only (\u, \x and the rest are read decoded).
+  const quoteless = !!find && !/["'\\/]/.test(qn);
+  let risky = -1;
   const keyHit = new Int8Array(t.keys.length);
   const nul = has('null');
   const yes = has('true');
@@ -168,15 +192,22 @@ export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: b
     }
     if (!hit) {
       const kind = kindOf(t, i);
-      if (kind === STR && find && valueKindOf(t, i) === VALUE_SLICE) {
+      const vk = kind === STR && find ? valueKindOf(t, i) : -1;
+      if (vk === VALUE_SLICE || (vk === VALUE_DECODE && quoteless)) {
         // (Its text is src[s, e), as valueOf reads it.)
         const s = a[i * W + 1] + 1;
         const e = a[i * W + 2] - 1;
-        if (next < s) {
-          find.lastIndex = s;
-          next = find.exec(src)?.index ?? Infinity;
+        if (vk === VALUE_DECODE && risky < s) risky = riskyEscape(src, s);
+        if (vk === VALUE_DECODE && risky < e) hit = has(valueOf(t, i, src) as string);
+        else {
+          if (next < s) {
+            find!.lastIndex = s;
+            next = find!.exec(src)?.index ?? Infinity;
+          }
+          // (A match of ASCII characters only is one in the string's value, as written there; one through İ or
+          // the Kelvin sign is checked on the value.)
+          hit = next + qn.length <= e && (PRINTABLE_RUN.test(src.slice(next, next + qn.length)) || has(valueOf(t, i, src) as string));
         }
-        hit = next + qn.length <= e && has(valueOf(t, i, src) as string);
       } else if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
       else if (kind === BOOL) hit = valueOf(t, i, src) ? yes : no;
       else if (kind === NUL) hit = nul;

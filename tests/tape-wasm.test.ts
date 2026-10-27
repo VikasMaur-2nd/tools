@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import { MAX_DEPTH } from '../lib/json/parser';
 import { parse, type TapeOptions } from '../lib/json/tape-parser';
 import { wasmTape } from '../lib/json/tape-wasm';
-import { W, sizeOf, type Tape } from '../lib/json/tape';
+import { TRIM_MAX, W, sizeOf, type Tape } from '../lib/json/tape';
 import { genLoose, mutate, rng, type Rng } from './oracle/compare';
+import { lf } from '../lib/engine/doc';
 import { CORPUS, FIXTURES, diffTape, files, genStrict, loosen } from './oracle/tape';
 
 // FUZZ_SEED / FUZZ_SCALE as in the other parser tests; `pnpm test --slow` runs 50x more and the big corpora.
@@ -43,8 +44,8 @@ function same(src: string, { bytes = false, window, options = {} }: Check = {}):
   let b: Uint8Array | undefined;
   if (bytes) {
     b = encoder.encode(src);
-    // (What a page has from a file: the text decoded from its bytes.)
-    src = new TextDecoder().decode(b);
+    // (What a page has from a file: the text decoded from its bytes, line ends as \n.)
+    src = lf(new TextDecoder().decode(b));
   }
   const js = parse(src, options);
   const w = wasmTape(mod, src, options, b, window);
@@ -270,6 +271,68 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
     }
     const levels = 1_000_000;
     same('['.repeat(levels) + '1' + ']'.repeat(levels));
+  });
+
+  test('a tape of up to TRIM_MAX bytes keeps no room to grow; a bigger one keeps it (no copy)', () => {
+    const r = rng((SEED || 1) + 41);
+    for (let it = 0; it < cases(300); it++) {
+      const src = genStrict(r, 5);
+      const t = wasmTape(mod, src, {}, r.chance(0.5) ? encoder.encode(src) : undefined);
+      assert.ok(t, show(src));
+      assert.equal(t.nodes.length, t.count * W, show(src));
+    }
+    for (const n of [1, 2, 4095, 4096, 4097, 9000, 100_000, 400_000]) {
+      const t = wasmTape(mod, '[' + '0,'.repeat(n - 1) + '0]')!;
+      assert.equal(t.count, n + 1);
+      assert.equal(t.nodes.length, t.count * W);
+    }
+    const n = Math.ceil(TRIM_MAX / 4 / W) + 1000;
+    const big = wasmTape(mod, '[' + '0,'.repeat(n - 2) + '0]')!;
+    assert.equal(big.count, n);
+    assert.ok(big.nodes.length > big.count * W, `${big.nodes.length} for ${big.count} nodes`);
+  });
+
+  test(`from bytes, \\r\\n is one unit and a lone \\r one, as in the LF text the page keeps: every window (${cases(1500)} cases)`, () => {
+    // (BREAKER-REPORT F16: offsets must be the editor's. From text, the text's own line ends count.)
+    const r = rng((SEED || 1) + 51);
+    const ENDS = ['\r\n', '\r', '\n', '\r\r\n', '\n\r', '\r\n\r\n'];
+    for (let it = 0; it < cases(1500); it++) {
+      const doc = JSON.stringify(JSON.parse(genStrict(r, 4)), null, r.pick([1, 2, '\t']));
+      const end = r.chance(0.5) ? r.pick(ENDS) : '';
+      const src = (r.chance(0.2) ? end : '') + doc.replace(/\n/g, () => (end || r.pick(ENDS))) + (r.chance(0.3) ? r.pick(ENDS) : '');
+      for (const window of [undefined, 64, 65 + r.int(100), 64 + r.int(400)]) {
+        assert.equal(same(src, { bytes: true, window }), 'strict', show(src));
+        same(src, { window });
+      }
+    }
+    // A pair cut by a block (64 bytes) or a window, at every place: the \r last in one, the \n first in the next.
+    for (let pad = 0; pad < 140; pad++) {
+      const src = '[' + '1,'.repeat(pad >> 1) + (pad & 1 ? ' ' : '') + '\r\n"é",\r\r\n\r 2]';
+      for (const window of [64, 65, 66, 128, 129]) assert.equal(same(src, { bytes: true, window }), 'strict');
+    }
+  });
+
+  test('a big array of multi-byte strings with CRLF between items, from bytes: the offsets of its LF text', () => {
+    // (As the breaker's 1.5 MB files: every item on its own line.)
+    const r = rng(53);
+    const items: string[] = [];
+    for (let n = 0; n < 1_500_000; ) {
+      const s = Array.from({ length: 1 + r.int(30) }, () => r.pick(['é', '東', '😀', 'a', ' ', '\\n', '\\u00e9', 'Ж'])).join('');
+      items.push(`  "${s}"`);
+      n += s.length + 6;
+    }
+    for (const eol of ['\r\n', '\r', '\n']) {
+      const src = '[' + eol + items.join(',' + eol) + eol + ']' + eol;
+      const b = encoder.encode(src);
+      const text = lf(decoder.decode(b));
+      const w = wasmTape(mod, text, {}, b)!;
+      assert.ok(w, eol === '\r' ? 'CR' : eol);
+      assert.equal(diffTape(parse(text), w, text), null);
+    }
+    const mixed = '[' + items.slice(0, 20_000).map((x, k) => x + (k % 3 === 0 ? ',\r\n' : k % 3 === 1 ? ',\r' : ',\n')).join('') + '1]';
+    const b = encoder.encode(mixed);
+    const text = lf(decoder.decode(b));
+    assert.equal(diffTape(parse(text), wasmTape(mod, text, {}, b)!, text), null);
   });
 
   test('JSONTestSuite, the simdjson corpus and the harness fixtures (where present)', (t) => {

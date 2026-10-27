@@ -412,9 +412,10 @@ fn below(bit: usize) -> u64 {
 }
 
 /// Takes the `len` bytes written at the window (the document from UTF-16 offset `u16_start`;
-/// `last` 1 if they end it) and runs stage 1. Returns FAIL if they aren't strict JSON, else 0.
+/// `last` 1 if they end it; `cr` 1 if the byte before them is a carriage return) and runs stage 1.
+/// Returns FAIL if they aren't strict JSON, else 0.
 #[no_mangle]
-pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32) -> i32 {
+pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32, cr: u32) -> i32 {
     WLEN = len;
     FINAL = last != 0;
     WU16 = u16_start;
@@ -435,6 +436,11 @@ pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32) -> i32 {
     let mut u_carry: u64 = 0;
     let mut units: u32 = 0;
     let mut hi_any: u64 = 0;
+    // From bytes, a line feed after a carriage return is no UTF-16 unit: the text is the bytes with their
+    // line ends as \n (doc.ts lf()), as the page keeps it; a lone \r stays one unit, as its \n.
+    let crlf = !FROM_TEXT;
+    let mut cr_carry: u64 = (crlf && cr != 0) as u64;
+    let mut drop_any: u64 = 0;
     let mut fail_at = usize::MAX;
     for b in 0..blocks {
         let p = b * 64;
@@ -463,6 +469,18 @@ pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32) -> i32 {
                 m4(&vs, |v| eqm2(u8x16_swizzle(WS, v128_and(v, u8x16_splat(15))), v)),
             )
         };
+        let mut drop = 0u64;
+        if crlf {
+            // (Only where a \r is: a pair needs one here, or the last byte of the block before.)
+            if ctl != 0 && (cr_carry != 0 || or4(&|v| i8x16_eq(v, u8x16_splat(b'\r')))) {
+                let cr = m4(&vs, |v| eqm(v, b'\r'));
+                drop = m4(&vs, |v| eqm(v, b'\n')) & ((cr << 1) | cr_carry);
+                cr_carry = cr >> 63;
+                drop_any |= drop;
+            } else {
+                cr_carry = 0;
+            }
+        }
         *base.add(b) = units;
         *bs_t.add(b) = bs;
         *hi_t.add(b) = hi;
@@ -470,13 +488,13 @@ pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32) -> i32 {
             hi_any |= hi;
             let cont = m4(&vs, |v| i8x16_bitmask(i8x16_lt(v, i8x16_splat(-64))) as u64);
             let four = m4(&vs, |v| i8x16_bitmask(u8x16_ge(v, u8x16_splat(0xF0))) as u64);
-            *nonc_t.add(b) = !cont;
+            *nonc_t.add(b) = !cont & !drop;
             *four_t.add(b) = four;
-            units += (64 - cont.count_ones() + four.count_ones()) as u32;
+            units += (64 - cont.count_ones() - drop.count_ones() + four.count_ones()) as u32;
         } else {
-            *nonc_t.add(b) = !0;
+            *nonc_t.add(b) = !drop;
             *four_t.add(b) = 0;
-            units += 64;
+            units += 64 - drop.count_ones();
         }
         // Escaped characters (simdjson's escape scanner).
         let mut escaped = 0u64;
@@ -556,8 +574,8 @@ pub unsafe extern "C" fn load(len: usize, last: u32, u16_start: u32) -> i32 {
         n -= 1;
     }
     NIDX = n;
-    // (The padding is spaces: any high bit is the window's.)
-    ASCII = hi_any == 0;
+    // (The padding is spaces: any high bit is the window's.) One byte is one unit only without both.
+    ASCII = hi_any == 0 && drop_any == 0;
     0
 }
 

@@ -77,6 +77,8 @@ export interface TapeLink {
   head(n: JNode, max: number): string;
   /** How many nodes of `n`'s subtree are at most `levels` below it. */
   within(n: JNode, levels: number): number;
+  /** How many children `n` has, counted up to `max` (more: max + 1). */
+  childrenUpTo(n: JNode, max: number): number;
   /** Calls `f` with the key of each of `n`'s children, without making them. */
   childKeys(n: JNode, f: (key: Key) => void): void;
   /** The tree search (TreeView) under `n`: matching tape indexes, in document order, at most `max`. */
@@ -148,6 +150,9 @@ export const MAX_ISSUES = 500;
  * stack ran out: 2,200 to 25,000 levels). About 270 bytes of tree per level, so at most ~27 MB.
  */
 export const MAX_DEPTH = 100_000;
+
+/** The error of a document with no value: empty, or only whitespace, a byte order mark or comments. */
+export const NO_VALUE = 'No JSON value';
 /**
  * Deepest nesting the features that still walk a tree recursively work on (Convert, Compare and the
  * spreadsheet exports), the same in every browser and far from any stack limit. Their cost grows with the
@@ -247,23 +252,14 @@ const AFTER = 2;
 
 /** Parses `text` in one go. */
 export function parse(text: string, { lines: jsonLines = false, repair = false }: ParseOptions = {}): ParseResult {
-  const once = (t: string, fix: boolean) => {
-    begin(t, jsonLines, STEP);
-    fixing = fix;
-    return steps(Infinity)!;
-  };
-  const res = once(text, false);
-  if (!repair || !res.error) return res;
-  const fixed = once(text, true);
-  if (!fixed.error) return fixed;
-  // JSON written as a string (`{\"a\": 1}`): read again with that level of escapes undone.
-  const u = unescaped(text);
-  if (u) {
-    let r = once(u.d, false);
-    if (r.error) r = once(u.d, true);
-    if (!r.error) return remap(r, u);
+  begin(text, jsonLines, STEP);
+  if (!repair) return steps(Infinity)!;
+  const ps = new Passes(text, jsonLines, STEP);
+  for (let r: ParseResult | null = null; ps.next(r); ) {
+    r = steps(Infinity)!;
+    if (!r.error) return ps.done(r);
   }
-  return res;
+  return ps.plain!;
 }
 
 /**
@@ -277,34 +273,74 @@ export function parse(text: string, { lines: jsonLines = false, repair = false }
  */
 export function parser(text: string, { lines: jsonLines = false, repair = false }: ParseOptions = {}, every = STEP): Parser {
   begin(text, jsonLines, every);
+  const ps = repair ? new Passes(text, jsonLines, every) : null;
+  ps?.next(null);
   const state = save();
   let result: ParseResult | undefined;
-  // The passes (see parse()): 0 as is, 1 repairing, 2 and 3 the same with escapes undone.
-  let pass = 0;
-  let u: Unescaped | null = null;
-  let failed: ParseResult | undefined;
-  const next = (): boolean => {
-    if (++pass === 2 && !(u = unescaped(text))) return false;
-    if (pass > 3) return false;
-    begin(pass < 2 ? text : u!.d, jsonLines, every);
-    fixing = pass !== 2;
-    save(state);
-    return true;
-  };
   const step = (until: number): ParseResult | undefined => {
     if (result) return result;
     load(state);
     const r = steps(until);
-    if (!r) {
-      save(state);
-      return undefined;
-    }
-    if (!r.error) return (result = pass >= 2 ? remap(r, u!) : r);
-    failed ??= r;
-    if (repair && next()) return undefined;
-    return (result = failed);
+    if (!r) save(state);
+    else if (!ps || !r.error) result = ps ? ps.done(r) : r;
+    else if (ps.next(r)) save(state);
+    else result = ps.plain!;
+    return result;
   };
-  return { step, at: () => (result ? text.length : pass >= 2 ? u!.map[state.i] : state.i) };
+  return { step, at: () => (result ? text.length : ps?.u && PASSES[ps.k][0] ? ps.u.map[state.i] : state.i) };
+}
+
+/**
+ * The passes of a parse with `repair`, each [on the text with escapes undone, fixing, quoting,
+ * prose]: the first repairs unescaped quotes and prose around the value; if it fails, the text as is
+ * (what a parse without repairs gives, kept if every pass fails), then repairing what fails; then
+ * the same two on JSON written as a string.
+ */
+export const PASSES: [boolean, boolean, boolean, boolean][] = [
+  [false, false, true, true],
+  [false, false, false, false],
+  [false, true, false, true],
+  [true, false, true, true],
+  [true, true, false, true],
+];
+
+/** The passes of one parse with `repair`. */
+class Passes {
+  k = -1;
+  u: Unescaped | null | undefined = undefined;
+  /** The result of the text as is. */
+  plain: ParseResult | undefined;
+  constructor(
+    readonly text: string,
+    readonly lines: boolean,
+    readonly every: number,
+  ) {}
+
+  /** Begins the next pass after one that failed with `r` (null: the first): false if none is left. */
+  next(r: ParseResult | null): boolean {
+    for (;;) {
+      this.k++;
+      // (The text as is gives what the first pass gave if it repaired nothing.)
+      if (this.k === 1 && !turnedLast) {
+        this.plain = r!;
+        continue;
+      }
+      if (this.k === 2) this.plain ??= r!;
+      if (this.k >= PASSES.length) return false;
+      const [esc, fix, quote, text] = PASSES[this.k];
+      if (esc && (this.u ??= unescaped(this.text)) === null) return false;
+      begin(esc ? this.u!.d : this.text, this.lines, this.every);
+      fixing = fix;
+      quoting = quote;
+      prose = text;
+      return true;
+    }
+  }
+
+  /** Result `r` of the current pass, as the result of the parse. */
+  done(r: ParseResult): ParseResult {
+    return PASSES[this.k][0] ? remap(r, this.u!) : r;
+  }
 }
 
 /** `text` read as the content of a JSON string (with escapes undone), and where each of its characters (and its end) comes from. */
@@ -444,6 +480,13 @@ let wrap: JNode | null = null;
 let phase = 0;
 /** Repairing (ParseOptions.repair, after the parse failed without). */
 let fixing = false;
+/** With ParseOptions.repair: a quote followed by a word is inside its string (see str()). */
+let quoting = false;
+/** With ParseOptions.repair: text that isn't JSON around the value is ignored (see topLevel(), steps()). */
+let prose = false;
+/** One of `quoting` or `prose` repaired something (and `turnedLast` when the parse that did finished). */
+let turned = false;
+let turnedLast = false;
 
 function begin(text: string, jsonLines: boolean, perRun: number) {
   src = text;
@@ -461,7 +504,7 @@ function begin(text: string, jsonLines: boolean, perRun: number) {
   sets = [];
   callD = [];
   callS = [];
-  fixing = false;
+  fixing = quoting = prose = turned = false;
 }
 
 interface State {
@@ -490,16 +533,19 @@ interface State {
   wrap: JNode | null;
   phase: number;
   fixing: boolean;
+  quoting: boolean;
+  prose: boolean;
+  turned: boolean;
 }
 
 /** The running parse's state, into `state` (a new object without it). */
 function save(state?: State): State {
-  const s: State = { src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing };
+  const s: State = { src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing, quoting, prose, turned };
   return state ? Object.assign(state, s) : s;
 }
 
 function load(s: State) {
-  ({ src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing } = s);
+  ({ src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing, quoting, prose, turned } = s);
   opened = false;
 }
 
@@ -512,6 +558,15 @@ function steps(until: number): ParseResult | undefined {
         i = 1;
       }
       ws();
+      // With repairs: prose before a code fence (an LLM's reply) is ignored.
+      if (prose && i < n && !src.startsWith('```', i) && isText(i)) {
+        const f = fenceLine(i);
+        if (f >= 0 && proseUntil(i, f)) {
+          fix(i, 'Text before the code fence was ignored');
+          turned = true;
+          i = f;
+        }
+      }
       if (src.startsWith('```', i)) {
         fix(i, 'Markdown code fences are not part of JSON');
         i = eol(i);
@@ -534,11 +589,14 @@ function steps(until: number): ParseResult | undefined {
 }
 
 function finish(error: Issue | null): ParseResult {
+  // (An editor shows a blank document as empty: its callers check for that before they parse.)
+  if (!error && !root) error = { p: n, m: NO_VALUE };
   if (error) root = null;
   issues.sort((a, b) => a.p - b.p);
   // A wrapped document is not the source text, so the native formatting fast path can't apply.
   exact = exact && !!root && !issues.length && !warnings.length && !multi;
   const res = { root, issues, warnings, error, nodes, depth, exact, multi: multi && !!root };
+  turnedLast = turned;
   // Nothing of it stays here.
   begin('', false, STEP);
   return res;
@@ -661,6 +719,8 @@ const str = (q: number, q2 = q): string => {
   let seg = ++i;
   let out = '';
   let plain = true;
+  // (With repairs: where a string with quotes inside closes, see innerClose().)
+  let inner = -1;
   for (;;) {
     if (i >= n) {
       if (fixing) {
@@ -671,6 +731,13 @@ const str = (q: number, q2 = q): string => {
     }
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
+      // With repairs: a quote followed by a word (`"say "hi" now"`) is inside the string.
+      if (quoting && q === 34 && (i < inner || (inner = innerClose(i)) > i)) {
+        fix(i, 'Unescaped quote inside a string (kept in it)');
+        turned = true;
+        i++;
+        continue;
+      }
       out += src.slice(seg, i);
       i++;
       if (fixing && plain) {
@@ -700,6 +767,83 @@ const str = (q: number, q2 = q): string => {
     }
     i++;
   }
+};
+
+/** Whether a word starts at `p`, after spaces or tabs on the same line. */
+const wordAfter = (p: number): boolean => {
+  while (src.charCodeAt(p) === 32 || src.charCodeAt(p) === 9) p++;
+  return isIdentStart(src.charCodeAt(p));
+};
+
+/** Words that stand for values (the loose ones too, see loose()). */
+const LITERALS = new Set(['true', 'false', 'null', 'True', 'TRUE', 'False', 'FALSE', 'None', 'NULL', 'Null', 'nil', 'undefined', 'NaN', 'Infinity', 'tru', 'ture', 'treu', 'rtue', 'fals', 'flase', 'fasle', 'fales', 'nul', 'nulll', 'nill', 'nll']);
+
+/** Whether the text at `p` is prose rather than a value: not a bracket, not what starts a value, or a word that is not a value nor a call(…). */
+const isText = (p: number): boolean => {
+  const c = src.charCodeAt(p);
+  if (c === 125 || c === 93) return false;
+  if (!startsValue(c)) return true;
+  if (!isIdentStart(c)) return false;
+  let e = p;
+  while (e < n && isIdent(src.charCodeAt(e))) e++;
+  if (LITERALS.has(src.slice(p, e))) return false;
+  while (src.charCodeAt(e) === 32 || src.charCodeAt(e) === 9) e++;
+  return src.charCodeAt(e) !== 40;
+};
+
+/** Where a line starting with ``` (after spaces) begins from `p` on, or -1. */
+const fenceLine = (p: number): number => {
+  for (let k = src.indexOf('```', p); k >= 0; k = src.indexOf('```', k + 3)) {
+    let j = k - 1;
+    while (j >= 0 && (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9)) j--;
+    if (j < 0 || src.charCodeAt(j) === 10 || src.charCodeAt(j) === 13) return k;
+  }
+  return -1;
+};
+
+/**
+ * With repairs, if the quote at `p` is inside its string (`"say "hi" now"`), where the string closes; else -1.
+ * Inside: a word follows it, the string goes on to the next quote on the same line with no JSON between
+ * (no , : [ ] { } and no escape), and so on until a quote that is followed by what can follow a string
+ * (, } ] : or the line's end). Else the quote closes the string as without repairs: `["x" y, "z"]` is three
+ * values, `{a: "x" b: "y"}` two members, `"hi "x""` a string and an empty one.
+ */
+const innerClose = (p: number): number => {
+  if (!wordAfter(p + 1)) return -1;
+  for (let k = p + 1; k < n; k++) {
+    const c = src.charCodeAt(k);
+    if (c === 34) {
+      if (wordAfter(k + 1)) continue;
+      let j = k + 1;
+      while (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9) j++;
+      const d = src.charCodeAt(j);
+      return j >= n || d === 44 || d === 125 || d === 93 || d === 58 || d === 10 || d === 13 ? k : -1;
+    }
+    if (c === 10 || c === 13 || c === 44 || c === 58 || c === 91 || c === 93 || c === 123 || c === 125 || c === 92) return -1;
+  }
+  return -1;
+};
+
+/**
+ * With repairs, whether [p, end) is prose to ignore (around the value): it starts with text that isn't a
+ * comment, is text (no control characters or U+FFFD: a binary file isn't prose), opens no container,
+ * and none of its lines starts with a value. (`{"a": 1}\nhello\n{"b": 2}`
+ * stays three values, `"a"\nb\n"c"` too.)
+ */
+const proseUntil = (p: number, end: number): boolean => {
+  if (!isText(p) || (src.charCodeAt(p) === 47 && (src.charCodeAt(p + 1) === 47 || src.charCodeAt(p + 1) === 42))) return false;
+  for (let k = p; k < end; k++) {
+    const c = src.charCodeAt(k);
+    // (Not a container, nor bytes that aren't text: control characters, U+FFFD from bytes that weren't UTF-8.)
+    if (c === 123 || c === 91 || (c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 127 || c === 0xfffd) return false;
+    if (c === 10 || c === 13) {
+      let j = k + 1;
+      while (j < end && (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9 || src.charCodeAt(j) === 10 || src.charCodeAt(j) === 13)) j++;
+      if (j < end && !isText(j)) return false;
+      k = j - 1;
+    }
+  }
+  return true;
 };
 
 /**
@@ -991,6 +1135,13 @@ const topLevel = (r: JNode): boolean => {
   }
   root = r;
   skipTail();
+  // With repairs: prose after the value (`{"a": 1} that is all`) is ignored, rather than read as JSON Lines.
+  if (prose && !lines && i < n && proseUntil(i, n)) {
+    fix(i, 'Text after the JSON value was ignored');
+    turned = true;
+    i = n;
+    return true;
+  }
   if ((i < n && startsValue(src.charCodeAt(i))) || lines) {
     // Several top-level values (NDJSON / JSON Lines): re-parse them into one array.
     multi = true;
