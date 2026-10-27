@@ -17,7 +17,6 @@ import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
-import { readText } from '../json/text';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
@@ -1704,7 +1703,7 @@ export class Engine {
       if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
     };
     try {
-      const text = await readText(f);
+      const text = await (await import('../json/read')).readText(f);
       if (signal.aborted) return unshow();
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
       let failed = false;
@@ -1866,7 +1865,7 @@ export class Engine {
   async loadCompareFile(f: File, source: InputSource = 'file') {
     const signal = this.request(2);
     try {
-      const text = await readText(f);
+      const text = await (await import('../json/read')).readText(f);
       if (signal.aborted) return;
       this.loadCompare(text, f.name);
       noteLoad(source, 2, f.name);
@@ -2152,7 +2151,7 @@ export class Engine {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
         return null;
       }
-      const text = await readText(res);
+      const text = await (await import('../json/read')).readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
@@ -3428,6 +3427,7 @@ export class Engine {
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
             () => loadPack(),
+            () => import('../json/read'),
             () => import('./sizes'),
             () => import('../convert'),
             () => import('../convert/import'),

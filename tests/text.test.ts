@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { asciiText, geckoForTests, readText } from '../lib/json/text';
+import { asciiText, geckoForTests } from '../lib/json/text';
+import { readText } from '../lib/json/read';
 
 const bytesText = (bytes: Uint8Array) => readText(new Blob([bytes as BlobPart]));
 
