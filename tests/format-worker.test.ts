@@ -1,14 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
-import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 import type { Request } from '../lib/engine/reindent.worker';
 import { applyCodeChange, codeIndexer, type CodeChange, type CodeIndex } from '../lib/json/code-index';
 import { formatDoc } from '../lib/json/format';
 import { parse } from '../lib/json/parser';
 import type { DocumentMetrics } from '../lib/json/metrics';
 import { unpacker, type PackedTree } from '../lib/json/pack';
-import { diffResults } from './oracle/compare';
+import { diffResults, genDeep, genLoose, mutate, rng } from './oracle/compare';
+import { genStrict, loosen } from './oracle/tape';
+import { byteLength } from '../lib/json/format';
+import { documentMetrics } from '../lib/json/metrics';
+import { jsonLines } from '../lib/engine/rules';
+import { kids } from '../lib/json/parser';
 
 interface Reply {
   id: number;
@@ -49,6 +55,65 @@ function session({ clock = 0, wait = 10_000 } = {}) {
   });
   return { worker, receive, messages, async request(data: Request) { const reply = receive(data.id); worker.postMessage(data); return reply; } };
 }
+
+test('the parse request and the output of loose documents read the tape: the same tree, metrics and output as parser.ts', async () => {
+  // (parser.ts left the worker: these requests parse to a tape now. Byte for byte what they gave before.)
+  const { worker, request, receive } = session();
+  const r = rng(77);
+  let id = 0;
+  try {
+    for (let it = 0; it < 300; it++) {
+      const k = it % 6;
+      let text = k === 0 ? genStrict(r, 4) : k === 1 ? loosen(r, genStrict(r, 4)) : k === 2 ? mutate(r, genLoose(r, 4)) : k === 3 ? genLoose(r, 5) : k === 4 ? genDeep(r, 480 + r.int(60)) : [genStrict(r, 2), genStrict(r, 2), genLoose(r, 2)].join('\n');
+      if (it % 25 === 0) text = '{"a":1,"a":{"b":[1,2,{"a":3,"a":4}]},"c":"\\u0041😀"}';
+      const lines = k === 5 && r.chance(0.5);
+      const indent = r.pick(['', '  ', '\t']);
+      const sortKeys = r.chance(0.3);
+      const escape = r.chance(0.2);
+      const old = parse(text, { lines, repair: true });
+      const expected = old.root ? formatDoc(text, old, indent, sortKeys) : null;
+      const label = `iteration ${it}: ${JSON.stringify(text.slice(0, 200))} ${JSON.stringify({ lines, indent, sortKeys, escape })}`;
+      // The parse request: the tree first, then the output.
+      const parsed = await request({ id: ++id, text, parse: true, indent, sortKeys, escape, lines });
+      const res = unpacker(parsed.tree!, text)(Infinity)!;
+      assert.equal(diffResults(old, res), null, label);
+      const min = old.root ? formatDoc(text, old, '') : null;
+      const metrics = documentMetrics(text, old, min ?? '');
+      if (jsonLines(text, old)) metrics.records = kids(old.root!).length;
+      if (escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
+      assert.deepEqual(parsed.metrics, metrics, label);
+      const output = await receive(id);
+      assert.equal(output.out, expected, label);
+      assert.equal(output.display, escape && expected ? JSON.stringify(expected) : undefined, label);
+      // The fast path (Format view settings): its output.
+      const fast = await request({ id: ++id, text, fast: true, indent, sortKeys, escape, lines });
+      assert.equal(fast.out === null ? null : escape ? JSON.parse(fast.display!) : fast.out, expected, label);
+    }
+  } finally { await worker.terminate(); }
+});
+
+test("parser.ts's parser stays out of the worker: nothing it imports calls it", () => {
+  // (The worker parses to tapes only, which keeps the old parser's ~4 KB out of its bundle. Its constants,
+  // repair passes and types may still come from parser.ts.)
+  const root = resolve(__dirname, '../..');
+  const seen = new Set<string>();
+  const callers: string[] = [];
+  const walk = (file: string) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const src = readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/^import\s+(type\s+)?(?:([\s\S]*?)\s+from\s+)?['"](\.[^'"]+)['"]/gm)) {
+      const names = (m[2] ?? '').replace(/[{}]/g, '').split(',').map((x) => x.trim()).filter(Boolean);
+      if (m[1] || (names.length && names.every((x) => x.startsWith('type ')))) continue;
+      const dep = resolve(dirname(file), m[3]) + '.ts';
+      if (dep.endsWith('/lib/json/parser.ts') && names.some((x) => /^(parse|parser)( as |$)/.test(x))) callers.push(relative(root, file));
+      walk(dep);
+    }
+  };
+  walk(resolve(root, 'lib/engine/reindent.worker.ts'));
+  assert.ok(seen.size > 10, `${seen.size} modules`);
+  assert.deepEqual(callers, []);
+});
 
 test('format worker patches an acknowledged output across skipped replies and invalid edits', async () => {
   const { worker, request } = session();
