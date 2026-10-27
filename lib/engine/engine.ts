@@ -766,7 +766,8 @@ export class Engine {
 
     let hint: Hint = null;
     if (jwt || lines) hint = null;
-    else if (metrics?.unescape || res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
+    // (A worker measured it: a long root string isn't decoded here just for this.)
+    else if (metrics ? metrics.unescape : res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
     else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
 
     store.set({

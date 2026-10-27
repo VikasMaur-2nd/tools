@@ -66,6 +66,8 @@ export function documentMetrics(text: string, res: ParseResult, minified?: strin
     for (const child of list) if (child.t >= ARR) stack.push(child);
   }
   const metrics: DocumentMetrics = { bytes: byteLength(text), min: res.root ? min ?? byteLength(minified ?? formatDoc(text, res, '')) : 0, extra, units };
-  if (res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) metrics.unescape = true;
+  // (A string's start is enough: a long one from a tape isn't decoded whole for this.)
+  const root = res.root;
+  if (root?.t === STR && /^\s*[[{]/.test(root._v === undefined && root.z ? root.z.head(root, 65_536) : (root.v as string))) metrics.unescape = true;
   return metrics;
 }

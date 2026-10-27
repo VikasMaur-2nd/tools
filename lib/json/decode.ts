@@ -6,8 +6,11 @@ import { normalizeNumber } from './parser';
 
 const isHex = (c: number) => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 
-/** The value of the string whose opening quote is at `start`, decoded as the parser reads it (it must have parsed: nothing is reported). */
-export function decodeString(src: string, start: number): string {
+/**
+ * The value of the string whose opening quote is at `start`, decoded as the parser reads it (it must have
+ * parsed: nothing is reported). `max`: only its first `max` units, decoding no further.
+ */
+export function decodeString(src: string, start: number, max = Infinity): string {
   const q0 = src.charCodeAt(start);
   const q = q0 === 0x201c || q0 === 0x201d ? 0x201d : q0 === 0x2018 || q0 === 0x2019 ? 0x2019 : q0;
   const q2 = q0 === 0x201c || q0 === 0x201d ? 0x201c : q0 === 0x2018 || q0 === 0x2019 ? 0x2018 : q0;
@@ -15,15 +18,19 @@ export function decodeString(src: string, start: number): string {
   let i = start + 1;
   let seg = i;
   let out = '';
+  // Plain characters that still fit under `max` after `seg`.
+  let room = max;
   for (;;) {
-    if (i >= n) return out + src.slice(seg, i);
+    if (i >= n) return cut(out + src.slice(seg, i), max);
     const c = src.charCodeAt(i);
-    if (c === q || c === q2) return out + src.slice(seg, i);
+    if (c === q || c === q2) return cut(out + src.slice(seg, i), max);
     if (c !== 92) {
+      if (i - seg >= room) return out + src.slice(seg, i);
       i++;
       continue;
     }
     out += src.slice(seg, i);
+    if (out.length >= max) return cut(out, max);
     const e = src.charCodeAt(++i);
     i++;
     switch (e) {
@@ -58,7 +65,7 @@ export function decodeString(src: string, start: number): string {
         } else out += 'u';
         break;
       default:
-        if (i > n) return out;
+        if (i > n) return cut(out, max);
         if (e === 120 && isHex(src.charCodeAt(i)) && isHex(src.charCodeAt(i + 1))) {
           out += String.fromCharCode(parseInt(src.slice(i, i + 2), 16));
           i += 2;
@@ -67,8 +74,11 @@ export function decodeString(src: string, start: number): string {
         } else out += String.fromCharCode(e);
     }
     seg = i;
+    room = max - out.length;
   }
 }
+
+const cut = (s: string, max: number) => (s.length > max ? s.slice(0, max) : s);
 
 /** The value of the loosely written number src.slice(start, end), as the parser gives it: hexadecimal in decimal, others normalized. */
 export function decodeNumber(src: string, start: number, end: number): string {
@@ -81,3 +91,4 @@ export function decodeNumber(src: string, start: number, end: number): string {
   }
   return normalizeNumber(src.slice(start, end));
 }
+

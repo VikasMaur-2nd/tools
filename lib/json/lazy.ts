@@ -7,9 +7,13 @@
  * Every node made here keeps its tape (`z`) and index (`zi`): code that only needs to count or scan
  * a big subtree reads the tape instead of making its nodes (see `tapeOfNode`).
  */
-import { ARR, BOOL, JNode, NUL, NUM, STR, type ParseResult, type TapeLink } from './parser';
-import { containerOf, endOf, kindOf, KEY_NAME, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, startOf, valueOf, W, type Tape } from './tape';
+import { ARR, BOOL, JNode, NUL, NUM, STR, type ParseResult, type TapeLink, type Val } from './parser';
+import { decodeString } from './decode';
+import { containerOf, endOf, kindOf, KEY_NAME, VALUE_DECODE, valueKindOf, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, startOf, valueOf, W, type Tape } from './tape';
 import type { Key } from './parser';
+
+/** Strings with escapes longer than this (source characters) are decoded only when read. */
+const LONG_STRING = 65_536;
 
 /** Makes the nodes of one tape over one source text. */
 export class Filler implements TapeLink {
@@ -22,7 +26,9 @@ export class Filler implements TapeLink {
   make(i: number, u: JNode | null): JNode {
     const t = this.tape;
     const kind = kindOf(t, i);
-    const n = new JNode(kind, kind >= ARR ? undefined : valueOf(t, i, this.src), startOf(t, i), u ? u.d + 1 : 0, u, keyOf(t, i));
+    // (A long string with escapes is decoded when read: a view showing its start reads `head` instead.)
+    const lazy = kind >= ARR || (valueKindOf(t, i) === VALUE_DECODE && kind === STR && endOf(t, i) - startOf(t, i) > LONG_STRING);
+    const n = new JNode(kind, lazy ? undefined : valueOf(t, i, this.src), startOf(t, i), u ? u.d + 1 : 0, u, keyOf(t, i));
     n.e = endOf(t, i);
     n.z = this;
     n.zi = i;
@@ -54,9 +60,15 @@ export class Filler implements TapeLink {
     return c < 0 ? null : [startOf(this.tape, c), endOf(this.tape, c)];
   }
 
-  fill(n: JNode): JNode[] {
+  head(n: JNode, max: number): string {
+    if (n._v !== undefined) return (n._v as string).slice(0, max);
+    return decodeString(this.src, n.s, max);
+  }
+
+  fill(n: JNode): Val {
     const t = this.tape;
     const i = n.zi;
+    if (n.t < ARR) return (n._v = valueOf(t, i, this.src));
     const list: JNode[] = [];
     const end = nextOf(t, i);
     for (let c = i + 1; c < end; c = nextOf(t, c)) list.push(this.make(c, n));

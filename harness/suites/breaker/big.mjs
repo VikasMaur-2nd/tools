@@ -116,7 +116,7 @@ test('a 50 MB string: valid, and the tree shows it without freezing the page', a
   await view(page, 'tree');
   await shown(page, 'tree');
   const gap = await page.evaluate(() => window.__gap.max);
-  t.check(gap < t.budget(1000), 'switching to the tree stalls the page under 1 s', `${Math.round(gap)} ms`, { known: 'bug: the tree lays out a huge string whole (BREAKER-REPORT, tree stall on big strings)' });
+  t.check(gap < t.budget(1000), 'switching to the tree stalls the page under 1 s', `${Math.round(gap)} ms`);
   const row = (await treeRows(page))[0] ?? '';
   t.check(row.startsWith('root"abcdefghij ÄÖÜ 東京 \\n \\"q\\" 🚀 abcdefghij'), 'the row starts with the string', row.slice(0, 60));
 });

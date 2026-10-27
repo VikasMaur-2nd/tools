@@ -71,8 +71,10 @@ export class JNode {
  * the tape's code loads only when a worker sends a tape, so the views don't import it.
  */
 export interface TapeLink {
-  /** Makes `n`'s children and returns them. */
-  fill(n: JNode): JNode[];
+  /** Makes `n`'s value (a container's children, or a long string's text) and returns it. */
+  fill(n: JNode): Val;
+  /** The first `max` units of string `n`'s value, decoding no more of it than that. */
+  head(n: JNode, max: number): string;
   /** How many nodes of `n`'s subtree are at most `levels` below it. */
   within(n: JNode, levels: number): number;
   /** Calls `f` with the key of each of `n`'s children, without making them. */

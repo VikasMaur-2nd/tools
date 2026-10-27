@@ -541,12 +541,14 @@ export class TreeView {
     }
     switch (n.t) {
       case STR: {
-        const s = n.v as string;
+        // (A long string not decoded yet: only its start, which is all a row shows.)
+        const whole = n._v !== undefined || !n.z;
+        const s = whole ? (n.v as string) : n.z!.head(n, 2001);
         const shown = JSON.stringify(s.length > 400 ? s.slice(0, 400) + '…' : s);
         // Badges (nested JSON, JWT) need their hint now; other hints only label the
         // tooltip, built on hover (date labels load the browser's locale data).
         const c0 = s.charCodeAt(0);
-        const badge = c0 === 123 || c0 === 91 || c0 === 34 || c0 === 101 || c0 === 66 || c0 === 98 || c0 <= 32;
+        const badge = whole && (c0 === 123 || c0 === 91 || c0 === 34 || c0 === 101 || c0 === 66 || c0 === 98 || c0 <= 32);
         const hint = badge ? valueHints?.(n)[0] : undefined;
         let extra = '';
         let vcls = 'tv-s';
