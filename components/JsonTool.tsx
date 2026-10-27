@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
@@ -11,13 +12,10 @@ import { store, useUI, type IndentId, type JwtInfo, type View } from '@/lib/engi
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
-import { startTooltips } from '@/lib/tooltips';
 import { startAgentTools } from '@/lib/webmcp';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
-import { CommandPalette, ShortcutsDialog } from './dialogs';
-import ContextMenu from './ContextMenu';
 import { EditorFoldItems, FoldItems, MCheck, MChoice, MHead, MItem, MLink, MSep, Menu, WrapItem } from './menu';
 
 function Btn({
@@ -769,6 +767,43 @@ function ViewerPane({
   );
 }
 
+// Opened by a key, a menu or a right click: loaded once the page is idle (not with its own loading), or at
+// once if opened before. (The menu's portal is made here, so react-dom stays with the first load alone.)
+const CommandPalette = dynamic(() => import('./dialogs').then((m) => m.CommandPalette), { ssr: false });
+const ShortcutsDialog = dynamic(() => import('./dialogs').then((m) => m.ShortcutsDialog), { ssr: false });
+const ContextMenuPopup = dynamic(() => import('./ContextMenu'), { ssr: false });
+
+/** True once the page has been idle after it started. */
+function useIdle() {
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    let gone = false;
+    idle(() => {
+      if (!gone) setDone(true);
+    });
+    return () => {
+      gone = true;
+    };
+  }, []);
+  return done;
+}
+
+function Dialogs() {
+  const open = useUI((s) => !!s.palette || s.shortcuts);
+  const later = useIdle();
+  return open || later ? (
+    <>
+      <CommandPalette />
+      <ShortcutsDialog />
+    </>
+  ) : null;
+}
+
+function ContextMenu() {
+  const open = useUI((s) => s.menu);
+  return open ? createPortal(<ContextMenuPopup key={open.id} m={open} />, document.body) : null;
+}
+
 // The graph's export dialog is code-split too: it loads the first time it opens
 // (and is prefetched with Compare, for offline use).
 const GraphExportDialog = dynamic(() => import('./GraphExport'), { ssr: false });
@@ -1108,8 +1143,20 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const comparing = useUI((s) => s.settings.view === 'compare');
   const empty = useUI((s) => s.empty);
 
-  // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views.
-  useEffect(() => startTooltips(), []);
+  // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views (loaded once the page is idle).
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let gone = false;
+    idle(() =>
+      void import('@/lib/tooltips').then((m) => {
+        if (!gone) stop = m.startTooltips();
+      }),
+    );
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, []);
 
   // Stops the engine below, once. Leaving the page, Next.js keeps its DOM, hidden (an <Activity>): this layout
   // effect's cleanup runs as it hides, before the browser lays the hidden tool out. The effect cleanup below
@@ -1139,6 +1186,8 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
     // A landing page's sample loads in the next task: hydration and the empty editor
     // paint first, and neither half is one long blocking task on a slow phone.
     const sample = pagePreset?.initialText ? window.setTimeout(() => e.applyPreset(pagePreset), 0) : 0;
+    // The context menu loads once the page is idle, before a right click needs it.
+    idle(() => void import('./ContextMenu'));
     const warm = window.setTimeout(() => idle(() => {
       void import('./CompareView');
       void import('./GraphExport');
@@ -1176,8 +1225,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <StatusBar langs={langs} />
       <ToastHost />
       <DropOverlay />
-      <CommandPalette />
-      <ShortcutsDialog />
+      <Dialogs />
       <ContextMenu />
       <GraphExportHost />
       <input ref={fileRef} className={PRIVATE} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />

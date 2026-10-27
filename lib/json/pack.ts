@@ -16,6 +16,8 @@ export { tapeOfNode } from './lazy';
 export { PrettyText, prettyIndexer } from './pretty';
 
 const received = new WeakMap<PackedTree, Tape>();
+/** The tree each tape was last unpacked to, and over which text (see unpacker). */
+const results = new WeakMap<Tape, { src: string; res: ParseResult }>();
 
 /** The tape of a packed tree, its property names read in steps (see `unpacker`). */
 function tapeIn(p: PackedTree): (until: number) => Tape | undefined {
@@ -49,7 +51,14 @@ export function unpacker(p: PackedTree, src: string, { fill = false } = {}): (un
     if (!res) {
       const t = read(until);
       if (!t) return undefined;
-      res = lazyResult(t, src);
+      // (The same tree each time a packed tree is unpacked over the same text: its nodes, and the children
+      // made already, are kept, and views comparing nodes with === agree.)
+      const known = results.get(t);
+      if (known?.src === src) res = known.res;
+      else {
+        res = lazyResult(t, src);
+        results.set(t, { src, res });
+      }
       if (fill && res.root?.z instanceof Filler) filling = res.root.z.fillSteps(res.root);
     }
     if (filling && !filling(until)) return undefined;

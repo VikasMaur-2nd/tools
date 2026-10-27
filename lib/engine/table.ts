@@ -1,6 +1,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Key } from '../json/parser';
 import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
+import { bigFill } from './tree';
 import type { FindResult } from './codeview';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
@@ -146,8 +147,18 @@ export class TableView {
     return this.cols.length;
   }
 
+  /** Called when a node whose children were made in steps is laid out (the counts the engine shows change). */
+  onFilled: (() => void) | null = null;
+
   setNode(node: JNode | null, keepSort = false) {
     if (!node && !this.node) return; // already empty: nothing to lay out
+    // (Items of millions from a tape are made in steps first; until then the table keeps what it showed.)
+    this.pending = node;
+    if (bigFill(node && node.t >= ARR ? node : null, () => {
+      if (this.pending !== node) return;
+      this.setNode(node, keepSort);
+      this.onFilled?.();
+    })) return;
     const key = node ? pathOf(node).join('\u0001') : null;
     const same = key !== null && key === this.nodeKey;
     this.nodeKey = key;
@@ -246,6 +257,9 @@ export class TableView {
   }
 
   private maps = new WeakMap<JNode, Map<string, JNode>>();
+
+  /** The node asked for last (one being filled in steps may be replaced by another meanwhile). */
+  private pending: JNode | null = null;
 
   // ── Find (rows whose key or any cell contains the query) ────────────────
 

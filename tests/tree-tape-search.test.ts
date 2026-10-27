@@ -107,3 +107,17 @@ test('tree search on a tape: an escape letter (\\t, \\n, \\b, \\f, \\r) is not a
     }
   }
 });
+
+test('bigFill makes a big container\'s children in short steps, then says so; small ones are left to read at once', async () => {
+  const { bigFill, BIG_FILL } = await import('../lib/engine/tree');
+  const big = JSON.stringify(Array.from({ length: BIG_FILL + 5 }, (_, i) => i));
+  const lazy = lazyResult(tapeOf(parse(big), big), big);
+  const done = new Promise<void>((resolve) => assert.equal(bigFill(lazy.root, resolve), true));
+  assert.equal(madeCount(lazy.root), 1, 'not made at once');
+  await done;
+  assert.equal(madeCount(lazy.root), BIG_FILL + 6);
+  assert.equal((lazy.root!.v as unknown[]).length, BIG_FILL + 5);
+  assert.equal(bigFill(lazy.root, () => assert.fail('nothing to wait for')), false, 'already made');
+  const small = '[1,2,3]';
+  assert.equal(bigFill(lazyResult(tapeOf(parse(small), small), small).root, () => assert.fail('nothing to wait for')), false);
+});

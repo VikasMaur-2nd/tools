@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { COMMANDS, fuzzy, keyLabel, type Command } from '@/lib/engine/commands';
+import { COMMANDS, fuzzy, type Command } from '@/lib/engine/commands';
 import { store, useUI } from '@/lib/engine/store';
 import { act } from '@/lib/engine/instance';
 import { PRIVATE, track, withVia } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
-import { Kbd } from './Kbd';
+import { Kbd, keyLabel } from './Kbd';
 import { Icon } from './icons';
 
 /** A native <dialog> opened/closed from store state (focus trap + Esc for free). */
