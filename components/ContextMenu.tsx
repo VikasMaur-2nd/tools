@@ -95,7 +95,9 @@ export default function Popup({ m }: { m: Open }) {
         if (at instanceof HTMLElement && at !== el && el.contains(at)) at.click();
         break;
       }
-      menuKey({ ...k, target: at, currentTarget: el, preventDefault() {}, stopPropagation() {} } as unknown as ReactKeyboardEvent<HTMLDivElement>, close);
+      // (Named, not spread: a held key is the browser's event, whose key and modifiers aren't its own properties.)
+      const { key, ctrlKey, metaKey, altKey, shiftKey } = k;
+      menuKey({ key, ctrlKey, metaKey, altKey, shiftKey, target: at, currentTarget: el, preventDefault() {}, stopPropagation() {} } as unknown as ReactKeyboardEvent<HTMLDivElement>, close);
     }
 
     const outside = (e: Event) => !(e.target instanceof Node && el.contains(e.target));
