@@ -62,31 +62,16 @@ const SUMS = 4;
  */
 export const BINARY = /[\0-\x08\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufffe\uffff]/u;
 /**
- * Line `t[a, b)` without copying it: 2 if BINARY would match it, else 1 if FORCED or WIDE would, else 0. (A
- * big document's short lines of other scripts are told at once this way: a copy each was hundreds of MB of
- * garbage, which WebKit gives back late.)
+ * Whether line `t[a, b)` holds only characters that neither break a row, are very wide, nor look binary (see
+ * FORCED, WIDE, BINARY; any pair, line separator, control or special counts as such), read in place: a big
+ * document's short lines of other scripts are told at once (a copy each was hundreds of MB of garbage).
  */
-export function shortClass(t: string, a: number, b: number): number {
-  let r = 0;
+export function plainLine(t: string, a: number, b: number) {
   for (let i = a; i < b; i++) {
     const c = t.charCodeAt(i);
-    if (c < 0xa0) {
-      if (c >= 0x20 && c < 0x7f) continue;
-      // Tab, line feed and carriage return are none; vertical tab, form feed and NEL break; the rest is binary.
-      if (c === 9 || c === 10 || c === 13) continue;
-      if (c === 11 || c === 12 || c === 0x85) r = 1;
-      else return 2;
-    } else if (c >= 0xd800 && c <= 0xdfff) {
-      const d = i + 1 < b ? t.charCodeAt(i + 1) : 0;
-      // (Only a pair is a character: a surrogate alone, or a pair cut at the end, is binary.)
-      if (c > 0xdbff || d < 0xdc00 || d > 0xdfff) return 2;
-      const cp = ((c - 0xd800) << 10) + (d - 0xdc00) + 0x10000;
-      if ((cp >= 0x12000 && cp <= 0x1254f) || (cp >= 0x13000 && cp <= 0x1345f) || (cp >= 0x1d000 && cp <= 0x1d24f)) r = 1;
-      i++;
-    } else if (c === 0xfffe || c === 0xffff) return 2;
-    else if (c === 0x2028 || c === 0x2029 || (c >= 0xfdfa && c <= 0xfdfd) || (c >= 0xa9c1 && c <= 0xa9cd)) r = 1;
+    if (c < 0xa0 ? c < 0x20 ? c !== 9 : c > 0x7e : c > 0x2027 && (c < 0x202a || (c > 0xa9c0 && c < 0xa9ce) || (c > 0xd7ff && c < 0xe000) || (c > 0xfdf9 && c < 0xfdfe) || c > 0xfffd)) return false;
   }
-  return r;
+  return true;
 }
 
 /** Characters that end a row by themselves, searched for (see FORCED). */
@@ -731,9 +716,8 @@ export class Wrapper {
         }
         odd[k] = 1;
       }
-      // (A short line read in place: it can't wrap unless it holds a character that breaks or is very wide.)
-      const short = b - a <= quarter && typeof text === 'string' ? shortClass(text, a, b) : -1;
-      if (short === 0) {
+      // (A short line of plain characters, read in place, can't wrap: see the quarter rule below.)
+      if (b - a <= quarter && typeof text === 'string' && plainLine(text, a, b)) {
         out[k] = 1;
         continue;
       }
@@ -748,12 +732,12 @@ export class Wrapper {
         continue;
       }
       const s = text.slice(a, b);
-      if (!this.exact && (short < 0 ? BINARY.test(s) : short === 2)) {
+      if (!this.exact && BINARY.test(s)) {
         odd[k] = CUT;
         out[k] = this.cut(s, 0, s.length);
         continue;
       }
-      if (short < 0 && s.length <= quarter && !FORCED.test(s) && !WIDE.test(s)) {
+      if (s.length <= quarter && !FORCED.test(s) && !WIDE.test(s)) {
         out[k] = 1;
         continue;
       }

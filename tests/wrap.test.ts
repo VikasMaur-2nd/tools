@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { asciiCells, asciiRows, BINARY, CUT, FORCED, leadOf, shortClass, WIDE, Wrapper } from '../lib/engine/wrap';
+import { asciiCells, asciiRows, BINARY, CUT, FORCED, leadOf, plainLine, WIDE, Wrapper } from '../lib/engine/wrap';
 import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 import { Doc } from '../lib/engine/doc';
 
@@ -34,7 +34,7 @@ describe('soft wrap arithmetic', () => {
   });
 });
 
-test('a short line is told binary, breaking or wide in place exactly as the patterns tell its copy', () => {
+test('a line told plain in place is one the patterns find nothing in (and most lines of other scripts are)', () => {
   let seed = 3;
   const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
   const units = [0, 8, 9, 10, 11, 12, 13, 14, 0x1f, 0x20, 0x41, 0x7e, 0x7f, 0x80, 0x84, 0x85, 0x86, 0x9f, 0xa0, 0xe9, 0x2028, 0x2029, 0x4e2d, 0xa9c0, 0xa9c1, 0xa9cd, 0xa9ce, 0xfdf9, 0xfdfa, 0xfdfd, 0xfdfe, 0xfffd, 0xfffe, 0xffff, 0xd800, 0xdbff, 0xdc00, 0xdfff];
@@ -45,9 +45,9 @@ test('a short line is told binary, breaking or wide in place exactly as the patt
     const a = rnd(2);
     const b = t.length - rnd(2);
     const s = t.slice(a, Math.max(a, b));
-    const want = BINARY.test(s) ? 2 : FORCED.test(s) || WIDE.test(s) ? 1 : 0;
-    assert.equal(shortClass(t, a, Math.max(a, b)), want, JSON.stringify(s));
+    if (plainLine(t, a, Math.max(a, b))) assert.ok(!BINARY.test(s) && !FORCED.test(s) && !WIDE.test(s), JSON.stringify(s));
   }
+  for (const s of ['"Zoë 12": "東京",', '  "name": "Олег — café",', 'tab\there', 'हिन्दी', 'ｶﾀｶﾅ']) assert.ok(plainLine(s, 0, s.length), s);
 });
 
 describe('rows that start inside a string', () => {
