@@ -255,6 +255,30 @@ test('a file that fails to convert opens as text, and its error stays in view', 
   assert.match(toasts[0], /^Couldn't read bad\.yaml: /);
 });
 
+test('a binary file is said to be one, and read again (not kept meanwhile) when opened as text anyway', async () => {
+  for (const [target, name] of [[1, 'disk.img'], [1, 'data.csv'], [2, 'disk.img']] as const) {
+    const { engine, loads } = loading();
+    const said: string[] = [];
+    let run: (() => void) | undefined;
+    engine.toast = (msg: string, _kind: string, action?: { run: () => void }) => {
+      said.push(msg);
+      run = action?.run ?? run;
+    };
+    let reads = 0;
+    const bytes = 'PK\x03\x04\0\0\x14\0' + 'x'.repeat(100);
+    const f = { name, size: bytes.length, text: () => Promise.resolve(bytes), stream: () => (reads++, streamOf(bytes)) };
+    await (target === 1 ? engine.loadFile(f) : engine.loadCompareFile(f));
+    assert.deepEqual(said, [`${name} looks like a binary file, not JSON`]);
+    assert.deepEqual(loads, []);
+    run!();
+    for (let i = 0; i < 5; i++) await settled();
+    assert.equal(reads, 2, 'read again');
+    // (As text: a .csv isn't converted.)
+    assert.deepEqual(loads, [`${target}:${name}`]);
+    assert.equal(said[1], target === 1 ? `Opened ${name}` : `Comparing with ${name}`);
+  }
+});
+
 test('a file that fails to read after a newer one was asked for says nothing', async () => {
   for (const target of [1, 2]) {
     const { engine, toasts } = loading();

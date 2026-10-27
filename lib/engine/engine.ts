@@ -1713,7 +1713,8 @@ export class Engine {
     else void this.loadFile(f, 'file');
   };
 
-  async loadFile(f: File, source: InputSource = 'file') {
+  /** `asText`: opened as it reads, binary or not, no format converted (see asks.ts). */
+  async loadFile(f: File, source: InputSource = 'file', asText = false) {
     const signal = this.request(1);
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
@@ -1733,6 +1734,9 @@ export class Engine {
     const unshow = () => {
       if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
     };
+    // A binary file's toast reads it again if asked (made here, where no text is in scope: a closure made
+    // where one is can keep it alive, and the toast stays until dismissed).
+    const again = () => void this.loadFile(f, source, true);
     this.reading = signal;
     try {
       // (Whether it is text at all is asked of what was read: see asks.ts.)
@@ -1751,14 +1755,15 @@ export class Engine {
           this.ed.undo();
         } else if (said) this.toast(said, 'ok');
       };
-      // Not text (a zip, an image, a video opened by mistake): said so, and opened only when asked.
-      if (looksBinary(text)) {
+      // Not text (a zip, an image, a video opened by mistake): said so, and read again only when asked (the
+      // text, up to hundreds of megabytes, isn't held for as long as the toast stays).
+      if (!asText && looksBinary(text)) {
         unshow();
-        if (!undone) this.toast(...binaryFile(f.name, () => (this.request(1), open(text, f.name, `Opened ${f.name}`))));
+        if (!undone) this.toast(...binaryFile(f.name, again));
         return;
       }
       let said: string | false = `Opened ${f.name}`;
-      if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
+      if (!asText && /\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
         const { detectFormat, importToJson } = await import('../convert/import');
         if (signal.aborted) return unshow();
         const fmt = detectFormat(text, f.name);
@@ -1909,19 +1914,19 @@ export class Engine {
     this.analyzeCompare();
   }
 
-  async loadCompareFile(f: File, source: InputSource = 'file') {
+  /** `asText`: as loadFile's. */
+  async loadCompareFile(f: File, source: InputSource = 'file', asText = false) {
     const signal = this.request(2);
+    // (Read again when asked, as in loadFile.)
+    const again = () => void this.loadCompareFile(f, source, true);
     try {
       const [text, { looksBinary, binaryFile }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./asks')]);
       if (signal.aborted) return;
-      const open = () => {
-        this.loadCompare(text, f.name);
-        noteLoad(source, 2, f.name);
-        if (this.settings.view !== 'compare') this.setView('compare');
-        this.toast(`Comparing with ${f.name}`, 'ok');
-      };
-      if (!looksBinary(text)) return open();
-      this.toast(...binaryFile(f.name, () => (this.request(2), open())));
+      if (!asText && looksBinary(text)) return this.toast(...binaryFile(f.name, again));
+      this.loadCompare(text, f.name);
+      noteLoad(source, 2, f.name);
+      if (this.settings.view !== 'compare') this.setView('compare');
+      this.toast(`Comparing with ${f.name}`, 'ok');
     } catch {
       if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
