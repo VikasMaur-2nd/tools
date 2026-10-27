@@ -6,7 +6,7 @@
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { CASES } from './_cases.mjs';
-import { copied, downloaded, golden, hash, load, reformat, svgTexts, tableRows, treeRows, until } from './_helpers.mjs';
+import { copied, downloaded, golden, hash, load, reformat, settled, svgTexts, tableRows, treeRows, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 240_000 });
 
@@ -235,4 +235,48 @@ test('WebMCP tools on a 3 MB document answer exactly', { engines: ['chromium'], 
     out.push([name, JSON.stringify(args).slice(0, 60), r.length > 1500 ? { hash: hash(r), head: r.slice(0, 1500) } : r]);
   }
   golden(t, 'big-strict/webmcp', out, 'every answer matches the golden file');
+});
+
+test('typing into a 3 MB document: the status, tree and output follow each edit, and Undo restores it', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const { readFileSync } = await import('node:fs');
+  const { bigFixture } = await import('./_gen.mjs');
+  const text = readFileSync(bigFixture('big-records-3mb'), 'utf8');
+  t.assert(await load(page, text, 'edit.json', { timeout: 120_000 }), 'the document loads');
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.locator('.app:visible .ed').first().click({ position: { x: 300, y: 60 } });
+  // (The raw size reads "2.9 MB" before and after these edits: each step waits for its own state.)
+  const state = async (want) => {
+    const end = Date.now() + 120_000;
+    let st = null;
+    while (Date.now() < end) {
+      st = await settled(page, { timeout: 120_000 });
+      if (st && want(st)) return st;
+      await page.waitForTimeout(250);
+    }
+    return st;
+  };
+  const out = {};
+  // 1. An item added before the closing bracket: valid, one more record.
+  await page.keyboard.press(`${mod}+End`);
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type(',null');
+  out.added = await state((st) => st.kind === 'ok' && st.stats?.includes('216,024 nodes'));
+  // 2. A stray letter at the very start: an error at Ln 1, Col 1.
+  await page.keyboard.press(`${mod}+Home`);
+  await page.keyboard.type('x');
+  out.broken = await state((st) => st.kind === 'err');
+  await view(page, 'tree');
+  out.treeBroken = await page.evaluate(() => window.__vis('#view-tree .tv-rows')?.childElementCount ?? 0);
+  // 3. Undo both: the original document, exactly.
+  await page.locator('.app:visible .ed').first().click({ position: { x: 300, y: 60 } });
+  await page.keyboard.press(`${mod}+z`);
+  await page.keyboard.press(`${mod}+z`);
+  out.undone = await state((st) => st.kind === 'ok' && st.stats?.includes('216,023 nodes'));
+  const back = await copied(page, 'Copy input to clipboard', { timeout: 60_000 });
+  t.check(back !== null && hash(back) === hash(text), 'after two Undos the text is the original', back?.length);
+  await view(page, 'tree');
+  out.tree = await until(page, () => (window.__vis('#view-tree .tv-rows')?.childElementCount ?? 0) > 2 || null, null, { timeout: 30_000 }).then(() => treeRows(page).then((r) => r.slice(0, 2)));
+  golden(t, 'big-strict/edits', out, 'the status after each edit matches the golden file');
 });
