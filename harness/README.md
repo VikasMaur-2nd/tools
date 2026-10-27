@@ -60,6 +60,7 @@ Environment settings:
 - `HARNESS_TIMEOUT_SCALE` multiplies every timeout, for slow machines.
 - `HARNESS_HEAVY_LOCK=/path/lock` runs builds under `flock` with other jobs on a shared machine.
 - `HEADED=1` is the same as `--headed`.
+- `HARNESS_UI_FONT="DejaVu Sans"` sets the page's UI font, to reproduce what GitHub's Ubuntu runners show (their `system-ui` falls back to the wider DejaVu Sans, which crowds the toolbar).
 - `HARNESS_HEADERS` is JSON for extra headers on every request to the target. Example for a protected Vercel preview: `{"x-vercel-protection-bypass":"…","x-vercel-set-bypass-cookie":"true"}`. HTTP-level checks should use `t.fetch`.
 
 ## Writing a check

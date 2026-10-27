@@ -107,6 +107,20 @@ const CLIPBOARD_STUB = () => {
   } catch {}
 };
 
+/**
+ * HARNESS_UI_FONT="DejaVu Sans" sets the page's UI font, to reproduce here what another machine's
+ * system-ui font does (GitHub's Ubuntu runners fall back to the wider DejaVu Sans).
+ */
+const UI_FONT = (font) => {
+  const style = () => {
+    const s = document.createElement('style');
+    s.textContent = `:root { --font-ui: ${JSON.stringify(font)} !important; }`;
+    document.head.append(s);
+  };
+  if (document.head) style();
+  else document.addEventListener('DOMContentLoaded', style, { once: true });
+};
+
 /** Page helpers the harness polls with. */
 const HELPERS = () => {
   window.__vis = (sel) => [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length > 0) || null;
@@ -147,6 +161,7 @@ export async function openPage(engine, opts = {}) {
       context.addInitScript(HELPERS),
       ...(opts.legacy ? [context.addInitScript(() => (window.__tkLegacy = true))] : []),
       ...(opts.clipboard !== false ? [context.addInitScript(CLIPBOARD_STUB)] : []),
+      ...(process.env.HARNESS_UI_FONT ? [context.addInitScript(UI_FONT, process.env.HARNESS_UI_FONT)] : []),
     ]);
     const errors = [];
     const watched = new WeakSet();
