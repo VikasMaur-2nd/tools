@@ -67,17 +67,19 @@ function siblingIndex(n: JNode) {
   return list.indexOf(n);
 }
 
-/** Rows a new big document opens with at most (levels open from the root while they fit; the root's always). */
-const OPEN_ROWS = 100_000;
+/** Rows a new big document opens with at most (fewer levels open when they would be more; the root's always). */
+const OPEN_ROWS = 500_000;
 
-/** How many levels a new document opens with: all of a small one, else as many as keep its rows few. */
+/**
+ * How many levels a new document opens with: all of a small one, three or two of a bigger one, and fewer
+ * when that many rows would be more than OPEN_ROWS (a tree from a tape counts them there; a tree from the
+ * page's parser has every node made already, so only its rows cost).
+ */
 function openLevels(root: JNode | null, nodes: number): number {
   if (nodes <= 50_000) return Infinity;
+  let levels = nodes <= 500_000 ? 3 : 2;
   const z = root?.z;
-  // (A tree from the parser on the page: nodes are made already, so only rows cost.)
-  if (!z) return nodes <= 500_000 ? 3 : 2;
-  let levels = 1;
-  while (levels < 8 && z.within(root!, levels + 1) <= OPEN_ROWS) levels++;
+  if (z) while (levels > 1 && z.within(root!, levels) > OPEN_ROWS) levels--;
   return levels;
 }
 

@@ -144,7 +144,7 @@ self.onmessage = (e: MessageEvent<Request>) => {
   let min: string | null = null;
   let parsed: ParseResult | null = null;
   if (data.parse) {
-    const res = parsed = parse(text, { lines: data.lines });
+    const res = parsed = parse(text, { lines: data.lines, repair: true });
     min = res.root ? formatDoc(text, res, '') : null;
     const metrics = documentMetrics(text, res, min ?? '');
     if (jsonLines(text, res)) metrics.records = (res.root!.v as JNode[]).length;
@@ -215,7 +215,7 @@ function analyse(data: Request, text: string) {
   if (wasm === undefined) return void loadWasm().then(() => latest === data.id && analyse(data, text));
   // Parsed straight to a tape: no node objects here (the page makes the ones it shows). Strict JSON goes
   // through WebAssembly; anything else (or no WebAssembly) through the JavaScript parser.
-  const options = { lines: data.lines, maxDepth: MAX_DEPTH };
+  const options = { lines: data.lines, maxDepth: MAX_DEPTH, repair: true };
   const tape = (wasm && !data.lines ? wasmTape(wasm, text, options) : null) ?? (data.progress ? parseShowing(data, text) : parseTape(text, options));
   const res = lazyResult(tape, text);
   showing(data, PARSED);
@@ -234,6 +234,11 @@ function analyse(data: Request, text: string) {
   showing(data, MEASURED);
   const tree = packTape(tape);
   (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, packedTransfer(tree));
+  // A huge document isn't kept here as well (hundreds of MB): an edit then asks the page for all of it again.
+  if (text.length > RETAIN_MAX && !data.good) {
+    source = Doc.of('');
+    sourceId = -1;
+  }
   if (later && metrics.min <= 32_000_000) {
     min ??= reindent(text, '');
     if (min === null) return;
@@ -248,7 +253,7 @@ const REINDENT_DEPTH = 500;
 
 /** The tape parse in steps, posting how far it got (it costs the same as in one go). */
 function parseShowing(data: Request, text: string): Tape {
-  const p = tapeParser(text, { lines: data.lines, maxDepth: MAX_DEPTH });
+  const p = tapeParser(text, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true });
   for (;;) {
     const res = p.step(performance.now() + PROGRESS_EVERY);
     if (res) return res;
@@ -292,7 +297,7 @@ function formatFast(data: Request, input: Doc) {
       raw = !data.sortKeys && !data.lines ? (data.progress ? reindentShowing(data, text, indent) : reindent(text, indent)) : null;
       strict = raw !== null;
       if (raw === null) {
-        const res = parse(text, { lines: data.lines });
+        const res = parse(text, { lines: data.lines, repair: true });
         raw = res.root ? formatDoc(text, res, indent, data.sortKeys) : null;
       }
     } catch (e) {

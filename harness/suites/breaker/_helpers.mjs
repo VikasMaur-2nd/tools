@@ -232,11 +232,12 @@ export function hash(t) {
 
 /**
  * Strict JSON `text` re-indented with `indent` ('' minifies), keeping every number, string and key
- * exactly as written: what the Format view must show, computed without the app's code. Empty
+ * exactly as written (`canonical`: strings as JSON.stringify writes their value, as the app does): what the
+ * Format view must show, computed without the app's code. Empty
  * containers stay `[]` / `{}`; a key is followed by ": " when indenting. Works on Buffers of any size
  * (returns a hash when `hashOnly`, so a 200 MB output never has to exist as one string).
  */
-export function reformat(text, indent, { hashOnly = false } = {}) {
+export function reformat(text, indent, { hashOnly = false, canonical = false } = {}) {
   const parts = [];
   let h = 0x811c9dc5;
   let len = 0;
@@ -255,7 +256,9 @@ export function reformat(text, indent, { hashOnly = false } = {}) {
     if (c === '"') {
       let j = i + 1;
       while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
-      put(text.slice(i, j + 1));
+      // The app writes strings canonically (JSON.stringify of the decoded value: "\u0063" becomes "c").
+      const lit = text.slice(i, j + 1);
+      put(canonical && lit.includes('\\') ? JSON.stringify(JSON.parse(lit)) : lit);
       i = j + 1;
     } else if (c === '{' || c === '[') {
       // An empty container stays on one line.
@@ -302,12 +305,20 @@ export async function heavyLock(t) {
   const file = process.env.BREAKER_HEAVY_LOCK;
   if (!file) return;
   const { spawn } = await import('node:child_process');
-  const p = spawn('flock', [file, 'sh', '-c', 'echo locked; read x'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  // -o: the lock stays with flock itself (not its child), so killing flock always releases it.
+  const p = spawn('flock', ['-o', file, 'sh', '-c', 'echo locked; read x'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const release = () => {
+    try {
+      p.stdin.end();
+    } catch {}
+    p.kill('SIGKILL');
+  };
+  // Released with the test's pages, also when the test ends (or times out) while still waiting for it.
+  t._extra.push({ context: { close: async () => release() }, errors: [] });
+  process.once('exit', release);
   await new Promise((resolve, reject) => {
     p.stdout.on('data', (d) => String(d).includes('locked') && resolve());
     p.on('error', reject);
     p.on('exit', (code) => reject(new Error(`flock exited (${code})`)));
   });
-  // Released with the test's pages (the runner closes every extra context after the test).
-  t._extra.push({ context: { close: async () => { p.stdin.end(); p.kill(); } }, errors: [] });
 }

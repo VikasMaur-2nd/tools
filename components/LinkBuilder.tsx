@@ -13,7 +13,6 @@ import { partsHtml, snippetParts } from '@/lib/link-colors';
 import type { View } from '@/lib/engine/store';
 import { Icon } from './icons';
 import MiniEditor from './MiniEditor';
-import { readText } from '@/lib/json/text';
 
 const VIEWS: [View, string][] = [
   ['format', 'Format'],
@@ -206,7 +205,7 @@ const FILE_TYPES = '.json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,
 
 /** A file's text as the viewer opens it: CSV, TSV, YAML, XML and TOML become JSON (lib/convert/import.ts). */
 async function fileText(f: File) {
-  const text = await readText(f);
+  const text = await (await import('@/lib/json/read')).readText(f);
   if (!/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) return text;
   const { detectFormat, importToJson } = await import('@/lib/convert/import');
   const fmt = detectFormat(text, f.name);
