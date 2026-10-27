@@ -169,14 +169,24 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
           const d = src.charCodeAt(i);
           if (d === 34) break;
           if (d === 92) {
-            special = true;
+            // An escape JSON.stringify writes the same way is kept as it stands (two bytes); others are re-quoted.
+            const e = src.charCodeAt(i + 1);
+            if (e === 34 || e === 92 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) bytes += 2;
+            else special = true;
             i++;
           } else if (d < 32) special = true;
           else if (d < 0x80) bytes++;
           else if (d < 0x800) bytes += 2;
-          else if (d >= 0xd800 && d <= 0xdfff) special = true;
-          else bytes += 3;
+          else if (d >= 0xd800 && d <= 0xdfff) {
+            // A pair is written as it stands (4 bytes); a surrogate alone is escaped.
+            if (d <= 0xdbff && ((src.charCodeAt(i + 1) & 0xfc00) === 0xdc00)) {
+              bytes += 4;
+              i++;
+            } else special = true;
+          } else bytes += 3;
         }
+        // (No closing quote: not a string JSON.parse would read.)
+        if (i >= n) return null;
         i++;
         if (!special) size += bytes;
         else if (requoter && i - a > requoter.min) {
@@ -519,16 +529,24 @@ const IDENT = /^[A-Za-z_$][\w$]*$/;
 const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
 
 /** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without allocating. */
+/** Runs of characters past ASCII (see byteLength). */
+const WIDE_RUN = /[^\x00-\x7f]+/g;
+
 export function byteLength(s: string, from = 0, to = s.length): number {
-  let b = 0;
-  for (let i = from; i < to; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80) b += 1;
-    else if (c < 0x800) b += 2;
-    else if (c >= 0xd800 && c <= 0xdbff && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
-      b += 4;
-      i++;
-    } else b += 3;
+  // A byte a character, plus what the characters past ASCII (found natively, a run at a time) add.
+  let b = to - from;
+  WIDE_RUN.lastIndex = from;
+  for (let m; (m = WIDE_RUN.exec(s)) && m.index < to; ) {
+    const end = Math.min(to, m.index + m[0].length);
+    for (let i = m.index; i < end; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x800) b += 1;
+      else if (c >= 0xd800 && c <= 0xdbff && i + 1 < to && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
+        // (A pair: 4 bytes for its two units.)
+        b += 2;
+        i++;
+      } else b += 2;
+    }
   }
   return b;
 }

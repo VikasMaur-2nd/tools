@@ -9,7 +9,7 @@
  */
 import { ARR, BOOL, NUL, NUM, OBJ, STR } from './parser';
 import { quote, MAX_INDENT } from './format';
-import { KEY_NAME, SIZE_BIG, VALUE_FALSE, VALUE_SLICE, W, valueOf, type Tape } from './tape';
+import { KEY_NAME, SIZE_BIG, VALUE_DECODE, VALUE_FALSE, VALUE_SLICE, W, valueOf, type Tape } from './tape';
 import type { CodeIndex } from './code-index';
 
 /** A document's pretty lines: the code view's index of them (see codeIndexer), and what each line is. */
@@ -40,14 +40,19 @@ function special(src: string, at: number): number {
 
 /**
  * Whether the string token src[a, b) is written as it stands: in double quotes (a string cut off at the end
- * has no closing one), with nothing JSON.stringify would escape (a quote, a backslash, a control character
- * or a lone surrogate) between them.
+ * has no closing one), with nothing JSON.stringify would escape (a quote, a control character or a lone
+ * surrogate) between them, and only escapes it writes the same way (\" \\ \b \f \n \r \t).
  */
 function plain(src: string, a: number, b: number): boolean {
   if (b - a < 2 || src.charCodeAt(a) !== 34 || src.charCodeAt(b - 1) !== 34) return false;
   for (let i = a + 1; i < b - 1; i++) {
     const c = src.charCodeAt(i);
-    if (c < 0x20 || c === 34 || c === 92) return false;
+    if (c === 92) {
+      const e = src.charCodeAt(++i);
+      if (i >= b - 1 || !(e === 34 || e === 92 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116)) return false;
+      continue;
+    }
+    if (c < 0x20 || c === 34) return false;
     if (c >= 0xd800 && c <= 0xdfff) {
       if (c >= 0xdc00 || i + 1 >= b - 1) return false;
       const d = src.charCodeAt(i + 1);
@@ -176,6 +181,18 @@ export function prettyIndexer(t: Tape, src: string, indent: string): (until: num
               plainLine &&= PRINTABLE.test(q);
             }
           }
+        } else if (kind === STR && vk === VALUE_DECODE && plain(src, nodes[o + 1], nodes[o + 2])) {
+          // (Escapes JSON.stringify writes the same way: the token as it stands.)
+          const a = nodes[o + 1];
+          const b = nodes[o + 2];
+          len += b - a;
+          if (plainLine) {
+            if (wider < a) {
+              WIDER.lastIndex = a;
+              wider = WIDER.exec(src)?.index ?? src.length;
+            }
+            plainLine = wider >= b;
+          }
         } else {
           const v = valueOf(t, i, src) as string;
           const q = kind === STR ? quote(v) : v;
@@ -255,7 +272,7 @@ export class PrettyText {
     } else if (kind === NUL) out += 'null';
     else if (kind === BOOL) out += ((m >> 5) & 7) === VALUE_FALSE ? 'false' : 'true';
     else if (kind === NUM) out += valueOf(t, i, src) as string;
-    else if (((m >> 5) & 7) === VALUE_SLICE && plain(src, nodes[o + 1], nodes[o + 2])) out += src.slice(nodes[o + 1], nodes[o + 2]);
+    else if ((((m >> 5) & 7) === VALUE_SLICE || ((m >> 5) & 7) === VALUE_DECODE) && plain(src, nodes[o + 1], nodes[o + 2])) out += src.slice(nodes[o + 1], nodes[o + 2]);
     else out += quote(valueOf(t, i, src) as string);
     return last ? out : out + ',';
   }
