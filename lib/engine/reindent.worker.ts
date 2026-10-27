@@ -252,7 +252,7 @@ declare const FileReaderSync: { new (): { readAsArrayBuffer(blob: Blob): ArrayBu
 /**
  * A request with the file the page loaded its document from, instead of the text: read here as the page
  * read it (readText(), then lf() as Engine.load does), so the text is the editor's without the page sending
- * it in chunks, and its bytes go to WebAssembly a window at a time (never all at once). If it can't be read
+ * it in chunks, and its bytes go to WebAssembly 16 MB at a time (never all at once). If it can't be read
  * (it changed on disk since) or its text isn't the page's length, the reply is a reset: the page sends the
  * text then. Messages that come meanwhile wait for it.
  */
@@ -269,13 +269,23 @@ function readFile(data: Request) {
   });
 }
 
-/** A file's bytes for WebAssembly, a window at a time, if read.ts reads it as UTF-8 (not with a UTF-16 byte order mark). */
+/** File bytes read at a time for WebAssembly's windows: each read costs ~5-20 ms whatever its size (Chromium), so few, but never the whole file. */
+const BLOCK = 16 << 20;
+
+/** A file's bytes for WebAssembly, a block at a time, if read.ts reads it as UTF-8 (not with a UTF-16 byte order mark). */
 function fileBytes(file: Blob): ByteSource | undefined {
   if (typeof FileReaderSync === 'undefined') return undefined;
   const reader = new FileReaderSync();
-  const read = (at: number, len: number) => new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + len)));
-  const head = read(0, 2);
-  if ((head[0] === 0xff && head[1] === 0xfe) || (head[0] === 0xfe && head[1] === 0xff)) return undefined;
+  let base = 0;
+  let block = new Uint8Array(reader.readAsArrayBuffer(file.slice(0, BLOCK)));
+  if ((block[0] === 0xff && block[1] === 0xfe) || (block[0] === 0xfe && block[1] === 0xff)) return undefined;
+  const read = (at: number, len: number) => {
+    if (at < base || at + len > base + block.length) {
+      base = at;
+      block = new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + Math.max(BLOCK, len))));
+    }
+    return block.subarray(at - base, at - base + len);
+  };
   return { size: file.size, read };
 }
 
