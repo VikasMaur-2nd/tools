@@ -23,6 +23,8 @@ export interface Request {
   text?: string;
   indent?: string;
   warm?: number;
+  /** The analysis worker's warm-up before a document comes (see warmTape). */
+  warmTape?: boolean;
   parse?: boolean;
   sortKeys?: boolean;
   lines?: boolean;
@@ -105,6 +107,7 @@ self.onmessage = (e: MessageEvent<Request>) => {
     return;
   }
   if (data.cancel) { latest = data.id; clearTimeout(fastTimer); return; }
+  if (data.warmTape) { void loadWasm().then(warmTape); return; }
   if (data.start) {
     latest = data.id;
     incoming = { options: data, chunks: [] };
@@ -215,6 +218,19 @@ const loadWasm = () => (wasmReady ??= (async () => {
   // The JavaScript parser's first parses in a fresh worker run before the engine optimizes it: a small one now.
   warmUp();
 })());
+
+/**
+ * The analysis worker's warm-up (Engine.warmAnalysis): one WebAssembly parse of ~256 KB, from bytes and from
+ * text. The engines optimize a module only once it has run a while: after the 4 KB warmUp() alone, the first
+ * 1 MB document parsed 30-60% slower than the next (Node: 13 ms against 8.5; WebKit 2x).
+ */
+function warmTape() {
+  if (!wasm) return;
+  const records = Array.from({ length: 1700 }, (_, i) => `{"id":${i},"name":"item ${i} — café","tags":["a","b\\n","c"],"price":${(i * 1.37).toFixed(2)},"ok":${i % 2 === 0},"n":null,"geo":{"lat":${(i % 90) + 0.5},"lon":-${(i % 180) + 0.25}}}`);
+  const text = '[' + records.join(',\n') + ']';
+  wasmTape(wasm, text, {}, new TextEncoder().encode(text));
+  wasmTape(wasm, text);
+}
 
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {

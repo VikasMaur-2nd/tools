@@ -115,6 +115,17 @@ test("parser.ts's parser stays out of the worker: nothing it imports calls it", 
   assert.deepEqual(callers, []);
 });
 
+test('the analysis worker warmed up before a document analyses it as a fresh one does', async () => {
+  const { worker, request, messages } = session();
+  try {
+    worker.postMessage({ id: -2, warmTape: true });
+    const text = '{"a":[1,"x\\u00e9",{"b":null}],"a":2}';
+    const reply = await request({ id: 1, text, analysis: true });
+    assert.equal(diffResults(parse(text, { repair: true }), unpacker(reply.tree!, text)(Infinity)!), null);
+    assert.ok(!messages.some((m) => m.id === -2), 'the warm-up answers nothing');
+  } finally { await worker.terminate(); }
+});
+
 test('format worker patches an acknowledged output across skipped replies and invalid edits', async () => {
   const { worker, request } = session();
   try {

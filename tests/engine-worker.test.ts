@@ -206,6 +206,43 @@ test('worker patch uses pinned fold arrays when the viewer changes before the re
   assert.equal(index?.depth, depth);
 });
 
+test('the analysis worker warmed up before a big document analyses it; a file picker or a drag replaces a used one, never one still analysing', async () => {
+  const { engine, workers, tick } = session();
+  const sent = (w: (typeof workers)[0]) => w.messages.map((m) => JSON.parse(JSON.stringify(m)));
+  // Idle (twice): one worker, warming up.
+  engine.warmAnalysis();
+  engine.warmAnalysis();
+  assert.equal(workers.length, 1);
+  assert.deepEqual(sent(workers[0]), [{ id: -2, warmTape: true }]);
+  // A new document comes: the warm worker holds nothing, so it stays, and analyses it.
+  engine.releaseWorkerDocuments();
+  assert.equal(workers[0].terminated, false);
+  let trees = 0;
+  engine.queueAnalysis(0, Doc.of('{"a":1}'), null, () => trees++, 0);
+  tick();
+  assert.equal(workers.length, 1, 'no other worker');
+  assert.equal(workers[0].messages.at(-1)!.analysis, true);
+  // Still analysing it: a file picker or a drag leaves it be.
+  engine.warmAnalysis(true);
+  assert.equal(workers.length, 1);
+  workers[0].onmessage!({ data: { id: 0, tree: { nodes: { length: 1 }, head: {} }, metrics: { bytes: 7, min: 7, extra: 0, units: 0 } } });
+  await engine.tapeCode();
+  assert.equal(trees, 1);
+  // Done: idle leaves it, a file picker or a drag makes a warm one in its place.
+  engine.warmAnalysis();
+  assert.equal(workers.length, 1);
+  engine.warmAnalysis(true);
+  assert.equal(workers.length, 2);
+  assert.equal(workers[0].terminated, true);
+  assert.deepEqual(sent(workers[1]), [{ id: -2, warmTape: true }]);
+  // Once it has had a document, a new one lets it go, as before.
+  engine.queueAnalysis(0, Doc.of('{"b":2}'), null, () => trees++, 0);
+  tick();
+  engine.releaseWorkerDocuments();
+  assert.equal(workers[1].terminated, true);
+  assert.equal(engine.analysisWorker, null);
+});
+
 // ── A new big document parsed in steps (analyzeInSteps) ──
 
 function stepsSession(text: string) {
