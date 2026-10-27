@@ -1,5 +1,5 @@
 // Extreme documents, exact results: a million keys, ten million numbers, a million duplicate keys, 50 MB
-// one-line and pretty records, a 50 MB string, 50 MB of random bytes, and the 300 MiB size limit. The
+// one-line and pretty records, a 50 MB string, 50 MB of random bytes and of NUL bytes, and the 300 MiB size limit. The
 // expected Format output comes from an independent re-indenter (reformat in _helpers), not the app.
 // Tagged slow: `pnpm e2e breaker/big --slow` (documents from 50 MB take the heavy lock when
 // BREAKER_HEAVY_LOCK names it; run alone on a shared machine).
@@ -10,18 +10,20 @@ import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
-import { clear, golden, hash, heavyLock, reformat, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
+import { clear, golden, hash, heavyLock, openAsText, reformat, seenToasts, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
 
 // (With the heavy lock a check may first wait in its queue for a long time: an hour then.)
 defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: process.env.BREAKER_HEAVY_LOCK ? 3_600_000 : 600_000 });
 
 /** Opens fixture `name` through Open file and waits (scaled per engine) until the status settles. */
-async function open(t, name, { minutes = 3, reopen = true } = {}) {
+async function open(t, name, { minutes = 3, reopen = true, binary = false } = {}) {
   const { page } = t;
   if (reopen) await t.open('/');
   await clear(page);
   await watchToasts(page);
   await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture(name));
+  // (A binary file is said to be one first: then opened as text anyway.)
+  if (binary) await openAsText(page, 60_000 * slow(t));
   return settled(page, { timeout: minutes * 60_000 * slow(t) });
 }
 
@@ -80,7 +82,7 @@ test('ten million numbers in one array: exact status, minified output and tree',
 test('a million duplicate keys: the status counts them', async (t) => {
   const st = await open(t, 'dupes-1000k');
   t.assert(st?.kind === 'ok', 'valid', st);
-  t.check(st.msg === 'Valid JSON· 999,999 duplicate keys', 'the status counts every duplicate (or says it stopped counting)', st.msg, { known: 'bug: the duplicate count stops at 500 and reads as exact (BREAKER-REPORT F10)' });
+  t.check(st.msg === 'Valid JSON· 999,999 duplicate keys' || st.msg === 'Valid JSON· 500+ duplicate keys', 'the status counts every duplicate (or says it stopped counting)', st.msg);
 });
 
 for (const [shape, indent] of [['records', '  '], ['pretty', '']]) {
@@ -96,7 +98,24 @@ for (const [shape, indent] of [['records', '  '], ['pretty', '']]) {
     const out = { status: st };
     await view(page, 'tree');
     await shown(page, 'tree');
-    out.tree = (await treeRows(page)).slice(0, 30);
+    // How many levels a new tree opens is a choice: main opened every level of a document loaded in the
+    // Format view, t3/optimize-json-memory-performance (70a020b) at most 500,000 rows, so only the root here.
+    // Record 0 opened all the way down reads the same either way.
+    const first = '#view-tree .tv-rows [role=treeitem][aria-level="2"]';
+    const closed = await page.evaluate((s) => window.__vis(s)?.getAttribute('aria-expanded') !== 'true', first);
+    if (closed) {
+      await page.locator('#view-tree:visible .tv-rows [role=treeitem][aria-level="2"]').first().click();
+      await page.keyboard.press('*');
+      await until(page, (s) => window.__vis(s)?.getAttribute('aria-expanded') === 'true' || null, first, { timeout: 30_000 });
+    }
+    const rows = await treeRows(page);
+    out.tree = rows.slice(0, 26);
+    t.check(rows[26]?.startsWith('  1:{9}'), 'record 1 follows record 0 in the tree', rows[26]?.slice(0, 40));
+    // (The table shows the tree's selection: back to the root.)
+    if (closed) {
+      await page.locator('#view-tree:visible .tv-rows [role=treeitem][aria-level="1"] .tv-root').click();
+      await until(page, () => window.__vis('#view-tree .tv-rows [role=treeitem][aria-level="1"]')?.getAttribute('aria-selected') === 'true' || null, null, { timeout: 10_000 });
+    }
     await view(page, 'table');
     await shown(page, 'table');
     const tb = await tableRows(page);
@@ -104,6 +123,70 @@ for (const [shape, indent] of [['records', '  '], ['pretty', '']]) {
     golden(t, `big/${name}`, out, 'status, tree and table match the golden file');
   });
 }
+
+test('over 48M characters: two quick edits reach the tree and the output, and Undo brings both back', async (t) => {
+  // Past 48M characters the analysis worker lets its copy of the text go once it is analysed (6eb4c63): the
+  // next edit gets a reset and the page sends the whole document again. The second edit comes inside the
+  // analysis wait, so that reset meets a newer edit.
+  await heavyLock(t);
+  const { page } = t;
+  const name = 'big-pretty-50mb';
+  const text = readFileSync(bigFixture(name), 'utf8');
+  t.assert(text.length > 48_000_000, 'the document is over 48M characters', text.length);
+  const st = await open(t, name, { minutes: 5 });
+  t.assert(st?.msg === 'Valid JSON', 'valid', st);
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  const idRow = async (want) => {
+    await view(page, 'tree');
+    await shown(page, 'tree');
+    const box = page.locator('.findbar:visible input');
+    if (!(await box.count())) await page.keyboard.press(`${mod}+f`);
+    let row = null;
+    for (const end = Date.now() + 120_000 * slow(t); row !== want && Date.now() < end; ) {
+      await box.fill('');
+      await box.fill('$[5].id');
+      await box.press('Enter');
+      row = await until(page, () => window.__vis('#view-tree .tv-rows [aria-selected=true]')?.textContent || null, null, { timeout: 30_000 });
+      if (row !== want) await page.waitForTimeout(1000);
+    }
+    await page.keyboard.press('Escape');
+    return row;
+  };
+  t.check((await idRow('id:5')) === 'id:5', 'the tree shows $[5].id');
+  // Show in editor, then type over the value.
+  await page.evaluate(() => window.__vis('#view-tree').focus());
+  await page.keyboard.press('Enter');
+  await until(page, () => document.activeElement?.id === 'input' || null, null, { timeout: 10_000 });
+  await page.keyboard.type('777');
+  await page.waitForTimeout(600);
+  await page.keyboard.type('8');
+  const edited = text.replace('"id": 5,', '"id": 7778,');
+  const row = await idRow('id:7778');
+  t.check(row === 'id:7778', 'both edits reach the tree', row);
+  await view(page, 'format');
+  const want = reformat(edited, '  ', { hashOnly: true });
+  let got = null;
+  for (let k = 0; k < 30 && got !== want; k++) {
+    got = await outputHash(page, 300_000);
+    if (got !== want) await page.waitForTimeout(2000);
+  }
+  t.check(got === want, 'both edits reach the Format output');
+  // (Typing over a selection is two Undo steps: BREAKER-REPORT F19.)
+  let back = null;
+  for (let k = 0; k < 2 && back !== 'id:5'; k++) {
+    await command(page, 'Undo');
+    back = await idRow('id:5');
+  }
+  t.check(back === 'id:5', 'Undo brings the tree back', back);
+  await view(page, 'format');
+  const original = reformat(text, '  ', { hashOnly: true });
+  got = null;
+  for (let k = 0; k < 30 && got !== original; k++) {
+    got = await outputHash(page, 300_000);
+    if (got !== original) await page.waitForTimeout(2000);
+  }
+  t.check(got === original, 'Undo brings the Format output back');
+});
 
 test('a 50 MB string: valid, and the tree shows it without freezing the page', async (t) => {
   await heavyLock(t);
@@ -133,25 +216,76 @@ test('a 200 MB string of non-ASCII text opens as valid JSON', { known: (engine) 
   t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 1 node · depth 0', 'valid, one node', st);
 });
 
-test('5 MB of random bytes: an error within seconds, and the page stays responsive', async (t) => {
-  // (50 MB of random bytes runs Chromium out of memory on main: 6.8 GiB after 3 minutes. Not opened here.)
-  const { page } = t;
-  await page.goto(t.base + '/', { waitUntil: 'commit' });
-  await t.app.waitEngine(page);
-  await page.evaluate(() => {
+/** Starts recording the longest gap between frames (window.__gap.max). */
+const watchGaps = (page) =>
+  page.evaluate(() => {
     window.__gap = { last: performance.now(), max: 0 };
     const f = () => { const n = performance.now(); window.__gap.max = Math.max(window.__gap.max, n - window.__gap.last); window.__gap.last = n; requestAnimationFrame(f); };
     requestAnimationFrame(f);
   });
-  const t0 = Date.now();
-  const st = await open(t, 'blob-5mb', { minutes: 3, reopen: false });
-  const ms = Date.now() - t0;
-  const gap = await page.evaluate(() => Math.round(window.__gap.max));
-  t.log('random 5 MB:', { ms, gap, st });
+
+for (const [mb, seconds, lock] of [[5, 15, false], [50, 90, true]]) {
+  test(`${mb} MB of random bytes: said to be binary at once; opened as text, an error within ${seconds} s and the page stays responsive`, async (t) => {
+    if (lock) await heavyLock(t);
+    const { page } = t;
+    let crashed = false;
+    page.on('crash', () => (crashed = true));
+    await t.open('/');
+    await clear(page);
+    await watchToasts(page);
+    let t0 = Date.now();
+    await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture(`blob-${mb}mb`));
+    const said = await openAsText(page, 60_000 * slow(t));
+    t.check(said === `blob-${mb}mb.bin looks like a binary file, not JSONOpen as text`, 'said to be binary', said);
+    t.log('binary toast after', Date.now() - t0, 'ms');
+    await watchGaps(page);
+    t0 = Date.now();
+    const st = await settled(page, { timeout: 5 * 60_000 * slow(t) });
+    const ms = Date.now() - t0;
+    const gap = await page.evaluate(() => Math.round(window.__gap.max)).catch(() => -1);
+    t.log(`random ${mb} MB opened as text:`, { ms, gap, st });
+    t.check(!crashed, 'the tab survives');
+    t.check(st?.kind === 'err', 'an error status', st);
+    t.check((await seenToasts(page)).includes(`Opened blob-${mb}mb.bin`), `Opened blob-${mb}mb.bin`, await seenToasts(page));
+    t.check(ms < t.budget(seconds * 1000) * slow(t), `the error shows within ${seconds} s`, `${ms} ms`);
+    t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`);
+  });
+}
+
+test('50 MB of NUL bytes in one line (a disk image): opened as text, it scrolls end to end without a long frame', async (t) => {
+  await heavyLock(t);
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  await t.open('/');
+  await clear(page);
+  await watchToasts(page);
+  await page.locator('.app:visible input[type=file]').setInputFiles(bigFixture('zeros-50mb'));
+  const said = await openAsText(page, 60_000 * slow(t));
+  t.check(said === 'zeros-50mb.img looks like a binary file, not JSONOpen as text', 'said to be binary', said);
+  const st = await settled(page, { timeout: 5 * 60_000 * slow(t) });
   t.check(st?.kind === 'err', 'an error status', st);
-  const known = { known: 'bug: binary text makes the editor measure every line in the DOM (BREAKER-REPORT, binary files)' };
-  t.check(ms < t.budget(15_000) * slow(t), 'the error shows within 15 s', `${ms} ms`, known);
-  t.check(gap < t.budget(2000), 'no frame gap over 2 s', `${gap} ms`, known);
+  await watchGaps(page);
+  // A sweep from the top to the end, a screen a frame further each time, then jumps all over.
+  const scrolled = await page.evaluate(async () => {
+    const el = window.__vis('.pane-ed .ed');
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const max = el.scrollHeight - el.clientHeight;
+    const gaps = [];
+    for (let i = 0; i < 160; i++) {
+      el.scrollTop = i < 80 ? (max * i) / 79 : (max * ((i * 7919) % 80)) / 80;
+      const t0 = performance.now();
+      await frame();
+      gaps.push(performance.now() - t0);
+    }
+    gaps.sort((a, b) => a - b);
+    return { max, median: Math.round(gaps[80]), worst: Math.round(gaps[159]) };
+  });
+  const gap = await page.evaluate(() => Math.round(window.__gap.max)).catch(() => -1);
+  t.log('NUL bytes scrolled:', { ...scrolled, gap });
+  t.check(!crashed, 'the tab survives');
+  t.check(scrolled.max > 0, 'rows to scroll through', scrolled);
+  t.check(gap < t.budget(500), 'no frame over 500 ms while scrolling', `${gap} ms`);
 });
 
 test('the 300 MiB limit: one byte more is refused before reading', async (t) => {
@@ -184,4 +318,18 @@ test('a 26 KB share link that inflates to 10 million values opens', async (t) =>
   await t.app.waitEngine(page);
   const st = await settled(page, { raw: text.length, timeout: 180_000 * slow(t) });
   t.check(st?.msg === 'Valid JSON' && st.stats === '1 line · 10,000,002 nodes · depth 1', 'valid, 10,000,002 nodes', st);
+});
+
+test('a 130 KB share link that inflates to 50 million values asks first, and the tab survives', async (t) => {
+  const { page } = t;
+  let crashed = false;
+  page.on('crash', () => (crashed = true));
+  const { fragment } = zeroLink(100);
+  t.log(`link fragment ${fragment.length} chars`);
+  await page.goto(t.base + '/' + fragment, { waitUntil: 'commit' });
+  await t.app.waitEngine(page);
+  const asked = await until(page, () => [...document.querySelectorAll('.toast')].map((x) => x.textContent).find((x) => /over 32 MB/.test(x)) || null, null, { timeout: 60_000 * slow(t) });
+  t.check(asked === "This link's document is over 32 MB: opening it can slow down or crash this tabOpen anyway", 'asked before opening it', asked);
+  t.check(/^Ready/.test(await page.evaluate(() => window.__vis('.sb-l')?.textContent ?? '')), 'nothing opened meanwhile');
+  t.check(!crashed, 'the tab survives');
 });

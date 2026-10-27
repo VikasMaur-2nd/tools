@@ -77,6 +77,8 @@ export interface TapeLink {
   head(n: JNode, max: number): string;
   /** How many nodes of `n`'s subtree are at most `levels` below it. */
   within(n: JNode, levels: number): number;
+  /** How many children `n` has, counted up to `max` (more: max + 1). */
+  childrenUpTo(n: JNode, max: number): number;
   /** Calls `f` with the key of each of `n`'s children, without making them. */
   childKeys(n: JNode, f: (key: Key) => void): void;
   /** The tree search (TreeView) under `n`: matching tape indexes, in document order, at most `max`. */
@@ -141,7 +143,8 @@ class ParseError {
   }
 }
 
-const MAX_ISSUES = 500;
+/** Issues and warnings listed at most (a document can hold millions of duplicate keys): past it, counts read "500+". */
+export const MAX_ISSUES = 500;
 /**
  * Deepest nesting parsed, the same in every browser (the recursive parser stopped where the call
  * stack ran out: 2,200 to 25,000 levels). About 270 bytes of tree per level, so at most ~27 MB.

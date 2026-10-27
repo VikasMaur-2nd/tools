@@ -94,7 +94,7 @@ export class CodeView {
   private cw = 7.8;
   /** Soft wrap (null: lines run on and the view scrolls sideways). */
   private wrapper: Wrapper | null;
-  /** Per visible line: 1 where the browser decides the breaks (Wrapper.odd). */
+  /** Per visible line: 1 where the browser decides the breaks, CUT for binary (Wrapper.odd). */
   private odd = new Uint8Array(0);
   /** Offset of each line in `text`. */
   private ls = new Int32Array(0);
@@ -482,9 +482,12 @@ export class CodeView {
         const batch: number[] = [];
         const base = index.starts[i];
         // Large outputs bound each wrapper call; small documents keep one shared glyph/layout pass.
-        // (Lines read one at a time with ASCII marks are mostly counted, not measured: bigger batches.)
+        // (Lines read one at a time with ASCII marks are mostly counted, not measured: bigger batches, bound
+        // by the text of the others, which is made and measured.)
+        let made = 0;
         for (; i < n && (small || batch.length < batchMax); i++) {
           if (!small && !ascii && batch.length && endOf(i) - base > 64_000) break;
+          if (!small && ascii && !ascii[i] && batch.length && (made += endOf(i) - index.starts[i]) > 64_000) break;
           if (scanner) {
             states[i] = state;
             state = scanner.scan(text, index.starts[i], Math.min(text.length, endOf(i) + 1), state);
@@ -585,7 +588,8 @@ export class CodeView {
     const probe = document.createElement('span');
     probe.className = 'cv-c';
     probe.textContent = '0'.repeat(200);
-    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+    // (Without the code's right padding, which is no character's width: counted in, every column drifted.)
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;padding:0';
     this.rows.appendChild(probe);
     const w = probe.getBoundingClientRect().width / 200;
     probe.remove();
@@ -634,10 +638,10 @@ export class CodeView {
     if (sub <= 0) return 0;
     if (sub >= this.rowStart[vi + 1] - this.rowStart[vi]) return len;
     const line = this.line(ln);
-    return (this.wrapper as Wrapper).rowStart(line, 0, len, sub, this.odd[vi] === 1);
+    return (this.wrapper as Wrapper).rowStart(line, 0, len, sub, this.odd[vi]);
   }
 
-  /** Is visible line `vi` drawn as one block the browser wraps (wide glyphs, not long)? */
+  /** Is visible line `vi` drawn as one block the browser wraps (wide glyphs, not long, not garbage: see Wrapper.summed)? */
   private isBlock(vi: number) {
     return this.odd[vi] === 1 && this.rowStart[vi + 1] - this.rowStart[vi] > 1 && this.line(this.vis[vi]).length <= LONG_LINE;
   }
@@ -719,7 +723,7 @@ export class CodeView {
         b = Math.min(b, this.rColB);
       }
       // A row of other scripts drawn alone gets its neighbours as bidi context.
-      const ctx = rows > 1 && !block && this.odd[vi] === 1;
+      const ctx = rows > 1 && !block && this.odd[vi] !== 0;
       let h = this.html.get(row);
       if (h === undefined) {
         const sc = this.scanner;
@@ -747,7 +751,7 @@ export class CodeView {
           const from = Math.max(col, a);
           const to = Math.min(col + qn, b);
           const cls = `cv-hit${ln === cur && col === curCol ? ' cur' : ''}`;
-          if (this.odd[vi] === 1 && this.wrapper) {
+          if (this.odd[vi] !== 0 && this.wrapper) {
             marks += `<i class="${cls}" data-h="${from - a}" data-n="${to - from}"></i>`;
             place = true;
           } else marks += `<i class="${cls}" style="left:${(pad + (from - a) * this.cw).toFixed(1)}px;width:${((to - from) * this.cw).toFixed(1)}px"></i>`;

@@ -154,7 +154,8 @@ test('canary: status-bar warning, JWT, context menu, graph export dialog and Min
   await t.app.view(page, 'format');
 
   // Minify: sizes and the "smaller" tooltip.
-  await page.getByRole('radio', { name: /Minify/ }).hover();
+  // (Where the button is exposed: in a crowded toolbar the Find icon can lie over its centre.)
+  await t.app.hoverExposed(page, page.getByRole('radio', { name: /Minify/ }));
   await waitTip(page, /smaller/);
 
   await eventsSent(t, a);
@@ -177,12 +178,13 @@ test('canary: tooltips with document facts stay out of recordings, site tooltips
   await t.app.view(page, 'format');
 
   const tips = {};
-  await page.getByRole('radio', { name: /Minify/ }).hover();
+  // (Where the button is exposed: in a crowded toolbar the Find icon can lie over its centre.)
+  await t.app.hoverExposed(page, page.getByRole('radio', { name: /Minify/ }));
   tips.minify = await waitTip(page, /% smaller/);
   await page.hover('.statusbar .sz-min');
   tips.size = await waitTip(page, /Minified/);
   // A site tooltip straight after: shown in recordings again.
-  await page.getByRole('radio', { name: /Pretty/ }).hover();
+  await t.app.hoverExposed(page, page.getByRole('radio', { name: /Pretty/ }));
   tips.site = await waitTip(page, /Indented and readable/);
   await t.app.view(page, 'compare');
   await t.app.paste(page, JSON.stringify({ a: '1', b: 'x', c: 2, list: [] }), 'input2');

@@ -16,6 +16,7 @@
 //   dupes-<n>k             one object whose n thousand keys are all "k"
 //   lines-<n>k             n thousand JSON Lines records (.jsonl)
 //   blob-<n>mb             random bytes (not text at all)
+//   zeros-<n>mb            NUL bytes, one line (a disk image or a sparse file)
 //   utf16-bom              a small JSON document saved as UTF-16 LE with a BOM
 //   bad-utf8               JSON with invalid UTF-8 byte sequences inside strings
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, statSync, writeSync } from 'node:fs';
@@ -191,6 +192,11 @@ const GEN = {
       write(b);
     }
   },
+  zeros(write, [n]) {
+    const total = Number(n) * MB;
+    const b = Buffer.alloc(1 << 20);
+    for (let at = 0; at < total; at += b.length) write(b.subarray(0, Math.min(b.length, total - at)));
+  },
   'utf16-bom'(write) {
     write(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('{"name":"Zoë","city":"東京","n":1}', 'utf16le')]));
   },
@@ -198,11 +204,11 @@ const GEN = {
     write(Buffer.concat([Buffer.from('{"a":"x'), Buffer.from([0xc3, 0x28, 0xa0, 0xa1, 0xff, 0xfe, 0xed, 0xa0, 0x80]), Buffer.from('y","b":1}')]));
   },
 };
-const EXT = { lines: 'jsonl', blob: 'bin' };
+const EXT = { lines: 'jsonl', blob: 'bin', zeros: 'img' };
 
 /** Path of a breaker fixture, generated on first use. */
 export function bigFixture(name) {
-  const m = /^(big|wide-keys|flat-nums|one-string|one-text|nest|dupes|lines|blob|utf16-bom|bad-utf8)(?:-(.+))?$/.exec(name);
+  const m = /^(big|wide-keys|flat-nums|one-string|one-text|nest|dupes|lines|blob|zeros|utf16-bom|bad-utf8)(?:-(.+))?$/.exec(name);
   if (!m) throw new Error(`unknown breaker fixture "${name}"`);
   const args = (m[2] || '').replace(/(mb|k|m)$/, '').split('-');
   const file = join(DIR, `${name}.${EXT[m[1]] || 'json'}`);

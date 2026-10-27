@@ -14,7 +14,7 @@ import type { IndentId, Settings } from '../engine/store';
 import { TARGETS, convertFileName, targetInfo } from '../engine/targets';
 import { byteLength, copyText, formatBytes, formatDoc, preview, primText, tooLarge } from '../json/format';
 import type { JwtInput } from '../json/jwt';
-import { ARR, BOOL, kids, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, parse, tooDeep, type Issue, type JNode, type ParseResult } from '../json/parser';
+import { ARR, BOOL, kids, MAX_ISSUES, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, parse, tooDeep, type Issue, type JNode, type ParseResult } from '../json/parser';
 import { formatPath, parsePath, type Seg } from '../json/path';
 
 /** The open document as a command sees it. */
@@ -109,11 +109,17 @@ const EMPTY = fail('The editor is empty. Open a document with open_json first.')
 const num = (n: number) => n.toLocaleString('en-US');
 const plural = (n: number, one: string, many = one + 's') => `${num(n)} ${n === 1 ? one : many}`;
 const list = (items: readonly string[]) => items.map((s) => `"${s}"`).join(', ');
+/** What an agent sent, quoted back in an answer: at most `n` characters of it. */
+function clip(s: string, n = 200) {
+  if (s.length <= n) return s;
+  const end = (s.charCodeAt(n - 1) & 0xfc00) === 0xd800 ? n - 1 : n;
+  return `${s.slice(0, end)}…`;
+}
 
-/** `text`, cut to MAX_RESULT characters with a note saying where the rest is. */
-export function cap(text: string): string {
-  if (text.length <= MAX_RESULT) return text;
-  let end = MAX_RESULT;
+/** `text`, cut to `max` characters (MAX_RESULT) with a note saying where the rest is. */
+export function cap(text: string, max = MAX_RESULT): string {
+  if (text.length <= max) return text;
+  let end = Math.max(0, max);
   const c = text.charCodeAt(end - 1);
   if (c >= 0xd800 && c <= 0xdbff) end--; // (not between the halves of a surrogate pair)
   return `${text.slice(0, end)}\n…\n[Cut at ${num(end)} of ${num(text.length)} characters. The whole output is in the page, where the user can copy or download it.]`;
@@ -172,7 +178,8 @@ function parsed(d: Doc): { res: ParseResult & { root: JNode } } | { result: Resu
 function issueList(src: string, issues: readonly Issue[]): string {
   const where = locator(src);
   const items = issues.slice(0, MAX_LIST).map((i) => `- ${where(i.p)}: ${i.m}`);
-  if (issues.length > MAX_LIST) items.push(`- and ${plural(issues.length - MAX_LIST, 'more')}`);
+  // (The parser lists MAX_ISSUES at most: past them, a count is a lower bound.)
+  if (issues.length > MAX_LIST) items.push(`- and ${issues.length >= MAX_ISSUES ? 'at least ' : ''}${plural(issues.length - MAX_LIST, 'more')}`);
   return items.join('\n');
 }
 
@@ -292,23 +299,24 @@ export const TOOLS: AgentTool[] = [
       const d = page.doc();
       const p = parsed(d);
       if ('result' in p) return p.result;
+      if (input.path !== undefined && typeof input.path !== 'string') return fail('Error: path must be text, such as $.users[0].name or /users/0/name.');
       const q = str(input.path) ?? '$';
       const segs = parsePath(q);
-      if (!segs) return fail(`Error: can't read the path ${JSON.stringify(q)}. Write it as $.users[0].name or /users/0/name.`);
+      if (!segs) return fail(`Error: can't read the path ${clip(JSON.stringify(q))}. Write it as $.users[0].name or /users/0/name${q.trim().startsWith('/') ? ' (in a JSON Pointer, ~ is written ~0 and / is ~1)' : ''}.`);
       // Walks down as far as the path goes, to say where it stops.
       let n: JNode = p.res.root;
       for (let i = 0; i < segs.length; i++) {
         const next = child(n, segs[i]);
         if (!next) {
-          const where = formatPath(segs.slice(0, i));
+          const where = clip(formatPath(segs.slice(0, i)));
           const has = n.t === OBJ ? `It has the keys ${keyList(n)}.` : n.t === ARR ? `It has ${plural(kids(n).length, 'item')}.` : `It is ${shape(n)}.`;
-          return fail(`Nothing at ${formatPath(segs)}: ${where} has no ${typeof segs[i] === 'number' ? `item ${segs[i]}` : `key ${JSON.stringify(segs[i])}`}. ${has}`);
+          return fail(`Nothing at ${clip(formatPath(segs))}: ${where} has no ${typeof segs[i] === 'number' ? `item ${segs[i]}` : `key ${clip(JSON.stringify(segs[i]))}`}. ${has}`);
         }
         n = next;
       }
       const value = attempt(() => copyText(n, page.indent()));
       if (typeof value !== 'string') return value;
-      let text = `${formatPath(segs)} is ${shape(n)}`;
+      let text = `${clip(formatPath(segs))} is ${shape(n)}`;
       if (n.t === OBJ && kids(n).length) {
         const ks = kids(n);
         const lines = ks.slice(0, MAX_KEYS).map((k) => `- ${JSON.stringify(k.key)}: ${TYPE[k.t]}`);
@@ -400,7 +408,8 @@ export const TOOLS: AgentTool[] = [
       if (!to) return fail(`Error: to must be one of ${list(TARGET_IDS)}.`);
       if (ts === null) return fail('Error: typescript_style must be "interface" or "type".');
       if (cs === null) return fail(`Error: csharp_library must be one of ${list(Object.keys(CSHARP))}.`);
-      const rootName = str(input.root_name)?.trim().slice(0, 100) || undefined;
+      // (As long as the page's own setting takes.)
+      const rootName = str(input.root_name)?.trim().slice(0, 60) || undefined;
       const d = page.doc();
       const p = parsed(d);
       if ('result' in p) return p.result;
@@ -475,10 +484,9 @@ export const TOOLS: AgentTool[] = [
       if (r.changes.length > MAX_CHANGES) lines.push(`- and ${plural(r.changes.length - MAX_CHANGES, 'more difference')}`);
       const counts = [added && `${num(added)} added`, removed && `${num(removed)} removed`, changed + type && `${num(changed + type)} changed`].filter(Boolean).join(', ');
       const patch = attempt(() => patchText(toPatch(r.changes), '  '));
-      return done(
-        `${plural(total, 'difference')}${r.truncated ? ' at least' : ''}: ${counts}.\n${lines.join('\n')}` +
-          (typeof patch === 'string' ? `\n\nJSON Patch:\n${cap(patch)}` : ''),
-      );
+      // The list and the patch share MAX_RESULT: the patch gets what the list leaves.
+      const head = cap(`${plural(total, 'difference')}${r.truncated ? ' at least' : ''}: ${counts}.\n${lines.join('\n')}`, MAX_RESULT / 2);
+      return done(head + (typeof patch === 'string' ? `\n\nJSON Patch:\n${cap(patch, MAX_RESULT - head.length - 300)}` : ''));
     },
   },
   {

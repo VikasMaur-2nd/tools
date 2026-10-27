@@ -74,8 +74,7 @@ test('malformed arguments get exact error texts, never a throw', async (t) => {
   for (const [name, args] of calls) {
     const r = await exec(page, name, args);
     t.check(!r.threw, `${name} ${JSON.stringify(args).slice(0, 60)}: answers without throwing`, r.threw);
-    const known = name === 'get_json_value' && (r.text ?? '').length > MAX_RESULT ? 'bug: an error answer echoes a huge path uncapped (BREAKER-REPORT, WebMCP caps)' : undefined;
-    t.check((r.text ?? '').length <= MAX_RESULT + 400, `${name}: answer within MAX_RESULT`, r.text?.length, { known });
+    t.check((r.text ?? '').length <= MAX_RESULT + 400, `${name}: answer within MAX_RESULT`, r.text?.length);
     out.push([name, JSON.stringify(args).slice(0, 80), short(r)]);
   }
   golden(t, 'webmcp/malformed', out, 'every answer matches the golden file');
@@ -112,7 +111,7 @@ test('a 30 MB document through open_json: the answer is capped, the page holds i
   t.check(v.text?.includes('"name": "user 123456"'), 'get_json_value reads deep inside it', v.text?.slice(0, 200));
   const cmp = await exec(page, 'compare_json', { modified: '[]' });
   t.check(!cmp.threw && /^100,000 differences at least: 100,000 removed\./.test(cmp.text ?? ''), 'compare_json with everything removed counts the differences', cmp.text?.slice(0, 200));
-  t.check((cmp.text ?? '').length <= MAX_RESULT + 400, 'compare_json answers within the cap', cmp.text?.length, { known: 'bug: compare_json adds a capped patch to 200 listed changes, past MAX_RESULT (BREAKER-REPORT, WebMCP caps)' });
+  t.check((cmp.text ?? '').length <= MAX_RESULT + 400, 'compare_json answers within the cap', cmp.text?.length);
   await command(page, 'Format view (formatted output)');
   await command(page, 'Undo');
   const back = await copied(page, 'Copy input to clipboard', { timeout: 60_000 });

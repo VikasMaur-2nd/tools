@@ -731,7 +731,7 @@ describe('path.ts', () => {
     assert.deepEqual(parsePath('/a~1b/~0c/~01'), ['a/b', '~c', '~1']);
     assert.deepEqual(parsePath('/'), ['']);
     assert.deepEqual(parsePath('$["a]b"]["c\\"]d"]'), ['a]b', 'c"]d']);
-    for (const bad of ['$.a[', '$.a.', '$[x]', '$["a]', '$[\'a]'])
+    for (const bad of ['$.a[', '$.a.', '$[x]', '$["a]', '$[\'a]', '/a/~2', '/~', '/a~b'])
       assert.equal(parsePath(bad), null, bad);
   });
   test('formatPath / parsePath round trip (random keys)', () => {

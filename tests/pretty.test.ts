@@ -57,6 +57,16 @@ function same(src: string, indent: string, options: ParseOptions = {}, r = rng(s
     while (got[k] === want[k]) k++;
     assert.fail(`text differs at ${k}: want ${show(want.slice(k - 20, k + 40))}, got ${show(got.slice(k - 20, k + 40))}: ${where}`);
   }
+  // As Blob parts, in steps (an expired deadline each time), small parts and one: the same text.
+  for (const size of [1, 64, 1 << 20]) {
+    const run = text.parts(size);
+    let parts = run(0);
+    for (let k = 0; parts === undefined; k++) {
+      assert.ok(k < want.length + 8, 'no progress');
+      parts = run(0);
+    }
+    assert.equal(parts.join(''), want, `parts of ${size}: ${where}`);
+  }
   for (let k = 0; k < 20; k++) {
     const a = r.int(want.length + 1);
     const b = a + r.int(Math.min(200, want.length - a + 1));
