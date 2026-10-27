@@ -4,7 +4,7 @@
  * result for every input this one can parse (it only goes deeper). Don't edit,
  * except to keep it compiling.
  */
-import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, type Issue, type Key, type Kind, type ParseOptions, type ParseResult, type Val } from '../../lib/json/parser';
+import { ARR, BOOL, JNode, NO_VALUE, NUL, NUM, OBJ, STR, type Issue, type Key, type Kind, type ParseOptions, type ParseResult, type Val } from '../../lib/json/parser';
 
 class ParseError {
   p: number;
@@ -687,6 +687,7 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
     else throw e;
     root = null;
   }
+  if (!error && !root) error = { p: n, m: NO_VALUE };
   issues.sort((a, b) => a.p - b.p);
   // A wrapped document is not the source text, so the native formatting fast path can't apply.
   exact = exact && !!root && !issues.length && !warnings.length && !multi;

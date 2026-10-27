@@ -300,4 +300,5 @@ export const MESSAGES: RegExp[] = [
   /^Unexpected end of input: expected a value$/,
   /^Unexpected .+: expected a value$/s,
   /^Unexpected .+ after the JSON value$/s,
+  /^No JSON value$/,
 ];

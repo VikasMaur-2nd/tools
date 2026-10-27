@@ -17,7 +17,7 @@
  * level), unless `maxDepth` says otherwise.
  */
 import { decodeNumber, decodeString } from './decode';
-import { ARR, BOOL, NUL, NUM, OBJ, PASSES, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
+import { ARR, BOOL, NO_VALUE, NUL, NUM, OBJ, PASSES, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
 import {
   KEY_INDEX,
   KEY_NAME,
@@ -639,6 +639,7 @@ function drive(): boolean {
 }
 
 function finish(error: Issue | null): Tape {
+  if (!error && root < 0) error = { p: n, m: NO_VALUE };
   if (error) root = -1;
   issues.sort((a, b) => a.p - b.p);
   // A wrapped document is not the source text, so the native formatting fast path can't apply.

@@ -147,6 +147,9 @@ const MAX_ISSUES = 500;
  * stack ran out: 2,200 to 25,000 levels). About 270 bytes of tree per level, so at most ~27 MB.
  */
 export const MAX_DEPTH = 100_000;
+
+/** The error of a document with no value: empty, or only whitespace, a byte order mark or comments. */
+export const NO_VALUE = 'No JSON value';
 /**
  * Deepest nesting the features that still walk a tree recursively work on (Convert, Compare and the
  * spreadsheet exports), the same in every browser and far from any stack limit. Their cost grows with the
@@ -583,6 +586,8 @@ function steps(until: number): ParseResult | undefined {
 }
 
 function finish(error: Issue | null): ParseResult {
+  // (An editor shows a blank document as empty: its callers check for that before they parse.)
+  if (!error && !root) error = { p: n, m: NO_VALUE };
   if (error) root = null;
   issues.sort((a, b) => a.p - b.p);
   // A wrapped document is not the source text, so the native formatting fast path can't apply.

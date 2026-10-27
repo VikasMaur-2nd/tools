@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { Doc } from '../lib/engine/doc';
-import { parse, type ParseResult } from '../lib/json/parser';
+import { NO_VALUE, parse, type ParseResult } from '../lib/json/parser';
 import { diffResults } from './oracle/compare';
 
 /** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
@@ -292,6 +292,46 @@ test('small documents and edits are analysed at once', () => {
     assert.deepEqual(analysed, [undefined]);
     assert.equal(engine.steps, null);
   }
+});
+
+// ── A document with no value ──
+
+/** The real analyze() on `text`, with fakes for the views it updates. */
+function analyzeSession(text: string) {
+  const s = session();
+  const { engine } = s;
+  const diagnostics: unknown[][] = [];
+  engine.ed = { version: Doc.of(text), length: text.length, text, ls: [0], blank: !/\S/.test(text), setDiagnostics: (d: unknown[]) => diagnostics.push(d), setScope() {}, setJwt() {} };
+  engine.tree = { setRoot() {} };
+  engine.table = { setNode() {} };
+  engine.setGraphRoot = engine.measure = engine.syncTableState = engine.afterDoc = engine.releaseWorkerDocuments = () => {};
+  engine.resetNext = true;
+  engine.loadSeq = 3;
+  return { ...s, diagnostics };
+}
+
+test('a blank document shows the empty state, not "No JSON value", whether analysed at once or parsed in steps', (t) => {
+  clock(t, 1);
+  for (const text of ['', ' \n\t', '\ufeff', '\u00a0\n', ' '.repeat(1_000_100), '\n'.repeat(1_000_100)]) {
+    const { engine, state, tick } = analyzeSession(text);
+    engine.analyzeInSteps();
+    for (let k = 0; k < 100_000 && engine.steps; k++) tick();
+    const label = `${text.length} chars`;
+    assert.equal(engine.steps, null, label);
+    assert.equal((state.status as { kind: string }).kind, 'empty', label);
+    assert.equal(state.empty, true, label);
+    assert.equal(engine.res, null, label);
+  }
+});
+
+test('a document with only a comment is not blank: parsed in steps, its error is "No JSON value" at its end', (t) => {
+  clock(t, 1);
+  const text = '// ' + 'x'.repeat(1_000_100) + '\n';
+  const { engine, tick, analysed } = stepsSession(text);
+  engine.analyzeInSteps();
+  for (let k = 0; k < 100_000 && !analysed.length; k++) tick();
+  assert.deepEqual(analysed[0]!.error, { p: text.length, m: NO_VALUE });
+  assert.equal(analysed[0]!.root, null);
 });
 
 // ── A big load's progress ("Parsing… N%", see Engine.progress) ──

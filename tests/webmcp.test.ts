@@ -132,6 +132,7 @@ describe('check_json', () => {
 
   test('empty editor, JSON Lines, duplicate keys and a JWT', async () => {
     assert.deepEqual(await run('check_json', fakePage('  ').page), { ok: false, text: 'The editor is empty. Open a document with open_json first.' });
+    assert.deepEqual(await run('check_json', fakePage('\ufeff\n').page), { ok: false, text: 'The editor is empty. Open a document with open_json first.' });
     assert.match((await run('check_json', fakePage('{"a":1}\n{"a":2}\n').page)).text, /^Valid JSON Lines with 2 records/);
     assert.match((await run('repair_json', fakePage('{"a":1}\n{"a":2}\n').page)).text, /already valid JSON Lines/);
     assert.match((await run('check_json', fakePage('{"a":1} {"a":2}').page)).text, /^Not valid JSON yet: 1 issue/);
@@ -278,6 +279,9 @@ describe('compare_json', () => {
     const { page } = fakePage('{"a":1,"b":2}');
     assert.equal((await run('compare_json', page, { modified: '{"b":2,"a":1}' })).text, 'The documents are the same (ignoring key order).');
     assert.match((await run('compare_json', page, { modified: '{"a":}' })).text, /^The other document isn't valid JSON: .*\(line 1, column 6\)/);
+    // (An empty other document has no value to compare: said, not thrown.)
+    assert.equal((await run('compare_json', page, { modified: '' })).text, "The other document isn't valid JSON: No JSON value (line 1, column 1).");
+    assert.equal((await run('compare_json', page, { modified: ' \n ' })).text, "The other document isn't valid JSON: No JSON value (line 2, column 2).");
   });
 });
 
