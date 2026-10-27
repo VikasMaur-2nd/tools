@@ -9,7 +9,7 @@
  */
 import { ARR, BOOL, JNode, NUL, NUM, STR, type ParseResult, type TapeLink, type Val } from './parser';
 import { decodeString } from './decode';
-import { containerOf, endOf, kindOf, KEY_NAME, VALUE_DECODE, valueKindOf, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, startOf, valueOf, W, type Tape } from './tape';
+import { containerOf, endOf, kindOf, KEY_NAME, VALUE_DECODE, VALUE_SLICE, valueKindOf, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, startOf, valueOf, W, type Tape } from './tape';
 import type { Key } from './parser';
 
 /** Strings with escapes longer than this (source characters) are decoded only when read. */
@@ -145,6 +145,13 @@ export function nodeAtIndex(root: JNode, i: number): JNode | null {
  */
 export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: boolean, max: number): number[] {
   const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
+  // A query of printable ASCII is looked for in the source text itself, one search forward through it, so a
+  // string without escapes isn't copied (and lowercased) to be searched; one it may be in is then checked
+  // as above. (Lowercased, İ and the Kelvin sign hold an ASCII i and k: they are looked for too.)
+  const find = qn && /^[\x20-\x7e]+$/.test(qn)
+    ? new RegExp(qn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/i/g, '(?:i|\u0130)').replace(/k/g, '[k\u212a]'), cs ? 'g' : 'gi')
+    : null;
+  let next = -1;
   const keyHit = new Int8Array(t.keys.length);
   const nul = has('null');
   const yes = has('true');
@@ -161,7 +168,16 @@ export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: b
     }
     if (!hit) {
       const kind = kindOf(t, i);
-      if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
+      if (kind === STR && find && valueKindOf(t, i) === VALUE_SLICE) {
+        // (Its text is src[s, e), as valueOf reads it.)
+        const s = a[i * W + 1] + 1;
+        const e = a[i * W + 2] - 1;
+        if (next < s) {
+          find.lastIndex = s;
+          next = find.exec(src)?.index ?? Infinity;
+        }
+        hit = next + qn.length <= e && has(valueOf(t, i, src) as string);
+      } else if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
       else if (kind === BOOL) hit = valueOf(t, i, src) ? yes : no;
       else if (kind === NUL) hit = nul;
     }

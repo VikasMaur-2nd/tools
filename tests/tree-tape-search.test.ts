@@ -30,8 +30,11 @@ const docs = [
   "{a: 'single', b: True, c: None, d: +1, e: .5, 'k\\u00e9y': \"esc\\u00e9\\n\"}",
   '{"a": 1}\n{"a": 2, "b": "a"}\n',
   JSON.stringify(Array.from({ length: 500 }, (_, i) => ({ id: i, name: `User ${i}`, tags: ['a', 'B'], ok: i % 3 === 0, n: i % 7 ? null : i * 1.25 }))),
+  // Characters whose lowercase holds ASCII (İ, the Kelvin sign) or that look like it (ı, ſ), escapes, quotes.
+  '{"a": "İd", "b": "İ", "c": "\u212aK", "d": "ıd ſs", "e": "say \\"id\\"", "f": "x\\u0049D", "g": ["ID", "iD", "kk", "", "i"]}',
+  "{'single': 'İD', curly: “kK”, raw: ID}",
 ];
-const queries = ['a', 'A', 'name', 'Name', 'nul', 'null', 'tru', 'false', 'e', 'é', 'É', '1', '1.5', 'user 4', 'User 4', 'zzz', '\\n', '\n', ':'];
+const queries = ['a', 'A', 'name', 'Name', 'nul', 'null', 'tru', 'false', 'e', 'é', 'É', '1', '1.5', 'user 4', 'User 4', 'zzz', '\\n', '\n', ':', 'i', 'id', 'ID', 'k', 'kk', 's', '"', '"id"', 'i̇'];
 
 test('tree search on a tape finds the same nodes as on nodes, in order, making only the matches gone to', () => {
   for (const text of docs) {
