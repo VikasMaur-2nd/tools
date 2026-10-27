@@ -109,11 +109,16 @@ export class Filler implements TapeLink {
   kids(i: number): Int32Array {
     const t = this.tape;
     const a = t.nodes;
-    // One walk (a container has fewer children than nodes below it), its count kept.
+    // One walk, its count kept (known already: the list made to size; else grown as it goes).
     const size = sizeOf(t, i);
-    const out = new Int32Array(Math.max(0, size - 1));
+    let out = new Int32Array(this.counts.get(i) ?? Math.min(size - 1, 1 << 16));
     let k = 0;
     for (let c = i + 1, end = i + size; c < end; ) {
+      if (k === out.length) {
+        const grown = new Int32Array(Math.min(size - 1, k * 2));
+        grown.set(out);
+        out = grown;
+      }
       out[k++] = c;
       const s = a[c * W] >>> 8;
       c += s < SIZE_BIG ? s : t.big!.get(c)!;
@@ -125,13 +130,25 @@ export class Filler implements TapeLink {
   columns(i: number, max: number): [string[], boolean] {
     const t = this.tape;
     const a = t.nodes;
-    const seen = new Set<string>();
+    // (Members of objects are named: their key is an index into the tape's names, each name once.)
+    const seen = new Uint8Array(t.keys.length);
+    const keys: string[] = [];
     let value = false;
-    for (let c = i + 1, end = nextOf(t, i); c < end; c = nextOf(t, c)) {
+    for (let c = i + 1, end = nextOf(t, i); c < end && !(value && keys.length >= max); c = nextOf(t, c)) {
       if ((a[c * W] & 7) !== OBJ) value = true;
-      else if (seen.size < max) for (let m = c + 1, e = nextOf(t, c); m < e && seen.size < max; m = nextOf(t, m)) seen.add(keyOf(t, m) as string);
+      else if (keys.length < max) {
+        for (let m = c + 1, e = nextOf(t, c); m < e && keys.length < max; ) {
+          const k = a[m * W + 4];
+          if (!seen[k]) {
+            seen[k] = 1;
+            keys.push(t.keys[k]);
+          }
+          const s = a[m * W] >>> 8;
+          m += s < SIZE_BIG ? s : t.big!.get(m)!;
+        }
+      }
     }
-    return [[...seen], value];
+    return [keys, value];
   }
 
   count(i: number): number {
@@ -282,8 +299,21 @@ export class Filler implements TapeLink {
         out = grown;
       }
       // (A leaf: a row, no more to decide.)
-      if ((meta & 7) < ARR) out[len++] = c * 2;
-      else container(c, depths[q], useT ? exps[q]?.children?.get(String(keyOf(t, c))) : undefined, next);
+      if ((meta & 7) < ARR) {
+        out[len++] = c * 2;
+        continue;
+      }
+      // (A container, as `container` does, inline: a call each costs a records array's rows.)
+      const d = depths[q];
+      const e = useT ? exps[q]?.children?.get(String(keyOf(t, c))) : undefined;
+      const open = e?.open ?? (d < limit || (first > 0 && len + 1 < first && len + 1 + this.childrenUpToAt(c, first) < first));
+      out[len++] = c * 2 + (open ? 1 : 0);
+      if (open) {
+        at.push(c + 1);
+        ends.push(next);
+        depths.push(d + 1);
+        exps.push(e);
+      }
     }
     return len === out.length ? out : out.slice(0, len);
   }
