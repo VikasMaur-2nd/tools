@@ -18,7 +18,7 @@ interface Exports {
   window(size: number): number;
   win_ptr(): number;
   win_cap(): number;
-  load(len: number, last: number, u16: number): number;
+  load(len: number, last: number, u16: number, cr: number): number;
   run(): number;
   out_ptr(): number;
   out_len(): number;
@@ -56,9 +56,11 @@ const idle = new WeakMap<WebAssembly.Module, Exports>();
 const encoder = new TextEncoder();
 
 /**
- * The tape of `text` (whose UTF-8 is `bytes` if given) from WebAssembly module `mod` (compiled from
- * tape.wasm), or null if it isn't strict JSON with one top-level value (or `lines` is set): parse it
- * with tape-parser.ts then. `window`: input bytes per window (tests make it small).
+ * The tape of `text` from WebAssembly module `mod` (compiled from tape.wasm), or null if it isn't strict
+ * JSON with one top-level value (or `lines` is set): parse it with tape-parser.ts then. `bytes`, if given,
+ * are the file `text` was read from (UTF-8): `text` is them decoded with their line ends as \n (doc.ts
+ * lf(), as Engine.load keeps a document), and the offsets count \r\n as one unit. `window`: input bytes
+ * per window (tests make it small).
  */
 export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOptions = {}, bytes?: Uint8Array, window = WINDOW): Tape | null {
   if (options.lines || !text) return null;
@@ -102,7 +104,7 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: Uint8Array |
       // (UTF-8 bytes for UTF-16 units: close enough for an estimate.)
       done = (p) => (u16 + (p * r.read) / Math.max(len, 1)) / total;
     }
-    if (x.load(len, last ? 1 : 0, u16) < 0) return null;
+    if (x.load(len, last ? 1 : 0, u16, bytes && at > 0 && bytes[at - 1] === 13 ? 1 : 0) < 0) return null;
     let r: number;
     while ((r = x.run()) === FULL || r === DONE) {
       // A batch of nodes.
