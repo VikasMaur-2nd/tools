@@ -68,7 +68,7 @@ function session() {
   const navigator: Dynamic = { onLine: true };
   const exports: Dynamic = {};
   runInNewContext(js, {
-    exports, performance, URL, console, AbortController, Intl, Blob,
+    exports, performance, URL, console, AbortController, Intl, Blob, queueMicrotask,
     process: { env: { NODE_ENV: 'production' } },
     setTimeout: defer, clearTimeout: cancel, requestAnimationFrame: defer, requestIdleCallback: defer, cancelIdleCallback: cancel, window, addEventListener: on, removeEventListener: off,
     document, location,
@@ -147,6 +147,9 @@ function converting(engine: Dynamic, json = '{"a":1}') {
   engine.settings.view = 'convert';
   engine.code = code;
   engine.good = parse(json);
+  // (Analysed: the editor's version is the one the good document came from.)
+  engine.ed ??= { version: {} };
+  engine.parsedVer = engine.goodVer = engine.ed.version;
   return code;
 }
 
@@ -191,14 +194,17 @@ test("Copy and Download right after the Convert target changes give the new targ
   navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
   engine.save = (text: string) => saved.push(text);
   engine.loadConverters = async () => ({ ...converters, convert: (_root: JNode, id: string) => `${id} output` });
-  // (Nothing converted yet and nothing asked for: Copy says so at once, it doesn't wait.)
-  engine.copyConvert();
-  assert.deepEqual(toasts, ['Nothing to copy yet']);
-  await engine.runConvert();
-  assert.equal(code.text, 'typescript output');
+  // Nothing converted yet: Copy converts it, then copies.
   engine.copyConvert();
   await settled();
+  assert.deepEqual(toasts.filter((t) => t !== 'Copied TypeScript'), []);
+  assert.equal(code.text, 'typescript output');
   assert.deepEqual(copied, ['typescript output']);
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(copied, ['typescript output', 'typescript output']);
+  copied.length = 0;
+  copied.push('typescript output');
   // A big document's view takes a while to show the new target's output: Copy and Download wait for it.
   engine.settings = { ...engine.settings, target: 'yaml' };
   engine.scheduleConvert(0);
@@ -207,8 +213,11 @@ test("Copy and Download right after the Convert target changes give the new targ
   await settled();
   assert.deepEqual(copied, ['typescript output'], 'nothing copied before the conversion');
   assert.deepEqual(saved, []);
-  tick();
-  await settled();
+  // (The queue holds the first copy's time limit too, before the conversion: it finds nothing left to end.)
+  for (let k = 0; k < 10 && (code.text as string) !== 'yaml output'; k++) {
+    tick();
+    await settled();
+  }
   assert.equal(code.text, 'yaml output');
   assert.deepEqual(copied, ['typescript output', 'yaml output']);
   assert.deepEqual(saved, ['yaml output']);
@@ -579,4 +588,65 @@ test('expanding nested JSON is dropped if the document changed while its code lo
   await expanding;
   assert.equal(set, null);
   assert.deepEqual(toasts, []);
+});
+
+test("Copy and Download from another view after an edit give the edited document's output (F18)", async () => {
+  const { engine, navigator } = session();
+  const code = converting(engine, '{"a":1}');
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  engine.loadConverters = async () => converters;
+  await engine.runConvert();
+  assert.equal(code.text, 'OUTPUT a');
+  // Edited in the Tree: analysed, but the Convert view (hidden) still holds the conversion before.
+  engine.settings.view = 'tree';
+  engine.good = parse('{"b":2}');
+  engine.goodVer = engine.parsedVer = engine.ed.version = {};
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(copied, ['OUTPUT b']);
+  // An edit whose analysis is still to come: Copy waits for it, then converts.
+  engine.ed.version = {};
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(copied, ['OUTPUT b'], 'nothing copied before the analysis');
+  engine.good = parse('{"c":3}');
+  engine.goodVer = engine.parsedVer = engine.ed.version;
+  for (const f of engine.analysed.splice(0)) f();
+  await settled();
+  assert.deepEqual(copied, ['OUTPUT b', 'OUTPUT c']);
+});
+
+test('Copy formatted output from another view after an edit gives the edited document, waiting for its analysis (F18)', async () => {
+  const { engine, navigator, state } = session();
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  const fmt = { text: '', setText(t: string) { fmt.text = t; }, setNotes() {}, lineCount: 0, el: {} };
+  engine.fmt = fmt;
+  state.fmt = {};
+  const analysed = (json: string) => {
+    engine.good = parse(json);
+    engine.goodText = json;
+    engine.goodVer = engine.parsedVer = engine.ed.version = {};
+  };
+  engine.ed = { version: {} };
+  analysed('{"a":1}');
+  engine.settings.view = 'format';
+  engine.runFormat();
+  assert.equal(fmt.text, '{\n  "a": 1\n}');
+  // Edited while the Tree shows: the hidden Format view keeps the output before.
+  engine.settings.view = 'tree';
+  analysed('{"b":2}');
+  engine.copyOutput();
+  await settled();
+  assert.deepEqual(copied, ['{\n  "b": 2\n}']);
+  // Its analysis still to come: Copy waits for it.
+  engine.ed.version = {};
+  engine.copyOutput();
+  await settled();
+  assert.equal(copied.length, 1, 'nothing copied before the analysis');
+  analysed('{"c":3}');
+  for (const f of engine.analysed.splice(0)) f();
+  await settled();
+  assert.deepEqual(copied, ['{\n  "b": 2\n}', '{\n  "c": 3\n}']);
 });

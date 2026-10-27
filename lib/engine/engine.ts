@@ -680,6 +680,8 @@ export class Engine {
 
   /** Publish analysis; a Format-only result can retain its packed tree until needed. */
   analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
+    // (Outputs asked for meanwhile are made once this analysis has published: see whenAnalysed.)
+    if (this.analysed.length) queueMicrotask(() => { for (const f of this.analysed.splice(0)) f(); });
     if (!lazy) this.packed = null;
     this.steps = null;
     clearTimeout(this.timer);
@@ -2446,8 +2448,9 @@ export class Engine {
   private fmtPretty: PrettyText | null = null;
   /** Bumped when the Format view is drawn: a pretty index still being made (see drawPretty) is dropped. */
   private prettySeq = 0;
-  /** The pretty index being made (see drawPretty), while it is prettySeq's. */
+  /** The pretty index being made (see drawPretty), while it is prettySeq's, and what for. */
   private prettyMaking = -1;
+  private prettyFor: { tape: Tape; indent: string; key: string } | null = null;
   /** The output drawn (empty) is the one too large to make: the view and Copy say so. */
   private fmtTooLarge = false;
   private fmtVersion = 0;
@@ -2461,7 +2464,11 @@ export class Engine {
   }
 
   private runFormat = () => {
-    if (this.settings.view !== 'format') return;
+    if (this.settings.view === 'format') this.makeFormat();
+  };
+
+  /** Draws the Format view's output for the current document and settings (also while another view shows: see outputLater). */
+  private makeFormat() {
     // Reformat the accepted source promptly even while its tree is still being analysed.
     if (this.fmtKey !== this.fmtSettings() && this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== this.goodVer && (this.fmtWorkerId || this.pendingFmtWorkerId)) {
       const retained = this.fmtSrcVer;
@@ -2530,7 +2537,7 @@ export class Engine {
     // A big document's sizes wait for a quiet moment (they only label the Pretty / Minify buttons).
     if (text.length > 500_000) idle(stats, 1000);
     else stats();
-  };
+  }
   private fmtStatSeq = 0;
 
   /** The Format view's settings, as a key: output is redrawn when they or the document change. */
@@ -2585,9 +2592,13 @@ export class Engine {
   private drawPretty(tape: Tape, src: string, key: string) {
     const ver = this.goodVer;
     if (this.fmtPretty && this.formatCurrent(key)) return this.prettyStats(this.fmtPretty);
+    const indent = this.indent;
+    // (Already being made for this tape and settings: that one is shown.)
+    const f = this.prettyFor;
+    if (this.prettyMaking === this.prettySeq && f?.tape === tape && f.indent === indent && f.key === key) return;
     const seq = ++this.prettySeq;
     this.prettyMaking = seq;
-    const indent = this.indent;
+    this.prettyFor = { tape, indent, key };
     // (Indexed by the worker that parsed it, for this indent, when the Format view was shown: else here, in steps.)
     const made = prettyIndexes.get(tape.nodes);
     const run = made?.indent === indent ? () => made.index : pack!.prettyIndexer(tape, src, indent);
@@ -2652,7 +2663,7 @@ export class Engine {
 
   copyOutput() {
     const msg = this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON';
-    const later = this.outputPending();
+    const later = this.outputLater();
     if (later) {
       // The output for these settings is still being made (a big document, after a style change): the copy
       // waits for it, handing the clipboard a promise so the click still counts when the text arrives.
@@ -2669,7 +2680,7 @@ export class Engine {
 
   downloadOutput() {
     const name = () => `${(store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '')}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`;
-    const later = this.outputPending();
+    const later = this.outputLater();
     if (later) {
       track('feature_used', { feature: 'download_output' });
       const file = name();
@@ -2689,11 +2700,30 @@ export class Engine {
 
   /** The Format output last drawn, if it is for the current settings ('' if not): the view may still be taking it in, in steps. */
   private drawnOutput() {
-    return this.fmtKey === this.fmtSettings() ? this.fmtOut : '';
+    return this.formatCurrent(this.fmtSettings()) ? this.fmtOut : '';
   }
 
   /** Copy/Download waiting for the Format output of the current settings (see outputPending). */
   private readonly outputWaiters: ((out: string | null) => void)[] = [];
+
+  /** Run once the editor's text is analysed: at once if it is, else after the analysis on its way publishes. */
+  private readonly analysed: (() => void)[] = [];
+  private whenAnalysed(f: () => void) {
+    if (this.parsedVer === this.ed.version) f();
+    else this.analysed.push(f);
+  }
+
+  /**
+   * The Format output for the document and settings, when the one made last isn't (another view showed while
+   * the document changed, or its analysis is still to come): made now, or once analysed. Null when it is.
+   */
+  private outputLater(): Promise<string | null> | null {
+    const pending = this.outputPending();
+    if (pending || this.parsedVer === this.ed.version && this.formatCurrent(this.fmtSettings())) return pending;
+    const later = waitIn(this.outputWaiters);
+    this.whenAnalysed(() => (this.formatCurrent(this.fmtSettings()) && this.prettyMaking !== this.prettySeq ? this.outputDrawn() : this.makeFormat()));
+    return later;
+  }
 
   /**
    * The output the Format view is still making for the current settings (it shows the last settings' until
@@ -2720,6 +2750,8 @@ export class Engine {
       if (!t) throw new Error('no output');
       return new Blob([t], { type: 'text/plain' });
     });
+    // (Where the clipboard takes no promise, nothing reads it: its failure is handled below.)
+    blob.catch(() => {});
     try {
       if (typeof ClipboardItem === 'undefined') throw new Error('no ClipboardItem');
       await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
@@ -2762,14 +2794,33 @@ export class Engine {
    * The last conversion made: its sequence and output ('' for none). The code view may still be taking a big
    * output in, in steps, so Copy and Download take it from here.
    */
-  private convDone = { seq: 0, out: '' };
+  private convDone: { seq: number; out: string; ver: object | null } = { seq: 0, out: '', ver: null };
 
   /** Copy/Download waiting for the conversion asked for last (see convPending). */
   private readonly convWaiters: ((out: string | null) => void)[] = [];
 
-  private convFinished(seq: number, out: string) {
-    this.convDone = { seq, out };
+  private convFinished(seq: number, out: string, ver: object | null) {
+    this.convDone = { seq, out, ver };
     for (const done of this.convWaiters.splice(0)) done(out);
+  }
+
+  /**
+   * The conversion of the document, when the one made last isn't of it (another view showed while the
+   * document changed, or its analysis is still to come): made now, or once analysed. Null when it is.
+   */
+  private convLater(): Promise<string | null> | null {
+    const pending = this.convPending();
+    const d = this.convDone;
+    if (pending || this.parsedVer === this.ed.version && d.seq === this.convSeq && d.ver === this.goodVer) return pending;
+    const later = waitIn(this.convWaiters);
+    this.whenAnalysed(() => {
+      const c = this.convDone;
+      // (One already on its way, e.g. the Convert view's after the analysis, hands it over.)
+      if (c.seq !== this.convSeq) return;
+      if (c.ver === this.goodVer) this.convFinished(c.seq, c.out, c.ver);
+      else void this.runConvert(true);
+    });
+    return later;
   }
 
   /**
@@ -2797,21 +2848,23 @@ export class Engine {
     return this.conv;
   }
 
-  private async runConvert() {
-    if (this.settings.view !== 'convert') return;
+  /** `anyView`: for Copy or Download while another view shows (see convLater). */
+  private async runConvert(anyView = false) {
+    if (this.settings.view !== 'convert' && !anyView) return;
     const seq = ++this.convSeq;
     // (The view closed or changed meanwhile: opening it again converts what it shows then.)
-    const current = () => seq === this.convSeq && !this.dead && this.settings.view === 'convert';
+    const current = () => seq === this.convSeq && !this.dead && (anyView || this.settings.view === 'convert');
+    const ver = this.goodVer;
     const root = this.good?.root;
     if (!root) {
       this.code.setText('', escapeHtml);
-      this.convFinished(seq, '');
+      this.convFinished(seq, '', ver);
       store.set({ convert: { loading: false, error: 'Paste or open valid JSON on the left to convert it.', lines: 0, bytes: 0 } });
       return;
     }
     if (this.good!.depth > MAX_WALK_DEPTH) {
       this.code.setText('', escapeHtml);
-      this.convFinished(seq, '');
+      this.convFinished(seq, '', ver);
       store.set({ convert: { loading: false, error: 'Nesting is too deep to convert', lines: 0, bytes: 0 } });
       return;
     }
@@ -2839,7 +2892,7 @@ export class Engine {
         const rows = mod.codeRows(info.lang);
         this.code.setText(out, rows.hl, false, rows.scanner);
       }
-      this.convFinished(seq, out);
+      this.convFinished(seq, out, ver);
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
       if (!current()) return;
@@ -2847,14 +2900,14 @@ export class Engine {
       const deep = tooDeep(e);
       if (!deep) reportError(e, 'conversion');
       this.code.setText('', escapeHtml);
-      this.convFinished(seq, '');
+      this.convFinished(seq, '', ver);
       store.set({ convert: { loading: false, error: deep ? 'Nesting is too deep to convert' : e instanceof Error ? e.message : 'Conversion failed', lines: 0, bytes: 0 } });
     }
   }
 
   copyConvert() {
     const msg = `Copied ${targetInfo(this.settings.target).label}`;
-    const later = this.convPending();
+    const later = this.convLater();
     if (later) {
       // (A big document's conversion after a target change: the copy waits for it, as copyOutput does.)
       track('feature_used', { feature: 'copy_convert' });
@@ -2886,7 +2939,7 @@ export class Engine {
       }
       return;
     }
-    const later = this.convPending();
+    const later = this.convLater();
     if (later) {
       void later.then((out) => {
         if (this.dead) return;
