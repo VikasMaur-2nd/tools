@@ -2735,11 +2735,37 @@ export class Engine {
       void this.copyLater(later, msg, () => (store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info')));
       return;
     }
+    const pretty = this.prettyNow();
+    if (pretty) {
+      // (A big document's pretty output, read off its tape: made in parts, in steps, never one string.)
+      track('feature_used', { feature: 'copy_output' });
+      void this.copyLater(this.prettyParts(pretty), msg, () => this.toast('Nothing to copy yet', 'info'));
+      return;
+    }
     const out = this.drawnOutput() || this.unlessTooLarge(() => this.output());
     if (out === null) return;
     if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_output' });
     void this.copy(out, msg);
+  }
+
+  /** The pretty output read off the tape (see drawPretty), when it is the current document's for these settings. */
+  private prettyNow() {
+    return this.fmtPretty && this.formatCurrent(this.fmtSettings()) ? this.fmtPretty : null;
+  }
+
+  /** `text` as Blob parts, made in short steps (see PrettyText.parts). */
+  private prettyParts(text: PrettyText): Promise<string[] | null> {
+    const run = text.parts();
+    return new Promise((done) => {
+      const step = () => {
+        if (this.dead) return done(null);
+        const parts = run(performance.now() + 8);
+        if (parts) done(parts);
+        else soon(step);
+      };
+      step();
+    });
   }
 
   downloadOutput() {
@@ -2753,6 +2779,13 @@ export class Engine {
         if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
         this.save(out, file, 'application/json');
       });
+      return;
+    }
+    const pretty = this.prettyNow();
+    if (pretty) {
+      track('feature_used', { feature: 'download_output' });
+      const file = name();
+      void this.prettyParts(pretty).then((parts) => parts && this.saveBlob(new Blob(parts, { type: 'application/json' }), file));
       return;
     }
     const out = this.drawnOutput() || this.unlessTooLarge(() => this.output());
@@ -2809,10 +2842,10 @@ export class Engine {
   }
 
   /** Copies text that is still on its way, keeping the click's permission to write the clipboard where the browser allows. */
-  private async copyLater(text: Promise<string | null>, msg: string, none: () => void) {
+  private async copyLater(text: Promise<string | string[] | null>, msg: string, none: () => void) {
     const blob = text.then((t) => {
-      if (!t) throw new Error('no output');
-      return new Blob([t], { type: 'text/plain' });
+      if (!t || !t.length) throw new Error('no output');
+      return new Blob(typeof t === 'string' ? [t] : t, { type: 'text/plain' });
     });
     // (Where the clipboard takes no promise, nothing reads it: its failure is handled below.)
     blob.catch(() => {});
@@ -2823,8 +2856,9 @@ export class Engine {
     } catch {
       const t = await text;
       if (this.dead) return;
-      if (!t) return none();
-      await this.copy(t, msg);
+      if (!t || !t.length) return none();
+      const s = typeof t === 'string' ? t : this.unlessTooLarge(() => t.join(''));
+      if (s !== null) await this.copy(s, msg);
     }
   }
 

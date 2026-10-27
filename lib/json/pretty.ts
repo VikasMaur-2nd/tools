@@ -277,6 +277,29 @@ export class PrettyText {
     return last ? out : out + ',';
   }
 
+  /**
+   * The whole text as parts of about `size` characters (Blob parts: it is never made one string), in steps:
+   * call it with a deadline until it returns them.
+   */
+  parts(size = 1 << 20): (until: number) => string[] | undefined {
+    const count = this.index.starts.length;
+    const out: string[] = [];
+    let k = 0;
+    return (until) => {
+      while (k < count) {
+        const lines: string[] = [];
+        for (let n = 0; k < count && n < size; k++) {
+          const line = this.line(k);
+          lines.push(line);
+          n += line.length + 1;
+        }
+        out.push(lines.join('\n') + (k < count ? '\n' : ''));
+        if (k < count && performance.now() >= until) return undefined;
+      }
+      return out;
+    };
+  }
+
   /** Line holding offset `at`. */
   lineAt(at: number): number {
     const st = this.index.starts;
