@@ -67,17 +67,19 @@ export interface ByteSource {
  * JSON with one top-level value (or `lines` is set): parse it with tape-parser.ts then. `bytes`, if given,
  * are the file `text` was read from (UTF-8), whole or read a window at a time: `text` is them decoded with
  * their line ends as \n (doc.ts lf(), as Engine.load keeps a document), and the offsets count \r\n as one
- * unit. `window`: input bytes per window (tests make it small).
+ * unit. With bytes, `text` may be a function giving it once they have been read (only property names are
+ * read from it, at the end; a leading byte order mark is then the bytes' business). `window`: input bytes
+ * per window (tests make it small).
  */
-export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOptions = {}, bytes?: Uint8Array | ByteSource, window = WINDOW): Tape | null {
-  if (options.lines || !text) return null;
+export function wasmTape(mod: WebAssembly.Module, text: string | (() => string), options: TapeOptions = {}, bytes?: Uint8Array | ByteSource, window = WINDOW): Tape | null {
+  if (options.lines || (typeof text === 'string' ? !text : !bytes || !(bytes instanceof Uint8Array ? bytes.length : bytes.size))) return null;
   let src: ByteSource | undefined;
   if (bytes instanceof Uint8Array) {
     const all = bytes;
     src = { size: all.length, read: (at, len) => all.subarray(at, at + len) };
   } else src = bytes;
   // TextDecoder drops a byte order mark: the bytes must be the text's.
-  if (src && text.charCodeAt(0) !== 0xfeff) {
+  if (src && typeof text === 'string' && text.charCodeAt(0) !== 0xfeff) {
     const head = src.read(0, 3);
     if (head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf) {
       const whole = src;
@@ -91,10 +93,10 @@ export function wasmTape(mod: WebAssembly.Module, text: string, options: TapeOpt
   return tape;
 }
 
-function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource | undefined, window: number): Tape | null {
+function run(x: Exports, text: string | (() => string), options: TapeOptions, bytes: ByteSource | undefined, window: number): Tape | null {
   const maxDepth = Math.min(options.maxDepth ?? 0xffffffff, 0xffffffff);
   if (!x.init(bytes ? 0 : 1, maxDepth >>> 0, window)) return null;
-  const total = bytes ? bytes.size : text.length;
+  const total = bytes ? bytes.size : (text as string).length;
   let nodes = new Int32Array(0);
   let count = 0;
   // Where the next window starts: in bytes (from bytes) or UTF-16 code units (both, from bytes).
@@ -116,9 +118,10 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource |
       done = (p) => (at + p) / total;
     } else {
       // (Not between the halves of a surrogate pair: each half would become U+FFFD.)
+      const t = text as string;
       let end = Math.min(total, u16 + cap);
-      if (end < total && (text.charCodeAt(end - 1) & 0xfc00) === 0xd800) end--;
-      const r = encoder.encodeInto(u16 === 0 && end === total ? text : text.substring(u16, end), win);
+      if (end < total && (t.charCodeAt(end - 1) & 0xfc00) === 0xd800) end--;
+      const r = encoder.encodeInto(u16 === 0 && end === total ? t : t.substring(u16, end), win);
       len = r.written;
       last = u16 + r.read === total;
       // (UTF-8 bytes for UTF-16 units: close enough for an estimate.)
@@ -133,7 +136,7 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource |
       nodes.set(new Int32Array(x.memory.buffer, x.out_ptr(), n * W), count * W);
       count += n;
       x.drain();
-      if (r === DONE) return finish(x, text, nodes, count);
+      if (r === DONE) return finish(x, typeof text === 'string' ? text : text(), nodes, count);
     }
     if (r !== NEED) return null;
     const next = x.resume();

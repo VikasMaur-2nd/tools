@@ -4,8 +4,9 @@ import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } 
 import { packedTransfer, packTape } from '../json/pack-send';
 import { lazyResult } from '../json/lazy';
 import { parse as parseTape, parser as tapeParser, warmUp } from '../json/tape-parser';
-import { wasmTape, type ByteSource } from '../json/tape-wasm';
+import { wasmTape } from '../json/tape-wasm';
 import { readText } from '../json/read';
+import { fileReading } from '../json/tape-file';
 import { childCount, W, type Tape } from '../json/tape';
 import { MAX_DEPTH, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
@@ -29,8 +30,8 @@ export interface Request {
   /** The file a document was loaded from, instead of its text: read here (see readFile). `size`: the text's length on the page. */
   file?: Blob;
   size?: number;
-  /** (Here: that file's bytes for WebAssembly.) */
-  bytes?: ByteSource;
+  /** (Here: that file's tape from WebAssembly, made as it was read; null: not strict JSON.) */
+  tape?: Tape | null;
   parse?: boolean;
   sortKeys?: boolean;
   lines?: boolean;
@@ -251,42 +252,41 @@ declare const FileReaderSync: { new (): { readAsArrayBuffer(blob: Blob): ArrayBu
 
 /**
  * A request with the file the page loaded its document from, instead of the text: read here as the page
- * read it (readText(), then lf() as Engine.load does), so the text is the editor's without the page sending
- * it in chunks, and its bytes go to WebAssembly 16 MB at a time (never all at once). If it can't be read
- * (it changed on disk since) or its text isn't the page's length, the reply is a reset: the page sends the
- * text then. Messages that come meanwhile wait for it.
+ * read it (read.ts, then lf() as Engine.load does), so the text is the editor's without the page sending it
+ * in chunks. Read once, a block at a time (tape-file.ts): each block goes to WebAssembly as it is decoded
+ * into the text, never the whole file at once. If it can't be read (it changed on disk since) or its text
+ * isn't the page's length, the reply is a reset: the page sends the text then. Messages that come meanwhile
+ * wait for it.
  */
 function readFile(data: Request) {
   const file = data.file!;
   latest = data.id;
   queued = [];
-  void readText(file).then(lf, () => null).then((text) => {
+  const done = (text: string | null, tape?: Tape | null) => {
     const later = queued!;
     queued = null;
-    if (text !== null && text.length === data.size) receive({ ...data, file: undefined, text, bytes: fileBytes(file) });
+    if (text !== null && text.length === data.size) receive({ ...data, file: undefined, text, tape });
     else self.postMessage({ id: data.id, reset: true });
     for (const d of later) receive(d);
-  });
-}
-
-/** File bytes read at a time for WebAssembly's windows: each read costs ~5-20 ms whatever its size (Chromium), so few, but never the whole file. */
-const BLOCK = 16 << 20;
-
-/** A file's bytes for WebAssembly, a block at a time, if read.ts reads it as UTF-8 (not with a UTF-16 byte order mark). */
-function fileBytes(file: Blob): ByteSource | undefined {
-  if (typeof FileReaderSync === 'undefined') return undefined;
-  const reader = new FileReaderSync();
-  let base = 0;
-  let block = new Uint8Array(reader.readAsArrayBuffer(file.slice(0, BLOCK)));
-  if ((block[0] === 0xff && block[1] === 0xfe) || (block[0] === 0xfe && block[1] === 0xff)) return undefined;
-  const read = (at: number, len: number) => {
-    if (at < base || at + len > base + block.length) {
-      base = at;
-      block = new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + Math.max(BLOCK, len))));
-    }
-    return block.subarray(at - base, at - base + len);
   };
-  return { size: file.size, read };
+  void loadWasm().then(() => {
+    if (!wasm || data.lines || typeof FileReaderSync === 'undefined') return void readText(file).then(lf, () => null).then((text) => done(text));
+    let text: string | null = null;
+    let tape: Tape | null = null;
+    try {
+      const reader = new FileReaderSync();
+      const reading = fileReading(file.size, (at, len) => new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + len))));
+      // (A UTF-16 file is read as the page reads it, then parsed from its text.)
+      if (!reading) return void readText(file).then(lf, () => null).then((t) => done(t));
+      let whole: string | null = null;
+      const textOf = () => (whole ??= lf(reading.text()));
+      tape = wasmTape(wasm, textOf, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true }, reading.bytes);
+      text = textOf();
+    } catch {
+      text = null;
+    }
+    done(text, tape);
+  });
 }
 
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
@@ -296,7 +296,7 @@ function analyse(data: Request, text: string) {
   // Parsed straight to a tape: no node objects here (the page makes the ones it shows). Strict JSON goes
   // through WebAssembly; anything else (or no WebAssembly) through the JavaScript parser.
   const options = { lines: data.lines, maxDepth: MAX_DEPTH, repair: true };
-  const tape = (wasm && !data.lines ? wasmTape(wasm, text, options, data.bytes) : null) ?? (data.progress ? parseShowing(data, text) : parseTape(text, options));
+  const tape = (data.tape !== undefined ? data.tape : wasm && !data.lines ? wasmTape(wasm, text, options) : null) ?? (data.progress ? parseShowing(data, text) : parseTape(text, options));
   const res = lazyResult(tape, text);
   showing(data, PARSED);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
