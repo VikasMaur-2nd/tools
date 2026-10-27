@@ -204,9 +204,11 @@ export function tapeSearch(t: Tape, src: string, from: number, qn: string, cs: b
             find!.lastIndex = s;
             next = find!.exec(src)?.index ?? Infinity;
           }
-          // (A match of ASCII characters only is one in the string's value, as written there; one through İ or
-          // the Kelvin sign is checked on the value.)
-          hit = next + qn.length <= e && (PRINTABLE_RUN.test(src.slice(next, next + qn.length)) || has(valueOf(t, i, src) as string));
+          // (A match of ASCII characters only in a string without escapes is one in its value, as written there.
+          // In a string with escapes it may take an escape's letter (\t's t): the value is checked, as is a
+          // match through İ or the Kelvin sign. A match in the value is always one in the text: printable
+          // characters other than quotes and slashes come from no escape.)
+          hit = next + qn.length <= e && (vk === VALUE_SLICE && PRINTABLE_RUN.test(src.slice(next, next + qn.length)) || has(valueOf(t, i, src) as string));
         }
       } else if (kind === STR || kind === NUM) hit = has(valueOf(t, i, src) as string);
       else if (kind === BOOL) hit = valueOf(t, i, src) ? yes : no;
