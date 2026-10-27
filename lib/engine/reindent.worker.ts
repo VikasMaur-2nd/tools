@@ -3,7 +3,8 @@ import '../json/requote';
 import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
 import { packedTransfer, packTape, packTree } from '../json/pack-send';
 import { lazyResult } from '../json/lazy';
-import { parse as parseTape, parser as tapeParser } from '../json/tape-parser';
+import { parse as parseTape, parser as tapeParser, warmUp } from '../json/tape-parser';
+import { wasmTape } from '../json/tape-wasm';
 import type { Tape } from '../json/tape';
 import { MAX_DEPTH, parse, type ParseResult } from '../json/parser';
 import { codeChange, codeIndexer, inlineCodeIndexer, type CodeIndex } from '../json/code-index';
@@ -189,10 +190,33 @@ self.onmessage = (e: MessageEvent<Request>) => {
 };
 
 
+/**
+ * The WebAssembly tape parser (tape.wasm): strict JSON several times faster than in JavaScript. Compiled
+ * on the first analysis (only the analysis worker parses big documents); null where WebAssembly can't run
+ * (the JavaScript parser then does it all).
+ */
+let wasm: WebAssembly.Module | null | undefined;
+let wasmReady: Promise<unknown> | null = null;
+const loadWasm = () => (wasmReady ??= (async () => {
+  try {
+    const url = new URL('../json/tape.wasm', import.meta.url);
+    // (compileStreaming needs the application/wasm type: a server that sends another gets the bytes compiled instead.)
+    wasm = await WebAssembly.compileStreaming(fetch(url)).catch(async () => WebAssembly.compile(await (await fetch(url)).arrayBuffer()));
+  } catch {
+    wasm = null;
+  }
+  // The JavaScript parser's first parses in a fresh worker run before the engine optimizes it: a small one now.
+  warmUp();
+})());
+
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
 function analyse(data: Request, text: string) {
-  // Parsed straight to a tape: no node objects here (the page makes the ones it shows).
-  const tape = data.progress ? parseShowing(data, text) : parseTape(text, { lines: data.lines, maxDepth: MAX_DEPTH });
+  // (The first document may come before WebAssembly is compiled: a few ms.)
+  if (wasm === undefined) return void loadWasm().then(() => latest === data.id && analyse(data, text));
+  // Parsed straight to a tape: no node objects here (the page makes the ones it shows). Strict JSON goes
+  // through WebAssembly; anything else (or no WebAssembly) through the JavaScript parser.
+  const options = { lines: data.lines, maxDepth: MAX_DEPTH };
+  const tape = (wasm && !data.lines ? wasmTape(wasm, text, options) : null) ?? (data.progress ? parseShowing(data, text) : parseTape(text, options));
   const res = lazyResult(tape, text);
   showing(data, PARSED);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
