@@ -27,6 +27,9 @@ import type { InputSource } from '../analytics/events';
 import type { SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
 
+/** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
+export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
+
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
 const MAX_PERSIST = 2_500_000;
@@ -3599,6 +3602,36 @@ export class Engine {
     if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), ms ?? (kind === 'err' ? 4000 : 2200));
   }
 
+  /** Keys pressed after the palette, the shortcuts or a context menu was asked for, before it showed (see holdKeys). */
+  private held: HeldKey[] = [];
+  /** What is open shows and has the keys (see takeKeys). */
+  private keysTaken = false;
+
+  /**
+   * A key pressed while the palette, the shortcuts or a context menu loads (they load when the page is idle):
+   * kept for it, out of the editor (Esc closes it). Only keys they use: the browser keeps its own.
+   */
+  private holdKeys(e: KeyboardEvent) {
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (e.key !== 'Escape' && !(plain && (e.key.length === 1 || /^(Backspace|Enter|Tab|Arrow(Up|Down)|Home|End)$/.test(e.key))) && !((e.ctrlKey || e.metaKey) && /^[knp]$/i.test(e.key))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') store.set({ palette: false, shortcuts: false, menu: null });
+    else this.held.push({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey });
+  }
+
+  /** The keys held for the palette, the shortcuts or the menu now shown (see holdKeys): it has the keys from now. */
+  takeKeys(): HeldKey[] {
+    this.keysTaken = true;
+    return this.held.splice(0);
+  }
+
+  /** What was shown is gone: keys are held again while the next one loads. */
+  releaseKeys() {
+    this.keysTaken = false;
+    this.held = [];
+  }
+
   openPalette(mode: 'commands' | 'url' = 'commands') {
     track('feature_used', { feature: mode === 'url' ? 'load_url_dialog' : 'palette' });
     store.set({ palette: mode, shortcuts: false });
@@ -3606,8 +3639,11 @@ export class Engine {
 
   private onKey = (e: KeyboardEvent) => {
     const s = store.get();
-    // (The open context menu has the keys.)
-    if (s.palette || s.shortcuts || s.menu || e.isComposing) return;
+    // (The open palette, shortcuts or context menu has the keys; until it shows, they wait for it.)
+    if (s.palette || s.shortcuts || s.menu || e.isComposing) {
+      if (!this.keysTaken && !e.isComposing) this.holdKeys(e);
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;

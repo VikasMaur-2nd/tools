@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { COMMANDS, fuzzy, type Command } from '@/lib/engine/commands';
 import { store, useUI } from '@/lib/engine/store';
-import { act } from '@/lib/engine/instance';
+import { act, getEngine } from '@/lib/engine/instance';
+import type { HeldKey } from '@/lib/engine/engine';
 import { PRIVATE, track, withVia } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
 import { Kbd, keyLabel } from './Kbd';
@@ -13,7 +14,8 @@ import { Icon } from './icons';
 /** A native <dialog> opened/closed from store state (focus trap + Esc for free). */
 export function Modal({ open, onClose, className, label, children }: { open: boolean; onClose: () => void; className: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
+  // (Shown before paint: the keys held for it while it loaded go to its field, see heldKeys.)
+  useLayoutEffect(() => {
     const d = ref.current;
     if (!d) return;
     if (open && !d.open) d.showModal();
@@ -44,6 +46,30 @@ export function CommandPalette() {
   );
 }
 
+/**
+ * The keys held while what is shown loaded (see Engine.holdKeys), for `use` as it shows (before paint: after
+ * that, keys come to it); held again once it goes.
+ */
+function useHeldKeys(use: (keys: HeldKey[]) => void) {
+  useLayoutEffect(() => {
+    use(getEngine()?.takeKeys() ?? []);
+    return () => getEngine()?.releaseKeys();
+    // (Once: as it shows.)
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Taken as a field would take it: a character or Backspace. */
+const typed = (k: HeldKey) => !k.ctrlKey && !k.metaKey && !k.altKey && (k.key.length === 1 || k.key === 'Backspace');
+
+/** `text` with typed key `k` applied. */
+const typeKey = (text: string, k: HeldKey) => (k.key === 'Backspace' ? text.slice(0, -1) : text + k.key);
+
+/** The keys of a dialog with no field (the shortcuts): it has them as it shows. */
+function HeldKeys() {
+  useHeldKeys(() => {});
+  return null;
+}
+
 function Commands() {
   const settings = useUI((s) => s.settings);
   const mac = useUI((s) => s.mac);
@@ -63,20 +89,23 @@ function Commands() {
     return m;
   }, [t]);
 
-  const list = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+  /** The commands `query` finds, best first. */
+  const matching = (query: string) => {
+    const needle = query.trim().toLowerCase();
     if (!needle) return COMMANDS;
     return COMMANDS.map((c) => ({ c, s: Math.max(fuzzy(needle, names.get(c)!.title) * 1.2, fuzzy(needle, names.get(c)!.hay)) }))
       .filter((x) => x.s >= 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.c);
-  }, [q, names]);
+  };
+  const list = useMemo(() => matching(q), [q, names]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const active = Math.min(sel, Math.max(0, list.length - 1));
 
   useEffect(() => {
     listRef.current?.children[active]?.scrollIntoView({ block: 'nearest' });
   }, [active]);
+
 
   const run = (c: Command) => {
     track('command_run', { command: c.id });
@@ -111,6 +140,29 @@ function Commands() {
       e.currentTarget.closest('dialog')?.close();
     }
   };
+
+  // Keys pressed while the palette loaded: what was typed, then the keys after the last one typed (one typed
+  // puts the choice back on the first command, so those before it changed nothing). Enter and Mod+K wait a
+  // frame, for the dialog to be open as they close it.
+  useHeldKeys((keys) => {
+    let text = '';
+    let last = -1;
+    keys.forEach((k, i) => {
+      if (!typed(k)) return;
+      text = typeKey(text, k);
+      last = i;
+    });
+    if (text) setQ(text);
+    const found = matching(text);
+    let s = 0;
+    for (const k of keys.slice(last + 1)) {
+      if (k.key === 'ArrowDown' || (k.ctrlKey && k.key === 'n')) s = (s + 1) % Math.max(1, found.length);
+      else if (k.key === 'ArrowUp' || (k.ctrlKey && k.key === 'p')) s = (s - 1 + found.length) % Math.max(1, found.length);
+      else if (k.key === 'Enter' && found[s]) return void requestAnimationFrame(() => run(found[s]));
+      else if ((k.metaKey || k.ctrlKey) && k.key.toLowerCase() === 'k') return void requestAnimationFrame(() => listRef.current?.closest('dialog')?.close());
+    }
+    setSel(s);
+  });
 
   const state = { ...store.get(), settings };
   return (
@@ -166,8 +218,26 @@ function Commands() {
 function UrlPrompt() {
   const [url, setUrl] = useState('');
   const t = useT();
+  const form = useRef<HTMLFormElement>(null);
+  /** Enter was pressed while it loaded: it loads the URL typed, once that is in the field. */
+  const [enter, setEnter] = useState(false);
+  useHeldKeys((keys) => {
+    let text = '';
+    for (const k of keys) {
+      if (k.key === 'Enter') {
+        setEnter(true);
+        break;
+      }
+      if (typed(k)) text = typeKey(text, k);
+    }
+    if (text) setUrl(text);
+  });
+  useEffect(() => {
+    if (enter) form.current?.requestSubmit();
+  }, [enter]);
   return (
     <form
+      ref={form}
       className="pl-input"
       onSubmit={(e) => {
         e.preventDefault();
@@ -276,6 +346,7 @@ export function ShortcutsDialog() {
   }, [open]);
   return (
     <Modal open={open} onClose={() => store.set({ shortcuts: false })} className="sheet" label={t('Keyboard shortcuts')}>
+      <HeldKeys />
       <header>
         <h2>
           <Icon name="keyboard" size={18} /> {t('Keyboard shortcuts')}

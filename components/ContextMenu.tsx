@@ -4,7 +4,7 @@ import { useCallback, useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboa
 import { withVia } from '@/lib/analytics';
 import type { SnippetFormat } from '@/lib/badge';
 import type { Engine } from '@/lib/engine/engine';
-import { act } from '@/lib/engine/instance';
+import { act, getEngine } from '@/lib/engine/instance';
 import { store, useUI, type ContextMenu as Open, type DiffAction, type DiffMenu, type MenuArea } from '@/lib/engine/store';
 import { useT } from '@/lib/i18n/react';
 import { LEVELS, MCheck, MChoice, MItem, MSep, menuKeys, menuLetter } from './menu';
@@ -46,6 +46,15 @@ const NAMES: Record<MenuArea, string> = {
 };
 
 /** The open menu `m` (in a portal of JsonTool's: react-dom isn't loaded with this module). */
+/** A key in the menu: Esc, Tab or the menu keys close it; the arrows, Home, End and letters move in it. */
+function menuKey(e: ReactKeyboardEvent<HTMLDivElement>, close: () => void) {
+  if (e.key === 'Escape' || e.key === 'Tab' || e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  } else if (!menuKeys(e)) menuLetter(e);
+}
+
 export default function Popup({ m }: { m: Open }) {
   const ref = useRef<HTMLDivElement>(null);
   const done = useRef(false);
@@ -77,6 +86,17 @@ export default function Popup({ m }: { m: Open }) {
     el.style.top = `${Math.round(Math.max(EDGE, Math.min(y, vh - EDGE - h)))}px`;
     // From the keyboard the first item has focus; from a pointer the menu does (the arrows then pick).
     (m.keyboard ? el.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)') : el)?.focus({ preventScroll: true });
+    // Keys pressed while the menu loaded (it loads when the page is idle), as if pressed now: Enter or Space
+    // presses the item they reach.
+    for (const k of getEngine()?.takeKeys() ?? []) {
+      if (done.current) break;
+      const at = document.activeElement;
+      if (k.key === 'Enter' || k.key === ' ') {
+        if (at instanceof HTMLElement && at !== el && el.contains(at)) at.click();
+        break;
+      }
+      menuKey({ ...k, target: at, currentTarget: el, preventDefault() {}, stopPropagation() {} } as unknown as ReactKeyboardEvent<HTMLDivElement>, close);
+    }
 
     const outside = (e: Event) => !(e.target instanceof Node && el.contains(e.target));
     const onDown = (e: PointerEvent) => outside(e) && close(false);
@@ -92,16 +112,11 @@ export default function Popup({ m }: { m: Open }) {
       document.removeEventListener('wheel', onWheel, true);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('blur', onBlur);
+      getEngine()?.releaseKeys();
     };
   }, [m, close]);
 
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape' || e.key === 'Tab' || e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
-      e.preventDefault();
-      e.stopPropagation();
-      close();
-    } else if (!menuKeys(e)) menuLetter(e);
-  };
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => menuKey(e, close);
 
   return (
     <div
