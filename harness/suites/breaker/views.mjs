@@ -128,3 +128,16 @@ for (const mb of [1, 3]) {
     t.check(msg === 'Select an array or object in the tree to see it as a table.', 'the table says to pick an array or object', msg ?? 'blank', mb >= 2 ? { known: 'bug: the Table is blank for a 2 MB+ string document with escapes (BREAKER-REPORT, blank table)' } : {});
   });
 }
+
+for (const [name, mb] of [['big-records-1mb', 1], ['big-records-3mb', 3]]) {
+  test(`a ${mb} MB array of records: the tree opens with the first record expanded`, async (t) => {
+    // From 2 MB the tree reads the worker's tree; it must open the way a small document's does.
+    const { page } = t;
+    await t.open('/');
+    const text = readFileSync(bigFixture(name), 'utf8');
+    t.assert(await load(page, text, `${name}.json`, { timeout: 120_000 }), 'the document loads');
+    await view(page, 'tree');
+    const rows = await until(page, () => (window.__vis('#view-tree .tv-rows')?.childElementCount ?? 0) > 3 || null, null, { timeout: 30_000 }).then(() => treeRows(page));
+    t.check(JSON.stringify(rows.slice(0, 4)) === JSON.stringify([`root[${mb === 1 ? 3440 : 10286}]`, '  0:{9}', '    id:0', '    uuid:"ce15b37f-1dc67309"']), 'root, the first record open, its first fields', rows.slice(0, 4));
+  });
+}
