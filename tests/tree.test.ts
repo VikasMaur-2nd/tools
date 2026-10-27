@@ -249,3 +249,31 @@ test('Tree rows give their place among their siblings', () => {
   for (const n of made) assert.ok(render.row(n, 0).includes(`aria-posinset="${made.indexOf(n) + 1}"`));
   p.v = saved;
 });
+
+test('A big array of records opens with its first records open, the rest collapsed, under the row budget', async () => {
+  const { lazyResult } = await import('../lib/json/lazy');
+  const { tapeOf } = await import('../lib/json/tape-send');
+  // 60,000 records of 9 fields: two levels would be 600,000 rows, over the budget: only the root's level
+  // opens, and the first records whole (as a smaller document opens every record).
+  const text = JSON.stringify(Array.from({ length: 60_000 }, (_, i) => ({ id: i, a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: [i, 1] })));
+  const res = parse(text);
+  const lazy = lazyResult(tapeOf(res, text), text);
+  const { tree } = view();
+  tree.setRoot(lazy.root, true, res.nodes);
+  const rows = tree.rows;
+  assert.equal(rows[0], lazy.root);
+  assert.equal(rows[1].x, true, 'the first record is open');
+  assert.deepEqual(rows.slice(2, 11).map((n) => n.key), ['id', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
+  assert.equal(rows[10].x, true, 'with everything in it');
+  assert.deepEqual(rows.slice(11, 13).map((n) => n.v), ['0', '1']);
+  assert.equal(rows[13].x, true, 'and the next');
+  const last = rows.at(-1)!;
+  assert.equal(last.d, 1);
+  assert.equal(last.x, false, 'the last record is collapsed');
+  assert.ok(rows.length < 60_000 + 2_100, `${rows.length} rows`);
+  // Expand to a level: the levels asked for, nothing more.
+  tree.expandTo(1);
+  assert.equal(tree.rows.length, 60_001);
+  tree.collapseAll();
+  assert.equal(tree.rows.length, 60_001);
+});
