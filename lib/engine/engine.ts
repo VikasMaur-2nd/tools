@@ -1258,8 +1258,9 @@ export class Engine {
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
     this.loadSeq++; // drops what an earlier load still has pending
-    // (The name shows at once; it is saved with the document, once the editor has it: see persistNow.)
-    store.set({ fileName: name });
+    // (The name shows at once; it is saved with the document, once the editor has it: see persistNow. The
+    // sizes and counts shown were the document before's.)
+    store.set({ fileName: name, sizes: null, stats: null });
     const names: [string | null, string | null] = [this.edName, name];
     if (text.length >= STEPS_MIN) this.startProgress();
     if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, names))) {

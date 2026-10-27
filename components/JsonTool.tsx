@@ -325,10 +325,11 @@ function FindBar() {
   const { open, q, total, index, note, seq } = useUI((s) => s.find);
   const view = useUI((s) => s.settings.view);
   if (!open || view === 'compare') return null;
-  return <FindInput key={seq} initial={q} total={total} index={index} note={note} view={view} />;
+  return <FindInput key={seq} initial={q} q={q} total={total} index={index} note={note} view={view} />;
 }
 
-function FindInput({ initial, total, index, note, view }: { initial: string; total: number; index: number; note?: string; view: View }) {
+/** `q`: the query `total` and `index` are for (the text typed may be newer, its search still to run). */
+function FindInput({ initial, q, total, index, note, view }: { initial: string; q: string; total: number; index: number; note?: string; view: View }) {
   const t = useT();
   const [text, setText] = useState(initial);
   const timer = useRef(0);
@@ -367,7 +368,7 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
         autoComplete="off"
       />
       <span className="count" aria-live="polite" title={note && t.msg(note)}>
-        {text ? (total ? t('{i} of {total}', { i: t.num(index + 1), total: total >= 100000 ? '100k+' : t.num(total) }) : t(note ? 'Concrete paths only' : 'No results')) : ''}
+        {text && text === q ? (total ? t('{i} of {total}', { i: t.num(index + 1), total: total >= 100000 ? '100k+' : t.num(total) }) : t(note ? 'Concrete paths only' : 'No results')) : ''}
       </span>
       <button type="button" className="btn icon sm" aria-label={t('Previous match')} onClick={() => act((e) => e.findStep(-1))}>
         <Icon name="up" size={14} />
@@ -928,8 +929,10 @@ function Sizes() {
   const sizes = useUI((s) => s.sizes);
   // A JWT input has no minified form of its own: just its raw size.
   const parsed = useUI((s) => (s.status.kind === 'valid' && !s.status.jwt) || s.status.kind === 'fixable');
+  // (While a document loads, what is known is the one before's.)
+  const loading = useUI((s) => s.status.kind === 'parsing');
   const t = useT();
-  if (raw === undefined) return null;
+  if (raw === undefined || loading) return null;
   const less = (n: number) => (raw > n ? t(' · ') + t('{percent}% smaller than the input', { percent: Math.round((1 - n / raw) * 100) }) : '');
   return (
     <span className={sizes?.stale ? 'sizes stale' : 'sizes'}>
@@ -963,8 +966,9 @@ function Sizes() {
 
 function Stats() {
   const stats = useUI((s) => s.stats);
+  const loading = useUI((s) => s.status.kind === 'parsing');
   const t = useT();
-  if (!stats) return null;
+  if (!stats || loading) return null;
   return (
     <span className="stats muted" title={t('Parsed in {ms} ms', { ms: t.lang ? t.num(Math.round(stats.ms * 10) / 10) : stats.ms.toFixed(1) })}>
       {t.n(stats.lines, '{n} line', '{n} lines')} · {t.n(stats.nodes, '{n} node', '{n} nodes')} · {t('depth {depth}', { depth: stats.depth })}
