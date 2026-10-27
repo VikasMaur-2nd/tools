@@ -234,6 +234,11 @@ function analyse(data: Request, text: string) {
   showing(data, MEASURED);
   const tree = packTape(tape);
   (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good }, packedTransfer(tree));
+  // A huge document isn't kept here as well (hundreds of MB): an edit then asks the page for all of it again.
+  if (text.length > RETAIN_MAX && !data.good) {
+    source = Doc.of('');
+    sourceId = -1;
+  }
   if (later && metrics.min <= 32_000_000) {
     min ??= reindent(text, '');
     if (min === null) return;
