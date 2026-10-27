@@ -622,3 +622,13 @@ test('expanding nested JSON is dropped if the document changed while its code lo
   assert.equal(set, null);
   assert.deepEqual(toasts, []);
 });
+
+test('past the 500 duplicate keys a parse lists, the status says there are more', () => {
+  const { engine } = session();
+  closable(engine);
+  engine.ed.lineCol = () => ({ line: 1, col: 1 });
+  const st = engine.statusOf(parse('{' + Array.from({ length: 600 }, (_, i) => `"k":${i}`).join(',') + '}'));
+  assert.equal(st.warnings, 500);
+  assert.equal(st.more, true);
+  assert.equal(engine.statusOf(parse('{"k":0,"k":1}')).more, false);
+});

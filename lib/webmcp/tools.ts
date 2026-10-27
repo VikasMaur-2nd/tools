@@ -14,7 +14,7 @@ import type { IndentId, Settings } from '../engine/store';
 import { TARGETS, convertFileName, targetInfo } from '../engine/targets';
 import { byteLength, copyText, formatBytes, formatDoc, preview, primText, tooLarge } from '../json/format';
 import type { JwtInput } from '../json/jwt';
-import { ARR, BOOL, kids, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, parse, tooDeep, type Issue, type JNode, type ParseResult } from '../json/parser';
+import { ARR, BOOL, kids, MAX_ISSUES, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, parse, tooDeep, type Issue, type JNode, type ParseResult } from '../json/parser';
 import { formatPath, parsePath, type Seg } from '../json/path';
 
 /** The open document as a command sees it. */
@@ -178,7 +178,8 @@ function parsed(d: Doc): { res: ParseResult & { root: JNode } } | { result: Resu
 function issueList(src: string, issues: readonly Issue[]): string {
   const where = locator(src);
   const items = issues.slice(0, MAX_LIST).map((i) => `- ${where(i.p)}: ${i.m}`);
-  if (issues.length > MAX_LIST) items.push(`- and ${plural(issues.length - MAX_LIST, 'more')}`);
+  // (The parser lists MAX_ISSUES at most: past them, a count is a lower bound.)
+  if (issues.length > MAX_LIST) items.push(`- and ${issues.length >= MAX_ISSUES ? 'at least ' : ''}${plural(issues.length - MAX_LIST, 'more')}`);
   return items.join('\n');
 }
 

@@ -1,4 +1,4 @@
-import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
+import { ARR, JNode, MAX_ISSUES, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
 import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
 import type { PackedTree } from '../json/pack';
@@ -798,7 +798,7 @@ export class Engine {
   private linesStatus(res: ParseResult, records?: number): Status {
     const w = res.warnings[0];
     const jsonl = records ?? (res.root!.v as JNode[]).length;
-    return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
+    return w ? { kind: 'valid', warnings: res.warnings.length, more: res.warnings.length >= MAX_ISSUES, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
   }
 
   /** A decoded JWT (signature not verified); the UI shows its expiry live. */
@@ -913,7 +913,7 @@ export class Engine {
     const at = (p: number) => this.ed.lineCol(p);
     if (!first && !err) {
       const w = res.warnings[0];
-      return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...at(w.p) } : { kind: 'valid', warnings: 0 };
+      return w ? { kind: 'valid', warnings: res.warnings.length, more: res.warnings.length >= MAX_ISSUES, msg: w.m, p: w.p, ...at(w.p) } : { kind: 'valid', warnings: 0 };
     }
     if (err && (!first || err.p <= first.p)) return { kind: 'error', msg: err.m, p: err.p, ...at(err.p) };
     if (err) return { kind: 'error', msg: first.m, p: first.p, ...at(first.p) };

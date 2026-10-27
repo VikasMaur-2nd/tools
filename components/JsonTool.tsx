@@ -899,7 +899,7 @@ function StatusMsg() {
           <span className="st-msg">{status.jsonl ? t.n(status.jsonl, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}</span>
           {status.warnings > 0 && (
             <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg && t.msg(status.msg)}>
-              · {t.n(status.warnings, '{n} duplicate key', '{n} duplicate keys')}
+              · {status.more ? t('{n}+ duplicate keys', { n: t.num(status.warnings) }) : t.n(status.warnings, '{n} duplicate key', '{n} duplicate keys')}
             </button>
           )}
         </span>
