@@ -173,3 +173,16 @@ test('unpacker with fill makes the root\'s children in steps, before it gives th
   const plain = unpacker(packTree(res, src), src)(Infinity)!;
   assert.equal(madeCount(plain.root), 1);
 });
+
+test('unpacking the same packed tree over the same text gives the same tree each time', () => {
+  const src = '[{"a":1},{"b":[2,3]}]';
+  const packed = packTree(parse(src), src);
+  const one = unpacker(packed, src)(Infinity)!;
+  const kids1 = one.root!.v as JNode[];
+  const two = unpacker(packed, src)(Infinity)!;
+  assert.equal(two.root, one.root, 'same root');
+  assert.equal(two.root!.v, kids1, 'children made once');
+  // Another text (an edit) is another tree.
+  const other = src.replace('1', '9');
+  assert.notEqual(unpacker(packed, other)(Infinity)!.root, one.root);
+});
