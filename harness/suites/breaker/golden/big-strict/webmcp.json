@@ -1,0 +1,46 @@
+[
+ [
+  "check_json",
+  "{}",
+  "Valid JSON: an array of 19,613 items (3.2 MB, 297,082 values, nesting depth 42).\nWarnings:\n- line 4, column 34: Duplicate key \"a\"\n- line 4, column 51: Duplicate key \"c\"\n- line 4, column 64: Duplicate key \"a\"\n- line 16, column 34: Duplicate key \"a\"\n- line 16, column 51: Duplicate key \"c\"\n- line 16, column 64: Duplicate key \"a\"\n- line 28, column 34: Duplicate key \"a\"\n- line 28, column 51: Duplicate key \"c\"\n- line 28, column 64: Duplicate key \"a\"\n- line 40, column 34: Duplicate key \"a\"\n- line 40, column 51: Duplicate key \"c\"\n- line 40, column 64: Duplicate key \"a\"\n- line 52, column 34: Duplicate key \"a\"\n- line 52, column 51: Duplicate key \"c\"\n- line 52, column 64: Duplicate key \"a\"\n- line 64, column 34: Duplicate key \"a\"\n- line 64, column 51: Duplicate key \"c\"\n- line 64, column 64: Duplicate key \"a\"\n- line 76, column 34: Duplicate key \"a\"\n- line 76, column 51: Duplicate key \"c\"\n- and 430 mores"
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$[1].v\"}",
+  "$[1].v is an array of 13 items.\n\nValue:\n[\n  1e400,\n  -0,\n  1.0000000000000000000001,\n  123456789012345678901234567890123,\n  9007199254740993,\n  -1e-400,\n  0.1e1,\n  1E+2,\n  0,\n  -0.0,\n  5e-324,\n  1.5e-10,\n  100000000000000000000000\n]"
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$[19612]\"}",
+  {
+   "hash": "50172:6c89c390",
+   "head": "$[19612] is an object with 1 key:\n- \"long\": string\n\nValue:\n{\n  \"long\": \"東京é\\t\\\"😀/\\t\\\\ \\\\ab\\\\\\\\é\\\\\\n/\\\\éé東京 é\\t\\t/東京/ éé/\\\"/😀\\\\é \\\"/éab\\n😀é \\n/éé \\t/ ab😀\\\\東京é abé/\\t東京\\t\\\"😀\\\\é\\t東京\\t\\t\\n\\t\\\"😀東京abéé 😀\\n\\t\\\"é 😀 é😀 東京éabab\\\"東京\\té/\\\"ab\\\\ ab\\t/😀\\\"\\n/東京\\\"\\\"\\n\\t  /é😀abé \\n ab東京😀/\\\\\\\\abéé\\\\ 😀\\t\\né\\\"é\\n\\\"東京\\\\\\\\ab\\n\\n\\\\😀/é東京/ 😀\\\"😀éabé/é😀é//\\t\\\\\\\"\\\\é/é éab/abab\\té😀 \\\\é//é東京abéab\\t//é\\té é/😀😀ab\\n\\\"é😀東京東京é\\n東京ab\\n \\n\\té \\\"東京😀\\n\\\\ab\\té\\n\\nééé😀  é\\\" \\\\ab\\nab\\\\\\n東京/\\né😀\\\\東京😀\\\"\\\"é😀\\\\\\\\\\\\/ababé😀/é \\\\東京\\n\\\"\\\\東京\\t\\t\\t東京\\\"é😀😀 \\\"\\\" /😀 ab東京\\\"/ab/\\nab\\\\\\\\\\t/😀é\\\\\\né東京東京 \\\"é😀東京\\\\\\\\\\\"\\n\\t\\\\ ab\\n\\t東京東京 \\\"\\t \\t😀\\\"\\\"\\\\é/東京\\\"東京東京\\\"\\\\/\\\\\\\"ab/ab東京\\n\\t\\\"é\\\\\\\"東京😀\\t東京東京/\\t\\\"\\n/\\n😀東京\\\\\\n\\né東京/\\\\éé\\\\/東京東京\\n\\\\abé \\té東京\\\\ab\\\"é\\\"\\néé\\té東京é東京/東京😀éé東京\\t\\\"éé\\\"\\\\\\té/😀\\\"\\\"é\\\\\\\" é/é\\\\😀é😀 ab東京\\\\\\\\😀\\\\😀é\\n\\té\\néab😀  😀 é\\\\😀\\\"/é\\\"\\\"\\nab\\\\/\\\\éé 東京\\n/\\\\\\\\é😀東京\\\\\\t\\\"ab\\n\\t\\té \\\\ /ab\\n\\\"😀é\\\"é😀ab /😀\\n😀\\\"😀/    /\\n\\n😀\\n東京//éé😀é\\n\\t \\n😀\\n東京/😀é東京\\té😀東京ééab\\n\\\"😀\\néééab😀é/\\n東京/😀\\té\\t/abé\\n/ 東京é é東京 é\\\\//東京\\t\\té東京\\t東京é\\né\\\"ab東京\\t\\t😀\\\\ab/ab\\\\\\n\\t//東京abab\\n 東京abé\\\"\\t\\\\\\n\\nab/😀ab\\\\\\t\\t\\n\\t\\\\é\\n😀/東京😀é/\\\"\\\"\\\"\\tab東京//\\\"東京😀\\\\\\t\\t東京\\n\\\"東京\\n\\\"東京é \\\"東京 東京 \\\"ab/  \\\"😀\\\"😀ab\\\\éab東京\\\"\\\"é\\\\ \\\\/\\téab😀/é \\\"é😀é\\n東京 /😀\\\"😀\\t\\tab東京éabé\\n\\\\\\n\\\"\\téab\\\"\\t\\\\abé😀/ab東京é\\n\\t😀abab😀\\t東京\\\\\\n\\\"\\t東京 東京\\\"😀éé//\\n東京ab/\\n\\té\\\"\\\"é/\\\\\\\"東京😀😀é\\té\\t😀😀😀\\\"\\t\\néabab\\t /東京é\\\\/\\\"ab ab\\t \\tééé\\t東京東京abab\\\"é\\t/ééé\\t\\n/\\t\\\\\\\\😀 ab ab😀 é/\\n\\t\\t\\\" \\n 東京/ab東京\\t😀é東京😀\\\\\\\\\\tab\\\\😀東京\\\\\\né 東京é\\\\\\té\\\\ abé東京ab東京ab東京😀東京\\\\東"
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$[4].v\"}",
+  "$[4].v is an object with 8 keys:\n- \"k‮RLO\": string\n- \"👨‍👩‍👧‍👦\": string\n- \"ls\": string\n- \"esc\": string\n- \"ctl\": string\n- \"astral\": string\n- \"lone\": string\n- \"nul\": string\n\nValue:\n{\n  \"k‮RLO\": \"v‮evil‬\",\n  \"👨‍👩‍👧‍👦\": \"Z͓͑͒ ǟ é\",\n  \"ls\": \"a b c\",\n  \"esc\": \"\\b\\f\\n\\r\\t\\\"\\\\/\",\n  \"ctl\": \"\\u0001\\u001f\",\n  \"astral\": \"😀𝓐\",\n  \"lone\": \"\\ud800 \\udfff\",\n  \"nul\": \"\\u0000\"\n}"
+ ],
+ [
+  "convert_json",
+  "{\"to\":\"typescript\"}",
+  {
+   "hash": "2284:cb908709",
+   "head": "export type Root = RootItem[];\n\nexport interface RootItem {\n  r?: number;\n  case?: string;\n  v?: number | string | (boolean | number | string | (number | unknown[] | Record<string, unknown>)[] | VItem | null)[] | V | null; // exceeds Number.MAX_SAFE_INTEGER: precision is lost as a JS number\n  long?: string;\n}\n\nexport interface VItem {\n  a?: number;\n  b?: unknown[];\n  id?: number;\n  name?: string | null;\n  tags?: string[];\n  addr?: Addr;\n  active?: boolean;\n  extra?: (number | ExtraItem)[];\n}\n\nexport interface Addr {\n  city: string;\n  zip?: string;\n}\n\nexport interface ExtraItem {\n  deep: boolean;\n}\n\nexport interface V {\n  __proto__?: Proto;\n  constructor?: Constructor;\n  toString?: string;\n  hasOwnProperty?: null;\n  valueOf?: unknown[];\n  __defineGetter__?: number;\n  a?: number;\n  b?: number | B;\n  \"10\"?: string;\n  \"2\"?: string;\n  \"-1\"?: string;\n  \"01\"?: string;\n  \"\"?: string;\n  \" \"?: string;\n  \"k‮RLO\"?: string;\n  \"👨‍👩‍👧‍👦\"?: string;\n  ls?: string;\n  esc?: string;\n  ctl?: string;\n  astral?: string;\n  lone?: string;\n  nul?: string;\n  \"<img src=x onerror=window.__xss=1>\"?: string;\n  \"a\\\"b\"?: string;\n  \"&amp;\"?: string;\n  l0?: L0Item[];\n}\n\nexport interface Proto {\n  polluted: number;\n}\n\nexport interface Constructor {\n  prototype: Prototype;\n}\n\nexport interface Prototype {\n  x: number;\n}\n\nexport interface B {\n  c: number | C;\n}\n\nexport interface C {\n  d: number;\n}\n\nexport interface L0Item {\n  l2: L2Item[];\n}\n\nexport interface L2Item {\n  l4: L4Item[];\n}\n\nexport interface L4Item"
+  }
+ ],
+ [
+  "compare_json",
+  "{\"modified\":\"[\\n{\\\"r\\\":0,\\\"case\\\":\\\"proto-keys\\\",\\\"v\\\":{\\\"__",
+  "4 differences: 1 added, 1 removed, 2 changed.\n- changed $[1].v[4]: 9007199254740993 → 9007199254740994\n- changed $[7].case: \"html\" → \"HTML\"\n- removed $[30]: {r: 2, case: \"records\", v: […]}\n- added $[5000]: {inserted: true, n: 1e400}\n\nJSON Patch:\n[\n  {\n    \"op\": \"replace\",\n    \"path\": \"/1/v/4\",\n    \"value\": 9007199254740994\n  },\n  {\n    \"op\": \"replace\",\n    \"path\": \"/7/case\",\n    \"value\": \"HTML\"\n  },\n  {\n    \"op\": \"remove\",\n    \"path\": \"/30\"\n  },\n  {\n    \"op\": \"add\",\n    \"path\": \"/5000\",\n    \"value\": {\n      \"inserted\": true,\n      \"n\": 1e400\n    }\n  }\n]"
+ ],
+ [
+  "format_json",
+  "{\"style\":\"minified\"}",
+  {
+   "hash": "50116:a2deef99",
+   "head": "[{\"r\":0,\"case\":\"proto-keys\",\"v\":{\"__proto__\":{\"polluted\":1},\"constructor\":{\"prototype\":{\"x\":1}},\"toString\":\"s\",\"hasOwnProperty\":null,\"valueOf\":[],\"__defineGetter__\":0}},{\"r\":0,\"case\":\"numbers\",\"v\":[1e400,-0,1.0000000000000000000001,123456789012345678901234567890123,9007199254740993,-1e-400,0.1e1,1E+2,0,-0.0,5e-324,1.5e-10,100000000000000000000000]},{\"r\":0,\"case\":\"dupes\",\"v\":{\"a\":1,\"a\":2,\"b\":{\"c\":1,\"c\":{\"d\":2}},\"a\":3}},{\"r\":0,\"case\":\"key-order\",\"v\":{\"10\":\"ten\",\"2\":\"two\",\"-1\":\"minus\",\"01\":\"zero-one\",\"\":\"empty\",\" \":\"space\",\"b\":1,\"a\":2}},{\"r\":0,\"case\":\"unicode\",\"v\":{\"k‮RLO\":\"v‮evil‬\",\"👨‍👩‍👧‍👦\":\"Z͓͑͒ ǟ é\",\"ls\":\"a b c\",\"esc\":\"\\b\\f\\n\\r\\t\\\"\\\\/\",\"ctl\":\"\\u0001\\u001f\",\"astral\":\"😀𝓐\",\"lone\":\"\\ud800 \\udfff\",\"nul\":\"\\u0000\"}},{\"r\":0,\"case\":\"mixed\",\"v\":[1,\"a\",null,true,false,{\"a\":1},[1,2],{\"b\":[]},[],{},[[]],[{}],-0.5,\"\"]},{\"r\":0,\"case\":\"records\",\"v\":[{\"id\":1,\"name\":\"Ada\",\"tags\":[\"x\",\"y\"],\"addr\":{\"city\":\"London\",\"zip\":\"N1\"}},{\"id\":2,\"name\":\"Lin\",\"active\":false},{\"id\":3,\"name\":null,\"addr\":{\"city\":\"Oslo\"},\"extra\":[1,{\"deep\":true}]}]},{\"r\":0,\"case\":\"html\",\"v\":{\"<img src=x onerror=window.__xss=1>\":\"<script>window.__xss=2</script>\",\"a\\\"b\":\"</textarea><svg onload=window.__xss=3>\",\"&amp;\":\"&lt;b&gt;\"}},{\"r\":0,\"case\":\"scalar-string\",\"v\":\"just a string with \\\"quotes\\\" and é\"},{\"r\":0,\"case\":\"scalar-number\",\"v\":-12.50e+3},{\"r\":0,\"case\":\"scalar-null\",\"v\":null},{\"r\":0,\"case\":\"nested\",\"v\":{\"l0\":[{\"l2\":[{\"l4\":[{\"l6\":[{\"l8\":[{\"l10\":[{\"l12\":[{\"l14\":[{\"l16\":[{\"l18\":[{\"l20\":[{\"l22\":[{\"l24\":[{\"l26\":[{\"l28\""
+  }
+ ]
+]

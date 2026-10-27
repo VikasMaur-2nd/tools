@@ -345,16 +345,24 @@ export interface Unescaped {
   at: number;
 }
 
-/** `text` with one level of escapes undone, if it has escaped quotes and every escape is valid; else null. */
+/**
+ * `text` with one level of escapes undone, if it is JSON written as a string (every quote is escaped:
+ * `{\"a\": 1}`) and every escape is valid; else null. (Ordinary JSON holding an escaped quote in a value
+ * isn't: undoing its escapes would cut that value apart.)
+ */
 export function unescaped(text: string): Unescaped | null {
-  const at = text.indexOf('\\"');
-  if (at < 0) return null;
+  const q = text.indexOf('"');
+  if (q < 1 || text.charCodeAt(q - 1) !== 92) return null;
+  const at = q - 1;
   const map = new Int32Array(text.length + 1);
   let d = '';
   let k = 0;
   let seg = 0;
   for (let j = 0; j < text.length; ) {
-    if (text.charCodeAt(j) !== 92) {
+    const x = text.charCodeAt(j);
+    if (x !== 92) {
+      // (A quote not escaped: this is JSON itself, not JSON written as a string.)
+      if (x === 34) return null;
       map[k++] = j++;
       continue;
     }

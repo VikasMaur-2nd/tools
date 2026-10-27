@@ -69,18 +69,21 @@ function siblingIndex(n: JNode) {
 
 /** Rows a new big document opens with at most (fewer levels open when they would be more; the root's always). */
 const OPEN_ROWS = 500_000;
+/** With fewer levels open: deeper containers open too while the rows before them are fewer than this (the first records show whole). */
+const FIRST_ROWS = 2_000;
 
 /**
  * How many levels a new document opens with: all of a small one, three or two of a bigger one, and fewer
  * when that many rows would be more than OPEN_ROWS (a tree from a tape counts them there; a tree from the
- * page's parser has every node made already, so only its rows cost).
+ * page's parser has every node made already, so only its rows cost). And whether that took levels away.
  */
-function openLevels(root: JNode | null, nodes: number): number {
-  if (nodes <= 50_000) return Infinity;
-  let levels = nodes <= 500_000 ? 3 : 2;
+function openLevels(root: JNode | null, nodes: number): [number, boolean] {
+  if (nodes <= 50_000) return [Infinity, false];
+  const most = nodes <= 500_000 ? 3 : 2;
+  let levels = most;
   const z = root?.z;
   if (z) while (levels > 1 && z.within(root!, levels) > OPEN_ROWS) levels--;
-  return levels;
+  return [levels, levels < most];
 }
 
 export class TreeView {
@@ -97,6 +100,8 @@ export class TreeView {
   rows: JNode[] = [];
   sel: JNode | null = null;
   private limit = Infinity;
+  /** The first containers one level past `limit` open too (see FIRST_ROWS). */
+  private first = false;
   /** The next root is a new document's: how many levels it opens with is still to decide. */
   private newDoc = false;
   private dirty = false;
@@ -155,7 +160,7 @@ export class TreeView {
     }
     // (A new document's first tree may come after a release: see releaseRoot.)
     if (reset || this.newDoc) {
-      this.limit = openLevels(root, nodes);
+      [this.limit, this.first] = openLevels(root, nodes);
       this.newDoc = false;
     }
     this.root = root;
@@ -198,6 +203,7 @@ export class TreeView {
     const rows: JNode[] = [];
     const useT = !!startExpansion?.children;
     const limit = this.limit;
+    const first = this.first;
     // Open containers being listed (a list rather than the call stack, so any depth can be shown):
     // their items, the next item, and their position in the override trie.
     const lists: JNode[][] = [];
@@ -206,7 +212,7 @@ export class TreeView {
     const visit = (n: JNode, expansion: Expansion | undefined) => {
       rows.push(n);
       if (n.t < ARR) return;
-      const open = expansion?.open ?? n.d < limit;
+      const open = expansion?.open ?? (n.d < limit || (first && rows.length < FIRST_ROWS));
       n.x = open;
       if (open) {
         lists.push(kids(n));
@@ -285,6 +291,7 @@ export class TreeView {
 
   expandAll() {
     this.limit = Infinity;
+    this.first = false;
     this.toggles = {};
     this.rebuild();
     this.scrollToSel(true);
@@ -292,6 +299,7 @@ export class TreeView {
 
   collapseAll() {
     this.limit = 1;
+    this.first = false;
     this.toggles = {};
     this.rebuild();
     this.sc.top = 0;
@@ -299,6 +307,7 @@ export class TreeView {
 
   expandTo(level: number) {
     this.limit = level;
+    this.first = false;
     this.toggles = {};
     this.rebuild();
   }

@@ -183,6 +183,37 @@ test('a conversion is dropped once a newer one is asked for, and the newer one s
   assert.equal(code.text, 'OUTPUT new');
 });
 
+test("Copy and Download right after the Convert target changes give the new target's output", async () => {
+  const { engine, tick, navigator, toasts } = session();
+  const code = converting(engine, '{"a":1}');
+  const copied: string[] = [];
+  const saved: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  engine.save = (text: string) => saved.push(text);
+  engine.loadConverters = async () => ({ ...converters, convert: (_root: JNode, id: string) => `${id} output` });
+  // (Nothing converted yet and nothing asked for: Copy says so at once, it doesn't wait.)
+  engine.copyConvert();
+  assert.deepEqual(toasts, ['Nothing to copy yet']);
+  await engine.runConvert();
+  assert.equal(code.text, 'typescript output');
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(copied, ['typescript output']);
+  // A big document's view takes a while to show the new target's output: Copy and Download wait for it.
+  engine.settings = { ...engine.settings, target: 'yaml' };
+  engine.scheduleConvert(0);
+  engine.copyConvert();
+  await engine.downloadConvert();
+  await settled();
+  assert.deepEqual(copied, ['typescript output'], 'nothing copied before the conversion');
+  assert.deepEqual(saved, []);
+  tick();
+  await settled();
+  assert.equal(code.text, 'yaml output');
+  assert.deepEqual(copied, ['typescript output', 'yaml output']);
+  assert.deepEqual(saved, ['yaml output']);
+});
+
 test('a superseded conversion whose code failed to load says nothing', async () => {
   const { engine, state, errors } = session();
   converting(engine);
