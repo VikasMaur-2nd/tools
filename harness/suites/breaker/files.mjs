@@ -217,3 +217,28 @@ for (const [eol, label] of [['\r\n', 'CRLF'], ['\n', 'LF']]) {
     t.check(row1 === `1,${JSON.parse(lines[1]).s},1.5,false`, 'Convert → CSV writes record 1 exactly', row1, known);
   });
 }
+
+for (const ext of ['json', 'jsonl']) {
+  test(`3 MB .${ext} with invalid UTF-8 in every record: decoded as the WHATWG decoder does`, async (t) => {
+    // Truncated sequences, a lone 0xFF, an encoded surrogate, an overlong form: each becomes U+FFFD(s)
+    // exactly as TextDecoder makes them, wherever the file's read chunks split it.
+    const { page } = t;
+    await t.open('/');
+    const BAD = [[0xc3, 0x28], [0xe2, 0x82], [0xf0, 0x9f, 0x98], [0xff], [0xed, 0xa0, 0x80], [0xc0, 0xaf]].map((b) => Buffer.from(b));
+    const parts = [Buffer.from(ext === 'json' ? '[' : '')];
+    for (let i = 0, n = 0; n < 3_000_000; i++) {
+      // (Padded so the bad bytes stay a few percent of the text, as in a real file: not a binary file.)
+      const rec = Buffer.concat([Buffer.from(`${i && ext === 'json' ? ',' : ''}{"i":${i},"pad":"${'text '.repeat(8)}","s":"a`), BAD[i % BAD.length], Buffer.from(`b"}${ext === 'jsonl' ? '\n' : ''}`)]);
+      parts.push(rec);
+      n += rec.length;
+    }
+    if (ext === 'json') parts.push(Buffer.from(']'));
+    const file = Buffer.concat(parts);
+    const text = new TextDecoder().decode(file);
+    const records = ext === 'json' ? JSON.parse(text) : text.trim().split('\n').map((l) => JSON.parse(l));
+    const st = await loadAny(page, file, `bad.${ext}`, { timeout: 120_000 });
+    t.check(st?.kind === 'ok', 'it parses', st);
+    const out = await copied(page, 'Copy formatted output', { timeout: 60_000 });
+    t.check(out !== null && hash(out) === hash(JSON.stringify(records, null, 2)), 'the Format output holds exactly the decoded text');
+  });
+}
