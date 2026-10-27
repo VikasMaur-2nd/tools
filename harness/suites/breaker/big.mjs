@@ -80,7 +80,7 @@ test('ten million numbers in one array: exact status, minified output and tree',
 test('a million duplicate keys: the status counts them', async (t) => {
   const st = await open(t, 'dupes-1000k');
   t.assert(st?.kind === 'ok', 'valid', st);
-  t.check(st.msg === 'Valid JSON· 999,999 duplicate keys', 'the status counts every duplicate (or says it stopped counting)', st.msg, { known: 'bug: the duplicate count stops at 500 and reads as exact (BREAKER-REPORT F4)' });
+  t.check(st.msg === 'Valid JSON· 999,999 duplicate keys', 'the status counts every duplicate (or says it stopped counting)', st.msg, { known: 'bug: the duplicate count stops at 500 and reads as exact (BREAKER-REPORT F10)' });
 });
 
 for (const [shape, indent] of [['records', '  '], ['pretty', '']]) {
