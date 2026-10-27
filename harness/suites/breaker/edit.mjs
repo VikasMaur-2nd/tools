@@ -4,7 +4,7 @@
 // formula-like values.
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
-import { copied, downloaded, inputText, load, until, watchToasts } from './_helpers.mjs';
+import { copied, downloaded, inputText, load, loadAny, until, watchToasts } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
 
@@ -174,3 +174,58 @@ for (const pad of [0, 3_000_000]) {
     t.check((await inputText(page)) === text, 'Undo brings the string back');
   });
 }
+
+test('an edit made while the Tree shows: Copy formatted output, Copy converted output and Download formatted output give the edited document', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  const doc = JSON.stringify([{ id: 1, tag: 'a' }, { id: 2, tag: 'b' }], null, 2);
+  t.assert(await load(page, doc, 'tags.json'), 'the document loads');
+  await view(page, 'convert');
+  await page.locator('.app:visible .pane-view select').filter({ has: page.locator('option[value="typescript"]') }).first().selectOption('csv');
+  t.check((await copied(page, 'Copy converted output')) === 'id,tag\r\n1,a\r\n2,b\r\n', 'CSV before the edit');
+  // Show in editor from the tree, then type over the value.
+  await view(page, 'tree');
+  await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+f`);
+  const box = page.locator('.findbar:visible input');
+  await box.fill('$[1].tag');
+  await box.press('Enter');
+  await until(page, () => window.__vis('#view-tree .tv-rows [aria-selected=true]')?.textContent === 'tag:"b"' || null, null, { timeout: 10_000 });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.__vis('#view-tree').focus());
+  await page.keyboard.press('Enter');
+  await until(page, () => document.activeElement?.id === 'input' || null, null, { timeout: 5000 });
+  await page.keyboard.type('"EDITED"');
+  const want = doc.replace('"b"', '"EDITED"');
+  t.check(!!(await until(page, () => [...document.querySelectorAll('#view-tree .tv-rows [role=treeitem]')].some((r) => r.textContent === 'tag:"EDITED"') || null, null, { timeout: 10_000 })), 'the tree shows the edit');
+  t.check((await inputText(page)) === want, 'the input holds the edit');
+  const known = { known: 'bug (main and branch): from a view other than Format/Convert, output commands give the output from before the edit (BREAKER-REPORT F18)' };
+  const out = await copied(page, 'Copy formatted output');
+  t.check(out === want, 'Copy formatted output, from the Tree: the edited document', out?.slice(0, 80), known);
+  const csv = await copied(page, 'Copy converted output');
+  t.check(csv === 'id,tag\r\n1,a\r\n2,EDITED\r\n', 'Copy converted output, from the Tree: the edited CSV', csv, known);
+  const file = await downloaded(page, () => command(page, 'Download formatted output'));
+  t.check(file?.bytes?.toString() === want, 'Download formatted output, from the Tree: the edited document', file?.bytes?.toString().slice(0, 80), known);
+});
+
+test('Repair keeps ordinary JSON\'s escaped quotes: an error elsewhere is not read as JSON written as a string', async (t) => {
+  // Ordinary JSON holding an escaped quote, with an error repair can't fix. Main says where the error is and
+  // refuses to repair it; a repair may drop the stray text, but each string must keep its value.
+  const { page } = t;
+  await t.open('/');
+  for (const [doc, kept] of [
+    ['{"a":"q\\"x"} @', (v) => v?.a === 'q"x' && Object.keys(v).length === 1],
+    ['{"a": "\\"", "b": ~}', (v) => v?.a === '"'],
+  ]) {
+    const st = await loadAny(page, doc, 'doc.json');
+    t.check(!!st && !/JSON written as a string/.test(st.msg), `${doc}: the status names the real error`, st?.msg);
+    await watchToasts(page);
+    await command(page, 'Repair JSON');
+    await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 5000 });
+    const after = await inputText(page);
+    let value = null;
+    try {
+      value = JSON.parse(after);
+    } catch {}
+    t.check(after === doc || kept(value), `${doc}: Repair leaves it alone or keeps every string's value`, after);
+  }
+});
