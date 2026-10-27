@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { asciiCells, asciiRows, leadOf, SUMMED, Wrapper } from '../lib/engine/wrap';
+import { asciiCells, asciiRows, CUT, leadOf, SUMMED, Wrapper } from '../lib/engine/wrap';
 import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 import { Doc } from '../lib/engine/doc';
 
@@ -498,27 +498,53 @@ describe('garbage and documents of many glyphs', () => {
     return [Int32Array.from(A), Int32Array.from(B)] as const;
   };
 
-  test('views that draw their rows add up garbage lines: no layout, no glyph measured', () => {
+  test('views that draw their rows cut binary lines every few code units: no layout, no glyph measured', () => {
     const t = binary(200_000);
     const { w, seen } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
     const [A, B] = linesOf(t);
     const rows = w.rows(t, A, B);
-    let summed = 0;
+    const per = 20;
+    let cut = 0;
     for (let k = 0; k < A.length; k++) {
-      if (w.odd[k] !== SUMMED) continue;
-      summed++;
-      // The rows are the breaks added up (see rowsOf), and rowStart/rowAt agree with them.
-      const st = breaksOf(w, t, A[k], B[k]);
-      assert.equal(rows[k], st.length, `line ${k}`);
-      for (let r = 1; r < st.length; r++) {
-        assert.equal(w.rowStart(t, A[k], B[k], r, SUMMED), st[r]);
-        assert.equal(w.rowAt(t, A[k], B[k], A[k] + st[r], SUMMED, st.length), r);
+      if (w.odd[k] !== CUT) continue;
+      cut++;
+      // Rows of 20 code units (40 columns, two cells a glyph at most), after a forced break, never inside a pair.
+      const s = t.slice(A[k], B[k]);
+      const st = [0];
+      for (let i = 0, n = 0; i < s.length; ) {
+        const c = s.charCodeAt(i);
+        const step = (c & 0xfc00) === 0xd800 && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+        if (n >= per) {
+          st.push(i);
+          n = 0;
+        }
+        n += step;
+        i += step;
+        if (/[\v\f\x85\u2028\u2029]/.test(String.fromCharCode(c)) && i < s.length) {
+          st.push(i);
+          n = 0;
+        }
       }
+      assert.deepEqual([...Array(rows[k]).keys()].map((r) => w.rowStart(t, A[k], B[k], r, CUT)), st, `line ${k}`);
+      for (let r = 1; r < st.length; r++) assert.equal(w.rowAt(t, A[k], B[k], A[k] + st[r], CUT, st.length), r);
     }
-    assert.ok(summed > A.length * 0.9, `most lines are garbage (${summed} of ${A.length})`);
-    // (Garbage needn't be tight: its glyphs are estimated, none measured.)
+    assert.ok(cut > A.length * 0.9, `most lines are binary (${cut} of ${A.length})`);
     assert.equal(seen.length, 0, `${seen.length} glyphs measured`);
-    assert.ok(w.guess.size > 1000, `${w.guess.size} estimated`);
+  });
+
+  test('a line whose only oddity is undecodable bytes has its rows added up, its new glyphs estimated', () => {
+    const { w, seen } = make(false, () => 8);
+    const t = Array.from({ length: 40 }, (_, i) => `{"name":"Fran\ufffdois ${i} 東京${String.fromCodePoint(0x4e00 + i)}","note":"caf\ufffd au lait, tr\ufffds bien"}`).join('\n');
+    const [A, B] = linesOf(t);
+    const rows = w.rows(t, A, B);
+    for (let k = 0; k < A.length; k++) {
+      assert.equal(w.odd[k], SUMMED);
+      const st = breaksOf(w, t, A[k], B[k]);
+      assert.equal(rows[k], st.length);
+      for (let r = 1; r < st.length; r++) assert.equal(w.rowStart(t, A[k], B[k], r, SUMMED), st[r]);
+    }
+    assert.equal(seen.length, 0);
+    assert.ok(w.guess.size >= 40);
   });
 
   test('an estimated glyph is as wide as the widest measured in its block', () => {
@@ -545,7 +571,7 @@ describe('garbage and documents of many glyphs', () => {
     const { w } = make(true, () => 8);
     const t = 'ab\u0000cd�' + 'x'.repeat(100);
     assert.throws(() => w.rows(t, Int32Array.of(0), Int32Array.of(t.length)), /laid out in the DOM/);
-    assert.notEqual(w.odd[0], SUMMED);
+    assert.ok(w.odd[0] < SUMMED);
   });
 
   test('text without garbage is laid out as before', () => {

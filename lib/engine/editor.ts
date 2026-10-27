@@ -339,7 +339,7 @@ export class Editor {
   private wrapper: Wrapper | null = null;
   /** While wrapping: the first visual row of each display line (length rows + 1). */
   private wy: Int32Array | null = null;
-  /** While wrapping: 1 for display lines whose breaks the browser decides, SUMMED for garbage (Wrapper.odd). */
+  /** While wrapping: 1 for display lines whose breaks the browser decides, SUMMED or CUT for garbage (Wrapper.odd). */
   private wodd = new Uint8Array(0);
   /** Text or folds changed since rows were last wrapped. */
   private wrapDirty = true;
@@ -1560,7 +1560,7 @@ export class Editor {
       const lm = this.lineMarks ? this.lineMarks[ln] : 0;
       const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
       // (Garbage, too, is drawn as its rows: see Wrapper.summed.)
-      if (rows > 1 && (b - a > LONG_LINE || this.wodd[k] === SUMMED)) {
+      if (rows > 1 && (b - a > LONG_LINE || this.wodd[k] >= SUMMED)) {
         const flag = this.wodd[k];
         const odd = flag !== 0;
         const s0 = Math.max(0, r0 - y);

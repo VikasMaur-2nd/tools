@@ -80,7 +80,7 @@ export class CodeView {
   private cw = 7.8;
   /** Soft wrap (null: lines run on and the view scrolls sideways). */
   private wrapper: Wrapper | null;
-  /** Per visible line: 1 where the browser decides the breaks, SUMMED for garbage (Wrapper.odd). */
+  /** Per visible line: 1 where the browser decides the breaks, SUMMED or CUT for garbage (Wrapper.odd). */
   private odd = new Uint8Array(0);
   /** Offset of each line in `text`. */
   private ls = new Int32Array(0);

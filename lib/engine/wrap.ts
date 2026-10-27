@@ -17,8 +17,9 @@
  * - Views that draw every row themselves (the code views, the editor without
  *   its textarea) needn't match a textarea: a long line of other text is
  *   broken by adding up its glyphs' widths, which is instant at any size. So is
- *   a line of garbage (control characters, bytes that weren't UTF-8: a binary
- *   file opened as text), which the browser takes seconds a megabyte to lay out.
+ *   a line with bytes that weren't UTF-8, and a line of binary (control
+ *   characters: a file that isn't text) is cut every few code units: laying
+ *   such text out, the browser takes seconds a megabyte to find fonts.
  * - Glyphs are measured once each, up to a budget; past it a glyph's width is
  *   estimated from those measured in its block (random bytes hold tens of
  *   thousands of distinct code points, and each measurement costs ~0.3 ms).
@@ -58,12 +59,22 @@ const RUN = /[\x20-\x7e]+/y;
 /** Long lines whose breaks were added up (see `rowsOf`). */
 const SUMS = 4;
 /**
- * What no text file holds: control characters (but tabs and line breaks), bytes that weren't UTF-8 (U+FFFD),
- * noncharacters and lone surrogates. A line with any is garbage: its rows are added up (see `rows`).
+ * What no text file holds: control characters (but tabs and line breaks), noncharacters and lone surrogates.
+ * A line with any is binary (a file that isn't text, opened as text): its rows are cut every perRow code
+ * units (see `cut`), which costs nothing to count.
  */
-const GARBAGE = /[\0-\x08\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufffd\ufffe\uffff]/u;
-/** Per `rows()` flag: the line's rows are added up and it is drawn row by row (garbage, see GARBAGE). */
+const BINARY = /[\0-\x08\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufffe\uffff]/u;
+/** Bytes that weren't UTF-8 (U+FFFD), as a text in another encoding has a few of: such a line's rows are added up. */
+const UNDECODED = '\ufffd';
+/** Characters that end a row by themselves, searched for (see FORCED). */
+const FORCED_ALL = /[\v\f\x85\u2028\u2029]/g;
+/**
+ * Per `rows()` flags of lines drawn row by row: their rows added up (SUMMED: text with undecodable bytes), or
+ * cut every perRow code units (CUT: binary). Never laid out by the browser: every script in such a line needs
+ * a font found, which takes seconds a megabyte.
+ */
 export const SUMMED = 2;
+export const CUT = 3;
 /** Glyphs measured per font; past them, the first PER_BLOCK of each block of 256 code points up to MEASURE_CAP; the rest are estimated (see `estimate`). */
 const MEASURE_MAX = 512;
 const PER_BLOCK = 2;
@@ -607,8 +618,13 @@ export class Wrapper {
         continue;
       }
       const s = text.slice(a, b);
-      // Garbage is added up too (and drawn row by row): laid out, every script in it needs a font found.
-      if (!this.exact && GARBAGE.test(s)) {
+      // Garbage is drawn row by row too (see SUMMED, CUT).
+      if (!this.exact && BINARY.test(s)) {
+        odd[k] = CUT;
+        out[k] = this.cut(s, null);
+        continue;
+      }
+      if (!this.exact && s.indexOf(UNDECODED) !== -1) {
         odd[k] = SUMMED;
         out[k] = this.countGarbage(text, a, b);
         continue;
@@ -660,7 +676,7 @@ export class Wrapper {
 
   /** Are the rows of a line flagged `odd` by `rows()`, `b - a` long, added up (else laid out by the browser)? */
   summed(odd: number, len: number) {
-    return !this.exact && (odd === SUMMED || (odd !== 0 && len > LONG_LINE));
+    return !this.exact && (odd >= SUMMED || (odd !== 0 && len > LONG_LINE));
   }
 
   /**
@@ -674,6 +690,11 @@ export class Wrapper {
       return Math.min(b - a, r * this.cols - cells + chars);
     }
     if (this.summed(odd, b - a)) {
+      if (odd === CUT) {
+        const st: number[] = [];
+        this.cut(text.slice(a, b), st);
+        return r < st.length ? st[r] : b - a;
+      }
       const st = odd === SUMMED ? this.garbageRows(text, a, b) : this.rowsOf(text, a, b);
       return r < st.length ? st.get(r) : b - a;
     }
@@ -689,6 +710,13 @@ export class Wrapper {
       // Tabs only ever indent the first row (see rows()).
       const col = cells === chars ? off - a : off - a <= chars ? 0 : cells + off - a - chars;
       return Math.min(rows - 1, Math.floor(col / this.cols));
+    }
+    if (odd === CUT && !this.exact) {
+      const st: number[] = [];
+      this.cut(text.slice(a, b), st);
+      let r = 0;
+      while (r + 1 < st.length && st[r + 1] <= off - a) r++;
+      return r;
     }
     if (this.summed(odd, b - a)) return (odd === SUMMED ? this.garbageRows(text, a, b) : this.rowsOf(text, a, b)).floor(off - a);
     const m = this.mirror(text.slice(a, b));
@@ -760,6 +788,32 @@ export class Wrapper {
       return this.rowsOf(t, a, b);
     } finally {
       this.guessing = false;
+    }
+  }
+
+  /**
+   * Rows of the binary line `s` (see BINARY): perRow code units each, two cells or less a glyph (so a row never
+   * runs over, a rare wider glyph aside), a row ended after a character that ends one, never between the halves
+   * of a surrogate pair. Counted; and their starts pushed to `out` if given.
+   */
+  private cut(s: string, out: number[] | null): number {
+    const per = Math.max(1, this.cols >> 1);
+    const len = s.length;
+    let n = 0;
+    FORCED_ALL.lastIndex = 0;
+    for (let start = 0; ; ) {
+      const m = FORCED_ALL.exec(s);
+      const end = m ? m.index + 1 : len;
+      for (let x = start; ; ) {
+        out?.push(x);
+        n++;
+        let y = x + per;
+        if (y < end && (s.charCodeAt(y) & 0xfc00) === 0xdc00 && (s.charCodeAt(y - 1) & 0xfc00) === 0xd800) y++;
+        if (y >= end) break;
+        x = y;
+      }
+      if (end >= len) return n;
+      start = end;
     }
   }
 
