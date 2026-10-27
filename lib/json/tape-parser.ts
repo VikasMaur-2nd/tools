@@ -16,7 +16,8 @@
  * Nesting is limited only by memory (open containers are in the tape itself, plus 4 bytes per
  * level), unless `maxDepth` says otherwise.
  */
-import { ARR, BOOL, NUL, NUM, OBJ, STR, type Issue, type ParseOptions } from './parser';
+import { decodeNumber, decodeString } from './decode';
+import { ARR, BOOL, NUL, NUM, OBJ, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
 import {
   KEY_INDEX,
   KEY_NAME,
@@ -32,8 +33,11 @@ import {
   VALUE_TRUE,
   W,
   emptyTape,
+  valueOf,
   type Tape,
 } from './tape';
+
+export { decodeNumber, decodeString };
 
 export interface TapeOptions extends ParseOptions {
   /** Deepest nesting parsed (the root is 0): deeper fails with "Nesting is too deep to parse". Default: as deep as memory allows. */
@@ -70,6 +74,10 @@ const AFTER = 2;
 const CALL = -2;
 const CLOSED = -3;
 const PAUSED = -4;
+// str(): what a string has.
+const ESCAPED = 1;
+const CONTROL = 2;
+const CUT = 4;
 /** Tolerant values at most between two tries of the fast path. */
 const MAX_TOLERANT = 4096;
 
@@ -110,6 +118,8 @@ const startsValue = (c: number) =>
 const startsStrict = (c: number) => c === 34 || c === 123 || c === 91 || c === 45 || (c >= 48 && c <= 57) || c === 116 || c === 102 || c === 110;
 
 const INT_KEY = /^(?:0|[1-9]\d{0,9})$/;
+/** JSON whitespace. */
+const isSpace = (c: number) => c === 32 || c === 10 || c === 13 || c === 9;
 
 /** parser.ts's isCanonical(src.slice(a, e)) (`String(Number(raw)) === raw`), without the slice. */
 function canonicalAt(s: string, a: number, e: number): boolean {
@@ -144,34 +154,113 @@ function intKeyAt(s: string, a: number, e: number): boolean {
   return true;
 }
 
-import { decodeNumber, decodeString } from './decode';
-
-export { decodeNumber, decodeString };
-
 // ── API ──────────────────────────────────────────────────────────────────
 
 /** Parses `text` in one go. */
-export function parse(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED }: TapeOptions = {}): Tape {
-  begin(text, jsonLines, 0x40000000, deepest);
-  return steps(Infinity)!;
+export function parse(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}): Tape {
+  // (In runs all the same: the engine then optimizes the fast path as a function, rather than only
+  // the loop it is in, which takes longer and is less sure.)
+  const once = (t: string, fix: boolean) => {
+    begin(t, jsonLines, 65536, deepest);
+    fixing = fix;
+    return steps(Infinity)!;
+  };
+  const tape = once(text, false);
+  if (!repair || !tape.head.error) return tape;
+  const fixed = once(text, true);
+  if (!fixed.head.error) return fixed;
+  // parser.ts: JSON written as a string (`{\"a\": 1}`), read again with that level of escapes undone.
+  const u = unescaped(text);
+  if (u) {
+    let t = once(u.d, false);
+    if (t.head.error) t = once(u.d, true);
+    if (!t.head.error) return remap(t, u);
+  }
+  return tape;
 }
 
 /**
  * Parses `text` in steps: call `step` with a deadline until it returns the tape. `every`: values
- * (and closed containers) between looks at the clock; tests stop after each one.
+ * (and closed containers) between looks at the clock; tests stop after each one. With `repair`,
+ * the passes of parse() one after the other (at() starts over with each).
  */
-export function parser(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED }: TapeOptions = {}, every = STEP): TapeParser {
+export function parser(text: string, { lines: jsonLines = false, maxDepth: deepest = UNLIMITED, repair = false }: TapeOptions = {}, every = STEP): TapeParser {
   begin(text, jsonLines, every, deepest);
   const state = save();
   let result: Tape | undefined;
+  // The passes (see parse()): 0 as is, 1 repairing, 2 and 3 the same with escapes undone.
+  let pass = 0;
+  let u: Unescaped | null = null;
+  let failed: Tape | undefined;
+  const next = (): boolean => {
+    if (++pass === 2 && !(u = unescaped(text))) return false;
+    if (pass > 3) return false;
+    begin(pass < 2 ? text : u!.d, jsonLines, every, deepest);
+    fixing = pass !== 2;
+    save(state);
+    return true;
+  };
   const step = (until: number): Tape | undefined => {
     if (result) return result;
     load(state);
-    result = steps(until);
-    if (!result) save(state);
-    return result;
+    const t = steps(until);
+    if (!t) {
+      save(state);
+      return undefined;
+    }
+    if (!t.head.error) return (result = pass >= 2 ? remap(t, u!) : t);
+    failed ??= t;
+    if (repair && next()) return undefined;
+    return (result = failed);
   };
-  return { step, at: () => (result ? state.n : state.i) };
+  return { step, at: () => (result ? text.length : pass >= 2 ? u!.map[state.i] : state.i) };
+}
+
+/** parser.ts's remap(): tape `t` of `u.d` with its offsets in the source (values it can't read back from there in `extra`). */
+function remap(t: Tape, u: Unescaped): Tape {
+  const m = u.map;
+  const T = t.nodes;
+  let extra = t.extra;
+  for (let k = 0; k < t.count; k++) {
+    const o = k * W;
+    const vk = (T[o] >> 5) & 7;
+    if (vk === VALUE_SLICE || vk === VALUE_RAW || vk === VALUE_DECODE) {
+      (extra ??= new Map()).set(k, valueOf(t, k, u.d) as string);
+      T[o] = (T[o] & ~(7 << 5)) | (VALUE_EXTRA << 5);
+    }
+    T[o + 1] = m[T[o + 1]];
+    T[o + 2] = m[T[o + 2]];
+  }
+  const head = t.head;
+  for (const x of head.issues) x.p = m[x.p];
+  for (const x of head.warnings) x.p = m[x.p];
+  head.issues.push({ p: u.at, m: 'JSON written as a string (escaped quotes): read with its escapes undone' });
+  head.issues.sort((a, b) => a.p - b.p);
+  if (head.issues.length > MAX_ISSUES) head.issues.length = MAX_ISSUES;
+  head.exact = false;
+  return { ...t, extra };
+}
+
+/** A small document that takes every path of the fast path. */
+const WARM =
+  '{"id":1,"name":"a b","esc":"q\\"\\\\\\/\\b\\f\\n\\r\\t\\u00e9","ok":true,"no":false,"x":null,"n":-1.5e3,"f":0.25,"z":0,"E":1E+2,"e2":2e-1,' +
+  '"o":{},"l":[],"t":[1,"s",[2,3],{"a":{"a":1},"a":2}],"\\u0041":1,"7":2,"id":3,"w":{"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,' +
+  '"k8":8,"k9":9,"k10":{"k1":0},"k11":1,"k12":2,"k13":3,"k14":4,"k15":5,"k16":6,"k17":7,"k1":8}}';
+
+/**
+ * Runs every path of the parser on small documents (a few milliseconds), with both kinds of strings
+ * engines keep (Latin-1 and UTF-16), so that the engine then optimizes it knowing them all. Call it
+ * when idle, before the first big parse: else that parse runs slower code for a while each time it
+ * takes a path for the first time.
+ */
+export function warmUp(): void {
+  for (const doc of ['[' + WARM + ',\n ' + WARM + ' ]', '[' + WARM + ',\n "\u0100", ' + WARM + ' ]']) {
+    parse(doc);
+    parse(WARM + '\n' + WARM + '\r\n' + WARM + '\n');
+    parse('{"a": [1,, 2], // c\n b: NaN, "c": f({"d": [1, 2]})}');
+    const p = parser(doc, {}, 5);
+    while (!p.step(0));
+  }
 }
 
 // ── The parse being run ──────────────────────────────────────────────────
@@ -217,6 +306,8 @@ let wrap = -1;
 let phase = 0;
 /** Values the tolerant parser takes before the fast path tries again (more while it keeps stopping at once). */
 let tol = 1;
+/** Repairing (ParseOptions.repair, after the parse failed without): the tolerant parser only. */
+let fixing = false;
 
 // The tape: W numbers per node in T (see tape.ts), `count` in use.
 let T: Int32Array<ArrayBuffer> = NONE;
@@ -236,9 +327,16 @@ let kHash = NONE;
 let kLen = NONE;
 let kPos = NONE;
 let lastSeen = NONE;
+// The fast path guesses each property name before reading it, from the name that followed the
+// previous one last time (or came first at that depth): per key, that next name (-1: none yet).
+let follows = NONE;
 
-// Per depth: children so far of the open container there, and the key sets of wide objects (see dup()).
+// Per depth: children so far of the open container there, the first property name of the last
+// object there and, while a member's value is a container, the member's name (for the guesses), and
+// the key sets of wide objects (see dup()).
 let cc = NONE;
+let firsts = NONE;
+let kd = NONE;
 let sets: Map<number, KeySet> = new Map();
 
 interface KeySet {
@@ -267,15 +365,18 @@ function begin(text: string, jsonLines: boolean, perRun: number, deepest: number
   callD = [];
   callS = [];
   tol = 1;
+  fixing = false;
   T = NONE;
   count = grownAt = grownCount = 0;
   keys = [];
   big = extra = null;
-  kTable = kHash = kLen = kPos = lastSeen = cc = NONE;
+  kTable = kHash = kLen = kPos = lastSeen = follows = cc = firsts = kd = NONE;
   sets = new Map();
   if (text) {
-    restart();
     cc = new Int32Array(64);
+    firsts = new Int32Array(64);
+    kd = new Int32Array(64);
+    restart();
   }
 }
 
@@ -289,6 +390,8 @@ function restart() {
   kLen = new Int32Array(32);
   kPos = new Int32Array(32);
   lastSeen = new Int32Array(32);
+  follows = new Int32Array(32);
+  firsts.fill(-1);
   sets = new Map();
 }
 
@@ -319,6 +422,7 @@ interface State {
   wrap: number;
   phase: number;
   tol: number;
+  fixing: boolean;
   T: Int32Array<ArrayBuffer>;
   count: number;
   keys: string[];
@@ -331,7 +435,10 @@ interface State {
   kLen: Int32Array<ArrayBuffer>;
   kPos: Int32Array<ArrayBuffer>;
   lastSeen: Int32Array<ArrayBuffer>;
+  follows: Int32Array<ArrayBuffer>;
   cc: Int32Array<ArrayBuffer>;
+  firsts: Int32Array<ArrayBuffer>;
+  kd: Int32Array<ArrayBuffer>;
   sets: Map<number, KeySet>;
 }
 
@@ -364,6 +471,7 @@ function save(state?: State): State {
     wrap,
     phase,
     tol,
+    fixing,
     T,
     count,
     keys,
@@ -376,7 +484,10 @@ function save(state?: State): State {
     kLen,
     kPos,
     lastSeen,
+    follows,
     cc,
+    firsts,
+    kd,
     sets,
   };
   return state ? Object.assign(state, s) : s;
@@ -410,6 +521,7 @@ function load(s: State) {
     wrap,
     phase,
     tol,
+    fixing,
     T,
     count,
     keys,
@@ -422,7 +534,10 @@ function load(s: State) {
     kLen,
     kPos,
     lastSeen,
+    follows,
     cc,
+    firsts,
+    kd,
     sets,
   } = s);
   opened = false;
@@ -464,7 +579,7 @@ function steps(until: number): Tape | undefined {
 /** Parses `left` values (or closes as many containers), or less if the document is done (true): the fast path wherever it can, the tolerant parser elsewhere. */
 function drive(): boolean {
   for (;;) {
-    if (mode !== AFTER || cur >= 0) {
+    if (!fixing && (mode !== AFTER || cur >= 0)) {
       const was = left;
       fast();
       if (left < 0) return false;
@@ -502,7 +617,9 @@ function grow(need: number, at: number, used: number): Int32Array<ArrayBuffer> {
   else {
     // Nodes per character so far, and since the last growth (a document may get denser).
     const rate = Math.max(used / Math.max(at, 1), (used - grownCount) / Math.max(at - grownAt, 1));
-    want = Math.max(Math.ceil(used + (n - at) * rate * 1.04) + 1024, Math.ceil(have * 1.125));
+    // (A small document gets more room to spare: its density varies more, and growing again costs
+    // more than the room: big allocations are slow in WebKit.)
+    want = Math.max(Math.ceil(used + (n - at) * rate * (1.04 + Math.min(0.2, 1e6 / n))) + 1024, Math.ceil(have * 1.125));
   }
   // At most one node per character, plus the array JSON Lines are wrapped in.
   want = Math.max(Math.min(want, n + 2), Math.ceil(need / W));
@@ -530,9 +647,15 @@ function node(kind: number, vk: number, s: number, e: number, d: number, u: numb
 /** A container at depth `d` opened: its children are counted from 0. */
 function enter(d: number) {
   if (d >= cc.length) {
-    const next = new Int32Array(Math.max(cc.length * 2, d + 1));
-    next.set(cc);
-    cc = next;
+    const size = Math.max(cc.length * 2, d + 1);
+    const grown = (a: Int32Array<ArrayBuffer>, fill: number) => {
+      const b = new Int32Array(size).fill(fill, a.length);
+      b.set(a);
+      return b;
+    };
+    cc = grown(cc, 0);
+    firsts = grown(firsts, -1);
+    kd = grown(kd, -1);
   }
   cc[d] = 0;
 }
@@ -642,11 +765,13 @@ function addKey(t: string, h: number, pos: number, slot: number): number {
     kLen = grown(kLen);
     kPos = grown(kPos);
     lastSeen = grown(lastSeen);
+    follows = grown(follows);
   }
   kHash[k] = h;
   kLen[k] = t.length;
   kPos[k] = pos;
   lastSeen[k] = -1;
+  follows[k] = -1;
   kTable[slot] = k + 1;
   if ((k + 1) * 2 > kTable.length) {
     const table = new Int32Array(kTable.length * 2);
@@ -717,77 +842,46 @@ function fast(): void {
   let ex = exact;
   let budget = left;
   let depths = cc;
+  let names = kd;
+  let first = firsts;
   let obj = p >= 0 && (t[p * W] & 7) === OBJ;
   let kb = p < 0 ? 0 : obj ? KEY_NAME << 3 : KEY_INDEX << 3;
   let m = pd >= 0 ? depths[pd] : 0;
 
-  main: for (;;) {
+  for (;;) {
     if (md === VALUE) {
       if (--budget < 0) break;
       let c = s.charCodeAt(at);
-      while (c === 32 || c === 10 || c === 13 || c === 9) c = s.charCodeAt(++at);
+      while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = s.charCodeAt(++at);
       const d = pd + 1;
       if (d > deepest) {
         budget++;
         break;
       }
-      let o = cnt * W;
+      const o = cnt * W;
       if (o + W > t.length) t = grow(o + W, at, cnt);
+      let meta: number;
+      let e: number;
       if (c === 34) {
-        let j = at + 1;
-        let esc = false;
-        for (;;) {
-          const ch = s.charCodeAt(j);
-          if (ch === 34) break;
-          if (ch === 92) {
-            const e = s.charCodeAt(j + 1);
-            if (e === 117) {
-              let h = s.charCodeAt(j + 2);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              h = s.charCodeAt(j + 3);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              h = s.charCodeAt(j + 4);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              h = s.charCodeAt(j + 5);
-              if (!((h >= 48 && h <= 57) || ((h | 32) >= 97 && (h | 32) <= 102))) {
-                budget++;
-                break main;
-              }
-              j += 6;
-            } else if (e === 34 || e === 92 || e === 47 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) j += 2;
-            else {
-              budget++;
-              break main;
-            }
-            esc = true;
-            continue;
-          }
-          // (NaN past the end, too.)
-          if (!(ch >= 32)) {
-            budget++;
-            break main;
-          }
-          j++;
+        const r = strictString(s, at + 1);
+        if (r === -1) {
+          budget++;
+          break;
         }
-        t[o] = STR | kb | ((esc ? VALUE_DECODE : VALUE_SLICE) << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = j + 1;
-        at = j + 1;
+        if (r >= 0) {
+          meta = STR | (VALUE_SLICE << 5);
+          e = r + 1;
+        } else {
+          meta = STR | (VALUE_DECODE << 5);
+          e = ~r + 1;
+        }
       } else if ((c >= 48 && c <= 57) || c === 45) {
         let j = at;
         let ch = c;
         if (ch === 45) ch = s.charCodeAt(++j);
         if (ch === 48) {
           ch = s.charCodeAt(++j);
+          // (Leading zeros, hexadecimal.)
           if ((ch >= 48 && ch <= 57) || ch === 120 || ch === 88) {
             budget++;
             break;
@@ -819,21 +913,16 @@ function fast(): void {
           while (ch >= 48 && ch <= 57);
         }
         if (ex && !canonicalAt(s, at, j)) ex = false;
-        t[o] = NUM | kb | (VALUE_SLICE << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = j;
-        at = j;
+        meta = NUM | (VALUE_SLICE << 5);
+        e = j;
       } else if (c === 123 || c === 91) {
         let j = at + 1;
         let ch = s.charCodeAt(j);
-        while (ch === 32 || ch === 10 || ch === 13 || ch === 9) ch = s.charCodeAt(++j);
-        const close = c === 123 ? 125 : 93;
-        if (ch === close) {
+        while (ch <= 32 && (ch === 32 || ch === 10 || ch === 13 || ch === 9)) ch = s.charCodeAt(++j);
+        if (ch === (c === 123 ? 125 : 93)) {
           // Empty: finished at once.
-          t[o] = (c === 123 ? OBJ : ARR) | kb | (VALUE_NONE << 5) | 256;
-          t[o + 1] = at;
-          t[o + 2] = j + 1;
-          at = j + 1;
+          meta = (c === 123 ? OBJ : ARR) | (VALUE_NONE << 5);
+          e = j + 1;
         } else if (c === 123 ? ch === 34 : startsStrict(ch)) {
           // Open: its first property name or item comes next.
           t[o] = (c === 123 ? OBJ : ARR) | kb | (VALUE_NONE << 5) | 256;
@@ -843,10 +932,15 @@ function fast(): void {
           t[o + 4] = obj ? k : m;
           nd++;
           if (d > mx) mx = d;
-          if (pd >= 0) depths[pd] = m + 1;
+          if (pd >= 0) {
+            depths[pd] = m + 1;
+            names[pd] = k;
+          }
           if (d >= depths.length) {
             enter(d);
             depths = cc;
+            names = kd;
+            first = firsts;
           }
           p = cnt++;
           pd = d;
@@ -860,48 +954,26 @@ function fast(): void {
           budget++;
           break;
         }
-      } else if (c === 116) {
-        const ch = s.charCodeAt(at + 4);
-        if (s.charCodeAt(at + 1) !== 114 || s.charCodeAt(at + 2) !== 117 || s.charCodeAt(at + 3) !== 101 || ch > 127 || isIdent(ch)) {
-          budget++;
-          break;
-        }
-        t[o] = BOOL | kb | (VALUE_TRUE << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = at += 4;
-      } else if (c === 102) {
-        const ch = s.charCodeAt(at + 5);
-        if (
-          s.charCodeAt(at + 1) !== 97 ||
-          s.charCodeAt(at + 2) !== 108 ||
-          s.charCodeAt(at + 3) !== 115 ||
-          s.charCodeAt(at + 4) !== 101 ||
-          ch > 127 ||
-          isIdent(ch)
-        ) {
-          budget++;
-          break;
-        }
-        t[o] = BOOL | kb | (VALUE_FALSE << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = at += 5;
-      } else if (c === 110) {
-        const ch = s.charCodeAt(at + 4);
-        if (s.charCodeAt(at + 1) !== 117 || s.charCodeAt(at + 2) !== 108 || s.charCodeAt(at + 3) !== 108 || ch > 127 || isIdent(ch)) {
-          budget++;
-          break;
-        }
-        t[o] = NUL | kb | (VALUE_NULL << 5) | 256;
-        t[o + 1] = at;
-        t[o + 2] = at += 4;
+      } else if (c === 116 && s.charCodeAt(at + 1) === 114 && s.charCodeAt(at + 2) === 117 && s.charCodeAt(at + 3) === 101 && ends(s.charCodeAt(at + 4))) {
+        meta = BOOL | (VALUE_TRUE << 5);
+        e = at + 4;
+      } else if (c === 102 && s.charCodeAt(at + 1) === 97 && s.charCodeAt(at + 2) === 108 && s.charCodeAt(at + 3) === 115 && s.charCodeAt(at + 4) === 101 && ends(s.charCodeAt(at + 5))) {
+        meta = BOOL | (VALUE_FALSE << 5);
+        e = at + 5;
+      } else if (c === 110 && s.charCodeAt(at + 1) === 117 && s.charCodeAt(at + 2) === 108 && s.charCodeAt(at + 3) === 108 && ends(s.charCodeAt(at + 4))) {
+        meta = NUL | (VALUE_NULL << 5);
+        e = at + 4;
       } else {
         budget++;
         break;
       }
-      // A finished leaf (or empty container): its parent and key.
-      o = cnt * W;
+      // A finished leaf (or empty container).
+      t[o] = meta | kb | 256;
+      t[o + 1] = at;
+      t[o + 2] = e;
       t[o + 3] = p;
       t[o + 4] = obj ? k : m;
+      at = e;
       cnt++;
       nd++;
       m++;
@@ -914,42 +986,40 @@ function fast(): void {
       // A property name of object p at `at`, and its colon.
       const q = at;
       if (s.charCodeAt(q) !== 34) break;
-      let j = q + 1;
-      let h = 0;
+      let key = -1;
+      let j = 0;
       let esc = false;
-      for (;;) {
-        const ch = s.charCodeAt(j);
-        if (ch === 34) break;
-        if (ch === 92) {
-          const e = s.charCodeAt(j + 1);
-          if (e === 117) {
-            let x = s.charCodeAt(j + 2);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            x = s.charCodeAt(j + 3);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            x = s.charCodeAt(j + 4);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            x = s.charCodeAt(j + 5);
-            if (!((x >= 48 && x <= 57) || ((x | 32) >= 97 && (x | 32) <= 102))) break main;
-            j += 6;
-          } else if (e === 34 || e === 92 || e === 47 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) j += 2;
-          else break main;
-          esc = true;
-          continue;
+      // The guess: the name that followed the previous member's last time (or came first here).
+      const guess = m === 0 ? first[pd] : k >= 0 && k < keys.length ? follows[k] : -1;
+      if (guess >= 0) {
+        const b = kPos[guess];
+        const len = kLen[guess];
+        if (b >= 0 && s.charCodeAt(q + 1 + len) === 34) {
+          let x = 0;
+          while (x < len && s.charCodeAt(q + 1 + x) === s.charCodeAt(b + x)) x++;
+          if (x === len) {
+            key = guess;
+            j = q + 1 + len;
+          }
         }
-        if (!(ch >= 32)) break main;
-        h = (Math.imul(h, 31) + ch) | 0;
-        j++;
+      }
+      if (key < 0) {
+        const r = strictString(s, q + 1);
+        if (r === -1) break;
+        esc = r < 0;
+        j = esc ? ~r : r;
       }
       let r = j + 1;
       let ch = s.charCodeAt(r);
-      while (ch === 32 || ch === 10 || ch === 13 || ch === 9) ch = s.charCodeAt(++r);
+      while (ch <= 32 && (ch === 32 || ch === 10 || ch === 13 || ch === 9)) ch = s.charCodeAt(++r);
       if (ch !== 58) break;
-      const key = esc ? internText(decodeString(s, q)) : internRange(s, q + 1, j, h);
+      if (key < 0) key = esc ? internText(decodeString(s, q)) : internRange(s, q + 1, j, hashRange(s, q + 1, j));
       if (ex && (esc || (s.charCodeAt(q + 1) >= 48 && s.charCodeAt(q + 1) <= 57 && intKeyAt(s, q + 1, j)))) ex = false;
       const last = lastSeen[key];
       if (last > p && (t[last * W + 3] === p || dup(p, pd, m, key))) duplicate(q, key);
       lastSeen[key] = cnt;
+      if (m === 0) first[pd] = key;
+      else if (k >= 0 && k < keys.length) follows[k] = key;
       k = key;
       at = r + 1;
       md = VALUE;
@@ -957,23 +1027,29 @@ function fast(): void {
     }
 
     // AFTER a value in p.
-    let j = at;
-    let c = s.charCodeAt(j);
-    while (c === 32 || c === 10 || c === 13 || c === 9) c = s.charCodeAt(++j);
     if (p === top) {
-      // JSON Lines: the next line's value (the tolerant parser takes the second one: it reports the wrapping).
-      if (top < 0 || m < 2 || !startsStrict(c)) {
-        if (top < 0) ret = 0;
+      // The top-level value is done: the tolerant parser looks at what follows. (Not reading past the
+      // end here keeps the engine from optimizing for that only to undo it at the end of every parse.)
+      if (top < 0) {
+        ret = 0;
         break;
       }
+      // JSON Lines: the next line's value (the tolerant parser takes the second one: it reports the wrapping).
+      let j = at;
+      let c = j < s.length ? s.charCodeAt(j) : -1;
+      while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = ++j < s.length ? s.charCodeAt(j) : -1;
+      if (m < 2 || !startsStrict(c)) break;
       at = j;
       md = VALUE;
       continue;
     }
+    let j = at;
+    let c = s.charCodeAt(j);
+    while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = s.charCodeAt(++j);
     if (c === 44) {
       let q = j + 1;
       let ch = s.charCodeAt(q);
-      while (ch === 32 || ch === 10 || ch === 13 || ch === 9) ch = s.charCodeAt(++q);
+      while (ch <= 32 && (ch === 32 || ch === 10 || ch === 13 || ch === 9)) ch = s.charCodeAt(++q);
       if (obj ? ch !== 34 : !startsStrict(ch)) break;
       at = q;
       md = obj ? FIRST : VALUE;
@@ -989,7 +1065,10 @@ function fast(): void {
       else sized(p, cnt);
       p = t[po + 3];
       pd--;
-      m = pd >= 0 ? depths[pd] : 0;
+      if (pd >= 0) {
+        m = depths[pd];
+        k = names[pd];
+      } else m = 0;
       obj = p >= 0 && (t[p * W] & 7) === OBJ;
       kb = p < 0 ? 0 : obj ? KEY_NAME << 3 : KEY_INDEX << 3;
       continue;
@@ -1009,6 +1088,34 @@ function fast(): void {
   exact = ex;
   left = budget;
 }
+
+/**
+ * The strict JSON string whose text starts at `j`: the index of its closing quote, or its
+ * complement (~index, negative) if it has escapes; -1 if it isn't strict JSON (or doesn't end).
+ */
+function strictString(s: string, j: number): number {
+  let esc = false;
+  for (;;) {
+    const c = s.charCodeAt(j);
+    if (c === 34) return esc ? ~j : j;
+    if (c === 92) {
+      const e = s.charCodeAt(j + 1);
+      if (e === 117) {
+        if (!(isHex(s.charCodeAt(j + 2)) && isHex(s.charCodeAt(j + 3)) && isHex(s.charCodeAt(j + 4)) && isHex(s.charCodeAt(j + 5)))) return -1;
+        j += 6;
+      } else if (e === 34 || e === 92 || e === 47 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) j += 2;
+      else return -1;
+      esc = true;
+      continue;
+    }
+    // (NaN past the end, too.)
+    if (!(c >= 32)) return -1;
+    j++;
+  }
+}
+
+/** Whether `c` can follow true, false or null (parser.ts's word(): not part of a longer name; anything non-ASCII is left to the tolerant parser). */
+const ends = (c: number) => !(c > 127 || (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95 || c === 36);
 
 // ── The tolerant parser (parser.ts, writing the tape) ────────────────────
 
@@ -1069,6 +1176,17 @@ const word = (w: string) => {
 /** A leaf ending here. */
 const leaf = (t: number, vk: number, s: number, d: number, u: number, kk: number, key: number) => node(t, vk, s, i, d, u, kk, key);
 
+/** A leaf ending here whose value `v` the source can't give back (repairs): kept in `extra`. */
+const kept = (t: number, v: string, s: number, d: number, u: number, kk: number, key: number) => {
+  const nd = leaf(t, VALUE_EXTRA, s, d, u, kk, key);
+  (extra ??= new Map()).set(nd, v);
+  return nd;
+};
+
+/** The leaf of a string from `s` that str() just read (`found`). */
+const strLeaf = (found: number, s: number, d: number, u: number, kk: number, key: number) =>
+  found & CUT ? kept(STR, textOf(s, found), s, d, u, kk, key) : leaf(STR, found & ESCAPED ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+
 /** Goes over an escape (i is after the backslash), reporting what parser.ts does. */
 const esc = () => {
   const c = src.charCodeAt(i++);
@@ -1090,7 +1208,14 @@ const esc = () => {
       fix(i - 2, 'Invalid unicode escape: expected \\u followed by 4 hex digits');
       return;
   }
-  if (i > n) fail(i - 2, 'Unterminated string: missing closing quote');
+  if (i > n) {
+    // (Repairing: the string ends with this backslash, at the end of the input.)
+    if (fixing) {
+      i = n;
+      return;
+    }
+    fail(i - 2, 'Unterminated string: missing closing quote');
+  }
   if (c === 120 && isHex(src.charCodeAt(i)) && isHex(src.charCodeAt(i + 1))) {
     fix(i - 2, 'Invalid escape \\x: use \\u00XX instead');
     i += 2;
@@ -1104,35 +1229,140 @@ const esc = () => {
   fix(i - 2, `Invalid escape sequence \\${String.fromCharCode(c)}`);
 };
 
-/** Goes over a string starting at the opening quote; `q`/`q2` are the accepted closing quotes. True if it has escapes (its value is not the text between the quotes). */
-const str = (q: number, q2: number): boolean => {
+/**
+ * Goes over a string starting at the opening quote; `q`/`q2` are the accepted closing quotes.
+ * ESCAPED if it has escapes (its value is not the text between the quotes), | CONTROL if it has
+ * control characters, | CUT if repairing closed it where it has no closing quote (it ends at i).
+ */
+const str = (q: number, q2: number): number => {
   const s = i;
-  let escaped = false;
+  let found = 0;
   i++;
   for (;;) {
-    if (i >= n) fail(s, 'Unterminated string: missing closing quote');
+    if (i >= n) {
+      if (fixing) {
+        fix(n, 'Missing closing quote: the string was closed at the end of the input');
+        return found | CUT;
+      }
+      fail(s, 'Unterminated string: missing closing quote');
+    }
     const c = src.charCodeAt(i);
     if (c === q || c === q2) {
       i++;
-      return escaped;
+      if (fixing && !(found & ESCAPED)) {
+        const k = unclosed(s + 1, i - 1);
+        if (k >= 0) {
+          fix(k, `Missing closing quote: the string was closed before the '${src[k]}'`);
+          i = k;
+          return found | CUT;
+        }
+      }
+      return found;
     }
     if (c === 92) {
       i++;
       esc();
-      escaped = true;
+      found |= ESCAPED;
       continue;
     }
     if (c < 32) {
+      if (fixing && (c === 10 || c === 13)) {
+        fix(i, 'Missing closing quote: the string was closed at the end of the line');
+        return found | CUT;
+      }
       fix(i, c === 10 || c === 13 ? 'Line breaks inside strings must be escaped as \\n' : 'Control characters inside strings must be escaped');
+      found |= CONTROL;
     }
     i++;
   }
 };
 
+/** parser.ts's unclosed(): repairing, where a string without escapes ([a, e), closing quote at e) should end, or -1. */
+const unclosed = (a: number, e: number): number => {
+  let j = e + 1;
+  while (src.charCodeAt(j) === 32 || src.charCodeAt(j) === 9) j++;
+  const f = src.charCodeAt(j);
+  if (!(f === 34 || f === 39 || f === 96 || isSmartQuote(f) || isIdent(f))) return -1;
+  for (let k = a; k < e; k++) {
+    const c = src.charCodeAt(k);
+    if (c === 44 || c === 125 || c === 93) {
+      while (issues.length && issues[issues.length - 1].p >= k) issues.pop();
+      return k;
+    }
+  }
+  return -1;
+};
+
+/** The value of the string str() just read from `s` (`found`: what str() returned). */
+const textOf = (s: number, found: number): string =>
+  found & CUT ? (found & ESCAPED ? decodeUntil(s, i) : src.slice(s + 1, i)) : found & ESCAPED ? decodeString(src, s) : src.slice(s + 1, i - 1);
+
+/** decodeString() of a string that repairing cut at `end` (it has no closing quote): parser.ts's str() and esc() up to there. */
+function decodeUntil(start: number, end: number): string {
+  let k = start + 1;
+  let seg = k;
+  let out = '';
+  while (k < end) {
+    if (src.charCodeAt(k) !== 92) {
+      k++;
+      continue;
+    }
+    out += src.slice(seg, k);
+    const e = src.charCodeAt(k + 1);
+    k += 2;
+    // (A backslash that ends the input stands for nothing.)
+    if (k > end) {
+      seg = k = end;
+      break;
+    }
+    switch (e) {
+      case 34:
+        out += '"';
+        break;
+      case 92:
+        out += '\\';
+        break;
+      case 47:
+        out += '/';
+        break;
+      case 98:
+        out += '\b';
+        break;
+      case 102:
+        out += '\f';
+        break;
+      case 110:
+        out += '\n';
+        break;
+      case 114:
+        out += '\r';
+        break;
+      case 116:
+        out += '\t';
+        break;
+      case 117:
+        if (isHex(src.charCodeAt(k)) && isHex(src.charCodeAt(k + 1)) && isHex(src.charCodeAt(k + 2)) && isHex(src.charCodeAt(k + 3))) {
+          out += String.fromCharCode(parseInt(src.slice(k, k + 4), 16));
+          k += 4;
+        } else out += 'u';
+        break;
+      default:
+        if (e === 120 && isHex(src.charCodeAt(k)) && isHex(src.charCodeAt(k + 1))) {
+          out += String.fromCharCode(parseInt(src.slice(k, k + 2), 16));
+          k += 2;
+        } else if (e === 10 || e === 13) {
+          if (e === 13 && src.charCodeAt(k) === 10) k++;
+        } else out += String.fromCharCode(e);
+    }
+    seg = k;
+  }
+  return out + src.slice(seg, end);
+}
+
 /** A string's value (a property name). */
 const strText = (q: number, q2: number): string => {
   const s = i;
-  return str(q, q2) ? decodeString(src, s) : src.slice(s + 1, i - 1);
+  return textOf(s, str(q, q2));
 };
 
 /** Goes over a number: VALUE_SLICE if its value is its text, VALUE_DECODE if it is written loosely. */
@@ -1239,21 +1469,26 @@ const loose = (c: number, d: number, u: number, kk: number, key: number): number
   const s = i;
   if (c === 39) {
     fix(i, 'Strings must use double quotes');
-    return leaf(STR, str(39, 39) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(39, 39), s, d, u, kk, key);
   }
   if (c === 0x201c || c === 0x201d) {
     fix(i, 'Strings must use straight double quotes (")');
-    return leaf(STR, str(0x201d, 0x201c) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(0x201d, 0x201c), s, d, u, kk, key);
   }
   if (c === 0x2018 || c === 0x2019) {
     fix(i, 'Strings must use straight double quotes (")');
-    return leaf(STR, str(0x2019, 0x2018) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(0x2019, 0x2018), s, d, u, kk, key);
   }
   if (c === 96) {
     fix(i, 'Strings must use double quotes');
-    return leaf(STR, str(96, 96) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+    return strLeaf(str(96, 96), s, d, u, kk, key);
   }
   if (c === 43 || c === 45 || c === 46) {
+    if (fixing && c === 46 && kk === KEY_NAME && src.startsWith('...', i)) {
+      fix(s, "Placeholder '...' (null)");
+      i += 3;
+      return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+    }
     if (c !== 46 && src.startsWith('Infinity', i + 1)) {
       fix(s, 'Infinity is not valid JSON (replaced with null)');
       i += 9;
@@ -1337,6 +1572,17 @@ const loose = (c: number, d: number, u: number, kk: number, key: number): number
     const text = src.slice(s, e);
     fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
     return node(STR, VALUE_RAW, s, e, d, u, kk, key);
+  }
+  // Repairing, a property's missing value: null.
+  if (fixing && kk === KEY_NAME) {
+    if (i >= n) {
+      fix(n, 'Unexpected end of input: the value is missing (null)');
+      return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+    }
+    if (c === 44 || c === 125 || c === 93) {
+      fix(i, 'The value is missing (null)');
+      return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+    }
   }
   if (i >= n) fail(i, 'Unexpected end of input: expected a value');
   return fail(i, `Unexpected ${describe(i)}: expected a value`);
@@ -1457,7 +1703,28 @@ const value = (d: number, u: number, kk: number, key: number): number => {
     if (d > maxDepth) fail(i, 'Nesting is too deep to parse');
     depth = d;
   }
-  if (c === 34) return leaf(STR, str(34, 34) ? VALUE_DECODE : VALUE_SLICE, s, d, u, kk, key);
+  if (c === 34) {
+    const found = str(34, 34);
+    if (fixing) {
+      // parser.ts's joined(): strings that follow joined by `+`.
+      let v: string | undefined;
+      for (;;) {
+        let j = i;
+        while (isSpace(src.charCodeAt(j))) j++;
+        if (src.charCodeAt(j) !== 43) break;
+        let k = j + 1;
+        while (isSpace(src.charCodeAt(k))) k++;
+        if (src.charCodeAt(k) !== 34) break;
+        v ??= textOf(s, found);
+        fix(j, "Strings joined with '+' (not valid JSON)");
+        i = k;
+        const s2 = i;
+        v += textOf(s2, str(34, 34));
+      }
+      if (v !== undefined) return kept(STR, v, s, d, u, kk, key);
+    }
+    return strLeaf(found, s, d, u, kk, key);
+  }
   if (c === 123) return openObj(d, u, kk, key);
   if (c === 91) return openArr(d, u, kk, key);
   if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, kk, key);
@@ -1537,9 +1804,21 @@ const fillObj = (p: number, pd: number): number => {
           fix(i, "Expected ',' between properties");
         } else fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
       } else c = src.charCodeAt(i);
+      // Repairing: a `...` placeholder for members is skipped.
+      if (fixing && c === 46 && src.startsWith('...', i)) {
+        fix(i, "Placeholder '...' was skipped");
+        i += 3;
+        m = AFTER;
+        continue;
+      }
       // A property name and its colon.
       const ks = i;
-      key = c === 34 ? (str(34, 34) ? internText(decodeString(src, ks)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1))) : internText(looseKey(c));
+      const had = keys.length;
+      if (c === 34) {
+        const found = str(34, 34);
+        // (Only a name written in strict JSON is kept as source text: the fast path matches others against it.)
+        key = found & (ESCAPED | CUT) ? internText(textOf(ks, found)) : found ? internText(src.slice(ks + 1, i - 1)) : internRange(src, ks + 1, i - 1, hashRange(src, ks + 1, i - 1));
+      } else key = internText(looseKey(c));
       const name = keys[key];
       // Not natively reproducible: integer-like keys (JS reorders them) and keys written with
       // escapes (V8 13.x JSON.parse can misread "\n" as "\" after seeing a key containing "\").
@@ -1550,7 +1829,14 @@ const fillObj = (p: number, pd: number): number => {
       ws();
       c = src.charCodeAt(i);
       if (c === 58) i++;
-      else if (i >= n) fail(i, "Unexpected end of input: expected ':' after property name");
+      else if (i >= n) {
+        if (!fixing) fail(i, "Unexpected end of input: expected ':' after property name");
+        // Repairing: a property cut off after its name is left out (and so is its name, if new).
+        fix(ks, `Unexpected end of input: "${name.length > 40 ? name.slice(0, 40) + '…' : name}" has no value (left out)`);
+        fix(n, "Unexpected end of input: missing '}'");
+        keys.length = had;
+        return CLOSED;
+      }
       else if (c === 61) {
         fix(i, "Expected ':' after property name");
         i++;
@@ -1615,6 +1901,16 @@ const fillArr = (p: number, pd: number): number => {
     if (--left < 0) {
       mode = VALUE;
       return PAUSED;
+    }
+    // Repairing: a `...` placeholder for items is skipped.
+    if (fixing) {
+      ws();
+      if (src.startsWith('...', i)) {
+        fix(i, "Placeholder '...' was skipped");
+        i += 3;
+        after = true;
+        continue;
+      }
     }
     const k = cc[pd];
     let v = value(d, p, KEY_INDEX, k);

@@ -17,7 +17,6 @@ import { readJwt, type JwtInput } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc } from './doc';
-import { readText } from '../json/text';
 import { looksBinary } from './binary';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
@@ -570,7 +569,7 @@ export class Engine {
     if (!text || readJwt(text, this.indent)) return this.analyze();
     const seq = this.loadSeq;
     const ver = this.ed.version;
-    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? '') });
+    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     this.steps = { p, seq, ver };
     // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
     clearTimeout(this.timer);
@@ -705,7 +704,7 @@ export class Engine {
     const t0 = performance.now();
     const jwt = readJwt(text, this.indent);
     const src = jwt ? jwt.json : text;
-    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
+    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
     // (Used once: it holds that version's text.)
     const counted = this.counted?.ver === ed.version ? this.counted : null;
@@ -772,7 +771,8 @@ export class Engine {
 
     let hint: Hint = null;
     if (jwt || lines) hint = null;
-    else if (metrics?.unescape || res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
+    // (A worker measured it: a long root string isn't decoded here just for this.)
+    else if (metrics ? metrics.unescape : res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
     else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
 
     store.set({
@@ -1733,7 +1733,7 @@ export class Engine {
     };
     this.reading = signal;
     try {
-      const text = await readText(f);
+      const text = await (await import('../json/read')).readText(f);
       if (this.reading === signal) this.reading = null;
       if (signal.aborted) return unshow();
       // Undone while it was read: it opens, and is undone at once (Redo brings it back).
@@ -1923,7 +1923,7 @@ export class Engine {
   async loadCompareFile(f: File, source: InputSource = 'file') {
     const signal = this.request(2);
     try {
-      const text = await readText(f);
+      const text = await (await import('../json/read')).readText(f);
       if (signal.aborted) return;
       const open = () => {
         this.loadCompare(text, f.name);
@@ -2220,7 +2220,7 @@ export class Engine {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
         return null;
       }
-      const text = await readText(res);
+      const text = await (await import('../json/read')).readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
@@ -2342,7 +2342,8 @@ export class Engine {
     if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
-      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
+      // (A selected primitive root has no container: the table says what it can show, as for an unselected one.)
+      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u ?? this.sel) : root;
       this.tableShow(base);
     } else this.table.setNode(null);
     if (view === 'tree') {
@@ -2441,6 +2442,8 @@ export class Engine {
   private pendingFmtWorkerId = 0;
   private fmtKey = '';
   private fmtText = '';
+  /** What drawFormat last gave the view (the output as shown: escaped when it is). */
+  private fmtOut = '';
   /** The output drawn (empty) is the one too large to make: the view and Copy say so. */
   private fmtTooLarge = false;
   private fmtVersion = 0;
@@ -2537,8 +2540,11 @@ export class Engine {
     this.fmtKey = key;
     this.fmtText = text;
     const out = display ?? (escape && text ? JSON.stringify(text) : text);
+    this.fmtOut = out;
     this.fmt.setText(out, jsonRow, true, null, index, change, patch, inline);
     this.noteExpiry(minify || escape ? '' : out);
+    // (After the caller has said whether it is the too-large note: see runFormat.)
+    if (this.outputWaiters.length) queueMicrotask(() => this.outputDrawn());
   }
 
   /**
@@ -2575,20 +2581,94 @@ export class Engine {
   }
 
   copyOutput() {
-    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    const msg = this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON';
+    const later = this.outputPending();
+    if (later) {
+      // The output for these settings is still being made (a big document, after a style change): the copy
+      // waits for it, handing the clipboard a promise so the click still counts when the text arrives.
+      track('feature_used', { feature: 'copy_output' });
+      void this.copyLater(later, msg, 'Nothing to copy yet');
+      return;
+    }
+    const out = this.drawnOutput() || this.unlessTooLarge(() => this.output());
     if (out === null) return;
     if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_output' });
-    void this.copy(out, this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
+    void this.copy(out, msg);
   }
 
   downloadOutput() {
-    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    const name = () => `${(store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '')}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`;
+    const later = this.outputPending();
+    if (later) {
+      track('feature_used', { feature: 'download_output' });
+      const file = name();
+      void later.then((out) => {
+        if (this.dead) return;
+        if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
+        this.save(out, file, 'application/json');
+      });
+      return;
+    }
+    const out = this.drawnOutput() || this.unlessTooLarge(() => this.output());
     if (out === null) return;
     if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
     track('feature_used', { feature: 'download_output' });
-    const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    this.save(out, `${base}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`, 'application/json');
+    this.save(out, name(), 'application/json');
+  }
+
+  /** The Format output last drawn, if it is for the current settings ('' if not): the view may still be taking it in, in steps. */
+  private drawnOutput() {
+    return this.fmtKey === this.fmtSettings() ? this.fmtOut : '';
+  }
+
+  /** Copy/Download waiting for the Format output of the current settings (see outputPending). */
+  private outputWaiters: ((out: string | null) => void)[] = [];
+
+  /**
+   * The output the Format view is still making for the current settings (it shows the last settings' until
+   * then), or null when what it shows is current. Resolves with the output, or null if it couldn't be made.
+   */
+  private outputPending(): Promise<string | null> | null {
+    if (this.settings.view !== 'format' || this.fmtKey === this.fmtSettings() || !this.fmtOut) return null;
+    return new Promise((done) => {
+      this.outputWaiters.push(done);
+      // (A format that never comes, the document turned invalid say: nothing to copy.)
+      setTimeout(() => {
+        const i = this.outputWaiters.indexOf(done);
+        if (i >= 0) {
+          this.outputWaiters.splice(i, 1);
+          done(null);
+        }
+      }, 120_000);
+    });
+  }
+
+  /** Hands waiting copies and downloads the output once it matches the settings (after drawFormat). */
+  private outputDrawn() {
+    if (!this.outputWaiters.length || this.fmtKey !== this.fmtSettings()) return;
+    const waiting = this.outputWaiters;
+    this.outputWaiters = [];
+    const out = this.fmtTooLarge ? null : this.fmtOut;
+    for (const done of waiting) done(out);
+  }
+
+  /** Copies text that is still on its way, keeping the click's permission to write the clipboard where the browser allows. */
+  private async copyLater(text: Promise<string | null>, msg: string, none: string) {
+    const blob = text.then((t) => {
+      if (!t) throw new Error('no output');
+      return new Blob([t], { type: 'text/plain' });
+    });
+    try {
+      if (typeof ClipboardItem === 'undefined') throw new Error('no ClipboardItem');
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+      if (!this.dead) this.toast(msg, 'ok');
+    } catch {
+      const t = await text;
+      if (this.dead) return;
+      if (!t) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast(none, 'info');
+      await this.copy(t, msg);
+    }
   }
 
   // ── Convert ────────────────────────────────────────────────────────────
@@ -3429,6 +3509,7 @@ export class Engine {
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
             () => loadPack(),
+            () => import('../json/read'),
             () => import('./sizes'),
             () => import('../convert'),
             () => import('../convert/import'),

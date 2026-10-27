@@ -56,7 +56,7 @@ if (!tests.length) {
 const options = { target: 9, module: 1, esModuleInterop: true, jsx: 4, inlineSourceMap: true };
 const tsVersion = JSON.parse(readFileSync(join(root, 'node_modules/typescript/package.json'), 'utf8')).version;
 // Changing these options or this file's transpile step must invalidate the cache.
-const VERSION = `${tsVersion} ${JSON.stringify(options)} 4`;
+const VERSION = `${tsVersion} ${JSON.stringify(options)} 6`;
 
 // Every non-React TypeScript file in lib/ (tests load some of them by path, e.g. worker modules),
 // all of tests/, and whatever else those import (app/ snippets).
@@ -124,6 +124,9 @@ while (queue.length) {
     if (!r.startsWith('.')) r = './' + r;
     return `require(${JSON.stringify(r)})`;
   });
+  // `import.meta` is a syntax error in CommonJS: its url is the file's own (asset URLs such as a worker's
+  // or a .wasm resolve as a bundler would, then fail to fetch in Node, which code must handle anyway).
+  text = text.replace(/(?<!['"])\bimport\.meta\.url\b(?!['"])/g, "require('node:url').pathToFileURL(__filename).href");
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, text);
   files[rel(file)] = { hash, imports };

@@ -84,3 +84,104 @@ test('video.mp4: a real video is said to be binary, and opens as text with a cle
   t.check(seen.includes('video.mp4 looks like a binary file, not JSONOpen as text'), 'said to be binary first', seen);
   t.check(seen.includes('Opened video.mp4'), 'Opened video.mp4', seen);
 });
+
+// ── Encodings across read chunks ────────────────────────────────────────────────────────────────
+// Files are read in chunks (64 KB and up): a character split between two chunks, a surrogate pair, a CRLF
+// pair, a UTF-16 code unit split between bytes must all come out whole. ~1.5 MB of text dense in 1- to
+// 4-byte characters, written with CRLF, in UTF-8 (with and without a BOM) and UTF-16 LE / BE with a BOM.
+
+/** A seeded JSON array of strings packed with multi-byte characters, CRLF between items. */
+function denseText() {
+  const pieces = ['a', 'é', 'ß', 'Ж', '東', '京', '😀', '👨‍👩‍👧', '🚀', '\\n', '\\"', '\\u00e9', '\\ud83d\\ude00', ' ', 'z'];
+  let seed = 1;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) % pieces.length);
+  const items = [];
+  for (let size = 0; size < 1_500_000; ) {
+    let s = '';
+    for (let j = 0, n = 5 + (items.length % 61); j < n; j++) s += pieces[rnd()];
+    items.push(`  "${s}"`);
+    size += s.length * 2 + 4;
+  }
+  return '[\r\n' + items.join(',\r\n') + '\r\n]';
+}
+
+const ENCODINGS = [
+  ['utf8', (t) => Buffer.from(t, 'utf8')],
+  ['utf8-bom', (t) => Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(t, 'utf8')])],
+  ['utf16le-bom', (t) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(t, 'utf16le')])],
+  ['utf16be-bom', (t) => {
+    const le = Buffer.from(t, 'utf16le');
+    for (let i = 0; i < le.length; i += 2) [le[i], le[i + 1]] = [le[i + 1], le[i]];
+    return Buffer.concat([Buffer.from([0xfe, 0xff]), le]);
+  }],
+];
+
+for (const [enc, encode] of ENCODINGS) {
+  test(`${enc}: 1.5 MB dense in multi-byte characters and CRLF comes out exact`, async (t) => {
+    const { page } = t;
+    await t.open('/');
+    const text = denseText();
+    const want = text.replace(/\r\n/g, '\n');
+    const st = await loadAny(page, encode(text), `dense-${enc}.json`);
+    const known = enc.startsWith('utf16') && t.engine === 'firefox' ? { known: 'bug (main): Firefox opens a UTF-16 file with a BOM as garbage (BREAKER-REPORT F7)' } : {};
+    t.check(st?.kind === 'ok' && st.msg === 'Valid JSON', 'valid JSON', st, known);
+    const got = await copied(page, 'Copy input to clipboard', { timeout: 30_000 });
+    t.check(got !== null && hash(got) === hash(want), 'the editor holds exactly the text (LF line breaks)', got === null ? null : `${got.length} vs ${want.length} chars`, known);
+  });
+}
+
+/**
+ * A JSON array in which every 4,096-byte boundary of the file falls inside something: a 2-, 3- or 4-byte
+ * UTF-8 character (at each split point), a CRLF between items, an escape or an escaped surrogate pair. Read
+ * chunks are multiples of 4 KB, so every chunk boundary splits one. `utf16`: the same in UTF-16 LE with a
+ * BOM, where boundaries split surrogate pairs.
+ */
+function boundaryFile(utf16) {
+  const unit = utf16 ? 2 : 1;
+  const bytes = (s) => (utf16 ? Buffer.from(s, 'utf16le') : Buffer.from(s, 'utf8'));
+  const specials = utf16
+    ? [['😀', 1], ['🚀', 1], ['\r\n', 1]]
+    : [['é', 1], ['東', 1], ['東', 2], ['😀', 1], ['😀', 2], ['😀', 3], ['\r\n', 1], ['\\u00e9', 3], ['\\ud83d\\ude00', 6]];
+  const parts = [];
+  let pos = utf16 ? 2 : 0;
+  const put = (s) => {
+    const b = bytes(s);
+    parts.push(b);
+    pos += b.length;
+  };
+  put('[');
+  for (let i = 0; pos < 600_000; i++) {
+    const [sp, split] = specials[i % specials.length];
+    const boundary = Math.ceil((pos + 64) / 4096) * 4096;
+    if (sp === '\r\n') {
+      // Close the item, then spaces so the CR is the boundary's last byte.
+      put('"x",' + ' '.repeat((boundary - split * unit - pos - 4 * unit) / unit));
+      put('\r\n');
+    } else {
+      put('"');
+      const at = boundary - split * unit; // where the special starts
+      put('a'.repeat((at - pos) / unit));
+      put(sp + '",');
+    }
+  }
+  put('"end"]');
+  const body = Buffer.concat(parts);
+  const file = utf16 ? Buffer.concat([Buffer.from([0xff, 0xfe]), body]) : body;
+  const text = utf16 ? body.toString('utf16le') : body.toString('utf8');
+  return { file, want: text.replace(/\r\n/g, '\n') };
+}
+
+for (const utf16 of [false, true]) {
+  test(`${utf16 ? 'UTF-16 LE' : 'UTF-8'}: every 4 KB boundary splits a character, a pair or a CRLF, and the text comes out exact`, async (t) => {
+    const { page } = t;
+    await t.open('/');
+    const { file, want } = boundaryFile(utf16);
+    const st = await loadAny(page, file, `boundaries-${utf16 ? 'utf16' : 'utf8'}.json`);
+    const known = utf16 && t.engine === 'firefox' ? { known: 'bug (main): Firefox opens a UTF-16 file with a BOM as garbage (BREAKER-REPORT F7)' } : {};
+    t.check(st?.kind === 'ok' && st.msg === 'Valid JSON', 'valid JSON', st, known);
+    const got = await copied(page, 'Copy input to clipboard', { timeout: 30_000 });
+    let at = -1;
+    if (got !== null && got !== want) for (at = 0; at < want.length && got[at] === want[at]; ) at++;
+    t.check(got === want, 'the editor holds exactly the text', got === null ? null : { at, got: JSON.stringify(got.slice(Math.max(0, at - 10), at + 10)), want: JSON.stringify(want.slice(Math.max(0, at - 10), at + 10)) }, known);
+  });
+}

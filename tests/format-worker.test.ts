@@ -144,7 +144,7 @@ test('random worker edits equal a full format with every output setting', async 
         const sourceBase = id;
         if (a !== undefined) text = text.slice(0, a) + ins + text.slice(b);
         const reply = await request({ ...options, id: ++id, base, ...(a === undefined ? { text } : { edit: { a, b: b!, ins }, sourceBase }) });
-        const res = parse(text);
+        const res = parse(text, { repair: true });
         const expected = res.root ? formatDoc(text, res, options.indent, sortKeys) : null;
         if (expected === null) {
           assert.equal(reply.out, null);

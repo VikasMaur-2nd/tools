@@ -12,7 +12,8 @@ import { DIRS } from '../../lib/env.mjs';
 import { bigFixture } from './_gen.mjs';
 import { clear, golden, hash, heavyLock, openAsText, reformat, seenToasts, settled, slow, tableRows, treeRows, until, watchToasts } from './_helpers.mjs';
 
-defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: 600_000 });
+// (With the heavy lock a check may first wait in its queue for a long time: an hour then.)
+defaults({ engines: 'all', tags: ['slow', 'breaker'], slots: 'all', timeout: process.env.BREAKER_HEAVY_LOCK ? 3_600_000 : 600_000 });
 
 /** Opens fixture `name` through Open file and waits (scaled per engine) until the status settles. */
 async function open(t, name, { minutes = 3, reopen = true, binary = false } = {}) {
@@ -119,7 +120,7 @@ test('a 50 MB string: valid, and the tree shows it without freezing the page', a
   await view(page, 'tree');
   await shown(page, 'tree');
   const gap = await page.evaluate(() => window.__gap.max);
-  t.check(gap < t.budget(1000), 'switching to the tree stalls the page under 1 s', `${Math.round(gap)} ms`, { known: 'bug: the tree lays out a huge string whole (BREAKER-REPORT, tree stall on big strings)' });
+  t.check(gap < t.budget(1000), 'switching to the tree stalls the page under 1 s', `${Math.round(gap)} ms`);
   const row = (await treeRows(page))[0] ?? '';
   t.check(row.startsWith('root"abcdefghij ÄÖÜ 東京 \\n \\"q\\" 🚀 abcdefghij'), 'the row starts with the string', row.slice(0, 60));
 });

@@ -67,17 +67,19 @@ function siblingIndex(n: JNode) {
   return list.indexOf(n);
 }
 
-/** Rows a new big document opens with at most (levels open from the root while they fit; the root's always). */
-const OPEN_ROWS = 100_000;
+/** Rows a new big document opens with at most (fewer levels open when they would be more; the root's always). */
+const OPEN_ROWS = 500_000;
 
-/** How many levels a new document opens with: all of a small one, else as many as keep its rows few. */
+/**
+ * How many levels a new document opens with: all of a small one, three or two of a bigger one, and fewer
+ * when that many rows would be more than OPEN_ROWS (a tree from a tape counts them there; a tree from the
+ * page's parser has every node made already, so only its rows cost).
+ */
 function openLevels(root: JNode | null, nodes: number): number {
   if (nodes <= 50_000) return Infinity;
+  let levels = nodes <= 500_000 ? 3 : 2;
   const z = root?.z;
-  // (A tree from the parser on the page: nodes are made already, so only rows cost.)
-  if (!z) return nodes <= 500_000 ? 3 : 2;
-  let levels = 1;
-  while (levels < 8 && z.within(root!, levels + 1) <= OPEN_ROWS) levels++;
+  if (z) while (levels > 1 && z.within(root!, levels) > OPEN_ROWS) levels--;
   return levels;
 }
 
@@ -541,12 +543,14 @@ export class TreeView {
     }
     switch (n.t) {
       case STR: {
-        const s = n.v as string;
+        // (A long string not decoded yet: only its start, which is all a row shows.)
+        const whole = n._v !== undefined || !n.z;
+        const s = whole ? (n.v as string) : n.z!.head(n, 2001);
         const shown = JSON.stringify(s.length > 400 ? s.slice(0, 400) + '…' : s);
         // Badges (nested JSON, JWT) need their hint now; other hints only label the
         // tooltip, built on hover (date labels load the browser's locale data).
         const c0 = s.charCodeAt(0);
-        const badge = c0 === 123 || c0 === 91 || c0 === 34 || c0 === 101 || c0 === 66 || c0 === 98 || c0 <= 32;
+        const badge = whole && (c0 === 123 || c0 === 91 || c0 === 34 || c0 === 101 || c0 === 66 || c0 === 98 || c0 <= 32);
         const hint = badge ? valueHints?.(n)[0] : undefined;
         let extra = '';
         let vcls = 'tv-s';

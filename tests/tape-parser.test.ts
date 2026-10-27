@@ -1,13 +1,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MAX_DEPTH, parse as oldParse, type ParseOptions } from '../lib/json/parser';
-import { parse, parser, type TapeOptions } from '../lib/json/tape-parser';
-import { KEY_NAME, VALUE_EXTRA, W, keyKindOf, sizeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
+import { parse, parser, warmUp, type TapeOptions } from '../lib/json/tape-parser';
+import { KEY_NAME, W, keyKindOf, sizeOf, valueKindOf, valueOf, type Tape } from '../lib/json/tape';
 import { tapeOf } from '../lib/json/tape-send';
-import { MESSAGES, genDeep, genLoose, mutate, rng, type Rng } from './oracle/compare';
+import { MESSAGES, genDeep, genLoose, mutate, rng } from './oracle/compare';
+import { CORPUS, FIXTURES, diffTape, files, genStrict, loosen } from './oracle/tape';
 
 // FUZZ_SEED=<n> / FUZZ_SCALE=<x> (env) re-run with another seed / more cases; `pnpm test --slow` runs
 // millions of fuzzed documents and the big corpora.
@@ -21,46 +21,6 @@ const show = (s: string) => {
   return s.length > 400 ? `${j}… (${s.length} chars)` : j;
 };
 
-/**
- * The first difference between the tape parser's tape and the tape of parser.ts's tree (null if
- * none): the head, every node (kind, size, offsets, parent, key) and its value as JNode.v has it.
- * Value kinds may differ only where tapeOf keeps the value aside (VALUE_EXTRA) and the tape parser
- * reads it back from the source.
- */
-export function diffTape(want: Tape, got: Tape, src: string): string | null {
-  const a = want.head;
-  const b = got.head;
-  for (const k of ['nodes', 'depth', 'exact', 'multi'] as const) if (a[k] !== b[k]) return `head.${k}: ${a[k]} vs ${b[k]}`;
-  for (const k of ['issues', 'warnings'] as const) {
-    if (a[k].length !== b[k].length) return `head.${k}.length: ${a[k].length} vs ${b[k].length}`;
-    for (let j = 0; j < a[k].length; j++) {
-      if (a[k][j].p !== b[k][j].p || a[k][j].m !== b[k][j].m) return `head.${k}[${j}]: ${JSON.stringify(a[k][j])} vs ${JSON.stringify(b[k][j])}`;
-    }
-  }
-  if (JSON.stringify(a.error) !== JSON.stringify(b.error)) return `head.error: ${JSON.stringify(a.error)} vs ${JSON.stringify(b.error)}`;
-  if (Object.keys(b).join() !== 'issues,warnings,error,nodes,depth,exact,multi') return `head fields: ${Object.keys(b)}`;
-  if (want.count !== got.count) return `count: ${want.count} vs ${got.count}`;
-  if (got.nodes.length < got.count * W) return `nodes buffer too short: ${got.nodes.length}`;
-  if (want.keys.length !== got.keys.length) return `keys.length: ${want.keys.length} vs ${got.keys.length}`;
-  for (let k = 0; k < want.keys.length; k++) if (want.keys[k] !== got.keys[k]) return `keys[${k}]: ${JSON.stringify(want.keys[k])} vs ${JSON.stringify(got.keys[k])}`;
-  const x = want.nodes;
-  const y = got.nodes;
-  for (let i = 0; i < want.count; i++) {
-    const o = i * W;
-    if ((x[o] & 0x1f) !== (y[o] & 0x1f) || x[o + 1] !== y[o + 1] || x[o + 2] !== y[o + 2] || x[o + 3] !== y[o + 3] || x[o + 4] !== y[o + 4] || sizeOf(want, i) !== sizeOf(got, i)) {
-      const f = (t: Tape) => JSON.stringify([t.nodes[o] & 7, keyKindOf(t, i), sizeOf(t, i), t.nodes[o + 1], t.nodes[o + 2], t.nodes[o + 3], t.nodes[o + 4]]);
-      return `node ${i} [kind, keyKind, size, start, end, parent, key]: ${f(want)} vs ${f(got)}`;
-    }
-    const vw = valueKindOf(want, i);
-    const vg = valueKindOf(got, i);
-    if (vw !== vg && vw !== VALUE_EXTRA) return `node ${i} value kind: ${vw} vs ${vg}`;
-    const v1 = valueOf(want, i, src);
-    const v2 = valueOf(got, i, src);
-    if (v1 !== v2) return `node ${i} value: ${JSON.stringify(v1)} vs ${JSON.stringify(v2)}`;
-  }
-  return null;
-}
-
 /** Parses `src` in steps of `every` values with an expired deadline. */
 function stepped(src: string, options: TapeOptions, every: number): Tape {
   const { step, at } = parser(src, options, every);
@@ -68,7 +28,9 @@ function stepped(src: string, options: TapeOptions, every: number): Tape {
   let back = 0;
   for (let k = 0; ; k++) {
     const t = step(0);
-    if (at() < pos) assert.ok(++back === 1, 'progress went back twice');
+    // (Several top-level values: it starts over at the first one, once; repairing, each of up to 3
+    // more passes starts over from the start, and may again for several values.)
+    if (at() < pos) assert.ok(++back <= (options.repair ? 7 : 1), `progress went back ${back} times`);
     pos = at();
     if (t) {
       assert.equal(step(0), t, 'a finished parse keeps its tape');
@@ -91,66 +53,6 @@ function same(src: string, options: ParseOptions = {}, steps: number[] = []): Ta
     if (ds) assert.fail(`steps of ${every}: ${ds}\ninput: ${show(src)} ${JSON.stringify(options)}`);
   }
   return got;
-}
-
-// ── Generators ───────────────────────────────────────────────────────────
-
-const KEYS = ['id', 'name', 'type', 'value', 'a', 'b', 'x', '', 'é', '中', '😀', 'k\\n', 'q\\"', '\\u0041b', '0', '12', '01', '4294967295', '12345678901', 'dup', 'long key with spaces'];
-const STRS = ['', 'a', 'hello world', 'é', '中文', '😀', '\\"', '\\\\', '\\/', '\\b\\f\\n\\r\\t', '\\u0041', '\\uD83D\\uDE00', '\\ud800', '\\uDFFF', ' ', '\u007f', 'x'.repeat(40)];
-const NUMBERS = ['0', '-0', '1', '-12', '3.5', '1e5', '1E-7', '-2.5e+10', '9007199254740993', '123456789012345678901234567890', '0.1', '1.0', '100', '5e-324', '1e400', '0.0000001', '0.000001', '-0.0', '123456789012345', '1234567890123456', '-123456789012345'];
-const SPACE = ['', '', '', ' ', '\n', '\r\n', '\t', '\n  '];
-
-/** Strict JSON (mostly: what the fast path takes), occasionally deep, wide or with duplicate keys. */
-function genStrict(r: Rng, maxDepth: number): string {
-  const ws = () => r.pick(SPACE);
-  const value = (d: number): string => {
-    const k = d >= maxDepth ? r.int(8) : r.int(12);
-    if (k < 1) return r.pick(['null', 'true', 'false']);
-    if (k < 4) return r.pick(NUMBERS);
-    if (k < 8) return '"' + r.pick(STRS) + (r.chance(0.2) ? r.pick(STRS) : '') + '"';
-    if (k < 10) {
-      const len = r.chance(0.1) ? 17 + r.int(30) : r.int(5);
-      const items = Array.from({ length: len }, () => ws() + value(d + 1) + ws());
-      return '[' + ws() + items.join(',') + ']';
-    }
-    const len = r.chance(0.1) ? 14 + r.int(30) : r.int(6);
-    const items = Array.from({ length: len }, () => ws() + '"' + (r.chance(0.7) ? r.pick(KEYS) : 'k' + r.int(40)) + '"' + ws() + ':' + ws() + value(d + 1) + ws());
-    return '{' + ws() + items.join(',') + '}';
-  };
-  return ws() + value(0) + ws();
-}
-
-const LOOSE_BITS = ['//c\n', '/*c*/', '#h\n', ',', ',,', "'s'", '`t`', '“q”', 'NaN', '+1', '.5', '1.', '007', '0x1F', 'True', 'None', 'undefined', 'abc', 'f(', ')', 'cb(1)', ' ', '\u000b', '﻿', '}', ']', ':', '=', '"\n"', '"\\q"', '"\\x41"', '\u0001', '\ud800', '\\', '"'];
-
-/** Breaks a strict document in a few places with loose constructs or broken bytes: the fast path hands over there. */
-function loosen(r: Rng, s: string): string {
-  for (let ops = 1 + r.int(3); ops > 0; ops--) {
-    const p = r.int(s.length + 1);
-    const k = r.int(10);
-    if (k < 6) s = s.slice(0, p) + r.pick(LOOSE_BITS) + s.slice(p);
-    else if (k < 8) s = s.slice(0, p) + s.slice(p + 1 + r.int(3));
-    else s = mutate(r, s);
-  }
-  return s;
-}
-
-// ── Corpora on this host (skipped where missing) ─────────────────────────
-
-const CORPUS = process.env.TAPE_CORPUS || join(homedir(), '.cache/selftest/pbench-data');
-const FIXTURES = process.env.TAPE_FIXTURES || join(homedir(), '.cache/tool-kumar-harness/fixtures/v1');
-
-function files(dir: string, filter: (name: string) => boolean): string[] {
-  if (!existsSync(dir)) return [];
-  const out: string[] = [];
-  const walk = (d: string) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (filter(e.name)) out.push(p);
-    }
-  };
-  walk(dir);
-  return out.sort();
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -347,6 +249,103 @@ describe('tape parser: the same as parser.ts', () => {
   });
 });
 
+describe('repairs (repair: true): the same in both parsers, and only for documents that fail without', () => {
+  const val = (t: Tape, src: string, k = 0): unknown => {
+    const kind = t.nodes[k * W] & 7;
+    if (kind === 4 || kind === 5) {
+      const out: unknown[] = [];
+      const names: [string, unknown][] = [];
+      for (let c = k + 1; c < k + sizeOf(t, k); c += sizeOf(t, c)) {
+        if (kind === 4) out.push(val(t, src, c));
+        else names.push([t.keys[t.nodes[c * W + 4]], val(t, src, c)]);
+      }
+      return kind === 4 ? out : Object.fromEntries(names);
+    }
+    const v = valueOf(t, k, src);
+    return kind === 2 ? Number(v) : v;
+  };
+  const CASES: [string, string, unknown][] = [
+    ['truncated inside a nested string', '{"a": [1, 2], "b": {"c": "hel', { a: [1, 2], b: { c: 'hel' } }],
+    ['truncated after a key', '{"a": 1, "b', { a: 1 }],
+    ['truncated after a colon', '{"a": 1, "b":', { a: 1, b: null }],
+    ['ellipsis in array', '[1, 2, 3, ...]', [1, 2, 3]],
+    ['ellipsis in object', '{"a": 1, ...}', { a: 1 }],
+    ['ellipsis as a value', '{"a": ..., "b": 2}', { a: null, b: 2 }],
+    ['string concatenation', '{"a": "x" + "y" +\n "z"}', { a: 'xyz' }],
+    ['missing value', '{"a": , "b": 2}', { a: null, b: 2 }],
+    ['missing value before }', '{"a": 1, "b": }', { a: 1, b: null }],
+    ['missing closing quote before the next key', '{"a": "b, "c": 1}', { a: 'b', c: 1 }],
+    ['missing closing quote at the end of a line', '{"a": "hello\n "b": 2}', { a: 'hello', b: 2 }],
+    ['escapes in a string cut at the end of a line', '{"a": "x\\ny\\u0041\n, "b": 1}', { a: 'x\nyA', b: 1 }],
+    ['a backslash at the end', '["ab\\', ['ab']],
+    ['a cut name', '{"a": 1, "b\n: 2}', { a: 1, b: 2 }],
+    ['stringified JSON', '{\\"a\\": \\"b\\"}', { a: 'b' }],
+    ['stringified JSON with escapes in it', JSON.stringify('{"a": "x\\ny \\"q\\"", "b": [1, 2.5], "c": {"d": null}}').slice(1, -1), { a: 'x\ny "q"', b: [1, 2.5], c: { d: null } }],
+  ];
+  test('the repairs pbench scores, and more: values, issues at exact positions', () => {
+    for (const [name, src, want] of CASES) {
+      assert.ok(oldParse(src).error, `${name}: fails without repairs`);
+      const t = same(src, { repair: true }, [1, 3]);
+      assert.equal(t.head.error, null, `${name}: ${JSON.stringify(t.head.error)}`);
+      assert.deepEqual(val(t, src), want, name);
+      assert.ok(t.head.issues.length > 0, name);
+    }
+    const t = parse('{"a": "b, "c": 1}', { repair: true });
+    assert.deepEqual(t.head.issues, [{ p: 8, m: "Missing closing quote: the string was closed before the ','" }]);
+    assert.deepEqual(parse('{"a": 1, "b":', { repair: true }).head.issues, [
+      { p: 13, m: 'Unexpected end of input: the value is missing (null)' },
+      { p: 13, m: "Unexpected end of input: missing '}'" },
+    ]);
+    assert.deepEqual(parse('[1, ...]', { repair: true }).head.issues, [{ p: 4, m: "Placeholder '...' was skipped" }]);
+    assert.deepEqual(parse('{"a": "x" + "y"}', { repair: true }).head.issues, [{ p: 10, m: "Strings joined with '+' (not valid JSON)" }]);
+    const sj = '{\\"a\\": \\"b\\"}';
+    const st = parse(sj, { repair: true });
+    assert.deepEqual(st.head.issues, [{ p: 1, m: 'JSON written as a string (escaped quotes): read with its escapes undone' }]);
+    // Offsets are the source's: "b" is \"b\".
+    assert.deepEqual([st.nodes[W + 1], st.nodes[W + 2]], [sj.indexOf('\\"b'), sj.lastIndexOf('}')]);
+    // What can't be repaired keeps its error.
+    assert.deepEqual(parse('{"a": 1 @}', { repair: true }).head.error, { p: 8, m: "Expected ',' or '}' after property value, found '@'" });
+  });
+
+  test(`stringified JSON reads back as the document it was (${cases(3000)} cases)`, () => {
+    const r = rng((SEED || 1) + 22);
+    let read = 0;
+    for (let it = 0, total = cases(3000); it < total; it++) {
+      const doc = genStrict(r, 4);
+      const src = JSON.stringify(doc).slice(1, -1);
+      if (!oldParse(src).error) continue;
+      try {
+        const t = same(src, { repair: true }, it % 8 === 0 ? [1 + r.int(5)] : []);
+        if (t.head.error) continue;
+        assert.deepEqual(val(t, src), val(parse(doc), doc));
+        read++;
+      } catch (e) {
+        throw new Error(`iteration ${it}: ${(e as Error).message}\ninput: ${show(src)}`, { cause: e });
+      }
+    }
+    assert.ok(read > cases(1500), `read: ${read}`);
+  });
+
+  test(`a document that parses without repairs parses the same with them; one that fails, the same in both parsers (${cases(20000)} cases)`, () => {
+    const r = rng((SEED || 1) + 21);
+    let repaired = 0;
+    for (let it = 0, total = cases(20000); it < total; it++) {
+      let src = r.chance(0.5) ? genLoose(r, 1 + r.int(5)) : genStrict(r, 4);
+      src = r.chance(0.5) ? mutate(r, src) : loosen(r, src);
+      const options = r.chance(0.1) ? { lines: true } : {};
+      try {
+        const plain = oldParse(src, options);
+        const t = same(src, { ...options, repair: true }, it % 16 === 0 ? [1] : it % 16 === 8 ? [1 + r.int(7)] : []);
+        if (!plain.error) assert.equal(diffTape(tapeOf(plain, src), t, src), null, 'repairs changed a document that parses');
+        else if (!t.head.error) repaired++;
+      } catch (e) {
+        throw new Error(`iteration ${it}: ${(e as Error).message}\ninput: ${show(src)}`, { cause: e });
+      }
+    }
+    assert.ok(repaired > cases(1000), `repaired: ${repaired}`);
+  });
+});
+
 describe('tape parser: beyond parser.ts', () => {
   test('nesting is limited by memory only', () => {
     const levels = 2_000_000;
@@ -394,6 +393,18 @@ describe('tape parser: beyond parser.ts', () => {
     docs.forEach((d, k) => assert.equal(diffTape(tapeOf(oldParse(d), d), out[k]!, d), null));
   });
 
+  test('warmUp() leaves nothing behind, also in the middle of a parse in steps', () => {
+    const src = '{"a":[1,"x",{"b":null}],"c":true}';
+    const p = parser(src, {}, 1);
+    p.step(0);
+    warmUp();
+    let t: Tape | undefined;
+    while (!(t = p.step(0)));
+    assert.equal(diffTape(tapeOf(oldParse(src), src), t, src), null);
+    warmUp();
+    same(src, {}, [1]);
+  });
+
   test('values are read back from the source: no string per value', () => {
     const src = '{"a":"x","b":"y\\nz","c":12.50,"d":-0x1F,"e":\'q\',"f":abc ,"g":f("h"),"h":+1}';
     const t = parse(src);
@@ -411,4 +422,26 @@ describe('tape parser: beyond parser.ts', () => {
     ]);
     assert.deepEqual([...t.extra!.keys()], [7]);
   });
+});
+
+test('decodeString with a limit gives the start of the full decode, for every limit', async () => {
+  const { decodeString } = await import('../lib/json/decode');
+  for (const body of ['plain text', 'a\\nb\\"c\\\\d\\u00e9e\\ud83d\\ude00f\\/g', "\\x41 'quoted' \\\nnext", '']) {
+    for (const quote of ['"', "'"]) {
+      const src = quote + body + quote + ' tail';
+      const full = decodeString(src, 0);
+      for (let max = 0; max <= full.length + 2; max++) assert.equal(decodeString(src, 0, max), full.slice(0, max), `${src} ${max}`);
+    }
+  }
+});
+
+test('a long string with escapes from a tape is decoded only when read, and its head without decoding the rest', async () => {
+  const { lazyResult } = await import('../lib/json/lazy');
+  const text = JSON.stringify('line\n"quoted" é '.repeat(10_000));
+  const res = lazyResult(parse(text), text);
+  const root = res.root!;
+  assert.equal(root._v, undefined, 'not decoded yet');
+  assert.equal(root.z!.head(root, 30), JSON.parse(text).slice(0, 30));
+  assert.equal(root._v, undefined, 'still not decoded');
+  assert.equal(root.v, JSON.parse(text));
 });
