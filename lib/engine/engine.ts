@@ -3617,7 +3617,7 @@ export class Engine {
     e.preventDefault();
     e.stopPropagation();
     if (e.key === 'Escape') store.set({ palette: false, shortcuts: false, menu: null });
-    else this.held.push({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey });
+    else this.held.push(e);
   }
 
   /** The keys held for the palette, the shortcuts or the menu now shown (see holdKeys): it has the keys from now. */

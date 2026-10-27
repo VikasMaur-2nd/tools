@@ -7,7 +7,7 @@
  * Every node made here keeps its tape (`z`) and index (`zi`): code that only needs to count or scan
  * a big subtree reads the tape instead of making its nodes (see `tapeOfNode`).
  */
-import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, type Expansion, type Kind, type ParseResult, type TapeLink, type Val } from './parser';
+import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, type CellFn, type Expansion, type ParseResult, type TapeLink, type TreeRows, type Val } from './parser';
 import { decodeString } from './decode';
 import { clip, keyLabel, primText, stringify } from './format';
 import { childCount, containerOf, endOf, isContainerAt, kindOf, KEY_INDEX, KEY_NAME, SIZE_BIG, VALUE_DECODE, VALUE_SLICE, valueKindOf, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, parentOf, sizeOf, startOf, valueOf, W, type Tape } from './tape';
@@ -151,6 +151,27 @@ export class Filler implements TapeLink {
     return [keys, value];
   }
 
+  cells(items: Int32Array, idxs: ArrayLike<number>, keys: (string | null)[], each: CellFn, row?: (r: number) => void) {
+    const t = this.tape;
+    for (let r = 0; r < idxs.length; r++) {
+      const it = items[idxs[r]];
+      const obj = kindOf(t, it) === OBJ;
+      // (A wide item's members by name, read once: the last of a name, as `member` finds it.)
+      let wide: Map<string, number> | null = null;
+      if (obj && keys.length > 1 && sizeOf(t, it) > 13 && childCount(t, it) > 12) {
+        wide = new Map();
+        for (let c = it + 1, end = nextOf(t, it); c < end; c = nextOf(t, c)) wide.set(keyOf(t, c) as string, c);
+      }
+      for (let k = 0; k < keys.length; k++) {
+        const key = keys[k];
+        const c = key === null ? (obj ? -1 : it) : !obj ? -1 : wide ? (wide.get(key) ?? -1) : this.member(it, key);
+        const kind = c < 0 ? -1 : kindOf(t, c);
+        if (each(r, k, kind, kind < 0 || kind >= ARR ? null : valueOf(t, c, this.src), c)) break;
+      }
+      row?.(r);
+    }
+  }
+
   count(i: number): number {
     if (!isContainerAt(this.tape, i)) return 0;
     // (A container's subtree size bounds its children: a small one is counted at once.)
@@ -182,23 +203,12 @@ export class Filler implements TapeLink {
     return lo;
   }
 
-  next(i: number): number {
-    return nextOf(this.tape, i);
-  }
-
-  kind(i: number): Kind {
-    return kindOf(this.tape, i);
-  }
-
   key(i: number): Key {
     return keyOf(this.tape, i);
   }
 
-  value(i: number): string | boolean | null {
-    return valueOf(this.tape, i, this.src);
-  }
-
-  member(i: number, key: string): number {
+  /** The last member of object `i` named `key` (the value every view reads), or -1. */
+  private member(i: number, key: string): number {
     const t = this.tape;
     const end = nextOf(t, i);
     let m = -1;
@@ -332,7 +342,61 @@ export class Filler implements TapeLink {
     return len === out.length ? out : out.slice(0, len);
   }
 
-  /** childrenUpTo by index. */
+  rowOf(tr: TreeRows, i: number): number {
+    // (Rows are in tape order.)
+    let lo = 0;
+    let hi = tr.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const x = tr[mid] >> 1;
+      if (x === i) return mid;
+      if (x < i) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return -1;
+  }
+
+  toggle(tr: TreeRows | null, n: JNode, open: boolean, deep: boolean, exp: Expansion, limit: number, first: number): TreeRows | null {
+    const t = this.tape;
+    if (deep) {
+      // Each container below gets its trie entry, by key, as TreeView's childExpansion makes them.
+      const stack = [n.zi];
+      const exps = [exp];
+      while (stack.length) {
+        const c = stack.pop()!;
+        const e = exps.pop()!;
+        e.open = open;
+        for (let k = c + 1, end = nextOf(t, c); k < end; k = nextOf(t, k)) {
+          if (!isContainerAt(t, k)) continue;
+          const key = String(keyOf(t, k));
+          let x = e.children?.get(key);
+          if (!x) (e.children ??= new Map()).set(key, (x = {}));
+          stack.push(k);
+          exps.push(x);
+        }
+      }
+    } else exp.open = open;
+    const i = tr ? this.rowOf(tr, n.zi) : -1;
+    if (i < 0) return null;
+    // Its rows are those up to the end of its subtree on the tape.
+    const rows = tr!;
+    const end = nextOf(t, n.zi);
+    let j = i + 1;
+    for (let hi = rows.length; j < hi; ) {
+      const mid = (j + hi) >> 1;
+      if (rows[mid] >> 1 < end) j = mid + 1;
+      else hi = mid;
+    }
+    const sub = open ? this.rows(n, exp, false, limit, first) : new Int32Array(0);
+    const out = new Int32Array(rows.length - (j - i - 1) + sub.length);
+    out.set(rows.subarray(0, i));
+    out[i] = n.zi * 2 + (open ? 1 : 0);
+    out.set(sub, i + 1);
+    out.set(rows.subarray(j), i + 1 + sub.length);
+    return out;
+  }
+
+  /** How many children `i` has, counted up to `max` (more: max + 1). */
   private childrenUpToAt(i: number, max: number): number {
     const t = this.tape;
     const end = nextOf(t, i);
@@ -343,14 +407,6 @@ export class Filler implements TapeLink {
 
   within(n: JNode, levels: number, max?: number): number {
     return nodesWithin(this.tape, n.zi, levels, max);
-  }
-
-  childrenUpTo(n: JNode, max: number): number {
-    return this.childrenUpToAt(n.zi, max);
-  }
-
-  childKeys(n: JNode, f: (key: Key) => void) {
-    eachChildKey(n, f);
   }
 
   search(n: JNode, qn: string, cs: boolean, max: number): number[] {
@@ -462,15 +518,6 @@ export function madeCount(root: JNode | null): number {
     if (n.t >= ARR && n._v !== undefined) for (const c of n._v as JNode[]) stack.push(c);
   }
   return k;
-}
-
-/** Calls `f` with the key of each of `n`'s children, in order, without making them if they aren't yet. */
-export function eachChildKey(n: JNode, f: (key: Key) => void) {
-  if (n._v === undefined && n.z instanceof Filler) {
-    const t = n.z.tape;
-    const end = nextOf(t, n.zi);
-    for (let c = n.zi + 1; c < end; c = nextOf(t, c)) f(keyOf(t, c));
-  } else for (const c of n.v as JNode[]) f(c.key);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Key, type TapeLink } from '../json/parser';
+import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type CellFn, type Key } from '../json/parser';
 import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
 import type { FindResult } from './codeview';
@@ -33,30 +33,13 @@ export interface TableEvents {
   drill(node: JNode): void;
 }
 
-const cellText = (n: JNode): string => {
-  switch (n.t) {
-    case STR:
-      return n.v as string;
-    case NUM:
-      return n.v as string;
-    case BOOL:
-      return n.v ? 'true' : 'false';
-    case NUL:
-      return 'null';
-  }
-  return '';
-};
+/** A primitive cell's text, from its kind and value (as JNode.v has it). */
+const cellText = (t: number, v: string | boolean | null): string => (t === BOOL ? (v ? 'true' : 'false') : t === NUL ? 'null' : (v as string));
 
 const csvEscape = (s: string) => ((s = formulaSafe(s)), /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
 
 /** Sort rank of a cell of kind `t` (-1: none): numbers, text, booleans, null, arrays and objects, then missing. */
 const typeRank = (t: number) => (t < 0 ? 9 : t === NUM ? 0 : t === STR ? 1 : t === BOOL ? 2 : t === NUL ? 3 : 4);
-
-/** cellText of tape node `c`. */
-const tapeText = (z: TapeLink, c: number) => {
-  const t = z.kind(c);
-  return t === NUL ? 'null' : t === BOOL ? (z.value(c) ? 'true' : 'false') : t >= ARR ? '' : (z.value(c) as string);
-};
 
 const JSON_NUM = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
@@ -157,20 +140,30 @@ export class TableView {
     return this.ti ? this.node!.z!.at(this.ti[idx]) : this.items[idx];
   }
 
-  /** The tape node of item `it`'s cell in `col` (see cell), or -1. */
-  private tcell(z: TapeLink, it: number, col: Col, wide?: Map<string, number> | null): number {
-    const obj = z.kind(it) === OBJ;
-    if (col.key === null) return obj ? -1 : it;
-    if (!obj) return -1;
-    return wide ? (wide.get(col.key) ?? -1) : z.member(it, col.key);
+  /** Item `idx`'s row label: its key in an object, its index in an array. */
+  private label(idx: number) {
+    return String(this.node!.t !== OBJ ? idx : this.ti ? this.node!.z!.key(this.ti[idx]) : this.items[idx].key);
   }
 
-  /** Item `it`'s members by name (the last of a name), for an item read cell by cell; null for a narrow one. */
-  private members(z: TapeLink, it: number): Map<string, number> | null {
-    if (z.kind(it) !== OBJ || z.count(it) <= 12) return null;
-    const m = new Map<string, number>();
-    for (let c = it + 1, end = z.next(it); c < end; c = z.next(c)) m.set(z.key(c) as string, c);
-    return m;
+  /**
+   * A pass over items `idxs` (places among the items), row by row: `each` for their cells under member names
+   * `keys` (see cell; true: on to the next row), then `row`. From a tape, read there: no node made for a row.
+   */
+  private cells(idxs: ArrayLike<number>, keys: (string | null)[], each: CellFn, row?: (r: number) => void) {
+    if (this.ti) return this.node!.z!.cells(this.ti, idxs, keys, each, row);
+    for (let r = 0; r < idxs.length; r++) {
+      const it = this.items[idxs[r]];
+      for (let k = 0; k < keys.length; k++) {
+        const c = this.cell(it, keys[k]);
+        if (each(r, k, c ? c.t : -1, c && c.t < ARR ? (c.v as string | boolean | null) : null, c ?? -1)) break;
+      }
+      row?.(r);
+    }
+  }
+
+  /** How many items container cell `c` (see cells) has. */
+  private size(c: JNode | number) {
+    return typeof c === 'number' ? this.node!.z!.count(c) : kids(c).length;
   }
 
   get colCount() {
@@ -224,44 +217,27 @@ export class TableView {
       const k = key as string;
       if (seen.size < MAX_COLS && !seen.has(k)) seen.set(k, 0);
     };
-    const ti = this.ti;
-    if (ti) {
+    if (this.ti) {
       // (Read off the tape: a big array's rows stay unmade.)
       const [keys, value] = this.node!.z!.columns(this.node!.zi, MAX_COLS);
       for (const k of keys) add(k);
       hasValue = value;
     }
-    for (let r = 0; r < items.length; r++) {
-      const it = items[r];
-      if (it.t === OBJ) {
-        if (it.z && it._v === undefined) it.z.childKeys(it, add);
-        else for (const c of kids(it)) add(c.key);
-      } else hasValue = true;
+    for (const it of items) {
+      if (it.t === OBJ) for (const c of kids(it)) add(c.key);
+      else hasValue = true;
     }
     const cols: Col[] = [{ key: null, idx: true, label: isObj ? 'key' : '#', w: 0 }];
     if (hasValue) cols.push({ key: null, label: 'value', w: 0 });
     for (const k of seen.keys()) cols.push({ key: k, label: k, w: 0 });
 
-    // Width from a sample of content (from a tape, read there).
+    // Width from a sample of content.
     const sample = Math.min(this.rowCount, 400);
-    const z = this.node?.z;
-    for (let ci = 0; ci < cols.length; ci++) {
-      const col = cols[ci];
-      let len = col.label.length + 2;
-      for (let r = 0; r < sample; r++) {
-        let l: number;
-        if (ti) {
-          const c = ci ? this.tcell(z!, ti[r], col) : -1;
-          l = ci === 0 ? (isObj ? String(z!.key(ti[r])).length : String(r).length) : c < 0 ? 1 : z!.kind(c) >= ARR ? 6 : tapeText(z!, c).length;
-        } else if (ci === 0) l = isObj ? String(items[r].key).length : String(r).length;
-        else {
-          const c = this.cell(items[r], col);
-          l = !c ? 1 : c.t >= ARR ? 6 : cellText(c).length;
-        }
-        if (l > len) len = l;
-      }
-      col.w = Math.round(Math.min(ci === 0 ? 28 : 46, Math.max(ci === 0 ? 3 : 5, len)) * this.cw + 28);
-    }
+    const lens = cols.map((c) => c.label.length + 2);
+    const first = new Int32Array(sample).map((_, r) => r);
+    for (const r of first) lens[0] = Math.max(lens[0], this.label(r).length);
+    this.cells(first, cols.slice(1).map((c) => c.key), (_r, k, t, v) => void (lens[k + 1] = Math.max(lens[k + 1], t < 0 ? 1 : t >= ARR ? 6 : cellText(t, v).length)));
+    cols.forEach((col, ci) => (col.w = Math.round(Math.min(ci === 0 ? 28 : 46, Math.max(ci === 0 ? 3 : 5, lens[ci])) * this.cw + 28)));
     this.cols = cols;
     const tpl = cols.map((c) => c.w + 'px').join(' ');
     this.el.style.setProperty('--tb-cols', tpl);
@@ -270,9 +246,9 @@ export class TableView {
     this.renderHead();
   }
 
-  /** The value of `col` in row `it`: of a duplicated key, the last (as JSON.parse and every other view read it). */
-  private cell(it: JNode, col: Col): JNode | undefined {
-    if (col.key === null) return it.t === OBJ ? undefined : it;
+  /** Row `it`'s cell under member `key` (null: the item itself): of a duplicated key, the last (as JSON.parse and every other view read it). */
+  private cell(it: JNode, key: string | null): JNode | undefined {
+    if (key === null) return it.t === OBJ ? undefined : it;
     if (it.t !== OBJ) return undefined;
     const list = kids(it);
     if (list.length > 12) {
@@ -282,9 +258,9 @@ export class TableView {
         for (const c of list) m.set(c.key as string, c);
         this.maps.set(it, m);
       }
-      return m.get(col.key);
+      return m.get(key);
     }
-    for (let i = list.length - 1; i >= 0; i--) if (list[i].key === col.key) return list[i];
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].key === key) return list[i];
     return undefined;
   }
 
@@ -309,31 +285,10 @@ export class TableView {
       const cs = q !== q.toLowerCase();
       const qn = cs ? q : q.toLowerCase();
       const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
-      const isObj = this.node.t === OBJ;
-      const ti = this.ti;
-      const z = this.node.z!;
-      for (let r = 0; r < this.order.length; r++) {
-        const idx = this.order[r];
-        let hit: boolean;
-        if (ti) {
-          // (Read off the tape: no node made for a row.)
-          const it = ti[idx];
-          hit = has(isObj ? String(z.key(it)) : String(idx));
-          const wide = hit ? null : this.members(z, it);
-          for (let ci = 1; !hit && ci < this.cols.length; ci++) {
-            const c = this.tcell(z, it, this.cols[ci], wide);
-            if (c >= 0 && z.kind(c) < ARR) hit = has(tapeText(z, c));
-          }
-        } else {
-          const it = this.items[idx];
-          hit = has(isObj ? String(it.key) : String(idx));
-          for (let ci = 1; !hit && ci < this.cols.length; ci++) {
-            const c = this.cell(it, this.cols[ci]);
-            if (c && c.t < ARR) hit = has(cellText(c));
-          }
-        }
-        if (hit) this.fhits.push(r);
-      }
+      const hit = new Uint8Array(this.order.length);
+      for (let r = 0; r < hit.length; r++) hit[r] = +has(this.label(this.order[r]));
+      this.cells(this.order, this.cols.slice(1).map((c) => c.key), (r, _k, t, v) => hit[r] || (t >= 0 && t < ARR && has(cellText(t, v)) && (hit[r] = 1)));
+      for (let r = 0; r < hit.length; r++) if (hit[r]) this.fhits.push(r);
       this.fset = new Set(this.fhits.map((r) => this.order[r]));
       if (this.fhits.length) {
         this.fi = 0;
@@ -374,33 +329,11 @@ export class TableView {
       const rank = new Uint8Array(n);
       const num = new Float64Array(n);
       const text: (string | undefined)[] = new Array(n);
-      const ti = this.ti;
-      const z = this.node?.z;
-      for (let i = 0; i < n; i++) {
-        let t = -1;
-        let v: string | boolean | null = null;
-        if (ti) {
-          const c = this.tcell(z!, ti[i], col);
-          if (c >= 0) {
-            t = z!.kind(c);
-            v = t >= ARR ? null : z!.value(c);
-            if (t >= ARR) num[i] = z!.count(c);
-          }
-        } else {
-          const c = this.cell(this.items[i], col);
-          if (c) {
-            t = c.t;
-            v = t >= ARR ? null : (c.v as string | boolean | null);
-            if (t >= ARR) num[i] = kids(c).length;
-          }
-        }
+      this.cells(order, [col.key], (i, _k, t, v, c) => {
         rank[i] = typeRank(t);
-        if (t === NUM) {
-          text[i] = v as string;
-          num[i] = Number(v);
-        } else if (t === STR) text[i] = v as string;
-        else if (t === BOOL) num[i] = Number(v);
-      }
+        if (t === NUM || t === STR) text[i] = v as string;
+        num[i] = t === NUM || t === BOOL ? Number(v) : t >= ARR ? this.size(c) : 0;
+      });
       const dir = this.sortDir;
       const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
       order.sort((a, b) => {
@@ -410,7 +343,8 @@ export class TableView {
         // (Numbers: as compareNumbers, its doubles read once.)
         if (rx === 0) c = num[a] !== num[b] ? (num[a] < num[b] ? -1 : 1) : compareNumbers(text[a]!, text[b]!);
         else if (rx === 1) c = coll.compare(text[a]!, text[b]!);
-        else if (rx === 2 || rx === 4) c = num[a] - num[b];
+        // (Booleans, item counts; null and missing: 0.)
+        else c = num[a] - num[b];
         // (Ties in the document's order, in every engine.)
         return c * dir || a - b;
       });
@@ -489,7 +423,7 @@ export class TableView {
       html += `<div class="tb-r${sel ? ' sel' : ''}${hit}" role="row" aria-rowindex="${r + 2}"${sel ? ' aria-selected="true"' : ''} data-r="${idx}">`;
       html += `<div class="tb-td tb-c0${act === 0 ? ` act" id="tb-${r}-0` : ''}" role="rowheader" data-c="0">${escapeHtml(isObj ? String(it.key) : String(idx))}</div>`;
       for (let ci = 1; ci < this.cols.length; ci++) {
-        const c = this.cell(it, this.cols[ci]);
+        const c = this.cell(it, this.cols[ci].key);
         html += `<div class="tb-td${act === ci ? ` act" id="tb-${r}-${ci}` : ''}" role="gridcell" data-c="${ci}">`;
         if (!c) html += '<span class="tb-x">·</span></div>';
         else if (c.t >= ARR) {
@@ -497,7 +431,7 @@ export class TableView {
           html += `<button class="tb-dr" data-c="${ci}" tabindex="-1">${c.t === OBJ ? `{${len}}` : `[${len}]`}</button></div>`;
         } else {
           const cls = c.t === STR ? 'tv-s' : c.t === NUM ? 'tv-n' : c.t === BOOL ? 'tv-l' : 'tv-z';
-          let t = cellText(c);
+          let t = cellText(c.t, c.v as string | boolean | null);
           if (t.length > 300) t = t.slice(0, 300) + '…';
           html += `<span class="${cls}">${escapeHtml(t)}</span></div>`;
         }
@@ -547,7 +481,7 @@ export class TableView {
 
   /** What a cell stands for: its value, or for the row label (and a missing value) the row's item. */
   private target(it: JNode, ci: number) {
-    return (ci > 0 ? this.cell(it, this.cols[ci]) : undefined) ?? it;
+    return (ci > 0 ? this.cell(it, this.cols[ci].key) : undefined) ?? it;
   }
 
   private onClick = (e: MouseEvent) => {
@@ -636,7 +570,7 @@ export class TableView {
         e.preventDefault();
         if (r < 0) return this.sortBy(c);
         if (e.key === 'Enter') {
-          const v = this.cell(this.item(this.order[r]), this.cols[c]);
+          const v = this.cell(this.item(this.order[r]), this.cols[c].key);
           if (c > 0 && v && v.t >= ARR) return this.ev.drill(v);
         }
         return this.activate(r, c);
@@ -702,39 +636,20 @@ export class TableView {
 
   toCSV(): string {
     if (!this.node) return '';
-    const cols = this.cols.slice(this.node.t === OBJ ? 0 : 1);
+    const isObj = this.node.t === OBJ;
+    const cols = this.cols.slice(isObj ? 0 : 1);
     const lines = [cols.map((c) => csvEscape(c.idx ? 'key' : c.label)).join(',')];
-    const ti = this.ti;
-    const z = this.node.z!;
-    for (const idx of this.order) {
-      if (ti) {
-        // (Read off the tape: no node kept for a row.)
-        const it = ti[idx];
-        const wide = this.members(z, it);
-        lines.push(
-          cols
-            .map((col) => {
-              if (col.idx) return csvEscape(String(z.key(it)));
-              const c = this.tcell(z, it, col, wide);
-              if (c < 0 || z.kind(c) === NUL) return '';
-              return csvEscape(z.kind(c) >= ARR ? z.json(c) : tapeText(z, c));
-            })
-            .join(','),
-        );
-        continue;
-      }
-      const it = this.items[idx];
-      lines.push(
-        cols
-          .map((col) => {
-            if (col.idx) return csvEscape(String(it.key));
-            const c = this.cell(it, col);
-            if (!c || c.t === NUL) return '';
-            return csvEscape(c.t >= ARR ? stringify(c, '') : cellText(c));
-          })
-          .join(','),
-      );
-    }
+    let line: string[] = [];
+    this.cells(
+      this.order,
+      this.cols.slice(1).map((c) => c.key),
+      (_r, _k, t, v, c) => void line.push(t < 0 || t === NUL ? '' : csvEscape(t < ARR ? cellText(t, v) : typeof c === 'number' ? this.node!.z!.json(c) : stringify(c, ''))),
+      (r) => {
+        if (isObj) line.unshift(csvEscape(this.label(this.order[r])));
+        lines.push(line.join(','));
+        line = [];
+      },
+    );
     return lines.join('\r\n');
   }
 }

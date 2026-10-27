@@ -247,7 +247,7 @@ export class TreeView {
       if (n.t < ARR) return;
       // (Past the levels: a container opens only if its items too fit the first rows, so one huge array in the
       // first record isn't listed whole.)
-      const open = expansion?.open ?? (n.d < limit || (first && rows.length < FIRST_ROWS && rows.length + (n.z ? n.z.childrenUpTo(n, FIRST_ROWS) : kids(n).length) < FIRST_ROWS));
+      const open = expansion?.open ?? (n.d < limit || (first && rows.length < FIRST_ROWS && rows.length + kids(n).length < FIRST_ROWS));
       n.x = open;
       if (open) {
         lists.push(kids(n));
@@ -276,21 +276,8 @@ export class TreeView {
   }
 
   indexOf(n: JNode) {
-    const tr = this.tr;
-    if (tr) {
-      // (Rows are in tape order; a node of another tree is in none.)
-      if (n.z !== this.root?.z) return -1;
-      let lo = 0;
-      let hi = tr.length - 1;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        const x = tr[mid] >> 1;
-        if (x === n.zi) return mid;
-        if (x < n.zi) lo = mid + 1;
-        else hi = mid - 1;
-      }
-      return -1;
-    }
+    // (From a tape: found there; a node of another tree is in none.)
+    if (this.tr) return n.z === this.root?.z ? n.z!.rowOf(this.tr, n.zi) : -1;
     const r = this.rows;
     let lo = 0;
     let hi = r.length - 1;
@@ -311,59 +298,29 @@ export class TreeView {
     for (let p = n; p.u; p = p.u) ancestors.push(p);
     let expansion = this.toggles;
     for (let i = ancestors.length - 1; i >= 0; i--) expansion = childExpansion(expansion, ancestors[i].key, true)!;
-    const z = this.tr ? n.z : null;
-    if (deep && z) {
-      // (On the tape: no node made for the containers below.)
-      const stack = [n.zi];
-      const expansions = [expansion];
-      while (stack.length) {
-        const c = stack.pop()!;
-        const entry = expansions.pop()!;
-        entry.open = open;
-        for (const k of z.kids(c)) {
-          if (z.kind(k) < ARR) continue;
-          stack.push(k);
-          expansions.push(childExpansion(entry, z.key(k), true)!);
-        }
-      }
-    } else if (deep) {
-      const stack = [n];
-      const expansions = [expansion];
-      while (stack.length) {
-        const c = stack.pop() as JNode;
-        const entry = expansions.pop()!;
-        entry.open = open;
-        for (const k of kids(c)) {
-          if (k.t < ARR) continue;
-          stack.push(k);
-          expansions.push(childExpansion(entry, k.key, true)!);
-        }
-      }
-    } else expansion.open = open;
     n.x = open;
-    const i = this.indexOf(n);
-    if (i < 0) {
-      this.rebuild();
-      return;
-    }
-    const tr = this.tr;
-    if (z && tr) {
-      // Its rows are those up to the end of its subtree on the tape.
-      const end = z.next(n.zi);
-      let j = i + 1;
-      for (let hi = tr.length; j < hi; ) {
-        const mid = (j + hi) >> 1;
-        if (tr[mid] >> 1 < end) j = mid + 1;
-        else hi = mid;
-      }
-      const sub = open ? z.rows(n, expansion, false, this.limit, this.first ? FIRST_ROWS : 0) : new Int32Array(0);
-      const out = new Int32Array(tr.length - (j - i - 1) + sub.length);
-      out.set(tr.subarray(0, i));
-      out[i] = n.zi * 2 + (open ? 1 : 0);
-      out.set(sub, i + 1);
-      out.set(tr.subarray(j), i + 1 + sub.length);
-      this.tr = out;
+    if (this.tr && n.z) {
+      // (On the tape: no node made for the containers below, or for its rows.)
+      const tr = n.z.toggle(n.z === this.root!.z ? this.tr : null, n, open, deep, expansion, this.limit, this.first ? FIRST_ROWS : 0);
+      if (!tr) return this.rebuild();
+      this.tr = tr;
     } else {
+      if (deep) {
+        const stack = [n];
+        const expansions = [expansion];
+        while (stack.length) {
+          const c = stack.pop() as JNode;
+          const entry = expansions.pop()!;
+          entry.open = open;
+          for (const k of kids(c)) {
+            if (k.t < ARR) continue;
+            stack.push(k);
+            expansions.push(childExpansion(entry, k.key, true)!);
+          }
+        }
+      } else expansion.open = open;
+      const i = this.indexOf(n);
+      if (i < 0) return this.rebuild();
       let j = i + 1;
       while (j < this.rows.length && this.rows[j].d > n.d) j++;
       const sub = open ? this.flatten(n, expansion, false) : [];
