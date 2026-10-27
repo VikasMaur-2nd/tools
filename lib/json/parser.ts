@@ -87,6 +87,8 @@ export interface TapeLink {
   nodeAt(root: JNode, i: number): JNode | null;
   /** Source start of tape index `i`. */
   start(i: number): number;
+  /** Makes container `n`'s children in steps: call with a deadline until it returns true. */
+  fillSteps(n: JNode): (until: number) => boolean;
   /** Start and end offsets of the container `nodeAt(root, off)` is or is in (null: none), making no node. */
   containerAt(off: number): [number, number] | null;
 }

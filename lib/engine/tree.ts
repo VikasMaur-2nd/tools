@@ -1,7 +1,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { preview } from '../json/format';
 import { parsePath, resolve } from '../json/path';
-import { idle } from './idle';
+import { idle, soon } from './idle';
 import type { ValueHint } from '../json/smart';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
@@ -65,6 +65,22 @@ function siblingIndex(n: JNode) {
     else hi = mid - 1;
   }
   return list.indexOf(n);
+}
+
+/** Containers with more children than this are filled in steps before a view lays them out (see bigFill). */
+export const BIG_FILL = 100_000;
+
+/**
+ * For a container from a tape whose children aren't made yet and are many: makes them in short tasks and then
+ * calls `done` (true), so a view never makes millions of nodes in one task. False (nothing to wait for) otherwise.
+ */
+export function bigFill(n: JNode | null, done: () => void): boolean {
+  const z = n?.z;
+  if (!n || !z || n.t < ARR || n._v !== undefined || z.childrenUpTo(n, BIG_FILL) <= BIG_FILL) return false;
+  const step = z.fillSteps(n);
+  const run = () => (step(performance.now() + 8) ? done() : soon(run));
+  soon(run);
+  return true;
 }
 
 /** Rows a new big document opens with at most (fewer levels open when they would be more; the root's always). */
@@ -188,10 +204,27 @@ export class TreeView {
   /** A hidden view retains its settings and selection without flattening the new tree. */
   activate() {
     if (!this.dirty) return;
+    // (A root of millions from a tape: its children are made in steps first; the view draws once they are.)
+    const root = this.root;
+    if (this.filling === root && root) return;
+    if (bigFill(root, () => {
+      if (this.filling !== root) return;
+      this.filling = null;
+      if (this.root === root && !this.el.hidden) {
+        this.activate();
+        this.render(true);
+      }
+    })) {
+      this.filling = root;
+      return;
+    }
     this.dirty = false;
     this.rebuild();
     if (this.sel) this.reveal(this.sel);
   }
+
+  /** The root whose children are being made in steps (see activate). */
+  private filling: JNode | null = null;
 
   private rebuild() {
     this.rows = this.root ? this.flatten(this.root, this.toggles, true) : [];

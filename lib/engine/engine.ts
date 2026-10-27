@@ -346,6 +346,10 @@ export class Engine {
       select: (n) => this.selectFromView(n, 'table'),
       drill: (n) => this.tableShow(n),
     });
+    // (Items of millions are made in steps before the table lays them out: its counts change then.)
+    this.table.onFilled = () => {
+      if (!this.dead) this.syncTableState();
+    };
     this.code = new CodeView(els.code);
     this.fmt = new CodeView(els.fmt);
     this.fmt.onReady = () => {

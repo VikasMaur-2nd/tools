@@ -9,6 +9,8 @@ export const soon = (fn: () => void) => {
   if (!port) {
     const ch = new MessageChannel();
     ch.port1.onmessage = () => queue.shift()?.();
+    // (Node's ports keep its process alive, for tests: browsers have no unref.)
+    (ch.port1 as { unref?: () => void }).unref?.();
     port = ch.port2;
   }
   queue.push(fn);
