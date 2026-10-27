@@ -96,7 +96,24 @@ for (const [shape, indent] of [['records', '  '], ['pretty', '']]) {
     const out = { status: st };
     await view(page, 'tree');
     await shown(page, 'tree');
-    out.tree = (await treeRows(page)).slice(0, 30);
+    // How many levels a new tree opens is a choice: main opened every level of a document loaded in the
+    // Format view, t3/optimize-json-memory-performance (70a020b) at most 500,000 rows, so only the root here.
+    // Record 0 opened all the way down reads the same either way.
+    const first = '#view-tree .tv-rows [role=treeitem][aria-level="2"]';
+    const closed = await page.evaluate((s) => window.__vis(s)?.getAttribute('aria-expanded') !== 'true', first);
+    if (closed) {
+      await page.locator('#view-tree:visible .tv-rows [role=treeitem][aria-level="2"]').first().click();
+      await page.keyboard.press('*');
+      await until(page, (s) => window.__vis(s)?.getAttribute('aria-expanded') === 'true' || null, first, { timeout: 30_000 });
+    }
+    const rows = await treeRows(page);
+    out.tree = rows.slice(0, 26);
+    t.check(rows[26]?.startsWith('  1:{9}'), 'record 1 follows record 0 in the tree', rows[26]?.slice(0, 40));
+    // (The table shows the tree's selection: back to the root.)
+    if (closed) {
+      await page.locator('#view-tree:visible .tv-rows [role=treeitem][aria-level="1"] .tv-root').click();
+      await until(page, () => window.__vis('#view-tree .tv-rows [role=treeitem][aria-level="1"]')?.getAttribute('aria-selected') === 'true' || null, null, { timeout: 10_000 });
+    }
     await view(page, 'table');
     await shown(page, 'table');
     const tb = await tableRows(page);
@@ -104,6 +121,70 @@ for (const [shape, indent] of [['records', '  '], ['pretty', '']]) {
     golden(t, `big/${name}`, out, 'status, tree and table match the golden file');
   });
 }
+
+test('over 48M characters: two quick edits reach the tree and the output, and Undo brings both back', async (t) => {
+  // Past 48M characters the analysis worker lets its copy of the text go once it is analysed (6eb4c63): the
+  // next edit gets a reset and the page sends the whole document again. The second edit comes inside the
+  // analysis wait, so that reset meets a newer edit.
+  await heavyLock(t);
+  const { page } = t;
+  const name = 'big-pretty-50mb';
+  const text = readFileSync(bigFixture(name), 'utf8');
+  t.assert(text.length > 48_000_000, 'the document is over 48M characters', text.length);
+  const st = await open(t, name, { minutes: 5 });
+  t.assert(st?.msg === 'Valid JSON', 'valid', st);
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  const idRow = async (want) => {
+    await view(page, 'tree');
+    await shown(page, 'tree');
+    const box = page.locator('.findbar:visible input');
+    if (!(await box.count())) await page.keyboard.press(`${mod}+f`);
+    let row = null;
+    for (const end = Date.now() + 120_000 * slow(t); row !== want && Date.now() < end; ) {
+      await box.fill('');
+      await box.fill('$[5].id');
+      await box.press('Enter');
+      row = await until(page, () => window.__vis('#view-tree .tv-rows [aria-selected=true]')?.textContent || null, null, { timeout: 30_000 });
+      if (row !== want) await page.waitForTimeout(1000);
+    }
+    await page.keyboard.press('Escape');
+    return row;
+  };
+  t.check((await idRow('id:5')) === 'id:5', 'the tree shows $[5].id');
+  // Show in editor, then type over the value.
+  await page.evaluate(() => window.__vis('#view-tree').focus());
+  await page.keyboard.press('Enter');
+  await until(page, () => document.activeElement?.id === 'input' || null, null, { timeout: 10_000 });
+  await page.keyboard.type('777');
+  await page.waitForTimeout(600);
+  await page.keyboard.type('8');
+  const edited = text.replace('"id": 5,', '"id": 7778,');
+  const row = await idRow('id:7778');
+  t.check(row === 'id:7778', 'both edits reach the tree', row);
+  await view(page, 'format');
+  const want = reformat(edited, '  ', { hashOnly: true });
+  let got = null;
+  for (let k = 0; k < 30 && got !== want; k++) {
+    got = await outputHash(page, 300_000);
+    if (got !== want) await page.waitForTimeout(2000);
+  }
+  t.check(got === want, 'both edits reach the Format output');
+  // (Typing over a selection is two Undo steps: BREAKER-REPORT F19.)
+  let back = null;
+  for (let k = 0; k < 2 && back !== 'id:5'; k++) {
+    await command(page, 'Undo');
+    back = await idRow('id:5');
+  }
+  t.check(back === 'id:5', 'Undo brings the tree back', back);
+  await view(page, 'format');
+  const original = reformat(text, '  ', { hashOnly: true });
+  got = null;
+  for (let k = 0; k < 30 && got !== original; k++) {
+    got = await outputHash(page, 300_000);
+    if (got !== original) await page.waitForTimeout(2000);
+  }
+  t.check(got === original, 'Undo brings the Format output back');
+});
 
 test('a 50 MB string: valid, and the tree shows it without freezing the page', async (t) => {
   await heavyLock(t);
