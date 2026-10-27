@@ -482,9 +482,12 @@ export class CodeView {
         const batch: number[] = [];
         const base = index.starts[i];
         // Large outputs bound each wrapper call; small documents keep one shared glyph/layout pass.
-        // (Lines read one at a time with ASCII marks are mostly counted, not measured: bigger batches.)
+        // (Lines read one at a time with ASCII marks are mostly counted, not measured: bigger batches, bound
+        // by the text of the others, which is made and measured.)
+        let made = 0;
         for (; i < n && (small || batch.length < batchMax); i++) {
           if (!small && !ascii && batch.length && endOf(i) - base > 64_000) break;
+          if (!small && ascii && !ascii[i] && batch.length && (made += endOf(i) - index.starts[i]) > 64_000) break;
           if (scanner) {
             states[i] = state;
             state = scanner.scan(text, index.starts[i], Math.min(text.length, endOf(i) + 1), state);
