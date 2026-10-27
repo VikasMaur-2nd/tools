@@ -55,7 +55,8 @@ for (const [name, data, mime] of FILES) {
     await t.open('/');
     await page.evaluate(() => (window.__xss = 0));
     const bytes = typeof data === 'function' ? data() : Buffer.from(data);
-    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim() });
+    // (Random bytes take WebKit ~45 s on a busy host: BREAKER-REPORT F3b.)
+    const st = await loadAny(page, bytes, name, { mimeType: mime || 'application/json', ready: !bytes.toString().trim(), timeout: 150_000 });
     const out = { status: st };
     out.toasts = await until(page, () => (window.__toasts?.length ? window.__toasts : null), null, { timeout: 3000 });
     const input = await copied(page, 'Copy input to clipboard', { timeout: 5000 });
