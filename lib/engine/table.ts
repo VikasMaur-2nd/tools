@@ -227,6 +227,7 @@ export class TableView {
     this.renderHead();
   }
 
+  /** The value of `col` in row `it`: of a duplicated key, the last (as JSON.parse and every other view read it). */
   private cell(it: JNode, col: Col): JNode | undefined {
     if (col.key === null) return it.t === OBJ ? undefined : it;
     if (it.t !== OBJ) return undefined;
@@ -235,12 +236,12 @@ export class TableView {
       let m = this.maps.get(it);
       if (!m) {
         m = new Map();
-        for (const c of list) if (!m.has(c.key as string)) m.set(c.key as string, c);
+        for (const c of list) m.set(c.key as string, c);
         this.maps.set(it, m);
       }
       return m.get(col.key);
     }
-    for (let i = 0; i < list.length; i++) if (list[i].key === col.key) return list[i];
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].key === col.key) return list[i];
     return undefined;
   }
 
