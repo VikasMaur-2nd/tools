@@ -125,6 +125,6 @@ for (const mb of [1, 3]) {
       const e = window.__vis('#view-table .tb-empty');
       return e && !e.hidden ? e.textContent : null;
     }, null, { timeout: 10_000 });
-    t.check(msg === 'Select an array or object in the tree to see it as a table.', 'the table says to pick an array or object', msg ?? 'blank', mb >= 2 ? { known: 'bug: the Table is blank for a 2 MB+ string document with escapes (BREAKER-REPORT, blank table)' } : {});
+    t.check(msg === 'Select an array or object in the tree to see it as a table.', 'the table says to pick an array or object', msg ?? 'blank');
   });
 }

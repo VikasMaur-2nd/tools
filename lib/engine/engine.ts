@@ -2273,7 +2273,8 @@ export class Engine {
     if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
-      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
+      // (A selected primitive root has no container: the table says what it can show, as for an unselected one.)
+      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u ?? this.sel) : root;
       this.tableShow(base);
     } else this.table.setNode(null);
     if (view === 'tree') {
