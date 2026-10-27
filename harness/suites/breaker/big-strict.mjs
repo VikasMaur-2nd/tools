@@ -6,7 +6,7 @@
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
 import { CASES } from './_cases.mjs';
-import { copied, golden, hash, load, reformat, tableRows, treeRows, until } from './_helpers.mjs';
+import { copied, downloaded, golden, hash, load, reformat, svgTexts, tableRows, treeRows, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 240_000 });
 
@@ -110,4 +110,25 @@ test('the tricky cases at 3 MB: exact status, outputs, tree, table, find and Con
   const ts = await copied(page, 'Copy converted output', { timeout: 30_000 });
   out.typescript = ts && { hash: hash(ts), head: ts.slice(0, 600) };
   golden(t, 'big-strict/strict-3mb', out, 'status, sorted output, tree, find, values, table and Convert match the golden file');
+});
+
+test('a 2.6 MB document with few cards: the graph and its SVG export are exact', async (t) => {
+  // From 2 MB the graph is built from the worker's tree (on t3/optimize-json-memory-performance, the tape).
+  const { page } = t;
+  await t.open('/');
+  const cases = STRICT.map(([, text]) => text).join(',');
+  const blobs = [...DOC.longs, ...DOC.longs.map((l) => `"${l.slice(1, -1).repeat(5)}"`)].join(',');
+  const text = `{"cases":[${cases}],"blobs":[${blobs}]}`;
+  t.assert(await load(page, text, 'cards.json', { timeout: 120_000 }), 'the document loads');
+  await view(page, 'graph');
+  // (Right after the view shows, an export can find nothing yet: it is retried until the graph is built.)
+  let svg = null;
+  for (let i = 0; i < 20 && !svg; i++) {
+    svg = await downloaded(page, () => command(page, 'Download graph as SVG'), { timeout: 10_000 });
+    if (!svg) await page.waitForTimeout(1000);
+  }
+  t.assert(svg?.bytes, 'an SVG downloads');
+  const texts = svgTexts(svg.bytes.toString());
+  // (Not its size: coordinates come from each engine's text measuring.)
+  golden(t, 'big-strict/graph-cards', { name: svg.name, count: texts.length, texts }, 'the cards match the golden file');
 });
