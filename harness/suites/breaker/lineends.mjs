@@ -101,11 +101,13 @@ for (const [label, eol] of EOLS) {
       if (hash(out ?? '') !== hash(edited)) await page.waitForTimeout(1000);
     }
     t.check(hash(out ?? '') === hash(edited), 'the edit reaches the Format output', out?.length);
-    // Typing over a selection is two Undo steps (the first typed character, then the rest: BREAKER-REPORT F19).
+    // Typing over a selection is two Undo steps (the first typed character, then the rest: BREAKER-REPORT F19),
+    // more when typing is slow (a busy host): Undo until the text is back, not past the typing (into the load).
     let back = null;
-    for (let k = 0; k < 2 && hash(back ?? '') !== hash(want); k++) {
+    for (let k = 0; k < 12 && hash(back ?? '') !== hash(want); k++) {
       await command(page, 'Undo');
       back = await inputText(page);
+      if ((back?.length ?? 0) < want.length - 100) break;
     }
     t.check(hash(back ?? '') === hash(want), 'Undo brings the text back');
     await validNow(page, /^Valid JSON/);

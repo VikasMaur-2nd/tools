@@ -5,7 +5,7 @@
 // nesting too deep to pretty-print. Expected values come from the document's own values (JSON.stringify).
 import { defaults, test } from '../../lib/api.mjs';
 import { command, view } from '../../lib/app.mjs';
-import { downloaded, loadAny, MOD, openBytes, settled, until } from './_helpers.mjs';
+import { downloaded, inputText, loadAny, MOD, openBytes, settled, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker'], timeout: 300_000 });
 
@@ -273,14 +273,18 @@ test('3 MB in the Format view: typing shows in the view and Copy, and Undo bring
   await closeFind(page);
   const r = await rows(page);
   t.check(!badRows(r, edited.split('\n')).bad.length, 'the rows there are the edited lines', badRows(r, edited.split('\n')));
-  // (Typing over a selection is two Undo steps: BREAKER-REPORT F19.)
-  const want = hash(LINES['  '].join('\n'));
-  let got = null;
-  for (let k = 0; k < 2 && got !== want; k++) {
+  // (Typing over a selection is two Undo steps, BREAKER-REPORT F19, more when typing is slow on a busy host:
+  // Undo until the input is back, not past the typing.)
+  const source = JSON.stringify(A);
+  let input = null;
+  for (let k = 0; k < 12 && input !== source; k++) {
     await command(page, 'Undo');
-    got = await copyIs(page, want, 20_000);
+    input = await inputText(page);
+    if ((input?.length ?? 0) < source.length - 100) break;
   }
-  t.check(got === want, 'Undo brings the output back');
+  t.check(input === source, 'Undo brings the input back');
+  const want = hash(LINES['  '].join('\n'));
+  t.check((await copyIs(page, want)) === want, 'Undo brings the output back');
 });
 
 test('a second big document right after the first: nothing of the first shows or copies', async (t) => {
@@ -460,7 +464,8 @@ test('toggling wrap while a find is open on long lines: no page errors, and the 
   last = await until(page, () => (window.__vis('.findbar .count')?.textContent === '1 of 1' && window.__vis('#view-format .cv-hit.cur') ? 'ok' : null), null, { timeout: 15_000 }).catch(() => null);
   const known = t.engine === 'chromium' ? {} : { known: 'bug (main): toggling wrap under an open find throws "wrapper is null" (BREAKER-REPORT F21)' };
   t.check(!errors.length, 'no page errors', errors.slice(0, 2), known);
-  t.check(last === 'ok', 'the last find shows 1 of 1 with its highlight', await page.evaluate(() => window.__vis('.findbar .count')?.textContent));
+  // (After that error the highlight can be missing too.)
+  t.check(last === 'ok', 'the last find shows 1 of 1 with its highlight', await page.evaluate(() => window.__vis('.findbar .count')?.textContent), errors.length ? known : {});
 });
 
 test('3 MB in the Format view: Download formatted output saves the exact UTF-8 bytes, indent 2 and tabs', async (t) => {

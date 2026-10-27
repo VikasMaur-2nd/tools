@@ -17,6 +17,8 @@
 // between). BREAKER_MEM_VIEWS=tree,table picks the views switched to (default tree,table,graph; empty for
 // none), BREAKER_MEM_FIND=0 skips Find. A run stops (and fails) when the host's available memory falls
 // under 1.5 GiB.
+import { appendFileSync } from 'node:fs';
+import { loadavg } from 'node:os';
 import { defaults, test } from '../../lib/api.mjs';
 import { view } from '../../lib/app.mjs';
 import { OPEN_PHASES, cpuDuring, phases } from '../../lib/perf.mjs';
@@ -27,6 +29,13 @@ import { heavyLock } from './_helpers.mjs';
 defaults({ engines: 'all', tags: ['perf', 'slow', 'breaker'], slots: 'all', rounds: 1, timeout: process.env.BREAKER_HEAVY_LOCK ? 3_600_000 : 900_000, allowErrors: true });
 
 const VIEWS = (process.env.BREAKER_MEM_VIEWS ?? 'tree,table,graph').split(',').filter(Boolean);
+/** BREAKER_MEM_OUT=file: each run's metrics are appended to it as a JSON line when the run ends (a long run keeps what it measured). */
+const OUT = process.env.BREAKER_MEM_OUT;
+const record = (t, test, extra = {}) => {
+  if (!OUT) return;
+  const metrics = Object.fromEntries(Object.entries(t.metrics ?? {}).map(([k, m]) => [k, m.values.length === 1 ? m.values[0] : m.values]));
+  appendFileSync(OUT, JSON.stringify({ at: new Date().toISOString(), engine: t.engine, target: t.target?.name, test, load: loadavg()[0], metrics, ...extra }) + '\n');
+};
 const FIND = process.env.BREAKER_MEM_FIND !== '0';
 
 const SHAPES = ['records', 'pretty', 'deep', 'strings', 'numbers'];
@@ -63,6 +72,15 @@ const SHOWN = {
 for (const size of SIZES) {
   for (const shape of SHAPES) {
     test(`${shape} ${size}mb`, async (t) => {
+      try {
+        await measure(t);
+        record(t, `${shape} ${size}mb`);
+      } catch (e) {
+        record(t, `${shape} ${size}mb`, { failed: String(e).slice(0, 200) });
+        throw e;
+      }
+    });
+    const measure = async (t) => {
       const { page } = t;
       const name = `big-${shape}-${size}mb`;
       const file = bigFixture(name); // generated (streamed) before anything is timed
@@ -137,6 +155,6 @@ for (const size of SIZES) {
         t.metric(`${metric}-stall`, Math.round(await frameGap(page)));
       }
       t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
-    });
+    };
   }
 }
