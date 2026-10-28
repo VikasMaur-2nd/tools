@@ -204,7 +204,7 @@ test('offline before the JavaScript tape parser was ever cached: its chunk is tr
   }
 });
 
-test('a broken document between two valid ones: each answered as a fresh worker would, or not at all if superseded while its chunk loads', async () => {
+test('a broken document between two valid ones: superseded, each says it stopped; then each answered as a fresh worker would', async () => {
   const valid = JSON.stringify(Array.from({ length: 2000 }, (_, i) => ({ id: i, s: 'v' + i })));
   const broken = valid.replace(/\]$/, ',]');
   const same = (r: Reply, text: string) => diffResults(parse(text, { repair: true }), unpacker(r.tree!, text)(Infinity)!);
@@ -216,11 +216,9 @@ test('a broken document between two valid ones: each answered as a fresh worker 
       s.worker.postMessage({ id: 2, text: broken, analysis: true });
       const third = await s.request({ id: 3, text: valid, analysis: true });
       assert.equal(same(third, valid), null);
-      assert.equal(same(await s.receive(1), valid), null);
-      if (offline) {
-        await new Promise((done) => setTimeout(done, 1500));
-        assert.ok(!s.messages.some((m) => m.id === 2 && m.tree), 'the superseded broken document was answered after the newer one');
-      } else assert.equal(same(await s.receive(2), broken), null);
+      // (Superseded while they ran: each says it stopped, and nothing it made is sent.)
+      await new Promise((done) => setTimeout(done, offline ? 1500 : 100));
+      for (const id of [1, 2]) assert.ok(s.messages.some((m) => m.id === id && (m as { dropped?: boolean }).dropped) && !s.messages.some((m) => m.id === id && m.tree), `${id} answered as stopped`);
       // Then alone: the tolerant parse, the chunk loaded once.
       assert.equal(same(await s.request({ id: 4, text: broken, analysis: true }), broken), null);
       assert.equal(same(await s.request({ id: 5, text: valid, analysis: true }), valid), null);
@@ -243,12 +241,13 @@ test('the analysis worker reads a loaded file itself: the text as the page has i
     le.set([0xff, 0xfe]);
     for (let i = 0; i < body.length; i++) { le[2 + 2 * i] = body.charCodeAt(i) & 0xff; le[3 + 2 * i] = body.charCodeAt(i) >> 8; }
     assert.equal(tree(await request({ id: 2, analysis: true, file: new Blob([le]), size: text.length }), text), null);
-    // An edit sent while the file is read waits for it, then applies to its text.
+    // An edit sent while the file is read waits for it, then applies to its text (the file's own analysis,
+    // superseded by it, says it stopped).
     const at = text.indexOf('"id": 7,') + 6;
     const edited = text.slice(0, at) + '70' + text.slice(at + 1);
     worker.postMessage({ id: 3, analysis: true, file: utf8, size: text.length });
     const next = request({ id: 4, analysis: true, edit: { a: at, b: at + 1, ins: '70' }, sourceBase: 3 });
-    assert.equal(tree(await receive(3), text), null);
+    assert.equal((await receive(3) as { dropped?: boolean }).dropped, true);
     assert.equal(tree(await next, edited), null);
     // Not the page's text (the file changed on disk since): the page is asked for it.
     assert.equal((await request({ id: 5, analysis: true, file: utf8, size: text.length + 1 })).reset, true);
@@ -521,6 +520,24 @@ test('the formatting worker measures compressed sizes for the page, answering on
     assert.ok(!messages.some((x) => (x as unknown as { measured?: number }).measured === 1), 'the older request is not answered');
   } finally {
     await worker.terminate();
+  }
+});
+
+test('an analysis superseded while it runs stops at its next step: it answers that it stopped, sending no tape or index; the newest is answered', async () => {
+  const s = session({ wasm: true });
+  try {
+    const text = JSON.stringify(Array.from({ length: 30_000 }, (_, i) => ({ id: i, s: 'v' + i })));
+    // A document, then (as the page does at the next paste) a cancel and the newer one.
+    s.worker.postMessage({ id: 1, text, analysis: true, pretty: '  ' });
+    s.worker.postMessage({ id: 2, cancel: true });
+    const third = await s.request({ id: 3, text: text.replace(/]$/, ',1]'), analysis: true, pretty: '  ' });
+    assert.ok(third.tree, 'the newest is analysed');
+    const first = s.messages.filter((m) => m.id === 1);
+    assert.equal(first.length, 1);
+    assert.equal((first[0] as { dropped?: boolean }).dropped, true, 'the first says it stopped');
+    assert.ok(!first[0].tree && !(first[0] as { pretty?: unknown }).pretty, 'and sends nothing it made');
+  } finally {
+    await s.worker.terminate();
   }
 });
 

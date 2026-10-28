@@ -162,6 +162,8 @@ function mayBeJwt(t: { length: number; charCodeAt(i: number): number }) {
 const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
 const WORKER_MIN = 2_000_000;
+/** From this size, an edited document is analysed after a second without input (see onChange). */
+const HUGE_TYPED = 16_000_000;
 /** From this size, a new document is parsed here in steps (see analyzeInSteps). */
 const STEPS_MIN = 1_000_000;
 /** The first step's length in ms. It runs at once, as a parse in one go did: a document parsed by then is ready as soon. */
@@ -537,7 +539,8 @@ export class Engine {
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
       clearTimeout(this.timer);
-      this.timer = window.setTimeout(this.analyzeTyped, len < 100_000 ? 60 : len < 250_000 ? 160 : len < WORKER_MIN ? 500 : 200);
+      // (A huge document's analysis takes seconds: it starts once input pauses for one, not between pastes.)
+      this.timer = window.setTimeout(this.analyzeTyped, len < 100_000 ? 60 : len < 250_000 ? 160 : len < WORKER_MIN ? 500 : len < HUGE_TYPED ? 200 : 1000);
     }
     if (this.persistEnabled) this.persistSoon();
   };
@@ -1554,8 +1557,23 @@ export class Engine {
   private analysisWorker: Worker | null = null;
   /** The analysis worker was warmed up (see warmAnalysis) and has had no document yet: it holds nothing. */
   private analysisFresh = false;
-  /** The analysis worker has a document to analyse whose tree hasn't come back yet. */
+  /** The analysis worker has a document to analyse whose tree (or word that it stopped) hasn't come back yet. */
   private analysisBusy = false;
+  /**
+   * The newest analysis asked for while one was in flight: sent once that one answers (see analysisDone). The
+   * worker gets one document at a time, so a burst of big pastes costs one more analysis, not one each.
+   */
+  private analysisNext: (() => void) | null = null;
+  /** Versions sent to be analysed as the output's (see queueAnalysis `good`): each once. */
+  private goodSent = new WeakSet<object>();
+
+  /** The analysis in flight answered (its tree, or that it stopped, or failed): the newest asked for goes now. */
+  private analysisDone() {
+    this.analysisBusy = false;
+    const next = this.analysisNext;
+    this.analysisNext = null;
+    next?.();
+  }
   private analysisFails = 0;
   private analysisDoc: Doc | null = null;
   private analysisDocId = 0;
@@ -1570,6 +1588,7 @@ export class Engine {
       this.analysisWorker = null;
       this.analysisBusy = false;
     }
+    this.analysisNext = null;
     this.analysisDoc = this.workerDoc = null;
     this.analysisDocId = this.workerDocId = 0;
     this.reindentJob = this.workerParse = null;
@@ -1608,7 +1627,11 @@ export class Engine {
     w.postMessage({ ...request, start: true });
     let at = 0;
     const send = () => {
-      if (this.dead || request.id !== this.loadSeq || (analysis ? this.analysisWorker : this.worker) !== w) return;
+      if (this.dead || request.id !== this.loadSeq || (analysis ? this.analysisWorker : this.worker) !== w) {
+        // (Not all sent: the worker won't answer it, so the newest asked for meanwhile goes now.)
+        if (analysis && !this.dead && this.analysisWorker === w && !request.good) this.analysisDone();
+        return;
+      }
       const until = performance.now() + 8;
       do {
         const end = Math.min(document.length, at + 256_000);
@@ -1632,6 +1655,15 @@ export class Engine {
     clearTimeout(this.analysisTimer);
     this.analysisTimer = window.setTimeout(() => {
       if (id !== this.loadSeq || this.dead) return;
+      // One at a time: while the worker has one, this waits (only the newest waits: see analysisNext).
+      if (this.analysisBusy && this.analysisWorker) {
+        this.analysisNext = send;
+        return;
+      }
+      send();
+    }, wait);
+    const send = () => {
+      if (id !== this.loadSeq || this.dead) return;
       if (this.analysisFails >= 3) return failed?.();
       const from = showing ? this.progressShown() : -1;
       const sentTo = from + ANALYSIS_SENT * (1 - from);
@@ -1639,10 +1671,14 @@ export class Engine {
       const worked = from >= 0 ? this.span(sentTo, 1) : undefined;
       try {
         const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
-        const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
-        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number; pretty?: { indent: string; index: PrettyIndex } }>) => this.withPack(!!e.data.tree, () => {
-          if (e.data.id !== this.loadSeq) return;
-          if (e.data.tree && !e.data.good) this.analysisBusy = false;
+        // The output shown is of an older version than this one, not yet the views': it is analysed too, once
+        // (its result may come too late to be used, when the text changed again: not sent again for each change).
+        const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer && !this.goodSent.has(this.fmtSrcVer) ? this.fmtSrcVer : null;
+        if (good) this.goodSent.add(good);
+        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; dropped?: boolean; progress?: number; pretty?: { indent: string; index: PrettyIndex } }>) => this.withPack(!!e.data.tree, () => {
+          // (The analysis in flight answered, wanted or not: the newest asked for meanwhile goes now.)
+          if (!e.data.good && (e.data.tree || e.data.dropped || e.data.reset) && this.analysisWorker === w) this.analysisDone();
+          if (e.data.id !== this.loadSeq || e.data.dropped) return;
           if (e.data.tree && e.data.pretty) prettyIndexes.set(e.data.tree.nodes, e.data.pretty);
           if (e.data.reset) { this.analysisDoc = null; this.fromFile = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
@@ -1665,8 +1701,9 @@ export class Engine {
           if (this.analysisWorker !== w) return;
           reportError(e.error ?? new Error(), 'worker');
           this.analysisFails++;
-          w.terminate(); this.analysisWorker = null; this.analysisDoc = null; this.analysisBusy = false;
+          w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
           if (id === this.loadSeq) failed?.();
+          this.analysisDone();
         };
         // (The Format view shown Pretty off the tape: the worker indexes its lines too, see drawPretty.)
         const pretty = this.settings.view === 'format' && this.prettyFromTape(document.length) ? this.indent : undefined;
@@ -1677,7 +1714,7 @@ export class Engine {
         if (good) this.postDocument(w, { ...request, good: true, progress: false }, good, true, current);
         else current();
       } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; this.analysisBusy = false; failed?.(); }
-    }, wait);
+    };
   }
 
   /**
@@ -1814,8 +1851,8 @@ export class Engine {
     this.pendingLoad = null;
     const loading = this.progressShown() >= 0 ? this.progressStatus : null;
     this.edName = names[1];
-    // (Undo and Redo bring the file names back with the documents.)
-    this.ed.setValue(text, 0, true, names);
+    // (Undo and Redo bring the file names back with the documents. Pasted, the caret goes after it, as a paste's does.)
+    this.ed.setValue(text, this.refocus ? text.length : 0, true, names);
     if (loading) {
       // (The editor's change said "Parsing…": the load goes on. With its output shown first, the editor's step is done too.)
       store.set({ status: (this.progressStatus = loading) });
@@ -1831,6 +1868,7 @@ export class Engine {
       this.ed.takeOver();
       this.ed.focus();
     }
+    const pasted = this.refocus;
     this.refocus = false;
     const seq = this.loadSeq;
     const rest = () => {
@@ -1864,7 +1902,8 @@ export class Engine {
           run();
         }, 0, here, showing);
       } else this.analyzeInSteps();
-      this.ed.el.scrollTop = 0;
+      // (A file opens at its start; a paste shows where it ends, at the caret.)
+      if (!pasted) this.ed.el.scrollTop = 0;
       if (persist) this.persistSoon();
     };
     if (split) soon(rest);

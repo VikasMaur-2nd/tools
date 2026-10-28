@@ -243,6 +243,39 @@ test('the analysis worker warmed up before a big document analyses it; a file pi
   assert.equal(engine.analysisWorker, null);
 });
 
+test('one analysis at a time: documents asked for while one is in flight wait, and only the newest is sent when it answers', async () => {
+  const { engine, workers, tick } = session();
+  const analyses = () => workers.flatMap((w) => w.messages.filter((m) => m.analysis).map((m) => m.id));
+  let trees = 0;
+  const ask = (k: number) => {
+    engine.loadSeq = k;
+    engine.queueAnalysis(k, Doc.of(`{"v":${k}}`), null, () => trees++, 0);
+    tick();
+  };
+  ask(1);
+  assert.deepEqual(analyses(), [1]);
+  // Three more versions while the first is analysed (a burst of pastes): none is sent yet.
+  ask(2);
+  ask(3);
+  ask(4);
+  assert.deepEqual(analyses(), [1], 'nothing more while one is in flight');
+  // The first answers that it stopped (a newer one came): the newest goes, the two between never.
+  const w = workers[0];
+  w.onmessage!({ data: { id: 1, dropped: true } });
+  assert.deepEqual(analyses(), [1, 4]);
+  w.onmessage!({ data: { id: 4, tree: { nodes: { length: 1 }, head: {} }, metrics: { bytes: 7, min: 7, extra: 0, units: 0 } } });
+  await engine.tapeCode();
+  assert.equal(trees, 1, 'only the newest result is used');
+  // Idle again: the next one goes at once. A stale tree also ends the one in flight.
+  ask(5);
+  ask(6);
+  assert.deepEqual(analyses(), [1, 4, 5]);
+  w.onmessage!({ data: { id: 5, tree: { nodes: { length: 1 }, head: {} }, metrics: { bytes: 7, min: 7, extra: 0, units: 0 } } });
+  await engine.tapeCode();
+  assert.deepEqual(analyses(), [1, 4, 5, 6]);
+  assert.equal(trees, 1, 'the stale one is not used');
+});
+
 // ── A new big document parsed in steps (analyzeInSteps) ──
 
 function stepsSession(text: string) {

@@ -634,6 +634,18 @@ test("the Compare editor's file name goes with its document: a load, a clear, a 
   assert.equal(s.state.cmpFile, null, 'a paste over everything leaves the file');
 });
 
+test('a paste over the whole editor ends with the caret after what was pasted, as a paste does; a file opens at its start (F26)', () => {
+  const s = session();
+  const carets: number[] = [];
+  const doc = Doc.of('[1,2]');
+  s.engine.ed = { el: {}, setValue: (_t: string, caret: number) => carets.push(caret), get version() { return doc; }, takeOver() {}, focus() {} };
+  s.engine.refocus = true;
+  s.engine.finishLoad('[1,2]', false, true, [null, null]);
+  assert.deepEqual(carets, [5]);
+  s.engine.finishLoad('[1,2]', false, true, [null, null]);
+  assert.deepEqual(carets, [5, 0]);
+});
+
 test('Undo while a file is being read undoes that file once it arrives, not the document before it', async () => {
   const { engine, loads, toasts } = loading();
   let undone = 0;
