@@ -3,7 +3,8 @@ import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStat
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
 import { foldScanner, foldsAround, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
-import { CUT, LONG_LINE, Wrapper, type Src } from './wrap';
+import { asciiRows, CUT, LONG_LINE, Wrapper, type Src } from './wrap';
+import { soon } from './idle';
 import { rt } from '../i18n/ui';
 
 /*
@@ -37,6 +38,10 @@ import { rt } from '../i18n/ui';
  */
 
 export const LH = 20;
+/** From this many display rows, a text laid out afresh is laid out in steps (see wrapInSteps). */
+const STEP_ROWS = 200_000;
+/** Each step's length in ms (input waits at most about this long). */
+const STEP_MS = 8;
 const PAD_T = 10;
 const PAD_B = 48;
 const PAD_L = 16;
@@ -666,6 +671,8 @@ export class Editor {
       this.ev.caret();
     } else if (switched) this.ev.caret();
     this.wrapDirty = true;
+    // (A new text laid out afresh: a big one in steps, see rewrap.)
+    if (doc !== old && fresh) this.wrapFresh = true;
     this.layout();
     this.updateCaret();
     this.placeScope();
@@ -1128,6 +1135,7 @@ export class Editor {
         this.render(true);
       };
     this.wy = null;
+    this.wrapJob = null;
     this.wrapDirty = true;
     this.el.classList.toggle('wrap', on);
     this.ta.wrap = on && !this.surface ? 'soft' : 'off';
@@ -1170,9 +1178,35 @@ export class Editor {
     if (!resized && !moded && !this.wrapDirty && this.wy) return;
     this.wrapDirty = false;
     const n = this.rows;
+    const job = this.wrapJob;
+    // (The same rows are being counted in steps: the new layout is theirs.)
+    if (job && !resized && !moded && job.wr === wr && job.text === this.src && job.vis === this.vis) return;
+    this.wrapJob = null;
+    // A big text laid out afresh (a new one, or after a new width, mode or font, or an edit of one still being
+    // laid out: nothing of the last layout is reused) is counted in steps, the view usable meanwhile: see
+    // wrapInSteps. Matching a textarea, rows are counted at once.
+    const fresh = this.wrapFresh || !wr.reuses;
+    this.wrapFresh = false;
+    if (fresh && !wr.exact && wr.cols && n >= STEP_ROWS) return this.wrapInSteps(wr, n);
     this.flip ^= 1;
     const A = this.buf(this.flip * 3, n);
     const B = this.buf(this.flip * 3 + 1, n);
+    this.lineBounds(A, B, n);
+    // An edit of lines [la, end) of an unfolded text: the wrapper needn't compare the others to find them.
+    const edit = this.wrapEdit ?? undefined;
+    const rows = wr.rows(this.src, A, B, edit, edit && !this.vis && this.lineEdit ? this.lineEdit : undefined);
+    this.wrapEdit = null;
+    this.lineEdit = null;
+    this.wrapText = this.doc;
+    const wy = this.buf(this.flip * 3 + 2, n + 1);
+    wy[0] = 0;
+    for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
+    this.wy = wy;
+    this.wodd = wr.odd;
+  }
+
+  /** Display rows [0, n)'s lines as model offsets [A[k], B[k]). */
+  private lineBounds(A: Int32Array, B: Int32Array, n: number) {
     const ls = this.ls;
     if (!this.vis) {
       for (let k = 0; k + 1 < n; k++) {
@@ -1188,17 +1222,74 @@ export class Editor {
         B[k] = this.lineEnd(ln);
       }
     }
-    // An edit of lines [la, end) of an unfolded text: the wrapper needn't compare the others to find them.
-    const edit = this.wrapEdit ?? undefined;
-    const rows = wr.rows(this.src, A, B, edit, edit && !this.vis && this.lineEdit ? this.lineEdit : undefined);
-    this.wrapEdit = null;
-    this.lineEdit = null;
-    this.wrapText = this.doc;
+  }
+
+  /** A whole-text layout still being counted in steps (see wrapInSteps): what it is of. */
+  private wrapJob: { wr: Wrapper; text: Src; vis: Int32Array | null } | null = null;
+  /** The next layout is of a new text (see model): nothing of the last one's rows is reused. */
+  private wrapFresh = false;
+
+  /**
+   * Lays out a big text's `n` display rows in steps (a million lines took seconds in one task): at once,
+   * each line takes the rows its length would as ASCII text (most lines do; one with wide or joined
+   * characters may overflow its rows a moment); its real rows come in steps of a few ms, and replace
+   * those in one go, the line and character at the top of the view kept there.
+   */
+  private wrapInSteps(wr: Wrapper, n: number) {
+    this.flip ^= 1;
+    const A = this.buf(this.flip * 3, n);
+    const B = this.buf(this.flip * 3 + 1, n);
+    this.lineBounds(A, B, n);
+    const cols = wr.cols;
     const wy = this.buf(this.flip * 3 + 2, n + 1);
     wy[0] = 0;
-    for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
+    for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + asciiRows(B[k] - A[k], cols);
     this.wy = wy;
-    this.wodd = wr.odd;
+    this.wodd = new Uint8Array(n);
+    // (Edit hints are against the last layout: this one counts every line.)
+    this.wrapEdit = null;
+    this.lineEdit = null;
+    const run = wr.rowsInSteps(this.src, A, B);
+    const job = { wr, text: this.src, vis: this.vis };
+    this.wrapJob = job;
+    const step = () => {
+      if (this.gone || this.wrapJob !== job) return;
+      const rows = run(performance.now() + STEP_MS);
+      if (rows === undefined) return void soon(step);
+      this.wrapJob = null;
+      if (rows === null) {
+        // (The width, the mode or the fonts changed meanwhile: laid out again, in steps again.)
+        this.wrapFresh = true;
+        this.wrapDirty = true;
+        this.layout();
+      } else {
+        const at = this.viewAt();
+        for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
+        this.wodd = wr.odd;
+        this.wrapText = this.doc;
+        this.layout();
+        this.scrollBack(at);
+      }
+      this.updateCaret();
+      this.placeScope();
+      this.render(true);
+    };
+    soon(step);
+  }
+
+  /** The character at the top of the view and how far above it the view starts, for scrollBack after a new layout. */
+  private viewAt() {
+    const top = this.sc.top;
+    const r = Math.max(0, Math.floor((top - PAD_T) / LH));
+    const k = this.kAt(r);
+    const sub = r - this.yOf(k);
+    const off = sub > 0 ? this.rowSpan(k, sub)[0] : this.ls[this.lineAt(k)];
+    return { off, dy: top - (PAD_T + r * LH) };
+  }
+
+  /** Scrolls back to `at` (see viewAt) in the rows now laid out. */
+  private scrollBack(at: { off: number; dy: number }) {
+    this.sc.top = Math.max(0, PAD_T + this.vrowOf(at.off) * LH + at.dy);
   }
 
   /** Display row containing textarea offset `off`. */

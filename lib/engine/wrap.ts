@@ -40,7 +40,7 @@ const NON_ASCII = /[^\t\n\x20-\x7e]/g;
 /** Longer lines are drawn row by row (sliced), shorter ones whole. */
 export const LONG_LINE = 3000;
 /** Characters that end a row by themselves. */
-const FORCED = /[\v\f\x85\u2028\u2029]/;
+export const FORCED = /[\v\f\x85\u2028\u2029]/;
 /** Code points that never start a row: marks, joiners, variation selectors, skin tones, tags. */
 const JOINS = /[\p{M}\u200d\ufe00-\ufe0f\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
 /**
@@ -50,7 +50,7 @@ const JOINS = /[\p{M}\u200d\ufe00-\ufe0f\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}\u
 const JOINS_NEXT = /[\u0620\u0626\u0628\u062a-\u062e\u0633-\u0647\u0649\u064a\u066e\u066f\u0678-\u0687\u069a-\u06bf\u06c1\u06c2\u06cc\u06ce\u06d0\u06d1\u06fa-\u06fc\u06ff\u0712-\u0714\u071a-\u071d\u071f-\u0727\u0729\u072b\u072d\u072e\u074e-\u0758\u075c-\u076a\u076d-\u0770\u0772\u0775-\u0777\u077a-\u077f\u07ca-\u07ea\u07fa\u0841-\u0845\u0848\u084a-\u0853\u0855\u0860\u0862-\u0865\u0868\u0883-\u0886\u0889-\u088d\u088f\u08a0-\u08a9\u08af\u08b0\u08b3-\u08b8\u08ba-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua872\u{10ac0}-\u{10ac4}\u{10acd}\u{10ad3}-\u{10adc}\u{10ade}-\u{10ae0}\u{10aeb}-\u{10aee}\u{10b80}\u{10b82}\u{10b86}-\u{10b88}\u{10b8a}\u{10b8b}\u{10b8d}\u{10b90}\u{10bad}\u{10bae}\u{10d00}-\u{10d21}\u{10d23}\u{10ec3}\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f32}\u{10f34}-\u{10f44}\u{10f51}-\u{10f53}\u{10f70}-\u{10f73}\u{10f76}-\u{10f81}\u{10fb0}\u{10fb2}\u{10fb3}\u{10fb8}\u{10fbb}\u{10fbc}\u{10fbe}\u{10fbf}\u{10fc1}\u{10fc4}\u{10fca}\u{10fcb}\u{1e900}-\u{1e943}]/u;
 const JOINS_PREV = /[\u0620\u0622-\u064a\u066e\u066f\u0671-\u0673\u0675-\u06d3\u06d5\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u077f\u07ca-\u07ea\u07fa\u0840-\u0858\u0860\u0862-\u0865\u0867-\u086a\u0870-\u0886\u0889-\u088f\u08a0-\u08ac\u08ae-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua871\u{10ac0}-\u{10ac5}\u{10ac7}\u{10ac9}\u{10aca}\u{10ace}-\u{10ad6}\u{10ad8}-\u{10ae1}\u{10ae4}\u{10aeb}-\u{10aef}\u{10b80}-\u{10b91}\u{10ba9}-\u{10bae}\u{10d01}-\u{10d23}\u{10ec2}-\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f44}\u{10f51}-\u{10f54}\u{10f70}-\u{10f81}\u{10fb0}\u{10fb2}-\u{10fb6}\u{10fb8}-\u{10fbf}\u{10fc1}-\u{10fc4}\u{10fc9}\u{10fca}\u{1e900}-\u{1e943}]/u;
 /** Characters that can be over four cells wide (ligatures, cuneiform, hieroglyphs, musical symbols). */
-const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
+export const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
 /** A run of printable ASCII (sticky). */
 const RUN = /[\x20-\x7e]+/y;
 /** Long lines whose breaks were added up (see `rowsOf`). */
@@ -60,7 +60,20 @@ const SUMS = 4;
  * A line with any is binary (a file that isn't text, opened as text): its rows are cut every perRow code
  * units (see `cut`), which costs nothing to count.
  */
-const BINARY = /[\0-\x08\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufffe\uffff]/u;
+export const BINARY = /[\0-\x08\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufffe\uffff]/u;
+/**
+ * Whether line `t[a, b)` holds only characters that neither break a row, are very wide, nor look binary (see
+ * FORCED, WIDE, BINARY; any pair, line separator, control or special counts as such), read in place: a big
+ * document's short lines of other scripts are told at once (a copy each was hundreds of MB of garbage).
+ */
+export function plainLine(t: string, a: number, b: number) {
+  for (let i = a; i < b; i++) {
+    const c = t.charCodeAt(i);
+    if (c < 0xa0 ? c < 0x20 ? c !== 9 : c > 0x7e : c > 0x2027 && (c < 0x202a || (c > 0xa9c0 && c < 0xa9ce) || (c > 0xd7ff && c < 0xe000) || (c > 0xfdf9 && c < 0xfdfe) || c > 0xfffd)) return false;
+  }
+  return true;
+}
+
 /** Characters that end a row by themselves, searched for (see FORCED). */
 const FORCED_ALL = /[\v\f\x85\u2028\u2029]/g;
 /**
@@ -367,6 +380,25 @@ const fragment = (nodes: Node[]) => {
 /** Rows an ASCII line of `cells` cells takes at `cols` cells per row. */
 export const asciiRows = (cells: number, cols: number) => (cells > cols ? Math.ceil(cells / cols) : 1);
 
+/** Lines counted between looks at the clock, laying out in steps (see rowsInSteps). */
+const STEP_LINES = 8192;
+
+/** A rows() call (see Wrapper.begin). */
+interface RowsJob {
+  text: Src;
+  A: Int32Array;
+  B: Int32Array;
+  out: Int32Array<ArrayBuffer>;
+  odd: Uint8Array<ArrayBuffer>;
+  /** Laid out afresh in steps. */
+  fresh: boolean;
+  lo: number;
+  hi: number;
+  inherit: number;
+  tabs: boolean;
+  keep: Map<string, number>;
+}
+
 export class Wrapper {
   /** Cells per row (0 until the view has a width). */
   cols = 0;
@@ -394,6 +426,14 @@ export class Wrapper {
   private last: { text: Src; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array; tabs: boolean } | null = null;
   /** Whether a string text has a tab, told by whoever found out anyway (see knowTabs). */
   private told: { text: string; tabs: boolean } | null = null;
+
+  /** A rows() call in steps not yet done (see rowsInSteps). */
+  private stepping: RowsJob | null = null;
+
+  /** Whether the next rows() can reuse the last call's counts (else it counts every line: see rowsInSteps). */
+  get reuses() {
+    return this.last !== null;
+  }
 
   /** Tells rows() whether `text` has a tab (the editor finds out while counting its lines). */
   knowTabs(text: string, tabs: boolean) {
@@ -508,20 +548,60 @@ export class Wrapper {
    * every line with the last call's to find them. (See `recycle`.)
    */
   rows(text: Src, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number], lines?: readonly [number, number]): Int32Array {
+    const job = this.begin(text, A, B, false, edit, lines);
+    this.fill(job, job.lo, job.hi);
+    return this.end(job);
+  }
+
+  /**
+   * rows() of a text laid out afresh (nothing reused from the last call), in steps: call with a deadline
+   * (performance.now()) until it returns the rows, or null if they can't be finished (the width, mode or
+   * fonts changed: lay out again). Until then `odd` and the counts stand as they were, and nothing is kept
+   * of the last call (a rows() meanwhile lays out every line).
+   */
+  rowsInSteps(text: Src, A: Int32Array, B: Int32Array): (until: number) => Int32Array | null | undefined {
+    const job = this.begin(text, A, B, true);
+    this.stepping = job;
+    const gen = this.gen;
+    let k = job.lo;
+    return (until) => {
+      if (this.gen !== gen || this.stepping !== job) return null;
+      do {
+        const to = Math.min(job.hi, k + STEP_LINES);
+        this.fill(job, k, to);
+        k = to;
+      } while (k < job.hi && performance.now() < until);
+      if (k < job.hi) return undefined;
+      this.stepping = null;
+      return this.end(job);
+    };
+  }
+
+  /** The arrays and the lines [lo, hi) of a rows() call, the lines around them reused from the last call. */
+  private begin(text: Src, A: Int32Array, B: Int32Array, fresh: boolean, edit?: readonly [number, number, number], lines?: readonly [number, number]): RowsJob {
+    // (A call in steps not yet done is dropped: its arrays may be this one's.)
+    this.stepping = null;
     const n = A.length;
     this.flip ^= 1;
     const f = this.flip;
     const out = this.recycle && this.outs[f]?.length === n ? this.outs[f].fill(0) : (this.outs[f] = new Int32Array(n));
     const odd = this.recycle && this.odds[f]?.length === n ? this.odds[f].fill(0) : (this.odds[f] = new Uint8Array(n));
-    this.odd = odd;
     const cols = this.cols;
-    if (!cols) return out.fill(1);
+    const job: RowsJob = { text, A, B, out, odd, fresh, lo: 0, hi: n, inherit: -1, tabs: false, keep: this.sized };
+    if (!fresh) this.odd = odd;
+    if (!cols) {
+      out.fill(1);
+      job.hi = 0;
+      return job;
+    }
     // An edit changes a few lines: lines before and after it (same text, same
     // place) keep their rows from last time, so typing costs no more in a
     // big document.
     let lo = 0;
     let hi = n;
-    const last = this.last;
+    // (Laid out afresh in steps, its arrays may be the last call's: those are dropped now.)
+    const last = fresh ? null : this.last;
+    if (fresh) this.last = null;
     /** Long lines whose oddness follows from the lines they were and the edit (no scanning them): 0 or 1, else -1. */
     let inherit = -1;
     if (last) {
@@ -572,23 +652,37 @@ export class Wrapper {
     }
     this.verText = text;
     // (A string's tab, looked for over 100 MB, took 0.1 s in Firefox: the same text keeps its answer.)
-    const tabs = typeof text !== 'string' ? text.tabs : last?.text === text ? last.tabs : this.told?.text === text ? this.told.tabs : text.indexOf('\t') !== -1;
-    this.last = { text, A, B, out, odd, tabs };
+    job.tabs = typeof text !== 'string' ? text.tabs : last?.text === text ? last.tabs : this.told?.text === text ? this.told.tabs : text.indexOf('\t') !== -1;
+    if (!fresh) this.last = { text, A, B, out, odd, tabs: job.tabs };
     // (Lines cut in another text would keep it alive.)
     if (text !== this.cutText) {
       this.cutLines = [];
       this.cutText = text;
     }
-    if (!this.trust) odd.fill(1, lo, hi);
+    // Whole documents prune counts of lines that are gone; edits only add. Only counts that were measured
+    // are kept: one found as cheaply again isn't (a million lines of a big document held a million strings).
+    if (lo === 0 && hi === n) job.keep = new Map<string, number>();
+    job.lo = lo;
+    job.hi = hi;
+    job.inherit = inherit;
+    return job;
+  }
+
+  /** Counts the rows of lines [from, to) of `job` (see rows). */
+  private fill(job: RowsJob, from: number, to: number) {
+    if (from >= to) return;
+    const { text, A, B, out, odd, inherit, tabs, keep } = job;
+    const cols = this.cols;
+    if (!this.trust) odd.fill(1, from, to);
     else {
       const long = (k: number) => inherit >= 0 && B[k] - A[k] > LONG_LINE;
-      for (let k0 = lo; k0 < hi; ) {
+      for (let k0 = from; k0 < to; ) {
         if (long(k0)) {
           odd[k0++] = inherit;
           continue;
         }
         let k1 = k0 + 1;
-        while (k1 < hi && !long(k1)) k1++;
+        while (k1 < to && !long(k1)) k1++;
         // Lines [k0, k1): one search from match to match.
         const end = B[k1 - 1];
         let i = k0;
@@ -606,10 +700,11 @@ export class Wrapper {
       }
     }
     const lead = this.lead;
-    // Whole documents prune counts of lines that are gone; edits only add.
-    const keep = lo === 0 && hi === n ? new Map<string, number>() : this.sized;
     const unsized: number[] = [];
-    for (let k = lo; k < hi; k++) {
+    // Rows drawn by these views needn't match a textarea: a line a quarter of a row long can't wrap (no
+    // character but the widest few is over four cells), so isn't measured.
+    const quarter = this.exact ? -1 : cols >> 2;
+    for (let k = from; k < to; k++) {
       const a = A[k];
       const b = B[k];
       if (!odd[k]) {
@@ -620,6 +715,11 @@ export class Wrapper {
           continue;
         }
         odd[k] = 1;
+      }
+      // (A short line of plain characters, read in place, can't wrap: see the quarter rule below.)
+      if (b - a <= quarter && typeof text === 'string' && plainLine(text, a, b)) {
+        out[k] = 1;
+        continue;
       }
       if (!this.exact && b - a > LONG_LINE) {
         // (Not split between the halves of a pair, which would read as a lone surrogate.)
@@ -637,6 +737,10 @@ export class Wrapper {
         out[k] = this.cut(s, 0, s.length);
         continue;
       }
+      if (s.length <= quarter && !FORCED.test(s) && !WIDE.test(s)) {
+        out[k] = 1;
+        continue;
+      }
       let r = this.sized.get(s) ?? keep.get(s);
       // A long line is laid out once, as the mirror its rows are later read from.
       if (r === undefined && s.length > LONG_LINE) r = this.mirror(s).rows;
@@ -646,29 +750,13 @@ export class Wrapper {
         keep.set(s, r);
       }
     }
-    if (unsized.length && !this.exact) {
-      // Rows drawn by these views needn't match a textarea: a line a quarter of a row long
-      // can't wrap (no character but the widest few is over four cells), so isn't measured.
-      const quarter = cols >> 2;
-      let w = 0;
-      for (const k of unsized) {
-        const s = B[k] - A[k] <= quarter ? text.slice(A[k], B[k]) : '';
-        if (s && !FORCED.test(s) && !WIDE.test(s)) {
-          out[k] = 1;
-          keep.set(s, 1);
-        } else unsized[w++] = k;
-      }
-      unsized.length = w;
-    }
     if (unsized.length) {
       const lines = unsized.map((k) => text.slice(A[k], B[k]));
       this.learn(lines);
       const big: number[] = [];
       for (let j = 0; j < lines.length; j++) {
-        if (this.fits(lines[j])) {
-          out[unsized[j]] = 1;
-          keep.set(lines[j], 1);
-        } else big.push(j);
+        if (this.fits(lines[j])) out[unsized[j]] = 1;
+        else big.push(j);
       }
       const sizes = this.measure(big.map((j) => lines[j]));
       big.forEach((j, x) => {
@@ -676,9 +764,19 @@ export class Wrapper {
         keep.set(lines[j], sizes[x]);
       });
     }
+  }
+
+  /** Ends a rows() call: its counts kept, and (laid out in steps) its lines and `odd` made the last call's. */
+  private end(job: RowsJob): Int32Array {
+    const { text, A, B, out, odd, keep } = job;
+    if (job.fresh) {
+      this.odd = odd;
+      if (this.cols) this.last = { text, A, B, out, odd, tabs: job.tabs };
+    }
+    if (!this.cols) return out;
     this.sized = keep;
     // Edits only add counts: start afresh (pruning) once enough have piled up.
-    if (keep.size > n + 5000) this.last = null;
+    if (keep.size > A.length + 5000) this.last = null;
     return out;
   }
 
@@ -1193,10 +1291,11 @@ export class Wrapper {
     const st = Starts.join(runs);
     e.st = st;
     e.exact = st.length;
-    // The last rows() call counted the line's estimated rows, and the next one reuses its counts.
-    const last = this.last;
-    if (last && last.text === e.t) {
-      const A = last.A;
+    // The last rows() call (or one in steps: see rowsInSteps) counted the line's estimated rows, and the next
+    // one reuses its counts.
+    for (const x of [this.last, this.stepping]) {
+      if (!x || x.text !== e.t) continue;
+      const A = x.A;
       let lo = 0;
       let hi = A.length - 1;
       while (lo < hi) {
@@ -1204,7 +1303,7 @@ export class Wrapper {
         if (A[mid] <= e.a) lo = mid;
         else hi = mid - 1;
       }
-      if (A[lo] === e.a && last.B[lo] === e.b) last.out[lo] = st.length;
+      if (A[lo] === e.a && x.B[lo] === e.b) x.out[lo] = st.length;
     }
     return true;
   }
@@ -1317,8 +1416,12 @@ export class Wrapper {
     return typeof CSS !== 'undefined' && CSS.supports('-moz-appearance', 'none');
   }
 
+  /** Bumped whenever counts are dropped (see forget): rows being counted in steps are then dropped too. */
+  private gen = 0;
+
   /** Drops every row count and break (they depend on the width, the fonts and the mode). */
   private forget() {
+    this.gen++;
     this.sized.clear();
     this.last = null;
     for (const m of this.mirrors.values()) m.el.remove();
