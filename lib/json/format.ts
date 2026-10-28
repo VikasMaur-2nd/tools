@@ -559,11 +559,18 @@ export function preview(node: JNode, budget = 90): string {
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 export const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
 
-/** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without allocating. */
+/** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without copying it. */
 /** Runs of characters past ASCII (see byteLength). */
 const WIDE_RUN = /[^\x00-\x7f]+/g;
 
 export function byteLength(s: string, from = 0, to = s.length): number {
+  // (A part of `s` is measured on its own: the search below would run on to the end of `s` past it, over every
+  // part of an ASCII text one after another.)
+  if (from > 0 || to < s.length) {
+    s = s.slice(from, to);
+    from = 0;
+    to = s.length;
+  }
   // A byte a character, plus what the characters past ASCII (found natively, a run at a time) add.
   let b = to - from;
   WIDE_RUN.lastIndex = from;

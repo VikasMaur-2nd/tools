@@ -151,7 +151,8 @@ function receive(data: Request) {
   } else source = Doc.of(data.text ?? '');
   sourceId = id;
   latest = id;
-  if (data.analysis) { void analyse(data, source.toString()); return; }
+  // (A failure is thrown where the page's error handler hears it, as before the analysis waited between steps.)
+  if (data.analysis) { analyse(data, source.toString()).catch((e: unknown) => setTimeout(() => { throw e; })); return; }
   clearTimeout(fastTimer);
   if (data.fast) {
     const input = source;

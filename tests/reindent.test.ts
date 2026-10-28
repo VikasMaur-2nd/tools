@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, JNode, OBJ, parse, type ParseResult } from '../lib/json/parser';
-import { formatDoc, minifiedBytes, reindent, reindenter, stringify } from '../lib/json/format';
+import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, stringify } from '../lib/json/format';
 import { compressedSize, minifiedBytesStream } from '../lib/engine/sizes';
 import '../lib/json/requote';
 
@@ -184,4 +184,15 @@ test('the minified bytes stream is the minified text in UTF-8, and compresses to
     for (const codec of ['gzip', 'deflate']) assert.equal(await compressedSize(() => minifiedBytesStream(src), codec), await compressedSize(new Blob([min]), codec), codec);
   }
   await assert.rejects(read(minifiedBytesStream('[1, 2')), /not JSON/);
+});
+
+test('byteLength of a part of a text reads that part only (an ASCII text measured part by part took minutes)', () => {
+  const ascii = '{"a":"bc"},'.repeat(400_000);
+  const t0 = performance.now();
+  let n = 0;
+  for (let i = 0; i + 11 <= ascii.length; i += 11 * 20) n += byteLength(ascii, i + 5, i + 9);
+  assert.equal(n, 4 * Math.ceil(ascii.length / 220));
+  assert.ok(performance.now() - t0 < 5000, `${Math.round(performance.now() - t0)} ms`);
+  const mixed = 'aé😀\n中b';
+  for (let a = 0; a <= mixed.length; a++) for (let b = a; b <= mixed.length; b++) assert.equal(byteLength(mixed, a, b), byteLength(mixed.slice(a, b)), `${a}..${b}`);
 });
