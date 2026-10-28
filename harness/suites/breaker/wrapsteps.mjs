@@ -35,28 +35,61 @@ const height = (page) =>
     return best?.scrollHeight ?? 0;
   });
 
-test('while a big text\'s rows are still counted: End then Enter on a wrapped emoji line breaks it between characters, and what is typed follows the break', async (t) => {
+/**
+ * On a fresh load of the wrap document: if `after`, once the rows are in. Down to line 5 (the emoji line), `row` rows
+ * more, End, then Enter x Enter y. Whether the break fell between characters and the letters where typed; and
+ * whether the rows were still being counted then.
+ */
+async function endEnter(t, row, after) {
   const { page } = t;
   await t.open('/');
   const text = wrapDoc(30_000);
   t.assert(await load(page, text, 'wrap.json', { timeout: 180_000 * slow(t) }), 'the document loads');
-  // At once: down to line 5 (the emoji line), the end of its first row, Enter, a letter.
+  if (after) await pause(25_000 * slow(t));
   await page.locator('#input').focus();
   await page.keyboard.press(`${MOD}+Home`);
   for (let i = 0; i < 30 && (await line(page)) < 5; i++) await page.keyboard.press('ArrowDown');
+  for (let i = 0; i < row; i++) await page.keyboard.press('ArrowDown');
   const h0 = await height(page);
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');
   await page.keyboard.type('x');
-  await pause(25_000 * slow(t));
-  const counting = Math.abs((await height(page)) - h0) > 10_000;
-  t.log(counting ? 'acted while the rows were counted' : 'the rows were in already: this run checks the real rows');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('y');
+  if (!after) await pause(25_000 * slow(t));
+  const counting = !after && Math.abs((await height(page)) - h0) > 10_000;
   const out = await copied(page, 'Copy input to clipboard', { timeout: 60_000 });
   const was = text.split('\n')[4];
-  const [a, b] = (out ?? '').split('\n').slice(4, 6);
+  const [a, b, c] = (out ?? '').split('\n').slice(4, 7);
   const k = a?.length ?? -1;
   const breaks = new Set([...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(was)].map((g) => g.index));
-  const known = counting ? { known: 'bug (branch, since f1aa3bc): while the rows are counted, End can stop inside an emoji, and Enter breaks the line there while what is typed goes after the emoji (BREAKER-REPORT R9)' } : {};
-  t.check(was.startsWith(a ?? '\u0000') && breaks.has(k), 'Enter breaks the line between characters', { at: k, end: [...(a ?? '')].slice(-3).join(''), next: [...(b ?? '')].slice(0, 6).join('') }, known);
-  t.check(b === `\t\tx${was.slice(k)}`, 'the letter typed starts the new line, the rest of the line after it', [...(b ?? '')].slice(0, 6).join(''), known);
+  breaks.add(was.length);
+  return {
+    row: row + 1,
+    counting,
+    split: !(was.startsWith(a ?? '\u0000') && breaks.has(k)),
+    misplaced: !(b === '\t\tx' && c === `\t\ty${was.slice(k)}`),
+    at: `${[...(a ?? '')].slice(-2).join('')}|${[...(b ?? '')].slice(0, 4).join('')}|${[...(c ?? '')].slice(0, 5).join('')}`,
+  };
+}
+
+test('while a big text\'s rows are still counted: End then Enter on each row of a wrapped emoji line breaks it between characters, and what is typed goes where typed', async (t) => {
+  const rows = [];
+  for (const row of [0, 1, 2]) rows.push(await endEnter(t, row, false));
+  t.log(rows);
+  const bad = rows.filter((r) => r.split || r.misplaced);
+  // (On main nothing is counted in steps: there this checks the rows as laid out, F25 only.)
+  t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad, {
+    known: 'bug (branch, since f1aa3bc): while the rows are counted, End can stop at a guessed row end inside an emoji (👍|🏽); Enter breaks it there and the next Enter lands a character later (BREAKER-REPORT R9; main and branch also F25)',
+  });
+});
+
+test('once a big text\'s rows are in: End then Enter on each row of a wrapped emoji line breaks it between characters, and what is typed goes where typed', async (t) => {
+  const rows = [];
+  for (const row of [0, 1, 2]) rows.push(await endEnter(t, row, true));
+  t.log(rows);
+  const bad = rows.filter((r) => r.split || r.misplaced);
+  t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad, {
+    known: 'bug (main and branch): a wrapped row can end inside a ZWJ emoji (👨‍👩‍👧‍|👦), End stops there and Enter splits it (BREAKER-REPORT F25)',
+  });
 });
