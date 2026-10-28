@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse, type ParseOptions } from '../lib/json/parser';
-import { stringify } from '../lib/json/format';
+import { stringify, stringifyNodes } from '../lib/json/format';
+import { lazyResult, madeCount, nodeAtIndex } from '../lib/json/lazy';
 import { codeIndexer } from '../lib/json/code-index';
 import { PrettyText, prettyIndexer } from '../lib/json/pretty';
 import { tapeOf } from '../lib/json/tape-send';
@@ -141,4 +142,56 @@ test('nesting too deep to indent, and no document, give no pretty lines', () => 
   assert.equal(prettyIndexer(tapeOf(res, deep), deep, '  ')(Infinity), null);
   const empty = parse('');
   assert.equal(prettyIndexer(tapeOf(empty, ''), '', '  ')(Infinity), null);
+});
+
+/**
+ * stringify of a tree read from a tape (written off the tape, see pretty.ts writeTape) is the text written from
+ * its nodes, minified and indented, for the whole document and for subtrees; and it makes no node.
+ */
+function written(src: string, options: ParseOptions = {}, r = rng(src.length)) {
+  const res = parse(src, options);
+  if (!res.root) return false;
+  const tape = tapeOf(res, src);
+  const root = lazyResult(tape, src).root!;
+  const count = tape.count;
+  // (Nesting so deep its indentation alone is longer than a string can be: both throw, as formatDoc never asks.)
+  const write = (f: () => string) => {
+    try {
+      return f();
+    } catch (e) {
+      if (!(e instanceof RangeError)) throw e;
+      return 'RangeError';
+    }
+  };
+  const indents = ['', '  ', '\t'];
+  const whole = indents.map((indent) => write(() => stringify(root, indent)));
+  assert.equal(madeCount(root), 1, `no node made: ${show(src)}`);
+  for (const [j, indent] of indents.entries()) {
+    const where = `${show(src)} indent ${JSON.stringify(indent)} ${JSON.stringify(options)}`;
+    assert.equal(whole[j], write(() => stringifyNodes(res.root!, indent)), `whole document: ${where}`);
+    for (let k = 0; k < 3; k++) {
+      const n = nodeAtIndex(root, r.int(count))!;
+      assert.equal(write(() => stringify(n, indent)), write(() => stringifyNodes(n, indent)), `subtree at ${n.zi}: ${where}`);
+    }
+  }
+  return true;
+}
+
+test('a tree read from a tape is written from the tape exactly as from its nodes, making none', () => {
+  for (const src of CASES) assert.ok(written(src), src);
+  const loose = ["{a: 'its', b: \"x\", d: “curly”}", '{"a": 0x1F, "b": .5, "c": +1, "d": NaN}', '// c\n{"a": [1, 2,], "b": True,}', '{"a":3,"b":"unfinish', '[1 2 3]', '"{\\"a\\": 1}"', '[1][2]{"a":3}'];
+  for (const src of loose) assert.ok(written(src, { repair: true }), src);
+  assert.ok(written('{"a":1}\n{"a":[2,{}]}\n[]\n"x"\n', { lines: true }));
+  const r = rng(SEED + 11);
+  for (let k = 0; k < (SLOW ? 6_000 : 600); k++) {
+    const strict = genStrict(r, 6);
+    written(strict, {}, r);
+    written(loosen(r, strict), { repair: true }, r);
+    written(genLoose(r), { repair: true }, r);
+    written(mutate(r, strict), { repair: true }, r);
+  }
+  for (const f of [...files(join(CORPUS, 'jts'), (x) => x.endsWith('.json')), ...files(FIXTURES, (x) => /\.(json|jsonl|ndjson)$/.test(x))]) {
+    if (statSync(f).size > 1_000_000) continue;
+    written(readFileSync(f, 'utf8'), { lines: /\.(jsonl|ndjson)$/.test(f), repair: true });
+  }
 });

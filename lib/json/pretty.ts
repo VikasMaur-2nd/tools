@@ -8,7 +8,7 @@
  * indentation, its property name, its value (a container's open bracket) and the comma after it.
  */
 import { ARR, BOOL, NUL, NUM, OBJ, STR } from './parser';
-import { quote, MAX_INDENT } from './format';
+import { quote, MAX_INDENT, MAX_TEXT, tooLong } from './format';
 import { KEY_NAME, SIZE_BIG, VALUE_DECODE, VALUE_FALSE, VALUE_SLICE, W, valueOf, type Tape } from './tape';
 import type { CodeIndex } from './code-index';
 
@@ -328,4 +328,76 @@ export class PrettyText {
     }
     return out;
   }
+}
+
+/**
+ * The text format.ts stringify writes for node `i` of `t` and its subtree (`indent` '': minified), read off the
+ * tape: no node is made. The same values as PrettyText.line, laid out as stringify lays them out.
+ */
+export function writeTape(t: Tape, src: string, i: number, indent: string): string {
+  const nodes = t.nodes;
+  const big = t.big;
+  const size = (j: number) => {
+    const z = nodes[j * W] >>> 8;
+    return z < SIZE_BIG ? z : big!.get(j)!;
+  };
+  const nl = indent ? '\n' : '';
+  const colon = indent ? ': ' : ':';
+  const pads = [''];
+  const pad = (d: number) => {
+    while (pads.length <= d) pads.push(pads[pads.length - 1] + indent);
+    return pads[d];
+  };
+  const seps: string[] = [];
+  // The open containers: the index past each one's subtree, and whether it is an object.
+  const ends: number[] = [];
+  const objs: boolean[] = [];
+  // (Written in pieces of ~64K characters, joined once: one string grown a token at a time is a chain of
+  // millions of short pieces, which took twice the time and the memory.)
+  const parts: string[] = [];
+  let length = 0;
+  let out = '';
+  for (let k = i, end = i + size(i); k < end; ) {
+    const o = k * W;
+    const m = nodes[o];
+    const kind = m & 7;
+    if (ends.length && objs[ends.length - 1]) out += quote(t.keys[nodes[o + 4]]) + colon;
+    if (kind >= ARR) {
+      const s = size(k++);
+      if (s > 1) {
+        out += (kind === OBJ ? '{' : '[') + nl + pad(ends.length + 1);
+        ends.push(k - 1 + s);
+        objs.push(kind === OBJ);
+        continue;
+      }
+      out += kind === OBJ ? '{}' : '[]';
+    } else {
+      const vk = (m >> 5) & 7;
+      if (kind === NUL) out += 'null';
+      else if (kind === BOOL) out += vk === VALUE_FALSE ? 'false' : 'true';
+      else if (kind === NUM) out += valueOf(t, k, src) as string;
+      else if ((vk === VALUE_SLICE || vk === VALUE_DECODE) && plain(src, nodes[o + 1], nodes[o + 2])) out += src.slice(nodes[o + 1], nodes[o + 2]);
+      else out += quote(valueOf(t, k, src) as string);
+      k++;
+    }
+    // The value is written: a separator before the next item, or the containers it ends closed.
+    for (let d = ends.length; d; d = ends.length) {
+      if (k < ends[d - 1]) {
+        out += seps[d] ?? (seps[d] = ',' + nl + pad(d));
+        break;
+      }
+      ends.pop();
+      out += nl + pad(d - 1) + (objs.pop() ? '}' : ']');
+    }
+    if (out.length > 65536) {
+      length += out.length;
+      if (length > MAX_TEXT) throw tooLong();
+      parts.push(out);
+      out = '';
+    }
+  }
+  if (length + out.length > MAX_TEXT) throw tooLong();
+  if (!parts.length) return out;
+  parts.push(out);
+  return parts.join('');
 }

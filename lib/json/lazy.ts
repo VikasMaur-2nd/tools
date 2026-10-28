@@ -10,6 +10,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, type CellFn, type Expansion, type ParseResult, type TapeLink, type TreeRows, type Val } from './parser';
 import { decodeString } from './decode';
 import { clip, keyLabel, primText, stringify } from './format';
+import { writeTape } from './pretty';
 import { childCount, containerOf, endOf, isContainerAt, kindOf, KEY_INDEX, KEY_NAME, SIZE_BIG, VALUE_DECODE, VALUE_SLICE, valueKindOf, keyKindOf, keyOf, nextOf, nodeAtOffset, nodesWithin, parentOf, sizeOf, startOf, valueOf, W, type Tape } from './tape';
 import type { Key } from './parser';
 
@@ -453,6 +454,10 @@ export class Filler implements TapeLink {
       if (n._v === undefined) n._v = list;
       return true;
     };
+  }
+
+  write(n: JNode, indent: string): string {
+    return writeTape(this.tape, this.src, n.zi, indent);
   }
 
   fill(n: JNode): Val {

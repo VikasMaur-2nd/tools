@@ -73,6 +73,8 @@ export class JNode {
 export interface TapeLink {
   /** Makes `n`'s value (a container's children, or a long string's text) and returns it. */
   fill(n: JNode): Val;
+  /** format.ts stringify's text of `n` and its subtree (`indent` '': minified), written from the tape. */
+  write(n: JNode, indent: string): string;
   /** The first `max` units of string `n`'s value, decoding no more of it than that. */
   head(n: JNode, max: number): string;
   /** How many nodes of `n`'s subtree are at most `levels` below it (counted no further than past `max`). */

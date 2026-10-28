@@ -13,7 +13,7 @@ const byKey = (a: JNode, b: JNode) => {
  * throws `tooLong()`, a RangeError like the engine's own (see `tooLarge`).
  */
 export const MAX_TEXT = 2 ** 29 - 24;
-const tooLong = () => new RangeError('Invalid string length');
+export const tooLong = () => new RangeError('Invalid string length');
 /** An output too large to make: past MAX_TEXT, or more than the engine or memory could hold. */
 export const tooLarge = (e: unknown) => e instanceof RangeError && /string length|array buffer|array length|allocation/i.test(e.message);
 
@@ -27,6 +27,14 @@ export const quote = (s: string) => (NEEDS_ESCAPE.test(s) ? JSON.stringify(s) : 
  * Open containers are kept on a list rather than the call stack, so any depth the parser accepts can be written.
  */
 export function stringify(root: JNode, indent: string, sortKeys = false): string {
+  // (A tree read from a tape is written from the tape: no node is made. Making them all to write a big loose
+  // document took ~23 bytes a character, GBs at 100 MB.)
+  if (!sortKeys && root.z) return root.z.write(root, indent);
+  return stringifyNodes(root, indent, sortKeys);
+}
+
+/** stringify, from the nodes (tests compare it with the tape's). */
+export function stringifyNodes(root: JNode, indent: string, sortKeys = false): string {
   let out = '';
   const nl = indent ? '\n' : '';
   const colon = indent ? ': ' : ':';
