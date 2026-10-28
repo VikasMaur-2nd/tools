@@ -35,12 +35,19 @@ interface Reply {
   chunkedOut?: boolean;
 }
 
-/** `clock`: the worker's clock moves on by this many ms at each reading (a fake one, the same on any machine). */
-function session({ clock = 0, wait = 10_000 } = {}) {
+/**
+ * `clock`: the worker's clock moves on by this many ms at each reading (a fake one, the same on any machine).
+ * `wasm`: the worker can fetch tape.wasm (as in a browser; else its fetch fails and the JavaScript parser does
+ * everything). `offline`: loading the JavaScript tape parser's chunk fails this many times first. `loads()`
+ * asks the worker how many times that chunk has loaded.
+ */
+function session({ clock = 0, wait = 10_000, wasm = false, offline = 0 } = {}) {
   const fake = clock ? `let now=0; performance.now=()=>(now+=${clock});` : '';
-  const worker = new Worker(`${fake}const {parentPort}=require('node:worker_threads'); global.self={postMessage:(data,transfer)=>parentPort.postMessage(data,transfer)}; parentPort.on('message',data=>self.onmessage({data})); require(${JSON.stringify(resolve(__dirname, '../lib/engine/reindent.worker.js'))});`, { eval: true });
+  const fetcher = wasm ? `global.fetch=async(u)=>new Response(require('node:fs').readFileSync(require('node:url').fileURLToPath(String(u)).replace('/.test-build/','/')),{headers:{'content-type':'application/wasm'}});` : '';
+  const chunk = `const seen={loads:0,fail:${offline}}; const M=require('node:module'); const req=M.prototype.require; M.prototype.require=function(id){ if(/tape-parser$/.test(id)){ if(seen.fail>0){ seen.fail--; throw new Error('offline'); } seen.loads++; } return req.apply(this,arguments); };`;
+  const worker = new Worker(`${fake}${fetcher}${chunk}const {parentPort}=require('node:worker_threads'); global.self={postMessage:(data,transfer)=>parentPort.postMessage(data,transfer)}; parentPort.on('message',data=>data.loads?parentPort.postMessage({loads:seen.loads}):self.onmessage({data})); require(${JSON.stringify(resolve(__dirname, '../lib/engine/reindent.worker.js'))});`, { eval: true });
   const messages: Reply[] = [];
-  worker.on('message', (data) => messages.push(data));
+  worker.on('message', (data) => data.loads === undefined && messages.push(data));
   const receive = (id: number) => new Promise<Reply>((done, fail) => {
     const timer = setTimeout(() => { worker.terminate(); fail(new Error(`missing worker reply ${id}`)); }, wait);
     const check = () => {
@@ -53,7 +60,16 @@ function session({ clock = 0, wait = 10_000 } = {}) {
     };
     worker.on('message', check); worker.once('error', fail); check();
   });
-  return { worker, receive, messages, async request(data: Request) { const reply = receive(data.id); worker.postMessage(data); return reply; } };
+  const loads = () => new Promise<number>((done) => {
+    const got = (m: { loads?: number }) => {
+      if (m.loads === undefined) return;
+      worker.off('message', got);
+      done(m.loads);
+    };
+    worker.on('message', got);
+    worker.postMessage({ loads: true });
+  });
+  return { worker, receive, messages, loads, async request(data: Request) { const reply = receive(data.id); worker.postMessage(data); return reply; } };
 }
 
 test('the parse request and the output of loose documents read the tape: the same tree, metrics and output as parser.ts', async () => {
@@ -113,6 +129,104 @@ test("parser.ts's parser stays out of the worker: nothing it imports calls it", 
   walk(resolve(root, 'lib/engine/reindent.worker.ts'));
   assert.ok(seen.size > 10, `${seen.size} modules`);
   assert.deepEqual(callers, []);
+});
+
+test('the JavaScript tape parser is its own chunk in the worker: nothing the worker imports statically imports it', () => {
+  const root = resolve(__dirname, '../..');
+  const seen = new Set<string>();
+  const walk = (file: string) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const src = readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/^import\s+(type\s+)?(?:([\s\S]*?)\s+from\s+)?['"](\.[^'"]+)['"]/gm)) {
+      const names = (m[2] ?? '').replace(/[{}]/g, '').split(',').map((x) => x.trim()).filter(Boolean);
+      if (m[1] || (names.length && names.every((x) => x.startsWith('type ')))) continue;
+      walk(resolve(dirname(file), m[3]) + '.ts');
+    }
+  };
+  walk(resolve(root, 'lib/engine/reindent.worker.ts'));
+  assert.ok(seen.size > 10, `${seen.size} modules`);
+  assert.ok(!seen.has(resolve(root, 'lib/json/tape-parser.ts')), 'tape-parser.ts is imported statically');
+  assert.match(readFileSync(resolve(root, 'lib/engine/reindent.worker.ts'), 'utf8'), /import\('\.\.\/json\/tape-parser'\)/);
+});
+
+test('with WebAssembly, valid JSON never loads the JavaScript tape parser; the first broken document does, and gets the same result as without', async () => {
+  const s = session({ wasm: true });
+  try {
+    const item = (i: number) => ({ id: i, name: `Zoë ${i}`, tags: ['a', 'b'], n: 1.5e3, ok: true, x: null, s: 'say "hi"\n' });
+    const valid = JSON.stringify(Array.from({ length: 3000 }, (_, i) => item(i)));
+    // Analysis, a typed parse, sorted keys, and typing into a value (the scalar formatter re-parses the token).
+    const a = await s.request({ id: 1, text: valid, analysis: true });
+    assert.equal(diffResults(parse(valid), unpacker(a.tree!, valid)(Infinity)!), null);
+    const b = await s.request({ id: 2, text: valid, parse: true, indent: '  ' });
+    assert.equal(diffResults(parse(valid), unpacker(b.tree!, valid)(Infinity)!), null);
+    // (Its output is the second reply.)
+    assert.equal((await s.receive(2)).out, formatDoc(valid, parse(valid), '  '));
+    const sorted = await s.request({ id: 3, text: valid, fast: true, indent: '  ', sortKeys: true });
+    assert.equal(sorted.out, formatDoc(valid, parse(valid), '  ', true));
+    const fast = await s.request({ id: 4, text: valid, fast: true, indent: '  ' });
+    assert.equal(fast.out, formatDoc(valid, parse(valid), '  '));
+    let text = valid;
+    let out = fast.out!;
+    let patched = 0;
+    for (let k = 0; k < 5; k++) {
+      const at = text.indexOf('Zoë', 1000 * (k + 1)) + 1;
+      text = text.slice(0, at) + 'é' + text.slice(at);
+      const r = await s.request({ id: 5 + k, edit: { a: at, b: at, ins: 'é' }, sourceBase: 4 + k, fast: true, indent: '  ', base: 4 + k });
+      out = r.patch !== undefined && r.change ? applyCodeChange(out, r.patch, r.change) : r.out!;
+      if (r.patch !== undefined) patched++;
+      assert.equal(out, formatDoc(text, parse(text), '  '), `edit ${k}`);
+    }
+    assert.ok(patched >= 3, `typing patched ${patched} times`);
+    assert.equal(await s.loads(), 0, 'valid JSON loaded the JavaScript tape parser');
+    // The first broken document loads it, once; the next ones use it.
+    const broken = valid.replace(/\]$/, ',]').replace('"id":7,', '"id":7,,');
+    const c = await s.request({ id: 20, text: broken, analysis: true });
+    assert.equal(diffResults(parse(broken, { repair: true }), unpacker(c.tree!, broken)(Infinity)!), null);
+    const d = await s.request({ id: 21, text: broken, fast: true, indent: '  ' });
+    assert.equal(d.out, formatDoc(broken, parse(broken, { repair: true }), '  '));
+    const lines = '{"a":1}\n{"b":[2,3]}\n';
+    const e = await s.request({ id: 22, text: lines, analysis: true, lines: true });
+    assert.equal(diffResults(parse(lines, { lines: true, repair: true }), unpacker(e.tree!, lines)(Infinity)!), null);
+    assert.equal(await s.loads(), 1);
+  } finally { await s.worker.terminate(); }
+});
+
+test('offline before the JavaScript tape parser was ever cached: its chunk is tried again, and the broken document is answered', async () => {
+  for (const wasm of [true, false]) {
+    const s = session({ wasm, offline: 2, wait: 15_000 });
+    try {
+      const broken = '{"a": [1, 2,], b: true}';
+      const r = await s.request({ id: 1, text: broken, analysis: true });
+      assert.equal(diffResults(parse(broken, { repair: true }), unpacker(r.tree!, broken)(Infinity)!), null, `wasm ${wasm}`);
+      assert.equal(await s.loads(), 1);
+    } finally { await s.worker.terminate(); }
+  }
+});
+
+test('a broken document between two valid ones: each answered as a fresh worker would, or not at all if superseded while its chunk loads', async () => {
+  const valid = JSON.stringify(Array.from({ length: 2000 }, (_, i) => ({ id: i, s: 'v' + i })));
+  const broken = valid.replace(/\]$/, ',]');
+  const same = (r: Reply, text: string) => diffResults(parse(text, { repair: true }), unpacker(r.tree!, text)(Infinity)!);
+  // `offline`: the chunk's first load fails, so the broken document still waits for it when the next one comes.
+  for (const offline of [0, 1]) {
+    const s = session({ wasm: true, offline });
+    try {
+      s.worker.postMessage({ id: 1, text: valid, analysis: true });
+      s.worker.postMessage({ id: 2, text: broken, analysis: true });
+      const third = await s.request({ id: 3, text: valid, analysis: true });
+      assert.equal(same(third, valid), null);
+      assert.equal(same(await s.receive(1), valid), null);
+      if (offline) {
+        await new Promise((done) => setTimeout(done, 1500));
+        assert.ok(!s.messages.some((m) => m.id === 2 && m.tree), 'the superseded broken document was answered after the newer one');
+      } else assert.equal(same(await s.receive(2), broken), null);
+      // Then alone: the tolerant parse, the chunk loaded once.
+      assert.equal(same(await s.request({ id: 4, text: broken, analysis: true }), broken), null);
+      assert.equal(same(await s.request({ id: 5, text: valid, analysis: true }), valid), null);
+      assert.equal(await s.loads(), 1);
+    } finally { await s.worker.terminate(); }
+  }
 });
 
 test('the analysis worker reads a loaded file itself: the text as the page has it, then edits; a changed file asks for the text', async () => {

@@ -2,8 +2,7 @@ import { Doc } from '../engine/doc';
 import { formatDoc } from './format';
 import { lazyResult } from './lazy';
 import { ARR, STR } from './parser';
-import { kindOf } from './tape';
-import { parse } from './tape-parser';
+import { kindOf, type Tape } from './tape';
 import type { CodeChange } from './code-index';
 
 interface Text {
@@ -45,12 +44,14 @@ export interface ScalarChange {
  * Sparse source/output checkpoints, one per 16K source units. Only a bounded scalar is reparsed.
  * Containers, ambiguous edits and sorted output use the full formatter. No speculative output
  * is published: both the unchanged document and the replacement token must be strict JSON.
+ * `strict` parses a replacement token: its tape if it is strict JSON with one value, else null
+ * (the worker's is WebAssembly, so typing doesn't load the JavaScript parser).
  */
 export class ScalarFormatter {
   private source: number[] = [];
   private target: number[] = [];
 
-  constructor(private input: Doc, private output: Doc) {
+  constructor(private input: Doc, private output: Doc, private strict: (raw: string) => Tape | null) {
     const src = input.toString();
     const out = output.toString();
     let a = 0;
@@ -95,9 +96,9 @@ export class ScalarFormatter {
       if (edit.a <= ae && edit.b <= ae) {
         if (edit.a < a || punctuation(this.input.charCodeAt(a))) return null;
         const raw = this.input.slice(a, edit.a) + edit.ins + this.input.slice(edit.b, ae);
-        const t = parse(raw);
+        const t = this.strict(raw);
         const key = this.input.charCodeAt(skip(this.input, ae)) === 58;
-        if (!t.count || t.head.error || t.head.issues.length || t.head.multi || kindOf(t, 0) >= ARR || key && kindOf(t, 0) !== STR) return null;
+        if (!t || kindOf(t, 0) >= ARR || key && kindOf(t, 0) !== STR) return null;
         const patch = formatDoc(raw, lazyResult(t, raw), '');
         const change = { prefix: b, suffix: this.output.length - be };
         this.output = this.output.edit(b, be, patch);
