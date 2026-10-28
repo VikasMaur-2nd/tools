@@ -193,6 +193,10 @@ export class Surface {
     this.value = this.before = now;
     const sel = [this.start + ta.selectionStart, this.start + ta.selectionEnd];
     if (this.comp) this.comp = [this.comp[0], sel[1]];
+    // (Much more than a passage came in, pasted or dropped by the browser: out of the textarea before the edit
+    // lays the page out, which with millions of characters in it took Firefox half a minute. The passage around
+    // the caret goes back in after it, see sync.)
+    if (!this.comp && now.length > 2 * PASSAGE) ta.value = '';
     this.h.edit(big ? s : this.start + a, big ? e2 : this.start + b, now.slice(a, c), e.inputType || 'insertText');
     this.select(sel[0], sel[1], ta.selectionDirection === 'backward');
     this.h.moved(false);
