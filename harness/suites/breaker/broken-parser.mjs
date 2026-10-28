@@ -22,8 +22,9 @@ const formatted = (t, page) =>
 test('a big valid file, then a big broken one: the broken one is repaired and shown, and a valid one after is valid again', async (t) => {
   const { page } = t;
   await t.open('/');
-  await t.app.view(page, 'format');
   await open(page, 'valid.json', VALID);
+  // (The views' tabs show once there is a document.)
+  await t.app.view(page, 'format');
   t.check(/^Valid JSON/.test(await settled(t, page)), 'the valid file is valid', await t.app.status(page));
   await open(page, 'broken.json', BROKEN);
   const st = await settled(t, page);
@@ -36,6 +37,7 @@ test('a big valid file, then a big broken one: the broken one is repaired and sh
 test('a big broken file opened while a big valid one is still being analysed: the broken one shows, then the valid one again', async (t) => {
   const { page } = t;
   await t.open('/');
+  await open(page, 'small.json', '{"a": 1}');
   await t.app.view(page, 'format');
   // No waiting in between: the second file comes while the first is analysed.
   await open(page, 'valid.json', VALID);
