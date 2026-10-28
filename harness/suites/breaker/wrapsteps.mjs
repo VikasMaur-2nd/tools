@@ -4,6 +4,7 @@
 // once they are in. The document: 30,000 records over 240,000 lines (12.7 MB), a third of its lines CJK, emoji
 // (skin tones, ZWJ families, flags) and RTL, tabs in a third of the records.
 import { defaults, test } from '../../lib/api.mjs';
+import { command } from '../../lib/app.mjs';
 import { MOD, copied, load, slow } from './_helpers.mjs';
 
 defaults({ engines: 'all', tags: ['breaker', 'wrap'], width: 1280, height: 860, timeout: 300_000 });
@@ -94,4 +95,37 @@ test('once a big text\'s rows are in: End then Enter on each row of a wrapped em
   t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad, {
     known: 'bug (main and branch): a wrapped row can end inside a ZWJ emoji (👨‍👩‍👧‍|👦), End stops there and Enter splits it (BREAKER-REPORT F25)',
   });
+});
+
+test('Collapse all then Expand all in input right after a big load: the page keeps drawing', async (t) => {
+  // R10: on the branch, the first Expand all in input while the rows are still counted froze WebKit for 18.7 s and
+  // 22.7 s (2 of 3 runs; main 0.9–2.4 s, frames every 1 s at most). Folded, the text has under 200,000 rows and is
+  // laid out at once; unfolded, every line is laid out again in one task.
+  const { page } = t;
+  await t.open('/');
+  t.assert(await load(page, wrapDoc(30_000), 'wrap.json', { timeout: 180_000 * slow(t) }), 'the document loads');
+  await page.evaluate(() => {
+    window.__gap = 0;
+    let last = performance.now();
+    const f = (now) => {
+      window.__gap = Math.max(window.__gap, now - last);
+      last = now;
+      requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+  });
+  const gaps = {};
+  for (const [k, c] of [['collapse', 'Collapse all in input'], ['expand', 'Expand all in input']]) {
+    await command(page, c, { timeout: 120_000 });
+    await pause(500);
+    gaps[k] = await page.evaluate(() => {
+      const g = window.__gap;
+      window.__gap = 0;
+      return Math.round(g);
+    });
+  }
+  const budget = t.budget(5_000 * slow(t));
+  t.check(gaps.collapse < budget && gaps.expand < budget, `no frame gap over ${Math.round(budget / 1000)} s while folding and unfolding everything`, gaps, t.engine === 'webkit' ? {
+    known: 'bug (branch, since f1aa3bc/30c6150): the first Expand all in input while a big text\'s rows are counted lays every line out in one task: WebKit froze 18.7 s and 22.7 s (BREAKER-REPORT R10)',
+  } : {});
 });
