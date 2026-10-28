@@ -344,6 +344,8 @@ export class Editor {
   private locked = false;
   /** Soft wrap (null: off). */
   private wrapper: Wrapper | null = null;
+  /** The text wants the big-document editor, whose module is still on its way (see model). */
+  private surfaceDue = false;
   /** While wrapping: the first visual row of each display line (length rows + 1). */
   private wy: Int32Array | null = null;
   /** While wrapping: 1 for display lines whose breaks the browser decides, CUT for binary (Wrapper.odd). */
@@ -620,15 +622,20 @@ export class Editor {
     const want = this.wantsSurface(1);
     const wait = len > NATIVE_CHARS && !SurfaceClass;
     const quiet = wait || ((!want || !SurfaceClass) && (this.view ? this.lazy : this.loading && len > LAZY_CHARS));
-    const view = (wait || !this.forceEdit) && quiet && !(fromTa && !this.view);
+    // (Text pasted or dropped into the textarea by the browser goes there too, as a big paste of ours does:
+    // the textarea emptied before it lays millions of characters out, which took Firefox minutes.)
+    const view = (wait || !this.forceEdit) && quiet && !(fromTa && !this.view && !this.dropIn);
     this.lazy = view;
     // A user edit keeps the big-document editor until the text (or its longest line) is well under the
     // threshold (no flip-flopping at it), and never leaves it mid-composition (see onCompEnd).
     let custom = !view && (want || (!!this.surface && fromTa && (this.wantsSurface(0.8) || this.compOld !== null)));
+    // (Until it arrives, the textarea's rows needn't be matched: see rewrap.)
+    this.surfaceDue = want && !SurfaceClass;
     if (want && !SurfaceClass) {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
+        this.surfaceDue = false;
         if (this.gone || !SurfaceClass || this.surface || !this.el.isConnected || !this.wantsSurface(1)) return;
         // Switch to it, from the textarea or from the quiet view it was waiting in. Focus in that view (a big
         // paste moves it there) goes on in the editor at its caret, as when the user asked to edit meanwhile:
@@ -1179,7 +1186,9 @@ export class Editor {
     const resized = wr.fit(space, this.cw);
     if (resized) this.el.style.setProperty('--tw', `${wr.width}px`);
     // Without the textarea (view mode) nothing has to line up with it: long lines can be summed.
-    const moded = wr.setExact(!this.view && !this.surface);
+    // Rows match the textarea's while it shows the text, but not for a big text waiting for the big-document
+    // editor: laying a line of millions of characters out to match took Firefox minutes, for a textarea about to go.
+    const moded = wr.setExact(!this.view && !this.surface && !this.surfaceDue);
     if (!resized && !moded && !this.wrapDirty && this.wy) return;
     this.wrapDirty = false;
     const src = this.src;
@@ -1528,7 +1537,7 @@ export class Editor {
     // widths may be stale (a font just arrived); failing that, this browser
     // breaks ASCII its own way, so measure every line.
     const wr = this.wrapper;
-    if (wr?.cols && this.wy && !this.view && !this.surface && !this.healing && this.overflows()) {
+    if (wr?.cols && wr.exact && this.wy && !this.view && !this.surface && !this.healing && this.overflows()) {
       this.healing = true;
       this.measure();
       wr.reset();
@@ -2040,11 +2049,22 @@ export class Editor {
     this.typing = true;
     this.tabMovesFocus = false;
     if (it !== 'insertFromPaste') this.pasteFull = false;
-    if (!this.sync()) return;
+    // (Pasted or dropped by the browser itself, as when its paste event carried no text: see model.)
+    this.dropIn = it === 'insertFromPaste' || it === 'insertFromDrop';
+    try {
+      if (!this.sync()) return;
+    } finally {
+      this.dropIn = false;
+    }
+    // Gone to the quiet view meanwhile, as a big paste of ours does: the editor takes the keys there.
+    if (this.view) this.el.focus({ preventScroll: true });
     // An IME composition is recorded once, when it ends.
     if (this.compOld === null) this.record(old, this.doc, it);
     this.ev.change(it === 'insertFromPaste' || it === 'insertFromDrop' ? 'paste' : 'input');
   };
+
+  /** The browser pasted or dropped text into the textarea itself (see onInput). */
+  private dropIn = false;
 
   /**
    * Brings the model up to date with the textarea after a native edit: the
