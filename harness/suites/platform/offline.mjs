@@ -176,7 +176,9 @@ test("deploy: a tab open during a deploy keeps its build offline; new tabs get t
       .then(() => true, () => false);
     t.check(swapped, 'deploy: the new shell replaces the old one once its files are cached');
     // This navigation may have received stale A while its refresh installed A'. Reload the
-    // now-committed shell before waiting for that build's own warm-up/cache message.
+    // now-committed shell before waiting for that build's own warm-up/cache message. (Its idle loads are let
+    // finish first: Firefox reports each one a reload cancels as an error from the worker's fetch.)
+    await quiet(visitor);
     await visitor.reload({ waitUntil: 'load' });
     await swIdle(visitor, { posted: true, timeout: 90_000 });
     const missingA2 = await missingFromCache(visitor, a2.all);
@@ -197,6 +199,8 @@ test("deploy: a tab open during a deploy keeps its build offline; new tabs get t
     await features(t, fresh, 'deploy offline, new build');
 
     // The old tabs close: the old build's files go (checked when a page posts what it loaded, or on a visit).
+    // (Once their loads are done: see the reload above.)
+    await Promise.all([quiet(oldTab), quiet(visitor)]);
     await oldTab.close();
     await visitor.close();
     proxy.offline(false);
