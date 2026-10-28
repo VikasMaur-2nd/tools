@@ -3,7 +3,7 @@ import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStat
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
 import { foldScanner, foldsAround, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
-import { asciiRows, CUT, LONG_LINE, Wrapper, type Src } from './wrap';
+import { asciiRows, clusterStart, CUT, LONG_LINE, Wrapper, type Src } from './wrap';
 import { soon } from './idle';
 import { rt } from '../i18n/ui';
 
@@ -344,7 +344,7 @@ export class Editor {
   /** While wrapping: the first visual row of each display line (length rows + 1). */
   private wy: Int32Array | null = null;
   /** While wrapping: 1 for display lines whose breaks the browser decides, CUT for binary (Wrapper.odd). */
-  private wodd = new Uint8Array(0);
+  private wodd: Uint8Array = new Uint8Array(0);
   /** Text or folds changed since rows were last wrapped. */
   private wrapDirty = true;
   private strs = new StringStates();
@@ -687,6 +687,7 @@ export class Editor {
       get length() { return doc().length; },
       slice: (a, b) => this.doc.slice(a, b),
       charCodeAt: (i) => this.doc.charCodeAt(i),
+      between: (off) => clusterStart(this.doc, 0, off),
       line: (off) => { const ln = this.lineOf(off); return [this.ls[ln], this.lineEnd(ln)]; },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
       moved: (nav, reveal) => this.surfaceMoved(nav, reveal),
@@ -1136,6 +1137,7 @@ export class Editor {
       };
     this.wy = null;
     this.wrapJob = null;
+    this.keepLines(null, null, null);
     this.wrapDirty = true;
     this.el.classList.toggle('wrap', on);
     this.ta.wrap = on && !this.surface ? 'soft' : 'off';
@@ -1157,8 +1159,8 @@ export class Editor {
   private lineEdit: [number, number] | null = null;
   /**
    * Arrays for rewrap, two of each in turn (the wrapper keeps the last call's
-   * lines): a document of a million lines would otherwise allocate megabytes
-   * per key.
+   * lines; see lineBounds and display): a document of a million lines would
+   * otherwise allocate megabytes per key.
    */
   private bufs: Int32Array[] = [];
   private flip = 0;
@@ -1177,81 +1179,114 @@ export class Editor {
     const moded = wr.setExact(!this.view && !this.surface);
     if (!resized && !moded && !this.wrapDirty && this.wy) return;
     this.wrapDirty = false;
-    const n = this.rows;
+    const src = this.src;
     const job = this.wrapJob;
-    // (The same rows are being counted in steps: the new layout is theirs.)
-    if (job && !resized && !moded && job.wr === wr && job.text === this.src && job.vis === this.vis) return;
+    // (Every line's rows are being counted in steps for this text: the display, folded or not, guesses them meanwhile.)
+    if (job && !resized && !moded && job.wr === wr && job.text === src) return this.display(null, null);
     this.wrapJob = null;
+    // Only the folds changed: every line's rows stand, and the display is made of them (no line wrapped again).
+    if (!resized && !moded && !this.wrapFresh && wr.reuses && this.lineWr === wr && this.lineText === src && this.lineRows) return this.display(this.lineRows, this.lineOdd);
     // A big text laid out afresh (a new one, or after a new width, mode or font, or an edit of one still being
     // laid out: nothing of the last layout is reused) is counted in steps, the view usable meanwhile: see
     // wrapInSteps. Matching a textarea, rows are counted at once.
     const fresh = this.wrapFresh || !wr.reuses;
     this.wrapFresh = false;
-    if (fresh && !wr.exact && wr.cols && n >= STEP_ROWS) return this.wrapInSteps(wr, n);
-    this.flip ^= 1;
-    const A = this.buf(this.flip * 3, n);
-    const B = this.buf(this.flip * 3 + 1, n);
-    this.lineBounds(A, B, n);
-    // An edit of lines [la, end) of an unfolded text: the wrapper needn't compare the others to find them.
+    const L = this.ls.length;
+    if (fresh && !wr.exact && wr.cols && L >= STEP_ROWS) return this.wrapInSteps(wr);
+    const [A, B] = this.lineBounds();
+    // An edit of lines [la, end): the wrapper needn't compare the others to find them.
     const edit = this.wrapEdit ?? undefined;
-    const rows = wr.rows(this.src, A, B, edit, edit && !this.vis && this.lineEdit ? this.lineEdit : undefined);
+    const rows = wr.rows(src, A, B, edit, edit && this.lineEdit ? this.lineEdit : undefined);
     this.wrapEdit = null;
     this.lineEdit = null;
     this.wrapText = this.doc;
-    const wy = this.buf(this.flip * 3 + 2, n + 1);
-    wy[0] = 0;
-    for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
-    this.wy = wy;
-    this.wodd = wr.odd;
+    this.keepLines(wr, src, rows);
+    this.display(rows, wr.odd);
   }
 
-  /** Display rows [0, n)'s lines as model offsets [A[k], B[k]). */
-  private lineBounds(A: Int32Array, B: Int32Array, n: number) {
+  /**
+   * Every line's rows (the wrapper's last count, of every line of `lineText`, folded or not): a fold or unfold
+   * only makes the display of them again. (The wrapper's arrays, which the next count may reuse: see recycle.)
+   */
+  private lineRows: Int32Array | null = null;
+  private lineOdd: Uint8Array | null = null;
+  private lineText: Src | null = null;
+  private lineWr: Wrapper | null = null;
+
+  private keepLines(wr: Wrapper | null, text: Src | null, rows: Int32Array | null) {
+    this.lineWr = wr;
+    this.lineText = text;
+    this.lineRows = rows;
+    this.lineOdd = wr && rows ? wr.odd : null;
+  }
+
+  /** Every line's bounds [A[k], B[k]) for the wrapper: two pairs of arrays in turn (it keeps the last call's). */
+  private lineBounds(): [Int32Array, Int32Array] {
     const ls = this.ls;
-    if (!this.vis) {
-      for (let k = 0; k + 1 < n; k++) {
-        A[k] = ls[k];
-        B[k] = ls[k + 1] - 1;
-      }
-      A[n - 1] = ls[n - 1];
-      B[n - 1] = this.doc.length;
-    } else {
-      for (let k = 0; k < n; k++) {
-        const ln = this.lineAt(k);
-        A[k] = ls[ln];
-        B[k] = this.lineEnd(ln);
-      }
+    const n = ls.length;
+    this.flip ^= 1;
+    const A = this.buf(this.flip * 2, n);
+    const B = this.buf(this.flip * 2 + 1, n);
+    for (let k = 0; k + 1 < n; k++) {
+      A[k] = ls[k];
+      B[k] = ls[k + 1] - 1;
+    }
+    A[n - 1] = ls[n - 1];
+    B[n - 1] = this.doc.length;
+    return [A, B];
+  }
+
+  /** wy and wodd of the display rows (folds hide lines) from every line's rows and flags, or (null) its length as ASCII. */
+  private display(rows: Int32Array | null, odd: Uint8Array | null) {
+    const n = this.rows;
+    const vis = this.vis;
+    const ls = this.ls;
+    const cols = (this.wrapper as Wrapper).cols;
+    // (The wy shown until now stays as it was: a view kept across a new layout is read from it, see viewAt.)
+    this.wyFlip ^= 1;
+    const wy = this.buf(4 + this.wyFlip, n + 1);
+    wy[0] = 0;
+    for (let k = 0; k < n; k++) {
+      const ln = vis ? vis[k] : k;
+      wy[k + 1] = wy[k] + (rows ? rows[ln] : asciiRows(this.lineEnd(ln) - ls[ln], cols));
+    }
+    this.wy = wy;
+    if (!odd) this.wodd = new Uint8Array(n);
+    else if (!vis) this.wodd = odd;
+    else {
+      const w = (this.oddBufs[this.wyFlip] = this.oddBufs[this.wyFlip]?.length === n ? this.oddBufs[this.wyFlip] : new Uint8Array(n));
+      for (let k = 0; k < n; k++) w[k] = odd[vis[k]];
+      this.wodd = w;
     }
   }
 
+  /** wy's arrays, two in turn (see display), and wodd's while folded. */
+  private wyFlip = 0;
+  private oddBufs: Uint8Array[] = [];
+
   /** A whole-text layout still being counted in steps (see wrapInSteps): what it is of. */
-  private wrapJob: { wr: Wrapper; text: Src; vis: Int32Array | null } | null = null;
+  private wrapJob: { wr: Wrapper; text: Src } | null = null;
   /** The next layout is of a new text (see model): nothing of the last one's rows is reused. */
   private wrapFresh = false;
 
   /**
-   * Lays out a big text's `n` display rows in steps (a million lines took seconds in one task): at once,
-   * each line takes the rows its length would as ASCII text (most lines do; one with wide or joined
-   * characters may overflow its rows a moment); its real rows come in steps of a few ms, and replace
-   * those in one go, the line and character at the top of the view kept there.
+   * Lays out a big text's lines in steps (a million lines took seconds in one task): at once, each line takes
+   * the rows its length would as ASCII text (most lines do; one with wide or joined characters may overflow
+   * its rows a moment, and its rows start off its clusters); its real rows come in steps of a few ms, and
+   * replace those in one go, the line and character at the top of the view kept there. Folds meanwhile only
+   * change which lines are shown.
    */
-  private wrapInSteps(wr: Wrapper, n: number) {
-    this.flip ^= 1;
-    const A = this.buf(this.flip * 3, n);
-    const B = this.buf(this.flip * 3 + 1, n);
-    this.lineBounds(A, B, n);
-    const cols = wr.cols;
-    const wy = this.buf(this.flip * 3 + 2, n + 1);
-    wy[0] = 0;
-    for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + asciiRows(B[k] - A[k], cols);
-    this.wy = wy;
-    this.wodd = new Uint8Array(n);
+  private wrapInSteps(wr: Wrapper) {
+    const [A, B] = this.lineBounds();
     // (Edit hints are against the last layout: this one counts every line.)
     this.wrapEdit = null;
     this.lineEdit = null;
-    const run = wr.rowsInSteps(this.src, A, B);
-    const job = { wr, text: this.src, vis: this.vis };
+    const src = this.src;
+    const run = wr.rowsInSteps(src, A, B);
+    const job = { wr, text: src };
     this.wrapJob = job;
+    this.keepLines(null, null, null);
+    this.display(null, null);
     const step = () => {
       if (this.gone || this.wrapJob !== job) return;
       const rows = run(performance.now() + STEP_MS);
@@ -1264,9 +1299,9 @@ export class Editor {
         this.layout();
       } else {
         const at = this.viewAt();
-        for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
-        this.wodd = wr.odd;
         this.wrapText = this.doc;
+        this.keepLines(wr, src, rows);
+        this.display(rows, wr.odd);
         this.layout();
         this.scrollBack(at);
       }

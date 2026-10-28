@@ -82,9 +82,7 @@ test('while a big text\'s rows are still counted: End then Enter on each row of 
   t.log(rows);
   const bad = rows.filter((r) => !r.skipped && (r.split || r.misplaced));
   // (On main nothing is counted in steps: there this checks the rows as laid out, F25 only.)
-  t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad, {
-    known: 'bug (branch, since f1aa3bc): while the rows are counted, End can stop at a guessed row end inside an emoji (👍|🏽); Enter breaks it there and the next Enter lands a character later (BREAKER-REPORT R9; main and branch also F25)',
-  });
+  t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad);
 });
 
 test('once a big text\'s rows are in: End then Enter on each row of a wrapped emoji line breaks it between characters, and what is typed goes where typed', async (t) => {
@@ -92,9 +90,7 @@ test('once a big text\'s rows are in: End then Enter on each row of a wrapped em
   for (const row of [0, 1, 2]) rows.push(await endEnter(t, row, true));
   t.log(rows);
   const bad = rows.filter((r) => !r.skipped && (r.split || r.misplaced));
-  t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad, {
-    known: 'bug (main and branch): a wrapped row can end inside a ZWJ emoji (👨‍👩‍👧‍|👦), End stops there and Enter splits it (BREAKER-REPORT F25)',
-  });
+  t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad);
 });
 
 test('Collapse all then Expand all in input right after a big load: the page keeps drawing', async (t) => {
@@ -125,7 +121,5 @@ test('Collapse all then Expand all in input right after a big load: the page kee
     });
   }
   const budget = t.budget(5_000 * slow(t));
-  t.check(gaps.collapse < budget && gaps.expand < budget, `no frame gap over ${Math.round(budget / 1000)} s while folding and unfolding everything`, gaps, t.engine === 'webkit' ? {
-    known: 'bug (branch, since f1aa3bc/30c6150): the first Expand all in input while a big text\'s rows are counted lays every line out in one task: WebKit froze 18.7 s and 22.7 s (BREAKER-REPORT R10)',
-  } : {});
+  t.check(gaps.collapse < budget && gaps.expand < budget, `no frame gap over ${Math.round(budget / 1000)} s while folding and unfolding everything`, gaps);
 });
