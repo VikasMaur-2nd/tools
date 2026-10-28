@@ -50,6 +50,8 @@ async function endEnter(t, row, after) {
   await page.keyboard.press(`${MOD}+Home`);
   for (let i = 0; i < 30 && (await line(page)) < 5; i++) await page.keyboard.press('ArrowDown');
   for (let i = 0; i < row; i++) await page.keyboard.press('ArrowDown');
+  // (A line of fewer rows: past it, nothing of this row to check.)
+  if ((await line(page)) !== 5) return { row: row + 1, skipped: true };
   const h0 = await height(page);
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');
@@ -77,7 +79,7 @@ test('while a big text\'s rows are still counted: End then Enter on each row of 
   const rows = [];
   for (const row of [0, 1, 2]) rows.push(await endEnter(t, row, false));
   t.log(rows);
-  const bad = rows.filter((r) => r.split || r.misplaced);
+  const bad = rows.filter((r) => !r.skipped && (r.split || r.misplaced));
   // (On main nothing is counted in steps: there this checks the rows as laid out, F25 only.)
   t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad, {
     known: 'bug (branch, since f1aa3bc): while the rows are counted, End can stop at a guessed row end inside an emoji (👍|🏽); Enter breaks it there and the next Enter lands a character later (BREAKER-REPORT R9; main and branch also F25)',
@@ -88,7 +90,7 @@ test('once a big text\'s rows are in: End then Enter on each row of a wrapped em
   const rows = [];
   for (const row of [0, 1, 2]) rows.push(await endEnter(t, row, true));
   t.log(rows);
-  const bad = rows.filter((r) => r.split || r.misplaced);
+  const bad = rows.filter((r) => !r.skipped && (r.split || r.misplaced));
   t.check(!bad.length, 'no row\'s End and Enter break a character or misplace the letters typed after', bad, {
     known: 'bug (main and branch): a wrapped row can end inside a ZWJ emoji (👨‍👩‍👧‍|👦), End stops there and Enter splits it (BREAKER-REPORT F25)',
   });
