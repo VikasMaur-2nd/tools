@@ -151,7 +151,8 @@ function receive(data: Request) {
   } else source = Doc.of(data.text ?? '');
   sourceId = id;
   latest = id;
-  if (data.analysis) { analyse(data, source.toString()); return; }
+  // (A failure is thrown where the page's error handler hears it, as before the analysis waited between steps.)
+  if (data.analysis) { analyse(data, source.toString()).catch((e: unknown) => setTimeout(() => { throw e; })); return; }
   clearTimeout(fastTimer);
   if (data.fast) {
     const input = source;
@@ -343,19 +344,48 @@ function fileBytes(file: Blob): ByteSource | undefined {
   return { size: file.size, read };
 }
 
-/** Secondary work has its own worker, so a full parse never delays the next output patch. */
-function analyse(data: Request, text: string, refused = false) {
+/**
+ * A task's turn ends here, so messages that came meanwhile (a newer document, a cancel) are read: true if
+ * `data` is no longer the one wanted (see dropped).
+ */
+const stale = (data: Request) => new Promise<boolean>((done) => setTimeout(() => done(latest !== data.id), 0));
+
+/**
+ * An analysis stopped because a newer document came: the page hears it ended (it sends the newest one then,
+ * see Engine.queueAnalysis), with nothing made for it. A huge document isn't kept here (see RETAIN_MAX).
+ */
+function dropped(data: Request, text: string) {
+  self.postMessage({ id: data.id, dropped: true, good: data.good });
+  if (text.length > RETAIN_MAX && !data.good && sourceId === data.id) {
+    source = Doc.of('');
+    sourceId = -1;
+  }
+}
+
+/**
+ * Secondary work has its own worker, so a full parse never delays the next output patch. Each request gets
+ * one answer: its tree (with its metrics and Format lines), or `dropped` once a newer one came (checked
+ * between the steps, so nothing stale is made or sent), or `reset`.
+ */
+async function analyse(data: Request, text: string, refused = false): Promise<void> {
   // (The first document may come before WebAssembly is compiled: a few ms.)
-  if (wasm === undefined) return void loadWasm().then(() => latest === data.id && analyse(data, text));
+  if (wasm === undefined) await loadWasm();
+  // (Not parsed if a newer one came while this one's text arrived.)
+  if (await stale(data)) return dropped(data, text);
   // Parsed straight to a tape: no node objects here (the page makes the ones it shows). Strict JSON goes
   // through WebAssembly; anything else (or no WebAssembly) through the JavaScript parser, loaded the first
   // time one comes (see loadJs: WebAssembly isn't asked again then).
   const options = { lines: data.lines, maxDepth: MAX_DEPTH, repair: true };
   const fromWasm = !refused && wasm && !data.lines ? wasmTape(wasm, text, options, data.bytes) : null;
-  if (!fromWasm && !js) return void loadJs().then(() => latest === data.id && analyse(data, text, true));
+  if (!fromWasm && !js) {
+    await loadJs();
+    if (latest !== data.id) return dropped(data, text);
+    return analyse(data, text, true);
+  }
   const tape = fromWasm ?? (data.progress ? parseShowing(data, text) : js!.parse(text, options));
-  const res = lazyResult(tape, text);
   showing(data, PARSED);
+  if (await stale(data)) return dropped(data, text);
+  const res = lazyResult(tape, text);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
   // is made after, only for what needs it (compressed sizes, the escaped size).
   const strict = !!res.root && !res.error && !res.issues.length && !res.multi;
@@ -366,19 +396,22 @@ function analyse(data: Request, text: string, refused = false) {
   // only for what reads it (the escaped size; compressed sizes, measured up to 32 MB), as a big loose
   // document's copy is hundreds of MB.
   const minBytes = strict ? minifiedBytes(text) ?? undefined : res.root ? minifiedTapeBytes(tape, text) : undefined;
+  if (await stale(data)) return dropped(data, text);
   const min = res.root && (data.escape || (later && (strict ? res.depth >= REINDENT_DEPTH : minBytes! <= 32_000_000))) ? formatDoc(text, res, '') : null;
   showing(data, MINIFIED);
   const metrics = documentMetrics(text, res, min ?? undefined, minBytes);
   if (jsonLines(text, res)) metrics.records = childCount(tape, 0);
   if (data.escape && min !== null) metrics.escaped = byteLength(JSON.stringify(min));
   showing(data, MEASURED);
+  if (await stale(data)) return dropped(data, text);
   // The Format view's lines are indexed here, off the page's thread, before the tape goes (it moves, not copied).
   const pretty = data.pretty && res.root ? prettyIndexer(tape, text, data.pretty)(Infinity) : null;
+  if (await stale(data)) return dropped(data, text);
   const tree = packTape(tape);
   const lines = pretty ? [pretty.starts.buffer, pretty.close.buffer, pretty.depth.buffer, pretty.node.buffer, pretty.ascii.buffer] : [];
   (self as unknown as Worker).postMessage({ id: data.id, tree, metrics, good: data.good, pretty: pretty && { indent: data.pretty, index: pretty } }, [...packedTransfer(tree), ...lines]);
   // A huge document isn't kept here as well (hundreds of MB): an edit then asks the page for all of it again.
-  if (text.length > RETAIN_MAX && !data.good) {
+  if (text.length > RETAIN_MAX && !data.good && sourceId === data.id) {
     source = Doc.of('');
     sourceId = -1;
   }

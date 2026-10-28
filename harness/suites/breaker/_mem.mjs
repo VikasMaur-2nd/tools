@@ -98,3 +98,30 @@ export function memorySampler({ ms = 200, minAvailable = 1.5 * 2 ** 30, onLow } 
 }
 
 export const MiB = (b) => Math.round(b / 2 ** 20);
+
+/** What kind of browser process `cmdline` is: renderer (page and its workers), gpu, or browser (the rest). */
+function kindOf(cmd) {
+  if (/--type=renderer|-contentproc.*\btab\b|WebKitWebProcess/.test(cmd)) return 'renderer';
+  if (/--type=gpu-process|-contentproc.*\bgpu\b|WebKitGPUProcess/.test(cmd)) return 'gpu';
+  return 'browser';
+}
+
+/**
+ * PSS in bytes by kind of process (see kindOf): { total, renderer, gpu, browser, rendererMax } (rendererMax: the
+ * biggest renderer alone, the page's own where others are idle).
+ */
+export function browserMemoryByKind() {
+  const out = { total: 0, renderer: 0, gpu: 0, browser: 0, rendererMax: 0 };
+  for (const pid of browserPids()) {
+    try {
+      const m = /^Pss:\s+(\d+) kB/m.exec(readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8'));
+      if (!m) continue;
+      const pss = +m[1] * 1024;
+      const kind = kindOf(readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' '));
+      out[kind] += pss;
+      out.total += pss;
+      if (kind === 'renderer' && pss > out.rendererMax) out.rendererMax = pss;
+    } catch {}
+  }
+  return out;
+}

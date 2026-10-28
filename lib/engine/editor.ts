@@ -92,7 +92,10 @@ export function loadSurface() {
     surfaceLoad = undefined;
   })());
 }
-/** Edits inserting at most this much patch the line state (see model); bigger ones rescan. */
+/**
+ * Edits inserting at most this much, or less than half the text they make, patch the line state (see model): its
+ * cost is the inserted text's and the lines' after it. Bigger ones (all of a text replaced) rescan it.
+ */
 const PATCH_CHARS = 1 << 16;
 /**
  * The document an editor leaves to the next editor on the same textarea. Next.js keeps a page's DOM while the
@@ -542,7 +545,7 @@ export class Editor {
     let around = false;
     /** The edit kept every line's part in the fold structure, and the line count. */
     let kept = false;
-    if (edit && fits && edit.ins.length <= PATCH_CHARS) {
+    if (edit && fits && (edit.ins.length <= PATCH_CHARS || edit.ins.length * 2 <= doc.length)) {
       // A bounded edit: patch the line starts and the widest line instead of rescanning the document.
       const { a, b, ins } = edit;
       const ls = this.ls;

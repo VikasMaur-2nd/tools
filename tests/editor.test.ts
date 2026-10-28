@@ -179,6 +179,22 @@ test('typing that keeps the structure lets the scan in progress go on', async (t
   assert.deepEqual([...f.close], [...scanFolds(ed.text, lineStarts(ed.text).ls).close]);
 });
 
+test('a big insert into a bigger text patches its line starts: no whole rescan', () => {
+  const doc = Array.from({ length: 30_000 }, (_, i) => `  {"id": ${i}, "name": "Zoë ${i}"},`).join('\n');
+  const { ed } = editor(doc);
+  const inner = ed as unknown as { ls: number[] };
+  const before = inner.ls;
+  // A paste of 300K characters at the end (as Ctrl+V again), and one in the middle.
+  const ins = '\n' + Array.from({ length: 10_000 }, (_, i) => `  {"id": ${i}, "x": "東京 ${i}"},`).join('\n');
+  assert.ok(ins.length > 1 << 16);
+  ed.replace(doc.length, doc.length, ins);
+  assert.equal(inner.ls, before, 'patched in place');
+  assert.deepEqual(inner.ls, lineStarts(ed.text).ls);
+  ed.replace(5000, 5000, ins);
+  assert.equal(inner.ls, before, 'patched in place');
+  assert.deepEqual(inner.ls, lineStarts(ed.text).ls);
+});
+
 test('Undo and Redo past a load tell the file name of the document they bring back; Undo can be taken instead', () => {
   const { el } = editorElement();
   const names: (string | null)[] = [];
