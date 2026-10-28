@@ -107,6 +107,9 @@ async function features(t, page, label, { broken = false } = {}) {
   const st = await t.app.waitStatus(page, /^(?!Parsing)(?!Ready)(?!.*…)./, { timeout: t.budget(60_000) }).catch(() => t.app.status(page));
   const repaired = await page.waitForFunction(() => /"name": "item 0"/.test(document.getElementById('view-format')?.textContent || ''), null, { ...POLL, timeout: t.budget(30_000) }).then(() => true, () => false);
   t.check(!/^Valid JSON/.test(st) && /issue|comment|comma|fixed/i.test(st) && repaired && !(await errToast()), `${label}: a big broken file is repaired and shown`, `${st.slice(0, 100)} | shown ${repaired}`);
+  // (A big document makes the page load more of its code when idle: let that finish before the page moves on,
+  // or Firefox reports the cancelled loads as errors from the service worker's fetch.)
+  await quiet(page);
 }
 
 /** Waits until the page has loaded nothing for half a second (at most 15 s). */
