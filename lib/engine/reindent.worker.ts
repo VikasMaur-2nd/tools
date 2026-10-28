@@ -284,16 +284,20 @@ function tapeFor(data: Request, text: string, refused: boolean, later: (refused:
 }
 
 /**
- * The analysis worker's warm-up (Engine.warmAnalysis): one WebAssembly parse of ~256 KB, from bytes and from
- * text. The engines optimize a module only once it has run a while: after the 4 KB warmUp() alone, the first
- * 1 MB document parsed 30-60% slower than the next (Node: 13 ms against 8.5; WebKit 2x).
+ * The analysis worker's warm-up (Engine.warmAnalysis): WebAssembly parses of ~256 KB, from bytes and from
+ * text, twice. The engines optimize a module only once it has run a while: after a 4 KB warm-up alone, the
+ * first 1 MB document parsed 30-60% slower than the next (Node: 13 ms against 8.5; WebKit 2x). (Twice: with
+ * the JavaScript parser no longer warmed up here (see loadJs), once left the first 1 MB parse ~4% slower.)
  */
 function warmTape() {
   if (!wasm) return;
   const records = Array.from({ length: 1700 }, (_, i) => `{"id":${i},"name":"item ${i} — café","tags":["a","b\\n","c"],"price":${(i * 1.37).toFixed(2)},"ok":${i % 2 === 0},"n":null,"geo":{"lat":${(i % 90) + 0.5},"lon":-${(i % 180) + 0.25}}}`);
   const text = '[' + records.join(',\n') + ']';
-  wasmTape(wasm, text, {}, new TextEncoder().encode(text));
-  wasmTape(wasm, text);
+  const bytes = new TextEncoder().encode(text);
+  for (let k = 0; k < 2; k++) {
+    wasmTape(wasm, text, {}, bytes);
+    wasmTape(wasm, text);
+  }
 }
 
 /** (Workers only, so not among the DOM's types.) */
