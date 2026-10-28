@@ -1,3 +1,5 @@
 [build]
 target = "wasm32-unknown-unknown"
-rustflags = ["-C", "target-feature=+simd128"]
+# --compress-relocations: wasm-ld otherwise writes the numbers it relocates as padded 5-byte LEB128s; the same
+# module with them at their shortest is ~6% smaller (~85 B gzip). The instructions are the same.
+rustflags = ["-C", "target-feature=+simd128", "-C", "link-arg=--compress-relocations"]
