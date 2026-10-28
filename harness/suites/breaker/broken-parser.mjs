@@ -13,9 +13,16 @@ const VALID = '[' + Array.from({ length: 52_000 }, (_, i) => record(i)).join(',\
 const BROKEN = '// export\n[' + Array.from({ length: 52_000 }, (_, i) => record(i)).join(',\n') + ',]';
 
 const open = (page, name, text) => page.setInputFiles('.app:visible input[type=file]', { name, mimeType: 'application/json', buffer: Buffer.from(text) });
-/** The editor holds `text` (by its start and length): the file is open, whatever its status says yet. */
-const holds = (t, page, text) =>
-  page.waitForFunction(([head, length]) => { const v = document.getElementById('input')?.value ?? ''; return v.length === length && v.startsWith(head); }, [text.slice(0, 20), text.length], { timeout: t.budget(30_000), polling: 50 }).then(() => true, () => false);
+/** The editor holds `text` (its whole document, read through Copy): the file is open, whatever its status says yet. */
+async function holds(t, page, text) {
+  const want = t.app.hashText(text);
+  const until = Date.now() + t.budget(30_000);
+  while (Date.now() < until) {
+    if ((await t.app.docHash(page).catch(() => null)) === want) return true;
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
 /** Settled: not parsing and no "…" readout. */
 const settled = (t, page) => t.app.waitStatus(page, /^(?!Parsing)(?!Ready)(?!.*…)./, { timeout: t.budget(90_000) }).catch(() => t.app.status(page));
 /** The Format view shows the document (its first record, pretty-printed). */
