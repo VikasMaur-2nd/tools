@@ -3,7 +3,6 @@ import '../json/requote';
 import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, tooLarge } from '../json/format';
 import { packedTransfer, packTape } from '../json/pack-send';
 import { lazyResult } from '../json/lazy';
-import { parse as parseTape, parser as tapeParser, warmUp } from '../json/tape-parser';
 import { wasmTape, type ByteSource } from '../json/tape-wasm';
 import { readText } from '../json/read';
 import { childCount, W, type Tape } from '../json/tape';
@@ -115,8 +114,12 @@ function receive(data: Request) {
     const pending = pendingCheckpoints;
     if (pending?.id === data.id) {
       pendingCheckpoints = null;
-      scalar = { key: pending.key, formatter: new ScalarFormatter(pending.input, pending.output) };
+      scalar = { key: pending.key, formatter: new ScalarFormatter(pending.input, pending.output, strictToken) };
     }
+    // (Typing comes next: what re-parses the edited token, compiled now.)
+    void loadWasm().then(() => {
+      if (wasm === null) void loadJs();
+    });
     return;
   }
   if (data.cancel) { latest = data.id; clearTimeout(fastTimer); return; }
@@ -156,14 +159,23 @@ function receive(data: Request) {
     fastTimer = setTimeout(() => { if (latest === id) formatFast(data, input); }, 2);
     return;
   }
-  const text = source.toString();
+  format(data, source.toString());
+}
+
+/**
+ * A format request for `text` (the source as it is now): its parse first if it asks (see Request.parse), then
+ * its output. `refused`: WebAssembly already found `text` isn't strict JSON (see tapeFor).
+ */
+function format(data: Request, text: string, refused = false) {
+  const { id, indent = '' } = data;
   // The parse goes first, on its own (the page takes each message in its own task), packed: cloning a
   // big tree would block the page for about a second per 10 MB; the page rebuilds it in slices.
   latest = id;
   let min: string | null = null;
   let parsed: ParseResult | null = null;
   if (data.parse) {
-    const tape = parseTape(text, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true });
+    const tape = tapeFor(data, text, refused, (no) => latest === id && format(data, text, no));
+    if (!tape) return;
     const res = lazyResult(tape, text);
     min = res.root ? formatDoc(text, res, '') : null;
     const metrics = documentMetrics(text, res, min ?? '');
@@ -216,8 +228,8 @@ function receive(data: Request) {
 
 /**
  * The WebAssembly tape parser (tape.wasm): strict JSON several times faster than in JavaScript. Compiled
- * on the first analysis (only the analysis worker parses big documents); null where WebAssembly can't run
- * (the JavaScript parser then does it all).
+ * on the first parse (or the format worker's first output: see Request.prepare); null where WebAssembly can't
+ * run (the JavaScript parser then does it all).
  */
 let wasm: WebAssembly.Module | null | undefined;
 let wasmReady: Promise<unknown> | null = null;
@@ -229,21 +241,63 @@ const loadWasm = () => (wasmReady ??= (async () => {
   } catch {
     wasm = null;
   }
-  // The JavaScript parser's first parses in a fresh worker run before the engine optimizes it: a small one now.
-  warmUp();
 })());
 
 /**
- * The analysis worker's warm-up (Engine.warmAnalysis): one WebAssembly parse of ~256 KB, from bytes and from
- * text. The engines optimize a module only once it has run a while: after the 4 KB warmUp() alone, the first
- * 1 MB document parsed 30-60% slower than the next (Node: 13 ms against 8.5; WebKit 2x).
+ * The JavaScript tape parser (tape-parser.ts), for what WebAssembly doesn't take: loose and broken documents,
+ * JSON Lines, a worker without WebAssembly. It is its own chunk, loaded the first time a document needs it, so
+ * a worker that only ever sees strict JSON doesn't load it; it is warmed up as it loads (its first parses
+ * would run before the engine optimizes it). Offline it comes from the service worker's cache, as every chunk
+ * the worker can load does; if it can't load, it is tried again a second later.
+ */
+let js: typeof import('../json/tape-parser') | null = null;
+let jsReady: Promise<void> | null = null;
+const loadJs = (): Promise<void> => (jsReady ??= import('../json/tape-parser').then(
+  (m) => {
+    m.warmUp();
+    js = m;
+  },
+  () => {
+    jsReady = null;
+    return new Promise<void>((done) => setTimeout(done, 1000)).then(loadJs);
+  },
+));
+
+/**
+ * The tape of `text` for `data` as the worker parses (strict JSON through WebAssembly, anything else through
+ * the JavaScript parser), or null if that needs code not loaded yet: `later(refused)` runs once it is
+ * (`refused`: WebAssembly said no, and isn't asked again).
+ */
+function tapeFor(data: Request, text: string, refused: boolean, later: (refused: boolean) => void): Tape | null {
+  if (wasm === undefined) {
+    void loadWasm().then(() => later(false));
+    return null;
+  }
+  const options = { lines: data.lines, maxDepth: MAX_DEPTH, repair: true };
+  const strict = !refused && wasm && !data.lines ? wasmTape(wasm, text, options) : null;
+  if (strict) return strict;
+  if (!js) {
+    void loadJs().then(() => later(true));
+    return null;
+  }
+  return js.parse(text, options);
+}
+
+/**
+ * The analysis worker's warm-up (Engine.warmAnalysis): WebAssembly parses of ~256 KB, from bytes and from
+ * text, twice. The engines optimize a module only once it has run a while: after a 4 KB warm-up alone, the
+ * first 1 MB document parsed 30-60% slower than the next (Node: 13 ms against 8.5; WebKit 2x). (Twice: with
+ * the JavaScript parser no longer warmed up here (see loadJs), once left the first 1 MB parse ~4% slower.)
  */
 function warmTape() {
   if (!wasm) return;
   const records = Array.from({ length: 1700 }, (_, i) => `{"id":${i},"name":"item ${i} — café","tags":["a","b\\n","c"],"price":${(i * 1.37).toFixed(2)},"ok":${i % 2 === 0},"n":null,"geo":{"lat":${(i % 90) + 0.5},"lon":-${(i % 180) + 0.25}}}`);
   const text = '[' + records.join(',\n') + ']';
-  wasmTape(wasm, text, {}, new TextEncoder().encode(text));
-  wasmTape(wasm, text);
+  const bytes = new TextEncoder().encode(text);
+  for (let k = 0; k < 2; k++) {
+    wasmTape(wasm, text, {}, bytes);
+    wasmTape(wasm, text);
+  }
 }
 
 /** (Workers only, so not among the DOM's types.) */
@@ -290,13 +344,16 @@ function fileBytes(file: Blob): ByteSource | undefined {
 }
 
 /** Secondary work has its own worker, so a full parse never delays the next output patch. */
-function analyse(data: Request, text: string) {
+function analyse(data: Request, text: string, refused = false) {
   // (The first document may come before WebAssembly is compiled: a few ms.)
   if (wasm === undefined) return void loadWasm().then(() => latest === data.id && analyse(data, text));
   // Parsed straight to a tape: no node objects here (the page makes the ones it shows). Strict JSON goes
-  // through WebAssembly; anything else (or no WebAssembly) through the JavaScript parser.
+  // through WebAssembly; anything else (or no WebAssembly) through the JavaScript parser, loaded the first
+  // time one comes (see loadJs: WebAssembly isn't asked again then).
   const options = { lines: data.lines, maxDepth: MAX_DEPTH, repair: true };
-  const tape = (wasm && !data.lines ? wasmTape(wasm, text, options, data.bytes) : null) ?? (data.progress ? parseShowing(data, text) : parseTape(text, options));
+  const fromWasm = !refused && wasm && !data.lines ? wasmTape(wasm, text, options, data.bytes) : null;
+  if (!fromWasm && !js) return void loadJs().then(() => latest === data.id && analyse(data, text, true));
+  const tape = fromWasm ?? (data.progress ? parseShowing(data, text) : js!.parse(text, options));
   const res = lazyResult(tape, text);
   showing(data, PARSED);
   // Strict JSON's minified size needs no minified copy: the tree goes to the page first, and the copy
@@ -336,7 +393,7 @@ const REINDENT_DEPTH = 500;
 
 /** The tape parse in steps, posting how far it got (it costs the same as in one go). */
 function parseShowing(data: Request, text: string): Tape {
-  const p = tapeParser(text, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true });
+  const p = js!.parser(text, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true });
   for (;;) {
     const res = p.step(performance.now() + PROGRESS_EVERY);
     if (res) return res;
@@ -358,12 +415,23 @@ function reindentShowing(data: Request, text: string, indent: string): string | 
 const RETAIN_MAX = 48_000_000;
 
 let scalar: { key: string; formatter: ScalarFormatter } | null = null;
+
+/** An edited token for the scalar formatter (a few bytes): its tape if it is strict JSON (see ScalarFormatter). */
+const strictToken = (raw: string): Tape | null => {
+  if (wasm) return wasmTape(wasm, raw, {}, undefined, 4096);
+  const t = js?.parse(raw);
+  return t && t.count && !t.head.error && !t.head.issues.length && !t.head.multi ? t : null;
+};
 let pendingCheckpoints: { id: number; key: string; input: Doc; output: Doc } | null = null;
 let shape = 0;
 let indexed: { doc: Doc; index: CodeIndex; shape: number } | null = null;
 const outputs = new Map<number, { doc: Doc; shape: number }>();
 
-function formatFast(data: Request, input: Doc) {
+/**
+ * `again`: asked again once code the parse needs has loaded (see tapeFor); re-indenting already found it can't,
+ * and `refused` says whether WebAssembly did too.
+ */
+function formatFast(data: Request, input: Doc, again?: { refused: boolean }) {
   const id = data.id;
   const indent = data.indent ?? '';
   const key = `${indent}:${!!data.sortKeys}:${!!data.escape}:${!!data.lines}`;
@@ -377,10 +445,12 @@ function formatFast(data: Request, input: Doc) {
     const text = input.toString();
     let strict = false;
     try {
-      raw = !data.sortKeys && !data.lines ? (data.progress ? reindentShowing(data, text, indent) : reindent(text, indent)) : null;
+      raw = !again && !data.sortKeys && !data.lines ? (data.progress ? reindentShowing(data, text, indent) : reindent(text, indent)) : null;
       strict = raw !== null;
       if (raw === null) {
-        const res = lazyResult(parseTape(text, { lines: data.lines, maxDepth: MAX_DEPTH, repair: true }), text);
+        const tape = tapeFor(data, text, !!again?.refused, (refused) => latest === id && formatFast(data, input, { refused }));
+        if (!tape) return;
+        const res = lazyResult(tape, text);
         raw = res.root ? formatDoc(text, res, indent, data.sortKeys) : null;
       }
     } catch (e) {

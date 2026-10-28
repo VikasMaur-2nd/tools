@@ -15,6 +15,11 @@ import {
 defaults({ engines: 'all', serviceWorkers: 'allow', allowErrors: true, tags: ['offline'], timeout: 300_000 });
 
 const DOC = JSON.stringify({ users: [{ id: 1, name: 'Ada', tags: ['a', 'b'] }, { id: 2, name: 'Grace', tags: [] }], total: 2 }, null, 2);
+/**
+ * A big broken file (~2.8 MB: the analysis worker takes it). The worker parses it with its JavaScript tape
+ * parser, a chunk of its own loaded the first time a document isn't strict JSON: here offline, from the cache.
+ */
+const BROKEN = '// export\n[' + Array.from({ length: 52_000 }, (_, i) => `{"id":${i},"name":"item ${i}","tags":["a","b"],"ok":true}`).join(',\n') + ',]';
 /** Errors of an offline page that are just the network being gone. */
 const NETWORK = /_vercel\/insights|ERR_INTERNET_DISCONNECTED|ERR_EMPTY_RESPONSE|ERR_CONNECTION|Failed to load resource|NetworkError|net::|fetch|Load failed|Cannot load https?:|The network connection was lost|Could not connect/i;
 
@@ -30,7 +35,7 @@ async function checkErrors(t, scenario) {
  * The lazily loaded features in a page that has just opened (before its warm-up loads them): the graph,
  * Convert to every format, the Excel writer and the YAML importer are each their own chunk.
  */
-async function features(t, page, label) {
+async function features(t, page, label, { broken = false } = {}) {
   const unavailable = (detail) => {
     for (const feature of ['graph view', 'Convert to every format', 'Excel download', 'YAML import']) {
       t.check(false, `${label}: ${feature}`, detail);
@@ -95,6 +100,16 @@ async function features(t, page, label) {
   await page.setInputFiles('.app:visible input[type=file]', { name: 'people.yaml', mimeType: 'text/yaml', buffer: Buffer.from('people:\n  - name: Ada\n    born: 1815\n  - name: Grace\n') });
   const yaml = await page.waitForFunction(() => /"born": 1815/.test(document.getElementById('input').value), null, { ...POLL, timeout: t.budget(15_000) }).then(() => true, () => false);
   t.check(yaml && !(await errToast()), `${label}: YAML import`);
+
+  if (!broken) return;
+  await t.app.view(page, 'format');
+  await page.setInputFiles('.app:visible input[type=file]', { name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from(BROKEN) });
+  const st = await t.app.waitStatus(page, /^(?!Parsing)(?!Ready)(?!.*…)./, { timeout: t.budget(60_000) }).catch(() => t.app.status(page));
+  const repaired = await page.waitForFunction(() => /"name": "item 0"/.test(document.getElementById('view-format')?.textContent || ''), null, { ...POLL, timeout: t.budget(30_000) }).then(() => true, () => false);
+  t.check(!/^Valid JSON/.test(st) && /issue|comment|comma|fixed/i.test(st) && repaired && !(await errToast()), `${label}: a big broken file is repaired and shown`, `${st.slice(0, 100)} | shown ${repaired}`);
+  // (A big document makes the page load more of its code when idle: let that finish before the page moves on,
+  // or Firefox reports the cancelled loads as errors from the service worker's fetch.)
+  await quiet(page);
 }
 
 /** Waits until the page has loaded nothing for half a second (at most 15 s). */
@@ -131,7 +146,7 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
     const p2 = await t.context.newPage();
     const home2 = await opened(p2, proxy.origin, '/');
     t.check(home2.ok && home2.tool === 1, 'fresh offline: / opens', home2);
-    await features(t, p2, 'fresh offline /');
+    await features(t, p2, 'fresh offline /', { broken: true });
     const tool = await opened(p2, proxy.origin, '/tools/json-validator');
     t.check(tool.ok && tool.tool === 1, 'fresh offline: a visited tool page opens', tool);
     const es = await opened(p2, proxy.origin, '/es');
@@ -141,7 +156,7 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
     t.check(es2.ok && es2.lang === 'es', 'fresh offline: an unvisited localized tool page falls back to its home', es2);
     const other = await opened(p3, proxy.origin, '/tools/json-diff');
     t.check(other.ok && other.tool === 1, 'fresh offline: an unvisited page falls back to the shell', other);
-    await features(t, p3, 'fresh offline (fallback page)');
+    await features(t, p3, 'fresh offline (fallback page)', { broken: true });
     await checkErrors(t, 'fresh');
   } finally {
     proxy.close();
