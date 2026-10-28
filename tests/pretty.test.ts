@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse, type ParseOptions } from '../lib/json/parser';
-import { stringify, stringifyNodes } from '../lib/json/format';
+import { byteLength, stringify, stringifyNodes } from '../lib/json/format';
 import { lazyResult, madeCount, nodeAtIndex } from '../lib/json/lazy';
 import { codeIndexer } from '../lib/json/code-index';
-import { PrettyText, prettyIndexer } from '../lib/json/pretty';
+import { PrettyText, minifiedTapeBytes, prettyIndexer } from '../lib/json/pretty';
 import { tapeOf } from '../lib/json/tape-send';
 import { genLoose, mutate, rng } from './oracle/compare';
 import { CORPUS, FIXTURES, files, genStrict, loosen } from './oracle/tape';
@@ -166,6 +166,7 @@ function written(src: string, options: ParseOptions = {}, r = rng(src.length)) {
   const indents = ['', '  ', '\t'];
   const whole = indents.map((indent) => write(() => stringify(root, indent)));
   assert.equal(madeCount(root), 1, `no node made: ${show(src)}`);
+  if (whole[0] !== 'RangeError') assert.equal(minifiedTapeBytes(tape, src), byteLength(whole[0]), `minified bytes: ${show(src)}`);
   for (const [j, indent] of indents.entries()) {
     const where = `${show(src)} indent ${JSON.stringify(indent)} ${JSON.stringify(options)}`;
     assert.equal(whole[j], write(() => stringifyNodes(res.root!, indent)), `whole document: ${where}`);

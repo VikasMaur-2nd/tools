@@ -8,7 +8,7 @@
  * indentation, its property name, its value (a container's open bracket) and the comma after it.
  */
 import { ARR, BOOL, NUL, NUM, OBJ, STR } from './parser';
-import { quote, MAX_INDENT, MAX_TEXT, tooLong } from './format';
+import { byteLength, quote, MAX_INDENT, MAX_TEXT, tooLong } from './format';
 import { KEY_NAME, SIZE_BIG, VALUE_DECODE, VALUE_FALSE, VALUE_SLICE, W, valueOf, type Tape } from './tape';
 import type { CodeIndex } from './code-index';
 
@@ -400,4 +400,34 @@ export function writeTape(t: Tape, src: string, i: number, indent: string): stri
   if (!parts.length) return out;
   parts.push(out);
   return parts.join('');
+}
+
+/** The UTF-8 size of writeTape(t, src, 0, ''), the minified text, counted without making it. */
+export function minifiedTapeBytes(t: Tape, src: string): number {
+  const nodes = t.nodes;
+  const keyBytes = new Float64Array(t.keys.length).fill(-1);
+  let n = 0;
+  for (let k = 0; k < t.count; k++) {
+    const o = k * W;
+    const m = nodes[o];
+    const kind = m & 7;
+    const p = nodes[o + 3];
+    // (A comma before every item but a container's first.)
+    if (p >= 0 && k !== p + 1) n++;
+    if (((m >> 3) & 3) === KEY_NAME) {
+      const key = nodes[o + 4];
+      if (keyBytes[key] < 0) keyBytes[key] = byteLength(quote(t.keys[key])) + 1;
+      n += keyBytes[key];
+    }
+    if (kind >= ARR) n += 2;
+    else {
+      const vk = (m >> 5) & 7;
+      if (kind === NUL) n += 4;
+      else if (kind === BOOL) n += vk === VALUE_FALSE ? 5 : 4;
+      else if (kind === NUM) n += (valueOf(t, k, src) as string).length;
+      else if ((vk === VALUE_SLICE || vk === VALUE_DECODE) && plain(src, nodes[o + 1], nodes[o + 2])) n += byteLength(src, nodes[o + 1], nodes[o + 2]);
+      else n += byteLength(quote(valueOf(t, k, src) as string));
+    }
+  }
+  return n;
 }

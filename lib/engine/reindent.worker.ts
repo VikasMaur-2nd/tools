@@ -13,7 +13,7 @@ import { compressedSizes, minifiedBytesStream } from './sizes';
 import { jsonLines } from './rules';
 import { Doc, lf, type TextEdit } from './doc';
 import { ScalarFormatter } from '../json/incremental-format';
-import { prettyIndexer } from '../json/pretty';
+import { minifiedTapeBytes, prettyIndexer } from '../json/pretty';
 
 let latest = 0;
 let previous = '';
@@ -362,8 +362,11 @@ function analyse(data: Request, text: string, refused = false) {
   // (After the tape is sent this parse can't be read: a copy that needs it (loose JSON, nesting deeper than
   // reindent goes) is made before.)
   const later = !data.good && !!res.root;
-  const min = res.root && (!strict || data.escape || (later && res.depth >= REINDENT_DEPTH)) ? formatDoc(text, res, '') : null;
-  const minBytes = strict ? minifiedBytes(text) ?? undefined : undefined;
+  // Its minified size, counted (on the text, or on the tape) without making the minified copy: that is made
+  // only for what reads it (the escaped size; compressed sizes, measured up to 32 MB), as a big loose
+  // document's copy is hundreds of MB.
+  const minBytes = strict ? minifiedBytes(text) ?? undefined : res.root ? minifiedTapeBytes(tape, text) : undefined;
+  const min = res.root && (data.escape || (later && (strict ? res.depth >= REINDENT_DEPTH : minBytes! <= 32_000_000))) ? formatDoc(text, res, '') : null;
   showing(data, MINIFIED);
   const metrics = documentMetrics(text, res, min ?? undefined, minBytes);
   if (jsonLines(text, res)) metrics.records = childCount(tape, 0);
