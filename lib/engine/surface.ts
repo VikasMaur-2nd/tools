@@ -13,6 +13,8 @@ export interface SurfaceHost {
   readonly length: number;
   slice(a: number, b: number): string;
   charCodeAt(i: number): number;
+  /** Whether the caret may be at `off`: not inside a pair or a cluster (an emoji with its skin tone, a joined family, a flag). */
+  between(off: number): boolean;
   /** Model start and end of the line holding `off`. */
   line(off: number): [number, number];
   edit(a: number, b: number, text: string, kind: string): void;
@@ -221,7 +223,9 @@ export class Surface {
       const part = (words ??= new Intl.Segmenter(undefined, { granularity: 'word' })).segment(h.slice(a, off + 2048)).containing(off - a);
       return part ? a + part.index + (dir > 0 ? part.segment.length : 0) : off;
     }
-    return (h.charCodeAt(off) & 0xfc00) === 0xdc00 ? off + dir : off;
+    // (Never inside a pair or a cluster.)
+    while (off > 0 && off < h.length && !h.between(off)) off += dir;
+    return off;
   }
 
   /**

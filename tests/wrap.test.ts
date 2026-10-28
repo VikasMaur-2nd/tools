@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { asciiCells, asciiRows, BINARY, CUT, FORCED, leadOf, plainLine, WIDE, Wrapper } from '../lib/engine/wrap';
+import { asciiCells, asciiRows, BINARY, clusterStart, CUT, FORCED, leadOf, plainLine, WIDE, Wrapper } from '../lib/engine/wrap';
 import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
 import { Doc } from '../lib/engine/doc';
 
@@ -48,6 +48,56 @@ test('a line told plain in place is one the patterns find nothing in (and most l
     if (plainLine(t, a, Math.max(a, b))) assert.ok(!BINARY.test(s) && !FORCED.test(s) && !WIDE.test(s), JSON.stringify(s));
   }
   for (const s of ['"Zoë 12": "東京",', '  "name": "Олег — café",', 'tab\there', 'हिन्दी', 'ｶﾀｶﾅ']) assert.ok(plainLine(s, 0, s.length), s);
+});
+
+test('a row may start where clusterStart says only between characters (grapheme clusters)', () => {
+  let seed = 7;
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  const parts = ['a', ' ', '\t', 'é', 'e\u0301', '\u0301', '\u200d', '\ufe0f', '中', 'ｶ', 'م', '😀', '👍', '🏽', '👨‍👩‍👧‍👦', '🇮', '🇳', '❤', '\ud83d', '\ude00', '\u0915\u094d\u0937'];
+  const seg = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  for (let k = 0; k < 4000; k++) {
+    let t = '';
+    for (let n = 1 + rnd(14); n > 0; n--) t += parts[rnd(parts.length)];
+    const breaks = new Set([...seg.segment(t)].map((g) => g.index));
+    for (let i = 1; i < t.length; i++) if (clusterStart(t, 0, i)) assert.ok(breaks.has(i), `${JSON.stringify(t)} at ${i}`);
+  }
+});
+
+test('rows counted as ASCII (while the real ones are counted) start between characters, and the caret maps back to them', () => {
+  const el = () => ({ className: '', style: {}, setAttribute() {}, appendChild() {}, remove() {} });
+  (globalThis as { document?: unknown }).document ??= { createElement: el };
+  const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+  const seg = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  let seed = 11;
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  const parts = ['a', 'é', '中', '😀', '👍🏽', '👨‍👩‍👧‍👦', '🇮🇳', 'e\u0301\u0302', '❤️'];
+  for (const cols of [8, 13, 40]) {
+    w.fit(cols * 8 + 4 + 0.25, 8);
+    for (let k = 0; k < 400; k++) {
+      let line = k % 3 ? '\t\t' : '  ';
+      for (let n = rnd(120); n > 0; n--) line += parts[rnd(parts.length)];
+      const t = `x\n${line}\ny`;
+      const a = 2;
+      const b = a + line.length;
+      const breaks = new Set([...seg.segment(line)].map((g) => g.index));
+      breaks.add(line.length);
+      const rows = asciiRows(b - a, cols);
+      const starts = [0];
+      for (let r = 1; r < rows; r++) {
+        const s = w.rowStart(t, a, b, r, 0);
+        assert.ok(breaks.has(s), `${cols} cols, row ${r} of ${JSON.stringify(line)} starts at ${s}`);
+        assert.ok(s >= starts[r - 1], 'in order');
+        starts.push(s);
+      }
+      // The caret before each character is on the row that holds it (a cluster wider than a row leaves one empty).
+      for (const i of breaks) {
+        if (i === 0 || i >= line.length) continue;
+        let want = 0;
+        while (want + 1 < rows && starts[want + 1] <= i) want++;
+        assert.equal(w.rowAt(t, a, b, a + i, 0, rows), want, `${cols} cols, the caret at ${i} of ${JSON.stringify(line)}`);
+      }
+    }
+  }
 });
 
 describe('rows that start inside a string', () => {

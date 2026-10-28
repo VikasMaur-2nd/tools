@@ -49,6 +49,47 @@ const JOINS = /[\p{M}\u200d\ufe00-\ufe0f\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}\u
  */
 const JOINS_NEXT = /[\u0620\u0626\u0628\u062a-\u062e\u0633-\u0647\u0649\u064a\u066e\u066f\u0678-\u0687\u069a-\u06bf\u06c1\u06c2\u06cc\u06ce\u06d0\u06d1\u06fa-\u06fc\u06ff\u0712-\u0714\u071a-\u071d\u071f-\u0727\u0729\u072b\u072d\u072e\u074e-\u0758\u075c-\u076a\u076d-\u0770\u0772\u0775-\u0777\u077a-\u077f\u07ca-\u07ea\u07fa\u0841-\u0845\u0848\u084a-\u0853\u0855\u0860\u0862-\u0865\u0868\u0883-\u0886\u0889-\u088d\u088f\u08a0-\u08a9\u08af\u08b0\u08b3-\u08b8\u08ba-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua872\u{10ac0}-\u{10ac4}\u{10acd}\u{10ad3}-\u{10adc}\u{10ade}-\u{10ae0}\u{10aeb}-\u{10aee}\u{10b80}\u{10b82}\u{10b86}-\u{10b88}\u{10b8a}\u{10b8b}\u{10b8d}\u{10b90}\u{10bad}\u{10bae}\u{10d00}-\u{10d21}\u{10d23}\u{10ec3}\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f32}\u{10f34}-\u{10f44}\u{10f51}-\u{10f53}\u{10f70}-\u{10f73}\u{10f76}-\u{10f81}\u{10fb0}\u{10fb2}\u{10fb3}\u{10fb8}\u{10fbb}\u{10fbc}\u{10fbe}\u{10fbf}\u{10fc1}\u{10fc4}\u{10fca}\u{10fcb}\u{1e900}-\u{1e943}]/u;
 const JOINS_PREV = /[\u0620\u0622-\u064a\u066e\u066f\u0671-\u0673\u0675-\u06d3\u06d5\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u077f\u07ca-\u07ea\u07fa\u0840-\u0858\u0860\u0862-\u0865\u0867-\u086a\u0870-\u0886\u0889-\u088f\u08a0-\u08ac\u08ae-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua871\u{10ac0}-\u{10ac5}\u{10ac7}\u{10ac9}\u{10aca}\u{10ace}-\u{10ad6}\u{10ad8}-\u{10ae1}\u{10ae4}\u{10aeb}-\u{10aef}\u{10b80}-\u{10b91}\u{10ba9}-\u{10bae}\u{10d01}-\u{10d23}\u{10ec2}-\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f44}\u{10f51}-\u{10f54}\u{10f70}-\u{10f81}\u{10fb0}\u{10fb2}-\u{10fb6}\u{10fb8}-\u{10fbf}\u{10fc1}-\u{10fc4}\u{10fc9}\u{10fca}\u{1e900}-\u{1e943}]/u;
+
+/**
+ * Whether a row (or the caret) may start at `i` of `t` (line start `a`): not inside a pair or a cluster, that is
+ * not before a mark, a joiner, a variation selector, a skin tone or a tag, nor after a joiner, nor between a
+ * flag's two letters. (A few code units read, not a full segmentation.)
+ */
+export function clusterStart(t: Pick<string, 'charCodeAt' | 'length'>, a: number, i: number): boolean {
+  if (i <= a || i >= t.length) return true;
+  const c = t.charCodeAt(i);
+  const p = t.charCodeAt(i - 1);
+  if (p === 0x200d) return false;
+  if (c < 0x300) return true;
+  // (A virama joins the consonant after it: क्ष is one.)
+  if (p >= 0x94d && p <= 0xd4d && (p - 0x94d) % 0x80 === 0) return false;
+  if ((c & 0xfc00) === 0xdc00) return (p & 0xfc00) !== 0xd800;
+  const d = t.charCodeAt(i + 1);
+  const cp = (c & 0xfc00) === 0xd800 && (d & 0xfc00) === 0xdc00 ? ((c - 0xd800) << 10) + d - 0xdc00 + 0x10000 : c;
+  if (JOINS.test(String.fromCodePoint(cp))) return false;
+  if (cp < 0x1f1e6 || cp > 0x1f1ff) return true;
+  // (Flags are pairs of letters: an odd count of them before this one makes it a flag's second half.)
+  let k = 0;
+  for (let j = i - 2; j >= a && t.charCodeAt(j) === 0xd83c && t.charCodeAt(j + 1) >= 0xdde6 && t.charCodeAt(j + 1) <= 0xddff; j -= 2) k++;
+  return k % 2 === 0;
+}
+
+/** Row `r` (of `rows`) moved to the last whose start (see `start`) is at or before `o`. */
+function rowFrom(r: number, rows: number, o: number, start: (r: number) => number) {
+  while (r + 1 < rows && start(r + 1) <= o) r++;
+  while (r > 0 && start(r) > o) r--;
+  return r;
+}
+
+/** Row start `p` of line `t[a, a + len)` kept off a cluster (see clusterStart): back to its start if that is after `lo` (the row before's start), else on to its end. */
+function snapRow(t: Src, a: number, len: number, p: number, lo: number): number {
+  if (p >= len || clusterStart(t, a, a + p)) return p;
+  let q = p;
+  while (q > lo && !clusterStart(t, a, a + q)) q--;
+  if (q > lo) return q;
+  for (q = p; q < len && !clusterStart(t, a, a + q); q++);
+  return q;
+}
 /** Characters that can be over four cells wide (ligatures, cuneiform, hieroglyphs, musical symbols). */
 export const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
 /** A run of printable ASCII (sticky). */
@@ -789,7 +830,8 @@ export class Wrapper {
     if (r <= 0) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
-      return Math.min(b - a, r * cols - cells + chars);
+      // (Counted as ASCII while the real rows are counted (see rowsInSteps): kept off a cluster.)
+      return snapRow(text, a, b - a, Math.min(b - a, r * cols - cells + chars), Math.max(0, (r - 1) * cols - cells + chars));
     }
     if (odd === CUT && !this.exact) {
       const c = this.cuts(text, a, b);
@@ -801,8 +843,14 @@ export class Wrapper {
       const st = this.rowsOf(text, a, b);
       return r < st.length ? st.get(r) : b - a;
     }
-    const m = this.mirror(text.slice(a, b));
-    return r >= m.rows ? b - a : this.probe(m, b - a, r);
+    return this.mirrorStart(text, a, b - a, this.mirror(text.slice(a, b)), r);
+  }
+
+  /** rowStart of a line laid out as mirror `m` (the browser's row breaks, kept off a cluster as a caret is). */
+  private mirrorStart(text: Src, a: number, len: number, m: Mirror, r: number) {
+    if (r <= 0) return 0;
+    if (r >= m.rows) return len;
+    return snapRow(text, a, len, this.probe(m, len, r), r > 1 ? this.probe(m, len, r - 1) : 0);
   }
 
   /** Row of the line `text[a, b)` (taking `rows` rows) that shows offset `off`: the caret before that character. */
@@ -812,7 +860,8 @@ export class Wrapper {
       const [cells, chars] = leadOf(text, a, b, this.lead);
       // Tabs only ever indent the first row (see rows()).
       const col = cells === chars ? off - a : off - a <= chars ? 0 : cells + off - a - chars;
-      return Math.min(rows - 1, Math.floor(col / this.cols));
+      // (A row start kept off a cluster is a little before or after where the count puts it.)
+      return rowFrom(Math.min(rows - 1, Math.floor(col / this.cols)), rows, off - a, (r) => this.rowStart(text, a, b, r, 0));
     }
     if (odd === CUT && !this.exact) {
       const c = this.cuts(text, a, b);
@@ -823,7 +872,7 @@ export class Wrapper {
     if (!this.exact && b - a > LONG_LINE) return this.rowsOf(text, a, b).floor(off - a);
     const m = this.mirror(text.slice(a, b));
     const o = Math.min(b - a - 1, off - a);
-    return Math.min(m.rows - 1, this.probeRow(m, o, m.el.getBoundingClientRect().top));
+    return rowFrom(Math.min(m.rows - 1, this.probeRow(m, o, m.el.getBoundingClientRect().top)), m.rows, off - a, (r) => this.mirrorStart(text, a, b - a, m, r));
   }
 
   // ── Measuring ──────────────────────────────────────────────────────────
