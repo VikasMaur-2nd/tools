@@ -732,7 +732,15 @@ test('a big document shown Pretty is read off its tape a line at a time, and Cop
   const want = stringify(parse(text).root!, '  ');
   assert.equal(shown.length, want.length);
   assert.equal(shown.slice(), want);
-  assert.equal(await waiting, want);
+  // (It gets the output as Copy does once it shows: in parts, made in steps, never one string on the page.)
+  let got: unknown;
+  void waiting.then((out: unknown) => (got = out));
+  for (let k = 0; k < 10_000 && got === undefined; k++) {
+    while (tick());
+    await new Promise((r) => setImmediate(r));
+  }
+  assert.ok(Array.isArray(got) && got.length > 1, 'in parts');
+  assert.equal((got as string[]).join(''), want);
   assert.deepEqual(plain(state.fmt), { lines: shown.index.starts.length, pretty: text.length + 123 + 20, minified: text.length, escaped: 0 });
   // The engine keeps no text of it, and a second run draws nothing new.
   assert.equal(engine.fmtOut, '');

@@ -217,33 +217,47 @@ function sniff(text: string): Hint {
  * the first load. Loaded when the page is idle, and waited for by a worker message that brings a tape.
  */
 /**
- * Copies and downloads waiting for an output still being made (see outputPending): one wait, shared by every
- * one asked for meanwhile (a key held down asks dozens of times), until its maker hands the output over, or
- * with null after two minutes (one that never comes, the document turned invalid say: nothing to copy).
+ * What a waiting copy or download gets (see Waiting): the output (a big pretty one as parts, see prettyParts), null
+ * when none could be made, or undefined when what it asked for was superseded first (nothing copied or saved).
+ */
+type Output = string | string[] | null | undefined;
+
+/**
+ * Copies and downloads waiting for an output still being made (see outputPending, convPending): one wait, shared
+ * by every one asked for meanwhile (a key held down asks dozens of times), bound to what it asked for (its key:
+ * the settings and the document, see Engine.fmtWait and convKey). Its maker hands it the output for that only;
+ * asked for something else, or the settings or the document changed first, it ends with nothing (undefined).
+ * With null after two minutes (one that never comes, the document turned invalid say: nothing to copy).
  */
 class Waiting {
-  private wait: { promise: Promise<string | null>; done: (out: string | null) => void } | null = null;
+  private w: { key: string; promise: Promise<Output>; done: (out: Output) => void } | null = null;
 
   get pending() {
-    return !!this.wait;
+    return !!this.w;
   }
 
-  get(): Promise<string | null> {
-    if (this.wait) return this.wait.promise;
-    let done!: (out: string | null) => void;
-    const w = { promise: new Promise<string | null>((r) => (done = r)), done: (out: string | null) => done(out) };
-    this.wait = w;
-    setTimeout(() => {
-      if (this.wait === w) this.give(null);
-    }, 120_000);
+  /** The wait for `key` (one for anything else ends, superseded). */
+  get(key: string): Promise<Output> {
+    if (this.w?.key === key) return this.w.promise;
+    this.end();
+    let done!: (out: Output) => void;
+    const w = { key, promise: new Promise<Output>((r) => (done = r)), done: (out: Output) => done(out) };
+    this.w = w;
+    setTimeout(() => this.w === w && this.end(null), 120_000);
     return w.promise;
   }
 
-  /** Hands `out` to whoever waits. */
-  give(out: string | null) {
-    const w = this.wait;
-    this.wait = null;
-    w?.done(out);
+  /** Whether what waits is for `key`. */
+  wants(key: string) {
+    return this.w?.key === key;
+  }
+
+  /** Ends what waits with `out` (nothing: superseded), if it is for `key` (when given). */
+  end(out?: Output, key?: string) {
+    const w = this.w;
+    if (!w || (key !== undefined && w.key !== key)) return;
+    this.w = null;
+    w.done(out);
   }
 }
 
@@ -494,6 +508,13 @@ export class Engine {
 
   private onChange = (kind: ChangeKind) => {
     if (this.dead) return;
+    // (A load's text arriving in the editor is that load's document, not a new one: see finishLoad.)
+    if (!this.landing) {
+      this.docGen++;
+      this.supersede();
+      // The file read no longer is the editor's text: the analysis worker is sent the text (see postDocument).
+      if (this.fromFile && this.fromFile.doc !== this.ed.version) this.fromFile = null;
+    }
     if (kind !== 'set') this.requests[1]?.abort(); // (what was typed or pasted is newer than a document on its way)
     this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
     this.progressStatus = null; // (and a big load's progress: what follows says nothing of it)
@@ -1351,6 +1372,8 @@ export class Engine {
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
     // worker, over this text) must match the editor's, or values and positions shift a character a line.
     text = lf(text);
+    this.docGen++;
+    this.supersede();
     this.fromFile = file ? { file, text, doc: null } : null;
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
@@ -1372,8 +1395,18 @@ export class Engine {
     this.finishLoad(text, persist, false, names);
   }
 
-  /** The file the document was loaded from (see load) and, once the editor has it, its version: until it changes, the analysis worker reads the file instead of being sent the text. */
-  private fromFile: { file: File; text: string; doc: Doc | null } | null = null;
+  /**
+   * The file the document was loaded from (see load), its text until the editor has it, then that version: until
+   * it changes (then this goes, see onChange), the analysis worker reads the file instead of being sent the text.
+   */
+  private fromFile: { file: File; text?: string; doc: Doc | null } | null = null;
+  /**
+   * Bumped by each new document and each change to it, a load's arriving in the editor aside (see landing): a copy
+   * or download waiting for an output is for the document of its generation (see Waiting).
+   */
+  private docGen = 0;
+  /** A load's text is going into the editor (see finishLoad): its change is that load's. */
+  private landing = false;
 
   /** Undo or Redo brought back a document with its file name (see Editor.setValue). */
   private renamed = (name: string | null) => {
@@ -1855,14 +1888,20 @@ export class Engine {
     const loading = this.progressShown() >= 0 ? this.progressStatus : null;
     this.edName = names[1];
     // (Undo and Redo bring the file names back with the documents. Pasted, the caret goes after it, as a paste's does.)
-    this.ed.setValue(text, this.refocus ? text.length : 0, true, names);
+    this.landing = true;
+    try {
+      this.ed.setValue(text, this.refocus ? text.length : 0, true, names);
+    } finally {
+      this.landing = false;
+    }
     if (loading) {
       // (The editor's change said "Parsing…": the load goes on. With its output shown first, the editor's step is done too.)
       store.set({ status: (this.progressStatus = loading) });
       if (this.progressShown() >= FORMATTED) this.progress(EDITOR);
     }
     const document = this.ed.version as Doc;
-    if (this.fromFile?.text === text) this.fromFile.doc = document;
+    // (The file's text isn't kept past this: the editor's version stands for it.)
+    if (this.fromFile?.text === text) this.fromFile = { file: this.fromFile.file, doc: document };
     if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
     if (this.fmtSrcVer === null && (this.fmtWorkerId || this.pendingFmtWorkerId)) this.fmtSrcVer = document;
     if (this.refocus) {
@@ -2697,7 +2736,10 @@ export class Engine {
   private fmtPretty: PrettyText | null = null;
   /** Bumped when the Format view is drawn: a pretty index still being made (see drawPretty) is dropped. */
   private prettySeq = 0;
-  /** The pretty index being made (see drawPretty), while it is prettySeq's, and what for. */
+  /**
+   * The pretty index being made (see drawPretty), while it is prettySeq's, and what for: only while it is (a tape
+   * held here kept its document, and the worker's index of it, alive into the next one's load).
+   */
   private prettyMaking = -1;
   private prettyFor: { tape: Tape; indent: string; key: string } | null = null;
   /** The output drawn (empty) is the one too large to make: the view and Copy say so. */
@@ -2804,6 +2846,8 @@ export class Engine {
     this.fmtVersion++;
     this.fmtStatSeq++;
     this.prettySeq++;
+    // (A pretty index still being made is for output no longer wanted, or is this one: done either way.)
+    this.prettyFor = null;
     const { minify, escape } = this.settings;
     this.fmtSrcVer = version;
     this.fmtKey = key;
@@ -2822,6 +2866,7 @@ export class Engine {
   /** The Format view shows nothing, and nothing is current there (a big new document's output comes with its analysis). */
   private blankFormat() {
     this.prettySeq++;
+    this.prettyFor = null;
     this.fmtKey = '';
     this.fmtSrcVer = null;
     this.fmtPretty = null;
@@ -2847,12 +2892,17 @@ export class Engine {
     if (this.prettyMaking === this.prettySeq && f?.tape === tape && f.indent === indent && f.key === key) return;
     const seq = ++this.prettySeq;
     this.prettyMaking = seq;
-    this.prettyFor = { tape, indent, key };
+    const mine = (this.prettyFor = { tape, indent, key });
     // (Indexed by the worker that parsed it, for this indent, when the Format view was shown: else here, in steps.)
     const made = prettyIndexes.get(tape.nodes);
     const run = made?.indent === indent ? () => made.index : pack!.prettyIndexer(tape, src, indent);
     const step = () => {
-      if (seq !== this.prettySeq || this.dead || ver !== this.goodVer || key !== this.fmtSettings()) return;
+      if (seq !== this.prettySeq || this.dead || ver !== this.goodVer || key !== this.fmtSettings()) {
+        // (Dropped: nothing is made for it any more, and its tape isn't held.)
+        if (this.prettyFor === mine) this.prettyFor = null;
+        if (this.prettyMaking === seq) this.prettyMaking = -1;
+        return;
+      }
       const index = run(performance.now() + 8);
       if (index === undefined) return void soon(step);
       if (index === null) {
@@ -2968,9 +3018,11 @@ export class Engine {
       track('feature_used', { feature: 'download_output' });
       const file = name();
       void later.then((out) => {
-        if (this.dead) return;
-        if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
-        this.save(out, file, 'application/json');
+        // (Superseded: the settings or the document changed before the output for this click came.)
+        if (this.dead || out === undefined) return;
+        if (!out || !out.length) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
+        if (typeof out === 'string') this.save(out, file, 'application/json');
+        else this.saveBlob(new Blob(out, { type: 'application/json' }), file);
       });
       return;
     }
@@ -2996,6 +3048,17 @@ export class Engine {
   /** Copy/Download waiting for the Format output of the current settings (see outputPending). */
   private readonly outputWait = new Waiting();
 
+  /** Copies and downloads waiting for what the settings or the document no longer are end now, with nothing. */
+  private supersede() {
+    if (!this.outputWait.wants(this.fmtWait())) this.outputWait.end();
+    if (!this.convWait.wants(this.convKey())) this.convWait.end();
+  }
+
+  /** What a copy or download of the Format output waits for: these settings' output of this document. */
+  private fmtWait() {
+    return this.fmtSettings() + '\n' + this.docGen;
+  }
+
   /** Run once the editor's text is analysed: at once if it is, else after the analysis on its way publishes. */
   private readonly analysed: (() => void)[] = [];
   private whenAnalysed(f: () => void) {
@@ -3007,12 +3070,13 @@ export class Engine {
    * The Format output for the document and settings, when the one made last isn't (another view showed while
    * the document changed, or its analysis is still to come): made now, or once analysed. Null when it is.
    */
-  private outputLater(): Promise<string | null> | null {
+  private outputLater(): Promise<Output> | null {
     const pending = this.outputPending();
     if (pending || this.parsedVer === this.ed.version && this.formatCurrent(this.fmtSettings())) return pending;
     // (Asked again before it came: the same wait, and nothing made twice.)
-    if (this.outputWait.pending) return this.outputWait.get();
-    const later = this.outputWait.get();
+    const key = this.fmtWait();
+    if (this.outputWait.wants(key)) return this.outputWait.get(key);
+    const later = this.outputWait.get(key);
     this.whenAnalysed(() => (this.formatCurrent(this.fmtSettings()) && this.prettyMaking !== this.prettySeq ? this.outputDrawn() : this.makeFormat()));
     return later;
   }
@@ -3021,24 +3085,32 @@ export class Engine {
    * The output the Format view is still making for the current settings (it shows the last settings' until
    * then), or null when what it shows is current. Resolves with the output, or null if it couldn't be made.
    */
-  private outputPending(): Promise<string | null> | null {
+  private outputPending(): Promise<Output> | null {
     const making = this.prettyMaking === this.prettySeq;
     if (this.settings.view !== 'format' || !making && (this.fmtKey === this.fmtSettings() || !this.fmtOut && !this.fmtPretty)) return null;
-    return this.outputWait.get();
+    return this.outputWait.get(this.fmtWait());
   }
 
-  /** Hands waiting copies and downloads the output once it matches the settings (after drawFormat). */
+  /**
+   * Hands waiting copies and downloads the output once it is the one they asked for (after drawFormat). The
+   * settings or the document changed since: they get nothing (a minified copy never gets the pretty output).
+   */
   private outputDrawn() {
-    if (!this.outputWait.pending || this.fmtKey !== this.fmtSettings()) return;
+    const w = this.outputWait;
+    const key = this.fmtWait();
+    if (!w.wants(key)) return w.end();
+    if (this.fmtKey !== this.fmtSettings()) return;
     const pretty = this.fmtPretty;
-    this.outputWait.give(this.fmtTooLarge ? null : pretty ? this.unlessTooLarge(() => pretty.slice(), false) : this.fmtOut);
+    if (this.fmtTooLarge || !pretty) return w.end(this.fmtTooLarge ? null : this.fmtOut, key);
+    // (A big document's pretty output, read off its tape: in parts made in steps, as once it shows, never one string.)
+    void this.prettyParts(pretty).then((parts) => w.end(parts, key));
   }
 
   /** The text a copy waits for (see copyLater). */
   private copying: Promise<unknown> | null = null;
 
   /** Copies text that is still on its way, keeping the click's permission to write the clipboard where the browser allows. */
-  private async copyLater(text: Promise<string | string[] | null>, msg: string, none: () => void) {
+  private async copyLater(text: Promise<Output>, msg: string, none: () => void) {
     // (Asked again for the same text while it comes: that copy is already on its way.)
     if (this.copying === text) return;
     this.copying = text;
@@ -3057,7 +3129,8 @@ export class Engine {
       if (!this.dead) this.toast(msg, 'ok');
     } catch {
       const t = await text;
-      if (this.dead) return;
+      // (Superseded: the settings or the document changed before the text for this click came.)
+      if (this.dead || t === undefined) return;
       if (!t || !t.length) return none();
       const s = typeof t === 'string' ? t : this.unlessTooLarge(() => t.join(''));
       if (s !== null) await this.copy(s, msg);
@@ -3094,31 +3167,45 @@ export class Engine {
    * The last conversion made: its sequence and output ('' for none). The code view may still be taking a big
    * output in, in steps, so Copy and Download take it from here.
    */
-  private convDone: { seq: number; out: string; ver: object | null } = { seq: 0, out: '', ver: null };
+  private convDone: { seq: number; out: string; ver: object | null; key: string } = { seq: 0, out: '', ver: null, key: '' };
+
+  /** The Convert view's settings and the document, as a key: what a conversion was made for (see convFinished). */
+  private convKey() {
+    const s = this.settings;
+    return `${s.target}\n${s.rootName}\n${s.tsStyle}\n${s.csharpLib}\n${this.docGen}`;
+  }
 
   /** Copy/Download waiting for the conversion asked for last (see convPending). */
   private readonly convWait = new Waiting();
 
-  private convFinished(seq: number, out: string, ver: object | null) {
-    this.convDone = { seq, out, ver };
-    this.convWait.give(out);
+  /**
+   * A conversion made, for settings `key`: waiting copies and downloads get it if it is what they asked for (the
+   * settings and the document at their click), of the document as analysed now; nothing if those changed since.
+   */
+  private convFinished(seq: number, out: string, ver: object | null, key = this.convKey()) {
+    this.convDone = { seq, out, ver, key };
+    const w = this.convWait;
+    const now = this.convKey();
+    if (!w.wants(now)) return w.end();
+    // (Of an analysis before the one on its way: the conversion after it comes, see convLater.)
+    if (key === now && ver === this.goodVer && this.parsedVer === this.ed.version) w.end(out, now);
   }
 
   /**
    * The conversion of the document, when the one made last isn't of it (another view showed while the
    * document changed, or its analysis is still to come): made now, or once analysed. Null when it is.
    */
-  private convLater(): Promise<string | null> | null {
+  private convLater(): Promise<Output> | null {
+    const key = this.convKey();
     const pending = this.convPending();
     const d = this.convDone;
-    if (pending || this.parsedVer === this.ed.version && d.seq === this.convSeq && d.ver === this.goodVer) return pending;
-    if (this.convWait.pending) return this.convWait.get();
-    const later = this.convWait.get();
+    if (!pending && this.parsedVer === this.ed.version && d.seq === this.convSeq && d.ver === this.goodVer && d.key === key) return null;
+    const later = pending ?? this.convWait.get(key);
     this.whenAnalysed(() => {
       const c = this.convDone;
       // (One already on its way, e.g. the Convert view's after the analysis, hands it over.)
       if (c.seq !== this.convSeq) return;
-      if (c.ver === this.goodVer) this.convFinished(c.seq, c.out, c.ver);
+      if (c.ver === this.goodVer && c.key === this.convKey()) this.convFinished(c.seq, c.out, c.ver, c.key);
       else void this.runConvert(true);
     });
     return later;
@@ -3128,9 +3215,9 @@ export class Engine {
    * The output of the conversion asked for last while it is still being made (the view shows the one
    * before until then), or null when the view's output is current.
    */
-  private convPending(): Promise<string | null> | null {
+  private convPending(): Promise<Output> | null {
     if (this.settings.view !== 'convert' || this.convDone.seq === this.convSeq) return null;
-    return this.convWait.get();
+    return this.convWait.get(this.convKey());
   }
 
   /** The output the Convert view shows or is making for the current settings. */
@@ -3179,6 +3266,7 @@ export class Engine {
         if (!current()) return;
       }
       const s = this.settings;
+      const key = this.convKey();
       const info = targetInfo(s.target);
       // CSV and Excel share one flattening (dotted columns) over the main array of
       // records; Excel is a binary download, so its preview is the same table.
@@ -3193,7 +3281,7 @@ export class Engine {
         const rows = mod.codeRows(info.lang);
         this.code.setText(out, rows.hl, false, rows.scanner);
       }
-      this.convFinished(seq, out, ver);
+      this.convFinished(seq, out, ver, key);
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
       if (!current()) return;
@@ -3243,8 +3331,9 @@ export class Engine {
     const later = this.convLater();
     if (later) {
       void later.then((out) => {
-        if (this.dead) return;
-        if (!out) return this.toast('Nothing to download yet', 'info');
+        // (Superseded: another target or document before this one's conversion came, never saved under this name.)
+        if (this.dead || out === undefined) return;
+        if (!out || typeof out !== 'string') return this.toast('Nothing to download yet', 'info');
         this.save(out, name, info.mime);
       });
       return;
@@ -3541,6 +3630,7 @@ export class Engine {
 
   private setSettings(patch: Partial<Settings>) {
     this.settings = { ...this.settings, ...patch };
+    this.supersede();
     store.settings(patch);
     if (this.presetting) return;
     this.saved = { ...this.saved, ...patch };
