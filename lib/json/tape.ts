@@ -179,22 +179,25 @@ function sentString(s: SentTape, k: number): string {
 }
 
 /**
- * A received tape. Property names are read in steps: call the returned function with a deadline
- * (a performance.now() value) until it returns the tape.
+ * A received tape. Property names, then extra values (a repaired document may have one per value), are read
+ * in steps: call the returned function with a deadline (a performance.now() value) until it returns the tape.
  */
 export function receiver(s: SentTape): (until: number) => Tape | undefined {
   const keys: string[] = new Array(s.keyCount);
+  const extras = s.extraAt.length;
+  const extra: Map<number, string> | null = extras ? new Map() : null;
   let k = 0;
+  let j = 0;
   return (until) => {
     while (k < s.keyCount) {
       const end = Math.min(s.keyCount, k + 4096);
       for (; k < end; k++) keys[k] = sentString(s, k);
       if (k < s.keyCount && performance.now() >= until) return undefined;
     }
-    let extra: Map<number, string> | null = null;
-    if (s.extraAt.length) {
-      extra = new Map();
-      for (let j = 0; j < s.extraAt.length; j++) extra.set(s.extraAt[j], sentString(s, s.keyCount + j));
+    while (j < extras) {
+      const end = Math.min(extras, j + 4096);
+      for (; j < end; j++) extra!.set(s.extraAt[j], sentString(s, s.keyCount + j));
+      if (j < extras && performance.now() >= until) return undefined;
     }
     return { nodes: s.nodes, count: s.count, keys, big: s.big.length ? new Map(s.big) : null, extra, head: s.head };
   };

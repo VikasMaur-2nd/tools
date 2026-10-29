@@ -5,6 +5,9 @@ import { nodeAt, pathOf } from '../lib/json/path';
 import { packedPosition, unpacker } from '../lib/json/pack';
 import { packTree } from '../lib/json/pack-send';
 import { madeCount } from '../lib/json/lazy';
+import { parse as tapeParse } from '../lib/json/tape-parser';
+import { sendable } from '../lib/json/tape-send';
+import { receiver, type Tape } from '../lib/json/tape';
 import { Doc } from '../lib/engine/doc';
 
 /** Every field of every node, parent links included, must match. */
@@ -110,6 +113,22 @@ test('a big document is received in short steps, and makes nodes only when read'
   assert.equal((first.v as JNode[]).length, 6);
   assert.equal(first, (out.root!.v as JNode[])[0], 'stable identity');
   same(res.root, out.root);
+});
+
+test('extra values (escaped JSON repaired: one per value) are received in short steps too, the same values', () => {
+  // (REVIEW-GPT 5: 1.1 M extra values were read in one call past its deadline, ~0.9 s on the page.)
+  const n = 200_000;
+  const src = '{\\"values\\":[' + Array.from({ length: n }, (_, i) => (i % 3 ? i : `\\"s${i}\\"`)).join(',') + ']}';
+  const t = tapeParse(src, { repair: true });
+  assert.equal(t.head.error, null);
+  assert.equal(t.extra?.size, n);
+  const read = receiver(structuredClone(sendable(t).sent));
+  let calls = 0;
+  let got: Tape | undefined;
+  // (A deadline already past: each call does one batch.)
+  while (!(got = read(0))) calls++;
+  assert.ok(calls >= n / 8192, `${calls} calls for ${n} extra values`);
+  assert.deepEqual([...got.extra!], [...t.extra!]);
 });
 
 test('packed caret navigation matches the node tree, including keys and container boundaries', () => {
