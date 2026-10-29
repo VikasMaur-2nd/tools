@@ -225,10 +225,32 @@ export function prettyIndexer(t: Tape, src: string, indent: string): (until: num
   };
 }
 
+/**
+ * A line's text in parts (see PrettyText.form): its head (indentation, property name, a container's bracket),
+ * its value (`body`, or the source's [from, to) when the token is written as it stands) and its comma.
+ */
+interface Form {
+  k: number;
+  head: string;
+  body: string | null;
+  from: number;
+  to: number;
+  tail: string;
+}
+
+/**
+ * Lines longer than this are cut from their parts in PrettyText.slice, not made whole: Find reads the text in
+ * 1 MiB slices, and a long string value would be made (and checked) again for each one.
+ */
+const LONG = 1 << 16;
+
 /** The pretty text of `t` as lines and slices of it (see prettyIndexer for `index`). */
 export class PrettyText {
   readonly length: number;
   private pads: string[] = [''];
+  /** The parts of the line line() makes (reused), and of the last long line slice() cut. */
+  private f: Form = { k: -1, head: '', body: '', from: 0, to: 0, tail: '' };
+  private long: Form = { k: -1, head: '', body: '', from: 0, to: 0, tail: '' };
 
   constructor(
     private readonly t: Tape,
@@ -247,6 +269,12 @@ export class PrettyText {
 
   /** Line `k` (without its line break). */
   line(k: number): string {
+    const f = this.form(k, this.f);
+    return f.head + (f.body ?? this.src.slice(f.from, f.to)) + f.tail;
+  }
+
+  /** Line `k`'s parts, into `f`. */
+  private form(k: number, f: Form): Form {
     const { t, src } = this;
     const nodes = t.nodes;
     const x = this.index.node[k];
@@ -263,18 +291,46 @@ export class PrettyText {
       return z < SIZE_BIG ? z : t.big!.get(j)!;
     };
     const last = p < 0 || i + s(i) >= p + s(p);
-    if (x < 0) return this.pad(d) + (kind === OBJ ? '}' : ']') + (last ? '' : ',');
-    let out = this.pad(d);
-    if (((m >> 3) & 3) === KEY_NAME) out += quote(t.keys[nodes[o + 4]]) + ': ';
+    f.k = k;
+    f.body = '';
+    f.tail = last ? '' : ',';
+    if (x < 0) {
+      f.head = this.pad(d) + (kind === OBJ ? '}' : ']');
+      return f;
+    }
+    let head = this.pad(d);
+    if (((m >> 3) & 3) === KEY_NAME) head += quote(t.keys[nodes[o + 4]]) + ': ';
+    f.head = head;
     if (kind >= ARR) {
-      if ((m >>> 8) !== 1) return out + (kind === OBJ ? '{' : '[');
-      out += kind === OBJ ? '{}' : '[]';
-    } else if (kind === NUL) out += 'null';
-    else if (kind === BOOL) out += ((m >> 5) & 7) === VALUE_FALSE ? 'false' : 'true';
-    else if (kind === NUM) out += valueOf(t, i, src) as string;
-    else if ((((m >> 5) & 7) === VALUE_SLICE || ((m >> 5) & 7) === VALUE_DECODE) && plain(src, nodes[o + 1], nodes[o + 2])) out += src.slice(nodes[o + 1], nodes[o + 2]);
-    else out += quote(valueOf(t, i, src) as string);
-    return last ? out : out + ',';
+      if ((m >>> 8) !== 1) {
+        f.head = head + (kind === OBJ ? '{' : '[');
+        f.tail = '';
+      } else f.head = head + (kind === OBJ ? '{}' : '[]');
+    } else if (kind === NUL) f.body = 'null';
+    else if (kind === BOOL) f.body = ((m >> 5) & 7) === VALUE_FALSE ? 'false' : 'true';
+    else if (kind === NUM) f.body = valueOf(t, i, src) as string;
+    else if ((((m >> 5) & 7) === VALUE_SLICE || ((m >> 5) & 7) === VALUE_DECODE) && plain(src, nodes[o + 1], nodes[o + 2])) {
+      f.body = null;
+      f.from = nodes[o + 1];
+      f.to = nodes[o + 2];
+    } else f.body = quote(valueOf(t, i, src) as string);
+    return f;
+  }
+
+  /** Line `k`'s text [x, y), a long line's (see LONG): cut from its parts, which are kept for the next slice of it. */
+  private cut(k: number, x: number, y: number): string {
+    const f = this.long.k === k ? this.long : this.form(k, this.long);
+    const h = f.head.length;
+    const v = f.body === null ? f.to - f.from : f.body.length;
+    let out = '';
+    if (x < h) out += f.head.slice(x, Math.min(y, h));
+    if (y > h && x < h + v) {
+      const a = Math.max(0, x - h);
+      const b = Math.min(v, y - h);
+      out += f.body === null ? this.src.slice(f.from + a, f.from + b) : f.body.slice(a, b);
+    }
+    if (y > h + v) out += f.tail.slice(Math.max(0, x - h - v), y - h - v);
+    return out;
   }
 
   /**
@@ -313,7 +369,7 @@ export class PrettyText {
     return lo;
   }
 
-  /** The text [a, b): the lines it spans, made and cut. */
+  /** The text [a, b): the lines it spans, made and cut (a long line only cut: see LONG). */
   slice(a = 0, b = this.length): string {
     a = Math.max(0, a);
     b = Math.min(this.length, b);
@@ -321,10 +377,15 @@ export class PrettyText {
     const st = this.index.starts;
     let k = this.lineAt(a);
     let out = '';
-    for (let at = st[k]; at < b && k < st.length; k++) {
-      const text = k + 1 < st.length ? this.line(k) + '\n' : this.line(k);
-      out += text.slice(Math.max(0, a - at), b - at);
-      at += text.length;
+    for (; k < st.length && st[k] < b; k++) {
+      const at = st[k];
+      const next = k + 1 < st.length;
+      // The line's length, without its line break.
+      const len = (next ? st[k + 1] - 1 : this.length) - at;
+      const x = Math.max(0, a - at);
+      const y = b - at;
+      if (len > LONG) out += this.cut(k, x, Math.min(y, len)) + (next && y > len ? '\n' : '');
+      else out += (next ? this.line(k) + '\n' : this.line(k)).slice(x, y);
     }
     return out;
   }

@@ -196,3 +196,58 @@ test('a tree read from a tape is written from the tape exactly as from its nodes
     written(readFileSync(f, 'utf8'), { lines: /\.(jsonl|ndjson)$/.test(f), repair: true });
   }
 });
+
+test('long lines read in slices: the same text, cut at every part of a line (indentation, name, value, comma) and across lines', () => {
+  const big = 'x'.repeat(70_000);
+  const docs = [
+    // A plain string (read straight from the source), one that needs escaping as written (a raw tab), a long
+    // name, a long number, and long values as the last line.
+    JSON.stringify({ a: big, b: 1 }),
+    `{"a":"${big}\t${big}","b":[1]}`,
+    `{"${big}":1,"c":"${big}"}`,
+    `[${'7'.repeat(80_000)},"${big}",${'1'.repeat(66_000)}]`,
+    `"${big}é😀"`,
+    `["${big}\\u0041${big}"]`,
+  ];
+  const r = rng((SEED || 1) + 7);
+  for (const src of docs) for (const indent of ['  ', '\t']) {
+    const res = parse(src);
+    const want = stringify(res.root!, indent);
+    const tape = tapeOf(res, src);
+    const text = new PrettyText(tape, src, indent, prettyIndexer(tape, src, indent)(Infinity)!);
+    assert.equal(text.slice(), want);
+    // Around every line's start and end, the parts of its line, and random cuts.
+    const cuts = new Set<number>([0, want.length]);
+    for (let k = want.indexOf('\n'); k >= 0; k = want.indexOf('\n', k + 1)) for (const d of [-2, -1, 0, 1, 2]) cuts.add(k + d);
+    for (const s of [': "', ': ', '",', '"', '\t', 'é']) for (let k = want.indexOf(s); k >= 0; k = want.indexOf(s, k + 1)) for (const d of [-1, 0, 1, s.length]) cuts.add(k + d);
+    for (let k = 0; k < 60; k++) cuts.add(r.int(want.length + 1));
+    const at = [...cuts].filter((x) => x >= 0 && x <= want.length).sort((x, y) => x - y);
+    for (const a of at) for (const b of [a, a + 1, a + 7, a + 65_536, a + 200_000, want.length]) {
+      assert.equal(text.slice(a, b), want.slice(a, Math.min(b, want.length)), `slice(${a}, ${b}) of ${show(src)}`);
+    }
+  }
+});
+
+test('Find reads a long line in slices without making the whole line again for each one', () => {
+  // (REVIEW-GPT 3: a 16 MB string was made whole for each of Find's 17 slices: ~285 M characters.)
+  const src = JSON.stringify({ body: 'x'.repeat(4 << 20) });
+  const res = parse(src);
+  const tape = tapeOf(res, src);
+  const text = new PrettyText(tape, src, '  ', prettyIndexer(tape, src, '  ')(Infinity)!);
+  let made = 0;
+  const line = text.line.bind(text);
+  text.line = (k: number) => {
+    const s = line(k);
+    made += s.length;
+    return s;
+  };
+  // CodeView.runFind's slices: 1 MiB, overlapping by the query's length - 1.
+  const query = 'needle';
+  let read = 0;
+  for (let pos = 0; pos < text.length; pos += 1 << 20) {
+    const chunk = text.slice(pos, Math.min(text.length, pos + (1 << 20) + query.length - 1));
+    read += chunk.length;
+    assert.equal(chunk.includes(query), false);
+  }
+  assert.ok(made <= 1000, `${made} characters made by line() for ${read} read`);
+});
