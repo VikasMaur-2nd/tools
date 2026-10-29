@@ -1683,6 +1683,9 @@ export class Engine {
           if (e.data.reset) { this.analysisDoc = null; this.fromFile = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
           else if (e.data.good && e.data.tree && good) {
+            // (The views already show the editor's current version, which another path parsed meanwhile: this
+            // older one would take its place.)
+            if (this.goodVer === this.ed.version) return;
             this.good = null;
             this.goodVer = good;
             this.goodText = good.toString();
@@ -2566,7 +2569,8 @@ export class Engine {
         const res = step(performance.now() + 8);
         if (!res) return soon(run);
         if (packed.id === this.loadSeq) this.analyze(res, metrics);
-        else {
+        // (A newer result was shown while this one was made, the editor's current version: this one is dropped.)
+        else if (this.goodPacked === packed) {
           this.good = res;
           this.goodPacked = null;
           this.tree.setRoot(res.root, false, res.nodes, false);

@@ -276,6 +276,60 @@ test('one analysis at a time: documents asked for while one is in flight wait, a
   assert.equal(trees, 1, 'the stale one is not used');
 });
 
+test("the output's older version, analysed for the views, never replaces the current one already shown (R11)", async () => {
+  const { engine, workers, tick } = session();
+  const older = Doc.of('{"a":1}');
+  const current = Doc.of('{"a":1,"added":[1,2]}');
+  engine.settings.view = 'tree';
+  engine.ed = { version: current, text: current.toString(), length: current.length };
+  // The Format output shows the older version; the current one is sent with it.
+  engine.fmtSrcVer = older;
+  engine.loadSeq = 7;
+  let released = 0;
+  engine.tree = { releaseRoot: () => released++, setRoot() {} };
+  engine.setGraphRoot = () => {};
+  engine.setView = () => {};
+  engine.queueAnalysis(7, current, null, () => {}, 0);
+  tick();
+  const w = workers[0];
+  assert.deepEqual(w.messages.filter((m) => m.analysis).map((m) => !!m.good), [true, false], 'the older version, then the current one');
+  // The current version reached the views first (another path parsed it): the older one's tree comes after.
+  engine.goodVer = current;
+  w.onmessage!({ data: { id: 7, good: true, tree: { nodes: { length: 1 }, head: {} }, metrics: { bytes: 7, min: 7, extra: 0, units: 0 } } });
+  await engine.tapeCode();
+  assert.equal(engine.goodVer, current, 'the views keep the current version');
+  assert.equal(engine.goodPacked, null, 'nothing older waits to replace it');
+  assert.equal(released, 0, 'the tree keeps its root');
+});
+
+test("an older version's tree made in steps for a view is dropped when a newer one was shown meanwhile (R11)", async () => {
+  const { engine, tick } = session();
+  await engine.tapeCode();
+  const { packTape } = await import('../lib/json/pack-send');
+  const { tapeOf } = await import('../lib/json/tape-send');
+  const older = '{"a":1}';
+  engine.settings.view = 'tree';
+  engine.loadSeq = 9;
+  engine.packed = null;
+  // The output's older version came back from the analysis worker (see queueAnalysis `good`): the Tree makes it.
+  engine.goodPacked = { id: -1, tree: packTape(tapeOf(parse(older), older)), text: older };
+  const roots: unknown[] = [];
+  engine.tree = { setRoot: (r: unknown) => roots.push(r), select() {}, releaseRoot() {} };
+  engine.setGraphRoot = () => {};
+  const setView = engine.setView.bind(engine);
+  let again = 0;
+  engine.setView = () => void again++;
+  setView('tree');
+  // The current version is analysed and shown before those steps end (analyze drops the older one).
+  const current = { root: { t: 5, v: [] } };
+  engine.goodPacked = null;
+  engine.good = current;
+  for (let k = 0; k < 50 && tick(); k++);
+  assert.deepEqual(roots, [], 'the Tree keeps the current version');
+  assert.equal(engine.good, current);
+  assert.equal(again, 1, 'and the view is shown');
+});
+
 // ── A new big document parsed in steps (analyzeInSteps) ──
 
 function stepsSession(text: string) {

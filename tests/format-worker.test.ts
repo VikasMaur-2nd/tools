@@ -598,3 +598,23 @@ test('an analysis for the Format view shown Pretty indexes its pretty lines with
     await worker.terminate();
   }
 });
+
+test('the output\'s older version and the current one, sent together, are answered in the order sent (R11)', async () => {
+  // The page sends the version the Format output shows (`good`) and then the current one, under one id. Their
+  // analyses run one after the other: the older one's tree never lands after the current one's, where the page
+  // would show the older version in the views.
+  const s = session({ wasm: true });
+  try {
+    const older = JSON.stringify(Array.from({ length: 60_000 }, (_, i) => ({ id: i, s: 'v' + i })));
+    const current = '{"a":1,"added":[1,2]}';
+    s.worker.postMessage({ id: 5, text: older, analysis: true, good: true, pretty: '  ' });
+    s.worker.postMessage({ id: 5, text: current, analysis: true, pretty: '  ' });
+    const trees = () => s.messages.filter((m) => m.id === 5 && m.tree);
+    for (let k = 0; k < 400 && trees().length < 2; k++) await new Promise((r) => setTimeout(r, 25));
+    const got = trees();
+    assert.equal(got.length, 2, 'both answered');
+    assert.deepEqual(got.map((m) => !!m.good), [true, false], 'the older version first, the current one last');
+  } finally {
+    await s.worker.terminate();
+  }
+});
