@@ -93,7 +93,7 @@ function session() {
       terminate() {}
     },
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
+      if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); }, settings() {} } };
       if (name === './idle') return { soon: defer, idle: defer };
       if (name === './instance') return { getEngine: () => current, getDiffMenu: () => null };
       if (name === '../analytics') return { PRIVATE: 'private', track() {}, reportError: (error: unknown) => errors.push(error) };
@@ -802,4 +802,152 @@ test('past the 500 duplicate keys a parse lists, the status says there are more'
   assert.equal(st.warnings, 500);
   assert.equal(st.more, true);
   assert.equal(engine.statusOf(parse('{"k":0,"k":1}')).more, false);
+});
+
+// ── From PR #31's review (REVIEW-GPT): what waits for an output, and what the engine keeps of a document ──
+
+/** An editor double: setValue is a no-op for the same text, else a new version and a real Engine.onChange. */
+function reviewing(s: ReturnType<typeof session>, initial = '') {
+  const { engine, state } = s;
+  let text = initial;
+  let version = Doc.of(text);
+  const ed = {
+    get text() { return text; }, get length() { return text.length; }, get blank() { return !text.trim(); },
+    get version() { return version; }, get ls() { return [0]; }, el: {},
+    setValue(next: string) { if (next === text) return; text = next; version = Doc.of(text); engine.onChange('set'); },
+    setBrackets() {}, setScope() {}, setDiagnostics() {}, setJwt() {}, focus() {},
+    lineCol() { return {line: 1, col: 1}; },
+  };
+  engine.ed = ed;
+  engine.fmt = { text: '', el: {}, setText() {}, setLines() {}, setNotes() {}, snapshotText: () => () => '', inlineIndex: () => ({}) };
+  engine.tree = { setRoot() {}, select() {}, releaseRoot() {} };
+  engine.table = { setNode() {}, state: () => ({}), path: [], rowCount: 0, colCount: 0 };
+  engine.syncTableState = () => {};
+  engine.persistSoon = () => {};
+  engine.jwtReader = () => null;
+  state.fmt = {};
+  return ed;
+}
+
+
+
+test('a Download waiting for a conversion never saves another target\'s under its name: superseded, nothing is saved', async () => {
+  const s = session();
+  const {engine} = s;
+  reviewing(s, '{"a":1}');
+  engine.settings.view = 'convert';
+  engine.good = parse(engine.ed.text);
+  engine.goodText = engine.ed.text;
+  engine.goodVer = engine.parsedVer = engine.ed.version;
+  engine.code = {text: '', setText(t: string) { this.text = t; }};
+  engine.loadConverters = async () => load(resolve(__dirname, '../lib/convert/index'));
+  await engine.runConvert();
+  engine.settings.target = 'yaml';
+  engine.scheduleConvert(0);
+  const saved: {text: string; name: string; type: string}[] = [];
+  engine.save = (text: string, name: string, type: string) => saved.push({text,name,type});
+  await engine.downloadConvert();
+  assert.equal(saved.length, 0, 'the YAML download waits for conversion');
+  engine.settings.target = 'typescript';
+  engine.scheduleConvert(0);
+  await engine.runConvert();
+  await settled();
+  assert.equal(saved.some(s => s.name.endsWith('.yaml') && s.text.includes('interface Root')), false,
+    'a TypeScript result must not satisfy a pending YAML download');
+  assert.deepEqual(saved, [], 'nothing saved for the superseded click');
+  assert.deepEqual(s.toasts, [], 'and nothing said');
+  // Asked again for TypeScript: saved, under its own name.
+  await engine.downloadConvert();
+  await settled();
+  // (Read past the assertion above, which narrows `saved` to empty.)
+  const now = saved as { text: string; name: string; type: string }[];
+  assert.equal(now.length, 1);
+  assert.ok(now[0].name.endsWith('.ts') && now[0].text.includes('interface Root'), now[0].name);
+});
+
+test('Copy waiting for the Format output of other settings never gets the output of the settings after', async () => {
+  const s = session();
+  const { engine, navigator, state } = s;
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  reviewing(s, '{"a":1}');
+  engine.fmt = { text: '', el: {}, setText(t: string) { this.text = t; }, setLines() {}, setNotes() {}, snapshotText: () => () => '', inlineIndex: () => ({}), lineCount: 0 };
+  state.fmt = {};
+  engine.settings.view = 'format';
+  engine.good = parse(engine.ed.text);
+  engine.goodText = engine.ed.text;
+  engine.goodVer = engine.parsedVer = engine.ed.version;
+  engine.runFormat();
+  assert.equal(engine.fmt.text, '{\n  "a": 1\n}');
+  // Minify asked for: its output still to be drawn (fmtKey still Pretty's), Copy waits for it.
+  engine.settings.minify = true;
+  engine.copyOutput();
+  await settled();
+  assert.deepEqual(copied, [], 'waits');
+  // Back to Pretty before it comes: the waiting minified Copy ends with nothing (no pretty output, no toast).
+  engine.setSettings({ minify: false });
+  await s.drain();
+  assert.deepEqual(copied, []);
+  assert.deepEqual(s.toasts, []);
+  // The document edited after a Copy asked: that Copy gets nothing either.
+  engine.settings.minify = true;
+  engine.copyOutput();
+  engine.ed.setValue('{"b":2}');
+  engine.runFormat();
+  await s.drain();
+  assert.deepEqual(copied, []);
+});
+
+test('the file a document was read from is let go once the editor\'s text is no longer it (Clear)', async () => {
+  const s = session();
+  reviewing(s);
+  const input = JSON.stringify({value: 'x'.repeat(2_000_000)});
+  const file = {size: input.length, name: 'big.json'};
+  s.engine.load(input, 'big.json', true, false, file);
+  // (The editor has it: the file stands for that version, and its text isn't kept a second time.)
+  assert.ok(s.engine.fromFile && s.engine.fromFile.file === file && s.engine.fromFile.doc === s.engine.ed.version, 'the file goes with the version the editor has');
+  assert.ok(!('text' in s.engine.fromFile) || s.engine.fromFile.text === undefined, 'its text is not kept');
+  s.engine.clear();
+  // Drain the zero-delay Format redraw, without advancing the unrelated long timeouts.
+  for (let k = 0; k < 5; k++) { s.tick(); await settled(); }
+  assert.equal(s.engine.ed.length, 0);
+  assert.equal(s.engine.fromFile === null, true, 'the file optimization must release obsolete document versions');
+});
+
+test('a pretty index done or dropped keeps no tape: the Format view cleared holds none', async () => {
+  const s = session();
+  reviewing(s);
+  await s.engine.tapeCode();
+  const {parse: parseTape} = load(resolve(__dirname, '../lib/json/tape-parser'));
+  const tape = parseTape('[1,2,3]');
+  s.engine.goodVer = s.engine.ed.version;
+  s.engine.drawPretty(tape, '[1,2,3]', s.engine.fmtSettings());
+  s.engine.clear();
+  for (let k = 0; k < 5; k++) { s.tick(); await settled(); }
+  assert.equal(s.engine.fmtPretty, null);
+  assert.equal(s.engine.prettyFor === null, true, 'a cleared view must not retain its old tape and cached index');
+});
+
+test('Copy waiting for pretty output read off a tape gets it in parts, made in steps, never one string', async () => {
+  const s = session();
+  reviewing(s);
+  const {engine, navigator} = s;
+  const {parse: parseTape} = load(resolve(__dirname, '../lib/json/tape-parser'));
+  const {PrettyText, prettyIndexer} = load(resolve(__dirname, '../lib/json/pretty'));
+  const src = '{"a":1}';
+  const tape = parseTape(src);
+  const pretty = new PrettyText(tape, src, '  ', prettyIndexer(tape, src, '  ')(Infinity));
+  let whole = 0;
+  const slice = pretty.slice.bind(pretty);
+  pretty.slice = (...args: number[]) => { if (!args.length) whole++; return slice(...args); };
+  engine.parsedVer = engine.ed.version;
+  engine.fmtKey = 'old settings';
+  engine.fmtOut = 'old output';
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  engine.copyOutput();
+  engine.drawFormat(pretty, engine.fmtSettings());
+  await s.drain();
+  assert.equal(whole, 0, 'pending Copy must use PrettyText.parts(), just as Copy after rendering does');
+  assert.deepEqual(copied, ['{\n  "a": 1\n}']);
 });
