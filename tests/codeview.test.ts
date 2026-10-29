@@ -192,3 +192,36 @@ test('Find going to a match while a big document is laid out again lands on it i
     performance.now = now;
   }
 });
+
+test('Find going to a match while a new text is laid out, that layout restarted by a wrap toggle: it lands in the new rows (R12)', async () => {
+  const { code, rows, el } = view(400);
+  const text = Array.from({ length: 2000 }, (_, i) => '"' + 'x'.repeat(1200) + (i === 1500 ? 'MARKB' : '') + '"').join('\n');
+  type Inner = { vis: Int32Array; rowStart: Int32Array; sc: { top: number }; rFirst: number; hi: number };
+  const inner = code as unknown as Inner;
+  const total = () => inner.rowStart[inner.vis.length];
+  const inView = () => {
+    const k = rows.innerHTML.split('<div class="cv-l').findIndex((r) => r.includes('cv-hit cur')) - 1;
+    const y = (inner.rFirst + k) * 20;
+    return k >= 0 && y >= inner.sc.top && y + 20 <= inner.sc.top + el.clientHeight;
+  };
+  code.setText(text, (t) => t);
+  for (let k = 0; k < 500 && !(inner.vis.length === 2000 && rows.innerHTML); k++) await tick();
+  const now = performance.now;
+  let t = now.call(performance);
+  // Each step finds its time spent: layouts and searches take many steps.
+  performance.now = () => (t += 10);
+  try {
+    // A new output (as the analysis's line index comes), Find going to MARKB in the rows still on screen, then
+    // wrap turned off: the new text's layout starts over.
+    const next = text + '\n"y"';
+    code.setText(next, (t) => t);
+    code.find('markb');
+    for (let k = 0; k < 400 && inner.hi !== 0; k++) await tick();
+    code.setWrap(false);
+    for (let k = 0; k < 4000 && !(inner.vis.length === 2001 && total() === 2001 && inner.hi === 0); k++) await tick();
+    assert.equal(total(), 2001, 'the new text, wrap off');
+    assert.ok(inView(), 'MARKB is in view');
+  } finally {
+    performance.now = now;
+  }
+});

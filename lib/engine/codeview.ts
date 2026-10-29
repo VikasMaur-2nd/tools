@@ -83,8 +83,10 @@ export class CodeView {
   private model: TextModel | LineModel = TextSlices.from('');
   private lineText = new Map<number, string>();
   private layoutSeq = 0;
-  /** The layout in progress when Find last went to a match (see goto). */
+  /** The newest layout started when Find last went to a match (see goto). */
   private jumpSeq = -1;
+  /** The layout whose rows are on screen (see layout). */
+  private shownSeq = 0;
   private textSeq = 0;
   private wrapTextLength = 0;
   /**
@@ -390,7 +392,10 @@ export class CodeView {
       this.html.clear();
       this.sc.fit(starts[starts.length - 1] * RH + 24, this.sizer);
       if (!this.wrapper) this.sizer.style.width = `${Math.ceil((Math.max(3, String(this.ls.length).length) + 5 + index.maxLen + 4) * this.cw + PAD_X * 2)}px`;
-      if (this.q) this.runFind(false);
+      // (These rows are the ones on screen now: see layout's.)
+      const jumped = this.jumpSeq > this.shownSeq;
+      this.shownSeq = layout;
+      if (this.q) this.runFind(jumped, true);
       this.render(true);
       soon(() => { if (seq === this.textSeq) this.onReady?.(); });
     };
@@ -596,8 +601,11 @@ export class CodeView {
       this.sc.fit(rows * RH + 24, this.sizer);
       this.sizer.style.width = wr ? '' : `${Math.ceil(gutter + (index.maxLen + 4) * this.cw + PAD_X * 2)}px`;
       if (at) this.scrollBack(at);
-      // (Find went to a match while these rows were made: it goes to it again in them.)
-      if (this.q) this.runFind(this.jumpSeq === seq, true);
+      // (Find went to a match since the rows on screen were laid out, in rows that these replace, this layout or
+      // one it started over: it goes to it again in them.)
+      const jumped = this.jumpSeq > this.shownSeq;
+      this.shownSeq = seq;
+      if (this.q) this.runFind(jumped, true);
       this.render(true);
     };
     step();
