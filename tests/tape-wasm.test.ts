@@ -323,6 +323,46 @@ describe('Wasm tape parser: the JS tape parser\'s tape, or null', () => {
     assert.ok(big.nodes.length > big.count * W, `${big.nodes.length} for ${big.count} nodes`);
   });
 
+  test('the tape grows to what the document needs, not to the density of its start over the rest (a long string after a dense start)', () => {
+    // (REVIEW-GPT 2: 4,102 nodes reserved ~62 MB, extrapolating the dense start over the 5 MB string.)
+    const sizes: number[] = [];
+    const Original = globalThis.Int32Array;
+    globalThis.Int32Array = class extends Original {
+      constructor(...args: unknown[]) {
+        super(...(args as [number]));
+        if (typeof args[0] === 'number' && args[0] >= 4096 * W) sizes.push(this.byteLength);
+      }
+    } as typeof Int32Array;
+    const tapes = (src: string, bytes: boolean) => {
+      sizes.length = 0;
+      const t = wasmTape(mod, src, {}, bytes ? encoder.encode(src) : undefined)!;
+      return { t, sizes: [...sizes] };
+    };
+    try {
+      for (const bytes of [false, true]) {
+        const src = '[' + '0,'.repeat(4100) + '"' + 'x'.repeat(5_000_000) + '"]';
+        const { t, sizes: long } = tapes(src, bytes);
+        assert.equal(t.count, 4102);
+        // (Its start alone forecasts ~2.5 M nodes: not trusted, the tape grows 4 times over at most.)
+        assert.ok(Math.max(...long) <= 4 * t.count * W * 4, `largest tape ${Math.max(...long)} B for ${t.count} nodes`);
+        // A uniform document still grows its tape a few times at most (the speed of the normal case).
+        const uniform = '[' + Array.from({ length: 60_000 }, (_, i) => `{"id":${i},"name":"item ${i}","tags":["a","b"],"ok":true}`).join(',') + ']';
+        const { t: u, sizes: grown } = tapes(uniform, bytes);
+        assert.equal(u.count, 60_000 * 7 + 1);
+        // (Not counting the copy cut to the exact size at the end: see fitted.)
+        const growths = grown.filter((b) => b !== u.count * W * 4);
+        assert.ok(growths.length <= 3, `${growths.length} growths: ${grown.join(' ')}`);
+        // A pretty-printed records document (under a node per 10 characters) grows as it always did (the forecast, at the first window).
+        const records = JSON.stringify(Array.from({ length: 20_000 }, (_, i) => ({ id: i, name: `item ${i}`, email: `user${i}@example.com`, active: i % 2 === 0, score: i * 1.5, tags: ['a', 'b'] })), null, 2);
+        const { t: rt, sizes: once } = tapes(records, bytes);
+        assert.ok(rt.count * 10 < records.length, `${rt.count} nodes in ${records.length} characters`);
+        assert.ok(once.filter((b) => b !== rt.count * W * 4).length <= 1, `growths: ${once.join(' ')}`);
+      }
+    } finally {
+      globalThis.Int32Array = Original;
+    }
+  });
+
   test(`from bytes, \\r\\n is one unit and a lone \\r one, as in the LF text the page keeps: every window (${cases(1500)} cases)`, () => {
     // (BREAKER-REPORT F16: offsets must be the editor's. From text, the text's own line ends count.)
     const r = rng((SEED || 1) + 51);

@@ -51,6 +51,18 @@ export const SIZE_BIG = 0xffffff;
 export const TRIM_MAX = 64 << 20;
 
 /**
+ * How far a parser's tape may grow ahead of the nodes it holds. A parser forecasts the tape the whole document
+ * needs from how dense it has been, and the rest of the source may be one long string that needs no node. So a
+ * forecast is trusted only if it is at most GROW_MAX times the nodes held, or a node per GROW_TEXT characters of
+ * source (2 bytes of tape a character: the size of the text itself, as UTF-16; records and pretty-printed
+ * documents need less, so they grow once, as they did). Otherwise the tape grows GROW_STEP times over, and
+ * forecasts again when that is full.
+ */
+export const GROW_MAX = 64;
+export const GROW_TEXT = 10;
+export const GROW_STEP = 4;
+
+/**
  * `nodes` cut to its first `count` nodes: the room a parser kept to grow into doesn't stay with the
  * tape. It is a copy, so a tape bigger than TRIM_MAX keeps its room (~5% there, and copying would add
  * the whole tape again to the peak).

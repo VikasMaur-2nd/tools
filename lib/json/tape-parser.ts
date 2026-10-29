@@ -34,6 +34,9 @@ import {
   W,
   emptyTape,
   fitted,
+  GROW_MAX,
+  GROW_STEP,
+  GROW_TEXT,
   valueOf,
   type Tape,
 } from './tape';
@@ -657,7 +660,10 @@ function finish(error: Issue | null): Tape {
 
 // ── The tape ─────────────────────────────────────────────────────────────
 
-/** T with room for `need` numbers, grown to about what the whole document needs (from how dense it has been), so the tape is copied once or twice at most. */
+/**
+ * T with room for `need` numbers, grown to about what the whole document needs (from how dense it has been), so
+ * the big tape is copied once or twice at most; a forecast that runs too far ahead isn't trusted (see GROW_MAX).
+ */
 function grow(need: number, at: number, used: number): Int32Array<ArrayBuffer> {
   const have = T.length / W;
   let want: number;
@@ -667,7 +673,8 @@ function grow(need: number, at: number, used: number): Int32Array<ArrayBuffer> {
     const rate = Math.max(used / Math.max(at, 1), (used - grownCount) / Math.max(at - grownAt, 1));
     // (A small document gets more room to spare: its density varies more, and growing again costs
     // more than the room: big allocations are slow in WebKit.)
-    want = Math.max(Math.ceil(used + (n - at) * rate * (1.04 + Math.min(0.2, 1e6 / n))) + 1024, Math.ceil(have * 1.125));
+    const forecast = Math.ceil(used + (n - at) * rate * (1.04 + Math.min(0.2, 1e6 / n))) + 1024;
+    want = Math.max(forecast <= Math.max(used * GROW_MAX, n / GROW_TEXT) ? forecast : used * GROW_STEP, Math.ceil(have * 1.125));
   }
   // At most one node per character, plus the array JSON Lines are wrapped in.
   want = Math.max(Math.min(want, n + 2), Math.ceil(need / W));

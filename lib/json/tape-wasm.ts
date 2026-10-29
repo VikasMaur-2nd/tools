@@ -10,7 +10,7 @@
  * characters beyond ASCII goes as its UTF-16 units instead of encoded (see UNITS).
  */
 import { decodeString } from './decode';
-import { fitted, SIZE_BIG, W, type Tape } from './tape';
+import { fitted, GROW_MAX, GROW_STEP, GROW_TEXT, SIZE_BIG, W, type Tape } from './tape';
 import type { TapeOptions } from './tape-parser';
 
 interface Exports {
@@ -178,13 +178,14 @@ function run(x: Exports, text: string, options: TapeOptions, bytes: ByteSource |
 
 /**
  * `nodes` with room for `need` nodes (`used` in use), grown to about what the whole document needs:
- * `need` nodes are its share `done` (of `size` bytes). A small document gets more room to spare (up to 24%):
- * its density varies more, and growing again costs more than the room (big allocations are slow in
- * WebKit).
+ * `need` nodes are its share `done` (of `size` bytes), if that doesn't run too far ahead (see GROW_MAX). A small document
+ * gets more room to spare (up to 24%): its density varies more, and growing again costs more than the room
+ * (big allocations are slow in WebKit).
  */
 function grow(nodes: Int32Array<ArrayBuffer>, used: number, need: number, done: number, size: number): Int32Array<ArrayBuffer> {
   const margin = 1.04 + Math.min(0.2, 1e6 / size);
-  const want = Math.max(need, Math.ceil((need / Math.max(done, 1e-6)) * margin) + 1024, Math.ceil((nodes.length / W) * 1.125));
+  const forecast = Math.ceil((need / Math.max(done, 1e-6)) * margin) + 1024;
+  const want = Math.max(need, forecast <= Math.max(need * GROW_MAX, size / GROW_TEXT) ? forecast : need * GROW_STEP, Math.ceil((nodes.length / W) * 1.125));
   const next = new Int32Array(want * W);
   next.set(nodes.subarray(0, used * W));
   return next;
