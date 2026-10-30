@@ -1,3 +1,4 @@
+import { asciiText } from './text';
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, tooDeep, type ParseResult } from './parser';
 
 const byKey = (a: JNode, b: JNode) => {
@@ -12,7 +13,7 @@ const byKey = (a: JNode, b: JNode) => {
  * throws `tooLong()`, a RangeError like the engine's own (see `tooLarge`).
  */
 export const MAX_TEXT = 2 ** 29 - 24;
-const tooLong = () => new RangeError('Invalid string length');
+export const tooLong = () => new RangeError('Invalid string length');
 /** An output too large to make: past MAX_TEXT, or more than the engine or memory could hold. */
 export const tooLarge = (e: unknown) => e instanceof RangeError && /string length|array buffer|array length|allocation/i.test(e.message);
 
@@ -26,6 +27,14 @@ export const quote = (s: string) => (NEEDS_ESCAPE.test(s) ? JSON.stringify(s) : 
  * Open containers are kept on a list rather than the call stack, so any depth the parser accepts can be written.
  */
 export function stringify(root: JNode, indent: string, sortKeys = false): string {
+  // (A tree read from a tape is written from the tape: no node is made. Making them all to write a big loose
+  // document took ~23 bytes a character, GBs at 100 MB.)
+  if (!sortKeys && root.z) return root.z.write(root, indent);
+  return stringifyNodes(root, indent, sortKeys);
+}
+
+/** stringify, from the nodes (tests compare it with the tape's). */
+export function stringifyNodes(root: JNode, indent: string, sortKeys = false): string {
   let out = '';
   const nl = indent ? '\n' : '';
   const colon = indent ? ': ' : ':';
@@ -168,17 +177,31 @@ export function minifiedBytesIn(src: string): (until: number) => number | null |
           const d = src.charCodeAt(i);
           if (d === 34) break;
           if (d === 92) {
-            special = true;
+            // An escape JSON.stringify writes the same way is kept as it stands (two bytes); others are re-quoted.
+            const e = src.charCodeAt(i + 1);
+            if (e === 34 || e === 92 || e === 98 || e === 102 || e === 110 || e === 114 || e === 116) bytes += 2;
+            else special = true;
             i++;
           } else if (d < 32) special = true;
           else if (d < 0x80) bytes++;
           else if (d < 0x800) bytes += 2;
-          else if (d >= 0xd800 && d <= 0xdfff) special = true;
-          else bytes += 3;
+          else if (d >= 0xd800 && d <= 0xdfff) {
+            // A pair is written as it stands (4 bytes); a surrogate alone is escaped.
+            if (d <= 0xdbff && ((src.charCodeAt(i + 1) & 0xfc00) === 0xdc00)) {
+              bytes += 4;
+              i++;
+            } else special = true;
+          } else bytes += 3;
         }
+        // (No closing quote: not a string JSON.parse would read.)
+        if (i >= n) return null;
         i++;
         if (!special) size += bytes;
-        else {
+        else if (requoter && i - a > requoter.min) {
+          const k = requoter.bytes(src, a, i - 1);
+          if (k < 0) return null;
+          size += k;
+        } else {
           try {
             size += byteLength(quote(JSON.parse(src.slice(a, i)) as string));
           } catch {
@@ -200,6 +223,33 @@ function grown(buf: Uint16Array, len: number, k: number) {
   return next;
 }
 
+/**
+ * The text of the first `len` units of `buf`. ASCII (`hi` < 0x80) is made one byte a character: half the
+ * memory of UTF-16, here and wherever the text is sent (see text.ts).
+ */
+function decoded(buf: Uint16Array, len: number, hi: number): string {
+  return hi > 0x7f ? new TextDecoder('utf-16le').decode(buf.subarray(0, len)) : asciiText(buf.subarray(0, len));
+}
+
+/**
+ * Re-quoting long strings in place (requote.ts, which installs itself where it is imported: the workers).
+ * Without it, as on the page (documents under 2 MB), strings are re-quoted natively.
+ */
+export interface Requoter {
+  /** Strings this long (characters) are re-quoted in place; shorter ones natively, which is faster. */
+  min: number;
+  /** Writes token src[a..b] as quote(JSON.parse(token)) would into `out` from `at` (only counts if null): its length, or -1 if JSON.parse would refuse it. */
+  write(src: string, a: number, b: number, out: Uint16Array | null, at: number): number;
+  /** The highest unit the last `write` wrote. */
+  hi: number;
+  /** UTF-8 bytes of what `write` writes for src[a..b], or -1. */
+  bytes(src: string, a: number, b: number): number;
+}
+let requoter: Requoter | null = null;
+export const installRequoter = (r: Requoter) => {
+  requoter = r;
+};
+
 /** A re-indent in steps (see `reindenter`). */
 export interface Reindenter {
   (until: number): string | null | undefined;
@@ -210,9 +260,11 @@ export interface Reindenter {
 /**
  * `reindent` in steps: each call works until the time `until` (from
  * performance.now()) and returns undefined if there's more to do, so a big
- * document is re-indented without one long freeze.
+ * document is re-indented without one long freeze. With a `sink`, the output goes
+ * to it in pieces as they are written (a view of a buffer used again after: read
+ * it at once) and is never held whole; the result is then '' (or null).
  */
-export function reindenter(src: string, indent: string): Reindenter {
+export function reindenter(src: string, indent: string, sink?: (units: Uint16Array) => void): Reindenter {
   const n = src.length;
   const unit = indent.length;
   const iu = unit ? indent.charCodeAt(0) : 0;
@@ -223,7 +275,10 @@ export function reindenter(src: string, indent: string): Reindenter {
   // What may come next (want): 0 value, 1 value or close (array start), 2 key or
   // close (object start), 3 key, 4 colon, 5 comma or close, 6 end of text.
   // special: the next backslash, control character or surrogate (one forward search overall).
-  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(n + (n >> 1) + 64), len: 0, i: 0, want: 0, special: -1 };
+  // `hi`: the highest unit written (ASCII output is made one byte a character: see `decoded`).
+  // (Minified, the output is at most the input bar a few re-quoted strings, which grow the buffer as they come.)
+  const size = sink ? SINK_UNITS : unit ? n + (n >> 1) + 64 : n + 64;
+  const st: Reindent = { src, indent, n, unit, iu, same, stack, buf: new Uint16Array(size), len: 0, i: 0, want: 0, special: -1, hi: 0, sink };
   return Object.assign((until: number) => step(st, until), { at: () => st.i });
 }
 
@@ -240,13 +295,28 @@ interface Reindent {
   i: number;
   want: number;
   special: number;
+  hi: number;
+  sink?: (units: Uint16Array) => void;
+}
+
+/** The output buffer of a reindent into a sink (see reindenter): what it hands on at a time, at most (bar a longer string). */
+const SINK_UNITS = 1 << 16;
+
+/** Room for `k` more units after `len`: the buffer grown, or with a sink what it holds handed on first. */
+function room(st: Reindent, buf: Uint16Array, len: number, k: number): [Uint16Array, number] {
+  if (st.sink && len) {
+    st.sink(buf.subarray(0, len));
+    if (k <= buf.length) return [buf, 0];
+    len = 0;
+  }
+  return [grown(buf, len, k), len];
 }
 
 /** Runs a reindent until `until`; the loop works on locals (closure or object reads per character are slow). */
 function step(st: Reindent, until: number): string | null | undefined {
   {
     const { src, indent, n, unit, iu, same, stack } = st;
-    let { buf, len, i, want, special } = st;
+    let { buf, len, i, want, special, hi } = st;
     for (let steps = 1; ; steps++) {
       if ((steps & 4095) === 0 && performance.now() > until) {
         st.buf = buf;
@@ -254,15 +324,21 @@ function step(st: Reindent, until: number): string | null | undefined {
         st.i = i;
         st.want = want;
         st.special = special;
+        st.hi = hi;
         return undefined;
       }
       let c = src.charCodeAt(i);
       while (c === 32 || c === 10 || c === 13 || c === 9) c = src.charCodeAt(++i);
-      if (i >= n) return want === 6 ? new TextDecoder('utf-16le').decode(buf.subarray(0, len)) : null;
+      if (i >= n) {
+        if (want !== 6) return null;
+        if (!st.sink) return decoded(buf, len, hi);
+        if (len) st.sink(buf.subarray(0, len));
+        return '';
+      }
       if (want === 6) return null;
       // Room for any punctuation plus a line break and its indent.
       const depth = stack.length + 1;
-      if (len + 8 + depth * unit > buf.length) buf = grown(buf, len, 8 + depth * unit);
+      if (len + 8 + depth * unit > buf.length) [buf, len] = room(st, buf, len, 8 + depth * unit);
       let br = -1; // write a line break and indent for this depth after the punctuation
       if (want === 4) {
         if (c !== 58) return null;
@@ -325,18 +401,29 @@ function step(st: Reindent, until: number): string | null | undefined {
           SPECIAL.lastIndex = i;
           special = SPECIAL.exec(src)?.index ?? n;
         }
-        let s: string | null = null;
-        if (special < j) {
+        if (special < j && requoter && j - i >= requoter.min) {
+          // A big string with escapes, control characters or surrogates: re-quoted as JSON.stringify writes it
+          // (counted first), without the copies the native way makes (hundreds of MB for one long string).
+          const k = requoter.write(src, i, j, null, 0);
+          if (k < 0) return null;
+          if (len + k > buf.length) [buf, len] = room(st, buf, len, k);
+          len += requoter.write(src, i, j, buf, len);
+          hi |= requoter.hi;
+        } else if (special < j) {
+          let s: string;
           try {
             s = quote(JSON.parse(src.slice(i, j + 1)) as string);
           } catch {
             return null;
           }
+          const k = s.length;
+          if (len + k > buf.length) [buf, len] = room(st, buf, len, k);
+          for (let m = 0; m < k; m++) hi |= buf[len++] = s.charCodeAt(m);
+        } else {
+          const k = j + 1 - i;
+          if (len + k > buf.length) [buf, len] = room(st, buf, len, k);
+          for (let m = i; m <= j; m++) hi |= buf[len++] = src.charCodeAt(m);
         }
-        const k = s ? s.length : j + 1 - i;
-        if (len + k > buf.length) buf = grown(buf, len, k);
-        if (s) for (let m = 0; m < k; m++) buf[len++] = s.charCodeAt(m);
-        else for (let m = i; m <= j; m++) buf[len++] = src.charCodeAt(m);
         i = j + 1;
         want = want === 2 || want === 3 ? 4 : stack.length ? 5 : 6;
         continue;
@@ -362,7 +449,7 @@ function step(st: Reindent, until: number): string | null | undefined {
       // A literal ends at whitespace or a delimiter (not "truex" or "1x").
       const d = src.charCodeAt(end);
       if (end < n && !(d === 32 || d === 10 || d === 13 || d === 9 || d === 44 || d === 93 || d === 125)) return null;
-      if (len + end - i > buf.length) buf = grown(buf, len, end - i);
+      if (len + end - i > buf.length) [buf, len] = room(st, buf, len, end - i);
       for (let m = i; m < end; m++) buf[len++] = src.charCodeAt(m);
       i = end;
       want = stack.length ? 5 : 6;
@@ -470,19 +557,34 @@ export function preview(node: JNode, budget = 90): string {
 }
 
 const IDENT = /^[A-Za-z_$][\w$]*$/;
-const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
+export const keyLabel = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
 
-/** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without allocating. */
+/** UTF-8 byte length of `s` (or of its characters [from, to): don't split a surrogate pair), without copying it. */
+/** Runs of characters past ASCII (see byteLength). */
+const WIDE_RUN = /[^\x00-\x7f]+/g;
+
 export function byteLength(s: string, from = 0, to = s.length): number {
-  let b = 0;
-  for (let i = from; i < to; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80) b += 1;
-    else if (c < 0x800) b += 2;
-    else if (c >= 0xd800 && c <= 0xdbff && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
-      b += 4;
-      i++;
-    } else b += 3;
+  // (A part of `s` is measured on its own: the search below would run on to the end of `s` past it, over every
+  // part of an ASCII text one after another.)
+  if (from > 0 || to < s.length) {
+    s = s.slice(from, to);
+    from = 0;
+    to = s.length;
+  }
+  // A byte a character, plus what the characters past ASCII (found natively, a run at a time) add.
+  let b = to - from;
+  WIDE_RUN.lastIndex = from;
+  for (let m; (m = WIDE_RUN.exec(s)) && m.index < to; ) {
+    const end = Math.min(to, m.index + m[0].length);
+    for (let i = m.index; i < end; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x800) b += 1;
+      else if (c >= 0xd800 && c <= 0xdbff && i + 1 < to && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
+        // (A pair: 4 bytes for its two units.)
+        b += 2;
+        i++;
+      } else b += 2;
+    }
   }
   return b;
 }

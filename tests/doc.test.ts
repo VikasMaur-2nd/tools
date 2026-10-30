@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Doc } from '../lib/engine/doc';
+import { Doc, lf } from '../lib/engine/doc';
 
 test('a document edited anywhere reads like the string edited the same way', () => {
   let seed = 9;
@@ -98,4 +98,30 @@ test('document deltas compare arbitrary shared-base versions without flattening'
   base.toString = changed.toString = () => { throw new Error('must not flatten'); };
   assert.deepEqual(changed.changeFrom(base), { a: 49_999_990, b: 49_999_991, ins: 'é😀' });
   assert.equal(changed.changeFrom(Doc.of('different')), null);
+});
+
+test('a long text without a CR is looked at once when normalized again (load, then the editor)', () => {
+  const big = '{"a":"' + 'x'.repeat(2_000_000) + '"}';
+  const indexOf = String.prototype.indexOf;
+  let looks = 0;
+  String.prototype.indexOf = function (this: string, ...a: Parameters<string['indexOf']>) {
+    if (this.length === big.length) looks++;
+    return indexOf.apply(this, a);
+  };
+  try {
+    assert.equal(lf(big), big);
+    assert.equal(lf(big), big);
+    assert.equal(lf(big), big);
+    assert.equal(looks, 1);
+    // Another call in between forgets it (nothing kept longer than that).
+    assert.equal(lf('a\r\nb'), 'a\nb');
+    assert.equal(lf(big), big);
+    assert.equal(looks, 2);
+  } finally {
+    String.prototype.indexOf = indexOf;
+  }
+  // A long text with CRs is never taken as clean.
+  const crlf = big.replace('x', '\r\n');
+  assert.equal(lf(crlf), big.replace('x', '\n'));
+  assert.equal(lf(crlf), big.replace('x', '\n'));
 });

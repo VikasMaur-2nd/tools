@@ -1682,6 +1682,8 @@ button.tv-x:hover {
 .cv-n {
   position: sticky;
   left: 0;
+  /* Above the code and its find marks scrolled under it (wrap off). */
+  z-index: 1;
   flex: none;
   width: var(--cv-gw, 6ch);
   padding-right: 24px;

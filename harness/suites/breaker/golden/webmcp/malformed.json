@@ -1,0 +1,191 @@
+[
+ [
+  "open_json",
+  "{}",
+  {
+   "text": "Error: give the document as text."
+  }
+ ],
+ [
+  "open_json",
+  "{\"text\":42}",
+  {
+   "text": "Error: give the document as text."
+  }
+ ],
+ [
+  "open_json",
+  "{\"text\":null}",
+  {
+   "text": "Error: give the document as text."
+  }
+ ],
+ [
+  "open_json",
+  "{\"text\":[\"a\"]}",
+  {
+   "text": "Error: give the document as text."
+  }
+ ],
+ [
+  "open_json",
+  "{\"text\":\"{\\\"a\\\":1}\",\"view\":\"compare\"}",
+  {
+   "text": "Error: view must be one of \"format\", \"tree\", \"table\", \"graph\"."
+  }
+ ],
+ [
+  "open_json",
+  "{\"text\":\"{\\\"a\\\":{\\\"b\\\":[1,2,{\\\"c\\\":\\\"d\\\"}]},\\\"__proto__\\\":{\\\"x\\\":1}}\",\"name\":\"..",
+  {
+   "text": "Valid JSON: an object with 2 keys (47 B, 9 values, nesting depth 4)."
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$[\"}",
+  {
+   "text": "Error: can't read the path \"$[\". Write it as $.users[0].name or /users/0/name."
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$..a\"}",
+  {
+   "text": "Error: can't read the path \"$..a\". Write it as $.users[0].name or /users/0/name."
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"/a/~2\"}",
+  {
+   "text": "Error: can't read the path \"/a/~2\". Write it as $.users[0].name or /users/0/name (in a JSON Pointer, ~ is written ~0 and / is ~1)."
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$.__proto__.x\"}",
+  {
+   "text": "$.__proto__.x is a number.\n\nValue:\n1"
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$['a']['b'][2].c\"}",
+  {
+   "text": "$.a.b[2].c is a string.\n\nValue (the string itself):\nd"
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"/a/b/9\"}",
+  {
+   "text": "Nothing at $.a.b[9]: $.a.b has no item 9. It has 3 items."
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":\"$.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a",
+  {
+   "text": "Nothing at $.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.…: $.a has no key \"a\". It has the keys \"b\"."
+  }
+ ],
+ [
+  "get_json_value",
+  "{\"path\":12}",
+  {
+   "text": "Error: path must be text, such as $.users[0].name or /users/0/name."
+  }
+ ],
+ [
+  "format_json",
+  "{\"style\":\"weird\"}",
+  {
+   "text": "Error: style must be one of \"pretty\", \"minified\", \"escaped\"."
+  }
+ ],
+ [
+  "format_json",
+  "{\"indent\":\"8\"}",
+  {
+   "text": "Error: indent must be one of \"2\", \"4\", \"tab\"."
+  }
+ ],
+ [
+  "convert_json",
+  "{}",
+  {
+   "text": "Error: to must be one of \"typescript\", \"zod\", \"json-schema\", \"csharp\", \"dart\", \"java\", \"python\", \"go\", \"kotlin\", \"swift\", \"php\", \"rust\", \"csv\", \"yaml\", \"xml\", \"toml\", \"jsonl\"."
+  }
+ ],
+ [
+  "convert_json",
+  "{\"to\":\"cobol\"}",
+  {
+   "text": "Error: to must be one of \"typescript\", \"zod\", \"json-schema\", \"csharp\", \"dart\", \"java\", \"python\", \"go\", \"kotlin\", \"swift\", \"php\", \"rust\", \"csv\", \"yaml\", \"xml\", \"toml\", \"jsonl\"."
+  }
+ ],
+ [
+  "convert_json",
+  "{\"to\":\"typescript\",\"root_name\":\"<script>RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+  {
+   "text": "export interface ScriptRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR {\n  a: A;\n  __proto__: Proto;\n}\n\nexport interface A {\n  b: (number | BItem)[];\n}\n\nexport interface BItem {\n  c: string;\n}\n\nexport interface Proto {\n  x: number;\n}\n"
+  }
+ ],
+ [
+  "import_to_json",
+  "{\"from\":\"ini\"}",
+  {
+   "text": "Error: from must be one of \"yaml\", \"xml\", \"csv\", \"tsv\", \"toml\"."
+  }
+ ],
+ [
+  "compare_json",
+  "{}",
+  {
+   "text": "Error: give the other document as text in modified."
+  }
+ ],
+ [
+  "compare_json",
+  "{\"modified\":\"{\\\"a\\\":{\\\"b\\\":[1,2,{\\\"c\\\":\\\"e\\\"}]}\"}",
+  {
+   "text": "2 differences: 1 removed, 1 changed.\n- changed $.a.b[2].c: \"d\" → \"e\"\n- removed $.__proto__: {x: 1}\n\nJSON Patch:\n[\n  {\n    \"op\": \"replace\",\n    \"path\": \"/a/b/2/c\",\n    \"value\": \"e\"\n  },\n  {\n    \"op\": \"remove\",\n    \"path\": \"/__proto__\"\n  }\n]"
+  }
+ ],
+ [
+  "decode_jwt",
+  "{}",
+  {
+   "text": "The open document is not a JWT. Open one with open_json first."
+  }
+ ],
+ [
+  "download_file",
+  "{\"what\":\"passwords\"}",
+  {
+   "text": "Error: what must be one of \"document\", \"formatted\", \"converted\", \"excel\", \"graph\"."
+  }
+ ],
+ [
+  "show_view",
+  "{\"view\":\"compare\"}",
+  {
+   "text": "Error: view must be one of \"format\", \"tree\", \"table\", \"graph\"."
+  }
+ ],
+ [
+  "show_view",
+  "{\"view\":\"tree\"}",
+  {
+   "text": "Showing the tree view."
+  }
+ ],
+ [
+  "share_link",
+  "{\"as\":\"pdf\"}",
+  {
+   "text": "Error: as must be one of \"link\", \"markdown\", \"html\"."
+  }
+ ]
+]

@@ -6,7 +6,7 @@ import { reportError, track, withVia } from '../analytics';
 import type { Engine } from '../engine/engine';
 import { getEngine } from '../engine/instance';
 import { store } from '../engine/store';
-import { TOOLS, type AgentTool, type Page } from './tools';
+import { TOOLS, cap, type AgentTool, type Page } from './tools';
 
 /** The browser's WebMCP object: `document.modelContext`, or `navigator.modelContext` in Chrome's first origin-trial builds. */
 export interface ModelContext {
@@ -79,9 +79,11 @@ async function call(tool: AgentTool, input: unknown): Promise<string> {
         args = {};
       }
     }
+    await engine().agentReady();
     const r = await tool.run(args && typeof args === 'object' ? (args as Record<string, unknown>) : {}, page);
     ok = r.ok;
-    return r.text;
+    // (Each tool keeps its answer within MAX_RESULT; this makes sure.)
+    return cap(r.text);
   } catch (error) {
     reportError(error, 'webmcp');
     return 'Error: this tool failed unexpectedly. The user can do the same in the page.';

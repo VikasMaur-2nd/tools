@@ -4,6 +4,7 @@
  */
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { stringify, toValue } from '../json/format';
+import { formulaSafe } from './formula';
 
 export type Flatten = 'dot' | 'json';
 export type CellValue = string | number | boolean | null;
@@ -258,12 +259,13 @@ export interface CsvOptions {
   bom?: boolean;
 }
 
-/** RFC 4180 CSV (CRLF line endings). null/missing → empty field, "" → `""`. Numbers keep their exact source text. */
+/** RFC 4180 CSV (CRLF line endings). null/missing → empty field, "" → `""`. Numbers keep their exact source text; formula-like text gets a leading ' (formulaSafe). */
 export function toCsv(root: JNode, opts: CsvOptions = {}): string {
   const d = opts.delimiter ?? ',';
   const { h, r } = table(root, opts.flatten ?? 'dot');
   const re = new RegExp('["\\r\\n' + (d === '\t' ? '\\t' : d) + ']');
-  const f = (s: string) => (re.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
+  // (Text that would run as a formula is kept as text: see formulaSafe.)
+  const f = (s: string) => ((s = formulaSafe(s)), re.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
   let out = opts.bom ? '\ufeff' : '';
   if (h.length) out += h.map(f).join(d) + '\r\n';
   for (const row of r) {

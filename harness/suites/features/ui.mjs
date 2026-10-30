@@ -26,7 +26,9 @@ const tipFor = (page, re) => until(page, ([s, f]) => { const t = document.queryS
 test('tooltips: document facts are PRIVATE, site text is not', { allowErrors: true }, async (t) => {
   const { page } = t;
   await t.open('/');
-  // Every state a session recorder could see (it reads the DOM on MutationObserver callbacks).
+  // Every state a session recorder could see (it reads the DOM on MutationObserver callbacks), from when the
+  // tooltip element is made (once the page is idle).
+  t.assert(await until(page, () => !!document.querySelector('.tip'), null, { timeout: 10_000 }), 'the tooltip element is made');
   await page.evaluate(() => {
     window.__tipStates = [];
     const t = document.querySelector('.tip');
@@ -35,13 +37,14 @@ test('tooltips: document facts are PRIVATE, site text is not', { allowErrors: tr
   t.assert(await setDoc(page, JSON.stringify({ a: 1, b: 'x', list: Array.from({ length: 40 }, (_, i) => ({ i, v: 'some value ' + i })) }, null, 2)), 'the document is in');
   await page.getByRole('tab', { name: 'Format' }).click();
   await until(page, () => !!window.__vis('.sb-l .sz-min'), null, { timeout: 10_000 });
-  await page.getByRole('radio', { name: /Minify/ }).hover();
+  // (Where the button is exposed: in a crowded toolbar the Find icon can lie over its centre.)
+  await t.app.hoverExposed(page, page.getByRole('radio', { name: /Minify/ }));
   const m = await tipFor(page, /% smaller/);
   t.check(!!m && /% smaller/.test(m.text) && m.priv && m.shown, 'tooltips: Minify\'s "N% smaller" is PRIVATE', m);
   await page.hover('.statusbar .sz-min');
   const s = await tipFor(page, /smaller than the input/);
   t.check(!!s && /smaller than the input/.test(s.text) && s.priv, 'tooltips: a size tooltip ("…% smaller than the input") is PRIVATE', s);
-  await page.getByRole('radio', { name: /Pretty/ }).hover();
+  await t.app.hoverExposed(page, page.getByRole('radio', { name: /Pretty/ }));
   const p = await tipFor(page, /^Indented and readable$/);
   t.check(!!p && p.text === 'Indented and readable' && !p.priv, 'tooltips: a site tooltip right after is public again', p);
   await page.getByRole('tab', { name: 'Compare' }).click();
@@ -306,13 +309,28 @@ for (const [what, make] of [
   });
 }
 
+const FIND_WORDS = ['Alpha', 'beta', 'Gamma', 'delta', 'EPSILON'];
+const findRecords = () => Array.from({ length: 6000 }, (_, i) => ({ id: i, name: `${FIND_WORDS[i % 5]} item ${i}`, ok: i % 3 === 0, v: i % 7 ? null : 'Straße İstanbul ' + i, n: i * 1.5 }));
+// What PR #26's build and main both answered, in every engine (the old script compared them).
+const FIND_WANT = { alpha: '1 of 1,200', Alpha: '1 of 1,200', 'item 12': '1 of 111', true: '5 of 2,000', null: '11 of 5,142', straße: '3 of 858', i̇stanbul: '3 of 858', '1.5': '2 of 300', zzz: 'No results', '$[3].name': '1 of 1', '$[*].name': 'Concrete paths only' };
+
 test('graph find: counts for a set of queries', async (t) => {
   const { page } = t;
-  const words = ['Alpha', 'beta', 'Gamma', 'delta', 'EPSILON'];
-  const doc = JSON.stringify(Array.from({ length: 6000 }, (_, i) => ({ id: i, name: `${words[i % 5]} item ${i}`, ok: i % 3 === 0, v: i % 7 ? null : 'Straße İstanbul ' + i, n: i * 1.5 })));
-  await graph(t, () => loadText(page, 'find.json', doc));
-  // What PR #26's build and main both answered, in every engine (the old script compared them).
-  const want = { alpha: '1 of 1,200', Alpha: '1 of 1,200', 'item 12': '1 of 111', true: '5 of 2,000', null: '11 of 5,142', straße: '3 of 858', i̇stanbul: '3 of 858', '1.5': '2 of 300', zzz: 'No results', '$[3].name': '1 of 1', '$[*].name': 'Concrete paths only' };
+  await graph(t, () => loadText(page, 'find.json', JSON.stringify(findRecords())));
+  await findCounts(t, FIND_WANT);
+});
+
+test('graph find on a document the worker parsed (a tape): the same counts', async (t) => {
+  const { page } = t;
+  // Over 2 MB, so a worker parses it and the graph is built from its tape. The padding matches no query.
+  const doc = JSON.stringify([...findRecords(), ...Array.from({ length: 9000 }, () => ({ q: 'x'.repeat(200) }))]);
+  await graph(t, () => loadText(page, 'find-big.json', doc));
+  await findCounts(t, FIND_WANT);
+  errorsOk(t);
+});
+
+async function findCounts(t, want) {
+  const { page } = t;
   for (const [q, count] of Object.entries(want)) {
     await page.keyboard.press('Control+f');
     const input = page.locator('.findbar input');
@@ -322,4 +340,4 @@ test('graph find: counts for a set of queries', async (t) => {
     await page.keyboard.press('Escape');
     await page.locator('#view-graph').focus();
   }
-});
+}

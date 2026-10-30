@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ARR, JNode, MAX_DEPTH, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
+import { ARR, JNode, MAX_DEPTH, NO_VALUE, NUM, OBJ, STR, kids, parse, type ParseResult } from '../lib/json/parser';
 import { MAX_INDENT, MAX_TEXT, byteLength, formatDoc, preview, primText, stringify, toValue, tooLarge } from '../lib/json/format';
 import { formatPath, nodeAt, parsePath, pathOf, resolve, type Seg } from '../lib/json/path';
 import { cpuNow } from './timing';
@@ -419,12 +419,14 @@ describe('fuzz: mutated documents', () => {
     },
     checkAny,
   );
-  test('JSON whitespace-only / empty input: no root, no error (editor shows the empty state)', () => {
-    for (const s of ['', ' ', '\n\t\r ']) {
-      const r = parse(s);
-      assert.equal(r.root, null);
-      assert.equal(r.error, null);
-      assert.equal(r.exact, false);
+  test('a document with no value is an error at its end, as in JSON.parse (an editor shows a blank one as empty)', () => {
+    for (const s of ['', ' ', '\n\t\r ', '\ufeff', '\u00a0', '// only a comment', '/* a */ /* b */']) {
+      for (const r of [parse(s), parse(s, { lines: true }), parse(s, { repair: true })]) {
+        assert.equal(r.root, null);
+        assert.deepEqual(r.error, { p: s.length, m: NO_VALUE });
+        assert.equal(r.exact, false);
+        assert.equal(r.multi, false);
+      }
     }
   });
   test('BOM is reported, like JSON.parse rejecting it', () => {
@@ -729,7 +731,7 @@ describe('path.ts', () => {
     assert.deepEqual(parsePath('/a~1b/~0c/~01'), ['a/b', '~c', '~1']);
     assert.deepEqual(parsePath('/'), ['']);
     assert.deepEqual(parsePath('$["a]b"]["c\\"]d"]'), ['a]b', 'c"]d']);
-    for (const bad of ['$.a[', '$.a.', '$[x]', '$["a]', '$[\'a]'])
+    for (const bad of ['$.a[', '$.a.', '$[x]', '$["a]', '$[\'a]', '/a/~2', '/~', '/a~b'])
       assert.equal(parsePath(bad), null, bad);
   });
   test('formatPath / parsePath round trip (random keys)', () => {

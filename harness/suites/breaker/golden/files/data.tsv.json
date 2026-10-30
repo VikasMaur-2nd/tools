@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "82 B raw",
+  "min": "45 B min",
+  "stats": "10 lines · 7 nodes · depth 2"
+ },
+ "toasts": [
+  "Converted data.tsv to JSON"
+ ],
+ "input": "[\n  {\n    \"id\": 1,\n    \"name\": \"Ada\"\n  },\n  {\n    \"id\": 2,\n    \"name\": \"Lin\"\n  }\n]",
+ "formatted": "[\n  {\n    \"id\": 1,\n    \"name\": \"Ada\"\n  },\n  {\n    \"id\": 2,\n    \"name\": \"Lin\"\n  }\n]"
+}

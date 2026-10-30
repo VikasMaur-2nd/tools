@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
@@ -11,13 +12,10 @@ import { store, useUI, type IndentId, type JwtInfo, type View } from '@/lib/engi
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
-import { startTooltips } from '@/lib/tooltips';
 import { startAgentTools } from '@/lib/webmcp';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
 import { Kbd } from './Kbd';
-import { CommandPalette, ShortcutsDialog } from './dialogs';
-import ContextMenu from './ContextMenu';
 import { EditorFoldItems, FoldItems, MCheck, MChoice, MHead, MItem, MLink, MSep, Menu, WrapItem } from './menu';
 
 function Btn({
@@ -325,10 +323,11 @@ function FindBar() {
   const { open, q, total, index, note, seq } = useUI((s) => s.find);
   const view = useUI((s) => s.settings.view);
   if (!open || view === 'compare') return null;
-  return <FindInput key={seq} initial={q} total={total} index={index} note={note} view={view} />;
+  return <FindInput key={seq} initial={q} q={q} total={total} index={index} note={note} view={view} />;
 }
 
-function FindInput({ initial, total, index, note, view }: { initial: string; total: number; index: number; note?: string; view: View }) {
+/** `q`: the query `total` and `index` are for (the text typed may be newer, its search still to run). */
+function FindInput({ initial, q, total, index, note, view }: { initial: string; q: string; total: number; index: number; note?: string; view: View }) {
   const t = useT();
   const [text, setText] = useState(initial);
   const timer = useRef(0);
@@ -367,7 +366,7 @@ function FindInput({ initial, total, index, note, view }: { initial: string; tot
         autoComplete="off"
       />
       <span className="count" aria-live="polite" title={note && t.msg(note)}>
-        {text ? (total ? t('{i} of {total}', { i: t.num(index + 1), total: total >= 100000 ? '100k+' : t.num(total) }) : t(note ? 'Concrete paths only' : 'No results')) : ''}
+        {text && text === q ? (total ? t('{i} of {total}', { i: t.num(index + 1), total: total >= 100000 ? '100k+' : t.num(total) }) : t(note ? 'Concrete paths only' : 'No results')) : ''}
       </span>
       <button type="button" className="btn icon sm" aria-label={t('Previous match')} onClick={() => act((e) => e.findStep(-1))}>
         <Icon name="up" size={14} />
@@ -768,6 +767,43 @@ function ViewerPane({
   );
 }
 
+// Opened by a key, a menu or a right click: loaded once the page is idle (not with its own loading), or at
+// once if opened before. (The menu's portal is made here, so react-dom stays with the first load alone.)
+const CommandPalette = dynamic(() => import('./dialogs').then((m) => m.CommandPalette), { ssr: false });
+const ShortcutsDialog = dynamic(() => import('./dialogs').then((m) => m.ShortcutsDialog), { ssr: false });
+const ContextMenuPopup = dynamic(() => import('./ContextMenu'), { ssr: false });
+
+/** True once the page has been idle after it started. */
+function useIdle() {
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    let gone = false;
+    idle(() => {
+      if (!gone) setDone(true);
+    });
+    return () => {
+      gone = true;
+    };
+  }, []);
+  return done;
+}
+
+function Dialogs() {
+  const open = useUI((s) => !!s.palette || s.shortcuts);
+  const later = useIdle();
+  return open || later ? (
+    <>
+      <CommandPalette />
+      <ShortcutsDialog />
+    </>
+  ) : null;
+}
+
+function ContextMenu() {
+  const open = useUI((s) => s.menu);
+  return open ? createPortal(<ContextMenuPopup key={open.id} m={open} />, document.body) : null;
+}
+
 // The graph's export dialog is code-split too: it loads the first time it opens
 // (and is prefetched with Compare, for offline use).
 const GraphExportDialog = dynamic(() => import('./GraphExport'), { ssr: false });
@@ -899,7 +935,7 @@ function StatusMsg() {
           <span className="st-msg">{status.jsonl ? t.n(status.jsonl, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}</span>
           {status.warnings > 0 && (
             <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg && t.msg(status.msg)}>
-              · {t.n(status.warnings, '{n} duplicate key', '{n} duplicate keys')}
+              · {status.more ? t('{n}+ duplicate keys', { n: t.num(status.warnings) }) : t.n(status.warnings, '{n} duplicate key', '{n} duplicate keys')}
             </button>
           )}
         </span>
@@ -928,8 +964,10 @@ function Sizes() {
   const sizes = useUI((s) => s.sizes);
   // A JWT input has no minified form of its own: just its raw size.
   const parsed = useUI((s) => (s.status.kind === 'valid' && !s.status.jwt) || s.status.kind === 'fixable');
+  // (While a document loads, what is known is the one before's.)
+  const loading = useUI((s) => s.status.kind === 'parsing');
   const t = useT();
-  if (raw === undefined) return null;
+  if (raw === undefined || loading) return null;
   const less = (n: number) => (raw > n ? t(' · ') + t('{percent}% smaller than the input', { percent: Math.round((1 - n / raw) * 100) }) : '');
   return (
     <span className={sizes?.stale ? 'sizes stale' : 'sizes'}>
@@ -963,8 +1001,9 @@ function Sizes() {
 
 function Stats() {
   const stats = useUI((s) => s.stats);
+  const loading = useUI((s) => s.status.kind === 'parsing');
   const t = useT();
-  if (!stats) return null;
+  if (!stats || loading) return null;
   return (
     <span className="stats muted" title={t('Parsed in {ms} ms', { ms: t.lang ? t.num(Math.round(stats.ms * 10) / 10) : stats.ms.toFixed(1) })}>
       {t.n(stats.lines, '{n} line', '{n} lines')} · {t.n(stats.nodes, '{n} node', '{n} nodes')} · {t('depth {depth}', { depth: stats.depth })}
@@ -1104,8 +1143,20 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const comparing = useUI((s) => s.settings.view === 'compare');
   const empty = useUI((s) => s.empty);
 
-  // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views.
-  useEffect(() => startTooltips(), []);
+  // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views (loaded once the page is idle).
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let gone = false;
+    idle(() =>
+      void import('@/lib/tooltips').then((m) => {
+        if (!gone) stop = m.startTooltips();
+      }),
+    );
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, []);
 
   // Stops the engine below, once. Leaving the page, Next.js keeps its DOM, hidden (an <Activity>): this layout
   // effect's cleanup runs as it hides, before the browser lays the hidden tool out. The effect cleanup below
@@ -1135,6 +1186,8 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
     // A landing page's sample loads in the next task: hydration and the empty editor
     // paint first, and neither half is one long blocking task on a slow phone.
     const sample = pagePreset?.initialText ? window.setTimeout(() => e.applyPreset(pagePreset), 0) : 0;
+    // The context menu loads once the page is idle, before a right click needs it.
+    idle(() => void import('./ContextMenu'));
     const warm = window.setTimeout(() => idle(() => {
       void import('./CompareView');
       void import('./GraphExport');
@@ -1172,8 +1225,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <StatusBar langs={langs} />
       <ToastHost />
       <DropOverlay />
-      <CommandPalette />
-      <ShortcutsDialog />
+      <Dialogs />
       <ContextMenu />
       <GraphExportHost />
       <input ref={fileRef} className={PRIVATE} type="file" accept=".json,.geojson,.jsonl,.ndjson,.har,.map,.txt,.log,.csv,.tsv,.yaml,.yml,.xml,.toml,application/json,text/plain" hidden />

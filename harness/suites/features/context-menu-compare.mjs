@@ -75,7 +75,9 @@ test('the Changes list', async (t) => {
   t.check(m?.items.includes('Ignore array order✓'), 'and the menu shows it checked', m?.items);
   await pick(page, 'Ignore array order');
   await until(page, () => document.querySelectorAll('.cmp-opt')[1]?.getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
-  await until(page, (s) => document.querySelectorAll(s).length >= 3, ROW, { timeout: 5000 });
+  // (The list from before has 3 rows too: wait for the comparison with the new option, or the one it makes after
+  // Next difference starts again at the first row.)
+  await until(page, (s) => !document.querySelector('.cmp.stale') && document.querySelectorAll(s).length >= 3, ROW, { timeout: 5000 });
   await rightClickOn(page, ROW);
   await pick(page, 'Next difference');
   const selN = await until(page, () => document.querySelector('.cmp-list [aria-current="true"], .cmp-list .sel')?.getAttribute('data-i') === '1' && '1', null, { timeout: 3000 }).then(async (v) => v || selected(page));

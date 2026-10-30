@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Ln 1, Col 2: Multiple top-level values (wrapped in an array)",
+  "kind": "err",
+  "raw": "1.7 MB raw",
+  "min": null,
+  "stats": "7,808 lines · 4 nodes · depth 1"
+ },
+ "toasts": [
+  "random.json looks like a binary file, not JSONOpen as text",
+  "Opened random.json"
+ ],
+ "input": "947429:51af4239"
+}

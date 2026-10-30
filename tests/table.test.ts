@@ -215,3 +215,15 @@ test('scrolling on draws only the rows coming into view, and they read as a full
   }
   assert.ok(full > 800 && drawn < full / 2, `${drawn} rows drawn, ${full} redrawn whole`);
 });
+
+test('Copy table as CSV keeps formula-like text from running in a spreadsheet; numbers stay numbers', () => {
+  const { view } = table('[{"=k": "=1+1", "n": -5, "s": "-5", "t": "@SUM(A1)", "u": "\\t=1", "v": "plain"}]');
+  assert.equal(view.toCSV(), "'=k,n,s,t,u,v\r\n'=1+1,-5,-5,'@SUM(A1),'\t=1,plain");
+});
+
+test('a duplicated key shows its last value, as everything else reads it (JSON.parse, Compare, YAML)', () => {
+  assert.equal(table('[{"a":1,"a":2},{"a":3}]').view.toCSV(), 'a\r\n2\r\n3');
+  // (Rows of many keys are looked up through a map.)
+  const wide = '{' + Array.from({ length: 14 }, (_, i) => `"k${i}":${i}`).join(',') + ',"k0":"last"}';
+  assert.equal(table(`[${wide}]`).view.toCSV().split('\r\n')[1].split(',')[0], 'last');
+});

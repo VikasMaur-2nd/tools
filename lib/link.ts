@@ -25,6 +25,13 @@ const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', '
  * to gigabytes while it decompresses.
  */
 export const MAX_DOCUMENT = 300 * 1024 * 1024;
+/**
+ * The largest document a share link opens without asking. A link compresses its document,
+ * hundreds of times for repetitive JSON: a 130 KB link (it fits a README badge) can hold
+ * 100 MB of numbers, more values than a tab holds. Real links stay well under this (a 2 MB
+ * link, the longest browsers open, of JSON compressed 10 times is 20 MB).
+ */
+export const LINK_DOCUMENT = 32 * 1024 * 1024;
 
 /**
  * The longest link browsers open, measured on 2026-10-22 (Playwright 1.64; links clicked

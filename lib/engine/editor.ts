@@ -1,9 +1,10 @@
-import { Doc } from './doc';
+import { Doc, lf } from './doc';
 import { bidiContext, escapeHtml, highlightLine, jwtLine, mayReorder, StringStates, stringState, trimWs, type Mark } from './highlight';
 import type { Surface } from './surface';
 import { TallScroll } from './tall';
 import { foldScanner, foldsAround, foldSig, lineEndIn, lineOfIn, lineStarts, maxWidth, patchLines, scanFolds, shiftFoldLines, widest } from './lines';
-import { LONG_LINE, Wrapper, type Src } from './wrap';
+import { asciiRows, clusterStart, CUT, LONG_LINE, Wrapper, type Src } from './wrap';
+import { soon } from './idle';
 import { rt } from '../i18n/ui';
 
 /*
@@ -37,6 +38,10 @@ import { rt } from '../i18n/ui';
  */
 
 export const LH = 20;
+/** From this many display rows, a text laid out afresh is laid out in steps (see wrapInSteps). */
+const STEP_ROWS = 200_000;
+/** Each step's length in ms (input waits at most about this long). */
+const STEP_MS = 8;
 const PAD_T = 10;
 const PAD_B = 48;
 const PAD_L = 16;
@@ -87,7 +92,10 @@ export function loadSurface() {
     surfaceLoad = undefined;
   })());
 }
-/** Edits inserting at most this much patch the line state (see model); bigger ones rescan. */
+/**
+ * Edits inserting at most this much, or less than half the text they make, patch the line state (see model): its
+ * cost is the inserted text's and the lines' after it. Bigger ones (all of a text replaced) rescan it.
+ */
 const PATCH_CHARS = 1 << 16;
 /**
  * The document an editor leaves to the next editor on the same textarea. Next.js keeps a page's DOM while the
@@ -114,6 +122,12 @@ export interface EditorEvents {
    * `edit`: the input edits, so the document is editable at once (else it arrives as it would have).
    */
   flush?(edit: boolean): void;
+  /** Undo or Redo went past a load (see setValue), or a paste over everything: the file name of the document shown now. */
+  renamed?(name: string | null): void;
+  /** The file name of the document it holds: a paste over all of it leaves that file (Undo tells it again, see renamed). */
+  name?(): string | null;
+  /** Undo is about to be applied: true if the listener takes it instead (a document still being read, undone once it arrives). */
+  undoing?(): boolean;
 }
 
 /** Colours [a, b) of `text`, which starts at document offset `at`, as escaped HTML: for a document that isn't JSON (see setColors). */
@@ -132,12 +146,11 @@ interface Change {
   selA: [number, number];
   t: number;
   kind: 'type' | 'del' | 'other';
+  /** The file names before and after a load (see setValue) or a paste over everything: told on undo and redo. */
+  names?: [string | null, string | null];
 }
 
 const LINE_MARK = ['', 'dla', 'dld', 'dlc'];
-
-/** Textareas normalize line endings; the model must match them offset for offset. */
-const lf = (s: string) => (s.indexOf('\r') === -1 ? s : s.replace(/\r\n?/g, '\n'));
 
 /** Smallest changed range between two strings: [start, oldEnd, newEnd]. `hint` is a likely start. */
 function diffRange(old: string, now: string, hint: number): [number, number, number] {
@@ -331,10 +344,12 @@ export class Editor {
   private locked = false;
   /** Soft wrap (null: off). */
   private wrapper: Wrapper | null = null;
+  /** The text wants the big-document editor, whose module is still on its way (see model). */
+  private surfaceDue = false;
   /** While wrapping: the first visual row of each display line (length rows + 1). */
   private wy: Int32Array | null = null;
-  /** While wrapping: 1 for display lines whose breaks the browser decides (Wrapper.odd). */
-  private wodd = new Uint8Array(0);
+  /** While wrapping: 1 for display lines whose breaks the browser decides, CUT for binary (Wrapper.odd). */
+  private wodd: Uint8Array = new Uint8Array(0);
   /** Text or folds changed since rows were last wrapped. */
   private wrapDirty = true;
   private strs = new StringStates();
@@ -532,7 +547,7 @@ export class Editor {
     let around = false;
     /** The edit kept every line's part in the fold structure, and the line count. */
     let kept = false;
-    if (edit && fits && edit.ins.length <= PATCH_CHARS) {
+    if (edit && fits && (edit.ins.length <= PATCH_CHARS || edit.ins.length * 2 <= doc.length)) {
       // A bounded edit: patch the line starts and the widest line instead of rescanning the document.
       const { a, b, ins } = edit;
       const ls = this.ls;
@@ -574,6 +589,7 @@ export class Editor {
       const lb = near ? lineOfIn(this.ls, edit.b) : -1;
       const { ls, max, tabs } = lineStarts(doc.toString());
       doc.knowTabs(tabs);
+      if (doc.flat !== null) this.wrapper?.knowTabs(doc.flat, tabs);
       this.maxStale = false;
       if (near && ls.length >= FOLD_EDIT_LINES) {
         folds = foldsAround(this.close, this.depth, la, lb, countLines(edit.ins, Infinity));
@@ -606,15 +622,20 @@ export class Editor {
     const want = this.wantsSurface(1);
     const wait = len > NATIVE_CHARS && !SurfaceClass;
     const quiet = wait || ((!want || !SurfaceClass) && (this.view ? this.lazy : this.loading && len > LAZY_CHARS));
-    const view = (wait || !this.forceEdit) && quiet && !(fromTa && !this.view);
+    // (Text pasted or dropped into the textarea by the browser goes there too, as a big paste of ours does:
+    // the textarea emptied before it lays millions of characters out, which took Firefox minutes.)
+    const view = (wait || !this.forceEdit) && quiet && !(fromTa && !this.view && !this.dropIn);
     this.lazy = view;
     // A user edit keeps the big-document editor until the text (or its longest line) is well under the
     // threshold (no flip-flopping at it), and never leaves it mid-composition (see onCompEnd).
     let custom = !view && (want || (!!this.surface && fromTa && (this.wantsSurface(0.8) || this.compOld !== null)));
+    // (Until it arrives, the textarea's rows needn't be matched: see rewrap.)
+    this.surfaceDue = want && !SurfaceClass;
     if (want && !SurfaceClass) {
       // Native editing until the module arrives (it is usually cached already), then switch.
       custom = false;
       void loadSurface().then(() => {
+        this.surfaceDue = false;
         if (this.gone || !SurfaceClass || this.surface || !this.el.isConnected || !this.wantsSurface(1)) return;
         // Switch to it, from the textarea or from the quiet view it was waiting in. Focus in that view (a big
         // paste moves it there) goes on in the editor at its caret, as when the user asked to edit meanwhile:
@@ -660,6 +681,8 @@ export class Editor {
       this.ev.caret();
     } else if (switched) this.ev.caret();
     this.wrapDirty = true;
+    // (A new text laid out afresh: a big one in steps, see rewrap.)
+    if (doc !== old && fresh) this.wrapFresh = true;
     this.layout();
     this.updateCaret();
     this.placeScope();
@@ -674,6 +697,7 @@ export class Editor {
       get length() { return doc().length; },
       slice: (a, b) => this.doc.slice(a, b),
       charCodeAt: (i) => this.doc.charCodeAt(i),
+      between: (off) => clusterStart(this.doc, 0, off),
       line: (off) => { const ln = this.lineOf(off); return [this.ls[ln], this.lineEnd(ln)]; },
       edit: (a, b, text, kind) => this.surfaceEdit(a, b, text, kind),
       moved: (nav, reveal) => this.surfaceMoved(nav, reveal),
@@ -1090,7 +1114,7 @@ export class Editor {
     const k = this.rowOf(ln);
     const wy = this.wy;
     if (!wy || !this.wrapper || this.lineAt(k) !== ln) return this.yOf(k);
-    return wy[k] + this.wrapper.rowAt(this.src, this.ls[ln], this.lineEnd(ln), off, this.wodd[k] === 1, wy[k + 1] - wy[k]);
+    return wy[k] + this.wrapper.rowAt(this.src, this.ls[ln], this.lineEnd(ln), off, this.wodd[k], wy[k + 1] - wy[k]);
   }
 
   /** Model offsets [start, end) of wrapped row `sub` of display row `k`. */
@@ -1101,7 +1125,7 @@ export class Editor {
     const wr = this.wrapper;
     if (!wr || !this.wy) return [a, b];
     const rows = this.wy[k + 1] - this.wy[k];
-    const odd = this.wodd[k] === 1;
+    const odd = this.wodd[k];
     const t = this.src;
     return [a + wr.rowStart(t, a, b, sub, odd), sub + 1 < rows ? a + wr.rowStart(t, a, b, sub + 1, odd) : b];
   }
@@ -1122,6 +1146,8 @@ export class Editor {
         this.render(true);
       };
     this.wy = null;
+    this.wrapJob = null;
+    this.keepLines(null, null, null);
     this.wrapDirty = true;
     this.el.classList.toggle('wrap', on);
     this.ta.wrap = on && !this.surface ? 'soft' : 'off';
@@ -1143,8 +1169,8 @@ export class Editor {
   private lineEdit: [number, number] | null = null;
   /**
    * Arrays for rewrap, two of each in turn (the wrapper keeps the last call's
-   * lines): a document of a million lines would otherwise allocate megabytes
-   * per key.
+   * lines; see lineBounds and display): a document of a million lines would
+   * otherwise allocate megabytes per key.
    */
   private bufs: Int32Array[] = [];
   private flip = 0;
@@ -1160,39 +1186,157 @@ export class Editor {
     const resized = wr.fit(space, this.cw);
     if (resized) this.el.style.setProperty('--tw', `${wr.width}px`);
     // Without the textarea (view mode) nothing has to line up with it: long lines can be summed.
-    const moded = wr.setExact(!this.view && !this.surface);
+    // Rows match the textarea's while it shows the text, but not for a big text waiting for the big-document
+    // editor: laying a line of millions of characters out to match took Firefox minutes, for a textarea about to go.
+    const moded = wr.setExact(!this.view && !this.surface && !this.surfaceDue);
     if (!resized && !moded && !this.wrapDirty && this.wy) return;
     this.wrapDirty = false;
-    const n = this.rows;
-    this.flip ^= 1;
-    const A = this.buf(this.flip * 3, n);
-    const B = this.buf(this.flip * 3 + 1, n);
-    const ls = this.ls;
-    if (!this.vis) {
-      for (let k = 0; k + 1 < n; k++) {
-        A[k] = ls[k];
-        B[k] = ls[k + 1] - 1;
-      }
-      A[n - 1] = ls[n - 1];
-      B[n - 1] = this.doc.length;
-    } else {
-      for (let k = 0; k < n; k++) {
-        const ln = this.lineAt(k);
-        A[k] = ls[ln];
-        B[k] = this.lineEnd(ln);
-      }
-    }
-    // An edit of lines [la, end) of an unfolded text: the wrapper needn't compare the others to find them.
+    const src = this.src;
+    const job = this.wrapJob;
+    // (Every line's rows are being counted in steps for this text: the display, folded or not, guesses them meanwhile.)
+    if (job && !resized && !moded && job.wr === wr && job.text === src) return this.display(null, null);
+    this.wrapJob = null;
+    // Only the folds changed: every line's rows stand, and the display is made of them (no line wrapped again).
+    if (!resized && !moded && !this.wrapFresh && wr.reuses && this.lineWr === wr && this.lineText === src && this.lineRows) return this.display(this.lineRows, this.lineOdd);
+    // A big text laid out afresh (a new one, or after a new width, mode or font, or an edit of one still being
+    // laid out: nothing of the last layout is reused) is counted in steps, the view usable meanwhile: see
+    // wrapInSteps. Matching a textarea, rows are counted at once.
+    const fresh = this.wrapFresh || !wr.reuses;
+    this.wrapFresh = false;
+    const L = this.ls.length;
+    if (fresh && !wr.exact && wr.cols && L >= STEP_ROWS) return this.wrapInSteps(wr);
+    const [A, B] = this.lineBounds();
+    // An edit of lines [la, end): the wrapper needn't compare the others to find them.
     const edit = this.wrapEdit ?? undefined;
-    const rows = wr.rows(this.src, A, B, edit, edit && !this.vis && this.lineEdit ? this.lineEdit : undefined);
+    const rows = wr.rows(src, A, B, edit, edit && this.lineEdit ? this.lineEdit : undefined);
     this.wrapEdit = null;
     this.lineEdit = null;
     this.wrapText = this.doc;
-    const wy = this.buf(this.flip * 3 + 2, n + 1);
+    this.keepLines(wr, src, rows);
+    this.display(rows, wr.odd);
+  }
+
+  /**
+   * Every line's rows (the wrapper's last count, of every line of `lineText`, folded or not): a fold or unfold
+   * only makes the display of them again. (The wrapper's arrays, which the next count may reuse: see recycle.)
+   */
+  private lineRows: Int32Array | null = null;
+  private lineOdd: Uint8Array | null = null;
+  private lineText: Src | null = null;
+  private lineWr: Wrapper | null = null;
+
+  private keepLines(wr: Wrapper | null, text: Src | null, rows: Int32Array | null) {
+    this.lineWr = wr;
+    this.lineText = text;
+    this.lineRows = rows;
+    this.lineOdd = wr && rows ? wr.odd : null;
+  }
+
+  /** Every line's bounds [A[k], B[k]) for the wrapper: two pairs of arrays in turn (it keeps the last call's). */
+  private lineBounds(): [Int32Array, Int32Array] {
+    const ls = this.ls;
+    const n = ls.length;
+    this.flip ^= 1;
+    const A = this.buf(this.flip * 2, n);
+    const B = this.buf(this.flip * 2 + 1, n);
+    for (let k = 0; k + 1 < n; k++) {
+      A[k] = ls[k];
+      B[k] = ls[k + 1] - 1;
+    }
+    A[n - 1] = ls[n - 1];
+    B[n - 1] = this.doc.length;
+    return [A, B];
+  }
+
+  /** wy and wodd of the display rows (folds hide lines) from every line's rows and flags, or (null) its length as ASCII. */
+  private display(rows: Int32Array | null, odd: Uint8Array | null) {
+    const n = this.rows;
+    const vis = this.vis;
+    const ls = this.ls;
+    const cols = (this.wrapper as Wrapper).cols;
+    // (The wy shown until now stays as it was: a view kept across a new layout is read from it, see viewAt.)
+    this.wyFlip ^= 1;
+    const wy = this.buf(4 + this.wyFlip, n + 1);
     wy[0] = 0;
-    for (let k = 0; k < n; k++) wy[k + 1] = wy[k] + rows[k];
+    for (let k = 0; k < n; k++) {
+      const ln = vis ? vis[k] : k;
+      wy[k + 1] = wy[k] + (rows ? rows[ln] : asciiRows(this.lineEnd(ln) - ls[ln], cols));
+    }
     this.wy = wy;
-    this.wodd = wr.odd;
+    if (!odd) this.wodd = new Uint8Array(n);
+    else if (!vis) this.wodd = odd;
+    else {
+      const w = (this.oddBufs[this.wyFlip] = this.oddBufs[this.wyFlip]?.length === n ? this.oddBufs[this.wyFlip] : new Uint8Array(n));
+      for (let k = 0; k < n; k++) w[k] = odd[vis[k]];
+      this.wodd = w;
+    }
+  }
+
+  /** wy's arrays, two in turn (see display), and wodd's while folded. */
+  private wyFlip = 0;
+  private oddBufs: Uint8Array[] = [];
+
+  /** A whole-text layout still being counted in steps (see wrapInSteps): what it is of. */
+  private wrapJob: { wr: Wrapper; text: Src } | null = null;
+  /** The next layout is of a new text (see model): nothing of the last one's rows is reused. */
+  private wrapFresh = false;
+
+  /**
+   * Lays out a big text's lines in steps (a million lines took seconds in one task): at once, each line takes
+   * the rows its length would as ASCII text (most lines do; one with wide or joined characters may overflow
+   * its rows a moment, and its rows start off its clusters); its real rows come in steps of a few ms, and
+   * replace those in one go, the line and character at the top of the view kept there. Folds meanwhile only
+   * change which lines are shown.
+   */
+  private wrapInSteps(wr: Wrapper) {
+    const [A, B] = this.lineBounds();
+    // (Edit hints are against the last layout: this one counts every line.)
+    this.wrapEdit = null;
+    this.lineEdit = null;
+    const src = this.src;
+    const run = wr.rowsInSteps(src, A, B);
+    const job = { wr, text: src };
+    this.wrapJob = job;
+    this.keepLines(null, null, null);
+    this.display(null, null);
+    const step = () => {
+      if (this.gone || this.wrapJob !== job) return;
+      const rows = run(performance.now() + STEP_MS);
+      if (rows === undefined) return void soon(step);
+      this.wrapJob = null;
+      if (rows === null) {
+        // (The width, the mode or the fonts changed meanwhile: laid out again, in steps again.)
+        this.wrapFresh = true;
+        this.wrapDirty = true;
+        this.layout();
+      } else {
+        const at = this.viewAt();
+        this.wrapText = this.doc;
+        this.keepLines(wr, src, rows);
+        this.display(rows, wr.odd);
+        this.layout();
+        this.scrollBack(at);
+      }
+      this.updateCaret();
+      this.placeScope();
+      this.render(true);
+    };
+    soon(step);
+  }
+
+  /** The character at the top of the view and how far above it the view starts, for scrollBack after a new layout. */
+  private viewAt() {
+    const top = this.sc.top;
+    const r = Math.max(0, Math.floor((top - PAD_T) / LH));
+    const k = this.kAt(r);
+    const sub = r - this.yOf(k);
+    const off = sub > 0 ? this.rowSpan(k, sub)[0] : this.ls[this.lineAt(k)];
+    return { off, dy: top - (PAD_T + r * LH) };
+  }
+
+  /** Scrolls back to `at` (see viewAt) in the rows now laid out. */
+  private scrollBack(at: { off: number; dy: number }) {
+    this.sc.top = Math.max(0, PAD_T + this.vrowOf(at.off) * LH + at.dy);
   }
 
   /** Display row containing textarea offset `off`. */
@@ -1393,7 +1537,7 @@ export class Editor {
     // widths may be stale (a font just arrived); failing that, this browser
     // breaks ASCII its own way, so measure every line.
     const wr = this.wrapper;
-    if (wr?.cols && this.wy && !this.view && !this.surface && !this.healing && this.overflows()) {
+    if (wr?.cols && wr.exact && this.wy && !this.view && !this.surface && !this.healing && this.overflows()) {
       this.healing = true;
       this.measure();
       wr.reset();
@@ -1553,19 +1697,21 @@ export class Editor {
       const marks = this.marksFor(ln);
       const lm = this.lineMarks ? this.lineMarks[ln] : 0;
       const ph = this.folded.has(ln) ? this.foldPill(ln) : '';
-      if (rows > 1 && b - a > LONG_LINE) {
-        const odd = this.wodd[k] === 1;
+      // (Garbage, too, is drawn as its rows: see Wrapper.summed.)
+      if (rows > 1 && (b - a > LONG_LINE || this.wodd[k] === CUT)) {
+        const flag = this.wodd[k];
+        const odd = flag !== 0;
         const s0 = Math.max(0, r0 - y);
         const s1 = Math.min(rows, r1 - y);
         if (top < 0) top = y + s0;
-        let sa = a + wr.rowStart(doc, a, b, s0, odd);
+        let sa = a + wr.rowStart(doc, a, b, s0, flag);
         // The rows on screen and the neighbours read around them, from one string at offset `o`.
-        const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, odd) : b;
+        const ea = s1 < rows ? a + wr.rowStart(doc, a, b, s1, flag) : b;
         const [t, o] = this.win(Math.max(a, sa - 64), Math.min(b, ea + 64) + 1);
         const ms = moved(marks, o);
         let str = this.jwt || this.colors ? 0 : this.strs.at(doc, a, sa);
         for (let sub = s0; sub < s1; sub++) {
-          const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, odd) : b;
+          const sb = sub + 1 < rows ? a + wr.rowStart(doc, a, b, sub + 1, flag) : b;
           const end = sb === b;
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa - o, sb - o) + o : sb;
@@ -1903,11 +2049,22 @@ export class Editor {
     this.typing = true;
     this.tabMovesFocus = false;
     if (it !== 'insertFromPaste') this.pasteFull = false;
-    if (!this.sync()) return;
+    // (Pasted or dropped by the browser itself, as when its paste event carried no text: see model.)
+    this.dropIn = it === 'insertFromPaste' || it === 'insertFromDrop';
+    try {
+      if (!this.sync()) return;
+    } finally {
+      this.dropIn = false;
+    }
+    // Gone to the quiet view meanwhile, as a big paste of ours does: the editor takes the keys there.
+    if (this.view) this.el.focus({ preventScroll: true });
     // An IME composition is recorded once, when it ends.
     if (this.compOld === null) this.record(old, this.doc, it);
     this.ev.change(it === 'insertFromPaste' || it === 'insertFromDrop' ? 'paste' : 'input');
   };
+
+  /** The browser pasted or dropped text into the textarea itself (see onInput). */
+  private dropIn = false;
 
   /**
    * Brings the model up to date with the textarea after a native edit: the
@@ -1999,8 +2156,11 @@ export class Editor {
       return;
     }
     this.compOld = null;
-    this.sync();
+    const changed = this.sync();
     if (old !== null) this.record(old, this.doc, 'insertText');
+    // (Firefox fires the commit's input event after this one, Chromium before: a change only this sync finds
+    // is passed on here, and the input event then finds nothing to pass on.)
+    if (changed) this.ev.change('input');
   };
 
   private onPaste = (e: ClipboardEvent) => {
@@ -2286,10 +2446,12 @@ export class Editor {
       selA: this.selAfter,
       t: Date.now(),
       kind: kind === 'insertText' || kind === 'insertCompositionText' ? 'type' : kind.startsWith('delete') ? 'del' : 'other',
+      names: kind === 'insertFromPaste' ? this.leaving() : undefined,
     };
     const last = this.undo_[this.undo_.length - 1];
     const recent = last && ch.t - last.t < 1200;
-    if (recent && ch.kind === 'type' && last.kind === 'type' && !ch.del && !last.del && last.a + last.ins.length === ch.a && !ch.ins.includes('\n')) {
+    // (Typing on after replacing a selection by typing joins that step too: one Undo brings the selection back.)
+    if (recent && ch.kind === 'type' && last.kind === 'type' && !ch.del && last.a + last.ins.length === ch.a && !ch.ins.includes('\n')) {
       last.ins += ch.ins;
       last.selA = ch.selA;
       last.t = ch.t;
@@ -2302,6 +2464,12 @@ export class Editor {
       this.grew(ch.del.length);
     } else this.push(ch);
     this.redo_ = [];
+  }
+
+  /** The file names of a paste's step (see Change.names): a paste over everything leaves the document's file. */
+  private leaving(): [string | null, string | null] | undefined {
+    const name = this.pasteFull ? (this.ev.name?.() ?? null) : null;
+    return name === null ? undefined : [name, null];
   }
 
   private push(ch: Change) {
@@ -2319,12 +2487,13 @@ export class Editor {
   }
 
   undo() {
-    if (this.locked) return;
+    if (this.locked || this.ev.undoing?.()) return;
     const ch = this.undo_.pop();
     if (!ch) return;
     this.histChars -= ch.del.length + ch.ins.length;
     this.redo_.push(ch);
     this.write(ch.a, ch.a + ch.ins.length, ch.del, ch.selB);
+    if (ch.names) this.ev.renamed?.(ch.names[0]);
   }
 
   redo() {
@@ -2333,6 +2502,7 @@ export class Editor {
     if (!ch) return;
     this.push(ch);
     this.write(ch.a, ch.a + ch.del.length, ch.ins, ch.selA);
+    if (ch.names) this.ev.renamed?.(ch.names[1]);
   }
 
   /** Low-level replace without recording history. */
@@ -2377,13 +2547,13 @@ export class Editor {
     this.apply(a, b, text, selA, selB, 'input');
   }
 
-  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind) {
+  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind, names?: [string | null, string | null]) {
     text = lf(text);
     const sb = this.selection;
     const del = this.doc.slice(a, b);
     const s1 = selA ?? a + text.length;
     const s2 = selB ?? s1;
-    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other' });
+    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names: names ?? (kind === 'paste' ? this.leaving() : undefined) });
     this.redo_ = [];
     this.typing = true;
     this.shiftFolds(a, b, text, true);
@@ -2403,14 +2573,15 @@ export class Editor {
   }
 
   /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
-  setValue(next: string, caret = 0, load = false) {
+  /** `names`: the file names before and after, when the document comes from or leaves a file (see EditorEvents.renamed). */
+  setValue(next: string, caret = 0, load = false, names?: [string | null, string | null]) {
     next = lf(next);
     if (next.length !== this.doc.length || next !== this.text) {
       // (A new document may open in the quiet view: see LAZY_CHARS.)
       this.forceEdit = false;
       this.loading = load;
       try {
-        this.apply(0, this.doc.length, next, caret, caret, 'set');
+        this.apply(0, this.doc.length, next, caret, caret, 'set', names);
       } finally {
         this.loading = false;
       }

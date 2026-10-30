@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { asciiCells, asciiRows, leadOf, Wrapper } from '../lib/engine/wrap';
+import { asciiCells, asciiRows, BINARY, clusterStart, CUT, FORCED, leadOf, plainLine, WIDE, Wrapper } from '../lib/engine/wrap';
 import { bidiContext, highlightLine, StringStates, stringState } from '../lib/engine/highlight';
+import { Doc } from '../lib/engine/doc';
 
 /** Row starts the wrapper adds up for the long line `t[a, b)`, as an array. */
 function breaks(w: object, t: string, a: number, b: number) {
@@ -31,6 +32,72 @@ describe('soft wrap arithmetic', () => {
     assert.equal(asciiRows(81, 80), 2);
     assert.equal(asciiRows(800, 80), 10);
   });
+});
+
+test('a line told plain in place is one the patterns find nothing in (and most lines of other scripts are)', () => {
+  let seed = 3;
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  const units = [0, 8, 9, 10, 11, 12, 13, 14, 0x1f, 0x20, 0x41, 0x7e, 0x7f, 0x80, 0x84, 0x85, 0x86, 0x9f, 0xa0, 0xe9, 0x2028, 0x2029, 0x4e2d, 0xa9c0, 0xa9c1, 0xa9cd, 0xa9ce, 0xfdf9, 0xfdfa, 0xfdfd, 0xfdfe, 0xfffd, 0xfffe, 0xffff, 0xd800, 0xdbff, 0xdc00, 0xdfff];
+  const pairs = [0x1f600, 0x11fff, 0x12000, 0x1254f, 0x12550, 0x13000, 0x1345f, 0x1d000, 0x1d24f, 0x1d250, 0x10ffff];
+  for (let k = 0; k < 20_000; k++) {
+    let t = '';
+    for (let n = rnd(8); n >= 0; n--) t += rnd(3) ? String.fromCharCode(units[rnd(units.length)]) : String.fromCodePoint(pairs[rnd(pairs.length)]);
+    const a = rnd(2);
+    const b = t.length - rnd(2);
+    const s = t.slice(a, Math.max(a, b));
+    if (plainLine(t, a, Math.max(a, b))) assert.ok(!BINARY.test(s) && !FORCED.test(s) && !WIDE.test(s), JSON.stringify(s));
+  }
+  for (const s of ['"Zoë 12": "東京",', '  "name": "Олег — café",', 'tab\there', 'हिन्दी', 'ｶﾀｶﾅ']) assert.ok(plainLine(s, 0, s.length), s);
+});
+
+test('a row may start where clusterStart says only between characters (grapheme clusters)', () => {
+  let seed = 7;
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  const parts = ['a', ' ', '\t', 'é', 'e\u0301', '\u0301', '\u200d', '\ufe0f', '中', 'ｶ', 'م', '😀', '👍', '🏽', '👨‍👩‍👧‍👦', '🇮', '🇳', '❤', '\ud83d', '\ude00', '\u0915\u094d\u0937'];
+  const seg = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  for (let k = 0; k < 4000; k++) {
+    let t = '';
+    for (let n = 1 + rnd(14); n > 0; n--) t += parts[rnd(parts.length)];
+    const breaks = new Set([...seg.segment(t)].map((g) => g.index));
+    for (let i = 1; i < t.length; i++) if (clusterStart(t, 0, i)) assert.ok(breaks.has(i), `${JSON.stringify(t)} at ${i}`);
+  }
+});
+
+test('rows counted as ASCII (while the real ones are counted) start between characters, and the caret maps back to them', () => {
+  const el = () => ({ className: '', style: {}, setAttribute() {}, appendChild() {}, remove() {} });
+  (globalThis as { document?: unknown }).document ??= { createElement: el };
+  const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+  const seg = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  let seed = 11;
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  const parts = ['a', 'é', '中', '😀', '👍🏽', '👨‍👩‍👧‍👦', '🇮🇳', 'e\u0301\u0302', '❤️'];
+  for (const cols of [8, 13, 40]) {
+    w.fit(cols * 8 + 4 + 0.25, 8);
+    for (let k = 0; k < 400; k++) {
+      let line = k % 3 ? '\t\t' : '  ';
+      for (let n = rnd(120); n > 0; n--) line += parts[rnd(parts.length)];
+      const t = `x\n${line}\ny`;
+      const a = 2;
+      const b = a + line.length;
+      const breaks = new Set([...seg.segment(line)].map((g) => g.index));
+      breaks.add(line.length);
+      const rows = asciiRows(b - a, cols);
+      const starts = [0];
+      for (let r = 1; r < rows; r++) {
+        const s = w.rowStart(t, a, b, r, 0);
+        assert.ok(breaks.has(s), `${cols} cols, row ${r} of ${JSON.stringify(line)} starts at ${s}`);
+        assert.ok(s >= starts[r - 1], 'in order');
+        starts.push(s);
+      }
+      // The caret before each character is on the row that holds it (a cluster wider than a row leaves one empty).
+      for (const i of breaks) {
+        if (i === 0 || i >= line.length) continue;
+        let want = 0;
+        while (want + 1 < rows && starts[want + 1] <= i) want++;
+        assert.equal(w.rowAt(t, a, b, a + i, 0, rows), want, `${cols} cols, the caret at ${i} of ${JSON.stringify(line)}`);
+      }
+    }
+  }
 });
 
 describe('rows that start inside a string', () => {
@@ -370,10 +437,95 @@ describe('row breaks added up for long lines', () => {
           assert.deepEqual([...breaks(told, t, A[i], B[i])], want, `told breaks: line ${i}, edit ${k}`);
           assert.deepEqual([...breaks(guessed, t, A[i], B[i])], want, `guessed breaks: line ${i}, edit ${k}`);
           const r = rnd(want.length);
-          assert.equal(told.rowStart(t, A[i], B[i], r, true), want[r]);
+          assert.equal(told.rowStart(t, A[i], B[i], r, 1), want[r]);
         }
       }
     }
+  });
+
+  test('a huge new text in place of the old: rows near the start at once, all of them when idle, no task long', () => {
+    let seed = 13;
+    const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+    type X = Pick<Wrapper, 'rows' | 'settle'> & { glyphs: Map<number, number>; joins: Set<number> };
+    const make = () => {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false) as unknown as X;
+      (w as unknown as Wrapper).fit(60 * 8 + 4 + 0.25, 8);
+      for (const [c, g] of [[0xc4, 8], [0x6771, 16], [0x4eac, 16], [0x1f680, 16], [0x200d, 0]]) w.glyphs.set(c, g);
+      w.joins.add(0x200d);
+      return w;
+    };
+    const parts = ['abcdefghij ', 'Ä', '東京 ', '\\n ', '🚀', '\u200d', 'x'];
+    const huge = (n: number) => {
+      let s = '"';
+      while (s.length < n) s += parts[rnd(parts.length)];
+      return s + '"';
+    };
+    // As the output view does: the whole text replaced, one line before and after.
+    const w = make();
+    const first = huge(5000);
+    w.rows(first, Int32Array.of(0), Int32Array.of(first.length));
+    const t = huge(600_000);
+    const one = (s: string) => [Int32Array.of(0), Int32Array.of(s.length)] as const;
+    const t0 = performance.now();
+    const est = w.rows(t, ...one(t), [0, first.length, t.length])[0];
+    const ms = performance.now() - t0;
+    const fresh = make();
+    fresh.rows(t, ...one(t));
+    fresh.settle();
+    const want = [...breaks(fresh, t, 0, t.length)];
+    const got = [...breaks(w, t, 0, t.length)];
+    const near = want.filter((x) => x <= 32_768);
+    assert.deepEqual(got.slice(0, near.length), near, 'exact near the start');
+    assert.equal((w as unknown as { pending: unknown[] }).pending.length, 1, 'the rest estimated, to be refined');
+    assert.ok(est > 0 && ms < 100, `${ms.toFixed(0)} ms for the first rows`);
+    w.settle();
+    assert.deepEqual([...breaks(w, t, 0, t.length)], want, 'exact once settled');
+  });
+
+  test('a document of pieces breaks exactly as the same text in one string', () => {
+    let seed = 17;
+    const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+    const make = () => {
+      const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+      w.fit(37 * 7.5 + 3.75 + 0.25, 7.5);
+      const x = w as unknown as { glyphs: Map<number, number>; joins: Set<number> };
+      for (const [c, g] of [[0x200d, 0], [0x301, 0], [0xe9, 7.5], [0x4e2d, 15], [0x1f600, 15], [0x2028, 0]]) x.glyphs.set(c, g);
+      x.joins.add(0x200d);
+      x.joins.add(0x301);
+      return w;
+    };
+    const pick = () => {
+      const r = rnd(30);
+      return r === 0 ? '\t' : r === 1 ? '\u200d' : r === 2 ? 'e\u0301' : r === 3 ? '中' : r === 4 ? '😀' : r === 5 ? '\u2028' : r === 6 ? 'é' : String.fromCharCode(32 + rnd(95));
+    };
+    let s = '';
+    for (let n = 20_000; n > 0; n--) s += pick();
+    let doc = Doc.of(s);
+    for (let k = 0; k < 30; k++) {
+      // Edits at code point boundaries, as the editor makes them.
+      let at = rnd(doc.length);
+      if ((doc.charCodeAt(at) & 0xfc00) === 0xdc00) at--;
+      doc = doc.edit(at, at, pick() + pick());
+      const flat = doc.toString();
+      assert.equal(doc.flat, null);
+      assert.deepEqual([...breaks(make(), doc as unknown as string, 0, doc.length)], [...breaks(make(), flat, 0, flat.length)], `edit ${k}`);
+    }
+  });
+  test('a variation selector may start a row until a line holding it is measured, then joins', () => {
+    const w = new Wrapper(el() as unknown as HTMLElement, 20, false);
+    w.fit(10 * 8 + 4 + 0.25, 8);
+    const x = w as unknown as { glyphs: Map<number, number>; ctx: unknown; font: string; learn(lines: string[]): void };
+    x.glyphs.set(0x263a, 8);
+    x.ctx = { font: '', measureText: () => ({ width: 8 }) };
+    x.font = 'test';
+    // Nine cells, the smiley's tenth, then U+FE0F's 2.5 cells don't fit.
+    const s = 'aaaaaaaaa☺️bb';
+    assert.deepEqual([...breaks(w, s, 0, s.length)], [0, 10]);
+    assert.deepEqual([...breaks(w, s, 0, s.length)], [0, 10], 'read from the tables');
+    x.learn([s]);
+    // (Another line: rows of one seen before are reused.)
+    const t = 'ccccccccc☺️dd';
+    assert.deepEqual([...breaks(w, t, 0, t.length)], [0, 11]);
   });
 });
 
@@ -392,4 +544,212 @@ test("a row's bidi context stops at a forced break, which would break the drawn 
   }
   // Without one, the whole range (whole code points).
   assert.equal(bidiContext('ab😀', 0, 3, true), '<span class="ctx">ab</span>');
+});
+
+describe('binary text', () => {
+  const el = () => ({ className: '', style: {}, setAttribute() {}, appendChild() {}, remove() {}, replaceChildren() {} });
+  (globalThis as { document?: unknown }).document ??= { createElement: el };
+  type X = Pick<Wrapper, 'rows' | 'rowStart' | 'rowAt' | 'odd' | 'fit'> & { ctx: unknown; font: string; glyphs: Map<number, number> };
+  /** A wrapper whose canvas measures `width(c)` and counts its measurements; laying out lines in the DOM throws. */
+  const make = (exact: boolean, width: (c: number) => number, cols = 40, cw = 8) => {
+    const w = new Wrapper(el() as unknown as HTMLElement, 20, exact) as unknown as X;
+    w.fit(cols * cw + cw / 2 + 0.25, cw);
+    const seen: number[] = [];
+    w.ctx = { font: '', measureText: (s: string) => (seen.push(s.codePointAt(0)!), { width: width(s.codePointAt(0)!) }) };
+    w.font = 'test';
+    (w as unknown as { measure(lines: string[]): number[] }).measure = () => {
+      throw new Error('laid out in the DOM');
+    };
+    return { w, seen };
+  };
+  let seed = 9;
+  // (32-bit arithmetic: every byte value comes up.)
+  const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 16) % n);
+  /** Random bytes decoded as UTF-8 (as a binary file opened by mistake reads). */
+  const binary = (bytes: number) => new TextDecoder().decode(Uint8Array.from({ length: bytes }, () => rnd(256)));
+  const linesOf = (t: string) => {
+    const A: number[] = [];
+    const B: number[] = [];
+    for (let a = 0; ; ) {
+      const e = t.indexOf('\n', a);
+      A.push(a);
+      B.push(e < 0 ? t.length : e);
+      if (e < 0) break;
+      a = e + 1;
+    }
+    return [Int32Array.from(A), Int32Array.from(B)] as const;
+  };
+
+  /** Row starts of binary line `s`, a character at a time: `per` code units, after a forced break, never inside a pair. */
+  const cutStarts = (s: string, per: number) => {
+    const st = [0];
+    for (let i = 0, n = 0; i < s.length; ) {
+      const c = s.charCodeAt(i);
+      const step = (c & 0xfc00) === 0xd800 && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+      if (n >= per) {
+        st.push(i);
+        n = 0;
+      }
+      n += step;
+      i += step;
+      if (/[\v\f\x85\u2028\u2029]/.test(String.fromCharCode(c)) && i < s.length) {
+        st.push(i);
+        n = 0;
+      }
+    }
+    return st;
+  };
+
+  test('rows counted in steps are those of rows() in one go; a new width meanwhile drops them', () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 30_000; i++) lines.push(i % 9 === 4 ? `"${'é中'.repeat(i % 50)}",` : i % 7 === 3 ? `"${'ab'.repeat(i % 60)}",` : `${i},`);
+    const t = lines.join('\n') + '\n' + binary(3000);
+    const [A, B] = linesOf(t);
+    const measure = (ls: string[]) => ls.map((l) => Math.ceil(l.length / 40));
+    const once = make(false, (c) => (c >= 0x1100 ? 16 : 8)).w;
+    (once as unknown as { measure: typeof measure }).measure = measure;
+    const want = [...once.rows(t, A, B)];
+    const wantOdd = [...once.odd];
+    const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
+    (w as unknown as { measure: typeof measure }).measure = measure;
+    const run = (w as unknown as Wrapper).rowsInSteps(t, A, B);
+    let got: Int32Array | null | undefined;
+    let steps = 0;
+    while ((got = run(performance.now() + 1)) === undefined) steps++;
+    assert.ok(steps > 1, `${steps} steps`);
+    assert.deepEqual([...got!], want);
+    assert.deepEqual([...w.odd], wantOdd);
+    // Then an edit reuses them, as after rows().
+    const t2 = t.replace('\n10,\n', '\n10é,\n');
+    const [A2, B2] = linesOf(t2);
+    const at = t.indexOf('\n10,\n') + 3;
+    assert.deepEqual([...w.rows(t2, A2, B2, [at, at, at + 1])], [...(once as unknown as Wrapper).rows(t2, A2, B2)]);
+    // Dropped when the width changes meanwhile.
+    const again = (w as unknown as Wrapper).rowsInSteps(t, A, B);
+    again(performance.now());
+    w.fit(30 * 8 + 4 + 0.25, 8);
+    assert.equal(again(performance.now() + 1000), null);
+  });
+
+  test('a whole layout keeps the counts it measured, not those found as cheaply again: the same rows next time', () => {
+    const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
+    const lines: string[] = [];
+    for (let i = 0; i < 3000; i++) lines.push(`é${i}`, `  "name": "Zoë ${i}",`);
+    // Lines past a row (40 columns): laid out (measured), their counts kept.
+    for (let i = 0; i < 3; i++) lines.push(`  "note": "${'Олег '.repeat(12 + i)}"`);
+    const t = lines.join('\n');
+    const laidOut: string[] = [];
+    (w as unknown as { measure(lines: string[]): number[] }).measure = (ls) => (laidOut.push(...ls), ls.map((l) => Math.ceil(l.length / 40)));
+    const [A, B] = linesOf(t);
+    const rows = [...w.rows(t, A, B)];
+    assert.equal(laidOut.length, 3);
+    assert.equal((w as unknown as { sized: Map<string, number> }).sized.size, 3, 'only the measured lines kept');
+    // Another document with the same lines: the same rows, nothing laid out again.
+    const t2 = 'x\n' + t;
+    const [A2, B2] = linesOf(t2);
+    assert.deepEqual([...w.rows(t2, A2, B2)].slice(1), rows);
+    assert.equal(laidOut.length, 3);
+  });
+
+  test('views that draw their rows cut binary lines every few code units: no layout, no glyph measured', () => {
+    const t = binary(200_000);
+    const { w } = make(false, (c) => (c >= 0x1100 ? 16 : 8));
+    const [A, B] = linesOf(t);
+    // (A random line without a control character is text, laid out as such.)
+    const laidOut: string[] = [];
+    (w as unknown as { measure(lines: string[]): number[] }).measure = (lines) => (laidOut.push(...lines), lines.map(() => 1));
+    const rows = w.rows(t, A, B);
+    const per = 20;
+    let cut = 0;
+    for (let k = 0; k < A.length; k++) {
+      if (w.odd[k] !== CUT) continue;
+      cut++;
+      // Rows of 20 code units (40 columns, two cells a glyph at most), after a forced break, never inside a pair.
+      const st = cutStarts(t.slice(A[k], B[k]), per);
+      assert.deepEqual([...Array(rows[k]).keys()].map((r) => w.rowStart(t, A[k], B[k], r, CUT)), st, `line ${k}`);
+      for (let r = 1; r < st.length; r++) assert.equal(w.rowAt(t, A[k], B[k], A[k] + st[r], CUT, st.length), r);
+    }
+    assert.ok(cut > A.length * 0.9, `most lines are binary (${cut} of ${A.length})`);
+    assert.ok(laidOut.every((l) => !/[\0-\x08\x0e-\x1f\x7f-\x9f]/.test(l)), 'no binary line laid out');
+  });
+
+  test('a 10M-character binary line: cut without measuring, its rows looked up fast and as cut one by one', () => {
+    // NUL bytes (a disk image), with a few forced breaks and pairs across where rows would be cut.
+    const parts: string[] = [];
+    for (let k = 0; k < 40; k++) parts.push('\0'.repeat(250_000 - 41 + k), k % 3 ? '😀' : '\f');
+    const t = 'x\n' + parts.join('') + '\n{}';
+    const [A, B] = linesOf(t);
+    const a = A[1];
+    const b = B[1];
+    for (const src of [t, Doc.of(t).edit(5, 6, '\0').edit(3_000_000, 3_000_001, '\0')]) {
+      const { w, seen } = make(false, () => 8);
+      const text = src as unknown as string;
+      const rows = w.rows(text, A, B);
+      assert.equal(w.odd[1], CUT);
+      assert.equal(seen.length, 0, 'no glyph measured');
+      const st = cutStarts(src.slice(a, b), 20);
+      assert.equal(rows[1], st.length);
+      /** The row showing offset `o` of the line: the last starting at or before it. */
+      const rowOf = (o: number) => {
+        let lo = 0;
+        for (let hi = st.length - 1; lo < hi; ) {
+          const mid = (lo + hi + 1) >> 1;
+          if (st[mid] <= o) lo = mid;
+          else hi = mid - 1;
+        }
+        return lo;
+      };
+      let seed = 5;
+      const rnd = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0), (seed >>> 8) % n);
+      const t0 = performance.now();
+      for (let i = 0; i < 100_000; i++) {
+        const r = rnd(st.length);
+        assert.equal(w.rowStart(text, a, b, r, CUT), st[r]);
+        const o = 1 + rnd(b - a);
+        assert.equal(w.rowAt(text, a, b, a + o, CUT, st.length), rowOf(o));
+      }
+      const ms = performance.now() - t0;
+      // (Cut again for every lookup, as before, a hundred took seconds.)
+      assert.ok(ms < 2000, `100,000 lookups each way in ${Math.round(ms)} ms`);
+    }
+  });
+
+  test("a string's tab is looked for once: told by the editor, or kept from the call before", () => {
+    const { w } = make(false, () => 8);
+    const t = 'x'.repeat(3_000_000) + '\n' + '{}';
+    const [A, B] = linesOf(t);
+    const indexOf = String.prototype.indexOf;
+    let looks = 0;
+    String.prototype.indexOf = function (this: string, ...a: Parameters<string['indexOf']>) {
+      if (this.length >= t.length && a[0] === '\t') looks++;
+      return indexOf.apply(this, a);
+    };
+    try {
+      w.rows(t, A, B);
+      w.rows(t, A, B);
+      assert.equal(looks, 1, 'kept from the call before');
+      const u = t + ' ';
+      const [A2, B2] = linesOf(u);
+      (w as unknown as Wrapper).knowTabs(u, false);
+      w.rows(u, A2, B2);
+      assert.equal(looks, 1, 'told');
+    } finally {
+      String.prototype.indexOf = indexOf;
+    }
+  });
+
+  test('a textarea editor still measures garbage exactly (its rows must match the textarea)', () => {
+    const { w } = make(true, () => 8);
+    const t = 'ab\u0000cd�' + 'x'.repeat(100);
+    assert.throws(() => w.rows(t, Int32Array.of(0), Int32Array.of(t.length)), /laid out in the DOM/);
+    assert.notEqual(w.odd[0], CUT);
+  });
+
+  test('text without garbage is laid out as before', () => {
+    const { w } = make(false, () => 8);
+    for (const s of ['"é ü 東京 🚀 עברית"'.repeat(8), '\t"tab\tmid"'.repeat(12)]) {
+      assert.throws(() => w.rows(s, Int32Array.of(0), Int32Array.of(s.length)), /laid out in the DOM/, s.slice(0, 20));
+      assert.equal(w.odd[0], 1);
+    }
+  });
 });

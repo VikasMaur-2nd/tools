@@ -16,7 +16,10 @@
  *   nodes (in one huge text node every probe walks the whole line).
  * - Views that draw every row themselves (the code views, the editor without
  *   its textarea) needn't match a textarea: a long line of other text is
- *   broken by adding up its glyphs' widths, which is instant at any size.
+ *   broken by adding up its glyphs' widths, which is instant at any size. A
+ *   line of binary (control characters: a file that isn't text) is cut every
+ *   few code units: laying it out, the browser takes seconds a megabyte to
+ *   find fonts for all the scripts in it.
  */
 
 import type { Doc } from './doc';
@@ -37,7 +40,7 @@ const NON_ASCII = /[^\t\n\x20-\x7e]/g;
 /** Longer lines are drawn row by row (sliced), shorter ones whole. */
 export const LONG_LINE = 3000;
 /** Characters that end a row by themselves. */
-const FORCED = /[\v\f\x85\u2028\u2029]/;
+export const FORCED = /[\v\f\x85\u2028\u2029]/;
 /** Code points that never start a row: marks, joiners, variation selectors, skin tones, tags. */
 const JOINS = /[\p{M}\u200d\ufe00-\ufe0f\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
 /**
@@ -46,13 +49,107 @@ const JOINS = /[\p{M}\u200d\ufe00-\ufe0f\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}\u
  */
 const JOINS_NEXT = /[\u0620\u0626\u0628\u062a-\u062e\u0633-\u0647\u0649\u064a\u066e\u066f\u0678-\u0687\u069a-\u06bf\u06c1\u06c2\u06cc\u06ce\u06d0\u06d1\u06fa-\u06fc\u06ff\u0712-\u0714\u071a-\u071d\u071f-\u0727\u0729\u072b\u072d\u072e\u074e-\u0758\u075c-\u076a\u076d-\u0770\u0772\u0775-\u0777\u077a-\u077f\u07ca-\u07ea\u07fa\u0841-\u0845\u0848\u084a-\u0853\u0855\u0860\u0862-\u0865\u0868\u0883-\u0886\u0889-\u088d\u088f\u08a0-\u08a9\u08af\u08b0\u08b3-\u08b8\u08ba-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua872\u{10ac0}-\u{10ac4}\u{10acd}\u{10ad3}-\u{10adc}\u{10ade}-\u{10ae0}\u{10aeb}-\u{10aee}\u{10b80}\u{10b82}\u{10b86}-\u{10b88}\u{10b8a}\u{10b8b}\u{10b8d}\u{10b90}\u{10bad}\u{10bae}\u{10d00}-\u{10d21}\u{10d23}\u{10ec3}\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f32}\u{10f34}-\u{10f44}\u{10f51}-\u{10f53}\u{10f70}-\u{10f73}\u{10f76}-\u{10f81}\u{10fb0}\u{10fb2}\u{10fb3}\u{10fb8}\u{10fbb}\u{10fbc}\u{10fbe}\u{10fbf}\u{10fc1}\u{10fc4}\u{10fca}\u{10fcb}\u{1e900}-\u{1e943}]/u;
 const JOINS_PREV = /[\u0620\u0622-\u064a\u066e\u066f\u0671-\u0673\u0675-\u06d3\u06d5\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u077f\u07ca-\u07ea\u07fa\u0840-\u0858\u0860\u0862-\u0865\u0867-\u086a\u0870-\u0886\u0889-\u088f\u08a0-\u08ac\u08ae-\u08c8\u1807\u180a\u1820-\u1878\u1887-\u18a8\u18aa\u200d\ua840-\ua871\u{10ac0}-\u{10ac5}\u{10ac7}\u{10ac9}\u{10aca}\u{10ace}-\u{10ad6}\u{10ad8}-\u{10ae1}\u{10ae4}\u{10aeb}-\u{10aef}\u{10b80}-\u{10b91}\u{10ba9}-\u{10bae}\u{10d01}-\u{10d23}\u{10ec2}-\u{10ec4}\u{10ec6}\u{10ec7}\u{10f30}-\u{10f44}\u{10f51}-\u{10f54}\u{10f70}-\u{10f81}\u{10fb0}\u{10fb2}-\u{10fb6}\u{10fb8}-\u{10fbf}\u{10fc1}-\u{10fc4}\u{10fc9}\u{10fca}\u{1e900}-\u{1e943}]/u;
+
+/**
+ * Whether a row (or the caret) may start at `i` of `t` (line start `a`): not inside a pair or a cluster, that is
+ * not before a mark, a joiner, a variation selector, a skin tone or a tag, nor after a joiner, nor between a
+ * flag's two letters. (A few code units read, not a full segmentation.)
+ */
+export function clusterStart(t: Pick<string, 'charCodeAt' | 'length'>, a: number, i: number): boolean {
+  if (i <= a || i >= t.length) return true;
+  const c = t.charCodeAt(i);
+  const p = t.charCodeAt(i - 1);
+  if (p === 0x200d) return false;
+  if (c < 0x300) return true;
+  // (A virama joins the consonant after it: क्ष is one.)
+  if (p >= 0x94d && p <= 0xd4d && (p - 0x94d) % 0x80 === 0) return false;
+  if ((c & 0xfc00) === 0xdc00) return (p & 0xfc00) !== 0xd800;
+  const d = t.charCodeAt(i + 1);
+  const cp = (c & 0xfc00) === 0xd800 && (d & 0xfc00) === 0xdc00 ? ((c - 0xd800) << 10) + d - 0xdc00 + 0x10000 : c;
+  if (JOINS.test(String.fromCodePoint(cp))) return false;
+  if (cp < 0x1f1e6 || cp > 0x1f1ff) return true;
+  // (Flags are pairs of letters: an odd count of them before this one makes it a flag's second half.)
+  let k = 0;
+  for (let j = i - 2; j >= a && t.charCodeAt(j) === 0xd83c && t.charCodeAt(j + 1) >= 0xdde6 && t.charCodeAt(j + 1) <= 0xddff; j -= 2) k++;
+  return k % 2 === 0;
+}
+
+/** Row `r` (of `rows`) moved to the last whose start (see `start`) is at or before `o`. */
+function rowFrom(r: number, rows: number, o: number, start: (r: number) => number) {
+  while (r + 1 < rows && start(r + 1) <= o) r++;
+  while (r > 0 && start(r) > o) r--;
+  return r;
+}
+
+/** Row start `p` of line `t[a, a + len)` kept off a cluster (see clusterStart): back to its start if that is after `lo` (the row before's start), else on to its end. */
+function snapRow(t: Src, a: number, len: number, p: number, lo: number): number {
+  if (p >= len || clusterStart(t, a, a + p)) return p;
+  let q = p;
+  while (q > lo && !clusterStart(t, a, a + q)) q--;
+  if (q > lo) return q;
+  for (q = p; q < len && !clusterStart(t, a, a + q); q++);
+  return q;
+}
 /** Characters that can be over four cells wide (ligatures, cuneiform, hieroglyphs, musical symbols). */
-const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
-/** A run of printable ASCII (sticky), and what ends one. */
+export const WIDE = /[\ufdfa-\ufdfd\ua9c1-\ua9cd\u{12000}-\u{1254f}\u{13000}-\u{1345f}\u{1d000}-\u{1d24f}]/u;
+/** A run of printable ASCII (sticky). */
 const RUN = /[\x20-\x7e]+/y;
-const NOT_PRINTABLE = /[^\x20-\x7e]/g;
 /** Long lines whose breaks were added up (see `rowsOf`). */
 const SUMS = 4;
+/**
+ * What no text file holds: control characters (but tabs and line breaks), noncharacters and lone surrogates.
+ * A line with any is binary (a file that isn't text, opened as text): its rows are cut every perRow code
+ * units (see `cut`), which costs nothing to count.
+ */
+export const BINARY = /[\0-\x08\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufffe\uffff]/u;
+/**
+ * Whether line `t[a, b)` holds only characters that neither break a row, are very wide, nor look binary (see
+ * FORCED, WIDE, BINARY; any pair, line separator, control or special counts as such), read in place: a big
+ * document's short lines of other scripts are told at once (a copy each was hundreds of MB of garbage).
+ */
+export function plainLine(t: string, a: number, b: number) {
+  for (let i = a; i < b; i++) {
+    const c = t.charCodeAt(i);
+    if (c < 0xa0 ? c < 0x20 ? c !== 9 : c > 0x7e : c > 0x2027 && (c < 0x202a || (c > 0xa9c0 && c < 0xa9ce) || (c > 0xd7ff && c < 0xe000) || (c > 0xfdf9 && c < 0xfdfe) || c > 0xfffd)) return false;
+  }
+  return true;
+}
+
+/** Characters that end a row by themselves, searched for (see FORCED). */
+const FORCED_ALL = /[\v\f\x85\u2028\u2029]/g;
+/**
+ * Per `rows()` flag of a binary line: cut every perRow code units and drawn row by row, never laid out by the
+ * browser (every script in it needs a font found, which takes seconds a megabyte).
+ */
+export const CUT = 2;
+/** A line longer than LONG_LINE is binary if its first this many characters are (as a file is: see asks.ts). */
+const BINARY_LOOK = 65_536;
+/** Binary lines whose rows are kept for lookups (see cuts): the few a frame draws. */
+const CUTS = 32;
+
+/** The rows of a binary line `t[a, b)` (see Wrapper.cut): from row `row[k]`, they start `per` code units apart from `off[k]`. */
+interface Cuts {
+  t: Src;
+  a: number;
+  b: number;
+  per: number;
+  /** Rows in all. */
+  n: number;
+  off: Int32Array;
+  row: Int32Array;
+}
+
+/** Last index of the ascending `v` whose value is at most `x` (v[0] is). */
+function lastAtMost(v: Int32Array, x: number) {
+  let lo = 0;
+  let hi = v.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (v[mid] <= x) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
 /**
  * Characters past an edit whose rows are found at once (hundreds of rows: the view and the caret are
  * among them); the rest of a longer line when idle (see refine).
@@ -63,13 +160,16 @@ const LAZY_ROWS = 32_768;
 const flatOf = (t: Src): string | null => (typeof t === 'string' ? t : t.flat);
 
 /** First character in t[from, to) that isn't printable ASCII, a tab or a line break, or -1. */
-function nonAscii(t: Src, from: number, to: number): number {
+const nonAscii = (t: Src, from: number, to: number) => search(NON_ASCII, t, from, to);
+
+/** First match of the global `re` (one character long) in t[from, to), or -1. */
+function search(re: RegExp, t: Src, from: number, to: number): number {
   let r = -1;
   let at = from;
   const look = (x: string, i: number, j: number) => {
     // In a view: a search on from `i` in the whole string would run on past `j`.
-    NON_ASCII.lastIndex = 0;
-    const m = NON_ASCII.exec(i === 0 && j === x.length ? x : x.slice(i, j));
+    re.lastIndex = 0;
+    const m = re.exec(i === 0 && j === x.length ? x : x.slice(i, j));
     if (m) r = at + m.index;
     at += j - i;
     return !!m;
@@ -77,20 +177,6 @@ function nonAscii(t: Src, from: number, to: number): number {
   const s = flatOf(t);
   if (s !== null) look(s, Math.max(0, from), Math.min(s.length, to));
   else (t as Doc).each(from, to, look);
-  return r;
-}
-
-/** End of the run of printable ASCII in `t` from `from` (at most `to`), searched in views of its pieces. */
-function endOfRun(t: Doc, from: number, to: number): number {
-  let r = to;
-  let at = from;
-  t.each(from, to, (x, i, j) => {
-    NOT_PRINTABLE.lastIndex = 0;
-    const m = NOT_PRINTABLE.exec(i === 0 && j === x.length ? x : x.slice(i, j));
-    if (m) r = at + m.index;
-    at += j - i;
-    return !!m;
-  });
   return r;
 }
 
@@ -233,6 +319,8 @@ interface SumEntry {
 /** Where breaking a line into rows stopped (see breakRows). */
 interface BreakState {
   i: number;
+  /** Where the run of printable ASCII at `i` ends, if a call stopped inside it (else at most `i`). */
+  run: number;
   lastStart: number;
   w: number;
   joined: boolean;
@@ -333,10 +421,29 @@ const fragment = (nodes: Node[]) => {
 /** Rows an ASCII line of `cells` cells takes at `cols` cells per row. */
 export const asciiRows = (cells: number, cols: number) => (cells > cols ? Math.ceil(cells / cols) : 1);
 
+/** Lines counted between looks at the clock, laying out in steps (see rowsInSteps). */
+const STEP_LINES = 8192;
+
+/** A rows() call (see Wrapper.begin). */
+interface RowsJob {
+  text: Src;
+  A: Int32Array;
+  B: Int32Array;
+  out: Int32Array<ArrayBuffer>;
+  odd: Uint8Array<ArrayBuffer>;
+  /** Laid out afresh in steps. */
+  fresh: boolean;
+  lo: number;
+  hi: number;
+  inherit: number;
+  tabs: boolean;
+  keep: Map<string, number>;
+}
+
 export class Wrapper {
   /** Cells per row (0 until the view has a width). */
   cols = 0;
-  /** Per line of the last `rows()` call: 1 where the browser decides the breaks. */
+  /** Per line of the last `rows()` call: 1 where the browser decides the breaks, CUT for binary. */
   odd = new Uint8Array(0);
   /** Rows must break exactly where a textarea's do (else long lines are summed: see `rowsOf`). */
   exact: boolean;
@@ -357,7 +464,22 @@ export class Wrapper {
   /** How the last `rows()` text differs from the one before: same first `p` and last `q` characters. */
   private diff: { old: Src; text: Src; p: number; q: number } | null = null;
   /** The last `rows()` call, whose unchanged lines the next one reuses. */
-  private last: { text: Src; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array } | null = null;
+  private last: { text: Src; A: Int32Array; B: Int32Array; out: Int32Array; odd: Uint8Array; tabs: boolean } | null = null;
+  /** Whether a string text has a tab, told by whoever found out anyway (see knowTabs). */
+  private told: { text: string; tabs: boolean } | null = null;
+
+  /** A rows() call in steps not yet done (see rowsInSteps). */
+  private stepping: RowsJob | null = null;
+
+  /** Whether the next rows() can reuse the last call's counts (else it counts every line: see rowsInSteps). */
+  get reuses() {
+    return this.last !== null;
+  }
+
+  /** Tells rows() whether `text` has a tab (the editor finds out while counting its lines). */
+  knowTabs(text: string, tabs: boolean) {
+    this.told = { text, tabs };
+  }
   /**
    * rows() reuses its arrays two calls later (the last call's are read by the next): for a caller that
    * keeps neither `odd` nor the counts past the next call. A document of a million lines would
@@ -396,6 +518,7 @@ export class Wrapper {
     if (cols === this.cols && cw === this.cw) return false;
     if (cw !== this.cw) {
       this.glyphs.clear();
+      this.ft?.fill(0);
       this.font = '';
     }
     this.cols = cols;
@@ -444,6 +567,7 @@ export class Wrapper {
       // A font swapped for one of nearly the same widths moves no break that matters here.
       if (Math.abs(n - w) >= 0.2) changed = true;
     }
+    this.ft?.fill(0);
     if (changed) this.forget();
     return changed;
   }
@@ -453,6 +577,7 @@ export class Wrapper {
     this.cols = 0;
     this.cw = 0;
     this.glyphs.clear();
+    this.ft?.fill(0);
     this.across = null;
     this.forget();
   }
@@ -464,28 +589,69 @@ export class Wrapper {
    * every line with the last call's to find them. (See `recycle`.)
    */
   rows(text: Src, A: Int32Array, B: Int32Array, edit?: readonly [number, number, number], lines?: readonly [number, number]): Int32Array {
+    const job = this.begin(text, A, B, false, edit, lines);
+    this.fill(job, job.lo, job.hi);
+    return this.end(job);
+  }
+
+  /**
+   * rows() of a text laid out afresh (nothing reused from the last call), in steps: call with a deadline
+   * (performance.now()) until it returns the rows, or null if they can't be finished (the width, mode or
+   * fonts changed: lay out again). Until then `odd` and the counts stand as they were, and nothing is kept
+   * of the last call (a rows() meanwhile lays out every line).
+   */
+  rowsInSteps(text: Src, A: Int32Array, B: Int32Array): (until: number) => Int32Array | null | undefined {
+    const job = this.begin(text, A, B, true);
+    this.stepping = job;
+    const gen = this.gen;
+    let k = job.lo;
+    return (until) => {
+      if (this.gen !== gen || this.stepping !== job) return null;
+      do {
+        const to = Math.min(job.hi, k + STEP_LINES);
+        this.fill(job, k, to);
+        k = to;
+      } while (k < job.hi && performance.now() < until);
+      if (k < job.hi) return undefined;
+      this.stepping = null;
+      return this.end(job);
+    };
+  }
+
+  /** The arrays and the lines [lo, hi) of a rows() call, the lines around them reused from the last call. */
+  private begin(text: Src, A: Int32Array, B: Int32Array, fresh: boolean, edit?: readonly [number, number, number], lines?: readonly [number, number]): RowsJob {
+    // (A call in steps not yet done is dropped: its arrays may be this one's.)
+    this.stepping = null;
     const n = A.length;
     this.flip ^= 1;
     const f = this.flip;
     const out = this.recycle && this.outs[f]?.length === n ? this.outs[f].fill(0) : (this.outs[f] = new Int32Array(n));
     const odd = this.recycle && this.odds[f]?.length === n ? this.odds[f].fill(0) : (this.odds[f] = new Uint8Array(n));
-    this.odd = odd;
     const cols = this.cols;
-    if (!cols) return out.fill(1);
+    const job: RowsJob = { text, A, B, out, odd, fresh, lo: 0, hi: n, inherit: -1, tabs: false, keep: this.sized };
+    if (!fresh) this.odd = odd;
+    if (!cols) {
+      out.fill(1);
+      job.hi = 0;
+      return job;
+    }
     // An edit changes a few lines: lines before and after it (same text, same
     // place) keep their rows from last time, so typing costs no more in a
     // big document.
     let lo = 0;
     let hi = n;
-    const last = this.last;
+    // (Laid out afresh in steps, its arrays may be the last call's: those are dropped now.)
+    const last = fresh ? null : this.last;
+    if (fresh) this.last = null;
     /** Long lines whose oddness follows from the lines they were and the edit (no scanning them): 0 or 1, else -1. */
     let inherit = -1;
     if (last) {
       const old = last.text;
       let p: number;
       let q: number;
-      // A known edit `[a, oldEnd, newEnd)` spares comparing the texts (two passes over the document).
-      const told = !!edit && edit[0] >= 0 && edit[0] <= edit[1] && edit[0] <= edit[2] && edit[1] <= old.length && edit[2] <= text.length && text.length - old.length === edit[2] - edit[1];
+      // A known edit `[a, oldEnd, newEnd)` spares comparing the texts (two passes over the document). One of
+      // all of a text as long as before says nothing: it may be the same text (laid out again).
+      const told = !!edit && edit[0] >= 0 && edit[0] <= edit[1] && edit[0] <= edit[2] && edit[1] <= old.length && edit[2] <= text.length && text.length - old.length === edit[2] - edit[1] && !(edit[0] === 0 && edit[2] === text.length && old.length === text.length);
       if (told) {
         p = edit![0];
         q = text.length - edit![2];
@@ -518,7 +684,7 @@ export class Wrapper {
       // lines the same either way; a textarea's rows are measured exactly).
       if (told && !this.exact && hi > lo && dk === breaksIn(text, edit![0], edit![2]) - breaksIn(old, edit![0], edit![1])) {
         inherit = nonAscii(text, edit![0], edit![2]) >= 0 ? 1 : 0;
-        for (let k = lo; k < hi - dk && !inherit; k++) inherit = last.odd[k];
+        for (let k = lo; k < hi - dk && !inherit; k++) inherit = last.odd[k] ? 1 : 0;
       }
     }
     if (!last) {
@@ -526,17 +692,38 @@ export class Wrapper {
       this.ver++;
     }
     this.verText = text;
-    this.last = { text, A, B, out, odd };
-    if (!this.trust) odd.fill(1, lo, hi);
+    // (A string's tab, looked for over 100 MB, took 0.1 s in Firefox: the same text keeps its answer.)
+    job.tabs = typeof text !== 'string' ? text.tabs : last?.text === text ? last.tabs : this.told?.text === text ? this.told.tabs : text.indexOf('\t') !== -1;
+    if (!fresh) this.last = { text, A, B, out, odd, tabs: job.tabs };
+    // (Lines cut in another text would keep it alive.)
+    if (text !== this.cutText) {
+      this.cutLines = [];
+      this.cutText = text;
+    }
+    // Whole documents prune counts of lines that are gone; edits only add. Only counts that were measured
+    // are kept: one found as cheaply again isn't (a million lines of a big document held a million strings).
+    if (lo === 0 && hi === n) job.keep = new Map<string, number>();
+    job.lo = lo;
+    job.hi = hi;
+    job.inherit = inherit;
+    return job;
+  }
+
+  /** Counts the rows of lines [from, to) of `job` (see rows). */
+  private fill(job: RowsJob, from: number, to: number) {
+    if (from >= to) return;
+    const { text, A, B, out, odd, inherit, tabs, keep } = job;
+    const cols = this.cols;
+    if (!this.trust) odd.fill(1, from, to);
     else {
       const long = (k: number) => inherit >= 0 && B[k] - A[k] > LONG_LINE;
-      for (let k0 = lo; k0 < hi; ) {
+      for (let k0 = from; k0 < to; ) {
         if (long(k0)) {
           odd[k0++] = inherit;
           continue;
         }
         let k1 = k0 + 1;
-        while (k1 < hi && !long(k1)) k1++;
+        while (k1 < to && !long(k1)) k1++;
         // Lines [k0, k1): one search from match to match.
         const end = B[k1 - 1];
         let i = k0;
@@ -553,12 +740,12 @@ export class Wrapper {
         k0 = k1;
       }
     }
-    const tabs = typeof text === 'string' ? text.indexOf('\t') !== -1 : text.tabs;
     const lead = this.lead;
-    // Whole documents prune counts of lines that are gone; edits only add.
-    const keep = lo === 0 && hi === n ? new Map<string, number>() : this.sized;
     const unsized: number[] = [];
-    for (let k = lo; k < hi; k++) {
+    // Rows drawn by these views needn't match a textarea: a line a quarter of a row long can't wrap (no
+    // character but the widest few is over four cells), so isn't measured.
+    const quarter = this.exact ? -1 : cols >> 2;
+    for (let k = from; k < to; k++) {
       const a = A[k];
       const b = B[k];
       if (!odd[k]) {
@@ -570,11 +757,31 @@ export class Wrapper {
         }
         odd[k] = 1;
       }
+      // (A short line of plain characters, read in place, can't wrap: see the quarter rule below.)
+      if (b - a <= quarter && typeof text === 'string' && plainLine(text, a, b)) {
+        out[k] = 1;
+        continue;
+      }
       if (!this.exact && b - a > LONG_LINE) {
-        out[k] = this.rowsOf(text, a, b).length;
+        // (Not split between the halves of a pair, which would read as a lone surrogate.)
+        let e = Math.min(b, a + BINARY_LOOK);
+        if (e < b && (text.charCodeAt(e - 1) & 0xfc00) === 0xd800) e--;
+        if (BINARY.test(text.slice(a, e))) {
+          odd[k] = CUT;
+          out[k] = this.cuts(text, a, b).n;
+        } else out[k] = this.rowsOf(text, a, b).length;
         continue;
       }
       const s = text.slice(a, b);
+      if (!this.exact && BINARY.test(s)) {
+        odd[k] = CUT;
+        out[k] = this.cut(s, 0, s.length);
+        continue;
+      }
+      if (s.length <= quarter && !FORCED.test(s) && !WIDE.test(s)) {
+        out[k] = 1;
+        continue;
+      }
       let r = this.sized.get(s) ?? keep.get(s);
       // A long line is laid out once, as the mirror its rows are later read from.
       if (r === undefined && s.length > LONG_LINE) r = this.mirror(s).rows;
@@ -584,29 +791,13 @@ export class Wrapper {
         keep.set(s, r);
       }
     }
-    if (unsized.length && !this.exact) {
-      // Rows drawn by these views needn't match a textarea: a line a quarter of a row long
-      // can't wrap (no character but the widest few is over four cells), so isn't measured.
-      const quarter = cols >> 2;
-      let w = 0;
-      for (const k of unsized) {
-        const s = B[k] - A[k] <= quarter ? text.slice(A[k], B[k]) : '';
-        if (s && !FORCED.test(s) && !WIDE.test(s)) {
-          out[k] = 1;
-          keep.set(s, 1);
-        } else unsized[w++] = k;
-      }
-      unsized.length = w;
-    }
     if (unsized.length) {
       const lines = unsized.map((k) => text.slice(A[k], B[k]));
       this.learn(lines);
       const big: number[] = [];
       for (let j = 0; j < lines.length; j++) {
-        if (this.fits(lines[j])) {
-          out[unsized[j]] = 1;
-          keep.set(lines[j], 1);
-        } else big.push(j);
+        if (this.fits(lines[j])) out[unsized[j]] = 1;
+        else big.push(j);
       }
       const sizes = this.measure(big.map((j) => lines[j]));
       big.forEach((j, x) => {
@@ -614,43 +805,74 @@ export class Wrapper {
         keep.set(lines[j], sizes[x]);
       });
     }
+  }
+
+  /** Ends a rows() call: its counts kept, and (laid out in steps) its lines and `odd` made the last call's. */
+  private end(job: RowsJob): Int32Array {
+    const { text, A, B, out, odd, keep } = job;
+    if (job.fresh) {
+      this.odd = odd;
+      if (this.cols) this.last = { text, A, B, out, odd, tabs: job.tabs };
+    }
+    if (!this.cols) return out;
     this.sized = keep;
     // Edits only add counts: start afresh (pruning) once enough have piled up.
-    if (keep.size > n + 5000) this.last = null;
+    if (keep.size > A.length + 5000) this.last = null;
     return out;
   }
 
   /**
    * Offset (from the line start) of the first character on row `r` of the
-   * line `text[a, b)`. `odd` as set by `rows()`.
+   * line `text[a, b)`. `odd` as set by `rows()`. `cols`: the row width the
+   * rows were counted at (a font or a width may have changed it since).
    */
-  rowStart(text: Src, a: number, b: number, r: number, odd: boolean): number {
+  rowStart(text: Src, a: number, b: number, r: number, odd: number, cols = this.cols): number {
     if (r <= 0) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
-      return Math.min(b - a, r * this.cols - cells + chars);
+      // (Counted as ASCII while the real rows are counted (see rowsInSteps): kept off a cluster.)
+      return snapRow(text, a, b - a, Math.min(b - a, r * cols - cells + chars), Math.max(0, (r - 1) * cols - cells + chars));
+    }
+    if (odd === CUT && !this.exact) {
+      const c = this.cuts(text, a, b);
+      if (r >= c.n) return b - a;
+      const k = lastAtMost(c.row, r);
+      return c.off[k] + (r - c.row[k]) * c.per;
     }
     if (!this.exact && b - a > LONG_LINE) {
       const st = this.rowsOf(text, a, b);
       return r < st.length ? st.get(r) : b - a;
     }
-    const m = this.mirror(text.slice(a, b));
-    return r >= m.rows ? b - a : this.probe(m, b - a, r);
+    return this.mirrorStart(text, a, b - a, this.mirror(text.slice(a, b)), r);
+  }
+
+  /** rowStart of a line laid out as mirror `m` (the browser's row breaks, kept off a cluster as a caret is). */
+  private mirrorStart(text: Src, a: number, len: number, m: Mirror, r: number) {
+    if (r <= 0) return 0;
+    if (r >= m.rows) return len;
+    return snapRow(text, a, len, this.probe(m, len, r), r > 1 ? this.probe(m, len, r - 1) : 0);
   }
 
   /** Row of the line `text[a, b)` (taking `rows` rows) that shows offset `off`: the caret before that character. */
-  rowAt(text: Src, a: number, b: number, off: number, odd: boolean, rows: number): number {
+  rowAt(text: Src, a: number, b: number, off: number, odd: number, rows: number): number {
     if (rows <= 1 || off <= a) return 0;
     if (!odd) {
       const [cells, chars] = leadOf(text, a, b, this.lead);
       // Tabs only ever indent the first row (see rows()).
       const col = cells === chars ? off - a : off - a <= chars ? 0 : cells + off - a - chars;
-      return Math.min(rows - 1, Math.floor(col / this.cols));
+      // (A row start kept off a cluster is a little before or after where the count puts it.)
+      return rowFrom(Math.min(rows - 1, Math.floor(col / this.cols)), rows, off - a, (r) => this.rowStart(text, a, b, r, 0));
+    }
+    if (odd === CUT && !this.exact) {
+      const c = this.cuts(text, a, b);
+      const k = lastAtMost(c.off, off - a);
+      // (A row a pair's half made one longer ends where the next run starts.)
+      return Math.min(c.row[k] + Math.floor((off - a - c.off[k]) / c.per), (k + 1 < c.row.length ? c.row[k + 1] : c.n) - 1);
     }
     if (!this.exact && b - a > LONG_LINE) return this.rowsOf(text, a, b).floor(off - a);
     const m = this.mirror(text.slice(a, b));
     const o = Math.min(b - a - 1, off - a);
-    return Math.min(m.rows - 1, this.probeRow(m, o, m.el.getBoundingClientRect().top));
+    return rowFrom(Math.min(m.rows - 1, this.probeRow(m, o, m.el.getBoundingClientRect().top)), m.rows, off - a, (r) => this.mirrorStart(text, a, b - a, m, r));
   }
 
   // ── Measuring ──────────────────────────────────────────────────────────
@@ -669,7 +891,11 @@ export class Wrapper {
         if (this.glyphs.has(c)) continue;
         this.glyphs.set(c, 0);
         todo.push(c);
-        if (JOINS.test(String.fromCodePoint(c))) this.joins.add(c);
+        if (JOINS.test(String.fromCodePoint(c))) {
+          this.joins.add(c);
+          // (U+FE0F is in breakIn's tables before it is learned: it now never starts a row.)
+          if (c < 0x10000 && this.ft) this.ft[c] = 0;
+        }
       }
     }
     if (!todo.length) return;
@@ -684,6 +910,56 @@ export class Wrapper {
     }
     x.font = this.font;
     for (const c of todo) this.glyphs.set(c, x.measureText(String.fromCodePoint(c)).width + 0.05);
+  }
+
+  /**
+   * Rows of the binary line `t[a, b)` (see BINARY): perRow code units each, two cells or less a glyph (so a row
+   * never runs over, a rare wider glyph aside), a row ended after a character that ends one, never between the
+   * halves of a surrogate pair. Counted, reading only where a row may end; where rows stop running perRow
+   * apart from the line start (a row ended early, or one longer by a pair's half) is pushed to `off` and `row`
+   * if given (see Cuts).
+   */
+  private cut(t: Src, a: number, b: number, off?: number[], row?: number[]): number {
+    const per = Math.max(1, this.cols >> 1);
+    const len = b - a;
+    let n = 0;
+    for (let x = 0; ; ) {
+      const f = search(FORCED_ALL, t, a + x, b);
+      const end = f < 0 ? len : f - a + 1;
+      for (;;) {
+        n++;
+        let y = x + per;
+        if (y >= end) break;
+        if ((t.charCodeAt(a + y) & 0xfc00) === 0xdc00 && (t.charCodeAt(a + y - 1) & 0xfc00) === 0xd800) {
+          if (++y >= end) break;
+          off?.push(y);
+          row?.push(n);
+        }
+        x = y;
+      }
+      if (end >= len) return n;
+      x = end;
+      off?.push(x);
+      row?.push(n);
+    }
+  }
+
+  /** Binary lines cut for lookups since rows() was last given another text, the latest first. */
+  private cutLines: Cuts[] = [];
+  private cutText: Src | null = null;
+
+  /** The rows of the binary line `t[a, b)` (see cut): cut once for the text and row width, then looked up. */
+  private cuts(t: Src, a: number, b: number): Cuts {
+    const per = Math.max(1, this.cols >> 1);
+    const all = this.cutLines;
+    for (const c of all) if (c.a === a && c.b === b && c.per === per && c.t === t) return c;
+    const off = [0];
+    const row = [0];
+    const n = this.cut(t, a, b, off, row);
+    const c = { t, a, b, per, n, off: Int32Array.from(off), row: Int32Array.from(row) };
+    if (all.length >= CUTS) all.pop();
+    all.unshift(c);
+    return c;
   }
 
   private ctx: CanvasRenderingContext2D | null = null;
@@ -872,20 +1148,23 @@ export class Wrapper {
       from = j + 1;
       return true;
     };
-    const st: BreakState = { i: at, lastStart: at, w: 0, joined: false, flags: 0, forced: false };
-    // A huge line split or joined far from its end: rows near the edit now, the rest when idle (see refine).
+    const st: BreakState = { i: at, run: 0, lastStart: at, w: 0, joined: false, flags: 0, forced: false };
+    // Rows near the edit now (the view and the caret are there). With no old rows to meet again soon after
+    // (a huge line split, joined or new), the rest when idle (see refine).
     const near = Math.max(p, at, edit);
-    const stop = tail === Infinity && len - near > LAZY_ROWS ? near + LAZY_ROWS : len;
+    const stop = len - near > LAZY_ROWS && tail - near > LAZY_ROWS ? near + LAZY_ROWS : len;
     const resynced = this.breakRows(t, a, len, st, stop, brk, (x) => void starts.push(x));
     const runs = old ? old.part(0, keep, 0) : [{ a: Int32Array.of(0), i: 0, n: 1, d: 0 }];
     if (!resynced && st.i < len) {
-      // Estimated: whole rows of printable ASCII (JSON is mostly that) from the last exact start.
-      const full = Math.max(1, Math.floor(this.width / this.cw));
+      // Estimated: rows as long as those found so far are on average (whole rows of printable ASCII
+      // without enough of them), from the last exact start.
+      const n = starts.length;
+      const full = Math.max(1, Math.floor(n >= 16 ? (st.lastStart - starts[0]) / (n - 1) : this.width / this.cw));
       const more = Math.max(0, Math.ceil((len - st.lastStart) / full) - 1);
-      const head = keep + starts.length;
-      const est = new Int32Array(starts.length + more);
+      const head = keep + n;
+      const est = new Int32Array(n + more);
       est.set(starts);
-      for (let k = 0; k < more; k++) est[starts.length + k] = st.lastStart + (k + 1) * full;
+      for (let k = 0; k < more; k++) est[n + k] = st.lastStart + (k + 1) * full;
       runs.push({ a: est, i: 0, n: est.length, d: 0 });
       const e = this.keepSum(t, a, b, Starts.join(runs), head);
       this.refine(e, st);
@@ -900,28 +1179,59 @@ export class Wrapper {
   /**
    * Breaks `t[a, a + len)` into rows from state `s` until the line ends, `stop`
    * characters in, or `brk` (told each row start) returns true. True if it did.
+   * A document of pieces is read a piece at a time (see Doc.each).
    */
   private breakRows(src: Src, a: number, len: number, s: BreakState, stop: number, brk: (x: number) => boolean, push: (x: number) => void): boolean {
+    const flat = flatOf(src);
+    if (flat !== null) return this.breakIn(flat, a, len, len, s, stop, brk, push);
+    let done = false;
+    let at = s.i;
+    (src as Doc).each(a + s.i, a + Math.min(len, stop), (x, i, j) => {
+      // (Line offset `at` is x[i]: the line starts at x[i - at].)
+      done = this.breakIn(x, i - at, at + j - i, len, s, stop, brk, push);
+      at += j - i;
+      return done;
+    });
+    return done;
+  }
+
+  /**
+   * breakRows on the text `x` holding the line from `x[base]`, up to line offset `end` (where it
+   * or the piece of it in `x` ends). Printable ASCII is counted a run at a time (one cell a character);
+   * other glyphs' widths and flags in the BMP come from tables, filled as they are met (see `cache`).
+   */
+  private breakIn(x: string, base: number, end: number, len: number, s: BreakState, stop: number, brk: (x: number) => boolean, push: (x: number) => void): boolean {
     const cw = this.cw;
     const max = this.width;
     /** Printable ASCII characters a row holds from its start. */
     const full = Math.floor(max / cw);
-    const b = a + len;
-    const flat = flatOf(src);
-    const t = flat ?? src;
+    const F = (this.ft ??= new Uint8Array(0x10000));
+    const W = (this.wt ??= new Float32Array(0x10000));
+    const until = Math.min(end, stop);
     let { i, lastStart, w, joined, flags, forced } = s;
     let done = false;
-    while (i < len && i < stop && !done) {
-      let c = t.charCodeAt(a + i);
-      if (c >= 32 && c < 127 && !joined) {
-        // A run of printable ASCII is one cell a character: its breaks are arithmetic. (Taken whole
-        // however far it runs past `stop`: the breaks then don't depend on where a call stopped.)
-        let e: number;
-        if (flat !== null) {
-          RUN.lastIndex = a + i;
-          RUN.test(flat);
-          e = Math.min(RUN.lastIndex, b) - a;
-        } else e = endOfRun(src as Doc, a + i, b) - a;
+    while (i < until && !done) {
+      let c = x.charCodeAt(base + i);
+      // (Printable ASCII: c - 32 < 95, unsigned.)
+      if (((c - 32) >>> 0) < 95 && !joined) {
+        // A run of printable ASCII is one cell a character: its breaks are arithmetic (a run cut at
+        // `stop` goes on from there just the same).
+        // (Short runs, as in text mixing scripts, are read here; a long one natively, once: where it ends past
+        // `stop` is kept for the next call.)
+        let e = i + 1;
+        if (i < s.run) e = Math.min(s.run, until);
+        else {
+          const short = Math.min(until, i + 16);
+          for (let o = base + e; e < short && ((x.charCodeAt(o) - 32) >>> 0) < 95; o++) e++;
+          if (e === short && e < until) {
+            RUN.lastIndex = base + e;
+            if (RUN.test(x)) {
+              const r = Math.min(RUN.lastIndex - base, end);
+              if (r > until) s.run = r;
+              e = Math.min(r, until);
+            }
+          }
+        }
         // (A row can already be over full: nothing breaks before a joined character.)
         let k = i + Math.max(0, Math.floor((max - w) / cw));
         if (k === lastStart) k++;
@@ -939,19 +1249,27 @@ export class Wrapper {
       if (c === 9) g = tabTo(w, cw);
       else if (c >= 32 && c < 127) g = cw;
       else {
-        if (c >= 0xd800 && c < 0xdc00 && i + 1 < len) {
-          const lo = t.charCodeAt(a + i + 1);
+        if (c >= 0xd800 && c < 0xdc00 && i + 1 < end) {
+          const lo = x.charCodeAt(base + i + 1);
           if (lo >= 0xdc00 && lo < 0xe000) {
             c = (c - 0xd800) * 0x400 + lo - 0xdc00 + 0x10000;
             n = 2;
           }
         }
-        g = c === 0xfe0f ? 2.5 * cw : (this.glyphs.get(c) ?? this.glyph(c));
-        if (this.joins.has(c)) join = true;
-        if (c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029) forced = true;
-        // Regional indicators pair into flags.
-        if (c >= 0x1f1e6 && c <= 0x1f1ff) join ||= flags++ % 2 === 1;
-        else flags = 0;
+        if (c < 0x10000) {
+          let f = F[c];
+          if (!f) f = this.cache(c);
+          g = W[c];
+          if (f & 1) join = true;
+          if (f & 2) forced = true;
+          flags = 0;
+        } else {
+          g = this.glyphs.get(c) ?? this.glyph(c);
+          if (this.joins.has(c)) join = true;
+          // Regional indicators pair into flags.
+          if (c >= 0x1f1e6 && c <= 0x1f1ff) join ||= flags++ % 2 === 1;
+          else flags = 0;
+        }
       }
       if (!join && w + g > max && i > lastStart) {
         // (A flag's half can't resynchronize: which half it is depends on what came before.)
@@ -970,8 +1288,26 @@ export class Wrapper {
       }
       forced = false;
     }
-    Object.assign(s, { i, lastStart, w, joined, flags, forced });
+    s.i = i;
+    s.lastStart = lastStart;
+    s.w = w;
+    s.joined = joined;
+    s.flags = flags;
+    s.forced = forced;
     return done;
+  }
+
+  /** BMP glyph widths for breakIn, and flags: 4 looked up (else 0), 1 never starts a row, 2 ends one. */
+  private wt: Float32Array | null = null;
+  private ft: Uint8Array | null = null;
+
+  /** Puts BMP code point `c` in the tables (learning it if new); its flags. */
+  private cache(c: number) {
+    // (A variation selector can turn the character before it into a wider emoji: it counts for that, and may
+    // start a row until a line holding it is measured, as it always did here.)
+    const g = c === 0xfe0f ? 2.5 * this.cw : (this.glyphs.get(c) ?? this.glyph(c));
+    (this.wt as Float32Array)[c] = g;
+    return ((this.ft as Uint8Array)[c] = 4 | (this.joins.has(c) ? 1 : 0) | (c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029 ? 2 : 0));
   }
 
   /** Lines whose rows past an edit are estimated, finished a slice at a time when the page is idle. */
@@ -1004,10 +1340,11 @@ export class Wrapper {
     const st = Starts.join(runs);
     e.st = st;
     e.exact = st.length;
-    // The last rows() call counted the line's estimated rows, and the next one reuses its counts.
-    const last = this.last;
-    if (last && last.text === e.t) {
-      const A = last.A;
+    // The last rows() call (or one in steps: see rowsInSteps) counted the line's estimated rows, and the next
+    // one reuses its counts.
+    for (const x of [this.last, this.stepping]) {
+      if (!x || x.text !== e.t) continue;
+      const A = x.A;
       let lo = 0;
       let hi = A.length - 1;
       while (lo < hi) {
@@ -1015,7 +1352,7 @@ export class Wrapper {
         if (A[mid] <= e.a) lo = mid;
         else hi = mid - 1;
       }
-      if (A[lo] === e.a && last.B[lo] === e.b) last.out[lo] = st.length;
+      if (A[lo] === e.a && x.B[lo] === e.b) x.out[lo] = st.length;
     }
     return true;
   }
@@ -1128,14 +1465,19 @@ export class Wrapper {
     return typeof CSS !== 'undefined' && CSS.supports('-moz-appearance', 'none');
   }
 
+  /** Bumped whenever counts are dropped (see forget): rows being counted in steps are then dropped too. */
+  private gen = 0;
+
   /** Drops every row count and break (they depend on the width, the fonts and the mode). */
   private forget() {
+    this.gen++;
     this.sized.clear();
     this.last = null;
     for (const m of this.mirrors.values()) m.el.remove();
     this.mirrors.clear();
     this.sums.length = 0;
     this.lastSum = null;
+    this.cutLines = [];
     this.diff = null;
     this.pending = [];
     clearTimeout(this.refineTimer);

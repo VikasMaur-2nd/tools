@@ -1,0 +1,7 @@
+{
+ "rows": [
+  "≠$string\"text\"→array[\"text\"]"
+ ],
+ "empty": null,
+ "patch": "[\n  {\n    \"op\": \"replace\",\n    \"path\": \"\",\n    \"value\": [\n      \"text\"\n    ]\n  }\n]"
+}

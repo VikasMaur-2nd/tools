@@ -13,6 +13,8 @@ export interface SurfaceHost {
   readonly length: number;
   slice(a: number, b: number): string;
   charCodeAt(i: number): number;
+  /** Whether the caret may be at `off`: not inside a pair or a cluster (an emoji with its skin tone, a joined family, a flag). */
+  between(off: number): boolean;
   /** Model start and end of the line holding `off`. */
   line(off: number): [number, number];
   edit(a: number, b: number, text: string, kind: string): void;
@@ -191,6 +193,10 @@ export class Surface {
     this.value = this.before = now;
     const sel = [this.start + ta.selectionStart, this.start + ta.selectionEnd];
     if (this.comp) this.comp = [this.comp[0], sel[1]];
+    // (Much more than a passage came in, pasted or dropped by the browser: out of the textarea before the edit
+    // lays the page out, which with millions of characters in it took Firefox half a minute. The passage around
+    // the caret goes back in after it, see sync.)
+    if (!this.comp && now.length > 2 * PASSAGE) ta.value = '';
     this.h.edit(big ? s : this.start + a, big ? e2 : this.start + b, now.slice(a, c), e.inputType || 'insertText');
     this.select(sel[0], sel[1], ta.selectionDirection === 'backward');
     this.h.moved(false);
@@ -221,7 +227,9 @@ export class Surface {
       const part = (words ??= new Intl.Segmenter(undefined, { granularity: 'word' })).segment(h.slice(a, off + 2048)).containing(off - a);
       return part ? a + part.index + (dir > 0 ? part.segment.length : 0) : off;
     }
-    return (h.charCodeAt(off) & 0xfc00) === 0xdc00 ? off + dir : off;
+    // (Never inside a pair or a cluster.)
+    while (off > 0 && off < h.length && !h.between(off)) off += dir;
+    return off;
   }
 
   /**

@@ -170,13 +170,17 @@ export class OldTreeView {
 
   /** Expands every collapsed ancestor of `n`. */
   reveal(n: JNode) {
+    // (From the top: below the first closed ancestor, the others open too, whatever their kept x says. The
+    // model before 2026-10-27 skipped those, and a deep node stayed hidden after Expand all, Collapse all.)
+    const ancestors: JNode[] = [];
+    for (let p = n.u; p; p = p.u) ancestors.push(p);
     let changed = false;
-    for (let p = n.u; p; p = p.u) {
-      if (!p.x) {
-        p.x = true;
-        this.toggles.set(keyOf(p), true);
-        changed = true;
-      }
+    for (let i = ancestors.length - 1; i >= 0; i--) {
+      const p = ancestors[i];
+      if (!changed && p.x) continue;
+      p.x = true;
+      this.toggles.set(keyOf(p), true);
+      changed = true;
     }
     if (changed) this.rebuild();
   }

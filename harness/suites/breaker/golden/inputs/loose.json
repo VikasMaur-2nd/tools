@@ -1,0 +1,61 @@
+{
+ "status": {
+  "msg": "Ln 2, Col 3: Comments are not allowed in JSON",
+  "kind": "warn",
+  "raw": "127 B raw",
+  "min": "78 B min",
+  "stats": "10 lines · 10 nodes · depth 2"
+ },
+ "pretty": "{\n  \"name\": \"Ada\",\n  \"ok\": true,\n  \"none\": null,\n  \"n\": null,\n  \"inf\": null,\n  \"hex\": 31,\n  \"list\": [\n    1,\n    2\n  ]\n}",
+ "minified": "{\"name\":\"Ada\",\"ok\":true,\"none\":null,\"n\":null,\"inf\":null,\"hex\":31,\"list\":[1,2]}",
+ "string": "\"{\\\"name\\\":\\\"Ada\\\",\\\"ok\\\":true,\\\"none\\\":null,\\\"n\\\":null,\\\"inf\\\":null,\\\"hex\\\":31,\\\"list\\\":[1,2]}\"",
+ "sorted": "{\n  \"hex\": 31,\n  \"inf\": null,\n  \"list\": [\n    1,\n    2\n  ],\n  \"n\": null,\n  \"name\": \"Ada\",\n  \"none\": null,\n  \"ok\": true\n}",
+ "tree": [
+  "root{7}",
+  "  name:\"Ada\"",
+  "  ok:true",
+  "  none:null",
+  "  n:null",
+  "  inf:null",
+  "  hex:31",
+  "  list:[2]",
+  "    0:1",
+  "    1:2"
+ ],
+ "table": {
+  "head": [
+   "key",
+   "value"
+  ],
+  "rows": [
+   "name | Ada",
+   "ok | true",
+   "none | null",
+   "n | null",
+   "inf | null",
+   "hex | 31",
+   "list | [2]"
+  ],
+  "empty": false
+ },
+ "csv": "key,value\r\nname,Ada\r\nok,true\r\nnone,\r\nn,\r\ninf,\r\nhex,31\r\nlist,\"[1,2]\"",
+ "convert": {
+  "typescript": "export interface Root {\n  name: string;\n  ok: boolean;\n  none: null;\n  n: null;\n  inf: null;\n  hex: number;\n  list: number[];\n}\n",
+  "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.object({\n  name: z.string(),\n  ok: z.boolean(),\n  none: z.null(),\n  n: z.null(),\n  inf: z.null(),\n  hex: z.number().int(),\n  list: z.array(z.number().int()),\n});\nexport type Root = z.infer<typeof RootSchema>;\n",
+  "json-schema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Root\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"ok\": {\n      \"type\": \"boolean\"\n    },\n    \"none\": {\n      \"type\": \"null\"\n    },\n    \"n\": {\n      \"type\": \"null\"\n    },\n    \"inf\": {\n      \"type\": \"null\"\n    },\n    \"hex\": {\n      \"type\": \"integer\"\n    },\n    \"list\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"integer\"\n      }\n    }\n  },\n  \"required\": [\"name\", \"ok\", \"none\", \"n\", \"inf\", \"hex\", \"list\"]\n}\n",
+  "csharp": "using System.Collections.Generic;\nusing System.Text.Json;\nusing System.Text.Json.Serialization;\n\npublic class Root\n{\n    [JsonPropertyName(\"name\")]\n    public required string Name { get; set; }\n\n    [JsonPropertyName(\"ok\")]\n    public required bool Ok { get; set; }\n\n    [JsonPropertyName(\"none\")]\n    public required JsonElement? None { get; set; }\n\n    [JsonPropertyName(\"n\")]\n    public required JsonElement? N { get; set; }\n\n    [JsonPropertyName(\"inf\")]\n    public required JsonElement? Inf { get; set; }\n\n    [JsonPropertyName(\"hex\")]\n    public required long Hex { get; set; }\n\n    [JsonPropertyName(\"list\")]\n    public required List<long> List { get; set; }\n}\n",
+  "dart": "class Root {\n  final String name;\n  final bool ok;\n  final dynamic none;\n  final dynamic n;\n  final dynamic inf;\n  final int hex;\n  final List<int> list;\n\n  const Root({\n    required this.name,\n    required this.ok,\n    this.none,\n    this.n,\n    this.inf,\n    required this.hex,\n    required this.list,\n  });\n\n  factory Root.fromJson(Map<String, dynamic> json) => Root(\n    name: json['name'] as String,\n    ok: json['ok'] as bool,\n    none: json['none'],\n    n: json['n'],\n    inf: json['inf'],\n    hex: json['hex'] as int,\n    list: (json['list'] as List<dynamic>).map((e) => e as int).toList(),\n  );\n\n  Map<String, dynamic> toJson() => {\n    'name': name,\n    'ok': ok,\n    'none': none,\n    'n': n,\n    'inf': inf,\n    'hex': hex,\n    'list': list,\n  };\n}\n",
+  "java": "import java.util.List;\n\npublic record Root(\n    String name,\n    boolean ok,\n    Object none,\n    Object n,\n    Object inf,\n    long hex,\n    List<Long> list\n) {}\n",
+  "python": "from typing import Any, List\n\nfrom pydantic import BaseModel, Field\n\n\nclass Root(BaseModel):\n    name: str\n    ok: bool\n    none: Any\n    n: Any\n    inf: Any\n    hex: int\n    list_: List[int] = Field(alias=\"list\")\n",
+  "go": "package main\n\ntype Root struct {\n\tName string  `json:\"name\"`\n\tOk   bool    `json:\"ok\"`\n\tNone any     `json:\"none\"`\n\tN    any     `json:\"n\"`\n\tInf  any     `json:\"inf\"`\n\tHex  int64   `json:\"hex\"`\n\tList []int64 `json:\"list\"`\n}\n",
+  "kotlin": "import kotlinx.serialization.Serializable\nimport kotlinx.serialization.json.JsonElement\n\n@Serializable\ndata class Root(\n    val name: String,\n    val ok: Boolean,\n    val none: JsonElement? = null,\n    val n: JsonElement? = null,\n    val inf: JsonElement? = null,\n    val hex: Long,\n    val list: List<Long>,\n)\n",
+  "swift": "import Foundation\n\nstruct Root: Codable {\n    let name: String\n    let ok: Bool\n    let none: JSONValue?\n    let n: JSONValue?\n    let inf: JSONValue?\n    let hex: Int\n    let list: [Int]\n}\n\n/// Any JSON value (used where the type is unknown or mixed).\nenum JSONValue: Codable {\n    case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null\n\n    init(from decoder: Decoder) throws {\n        let c = try decoder.singleValueContainer()\n        if c.decodeNil() { self = .null }\n        else if let v = try? c.decode(Bool.self) { self = .bool(v) }\n        else if let v = try? c.decode(Double.self) { self = .number(v) }\n        else if let v = try? c.decode(String.self) { self = .string(v) }\n        else if let v = try? c.decode([JSONValue].self) { self = .array(v) }\n        else { self = .object(try c.decode([String: JSONValue].self)) }\n    }\n\n    func encode(to encoder: Encoder) throws {\n        var c = encoder.singleValueContainer()\n        switch self {\n        case .string(let v): try c.encode(v)\n        case .number(let v): try c.encode(v)\n        case .bool(let v): try c.encode(v)\n        case .object(let v): try c.encode(v)\n        case .array(let v): try c.encode(v)\n        case .null: try c.encodeNil()\n        }\n    }\n}\n",
+  "php": "<?php\n\ndeclare(strict_types=1);\n\nfinal class Root\n{\n    public function __construct(\n        public readonly string $name,\n        public readonly bool $ok,\n        public readonly mixed $none,\n        public readonly mixed $n,\n        public readonly mixed $inf,\n        public readonly int $hex,\n        /** @var int[] */\n        public readonly array $list,\n    ) {\n    }\n\n    public static function fromArray(array $data): self\n    {\n        return new self(\n            name: $data['name'],\n            ok: $data['ok'],\n            none: $data['none'],\n            n: $data['n'],\n            inf: $data['inf'],\n            hex: $data['hex'],\n            list: $data['list'],\n        );\n    }\n}\n",
+  "rust": "use serde::{Deserialize, Serialize};\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct Root {\n    pub name: String,\n    pub ok: bool,\n    pub none: serde_json::Value,\n    pub n: serde_json::Value,\n    pub inf: serde_json::Value,\n    pub hex: i64,\n    pub list: Vec<i64>,\n}\n",
+  "csv": "key,value\r\nname,Ada\r\nok,true\r\nnone,\r\nn,\r\ninf,\r\nhex,31\r\nlist,\"1, 2\"\r\n",
+  "yaml": "name: Ada\nok: true\nnone: null\n\"n\": null\ninf: null\nhex: 31\nlist:\n  - 1\n  - 2\n",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <name>Ada</name>\n  <ok>true</ok>\n  <none/>\n  <n/>\n  <inf/>\n  <hex>31</hex>\n  <list>1</list>\n  <list>2</list>\n</root>\n",
+  "toml": "name = \"Ada\"\nok = true\n# none = null (omitted: TOML has no null)\n# n = null (omitted: TOML has no null)\n# inf = null (omitted: TOML has no null)\nhex = 31\nlist = [1, 2]\n",
+  "jsonl": "{\"name\":\"Ada\",\"ok\":true,\"none\":null,\"n\":null,\"inf\":null,\"hex\":31,\"list\":[1,2]}\n"
+ }
+}

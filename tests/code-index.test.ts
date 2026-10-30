@@ -49,6 +49,9 @@ test('the minified size of strict JSON, counted without minifying, matches the m
     '{"z":["\\u0061\\ud800",1.20e+9],"a":1,"a":900719925474099312345}',
     '{ "esc": "\\u00e9\\n\\t\\/", "pair": "\\ud83d\\ude00", "raw": "😀", "ctl": "\\u0001" }',
     '[' + Array.from({ length: 300 }, (_, i) => `{"id": ${i}, "name": "Zoë ${i}\\n", "tags": [ "a" , "b" ]}`).join(' ,\n ') + ']',
+    // Raw pairs (emoji) and raw lone surrogates in strings and names, and a pair across a 64K step.
+    JSON.stringify({ '😀k': '👨‍👩‍👧 x 😀', lone: 'a\ud800b', low: '\udc00', end: 'x\ud83d' }),
+    '["' + 'a'.repeat(65_533) + '😀😀", "\ud800", "z"]',
   ];
   for (const text of samples) {
     const res = parse(text);
@@ -59,6 +62,8 @@ test('the minified size of strict JSON, counted without minifying, matches the m
     let got;
     while ((got = step(0)) === undefined);
     assert.equal(got, minifiedBytes(text));
+    assert.equal(minifiedBytes(text), Buffer.byteLength(formatDoc(text, res, '')), `UTF-8: ${text.slice(0, 40)}`);
+    assert.equal(byteLength(text), Buffer.byteLength(text), `byteLength: ${text.slice(0, 40)}`);
   }
 });
 

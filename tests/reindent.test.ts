@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, JNode, OBJ, parse, type ParseResult } from '../lib/json/parser';
-import { formatDoc, reindent, stringify } from '../lib/json/format';
+import { byteLength, formatDoc, minifiedBytes, reindent, reindenter, stringify } from '../lib/json/format';
+import { compressedSize, minifiedBytesStream } from '../lib/engine/sizes';
+import '../lib/json/requote';
 
 let seed = 11;
 const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
@@ -68,4 +70,129 @@ test('documents nested deeper than the engine can stringify are written from the
   assert.equal(pretty.split('\n').length, 2 * (depth - 1) + 1);
   assert.ok(pretty.startsWith('[\n {\n  "k": [\n   {\n'));
   assert.equal(formatDoc(src, res, '', true), src);
+});
+
+test('reindent switches from one-byte to UTF-16 output where the first wide character appears', () => {
+  const ascii = JSON.stringify(Array.from({ length: 2000 }, (_, i) => ({ id: i, s: 'plain ' + i })));
+  for (const tail of ['"é"', '"\\u00e9"', '"😀"', '"\\ud83d\\ude00"', '"\\ud800"', '"\\u0080"', '"a\\nb"', '"\\u007f"']) {
+    const doc = `{"a": ${ascii}, "tail": ${tail}, "more": ${ascii}}`;
+    for (const indent of ['', '  ', '\t']) assert.equal(reindent(doc, indent), JSON.stringify(JSON.parse(doc), null, indent), `${tail} ${JSON.stringify(indent)}`);
+  }
+  // A wide character first, in a key.
+  assert.equal(reindent('{"ключ": [1, 2]}', ''), '{"ключ":[1,2]}');
+});
+
+test('strings with escapes are re-quoted in place exactly as quote(JSON.parse(token)), and refused where JSON.parse refuses', () => {
+  let r = 99;
+  const rnd = (n: number) => ((r = (r * 1103515245 + 12345) & 0x7fffffff), r % n);
+  const atoms = ['a', 'é', '東', '😀', '\\n', '\\"', '\\\\', '\\/', '\\b', '\\f', '\\r', '\\t', '\\u0000', '\\u001f', '\\u0041', '\\u00e9', '\\uD83D', '\\uDE00', '\\ud83d\\ude00', '\\uDBFF', '\\uDC00', '\ud83d', '\ude00', ' ', '\u007f', '"', '\\x', '\\u12', '\\uZZZZ', '\u0001', '\t', '\\', ' '];
+  for (let k = 0; k < 20000; k++) {
+    let body = '';
+    for (let n = rnd(8); n >= 0; n--) body += atoms[rnd(atoms.length)];
+    const token = '"' + body + '"';
+    const doc = '[' + token + ', "x\\n"]';
+    let want: string | null;
+    try {
+      want = JSON.stringify(JSON.parse(doc));
+    } catch {
+      want = null;
+    }
+    // A raw quote or trailing backslash ends the token early: reindent then sees other text, as the parser would.
+    const got = reindent(doc, '');
+    if (want !== null) assert.equal(got, want, doc);
+    else assert.equal(got, null, doc);
+    // (minifiedBytes checks strings, not the grammar around them.)
+    if (want !== null) assert.equal(minifiedBytes(doc), new TextEncoder().encode(want).length, doc);
+    let token1: string | null;
+    try {
+      token1 = JSON.stringify(JSON.parse(token));
+    } catch {
+      token1 = null;
+    }
+    // A token alone (a raw quote inside ends it early: then it isn't one token).
+    if (!body.includes('"') || token1 !== null) assert.equal(minifiedBytes(token), token1 === null ? null : new TextEncoder().encode(token1).length, token);
+  }
+});
+
+test('strings over 64K characters are re-quoted in place with the same result and the same refusals', () => {
+  let r = 5;
+  const rnd = (n: number) => ((r = (r * 1103515245 + 12345) & 0x7fffffff), r % n);
+  const atoms = ['a', 'é', '東', '😀', '\\n', '\\"', '\\\\', '\\/', '\\b', '\\u0000', '\\u00e9', '\\uD83D', '\\uDE00', '\\ud83d\\ude00', '\ud83d', '\ude00', ' ', '\\x', '\\u12', '\u0001', '\t', ' '];
+  for (let k = 0; k < 120; k++) {
+    let body = '';
+    for (let n = rnd(6); n >= 0; n--) body += atoms[rnd(atoms.length)];
+    // A valid filler around the random part, so only that part decides.
+    const filler = 'x\\n'.repeat(22_000 + rnd(1000));
+    const token = '"' + filler + body + filler + '"';
+    for (const doc of [token, '{"k": ' + token + '}', '[' + token + ', "é"]']) {
+      let want: string | null;
+      try {
+        want = JSON.stringify(JSON.parse(doc));
+      } catch {
+        want = null;
+      }
+      assert.equal(reindent(doc, ''), want, body);
+      if (want !== null) assert.equal(minifiedBytes(doc), new TextEncoder().encode(want).length, body);
+      else if (doc === token) assert.equal(minifiedBytes(doc), null, body);
+    }
+  }
+  assert.equal(minifiedBytes('"' + 'x\\n'.repeat(40_000) + '\\'), null, 'unterminated');
+});
+
+/** `reindenter` into a sink, run in short steps: its pieces as one text, its result, and how many pieces there were. */
+function sunk(src: string, indent: string) {
+  const pieces: string[] = [];
+  const run = reindenter(src, indent, (units) => pieces.push(new TextDecoder('utf-16le').decode(units)));
+  let out: string | null | undefined;
+  while ((out = run(performance.now() + 1)) === undefined);
+  return { out, text: pieces.join(''), pieces: pieces.length };
+}
+
+/** A strict document of `n` records long enough to be written in many pieces, wide characters and re-quoted strings across them. */
+const long = (n: number) =>
+  '[\n' + Array.from({ length: n }, (_, i) => `  {"i": ${i}, "s": "${['😀 é', '\\u00e9\\/', 'plain', '中文 😀😀', 'x\\ud83d\\ude00'][i % 5]}", "big": ${9007199254740993n + BigInt(i)}}`).join(',\n') + '\n]\n';
+
+test('a reindent into a sink gives the same text in pieces, never the whole, and the same refusals', () => {
+  for (let k = 0; k < 1500; k++) {
+    const src = ws() + value(0) + ws();
+    for (const indent of ['  ', '']) {
+      const { out, text } = sunk(src, indent);
+      const want = reindent(src, indent);
+      assert.equal(out === null, want === null, src);
+      if (want !== null) assert.equal(text, want, src);
+    }
+  }
+  for (const src of [long(20_000), '{"k": "' + 'x\\n'.repeat(70_000) + '😀", "b": [1, 2]}']) {
+    for (const indent of ['', '\t']) {
+      const { out, text, pieces } = sunk(src, indent);
+      assert.equal(out, '');
+      assert.ok(pieces > 1, `${pieces} pieces`);
+      assert.equal(text, reindent(src, indent));
+    }
+  }
+  assert.equal(sunk('[1, 2', '').out, null);
+  assert.equal(sunk('{"a": tru}', '').out, null);
+});
+
+test('the minified bytes stream is the minified text in UTF-8, and compresses to the same size', async () => {
+  const read = async (s: ReadableStream<Uint8Array>) => new Uint8Array(await new Response(s).arrayBuffer());
+  for (const src of [long(30_000), '{"a": [1, 2.50, "é😀"], "b": null}', '"' + '\\u0041'.repeat(90_000) + '"']) {
+    const min = reindent(src, '')!;
+    const bytes = new TextEncoder().encode(min);
+    assert.deepEqual(await read(minifiedBytesStream(src)), bytes);
+    assert.equal(minifiedBytes(src), bytes.length);
+    for (const codec of ['gzip', 'deflate']) assert.equal(await compressedSize(() => minifiedBytesStream(src), codec), await compressedSize(new Blob([min]), codec), codec);
+  }
+  await assert.rejects(read(minifiedBytesStream('[1, 2')), /not JSON/);
+});
+
+test('byteLength of a part of a text reads that part only (an ASCII text measured part by part took minutes)', () => {
+  const ascii = '{"a":"bc"},'.repeat(400_000);
+  const t0 = performance.now();
+  let n = 0;
+  for (let i = 0; i + 11 <= ascii.length; i += 11 * 20) n += byteLength(ascii, i + 5, i + 9);
+  assert.equal(n, 4 * Math.ceil(ascii.length / 220));
+  assert.ok(performance.now() - t0 < 5000, `${Math.round(performance.now() - t0)} ms`);
+  const mixed = 'aé😀\n中b';
+  for (let a = 0; a <= mixed.length; a++) for (let b = a; b <= mixed.length; b++) assert.equal(byteLength(mixed, a, b), byteLength(mixed.slice(a, b)), `${a}..${b}`);
 });

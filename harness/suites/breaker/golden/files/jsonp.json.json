@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Ln 1, Col 1: callback(…) is not valid JSON (only its argument is kept)",
+  "kind": "warn",
+  "raw": "18 B raw",
+  "min": "7 B min",
+  "stats": "1 line · 2 nodes · depth 1"
+ },
+ "toasts": [
+  "Opened jsonp.json"
+ ],
+ "input": "callback({\"a\":1});",
+ "formatted": "{\n  \"a\": 1\n}"
+}

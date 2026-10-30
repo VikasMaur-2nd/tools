@@ -1,7 +1,9 @@
-import { ARR, JNode, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
+import { ARR, JNode, MAX_ISSUES, MAX_WALK_DEPTH, OBJ, STR, parse, parser, tooDeep, type ParseResult, type Parser } from '../json/parser';
 import { byteLength, copyText, formatBytes, formatDoc, minifiedBytesIn, reindent, reindenter, stringify, tooLarge } from '../json/format';
 import { formatPath, nodeAt, pathOf, resolve, type Seg } from '../json/path';
-import { packedPosition, unpacker, type PackedTree } from '../json/pack';
+import type { PackedTree, PrettyText } from '../json/pack';
+import type { PrettyIndex } from '../json/pretty';
+import type { Tape } from '../json/tape';
 import { applyCodeChange, type CodeChange, type CodeIndex } from '../json/code-index';
 import type { DocumentMetrics } from '../json/metrics';
 import { Editor, loadSurface, type ChangeKind, type Diagnostic } from './editor';
@@ -13,17 +15,20 @@ import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { convertFileName, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type ContextMenu, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
-import { readJwt, type JwtInput } from '../json/jwt';
+import type { JwtInput, readJwt } from '../json/jwt';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
-import { Doc } from './doc';
+import { Doc, lf } from './doc';
 import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
-import { snippet, type SnippetFormat } from '../badge';
-import { HANDOFF_VERSION, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import type { SnippetFormat } from '../badge';
+import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+
+/** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
+export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
 
 const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
@@ -141,10 +146,24 @@ function prettyExtraIn(root: JNode, unit: number): (until: number) => number | u
 
 /** Opened JSON Lines files: even one record reads as a list of records. */
 const LINES_FILE = /\.(jsonl|ndjson)$/i;
+
+/**
+ * Could the input be a JWT (see readJwt, loaded once one may be)? As readJwt, looks at its first character
+ * only: anything but "e" (eyJ…) or "Bearer" isn't.
+ */
+function mayBeJwt(t: { length: number; charCodeAt(i: number): number }) {
+  if (t.length > 1_000_000) return false;
+  let i = 0;
+  while (i < t.length && t.charCodeAt(i) <= 32) i++;
+  const c = t.charCodeAt(i);
+  return c === 101 || c === 66 || c === 98;
+}
 /** From this size, a load in the Format view draws its output before the editor (see `load`). */
 const OUTPUT_FIRST = 200_000;
 /** From this size, that output is re-indented in a worker. */
 const WORKER_MIN = 2_000_000;
+/** From this size, an edited document is analysed after a second without input (see onChange). */
+const HUGE_TYPED = 16_000_000;
 /** From this size, a new document is parsed here in steps (see analyzeInSteps). */
 const STEPS_MIN = 1_000_000;
 /** The first step's length in ms. It runs at once, as a parse in one go did: a document parsed by then is ready as soon. */
@@ -193,6 +212,65 @@ function sniff(text: string): Hint {
  * The service worker is registered once per page (a client navigation mounts the tool again, with a new
  * engine), and its news of a new version goes to the tool open then, or to the next one (see registerSW).
  */
+/**
+ * The tape's code (pack.ts and what it imports): only documents a worker parsed need it, so it isn't in
+ * the first load. Loaded when the page is idle, and waited for by a worker message that brings a tape.
+ */
+/**
+ * What a waiting copy or download gets (see Waiting): the output (a big pretty one as parts, see prettyParts), null
+ * when none could be made, or undefined when what it asked for was superseded first (nothing copied or saved).
+ */
+type Output = string | string[] | null | undefined;
+
+/**
+ * Copies and downloads waiting for an output still being made (see outputPending, convPending): one wait, shared
+ * by every one asked for meanwhile (a key held down asks dozens of times), bound to what it asked for (its key:
+ * the settings and the document, see Engine.fmtWait and convKey). Its maker hands it the output for that only;
+ * asked for something else, or the settings or the document changed first, it ends with nothing (undefined).
+ * With null after two minutes (one that never comes, the document turned invalid say: nothing to copy).
+ */
+class Waiting {
+  private w: { key: string; promise: Promise<Output>; done: (out: Output) => void } | null = null;
+
+  get pending() {
+    return !!this.w;
+  }
+
+  /** The wait for `key` (one for anything else ends, superseded). */
+  get(key: string): Promise<Output> {
+    if (this.w?.key === key) return this.w.promise;
+    this.end();
+    let done!: (out: Output) => void;
+    const w = { key, promise: new Promise<Output>((r) => (done = r)), done: (out: Output) => done(out) };
+    this.w = w;
+    setTimeout(() => this.w === w && this.end(null), 120_000);
+    return w.promise;
+  }
+
+  /** Whether what waits is for `key`. */
+  wants(key: string) {
+    return this.w?.key === key;
+  }
+
+  /** Ends what waits with `out` (nothing: superseded), if it is for `key` (when given). */
+  end(out?: Output, key?: string) {
+    const w = this.w;
+    if (!w || (key !== undefined && w.key !== key)) return;
+    this.w = null;
+    w.done(out);
+  }
+}
+
+type Pack = typeof import('../json/pack');
+/** Pretty lines a worker indexed with a tape (see drawPretty), by the tape's nodes. */
+const prettyIndexes = new WeakMap<Int32Array, { indent: string; index: PrettyIndex }>();
+let pack: Pack | null = null;
+let packLoad: Promise<Pack> | null = null;
+const loadPack = () => (packLoad ??= import('../json/pack').then((m) => (pack = m), (e: unknown) => {
+  packLoad = null;
+  throw e;
+}));
+
 let swStarted = false;
 let updateWaiting = false;
 
@@ -229,6 +307,11 @@ export class Engine {
   private good: ParseResult | null = null;
   /** The input is a JWT: `res` and the views describe its decoded document. */
   private jwt: JwtInput | null = null;
+  /** The JWT reader (lib/json/jwt.ts): loaded when an input may be a JWT, or when the page is idle. */
+  private jwtReader: typeof readJwt | null = null;
+  private jwtLoad: Promise<void> | null = null;
+  /** An analysis waits for the JWT reader (see waitForJwt). */
+  private jwtWait = false;
   private sel: JNode | null = null;
   private selPath: Seg[] | null = null;
   private tablePath: Seg[] = [];
@@ -264,6 +347,9 @@ export class Engine {
       escape: () => this.leaveEditor(),
       copyAll: () => void this.copyAll(),
       flush: this.flushLoad,
+      renamed: this.renamed,
+      name: () => this.edName,
+      undoing: this.undoing,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
         if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
@@ -280,6 +366,8 @@ export class Engine {
       nav: () => undefined,
       escape: () => document.querySelector<HTMLElement>('.pane-view [role="tab"][aria-selected="true"]')?.focus(),
       copyAll: () => void this.copy(this.ed2.text, 'Copied the modified document'),
+      renamed: this.cmpRenamed,
+      name: this.cmpName,
     });
     this.ed2.indentUnit = INDENTS[this.settings.indent];
     if (!this.ed2.text) {
@@ -297,6 +385,7 @@ export class Engine {
       select: (n) => this.selectFromView(n, 'table'),
       drill: (n) => this.tableShow(n),
     });
+    // (Items of millions are made in steps before the table lays them out: its counts change then.)
     this.code = new CodeView(els.code);
     this.fmt = new CodeView(els.fmt);
     this.fmt.onReady = () => {
@@ -320,7 +409,7 @@ export class Engine {
       const saved = read(KEYS.doc);
       if (saved) this.ed.init(saved);
     }
-    store.set({ fileName: read(KEYS.file) });
+    store.set({ fileName: (this.edName = read(KEYS.file)) });
     this.analyzeInSteps();
     if (this.settings.view === 'graph') this.setView('graph');
     if (this.ed2.text) this.analyzeCompare();
@@ -353,6 +442,8 @@ export class Engine {
   }
 
   destroy() {
+    // (Saved below: the document still on its way is the one kept, see persist.)
+    const pending = this.pendingNow();
     this.worker?.terminate();
     this.analysisWorker?.terminate();
     clearTimeout(this.analysisTimer);
@@ -399,7 +490,7 @@ export class Engine {
     clearTimeout(this.convTimer);
     clearTimeout(this.fmtTimer);
     clearTimeout(this.expTimer);
-    this.persistNow();
+    this.persist(pending);
     this.ed.destroy();
     this.themeMedia.removeEventListener('change', this.onSystemTheme);
     this.graph?.destroy();
@@ -417,6 +508,13 @@ export class Engine {
 
   private onChange = (kind: ChangeKind) => {
     if (this.dead) return;
+    // (A load's text arriving in the editor is that load's document, not a new one: see finishLoad.)
+    if (!this.landing) {
+      this.docGen++;
+      this.supersede();
+      // The file read no longer is the editor's text: the analysis worker is sent the text (see postDocument).
+      if (this.fromFile && this.fromFile.doc !== this.ed.version) this.fromFile = null;
+    }
     if (kind !== 'set') this.requests[1]?.abort(); // (what was typed or pasted is newer than a document on its way)
     this.loadSeq++; // Invalidate queued worker replies and unpacking as soon as typing resumes.
     this.progressStatus = null; // (and a big load's progress: what follows says nothing of it)
@@ -430,6 +528,7 @@ export class Engine {
     this.persistEnabled = persistenceAfterChange(this.persistEnabled, kind);
     if (kind === 'paste' && this.ed.pasteFull) {
       this.resetNext = true;
+      this.edName = null;
       if (store.get().fileName) {
         store.set({ fileName: null });
         write(KEYS.file, null);
@@ -461,7 +560,8 @@ export class Engine {
     } else {
       if (len > 1_000_000) store.set({ status: { kind: 'parsing' } });
       clearTimeout(this.timer);
-      this.timer = window.setTimeout(this.analyzeTyped, len < 100_000 ? 60 : len < 250_000 ? 160 : len < WORKER_MIN ? 500 : 200);
+      // (A huge document's analysis takes seconds: it starts once input pauses for one, not between pastes.)
+      this.timer = window.setTimeout(this.analyzeTyped, len < 100_000 ? 60 : len < 250_000 ? 160 : len < WORKER_MIN ? 500 : len < HUGE_TYPED ? 200 : 1000);
     }
     if (this.persistEnabled) this.persistSoon();
   };
@@ -490,7 +590,7 @@ export class Engine {
   private materializeGood() {
     if (!this.goodPacked) return;
     const { tree, text } = this.goodPacked;
-    const res = unpacker(tree, text)(Infinity)!;
+    const res = pack!.unpacker(tree, text)(Infinity)!;
     if (this.packed?.id === this.loadSeq && this.packed.text === text) {
       this.analyze(res, this.goodMetrics ?? undefined);
       return;
@@ -517,7 +617,7 @@ export class Engine {
       const { tree, text, metrics } = this.packed;
       this.viewSeq++;
       this.packed = null;
-      this.analyze(unpacker(tree, text)(Infinity), metrics);
+      this.analyze(pack!.unpacker(tree, text)(Infinity), metrics);
     }
     if (this.ed.text !== this.parsed || (!this.res && this.ed.text.trim())) {
       clearTimeout(this.timer);
@@ -540,6 +640,31 @@ export class Engine {
   /** A new document being parsed in steps (see analyzeInSteps). */
   private steps: { p: Parser; seq: number; ver: object } | null = null;
 
+  /** Loads the JWT reader, once (a page offline without it reads every input as plain text). */
+  private loadJwt() {
+    return (this.jwtLoad ??= import('../json/jwt').then(
+      (m) => void (this.jwtReader = m.readJwt),
+      () => void (this.jwtReader = () => null),
+    ));
+  }
+
+  /**
+   * An input that may be a JWT before the JWT reader has loaded: says "Parsing…" and analyses again once it
+   * has. True if the analysis must wait.
+   */
+  private waitForJwt() {
+    if (this.jwtReader || !mayBeJwt(this.ed.version as Doc)) return false;
+    store.set({ status: { kind: 'parsing' } });
+    if (!this.jwtWait) {
+      this.jwtWait = true;
+      void this.loadJwt().then(() => {
+        this.jwtWait = false;
+        if (!this.dead) this.analyze();
+      });
+    }
+    return true;
+  }
+
   /**
    * Analyses a new document. A big one is parsed here in steps, the first at once (one it finishes is ready
    * as soon as in one go): input is handled between them, the status shows how far it got, and an edit or
@@ -548,10 +673,10 @@ export class Engine {
    */
   private analyzeInSteps() {
     const text = this.ed.length >= STEPS_MIN && this.resetNext ? this.ed.text : '';
-    if (!text || readJwt(text, this.indent)) return this.analyze();
+    if (!text || mayBeJwt(text)) return this.analyze();
     const seq = this.loadSeq;
     const ver = this.ed.version;
-    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? '') });
+    const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     this.steps = { p, seq, ver };
     // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
     clearTimeout(this.timer);
@@ -647,6 +772,9 @@ export class Engine {
 
   /** Publish analysis; a Format-only result can retain its packed tree until needed. */
   analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
+    if (this.waitForJwt()) return;
+    // (Outputs asked for meanwhile are made once this analysis has published: see whenAnalysed.)
+    if (this.analysed.length) queueMicrotask(() => { for (const f of this.analysed.splice(0)) f(); });
     if (!lazy) this.packed = null;
     this.steps = null;
     clearTimeout(this.timer);
@@ -684,9 +812,9 @@ export class Engine {
     }
 
     const t0 = performance.now();
-    const jwt = readJwt(text, this.indent);
+    const jwt = this.jwtReader && mayBeJwt(text) ? this.jwtReader(text, this.indent) : null;
     const src = jwt ? jwt.json : text;
-    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? '') });
+    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
     // (Used once: it holds that version's text.)
     const counted = this.counted?.ver === ed.version ? this.counted : null;
@@ -707,8 +835,8 @@ export class Engine {
       this.goodPacked = this.packed;
       this.good = null;
       this.sel = null;
-      this.selPath = packedPosition(this.packed!.tree, ed.caret, this.packed!.document ?? text)?.path ?? null;
-      this.tree.releaseRoot();
+      this.selPath = pack!.packedPosition(this.packed!.tree, ed.caret, this.packed!.document ?? text)?.path ?? null;
+      this.tree.releaseRoot(reset);
       this.setGraphRoot(null, true);
       // Format already has the worker's output. Nodes are needed only by commands and other views.
       this.goodText = src;
@@ -753,7 +881,8 @@ export class Engine {
 
     let hint: Hint = null;
     if (jwt || lines) hint = null;
-    else if (metrics?.unescape || res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
+    // (A worker measured it: a long root string isn't decoded here just for this.)
+    else if (metrics ? metrics.unescape : res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
     else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
 
     store.set({
@@ -779,7 +908,7 @@ export class Engine {
   private linesStatus(res: ParseResult, records?: number): Status {
     const w = res.warnings[0];
     const jsonl = records ?? (res.root!.v as JNode[]).length;
-    return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
+    return w ? { kind: 'valid', warnings: res.warnings.length, more: res.warnings.length >= MAX_ISSUES, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
   }
 
   /** A decoded JWT (signature not verified); the UI shows its expiry live. */
@@ -852,14 +981,27 @@ export class Engine {
         const sizes: Sizes = { min: blob.size, stale: false };
         // Beyond this, compressing on every edit costs more than the number is worth.
         if (blob.size <= 32_000_000) {
-          const encoders = await import('./sizes').catch(() => null);
-          if (seq !== this.sizeSeq) return;
-          if (encoders) Object.assign(sizes, await encoders.compressedSizes(blob, () => seq === this.sizeSeq));
+          Object.assign(sizes, await this.compressed(blob, seq));
         }
         if (seq === this.sizeSeq) store.set({ sizes });
       }),
       text.length > 1_000_000 ? 700 : 200,
     );
+  }
+
+  /** Compressed sizes waiting for the formatting worker, by measure() sequence. */
+  private sizesWanted = new Map<number, (sizes: Partial<Record<string, number>>) => void>();
+
+  /** Compresses in the formatting worker (encoders can run seconds on the thread that calls them: Firefox's), or here without one. */
+  private compressed(blob: Blob, seq: number): Promise<Partial<Record<string, number>>> {
+    const w = this.reindentWorker();
+    if (!w) return import('./sizes').then((m) => m.compressedSizes(blob, () => seq === this.sizeSeq), () => ({}));
+    // (Only the newest is answered: older ones stop.)
+    this.sizesWanted.clear();
+    return new Promise((done) => {
+      this.sizesWanted.set(seq, done);
+      w.postMessage({ id: 0, measure: blob, seq });
+    });
   }
 
   /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
@@ -881,7 +1023,7 @@ export class Engine {
     const at = (p: number) => this.ed.lineCol(p);
     if (!first && !err) {
       const w = res.warnings[0];
-      return w ? { kind: 'valid', warnings: res.warnings.length, msg: w.m, p: w.p, ...at(w.p) } : { kind: 'valid', warnings: 0 };
+      return w ? { kind: 'valid', warnings: res.warnings.length, more: res.warnings.length >= MAX_ISSUES, msg: w.m, p: w.p, ...at(w.p) } : { kind: 'valid', warnings: 0 };
     }
     if (err && (!first || err.p <= first.p)) return { kind: 'error', msg: err.m, p: err.p, ...at(err.p) };
     if (err) return { kind: 'error', msg: first.m, p: first.p, ...at(first.p) };
@@ -906,7 +1048,7 @@ export class Engine {
   /** Caret moved by the user → reveal the node under it in the tree. */
   private onNav = () => {
     if (this.packed?.id === this.loadSeq) {
-      const at = packedPosition(this.packed.tree, this.ed.caret, this.packed.document ?? this.packed.text);
+      const at = pack!.packedPosition(this.packed.tree, this.ed.caret, this.packed.document ?? this.packed.text);
       this.selPath = at?.path ?? null;
       store.set({ path: at ? formatPath(at.path) : null });
       this.ed.setScope(-1, -1);
@@ -924,7 +1066,7 @@ export class Engine {
   private updateBrackets() {
     if (this.packed?.id === this.loadSeq) {
       const off = this.ed.caret;
-      const at = packedPosition(this.packed.tree, off, this.packed.document ?? this.packed.text);
+      const at = pack!.packedPosition(this.packed.tree, off, this.packed.document ?? this.packed.text);
       const close = at ? at.end - 1 : -1;
       const c = (this.packed.document ?? this.packed.text).charCodeAt(close);
       const match = at && (c === 125 || c === 93) && (off === at.start || off === at.start + 1 || off === close || off === at.end);
@@ -934,6 +1076,16 @@ export class Engine {
     if (!this.synced) return;
     const off = this.ed.caret;
     const t = this.ed.text;
+    // A tree from a tape: its brackets are found on the tape (nodeAt would make the root's children).
+    const z = this.res!.root!.z;
+    if (z) {
+      const at = z.containerAt(off);
+      const close = at ? at[1] - 1 : -1;
+      const c = t.charCodeAt(close);
+      const match = at && (c === 125 || c === 93) && (off === at[0] || off === at[0] + 1 || off === close || off === at[1]);
+      this.ed.setBrackets(match ? at[0] : -1, match ? close : -1);
+      return;
+    }
     for (let n: JNode | null = nodeAt(this.res!.root, off, t); n; n = n.u) {
       if (n.t < ARR) continue;
       const close = n.e - 1;
@@ -1021,6 +1173,11 @@ export class Engine {
   private fixed = (r: ParseResult) => (r.issues.length ? ` · fixed ${r.issues.length} issue${r.issues.length > 1 ? 's' : ''}` : '');
 
   // ── AI agents (WebMCP tools, lib/webmcp) ───────────────────────────────
+
+  /** Before an agent's tool runs: the JWT reader is loaded, so a JWT is read as one at once (it loads when idle otherwise). */
+  agentReady(): Promise<void> {
+    return this.loadJwt();
+  }
 
   /** The open document as a command sees it, its parse finished now if it was still on its way. */
   agentDoc() {
@@ -1210,25 +1367,68 @@ export class Engine {
   // ── Commands: documents ────────────────────────────────────────────────
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
-  load(text: string, name: string | null, persist = true, outputFirst = false) {
+  /** `file`: the file `text` was read from, as is (readText), which the analysis worker then reads itself. */
+  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File) {
+    // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
+    // worker, over this text) must match the editor's, or values and positions shift a character a line.
+    text = lf(text);
+    this.docGen++;
+    this.supersede();
+    this.fromFile = file ? { file, text, doc: null } : null;
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
     this.persistEnabled = persistenceAfterLoad(this.persistEnabled, persist);
     this.resetNext = true;
     this.loadSeq++; // drops what an earlier load still has pending
-    store.set({ fileName: name });
-    if (persist) write(KEYS.file, name);
+    // (The name shows at once; it is saved with the document, once the editor has it: see persistNow. The
+    // sizes and counts shown were the document before's.)
+    store.set({ fileName: name, sizes: null, stats: null });
+    const names: [string | null, string | null] = [this.edName, name];
     if (text.length >= STEPS_MIN) this.startProgress();
-    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true))) {
+    // (Its output, read off its tape, comes with its analysis: until then the view shows nothing of the one before.)
+    if (this.settings.view === 'format' && this.prettyFromTape(text.length)) this.blankFormat();
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, names))) {
       // Until the editor has it, input would act on the old document: the first input hands it over at once.
-      this.pendingLoad = { seq: this.loadSeq, text, persist };
+      this.pendingLoad = { seq: this.loadSeq, text, persist, names };
       return;
     }
-    this.finishLoad(text, persist, false);
+    this.finishLoad(text, persist, false, names);
   }
 
+  /**
+   * The file the document was loaded from (see load), its text until the editor has it, then that version: until
+   * it changes (then this goes, see onChange), the analysis worker reads the file instead of being sent the text.
+   */
+  private fromFile: { file: File; text?: string; doc: Doc | null } | null = null;
+  /**
+   * Bumped by each new document and each change to it, a load's arriving in the editor aside (see landing): a copy
+   * or download waiting for an output is for the document of its generation (see Waiting).
+   */
+  private docGen = 0;
+  /** A load's text is going into the editor (see finishLoad): its change is that load's. */
+  private landing = false;
+
+  /** Undo or Redo brought back a document with its file name (see Editor.setValue). */
+  private renamed = (name: string | null) => {
+    this.edName = name;
+    store.set({ fileName: name });
+  };
+
+  /** Undo while a file is still being read: that file is undone once it arrives (see loadFile), not the document before it. */
+  private undoing = () => {
+    const r = this.reading;
+    if (!r || r.aborted) return false;
+    this.undoLoad = r;
+    return true;
+  };
+
   /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
-  private pendingLoad: { seq: number; text: string; persist: boolean } | null = null;
+  private pendingLoad: { seq: number; text: string; persist: boolean; names: [string | null, string | null] } | null = null;
+  /** The file name of the document the editor holds (the store's is a loading document's at once). */
+  private edName: string | null = null;
+  /** The file being read for the input editor (its request), and one an Undo asked to undo once it arrives. */
+  private reading: AbortSignal | null = null;
+  private undoLoad: AbortSignal | null = null;
 
   /**
    * Input arrived in the editor before a pending load reached it (a key, a paste or a cut right after
@@ -1241,7 +1441,7 @@ export class Engine {
     if (p.seq !== this.loadSeq) return;
     // The load's deferred steps are dropped; the analysis draws its output as usual.
     this.loadSeq++;
-    this.finishLoad(p.text, p.persist, true);
+    this.finishLoad(p.text, p.persist, true, p.names);
     // Arrived for an edit: editable at once, not in the quiet view.
     if (edit) this.ed.takeOver();
     this.onCaret();
@@ -1254,7 +1454,10 @@ export class Engine {
    */
   private outputFirst(text: string | Doc, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void, typed = false, retained?: Doc): boolean {
     const s = this.settings;
-    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || text.length < WORKER_MIN && readJwt(text.toString(), this.indent)) return false;
+    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || mayBeJwt(text)) return false;
+    // A big document's Pretty output is read off its tape (see runFormat): nothing to make here. A load goes
+    // on to the editor and the analysis (finishLoad); after typing, only the analysis runs.
+    if (this.prettyFromTape(text.length)) return typed && this.analyzeOnly(retained ?? (typeof text === 'string' ? Doc.of(text) : text), name, next);
     const seq = ++this.loadSeq;
     const fast = text.length >= WORKER_MIN;
     // A big load (not typing) shows how far it got, here its output's steps (see FORMAT_SENT).
@@ -1279,7 +1482,7 @@ export class Engine {
         this.analyze({ ...tree.head, root: null }, metrics, true);
         return;
       }
-      const step = unpacker(tree, analysisText);
+      const step = pack!.unpacker(tree, analysisText);
       const run = () => {
         if (seq !== this.loadSeq) return;
         const res = step(performance.now() + 8);
@@ -1332,10 +1535,40 @@ export class Engine {
     } else {
       let got = 0;
       const arrived = showing ? (chars: number, size: number) => this.progress(FORMAT_MADE + ((FORMATTED - FORMAT_MADE) * (got += chars)) / size) : undefined;
-      this.reindentJob = { id: seq, done, fallback: here, baseText, baseIndex: this.fmt.inlineIndex({ starts: new Int32Array(0), maxLen: 0 }), baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [], made, arrived };
       const request = { id: seq, indent, parse: typed && !fast, fast, reuseIndex: true, sortKeys: s.sortKeys, lines: LINES_FILE.test(name ?? ''), escape: s.escape, base: baseId, progress: showing };
+      // (A worker that let go of a huge document answers an edit with "reset": it gets all of it again.)
+      const resend = () => this.postDocument(w, request, document, false);
+      this.reindentJob = { id: seq, done, fallback: here, resend, baseText, baseIndex: this.fmt.inlineIndex({ starts: new Int32Array(0), maxLen: 0 }), baseSlice: this.fmt.snapshotText(), outParts: [], displayParts: [], made, arrived };
       this.postDocument(w, request, document, false, undefined, showing ? this.span(0, FORMAT_SENT) : undefined);
     }
+    return true;
+  }
+
+  /**
+   * Whether the Format view reads a document of `length` characters off its tape (see pretty.ts), never making its
+   * output whole: a big one (parsed in the worker) shown Pretty, not sorted, not escaped.
+   */
+  private prettyFromTape(length: number) {
+    const s = this.settings;
+    return length >= WORKER_MIN && !s.minify && !s.escape && !s.sortKeys;
+  }
+
+  /** After typing in a big document shown Pretty (see prettyFromTape): its analysis in the worker, then `next`. */
+  private analyzeOnly(document: Doc, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void) {
+    const seq = ++this.loadSeq;
+    clearTimeout(this.timer);
+    this.queueAnalysis(seq, document, name, (tree, metrics) => {
+      if (seq !== this.loadSeq) return;
+      if (!tree) return next();
+      const step = pack!.unpacker(tree, document.toString());
+      const run = () => {
+        if (seq !== this.loadSeq) return;
+        const res = step(performance.now() + 8);
+        if (res) next(res, metrics);
+        else soon(run);
+      };
+      run();
+    }, 0, () => seq === this.loadSeq && next());
     return true;
   }
 
@@ -1350,11 +1583,30 @@ export class Engine {
   private measuredSizes: { id: number; sizes: Sizes } | null = null;
   private workerParse: { id: number; tree: PackedTree; metrics?: DocumentMetrics } | null = null;
   /** `made`, `arrived`: a big load shows how far the worker got, then how much of its output arrived. */
-  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; baseText: string; baseIndex: CodeIndex; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[]; made?: (f: number) => void; arrived?: (chars: number, size: number) => void } | null = null;
+  private reindentJob: { id: number; done: (out: string | null, tree?: PackedTree, metrics?: DocumentMetrics, index?: CodeIndex, display?: string, change?: CodeChange & { base: number }, patch?: string, inline?: boolean) => void; fallback: () => void; resend?: () => void; baseText: string; baseIndex: CodeIndex; baseSlice: (a: number, b: number) => string; outParts: string[]; displayParts: string[]; made?: (f: number) => void; arrived?: (chars: number, size: number) => void } | null = null;
 
   private workerDoc: Doc | null = null;
   private workerDocId = 0;
   private analysisWorker: Worker | null = null;
+  /** The analysis worker was warmed up (see warmAnalysis) and has had no document yet: it holds nothing. */
+  private analysisFresh = false;
+  /** The analysis worker has a document to analyse whose tree (or word that it stopped) hasn't come back yet. */
+  private analysisBusy = false;
+  /**
+   * The newest analysis asked for while one was in flight: sent once that one answers (see analysisDone). The
+   * worker gets one document at a time, so a burst of big pastes costs one more analysis, not one each.
+   */
+  private analysisNext: (() => void) | null = null;
+  /** Versions sent to be analysed as the output's (see queueAnalysis `good`): each once. */
+  private goodSent = new WeakSet<object>();
+
+  /** The analysis in flight answered (its tree, or that it stopped, or failed): the newest asked for goes now. */
+  private analysisDone() {
+    this.analysisBusy = false;
+    const next = this.analysisNext;
+    this.analysisNext = null;
+    next?.();
+  }
   private analysisFails = 0;
   private analysisDoc: Doc | null = null;
   private analysisDocId = 0;
@@ -1363,8 +1615,13 @@ export class Engine {
   /** A new document keeps the warmed formatter, but drops every old document and analysis task. */
   private releaseWorkerDocuments() {
     clearTimeout(this.analysisTimer);
-    this.analysisWorker?.terminate();
-    this.analysisWorker = null;
+    // (A warmed worker that has had no document holds nothing: it stays, warm, for the next big one.)
+    if (!this.analysisFresh) {
+      this.analysisWorker?.terminate();
+      this.analysisWorker = null;
+      this.analysisBusy = false;
+    }
+    this.analysisNext = null;
     this.analysisDoc = this.workerDoc = null;
     this.analysisDocId = this.workerDocId = 0;
     this.reindentJob = this.workerParse = null;
@@ -1392,10 +1649,22 @@ export class Engine {
       remember();
       return;
     }
+    // A big file just loaded: the analysis worker reads it itself (reindent.worker.ts readFile), so its text
+    // isn't copied over in chunks. (A reset, if the file changed since, sends the text then.)
+    if (analysis && this.fromFile?.doc === document) {
+      w.postMessage({ ...request, file: this.fromFile.file, size: document.length });
+      sent?.(1);
+      remember();
+      return;
+    }
     w.postMessage({ ...request, start: true });
     let at = 0;
     const send = () => {
-      if (this.dead || request.id !== this.loadSeq || (analysis ? this.analysisWorker : this.worker) !== w) return;
+      if (this.dead || request.id !== this.loadSeq || (analysis ? this.analysisWorker : this.worker) !== w) {
+        // (Not all sent: the worker won't answer it, so the newest asked for meanwhile goes now.)
+        if (analysis && !this.dead && this.analysisWorker === w && !request.good) this.analysisDone();
+        return;
+      }
       const until = performance.now() + 8;
       do {
         const end = Math.min(document.length, at + 256_000);
@@ -1419,6 +1688,15 @@ export class Engine {
     clearTimeout(this.analysisTimer);
     this.analysisTimer = window.setTimeout(() => {
       if (id !== this.loadSeq || this.dead) return;
+      // One at a time: while the worker has one, this waits (only the newest waits: see analysisNext).
+      if (this.analysisBusy && this.analysisWorker) {
+        this.analysisNext = send;
+        return;
+      }
+      send();
+    }, wait);
+    const send = () => {
+      if (id !== this.loadSeq || this.dead) return;
       if (this.analysisFails >= 3) return failed?.();
       const from = showing ? this.progressShown() : -1;
       const sentTo = from + ANALYSIS_SENT * (1 - from);
@@ -1426,12 +1704,21 @@ export class Engine {
       const worked = from >= 0 ? this.span(sentTo, 1) : undefined;
       try {
         const w = this.analysisWorker ??= new Worker(new URL('./reindent.worker.ts', import.meta.url));
-        const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer ? this.fmtSrcVer : null;
-        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; progress?: number }>) => {
-          if (e.data.id !== this.loadSeq) return;
-          if (e.data.reset) { this.analysisDoc = null; this.queueAnalysis(id, document, name, done); }
+        // The output shown is of an older version than this one, not yet the views': it is analysed too, once
+        // (its result may come too late to be used, when the text changed again: not sent again for each change).
+        const good = this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== document && this.fmtSrcVer !== this.goodVer && !this.goodSent.has(this.fmtSrcVer) ? this.fmtSrcVer : null;
+        if (good) this.goodSent.add(good);
+        w.onmessage = (e: MessageEvent<{ id: number; tree?: PackedTree; metrics?: DocumentMetrics; sizes?: Sizes; reset?: boolean; good?: boolean; dropped?: boolean; progress?: number; pretty?: { indent: string; index: PrettyIndex } }>) => this.withPack(!!e.data.tree, () => {
+          // (The analysis in flight answered, wanted or not: the newest asked for meanwhile goes now.)
+          if (!e.data.good && (e.data.tree || e.data.dropped || e.data.reset) && this.analysisWorker === w) this.analysisDone();
+          if (e.data.id !== this.loadSeq || e.data.dropped) return;
+          if (e.data.tree && e.data.pretty) prettyIndexes.set(e.data.tree.nodes, e.data.pretty);
+          if (e.data.reset) { this.analysisDoc = null; this.fromFile = null; this.queueAnalysis(id, document, name, done); }
           else if (e.data.progress !== undefined) worked?.(e.data.progress);
           else if (e.data.good && e.data.tree && good) {
+            // (The views already show the editor's current version, which another path parsed meanwhile: this
+            // older one would take its place.)
+            if (this.goodVer === this.ed.version) return;
             this.good = null;
             this.goodVer = good;
             this.goodText = good.toString();
@@ -1443,7 +1730,7 @@ export class Engine {
           }
           else if (e.data.tree) done(e.data.tree, e.data.metrics);
           else if (e.data.sizes) { this.measuredSizes = { id, sizes: e.data.sizes }; store.set({ sizes: e.data.sizes }); }
-        };
+        });
         w.onerror = (e) => {
           e.preventDefault();
           // Ignore duplicate failure events and never move this full parse onto the typing thread.
@@ -1452,13 +1739,78 @@ export class Engine {
           this.analysisFails++;
           w.terminate(); this.analysisWorker = null; this.analysisDoc = null;
           if (id === this.loadSeq) failed?.();
+          this.analysisDone();
         };
-        const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape, progress: !!worked };
+        // (The Format view shown Pretty off the tape: the worker indexes its lines too, see drawPretty.)
+        const pretty = this.settings.view === 'format' && this.prettyFromTape(document.length) ? this.indent : undefined;
+        const request = { id, analysis: true, lines: LINES_FILE.test(name ?? ''), escape: this.settings.escape, progress: !!worked, pretty };
         const current = () => this.postDocument(w, request, document, true, undefined, sent);
+        this.analysisFresh = false;
+        this.analysisBusy = true;
         if (good) this.postDocument(w, { ...request, good: true, progress: false }, good, true, current);
         else current();
-      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; failed?.(); }
-    }, wait);
+      } catch (error) { reportError(error, 'worker'); this.analysisFails++; this.analysisWorker?.terminate(); this.analysisWorker = null; this.analysisDoc = null; this.analysisBusy = false; failed?.(); }
+    };
+  }
+
+  /**
+   * Makes the analysis worker before a big document comes (when the page is idle, the file picker opens or
+   * a file is dragged in), and warms it up: WebAssembly compiled and run a while, so the first big
+   * document parses at full speed (see reindent.worker.ts warmTape). `replace`: a document is coming, so a
+   * worker that had one (and isn't still analysing it) makes way for a warm one.
+   */
+  private warmAnalysis(replace = false) {
+    if (this.dead || this.analysisFails >= 3) return;
+    if (this.analysisWorker) {
+      if (!replace || this.analysisFresh || this.analysisBusy) return;
+      this.analysisWorker.terminate();
+      this.analysisDoc = null;
+      this.analysisDocId = 0;
+    }
+    try {
+      const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
+      w.onerror = (e) => {
+        e.preventDefault();
+        if (this.analysisWorker !== w) return;
+        reportError(e.error ?? new Error(), 'worker');
+        this.analysisFails++;
+        w.terminate();
+        this.analysisWorker = null;
+        this.analysisFresh = false;
+      };
+      w.postMessage({ id: -2, warmTape: true });
+      this.analysisWorker = w;
+      this.analysisFresh = true;
+    } catch (error) {
+      reportError(error, 'worker');
+      this.analysisFails++;
+      this.analysisWorker = null;
+      this.analysisFresh = false;
+    }
+  }
+
+  /** Loads the tape's code now (the page does when idle, or when a tape comes). */
+  tapeCode(): Promise<unknown> {
+    return loadPack();
+  }
+
+  /** Workers' messages waiting for the tape's code (see loadPack), in the order they came. */
+  private waiting: (() => void)[] | null = null;
+
+  /** Runs a worker's message handler `f`, after the tape's code has loaded if the message brings a tape (`tape`), or one before it did. */
+  private withPack(tape: boolean, f: () => void) {
+    if (!this.waiting && (pack || !tape)) return f();
+    if (this.waiting) return void this.waiting.push(f);
+    this.waiting = [f];
+    const run = () => void loadPack().then(() => {
+      const list = this.waiting ?? [];
+      this.waiting = null;
+      if (!this.dead) for (const g of list) g();
+    }, () => {
+      // (Offline before it was ever cached, or a network error: tried again shortly.)
+      if (!this.dead) setTimeout(run, 1000);
+    });
+    run();
   }
 
   /** The re-indenting worker, started on first use or when a file is about to arrive. */
@@ -1467,8 +1819,18 @@ export class Engine {
     if (this.worker !== undefined) return this.worker;
     try {
       const w = new Worker(new URL('./reindent.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; size?: number; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean; progress?: number }>) => {
-        if (e.data.id === -1) return void (this.workerWarm = true);
+      w.onmessage = (e: MessageEvent<{ id: number; out: string | null; tree?: PackedTree; metrics?: DocumentMetrics; index?: CodeIndex; display?: string; change?: CodeChange & { base: number }; sizes?: Sizes; patch?: string; chunk?: string; field?: 'out' | 'display'; size?: number; chunkedOut?: boolean; chunkedDisplay?: boolean; inline?: boolean; indexReuse?: boolean; reset?: boolean; progress?: number; measured?: number }>) => this.withPack(!!e.data.tree, () => {
+        if (e.data.measured !== undefined) {
+          const done = this.sizesWanted.get(e.data.measured);
+          this.sizesWanted.delete(e.data.measured);
+          return void done?.((e.data.sizes ?? {}) as Partial<Record<string, number>>);
+        }
+        if (e.data.id === -1) {
+          this.workerWarm = true;
+          // A warm worker means a big document may come: its tape's code next, when the page is idle.
+          idle(() => void loadPack().catch(() => {}), 2000);
+          return;
+        }
         if (e.data.id !== this.loadSeq) return;
         if (e.data.sizes) {
           this.measuredSizes = { id: e.data.id, sizes: e.data.sizes };
@@ -1477,7 +1839,12 @@ export class Engine {
         }
         if (e.data.tree) return void (this.workerParse = { id: e.data.id, tree: e.data.tree, metrics: e.data.metrics });
         const job = this.reindentJob;
-        if (e.data.reset) { this.workerDoc = null; job?.fallback(); return; }
+        if (e.data.reset) {
+          this.workerDoc = null;
+          if (job?.resend && job.id === e.data.id) job.resend();
+          else job?.fallback();
+          return;
+        }
         if (!job || job.id !== e.data.id) return;
         if (e.data.progress !== undefined) return void job.made?.(e.data.progress);
         if (e.data.chunk !== undefined) {
@@ -1490,7 +1857,7 @@ export class Engine {
         const display = e.data.chunkedDisplay ? job.displayParts.join('') : e.data.display;
         job.done(out, this.workerParse?.id === job.id ? this.workerParse.tree : undefined, this.workerParse?.metrics, e.data.indexReuse && e.data.index ? { ...e.data.index, close: job.baseIndex.close, depth: job.baseIndex.depth } : e.data.index, display, e.data.change, e.data.patch, e.data.inline);
         this.workerParse = null;
-      };
+      });
       w.onerror = (e) => {
         // It couldn't load (offline before it was ever cached, blocked, or its start cut short by a
         // navigation): work here instead, and start another on a later use, a few times over.
@@ -1516,16 +1883,25 @@ export class Engine {
   private refocus = false;
 
   /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
-  private finishLoad(text: string, persist: boolean, split = false) {
+  private finishLoad(text: string, persist: boolean, split: boolean, names: [string | null, string | null]) {
     this.pendingLoad = null;
     const loading = this.progressShown() >= 0 ? this.progressStatus : null;
-    this.ed.setValue(text, 0, true);
+    this.edName = names[1];
+    // (Undo and Redo bring the file names back with the documents. Pasted, the caret goes after it, as a paste's does.)
+    this.landing = true;
+    try {
+      this.ed.setValue(text, this.refocus ? text.length : 0, true, names);
+    } finally {
+      this.landing = false;
+    }
     if (loading) {
       // (The editor's change said "Parsing…": the load goes on. With its output shown first, the editor's step is done too.)
       store.set({ status: (this.progressStatus = loading) });
       if (this.progressShown() >= FORMATTED) this.progress(EDITOR);
     }
     const document = this.ed.version as Doc;
+    // (The file's text isn't kept past this: the editor's version stands for it.)
+    if (this.fromFile?.text === text) this.fromFile = { file: this.fromFile.file, doc: document };
     if (this.workerDoc?.flat === text && document.flat === text) this.workerDoc = document;
     if (this.fmtSrcVer === null && (this.fmtWorkerId || this.pendingFmtWorkerId)) this.fmtSrcVer = document;
     if (this.refocus) {
@@ -1534,6 +1910,7 @@ export class Engine {
       this.ed.takeOver();
       this.ed.focus();
     }
+    const pasted = this.refocus;
     this.refocus = false;
     const seq = this.loadSeq;
     const rest = () => {
@@ -1557,7 +1934,7 @@ export class Engine {
             return;
           }
           // (The view changed meanwhile: its nodes, rebuilt in short slices.)
-          const step = unpacker(tree, text);
+          const step = pack!.unpacker(tree, text);
           const run = () => {
             if (seq !== this.loadSeq) return;
             const res = step(performance.now() + 8);
@@ -1567,7 +1944,8 @@ export class Engine {
           run();
         }, 0, here, showing);
       } else this.analyzeInSteps();
-      this.ed.el.scrollTop = 0;
+      // (A file opens at its start; a paste shows where it ends, at the caret.)
+      if (!pasted) this.ed.el.scrollTop = 0;
       if (persist) this.persistSoon();
     };
     if (split) soon(rest);
@@ -1599,6 +1977,7 @@ export class Engine {
 
   openFile(target: 1 | 2 = 1) {
     this.reindentWorker();
+    this.warmAnalysis(true);
     void loadSurface();
     this.fileTarget = target;
     this.els.file.value = '';
@@ -1612,7 +1991,8 @@ export class Engine {
     else void this.loadFile(f, 'file');
   };
 
-  async loadFile(f: File, source: InputSource = 'file') {
+  /** `asText`: opened as it reads, binary or not, no format converted (see asks.ts). */
+  async loadFile(f: File, source: InputSource = 'file', asText = false) {
     const signal = this.request(1);
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
@@ -1632,31 +2012,50 @@ export class Engine {
     const unshow = () => {
       if (reading && !this.dead && store.get().status === reading) store.set({ status: (this.progressStatus = before) });
     };
+    // A binary file's toast reads it again if asked (made here, where no text is in scope: a closure made
+    // where one is can keep it alive, and the toast stays until dismissed).
+    const again = () => void this.loadFile(f, source, true);
+    this.reading = signal;
     try {
-      const text = await f.text();
+      // (Whether it is text at all is asked of what was read: see asks.ts.)
+      const [text, { looksBinary, binaryFile }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./asks')]);
+      if (this.reading === signal) this.reading = null;
       if (signal.aborted) return unshow();
+      // Undone while it was read: it opens, and is undone at once (Redo brings it back).
+      const undone = this.undoLoad === signal;
+      this.undoLoad = null;
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
-      let failed = false;
-      if (/\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
+      const open = (json: string, name: string, said: string | false) => {
+        noteLoad(source, 1, f.name);
+        // (The file itself goes to the analysis worker only for its own text, not a conversion.)
+        this.load(json, name, true, json === text, json === text ? f : undefined);
+        if (undone) {
+          this.flushLoad();
+          this.ed.undo();
+        } else if (said) this.toast(said, 'ok');
+      };
+      // Not text (a zip, an image, a video opened by mistake): said so, and read again only when asked (the
+      // text, up to hundreds of megabytes, isn't held for as long as the toast stays).
+      if (!asText && looksBinary(text)) {
+        unshow();
+        if (!undone) this.toast(...binaryFile(f.name, again));
+        return;
+      }
+      let said: string | false = `Opened ${f.name}`;
+      if (!asText && /\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
         const { detectFormat, importToJson } = await import('../convert/import');
         if (signal.aborted) return unshow();
         const fmt = detectFormat(text, f.name);
         if (fmt !== 'json' && fmt !== 'unknown') {
           const r = importToJson(text, fmt, this.indent);
-          if ('json' in r) {
-            noteLoad(source, 1, f.name);
-            this.load(r.json, f.name.replace(/\.[^.]+$/, '.json'));
-            this.toast(`Converted ${f.name} to JSON`, 'ok');
-            return;
-          }
+          if ('json' in r) return open(r.json, f.name.replace(/\.[^.]+$/, '.json'), `Converted ${f.name} to JSON`);
           this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
-          failed = true;
+          said = false;
         }
       }
-      noteLoad(source, 1, f.name);
-      this.load(text, f.name, true, true);
-      if (!failed) this.toast(`Opened ${f.name}`, 'ok');
+      open(text, f.name, said);
     } catch {
+      if (this.reading === signal) this.reading = null;
       unshow();
       if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
@@ -1699,9 +2098,11 @@ export class Engine {
     // (A document still on its way isn't wanted any more.)
     this.request(1);
     this.resetNext = true;
+    const before = this.edName;
+    this.edName = null;
     store.set({ fileName: null });
     write(KEYS.file, null);
-    this.ed.setValue('');
+    this.ed.setValue('', 0, false, [before, null]);
     this.analyze();
     this.ed.focus();
   }
@@ -1749,6 +2150,8 @@ export class Engine {
 
   private onCompareChange = (kind: ChangeKind) => {
     if (kind !== 'set') this.requests[2]?.abort();
+    // (A paste over everything leaves the file it held, as in the input editor.)
+    if (kind === 'paste' && this.ed2.pasteFull) store.set({ cmpFile: null });
     clearTimeout(this.cmpTimer);
     const len = this.ed2.length; // (not .text: no need to join an edited document's pieces for this)
     this.cmpTimer = window.setTimeout(this.analyzeCompare, len < 100_000 ? 60 : len < 1_000_000 ? 160 : 400);
@@ -1787,16 +2190,25 @@ export class Engine {
   }
 
   loadCompare(text: string, name: string | null) {
+    const before = this.cmpName();
     store.set({ cmpFile: name });
-    this.ed2.setValue(text, 0);
+    this.ed2.setValue(text, 0, false, [before, name]);
     this.analyzeCompare();
   }
 
-  async loadCompareFile(f: File, source: InputSource = 'file') {
+  /** The Compare editor's file name, and Undo or Redo bringing one back (see Editor.setValue). */
+  private cmpName = () => store.get().cmpFile;
+  private cmpRenamed = (name: string | null) => store.set({ cmpFile: name });
+
+  /** `asText`: as loadFile's. */
+  async loadCompareFile(f: File, source: InputSource = 'file', asText = false) {
     const signal = this.request(2);
+    // (Read again when asked, as in loadFile.)
+    const again = () => void this.loadCompareFile(f, source, true);
     try {
-      const text = await f.text();
+      const [text, { looksBinary, binaryFile }] = await Promise.all([import('../json/read').then((m) => m.readText(f)), import('./asks')]);
       if (signal.aborted) return;
+      if (!asText && looksBinary(text)) return this.toast(...binaryFile(f.name, again));
       this.loadCompare(text, f.name);
       noteLoad(source, 2, f.name);
       if (this.settings.view !== 'compare') this.setView('compare');
@@ -1834,8 +2246,9 @@ export class Engine {
 
   clearCompare() {
     this.request(2);
+    const before = this.cmpName();
     store.set({ cmpFile: null });
-    this.ed2.setValue('');
+    this.ed2.setValue('', 0, false, [before, null]);
     this.analyzeCompare();
     this.ed2.focus();
   }
@@ -1846,11 +2259,12 @@ export class Engine {
     this.flushLoad();
     const a = this.ed.text;
     const b = this.ed2.text;
-    const fa = store.get().fileName;
+    const fa = this.edName;
     const fb = store.get().cmpFile;
     this.resetNext = true;
-    this.ed.setValue(b);
-    this.ed2.setValue(a);
+    this.edName = fb;
+    this.ed.setValue(b, 0, false, [fa, fb]);
+    this.ed2.setValue(a, 0, false, [fb, fa]);
     store.set({ fileName: fb, cmpFile: fa });
     write(KEYS.file, fb);
     this.analyze();
@@ -1910,7 +2324,8 @@ export class Engine {
    */
   async share(as: SnippetFormat = 'link') {
     try {
-      const link = await this.shareUrl();
+      // (The button's markup loads meanwhile: shared rarely, it isn't part of the first load.)
+      const [link, { snippet }] = await Promise.all([this.shareUrl(), import('../badge')]);
       if (!link) return this.toast('Nothing to share yet', 'info');
       const { url, comparing } = link;
       track('feature_used', { feature: comparing ? 'share_compare' : 'share_link', value: as });
@@ -1974,15 +2389,25 @@ export class Engine {
         ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
         : this.toast('That share link is broken or incomplete', 'err');
     if (link === 'broken') return broken();
-    const signal = this.requestFor(link);
-    const docs: (LinkDoc | undefined)[] = [];
-    try {
-      for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data) } : d);
-    } catch (e) {
-      if (signal.aborted) return;
-      return e instanceof LinkTooLarge ? this.toast('That share link is too large to open', 'err') : broken();
-    }
-    if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
+    // A document past LINK_DOCUMENT opens only when asked (a small link can hold more than a tab can).
+    const open = async (max: number) => {
+      const signal = this.requestFor(link);
+      const docs: (LinkDoc | undefined)[] = [];
+      try {
+        for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data, max) } : d);
+      } catch (e) {
+        if (signal.aborted) return;
+        if (!(e instanceof LinkTooLarge)) return broken();
+        if (max < MAX_DOCUMENT) {
+          const { bigLink } = await import('./asks');
+          if (!signal.aborted) this.toast(...bigLink(() => void open(MAX_DOCUMENT)));
+          return;
+        }
+        return this.toast('That share link is too large to open', 'err');
+      }
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
+    };
+    await open(LINK_DOCUMENT);
   };
 
   /** Ends the wait for a handoff (see awaitHandoff). */
@@ -2081,7 +2506,7 @@ export class Engine {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
         return null;
       }
-      const text = await res.text();
+      const text = await (await import('../json/read')).readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
       return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
     } catch {
@@ -2176,13 +2601,15 @@ export class Engine {
     if (view !== 'format' && view !== 'compare' && packed) {
       const { tree, text, metrics } = packed;
       const seq = this.loadSeq;
-      const step = unpacker(tree, text);
+      // (The Tree and the Table read the root's children at once: they are made in the steps too.)
+      const step = pack!.unpacker(tree, text);
       const run = () => {
         if (this.dead || seq !== this.loadSeq || viewSeq !== this.viewSeq) return;
         const res = step(performance.now() + 8);
         if (!res) return soon(run);
         if (packed.id === this.loadSeq) this.analyze(res, metrics);
-        else {
+        // (A newer result was shown while this one was made, the editor's current version: this one is dropped.)
+        else if (this.goodPacked === packed) {
           this.good = res;
           this.goodPacked = null;
           this.tree.setRoot(res.root, false, res.nodes, false);
@@ -2203,7 +2630,8 @@ export class Engine {
     if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
-      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u) : root;
+      // (A selected primitive root has no container: the table says what it can show, as for an unselected one.)
+      const base = this.sel ? (this.sel.t >= ARR ? this.sel : this.sel.u ?? this.sel) : root;
       this.tableShow(base);
     } else this.table.setNode(null);
     if (view === 'tree') {
@@ -2282,7 +2710,7 @@ export class Engine {
 
   /** The formatted document for the current settings (from the last valid parse), before any escaping. */
   private formatted(): string {
-    if (this.formatCurrent(this.fmtSettings())) return this.fmtText;
+    if (this.formatCurrent(this.fmtSettings())) return this.fmtPretty ? this.fmtPretty.slice() : this.fmtText;
     const r = this.good;
     if (!r?.root) return '';
     const s = this.settings;
@@ -2302,6 +2730,20 @@ export class Engine {
   private pendingFmtWorkerId = 0;
   private fmtKey = '';
   private fmtText = '';
+  /** What drawFormat last gave the view (the output as shown: escaped when it is). */
+  private fmtOut = '';
+  /** Or the pretty text read off a big document's tape it gave the view (see drawPretty): never made whole. */
+  private fmtPretty: PrettyText | null = null;
+  /** Bumped when the Format view is drawn: a pretty index still being made (see drawPretty) is dropped. */
+  private prettySeq = 0;
+  /**
+   * The pretty index being made (see drawPretty), while it is prettySeq's, and what for: only while it is (a tape
+   * held here kept its document, and the worker's index of it, alive into the next one's load).
+   */
+  private prettyMaking = -1;
+  private prettyFor: { tape: Tape; indent: string; key: string } | null = null;
+  /** The output drawn (empty) is the one too large to make: the view and Copy say so. */
+  private fmtTooLarge = false;
   private fmtVersion = 0;
   private fmtCounts: { version: number; pretty: number; minified: number; escaped: number } | null = null;
   /** User Timing for DevTools: a file opened (tk:input) → its output painted (tk:formatted). */
@@ -2313,17 +2755,31 @@ export class Engine {
   }
 
   private runFormat = () => {
-    if (this.settings.view !== 'format') return;
+    if (this.settings.view === 'format') this.makeFormat();
+  };
+
+  /** Draws the Format view's output for the current document and settings (also while another view shows: see outputLater). */
+  private makeFormat() {
     // Reformat the accepted source promptly even while its tree is still being analysed.
     if (this.fmtKey !== this.fmtSettings() && this.fmtSrcVer instanceof Doc && this.fmtSrcVer !== this.goodVer && (this.fmtWorkerId || this.pendingFmtWorkerId)) {
       const retained = this.fmtSrcVer;
       if (this.outputFirst(retained, store.get().fileName, (res, metrics) => this.analyze(res, metrics), true, retained)) return;
     }
+    // A big document's output for other settings (Minify, sorted, escaped) is made in the worker too: here it
+    // would hold the page for seconds.
+    const ver = this.goodVer;
+    if (this.fmtKey !== this.fmtSettings() && ver instanceof Doc && ver.length >= WORKER_MIN && !this.prettyFromTape(ver.length)) {
+      if (this.outputFirst(ver, store.get().fileName, (res, metrics) => this.analyze(res, metrics), true, ver)) return;
+    }
     if (this.packed && this.fmtKey !== this.fmtSettings()) this.fresh();
     if (this.fmtKey !== this.fmtSettings()) this.materializeGood();
     // Already drawn for this document and settings (a big load draws it before its analysis).
     const key = this.fmtSettings();
+    const pretty = this.prettySource();
+    if (pretty) return this.drawPretty(pretty.tape, pretty.src, key);
     const drawn = this.formatCurrent(key);
+    // (Already found too large to make: the view keeps saying so.)
+    if (drawn && this.fmtTooLarge) return;
     let text: string;
     try {
       text = drawn ? this.fmtText : this.formatted();
@@ -2332,6 +2788,7 @@ export class Engine {
       if (!tooLarge(e)) throw e;
       // (Pretty-printing very deep nesting: about 2·depth² characters.) The view says so instead.
       this.drawFormat('', key);
+      this.fmtTooLarge = true;
       store.set({ fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0, tooLarge: true } });
       return;
     }
@@ -2371,7 +2828,7 @@ export class Engine {
     // A big document's sizes wait for a quiet moment (they only label the Pretty / Minify buttons).
     if (text.length > 500_000) idle(stats, 1000);
     else stats();
-  };
+  }
   private fmtStatSeq = 0;
 
   /** The Format view's settings, as a key: output is redrawn when they or the document change. */
@@ -2380,20 +2837,94 @@ export class Engine {
     return `${minify}${escape}${sortKeys}${this.indent}`;
   }
 
-  /** Shows `text` (the formatted `src`) in the Format view. */
-  private drawFormat(text: string, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+  /** Shows `text` (the formatted `src`, or its pretty text read off its tape) in the Format view. */
+  private drawFormat(text: string | PrettyText, key: string, index?: CodeIndex, display?: string, change?: CodeChange, patch?: string, inline = false, version: object | null = this.goodVer) {
+    this.fmtTooLarge = false;
     if (store.get().fmt.tooLarge) store.set({ fmt: { ...store.get().fmt, tooLarge: false } });
     if (!change) this.fmtWorkerId = 0;
     this.pendingFmtWorkerId = 0;
     this.fmtVersion++;
     this.fmtStatSeq++;
+    this.prettySeq++;
+    // (A pretty index still being made is for output no longer wanted, or is this one: done either way.)
+    this.prettyFor = null;
     const { minify, escape } = this.settings;
     this.fmtSrcVer = version;
     this.fmtKey = key;
-    this.fmtText = text;
-    const out = display ?? (escape && text ? JSON.stringify(text) : text);
-    this.fmt.setText(out, jsonRow, true, null, index, change, patch, inline);
+    const pretty = typeof text === 'string' ? null : text;
+    this.fmtPretty = pretty;
+    this.fmtText = pretty ? '' : (text as string);
+    const out = pretty ? '' : display ?? (escape && text ? JSON.stringify(text) : (text as string));
+    this.fmtOut = out;
+    if (pretty) this.fmt.setLines(pretty, jsonRow, true);
+    else this.fmt.setText(out, jsonRow, true, null, index, change, patch, inline);
     this.noteExpiry(minify || escape ? '' : out);
+    // (After the caller has said whether it is the too-large note: see runFormat.)
+    if (this.outputWait.pending) queueMicrotask(() => this.outputDrawn());
+  }
+
+  /** The Format view shows nothing, and nothing is current there (a big new document's output comes with its analysis). */
+  private blankFormat() {
+    this.prettySeq++;
+    this.prettyFor = null;
+    this.fmtKey = '';
+    this.fmtSrcVer = null;
+    this.fmtPretty = null;
+    this.fmtText = this.fmtOut = '';
+    this.fmt.setText('', jsonRow, true);
+  }
+
+  /** The newest good document's tape and text, when the Format view reads its output off them (see prettyFromTape). */
+  private prettySource(): { tape: Tape; src: string } | null {
+    if (!pack || !this.prettyFromTape(this.goodText.length)) return null;
+    if (this.goodPacked) return { tape: pack.tapeOfPacked(this.goodPacked.tree), src: this.goodPacked.text };
+    const z = this.good?.root ? pack.tapeOfNode(this.good.root) : null;
+    return z && z.i === 0 ? { tape: z.tape, src: z.src } : null;
+  }
+
+  /** Shows the pretty text of `tape` (of `src`), its lines indexed first in short steps. */
+  private drawPretty(tape: Tape, src: string, key: string) {
+    const ver = this.goodVer;
+    if (this.fmtPretty && this.formatCurrent(key)) return this.prettyStats(this.fmtPretty);
+    const indent = this.indent;
+    // (Already being made for this tape and settings: that one is shown.)
+    const f = this.prettyFor;
+    if (this.prettyMaking === this.prettySeq && f?.tape === tape && f.indent === indent && f.key === key) return;
+    const seq = ++this.prettySeq;
+    this.prettyMaking = seq;
+    const mine = (this.prettyFor = { tape, indent, key });
+    // (Indexed by the worker that parsed it, for this indent, when the Format view was shown: else here, in steps.)
+    const made = prettyIndexes.get(tape.nodes);
+    const run = made?.indent === indent ? () => made.index : pack!.prettyIndexer(tape, src, indent);
+    const step = () => {
+      if (seq !== this.prettySeq || this.dead || ver !== this.goodVer || key !== this.fmtSettings()) {
+        // (Dropped: nothing is made for it any more, and its tape isn't held.)
+        if (this.prettyFor === mine) this.prettyFor = null;
+        if (this.prettyMaking === seq) this.prettyMaking = -1;
+        return;
+      }
+      const index = run(performance.now() + 8);
+      if (index === undefined) return void soon(step);
+      if (index === null) {
+        // (Nesting so deep its indentation alone would be huge.) The view says so, as runFormat does.
+        this.drawFormat('', key, undefined, undefined, undefined, undefined, false, ver);
+        this.fmtTooLarge = true;
+        store.set({ fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0, tooLarge: true } });
+        return;
+      }
+      const text = new pack!.PrettyText(tape, src, indent, index);
+      this.drawFormat(text, key, undefined, undefined, undefined, undefined, false, ver);
+      this.prettyStats(text);
+    };
+    step();
+  }
+
+  /** The Format view's line count and sizes for pretty text read off a tape (its document was measured in the worker). */
+  private prettyStats(text: PrettyText) {
+    const m = this.goodMetrics;
+    if (!m) return;
+    const extra = m.extra + m.units * this.indent.length;
+    store.set({ fmt: { lines: text.index.starts.length, pretty: m.min + extra, minified: m.min, escaped: 0 } });
   }
 
   /**
@@ -2430,20 +2961,180 @@ export class Engine {
   }
 
   copyOutput() {
-    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    const msg = this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON';
+    const later = this.outputLater();
+    if (later) {
+      // The output for these settings is still being made (a big document, after a style change): the copy
+      // waits for it, handing the clipboard a promise so the click still counts when the text arrives.
+      track('feature_used', { feature: 'copy_output' });
+      void this.copyLater(later, msg, () => (store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info')));
+      return;
+    }
+    const pretty = this.prettyNow();
+    if (pretty) {
+      // (A big document's pretty output, read off its tape: made in parts, in steps, never one string.)
+      track('feature_used', { feature: 'copy_output' });
+      void this.copyLater(this.prettyParts(pretty), msg, () => this.toast('Nothing to copy yet', 'info'));
+      return;
+    }
+    const out = this.drawnOutput() || this.unlessTooLarge(() => this.output());
     if (out === null) return;
     if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_output' });
-    void this.copy(out, this.settings.escape ? 'Copied as a JSON string' : this.settings.minify ? 'Copied minified JSON' : 'Copied formatted JSON');
+    void this.copy(out, msg);
   }
 
+  /** The pretty output read off the tape (see drawPretty), when it is the current document's for these settings. */
+  private prettyNow() {
+    return this.fmtPretty && this.formatCurrent(this.fmtSettings()) ? this.fmtPretty : null;
+  }
+
+  /** `text` as Blob parts, made in short steps (see PrettyText.parts). */
+  private prettyParts(text: PrettyText): Promise<string[] | null> {
+    // (Asked again while they are made, Copy held down say: the same ones.)
+    if (this.partsFor?.text === text) return this.partsFor.parts;
+    const run = text.parts();
+    const parts = new Promise<string[] | null>((done) => {
+      const step = () => {
+        if (this.dead) return done(null);
+        const got = run(performance.now() + 8);
+        if (got) done(got);
+        else soon(step);
+      };
+      step();
+    });
+    this.partsFor = { text, parts };
+    void parts.then(() => {
+      if (this.partsFor?.parts === parts) this.partsFor = null;
+    });
+    return parts;
+  }
+  private partsFor: { text: PrettyText; parts: Promise<string[] | null> } | null = null;
+
   downloadOutput() {
-    const out = this.fmt.text || this.unlessTooLarge(() => this.output());
+    const name = () => `${(store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '')}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`;
+    const later = this.outputLater();
+    if (later) {
+      track('feature_used', { feature: 'download_output' });
+      const file = name();
+      void later.then((out) => {
+        // (Superseded: the settings or the document changed before the output for this click came.)
+        if (this.dead || out === undefined) return;
+        if (!out || !out.length) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
+        if (typeof out === 'string') this.save(out, file, 'application/json');
+        else this.saveBlob(new Blob(out, { type: 'application/json' }), file);
+      });
+      return;
+    }
+    const pretty = this.prettyNow();
+    if (pretty) {
+      track('feature_used', { feature: 'download_output' });
+      const file = name();
+      void this.prettyParts(pretty).then((parts) => parts && this.saveBlob(new Blob(parts, { type: 'application/json' }), file));
+      return;
+    }
+    const out = this.drawnOutput() || this.unlessTooLarge(() => this.output());
     if (out === null) return;
     if (!out) return store.get().fmt.tooLarge ? this.toast('The result is too large', 'err') : this.toast('Nothing to download yet', 'info');
     track('feature_used', { feature: 'download_output' });
-    const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    this.save(out, `${base}${this.settings.escape ? '.escaped' : this.settings.minify ? '.min' : ''}.json`, 'application/json');
+    this.save(out, name(), 'application/json');
+  }
+
+  /** The Format output last drawn, if it is for the current settings ('' if not): the view may still be taking it in, in steps. */
+  private drawnOutput() {
+    return this.formatCurrent(this.fmtSettings()) ? this.fmtOut : '';
+  }
+
+  /** Copy/Download waiting for the Format output of the current settings (see outputPending). */
+  private readonly outputWait = new Waiting();
+
+  /** Copies and downloads waiting for what the settings or the document no longer are end now, with nothing. */
+  private supersede() {
+    if (!this.outputWait.wants(this.fmtWait())) this.outputWait.end();
+    if (!this.convWait.wants(this.convKey())) this.convWait.end();
+  }
+
+  /** What a copy or download of the Format output waits for: these settings' output of this document. */
+  private fmtWait() {
+    return this.fmtSettings() + '\n' + this.docGen;
+  }
+
+  /** Run once the editor's text is analysed: at once if it is, else after the analysis on its way publishes. */
+  private readonly analysed: (() => void)[] = [];
+  private whenAnalysed(f: () => void) {
+    if (this.parsedVer === this.ed.version) f();
+    else this.analysed.push(f);
+  }
+
+  /**
+   * The Format output for the document and settings, when the one made last isn't (another view showed while
+   * the document changed, or its analysis is still to come): made now, or once analysed. Null when it is.
+   */
+  private outputLater(): Promise<Output> | null {
+    const pending = this.outputPending();
+    if (pending || this.parsedVer === this.ed.version && this.formatCurrent(this.fmtSettings())) return pending;
+    // (Asked again before it came: the same wait, and nothing made twice.)
+    const key = this.fmtWait();
+    if (this.outputWait.wants(key)) return this.outputWait.get(key);
+    const later = this.outputWait.get(key);
+    this.whenAnalysed(() => (this.formatCurrent(this.fmtSettings()) && this.prettyMaking !== this.prettySeq ? this.outputDrawn() : this.makeFormat()));
+    return later;
+  }
+
+  /**
+   * The output the Format view is still making for the current settings (it shows the last settings' until
+   * then), or null when what it shows is current. Resolves with the output, or null if it couldn't be made.
+   */
+  private outputPending(): Promise<Output> | null {
+    const making = this.prettyMaking === this.prettySeq;
+    if (this.settings.view !== 'format' || !making && (this.fmtKey === this.fmtSettings() || !this.fmtOut && !this.fmtPretty)) return null;
+    return this.outputWait.get(this.fmtWait());
+  }
+
+  /**
+   * Hands waiting copies and downloads the output once it is the one they asked for (after drawFormat). The
+   * settings or the document changed since: they get nothing (a minified copy never gets the pretty output).
+   */
+  private outputDrawn() {
+    const w = this.outputWait;
+    const key = this.fmtWait();
+    if (!w.wants(key)) return w.end();
+    if (this.fmtKey !== this.fmtSettings()) return;
+    const pretty = this.fmtPretty;
+    if (this.fmtTooLarge || !pretty) return w.end(this.fmtTooLarge ? null : this.fmtOut, key);
+    // (A big document's pretty output, read off its tape: in parts made in steps, as once it shows, never one string.)
+    void this.prettyParts(pretty).then((parts) => w.end(parts, key));
+  }
+
+  /** The text a copy waits for (see copyLater). */
+  private copying: Promise<unknown> | null = null;
+
+  /** Copies text that is still on its way, keeping the click's permission to write the clipboard where the browser allows. */
+  private async copyLater(text: Promise<Output>, msg: string, none: () => void) {
+    // (Asked again for the same text while it comes: that copy is already on its way.)
+    if (this.copying === text) return;
+    this.copying = text;
+    void text.finally(() => {
+      if (this.copying === text) this.copying = null;
+    });
+    const blob = text.then((t) => {
+      if (!t || !t.length) throw new Error('no output');
+      return new Blob(typeof t === 'string' ? [t] : t, { type: 'text/plain' });
+    });
+    // (Where the clipboard takes no promise, nothing reads it: its failure is handled below.)
+    blob.catch(() => {});
+    try {
+      if (typeof ClipboardItem === 'undefined') throw new Error('no ClipboardItem');
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+      if (!this.dead) this.toast(msg, 'ok');
+    } catch {
+      const t = await text;
+      // (Superseded: the settings or the document changed before the text for this click came.)
+      if (this.dead || t === undefined) return;
+      if (!t || !t.length) return none();
+      const s = typeof t === 'string' ? t : this.unlessTooLarge(() => t.join(''));
+      if (s !== null) await this.copy(s, msg);
+    }
   }
 
   // ── Convert ────────────────────────────────────────────────────────────
@@ -2472,6 +3163,68 @@ export class Engine {
   /** Bumped by each conversion asked for: one still loading its code then is dropped (the newer one shows). */
   private convSeq = 0;
 
+  /**
+   * The last conversion made: its sequence and output ('' for none). The code view may still be taking a big
+   * output in, in steps, so Copy and Download take it from here.
+   */
+  private convDone: { seq: number; out: string; ver: object | null; key: string } = { seq: 0, out: '', ver: null, key: '' };
+
+  /** The Convert view's settings and the document, as a key: what a conversion was made for (see convFinished). */
+  private convKey() {
+    const s = this.settings;
+    return `${s.target}\n${s.rootName}\n${s.tsStyle}\n${s.csharpLib}\n${this.docGen}`;
+  }
+
+  /** Copy/Download waiting for the conversion asked for last (see convPending). */
+  private readonly convWait = new Waiting();
+
+  /**
+   * A conversion made, for settings `key`: waiting copies and downloads get it if it is what they asked for (the
+   * settings and the document at their click), of the document as analysed now; nothing if those changed since.
+   */
+  private convFinished(seq: number, out: string, ver: object | null, key = this.convKey()) {
+    this.convDone = { seq, out, ver, key };
+    const w = this.convWait;
+    const now = this.convKey();
+    if (!w.wants(now)) return w.end();
+    // (Of an analysis before the one on its way: the conversion after it comes, see convLater.)
+    if (key === now && ver === this.goodVer && this.parsedVer === this.ed.version) w.end(out, now);
+  }
+
+  /**
+   * The conversion of the document, when the one made last isn't of it (another view showed while the
+   * document changed, or its analysis is still to come): made now, or once analysed. Null when it is.
+   */
+  private convLater(): Promise<Output> | null {
+    const key = this.convKey();
+    const pending = this.convPending();
+    const d = this.convDone;
+    if (!pending && this.parsedVer === this.ed.version && d.seq === this.convSeq && d.ver === this.goodVer && d.key === key) return null;
+    const later = pending ?? this.convWait.get(key);
+    this.whenAnalysed(() => {
+      const c = this.convDone;
+      // (One already on its way, e.g. the Convert view's after the analysis, hands it over.)
+      if (c.seq !== this.convSeq) return;
+      if (c.ver === this.goodVer && c.key === this.convKey()) this.convFinished(c.seq, c.out, c.ver, c.key);
+      else void this.runConvert(true);
+    });
+    return later;
+  }
+
+  /**
+   * The output of the conversion asked for last while it is still being made (the view shows the one
+   * before until then), or null when the view's output is current.
+   */
+  private convPending(): Promise<Output> | null {
+    if (this.settings.view !== 'convert' || this.convDone.seq === this.convSeq) return null;
+    return this.convWait.get(this.convKey());
+  }
+
+  /** The output the Convert view shows or is making for the current settings. */
+  private convOutput() {
+    return this.convDone.seq === this.convSeq ? this.convDone.out : this.code.text;
+  }
+
   private async loadConverters(): Promise<ConvertModule> {
     if (!this.conv) {
       store.set({ convert: { ...store.get().convert, loading: true } });
@@ -2483,26 +3236,37 @@ export class Engine {
     return this.conv;
   }
 
-  private async runConvert() {
-    if (this.settings.view !== 'convert') return;
+  /** `anyView`: for Copy or Download while another view shows (see convLater). */
+  private async runConvert(anyView = false) {
+    if (this.settings.view !== 'convert' && !anyView) return;
     const seq = ++this.convSeq;
     // (The view closed or changed meanwhile: opening it again converts what it shows then.)
-    const current = () => seq === this.convSeq && !this.dead && this.settings.view === 'convert';
+    const current = () => seq === this.convSeq && !this.dead && (anyView || this.settings.view === 'convert');
+    const ver = this.goodVer;
     const root = this.good?.root;
     if (!root) {
       this.code.setText('', escapeHtml);
+      this.convFinished(seq, '', ver);
       store.set({ convert: { loading: false, error: 'Paste or open valid JSON on the left to convert it.', lines: 0, bytes: 0 } });
       return;
     }
     if (this.good!.depth > MAX_WALK_DEPTH) {
       this.code.setText('', escapeHtml);
+      this.convFinished(seq, '', ver);
       store.set({ convert: { loading: false, error: 'Nesting is too deep to convert', lines: 0, bytes: 0 } });
       return;
     }
     try {
       const mod = await this.loadConverters();
       if (!current()) return;
+      if (this.good!.nodes >= 50_000 && !store.get().convert.loading) {
+        // A big document converts for a while: the spinner shows first.
+        store.set({ convert: { ...store.get().convert, loading: true } });
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+        if (!current()) return;
+      }
       const s = this.settings;
+      const key = this.convKey();
       const info = targetInfo(s.target);
       // CSV and Excel share one flattening (dotted columns) over the main array of
       // records; Excel is a binary download, so its preview is the same table.
@@ -2517,6 +3281,7 @@ export class Engine {
         const rows = mod.codeRows(info.lang);
         this.code.setText(out, rows.hl, false, rows.scanner);
       }
+      this.convFinished(seq, out, ver, key);
       store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
     } catch (e) {
       if (!current()) return;
@@ -2524,14 +3289,24 @@ export class Engine {
       const deep = tooDeep(e);
       if (!deep) reportError(e, 'conversion');
       this.code.setText('', escapeHtml);
+      this.convFinished(seq, '', ver);
       store.set({ convert: { loading: false, error: deep ? 'Nesting is too deep to convert' : e instanceof Error ? e.message : 'Conversion failed', lines: 0, bytes: 0 } });
     }
   }
 
   copyConvert() {
-    if (!this.code.text) return this.toast('Nothing to copy yet', 'info');
+    const msg = `Copied ${targetInfo(this.settings.target).label}`;
+    const later = this.convLater();
+    if (later) {
+      // (A big document's conversion after a target change: the copy waits for it, as copyOutput does.)
+      track('feature_used', { feature: 'copy_convert' });
+      void this.copyLater(later, msg, () => this.toast('Nothing to copy yet', 'info'));
+      return;
+    }
+    const out = this.convOutput();
+    if (!out) return this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_convert' });
-    void this.copy(this.code.text, `Copied ${targetInfo(this.settings.target).label}`);
+    void this.copy(out, msg);
   }
 
   async downloadConvert() {
@@ -2553,8 +3328,19 @@ export class Engine {
       }
       return;
     }
-    if (!this.code.text) return this.toast('Nothing to download yet', 'info');
-    this.save(this.code.text, name, info.mime);
+    const later = this.convLater();
+    if (later) {
+      void later.then((out) => {
+        // (Superseded: another target or document before this one's conversion came, never saved under this name.)
+        if (this.dead || out === undefined) return;
+        if (!out || typeof out !== 'string') return this.toast('Nothing to download yet', 'info');
+        this.save(out, name, info.mime);
+      });
+      return;
+    }
+    const out = this.convOutput();
+    if (!out) return this.toast('Nothing to download yet', 'info');
+    this.save(out, name, info.mime);
   }
 
   tableShow(n: JNode | null) {
@@ -2844,6 +3630,7 @@ export class Engine {
 
   private setSettings(patch: Partial<Settings>) {
     this.settings = { ...this.settings, ...patch };
+    this.supersede();
     store.settings(patch);
     if (this.presetting) return;
     this.saved = { ...this.saved, ...patch };
@@ -2954,6 +3741,36 @@ export class Engine {
     if (!action) this.toastTimer = window.setTimeout(() => store.set({ toast: null }), ms ?? (kind === 'err' ? 4000 : 2200));
   }
 
+  /** Keys pressed after the palette, the shortcuts or a context menu was asked for, before it showed (see holdKeys). */
+  private held: HeldKey[] = [];
+  /** What is open shows and has the keys (see takeKeys). */
+  private keysTaken = false;
+
+  /**
+   * A key pressed while the palette, the shortcuts or a context menu loads (they load when the page is idle):
+   * kept for it, out of the editor (Esc closes it). Only keys they use: the browser keeps its own.
+   */
+  private holdKeys(e: KeyboardEvent) {
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (e.key !== 'Escape' && !(plain && (e.key.length === 1 || /^(Backspace|Enter|Tab|Arrow(Up|Down)|Home|End)$/.test(e.key))) && !((e.ctrlKey || e.metaKey) && /^[knp]$/i.test(e.key))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') store.set({ palette: false, shortcuts: false, menu: null });
+    else this.held.push(e);
+  }
+
+  /** The keys held for the palette, the shortcuts or the menu now shown (see holdKeys): it has the keys from now. */
+  takeKeys(): HeldKey[] {
+    this.keysTaken = true;
+    return this.held.splice(0);
+  }
+
+  /** What was shown is gone: keys are held again while the next one loads. */
+  releaseKeys() {
+    this.keysTaken = false;
+    this.held = [];
+  }
+
   openPalette(mode: 'commands' | 'url' = 'commands') {
     track('feature_used', { feature: mode === 'url' ? 'load_url_dialog' : 'palette' });
     store.set({ palette: mode, shortcuts: false });
@@ -2961,8 +3778,13 @@ export class Engine {
 
   private onKey = (e: KeyboardEvent) => {
     const s = store.get();
-    // (The open context menu has the keys.)
-    if (s.palette || s.shortcuts || s.menu || e.isComposing) return;
+    // (The open palette, shortcuts or context menu has the keys; until it shows, they wait for it.)
+    if (s.palette || s.shortcuts || s.menu || e.isComposing) {
+      if (!this.keysTaken && !e.isComposing) this.holdKeys(e);
+      return;
+    }
+    // (Keys held for what closed before it showed (Esc, a click away) are for nothing now: never replayed.)
+    if (this.held.length) this.held = [];
     const mod = e.metaKey || e.ctrlKey;
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;
@@ -3175,7 +3997,7 @@ export class Engine {
   /** Tree: expand or collapse the node the menu opened on. */
   menuToggle() {
     const n = this.menuNode;
-    if (n && n.t >= ARR) this.tree.toggle(n, !n.x);
+    if (n && n.t >= ARR) this.tree.toggle(n);
   }
 
   /** Tree and graph: select the node's text in the input editor. */
@@ -3188,6 +4010,7 @@ export class Engine {
   private onDragEnter = (e: DragEvent) => {
     if (!this.hasFiles(e)) return;
     this.reindentWorker();
+    this.warmAnalysis(true);
     this.dragDepth++;
     store.set({ dragging: true });
   };
@@ -3235,12 +4058,25 @@ export class Engine {
     }, 800);
   }
 
-  private persistNow = () => {
+  private persistNow = () => this.persist(this.pendingNow());
+
+  /** The load still on its way to the editor (see flushLoad), if it is the latest. */
+  private pendingNow() {
+    const p = this.pendingLoad;
+    return p && p.seq === this.loadSeq ? p : null;
+  }
+
+  /** Saves the document, or `pending` (one on its way to the editor as the page is left) when it fits. */
+  private persist(pending: Engine['pendingLoad']) {
     clearTimeout(this.persistTimer);
     if (!this.persistEnabled) return;
-    const n = this.ed.length;
-    write(KEYS.doc, n && n <= MAX_PERSIST ? this.ed.text : null);
-  };
+    const p = pending?.persist && pending.text.length <= MAX_PERSIST ? pending : null;
+    const n = p ? p.text.length : this.ed.length;
+    const keep = n > 0 && n <= MAX_PERSIST;
+    write(KEYS.doc, keep ? (p ? p.text : this.ed.text) : null);
+    // The file name goes with the document kept (a name over nothing, or over the one before, would mislead).
+    write(KEYS.file, keep ? (p ? p.names[1] : this.edName) : null);
+  }
 
   /** Offers to reload into the new version the service worker has cached. */
   private offerUpdate() {
@@ -3270,6 +4106,8 @@ export class Engine {
           // Load the lazy features once so they're cached for offline use and survive a
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
+            () => loadPack(),
+            () => import('../json/read'),
             () => import('./sizes'),
             () => import('../convert'),
             () => import('../convert/import'),
@@ -3321,7 +4159,9 @@ export class Engine {
             for (const c of 'é Я α 中 あ 한 ب א ह ไ ✓ 😀'.split(' ')) x.measureText(c);
           },
           () => this.reindentWorker(),
+          () => this.warmAnalysis(),
           () => loadSurface(),
+          () => this.loadJwt(),
           () => import('../graph/view').catch(() => {}),
         );
         const next = () => {

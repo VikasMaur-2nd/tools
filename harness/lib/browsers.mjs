@@ -101,10 +101,33 @@ export async function closeBrowsers() {
 /** Records clipboard writes instead of touching the system clipboard; tests read window.__clip. */
 const CLIPBOARD_STUB = () => {
   window.__clip = null;
-  const c = { writeText: async (t) => void (window.__clip = String(t)), readText: async () => window.__clip ?? '', write: async () => {}, read: async () => [] };
+  // write() keeps an item's text/plain, as a real clipboard would (the app copies output still being made that way).
+  const c = {
+    writeText: async (t) => void (window.__clip = String(t)),
+    readText: async () => window.__clip ?? '',
+    write: async (items) => {
+      const item = items?.[0];
+      if (item?.types?.includes('text/plain')) window.__clip = await (await item.getType('text/plain')).text();
+    },
+    read: async () => [],
+  };
   try {
     Object.defineProperty(navigator, 'clipboard', { value: c, configurable: true });
   } catch {}
+};
+
+/**
+ * HARNESS_UI_FONT="DejaVu Sans" sets the page's UI font, to reproduce here what another machine's
+ * system-ui font does (GitHub's Ubuntu runners fall back to the wider DejaVu Sans).
+ */
+const UI_FONT = (font) => {
+  const style = () => {
+    const s = document.createElement('style');
+    s.textContent = `:root { --font-ui: ${JSON.stringify(font)} !important; }`;
+    document.head.append(s);
+  };
+  if (document.head) style();
+  else document.addEventListener('DOMContentLoaded', style, { once: true });
 };
 
 /** Page helpers the harness polls with. */
@@ -147,6 +170,7 @@ export async function openPage(engine, opts = {}) {
       context.addInitScript(HELPERS),
       ...(opts.legacy ? [context.addInitScript(() => (window.__tkLegacy = true))] : []),
       ...(opts.clipboard !== false ? [context.addInitScript(CLIPBOARD_STUB)] : []),
+      ...(process.env.HARNESS_UI_FONT ? [context.addInitScript(UI_FONT, process.env.HARNESS_UI_FONT)] : []),
     ]);
     const errors = [];
     const watched = new WeakSet();

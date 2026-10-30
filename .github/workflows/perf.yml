@@ -126,6 +126,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Browser packages
+        # (Usually 1-2 min; a stalled Ubuntu mirror once took 46: fail fast instead.)
+        timeout-minutes: 8
         run: node node_modules/playwright-core/cli.js install-deps ${{ matrix.engine }}
       - name: Run ${{ matrix.check }} (${{ inputs.ref }} against ${{ inputs.base }})
         id: run

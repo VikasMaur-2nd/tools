@@ -8,6 +8,18 @@ import ts from 'typescript';
 import { Doc } from '../lib/engine/doc';
 import { parse, type JNode } from '../lib/json/parser';
 
+/** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
+const streamOf = (text: string | Promise<string>) => new ReadableStream<Uint8Array>({
+  async start(c) {
+    try {
+      c.enqueue(new TextEncoder().encode(await text));
+      c.close();
+    } catch (e) {
+      c.error(e);
+    }
+  },
+});
+
 // The engine's asynchronous work against its lifecycle: requests that finish out of order, work still
 // pending when the tool is closed (a client navigation) and another one opens. The real Engine methods
 // run without the browser-only constructor; timers, idle callbacks and steps share one fake task queue.
@@ -56,7 +68,7 @@ function session() {
   const navigator: Dynamic = { onLine: true };
   const exports: Dynamic = {};
   runInNewContext(js, {
-    exports, performance, URL, console, AbortController, Intl, Blob,
+    exports, performance, URL, console, AbortController, Intl, Blob, queueMicrotask,
     process: { env: { NODE_ENV: 'production' } },
     setTimeout: defer, clearTimeout: cancel, requestAnimationFrame: defer, requestIdleCallback: defer, cancelIdleCallback: cancel, window, addEventListener: on, removeEventListener: off,
     document, location,
@@ -81,7 +93,7 @@ function session() {
       terminate() {}
     },
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
+      if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); }, settings() {} } };
       if (name === './idle') return { soon: defer, idle: defer };
       if (name === './instance') return { getEngine: () => current, getDiffMenu: () => null };
       if (name === '../analytics') return { PRIVATE: 'private', track() {}, reportError: (error: unknown) => errors.push(error) };
@@ -90,7 +102,7 @@ function session() {
       if (name === './sizes') return { compressedSizes: () => Promise.resolve({ gzip: 1 }) };
       if (name === './editor') return { loadSurface: () => Promise.resolve() };
       if (name === '../json/smart') return { embeddedJson: (s: string) => s };
-      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
+      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === './asks' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
   });
@@ -135,6 +147,9 @@ function converting(engine: Dynamic, json = '{"a":1}') {
   engine.settings.view = 'convert';
   engine.code = code;
   engine.good = parse(json);
+  // (Analysed: the editor's version is the one the good document came from.)
+  engine.ed ??= { version: {} };
+  engine.parsedVer = engine.goodVer = engine.ed.version;
   return code;
 }
 
@@ -171,6 +186,43 @@ test('a conversion is dropped once a newer one is asked for, and the newer one s
   assert.equal(code.text, 'OUTPUT new');
 });
 
+test("Copy and Download right after the Convert target changes give the new target's output", async () => {
+  const { engine, tick, navigator, toasts } = session();
+  const code = converting(engine, '{"a":1}');
+  const copied: string[] = [];
+  const saved: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  engine.save = (text: string) => saved.push(text);
+  engine.loadConverters = async () => ({ ...converters, convert: (_root: JNode, id: string) => `${id} output` });
+  // Nothing converted yet: Copy converts it, then copies.
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(toasts.filter((t) => t !== 'Copied TypeScript'), []);
+  assert.equal(code.text, 'typescript output');
+  assert.deepEqual(copied, ['typescript output']);
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(copied, ['typescript output', 'typescript output']);
+  copied.length = 0;
+  copied.push('typescript output');
+  // A big document's view takes a while to show the new target's output: Copy and Download wait for it.
+  engine.settings = { ...engine.settings, target: 'yaml' };
+  engine.scheduleConvert(0);
+  engine.copyConvert();
+  await engine.downloadConvert();
+  await settled();
+  assert.deepEqual(copied, ['typescript output'], 'nothing copied before the conversion');
+  assert.deepEqual(saved, []);
+  // (The queue holds the first copy's time limit too, before the conversion: it finds nothing left to end.)
+  for (let k = 0; k < 10 && (code.text as string) !== 'yaml output'; k++) {
+    tick();
+    await settled();
+  }
+  assert.equal(code.text, 'yaml output');
+  assert.deepEqual(copied, ['typescript output', 'yaml output']);
+  assert.deepEqual(saved, ['yaml output']);
+});
+
 test('a superseded conversion whose code failed to load says nothing', async () => {
   const { engine, state, errors } = session();
   converting(engine);
@@ -203,7 +255,7 @@ test('a conversion finishing after the view changed or the tool closed draws not
 
 // ── Documents asked for: files, links, URLs ──
 
-const file = (name: string, text: Promise<string>, size = 10) => ({ name, size, text: () => text });
+const file = (name: string, text: Promise<string>, size = 10) => ({ name, size, text: () => text, stream: () => streamOf(text) });
 
 /** A session whose loads are recorded instead of shown. */
 function loading() {
@@ -243,6 +295,30 @@ test('a file that fails to convert opens as text, and its error stays in view', 
   assert.match(toasts[0], /^Couldn't read bad\.yaml: /);
 });
 
+test('a binary file is said to be one, and read again (not kept meanwhile) when opened as text anyway', async () => {
+  for (const [target, name] of [[1, 'disk.img'], [1, 'data.csv'], [2, 'disk.img']] as const) {
+    const { engine, loads } = loading();
+    const said: string[] = [];
+    let run: (() => void) | undefined;
+    engine.toast = (msg: string, _kind: string, action?: { run: () => void }) => {
+      said.push(msg);
+      run = action?.run ?? run;
+    };
+    let reads = 0;
+    const bytes = 'PK\x03\x04\0\0\x14\0' + 'x'.repeat(100);
+    const f = { name, size: bytes.length, text: () => Promise.resolve(bytes), stream: () => (reads++, streamOf(bytes)) };
+    await (target === 1 ? engine.loadFile(f) : engine.loadCompareFile(f));
+    assert.deepEqual(said, [`${name} looks like a binary file, not JSON`]);
+    assert.deepEqual(loads, []);
+    run!();
+    for (let i = 0; i < 5; i++) await settled();
+    assert.equal(reads, 2, 'read again');
+    // (As text: a .csv isn't converted.)
+    assert.deepEqual(loads, [`${target}:${name}`]);
+    assert.equal(said[1], target === 1 ? `Opened ${name}` : `Comparing with ${name}`);
+  }
+});
+
 test('a file that fails to read after a newer one was asked for says nothing', async () => {
   for (const target of [1, 2]) {
     const { engine, toasts } = loading();
@@ -271,8 +347,8 @@ test('a URL asked for stops the download of the one before, which says nothing',
   const first = engine.fetchUrl('https://a.example/a.json');
   const second = engine.fetchUrl('https://b.example/b.json');
   assert.equal(fetches[0].signal?.aborted, true);
-  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"b":1}') });
-  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}') });
+  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"b":1}'), get body() { return streamOf(Promise.resolve('{"b":1}')); } });
+  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}'), get body() { return streamOf(Promise.resolve('{"a":1}')); } });
   await Promise.all([first, second]);
   assert.deepEqual(loads, ['1:b.json']);
   assert.deepEqual(toasts, ['Fetching…', 'Fetching…', 'Loaded b.example']);
@@ -286,11 +362,35 @@ test("a file opened while a link's document downloads wins, and the link stays q
   await settled();
   await engine.loadFile(file('b.json', Promise.resolve('{"b":1}')));
   assert.equal(fetches[0].signal?.aborted, true);
-  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}') });
+  fetches[0].reply.settle({ ok: true, text: () => Promise.resolve('{"a":1}'), get body() { return streamOf(Promise.resolve('{"a":1}')); } });
   await opening;
   await settled();
   assert.deepEqual(loads, ['1:b.json']);
   assert.deepEqual(toasts, ['Fetching…', 'Opened b.json']);
+});
+
+test('a share link whose document inflates past 32 MB opens only when asked', async () => {
+  const { engine, loads, location } = loading();
+  const said: [string, { label: string; run: () => void } | undefined][] = [];
+  engine.toast = (msg: string, _kind: string, action?: { label: string; run: () => void }) => said.push([msg, action]);
+  const { encodeDoc, LINK_DOCUMENT } = load(resolve(__dirname, '../lib/link'));
+  const link = async (text: string) => {
+    location.hash = '#a=' + (await encodeDoc(text));
+    location.href = 'https://tools.example/' + location.hash;
+    await engine.openLink();
+    for (let i = 0; i < 20; i++) await settled();
+  };
+  await link('[' + '0,'.repeat(1000) + '0]');
+  assert.deepEqual(loads, ['1:null'], 'a small one opens');
+  loads.length = 0;
+  said.length = 0;
+  // (About 33 KB of link.)
+  await link('[' + '0,'.repeat(LINK_DOCUMENT / 2) + '0]');
+  assert.deepEqual(loads, []);
+  assert.deepEqual(said.map(([m, a]) => [m, a?.label]), [["This link's document is over 32 MB: opening it can slow down or crash this tab", 'Open anyway']]);
+  said[0][1]!.run();
+  for (let i = 0; i < 200 && !loads.length; i++) await new Promise((r) => setTimeout(r, 25));
+  assert.deepEqual(loads, ['1:null'], 'opened when asked');
 });
 
 test('a big file still being read gives back the status it showed when a URL is asked for instead', async () => {
@@ -336,7 +436,7 @@ test("a URL that can't be read says why: no CORS, no server, cut off, http:// on
   assert.equal(said(), "Couldn't reach the server. Check the address or try again later.");
   // The headers came; the rest didn't.
   got = engine.fetchUrl('https://c.example/c.json');
-  fetches[4].reply.settle({ ok: true, text: () => Promise.reject(failed()) });
+  fetches[4].reply.settle({ ok: true, text: () => Promise.reject(failed()), get body() { return streamOf(Promise.reject(failed())); } });
   await got;
   assert.equal(said(), 'The connection dropped before the whole file arrived. Try again.');
   // http:// from this https page is blocked, except on this device; offline needs no second request either.
@@ -385,7 +485,7 @@ test('typing or pasting in an editor drops the document still on its way to it, 
   // What the tool writes into the editor itself leaves a document on its way alone.
   const c = engine.fetchUrl('https://c.example/c.json');
   engine.onChange('set');
-  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"c":1}') });
+  fetches[1].reply.settle({ ok: true, text: () => Promise.resolve('{"c":1}'), get body() { return streamOf(Promise.resolve('{"c":1}')); } });
   await c;
   assert.deepEqual(loads, ['1:c.json']);
 });
@@ -476,6 +576,101 @@ test('a save waiting for an idle moment is dropped by destroy, which saves the d
   assert.equal(s.storage.get('jf:doc'), '{"new":1}');
 });
 
+test('the file name is saved with the document kept: a load still on its way when the page is left, or the one before', () => {
+  for (const [pending, doc, file] of [
+    ['{"new":1}', '{"new":1}', 'new.json'],
+    // Too big to keep: the document before stays, under its own name.
+    ['[' + '0,'.repeat(1_300_000) + '0]', '{"old":1}', 'old.json'],
+  ]) {
+    const s = session();
+    closable(s.engine, '{"old":1}');
+    Object.assign(s.engine, { persistEnabled: true, edName: 'old.json' });
+    s.storage.set('jf:file', 'old.json');
+    s.engine.pendingLoad = { seq: s.engine.loadSeq, text: pending, persist: true, names: ['old.json', 'new.json'] };
+    s.engine.destroy();
+    assert.equal(s.storage.get('jf:doc'), doc);
+    assert.equal(s.storage.get('jf:file'), file);
+  }
+  // A document too big to keep is saved as none, and so is its name.
+  const s = session();
+  closable(s.engine, '[' + '0,'.repeat(1_300_000) + '0]');
+  Object.assign(s.engine, { persistEnabled: true, edName: 'big.json' });
+  s.engine.destroy();
+  assert.equal(s.storage.get('jf:doc'), undefined);
+  assert.equal(s.storage.get('jf:file'), undefined);
+});
+
+test("the Compare editor's file name goes with its document: a load, a clear, a swap and a paste over it tell its undo steps", () => {
+  const s = session();
+  type Names = [string | null, string | null];
+  /** An editor that keeps the file names each whole-document step carries (Editor.undo/redo tell them back: see editor.test). */
+  const editor = (text: string) => ({
+    text, pasteFull: false, steps: [] as (Names | undefined)[], el: { removeEventListener() {} },
+    get length() { return this.text.length; },
+    setValue(t: string, ...[, , names]: [number?, boolean?, Names?]) { this.text = t; this.steps.push(names); },
+    setDiagnostics() {}, focus() {}, setBrackets() {}, destroy() {},
+  });
+  const ed = editor('{"a":1}');
+  const ed2 = editor('');
+  Object.assign(s.engine, { ed, ed2, edName: 'a.json', analyze() {}, persistSoon() {} });
+  Object.assign(s.state, { fileName: 'a.json', cmpFile: null });
+  s.engine.loadCompare('{"b":1}', 'b.json');
+  s.engine.clearCompare();
+  assert.equal(s.state.cmpFile, null);
+  s.engine.loadCompare('{"c":1}', 'c.json');
+  s.engine.swapCompare();
+  assert.deepEqual([s.state.fileName, s.state.cmpFile], ['c.json', 'a.json']);
+  // (Made in the engine's realm: compared as JSON.)
+  assert.equal(JSON.stringify(ed2.steps), JSON.stringify([[null, 'b.json'], ['b.json', null], [null, 'c.json'], ['c.json', 'a.json']]));
+  assert.equal(JSON.stringify(ed.steps), JSON.stringify([['a.json', 'c.json']]));
+  // Undo or Redo bringing a name back, and the name a paste over everything leaves.
+  s.engine.cmpRenamed('b.json');
+  assert.equal(s.state.cmpFile, 'b.json');
+  assert.equal(s.engine.cmpName(), 'b.json');
+  s.engine.onCompareChange('paste');
+  assert.equal(s.state.cmpFile, 'b.json', 'a paste into part of it keeps the name');
+  ed2.pasteFull = true;
+  s.engine.onCompareChange('paste');
+  assert.equal(s.state.cmpFile, null, 'a paste over everything leaves the file');
+});
+
+test('a paste over the whole editor ends with the caret after what was pasted, as a paste does; a file opens at its start (F26)', () => {
+  const s = session();
+  const carets: number[] = [];
+  const doc = Doc.of('[1,2]');
+  s.engine.ed = { el: {}, setValue: (_t: string, caret: number) => carets.push(caret), get version() { return doc; }, takeOver() {}, focus() {} };
+  s.engine.refocus = true;
+  s.engine.finishLoad('[1,2]', false, true, [null, null]);
+  assert.deepEqual(carets, [5]);
+  s.engine.finishLoad('[1,2]', false, true, [null, null]);
+  assert.deepEqual(carets, [5, 0]);
+});
+
+test('Undo while a file is being read undoes that file once it arrives, not the document before it', async () => {
+  const { engine, loads, toasts } = loading();
+  let undone = 0;
+  engine.ed.undo = () => undone++;
+  assert.equal(engine.undoing(), false, 'nothing on its way: the editor undoes');
+  const a = later<string>();
+  const opening = engine.loadFile(file('big.json', a.promise));
+  assert.equal(engine.undoing(), true, 'taken');
+  a.settle('{"big":1}');
+  await opening;
+  assert.deepEqual(loads, ['1:big.json']);
+  assert.equal(undone, 1, 'opened, then undone');
+  assert.deepEqual(toasts, []);
+  assert.equal(engine.undoing(), false);
+  // Typing meanwhile drops the file (and the Undo with it).
+  const b = later<string>();
+  const next = engine.loadFile(file('c.json', b.promise));
+  assert.equal(engine.undoing(), true);
+  engine.requests[1].abort();
+  b.settle('{"c":1}');
+  await next;
+  assert.deepEqual(loads, ['1:big.json']);
+  assert.equal(undone, 1);
+});
+
 test('destroy closes what the tool showed for itself; a notice with an action stays', () => {
   for (const action of [false, true]) {
     const s = session();
@@ -536,4 +731,223 @@ test('expanding nested JSON is dropped if the document changed while its code lo
   await expanding;
   assert.equal(set, null);
   assert.deepEqual(toasts, []);
+});
+
+test("Copy and Download from another view after an edit give the edited document's output (F18)", async () => {
+  const { engine, navigator } = session();
+  const code = converting(engine, '{"a":1}');
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  engine.loadConverters = async () => converters;
+  await engine.runConvert();
+  assert.equal(code.text, 'OUTPUT a');
+  // Edited in the Tree: analysed, but the Convert view (hidden) still holds the conversion before.
+  engine.settings.view = 'tree';
+  engine.good = parse('{"b":2}');
+  engine.goodVer = engine.parsedVer = engine.ed.version = {};
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(copied, ['OUTPUT b']);
+  // An edit whose analysis is still to come: Copy waits for it, then converts.
+  engine.ed.version = {};
+  engine.copyConvert();
+  await settled();
+  assert.deepEqual(copied, ['OUTPUT b'], 'nothing copied before the analysis');
+  engine.good = parse('{"c":3}');
+  engine.goodVer = engine.parsedVer = engine.ed.version;
+  for (const f of engine.analysed.splice(0)) f();
+  await settled();
+  assert.deepEqual(copied, ['OUTPUT b', 'OUTPUT c']);
+});
+
+test('Copy formatted output from another view after an edit gives the edited document, waiting for its analysis (F18)', async () => {
+  const { engine, navigator, state } = session();
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  const fmt = { text: '', setText(t: string) { fmt.text = t; }, setNotes() {}, lineCount: 0, el: {} };
+  engine.fmt = fmt;
+  state.fmt = {};
+  const analysed = (json: string) => {
+    engine.good = parse(json);
+    engine.goodText = json;
+    engine.goodVer = engine.parsedVer = engine.ed.version = {};
+  };
+  engine.ed = { version: {} };
+  analysed('{"a":1}');
+  engine.settings.view = 'format';
+  engine.runFormat();
+  assert.equal(fmt.text, '{\n  "a": 1\n}');
+  // Edited while the Tree shows: the hidden Format view keeps the output before.
+  engine.settings.view = 'tree';
+  analysed('{"b":2}');
+  engine.copyOutput();
+  await settled();
+  assert.deepEqual(copied, ['{\n  "b": 2\n}']);
+  // Its analysis still to come: Copy waits for it.
+  engine.ed.version = {};
+  engine.copyOutput();
+  await settled();
+  assert.equal(copied.length, 1, 'nothing copied before the analysis');
+  analysed('{"c":3}');
+  for (const f of engine.analysed.splice(0)) f();
+  await settled();
+  assert.deepEqual(copied, ['{\n  "b": 2\n}', '{\n  "c": 3\n}']);
+});
+
+test('past the 500 duplicate keys a parse lists, the status says there are more', () => {
+  const { engine } = session();
+  closable(engine);
+  engine.ed.lineCol = () => ({ line: 1, col: 1 });
+  const st = engine.statusOf(parse('{' + Array.from({ length: 600 }, (_, i) => `"k":${i}`).join(',') + '}'));
+  assert.equal(st.warnings, 500);
+  assert.equal(st.more, true);
+  assert.equal(engine.statusOf(parse('{"k":0,"k":1}')).more, false);
+});
+
+// ── From PR #31's review (REVIEW-GPT): what waits for an output, and what the engine keeps of a document ──
+
+/** An editor double: setValue is a no-op for the same text, else a new version and a real Engine.onChange. */
+function reviewing(s: ReturnType<typeof session>, initial = '') {
+  const { engine, state } = s;
+  let text = initial;
+  let version = Doc.of(text);
+  const ed = {
+    get text() { return text; }, get length() { return text.length; }, get blank() { return !text.trim(); },
+    get version() { return version; }, get ls() { return [0]; }, el: {},
+    setValue(next: string) { if (next === text) return; text = next; version = Doc.of(text); engine.onChange('set'); },
+    setBrackets() {}, setScope() {}, setDiagnostics() {}, setJwt() {}, focus() {},
+    lineCol() { return {line: 1, col: 1}; },
+  };
+  engine.ed = ed;
+  engine.fmt = { text: '', el: {}, setText() {}, setLines() {}, setNotes() {}, snapshotText: () => () => '', inlineIndex: () => ({}) };
+  engine.tree = { setRoot() {}, select() {}, releaseRoot() {} };
+  engine.table = { setNode() {}, state: () => ({}), path: [], rowCount: 0, colCount: 0 };
+  engine.syncTableState = () => {};
+  engine.persistSoon = () => {};
+  engine.jwtReader = () => null;
+  state.fmt = {};
+  return ed;
+}
+
+
+
+test('a Download waiting for a conversion never saves another target\'s under its name: superseded, nothing is saved', async () => {
+  const s = session();
+  const {engine} = s;
+  reviewing(s, '{"a":1}');
+  engine.settings.view = 'convert';
+  engine.good = parse(engine.ed.text);
+  engine.goodText = engine.ed.text;
+  engine.goodVer = engine.parsedVer = engine.ed.version;
+  engine.code = {text: '', setText(t: string) { this.text = t; }};
+  engine.loadConverters = async () => load(resolve(__dirname, '../lib/convert/index'));
+  await engine.runConvert();
+  engine.settings.target = 'yaml';
+  engine.scheduleConvert(0);
+  const saved: {text: string; name: string; type: string}[] = [];
+  engine.save = (text: string, name: string, type: string) => saved.push({text,name,type});
+  await engine.downloadConvert();
+  assert.equal(saved.length, 0, 'the YAML download waits for conversion');
+  engine.settings.target = 'typescript';
+  engine.scheduleConvert(0);
+  await engine.runConvert();
+  await settled();
+  assert.equal(saved.some(s => s.name.endsWith('.yaml') && s.text.includes('interface Root')), false,
+    'a TypeScript result must not satisfy a pending YAML download');
+  assert.deepEqual(saved, [], 'nothing saved for the superseded click');
+  assert.deepEqual(s.toasts, [], 'and nothing said');
+  // Asked again for TypeScript: saved, under its own name.
+  await engine.downloadConvert();
+  await settled();
+  // (Read past the assertion above, which narrows `saved` to empty.)
+  const now = saved as { text: string; name: string; type: string }[];
+  assert.equal(now.length, 1);
+  assert.ok(now[0].name.endsWith('.ts') && now[0].text.includes('interface Root'), now[0].name);
+});
+
+test('Copy waiting for the Format output of other settings never gets the output of the settings after', async () => {
+  const s = session();
+  const { engine, navigator, state } = s;
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  reviewing(s, '{"a":1}');
+  engine.fmt = { text: '', el: {}, setText(t: string) { this.text = t; }, setLines() {}, setNotes() {}, snapshotText: () => () => '', inlineIndex: () => ({}), lineCount: 0 };
+  state.fmt = {};
+  engine.settings.view = 'format';
+  engine.good = parse(engine.ed.text);
+  engine.goodText = engine.ed.text;
+  engine.goodVer = engine.parsedVer = engine.ed.version;
+  engine.runFormat();
+  assert.equal(engine.fmt.text, '{\n  "a": 1\n}');
+  // Minify asked for: its output still to be drawn (fmtKey still Pretty's), Copy waits for it.
+  engine.settings.minify = true;
+  engine.copyOutput();
+  await settled();
+  assert.deepEqual(copied, [], 'waits');
+  // Back to Pretty before it comes: the waiting minified Copy ends with nothing (no pretty output, no toast).
+  engine.setSettings({ minify: false });
+  await s.drain();
+  assert.deepEqual(copied, []);
+  assert.deepEqual(s.toasts, []);
+  // The document edited after a Copy asked: that Copy gets nothing either.
+  engine.settings.minify = true;
+  engine.copyOutput();
+  engine.ed.setValue('{"b":2}');
+  engine.runFormat();
+  await s.drain();
+  assert.deepEqual(copied, []);
+});
+
+test('the file a document was read from is let go once the editor\'s text is no longer it (Clear)', async () => {
+  const s = session();
+  reviewing(s);
+  const input = JSON.stringify({value: 'x'.repeat(2_000_000)});
+  const file = {size: input.length, name: 'big.json'};
+  s.engine.load(input, 'big.json', true, false, file);
+  // (The editor has it: the file stands for that version, and its text isn't kept a second time.)
+  assert.ok(s.engine.fromFile && s.engine.fromFile.file === file && s.engine.fromFile.doc === s.engine.ed.version, 'the file goes with the version the editor has');
+  assert.ok(!('text' in s.engine.fromFile) || s.engine.fromFile.text === undefined, 'its text is not kept');
+  s.engine.clear();
+  // Drain the zero-delay Format redraw, without advancing the unrelated long timeouts.
+  for (let k = 0; k < 5; k++) { s.tick(); await settled(); }
+  assert.equal(s.engine.ed.length, 0);
+  assert.equal(s.engine.fromFile === null, true, 'the file optimization must release obsolete document versions');
+});
+
+test('a pretty index done or dropped keeps no tape: the Format view cleared holds none', async () => {
+  const s = session();
+  reviewing(s);
+  await s.engine.tapeCode();
+  const {parse: parseTape} = load(resolve(__dirname, '../lib/json/tape-parser'));
+  const tape = parseTape('[1,2,3]');
+  s.engine.goodVer = s.engine.ed.version;
+  s.engine.drawPretty(tape, '[1,2,3]', s.engine.fmtSettings());
+  s.engine.clear();
+  for (let k = 0; k < 5; k++) { s.tick(); await settled(); }
+  assert.equal(s.engine.fmtPretty, null);
+  assert.equal(s.engine.prettyFor === null, true, 'a cleared view must not retain its old tape and cached index');
+});
+
+test('Copy waiting for pretty output read off a tape gets it in parts, made in steps, never one string', async () => {
+  const s = session();
+  reviewing(s);
+  const {engine, navigator} = s;
+  const {parse: parseTape} = load(resolve(__dirname, '../lib/json/tape-parser'));
+  const {PrettyText, prettyIndexer} = load(resolve(__dirname, '../lib/json/pretty'));
+  const src = '{"a":1}';
+  const tape = parseTape(src);
+  const pretty = new PrettyText(tape, src, '  ', prettyIndexer(tape, src, '  ')(Infinity));
+  let whole = 0;
+  const slice = pretty.slice.bind(pretty);
+  pretty.slice = (...args: number[]) => { if (!args.length) whole++; return slice(...args); };
+  engine.parsedVer = engine.ed.version;
+  engine.fmtKey = 'old settings';
+  engine.fmtOut = 'old output';
+  const copied: string[] = [];
+  navigator.clipboard = { writeText: async (t: string) => { copied.push(t); } };
+  engine.copyOutput();
+  engine.drawFormat(pretty, engine.fmtSettings());
+  await s.drain();
+  assert.equal(whole, 0, 'pending Copy must use PrettyText.parts(), just as Copy after rendering does');
+  assert.deepEqual(copied, ['{\n  "a": 1\n}']);
 });

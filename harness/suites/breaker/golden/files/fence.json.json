@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Ln 1, Col 1: Markdown code fences are not part of JSON",
+  "kind": "warn",
+  "raw": "19 B raw",
+  "min": "7 B min",
+  "stats": "3 lines · 2 nodes · depth 1"
+ },
+ "toasts": [
+  "Opened fence.json"
+ ],
+ "input": "```json\n{\"a\":1}\n```",
+ "formatted": "{\n  \"a\": 1\n}"
+}

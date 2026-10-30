@@ -1,0 +1,14 @@
+{
+ "status": {
+  "msg": "Ln 1, Col 1: Unexpected control character U+007F: expected a value",
+  "kind": "err",
+  "raw": "354 KB raw",
+  "min": null,
+  "stats": "1,594 lines · 1 node · depth 0"
+ },
+ "toasts": [
+  "elf.json looks like a binary file, not JSONOpen as text",
+  "Opened elf.json"
+ ],
+ "input": "189465:59df1a11"
+}

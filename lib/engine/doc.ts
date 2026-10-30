@@ -11,6 +11,22 @@
  * returns a new version, so versions compare by identity.
  */
 
+/**
+ * `s` with its line ends as \n. Textareas normalize line endings, so the editor's text never holds \r\n or a
+ * lone \r, and every offset into a document (a worker's tree, a position) must count as the editor does.
+ */
+export function lf(s: string): string {
+  // A loaded text is normalized again on its way into the editor (setValue, then apply): each look at 100 MB
+  // took 0.1–0.2 s in Firefox.
+  if (s === clean) return s;
+  const ok = s.indexOf('\r') === -1;
+  // (Kept until the next call only, so never past whoever normalizes it again.)
+  clean = ok && s.length >= 1 << 20 ? s : '';
+  return ok ? s : s.replace(/\r\n?/g, '\n');
+}
+/** The last long text lf found without a \r. */
+let clean = '';
+
 /** An edit this close (characters) to a replacement joins it, copying the text between. */
 const GAP = 4096;
 /** ... unless that makes a replacement longer than this. */

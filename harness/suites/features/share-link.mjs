@@ -122,9 +122,8 @@ const B = '{"name":"Ada King","roles":["author"]}';
 
 /**
  * Types `text` into an editor key by key and waits until the tool has it. (Not keyboard.insertText, as
- * the old script did: Playwright's Firefox sends that as an IME composition, and Firefox fires the
- * commit's input event after compositionend, which the editor never passes on to the tool: an app bug,
- * found 2026-10-25.)
+ * the old script did: Playwright's Firefox sends that as an IME composition, whose commit the editor
+ * didn't pass on to the tool until BREAKER-REPORT F22 was fixed; typing keeps this check about links.)
  */
 async function type(page, which, text) {
   await page.locator(`#${which}`).click();

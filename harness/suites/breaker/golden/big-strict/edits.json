@@ -1,0 +1,28 @@
+{
+ "added": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "2.9 MB raw",
+  "min": "2.9 MB min",
+  "stats": "1 line · 216,024 nodes · depth 4"
+ },
+ "broken": {
+  "msg": "Ln 1, Col 1: Unexpected 'x[{\"id\":0': strings must be wrapped in double quotes",
+  "kind": "err",
+  "raw": "2.9 MB raw",
+  "min": null,
+  "stats": "1 line · 4 nodes · depth 1"
+ },
+ "treeBroken": 53,
+ "undone": {
+  "msg": "Valid JSON",
+  "kind": "ok",
+  "raw": "2.9 MB raw",
+  "min": "2.9 MB min",
+  "stats": "1 line · 216,023 nodes · depth 4"
+ },
+ "tree": [
+  "root[10286]",
+  "  0:{9}"
+ ]
+}

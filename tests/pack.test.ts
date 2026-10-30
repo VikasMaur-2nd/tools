@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, parse, type JNode, type ParseResult } from '../lib/json/parser';
 import { nodeAt, pathOf } from '../lib/json/path';
-import { packStrings, packTree, packedPosition, unpacker } from '../lib/json/pack';
+import { packedPosition, unpacker } from '../lib/json/pack';
+import { packTree } from '../lib/json/pack-send';
+import { madeCount } from '../lib/json/lazy';
+import { parse as tapeParse } from '../lib/json/tape-parser';
+import { sendable } from '../lib/json/tape-send';
+import { receiver, type Tape } from '../lib/json/tape';
 import { Doc } from '../lib/engine/doc';
 
 /** Every field of every node, parent links included, must match. */
@@ -29,7 +34,7 @@ function same(a: JNode | null, b: JNode | null, path = '$') {
 /** Packs and rebuilds in tiny steps (deadline already passed: one batch per call). */
 function roundTrip(src: string, lines = false): [ParseResult, ParseResult] {
   const res = parse(src, { lines });
-  const packed = packStrings(packTree(res, src));
+  const packed = packTree(res, src);
   const step = unpacker(structuredClone(packed), src);
   let out: ParseResult | undefined;
   for (let k = 0; k < 100_000 && !(out = step(0)); k++);
@@ -93,22 +98,43 @@ test('packed trees rebuild exactly: lenient input, escapes, JSON Lines and error
   check('{"a": 1}\n{"b": 2}\n', true);
 });
 
-test('a big document rebuilds in many short steps', () => {
-  const src = JSON.stringify(Array.from({ length: 20000 }, (_, i) => ({ id: i, name: `User ${i}`, tags: ['a', 'b'], ok: i % 2 === 0, n: i * 1.5, s: 'x\ny' })));
+test('a big document is received in short steps, and makes nodes only when read', () => {
+  const src = JSON.stringify(Array.from({ length: 20000 }, (_, i) => ({ id: i, [`name${i}`]: `User ${i}`, tags: ['a', 'b'], ok: i % 2 === 0, n: i * 1.5, s: 'x\ny' })));
   const res = parse(src);
-  const packed = packStrings(packTree(res, src));
+  const packed = packTree(res, src);
   const step = unpacker(packed, src);
   let calls = 0;
   let out: ParseResult | undefined;
   while (!(out = step(0))) calls++;
-  assert.ok(calls > 10, 'sliced');
+  assert.ok(calls >= 4, 'sliced');
+  assert.equal(madeCount(out.root), 1, 'only the root is made');
+  const first = (out.root!.v as JNode[])[0];
+  assert.equal(madeCount(out.root), 20001, 'one level');
+  assert.equal((first.v as JNode[]).length, 6);
+  assert.equal(first, (out.root!.v as JNode[])[0], 'stable identity');
   same(res.root, out.root);
+});
+
+test('extra values (escaped JSON repaired: one per value) are received in short steps too, the same values', () => {
+  // (REVIEW-GPT 5: 1.1 M extra values were read in one call past its deadline, ~0.9 s on the page.)
+  const n = 200_000;
+  const src = '{\\"values\\":[' + Array.from({ length: n }, (_, i) => (i % 3 ? i : `\\"s${i}\\"`)).join(',') + ']}';
+  const t = tapeParse(src, { repair: true });
+  assert.equal(t.head.error, null);
+  assert.equal(t.extra?.size, n);
+  const read = receiver(structuredClone(sendable(t).sent));
+  let calls = 0;
+  let got: Tape | undefined;
+  // (A deadline already past: each call does one batch.)
+  while (!(got = read(0))) calls++;
+  assert.ok(calls >= n / 8192, `${calls} calls for ${n} extra values`);
+  assert.deepEqual([...got.extra!], [...t.extra!]);
 });
 
 test('packed caret navigation matches the node tree, including keys and container boundaries', () => {
   for (const text of ['{"a":[1,2,{"b":true}], "c": "v", "empty":{}}', '[1,2,{"key,comma": [[],{}]}]', '{a:1,b:[2,3,]}', '{"a":1}\n{"b":2}']) {
     const res = parse(text);
-    const packed = packStrings(packTree(res, text));
+    const packed = packTree(res, text);
     for (let off = 0; off <= text.length; off++) {
       const n = nodeAt(res.root, off, text);
       const at = packedPosition(packed, off, text);
@@ -133,7 +159,49 @@ test('packed navigation reads document pieces without building the complete text
   let doc = Doc.of('{"a":[1,2,{"key,comma":"😀"}],"b":true}');
   doc = doc.edit(3, 3, 'é');
   const text = doc.toString();
-  const tree = packStrings(packTree(parse(text), text));
+  const tree = packTree(parse(text), text);
   doc.toString = () => { throw new Error('must not flatten'); };
   for (let off = 0; off <= text.length; off++) assert.deepEqual(packedPosition(tree, off, doc), packedPosition(tree, off, text));
+});
+
+test('containerAt on a tape finds the container nodeAt does, at every offset, making no node', () => {
+  for (const text of ['{"a":[1,2,{"b":true}], "c": "v", "empty":{}}', '[1,2,{"key,comma": [[],{}]}]', '{a:1,b:[2,3,]}', '{"a":1}\n{"b":2}', '"s"', '[[[[]]]]']) {
+    const res = parse(text);
+    const lazy = unpacker(packTree(res, text), text)(Infinity)!;
+    for (let off = -1; off <= text.length + 1; off++) {
+      let n = nodeAt(res.root, off, text);
+      while (n && n.t < ARR) n = n.u;
+      assert.deepEqual(lazy.root!.z!.containerAt(off), n ? [n.s, n.e] : null, `${text} @ ${off}`);
+    }
+    assert.equal(madeCount(lazy.root), 1);
+  }
+});
+
+test('unpacker with fill makes the root\'s children in steps, before it gives the tree', () => {
+  const src = JSON.stringify(Array.from({ length: 30_000 }, (_, i) => (i % 3 ? i : { i })));
+  const res = parse(src);
+  const step = unpacker(packTree(res, src), src, { fill: true });
+  let calls = 0;
+  let out: ParseResult | undefined;
+  // (A deadline already passed: each call does one batch.)
+  while (!(out = step(0))) calls++;
+  assert.ok(calls >= 7, `in steps (${calls})`);
+  assert.equal(madeCount(out.root), 30_001, 'the root and its children, no deeper');
+  same(res.root, out.root);
+  // Without fill, only the root.
+  const plain = unpacker(packTree(res, src), src)(Infinity)!;
+  assert.equal(madeCount(plain.root), 1);
+});
+
+test('unpacking the same packed tree over the same text gives the same tree each time', () => {
+  const src = '[{"a":1},{"b":[2,3]}]';
+  const packed = packTree(parse(src), src);
+  const one = unpacker(packed, src)(Infinity)!;
+  const kids1 = one.root!.v as JNode[];
+  const two = unpacker(packed, src)(Infinity)!;
+  assert.equal(two.root, one.root, 'same root');
+  assert.equal(two.root!.v, kids1, 'children made once');
+  // Another text (an edit) is another tree.
+  const other = src.replace('1', '9');
+  assert.notEqual(unpacker(packed, other)(Infinity)!.root, one.root);
 });

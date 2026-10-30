@@ -1,0 +1,8 @@
+{
+ "rows": [
+  "+$[0]{id: 3}",
+  "−$[2]{id: 3}"
+ ],
+ "empty": null,
+ "patch": "[\n  {\n    \"op\": \"add\",\n    \"path\": \"/0\",\n    \"value\": {\n      \"id\": 3\n    }\n  },\n  {\n    \"op\": \"remove\",\n    \"path\": \"/3\"\n  }\n]"
+}

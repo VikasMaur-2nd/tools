@@ -453,7 +453,7 @@
     ]
   },
   "json-to-csv": {
-    "hash": "7f15407a3074",
+    "hash": "d51feb471099",
     "title": "JSON vers CSV : convertir des enregistrements",
     "description": "Convertissez un tableau JSON en CSV dans le navigateur, sans envoi au serveur. Tool Kumar aplatit les champs imbriqués en colonnes, comme profile.city.",
     "heading": "JSON vers CSV",
@@ -486,7 +486,7 @@
       },
       {
         "question": "Les virgules et guillemets sont-ils échappés ?",
-        "answer": "Oui. Les champs CSV sont placés entre guillemets, et les guillemets qu'ils contiennent sont doublés conformément aux règles CSV standard."
+        "answer": "Oui. Les champs CSV sont placés entre guillemets, et les guillemets qu'ils contiennent sont doublés conformément aux règles CSV standard. Un texte qui commence comme une formule de tableur (=, +, - ou @) reçoit une apostrophe devant lui, afin qu'Excel ou Sheets l'affiche au lieu de l'exécuter."
       }
     ]
   },
@@ -1415,7 +1415,7 @@
     ]
   },
   "jsonl-to-csv": {
-    "hash": "efc51c1e4f45",
+    "hash": "d6e71d204e72",
     "title": "JSONL vers CSV : convertir des enregistrements NDJSON",
     "description": "Convertissez des lignes JSONL ou NDJSON en CSV dans le navigateur, sans envoi au serveur. Les objets imbriqués deviennent des colonnes, comme profile.city.",
     "heading": "JSONL vers CSV",
@@ -1436,7 +1436,7 @@
       "Les colonnes correspondent aux clés trouvées dans l'ensemble des enregistrements, dans leur ordre de première apparition.",
       "Les objets imbriqués deviennent des colonnes dont les noms utilisent des points. Un tableau de valeurs simples est écrit dans une seule cellule, avec ses valeurs séparées par des virgules ; un tableau d'objets reste dans une cellule sous forme de JSON compact.",
       "Les champs absents et les valeurs null deviennent tous deux des cellules vides. Une reconversion en JSON ne permet donc pas de les distinguer.",
-      "Les cellules contenant des virgules, des guillemets ou des sauts de ligne sont placées entre guillemets, conformément aux règles CSV. Les nombres conservent leurs chiffres d'origine.",
+      "Les cellules contenant des virgules, des guillemets ou des sauts de ligne sont placées entre guillemets, conformément aux règles CSV. Les nombres conservent leurs chiffres d'origine. Un texte qui commence comme une formule (=, +, - ou @) reçoit une apostrophe devant lui, afin qu'un tableur ne l'exécute jamais.",
       "Un fichier .jsonl ouvert contenant un seul enregistrement produit tout de même une ligne d'en-tête et une ligne de données."
     ],
     "faqs": [
@@ -1590,7 +1590,7 @@
     ]
   },
   "json-repair": {
-    "hash": "37e9857866ee",
+    "hash": "f51759b8072f",
     "title": "Réparer du JSON : corriger un JSON invalide",
     "description": "Réparez les erreurs JSON courantes : guillemets simples, clés sans guillemets, commentaires, virgules finales ou manquantes. Vérifiez chaque correction.",
     "heading": "Réparer du JSON",
@@ -1608,9 +1608,9 @@
       "Vérifiez le document réparé dans la vue « Formater », puis choisissez « Réparer l'entrée » pour l'appliquer. Ctrl+Z annule l'opération."
     ],
     "options": [
-      "Corrige les commentaires, les clés sans guillemets, les chaînes entre guillemets simples, les virgules finales, les virgules manquantes entre propriétés, les valeurs Python True, False et None, ainsi que les délimiteurs de bloc de code Markdown autour du JSON collé.",
+      "Corrige les commentaires, les clés sans guillemets, les chaînes entre guillemets simples, les virgules finales, les virgules manquantes, les valeurs Python True, False et None, les délimiteurs de bloc de code Markdown autour du JSON collé, ainsi que le JSON collé sous forme de chaîne échappée.",
       "NaN et Infinity n'ont pas de représentation JSON et deviennent donc null. Vérifiez la sortie lorsque ces valeurs sont importantes.",
-      "Certaines entrées ne peuvent pas être réparées, comme une chaîne sans guillemet fermant. Le bandeau indique alors une erreur et son emplacement.",
+      "Une entrée tronquée à la fin est complétée : une chaîne sans guillemet fermant est fermée en fin de ligne, une valeur manquante devient null et les crochets et accolades ouverts sont fermés. L'éditeur souligne chacune de ces réparations. Vérifiez-les, car le texte perdu ne peut pas être deviné.",
       "La réparation conserve les chiffres des nombres et l'ordre des clés."
     ],
     "faqs": [
@@ -1620,11 +1620,11 @@
       },
       {
         "question": "Toutes les erreurs JSON peuvent-elles être réparées ?",
-        "answer": "Non. Les erreurs de guillemets, de virgules et de commentaires sont corrigées automatiquement. Le texte manquant, comme une chaîne tronquée avant son guillemet fermant, doit être corrigé manuellement."
+        "answer": "La plupart, oui. Les erreurs de guillemets, de virgules et de commentaires sont corrigées automatiquement, et une entrée tronquée à la fin est complétée : une chaîne ouverte est fermée et une valeur manquante devient null. Le texte perdu ne peut pas être récupéré, vérifiez donc ces endroits. Si le document reste illisible, le bandeau indique l'erreur et son emplacement."
       },
       {
         "question": "La réparation modifie-t-elle mes valeurs ?",
-        "answer": "Les valeurs restent identiques, sauf NaN et Infinity, que JSON ne peut pas représenter et qui deviennent null. Vérifiez la sortie avant de l'utiliser."
+        "answer": "Les valeurs restent identiques, sauf NaN et Infinity, que JSON ne peut pas représenter, et les valeurs manquantes. Toutes deviennent null. Vérifiez la sortie avant de l'utiliser."
       }
     ],
     "guides": [

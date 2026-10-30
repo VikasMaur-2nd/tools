@@ -253,6 +253,11 @@ describe('toCsv', () => {
     assert.equal(csv, 'a,b,c,d,e,f,g\r\n"x,y","say ""hi""","multi\nline",1.50,,"",123456789012345678901\r\n');
   });
 
+  test('text a spreadsheet would run as a formula gets a leading apostrophe; numbers stay numbers', () => {
+    const csv = toCsv(root('[{"=k": "=HYPERLINK(\\"http://x.invalid\\",\\"click\\")", "a": "+1+1", "b": "-2+3", "c": "@SUM(A1)", "d": "\\t=1", "e": "\\r=1", "f": -5, "g": "-5", "h": "+1.5e3", "i": "a=b", "j": "-"}]'));
+    assert.equal(csv, `'=k,a,b,c,d,e,f,g,h,i,j\r\n"'=HYPERLINK(""http://x.invalid"",""click"")",'+1+1,'-2+3,'@SUM(A1),'\t=1,"'\r=1",-5,-5,+1.5e3,a=b,'-\r\n`);
+  });
+
   test('delimiters and BOM', () => {
     const r = root('[{"a": "1;2", "b": "t\\tab"}]');
     assert.equal(toCsv(r, { delimiter: ';' }), 'a;b\r\n"1;2";t\tab\r\n');
