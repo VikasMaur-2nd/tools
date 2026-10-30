@@ -1,6 +1,6 @@
 # Tool Kumar (JSON Formatter & Viewer)
 
-A fast, private, offline-capable JSON formatter, validator and viewer. Everything runs in the browser; nothing is uploaded.
+A fast, private, offline-capable JSON formatter,  validator and viewer. Everything runs in the browser; nothing is uploaded.
 
 **Live:** https://tools.vikasmaur.com
 
