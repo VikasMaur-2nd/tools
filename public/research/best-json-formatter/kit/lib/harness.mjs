@@ -187,15 +187,14 @@ export async function landed(page, adapter, text, timeoutMs = 30_000) {
   const readable = await page.evaluate(([k, s]) => { try { window.__fmt.io(k, s).lines(); return true; } catch { return false; } }, [adapter.input.kind, adapter.input.sel]).catch(() => false);
   if (!readable) return null;
   const r = await page.evaluate(
-    ([k, s, count, t, ms]) => window.__fmt.waitFor(() => {
+    ([k, s, count, chars, t, ms]) => window.__fmt.waitFor(() => {
       if (window.__fmt.state.halt) return true; // the result is already complete (formatted on paste)
-      const d = window.__fmt.io(k, s);
-      const n = d.lines();
-      if (n !== count && !(n === count + 1 && d.line(n) === '')) return false;
-      const m = d.line(n) === '' && n > 1 ? n - 1 : n;
-      return ((m > 1 ? d.line(m - 1) + '\n' : '') + d.line(m)).endsWith(t);
+      const end = window.__fmt.io(k, s).tail(3);
+      const text = end.text.replace(/\n$/, '');
+      if (end.length !== null) return (end.length === chars || end.length === chars + 1) && text.endsWith(t);
+      return (end.lines === count || (end.lines === count + 1 && end.text.endsWith('\n'))) && text.endsWith(t);
     }, ms),
-    [adapter.input.kind, adapter.input.sel, lines.length, tail, timeoutMs],
+    [adapter.input.kind, adapter.input.sel, lines.length, text.length, tail, timeoutMs],
   );
   return r.done ? r.checkedAt : null;
 }
@@ -224,12 +223,8 @@ export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs
         return f.waitFor(() => done(fn()), timeout);
       }
       return f.waitFor(() => {
-        const d = f.io(c.kind, c.sel);
-        const n = d.lines();
-        if (n < 2) return false;
-        let tail = '';
-        for (let k = Math.max(1, n - 15); k <= n; k++) tail += d.line(k) + '\n';
-        return done(tail.includes(marker));
+        const end = f.io(c.kind, c.sel).tail(16);
+        return done(end.multiline && end.text.includes(marker));
       }, timeout);
     },
     [check, endMarker, timeoutMs],

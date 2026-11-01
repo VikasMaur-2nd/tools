@@ -1,8 +1,3 @@
 {
-  "jobs": [
-    { "name": "pilot-blocked", "cmd": "run.mjs smoke --tools curiousconcept,static-app", "browsers": "chromium", "minutes": 5 },
-    { "name": "pilot-big", "cmd": "run.mjs speed --engine chromium --sizes 10mb,50mb --reps 1 --tools tool-kumar,jsonformatter-org,jsonviewer-stack", "browsers": "chromium", "minutes": 8 },
-    { "name": "pilot-firefox", "cmd": "run.mjs speed --engine firefox --sizes 100kb,1mb,50mb --reps 1 --tools tool-kumar,jsonformatter-org,jsonchecker,jsoneditoronline", "browsers": "firefox", "minutes": 8 },
-    { "name": "pilot-webkit", "cmd": "run.mjs webkit --engine webkit --tools tool-kumar,jsonformatter-org,jsonbeautify-org", "browsers": "webkit", "minutes": 4 }
-  ]
+  "jobs": [{ "name": "probe", "cmd": "dev/probe.mjs --tools static-app,curiousconcept,jsonlint", "browsers": "chromium", "minutes": 4 }]
 }

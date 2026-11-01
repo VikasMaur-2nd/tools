@@ -73,25 +73,40 @@ export const INPAGE = `(() => {
     }
     return undefined;
   };
-  // Every kind: value(), lines(), line(n) (1-based), markers() → 1-based lines marked as errors.
+  // Every kind: value(), lines(), line(n) (1-based), markers() → 1-based lines marked as errors, and
+  // tail(count) → { multiline, text, length } (the last lines, and the length where it is cheap to know). tail() is
+  // what runs on every frame while a result is awaited, so it only ever touches the end of the document.
+  const editorTail = (lines, line) => (count) => {
+    const n = lines(), out = [];
+    for (let k = Math.max(1, n - count + 1); k <= n; k++) out.push(line(k));
+    return { multiline: n > 1, text: out.join('\\n'), length: null, lines: n };
+  };
+  // A plain string: look back from the end only (64 KB at most), never through the whole document.
+  const stringTail = (v, count) => {
+    const w = v.slice(-65536);
+    let i = w.length;
+    for (let k = 0; k < count && i > 0; k++) i = w.lastIndexOf('\\n', i - 1);
+    return { multiline: w.includes('\\n'), text: i > 0 ? w.slice(i + 1) : w, length: v.length, lines: null };
+  };
   const kinds = {
-    ace: (sel) => { const e = ace(sel), s = e.session; return {
-      value: () => e.getValue(), lines: () => s.getLength(), line: (n) => s.getLine(n - 1),
+    ace: (sel) => { const e = ace(sel), s = e.session; const lines = () => s.getLength(), line = (n) => s.getLine(n - 1); return {
+      value: () => e.getValue(), lines, line, tail: editorTail(lines, line),
       markers: () => (s.getAnnotations() || []).filter((a) => a.type === 'error' || a.type === 'warning').map((a) => a.row + 1) }; },
-    cm5: (sel) => { const e = cm5(sel); return {
-      value: () => e.getValue(), lines: () => e.lineCount(), line: (n) => e.getLine(n - 1),
+    cm5: (sel) => { const e = cm5(sel); const lines = () => e.lineCount(), line = (n) => e.getLine(n - 1); return {
+      value: () => e.getValue(), lines, line, tail: editorTail(lines, line),
       markers: () => { const out = []; e.eachLine((h) => { const info = e.lineInfo(h); if (info.gutterMarkers?.['CodeMirror-lint-markers'] || /error/i.test(info.bgClass || '') || /error/i.test(info.textClass || '') || /error/i.test(info.wrapClass || '')) out.push(info.line + 1); }); return out; } }; },
-    cm6: (sel) => { const v = cm6(sel), d = () => v.state.doc; return {
-      value: () => d().toString(), lines: () => d().lines, line: (n) => d().line(n).text,
+    cm6: (sel) => { const v = cm6(sel), d = () => v.state.doc; const lines = () => d().lines, line = (n) => d().line(n).text; return {
+      value: () => d().toString(), lines, line, tail: editorTail(lines, line),
       markers: () => [...v.dom.querySelectorAll('.cm-content .cm-lintRange-error, .cm-content .cm-lintRange-warning')].map((m) => { try { return d().lineAt(v.posAtDOM(m)).number; } catch { return null; } }).filter(Boolean) }; },
-    monaco: (sel) => { const m = monaco(sel); return {
-      value: () => m.getValue(), lines: () => m.getLineCount(), line: (n) => m.getLineContent(n),
+    monaco: (sel) => { const m = monaco(sel); const lines = () => m.getLineCount(), line = (n) => m.getLineContent(n); return {
+      value: () => m.getValue(), lines, line, tail: editorTail(lines, line),
       markers: () => (window.monaco ? window.monaco.editor.getModelMarkers({ resource: m.uri }).filter((k) => k.severity >= 4).map((k) => k.startLineNumber) : []) }; },
     textarea: (sel) => { const el = q(sel); return {
       value: () => el.value, lines: () => { let n = 1, i = -1; const v = el.value; while ((i = v.indexOf('\\n', i + 1)) !== -1) n++; return n; },
-      line: (n) => el.value.split('\\n')[n - 1], markers: () => [] }; },
+      line: (n) => el.value.split('\\n')[n - 1], tail: (count) => stringTail(el.value, count), markers: () => [] }; },
     text: (sel) => { const el = q(sel); return {
-      value: () => el.textContent, lines: () => el.textContent.split('\\n').length, line: (n) => el.textContent.split('\\n')[n - 1], markers: () => [] }; },
+      value: () => el.textContent, lines: () => el.textContent.split('\\n').length, line: (n) => el.textContent.split('\\n')[n - 1],
+      tail: (count) => stringTail(el.textContent, count), markers: () => [] }; },
   };
   const io = (kind, sel) => {
     if (!kinds[kind]) throw new Error('unknown kind ' + kind);
@@ -104,9 +119,7 @@ export const INPAGE = `(() => {
     arm() { S.pasteAt = null; S.clickAt = null; S.halt = false; S.frames.armed = true; S.frames.maxGap = 0; S.frames.last = 0; S.frames.from = performance.now(); },
     // The last lines of a document, without building the whole text.
     tail(kind, sel, count) {
-      const d = io(kind, sel), n = d.lines(), out = [];
-      for (let k = Math.max(1, n - count + 1); k <= n; k++) out.push(d.line(k));
-      return { lines: n, text: out.join('\\n') };
+      return io(kind, sel).tail(count);
     },
     // Resolves with performance.now() at the first frame after check() is true, then one more frame painted.
     waitFor(check, timeoutMs) {

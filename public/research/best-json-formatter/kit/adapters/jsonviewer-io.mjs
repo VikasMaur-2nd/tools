@@ -24,7 +24,7 @@ export default {
     download: 'button:has-text("download")',
     openFile: 'button:has-text("upload")',
     loadUrl: 'button:has-text("url")',
-    darkMode: 'button[title*="theme" i]',
+    darkMode: 'button[title*="theme" i], button[aria-label*="theme" i]',
     repair: repairOffered('button:has-text("repair"), button:has-text("fix")'),
     convert: 'button:has-text("convert")',
   },

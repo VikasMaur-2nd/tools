@@ -38,6 +38,13 @@ mkdirSync(join(o.out, 'shots'), { recursive: true });
 const manifest = JSON.parse(readFileSync(new URL('fixtures.sha256.json', import.meta.url), 'utf8'));
 const TIMEOUT = { '100kb': 30_000, '1mb': 60_000, '10mb': 120_000, '50mb': 120_000 };
 
+/** A failure's first line, plus Playwright's note of what covered the target, if a click was blocked. */
+function why(e) {
+  const lines = String(e?.message ?? e).split('\n');
+  const cover = lines.find((l) => /intercepts pointer events|not visible|not enabled|not stable/.test(l));
+  return (lines[0] + (cover ? ` (${cover.trim()})` : '')).slice(0, 400);
+}
+
 function fail(msg) {
   console.error(msg);
   process.exit(2);
@@ -115,7 +122,7 @@ async function speedRun(browser, adapter, size, text, { phone = false, offlineFi
     out.ok = true;
   } catch (e) {
     out.ok = false;
-    out.failure = String(e.message).split('\n')[0].slice(0, 300);
+    out.failure = why(e);
     out.uploads ??= net.lastHits ?? []; // a run that timed out still reports what it sent
     if (page) {
       out.crashed = await page.evaluate(() => 1).then(() => false, () => true);
@@ -211,7 +218,7 @@ async function dataSuite(browser, adapter, { cases = DATA_CASES, as = 'data' } =
         }
         res.ms = Date.now() - started;
       } catch (e) {
-        res = { grade: 'no output', notes: [], failure: String(e.message).split('\n')[0] };
+        res = { grade: 'no output', notes: [], failure: why(e) };
         await shot(page, join(o.out, 'shots', `data-${adapter.id}-${c.id}.jpg`));
         await open().catch(() => {});
       }
@@ -230,11 +237,18 @@ async function errorSuite(browser, adapter) {
   const context = await newContext(browser, engine);
   try {
     const { page } = await within(openTool(context, adapter), 75_000, 'opening the page');
+    const RESET = '{"reset": true}';
     for (const c of ERROR_CASES) {
       try {
+        // A valid document first clears the previous case's error; a message still showing from before (a toast
+        // that hasn't faded) is not counted for this case.
+        await within(stage(page, adapter, RESET), 20_000, 'clipboard');
+        await within(pasteSmall(page, adapter, { text: RESET, timeoutMs: 4000 }), 15_000, 'resetting');
+        const before = new Set((await within(readError(page, adapter), 10_000, 'reading the error')).text.split('\n').filter(Boolean));
         await within(stage(page, adapter, c.text), 20_000, 'clipboard');
         await within(pasteSmall(page, adapter, { text: c.text, timeoutMs: 6000 }), 20_000, 'formatting');
-        const err = await within(readError(page, adapter), 10_000, 'reading the error');
+        const seen = await within(readError(page, adapter), 10_000, 'reading the error');
+        const err = { ...seen, text: seen.text.split('\n').filter((l) => l && !before.has(l)).join('\n') };
         const named = linesInText(err.text);
         const detected = Boolean(err.text || err.lines.length || err.repaired);
         const rightLine = detected && [...err.lines, ...named].some((n) => c.lines.includes(n));
@@ -322,7 +336,7 @@ async function keyboardSuite(browser, adapter) {
       const out = adapter.output === 'input' ? adapter.input : adapter.output;
       const done = adapter.done
         ? await page.evaluate(([fn, m]) => window.__fmt.waitFor(new Function('marker', fn).bind(null, m), 15000), [adapter.done.fn, END_MARKER])
-        : await page.evaluate(([k, s, m]) => window.__fmt.waitFor(() => { const d = window.__fmt.io(k, s); const n = d.lines(); if (n < 2) return false; let t = ''; for (let i = Math.max(1, n - 15); i <= n; i++) t += d.line(i); return t.includes(m); }, 15000), [out.kind, out.sel, END_MARKER]);
+        : await page.evaluate(([k, s, m]) => window.__fmt.waitFor(() => { const end = window.__fmt.io(k, s).tail(16); return end.multiline && end.text.includes(m); }, 15000), [out.kind, out.sel, END_MARKER]);
       res.keyboardFormat = done.done;
     } else res.keyboardFormat = false;
     res.ok = true;
