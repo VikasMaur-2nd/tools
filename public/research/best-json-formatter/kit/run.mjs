@@ -124,8 +124,9 @@ async function speedRun(browser, adapter, size, text, { phone = false, offlineFi
     out.ok = false;
     out.failure = why(e);
     out.uploads ??= net.lastHits ?? []; // a run that timed out still reports what it sent
+    page ??= e.page;
     if (page) {
-      out.crashed = await page.evaluate(() => 1).then(() => false, () => true);
+      out.crashed = await within(page.evaluate(() => 1), 5000, 'page').then(() => false, () => true);
       const err = await within(readError(page, adapter), 5000, 'error').catch(() => null);
       if (err?.text) out.toolMessage = err.text.slice(0, 300);
       await shot(page, join(o.out, 'shots', `${suite}-${engine}-${adapter.id}-${size}-${Date.now()}.jpg`));
@@ -151,6 +152,12 @@ async function speedSuite(browser) {
   for (let rep = Number(o.from); rep <= reps; rep++) {
     for (const adapter of shuffle(tools, Number(o.seed) + rep)) {
       for (const [i, size] of sizes.entries()) {
+        // A blocked tool (its adapter says why) gets one 1 MB run in the first repetition, for what it sends.
+        if (adapter.blocked) {
+          if (rep === Number(o.from) && size === '1mb') record({ ...(await speedRun(browser, adapter, size, texts[size])), rep, attempt: 1, blocked: adapter.blocked });
+          else record({ tool: adapter.id, size, rep, ok: null, skipped: true, failure: `not tested: ${adapter.blocked}` });
+          continue;
+        }
         if (stopAt.has(adapter.id) && i >= stopAt.get(adapter.id)) {
           record({ tool: adapter.id, size, rep, ok: false, skipped: true, failure: `skipped: failed twice at ${sizes[stopAt.get(adapter.id)]}` });
           continue;
@@ -246,9 +253,19 @@ async function errorSuite(browser, adapter) {
         await within(pasteSmall(page, adapter, { text: RESET, timeoutMs: 4000 }), 15_000, 'resetting');
         const before = new Set((await within(readError(page, adapter), 10_000, 'reading the error')).text.split('\n').filter(Boolean));
         await within(stage(page, adapter, c.text), 20_000, 'clipboard');
-        await within(pasteSmall(page, adapter, { text: c.text, timeoutMs: 6000 }), 20_000, 'formatting');
-        const seen = await within(readError(page, adapter), 10_000, 'reading the error');
-        const err = { ...seen, text: seen.text.split('\n').filter((l) => l && !before.has(l)).join('\n') };
+        // Messages can be brief (a toast) or late: everything shown from the click until 1 s after the output
+        // settles counts.
+        const lines = new Set();
+        const marks = new Set();
+        const look = async () => {
+          const e = await within(readError(page, adapter), 10_000, 'reading the error').catch(() => null);
+          e?.text.split('\n').forEach((l) => l && lines.add(l));
+          e?.lines.forEach((n) => marks.add(n));
+        };
+        await within(pasteSmall(page, adapter, { text: c.text, timeoutMs: 6000, onTick: look }), 40_000, 'formatting');
+        await sleep(1000);
+        await look();
+        const err = { text: [...lines].filter((l) => !before.has(l)).join('\n'), lines: [...marks] };
         const named = linesInText(err.text);
         const detected = Boolean(err.text || err.lines.length || err.repaired);
         const rightLine = detected && [...err.lines, ...named].some((n) => c.lines.includes(n));
@@ -353,6 +370,11 @@ async function qualitySuite(browser) {
   const parts = (o.only ?? 'data,errors,features,keyboard,offline,phone').split(',');
   const small = generate(SIZES['100kb']);
   for (const adapter of shuffle(tools, Number(o.seed))) {
+    if (adapter.blocked) {
+      record({ suite: 'blocked', tool: adapter.id, why: adapter.blocked });
+      if (parts.includes('features')) await featureSuite(browser, adapter);
+      continue;
+    }
     if (parts.includes('data')) await dataSuite(browser, adapter);
     if (parts.includes('errors')) await errorSuite(browser, adapter);
     if (parts.includes('features')) await featureSuite(browser, adapter);
@@ -366,7 +388,7 @@ async function qualitySuite(browser) {
 async function webkitSuite(browser) {
   const small = generate(SIZES['100kb']);
   const cases = DATA_CASES.filter((c) => ['big-integer', 'unicode'].includes(c.id));
-  for (const adapter of tools) {
+  for (const adapter of tools.filter((a) => !a.blocked)) {
     record({ suite: 'webkit', ...(await speedRun(browser, adapter, '100kb', small)) });
     await dataSuite(browser, adapter, { cases, as: 'webkit-data' });
   }

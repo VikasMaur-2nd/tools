@@ -84,7 +84,8 @@ const tools = ADAPTERS.map((a) => {
   const all = records.filter((r) => r.tool === id && Array.isArray(r.uploads));
   const uploadRuns = all.filter((r) => r.uploads.length);
   const sends = uploadRuns.length > 0;
-  const pageRuns = records.filter((r) => r.suite === 'speed' && r.engine === 'chromium' && r.tool === id && r.size === '1mb' && r.rep <= 3 && r.net && r.ok);
+  // A blocked tool has no successful runs: its one recorded visit still shows what the page sends and loads.
+  const pageRuns = records.filter((r) => r.suite === 'speed' && r.engine === 'chromium' && r.tool === id && r.size === '1mb' && r.rep <= 3 && r.net && (r.ok || a.blocked));
   const third = median(pageRuns.map((r) => r.net.thirdPartyDomains.length));
   const offline = mine('offline').at(-1);
   const privacyTested = all.length > 0 && pageRuns.length > 0;
@@ -132,9 +133,10 @@ const tools = ADAPTERS.map((a) => {
   };
   const pagePts = pageTested ? Object.values(pageParts).reduce((s, x) => s + x, 0) : null;
 
-  const cats = { data: dataPts, speed: speedPts, privacy: privacyPts, ease: easePts, page: pagePts };
+  const cats = a.blocked ? { data: null, speed: null, privacy: null, ease: null, page: null } : { data: dataPts, speed: speedPts, privacy: privacyPts, ease: easePts, page: pagePts };
   const complete = Object.values(cats).every((x) => x !== null);
-  if (!complete) notes.push(`not ranked: ${Object.entries(cats).filter(([, v]) => v === null).map(([k]) => k).join(', ')} could not be measured`);
+  if (a.blocked) notes.push(`not ranked: ${a.blocked}`);
+  else if (!complete) notes.push(`not ranked: ${Object.entries(cats).filter(([, v]) => v === null).map(([k]) => k).join(', ')} could not be measured`);
   const fractions = Object.fromEntries(Object.entries(cats).map(([k, v]) => [k, v === null ? null : v / WEIGHTS.Default[k]]));
   const totals = complete ? Object.fromEntries(Object.entries(WEIGHTS).map(([name, w]) => [name, round(Object.entries(w).reduce((s, [k, wt]) => s + fractions[k] * wt, 0), 1)])) : null;
   return {
@@ -142,6 +144,7 @@ const tools = ADAPTERS.map((a) => {
     name: a.name,
     url: a.url,
     publisher: !!a.publisher,
+    blocked: a.blocked ?? null,
     total: totals?.Default ?? null,
     totals,
     categories: Object.fromEntries(Object.entries(cats).map(([k, v]) => [k, round(v, 2)])),

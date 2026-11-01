@@ -7,7 +7,7 @@ export default {
   input: { kind: 'ace', sel: '#inputeditor .ace_editor', click: '#inputeditor .ace_scroller', a11y: '#inputeditor textarea.ace_text-input' },
   output: { kind: 'ace', sel: '#outputeditor .ace_editor' },
   format: '#defaultaction',
-  error: ['#msgDiv .alert-danger'],
+  error: ['#msgDiv .alert-danger', '#outputeditor textarea:not(.ace_text-input)'],
   features: {
     indent: 'select#sel1',
     minify: 'button:has-text("Minify / Compact")',

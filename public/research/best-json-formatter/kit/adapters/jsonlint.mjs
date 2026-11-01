@@ -12,12 +12,20 @@ export default {
   },
   input: { kind: 'monaco', sel: '.editor-container .monaco-editor', click: '.editor-container .monaco-editor .view-lines' },
   output: 'input',
-  // Some visitors get a Prettify button (Validate then only validates); others a layout where Validate also
-  // reformats. Prettify is used when it is there (protocol 5: the control labelled Format / Beautify / Pretty print).
-  format: async (page) => {
-    const prettify = page.locator('button:text-is("Prettify")').first();
-    return (await prettify.isVisible().catch(() => false)) ? prettify : page.locator('button:has-text("Validate")').first();
+  // Formatting is two steps on the current layout: the Prettify button appears once the input has been validated,
+  // so a person presses Validate, then Prettify. (On the older layout, without Prettify, Validate also reformats.)
+  // The timing starts at the first click.
+  format: 'button:has-text("Prettify"), button:has-text("Validate")',
+  async formatAction(page) {
+    const prettify = page.locator('button:has-text("Prettify")').first();
+    const shown = () => prettify.waitFor({ state: 'visible', timeout: 1000 }).then(() => true, () => false);
+    if (!(await shown())) {
+      await page.locator('button:has-text("Validate")').first().click({ timeout: 10_000 });
+      await prettify.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    }
+    if (await prettify.isVisible().catch(() => false)) await prettify.click({ timeout: 10_000 });
   },
+  keyboard: { shortcut: 'Control+Shift+F' },
   error: ['div.space-y-3.px-3.py-2:has(span:text-is("Invalid JSON"))'],
   features: {
     indent: '[aria-label*="indent" i], select:has(option:text-matches("space|tab", "i"))',

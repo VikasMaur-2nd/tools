@@ -116,6 +116,15 @@ export function captureNetwork(context, { site }) {
 /** Opens the tool: load, a short settle, the adapter's own readiness check, and the consent dialog if any. */
 export async function openTool(context, adapter, { phone = false } = {}) {
   const page = await context.newPage();
+  try {
+    return await openPage(page, adapter, { phone });
+  } catch (e) {
+    e.page = page; // so the caller can still take a screenshot
+    throw e;
+  }
+}
+
+async function openPage(page, adapter, { phone }) {
   const crashed = { value: false };
   page.on('crash', () => (crashed.value = true));
   // A tool may report errors in an alert(): keep the message, then close the dialog.
@@ -138,7 +147,8 @@ export async function openTool(context, adapter, { phone = false } = {}) {
     }
   }
   if (adapter.ready) await adapter.ready(page, { phone });
-  await page.locator(adapter.input.click ?? adapter.input.sel).first().waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator(adapter.input.click ?? adapter.input.sel).first().waitFor({ state: 'visible', timeout: 30_000 });
+  page.__interruptions = interruptions;
   const covered = await page.evaluate((sel) => window.__fmt?.covered(sel), adapter.input.click ?? adapter.input.sel).catch(() => null);
   if (covered && covered !== 'missing' && covered !== 'hidden') interruptions.push(`input covered by ${covered}`);
   return { page, crashed, openMs: Date.now() - t0, interruptions };
@@ -165,8 +175,58 @@ export async function stage(page, adapter, text) {
 
 export async function focusInput(page, adapter) {
   const target = page.locator(adapter.input.click ?? adapter.input.sel).first();
-  if (adapter.input.focus) await adapter.input.focus(page);
-  else await target.click({ timeout: 10_000, position: adapter.input.clickAt });
+  if (adapter.input.focus) return adapter.input.focus(page);
+  try {
+    await target.click({ timeout: 10_000, position: adapter.input.clickAt }).catch(async (e) => {
+      if (!(await dismissOverlay(page))) throw e;
+      await target.click({ timeout: 10_000, position: adapter.input.clickAt });
+    });
+  } catch (e) {
+    // Something covers the input (an ad, a banner): focus its text area directly, which a person would reach by
+    // closing the overlay, and note the overlay. This is outside any timing.
+    const covered = /intercepts pointer events/.test(e.message) ? (e.message.match(/<[^>]{0,120}>/)?.[0] ?? 'an element') : null;
+    const ok = await page
+      .locator(adapter.input.sel)
+      .first()
+      .evaluate((box) => {
+        const el = box.matches('textarea, [contenteditable=true]') ? box : box.querySelector('textarea, [contenteditable=true], .cm-content');
+        if (!el) return false;
+        el.focus();
+        return document.activeElement === el;
+      })
+      .catch(() => false);
+    if (!ok) throw e;
+    (page.__interruptions ??= []).push(covered ? `input covered by ${covered}` : 'input could not be clicked');
+  }
+}
+
+/**
+ * Closes a full-page ad (Google's "vignette" and similar) the way a person would, with its own close button, and
+ * notes it as an interruption. Returns true if one was closed.
+ */
+export async function dismissOverlay(page) {
+  // Only inside ad frames, never the tool's own page (whose Close buttons belong to the tool).
+  for (const frame of page.frames().filter((f) => f !== page.mainFrame())) {
+    const close = frame.locator('#dismiss-button, [aria-label="Close ad"]').first();
+    if (await close.isVisible().catch(() => false)) {
+      await close.click({ timeout: 3000 }).catch(() => {});
+      await sleep(500);
+      (page.__interruptions ??= []).push('full-page ad');
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Clicks; if something covers the target, closes a full-page ad (if that is what covers it) and clicks again. */
+export async function clickThrough(page, target, { timeout = 10_000, tap = false } = {}) {
+  const act = (ms) => (tap ? target.tap({ timeout: ms }) : target.click({ timeout: ms }));
+  try {
+    return await act(Math.min(timeout, 8000));
+  } catch (e) {
+    if (!/intercepts pointer events|Timeout/.test(e.message) || !(await dismissOverlay(page))) throw e;
+    return act(timeout);
+  }
 }
 
 /** The tool's format control: a selector, or a function that picks one on the live page (a site that shows
@@ -239,10 +299,31 @@ export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs
   }
   // A tool that formats on paste may be done before the click: then there is nothing to click (protocol 5).
   if (adapter.format && !finished) {
-    const btn = await formatControl(page, adapter);
-    await (tap ? btn.tap({ timeout: timeoutMs }) : btn.click({ timeout: timeoutMs })).catch((e) => {
-      throw new Error('format control: ' + String(e.message).split('\n')[0]);
-    });
+    if (adapter.formatAction) {
+      await adapter.formatAction(page, { tap }).catch((e) => {
+        throw new Error('format control: ' + String(e.message).split('\n')[0]);
+      });
+    } else {
+      const btn = await formatControl(page, adapter);
+      await clickThrough(page, btn, { timeout: timeoutMs, tap }).catch((e) => {
+        throw new Error('format control: ' + String(e.message).split('\n')[0]);
+      });
+    }
+  }
+  // A full-page ad can swallow the click (jsonviewer.stack.hu shows one on Format): a person closes it and presses
+  // Format again. The time keeps running from the first click.
+  if (adapter.format) {
+    for (let tries = 0; tries < 3 && !finished; ) {
+      await Promise.race([waiter, sleep(1500)]);
+      if (finished) break;
+      if (await dismissOverlay(page)) {
+        tries++;
+        if (!finished) {
+          if (adapter.formatAction) await adapter.formatAction(page, { tap }).catch(() => {});
+          else await clickThrough(page, await formatControl(page, adapter), { timeout: 10_000, tap }).catch(() => {});
+        }
+      } else if (!(await page.evaluate(() => 1).then(() => true, () => false))) break;
+    }
   }
   const r = await waiter;
   const f = await page.evaluate(() => window.__fmt.disarm());
@@ -258,7 +339,7 @@ export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs
 }
 
 /** For the small cases: paste, format, then wait until the output stops changing (or an error shows). */
-export async function pasteSmall(page, adapter, { text, settleMs = 600, timeoutMs = 10_000 } = {}) {
+export async function pasteSmall(page, adapter, { text, settleMs = 600, timeoutMs = 10_000, onTick = null } = {}) {
   await page.keyboard.press(`${MOD}+A`);
   await page.keyboard.press(`${MOD}+V`);
   if (text && adapter.format) {
@@ -266,12 +347,22 @@ export async function pasteSmall(page, adapter, { text, settleMs = 600, timeoutM
     await landed(page, adapter, text, Math.min(timeoutMs, 3000));
     await sleep(CLICK_PAUSE_MS);
   } else await sleep(150);
-  if (adapter.format) await (await formatControl(page, adapter)).click({ timeout: 10_000 });
+  const press = async () => {
+    if (adapter.formatAction) await adapter.formatAction(page, {});
+    else if (adapter.format) await clickThrough(page, await formatControl(page, adapter), { timeout: 10_000 });
+  };
+  await press();
+  if (adapter.format) {
+    // A full-page ad that swallowed the click: close it and press again, as a person would.
+    await sleep(800);
+    if (await dismissOverlay(page)) await press();
+  }
   const end = Date.now() + timeoutMs;
   let prev = null;
   let stableSince = Date.now();
   while (Date.now() < end) {
     await sleep(150);
+    if (onTick) await onTick();
     const now = await readOutput(page, adapter).catch((e) => ({ error: e.message }));
     const key = JSON.stringify([now.text?.length, now.text?.slice(0, 200), now.text?.slice(-200), now.error]);
     if (key !== prev) (prev = key), (stableSince = Date.now());
@@ -291,7 +382,11 @@ export async function readError(page, adapter) {
   const sels = [].concat(adapter.error ?? []);
   const texts = [];
   for (const sel of sels) {
-    for (const el of await page.locator(sel).all()) if (await el.isVisible().catch(() => false)) texts.push((await el.innerText().catch(() => '')).trim());
+    for (const el of await page.locator(sel).all()) {
+      if (!(await el.isVisible().catch(() => false))) continue;
+      const isBox = await el.evaluate((e) => e.matches('textarea, input')).catch(() => false);
+      texts.push(((isBox ? await el.inputValue().catch(() => '') : await el.innerText().catch(() => '')) || '').trim().slice(0, 1500));
+    }
   }
   const lines = await page
     .evaluate(
@@ -301,6 +396,11 @@ export async function readError(page, adapter) {
     .catch(() => []);
   // Only text that reads like an error report counts (a "Copied" toast or a "Valid JSON" badge does not).
   texts.push(...(page.__dialogs ?? []).map((m) => `[dialog] ${m}`));
+  // Some tools write the error into the output pane instead of a message area: short text there that isn't JSON.
+  if (adapter.output && adapter.output !== 'input' && !adapter.readOutput) {
+    const shown = await page.evaluate(([k, s]) => { try { const v = window.__fmt.io(k, s).value(); return v.length < 1500 ? v : null; } catch { return null; } }, [adapter.output.kind, adapter.output.sel]).catch(() => null);
+    if (shown && !/^\s*[[{"\d-]|^\s*(true|false|null)\s*$/.test(shown)) texts.push(shown.trim());
+  }
   const kept = texts.filter((t) => ERRORISH.test(t) && !/^\s*(?:✓\s*)?valid json\.?\s*$/i.test(t));
   return { text: kept.join('\n').slice(0, 2000), lines: [...new Set(lines)] };
 }
@@ -344,18 +444,21 @@ export async function copyOut(page, copySel) {
   await page.keyboard.press(`${MOD}+C`);
   await page.evaluate(() => document.getElementById('__fmt_scratch')?.remove());
   await page.locator(copySel).first().click({ timeout: 10_000 });
-  await sleep(400);
-  await scratch('');
-  await page.keyboard.press(`${MOD}+V`);
-  await sleep(300);
-  const text = await page.evaluate(() => {
-    const t = document.getElementById('__fmt_scratch');
-    const v = t.value;
-    t.remove();
-    return v;
-  });
-  if (text === SENTINEL || text === '') throw new Error('the Copy control did not put the result on the clipboard');
-  return text;
+  // Copying tens of megabytes takes a while: paste again every second, for up to 30 s, until it has arrived.
+  for (let waited = 0; waited <= 30_000; waited += 1000) {
+    await sleep(waited ? 1000 : 400);
+    await scratch('');
+    await page.keyboard.press(`${MOD}+V`);
+    await sleep(300);
+    const text = await page.evaluate(() => {
+      const t = document.getElementById('__fmt_scratch');
+      const v = t.value;
+      t.remove();
+      return v;
+    });
+    if (text !== SENTINEL && text !== '') return text;
+  }
+  throw new Error('the Copy control did not put the result on the clipboard within 30 s');
 }
 
 /** Like window.__fmt.verify, for a result read in Node. */

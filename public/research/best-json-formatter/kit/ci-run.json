@@ -1,3 +1,6 @@
 {
-  "jobs": [{ "name": "probe", "cmd": "dev/probe.mjs --tools static-app,curiousconcept,jsonlint", "browsers": "chromium", "minutes": 4 }]
+  "jobs": [
+    { "name": "check-smoke", "cmd": "run.mjs smoke --tools static-app,jsonlint,jsonviewer-stack", "browsers": "chromium", "minutes": 8 },
+    { "name": "check-big", "cmd": "run.mjs speed --engine chromium --sizes 10mb,50mb --reps 1 --tools tool-kumar,static-app,jsonchecker", "browsers": "chromium", "minutes": 8 }
+  ]
 }
