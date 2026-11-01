@@ -1,0 +1,567 @@
+{
+ "rule": "protocol.md section 2",
+ "take": 12,
+ "ranked": [
+  {
+   "site": "jsonformatter.org",
+   "lists": [
+    "google: json formatter",
+    "google: json beautifier",
+    "google: json viewer",
+    "google: json validator",
+    "google: format json online",
+    "bing: json formatter",
+    "bing: json beautifier",
+    "bing: json viewer",
+    "bing: json validator",
+    "bing: format json online"
+   ],
+   "positions": [
+    2,
+    2,
+    2,
+    3,
+    2,
+    1,
+    3,
+    7,
+    4,
+    1
+   ],
+   "count": 10,
+   "best": 1,
+   "average": 2.7,
+   "rank": 1
+  },
+  {
+   "site": "jsonformatter.curiousconcept.com",
+   "lists": [
+    "google: json formatter",
+    "google: json beautifier",
+    "google: json validator",
+    "google: format json online",
+    "bing: json formatter",
+    "bing: json beautifier",
+    "bing: json validator",
+    "bing: format json online"
+   ],
+   "positions": [
+    1,
+    7,
+    2,
+    1,
+    3,
+    9,
+    6,
+    7
+   ],
+   "count": 8,
+   "best": 1,
+   "average": 4.5,
+   "rank": 2
+  },
+  {
+   "site": "jsoneditoronline.org",
+   "lists": [
+    "google: json formatter",
+    "google: json viewer",
+    "google: format json online",
+    "bing: json formatter",
+    "bing: json beautifier",
+    "bing: json viewer",
+    "bing: json validator",
+    "bing: format json online"
+   ],
+   "positions": [
+    6,
+    8,
+    4,
+    4,
+    6,
+    4,
+    10,
+    4
+   ],
+   "count": 8,
+   "best": 4,
+   "average": 5.75,
+   "rank": 3
+  },
+  {
+   "site": "codebeautify.org",
+   "lists": [
+    "google: json beautifier",
+    "google: json viewer",
+    "google: json validator",
+    "google: format json online",
+    "bing: json beautifier",
+    "bing: json viewer",
+    "bing: json validator"
+   ],
+   "positions": [
+    3,
+    4,
+    5,
+    9,
+    4,
+    6,
+    3
+   ],
+   "count": 7,
+   "best": 3,
+   "average": 4.857142857142857,
+   "rank": 4
+  },
+  {
+   "site": "jsonlint.com",
+   "lists": [
+    "google: json validator",
+    "bing: json formatter",
+    "bing: json beautifier",
+    "bing: json viewer",
+    "bing: json validator",
+    "bing: format json online"
+   ],
+   "positions": [
+    1,
+    6,
+    8,
+    8,
+    1,
+    8
+   ],
+   "count": 6,
+   "best": 1,
+   "average": 5.333333333333333,
+   "rank": 5
+  },
+  {
+   "site": "jsonviewer.stack.hu",
+   "lists": [
+    "google: json viewer",
+    "google: format json online",
+    "bing: json formatter",
+    "bing: json beautifier",
+    "bing: json viewer"
+   ],
+   "positions": [
+    1,
+    7,
+    8,
+    7,
+    1
+   ],
+   "count": 5,
+   "best": 1,
+   "average": 4.8,
+   "rank": 6
+  },
+  {
+   "site": "jsonbeautify.com",
+   "lists": [
+    "google: json beautifier",
+    "bing: json formatter",
+    "bing: json beautifier",
+    "bing: json validator",
+    "bing: format json online"
+   ],
+   "positions": [
+    4,
+    2,
+    2,
+    8,
+    2
+   ],
+   "count": 5,
+   "best": 2,
+   "average": 3.6,
+   "rank": 7
+  },
+  {
+   "site": "jsonbeautify.org",
+   "lists": [
+    "bing: json formatter",
+    "bing: json beautifier",
+    "bing: json viewer",
+    "bing: json validator",
+    "bing: format json online"
+   ],
+   "positions": [
+    5,
+    5,
+    5,
+    5,
+    3
+   ],
+   "count": 5,
+   "best": 3,
+   "average": 4.6,
+   "rank": 8
+  },
+  {
+   "site": "jsonchecker.com",
+   "lists": [
+    "google: json validator",
+    "google: format json online",
+    "bing: json validator",
+    "bing: format json online"
+   ],
+   "positions": [
+    4,
+    8,
+    2,
+    9
+   ],
+   "count": 4,
+   "best": 2,
+   "average": 5.75,
+   "rank": 9
+  },
+  {
+   "site": "static.app",
+   "lists": [
+    "google: json formatter",
+    "google: json beautifier",
+    "google: format json online"
+   ],
+   "positions": [
+    9,
+    5,
+    6
+   ],
+   "count": 3,
+   "best": 5,
+   "average": 6.666666666666667,
+   "rank": 10
+  },
+  {
+   "site": "jsonbeautifier.org",
+   "lists": [
+    "google: json beautifier",
+    "bing: json beautifier"
+   ],
+   "positions": [
+    1,
+    1
+   ],
+   "count": 2,
+   "best": 1,
+   "average": 1,
+   "rank": 11
+  },
+  {
+   "site": "jsonviewer.io",
+   "lists": [
+    "bing: json viewer",
+    "bing: json validator"
+   ],
+   "positions": [
+    2,
+    9
+   ],
+   "count": 2,
+   "best": 2,
+   "average": 5.5,
+   "rank": 12
+  },
+  {
+   "site": "json-indent.com",
+   "lists": [
+    "google: json formatter",
+    "google: format json online"
+   ],
+   "positions": [
+    4,
+    3
+   ],
+   "count": 2,
+   "best": 3,
+   "average": 3.5,
+   "rank": 13
+  },
+  {
+   "site": "jsonformatter.gg",
+   "lists": [
+    "bing: json formatter",
+    "bing: format json online"
+   ],
+   "positions": [
+    7,
+    10
+   ],
+   "count": 2,
+   "best": 7,
+   "average": 8.5,
+   "rank": 14
+  },
+  {
+   "site": "jsonformatter.net",
+   "lists": [
+    "bing: json viewer"
+   ],
+   "positions": [
+    3
+   ],
+   "count": 1,
+   "best": 3,
+   "average": 3,
+   "rank": 15
+  },
+  {
+   "site": "json.site",
+   "lists": [
+    "google: format json online"
+   ],
+   "positions": [
+    5
+   ],
+   "count": 1,
+   "best": 5,
+   "average": 5,
+   "rank": 16
+  },
+  {
+   "site": "openreplay.com",
+   "lists": [
+    "google: json formatter"
+   ],
+   "positions": [
+    5
+   ],
+   "count": 1,
+   "best": 5,
+   "average": 5,
+   "rank": 17
+  },
+  {
+   "site": "formatjsononline.com",
+   "lists": [
+    "bing: format json online"
+   ],
+   "positions": [
+    6
+   ],
+   "count": 1,
+   "best": 6,
+   "average": 6,
+   "rank": 18
+  },
+  {
+   "site": "liquid-technologies.com",
+   "lists": [
+    "google: json validator"
+   ],
+   "positions": [
+    6
+   ],
+   "count": 1,
+   "best": 6,
+   "average": 6,
+   "rank": 19
+  },
+  {
+   "site": "site24x7.com",
+   "lists": [
+    "google: json beautifier"
+   ],
+   "positions": [
+    6
+   ],
+   "count": 1,
+   "best": 6,
+   "average": 6,
+   "rank": 20
+  },
+  {
+   "site": "coderspace.io",
+   "lists": [
+    "google: json validator"
+   ],
+   "positions": [
+    7
+   ],
+   "count": 1,
+   "best": 7,
+   "average": 7,
+   "rank": 21
+  },
+  {
+   "site": "jsonlint.me",
+   "lists": [
+    "bing: json validator"
+   ],
+   "positions": [
+    7
+   ],
+   "count": 1,
+   "best": 7,
+   "average": 7,
+   "rank": 22
+  },
+  {
+   "site": "jam.dev",
+   "lists": [
+    "google: json formatter"
+   ],
+   "positions": [
+    8
+   ],
+   "count": 1,
+   "best": 8,
+   "average": 8,
+   "rank": 23
+  },
+  {
+   "site": "jsonlint.vearne.cc",
+   "lists": [
+    "google: json validator"
+   ],
+   "positions": [
+    8
+   ],
+   "count": 1,
+   "best": 8,
+   "average": 8,
+   "rank": 24
+  },
+  {
+   "site": "json.onlineviewer.net",
+   "lists": [
+    "google: json viewer"
+   ],
+   "positions": [
+    9
+   ],
+   "count": 1,
+   "best": 9,
+   "average": 9,
+   "rank": 25
+  },
+  {
+   "site": "jsonfold.com",
+   "lists": [
+    "bing: json formatter"
+   ],
+   "positions": [
+    9
+   ],
+   "count": 1,
+   "best": 9,
+   "average": 9,
+   "rank": 26
+  },
+  {
+   "site": "playcode.io",
+   "lists": [
+    "google: json beautifier"
+   ],
+   "positions": [
+    9
+   ],
+   "count": 1,
+   "best": 9,
+   "average": 9,
+   "rank": 27
+  },
+  {
+   "site": "jsonbeautifier.io",
+   "lists": [
+    "bing: json beautifier"
+   ],
+   "positions": [
+    10
+   ],
+   "count": 1,
+   "best": 10,
+   "average": 10,
+   "rank": 28
+  },
+  {
+   "site": "toptal.com",
+   "lists": [
+    "bing: json formatter"
+   ],
+   "positions": [
+    10
+   ],
+   "count": 1,
+   "best": 10,
+   "average": 10,
+   "rank": 29
+  }
+ ],
+ "ineligible": {
+  "chromewebstore.google.com": "browser-extension listing",
+  "apps.microsoft.com": "app-store listing",
+  "apps.apple.com": "app-store listing",
+  "play.google.com": "app-store listing",
+  "jsonschemavalidator.net": "JSON Schema validator: needs a schema, does not format"
+ },
+ "tested": [
+  {
+   "site": "jsonformatter.org",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonformatter.curiousconcept.com",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsoneditoronline.org",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "codebeautify.org",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonlint.com",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonviewer.stack.hu",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonbeautify.com",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonbeautify.org",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonchecker.com",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "static.app",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonbeautifier.org",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "jsonviewer.io",
+   "page": null,
+   "publisher": false
+  },
+  {
+   "site": "tools.vikasmaur.com",
+   "page": null,
+   "publisher": true
+  }
+ ]
+}

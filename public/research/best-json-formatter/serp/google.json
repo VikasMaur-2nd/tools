@@ -1,0 +1,56 @@
+{
+  "takenAt": "2026-11-01T16:48:30Z",
+  "how": "Google blocked all five GitHub Actions runners with a CAPTCHA (runs 41327510021 and 41327859714), so per protocol section 2 the Google lists were taken with an ordinary desktop Chrome window (Chrome 156, incognito, signed out) on the study's server in Mumbai, India, with Google's United States English settings (hl=en, gl=us, pws=0). Google's footer said 'Unknown - Can't determine location'. Results are the organic results read from the page; screenshots show the top of each page.",
+  "lists": [
+    { "engine": "google", "query": "json formatter", "results": [
+      { "position": 1, "url": "https://jsonformatter.curiousconcept.com", "title": "JSON Formatter & Validator" },
+      { "position": 2, "url": "https://jsonformatter.org", "title": "Best JSON Formatter and JSON Validator: Online JSON ..." },
+      { "position": 3, "url": "https://chromewebstore.google.com/detail/json-formatter/bcjindcccaagfpapjjmafapmmgkkhgoa", "title": "JSON Formatter - Chrome Web Store" },
+      { "position": 4, "url": "https://json-indent.com", "title": "JSON Formatter & Beautifier — Free, 100% In-Browser" },
+      { "position": 5, "url": "https://openreplay.com", "title": "JSON Formatter – Format, Repair & Minify", "cite": "https://openreplay.com › Developer toolbox" },
+      { "position": 6, "url": "https://jsoneditoronline.org", "title": "JSON Editor Online: edit JSON, format JSON, query JSON" },
+      { "position": 7, "url": "https://apps.microsoft.com", "title": "JSON Tools - Free download and install on Windows", "cite": "https://apps.microsoft.com › detail" },
+      { "position": 8, "url": "https://jam.dev", "title": "JSON formatter | Free, Open Source & Ad-free", "cite": "https://jam.dev › utilities › json-formatter" },
+      { "position": 9, "url": "https://static.app", "title": "JSON Formatter & Beautifier - Format JSON Online", "cite": "https://static.app › json-beautifier" } ] },
+    { "engine": "google", "query": "json beautifier", "results": [
+      { "position": 1, "url": "https://jsonbeautifier.org", "title": "Json Beautifier - Json Formatter | Json Viewer | Json Editor" },
+      { "position": 2, "url": "https://jsonformatter.org", "title": "Best JSON Formatter and JSON Validator: Online JSON ..." },
+      { "position": 3, "url": "https://codebeautify.org", "title": "Best JSON Viewer and JSON Beautifier Online", "cite": "https://codebeautify.org › jsonviewer" },
+      { "position": 4, "url": "https://jsonbeautify.com", "title": "JSON Beautify: JSON Beautifier, Formatter & Validator" },
+      { "position": 5, "url": "https://static.app", "title": "JSON Formatter & Beautifier - Format JSON Online", "cite": "https://static.app › json-beautifier" },
+      { "position": 6, "url": "https://www.site24x7.com", "title": "JSON Beautifier", "cite": "https://www.site24x7.com › tools › json-beautifier" },
+      { "position": 7, "url": "https://jsonformatter.curiousconcept.com", "title": "JSON Formatter & Validator" },
+      { "position": 8, "url": "https://chromewebstore.google.com/detail/json-beautifier-and-edito/lpopeocbeepakdnipejhlpcmifheolpl", "title": "JSON Beautifier and Editor - Chrome Web Store" },
+      { "position": 9, "url": "https://playcode.io", "title": "JSON Formatter Online - Free JSON Viewer & Beautifier", "cite": "https://playcode.io › json-formatter" } ] },
+    { "engine": "google", "query": "json viewer", "results": [
+      { "position": 1, "url": "https://jsonviewer.stack.hu", "title": "Online JSON Viewer and Formatter" },
+      { "position": 2, "url": "https://jsonformatter.org", "title": "JSON Viewer Online Best and Free", "cite": "https://jsonformatter.org › json-viewer" },
+      { "position": 3, "url": "https://chromewebstore.google.com/detail/json-viewer-pro/eifflpmocdbdmepbjaopkkhbfmdgijcc", "title": "JSON Viewer Pro - Chrome Web Store" },
+      { "position": 4, "url": "https://codebeautify.org", "title": "Best JSON Viewer and JSON Beautifier Online", "cite": "https://codebeautify.org › jsonviewer" },
+      { "position": 5, "url": "https://apps.microsoft.com", "title": "JSON Viewer - JSON Utilities - Free download and install ...", "cite": "https://apps.microsoft.com › detail" },
+      { "position": 6, "url": "https://apps.apple.com", "title": "Json Viewer Simple - App Store - Apple", "cite": "https://apps.apple.com › app › json-viewer-simple" },
+      { "position": 7, "url": "https://play.google.com/store/apps/details?id=com.subarstudio.jsonviewer", "title": "JSON Viewer: JSON Reader - Apps on Google Play" },
+      { "position": 8, "url": "https://jsoneditoronline.org", "title": "JSON Editor Online: edit JSON, format JSON, query JSON" },
+      { "position": 9, "url": "https://json.onlineviewer.net", "title": "JSON Online Viewer" } ] },
+    { "engine": "google", "query": "json validator", "results": [
+      { "position": 1, "url": "https://jsonlint.com", "title": "The JSON Validator: JSONLint" },
+      { "position": 2, "url": "https://jsonformatter.curiousconcept.com", "title": "JSON Formatter & Validator" },
+      { "position": 3, "url": "https://jsonformatter.org", "title": "Best JSON Formatter and JSON Validator: Online JSON ..." },
+      { "position": 4, "url": "https://jsonchecker.com", "title": "JSON Checker - The JSON Validator | Check JSON Online" },
+      { "position": 5, "url": "https://codebeautify.org", "title": "JSON Validator - JSONLint tool to validate JSON data", "cite": "https://codebeautify.org › jsonvalidator" },
+      { "position": 6, "url": "https://www.liquid-technologies.com", "title": "Free Online JSON Validator", "cite": "https://www.liquid-technologies.com › online-json-valida..." },
+      { "position": 7, "url": "https://coderspace.io", "title": "JSON Validator and Formatter | Error Checking and Data ...", "cite": "https://coderspace.io › Coderspace › Free Software Tools" },
+      { "position": 8, "url": "http://jsonlint.vearne.cc", "title": "JSONLint - The JSON Validator" },
+      { "position": 9, "url": "https://www.jsonschemavalidator.net", "title": "JSON Schema Validator - Newtonsoft" } ] },
+    { "engine": "google", "query": "format json online", "results": [
+      { "position": 1, "url": "https://jsonformatter.curiousconcept.com", "title": "JSON Formatter & Validator" },
+      { "position": 2, "url": "https://jsonformatter.org", "title": "Best JSON Formatter and JSON Validator: Online JSON ..." },
+      { "position": 3, "url": "https://json-indent.com", "title": "JSON Formatter & Beautifier — Free, 100% In-Browser" },
+      { "position": 4, "url": "https://jsoneditoronline.org", "title": "JSON Editor Online: edit JSON, format JSON, query JSON" },
+      { "position": 5, "url": "https://json.site", "title": "JSON Formatter Online - Free, Private & Secure" },
+      { "position": 6, "url": "https://static.app", "title": "JSON Formatter & Beautifier - Format JSON Online", "cite": "https://static.app › json-beautifier" },
+      { "position": 7, "url": "https://jsonviewer.stack.hu", "title": "Online JSON Viewer and Formatter" },
+      { "position": 8, "url": "https://jsonchecker.com", "title": "JSON Checker - The JSON Validator | Check JSON Online" },
+      { "position": 9, "url": "https://codebeautify.org", "title": "Best JSON Viewer and JSON Beautifier Online", "cite": "https://codebeautify.org › jsonviewer" } ] }
+  ]
+}

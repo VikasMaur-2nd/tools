@@ -1,0 +1,25 @@
+// jsonbeautify.com: two Ace editors and a "Format / Beautify" button (the same layout as jsonformatter.org).
+import { menuHas, shortcutShows } from './_checks.mjs';
+export default {
+  id: 'jsonbeautify-com',
+  name: 'JSON Beautify (jsonbeautify.com)',
+  url: 'https://jsonbeautify.com/',
+  input: { kind: 'ace', sel: '#inputeditor .ace_editor', click: '#inputeditor .ace_scroller', a11y: '#inputeditor textarea.ace_text-input' },
+  output: { kind: 'ace', sel: '#outputeditor .ace_editor' },
+  format: '#defaultaction',
+  error: ['#msgDiv .alert-danger'],
+  features: {
+    indent: 'select#sel1',
+    minify: 'button:has-text("Minify / Compact")',
+    tree: menuHas('#outputeditor button.jsoneditor-modes', /^Tree$/),
+    search: shortcutShows('#outputeditor .ace_scroller', 'Control+F', '.ace_search'),
+    sortKeys: 'button.jsoneditor-sort',
+    copy: '[title*="copy" i], [aria-label*="copy" i], button:has-text("Copy")',
+    download: 'button:has-text("Download")',
+    openFile: 'button:has-text("Upload"), button:has-text("Open file")',
+    loadUrl: 'button:has-text("URL")',
+    darkMode: '[title*="dark" i], [aria-label*="theme" i], [title*="theme" i]',
+    repair: 'button.jsoneditor-repair',
+    convert: 'button:has-text("Convert")',
+  },
+};

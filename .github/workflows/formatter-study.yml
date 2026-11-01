@@ -87,7 +87,8 @@ jobs:
           CMD: ${{ matrix.cmd }}
           JOB: ${{ matrix.name }}
       - name: Keep the results
-        if: ${{ !cancelled() }}
+        # always(): a job that hits its time limit still keeps what it measured (results are written as they come).
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: study-${{ matrix.name }}

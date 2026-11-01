@@ -237,4 +237,37 @@ Actions workflow. `kit/README.md` explains how to rerun one tool on a laptop or 
 
 ## Deviations
 
-None yet.
+### Amendment 1 — 2026-11-01, before the first measured run
+
+Found while selecting the tools and writing the adapters. No measured run had happened; the adapters were tried on
+small files on the study's own server, and those trial results are not used anywhere.
+
+1. **Search snapshot (section 2).** Google showed a CAPTCHA to every GitHub Actions runner, in the first run and in
+   the retry from five new runners (runs 41327510021 and 41327859714). As the fallback says, Google's lists were then
+   taken in an ordinary desktop Chrome window, signed out, with Google's United States English settings (`hl=en`,
+   `gl=us`, `pws=0`) — but that window ran on the study's server in Mumbai, India, not in the US; Google's footer
+   said it could not determine the location. Bing's lists come from US runners as planned. Both are in `serp/`.
+2. **WebKit check (5.7).** "Pass if all are correct" is read as: the 100 KB file formats correctly, and the two
+   cases get the same grade as in Chromium. Otherwise a data-safety flaw (already scored in 5.1) would be counted a
+   second time here.
+3. **Page runs (5.5).** The three Chromium page runs are the first three repetitions of the 1 MB speed test, not
+   extra visits: they are the same first visit with the same file, and it saves a third of the page loads.
+4. **Data cases (5.1).** All cases of a tool are pasted one after another into one page, which is reloaded after
+   any failure. When the output did not change and the tool showed an error, the case is graded "rejected".
+5. **Bot protection (3).** On the study server, Curious Concept's formatting endpoint answered HTTP 403 to the
+   automated browser, and static.app showed a Cloudflare check that did not clear. Both are tried on the CI runners
+   as section 3 says, and reported as "could not be tested automatically" if they stay blocked.
+6. **When the format control is pressed (5, 5.3).** A script can click a few milliseconds after pasting, before an
+   editor has taken in the pasted text; some editors then format their previous content (JSON Editor Online did).
+   A person sees the pasted text, then moves to the button. So the click comes when the pasted text is visible in
+   the input, plus a 300 ms pause. The pause is a person's, not the tool's, and is not timed: for tools with a format
+   control the time is (paste key press → pasted text in the input) + (format click → complete result). The click's
+   time is the moment it is made, so a page that is still busy keeps the wait in the result. Tools that format on
+   paste are timed from the paste key press, and so is a tool whose complete result appears before the click would
+   come (it formatted on paste; no click is made). The total including the pause is kept in the raw data
+   (`totalMs`).
+7. **Sites with more than one layout (5).** JSONLint showed some visits a layout with a Prettify button, where
+   Validate only validates, and others one without it. Its adapter presses Prettify when it is shown, otherwise
+   Validate, which then reformats.
+8. **Compressed uploads (5.4).** Request bodies are also searched after gzip, deflate and brotli decompression, so a
+   marker inside a compressed upload (session replay scripts compress) is found.

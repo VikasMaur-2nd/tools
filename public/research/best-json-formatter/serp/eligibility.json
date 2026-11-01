@@ -1,0 +1,12 @@
+{
+  "take": 12,
+  "publisher": "tools.vikasmaur.com",
+  "ineligible": {
+    "chromewebstore.google.com": "browser-extension listing",
+    "apps.microsoft.com": "app-store listing",
+    "apps.apple.com": "app-store listing",
+    "play.google.com": "app-store listing",
+    "jsonschemavalidator.net": "JSON Schema validator: needs a schema, does not format"
+  },
+  "pages": {}
+}

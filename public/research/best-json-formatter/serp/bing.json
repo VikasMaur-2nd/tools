@@ -1,0 +1,321 @@
+{
+ "takenAt": "2026-11-01T16:45:33.184Z",
+ "how": "One GitHub Actions runner per query (run 41327859714), Chromium 156 headed, signed out, setlang=en-US, cc=US, mkt=en-US. Each list records the runner location (IP geolocation).",
+ "lists": [
+  {
+   "engine": "bing",
+   "query": "json formatter",
+   "at": "2026-11-01T16:45:33.184Z",
+   "location": {
+    "city": "Phoenix",
+    "region": "Arizona",
+    "country": "US",
+    "org": "AS8075 Microsoft Corporation"
+   },
+   "results": [
+    {
+     "position": 1,
+     "url": "https://jsonformatter.org/",
+     "title": "Best JSON Formatter and JSON Validator: Online JSON Formatter"
+    },
+    {
+     "position": 2,
+     "url": "https://jsonbeautify.com/",
+     "title": "JSON Beautifier, Formatter & Validator | JSON Beautify"
+    },
+    {
+     "position": 3,
+     "url": "https://jsonformatter.curiousconcept.com/",
+     "title": "JSON Formatter & Validator"
+    },
+    {
+     "position": 4,
+     "url": "https://jsoneditoronline.org/",
+     "title": "JSON Editor Online: edit JSON, format JSON, query JSON"
+    },
+    {
+     "position": 5,
+     "url": "https://www.jsonbeautify.org/en/json-formatter",
+     "title": "JSON Beautifier Online — Free JSON Formatter and Validator"
+    },
+    {
+     "position": 6,
+     "url": "https://jsonlint.com/",
+     "title": "JSONLint - The JSON Validator"
+    },
+    {
+     "position": 7,
+     "url": "https://www.jsonformatter.gg/",
+     "title": "JSON Formatter – Free Online Formatter & Tools"
+    },
+    {
+     "position": 8,
+     "url": "https://jsonviewer.stack.hu/",
+     "title": "Online JSON Viewer and Formatter"
+    },
+    {
+     "position": 9,
+     "url": "https://jsonfold.com/",
+     "title": "JSON Formatter, Validator & Tree Viewer | JSONFold"
+    },
+    {
+     "position": 10,
+     "url": "https://www.toptal.com/developers/json-formatter",
+     "title": ""
+    }
+   ]
+  },
+  {
+   "engine": "bing",
+   "query": "json beautifier",
+   "at": "2026-11-01T16:45:57.854Z",
+   "location": {
+    "city": "Ashburn",
+    "region": "Virginia",
+    "country": "US",
+    "org": "AS14618 Amazon.com, Inc."
+   },
+   "results": [
+    {
+     "position": 1,
+     "url": "https://jsonbeautifier.org/",
+     "title": "Json Beautifier - Json Formatter | Json Viewer | Json Editor"
+    },
+    {
+     "position": 2,
+     "url": "https://jsonbeautify.com/",
+     "title": "JSON Beautifier, Formatter & Validator | JSON Beautify"
+    },
+    {
+     "position": 3,
+     "url": "https://jsonformatter.org/",
+     "title": "Best JSON Formatter and JSON Validator: Online …"
+    },
+    {
+     "position": 4,
+     "url": "https://codebeautify.org/jsonviewer",
+     "title": "Best JSON Viewer and JSON Beautifier Online"
+    },
+    {
+     "position": 5,
+     "url": "https://www.jsonbeautify.org/en/json-formatter",
+     "title": "JSON Beautifier Online — Free JSON Formatter and Validator"
+    },
+    {
+     "position": 6,
+     "url": "https://jsoneditoronline.org/",
+     "title": "JSON Editor Online: edit JSON, format JSON, query JSON"
+    },
+    {
+     "position": 7,
+     "url": "https://jsonviewer.stack.hu/",
+     "title": "Online JSON Viewer and Formatter"
+    },
+    {
+     "position": 8,
+     "url": "https://jsonlint.com/",
+     "title": "JSONLint - The JSON Validator"
+    },
+    {
+     "position": 9,
+     "url": "https://jsonformatter.curiousconcept.com/",
+     "title": "JSON Formatter & Validator"
+    },
+    {
+     "position": 10,
+     "url": "https://jsonbeautifier.io/",
+     "title": "JSON Beautifier Online – Format & Pretty Print JSON Free"
+    }
+   ]
+  },
+  {
+   "engine": "bing",
+   "query": "json viewer",
+   "at": "2026-11-01T16:45:58.672Z",
+   "location": {
+    "city": "San Jose",
+    "region": "California",
+    "country": "US",
+    "org": "AS8075 Microsoft Corporation"
+   },
+   "results": [
+    {
+     "position": 1,
+     "url": "https://jsonviewer.stack.hu/",
+     "title": "Online JSON Viewer and Formatter"
+    },
+    {
+     "position": 2,
+     "url": "https://jsonviewer.io/",
+     "title": "JSON Viewer"
+    },
+    {
+     "position": 3,
+     "url": "https://jsonformatter.net/json-viewer/",
+     "title": "JSON Viewer - JSON Formatter"
+    },
+    {
+     "position": 4,
+     "url": "https://jsoneditoronline.org/",
+     "title": "JSON Editor Online: edit JSON, format JSON, query JSON"
+    },
+    {
+     "position": 5,
+     "url": "https://www.jsonbeautify.org/en/json-viewer",
+     "title": "JSON Viewer - View and Explore JSON Data Online"
+    },
+    {
+     "position": 6,
+     "url": "https://codebeautify.org/jsonviewer",
+     "title": "Best JSON Viewer and JSON Beautifier Online"
+    },
+    {
+     "position": 7,
+     "url": "https://jsonformatter.org/json-viewer",
+     "title": "JSON Viewer Online Best and Free"
+    },
+    {
+     "position": 8,
+     "url": "https://jsonlint.com/",
+     "title": "JSONLint - The JSON Validator"
+    },
+    {
+     "position": 9,
+     "url": "https://jsonformatter.org/",
+     "title": "Best JSON Formatter and JSON Validator: Online JSON Formatter"
+    },
+    {
+     "position": 10,
+     "url": "https://jsonlint.com/json-tree",
+     "title": "JSON Tree Viewer Online - JSON Viewer & Visualizer | JSONLint"
+    }
+   ]
+  },
+  {
+   "engine": "bing",
+   "query": "json validator",
+   "at": "2026-11-01T16:45:47.801Z",
+   "location": {
+    "city": "San Jose",
+    "region": "California",
+    "country": "US",
+    "org": "AS8075 Microsoft Corporation"
+   },
+   "results": [
+    {
+     "position": 1,
+     "url": "https://jsonlint.com/",
+     "title": "JSONLint - The JSON Validator"
+    },
+    {
+     "position": 2,
+     "url": "https://jsonchecker.com/",
+     "title": "JSON Checker - The JSON Validator | Check JSON Online"
+    },
+    {
+     "position": 3,
+     "url": "https://codebeautify.org/jsonvalidator",
+     "title": "JSON Validator - JSONLint tool to validate JSON data"
+    },
+    {
+     "position": 4,
+     "url": "https://jsonformatter.org/",
+     "title": "Best JSON Formatter and JSON Validator: Online JSON Formatter"
+    },
+    {
+     "position": 5,
+     "url": "https://www.jsonbeautify.org/en/json-validator",
+     "title": "JSON Validator - Check and Validate JSON Online"
+    },
+    {
+     "position": 6,
+     "url": "https://jsonformatter.curiousconcept.com/",
+     "title": "JSON Formatter & Validator"
+    },
+    {
+     "position": 7,
+     "url": "https://jsonlint.me/",
+     "title": "JSON Validator & Formatter - Free Online JSON Lint Tool | Validate ..."
+    },
+    {
+     "position": 8,
+     "url": "https://jsonbeautify.com/",
+     "title": "JSON Beautifier, Formatter & Validator | JSON Beautify"
+    },
+    {
+     "position": 9,
+     "url": "https://jsonviewer.io/",
+     "title": "JSON Viewer"
+    },
+    {
+     "position": 10,
+     "url": "https://jsoneditoronline.org/",
+     "title": "JSON Editor Online: edit JSON, format JSON, query JSON"
+    }
+   ]
+  },
+  {
+   "engine": "bing",
+   "query": "format json online",
+   "at": "2026-11-01T16:45:44.843Z",
+   "location": {
+    "city": "Dulles Town Center",
+    "region": "Virginia",
+    "country": "US",
+    "org": "AS8075 Microsoft Corporation"
+   },
+   "results": [
+    {
+     "position": 1,
+     "url": "https://jsonformatter.org/",
+     "title": "Best JSON Formatter and JSON Validator: Online JSON Formatter"
+    },
+    {
+     "position": 2,
+     "url": "https://jsonbeautify.com/",
+     "title": "JSON Beautifier, Formatter & Validator | JSON Beautify"
+    },
+    {
+     "position": 3,
+     "url": "https://www.jsonbeautify.org/en/json-formatter",
+     "title": "JSON Beautifier Online — Free JSON Formatter and Validator"
+    },
+    {
+     "position": 4,
+     "url": "https://jsoneditoronline.org/",
+     "title": "JSON Editor Online: edit JSON, format JSON, query JSON"
+    },
+    {
+     "position": 5,
+     "url": "https://www.jsonbeautify.org/en/json-editor",
+     "title": "JSON Editor - Edit, Format and Validate JSON Online"
+    },
+    {
+     "position": 6,
+     "url": "https://formatjsononline.com/",
+     "title": "Format JSON Online — Free Client-Side JSON Formatter & Validator"
+    },
+    {
+     "position": 7,
+     "url": "https://jsonformatter.curiousconcept.com/",
+     "title": "JSON Formatter & Validator"
+    },
+    {
+     "position": 8,
+     "url": "https://jsonlint.com/json-pretty-print",
+     "title": "JSON Pretty Print - Format & Beautify JSON Online | JSONLint"
+    },
+    {
+     "position": 9,
+     "url": "https://jsonchecker.com/json-formatter",
+     "title": "JSON Formatter - Format JSON Online | JSON Checker"
+    },
+    {
+     "position": 10,
+     "url": "https://www.jsonformatter.gg/",
+     "title": "JSON Formatter – Free Online Formatter & Tools"
+    }
+   ]
+  }
+ ]
+}

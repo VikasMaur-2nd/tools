@@ -1,9 +1,8 @@
 {
   "jobs": [
-    { "name": "serp-1", "cmd": "serp.mjs --query-index 1", "browsers": "chromium", "minutes": 2 },
-    { "name": "serp-2", "cmd": "serp.mjs --query-index 2", "browsers": "chromium", "minutes": 2 },
-    { "name": "serp-3", "cmd": "serp.mjs --query-index 3", "browsers": "chromium", "minutes": 2 },
-    { "name": "serp-4", "cmd": "serp.mjs --query-index 4", "browsers": "chromium", "minutes": 2 },
-    { "name": "serp-5", "cmd": "serp.mjs --query-index 5", "browsers": "chromium", "minutes": 2 }
+    { "name": "pilot-chromium", "cmd": "run.mjs smoke", "browsers": "chromium", "minutes": 22 },
+    { "name": "pilot-big", "cmd": "run.mjs speed --engine chromium --sizes 10mb,50mb --reps 1 --tools tool-kumar,jsonformatter-org,jsonviewer-stack,jsoneditoronline", "browsers": "chromium", "minutes": 10 },
+    { "name": "pilot-firefox", "cmd": "run.mjs speed --engine firefox --sizes 100kb,1mb,50mb --reps 1 --tools tool-kumar,jsonformatter-org,jsonlint,jsonviewer-io,jsonchecker", "browsers": "firefox", "minutes": 10 },
+    { "name": "pilot-webkit", "cmd": "run.mjs webkit --engine webkit --tools tool-kumar,jsonformatter-org,jsoneditoronline,jsonbeautify-org", "browsers": "webkit", "minutes": 6 }
   ]
 }

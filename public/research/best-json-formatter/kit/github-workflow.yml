@@ -1,0 +1,101 @@
+# Copy of the workflow the study ran (.github/workflows/formatter-study.yml in its repository). Put it in your
+# repository as .github/workflows/formatter-study.yml and set KIT below to where this kit is. The budget-guard step
+# (scripts/ci-usage.mjs) belongs to the study's repository: remove it, or keep an eye on your own Actions minutes.
+
+# The online JSON formatter study (public/research/best-json-formatter). Its jobs are listed in
+# public/research/best-json-formatter/kit/ci-run.json; a run starts when a commit is pushed to a study-run/* branch
+# (or by hand once this file is on main). Each job installs the kit on its own (only playwright-core), runs one
+# script headed under Xvfb, and keeps everything it wrote as an artifact (gh run download).
+#
+# The plan job runs scripts/ci-usage.mjs --guard (level perf), which stops the run when this month's billed minutes
+# plus its estimate would pass the monthly budget. The study's own 500-minute budget is tracked in kit/README.md.
+name: formatter-study
+run-name: "study · ${{ github.ref_name }}"
+
+on:
+  push:
+    branches: ['study-run/**']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: formatter-study-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  KIT: public/research/best-json-formatter/kit
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Jobs
+        id: plan
+        run: node "$KIT/ci-plan.mjs"
+      - name: Budget
+        run: node scripts/ci-usage.mjs --guard
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  run:
+    needs: plan
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.jobs) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install the kit
+        working-directory: ${{ env.KIT }}
+        run: pnpm install --ignore-workspace
+      - name: Browsers (${{ matrix.browsers }})
+        # Usually 1-2 min; a stalled Ubuntu mirror once took 46: fail fast instead.
+        timeout-minutes: 8
+        working-directory: ${{ env.KIT }}
+        run: pnpm exec playwright-core install --with-deps ${{ matrix.browsers }}
+      - name: Run ${{ matrix.cmd }}
+        working-directory: ${{ env.KIT }}
+        run: |
+          OUT="$RUNNER_TEMP/out"
+          mkdir -p "$OUT"
+          {
+            echo "job: $JOB"
+            echo "commit: $GITHUB_SHA"
+            echo "runner: $RUNNER_OS $ImageOS $ImageVersion"
+            echo "cpu: $(lscpu | sed -n 's/^Model name: *//p') x $(nproc)"
+            free -m | sed -n 2p
+            echo "started: $(date -u +%FT%TZ)"
+          } | tee "$OUT/runner.txt"
+          set -o pipefail
+          xvfb-run -a --server-args="-screen 0 1920x1080x24" node $CMD --out "$OUT" 2>&1 | tee "$OUT/run.log"
+          echo "finished: $(date -u +%FT%TZ)" >> "$OUT/runner.txt"
+        env:
+          CMD: ${{ matrix.cmd }}
+          JOB: ${{ matrix.name }}
+      - name: Keep the results
+        # always(): a job that hits its time limit still keeps what it measured (results are written as they come).
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: study-${{ matrix.name }}
+          path: ${{ runner.temp }}/out/
+          retention-days: 90
+          if-no-files-found: ignore
