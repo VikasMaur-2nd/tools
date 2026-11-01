@@ -461,6 +461,13 @@ export async function copyOut(page, copySel) {
   throw new Error('the Copy control did not put the result on the clipboard within 30 s');
 }
 
+/** Reads a tool's result through its own Download control (for results too big to pass through the clipboard). */
+export async function downloadOut(page, sel) {
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.locator(sel).first().click({ timeout: 10_000 })]);
+  const { readFile } = await import('node:fs/promises');
+  return readFile(await download.path(), 'utf8');
+}
+
 /** Like window.__fmt.verify, for a result read in Node. */
 export async function verifyText(text) {
   const { createHash } = await import('node:crypto');

@@ -109,7 +109,7 @@ async function speedRun(browser, adapter, size, text, { phone = false, offlineFi
     if (!r.pasteSeen) throw new Error('the paste key press was not seen');
     if (adapter.format && !r.clickSeen && !r.formattedOnPaste) throw new Error('the format click was not seen');
     // Is the output exactly the same data? (Outside the timing.)
-    const v = adapter.verify ? await within(adapter.verify(page), 60_000, 'reading the output') : await within(page.evaluate(([k, s]) => window.__fmt.verify(k, s), [(adapter.output === 'input' ? adapter.input : adapter.output).kind, (adapter.output === 'input' ? adapter.input : adapter.output).sel]), 60_000, 'reading the output');
+    const v = adapter.verify ? await within(adapter.verify(page), 120_000, 'reading the output') : await within(page.evaluate(([k, s]) => window.__fmt.verify(k, s), [(adapter.output === 'input' ? adapter.input : adapter.output).kind, (adapter.output === 'input' ? adapter.input : adapter.output).sel]), 120_000, 'reading the output');
     out.verified = v.ok && v.sha256 === manifest[size]?.sha256;
     if (!out.verified) throw new Error(`wrong output: ${v.why ?? `data differs (${v.length} characters)`}`);
     const st = await page.evaluate(() => ({ lcp: window.__fmt.state.lcp, cls: window.__fmt.state.cls })).catch(() => ({}));

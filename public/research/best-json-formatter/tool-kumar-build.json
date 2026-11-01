@@ -1,0 +1,29 @@
+{
+ "what": "Tool Kumar's production build during the study: the set of script files its homepage loads (each name is a content hash). Protocol section 9: if it changes between the first and last measured run, Tool Kumar's runs are repeated.",
+ "checks": [
+  {
+   "when": "before the first measured run",
+   "checkedAt": "2026-11-01T18:40:11Z",
+   "url": "https://tools.vikasmaur.com/",
+   "cachedPageAgeSeconds": 224715,
+   "scriptCount": 14,
+   "scriptSetSha256": "c163f611b4005bc04539df0d4c1b473eb4adaa45bd1fc8c7c02306c5e7343e4f",
+   "scripts": [
+    "/_next/static/immutable/chunks/00j67k-m2f8_l.js",
+    "/_next/static/immutable/chunks/0c0hxoamwjsbw.js",
+    "/_next/static/immutable/chunks/0e_mbosp2re6v.js",
+    "/_next/static/immutable/chunks/0j9c12of9g5lc.js",
+    "/_next/static/immutable/chunks/0la9jftfk7flv.js",
+    "/_next/static/immutable/chunks/0onbm1-klbohd.js",
+    "/_next/static/immutable/chunks/0x43q019tc4wn.js",
+    "/_next/static/immutable/chunks/11i77pv6ocv1-.js",
+    "/_next/static/immutable/chunks/23b603l6_ulhw.js",
+    "/_next/static/immutable/chunks/3-0umihbfwm8n.js",
+    "/_next/static/immutable/chunks/3drvpvgu8nffs.js",
+    "/_next/static/immutable/chunks/3inlh_l6rhk3u.js",
+    "/_next/static/immutable/chunks/3n3l94aggo4pu.js",
+    "/_next/static/immutable/chunks/turbopack-2x27e_cqao23g.js"
+   ]
+  }
+ ]
+}

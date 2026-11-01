@@ -1,7 +1,5 @@
 // jsonviewer.io: one Monaco editor (no global API) with a "format" button that reformats it in place.
-// Monaco sizes its scroll content to the line count, so the result is complete when that reaches the formatted
-// document's length; the full result is read with the site's copy button.
-import { copyOut, verifyText } from '../lib/harness.mjs';
+// Its Monaco editor is read through the editor object React keeps for it (lib/inpage.mjs).
 import { shortcutShows, repairOffered } from './_checks.mjs';
 
 export default {
@@ -11,8 +9,6 @@ export default {
   input: { kind: 'monaco', sel: '.monaco-editor', click: '.monaco-editor .view-lines' },
   output: 'input',
   format: 'button:has-text("format")',
-  readOutput: (page) => copyOut(page, 'button:has-text("copy")'),
-  verify: async (page) => verifyText(await copyOut(page, 'button:has-text("copy")')),
   error: ['.notification .notification-message'],
   features: {
     indent: '[aria-label*="indent" i], select:has(option:text-matches("space|tab", "i"))',

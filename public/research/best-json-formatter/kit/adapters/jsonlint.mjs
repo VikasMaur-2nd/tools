@@ -4,11 +4,25 @@ export default {
   id: 'jsonlint',
   name: 'JSONLint',
   url: 'https://jsonlint.com/',
+  // JSONLint serves visitors different layouts (seen on the runners within minutes of each other): a Monaco editor
+  // that may load only when the box is clicked, or another editor. ready() finds which one this visit got.
   async ready(page) {
     const box = page.locator('div.editor-container div.rounded-lg.cursor-text').first();
-    if (await box.isVisible().catch(() => false)) await box.click();
-    await page.locator('.editor-container .monaco-editor').first().waitFor({ state: 'visible', timeout: 20_000 });
-    await page.waitForFunction(() => window.monaco?.editor?.getModels?.().length > 0, null, { timeout: 20_000 });
+    if (await box.isVisible().catch(() => false)) await box.click().catch(() => {});
+    const kinds = [
+      ['.editor-container .monaco-editor', { kind: 'monaco', sel: '.editor-container .monaco-editor', click: '.editor-container .monaco-editor .view-lines' }],
+      ['.editor-container .cm-editor', { kind: 'cm6', sel: '.editor-container .cm-editor', click: '.editor-container .cm-content' }],
+      ['.editor-container .CodeMirror', { kind: 'cm5', sel: '.editor-container .CodeMirror', click: '.editor-container .CodeMirror-scroll' }],
+      ['.editor-container textarea:not(.ime-text-area):not(.inputarea)', { kind: 'textarea', sel: '.editor-container textarea:not(.ime-text-area):not(.inputarea)' }],
+    ];
+    await page.locator(kinds.map(([sel]) => sel).join(', ')).first().waitFor({ state: 'visible', timeout: 20_000 });
+    for (const [sel, input] of kinds) {
+      if (await page.locator(sel).first().isVisible().catch(() => false)) {
+        this.input = input;
+        break;
+      }
+    }
+    if (this.input.kind === 'monaco') await page.waitForFunction(() => window.__fmt.io('monaco', '.editor-container .monaco-editor').lines() >= 1, null, { timeout: 20_000 }).catch(() => {});
   },
   input: { kind: 'monaco', sel: '.editor-container .monaco-editor', click: '.editor-container .monaco-editor .view-lines' },
   output: 'input',
@@ -21,7 +35,7 @@ export default {
     const shown = () => prettify.waitFor({ state: 'visible', timeout: 1000 }).then(() => true, () => false);
     if (!(await shown())) {
       await page.locator('button:has-text("Validate")').first().click({ timeout: 10_000 });
-      await prettify.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+      await prettify.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
     }
     if (await prettify.isVisible().catch(() => false)) await prettify.click({ timeout: 10_000 });
   },

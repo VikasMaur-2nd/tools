@@ -1,7 +1,8 @@
 // Tool Kumar (the publisher's tool): a text box on the left; the Format view on the right updates on paste, so
 // there is no format click. The view draws only the rows on screen, so "complete" means the end of the document
-// shows when the view is scrolled to its end, and the full result is read with its Copy button.
-import { copyOut, verifyText } from '../lib/harness.mjs';
+// shows when the view is scrolled to its end; the full result is read with its Copy button (small cases) or its
+// Download button (speed runs).
+import { copyOut, downloadOut, verifyText } from '../lib/harness.mjs';
 import { menuHas, repairOffered } from './_checks.mjs';
 
 export default {
@@ -14,7 +15,8 @@ export default {
   format: null,
   done: { fn: "const s = document.querySelector('#view-format'); if (!s) return false; s.scrollTop = s.scrollHeight; return s.innerText.includes(marker);" },
   readOutput: (page) => copyOut(page, 'section.pane-view button[aria-label="Copy"], section.pane-view button[title^="Copy"]'),
-  verify: async (page) => verifyText(await copyOut(page, 'section.pane-view button[aria-label="Copy"], section.pane-view button[title^="Copy"]')),
+  // The speed runs check the whole result through Download: tens of megabytes are too slow through the clipboard.
+  verify: async (page) => verifyText(await downloadOut(page, 'section.pane-view button[aria-label="Download"], section.pane-view button[title^="Download"]')),
   error: ['.pane-view .banner', 'footer.statusbar .st-msg'],
   features: {
     indent: menuHas('section.pane-view button[aria-label="More options"]', /^Indent$/),

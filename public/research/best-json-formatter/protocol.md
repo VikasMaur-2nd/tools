@@ -269,7 +269,9 @@ small files on the study's own server, and those trial results are not used anyw
 7. **Sites with more than one layout (5).** JSONLint showed some visits a layout with a Prettify button, where
    Validate only validates, and others one without it. On the newer layout, Prettify appears only after the input
    has been validated, so a person presses Validate, then Prettify; its adapter does the same (Prettify straight away
-   if it is already shown) and the time runs from the first click. On the older layout, Validate also reformats.
+   if it is already shown) and the time runs from the first click. On the older layout, and on some visits of the
+   newer one, Validate itself reformats; then no Prettify click is needed. The editor also differs between visits
+   (Monaco or another), so the adapter detects it on every visit.
 8. **Compressed uploads (5.4).** Request bodies are also searched after gzip, deflate and brotli decompression, so a
    marker inside a compressed upload (session replay scripts compress) is found.
 9. **Curious Concept is not ranked (3).** Its formatting happens on its server (`POST /process`, which carries the
@@ -282,8 +284,9 @@ small files on the study's own server, and those trial results are not used anyw
 11. **Errors written into the output pane (5.2).** Some tools print the error message in the output editor instead of
     a message area. Short text there that is not JSON counts as the tool's message, for every tool.
 12. **Reading results through a Copy control (5.3).** For tools whose output view shows only the visible rows, the
-    full result is read through the tool's own Copy control. Copying tens of megabytes takes time, so the clipboard
-    is read again every second for up to 30 s before the copy counts as failed.
+    full result is read through the tool's own Copy control (small cases) or its Download control (speed runs: tens
+    of megabytes are too slow through the clipboard). Only Tool Kumar needs this; every other result is read from
+    its editor.
 
 13. **Full-page ads and covered controls (3, 5.5).** When a full-page ad (Google's "vignette") covers the page, the
     harness closes it with the ad's own close button, as a person would, and records an interruption. When something
@@ -293,5 +296,5 @@ small files on the study's own server, and those trial results are not used anyw
     others appear after the output has settled. Every message shown from the click until one second after the output
     settles counts.
 
-Trial runs on the study server and pilot runs on CI (runs 41333009350 and 41333830896) were used only to check the
-harness; none of their numbers is used in the results.
+Trial runs on the study server and pilot runs on CI (runs 41333009350, 41333830896 and 41337698033) were used only
+to check the harness; none of their numbers is used in the results.
