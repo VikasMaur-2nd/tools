@@ -1,0 +1,9 @@
+{
+  "name": "best-json-formatter-study",
+  "private": true,
+  "type": "module",
+  "description": "Replication kit for Tool Kumar's study of online JSON formatters. See README.md.",
+  "dependencies": {
+    "playwright-core": "1.64.1"
+  }
+}
