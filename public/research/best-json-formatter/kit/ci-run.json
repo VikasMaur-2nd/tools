@@ -1,3 +1,9 @@
 {
-  "jobs": [{ "name": "serp", "cmd": "serp.mjs", "browsers": "chromium", "minutes": 3 }]
+  "jobs": [
+    { "name": "serp-1", "cmd": "serp.mjs --query-index 1", "browsers": "chromium", "minutes": 2 },
+    { "name": "serp-2", "cmd": "serp.mjs --query-index 2", "browsers": "chromium", "minutes": 2 },
+    { "name": "serp-3", "cmd": "serp.mjs --query-index 3", "browsers": "chromium", "minutes": 2 },
+    { "name": "serp-4", "cmd": "serp.mjs --query-index 4", "browsers": "chromium", "minutes": 2 },
+    { "name": "serp-5", "cmd": "serp.mjs --query-index 5", "browsers": "chromium", "minutes": 2 }
+  ]
 }

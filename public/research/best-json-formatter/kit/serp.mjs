@@ -11,8 +11,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
-const { values: o } = parseArgs({ options: { out: { type: 'string', default: 'out' }, query: { type: 'string', multiple: true } } });
-const QUERIES = o.query ?? ['json formatter', 'json beautifier', 'json viewer', 'json validator', 'format json online'];
+const { values: o } = parseArgs({ options: { out: { type: 'string', default: 'out' }, query: { type: 'string', multiple: true }, 'query-index': { type: 'string' } } });
+export const ALL_QUERIES = ['json formatter', 'json beautifier', 'json viewer', 'json validator', 'format json online'];
+// One query per job (--query-index 1..5): both engines answered the first search of a runner and asked for a CAPTCHA
+// after that (run 41327510021).
+const QUERIES = o.query ?? (o['query-index'] ? [ALL_QUERIES[Number(o['query-index']) - 1]] : ALL_QUERIES);
 const dir = join(o.out, 'serp');
 mkdirSync(dir, { recursive: true });
 
@@ -20,12 +23,20 @@ const ENGINES = {
   google: {
     url: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}&hl=en&gl=us&pws=0`,
     blocked: (page) => page.url().includes('/sorry/') || page.locator('form#captcha-form, iframe[src*="recaptcha"]').count().then((n) => n > 0),
-    // Organic results: links with a heading inside the main results column, not in ad blocks.
+    // Organic results: headings inside a link in the main results column (ads sit outside #rso). Google wraps the
+    // link in a redirect, so the address is read from the result's displayed URL (its <cite>).
     parse: () =>
-      [...document.querySelectorAll('#rso a[href^="http"]:has(h3)')]
-        .filter((a) => !a.closest('#tads, #tadsb, #bottomads, [data-text-ad], [aria-label="Ads"]'))
-        .filter((a) => !a.closest('[jsname][data-initq], g-section-with-header, video-voyager, [data-attrid="VideoResult"]'))
-        .map((a) => ({ url: a.href, title: a.querySelector('h3').innerText.trim() })),
+      [...document.querySelectorAll('#rso h3')]
+        .map((h) => ({ h, a: h.closest('a[href]') }))
+        .filter(({ a }) => a)
+        .map(({ h, a }) => {
+          const block = a.closest('[data-hveid]') ?? a.parentElement;
+          const cite = block.querySelector('cite')?.innerText.trim() ?? '';
+          const shown = cite.split(/\s*›\s*/);
+          let url = a.href;
+          if (/^https?:\/\/www\.google\.[^/]+\/(goto|url)\b/.test(url) && /^https?:\/\//.test(shown[0])) url = shown[0]; // the shown path is a breadcrumb, not a URL: keep the site
+          return { url, title: h.innerText.trim(), cite };
+        }),
   },
   bing: {
     url: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}&setlang=en-US&cc=US&mkt=en-US`,
@@ -72,12 +83,12 @@ for (const [engine, e] of Object.entries(ENGINES)) {
     console.log(`${engine} · ${query}: ${entry.blocked ? 'BLOCKED' : entry.error ? 'ERROR ' + entry.error : entry.results.length + ' results'}`);
     for (const r of entry.results) console.log(`  ${r.position}. ${r.url}`);
     await page.close();
-    await new Promise((r) => setTimeout(r, 4000 + Math.random() * 3000)); // a person's pace, not a crawler's
+    await new Promise((r) => setTimeout(r, 15_000 + Math.random() * 5000)); // a person's pace, not a crawler's
   }
 }
 const ip = await context.request.get('https://ipinfo.io/json').then((r) => r.json()).catch(() => null);
 await browser.close();
 writeFileSync(
-  join(dir, 'serp.json'),
+  join(dir, `serp${o['query-index'] ? '-' + o['query-index'] : ''}.json`),
   JSON.stringify({ takenAt: new Date().toISOString(), browser: browserVersion, location: ip && { city: ip.city, region: ip.region, country: ip.country, org: ip.org }, lists }, null, 2) + '\n',
 );

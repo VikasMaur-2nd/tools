@@ -1,0 +1,22 @@
+{
+  "100kb": {
+    "bytes": 100000,
+    "sha256": "ef1c21100a7f8001eba1bedf6dcfcd64ecf4e7839ea8dc2629ba60d126ebf330",
+    "prettyLines": 6763
+  },
+  "1mb": {
+    "bytes": 1000000,
+    "sha256": "b3d5217878507dfd5d4295b8452a415eb17eb7b7a3f1026f2699e6bdc2bcd44f",
+    "prettyLines": 69140
+  },
+  "10mb": {
+    "bytes": 10000000,
+    "sha256": "057e98e8b709e59c513294f6d63c9c4db16737d9b22bdf19b7b7a2c61d78bb84",
+    "prettyLines": 691756
+  },
+  "50mb": {
+    "bytes": 50000000,
+    "sha256": "53039d3e81f3f42e68c37a664765b4ec3d055f7916f5c1ae14d7dfcaf92a76aa",
+    "prettyLines": 3460883
+  }
+}
