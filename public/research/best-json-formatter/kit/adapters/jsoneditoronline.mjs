@@ -8,6 +8,8 @@ export default {
   input: { kind: 'cm6', sel: '.jse-text-mode .cm-editor', click: '.jse-text-mode .cm-content' },
   output: 'input',
   format: '.jse-text-mode button.jse-format',
+  // Above 10.5 MB it warns that text mode may crash the browser and offers Open anyway / Open in tree mode / Cancel.
+  continueLarge: 'button:has-text("Open anyway")',
   error: ['.jse-text-mode .jse-message.jse-error'],
   features: {
     indent: menuHas('button:has-text("Settings")', /indent/i),

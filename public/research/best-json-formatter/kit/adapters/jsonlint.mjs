@@ -30,14 +30,14 @@ export default {
   // so a person presses Validate, then Prettify. (On the older layout, without Prettify, Validate also reformats.)
   // The timing starts at the first click.
   format: 'button:has-text("Prettify"), button:has-text("Validate")',
-  async formatAction(page) {
+  async formatAction(page, { timeout = 10_000 } = {}) {
     const prettify = page.locator('button:has-text("Prettify")').first();
     const shown = () => prettify.waitFor({ state: 'visible', timeout: 1000 }).then(() => true, () => false);
     if (!(await shown())) {
-      await page.locator('button:has-text("Validate")').first().click({ timeout: 10_000 });
+      await page.locator('button:has-text("Validate")').first().click({ timeout }); // a big paste can keep the page busy
       await prettify.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
     }
-    if (await prettify.isVisible().catch(() => false)) await prettify.click({ timeout: 10_000 });
+    if (await prettify.isVisible().catch(() => false)) await prettify.click({ timeout });
   },
   keyboard: { shortcut: 'Control+Shift+F' },
   error: ['div.space-y-3.px-3.py-2:has(span:text-is("Invalid JSON"))'],

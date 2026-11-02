@@ -83,6 +83,7 @@ export function captureNetwork(context, { site }) {
     req.response().then(() => req.sizes()).then((s) => (entry.bytes = s.responseBodySize + s.responseHeadersSize)).catch(() => {});
   });
   context.on('page', (p) => {
+    if (context.__fmtHelper) return; // the harness's own clipboard tab, not a pop-up
     popups.push({ at: Date.now() });
     p.on('websocket', (ws) => ws.on('framesent', (f) => checkBody(ws.url(), Buffer.from(typeof f.payload === 'string' ? f.payload : f.payload), 'websocket')));
   });
@@ -166,11 +167,29 @@ export async function quiet(page, idleMs, maxMs) {
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-/** Puts text on the clipboard (outside any timing) and focuses the input. */
+/**
+ * Puts text on the clipboard (outside any timing) and focuses the input. The text is copied from a separate blank
+ * tab with a real Ctrl+C, so a tool page that is busy (ads) or holds the focus elsewhere can't block it: the clipboard
+ * is the browser's, as it is for a person who copied the JSON from somewhere else.
+ */
 export async function stage(page, adapter, text) {
   if (page.__dialogs) page.__dialogs.length = 0;
+  page.context().__fmtHelper = true;
+  const helper = await page.context().newPage().finally(() => (page.context().__fmtHelper = false));
+  try {
+    await helper.setContent('<textarea id="t"></textarea>');
+    await helper.evaluate((v) => {
+      const t = document.getElementById('t');
+      t.value = v;
+      t.focus();
+      t.select();
+    }, text);
+    await helper.keyboard.press(`${MOD}+C`);
+  } finally {
+    await helper.close();
+  }
+  await page.bringToFront();
   await focusInput(page, adapter);
-  await page.evaluate((t) => navigator.clipboard.writeText(t), text);
 }
 
 export async function focusInput(page, adapter) {
@@ -200,16 +219,33 @@ export async function focusInput(page, adapter) {
   }
 }
 
+/** Resolves with the promise's value, or `fallback` after ms (a busy frame must not stall the harness). */
+const race = (p, ms, fallback) => Promise.race([p.catch(() => fallback), sleep(ms).then(() => fallback)]);
+
 /**
  * Closes a full-page ad (Google's "vignette" and similar) the way a person would, with its own close button, and
- * notes it as an interruption. Returns true if one was closed.
+ * notes it as an interruption. Only looks when a frame covers the middle of the page, and only inside that frame,
+ * each step with a short time limit. Returns true if one was closed.
  */
 export async function dismissOverlay(page) {
-  // Only inside ad frames, never the tool's own page (whose Close buttons belong to the tool).
-  for (const frame of page.frames().filter((f) => f !== page.mainFrame())) {
-    const close = frame.locator('#dismiss-button, [aria-label="Close ad"]').first();
-    if (await close.isVisible().catch(() => false)) {
-      await close.click({ timeout: 3000 }).catch(() => {});
+  const handle = await race(
+    page.evaluateHandle(() => {
+      const e = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+      const f = e && (e.tagName === 'IFRAME' ? e : e.querySelector?.('iframe'));
+      if (!f) return null;
+      const r = f.getBoundingClientRect();
+      return r.width > innerWidth * 0.4 && r.height > innerHeight * 0.4 ? f : null;
+    }),
+    3000,
+    null,
+  );
+  const frame = handle && (await race(handle.asElement()?.contentFrame() ?? Promise.resolve(null), 2000, null));
+  if (!frame) return false;
+  const frames = [frame, ...frame.childFrames()];
+  for (const f of frames) {
+    const close = f.locator('#dismiss-button, [aria-label="Close ad"]').first();
+    if (await race(close.isVisible(), 2000, false)) {
+      await race(close.click({ timeout: 3000 }), 4000, null);
       await sleep(500);
       (page.__interruptions ??= []).push('full-page ad');
       return true;
@@ -221,13 +257,22 @@ export async function dismissOverlay(page) {
 /** Clicks; if something covers the target, closes a full-page ad (if that is what covers it) and clicks again. */
 export async function clickThrough(page, target, { timeout = 10_000, tap = false } = {}) {
   const act = (ms) => (tap ? target.tap({ timeout: ms }) : target.click({ timeout: ms }));
+  const start = Date.now();
   try {
     return await act(Math.min(timeout, 8000));
   } catch (e) {
-    if (!/intercepts pointer events|Timeout/.test(e.message) || !(await dismissOverlay(page))) throw e;
-    return act(timeout);
+    // Not clickable yet: a full-page ad (close it), or a page still busy with a big paste (keep waiting). Either
+    // way the click is tried again for the rest of the time limit.
+    if (!/intercepts pointer events|Timeout/.test(e.message)) throw e;
+    await dismissOverlay(page);
+    return act(Math.max(1000, timeout - (Date.now() - start)));
   }
 }
+
+/** Bot-check services whose own telemetry (tens of kilobytes, whatever was pasted) is not counted by the
+ * request-size rule of protocol 5.4; a body that holds the marker still counts (amendment 2). */
+export const BOT_CHECK_HOSTS = ['challenges.cloudflare.com'];
+export const countsAsUpload = (hit) => hit.why.startsWith('marker') || !BOT_CHECK_HOSTS.some((h) => new URL(hit.url).hostname === h);
 
 /** The tool's format control: a selector, or a function that picks one on the live page (a site that shows
  * different layouts to different visitors). */
@@ -268,18 +313,18 @@ const outputOf = (adapter) => (adapter.output === 'input' ? adapter.input : adap
  * The timed action: select all, paste (Ctrl+V), press the format control, wait for the complete result.
  * `endMarker` is a string that only the end of the document holds. Returns times from the paste key press.
  */
-export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs, tap = false }) {
+export async function pasteAndFormat(page, adapter, { text, endMarker, expectedLines = null, timeoutMs, tap = false }) {
   const out = outputOf(adapter);
   await page.keyboard.press(`${MOD}+A`);
   await page.evaluate(() => window.__fmt.arm());
   const check = adapter.done ?? { kind: out.kind, sel: out.sel };
   const waiter = page.evaluate(
-    ([c, marker, timeout]) => {
+    ([c, marker, expected, timeout]) => {
       const f = window.__fmt;
       // On success the check also sets state.halt, which ends a pending wait for the paste to land.
       const done = (ok) => (ok && (f.state.halt = true), ok);
       if (c.fn) {
-        const fn = new Function('marker', c.fn).bind(null, marker);
+        const fn = new Function('marker', 'expected', c.fn).bind(null, marker, expected);
         return f.waitFor(() => done(fn()), timeout);
       }
       return f.waitFor(() => {
@@ -287,7 +332,7 @@ export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs
         return done(end.multiline && end.text.includes(marker));
       }, timeout);
     },
-    [check, endMarker, timeoutMs],
+    [check, endMarker, expectedLines, timeoutMs],
   );
   let finished = false;
   waiter.then(() => (finished = true), () => (finished = true));
@@ -300,7 +345,7 @@ export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs
   // A tool that formats on paste may be done before the click: then there is nothing to click (protocol 5).
   if (adapter.format && !finished) {
     if (adapter.formatAction) {
-      await adapter.formatAction(page, { tap }).catch((e) => {
+      await adapter.formatAction(page, { tap, timeout: timeoutMs }).catch((e) => {
         throw new Error('format control: ' + String(e.message).split('\n')[0]);
       });
     } else {
@@ -310,16 +355,28 @@ export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs
       });
     }
   }
-  // A full-page ad can swallow the click (jsonviewer.stack.hu shows one on Format): a person closes it and presses
-  // Format again. The time keeps running from the first click.
-  if (adapter.format) {
+  // While waiting: a full-page ad can swallow the click (jsonviewer.stack.hu shows one on Format), so a person
+  // closes it and presses Format again; a tool that warns about size and offers to continue (adapter.continueLarge)
+  // gets "continue", as a person who wants the result would answer. The time keeps running throughout.
+  {
+    let continued = false;
     for (let tries = 0; tries < 3 && !finished; ) {
       await Promise.race([waiter, sleep(1500)]);
       if (finished) break;
+      if (adapter.continueLarge && !continued) {
+        const go = page.locator(adapter.continueLarge).first();
+        if (await go.isVisible().catch(() => false)) {
+          continued = true;
+          (page.__interruptions ??= []).push('size warning (continued)');
+          await go.click({ timeout: 10_000 }).catch(() => {});
+          continue;
+        }
+      }
+      if (!adapter.format) continue;
       if (await dismissOverlay(page)) {
         tries++;
         if (!finished) {
-          if (adapter.formatAction) await adapter.formatAction(page, { tap }).catch(() => {});
+          if (adapter.formatAction) await adapter.formatAction(page, { tap, timeout: timeoutMs }).catch(() => {});
           else await clickThrough(page, await formatControl(page, adapter), { timeout: 10_000, tap }).catch(() => {});
         }
       } else if (!(await page.evaluate(() => 1).then(() => true, () => false))) break;
@@ -335,7 +392,7 @@ export async function pasteAndFormat(page, adapter, { text, endMarker, timeoutMs
     if (!adapter.format || formattedOnPaste) ms = r.at - f.pasteAt;
     else ms = (landedAt !== null ? Math.max(0, landedAt - f.pasteAt) : 0) + (r.at - f.clickAt);
   }
-  return { done: r.done, ms, totalMs: r.done && f.pasteAt !== null ? r.at - f.pasteAt : null, freezeMs: f.maxGap, waitError: r.error ?? null, pasteSeen: f.pasteAt !== null, clickSeen: f.clickAt !== null, landedSeen: landedAt !== null, formattedOnPaste };
+  return { done: r.done, ms, totalMs: r.done && f.pasteAt !== null ? r.at - f.pasteAt : null, checkSpacingMs: r.maxSpacing ?? null, freezeMs: f.maxGap, waitError: r.error ?? null, pasteSeen: f.pasteAt !== null, clickSeen: f.clickAt !== null, landedSeen: landedAt !== null, formattedOnPaste };
 }
 
 /** For the small cases: paste, format, then wait until the output stops changing (or an error shows). */

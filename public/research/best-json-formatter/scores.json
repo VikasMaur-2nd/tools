@@ -1,0 +1,2090 @@
+{
+ "scoredAt": "2026-11-01T18:59:53.983Z",
+ "protocol": "protocol.md section 6",
+ "weights": {
+  "Default": {
+   "data": 25,
+   "speed": 25,
+   "privacy": 20,
+   "ease": 20,
+   "page": 10
+  },
+  "Equal": {
+   "data": 20,
+   "speed": 20,
+   "privacy": 20,
+   "ease": 20,
+   "page": 20
+  },
+  "Features first": {
+   "data": 15,
+   "speed": 15,
+   "privacy": 15,
+   "ease": 40,
+   "page": 15
+  },
+  "Speed first": {
+   "data": 15,
+   "speed": 40,
+   "privacy": 15,
+   "ease": 15,
+   "page": 15
+  },
+  "Privacy first": {
+   "data": 15,
+   "speed": 15,
+   "privacy": 40,
+   "ease": 15,
+   "page": 15
+  }
+ },
+ "records": 534,
+ "tools": [
+  {
+   "id": "jsonlint",
+   "name": "JSONLint",
+   "url": "https://jsonlint.com/",
+   "publisher": false,
+   "blocked": null,
+   "total": 84.9,
+   "totals": {
+    "Default": 84.9,
+    "Equal": 85.8,
+    "Features first": 81.3,
+    "Speed first": 87.2,
+    "Privacy first": 87.1
+   },
+   "categories": {
+    "data": 20.57,
+    "speed": 22.89,
+    "privacy": 18.2,
+    "ease": 13.62,
+    "page": 9.59
+   },
+   "details": {
+    "data": {
+     "big-integer": "pass",
+     "max-safe-plus-one": "spelling",
+     "long-decimal": "rejected",
+     "number-spelling": "pass",
+     "huge-exponent": "pass",
+     "duplicate-keys": "pass",
+     "key-order": "spelling",
+     "unicode": "pass",
+     "escapes": "changed",
+     "proto-key": "rejected",
+     "top-level-scalar": "changed",
+     "deep-nesting": "spelling",
+     "long-string": "rejected"
+    },
+    "speedSeconds": {
+     "100kb": 0.05,
+     "1mb": 6.096,
+     "10mb": 43.442,
+     "50mb": 3.702
+    },
+    "freezeSeconds": {
+     "1mb": 0.408,
+     "10mb": 1.605
+    },
+    "firefoxSeconds": {
+     "100kb": 0.216,
+     "1mb": 0.679,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 0,
+     "1mb": 0,
+     "10mb": 3.56,
+     "50mb": 0,
+     "freeze1mb": 0,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 34,
+    "offline": false,
+    "privacyParts": {
+     "staysLocal": 12,
+     "thirdParties": 0,
+     "offline": 0
+    },
+    "errors": {
+     "trailing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": false,
+     "minify": true,
+     "tree": true,
+     "search": true,
+     "sortKeys": true,
+     "copy": true,
+     "download": true,
+     "openFile": true,
+     "loadUrl": true,
+     "darkMode": false,
+     "repair": false,
+     "convert": false
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 1,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 3.2,
+    "pageMB": 3.97,
+    "cls": 0.114,
+    "ads": true,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": true,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 1,
+    "Equal": 1,
+    "Features first": 1,
+    "Speed first": 1,
+    "Privacy first": 1
+   }
+  },
+  {
+   "id": "tool-kumar",
+   "name": "Tool Kumar",
+   "url": "https://tools.vikasmaur.com/",
+   "publisher": true,
+   "blocked": null,
+   "total": 74.2,
+   "totals": {
+    "Default": 74.2,
+    "Equal": 75.5,
+    "Features first": 79.7,
+    "Speed first": 62.6,
+    "Privacy first": 80.6
+   },
+   "categories": {
+    "data": 23.41,
+    "speed": 5.97,
+    "privacy": 19.21,
+    "ease": 18.47,
+    "page": 7.13
+   },
+   "details": {
+    "data": {
+     "big-integer": "spelling",
+     "max-safe-plus-one": "pass",
+     "long-decimal": "changed",
+     "number-spelling": "rejected",
+     "huge-exponent": "spelling",
+     "duplicate-keys": "pass",
+     "key-order": "spelling",
+     "unicode": "rejected",
+     "escapes": "pass",
+     "proto-key": "rejected",
+     "top-level-scalar": "spelling",
+     "deep-nesting": "spelling",
+     "long-string": "rejected"
+    },
+    "speedSeconds": {
+     "100kb": 1.136,
+     "1mb": 5.183,
+     "10mb": 10.94,
+     "50mb": "failed"
+    },
+    "freezeSeconds": {
+     "1mb": 1.325,
+     "10mb": 15.409
+    },
+    "firefoxSeconds": {
+     "100kb": 1.496,
+     "1mb": 5.535,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 3.36,
+     "1mb": 4.94,
+     "10mb": 5,
+     "50mb": 0,
+     "freeze1mb": 1.48,
+     "freeze10mb": 2.39
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 22,
+    "offline": true,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": true,
+     "minify": true,
+     "tree": true,
+     "search": false,
+     "sortKeys": true,
+     "copy": true,
+     "download": true,
+     "openFile": true,
+     "loadUrl": true,
+     "darkMode": false,
+     "repair": true,
+     "convert": false
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 0,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 1.68,
+    "pageMB": 4.21,
+    "cls": 0.057,
+    "ads": true,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": true,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 2,
+    "Equal": 2,
+    "Features first": 2,
+    "Speed first": 3,
+    "Privacy first": 2
+   }
+  },
+  {
+   "id": "jsonchecker",
+   "name": "JSON Checker",
+   "url": "https://jsonchecker.com/",
+   "publisher": false,
+   "blocked": null,
+   "total": 71.2,
+   "totals": {
+    "Default": 71.2,
+    "Equal": 71.7,
+    "Features first": 65.4,
+    "Speed first": 70.2,
+    "Privacy first": 74.1
+   },
+   "categories": {
+    "data": 21.13,
+    "speed": 16.46,
+    "privacy": 16.32,
+    "ease": 9.34,
+    "page": 7.96
+   },
+   "details": {
+    "data": {
+     "big-integer": "rejected",
+     "max-safe-plus-one": "rejected",
+     "long-decimal": "rejected",
+     "number-spelling": "pass",
+     "huge-exponent": "spelling",
+     "duplicate-keys": "changed",
+     "key-order": "changed",
+     "unicode": "spelling",
+     "escapes": "rejected",
+     "proto-key": "spelling",
+     "top-level-scalar": "changed",
+     "deep-nesting": "changed",
+     "long-string": "pass"
+    },
+    "speedSeconds": {
+     "100kb": 1.658,
+     "1mb": 0.34,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "freezeSeconds": {
+     "1mb": 0.07,
+     "10mb": 11.551
+    },
+    "firefoxSeconds": {
+     "100kb": 1.624,
+     "1mb": 5.017,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 5,
+     "1mb": 5,
+     "10mb": 5,
+     "50mb": 4.25,
+     "freeze1mb": 1.39,
+     "freeze10mb": 0.41
+    },
+    "sendsJson": false,
+    "uploadEvidence": [
+     {
+      "suite": "speed",
+      "size": "100kb",
+      "hits": [
+       {
+        "url": "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/fo/1892404305:1793549952:veg7GGUjZBggYdyRHrPN-0r5zZrQ7id7aJccixWDpFo/a53cb6a85a5bddb1/Cg1Re8Vf-u_ORmlw0LJcQMDZJ5O1v1gvhX3a_pBnMxdxYBFEv",
+        "how": "POST",
+        "why": "body of 75148 bytes"
+       }
+      ]
+     }
+    ],
+    "thirdPartyDomains": 18,
+    "offline": true,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": false,
+     "minify": false,
+     "tree": true,
+     "search": true,
+     "sortKeys": true,
+     "copy": true,
+     "download": true,
+     "openFile": true,
+     "loadUrl": true,
+     "darkMode": true,
+     "repair": true,
+     "convert": false
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 1,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 3.36,
+    "pageMB": 1.65,
+    "cls": 0.061,
+    "ads": true,
+    "interruptions": [
+     "full-page ad"
+    ],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": true,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 3,
+    "Equal": 3,
+    "Features first": 4,
+    "Speed first": 2,
+    "Privacy first": 3
+   }
+  },
+  {
+   "id": "jsonbeautify-org",
+   "name": "JSON Beautifier (jsonbeautify.org)",
+   "url": "https://www.jsonbeautify.org/en/json-formatter",
+   "publisher": false,
+   "blocked": null,
+   "total": 66.5,
+   "totals": {
+    "Default": 66.5,
+    "Equal": 68.8,
+    "Features first": 75.7,
+    "Speed first": 61.3,
+    "Privacy first": 66.9
+   },
+   "categories": {
+    "data": 17.51,
+    "speed": 9.7,
+    "privacy": 12.27,
+    "ease": 19.3,
+    "page": 7.71
+   },
+   "details": {
+    "data": {
+     "big-integer": "spelling",
+     "max-safe-plus-one": "changed",
+     "long-decimal": "changed",
+     "number-spelling": "pass",
+     "huge-exponent": "pass",
+     "duplicate-keys": "pass",
+     "key-order": "changed",
+     "unicode": "changed",
+     "escapes": "pass",
+     "proto-key": "spelling",
+     "top-level-scalar": "pass",
+     "deep-nesting": "pass",
+     "long-string": "pass"
+    },
+    "speedSeconds": {
+     "100kb": 1.924,
+     "1mb": 5.692,
+     "10mb": 48.163,
+     "50mb": "failed"
+    },
+    "freezeSeconds": {
+     "1mb": 0.196,
+     "10mb": 14.532
+    },
+    "firefoxSeconds": {
+     "100kb": 1.293,
+     "1mb": 3.449,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 0.74,
+     "1mb": 0,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 30,
+    "offline": false,
+    "privacyParts": {
+     "staysLocal": 12,
+     "thirdParties": 1.8,
+     "offline": 0
+    },
+    "errors": {
+     "trailing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": false,
+     "minify": false,
+     "tree": true,
+     "search": true,
+     "sortKeys": true,
+     "copy": true,
+     "download": false,
+     "openFile": false,
+     "loadUrl": false,
+     "darkMode": true,
+     "repair": false,
+     "convert": false
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 0,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 2.77,
+    "pageMB": 1.71,
+    "cls": 0.142,
+    "ads": true,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": true,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 4,
+    "Equal": 4,
+    "Features first": 3,
+    "Speed first": 4,
+    "Privacy first": 4
+   }
+  },
+  {
+   "id": "jsonviewer-stack",
+   "name": "Online JSON Viewer (jsonviewer.stack.hu)",
+   "url": "https://jsonviewer.stack.hu/",
+   "publisher": false,
+   "blocked": null,
+   "total": 60.6,
+   "totals": {
+    "Default": 60.6,
+    "Equal": 61.6,
+    "Features first": 62.9,
+    "Speed first": 60.4,
+    "Privacy first": 64.3
+   },
+   "categories": {
+    "data": 12.37,
+    "speed": 14.19,
+    "privacy": 14.44,
+    "ease": 13.3,
+    "page": 6.33
+   },
+   "details": {
+    "data": {
+     "big-integer": "pass",
+     "max-safe-plus-one": "changed",
+     "long-decimal": "rejected",
+     "number-spelling": "spelling",
+     "huge-exponent": "spelling",
+     "duplicate-keys": "rejected",
+     "key-order": "rejected",
+     "unicode": "pass",
+     "escapes": "pass",
+     "proto-key": "rejected",
+     "top-level-scalar": "pass",
+     "deep-nesting": "rejected",
+     "long-string": "rejected"
+    },
+    "speedSeconds": {
+     "100kb": 1.458,
+     "1mb": 7.076,
+     "10mb": 59.295,
+     "50mb": "failed"
+    },
+    "freezeSeconds": {
+     "1mb": 1.461,
+     "10mb": 19.144
+    },
+    "firefoxSeconds": {
+     "100kb": 1.95,
+     "1mb": 2.862,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 3.83,
+     "1mb": 0,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 27,
+    "offline": true,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": false,
+      "rightLine": true,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": false,
+     "minify": true,
+     "tree": true,
+     "search": false,
+     "sortKeys": true,
+     "copy": true,
+     "download": true,
+     "openFile": true,
+     "loadUrl": false,
+     "darkMode": false,
+     "repair": true,
+     "convert": true
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 0,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 0.47,
+    "pageMB": 3.76,
+    "cls": 0.003,
+    "ads": false,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": false,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 5,
+    "Equal": 5,
+    "Features first": 6,
+    "Speed first": 7,
+    "Privacy first": 5
+   }
+  },
+  {
+   "id": "jsoneditoronline",
+   "name": "JSON Editor Online",
+   "url": "https://jsoneditoronline.org/",
+   "publisher": false,
+   "blocked": null,
+   "total": 59.1,
+   "totals": {
+    "Default": 59.1,
+    "Equal": 59.6,
+    "Features first": 57.3,
+    "Speed first": 60.6,
+    "Privacy first": 57.6
+   },
+   "categories": {
+    "data": 15.88,
+    "speed": 15.86,
+    "privacy": 10.32,
+    "ease": 10.1,
+    "page": 6.89
+   },
+   "details": {
+    "data": {
+     "big-integer": "pass",
+     "max-safe-plus-one": "rejected",
+     "long-decimal": "pass",
+     "number-spelling": "changed",
+     "huge-exponent": "pass",
+     "duplicate-keys": "pass",
+     "key-order": "rejected",
+     "unicode": "pass",
+     "escapes": "spelling",
+     "proto-key": "pass",
+     "top-level-scalar": "changed",
+     "deep-nesting": "spelling",
+     "long-string": "pass"
+    },
+    "speedSeconds": {
+     "100kb": 1.879,
+     "1mb": 3.174,
+     "10mb": 15.067,
+     "50mb": 35.059
+    },
+    "freezeSeconds": {
+     "1mb": 0.992,
+     "10mb": 7.829
+    },
+    "firefoxSeconds": {
+     "100kb": 1.589,
+     "1mb": 7.02,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 3.96,
+     "1mb": 2.67,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0.93,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 22,
+    "offline": false,
+    "privacyParts": {
+     "staysLocal": 12,
+     "thirdParties": 0,
+     "offline": 0
+    },
+    "errors": {
+     "trailing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": true,
+     "minify": true,
+     "tree": false,
+     "search": true,
+     "sortKeys": true,
+     "copy": true,
+     "download": false,
+     "openFile": false,
+     "loadUrl": false,
+     "darkMode": true,
+     "repair": false,
+     "convert": true
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 0,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 1.07,
+    "pageMB": 1.34,
+    "cls": 0.042,
+    "ads": true,
+    "interruptions": [
+     "full-page ad"
+    ],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": false,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 6,
+    "Equal": 6,
+    "Features first": 8,
+    "Speed first": 6,
+    "Privacy first": 8
+   }
+  },
+  {
+   "id": "static-app",
+   "name": "Static.app JSON Beautifier",
+   "url": "https://static.app/json-beautifier",
+   "publisher": false,
+   "blocked": null,
+   "total": 54.7,
+   "totals": {
+    "Default": 54.7,
+    "Equal": 58.5,
+    "Features first": 62.7,
+    "Speed first": 59.1,
+    "Privacy first": 58.3
+   },
+   "categories": {
+    "data": 4.99,
+    "speed": 15.19,
+    "privacy": 11.56,
+    "ease": 15.08,
+    "page": 7.85
+   },
+   "details": {
+    "data": {
+     "big-integer": "rejected",
+     "max-safe-plus-one": "pass",
+     "long-decimal": "pass",
+     "number-spelling": "changed",
+     "huge-exponent": "rejected",
+     "duplicate-keys": "rejected",
+     "key-order": "spelling",
+     "unicode": "spelling",
+     "escapes": "pass",
+     "proto-key": "spelling",
+     "top-level-scalar": "rejected",
+     "deep-nesting": "pass",
+     "long-string": "rejected"
+    },
+    "speedSeconds": {
+     "100kb": 0.985,
+     "1mb": 6.936,
+     "10mb": 7.235,
+     "50mb": 73.629
+    },
+    "freezeSeconds": {
+     "1mb": 2.673,
+     "10mb": 11.599
+    },
+    "firefoxSeconds": {
+     "100kb": 1.934,
+     "1mb": 2.325,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 3.8,
+     "1mb": 0,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 17,
+    "offline": false,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": false,
+      "rightLine": true,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": true,
+     "minify": true,
+     "tree": true,
+     "search": false,
+     "sortKeys": false,
+     "copy": false,
+     "download": true,
+     "openFile": false,
+     "loadUrl": false,
+     "darkMode": true,
+     "repair": false,
+     "convert": true
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 1,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 0.19,
+    "pageMB": 3.41,
+    "cls": 0.156,
+    "ads": false,
+    "interruptions": [
+     "full-page ad"
+    ],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": true,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 7,
+    "Equal": 7,
+    "Features first": 7,
+    "Speed first": 8,
+    "Privacy first": 6
+   }
+  },
+  {
+   "id": "jsonviewer-io",
+   "name": "JSON Viewer (jsonviewer.io)",
+   "url": "https://jsonviewer.io/",
+   "publisher": false,
+   "blocked": null,
+   "total": 53.6,
+   "totals": {
+    "Default": 53.6,
+    "Equal": 58.2,
+    "Features first": 55.3,
+    "Speed first": 61.1,
+    "Privacy first": 54.2
+   },
+   "categories": {
+    "data": 8.6,
+    "speed": 17.42,
+    "privacy": 8.42,
+    "ease": 9.28,
+    "page": 9.85
+   },
+   "details": {
+    "data": {
+     "big-integer": "spelling",
+     "max-safe-plus-one": "pass",
+     "long-decimal": "changed",
+     "number-spelling": "spelling",
+     "huge-exponent": "pass",
+     "duplicate-keys": "spelling",
+     "key-order": "rejected",
+     "unicode": "changed",
+     "escapes": "pass",
+     "proto-key": "pass",
+     "top-level-scalar": "spelling",
+     "deep-nesting": "changed",
+     "long-string": "pass"
+    },
+    "speedSeconds": {
+     "100kb": 0.896,
+     "1mb": 4.413,
+     "10mb": 6.127,
+     "50mb": "failed"
+    },
+    "freezeSeconds": {
+     "1mb": 0.553,
+     "10mb": 16.758
+    },
+    "firefoxSeconds": {
+     "100kb": 0.673,
+     "1mb": 7.967,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 5,
+     "1mb": 5,
+     "10mb": 3.9,
+     "50mb": 0,
+     "freeze1mb": 1.65,
+     "freeze10mb": 0.12
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 16,
+    "offline": false,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": false,
+      "rightLine": true,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": true,
+     "minify": false,
+     "tree": true,
+     "search": true,
+     "sortKeys": false,
+     "copy": false,
+     "download": false,
+     "openFile": false,
+     "loadUrl": true,
+     "darkMode": true,
+     "repair": true,
+     "convert": true
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 0,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 3.52,
+    "pageMB": 5.12,
+    "cls": 0.082,
+    "ads": true,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": false,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 8,
+    "Equal": 8,
+    "Features first": 9,
+    "Speed first": 5,
+    "Privacy first": 9
+   }
+  },
+  {
+   "id": "jsonbeautify-com",
+   "name": "JSON Beautify (jsonbeautify.com)",
+   "url": "https://jsonbeautify.com/",
+   "publisher": false,
+   "blocked": null,
+   "total": 50.4,
+   "totals": {
+    "Default": 50.4,
+    "Equal": 53.5,
+    "Features first": 64,
+    "Speed first": 48.4,
+    "Privacy first": 58
+   },
+   "categories": {
+    "data": 3.2,
+    "speed": 8.28,
+    "privacy": 14.3,
+    "ease": 19.1,
+    "page": 5.48
+   },
+   "details": {
+    "data": {
+     "big-integer": "changed",
+     "max-safe-plus-one": "pass",
+     "long-decimal": "spelling",
+     "number-spelling": "spelling",
+     "huge-exponent": "rejected",
+     "duplicate-keys": "pass",
+     "key-order": "rejected",
+     "unicode": "pass",
+     "escapes": "spelling",
+     "proto-key": "changed",
+     "top-level-scalar": "rejected",
+     "deep-nesting": "spelling",
+     "long-string": "rejected"
+    },
+    "speedSeconds": {
+     "100kb": 1.176,
+     "1mb": 6.22,
+     "10mb": 44.02,
+     "50mb": 10.026
+    },
+    "freezeSeconds": {
+     "1mb": 0.136,
+     "10mb": 12.265
+    },
+    "firefoxSeconds": {
+     "100kb": 0.45,
+     "1mb": 4.649,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 4.41,
+     "1mb": 2.83,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0.81,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 2,
+    "offline": true,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": true,
+     "minify": false,
+     "tree": false,
+     "search": false,
+     "sortKeys": true,
+     "copy": true,
+     "download": true,
+     "openFile": true,
+     "loadUrl": true,
+     "darkMode": true,
+     "repair": true,
+     "convert": true
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 1,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 0.37,
+    "pageMB": 3.78,
+    "cls": 0.094,
+    "ads": false,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": true,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 9,
+    "Equal": 9,
+    "Features first": 5,
+    "Speed first": 11,
+    "Privacy first": 7
+   }
+  },
+  {
+   "id": "codebeautify",
+   "name": "Code Beautify JSON Viewer",
+   "url": "https://codebeautify.org/jsonviewer",
+   "publisher": false,
+   "blocked": null,
+   "total": 47.1,
+   "totals": {
+    "Default": 47.1,
+    "Equal": 41.1,
+    "Features first": 31.7,
+    "Speed first": 48.7,
+    "Privacy first": 43.3
+   },
+   "categories": {
+    "data": 17.52,
+    "speed": 17.85,
+    "privacy": 9.96,
+    "ease": 0.65,
+    "page": 1.1
+   },
+   "details": {
+    "data": {
+     "big-integer": "rejected",
+     "max-safe-plus-one": "changed",
+     "long-decimal": "pass",
+     "number-spelling": "spelling",
+     "huge-exponent": "rejected",
+     "duplicate-keys": "changed",
+     "key-order": "pass",
+     "unicode": "changed",
+     "escapes": "rejected",
+     "proto-key": "spelling",
+     "top-level-scalar": "changed",
+     "deep-nesting": "spelling",
+     "long-string": "spelling"
+    },
+    "speedSeconds": {
+     "100kb": 1.838,
+     "1mb": 1.046,
+     "10mb": 53.581,
+     "50mb": "failed"
+    },
+    "freezeSeconds": {
+     "1mb": 2.649,
+     "10mb": 17.227
+    },
+    "firefoxSeconds": {
+     "100kb": 1.985,
+     "1mb": 7.634,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 0.39,
+     "1mb": 0,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 8,
+    "offline": false,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": false,
+      "rightLine": true,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": true,
+     "minify": true,
+     "tree": true,
+     "search": false,
+     "sortKeys": true,
+     "copy": true,
+     "download": true,
+     "openFile": false,
+     "loadUrl": true,
+     "darkMode": false,
+     "repair": true,
+     "convert": true
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 0,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 1.16,
+    "pageMB": 1.41,
+    "cls": 0.132,
+    "ads": true,
+    "interruptions": [
+     "full-page ad"
+    ],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": false,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 10,
+    "Equal": 11,
+    "Features first": 12,
+    "Speed first": 10,
+    "Privacy first": 10
+   }
+  },
+  {
+   "id": "jsonformatter-org",
+   "name": "JSON Formatter (jsonformatter.org)",
+   "url": "https://jsonformatter.org/",
+   "publisher": false,
+   "blocked": null,
+   "total": 40.3,
+   "totals": {
+    "Default": 40.3,
+    "Equal": 43,
+    "Features first": 37.5,
+    "Speed first": 55.3,
+    "Privacy first": 39.5
+   },
+   "categories": {
+    "data": 0,
+    "speed": 23.02,
+    "privacy": 5.78,
+    "ease": 4.21,
+    "page": 7.29
+   },
+   "details": {
+    "data": {
+     "big-integer": "spelling",
+     "max-safe-plus-one": "spelling",
+     "long-decimal": "pass",
+     "number-spelling": "spelling",
+     "huge-exponent": "changed",
+     "duplicate-keys": "rejected",
+     "key-order": "rejected",
+     "unicode": "pass",
+     "escapes": "spelling",
+     "proto-key": "rejected",
+     "top-level-scalar": "spelling",
+     "deep-nesting": "spelling",
+     "long-string": "spelling"
+    },
+    "speedSeconds": {
+     "100kb": 1.065,
+     "1mb": 2.634,
+     "10mb": 45.304,
+     "50mb": 68.451
+    },
+    "freezeSeconds": {
+     "1mb": 1.908,
+     "10mb": 16.335
+    },
+    "firefoxSeconds": {
+     "100kb": 0.484,
+     "1mb": 2.994,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 0.81,
+     "1mb": 0.9,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0.22,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [
+     {
+      "suite": "speed",
+      "size": "100kb",
+      "hits": [
+       {
+        "url": "https://na.edge.optable.co/witness?osdk=web-v0.59.0&sid=mX8cA5t5NZ6r_uDrX1HBMw&t=freestar-auth&o=jsonformatter-org&cookies=no&passport=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpZCI6InY6NThkZGJyaUxTb21UU",
+        "how": "POST",
+        "why": "body of 107798 bytes"
+       }
+      ]
+     }
+    ],
+    "thirdPartyDomains": 16,
+    "offline": false,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": false,
+      "rightLine": true,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "comment": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": true,
+     "minify": true,
+     "tree": false,
+     "search": true,
+     "sortKeys": true,
+     "copy": true,
+     "download": false,
+     "openFile": false,
+     "loadUrl": true,
+     "darkMode": true,
+     "repair": true,
+     "convert": true
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 1,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 2.13,
+    "pageMB": 3.68,
+    "cls": 0.047,
+    "ads": false,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": false,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 11,
+    "Equal": 10,
+    "Features first": 10,
+    "Speed first": 9,
+    "Privacy first": 11
+   }
+  },
+  {
+   "id": "jsonbeautifier-org",
+   "name": "JSON Beautifier (jsonbeautifier.org)",
+   "url": "https://jsonbeautifier.org/",
+   "publisher": false,
+   "blocked": null,
+   "total": 38.8,
+   "totals": {
+    "Default": 38.8,
+    "Equal": 34.3,
+    "Features first": 33,
+    "Speed first": 36.3,
+    "Privacy first": 33.7
+   },
+   "categories": {
+    "data": 15.36,
+    "speed": 10.56,
+    "privacy": 6.35,
+    "ease": 5.8,
+    "page": 0.73
+   },
+   "details": {
+    "data": {
+     "big-integer": "rejected",
+     "max-safe-plus-one": "rejected",
+     "long-decimal": "spelling",
+     "number-spelling": "changed",
+     "huge-exponent": "spelling",
+     "duplicate-keys": "pass",
+     "key-order": "changed",
+     "unicode": "pass",
+     "escapes": "rejected",
+     "proto-key": "pass",
+     "top-level-scalar": "pass",
+     "deep-nesting": "spelling",
+     "long-string": "pass"
+    },
+    "speedSeconds": {
+     "100kb": 0.739,
+     "1mb": 3.457,
+     "10mb": 30.243,
+     "50mb": 43.194
+    },
+    "freezeSeconds": {
+     "1mb": 1.869,
+     "10mb": 17.957
+    },
+    "firefoxSeconds": {
+     "100kb": 1.89,
+     "1mb": 3.699,
+     "10mb": "failed",
+     "50mb": "failed"
+    },
+    "speedParts": {
+     "100kb": 4.34,
+     "1mb": 2.35,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0.54,
+     "freeze10mb": 0
+    },
+    "sendsJson": false,
+    "uploadEvidence": [],
+    "thirdPartyDomains": 6,
+    "offline": false,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "missing-comma": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "single-quotes": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unquoted-key": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     },
+     "comment": {
+      "detected": false,
+      "rightLine": false,
+      "message": "x"
+     },
+     "unclosed-array": {
+      "detected": false,
+      "rightLine": true,
+      "message": "x"
+     },
+     "bad-literal": {
+      "detected": true,
+      "rightLine": true,
+      "message": "x"
+     },
+     "raw-newline": {
+      "detected": false,
+      "rightLine": true,
+      "message": "x"
+     },
+     "extra-bracket": {
+      "detected": true,
+      "rightLine": false,
+      "message": "x"
+     }
+    },
+    "features": {
+     "indent": false,
+     "minify": false,
+     "tree": false,
+     "search": true,
+     "sortKeys": true,
+     "copy": false,
+     "download": false,
+     "openFile": true,
+     "loadUrl": true,
+     "darkMode": true,
+     "repair": false,
+     "convert": false
+    },
+    "easeParts": {
+     "errors": 5,
+     "features": 3,
+     "phoneWorks": 1,
+     "phoneFits": 0,
+     "firefox": 1,
+     "webkit": 1
+    },
+    "lcpSeconds": 3.99,
+    "pageMB": 3.71,
+    "cls": 0.144,
+    "ads": true,
+    "interruptions": [],
+    "keyboard": {
+     "inputName": "x",
+     "controlName": "y",
+     "keyboardFormat": true,
+     "tabsToInput": 3
+    },
+    "pageParts": false
+   },
+   "notes": [],
+   "ranks": {
+    "Default": 12,
+    "Equal": 12,
+    "Features first": 11,
+    "Speed first": 12,
+    "Privacy first": 12
+   }
+  },
+  {
+   "id": "curiousconcept",
+   "name": "JSON Formatter & Validator (Curious Concept)",
+   "url": "https://jsonformatter.curiousconcept.com/",
+   "publisher": false,
+   "blocked": "its formatting endpoint answered HTTP 403 to our automated browser, so formatting could not be tested",
+   "total": null,
+   "totals": null,
+   "categories": {
+    "data": null,
+    "speed": null,
+    "privacy": null,
+    "ease": null,
+    "page": null
+   },
+   "details": {
+    "data": {
+     "big-integer": "no output",
+     "max-safe-plus-one": null,
+     "long-decimal": null,
+     "number-spelling": null,
+     "huge-exponent": null,
+     "duplicate-keys": null,
+     "key-order": "no output",
+     "unicode": "no output",
+     "escapes": null,
+     "proto-key": null,
+     "top-level-scalar": "no output",
+     "deep-nesting": null,
+     "long-string": null
+    },
+    "speedSeconds": {
+     "100kb": "failed",
+     "1mb": "failed",
+     "10mb": null,
+     "50mb": null
+    },
+    "freezeSeconds": {
+     "1mb": "failed",
+     "10mb": null
+    },
+    "firefoxSeconds": {
+     "100kb": null,
+     "1mb": null,
+     "10mb": null,
+     "50mb": null
+    },
+    "speedParts": {
+     "100kb": 0,
+     "1mb": 0,
+     "10mb": 0,
+     "50mb": 0,
+     "freeze1mb": 0,
+     "freeze10mb": 0
+    },
+    "sendsJson": true,
+    "uploadEvidence": [
+     {
+      "suite": "speed",
+      "size": "100kb",
+      "hits": [
+       {
+        "url": "https://jsonformatter.curiousconcept.com/process",
+        "how": "POST",
+        "why": "marker"
+       },
+       {
+        "url": "https://jsonformatter.curiousconcept.com/process",
+        "how": "POST",
+        "why": "marker"
+       }
+      ]
+     }
+    ],
+    "thirdPartyDomains": 40,
+    "offline": null,
+    "privacyParts": false,
+    "errors": {
+     "trailing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": null
+     },
+     "missing-comma": {
+      "detected": false,
+      "rightLine": false,
+      "message": null
+     },
+     "single-quotes": null,
+     "unquoted-key": null,
+     "comment": null,
+     "unclosed-array": null,
+     "bad-literal": null,
+     "raw-newline": null,
+     "extra-bracket": null
+    },
+    "features": {},
+    "easeParts": {
+     "errors": null,
+     "features": null,
+     "phoneWorks": null,
+     "phoneFits": null,
+     "firefox": null,
+     "webkit": null
+    },
+    "lcpSeconds": 0,
+    "pageMB": 0,
+    "cls": null,
+    "ads": true,
+    "interruptions": [],
+    "keyboard": null,
+    "pageParts": false
+   },
+   "notes": [
+    "not ranked: its formatting endpoint answered HTTP 403 to our automated browser, so formatting could not be tested"
+   ]
+  }
+ ],
+ "PLACEHOLDER": "FAKE DATA FOR LAYOUT CHECKS ONLY"
+}

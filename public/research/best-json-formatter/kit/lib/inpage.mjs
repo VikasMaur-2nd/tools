@@ -121,17 +121,24 @@ export const INPAGE = `(() => {
     tail(kind, sel, count) {
       return io(kind, sel).tail(count);
     },
-    // Resolves with performance.now() at the first frame after check() is true, then one more frame painted.
+    // Resolves with performance.now() at the first frame after check() is true, then one more frame painted. A check
+    // that costs time (reading a big text box) is spaced out so that checking takes at most a tenth of the page's
+    // time: the next one comes 9 × its cost later. maxSpacing (ms) bounds how late completion can be noticed.
     waitFor(check, timeoutMs) {
       return new Promise((resolve) => {
         const start = performance.now();
+        let maxSpacing = 0;
         const tick = () => {
           let ok = false, err = null;
+          const t0 = performance.now();
           try { ok = check(); } catch (e) { err = String(e && e.message || e); }
           const now = performance.now();
-          if (ok) return requestAnimationFrame(() => requestAnimationFrame(() => resolve({ done: true, at: performance.now(), checkedAt: now })));
-          if (now - start > timeoutMs) return resolve({ done: false, at: now, error: err });
-          requestAnimationFrame(tick);
+          if (ok) return requestAnimationFrame(() => requestAnimationFrame(() => resolve({ done: true, at: performance.now(), checkedAt: now, maxSpacing })));
+          if (now - start > timeoutMs) return resolve({ done: false, at: now, error: err, maxSpacing });
+          const wait = (now - t0) * 9;
+          maxSpacing = Math.max(maxSpacing, wait);
+          if (wait > 4) setTimeout(() => requestAnimationFrame(tick), wait);
+          else requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       });

@@ -9,6 +9,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ADAPTERS } from './adapters/index.mjs';
+import { countsAsUpload } from './lib/harness.mjs';
 import { DATA_CASES, ERROR_CASES } from './cases.mjs';
 
 const { values: o, positionals } = parseArgs({ allowPositionals: true, options: { out: { type: 'string' } } });
@@ -82,7 +83,7 @@ const tools = ADAPTERS.map((a) => {
 
   // Privacy (5.4)
   const all = records.filter((r) => r.tool === id && Array.isArray(r.uploads));
-  const uploadRuns = all.filter((r) => r.uploads.length);
+  const uploadRuns = all.filter((r) => r.uploads.some(countsAsUpload));
   const sends = uploadRuns.length > 0;
   // A blocked tool has no successful runs: its one recorded visit still shows what the page sends and loads.
   const pageRuns = records.filter((r) => r.suite === 'speed' && r.engine === 'chromium' && r.tool === id && r.size === '1mb' && r.rep <= 3 && r.net && (r.ok || a.blocked));
@@ -155,7 +156,8 @@ const tools = ADAPTERS.map((a) => {
       firefoxSeconds: Object.fromEntries(['100kb', '1mb', '10mb', '50mb'].map((s) => { const v = medianTime(id, 'firefox', s); return [s, v === Infinity ? 'failed' : round(v, 3)]; })),
       speedParts: speedParts && Object.fromEntries(Object.entries(speedParts).map(([k, v]) => [k, round(v)])),
       sendsJson: sends,
-      uploadEvidence: uploadRuns.slice(0, 3).map((r) => ({ suite: r.suite, size: r.size, hits: r.uploads.slice(0, 2) })),
+      uploadEvidence: uploadRuns.slice(0, 3).map((r) => ({ suite: r.suite, size: r.size, hits: r.uploads.filter(countsAsUpload).slice(0, 2) })),
+      notCounted: all.flatMap((r) => r.uploads.filter((h) => !countsAsUpload(h)).map((h) => ({ suite: r.suite, size: r.size, url: h.url.slice(0, 80), why: h.why }))).slice(0, 5),
       thirdPartyDomains: third,
       offline: offline ? !!offline.ok : null,
       privacyParts: privacyParts && Object.fromEntries(Object.entries(privacyParts).map(([k, v]) => [k, round(v)])),

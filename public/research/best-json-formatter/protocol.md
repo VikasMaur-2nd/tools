@@ -298,3 +298,50 @@ small files on the study's own server, and those trial results are not used anyw
 
 Trial runs on the study server and pilot runs on CI (runs 41333009350, 41333830896 and 41337698033) were used only
 to check the harness; none of their numbers is used in the results.
+
+### Amendment 2 — 2026-11-02, after the first measured run
+
+The first measured run (CI run 41339388831, 2026-11-01, harness commit `7a1df7a`) showed that the harness itself
+failed some runs: pages busy with ads stopped answering when the test file was put on the clipboard, clicks gave up
+after 8–10 s while a page was still taking in a 50 MB paste, the full-page-ad check stalled on pages with many ad
+frames, and the "is it done?" check read the whole text box on every frame. Those failures say nothing about the
+tools, so they could not be scored. The publisher decided to repeat the measurement with a fixed harness rather than
+score a broken run, and raised the study's CI budget from 500 to about 800 minutes to pay for it.
+
+What was repeated: the Chromium speed runs, the quality checks and the WebKit check, for every tool, in one new run.
+What was kept: the Firefox speed runs of run 41339388831. From Firefox the score only uses whether the 100 KB and
+1 MB files format correctly (5.7), which none of the fixes changes; Firefox results for 10 MB and 50 MB are not
+reported, because the click time limit was broken there. Nothing from run 41339388831 other than that is used.
+
+Changes to the harness (each applies to every tool):
+
+1. **Clipboard.** The test file is copied from a separate blank tab with a real Ctrl+C, outside the timing, so a
+   busy tool page can't block it.
+2. **Clicks on a busy page** wait as long as the time limit allows, instead of 8–10 s.
+3. **Full-page ads** are looked for only when a frame covers the middle of the page, with short time limits.
+4. **The "is it done?" check** is spaced out by 9 × its own cost, so it takes at most a tenth of the page's time
+   (protocol 5.3 does not change: completion is still the complete result on screen). The largest spacing is
+   recorded with each run (`checkSpacingMs`). An A/B run with no in-page checking at all confirmed that
+   jsonviewer.stack.hu really freezes Chromium for minutes when 10 MB is pasted into its text box.
+5. **Harness failures in the data and error cases** get one retry on a fresh page (5.1 allowed this; it was not yet
+   implemented).
+6. **The input's accessible name (5.8)** is read from the element that takes the focus when the input is clicked,
+   for every tool, instead of from a container chosen per adapter.
+
+Decisions made after seeing results (stated as such):
+
+7. **Size warnings that offer to continue (5.3).** JSON Editor Online, above 10.5 MB, shows "may crash your browser"
+   with *Open anyway*, *Open in tree mode* and *Cancel*, and waits. 5.3 counts "a size limit message" as a failure; we
+   read that as a refusal, not a warning a person can click past. The harness now clicks *Open anyway*, the time
+   keeps running, and the warning is recorded as an interruption. This helps JSON Editor Online only.
+8. **Bot-check telemetry (5.4).** On a 100 KB Firefox run, JSON Checker's page sent 73 KB to
+   `challenges.cloudflare.com` (Cloudflare's bot check), which the "request body larger than half the pasted text"
+   rule would have counted as sending the JSON, although the body did not hold the marker. Bodies sent to
+   `challenges.cloudflare.com` without the marker are no longer counted; a body holding the marker still counts. This
+   helps JSON Checker only; the uncounted requests are listed in `scores.json` (`notCounted`).
+9. **Tool Kumar's phone end check.** Tool Kumar's output view draws only the rows on screen, so its adapter checks
+   the screen after scrolling to the end. On a 390 px phone screen, the last value (a long string) wraps over more
+   rows than the screen holds, pushing the end marker above it; every phone run failed although the formatted
+   document was complete (screenshot in the run's artifacts). The check now also accepts the document's last line
+   number at the end of the view. For every other tool the check reads the editor's last lines through the editor
+   itself, where screen size doesn't matter. This helps the publisher's tool; it is listed here for that reason.

@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 import { ADAPTERS } from './adapters/index.mjs';
 import { DATA_CASES, ERROR_CASES } from './cases.mjs';
 import { END_MARKER, MARKER, SIZES, generate, sha256 } from './generate.mjs';
-import { captureNetwork, focusInput, formatControl, launch, linesInText, newContext, openTool, pasteAndFormat, pasteSmall, readError, readOutput, shot, stage } from './lib/harness.mjs';
+import { captureNetwork, countsAsUpload, focusInput, formatControl, launch, linesInText, newContext, openTool, pasteAndFormat, pasteSmall, readError, readOutput, shot, stage } from './lib/harness.mjs';
 import { compare, read } from './lib/tokens.mjs';
 
 const { values: o, positionals } = parseArgs({
@@ -51,7 +51,10 @@ function fail(msg) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Resolves with the promise, or rejects after ms: a frozen page never answers an evaluate. */
-const within = (p, ms, what) => Promise.race([p, sleep(ms).then(() => Promise.reject(new Error(`${what}: no answer within ${Math.round(ms / 1000)} s`)))]);
+const within = (p, ms, what) => {
+  p.catch(() => {}); // a step that is given up on may still fail later: that must not stop the run
+  return Promise.race([p, sleep(ms).then(() => Promise.reject(new Error(`${what}: no answer within ${Math.round(ms / 1000)} s`)))]);
+};
 let fileFor = null;
 function record(r) {
   const line = { suite: r.suite ?? suite, engine, at: new Date().toISOString(), ...r };
@@ -102,8 +105,8 @@ async function speedRun(browser, adapter, size, text, { phone = false, offlineFi
     }
     await within(stage(page, adapter, text), 60_000, 'putting the file on the clipboard');
     const timeoutMs = TIMEOUT[size] ?? 30_000;
-    const r = await net.window(MARKER, text.length / 2, () => within(pasteAndFormat(page, adapter, { text, endMarker: END_MARKER, timeoutMs, tap: phone }), timeoutMs + 20_000, 'formatting'));
-    Object.assign(out, { ms: r.ms, totalMs: r.totalMs, freezeMs: r.freezeMs, pasteSeen: r.pasteSeen, clickSeen: r.clickSeen, landedSeen: r.landedSeen, formattedOnPaste: r.formattedOnPaste });
+    const r = await net.window(MARKER, text.length / 2, () => within(pasteAndFormat(page, adapter, { text, endMarker: END_MARKER, expectedLines: manifest[size]?.prettyLines ?? null, timeoutMs, tap: phone }), timeoutMs + 40_000, 'formatting'));
+    Object.assign(out, { ms: r.ms, totalMs: r.totalMs, checkSpacingMs: r.checkSpacingMs, freezeMs: r.freezeMs, pasteSeen: r.pasteSeen, clickSeen: r.clickSeen, landedSeen: r.landedSeen, formattedOnPaste: r.formattedOnPaste });
     out.uploads = net.lastHits;
     if (!r.done) throw new Error(r.waitError ? `no complete result (${r.waitError})` : 'no complete result within the time limit');
     if (!r.pasteSeen) throw new Error('the paste key press was not seen');
@@ -170,7 +173,7 @@ async function speedSuite(browser) {
         for (let attempt = 1; attempt <= 2; attempt++) {
           r = await speedRun(browser, adapter, size, texts[size]);
           record({ ...r, rep, attempt });
-          if (r.uploads?.length) uploads.add(adapter.id);
+          if (r.uploads?.some(countsAsUpload)) uploads.add(adapter.id);
           if (r.ok) break;
         }
         if (!r.ok) stopAt.set(adapter.id, i);
@@ -199,16 +202,19 @@ async function dataSuite(browser, adapter, { cases = DATA_CASES, as = 'data' } =
     const docs = [];
     for (const doc of c.docs) {
       let res;
+      // A step that fails for the harness's own reasons (no answer from a busy page, a click that didn't land) gets
+      // one more try on a fresh page (protocol 5.1); a second failure stands.
+      for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const want = read(doc).value;
         const inPlace = adapter.output === 'input';
-        const before = inPlace ? null : await within(readOutput(page, adapter), 10_000, 'reading').then((x) => x.text, () => null);
-        await within(stage(page, adapter, doc), 20_000, 'clipboard');
+        const before = inPlace ? null : await within(readOutput(page, adapter), 30_000, 'reading').then((x) => x.text, () => null);
+        await within(stage(page, adapter, doc), 60_000, 'clipboard');
         const big = doc.length > 10_000;
         const started = Date.now();
-        await within(pasteSmall(page, adapter, { text: doc, timeoutMs: big ? 30_000 : 8_000 }), big ? 45_000 : 20_000, 'formatting');
-        const after = (await within(readOutput(page, adapter), 20_000, 'reading')).text ?? '';
-        const err = await within(readError(page, adapter), 10_000, 'reading the error');
+        await within(pasteSmall(page, adapter, { text: doc, timeoutMs: big ? 30_000 : 8_000 }), big ? 90_000 : 60_000, 'formatting');
+        const after = (await within(readOutput(page, adapter), 45_000, 'reading')).text ?? '';
+        const err = await within(readError(page, adapter), 30_000, 'reading the error');
         const shownError = err.text || err.lines.length ? (err.text || `error marked on line ${err.lines.join(', ')}`).slice(0, 200) : null;
         const changed = inPlace ? after !== doc : after !== before;
         const got = read(after.trim());
@@ -224,10 +230,13 @@ async function dataSuite(browser, adapter, { cases = DATA_CASES, as = 'data' } =
           res = { grade: 'no output', notes: [], message: null };
         }
         res.ms = Date.now() - started;
+        res.attempt = attempt;
+        break;
       } catch (e) {
-        res = { grade: 'no output', notes: [], failure: why(e) };
-        await shot(page, join(o.out, 'shots', `data-${adapter.id}-${c.id}.jpg`));
+        res = { grade: 'no output', notes: [], failure: why(e), attempt };
+        await shot(page, join(o.out, 'shots', `data-${adapter.id}-${c.id}-${attempt}.jpg`));
         await open().catch(() => {});
+      }
       }
       docs.push(res);
     }
@@ -245,33 +254,39 @@ async function errorSuite(browser, adapter) {
   try {
     const { page } = await within(openTool(context, adapter), 75_000, 'opening the page');
     const RESET = '{"reset": true}';
+    let current = page;
     for (const c of ERROR_CASES) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+      const page = current;
       try {
         // A valid document first clears the previous case's error; a message still showing from before (a toast
         // that hasn't faded) is not counted for this case.
-        await within(stage(page, adapter, RESET), 20_000, 'clipboard');
-        await within(pasteSmall(page, adapter, { text: RESET, timeoutMs: 4000 }), 15_000, 'resetting');
-        const before = new Set((await within(readError(page, adapter), 10_000, 'reading the error')).text.split('\n').filter(Boolean));
-        await within(stage(page, adapter, c.text), 20_000, 'clipboard');
+        await within(stage(page, adapter, RESET), 60_000, 'clipboard');
+        await within(pasteSmall(page, adapter, { text: RESET, timeoutMs: 4000 }), 60_000, 'resetting');
+        const before = new Set((await within(readError(page, adapter), 30_000, 'reading the error')).text.split('\n').filter(Boolean));
+        await within(stage(page, adapter, c.text), 60_000, 'clipboard');
         // Messages can be brief (a toast) or late: everything shown from the click until 1 s after the output
         // settles counts.
         const lines = new Set();
         const marks = new Set();
         const look = async () => {
-          const e = await within(readError(page, adapter), 10_000, 'reading the error').catch(() => null);
+          const e = await within(readError(page, adapter), 20_000, 'reading the error').catch(() => null);
           e?.text.split('\n').forEach((l) => l && lines.add(l));
           e?.lines.forEach((n) => marks.add(n));
         };
-        await within(pasteSmall(page, adapter, { text: c.text, timeoutMs: 6000, onTick: look }), 40_000, 'formatting');
+        await within(pasteSmall(page, adapter, { text: c.text, timeoutMs: 6000, onTick: look }), 90_000, 'formatting');
         await sleep(1000);
         await look();
         const err = { text: [...lines].filter((l) => !before.has(l)).join('\n'), lines: [...marks] };
         const named = linesInText(err.text);
         const detected = Boolean(err.text || err.lines.length || err.repaired);
         const rightLine = detected && [...err.lines, ...named].some((n) => c.lines.includes(n));
-        record({ suite: 'errors', tool: adapter.id, case: c.id, detected, rightLine, message: err.text.slice(0, 300), marked: err.lines, named, repaired: err.repaired ?? false });
+        record({ suite: 'errors', tool: adapter.id, case: c.id, detected, rightLine, message: err.text.slice(0, 300), marked: err.lines, named, repaired: err.repaired ?? false, attempt });
+        break;
       } catch (e) {
-        record({ suite: 'errors', tool: adapter.id, case: c.id, detected: false, rightLine: false, failure: String(e.message).split('\n')[0] });
+        if (attempt === 2) record({ suite: 'errors', tool: adapter.id, case: c.id, detected: false, rightLine: false, failure: why(e), attempt });
+        else current = (await within(openTool(context, adapter), 75_000, 'opening the page').catch(() => ({ page }))).page;
+      }
       }
     }
   } catch (e) {
@@ -317,7 +332,11 @@ async function keyboardSuite(browser, adapter) {
       const m = /^- \w[\w-]*(?: "((?:[^"\\]|\\.)*)")?/.exec(snap.trim());
       return m?.[1] || null;
     };
-    res.inputName = await nameOf(adapter.input.a11y ?? adapter.input.sel);
+    // The input's name is read from the element that takes the focus when the input is clicked (an editor's hidden
+    // text area or content element), the same way for every tool.
+    await focusInput(page, adapter).catch(() => {});
+    const focused = page.locator('*:focus').first();
+    res.inputName = (await focused.count().catch(() => 0)) ? await nameOf(focused) : await nameOf(adapter.input.a11y ?? adapter.input.sel);
     res.controlName = adapter.format ? await nameOf(await formatControl(page, adapter)) : 'formats on paste';
     // Keyboard only, from the top of the page.
     const text = generate(SIZES['100kb']);
@@ -352,7 +371,7 @@ async function keyboardSuite(browser, adapter) {
       }
       const out = adapter.output === 'input' ? adapter.input : adapter.output;
       const done = adapter.done
-        ? await page.evaluate(([fn, m]) => window.__fmt.waitFor(new Function('marker', fn).bind(null, m), 15000), [adapter.done.fn, END_MARKER])
+        ? await page.evaluate(([fn, m, n]) => window.__fmt.waitFor(new Function('marker', 'expected', fn).bind(null, m, n), 15000), [adapter.done.fn, END_MARKER, manifest['100kb'].prettyLines])
         : await page.evaluate(([k, s, m]) => window.__fmt.waitFor(() => { const end = window.__fmt.io(k, s).tail(16); return end.multiline && end.text.includes(m); }, 15000), [out.kind, out.sel, END_MARKER]);
       res.keyboardFormat = done.done;
     } else res.keyboardFormat = false;

@@ -1,9 +1,8 @@
 {
   "jobs": [
-    { "name": "speed-chromium-1", "cmd": "run.mjs speed --engine chromium --sizes 100kb,1mb,10mb,50mb --reps 3", "browsers": "chromium", "minutes": 100 },
-    { "name": "speed-chromium-2", "cmd": "run.mjs speed --engine chromium --sizes 100kb,1mb,10mb,50mb --from 4 --reps 5", "browsers": "chromium", "minutes": 80 },
-    { "name": "speed-firefox", "cmd": "run.mjs speed --engine firefox --sizes 100kb,1mb,10mb,50mb --reps 3", "browsers": "firefox", "minutes": 100 },
-    { "name": "quality", "cmd": "run.mjs quality", "browsers": "chromium", "minutes": 60 },
-    { "name": "webkit", "cmd": "run.mjs webkit --engine webkit", "browsers": "webkit", "minutes": 10 }
+    { "name": "speed-chromium-1", "cmd": "run.mjs speed --engine chromium --sizes 100kb,1mb,10mb,50mb --reps 3", "browsers": "chromium", "minutes": 115 },
+    { "name": "speed-chromium-2", "cmd": "run.mjs speed --engine chromium --sizes 100kb,1mb,10mb,50mb --from 4 --reps 5", "browsers": "chromium", "minutes": 90 },
+    { "name": "quality", "cmd": "run.mjs quality", "browsers": "chromium", "minutes": 95 },
+    { "name": "webkit", "cmd": "run.mjs webkit --engine webkit", "browsers": "webkit", "minutes": 15 }
   ]
 }

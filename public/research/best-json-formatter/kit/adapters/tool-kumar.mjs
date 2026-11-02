@@ -13,7 +13,9 @@ export default {
   input: { kind: 'textarea', sel: 'textarea#input' },
   output: { kind: 'view', sel: '#view-format' },
   format: null,
-  done: { fn: "const s = document.querySelector('#view-format'); if (!s) return false; s.scrollTop = s.scrollHeight; return s.innerText.includes(marker);" },
+  // Done when the end of the formatted document is on screen after scrolling to the end: its end marker, or (on a
+  // narrow phone screen, where the last long string wraps over many rows) the document's last line number.
+  done: { fn: "const s = document.querySelector('#view-format'); if (!s) return false; s.scrollTop = s.scrollHeight; if (s.innerText.includes(marker)) return true; if (!expected) return false; const nums = [...s.querySelectorAll('.cv-n')].map((e) => Number(e.textContent)); return nums.includes(expected);" },
   readOutput: (page) => copyOut(page, 'section.pane-view button[aria-label="Copy"], section.pane-view button[title^="Copy"]'),
   // The speed runs check the whole result through Download: tens of megabytes are too slow through the clipboard.
   verify: async (page) => verifyText(await downloadOut(page, 'section.pane-view button[aria-label="Download"], section.pane-view button[title^="Download"]')),
