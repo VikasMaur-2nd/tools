@@ -1,0 +1,71 @@
+{
+ "checkedAt": "2026-11-02T13:56:23.215Z",
+ "names": {
+  "jsonformatter-org": {
+   "inputName": "Cursor at row 1",
+   "controlName": "Format / Beautify",
+   "inputSnapshot": "- textbox \"Cursor at row 1\"",
+   "controlSnapshot": "- button \"Format / Beautify\""
+  },
+  "jsoneditoronline": {
+   "inputName": "JSON editor",
+   "controlName": "Format JSON: add proper indentation and new lines (Ctrl+I)",
+   "inputSnapshot": "- textbox \"JSON editor\"",
+   "controlSnapshot": "- 'button \"Format JSON: add proper indentation and new lines (Ctrl+I)\"':"
+  },
+  "codebeautify": {
+   "inputName": null,
+   "controlName": "Beautify",
+   "inputSnapshot": "- textbox",
+   "controlSnapshot": "- button \"Beautify\""
+  },
+  "jsonlint": {
+   "inputName": "Editor content",
+   "controlName": "Validate",
+   "inputSnapshot": "- textbox \"Editor content\"",
+   "controlSnapshot": "- button \"Validate\":"
+  },
+  "jsonviewer-stack": {
+   "inputName": null,
+   "controlName": "Format",
+   "inputSnapshot": "- textbox: \"{ \\\"title\\\": \\\"Welcome to JSON Viewer!\\\", \\\"description\\\": \\\"This is an example JSON document demonstrating different data types and structures\\\", \\\"instructions\\\": \\\"Replace this with your own JSON code and click on the Viewer tab to visualize your data\\\", \\\"rightclick\\\": \\\"In the Viewer, right-click any node to expand or collapse its contents\\\", \\\"privacy\\\": { \\\"title\\\": \\\"Your Privacy Matters\\\", \\\"message\\\": \\\"The JSON you enter is processed directly in your browser. Your data IS NEVER SAVED on our servers!\\\", \\\"dataStoredOnServer\\\": false, \\\"privacyFirst\\\": true }, \\\"security\\\": { \\\"title\\\": \\\"Secure Connection\\\", \\\"protocol\\\": \\\"HTTPS\\\", \\\"message\\\": \\\"Our website uses HTTPS encryption to protect all data transmitted between your browser and our server\\\", \\\"encrypted\\\": true }, \\\"about\\\": { \\\"title\\\": \\\"Trusted Since 2008\\\", \\\"established\\\": 2008, \\\"monthlyUsers\\\": 500000, \\\"monthlyUsersDescription\\\": \\\"More than 500,000 users trust our service every month!\\\" }, \\\"features\\\": [ { \\\"name\\\": \\\"JSON Viewer\\\", \\\"description\\\": \\\"Explore JSON data in an easy-to-read, interactive tree structure\\\", \\\"enabled\\\": true }, { \\\"name\\\": \\\"JSON Formatter\\\", \\\"description\\\": \\\"Format and beautify JSON code for better readability\\\", \\\"enabled\\\": true }, { \\\"name\\\": \\\"JSON Text Editor\\\", \\\"description\\\": \\\"View and edit raw JSON directly in your browser\\\", \\\"enabled\\\": true } ], \\\"statistics\\\": { \\\"yearsOfService\\\": 18, \\\"monthlyUsers\\\": 500000, \\\"supportedFormats\\\": [ \\\"JSON\\\", \\\"JSON arrays\\\", \\\"JSON objects\\\" ] }, \\\"exampleData\\\": { \\\"user\\\": { \\\"id\\\": 12345, \\\"name\\\": \\\"John Smith\\\", \\\"email\\\": \\\"john@example.com\\\", \\\"verified\\\": true, \\\"age\\\": 32 }, \\\"tags\\\": [ \\\"json\\\", \\\"viewer\\\", \\\"formatter\\\", \\\"developer tools\\\" ] } }\"",
+   "controlSnapshot": "- button \"Format\""
+  },
+  "jsonbeautify-com": {
+   "error": "site unavailable: HTTP 522"
+  },
+  "jsonbeautify-org": {
+   "inputName": "Paste or type your JSON here...",
+   "controlName": "formats on paste",
+   "inputSnapshot": "- textbox \"Paste or type your JSON here...\":",
+   "controlSnapshot": null
+  },
+  "jsonchecker": {
+   "inputName": null,
+   "controlName": "Format",
+   "inputSnapshot": "- textbox",
+   "controlSnapshot": "- button \"Format\""
+  },
+  "static-app": {
+   "error": "locator.waitFor: Timeout 30000ms exceeded."
+  },
+  "jsonbeautifier-org": {
+   "inputName": null,
+   "controlName": "Beautify >>",
+   "inputSnapshot": "- textbox",
+   "controlSnapshot": "- button \"Beautify >>\""
+  },
+  "jsonviewer-io": {
+   "inputName": "JSON editor",
+   "controlName": "Format",
+   "inputSnapshot": "- textbox \"JSON editor\"",
+   "controlSnapshot": "- button \"Format\""
+  },
+  "tool-kumar": {
+   "inputName": "JSON input",
+   "controlName": "formats on paste",
+   "inputSnapshot": "- textbox \"JSON input\":",
+   "controlSnapshot": null
+  }
+ }
+}

@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 import { ADAPTERS } from './adapters/index.mjs';
 import { DATA_CASES, ERROR_CASES } from './cases.mjs';
 import { END_MARKER, MARKER, SIZES, generate, sha256 } from './generate.mjs';
-import { DID_NOT_START, captureNetwork, countsAsUpload, focusInput, formatControl, launch, linesInText, newContext, openTool, pasteAndFormat, pasteSmall, readError, readOutput, shot, stage } from './lib/harness.mjs';
+import { DID_NOT_START, nameFromSnapshot, captureNetwork, countsAsUpload, focusInput, formatControl, launch, linesInText, newContext, openTool, pasteAndFormat, pasteSmall, readError, readOutput, shot, stage } from './lib/harness.mjs';
 import { compare, read } from './lib/tokens.mjs';
 
 const { values: o, positionals } = parseArgs({
@@ -369,8 +369,7 @@ async function keyboardSuite(browser, adapter) {
       if (!target) return null;
       const loc = typeof target === 'string' ? page.locator(target).first() : target;
       const snap = await loc.ariaSnapshot({ timeout: 20_000 }).catch((e) => (res.nameErrors.push(why(e)), ''));
-      const m = /^- \w[\w-]*(?: "((?:[^"\\]|\\.)*)")?/.exec(snap.trim());
-      return m?.[1] || null;
+      return nameFromSnapshot(snap);
     };
     // The input's name is read from the element that takes the focus when the input is clicked (an editor's hidden
     // text area or content element), the same way for every tool.

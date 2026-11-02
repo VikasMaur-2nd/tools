@@ -566,3 +566,15 @@ export async function verifyText(text) {
   }
   return { ok: true, length: text.length, sha256: createHash('sha256').update(min).digest('hex') };
 }
+
+/**
+ * The accessible name in the first line of a Playwright aria snapshot: `- button "Name"`, or, when the name holds a
+ * colon or another YAML special character, the quoted form `- 'button "Name: more"':`.
+ */
+export function nameFromSnapshot(snap) {
+  let line = (snap ?? '').trim().split('\n')[0] ?? '';
+  const quoted = /^- '(.*)':?$/.exec(line);
+  if (quoted) line = '- ' + quoted[1].replace(/''/g, "'");
+  const m = /^- \w[\w-]*(?: "((?:[^"\\]|\\.)*)")?/.exec(line);
+  return m?.[1] || null;
+}

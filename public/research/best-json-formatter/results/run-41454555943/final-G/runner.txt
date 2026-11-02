@@ -1,0 +1,7 @@
+job: final-G
+commit: 91f0567143d3390b4fd8e745f4dd3ccc7f16ea4f
+runner: Linux ubuntu24 20261026.354.1
+cpu: AMD EPYC 9V74 80-Core Processor x 2
+Mem:            7932        1230        4575          47        2452        6702
+started: 2026-11-02T13:38:35Z
+finished: 2026-11-02T13:40:21Z

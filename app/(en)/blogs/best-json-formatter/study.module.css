@@ -1,0 +1,194 @@
+/* The JSON formatter study: tables and the two charts. Ink and surfaces use the site's tokens; the five
+   category colours are the validated categorical slots 1-5 (blue, orange, aqua, yellow, magenta), stepped for
+   each theme. Every chart has the full numbers in a table next to it. */
+
+.ranking td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.max {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.total {
+  font-weight: 650;
+}
+
+.publisher th[scope='row']::after {
+  content: '';
+}
+
+.unranked {
+  color: var(--muted);
+  white-space: normal !important;
+}
+
+/* Result matrices: a glyph says what happened, colour only repeats it. The table is the positioning context so
+   the visually hidden labels in its cells stay inside its scroll box; the first column stays put while it scrolls. */
+.matrix,
+.ranking {
+  position: relative;
+}
+
+.matrix th[scope='row'] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+}
+
+.matrix td {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix thead th {
+  font-size: 12px;
+  white-space: normal;
+  min-width: 64px;
+  vertical-align: bottom;
+}
+
+.g-pass {
+  color: var(--ok);
+}
+
+.g-spelling,
+.g-refused {
+  color: var(--warn);
+}
+
+.g-changed,
+.g-rejected,
+.g-no-output {
+  color: var(--err);
+  background: var(--err-soft);
+}
+
+.g-untested,
+.g-none {
+  color: var(--muted);
+}
+
+/* Charts */
+.viz {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  margin: 28px 0 30px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:where(:not([data-theme='light']))) .viz {
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+  }
+}
+
+:global(:root[data-theme='dark']) .viz {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+}
+
+.viz figcaption {
+  margin-bottom: 12px;
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.viz figcaption span {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.rows {
+  display: grid;
+  gap: 8px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(110px, 30%) 1fr 56px;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.name {
+  overflow: hidden;
+  color: var(--fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  display: flex;
+  gap: 2px; /* a surface gap between stacked segments */
+  height: 14px;
+}
+
+.seg {
+  height: 100%;
+  min-width: 2px;
+}
+
+.seg:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.value {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.failed {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 28px;
+}
+
+.axis {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}

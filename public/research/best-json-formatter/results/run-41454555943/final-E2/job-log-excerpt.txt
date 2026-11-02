@@ -1,0 +1,5 @@
+[13:39:02] speed codebeautify 10mb #4 17.464 s, freeze 9.43 s
+[13:40:10] speed codebeautify 10mb #5 14.695 s, freeze 8.00 s
+[13:41:54] speed codebeautify 50mb #1 FAIL could not start: filling the clipboard page took over 30 s
+##[error]Process completed with exit code 143.
+##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.

@@ -1,0 +1,32 @@
+repeat · chromium 156.0.8078.4 · 13 tools
+[13:38:35] errors jsonlint trailing-comma
+[13:38:35] errors jsonlint missing-comma
+[13:38:35] errors jsonlint single-quotes
+[13:38:35] errors jsonlint unquoted-key
+[13:38:35] errors jsonlint comment
+[13:38:35] errors jsonlint unclosed-array
+[13:38:35] errors jsonlint bad-literal
+[13:38:35] errors jsonlint raw-newline
+[13:38:35] errors jsonlint extra-bracket
+[13:39:06] features jsonlint *
+[13:40:38] offline jsonlint 100kb FAIL opening the page: no answer within 75 s
+[13:41:25] phone jsonlint 100kb #1 FAIL locator.waitFor: Timeout 1000ms exceeded.
+[13:42:57] phone jsonlint 100kb #2 2.654 s, freeze 1.00 s
+[13:43:40] phone jsonlint 100kb #3 FAIL locator.waitFor: Timeout 1000ms exceeded.
+[13:43:58] offline jsonbeautify-com 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[13:44:18] phone jsonbeautify-com 100kb #1 FAIL site unavailable: HTTP 522
+[13:44:27] phone jsonbeautify-com 100kb #2 0.466 s, freeze 0.37 s
+[13:45:25] phone jsonbeautify-com 100kb #3 FAIL locator.waitFor: Timeout 30000ms exceeded.
+[13:46:43] keyboard jsonformatter-org 
+[13:46:48] keyboard jsonviewer-io 
+[13:47:10] keyboard codebeautify 
+[13:47:16] keyboard jsoneditoronline 
+[13:47:20] keyboard jsonbeautify-org 
+[13:48:32] keyboard jsonbeautify-com  FAIL locator.waitFor: Timeout 30000ms exceeded.
+[13:48:41] keyboard jsonviewer-stack 
+[13:48:41] blocked curiousconcept 
+[13:48:46] keyboard static-app 
+[13:50:10] keyboard jsonlint  FAIL opening the page: no answer within 75 s
+[13:50:15] keyboard tool-kumar 
+[13:50:24] keyboard jsonbeautifier-org 
+[13:50:29] keyboard jsonchecker 

@@ -45,6 +45,16 @@ for (let i = records.length - 1; i >= 0; i--) {
 if (before !== records.length) console.error(`left out ${before - records.length} runs listed in excluded.json`);
 // Oldest first, so "the last record" of anything is its latest attempt (a run repeated later replaces the earlier one).
 records.sort((a, b) => a.at.localeCompare(b.at));
+// corrections.json (optional): documented corrections of a harness misreading, each applied to the tool's latest
+// record of that suite, with its reason and evidence (protocol amendment 5).
+let corrections = [];
+try {
+  corrections = JSON.parse(readFileSync(join(dir, 'corrections.json'), 'utf8'));
+} catch {}
+for (const c of corrections) {
+  const r = records.filter((x) => x.suite === c.suite && x.tool === c.tool).at(-1);
+  if (r) Object.assign(r, c.set, { corrected: c.reason });
+}
 // Runs that say nothing about the tool (the site was down, the harness's clipboard step stalled), and the speed runs
 // the size ladder skipped only because of them, count neither way (amendment 3).
 const notCounted = [];
@@ -103,8 +113,11 @@ const tools = ADAPTERS.map((a) => {
   const notes = [];
 
   // Data safety (5.1)
-  const data = DATA_CASES.map((c) => mine('data').filter((r) => r.case === c.id && r.engine === 'chromium').at(-1));
-  const dataTested = data.every((r) => r && r.grade !== 'untested');
+  // A case that ended in a harness error (an exception in our code, recorded as `failure`) is unmeasured, not a tool
+  // failure; a tool that showed nothing at all has no `failure` and keeps its "no output" grade (amendment 5).
+  const harnessError = (r) => !r || r.grade === 'untested' || (r.docs ?? []).some((d) => d.failure);
+  const data = DATA_CASES.map((c) => mine('data').filter((r) => r.case === c.id && r.engine === 'chromium' && !harnessError(r)).at(-1));
+  const dataTested = data.every((r) => r);
   const dataPts = dataTested ? (25 * data.reduce((s, r) => s + (GRADE[r.grade] ?? 0), 0)) / DATA_CASES.length : null;
 
   // Speed (5.3), Chromium medians, failures infinitely slow
@@ -136,8 +149,8 @@ const tools = ADAPTERS.map((a) => {
   const privacyPts = privacyTested ? Object.values(privacyParts).reduce((s, x) => s + x, 0) : null;
 
   // Ease of use (5.2, 5.6, 5.7, 5.9)
-  const errs = ERROR_CASES.map((c) => mine('errors').filter((r) => r.case === c.id).at(-1));
-  const errTested = errs.every((r) => r && !r.untested);
+  const errs = ERROR_CASES.map((c) => mine('errors').filter((r) => r.case === c.id && !r.untested && !r.failure).at(-1));
+  const errTested = errs.every((r) => r);
   const errorPts = errTested ? (10 * errs.reduce((s, r) => s + (r.detected ? 0.5 : 0) + (r.rightLine ? 0.5 : 0), 0)) / ERROR_CASES.length : null;
   const feats = mine('features').filter((r) => r.feature !== '*');
   const featureList = Object.fromEntries(feats.map((r) => [r.feature, r.found]));
@@ -151,7 +164,8 @@ const tools = ADAPTERS.map((a) => {
   const firefoxWorks = ff.every((x) => x !== null) ? ff.every((x) => Number.isFinite(x)) : null;
   const wk = mine('webkit').at(-1);
   // WebKit works: the 100 KB file formats correctly and the two cases grade as they do in Chromium (amendment 1).
-  const wkSame = ['big-integer', 'unicode'].every((c) => mine('webkit-data').filter((r) => r.case === c).at(-1)?.grade === data[DATA_CASES.findIndex((d) => d.id === c)]?.grade);
+  const wkData = (c) => mine('webkit-data').filter((r) => r.case === c && !harnessError(r)).at(-1);
+  const wkSame = ['big-integer', 'unicode'].every((c) => wkData(c)?.grade === data[DATA_CASES.findIndex((d) => d.id === c)]?.grade);
   const webkitWorks = wk ? Boolean(wk.ok && wkSame) : null;
   const easeParts = { errors: errorPts, features: featurePts, phoneWorks: phoneWorks === null ? null : +phoneWorks, phoneFits: phoneFits === null ? null : +phoneFits, firefox: firefoxWorks === null ? null : +firefoxWorks, webkit: webkitWorks === null ? null : +webkitWorks };
   const easeTested = Object.values(easeParts).every((x) => x !== null);
@@ -162,7 +176,9 @@ const tools = ADAPTERS.map((a) => {
   const mb = median(pageRuns.map((r) => r.net.bytes)) / 1e6;
   const cls = median(pageRuns.map((r) => r.cls ?? 0));
   const ads = pageRuns.some((r) => r.net.adRequests > 0);
-  const interrupted = records.filter((r) => r.tool === id && ((r.interruptions?.length ?? 0) > 0 || (r.net?.popups ?? 0) > 0));
+  // "input covered by …" is not used: the check misfired for inputs below the fold (amendment 5).
+  const realInterruptions = (r) => (r.interruptions ?? []).filter((x) => !x.startsWith('input covered'));
+  const interrupted = records.filter((r) => r.tool === id && (realInterruptions(r).length > 0 || (r.net?.popups ?? 0) > 0));
   const kb = mine('keyboard').at(-1);
   const pageTested = pageRuns.length > 0 && !!kb;
   const pageParts = pageTested && {
@@ -178,6 +194,36 @@ const tools = ADAPTERS.map((a) => {
   };
   const pagePts = pageTested ? Object.values(pageParts).reduce((s, x) => s + x, 0) : null;
 
+  // For a tool with parts that could not be measured: its total with every missing part at zero and at full marks
+  // (amendment 5). Nothing is guessed; the true score lies in this range.
+  const sizePts = { '100kb': [0.2, 3], '1mb': [0.5, 5], '10mb': [2, 120], '50mb': [5, 120] };
+  const known = (v) => [v, v];
+  const speedRange = Object.entries(sizePts).reduce(([lo, hi], [k, [g, b]]) => (t[k] === null ? [lo, hi + 5] : [lo + 5 * logScore(t[k], g, b), hi + 5 * logScore(t[k], g, b)]), [0, 0]);
+  for (const k of ['1mb', '10mb']) {
+    if (t[k] === null) speedRange[1] += 2.5;
+    else {
+      const v = 2.5 * logScore(fr[k] ?? Infinity, 0.1, 3);
+      speedRange[0] += v;
+      speedRange[1] += v;
+    }
+  }
+  const easeMax = { errors: 10, features: 6, phoneWorks: 1, phoneFits: 1, firefox: 1, webkit: 1 };
+  const easeRange = Object.entries(easeParts).reduce(([lo, hi], [k, v]) => (v === null ? [lo, hi + easeMax[k]] : [lo + v, hi + v]), [0, 0]);
+  // Per case: measured cases keep their points, missing ones span zero to full marks.
+  const perCase = (list, each, pts) => list.reduce(([lo, hi], r) => (r ? [lo + pts(r), hi + pts(r)] : [lo, hi + each]), [0, 0]);
+  const dataRange = perCase(data, 25 / DATA_CASES.length, (r) => (25 * (GRADE[r.grade] ?? 0)) / DATA_CASES.length);
+  if (easeParts.errors === null) {
+    const er = perCase(errs, 10 / ERROR_CASES.length, (r) => (10 * ((r.detected ? 0.5 : 0) + (r.rightLine ? 0.5 : 0))) / ERROR_CASES.length);
+    easeRange[0] += er[0];
+    easeRange[1] += er[1] - easeMax.errors;
+  }
+  const ranges = {
+    data: dataRange,
+    speed: speedRange,
+    privacy: privacyPts === null ? [0, 20] : known(privacyPts),
+    ease: easeRange,
+    page: pagePts === null ? [0, 10] : known(pagePts),
+  };
   const cats = a.blocked ? { data: null, speed: null, privacy: null, ease: null, page: null } : { data: dataPts, speed: speedPts, privacy: privacyPts, ease: easePts, page: pagePts };
   const complete = Object.values(cats).every((x) => x !== null);
   if (a.blocked) notes.push(`not ranked: ${a.blocked}`);
@@ -193,6 +239,7 @@ const tools = ADAPTERS.map((a) => {
     total: totals?.Default ?? null,
     totals,
     categories: Object.fromEntries(Object.entries(cats).map(([k, v]) => [k, round(v, 2)])),
+    range: !complete && !a.blocked ? { min: round(Object.values(ranges).reduce((x, [lo]) => x + lo, 0), 1), max: round(Object.values(ranges).reduce((x, [, hi]) => x + hi, 0), 1), missing: Object.entries(cats).filter(([, v]) => v === null).map(([k]) => k) } : null,
     details: {
       data: Object.fromEntries(DATA_CASES.map((c, i) => [c.id, data[i]?.grade ?? null])),
       speedSeconds: Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v === Infinity ? 'failed' : round(v, 3)])),
@@ -214,7 +261,7 @@ const tools = ADAPTERS.map((a) => {
       pageMB: round(mb, 2),
       cls: round(cls, 3),
       ads,
-      interruptions: [...new Set(interrupted.flatMap((r) => [...(r.interruptions ?? []), ...((r.net?.popups ?? 0) > 0 ? ['pop-up window'] : [])]))],
+      interruptions: [...new Set(interrupted.flatMap((r) => [...realInterruptions(r), ...((r.net?.popups ?? 0) > 0 ? ['pop-up window'] : [])]))],
       keyboard: kb ? { inputName: kb.inputName, controlName: kb.controlName, keyboardFormat: kb.keyboardFormat, tabsToInput: kb.tabsToInput, nameErrors: kb.nameErrors ?? [] } : null,
       pageParts: pageParts && Object.fromEntries(Object.entries(pageParts).map(([k, v]) => [k, round(v)])),
     },
@@ -233,6 +280,12 @@ function rank(list, key) {
   });
 }
 for (const key of Object.keys(WEIGHTS)) rank(tools, key);
+// Where an unranked tool would place at the low and the high end of its range (default weights).
+for (const x of tools.filter((t) => t.range)) {
+  const totals = tools.filter((t) => t.totals).map((t) => t.totals.Default);
+  x.range.rankBest = totals.filter((v) => v > x.range.max).length + 1;
+  x.range.rankWorst = totals.filter((v) => v >= x.range.min).length + 1;
+}
 tools.sort((a, b) => (b.total ?? -1) - (a.total ?? -1));
 
 // --gaps: what is still missing, by the rules above: Chromium speed repetitions 1-5 without a counted run (as
@@ -259,6 +312,6 @@ const pad = (s, n) => String(s ?? '—').padEnd(n);
 console.log(`${pad('rank', 5)}${pad('tool', 46)}${pad('total', 7)}${pad('data', 7)}${pad('speed', 7)}${pad('privacy', 8)}${pad('ease', 7)}${pad('page', 6)} ranks under ${Object.keys(WEIGHTS).slice(1).join(' / ')}`);
 for (const x of tools) {
   const c = x.categories;
-  console.log(`${pad(x.ranks?.Default, 5)}${pad(x.name + (x.publisher ? ' (publisher)' : ''), 46)}${pad(x.total, 7)}${pad(c.data, 7)}${pad(c.speed, 7)}${pad(c.privacy, 8)}${pad(c.ease, 7)}${pad(c.page, 6)} ${x.ranks ? Object.keys(WEIGHTS).slice(1).map((k) => x.ranks[k]).join(' / ') : x.notes.join('; ')}`);
+  console.log(`${pad(x.ranks?.Default, 5)}${pad(x.name + (x.publisher ? ' (publisher)' : ''), 46)}${pad(x.total, 7)}${pad(c.data, 7)}${pad(c.speed, 7)}${pad(c.privacy, 8)}${pad(c.ease, 7)}${pad(c.page, 6)} ${x.ranks ? Object.keys(WEIGHTS).slice(1).map((k) => x.ranks[k]).join(' / ') : x.notes.join('; ')}${x.range ? ` · between ${x.range.min} and ${x.range.max} points, rank ${x.range.rankBest}–${x.range.rankWorst}` : ''}`);
 }
-if (o.out) writeFileSync(o.out, JSON.stringify({ scoredAt: new Date().toISOString(), protocol: 'protocol.md section 6', weights: WEIGHTS, records: records.length, excluded, tools }, null, 1) + '\n');
+if (o.out) writeFileSync(o.out, JSON.stringify({ scoredAt: new Date().toISOString(), protocol: 'protocol.md section 6', weights: WEIGHTS, records: records.length, excluded, corrections, tools }, null, 1) + '\n');

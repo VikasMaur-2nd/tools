@@ -1,0 +1,11 @@
+[
+ {
+  "tool": "jsoneditoronline",
+  "suite": "keyboard",
+  "set": {
+   "controlName": "Format JSON: add proper indentation and new lines (Ctrl+I)"
+  },
+  "reason": "the keyboard check misread accessible names that Playwright prints in YAML quotes (names containing a colon); fixed in lib/harness.mjs nameFromSnapshot (amendment 5)",
+  "evidence": "dev/names.mjs on 2026-11-02T13:56:23.215Z: control snapshot - 'button \"Format JSON: add proper indentation and new lines (Ctrl+I)\"':. Every other tool's names matched the CI keyboard check of run 41454555943."
+ }
+]

@@ -21,6 +21,23 @@ export interface Post {
 
 export const POSTS: Post[] = [
   {
+    slug: 'best-json-formatter',
+    title: 'Best JSON formatter in 2026: 13 online tools tested',
+    description:
+      'A pre-registered, reproducible test of the 13 most-shown online JSON formatters: data safety, speed up to 50 MB, privacy and error help, with every script and raw result.',
+    excerpt: 'Thirteen JSON formatters, one scripted test: which keep your data intact, which are fast with big files, and which send your JSON away.',
+    category: 'Research',
+    published: '2026-11-02',
+    updated: '2026-11-02',
+    minutes: 15,
+    keywords: ['best JSON formatter', 'JSON formatter comparison', 'online JSON formatter', 'JSON beautifier comparison', 'JSON formatter benchmark', 'large JSON formatter'],
+    sample: `{
+  "tools": 13,
+  "preRegistered": true,
+  "rawData": "public"
+}`,
+  },
+  {
     slug: 'json-formatter-privacy-study',
     title: 'Do online JSON formatters upload your data? A 12-tool canary test',
     description:

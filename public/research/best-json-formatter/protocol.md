@@ -394,3 +394,32 @@ Decisions made after seeing results (stated as such):
    and did not record when it could not read one, which made "no name" and "page too busy to answer" look the same.
    Names are now read with a 20 s limit, and a name that can't be read is recorded as such (it still scores like a
    missing name).
+
+### Amendment 5 — 2026-11-02, after the last measured run (scoring)
+
+1. **What the final job got.** Two of its four jobs ended with GitHub's "the runner has received a shutdown signal"
+   during 50 MB runs on jsonformatter.org and Code Beautify, as job A had on JSONLint: a 50 MB document in these
+   pages, on a 7 GB runner, takes the machine down. Their results are recovered from the job logs (marked `fromLog`).
+   Neither tool got a counted 50 MB run, so their speed is not measured and they are unranked. jsonbeautify.com was
+   down again (HTTP 522), so its WebKit check stays unmeasured and it is unranked. JSONLint's editor did not load
+   within 60 s in the final job's checks (it did in other runs), so its error and feature checks stay unmeasured
+   and it is unranked. Measurement ended here, as amendment 4 said; 909 CI minutes were used in all.
+2. **Ranges for unranked tools.** For each tool that could not be fully measured we publish its total with every
+   missing piece at zero and at full marks, case by case (`range` in `scores.json`), and where that range would place
+   it. Nothing is estimated; the true score lies in the range.
+3. **Harness errors are unmeasured, not failures.** A data-safety, error or WebKit case that ended in an error of our
+   own code (recorded as `failure`) is unmeasured. A tool that showed nothing has no such error and keeps its
+   "no output" grade. This applies to every tool; it changes JSONLint's three data cases from "no output" to
+   unmeasured.
+4. **Accessible names with a colon.** The keyboard check misread names that Playwright prints in quotes (any name
+   containing a colon). Fixed (`nameFromSnapshot`); every tool's names were read again with the fix
+   (`results/names-2026-11-02.json`). Only one differed from the CI run: JSON Editor Online's Format button is named
+   "Format JSON: add proper indentation and new lines (Ctrl+I)". It is corrected in `results/corrections.json`, which the
+   scorer applies.
+5. **"Input covered" is not used as an interruption.** The check misfired when the input was below the fold (it
+   reported static.app's own Download button). No score changes: static.app also showed a consent dialog.
+6. **JSON Checker's page weight** varied from 1.8 to 98.7 MB between five identical visits on the runners; a visit
+   from the study server transferred 2.4 MB, most of it Cloudflare's bot check. The measured median (49.4 MB) is
+   scored, as for every tool; the article reports the spread.
+7. **Tool Kumar's build** was the same before the first and after the last measured run (`tool-kumar-build.json`);
+   its last production deployment was on 2026-10-30, before the study.

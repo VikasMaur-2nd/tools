@@ -1,0 +1,10 @@
+[13:38:43] speed jsonformatter-org 1mb #5 2.088 s, freeze 1.52 s
+[13:40:00] speed jsonformatter-org 10mb #3 11.020 s, freeze 6.43 s
+[13:42:16] speed jsonformatter-org 10mb #5 9.134 s, freeze 5.25 s
+[13:44:17] speed jsonformatter-org 50mb #1 FAIL could not start: opening the clipboard page took over 20 s
+[13:45:47] speed jsonformatter-org 50mb #1 retry FAIL could not start: filling the clipboard page took over 30 s
+[13:47:36] speed jsonformatter-org 50mb #2 FAIL could not start: filling the clipboard page took over 30 s
+[13:49:26] speed jsonformatter-org 50mb #2 retry FAIL could not start: filling the clipboard page took over 30 s
+[13:50:25] speed jsonformatter-org 50mb #3 FAIL could not start: filling the clipboard page took over 30 s
+##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.
+##[error]Process completed with exit code 143.

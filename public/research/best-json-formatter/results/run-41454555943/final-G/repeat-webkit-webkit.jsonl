@@ -1,0 +1,3 @@
+{"suite":"webkit","engine":"webkit","at":"2026-11-02T13:39:06.440Z","tool":"jsonbeautify-com","size":"100kb","ok":false,"failure":"site unavailable: HTTP 522","uploads":[],"crashed":false,"net":{"requests":7,"bytes":16519,"thirdPartyDomains":[],"adRequests":0,"adDomains":[],"popups":0}}
+{"suite":"webkit-data","engine":"webkit","at":"2026-11-02T13:39:26.410Z","tool":"jsonbeautify-com","case":"big-integer","grade":"untested","ok":false,"failure":"site unavailable: HTTP 522"}
+{"suite":"webkit-data","engine":"webkit","at":"2026-11-02T13:39:26.410Z","tool":"jsonbeautify-com","case":"unicode","grade":"untested","ok":false,"failure":"site unavailable: HTTP 522"}
