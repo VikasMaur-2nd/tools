@@ -12,7 +12,9 @@ if (!Array.isArray(jobs) || !jobs.length) throw new Error('ci-run.json has no jo
 const matrix = jobs.map((j) => {
   if (!j.name || !j.cmd || !j.minutes) throw new Error(`job needs name, cmd and minutes: ${JSON.stringify(j)}`);
   if (!/^[\w./ ,:=-]+$/.test(j.cmd)) throw new Error(`cmd may only hold plain words: ${j.cmd}`);
-  return { name: j.name, cmd: j.cmd, browsers: j.browsers ?? 'chromium', minutes: j.minutes, timeout: Math.ceil(j.minutes * 1.5) + 5 };
+  // The test step stops first (stepTimeout), so the job (timeout) still has time to upload what was measured.
+  const stepTimeout = Math.ceil(j.minutes * 1.5);
+  return { name: j.name, cmd: j.cmd, browsers: j.browsers ?? 'chromium', minutes: j.minutes, stepTimeout, timeout: stepTimeout + 10 };
 });
 const total = matrix.reduce((s, j) => s + Math.ceil(j.minutes + 2.5), 0);
 console.log(matrix.map((j) => `${j.name.padEnd(28)} ${String(j.minutes).padStart(3)} min  node ${j.cmd}`).join('\n'));

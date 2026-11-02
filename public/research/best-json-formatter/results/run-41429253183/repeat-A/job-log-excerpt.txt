@@ -1,0 +1,33 @@
+2026-11-02T10:31:03.0827274Z [10:31:03] speed jsonbeautify-com 50mb #1 FAIL site unavailable: HTTP 522
+2026-11-02T10:31:23.1989303Z [10:31:23] speed jsonbeautify-com 50mb #1 retry FAIL site unavailable: HTTP 522
+2026-11-02T10:31:42.9990813Z [10:31:42] speed jsonbeautify-com 100kb #2 FAIL site unavailable: HTTP 522
+2026-11-02T10:31:54.1522759Z [10:31:54] speed jsonbeautify-com 100kb #2 retry 0.218 s, freeze 0.12 s
+2026-11-02T10:32:07.8497881Z [10:32:07] speed jsonbeautify-com 1mb #2 0.711 s, freeze 0.45 s
+2026-11-02T10:32:28.1965112Z [10:32:28] speed jsonbeautify-com 10mb #2 FAIL site unavailable: HTTP 522
+2026-11-02T10:33:33.4839139Z [10:33:33] speed jsonbeautify-com 10mb #2 retry FAIL page.goto: Timeout 45000ms exceeded.
+2026-11-02T10:33:33.4868378Z [10:33:33] speed jsonbeautify-com 50mb #2 FAIL skipped: failed twice at 10mb
+2026-11-02T10:34:12.8628429Z [10:34:12] speed jsonbeautify-com 100kb #3 0.166 s, freeze 0.07 s
+2026-11-02T10:34:33.1308631Z [10:34:33] speed jsonbeautify-com 1mb #3 FAIL site unavailable: HTTP 522
+2026-11-02T10:34:46.4598038Z [10:34:46] speed jsonbeautify-com 1mb #3 retry 0.704 s, freeze 0.43 s
+2026-11-02T10:34:46.4607124Z [10:34:46] speed jsonbeautify-com 10mb #3 FAIL skipped: failed twice at 10mb
+2026-11-02T10:34:46.4636857Z [10:34:46] speed jsonbeautify-com 50mb #3 FAIL skipped: failed twice at 10mb
+2026-11-02T10:35:06.4076211Z [10:35:06] speed jsonbeautify-com 100kb #4 FAIL site unavailable: HTTP 522
+2026-11-02T10:35:17.1212352Z [10:35:17] speed jsonbeautify-com 100kb #4 retry 0.164 s, freeze 0.07 s
+2026-11-02T10:35:37.1707911Z [10:35:37] speed jsonbeautify-com 1mb #4 FAIL site unavailable: HTTP 522
+2026-11-02T10:35:56.9368038Z [10:35:56] speed jsonbeautify-com 1mb #4 retry FAIL site unavailable: HTTP 522
+2026-11-02T10:35:56.9382326Z [10:35:56] speed jsonbeautify-com 10mb #4 FAIL skipped: failed twice at 10mb
+2026-11-02T10:35:56.9416842Z [10:35:56] speed jsonbeautify-com 50mb #4 FAIL skipped: failed twice at 10mb
+2026-11-02T10:36:59.6778877Z [10:36:59] speed jsonbeautify-com 100kb #5 FAIL page.goto: Timeout 45000ms exceeded.
+2026-11-02T10:37:18.2837437Z [10:37:18] speed jsonbeautify-com 100kb #5 retry 0.158 s, freeze 0.07 s
+2026-11-02T10:38:23.5810836Z [10:38:23] speed jsonbeautify-com 1mb #5 FAIL page.goto: Timeout 45000ms exceeded.
+2026-11-02T10:38:43.4989785Z [10:38:43] speed jsonbeautify-com 1mb #5 retry FAIL site unavailable: HTTP 522
+2026-11-02T10:38:43.4995238Z [10:38:43] speed jsonbeautify-com 10mb #5 FAIL skipped: failed twice at 10mb
+2026-11-02T10:38:43.5005604Z [10:38:43] speed jsonbeautify-com 50mb #5 FAIL skipped: failed twice at 10mb
+2026-11-02T10:41:33.7349101Z [10:41:33] speed jsonlint 50mb #1 62.566 s, freeze 40.93 s
+2026-11-02T10:42:40.5068937Z [10:42:40] speed jsonlint 10mb #2 13.155 s, freeze 3.85 s
+2026-11-02T10:45:22.9220988Z [10:45:22] speed jsonlint 50mb #2 42.200 s, freeze 26.38 s
+2026-11-02T10:46:10.3635121Z [10:46:10] speed jsonlint 100kb #3 0.458 s, freeze 0.12 s
+2026-11-02T10:47:00.4674737Z [10:47:00] speed jsonlint 1mb #3 3.953 s, freeze 1.53 s
+2026-11-02T10:48:19.3878632Z [10:48:19] speed jsonlint 10mb #3 9.611 s, freeze 3.23 s
+2026-11-02T10:49:47.7209411Z [10:49:47] speed jsonlint 50mb #3 FAIL could not start: copying took over 20 s
+2026-11-02T10:51:17.0017730Z ##[error]Process completed with exit code 143.

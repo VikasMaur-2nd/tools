@@ -9,10 +9,10 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ADAPTERS } from './adapters/index.mjs';
-import { countsAsUpload } from './lib/harness.mjs';
+import { NOT_COUNTED, countsAsUpload } from './lib/harness.mjs';
 import { DATA_CASES, ERROR_CASES } from './cases.mjs';
 
-const { values: o, positionals } = parseArgs({ allowPositionals: true, options: { out: { type: 'string' } } });
+const { values: o, positionals } = parseArgs({ allowPositionals: true, options: { out: { type: 'string' }, gaps: { type: 'boolean' } } });
 const dir = positionals[0] ?? fail('usage: node score.mjs <results dir>');
 function fail(m) {
   console.error(m);
@@ -29,7 +29,7 @@ const records = [];
   }
 })(dir);
 
-// excluded.json (in the results folder, optional) lists runs to leave out, each with its reason and evidence:
+// excluded.json (in the results folder, optional) lists outage windows: failed runs inside them are left out, each window with its reason and evidence:
 // [{ "tool": "…", "from": ISO time, "to": ISO time, "reason": "…", "evidence": "…" }] (protocol amendment 3).
 let excluded = [];
 try {
@@ -38,11 +38,29 @@ try {
 const before = records.length;
 for (let i = records.length - 1; i >= 0; i--) {
   const r = records[i];
-  if (excluded.some((x) => x.tool === r.tool && r.at >= x.from && r.at <= x.to)) records.splice(i, 1);
+  // Only failures inside an outage window are left out; a run that succeeded while the site was briefly up stands.
+  const failed = r.ok === false || !!r.failure || r.untested || ['no output', 'untested'].includes(r.grade) || (r.docs ?? []).some((d) => d.failure);
+  if (failed && excluded.some((x) => x.tool === r.tool && r.at >= x.from && r.at <= x.to)) records.splice(i, 1);
 }
-if (before !== records.length) console.log(`left out ${before - records.length} runs listed in excluded.json`);
+if (before !== records.length) console.error(`left out ${before - records.length} runs listed in excluded.json`);
 // Oldest first, so "the last record" of anything is its latest attempt (a run repeated later replaces the earlier one).
 records.sort((a, b) => a.at.localeCompare(b.at));
+// Runs that say nothing about the tool (the site was down, the harness's clipboard step stalled), and the speed runs
+// the size ladder skipped only because of them, count neither way (amendment 3).
+const notCounted = [];
+for (let i = 0; i < records.length; i++) {
+  const r = records[i];
+  if (!['speed', 'webkit', 'phone', 'offline', 'keyboard'].includes(r.suite) || r.ok !== false) continue;
+  let drop = NOT_COUNTED.test(r.failure ?? '');
+  const m = /failed twice at (\w+)/.exec(r.failure ?? '');
+  if (r.skipped && m) {
+    const stop = records.slice(0, i).filter((x) => x.suite === 'speed' && x.engine === r.engine && x.tool === r.tool && x.size === m[1] && x.ok === false && !x.skipped).at(-1);
+    drop = !!stop && NOT_COUNTED.test(stop.failure ?? '');
+  }
+  if (drop) notCounted.push(i);
+}
+for (const i of notCounted.reverse()) records.splice(i, 1);
+console.error(`not counted: ${notCounted.length} runs (site down, clipboard step, or skipped because of those)`);
 
 export const logScore = (x, good, bad) => (x <= good ? 1 : x >= bad ? 0 : (Math.log(bad) - Math.log(x)) / (Math.log(bad) - Math.log(good)));
 const median = (xs) => {
@@ -68,6 +86,7 @@ const medianTime = (tool, engine, size, field) => {
   const v = perRep(tool, engine, size, field);
   return v.length ? median(v) : null;
 };
+const runCount = (tool, engine, size) => perRep(tool, engine, size).length;
 
 const WEIGHTS = {
   Default: { data: 25, speed: 25, privacy: 20, ease: 20, page: 10 },
@@ -91,12 +110,14 @@ const tools = ADAPTERS.map((a) => {
   // Speed (5.3), Chromium medians, failures infinitely slow
   const t = Object.fromEntries(['100kb', '1mb', '10mb', '50mb'].map((s) => [s, medianTime(id, 'chromium', s)]));
   const fr = Object.fromEntries(['1mb', '10mb'].map((s) => [s, medianTime(id, 'chromium', s, 'freezeMs')]));
-  const speedTested = t['100kb'] !== null;
+  // A size with no counted run (every attempt was not counted, amendment 3) is not measured: the category is then
+  // incomplete and the tool unranked, rather than scored as if it had failed.
+  const speedTested = ['100kb', '1mb', '10mb', '50mb'].every((s) => t[s] !== null);
   const speedParts = speedTested && {
     '100kb': 5 * logScore(t['100kb'], 0.2, 3),
-    '1mb': 5 * logScore(t['1mb'] ?? Infinity, 0.5, 5),
-    '10mb': 5 * logScore(t['10mb'] ?? Infinity, 2, 120),
-    '50mb': 5 * logScore(t['50mb'] ?? Infinity, 5, 120),
+    '1mb': 5 * logScore(t['1mb'], 0.5, 5),
+    '10mb': 5 * logScore(t['10mb'], 2, 120),
+    '50mb': 5 * logScore(t['50mb'], 5, 120),
     freeze1mb: 2.5 * logScore(fr['1mb'] ?? Infinity, 0.1, 3),
     freeze10mb: 2.5 * logScore(fr['10mb'] ?? Infinity, 0.1, 3),
   };
@@ -176,6 +197,7 @@ const tools = ADAPTERS.map((a) => {
       data: Object.fromEntries(DATA_CASES.map((c, i) => [c.id, data[i]?.grade ?? null])),
       speedSeconds: Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v === Infinity ? 'failed' : round(v, 3)])),
       freezeSeconds: Object.fromEntries(Object.entries(fr).map(([k, v]) => [k, v === Infinity ? 'failed' : round(v, 3)])),
+      speedRuns: Object.fromEntries(['100kb', '1mb', '10mb', '50mb'].map((s) => [s, runCount(id, 'chromium', s)])),
       // Firefox: only 100 KB and 1 MB are reported (protocol amendment 2).
       firefoxSeconds: Object.fromEntries(['100kb', '1mb'].map((s) => { const v = medianTime(id, 'firefox', s); return [s, v === Infinity ? 'failed' : round(v, 3)]; })),
       speedParts: speedParts && Object.fromEntries(Object.entries(speedParts).map(([k, v]) => [k, round(v)])),
@@ -212,6 +234,26 @@ function rank(list, key) {
 }
 for (const key of Object.keys(WEIGHTS)) rank(tools, key);
 tools.sort((a, b) => (b.total ?? -1) - (a.total ?? -1));
+
+// --gaps: what is still missing, by the rules above: Chromium speed repetitions 1-5 without a counted run (as
+// tool:size:rep for run.mjs --runs), and the checks of each part that could not be measured.
+if (o.gaps) {
+  const missing = [];
+  for (const a of ADAPTERS.filter((x) => !x.blocked)) {
+    for (const size of ['100kb', '1mb', '10mb', '50mb']) {
+      for (let rep = 1; rep <= 5; rep++) {
+        const has = records.some((r) => r.suite === 'speed' && r.engine === 'chromium' && r.tool === a.id && r.size === size && r.rep === rep && r.ok !== null);
+        if (!has) missing.push(`${a.id}:${size}:${rep}`);
+      }
+    }
+    const t = tools.find((x) => x.id === a.id);
+    const parts = [...Object.entries(t.details.easeParts).filter(([, v]) => v === null).map(([k]) => `ease.${k}`), ...(t.categories.page === null ? ['page'] : []), ...(t.categories.data === null ? ['data'] : [])];
+    if (parts.length) console.error(`${a.id}: missing ${parts.join(', ')}`);
+  }
+  console.error(`speed runs without a counted result: ${missing.length}`);
+  console.log(missing.join(','));
+  process.exit(0);
+}
 
 const pad = (s, n) => String(s ?? '—').padEnd(n);
 console.log(`${pad('rank', 5)}${pad('tool', 46)}${pad('total', 7)}${pad('data', 7)}${pad('speed', 7)}${pad('privacy', 8)}${pad('ease', 7)}${pad('page', 6)} ranks under ${Object.keys(WEIGHTS).slice(1).join(' / ')}`);

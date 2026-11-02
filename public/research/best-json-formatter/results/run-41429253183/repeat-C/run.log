@@ -1,0 +1,30 @@
+repeat · chromium 156.0.8078.4 · 13 tools
+[10:31:12] data jsonlint big-integer changed
+[10:35:11] data jsonlint max-safe-plus-one no output
+[10:38:55] data jsonlint long-decimal no output
+[10:42:59] data jsonlint number-spelling no output
+[10:43:34] data jsonlint huge-exponent changed
+[10:43:37] data jsonlint duplicate-keys changed
+[10:43:41] data jsonlint key-order changed
+[10:43:44] data jsonlint unicode pass
+[10:43:48] data jsonlint escapes pass
+[10:43:51] data jsonlint proto-key pass
+[10:44:05] data jsonlint top-level-scalar pass
+[10:44:11] data jsonlint deep-nesting refused
+[10:44:16] data jsonlint long-string pass
+[10:45:22] errors jsonlint trailing-comma
+[10:45:22] errors jsonlint missing-comma
+[10:45:22] errors jsonlint single-quotes
+[10:45:22] errors jsonlint unquoted-key
+[10:45:22] errors jsonlint comment
+[10:45:22] errors jsonlint unclosed-array
+[10:45:22] errors jsonlint bad-literal
+[10:45:22] errors jsonlint raw-newline
+[10:45:22] errors jsonlint extra-bracket
+[10:46:04] features jsonlint *
+[10:46:54] keyboard jsonlint  FAIL locator.waitFor: Timeout 20000ms exceeded.
+[10:48:27] offline jsonlint 100kb FAIL locator.waitFor: Timeout 20000ms exceeded.
+[10:50:04] phone jsonlint 100kb #1 FAIL locator.waitFor: Timeout 20000ms exceeded.
+[10:51:38] phone jsonlint 100kb #2 FAIL locator.waitFor: Timeout 20000ms exceeded.
+[10:53:11] phone jsonlint 100kb #3 FAIL opening the page: no answer within 75 s
+no adapter jsonbeautify-com

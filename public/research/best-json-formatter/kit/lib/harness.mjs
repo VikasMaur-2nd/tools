@@ -206,7 +206,9 @@ export async function stage(page, adapter, text) {
     30_000,
     'filling the clipboard page',
   );
-  await step(helper.keyboard.press(`${MOD}+C`), 20_000, 'copying');
+  await step(helper.keyboard.press(`${MOD}+C`), 60_000, 'copying');
+  // Free the copy held by the clipboard page (a 50 MB document would otherwise stay in memory for the whole job).
+  await step(helper.evaluate(() => (document.getElementById('t').value = '')), 20_000, 'clearing the clipboard page');
   await step(page.bringToFront(), 20_000, 'switching back to the tool');
   await step(focusInput(page, adapter), 45_000, 'focusing the input');
 }
@@ -238,8 +240,14 @@ export async function focusInput(page, adapter) {
   }
 }
 
-/** Failures before the paste reached the tool (protocol amendment 3): they say nothing about the tool. */
-export const DID_NOT_START = /^(site unavailable|could not start|putting the file on the clipboard|page\.setContent|opening the page|locator\.waitFor|locator\.click: Timeout|page\.waitForFunction|the paste key press was not seen)/;
+/**
+ * Failures before the paste reached the tool (protocol amendment 3). NOT_COUNTED: the site was down (a server error,
+ * the page not loading) or the harness's own clipboard step stalled; such runs say nothing about the tool and count
+ * neither way. DID_NOT_START adds "the page loaded but its input never became usable", which is repeated once and
+ * then counts as a failure, because that is what a visitor would see.
+ */
+export const NOT_COUNTED = /^(site unavailable|page\.goto: Timeout|could not start|putting the file on the clipboard|page\.setContent)/;
+export const DID_NOT_START = /^(site unavailable|page\.goto: Timeout|could not start|putting the file on the clipboard|page\.setContent|opening the page|locator\.waitFor|locator\.click: Timeout|page\.waitForFunction|the paste key press was not seen)/;
 
 /** Resolves with the promise's value, or `fallback` after ms (a busy frame must not stall the harness). */
 const race = (p, ms, fallback) => Promise.race([p.catch(() => fallback), sleep(ms).then(() => fallback)]);

@@ -72,6 +72,7 @@ jobs:
         working-directory: ${{ env.KIT }}
         run: pnpm exec playwright-core install --with-deps ${{ matrix.browsers }}
       - name: Run ${{ matrix.cmd }}
+        timeout-minutes: ${{ matrix.stepTimeout }}
         working-directory: ${{ env.KIT }}
         run: |
           OUT="$RUNNER_TEMP/out"

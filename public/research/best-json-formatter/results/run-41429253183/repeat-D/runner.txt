@@ -1,0 +1,7 @@
+job: repeat-D
+commit: dd25af641f0d84d715350b3beed4292ba9e12337
+runner: Linux ubuntu24 20261026.354.1
+cpu: AMD EPYC 9V74 80-Core Processor x 2
+Mem:            7932        1195        4611          46        2450        6736
+started: 2026-11-02T10:30:57Z
+finished: 2026-11-02T10:39:55Z

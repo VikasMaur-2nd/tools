@@ -158,11 +158,18 @@ async function listedRuns(browser) {
       continue;
     }
     texts[size] ??= generate(SIZES[size]);
+    // Big files get a fresh browser per run, so memory from earlier runs can't pile up (a runner was stopped on one).
+    const big = SIZES[size] >= 10_000_000;
+    const b = big ? await launch(engine) : browser;
     let r;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      r = await speedRun(browser, adapter, size, texts[size]);
-      record({ suite: 'speed', ...r, rep: Number(rep), attempt, repeated: true });
-      if (r.ok) break;
+    try {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        r = await speedRun(b, adapter, size, texts[size]);
+        record({ suite: 'speed', ...r, rep: Number(rep), attempt, repeated: true });
+        if (r.ok) break;
+      }
+    } finally {
+      if (big) await b.close().catch(() => {});
     }
     if (!r.ok && !DID_NOT_START.test(r.failure ?? '')) stopAt.set(id, size);
   }
@@ -319,7 +326,8 @@ async function errorSuite(browser, adapter) {
       }
     }
   } catch (e) {
-    for (const c of ERROR_CASES) record({ suite: 'errors', tool: adapter.id, case: c.id, detected: false, rightLine: false, untested: true, failure: String(e.message).split('\n')[0] });
+    if (e.page) await shot(e.page, join(o.out, 'shots', `errors-${adapter.id}-open.jpg`));
+    for (const c of ERROR_CASES) record({ suite: 'errors', tool: adapter.id, case: c.id, detected: false, rightLine: false, untested: true, failure: why(e) });
   } finally {
     await within(context.close(), 20_000, 'closing').catch(() => {});
   }
@@ -342,7 +350,8 @@ async function featureSuite(browser, adapter) {
       record({ suite: 'features', tool: adapter.id, feature, found, how: typeof how === 'string' ? how : 'script', why });
     }
   } catch (e) {
-    record({ suite: 'features', tool: adapter.id, feature: '*', found: false, failure: String(e.message).split('\n')[0] });
+    if (e.page) await shot(e.page, join(o.out, 'shots', `features-${adapter.id}-open.jpg`));
+    record({ suite: 'features', tool: adapter.id, feature: '*', found: false, failure: why(e) });
   } finally {
     await within(context.close(), 20_000, 'closing').catch(() => {});
   }
@@ -408,8 +417,9 @@ async function keyboardSuite(browser, adapter) {
     } else res.keyboardFormat = false;
     res.ok = true;
   } catch (e) {
+    if (e.page) await shot(e.page, join(o.out, 'shots', `keyboard-${adapter.id}-open.jpg`));
     res.ok = false;
-    res.failure = String(e.message).split('\n')[0];
+    res.failure = why(e);
   } finally {
     await within(context.close(), 20_000, 'closing').catch(() => {});
   }
@@ -467,7 +477,7 @@ async function repeatSuite(browser) {
   for (const step of plan) {
     o.runs = step.runs;
     o.only = step.only;
-    tools.splice(0, tools.length, ...(step.tools ? step.tools.split(',').map((id) => ADAPTERS.find((a) => a.id === id) ?? fail(`no adapter ${id}`)) : ADAPTERS));
+    tools = step.tools ? step.tools.split(',').map((id) => ADAPTERS.find((a) => a.id === id) ?? fail(`no adapter ${id}`)) : ADAPTERS;
     fileFor = `repeat-${step.suite}`;
     if (step.suite === 'speed') await listedRuns(browser);
     else if (step.suite === 'quality') await qualitySuite(browser);

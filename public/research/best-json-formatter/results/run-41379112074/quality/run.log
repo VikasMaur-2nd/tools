@@ -1,0 +1,471 @@
+quality · chromium 156.0.8078.4 · 13 tools
+[02:44:54] data jsonformatter-org big-integer changed
+[02:44:57] data jsonformatter-org max-safe-plus-one changed
+[02:45:00] data jsonformatter-org long-decimal changed
+[02:45:03] data jsonformatter-org number-spelling spelling
+[02:45:06] data jsonformatter-org huge-exponent changed
+[02:45:08] data jsonformatter-org duplicate-keys changed
+[02:45:11] data jsonformatter-org key-order changed
+[02:45:15] data jsonformatter-org unicode pass
+[02:45:21] data jsonformatter-org escapes pass
+[02:45:23] data jsonformatter-org proto-key pass
+[02:45:31] data jsonformatter-org top-level-scalar pass
+[02:45:35] data jsonformatter-org deep-nesting pass
+[02:45:42] data jsonformatter-org long-string pass
+[02:46:27] errors jsonformatter-org trailing-comma
+[02:46:34] errors jsonformatter-org missing-comma
+[02:46:40] errors jsonformatter-org single-quotes
+[02:46:46] errors jsonformatter-org unquoted-key
+[02:46:52] errors jsonformatter-org comment
+[02:46:58] errors jsonformatter-org unclosed-array
+[02:47:06] errors jsonformatter-org bad-literal
+[02:47:12] errors jsonformatter-org raw-newline
+[02:47:18] errors jsonformatter-org extra-bracket
+[02:47:45] features jsonformatter-org indent
+[02:47:47] features jsonformatter-org minify
+[02:47:50] features jsonformatter-org tree
+[02:47:50] features jsonformatter-org search
+[02:47:50] features jsonformatter-org sortKeys
+[02:47:50] features jsonformatter-org copy
+[02:47:50] features jsonformatter-org download
+[02:47:50] features jsonformatter-org openFile
+[02:47:58] features jsonformatter-org loadUrl
+[02:47:58] features jsonformatter-org darkMode
+[02:47:58] features jsonformatter-org repair
+[02:47:58] features jsonformatter-org convert
+[02:50:18] keyboard jsonformatter-org 
+[02:51:40] offline jsonformatter-org 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[02:53:22] phone jsonformatter-org 100kb #1 1.282 s, freeze 0.68 s
+[02:54:00] phone jsonformatter-org 100kb #2 1.020 s, freeze 0.62 s
+[02:55:34] phone jsonformatter-org 100kb #3 1.589 s, freeze 0.62 s
+[02:55:41] data jsonviewer-io big-integer changed
+[02:55:43] data jsonviewer-io max-safe-plus-one changed
+[02:55:45] data jsonviewer-io long-decimal changed
+[02:55:48] data jsonviewer-io number-spelling spelling
+[02:55:50] data jsonviewer-io huge-exponent changed
+[02:55:52] data jsonviewer-io duplicate-keys changed
+[02:55:54] data jsonviewer-io key-order changed
+[02:55:56] data jsonviewer-io unicode pass
+[02:55:59] data jsonviewer-io escapes pass
+[02:56:01] data jsonviewer-io proto-key pass
+[02:56:07] data jsonviewer-io top-level-scalar pass
+[02:56:10] data jsonviewer-io deep-nesting pass
+[02:56:14] data jsonviewer-io long-string pass
+[02:56:22] errors jsonviewer-io trailing-comma
+[02:56:28] errors jsonviewer-io missing-comma
+[02:56:33] errors jsonviewer-io single-quotes
+[02:56:38] errors jsonviewer-io unquoted-key
+[02:56:44] errors jsonviewer-io comment
+[02:56:49] errors jsonviewer-io unclosed-array
+[02:56:55] errors jsonviewer-io bad-literal
+[02:57:00] errors jsonviewer-io raw-newline
+[02:57:05] errors jsonviewer-io extra-bracket
+[02:57:08] features jsonviewer-io indent
+[02:57:08] features jsonviewer-io minify
+[02:57:08] features jsonviewer-io tree
+[02:57:08] features jsonviewer-io search
+[02:57:08] features jsonviewer-io sortKeys
+[02:57:08] features jsonviewer-io copy
+[02:57:08] features jsonviewer-io download
+[02:57:08] features jsonviewer-io openFile
+[02:57:08] features jsonviewer-io loadUrl
+[02:57:08] features jsonviewer-io darkMode
+[02:57:12] features jsonviewer-io repair
+[02:57:12] features jsonviewer-io convert
+[02:57:16] keyboard jsonviewer-io 
+[02:57:24] offline jsonviewer-io 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[02:57:34] phone jsonviewer-io 100kb #1 0.465 s, freeze 0.23 s
+[02:57:44] phone jsonviewer-io 100kb #2 0.686 s, freeze 0.25 s
+[02:57:53] phone jsonviewer-io 100kb #3 0.614 s, freeze 0.23 s
+[02:58:30] data codebeautify big-integer changed
+[02:58:33] data codebeautify max-safe-plus-one changed
+[02:58:39] data codebeautify long-decimal changed
+[02:58:42] data codebeautify number-spelling spelling
+[02:58:44] data codebeautify huge-exponent changed
+[02:58:47] data codebeautify duplicate-keys changed
+[02:58:49] data codebeautify key-order changed
+[02:58:52] data codebeautify unicode pass
+[02:58:54] data codebeautify escapes pass
+[02:58:56] data codebeautify proto-key pass
+[02:59:04] data codebeautify top-level-scalar pass
+[02:59:09] data codebeautify deep-nesting pass
+[02:59:15] data codebeautify long-string pass
+[02:59:52] errors codebeautify trailing-comma
+[03:00:00] errors codebeautify missing-comma
+[03:00:06] errors codebeautify single-quotes
+[03:00:12] errors codebeautify unquoted-key
+[03:00:18] errors codebeautify comment
+[03:00:24] errors codebeautify unclosed-array
+[03:00:33] errors codebeautify bad-literal
+[03:00:39] errors codebeautify raw-newline
+[03:00:45] errors codebeautify extra-bracket
+[03:01:17] features codebeautify indent
+[03:01:18] features codebeautify minify
+[03:01:18] features codebeautify tree
+[03:01:19] features codebeautify search
+[03:01:19] features codebeautify sortKeys
+[03:01:19] features codebeautify copy
+[03:01:19] features codebeautify download
+[03:01:19] features codebeautify openFile
+[03:01:19] features codebeautify loadUrl
+[03:01:19] features codebeautify darkMode
+[03:01:19] features codebeautify repair
+[03:01:19] features codebeautify convert
+[03:02:08] keyboard codebeautify 
+[03:03:09] offline codebeautify 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[03:05:21] phone codebeautify 100kb #1 FAIL format control: locator.tap: Timeout 21840ms exceeded.
+[03:07:20] phone codebeautify 100kb #2 FAIL format control: locator.tap: Timeout 21603ms exceeded.
+[03:10:20] phone codebeautify 100kb #3 FAIL format control: locator.tap: Timeout 21803ms exceeded.
+[03:10:31] data jsoneditoronline big-integer pass
+[03:10:33] data jsoneditoronline max-safe-plus-one pass
+[03:10:35] data jsoneditoronline long-decimal pass
+[03:10:37] data jsoneditoronline number-spelling pass
+[03:10:40] data jsoneditoronline huge-exponent pass
+[03:10:42] data jsoneditoronline duplicate-keys rejected
+[03:10:44] data jsoneditoronline key-order changed
+[03:10:46] data jsoneditoronline unicode pass
+[03:10:48] data jsoneditoronline escapes pass
+[03:10:51] data jsoneditoronline proto-key changed
+[03:10:57] data jsoneditoronline top-level-scalar pass
+[03:11:02] data jsoneditoronline deep-nesting pass
+[03:11:05] data jsoneditoronline long-string pass
+[03:11:17] errors jsoneditoronline trailing-comma
+[03:11:22] errors jsoneditoronline missing-comma
+[03:11:27] errors jsoneditoronline single-quotes
+[03:11:33] errors jsoneditoronline unquoted-key
+[03:11:38] errors jsoneditoronline comment
+[03:11:44] errors jsoneditoronline unclosed-array
+[03:11:49] errors jsoneditoronline bad-literal
+[03:11:54] errors jsoneditoronline raw-newline
+[03:12:00] errors jsoneditoronline extra-bracket
+[03:12:06] features jsoneditoronline indent
+[03:12:06] features jsoneditoronline minify
+[03:12:06] features jsoneditoronline tree
+[03:12:06] features jsoneditoronline search
+[03:12:06] features jsoneditoronline sortKeys
+[03:12:06] features jsoneditoronline copy
+[03:12:08] features jsoneditoronline download
+[03:12:10] features jsoneditoronline openFile
+[03:12:13] features jsoneditoronline loadUrl
+[03:12:15] features jsoneditoronline darkMode
+[03:12:17] features jsoneditoronline repair
+[03:12:20] features jsoneditoronline convert
+[03:12:26] keyboard jsoneditoronline 
+[03:12:37] offline jsoneditoronline 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[03:12:50] phone jsoneditoronline 100kb #1 0.870 s, freeze 0.50 s
+[03:13:03] phone jsoneditoronline 100kb #2 0.866 s, freeze 0.47 s
+[03:13:15] phone jsoneditoronline 100kb #3 0.850 s, freeze 0.50 s
+[03:13:20] data jsonbeautify-org big-integer changed
+[03:13:22] data jsonbeautify-org max-safe-plus-one changed
+[03:13:23] data jsonbeautify-org long-decimal changed
+[03:13:24] data jsonbeautify-org number-spelling spelling
+[03:13:25] data jsonbeautify-org huge-exponent changed
+[03:13:26] data jsonbeautify-org duplicate-keys changed
+[03:13:27] data jsonbeautify-org key-order changed
+[03:13:28] data jsonbeautify-org unicode pass
+[03:13:30] data jsonbeautify-org escapes pass
+[03:13:31] data jsonbeautify-org proto-key pass
+[03:13:34] data jsonbeautify-org top-level-scalar pass
+[03:13:37] data jsonbeautify-org deep-nesting pass
+[03:13:40] data jsonbeautify-org long-string pass
+[03:13:48] errors jsonbeautify-org trailing-comma
+[03:13:51] errors jsonbeautify-org missing-comma
+[03:13:55] errors jsonbeautify-org single-quotes
+[03:13:58] errors jsonbeautify-org unquoted-key
+[03:14:01] errors jsonbeautify-org comment
+[03:14:05] errors jsonbeautify-org unclosed-array
+[03:14:08] errors jsonbeautify-org bad-literal
+[03:14:11] errors jsonbeautify-org raw-newline
+[03:14:15] errors jsonbeautify-org extra-bracket
+[03:14:19] features jsonbeautify-org indent
+[03:14:19] features jsonbeautify-org minify
+[03:14:19] features jsonbeautify-org tree
+[03:14:19] features jsonbeautify-org search
+[03:14:19] features jsonbeautify-org sortKeys
+[03:14:19] features jsonbeautify-org copy
+[03:14:19] features jsonbeautify-org download
+[03:14:19] features jsonbeautify-org openFile
+[03:14:19] features jsonbeautify-org loadUrl
+[03:14:19] features jsonbeautify-org darkMode
+[03:14:20] features jsonbeautify-org repair
+[03:14:20] features jsonbeautify-org convert
+[03:14:25] keyboard jsonbeautify-org 
+[03:14:34] offline jsonbeautify-org 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[03:14:47] phone jsonbeautify-org 100kb #1 4.410 s, freeze 2.55 s
+[03:15:01] phone jsonbeautify-org 100kb #2 4.642 s, freeze 2.80 s
+[03:15:15] phone jsonbeautify-org 100kb #3 4.664 s, freeze 2.83 s
+[03:15:34] data jsonbeautify-com big-integer changed
+[03:15:36] data jsonbeautify-com max-safe-plus-one changed
+[03:15:38] data jsonbeautify-com long-decimal changed
+[03:15:40] data jsonbeautify-com number-spelling spelling
+[03:15:42] data jsonbeautify-com huge-exponent changed
+[03:15:44] data jsonbeautify-com duplicate-keys changed
+[03:15:47] data jsonbeautify-com key-order changed
+[03:15:49] data jsonbeautify-com unicode pass
+[03:15:51] data jsonbeautify-com escapes pass
+[03:15:53] data jsonbeautify-com proto-key pass
+[03:15:59] data jsonbeautify-com top-level-scalar pass
+[03:16:02] data jsonbeautify-com deep-nesting pass
+[03:16:07] data jsonbeautify-com long-string pass
+[03:16:24] errors jsonbeautify-com trailing-comma
+[03:16:29] errors jsonbeautify-com missing-comma
+[03:16:35] errors jsonbeautify-com single-quotes
+[03:16:40] errors jsonbeautify-com unquoted-key
+[03:16:45] errors jsonbeautify-com comment
+[03:16:51] errors jsonbeautify-com unclosed-array
+[03:16:56] errors jsonbeautify-com bad-literal
+[03:17:02] errors jsonbeautify-com raw-newline
+[03:17:07] errors jsonbeautify-com extra-bracket
+[03:17:13] features jsonbeautify-com indent
+[03:17:13] features jsonbeautify-com minify
+[03:17:14] features jsonbeautify-com tree
+[03:17:14] features jsonbeautify-com search
+[03:17:14] features jsonbeautify-com sortKeys
+[03:17:14] features jsonbeautify-com copy
+[03:17:14] features jsonbeautify-com download
+[03:17:14] features jsonbeautify-com openFile
+[03:17:14] features jsonbeautify-com loadUrl
+[03:17:14] features jsonbeautify-com darkMode
+[03:17:14] features jsonbeautify-com repair
+[03:17:14] features jsonbeautify-com convert
+[03:18:05] keyboard jsonbeautify-com  FAIL locator.waitFor: Timeout 30000ms exceeded.
+[03:18:56] offline jsonbeautify-com 100kb FAIL locator.waitFor: Timeout 30000ms exceeded.
+[03:19:47] phone jsonbeautify-com 100kb #1 FAIL locator.waitFor: Timeout 30000ms exceeded.
+[03:20:38] phone jsonbeautify-com 100kb #2 FAIL locator.waitFor: Timeout 30000ms exceeded.
+[03:21:29] phone jsonbeautify-com 100kb #3 FAIL locator.waitFor: Timeout 30000ms exceeded.
+[03:21:36] data jsonviewer-stack big-integer pass
+[03:21:39] data jsonviewer-stack max-safe-plus-one pass
+[03:21:41] data jsonviewer-stack long-decimal pass
+[03:21:43] data jsonviewer-stack number-spelling pass
+[03:21:45] data jsonviewer-stack huge-exponent pass
+[03:21:47] data jsonviewer-stack duplicate-keys pass
+[03:21:49] data jsonviewer-stack key-order pass
+[03:21:52] data jsonviewer-stack unicode pass
+[03:21:54] data jsonviewer-stack escapes pass
+[03:21:56] data jsonviewer-stack proto-key pass
+[03:22:02] data jsonviewer-stack top-level-scalar pass
+[03:22:06] data jsonviewer-stack deep-nesting pass
+[03:22:10] data jsonviewer-stack long-string pass
+[03:22:21] errors jsonviewer-stack trailing-comma
+[03:22:26] errors jsonviewer-stack missing-comma
+[03:22:32] errors jsonviewer-stack single-quotes
+[03:22:37] errors jsonviewer-stack unquoted-key
+[03:22:42] errors jsonviewer-stack comment
+[03:22:48] errors jsonviewer-stack unclosed-array
+[03:22:53] errors jsonviewer-stack bad-literal
+[03:22:58] errors jsonviewer-stack raw-newline
+[03:23:04] errors jsonviewer-stack extra-bracket
+[03:23:09] features jsonviewer-stack indent
+[03:23:09] features jsonviewer-stack minify
+[03:23:09] features jsonviewer-stack tree
+[03:23:09] features jsonviewer-stack search
+[03:23:09] features jsonviewer-stack sortKeys
+[03:23:09] features jsonviewer-stack copy
+[03:23:09] features jsonviewer-stack download
+[03:23:09] features jsonviewer-stack openFile
+[03:23:09] features jsonviewer-stack loadUrl
+[03:23:09] features jsonviewer-stack darkMode
+[03:23:09] features jsonviewer-stack repair
+[03:23:09] features jsonviewer-stack convert
+[03:23:16] keyboard jsonviewer-stack 
+[03:23:27] offline jsonviewer-stack 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[03:24:10] phone jsonviewer-stack 100kb #1 FAIL format control: locator.tap: Timeout 21994ms exceeded.
+[03:24:53] phone jsonviewer-stack 100kb #2 FAIL format control: locator.tap: Timeout 21993ms exceeded.
+[03:25:35] phone jsonviewer-stack 100kb #3 FAIL format control: locator.tap: Timeout 21993ms exceeded.
+[03:25:35] blocked curiousconcept 
+[03:25:45] features curiousconcept indent
+[03:25:45] features curiousconcept minify
+[03:25:45] features curiousconcept tree
+[03:25:45] features curiousconcept search
+[03:25:45] features curiousconcept sortKeys
+[03:25:45] features curiousconcept copy
+[03:25:45] features curiousconcept download
+[03:25:45] features curiousconcept openFile
+[03:25:45] features curiousconcept loadUrl
+[03:25:45] features curiousconcept darkMode
+[03:25:45] features curiousconcept repair
+[03:25:45] features curiousconcept convert
+[03:25:53] data static-app big-integer pass
+[03:25:55] data static-app max-safe-plus-one pass
+[03:25:58] data static-app long-decimal pass
+[03:26:00] data static-app number-spelling pass
+[03:26:02] data static-app huge-exponent pass
+[03:26:04] data static-app duplicate-keys pass
+[03:26:07] data static-app key-order pass
+[03:26:09] data static-app unicode pass
+[03:26:11] data static-app escapes pass
+[03:26:13] data static-app proto-key pass
+[03:26:20] data static-app top-level-scalar pass
+[03:26:24] data static-app deep-nesting pass
+[03:26:34] data static-app long-string pass
+[03:26:44] errors static-app trailing-comma
+[03:26:49] errors static-app missing-comma
+[03:26:55] errors static-app single-quotes
+[03:27:00] errors static-app unquoted-key
+[03:27:06] errors static-app comment
+[03:27:12] errors static-app unclosed-array
+[03:27:17] errors static-app bad-literal
+[03:27:22] errors static-app raw-newline
+[03:27:28] errors static-app extra-bracket
+[03:27:33] features static-app indent
+[03:27:33] features static-app minify
+[03:27:33] features static-app tree
+[03:27:33] features static-app search
+[03:27:33] features static-app sortKeys
+[03:27:33] features static-app copy
+[03:27:33] features static-app download
+[03:27:33] features static-app openFile
+[03:27:33] features static-app loadUrl
+[03:27:33] features static-app darkMode
+[03:27:37] features static-app repair
+[03:27:37] features static-app convert
+[03:27:43] keyboard static-app 
+[03:27:52] offline static-app 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[03:28:05] phone static-app 100kb #1 1.789 s, freeze 0.65 s
+[03:28:18] phone static-app 100kb #2 1.184 s, freeze 0.62 s
+[03:28:31] phone static-app 100kb #3 1.204 s, freeze 0.65 s
+[03:29:30] data jsonlint big-integer FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint max-safe-plus-one FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint long-decimal FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint number-spelling FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint huge-exponent FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint duplicate-keys FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint key-order FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint unicode FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint escapes FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint proto-key FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint top-level-scalar FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint deep-nesting FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:29:30] data jsonlint long-string FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:31:03] errors jsonlint trailing-comma
+[03:31:03] errors jsonlint missing-comma
+[03:31:03] errors jsonlint single-quotes
+[03:31:03] errors jsonlint unquoted-key
+[03:31:03] errors jsonlint comment
+[03:31:03] errors jsonlint unclosed-array
+[03:31:03] errors jsonlint bad-literal
+[03:31:03] errors jsonlint raw-newline
+[03:31:03] errors jsonlint extra-bracket
+[03:32:33] features jsonlint *
+[03:33:59] keyboard jsonlint  FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:35:38] offline jsonlint 100kb FAIL opening the page: no answer within 75 s
+[03:37:21] phone jsonlint 100kb #1 FAIL locator.waitFor: Timeout 20000ms exceeded.
+[03:39:22] phone jsonlint 100kb #2 3.727 s, freeze 0.85 s
+[03:40:52] phone jsonlint 100kb #3 FAIL opening the page: no answer within 75 s
+[03:41:31] data tool-kumar big-integer pass
+[03:41:35] data tool-kumar max-safe-plus-one pass
+[03:41:39] data tool-kumar long-decimal pass
+[03:41:43] data tool-kumar number-spelling pass
+[03:41:46] data tool-kumar huge-exponent pass
+[03:41:50] data tool-kumar duplicate-keys pass
+[03:41:54] data tool-kumar key-order pass
+[03:41:57] data tool-kumar unicode pass
+[03:42:01] data tool-kumar escapes pass
+[03:42:05] data tool-kumar proto-key pass
+[03:42:16] data tool-kumar top-level-scalar pass
+[03:42:24] data tool-kumar deep-nesting pass
+[03:42:41] data tool-kumar long-string pass
+[03:42:49] errors tool-kumar trailing-comma
+[03:42:54] errors tool-kumar missing-comma
+[03:42:59] errors tool-kumar single-quotes
+[03:43:05] errors tool-kumar unquoted-key
+[03:43:10] errors tool-kumar comment
+[03:43:16] errors tool-kumar unclosed-array
+[03:43:21] errors tool-kumar bad-literal
+[03:43:27] errors tool-kumar raw-newline
+[03:43:32] errors tool-kumar extra-bracket
+[03:43:34] features tool-kumar indent
+[03:43:34] features tool-kumar minify
+[03:43:34] features tool-kumar tree
+[03:43:34] features tool-kumar search
+[03:43:35] features tool-kumar sortKeys
+[03:43:35] features tool-kumar copy
+[03:43:35] features tool-kumar download
+[03:43:35] features tool-kumar openFile
+[03:43:35] features tool-kumar loadUrl
+[03:43:35] features tool-kumar darkMode
+[03:43:38] features tool-kumar repair
+[03:43:38] features tool-kumar convert
+[03:43:40] keyboard tool-kumar 
+[03:43:54] offline tool-kumar 100kb 0.402 s, freeze 0.10 s
+[03:44:02] phone tool-kumar 100kb #1 0.781 s, freeze 0.23 s
+[03:44:10] phone tool-kumar 100kb #2 0.739 s, freeze 0.25 s
+[03:44:19] phone tool-kumar 100kb #3 0.787 s, freeze 0.25 s
+[03:44:28] data jsonbeautifier-org big-integer changed
+[03:44:31] data jsonbeautifier-org max-safe-plus-one changed
+[03:44:33] data jsonbeautifier-org long-decimal changed
+[03:44:35] data jsonbeautifier-org number-spelling spelling
+[03:44:37] data jsonbeautifier-org huge-exponent changed
+[03:44:40] data jsonbeautifier-org duplicate-keys changed
+[03:44:42] data jsonbeautifier-org key-order changed
+[03:44:44] data jsonbeautifier-org unicode pass
+[03:44:47] data jsonbeautifier-org escapes pass
+[03:44:49] data jsonbeautifier-org proto-key pass
+[03:44:55] data jsonbeautifier-org top-level-scalar pass
+[03:44:59] data jsonbeautifier-org deep-nesting pass
+[03:45:04] data jsonbeautifier-org long-string pass
+[03:45:15] errors jsonbeautifier-org trailing-comma
+[03:45:21] errors jsonbeautifier-org missing-comma
+[03:45:26] errors jsonbeautifier-org single-quotes
+[03:45:32] errors jsonbeautifier-org unquoted-key
+[03:45:37] errors jsonbeautifier-org comment
+[03:45:43] errors jsonbeautifier-org unclosed-array
+[03:45:48] errors jsonbeautifier-org bad-literal
+[03:45:54] errors jsonbeautifier-org raw-newline
+[03:45:59] errors jsonbeautifier-org extra-bracket
+[03:46:08] features jsonbeautifier-org indent
+[03:46:08] features jsonbeautifier-org minify
+[03:46:08] features jsonbeautifier-org tree
+[03:46:08] features jsonbeautifier-org search
+[03:46:08] features jsonbeautifier-org sortKeys
+[03:46:08] features jsonbeautifier-org copy
+[03:46:08] features jsonbeautifier-org download
+[03:46:08] features jsonbeautifier-org openFile
+[03:46:08] features jsonbeautifier-org loadUrl
+[03:46:08] features jsonbeautifier-org darkMode
+[03:46:08] features jsonbeautifier-org repair
+[03:46:08] features jsonbeautifier-org convert
+[03:46:18] keyboard jsonbeautifier-org 
+[03:46:30] offline jsonbeautifier-org 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[03:46:44] phone jsonbeautifier-org 100kb #1 0.943 s, freeze 0.35 s
+[03:46:57] phone jsonbeautifier-org 100kb #2 0.898 s, freeze 0.40 s
+[03:47:09] phone jsonbeautifier-org 100kb #3 0.909 s, freeze 0.42 s
+[03:47:19] data jsonchecker big-integer pass
+[03:47:24] data jsonchecker max-safe-plus-one pass
+[03:47:30] data jsonchecker long-decimal pass
+[03:47:35] data jsonchecker number-spelling pass
+[03:47:40] data jsonchecker huge-exponent pass
+[03:47:45] data jsonchecker duplicate-keys pass
+[03:47:50] data jsonchecker key-order pass
+[03:47:56] data jsonchecker unicode pass
+[03:48:01] data jsonchecker escapes pass
+[03:48:06] data jsonchecker proto-key pass
+[03:48:13] data jsonchecker top-level-scalar pass
+[03:48:15] data jsonchecker deep-nesting refused
+[03:48:22] data jsonchecker long-string pass
+[03:48:36] errors jsonchecker trailing-comma
+[03:48:45] errors jsonchecker missing-comma
+[03:48:54] errors jsonchecker single-quotes
+[03:49:02] errors jsonchecker unquoted-key
+[03:49:11] errors jsonchecker comment
+[03:49:20] errors jsonchecker unclosed-array
+[03:49:28] errors jsonchecker bad-literal
+[03:49:37] errors jsonchecker raw-newline
+[03:49:46] errors jsonchecker extra-bracket
+[03:49:52] features jsonchecker indent
+[03:49:52] features jsonchecker minify
+[03:49:52] features jsonchecker tree
+[03:49:54] features jsonchecker search
+[03:49:54] features jsonchecker sortKeys
+[03:49:54] features jsonchecker copy
+[03:49:54] features jsonchecker download
+[03:49:54] features jsonchecker openFile
+[03:49:54] features jsonchecker loadUrl
+[03:49:54] features jsonchecker darkMode
+[03:49:59] features jsonchecker repair
+[03:49:59] features jsonchecker convert
+[03:50:05] keyboard jsonchecker 
+[03:50:14] offline jsonchecker 100kb FAIL page.reload: net::ERR_INTERNET_DISCONNECTED
+[03:50:25] phone jsonchecker 100kb #1 0.239 s, freeze 0.22 s
+[03:50:36] phone jsonchecker 100kb #2 0.229 s, freeze 0.20 s
+[03:50:48] phone jsonchecker 100kb #3 0.232 s, freeze 0.20 s

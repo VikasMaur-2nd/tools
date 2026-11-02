@@ -1,0 +1,23 @@
+[
+  {
+    "tool": "jsonbeautify-com",
+    "from": "2026-11-02T02:55:00Z",
+    "to": "2026-11-02T03:22:00Z",
+    "reason": "site outage: Cloudflare 'Error 522: connection timed out' (the site's own server not answering)",
+    "evidence": "screenshots/webkit-jsonbeautify-com-522-0256.jpg (02:56:28 UTC) and screenshots/quality-jsonbeautify-com-522-0319.jpg (03:19:16 UTC); every jsonbeautify.com run between 02:57 and 03:21 failed before the paste. The runs were repeated (dev/repeat-2026-11-02.json)."
+  },
+  {
+    "tool": "jsonbeautify-com",
+    "from": "2026-11-02T04:22:00Z",
+    "to": "2026-11-02T04:27:00Z",
+    "reason": "site outage: Cloudflare 'Error 522: connection timed out'",
+    "evidence": "screenshots/speed-jsonbeautify-com-522-0423.jpg (04:23:55 UTC); both attempts at 04:24 and 04:25 failed before the paste. Repeated."
+  },
+  {
+    "tool": "jsonlint",
+    "from": "2026-11-02T03:30:00Z",
+    "to": "2026-11-02T03:43:00Z",
+    "reason": "the page did not open on two runners at the same time (likely a site problem; no error page to prove it)",
+    "evidence": "quality job: every JSONLint check 03:31-03:41 failed opening the page; Chromium job 2: JSONLint failed opening at 03:33 and 03:34. Repeated."
+  }
+]

@@ -366,3 +366,31 @@ Decisions made after seeing results (stated as such):
    different machines; the phone Format tap got no response on Code Beautify (a video ad was playing) and was covered
    by ads on jsonviewer.stack.hu; jsonviewer.stack.hu, static.app and jsonbeautify.org did not finish 10 MB in
    Chromium (an A/B run without any in-page checking froze the same way for jsonviewer.stack.hu).
+
+### Amendment 4 — 2026-11-02, after the repeat run
+
+1. **What happened to the repeat run (41429253183).** Job A was stopped by the runner (exit code 143) while copying a
+   50 MB file, most likely out of memory; its results file was lost, but its log has every result line, and those 32
+   runs are recovered from it (`results/run-41429253183/repeat-A/`, each marked `fromLog`). Job B passed its time
+   limit and left neither results nor a log. In job C a harness bug skipped its second and third steps
+   (jsonbeautify.com's and jsonformatter.org's checks). Job D ran. jsonbeautify.com was down again (HTTP 520 and 522)
+   for much of 10:31–10:38 UTC.
+2. **What counts, for every check that opens a page.** A run where the site was down (a server error, or the page not
+   loading within 45 s) or the harness's own clipboard step stalled says nothing about the tool and counts neither
+   way, nor do the speed runs the size ladder skipped only because of such a run. A run where the page loaded but its
+   input never became usable counts as a failure: that is what a visitor sees. Outage windows (`excluded.json`) leave
+   out only the failures inside them, not the runs that succeeded while the site was briefly up.
+3. **Not measured is not failed.** A size with no counted run, or a check that could not be measured, makes that
+   category incomplete and the tool unranked, with the reason; it is never scored as a failure.
+4. **One final gap-filling job** (`dev/repeat-2026-11-02b.json`, approved by the publisher with the CI budget raised to
+   about 920 minutes): every Chromium speed run that `node score.mjs results --gaps` reported without a counted
+   result (25), JSONLint's error, feature, offline and phone checks, jsonbeautify.com's offline and phone checks and
+   its WebKit check, and the keyboard check for every tool. Every 10 MB and 50 MB run gets a fresh browser. Whatever
+   is still missing after this job stays missing: that tool is unranked, with the reason. There are no further
+   repeats.
+5. **JSONLint's adapter** now waits up to 60 s for its editor to load, clicking the editor's placeholder again while
+   it still shows. Its earlier keyboard and phone failures came from the adapter's 20 s wait, so they are repeated.
+6. **The keyboard check for every tool** is repeated because the earlier one gave reading an accessible name only 5 s
+   and did not record when it could not read one, which made "no name" and "page too busy to answer" look the same.
+   Names are now read with a 20 s limit, and a name that can't be read is recorded as such (it still scores like a
+   missing name).

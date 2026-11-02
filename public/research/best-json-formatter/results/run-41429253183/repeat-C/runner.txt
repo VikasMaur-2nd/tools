@@ -1,0 +1,6 @@
+job: repeat-C
+commit: dd25af641f0d84d715350b3beed4292ba9e12337
+runner: Linux ubuntu24 20261026.354.1
+cpu: AMD EPYC 7763 64-Core Processor x 2
+Mem:            7936        1105        4628          47        2525        6831
+started: 2026-11-02T10:30:47Z

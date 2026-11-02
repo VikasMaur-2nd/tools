@@ -7,22 +7,30 @@ export default {
   // JSONLint serves visitors different layouts (seen on the runners within minutes of each other): a Monaco editor
   // that may load only when the box is clicked, or another editor. ready() finds which one this visit got.
   async ready(page) {
-    const box = page.locator('div.editor-container div.rounded-lg.cursor-text').first();
-    if (await box.isVisible().catch(() => false)) await box.click().catch(() => {});
     const kinds = [
       ['.editor-container .monaco-editor', { kind: 'monaco', sel: '.editor-container .monaco-editor', click: '.editor-container .monaco-editor .view-lines' }],
       ['.editor-container .cm-editor', { kind: 'cm6', sel: '.editor-container .cm-editor', click: '.editor-container .cm-content' }],
       ['.editor-container .CodeMirror', { kind: 'cm5', sel: '.editor-container .CodeMirror', click: '.editor-container .CodeMirror-scroll' }],
       ['.editor-container textarea:not(.ime-text-area):not(.inputarea)', { kind: 'textarea', sel: '.editor-container textarea:not(.ime-text-area):not(.inputarea)' }],
     ];
-    await page.locator(kinds.map(([sel]) => sel).join(', ')).first().waitFor({ state: 'visible', timeout: 20_000 });
+    // The editor loads only after its placeholder ("Click here to start editing JSON…") is clicked, and on a busy
+    // machine it can take a while: click the placeholder, and again every few seconds while it still shows, for up to
+    // 60 s. Nothing has been pasted yet, so this wait is not part of any timing.
+    const editor = page.locator(kinds.map(([sel]) => sel).join(', ')).first();
+    const placeholder = page.locator('div.editor-container div.cursor-text, div.editor-container :text("Click here to start editing")').first();
+    for (let t = 0; t < 60_000; t += 5000) {
+      if (await editor.isVisible().catch(() => false)) break;
+      if (await placeholder.isVisible().catch(() => false)) await placeholder.click({ timeout: 5000 }).catch(() => {});
+      await editor.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    }
+    await editor.waitFor({ state: 'visible', timeout: 1000 });
     for (const [sel, input] of kinds) {
       if (await page.locator(sel).first().isVisible().catch(() => false)) {
         this.input = input;
         break;
       }
     }
-    if (this.input.kind === 'monaco') await page.waitForFunction(() => window.__fmt.io('monaco', '.editor-container .monaco-editor').lines() >= 1, null, { timeout: 20_000 }).catch(() => {});
+    if (this.input.kind === 'monaco') await page.waitForFunction(() => window.__fmt.io('monaco', '.editor-container .monaco-editor').lines() >= 1, null, { timeout: 30_000 }).catch(() => {});
   },
   input: { kind: 'monaco', sel: '.editor-container .monaco-editor', click: '.editor-container .monaco-editor .view-lines' },
   output: 'input',

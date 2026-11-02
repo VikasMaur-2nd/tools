@@ -1,0 +1,37 @@
+{
+ "_about": "Final gap-filling plan of 2026-11-02 (protocol amendment 4): the speed runs node score.mjs results --gaps reported without a counted result, JSONLint and jsonbeautify.com checks that could not be measured, the keyboard check for every tool (amendment 4), and WebKit for jsonbeautify.com. Run as: run.mjs repeat --spec dev/repeat-2026-11-02b.json --group <E1|E2|F|G> (G with --engine webkit).",
+ "E1": [
+  {
+   "suite": "speed",
+   "runs": "jsonformatter-org:1mb:5,jsonformatter-org:10mb:3,jsonformatter-org:10mb:5,jsonformatter-org:50mb:1,jsonformatter-org:50mb:2,jsonformatter-org:50mb:3,jsonformatter-org:50mb:4,jsonformatter-org:50mb:5,jsonbeautify-com:1mb:4,jsonbeautify-com:10mb:2,jsonbeautify-com:10mb:4,jsonbeautify-com:50mb:1,jsonbeautify-com:50mb:2,jsonbeautify-com:50mb:4"
+  }
+ ],
+ "E2": [
+  {
+   "suite": "speed",
+   "runs": "codebeautify:10mb:4,codebeautify:10mb:5,codebeautify:50mb:1,codebeautify:50mb:2,codebeautify:50mb:3,codebeautify:50mb:4,codebeautify:50mb:5,jsonlint:100kb:4,jsonlint:1mb:4,jsonlint:10mb:4,jsonlint:50mb:4"
+  }
+ ],
+ "F": [
+  {
+   "suite": "quality",
+   "tools": "jsonlint",
+   "only": "errors,features,offline,phone"
+  },
+  {
+   "suite": "quality",
+   "tools": "jsonbeautify-com",
+   "only": "offline,phone"
+  },
+  {
+   "suite": "quality",
+   "only": "keyboard"
+  }
+ ],
+ "G": [
+  {
+   "suite": "webkit",
+   "tools": "jsonbeautify-com"
+  }
+ ]
+}

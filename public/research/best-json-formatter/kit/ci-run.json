@@ -1,8 +1,8 @@
 {
   "jobs": [
-    { "name": "repeat-A", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02.json --group A --engine chromium", "browsers": "chromium", "minutes": 30 },
-    { "name": "repeat-B", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02.json --group B --engine chromium", "browsers": "chromium", "minutes": 30 },
-    { "name": "repeat-C", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02.json --group C --engine chromium", "browsers": "chromium", "minutes": 15 },
-    { "name": "repeat-D", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02.json --group D --engine webkit", "browsers": "webkit", "minutes": 6 }
+    { "name": "final-E1", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02b.json --group E1 --engine chromium", "browsers": "chromium", "minutes": 20 },
+    { "name": "final-E2", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02b.json --group E2 --engine chromium", "browsers": "chromium", "minutes": 20 },
+    { "name": "final-F", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02b.json --group F --engine chromium", "browsers": "chromium", "minutes": 12 },
+    { "name": "final-G", "cmd": "run.mjs repeat --spec dev/repeat-2026-11-02b.json --group G --engine webkit", "browsers": "webkit", "minutes": 4 }
   ]
 }

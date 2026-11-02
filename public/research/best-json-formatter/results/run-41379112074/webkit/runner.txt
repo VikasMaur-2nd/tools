@@ -1,0 +1,7 @@
+job: webkit
+commit: e64c9ca268c0429665b73f029176015223f71056
+runner: Linux ubuntu24 20261026.354.1
+cpu: INTEL(R) XEON(R) PLATINUM 8573C x 2
+Mem:            7931        1126        4734          46        2394        6805
+started: 2026-11-02T02:43:03Z
+finished: 2026-11-02T03:02:18Z

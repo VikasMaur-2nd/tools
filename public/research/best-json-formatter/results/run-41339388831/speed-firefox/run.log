@@ -1,0 +1,167 @@
+speed · firefox 157.0 · 13 tools
+[19:00:15] speed jsonbeautify-org 100kb #1 1.446 s, freeze 0.51 s
+[19:00:50] speed jsonbeautify-org 1mb #1 23.910 s, freeze 18.08 s
+[19:03:40] speed jsonbeautify-org 10mb #1 FAIL formatting: no answer within 140 s
+[19:06:31] speed jsonbeautify-org 10mb #1 retry FAIL formatting: no answer within 140 s
+[19:06:31] speed jsonbeautify-org 50mb #1 FAIL skipped: failed twice at 10mb
+[19:06:43] speed jsonchecker 100kb #1 0.096 s, freeze 0.07 s
+[19:06:53] speed jsonchecker 1mb #1 0.353 s, freeze 0.05 s
+[19:07:11] speed jsonchecker 10mb #1 1.991 s, freeze 1.93 s
+[19:07:52] speed jsonchecker 50mb #1 9.197 s, freeze 16.07 s
+[19:08:10] speed jsonformatter-org 100kb #1 0.659 s, freeze 0.24 s
+[19:08:31] speed jsonformatter-org 1mb #1 1.271 s, freeze 0.66 s
+[19:09:02] speed jsonformatter-org 10mb #1 10.006 s, freeze 5.78 s
+[19:10:18] speed jsonformatter-org 50mb #1 48.113 s, freeze 26.51 s
+[19:10:36] speed jsonlint 100kb #1 0.599 s, freeze 0.15 s
+[19:10:55] speed jsonlint 1mb #1 4.181 s, freeze 1.61 s
+[19:11:21] speed jsonlint 10mb #1 10.973 s, freeze 4.61 s
+[19:12:16] speed jsonlint 50mb #1 FAIL format control: locator.click: Timeout 10000ms exceeded.
+[19:13:16] speed jsonlint 50mb #1 retry FAIL format control: locator.click: Timeout 10000ms exceeded.
+[19:13:27] speed jsonbeautify-com 100kb #1 0.164 s, freeze 0.08 s
+[19:13:36] speed jsonbeautify-com 1mb #1 0.702 s, freeze 0.46 s
+[19:13:52] speed jsonbeautify-com 10mb #1 6.292 s, freeze 4.12 s
+[19:14:38] speed jsonbeautify-com 50mb #1 31.438 s, freeze 20.32 s
+[19:14:49] speed static-app 100kb #1 0.199 s, freeze 0.07 s
+[19:15:00] speed static-app 1mb #1 0.964 s, freeze 0.54 s
+[19:15:24] speed static-app 10mb #1 13.088 s, freeze 6.64 s
+[19:18:16] speed static-app 50mb #1 FAIL formatting: no answer within 140 s
+[19:20:55] speed static-app 50mb #1 retry FAIL no complete result within the time limit
+[19:21:03] speed tool-kumar 100kb #1 0.514 s, freeze 0.10 s
+[19:21:11] speed tool-kumar 1mb #1 0.244 s, freeze 0.14 s
+[19:21:23] speed tool-kumar 10mb #1 1.892 s, freeze 0.08 s
+[19:21:44] speed tool-kumar 50mb #1 5.986 s, freeze 1.76 s
+[19:21:53] speed jsonviewer-io 100kb #1 0.207 s, freeze 0.05 s
+[19:22:03] speed jsonviewer-io 1mb #1 1.090 s, freeze 0.32 s
+[19:22:19] speed jsonviewer-io 10mb #1 4.075 s, freeze 2.03 s
+[19:22:50] speed jsonviewer-io 50mb #1 FAIL format control: locator.click: Timeout 8000ms exceeded.
+[19:23:20] speed jsonviewer-io 50mb #1 retry FAIL format control: locator.click: Timeout 8000ms exceeded.
+[19:23:36] speed jsonbeautifier-org 100kb #1 0.196 s, freeze 0.07 s
+[19:23:50] speed jsonbeautifier-org 1mb #1 0.753 s, freeze 0.46 s
+[19:24:20] speed jsonbeautifier-org 10mb #1 FAIL format control: locator.click: Timeout 8000ms exceeded.
+[19:24:43] speed jsonbeautifier-org 10mb #1 retry 6.692 s, freeze 3.83 s
+[19:27:03] speed jsonbeautifier-org 50mb #1 FAIL no complete result within the time limit
+[19:29:22] speed jsonbeautifier-org 50mb #1 retry FAIL no complete result within the time limit
+[19:29:45] speed codebeautify 100kb #1 1.799 s, freeze 1.19 s
+[19:30:08] speed codebeautify 1mb #1 3.158 s, freeze 1.12 s
+[19:31:28] speed codebeautify 10mb #1 FAIL format control: locator.click: Timeout 8000ms exceeded.
+[19:32:51] speed codebeautify 10mb #1 retry FAIL format control: locator.click: Timeout 8000ms exceeded.
+[19:32:51] speed codebeautify 50mb #1 FAIL skipped: failed twice at 10mb
+[19:33:03] speed jsoneditoronline 100kb #1 0.267 s, freeze 0.14 s
+[19:33:17] speed jsoneditoronline 1mb #1 1.200 s, freeze 0.80 s
+[19:35:30] speed jsoneditoronline 10mb #1 FAIL no complete result within the time limit
+[19:37:42] speed jsoneditoronline 10mb #1 retry FAIL no complete result within the time limit
+[19:37:42] speed jsoneditoronline 50mb #1 FAIL skipped: failed twice at 10mb
+[19:37:54] speed jsonviewer-stack 100kb #1 0.125 s, freeze 0.05 s
+[19:38:07] speed jsonviewer-stack 1mb #1 0.814 s, freeze 0.49 s
+[19:38:29] speed jsonviewer-stack 10mb #1 10.454 s, freeze 4.95 s
+[19:40:43] speed jsonviewer-stack 50mb #1 FAIL no complete result within the time limit
+[19:42:57] speed jsonviewer-stack 50mb #1 retry FAIL no complete result within the time limit
+[19:42:57] speed curiousconcept 100kb #1
+[19:44:30] speed curiousconcept 1mb #1 FAIL formatting: no answer within 80 s
+[19:44:30] speed curiousconcept 10mb #1
+[19:44:30] speed curiousconcept 50mb #1
+[19:44:38] speed tool-kumar 100kb #2 0.611 s, freeze 0.10 s
+[19:44:46] speed tool-kumar 1mb #2 0.172 s, freeze 0.03 s
+[19:44:55] speed tool-kumar 10mb #2 1.247 s, freeze 0.27 s
+[19:45:12] speed tool-kumar 50mb #2 4.202 s, freeze 1.19 s
+[19:45:23] speed jsonbeautify-org 100kb #2 1.161 s, freeze 0.37 s
+[19:46:01] speed jsonbeautify-org 1mb #2 23.707 s, freeze 16.75 s
+[19:46:01] speed jsonbeautify-org 10mb #2 FAIL skipped: failed twice at 10mb
+[19:46:01] speed jsonbeautify-org 50mb #2 FAIL skipped: failed twice at 10mb
+[19:46:13] speed jsonviewer-stack 100kb #2 0.127 s, freeze 0.05 s
+[19:46:25] speed jsonviewer-stack 1mb #2 0.832 s, freeze 0.44 s
+[19:46:48] speed jsonviewer-stack 10mb #2 10.487 s, freeze 4.97 s
+[19:46:48] speed jsonviewer-stack 50mb #2 FAIL skipped: failed twice at 50mb
+[19:46:48] speed curiousconcept 100kb #2
+[19:46:48] speed curiousconcept 1mb #2
+[19:46:48] speed curiousconcept 10mb #2
+[19:46:48] speed curiousconcept 50mb #2
+[19:47:59] speed jsoneditoronline 100kb #2 FAIL putting the file on the clipboard: no answer within 60 s
+[19:48:14] speed jsoneditoronline 100kb #2 retry 0.281 s, freeze 0.14 s
+[19:48:27] speed jsoneditoronline 1mb #2 1.147 s, freeze 0.76 s
+[19:48:27] speed jsoneditoronline 10mb #2 FAIL skipped: failed twice at 10mb
+[19:48:27] speed jsoneditoronline 50mb #2 FAIL skipped: failed twice at 10mb
+[19:48:40] speed jsonbeautifier-org 100kb #2 0.216 s, freeze 0.09 s
+[19:48:54] speed jsonbeautifier-org 1mb #2 1.335 s, freeze 0.51 s
+[19:49:20] speed jsonbeautifier-org 10mb #2 6.397 s, freeze 5.19 s
+[19:49:20] speed jsonbeautifier-org 50mb #2 FAIL skipped: failed twice at 50mb
+[19:49:39] speed jsonformatter-org 100kb #2 0.475 s, freeze 0.19 s
+[19:50:00] speed jsonformatter-org 1mb #2 1.424 s, freeze 0.83 s
+[19:50:30] speed jsonformatter-org 10mb #2 9.303 s, freeze 6.20 s
+[19:51:46] speed jsonformatter-org 50mb #2 47.247 s, freeze 29.59 s
+[19:51:56] speed jsonviewer-io 100kb #2 0.289 s, freeze 0.05 s
+[19:52:07] speed jsonviewer-io 1mb #2 1.316 s, freeze 0.49 s
+[19:52:24] speed jsonviewer-io 10mb #2 3.811 s, freeze 2.10 s
+[19:52:24] speed jsonviewer-io 50mb #2 FAIL skipped: failed twice at 50mb
+[19:52:34] speed static-app 100kb #2 0.165 s, freeze 0.07 s
+[19:52:45] speed static-app 1mb #2 1.001 s, freeze 0.56 s
+[19:53:11] speed static-app 10mb #2 13.504 s, freeze 6.80 s
+[19:53:11] speed static-app 50mb #2 FAIL skipped: failed twice at 50mb
+[19:53:26] speed jsonlint 100kb #2 0.601 s, freeze 0.10 s
+[19:53:45] speed jsonlint 1mb #2 4.709 s, freeze 1.83 s
+[19:54:11] speed jsonlint 10mb #2 10.635 s, freeze 4.71 s
+[19:54:11] speed jsonlint 50mb #2 FAIL skipped: failed twice at 50mb
+[19:54:21] speed jsonchecker 100kb #2 0.085 s, freeze 0.02 s
+[19:54:31] speed jsonchecker 1mb #2 0.234 s, freeze 0.02 s
+[19:54:31] speed jsonchecker 10mb #2
+[19:54:31] speed jsonchecker 50mb #2
+[19:54:39] speed jsonbeautify-com 100kb #2 0.156 s, freeze 0.10 s
+[19:54:48] speed jsonbeautify-com 1mb #2 0.812 s, freeze 0.54 s
+[19:55:03] speed jsonbeautify-com 10mb #2 6.452 s, freeze 4.17 s
+[19:55:49] speed jsonbeautify-com 50mb #2 31.258 s, freeze 20.15 s
+[19:56:11] speed codebeautify 100kb #2 1.851 s, freeze 0.85 s
+[19:56:34] speed codebeautify 1mb #2 3.326 s, freeze 1.15 s
+[19:56:34] speed codebeautify 10mb #2 FAIL skipped: failed twice at 10mb
+[19:56:34] speed codebeautify 50mb #2 FAIL skipped: failed twice at 10mb
+[19:56:48] speed jsoneditoronline 100kb #3 0.281 s, freeze 0.14 s
+[19:57:02] speed jsoneditoronline 1mb #3 1.127 s, freeze 0.75 s
+[19:57:02] speed jsoneditoronline 10mb #3 FAIL skipped: failed twice at 10mb
+[19:57:02] speed jsoneditoronline 50mb #3 FAIL skipped: failed twice at 10mb
+[19:57:17] speed jsonlint 100kb #3 0.584 s, freeze 0.10 s
+[19:57:38] speed jsonlint 1mb #3 5.639 s, freeze 1.83 s
+[19:58:03] speed jsonlint 10mb #3 9.974 s, freeze 4.44 s
+[19:58:03] speed jsonlint 50mb #3 FAIL skipped: failed twice at 50mb
+[19:58:16] speed jsonviewer-stack 100kb #3 0.140 s, freeze 0.05 s
+[19:58:28] speed jsonviewer-stack 1mb #3 0.804 s, freeze 0.42 s
+[19:58:51] speed jsonviewer-stack 10mb #3 10.501 s, freeze 5.07 s
+[19:58:51] speed jsonviewer-stack 50mb #3 FAIL skipped: failed twice at 50mb
+[19:59:00] speed jsonbeautify-com 100kb #3 0.155 s, freeze 0.10 s
+[19:59:08] speed jsonbeautify-com 1mb #3 0.705 s, freeze 0.56 s
+[19:59:23] speed jsonbeautify-com 10mb #3 6.362 s, freeze 4.15 s
+[20:00:08] speed jsonbeautify-com 50mb #3 31.313 s, freeze 20.27 s
+[20:00:21] speed jsonbeautifier-org 100kb #3 0.212 s, freeze 0.08 s
+[20:00:34] speed jsonbeautifier-org 1mb #3 0.752 s, freeze 0.42 s
+[20:00:58] speed jsonbeautifier-org 10mb #3 6.511 s, freeze 3.88 s
+[20:00:58] speed jsonbeautifier-org 50mb #3 FAIL skipped: failed twice at 50mb
+[20:01:07] speed static-app 100kb #3 0.189 s, freeze 0.05 s
+[20:01:18] speed static-app 1mb #3 1.014 s, freeze 0.58 s
+[20:01:42] speed static-app 10mb #3 13.163 s, freeze 6.68 s
+[20:01:42] speed static-app 50mb #3 FAIL skipped: failed twice at 50mb
+[20:01:52] speed jsonviewer-io 100kb #3 0.212 s, freeze 0.05 s
+[20:02:02] speed jsonviewer-io 1mb #3 1.095 s, freeze 0.31 s
+[20:02:18] speed jsonviewer-io 10mb #3 3.470 s, freeze 2.03 s
+[20:02:18] speed jsonviewer-io 50mb #3 FAIL skipped: failed twice at 50mb
+[20:02:18] speed curiousconcept 100kb #3
+[20:02:18] speed curiousconcept 1mb #3
+[20:02:18] speed curiousconcept 10mb #3
+[20:02:18] speed curiousconcept 50mb #3
+[20:02:44] speed codebeautify 100kb #3 1.771 s, freeze 1.19 s
+[20:03:10] speed codebeautify 1mb #3 3.646 s, freeze 1.34 s
+[20:03:10] speed codebeautify 10mb #3 FAIL skipped: failed twice at 10mb
+[20:03:10] speed codebeautify 50mb #3 FAIL skipped: failed twice at 10mb
+[20:03:18] speed tool-kumar 100kb #3 0.343 s, freeze 0.07 s
+[20:03:26] speed tool-kumar 1mb #3 0.167 s, freeze 0.10 s
+[20:03:36] speed tool-kumar 10mb #3 1.391 s, freeze 0.05 s
+[20:03:53] speed tool-kumar 50mb #3 4.128 s, freeze 0.09 s
+[20:04:03] speed jsonbeautify-org 100kb #3 1.152 s, freeze 0.36 s
+[20:04:43] speed jsonbeautify-org 1mb #3 24.045 s, freeze 18.05 s
+[20:04:43] speed jsonbeautify-org 10mb #3 FAIL skipped: failed twice at 10mb
+[20:04:43] speed jsonbeautify-org 50mb #3 FAIL skipped: failed twice at 10mb
+[20:05:03] speed jsonformatter-org 100kb #3 0.524 s, freeze 0.24 s
+[20:05:24] speed jsonformatter-org 1mb #3 1.340 s, freeze 0.69 s
+[20:05:56] speed jsonformatter-org 10mb #3 9.812 s, freeze 5.83 s
+[20:07:12] speed jsonformatter-org 50mb #3 48.816 s, freeze 29.49 s
+[20:07:23] speed jsonchecker 100kb #3 0.072 s, freeze 0.02 s
+[20:07:34] speed jsonchecker 1mb #3 0.229 s, freeze 0.02 s
+[20:07:34] speed jsonchecker 10mb #3
+[20:07:34] speed jsonchecker 50mb #3

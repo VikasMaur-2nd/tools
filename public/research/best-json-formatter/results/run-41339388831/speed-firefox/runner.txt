@@ -1,0 +1,7 @@
+job: speed-firefox
+commit: 7a1df7ae728fece79c22052b9cca95f3aaca9c55
+runner: Linux ubuntu24 20261026.354.1
+cpu: AMD EPYC 7763 64-Core Processor x 2
+Mem:            7932        1150        4963          46        2138        6782
+started: 2026-11-01T18:59:58Z
+finished: 2026-11-01T20:09:34Z

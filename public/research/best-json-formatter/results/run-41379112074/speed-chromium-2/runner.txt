@@ -1,0 +1,7 @@
+job: speed-chromium-2
+commit: e64c9ca268c0429665b73f029176015223f71056
+runner: Linux ubuntu24 20261026.354.1
+cpu: AMD EPYC 7763 64-Core Processor x 2
+Mem:            7932        1368        4365          46        2520        6564
+started: 2026-11-02T02:42:49Z
+finished: 2026-11-02T04:02:49Z
