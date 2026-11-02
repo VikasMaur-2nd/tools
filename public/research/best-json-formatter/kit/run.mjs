@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 import { ADAPTERS } from './adapters/index.mjs';
 import { DATA_CASES, ERROR_CASES } from './cases.mjs';
 import { END_MARKER, MARKER, SIZES, generate, sha256 } from './generate.mjs';
-import { captureNetwork, countsAsUpload, focusInput, formatControl, launch, linesInText, newContext, openTool, pasteAndFormat, pasteSmall, readError, readOutput, shot, stage } from './lib/harness.mjs';
+import { DID_NOT_START, captureNetwork, countsAsUpload, focusInput, formatControl, launch, linesInText, newContext, openTool, pasteAndFormat, pasteSmall, readError, readOutput, shot, stage } from './lib/harness.mjs';
 import { compare, read } from './lib/tokens.mjs';
 
 const { values: o, positionals } = parseArgs({
@@ -24,6 +24,9 @@ const { values: o, positionals } = parseArgs({
     sizes: { type: 'string', default: '100kb,1mb,10mb,50mb' },
     reps: { type: 'string' },
     from: { type: 'string', default: '1' },
+    runs: { type: 'string' },
+    spec: { type: 'string' },
+    group: { type: 'string' },
     tools: { type: 'string' },
     only: { type: 'string' },
     out: { type: 'string', default: 'out' },
@@ -32,7 +35,7 @@ const { values: o, positionals } = parseArgs({
 });
 const suite = positionals[0];
 const engine = o.engine;
-const tools = o.tools ? o.tools.split(',').map((id) => ADAPTERS.find((a) => a.id === id) ?? fail(`no adapter ${id}`)) : ADAPTERS;
+let tools = o.tools ? o.tools.split(',').map((id) => ADAPTERS.find((a) => a.id === id) ?? fail(`no adapter ${id}`)) : ADAPTERS;
 mkdirSync(join(o.out, 'results'), { recursive: true });
 mkdirSync(join(o.out, 'shots'), { recursive: true });
 const manifest = JSON.parse(readFileSync(new URL('fixtures.sha256.json', import.meta.url), 'utf8'));
@@ -103,7 +106,7 @@ async function speedRun(browser, adapter, size, text, { phone = false, offlineFi
       const cdp = await context.newCDPSession(page);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpu });
     }
-    await within(stage(page, adapter, text), 60_000, 'putting the file on the clipboard');
+    await within(stage(page, adapter, text), 150_000, 'could not start: putting the file on the clipboard');
     const timeoutMs = TIMEOUT[size] ?? 30_000;
     const r = await net.window(MARKER, text.length / 2, () => within(pasteAndFormat(page, adapter, { text, endMarker: END_MARKER, expectedLines: manifest[size]?.prettyLines ?? null, timeoutMs, tap: phone }), timeoutMs + 40_000, 'formatting'));
     Object.assign(out, { ms: r.ms, totalMs: r.totalMs, checkSpacingMs: r.checkSpacingMs, freezeMs: r.freezeMs, pasteSeen: r.pasteSeen, clickSeen: r.clickSeen, landedSeen: r.landedSeen, formattedOnPaste: r.formattedOnPaste });
@@ -141,7 +144,32 @@ async function speedRun(browser, adapter, size, text, { phone = false, offlineFi
   return out;
 }
 
+/** --runs tool:size:rep,…: repeats exactly these runs (each with its usual retry), for runs that could not start or
+ * hit a site outage (protocol amendment 3). The scorer uses the latest attempt of each repetition. */
+async function listedRuns(browser) {
+  const texts = {};
+  const order = Object.keys(SIZES);
+  const stopAt = new Map(); // the size ladder, as in speedSuite: two real failures at a size skip it and larger ones
+  for (const spec of o.runs.split(',')) {
+    const [id, size, rep] = spec.split(':');
+    const adapter = ADAPTERS.find((a) => a.id === id) ?? fail(`no adapter ${id}`);
+    if (stopAt.has(id) && order.indexOf(size) >= order.indexOf(stopAt.get(id))) {
+      record({ suite: 'speed', tool: id, size, rep: Number(rep), ok: false, skipped: true, repeated: true, failure: `skipped: failed twice at ${stopAt.get(id)}` });
+      continue;
+    }
+    texts[size] ??= generate(SIZES[size]);
+    let r;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      r = await speedRun(browser, adapter, size, texts[size]);
+      record({ suite: 'speed', ...r, rep: Number(rep), attempt, repeated: true });
+      if (r.ok) break;
+    }
+    if (!r.ok && !DID_NOT_START.test(r.failure ?? '')) stopAt.set(id, size);
+  }
+}
+
 async function speedSuite(browser) {
+  if (o.runs) return listedRuns(browser);
   const sizes = o.sizes.split(',');
   const reps = Number(o.reps ?? (engine === 'chromium' ? 5 : 3));
   const texts = {};
@@ -176,7 +204,8 @@ async function speedSuite(browser) {
           if (r.uploads?.some(countsAsUpload)) uploads.add(adapter.id);
           if (r.ok) break;
         }
-        if (!r.ok) stopAt.set(adapter.id, i);
+        // A site that is down says nothing about the tool: it doesn't stop the ladder (protocol amendment 3).
+        if (!r.ok && !DID_NOT_START.test(r.failure ?? '')) stopAt.set(adapter.id, i);
       }
     }
   }
@@ -325,10 +354,12 @@ async function keyboardSuite(browser, adapter) {
   const res = { suite: 'keyboard', tool: adapter.id };
   try {
     const { page } = await within(openTool(context, adapter), 75_000, 'opening the page');
+    // A name that can't be read (a busy page) is recorded as an error, not as "no name".
+    res.nameErrors = [];
     const nameOf = async (target) => {
       if (!target) return null;
       const loc = typeof target === 'string' ? page.locator(target).first() : target;
-      const snap = await loc.ariaSnapshot({ timeout: 5000 }).catch(() => '');
+      const snap = await loc.ariaSnapshot({ timeout: 20_000 }).catch((e) => (res.nameErrors.push(why(e)), ''));
       const m = /^- \w[\w-]*(?: "((?:[^"\\]|\\.)*)")?/.exec(snap.trim());
       return m?.[1] || null;
     };
@@ -427,6 +458,24 @@ async function smokeSuite(browser) {
   }
 }
 
+/**
+ * repeat --spec file --group name: the steps of one group of a repeat plan (protocol amendment 3), e.g.
+ * { "A": [{ "suite": "speed", "runs": "tool:size:rep,…" }, { "suite": "quality", "tools": "jsonlint", "only": "…" }] }.
+ */
+async function repeatSuite(browser) {
+  const plan = JSON.parse(readFileSync(o.spec, 'utf8'))[o.group] ?? fail(`no group ${o.group} in ${o.spec}`);
+  for (const step of plan) {
+    o.runs = step.runs;
+    o.only = step.only;
+    tools.splice(0, tools.length, ...(step.tools ? step.tools.split(',').map((id) => ADAPTERS.find((a) => a.id === id) ?? fail(`no adapter ${id}`)) : ADAPTERS));
+    fileFor = `repeat-${step.suite}`;
+    if (step.suite === 'speed') await listedRuns(browser);
+    else if (step.suite === 'quality') await qualitySuite(browser);
+    else if (step.suite === 'webkit') await webkitSuite(browser);
+    else fail(`unknown step ${step.suite}`);
+  }
+}
+
 const browser = await launch(engine);
 console.log(`${suite} · ${engine} ${browser.version()} · ${tools.length} tools`);
 try {
@@ -434,6 +483,7 @@ try {
   else if (suite === 'quality') await qualitySuite(browser);
   else if (suite === 'webkit') await webkitSuite(browser);
   else if (suite === 'smoke') await smokeSuite(browser);
+  else if (suite === 'repeat') await repeatSuite(browser);
   else fail(`unknown suite ${suite}`);
 } finally {
   await browser.close().catch(() => {});

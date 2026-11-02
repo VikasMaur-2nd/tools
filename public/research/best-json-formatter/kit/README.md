@@ -33,18 +33,20 @@ shows that day. Compare tools within one run, not with our numbers.
    (change `KIT:` to where the kit is).
 2. Put the jobs in `ci-run.json`. The study used:
 
-   | Job | Command | Billed minutes |
-   |---|---|---|
-   | Chromium speed | `run.mjs speed --engine chromium --sizes 100kb,1mb,10mb,50mb --reps 5` | see the measurement log |
-   | Firefox speed | `run.mjs speed --engine firefox --sizes 100kb,1mb,10mb,50mb --reps 3` | |
-   | Quality | `run.mjs quality` | |
-   | WebKit | `run.mjs webkit --engine webkit` | |
+   | Job | Command |
+   |---|---|
+   | Chromium speed, repetitions 1–3 | `run.mjs speed --engine chromium --sizes 100kb,1mb,10mb,50mb --reps 3` |
+   | Chromium speed, repetitions 4–5 | `run.mjs speed --engine chromium --sizes 100kb,1mb,10mb,50mb --from 4 --reps 5` |
+   | Firefox speed | `run.mjs speed --engine firefox --sizes 100kb,1mb,10mb,50mb --reps 3` |
+   | Quality | `run.mjs quality` |
+   | WebKit | `run.mjs webkit --engine webkit` |
 
 3. Push to a branch named `study-run/<anything>`. Each job uploads its `out/` folder as an artifact
    (`gh run download <run id>`). Put the artifacts in one folder and run `node score.mjs <folder>`.
 
-Every tool's speed runs happen inside one job, so all tools of a browser share one machine: GitHub's runners do
-not all have the same processor.
+Every speed job runs every tool, in a seeded random order per repetition, so when a browser's repetitions are
+split over two jobs each tool gets the same share of each machine: GitHub's runners do not all have the same
+processor (each job records its CPU in `runner.txt`).
 
 ## What is in here
 

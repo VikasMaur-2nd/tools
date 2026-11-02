@@ -83,7 +83,6 @@ export function captureNetwork(context, { site }) {
     req.response().then(() => req.sizes()).then((s) => (entry.bytes = s.responseBodySize + s.responseHeadersSize)).catch(() => {});
   });
   context.on('page', (p) => {
-    if (context.__fmtHelper) return; // the harness's own clipboard tab, not a pop-up
     popups.push({ at: Date.now() });
     p.on('websocket', (ws) => ws.on('framesent', (f) => checkBody(ws.url(), Buffer.from(typeof f.payload === 'string' ? f.payload : f.payload), 'websocket')));
   });
@@ -136,7 +135,11 @@ async function openPage(page, adapter, { phone }) {
   });
   const t0 = Date.now();
   // The page's own document first; ads can keep the load event waiting for a long time, so it gets 20 s more.
-  await page.goto(adapter.url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  const response = await page.goto(adapter.url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  // The site itself is down (a server error, or a CDN's "origin unreachable" page): not a result about the tool.
+  // Such runs are recorded as "site unavailable" and repeated later (protocol amendment 3).
+  const status = response?.status() ?? 0;
+  if (status >= 500) throw Object.assign(new Error(`site unavailable: HTTP ${status}`), { unavailable: true });
   await page.waitForLoadState('load', { timeout: 20_000 }).catch(() => {});
   await quiet(page, 1000, 5000);
   const interruptions = [];
@@ -168,28 +171,44 @@ export async function quiet(page, idleMs, maxMs) {
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 /**
- * Puts text on the clipboard (outside any timing) and focuses the input. The text is copied from a separate blank
- * tab with a real Ctrl+C, so a tool page that is busy (ads) or holds the focus elsewhere can't block it: the clipboard
- * is the browser's, as it is for a person who copied the JSON from somewhere else.
+ * Puts text on the clipboard (outside any timing) and focuses the input. The text is copied with a real Ctrl+C from a
+ * blank page in a separate browser profile, kept for the whole job, so a tool page that is busy (ads) can't block it:
+ * the clipboard is the browser's, as it is for a person who copied the JSON from somewhere else. A failure here
+ * happens before the paste and says nothing about the tool: it is reported as "could not start" (amendment 3).
  */
+const helpers = new WeakMap();
 export async function stage(page, adapter, text) {
   if (page.__dialogs) page.__dialogs.length = 0;
-  page.context().__fmtHelper = true;
-  const helper = await page.context().newPage().finally(() => (page.context().__fmtHelper = false));
-  try {
-    await helper.setContent('<textarea id="t"></textarea>');
-    await helper.evaluate((v) => {
+  const step = async (p, ms, what) => {
+    let timer;
+    try {
+      return await Promise.race([p, new Promise((_, no) => (timer = setTimeout(() => no(new Error(`could not start: ${what} took over ${ms / 1000} s`)), ms)))]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const browser = page.context().browser();
+  let helper = helpers.get(browser);
+  if (!helper || helper.isClosed()) {
+    const ctx = await step(browser.newContext(), 20_000, 'opening the clipboard page');
+    helper = await step(ctx.newPage(), 20_000, 'opening the clipboard page');
+    await step(helper.setContent('<textarea id="t"></textarea>'), 20_000, 'opening the clipboard page');
+    helpers.set(browser, helper);
+  }
+  await step(helper.bringToFront(), 20_000, 'switching to the clipboard page');
+  await step(
+    helper.evaluate((v) => {
       const t = document.getElementById('t');
       t.value = v;
       t.focus();
       t.select();
-    }, text);
-    await helper.keyboard.press(`${MOD}+C`);
-  } finally {
-    await helper.close();
-  }
-  await page.bringToFront();
-  await focusInput(page, adapter);
+    }, text),
+    30_000,
+    'filling the clipboard page',
+  );
+  await step(helper.keyboard.press(`${MOD}+C`), 20_000, 'copying');
+  await step(page.bringToFront(), 20_000, 'switching back to the tool');
+  await step(focusInput(page, adapter), 45_000, 'focusing the input');
 }
 
 export async function focusInput(page, adapter) {
@@ -218,6 +237,9 @@ export async function focusInput(page, adapter) {
     (page.__interruptions ??= []).push(covered ? `input covered by ${covered}` : 'input could not be clicked');
   }
 }
+
+/** Failures before the paste reached the tool (protocol amendment 3): they say nothing about the tool. */
+export const DID_NOT_START = /^(site unavailable|could not start|putting the file on the clipboard|page\.setContent|opening the page|locator\.waitFor|locator\.click: Timeout|page\.waitForFunction|the paste key press was not seen)/;
 
 /** Resolves with the promise's value, or `fallback` after ms (a busy frame must not stall the harness). */
 const race = (p, ms, fallback) => Promise.race([p.catch(() => fallback), sleep(ms).then(() => fallback)]);

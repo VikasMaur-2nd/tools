@@ -25,8 +25,24 @@ const records = [];
     const p = join(d, f);
     if (statSync(p).isDirectory()) walk(p);
     else if (f.endsWith('.jsonl')) for (const line of readFileSync(p, 'utf8').split('\n')) if (line.trim()) records.push(JSON.parse(line));
+
   }
 })(dir);
+
+// excluded.json (in the results folder, optional) lists runs to leave out, each with its reason and evidence:
+// [{ "tool": "…", "from": ISO time, "to": ISO time, "reason": "…", "evidence": "…" }] (protocol amendment 3).
+let excluded = [];
+try {
+  excluded = JSON.parse(readFileSync(join(dir, 'excluded.json'), 'utf8'));
+} catch {}
+const before = records.length;
+for (let i = records.length - 1; i >= 0; i--) {
+  const r = records[i];
+  if (excluded.some((x) => x.tool === r.tool && r.at >= x.from && r.at <= x.to)) records.splice(i, 1);
+}
+if (before !== records.length) console.log(`left out ${before - records.length} runs listed in excluded.json`);
+// Oldest first, so "the last record" of anything is its latest attempt (a run repeated later replaces the earlier one).
+records.sort((a, b) => a.at.localeCompare(b.at));
 
 export const logScore = (x, good, bad) => (x <= good ? 1 : x >= bad ? 0 : (Math.log(bad) - Math.log(x)) / (Math.log(bad) - Math.log(good)));
 const median = (xs) => {
@@ -37,10 +53,15 @@ const median = (xs) => {
 const round = (x, d = 2) => (x == null ? null : Math.round(x * 10 ** d) / 10 ** d);
 
 /** One value per repetition: the last attempt of each (a retry replaces the failed first try); failures are Infinity. */
+/** Runs where the site itself was down are not results about the tool (protocol amendment 3). */
+const unavailable = (r) => /^site unavailable/.test(r.failure ?? '') || (r.docs ?? []).some((d) => /^site unavailable/.test(d.failure ?? ''));
+
 function perRep(tool, engine, size, field = 'ms') {
-  const rs = records.filter((r) => r.suite === 'speed' && r.engine === engine && r.tool === tool && r.size === size && r.ok !== null);
+  const rs = records.filter((r) => r.suite === 'speed' && r.engine === engine && r.tool === tool && r.size === size && r.ok !== null && !unavailable(r));
+  // Each repetition's value is its latest attempt: a retry replaces a failed try, and a run repeated later (after an
+  // outage or a run that could not start, amendment 3) replaces the earlier one.
   const byRep = new Map();
-  for (const r of rs) if (!byRep.has(r.rep) || (r.attempt ?? 1) >= (byRep.get(r.rep).attempt ?? 1)) byRep.set(r.rep, r);
+  for (const r of [...rs].sort((a, b) => a.at.localeCompare(b.at))) byRep.set(r.rep, r);
   return [...byRep.values()].map((r) => (r.ok ? r[field] / 1000 : Infinity));
 }
 const medianTime = (tool, engine, size, field) => {
@@ -100,7 +121,8 @@ const tools = ADAPTERS.map((a) => {
   const feats = mine('features').filter((r) => r.feature !== '*');
   const featureList = Object.fromEntries(feats.map((r) => [r.feature, r.found]));
   const featurePts = feats.length ? 0.5 * feats.filter((r) => r.found).length : null;
-  const phone = mine('phone');
+  // The latest run of each phone repetition (a repeated run replaces an earlier one).
+  const phone = [...new Map(mine('phone').map((r) => [r.rep, r])).values()];
   const majority = (xs) => xs.filter(Boolean).length * 2 > xs.length;
   const phoneWorks = phone.length ? majority(phone.map((r) => r.ok)) : null;
   const phoneFits = phone.length ? majority(phone.map((r) => r.fits?.noSideScroll && r.fits?.controlInView)) : null;
@@ -130,6 +152,7 @@ const tools = ADAPTERS.map((a) => {
     cls: cls <= 0.1 ? 1 : cls <= 0.25 ? 0.5 : 0,
     inputNamed: kb.inputName ? 0.5 : 0,
     controlNamed: kb.controlName ? 0.5 : 0,
+    // (A name that could not be read is listed in details.keyboard.nameErrors; it scores like a missing name.)
     keyboard: kb.keyboardFormat ? 1 : 0,
   };
   const pagePts = pageTested ? Object.values(pageParts).reduce((s, x) => s + x, 0) : null;
@@ -153,7 +176,8 @@ const tools = ADAPTERS.map((a) => {
       data: Object.fromEntries(DATA_CASES.map((c, i) => [c.id, data[i]?.grade ?? null])),
       speedSeconds: Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v === Infinity ? 'failed' : round(v, 3)])),
       freezeSeconds: Object.fromEntries(Object.entries(fr).map(([k, v]) => [k, v === Infinity ? 'failed' : round(v, 3)])),
-      firefoxSeconds: Object.fromEntries(['100kb', '1mb', '10mb', '50mb'].map((s) => { const v = medianTime(id, 'firefox', s); return [s, v === Infinity ? 'failed' : round(v, 3)]; })),
+      // Firefox: only 100 KB and 1 MB are reported (protocol amendment 2).
+      firefoxSeconds: Object.fromEntries(['100kb', '1mb'].map((s) => { const v = medianTime(id, 'firefox', s); return [s, v === Infinity ? 'failed' : round(v, 3)]; })),
       speedParts: speedParts && Object.fromEntries(Object.entries(speedParts).map(([k, v]) => [k, round(v)])),
       sendsJson: sends,
       uploadEvidence: uploadRuns.slice(0, 3).map((r) => ({ suite: r.suite, size: r.size, hits: r.uploads.filter(countsAsUpload).slice(0, 2) })),
@@ -169,7 +193,7 @@ const tools = ADAPTERS.map((a) => {
       cls: round(cls, 3),
       ads,
       interruptions: [...new Set(interrupted.flatMap((r) => [...(r.interruptions ?? []), ...((r.net?.popups ?? 0) > 0 ? ['pop-up window'] : [])]))],
-      keyboard: kb ? { inputName: kb.inputName, controlName: kb.controlName, keyboardFormat: kb.keyboardFormat, tabsToInput: kb.tabsToInput } : null,
+      keyboard: kb ? { inputName: kb.inputName, controlName: kb.controlName, keyboardFormat: kb.keyboardFormat, tabsToInput: kb.tabsToInput, nameErrors: kb.nameErrors ?? [] } : null,
       pageParts: pageParts && Object.fromEntries(Object.entries(pageParts).map(([k, v]) => [k, round(v)])),
     },
     notes,
@@ -195,4 +219,4 @@ for (const x of tools) {
   const c = x.categories;
   console.log(`${pad(x.ranks?.Default, 5)}${pad(x.name + (x.publisher ? ' (publisher)' : ''), 46)}${pad(x.total, 7)}${pad(c.data, 7)}${pad(c.speed, 7)}${pad(c.privacy, 8)}${pad(c.ease, 7)}${pad(c.page, 6)} ${x.ranks ? Object.keys(WEIGHTS).slice(1).map((k) => x.ranks[k]).join(' / ') : x.notes.join('; ')}`);
 }
-if (o.out) writeFileSync(o.out, JSON.stringify({ scoredAt: new Date().toISOString(), protocol: 'protocol.md section 6', weights: WEIGHTS, records: records.length, tools }, null, 1) + '\n');
+if (o.out) writeFileSync(o.out, JSON.stringify({ scoredAt: new Date().toISOString(), protocol: 'protocol.md section 6', weights: WEIGHTS, records: records.length, excluded, tools }, null, 1) + '\n');

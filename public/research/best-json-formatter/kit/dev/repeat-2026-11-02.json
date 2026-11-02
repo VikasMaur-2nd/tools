@@ -1,0 +1,37 @@
+{
+ "_about": "Repeat plan of 2026-11-02 (protocol amendment 3). Speed runs from dev/repeat-list.mjs on the results of run 41379112074; quality and WebKit parts that hit a site outage or could not start. Run as: run.mjs repeat --spec dev/repeat-2026-11-02.json --group <A|B|C|D> (D with --engine webkit).",
+ "A": [
+  {
+   "suite": "speed",
+   "runs": "jsonbeautify-com:50mb:1,jsonbeautify-com:100kb:2,jsonbeautify-com:1mb:2,jsonbeautify-com:10mb:2,jsonbeautify-com:50mb:2,jsonbeautify-com:100kb:3,jsonbeautify-com:1mb:3,jsonbeautify-com:10mb:3,jsonbeautify-com:50mb:3,jsonbeautify-com:100kb:4,jsonbeautify-com:1mb:4,jsonbeautify-com:10mb:4,jsonbeautify-com:50mb:4,jsonbeautify-com:100kb:5,jsonbeautify-com:1mb:5,jsonbeautify-com:10mb:5,jsonbeautify-com:50mb:5,jsonlint:50mb:1,jsonlint:10mb:2,jsonlint:50mb:2,jsonlint:100kb:3,jsonlint:1mb:3,jsonlint:10mb:3,jsonlint:50mb:3,jsonlint:100kb:4,jsonlint:1mb:4,jsonlint:10mb:4,jsonlint:50mb:4,jsonlint:100kb:5,jsonlint:1mb:5,jsonlint:10mb:5,jsonlint:50mb:5"
+  }
+ ],
+ "B": [
+  {
+   "suite": "speed",
+   "runs": "codebeautify:50mb:1,codebeautify:50mb:2,codebeautify:50mb:3,codebeautify:10mb:4,codebeautify:50mb:4,codebeautify:10mb:5,codebeautify:50mb:5,jsonformatter-org:50mb:1,jsonformatter-org:50mb:2,jsonformatter-org:1mb:3,jsonformatter-org:10mb:3,jsonformatter-org:50mb:3,jsonformatter-org:50mb:4,jsonformatter-org:1mb:5,jsonformatter-org:10mb:5,jsonformatter-org:50mb:5"
+  }
+ ],
+ "C": [
+  {
+   "suite": "quality",
+   "tools": "jsonlint"
+  },
+  {
+   "suite": "quality",
+   "tools": "jsonbeautify-com",
+   "only": "keyboard,offline,phone"
+  },
+  {
+   "suite": "quality",
+   "tools": "jsonformatter-org",
+   "only": "keyboard"
+  }
+ ],
+ "D": [
+  {
+   "suite": "webkit",
+   "tools": "jsonbeautify-com,jsonformatter-org,codebeautify"
+  }
+ ]
+}

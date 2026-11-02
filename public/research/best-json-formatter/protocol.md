@@ -345,3 +345,24 @@ Decisions made after seeing results (stated as such):
    document was complete (screenshot in the run's artifacts). The check now also accepts the document's last line
    number at the end of the view. For every other tool the check reads the editor's last lines through the editor
    itself, where screen size doesn't matter. This helps the publisher's tool; it is listed here for that reason.
+
+### Amendment 3 — 2026-11-02, during the repeated run
+
+1. **Site outages.** jsonbeautify.com served Cloudflare's "Error 522: connection timed out" (its own server not
+   answering) at 02:56 and 03:19 UTC on 2026-11-02 (screenshots in the run's artifacts). JSONLint's page did not open
+   on two runners at the same time, 03:31–03:42 UTC; there is no error page to prove an outage there, but two
+   machines failing together points at the site. Runs of these two tools inside those windows are left out
+   (`results/excluded.json` lists each window and its evidence) and repeated in a later job. From now on the harness
+   records a server error (HTTP 500 or above) when a page opens as "site unavailable", which never counts as a
+   failure and is repeated.
+2. **Runs that could not start.** On the 2-CPU runners, pages with video ads sometimes kept the browser so busy that
+   putting the test file on the clipboard or focusing the input took over a minute, so the paste never happened. That
+   says nothing about formatting. Such runs are repeated in a later job, with a sturdier clipboard step (one blank page
+   in a separate browser profile for the whole job, every step time-limited); a repeated run that fails again counts
+   as a failure. These failures no longer stop the size ladder.
+3. **Which attempt counts.** Each repetition's value is its latest attempt: a retry replaces a failed try, and a run
+   repeated in a later job replaces the earlier one.
+4. **Kept as results:** jsonformatter.org and Code Beautify stopped responding in WebKit in both measured runs, on
+   different machines; the phone Format tap got no response on Code Beautify (a video ad was playing) and was covered
+   by ads on jsonviewer.stack.hu; jsonviewer.stack.hu, static.app and jsonbeautify.org did not finish 10 MB in
+   Chromium (an A/B run without any in-page checking froze the same way for jsonviewer.stack.hu).
