@@ -11,7 +11,7 @@ import { store } from '../engine/store';
 import { rt } from '../i18n/ui';
 import HugeGz from '@/components/huge/HugeGz';
 import { hugeSize, type HugeHost } from './session';
-import { StreamClient, StreamError, freeSpace, hold, removeTemp, tempName } from './stream/client';
+import { StreamClient, StreamError, freeSpace, gzSize, hold, removeTemp, tempName } from './stream/client';
 
 export interface GzState {
   name: string;
@@ -39,19 +39,6 @@ export class GzStore {
     this.s = { ...this.s, ...patch };
     for (const f of this.ls) f();
   }
-}
-
-/**
- * The size a gzip file says it decompresses to (its ISIZE trailer: modulo 4 GiB, raised by 4 GiB at a time
- * while below twice the compressed size: JSON compresses well), or null if it isn't gzip.
- */
-export async function gzSize(file: Blob): Promise<number | null> {
-  if (file.size < 18) return null;
-  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
-  if (head[0] !== 0x1f || head[1] !== 0x8b) return null;
-  let n = new DataView(await file.slice(file.size - 4).arrayBuffer()).getUint32(0, true);
-  if (file.size > 2 ** 30) while (n < file.size * 2) n += 2 ** 32;
-  return n;
 }
 
 /** What opening the decompressed big file needs: opens it in huge mode; `closed` runs when that session closes. */

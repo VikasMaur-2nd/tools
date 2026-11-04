@@ -37,7 +37,7 @@ const pct = (n: number, of: number) => (of > 0 ? (n / of) * 100 : 0);
 
 function Pct({ v }: { v: number }) {
   const t = useT();
-  const s = v >= 99.95 || v === 0 ? t.num(Math.round(v)) : v < 0.1 ? '<0.1' : v.toFixed(1);
+  const s = v >= 99.95 || v === 0 ? t.num(Math.round(v)) : v < 0.1 ? '<0.1' : String(Math.round(v * 10) / 10);
   return <>{s}%</>;
 }
 

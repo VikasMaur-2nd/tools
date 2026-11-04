@@ -152,3 +152,16 @@ export const hasOpfs = () => typeof navigator !== 'undefined' && !!navigator.sto
 /** Chromium's save and folder pickers. */
 export const canPick = () => typeof window !== 'undefined' && 'showSaveFilePicker' in window;
 export const canPickFolder = () => typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+
+/**
+ * The size a gzip file says it decompresses to (its ISIZE trailer: modulo 4 GiB, raised by 4 GiB at a time
+ * while below twice the compressed size: JSON compresses well), or null if it isn't gzip.
+ */
+export async function gzSize(file: Blob): Promise<number | null> {
+  if (file.size < 18) return null;
+  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  if (head[0] !== 0x1f || head[1] !== 0x8b) return null;
+  let n = new DataView(await file.slice(file.size - 4).arrayBuffer()).getUint32(0, true);
+  if (file.size > 2 ** 30) while (n < file.size * 2) n += 2 ** 32;
+  return n;
+}

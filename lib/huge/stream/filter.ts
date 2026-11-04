@@ -133,3 +133,48 @@ export function valueOf(text: string): Value {
   }
   return text;
 }
+
+/** A condition's path as typed: names with dots, `[*]` any item, `[3]` an index, `["a.b"]` a name with signs. */
+export function condPath(segs: (string | number)[]): string {
+  let s = '';
+  for (const x of segs) {
+    if (x === '*') s += '[*]';
+    else if (typeof x === 'number') s += `[${x}]`;
+    else if (/^[A-Za-z_$][\w$-]*$/.test(x)) s += (s ? '.' : '') + x;
+    else s += `[${JSON.stringify(x)}]`;
+  }
+  return s;
+}
+
+/** condPath's text back to segments (null: not a path). A leading `$.` or `$` is allowed. */
+export function parseCondPath(text: string): (string | number)[] | null {
+  let s = text.trim().replace(/^\$\.?/, '');
+  const out: (string | number)[] = [];
+  while (s.length) {
+    let m: RegExpExecArray | null;
+    if ((m = /^\.?([^.[\]"]+)/.exec(s))) out.push(m[1].trim());
+    else if ((m = /^\[\s*\*\s*\]/.exec(s))) out.push('*');
+    else if ((m = /^\[\s*(\d+)\s*\]/.exec(s))) out.push(Number(m[1]));
+    else if ((m = /^\[\s*("(?:[^"\\]|\\.)*")\s*\]/.exec(s))) {
+      try {
+        out.push(JSON.parse(m[1]) as string);
+      } catch {
+        return null;
+      }
+    } else return null;
+    s = s.slice(m[0].length);
+  }
+  return out.length ? out : null;
+}
+
+/** The form's conditions as a filter (those whose path doesn't read are left out; null: none). */
+export function filterOf(f: { conds: { path: string; op: Op; value: string }[]; any: boolean }): Filter | null {
+  const conds: Cond[] = [];
+  for (const c of f.conds) {
+    const path = parseCondPath(c.path);
+    if (!path) continue;
+    const needs = c.op !== 'exists' && c.op !== 'missing';
+    conds.push({ path, op: c.op, value: needs ? (c.op === 'is' ? c.value : c.op === 'contains' || c.op === 'starts' ? c.value : valueOf(c.value)) : undefined });
+  }
+  return conds.length ? { conds, any: f.any } : null;
+}

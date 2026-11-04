@@ -26,6 +26,17 @@ export function syncSource(src: ByteSource): Source {
   return { size: src.size, read: async (at, len) => src.read(at, len).slice(0, len) };
 }
 
+/** Resolves in a new task (a MessageChannel message: timers would be clamped), so a stop request is seen between chunks. */
+const nextTask = () =>
+  new Promise<void>((done) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => {
+      ch.port1.close();
+      done();
+    };
+    ch.port2.postMessage(0);
+  });
+
 export class Stopped extends Error {
   constructor() {
     super('Stopped');
@@ -63,6 +74,7 @@ export async function pass(src: Source, start: number, end: number, walker: Walk
     }
   };
   let at = start;
+  let yielded = performance.now();
   issue();
   while (reads.length) {
     const b = await reads.shift()!;
@@ -79,6 +91,11 @@ export async function pass(src: Source, start: number, end: number, walker: Walk
     at += b.length;
     await o.flush?.();
     o.progress?.(at - start);
+    // (Reads already here resolve at once: messages, a stop among them, get their turn now and then.)
+    if (performance.now() - yielded > 30) {
+      await nextTask();
+      yielded = performance.now();
+    }
   }
   if (finish) walker.finish(end);
   await o.flush?.();

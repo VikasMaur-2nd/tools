@@ -17,7 +17,8 @@ import { hugeSize, type HugeSession } from './session';
 import { ARR, LIST, OBJ, type HugeNode as CoreNode } from './types';
 import { StreamClient, StreamError, canPick, canPickFolder, freeSpace, hold, removeTemp, sweep, tempName } from './stream/client';
 import type { CsvOptions } from './stream/csv';
-import { valueOf, type Cond, type Filter, type Op } from './stream/filter';
+import { condPath, type Cond, type Filter, type Op } from './stream/filter';
+export { condPath, filterOf, parseCondPath } from './stream/filter';
 import type { Job, JobFormat, Scope } from './stream/jobs';
 import type { Out } from './stream/protocol';
 import { K_OBJ, type ShapeReport } from './stream/shape';
@@ -185,51 +186,6 @@ export const COMMAND_MESSAGES: Record<string, string> = {
   'Read failed': "Couldn't read the file: it may have changed or moved",
   'Command failed': 'Something went wrong writing the result',
 };
-
-/** A condition's path as typed: names with dots, `[*]` any item, `[3]` an index, `["a.b"]` a name with signs. */
-export function condPath(segs: (string | number)[]): string {
-  let s = '';
-  for (const x of segs) {
-    if (x === '*') s += '[*]';
-    else if (typeof x === 'number') s += `[${x}]`;
-    else if (/^[A-Za-z_$][\w$-]*$/.test(x)) s += (s ? '.' : '') + x;
-    else s += `[${JSON.stringify(x)}]`;
-  }
-  return s;
-}
-
-/** condPath's text back to segments (null: not a path). A leading `$.` or `$` is allowed. */
-export function parseCondPath(text: string): (string | number)[] | null {
-  let s = text.trim().replace(/^\$\.?/, '');
-  const out: (string | number)[] = [];
-  while (s.length) {
-    let m: RegExpExecArray | null;
-    if ((m = /^\.?([^.[\]"]+)/.exec(s))) out.push(m[1].trim());
-    else if ((m = /^\[\s*\*\s*\]/.exec(s))) out.push('*');
-    else if ((m = /^\[\s*(\d+)\s*\]/.exec(s))) out.push(Number(m[1]));
-    else if ((m = /^\[\s*("(?:[^"\\]|\\.)*")\s*\]/.exec(s))) {
-      try {
-        out.push(JSON.parse(m[1]) as string);
-      } catch {
-        return null;
-      }
-    } else return null;
-    s = s.slice(m[0].length);
-  }
-  return out.length ? out : null;
-}
-
-/** The form's conditions as a filter (those whose path doesn't read are left out; null: none). */
-export function filterOf(f: FormUI['extract']): Filter | null {
-  const conds: Cond[] = [];
-  for (const c of f.conds) {
-    const path = parseCondPath(c.path);
-    if (!path) continue;
-    const needs = c.op !== 'exists' && c.op !== 'missing';
-    conds.push({ path, op: c.op, value: needs ? (c.op === 'is' ? c.value : c.op === 'contains' || c.op === 'starts' ? c.value : valueOf(c.value)) : undefined });
-  }
-  return conds.length ? { conds, any: f.any } : null;
-}
 
 export class HugeTasks {
   readonly ui: TaskStore;
@@ -471,7 +427,16 @@ export class HugeTasks {
     this.ui.shape({ seek: { key, busy: true, found: 0, first: -1, count } });
     track('feature_used', { feature: count ? 'shape_count' : 'shape_next' });
     const d = await this.doc();
-    const run = this.stream().run(this.core.doc.file, d.bom, { kind: 'seek', scope: at.scope, target, from: count ? 0 : Math.max(0, start), count }, { kind: 'none' });
+    // "Next" in a list of records starts at the record holding the selection (nothing before it is read again).
+    let scope = at.scope;
+    if (!count && start > scope.start && at.t === ARR) {
+      const loc = await this.core.doc.locate(start).catch(() => null);
+      const k = loc ? loc.chain.findIndex((c) => (scope.multi ? c.node.kind === LIST : c.node.kind === ARR && c.node.start === scope.start)) : -1;
+      const rec = k >= 0 ? (loc!.chain[k + 1]?.node ?? loc!.node) : null;
+      if (rec && rec.start > scope.start) scope = { start: rec.start, end: scope.multi ? scope.end : scope.end - 1, multi: true };
+    }
+    if (this.dead) return;
+    const run = this.stream().run(this.core.doc.file, d.bom, { kind: 'seek', scope, target, from: count ? 0 : Math.max(0, start), count }, { kind: 'none' });
     this.seekRun = run;
     try {
       const { result } = await run.done;
