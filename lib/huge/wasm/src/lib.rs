@@ -166,6 +166,8 @@ static mut FLAGS: u32 = 0;
 const F_CHECKPOINTS: u32 = 1;
 const F_DUPS: u32 = 2;
 const F_DIR: u32 = 4;
+/** JSON Lines (the file's name says so): separators after a single top-level value are fine (tape-parser.ts `lines`). */
+const F_LINES: u32 = 8;
 static mut CK_EVERY: u64 = 1 << 20;
 static mut BIG: u64 = 1 << 18;
 static mut MAX_DEPTH: u64 = 100_000;
@@ -221,6 +223,8 @@ static mut LOW: usize = 0;
 static mut NEXT_CK: u64 = 0;
 static mut WHY: u32 = 0;
 static mut FAIL_POS: u64 = 0;
+/** At FAIL_POS: UTF-16 units before it, line breaks before it, the UTF-16 offset of its line's start. */
+static mut FAIL_AT_U16: [f64; 3] = [0.0; 3];
 // The token the window cut: what it is, where it starts, and a number's or literal's state so far.
 static mut PART: u32 = P_NONE;
 static mut PSTART: u64 = 0;
@@ -240,6 +244,7 @@ static mut T_DEPTH: usize = usize::MAX;
 static mut T_START: u64 = NONE;
 static mut T_COUNT: u64 = NONE;
 static mut T_BYTE: u64 = NONE;
+static mut T_VAL: u64 = NONE;
 
 // Output.
 static mut CK: Out = Out::new();
@@ -264,7 +269,7 @@ static mut SCRATCH: usize = 0;
 static mut SCRATCH_CAP: usize = 0;
 
 /// Starts a parse. `wcap`: window bytes (a multiple of 64); `flags`: 1 checkpoints, 2 duplicate names, 4 the
-/// directory; `ck_every`: bytes between checkpoints; `big`: the size from which a value is in the directory;
+/// directory, 8 JSON Lines; `ck_every`: bytes between checkpoints; `big`: the size from which a value is in the directory;
 /// `max_depth`: deepest nesting (parser.ts MAX_DEPTH). Returns 0 if out of memory.
 #[no_mangle]
 pub unsafe extern "C" fn init(wcap: usize, flags: u32, ck_every: f64, big: f64, max_depth: u32) -> u32 {
@@ -375,6 +380,18 @@ pub unsafe extern "C" fn why() -> u32 {
 pub unsafe extern "C" fn fail_pos() -> f64 {
     FAIL_POS as f64
 }
+/** [UTF-16 units before fail_pos(), line breaks before it, the UTF-16 offset of its line's start]. */
+#[no_mangle]
+pub unsafe extern "C" fn fail_info() -> usize {
+    FAIL_AT_U16.as_ptr() as usize
+}
+
+#[cold]
+#[inline(never)]
+unsafe fn failed_at(p: usize) {
+    FAIL_POS = POS0 + p as u64;
+    FAIL_AT_U16 = [(U16_0 + u16_at(p) as u64) as f64, lines_at(p) as f64, line_u16_at(p) as f64];
+}
 #[no_mangle]
 pub unsafe extern "C" fn ck_ptr() -> usize {
     CK.p
@@ -432,13 +449,15 @@ pub unsafe extern "C" fn stats() -> usize {
 
 /// From now on, stop before child `count` of the container that starts at byte `start` and is innermost at
 /// depth `depth` (depth 0: the top level, whatever `start`; 1: the root container...), or before its first child
-/// that starts at byte `byte` or later, or at its closing bracket. depth -1: no target.
+/// that starts at byte `byte` or later (an object's member: its name), or before its child whose value starts at
+/// byte `val` (an object's member: after its name), or at its closing bracket. depth -1: no target.
 #[no_mangle]
-pub unsafe extern "C" fn target(depth: i32, start: f64, count: f64, byte: f64) {
+pub unsafe extern "C" fn target(depth: i32, start: f64, count: f64, byte: f64, val: f64) {
     T_DEPTH = if depth < 0 { usize::MAX } else { depth as usize };
     T_START = start as u64;
     T_COUNT = if count < 0.0 { NONE } else { count as u64 };
     T_BYTE = if byte < 0.0 { NONE } else { byte as u64 };
+    T_VAL = if val < 0.0 { NONE } else { val as u64 };
 }
 
 // ── Stage 1 ──────────────────────────────────────────────────────────────
@@ -823,6 +842,29 @@ fn dfa(s: u32, c: u8) -> u32 {
         }
         _ => D_BAD,
     }
+}
+
+/// Whether a top-level value can start at byte `c`, right after a number or literal that ended as `s` (a DFA
+/// state) without a separator: tape-parser.ts reads `1true` and `1-2` as two values, `0123`, `0x1`, `1.5.2` and
+/// `truex` as one (loose).
+fn dfa_splits(s: u32, c: u8) -> bool {
+    if s >= D_LIT {
+        return !(c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80);
+    }
+    if digit(c) || c == b'.' || c == b'e' || c == b'E' {
+        return false;
+    }
+    !(s == D_ZERO && (c == b'x' || c == b'X'))
+}
+
+/// dfa_splits for the number or literal at window offsets [p, e), followed by byte `c`.
+unsafe fn splits(p: usize, e: usize, c: u8) -> bool {
+    let first = byte(p);
+    if first == b't' || first == b'f' || first == b'n' {
+        return dfa_splits(D_LIT, c);
+    }
+    let zero = (e - p == 1 && first == b'0') || (e - p == 2 && first == b'-' && byte(p + 1) == b'0');
+    dfa_splits(if zero { D_ZERO } else { D_INT }, c)
 }
 
 fn dfa_done(s: u32) -> bool {
@@ -1247,6 +1289,7 @@ pub unsafe extern "C" fn run() -> i32 {
     let t_start = T_START;
     let t_count = T_COUNT;
     let t_at = local(T_BYTE);
+    let t_val = T_VAL;
     let mut ck_at = local(NEXT_CK);
     let mut ii = II;
     let mut state = STATE;
@@ -1262,7 +1305,7 @@ pub unsafe extern "C" fn run() -> i32 {
     macro_rules! fail {
         ($why:expr, $p:expr) => {{
             WHY = $why;
-            FAIL_POS = pos0 + $p as u64;
+            failed_at($p as usize);
             break FAIL;
         }};
     }
@@ -1282,6 +1325,16 @@ pub unsafe extern "C" fn run() -> i32 {
                 }
                 LAST_TOP_LINE = l;
             }
+        }};
+    }
+    // A top-level value starts at window offset $p (JSON Lines want it on a line of its own).
+    macro_rules! top_start {
+        ($p:expr) => {{
+            let l = lines_at($p);
+            if l == LAST_TOP_LINE {
+                LINES_OK = false;
+            }
+            TOP_LINE = l;
         }};
     }
     // A string value from byte $start to window offset $q (its closing quote).
@@ -1372,6 +1425,39 @@ pub unsafe extern "C" fn run() -> i32 {
             ck_at = local(NEXT_CK);
         }};
     }
+    // Feeds window bytes [$from, $to) to DFA state $s (a number or literal the window cut); at the top level a
+    // value may end and another start inside it (see dfa_splits). Fails at a byte that can't follow.
+    macro_rules! feed {
+        ($s:ident, $from:expr, $to:expr) => {{
+            let mut k = $from;
+            let mut bad = usize::MAX;
+            while k < $to {
+                let c = byte(k);
+                let t = dfa($s, c);
+                if t == D_BAD && depth == 0 && dfa_done($s) && dfa_splits($s, c) {
+                    if k > 0 {
+                        top_end!(k - 1);
+                    }
+                    top_start!(k);
+                    nodes += 1;
+                    tcount += 1;
+                    $s = dfa(D_START, c);
+                } else {
+                    $s = t;
+                }
+                if $s == D_BAD {
+                    bad = k;
+                    break;
+                }
+                k += 1;
+            }
+            if bad != usize::MAX {
+                fail!(W_SYNTAX, bad);
+            }
+        }};
+    }
+    // A top-level value right after a number or literal (see dfa_splits), in the same token: where it starts.
+    let mut split = usize::MAX;
     let r = loop {
         // A token the last window cut.
         if part != P_NONE {
@@ -1379,12 +1465,9 @@ pub unsafe extern "C" fn run() -> i32 {
                 let mut j = 0;
                 let mut s = PDFA;
                 while j < wlen && !ENDS[byte(j) as usize] {
-                    s = dfa(s, byte(j));
                     j += 1;
                 }
-                if s == D_BAD {
-                    fail!(W_SYNTAX, 0);
-                }
+                feed!(s, 0, j);
                 if j == wlen && !last {
                     PDFA = s;
                     break NEED;
@@ -1434,15 +1517,16 @@ pub unsafe extern "C" fn run() -> i32 {
             }
             continue;
         }
-        if ii >= n {
+        if split == usize::MAX && ii >= n {
             if fail_at != usize::MAX {
                 fail!(W_SYNTAX, fail_at);
             }
             if last {
                 if state == S_TOP {
                     // (A separator after the only top-level value is one too many: "Unexpected ','".)
-                    if SEP != NONE && tcount == 1 {
+                    if SEP != NONE && tcount == 1 && flags & F_LINES == 0 {
                         WHY = W_SYNTAX;
+                        failed_at(wlen);
                         FAIL_POS = SEP;
                         break FAIL;
                     }
@@ -1452,7 +1536,8 @@ pub unsafe extern "C" fn run() -> i32 {
             }
             break NEED;
         }
-        let mut p = *idx.add(ii) as usize;
+        let mut p = if split != usize::MAX { split } else { *idx.add(ii) as usize };
+        split = usize::MAX;
         if p >= fail_at {
             fail!(W_SYNTAX, fail_at);
         }
@@ -1570,7 +1655,7 @@ pub unsafe extern "C" fn run() -> i32 {
             close!(p);
             continue;
         }
-        if tkind != OBJ && at_target!() && (tcount >= t_count || p >= t_at) {
+        if at_target!() && ((tkind != OBJ && (tcount >= t_count || p >= t_at)) || pos0 + p as u64 == t_val) {
             WHY = W_CHILD;
             break STOP;
         }
@@ -1578,11 +1663,7 @@ pub unsafe extern "C" fn run() -> i32 {
             fail!(W_DEPTH, p);
         }
         if depth == 0 {
-            let l = lines_at(p);
-            if l == LAST_TOP_LINE {
-                LINES_OK = false;
-            }
-            TOP_LINE = l;
+            top_start!(p);
         }
         nodes += 1;
         tcount += 1;
@@ -1638,12 +1719,7 @@ pub unsafe extern "C" fn run() -> i32 {
                     }
                     if j == wlen {
                         let mut s = D_START;
-                        for k in p..wlen {
-                            s = dfa(s, byte(k));
-                        }
-                        if s == D_BAD {
-                            fail!(W_SYNTAX, p);
-                        }
+                        feed!(s, p, wlen);
                         part = P_SCALAR;
                         PDFA = s;
                         PSTART = pos0 + p as u64;
@@ -1652,8 +1728,19 @@ pub unsafe extern "C" fn run() -> i32 {
                     }
                 }
                 let e = scalar(p);
-                if e == 0 || !ENDS[byte(e) as usize] {
+                if e == 0 {
                     fail!(W_SYNTAX, p);
+                }
+                let c2 = byte(e);
+                if !ENDS[c2 as usize] {
+                    if depth != 0 || !splits(p, e, c2) {
+                        fail!(W_SYNTAX, p);
+                    }
+                    // Another top-level value right after it, in the same token.
+                    top_end!(e - 1);
+                    after!();
+                    split = e;
+                    continue;
                 }
                 ii += 1;
                 top_end!(e - 1);
@@ -1664,7 +1751,7 @@ pub unsafe extern "C" fn run() -> i32 {
     // (A window that ends inside a token isn't done until what stage 1 found wrong in it is reported.)
     let r = if r == NEED && fail_at != usize::MAX {
         WHY = W_SYNTAX;
-        FAIL_POS = pos0 + fail_at as u64;
+        failed_at(fail_at);
         FAIL
     } else {
         r

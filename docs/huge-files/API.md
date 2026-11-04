@@ -94,7 +94,7 @@ pretty form (as on the normal path).
   its `path`, its `parent` and `index` there (to page the tree to it), and `line` / `col`.
 - `resolve(path)`: `$.records[5000000].name`, `/records/5000000/name` or segments (path.ts syntax). An index
   into a big array is a checkpoint seek (≤ ~1 MiB parsed). A **name** in a big object is found by scanning that
-  object (skeleton speed, ~1 GB/s): the last member with that name wins, as path.ts `resolve`.
+  object until the first member with that name (as path.ts `resolve`): pages of it, parsed.
 - Pretty line ↔ node: `prettyLines(k, 1).pos[0]` is the node's byte; a node's `pretty` is its line.
 
 ## Find

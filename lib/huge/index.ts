@@ -47,6 +47,8 @@ export class HugeIndex {
   depth = new Int32Array(1024);
   /** First frame it holds (the ones below are the previous checkpoint's). */
   from = new Int32Array(1024);
+  /** The lowest depth since the checkpoint before (0: the parse was at the top level in between). */
+  low = new Int32Array(1024);
   /** Where frame `from` is in `frames` (FW numbers per frame). */
   fr = new Int32Array(1024);
   nodes = new Float64Array(1024);
@@ -77,6 +79,7 @@ export class HugeIndex {
     this.st = grow(this.st, n);
     this.depth = grow(this.depth, n);
     this.from = grow(this.from, n);
+    this.low = grow(this.low, n);
     this.fr = grow(this.fr, n);
     this.nodes = grow(this.nodes, n);
     this.closers = grow(this.closers, n);
@@ -94,6 +97,7 @@ export class HugeIndex {
     this.st[k] = s.state;
     this.depth[k] = s.frames.length;
     this.from[k] = 0;
+    this.low[k] = 0;
     this.fr[k] = this.nf;
     this.nodes[k] = s.nodes;
     this.closers[k] = s.closers;
@@ -121,6 +125,7 @@ export class HugeIndex {
       this.st[k] = a[at + 1];
       this.depth[k] = depth;
       this.from[k] = from;
+      this.low[k] = a[at + 3];
       this.fr[k] = this.nf;
       this.nodes[k] = a[at + 4];
       this.closers[k] = a[at + 5];

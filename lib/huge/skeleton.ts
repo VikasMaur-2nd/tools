@@ -13,6 +13,7 @@ interface Exports {
   next_pos(): number;
   why(): number;
   fail_pos(): number;
+  fail_info(): number;
   ck_ptr(): number;
   ck_len(): number;
   dir_ptr(): number;
@@ -21,7 +22,7 @@ interface Exports {
   warn_len(): number;
   drain(): void;
   stats(): number;
-  target(depth: number, start: number, count: number, byte: number): void;
+  target(depth: number, start: number, count: number, byte: number, val: number): void;
   load(len: number, last: number): number;
   run(): number;
   snap(): number;
@@ -59,6 +60,7 @@ export const S_TOP = 6;
 export const F_CHECKPOINTS = 1;
 export const F_DUPS = 2;
 export const F_DIR = 4;
+export const F_LINES = 8;
 
 /** f64 per frame in a state (see State), and before the frames. */
 export const FW = 6;
@@ -108,6 +110,8 @@ export interface SkeletonOptions {
   /** Check property names for duplicates (bounded: see DUP_CAP in lib.rs). */
   dups?: boolean;
   maxDepth?: number;
+  /** JSON Lines (as tape-parser.ts `lines`): separators after a single top-level value are fine. */
+  lines?: boolean;
 }
 
 export const WINDOW = 1 << 20;
@@ -154,7 +158,7 @@ export class Skeleton {
   start(src: ByteSource, o: SkeletonOptions = {}): boolean {
     this.src = src;
     this.window = Math.max(64, (o.window ?? WINDOW) & ~63);
-    const flags = (o.every ? F_CHECKPOINTS : 0) | (o.dups ? F_DUPS : 0) | (o.big ? F_DIR : 0);
+    const flags = (o.every ? F_CHECKPOINTS : 0) | (o.dups ? F_DUPS : 0) | (o.big ? F_DIR : 0) | (o.lines ? F_LINES : 0);
     return this.x.init(this.window, flags, o.every || 0, o.big || 0, o.maxDepth ?? 100_000) === 1;
   }
 
@@ -198,13 +202,20 @@ export class Skeleton {
     return this.x.fail_pos();
   }
 
+  /** At failPos (if the failure is in the last window): [UTF-16 units before it, line breaks before it, the UTF-16 offset of its line's start]. */
+  get failAt(): [number, number, number] {
+    const a = new Float64Array(this.x.memory.buffer, this.x.fail_info(), 3);
+    return [a[0], a[1], a[2]];
+  }
+
   /**
    * From now on, stop before child `count` of the container that starts at byte `start` and has `depth` open
    * containers when innermost (depth 0: the top level, whatever `start`), or before its first child at byte
-   * `byte` or later, or at its closing bracket. `depth` -1: no target.
+   * `byte` or later (an object member: at its name), or before the child whose value starts at byte `val` (an
+   * object member: after its name), or at its closing bracket. `depth` -1: no target.
    */
-  target(depth: number, start = -1, count = -1, byte = -1): void {
-    this.x.target(depth, start, count, byte);
+  target(depth: number, start = -1, count = -1, byte = -1, val = -1): void {
+    this.x.target(depth, start, count, byte, val);
   }
 
   /** The state now (where it stopped, or at the end of the window). */
