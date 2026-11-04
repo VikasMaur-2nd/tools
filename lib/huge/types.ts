@@ -72,13 +72,39 @@ export interface HugeNode {
   depth: number;
   /** Its name or index in its container; null for a root (and the LIST). */
   key: Seg | null;
-  /** Children of a container (0 for anything else); null if not known yet (being indexed). */
+  /**
+   * Children of a container (0 for anything else). For one still being read (`partial`): the children read so
+   * far (the last may be incomplete). null: not known (not read yet).
+   */
   count: number | null;
+  /** Still being read when this was answered (the indexing front is inside it): `count` is so far, `end` is -1. */
+  partial?: boolean;
   /** Its first line in the pretty form (0-based), and how many lines it takes there (null: not known yet). */
   pretty: number;
   prettyLines: number | null;
   /** Its children come from children() (big: in the directory); a small container comes whole in its parent's page. */
   big: boolean;
+  /**
+   * For a big child in a page (a stub): what its row shows. A container: format.ts preview of its first children
+   * (`{id: 1, name: "Ada", …}`); a string: its start, decoded (cut; a long one ends with `…`).
+   */
+  preview?: string;
+}
+
+/** The normal path's status bar for the document (Engine.statusOf, linesStatus), as far as huge mode can tell. */
+export interface HugeStatus {
+  /** 'valid' (maybe with warnings), 'fixable' (the first issue a repair fixes), 'error'. */
+  kind: 'valid' | 'fixable' | 'error';
+  /** The message it shows: the first problem, or a valid document's first warning; null if none. */
+  msg: string | null;
+  line: number;
+  col: number;
+  pos: Bytes;
+  /** Valid: duplicate-name warnings (first 500; `more` past them). */
+  warnings: number;
+  more: boolean;
+  /** Valid JSON Lines: the records (the status bar says "JSON Lines"); else null. */
+  jsonl: number | null;
 }
 
 export interface HugeSummary {
@@ -87,6 +113,8 @@ export interface HugeSummary {
   bom: number;
   /** The whole document has been read. Until then, counts are so far and queries see what's read. */
   done: boolean;
+  /** Indexing was stopped (stop()): `done` stays false, queries see what was read before. */
+  stopped: boolean;
   /** The only top-level value, or the LIST of them (null: none, e.g. an empty file or an error before any). */
   root: HugeNode | null;
   /** Top-level values. */
@@ -104,6 +132,12 @@ export interface HugeSummary {
   prettyLines: number;
   /** The first problem (the document is valid up to it; views show what comes before). */
   error: HugeError | null;
+  /**
+   * What the normal path's status bar would say: the error, or "Multiple top-level values (wrapped in an array)"
+   * (fixable, at the second value) for several top-level values in a file not named .jsonl that aren't JSON
+   * Lines, or valid (warnings, JSON Lines). null while indexing (not known yet).
+   */
+  status: HugeStatus | null;
   /** Duplicate property names (first 500). */
   warnings: HugeProblem[];
   moreWarnings: boolean;
@@ -161,6 +195,8 @@ export interface HugeLocation {
   /** Its container (null for a root) and its index there, to page the tree to it. */
   parent: HugeNode | null;
   index: number;
+  /** The containers above it, the root (or the LIST) first, its container last, each with its index in its own container (the root: 0). */
+  chain: { node: HugeNode; index: number }[];
   /** 1-based line and column of its start (as the status bar shows them). */
   line: number;
   col: number;

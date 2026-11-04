@@ -9,6 +9,8 @@ import { MAX_DEPTH } from '../lib/json/parser';
 import { parse } from '../lib/json/tape-parser';
 import type { ByteSource } from '../lib/json/tape-wasm';
 import { HugeDoc } from '../lib/huge/doc';
+import { lazyResult } from '../lib/json/lazy';
+import { jsonLines } from '../lib/engine/rules';
 import type { HugeOptions } from '../lib/huge/types';
 
 export const hugeMod = new WebAssembly.Module(readFileSync(join(__dirname, '..', '..', 'lib', 'huge', 'huge.wasm')));
@@ -55,4 +57,27 @@ export function normalStatus(bytes: Uint8Array, name = ''): { kind: string; msg:
   let line = 1;
   for (let i = text.indexOf('\n'); i >= 0 && i < p; i = text.indexOf('\n', i + 1)) line++;
   return { kind, msg: pick.m, p, line, col: p - (nl + 1) + 1 };
+}
+
+/**
+ * The normal path's status bar for a file (Engine.statusOf, or linesStatus for JSON Lines): kind, message and its
+ * place, and the records of valid JSON Lines.
+ */
+export function normalBar(bytes: Uint8Array, name = ''): { kind: string; msg: string | null; line: number; col: number; jsonl: number | null } {
+  const text = pageText(bytes);
+  const t = parse(text, { lines: LINES_FILE.test(name), maxDepth: MAX_DEPTH, repair: true });
+  const res = lazyResult(t, text);
+  const place = (p: number) => {
+    const nl = text.lastIndexOf('\n', p - 1);
+    let line = 1;
+    for (let i = text.indexOf('\n'); i >= 0 && i < p; i = text.indexOf('\n', i + 1)) line++;
+    return { line, col: p - (nl + 1) + 1 };
+  };
+  const w = res.warnings[0];
+  if (jsonLines(text, res)) return { kind: 'valid', msg: w ? w.m : null, ...(w ? place(w.p) : { line: 0, col: 0 }), jsonl: (res.root!.v as unknown[]).length };
+  const first = res.issues[0];
+  const err = res.error;
+  if (!first && !err) return { kind: 'valid', msg: w ? w.m : null, ...(w ? place(w.p) : { line: 0, col: 0 }), jsonl: null };
+  if (err && (!first || err.p <= first.p)) return { kind: 'error', msg: err.m, ...place(err.p), jsonl: null };
+  return { kind: err ? 'error' : 'fixable', msg: first.m, ...place(first.p), jsonl: null };
 }

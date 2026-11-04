@@ -8,6 +8,8 @@ import { parse } from '../lib/json/tape-parser';
 import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { Prefetch } from '../lib/huge/prefetch';
+import { BlockSource } from '../lib/huge/bytes';
+import { Wait, watched } from '../lib/huge/wait';
 import { PageNodes } from '../lib/huge/page';
 import type { HugeProgress } from '../lib/huge/types';
 import { hugeMod, tapeMod, memSource, normalStatus } from './huge-oracle';
@@ -145,5 +147,69 @@ test('client: queries sent before the worker has its modules wait for the docume
   const at = await early;
   assert.deepEqual(at!.path, ['a', 2]);
   await doc.ready;
+  doc.close();
+});
+
+test('client: queries over async blocks (BlockSource) wait for their reads; the JS parser loads late; stop', async () => {
+  const src = new Records(80_000);
+  const bytes = src.read(0, src.size);
+  const file = new Blob([bytes as BlobPart]);
+  // A parser that isn't there for the first queries (as the worker loads it after the document is made).
+  let ready = false;
+  const later = new Promise<void>((done) => setTimeout(() => ((ready = true), done()), 30));
+  const lateParse: typeof parse = (text, options) => {
+    if (!ready) throw new Wait(() => later);
+    return parse(text, options);
+  };
+  const [page, worker] = channel();
+  // (Query blocks taken from the read-ahead when it has them, as the worker does.)
+  let shared: Prefetch | null = null;
+  serve(worker, async () => ({ huge: hugeMod, parsers: { wasm: tapeMod, parse: lateParse } }), (f) => Object.assign(new BlockSource(f, 1 << 16, 8, shared ?? undefined), { cached: true }), (f) => (shared = new Prefetch(f, 1 << 20, 2)));
+  const doc = new HugeClient(file, { name: 'a.json' }, undefined, page);
+  const s0 = await doc.summary();
+  assert.ok(s0.root);
+  const s = await doc.ready;
+  assert.equal(s.root!.count, 80_000);
+  const at = await doc.resolve([79_999, 'tags', 2]);
+  assert.equal(at!.node.start, src.start(79_999) + src.text(79_999).indexOf('null'));
+  assert.equal(at!.chain.length, 3);
+  assert.equal((await doc.prettyLines(1 + 11 * 500, 2)).text[1], '    "id": 500,');
+  const found: number[] = [];
+  await new Promise<void>((done) => doc.find('item 77777 ', { limit: 1 }, (b) => (found.push(...b.matches), b.done && done())));
+  assert.deepEqual(found, [src.start(77_777) + src.text(77_777).indexOf('item 77777 ')]);
+  doc.close();
+  // Stop: ready resolves stopped, what's read browsable.
+  const [p2, w2] = channel();
+  serve(w2, async () => ({ huge: hugeMod, parsers: { wasm: tapeMod, parse } }), (f) => Object.assign(new BlockSource(f), { cached: true }), (f) => new Prefetch(f, 1 << 16, 2));
+  const big = new Records(400_000);
+  const doc2 = new HugeClient(new Blob([big.read(0, big.size) as BlobPart]), {}, undefined, p2);
+  await doc2.summary();
+  await doc2.stop();
+  const st = await doc2.ready;
+  assert.ok(st.stopped && !st.done);
+  const pg = await doc2.children(st.root!, 0, 10);
+  assert.equal(pg.count, Math.min(10, st.root!.count ?? 0));
+  doc2.close();
+});
+
+test('reads: a read that stalls is made again; after its tries, "Read failed" (nothing of the document)', async () => {
+  // Stalls once (never resolves), then reads.
+  let calls = 0;
+  const once = await watched(() => (++calls === 1 ? new Promise<number>(() => {}) : Promise.resolve(42)), 5, 3);
+  assert.equal(once, 42);
+  assert.equal(calls, 2);
+  // Fails (with a message that could say anything), then stalls: fails with the fixed message after 3 tries.
+  let n = 0;
+  await assert.rejects(
+    watched(() => (++n === 1 ? Promise.reject(new Error('secret bytes')) : new Promise<never>(() => {})), 5, 3),
+    (e: Error) => e.message === 'Read failed',
+  );
+  assert.equal(n, 3);
+  // Over the protocol: indexing whose reads never come fails with that message.
+  const [page, worker] = channel();
+  const stuck = { size: 1 << 20, slice: () => ({ arrayBuffer: () => new Promise<ArrayBuffer>(() => {}) }) } as unknown as Blob;
+  serve(worker, async () => ({ huge: hugeMod, parsers: { wasm: tapeMod, parse } }), () => memSource(new Uint8Array(1 << 20).fill(32)), () => new Prefetch(stuck, 1 << 16, 2, 5));
+  const doc = new HugeClient(new Blob([new Uint8Array(1 << 20).fill(32)]), { name: 'a.json' }, undefined, page);
+  await assert.rejects(doc.ready, (e: Error) => e.message === 'Read failed');
   doc.close();
 });

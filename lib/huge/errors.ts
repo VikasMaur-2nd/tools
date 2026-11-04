@@ -62,13 +62,19 @@ export function prefixOf(s: State, prev: number): string {
 export const byteBefore = (src: ByteSource, pos: number) => (pos > 0 ? src.read(pos - 1, 1)[0] : -1);
 
 /** The first problem of a parse (as Engine.statusOf picks it), ignoring several top-level values and anything before `from`. */
-function firstProblem(t: Tape, from: number): { p: number; m: string; fatal: boolean } | null {
+function firstProblem(t: Tape, from: number): { p: number; m: string; fatal: boolean; self: boolean } | null {
   const err = t.head.error;
   const first = t.head.issues.find((x) => x.m !== MULTI && x.p >= from);
-  if (err && err.p >= from && (!first || err.p <= first.p)) return { p: err.p, m: err.m, fatal: true };
-  if (first) return { p: first.p, m: first.m, fatal: !!err };
+  if (err && err.p >= from && (!first || err.p <= first.p)) return { p: err.p, m: err.m, fatal: true, self: true };
+  if (first) return { p: first.p, m: first.m, fatal: !!err, self: false };
   return null;
 }
+
+/**
+ * A HugeError, whether it is the parser's fatal error itself (rather than an issue before one), and whether that
+ * parse also noted "Multiple top-level values" at the same place (the normal path's status then shows that first).
+ */
+export type Problem = HugeError & { self?: boolean; multi?: boolean };
 
 /** Line and column (1-based, as the status bar) of byte `pos`, counting from checkpoint `k` (at or before it). */
 export function lineCol(src: ByteSource, index: HugeIndex, pos: number, k = index.at(pos)): { line: number; col: number } {
@@ -97,7 +103,7 @@ export function lineCol(src: ByteSource, index: HugeIndex, pos: number, k = inde
  * `failPos` (`anchor`: the skeleton's [UTF-16 units, line breaks, line start] there). `lines`: read as JSON Lines
  * (the file's name says so, as Engine.load decides).
  */
-export function exactError(src: ByteSource, index: HugeIndex, failPos: number, anchor: [number, number, number], parse: Parse, lines: boolean): HugeError {
+export function exactError(src: ByteSource, index: HugeIndex, failPos: number, anchor: [number, number, number], parse: Parse, lines: boolean): Problem {
   // (One checkpoint back: repairing, the JS parser may place the problem in the string before the failure,
   // which can end right before the last checkpoint: `"a" b` is the string "a\" b".)
   const k = Math.max(0, index.at(failPos) - 1);
@@ -124,10 +130,12 @@ export function exactError(src: ByteSource, index: HugeIndex, failPos: number, a
       }
       const local = pb.p - prefix.length;
       const kind = pb.fatal ? 'error' : 'fixable';
+      const self = pb.self;
+      const multi = t.head.issues.some((x) => x.m === MULTI && x.p === pb.p);
       if (local <= head.length) {
         const b = src.read(start, headEnd - start);
         const pos = start + byteAfterUnits(b, 0, headEnd - start, local);
-        return { msg: pb.m, ...placeIn(head, local, index, k), pos, kind };
+        return { msg: pb.m, ...placeIn(head, local, index, k), pos, kind, self, multi };
       }
       // In the tail: placed from the failure (whose place the skeleton knew).
       const off = local - head.length;
@@ -138,10 +146,10 @@ export function exactError(src: ByteSource, index: HugeIndex, failPos: number, a
       if (between) {
         const line = brk + between.breaks + 1;
         const col = between.sinceBreak >= 0 ? between.sinceBreak + 1 : u16 + between.units - lineU16 + 1;
-        return { msg: pb.m, line, col, pos, kind };
+        return { msg: pb.m, line, col, pos, kind, self, multi };
       }
       const back = count(src.read(pos, failPos - pos), 0, failPos - pos);
-      return { msg: pb.m, line: brk - back.breaks + 1, col: u16 - back.units - lineU16 + 1, pos, kind };
+      return { msg: pb.m, line: brk - back.breaks + 1, col: u16 - back.units - lineU16 + 1, pos, kind, self, multi };
     }
   }
 }

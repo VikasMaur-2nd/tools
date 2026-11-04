@@ -23,6 +23,7 @@ interface Exports {
   drain(): void;
   stats(): number;
   target(depth: number, start: number, count: number, byte: number, val: number): void;
+  stop_after(after: number): void;
   load(len: number, last: number): number;
   run(): number;
   snap(): number;
@@ -36,6 +37,8 @@ export const DONE = 0;
 export const NEED = 1;
 export const STOP = 2;
 export const FAIL = -1;
+/** (JS only) The bytes after `limit` aren't read yet: the run stopped before them (see Skeleton.limit). */
+export const FRONT = 3;
 
 // why(): failures, then stops.
 export const W_SYNTAX = 1;
@@ -44,6 +47,8 @@ export const W_MEMORY = 3;
 export const W_END = 4;
 export const W_CHILD = 5;
 export const W_CLOSE = 6;
+/** Stopped after a value at or past stopAfter's byte. */
+export const W_AFTER = 7;
 
 // Parser states (what comes next).
 export const S_VALUE = 0;
@@ -149,6 +154,11 @@ export class Skeleton {
   private x: Exports;
   private src: ByteSource | null = null;
   window = WINDOW;
+  /**
+   * Bytes it may read: past this the document isn't read yet (the indexing pass's front), and a run stops there
+   * with FRONT (a token the limit cuts is left unread).
+   */
+  limit = Infinity;
 
   constructor(mod: WebAssembly.Module) {
     this.x = new WebAssembly.Instance(mod, {}).exports as unknown as Exports;
@@ -157,6 +167,7 @@ export class Skeleton {
   /** Starts a parse of `src` from its first byte. False if out of memory. */
   start(src: ByteSource, o: SkeletonOptions = {}): boolean {
     this.src = src;
+    this.limit = Infinity;
     this.window = Math.max(64, (o.window ?? WINDOW) & ~63);
     const flags = (o.every ? F_CHECKPOINTS : 0) | (o.dups ? F_DUPS : 0) | (o.big ? F_DIR : 0) | (o.lines ? F_LINES : 0);
     return this.x.init(this.window, flags, o.every || 0, o.big || 0, o.maxDepth ?? 100_000) === 1;
@@ -175,8 +186,14 @@ export class Skeleton {
     const x = this.x;
     const src = this.src!;
     const at = x.next_pos();
-    const len = Math.min(max, src.size - at);
-    const last = at + len >= src.size;
+    let len = Math.min(max, src.size - at);
+    let last = at + len >= src.size;
+    if (at + len > this.limit) {
+      // (The window up to the limit: not a whole number of blocks, but nothing is read after it.)
+      len = this.limit - at;
+      last = false;
+      if (len <= 0) return FRONT;
+    }
     if (len > 0) new Uint8Array(x.memory.buffer, x.win_ptr(), len).set(src.read(at, len).subarray(0, len));
     x.load(len, last ? 1 : 0);
     return x.run();
@@ -187,7 +204,7 @@ export class Skeleton {
     return this.x.run();
   }
 
-  /** Runs on (in the window it is in, then the next ones) until done, stopped or failed (not NEED). */
+  /** Runs on (in the window it is in, then the next ones) until done, stopped, failed or at the limit (not NEED). */
   go(max = this.window): number {
     let r = this.x.run();
     while (r === NEED) r = this.step(max);
@@ -216,6 +233,11 @@ export class Skeleton {
    */
   target(depth: number, start = -1, count = -1, byte = -1, val = -1): void {
     this.x.target(depth, start, count, byte, val);
+  }
+
+  /** From now on (after target()), also stop after a value at the first comma, closing bracket or top-level value at or after byte `after` (-1: no). */
+  stopAfter(after: number): void {
+    this.x.stop_after(after);
   }
 
   /** The state now (where it stopped, or at the end of the window). */
@@ -259,7 +281,7 @@ export class Skeleton {
   /** Counters now: see lib.rs stats(). */
   stats(): Float64Array {
     const x = this.x;
-    return new Float64Array(x.memory.buffer, x.stats(), 12).slice();
+    return new Float64Array(x.memory.buffer, x.stats(), 16).slice();
   }
 
   /** The checkpoints, directory records and warnings since the last drain (copies), then drains. */

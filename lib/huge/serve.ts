@@ -5,6 +5,7 @@
  */
 import type { ByteSource } from '../json/tape-wasm';
 import { HugeDoc, type Parsers } from './doc';
+import { Wait } from './wait';
 import type { Reply, Request } from './protocol';
 import type { Prefetch } from './prefetch';
 import type { FindBatch, HugePage } from './types';
@@ -14,13 +15,16 @@ export interface ServePort {
   onmessage: ((e: { data: unknown }) => void) | null;
 }
 
-/** Indexing runs this long between looks at the requests (ms). */
-const SLICE = 25;
+/** Indexing runs this long between looks at the requests (ms): a request waits at most this for a step to end (10 ms
+ * costs indexing nothing measurable; 25 ms held every first query back by ~12 ms on average). */
+const SLICE = 10;
 /** Progress is posted at most this often (ms). */
 const PROGRESS = 100;
 
 /** Messages this worker may send as an error (others are replaced: they could say something of the document). */
-const KNOWN = new Set(['Out of memory', 'Nesting is too deep to format', 'No document']);
+const KNOWN = new Set(['Out of memory', 'Nesting is too deep to format', 'No document', 'Read failed']);
+/** Tries of a query that waits (blocks to read, the parser to load) before it fails. */
+const TRIES = 256;
 
 /** Resolves in a new task (a MessageChannel message: timers would be clamped). */
 const nextTask = () =>
@@ -37,20 +41,47 @@ const nextTask = () =>
  * `sourceOf`: random reads of a file (queries). `aheadOf`: the indexing pass's read-ahead source (prefetch.ts), or
  * none (the indexing pass reads through `sourceOf`).
  */
-export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource, aheadOf?: (file: Blob) => Prefetch) {
+export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource, aheadOf?: (file: Blob) => Pick<Prefetch, 'has' | 'need' | 'read' | 'size'>) {
   let doc: HugeDoc | null = null;
+  /** The document's source for queries (one that reads async blocks pins those a query uses until it ends). */
+  let src: (ByteSource & { release?(): void }) | null = null;
+  // A stop that came before the document existed.
+  let stopNow = false;
   // Requests that come before the document exists (its modules still loading) wait for it.
   let opened: () => void = () => {};
   const made = new Promise<void>((done) => (opened = done));
   const finds = new Map<number, boolean>();
+  // Queries waiting for reads (or the parser): indexing pauses until they're answered, or each would wait out
+  // a step (up to SLICE ms) every time it's asked again.
+  let held = 0;
+  let resume: (() => void) | null = null;
+  const unhold = () => {
+    if (--held === 0 && resume) {
+      resume();
+      resume = null;
+    }
+  };
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
   const fail = (id: number, e: unknown) => reply({ id, ok: false, error: e instanceof Error && KNOWN.has(e.message) ? e.message : 'Query failed' });
 
   const open = async (id: number, file: Blob, options: import('./types').HugeOptions) => {
     const { huge, parsers } = await load();
     const ahead = aheadOf?.(file);
-    doc = new HugeDoc(sourceOf(file), huge, parsers, options, { index: ahead });
+    // (The read-ahead starts now: the first pages can take the start of the file from it.)
+    void ahead?.need(0, 1 << 20).catch(() => {});
+    src = sourceOf(file);
+    for (;;) {
+      try {
+        doc = new HugeDoc(src, huge, parsers, options, { index: ahead });
+        break;
+      } catch (e) {
+        // (Its first bytes (a byte order mark?) read first.)
+        if (!(e instanceof Wait)) throw e;
+        await e.until();
+      }
+    }
     opened();
+    if (stopNow) doc.stop();
     let shown = 0;
     for (;;) {
       if (ahead) {
@@ -59,7 +90,17 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         const ready = ahead.need(at, len);
         if (!ahead.has(at, len)) await ready;
       }
-      if (doc.step(performance.now() + SLICE)) break;
+      if (held) await new Promise<void>((done) => (resume = done));
+      let finished: boolean;
+      try {
+        finished = doc.step(performance.now() + SLICE);
+      } catch (e) {
+        // (Placing an error needs blocks or the parser not here yet.)
+        if (!(e instanceof Wait)) throw e;
+        await e.until();
+        continue;
+      }
+      if (finished) break;
       const now = performance.now();
       if (now - shown >= PROGRESS) {
         shown = now;
@@ -80,6 +121,10 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       }
       const r = it.next();
       if (r.done) break;
+      if ('wait' in r.value) {
+        await r.value.wait.until();
+        continue;
+      }
       const b = r.value;
       reply({ id, ok: true, value: b, done: b.done }, [b.matches.buffer]);
       if (b.done) break;
@@ -103,11 +148,18 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       reply({ id: m.id, ok: true, value: null, done: true });
       return;
     }
+    if (m.op === 'stop') {
+      if (doc) doc.stop();
+      else stopNow = true;
+      reply({ id: m.id, ok: true, value: null, done: true });
+      return;
+    }
     if (doc) answer(m);
     else void made.then(() => answer(m));
   };
 
-  const answer = (m: Request) => {
+  const answer = (m: Request, tries = 0) => {
+    let waiting = false;
     try {
       if (!doc) throw new Error('No document');
       switch (m.op) {
@@ -135,7 +187,27 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
           return;
       }
     } catch (err) {
+      // (Blocks to read or the parser to load first: asked again then.)
+      if (err instanceof Wait && tries < TRIES) {
+        waiting = true;
+        held++;
+        err.until().then(
+          () => {
+            answer(m, tries + 1);
+            unhold();
+          },
+          (e) => {
+            src?.release?.();
+            fail(m.id, e);
+            unhold();
+          },
+        );
+        return;
+      }
       fail(m.id, err);
+    } finally {
+      // (Done with its blocks, unless asked again after a Wait.)
+      if (!waiting) src?.release?.();
     }
   };
 }
