@@ -3,7 +3,8 @@
 // them (Pretty, Minify, JSON Lines, CSV, Split into a zip, Extract with conditions) through both sinks (a
 // download from the browser's storage, and a save dialog, stubbed with an OPFS file), .gz files (small: the
 // editor; big: huge mode), privacy, and screenshots (HUGE_SHOTS=dir) in both themes on desktop and phone.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { webkit } from 'playwright-core';
 import { join } from 'node:path';
 import { gzipSync, inflateRawSync } from 'node:zlib';
 import { defaults, test } from '../../lib/api.mjs';
@@ -53,6 +54,26 @@ const NO_PICKERS = () => {
     }
   }
 };
+
+/**
+ * WebKit keeps no OPFS in a fresh (ephemeral) context, as Safari's private windows: checks that write
+ * there run in a persistent profile in WebKit (Chromium and Firefox have it either way).
+ */
+async function storagePage(t) {
+  if (t.engine !== 'webkit') return t.page;
+  const profile = mkdtempSync(join(DIRS.tmp, 'webkit-profile-'));
+  const ctx = await webkit.launchPersistentContext(profile, { headless: true, viewport: { width: 1280, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  await page.addInitScript(() => {
+    window.__vis = (sel) => [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length > 0) || null;
+  });
+  t.page = page;
+  t.cleanup = async () => {
+    await ctx.close().catch(() => {});
+    rmSync(profile, { recursive: true, force: true });
+  };
+  return page;
+}
 
 async function openHuge(t, path) {
   const { page } = t;
@@ -135,7 +156,8 @@ test('huge stream: the Shape panel reads every record: paths, kinds, presence, F
 });
 
 test('huge stream: Pretty, Minify, JSON Lines and CSV download exactly what the normal path writes', async (t) => {
-  const { page } = t;
+  const page = await storagePage(t);
+  try {
   await page.addInitScript(NO_PICKERS);
   await t.open('/');
   await openHuge(t, arrayPath);
@@ -154,10 +176,14 @@ test('huge stream: Pretty, Minify, JSON Lines and CSV download exactly what the 
   // The result line, and Download again.
   const done = await page.locator('#hg-convert .hc-done').textContent();
   t.check(/3,000 records/.test(done) && /Download again/.test(done), 'the result says what it wrote', done);
+  } finally {
+    await t.cleanup?.();
+  }
 });
 
 test('huge stream: Split writes its parts into a zip; Extract picks records by conditions', async (t) => {
-  const { page } = t;
+  const page = await storagePage(t);
+  try {
   await page.addInitScript(NO_PICKERS);
   await t.open('/');
   await openHuge(t, linesPath);
@@ -207,10 +233,17 @@ test('huge stream: Split writes its parts into a zip; Extract picks records by c
   });
   const want = recs.filter((x) => !x.active && x.name.includes('7')).slice(0, 20);
   t.check(e.data === want.map((x) => JSON.stringify(x) + '\n').join(''), 'Extract: the first 20 matching records', e.data.slice(0, 200));
+  } finally {
+    await t.cleanup?.();
+  }
 });
 
-test('huge stream: the save dialog writes the file as it goes (a stubbed picker: an OPFS file)', async (t) => {
-  const { page } = t;
+// (Chromium's path: Safari has no save dialog API, so WebKit always writes to OPFS and downloads. A stubbed
+// picker there reports "Saved" but its OPFS file reads back without the bytes: WebKit's createWritable from a
+// worker, not a path huge mode takes in Safari.)
+test('huge stream: the save dialog writes the file as it goes (a stubbed picker: an OPFS file)', { engines: ['chromium', 'firefox'] }, async (t) => {
+  const page = await storagePage(t);
+  try {
   await page.addInitScript(() => {
     window.showSaveFilePicker = async (o) => {
       window.__picked = o.suggestedName;
@@ -227,10 +260,14 @@ test('huge stream: the save dialog writes the file as it goes (a stubbed picker:
   t.assert(await until(page, () => /Saved/.test(document.querySelector('#hg-convert .hc-done')?.textContent ?? ''), null, { timeout: 30_000 }), 'saved');
   const out = await page.evaluate(async () => [window.__picked, await (await (await navigator.storage.getDirectory()).getFileHandle('picked-output')).getFile().then((f) => f.text())]);
   t.check(out[0] === 'people.min.json' && out[1] === JSON.stringify(doc), 'the picked file holds the minified document', out[0]);
+  } finally {
+    await t.cleanup?.();
+  }
 });
 
 test('huge stream: a small .json.gz opens in the editor; a big .jsonl.gz in huge mode', async (t) => {
-  const { page } = t;
+  const page = await storagePage(t);
+  try {
   await t.open('/');
   await page.evaluate(() => localStorage.removeItem('tk:hugeMin'));
   await page.locator('.app:visible input[type=file]').setInputFiles(gzSmall);
@@ -254,6 +291,9 @@ test('huge stream: a small .json.gz opens in the editor; a big .jsonl.gz in huge
       return true;
     });
   t.check(await poll(empty, { timeout: 10_000 }), 'the decompressed copy is deleted');
+  } finally {
+    await t.cleanup?.();
+  }
 });
 
 test('huge stream: Shape and Convert show the document only inside private boxes', async (t) => {

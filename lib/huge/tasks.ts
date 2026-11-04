@@ -528,10 +528,10 @@ export class HugeTasks {
     try {
       where = await this.outFor(spec, name, parts);
     } catch (e) {
-      // (The picker closed: nothing to do.)
+      // (The picker closed: nothing to do. Refused, or no storage: said so.)
       if (e instanceof DOMException && e.name === 'AbortError') return;
-      if (e instanceof DOMException && e.name === 'SecurityError') where = null;
-      else throw e;
+      this.ui.cmd({ state: 'error', kind: spec.kind, name, result: null, error: 'No storage' });
+      return;
     }
     if (!where) return;
     const began = performance.now();
