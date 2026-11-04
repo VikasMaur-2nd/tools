@@ -329,7 +329,8 @@ export class HugeTreeView {
     else h += `<span class="tv-k">${this.mark(String(n.key))}</span><span class="tv-c">:</span>`;
     if (cont) {
       const isObj = n.t === OBJ;
-      const count = rt.num(n.count) + (n.partial ? '+' : '');
+      // (Still being read and not counted yet: an ellipsis.)
+      const count = n.partial && !n.count ? '…' : rt.num(n.count) + (n.partial ? '+' : '');
       h += `<span class="tv-b"${n.partial ? ` title="${escapeHtml(rt('Still counting: the file is being indexed'))}"` : ''}>${isObj ? '{' : '['}${count}${isObj ? '}' : ']'}</span>`;
       if (!row.open && n.count && n.text) h += `<span class="tv-p">${this.mark(n.text)}</span>`;
       return h + '</div>';

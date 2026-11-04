@@ -21,6 +21,8 @@ type Ref = { core: CoreNode } | { page: PageNodes; j: JNode };
 const SUMMARY_EVERY = 1000;
 /** How often a container still being indexed has its count so far worked out (ms). */
 const COUNT_EVERY = 2000;
+/** Children read at once to work that out. */
+const PROBE = 1000;
 
 const aborted = () => new DOMException('Aborted', 'AbortError');
 const check = (signal?: AbortSignal) => {
@@ -203,10 +205,20 @@ export class CoreSource implements HugeSource {
     node.text = s + (isObj ? '}' : ']');
   }
 
+  /**
+   * Can container `c` be paged now? While indexing, a page reaching a big child still being read makes the
+   * core build all of that child's text read so far (seconds, and past 512 MB a failure: reported to the
+   * core), so a container whose count isn't known yet is paged only once indexing ends (the list of JSON
+   * Lines records excepted: its records are small).
+   */
+  private pageable(c: HugeNode, ref: Ref) {
+    return this.st.done || !c.partial || ('core' in ref && ref.core.kind === LIST);
+  }
+
   /** Items [from, from + n) of container `c` as nodes of the views. */
   private async items(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<{ view: PageNodes | null; list: JNode[]; nodes: HugeNode[] }> {
     const ref = this.refs.get(c);
-    if (!ref) return { view: null, list: [], nodes: [] };
+    if (!ref || !this.pageable(c, ref)) return { view: null, list: [], nodes: [] };
     if ('j' in ref) {
       // A small container: its items are in its page already.
       const all = kids(ref.j);
@@ -242,28 +254,43 @@ export class CoreSource implements HugeSource {
   }
 
   /**
-   * How many children of `n` (a container still being indexed) are read so far: found by asking for single
-   * children past the last count known (a few checkpoint seeks), at most every COUNT_EVERY ms.
+   * How many children of `n` (a container still being indexed) are read so far, at most every COUNT_EVERY ms.
+   * One page from the last count known says it when it ends at an open child (the one being read: nothing
+   * can follow it yet) or short. Only a full page of closed items (an array of records being read) is
+   * followed by probes further on, which the index answers with a checkpoint seek; a probe past an open
+   * child would make it parse all that child's text read so far, so there is none.
    */
   private async countSoFar(n: CoreNode, signal?: AbortSignal): Promise<number> {
-    if (n.kind === LIST && this.st.records) return this.st.records;
+    if (n.kind === LIST) return this.st.records;
+    // (Not paged while indexing: see pageable.)
+    if (!this.st.done) return 0;
     const was = this.known.get(n.start);
     const now = performance.now();
     if (was && now - was.at < COUNT_EVERY) return was.count;
-    const has = async (k: number) => (await this.doc.children(n, k, 1)).count > 0;
-    let lo = was?.count ?? 0;
-    let step = 1024;
-    let hi = lo + step;
-    while (await has(hi - 1)) {
-      check(signal);
-      lo = hi;
-      step *= 4;
-      hi = lo + step;
-    }
-    while (hi - lo > 1) {
-      const mid = Math.floor((lo + hi) / 2);
-      if (await has(mid - 1)) lo = mid;
-      else hi = mid;
+    const from = was ? Math.max(0, was.count - 1) : 0;
+    const page = await this.doc.children(n, from, PROBE);
+    check(signal);
+    let lo = from + page.count;
+    if (page.count === PROBE && page.more) {
+      const view = new PageNodes(page);
+      const kids = view.children;
+      const last = kids.length ? view.stub(kids[kids.length - 1]) : null;
+      if (!last || last.count !== null) {
+        const has = async (k: number) => (await this.doc.children(n, k, 1)).count > 0;
+        let step = PROBE * 4;
+        let hi = lo + step;
+        while (await has(hi - 1)) {
+          check(signal);
+          lo = hi;
+          step *= 4;
+          hi = lo + step;
+        }
+        while (hi - lo > 1) {
+          const mid = Math.floor((lo + hi) / 2);
+          if (await has(mid - 1)) lo = mid;
+          else hi = mid;
+        }
+      }
     }
     this.known.set(n.start, { count: lo, at: performance.now() });
     return lo;
