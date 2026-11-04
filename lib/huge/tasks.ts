@@ -601,7 +601,9 @@ export class HugeTasks {
         shown = file;
         this.download(file, name);
       } else release?.();
-      this.ui.cmd({ state: 'done', ms: performance.now() - began, eta: null, result: { name, bytes: result.bytes, records: result.records, parts: result.parts, file: shown, picked: !where.temp } });
+      // (Parts in a folder: named after the first one.)
+      const shownName = where.sink === 'folder' && parts ? `${parts.replace('{n}', '0001')} …` : name;
+      this.ui.cmd({ state: 'done', ms: performance.now() - began, eta: null, result: { name: shownName, bytes: result.bytes, records: result.records, parts: result.parts, file: shown, picked: !where.temp } });
       event('done');
     } catch (e) {
       release?.();
