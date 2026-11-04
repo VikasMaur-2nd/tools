@@ -227,11 +227,11 @@ test('find: every match of a query in the bytes, forward and back, either case',
     for (let i = norm(hay).indexOf(norm(needle)); i >= 0; i = norm(hay).indexOf(norm(needle), i + 1)) want.push(i);
     const from = r.int(c.bytes.length + 1);
     const got: number[] = [];
-    for (const b of c.d.find(q, { from, caseSensitive: cs })) got.push(...b.matches);
+    for (const b of c.d.find(q, { from, caseSensitive: cs })) if ('matches' in b) got.push(...b.matches);
     const order = [...want.filter((x) => x >= from), ...want.filter((x) => x < from)];
     assert.deepEqual(got, order, `find ${JSON.stringify(q)} from ${from} cs ${cs}${c.where}`);
     const back: number[] = [];
-    for (const b of c.d.find(q, { from, caseSensitive: cs, backward: true })) back.push(...b.matches);
+    for (const b of c.d.find(q, { from, caseSensitive: cs, backward: true })) if ('matches' in b) back.push(...b.matches);
     const border = [...want.filter((x) => x < from).reverse(), ...want.filter((x) => x >= from).reverse()];
     assert.deepEqual(back, border, `find back ${JSON.stringify(q)} from ${from}${c.where}`);
   }

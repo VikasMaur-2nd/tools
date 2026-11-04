@@ -6,6 +6,7 @@
  * garbage it leaves is what the read path costs in memory.
  */
 import type { ByteSource } from '../json/tape-wasm';
+import { watched } from './wait';
 
 export class Prefetch implements ByteSource {
   readonly size: number;
@@ -49,17 +50,56 @@ export class Prefetch implements ByteSource {
     const last = Math.floor((Math.min(this.size, at + len) - 1) / this.chunk);
     for (let k = first; k < first + this.ahead && k * this.chunk < this.size; k++) {
       if (!this.chunks.has(k) && !this.loading.has(k)) {
-        const p = this.file
-          .slice(k * this.chunk, Math.min(this.size, (k + 1) * this.chunk))
-          .arrayBuffer()
-          .then((b) => {
+        // (Each read watched: one that stalls is made again.)
+        const p = watched(() => this.file.slice(k * this.chunk, Math.min(this.size, (k + 1) * this.chunk)).arrayBuffer()).then(
+          (b) => {
             this.chunks.set(k, new Uint8Array(b));
             this.loading.delete(k);
-          });
+          },
+          (e) => {
+            this.loading.delete(k);
+            throw e;
+          },
+        );
         this.loading.set(k, p);
       }
       if (k <= last && this.loading.has(k)) waits.push(this.loading.get(k)!);
     }
     return Promise.all(waits).then(() => {});
+  }
+}
+
+/**
+ * The indexing pass's reads where FileReaderSync is the better reader (Firefox: flat memory over a long read,
+ * ~440 MB/s in 16 MiB reads): one chunk at a time, synchronously. Always "here".
+ */
+export class SyncChunks implements ByteSource {
+  readonly size: number;
+  private at = -1;
+  private buf = new Uint8Array(0);
+
+  constructor(
+    private readonly file: Blob,
+    private readonly readSync: (blob: Blob) => ArrayBuffer,
+    private readonly chunk = 16 << 20,
+  ) {
+    this.size = file.size;
+  }
+
+  has(): boolean {
+    return true;
+  }
+
+  read(at: number, len: number): Uint8Array {
+    len = Math.max(0, Math.min(len, this.size - at));
+    if (at < this.at || at + len > this.at + this.buf.length) {
+      this.at = at;
+      this.buf = new Uint8Array(this.readSync(this.file.slice(at, Math.min(this.size, at + Math.max(len, this.chunk)))));
+    }
+    return this.buf.subarray(at - this.at, at - this.at + len);
+  }
+
+  need(): Promise<void> {
+    return Promise.resolve();
   }
 }

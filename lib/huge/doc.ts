@@ -12,6 +12,7 @@ import { wasmTape, type ByteSource } from '../json/tape-wasm';
 import { CachedSource, afterBreaks, content, nextBreak, textOf } from './bytes';
 import { byteBefore, duplicates, exactError, lineCol, nameAt, prefixOf, type Parse, type Problem } from './errors';
 import { HugeIndex, type Big } from './index';
+import { Wait } from './wait';
 import { DONE, FAIL, FRONT, NEED, S_AFTER, S_COLON, S_TOP, S_VALUE, STOP, Skeleton, W_AFTER, W_CHILD, W_CLOSE, W_MEMORY, type State } from './skeleton';
 import { ARR, BOOL, LIST, NUL, NUM, OBJ, STR, type Bytes, type FindBatch, type FindOptions, type HugeError, type HugeLines, type HugeLocation, type HugeNode, type HugeOptions, type HugePage, type HugeProblem, type HugeProgress, type HugeStatus, type HugeSummary, type Seg } from './types';
 
@@ -125,7 +126,8 @@ export class HugeDoc {
     this.queryWindow = tune.queryWindow ?? QUERY_WINDOW;
     this.pageBytes = tune.pageBytes ?? PAGE_BYTES;
     const c = content(file);
-    this.src = new CachedSource(c.src);
+    // (A source that keeps its own blocks (bytes.ts BlockSource) isn't cached again.)
+    this.src = (file as { cached?: boolean }).cached ? c.src : new CachedSource(c.src);
     this.size = file.size;
     this.bom = c.bom;
     this.lines = LINES_FILE.test(options.name ?? '');
@@ -173,7 +175,9 @@ export class HugeDoc {
     }
     const st = this.stats();
     const s = this.ix.snapshot();
-    this.front = { pos: this.error ? this.error.pos : this.ix.pos, s, part: st[12], partStart: st[13] };
+    // (Broken: what's read is what comes before both where the skeleton stopped and where the error is.)
+    const pos = this.failed ? this.failed.at : this.error ? Math.min(this.error.pos, this.failedAt >= 0 ? this.failedAt : this.error.pos) : this.ix.pos;
+    this.front = { pos, s, part: st[12], partStart: st[13] };
   }
 
   /** Whether the error is the parser's fatal error itself (the normal path's status puts it before an issue at the same place). */
@@ -198,8 +202,18 @@ export class HugeDoc {
     this.stopped = true;
   }
 
+  /** Where the skeleton failed (-1: it didn't). */
+  private failedAt = -1;
+
+  /** The skeleton failed: where, why, and its place there (the error is made from it, maybe after a Wait). */
+  private failed: { at: number; why: number; anchor: [number, number, number] } | null = null;
+
   private steps(until: number): boolean {
     while (!this.done) {
+      if (this.failed) {
+        this.fail();
+        continue;
+      }
       // (Not read yet: the caller reads ahead (indexAt) and steps again.)
       if (this.indexHas && !this.indexHas(this.ix.pos, Math.min(this.ix.window, this.src.size - this.ix.pos))) return false;
       const r = this.ix.step();
@@ -213,20 +227,34 @@ export class HugeDoc {
       }
       this.final = this.ix.stats();
       if (r === FAIL) {
-        const at = this.ix.failPos;
-        this.error =
-          this.ix.why === W_MEMORY
-            ? { msg: 'Not enough memory to parse this document', ...lineCol(this.src, this.index, at), pos: at, kind: 'error' }
-            : // (A second top-level value begun before: the normal path reads them all as JSON Lines then.)
-              this.problem(exactError(this.src, this.index, at, this.ix.failAt, this.parsers.parse, this.lines || (this.final[14] >= 0 && this.final[14] < at)));
+        this.failed = { at: this.ix.failPos, why: this.ix.why, anchor: this.ix.failAt };
+        continue;
       }
-      this.done = true;
-      this.ms = performance.now() - this.t0;
-      // (Regions parsed while reading may end where the document did then.)
-      this.regions.clear();
-      this.regionBytes = 0;
+      this.finish();
     }
     return true;
+  }
+
+  /** The error where the skeleton failed (the JS parser places it: it may throw a Wait, then this runs again). */
+  private fail() {
+    const { at, why, anchor } = this.failed!;
+    this.failedAt = at;
+    const second = this.final![14];
+    this.error =
+      why === W_MEMORY
+        ? { msg: 'Not enough memory to parse this document', ...lineCol(this.src, this.index, at), pos: at, kind: 'error' }
+        : // (A second top-level value begun before: the normal path reads them all as JSON Lines then.)
+          this.problem(exactError(this.src, this.index, at, anchor, this.parsers.parse, this.lines || (second >= 0 && second < at)));
+    this.failed = null;
+    this.finish();
+  }
+
+  private finish() {
+    this.done = true;
+    this.ms = performance.now() - this.t0;
+    // (Regions parsed while reading may end where the document did then.)
+    this.regions.clear();
+    this.regionBytes = 0;
   }
 
   /** The file byte the indexing pass reads next (for a read-ahead source), and how many it reads at a time. */
@@ -1194,6 +1222,18 @@ export class HugeDoc {
     return node.kind === LIST ? { path: [], node, parent: null, index: 0, chain: [], line: 1, col: 1 } : this.locate(node.start);
   }
 
+  /** Bytes [at, at + len), yielding the Waits of blocks not read yet (find runs as a generator: it can't be asked again). */
+  private *reading(at: number, len: number): Generator<{ wait: Wait }, Uint8Array, void> {
+    for (;;) {
+      try {
+        return this.src.read(at, len);
+      } catch (e) {
+        if (!(e instanceof Wait)) throw e;
+        yield { wait: e };
+      }
+    }
+  }
+
   // ── Text ──────────────────────────────────────────────────────────────
 
   text(start: Bytes, end: Bytes, max: number): { text: string; cut: boolean } {
@@ -1205,7 +1245,7 @@ export class HugeDoc {
   // ── Find ──────────────────────────────────────────────────────────────
 
   /** Finds `query` (its UTF-8 bytes): batches of matches as the search goes, the last `done`. */
-  *find(query: string, o: FindOptions): Generator<FindBatch, void, void> {
+  *find(query: string, o: FindOptions): Generator<FindBatch | { wait: Wait }, void, void> {
     const needle = new TextEncoder().encode(query);
     const len = needle.length;
     const size = this.src.size;
@@ -1230,7 +1270,7 @@ export class HugeDoc {
       if (back) {
         for (let hi = b; hi > a && total < limit; ) {
           const lo = Math.max(a, hi - chunk);
-          const buf = this.src.read(lo, Math.min(hi + len - 1, size) - lo);
+          const buf = yield* this.reading(lo, Math.min(hi + len - 1, size) - lo);
           const ms: number[] = [];
           scanWindow(buf, lower, cs, first, firstU, hi - lo, (i) => ms.push(lo + i));
           const found: number[] = [];
@@ -1243,7 +1283,7 @@ export class HugeDoc {
       } else {
         for (let lo = a; lo < b && total < limit; ) {
           const hi = Math.min(b, lo + chunk);
-          const buf = this.src.read(lo, Math.min(hi + len - 1, size) - lo);
+          const buf = yield* this.reading(lo, Math.min(hi + len - 1, size) - lo);
           const found: number[] = [];
           scanWindow(buf, lower, cs, first, firstU, hi - lo, (i) => {
             if (total < limit) {

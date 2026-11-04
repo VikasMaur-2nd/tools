@@ -78,7 +78,7 @@ test(`records past 2^31 bytes (${SLOW ? 10 : 2.5} GB): counts, pages, paths, lin
 
   const needle = `item ${String(k).padEnd(12)}`;
   const got: number[] = [];
-  for (const b of d.find(needle, { from: src.start(k) - 4096, limit: 1 })) got.push(...b.matches);
+  for (const b of d.find(needle, { from: src.start(k) - 4096, limit: 1 })) if ('matches' in b) got.push(...b.matches);
   assert.deepEqual(got, [src.start(k) + src.text(k).indexOf('item ')]);
 });
 

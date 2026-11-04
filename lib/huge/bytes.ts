@@ -3,6 +3,7 @@
  * as U+FFFD), and counting what positions need (UTF-16 units, line breaks) the way huge.wasm counts them.
  */
 import type { ByteSource } from '../json/tape-wasm';
+import { Wait, watched } from './wait';
 
 const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
 
@@ -170,4 +171,99 @@ export function afterBreaks(src: ByteSource, at: number, n: number, end = src.si
   }
   if (last) return end < src.size && src.read(end, 1)[0] === 10 ? end + 1 : end;
   return -1;
+}
+
+/**
+ * A file read in blocks fetched asynchronously (`slice().arrayBuffer()`, each watched for a stall), for engines
+ * where FileReaderSync's garbage keeps growing over a long session (Chromium) or slices are cheap only async.
+ * A read of blocks not here throws a Wait (wait.ts) that fetches them; the query is then asked again.
+ */
+export class BlockSource implements ByteSource {
+  readonly size: number;
+  private blocks = new Map<number, Uint8Array>();
+  private loading = new Map<number, Promise<void>>();
+  /** Blocks read by the queries under way (asked again after a Wait): not dropped until release(). */
+  private pinned = new Set<number>();
+
+  constructor(
+    private readonly file: Blob,
+    private readonly block = 1 << 20,
+    private readonly keep = 24,
+  ) {
+    this.size = file.size;
+  }
+
+  read(at: number, len: number): Uint8Array {
+    len = Math.max(0, Math.min(len, this.size - at));
+    const b = this.block;
+    const first = Math.floor(at / b);
+    const last = Math.floor((at + Math.max(len, 1) - 1) / b);
+    const missing: number[] = [];
+    for (let k = first; k <= last; k++) {
+      if (this.blocks.has(k)) this.pinned.add(k);
+      else missing.push(k);
+    }
+    if (missing.length) throw new Wait(() => this.fetch(missing));
+    if (first === last) {
+      const blk = this.touch(first);
+      return blk.subarray(at - first * b, at - first * b + len);
+    }
+    const out = new Uint8Array(len);
+    for (let k = first, o = 0; k <= last; k++) {
+      const blk = this.touch(k);
+      const from = k === first ? at - k * b : 0;
+      const n = Math.min(blk.length - from, len - o);
+      out.set(blk.subarray(from, from + n), o);
+      o += n;
+    }
+    return out;
+  }
+
+  /** The queries under way are done: their blocks may go. */
+  release() {
+    this.pinned.clear();
+    this.trim();
+  }
+
+  private trim() {
+    if (this.blocks.size <= this.keep) return;
+    for (const k of [...this.blocks.keys()]) {
+      if (this.blocks.size <= this.keep) break;
+      if (!this.pinned.has(k)) this.blocks.delete(k);
+    }
+  }
+
+  private touch(k: number): Uint8Array {
+    this.pinned.add(k);
+    const blk = this.blocks.get(k)!;
+    this.blocks.delete(k);
+    this.blocks.set(k, blk);
+    return blk;
+  }
+
+  /** Reads blocks `ks` (dropping the least used past `keep`). */
+  fetch(ks: number[]): Promise<void> {
+    return Promise.all(
+      ks.map((k) => {
+        let p = this.loading.get(k);
+        if (!p) {
+          const at = k * this.block;
+          p = watched(() => this.file.slice(at, Math.min(this.size, at + this.block)).arrayBuffer()).then(
+            (buf) => {
+              this.blocks.set(k, new Uint8Array(buf));
+              this.pinned.add(k);
+              this.loading.delete(k);
+              this.trim();
+            },
+            (e) => {
+              this.loading.delete(k);
+              throw e;
+            },
+          );
+          this.loading.set(k, p);
+        }
+        return p;
+      }),
+    ).then(() => {});
+  }
 }
