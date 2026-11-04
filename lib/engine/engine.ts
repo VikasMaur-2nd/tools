@@ -2007,7 +2007,8 @@ export class Engine {
     // Too big for the editor: huge-file mode reads it a window at a time (lib/huge, loaded only now).
     // From 300 MiB (less where the device has little memory; tk:hugeMin, in bytes, forces it for smaller files).
     const huge = read('tk:hugeMin');
-    if (f.size > Math.min(MAX_DOCUMENT, huge ? +huge : ((navigator as { deviceMemory?: number }).deviceMemory || 8) * 2 ** 26)) return void import('../huge/open').then((m) => m.openHuge(this, f, source, signal, asText, TallScroll)).then((h) => void (this.huge = h ?? this.huge), () => this.toast(`Couldn't read ${f.name}`, 'err'));
+    // (A .gz file is decompressed there too: to the editor when it is small.)
+    if (f.size > Math.min(MAX_DOCUMENT, huge ? +huge : ((navigator as { deviceMemory?: number }).deviceMemory || 8) * 2 ** 26) || /\.gz$/i.test(f.name)) return void import('../huge/open').then((m) => m.openHuge(this, f, source, signal, asText, TallScroll)).then((h) => void (this.huge = h ?? this.huge), () => this.toast(`Couldn't read ${f.name}`, 'err'));
     // A big file shows it is being opened while it is read too.
     const before = store.get().status;
     let reading: Status | null = null;

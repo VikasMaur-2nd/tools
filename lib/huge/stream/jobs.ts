@@ -221,9 +221,8 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
       await single(async (out, flush) => {
         const scan = new CsvScan(job.csv.flatten);
         const picked = !!job.filter?.conds.length || job.limit !== undefined;
-        let t1: Trees;
         const p1 = new Picked(job.filter, job.limit, (n) => scan.record(n, picked ? ARR : t1.rootKind));
-        t1 = new Trees(p1.each);
+        const t1 = new Trees(p1.each);
         await walk(t1, 0, 2, undefined, () => p1.done);
         if (picked && t1.rootKind !== ARR) throw new JobError('Pick records from an array or JSON Lines');
         const plan = scan.plan(picked ? ARR : t1.rootKind);
@@ -239,7 +238,6 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
         const pretty = job.format === 'json' && job.indent.length > 0;
         const ind = job.indent;
         if (job.format === 'json') out.byte(91);
-        let t: Trees;
         const p = new Picked(job.filter, job.limit, (n) => {
           if (job.format === 'jsonl') {
             out.text(stringify(n, '') + '\n');
@@ -249,7 +247,7 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
           if (pretty) out.text('\n' + ind + stringify(n, ind).replace(/\n/g, '\n' + ind));
           else out.text(stringify(n, ''));
         });
-        t = new Trees(p.each);
+        const t = new Trees(p.each);
         await walk(t, 0, 1, flush, () => p.done);
         if (t.rootKind !== ARR) throw new JobError('Pick records from an array or JSON Lines');
         if (job.format === 'json') {

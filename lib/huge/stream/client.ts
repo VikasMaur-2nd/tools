@@ -60,7 +60,7 @@ export class StreamClient {
     }
   }
 
-  private send<T>(q: Omit<StreamRequest, 'id'>, handlers: Omit<Handlers, 'done' | 'fail'>, map: (r: Extract<StreamReply, { type: 'done' }>) => T): Running<T> {
+  private send<T>(q: StreamRequest extends infer R ? (R extends { id: number } ? Omit<R, 'id'> : never) : never, handlers: Omit<Handlers, 'done' | 'fail'>, map: (r: Extract<StreamReply, { type: 'done' }>) => T): Running<T> {
     const id = ++this.seq;
     const done = new Promise<T>((ok, fail) => {
       if (this.closed) return fail(new StreamError('Stopped'));

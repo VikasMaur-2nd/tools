@@ -53,6 +53,12 @@ export async function openHuge(host: HugeHost, file: File, source: InputSource, 
     } catch {
       /* storage refused */
     }
+    // A .gz file: decompressed first (to the editor when small, else to huge mode from the browser's storage).
+    if (/\.gz$/i.test(file.name)) {
+      const { openGz } = await import('./gz');
+      await openGz(host, file, source, signal, editorLimit(), (plain, closed) => open(host, plain, source, signal, forced, false, closed));
+      return null;
+    }
     return await open(host, file, source, signal, forced, asText);
   } catch (e) {
     reportError(e, 'huge');
@@ -61,8 +67,19 @@ export async function openHuge(host: HugeHost, file: File, source: InputSource, 
   }
 }
 
-/** The open session's hook for the engine (null: nothing opened). */
-async function open(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, forced: boolean, asText: boolean): Promise<HugeHook | null> {
+/** The largest file the editor opens (Engine.loadFile's threshold: 300 MiB, less on a device with little memory, or tk:hugeMin). */
+function editorLimit(): number {
+  let forced: string | null = null;
+  try {
+    forced = localStorage.getItem('tk:hugeMin');
+  } catch {
+    /* storage refused */
+  }
+  return Math.min(MAX_DOCUMENT, forced ? +forced : ((navigator as { deviceMemory?: number }).deviceMemory || 8) * 2 ** 26);
+}
+
+/** The open session's hook for the engine (null: nothing opened). `closed`: told when the session closes. */
+async function open(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, forced: boolean, asText: boolean, closed?: () => void): Promise<HugeHook | null> {
   if (signal.aborted) return null;
   if (!asText && CONVERTED.test(file.name)) {
     host.toast(`Converting ${file.name} to JSON isn't available for files this large yet`, 'err');
@@ -82,6 +99,7 @@ async function open(host: HugeHost, file: File, source: InputSource, signal: Abo
   }
   const key = String(++opened);
   const session: HugeSession = new HugeSession(host, src, { name: file.name, source, forced }, (portal): ReactNode => createElement(HugeTool, { key, portal }));
+  if (closed) session.onClose(closed);
   signal.addEventListener('abort', () => session.close(), { once: true });
   // (Shown at once; its root comes as the index reads it.)
   void session.start();

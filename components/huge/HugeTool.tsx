@@ -15,6 +15,8 @@ import type { HugeStore, HugeUI, HugeView } from '@/lib/huge/state';
 import type { Portal } from '@/lib/huge/kit';
 import { Icon, type IconName } from '../icons';
 import { MHead, MItem, MSep, Menu } from '../menu';
+import ShapeView from './HugeShape';
+import CommandsView from './HugeCommands';
 
 function useHuge<T>(store: HugeStore, select: (s: HugeUI) => T): T {
   return useSyncExternalStore(store.subscribe, () => select(store.get()), () => select(store.get()));
@@ -24,6 +26,7 @@ const VIEWS: { id: HugeView; label: string }[] = [
   { id: 'format', label: 'Format' },
   { id: 'tree', label: 'Tree' },
   { id: 'table', label: 'Table' },
+  { id: 'shape', label: 'Shape' },
   { id: 'graph', label: 'Graph' },
   { id: 'convert', label: 'Convert' },
   { id: 'compare', label: 'Compare' },
@@ -465,17 +468,16 @@ function TableView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
   );
 }
 
-/** Graph, Convert and Compare: not for files this big yet, said kindly, with where to go instead. */
-function NotYet({ s, view }: { s: HugeSession; view: 'graph' | 'convert' | 'compare' }) {
+/** Graph and Compare: not for files this big yet, said kindly, with where to go instead. */
+function NotYet({ s, view }: { s: HugeSession; view: 'graph' | 'compare' }) {
   const t = useT();
   const copy = {
     graph: [t('The graph of a file this large is on its way'), t('It will draw the part you are exploring. Until then, the tree shows every value, a page at a time.')],
-    convert: [t('Converting a file this large is on its way'), t('It will write the result straight to a file. Until then, select a value in the tree and copy or save it.')],
     compare: [t('Compare works with documents up to 300 MB'), t('To compare parts of this file, save a value as a file and open it in another tab.')],
   }[view];
   return (
     <div id={`hg-${view}`} className="hg-notyet" tabIndex={-1}>
-      <Icon name={view === 'graph' ? 'tree' : view === 'convert' ? 'code' : 'diff'} size={22} />
+      <Icon name={view === 'graph' ? 'tree' : 'diff'} size={22} />
       <b>{copy[0]}</b>
       <p>{copy[1]}</p>
       <button type="button" className="btn" onClick={() => s.setView('tree')}>
@@ -583,7 +585,9 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
         {seen.has('format') && <FormatView s={s} hidden={view !== 'format'} />}
         {seen.has('tree') && <TreeView s={s} hidden={view !== 'tree'} />}
         {seen.has('table') && <TableView s={s} hidden={view !== 'table'} />}
-        {(view === 'graph' || view === 'convert' || view === 'compare') && <NotYet s={s} view={view} />}
+        {seen.has('shape') && <ShapeView s={s} hidden={view !== 'shape'} />}
+        {view === 'convert' && <CommandsView s={s} />}
+        {(view === 'graph' || view === 'compare') && <NotYet s={s} view={view} />}
       </div>
     </section>
   );

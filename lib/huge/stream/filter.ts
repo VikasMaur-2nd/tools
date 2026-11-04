@@ -65,6 +65,7 @@ function holds(n: JNode, c: Cond): boolean {
       if (v === null) same = n.t === NUL;
       else if (typeof v === 'boolean') same = n.t === BOOL && n.v === v;
       else if (typeof v === 'number') same = n.t === NUM && Number(n.v) === v;
+      else if (v === undefined) same = false;
       else if (n.t === STR) same = c.caseSensitive === false ? (n.v as string).toLowerCase() === v.toLowerCase() : n.v === v;
       else same = n.t === NUM && (n.v as string) === v;
       return c.op === 'eq' ? same : !same;

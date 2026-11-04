@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatDoc } from '../lib/json/format';
-import { kids, parse, type JNode } from '../lib/json/parser';
+import { kids, parse } from '../lib/json/parser';
 import { toJSONL } from '../lib/convert/data';
 import { runJob, type Job, type Outputs } from '../lib/huge/stream/jobs';
 import { MemorySink } from '../lib/huge/stream/out';
