@@ -94,6 +94,13 @@ function checkPages(c: Case, node: HugeNode, i: number, size: number, depth = 0)
       assert.equal(e, byteOfText(c, endOf(t, w)), `child ${at} end${c.where}`);
       if (stub) {
         assert.equal(stub.count ?? 0, childCount(t, w), `stub ${at} count${c.where}`);
+        // Its row: the normal tree's preview of it, or its decoded start.
+        if (stub.preview !== undefined) {
+          const z = lazyResult(t, c.text).root!.z!;
+          const v = z.at(w);
+          const want = v.t >= 4 ? z.preview(v) : (v.v as string).length > 1024 ? (v.v as string).slice(0, 1024) + '…' : (v.v as string);
+          assert.equal(stub.preview, want, `stub ${at} preview${c.where}`);
+        }
         if (stub.kind >= 4 && depth < 6) checkPages(c, stub, w, 1 + (asked >> 1), depth + 1);
       } else {
         assert.equal(k.key ?? null, (lazyResult(t, c.text).root && keyOfNormal(c, w)) ?? null, `child ${at} key${c.where}`);

@@ -178,6 +178,9 @@ export function afterBreaks(src: ByteSource, at: number, n: number, end = src.si
  * where FileReaderSync's garbage keeps growing over a long session (Chromium) or slices are cheap only async.
  * A read of blocks not here throws a Wait (wait.ts) that fetches them; the query is then asked again.
  */
+/** Blocks read after a missing one (BlockSource). */
+const AHEAD = 2;
+
 export class BlockSource implements ByteSource {
   readonly size: number;
   private blocks = new Map<number, Uint8Array>();
@@ -203,7 +206,13 @@ export class BlockSource implements ByteSource {
       if (this.blocks.has(k)) this.pinned.add(k);
       else missing.push(k);
     }
-    if (missing.length) throw new Wait(() => this.fetch(missing));
+    // (Queries read on from where they start: the next blocks come with the missing ones, so asking again
+    // seldom misses again.)
+    if (missing.length) {
+      const next = missing[missing.length - 1];
+      for (let k = next + 1; k <= next + AHEAD && k * this.block < this.size; k++) if (!this.blocks.has(k)) missing.push(k);
+      throw new Wait(() => this.fetch(missing));
+    }
     if (first === last) {
       const blk = this.touch(first);
       return blk.subarray(at - first * b, at - first * b + len);

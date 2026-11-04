@@ -85,8 +85,13 @@ static ENDS: [bool; 256] = {
     t
 };
 
-/** u64 per open container: kind, children so far, start byte, its current member's name (byte of its quote), nodes and closing lines before it, object serial, base in the duplicate check's name stack. */
-const FR: usize = 8;
+/**
+ * u64 per open container: kind, children so far, start byte, its current member's name (byte of its quote),
+ * nodes and closing lines before it, object serial, base in the duplicate check's name stack, and for the
+ * duplicate check's shortcut: the names matched so far of the last object at its depth (NONE: not matching),
+ * and whether its names are being kept (0) for the next object there.
+ */
+const FR: usize = 10;
 /** f64 per frame in checkpoints and snapshots: kind, children, start, key, nodes before, closing lines before. */
 const FW: usize = 6;
 /** f64 before the frames in a checkpoint or snapshot (see snap()). */
@@ -94,6 +99,18 @@ const HW: usize = 11;
 /** f64 per directory record (see dir_out()). */
 const DW: usize = 10;
 
+/**
+ * The duplicate check's shortcut (as tape.wasm guesses names): an object whose names so far are, in order, the
+ * names of the last duplicate-free object at its depth has no duplicates so far, and isn't hashed. Kept per depth
+ * below SEQ_DEPTH: up to SEQ_NAMES names of SEQ_BYTES in all, without escapes.
+ */
+const SEQ_DEPTH: usize = 64;
+const SEQ_NAMES: usize = 16;
+const SEQ_BYTES: usize = 1024;
+/** Bytes of one kept sequence: count, offsets, positions, names. */
+const SEQ_SLOT: usize = 8 + (SEQ_NAMES + 1) * 4 + SEQ_NAMES * 8 + SEQ_BYTES + 8;
+const SEQ_POS: usize = 8 + (SEQ_NAMES + 1) * 4 + 4;
+const SEQ_TEXT: usize = SEQ_POS + SEQ_NAMES * 8;
 /** Names remembered per object for the duplicate check (later names are still checked against them). */
 const DUP_CAP: u64 = 4096;
 /** Names remembered in all open objects together. */
@@ -272,6 +289,8 @@ static mut SERIAL: u64 = 0;
 /** Names not checked (cut by a window and too long, or written with escapes and too long, or past DUP_ALL). */
 static mut DUP_SKIPPED: u64 = 0;
 static mut SCRATCH: usize = 0;
+/** The shortcut's sequences: per depth, the last duplicate-free object's names and the open object's. */
+static mut SEQ: usize = 0;
 static mut SCRATCH_CAP: usize = 0;
 
 /// Starts a parse. `wcap`: window bytes (a multiple of 64); `flags`: 1 checkpoints, 2 duplicate names, 4 the
@@ -304,6 +323,11 @@ pub unsafe extern "C" fn init(wcap: usize, flags: u32, ck_every: f64, big: f64, 
     if flags & F_DUPS != 0 {
         DMASK = 1023;
         DTAB = alloc(1024 * 16);
+        SEQ = alloc(SEQ_DEPTH * 2 * SEQ_SLOT);
+        if SEQ == 0 {
+            return 0;
+        }
+        core::ptr::write_bytes(SEQ as *mut u8, 0, SEQ_DEPTH * 2 * SEQ_SLOT);
         DSCAP = 1024;
         DSTACK = alloc(DSCAP * 16);
         if DTAB == 0 || DSTACK == 0 {
@@ -1013,6 +1037,8 @@ pub unsafe extern "C" fn restore() -> u32 {
         SERIAL += 1;
         *f.add(6) = SERIAL;
         *f.add(7) = DSLEN as u64;
+        *f.add(8) = NONE;
+        *f.add(9) = 1;
     }
     LOW = depth;
     reset_stage1();
@@ -1205,10 +1231,97 @@ unsafe fn table_put(tag: u64, pos: u64) -> bool {
     true
 }
 
+/// A kept sequence: `which` 0 the last duplicate-free object's at depth `d`, 1 the open object's.
+#[inline(always)]
+unsafe fn seq(d: usize, which: usize) -> usize {
+    SEQ + (d * 2 + which) * SEQ_SLOT
+}
+#[inline(always)]
+unsafe fn seq_n(s: usize) -> usize {
+    *(s as *const u32) as usize
+}
+#[inline(always)]
+unsafe fn seq_off(s: usize, i: usize) -> usize {
+    *((s + 8 + i * 4) as *const u32) as usize
+}
+/// Appends a name (`len` bytes at `a`, its quote at byte `pos`); false if it doesn't fit.
+unsafe fn seq_push(s: usize, a: usize, len: usize, pos: u64) -> bool {
+    let n = seq_n(s);
+    let used = if n == 0 { 0 } else { seq_off(s, n) };
+    if n >= SEQ_NAMES || used + len > SEQ_BYTES {
+        return false;
+    }
+    core::ptr::copy_nonoverlapping(a as *const u8, (s + SEQ_TEXT + used) as *mut u8, len);
+    *((s + 8) as *mut u32) = 0;
+    *((s + 8 + (n + 1) * 4) as *mut u32) = (used + len) as u32;
+    *((s + SEQ_POS + n * 8) as *mut u64) = pos;
+    *(s as *mut u32) = (n + 1) as u32;
+    true
+}
+/// Whether name `i` of sequence `s` is the `len` bytes at `a`.
+#[inline(always)]
+unsafe fn seq_eq(s: usize, i: usize, a: usize, len: usize) -> bool {
+    let o = seq_off(s, i);
+    if seq_off(s, i + 1) - o != len {
+        return false;
+    }
+    let b = s + SEQ_TEXT + o;
+    (0..len).all(|k| *((a + k) as *const u8) == *((b + k) as *const u8))
+}
+
 /// Checks the name whose `len` bytes are at `a` (memory, 8 more readable) and whose quote is at byte `pos`
-/// against its object's names (frame `f`), and remembers it. False if out of memory.
+/// against its object's names (frame `f`), and remembers it; through the shortcut (SEQ_DEPTH) when its object's
+/// names so far are the last duplicate-free object's at its depth. False if out of memory.
 #[inline(never)]
 unsafe fn dup(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
+    let d = (f as usize - STACK) / (FR * 8);
+    if d < SEQ_DEPTH {
+        let cur = seq(d, 1);
+        let m = *f.add(8);
+        if m != NONE {
+            let last = seq(d, 0);
+            if (m as usize) < seq_n(last) && seq_eq(last, m as usize, a, len) {
+                // (A name kept without escapes, so the same bytes are the same name: only its place is kept.)
+                *f.add(8) = m + 1;
+                *((cur + SEQ_POS + m as usize * 8) as *mut u64) = pos;
+                return true;
+            }
+            // Not the same names: the ones passed so far (the last object's first m, at the places kept) are this
+            // object's list, and are checked in now.
+            *f.add(8) = NONE;
+            let j = m as usize;
+            if j > 0 {
+                let bytes = seq_off(last, j);
+                core::ptr::copy_nonoverlapping((last + 8) as *const u8, (cur + 8) as *mut u8, (j + 1) * 4);
+                core::ptr::copy_nonoverlapping((last + SEQ_TEXT) as *const u8, (cur + SEQ_TEXT) as *mut u8, bytes);
+            }
+            *(cur as *mut u32) = j as u32;
+            for i in 0..seq_n(cur) {
+                let o = seq_off(cur, i);
+                if !dup_check(f, cur + SEQ_TEXT + o, seq_off(cur, i + 1) - o, *((cur + SEQ_POS + i * 8) as *const u64)) {
+                    return false;
+                }
+            }
+        }
+        if *f.add(9) == 0 {
+            let mut esc = false;
+            for k in 0..len {
+                if *((a + k) as *const u8) == b'\\' {
+                    esc = true;
+                    break;
+                }
+            }
+            if esc || !seq_push(cur, a, len, pos) {
+                *f.add(9) = 1;
+            }
+        }
+    }
+    dup_check(f, a, len, pos)
+}
+
+/// Checks a name against its object's names (frame `f`) and remembers it: see dup().
+#[inline(never)]
+unsafe fn dup_check(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
     let mut p = a;
     let mut l = len;
     let mut k = 0;
@@ -1238,6 +1351,8 @@ unsafe fn dup(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
         // A small object: its own names, one by one.
         for j in base..DSLEN {
             if *st.add(j * 2) == tag {
+                // (Not duplicate-free: its names aren't the shortcut's.)
+                *f.add(9) = 1;
                 return warn(pos, *st.add(j * 2 + 1));
             }
         }
@@ -1250,6 +1365,7 @@ unsafe fn dup(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
                 break;
             }
             if t == tag {
+                *f.add(9) = 1;
                 return warn(pos, *tab.add(slot * 2 + 1));
             }
             slot = (slot + 1) & DMASK;
@@ -1288,9 +1404,14 @@ unsafe fn dup(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
     true
 }
 
-/// Forgets the names of the object closing (frame `f`).
+/// Forgets the names of the object closing (frame `f`); its names, duplicate-free and not the last object's at
+/// its depth, are the shortcut's for the next.
 #[inline(never)]
 unsafe fn dup_pop(f: *mut u64) {
+    let d = (f as usize - STACK) / (FR * 8);
+    if d < SEQ_DEPTH && *f.add(9) == 0 && *f.add(8) == NONE {
+        core::ptr::copy_nonoverlapping(seq(d, 1) as *const u8, seq(d, 0) as *mut u8, SEQ_SLOT);
+    }
     let field = *f.add(7);
     let from = (field & !TABLED) as usize;
     if field & TABLED == 0 {
@@ -1697,8 +1818,16 @@ pub unsafe extern "C" fn run() -> i32 {
                 if q >= fail_at {
                     fail!(W_SYNTAX, fail_at);
                 }
-                if dups && !dup(top, WIN + p + 1, q - p - 1, kpos) {
-                    fail!(W_MEMORY, p);
+                if dups {
+                    // (The shortcut's common case in line: the last object's next name at this depth.)
+                    let d = depth - 1;
+                    let m = if d < SEQ_DEPTH { *top.add(8) } else { NONE };
+                    if m != NONE && (m as usize) < seq_n(seq(d, 0)) && seq_eq(seq(d, 0), m as usize, WIN + p + 1, q - p - 1) {
+                        *top.add(8) = m + 1;
+                        *((seq(d, 1) + SEQ_POS + m as usize * 8) as *mut u64) = kpos;
+                    } else if !dup(top, WIN + p + 1, q - p - 1, kpos) {
+                        fail!(W_MEMORY, p);
+                    }
                 }
                 ii += 2;
                 // The colon, and the value in this same pass if it's in the window.
@@ -1814,6 +1943,14 @@ pub unsafe extern "C" fn run() -> i32 {
                     SERIAL += 1;
                     *f.add(6) = SERIAL;
                     *f.add(7) = DSLEN as u64;
+                    if depth < SEQ_DEPTH {
+                        *(seq(depth, 1) as *mut u32) = 0;
+                        *f.add(8) = if seq_n(seq(depth, 0)) > 0 { 0 } else { NONE };
+                        *f.add(9) = 0;
+                    } else {
+                        *f.add(8) = NONE;
+                        *f.add(9) = 1;
+                    }
                 }
                 depth += 1;
                 top = f;

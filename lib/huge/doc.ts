@@ -5,9 +5,10 @@
  * the JS tape parser), on a text made of the document's bytes and a few brackets (see `region`, `pageOf`).
  */
 import { decodeString } from '../json/decode';
-import { MAX_INDENT, quote } from '../json/format';
+import { clip, keyLabel, MAX_INDENT, primText, quote } from '../json/format';
+import { lazyResult } from '../json/lazy';
 import { MAX_DEPTH } from '../json/parser';
-import { childCount, endOf, KEY_INDEX, KEY_NAME, keyKindOf, keyOf, kindOf, nextOf, nodeAtOffset, parentOf, sizeOf, startOf, valueKindOf, valueOf, VALUE_DECODE, VALUE_FALSE, VALUE_SLICE, W, type SentTape, type Tape } from '../json/tape';
+import { childCount, endOf, KEY_INDEX, KEY_NAME, keyKindOf, keyOf, kindOf, nextOf, nodeAtOffset, parentOf, receiver, sizeOf, startOf, valueKindOf, valueOf, VALUE_DECODE, VALUE_FALSE, VALUE_SLICE, W, type SentTape, type Tape } from '../json/tape';
 import { wasmTape, type ByteSource } from '../json/tape-wasm';
 import { CachedSource, afterBreaks, content, nextBreak, textOf } from './bytes';
 import { byteBefore, duplicates, exactError, lineCol, nameAt, prefixOf, type Parse, type Problem } from './errors';
@@ -31,6 +32,11 @@ const PAGE_BYTES = 4 << 20;
 const QUERY_WINDOW = 1 << 18;
 /** Parsed regions kept for the Format view and locate (bytes of text and tape, about). */
 const REGION_BUDGET = 64 << 20;
+/** Big children of a page given a preview (at most), and the time spent on them (ms). */
+const PREVIEWS = 64;
+const PREVIEW_MS = 60;
+/** Characters of a big string's preview. */
+const PREVIEW_CHARS = 1024;
 /** What a big string shows of itself in a pretty line (bytes). */
 const PREVIEW = 1 << 12;
 
@@ -447,8 +453,8 @@ export class HugeDoc {
    * Child `i` of `b`: the state before it (an object member: before its name), or where `b` closes (`closed`);
    * null if it isn't read yet (or the document ends or breaks first).
    */
-  private seek(b: Box, i: number): { s: State; closed: boolean } | null {
-    const q = this.at(this.index.state(this.from(b, i)));
+  private seek(b: Box, i: number, at?: State): { s: State; closed: boolean } | null {
+    const q = this.at(at ?? this.index.state(this.from(b, i)));
     q.target(b.d, b.start, i, this.cutOf(b));
     if (q.go() !== STOP) return null;
     const s = q.snapshot();
@@ -539,13 +545,17 @@ export class HugeDoc {
     }
   }
 
-  private pageOf(node: HugeNode, from: number, count: number): { page: HugePage; nodes: HugeNode[] } | null {
+  /**
+   * `opts.at`: a state before the container's first child (its value's first byte), so child 0 needs no seek;
+   * `opts.budget`: bytes of text (else PAGE_BYTES); `opts.previews`: the big children's previews (HugeNode.preview).
+   */
+  private pageOf(node: HugeNode, from: number, count: number, opts: { at?: State; budget?: number; previews?: boolean } = {}): { page: HugePage; nodes: HugeNode[] } | null {
     if (node.kind < ARR) return null;
     const b = this.box(node);
-    const first = this.seek(b, from);
+    const first = this.seek(b, from, from === 0 ? opts.at : undefined);
     if (!first) return null;
     const pieces: Piece[] = [];
-    const stubs: { index: number; key: Seg | null }[] = [];
+    const stubs: { index: number; key: Seg | null; at?: State }[] = [];
     let cur = first.s.pos;
     let end = cur;
     let more = false;
@@ -558,7 +568,7 @@ export class HugeDoc {
     if (!first.closed) {
       const q = this.q;
       // (Big children are stubs: their bytes don't count.)
-      let limit = cur + this.pageBytes;
+      let limit = cur + (opts.budget ?? this.pageBytes);
       const kids = this.bigKids(b, cur);
       let nb = kids.next().value as Big | undefined;
       // (The child being read comes after every closed one.)
@@ -585,7 +595,7 @@ export class HugeDoc {
           const key = node.kind === OBJ ? nameAt(this.src, s.frames[b.d - 1].key) : n;
           const partial = open.kind === STR ? { kind: STR, start: open.start, end: -1, depth: node.depth + 1, key, count: 0, partial: true, pretty: -1, prettyLines: null, big: true } : this.openNode(node.depth + 1, open.start, open.kind, key);
           const fake: Big & { node?: HugeNode } = { start: open.start, end: -1, kind: open.kind, depth: node.depth + 1, count: open.count, nodes: 0, closers: 0, endNodes: 0, endClosers: 0, parent: b.start, node: partial ?? undefined };
-          stubs.push({ index: n, key });
+          stubs.push({ index: n, key, at: s });
           pieces.push([cur, s.pos], fake);
           cur = end = s.pos;
           got = n + 1;
@@ -603,7 +613,7 @@ export class HugeDoc {
         const n = this.countIn(s, b);
         if (q.why === W_CHILD && n < from + count && nb && s.pos === nb.start) {
           // A big child: a stub, and on after it (from the checkpoint right after it, if it's read yet).
-          stubs.push({ index: n, key: node.kind === OBJ ? nameAt(this.src, s.frames[b.d - 1].key) : n });
+          stubs.push({ index: n, key: node.kind === OBJ ? nameAt(this.src, s.frames[b.d - 1].key) : n, at: s });
           pieces.push([cur, s.pos], nb);
           cur = nb.end;
           limit += nb.end - nb.start;
@@ -659,7 +669,17 @@ export class HugeDoc {
     if (from + n < 0x7fffffff) for (const c of kids) if (keyKindOf(t, c) === KEY_INDEX) t.nodes[c * W + 4] += from;
     const depth = node.depth + 1;
     const nodes = kids.map((c) => this.nodeIn(built, t, c, depth, keyKindOf(t, c) === KEY_NAME ? (keyOf(t, c) as string) : (keyOf(t, c) as number)));
-    const stubPairs: [number, HugeNode][] = stubs.map((x) => [kids[x.index - from], { ...nodes[x.index - from], key: x.key }]);
+    // Big children's previews (their rows), within a time budget.
+    const t0 = opts.previews === false ? 0 : performance.now();
+    const stubPairs: [number, HugeNode][] = stubs.map((x, j) => {
+      const n = { ...nodes[x.index - from], key: x.key };
+      if (opts.previews !== false && j < PREVIEWS && performance.now() - t0 < PREVIEW_MS) {
+        const pv = this.previewOf(n, x.at);
+        if (pv !== undefined) n.preview = pv;
+      }
+      nodes[x.index - from] = n;
+      return [kids[x.index - from], n];
+    });
     const o = this.openAt(b);
     const container = o.open ? (node.kind === LIST ? this.list() : (this.openNode(node.depth, node.start, node.kind, node.key) ?? node)) : !more && node.count === null ? { ...node, count: got } : node;
     const pairs = new Float64Array((built.map.length / 3) * 2);
@@ -669,6 +689,53 @@ export class HugeDoc {
     }
     const page: HugePage = { container, from, count: kids.length, more, tape: sendTape(t), text: built.text, stubs: stubPairs, map: pairs };
     return { page, nodes };
+  }
+
+  /**
+   * What a big child's row shows: a container's first children as lazy.ts Filler.preview (format.ts preview) writes
+   * them; a string's decoded start (cut, with …). `at`: the state at its first byte.
+   */
+  private previewOf(n: HugeNode, at?: State): string | undefined {
+    if (n.kind === STR) return this.stringStart(n.start, n.end, PREVIEW_CHARS);
+    if (n.kind < ARR) return undefined;
+    const isObj = n.kind === OBJ;
+    if (n.count === 0) return isObj ? '{}' : '[]';
+    const page = this.pageOf(n, 0, 32, { at, budget: 8192, previews: false });
+    if (!page) return undefined;
+    const t = receiverTape(page.page);
+    const root = lazyResult(t, page.page.text).root;
+    const list = root ? (root.v as import('../json/parser').JNode[]) : [];
+    const stubs = new Map(page.page.stubs);
+    let s = isObj ? '{' : '[';
+    for (let i = 0; i < list.length; i++) {
+      if (s.length > 90) {
+        s += ', …';
+        break;
+      }
+      const c = list[i];
+      const big = c.zi !== undefined ? stubs.get(c.zi) : undefined;
+      let v: string;
+      if (big) v = big.kind === OBJ ? (big.count ? '{…}' : '{}') : big.kind === ARR ? (big.count ? '[…]' : '[]') : JSON.stringify(clip(this.stringStart(big.start, big.end, 48, false), 40));
+      else v = c.t === OBJ ? ((c.v as unknown[]).length ? '{…}' : '{}') : c.t === ARR ? ((c.v as unknown[]).length ? '[…]' : '[]') : primText(c, 40);
+      s += (i ? ', ' : '') + (isObj ? keyLabel(clip(c.key as string, 40)) + ': ' + v : v);
+    }
+    // (More children than the page held, all shown: more follow.)
+    if (s.length <= 90 && list.length && list.length < (n.count ?? 0)) s += ', …';
+    return s + (isObj ? '}' : ']');
+  }
+
+  /** The start of the string token at `start` (to `end`; -1: still being read), decoded: `max` characters, `…` if cut. */
+  private stringStart(start: number, end: number, max: number, ellipsis = true): string {
+    // (Up to 6 bytes a character: \uXXXX.)
+    const want = Math.min(end > 0 ? end - start : Infinity, 6 * max + 16, this.src.size - start);
+    let token = textOf(this.src, start, want);
+    const whole = end > 0 && want >= end - start;
+    // (Cut inside an escape or a character: dropped.)
+    if (!whole) token = token.replace(/\\(u[0-9a-fA-F]{0,3})?$/, '').replace(/\uFFFD$/, '');
+    let v = decodeString(token, 0);
+    const cut = !whole || v.length > max;
+    if (v.length > max) v = v.slice(0, (v.charCodeAt(max - 1) & 0xfc00) === 0xd800 ? max - 1 : max);
+    return cut && ellipsis ? v + '…' : v;
   }
 
   /** A node of a parsed text, whole in it (a stub: its big value), as a HugeNode (its pretty line not known: -1). */
@@ -1517,6 +1584,11 @@ function sendTape(t: Tape): SentTape {
   offsets[strs.length] = at;
   const extraAt = new Int32Array(t.extra ? [...t.extra.keys()] : []);
   return { nodes: t.nodes.slice(0, t.count * W), count: t.count, text, offsets, keyCount: t.keys.length, extraAt, big: t.big ? [...t.big] : [], head: t.head };
+}
+
+/** A page's tape, as the page receives it. */
+function receiverTape(p: HugePage): Tape {
+  return receiver(p.tape)(Infinity)!;
 }
 
 function emptySent(): SentTape {
