@@ -85,6 +85,16 @@ export class HugeTreeView {
     cancelAnimationFrame(this.raf);
   }
 
+  /** The root as the index has it now (its count grew, or it ended): what is open stays open. */
+  updateRoot(root: HugeNode) {
+    const o = this.model.root;
+    if (!o || o.node.at !== root.at || o.node.depth !== root.depth) return;
+    o.node = root;
+    this.cache.refresh(!root.partial);
+    this.model.recount();
+    this.redraw();
+  }
+
   setRoot(root: HugeNode) {
     this.model.setRoot(root);
     this.cache.clear();

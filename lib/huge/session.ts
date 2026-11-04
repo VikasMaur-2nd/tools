@@ -257,6 +257,8 @@ export class HugeSession {
       void this.src.root().then((r) => {
         if (this.dead) return;
         this.root = r;
+        // (A tree shown meanwhile has the root as it was: it takes this one.)
+        this.tree?.updateRoot(r);
         const t = this.tableAt.node;
         if (t && t.at === r.at && t.depth === r.depth) {
           this.tableAt.node = r;

@@ -184,14 +184,15 @@ test('huge mode: Table pages an array of records; Go to row', async (t) => {
   t.check(/JSON Lines · 1,200 records/.test(st), 'JSON Lines status', st);
 });
 
-test('huge mode: an invalid file says where, and Go to error shows its line', async (t) => {
+test('huge mode: a file with a problem says what and where, as the normal path, and Go to error shows its line', async (t) => {
   const { page } = t;
   await t.open('/');
   await openHuge(t, broken);
   await waitIndexed(page);
-  const banner = await until(page, () => window.__vis('.hg .banner.err')?.textContent, null);
-  t.check(/Invalid JSON/.test(banner ?? '') && /Ln 329, Col 14/.test(banner ?? ''), 'the error and its place', banner);
-  await page.locator('.hg .banner.err .btn').click();
+  // (An extra comma: the normal path's status calls it fixable, "Not strict JSON"; huge mode reads up to it.)
+  const banner = await until(page, () => window.__vis('.hg .banner.warn')?.textContent, null);
+  t.check(/Not strict JSON/.test(banner ?? '') && /Ln 329, Col 14: Unexpected extra comma/.test(banner ?? ''), 'the issue and its place', banner);
+  await page.locator('.hg .banner.warn .btn').click();
   t.check(await until(page, () => document.querySelector('#hg-format .hg-cur .cv-n')?.textContent === '329', null), 'Go to error shows line 329 as written', await page.evaluate(() => document.querySelector('#hg-format .hg-cur')?.textContent));
   const sb = await status(page);
   t.check(/Ln 329, Col 14/.test(sb), 'the status bar says it too', sb);
