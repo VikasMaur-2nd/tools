@@ -1,9 +1,9 @@
 /**
  * Huge-file mode's worker (client.ts starts it): reads a File through huge.wasm and answers the page's
- * queries (serve.ts). Readers per engine (RESEARCH-REPORT.md §4, a 5 GiB read): Firefox reads with
- * FileReaderSync (flat memory, its fastest single reader); Chromium and WebKit with `slice().arrayBuffer()`,
- * 16 MiB chunks two in flight for the indexing pass and 1 MiB blocks for queries (FileReaderSync's garbage keeps
- * growing in Chromium; WebKit's streams grow without bound). Every async read is watched for a stall.
+ * queries (serve.ts). Readers per engine (RESEARCH-REPORT.md §4, a 5 GiB read; never streams): the indexing pass
+ * reads 16 MiB chunks, two in flight with `slice().arrayBuffer()` (Chromium, WebKit) or with FileReaderSync
+ * (Firefox: flat memory); queries read 1 MiB with FileReaderSync (Firefox, WebKit) or async blocks (Chromium,
+ * whose FileReaderSync garbage keeps growing). Every async read is watched for a stall.
  */
 import { BlockSource } from './bytes';
 import { Prefetch, SyncChunks } from './prefetch';
@@ -46,14 +46,19 @@ const load = () =>
 declare const FileReaderSync: { new (): { readAsArrayBuffer(blob: Blob): ArrayBuffer } };
 const reader = new FileReaderSync();
 const readSync = (b: Blob) => reader.readAsArrayBuffer(b);
-const firefox = /Firefox\//.test(navigator.userAgent);
+const ua = navigator.userAgent;
+const firefox = /Firefox\//.test(ua);
+const webkit = /AppleWebKit\//.test(ua) && !/(Chrome|Chromium)\//.test(ua);
 
 serve(
   self as unknown as Parameters<typeof serve>[0],
   load,
+  // Queries: FileReaderSync in Firefox and WebKit (as fast as an async read there; nothing to wait for and ask
+  // again), async blocks in Chromium (its FileReaderSync garbage keeps growing).
   (file) =>
-    firefox
+    firefox || webkit
       ? { size: file.size, read: (at, len) => new Uint8Array(readSync(file.slice(at, at + len))) }
       : Object.assign(new BlockSource(file), { cached: true }),
+  // Indexing: FileReaderSync 16 MiB at a time in Firefox (flat memory), 16 MiB arrayBuffer() two in flight elsewhere.
   (file) => (firefox ? new SyncChunks(file, readSync) : new Prefetch(file)),
 );

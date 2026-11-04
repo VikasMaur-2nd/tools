@@ -991,8 +991,10 @@ export class HugeDoc {
     const multi = this.multi;
     const ix = this.index;
     // Lines known: all once read; while reading (or before an error), those before the last checkpoint.
-    // (While reading, or before an error: to the last place a stretch can end.)
-    const total = this.done && !this.error ? st[1] + st[2] + (multi ? 2 : 0) : this.prettyAt(ix.n - 1) + (this.region(ix.n - 1)?.lines.length ?? 0) + (multi ? 1 : 0);
+    // (While reading, or before an error: the lines read so far, as the summary counts them; the last few, past
+    // the last place a stretch can end, come once more is read: fewer lines than asked then.)
+    const total = this.done && !this.error ? st[1] + st[2] + (multi ? 2 : 0) : st[1] + st[2] + (multi ? 1 : 0);
+    void ix;
     const n = Math.max(0, Math.min(count, total - from));
     const text: string[] = [];
     const cut = new Uint8Array(n);
