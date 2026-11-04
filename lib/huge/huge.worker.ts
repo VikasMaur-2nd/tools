@@ -26,6 +26,7 @@ const load = () =>
     return { huge, parsers: { wasm, parse: js.parse } };
   })());
 
+declare const FileReaderSync: { new (): { readAsArrayBuffer(blob: Blob): ArrayBuffer } };
 const reader = new FileReaderSync();
 
 serve(self as unknown as Parameters<typeof serve>[0], load, (file) => ({
