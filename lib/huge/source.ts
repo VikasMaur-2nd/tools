@@ -1,0 +1,135 @@
+/*
+ * Huge-file mode's view of a document: what its views (tree, lines, table, find) read, asynchronously and
+ * a window at a time, from a JSON or JSON Lines file bigger than memory.
+ *
+ * The core implements it over a checkpoint index in a worker (docs/huge-files/API.md); SmallSource
+ * (./small-source.ts) implements it over a normally parsed document, so every view can be driven by small
+ * files in unit tests and browser checks (localStorage['tk:hugeMin'] forces huge mode, see ./min.ts).
+ *
+ * Positions are byte offsets in the file (UTF-8; SmallSource: UTF-16 units of its text), plain numbers
+ * (beyond 2^31). A read takes an AbortSignal: views drop what scrolled away. Nothing here returns a list
+ * proportional to the document: every list is a bounded window the caller asked for.
+ */
+import type { Kind } from '../json/parser';
+
+export type Seg = string | number;
+
+/** A value in the file. Identified by `at`, its first byte. */
+export interface HugeNode {
+  /** Offset of the value's first byte (for a member: of its value, not its key). */
+  at: number;
+  /** Offset just past the value (-1: not indexed that far yet). */
+  end: number;
+  t: Kind;
+  /** Property name (object member), index (array item, JSON Lines record), undefined for the root. */
+  key: Seg | undefined;
+  /** Position among its parent's items (0 for the root). */
+  i: number;
+  /** Nesting depth: the root is 0 (for JSON Lines, the virtual list of records). */
+  depth: number;
+  /** Containers: how many items (so far, while `partial`). 0 for a scalar. */
+  count: number;
+  /** A container whose end the index hasn't reached yet: `count` is what it has so far. */
+  partial?: boolean;
+  /**
+   * Scalars: the value as shown, a number or literal as written, a string decoded (at most PREVIEW chars,
+   * `clipped` then). Containers: a short preview of its first items (`{id: 1, name: "Ada", …}`), or ''.
+   */
+  text: string;
+  /** The text was cut: the whole value is `end - at` bytes. */
+  clipped?: boolean;
+}
+
+/** Characters of a string a node carries at most (a row shows less). */
+export const PREVIEW = 2000;
+
+export type LineMode = 'raw' | 'pretty';
+
+/** A line of text: as written in the file (raw) or of the document pretty-printed. */
+export interface HugeLine {
+  /** Its text, without its line break, at most the `cols` asked for. */
+  text: string;
+  /** Characters past `text` (cut off: a minified file's one line, a long string). */
+  more: number;
+  /** The value the line is about (pretty), or the offset the line starts at (raw): what selecting it selects. */
+  at: number;
+}
+
+export interface HugeError {
+  /** The parser's message, as the normal path words it. */
+  msg: string;
+  /** Byte offset of the error, and its line and column (1-based, columns in characters). */
+  at: number;
+  line: number;
+  col: number;
+}
+
+/** How far the index has got. Counts are final once `done`. */
+export interface IndexState {
+  /** Bytes indexed so far (of the source's `size`). */
+  bytes: number;
+  done: boolean;
+  /** Stopped by `cancel()` at `bytes`: what was indexed can still be browsed. */
+  cancelled: boolean;
+  /** The first error (indexing stops there; `done` is set). */
+  error: HugeError | null;
+  /** Many top-level values, one per line: shown as a list of records. */
+  jsonl: boolean;
+  /** Values, deepest nesting, lines as written and pretty lines counted so far; JSON Lines records. */
+  nodes: number;
+  depth: number;
+  lines: number;
+  prettyLines: number;
+  records: number;
+}
+
+/** A table row: an item of an array, and its members if it is an object. */
+export interface HugeRow {
+  node: HugeNode;
+  /** Its first members by name (null: not an object, its value is the row's one cell). */
+  cells: Map<string, HugeNode> | null;
+}
+
+export interface HugeSource {
+  readonly name: string;
+  readonly size: number;
+
+  /** The index as it is now. */
+  state(): IndexState;
+  /** Called as the index advances (a few times a second) and when it ends. Returns an unsubscribe. */
+  onState(f: (s: IndexState) => void): () => void;
+  /** Stops indexing (browsing what was indexed still works). */
+  cancel(): void;
+  /** Releases everything (the worker, caches). */
+  destroy(): void;
+
+  /** The root: the document's top value, or for JSON Lines the list of records. Ready once the first window is read. */
+  root(signal?: AbortSignal): Promise<HugeNode>;
+  /** Items [from, from + n) of container `c` (fewer past its end, or past what is indexed so far). */
+  children(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<HugeNode[]>;
+  /** The nodes from the root down to the one at `path` (null: no such node). */
+  resolve(path: Seg[], signal?: AbortSignal): Promise<HugeNode[] | null>;
+  /** The nodes from the root down to the innermost value holding offset `at`. */
+  locate(at: number, signal?: AbortSignal): Promise<HugeNode[]>;
+  /** Items [from, from + n) of array `c` as table rows (each with at most `cols` members). */
+  rows(c: HugeNode, from: number, n: number, cols: number, signal?: AbortSignal): Promise<HugeRow[]>;
+
+  /** How many lines there are in `mode` (so far, while indexing). */
+  lineCount(mode: LineMode): number;
+  /** Lines [from, from + n) in `mode`, each cut to `cols` characters; pretty lines indented with `indent`. */
+  lines(mode: LineMode, from: number, n: number, cols: number, indent: string, signal?: AbortSignal): Promise<HugeLine[]>;
+  /** The line (0-based) in `mode` that shows offset `at`. */
+  lineOf(mode: LineMode, at: number, signal?: AbortSignal): Promise<number>;
+
+  /**
+   * Streams the offsets where `q` occurs in the file's text, in order, from offset `from`: `hits` gets them
+   * in batches, with how far the search has read. Smart case: a query without capitals matches any case.
+   * Resolves when the whole file is read or `signal` aborts.
+   */
+  find(q: string, from: number, hits: (at: number[], read: number) => void, signal: AbortSignal): Promise<void>;
+
+  /** The value's JSON text as written, or null when it is longer than `max` bytes (save it as a file instead). */
+  raw(n: HugeNode, max: number, signal?: AbortSignal): Promise<string | null>;
+  /** The value's bytes as written, for saving it as a file. */
+  blob(n: HugeNode): Blob;
+}
