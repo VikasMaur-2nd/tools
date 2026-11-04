@@ -222,16 +222,19 @@ function ViewBar({ s }: { s: HugeSession }) {
 
 // ── Banner, Find and Go to ──────────────────────────────────────────────────
 
+/** The normal path's banner: an error, or a fixable issue (several top-level values, for one), once known. */
 function ErrorBanner({ s }: { s: HugeSession }) {
-  const error = useHuge(s.ui, (u) => u.index.error);
+  useHuge(s.ui, (u) => u.index);
+  const p = s.problem();
   const t = useT();
-  if (!error) return null;
+  if (!p || p.kind === 'warning') return null;
+  const err = p.kind === 'error';
   return (
-    <div className="banner err" role="status" aria-live="polite">
+    <div className={`banner ${err ? 'err' : 'warn'}`} role="status" aria-live="polite">
       <Icon name="alert" size={15} />
       <button type="button" className="b-msg" onClick={() => void s.gotoError()}>
-        <b>{t('Invalid JSON')}</b>
-        <span>{t('Ln {line}, Col {col}: {msg}', { line: t.num(error.line), col: t.num(error.col), msg: t.msg(error.msg) })}</span>
+        <b>{err ? t('Invalid JSON') : t('Not strict JSON')}</b>
+        <span>{t('Ln {line}, Col {col}: {msg}', { line: t.num(p.line), col: t.num(p.col), msg: t.msg(p.msg) })}</span>
       </button>
       <button type="button" className="btn sm" onClick={() => void s.gotoError()}>
         {t('Go to error')}
@@ -241,25 +244,6 @@ function ErrorBanner({ s }: { s: HugeSession }) {
 }
 
 /** Find in the file (Ctrl+F): each opening is a new bar, its query selected. */
-/** Several top-level values (not JSON Lines): browsed as a list of them, with the normal path's notice. */
-function MultiBanner({ s }: { s: HugeSession }) {
-  const show = useHuge(s.ui, (u) => u.index.multi && !u.index.jsonl && !u.index.error);
-  const t = useT();
-  if (!show) return null;
-  return (
-    <div className="banner warn" role="status" aria-live="polite">
-      <Icon name="alert" size={15} />
-      <button type="button" className="b-msg" onClick={() => s.gotoSecond()}>
-        <b>{t('Not strict JSON')}</b>
-        <span>{t.msg('Multiple top-level values (wrapped in an array)')}</span>
-      </button>
-      <button type="button" className="btn sm" onClick={() => s.gotoSecond()}>
-        {t('Go to the second value')}
-      </button>
-    </div>
-  );
-}
-
 function FindBar({ s }: { s: HugeSession }) {
   const open = useHuge(s.ui, (u) => u.find.open && (u.view === 'format' || u.view === 'tree' || u.view === 'table'));
   const seq = useHuge(s.ui, (u) => u.find.seq);
@@ -508,11 +492,12 @@ function Status({ s }: { s: HugeSession }) {
       </span>
     );
   }
-  if (st.error) {
+  const p = s.problem();
+  if (p && p.kind !== 'warning') {
     return (
-      <button type="button" className="st st-link err" onClick={() => void s.gotoError()} title={t('Go to error')}>
+      <button type="button" className={`st st-link ${p.kind === 'error' ? 'err' : 'warn'}`} onClick={() => void s.gotoError()} title={t('Go to error')}>
         <i className="dot" />
-        <span className="st-msg">{t('Ln {line}, Col {col}: {msg}', { line: t.num(st.error.line), col: t.num(st.error.col), msg: t.msg(st.error.msg) })}</span>
+        <span className="st-msg">{t('Ln {line}, Col {col}: {msg}', { line: t.num(p.line), col: t.num(p.col), msg: t.msg(p.msg) })}</span>
       </button>
     );
   }
@@ -532,22 +517,16 @@ function Status({ s }: { s: HugeSession }) {
       </>
     );
   }
-  if (st.multi && !st.jsonl) {
-    return (
-      <>
-        <button type="button" className="st st-link warn" onClick={() => s.gotoSecond()}>
-          <i className="dot" />
-          <span className="st-msg">{t.msg('Multiple top-level values (wrapped in an array)')}</span>
-        </button>
-        {stats}
-      </>
-    );
-  }
   return (
     <>
       <span className="st ok" title={st.jsonl ? t('One JSON value per line, shown as an array of records') : undefined}>
         <i className="dot" />
         <span className="st-msg">{st.jsonl ? t.n(st.records, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}</span>
+        {st.status && st.status.warnings > 0 && (
+          <button type="button" className="st-link warn" onClick={() => void s.gotoError()} title={st.status.msg ? t.msg(st.status.msg) : undefined}>
+            · {st.status.more ? t('{n}+ duplicate keys', { n: t.num(st.status.warnings) }) : t.n(st.status.warnings, '{n} duplicate key', '{n} duplicate keys')}
+          </button>
+        )}
       </span>
       <span className="sz sz-raw">
         {t.bytes(size)} <i>{t('raw')}</i>
@@ -577,7 +556,6 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
       <ViewBar s={s} />
       <div className={`view ${PRIVATE}`}>
         <ErrorBanner s={s} />
-        <MultiBanner s={s} />
         <FindBar s={s} />
         <AskBar s={s} />
         {seen.has('format') && <FormatView s={s} hidden={view !== 'format'} />}

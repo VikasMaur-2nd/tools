@@ -203,11 +203,11 @@ test('huge mode: several top-level values are a list, with the normal path\'s no
   await openHuge(t, several);
   await until(page, () => /Multiple top-level values/.test(window.__vis('.hg-sb')?.textContent ?? ''), null);
   const banner = await page.evaluate(() => window.__vis('.hg .banner.warn')?.textContent);
-  t.check(/Not strict JSON/.test(banner ?? '') && /Multiple top-level values \(wrapped in an array\)/.test(banner ?? ''), 'the notice', banner);
+  t.check(/Not strict JSON/.test(banner ?? '') && /Ln 1, Col 10: Multiple top-level values \(wrapped in an array\)/.test(banner ?? ''), 'the normal path\'s notice, at the second value', banner);
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   t.check(await until(page, () => /\[3\]/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null), 'the root lists the three values', await page.evaluate(() => window.__vis('#hg-tree .tv-r')?.textContent));
   await page.locator('.hg .banner.warn .btn').click();
-  t.check(await until(page, () => /^1:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'Go to the second value', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
+  t.check(await until(page, () => document.querySelector('#hg-format .hg-errl .cv-n')?.textContent === '1' && !!document.querySelector('#hg-format .hg-errc'), null), 'Go to error marks where the second value starts', await page.evaluate(() => document.querySelector('#hg-format .hg-cur')?.textContent));
 });
 
 test('huge mode: progress while indexing, browse meanwhile, Cancel', async (t) => {

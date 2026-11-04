@@ -7,13 +7,11 @@ import { MAX_DOCUMENT } from '../link';
 import type { InputSource } from '../analytics/events';
 import { reportError } from '../analytics';
 import { createElement, type ReactNode } from 'react';
-import HugeTool from '@/components/huge/HugeTool';
 import { kit } from './kit';
 import { HUGE_MIN } from './min';
 import { CoreSource } from './core-source';
 import { SmallSource, type SmallOptions } from './small-source';
 import { HugeSession, type HugeHook, type HugeHost } from './session';
-import type { HugeSource } from './source';
 
 /** Formats the normal path converts to JSON: not in huge mode yet (a streamed conversion comes later). */
 const CONVERTED = /\.(csv|tsv|ya?ml|xml|toml)$/i;
@@ -24,18 +22,16 @@ type Kit = typeof kit;
 let opened = 0;
 
 /**
- * The source for `file`: the core's index in a worker (any size). For trying the UI, `tk:hugeSim`
- * ({"speed": bytes/s, "latency": ms}) plays an index over the file parsed whole instead (small files only).
+ * For trying the UI: `tk:hugeSim` ({"speed": bytes/s, "latency": ms}) plays an index over a small file parsed
+ * whole instead of the core's (null: the core, any size).
  */
-async function sourceFor(file: File): Promise<HugeSource> {
-  let sim: SmallOptions | null = null;
+function simOf(file: File): SmallOptions | null {
   try {
-    sim = JSON.parse(localStorage.getItem('tk:hugeSim') ?? 'null') as SmallOptions | null;
+    const sim = JSON.parse(localStorage.getItem('tk:hugeSim') ?? 'null') as SmallOptions | null;
+    return sim && file.size <= MAX_DOCUMENT ? { speed: Number(sim.speed) || undefined, latency: Number(sim.latency) || 0 } : null;
   } catch {
-    /* none */
+    return null;
   }
-  if (sim && file.size <= MAX_DOCUMENT) return new SmallSource(await file.text(), file.name, { speed: Number(sim.speed) || undefined, latency: Number(sim.latency) || 0 });
-  return new CoreSource(file, file.name);
 }
 
 /**
@@ -61,27 +57,35 @@ export async function openHuge(host: HugeHost, file: File, source: InputSource, 
   }
 }
 
-/** The open session's hook for the engine (null: nothing opened). */
+/**
+ * The open session's hook for the engine (null: nothing opened). The worker starts first (its modules and
+ * Wasm load meanwhile), the 64 KB binary check and the viewer's code load alongside it.
+ */
 async function open(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, forced: boolean, asText: boolean): Promise<HugeHook | null> {
   if (signal.aborted) return null;
   if (!asText && CONVERTED.test(file.name)) {
     host.toast(`Converting ${file.name} to JSON isn't available for files this large yet`, 'err');
     return null;
   }
+  for (const m of ['open', 'worker', 'root', 'rows', 'lines']) performance.clearMarks('tk:huge:' + m);
+  performance.mark('tk:huge:open');
+  const sim = simOf(file);
+  const src = sim ? null : new CoreSource(file, file.name);
+  const ui = import('@/components/huge/HugeTool');
   // (Its first 64 KB tell whether it is text at all.)
   const head = asText ? '' : await file.slice(0, 65_536).text();
-  if (signal.aborted) return null;
-  if (looksBinary(head)) {
-    host.toast(...binaryFile(file.name, () => void host.loadFile(file, source, true)));
+  if (signal.aborted || looksBinary(head)) {
+    src?.destroy();
+    if (!signal.aborted) host.toast(...binaryFile(file.name, () => void host.loadFile(file, source, true)));
     return null;
   }
-  const src = await sourceFor(file);
+  const [source_, { default: HugeTool }] = await Promise.all([src ?? new SmallSource(await file.text(), file.name, sim!), ui]);
   if (signal.aborted) {
-    src.destroy();
+    source_.destroy();
     return null;
   }
   const key = String(++opened);
-  const session: HugeSession = new HugeSession(host, src, { name: file.name, source, forced }, (portal): ReactNode => createElement(HugeTool, { key, portal }));
+  const session: HugeSession = new HugeSession(host, source_, { name: file.name, source, forced }, (portal): ReactNode => createElement(HugeTool, { key, portal }));
   signal.addEventListener('abort', () => session.close(), { once: true });
   // (Shown at once; its root comes as the index reads it.)
   void session.start();

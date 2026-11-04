@@ -60,10 +60,23 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
   // The Format view's first lines (as written: one record a line).
   t.check(await until(page, () => { const v = window.__vis('#hg-format'); return v && v.querySelectorAll('.cv-l[data-l]').length > 20; }, null, { timeout: 30_000 }), 'first lines');
   const firstLines = Date.now() - t0;
-  // The tree's first rows, while indexing goes on.
+  // The tree's first rows, while indexing goes on: the root's, then the big array's.
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   t.check(await until(page, () => /root/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null, { timeout: 30_000 }), 'tree root');
   const firstRows = Date.now() - t0;
+  t.check(await until(page, () => [...(window.__vis('#hg-tree')?.querySelectorAll('.tv-r') ?? [])].some((r) => /records/.test(r.textContent)), null, { timeout: 30_000 }), 'the root\'s items while indexing');
+  const rootItems = Date.now() - t0;
+  const indexingWhenOpened = await page.evaluate(() => /Indexing/.test(window.__vis('.hg-sb')?.textContent ?? ''));
+  const r0 = Date.now();
+  await page.locator('#hg-tree .tv-r', { hasText: 'records' }).first().click();
+  t.check(await until(page, () => [...(window.__vis('#hg-tree')?.querySelectorAll('.tv-r[aria-level="3"]') ?? [])].filter((r) => !r.classList.contains('hg-ph')).length > 10, null, { timeout: 30_000 }), 'the big array\'s first rows while indexing');
+  const bigArrayRows = Date.now() - r0;
+  const marks = await page.evaluate(() => {
+    const at = (n) => performance.getEntriesByName('tk:huge:' + n)[0]?.startTime;
+    const o = at('open');
+    const input = performance.getEntriesByName('tk:input').at(-1)?.startTime;
+    return Object.fromEntries([['input→open', o - input], ...['worker', 'root', 'lines', 'rows'].map((n) => [`open→${n}`, at(n) - o])].map(([k, v]) => [k, Math.round(v)]));
+  });
   // Memory while indexing (sampled), and when it ends.
   let peak = 0;
   let done = false;
@@ -74,9 +87,8 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
   t.check(done, 'indexed and valid', await page.evaluate(() => window.__vis('.hg-sb')?.textContent));
   const status = await page.evaluate(() => window.__vis('.hg-sb')?.textContent);
   const afterIndex = browserMemory();
-  // Seek: open records and go to an item deep in it.
+  // Seek: go to an item deep in records.
   const records = page.locator('#hg-tree .tv-r', { hasText: 'records' }).first();
-  await records.click();
   const count = Number((await records.textContent()).match(/\[([\d,]+)\]/)?.[1].replace(/,/g, '') ?? 0);
   const target = Math.floor(count * 0.83);
   await page.locator('#hg-tree').focus();
@@ -119,9 +131,20 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
   const slow = frames.filter((f) => f > 20).length / Math.max(1, frames.length);
   const placeholders = await page.evaluate(() => window.__vis('#hg-format').querySelectorAll('.hg-ph').length);
   await until(page, () => !window.__vis('#hg-format').querySelector('.hg-ph'), null, { timeout: 10_000 });
+  // A far jump in the Format view: Go to a line near the end, until its text is there.
+  const lines = await page.evaluate(() => Number((window.__vis('.hg-sb')?.textContent ?? '').match(/([\d,]+) lines/)?.[1].replace(/,/g, '') ?? 0));
+  const far = Math.floor(lines * 0.9);
+  await page.locator('#hg-format').focus();
+  await page.keyboard.press(`${MOD}+g`);
+  await page.locator('.hg-ask input').fill(String(far));
+  const j0 = Date.now();
+  await page.locator('.hg-ask input').press('Enter');
+  const farOk = await until(page, (n) => { const c = document.querySelector('#hg-format .hg-cur'); return !!c && c.querySelector('.cv-n')?.textContent === String(n) && !c.classList.contains('hg-ph'); }, far, { timeout: 30_000 });
+  const farLineMs = Date.now() - j0;
+  t.check(!!farOk, `Go to line ${far}`);
   const mb = (b) => Math.round(b / 1048576);
   const report = {
-    sizeMB: mb(size), shownMs: shown, firstLinesMs: firstLines, firstTreeRowsMs: firstRows, indexedMs: indexed,
+    sizeMB: mb(size), shownMs: shown, firstLinesMs: firstLines, firstTreeRowsMs: firstRows, rootItemsMs: rootItems, bigArrayRowsWhileIndexingMs: bigArrayRows, stillIndexing: indexingWhenOpened, indexedMs: indexed, farLineMs, marks,
     indexMBps: Math.round(size / 1048576 / (indexed / 1000)), seekMs, findNearEndMs: findMs,
     pssIdleMB: mb(idle.pss), pssPeakIndexingMB: mb(peak), pssAfterMB: mb(afterIndex.pss), pssNowMB: mb(browserMemory().pss),
     frames: frames.length, frameP95ms: Math.round(p95 * 10) / 10, framesOver20msPct: Math.round(slow * 1000) / 10, placeholdersAfterScroll: placeholders,

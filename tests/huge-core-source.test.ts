@@ -124,9 +124,14 @@ test('the core: what comes before an error inside the root can be browsed', asyn
   const { a, close } = await pair(broken);
   try {
     const root = await a.root();
+    // The normal tree tolerates that comma and shows all 50 records, record 31 whole. Read strictly up to the
+    // error, the closest is records 0–30 and record 31 begun: its members before the comma, marked partial.
     const first = await a.children(root, 0, 50);
     assert.equal(first[0].key, 0);
-    assert.equal(first.length, 31, 'the records before the error');
+    assert.equal(first.length, 32, 'the records before the error, and the one it is in');
+    assert.ok(!first[30].partial && first[31].partial, 'the broken one last, partial');
+    const begun = await a.children(first[31], 0, 10);
+    assert.deepEqual(begun.map((n) => [n.key, n.text]), [['id', '31']], 'its members before the error');
   } finally {
     close();
   }
@@ -145,5 +150,26 @@ test('the core: positions in bytes; columns in characters on a line with accents
   assert.equal(a.atOf(line, col), at);
   const chain = await a.locate(at);
   assert.equal(chain[chain.length - 1].key, 'city');
+  a.destroy();
+});
+
+test('the core: Cancel stops indexing where it is, and what was read stays browsable', async () => {
+  const text = '{"meta": {"n": 1}, "records": [\n' + Array.from({ length: 300_000 }, (_, i) => JSON.stringify({ id: i, name: `user ${i}`, note: 'x'.repeat(40) })).join(',\n') + '\n]}\n';
+  const a = core(text, 'big.json');
+  await new Promise((r) => setTimeout(r, 30));
+  a.cancel();
+  const st = await new Promise<IndexState>((done) => {
+    if (a.state().cancelled || a.state().done) return done(a.state());
+    const stop = a.onState((s) => (s.cancelled || s.done) && (stop(), done(s)));
+  });
+  assert.equal(st.cancelled, true, 'stopped, not done');
+  assert.equal(st.done, false);
+  const root = await a.root();
+  assert.equal(root.partial, true);
+  const [, records] = await a.children(root, 0, 2);
+  assert.equal(records.key, 'records');
+  assert.ok(records.partial && records.count > 0 && records.count < 300_000, `records so far: ${records.count}`);
+  const items = await a.children(records, 0, 5);
+  assert.deepEqual(items.map((n) => n.key), [0, 1, 2, 3, 4]);
   a.destroy();
 });

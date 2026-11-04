@@ -64,6 +64,20 @@ export interface HugeError {
   col: number;
 }
 
+/**
+ * The normal path's status: valid (maybe with duplicate-name warnings: `msg` is the first), fixable (the first
+ * issue a repair fixes, such as several top-level values in a file that isn't JSON Lines) or an error.
+ */
+export interface HugeStatus {
+  kind: 'valid' | 'fixable' | 'error';
+  msg: string | null;
+  at: number;
+  line: number;
+  col: number;
+  warnings: number;
+  more: boolean;
+}
+
 /** How far the index has got. Counts are final once `done`. */
 export interface IndexState {
   /** Bytes indexed so far (of the source's `size`). */
@@ -71,8 +85,10 @@ export interface IndexState {
   done: boolean;
   /** Stopped by `cancel()` at `bytes`: what was indexed can still be browsed. */
   cancelled: boolean;
-  /** The first error (indexing stops there; `done` is set). */
+  /** The first error (indexing stops there; `done` is set): where the readable part ends. */
   error: HugeError | null;
+  /** What the normal path's status bar says of the whole document, once it is read (null until then). */
+  status: HugeStatus | null;
   /** Several top-level values: shown as a list of them (may turn true while indexing, when a second appears). */
   multi: boolean;
   /** …each on its own line: JSON Lines. */

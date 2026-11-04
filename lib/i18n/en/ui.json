@@ -1053,7 +1053,5 @@
   "app.hugeNoRoot._context": "Large-file mode, Tree or Table view, when the file has an error before any value could be read.",
   "app.hugeNoRootText": "The Format view shows the file as it is written, with the error marked.",
   "app.notStrictJson": "Not strict JSON",
-  "app.notStrictJson._context": "Large-file mode: title of the notice for a file with several top-level values (not JSON Lines), browsed as a list of them.",
-  "app.hugeGotoSecond": "Go to the second value",
-  "app.hugeGotoSecond._context": "Button in that notice: shows where the second top-level value starts."
+  "app.notStrictJson._context": "Large-file mode: title of the notice for a file with several top-level values (not JSON Lines), browsed as a list of them."
 }
