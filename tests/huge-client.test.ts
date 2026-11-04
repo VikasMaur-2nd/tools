@@ -162,7 +162,9 @@ test('client: queries over async blocks (BlockSource) wait for their reads; the 
     return parse(text, options);
   };
   const [page, worker] = channel();
-  serve(worker, async () => ({ huge: hugeMod, parsers: { wasm: tapeMod, parse: lateParse } }), (f) => Object.assign(new BlockSource(f, 1 << 16, 8), { cached: true }), (f) => new Prefetch(f, 1 << 20, 2));
+  // (Query blocks taken from the read-ahead when it has them, as the worker does.)
+  let shared: Prefetch | null = null;
+  serve(worker, async () => ({ huge: hugeMod, parsers: { wasm: tapeMod, parse: lateParse } }), (f) => Object.assign(new BlockSource(f, 1 << 16, 8, shared ?? undefined), { cached: true }), (f) => (shared = new Prefetch(f, 1 << 20, 2)));
   const doc = new HugeClient(file, { name: 'a.json' }, undefined, page);
   const s0 = await doc.summary();
   assert.ok(s0.root);

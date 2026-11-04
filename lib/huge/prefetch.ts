@@ -42,6 +42,11 @@ export class Prefetch implements ByteSource {
     return out;
   }
 
+  /** The read under way of the chunk holding byte `at`, or null. */
+  loadingAt(at: number): Promise<void> | null {
+    return this.loading.get(Math.floor(at / this.chunk)) ?? null;
+  }
+
   /** Reads from byte `at` on: resolves once [at, at + len) is here, with the next chunks on their way; drops the ones before. */
   need(at: number, len: number): Promise<void> {
     const first = Math.floor(at / this.chunk);

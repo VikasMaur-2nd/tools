@@ -56,6 +56,8 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   const open = async (id: number, file: Blob, options: import('./types').HugeOptions) => {
     const { huge, parsers } = await load();
     const ahead = aheadOf?.(file);
+    // (The read-ahead starts now: the first pages can take the start of the file from it.)
+    void ahead?.need(0, 1 << 20).catch(() => {});
     src = sourceOf(file);
     for (;;) {
       try {

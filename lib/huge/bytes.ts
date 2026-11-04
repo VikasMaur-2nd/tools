@@ -188,10 +188,15 @@ export class BlockSource implements ByteSource {
   /** Blocks read by the queries under way (asked again after a Wait): not dropped until release(). */
   private pinned = new Set<number>();
 
+  /**
+   * `shared`: the indexing pass's read-ahead (prefetch.ts): a block it has (or is reading) is taken from it, so the
+   * first pages don't read the start of the file a second time while the indexer reads it.
+   */
   constructor(
     private readonly file: Blob,
     private readonly block = 1 << 20,
     private readonly keep = 24,
+    private readonly shared?: { has(at: number, len: number): boolean; read(at: number, len: number): Uint8Array; loadingAt(at: number): Promise<void> | null },
   ) {
     this.size = file.size;
   }
@@ -203,6 +208,17 @@ export class BlockSource implements ByteSource {
     const last = Math.floor((at + Math.max(len, 1) - 1) / b);
     const missing: number[] = [];
     for (let k = first; k <= last; k++) {
+      if (!this.blocks.has(k) && this.shared) {
+        const s = k * b;
+        const n = Math.min(b, this.size - s);
+        if (this.shared.has(s, n)) {
+          // (A copy: the read-ahead's chunk goes once indexed past.)
+          this.blocks.set(k, this.shared.read(s, n).slice());
+        } else {
+          const p = this.shared.loadingAt(s);
+          if (p) throw new Wait(() => p.catch(() => this.fetch([k])));
+        }
+      }
       if (this.blocks.has(k)) this.pinned.add(k);
       else missing.push(k);
     }

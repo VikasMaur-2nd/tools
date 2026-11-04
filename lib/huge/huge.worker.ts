@@ -50,6 +50,9 @@ const ua = navigator.userAgent;
 const firefox = /Firefox\//.test(ua);
 const webkit = /AppleWebKit\//.test(ua) && !/(Chrome|Chromium)\//.test(ua);
 
+// (The read-ahead of the file being opened: query blocks take what it has read.)
+let ahead: Prefetch | null = null;
+
 serve(
   self as unknown as Parameters<typeof serve>[0],
   load,
@@ -58,7 +61,7 @@ serve(
   (file) =>
     firefox || webkit
       ? { size: file.size, read: (at, len) => new Uint8Array(readSync(file.slice(at, at + len))) }
-      : Object.assign(new BlockSource(file), { cached: true }),
+      : Object.assign(new BlockSource(file, 1 << 20, 24, ahead ?? undefined), { cached: true }),
   // Indexing: FileReaderSync 16 MiB at a time in Firefox (flat memory), 16 MiB arrayBuffer() two in flight elsewhere.
-  (file) => (firefox ? new SyncChunks(file, readSync) : new Prefetch(file)),
+  (file) => (firefox ? new SyncChunks(file, readSync) : (ahead = new Prefetch(file))),
 );
