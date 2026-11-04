@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { lazyResult } from '../lib/json/lazy';
 import { MAX_DEPTH, type JNode } from '../lib/json/parser';
@@ -55,7 +56,7 @@ function makeCase(r: Rng): Case {
   const big = 40 + r.int(300);
   const window = 64 * (1 + r.int(3));
   const pageBytes = 64 + r.int(2000);
-  if (process.env.HUGE_DUMP) require('node:fs').writeFileSync(process.env.HUGE_DUMP, JSON.stringify({ doc: new TextDecoder().decode(bytes), name, every, big, window, pageBytes }));
+  if (process.env.HUGE_DUMP) writeFileSync(process.env.HUGE_DUMP, JSON.stringify({ doc: new TextDecoder().decode(bytes), name, every, big, window, pageBytes }));
   const d = hugeOf(bytes, { name, every, big }, { window, queryWindow: window, pageBytes });
   return { bytes, text, tape, d, where: `\ndoc: ${show(doc)} name ${name} every ${every} big ${big} window ${window}` };
 }

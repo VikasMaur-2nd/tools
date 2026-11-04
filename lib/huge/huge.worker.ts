@@ -2,6 +2,7 @@
  * Huge-file mode's worker (client.ts starts it): reads a File through huge.wasm and answers the page's
  * queries (serve.ts). Its File is read with FileReaderSync, a slice at a time: never all of it.
  */
+import { Prefetch } from './prefetch';
 import { serve } from './serve';
 import type { Parsers } from './doc';
 
@@ -29,7 +30,11 @@ const load = () =>
 declare const FileReaderSync: { new (): { readAsArrayBuffer(blob: Blob): ArrayBuffer } };
 const reader = new FileReaderSync();
 
-serve(self as unknown as Parameters<typeof serve>[0], load, (file) => ({
-  size: file.size,
-  read: (at, len) => new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + len))),
-}));
+// Queries read a slice at a time (a 1 MiB read takes ~4 ms); the indexing pass reads 16 MiB chunks ahead, two
+// in flight (prefetch.ts).
+serve(
+  self as unknown as Parameters<typeof serve>[0],
+  load,
+  (file) => ({ size: file.size, read: (at, len) => new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + len))) }),
+  (file) => new Prefetch(file),
+);

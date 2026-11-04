@@ -6,6 +6,7 @@
 import type { ByteSource } from '../json/tape-wasm';
 import { HugeDoc, type Parsers } from './doc';
 import type { Reply, Request } from './protocol';
+import type { Prefetch } from './prefetch';
 import type { FindBatch, HugePage } from './types';
 
 export interface ServePort {
@@ -32,17 +33,33 @@ const nextTask = () =>
     ch.port2.postMessage(0);
   });
 
-export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource) {
+/**
+ * `sourceOf`: random reads of a file (queries). `aheadOf`: the indexing pass's read-ahead source (prefetch.ts), or
+ * none (the indexing pass reads through `sourceOf`).
+ */
+export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource, aheadOf?: (file: Blob) => Prefetch) {
   let doc: HugeDoc | null = null;
+  // Requests that come before the document exists (its modules still loading) wait for it.
+  let opened: () => void = () => {};
+  const made = new Promise<void>((done) => (opened = done));
   const finds = new Map<number, boolean>();
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
   const fail = (id: number, e: unknown) => reply({ id, ok: false, error: e instanceof Error && KNOWN.has(e.message) ? e.message : 'Query failed' });
 
   const open = async (id: number, file: Blob, options: import('./types').HugeOptions) => {
     const { huge, parsers } = await load();
-    doc = new HugeDoc(sourceOf(file), huge, parsers, options);
+    const ahead = aheadOf?.(file);
+    doc = new HugeDoc(sourceOf(file), huge, parsers, options, { index: ahead });
+    opened();
     let shown = 0;
-    while (!doc.step(performance.now() + SLICE)) {
+    for (;;) {
+      if (ahead) {
+        // (Reads ahead; waits only if the parse caught up with the reads.)
+        const [at, len] = doc.indexAt;
+        const ready = ahead.need(at, len);
+        if (!ahead.has(at, len)) await ready;
+      }
+      if (doc.step(performance.now() + SLICE)) break;
       const now = performance.now();
       if (now - shown >= PROGRESS) {
         shown = now;
@@ -73,16 +90,25 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
 
   port.onmessage = (e) => {
     const m = e.data as Request;
+    if (m.op === 'open') {
+      open(m.id, m.file, m.options).catch((err) => {
+        fail(m.id, err);
+        // (Requests waiting for it fail too: there is none.)
+        opened();
+      });
+      return;
+    }
+    if (m.op === 'cancel') {
+      finds.set(m.target, false);
+      reply({ id: m.id, ok: true, value: null, done: true });
+      return;
+    }
+    if (doc) answer(m);
+    else void made.then(() => answer(m));
+  };
+
+  const answer = (m: Request) => {
     try {
-      if (m.op === 'open') {
-        open(m.id, m.file, m.options).catch((err) => fail(m.id, err));
-        return;
-      }
-      if (m.op === 'cancel') {
-        finds.set(m.target, false);
-        reply({ id: m.id, ok: true, value: null, done: true });
-        return;
-      }
       if (!doc) throw new Error('No document');
       switch (m.op) {
         case 'summary':

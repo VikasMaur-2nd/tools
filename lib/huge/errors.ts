@@ -74,8 +74,22 @@ function firstProblem(t: Tape, from: number): { p: number; m: string; fatal: boo
 export function lineCol(src: ByteSource, index: HugeIndex, pos: number, k = index.at(pos)): { line: number; col: number } {
   const at = index.pos[k];
   const b = src.read(at, pos - at);
-  const c = count(b, 0, pos - at);
-  return { line: index.lines[k] + c.breaks + 1, col: c.sinceBreak >= 0 ? c.sinceBreak + 1 : index.u16[k] - index.lineU16[k] + c.units + 1 };
+  // Breaks counted natively; units only after the last one (or all, if none).
+  let breaks = 0;
+  let last = -1;
+  for (let i = b.indexOf(10); i >= 0; i = b.indexOf(10, i + 1)) {
+    breaks++;
+    last = i;
+  }
+  for (let i = b.indexOf(13); i >= 0; i = b.indexOf(13, i + 1)) {
+    if (b[i + 1] !== 10) breaks++;
+    if (i > last) last = i;
+  }
+  if (last >= 0) {
+    const c = count(b, last + 1, b.length, b[last] === 13);
+    return { line: index.lines[k] + breaks + 1, col: c.units + 1 };
+  }
+  return { line: index.lines[k] + 1, col: index.u16[k] - index.lineU16[k] + count(b, 0, b.length).units + 1 };
 }
 
 /**

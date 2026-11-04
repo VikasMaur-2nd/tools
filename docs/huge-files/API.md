@@ -18,9 +18,14 @@ file is opened; nothing is on any page's first load.
 - **Positions are byte offsets** (`Bytes`, JS numbers, beyond 2^31) in the document after a UTF-8 byte order
   mark (`summary.bom` is 3 when the file has one). Lines and columns are as the normal path's status bar
   shows them: 1-based, columns in UTF-16 units, `\r\n` / `\r` / `\n` each end a line.
-- **Several top-level values** (JSON Lines, NDJSON, concatenated JSON) are one `LIST` node whose children are the
-  records, viewed as the normal path views them (an array). `summary.jsonl` tells real JSON Lines (one record
-  per line) from other multi-value documents (rules.ts `jsonLines`).
+- **Several top-level values** (JSON Lines, NDJSON, concatenated JSON), and any `.jsonl` / `.ndjson` file, are one
+  `LIST` node whose children are the records, viewed as the normal path views them (an array; `summary.multi`).
+  `summary.jsonl` tells real JSON Lines (one record per line) from other multi-value documents (rules.ts
+  `jsonLines`). While indexing, a document read so far as one value turns `multi` when a second appears: views
+  then ask again (the root becomes the `LIST`, pretty lines shift by the `[` line).
+- Reads: the indexing pass reads the File in 16 MiB chunks, two in flight (`slice().arrayBuffer()`: ~960 MB/s in
+  Chromium per the phase-0 research, against ~250 MB/s for one 1 MiB read at a time); queries read 1 MiB slices
+  (`FileReaderSync`, ~4 ms each) through a 16 MiB cache.
 
 ## Opening
 
@@ -63,8 +68,10 @@ view.span(jnode)     // [start, end) bytes of any JNode of the page
 
 - `children(node, from, count)`: children `[from, from + count)` of a big container (or the `LIST`), parsed in
   full: a page is a tape (`tape.ts`) over the page's own text, so lazy.ts / Filler / pretty.ts work on it
-  unchanged. A page stops at `count` children or about 4 MiB of text (`more` says more follow). Children of at
-  least 256 KiB are **stubs** (page them with their own `children()`; their `count` is known).
+  unchanged. A page stops at `count` children or about 4 MiB of text: **it may hold fewer than asked**
+  (`page.count`; `more` says more follow; the next page starts at `from + page.count`). Children of at least
+  256 KiB are **stubs** (page them with their own `children()`; their `count` is known): they don't count
+  against the 4 MiB.
 - Tree: page big containers by 1,000 (`from` = k × 1000; "Go to index…" is `children(node, i, …)`). Expanding
   a small container inside a page needs no request.
 - Table: rows are a container's children: `children()` pages; columns from `view.tape` (Filler.columns).
@@ -110,6 +117,12 @@ Searches the bytes as stored for the UTF-8 bytes of the query (ASCII letters eit
 `caseSensitive`), from `from` forward (or `backward`), wrapping around at the end, streaming batches. Next /
 previous from a place: `limit: 1` with `from` and `backward`. A match inside an escaped string matches its
 escaped form (`\n`, `é`): the text as stored. `locate(match)` turns a match into a node / path.
+
+## Speed (this host: arm64, 4 cores, loaded; see the core report for method and the browser numbers)
+
+On 3 M records (250 MB), each query from a cold region: page of 1,000 children 5–28 ms, seek to child k ~6 ms,
+`resolve` ~30 ms, `locate` ~26 ms, 100 pretty lines ~21 ms, 100 raw lines ~7 ms. Regions stay parsed (64 MiB
+LRU), so scrolling the Format view through a region is a lookup.
 
 ## Reading values
 
