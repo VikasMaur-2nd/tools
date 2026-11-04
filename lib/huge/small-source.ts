@@ -9,6 +9,7 @@
  */
 import { ARR, BOOL, NUM, OBJ, STR, kids, parse, type JNode } from '../json/parser';
 import { clip, preview, quote } from '../json/format';
+import { nodeAt } from '../json/path';
 import { jsonLines } from '../engine/rules';
 import { PREVIEW, type HugeError, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
 
@@ -115,7 +116,8 @@ export class SmallSource implements HugeSource {
       }
       out.push({ at: n.s, d, text: head + o });
       for (let k = 0; k < list.length; k++) visit(list[k], list[k].key, d + 1, k === list.length - 1);
-      out.push({ at: n.s, d, text: c + comma });
+      // (A closing line is about its container's last byte, as the core has it.)
+      out.push({ at: n.e - 1, d, text: c + comma });
     };
     if (virtual) {
       this.prettyAt.set(VIRTUAL, 0);
@@ -303,15 +305,18 @@ export class SmallSource implements HugeSource {
 
   locate(at: number, signal?: AbortSignal) {
     return this.later(() => {
-      let n = this.rootNode;
-      if (!n) return [];
-      const chain = [this.node(n, 0, 0, this.virtual)];
-      while (n.t >= ARR) {
-        const list = kids(n);
-        const k = upperBy(list, at + 1) - 1;
-        if (k < 0 || list[k].e <= at || list[k].s >= this.reach) break;
-        n = list[k];
-        chain.push(this.node(n, k, chain.length));
+      const root = this.rootNode;
+      if (!root) return [];
+      // The value the editor's caret would select there (a caret on a property name: its value), as the core's locate.
+      let n: JNode | null = nodeAt(root, Math.min(at, this.reach), this.text) ?? root;
+      if (n.s >= this.reach && n !== root) n = n.u ?? root;
+      const up: JNode[] = [];
+      for (let x: JNode | null = n; x && x !== root; x = x.u) up.push(x);
+      const chain = [this.node(root, 0, 0, this.virtual)];
+      for (let k = up.length - 1; k >= 0; k--) {
+        const x = up[k];
+        const list = kids(x.u as JNode);
+        chain.push(this.node(x, upperBy(list, x.s), chain.length));
       }
       return chain;
     }, signal);

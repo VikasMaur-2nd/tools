@@ -5,6 +5,7 @@
 import { looksBinary, binaryFile } from '../engine/asks';
 import { MAX_DOCUMENT } from '../link';
 import type { InputSource } from '../analytics/events';
+import { CoreSource } from './core-source';
 import { SmallSource, type SmallOptions } from './small-source';
 import { HugeSession, type HugeHost } from './session';
 import type { HugeSource } from './source';
@@ -13,19 +14,18 @@ import type { HugeSource } from './source';
 const CONVERTED = /\.(csv|tsv|ya?ml|xml|toml)$/i;
 
 /**
- * The source for `file`: the core's index once it is wired in; until then the small-document adapter, for
- * files a tab can parse whole (the debug override forcing huge mode on them). Null: none can read it.
+ * The source for `file`: the core's index in a worker (any size). For trying the UI, `tk:hugeSim`
+ * ({"speed": bytes/s, "latency": ms}) plays an index over the file parsed whole instead (small files only).
  */
 async function sourceFor(file: File): Promise<HugeSource | null> {
-  if (file.size > MAX_DOCUMENT) return null;
-  let sim: SmallOptions = {};
+  let sim: SmallOptions | null = null;
   try {
-    // Debug: an index played at a set speed, reads with a latency (tk:hugeSim = {"speed": bytes/s, "latency": ms}).
-    sim = JSON.parse(localStorage.getItem('tk:hugeSim') ?? '{}') as SmallOptions;
+    sim = JSON.parse(localStorage.getItem('tk:hugeSim') ?? 'null') as SmallOptions | null;
   } catch {
     /* none */
   }
-  return new SmallSource(await file.text(), file.name, { speed: Number(sim.speed) || undefined, latency: Number(sim.latency) || 0 });
+  if (sim && file.size <= MAX_DOCUMENT) return new SmallSource(await file.text(), file.name, { speed: Number(sim.speed) || undefined, latency: Number(sim.latency) || 0 });
+  return new CoreSource(file, file.name);
 }
 
 export interface OpenOptions {

@@ -27,6 +27,8 @@ export interface HugeUI {
   table: { path: string; rows: number; cols: number; ok: boolean };
   /** The Format view's line count (so far). */
   lines: number;
+  /** No value could be read (an error before any): the tree and the table say so. */
+  noRoot: boolean;
 }
 
 type Listener = () => void;

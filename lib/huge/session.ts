@@ -95,6 +95,7 @@ export class HugeSession {
   private dead = false;
   /** The container a "Go to index" bar is for. */
   private askOpen: Open | null = null;
+  private rootBusy = false;
 
   constructor(
     private readonly host: HugeHost,
@@ -117,6 +118,7 @@ export class HugeSession {
       ask: null,
       table: { path: '$', rows: 0, cols: 0, ok: false },
       lines: 0,
+      noRoot: false,
     });
     this.find = new StreamFind(src, (at) => void this.jumpTo(at), () => this.ui.set({ find: { ...this.ui.get().find, ...this.find.view() } }), (e) => this.failed(e));
     this.stopState = src.onState(this.onState);
@@ -124,22 +126,36 @@ export class HugeSession {
 
   /** Shows the file: huge mode takes the viewer and the keys. */
   async start() {
-    current?.close();
+    if (current && current !== this) current.close();
     setCurrent(this);
     this.host.attach(this.hook, this.id);
     this.onState(this.src.state());
+    await this.readRoot();
+  }
+
+  /** Reads the root (again as indexing goes on, until the first value is there). */
+  private async readRoot() {
+    if (this.dead || this.root || this.rootBusy) return;
+    this.rootBusy = true;
     try {
       const root = await this.src.root();
       if (this.dead) return;
       this.root = root;
+      this.ui.set({ noRoot: false });
       this.tableAt = { node: root, path: [] };
       this.tree?.setRoot(root);
       this.table?.setNode(root);
       this.ui.set({ table: { path: '$', rows: root.count, cols: 0, ok: root.t >= ARR } });
     } catch (e) {
       if (this.dead) return;
-      // (Not even a first value: the index's error says why, once it has one.)
-      if (!this.src.state().error) this.failed(e);
+      // Not even a first value yet: tried again as indexing goes on; at its end, the error says why.
+      const st = this.src.state();
+      if (st.done) {
+        this.ui.set({ noRoot: true });
+        if (!st.error) this.failed(e);
+      }
+    } finally {
+      this.rootBusy = false;
     }
   }
 
@@ -191,6 +207,7 @@ export class HugeSession {
     const ended = st.done || st.cancelled;
     const eta = !ended && rate > 0 && now - this.began > 400 ? (this.src.size - st.bytes) / rate : null;
     this.ui.set({ index: st, rate, eta, took: ended ? (this.ui.get().took ?? now - this.began) : null });
+    if (!this.root) void this.readRoot();
     if (ended) {
       this.report(st.error ? 'error' : st.cancelled ? 'cancelled' : 'done');
       if (st.error && st.bytes < 1) this.host.toast(`${this.meta.name} isn't valid JSON`, 'err');
@@ -247,8 +264,15 @@ export class HugeSession {
     });
   }
 
+  /** Can indexing stop while the file stays open? (Else Cancel closes the file.) */
+  get canStop() {
+    return !!this.src.cancel;
+  }
+
+  /** Cancel: stops indexing (browsing what was read goes on), or closes the file if its source can't stop. */
   cancel() {
-    this.src.cancel();
+    if (this.src.cancel) this.src.cancel();
+    else this.close(true);
   }
 
   // ── Views ──────────────────────────────────────────────────────────────
@@ -524,7 +548,7 @@ export class HugeSession {
     // (The Format view mounts in the next frame.)
     await new Promise((r) => requestAnimationFrame(r));
     if (this.dead) return;
-    this.lines?.setError(err.line - 1, err.at);
+    this.lines?.setError(err.line - 1, err.col - 1);
     this.lines?.goto(err.line - 1, err.at, true);
   }
 

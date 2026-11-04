@@ -43,9 +43,9 @@ export class HugeLinesView {
   private curAt = -1;
   /** The match's column is still to be scrolled to (its line wasn't read yet). */
   private toCol = false;
-  /** The file's error: its line and offset (marked there). */
+  /** The file's error: its line and column (marked there). */
   private errLine = -1;
-  private errAt = -1;
+  private errCol = -1;
   private q = '';
   private qn = '';
   private cs = false;
@@ -180,13 +180,19 @@ export class HugeLinesView {
       if (line.more) h += `<span class="hg-more">${escapeHtml(rt('… {size} more', { size: rt.bytes(line.more) }))}</span>`;
       this.html.set(k, h);
     }
-    const err = k === this.errLine && this.errAt >= line.at && this.errAt - line.at <= line.text.length ? `<i class="hg-errc" style="left:${((this.errAt - line.at) * this.cw).toFixed(1)}px;width:${this.cw.toFixed(1)}px"></i>` : '';
+    const err = k === this.errLine && this.errCol >= 0 && this.errCol <= line.text.length ? `<i class="hg-errc" style="left:${(this.errCol * this.cw).toFixed(1)}px;width:${this.cw.toFixed(1)}px"></i>` : '';
     return `<div class="cv-l${cur}" data-l="${k}"><span class="cv-n">${k + 1}</span><span class="cv-c">${err}${this.marks(k, line)}${h}</span></div>`;
+  }
+
+  /** The column of offset `at` on raw line `line` (-1: not on it, or a pretty line). */
+  private colAt(line: HugeLine, at: number) {
+    if (this.mode !== 'raw' || at < line.at) return -1;
+    return this.src.colOf ? this.src.colOf(line, at) : at - line.at;
   }
 
   /** The current match's column on line `line` (-1: not known: the first match on the line is it). */
   private curCol(line: HugeLine) {
-    return this.mode === 'raw' && this.curAt >= line.at ? this.curAt - line.at : -1;
+    return this.curAt < 0 ? -1 : this.colAt(line, this.curAt);
   }
 
   /** Find highlights on line `k`. */
@@ -239,10 +245,10 @@ export class HugeLinesView {
     if (x < this.el.scrollLeft || x > this.el.scrollLeft + view) this.el.scrollLeft = Math.max(0, x - view / 3);
   }
 
-  /** Marks the file's error (line `k`, at offset `at`): raw lines only, where its column is known. */
-  setError(k: number, at: number) {
+  /** Marks the file's error: line `k` (0-based), column `col` (0-based; raw lines only). */
+  setError(k: number, col: number) {
     this.errLine = k;
-    this.errAt = this.mode === 'raw' ? at : -1;
+    this.errCol = this.mode === 'raw' ? col : -1;
     this.render(true);
   }
 
@@ -269,7 +275,7 @@ export class HugeLinesView {
     if (this.mode === 'raw') {
       const c = r.querySelector('.cv-c') as HTMLElement;
       const col = Math.max(0, Math.min(line.text.length - 1, Math.floor((e.clientX - c.getBoundingClientRect().left) / this.cw)));
-      at += col;
+      at = this.src.atOf ? this.src.atOf(line, col) : at + col;
     }
     this.cur = k;
     this.curAt = -1;

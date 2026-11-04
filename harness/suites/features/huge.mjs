@@ -131,7 +131,7 @@ test('huge mode: Format view reads lines as they come into view; a one-line file
 test('huge mode: Find streams matches, steps through them, and $.path goes to a value', async (t) => {
   const { page } = t;
   await t.open('/');
-  await openHuge(t, pretty, { sim: { latency: 5 } });
+  await openHuge(t, pretty);
   await waitIndexed(page);
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   await loaded(page, '#hg-tree');

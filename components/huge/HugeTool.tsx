@@ -395,9 +395,22 @@ function FormatView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
   );
 }
 
+/** Where the tree or the table would be when no value could be read (the error comes before any). */
+function NoRoot({ hidden }: { hidden: boolean }) {
+  const t = useT();
+  return (
+    <div className="hg-notyet" hidden={hidden}>
+      <b>{t('No value could be read before the error')}</b>
+      <p>{t('The Format view shows the file as it is written, with the error marked.')}</p>
+    </div>
+  );
+}
+
 function TreeView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
   const t = useT();
+  const noRoot = useHuge(s.ui, (u) => u.noRoot && u.index.done);
   const ref = useMount((el) => s.mountTree(el), []);
+  if (noRoot) return <NoRoot hidden={hidden} />;
   return (
     <div id="hg-tree" className="tv" ref={ref} tabIndex={0} role="tree" aria-label={t('JSON tree')} hidden={hidden}>
       <div className="tv-sizer">
@@ -417,7 +430,9 @@ function TreeView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
 
 function TableView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
   const t = useT();
+  const noRoot = useHuge(s.ui, (u) => u.noRoot && u.index.done);
   const ref = useMount((el) => s.mountTable(el), []);
+  if (noRoot) return <NoRoot hidden={hidden} />;
   return (
     <div id="hg-table" className="tbl" ref={ref} hidden={hidden}>
       <div className="tb-head" role="row" aria-rowindex={1} />
@@ -468,7 +483,7 @@ function Status({ s }: { s: HugeSession }) {
           {t('Indexing {done} of {size}', { done: t.bytes(st.bytes), size: t.bytes(size) })}
           {eta !== null && eta >= 1 && <span className="st-pct"> {t('· ~{time} left', { time: t.dur(Math.ceil(eta)) })}</span>}
         </span>
-        <button type="button" className="st-link hg-cancel" onClick={() => s.cancel()}>
+        <button type="button" className="st-link hg-cancel" onClick={() => s.cancel()} data-tip={s.canStop ? t('Stop indexing: what is read so far stays open') : t('Stop and close the file')} data-tip-up="">
           {t('Cancel')}
         </button>
       </span>

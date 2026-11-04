@@ -98,8 +98,8 @@ export interface HugeSource {
   state(): IndexState;
   /** Called as the index advances (a few times a second) and when it ends. Returns an unsubscribe. */
   onState(f: (s: IndexState) => void): () => void;
-  /** Stops indexing (browsing what was indexed still works). */
-  cancel(): void;
+  /** Stops indexing (browsing what was indexed still works). Absent: indexing can't be stopped, only the file closed. */
+  cancel?(): void;
   /** Releases everything (the worker, caches). */
   destroy(): void;
 
@@ -120,6 +120,10 @@ export interface HugeSource {
   lines(mode: LineMode, from: number, n: number, cols: number, indent: string, signal?: AbortSignal): Promise<HugeLine[]>;
   /** The line (0-based) in `mode` that shows offset `at`. */
   lineOf(mode: LineMode, at: number, signal?: AbortSignal): Promise<number>;
+  /** The column (string index in its text) of offset `at` on raw line `line`, -1 if not on it (default: `at - line.at`). */
+  colOf?(line: HugeLine, at: number): number;
+  /** The offset of column `col` on raw line `line` (default: `line.at + col`). */
+  atOf?(line: HugeLine, col: number): number;
 
   /**
    * Streams the offsets where `q` occurs in the file's text, in order, from offset `from`: `hits` gets them

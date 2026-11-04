@@ -60,7 +60,7 @@ test('lines as written and pretty, and the line of an offset', async () => {
   const pretty = await src.lines('pretty', 0, 20, 100, '  ');
   assert.deepEqual(pretty.map((l) => l.text), ['{', '  "a": [', '    1,', '    2', '  ],', '  "b": {', '    "c": null', '  },', '  "e": []', '}']);
   assert.equal(await src.lineOf('pretty', 15), 5, 'the line of "b"\'s value');
-  assert.equal(await src.lineOf('pretty', 13), 0, 'a key is its object\'s');
+  assert.equal(await src.lineOf('pretty', 13), 5, 'a property name is its value\'s (as the editor\'s caret selects)');
   assert.equal(await src.lineOf('pretty', 21), 6, 'inside null');
   assert.equal(await src.lineOf('raw', 21), 0);
   const tab = await src.lines('pretty', 2, 1, 100, '\t');
