@@ -107,6 +107,7 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
   const found = await until(page, (w) => (document.querySelector('#hg-tree #htv-sel')?.textContent ?? '').includes(w), needle, { timeout: 120_000 });
   const findMs = Date.now() - f0;
   t.check(!!found, 'Find reaches a match near the end', await page.evaluate(() => document.querySelector('.hg .findbar .count')?.textContent));
+  const afterFind = browserMemory();
   await page.keyboard.press('Escape');
   // Scrolling the Format view: wheel steps for two seconds, frame times measured in the page.
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-format]')?.click());
@@ -130,6 +131,7 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
   const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
   const slow = frames.filter((f) => f > 20).length / Math.max(1, frames.length);
   const placeholders = await page.evaluate(() => window.__vis('#hg-format').querySelectorAll('.hg-ph').length);
+  const afterScroll = browserMemory();
   await until(page, () => !window.__vis('#hg-format').querySelector('.hg-ph'), null, { timeout: 10_000 });
   // A far jump in the Format view: Go to a line near the end, until its text is there.
   const lines = await page.evaluate(() => Number((window.__vis('.hg-sb')?.textContent ?? '').match(/([\d,]+) lines/)?.[1].replace(/,/g, '') ?? 0));
@@ -146,7 +148,7 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
   const report = {
     sizeMB: mb(size), shownMs: shown, firstLinesMs: firstLines, firstTreeRowsMs: firstRows, rootItemsMs: rootItems, bigArrayRowsWhileIndexingMs: bigArrayRows, stillIndexing: indexingWhenOpened, indexedMs: indexed, farLineMs, marks,
     indexMBps: Math.round(size / 1048576 / (indexed / 1000)), seekMs, findNearEndMs: findMs,
-    pssIdleMB: mb(idle.pss), pssPeakIndexingMB: mb(peak), pssAfterMB: mb(afterIndex.pss), pssNowMB: mb(browserMemory().pss),
+    pssIdleMB: mb(idle.pss), pssPeakIndexingMB: mb(peak), pssAfterMB: mb(afterIndex.pss), pssAfterFindMB: mb(afterFind.pss), pssAfterScrollMB: mb(afterScroll.pss), pssNowMB: mb(browserMemory().pss),
     frames: frames.length, frameP95ms: Math.round(p95 * 10) / 10, framesOver20msPct: Math.round(slow * 1000) / 10, placeholdersAfterScroll: placeholders,
     status,
   };
