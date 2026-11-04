@@ -97,6 +97,8 @@ export class HugeSession {
   /** The container a "Go to index" bar is for. */
   private askOpen: Open | null = null;
   private rootBusy = false;
+  /** The file has several top-level values (as last seen). */
+  private multi = false;
 
   /**
    * `viewer`: its UI (components/huge/HugeTool.tsx) as JsonTool renders it (the store holds it while the
@@ -220,6 +222,14 @@ export class HugeSession {
     const ended = st.done || st.cancelled;
     const eta = !ended && rate > 0 && now - this.began > 400 ? (this.src.size - st.bytes) / rate : null;
     this.ui.set({ index: st, rate, eta, took: ended ? (this.ui.get().took ?? now - this.began) : null });
+    // A second top-level value appeared: the root is the list of them now, and pretty lines shifted by its "[".
+    if (st.multi !== this.multi) {
+      this.multi = st.multi;
+      if (this.root && this.root.at >= 0) {
+        this.root = null;
+        this.lines?.reload();
+      }
+    }
     if (!this.root) void this.readRoot();
     if (ended) {
       this.report(st.error ? 'error' : st.cancelled ? 'cancelled' : 'done');
@@ -551,6 +561,17 @@ export class HugeSession {
     }
     this.closeAsk();
     return true;
+  }
+
+  /** Several top-level values: goes to the second (where the normal path's notice points). */
+  gotoSecond() {
+    if (this.ui.get().view === 'format' && this.lines) {
+      void this.src.resolve([1]).then((chain) => {
+        if (chain && !this.dead) void this.showLine(chain[chain.length - 1].at, false);
+      });
+      return;
+    }
+    void this.gotoPath([1]);
   }
 
   /** Go to error: its line in the Format view (as written), and its value in the tree. */

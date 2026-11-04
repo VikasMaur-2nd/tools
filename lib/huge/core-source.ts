@@ -56,7 +56,7 @@ export class CoreSource implements HugeSource {
   constructor(file: Blob, name: string, client?: (onProgress: (p: HugeProgress) => void) => HugeClient) {
     this.name = name;
     this.size = file.size;
-    this.st = { bytes: 0, done: false, cancelled: false, error: null, jsonl: false, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
+    this.st = { bytes: 0, done: false, cancelled: false, error: null, multi: false, jsonl: false, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
     this.doc = client ? client(this.onProgress) : new HugeClient(file, { name }, this.onProgress);
     this.doc.ready.then(
       (s) => this.onSummary(s),
@@ -101,6 +101,7 @@ export class CoreSource implements HugeSource {
       done: s.done,
       cancelled: false,
       error: e ? { msg: e.msg, at: e.pos, line: e.line, col: e.col } : null,
+      multi: s.multi,
       jsonl: s.jsonl,
       nodes: s.nodes,
       depth: s.depth,

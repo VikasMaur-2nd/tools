@@ -30,6 +30,7 @@ interface PrettyLine {
 }
 
 const LINES_NAME = /\.(jsonl|ndjson)$/i;
+const MULTI = 'Multiple top-level values (wrapped in an array)';
 /** Offset of the virtual list of JSON Lines records (its first record starts at 0 too). */
 const VIRTUAL = -1;
 
@@ -41,6 +42,7 @@ export class SmallSource implements HugeSource {
   private readonly text: string;
   private readonly rootNode: JNode | null;
   private readonly jsonl: boolean;
+  private readonly multi: boolean;
   private readonly error: HugeError | null;
   /** Start of each line. */
   private readonly ls: number[] = [];
@@ -66,10 +68,11 @@ export class SmallSource implements HugeSource {
     this.latency = options.latency ?? 0;
     const asLines = options.lines ?? LINES_NAME.test(name);
     const res = parse(text, { lines: asLines });
-    const multi = res.multi && !!res.root;
+    const multi = (this.multi = res.multi && !!res.root);
     this.jsonl = multi && !res.error && jsonLines(text, res);
-    // Strict JSON only: what the normal path tolerates with a fix (comments, trailing commas) is an error here.
-    const issue = res.error ?? (this.jsonl ? null : res.issues[0] ?? null);
+    // Strict JSON only: what the normal path tolerates with a fix (comments, trailing commas) is an error here;
+    // several top-level values are a list, as the core reads them (the UI shows the normal path's notice).
+    const issue = res.error ?? res.issues.find((x) => x.m !== MULTI) ?? null;
     let root = res.root;
     if (issue && !root) root = parse(text, { lines: asLines, repair: true }).root;
     this.rootNode = root;
@@ -77,7 +80,7 @@ export class SmallSource implements HugeSource {
     this.ls.push(0);
     for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) this.ls.push(i + 1);
     if (root) this.index(root);
-    this.st = { bytes: 0, done: false, cancelled: false, error: null, jsonl: this.jsonl, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
+    this.st = { bytes: 0, done: false, cancelled: false, error: null, multi, jsonl: this.jsonl, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
     this.began = Date.now();
     this.timer = setTimeout(this.tick, 0);
   }
@@ -94,14 +97,14 @@ export class SmallSource implements HugeSource {
 
   /** Lists every value's start and pretty lines (a small document: done once, whole). */
   private index(root: JNode) {
-    const virtual = this.jsonl || (root.u === null && this.isMulti(root));
+    const virtual = this.isMulti(root);
     const out = this.pretty;
     let deepest = 0;
     const visit = (n: JNode, key: Seg | undefined, d: number, last: boolean) => {
       this.starts.push(n.s);
       deepest = Math.max(deepest, n.d);
       this.depthTo.push(deepest);
-      const head = key === undefined || typeof key === 'number' ? '' : quote(key) + ': ';
+      const head = key === undefined || typeof key === 'number' || n.u?.t !== OBJ ? '' : quote(key) + ': ';
       const comma = last ? '' : ',';
       this.prettyAt.set(n.s, out.length);
       if (n.t < ARR) {
@@ -119,16 +122,14 @@ export class SmallSource implements HugeSource {
       // (A closing line is about its container's last byte, as the core has it.)
       out.push({ at: n.e - 1, d, text: c + comma });
     };
-    if (virtual) {
-      this.prettyAt.set(VIRTUAL, 0);
-      const list = kids(root);
-      for (let k = 0; k < list.length; k++) visit(list[k], undefined, 0, true);
-    } else visit(root, undefined, 0, true);
+    // (Several top-level values are written as one array, as the core and the normal path write them.)
+    visit(root, undefined, 0, true);
+    if (virtual) this.prettyAt.set(VIRTUAL, 0);
   }
 
   /** The root wraps several top-level values (the parser's list for JSON Lines). */
   private isMulti(root: JNode) {
-    return this.jsonl && root.t === ARR;
+    return this.multi && root.t === ARR;
   }
 
   // ── Index ───────────────────────────────────────────────────────────────
@@ -155,6 +156,7 @@ export class SmallSource implements HugeSource {
       done,
       cancelled: false,
       error,
+      multi: this.multi,
       jsonl: this.jsonl,
       nodes,
       depth: nodes ? this.depthTo[nodes - 1] : 0,

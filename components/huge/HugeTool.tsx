@@ -241,6 +241,25 @@ function ErrorBanner({ s }: { s: HugeSession }) {
 }
 
 /** Find in the file (Ctrl+F): each opening is a new bar, its query selected. */
+/** Several top-level values (not JSON Lines): browsed as a list of them, with the normal path's notice. */
+function MultiBanner({ s }: { s: HugeSession }) {
+  const show = useHuge(s.ui, (u) => u.index.multi && !u.index.jsonl && !u.index.error);
+  const t = useT();
+  if (!show) return null;
+  return (
+    <div className="banner warn" role="status" aria-live="polite">
+      <Icon name="alert" size={15} />
+      <button type="button" className="b-msg" onClick={() => s.gotoSecond()}>
+        <b>{t('Not strict JSON')}</b>
+        <span>{t.msg('Multiple top-level values (wrapped in an array)')}</span>
+      </button>
+      <button type="button" className="btn sm" onClick={() => s.gotoSecond()}>
+        {t('Go to the second value')}
+      </button>
+    </div>
+  );
+}
+
 function FindBar({ s }: { s: HugeSession }) {
   const open = useHuge(s.ui, (u) => u.find.open && (u.view === 'format' || u.view === 'tree' || u.view === 'table'));
   const seq = useHuge(s.ui, (u) => u.find.seq);
@@ -513,6 +532,17 @@ function Status({ s }: { s: HugeSession }) {
       </>
     );
   }
+  if (st.multi && !st.jsonl) {
+    return (
+      <>
+        <button type="button" className="st st-link warn" onClick={() => s.gotoSecond()}>
+          <i className="dot" />
+          <span className="st-msg">{t.msg('Multiple top-level values (wrapped in an array)')}</span>
+        </button>
+        {stats}
+      </>
+    );
+  }
   return (
     <>
       <span className="st ok" title={st.jsonl ? t('One JSON value per line, shown as an array of records') : undefined}>
@@ -547,6 +577,7 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
       <ViewBar s={s} />
       <div className={`view ${PRIVATE}`}>
         <ErrorBanner s={s} />
+        <MultiBanner s={s} />
         <FindBar s={s} />
         <AskBar s={s} />
         {seen.has('format') && <FormatView s={s} hidden={view !== 'format'} />}

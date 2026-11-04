@@ -73,7 +73,9 @@ export interface IndexState {
   cancelled: boolean;
   /** The first error (indexing stops there; `done` is set). */
   error: HugeError | null;
-  /** Many top-level values, one per line: shown as a list of records. */
+  /** Several top-level values: shown as a list of them (may turn true while indexing, when a second appears). */
+  multi: boolean;
+  /** …each on its own line: JSON Lines. */
   jsonl: boolean;
   /** Values, deepest nesting, lines as written and pretty lines counted so far; JSON Lines records. */
   nodes: number;

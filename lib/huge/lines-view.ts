@@ -100,6 +100,15 @@ export class HugeLinesView {
     return this.lines.count;
   }
 
+  /** The lines changed (a file turned out to have several top-level values): read again. */
+  reload() {
+    this.lines.reset();
+    this.html.clear();
+    this.lines.count = this.src.lineCount(this.mode);
+    this.fit();
+    this.redraw();
+  }
+
   private fit() {
     this.sc.fit(this.lines.count * RH + 2 * PAD, this.sizer);
     // Line numbers as wide as the longest.

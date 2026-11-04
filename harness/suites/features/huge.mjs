@@ -23,6 +23,8 @@ const pretty = file('users.json', JSON.stringify({ meta: { version: 3, note: 'x'
 const minified = file('min.json', JSON.stringify({ users: records(300), total: 300 }));
 const lines = file('events.jsonl', records(1200).map((r) => JSON.stringify(r)).join('\n') + '\n');
 // (An extra comma on line 329, column 14: fixable in the editor, an error in huge mode, which reads strict JSON.)
+// (Two values on one line, then more: several top-level values, not JSON Lines.)
+const several = file('several.json', '{"a": 1} {"b": 2}\n{"c": [1, 2, 3]}\n');
 const broken = file('broken.json', JSON.stringify(records(50), null, 2).replace('"id": 31,', '"id": 31,,'));
 
 /** Opens `path` in huge mode (forced) and waits for its viewer. */
@@ -193,6 +195,19 @@ test('huge mode: an invalid file says where, and Go to error shows its line', as
   t.check(await until(page, () => document.querySelector('#hg-format .hg-cur .cv-n')?.textContent === '329', null), 'Go to error shows line 329 as written', await page.evaluate(() => document.querySelector('#hg-format .hg-cur')?.textContent));
   const sb = await status(page);
   t.check(/Ln 329, Col 14/.test(sb), 'the status bar says it too', sb);
+});
+
+test('huge mode: several top-level values are a list, with the normal path\'s notice', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, several);
+  await until(page, () => /Multiple top-level values/.test(window.__vis('.hg-sb')?.textContent ?? ''), null);
+  const banner = await page.evaluate(() => window.__vis('.hg .banner.warn')?.textContent);
+  t.check(/Not strict JSON/.test(banner ?? '') && /Multiple top-level values \(wrapped in an array\)/.test(banner ?? ''), 'the notice', banner);
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
+  t.check(await until(page, () => /\[3\]/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null), 'the root lists the three values', await page.evaluate(() => window.__vis('#hg-tree .tv-r')?.textContent));
+  await page.locator('.hg .banner.warn .btn').click();
+  t.check(await until(page, () => /^1:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'Go to the second value', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
 });
 
 test('huge mode: progress while indexing, browse meanwhile, Cancel', async (t) => {

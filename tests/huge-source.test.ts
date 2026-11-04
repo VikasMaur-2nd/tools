@@ -83,7 +83,7 @@ test('JSON Lines: a list of records, each shown pretty in turn', async () => {
   const loc = await src.locate(text.indexOf('true'));
   assert.deepEqual(loc.map((n) => n.key), [undefined, 1, 'x', 0]);
   const pretty = await src.lines('pretty', 0, 4, 100, '  ');
-  assert.deepEqual(pretty.map((l) => l.text), ['{', '  "id": 1', '}', '{']);
+  assert.deepEqual(pretty.map((l) => l.text), ['[', '  {', '    "id": 1', '  },'], 'written as one array, as the core writes them');
   src.destroy();
 });
 
