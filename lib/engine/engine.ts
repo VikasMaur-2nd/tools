@@ -26,7 +26,6 @@ import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import type { SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
-import { hugeMin } from '../huge/min';
 import type { HugeHook } from '../huge/session';
 import { TallScroll } from './tall';
 
@@ -2006,7 +2005,9 @@ export class Engine {
     performance.mark('tk:input');
     this.markOutput = true;
     // Too big for the editor: huge-file mode reads it a window at a time (lib/huge, loaded only now).
-    if (f.size > Math.min(hugeMin(), MAX_DOCUMENT)) return void import('../huge/open').then((m) => m.openHuge(this, f, source, signal, asText, TallScroll)).then((h) => void (this.huge = h ?? this.huge), () => this.toast(`Couldn't read ${f.name}`, 'err'));
+    // From 300 MiB (less where the device has little memory; tk:hugeMin, in bytes, forces it for smaller files).
+    const huge = read('tk:hugeMin');
+    if (f.size > Math.min(MAX_DOCUMENT, huge ? +huge : ((navigator as { deviceMemory?: number }).deviceMemory || 8) * 2 ** 26)) return void import('../huge/open').then((m) => m.openHuge(this, f, source, signal, asText, TallScroll)).then((h) => void (this.huge = h ?? this.huge), () => this.toast(`Couldn't read ${f.name}`, 'err'));
     // A big file shows it is being opened while it is read too.
     const before = store.get().status;
     let reading: Status | null = null;

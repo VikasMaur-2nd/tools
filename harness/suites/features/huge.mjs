@@ -8,7 +8,7 @@ import { defaults, test } from '../../lib/api.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { MOD, until } from './_helpers.mjs';
 
-defaults({ engines: ['chromium'], width: 1280, height: 860, tags: ['huge'] });
+defaults({ engines: 'all', width: 1280, height: 860, tags: ['huge'] });
 
 const dir = join(DIRS.tmp, 'huge-files');
 mkdirSync(dir, { recursive: true });
@@ -254,7 +254,7 @@ for (const [name, opts] of [
   ['mobile-light', { mobile: true, width: 390, height: 844 }],
   ['mobile-dark', { mobile: true, dark: true, width: 390, height: 844 }],
 ]) {
-  test(`huge mode: screenshots ${name}`, { ...opts, tags: ['shots'] }, async (t) => {
+  test(`huge mode: screenshots ${name}`, { ...opts, engines: ['chromium'], tags: ['shots'] }, async (t) => {
     const out = process.env.HUGE_SHOTS;
     if (!out) return t.log('HUGE_SHOTS not set: no screenshots');
     mkdirSync(out, { recursive: true });

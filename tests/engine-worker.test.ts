@@ -45,15 +45,13 @@ function session() {
     }) as ts.SourceFile] },
   }).outputText;
   runInNewContext(js, {
-    exports, performance, URL, console, AbortController, queueMicrotask,
+    exports, performance, URL, console, AbortController, queueMicrotask, navigator: {},
     setTimeout: defer, clearTimeout: (id: number) => tasks.delete(id), window: { setTimeout: defer },
     require: (name: string) => {
       if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
       if (name === './idle') return { soon: defer, idle: defer };
       if (name === '../analytics') return { reportError: (error: unknown, source: string) => errors.push({ error, source }) };
       if (name === '../analytics/load') return { noteLoad() {}, watchPastes() {} };
-      // (Huge-file mode stays out of these: every file opens in the editor.)
-      if (name === '../huge/min') return { hugeMin: () => Infinity };
       if (name.startsWith('../json/') || name === './doc' || name === './rules' || name === './asks') return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
