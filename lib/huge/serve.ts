@@ -15,8 +15,9 @@ export interface ServePort {
   onmessage: ((e: { data: unknown }) => void) | null;
 }
 
-/** Indexing runs this long between looks at the requests (ms). */
-const SLICE = 25;
+/** Indexing runs this long between looks at the requests (ms): a request waits at most this for a step to end (10 ms
+ * costs indexing nothing measurable; 25 ms held every first query back by ~12 ms on average). */
+const SLICE = 10;
 /** Progress is posted at most this often (ms). */
 const PROGRESS = 100;
 
@@ -50,6 +51,16 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   let opened: () => void = () => {};
   const made = new Promise<void>((done) => (opened = done));
   const finds = new Map<number, boolean>();
+  // Queries waiting for reads (or the parser): indexing pauses until they're answered, or each would wait out
+  // a step (up to SLICE ms) every time it's asked again.
+  let held = 0;
+  let resume: (() => void) | null = null;
+  const unhold = () => {
+    if (--held === 0 && resume) {
+      resume();
+      resume = null;
+    }
+  };
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
   const fail = (id: number, e: unknown) => reply({ id, ok: false, error: e instanceof Error && KNOWN.has(e.message) ? e.message : 'Query failed' });
 
@@ -79,6 +90,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         const ready = ahead.need(at, len);
         if (!ahead.has(at, len)) await ready;
       }
+      if (held) await new Promise<void>((done) => (resume = done));
       let finished: boolean;
       try {
         finished = doc.step(performance.now() + SLICE);
@@ -178,11 +190,16 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       // (Blocks to read or the parser to load first: asked again then.)
       if (err instanceof Wait && tries < TRIES) {
         waiting = true;
+        held++;
         err.until().then(
-          () => answer(m, tries + 1),
+          () => {
+            answer(m, tries + 1);
+            unhold();
+          },
           (e) => {
             src?.release?.();
             fail(m.id, e);
+            unhold();
           },
         );
         return;
