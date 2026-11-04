@@ -83,13 +83,19 @@ export class HugeDoc {
   private queryWindow: number;
   private pageBytes: number;
 
-  /** `tune`: window sizes (tests make them small so every boundary is crossed). */
+  /** The indexing pass's source, when it has bytes only once read ahead (prefetch.ts): whether [at, at + len) is here. */
+  private indexHas: ((at: number, len: number) => boolean) | null = null;
+
+  /**
+   * `file`: the document's bytes for queries (random reads). `tune`: window sizes (tests make them small so every
+   * boundary is crossed), and `index`: a source for the indexing pass that reads ahead (else `file`).
+   */
   constructor(
     file: ByteSource,
     huge: WebAssembly.Module,
     private readonly parsers: Parsers,
     readonly options: HugeOptions = {},
-    tune: { window?: number; queryWindow?: number; pageBytes?: number } = {},
+    tune: { window?: number; queryWindow?: number; pageBytes?: number; index?: ByteSource & { has(at: number, len: number): boolean } } = {},
   ) {
     this.queryWindow = tune.queryWindow ?? QUERY_WINDOW;
     this.pageBytes = tune.pageBytes ?? PAGE_BYTES;
@@ -106,8 +112,15 @@ export class HugeDoc {
       this.error = { msg: 'UTF-16 files are not supported for files this big', line: 1, col: 1, pos: 0, kind: 'error' };
       return;
     }
-    // (Indexing reads the source as is: each byte once.)
-    if (!this.ix.start(c.src, { window: tune.window, every: options.every ?? 1 << 20, big: options.big ?? 1 << 18, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
+    // (Indexing reads each byte once, as is: from the read-ahead source if there is one.)
+    let indexSrc = c.src;
+    if (tune.index) {
+      const ahead = tune.index;
+      const bom = c.bom;
+      indexSrc = { size: ahead.size - bom, read: (at, len) => ahead.read(at + bom, len) };
+      this.indexHas = (at, len) => ahead.has(at + bom, len);
+    }
+    if (!this.ix.start(indexSrc, { window: tune.window, every: options.every ?? 1 << 20, big: options.big ?? 1 << 18, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
       this.final = new Float64Array(12);
       this.done = true;
       this.error = { msg: 'Not enough memory to parse this document', line: 1, col: 1, pos: 0, kind: 'error' };
@@ -119,6 +132,8 @@ export class HugeDoc {
   /** Reads windows until `until` (a performance.now() value) or the end: true once the whole document is read. */
   step(until: number): boolean {
     while (!this.done) {
+      // (Not read yet: the caller reads ahead (indexAt) and steps again.)
+      if (this.indexHas && !this.indexHas(this.ix.pos, Math.min(this.ix.window, this.src.size - this.ix.pos))) return false;
       const r = this.ix.step();
       const out = this.ix.drain();
       this.index.addCheckpoints(out.ck);
@@ -143,6 +158,11 @@ export class HugeDoc {
       this.regionBytes = 0;
     }
     return true;
+  }
+
+  /** The file byte the indexing pass reads next (for a read-ahead source), and how many it reads at a time. */
+  get indexAt(): [number, number] {
+    return [this.ix.pos + this.bom, this.ix.window];
   }
 
   private stats(): Float64Array {
@@ -201,17 +221,21 @@ export class HugeDoc {
     if (this.stats()[3] === 0) return null;
     if (this.multi) return this.list();
     const ix = this.index;
-    // In the directory, still open (frame 0 of the last checkpoint), or small (from the page of top-level values).
+    // In the directory; else a container from its first byte (open while being read, or broken: its end unknown).
     if (ix.bigCount) {
       const b = ix.big(0);
       if (b.depth === 0) return this.ofBig(b, null);
     }
-    const last = ix.n - 1;
-    if (!this.done && ix.depth[last] > 0) {
-      const o = ix.frame(last, 0);
-      return { kind: ix.frames[o], start: ix.frames[o + 2], end: -1, depth: 0, key: null, count: null, pretty: 0, prettyLines: null, big: true };
+    const head = this.src.read(0, Math.min(this.src.size, 4096));
+    let at = 0;
+    while (at < head.length && (head[at] === 32 || head[at] === 9 || head[at] === 10 || head[at] === 13)) at++;
+    const c = head[at];
+    if (c === 123 || c === 91) {
+      const kind = c === 123 ? OBJ : ARR;
+      if (!this.done || this.error) return { kind, start: at, end: -1, depth: 0, key: null, count: null, pretty: 0, prettyLines: null, big: true };
+      return { ...this.measure(ix.state(0), 0, at, kind, null), big: true };
     }
-    const page = this.pageOf(this.list(), 0, 1);
+    const page = this.error ? null : this.pageOf(this.list(), 0, 1);
     return page && page.nodes.length ? { ...page.nodes[0], key: null } : null;
   }
 
@@ -509,27 +533,32 @@ export class HugeDoc {
     const end = built.text.length - suffix.length;
     // Its pretty lines: every node after the synthetic ones, and the closing line of every container with
     // children that closes in it. Depths are real ones (the wrapper isn't a level).
-    const lines: number[] = [];
-    const depths: number[] = [];
+    const lines = new Int32Array(2 * t.count);
+    const depths = new Int32Array(2 * t.count);
+    let n = 0;
     const open: number[] = [];
-    for (let c = wrap ? 1 : 0; c < (wrap ? 1 : 0) + s.frames.length; c++) open.push(c);
+    const ends: number[] = [];
+    for (let c = wrap ? 1 : 0; c < (wrap ? 1 : 0) + s.frames.length; c++) open.push(c), ends.push(nextOf(t, c));
     const closeTo = (i: number) => {
-      while (open.length && nextOf(t, open[open.length - 1]) <= i) {
+      while (open.length && ends[ends.length - 1] <= i) {
         const c = open.pop()!;
+        ends.pop();
         if (endOf(t, c) <= end && sizeOf(t, c) > 1) {
-          lines.push(-1 - c);
-          depths.push(open.length);
+          lines[n] = -1 - c;
+          depths[n++] = open.length;
         }
       }
     };
+    const T = t.nodes;
     for (let i = synth; i < t.count; i++) {
-      closeTo(i);
-      lines.push(i);
-      depths.push(open.length);
-      if (kindOf(t, i) >= ARR && sizeOf(t, i) > 1) open.push(i);
+      if (open.length && ends[ends.length - 1] <= i) closeTo(i);
+      lines[n] = i;
+      depths[n++] = open.length;
+      const m = T[i * W];
+      if ((m & 7) >= ARR && m >>> 8 !== 1) open.push(i), ends.push(nextOf(t, i));
     }
     closeTo(Infinity);
-    const region: Region = { ...built, k, tape: t, synth, wrap, end, s, e, lines: Int32Array.from(lines), depth: Int32Array.from(depths), next: e ? e.pos : -1, bytes: built.text.length * 2 + t.count * W * 4 + lines.length * 8 + 1024 };
+    const region: Region = { ...built, k, tape: t, synth, wrap, end, s, e, lines: lines.slice(0, n), depth: depths.slice(0, n), next: e ? e.pos : -1, bytes: built.text.length * 2 + t.count * W * 4 + n * 8 + 1024 };
     this.regions.set(k, region);
     this.regionBytes += region.bytes;
     while (this.regionBytes > REGION_BUDGET && this.regions.size > 1) {
@@ -978,7 +1007,12 @@ interface Built {
   map: Float64Array;
   /** Offsets in text of the strings standing for big values (stubs), with their records. */
   stubs: Map<number, Big>;
+  /** Per piece, null if ASCII (a unit a byte), else bytes at every STRIDE units of it (made when first asked). */
+  wide: (Float64Array | null | undefined)[];
 }
+
+/** UTF-16 units between the byte offsets a wide piece keeps. */
+const STRIDE = 256;
 
 type Piece = string | [number, number] | Big;
 
@@ -1004,7 +1038,7 @@ function build(src: ByteSource, pieces: Piece[]): Built {
     parts.push(s);
     at += s.length;
   }
-  return { text: parts.join(''), map: Float64Array.from(map), stubs };
+  return { text: parts.join(''), map: Float64Array.from(map), stubs, wide: [] };
 }
 
 /** The document byte of offset `off` of a built text (-1 in added text; a stub: its value's start). */
@@ -1024,7 +1058,24 @@ function byteOf(b: Built, off: number): number {
   // (The end of a piece of the document where added text starts: the piece's end.)
   if (byte < 0 && lo > 0 && m[lo * 3] === off && m[lo * 3 - 2] >= 0) lo--, (byte = m[lo * 3 + 1]);
   if (byte < 0) return -1;
-  return byte + utf8Bytes(b.text, m[lo * 3], off);
+  const at = m[lo * 3];
+  let wide = b.wide[lo];
+  if (wide === undefined) {
+    // (Made once per piece: ASCII is a byte a unit; else the bytes at every STRIDE units.)
+    const end = lo + 1 < m.length / 3 ? m[lo * 3 + 3] : b.text.length;
+    wide = /[^\0-\x7f]/.test(b.text.slice(at, end)) ? strides(b.text, at, end) : null;
+    b.wide[lo] = wide;
+  }
+  if (!wide) return byte + off - at;
+  const k = Math.floor((off - at) / STRIDE);
+  return byte + wide[k] + utf8Bytes(b.text, at + k * STRIDE, off);
+}
+
+/** Bytes before every STRIDE units of text[a, e). */
+function strides(text: string, a: number, e: number): Float64Array {
+  const out = new Float64Array(Math.floor((e - a) / STRIDE) + 1);
+  for (let k = 1; k < out.length; k++) out[k] = out[k - 1] + utf8Bytes(text, a + (k - 1) * STRIDE, a + k * STRIDE);
+  return out;
 }
 
 /** The offset in a built text of document byte `pos`: in a piece, or in the stub standing for the big value holding it (-1: neither). */

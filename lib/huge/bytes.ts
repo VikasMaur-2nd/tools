@@ -128,8 +128,9 @@ export function byteAfterUnits(b: Uint8Array, from: number, to: number, units: n
 }
 
 /** The first line break (\n or \r) in `src` at or after `at` and before `end`, or -1; read a chunk at a time. */
-export function nextBreak(src: ByteSource, at: number, end = src.size, chunk = 1 << 20): number {
-  for (let p = at; p < end; p += chunk) {
+export function nextBreak(src: ByteSource, at: number, end = src.size, max = 1 << 20): number {
+  // (Small reads first: a line is usually short.)
+  for (let p = at, chunk = 4096; p < end; p += chunk, chunk = Math.min(max, chunk * 4)) {
     const len = Math.min(chunk, end - p);
     const b = src.read(p, len);
     let i = b.indexOf(10);
@@ -147,12 +148,12 @@ export function afterBreak(src: ByteSource, at: number): number {
 }
 
 /** The `n`th line break (n ≥ 1) at or after `at` (\r\n is one): the byte after it, or -1 if there are fewer before `end`. */
-export function afterBreaks(src: ByteSource, at: number, n: number, end = src.size, chunk = 1 << 20): number {
+export function afterBreaks(src: ByteSource, at: number, n: number, end = src.size, max = 1 << 20): number {
   let left = n;
   let prevCr = false;
   // The nth break was a \r: what follows decides (a \n is part of it).
   let last = false;
-  for (let p = at; p < end; p += chunk) {
+  for (let p = at, chunk = 4096; p < end; p += chunk, chunk = Math.min(max, chunk * 4)) {
     const len = Math.min(chunk, end - p);
     const b = src.read(p, len);
     for (let i = 0; i < len; i++) {

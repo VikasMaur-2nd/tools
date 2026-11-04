@@ -254,8 +254,9 @@ static mut WARNS: usize = 0;
 static mut SNAP: Out = Out::new();
 static mut STATS: [f64; 16] = [0.0; 16];
 
-// The duplicate check: an open-addressing table of (tag, byte of the name) where tag mixes the name's hash
-// with its object's serial (0: empty), and the tags of the open objects' names, innermost object last.
+// The duplicate check: the open objects' names (tag, byte of the name; innermost object last), where a tag
+// mixes the name's hash with its object's serial; and for objects with more than SMALL names, an
+// open-addressing table of them (tag 0: empty).
 static mut DTAB: usize = 0;
 static mut DMASK: usize = 0;
 static mut DLIVE: usize = 0;
@@ -299,7 +300,7 @@ pub unsafe extern "C" fn init(wcap: usize, flags: u32, ck_every: f64, big: f64, 
         DMASK = 1023;
         DTAB = alloc(1024 * 16);
         DSCAP = 1024;
-        DSTACK = alloc(DSCAP * 8);
+        DSTACK = alloc(DSCAP * 16);
         if DTAB == 0 || DSTACK == 0 {
             return 0;
         }
@@ -1123,6 +1124,61 @@ unsafe fn unescape(a: usize, len: usize) -> usize {
     at
 }
 
+/** An object's names are kept in its list in DSTACK, checked one by one, up to this many; then in the table. */
+const SMALL: usize = 16;
+/** In frame field 7 (the object's first entry in DSTACK): its names are in the table. */
+const TABLED: u64 = 1 << 63;
+
+#[cold]
+#[inline(never)]
+unsafe fn warn(pos: u64, first: u64) -> bool {
+    if WARNS < MAX_WARN {
+        if !WARN.reserve(2) {
+            return false;
+        }
+        WARN.put(pos as f64);
+        WARN.put(first as f64);
+        WARNS += 1;
+    }
+    true
+}
+
+/// Puts (tag, pos) in the table (kept at most half full). False if out of memory.
+unsafe fn table_put(tag: u64, pos: u64) -> bool {
+    if (DLIVE + 1) * 2 > DMASK + 1 {
+        let size = (DMASK + 1) * 2;
+        let t2 = alloc(size * 16);
+        if t2 == 0 {
+            return false;
+        }
+        core::ptr::write_bytes(t2 as *mut u8, 0, size * 16);
+        let old = DTAB as *const u64;
+        let t2p = t2 as *mut u64;
+        for s in 0..=DMASK {
+            let t = *old.add(s * 2);
+            if t != 0 {
+                let mut j = t as usize & (size - 1);
+                while *t2p.add(j * 2) != 0 {
+                    j = (j + 1) & (size - 1);
+                }
+                *t2p.add(j * 2) = t;
+                *t2p.add(j * 2 + 1) = *old.add(s * 2 + 1);
+            }
+        }
+        DTAB = t2;
+        DMASK = size - 1;
+    }
+    let tab = DTAB as *mut u64;
+    let mut slot = tag as usize & DMASK;
+    while *tab.add(slot * 2) != 0 {
+        slot = (slot + 1) & DMASK;
+    }
+    *tab.add(slot * 2) = tag;
+    *tab.add(slot * 2 + 1) = pos;
+    DLIVE += 1;
+    true
+}
+
 /// Checks the name whose `len` bytes are at `a` (memory, 8 more readable) and whose quote is at byte `pos`
 /// against its object's names (frame `f`), and remembers it. False if out of memory.
 #[inline(never)]
@@ -1148,69 +1204,60 @@ unsafe fn dup(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
     if tag == 0 {
         tag = 1;
     }
-    let tab = DTAB as *mut u64;
-    let mut slot = tag as usize & DMASK;
-    loop {
-        let t = *tab.add(slot * 2);
-        if t == 0 {
-            break;
-        }
-        if t == tag {
-            if WARNS < MAX_WARN {
-                if !WARN.reserve(2) {
-                    return false;
-                }
-                WARN.put(pos as f64);
-                WARN.put(*tab.add(slot * 2 + 1) as f64);
-                WARNS += 1;
+    let field = *f.add(7);
+    let base = (field & !TABLED) as usize;
+    let mine = DSLEN - base;
+    let st = DSTACK as *mut u64;
+    if field & TABLED == 0 {
+        // A small object: its own names, one by one.
+        for j in base..DSLEN {
+            if *st.add(j * 2) == tag {
+                return warn(pos, *st.add(j * 2 + 1));
             }
-            return true;
         }
-        slot = (slot + 1) & DMASK;
+    } else {
+        let tab = DTAB as *const u64;
+        let mut slot = tag as usize & DMASK;
+        loop {
+            let t = *tab.add(slot * 2);
+            if t == 0 {
+                break;
+            }
+            if t == tag {
+                return warn(pos, *tab.add(slot * 2 + 1));
+            }
+            slot = (slot + 1) & DMASK;
+        }
     }
     // A new name: remembered if its object and all open objects have room.
-    let mine = DSLEN as u64 - *f.add(7);
-    if mine >= DUP_CAP || DLIVE >= DUP_ALL {
+    if mine as u64 >= DUP_CAP || DSLEN >= DUP_ALL {
         DUP_SKIPPED += 1;
         return true;
     }
-    *tab.add(slot * 2) = tag;
-    *tab.add(slot * 2 + 1) = pos;
-    DLIVE += 1;
     if DSLEN == DSCAP {
-        let p2 = alloc(DSCAP * 16);
+        let p2 = alloc(DSCAP * 32);
         if p2 == 0 {
             return false;
         }
-        core::ptr::copy_nonoverlapping(DSTACK as *const u8, p2 as *mut u8, DSCAP * 8);
+        core::ptr::copy_nonoverlapping(DSTACK as *const u8, p2 as *mut u8, DSCAP * 16);
         DSTACK = p2;
         DSCAP *= 2;
     }
-    *(DSTACK as *mut u64).add(DSLEN) = tag;
+    let st = DSTACK as *mut u64;
+    *st.add(DSLEN * 2) = tag;
+    *st.add(DSLEN * 2 + 1) = pos;
     DSLEN += 1;
-    // At most half full.
-    if DLIVE * 2 > DMASK + 1 {
-        let size = (DMASK + 1) * 2;
-        let t2 = alloc(size * 16);
-        if t2 == 0 {
-            return false;
-        }
-        core::ptr::write_bytes(t2 as *mut u8, 0, size * 16);
-        let old = DTAB as *const u64;
-        let t2p = t2 as *mut u64;
-        for s in 0..=DMASK {
-            let t = *old.add(s * 2);
-            if t != 0 {
-                let mut j = t as usize & (size - 1);
-                while *t2p.add(j * 2) != 0 {
-                    j = (j + 1) & (size - 1);
-                }
-                *t2p.add(j * 2) = t;
-                *t2p.add(j * 2 + 1) = *old.add(s * 2 + 1);
+    if field & TABLED != 0 {
+        return table_put(tag, pos);
+    }
+    if mine + 1 == SMALL {
+        // Big enough for the table: its names go there.
+        for j in base..DSLEN {
+            if !table_put(*st.add(j * 2), *st.add(j * 2 + 1)) {
+                return false;
             }
         }
-        DTAB = t2;
-        DMASK = size - 1;
+        *f.add(7) = field | TABLED;
     }
     true
 }
@@ -1218,11 +1265,16 @@ unsafe fn dup(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
 /// Forgets the names of the object closing (frame `f`).
 #[inline(never)]
 unsafe fn dup_pop(f: *mut u64) {
-    let from = *f.add(7) as usize;
+    let field = *f.add(7);
+    let from = (field & !TABLED) as usize;
+    if field & TABLED == 0 {
+        DSLEN = from;
+        return;
+    }
     let tab = DTAB as *mut u64;
     while DSLEN > from {
         DSLEN -= 1;
-        let tag = *(DSTACK as *const u64).add(DSLEN);
+        let tag = *(DSTACK as *const u64).add(DSLEN * 2);
         let mut slot = tag as usize & DMASK;
         while *tab.add(slot * 2) != tag {
             slot = (slot + 1) & DMASK;

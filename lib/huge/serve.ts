@@ -6,6 +6,7 @@
 import type { ByteSource } from '../json/tape-wasm';
 import { HugeDoc, type Parsers } from './doc';
 import type { Reply, Request } from './protocol';
+import type { Prefetch } from './prefetch';
 import type { FindBatch, HugePage } from './types';
 
 export interface ServePort {
@@ -32,7 +33,11 @@ const nextTask = () =>
     ch.port2.postMessage(0);
   });
 
-export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource) {
+/**
+ * `sourceOf`: random reads of a file (queries). `aheadOf`: the indexing pass's read-ahead source (prefetch.ts), or
+ * none (the indexing pass reads through `sourceOf`).
+ */
+export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource, aheadOf?: (file: Blob) => Prefetch) {
   let doc: HugeDoc | null = null;
   const finds = new Map<number, boolean>();
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
@@ -40,9 +45,17 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
 
   const open = async (id: number, file: Blob, options: import('./types').HugeOptions) => {
     const { huge, parsers } = await load();
-    doc = new HugeDoc(sourceOf(file), huge, parsers, options);
+    const ahead = aheadOf?.(file);
+    doc = new HugeDoc(sourceOf(file), huge, parsers, options, { index: ahead });
     let shown = 0;
-    while (!doc.step(performance.now() + SLICE)) {
+    for (;;) {
+      if (ahead) {
+        // (Reads ahead; waits only if the parse caught up with the reads.)
+        const [at, len] = doc.indexAt;
+        const ready = ahead.need(at, len);
+        if (!ahead.has(at, len)) await ready;
+      }
+      if (doc.step(performance.now() + SLICE)) break;
       const now = performance.now();
       if (now - shown >= PROGRESS) {
         shown = now;
