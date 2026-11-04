@@ -213,7 +213,8 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
         const f = new Reformat(out, job.kind === 'lines' ? { indent: '', lines: true } : { indent: job.indent });
         const walker = await walk(f, 0, 1, flush, undefined, true);
         f.finish();
-        result.records = walker.records;
+        // (Records: a list's values, or an array's items.)
+        result.records = scope.multi ? walker.records : walker.rootKind === ARR ? walker.items : 0;
       });
       return result;
 

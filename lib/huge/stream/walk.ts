@@ -107,6 +107,9 @@ export class Walker {
   pause = false;
   /** Values read at the top (records of a list). */
   records = 0;
+  /** Items (members) of a single root read so far, and the root's kind (-1: not yet). */
+  items = 0;
+  rootKind = -1;
 
   private st: number;
   private d: number;
@@ -197,6 +200,7 @@ export class Walker {
             v.close(k, base + i);
             st = d > lb ? S_N : top;
             if (d === lb) this.records++;
+            else if (d === 1) this.items++;
             if (this.pause) break loop;
             continue;
           }
@@ -248,6 +252,7 @@ export class Walker {
             v.close(OBJ, base + i);
             st = d > lb ? S_N : top;
             if (d === lb) this.records++;
+            else if (d === 1) this.items++;
             if (this.pause) break loop;
             continue;
           }
@@ -273,6 +278,7 @@ export class Walker {
             v.close(ARR, base + i);
             st = d > lb ? S_N : top;
             if (d === lb) this.records++;
+            else if (d === 1) this.items++;
             if (this.pause) break loop;
             continue;
           }
@@ -304,6 +310,7 @@ export class Walker {
           i = j + 1;
           st = d > lb ? S_N : top;
           if (d === lb) this.records++;
+          else if (d === 1) this.items++;
           if (this.pause) break loop;
           continue;
         }
@@ -315,6 +322,7 @@ export class Walker {
       if (c === 123 || c === 91) {
         if (d === kinds.length) kinds = this.grow();
         const k = c === 123 ? OBJ : ARR;
+        if (d === 0) this.rootKind = k;
         kinds[d++] = k;
         v.open(k, base + i);
         i++;
@@ -338,6 +346,7 @@ export class Walker {
         i = j;
         st = d > lb ? S_N : top;
         if (d === lb) this.records++;
+        else if (d === 1) this.items++;
         if (this.pause) break loop;
         continue;
       }
@@ -362,6 +371,7 @@ export class Walker {
       i += len;
       st = d > lb ? S_N : top;
       if (d === lb) this.records++;
+      else if (d === 1) this.items++;
       if (this.pause) break loop;
     }
     this.st = st;
@@ -405,6 +415,7 @@ export class Walker {
 
   private counted() {
     if (this.d === (this.list ? 1 : 0)) this.records++;
+    else if (this.d === 1) this.items++;
   }
 
   /** Appends b[a, e) to the carried token (refused past `max` bytes). */

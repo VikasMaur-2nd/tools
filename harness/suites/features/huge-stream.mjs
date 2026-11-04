@@ -250,7 +250,6 @@ test('huge stream: a small .json.gz opens in the editor; a big .jsonl.gz in huge
   const empty = () =>
     page.evaluate(async () => {
       const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('tk-huge', { create: true });
-      // eslint-disable-next-line no-unreachable-loop
       for await (const _ of d.keys()) return false;
       return true;
     });
