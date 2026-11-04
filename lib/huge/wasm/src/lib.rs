@@ -237,6 +237,7 @@ static mut SEP: u64 = NONE;
 
 // Target (see target()).
 static mut T_DEPTH: usize = usize::MAX;
+static mut T_START: u64 = NONE;
 static mut T_COUNT: u64 = NONE;
 static mut T_BYTE: u64 = NONE;
 
@@ -429,12 +430,13 @@ pub unsafe extern "C" fn stats() -> usize {
     s.as_ptr() as usize
 }
 
-/// From now on, stop before child `count` of the container at depth `depth` (0: the top level, 1: the root
-/// container...), or before its first child that starts at byte `byte` or later, or at its closing bracket.
-/// depth -1: no target.
+/// From now on, stop before child `count` of the container that starts at byte `start` and is innermost at
+/// depth `depth` (depth 0: the top level, whatever `start`; 1: the root container...), or before its first child
+/// that starts at byte `byte` or later, or at its closing bracket. depth -1: no target.
 #[no_mangle]
-pub unsafe extern "C" fn target(depth: i32, count: f64, byte: f64) {
+pub unsafe extern "C" fn target(depth: i32, start: f64, count: f64, byte: f64) {
     T_DEPTH = if depth < 0 { usize::MAX } else { depth as usize };
+    T_START = start as u64;
     T_COUNT = if count < 0.0 { NONE } else { count as u64 };
     T_BYTE = if byte < 0.0 { NONE } else { byte as u64 };
 }
@@ -866,12 +868,14 @@ unsafe fn dir_out(start: u64, end: u64, kind: u64, depth: usize, count: u64, n0:
 }
 
 /// Writes the parse's state at window offset `p` (a token) to `out`: the header (see snap()) and the frames
-/// from `from` (the innermost frame's children count must be in its frame).
-unsafe fn state_out(out: &mut Out, p: usize, state: u64, depth: usize, from: usize) -> bool {
+/// from `low` - 1 (`low`: the lowest depth since the last checkpoint: frames below it haven't changed; the
+/// innermost frame's children count must be in its frame).
+unsafe fn state_out(out: &mut Out, p: usize, state: u64, depth: usize, low: usize) -> bool {
+    let from = if low > 0 { (low - 1).min(depth) } else { 0 };
     if !out.reserve(HW + (depth - from) * FW) {
         return false;
     }
-    for v in [(POS0 + p as u64) as f64, state as f64, depth as f64, from as f64, NODES as f64, CLOSERS as f64, lines_at(p) as f64, (U16_0 + u16_at(p) as u64) as f64, line_u16_at(p) as f64, TOPN as f64, DEEPEST as f64] {
+    for v in [(POS0 + p as u64) as f64, state as f64, depth as f64, low as f64, NODES as f64, CLOSERS as f64, lines_at(p) as f64, (U16_0 + u16_at(p) as u64) as f64, line_u16_at(p) as f64, TOPN as f64, DEEPEST as f64] {
         out.put(v);
     }
     for d in from..depth {
@@ -885,7 +889,7 @@ unsafe fn state_out(out: &mut Out, p: usize, state: u64, depth: usize, from: usi
 }
 
 /// The current state as a snapshot (header + every frame) at snap_ptr(): its length in f64. Header: byte of the
-/// next token, state, depth, (0), nodes, closing lines, line breaks, UTF-16 units, the UTF-16 offset of the line's
+/// next token, state, depth, (0: every frame follows), nodes, closing lines, line breaks, UTF-16 units, the UTF-16 offset of the line's
 /// start, top-level values, deepest nesting. Frames: kind, children, start, key, nodes before, closing lines before.
 #[no_mangle]
 pub unsafe extern "C" fn snap() -> usize {
@@ -1240,6 +1244,7 @@ pub unsafe extern "C" fn run() -> i32 {
     let max_depth = MAX_DEPTH as usize;
     let local = |g: u64| if g <= pos0 { 0 } else if g - pos0 >= usize::MAX as u64 { usize::MAX } else { (g - pos0) as usize };
     let t_depth = T_DEPTH;
+    let t_start = T_START;
     let t_count = T_COUNT;
     let t_at = local(T_BYTE);
     let mut ck_at = local(NEXT_CK);
@@ -1283,8 +1288,14 @@ pub unsafe extern "C" fn run() -> i32 {
     macro_rules! string {
         ($start:expr, $q:expr) => {{
             let end = pos0 + $q as u64 + 1;
-            if dir && end - $start >= big && !dir_out($start, end, STR, depth, 0, nodes - 1, closers, nodes, closers) {
-                fail!(W_MEMORY, $q);
+            if end - $start >= big {
+                if dir && !dir_out($start, end, STR, depth, 0, nodes - 1, closers, nodes, closers) {
+                    fail!(W_MEMORY, $q);
+                }
+                // A checkpoint right after a big value: a seek past it starts there.
+                if ck_at != usize::MAX {
+                    ck_at = 0;
+                }
             }
             top_end!($q);
             after!();
@@ -1296,8 +1307,13 @@ pub unsafe extern "C" fn run() -> i32 {
             let f = top;
             let start = *f.add(2);
             let end = pos0 + $p as u64 + 1;
-            if dir && end - start >= big && !dir_out(start, end, tkind, depth - 1, tcount, *f.add(4), *f.add(5), nodes, closers) {
-                fail!(W_MEMORY, $p);
+            if end - start >= big {
+                if dir && !dir_out(start, end, tkind, depth - 1, tcount, *f.add(4), *f.add(5), nodes, closers) {
+                    fail!(W_MEMORY, $p);
+                }
+                if ck_at != usize::MAX {
+                    ck_at = 0;
+                }
             }
             if tcount != 0 {
                 closers += 1;
@@ -1325,6 +1341,12 @@ pub unsafe extern "C" fn run() -> i32 {
             after!();
         }};
     }
+    // Whether the innermost container is the target (its depth checked first).
+    macro_rules! at_target {
+        () => {
+            depth == t_depth && (depth == 0 || *top.add(2) == t_start)
+        };
+    }
     // The innermost container's children count, into its frame.
     macro_rules! sync {
         () => {{
@@ -1342,8 +1364,7 @@ pub unsafe extern "C" fn run() -> i32 {
             NODES = nodes;
             CLOSERS = closers;
             DEEPEST = deepest;
-            let from = if low > 0 { low - 1 } else { 0 };
-            if !state_out(&mut CK, $p, state, depth, from.min(depth)) {
+            if !state_out(&mut CK, $p, state, depth, low) {
                 fail!(W_MEMORY, $p);
             }
             low = depth;
@@ -1447,7 +1468,7 @@ pub unsafe extern "C" fn run() -> i32 {
                     continue;
                 }
                 if c == (if tkind == OBJ { b'}' } else { b']' }) {
-                    if depth == t_depth {
+                    if at_target!() {
                         WHY = W_CLOSE;
                         break STOP;
                     }
@@ -1459,7 +1480,7 @@ pub unsafe extern "C" fn run() -> i32 {
             }
             S_KEY | S_OBJ_FIRST => {
                 if c == b'}' && state == S_OBJ_FIRST {
-                    if depth == t_depth {
+                    if at_target!() {
                         WHY = W_CLOSE;
                         break STOP;
                     }
@@ -1470,7 +1491,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 if c != b'"' {
                     fail!(W_SYNTAX, p);
                 }
-                if depth == t_depth && (tcount >= t_count || p >= t_at) {
+                if at_target!() && (tcount >= t_count || p >= t_at) {
                     WHY = W_CHILD;
                     break STOP;
                 }
@@ -1541,7 +1562,7 @@ pub unsafe extern "C" fn run() -> i32 {
         }
         // A value (S_VALUE, S_ARR_FIRST, S_TOP), or the end of an empty array.
         if c == b']' && state == S_ARR_FIRST {
-            if depth == t_depth {
+            if at_target!() {
                 WHY = W_CLOSE;
                 break STOP;
             }
@@ -1549,7 +1570,7 @@ pub unsafe extern "C" fn run() -> i32 {
             close!(p);
             continue;
         }
-        if tkind != OBJ && depth == t_depth && (tcount >= t_count || p >= t_at) {
+        if tkind != OBJ && at_target!() && (tcount >= t_count || p >= t_at) {
             WHY = W_CHILD;
             break STOP;
         }

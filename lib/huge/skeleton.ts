@@ -21,7 +21,7 @@ interface Exports {
   warn_len(): number;
   drain(): void;
   stats(): number;
-  target(depth: number, count: number, byte: number): void;
+  target(depth: number, start: number, count: number, byte: number): void;
   load(len: number, last: number): number;
   run(): number;
   snap(): number;
@@ -121,7 +121,10 @@ const decodeFrames = (a: Float64Array, at: number, n: number): Frame[] => {
   return out;
 };
 
-/** The state in a header + frames record (snap() or a checkpoint whose frames start at frame `from`). */
+/** The first frame a checkpoint holds (the ones below are its predecessor's): see lib.rs state_out. */
+export const firstFrame = (depth: number, low: number) => (low > 0 ? Math.min(low - 1, depth) : 0);
+
+/** The state in a header + frames record (snap(), or a checkpoint whose frames start at firstFrame(): `frames` then). */
 export function decodeState(a: Float64Array, at: number, frames?: Frame[]): State {
   const depth = a[at + 2];
   return {
@@ -134,7 +137,7 @@ export function decodeState(a: Float64Array, at: number, frames?: Frame[]): Stat
     lineU16: a[at + 8],
     top: a[at + 9],
     deepest: a[at + 10],
-    frames: frames ?? decodeFrames(a, at + HW, depth - a[at + 3]),
+    frames: frames ?? decodeFrames(a, at + HW, depth - firstFrame(depth, a[at + 3])),
   };
 }
 
@@ -195,9 +198,13 @@ export class Skeleton {
     return this.x.fail_pos();
   }
 
-  /** From now on, stop before child `count` of the container at depth `depth` (0: the top level), or its first child at byte `byte` or later, or at its closing bracket (-1: none). */
-  target(depth: number, count = -1, byte = -1): void {
-    this.x.target(depth, count, byte);
+  /**
+   * From now on, stop before child `count` of the container that starts at byte `start` and has `depth` open
+   * containers when innermost (depth 0: the top level, whatever `start`), or before its first child at byte
+   * `byte` or later, or at its closing bracket. `depth` -1: no target.
+   */
+  target(depth: number, start = -1, count = -1, byte = -1): void {
+    this.x.target(depth, start, count, byte);
   }
 
   /** The state now (where it stopped, or at the end of the window). */
