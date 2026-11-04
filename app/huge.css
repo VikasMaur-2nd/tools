@@ -277,6 +277,7 @@ html[data-huge] .statusbar .cursor {
 }
 
 .hs-status .warn,
+.hs-status.warn,
 .hc-done.warn {
   color: var(--warn);
 }

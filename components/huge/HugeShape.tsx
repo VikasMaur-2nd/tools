@@ -33,6 +33,8 @@ export function segsOf(r: ShapeReport, p: ShapePath): (string | number)[] | null
   return segs.reverse();
 }
 
+const pathSegsEqual = (a: (string | number)[] | null, b: (string | number)[]) => !!a && a.length === b.length && a.every((x, i) => x === b[i]);
+
 const pct = (n: number, of: number) => (of > 0 ? (n / of) * 100 : 0);
 
 function Pct({ v }: { v: number }) {
@@ -119,7 +121,11 @@ function Status({ sh, records }: { sh: ShapeUI; records: number }) {
       </span>
     );
   }
-  if (sh.state === 'error') return <span className="hs-status err">{t(sh.error ?? 'Something went wrong')}</span>;
+  if (sh.state === 'error') {
+    // (An error in the file: what was read before it stays shown.)
+    if (sh.error === 'Invalid JSON' && sh.report) return <span className="hs-status warn">{t('The file has an error: the shape shows what comes before it')}</span>;
+    return <span className="hs-status err">{t(sh.error ?? 'Something went wrong')}</span>;
+  }
   if (!sh.report) return null;
   return (
     <span className={`hs-status ${PRIVATE}`} aria-live="polite">
@@ -354,12 +360,13 @@ function Detail({ s, r, p }: { s: HugeSession; r: ShapeReport; p: ShapePath }) {
   const objs = parent ? parent.kinds[K_OBJ] : 0;
   const missing = member ? objs - p.present : 0;
   const path = pathText(r, p);
-  // Conditions on records, for Extract: only where the shape is of a list of records.
-  const recordPath = segs && segs[0] === '*' && r.paths[0].kinds[K_ARR] > 0 ? segs.slice(1) : null;
-  const extract = (cond: Cond) => {
-    tasks.prefill({ kind: 'extract', conds: [cond], target });
-    s.setView('convert');
-  };
+  // Conditions on records, for Extract: the records are the items of the first array on the path (its
+  // container selected for it when it isn't the shape's own scope).
+  const star = segs ? segs.indexOf('*') : -1;
+  const container = segs && star >= 0 ? segs.slice(0, star) : null;
+  const holder = container ? r.paths.find((q) => q.kinds[K_ARR] > 0 && pathSegsEqual(segsOf(r, q), container)) : undefined;
+  const recordPath = segs && holder ? segs.slice(star + 1) : null;
+  const extract = (cond: Cond) => void tasks.extractFrom({ conds: [cond], target, container: container ?? [] });
   const kinds = p.kinds.map((n, k) => [k, n] as const).filter(([, n]) => n > 0);
   return (
     <aside className={`hs-detail ${PRIVATE}`} aria-label={t('Path details')}>

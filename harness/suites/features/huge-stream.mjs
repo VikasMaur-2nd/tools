@@ -296,6 +296,30 @@ test('huge stream: a small .json.gz opens in the editor; a big .jsonl.gz in huge
   }
 });
 
+test('huge stream: "Extract records without it" from the Shape panel fills in Convert, for the records array', async (t) => {
+  const page = await storagePage(t);
+  try {
+    await page.addInitScript(NO_PICKERS);
+    await t.open('/');
+    await openHuge(t, prettyPath);
+    await view(page, 'shape');
+    t.assert(await shapeDone(page), 'shape read');
+    await page.locator('#hg-shape .hs-row', { has: page.locator('.hs-path', { hasText: /^vip$/ }) }).click();
+    await page.locator('#hg-shape .hs-detail .btn', { hasText: 'Extract records without it' }).click();
+    t.check(await until(page, () => !!document.querySelector('#hg-convert'), null), 'Convert opens');
+    const form = await page.evaluate(() => ({ path: document.querySelector('#hg-convert .hc-path')?.value, op: document.querySelector('#hg-convert .hc-cond select')?.value, of: document.querySelector('#hg-convert [role=radio][aria-checked=true]')?.textContent }));
+    t.check(form.path === 'vip' && form.op === 'missing', 'the condition, filled in', form);
+    const download = page.waitForEvent('download', { timeout: 30_000 });
+    await page.locator('#hg-convert .hc-go .btn.primary').click();
+    const d = await download;
+    const text = readFileSync(await d.path(), 'utf8');
+    const want = recs.filter((x) => !('vip' in x)).map((x) => JSON.stringify(x) + '\n').join('');
+    t.check(text === want, 'the 2,700 records of $.users without vip', text.slice(0, 200));
+  } finally {
+    await t.cleanup?.();
+  }
+});
+
 test('huge stream: Shape and Convert show the document only inside private boxes', async (t) => {
   const { page } = t;
   await t.open('/');

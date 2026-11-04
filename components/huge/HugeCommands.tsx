@@ -339,7 +339,7 @@ export default function CommandsView({ s }: { s: HugeSession }) {
           </button>
           <span className="muted sm">{!ready ? (index.error ? t('The file has an error: fix it first (see the status bar)') : t('Ready once the file is indexed ({percent})', { percent: Math.floor((index.bytes / Math.max(1, size)) * 100) + '%' })) : where}</span>
         </div>
-        <div className={`hc-run ${PRIVATE}`} aria-live="polite">
+        <div className={`hc-run ${PRIVATE}`} aria-live="polite" data-seq={cmd.seq} data-state={cmd.state}>
           {running && (
             <>
               <div className="hc-prog">

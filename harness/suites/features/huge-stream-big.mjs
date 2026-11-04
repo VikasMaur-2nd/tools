@@ -7,7 +7,7 @@
 // which a user's browser doesn't.)
 // Tagged slow (the night window on the shared host); HUGE_GB sets the size (default 1); the files are made once
 // and deleted with HUGE_KEEP unset. Results: the log, and HUGE_STREAM_JSON (a file) if set.
-import { createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -115,8 +115,11 @@ async function run(t, page, size) {
       await root.removeEntry('bench-out').catch(() => {});
       await root.removeEntry('bench-parts', { recursive: true }).catch(() => {});
     });
+  // (Each result as it comes, for a run that stalls or is stopped: HUGE_STREAM_LOG, a file.)
+  const note = (line) => process.env.HUGE_STREAM_LOG && appendFileSync(process.env.HUGE_STREAM_LOG, `${new Date().toISOString()} ${line}\n`);
   /** Runs `fn` (which starts the work) until `done()` in the page; times it and samples PSS. */
-  const measure = async (name, start, done, input = size) => {
+  const measure = async (name, start, done, input = size, arg = null) => {
+    note(`${name}: start`);
     await clean();
     await page.evaluate(() => new Promise((r) => setTimeout(r, 1500)));
     const before = browserMemory().pss;
@@ -124,7 +127,11 @@ async function run(t, page, size) {
     const timer = setInterval(() => (peak = Math.max(peak, browserMemory().pss)), 200);
     const t0 = Date.now();
     await start();
-    const ok = !!(await until(page, done, null, { timeout: 1_800_000 }));
+    const ok = !!(await until(page, done, typeof arg === 'function' ? arg() : arg, { timeout: 900_000 }));
+    if (!ok) {
+      note(`${name}: not done; convert says ${JSON.stringify(await page.evaluate(() => [document.querySelector('#hg-convert .hc-run')?.textContent, document.querySelector('#hg-shape .hs-status')?.textContent, window.__vis('.hg-sb')?.textContent]))}`);
+      await page.screenshot({ path: join(dir, `stall-${name}.png`) }).catch(() => {});
+    }
     const ms = Date.now() - t0;
     clearInterval(timer);
     const out = await page.evaluate(async () => {
@@ -137,7 +144,10 @@ async function run(t, page, size) {
     });
     const r = { ok, ms, mbs: +(input / 1e6 / (ms / 1000)).toFixed(1), pssBefore: before, pssPeak: peak, peakAbove: peak - before, out };
     results.commands[name] = r;
-    t.log(`${name}: ${ok ? 'ok' : 'FAILED'} ${(ms / 1000).toFixed(1)} s, ${r.mbs} MB/s, PSS ${Math.round(before / 2 ** 20)} → ${Math.round(peak / 2 ** 20)} MiB (+${Math.round((peak - before) / 2 ** 20)}), out ${out}`);
+    const line = `${name}: ${ok ? 'ok' : 'FAILED'} ${(ms / 1000).toFixed(1)} s, ${r.mbs} MB/s, PSS ${Math.round(before / 2 ** 20)} → ${Math.round(peak / 2 ** 20)} MiB (+${Math.round((peak - before) / 2 ** 20)}), out ${out}`;
+    t.log(line);
+    note(line);
+    if (process.env.HUGE_STREAM_JSON) writeFileSync(process.env.HUGE_STREAM_JSON, JSON.stringify(results, null, 2));
     t.check(ok, `${name} finished`);
     await clean();
   };
@@ -149,6 +159,8 @@ async function run(t, page, size) {
   );
   const status = await page.evaluate(() => document.querySelector('#hg-shape .hs-status')?.textContent);
   t.log('shape', status);
+  // (A command is done when the view's run number is past the one before its click, and that run ended.)
+  let seq = 0;
   const cmd = async (name, kind, set) => {
     await measure(
       name,
@@ -156,12 +168,19 @@ async function run(t, page, size) {
         await view('convert');
         await page.locator('#hg-convert .hc-kind', { hasText: new RegExp(`^${kind}$`) }).click();
         if (set) await set();
+        seq = Number(await page.locator('#hg-convert .hc-run').getAttribute('data-seq'));
         await page.locator('#hg-convert .hc-go .btn.primary').click();
       },
-      () => /Saved|Downloaded/.test(document.querySelector('#hg-convert .hc-done')?.textContent ?? '') || /went wrong|error|space/i.test(document.querySelector('#hg-convert .hc-done')?.textContent ?? ''),
+      (before) => {
+        const el = document.querySelector('#hg-convert .hc-run');
+        return !!el && Number(el.dataset.seq) > before && el.dataset.state !== 'running';
+      },
+      size,
+      () => seq,
     );
     const done = await page.evaluate(() => document.querySelector('#hg-convert .hc-done')?.textContent);
     t.log(name, done);
+    note(`${name}: says ${done}`);
   };
   const gz = (on) => page.locator('#hg-convert .hc-check', { hasText: 'gzip' }).locator('input').setChecked(on);
   await cmd('minify', 'Minify');

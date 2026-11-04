@@ -1385,5 +1385,7 @@
   "app.hugeCmdNoStorage": "Your browser won’t let this page store the result (a private window?)",
   "app.hugeCmdNoStorage._context": "Large-file mode, Convert view: the browser refused its storage, where results are written before they download.",
   "toast.hugeGzNoStorage": "Couldn't decompress {name}: your browser won't let this page store it (a private window?)",
-  "toast.hugeGzNoStorage._context": "Large-file mode: a .gz file needs the browser’s storage to be decompressed into, and the browser refused it."
+  "toast.hugeGzNoStorage._context": "Large-file mode: a .gz file needs the browser’s storage to be decompressed into, and the browser refused it.",
+  "app.hugeShErrorBefore": "The file has an error: the shape shows what comes before it",
+  "app.hugeShErrorBefore._context": "Large-file mode, Shape panel: the pass stopped at an error in the JSON; the paths shown are those read before it."
 }

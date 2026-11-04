@@ -60,6 +60,8 @@ export interface ShapeUI {
 
 export interface CmdUI {
   state: State;
+  /** Runs started (a check waits for its own). */
+  seq: number;
   kind: CommandKind | null;
   name: string;
   read: number;
@@ -203,7 +205,7 @@ export class HugeTasks {
     const st = s.src.state();
     this.ui = new TaskStore({
       shape: { state: 'idle', target: 'file', label: '$', report: null, read: 0, total: 0, rate: 0, eta: null, ms: 0, error: null, sel: -1, seek: null },
-      cmd: { state: 'idle', kind: null, name: '', read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null },
+      cmd: { state: 'idle', seq: 0, kind: null, name: '', read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null },
       form: {
         kind: 'pretty',
         target: 'file',
@@ -222,7 +224,22 @@ export class HugeTasks {
     void sweep();
   }
 
-  /** The Shape panel's "Extract records where…": the Convert form, filled in. */
+  /**
+   * The Shape panel's "Extract records where…": the Convert form, filled in; `container` (a path) is
+   * selected first when the records are an array inside the shape's scope.
+   */
+  async extractFrom(o: { conds: Cond[]; target: Target; container: (string | number)[] }) {
+    let target = o.target;
+    if (o.container.length) {
+      const base = target === 'value' && this.s.selected ? this.s.selected.path : [];
+      await this.s.gotoPath([...base, ...o.container]);
+      target = 'value';
+    }
+    this.prefill({ kind: 'extract', conds: o.conds, target });
+    this.s.setView('convert');
+  }
+
+  /** The Convert form filled in. */
   prefill(o: { kind: 'extract'; conds: Cond[]; target: Target }) {
     const f = this.ui.get().form;
     const conds = o.conds.map((c): CondUI => ({ path: condPath(c.path), op: c.op, value: c.value === undefined ? '' : typeof c.value === 'string' ? c.value : JSON.stringify(c.value) }));
@@ -530,12 +547,12 @@ export class HugeTasks {
     } catch (e) {
       // (The picker closed: nothing to do. Refused, or no storage: said so.)
       if (e instanceof DOMException && e.name === 'AbortError') return;
-      this.ui.cmd({ state: 'error', kind: spec.kind, name, result: null, error: 'No storage' });
+      this.ui.cmd({ state: 'error', seq: this.ui.get().cmd.seq + 1, kind: spec.kind, name, result: null, error: 'No storage' });
       return;
     }
     if (!where) return;
     const began = performance.now();
-    this.ui.cmd({ state: 'running', kind: spec.kind, name, read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null });
+    this.ui.cmd({ state: 'running', seq: this.ui.get().cmd.seq + 1, kind: spec.kind, name, read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null });
     const pace = new Pace();
     const event = (outcome: Events['huge_command']['outcome']) =>
       track('huge_command', {
@@ -550,7 +567,8 @@ export class HugeTasks {
       });
     const release = where.temp ? hold(where.temp) : null;
     try {
-      const at = spec.kind === 'csv' || (spec.kind === 'extract' && spec.extract?.format === 'csv' && !spec.extract.filter?.conds.length) ? await this.records(spec.target) : await this.scopeOf(spec.target);
+      // (CSV and Extract read records: of the container records() picks, as the normal path's CSV.)
+      const at = spec.kind === 'csv' || spec.kind === 'extract' ? await this.records(spec.target) : await this.scopeOf(spec.target);
       if (!at) throw new StreamError('Select a value that has been read');
       const size = at.scope.end - at.scope.start;
       // Room for an OPFS result: about the size it reads (Pretty: twice), compressed a tenth.
