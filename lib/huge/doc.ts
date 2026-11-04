@@ -851,8 +851,13 @@ export class HugeDoc {
   private parseRegion(k: number, s: State, e: State | null, low: number): Region | null {
     const ix = this.index;
     const to = e ? e.pos : this.src.size;
-    const prefix = prefixOf(s, byteBefore(this.src, s.pos));
-    const suffix = e ? e.frames.map((f) => (f.kind === OBJ ? '}' : ']')).reverse().join('') : '';
+    // A stretch from the very start that stays inside the first value (most documents' first stretch: the first
+    // pretty lines, a locate near the start) goes to tape.wasm as a one-item array, the same tape the JS parser's
+    // JSON Lines mode makes of it (text one later), 4–5× sooner, without waiting for the JS parser.
+    const one = s.top === 0 && s.frames.length === 0 && s.state !== S_AFTER && s.state !== S_TOP && !!e && e.top === 1 && e.frames.length > 0 && !!this.parsers.wasm;
+    const prefix = (one ? '[' : '') + prefixOf(s, byteBefore(this.src, s.pos));
+    const close = e ? e.frames.map((f) => (f.kind === OBJ ? '}' : ']')).reverse().join('') : '';
+    const suffix = one ? close + ']' : close;
     // Big strings in it are stubs (their lines show their start).
     const pieces: Piece[] = [prefix];
     let cur = s.pos;
@@ -866,10 +871,10 @@ export class HugeDoc {
     pieces.push([cur, to], suffix);
     const built = build(this.src, pieces);
     const wrap = s.frames.length === 0 || !e || e.frames.length === 0 || low === 0;
-    const t = wrap ? this.parsers.parse(built.text, { lines: true }) : ((this.parsers.wasm && wasmTape(this.parsers.wasm, built.text)) || this.parsers.parse(built.text));
+    const t = wrap && !one ? this.parsers.parse(built.text, { lines: true }) : ((this.parsers.wasm && wasmTape(this.parsers.wasm, built.text)) || this.parsers.parse(built.text));
     if (t.head.error) return null;
     const synth = (wrap ? 1 : 0) + s.frames.length + (s.state === S_AFTER || s.state === S_TOP ? 1 : 0);
-    const end = built.text.length - suffix.length;
+    const end = built.text.length - close.length - (one ? 1 : 0);
     // Its pretty lines: every node after the synthetic ones, and the closing line of every container with
     // children that closes in it. Depths are real ones (the wrapper isn't a level).
     const lines = new Int32Array(2 * t.count);
@@ -1275,7 +1280,8 @@ export class HugeDoc {
       if (node.kind === OBJ) {
         const key = String(seg);
         for (let from = 0; !next; ) {
-          const page = this.pageOf(node, from, 1000);
+          // (No previews: only the path's node is wanted.)
+          const page = this.pageOf(node, from, 1000, { previews: false });
           if (!page) return null;
           next = page.nodes.find((n) => n.key === key);
           if (!page.page.more || !page.page.count) break;
@@ -1283,7 +1289,7 @@ export class HugeDoc {
         }
       } else {
         if (typeof seg !== 'number' && !/^\d+$/.test(seg)) return null;
-        next = this.pageOf(node, Number(seg), 1)?.nodes[0];
+        next = this.pageOf(node, Number(seg), 1, { previews: false })?.nodes[0];
       }
       if (!next) return null;
       node = next;
