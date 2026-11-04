@@ -275,13 +275,22 @@ for (const [name, opts] of [
     mkdirSync(out, { recursive: true });
     const { page } = t;
     // (Tabs and rows fade their highlight: a shot waits for it.)
+    // (A phone has the views in a drop-down instead of tabs.)
+    const view = (v) =>
+      page.evaluate((v) => {
+        const tab = window.__vis(`.hg [role=tab][aria-controls=hg-${v}]`);
+        if (tab) return tab.click();
+        const pick = window.__vis('.hg .tabs-pick select');
+        pick.value = v;
+        pick.dispatchEvent(new Event('change', { bubbles: true }));
+      }, v);
     const shot = async (file) => {
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 250))));
       await page.screenshot({ path: join(out, file) });
     };
     await t.open('/');
     await openHuge(t, pretty, { sim: { speed: 60_000 } });
-    await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
+    await view('tree');
     await until(page, () => /root/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null);
     await until(page, () => /left/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 5000 });
     await shot(`${name}-indexing.png`);
@@ -291,17 +300,17 @@ for (const [name, opts] of [
     await page.evaluate(() => { const el = window.__vis('#hg-tree'); el.scrollTop = 1000 * 24 - el.clientHeight + 60; });
     await loaded(page, '#hg-tree');
     await shot(`${name}-tree-pages.png`);
-    await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-format]')?.click());
+    await view('format');
     await page.keyboard.press(`${MOD}+f`);
     await page.locator('.hg .findbar input').fill('u777@');
     await until(page, () => !!document.querySelector('#hg-format .hg-cur'), null);
     await loaded(page, '#hg-format');
     await shot(`${name}-format-find.png`);
-    await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-graph]')?.click());
+    await view('graph');
     await shot(`${name}-graph-notyet.png`);
     await openHuge(t, broken);
     await waitIndexed(page);
-    await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-table]')?.click());
+    await view('table');
     await loaded(page, '#hg-table');
     await shot(`${name}-error-table.png`);
   });

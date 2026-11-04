@@ -120,12 +120,13 @@ test('the core: an invalid file\'s error is the normal path\'s', async () => {
   close();
 });
 
-test('the core: what comes before an error inside the root can be browsed', { todo: 'core: summary.root is null when the error is inside the root (reported in UI-REPORT.md)' }, async () => {
+test('the core: what comes before an error inside the root can be browsed', async () => {
   const { a, close } = await pair(broken);
   try {
     const root = await a.root();
-    const first = await a.children(root, 0, 5);
+    const first = await a.children(root, 0, 50);
     assert.equal(first[0].key, 0);
+    assert.equal(first.length, 31, 'the records before the error');
   } finally {
     close();
   }
