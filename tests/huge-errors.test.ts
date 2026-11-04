@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { genStrict, loosen } from './oracle/tape';
 import { rng } from './oracle/compare';
-import { enc, hugeOf, normalStatus } from './huge-oracle';
+import { enc, hugeOf, normalStatus, pageText } from './huge-oracle';
+import { parse } from '../lib/json/tape-parser';
+import { MAX_DEPTH } from '../lib/json/parser';
 
 const SEED = Number(process.env.FUZZ_SEED) || 0;
 const SCALE = (Number(process.env.FUZZ_SCALE) || 1) * (process.env.TEST_SLOW ? 20 : 1);
@@ -85,5 +87,31 @@ test('errors: chosen cases', () => {
   ];
   for (const doc of cases) {
     for (const every of [64, 128, 1 << 20]) for (const window of [64, 128, 4096]) check(enc.encode(doc), 'a.json', every, 64, window);
+  }
+});
+
+test('warnings: duplicate property names, as the normal path lists them (message, line, column)', () => {
+  const r = rng(SEED + 13);
+  for (let k = 0; k < 600 * SCALE; k++) {
+    let doc = genStrict(r, 4);
+    // More duplicates: objects with names from a small set, some escaped (a is "a"), some long.
+    if (r.chance(0.5)) {
+      const names = ['"a"', '"\\u0061"', '"b"', '"' + 'k'.repeat(70) + '"', '"é"', '"\\u00e9"'];
+      const obj = () => '{' + Array.from({ length: 1 + r.int(30) }, () => r.pick(names) + ':' + r.int(9)).join(',') + '}';
+      doc = '[' + Array.from({ length: 1 + r.int(6) }, obj).join(',\n') + ']';
+    }
+    const bytes = asFile(r, doc);
+    const text = pageText(bytes);
+    const t = parse(text, { maxDepth: MAX_DEPTH });
+    if (t.head.error || t.head.issues.length) continue;
+    const d = hugeOf(bytes, { name: 'a.json', every: 64, big: 64 }, { window: 64, queryWindow: 64 });
+    const got = d.summary().warnings.map((w) => `${w.msg} ${w.line}:${w.col}`);
+    const want = t.head.warnings.map((w) => {
+      const nl = text.lastIndexOf('\n', w.p - 1);
+      let line = 1;
+      for (let i = text.indexOf('\n'); i >= 0 && i < w.p; i = text.indexOf('\n', i + 1)) line++;
+      return `${w.m} ${line}:${w.p - nl}`;
+    });
+    assert.deepEqual(got, want, `doc: ${show(doc)}`);
   }
 });

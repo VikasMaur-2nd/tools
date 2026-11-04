@@ -561,7 +561,8 @@ pub unsafe extern "C" fn load(len: usize, last: u32) -> i32 {
         let mut brk = 0u64;
         if ctl != 0 {
             let nl = m4(&vs, |v| eqm(v, b'\n'));
-            let cr = m4(&vs, |v| eqm(v, b'\r'));
+            // (Most files have no \r: its mask only where there is one.)
+            let cr = if or4(&|v| i8x16_eq(v, u8x16_splat(b'\r'))) { m4(&vs, |v| eqm(v, b'\r')) } else { 0 };
             drop = nl & ((cr << 1) | cr_carry);
             brk = (nl & !drop) | cr;
             cr_carry = cr >> 63;
@@ -1361,10 +1362,21 @@ pub unsafe extern "C" fn run() -> i32 {
             break FAIL;
         }};
     }
-    // What comes after a value.
+    // What comes after a value: mostly a comma, taken here (unless a checkpoint is due there).
     macro_rules! after {
         () => {{
-            state = if depth == 0 { S_TOP } else { S_AFTER };
+            if depth == 0 {
+                state = S_TOP;
+            } else {
+                state = S_AFTER;
+                if ii < n {
+                    let q = *idx.add(ii) as usize;
+                    if q < ck_at && q < fail_at && byte(q) == b',' {
+                        ii += 1;
+                        state = if tkind == OBJ { S_KEY } else { S_VALUE };
+                    }
+                }
+            }
         }};
     }
     // A top-level value ends at window offset $e (its last byte): JSON Lines want it on lines of its own.
@@ -1656,13 +1668,24 @@ pub unsafe extern "C" fn run() -> i32 {
                     fail!(W_MEMORY, p);
                 }
                 ii += 2;
-                if ii < n && byte(*idx.add(ii) as usize) == b':' {
+                // The colon, and the value in this same pass if it's in the window.
+                if ii + 1 < n && byte(*idx.add(ii) as usize) == b':' {
                     ii += 1;
                     state = S_VALUE;
+                    p = *idx.add(ii) as usize;
+                    if p >= fail_at {
+                        fail!(W_SYNTAX, fail_at);
+                    }
+                    c = byte(p);
                 } else {
-                    state = S_COLON;
+                    if ii < n && byte(*idx.add(ii) as usize) == b':' {
+                        ii += 1;
+                        state = S_VALUE;
+                    } else {
+                        state = S_COLON;
+                    }
+                    continue;
                 }
-                continue;
             }
             S_COLON => {
                 if c != b':' {
