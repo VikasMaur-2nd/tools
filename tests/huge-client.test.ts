@@ -129,3 +129,21 @@ test('client: the indexing pass reads ahead from a Blob (prefetch.ts), the same 
   assert.equal(at!.node.start, src.start(149_999) + src.text(149_999).indexOf('0.5'));
   doc.close();
 });
+
+test('client: queries sent before the worker has its modules wait for the document', async () => {
+  const [page, worker] = channel();
+  let release: () => void = () => {};
+  const loaded = new Promise<void>((done) => (release = done));
+  const bytes = new TextEncoder().encode('{"a": [1, 2, 3], "b": "x"}');
+  serve(worker, async () => {
+    await loaded;
+    return { huge: hugeMod, parsers: { wasm: tapeMod, parse } };
+  }, () => memSource(bytes));
+  const doc = new HugeClient(new Blob([bytes as BlobPart]), {}, undefined, page);
+  const early = doc.resolve('$.a[2]');
+  setTimeout(release, 20);
+  const at = await early;
+  assert.deepEqual(at!.path, ['a', 2]);
+  await doc.ready;
+  doc.close();
+});
