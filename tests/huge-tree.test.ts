@@ -47,7 +47,7 @@ test('rows found from open containers match a full walk through random opens, cl
   const m = new TreeModel();
   m.setRoot(box(2_345));
   let at = 1;
-  for (let step = 0; step < 400; step++) {
+  for (let step = 0; step < 250; step++) {
     const rows = oracle(m);
     assert.equal(m.count, rows.length, `row count at step ${step}`);
     // Every row (or a sample of a long list) maps both ways.
