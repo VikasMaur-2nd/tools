@@ -10,7 +10,7 @@ import { DIRS } from '../../lib/env.mjs';
 import { browserMemory } from '../breaker/_mem.mjs';
 import { MOD, until } from './_helpers.mjs';
 
-defaults({ engines: ['chromium'], width: 1280, height: 860, tags: ['slow', 'huge-big'], slots: 'all', timeout: 600_000 });
+defaults({ engines: 'all', width: 1280, height: 860, tags: ['slow', 'huge-big'], slots: 'all', timeout: 600_000 });
 
 const GB = Number(process.env.HUGE_GB || 1);
 const dir = join(DIRS.tmp, 'huge-big');
