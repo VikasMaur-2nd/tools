@@ -218,7 +218,8 @@ export class HugeDoc {
 
   /** The only top-level value, or the LIST of them. */
   private root(): HugeNode | null {
-    if (this.stats()[3] === 0) return null;
+    // (Before the first value is read: a container from its first byte, so the first rows come at once.)
+    if (this.stats()[3] === 0 && (this.done || this.lines)) return null;
     if (this.multi) return this.list();
     const ix = this.index;
     // In the directory; else a container from its first byte (open while being read, or broken: its end unknown).
@@ -235,7 +236,9 @@ export class HugeDoc {
       if (!this.done || this.error) return { kind, start: at, end: -1, depth: 0, key: null, count: null, pretty: 0, prettyLines: null, big: true };
       return { ...this.measure(ix.state(0), 0, at, kind, null), big: true };
     }
-    const page = this.error ? null : this.pageOf(this.list(), 0, 1);
+    // A string or scalar: once read (a long string is then in the directory).
+    if (this.error || !this.done) return null;
+    const page = this.pageOf(this.list(), 0, 1);
     return page && page.nodes.length ? { ...page.nodes[0], key: null } : null;
   }
 
@@ -330,7 +333,7 @@ export class HugeDoc {
 
   /** Children [from, from + count) of `node`. */
   children(node: HugeNode, from: number, count: number): HugePage {
-    const page = this.pageOf(node, from, count);
+    const page = node ? this.pageOf(node, from, count) : null;
     if (page) return page.page;
     return { container: node, from, count: 0, more: false, tape: emptySent(), text: '', stubs: [], map: new Float64Array(0) };
   }
@@ -933,7 +936,8 @@ export class HugeDoc {
     const cs = !!o.caseSensitive || !/[A-Za-z]/.test(query);
     const lower = cs ? needle : needle.map((c) => (c >= 65 && c <= 90 ? c + 32 : c));
     const limit = o.limit ?? 10_000;
-    const chunk = 1 << 22;
+    // (Small reads first: "find next" usually stops soon; then up to 4 MiB a read.)
+    let chunk = 1 << 16;
     let total = 0;
     let scanned = 0;
     const back = !!o.backward;
@@ -953,6 +957,7 @@ export class HugeDoc {
           for (let m = ms.length - 1; m >= 0 && total < limit; m--, total++) found.push(ms[m]);
           scanned += hi - lo;
           hi = lo;
+          chunk = Math.min(1 << 22, chunk * 4);
           if (found.length) yield { matches: Float64Array.from(found), length: len, scanned, done: false };
         }
       } else {
@@ -968,6 +973,7 @@ export class HugeDoc {
           });
           scanned += hi - lo;
           lo = hi;
+          chunk = Math.min(1 << 22, chunk * 4);
           if (found.length) yield { matches: Float64Array.from(found), length: len, scanned, done: false };
         }
       }
