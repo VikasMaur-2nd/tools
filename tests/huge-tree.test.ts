@@ -62,9 +62,10 @@ test('rows found from open containers match a full walk through random opens, cl
     const r = random(rows.length);
     const row = m.rowAt(r)!;
     const act = random(10);
-    if (row.kind === 'next') m.next(row.parent);
-    else if (row.kind === 'prev') m.prev(row.parent);
-    else if (row.open && row.parent && act < 4) m.close(row.parent, row.i);
+    if (row.kind !== 'node') {
+      if (row.kind === 'next') m.next(row.parent);
+      else m.prev(row.parent);
+    } else if (row.open && row.parent && act < 4) m.close(row.parent, row.i);
     else if (!row.open && row.parent && act < 8) m.open(row.parent, row.i, box(random(5) ? random(30) : 1_000 + random(3_000), at++, row.depth, row.i));
     else if (row.open && act === 9) m.show(row.open, random(Math.max(1, row.open.node.count)));
   }
