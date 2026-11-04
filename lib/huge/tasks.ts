@@ -284,17 +284,17 @@ export class HugeTasks {
   }
 
   /** What a command or the Shape pass reads: the whole file, or the selected value. */
-  private async scopeOf(target: Target): Promise<{ scope: Scope; path: (string | number)[]; node: CoreNode | null; t: number } | null> {
+  private async scopeOf(target: Target): Promise<{ scope: Scope; path: (string | number)[]; node: CoreNode | null; t: number; count: number } | null> {
     const d = await this.doc();
     if (target === 'value') {
       const sel = this.s.selected;
       if (sel && sel.node.at >= 0) {
         if (sel.node.end < 0) return null;
-        return { scope: { start: sel.node.at, end: sel.node.end, multi: false }, path: sel.path, node: null, t: sel.node.t };
+        return { scope: { start: sel.node.at, end: sel.node.end, multi: false }, path: sel.path, node: null, t: sel.node.t, count: sel.node.count };
       }
     }
     if (!d.root) return null;
-    return { scope: { start: 0, end: d.size, multi: d.multi }, path: [], node: d.root, t: d.multi ? ARR : d.root.kind };
+    return { scope: { start: 0, end: d.size, multi: d.multi }, path: [], node: d.root, t: d.multi ? ARR : d.root.kind, count: d.root.count ?? 0 };
   }
 
   // ── The records CSV reads (xlsx.ts `records`) ─────────────────────────────
@@ -343,7 +343,7 @@ export class HugeTasks {
   }
 
   /** CSV's container for `target`: as the normal path's `records(root)`. */
-  private async records(target: Target): Promise<{ scope: Scope; path: (string | number)[] } | null> {
+  private async records(target: Target): Promise<{ scope: Scope; path: (string | number)[]; count: number } | null> {
     const at = await this.scopeOf(target);
     if (!at) return null;
     if (at.t !== OBJ) return at;
@@ -357,7 +357,7 @@ export class HugeTasks {
       if (rec === res.root) return at;
       const enc = new TextEncoder();
       const byteOf = (s: number) => start + enc.encode(text.slice(0, s)).length;
-      return { scope: { start: byteOf(rec.s), end: byteOf(rec.e), multi: false }, path: at.path };
+      return { scope: { start: byteOf(rec.s), end: byteOf(rec.e), multi: false }, path: at.path, count: kids(rec).length };
     }
     let node = at.node;
     if (!node) {
@@ -366,7 +366,7 @@ export class HugeTasks {
     }
     if (!node) return at;
     const best = await this.bestArray(node);
-    return best ? { scope: { start: best.start, end: best.end, multi: false }, path: at.path } : at;
+    return best ? { scope: { start: best.start, end: best.end, multi: false }, path: at.path, count: best.count } : at;
   }
 
   // ── Shape ─────────────────────────────────────────────────────────────────
@@ -567,8 +567,8 @@ export class HugeTasks {
       });
     const release = where.temp ? hold(where.temp) : null;
     try {
-      // (CSV and Extract read records: of the container records() picks, as the normal path's CSV.)
-      const at = spec.kind === 'csv' || spec.kind === 'extract' ? await this.records(spec.target) : await this.scopeOf(spec.target);
+      // (CSV, Extract and Split read records: of the container records() picks, as the normal path's CSV.)
+      const at = spec.kind === 'csv' || spec.kind === 'extract' || spec.kind === 'split' ? await this.records(spec.target) : await this.scopeOf(spec.target);
       if (!at) throw new StreamError('Select a value that has been read');
       const size = at.scope.end - at.scope.start;
       // Room for an OPFS result: about the size it reads (Pretty: twice), compressed a tenth.
@@ -577,7 +577,7 @@ export class HugeTasks {
         const need = (spec.kind === 'pretty' || spec.kind === 'json' ? 2 : 1) * size * (spec.gzip ? 0.15 : 1);
         if (free !== null && free < need) throw new StreamError('Not enough storage space');
       }
-      const count = spec.kind === 'split' && spec.split?.by === 'parts' ? await this.countOf(spec.target) : 0;
+      const count = spec.kind === 'split' && spec.split?.by === 'parts' ? ('count' in at ? at.count : await this.countOf(spec.target)) : 0;
       const job = await this.jobOf(spec, at.scope, count);
       const d = await this.doc();
       const run = this.stream().run(this.core.doc.file, d.bom, job, where.out, {

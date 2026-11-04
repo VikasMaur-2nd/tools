@@ -192,6 +192,8 @@ async function run(t, page, size) {
   await page.locator('.hg .findbar input').fill('$.records');
   await page.locator('.hg .findbar input').press('Enter');
   t.check(await until(page, () => window.__vis('.hg .vmain .path')?.textContent === '$.records', null, { timeout: 30_000 }), '$.records selected');
+  // (Find closed: its query would search again in the views Find is for.)
+  await page.locator('.hg .findbar input').press('Escape');
   await cmd('jsonl-of-records', 'JSON Lines', () => page.locator('#hg-convert [role=radio]', { hasText: 'Selected value' }).click());
   await view('convert');
   await page.locator('#hg-convert [role=radio]', { hasText: 'Whole file' }).click();

@@ -25,8 +25,17 @@ export interface ServePort {
 const partName = (names: string, k: number) => names.replace('{n}', String(k + 1).padStart(4, '0'));
 
 /** The job's outputs for `out`; `opfs`: the OPFS file written, if any (to hand back). */
-async function outputsFor(out: Out): Promise<{ outs: Outputs; done: () => Promise<File | undefined> }> {
-  const gz = (s: Sink, on: boolean) => (on ? gzipSink(s) : s);
+async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs: Outputs; done: () => Promise<File | undefined> }> {
+  // (What reaches the file: after gzip, if any.)
+  const counted = (s: Sink): Sink => ({
+    write: (b) => {
+      written.bytes += b.length;
+      return s.write(b);
+    },
+    close: () => s.close(),
+    abort: () => s.abort(),
+  });
+  const gz = (s: Sink, on: boolean) => (on ? gzipSink(counted(s)) : counted(s));
   switch (out.kind) {
     case 'none':
       return { outs: { main: () => Promise.reject(new JobError('No output')), part: () => Promise.reject(new JobError('No output')) }, done: async () => undefined };
@@ -170,7 +179,8 @@ export function serve(port: ServePort) {
   const run = async (q: Extract<StreamRequest, { op: 'run' }>) => {
     let done: () => Promise<File | undefined> = async () => undefined;
     try {
-      const o = await outputsFor(q.out);
+      const written = { bytes: 0 };
+      const o = await outputsFor(q.out, written);
       done = o.done;
       let last = 0;
       const result = await runJob(blobSource(q.file, q.skip), q.job, o.outs, {
@@ -184,6 +194,7 @@ export function serve(port: ServePort) {
         report: (report) => reply({ id: q.id, type: 'shape', report }),
       });
       const file = await done();
+      if (q.out.kind !== 'none') result.bytes = written.bytes;
       reply({ id: q.id, type: 'done', result, file });
     } catch (e) {
       // (A temporary output that won't be downloaded goes at once.)

@@ -381,9 +381,11 @@ export class HugeSession {
     if (view === 'table' && this.sel) void this.tableForSel();
     this.ui.set({ view, ask: null });
     track('view_opened', { view, via: 'other' });
-    // Find follows the view: the same query, from where that view is.
+    // Find follows the view: the same query, from where that view is. (Only into a view Find is for: a search
+    // started in Shape or Convert would read the whole file for nothing, alongside their own pass.)
     const q = this.ui.get().find.q;
-    if (q) requestAnimationFrame(() => !this.dead && this.runFind(q));
+    if (q && (view === 'format' || view === 'tree' || view === 'table')) requestAnimationFrame(() => !this.dead && this.runFind(q));
+    else if (q) this.find.stop();
   }
 
   setMode(mode: LineMode) {
