@@ -103,6 +103,7 @@ class P {
   sMax = -1;
   sSum = 0;
   fmt = new Float64Array(FORMATS.length);
+  fmtSeen = false;
   aMin = Infinity;
   aMax = -1;
   aSum = 0;
@@ -214,29 +215,72 @@ function formatOf(b: Uint8Array, a: number, e: number): number {
   return -1;
 }
 
-/** A number token as a JS number (integers up to 15 digits read here; the rest by Number). */
-function numberOf(b: Uint8Array, a: number, e: number): { v: number; int: boolean } {
+/** Powers of ten a double holds exactly. */
+const POW10 = Array.from({ length: 23 }, (_, k) => 10 ** k);
+/** Whether the last numberOf was an integer as written (no fraction, no exponent), and read exactly. */
+let wasInt = false;
+let wasExact = true;
+
+/**
+ * A number token as JS reads it (Number(text)): exactly, without making its text in the common case (up to
+ * 15 significant digits and a power of ten up to 22: one correctly rounded multiply or divide, Clinger's
+ * fast path); otherwise from its text.
+ */
+export function numberOf(b: Uint8Array, a: number, e: number): number {
   let i = a;
   const neg = b[i] === 45;
   if (neg) i++;
-  if (e - i <= 15) {
-    let v = 0;
-    let k = i;
-    for (; k < e; k++) {
-      const x = b[k] - 48;
-      if (x < 0 || x > 9) break;
-      v = v * 10 + x;
+  let m = 0;
+  let digits = 0;
+  let frac = 0;
+  let x = b[i];
+  // (Leading zeros aren't significant digits.)
+  while (i < e && (x = b[i]) >= 48 && x <= 57) {
+    if (m || x !== 48) {
+      m = m * 10 + (x - 48);
+      digits++;
     }
-    if (k === e) return { v: neg ? -v : v, int: true };
+    i++;
   }
-  let int = true;
-  let s = '';
-  for (let k = a; k < e; k++) {
-    const x = b[k];
-    if (x === 46 || x === 101 || x === 69) int = false;
-    s += String.fromCharCode(x);
+  wasInt = true;
+  if (i < e && b[i] === 46) {
+    wasInt = false;
+    i++;
+    while (i < e && (x = b[i]) >= 48 && x <= 57) {
+      if (m || x !== 48) {
+        m = m * 10 + (x - 48);
+        digits++;
+      }
+      frac++;
+      i++;
+    }
   }
-  return { v: Number(s), int };
+  let exp = 0;
+  if (i < e && (b[i] | 32) === 101) {
+    wasInt = false;
+    i++;
+    let eneg = false;
+    if (b[i] === 45 || b[i] === 43) eneg = b[i++] === 45;
+    while (i < e && (x = b[i]) >= 48 && x <= 57) {
+      exp = exp * 10 + (x - 48);
+      i++;
+      if (exp > 1e6) break;
+    }
+    if (eneg) exp = -exp;
+  }
+  const p = exp - frac;
+  wasExact = true;
+  if (i === e && digits <= 15 && p >= -22 && p <= 22) {
+    const v = p >= 0 ? m * POW10[p] : m / POW10[-p];
+    return neg ? -v : v;
+  }
+  // (More digits: a close value, within a few units in the last place; num() asks for the exact one where it matters.)
+  if (i === e && digits <= 40 && p >= -300 && p <= 300) {
+    wasExact = false;
+    const v = p >= 0 ? m * 10 ** p : m / 10 ** -p;
+    return neg ? -v : v;
+  }
+  return Number(latin(b, a, e));
 }
 
 const latin = (b: Uint8Array, a: number, e: number) => {
@@ -353,26 +397,29 @@ export class Shape implements Visitor {
     return p;
   }
 
-  /** A scalar seen at `p`: its hash `h` (its identity), the text shown (made once, for a new value). */
-  private distinct(p: P, h: number, text: () => string, at: number) {
+  /** Counts scalar `h` (its identity) at `p`: true if it is new while values are kept exactly (then `keep` it, with its text). */
+  private seen(p: P, h: number): boolean {
     if (p.vals) {
       const v = p.vals.get(h);
-      if (v) {
-        v[0]++;
-        return;
-      }
-      const t = text();
-      if (p.ex.length < EXAMPLES) p.ex.push([t, at]);
-      if (p.vals.size < EXACT) {
-        p.vals.set(h, [1, at, t]);
-        return;
-      }
-      // (Too many to keep: estimated from now on, from what was kept.)
-      p.hll = new Uint8Array(HLL_M);
-      for (const k of p.vals.keys()) hllAdd(p.hll, k);
-      p.vals = null;
+      if (!v) return true;
+      v[0]++;
+      return false;
     }
     hllAdd(p.hll!, h);
+    return false;
+  }
+
+  /** A new value's text (an example; kept exactly while few, else the count is estimated from now on). */
+  private keep(p: P, h: number, t: string, at: number) {
+    if (p.ex.length < EXAMPLES) p.ex.push([t, at]);
+    if (p.vals!.size < EXACT) {
+      p.vals!.set(h, [1, at, t]);
+      return;
+    }
+    p.hll = new Uint8Array(HLL_M);
+    for (const k of p.vals!.keys()) hllAdd(p.hll, k);
+    p.vals = null;
+    hllAdd(p.hll, h);
   }
 
   open(kind: number, at: number) {
@@ -486,15 +533,28 @@ export class Shape implements Visitor {
     if (units < p.sMin) p.sMin = units;
     if (units > p.sMax) p.sMax = units;
     p.sSum += units;
-    const f = formatOf(b, a, e);
-    if (f >= 0) p.fmt[f]++;
-    this.distinct(p, hashBytes(b, a, e, STR), () => shownString(b, a, e, flags), at);
+    // (Formats: looked for in every string of a path that had one among its first 1,000.)
+    if (p.kinds[K_STR] <= 1000 || p.fmtSeen) {
+      const f = formatOf(b, a, e);
+      if (f >= 0) {
+        p.fmt[f]++;
+        p.fmtSeen = true;
+      }
+    }
+    const h = hashBytes(b, a, e, STR);
+    if (this.seen(p, h)) this.keep(p, h, shownString(b, a, e, flags), at);
   }
 
   num(b: Uint8Array, a: number, e: number, at: number) {
     const p = this.count(this.here(), K_NUM, at);
     if (!p) return;
-    const { v, int } = numberOf(b, a, e);
+    let v = numberOf(b, a, e);
+    const int = wasInt;
+    // (A close value that could be a new smallest or largest: read exactly.)
+    if (!wasExact) {
+      const tol = Math.abs(v) * 1e-12;
+      if (v - tol <= p.nMin || v + tol >= p.nMax) v = Number(latin(b, a, e));
+    }
     if (v < p.nMin || (v === p.nMin && !p.nMinText)) {
       p.nMin = v;
       p.nMinText = latin(b, a, Math.min(e, a + SHOW));
@@ -505,14 +565,15 @@ export class Shape implements Visitor {
     }
     p.nSum += v;
     if (int) p.ints++;
-    this.distinct(p, hashBytes(b, a, e, NUM), () => latin(b, a, Math.min(e, a + SHOW)), at);
+    const h = hashBytes(b, a, e, NUM);
+    if (this.seen(p, h)) this.keep(p, h, latin(b, a, Math.min(e, a + SHOW)), at);
   }
 
   lit(kind: number, v: boolean, at: number) {
     const k = kind === NUL ? K_NULL : v ? K_TRUE : K_FALSE;
     const p = this.count(this.here(), k, at);
     if (!p) return;
-    this.distinct(p, LIT_HASH[k], () => (kind === NUL ? 'null' : v ? 'true' : 'false'), at);
+    if (this.seen(p, LIT_HASH[k])) this.keep(p, LIT_HASH[k], kind === NUL ? 'null' : v ? 'true' : 'false', at);
   }
 
   report(bytes: number, size: number, done: boolean): ShapeReport {

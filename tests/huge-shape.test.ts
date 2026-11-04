@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, BOOL, NUL, NUM, OBJ, STR, kids, parse, type JNode } from '../lib/json/parser';
 import { stringify } from '../lib/json/format';
-import { Shape, hllCount, pathText, MAX_KEYS, K_NULL, K_FALSE, K_TRUE, K_NUM, K_STR, K_ARR, K_OBJ, type ShapeReport } from '../lib/huge/stream/shape';
+import { Shape, hllCount, numberOf, pathText, MAX_KEYS, K_NULL, K_FALSE, K_TRUE, K_NUM, K_STR, K_ARR, K_OBJ, type ShapeReport } from '../lib/huge/stream/shape';
 import { rng } from './oracle/compare';
 import { enc } from './huge-oracle';
 import { docOf, normal, walkAll } from './huge-stream-oracle';
@@ -202,4 +202,22 @@ test('shape: memory stays bounded on a document with ever new paths', () => {
   const got = shapeOf(enc.encode(parts.join('')), false, 1 << 16);
   assert.ok(got.paths.length <= 5000);
   assert.ok(got.dropped > 0 || got.paths.some((p) => p.manyKeys));
+});
+
+test('shape: numbers are read as Number() reads them (exactly where it can, else within 1e-12)', () => {
+  const r = rng(SEED + 12);
+  const texts = ['0', '-0', '1', '-1', '0.1', '0.30000000000000004', '123.45600000000002', '1e22', '1e23', '5e-324', '1.7976931348623157e308', '9007199254740993', '123456789012345678901234567890', '0.000001', '1E-7', '-2.5e+10', '100', '1.0', '00', '0.000000000000000000001234'];
+  for (let k = 0; k < 20000; k++) {
+    const ip = r.chance(0.2) ? '0' : String(1 + r.int(9)) + Array.from({ length: r.int(20) }, () => r.int(10)).join('');
+    const fp = r.chance(0.6) ? '.' + Array.from({ length: 1 + r.int(18) }, () => r.int(10)).join('') : '';
+    const ep = r.chance(0.3) ? r.pick(['e', 'E']) + r.pick(['', '+', '-']) + r.int(40) : '';
+    texts.push((r.chance(0.3) ? '-' : '') + ip + fp + ep);
+  }
+  for (const s of texts) {
+    const b = enc.encode(s);
+    const got = numberOf(b, 0, b.length);
+    const want = Number(s);
+    if (got === want) continue;
+    assert.ok(Math.abs(got - want) <= Math.abs(want) * 1e-12, `${s}: ${got} vs ${want}`);
+  }
 });

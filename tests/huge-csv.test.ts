@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { records, toCsv, type CsvOptions } from '../lib/convert/xlsx';
 import { parse, type JNode } from '../lib/json/parser';
 import { Bytes, MemorySink } from '../lib/huge/stream/out';
-import { CsvRows, CsvScan, Trees } from '../lib/huge/stream/csv';
+import { CsvColumns, CsvRows, CsvScan, Trees } from '../lib/huge/stream/csv';
 import { Walker } from '../lib/huge/stream/walk';
 import { genStrict } from './oracle/tape';
 import { rng, type Rng } from './oracle/compare';
@@ -72,10 +72,15 @@ function streamed(r: Rng, bytes: Uint8Array, a: number, e: number, multi: boolea
     }
     w.finish(e);
   };
+  // The first pass both ways (from records, and from tokens): the same plan.
   const scan = new CsvScan(o.flatten);
   const t1: Trees = new Trees((n) => scan.record(n, t1.rootKind));
   walk(t1);
   const plan = scan.plan(t1.rootKind);
+  const fast = new CsvScan(o.flatten);
+  walk(new CsvColumns(fast) as unknown as Trees);
+  const plan2 = fast.plan(fast.rootKind);
+  assert.deepEqual({ ...plan2, cols: [...plan2.cols], names: plan2.names && [...plan2.names] }, { ...plan, cols: [...plan.cols], names: plan.names && [...plan.names] }, 'CsvColumns plans as CsvScan.record does');
   const out = new Bytes();
   const rows = new CsvRows(plan, out, o);
   walk(new Trees((n) => rows.record(n)));

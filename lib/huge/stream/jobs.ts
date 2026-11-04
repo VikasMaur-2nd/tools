@@ -6,7 +6,7 @@
  */
 import { stringify } from '../../json/format';
 import type { JNode } from '../../json/parser';
-import { CsvError, CsvRows, CsvScan, Trees, type CsvOptions } from './csv';
+import { CsvColumns, CsvError, CsvRows, CsvScan, Trees, type CsvOptions } from './csv';
 import { matches, type Filter } from './filter';
 import { Bytes, type Sink } from './out';
 import { pass, type Source } from './pass';
@@ -221,11 +221,20 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
       await single(async (out, flush) => {
         const scan = new CsvScan(job.csv.flatten);
         const picked = !!job.filter?.conds.length || job.limit !== undefined;
-        const p1 = new Picked(job.filter, job.limit, (n) => scan.record(n, picked ? ARR : t1.rootKind));
-        const t1 = new Trees(p1.each);
-        await walk(t1, 0, 2, undefined, () => p1.done);
-        if (picked && t1.rootKind !== ARR) throw new JobError('Pick records from an array or JSON Lines');
-        const plan = scan.plan(picked ? ARR : t1.rootKind);
+        let plan;
+        if (picked) {
+          // (Records a filter picks are read whole: the filter looks at them.)
+          const p1 = new Picked(job.filter, job.limit, (n) => scan.record(n, ARR));
+          const t1 = new Trees(p1.each);
+          await walk(t1, 0, 2, undefined, () => p1.done);
+          if (t1.rootKind !== ARR) throw new JobError('Pick records from an array or JSON Lines');
+          plan = scan.plan(ARR);
+        } else {
+          // (Every record: its columns from the tokens, no records made.)
+          const cols = new CsvColumns(scan);
+          await walk(cols, 0, 2);
+          plan = scan.plan(scan.rootKind);
+        }
         const rows = new CsvRows(plan, out, job.csv);
         const p2 = new Picked(job.filter, job.limit, (n) => rows.record(n));
         await walk(new Trees(p2.each), 1, 2, flush, () => p2.done);

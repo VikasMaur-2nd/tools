@@ -16,6 +16,7 @@ import type { Bytes } from './out';
 import { decodeString } from './reformat';
 import { LONG, type Visitor } from './walk';
 
+
 export type Flatten = 'dot' | 'json';
 
 export interface CsvOptions {
@@ -139,32 +140,37 @@ export interface CsvPlan {
 /** The first pass: give it each record (`record`), then ask for the plan. */
 export class CsvScan {
   readonly dot: boolean;
-  private rootKind = -1;
-  private items = 0;
+  // (Not private: CsvColumns, the first pass from tokens, keeps the same books.)
+  rootKind = -1;
+  items = 0;
   // Arrays.
-  private allArr = true;
-  private someObj = false;
-  private width = 0;
-  private first: JNode | null = null;
-  private vc = -1;
+  allArr = true;
+  someObj = false;
+  width = 0;
+  /** The first record's items (matrix): how many, and their strings (null: one isn't a string). */
+  firstLen = 0;
+  firstStrs: string[] | null = null;
+  vc = -1;
   // Columns: escaped ids (in order), and the plain ones.
-  private ids: string[] = [];
-  private plain: string[] = [];
-  private cols = new Map<string, number>();
-  private dotted = false;
-  private overflow = false;
+  ids: string[] = [];
+  plain: string[] = [];
+  cols = new Map<string, number>();
+  dotted = false;
+  overflow = false;
   // Objects.
-  private allObj = true;
-  private deep = false;
-  private pairsDotted = false;
-  private pairs: Map<string, string> | null = new Map();
-  private dupPair = false;
+  allObj = true;
+  deep = false;
+  pairsDotted = false;
+  /** Key / value rows' plain keys (to see two read alike), and every escaped one (their names, then). */
+  pairs: Set<string> | null = new Set();
+  escs: Set<string> | null = new Set();
+  dupPair = false;
 
   constructor(flatten: Flatten = 'dot') {
     this.dot = flatten === 'dot';
   }
 
-  private col(plain: string, esc: string) {
+  col(plain: string, esc: string) {
     if (this.cols.has(esc)) return;
     // (Too many: refused if the table needs them, see plan.)
     if (this.ids.length >= MAX_COLUMNS) {
@@ -176,8 +182,28 @@ export class CsvScan {
     this.plain.push(plain);
   }
 
-  private seg(k: string) {
+  seg(k: string) {
     return this.dot && (k.indexOf('.') >= 0 || k.indexOf('\\') >= 0) ? k.replace(ESCAPE, '\\$&') : k;
+  }
+
+  /** A key / value row's key (a leaf of grid's `walk`). */
+  pair(plain: string, esc: string) {
+    const p = this.pairs;
+    if (!p || !this.escs) return;
+    if (p.has(plain)) this.dupPair = true;
+    else if (p.size >= MAX_PAIRS) {
+      this.pairs = this.escs = null;
+      return;
+    } else p.add(plain);
+    this.escs.add(esc);
+  }
+
+  /** The "value" column, made where the first record that needs it is. */
+  valueColumn() {
+    if (this.vc >= 0) return;
+    this.vc = this.ids.length;
+    this.ids.push('value');
+    this.plain.push('value');
   }
 
   /** xlsx.ts grid's `put`, finding columns. */
@@ -210,12 +236,7 @@ export class CsvScan {
       }
       return;
     }
-    const p = this.pairs;
-    if (!p) return;
-    const was = p.get(plain);
-    if (was !== undefined) this.dupPair = true;
-    else if (p.size >= MAX_PAIRS) this.pairs = null;
-    else p.set(plain, esc);
+    this.pair(plain, esc);
   }
 
   /** The next record (`rootKind`: its container's kind). */
@@ -224,17 +245,17 @@ export class CsvScan {
     this.items++;
     if (rootKind === ARR) {
       if (n.t === ARR) {
-        if (this.items === 1) this.first = n;
-        this.width = Math.max(this.width, kids(n).length);
+        const list = kids(n);
+        if (this.items === 1) {
+          this.firstLen = list.length;
+          this.firstStrs = list.every((c) => c.t === STR) ? list.map((c) => c.v as string) : null;
+        }
+        this.width = Math.max(this.width, list.length);
       } else this.allArr = false;
       if (n.t === OBJ) {
         this.someObj = true;
         this.props(n);
-      } else if (n.t !== NUL && this.vc < 0) {
-        this.vc = this.ids.length;
-        this.ids.push('value');
-        this.plain.push('value');
-      }
+      } else if (n.t !== NUL) this.valueColumn();
     } else if (rootKind === OBJ) {
       if (n.t !== OBJ) this.allObj = false;
       else if (this.allObj) this.props(n);
@@ -261,9 +282,9 @@ export class CsvScan {
         plan.mode = 'matrix';
         const w = this.width;
         if (w > MAX_COLUMNS) throw new CsvError('Too many columns for a CSV file');
-        const first = kids(this.first!);
-        plan.head = this.items > 1 && first.length === w && first.every((c) => c.t === STR);
-        for (let j = 0; j < w; j++) plan.header.push(plan.head ? (first[j].v as string) : String(j + 1));
+        const first = this.firstStrs;
+        plan.head = this.items > 1 && this.firstLen === w && first !== null;
+        for (let j = 0; j < w; j++) plan.header.push(plan.head ? first![j] : String(j + 1));
         return plan;
       }
       if (!this.someObj) {
@@ -281,9 +302,9 @@ export class CsvScan {
       plan.header = ['key', 'value'];
       // (Dotted keys below the top level and two rows that read alike: toCsv's second try, named from all of them.)
       if (this.dot && this.pairsDotted && this.deep && this.dupPair) {
-        if (!this.pairs) throw new CsvError('Too many values with dotted names for a CSV file');
+        if (!this.escs) throw new CsvError('Too many values with dotted names for a CSV file');
         plan.esc = true;
-        const escs = [...new Set(this.pairs.values())];
+        const escs = [...this.escs];
         const names = readableIds(escs);
         plan.names = new Map(escs.map((e, j) => [e, names[j]]));
       }
@@ -309,6 +330,222 @@ export class CsvScan {
     }
     plan.header = h;
     return plan;
+  }
+}
+
+/**
+ * The first pass from the walker's tokens, no records made: what CsvScan.record finds from each record's
+ * nodes (the same books, in the same order: a value's columns as grid's `put` visits it, an empty object at
+ * its close, before its next sibling), at the walker's speed.
+ */
+export class CsvColumns implements Visitor {
+  private d = 0;
+  private name: string | null = null;
+  // Per open container (by depth, the container itself 0): its paths for columns and for key / value rows,
+  // and whether an object there had a member yet.
+  private cp: string[] = [];
+  private ce: string[] = [];
+  private pp: string[] = [];
+  private pe: string[] = [];
+  private empty: boolean[] = [];
+  private flat: boolean[] = [];
+  /** Inside a value that is one cell (an array, or an object in JSON mode): how deep in it. */
+  private skip = 0;
+  /** The record (depth 1) is an array: its items counted (matrix); the first one's strings kept. */
+  private recArr = false;
+  private recLen = 0;
+  /** Columns are found in this record (an object item, or while every member of an object is one). */
+  private cols = false;
+
+  constructor(readonly s: CsvScan) {}
+
+  get rootKind() {
+    return this.s.rootKind;
+  }
+
+  /** A value starts at depth d (d ≥ 1): its kind, and where it is. */
+  private value(kind: number) {
+    const s = this.s;
+    const d = this.d;
+    if (d === 1) {
+      s.items++;
+      const key = this.name ?? '';
+      this.name = null;
+      this.recArr = false;
+      this.cols = false;
+      if (s.rootKind === ARR) {
+        if (kind === ARR) {
+          this.recArr = true;
+          this.recLen = 0;
+          if (s.items === 1) s.firstStrs = [];
+        } else s.allArr = false;
+        if (kind === OBJ) {
+          s.someObj = true;
+          this.cols = true;
+        } else if (kind !== NUL) s.valueColumn();
+        this.cp[1] = this.ce[1] = '';
+        return;
+      }
+      // An object container: its members are the records.
+      if (kind !== OBJ) s.allObj = false;
+      else this.cols = s.allObj;
+      if (s.dot && key.indexOf('.') >= 0) s.pairsDotted = true;
+      this.cp[1] = this.ce[1] = '';
+      this.pp[1] = key;
+      this.pe[1] = s.seg(key);
+      // (Not an object, or JSON mode: one key / value row.)
+      if (kind !== OBJ || !s.dot) s.pair(key, this.pe[1]);
+      return;
+    }
+    // In a record that is an array: its items (matrix cells).
+    if (this.recArr) {
+      if (d === 2) this.recLen++;
+      return;
+    }
+    const k = this.name!;
+    this.name = null;
+    const parent = d - 1;
+    this.empty[parent] = false;
+    const dot = s.dot;
+    // Column paths (records, keyed): from the record's members down.
+    let cp = '';
+    let ce = '';
+    if (this.cols) {
+      if (dot && k.indexOf('.') >= 0) s.dotted = true;
+      cp = parent === 1 ? k : this.cp[parent] + '.' + k;
+      ce = parent === 1 ? s.seg(k) : this.ce[parent] + '.' + s.seg(k);
+    }
+    // Key / value paths: from the member's key down (an object container, dot mode: JSON mode's rows are its members).
+    let pp = '';
+    let pe = '';
+    const pairs = s.rootKind === OBJ && dot;
+    if (pairs) {
+      if (k.indexOf('.') >= 0) s.pairsDotted = true;
+      pp = this.pp[parent] + '.' + k;
+      pe = this.pe[parent] + '.' + s.seg(k);
+    }
+    if (kind === OBJ && dot) {
+      // Flattened: its members are the cells (an empty one is a cell itself, at its close).
+      this.cp[d] = cp;
+      this.ce[d] = ce;
+      this.pp[d] = pp;
+      this.pe[d] = pe;
+      return;
+    }
+    if (this.cols) s.col(cp, ce);
+    if (pairs) s.pair(pp, pe);
+  }
+
+  open(kind: number) {
+    if (this.skip) {
+      this.skip++;
+      return;
+    }
+    if (this.s.rootKind < 0) {
+      this.s.rootKind = kind;
+      this.d = 1;
+      return;
+    }
+    this.value(kind);
+    const d = this.d++;
+    this.empty[d] = true;
+    this.flat[d] = false;
+    if (d === 1) {
+      // A record: its members are read (objects), or its items counted (arrays of an array: a matrix's rows);
+      // else (an array member of an object) it is one row, its contents don't matter here.
+      if (kind === OBJ) this.flat[d] = true;
+      else if (!this.recArr) {
+        this.skip = 1;
+        this.d--;
+      }
+      return;
+    }
+    if (this.recArr) {
+      // (A matrix cell that is a container: one cell; the first row then isn't all strings.)
+      if (d === 2 && this.s.items === 1) this.s.firstStrs = null;
+      this.skip = 1;
+      this.d--;
+      return;
+    }
+    if (kind === OBJ && this.s.dot) {
+      this.flat[d] = true;
+      return;
+    }
+    // A cell: its contents don't matter here.
+    this.skip = 1;
+    this.d--;
+  }
+
+  close(kind: number) {
+    if (this.skip) {
+      this.skip--;
+      return;
+    }
+    const d = --this.d;
+    if (d === 0) return;
+    const s = this.s;
+    if (d === 1) {
+      if (this.recArr) {
+        if (this.recLen > s.width) s.width = this.recLen;
+        if (s.items === 1) s.firstLen = this.recLen;
+        this.recArr = false;
+        return;
+      }
+      // An object member of an object container with no members: its own key / value row.
+      if (s.rootKind === OBJ && kind === OBJ && s.dot && this.empty[1]) s.pair(this.pp[1], this.pe[1]);
+      else if (s.rootKind === OBJ && kind === OBJ && s.dot) s.deep = true;
+      return;
+    }
+    if (kind === OBJ && this.flat[d]) {
+      if (this.empty[d]) {
+        if (this.cols) s.col(this.cp[d], this.ce[d]);
+        if (s.rootKind === OBJ) s.pair(this.pp[d], this.pe[d]);
+      } else if (s.rootKind === OBJ) s.deep = true;
+    }
+  }
+
+  key(b: Uint8Array, a: number, e: number, flags: number) {
+    if (this.skip) return;
+    this.name = flags ? decodeString(b, a, e, flags) : latin(b, a, e);
+  }
+
+  private scalar(str: (() => string) | null) {
+    if (this.skip) return;
+    if (this.s.rootKind < 0) {
+      this.s.rootKind = NUM;
+      this.s.items = 1;
+      return;
+    }
+    if (this.recArr && this.d === 2) {
+      this.recLen++;
+      const f = this.s.firstStrs;
+      if (this.s.items === 1 && f) {
+        if (str) f.push(str());
+        else this.s.firstStrs = null;
+      }
+      return;
+    }
+    this.value(NUM);
+  }
+
+  str(b: Uint8Array, a: number, e: number, flags: number) {
+    if (flags & LONG && this.recArr && this.s.items === 1 && this.d === 2) throw new CsvError('A value is too large to convert');
+    this.scalar(() => decodeString(b, a, e, flags));
+  }
+
+  num() {
+    this.scalar(null);
+  }
+
+  lit(kind: number) {
+    if (this.skip) return;
+    if (this.s.rootKind < 0) {
+      this.s.rootKind = kind;
+      this.s.items = 1;
+      return;
+    }
+    if (this.recArr && this.d === 2) return this.scalar(null);
+    this.value(kind);
   }
 }
 
