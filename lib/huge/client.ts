@@ -132,6 +132,11 @@ export class HugeClient {
     };
   }
 
+  /** Stops indexing where it is: `ready` resolves with the summary (`stopped`); queries keep working on what was read. */
+  stop(): Promise<null> {
+    return this.ask('stop', {});
+  }
+
   /** Stops the worker: the document is let go. */
   close() {
     this.closed = true;

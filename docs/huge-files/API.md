@@ -15,6 +15,9 @@ file is opened; nothing is on any page's first load.
   normal path's own parsers: `tape.wasm`, or `tape-parser.ts`), so its answer is what the normal path would
   give for that part of the document.
 - Queries work while indexing (on what's read so far: `summary().done` is false, counts are partial) and after.
+  **Nothing past the front** (where indexing has got to, or the error) is ever read by a query: a container still
+  being read is `partial` (its `count` is so far); in a page, the child being read is a partial stub, the page's
+  last. Indexing can be stopped (`stop()`): the front stays where it is.
 - **Positions are byte offsets** (`Bytes`, JS numbers, beyond 2^31) in the document after a UTF-8 byte order
   mark (`summary.bom` is 3 when the file has one). Lines and columns are as the normal path's status bar
   shows them: 1-based, columns in UTF-16 units, `\r\n` / `\r` / `\n` each end a line.
@@ -23,9 +26,11 @@ file is opened; nothing is on any page's first load.
   `summary.jsonl` tells real JSON Lines (one record per line) from other multi-value documents (rules.ts
   `jsonLines`). While indexing, a document read so far as one value turns `multi` when a second appears: views
   then ask again (the root becomes the `LIST`, pretty lines shift by the `[` line).
-- Reads: the indexing pass reads the File in 16 MiB chunks, two in flight (`slice().arrayBuffer()`: ~960 MB/s in
-  Chromium per the phase-0 research, against ~250 MB/s for one 1 MiB read at a time); queries read 1 MiB slices
-  (`FileReaderSync`, ~4 ms each) through a 16 MiB cache.
+- Reads, per engine (RESEARCH-REPORT.md §4f, 5 GiB reads): Chromium and WebKit read with `slice().arrayBuffer()`,
+  16 MiB chunks two in flight for indexing and 1 MiB blocks for queries (a 24-block cache; FileReaderSync's
+  garbage keeps growing in Chromium); Firefox reads with FileReaderSync (flat there). Every async read is watched
+  for a stall (20 s, 3 tries, then the error "Read failed"). A query needing blocks not read yet waits for them
+  in the worker and runs again: callers see only latency.
 
 ## Opening
 
@@ -33,7 +38,8 @@ file is opened; nothing is on any page's first load.
 const { openHuge } = await import('@/lib/huge/client');
 const doc = openHuge(file, { name: file.name }, (p) => progress(p.bytes / p.size));
 const first = await doc.summary();   // counts so far: show the first rows at once
-const s = await doc.ready;           // the whole file read: s.error is the first problem, if any
+const s = await doc.ready;           // the whole file read (or stopped): s.error is the first problem, if any
+await doc.stop();                    // indexing ends where it is (ready resolves, s.stopped); queries go on
 doc.close();                         // lets the worker (and the document) go
 ```
 
@@ -42,9 +48,17 @@ spacing, default 1 MiB), `big` (directory threshold, default 256 KiB), `dups` (d
 
 `HugeProgress` (streamed while indexing): `bytes`, `size`, `nodes`, `records`, `lines`, `ms`.
 
-`HugeSummary`: `size`, `bom`, `done`, `root` (the only value, or the `LIST`; null if none), `records`, `multi`,
-`jsonl`, `nodes`, `depth`, `lines` (raw), `prettyLines`, `error`, `warnings` (first 500 duplicate names),
-`moreWarnings`, `unchecked` (names the bounded duplicate check skipped), `ms`, `indexBytes`.
+`HugeSummary`: `size`, `bom`, `done`, `stopped`, `root` (the only value, or the `LIST`; null if none: nothing read
+yet), `records`, `multi`, `jsonl`, `nodes`, `depth`, `lines` (raw), `prettyLines`, `error`, `status`, `warnings`
+(first 500 duplicate names), `moreWarnings`, `unchecked` (names the bounded duplicate check skipped), `ms`,
+`indexBytes`. The root is there from the first summary (a container from its first byte, `partial` while read),
+also when the document breaks inside it.
+
+`status: HugeStatus | null` (null until all is read): **what the normal path's status bar says**
+(Engine.statusOf / linesStatus): `{ kind: 'valid'|'fixable'|'error', msg, line, col, pos, warnings, more, jsonl }`.
+Several top-level values in a file not named `.jsonl` that aren't JSON Lines (one record a line, whitespace
+between) say "Multiple top-level values (wrapped in an array)" at the second value, fixable (or 'error' when an
+error follows), as the normal path; still browsed as a LIST. `.jsonl` files: valid JSON Lines, or their error.
 
 `error: HugeError | null`: `{ msg, line, col, pos, kind }`. **The message, line and column are the normal
 path's** for the same document (its status bar's first problem: tape-parser.ts with `repair`, re-run from the
@@ -55,8 +69,10 @@ The document is valid up to the error: views show that part.
 ## Nodes and pages (tree, table, graph)
 
 `HugeNode` is a value without its subtree: `kind` (NUL…OBJ as tape.ts, or `LIST`), `start`/`end` bytes,
-`depth`, `key` (name or index; null for a root), `count` (children; null while not known), `pretty` /
-`prettyLines` (its lines in the pretty form), `big` (paged on its own).
+`depth`, `key` (name or index; null for a root), `count` (children), `partial` (still being read: `count` so far,
+`end` -1), `pretty` / `prettyLines` (its lines in the pretty form), `big` (paged on its own), `preview` (a big
+child in a page: its row's text: a container's first children as format.ts `preview` writes them, a string's
+decoded start, at most 1,024 characters then `…`).
 
 ```ts
 const page = await doc.children(node, from, 1000);   // HugePage
@@ -98,7 +114,8 @@ pretty form (as on the normal path).
 ## Going to things
 
 - `locate(pos)`: the value at byte `pos` (the deepest whose text holds it, as the editor's caret selects) with
-  its `path`, its `parent` and `index` there (to page the tree to it), and `line` / `col`.
+  its `path`, its `parent` and `index` there, its **`chain`** (every container above it, root first, each with
+  its own index and count: open them all in one go), and `line` / `col`. null only for bytes not read yet.
 - `resolve(path)`: `$.records[5000000].name`, `/records/5000000/name` or segments (path.ts syntax). An index
   into a big array is a checkpoint seek (≤ ~1 MiB parsed). A **name** in a big object is found by scanning that
   object until the first member with that name (as path.ts `resolve`): pages of it, parsed.
