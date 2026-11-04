@@ -52,25 +52,27 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
     localStorage.removeItem('tk:hugeMin');
     localStorage.removeItem('tk:hugeSim');
   });
+  // Huge mode starts in the view the tool shows: the tree here, so its first rows are timed from the open.
+  await page.evaluate(() => window.__vis('[role=tab][aria-controls=view-tree]')?.click());
   const idle = browserMemory();
   const t0 = Date.now();
   await page.locator('.app:visible input[type=file]').setInputFiles(path);
   t.assert(await until(page, () => !!window.__vis('.hg'), null, { timeout: 30_000 }), 'huge mode opens with no override');
   const shown = Date.now() - t0;
-  // The Format view's first lines (as written: one record a line).
-  t.check(await until(page, () => { const v = window.__vis('#hg-format'); return v && v.querySelectorAll('.cv-l[data-l]').length > 20; }, null, { timeout: 30_000 }), 'first lines');
-  const firstLines = Date.now() - t0;
-  // The tree's first rows, while indexing goes on: the root's, then the big array's.
-  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
-  t.check(await until(page, () => /root/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null, { timeout: 30_000 }), 'tree root');
-  const firstRows = Date.now() - t0;
+  // The tree's first rows, while indexing goes on: the root's items, then the big array's.
   t.check(await until(page, () => [...(window.__vis('#hg-tree')?.querySelectorAll('.tv-r') ?? [])].some((r) => /records/.test(r.textContent)), null, { timeout: 30_000 }), 'the root\'s items while indexing');
-  const rootItems = Date.now() - t0;
+  const firstRows = Date.now() - t0;
   const indexingWhenOpened = await page.evaluate(() => /Indexing/.test(window.__vis('.hg-sb')?.textContent ?? ''));
   const r0 = Date.now();
   await page.locator('#hg-tree .tv-r', { hasText: 'records' }).first().click();
   t.check(await until(page, () => [...(window.__vis('#hg-tree')?.querySelectorAll('.tv-r[aria-level="3"]') ?? [])].filter((r) => !r.classList.contains('hg-ph')).length > 10, null, { timeout: 30_000 }), 'the big array\'s first rows while indexing');
   const bigArrayRows = Date.now() - r0;
+  // The Format view's first lines (as written: one record a line), still while indexing.
+  const l0 = Date.now();
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-format]')?.click());
+  t.check(await until(page, () => { const v = window.__vis('#hg-format'); return v && v.querySelectorAll('.cv-l[data-l]').length > 20; }, null, { timeout: 30_000 }), 'first lines');
+  const firstLines = Date.now() - l0;
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   const marks = await page.evaluate(() => {
     const at = (n) => performance.getEntriesByName('tk:huge:' + n)[0]?.startTime;
     const o = at('open');
@@ -146,7 +148,7 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
   t.check(!!farOk, `Go to line ${far}`);
   const mb = (b) => Math.round(b / 1048576);
   const report = {
-    sizeMB: mb(size), shownMs: shown, firstLinesMs: firstLines, firstTreeRowsMs: firstRows, rootItemsMs: rootItems, bigArrayRowsWhileIndexingMs: bigArrayRows, stillIndexing: indexingWhenOpened, indexedMs: indexed, farLineMs, marks,
+    sizeMB: mb(size), shownMs: shown, firstTreeRowsMs: firstRows, bigArrayRowsWhileIndexingMs: bigArrayRows, firstLinesAfterSwitchMs: firstLines, stillIndexing: indexingWhenOpened, indexedMs: indexed, farLineMs, marks,
     indexMBps: Math.round(size / 1048576 / (indexed / 1000)), seekMs, findNearEndMs: findMs,
     pssIdleMB: mb(idle.pss), pssPeakIndexingMB: mb(peak), pssAfterMB: mb(afterIndex.pss), pssAfterFindMB: mb(afterFind.pss), pssAfterScrollMB: mb(afterScroll.pss), pssNowMB: mb(browserMemory().pss),
     frames: frames.length, frameP95ms: Math.round(p95 * 10) / 10, framesOver20msPct: Math.round(slow * 1000) / 10, placeholdersAfterScroll: placeholders,
