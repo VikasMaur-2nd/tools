@@ -7,7 +7,7 @@ import { JobError, runJob, type Outputs } from './jobs';
 import type { Sink } from './out';
 import { blobSource, Stopped } from './pass';
 import { KNOWN_ERRORS, type Out, type StreamReply, type StreamRequest } from './protocol';
-import { gzipSink, opfsFile, SpaceError, tempDir, writableSink, ZipWriter, type OpfsFile } from './sinks';
+import { gzipSink, NoStorageError, opfsFile, SpaceError, tempDir, writableSink, ZipWriter, type OpfsFile } from './sinks';
 
 const removeTemp = async (name: string) => {
   try {
@@ -81,6 +81,7 @@ async function outputsFor(out: Out): Promise<{ outs: Outputs; done: () => Promis
 const messageOf = (e: unknown): string => {
   if (e instanceof Stopped) return 'Stopped';
   if (e instanceof SpaceError) return 'Not enough storage space';
+  if (e instanceof NoStorageError) return 'No storage';
   if (e instanceof Error && KNOWN_ERRORS.has(e.message)) return e.message;
   if (e instanceof DOMException && e.name === 'QuotaExceededError') return 'Not enough storage space';
   if (e instanceof DOMException && (e.name === 'NotReadableError' || e.name === 'NotFoundError')) return 'Read failed';

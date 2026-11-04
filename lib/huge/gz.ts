@@ -126,6 +126,10 @@ export async function openGz(host: HugeHost, file: File, source: InputSource, si
       return;
     }
     report('error');
+    if (msg === 'No storage') {
+      host.toast(`Couldn't decompress ${file.name}: your browser won't let this page store it (a private window?)`, 'err', undefined, 10_000);
+      return;
+    }
     if (msg !== 'Not a gzip file') reportError(e, 'huge');
     host.toast(`Couldn't decompress ${file.name}: it isn't valid gzip`, 'err');
   }

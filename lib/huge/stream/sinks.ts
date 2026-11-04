@@ -42,9 +42,21 @@ interface SyncHandle {
   close(): void;
 }
 
+/** The browser won't store files for this page (a private window, storage turned off). */
+export class NoStorageError extends Error {
+  constructor() {
+    super('No storage');
+  }
+}
+
 export async function tempDir(): Promise<FileSystemDirectoryHandle> {
-  const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(TEMP_DIR, { create: true });
+  try {
+    const root = await navigator.storage.getDirectory();
+    return await root.getDirectoryHandle(TEMP_DIR, { create: true });
+  } catch (e) {
+    if (quota(e)) throw new SpaceError();
+    throw new NoStorageError();
+  }
 }
 
 /** A file in OPFS written through a sync access handle (workers only); `at` writes at a byte (the zip patches its headers). */
@@ -58,8 +70,14 @@ export interface OpfsFile extends Sink {
 
 export async function opfsFile(name: string): Promise<OpfsFile> {
   const dir = await tempDir();
-  const fh = await dir.getFileHandle(name, { create: true });
-  const h = (await (fh as unknown as { createSyncAccessHandle(): Promise<SyncHandle> }).createSyncAccessHandle()) as SyncHandle;
+  let fh: FileSystemFileHandle;
+  let h: SyncHandle;
+  try {
+    fh = await dir.getFileHandle(name, { create: true });
+    h = (await (fh as unknown as { createSyncAccessHandle(): Promise<SyncHandle> }).createSyncAccessHandle()) as SyncHandle;
+  } catch (e) {
+    throw quota(e) ? new SpaceError() : new NoStorageError();
+  }
   h.truncate(0);
   let open = true;
   const put = (b: Uint8Array, at: number) => {

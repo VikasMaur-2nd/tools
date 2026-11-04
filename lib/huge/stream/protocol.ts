@@ -42,6 +42,7 @@ export const KNOWN_ERRORS = new Set([
   'Invalid JSON',
   'Stopped',
   'Not enough storage space',
+  'No storage',
   'Nesting is too deep to format',
   'A record is too large to convert',
   'A value is too large to convert',

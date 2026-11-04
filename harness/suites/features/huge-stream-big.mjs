@@ -3,9 +3,12 @@
 // browser's memory (PSS over all its processes) before and at its peak. Outputs go through Chromium's real
 // sink (createWritable on a file handle), here an OPFS file standing in for the save dialog's, deleted after
 // each command. Also a .jsonl.gz of the same records decompressed to the browser's storage and indexed.
+// (In a persistent profile: a fresh context is off the record, and Chromium keeps its OPFS in memory there,
+// which a user's browser doesn't.)
 // Tagged slow (the night window on the shared host); HUGE_GB sets the size (default 1); the files are made once
 // and deleted with HUGE_KEEP unset. Results: the log, and HUGE_STREAM_JSON (a file) if set.
-import { createReadStream, createWriteStream, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chromium } from 'playwright-core';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
@@ -78,8 +81,23 @@ const PICKERS = () => {
 test('huge stream, a real big file: each command’s throughput and memory', async (t) => {
   await make();
   const size = statSync(path).size;
-  const { page } = t;
+  const profile = mkdtempSync(join(DIRS.tmp, 'huge-profile-'));
+  const ctx = await chromium.launchPersistentContext(profile, { headless: true, args: ['--disable-dev-shm-usage', '--disable-background-networking'], viewport: { width: 1280, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  t.page = page;
+  await page.addInitScript(() => {
+    window.__vis = (sel) => [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length > 0) || null;
+  });
   await page.addInitScript(PICKERS);
+  try {
+    await run(t, page, size);
+  } finally {
+    await ctx.close().catch(() => {});
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+async function run(t, page, size) {
   await t.open('/');
   await page.evaluate(() => {
     localStorage.removeItem('tk:hugeMin');
@@ -191,4 +209,4 @@ test('huge stream, a real big file: each command’s throughput and memory', asy
     rmSync(gzPath, { force: true });
     rmSync(path, { force: true });
   }
-});
+}

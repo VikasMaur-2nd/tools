@@ -176,6 +176,7 @@ const MIME: Record<string, string> = { json: 'application/json', jsonl: 'applica
 export const COMMAND_MESSAGES: Record<string, string> = {
   'Invalid JSON': 'The file has an error: fix it first (see the status bar)',
   'Not enough storage space': 'Not enough free disk space for the result',
+  'No storage': 'Your browser won’t let this page store the result (a private window?)',
   'Nesting is too deep to format': 'Nesting is too deep to format',
   'A record is too large to convert': 'A record is too large to convert (over 32 MB)',
   'A value is too large to convert': 'A value is too large for a CSV cell',
