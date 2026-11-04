@@ -172,93 +172,111 @@ export class Walker {
     let kinds = this.kinds;
     const lb = this.list ? 1 : 0;
     const top = this.list ? S_L : S_T;
-    while (i < n) {
+    loop: while (i < n) {
       const c = b[i];
-      if (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) {
-        i++;
-        continue;
-      }
-      if (st === S_N) {
-        if (c === 44) {
-          st = kinds[d - 1] === OBJ ? S_K : S_V;
+      if (c <= 32) {
+        if (c === 32 || c === 10 || c === 13 || c === 9) {
           i++;
-          continue;
-        }
-        if (c === 93 || c === 125) {
-          const k = kinds[d - 1];
-          if ((c === 93 ? ARR : OBJ) !== k) throw new WalkError(base + i);
-          d--;
-          i++;
-          this.last = base + i;
-          v.close(k, base + i);
-          st = d > lb ? S_N : top;
-          if (d === lb) this.records++;
-          if (this.pause) break;
           continue;
         }
         throw new WalkError(base + i);
       }
-      if (st === S_K || st === S_KO) {
-        if (c === 34) {
-          // A name: to its closing quote (escapes skipped), within this chunk if it can.
-          let j = i + 1;
-          let hi = 0;
-          let fl = 0;
-          while (j < n) {
-            const x = b[j];
-            if (x === 34) break;
-            if (x === 92) {
-              fl = ESC;
-              j += 2;
-              continue;
-            }
-            hi |= x;
-            j++;
-          }
-          if (j < n) {
-            v.key(b, i + 1, j, fl | (hi & 0x80 ? HI : 0), base + i);
-            i = j + 1;
-            st = S_C;
+      switch (st) {
+        case S_N:
+          if (c === 44) {
+            st = kinds[d - 1] === OBJ ? S_K : S_V;
+            i++;
             continue;
           }
-          this.st = st;
-          this.d = d;
-          this.cutString(b, base, i, j > n, fl | (hi & 0x80 ? HI : 0), true);
-          return n;
-        }
-        if (c === 125 && st === S_KO) {
-          d--;
+          if (c === 93 || c === 125) {
+            const k = kinds[d - 1];
+            if ((c === 93 ? ARR : OBJ) !== k) throw new WalkError(base + i);
+            d--;
+            i++;
+            this.last = base + i;
+            v.close(k, base + i);
+            st = d > lb ? S_N : top;
+            if (d === lb) this.records++;
+            if (this.pause) break loop;
+            continue;
+          }
+          throw new WalkError(base + i);
+        case S_K:
+        case S_KO:
+          if (c === 34) {
+            // A name: to its closing quote (escapes skipped), within this chunk if it can.
+            let j = i + 1;
+            let hi = 0;
+            let fl = 0;
+            while (j < n) {
+              const x = b[j];
+              if (x === 34) break;
+              if (x === 92) {
+                fl = ESC;
+                j += 2;
+                continue;
+              }
+              hi |= x;
+              j++;
+            }
+            if (j < n) {
+              v.key(b, i + 1, j, fl | (hi & 0x80 ? HI : 0), base + i);
+              i = j + 1;
+              st = S_C;
+              // (The colon usually follows at once.)
+              while (i < n) {
+                const x = b[i];
+                if (x === 58) {
+                  i++;
+                  st = S_V;
+                  break;
+                }
+                if (x !== 32 && x !== 10 && x !== 13 && x !== 9) throw new WalkError(base + i);
+                i++;
+              }
+              continue;
+            }
+            this.st = st;
+            this.d = d;
+            this.cutString(b, base, i, j > n, fl | (hi & 0x80 ? HI : 0), true);
+            return n;
+          }
+          if (c === 125 && st === S_KO) {
+            d--;
+            i++;
+            this.last = base + i;
+            v.close(OBJ, base + i);
+            st = d > lb ? S_N : top;
+            if (d === lb) this.records++;
+            if (this.pause) break loop;
+            continue;
+          }
+          throw new WalkError(base + i);
+        case S_C:
+          if (c !== 58) throw new WalkError(base + i);
+          st = S_V;
           i++;
-          this.last = base + i;
-          v.close(OBJ, base + i);
-          st = d > lb ? S_N : top;
-          if (d === lb) this.records++;
-          if (this.pause) break;
           continue;
-        }
-        throw new WalkError(base + i);
-      }
-      if (st === S_C) {
-        if (c !== 58) throw new WalkError(base + i);
-        st = S_V;
-        i++;
-        continue;
-      }
-      if (st === S_T) throw new WalkError(base + i);
-      if (st === S_L) {
-        if (c === 44 || c === 59) {
-          i++;
-          continue;
-        }
-      } else if (st === S_VA && c === 93) {
-        d--;
-        i++;
-        this.last = base + i;
-        v.close(ARR, base + i);
-        st = d > lb ? S_N : top;
-        if (d === lb) this.records++;
-        if (this.pause) break;
-        continue;
+        case S_T:
+          throw new WalkError(base + i);
+        case S_L:
+          if (c === 44 || c === 59) {
+            i++;
+            continue;
+          }
+          break;
+        case S_VA:
+          if (c === 93) {
+            d--;
+            i++;
+            this.last = base + i;
+            v.close(ARR, base + i);
+            st = d > lb ? S_N : top;
+            if (d === lb) this.records++;
+            if (this.pause) break loop;
+            continue;
+          }
+          break;
       }
       // A value starts at i.
       if (d === 0) {
@@ -286,7 +304,7 @@ export class Walker {
           i = j + 1;
           st = d > lb ? S_N : top;
           if (d === lb) this.records++;
-          if (this.pause) break;
+          if (this.pause) break loop;
           continue;
         }
         this.st = st;
@@ -320,7 +338,7 @@ export class Walker {
         i = j;
         st = d > lb ? S_N : top;
         if (d === lb) this.records++;
-        if (this.pause) break;
+        if (this.pause) break loop;
         continue;
       }
       const w = c === 110 ? 0 : c === 116 ? 1 : c === 102 ? 2 : -1;
@@ -344,7 +362,7 @@ export class Walker {
       i += len;
       st = d > lb ? S_N : top;
       if (d === lb) this.records++;
-      if (this.pause) break;
+      if (this.pause) break loop;
     }
     this.st = st;
     this.d = d;
