@@ -51,6 +51,8 @@ const W_END: u32 = 4;
 // Why it stopped: before a child of the target container, or at its closing bracket.
 const W_CHILD: u32 = 5;
 const W_CLOSE: u32 = 6;
+/** Stopped after a value, at the first comma, bracket or top-level value at or after the `after` byte (see target()). */
+const W_AFTER: u32 = 7;
 
 // What stage 2 expects next.
 const S_VALUE: u64 = 0;
@@ -238,6 +240,8 @@ static mut LAST_TOP_LINE: u64 = NONE;
 static mut TOP_LINE: u64 = 0;
 /** The first `,` or `;` between top-level values (JSON Lines may have them: tape-parser.ts nextLine), or NONE. */
 static mut SEP: u64 = NONE;
+/** Where the second top-level value starts (the normal path's "Multiple top-level values" notice), or NONE. */
+static mut SECOND: u64 = NONE;
 
 // Target (see target()).
 static mut T_DEPTH: usize = usize::MAX;
@@ -245,6 +249,7 @@ static mut T_START: u64 = NONE;
 static mut T_COUNT: u64 = NONE;
 static mut T_BYTE: u64 = NONE;
 static mut T_VAL: u64 = NONE;
+static mut T_AFTER: u64 = NONE;
 
 // Output.
 static mut CK: Out = Out::new();
@@ -344,6 +349,7 @@ pub unsafe extern "C" fn init(wcap: usize, flags: u32, ck_every: f64, big: f64, 
     LINES_OK = true;
     LAST_TOP_LINE = NONE;
     SEP = NONE;
+    SECOND = NONE;
     SERIAL = 0;
     T_DEPTH = usize::MAX;
     T_COUNT = NONE;
@@ -445,6 +451,12 @@ pub unsafe extern "C" fn stats() -> usize {
     s[9] = lines_at(p) as f64;
     s[10] = (U16_0 + u16_at(p) as u64) as f64;
     s[11] = line_u16_at(p) as f64;
+    // The token a window cut (P_*) and its start, the second top-level value's start, the lowest depth since
+    // the last checkpoint (or restore).
+    s[12] = PART as f64;
+    s[13] = if PART != P_NONE { PSTART as f64 } else { -1.0 };
+    s[14] = if SECOND == NONE { -1.0 } else { SECOND as f64 };
+    s[15] = LOW as f64;
     s.as_ptr() as usize
 }
 
@@ -454,11 +466,19 @@ pub unsafe extern "C" fn stats() -> usize {
 /// byte `val` (an object's member: after its name), or at its closing bracket. depth -1: no target.
 #[no_mangle]
 pub unsafe extern "C" fn target(depth: i32, start: f64, count: f64, byte: f64, val: f64) {
+    T_AFTER = NONE;
     T_DEPTH = if depth < 0 { usize::MAX } else { depth as usize };
     T_START = start as u64;
     T_COUNT = if count < 0.0 { NONE } else { count as u64 };
     T_BYTE = if byte < 0.0 { NONE } else { byte as u64 };
     T_VAL = if val < 0.0 { NONE } else { val as u64 };
+}
+
+/// From now on (with target()'s), stop after a value: at the first comma, closing bracket or next top-level
+/// value at or after byte `after` (a clean place to end a stretch of the document: see snap()). -1: none.
+#[no_mangle]
+pub unsafe extern "C" fn stop_after(after: f64) {
+    T_AFTER = if after < 0.0 { NONE } else { after as u64 };
 }
 
 // ── Stage 1 ──────────────────────────────────────────────────────────────
@@ -867,6 +887,11 @@ unsafe fn splits(p: usize, e: usize, c: u8) -> bool {
     }
     let zero = (e - p == 1 && first == b'0') || (e - p == 2 && first == b'-' && byte(p + 1) == b'0');
     dfa_splits(if zero { D_ZERO } else { D_INT }, c)
+}
+
+/// Whether tape-parser.ts reads a value starting at byte `c` (its startsValue: a top-level one makes several).
+fn starts_value(c: u8) -> bool {
+    matches!(c, b'{' | b'[' | b'"' | b'\'' | b'`' | b'-' | b'+' | b'.' | b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'$') || c >= 0x80
 }
 
 fn dfa_done(s: u32) -> bool {
@@ -1343,6 +1368,7 @@ pub unsafe extern "C" fn run() -> i32 {
     let t_count = T_COUNT;
     let t_at = local(T_BYTE);
     let t_val = T_VAL;
+    let stop_at = local(T_AFTER);
     let mut ck_at = local(NEXT_CK);
     let mut ii = II;
     let mut state = STATE;
@@ -1371,7 +1397,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 state = S_AFTER;
                 if ii < n {
                     let q = *idx.add(ii) as usize;
-                    if q < ck_at && q < fail_at && byte(q) == b',' {
+                    if q < ck_at && q < stop_at && q < fail_at && byte(q) == b',' {
                         ii += 1;
                         state = if tkind == OBJ { S_KEY } else { S_VALUE };
                     }
@@ -1394,6 +1420,9 @@ pub unsafe extern "C" fn run() -> i32 {
     // A top-level value starts at window offset $p (JSON Lines want it on a line of its own).
     macro_rules! top_start {
         ($p:expr) => {{
+            if tcount == 1 && SECOND == NONE && starts_value(byte($p)) {
+                SECOND = pos0 + $p as u64;
+            }
             let l = lines_at($p);
             if l == LAST_TOP_LINE {
                 LINES_OK = false;
@@ -1608,6 +1637,10 @@ pub unsafe extern "C" fn run() -> i32 {
         let mut c = byte(p);
         match state {
             S_AFTER => {
+                if p >= stop_at {
+                    WHY = W_AFTER;
+                    break STOP;
+                }
                 if p >= ck_at {
                     checkpoint!(p);
                 }
@@ -1696,6 +1729,10 @@ pub unsafe extern "C" fn run() -> i32 {
                 continue;
             }
             S_TOP => {
+                if p >= stop_at {
+                    WHY = W_AFTER;
+                    break STOP;
+                }
                 if p >= ck_at {
                     checkpoint!(p);
                 }
@@ -1804,6 +1841,9 @@ pub unsafe extern "C" fn run() -> i32 {
                 }
                 let e = scalar(p);
                 if e == 0 {
+                    // (Not a value: not counted as one.)
+                    nodes -= 1;
+                    tcount -= 1;
                     fail!(W_SYNTAX, p);
                 }
                 let c2 = byte(e);

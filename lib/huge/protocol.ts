@@ -18,7 +18,9 @@ export type Request =
   /** Replies with batches (not done) until done. */
   | { id: number; op: 'find'; query: string; options: FindOptions }
   /** Stops request `target` (a find): it replies done. */
-  | { id: number; op: 'cancel'; target: number };
+  | { id: number; op: 'cancel'; target: number }
+  /** Stops indexing where it is: open replies done with the summary (stopped); queries see what was read. */
+  | { id: number; op: 'stop' };
 
 export type Answer = {
   open: HugeProgress | HugeSummary;
@@ -32,6 +34,7 @@ export type Answer = {
   text: { text: string; cut: boolean };
   find: FindBatch;
   cancel: null;
+  stop: null;
 };
 
 export type Reply =
