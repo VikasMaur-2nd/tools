@@ -1490,7 +1490,9 @@ pub unsafe extern "C" fn run() -> i32 {
     let t_at = local(T_BYTE);
     let t_val = T_VAL;
     let stop_at = local(T_AFTER);
-    let mut ck_at = local(NEXT_CK);
+    // (Where the next checkpoint is due or the pass stops: one compare on the hot path for both.)
+    let ck_on = NEXT_CK != NONE;
+    let mut ck_at = local(NEXT_CK).min(stop_at);
     let mut ii = II;
     let mut state = STATE;
     let mut depth = DEPTH;
@@ -1518,7 +1520,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 state = S_AFTER;
                 if ii < n {
                     let q = *idx.add(ii) as usize;
-                    if q < ck_at && q < stop_at && q < fail_at && byte(q) == b',' {
+                    if q < ck_at && q < fail_at && byte(q) == b',' {
                         ii += 1;
                         state = if tkind == OBJ { S_KEY } else { S_VALUE };
                     }
@@ -1560,7 +1562,7 @@ pub unsafe extern "C" fn run() -> i32 {
                     fail!(W_MEMORY, $q);
                 }
                 // A checkpoint right after a big value: a seek past it starts there.
-                if ck_at != usize::MAX {
+                if ck_on {
                     ck_at = 0;
                 }
             }
@@ -1578,7 +1580,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 if dir && !dir_out(start, end, tkind, depth - 1, tcount, *f.add(4), *f.add(5), nodes, closers) {
                     fail!(W_MEMORY, $p);
                 }
-                if ck_at != usize::MAX {
+                if ck_on {
                     ck_at = 0;
                 }
             }
@@ -1636,7 +1638,7 @@ pub unsafe extern "C" fn run() -> i32 {
             }
             low = depth;
             NEXT_CK = pos0 + $p as u64 + CK_EVERY;
-            ck_at = local(NEXT_CK);
+            ck_at = local(NEXT_CK).min(stop_at);
         }};
     }
     // Feeds window bytes [$from, $to) to DFA state $s (a number or literal the window cut); at the top level a
@@ -1758,11 +1760,11 @@ pub unsafe extern "C" fn run() -> i32 {
         let mut c = byte(p);
         match state {
             S_AFTER => {
-                if p >= stop_at {
-                    WHY = W_AFTER;
-                    break STOP;
-                }
                 if p >= ck_at {
+                    if p >= stop_at {
+                        WHY = W_AFTER;
+                        break STOP;
+                    }
                     checkpoint!(p);
                 }
                 if c == b',' {
@@ -1858,11 +1860,11 @@ pub unsafe extern "C" fn run() -> i32 {
                 continue;
             }
             S_TOP => {
-                if p >= stop_at {
-                    WHY = W_AFTER;
-                    break STOP;
-                }
                 if p >= ck_at {
+                    if p >= stop_at {
+                        WHY = W_AFTER;
+                        break STOP;
+                    }
                     checkpoint!(p);
                 }
                 if c == b',' || c == b';' {
