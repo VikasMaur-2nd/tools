@@ -1,0 +1,235 @@
+/* Huge-file mode (components/huge/HugeTool.tsx): loaded with it, only when a file too big for the editor opens. */
+
+/* The large file takes the whole tool: no editor, no splitter, no Compare column. */
+html[data-huge] .panes {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+html[data-huge] .pane-ed,
+html[data-huge] .pane-cmp,
+html[data-huge] .pane-view,
+html[data-huge] .split,
+html[data-huge] .watermark,
+html[data-huge] .statusbar > .sb-l:not(.hg-sb),
+html[data-huge] .statusbar .cursor {
+  display: none;
+}
+
+.hg-sb {
+  order: -1;
+}
+
+.hg > .view {
+  flex: 1;
+}
+
+.hg > .view > .cv,
+.hg > .view > .tv,
+.hg > .view > .tbl {
+  flex: 1;
+}
+
+/* File bar: the file's name and size, what this mode is, Open and Close. */
+.hg-file .fname {
+  max-width: 50%;
+  color: var(--fg);
+}
+
+.hg-bytes {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.hg-badge {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--fg-2);
+  font: 600 11px/1.2 var(--font-ui);
+  letter-spacing: 0.02em;
+  cursor: default;
+}
+
+/* Indexing: a thin bar under the file bar. */
+.hg-bar {
+  position: relative;
+  flex: none;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.hg-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  transition: width 0.25s linear;
+}
+
+/* A row or line still being read: a soft bar where its text will be. */
+.hg-sk {
+  display: inline-block;
+  max-width: 70%;
+  height: 9px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--bg-3) 0%, var(--line-2) 50%, var(--bg-3) 100%) 0 0 / 200% 100%;
+  vertical-align: middle;
+  animation: hg-shimmer 1.2s ease-in-out infinite;
+}
+
+.cv-l .hg-sk {
+  margin-top: 5px;
+  vertical-align: top;
+}
+
+@keyframes hg-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-sk {
+    animation: none;
+  }
+  .hg-bar > i {
+    transition: none;
+  }
+}
+
+/* Paging rows of a container of thousands: "Show next 1,000 · 12,345 more · Go to index…". */
+.hg-page {
+  gap: 8px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.hg-pg {
+  padding: 1px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 500 12px/18px var(--font-ui);
+  cursor: pointer;
+}
+
+.hg-pg:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.hg-go {
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg-2);
+}
+
+.hg-left {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A long string's size, after its start; a long line's rest. */
+.hg-size,
+.hg-more {
+  margin-left: 8px;
+  color: var(--muted);
+  font: 11.5px var(--font-ui);
+}
+
+/* The Format view's current line (the selection's, or the match's). */
+.cv-l.hg-cur {
+  background: var(--row-sel);
+}
+
+.hg-lines .cv-l[data-l] {
+  cursor: default;
+}
+
+/* The file's error: its line, and the character it is at. */
+.cv-l.hg-errl {
+  background: var(--err-soft);
+}
+
+.hg-errc {
+  position: absolute;
+  top: 2px;
+  bottom: 1px;
+  border-bottom: 2px solid var(--err);
+  pointer-events: none;
+}
+
+/* Graph, Convert, Compare: not for files this large yet. */
+.hg-notyet {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 24px;
+  color: var(--muted);
+  text-align: center;
+  outline: none;
+}
+
+.hg-notyet b {
+  color: var(--fg);
+  font: 600 14px/1.4 var(--font-ui);
+}
+
+.hg-notyet p {
+  max-width: 420px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hg-notyet svg {
+  color: var(--fg-2);
+}
+
+/* Find and Go to. */
+.hg-searching {
+  color: var(--faint, var(--muted));
+}
+
+.hg-ask input {
+  width: 260px;
+}
+
+.hg-ask input.bad {
+  color: var(--err);
+}
+
+.hg-st .st-link.hg-cancel {
+  margin-left: 4px;
+  color: var(--fg-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hg-tpath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
+}
+
+@media (max-width: 760px) {
+  .hg-file .fname {
+    max-width: 45%;
+  }
+  .hg-file .btn .lbl {
+    display: none;
+  }
+  .hg-ask input,
+  .findbar input {
+    width: 140px;
+  }
+}

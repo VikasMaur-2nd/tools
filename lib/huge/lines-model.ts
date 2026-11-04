@@ -13,12 +13,13 @@ export const MAX_BLOCKS = 96;
 /** Blocks read ahead of the view in the direction it moves (and one behind). */
 export const AHEAD = 2;
 
-export type ReadLines = (from: number, n: number, signal: AbortSignal) => Promise<HugeLine[]>;
+export type ReadLines<T = HugeLine> = (from: number, n: number, signal: AbortSignal) => Promise<T[]>;
 
-export class SparseLines {
+/** Items (lines, table rows) read a block at a time as they come into view. */
+export class SparseLines<T = HugeLine> {
   /** Lines there are (so far, while indexing). */
   count = 0;
-  private blocks = new Map<number, HugeLine[]>();
+  private blocks = new Map<number, T[]>();
   private asked = new Map<number, AbortController>();
   private gen = 0;
   /** Where the view was last (to read ahead in the direction it moves). */
@@ -27,10 +28,10 @@ export class SparseLines {
   loaded: () => void = () => undefined;
   failed: (e: unknown) => void = () => undefined;
 
-  constructor(private read: ReadLines) {}
+  constructor(private read: ReadLines<T>) {}
 
   /** Line `k`, if read. */
-  get(k: number): HugeLine | undefined {
+  get(k: number): T | undefined {
     const b = Math.floor(k / BLOCK);
     const list = this.blocks.get(b);
     if (!list) return undefined;

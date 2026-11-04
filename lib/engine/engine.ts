@@ -26,6 +26,8 @@ import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import type { SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import { hugeMin } from '../huge/min';
+import type { HugeHook, HugeHost } from '../huge/session';
 
 /** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
 export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
@@ -329,6 +331,8 @@ export class Engine {
   /** Current find query (applies to the open view). */
   private query = '';
   private dead = false;
+  /** Huge-file mode (lib/huge), while a file too big for the editor is open: it has the viewer, the view switch, Find and some keys. */
+  private huge: HugeHook | null = null;
 
   constructor(els: EngineEls, options: EngineOptions = {}) {
     this.els = els;
@@ -442,6 +446,7 @@ export class Engine {
   }
 
   destroy() {
+    this.huge?.close();
     // (Saved below: the document still on its way is the one kept, see persist.)
     const pending = this.pendingNow();
     this.worker?.terminate();
@@ -1369,6 +1374,8 @@ export class Engine {
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
   /** `file`: the file `text` was read from, as is (readText), which the analysis worker then reads itself. */
   load(text: string, name: string | null, persist = true, outputFirst = false, file?: File) {
+    // (A document in the editor: huge mode's file goes.)
+    this.huge?.close();
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
     // worker, over this text) must match the editor's, or values and positions shift a character a line.
     text = lf(text);
@@ -1997,10 +2004,9 @@ export class Engine {
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
     this.markOutput = true;
-    if (f.size > MAX_DOCUMENT) {
-      this.toast('That file is too large to open in a browser tab', 'err');
-      return;
-    }
+    // Too big for the editor: huge-file mode reads it a window at a time (lib/huge, loaded only now).
+    const huge = hugeMin();
+    if (f.size > Math.min(huge.min, MAX_DOCUMENT)) return this.openHuge(f, source, asText, signal, huge.forced);
     // A big file shows it is being opened while it is read too.
     const before = store.get().status;
     let reading: Status | null = null;
@@ -2059,6 +2065,33 @@ export class Engine {
       unshow();
       if (!signal.aborted) this.toast(`Couldn't read ${f.name}`, 'err');
     }
+  }
+
+  private openHuge(f: File, source: InputSource, asText: boolean, signal: AbortSignal, forced: boolean) {
+    import('../huge/open')
+      .then((m) => {
+        if (!signal.aborted && !this.dead) return m.openHuge(this.hugeHost(), f, source, signal, { forced, asText, again: () => void this.loadFile(f, source, true) });
+      })
+      .catch((e: unknown) => {
+        reportError(e, 'huge');
+        if (!signal.aborted && !this.dead) this.toast(`Couldn't read ${f.name}`, 'err');
+      });
+  }
+
+  /** What huge mode needs of the engine (see HugeSession). */
+  private hugeHost(): HugeHost {
+    return {
+      toast: (msg, kind, action, ms) => this.toast(msg, kind, action, ms),
+      indent: this.indent,
+      view: this.settings.view,
+      openFile: () => this.openFile(),
+      saveBlob: (blob, name) => this.saveBlob(blob, name),
+      attach: (hook, id) => {
+        this.huge = hook;
+        store.set({ huge: id, find: { ...store.get().find, open: false } });
+      },
+      focusEditor: () => this.focusEditor(),
+    };
   }
 
   async paste() {
@@ -2588,6 +2621,7 @@ export class Engine {
   private viewSeq = 0;
 
   setView(view: View, ready?: () => void) {
+    if (this.huge?.view(view)) return;
     this.flushLoad();
     store.set({ menu: null });
     const viewSeq = ++this.viewSeq;
@@ -3587,6 +3621,7 @@ export class Engine {
 
   /** Opens the find bar for the open view, prefilled with the editor selection. */
   focusSearch() {
+    if (this.huge?.find()) return;
     if (this.settings.view === 'compare') this.setView('format');
     const picked = this.ed.hasFocus() ? this.ed.selectedText() : '';
     if (picked && picked.length < 100 && !picked.includes('\n')) this.find(picked, true);
@@ -3785,6 +3820,11 @@ export class Engine {
     }
     // (Keys held for what closed before it showed (Esc, a click away) are for nothing now: never replayed.)
     if (this.held.length) this.held = [];
+    if (this.huge?.key(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;

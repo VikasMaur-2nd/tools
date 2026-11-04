@@ -31,6 +31,10 @@ const AGENT_TOOLS = [
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOLS)[number];
 
+/** Huge-file mode (lib/huge): the file's size range (from 300 MB; smaller only when forced for testing), and how its indexing ended. */
+const HUGE_SIZE_LIST = ['0-300MB', '300MB-1GB', '1-10GB', '10-100GB', '100GB+'] as const;
+const HUGE_OUTCOMES = ['done', 'error', 'cancelled', 'replaced'] as const;
+
 /** Discrete actions, reported as `feature_used { feature }`. */
 const FEATURES = [
   'copy_input', 'copy_output', 'copy_convert', 'copy_value', 'copy_path', 'copy_csv',
@@ -74,6 +78,19 @@ export interface Events {
   command_run: { command: string };
   /** An AI agent called one of the tool's functions (`ok`: it did what was asked). What it sent and got back is never included. */
   agent_tool_used: { tool: AgentToolName; ok: boolean };
+  /**
+   * A file too big for the editor opened in huge-file mode. Sent once its indexing ends (finished, stopped at an
+   * error, cancelled) or when another document replaces it first. `forced`: huge mode was forced for testing.
+   */
+  huge_opened: {
+    source: InputSource;
+    file_kind: FileKind;
+    size: (typeof HUGE_SIZE_LIST)[number];
+    outcome: (typeof HUGE_OUTCOMES)[number];
+    jsonl: boolean;
+    index_ms: number;
+    forced: boolean;
+  };
 }
 
 export type EventName = keyof Events;
@@ -207,6 +224,7 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   },
   command_run: { command: COMMAND_IDS },
   agent_tool_used: { tool: AGENT_TOOLS, ok: 'flag' },
+  huge_opened: { source: INPUT_SOURCES, file_kind: FILE_KIND_LIST, size: HUGE_SIZE_LIST, outcome: HUGE_OUTCOMES, jsonl: 'flag', index_ms: 'number', forced: 'flag' },
 };
 
 /** Allowed properties per event (see `clean`). */

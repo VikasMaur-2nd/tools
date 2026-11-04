@@ -7,7 +7,7 @@ const TYPES = new Set([
   'InvalidStateError', 'NotAllowedError', 'NotFoundError', 'TimeoutError', 'DataCloneError',
 ]);
 export const ERROR_MESSAGE = 'Application error. Message removed for privacy.';
-const ERROR_SOURCES = ['unhandled_error', 'unhandled_rejection', 'react_boundary', 'conversion', 'import', 'export', 'worker', 'webmcp', 'manual'] as const;
+const ERROR_SOURCES = ['unhandled_error', 'unhandled_rejection', 'react_boundary', 'conversion', 'import', 'export', 'worker', 'webmcp', 'huge', 'manual'] as const;
 export type ErrorSource = typeof ERROR_SOURCES[number];
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const position = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 100_000_000;

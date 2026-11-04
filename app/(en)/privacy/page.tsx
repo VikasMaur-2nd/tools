@@ -22,6 +22,7 @@ const WHEN: Record<EventName, string> = {
   feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), and similar.',
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',
   agent_tool_used: 'An AI agent in your browser uses one of the JSON tool’s functions for you. What it sent and what it got back are never included.',
+  huge_opened: 'A file too big for the editor opens in large-file mode, once it has been indexed (or stopped, or replaced by another document first). Its name, content and exact size are never included.',
 };
 
 const PROPS: Record<string, string> = {
@@ -51,6 +52,9 @@ const PROPS: Record<string, string> = {
   command: 'command ID',
   tool: 'which function',
   ok: 'whether it did what was asked',
+  outcome: 'indexed, stopped at an error, cancelled or replaced',
+  index_ms: 'indexing time, 2 significant digits',
+  forced: 'large-file mode forced for testing',
 };
 
 const eu = /\beu\./.test(process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '');

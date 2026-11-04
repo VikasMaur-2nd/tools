@@ -821,6 +821,14 @@ const CompareView = dynamic(() => import('./CompareView'), {
     return <div className="cv-note">{useT()('Loading compare…')}</div>;
   },
 });
+// Huge-file mode (a file too big for the editor, lib/huge): its own viewer, loaded only when one opens.
+const HugeTool = dynamic(() => import('./huge/HugeTool'), { ssr: false });
+
+function HugeHost() {
+  const id = useUI((s) => s.huge);
+  return id ? <HugeTool key={id} /> : null;
+}
+
 const UNITS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
 const onJump = (l: number | undefined, r: number | undefined) => act((e) => e.compareJump(l, r));
 const onMarks = (l: Uint8Array | null, r: Uint8Array | null) => act((e) => e.compareMarks(l, r));
@@ -1221,6 +1229,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
         <Splitter />
         <Watermark />
         <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} />
+        <HugeHost />
       </div>
       <StatusBar langs={langs} />
       <ToastHost />
