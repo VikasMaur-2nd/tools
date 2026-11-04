@@ -366,7 +366,6 @@ export default function CommandsView({ s }: { s: HugeSession }) {
                 {cmd.result.picked ? t('Saved {name}', { name: cmd.result.name }) : t('Downloaded {name}', { name: cmd.result.name })}
               </span>
               <span className="muted">
-                {' · '}
                 {t.bytes(cmd.result.bytes)}
                 {cmd.result.parts > 1 && ` · ${t.n(cmd.result.parts, '{n} part', '{n} parts')}`}
                 {cmd.result.records > 0 && ` · ${t.n(cmd.result.records, '{n} record', '{n} records')}`}
