@@ -9,7 +9,7 @@ import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { Prefetch } from '../lib/huge/prefetch';
 import { BlockSource } from '../lib/huge/bytes';
-import { Wait } from '../lib/huge/wait';
+import { Wait, watched } from '../lib/huge/wait';
 import { PageNodes } from '../lib/huge/page';
 import type { HugeProgress } from '../lib/huge/types';
 import { hugeMod, tapeMod, memSource, normalStatus } from './huge-oracle';
@@ -190,4 +190,26 @@ test('client: queries over async blocks (BlockSource) wait for their reads; the 
   const pg = await doc2.children(st.root!, 0, 10);
   assert.equal(pg.count, Math.min(10, st.root!.count ?? 0));
   doc2.close();
+});
+
+test('reads: a read that stalls is made again; after its tries, "Read failed" (nothing of the document)', async () => {
+  // Stalls once (never resolves), then reads.
+  let calls = 0;
+  const once = await watched(() => (++calls === 1 ? new Promise<number>(() => {}) : Promise.resolve(42)), 5, 3);
+  assert.equal(once, 42);
+  assert.equal(calls, 2);
+  // Fails (with a message that could say anything), then stalls: fails with the fixed message after 3 tries.
+  let n = 0;
+  await assert.rejects(
+    watched(() => (++n === 1 ? Promise.reject(new Error('secret bytes')) : new Promise<never>(() => {})), 5, 3),
+    (e: Error) => e.message === 'Read failed',
+  );
+  assert.equal(n, 3);
+  // Over the protocol: indexing whose reads never come fails with that message.
+  const [page, worker] = channel();
+  const stuck = { size: 1 << 20, slice: () => ({ arrayBuffer: () => new Promise<ArrayBuffer>(() => {}) }) } as unknown as Blob;
+  serve(worker, async () => ({ huge: hugeMod, parsers: { wasm: tapeMod, parse } }), () => memSource(new Uint8Array(1 << 20).fill(32)), () => new Prefetch(stuck, 1 << 16, 2, 5));
+  const doc = new HugeClient(new Blob([new Uint8Array(1 << 20).fill(32)]), { name: 'a.json' }, undefined, page);
+  await assert.rejects(doc.ready, (e: Error) => e.message === 'Read failed');
+  doc.close();
 });

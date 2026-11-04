@@ -17,6 +17,8 @@ export class Prefetch implements ByteSource {
     private readonly file: Blob,
     private readonly chunk = 16 << 20,
     private readonly ahead = 2,
+    /** How long a read may take before it's made again (ms; wait.ts `watched`). */
+    private readonly stall = 20_000,
   ) {
     this.size = file.size;
   }
@@ -56,7 +58,7 @@ export class Prefetch implements ByteSource {
     for (let k = first; k < first + this.ahead && k * this.chunk < this.size; k++) {
       if (!this.chunks.has(k) && !this.loading.has(k)) {
         // (Each read watched: one that stalls is made again.)
-        const p = watched(() => this.file.slice(k * this.chunk, Math.min(this.size, (k + 1) * this.chunk)).arrayBuffer()).then(
+        const p = watched(() => this.file.slice(k * this.chunk, Math.min(this.size, (k + 1) * this.chunk)).arrayBuffer(), this.stall).then(
           (b) => {
             this.chunks.set(k, new Uint8Array(b));
             this.loading.delete(k);
