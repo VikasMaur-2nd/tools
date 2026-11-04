@@ -156,3 +156,35 @@ test('the node cache reads a page at a time, keeps a bounded number and drops re
   assert.equal(loads, 1);
   src.destroy();
 });
+
+test('the node cache completes a page answered in part, and does not loop on an empty answer', async () => {
+  const items = Array.from({ length: 1000 }, (_, i) => ({ ...box(0, 100 + i, 1, i), t: NUM, count: 0, key: i }) as HugeNode);
+  let reads = 0;
+  const cache = new NodeCache({
+    children: async (_c, from, n) => {
+      reads++;
+      // At most 30 a read; nothing past 700.
+      return items.slice(from, Math.min(from + Math.min(n, 30), 700));
+    },
+  });
+  const parent = box(1000);
+  for (let k = 0; k < 10; k++) {
+    cache.get(parent, 150);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.equal(cache.get(parent, 150)?.i, 150, 'completed in parts');
+  for (let k = 0; k < 10; k++) {
+    cache.get(parent, 750);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  const was = reads;
+  for (let k = 0; k < 5; k++) {
+    cache.get(parent, 750);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.equal(reads, was, 'an empty answer is not asked again');
+  assert.equal(cache.get(parent, 750), undefined);
+  cache.refresh();
+  cache.get(parent, 750);
+  assert.equal(reads, was + 1, 'asked again after a refresh');
+});

@@ -70,8 +70,19 @@ function HeldKeys() {
   return null;
 }
 
+/**
+ * Huge-file mode (a file too big for the editor is open): the commands that still mean something. The rest
+ * act on the editor's document, hidden meanwhile.
+ */
+const HUGE_COMMANDS = new Set([
+  'open', 'url', 'paste', 'sample', 'format-view', 'tree', 'table', 'graph', 'convert', 'compare', 'search',
+  'theme-system', 'theme-light', 'theme-dark', 'privacy-mode', 'integrate', 'handoff', 'shortcuts',
+]);
+
 function Commands() {
   const settings = useUI((s) => s.settings);
+  const huge = useUI((s) => !!s.huge);
+  const commands = huge ? COMMANDS.filter((c) => HUGE_COMMANDS.has(c.id)) : COMMANDS;
   const mac = useUI((s) => s.mac);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
@@ -92,13 +103,13 @@ function Commands() {
   /** The commands `query` finds, best first. */
   const matching = (query: string) => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return COMMANDS;
-    return COMMANDS.map((c) => ({ c, s: Math.max(fuzzy(needle, names.get(c)!.title) * 1.2, fuzzy(needle, names.get(c)!.hay)) }))
+    if (!needle) return commands;
+    return commands.map((c) => ({ c, s: Math.max(fuzzy(needle, names.get(c)!.title) * 1.2, fuzzy(needle, names.get(c)!.hay)) }))
       .filter((x) => x.s >= 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.c);
   };
-  const list = useMemo(() => matching(q), [q, names]); // eslint-disable-line react-hooks/exhaustive-deps
+  const list = useMemo(() => matching(q), [q, names, huge]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const active = Math.min(sel, Math.max(0, list.length - 1));
 

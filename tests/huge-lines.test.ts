@@ -82,9 +82,33 @@ test('a short last block is read again once the count grows (indexing goes on)',
   count = lines.count = 400;
   f.reads.length = 0;
   lines.want(90, 130);
-  assert.ok(f.reads.includes(0), 'the first block, short before, is read again');
+  assert.ok(f.reads.includes(100), 'the first block, short before, is completed from where it stopped');
   await tick();
   assert.equal(lines.get(110)!.text, 'line 110');
+});
+
+test('a source answering fewer lines than asked: the rest is asked for, and nothing loops', async () => {
+  const f = fakeLines(10_000);
+  // Answers at most 50 lines a read; nothing at all past line 9,000 (not read yet).
+  const lines = new SparseLines((from, n, s) => f.read(from, from >= 9000 ? 0 : Math.min(n, 50), s));
+  lines.count = 10_000;
+  for (let k = 0; k < 6; k++) {
+    lines.want(0, 40);
+    await tick();
+  }
+  assert.equal(lines.get(127)!.text, 'line 127', 'the block completed in parts');
+  f.reads.length = 0;
+  for (let k = 0; k < 5; k++) {
+    lines.want(9000, 9040);
+    await tick();
+  }
+  const asked = f.reads.length;
+  lines.want(9000, 9040);
+  await tick();
+  assert.equal(f.reads.length, asked, 'an empty answer is not asked again until the count changes');
+  lines.count = 10_001;
+  lines.want(9000, 9040);
+  assert.ok(f.reads.length > asked, 'asked again once it has');
 });
 
 /** A source whose find answers from a list of offsets, in batches of `per`, a tick apart. */

@@ -20,6 +20,8 @@ export class SparseLines<T = HugeLine> {
   /** Lines there are (so far, while indexing). */
   count = 0;
   private blocks = new Map<number, T[]>();
+  /** Blocks whose last read added nothing (not asked again until the count grows). */
+  private stuck = new Map<number, number>();
   private asked = new Map<number, AbortController>();
   private gen = 0;
   /** Where the view was last (to read ahead in the direction it moves). */
@@ -64,29 +66,36 @@ export class SparseLines<T = HugeLine> {
     for (let b = b1 + 1; b <= hi; b++) order.push(b);
     for (let b = b0 - 1; b >= lo; b--) order.push(b);
     for (const b of order) {
-      const have = this.blocks.get(b);
-      if (have) {
-        // Most recently used last; a short last block (the count grew since) is read again.
+      const have = this.blocks.get(b) ?? [];
+      if (have.length) {
+        // Most recently used last; a block read in part (answered short, or the count grew since) is completed.
         this.blocks.delete(b);
         this.blocks.set(b, have);
-        if (have.length === BLOCK || (b + 1) * BLOCK > this.count && have.length >= this.count - b * BLOCK) continue;
       }
+      if (have.length >= Math.min(BLOCK, this.count - b * BLOCK) || this.stuck.get(b) === this.count) continue;
       if (this.asked.has(b)) continue;
-      this.fetch(b);
+      this.fetch(b, have);
       asked++;
     }
     return asked;
   }
 
-  private fetch(b: number) {
+  private fetch(b: number, have: T[]) {
     const c = new AbortController();
     this.asked.set(b, c);
     const gen = this.gen;
-    this.read(b * BLOCK, BLOCK, c.signal).then(
+    const count = this.count;
+    this.read(b * BLOCK + have.length, BLOCK - have.length, c.signal).then(
       (lines) => {
         if (gen !== this.gen || this.asked.get(b) !== c) return;
         this.asked.delete(b);
-        this.blocks.set(b, lines);
+        if (!lines.length) {
+          // (Nothing more there for now: asked again once the count changes.)
+          this.stuck.set(b, count);
+          return;
+        }
+        this.stuck.delete(b);
+        this.blocks.set(b, have.concat(lines));
         while (this.blocks.size > MAX_BLOCKS) this.blocks.delete(this.blocks.keys().next().value as number);
         this.loaded();
       },
@@ -103,6 +112,7 @@ export class SparseLines<T = HugeLine> {
     for (const c of this.asked.values()) c.abort();
     this.asked.clear();
     this.blocks.clear();
+    this.stuck.clear();
   }
 
   /** Blocks held and reads in flight (tests, and the memory bound). */

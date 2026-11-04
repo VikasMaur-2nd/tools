@@ -311,7 +311,11 @@ function insertSorted(xs: number[], v: number) {
  * `get` answers from what is here and asks for what is missing; `loaded` is called as pages arrive.
  */
 export class NodeCache {
-  private pages = new Map<string, HugeNode[]>();
+  /**
+   * Pages by container and number: the items read so far (a source may answer with fewer than asked: the
+   * rest is asked for next), and whether the last read added none (not asked again until a refresh).
+   */
+  private pages = new Map<string, { list: HugeNode[]; stuck: boolean }>();
   private asked = new Map<string, AbortController>();
   /** Called when asked-for pages arrive (redraw). */
   loaded: () => void = () => undefined;
@@ -325,22 +329,22 @@ export class NodeCache {
     return `${parent.at}:${parent.depth}:${page}`;
   }
 
-  /** Item `i` of `parent`, if read (and asks for its page if not). */
+  /** Item `i` of `parent`, if read (and asks for what its page lacks if not). */
   get(parent: HugeNode, i: number): HugeNode | undefined {
     const page = Math.floor(i / FETCH);
     const key = this.key(parent, page);
-    const list = this.pages.get(key);
-    if (list) {
+    const have = this.pages.get(key);
+    if (have) {
       // Most recently used last.
       this.pages.delete(key);
-      this.pages.set(key, list);
-      const n = list[i - page * FETCH];
-      // (A page read before the index reached its end may be short: read it again.)
-      if (n || !parent.partial && list.length === FETCH) return n;
-      if (i < parent.count && !this.asked.has(key)) this.fetch(parent, page, key);
-      return n;
+      this.pages.set(key, have);
+      const n = have.list[i - page * FETCH];
+      if (n) return n;
+      // (A page read before the index got that far, or answered in part: the rest is read now.)
+      if (!have.stuck && i < parent.count && !this.asked.has(key)) this.fetch(parent, page, key, have.list);
+      return undefined;
     }
-    if (!this.asked.has(key)) this.fetch(parent, page, key);
+    if (!this.asked.has(key)) this.fetch(parent, page, key, []);
     return undefined;
   }
 
@@ -349,17 +353,17 @@ export class NodeCache {
     return this.asked.has(this.key(parent, Math.floor(i / FETCH)));
   }
 
-  private fetch(parent: HugeNode, page: number, key: string) {
+  private fetch(parent: HugeNode, page: number, key: string, have: HugeNode[]) {
     const c = new AbortController();
     this.asked.set(key, c);
     const gen = this.gen;
-    this.src.children(parent, page * FETCH, FETCH, c.signal).then(
-      (list) => {
+    this.src.children(parent, page * FETCH + have.length, FETCH - have.length, c.signal).then(
+      (got) => {
         if (gen !== this.gen || this.asked.get(key) !== c) return;
         this.asked.delete(key);
-        this.pages.set(key, list);
+        this.pages.set(key, { list: got.length ? have.concat(got) : have, stuck: !got.length });
         while (this.pages.size > CACHE_PAGES) this.pages.delete(this.pages.keys().next().value as string);
-        this.loaded();
+        if (got.length) this.loaded();
       },
       (e: unknown) => {
         if (this.asked.get(key) === c) this.asked.delete(key);
@@ -374,7 +378,7 @@ export class NodeCache {
       this.clear();
       return;
     }
-    for (const [key, list] of this.pages) if (list.length < FETCH) this.pages.delete(key);
+    for (const [key, p] of this.pages) if (p.list.length < FETCH) this.pages.delete(key);
   }
 
   /** Stops every read and forgets every page. */
