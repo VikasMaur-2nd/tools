@@ -422,7 +422,10 @@ export class HugeDoc {
     }
     if (end > cur) pieces.push([cur, trimEnd(this.src, cur, end)]);
     const list = node.kind === LIST;
-    if (!list) pieces.unshift(node.kind === OBJ ? '{' : '['), pieces.push(node.kind === OBJ ? '}' : ']');
+    if (!list) {
+      pieces.unshift(node.kind === OBJ ? '{' : '[');
+      pieces.push(node.kind === OBJ ? '}' : ']');
+    }
     const built = build(this.src, pieces);
     const t = list ? this.parsers.parse(built.text, { lines: true }) : ((this.parsers.wasm && wasmTape(this.parsers.wasm, built.text)) || this.parsers.parse(built.text));
     if (!t.count || t.head.error) return null;
@@ -538,7 +541,10 @@ export class HugeDoc {
     let n = 0;
     const open: number[] = [];
     const ends: number[] = [];
-    for (let c = wrap ? 1 : 0; c < (wrap ? 1 : 0) + s.frames.length; c++) open.push(c), ends.push(nextOf(t, c));
+    for (let c = wrap ? 1 : 0; c < (wrap ? 1 : 0) + s.frames.length; c++) {
+      open.push(c);
+      ends.push(nextOf(t, c));
+    }
     const closeTo = (i: number) => {
       while (open.length && ends[ends.length - 1] <= i) {
         const c = open.pop()!;
@@ -555,7 +561,10 @@ export class HugeDoc {
       lines[n] = i;
       depths[n++] = open.length;
       const m = T[i * W];
-      if ((m & 7) >= ARR && m >>> 8 !== 1) open.push(i), ends.push(nextOf(t, i));
+      if ((m & 7) >= ARR && m >>> 8 !== 1) {
+        open.push(i);
+        ends.push(nextOf(t, i));
+      }
     }
     closeTo(Infinity);
     const region: Region = { ...built, k, tape: t, synth, wrap, end, s, e, lines: lines.slice(0, n), depth: depths.slice(0, n), next: e ? e.pos : -1, bytes: built.text.length * 2 + t.count * W * 4 + n * 8 + 1024 };
@@ -1056,7 +1065,10 @@ function byteOf(b: Built, off: number): number {
   }
   let byte = m[lo * 3 + 1];
   // (The end of a piece of the document where added text starts: the piece's end.)
-  if (byte < 0 && lo > 0 && m[lo * 3] === off && m[lo * 3 - 2] >= 0) lo--, (byte = m[lo * 3 + 1]);
+  if (byte < 0 && lo > 0 && m[lo * 3] === off && m[lo * 3 - 2] >= 0) {
+    lo--;
+    byte = m[lo * 3 + 1];
+  }
   if (byte < 0) return -1;
   const at = m[lo * 3];
   let wide = b.wide[lo];

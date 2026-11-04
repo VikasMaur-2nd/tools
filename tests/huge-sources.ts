@@ -58,7 +58,10 @@ export class Records implements ByteSource {
     const digits = String(i);
     for (let k = 0; k < 12; k++) b[this.nameAt + k] = k < digits.length ? digits.charCodeAt(k) : 32;
     if (i === this.broken) b[this.len - 5] = 32;
-    if (!this.jsonl && i === this.count - 1) b[this.len] = 10, (b[this.len + 1] = 93);
+    if (!this.jsonl && i === this.count - 1) {
+      b[this.len] = 10;
+      b[this.len + 1] = 93;
+    }
     return b;
   }
 

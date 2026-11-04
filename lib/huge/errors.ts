@@ -77,7 +77,10 @@ export function lineCol(src: ByteSource, index: HugeIndex, pos: number, k = inde
   // Breaks counted natively; units only after the last one (or all, if none).
   let breaks = 0;
   let last = -1;
-  for (let i = b.indexOf(10); i >= 0; i = b.indexOf(10, i + 1)) breaks++, (last = i);
+  for (let i = b.indexOf(10); i >= 0; i = b.indexOf(10, i + 1)) {
+    breaks++;
+    last = i;
+  }
   for (let i = b.indexOf(13); i >= 0; i = b.indexOf(13, i + 1)) {
     if (b[i + 1] !== 10) breaks++;
     if (i > last) last = i;
