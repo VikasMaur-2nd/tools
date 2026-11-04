@@ -9,6 +9,9 @@ import { stringify } from '../json/format';
 import { formatPath, parsePath } from '../json/path';
 import { rt } from '../i18n/ui';
 import { reportError, track } from '../analytics';
+import { store } from '../engine/store';
+import type { ReactNode } from 'react';
+import type { Portal } from './kit';
 import { fileKind, type Events, type InputSource } from '../analytics/events';
 import { StreamFind } from './find';
 import { HugeLinesView } from './lines-view';
@@ -23,23 +26,21 @@ export const COPY_MAX = 16 * 1024 * 1024;
 /** How often the views re-read counts that grow while indexing (ms). */
 const GROW_EVERY = 1000;
 
-/** What the session needs of the engine. */
+/** What the session needs of the engine (the Engine itself). */
 export interface HugeHost {
   toast(msg: string, kind?: 'ok' | 'err' | 'info', action?: { label: string; run: () => void }, ms?: number): void;
   readonly indent: string;
-  /** The view open in the normal tool (the session starts in it when it can). */
-  readonly view: HugeView;
   openFile(): void;
   saveBlob(blob: Blob, name: string): void;
-  /** Gives the engine the hook while huge mode is open (null: closed), and shows or hides huge mode's UI (its id). */
-  attach(hook: HugeHook | null, id: number): void;
   /** Back to the editor (huge mode closed by the user). */
   focusEditor(): void;
+  /** Opens a file (again: as text, whatever it looks like). */
+  loadFile(f: File, source: InputSource, asText: boolean): Promise<void>;
 }
 
-/** What the engine asks of huge mode while it is open. */
+/** What the engine asks of huge mode while it is open (once closed, it takes nothing: every answer is false). */
 export interface HugeHook {
-  /** A key the tool's shortcuts would take: true if huge mode took it. */
+  /** A key the tool's shortcuts would take: true if huge mode took it (and stopped it). */
   key(e: KeyboardEvent): boolean;
   /** A view switch (tabs, Alt+digit, the palette): true if huge mode took it. */
   view(v: HugeView): boolean;
@@ -97,13 +98,20 @@ export class HugeSession {
   private askOpen: Open | null = null;
   private rootBusy = false;
 
+  /**
+   * `viewer`: its UI (components/huge/HugeTool.tsx) as JsonTool renders it (the store holds it while the
+   * session is open).
+   */
   constructor(
     private readonly host: HugeHost,
     readonly src: HugeSource,
     readonly meta: HugeOpen,
+    private readonly viewer: (portal: Portal) => ReactNode,
   ) {
     const index = src.state();
-    const view = (['format', 'tree', 'table'] as HugeView[]).includes(host.view) ? host.view : 'tree';
+    // (Starts in the view the tool shows, when huge mode has it.)
+    const shown = store.get().settings.view;
+    const view = shown === 'format' || shown === 'tree' || shown === 'table' ? shown : 'tree';
     this.ui = new HugeStore({
       name: meta.name,
       size: src.size,
@@ -128,7 +136,7 @@ export class HugeSession {
   async start() {
     if (current && current !== this) current.close();
     setCurrent(this);
-    this.host.attach(this.hook, this.id);
+    store.set({ huge: this.viewer });
     this.onState(this.src.state());
     await this.readRoot();
   }
@@ -160,9 +168,14 @@ export class HugeSession {
   }
 
   readonly hook: HugeHook = {
-    key: (e) => this.key(e),
-    view: (v) => (this.setView(v), true),
-    find: () => (this.openFind(), true),
+    key: (e) => {
+      if (this.dead || !this.key(e)) return false;
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    },
+    view: (v) => !this.dead && (this.setView(v), true),
+    find: () => !this.dead && (this.openFind(), true),
     close: () => this.close(),
   };
 
@@ -181,7 +194,7 @@ export class HugeSession {
     this.tree = this.lines = null;
     this.table = null;
     if (current === this) setCurrent(null);
-    this.host.attach(null, 0);
+    if (store.get().huge === this.viewer) store.set({ huge: null });
     if (back) this.host.focusEditor();
   }
 
@@ -214,7 +227,8 @@ export class HugeSession {
     }
     // The views take the counts that grew, at most once a second (and at once when it ends).
     if (ended) this.grow(true);
-    else if (!this.growTimer) this.growTimer = setTimeout(() => this.grow(false), Math.max(0, GROW_EVERY - (now - this.grewAt)));
+    // (Four times as often in the first seconds: the first rows and counts show at once.)
+    else if (!this.growTimer) this.growTimer = setTimeout(() => this.grow(false), Math.max(0, (now - this.began < 3000 ? GROW_EVERY / 4 : GROW_EVERY) - (now - this.grewAt)));
   };
 
   private grow(all: boolean) {

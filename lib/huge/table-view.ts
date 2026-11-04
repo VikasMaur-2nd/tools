@@ -6,7 +6,8 @@
  */
 import { ARR, BOOL, NUM, OBJ, STR } from '../json/parser';
 import { escapeHtml } from '../engine/highlight';
-import { TallScroll } from '../engine/tall';
+import type { TallScroll } from '../engine/tall';
+import { kit } from './kit';
 import { rt } from '../i18n/ui';
 import { SparseLines } from './lines-model';
 import type { HugeNode, HugeRow, HugeSource, Seg } from './source';
@@ -61,7 +62,7 @@ export class HugeTableView {
     this.sizer = el.querySelector('.tb-sizer') as HTMLElement;
     this.rowsEl = el.querySelector('.tb-rows') as HTMLElement;
     this.empty = el.querySelector('.tb-empty') as HTMLElement;
-    this.sc = new TallScroll(el);
+    this.sc = new kit.Scroll(el);
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
     el.addEventListener('keydown', this.onKey);

@@ -6,7 +6,8 @@
  */
 import { ARR, BOOL, NUL, NUM, OBJ, STR } from '../json/parser';
 import { escapeHtml } from '../engine/highlight';
-import { TallScroll } from '../engine/tall';
+import type { TallScroll } from '../engine/tall';
+import { kit } from './kit';
 import { rt } from '../i18n/ui';
 import { PRIVATE } from '../analytics';
 import { NodeCache, PAGE, TreeModel, type Cursor, type Open, type Row } from './tree-model';
@@ -60,7 +61,7 @@ export class HugeTreeView {
     this.sizer = el.querySelector('.tv-sizer') as HTMLElement;
     this.rowsEl = el.querySelector('.tv-rows') as HTMLElement;
     this.acts = el.querySelector('.tv-acts') as HTMLElement;
-    this.sc = new TallScroll(el);
+    this.sc = new kit.Scroll(el);
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
     el.addEventListener('keydown', this.onKey);

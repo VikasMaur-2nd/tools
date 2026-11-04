@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
+import type { Portal } from '../huge/kit';
 import type { ParseResult } from '../json/parser';
 import type { Seg } from '../json/path';
 
@@ -172,8 +173,8 @@ export interface UIState {
   menu: ContextMenu | null;
   dragging: boolean;
   toast: Toast | null;
-  /** The open huge-file session's id (lib/huge: a file too big for the editor), 0 for none. */
-  huge: number;
+  /** Huge-file mode's viewer, while a file too big for the editor is open (lib/huge): JsonTool renders it, handing it react-dom's createPortal. */
+  huge: ((portal: Portal) => ReactNode) | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -221,7 +222,7 @@ const INITIAL: UIState = {
   menu: null,
   dragging: false,
   toast: null,
-  huge: 0,
+  huge: null,
 };
 
 type Listener = () => void;

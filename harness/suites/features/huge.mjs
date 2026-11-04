@@ -251,38 +251,43 @@ test('huge mode: what shows the document is private (session replay records an e
 for (const [name, opts] of [
   ['desktop-light', {}],
   ['desktop-dark', { dark: true }],
-  ['mobile-light', { mobile: true }],
-  ['mobile-dark', { mobile: true, dark: true }],
+  ['mobile-light', { mobile: true, width: 390, height: 844 }],
+  ['mobile-dark', { mobile: true, dark: true, width: 390, height: 844 }],
 ]) {
   test(`huge mode: screenshots ${name}`, { ...opts, tags: ['shots'] }, async (t) => {
     const out = process.env.HUGE_SHOTS;
     if (!out) return t.log('HUGE_SHOTS not set: no screenshots');
     mkdirSync(out, { recursive: true });
     const { page } = t;
+    // (Tabs and rows fade their highlight: a shot waits for it.)
+    const shot = async (file) => {
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 250))));
+      await page.screenshot({ path: join(out, file) });
+    };
     await t.open('/');
     await openHuge(t, pretty, { sim: { speed: 60_000 } });
     await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
     await until(page, () => /root/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null);
     await until(page, () => /left/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 5000 });
-    await page.screenshot({ path: join(out, `${name}-indexing.png`) });
+    await shot(`${name}-indexing.png`);
     await waitIndexed(page, 30_000);
     await page.locator('#hg-tree .tv-r', { hasText: 'users' }).first().click();
     await loaded(page, '#hg-tree');
     await page.evaluate(() => { const el = window.__vis('#hg-tree'); el.scrollTop = 1000 * 24 - el.clientHeight + 60; });
     await loaded(page, '#hg-tree');
-    await page.screenshot({ path: join(out, `${name}-tree-pages.png`) });
+    await shot(`${name}-tree-pages.png`);
     await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-format]')?.click());
     await page.keyboard.press(`${MOD}+f`);
     await page.locator('.hg .findbar input').fill('u777@');
     await until(page, () => !!document.querySelector('#hg-format .hg-cur'), null);
     await loaded(page, '#hg-format');
-    await page.screenshot({ path: join(out, `${name}-format-find.png`) });
+    await shot(`${name}-format-find.png`);
     await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-graph]')?.click());
-    await page.screenshot({ path: join(out, `${name}-graph-notyet.png`) });
+    await shot(`${name}-graph-notyet.png`);
     await openHuge(t, broken);
     await waitIndexed(page);
     await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-table]')?.click());
     await loaded(page, '#hg-table');
-    await page.screenshot({ path: join(out, `${name}-error-table.png`) });
+    await shot(`${name}-error-table.png`);
   });
 }

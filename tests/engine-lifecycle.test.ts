@@ -99,7 +99,7 @@ function session() {
       if (name === '../analytics') return { PRIVATE: 'private', track() {}, reportError: (error: unknown) => errors.push(error) };
       if (name === '../analytics/load') return { noteLoad() {}, watchPastes() {} };
       // (Huge-file mode stays out of these: every file opens in the editor.)
-      if (name === '../huge/min') return { hugeMin: () => ({ min: Infinity, forced: false }) };
+      if (name === '../huge/min') return { hugeMin: () => Infinity };
       if (name === './sample') return { SAMPLE: '{"id":1,"name":"Zoë"}' };
       if (name === './sizes') return { compressedSizes: () => Promise.resolve({ gzip: 1 }) };
       if (name === './editor') return { loadSurface: () => Promise.resolve() };

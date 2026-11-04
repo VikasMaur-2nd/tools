@@ -5,7 +5,8 @@
  * at COLS characters and says how much more there is.
  */
 import { escapeHtml, highlightLine } from '../engine/highlight';
-import { TallScroll } from '../engine/tall';
+import type { TallScroll } from '../engine/tall';
+import { kit } from './kit';
 import { rt } from '../i18n/ui';
 import { SparseLines } from './lines-model';
 import type { HugeLine, HugeSource, LineMode } from './source';
@@ -67,7 +68,7 @@ export class HugeLinesView {
     this.lines.count = src.lineCount(mode);
     this.sizer = el.querySelector('.cv-sizer') as HTMLElement;
     this.rowsEl = el.querySelector('.cv-rows') as HTMLElement;
-    this.sc = new TallScroll(el);
+    this.sc = new kit.Scroll(el);
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
     this.ro = new ResizeObserver(() => this.render(true));

@@ -53,7 +53,7 @@ function session() {
       if (name === '../analytics') return { reportError: (error: unknown, source: string) => errors.push({ error, source }) };
       if (name === '../analytics/load') return { noteLoad() {}, watchPastes() {} };
       // (Huge-file mode stays out of these: every file opens in the editor.)
-      if (name === '../huge/min') return { hugeMin: () => ({ min: Infinity, forced: false }) };
+      if (name === '../huge/min') return { hugeMin: () => Infinity };
       if (name.startsWith('../json/') || name === './doc' || name === './rules' || name === './asks') return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },

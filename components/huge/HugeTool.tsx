@@ -7,12 +7,12 @@
  */
 import '@/app/huge.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
 import { PRIVATE } from '@/lib/analytics';
 import { act } from '@/lib/engine/instance';
 import { useT } from '@/lib/i18n/react';
 import { current, type HugeSession } from '@/lib/huge/session';
 import type { HugeStore, HugeUI, HugeView } from '@/lib/huge/state';
+import type { Portal } from '@/lib/huge/kit';
 import { Icon, type IconName } from '../icons';
 import { MHead, MItem, MSep, Menu } from '../menu';
 
@@ -242,7 +242,7 @@ function ErrorBanner({ s }: { s: HugeSession }) {
 
 /** Find in the file (Ctrl+F): each opening is a new bar, its query selected. */
 function FindBar({ s }: { s: HugeSession }) {
-  const open = useHuge(s.ui, (u) => u.find.open);
+  const open = useHuge(s.ui, (u) => u.find.open && (u.view === 'format' || u.view === 'tree' || u.view === 'table'));
   const seq = useHuge(s.ui, (u) => u.find.seq);
   return open ? <FindInput key={seq} s={s} /> : null;
 }
@@ -528,8 +528,8 @@ function Status({ s }: { s: HugeSession }) {
 }
 
 /** The status, in the tool's own status bar (`bar`). */
-function StatusPortal({ s, bar }: { s: HugeSession; bar: HTMLElement | null }) {
-  return bar ? createPortal(<div className={`sb-l hg-sb ${PRIVATE}`}>{<Status s={s} />}</div>, bar) : null;
+function StatusPortal({ s, bar, portal }: { s: HugeSession; bar: HTMLElement | null; portal: Portal }) {
+  return bar ? portal(<div className={`sb-l hg-sb ${PRIVATE}`}>{<Status s={s} />}</div>, bar) : null;
 }
 
 // ── Root ────────────────────────────────────────────────────────────────────
@@ -558,7 +558,7 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
   );
 }
 
-export default function HugeTool() {
+export default function HugeTool({ portal }: { portal: Portal }) {
   const [s] = useState(() => current);
   // The tool's own status bar (pages left keep theirs in the document, hidden).
   const [bar, setBar] = useState<HTMLElement | null>(null);
@@ -578,7 +578,7 @@ export default function HugeTool() {
   return (
     <>
       <HugePane s={s} paneRef={paneRef} />
-      <StatusPortal s={s} bar={bar} />
+      <StatusPortal s={s} bar={bar} portal={portal} />
     </>
   );
 }

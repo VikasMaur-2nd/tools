@@ -821,12 +821,13 @@ const CompareView = dynamic(() => import('./CompareView'), {
     return <div className="cv-note">{useT()('Loading compare…')}</div>;
   },
 });
-// Huge-file mode (a file too big for the editor, lib/huge): its own viewer, loaded only when one opens.
-const HugeTool = dynamic(() => import('./huge/HugeTool'), { ssr: false });
-
+/**
+ * Huge-file mode (a file too big for the editor, lib/huge): its own viewer, loaded with it only when one opens.
+ * (Its status goes in the status bar through react-dom's portal, handed over: react-dom stays in the first load's chunks.)
+ */
 function HugeHost() {
-  const id = useUI((s) => s.huge);
-  return id ? <HugeTool key={id} /> : null;
+  const viewer = useUI((s) => s.huge);
+  return viewer ? viewer(createPortal) : null;
 }
 
 const UNITS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
