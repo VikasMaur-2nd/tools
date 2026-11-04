@@ -75,7 +75,7 @@ test('huge mode, a real big file: first rows, indexing, memory, seek, find, scro
     const at = (n) => performance.getEntriesByName('tk:huge:' + n)[0]?.startTime;
     const o = at('open');
     const input = performance.getEntriesByName('tk:input').at(-1)?.startTime;
-    return Object.fromEntries([['input→open', o - input], ...['worker', 'root', 'lines', 'rows'].map((n) => [`open→${n}`, at(n) - o])].map(([k, v]) => [k, Math.round(v)]));
+    return Object.fromEntries([['input→open', o - input], ...['worker', 'rest', 'root', 'lines', 'rows'].map((n) => [`open→${n}`, at(n) - o])].map(([k, v]) => [k, Math.round(v)]));
   });
   // Memory while indexing (sampled), and when it ends.
   let peak = 0;

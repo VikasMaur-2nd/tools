@@ -52,7 +52,6 @@ export class CoreSource implements HugeSource {
     this.size = file.size;
     this.st = { bytes: 0, done: false, cancelled: false, error: null, status: null, multi: false, jsonl: false, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
     this.doc = client ? client(this.onProgress) : new HugeClient(file, { name }, this.onProgress);
-    performance.mark('tk:huge:worker');
     this.doc.ready.then(
       (s) => this.onSummary(s),
       () => {
