@@ -26,23 +26,23 @@ export function utf8Length(s: string): number {
 export class PageNodes {
   readonly tape: Tape;
   /** Stands for the container: its children are the page's. */
-  readonly root: JNode;
+  readonly root: JNode | null;
   private stubs: Map<number, HugeNode>;
 
   constructor(readonly page: HugePage) {
     this.tape = receiver(page.tape)(Infinity)!;
-    this.root = lazyResult(this.tape, page.text).root!;
+    this.root = lazyResult(this.tape, page.text).root;
     this.stubs = new Map(page.stubs);
   }
 
   /** The page's children. */
   get children(): JNode[] {
-    return (this.root.v as JNode[]) ?? [];
+    return this.root ? ((this.root.v as JNode[]) ?? []) : [];
   }
 
   /** The big child `n` stands for (its children come from client.children()), or null. */
   stub(n: JNode): HugeNode | null {
-    return n.zi !== undefined && n.z === this.root.z ? (this.stubs.get(n.zi) ?? null) : null;
+    return this.root && n.zi !== undefined && n.z === this.root.z ? (this.stubs.get(n.zi) ?? null) : null;
   }
 
   /** The document byte of offset `off` of the page's text (-1 in text the page added: brackets, stubs). */
@@ -56,6 +56,8 @@ export class PageNodes {
       if (m[mid * 2] <= off) lo = mid;
       else hi = mid - 1;
     }
+    // (The end of a run of the document where added text starts: the run's end.)
+    if (m[lo * 2 + 1] < 0 && lo > 0 && m[lo * 2] === off && m[lo * 2 - 1] >= 0) lo--;
     const at = m[lo * 2];
     const byte = m[lo * 2 + 1];
     if (byte < 0) return -1;

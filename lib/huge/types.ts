@@ -91,7 +91,7 @@ export interface HugeSummary {
   root: HugeNode | null;
   /** Top-level values. */
   records: number;
-  /** More than one top-level value (viewed as the normal path does: an array of them). */
+  /** The top-level values are viewed as an array of them (`root` is the LIST), as the normal path views them: several, or a `.jsonl` / `.ndjson` file. */
   multi: boolean;
   /** JSON Lines: several top-level values, each on lines of its own with only whitespace between (rules.ts jsonLines). */
   jsonl: boolean;

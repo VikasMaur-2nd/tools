@@ -4,14 +4,15 @@
  * may still be growing) and parses at most about a MiB in full, with the normal path's parsers (tape.wasm, or
  * the JS tape parser), on a text made of the document's bytes and a few brackets (see `region`, `pageOf`).
  */
+import { decodeString } from '../json/decode';
 import { MAX_INDENT, quote } from '../json/format';
 import { MAX_DEPTH } from '../json/parser';
 import { childCount, endOf, KEY_INDEX, KEY_NAME, keyKindOf, keyOf, kindOf, nextOf, nodeAtOffset, parentOf, sizeOf, startOf, valueKindOf, valueOf, VALUE_DECODE, VALUE_FALSE, VALUE_SLICE, W, type SentTape, type Tape } from '../json/tape';
 import { wasmTape, type ByteSource } from '../json/tape-wasm';
-import { CachedSource, afterBreaks, content, count, nextBreak, textOf } from './bytes';
+import { CachedSource, afterBreaks, content, nextBreak, textOf } from './bytes';
 import { byteBefore, duplicates, exactError, lineCol, nameAt, prefixOf, type Parse } from './errors';
 import { HugeIndex, type Big } from './index';
-import { FAIL, NEED, S_AFTER, S_TOP, STOP, Skeleton, W_CHILD, W_CLOSE, W_MEMORY, type State } from './skeleton';
+import { DONE, FAIL, NEED, S_AFTER, S_TOP, STOP, Skeleton, W_CHILD, W_CLOSE, W_MEMORY, type State } from './skeleton';
 import { ARR, BOOL, LIST, NUL, NUM, OBJ, STR, type Bytes, type FindBatch, type FindOptions, type HugeError, type HugeLines, type HugeLocation, type HugeNode, type HugeOptions, type HugePage, type HugeProblem, type HugeProgress, type HugeSummary, type Seg } from './types';
 
 /** The parsers queries use: tape.wasm's module (null without WebAssembly) and the JS tape parser. */
@@ -153,14 +154,16 @@ export class HugeDoc {
     return { bytes: this.done ? this.src.size : this.ix.pos, size: this.src.size, nodes: st[1], records: st[3], lines: st[9], ms: performance.now() - this.t0 };
   }
 
+  /** The top-level values are viewed as an array of them: several, or JSON Lines by name (the normal path wraps those even when one). */
   private get multi(): boolean {
-    return this.stats()[3] > 1;
+    const n = this.stats()[3];
+    return n > 1 || (this.lines && n > 0);
   }
 
   summary(): HugeSummary {
     const st = this.stats();
     const records = st[3];
-    const multi = records > 1;
+    const multi = this.multi;
     // Duplicate names, confirmed and placed as they come.
     if (this.checked < this.pairs.length) {
       this.warnings.push(...duplicates(this.src, this.index, this.pairs.slice(this.checked)));
@@ -195,9 +198,8 @@ export class HugeDoc {
 
   /** The only top-level value, or the LIST of them. */
   private root(): HugeNode | null {
-    const records = this.stats()[3];
-    if (records === 0) return null;
-    if (records > 1) return this.list();
+    if (this.stats()[3] === 0) return null;
+    if (this.multi) return this.list();
     const ix = this.index;
     // In the directory, still open (frame 0 of the last checkpoint), or small (from the page of top-level values).
     if (ix.bigCount) {
@@ -243,6 +245,21 @@ export class HugeDoc {
     const k1 = ix.at(b.start) + 1;
     let k2 = ix.n - 1;
     if (b.node.end >= 0) k2 = Math.min(k2, ix.at(b.node.end - 1));
+    else {
+      // (Its end not known yet: the checkpoints it is open at are k1… up to the last one where it is.)
+      const open = (k: number) => ix.depth[k] >= b.d && ix.frames[ix.frame(k, b.d - 1) + 2] === b.start;
+      if (k1 > k2 || !open(k1)) k2 = k1 - 1;
+      else {
+        let lo = k1;
+        let hi = k2;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >>> 1;
+          if (open(mid)) lo = mid;
+          else hi = mid - 1;
+        }
+        k2 = lo;
+      }
+    }
     if (k1 > k2 || this.countAt(k1, b) > i) return k1 - 1;
     let lo = k1;
     let hi = k2;
@@ -317,12 +334,20 @@ export class HugeDoc {
     let got = from;
     if (!first.closed) {
       const q = this.q;
-      const limit = cur + this.pageBytes;
+      // (Big children are stubs: their bytes don't count.)
+      let limit = cur + this.pageBytes;
       const kids = this.bigKids(b, cur);
       let nb = kids.next().value as Big | undefined;
       for (;;) {
         q.target(b.d, b.start, from + count, limit, nb ? nb.start : -1);
-        if (q.go() !== STOP) {
+        const r = q.go();
+        if (r === DONE && b.d === 0) {
+          // The top level ends with the document.
+          end = this.src.size;
+          got = q.snapshot().top;
+          break;
+        }
+        if (r !== STOP) {
           // The document ends or breaks in the page: it ends with the last whole child.
           const last = this.lastWhole(b, first.s, from + count);
           end = Math.max(cur, last.end);
@@ -331,17 +356,25 @@ export class HugeDoc {
         }
         const s = q.snapshot();
         const n = this.countIn(s, b);
-        if (q.why === W_CHILD && nb && s.pos === nb.start) {
+        if (q.why === W_CHILD && n < from + count && nb && s.pos === nb.start) {
           // A big child: a stub, and on after it (from the checkpoint right after it, if it's read yet).
           stubs.push({ index: n, key: node.kind === OBJ ? nameAt(this.src, s.frames[b.d - 1].key) : n });
           pieces.push([cur, s.pos], nb);
           cur = nb.end;
-          const k = this.index.at(nb.end + 64);
-          if (this.index.pos[k] >= nb.end) this.at(this.index.state(k));
+          limit += nb.end - nb.start;
+          // (The checkpoint after it is at the next token: only whitespace between.)
+          const k = this.index.at(nb.end - 1) + 1;
+          if (k < this.index.n && this.index.pos[k] < nb.end + 4096 && this.index.depth[k] === b.d) this.at(this.index.state(k));
           else {
             // (Not read that far yet: read through it.)
             q.target(b.d, b.start, n + 1);
-            if (q.go() !== STOP) {
+            const r2 = q.go();
+            if (r2 === DONE && b.d === 0) {
+              end = this.src.size;
+              got = n + 1;
+              break;
+            }
+            if (r2 !== STOP) {
               const last = this.lastWhole(b, first.s, from + count);
               end = Math.max(cur, last.end);
               got = last.count;
@@ -411,7 +444,9 @@ export class HugeDoc {
     for (let i = n + 1; i <= max; i++) {
       const q = this.at(s);
       q.target(b.d, b.start, i);
-      if (q.go() !== STOP) break;
+      const r = q.go();
+      if (r === DONE && b.d === 0) return { end: this.src.size, count: i };
+      if (r !== STOP) break;
       end = q.snapshot().pos;
       n = i;
       if (q.why === W_CLOSE) break;
@@ -535,7 +570,7 @@ export class HugeDoc {
   }
 
   /** Line `a` of region `r`: its text (cut at `max`), full length, its node's byte, and kind (0 value, 1 opens, 2 closes). */
-  private lineText(r: Region, a: number, indent: string, max: number, pads: string[]): { text: string; length: number; pos: number; kind: number } {
+  private lineText(r: Region, a: number, indent: string, max: number, pads: string[]): { text: string; length: number; pos: number; kind: number; cut?: boolean } {
     const t = r.tape;
     const x = r.lines[a];
     const d = r.depth[a] + (this.multi ? 1 : 0);
@@ -561,11 +596,16 @@ export class HugeDoc {
     }
     let body: string;
     if (stub) {
-      // A big string: its start (the line is cut).
-      const text = (head + textOf(this.src, stub.start, Math.min(PREVIEW, stub.end - stub.start))).slice(0, max);
-      return { text, length: head.length + (stub.end - stub.start) + tail.length, pos, kind: 0 };
-    }
-    if (kind === NUL) body = 'null';
+      const len = stub.end - stub.start;
+      if (len > PREVIEW) {
+        // A big string: its start as stored (the line is cut; its length is its bytes').
+        const text = (head + textOf(this.src, stub.start, PREVIEW)).slice(0, max);
+        return { text, length: head.length + len + tail.length, pos, kind: 0, cut: true };
+      }
+      // (Small enough to write as the normal path does.)
+      const token = textOf(this.src, stub.start, len);
+      body = plainToken(token, 0, token.length) ? token : quote(decodeString(token, 0));
+    } else if (kind === NUL) body = 'null';
     else if (kind === BOOL) body = valueKindOf(t, i) === VALUE_FALSE ? 'false' : 'true';
     else if (kind === NUM) body = valueOf(t, i, r.text) as string;
     else {
@@ -616,7 +656,7 @@ export class HugeDoc {
       for (let a = a0; a < r.lines.length && j < n; a++, j++) {
         const x = this.lineText(r, a, indent, max, pads);
         text.push(x.text);
-        cut[j] = x.length > max ? 1 : 0;
+        cut[j] = x.cut || x.length > max ? 1 : 0;
         length[j] = x.length;
         pos[j] = x.pos;
         kind[j] = x.kind;
@@ -744,7 +784,12 @@ export class HugeDoc {
   locate(pos: Bytes): HugeLocation | null {
     const ix = this.index;
     if (pos < 0 || pos >= this.src.size) return null;
-    const k = ix.at(pos);
+    let k = ix.at(pos);
+    // (Right after a value, at the comma or bracket where a checkpoint is: the value is the region before's.)
+    if (k > 0 && ix.pos[k] === pos && ix.st[k] === S_AFTER) {
+      const c = this.src.read(pos - 1, 1)[0];
+      if (c !== 32 && c !== 9 && c !== 10 && c !== 13) k--;
+    }
     const r = this.region(k);
     if (!r) return null;
     const t = r.tape;
@@ -811,11 +856,12 @@ export class HugeDoc {
       let next: HugeNode | undefined;
       if (node.kind === OBJ) {
         const key = String(seg);
-        for (let from = 0; !next; from += 1000) {
+        for (let from = 0; !next; ) {
           const page = this.pageOf(node, from, 1000);
           if (!page) return null;
           next = page.nodes.find((n) => n.key === key);
-          if (!page.page.more) break;
+          if (!page.page.more || !page.page.count) break;
+          from += page.page.count;
         }
       } else {
         if (typeof seg !== 'number' && !/^\d+$/.test(seg)) return null;
@@ -974,7 +1020,9 @@ function byteOf(b: Built, off: number): number {
     if (m[mid * 3] <= off) lo = mid;
     else hi = mid - 1;
   }
-  const byte = m[lo * 3 + 1];
+  let byte = m[lo * 3 + 1];
+  // (The end of a piece of the document where added text starts: the piece's end.)
+  if (byte < 0 && lo > 0 && m[lo * 3] === off && m[lo * 3 - 2] >= 0) lo--, (byte = m[lo * 3 + 1]);
   if (byte < 0) return -1;
   return byte + utf8Bytes(b.text, m[lo * 3], off);
 }
@@ -984,12 +1032,23 @@ function offsetOf(b: Built, pos: number, src: ByteSource): number {
   const m = b.map;
   for (let j = 0; j < m.length; j += 3) {
     const byte = m[j + 1];
-    if (byte >= 0 && pos >= byte && pos < byte + m[j + 2]) return m[j] + count(src.read(byte, pos - byte), 0, pos - byte).units;
+    if (byte >= 0 && pos >= byte && pos < byte + m[j + 2]) return m[j] + units(src.read(byte, pos - byte));
   }
-  for (const [at, big] of b.stubs) if (pos >= big.start && pos < big.end) return at + 1;
+  for (const [at, big] of b.stubs) if (pos >= big.start && pos <= big.end) return pos === big.end ? at + 2 : at + 1;
   // (At the very end of a piece.)
-  for (let j = 0; j < m.length; j += 3) if (m[j + 1] >= 0 && pos === m[j + 1] + m[j + 2]) return m[j] + count(src.read(m[j + 1], m[j + 2]), 0, m[j + 2]).units;
+  for (let j = 0; j < m.length; j += 3) if (m[j + 1] >= 0 && pos === m[j + 1] + m[j + 2]) return m[j] + units(src.read(m[j + 1], m[j + 2]));
   return -1;
+}
+
+/** UTF-16 units of UTF-8 bytes (as decoded: a \r\n is two). */
+function units(b: Uint8Array): number {
+  let n = 0;
+  for (let i = 0; i < b.length; i++) {
+    const c = b[i];
+    if (c < 0x80) n++;
+    else if (c >= 0xc0) n += c >= 0xf0 ? 2 : 1;
+  }
+  return n;
 }
 
 /** UTF-8 bytes of `s[a, e)`. */
