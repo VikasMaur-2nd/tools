@@ -135,6 +135,6 @@ export class MemorySink implements Sink {
     return out;
   }
   text() {
-    return new TextDecoder().decode(this.bytes());
+    return new TextDecoder('utf-8', { ignoreBOM: true }).decode(this.bytes());
   }
 }

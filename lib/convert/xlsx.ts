@@ -597,3 +597,7 @@ async function zip(files: [string, Uint8Array[]][]): Promise<Uint8Array[]> {
   ev.setUint32(16, off, true);
   return [...out, ...cd, end];
 }
+
+/** The tabulation's cell rules, for huge mode's streamed CSV (lib/huge/stream/csv.ts), which applies them a record at a time. */
+export { text as cellText, nested as nestedCell, readable as readableIds };
+export type { Cell as GridCell };
