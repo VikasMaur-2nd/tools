@@ -19,8 +19,11 @@ export const FULL = 4 << 20;
 
 const encoder = new TextEncoder();
 
+/** The first block (most outputs of a part or a cell are small): later ones are BLOCK. */
+const FIRST = 64 << 10;
+
 export class Bytes {
-  buf = new Uint8Array(BLOCK);
+  buf = new Uint8Array(FIRST);
   pos = 0;
   /** Bytes handed on so far (`written` counts the block being filled too). */
   total = 0;

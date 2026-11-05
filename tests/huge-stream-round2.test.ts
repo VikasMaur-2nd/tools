@@ -9,6 +9,9 @@ import { parse } from '../lib/json/parser';
 import { runJob, type Outputs } from '../lib/huge/stream/jobs';
 import { Bytes, MemorySink, type Sink } from '../lib/huge/stream/out';
 import { condValueOf, filterOf, formValue, test as condTest, type Op } from '../lib/huge/stream/filter';
+import { serve } from '../lib/huge/stream/serve';
+import { StreamClient } from '../lib/huge/stream/client';
+import { crc32, ZipWriter } from '../lib/huge/stream/sinks';
 import { rng } from './oracle/compare';
 import { enc } from './huge-oracle';
 
@@ -213,4 +216,183 @@ test('item 6: the Shape panel hands a big number to Extract as written', () => {
   // A string that reads as a number stays a string.
   assert.equal(formValue('12'), '"12"');
   assert.equal(filterOf({ conds: [{ path: 'id', op: 'eq', value: formValue('12') }], any: false })!.conds[0].value, '12');
+});
+
+// ── Items 9, 10: ZIP Split cleans up after itself and keeps no per-part memory ──
+
+/** An OPFS in memory that, like the browser, won't delete a file while an access handle on it is open. */
+function mockOpfs() {
+  const files = new Map<string, { data: Uint8Array; size: number; open: number }>();
+  const stats = { removed: 0, refused: 0, maxOpen: 0 };
+  const opened = () => [...files.values()].reduce((n, f) => n + f.open, 0);
+  const fileHandle = (name: string) => ({
+    kind: 'file',
+    async createSyncAccessHandle() {
+      const f = files.get(name)!;
+      f.open++;
+      stats.maxOpen = Math.max(stats.maxOpen, opened());
+      let closed = false;
+      return {
+        truncate(n: number) {
+          f.size = Math.min(f.size, n);
+        },
+        getSize: () => f.size,
+        write(b: Uint8Array, o: { at: number }) {
+          if (o.at + b.length > f.data.length) {
+            const g = new Uint8Array(Math.max(f.data.length * 2, o.at + b.length));
+            g.set(f.data.subarray(0, f.size));
+            f.data = g;
+          }
+          f.data.set(b, o.at);
+          f.size = Math.max(f.size, o.at + b.length);
+          return b.length;
+        },
+        read(b: Uint8Array, o: { at: number }) {
+          const n = Math.max(0, Math.min(b.length, f.size - o.at));
+          b.set(f.data.subarray(o.at, o.at + n));
+          return n;
+        },
+        flush() {},
+        close() {
+          if (!closed) f.open--;
+          closed = true;
+        },
+      };
+    },
+    async getFile() {
+      const f = files.get(name)!;
+      return new File([f.data.slice(0, f.size)], name);
+    },
+  });
+  const dir = {
+    async getFileHandle(name: string, o?: { create?: boolean }) {
+      if (!files.has(name)) {
+        if (!o?.create) throw new DOMException('Not found', 'NotFoundError');
+        files.set(name, { data: new Uint8Array(1024), size: 0, open: 0 });
+      }
+      return fileHandle(name);
+    },
+    async removeEntry(name: string) {
+      const f = files.get(name);
+      if (!f) throw new DOMException('Not found', 'NotFoundError');
+      if (f.open) {
+        stats.refused++;
+        throw new DOMException('Handle still open', 'NoModificationAllowedError');
+      }
+      files.delete(name);
+      stats.removed++;
+    },
+  };
+  const before = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => dir }) } } });
+  const restore = () => {
+    if (before) Object.defineProperty(globalThis, 'navigator', before);
+  };
+  return { files, stats, opened, restore };
+}
+
+/** A stream client and its worker side in process (messages a task apart, as postMessage). */
+function streamPair() {
+  const page: { onmessage: ((e: { data: unknown }) => void) | null; postMessage(m: unknown): void } = { onmessage: null, postMessage: (m) => setImmediate(() => worker.onmessage?.({ data: m })) };
+  const worker: { onmessage: ((e: { data: unknown }) => void) | null; postMessage(m: unknown): void } = { onmessage: null, postMessage: (m) => setImmediate(() => page.onmessage?.({ data: m })) };
+  serve(worker);
+  return { client: new StreamClient(page), worker };
+}
+
+/** The entries of a ZIP64 archive written by ZipWriter: names and contents. */
+function unzip(z: Uint8Array): { name: string; data: string; crcOk: boolean }[] {
+  const v = new DataView(z.buffer, z.byteOffset, z.byteLength);
+  const eocd = z.length - 22;
+  assert.equal(v.getUint32(eocd, true), 0x06054b50);
+  const z64 = Number(v.getBigUint64(eocd - 20 + 8, true));
+  assert.equal(v.getUint32(z64, true), 0x06064b50);
+  const count = Number(v.getBigUint64(z64 + 32, true));
+  let at = Number(v.getBigUint64(z64 + 48, true));
+  const out = [];
+  for (let k = 0; k < count; k++) {
+    assert.equal(v.getUint32(at, true), 0x02014b50, `central record ${k}`);
+    const n = v.getUint16(at + 28, true);
+    const x = v.getUint16(at + 30, true);
+    const crc = v.getUint32(at + 16, true);
+    const name = new TextDecoder().decode(z.subarray(at + 46, at + 46 + n));
+    const size = Number(v.getBigUint64(at + 46 + n + 4, true));
+    const local = Number(v.getBigUint64(at + 46 + n + 20, true));
+    const ln = v.getUint16(local + 26, true);
+    const lx = v.getUint16(local + 28, true);
+    const data = z.subarray(local + 30 + ln + lx, local + 30 + ln + lx + size);
+    out.push({ name, data: new TextDecoder().decode(data), crcOk: crc32(data) === crc && v.getUint32(local + 14, true) === crc });
+    at += 46 + n + x;
+  }
+  return out;
+}
+
+const split = (file: Blob, per = 1) => ({ kind: 'split' as const, scope: { start: 0, end: file.size, multi: false }, per, format: 'jsonl' as const, indent: '' });
+const zipOut = { kind: 'zip' as const, name: 'probe.zip', names: 'part-{n}.jsonl', gzip: false };
+
+test('item 9: a ZIP Split stopped before its first entry closes its files and deletes them (the review: 1 handle left open)', async () => {
+  const fs = mockOpfs();
+  try {
+    const { client, worker } = streamPair();
+    const file = new Blob(['[1,2,3]']);
+    const run = client.run(file, 0, split(file), zipOut);
+    // (Stopped at once, as the review's probe did: before any input is read.)
+    worker.onmessage?.({ data: { id: 2, op: 'stop', target: 1 } });
+    await assert.rejects(run.done, (e: Error) => e.message === 'Stopped');
+    assert.equal(fs.opened(), 0, 'no access handle left open');
+    assert.deepEqual([...fs.files.keys()], [], 'no file left');
+    client.close();
+  } finally {
+    fs.restore();
+  }
+});
+
+test('item 9: a ZIP Split that fails part-way (invalid JSON after some parts) leaves nothing behind', async () => {
+  const fs = mockOpfs();
+  try {
+    const { client } = streamPair();
+    const file = new Blob(['[' + Array.from({ length: 500 }, (_, i) => `{"i":${i}}`).join(',') + ',}]']);
+    await assert.rejects(client.run(file, 0, split(file, 7), zipOut).done, (e: Error) => e.message === 'Invalid JSON');
+    assert.equal(fs.opened(), 0, 'no access handle left open');
+    assert.deepEqual([...fs.files.keys()], [], 'no file left');
+    client.close();
+  } finally {
+    fs.restore();
+  }
+});
+
+test('item 10: a ZIP Split of 20,000 parts keeps no per-part memory; the archive (and only it) is left, complete', async () => {
+  const fs = mockOpfs();
+  try {
+    const { client } = streamPair();
+    const n = 20_000;
+    const lines = Array.from({ length: n }, (_, i) => `{"i":${i},"s":"é${i}"}`);
+    const file = new Blob(['[' + lines.join(',') + ']']);
+    const { result, file: zip } = await client.run(file, 0, split(file), zipOut).done;
+    assert.equal(result.parts, n);
+    assert.equal(fs.opened(), 0, 'every handle closed');
+    assert.deepEqual([...fs.files.keys()], ['probe.zip'], 'the central directory spool is gone');
+    const entries = unzip(new Uint8Array(await zip!.arrayBuffer()));
+    assert.equal(entries.length, n);
+    for (let k = 0; k < n; k += 997) {
+      assert.equal(entries[k].name, `part-${String(k + 1).padStart(4, '0')}.jsonl`);
+      assert.equal(entries[k].data, lines[k] + '\n');
+      assert.ok(entries[k].crcOk, `crc ${k}`);
+    }
+    client.close();
+  } finally {
+    fs.restore();
+  }
+  // The writer itself: nothing that grows with the entries (the review: an array of every part's metadata).
+  const f = { name: 'z', size: 0, write(b: Uint8Array) { this.size += b.length; }, writeAt() {}, readAt: () => 0, close: async () => {}, abort: async () => {}, file: async () => new File([], 'z') };
+  const spool = { ...f, name: 'z.cd', size: 0, write(b: Uint8Array) { this.size += b.length; } };
+  const zw = new ZipWriter(f, spool);
+  for (let k = 0; k < 5000; k++) {
+    const e = zw.entry(`p${k}`);
+    await e.write(new Uint8Array([k & 255]));
+    await e.close();
+  }
+  for (const v of Object.values(zw)) {
+    if (Array.isArray(v) || v instanceof Map || v instanceof Set) assert.ok((v as { length?: number; size?: number }).length ?? (v as { size: number }).size < 5000, 'no collection per entry');
+  }
+  assert.ok(spool.size > 5000 * 46, 'its central directory went to the spool');
 });
