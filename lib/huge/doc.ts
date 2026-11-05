@@ -44,6 +44,10 @@ const PREVIEW_CHARS = 1024;
 const DUP_SCAN = 1 << 20;
 /** The first window when reading again after an edit (it grows: see steps). */
 const REREAD_WINDOW = 1 << 16;
+/** Bytes read again a millisecond, about (a window no bigger than the time left: HugeDoc.steps). */
+const REREAD_PER_MS = 1 << 17;
+/** Bytes past an edit read again with checkpoints close together (HugeDoc.dense), for the next keystroke. */
+const DENSE_PAST = 1 << 17;
 /** Bytes before a failure from which its error is placed (nearFail), when a value ends there. */
 const NEAR_FAIL = 2048;
 /** Stats of a parse (lib.rs stats()). */
@@ -176,7 +180,10 @@ export class HugeDoc {
       indexSrc = { size: ahead.size - bom, read: (at, len) => ahead.read(at + bom, len) };
       this.indexHas = (at, len) => ahead.has(at + bom, len);
     }
-    if (!this.ix.start(indexSrc, { window: tune.window, every: options.every ?? 1 << 20, big: this.big, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
+    this.every = options.every ?? 1 << 20;
+    this.everyNow = this.every;
+    this.dense = Math.max(64, Math.min(this.every, this.every >> 6));
+    if (!this.ix.start(indexSrc, { window: tune.window, every: this.every, big: this.big, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
       this.final = new Float64Array(STATS);
       this.done = true;
       this.error = { msg: 'Not enough memory to parse this document', line: 1, col: 1, pos: 0, kind: 'error' };
@@ -297,6 +304,14 @@ export class HugeDoc {
         // (Never more than the window it was made with.)
         win = Math.min(this.ix.window, to > this.ix.pos ? Math.max(REREAD_WINDOW, (to - this.ix.pos + 4096 + 63) & ~63) : this.rewin);
         this.rewin = Math.min(this.ix.window, this.rewin * 2);
+        // (No more than there's time for before `until`: a keystroke's is short, and a window can't be stopped.)
+        if (until < Infinity) win = Math.min(win, Math.max(REREAD_WINDOW, Math.floor((until - performance.now()) * REREAD_PER_MS) & ~63));
+      }
+      // (Checkpoints close together near the last edit, as opened past it.)
+      const every = this.edited && this.ix.pos < this.denseUntil ? this.dense : this.every;
+      if (every !== this.everyNow) {
+        this.ix.every(every);
+        this.everyNow = every;
       }
       const r = this.resumeIx ? this.ix.resume() : this.ix.step(win);
       this.resumeIx = false;
@@ -531,6 +546,15 @@ export class HugeDoc {
   private resumeIx = false;
   /** Window bytes while reading again (from REREAD_WINDOW at each restore, doubling). */
   private rewin = REREAD_WINDOW;
+  /**
+   * Bytes between checkpoints: as opened, and `dense` while reading again from before the last edit to DENSE_PAST
+   * after it (`denseUntil`), so the next keystroke there reads again from a few KiB before it to a few KiB after
+   * (typing in the Format view: a few dozen more checkpoints a place); `everyNow`: the indexer's now.
+   */
+  private every = 1 << 20;
+  private dense = 1 << 14;
+  private everyNow = 1 << 20;
+  private denseUntil = -1;
   /** Where the indexer last started reading again, and its live checkpoint then; how far it has read since its tail was made. */
   private readStart = 0;
   private readUpTo = -1;
@@ -565,6 +589,7 @@ export class HugeDoc {
       cut = this.apply(o.a, o.b, o.put) || cut;
       removed.push(this.src.splice(o.a, o.b, o.put));
       this.tail?.replaced(o.a, o.b, lengthOf(o.put));
+      this.denseUntil = o.a + lengthOf(o.put) + DENSE_PAST;
     }
     if (cut) {
       // (Read again from the next step: nothing past the index's new end is read meanwhile.)
@@ -642,6 +667,9 @@ export class HugeDoc {
    */
   private cut(k: number, mark = false) {
     const live = this.index;
+    // (Reading again, an edit before where it has got to: the old tail's pairs it read past but couldn't find again
+    // (their first name before where it started) are kept first, or they'd go with the old document's.)
+    if (this.tail && this.readUpTo > this.readStart) this.keepPairs(this.readUpTo);
     const old = this.tail;
     const t = new Tail(old ? old.end : this.done && !this.error && this.final ? { kind: 'done', final: this.final.slice() } : { kind: 'open' });
     const last = live.n - 1;
@@ -785,10 +813,33 @@ export class HugeDoc {
     }
     const k = this.cand;
     const T = this.tail?.ix;
-    if (k >= 0 && s.pos === T!.pos[k] && this.same(s, k)) return this.take(s, this.ix.stats(), k);
+    if (k >= 0 && s.pos === T!.pos[k] && this.same(s, k) && this.ended(s)) return this.take(s, this.ix.stats(), k);
     if (!(k >= 0 && T!.pos[k] > s.pos)) this.cand = this.nextCand(s.pos, k);
     this.aim();
     this.resumeIx = true;
+  }
+
+  /**
+   * Whether the value before state `s` (stopped right after it) ended there: at the top level a number or literal
+   * ends at the next byte, which may not end it (`0y`: a fresh read fails at the `y` with no checkpoint before it,
+   * where an old checkpoint after a string, `"…"y`, has moved). Inside a container the stop is at a comma or a
+   * closing bracket. (Bytes not at hand: not here.)
+   */
+  private ended(s: State): boolean {
+    if (s.frames.length || s.pos <= 0) return true;
+    let b: Uint8Array;
+    try {
+      b = this.src.read(s.pos - 1, 2);
+    } catch (e) {
+      if (e instanceof Wait) return false;
+      throw e;
+    }
+    const prev = b[0];
+    // (After a string or a container, or past whitespace: ended before.)
+    if (prev === 34 || prev === 93 || prev === 125 || prev === 32 || prev === 9 || prev === 10 || prev === 13) return true;
+    if (b.length < 2) return true;
+    const next = b[1];
+    return next === 32 || next === 9 || next === 10 || next === 13 || next === 44 || next === 93 || next === 125;
   }
 
   /** Whether state `s` is tail checkpoint `k`'s: the same state and open containers (kinds, starts, names; children unless they began before the edit). */
@@ -1872,10 +1923,12 @@ export class HugeDoc {
     // (Not read yet.)
     if (this.front && pos >= this.front.pos) return null;
     let k = Math.min(ix.at(pos), this.lastK);
-    // (Right after a value, at the comma or bracket where a checkpoint is: the value is the region before's.)
-    if (k > 0 && ix.pos[k] === pos && ix.st[k] === S_AFTER) {
-      const c = this.src.read(pos - 1, 1)[0];
-      if (c !== 32 && c !== 9 && c !== 10 && c !== 13) k--;
+    // (Right after a value, at the comma or bracket where a checkpoint is, or at the top level at a separator (not
+    // the next value's start, `}{`): the value is the region before's, wherever checkpoints are.)
+    if (k > 0 && ix.pos[k] === pos && (ix.st[k] === S_AFTER || ix.st[k] === S_TOP)) {
+      const [c, n] = this.src.read(pos - 1, 2);
+      const space = (x: number) => x === 32 || x === 9 || x === 10 || x === 13;
+      if (!space(c) && (ix.st[k] === S_AFTER || n === 44 || space(n))) k--;
     }
     // After the last checkpoint while reading: a stretch to the first clean place past `pos`, if any before the front.
     let r = k === this.lastK && this.front ? this.frontRegion(k, pos) : this.region(k);

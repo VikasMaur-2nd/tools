@@ -33,6 +33,8 @@ export interface ServePort {
 const SLICE = 10;
 /** An edit reads the document again for at most this long before it replies (ms); the rest goes on in steps. */
 const EDIT_MS = 50;
+/** The same for a keystroke (`replace(…, typing)`: the Format view's typing), so typing never waits long behind a change that reads on (an unbalanced bracket): the rest in steps. */
+const TYPING_MS = 8;
 /** Progress is posted at most this often (ms). */
 const PROGRESS = 100;
 /** A session is kept this long after the last edit (ms). */
@@ -410,7 +412,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         // Edits: each is one undo step; reads (a node's place) come before any change, so one that waits is asked again whole.
         case 'edit': {
           const ops: EditOp[] = m.ops.map((o) => ({ a: o.a, b: o.b, put: piecesOf(enc.encode(o.text)) }));
-          ed().apply(ops, until, m.typing);
+          ed().apply(ops, m.typing ? performance.now() + TYPING_MS : until, m.typing);
           return reply({ id: m.id, ok: true, value: edited(), done: true });
         }
         case 'setValue':
