@@ -128,6 +128,19 @@ export class Pieces implements ByteSource {
     return removed;
   }
 
+  /** The pieces of bytes [a, b) (references: nothing is read or copied, so a value of any size is copied for free). */
+  slice(a: number, b: number): Piece[] {
+    const out: Piece[] = [];
+    if (b <= a) return out;
+    for (let i = this.find(a); i < this.ps.length && this.starts[i] < b; i++) {
+      const p = this.ps[i];
+      const from = Math.max(0, a - this.starts[i]);
+      const to = Math.min(p.len, b - this.starts[i]);
+      if (to > from) out.push({ buf: p.buf, off: p.off + from, len: to - from });
+    }
+    return out;
+  }
+
   /** The base's bytes (no edits) again. */
   reset(): void {
     this.ps = this.base.size ? [{ buf: null, off: 0, len: this.base.size }] : [];

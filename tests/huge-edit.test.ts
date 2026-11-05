@@ -8,29 +8,22 @@ import { test } from 'node:test';
 import { writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { MAX_DEPTH } from '../lib/json/parser';
-import { writeTape } from '../lib/json/pretty';
 import { endOf, kindOf, nextOf, startOf } from '../lib/json/tape';
 import { parse } from '../lib/json/tape-parser';
 import { byteAfterUnits } from '../lib/huge/bytes';
 import { HugeDoc } from '../lib/huge/doc';
-import { PageNodes } from '../lib/huge/page';
+import { Skeleton, type State } from '../lib/huge/skeleton';
 import { piecesOf } from '../lib/huge/pieces';
-import type { HugeNode } from '../lib/huge/types';
 import { genStrict } from './oracle/tape';
 import { rng, type Rng } from './oracle/compare';
-import { enc, hugeMod, memSource, normalBar, pageText, tapeMod } from './huge-oracle';
+import { dump, enc, hugeMod, memSource, normalBar, open, pageText, type EditTune } from './huge-oracle';
 
 const SEED = Number(process.env.FUZZ_SEED) || 0;
 const SCALE = (Number(process.env.FUZZ_SCALE) || 1) * (process.env.TEST_SLOW ? 20 : 1);
 const show = (s: string) => JSON.stringify(s.length > 400 ? s.slice(0, 400) + '…' : s);
 const dec = new TextDecoder();
 
-interface Tune {
-  every: number;
-  big: number;
-  window: number;
-  pageBytes: number;
-}
+type Tune = EditTune;
 
 function docOf(r: Rng): { doc: string; name: string } {
   const k = r.int(5);
@@ -44,59 +37,6 @@ function docOf(r: Rng): { doc: string; name: string } {
   if (k === 2) return { doc: '[\n  ' + recs.join(',\n  ') + '\n]', name: 'a.json' };
   if (k === 3) return { doc: '{"meta": {"n": 1}, "records": [' + recs.join(',') + '], "tail": "' + 'x'.repeat(r.int(300)) + '"}', name: 'a.json' };
   return { doc: JSON.stringify(JSON.parse('[' + recs.join(',') + ']'), null, 2), name: 'a.json' };
-}
-
-export const open = (bytes: Uint8Array, name: string, t: Tune) => {
-  const d = new HugeDoc(memSource(bytes), hugeMod, { wasm: tapeMod, parse }, { name, every: t.every, big: t.big }, { window: t.window, queryWindow: t.window, pageBytes: t.pageBytes });
-  d.step(Infinity);
-  return d;
-};
-
-/**
- * Everything the views can ask, as text lines: the summary, every page down to depth 5, every pretty and raw line,
- * locate at `at`. (Pretty lines apart: a broken document's run a value past its last checkpoint before the error,
- * which isn't at the same place in an edited one and a fresh one.)
- */
-export function dump(d: HugeDoc, at: number[]): { out: string[]; pretty: string[] } {
-  const out: string[] = [];
-  const pretty: string[] = [];
-  const s = d.summary();
-  const { size, done, records, multi, jsonl, nodes, depth, lines, prettyLines, error, status, warnings, moreWarnings } = s;
-  out.push(JSON.stringify({ size, done, records, multi, jsonl, nodes, depth, lines, prettyLines, error, status, warnings, moreWarnings }));
-  const node = (n: HugeNode | null) => (n ? JSON.stringify([n.kind, n.start, n.end, n.depth, n.key, n.count, !!n.partial, n.pretty, n.prettyLines, n.preview ?? null]) : 'null');
-  out.push('root ' + node(s.root));
-  const walk = (n: HugeNode, d0: number) => {
-    for (let from = 0; ; ) {
-      const page = d.children(n, from, 5);
-      const view = new PageNodes(page);
-      for (const k of view.children) {
-        const stub = view.stub(k);
-        out.push(`${d0} ${from} ${JSON.stringify(k.key ?? null)} ${JSON.stringify(view.span(k))} ` + (stub ? 'stub ' + node(stub) : writeTape(view.tape, page.text, k.zi!, '')));
-        if (stub && stub.kind >= 4 && d0 < 5) walk(stub, d0 + 1);
-      }
-      if (!page.more || !page.count) break;
-      from += page.count;
-    }
-  };
-  if (s.root && s.root.kind >= 4) walk(s.root, 0);
-  for (let from = 0; from < s.prettyLines; ) {
-    const p = d.prettyLines(from, 40, '  ', 1 << 20);
-    if (!p.text.length) break;
-    // (A line's close is given when the stretch it's in holds it: where stretches end differs, prettyClose doesn't.)
-    for (let j = 0; j < p.text.length; j++) pretty.push(`p${from + j} ${p.text[j]} ${p.depth![j]} ${p.kind![j]} ${p.kind![j] === 1 ? d.prettyClose(from + j) : -1} ${p.pos[j]}`);
-    from += p.text.length;
-  }
-  for (let from = 0; from < s.lines; ) {
-    const p = d.rawLines(from, 40, 1 << 20);
-    if (!p.text.length) break;
-    for (let j = 0; j < p.text.length; j++) out.push(`r${from + j} ${p.text[j]}`);
-    from += p.text.length;
-  }
-  for (const p of at) {
-    const l = d.locate(p);
-    out.push(`at ${p} ` + (l ? JSON.stringify({ path: l.path, node: [l.node.start, l.node.end, l.node.kind, l.node.count], index: l.index, chain: l.chain.map((c) => [c.node.start, c.node.kind, c.node.count, c.index]), line: l.line, col: l.col }) : 'null'));
-  }
-  return { out, pretty };
 }
 
 function same(got: HugeDoc, bytes: Uint8Array, name: string, t: Tune, r: Rng, where: string) {
@@ -186,8 +126,74 @@ test('edits: after each of a random sequence, every query is the fresh document\
       d.edit([{ a: c.a, b: c.b, put: piecesOf(ins) }]);
       bytes = apply(bytes, c.a, c.b, ins);
       assert.equal(dec.decode(d.src.read(0, d.src.size)), dec.decode(bytes), `bytes${where}`);
+      truth(d, bytes, where);
       same(d, bytes, name, t, r, where);
     }
   }
   if (statusDiffers) console.log(`(status: ${statusDiffers} documents where huge mode's status isn't the normal path's, opened fresh too)`);
+});
+
+/** Every checkpoint of `d`'s index is the parser's state at its byte in `bytes` (read from the start). */
+function truth(d: HugeDoc, bytes: Uint8Array, where: string) {
+  const ix = d.index;
+  const strip = (x: State) => JSON.stringify([x.pos, x.state, x.nodes, x.closers, x.lines, x.u16, x.lineU16, x.top, x.frames.map((f) => [f.kind, f.count, f.start, f.key, f.nodes, f.closers])]);
+  for (let k = 1; k < ix.n; k++) {
+    const want = ix.state(k);
+    const q = new Skeleton(hugeMod);
+    q.start(memSource(bytes), { window: 64 });
+    q.target(-1);
+    q.stopAfter(want.pos);
+    q.go();
+    assert.equal(strip(want), strip(q.snapshot()), `checkpoint ${k} of ${ix.n}${where}`);
+  }
+}
+
+test('edits while reading again: queries stay answered, more edits come, several in one; the end is the fresh document', () => {
+  const r = rng(SEED + 62);
+  for (let k = 0; k < 40 * SCALE; k++) {
+    const { doc, name } = docOf(r);
+    let bytes: Uint8Array = enc.encode(doc);
+    const t: Tune = { every: 64 * (1 + r.int(3)), big: r.chance(0.5) ? 40 + r.int(200) : 1 << 20, window: 64, pageBytes: 64 + r.int(1500) };
+    const d = open(bytes, name, t);
+    const log: string[] = [];
+    // (What was done, for HUGE_DUMP: edits, steps, queries.)
+    const acts: unknown[] = [];
+    for (let e = 0; e < 10; e++) {
+      // One to three changes at once, in order (each at the document as the one before leaves it).
+      const ops = [];
+      for (let j = 0, n = 1 + (r.chance(0.3) ? r.int(3) : 0); j < n; j++) {
+        const c = change(r, bytes, name);
+        const ins = enc.encode(c.ins);
+        ops.push({ a: c.a, b: c.b, put: piecesOf(ins) });
+        log.push(`${j ? '+' : ''}${c.a}-${c.b}=${JSON.stringify(c.ins)}`);
+        acts.push(['op', c.a, c.b, c.ins]);
+        bytes = apply(bytes, c.a, c.b, ins);
+      }
+      const where = `\ndoc: ${show(doc)} name ${name} tune ${JSON.stringify(t)}\nedits ${log.join(' ')}\nnow ${show(dec.decode(bytes))}`;
+      acts.push(['edit']);
+      const dump = () => process.env.HUGE_DUMP && writeFileSync(process.env.HUGE_DUMP, JSON.stringify({ doc, name, t, log, acts }));
+      dump();
+      // Read again a window at a time (no time to spare): queries meanwhile, sometimes the next edit right away.
+      let done = d.edit(ops, 0).done;
+      while (!done && !r.chance(0.3)) {
+        const s = d.summary();
+        assert.ok(!s.done, `not done while reading again${where}`);
+        if (s.root && s.root.kind >= 4) d.children(s.root, 0, 3);
+        d.prettyLines(0, 5, '  ', 1 << 16);
+        const at = r.int(bytes.length + 1);
+        d.locate(at);
+        acts.push(['ask', at]);
+        done = d.step(0);
+      }
+      if (!done && r.chance(0.5)) continue;
+      acts.push(['done']);
+      dump();
+      d.step(Infinity);
+      assert.equal(dec.decode(d.src.read(0, d.src.size)), dec.decode(bytes), `bytes${where}`);
+      truth(d, bytes, where);
+      same(d, bytes, name, t, r, where);
+    }
+    d.step(Infinity);
+    same(d, bytes, name, t, r, `\nat the end: doc ${show(doc)} edits ${log.join(' ')}`);
+  }
 });

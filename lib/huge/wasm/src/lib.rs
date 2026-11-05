@@ -844,9 +844,6 @@ unsafe fn scalar(p: usize) -> usize {
 /// A top-level value that starts inside the token before it (`1true`: see dfa_splits) where a run stopped: its
 /// window offset (the token index doesn't have it), or usize::MAX.
 static mut SPLIT: usize = usize::MAX;
-/// Whether the number or literal a window cut has had a whole value at its start yet (`0` of `0123`): one that
-/// never has isn't a value (as scalar() == 0 in a window).
-static mut PEVER: bool = false;
 
 /// Where a number or literal at window offset `p` that isn't one goes wrong: its first byte that can't follow, or
 /// the byte after it if it stops short, as a token cut by a window edge fails (so where a parse fails doesn't
@@ -1098,7 +1095,9 @@ pub unsafe extern "C" fn restore() -> u32 {
         *f.add(8) = NONE;
         *f.add(9) = 1;
     }
-    LOW = depth;
+    // (A state past the last checkpoint (a seek's: its stretch's facts carried) isn't the one the next checkpoint
+    // would share frames with: that one holds them all.)
+    LOW = if *s.add(3) < 0.0 { 0 } else { depth };
     reset_stage1();
     II = 0;
     SPLIT = usize::MAX;
@@ -1115,9 +1114,11 @@ pub unsafe extern "C" fn restore() -> u32 {
 }
 
 /// After restore(): the facts of the document before the snapshot's byte: whether its top-level values were on
-/// lines of their own, its first separator between them, where its second top-level value starts (-1: none).
+/// lines of their own, its first separator between them, where its second top-level value starts (-1: none), how
+/// many duplicate names it has (MAX_WARN counts the document's).
 #[no_mangle]
-pub unsafe extern "C" fn facts(lines_ok: u32, sep: f64, second: f64) {
+pub unsafe extern "C" fn facts(lines_ok: u32, sep: f64, second: f64, warns: u32) {
+    WARNS = warns as usize;
     LINES_OK = lines_ok != 0;
     SEP = if sep < 0.0 { NONE } else { sep as u64 };
     SECOND = if second < 0.0 { NONE } else { second as u64 };
@@ -1738,8 +1739,11 @@ pub unsafe extern "C" fn run() -> i32 {
         ($s:ident, $from:expr, $to:expr) => {{
             let mut k = $from;
             let mut bad = usize::MAX;
+            // (Whether what came before the byte that can't follow was a whole value: `1` of `1x`, not `1e` of `1e+`.)
+            let mut whole = false;
             while k < $to {
                 let c = byte(k);
+                let before = $s;
                 let t = dfa($s, c);
                 if t == D_BAD && depth == 0 && dfa_done($s) && dfa_splits($s, c) {
                     if k > 0 {
@@ -1749,23 +1753,21 @@ pub unsafe extern "C" fn run() -> i32 {
                     nodes += 1;
                     tcount += 1;
                     PSTART = pos0 + k as u64;
-                    PEVER = false;
                     $s = dfa(D_START, c);
                 } else {
                     $s = t;
                 }
-                if $s != D_BAD && dfa_done($s) {
-                    PEVER = true;
-                }
                 if $s == D_BAD {
                     bad = k;
+                    whole = before != D_START && dfa_done(before);
                     break;
                 }
                 k += 1;
             }
             if bad != usize::MAX {
-                // (What's read stops before it; with no whole value at its start, it isn't one: as in a window.)
-                if !PEVER {
+                // (What's read stops before it; a value only if what came before the bad byte was one, as
+                // scalar() takes it in a window.)
+                if !whole {
                     unvalue!(PSTART);
                 }
                 part = P_SCALAR;
@@ -1793,9 +1795,8 @@ pub unsafe extern "C" fn run() -> i32 {
                     break NEED;
                 }
                 if !dfa_done(s) {
-                    if !PEVER {
-                        unvalue!(PSTART);
-                    }
+                    // (It ends unfinished: no value, as scalar() == 0 in a window.)
+                    unvalue!(PSTART);
                     fail!(W_SYNTAX, j);
                 }
                 part = P_NONE;
@@ -2097,7 +2098,6 @@ pub unsafe extern "C" fn run() -> i32 {
                     if j == wlen {
                         let mut s = D_START;
                         PSTART = pos0 + p as u64;
-                        PEVER = false;
                         feed!(s, p, wlen);
                         part = P_SCALAR;
                         PDFA = s;

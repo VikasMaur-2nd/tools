@@ -249,6 +249,17 @@ export class HugeIndex {
     this.sortedAt = -1;
   }
 
+  /** Inserts directory record `r` (DW numbers) where it closed (records are in the order they closed: by end). */
+  insertBig(r: Float64Array) {
+    this.dir = grow(this.dir, (this.nd + 1) * DW);
+    let j = this.nd;
+    while (j > 0 && this.dir[(j - 1) * DW + 1] > r[1]) j--;
+    this.dir.copyWithin((j + 1) * DW, j * DW, this.nd * DW);
+    this.dir.set(r, j * DW);
+    this.nd++;
+    this.sortedAt = -1;
+  }
+
   /** The directory changed (records added or moved): its order is made again when asked. */
   dirChanged() {
     this.sortedAt = -1;

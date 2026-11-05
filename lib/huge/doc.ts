@@ -149,6 +149,7 @@ export class HugeDoc {
     this.src = new Pieces((file as { cached?: boolean }).cached ? c.src : new CachedSource(c.src));
     this.bom = c.bom;
     this.lines = LINES_FILE.test(options.name ?? '');
+    this.big = options.big ?? 1 << 18;
     this.ix = new Skeleton(huge);
     this.q = new Skeleton(huge);
     this.front = { pos: 0, s: this.index.state(0), part: 0, partStart: -1 };
@@ -167,7 +168,7 @@ export class HugeDoc {
       indexSrc = { size: ahead.size - bom, read: (at, len) => ahead.read(at + bom, len) };
       this.indexHas = (at, len) => ahead.has(at + bom, len);
     }
-    if (!this.ix.start(indexSrc, { window: tune.window, every: options.every ?? 1 << 20, big: options.big ?? 1 << 18, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
+    if (!this.ix.start(indexSrc, { window: tune.window, every: options.every ?? 1 << 20, big: this.big, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
       this.final = new Float64Array(STATS);
       this.done = true;
       this.error = { msg: 'Not enough memory to parse this document', line: 1, col: 1, pos: 0, kind: 'error' };
@@ -180,6 +181,8 @@ export class HugeDoc {
   }
 
   private utf16 = false;
+  /** Values of this many bytes or more are in the directory. */
+  private readonly big: number;
 
   // ── Indexing ──────────────────────────────────────────────────────────
 
@@ -267,9 +270,11 @@ export class HugeDoc {
       this.final = this.ix.stats();
       if (r === FAIL) {
         this.failed = { at: this.ix.failPos, why: this.ix.why, anchor: this.ix.failAt };
+        if (this.edited) this.keepPairs(this.failed.at);
         continue;
       }
-      // (Read to the end: the old index past here is of no use.)
+      // (Read to the end: the old index past here is of no use, but for the pairs the indexer couldn't find again.)
+      if (this.edited) this.keepPairs(Infinity);
       this.tail = null;
       this.finish();
     }
@@ -634,7 +639,7 @@ export class HugeDoc {
       if (!live.lok[k]) ok = false;
       if (first < 0 && live.sep[k] >= 0) first = live.sep[k];
     }
-    this.ix.facts(ok, first >= 0 ? first : carry ? s.sep : -1, s.top >= 2 ? this.secondValue() : -1);
+    this.ix.facts(ok, first >= 0 ? first : carry ? s.sep : -1, s.top >= 2 ? this.secondValue() : -1, this.pairs.length / 2);
     this.resumeIx = false;
   }
 
@@ -705,6 +710,15 @@ export class HugeDoc {
   private same(s: State, k: number): boolean {
     const T = this.tail!.ix;
     if (T.st[k] !== s.state || T.depth[k] !== s.frames.length) return false;
+    // (Several top-level values: whether each is on lines of its own after here depends on the lines the last one
+    // started and ended on, which must have moved as the rest did.)
+    const end = this.tail!.end;
+    if (s.frames.length === 0 || this.lines || this.topHint > 1 || s.top > 1 || (end.kind === 'done' && end.final[3] > 1)) {
+      const dl = s.lines - T.lines[k];
+      if (s.topLine !== T.topLine[k] + dl) return false;
+      const was = T.lastTopLine[k];
+      if (s.lastTopLine < 0 ? was >= 0 : s.lastTopLine !== was + dl) return false;
+    }
     const F = T.frames;
     for (let d = 0; d < s.frames.length; d++) {
       const o = T.frame(k, d);
@@ -739,11 +753,17 @@ export class HugeDoc {
     const limit = nd >= 0 ? t.dirty[nd] : Infinity;
     let m = k;
     for (let j = k + 1; j < T.n && T.pos[j] < limit; j++) if (!t.dead[j]) m = j;
+    // (Containers open there without a record: one an edit made big gets one once their ends are known: endFacts.)
+    for (let d = 0; d < s.frames.length; d++) if (!T.bigAt(s.frames[d].start) && !live.bigAt(s.frames[d].start)) this.unsized.add(d + ':' + s.frames[d].start);
     // Checkpoint k as the indexer has it, then the rest moved.
     live.addState(s, st[15]);
+    let prev = k;
     for (let j = k + 1; j <= m; j++) {
       if (t.dead[j]) continue;
-      live.copyFrom(T, j, false, (h, fr, from) => {
+      // (Its frames below its own are the one before's: all of them if that one wasn't taken.)
+      const full = prev !== j - 1;
+      prev = j;
+      live.copyFrom(T, j, full, (h, fr, from) => {
         h[2] += dn;
         h[3] += dc;
         h[4] += dl;
@@ -771,8 +791,9 @@ export class HugeDoc {
     let r = t.nextBig;
     for (; r < T.nd && T.dir[r * DW + 1] <= s.pos; r++);
     for (; r < T.nd && T.dir[r * DW + 1] <= mEnd; r++) {
-      // (Begun before checkpoint k: one of the containers open there, or it's an old one that's gone.)
-      if (T.dir[r * DW] < s.pos && !same(T.dir[r * DW + 3], T.dir[r * DW])) continue;
+      // (Begun before checkpoint k: one of the containers open there, or it's an old one that's gone; one an edit
+      // made smaller than `big` isn't in the directory any more.)
+      if (T.dir[r * DW] < s.pos && (!same(T.dir[r * DW + 3], T.dir[r * DW]) || T.dir[r * DW + 1] - T.dir[r * DW] < this.big)) continue;
       live.copyBig(T, r, (g) => {
         if (g[0] >= s.pos) {
           g[5] += dn;
@@ -788,10 +809,10 @@ export class HugeDoc {
     }
     t.nextBig = r;
     // Duplicate pairs: old ones the indexer couldn't find again (their first name before where it started), then the stretch's.
+    this.keepPairs(s.pos);
     const P = t.pairs;
     const add: number[] = [];
     let j = t.nextPair;
-    for (; j < P.length && P[j] < s.pos; j += 2) if (P[j + 1] < this.readStart && !inStretch(t.dirty, P[j])) add.push(P[j], P[j + 1]);
     for (; j < P.length && P[j] <= mEnd; j += 2) add.push(P[j], P[j + 1]);
     t.nextPair = j;
     if (add.length) this.addPairs(add);
@@ -822,6 +843,36 @@ export class HugeDoc {
     }
   }
 
+  /**
+   * Child `i` of container `node` (or of the LIST): where it starts (an object member: its name's quote), its
+   * value's span, and its name's end (the byte after its closing quote; -1: not an object's); null if there's none.
+   */
+  memberOf(node: HugeNode, i: number): { start: number; value: number; end: number; keyEnd: number } | null {
+    if (node.kind < ARR || i < 0) return null;
+    const at = this.seek(this.box(node), i);
+    if (!at || at.closed) return null;
+    const page = this.pageOf(node, i, 1, { previews: false });
+    const n = page?.nodes[0];
+    if (!n || n.end < 0) return null;
+    const start = at.s.pos;
+    return { start, value: n.start, end: n.end, keyEnd: node.kind === OBJ ? nameEnd(this.src, start) : -1 };
+  }
+
+  /**
+   * The tail's duplicate pairs before byte `upTo` the indexer couldn't find again, reading from where it started
+   * (their first name is before there, in an object it didn't read from its start): kept, unless an edit is on them.
+   */
+  private keepPairs(upTo: number) {
+    const t = this.tail;
+    if (!t) return;
+    const P = t.pairs;
+    const add: number[] = [];
+    let j = t.nextPair;
+    for (; j < P.length && P[j] < upTo; j += 2) if (P[j] >= this.readStart && P[j + 1] < this.readStart && !inStretch(t.dirty, P[j])) add.push(P[j], P[j + 1]);
+    t.nextPair = j;
+    if (add.length) this.addPairs(add);
+  }
+
   /** Adds duplicate pairs (sorted by name) to those read after where the indexer started. */
   private addPairs(add: number[]) {
     const P = this.pairs;
@@ -837,8 +888,41 @@ export class HugeDoc {
     this.checked = Math.min(this.checked, i);
   }
 
+  /** Containers open where the index re-synced that had no directory record (depth:start): see endFacts. */
+  private unsized = new Set<string>();
+
+  /** The directory record of the container at depth `d` that starts at byte `start`, read to its close (null: it doesn't close). */
+  private recordOf(d: number, start: number): Float64Array | null {
+    const ix = this.index;
+    const open = (k: number) => ix.depth[k] > d && ix.frames[ix.frame(k, d) + 2] === start;
+    // (From the last checkpoint it's open at, or the one before it.)
+    let lo = ix.at(start);
+    let hi = ix.n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (open(mid)) lo = mid;
+      else if (ix.pos[mid] <= start) lo = mid;
+      else hi = mid - 1;
+    }
+    const q = this.at(ix.state(lo));
+    q.limit = Infinity;
+    q.target(d + 1, start);
+    if (q.go() !== STOP || q.why !== W_CLOSE) return null;
+    const e = q.snapshot();
+    const f = e.frames[d];
+    return Float64Array.of(start, e.pos + 1, f.kind, d, f.count, f.nodes, f.closers, e.nodes, e.closers, d > 0 ? e.frames[d - 1].start : -1);
+  }
+
   /** The whole document's facts once it's all read again: from the index (each checkpoint's stretch) and the last stretch. */
   private endFacts() {
+    // Containers an edit made big that close past where it re-synced: their records.
+    for (const u of this.unsized) {
+      const [d, start] = u.split(':').map(Number);
+      if (this.index.bigAt(start)) continue;
+      const r = this.recordOf(d, start);
+      if (r && r[1] - r[0] >= this.big) this.index.insertBig(r);
+    }
+    this.unsized.clear();
     const f = this.final!;
     const live = this.index;
     let deep = f[18];
@@ -888,9 +972,9 @@ export class HugeDoc {
   /** The last checkpoint from which a parse reaches child `i` of `b`: inside it with fewer children begun, or before it. */
   private from(b: Box, i: number): number {
     const ix = this.index;
-    if (b.d === 0) return Math.max(0, ix.lastAtMost(ix.top, i));
+    if (b.d === 0) return Math.max(0, Math.min(this.lastK, ix.lastAtMost(ix.top, i)));
     const k1 = ix.at(b.start) + 1;
-    let k2 = ix.n - 1;
+    let k2 = this.lastK;
     if (b.node.end >= 0) k2 = Math.min(k2, ix.at(b.node.end - 1));
     else {
       // (Its end not known yet: the checkpoints it is open at are k1… up to the last one where it is.)
@@ -1256,11 +1340,20 @@ export class HugeDoc {
     return this.index.nodes[k] + this.index.closers[k];
   }
 
+  /**
+   * The last checkpoint queries read from: the index's last, or (broken) the last at or before the error, which can
+   * be before where the parse failed (a string the normal path closes earlier): checkpoints past it are unread.
+   */
+  private get lastK(): number {
+    const ix = this.index;
+    const f = this.front;
+    return f && this.error && ix.pos[ix.n - 1] > f.pos ? ix.at(f.pos) : ix.n - 1;
+  }
+
   /** The last checkpoint at or before pretty line `l` (before JSON Lines' opening line). */
   private checkpointOfLine(l: number): number {
-    const ix = this.index;
     let lo = 0;
-    let hi = ix.n - 1;
+    let hi = this.lastK;
     while (lo < hi) {
       const mid = (lo + hi + 1) >>> 1;
       if (this.prettyAt(mid) <= l) lo = mid;
@@ -1273,9 +1366,11 @@ export class HugeDoc {
   private region(k: number): Region | null {
     const hit = this.regions.get(k);
     const ix = this.index;
-    const last = k === ix.n - 1;
+    const lastK = this.lastK;
+    if (k > lastK) return null;
+    const last = k === lastK;
     // (A stretch near the front ends where reading had got to: made again once reading has gone 512 KiB further.)
-    if (hit && (!hit.front || (this.front && this.front.pos - hit.front < 1 << 19 && ix.n - 1 === k))) {
+    if (hit && (!hit.front || (this.front && this.front.pos - hit.front < 1 << 19 && lastK === k))) {
       this.regions.delete(k);
       this.regions.set(k, hit);
       return hit;
@@ -1684,16 +1779,20 @@ export class HugeDoc {
     if (pos < 0 || pos >= this.src.size) return null;
     // (Not read yet.)
     if (this.front && pos >= this.front.pos) return null;
-    let k = ix.at(pos);
+    let k = Math.min(ix.at(pos), this.lastK);
     // (Right after a value, at the comma or bracket where a checkpoint is: the value is the region before's.)
     if (k > 0 && ix.pos[k] === pos && ix.st[k] === S_AFTER) {
       const c = this.src.read(pos - 1, 1)[0];
       if (c !== 32 && c !== 9 && c !== 10 && c !== 13) k--;
     }
     // After the last checkpoint while reading: a stretch to the first clean place past `pos`, if any before the front.
-    let r = k === ix.n - 1 && this.front ? this.frontRegion(k, pos) : this.region(k);
+    let r = k === this.lastK && this.front ? this.frontRegion(k, pos) : this.region(k);
     // (Stopped at the start of the top-level value at `pos`: that value is wanted.)
-    if (r && r.front !== undefined && r.e && r.e.pos === pos && r.e.state === S_TOP) r = this.frontRegion(k, pos + 1);
+    if (r && r.front !== undefined && r.e && r.e.pos === pos && r.e.state === S_TOP) {
+      r = this.frontRegion(k, pos + 1);
+      // (None that goes past it (it breaks first): what's open at the front.)
+      if (r && r.e && r.e.pos <= pos) r = null;
+    }
     if (!r || pos > (r.e ? r.e.pos : this.src.size)) return this.frontLocation(pos);
     const t = r.tape;
     const off = offsetOf(r, pos, this.src);
@@ -1918,6 +2017,27 @@ const STRIDE = 256;
 type Piece = string | [number, number] | (Big & { node?: HugeNode });
 
 /** A text of pieces: byte ranges of `src` (decoded as the page decodes a file), strings, and stubs for big values. */
+/** The byte after the closing quote of the string whose opening quote is at `at`. */
+function nameEnd(src: ByteSource, at: number): number {
+  for (let p = at + 1; p < src.size; ) {
+    const b = src.read(p, Math.min(1 << 16, src.size - p));
+    for (let i = 0; i < b.length; i++) {
+      if (b[i] === 92) i++;
+      else if (b[i] === 34) return p + i + 1;
+    }
+    // (An escape's backslash at the end of a read: its character is the next read's first.)
+    p += b.length + (b.length && b[b.length - 1] === 92 && !evenBackslashes(b) ? 1 : 0);
+  }
+  return src.size;
+}
+
+/** Whether the backslashes ending `b` pair up (none escapes what follows). */
+function evenBackslashes(b: Uint8Array): boolean {
+  let n = 0;
+  for (let i = b.length - 1; i >= 0 && b[i] === 92; i--) n++;
+  return n % 2 === 0;
+}
+
 /** Whether byte `pos` is in one of the [start, end) pairs of `d`. */
 function inStretch(d: number[], pos: number): boolean {
   for (let j = 0; j < d.length; j += 2) if (pos >= d[j] && pos < d[j + 1]) return true;
@@ -2019,10 +2139,9 @@ function utf8Bytes(s: string, a: number, e: number): number {
     const c = s.charCodeAt(i);
     if (c < 0x80) continue;
     if (c < 0x800) n += 1;
-    else if (c >= 0xd800 && c < 0xdc00 && i + 1 < e && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
-      n += 2;
-      i++;
-    } else n += 2;
+    // (Each half of a surrogate pair is 2 of its 4 bytes: a range may cut the pair, as STRIDE does.)
+    else if (c >= 0xd800 && c < 0xe000) n += 1;
+    else n += 2;
   }
   return n;
 }

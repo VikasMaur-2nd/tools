@@ -24,7 +24,7 @@ interface Exports {
   stats(): number;
   target(depth: number, start: number, count: number, byte: number, val: number): void;
   stop_after(after: number): void;
-  facts(linesOk: number, sep: number, second: number): void;
+  facts(linesOk: number, sep: number, second: number, warns: number): void;
   load(len: number, last: number): number;
   run(): number;
   snap(): number;
@@ -274,7 +274,8 @@ export class Skeleton {
     a[0] = s.pos;
     a[1] = s.state;
     a[2] = depth;
-    a[3] = 0;
+    // (-1: past the last checkpoint: the next one holds all its frames.)
+    a[3] = carry ? -1 : 0;
     a[4] = s.nodes;
     a[5] = s.closers;
     a[6] = s.lines;
@@ -299,9 +300,9 @@ export class Skeleton {
     return x.restore() === 1;
   }
 
-  /** After restore(): the document's facts before the state's byte (see lib.rs facts()). */
-  facts(linesOk: boolean, sep: number, second: number): void {
-    this.x.facts(linesOk ? 1 : 0, sep, second);
+  /** After restore(): the document's facts before the state's byte, and its duplicate names so far (see lib.rs facts()). */
+  facts(linesOk: boolean, sep: number, second: number, warns: number): void {
+    this.x.facts(linesOk ? 1 : 0, sep, second, warns);
   }
 
   /** Reads `src` from now on (the same document, edited: see pieces.ts). */
