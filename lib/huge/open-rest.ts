@@ -64,7 +64,8 @@ async function open(host: HugeHost, file: File, source: InputSource, signal: Abo
     return null;
   }
   const key = String(++opened);
-  const meta = { name: file.name, source, forced, size: file.size, lastModified: file.lastModified, handle: await takeHandle(file), file };
+  // (`closed`: a .gz file's decompressed copy, removed when the session closes: not a file of the user's to overwrite.)
+  const meta = { name: file.name, source, forced, size: file.size, lastModified: file.lastModified, handle: await takeHandle(file), file, copy: !!closed };
   const session: HugeSession = new HugeSession(host, source_, meta, (portal): ReactNode => createElement(HugeTool, { key, portal }));
   if (closed) session.onClose(closed);
   signal.addEventListener('abort', () => session.close(), { once: true });

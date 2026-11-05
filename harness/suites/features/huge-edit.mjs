@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { defaults, test } from '../../lib/api.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { MOD, storagePage, until } from './_helpers.mjs';
@@ -450,6 +451,47 @@ test('huge edit: while the Format view is edited, the palette\'s edits wait (its
   t.check(/"user 7 X"/.test(await selRow(page)), 'typed where it was', await selRow(page));
   await selectPath(page, '$.users[2]');
   t.check(/\{3\}/.test(await selRow(page)), '$.users[2] still there', await selRow(page));
+});
+
+// REVIEW-2 #9: a .gz file's decompressed copy is new at every open; its session is keyed on the .gz file's facts, so
+// reopening the .gz offers it. Saving a copy never offers to overwrite "the opened file" (it isn't the user's).
+const gzPath = join(dir, 'users.json.gz');
+writeFileSync(gzPath, gzipSync(text));
+
+test('huge edit: a .json.gz edited, another file opened: reopening the .gz offers the edits; Save makes a new file', async (t) => {
+  const page = await storagePage(t);
+  try {
+    await t.open('/');
+    if (t.engine === 'chromium') {
+      await page.evaluate(async () => {
+        const root = await navigator.storage.getDirectory();
+        window.__picks = [];
+        window.showOpenFilePicker = async () => (window.__picks.push('open'), []);
+        window.showSaveFilePicker = async (o) => (window.__picks.push(`save ${o.suggestedName}`), root.getFileHandle('gz-out.json', { create: true }));
+      });
+    }
+    await openHuge(t, gzPath);
+    t.check((await page.evaluate(() => window.__vis('.hg-file .fname')?.textContent ?? '')).startsWith('users.json'), 'named without .gz', await page.evaluate(() => window.__vis('.hg-file .fname')?.textContent));
+    await selectPath(page, '$.users[5].name');
+    await page.keyboard.press('Delete');
+    await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+    const other = join(dir, 'other-gz.json');
+    writeFileSync(other, '[1]');
+    await openHuge(t, other);
+    t.check(await toasted(page, /Your 1 unsaved change to users\.json is kept/), 'said kept', await toasts(page));
+    await openHuge(t, gzPath);
+    t.check(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'reopening the .gz offers them');
+    await page.locator('.hg-restore .btn.primary').click();
+    t.check(await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 10_000 }), 'restored', await edited(page));
+    if (t.engine === 'chromium') {
+      await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+      await page.keyboard.press(`${MOD}+s`);
+      t.check(await toasted(page, /Saved as gz-out\.json/), 'Save: a new file, not asked to overwrite', await toasts(page));
+      t.check((await page.evaluate(() => window.__picks.join())) === 'save users (edited).json', 'the save picker only, another name', await page.evaluate(() => window.__picks.join()));
+    }
+  } finally {
+    await t.cleanup?.();
+  }
 });
 
 // Screenshots for review (HUGE_SHOTS names a folder): the edit box, the edit menu, the text dialog, the file bar

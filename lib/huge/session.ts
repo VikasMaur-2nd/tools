@@ -71,6 +71,8 @@ export interface HugeOpen {
   handle: FileSystemFileHandle | null;
   /** The file itself (read before saving over a picked file, to check it still is as it was opened). */
   file: Blob;
+  /** A copy made for huge mode (a .gz file decompressed): Save makes a new file, never offers to overwrite it. */
+  copy: boolean;
 }
 
 /** Where an edit was asked from (the huge_edit event). */
@@ -1250,6 +1252,7 @@ export class HugeSession {
       name,
       handle: this.handle,
       ...pickers(),
+      ...(this.meta.copy && { openPicker: false }),
       writable,
       ask: () => this.askSave(),
       pickExisting,
