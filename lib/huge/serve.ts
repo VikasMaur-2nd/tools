@@ -15,6 +15,14 @@ import type { Reply, Request } from './protocol';
 import type { Prefetch } from './prefetch';
 import type { FindBatch, HugeEdited, HugePage, HugeSummary } from './types';
 
+/** Pins scoped to a query or a find's step (bytes.ts BlockSource). */
+interface Scoped {
+  open(): Set<number>;
+  enter(s: Set<number>): Set<number>;
+  leave(): void;
+  close(s: Set<number>): void;
+}
+
 export interface ServePort {
   postMessage(message: unknown, transfer?: Transferable[]): void;
   onmessage: ((e: { data: unknown }) => void) | null;
@@ -58,8 +66,11 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   let doc: HugeDoc | null = null;
   let editor: HugeEditor | null = null;
   let file: Blob | null = null;
-  /** The document's source for queries (one that reads async blocks pins those a query uses until it ends). */
-  let src: (ByteSource & { release?(): void }) | null = null;
+  /**
+   * The document's source for queries; one that reads async blocks (bytes.ts BlockSource) pins what a scope reads
+   * until it's closed: a scope per query (kept while it's asked again after a Wait) and per step of a find.
+   */
+  let src: (ByteSource & Partial<Scoped>) | null = null;
   let ahead: Pick<Prefetch, 'has' | 'need' | 'read' | 'size'> | undefined;
   // A stop that came before the document existed.
   let stopNow = false;
@@ -195,23 +206,39 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   const find = async (id: number, query: string, options: import('./types').FindOptions) => {
     finds.set(id, true);
     const it = doc!.find(query, options);
-    for (;;) {
-      if (!finds.get(id)) {
-        reply({ id, ok: true, value: { matches: new Float64Array(0), length: 0, scanned: 0, done: true } satisfies FindBatch, done: true });
-        break;
+    // (Each step pins what it reads, and what's fetched for it when it waits; the step before lets go of its own
+    // then. So the blocks a step waited for stay until the next step has read them, and a scan with no match, which
+    // has no batch till the end, holds two steps' blocks at most, not all it has read.)
+    let scope: Set<number> | null = null;
+    try {
+      for (;;) {
+        if (!finds.get(id)) {
+          reply({ id, ok: true, value: { matches: new Float64Array(0), length: 0, scanned: 0, done: true } satisfies FindBatch, done: true });
+          break;
+        }
+        const before = scope;
+        scope = src?.open?.() ?? null;
+        let r: IteratorResult<FindBatch | { wait: Wait }>;
+        try {
+          r = it.next();
+        } finally {
+          src?.leave?.();
+          if (before) src!.close!(before);
+        }
+        if (r.done) break;
+        if ('wait' in r.value) {
+          await r.value.wait.until();
+          continue;
+        }
+        const b = r.value;
+        reply({ id, ok: true, value: b, done: b.done }, [b.matches.buffer]);
+        if (b.done) break;
+        await nextTask();
       }
-      const r = it.next();
-      if (r.done) break;
-      if ('wait' in r.value) {
-        await r.value.wait.until();
-        continue;
-      }
-      const b = r.value;
-      reply({ id, ok: true, value: b, done: b.done }, [b.matches.buffer]);
-      if (b.done) break;
-      await nextTask();
+    } finally {
+      if (scope) src?.close?.(scope);
+      finds.delete(id);
     }
-    finds.delete(id);
   };
 
   /** The document's bytes [start, end) as Blob parts: the file's slices and edits' bytes (nothing copied). */
@@ -331,8 +358,10 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     else void made.then(() => answer(m));
   };
 
-  const answer = (m: Request, tries = 0) => {
+  const answer = (m: Request, tries = 0, scope: Set<number> | null = null) => {
     let waiting = false;
+    // (Its blocks pinned while it runs and while it's asked again; another query's own scope holds theirs.)
+    const s = scope ? src!.enter!(scope) : (src?.open?.() ?? null);
     try {
       if (!doc) throw new Error('No document');
       const until = performance.now() + EDIT_MS;
@@ -412,11 +441,11 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         held++;
         err.until().then(
           () => {
-            answer(m, tries + 1);
+            answer(m, tries + 1, s);
             unhold();
           },
           (e) => {
-            src?.release?.();
+            if (s) src?.close?.(s);
             fail(m.id, e);
             unhold();
           },
@@ -425,8 +454,9 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       }
       fail(m.id, err);
     } finally {
-      // (Done with its blocks, unless asked again after a Wait.)
-      if (!waiting) src?.release?.();
+      // (Done with its blocks, unless asked again after a Wait: then only out of its scope until then.)
+      if (s && !waiting) src?.close?.(s);
+      else src?.leave?.();
     }
   };
 }
