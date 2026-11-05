@@ -44,6 +44,8 @@ const PREVIEW_CHARS = 1024;
 const DUP_SCAN = 1 << 20;
 /** The first window when reading again after an edit (it grows: see steps). */
 const REREAD_WINDOW = 1 << 16;
+/** Bytes before a failure from which its error is placed (nearFail), when a value ends there. */
+const NEAR_FAIL = 2048;
 /** Stats of a parse (lib.rs stats()). */
 const STATS = 19;
 
@@ -258,7 +260,9 @@ export class HugeDoc {
   }
 
   /** The skeleton failed: where, why, and its place there (the error is made from it, maybe after a Wait). */
-  private failed: { at: number; why: number; anchor: [number, number, number] } | null = null;
+  private failed: { at: number; why: number; anchor: [number, number, number]; outer: number } | null = null;
+  /** Where the outermost container open at the failure starts (-1: none, at the top level), for secondValue. */
+  private failOuter = -1;
 
   /**
    * Work owed to the next step (so a step that needs blocks not read yet throws its Wait with nothing half done,
@@ -311,7 +315,7 @@ export class HugeDoc {
       }
       this.final = this.ix.stats();
       if (r === FAIL) {
-        this.failed = { at: this.ix.failPos, why: this.ix.why, anchor: this.ix.failAt };
+        this.failed = { at: this.ix.failPos, why: this.ix.why, anchor: this.ix.failAt, outer: this.ix.snapshot().frames[0]?.start ?? -1 };
         if (this.edited) this.keepPairs(this.failed.at);
         continue;
       }
@@ -325,18 +329,44 @@ export class HugeDoc {
 
   /** The error where the skeleton failed (the JS parser places it: it may throw a Wait, then this runs again). */
   private fail() {
-    const { at, why, anchor } = this.failed!;
+    const { at, why, anchor, outer } = this.failed!;
     this.failedAt = at;
-    // (Lines as stored up to where the parse failed: how far a parse runs past it depends on its windows.)
-    this.failLines = lineCol(this.src, this.index, at).line - 1;
+    this.failOuter = outer;
+    // (Lines as stored up to where the parse failed: how far a parse runs past it depends on its windows. The
+    // skeleton's count there, when it has one.)
+    this.failLines = why !== W_MEMORY && anchor[1] >= 0 ? anchor[1] : lineCol(this.src, this.index, at).line - 1;
     const second = this.edited ? this.secondValue() : this.final![14];
     this.error =
       why === W_MEMORY
         ? { msg: 'Not enough memory to parse this document', ...lineCol(this.src, this.index, at), pos: at, kind: 'error' }
         : // (A second top-level value begun before: the normal path reads them all as JSON Lines then.)
-          this.problem(exactError(this.src, this.index, at, anchor, this.parsers.parse, this.lines || (second >= 0 && second < at)));
+          this.problem(exactError(this.src, this.index, at, anchor, this.parsers.parse, this.lines || (second >= 0 && second < at), this.nearFail(at)));
     this.failed = null;
     this.pendingFinish = true;
+  }
+
+  /**
+   * A state shortly before the failure at `at` to place the error from (the JS parser then reads a few KiB, not a
+   * megabyte or two: typing makes many errors): after the first value that ends NEAR_FAIL bytes or less before it,
+   * as a checkpoint is (after a value). Not right after a string that ends next to the failure (repairing, the JS
+   * parser may read that string again: `"a" b`); null then, or if none: from the checkpoint before, as ever.
+   */
+  private nearFail(at: number): State | null {
+    const k = this.index.at(at);
+    if (k < 0) return null;
+    const q = this.at(this.index.state(k));
+    q.limit = at + 1;
+    q.target(-1);
+    q.stopAfter(Math.max(this.index.pos[k], at - NEAR_FAIL));
+    if (q.go() !== STOP || q.why !== W_AFTER) return null;
+    const s = q.snapshot();
+    if (s.pos >= at) return null;
+    if (byteBefore(this.src, s.pos) === 34) {
+      // (Another value ends before the failure: this string isn't next to it.)
+      q.stopAfter(s.pos + 1);
+      if (q.go() !== STOP || q.why !== W_AFTER || q.snapshot().pos >= at) return null;
+    }
+    return s;
   }
 
   private finish() {
@@ -996,6 +1026,9 @@ export class HugeDoc {
     if (this.final && this.final[3] < 2 && !this.error && !this.failed) return (this.second = -1);
     const live = this.index;
     const k = Math.max(0, live.lastAtMost(live.top, 1));
+    // (Broken inside the first value, still open since a checkpoint in it: none began before the error.)
+    const outer = this.failed ? this.failed.outer : this.failedAt >= 0 ? this.failOuter : -1;
+    if (outer >= 0 && live.top[k] === 1 && live.depth[k] > 0 && live.frames[live.frame(k, 0) + 2] === outer) return (this.second = -1);
     const q = this.at(live.state(k));
     q.limit = Infinity;
     q.target(0, -1, 1);

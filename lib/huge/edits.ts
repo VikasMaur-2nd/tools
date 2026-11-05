@@ -71,9 +71,8 @@ export type EditOp =
   | { op: 'remove'; path: Seg[] }
   | { op: 'insert'; parent: Seg[]; index: number; json: string; name: string | null }
   | { op: 'duplicate'; path: Seg[] }
+  /** A value's new text: JSON (written as the document is), or anything else as typed (then the status says where it's wrong). */
   | { op: 'text'; path: Seg[]; text: string }
-  /** The text as it is (not valid JSON: the document is then invalid until it's fixed, as its status says). */
-  | { op: 'raw'; path: Seg[]; text: string }
   | { op: 'undo' }
   | { op: 'redo' }
   | { op: 'restore' };
@@ -134,13 +133,8 @@ export interface EditHost {
 
 type EditKind = Events['huge_edit']['op'];
 
-/**
- * The edits of one document: one at a time (each resolves its nodes afresh), counted (the header's "3 changes":
- * an edit or redo adds one, an undo takes one away, an in-place save makes it 0).
- */
+/** The edits of one document: one at a time, each resolving its nodes afresh (the core counts them: `steps`). */
 export class HugeEditing {
-  /** Undo steps there are (as counted here). */
-  steps = 0;
   busy = false;
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -160,10 +154,7 @@ export class HugeEditing {
     try {
       const r = await this.apply(op);
       if (!r) return false;
-      if (op.op === 'undo') this.steps = Math.max(0, this.steps - 1);
-      else if (op.op === 'restore') this.steps = r.steps ?? this.steps;
-      else this.steps++;
-      track('huge_edit', { op: (op.op === 'raw' ? 'text' : op.op) as EditKind, from });
+      track('huge_edit', { op: op.op as EditKind, from });
       await this.host.changed(r.fx, r.select);
       return true;
     } catch (e) {
@@ -183,7 +174,7 @@ export class HugeEditing {
     return { node: chain[chain.length - 1], parent: chain.length > 1 ? chain[chain.length - 2] : null };
   }
 
-  private async apply(op: EditOp): Promise<{ fx: Effect; select: Seg[] | null; steps?: number } | null> {
+  private async apply(op: EditOp): Promise<{ fx: Effect; select: Seg[] | null } | null> {
     const ed = this.host.src.edits!;
     const gone = () => {
       throw new Error('Out of range');
@@ -194,13 +185,6 @@ export class HugeEditing {
         const x = (await this.at(op.path)) ?? gone();
         if (op.op === 'set') await ed.setValue(x.node, op.json);
         else await ed.replaceNode(x.node, op.text);
-        return { fx: {}, select: op.path };
-      }
-      case 'raw': {
-        // (Byte for byte: replaceNode would read it leniently and write it as JSON.)
-        const x = (await this.at(op.path)) ?? gone();
-        if (x.node.end < 0) throw new Error('Not ready');
-        await ed.replace([{ a: x.node.at, b: x.node.end, text: op.text }], false);
         return { fx: {}, select: op.path };
       }
       case 'rename': {
@@ -241,11 +225,9 @@ export class HugeEditing {
       case 'redo':
         await (op.op === 'undo' ? ed.undo() : ed.redo());
         return { fx: {}, select: this.host.selPath() };
-      case 'restore': {
-        const steps = this.host.src.state().edit?.session?.steps;
+      case 'restore':
         await ed.restoreSession();
-        return { fx: {}, select: this.host.selPath(), steps };
-      }
+        return { fx: {}, select: this.host.selPath() };
     }
   }
 

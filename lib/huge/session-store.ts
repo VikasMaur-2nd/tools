@@ -25,6 +25,8 @@ export interface Kept {
   /** Its undo history (steps[0, applied) applied); empty if it didn't fit. */
   steps: KeptStep[];
   applied: number;
+  /** Applied steps not in `steps` (let go of by the history, or not kept): still in the document. (Absent: 0.) */
+  dropped?: number;
   /** Edits' bytes it holds, and when it was kept (ms since 1970). */
   bytes: number;
   time: number;
@@ -44,8 +46,11 @@ export const refOf = (p: Piece): PieceRef => (p.buf ? { bytes: p.buf.slice(p.off
 export const pieceOf = (r: PieceRef): Piece => ('bytes' in r ? { buf: r.bytes, off: 0, len: r.bytes.length } : { buf: null, off: r.off, len: r.len });
 const refBytes = (rs: readonly PieceRef[]) => rs.reduce((n, r) => n + ('bytes' in r ? r.bytes.length : 0), 0);
 
-/** What to keep of a document (its pieces) and its history, within `cap` bytes of edits (null: it doesn't fit). */
-export function keep(pieces: readonly Piece[], steps: readonly { ops: readonly EditOp[]; removed: readonly Piece[][] }[], applied: number, cap = SESSION_BYTES): Kept | null {
+/**
+ * What to keep of a document (its pieces) and its history, within `cap` bytes of edits (null: it doesn't fit).
+ * `dropped`: applied steps the history has let go of already.
+ */
+export function keep(pieces: readonly Piece[], steps: readonly { ops: readonly EditOp[]; removed: readonly Piece[][] }[], applied: number, cap = SESSION_BYTES, dropped = 0): Kept | null {
   const doc = pieces.map(refOf);
   let bytes = refBytes(doc);
   if (bytes > cap) return null;
@@ -62,7 +67,7 @@ export function keep(pieces: readonly Piece[], steps: readonly { ops: readonly E
     first = i;
   }
   // (Steps before `first` aren't kept: if some applied ones aren't, undo can't go back past them.)
-  return { version: 1, pieces: doc, steps: kept, applied: Math.max(0, applied - first), bytes, time: Date.now() };
+  return { version: 1, pieces: doc, steps: kept, applied: Math.max(0, applied - first), dropped: dropped + Math.min(first, applied), bytes, time: Date.now() };
 }
 
 /**
@@ -149,3 +154,6 @@ export class MemorySessionStore implements SessionStore {
     this.kept.delete(key);
   }
 }
+
+/** The changes a kept session puts back (what `HugeSession.steps` says). */
+export const keptSteps = (k: Kept): number => k.applied + (k.dropped ?? 0);

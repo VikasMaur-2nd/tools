@@ -265,8 +265,128 @@ for (const [name, opts] of [
     await shot('text');
     await page.keyboard.press('Escape');
     await until(page, () => !document.querySelector('.hg-te'), null);
+    // The Format view's text edited (round 6).
+    await editFormatAt(page, '"user 4"');
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type(' edited');
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
+    await shot('format-edit');
+    await page.keyboard.press('Escape');
+    await until(page, () => !document.querySelector('.hg-fe'), null);
     await page.locator('.hg-file .btn.icon[aria-label="Close file"]').click();
     t.check(await until(page, () => !!document.querySelector('.hg-confirm'), null), 'closing asks first');
     await shot('confirm');
   });
 }
+
+/** The Format view's text being edited: its lines' numbers in the gutter, and the editor's text. */
+const feGutter = (page) => page.evaluate(() => [...document.querySelectorAll('.hg-fe .ed-gl > div')].map((d) => Number(d.textContent)));
+const feText = (page) => page.evaluate(() => document.querySelector('.hg-fe .ed textarea')?.value ?? '');
+
+/** The Format view (As written), at the line of `needle`, then editing its text there (F2): the caret at that line's start. */
+async function editFormatAt(page, needle) {
+  // (A phone has the views in a drop-down.)
+  await page.evaluate(() => {
+    const tab = window.__vis('.hg [role=tab][aria-controls=hg-format]');
+    if (tab) return tab.click();
+    const pick = window.__vis('.hg .tabs-pick select');
+    pick.value = 'format';
+    pick.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill(needle);
+  await until(page, () => !!document.querySelector('#hg-format .hg-cur'), null);
+  await page.keyboard.press('Escape');
+  await page.locator('#hg-format').focus();
+  await page.keyboard.press('F2');
+  // (Its keys once the editor has them.)
+  await until(page, () => !!document.activeElement?.closest('.hg-fe') && /Editing lines/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null, { timeout: 10_000 });
+}
+
+test('huge edit: the Format view\'s text edited in place: numbered as the file, typing one change, undo, the error marked', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  const lineOf = (s) => text.split('\n').findIndex((l) => l.includes(s)) + 1;
+  await editFormatAt(page, '"user 120"');
+  const nums = await feGutter(page);
+  const want = lineOf('"user 120"');
+  t.check(nums.length > 0 && nums.includes(want) && Math.min(...nums) > 1, 'the gutter numbers the file\'s lines', `${want} in ${nums.slice(0, 3)}…`);
+  t.check(new RegExp(`Ln ${want.toLocaleString('en-US')}, Col 1`).test(await page.evaluate(() => window.__vis('.hg .vmain')?.textContent ?? '')), 'the caret at that line', await page.evaluate(() => window.__vis('.hg .vmain')?.textContent));
+  // Typing at the end of the name: one change (joined), the document has it.
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('XYZ');
+  t.check(await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 10_000 }), 'one change', await edited(page));
+  t.check(/"user 120XYZ",/.test(await feText(page)), 'the editor shows it');
+  // Undo (Ctrl+Z in the editor: the document's undo), redo.
+  await page.keyboard.press(`${MOD}+z`);
+  t.check(await until(page, () => /"user 120",/.test(document.querySelector('.hg-fe .ed textarea')?.value ?? '') && !window.__vis('.hg-edited'), null, { timeout: 10_000 }), 'undone at once (the typing was one step)', (await feText(page)).match(/"user 120[^"]*"/)?.[0]);
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  t.check(await until(page, () => /"user 120XYZ",/.test(document.querySelector('.hg-fe .ed textarea')?.value ?? ''), null, { timeout: 10_000 }), 'redone');
+  // Broken: a comma removed at the line's end. The file says where; the editor marks it.
+  await page.keyboard.press('End');
+  await page.keyboard.press('Backspace');
+  t.check(await until(page, () => /(Invalid JSON|Not strict JSON)Ln \d+, Col \d+/.test(window.__vis('.hg .banner')?.textContent ?? ''), null, { timeout: 10_000 }), 'the error, where', await page.evaluate(() => window.__vis('.hg .banner')?.textContent));
+  t.check(await until(page, () => !!document.querySelector('.hg-fe .ed .me'), null), 'marked in the editor');
+  await page.keyboard.type(',');
+  t.check(await until(page, () => !window.__vis('.hg .banner') && !document.querySelector('.hg-fe .ed .me'), null, { timeout: 10_000 }), 'fixed: valid again');
+  // A paste too big for the window: said why, nothing pasted.
+  // (A paste event with its data, on what has the keys, as harness/lib/app.mjs `paste` does: headless browsers
+  // don't hand a written clipboard to Ctrl+V.)
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'x'.repeat(9 << 20));
+    const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+    if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt });
+    (document.activeElement ?? document.querySelector('.hg-fe .ed textarea')).dispatchEvent(ev);
+  });
+  t.check(await until(page, () => [...document.querySelectorAll('.toast')].some((e) => /Paste up to 8\.0\sMB at a time here \(this is 9\.0\sMB\)/.test(e.textContent ?? '')), null), 'a paste over 8 MB: said why', await page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent)));
+  // Done (Esc): the views read the document again; the tree has the edit.
+  await page.keyboard.press('Escape');
+  t.check(await until(page, () => !document.querySelector('.hg-fe') && !!window.__vis('#hg-format'), null), 'Esc: back to the view');
+  await selectPath(page, '$.users[120].name');
+  t.check(/"user 120XYZ"/.test(await selRow(page)), 'the tree reads the edit', await selRow(page));
+});
+
+test('huge edit: typed in the Format view, saved in place: the file\'s SHA-256 is the edited text\'s', async (t) => {
+  const page = await storagePage(t);
+  try {
+    await t.open('/');
+    await page.evaluate(async (text) => {
+      localStorage.setItem('tk:hugeMin', '0');
+      const root = await navigator.storage.getDirectory();
+      const h = await root.getFileHandle('typed.json', { create: true });
+      const w = await h.createWritable();
+      await w.write(text);
+      await w.close();
+      window.showOpenFilePicker = async () => [h];
+    }, text);
+    await openHuge(t, path);
+    await page.locator('.hg-file .btn', { hasText: 'Open file' }).click();
+    t.assert(await until(page, () => /typed\.json/.test(window.__vis('.hg-file .fname')?.textContent ?? '') && /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'opened through its handle');
+    await editFormatAt(page, '"user 7"');
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type(' é😀');
+    // (Saved at once, as a user might: what was typed since the last paint goes first.)
+    await page.keyboard.press(`${MOD}+s`);
+    t.check(await until(page, () => [...document.querySelectorAll('.toast')].some((e) => /Saved typed\.json/.test(e.textContent ?? '')), null, { timeout: 10_000 }), 'saved, said so', await page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent)));
+    t.check(await until(page, () => !window.__vis('.hg-edited') && !window.__vis('.hg-saving'), null, { timeout: 20_000 }), 'saved');
+    const [got, near] = await page.evaluate(async () => {
+      const f = await (await (await navigator.storage.getDirectory()).getFileHandle('typed.json')).getFile();
+      const d = await crypto.subtle.digest('SHA-256', await f.arrayBuffer());
+      const s = await f.text();
+      const i = s.indexOf('"user 7');
+      return [[...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join(''), s.slice(i - 40, i + 40)];
+    });
+    t.check(got === sha(text.replace('"user 7"', '"user 7 é😀"')), 'the file holds the edited text (SHA-256)', near);
+  } finally {
+    await t.cleanup?.();
+  }
+});

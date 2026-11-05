@@ -127,6 +127,8 @@ export interface EditState {
   canRedo: boolean;
   /** Bumped by each edit, undo, redo and in-place save. */
   version: number;
+  /** Changes applied since opened or saved in place, as undo counts them (typing joined: one); the file bar's count. */
+  steps: number;
   /** A kept session of this file that can be put back (restoreSession): its steps, bytes, when (ms since 1970). */
   session: { steps: number; bytes: number; time: number } | null;
   /** Edits' bytes held (the document's and its history's). */
@@ -138,6 +140,7 @@ export interface Edited {
   done: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  steps: number;
 }
 
 /**
@@ -219,6 +222,8 @@ export interface HugeSource {
 
   /** The value's JSON text as written, or null when it is longer than `max` bytes (save it as a file instead). */
   raw(n: HugeNode, max: number, signal?: AbortSignal): Promise<string | null>;
+  /** The document's text [a, b) (bytes), at most `max` bytes of it (`cut`: there was more). */
+  textAt(a: number, b: number, max: number, signal?: AbortSignal): Promise<{ text: string; cut: boolean }>;
   /** The value's bytes as the document has them (its edits too), for saving it as a file. */
   slice(n: HugeNode): Promise<Blob>;
   /** Editing, if the source can (null: read-only). */
