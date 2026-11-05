@@ -34,8 +34,8 @@ export type StreamReply =
   | { id: number; type: 'shape'; report: ShapeReport }
   /** `file`: the OPFS output (to download); a gunzip's `blob` (small) or `file` and its size. */
   | { id: number; type: 'done'; result: JobResult | null; file?: File; blob?: Blob; size?: number }
-  /** A fixed message (never document content); `at`: the byte of an invalid document. */
-  | { id: number; type: 'error'; error: string; at: number };
+  /** A fixed message (never document content); `at`: the byte of an invalid document; `parts`: finished parts kept (Split into a folder). */
+  | { id: number; type: 'error'; error: string; at: number; parts?: number };
 
 /** Messages a stream error may carry (anything else is sent as 'Command failed'). */
 export const KNOWN_ERRORS = new Set([

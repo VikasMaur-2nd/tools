@@ -73,4 +73,9 @@ test('stream: broken documents throw a WalkError, never a result', () => {
   }
   // (Several top-level values are a list, not an error, when the walker is told so.)
   assert.equal(reformatted(r, enc.encode('1 2;3,{"a":[]}'), true, '', false, 2), '[1,2,3,{"a":[]}]');
+  // (Values that touch: a sign goes on a number only after its e, so 0-0.5e3 is two, and 1e-2-3 two; cut anywhere.)
+  for (const max of [1, 2, 3, 64]) {
+    assert.equal(reformatted(r, enc.encode('0-0.5e3'), true, '', false, max), '[0,-0.5e3]');
+    assert.equal(reformatted(r, enc.encode('1e-2-3 4E+5-6'), true, '', false, max), '[1e-2,-3,4E+5,-6]');
+  }
 });

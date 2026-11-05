@@ -1513,5 +1513,21 @@
   "app.hugeFeEditTip": "Edit the text here",
   "app.hugeFeEditTip._context": "Large-file mode, Format view: tooltip of the Edit button.",
   "app.hugeFePaste": "Paste up to {max} at a time here (this is {size}): insert a bigger value from the tree, as a value or as text",
-  "app.hugeFePaste._context": "Large-file mode, Format view: toast when a paste is too big for the editing window. {max}, {size}: sizes."
+  "app.hugeFePaste._context": "Large-file mode, Format view: toast when a paste is too big for the editing window. {max}, {size}: sizes.",
+  "app.hugeCmdNotReady": "The file is being read again after an edit: try again once it is",
+  "app.hugeCmdNotReady._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file.",
+  "app.hugeCmdChanged": "The document changed as the command started: try again",
+  "app.hugeCmdChanged._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file. The document was edited at the moment the command began.",
+  "app.hugeCmdSaving": "Wait for the save to finish",
+  "app.hugeCmdSaving._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file. A save of the edited file is under way.",
+  "app.hugeShEdited": "edited since: read again",
+  "app.hugeShEdited._context": "Large-file mode, Shape panel: the document was edited after the shape was read; the button \"Read again\" reads it anew.",
+  "toast.hugeSaveBusy": "A command is reading this file: save once it ends (or stop it)",
+  "toast.hugeSaveBusy._context": "Large-file mode: saving over the opened file waits while a Convert command or the Shape panel reads it.",
+  "app.hugeCmdKept.one": "Stopped: {n} part written to {folder}, the unfinished part {next} removed",
+  "app.hugeCmdKept.other": "Stopped: {n} parts written to {folder}, the unfinished part {next} removed",
+  "app.hugeCmdKept._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file. Split into a folder the user picked was stopped: the finished parts stay there, the one being written is deleted. {folder}: the folder's name; {next}: the number of the part removed.",
+  "app.hugeCmdKeptErr.one": "{n} finished part kept in {folder}.",
+  "app.hugeCmdKeptErr.other": "{n} finished parts kept in {folder}.",
+  "app.hugeCmdKeptErr._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file. After an error in Split into a picked folder: the finished parts stay there."
 }

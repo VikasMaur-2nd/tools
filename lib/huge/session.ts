@@ -1230,6 +1230,11 @@ export class HugeSession {
         inPlace = await this.isOpened(picked);
       }
     }
+    // (A Convert command or the Shape pass reads the opened file's bytes: saving over it waits for them.)
+    if (inPlace && this.work?.busy) {
+      this.host.toast('A command is reading this file: save once it ends (or stop it)', 'info');
+      return false;
+    }
     const how: Events['huge_save']['how'] = inPlace ? 'in_place' : handle ? 'save_as' : 'download';
     const began = performance.now();
     const size = this.src.state().docSize ?? this.src.size;
