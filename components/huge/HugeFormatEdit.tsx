@@ -196,6 +196,8 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       info();
     })();
     return () => {
+      // (The newest key, typed since the last frame, still goes: the window sends what's left once let go.)
+      if (ed && live) tw.edited(ed.text);
       live = false;
       cancelAnimationFrame(frame);
       cancelAnimationFrame(later);

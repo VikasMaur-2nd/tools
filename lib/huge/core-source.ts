@@ -503,14 +503,19 @@ export class CoreSource implements HugeSource {
     save: (handle, inPlace, progress) => {
       const r = this.doc.save(handle, inPlace, (x) => progress(x.written, x.size));
       return {
-        done: r.done.then(async (x) => {
-          // (In place: the document reads the saved file now, nothing edited.)
-          if (inPlace && handle && !this.dead) {
-            this.dropPages();
-            this.onSummary(await this.doc.summary());
-          }
-          return { blob: x.blob ?? null };
-        }),
+        done: r.done
+          .then(async (x) => {
+            // (In place: the document reads the saved file now, nothing edited.)
+            if (inPlace && handle && !this.dead) {
+              this.dropPages();
+              this.onSummary(await this.doc.summary());
+            }
+            return { blob: x.blob ?? null };
+          })
+          .finally(() => {
+            // (Edits wait while saving ('Not ready'): what waits hears the document takes them again, however it ended.)
+            if (!this.dead) this.set({ ...this.st });
+          }),
         stop: r.stop,
       };
     },

@@ -204,3 +204,85 @@ test('a file with CR LF line ends: the editor shows \\n, the document keeps \\r\
   src.destroy();
   lone.destroy();
 });
+
+/** A file handle whose writes wait until `open()` (a save that takes a while). REVIEW-2's probe. */
+class SlowHandle {
+  name = 'copy.json';
+  bytes: string | null = null;
+  open: (() => void) | null = null;
+  private released = false;
+  async createWritable() {
+    const parts: BlobPart[] = [];
+    return {
+      write: async (d: BlobPart) => {
+        if (!this.released) await new Promise<void>((r) => (this.open = () => ((this.released = true), r())));
+        parts.push(d);
+      },
+      close: async () => {
+        this.bytes = await new Blob(parts).text();
+      },
+      abort: async () => undefined,
+    };
+  }
+  async getFile() {
+    return new File([this.bytes ?? ''], this.name);
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test('REVIEW-2 #5: typed during a Save as, sent once it ends; flush resolves (not left waiting for a state)', async () => {
+  const text = '{\n  "a": 1,\n  "b": 2\n}\n';
+  const src = core(text);
+  await ended(src);
+  const w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  assert.equal(await w.load(0), true);
+  w.edited(w.view.replace('1', '10'));
+  await w.flush();
+  const h = new SlowHandle();
+  const run = src.edits!.save(h as unknown as FileSystemFileHandle, false, () => undefined);
+  await sleep(30);
+  // Typed while saving: the core answers 'Not ready'; the key waits.
+  w.edited(w.view.replace('2', '20'));
+  await sleep(30);
+  h.open?.();
+  await run.done;
+  const flushed = await Promise.race([w.flush().then(() => 'flushed'), sleep(2000).then(() => 'still pending')]);
+  assert.equal(flushed, 'flushed');
+  assert.equal(h.bytes, '{\n  "a": 10,\n  "b": 2\n}\n', 'the copy is the document when saved');
+  assert.equal(await whole(src), '{\n  "a": 10,\n  "b": 20\n}\n', 'the key typed meanwhile is in the document');
+  assert.equal(w.pending, false);
+  await src.destroy();
+});
+
+test('the window let go with a key not sent yet (another file replacing this one): the key still goes, flush resolves', async () => {
+  const src = core('[1,\n2]\n');
+  await ended(src);
+  const w = new TextWindow(src, { sent: () => assert.fail('nothing is told once let go'), failed: (e) => assert.fail(String(e)) });
+  await w.load(0);
+  // The newest key, typed in the last frame: the editor's text given at once, then the window let go.
+  w.edited(w.view.replace('2', '23'));
+  const f = w.flush();
+  w.destroy();
+  assert.equal(await Promise.race([f.then(() => 'resolved'), sleep(1000).then(() => 'pending')]), 'resolved');
+  assert.equal(await whole(src), '[1,\n23]\n');
+  // While a save runs: sent once it ends.
+  const h = new SlowHandle();
+  const w2 = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  await w2.load(0);
+  const run = src.edits!.save(h as unknown as FileSystemFileHandle, false, () => undefined);
+  await sleep(20);
+  w2.edited(w2.view.replace('1', '4'));
+  const f2 = w2.flush();
+  w2.destroy();
+  h.open?.();
+  await run.done;
+  assert.equal(await Promise.race([f2.then(() => 'resolved'), sleep(2000).then(() => 'pending')]), 'resolved');
+  assert.equal(await whole(src), '[4,\n23]\n');
+  // Nothing typed: let go at once.
+  const w3 = new TextWindow(src, { sent() {}, failed() {} });
+  await w3.load(0);
+  w3.destroy();
+  assert.equal(await w3.load(0), 'none', 'nothing more is read');
+  await src.destroy();
+});

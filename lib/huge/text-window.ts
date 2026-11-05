@@ -23,6 +23,8 @@ export const LINE_MAX = 1 << 20;
 export const WINDOW_ABOVE = 300;
 /** Characters a paste may have. */
 export const PASTE_MAX = 8 << 20;
+/** What's typed while the document can't take it ('Not ready') is tried again this often (ms), states or not. */
+const RETRY_MS = 250;
 
 /** What changed from `a` to `b`: [p, p + del) of `a` became `ins` (null: nothing did). Never between a pair's halves. */
 export function diffText(a: string, b: string): { p: number; del: number; ins: string } | null {
@@ -67,14 +69,23 @@ export class TextWindow {
   private busy = false;
   private waiting: (() => void) | null = null;
   private flushed: (() => void)[] = [];
+  /** Let go (nothing more is read or told), and nothing typed is left to send. */
   private dead = false;
+  /** Let go: what's typed and not taken in yet still goes (the newest key, when another file replaces this one). */
+  private gone = false;
 
   constructor(
     private readonly src: HugeSource,
     private readonly ev: WindowEvents,
   ) {}
 
+  /** Lets the window go: nothing more is read or told; what's typed still goes (`flush` resolves once it has). */
   destroy() {
+    this.gone = true;
+    if (!this.pending || this.broken) this.finish();
+  }
+
+  private finish() {
     this.dead = true;
     this.waiting?.();
     for (const f of this.flushed.splice(0)) f();
@@ -91,7 +102,7 @@ export class TextWindow {
     const n = Math.min(WINDOW_LINES, count - from);
     // (Where each line starts: one column of each is enough. One line more: where the last one ends.)
     const ls = await this.src.lines('raw', from, n + 1, 1, '');
-    if (!ls.length || this.dead) return 'none';
+    if (!ls.length || this.gone) return 'none';
     const end = this.src.state().docSize ?? this.src.size;
     const endOf = (k: number) => (k < ls.length ? ls[k].at : end);
     const start = ls[0].at;
@@ -112,7 +123,7 @@ export class TextWindow {
       k = lo;
     }
     const { text } = await this.src.textAt(start, endOf(k), LINE_MAX + 8);
-    if (this.dead) return 'none';
+    if (this.gone) return 'none';
     if (/\r(?!\n)/.test(text)) return 'cr';
     this.line = from;
     this.start = start;
@@ -190,6 +201,7 @@ export class TextWindow {
   private kick() {
     if (this.dead || this.busy || this.broken) return;
     if (this.now === this.view) {
+      if (this.gone) return this.finish();
       for (const f of this.flushed.splice(0)) f();
       return;
     }
@@ -197,15 +209,20 @@ export class TextWindow {
     void this.send();
   }
 
-  /** The document is read again after a change: what's typed waits for it. */
+  /**
+   * The document is read again after a change, or saved: what's typed waits for it (sent on its next state that's
+   * done, or tried again after RETRY_MS: nothing waits for a state that never comes).
+   */
   private waitReady() {
     if (this.waiting) return;
     const stop = this.src.onState((st: IndexState) => {
       if (!st.done) return;
       this.waiting?.();
     });
+    const timer = setTimeout(() => this.waiting?.(), RETRY_MS);
     this.waiting = () => {
       stop();
+      clearTimeout(timer);
       this.waiting = null;
       this.kick();
     };
@@ -231,7 +248,7 @@ export class TextWindow {
         this.end += utf8Bytes(ins) - (b - a);
         this.sent = this.view = next;
       }
-      this.ev.sent();
+      if (!this.gone) this.ev.sent();
     } catch (e) {
       if (this.dead) return;
       // (Still reading again after the last change: sent once it's done.)
@@ -242,7 +259,8 @@ export class TextWindow {
       // (Anything else: nothing more is sent; the window is read again from the document: see `broken`.)
       this.broken = true;
       for (const f of this.flushed.splice(0)) f();
-      this.ev.failed(e);
+      if (this.gone) this.finish();
+      else this.ev.failed(e);
       return;
     } finally {
       this.busy = false;

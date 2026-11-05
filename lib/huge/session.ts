@@ -79,6 +79,8 @@ export type EditFrom = Events['huge_edit']['from'];
 const BOX_MAX = 64 * 1024;
 /** Typing joined into one undo step by the core: changes this close together (ms, editor.ts TYPING_MS). */
 const TYPING_PAUSE = 1000;
+/** Closing waits this long at most for what's typed in the Format view to be taken in (ms). */
+const TYPED_WAIT = 3000;
 
 /** What the Format view's editing window does for the session (components/huge/HugeFormatEdit.tsx). */
 export interface FormatEditApi {
@@ -264,7 +266,6 @@ export class HugeSession {
   close(back = false) {
     if (this.dead) return;
     this.report(this.src.state().done ? 'done' : 'replaced');
-    const edits = this.ui.get().edit;
     this.dead = true;
     this.find.stop();
     this.stopState();
@@ -272,13 +273,17 @@ export class HugeSession {
     this.answerSave('cancel');
     window.removeEventListener('beforeunload', this.onUnload);
     clearTimeout(this.growTimer);
-    // (Closing keeps the edits not kept yet, then ends the core's worker.)
-    const kept = this.src.destroy();
-    // Replaced by another document with unsaved edits: they are kept, and offered when the file is opened again.
-    if (!back && edits?.edited) {
-      const { host, meta } = this;
-      void kept.then(() => host.toast(rt.n(edits.steps, 'Your {n} unsaved change to {name} is kept: reopen it to restore it', 'Your {n} unsaved changes to {name} are kept: reopen it to restore them', { name: meta.name }), 'info', undefined, 8000));
-    }
+    // What's typed in the Format view goes first, the newest key too; then closing keeps the edits not kept yet, and
+    // ends the core's worker. Replaced by another document with unsaved edits: they are said kept once they are, and
+    // offered when the file is opened again.
+    const typed = this.fe ? Promise.race([this.fe.flush(), new Promise((r) => setTimeout(r, TYPED_WAIT))]) : null;
+    const { src, host, meta } = this;
+    void (async () => {
+      if (typed) await typed.catch(() => undefined);
+      const e = src.state().edit;
+      await src.destroy();
+      if (!back && e?.edited) host.toast(rt.n(e.steps, 'Your {n} unsaved change to {name} is kept: reopen it to restore it', 'Your {n} unsaved changes to {name} are kept: reopen it to restore them', { name: meta.name }), 'info', undefined, 8000);
+    })();
     this.tree?.destroy();
     this.lines?.destroy();
     this.table?.destroy();

@@ -358,6 +358,36 @@ test('huge edit: another file opened right after an edit: the edit is kept (said
   t.check(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'offered again');
 });
 
+// REVIEW-2 (suspicion): the newest key typed in the Format view, then another file opened at once: it is taken in
+// before the document closes, and kept with the rest.
+test('huge edit: a key typed in the Format view right before another file is opened is kept with the rest', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await editFormatAt(page, '"user 7"');
+  const want = text.split('\n').findIndex((l) => l.includes('"user 7"')) + 1;
+  await until(page, (n) => new RegExp(`Ln ${n},`).test(window.__vis('.hg .vmain')?.textContent ?? ''), want);
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  // The key, and in the same task the next file: no frame between them.
+  await page.evaluate(() => {
+    document.execCommand('insertText', false, 'Q');
+    const input = window.__vis('.app')?.querySelector('input[type=file]');
+    const dt = new DataTransfer();
+    dt.items.add(new File(['[2]'], 'other-key.json', { type: 'application/json' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  t.check(await toasted(page, /Your 1 unsaved change to users\.json is kept/), 'said kept', await toasts(page));
+  await openHuge(t, path);
+  t.assert(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'offered');
+  await page.locator('.hg-restore .btn.primary').click();
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 10_000 });
+  await selectPath(page, '$.users[7].name');
+  t.check(/"user 7Q"/.test(await selRow(page)), 'the key is in the kept edits', await selRow(page));
+});
+
 // Screenshots for review (HUGE_SHOTS names a folder): the edit box, the edit menu, the text dialog, the file bar
 // with edits, asking before closing; light and dark, desktop and phone.
 for (const [name, opts] of [
