@@ -147,7 +147,9 @@ test('huge edit: a value as text in the normal editor; the document made invalid
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 
-test('huge edit: saved in place through the opened file\'s handle, the file\'s SHA-256 the edited document\'s', async (t) => {
+// (Saving into the opened file needs its handle, which only Chromium's pickers give: Firefox and Safari download the
+// edited document instead, checked below.)
+test('huge edit: saved in place through the opened file\'s handle, the file\'s SHA-256 the edited document\'s', { engines: ['chromium'] }, async (t) => {
   const page = await storagePage(t);
   try {
     await t.open('/');
@@ -720,7 +722,8 @@ async function editFormatAt(page, needle) {
   await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press(`${MOD}+f`);
   await page.locator('.hg .findbar input').fill(needle);
-  await until(page, () => !!document.querySelector('#hg-format .hg-cur'), null);
+  // (The current line is the match's: a selection made elsewhere had put it on its own line first.)
+  await until(page, (n) => (document.querySelector('#hg-format .hg-cur')?.textContent ?? '').includes(n), needle);
   await page.keyboard.press('Escape');
   await page.locator('#hg-format').focus();
   await page.keyboard.press('F2');
@@ -776,7 +779,7 @@ test('huge edit: the Format view\'s text edited in place: numbered as the file, 
   t.check(/"user 120XYZ"/.test(await selRow(page)), 'the tree reads the edit', await selRow(page));
 });
 
-test('huge edit: typed in the Format view, saved in place: the file\'s SHA-256 is the edited text\'s', async (t) => {
+test('huge edit: typed in the Format view, saved in place: the file\'s SHA-256 is the edited text\'s', { engines: ['chromium'] }, async (t) => {
   const page = await storagePage(t);
   try {
     await t.open('/');
@@ -1041,4 +1044,40 @@ test('huge edit: the same file opened again in the same tab right after an edit:
     t.check((await page.evaluate(() => window.__keepSeen)) === want, want ? 'held for good: said, after a second' : 'held a moment: not said', String(ms));
     await page.waitForTimeout(ms === 600 ? 0 : 2000);
   }
+});
+
+// Firefox and Safari (no File System Access pickers): Save downloads the edited document; no dialog, nothing asked.
+// The download's SHA-256 is the edited document's (a tree edit, then a key typed in the Format view).
+test('huge edit: without the pickers, Save downloads the edited document (tree edit, then typing)', { engines: ['firefox', 'webkit'] }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.assert(!(await page.evaluate(() => 'showOpenFilePicker' in window || 'showSaveFilePicker' in window)), 'no pickers here');
+  await openHuge(t, path);
+  await selectPath(page, '$.users[2].name');
+  await page.keyboard.press('F2');
+  await until(page, () => !!document.querySelector('.hg-box .hg-box-in.mono'), null);
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.type('Grace');
+  await page.keyboard.press('Enter');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  const want = structuredClone(doc);
+  want.users[2].name = 'Grace';
+  const save = async () => {
+    const [d] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.keyboard.press(`${MOD}+s`)]);
+    t.check(!(await page.evaluate(() => !!window.__vis('.hg-modal'))), 'not asked where');
+    t.check(d.suggestedFilename() === 'users.json', 'named as the file', d.suggestedFilename());
+    return (await import('node:fs')).readFileSync(await d.path(), 'utf8');
+  };
+  let got = await save();
+  t.check(sha(got) === sha(JSON.stringify(want, null, 2)), 'the download is the edited document (SHA-256)', got.slice(0, 80));
+  t.check(/Edited · 1 change/.test(await edited(page)), 'still edited (the file itself is as it was)', await edited(page));
+  // A key typed in the Format view, then Save at once: what was typed goes first.
+  await editFormatAt(page, '"user 7"');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('X');
+  got = await save();
+  want.users[7].name = 'user 7X';
+  t.check(sha(got) === sha(JSON.stringify(want, null, 2)), 'with the key typed (SHA-256)', got.slice(got.indexOf('"user 7') - 10, got.indexOf('"user 7') + 20));
 });
