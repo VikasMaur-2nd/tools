@@ -8,7 +8,7 @@ import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { CoreSource } from '../lib/huge/core-source';
 import { parse } from '../lib/json/tape-parser';
-import { HugeEditing, adjustPath, boxText, editError, valueJson, type Effect, type EditOp } from '../lib/huge/edits';
+import { HugeEditing, adjustPath, boxText, dedent, editError, valueJson, type Effect, type EditOp } from '../lib/huge/edits';
 import { NUM, STR } from '../lib/json/parser';
 import type { HugeSource, IndexState, Seg } from '../lib/huge/source';
 import { enc, hugeMod, memSource, tapeMod } from './huge-oracle';
@@ -53,6 +53,10 @@ test('what is typed: JSON of each kind, or why not', () => {
   assert.equal(boxText({ t: STR, text: 'A…' }, '"Ada\\nLovelace"'), 'Ada\nLovelace');
   assert.equal(boxText({ t: NUM, text: '12' }, null), '12');
   assert.equal(editError(new Error('Not allowed')), "That can't be done here");
+  // A value's text without the indent of where it is (for the editor).
+  assert.equal(dedent('{\n      "id": 3,\n      "t": [\n\n        1\n      ]\n    }'), '{\n  "id": 3,\n  "t": [\n\n    1\n  ]\n}');
+  assert.equal(dedent('"one line"'), '"one line"');
+  assert.equal(dedent('{\n"a": 1\n  }'), '{\n"a": 1\n  }', 'a line less indented: as it is');
   assert.equal(editError(new Error('boom')), null);
 });
 
@@ -149,5 +153,24 @@ test("a value's text for the editor, and the saved document (no handle: a Blob) 
   const r = src.edits!.save(null, false, () => undefined);
   const { blob } = await r.done;
   assert.equal(await blob!.text(), JSON.stringify(value, null, 2));
+  src.destroy();
+});
+
+test('text applied as it is (not JSON): the document is invalid, its status says where; undo fixes it', async () => {
+  const value = { meta: { version: 1 }, users: [{ id: 0 }] };
+  const src = core(JSON.stringify(value, null, 2));
+  await ended(src);
+  const ed = new HugeEditing({ src, selPath: () => null, changed: async () => undefined, refused: (m) => assert.fail(m), failed: (e) => assert.fail(String(e)) });
+  assert.equal(await ed.run({ op: 'raw', path: ['meta'], text: 'nul' }, 'tree'), true);
+  await ended(src);
+  // The normal path's status bar: where, and what (a repair would fix this one: "fixable").
+  const st = src.state().status;
+  assert.deepEqual([st?.kind, st?.msg, st?.line, st?.col], ['fixable', "Unexpected 'nul'. Did you mean null?", 2, 11]);
+  // (Read leniently, the same text is written as JSON: `null`.)
+  assert.equal(await ed.run({ op: 'undo' }, 'key'), true);
+  await ended(src);
+  assert.equal(src.state().status?.kind, 'valid');
+  assert.equal(await ed.run({ op: 'text', path: ['meta'], text: 'nul' }, 'tree'), true);
+  assert.equal(src.state().status?.kind, 'valid');
   src.destroy();
 });

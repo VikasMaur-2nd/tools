@@ -453,25 +453,33 @@ function TextEdit({ s, label, text }: { s: HugeSession; label: string; text: str
     if (!e || busy) return;
     if (!check.ok && !anyway) return setAnyway(true);
     setBusy(true);
-    await s.applyText(e.text);
+    await s.applyText(e.text, !check.ok);
     setBusy(false);
   };
+  // (Ctrl+Enter, Ctrl+F: the engine sees keys first; huge mode passes the dialog's to it.)
+  const keys = useRef(apply);
+  keys.current = apply;
+  useEffect(() => {
+    s.dialogKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return false;
+      if (e.key === 'Enter') void keys.current();
+      else if (e.key.toLowerCase() === 'f' && !e.shiftKey) document.getElementById('hg-te-find')?.focus();
+      else return false;
+      e.preventDefault();
+      return true;
+    };
+    return () => {
+      s.dialogKey = null;
+    };
+  }, [s]);
 
   return (
     <div
       className="hg-modal"
       onKeyDown={(e) => {
-        const mod = e.metaKey || e.ctrlKey;
         if (e.key === 'Escape' && !e.defaultPrevented) {
           e.preventDefault();
           s.closeText();
-        } else if (mod && e.key === 'Enter') {
-          e.preventDefault();
-          void apply();
-        } else if (mod && e.key.toLowerCase() === 'f' && !e.shiftKey) {
-          e.preventDefault();
-          e.stopPropagation();
-          document.getElementById('hg-te-find')?.focus();
         }
       }}
     >

@@ -448,10 +448,13 @@ test('huge mode: a big .json.gz opens in huge mode; Find, the palette and Ctrl+S
     await page.locator('.hg .findbar input').fill('$.users[3]');
     t.check(await until(page, () => /^3:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'a $.path selects that value', await selText(page));
     await page.keyboard.press('Escape');
-    // Ctrl+S: huge mode saves the selected value (the editor's document would be the whole thing, or nothing).
-    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), page.keyboard.press(`${MOD}+s`)]);
+    // Ctrl+S: huge mode's Save (nothing edited yet: it says so; the editor's would download its own document).
+    await page.keyboard.press(`${MOD}+s`);
+    t.check(await until(page, () => [...document.querySelectorAll('.toast')].some((e) => /No changes to save/.test(e.textContent ?? '')), null), `${MOD}+S is huge mode's Save`);
+    // Save value as file: the selected record, from the decompressed document.
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), page.locator('.hg .vicons button[aria-label="Save value as file"]').click()]);
     const saved = readFileSync(await dl.path(), 'utf8');
-    t.check(dl.suggestedFilename() === 'big-3.json' && JSON.parse(saved).id === 3, `${MOD}+S saves the selected value`, `${dl.suggestedFilename()}: ${saved.slice(0, 80)}`);
+    t.check(dl.suggestedFilename() === 'big-3.json' && JSON.parse(saved).id === 3, 'Save value as file saves the selected value', `${dl.suggestedFilename()}: ${saved.slice(0, 80)}`);
     // The palette's view commands reach the session too (last: a palette that throws, REVIEW-GPT 7, stops the check).
     await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
     await page.keyboard.press(`${MOD}+k`);

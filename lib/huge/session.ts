@@ -16,7 +16,7 @@ import { fileKind, type Events, type InputSource } from '../analytics/events';
 import { StreamFind } from './find';
 import { HugeLinesView } from './lines-view';
 import { HUGE_VIEWS, HugeStore, type Ask, type EditUI, type HugeUI, type HugeView } from './state';
-import { HugeEditing, adjustPath, boxText, editError, kindOf, valueJson, type Effect, type EditOp, type ValueKind } from './edits';
+import { HugeEditing, adjustPath, boxText, dedent, editError, kindOf, valueJson, type Effect, type EditOp, type ValueKind } from './edits';
 import { pickFile, pickSave, watchDrops, writable } from './handles';
 import { HugeTasks } from './tasks';
 import { HugeTableView } from './table-view';
@@ -1114,7 +1114,7 @@ export class HugeSession {
     const path = t.path;
     this.ui.set({ box: null, textEdit: { path, label: formatPath(path), text: null } });
     try {
-      const text = await this.src.edits!.nodeText(t.node);
+      const text = dedent(await this.src.edits!.nodeText(t.node));
       const te = this.ui.get().textEdit;
       if (!this.dead && te && te.path === path) this.ui.set({ textEdit: { ...te, text } });
     } catch (e) {
@@ -1126,11 +1126,14 @@ export class HugeSession {
     }
   }
 
-  /** The text dialog's Apply: its text in place of the value (one undo step). */
-  async applyText(text: string): Promise<boolean> {
+  /**
+   * The text dialog's Apply: its text in place of the value (one undo step), written as the document is; `exact`
+   * (not valid JSON, applied anyway): as it is, the document then invalid until it's fixed.
+   */
+  async applyText(text: string, exact = false): Promise<boolean> {
     const te = this.ui.get().textEdit;
     if (!te) return false;
-    const ok = await this.edit({ op: 'text', path: te.path, text }, this.editFrom);
+    const ok = await this.edit({ op: exact ? 'raw' : 'text', path: te.path, text }, this.editFrom);
     if (ok && !this.dead) this.closeText();
     return ok;
   }
@@ -1255,9 +1258,19 @@ export class HugeSession {
 
   // ── Keys ───────────────────────────────────────────────────────────────
 
+  /** The open dialog's keys (edit as text: Ctrl+Enter, Ctrl+F): the engine sees keys first, then huge mode. */
+  dialogKey: ((e: KeyboardEvent) => boolean) | null = null;
+
   private key(e: KeyboardEvent): boolean {
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
+    // In huge mode's dialogs, the edit box and the menu: their own keys; the tool's commands (which would act on the
+    // editor hidden behind) do nothing there; typing, Esc and the rest go on to them.
+    const inDialog = (e.target as HTMLElement | null)?.closest?.('.hg-modal, .hg-box, .hg-menu');
+    if (inDialog) {
+      if (this.dialogKey?.(e)) return true;
+      return mod && !e.altKey && (e.key === 'Enter' || /^[fgkos]$/.test(k));
+    }
     // Alt+digit: the views as numbered in the normal tool (Alt+4 is Graph), Shape seventh. On macOS not while typing (Option+digit types).
     const t = e.target as HTMLElement | null;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || !!t?.isContentEditable;

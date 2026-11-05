@@ -51,6 +51,19 @@ export function boxText(n: Pick<HugeNode, 't' | 'text'>, json: string | null): s
   return json ?? n.text;
 }
 
+/**
+ * A value's text as written, without the indent of where it is: its lines after the first all start with the
+ * last line's indent (a container's closing bracket), which comes off them. (Applied, it's indented for where it
+ * goes again.)
+ */
+export function dedent(text: string): string {
+  const lines = text.split('\n');
+  if (lines.length < 2) return text;
+  const pad = /^[ \t]*/.exec(lines[lines.length - 1])![0];
+  if (!pad || !lines.slice(1).every((l) => l.startsWith(pad) || !l.trim())) return text;
+  return [lines[0], ...lines.slice(1).map((l) => l.slice(pad.length))].join('\n');
+}
+
 /** An edit, by path (each is one undo step). */
 export type EditOp =
   | { op: 'set'; path: Seg[]; json: string }
@@ -59,6 +72,8 @@ export type EditOp =
   | { op: 'insert'; parent: Seg[]; index: number; json: string; name: string | null }
   | { op: 'duplicate'; path: Seg[] }
   | { op: 'text'; path: Seg[]; text: string }
+  /** The text as it is (not valid JSON: the document is then invalid until it's fixed, as its status says). */
+  | { op: 'raw'; path: Seg[]; text: string }
   | { op: 'undo' }
   | { op: 'redo' }
   | { op: 'restore' };
@@ -148,7 +163,7 @@ export class HugeEditing {
       if (op.op === 'undo') this.steps = Math.max(0, this.steps - 1);
       else if (op.op === 'restore') this.steps = r.steps ?? this.steps;
       else this.steps++;
-      track('huge_edit', { op: op.op as EditKind, from });
+      track('huge_edit', { op: (op.op === 'raw' ? 'text' : op.op) as EditKind, from });
       await this.host.changed(r.fx, r.select);
       return true;
     } catch (e) {
@@ -179,6 +194,13 @@ export class HugeEditing {
         const x = (await this.at(op.path)) ?? gone();
         if (op.op === 'set') await ed.setValue(x.node, op.json);
         else await ed.replaceNode(x.node, op.text);
+        return { fx: {}, select: op.path };
+      }
+      case 'raw': {
+        // (Byte for byte: replaceNode would read it leniently and write it as JSON.)
+        const x = (await this.at(op.path)) ?? gone();
+        if (x.node.end < 0) throw new Error('Not ready');
+        await ed.replace([{ a: x.node.at, b: x.node.end, text: op.text }], false);
         return { fx: {}, select: op.path };
       }
       case 'rename': {
