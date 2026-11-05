@@ -598,8 +598,11 @@ export class HugeSession {
       if (this.dead) return;
       track('feature_used', { feature: format === 'png' ? 'graph_export_png' : 'graph_export_svg' });
       this.host.saveBlob(blob, `${this.meta.name.replace(/\.[^.]+$/, '')}-graph.${format}`);
-    } catch {
-      this.host.toast("Couldn't make the image", 'err');
+    } catch (e) {
+      // (Why, as the normal tool says it: a canvas too big for this browser, and the like.)
+      if (this.dead) return;
+      reportError(e, 'export');
+      this.host.toast(rt("Couldn't download graph: {error}", { error: rt.msg(e instanceof Error ? e.message : 'Graph export failed') }), 'err');
     }
   }
 

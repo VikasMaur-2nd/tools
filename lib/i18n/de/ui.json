@@ -1057,7 +1057,6 @@
   "app.hugeGraphMoreSoFar": "+{n} weitere bisher",
   "app.hugeExportPng": "Als PNG exportieren",
   "app.hugeExportSvg": "Als SVG exportieren",
-  "toast.hugeGraphImage": "Das Bild konnte nicht erstellt werden",
   "cmd.shape": "Strukturansicht (Pfade, Typen und Anzahlen)",
   "cmd.shape.terms": "schema felder struktur statistik verschiedene form",
   "app.hugeShapeRead": "Datei lesen",

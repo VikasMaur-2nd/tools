@@ -1105,7 +1105,6 @@
   "app.hugeGraphMoreSoFar": "ещё +{n} на данный момент",
   "app.hugeExportPng": "Экспорт в PNG",
   "app.hugeExportSvg": "Экспорт в SVG",
-  "toast.hugeGraphImage": "Не удалось создать изображение",
   "cmd.shape": "Режим «Структура» (пути, типы и количества)",
   "cmd.shape.terms": "схема поля структура статистика различные форма",
   "app.hugeShapeRead": "Прочитать файл",

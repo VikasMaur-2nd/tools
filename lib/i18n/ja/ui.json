@@ -1033,7 +1033,6 @@
   "app.hugeGraphMoreSoFar": "+さらに{n}件（読み込み中）",
   "app.hugeExportPng": "PNGで書き出す",
   "app.hugeExportSvg": "SVGで書き出す",
-  "toast.hugeGraphImage": "画像を作成できませんでした",
   "cmd.shape": "構造ビュー（パス、型、件数）",
   "cmd.shape.terms": "スキーマ フィールド 構造 統計 異なる値 シェイプ",
   "app.hugeShapeRead": "ファイルを読み込む",

@@ -1033,7 +1033,6 @@
   "app.hugeGraphMoreSoFar": "+{n}개 더(읽는 중)",
   "app.hugeExportPng": "PNG로 내보내기",
   "app.hugeExportSvg": "SVG로 내보내기",
-  "toast.hugeGraphImage": "이미지를 만들지 못했습니다",
   "cmd.shape": "구조 보기(경로, 타입, 개수)",
   "cmd.shape.terms": "스키마 필드 구조 통계 고유 값 셰이프",
   "app.hugeShapeRead": "파일 읽기",

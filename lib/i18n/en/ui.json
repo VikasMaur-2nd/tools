@@ -1406,8 +1406,6 @@
   "app.hugeExportPng._context": "Menu item: saves the graph shown as a PNG image.",
   "app.hugeExportSvg": "Export SVG",
   "app.hugeExportSvg._context": "Menu item: saves the graph shown as an SVG image.",
-  "toast.hugeGraphImage": "Couldn't make the image",
-  "toast.hugeGraphImage._context": "Large-file mode: the graph image could not be made.",
   "cmd.shape": "Shape view (paths, types and counts)",
   "cmd.shape._context": "Command palette, large-file mode only: opens the Shape view (Alt+7).",
   "cmd.shape.terms": "schema fields structure statistics distinct",

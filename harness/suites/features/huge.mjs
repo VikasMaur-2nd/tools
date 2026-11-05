@@ -324,11 +324,15 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
   await page.keyboard.press('u');
   t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users', null), 'U a level up', await where());
   // Export PNG of what is shown.
-  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), (async () => {
-    await page.locator('.hg .vicons button[aria-label="More options"]').click();
-    await page.getByRole('menuitem', { name: 'Export PNG' }).click();
-  })()]);
-  t.check(/-graph\.png$/.test(dl.suggestedFilename()), 'Export PNG saves the graph', dl.suggestedFilename());
+  // (The menu open first; then up to a minute for the image, as the normal tool's big exports: Firefox on a CI runner
+  // gave no download in 15 s, where it takes ~1 s here. What went wrong, if anything: the toast says.)
+  await page.locator('.hg .vicons button[aria-label="More options"]').click();
+  const item = page.getByRole('menuitem', { name: 'Export PNG' });
+  await item.waitFor();
+  const t0 = Date.now();
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }).catch(() => null), item.click()]);
+  const toasts = () => page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent ?? ''));
+  t.check(!!dl && /-graph\.png$/.test(dl.suggestedFilename()), 'Export PNG saves the graph', dl ? `${dl.suggestedFilename()} in ${Date.now() - t0} ms` : await toasts());
   // Find from the Graph: a match outside the part shows the part around it, the match selected.
   await page.keyboard.press(`${MOD}+f`);
   await page.locator('.hg .findbar input').fill('u2400@');

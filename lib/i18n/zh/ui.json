@@ -1033,7 +1033,6 @@
   "app.hugeGraphMoreSoFar": "目前还有 +{n}",
   "app.hugeExportPng": "导出 PNG",
   "app.hugeExportSvg": "导出 SVG",
-  "toast.hugeGraphImage": "无法生成图片",
   "cmd.shape": "结构视图（路径、类型和计数）",
   "cmd.shape.terms": "schema 字段 结构 统计 不同值 形状",
   "app.hugeShapeRead": "读取文件",
