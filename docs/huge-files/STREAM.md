@@ -17,7 +17,11 @@ Everything is reached through the huge chunk's dynamic import; no page's first l
   valid; the Shape pass may run while indexing).
 - `pass.ts`: reads `[start, end)` of a `Source` (a Blob: `slice().arrayBuffer()`, 16 MiB, two in flight),
   feeds the walker, hands the visitor's output (`out.ts` `Bytes`, 1 MiB blocks) to its sink between chunks
-  and when the visitor pauses the walker, yields a task every 30 ms (a Stop is seen), throws `Stopped`.
+  and when the walker pauses, yields a task every 30 ms (a Stop is seen, mid-chunk too), throws `Stopped`.
+- **Output pressure**: when 8 MiB wait for the sink (`Bytes.onFull`), the job pauses its walker; the walker
+  stops after the token being written (values, closes; opens past depth 64) and the pass drains. Strings are
+  read a slice (1 MiB) at a time and writers get longer ones in parts, so what waits stays under ~16 MiB
+  however much the input expands (Pretty of deep nesting, control characters, invalid UTF-8).
 - A scope is a byte range of the document after its byte order mark: the whole file (`multi` for a list of
   values) or a value (`HugeNode.start/end`).
 
@@ -26,9 +30,9 @@ Everything is reached through the huge chunk's dynamic import; no page's first l
 | File | What | Exact against |
 |---|---|---|
 | `reformat.ts` | Pretty (an indent), Minify, JSON Lines (`toJSONL`) | `formatDoc`, `toJSONL` (strings re-quoted as `quote(JSON.parse(token))`, escapes JSON.stringify writes alike kept, invalid UTF-8 as U+FFFD, numbers as written, duplicates kept) |
-| `shape.ts` | Every path (`[*]` items): kinds and counts, presence and first object missing it, null %, numbers' range / mean / integers, string lengths and formats, array lengths, members per object, distinct values (exact ≤ 64 with counts, then HyperLogLog 2^11, ~2.3 %), examples, first byte of each kind | a tree-based oracle (tests/huge-shape.test.ts) |
-| `csv.ts` | `CsvColumns` (pass 1 from tokens) / `CsvScan` (pass 1 from records) → `CsvPlan`; `Trees` + `CsvRows` (pass 2, a record at a time with xlsx.ts's own cell rules) | `toCsv(records(root))`, every branch |
-| `filter.ts` | Field conditions on records (`exists`, `missing`, `eq`, `ne`, `contains`, `starts`, `lt`…`ge`, `is`), paths with `*`, all / any | hand cases |
+| `shape.ts` | Every path (`[*]` items): kinds and counts, presence and first object missing it, null %, numbers' range / mean / integers, string lengths and formats, array lengths, members per object, distinct values (exact ≤ 64 with counts, then HyperLogLog 2^11, ~2.3 %), examples, first byte of each kind | a tree-based oracle (tests/huge-shape.test.ts) | Exact distinct counts: each value hashed whole and compared byte for byte (strings as decoded text); values over 16 KiB make the count an estimate (`exact: false`).
+| `csv.ts` | `CsvColumns` (pass 1 from tokens; a path trie for arrays and JSON Lines) / `CsvScan` (pass 1 from records, with filters) → `CsvPlan`; `CsvTokens` (pass 2 from tokens: rows as bytes, no records made) or, for key / value tables and filtered CSV, `Trees` + `CsvRows` (a record at a time with xlsx.ts's own cell rules) | `toCsv(records(root))`, every branch, both pass 2s |
+| `filter.ts` | Field conditions on records (`exists`, `missing`, `eq`, `ne`, `contains`, `starts`, `lt`…`ge`, `is`), paths with `*`, all / any; a typed number is kept as written (`{ num }`) and compared exactly with the document's number text (no doubles) | hand cases, exact arithmetic on random pairs |
 | `seek.ts` | The next value of a kind at a shape path, the next object lacking a member, or a count | hand cases |
 | `jobs.ts` | `runJob(src, job, outs, hooks)`: `format`, `lines`, `csv` (optionally filtered), `extract`, `split`, `shape`, `seek` | extract / split / lines vs formatDoc / toJSONL |
 
@@ -42,7 +46,11 @@ Shape and CSV, written whole by Pretty / Minify / JSON Lines / Split.
   through `createWritable()` (committed on close; aborted on failure or Stop).
 - Elsewhere: an OPFS file in `tk-huge/` through `createSyncAccessHandle()` (every engine's workers), handed
   back as a disk-backed `File` and downloaded with `<a download>`; Split writes one stored ZIP64 archive
-  (local headers patched in place, no data descriptors). Space is checked first (`navigator.storage.estimate()`).
+  (local headers patched in place, no data descriptors; each entry's central-directory record spooled to a
+  second temp file `<name>.cd` and copied at the end: memory doesn't grow with the parts). Space is checked
+  first (`navigator.storage.estimate()`). Every output has an `abort` that a stopped or failed job calls
+  first: files closed, then deleted (the archive and its spool even before a first entry; Split's parts in
+  a picked folder too).
 - gzip on the way: `CompressionStream('gzip')` around any sink.
 - OPFS files: named per command, held with a Web Lock while used (another tab's `sweep()` leaves them),
   replaced by the next output, deleted a minute after the file closes, swept after 10 minutes otherwise.
