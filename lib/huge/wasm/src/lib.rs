@@ -96,6 +96,8 @@ const FR: usize = 10;
 const FW: usize = 6;
 /** f64 before the frames in a checkpoint or snapshot (see snap()). */
 const HW: usize = 15;
+/** Bytes a due checkpoint may wait for a shallower place (see run()), at most half the checkpoints' spacing. */
+const CK_DEFER: usize = 1 << 16;
 /** f64 per directory record (see dir_out()). */
 const DW: usize = 10;
 
@@ -1565,6 +1567,11 @@ pub unsafe extern "C" fn run() -> i32 {
     // (Where the next checkpoint is due or the pass stops: one compare on the hot path for both.)
     let ck_on = NEXT_CK != NONE;
     let mut ck_at = local(NEXT_CK).min(stop_at);
+    // A due checkpoint waits for the shallowest place since the last one (between records: an edit's stretch then
+    // starts outside them), CK_DEFER bytes at most; one owed after a big value doesn't wait.
+    let defer = CK_DEFER.min((CK_EVERY / 2) as usize) as u64;
+    // (Absolute: a window that ends while one waits doesn't start the wait again.)
+    let mut ck_hard = if NEXT_CK == 0 { 0 } else { local(NEXT_CK.saturating_add(defer)) };
     let mut ii = II;
     let mut state = STATE;
     let mut depth = DEPTH;
@@ -1647,6 +1654,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 // A checkpoint right after a big value: a seek past it starts there.
                 if ck_on {
                     ck_at = 0;
+                    ck_hard = 0;
                     // (Kept past a stop there: the run that goes on still owes it.)
                     NEXT_CK = 0;
                 }
@@ -1667,6 +1675,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 }
                 if ck_on {
                     ck_at = 0;
+                    ck_hard = 0;
                     // (Kept past a stop there: the run that goes on still owes it.)
                     NEXT_CK = 0;
                 }
@@ -1731,6 +1740,7 @@ pub unsafe extern "C" fn run() -> i32 {
             low = depth;
             NEXT_CK = pos0 + $p as u64 + CK_EVERY;
             ck_at = local(NEXT_CK).min(stop_at);
+            ck_hard = local(NEXT_CK.saturating_add(defer));
         }};
     }
     // Feeds window bytes [$from, $to) to DFA state $s (a number or literal the window cut); at the top level a
@@ -1874,7 +1884,9 @@ pub unsafe extern "C" fn run() -> i32 {
                         WHY = W_AFTER;
                         break STOP;
                     }
-                    checkpoint!(p);
+                    if depth <= low || p >= ck_hard {
+                        checkpoint!(p);
+                    }
                 }
                 if c == b',' {
                     ii += 1;
@@ -1981,7 +1993,9 @@ pub unsafe extern "C" fn run() -> i32 {
                         WHY = W_AFTER;
                         break STOP;
                     }
-                    checkpoint!(p);
+                    if depth <= low || p >= ck_hard {
+                        checkpoint!(p);
+                    }
                 }
                 if c == b',' || c == b';' {
                     // Separators between top-level values (as tape-parser.ts takes JSON Lines): not JSON Lines.

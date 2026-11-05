@@ -199,6 +199,8 @@ export class Skeleton {
     const x = this.x;
     const src = this.src!;
     const at = x.next_pos();
+    // (Never past the window it was made with, and whole 64-byte blocks unless it's the last.)
+    max = Math.max(64, Math.min(this.window, max) & ~63);
     let len = Math.min(max, src.size - at);
     let last = at + len >= src.size;
     if (at + len > this.limit) {

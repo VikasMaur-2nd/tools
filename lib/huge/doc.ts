@@ -41,6 +41,8 @@ const PREVIEW_MS = 60;
 const PREVIEW_CHARS = 1024;
 /** An object an edit is in that is at most this big is read again from its start, so its names are all checked again. */
 const DUP_SCAN = 1 << 20;
+/** The first window when reading again after an edit (it grows: see steps). */
+const REREAD_WINDOW = 1 << 16;
 /** Stats of a parse (lib.rs stats()). */
 const STATS = 19;
 
@@ -281,8 +283,17 @@ export class HugeDoc {
       }
       // (Not read yet: the caller reads ahead (indexAt) and steps again.)
       if (this.indexHas && !this.indexHas(this.ix.pos, Math.min(this.ix.window, this.src.size - this.ix.pos))) return false;
-      // (Stopped in its window at an old checkpoint that wasn't the same: on in that window.)
-      const r = this.resumeIx ? this.ix.resume() : this.ix.step();
+      // (Stopped in its window at an old checkpoint that wasn't the same: on in that window. Reading again: a window
+      // up to just past where it may re-sync (no more read than needed), else from small ones twice as big each time.)
+      let win: number | undefined;
+      if (this.edited && !this.resumeIx) {
+        const to = this.cand >= 0 ? this.tail!.ix.pos[this.cand] : -1;
+        // (Whole 64-byte blocks: a window that doesn't end the document carries stage 1's state at a block's end.)
+        // (Never more than the window it was made with.)
+        win = Math.min(this.ix.window, to > this.ix.pos ? Math.max(REREAD_WINDOW, (to - this.ix.pos + 4096 + 63) & ~63) : this.rewin);
+        this.rewin = Math.min(this.ix.window, this.rewin * 2);
+      }
+      const r = this.resumeIx ? this.ix.resume() : this.ix.step(win);
       this.resumeIx = false;
       const out = this.ix.drain();
       this.index.addCheckpoints(out.ck);
@@ -484,6 +495,8 @@ export class HugeDoc {
   private holdAt = -1;
   /** The indexer stopped inside its window (a re-sync tried there): it runs on in it. */
   private resumeIx = false;
+  /** Window bytes while reading again (from REREAD_WINDOW at each restore, doubling). */
+  private rewin = REREAD_WINDOW;
   /** Where the indexer last started reading again, and its live checkpoint then; how far it has read since its tail was made. */
   private readStart = 0;
   private readUpTo = -1;
@@ -598,7 +611,7 @@ export class HugeDoc {
     const old = this.tail;
     const t = new Tail(old ? old.end : this.done && !this.error && this.final ? { kind: 'done', final: this.final.slice() } : { kind: 'open' });
     const last = live.n - 1;
-    for (let j = k + 1; j <= last; j++) t.ix.copyFrom(live, j, j === k + 1);
+    t.ix.appendRange(live, k + 1, last + 1, true);
     const p0 = live.pos[k];
     for (let j = live.dirBefore(p0); j < live.nd; j++) t.ix.copyBig(live, j);
     let pj = 0;
@@ -620,13 +633,12 @@ export class HugeDoc {
       // (What the indexer has read past since the old tail was made is in the index already: its checkpoints,
       // records and pairs before there are of an older document.)
       const F0 = this.readUpTo;
-      let first = true;
-      for (let j = old.next; j < old.ix.n; j++) {
-        if (old.ix.pos[j] < F0 || (mark && old.ix.pos[j] < live.pos[last] + 1)) continue;
-        t.ix.copyFrom(old.ix, j, first);
-        first = false;
-        t.setDead(t.ix.n - 1, !!old.dead[j]);
-      }
+      // (Positions grow along the tail: the ones dropped are a run at its start.)
+      let j0 = old.next;
+      while (j0 < old.ix.n && (old.ix.pos[j0] < F0 || (mark && old.ix.pos[j0] < live.pos[last] + 1))) j0++;
+      const at = t.ix.n;
+      t.ix.appendRange(old.ix, j0, old.ix.n, true);
+      for (let j = j0; j < old.ix.n; j++) if (old.dead[j]) t.setDead(at + j - j0, true);
       for (let j = old.nextBig; j < old.ix.nd; j++) if (old.ix.dir[j * DW + 1] > F0) t.ix.copyBig(old.ix, j);
       for (let j = old.nextPair; j < old.pairs.length; j += 2) if (old.pairs[j] >= F0) t.pairs.push(old.pairs[j], old.pairs[j + 1]);
     }
@@ -644,25 +656,13 @@ export class HugeDoc {
    */
   private readAgain() {
     const live = this.index;
-    let k = live.n - 1;
-    let s = live.state(k);
-    let carry = false;
-    const o = this.objectAt(k);
-    if (o) {
-      if (o.k < k) {
-        this.cut(o.k);
-        k = o.k;
-      }
-      const q = this.at(live.state(k));
-      q.limit = Infinity;
-      q.target(o.d, o.parent, -1, -1, o.start);
-      if (q.go() === STOP && q.why === W_CHILD) {
-        s = q.snapshot();
-        carry = true;
-      } else s = live.state(k);
-    }
+    // (A small object open there: from the checkpoint before it, so it opens again and all its names are checked;
+    // reading that stretch costs what seeking to its start would.)
+    const o = this.objectAt(live.n - 1);
+    if (o && o.k < live.n - 1) this.cut(o.k);
+    const s = live.state(live.n - 1);
     this.pullBack(s.pos);
-    this.restore(s, carry);
+    this.restore(s);
     this.restartK = live.n - 1;
     this.readStart = s.pos;
     this.syncFrom = this.tail && this.tail.dirty.length ? this.tail.dirty[0] : Infinity;
@@ -682,6 +682,7 @@ export class HugeDoc {
     this.skipped += this.ix.stats()[8];
     if (!this.ix.restore(s, carry)) throw new Error('Out of memory');
     this.readUpTo = s.pos;
+    this.rewin = REREAD_WINDOW;
     const live = this.index;
     let ok = !carry || s.lok === 1;
     let first = -1;
@@ -807,33 +808,30 @@ export class HugeDoc {
     for (let d = 0; d < s.frames.length; d++) if (!T.bigAt(s.frames[d].start) && !live.bigAt(s.frames[d].start)) this.unsized.add(d + ':' + s.frames[d].start);
     // Checkpoint k as the indexer has it, then the rest moved.
     live.addState(s, st[15]);
-    let prev = k;
-    for (let j = k + 1; j <= m; j++) {
-      if (t.dead[j]) continue;
-      // (Its frames below its own are the one before's: all of them if that one wasn't taken.)
-      const full = prev !== j - 1;
-      prev = j;
-      live.copyFrom(T, j, full, (h, fr, from) => {
-        h[2] += dn;
-        h[3] += dc;
-        h[4] += dl;
-        h[5] += du;
-        h[6] = lineU16(h[6]);
-        h[7] += dt;
-        h[11] = topLine(h[11]);
-        h[12] = lastTop(h[12]);
-        for (let o = 0; o < fr.length; o += FW) {
-          const d = from + o / FW;
-          if (same(d, fr[o + 2])) {
-            fr[o + 1] += dcount[d];
-            fr[o + 4] = s.frames[d].nodes;
-            fr[o + 5] = s.frames[d].closers;
-          } else {
-            fr[o + 4] += dn;
-            fr[o + 5] += dc;
-          }
+    // The rest in bulk (no dead ones between: they're in dirty stretches), then their counts moved.
+    const base = live.n;
+    live.appendRange(T, k + 1, m + 1, false);
+    const F = live.frames;
+    for (let j = base; j < live.n; j++) {
+      live.nodes[j] += dn;
+      live.closers[j] += dc;
+      live.lines[j] += dl;
+      live.u16[j] += du;
+      live.lineU16[j] = lineU16(live.lineU16[j]);
+      live.top[j] += dt;
+      live.topLine[j] = topLine(live.topLine[j]);
+      live.lastTopLine[j] = lastTop(live.lastTopLine[j]);
+      const from = live.from[j];
+      for (let d = from, o = live.fr[j] * FW; d < live.depth[j]; d++, o += FW) {
+        if (same(d, F[o + 2])) {
+          F[o + 1] += dcount[d];
+          F[o + 4] = s.frames[d].nodes;
+          F[o + 5] = s.frames[d].closers;
+        } else {
+          F[o + 4] += dn;
+          F[o + 5] += dc;
         }
-      });
+      }
     }
     // (The last stretch, when the old end is the document's: all that's left.)
     const all = nd < 0 && t.end.kind === 'done' && dt === 0;
@@ -991,6 +989,8 @@ export class HugeDoc {
   /** Where the second top-level value starts (-1: none), found again after an edit (reading from the checkpoint before it). */
   private secondValue(): number {
     if (this.second !== -2) return this.second;
+    // (All read, one top-level value: none.)
+    if (this.final && this.final[3] < 2) return (this.second = -1);
     const live = this.index;
     const k = Math.max(0, live.lastAtMost(live.top, 1));
     const q = this.at(live.state(k));

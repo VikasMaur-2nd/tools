@@ -14,6 +14,9 @@ import { DW, FW, HW, S_VALUE, firstFrame, type Frame, type State } from './skele
 /** Numbers of a checkpoint's header in copyFrom(): pos, state, nodes, closers, lines, u16, lineU16, top, deepest, lok, sep, topLine, lastTopLine. */
 export const HEAD = 13;
 
+/** A checkpoint's arrays copied as they are by appendRange (fr: made again). */
+const HEADS = ['pos', 'st', 'depth', 'from', 'low', 'nodes', 'closers', 'lines', 'u16', 'lineU16', 'top', 'deepest', 'lok', 'sep', 'topLine', 'lastTopLine'] as const;
+
 const grow = <T extends Float64Array | Int32Array | Uint8Array>(a: T, need: number): T => {
   if (need <= a.length) return a;
   const b = new (a.constructor as new (n: number) => T)(Math.max(need, a.length * 2));
@@ -222,6 +225,39 @@ export class HugeIndex {
     this.frames = grow(this.frames, (this.nf + own) * FW);
     this.frames.set(frames, this.nf * FW);
     this.nf += own;
+  }
+
+  /**
+   * Appends checkpoints [j0, j1) of `src` in bulk (typed-array copies: an edit's cost per checkpoint is a few
+   * numbers moved): the first with all its frames if `firstFull`, else sharing the ones below its own with this
+   * index's last checkpoint. The caller then moves their counts (see HugeDoc.take).
+   */
+  appendRange(src: HugeIndex, j0: number, j1: number, firstFull: boolean) {
+    const cnt = j1 - j0;
+    if (cnt <= 0) return;
+    const base = this.n;
+    this.room(base + cnt - 1);
+    for (const key of HEADS) (this[key] as Float64Array).set((src[key] as Float64Array).subarray(j0, j1), base);
+    let f = this.nf;
+    // Own frames of [j0 + firstFull, j1) are together in src.frames.
+    const rest = firstFull ? j0 + 1 : j0;
+    const s0 = rest < j1 ? src.fr[rest] : 0;
+    const s1 = rest < j1 ? (j1 < src.n ? src.fr[j1] : src.nf) : 0;
+    const full = firstFull ? src.depth[j0] : 0;
+    this.frames = grow(this.frames, (f + full + (s1 - s0)) * FW);
+    if (firstFull) {
+      for (let d = 0; d < full; d++) {
+        const o = src.frame(j0, d);
+        this.frames.set(src.frames.subarray(o, o + FW), (f + d) * FW);
+      }
+      this.fr[base] = f;
+      this.from[base] = 0;
+      f += full;
+    }
+    if (s1 > s0) this.frames.set(src.frames.subarray(s0 * FW, s1 * FW), f * FW);
+    for (let j = rest; j < j1; j++) this.fr[base + j - j0] = f + (src.fr[j] - s0);
+    this.nf = f + (s1 - s0);
+    this.n += cnt;
   }
 
   /** Keeps checkpoints [0, k] and the directory records of values that end at checkpoint k's byte or before. */
