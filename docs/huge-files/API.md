@@ -171,9 +171,12 @@ as it is when the edit is asked (after the edits before it). Each call is one un
     `parent` null: an empty document's value), `duplicate(parent, index)` (right after it; an object member
     named `"<name> (copy)"`; any size: the copy is the same bytes, nothing is read).
   - `nodeText(node, max = 64 MiB)` (async; 'Too big' past `max`) for the normal editor, and
-    `replaceNode(node, text)` to put its text back (re-indented if it's JSON, else as it is: the document then
-    says where it's wrong).
-  - JSON given to them must be valid ('Invalid JSON' otherwise); a node edit where it can't be: 'Not allowed'.
+    `replaceNode(node, text)` to put its text back: re-indented for where it goes if it's strict JSON (one value,
+    nothing the normal path only tolerates: no comments, trailing commas, `nul`, single quotes, …), else **as
+    typed, never repaired**: the document then says where it's wrong (the normal path's message), and fixing it
+    there, or undo, makes it valid again.
+  - JSON given to the other node edits must be strict JSON, one value ('Invalid JSON' otherwise: nothing is
+    repaired); a node edit where it can't be: 'Not allowed'.
 - `undo()`, `redo()`: the history holds edits' bytes up to 256 MiB (the oldest steps go first).
 - After an edit the document is read again from the checkpoint before it until its index is the old one again
   (re-synced): typing and most edits are all read again when they answer (`done`, `summary` there). An edit that

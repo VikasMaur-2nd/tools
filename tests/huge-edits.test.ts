@@ -166,11 +166,12 @@ test('text applied as it is (not JSON): the document is invalid, its status says
   // The normal path's status bar: where, and what (a repair would fix this one: "fixable").
   const st = src.state().status;
   assert.deepEqual([st?.kind, st?.msg, st?.line, st?.col], ['fixable', "Unexpected 'nul'. Did you mean null?", 2, 11]);
-  // (Read leniently, the same text is written as JSON: `null`.)
   assert.equal(await ed.run({ op: 'undo' }, 'key'), true);
   await ended(src);
   assert.equal(src.state().status?.kind, 'valid');
+  // (replaceNode never repairs either (UI-NOTES 15, core round 5): text that isn't strict JSON goes in as typed.)
   assert.equal(await ed.run({ op: 'text', path: ['meta'], text: 'nul' }, 'tree'), true);
-  assert.equal(src.state().status?.kind, 'valid');
+  await ended(src);
+  assert.equal(src.state().status?.kind, 'fixable');
   src.destroy();
 });

@@ -223,14 +223,18 @@ export class HugeEditor {
     return dec.decode(this.doc.src.read(node.start, node.end - node.start));
   }
 
-  /** Puts `text` (from the normal editor) in place of `node`: re-indented for where it is if it's JSON, else as it is. */
+  /**
+   * Puts `text` (from the normal editor) in place of `node`: re-indented for where it is if it's strict JSON (one
+   * value, nothing the normal path only tolerates), else as typed, never repaired: the document then says where
+   * it's wrong (the normal path's message), and fixing it there, or undo, makes it valid again.
+   */
   replaceNode(node: HugeNode, text: string, until = Infinity): EditDone {
     this.ready();
     let value = text;
     try {
       value = this.format(text, this.indentAt(node.start), this.styleOf(this.parentOf(node)));
     } catch {
-      // (Not JSON: as it is; the document says where it's wrong.)
+      // (Not JSON, or JSON it can't write again (nested too deep): as typed.)
     }
     return this.apply([{ a: node.start, b: node.end, put: piecesOf(enc.encode(value)) }], until);
   }
@@ -321,9 +325,10 @@ export class HugeEditor {
   }
 
   /** JSON `json` written for a place whose line is indented `indent`: with the style's unit, or minified. */
+  /** `json` written as `style` says, indented at `indent`; 'Invalid JSON' unless it's strict JSON, one value (the parser's tolerated constructs would be repaired by writing it). */
   private format(json: string, indent: string, style: Style): string {
     const t = parse(json);
-    if (t.head.error || !t.count) throw new Error('Invalid JSON');
+    if (t.head.error || t.head.issues.length || t.head.multi || !t.count) throw new Error('Invalid JSON');
     const out = writeTape(t, json, 0, style.unit);
     return style.unit ? out.replace(/\n/g, '\n' + indent) : out;
   }
