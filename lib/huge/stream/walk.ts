@@ -360,7 +360,12 @@ export class Walker {
       }
       if (NUMCH[c] && c !== 43 && c !== 46 && c !== 101 && c !== 69) {
         let j = i + 1;
-        while (j < n && NUMCH[b[j]]) j++;
+        // (A sign goes on a number only after its e: `0-1` is two values, as tape-parser reads several.)
+        while (j < n) {
+          const x = b[j];
+          if (!NUMCH[x] || ((x === 45 || x === 43) && (b[j - 1] | 32) !== 101)) break;
+          j++;
+        }
         if (j === n) {
           this.st = st;
           this.d = d;
@@ -509,7 +514,14 @@ export class Walker {
     const n = b.length;
     if (this.st === S_NUM) {
       let j = i;
-      while (j < n && NUMCH[b[j]]) j++;
+      while (j < n) {
+        const x = b[j];
+        if (!NUMCH[x]) break;
+        // (Its byte before: in this chunk, or the last one carried.)
+        const prev = j > i ? b[j - 1] : this.carry[this.carryLen - 1];
+        if ((x === 45 || x === 43) && (prev | 32) !== 101) break;
+        j++;
+      }
       this.append(b, i, j, NUM_MAX);
       if (j === n) return -1;
       this.st = this.after();

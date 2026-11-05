@@ -31,7 +31,8 @@ const partName = (names: string, k: number) => names.replace('{n}', String(k + 1
  * The job's outputs for `out`: `done` (all written: the OPFS file to hand back, if any) and `abort` (stopped
  * or failed: every file it opened closed and deleted, whether or not the job got to write to it).
  */
-async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs: Outputs; done: () => Promise<File | undefined>; abort: () => Promise<void> }> {
+export async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs: Outputs; done: () => Promise<File | undefined>; abort: () => Promise<void>; kept: () => number }> {
+  const nothing = () => 0;
   const none = async () => {};
   // (What reaches the file: after gzip, if any.)
   const counted = (s: Sink): Sink => ({
@@ -45,31 +46,45 @@ async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs:
   const gz = (s: Sink, on: boolean) => (on ? gzipSink(counted(s)) : counted(s));
   switch (out.kind) {
     case 'none':
-      return { outs: { main: () => Promise.reject(new JobError('No output')), part: () => Promise.reject(new JobError('No output')) }, done: async () => undefined, abort: none };
+      return { outs: { main: () => Promise.reject(new JobError('No output')), part: () => Promise.reject(new JobError('No output')) }, done: async () => undefined, abort: none, kept: nothing };
     case 'file':
       return {
         outs: { main: async () => gz(writableSink(await out.handle.createWritable()), out.gzip), part: () => Promise.reject(new JobError('No output')) },
         done: async () => undefined,
         // (The job aborts its writable: the picked file keeps what it had.)
         abort: none,
+        kept: nothing,
       };
     case 'dir': {
-      // (Parts made in the picked folder: deleted if the split doesn't finish, as a stopped save keeps nothing.)
-      const made: string[] = [];
+      // (Parts made in the picked folder: a split that doesn't finish keeps the finished ones, the unfinished one goes.)
+      const open = new Set<string>();
+      let finished = 0;
       return {
         outs: {
           main: () => Promise.reject(new JobError('No output')),
           part: async (k) => {
             const name = partName(out.names, k);
             const fh = await out.handle.getFileHandle(name, { create: true });
-            made.push(name);
-            return gz(writableSink(await fh.createWritable()), out.gzip);
+            open.add(name);
+            const sink = writableSink(await fh.createWritable());
+            const closing: Sink = {
+              write: (b) => sink.write(b),
+              close: async () => {
+                await sink.close();
+                open.delete(name);
+                finished++;
+              },
+              abort: () => sink.abort(),
+            };
+            return gz(closing, out.gzip);
           },
         },
         done: async () => undefined,
         abort: async () => {
-          for (const name of made) await out.handle.removeEntry(name).catch(() => {});
+          for (const name of open) await out.handle.removeEntry(name).catch(() => {});
+          open.clear();
         },
+        kept: () => finished,
       };
     }
     case 'opfs': {
@@ -83,6 +98,7 @@ async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs:
         abort: async () => {
           await f?.abort().catch(() => {});
         },
+        kept: nothing,
       };
     }
     case 'zip': {
@@ -105,6 +121,7 @@ async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs:
           return f.file();
         },
         abort: () => zip.abort(),
+        kept: nothing,
       };
     }
   }
@@ -201,10 +218,12 @@ export function serve(port: ServePort) {
 
   const run = async (q: Extract<StreamRequest, { op: 'run' }>) => {
     let abort: () => Promise<void> = async () => {};
+    let kept: () => number = () => 0;
     try {
       const written = { bytes: 0 };
       const o = await outputsFor(q.out, written);
       abort = o.abort;
+      kept = o.kept;
       let last = 0;
       const result = await runJob(blobSource(q.file, q.skip), q.job, o.outs, {
         stopped: () => stops.has(q.id),
@@ -224,7 +243,7 @@ export function serve(port: ServePort) {
       await abort().catch(() => {});
       if (q.out.kind === 'opfs' || q.out.kind === 'zip') await removeTemp(q.out.name);
       if (q.out.kind === 'zip') await removeTemp(spoolName(q.out.name));
-      reply({ id: q.id, type: 'error', error: messageOf(e), at: e instanceof JobError ? e.at : -1 });
+      reply({ id: q.id, type: 'error', error: messageOf(e), at: e instanceof JobError ? e.at : -1, parts: kept() });
     } finally {
       stops.delete(q.id);
     }
