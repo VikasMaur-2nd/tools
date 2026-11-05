@@ -355,6 +355,8 @@ for (const [name, opts] of [
         pick.dispatchEvent(new Event('change', { bubbles: true }));
       }, v);
     const shot = async (file) => {
+      // (The mouse out of the way: a click left it over whatever the next view puts there, hovered.)
+      await page.mouse.move(1, 300);
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 250))));
       await page.screenshot({ path: join(out, file) });
     };
@@ -379,8 +381,11 @@ for (const [name, opts] of [
     await view('graph');
     await until(page, () => !!window.__vis('#hg-graph .gv-ctl:not([hidden])'), null, { timeout: 15_000 });
     await shot(`r3-${name}-graph.png`);
+    // (Shape and Convert read the file itself, which the simulated index doesn't have: the file again, as it is.)
+    await openHuge(t, pretty);
+    await waitIndexed(page);
     await view('shape');
-    await until(page, () => !!window.__vis('#hg-shape .hs-grid'), null, { timeout: 20_000 });
+    t.check(await until(page, () => !!window.__vis('#hg-shape .hs-grid'), null, { timeout: 20_000 }), 'shape read');
     await shot(`r3-${name}-shape.png`);
     await view('convert');
     await until(page, () => !!window.__vis('.hg .view button, .hg .view [role=radio]'), null, { timeout: 10_000 });
