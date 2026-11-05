@@ -265,6 +265,16 @@ for (const [name, opts] of [
     await shot('text');
     await page.keyboard.press('Escape');
     await until(page, () => !document.querySelector('.hg-te'), null);
+    // The Format view's text edited (round 6).
+    await editFormatAt(page, '"user 4"');
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type(' edited');
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
+    await shot('format-edit');
+    await page.keyboard.press('Escape');
+    await until(page, () => !document.querySelector('.hg-fe'), null);
     await page.locator('.hg-file .btn.icon[aria-label="Close file"]').click();
     t.check(await until(page, () => !!document.querySelector('.hg-confirm'), null), 'closing asks first');
     await shot('confirm');
@@ -277,7 +287,14 @@ const feText = (page) => page.evaluate(() => document.querySelector('.hg-fe .ed 
 
 /** The Format view (As written), at the line of `needle`, then editing its text there (F2): the caret at that line's start. */
 async function editFormatAt(page, needle) {
-  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-format]')?.click());
+  // (A phone has the views in a drop-down.)
+  await page.evaluate(() => {
+    const tab = window.__vis('.hg [role=tab][aria-controls=hg-format]');
+    if (tab) return tab.click();
+    const pick = window.__vis('.hg .tabs-pick select');
+    pick.value = 'format';
+    pick.dispatchEvent(new Event('change', { bubbles: true }));
+  });
   await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press(`${MOD}+f`);
   await page.locator('.hg .findbar input').fill(needle);
@@ -285,7 +302,8 @@ async function editFormatAt(page, needle) {
   await page.keyboard.press('Escape');
   await page.locator('#hg-format').focus();
   await page.keyboard.press('F2');
-  await until(page, () => !!document.querySelector('.hg-fe .ed textarea') && /Editing lines/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null, { timeout: 10_000 });
+  // (Its keys once the editor has them.)
+  await until(page, () => !!document.activeElement?.closest('.hg-fe') && /Editing lines/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null, { timeout: 10_000 });
 }
 
 test('huge edit: the Format view\'s text edited in place: numbered as the file, typing one change, undo, the error marked', async (t) => {
@@ -356,7 +374,9 @@ test('huge edit: typed in the Format view, saved in place: the file\'s SHA-256 i
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.type(' é😀');
+    // (Saved at once, as a user might: what was typed since the last paint goes first.)
     await page.keyboard.press(`${MOD}+s`);
+    t.check(await until(page, () => [...document.querySelectorAll('.toast')].some((e) => /Saved typed\.json/.test(e.textContent ?? '')), null, { timeout: 10_000 }), 'saved, said so', await page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent)));
     t.check(await until(page, () => !window.__vis('.hg-edited') && !window.__vis('.hg-saving'), null, { timeout: 20_000 }), 'saved');
     const [got, near] = await page.evaluate(async () => {
       const f = await (await (await navigator.storage.getDirectory()).getFileHandle('typed.json')).getFile();

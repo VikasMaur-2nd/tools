@@ -117,13 +117,13 @@ test('edits by path over the core: each one undo step, the document as JSON.stri
   // (A copy goes right after what it copies.)
   const v7 = { ...v6, info: { v: 2, 'v (copy)': 2, tags: ['a'] } };
   await step({ op: 'duplicate', path: ['info', 'v'] }, v7, ['info', 'v (copy)']);
-  assert.equal(ed.steps, 7);
+  assert.equal(src.state().edit?.steps, 7, 'the core counts the changes');
   // Undo goes back a step at a time; redo comes again.
   sel = ['users', 0];
   await step({ op: 'undo' }, v6, ['users', 0]);
   await step({ op: 'undo' }, v5, ['users', 0]);
   await step({ op: 'redo' }, v6, ['users', 0]);
-  assert.equal(ed.steps, 6);
+  assert.equal(src.state().edit?.steps, 6);
   assert.equal(src.state().edit?.edited, true);
   // Refused: said why, nothing changed, nothing counted.
   assert.equal(await ed.run({ op: 'remove', path: [] }, 'key'), false);
@@ -131,7 +131,7 @@ test('edits by path over the core: each one undo step, the document as JSON.stri
   assert.equal(await ed.run({ op: 'rename', path: ['users', 0], name: 'x' }, 'key'), false);
   assert.deepEqual(refused, ["That can't be done here", 'That value is no longer there', "That can't be done here"]);
   assert.equal(await text(), want(v6));
-  assert.equal(ed.steps, 6);
+  assert.equal(src.state().edit?.steps, 6);
   // Edits asked together run one after another, each on the document the one before left.
   const a = ed.run({ op: 'insert', parent: ['users'], index: 0, json: '0', name: null }, 'key');
   const b = ed.run({ op: 'set', path: ['users', 0], json: '"first"' }, 'key');
@@ -156,12 +156,12 @@ test("a value's text for the editor, and the saved document (no handle: a Blob) 
   src.destroy();
 });
 
-test('text applied as it is (not JSON): the document is invalid, its status says where; undo fixes it', async () => {
+test('text that isn\'t JSON goes in as typed: the document is invalid, its status says where; undo fixes it', async () => {
   const value = { meta: { version: 1 }, users: [{ id: 0 }] };
   const src = core(JSON.stringify(value, null, 2));
   await ended(src);
   const ed = new HugeEditing({ src, selPath: () => null, changed: async () => undefined, refused: (m) => assert.fail(m), failed: (e) => assert.fail(String(e)) });
-  assert.equal(await ed.run({ op: 'raw', path: ['meta'], text: 'nul' }, 'tree'), true);
+  assert.equal(await ed.run({ op: 'text', path: ['meta'], text: 'nul' }, 'tree'), true);
   await ended(src);
   // The normal path's status bar: where, and what (a repair would fix this one: "fixable").
   const st = src.state().status;

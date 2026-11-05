@@ -935,7 +935,7 @@ export class HugeSession {
       restore = { steps: e.session.steps, time: e.session.time };
     }
     if (!e.session) restore = null;
-    this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? ed.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle });
+    this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle });
   }
 
   /** Edits can be asked now; else says why. */
@@ -1170,13 +1170,13 @@ export class HugeSession {
   }
 
   /**
-   * The text dialog's Apply: its text in place of the value (one undo step), written as the document is; `exact`
-   * (not valid JSON, applied anyway): as it is, the document then invalid until it's fixed.
+   * The text dialog's Apply: its text in place of the value (one undo step), written as the document is if it's
+   * JSON; else as typed (applied anyway), the document then invalid until it's fixed.
    */
-  async applyText(text: string, exact = false): Promise<boolean> {
+  async applyText(text: string): Promise<boolean> {
     const te = this.ui.get().textEdit;
     if (!te) return false;
-    const ok = await this.edit({ op: exact ? 'raw' : 'text', path: te.path, text }, this.editFrom);
+    const ok = await this.edit({ op: 'text', path: te.path, text }, this.editFrom);
     if (ok && !this.dead) this.closeText();
     return ok;
   }
@@ -1243,7 +1243,6 @@ export class HugeSession {
       report('done');
       if (how === 'download' && r.blob) this.host.saveBlob(r.blob, this.meta.name);
       if (inPlace && handle) {
-        this.editing!.steps = 0;
         this.handle = handle;
         const f = await handle.getFile();
         this.file = { size: f.size, lastModified: f.lastModified };
@@ -1346,17 +1345,13 @@ export class HugeSession {
     };
   }
 
-  /** A change typed in the window was taken in: one change counted per pause (the core joins typing so). */
+  /** A change typed in the window was taken in (the huge_edit event once per pause: the core joins typing so). */
   formatTyped() {
     const now = performance.now();
     this.feTyped = true;
     this.editedAt = now;
-    if (this.editing && now - this.typedAt > TYPING_PAUSE) {
-      this.editing.steps++;
-      track('huge_edit', { op: 'type', from: 'format' });
-    }
+    if (now - this.typedAt > TYPING_PAUSE) track('huge_edit', { op: 'type', from: 'format' });
     this.typedAt = now;
-    this.editState();
   }
 
   formatFailed(e: unknown) {
@@ -1387,7 +1382,6 @@ export class HugeSession {
     } catch (err) {
       return this.formatFailed(err);
     }
-    if (this.editing) this.editing.steps = Math.max(0, this.editing.steps + (op === 'undo' ? -1 : 1));
     // (A typing after this starts a new step.)
     this.typedAt = 0;
     this.feTyped = true;

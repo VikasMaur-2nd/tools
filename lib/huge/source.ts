@@ -127,6 +127,8 @@ export interface EditState {
   canRedo: boolean;
   /** Bumped by each edit, undo, redo and in-place save. */
   version: number;
+  /** Changes applied since opened or saved in place, as undo counts them (typing joined: one); the file bar's count. */
+  steps: number;
   /** A kept session of this file that can be put back (restoreSession): its steps, bytes, when (ms since 1970). */
   session: { steps: number; bytes: number; time: number } | null;
   /** Edits' bytes held (the document's and its history's). */
@@ -138,6 +140,7 @@ export interface Edited {
   done: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  steps: number;
 }
 
 /**

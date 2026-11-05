@@ -90,10 +90,7 @@ export class CoreSource implements HugeSource {
       this.onSummary(s);
     };
     this.doc.ready.then(
-      (s) => {
-        this.onSummary(s);
-        this.lookForSession();
-      },
+      (s) => this.onSummary(s),
       () => {
         if (this.dead) return;
         // (The worker failed: what was read stays browsable; the state says it ended.)
@@ -135,7 +132,7 @@ export class CoreSource implements HugeSource {
     this.set({
       bytes: s.done ? (e ? Math.min(docSize, e.pos) : docSize) : this.st.bytes,
       docSize,
-      edit: { edited: !!s.edited, canUndo: !!s.canUndo, canRedo: !!s.canRedo, version: s.version ?? 0, session: s.session ?? null, bytes: s.editBytes ?? 0 },
+      edit: { edited: !!s.edited, canUndo: !!s.canUndo, canRedo: !!s.canRedo, version: s.version ?? 0, steps: s.steps ?? 0, session: s.session ?? null, bytes: s.editBytes ?? 0 },
       done: s.done,
       cancelled: s.stopped,
       error: e ? { msg: e.msg, at: e.pos, line: e.line, col: e.col } : null,
@@ -155,24 +152,6 @@ export class CoreSource implements HugeSource {
     return this.st;
   }
 
-  /**
-   * A kept session of this file is looked up in the worker while it is read, and may be found after the summary
-   * that says it's read (nothing tells when): asked again a few times, until one is seen or something is edited.
-   */
-  private lookForSession(k = 0) {
-    if (this.dead || this.st.edit?.session || this.st.edit?.edited || k >= 4) return;
-    setTimeout(() => {
-      if (this.dead || this.st.edit?.edited) return;
-      void this.doc.summary().then(
-        (s) => {
-          if (this.dead || this.rereading || this.st.edit?.edited) return;
-          if (s.session) this.onSummary(s);
-          else this.lookForSession(k + 1);
-        },
-        () => undefined,
-      );
-    }, [150, 500, 1500, 4000][k]);
-  }
 
   onState(f: (s: IndexState) => void) {
     this.listeners.add(f);
@@ -487,7 +466,7 @@ export class CoreSource implements HugeSource {
   /** After an edit: pages read before it are stale; the state says what the edit did. */
   private async edited(p: Promise<HugeEdited>): Promise<Edited> {
     const e = await p;
-    if (this.dead) return { done: e.done, canUndo: e.canUndo, canRedo: e.canRedo };
+    if (this.dead) return { done: e.done, canUndo: e.canUndo, canRedo: e.canRedo, steps: e.steps };
     this.dropPages();
     if (e.summary) {
       this.rereading = false;
@@ -495,10 +474,10 @@ export class CoreSource implements HugeSource {
     } else {
       // (Read on in steps: progress, then the summary through doc.onSummary.)
       this.rereading = true;
-      const was: EditState = this.st.edit ?? { edited: true, canUndo: false, canRedo: false, version: 0, session: null, bytes: 0 };
-      this.set({ ...this.st, done: false, status: null, edit: { ...was, edited: true, canUndo: e.canUndo, canRedo: e.canRedo, version: e.version } });
+      const was: EditState = this.st.edit ?? { edited: true, canUndo: false, canRedo: false, version: 0, steps: 0, session: null, bytes: 0 };
+      this.set({ ...this.st, done: false, status: null, edit: { ...was, edited: true, canUndo: e.canUndo, canRedo: e.canRedo, version: e.version, steps: e.steps } });
     }
-    return { done: e.done, canUndo: e.canUndo, canRedo: e.canRedo };
+    return { done: e.done, canUndo: e.canUndo, canRedo: e.canRedo, steps: e.steps };
   }
 
   private dropPages() {

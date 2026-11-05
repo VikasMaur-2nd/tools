@@ -142,6 +142,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       if (!ed || moving) return;
       moving = true;
       try {
+        if (ed) tw.edited(ed.text);
         await tw.flush();
         const e = ed;
         const topRel = e.topLine();
@@ -173,6 +174,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       if (!ed) return;
       let off = tw.offsetOf(byte);
       if (off < 0) {
+        tw.edited(ed.text);
         await tw.flush();
         const line = await s.src.lineOf('raw', byte);
         if ((await tw.load(line)) !== true || !live || !ed) return;
@@ -199,7 +201,11 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       s.pasteTooBig(n);
     };
     const unbind = s.bindFormatEdit({
-      flush: () => tw.flush(),
+      // (What was typed since the last paint too: a save or undo right after a key has it.)
+      flush: () => {
+        if (ed && live) tw.edited(ed.text);
+        return tw.flush();
+      },
       caretByte: () => (ed ? tw.byteOf(ed.caret) : -1),
       reload: () => move(true),
       goto,
