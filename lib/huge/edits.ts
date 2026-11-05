@@ -146,6 +146,11 @@ export class HugeEditing {
 
   constructor(private readonly host: EditHost) {}
 
+  /** Resolves once the edits asked so far are made (or refused), the views read again after them. */
+  settled(): Promise<void> {
+    return this.queue.then(() => undefined);
+  }
+
   /** Runs `op` after the edits before it; resolves to whether it was made. */
   run(op: EditOp, from: Events['huge_edit']['from']): Promise<boolean> {
     const next = this.queue.then(() => this.exec(op, from));

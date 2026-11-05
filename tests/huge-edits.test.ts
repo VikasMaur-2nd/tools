@@ -175,3 +175,30 @@ test('text that isn\'t JSON goes in as typed: the document is invalid, its statu
   assert.equal(src.state().status?.kind, 'fixable');
   src.destroy();
 });
+
+test('REVIEW-3 D1: settled() resolves once the edits asked so far are made and the views told (the Format window waits for it)', async () => {
+  const src = core(JSON.stringify({ a: 1, b: [1, 2, 3] }, null, 2));
+  await ended(src);
+  const order: string[] = [];
+  const ed = new HugeEditing({
+    src,
+    selPath: () => null,
+    changed: async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      order.push('views read again');
+    },
+    refused: (m) => assert.fail(m),
+    failed: (e) => assert.fail(String(e)),
+  });
+  assert.equal(ed.busy, false);
+  void ed.run({ op: 'set', path: ['a'], json: '2' }, 'tree');
+  void ed.run({ op: 'remove', path: ['b', 0] }, 'tree');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(ed.busy, true, 'busy while an edit runs');
+  await ed.settled();
+  order.push('settled');
+  assert.deepEqual(order, ['views read again', 'views read again', 'settled']);
+  assert.equal(ed.busy, false);
+  assert.equal((await src.textAt(0, src.state().docSize!, 1 << 20)).text, JSON.stringify({ a: 2, b: [2, 3] }, null, 2), 'both edits in');
+  await src.destroy();
+});

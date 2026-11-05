@@ -459,7 +459,7 @@ export class HugeSession {
     const mode = this.ui.get().mode;
     const lines = (this.lines = new HugeLinesView(el, this.src, mode, this.host.indent, {
       pick: (at) => void this.pickAt(at),
-      edit: (at) => this.editing && this.formatEdit(at),
+      edit: (at) => this.editing && void this.formatEdit(at),
       failed: (e) => this.failed(e),
     }));
     this.ui.set({ lines: lines.count });
@@ -1409,8 +1409,14 @@ export class HugeSession {
   private typedAt = 0;
 
   /** Edits the Format view's text (As written) at byte `at` (default: its current line, or the selection's). */
-  formatEdit(at?: number) {
+  async formatEdit(at?: number) {
     if (this.ui.get().fe || !this.canEdit()) return;
+    // A node edit on its way: the window opens once it's made, on the document it leaves (read before, it would
+    // hold the bytes from before it, and its next key would go in at old offsets: REVIEW-3 D1).
+    if (this.editing?.busy) {
+      await this.editing.settled();
+      if (this.dead || this.ui.get().fe || !this.canEdit()) return;
+    }
     if (this.ui.get().view !== 'format') this.setView('format');
     if (this.ui.get().mode !== 'raw') this.setMode('raw');
     const pos = at ?? this.lines?.currentAt ?? this.sel?.node.at ?? 0;
@@ -1556,7 +1562,7 @@ export class HugeSession {
     }
     // The Format view: F2 or Enter edits its text there.
     if (t?.closest('#hg-format') && !mod && !e.altKey && !e.shiftKey && (e.key === 'F2' || e.key === 'Enter')) {
-      this.formatEdit();
+      void this.formatEdit();
       return true;
     }
     if (!t?.closest('#hg-tree, #hg-table, #hg-graph') || e.altKey) return false;
