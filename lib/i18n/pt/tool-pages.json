@@ -456,7 +456,7 @@
     ]
   },
   "json-to-csv": {
-    "hash": "d51feb471099",
+    "hash": "f4961188a265",
     "title": "JSON para CSV com colunas para campos aninhados",
     "description": "Converta um array de registros JSON em CSV online. O Tool Kumar transforma campos aninhados em colunas com pontos no nome, no navegador, sem upload.",
     "heading": "JSON para CSV",
@@ -490,6 +490,10 @@
       {
         "question": "Vírgulas e aspas recebem escape?",
         "answer": "Sim. Os campos CSV ficam entre aspas, e as aspas dentro deles são duplicadas conforme as regras padrão do CSV. Um texto que começa como uma fórmula de planilha (=, +, - ou @) recebe um apóstrofo na frente, para que o Excel ou o Sheets o mostre em vez de executá-lo."
+      },
+      {
+        "question": "Posso converter um arquivo JSON grande para CSV?",
+        "answer": "Sim. Arquivos de até 300 MB abrem no editor e são convertidos aqui. Um arquivo maior abre no modo de arquivos grandes, em que “Converter” grava o CSV direto em um arquivo enquanto lê, com as mesmas colunas e regras, em qualquer tamanho."
       }
     ]
   },
@@ -1322,7 +1326,7 @@
     ]
   },
   "jsonl-viewer": {
-    "hash": "891b392414b5",
+    "hash": "e9ceae835e68",
     "title": "Visualizador JSONL para arquivos JSON Lines e NDJSON",
     "description": "Abra um arquivo .jsonl ou .ndjson e navegue pelos registros em árvore ou tabela. O Tool Kumar lê JSON Lines no navegador, sem upload.",
     "heading": "Visualizador JSONL",
@@ -1363,6 +1367,10 @@
       {
         "question": "Posso transformar os registros em um array JSON ou CSV?",
         "answer": "Sim. A visualização “Formatar” mostra os registros como um único array JSON que você pode copiar ou baixar, e a página “JSONL para CSV” os transforma em colunas de planilha."
+      },
+      {
+        "question": "Ele abre um arquivo JSONL de vários gigabytes?",
+        "answer": "Sim. Um arquivo acima de 300 MB abre no modo de arquivos grandes, que lê os registros do disco enquanto você navega, em vez de carregar todos, então a sua memória não limita o tamanho dele. Ele também pode resumir os campos de todos os registros e converter ou dividir o arquivo."
       }
     ],
     "guides": [
@@ -1548,9 +1556,9 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "951455e0dd15",
-    "title": "Visualizar arquivo JSON grande no navegador",
-    "description": "Abra JSON grande localmente em árvore, tabela ou texto, sem upload. Em nosso teste, um arquivo de 52,4 MB foi analisado em cerca de 1 s em um navegador desktop.",
+    "hash": "4a678029af2c",
+    "title": "Visualizar arquivo JSON grande, de vários GB",
+    "description": "Abra arquivos JSON e JSON Lines de muitos gigabytes no navegador. Navegue enquanto são lidos, pesquise, edite, divida ou converta para CSV, sem upload.",
     "heading": "Visualizar arquivo JSON grande",
     "query": "visualizar arquivo JSON grande",
     "secondary": [
@@ -1558,45 +1566,85 @@
       "visualizador de JSON grande",
       "abrir JSON grande online"
     ],
-    "intro": "Abra um arquivo JSON grande do seu dispositivo e navegue por ele em árvore, tabela ou texto formatado. O arquivo é lido no seu navegador e nunca é enviado ao servidor. Mesmo documentos muito grandes continuam editáveis e rolam com suavidade.",
-    "modeLabel": "Visualização em árvore",
-    "exampleLabel": "Um exemplo pequeno representa seu arquivo aqui. Abra seu próprio arquivo para ver o tamanho, a quantidade de linhas e a quantidade de nós na barra de status.",
+    "intro": "Abra um arquivo JSON ou JSON Lines de qualquer tamanho, até maior que a memória do seu computador. Navegue por ele como árvore, tabela, grafo ou texto enquanto ainda está sendo lido, pesquise, vá até um caminho, veja a estrutura de todos os registros, edite e salve, ou divida e converta para CSV. O arquivo é lido do seu disco neste navegador e nunca é enviado.",
+    "modeLabel": "Visualização em árvore para arquivos de qualquer tamanho",
+    "exampleLabel": "Aqui, uma pequena amostra substitui o seu arquivo. Abra o seu: acima de 300 MB, ele abre no modo de arquivos grandes, que mostra o progresso da leitura na barra de status e depois o tamanho, as linhas e os nós do arquivo.",
     "steps": [
-      "Escolha “Abrir arquivo” (Ctrl+O, ou ⌘O no Mac) ou arraste o arquivo para a página.",
-      "Quando a barra de status informar o resultado da análise, navegue em “Árvore” ou mude para “Tabela” para um array de registros.",
-      "Pressione Ctrl+F (⌘F) para pesquisar ou digite um caminho como $.users[1] na barra “Localizar” para ir até um nó."
+      "Escolha “Abrir arquivo” (Ctrl+O, ou ⌘O no Mac) ou arraste o arquivo para a página. Um arquivo acima de 300 MB abre no modo de arquivos grandes. Um arquivo .json.gz ou .jsonl.gz é descompactado antes.",
+      "Navegue na hora: a barra de status mostra quanto já foi indexado e o tempo restante. Expanda a “Árvore” ou mude para “Formatar”, “Tabela” ou “Grafo”. Arrays grandes mostram 1.000 itens por vez, com botões para ver os próximos e ir a um índice.",
+      "Pressione Ctrl+F (⌘F) para pesquisar o arquivo inteiro, ou Ctrl+G (⌘G) para ir a uma linha, a uma linha da tabela ou a um caminho como $.records[120000].email.",
+      "Abra “Shape” para ver os tipos, as contagens e os valores de cada caminho em todos os registros, ou “Converter” para gravar CSV, JSON Lines, partes divididas ou os registros que atendem às suas condições em um novo arquivo.",
+      "Edite valores na árvore, na tabela ou no grafo, ou o texto na visualização “Formatar”, e pressione Ctrl+S (⌘S) para salvar."
     ],
     "options": [
-      "São aceitos arquivos de até 300 MB. Esse é um limite de segurança, não uma garantia. O tamanho que abre com facilidade depende da memória do dispositivo e da estrutura dos dados.",
-      "Entradas grandes continuam editáveis. A partir de 250.000 caracteres ou 30.000 linhas, o editor desenha apenas as linhas visíveis na tela, para que a digitação continue rápida.",
-      "A análise acontece na thread principal, então a página pausa durante a leitura de um arquivo muito grande.",
-      "Documentos com mais de 2.500.000 caracteres não são salvos para a próxima visita. Abra o arquivo novamente.",
-      "Apenas as linhas na tela são renderizadas no editor e nas visualizações em árvore, tabela e texto, para manter a rolagem fluida depois de abrir o arquivo."
+      "Arquivos acima de 300 MB abrem no modo de arquivos grandes e, em um dispositivo que informa pouca memória, arquivos menores também. Os demais abrem no editor normal, que tem todas as ferramentas.",
+      "Arquivos .jsonl e .ndjson abrem como uma lista de registros. Um arquivo .json com vários valores em sequência também abre como lista, com um aviso.",
+      "Salvar no mesmo arquivo funciona no Chrome e no Edge, depois que o navegador pede permissão. Isso limpa o histórico de desfazer; salvar com outro nome o mantém. O Firefox e o Safari baixam o arquivo editado. As alterações não salvas ficam guardadas neste navegador e são oferecidas de novo quando você reabre o mesmo arquivo.",
+      "Um arquivo .gz grande é descompactado no armazenamento do navegador antes de abrir, então precisa de espaço livre em disco para o tamanho completo. No Firefox e no Safari, os resultados de “Converter” também ficam ali antes do download. Uma janela anônima pode não permitir esse armazenamento.",
+      "A edição e “Converter” ficam disponíveis quando o arquivo está totalmente indexado, e “Converter” precisa de um arquivo sem erros. O “Shape” pode começar enquanto o arquivo ainda está sendo lido.",
+      "“Localizar” encontra o texto como ele está escrito no arquivo, sem expressões regulares. “Comparar” e “Corrigir entrada” funcionam com documentos de até 300 MB."
     ],
     "faqs": [
       {
-        "question": "Como visualizo um arquivo JSON grande?",
-        "answer": "Abra-o aqui com “Abrir arquivo” ou arraste-o para a página. A árvore mostra a estrutura sem expandir tudo, e “Localizar” leva a chaves, valores ou um caminho."
+        "question": "Como abrir um arquivo JSON grande?",
+        "answer": "Abra esta página em um navegador atual no Windows, macOS ou Linux, escolha “Abrir arquivo” (Ctrl+O, ou ⌘O no Mac) ou arraste o arquivo para a página. Arquivos acima de 300 MB abrem no modo de arquivos grandes: as primeiras linhas aparecem na hora e o resto é lido em segundo plano. Nada é instalado nem enviado."
       },
       {
-        "question": "Como visualizo arquivos JSON grandes no Mac?",
-        "answer": "Abra esta página no Safari, Chrome ou outro navegador atual e escolha “Abrir arquivo” (⌘O). Não é preciso instalar nada."
+        "question": "O que fazer quando um arquivo JSON é grande demais para abrir?",
+        "answer": "A maioria dos editores e visualizadores carrega o arquivo inteiro na memória, e o JSON analisado ocupa várias vezes o tamanho do texto, então um arquivo de algumas centenas de megabytes pode travá-los ou ser recusado. Abra-o aqui: o modo de arquivos grandes lê o arquivo do disco aos poucos, então a sua memória não limita o tamanho dele. Para usar os dados em outra ferramenta, divida-o em arquivos menores ou extraia só os registros de que você precisa."
       },
       {
-        "question": "Como abro um arquivo JSON grande no Windows?",
-        "answer": "Abra esta página no Edge ou Chrome e escolha “Abrir arquivo” (Ctrl+O). O arquivo é lido no seu computador e não é enviado ao servidor."
+        "question": "Ele abre um arquivo JSON enorme, de 10 GB por exemplo?",
+        "answer": "Sim. Testamos com arquivos de 10 GB no Chromium, no Firefox e no WebKit. Em uma máquina de teste com 4 núcleos, eles foram indexados em 82 a 121 segundos, puderam ser navegados durante a indexação e usaram de 0,2 a 0,3 GB de memória além da aba ociosa. Não há limite fixo de tamanho, porque o arquivo nunca é carregado inteiro; um arquivo maior leva proporcionalmente mais tempo para indexar."
       },
       {
-        "question": "Há um limite de tamanho?",
-        "answer": "A página aceita arquivos de até 300 MB. O tamanho que abre sem lentidão depende da memória do dispositivo e da estrutura dos dados."
+        "question": "Posso visualizar um arquivo JSONL ou NDJSON grande?",
+        "answer": "Sim. Um arquivo .jsonl ou .ndjson de qualquer tamanho abre como uma lista de registros, um por linha, na árvore ou na tabela. O “Shape” resume os campos de todos os registros, e “Converter” transforma os registros em um único array JSON ou em um arquivo CSV, ou os divide em arquivos menores."
+      },
+      {
+        "question": "Posso editar um arquivo JSON grande e salvar?",
+        "answer": "Sim. Altere, renomeie, insira, duplique ou exclua valores na árvore, na tabela ou no grafo, ou edite o texto na visualização “Formatar”, com desfazer e refazer. Cada edição relê só cerca de um megabyte ao redor, então até um arquivo de 10 GB é atualizado sem espera. O Chrome e o Edge salvam no mesmo arquivo; o Firefox e o Safari baixam a cópia editada."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Unexpected end of JSON input: encontre onde um arquivo foi cortado"
+      },
+      {
+        "slug": "extra-data",
+        "text": "Extra data: quando um arquivo tem um valor JSON por linha"
       }
     ],
     "sections": [
       {
-        "heading": "Um exemplo com medições",
+        "heading": "Como ele abre arquivos maiores que a memória",
         "paragraphs": [
-          "Abrimos um arquivo de 52,4 MB, com 52.428.028 bytes e 51.501 registros, cada um sendo um objeto pequeno com uma string de 996 caracteres, no Chromium 154 em um computador Linux. A análise levou cerca de 1,0 segundo, e a árvore ficou pronta cerca de 1,9 segundo depois da seleção do arquivo. O documento tinha 154.505 nós.",
-          "Esse arquivo tem poucos níveis de aninhamento e contém principalmente texto. Dados muito aninhados, muitos números pequenos, um notebook antigo ou um celular podem levar mais tempo. Considere esses números uma referência, sem garantia de desempenho."
+          "O modo de arquivos grandes nunca carrega o arquivo inteiro. Um processo em segundo plano lê o arquivo uma vez, do início ao fim, verifica a sintaxe e salva um marcador mais ou menos a cada megabyte: em que ponto do documento ele está e quais objetos e arrays estão abertos ali. Para mostrar parte da árvore, uma linha ou um caminho, ele lê cerca de um megabyte a partir do marcador mais próximo, então um ponto no fundo do arquivo abre quase tão rápido quanto um perto do início. Em um arquivo de 10 GB, os marcadores ocupam cerca de 3 MB.",
+          "Você pode navegar enquanto ele lê e interromper a leitura a qualquer momento. Se o arquivo tiver um erro, a barra de status mostra a linha e a coluna exatas do primeiro erro, com a mesma mensagem de um arquivo pequeno, e tudo o que vem antes do erro continua aberto."
+        ]
+      },
+      {
+        "heading": "Velocidade e memória medidas",
+        "paragraphs": [
+          "Medimos em uma máquina compartilhada na nuvem com 4 núcleos (ARM, 15 GB de memória, o arquivo no disco dela) no Chromium, no Firefox e no WebKit, os motores do Chrome e do Edge, do Firefox e do Safari. O seu computador é diferente, então trate esses números como uma referência.",
+          "Com um arquivo de 1 GB, as primeiras linhas apareceram de 0,4 a 0,8 segundo depois de escolhê-lo, e o arquivo inteiro foi verificado e indexado em 5 a 8 segundos. Ir até um caminho perto do fim levou cerca de 0,2 segundo, e pesquisar um valor perto do fim levou de 5 a 8 segundos.",
+          "Com um arquivo de 10 GB, a indexação levou 82 segundos no Chromium, 90 no WebKit e 121 no Firefox. O navegador usou de 0,2 a 0,3 GB de memória a mais do que antes de abrir o arquivo, não mais do que com um arquivo de 5,5 GB.",
+          "Os comandos também trabalham em fluxo. No Chromium, o arquivo de 1 GB foi convertido para CSV em cerca de 41 segundos, dividido em partes de 256 MB em cerca de 25 e minificado em cerca de 20, cada um com no máximo 0,25 GB de memória extra."
+        ]
+      },
+      {
+        "heading": "Como dividir um arquivo JSON grande",
+        "paragraphs": [
+          "Abra o arquivo, escolha “Converter” e depois “Split”. O “Split” usa o array principal de registros, o array que você selecionar na árvore ou os registros de um arquivo JSON Lines. Divida por registros por parte, megabytes por parte ou número de partes; cada parte é um array JSON ou um arquivo JSON Lines válido. No Chrome e no Edge, “Choose a folder…” grava as partes direto em uma pasta; os outros navegadores baixam as partes em um único arquivo zip.",
+          "Para ficar só com alguns registros, escolha “Extract”. Adicione condições como status é active ou price < 10, exija que todas ou qualquer uma sejam atendidas e grave os registros correspondentes, ou só os primeiros, como JSON, JSON Lines ou CSV."
+        ]
+      },
+      {
+        "heading": "Converter um arquivo JSON grande para CSV",
+        "paragraphs": [
+          "Escolha “Converter” e depois “CSV”. Cada registro vira uma linha e os campos aninhados viram colunas com pontos, como address.city, pelas mesmas regras do conversor de JSON para CSV: aspas quando necessário, células vazias para valores ausentes e proteção contra fórmulas de planilha. Escolha vírgula, ponto e vírgula ou tabulação, adicione uma marca de ordem de bytes para o Excel ou compacte o resultado com gzip.",
+          "“Converter” também grava JSON formatado ou minificado do arquivo inteiro ou de um valor selecionado, e transforma um array em JSON Lines e JSON Lines em um único array. Os resultados são gravados à medida que são gerados: no Chrome e no Edge, no arquivo que você escolher; nos outros navegadores, no armazenamento do navegador e depois nos seus downloads."
         ]
       }
     ]

@@ -141,7 +141,7 @@ test('large JSON file viewer page answers the huge-file questions it targets', (
 test('localized JSON visualizer and large-file viewer metadata stay within search snippet limits', () => {
   for (const { id } of LOCALES) {
     const pages = JSON.parse(readFileSync(join(process.cwd(), 'lib/i18n', id, 'tool-pages.json'), 'utf8')) as Record<string, { title: string; description: string }>;
-    for (const slug of ['json-visualizer']) {
+    for (const slug of ['json-visualizer', 'large-json-viewer']) {
       const page = pages[slug];
       assert.ok(page, `${id}/${slug}`);
       assert.ok(`${page.title} | Tool Kumar`.length <= 60, `${id}/${slug} title`);
