@@ -171,7 +171,8 @@ test("what's typed while the document is read again waits, then goes as one repl
   w.edited('[\n  10,\n  20\n]\n');
   await w.flush();
   assert.equal(text, '[\n  10,\n  20\n]\n');
-  assert.deepEqual(replaces, ['5-10:0,\n  20'], 'one replace for both, once the document was ready');
+  // (One replace for both, once the document was ready: each its own op, nothing between them written: REVIEW-3 B2.)
+  assert.deepEqual(replaces, ['5-5:0,11-11:0'], 'one replace for both, once the document was ready');
 });
 
 test('a file with CR LF line ends: the editor shows \\n, the document keeps \\r\\n, a new line typed is \\r\\n', async () => {

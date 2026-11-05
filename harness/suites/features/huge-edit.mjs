@@ -811,3 +811,38 @@ test('huge edit: typed in the Format view, saved in place: the file\'s SHA-256 i
     await t.cleanup?.();
   }
 });
+
+// REVIEW-3 B2: two lines with Latin-1 bytes selected and indented (Tab) in the Format view, saved in place: only the
+// spaces are written; the E9 and EF bytes stay as they were (they were written back as EF BF BD).
+test('huge edit: lines with bytes that aren\'t UTF-8 indented in the Format view: only the spaces change', { engines: ['chromium'] }, async (t) => {
+  const page = await storagePage(t);
+  try {
+    await t.open('/');
+    const bytes = [...Buffer.from('[\n  {"name": "caf'), 0xe9, ...Buffer.from('"},\n  {"name": "na'), 0xef, ...Buffer.from('ve"},\n  {"name": "x"}\n]\n')];
+    await page.evaluate(async (bytes) => {
+      localStorage.setItem('tk:hugeMin', '0');
+      const root = await navigator.storage.getDirectory();
+      const h = await root.getFileHandle('latin.json', { create: true });
+      const w = await h.createWritable();
+      await w.write(new Uint8Array(bytes));
+      await w.close();
+      window.showOpenFilePicker = async () => [h];
+    }, bytes);
+    await openHuge(t, path);
+    await page.locator('.hg-file .btn', { hasText: 'Open file' }).click();
+    t.assert(await until(page, () => /latin\.json/.test(window.__vis('.hg-file .fname')?.textContent ?? '') && /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'opened through its handle');
+    await editFormatAt(page, 'caf');
+    await until(page, () => /Ln 2,/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null);
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('Shift+End');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press(`${MOD}+s`);
+    t.check(await toasted(page, /Saved latin\.json/), 'saved', await toasts(page));
+    const got = await page.evaluate(async () => [...new Uint8Array(await (await (await (await navigator.storage.getDirectory()).getFileHandle('latin.json')).getFile()).arrayBuffer())]);
+    const want = [...Buffer.from('[\n    {"name": "caf'), 0xe9, ...Buffer.from('"},\n    {"name": "na'), 0xef, ...Buffer.from('ve"},\n  {"name": "x"}\n]\n')];
+    t.check(Buffer.compare(Buffer.from(got), Buffer.from(want)) === 0, 'the two lines indented, E9 and EF as they were', Buffer.from(got).toString('latin1'));
+  } finally {
+    await t.cleanup?.();
+  }
+});
