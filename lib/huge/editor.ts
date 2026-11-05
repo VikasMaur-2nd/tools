@@ -111,9 +111,21 @@ export class HugeEditor {
     const bytes = ops.reduce((n, o, i) => n + editBytes(o.put) + editBytes(removed[i]), 0);
     const last = this.steps[this.at - 1];
     const now = Date.now();
-    if (typing && last && last.typing && now - last.time < TYPING_MS && last.ops.length === 1 && ops.length === 1 && ops[0].a === last.ops[0].a + lengthOf(last.ops[0].put) && ops[0].b === ops[0].a && removed[0].length === 0) {
-      // (Typed on: the same insert, longer.)
-      last.ops[0] = { a: last.ops[0].a, b: last.ops[0].b, put: [...last.ops[0].put, ...ops[0].put] };
+    // A typing run goes on at its caret (where its last change ends): a key typed there, Backspace before it, Delete
+    // after it (REVIEW-2 #11).
+    const prev = last?.ops[last.ops.length - 1];
+    const caret = prev ? prev.a + lengthOf(prev.put) : -1;
+    const op = ops[0];
+    const on = typing && last && last.typing && now - last.time < TYPING_MS && ops.length === 1;
+    if (on && op.a === caret && op.b === op.a && removed[0].length === 0) {
+      // (Typed on: the same change, its text longer.)
+      last.ops[last.ops.length - 1] = { a: prev!.a, b: prev!.b, put: [...prev!.put, ...op.put] };
+      last.bytes += bytes;
+      last.time = now;
+    } else if (on && !op.put.length && op.b > op.a && (op.b === caret || op.a === caret)) {
+      // (Deleted at the caret: one change more in the same step; undo takes them back last first.)
+      last.ops.push({ ...op, put: [] });
+      last.removed.push(removed[0]);
       last.bytes += bytes;
       last.time = now;
     } else {
