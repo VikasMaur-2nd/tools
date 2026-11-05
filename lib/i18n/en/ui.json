@@ -1553,5 +1553,7 @@
   "toast.hugeSaveNotAllowed": "Writing to {name} wasn’t allowed: nothing was written",
   "toast.hugeSaveNotAllowed._context": "Large-file mode: after \"Overwrite {name}…\", the user (or the browser) refused write permission on the file. {name}: the file name.",
   "toast.hugeSaveChanged": "Nothing was written: {name} has changed since it was opened (picking it in the save window may have emptied it), and saving reads it as it was",
-  "toast.hugeSaveChanged._context": "Large-file mode: Save as a new file stopped before writing because the opened file can no longer be read as it was (the browser's save window may empty a file picked in it). Saving reads the unchanged parts of the opened file. {name}: the opened file's name."
+  "toast.hugeSaveChanged._context": "Large-file mode: Save as a new file stopped before writing because the opened file can no longer be read as it was (the browser's save window may empty a file picked in it). Saving reads the unchanged parts of the opened file. {name}: the opened file's name.",
+  "toast.hugeLeaveTextEdit": "Leave text editing first (Esc)",
+  "toast.hugeLeaveTextEdit._context": "Large-file mode: an edit asked from elsewhere (the command palette, the edit menu, the Restore banner) while the Format view's text is being edited; it isn't made. Esc ends text editing."
 }

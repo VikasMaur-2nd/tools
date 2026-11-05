@@ -938,12 +938,14 @@ export class HugeSession {
     const ed = this.editing;
     if (!ui || !e || !ed) return;
     let restore = ui.restore;
+    const touched = e.edited || e.canUndo || e.canRedo;
     // A kept session of this file: offered once, before anything is edited.
-    if (e.session && !this.restoreOffered && !e.edited && st.done) {
+    if (e.session && !this.restoreOffered && !touched && st.done) {
       this.restoreOffered = true;
       restore = { steps: e.session.steps, time: e.session.time };
     }
-    if (!e.session) restore = null;
+    // (Not after an edit, even undone: its edits were made on the file as opened, and would be spliced into these.)
+    if (!e.session || touched) restore = null;
     this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle });
   }
 
@@ -951,6 +953,12 @@ export class HugeSession {
   private canEdit(): boolean {
     const e = this.ui.get().edit;
     if (!e || !this.editing || this.dead) return false;
+    // (The Format view's editing window holds the document's bytes as they were: an edit from elsewhere would leave
+    // it stale, and its next key would be written at old offsets. Its own undo and redo read it again.)
+    if (this.ui.get().fe) {
+      this.host.toast('Leave text editing first (Esc)', 'info');
+      return false;
+    }
     if (e.saving) {
       this.host.toast('Wait for the save to finish', 'info');
       return false;
@@ -994,9 +1002,17 @@ export class HugeSession {
     const opens = tree ? tree.openPaths().slice(1).map((p) => adjustPath(p, fx)).filter((p): p is Seg[] => !!p) : [];
     const graphPath = this.graph?.rootPath ? (adjustPath(this.graph.rootPath, fx) ?? this.graph.rootPath.slice(0, -1)) : null;
     let tablePath = adjustPath(this.tableAt.path, fx) ?? this.tableAt.path.slice(0, -1);
-    const root = await this.src.root();
+    let root: HugeNode;
+    try {
+      root = await this.src.root();
+    } catch {
+      // (Broken before its first value: nothing to show till it's fixed; the error says where.)
+      if (!this.dead) this.ui.set({ noRoot: true });
+      return;
+    }
     if (this.dead) return;
     this.root = root;
+    if (this.ui.get().noRoot) this.ui.set({ noRoot: false });
     const at = async (p: Seg[]) => (p.length ? await this.src.resolve(p) : [root]);
     let path = select ?? (this.sel ? adjustPath(this.sel.path, fx) : null);
     let chain = path ? await at(path) : null;
@@ -1196,6 +1212,7 @@ export class HugeSession {
 
   /** A kept session of this file: its edits put back (undo goes on where it was). */
   async restoreEdits() {
+    if (!this.ui.get().edit?.restore || !this.canEdit()) return;
     this.setEdit({ restore: null });
     await this.edit({ op: 'restore' }, 'banner');
   }
@@ -1371,7 +1388,7 @@ export class HugeSession {
 
   /** Edits the Format view's text (As written) at byte `at` (default: its current line, or the selection's). */
   formatEdit(at?: number) {
-    if (!this.canEdit()) return;
+    if (this.ui.get().fe || !this.canEdit()) return;
     if (this.ui.get().view !== 'format') this.setView('format');
     if (this.ui.get().mode !== 'raw') this.setMode('raw');
     const pos = at ?? this.lines?.currentAt ?? this.sel?.node.at ?? 0;

@@ -388,6 +388,70 @@ test('huge edit: a key typed in the Format view right before another file is ope
   t.check(/"user 7Q"/.test(await selRow(page)), 'the key is in the kept edits', await selRow(page));
 });
 
+// REVIEW-2 #1: a kept session is offered before anything is edited, and never after: Restore would splice its edits
+// (made on the file as opened) into the new ones. #3: while the Format view's text is edited, edits from elsewhere
+// (the palette, the Restore banner) wait: the window holds the document's bytes as they were.
+test('huge edit: the Restore banner goes on the first edit; while the Format view is edited, Restore waits', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await selectPath(page, '$.users[5].name');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await page.waitForTimeout(1500);
+  page.on('dialog', (d) => void d.accept());
+  await page.reload();
+  await openHuge(t, path);
+  t.assert(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'offered');
+  // The Format view's text being edited: Restore says why it waits; the banner stays.
+  await editFormatAt(page, '"user 9"');
+  await page.locator('.hg-restore .btn.primary').click();
+  t.check(await toasted(page, /Leave text editing first/), 'Restore waits for text editing to end', await toasts(page));
+  t.check(!!(await page.evaluate(() => window.__vis('.hg-restore'))), 'the banner stays');
+  t.check(!(await edited(page)), 'nothing restored');
+  await page.locator('.hg .vmain .btn.primary', { hasText: 'Done' }).click();
+  await until(page, () => !document.querySelector('.hg-fe'), null);
+  // An edit of the user's own: the banner goes, the kept edit isn't spliced in.
+  await selectPath(page, '$.users[7].name');
+  await page.keyboard.press('Delete');
+  t.check(await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null), 'edited', await edited(page));
+  t.check(await until(page, () => !window.__vis('.hg-restore'), null), 'the banner goes on the first edit');
+  await selectPath(page, '$.users[5]');
+  t.check(/\{3\}/.test(await selRow(page)), '$.users[5] as the file has it (the kept edit not put in)', await selRow(page));
+  await page.keyboard.press(`${MOD}+z`);
+  t.check(await until(page, () => !window.__vis('.hg-edited'), null), 'undone');
+  t.check(!(await page.evaluate(() => window.__vis('.hg-restore'))), 'and not offered again');
+});
+
+test('huge edit: while the Format view is edited, the palette\'s edits wait (its next keys land where they should)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await editFormatAt(page, '"user 7"');
+  // (The caret on the match's line before the keys.)
+  const want = text.split('\n').findIndex((l) => l.includes('"user 7"')) + 1;
+  t.assert(await until(page, (n) => new RegExp(`Ln ${n},`).test(window.__vis('.hg .vmain')?.textContent ?? ''), want), 'the caret at the match', await page.evaluate(() => window.__vis('.hg .vmain')?.textContent));
+  await page.keyboard.press(`${MOD}+k`);
+  await until(page, () => !!document.querySelector('dialog.palette')?.open, null);
+  await page.keyboard.type('Delete');
+  await until(page, () => /Delete/.test(document.querySelector('dialog.palette [role=option][aria-selected=true]')?.textContent ?? ''), null);
+  await page.keyboard.press('Enter');
+  t.check(await toasted(page, /Leave text editing first/), 'the palette\'s Delete says why it waits', await toasts(page));
+  t.check(!(await edited(page)), 'nothing deleted');
+  // Typing goes on where the caret is (the palette gives the keys back), at the right bytes.
+  t.check(await until(page, () => !!document.activeElement?.closest('.hg-fe'), null), 'the editor has the keys again');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type(' X');
+  await page.keyboard.press('Escape');
+  await until(page, () => !document.querySelector('.hg-fe'), null);
+  await selectPath(page, '$.users[7].name');
+  t.check(/"user 7 X"/.test(await selRow(page)), 'typed where it was', await selRow(page));
+  await selectPath(page, '$.users[2]');
+  t.check(/\{3\}/.test(await selRow(page)), '$.users[2] still there', await selRow(page));
+});
+
 // Screenshots for review (HUGE_SHOTS names a folder): the edit box, the edit menu, the text dialog, the file bar
 // with edits, asking before closing; light and dark, desktop and phone.
 for (const [name, opts] of [
