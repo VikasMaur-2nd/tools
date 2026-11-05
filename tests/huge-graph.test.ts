@@ -111,7 +111,7 @@ test('the graph model shows the stand-ins\' notes; without notes nothing changes
   }
   // (Notes off: the same node shows as what it is, an empty array.)
   assert.equal(valueText(stand), '[]');
-  assert.equal(valueText(b.root.v[1] as JNode), '1');
+  assert.equal(valueText(kids(b.root)[1]), '1');
   assert.equal(b.root.t, OBJ);
   src.destroy();
 });
