@@ -27,8 +27,10 @@ const LOOK = 1 << 12;
 const CAP = 1 << 26;
 /** What is kept of each side of a long token left out. */
 const SIDE = 1 << 20;
-/** UTF-16 units from a near start within which a problem may be one before it (exactError). */
+/** UTF-16 units from a near start (after a string) within which a problem may be in that string (exactError). */
 const NEAR_SLACK = 16;
+/** How far back from a cut end a comma is looked for (cleanEnd). */
+const CLEAN_BACK = 1 << 10;
 
 /**
  * A text the JS parser takes where checkpoint state `s` is: its open containers, outermost first (an array, or
@@ -122,8 +124,10 @@ export function exactError(src: ByteSource, index: HugeIndex, failPos: number, a
     const cut = end - start > CAP;
     const headEnd = cut ? safeCut(src, start + SIDE) : end;
     const tailStart = cut ? safeCut(src, failPos - SIDE) : end;
-    const head = lf(textOf(src, start, headEnd - start));
-    const tail = cut ? lf(textOf(src, tailStart, end - tailStart)) : '';
+    // (Cut before the document's end: its end made one the repair can close, see cleanEnd.)
+    const short = end < src.size;
+    const head = short && !cut ? cleanEnd(lf(textOf(src, start, headEnd - start))) : lf(textOf(src, start, headEnd - start));
+    const tail = cut ? (short ? cleanEnd : (x: string) => x)(lf(textOf(src, tailStart, end - tailStart))) : '';
     const text = prefix + head + tail;
     const t = parse(text, { lines, maxDepth: MAX_DEPTH, repair: true });
     const pb = firstProblem(t, prefix.length);
@@ -136,8 +140,8 @@ export function exactError(src: ByteSource, index: HugeIndex, failPos: number, a
         return { msg: 'Invalid JSON', ...lc, pos: failPos, kind: 'error' };
       }
       const local = pb.p - prefix.length;
-      // (At a near start's very start: maybe before it.)
-      if (s !== wide && local < NEAR_SLACK) return again();
+      // (At a near start's very start, right after a string: maybe in that string, read again by the repair.)
+      if (s !== wide && local < NEAR_SLACK && byteBefore(src, s.pos) === 34) return again();
       const kind = pb.fatal ? 'error' : 'fixable';
       const self = pb.self;
       const multi = t.head.issues.some((x) => x.m === MULTI && x.p === pb.p);
@@ -161,6 +165,24 @@ export function exactError(src: ByteSource, index: HugeIndex, failPos: number, a
       return { msg: pb.m, line: brk - back.breaks + 1, col: u16 - back.units - lineU16 + 1, pos, kind, self, multi };
     }
   }
+}
+
+/**
+ * Text cut before the document's end, ended where the repair can close it: after its last comma if that's near
+ * the end (a value ended there), and without an opener with nothing after it (`[`, `{ `) or a number begun (`-`,
+ * `1e`). Else every repairing pass may fail at the cut (an opened key, `,"`, too) and a problem before it isn't
+ * repaired (`"w":}` "Unexpected '}'") where the normal path, reading the rest of the document, repairs it ("The
+ * value is missing (null)"): the rest is taken to go on as it can (as it does when it is valid).
+ */
+function cleanEnd(s: string): string {
+  // (After the last comma, if near the end: a value ended there, and the repair closes what's open after it.)
+  const c = s.lastIndexOf(',');
+  if (c >= 0 && s.length - c <= CLEAN_BACK) s = s.slice(0, c + 1);
+  for (let was = ''; was !== s; ) {
+    was = s;
+    s = s.replace(/[\s[{]+$/, '').replace(/(?:-|[eE][+-]?)$/, '');
+  }
+  return s;
 }
 
 /** Line and column of offset `local` of `text` (the document from state `s`, as the page's text: \n line ends). */

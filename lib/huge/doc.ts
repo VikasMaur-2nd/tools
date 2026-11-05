@@ -348,8 +348,9 @@ export class HugeDoc {
   /**
    * A state shortly before the failure at `at` to place the error from (the JS parser then reads a few KiB, not a
    * megabyte or two: typing makes many errors): after the first value that ends NEAR_FAIL bytes or less before it,
-   * as a checkpoint is (after a value). Not right after a string that ends next to the failure (repairing, the JS
-   * parser may read that string again: `"a" b`); null then, or if none: from the checkpoint before, as ever.
+   * as a checkpoint is (after a value), inside a container. Not right after a string that ends next to the failure
+   * (repairing, the JS parser may read that string again: `"a" b`); null then, or if none: from the checkpoint
+   * before, as ever.
    */
   private nearFail(at: number): State | null {
     const k = this.index.at(at);
@@ -360,7 +361,9 @@ export class HugeDoc {
     q.stopAfter(Math.max(this.index.pos[k], at - NEAR_FAIL));
     if (q.go() !== STOP || q.why !== W_AFTER) return null;
     const s = q.snapshot();
-    if (s.pos >= at) return null;
+    // (Inside a container: at the top level, what follows a value depends on what went before, which a stand-in
+    // for it doesn't carry: "Text after the JSON value was ignored", several values.)
+    if (s.pos >= at || !s.frames.length) return null;
     if (byteBefore(this.src, s.pos) === 34) {
       // (Another value ends before the failure: this string isn't next to it.)
       q.stopAfter(s.pos + 1);
