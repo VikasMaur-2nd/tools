@@ -300,6 +300,11 @@ static mut SCRATCH: usize = 0;
 /** The shortcut's sequences: per depth, the last duplicate-free object's names and the open object's. */
 static mut SEQ: usize = 0;
 static mut SCRATCH_CAP: usize = 0;
+/** A name with invalid UTF-8, as decoded (decoded()), and its room. */
+static mut NORM: usize = 0;
+static mut NORM_CAP: usize = 0;
+/** decoded(): the name is valid UTF-8 (its bytes as they are). */
+const VALID: usize = usize::MAX - 1;
 
 /// Starts a parse. `wcap`: window bytes (a multiple of 64); `flags`: 1 checkpoints, 2 duplicate names, 4 the
 /// directory, 8 JSON Lines; `ck_every`: bytes between checkpoints; `big`: the size from which a value is in the directory;
@@ -1195,6 +1200,88 @@ unsafe fn wtf8(at: &mut usize, cp: u32) {
     }
 }
 
+/// The UTF-8 sequence at `a + i` (i < len), as TextDecoder reads bytes: its length if valid (1-4), else 0 minus the
+/// bytes that make one U+FFFD (a maximal invalid subsequence; the next byte is read again).
+unsafe fn seq_at(a: usize, i: usize, len: usize) -> isize {
+    let c = *((a + i) as *const u8);
+    if c < 0x80 {
+        return 1;
+    }
+    let (need, mut lo, mut hi) = match c {
+        0xC2..=0xDF => (1, 0x80u8, 0xBFu8),
+        0xE0 => (2, 0xA0, 0xBF),
+        0xED => (2, 0x80, 0x9F),
+        0xE1..=0xEF => (2, 0x80, 0xBF),
+        0xF0 => (3, 0x90, 0xBF),
+        0xF4 => (3, 0x80, 0x8F),
+        0xF1..=0xF3 => (3, 0x80, 0xBF),
+        _ => return -1,
+    };
+    let mut k = 1;
+    while k <= need {
+        if i + k >= len {
+            return -(k as isize);
+        }
+        let d = *((a + i + k) as *const u8);
+        if d < lo || d > hi {
+            return -(k as isize);
+        }
+        lo = 0x80;
+        hi = 0xBF;
+        k += 1;
+    }
+    (need + 1) as isize
+}
+
+/// A name's bytes as the page's text has them: each invalid UTF-8 sequence as U+FFFD (EF BF BD), as TextDecoder
+/// decodes the document before the normal path parses it (names alike once decoded are the same name), at NORM:
+/// its length; VALID if all valid (the bytes as they are); usize::MAX if too long to check.
+#[inline(never)]
+unsafe fn decoded(a: usize, len: usize) -> usize {
+    let mut i = 0;
+    let mut bad = false;
+    while i < len {
+        let l = seq_at(a, i, len);
+        if l < 0 {
+            bad = true;
+            break;
+        }
+        i += l as usize;
+    }
+    if !bad {
+        return VALID;
+    }
+    if len > ESC_CAP {
+        return usize::MAX;
+    }
+    if len * 3 + 16 > NORM_CAP {
+        let cap = (len * 3 + 16).next_power_of_two();
+        let p = alloc(cap + 16);
+        if p == 0 {
+            return usize::MAX;
+        }
+        NORM = p;
+        NORM_CAP = cap;
+    }
+    let mut at = 0usize;
+    i = 0;
+    while i < len {
+        let l = seq_at(a, i, len);
+        if l > 0 {
+            core::ptr::copy_nonoverlapping((a + i) as *const u8, (NORM + at) as *mut u8, l as usize);
+            at += l as usize;
+            i += l as usize;
+        } else {
+            *((NORM + at) as *mut u8) = 0xEF;
+            *((NORM + at + 1) as *mut u8) = 0xBF;
+            *((NORM + at + 2) as *mut u8) = 0xBD;
+            at += 3;
+            i += (-l) as usize;
+        }
+    }
+    at
+}
+
 /// The name's `len` bytes at `a` with escapes decoded, as WTF-8 at SCRATCH (equal names as JS strings are equal
 /// bytes): its length, or usize::MAX if too long to check.
 #[cold]
@@ -1410,14 +1497,29 @@ unsafe fn dup_check(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
     let mut p = a;
     let mut l = len;
     let mut k = 0;
+    let mut high = false;
     while k < len {
-        if *((a + k) as *const u8) == b'\\' {
+        let c = *((a + k) as *const u8);
+        if c == b'\\' {
             break;
         }
+        high |= c >= 0x80;
         k += 1;
     }
+    // (Invalid UTF-8 in it: as the page's text has it, before any escapes are read.)
+    if high || k < len {
+        let n = decoded(a, len);
+        if n == usize::MAX {
+            DUP_SKIPPED += 1;
+            return true;
+        }
+        if n != VALID {
+            p = NORM;
+            l = n;
+        }
+    }
     if k < len {
-        l = unescape(a, len);
+        l = unescape(p, l);
         if l == usize::MAX {
             DUP_SKIPPED += 1;
             return true;
