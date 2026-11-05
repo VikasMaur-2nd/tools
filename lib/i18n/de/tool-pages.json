@@ -1586,7 +1586,7 @@
       "Wähle „Datei öffnen“ mit Ctrl+O oder ⌘O auf dem Mac oder ziehe die Datei auf die Seite. Eine Datei über 300 MB öffnet sich im Großdateimodus. Eine .json.gz- oder .jsonl.gz-Datei wird vorher entpackt.",
       "Sieh dir die Daten sofort an: Die Statusleiste zeigt, wie viel schon indiziert ist und wie lange es noch dauert. Klappe den „Baum“ auf oder wechsle zu „Formatieren“, „Tabelle“ oder „Graph“. Große Arrays zeigen jeweils 1.000 Einträge, mit Buttons zum Weiterblättern und zum Springen zu einem Index.",
       "Drücke Ctrl+F oder ⌘F, um die ganze Datei zu durchsuchen, oder Ctrl+G oder ⌘G, um zu einer Zeile, einer Tabellenzeile oder einem Pfad wie $.records[120000].email zu springen.",
-      "Öffne „Shape“, um Typen, Anzahlen und Werte jedes Pfads über alle Datensätze zu sehen, oder „Konvertieren“, um CSV, JSON Lines, Teildateien oder die Datensätze, die deine Bedingungen erfüllen, in eine neue Datei zu schreiben.",
+      "Öffne „Struktur“, um Typen, Anzahlen und Werte jedes Pfads über alle Datensätze zu sehen, oder „Konvertieren“, um CSV, JSON Lines, Teildateien oder die Datensätze, die deine Bedingungen erfüllen, in eine neue Datei zu schreiben.",
       "Bearbeite Werte im Baum, in der Tabelle oder im Graph oder den Text in der Ansicht „Formatieren“ und drücke dann Ctrl+S oder ⌘S, um zu speichern."
     ],
     "options": [
@@ -1594,7 +1594,7 @@
       ".jsonl- und .ndjson-Dateien öffnen sich als Liste von Datensätzen. Eine .json-Datei mit mehreren Werten hintereinander öffnet sich ebenfalls als Liste, mit einem Hinweis.",
       "Speichern in dieselbe Datei funktioniert in Chrome und Edge, nachdem der Browser um Erlaubnis gefragt hat. Danach lässt sich nichts mehr rückgängig machen; Speichern unter einem anderen Namen behält den Verlauf. Firefox und Safari laden stattdessen die bearbeitete Datei herunter. Ungespeicherte Änderungen bleiben in diesem Browser erhalten und werden wieder angeboten, wenn du dieselbe Datei erneut öffnest.",
       "Eine große .gz-Datei wird vor dem Öffnen in den Speicher des Browsers entpackt und braucht dafür freien Speicherplatz in voller Größe. In Firefox und Safari landen auch die Ergebnisse von „Konvertieren“ dort, bevor sie heruntergeladen werden. Ein privates Fenster erlaubt diesen Speicher möglicherweise nicht.",
-      "Bearbeiten und „Konvertieren“ sind möglich, sobald die Datei vollständig indiziert ist, und „Konvertieren“ braucht eine fehlerfreie Datei. „Shape“ kann schon starten, während die Datei noch eingelesen wird.",
+      "Bearbeiten und „Konvertieren“ sind möglich, sobald die Datei vollständig indiziert ist, und „Konvertieren“ braucht eine fehlerfreie Datei. „Struktur“ kann schon starten, während die Datei noch eingelesen wird.",
       "„Suchen“ findet Text so, wie er in der Datei steht, ohne reguläre Ausdrücke. „Vergleichen“ und „Eingabe reparieren“ funktionieren mit Dokumenten bis 300 MB."
     ],
     "faqs": [
@@ -1612,7 +1612,7 @@
       },
       {
         "question": "Kann ich eine große JSONL- oder NDJSON-Datei ansehen?",
-        "answer": "Ja. Eine .jsonl- oder .ndjson-Datei jeder Größe öffnet sich als Liste von Datensätzen, einer pro Zeile, im Baum oder in der Tabelle. „Shape“ fasst die Felder aller Datensätze zusammen, und „Konvertieren“ macht aus den Datensätzen ein einziges JSON-Array oder eine CSV-Datei oder teilt sie in kleinere Dateien auf."
+        "answer": "Ja. Eine .jsonl- oder .ndjson-Datei jeder Größe öffnet sich als Liste von Datensätzen, einer pro Zeile, im Baum oder in der Tabelle. „Struktur“ fasst die Felder aller Datensätze zusammen, und „Konvertieren“ macht aus den Datensätzen ein einziges JSON-Array oder eine CSV-Datei oder teilt sie in kleinere Dateien auf."
       },
       {
         "question": "Kann ich eine große JSON-Datei bearbeiten und speichern?",
@@ -1649,8 +1649,8 @@
       {
         "heading": "So teilst du eine große JSON-Datei auf",
         "paragraphs": [
-          "Öffne die Datei, wähle „Konvertieren“ und dann „Datei aufteilen“. Der Befehl nimmt das Hauptarray mit den Datensätzen, das Array, das du im Baum auswählst, oder die Datensätze einer JSON-Lines-Datei. Teile nach Datensätzen pro Teil, Megabyte pro Teil oder Anzahl der Teile auf; jeder Teil ist ein gültiges JSON-Array oder eine gültige JSON-Lines-Datei. In Chrome und Edge schreibt „Choose a folder…“ die Teile direkt in einen Ordner; andere Browser laden sie als eine ZIP-Datei herunter.",
-          "Wenn du nur einige Datensätze brauchst, wähle „Extract“. Füge Bedingungen hinzu, etwa status ist active oder price < 10, lass alle oder eine davon gelten und schreibe die passenden Datensätze oder nur die ersten als JSON, JSON Lines oder CSV."
+          "Öffne die Datei, wähle „Konvertieren“ und dann „Datei aufteilen“. Der Befehl nimmt das Hauptarray mit den Datensätzen, das Array, das du im Baum auswählst, oder die Datensätze einer JSON-Lines-Datei. Teile nach Datensätzen pro Teil, Megabyte pro Teil oder Anzahl der Teile auf; jeder Teil ist ein gültiges JSON-Array oder eine gültige JSON-Lines-Datei. In Chrome und Edge schreibt „Ordner wählen…“ die Teile direkt in einen Ordner; andere Browser laden sie als eine ZIP-Datei herunter.",
+          "Wenn du nur einige Datensätze brauchst, wähle „Extrahieren“. Füge Bedingungen hinzu, etwa status ist active oder price < 10, lass alle oder eine davon gelten und schreibe die passenden Datensätze oder nur die ersten als JSON, JSON Lines oder CSV."
         ]
       },
       {

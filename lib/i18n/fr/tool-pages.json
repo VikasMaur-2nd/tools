@@ -1559,9 +1559,9 @@
     "exampleLabel": "Un petit exemple remplace ici votre fichier. Ouvrez le vôtre : au-delà de 300 Mo, il s'ouvre en mode gros fichiers, qui affiche dans la barre d'état la progression de la lecture, puis la taille, les lignes et les nœuds du fichier.",
     "steps": [
       "Choisissez « Ouvrir un fichier », avec Ctrl+O ou ⌘O sur Mac, ou faites glisser le fichier sur la page. Un fichier de plus de 300 Mo s'ouvre en mode gros fichiers. Un fichier .json.gz ou .jsonl.gz est d'abord décompressé.",
-      "Parcourez-le tout de suite : la barre d'état indique la part déjà indexée et le temps restant. Dépliez l'« Arborescence » ou passez à « Formater », « Tableau » ou « Graphe ». Les grands tableaux JSON affichent 1 000 éléments à la fois, avec des boutons pour voir les suivants et aller à un indice.",
+      "Parcourez-le tout de suite : la barre d'état indique la part déjà indexée et le temps restant. Dépliez l'« Arborescence » ou passez à « Formater », « Tableau » ou « Graphe ». Les grands tableaux JSON affichent 1 000 éléments à la fois, avec des boutons pour voir les suivants et aller à un indice.",
       "Appuyez sur Ctrl+F, ⌘F sur Mac, pour chercher dans tout le fichier, ou sur Ctrl+G, ⌘G sur Mac, pour aller à une ligne, une rangée ou un chemin comme $.records[120000].email.",
-      "Ouvrez « Shape » pour voir les types, les effectifs et les valeurs de chaque chemin dans tous les enregistrements, ou « Convertir » pour écrire du CSV, du JSON Lines, des parties découpées ou les enregistrements qui remplissent vos conditions dans un nouveau fichier.",
+      "Ouvrez « Structure » pour voir les types, les effectifs et les valeurs de chaque chemin dans tous les enregistrements, ou « Convertir » pour écrire du CSV, du JSON Lines, des parties découpées ou les enregistrements qui remplissent vos conditions dans un nouveau fichier.",
       "Modifiez des valeurs dans l'arborescence, le tableau ou le graphe, ou le texte dans la vue « Formater », puis appuyez sur Ctrl+S, ⌘S sur Mac, pour enregistrer."
     ],
     "options": [
@@ -1569,7 +1569,7 @@
       "Les fichiers .jsonl et .ndjson s'ouvrent comme une liste d'enregistrements. Un fichier .json qui contient plusieurs valeurs à la suite s'ouvre aussi comme une liste, avec un avertissement.",
       "L'enregistrement dans le même fichier fonctionne dans Chrome et Edge, une fois que le navigateur a demandé l'autorisation. Il vide l'historique d'annulation ; enregistrer sous un autre nom le conserve. Firefox et Safari téléchargent plutôt le fichier modifié. Les modifications non enregistrées sont conservées dans ce navigateur et proposées de nouveau quand vous rouvrez le même fichier.",
       "Un gros fichier .gz est décompressé dans le stockage du navigateur avant de s'ouvrir ; il lui faut donc assez d'espace disque libre pour sa taille complète. Dans Firefox et Safari, les résultats de « Convertir » y sont aussi stockés avant le téléchargement. Une fenêtre de navigation privée peut ne pas autoriser ce stockage.",
-      "La modification et « Convertir » sont disponibles une fois le fichier entièrement indexé, et « Convertir » exige un fichier sans erreur. « Shape » peut démarrer pendant que le fichier est encore lu.",
+      "La modification et « Convertir » sont disponibles une fois le fichier entièrement indexé, et « Convertir » exige un fichier sans erreur. « Structure » peut démarrer pendant que le fichier est encore lu.",
       "« Rechercher » trouve le texte tel qu'il est écrit dans le fichier, sans expressions régulières. « Comparer » et « Réparer l'entrée » fonctionnent avec des documents jusqu'à 300 Mo."
     ],
     "faqs": [
@@ -1587,7 +1587,7 @@
       },
       {
         "question": "Puis-je afficher un gros fichier JSONL ou NDJSON ?",
-        "answer": "Oui. Un fichier .jsonl ou .ndjson de n'importe quelle taille s'ouvre comme une liste d'enregistrements, un par ligne, dans l'arborescence ou le tableau. « Shape » résume les champs de tous les enregistrements, et « Convertir » transforme les enregistrements en un seul tableau JSON ou en fichier CSV, ou les découpe en fichiers plus petits."
+        "answer": "Oui. Un fichier .jsonl ou .ndjson de n'importe quelle taille s'ouvre comme une liste d'enregistrements, un par ligne, dans l'arborescence ou le tableau. « Structure » résume les champs de tous les enregistrements, et « Convertir » transforme les enregistrements en un seul tableau JSON ou en fichier CSV, ou les découpe en fichiers plus petits."
       },
       {
         "question": "Puis-je modifier un gros fichier JSON et l'enregistrer ?",
@@ -1624,8 +1624,8 @@
       {
         "heading": "Comment découper un gros fichier JSON",
         "paragraphs": [
-          "Ouvrez le fichier, choisissez « Convertir », puis « Découper le fichier ». La commande prend le tableau principal d'enregistrements, le tableau JSON que vous sélectionnez dans l'arborescence ou les enregistrements d'un fichier JSON Lines. Découpez par nombre d'enregistrements par partie, de mégaoctets par partie ou de parties ; chaque partie est un tableau JSON ou un fichier JSON Lines valide. Dans Chrome et Edge, « Choose a folder… » écrit les parties directement dans un dossier ; les autres navigateurs les téléchargent dans un seul fichier zip.",
-          "Pour ne garder que certains enregistrements, choisissez « Extract ». Ajoutez des conditions comme status est active ou price < 10, exigez qu'elles soient toutes remplies ou qu'une seule le soit, puis écrivez les enregistrements correspondants, ou seulement les premiers, en JSON, JSON Lines ou CSV."
+          "Ouvrez le fichier, choisissez « Convertir », puis « Découper le fichier ». La commande prend le tableau principal d'enregistrements, le tableau JSON que vous sélectionnez dans l'arborescence ou les enregistrements d'un fichier JSON Lines. Découpez par nombre d'enregistrements par partie, de mégaoctets par partie ou de parties ; chaque partie est un tableau JSON ou un fichier JSON Lines valide. Dans Chrome et Edge, « Choisir un dossier… » écrit les parties directement dans un dossier ; les autres navigateurs les téléchargent dans un seul fichier zip.",
+          "Pour ne garder que certains enregistrements, choisissez « Extraire ». Ajoutez des conditions comme status est active ou price < 10, exigez qu'elles soient toutes remplies ou qu'une seule le soit, puis écrivez les enregistrements correspondants, ou seulement les premiers, en JSON, JSON Lines ou CSV."
         ]
       },
       {
