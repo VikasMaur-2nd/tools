@@ -11,6 +11,7 @@ import { parse } from '../lib/json/tape-parser';
 import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { BlockSource } from '../lib/huge/bytes';
+import { HugeDoc } from '../lib/huge/doc';
 import { hugeMod, tapeMod, memSource } from './huge-oracle';
 
 const enc = new TextEncoder();
@@ -66,4 +67,52 @@ test('review 1: a Find holds no more blocks than the cache keeps, during it, aft
   await findDone;
   assert.equal(blocks!.pinnedBlocks, 0, 'pinned after both');
   c.close();
+});
+
+test('review 3: raw lines read no further than what is read (while indexing, stopped, broken), and a long line answers its start', () => {
+  // (The reviewer's: 8,200 bytes, one line, 64 read.)
+  const bytes = enc.encode('{"a":"' + 'x'.repeat(8192) + '"}');
+  let end = 0;
+  const src = { ...memSource(bytes), cached: true, read: (at: number, len: number) => ((end = Math.max(end, at + len)), bytes.subarray(at, at + len)) };
+  const d = new HugeDoc(src, hugeMod, parsers, { every: 64, big: 64 }, { window: 64, queryWindow: 64 });
+  d.step(0);
+  const front = d.progress().bytes;
+  end = 0;
+  const r = d.rawLines(0, 1, 20);
+  assert.ok(end <= front + 64, `read through ${end} with ${front} read`);
+  assert.equal(r.text[0], '{"a":"xxxxxxxxxxxxxx');
+  assert.equal(r.cut[0], 2, 'an unfinished line');
+  assert.ok(r.length[0] <= front, `its length so far: ${r.length[0]}`);
+  // Stopped there: the same.
+  d.stop();
+  end = 0;
+  d.rawLines(0, 3, 20);
+  assert.ok(end <= front + 64, `stopped: read through ${end}`);
+  // Broken: no further than the error.
+  const broken = enc.encode('[1,\n2,\n' + 'x'.repeat(5000) + '\n,3]');
+  let bend = 0;
+  const bsrc = { ...memSource(broken), cached: true, read: (at: number, len: number) => ((bend = Math.max(bend, at + len)), broken.subarray(at, at + len)) };
+  const bd = new HugeDoc(bsrc, hugeMod, parsers, { every: 64, big: 64 }, { window: 64, queryWindow: 64 });
+  bd.step(Infinity);
+  assert.ok(bd.summary().error);
+  bend = 0;
+  const br = bd.rawLines(0, 5, 10);
+  assert.ok(bend <= bd.summary().error!.pos + 128, `broken: read through ${bend} (error at ${bd.summary().error!.pos})`);
+  assert.deepEqual(br.text.slice(0, 2), ['[1,', '2,']);
+  // All read, one long line (10 MiB, no break), minified values or one big string: its start and length come
+  // without reading it all (from the last checkpoint on it; big strings skipped by the directory).
+  for (const doc of ['[' + '1,'.repeat(5 << 20) + '1]', '["' + 'y'.repeat(10 << 20) + '"]']) {
+    const long = enc.encode(doc);
+    let lend = 0;
+    let reads = 0;
+    const lsrc = { ...memSource(long), cached: true, read: (at: number, len: number) => ((lend = Math.max(lend, at + len)), (reads += Math.min(len, long.length - at)), long.subarray(at, at + len)) };
+    const ld = new HugeDoc(lsrc, hugeMod, parsers);
+    ld.step(Infinity);
+    reads = 0;
+    const lr = ld.rawLines(0, 1, 50);
+    assert.equal(lr.text[0], doc.slice(0, 50));
+    assert.equal(lr.cut[0], 1);
+    assert.equal(lr.length[0], long.length);
+    assert.ok(reads <= 3 << 20, `a long line (${doc.slice(0, 4)}…): read ${reads} bytes`);
+  }
 });

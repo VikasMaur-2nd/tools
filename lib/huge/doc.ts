@@ -1698,11 +1698,15 @@ export class HugeDoc {
 
   // ── Raw lines ─────────────────────────────────────────────────────────
 
-  /** Lines [from, from + count) of the text as stored, each cut at `max` bytes. */
+  /**
+   * Lines [from, from + count) of the text as stored, each cut at `max` bytes. Nothing past what's read (the front:
+   * indexing, stopped, or the error) is read: a line that goes on past it ends there, cut[k] = 2 (its length so far).
+   */
   rawLines(from: number, count: number, max: number): HugeLines {
     const ix = this.index;
     const st = this.stats();
-    const total = this.done ? this.breaks(st) + 1 : ix.lines[ix.n - 1] + 1;
+    const limit = this.front ? this.front.pos : this.src.size;
+    const total = this.done ? this.breaks(st) + 1 : (this.front ? this.front.s.lines : ix.lines[ix.n - 1]) + 1;
     const n = Math.max(0, Math.min(count, total - from));
     const text: string[] = [];
     const cut = new Uint8Array(n);
@@ -1711,40 +1715,40 @@ export class HugeDoc {
     // The first line's start: after the from-th break, counted from the last checkpoint before it.
     let at = 0;
     if (from > 0 && n > 0) {
-      const k = Math.max(0, ix.lastAtMost(ix.lines, from - 1));
-      at = afterBreaks(this.src, ix.pos[k], from - ix.lines[k]);
+      const k = Math.max(0, Math.min(this.lastK, ix.lastAtMost(ix.lines, from - 1)));
+      at = afterBreaks(this.src, ix.pos[k], from - ix.lines[k], limit);
     }
     let j = 0;
-    if (at >= 0) {
+    if (at >= 0 && at <= limit) {
       for (; j < n; ) {
-        const lineEnd = this.lineEnd(from + j, at);
+        const lineEnd = this.lineEnd(from + j, at, limit);
         const len = lineEnd - at;
         text.push(textOf(this.src, at, Math.min(len, max)));
-        cut[j] = len > max ? 1 : 0;
+        cut[j] = lineEnd >= limit && limit < this.src.size ? 2 : len > max ? 1 : 0;
         length[j] = len;
         pos[j] = at;
         j++;
-        if (lineEnd >= this.src.size) break;
-        at = afterBreaks(this.src, lineEnd, 1);
+        if (lineEnd >= limit) break;
+        at = afterBreaks(this.src, lineEnd, 1, limit);
       }
     }
     return { from, text, cut: cut.subarray(0, j), length: length.subarray(0, j), pos: pos.subarray(0, j), total };
   }
 
-  /** Where line `line` (starting at byte `at`) ends: at its break, or the end. */
-  private lineEnd(line: number, at: number): number {
+  /** Where line `line` (starting at byte `at`) ends: at its break, or `limit` (the end, or what's read). */
+  private lineEnd(line: number, at: number, limit: number): number {
     const ix = this.index;
     // From the last checkpoint still on this line (a long line is crossed by checkpoints, not read).
-    const k = ix.lastAtMost(ix.lines, line);
+    const k = Math.min(this.lastK, ix.lastAtMost(ix.lines, line));
     let from = k >= 0 && ix.pos[k] > at ? ix.pos[k] : at;
     // (Big strings hold no line break: skipped.)
     for (;;) {
       const g = ix.bigFrom(from);
       const big = g < ix.bigCount ? ix.big(g) : null;
-      const until = big && big.kind === STR ? big.start : this.src.size;
+      const until = big && big.kind === STR && big.start < limit ? big.start : limit;
       const b = nextBreak(this.src, from, until);
       if (b >= 0) return b;
-      if (until >= this.src.size) return this.src.size;
+      if (until >= limit) return limit;
       from = big!.end;
     }
   }

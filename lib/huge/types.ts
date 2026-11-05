@@ -209,7 +209,11 @@ export interface HugePage {
 /** Lines of the pretty form or of the text as stored. */
 export interface HugeLines {
   from: number;
-  /** Each line's text, without its break; one longer than `max` is cut (cut[k] = 1). */
+  /**
+   * Each line's text, without its break; one longer than `max` is cut (cut[k] = 1). Raw only: a line that goes on
+   * past what's read (the indexing front, a stop, an error) ends there (cut[k] = 2; its length so far), and no line
+   * after it is given.
+   */
   text: string[];
   cut: Uint8Array;
   /** Full length of each line: UTF-16 units (pretty) or bytes (raw). */
