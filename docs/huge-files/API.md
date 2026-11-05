@@ -40,7 +40,7 @@ const doc = openHuge(file, { name: file.name }, (p) => progress(p.bytes / p.size
 const first = await doc.summary();   // counts so far: show the first rows at once
 const s = await doc.ready;           // the whole file read (or stopped): s.error is the first problem, if any
 await doc.stop();                    // indexing ends where it is (ready resolves, s.stopped); queries go on
-doc.close();                         // lets the worker (and the document) go
+await doc.close();                   // keeps edits not kept yet (a session), then lets the worker go
 ```
 
 `HugeOptions`: `name` (`.jsonl`/`.ndjson` read as JSON Lines exactly as the normal path), `every` (checkpoint
@@ -166,7 +166,14 @@ place): the file bar's "N changes".
 
 - `replace([{ a, b, text }], typing)`: bytes `[a, b)` replaced by `text` (UTF-8); several in one step, in
   order, each at the document the one before leaves. `typing`: joins the last step if it goes on from it (an
-  insert right after the last one's, within a second): typing is one undo step per pause.
+  insert right after the last one's, within a second): typing is one undo step per pause. A keystroke
+  (`typing`) answers within about 8 ms of worker time (node edits: 50): what isn't read again by then goes on in
+  steps (`done: false`, the summary later through `onSummary`), and the next keystroke may come meanwhile.
+- **Free text (the Format view, "as written")**: a window's changes go in as `replace(…, true)` at document
+  bytes (the window's start plus `utf8Bytes` of the text before the change: lib/huge/utf8.ts, the rule the core
+  uses). The document may be invalid between keys: its error is the normal path's, placed from a few KiB before
+  it. Near an edit the index keeps checkpoints 1/64 as far apart (16 KiB), so the next keystroke there reads
+  a few KiB again, not a megabyte.
 - Node edits, written as the document around them is (the children's separator `,\n    ` / `, ` / `,`, their
   indent, `": "` or `":"`; a value re-indented for where it goes, minified in a minified document, a line of its
   own in JSON Lines):
@@ -190,9 +197,10 @@ place): the file bar's "N changes".
   its error (the normal path's message and place); fixing it re-syncs with the rest.
 - `summary` then has `edited` (the document differs from the file), `version`, `canUndo`, `canRedo`, `steps`,
   `editBytes` (edits' bytes held: the document's and the history's).
-- Speed (this host, Node, 1 GiB of records, read again before the next): typing p50 8 ms / p95 15 / max 19,
-  undo 7 ms, set / remove / insert ~22 ms p50, ≤ 52 ms. The worker reads about one checkpoint's stretch (1 MiB)
-  and moves a few numbers per checkpoint (see the core report for 10 GB).
+- Speed (this host, Node, worker time a keystroke, 1 GiB of records; 10 GiB in the core report): typing at a
+  cursor p50 0.7 ms / p95 8 (the first key at a place reads its checkpoint's stretch: ~8 ms); keys that leave
+  the document invalid p50 2.7 / p95 7; an unbalanced bracket ≤ ~11 (then read on in steps); undo of a typing
+  run 0.6; set / remove / insert ~22 ms p50, ≤ 52 ms.
 
 ## Saving
 
@@ -212,7 +220,8 @@ place): the file bar's "N changes".
 
 ## Sessions (edits kept between visits)
 
-- Edits are kept in IndexedDB a second after the last one, keyed by the file's name, size and last modified: the
+- Edits are kept in IndexedDB a second after the last one, and at `close()` (async: it keeps what isn't kept yet,
+  then ends the worker; at most 10 s), keyed by the file's name, size and last modified: the
   document's pieces (references to the file and the edits' bytes) and its history (256 MiB of edits' bytes at most;
   the history goes first if it doesn't fit, then nothing is kept).
 - Reopening the same file: `summary.session` is `undefined` while the kept session is looked for, then `null`

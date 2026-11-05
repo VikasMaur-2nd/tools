@@ -24,6 +24,7 @@ interface Exports {
   stats(): number;
   target(depth: number, start: number, count: number, byte: number, val: number): void;
   stop_after(after: number): void;
+  every(e: number): void;
   facts(linesOk: number, sep: number, second: number, warns: number): void;
   load(len: number, last: number): number;
   run(): number;
@@ -248,6 +249,11 @@ export class Skeleton {
    */
   target(depth: number, start = -1, count = -1, byte = -1, val = -1): void {
     this.x.target(depth, start, count, byte, val);
+  }
+
+  /** Bytes between checkpoints from now on: the next is due that far past the last one (an edit's stretch takes them closer). */
+  every(e: number): void {
+    this.x.every(e);
   }
 
   /** From now on (after target()), also stop after a value at the first comma, closing bracket or top-level value at or after byte `after` (-1: no). */

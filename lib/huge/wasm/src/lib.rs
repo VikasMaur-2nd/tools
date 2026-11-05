@@ -1115,6 +1115,17 @@ pub unsafe extern "C" fn restore() -> u32 {
     1
 }
 
+/// Bytes between checkpoints from now on (an edit's stretch read again takes them closer, so the next keystroke
+/// there reads a few KiB): the next one is due that far past the last (one owed after a big value stays owed).
+#[no_mangle]
+pub unsafe extern "C" fn every(e: f64) {
+    let e = e as u64;
+    if NEXT_CK != NONE && NEXT_CK != 0 {
+        NEXT_CK = NEXT_CK - CK_EVERY + e;
+    }
+    CK_EVERY = e;
+}
+
 /// After restore(): the facts of the document before the snapshot's byte: whether its top-level values were on
 /// lines of their own, its first separator between them, where its second top-level value starts (-1: none), how
 /// many duplicate names it has (MAX_WARN counts the document's).
