@@ -121,7 +121,8 @@ export class HugeSession {
   private graph: HugeGraph | null = null;
   private root: HugeNode | null = null;
   /** The selected value and its path. */
-  private sel: { node: HugeNode; path: Seg[] } | null = null;
+  /** (`at`: its index path, where known: which member, where names repeat.) */
+  private sel: { node: HugeNode; path: Seg[]; at?: number[] } | null = null;
   /** The table's container and its path. */
   private tableAt: { node: HugeNode | null; path: Seg[] } = { node: null, path: [] };
   private find: StreamFind;
@@ -437,7 +438,7 @@ export class HugeSession {
   mountTree(el: HTMLElement) {
     this.tree?.destroy();
     const tree = (this.tree = new HugeTreeView(el, this.src, {
-      select: (node, path) => this.select(node, path, 'tree'),
+      select: (node, path, _how, at) => this.select(node, path, 'tree', at),
       copy: (node, path, what) => (what === 'path' ? this.copyPath(path) : void this.copyValue(node, path)),
       gotoIndex: (o) => this.askIndex(o),
       escape: () => undefined,
@@ -654,8 +655,8 @@ export class HugeSession {
 
   // ── Selection ──────────────────────────────────────────────────────────
 
-  private select(node: HugeNode, path: Seg[], from: 'tree' | 'table' | 'lines' | 'graph') {
-    this.sel = { node, path };
+  private select(node: HugeNode, path: Seg[], from: 'tree' | 'table' | 'lines' | 'graph', at?: number[]) {
+    this.sel = { node, path, ...(at && at.length === path.length && { at }) };
     this.ui.set({ sel: { path: formatPath(path), t: node.t, bytes: node.end < 0 ? -1 : node.end - node.at, count: node.count, partial: !!node.partial, named: typeof path[path.length - 1] === 'string', root: !path.length } });
     if (from !== 'lines' && this.lines) void this.showLine(node.at, false);
     // The tree follows a choice in the graph (and the graph one elsewhere, when it shows that value).
@@ -668,7 +669,12 @@ export class HugeSession {
     const chain = await this.src.locate(at);
     if (this.dead || !chain.length) return;
     const node = chain[chain.length - 1];
-    this.select(node, chain.slice(1).map((n) => n.key as Seg), 'lines');
+    this.select(
+      node,
+      chain.slice(1).map((n) => n.key as Seg),
+      'lines',
+      chain.slice(1).map((n) => n.i),
+    );
     this.tree?.reveal(chain, null);
   }
 
@@ -1069,7 +1075,7 @@ export class HugeSession {
   }
 
   /** The value an edit acts on: the selected one (or the root). */
-  private target(): { node: HugeNode; path: Seg[] } | null {
+  private target(): { node: HugeNode; path: Seg[]; at?: number[] } | null {
     return this.sel ?? (this.root ? { node: this.root, path: [] } : null);
   }
 
@@ -1107,7 +1113,7 @@ export class HugeSession {
       if (json === null || this.dead) return this.openText(from);
     }
     this.editFrom = from;
-    this.ui.set({ box: { mode: 'value', path: t.path, i: t.node.i, label: formatPath(t.path), index: 0, named: false, kind: kindOf(t.node.t), text: boxText(t.node, json), name: '', at: this.anchor('value') } });
+    this.ui.set({ box: { mode: 'value', path: t.path, i: t.node.i, indexes: t.at, label: formatPath(t.path), index: 0, named: false, kind: kindOf(t.node.t), text: boxText(t.node, json), name: '', at: this.anchor('value') } });
   }
 
   /** Renames the selected object member. */
@@ -1117,7 +1123,7 @@ export class HugeSession {
     const key = t.path[t.path.length - 1];
     if (typeof key !== 'string') return void this.host.toast('Only the members of an object have names', 'info');
     this.editFrom = from;
-    this.ui.set({ box: { mode: 'rename', path: t.path, i: t.node.i, label: formatPath(t.path), index: 0, named: true, kind: 'string', text: '', name: key, at: this.anchor('name') } });
+    this.ui.set({ box: { mode: 'rename', path: t.path, i: t.node.i, indexes: t.at, label: formatPath(t.path), index: 0, named: true, kind: 'string', text: '', name: key, at: this.anchor('name') } });
   }
 
   /** Inserts a value after the selected one, or inside it (a container: at its end). */
@@ -1143,14 +1149,14 @@ export class HugeSession {
     const t = this.target();
     if (!t || !this.canEdit()) return;
     if (!t.path.length) return void this.host.toast("The root value can't be deleted: edit it instead", 'info');
-    void this.edit({ op: 'remove', path: t.path, i: t.node.i }, from);
+    void this.edit({ op: 'remove', path: t.path, i: t.node.i, at: t.at }, from);
   }
 
   duplicateSel(from: EditFrom) {
     const t = this.target();
     if (!t || !this.canEdit()) return;
     if (!t.path.length) return void this.host.toast("The root value can't be duplicated", 'info');
-    void this.edit({ op: 'duplicate', path: t.path, i: t.node.i }, from);
+    void this.edit({ op: 'duplicate', path: t.path, i: t.node.i, at: t.at }, from);
   }
 
   /** The edit box's answer: the edit made, or why what was typed can't be (the box stays then). */
@@ -1163,11 +1169,11 @@ export class HugeSession {
         this.closeBox();
         return null;
       }
-      op = { op: 'rename', path: b.path, i: b.i, name };
+      op = { op: 'rename', path: b.path, i: b.i, at: b.indexes, name };
     } else {
       const v = valueJson(kind, text);
       if ('error' in v) return v.error;
-      op = b.mode === 'value' ? { op: 'set', path: b.path, i: b.i, json: v.json } : { op: 'insert', parent: b.path, index: b.index, json: v.json, name: b.named ? name : null };
+      op = b.mode === 'value' ? { op: 'set', path: b.path, i: b.i, at: b.indexes, json: v.json } : { op: 'insert', parent: b.path, index: b.index, json: v.json, name: b.named ? name : null };
     }
     this.closeBox();
     await this.edit(op, this.editFrom);
@@ -1191,7 +1197,7 @@ export class HugeSession {
     if (!t || !this.canEdit()) return;
     this.editFrom = from;
     const path = t.path;
-    this.ui.set({ box: null, textEdit: { path, label: formatPath(path), text: null, i: t.node.i } });
+    this.ui.set({ box: null, textEdit: { path, label: formatPath(path), text: null, i: t.node.i, at: t.at } });
     try {
       const text = dedent(await this.src.edits!.nodeText(t.node));
       const te = this.ui.get().textEdit;
@@ -1212,7 +1218,7 @@ export class HugeSession {
   async applyText(text: string): Promise<boolean> {
     const te = this.ui.get().textEdit;
     if (!te) return false;
-    const ok = await this.edit({ op: 'text', path: te.path, i: te.i, text }, this.editFrom);
+    const ok = await this.edit({ op: 'text', path: te.path, i: te.i, at: te.at, text }, this.editFrom);
     if (ok && !this.dead) this.closeText();
     return ok;
   }

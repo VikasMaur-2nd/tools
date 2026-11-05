@@ -413,6 +413,8 @@ test('huge edit: the Restore banner goes on the first edit; while the Format vie
   await page.reload();
   await openHuge(t, path);
   t.assert(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'offered');
+  t.check(/Editing first discards them/.test(await page.evaluate(() => window.__vis('.hg-restore')?.textContent ?? '')), 'and says what editing first does');
+  if (process.env.HUGE_SHOTS) await page.screenshot({ path: join(process.env.HUGE_SHOTS, `r9-restore-${t.engine}.png`) });
   // The Format view's text being edited: Restore says why it waits; the banner stays.
   await editFormatAt(page, '"user 9"');
   await page.locator('.hg-restore .btn.primary').click();
@@ -548,6 +550,38 @@ test('huge edit: a broken file: Go to error, F2, the error\'s line in the editor
   await page.keyboard.type(',');
   await page.keyboard.press('Escape');
   t.check(await until(page, () => /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? '') && !window.__vis('.hg .banner'), null, { timeout: 10_000 }), 'fixed: valid', await page.evaluate(() => window.__vis('.hg-sb')?.textContent));
+});
+
+// REVIEW-2 #7, the UI's part: where a container's name repeats ({"a": {…}, "a": {…}}), an edit in the second "a"
+// changes the value selected in the tree, not the one under the first "a" (the tree's index path goes with it).
+test('huge edit: duplicate names: an edit inside the second of two members named alike changes that one', async (t) => {
+  const { page } = t;
+  const dup = join(dir, 'dup.json');
+  writeFileSync(dup, '{\n  "a": {"x": 1},\n  "a": {"x": 2}\n}\n');
+  await t.open('/');
+  await page.evaluate(() => localStorage.setItem('tk:hugeMin', '0'));
+  await page.locator('.app:visible input[type=file]').setInputFiles(dup);
+  t.assert(await until(page, () => /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'huge mode opens');
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
+  await until(page, () => !!document.querySelector('#hg-tree .tv-r, #hg-tree [role=treeitem]'), null);
+  await page.locator('#hg-tree').focus();
+  // root, a, a: the second a, opened, its x.
+  await page.keyboard.press('Home');
+  for (const k of ['ArrowDown', 'ArrowDown', 'ArrowRight', 'ArrowDown']) await page.keyboard.press(k);
+  t.assert(await until(page, () => /^x:\s*2/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'the second a\'s x selected', await selRow(page));
+  await page.keyboard.press('F2');
+  await until(page, () => !!document.querySelector('.hg-box .hg-box-in'), null);
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.type('99');
+  await page.keyboard.press('Enter');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  const doc = await page.evaluate(async () => {
+    const tab = window.__vis('.hg [role=tab][aria-controls=hg-format]');
+    tab?.click();
+    await new Promise((r) => setTimeout(r, 300));
+    return document.querySelector('#hg-format')?.textContent ?? '';
+  });
+  t.check(/"a": \{"x": 1\}.*"a": \{"x": 99\}/s.test(doc), 'the second a\'s x is 99, the first unchanged', doc.slice(0, 200));
 });
 
 // REVIEW-2 #9: a .gz file's decompressed copy is new at every open; its session is keyed on the .gz file's facts, so

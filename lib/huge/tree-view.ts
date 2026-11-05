@@ -19,8 +19,11 @@ const IND_DEPTH = 30;
 const OVERSCAN = 24;
 
 export interface HugeTreeEvents {
-  /** The cursor moved onto a value (`how`: by pointer or key), with its path. */
-  select(node: HugeNode, path: Seg[], how: 'pointer' | 'key'): void;
+  /**
+   * The cursor moved onto a value (`how`: by pointer or key), with its path, and its index path (each segment's
+   * index in its container: which member, where names repeat).
+   */
+  select(node: HugeNode, path: Seg[], how: 'pointer' | 'key', at: number[]): void;
   copy(node: HugeNode, path: Seg[], what: 'value' | 'path'): void;
   /** "Go to index…" in container `o`. */
   gotoIndex(o: Open): void;
@@ -157,7 +160,7 @@ export class HugeTreeView {
         const n = this.cursorNode();
         if (n) {
           this.selPending = null;
-          this.ev.select(n, this.cursorPath(), how);
+          this.ev.select(n, this.cursorPath(), how, this.cursorAt());
         }
       }
     });
@@ -181,6 +184,11 @@ export class HugeTreeView {
     if (open) return open.node;
     const parent = this.model.openAt(c.path.slice(0, -1));
     return parent ? this.cache.get(parent.node, c.path[c.path.length - 1]) : undefined;
+  }
+
+  /** The cursor's path as indexes (each segment's index in its container). */
+  private cursorAt(): number[] {
+    return [...(this.model.cursor?.path ?? [])];
   }
 
   /** The cursor's path as keys ($.a[3].b). */
@@ -207,7 +215,7 @@ export class HugeTreeView {
     this.fit();
     this.scrollToCursor(true);
     this.render(true);
-    if (how) this.ev.select(chain[chain.length - 1], this.cursorPath(), how);
+    if (how) this.ev.select(chain[chain.length - 1], this.cursorPath(), how, this.cursorAt());
   }
 
   /** Goes to item `i` of container `o` (its page is listed). */
@@ -461,7 +469,7 @@ export class HugeTreeView {
     const n = this.cursorNode();
     if (n) {
       this.selPending = null;
-      this.ev.select(n, this.cursorPath(), how);
+      this.ev.select(n, this.cursorPath(), how, this.cursorAt());
     } else this.selPending = this.model.cursor?.kind === 'node' ? how : null;
   }
 
