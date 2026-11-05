@@ -15,7 +15,7 @@ import { byteBefore, duplicates, exactError, lineCol, nameAt, prefixOf, type Par
 import { HugeIndex, type Big } from './index';
 import { lengthOf, Pieces, type Piece as EditPiece } from './pieces';
 import { Tail } from './tail';
-import { utf16Units, utf8At, utf8Table } from './utf8';
+import { badOf, badUnits, utf16Units, utf8At, utf8Table } from './utf8';
 import { Wait } from './wait';
 import { DONE, DW, FAIL, FRONT, FW, NEED, S_AFTER, S_COLON, S_TOP, S_VALUE, STOP, Skeleton, W_AFTER, W_CHILD, W_CLOSE, W_MEMORY, type State } from './skeleton';
 import { ARR, BOOL, LIST, NUL, NUM, OBJ, STR, type Bytes, type FindBatch, type FindOptions, type HugeError, type HugeLines, type HugeLocation, type HugeNode, type HugeOptions, type HugePage, type HugeProblem, type HugeProgress, type HugeStatus, type HugeSummary, type Seg } from './types';
@@ -1807,11 +1807,16 @@ export class HugeDoc {
       at = afterBreaks(this.src, ix.pos[k], from - ix.lines[k], limit);
     }
     let j = 0;
+    let bad: (Float64Array | null)[] | null = null;
     if (at >= 0 && at <= limit) {
       for (; j < n; ) {
         const lineEnd = this.lineEnd(from + j, at, limit);
         const len = lineEnd - at;
-        text.push(textOf(this.src, at, Math.min(len, max)));
+        const t = textOf(this.src, at, Math.min(len, max));
+        text.push(t);
+        // (Invalid bytes on it: which U+FFFD units they are, utf8.ts.)
+        const b = t.indexOf('\uFFFD') >= 0 ? badUnits(this.src.read(at, Math.min(len, max)), 0, Math.min(len, max)) : null;
+        if (b) (bad ??= [])[j] = b;
         cut[j] = lineEnd >= limit && limit < this.src.size ? 2 : len > max ? 1 : 0;
         length[j] = len;
         pos[j] = at;
@@ -1820,7 +1825,9 @@ export class HugeDoc {
         at = afterBreaks(this.src, lineEnd, 1, limit);
       }
     }
-    return { from, text, cut: cut.subarray(0, j), length: length.subarray(0, j), pos: pos.subarray(0, j), total };
+    const out: HugeLines = { from, text, cut: cut.subarray(0, j), length: length.subarray(0, j), pos: pos.subarray(0, j), total };
+    if (bad) out.bad = Array.from({ length: j }, (_, k) => bad![k] ?? null);
+    return out;
   }
 
   /** Where line `line` (starting at byte `at`) ends: at its break, or `limit` (the end, or what's read). */
@@ -2005,14 +2012,23 @@ export class HugeDoc {
 
   // ── Paths ─────────────────────────────────────────────────────────────
 
-  /** The value at `path` (path.ts resolve's rules: an object's first member with that name), or null. */
-  resolve(path: Seg[]): HugeLocation | null {
+  /**
+   * The value at `path` (path.ts resolve's rules: an object's first member with that name), or null. `at`: per
+   * segment, the child's index in its container where known (an object's member: the one at that index, if it has
+   * that name, else null: with duplicate names, a later member is meant), else -1 / absent: by name.
+   */
+  resolve(path: Seg[], at?: readonly number[]): HugeLocation | null {
     let node = this.root();
     if (!node) return null;
-    for (const seg of path) {
+    for (let j = 0; j < path.length; j++) {
+      const seg = path[j];
       if (node.kind < ARR) return null;
       let next: HugeNode | undefined;
-      if (node.kind === OBJ) {
+      const i = at?.[j] ?? -1;
+      if (node.kind === OBJ && i >= 0) {
+        next = this.pageOf(node, i, 1, { previews: false })?.nodes[0];
+        if (!next || next.key !== String(seg)) return null;
+      } else if (node.kind === OBJ) {
         const key = String(seg);
         for (let from = 0; !next; ) {
           // (No previews: only the path's node is wanted.)
@@ -2046,10 +2062,16 @@ export class HugeDoc {
 
   // ── Text ──────────────────────────────────────────────────────────────
 
-  text(start: Bytes, end: Bytes, max: number): { text: string; cut: boolean } {
+  /**
+   * The text of bytes [start, end), at most `max` (`cut` if more). `bad`, if any of its bytes are invalid UTF-8:
+   * which of its U+FFFD units stand for them and how many bytes each ([unit offset, bytes] pairs: utf8.ts).
+   */
+  text(start: Bytes, end: Bytes, max: number): { text: string; cut: boolean; bad?: Float64Array } {
     const stop = Math.min(end, this.src.size);
     const e = Math.min(stop, start + max);
-    return { text: textOf(this.src, start, e - start), cut: e < stop };
+    const text = textOf(this.src, start, e - start);
+    const bad = text.indexOf('\uFFFD') >= 0 ? badUnits(this.src.read(start, e - start), 0, e - start) : null;
+    return bad ? { text, cut: e < stop, bad } : { text, cut: e < stop };
   }
 
   // ── Find ──────────────────────────────────────────────────────────────
@@ -2200,8 +2222,23 @@ function build(src: ByteSource, pieces: Piece[]): Built {
       s = p;
       if (s) map.push(at, -1, 0);
     } else if (Array.isArray(p)) {
-      s = textOf(src, p[0], p[1] - p[0]);
-      if (s) map.push(at, p[0], p[1] - p[0]);
+      const len = p[1] - p[0];
+      s = textOf(src, p[0], len);
+      // (Invalid bytes, each sequence a U+FFFD standing for 1–3 of them: a run of their own, so the runs around
+      // them are valid UTF-8 and counted from their text (utf8.ts).)
+      const bad = s.indexOf('\uFFFD') >= 0 ? badOf(src.read(p[0], len), 0, len) : null;
+      if (bad) {
+        let u0 = 0;
+        let o0 = 0;
+        for (let j = 0; j < bad.length; j += 3) {
+          const [u, o, l] = [bad[j], bad[j + 1], bad[j + 2]];
+          if (u > u0) map.push(at + u0, p[0] + o0, o - o0);
+          map.push(at + u, p[0] + o, l);
+          u0 = u + 1;
+          o0 = o + l;
+        }
+        if (o0 < len) map.push(at + u0, p[0] + o0, len - o0);
+      } else if (s) map.push(at, p[0], len);
     } else {
       s = stubText(p.kind);
       stubs.set(at, p);

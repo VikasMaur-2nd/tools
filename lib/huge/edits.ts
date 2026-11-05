@@ -64,15 +64,21 @@ export function dedent(text: string): string {
   return [lines[0], ...lines.slice(1).map((l) => l.slice(pad.length))].join('\n');
 }
 
+/**
+ * Which member a path means, where names repeat (`{"a": 1, "a": 2}`: a path names the first): `i`, the member's
+ * index in its container (the selected node's), or `at`, every segment's (-1: by name). Without them, by name.
+ */
+type Which = { i?: number; at?: number[] };
+
 /** An edit, by path (each is one undo step). */
 export type EditOp =
-  | { op: 'set'; path: Seg[]; json: string }
-  | { op: 'rename'; path: Seg[]; name: string }
-  | { op: 'remove'; path: Seg[] }
+  | ({ op: 'set'; path: Seg[]; json: string } & Which)
+  | ({ op: 'rename'; path: Seg[]; name: string } & Which)
+  | ({ op: 'remove'; path: Seg[] } & Which)
   | { op: 'insert'; parent: Seg[]; index: number; json: string; name: string | null }
-  | { op: 'duplicate'; path: Seg[] }
+  | ({ op: 'duplicate'; path: Seg[] } & Which)
   /** A value's new text: JSON (written as the document is), or anything else as typed (then the status says where it's wrong). */
-  | { op: 'text'; path: Seg[]; text: string }
+  | ({ op: 'text'; path: Seg[]; text: string } & Which)
   | { op: 'undo' }
   | { op: 'redo' }
   | { op: 'restore' };
@@ -167,9 +173,10 @@ export class HugeEditing {
     }
   }
 
-  /** The node at `path` and its container (null: not there). */
-  private async at(path: Seg[]): Promise<{ node: HugeNode; parent: HugeNode | null } | null> {
-    const chain = await this.host.src.resolve(path);
+  /** The node at `path` and its container (null: not there); `w`: which member, where names repeat. */
+  private async at(path: Seg[], w: Which = {}): Promise<{ node: HugeNode; parent: HugeNode | null } | null> {
+    const at = w.at ?? (w.i !== undefined && w.i >= 0 && path.length ? [...path.slice(0, -1).map(() => -1), w.i] : undefined);
+    const chain = await this.host.src.resolve(path, undefined, at);
     if (!chain?.length) return null;
     return { node: chain[chain.length - 1], parent: chain.length > 1 ? chain[chain.length - 2] : null };
   }
@@ -182,20 +189,20 @@ export class HugeEditing {
     switch (op.op) {
       case 'set':
       case 'text': {
-        const x = (await this.at(op.path)) ?? gone();
+        const x = (await this.at(op.path, op)) ?? gone();
         if (op.op === 'set') await ed.setValue(x.node, op.json);
         else await ed.replaceNode(x.node, op.text);
         return { fx: {}, select: op.path };
       }
       case 'rename': {
-        const x = (await this.at(op.path)) ?? gone();
+        const x = (await this.at(op.path, op)) ?? gone();
         if (!x.parent) throw new Error('Not allowed');
         await ed.rename(x.parent, x.node.i, op.name);
         const to = [...op.path.slice(0, -1), op.name];
         return { fx: { moved: { from: op.path, to } }, select: to };
       }
       case 'remove': {
-        const x = (await this.at(op.path)) ?? gone();
+        const x = (await this.at(op.path, op)) ?? gone();
         if (!x.parent) throw new Error('Not allowed');
         const i = x.node.i;
         const count = x.parent.count;
@@ -213,7 +220,7 @@ export class HugeEditing {
         return { fx: op.name === null ? { shift: { parent: op.parent, index: op.index, delta: 1 } } : {}, select };
       }
       case 'duplicate': {
-        const x = (await this.at(op.path)) ?? gone();
+        const x = (await this.at(op.path, op)) ?? gone();
         if (!x.parent) throw new Error('Not allowed');
         const i = x.node.i;
         await ed.duplicate(x.parent, i);

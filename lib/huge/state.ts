@@ -41,7 +41,7 @@ export interface HugeUI {
   /** The edit box, open on a value, a name, or a value to insert. */
   box: EditBox | null;
   /** A value open as text in the normal editor (its dialog): its path, and its text when read. */
-  textEdit: { path: Seg[]; label: string; text: string | null } | null;
+  textEdit: { path: Seg[]; label: string; text: string | null; i?: number } | null;
   /** The edit menu (right click, the menu key): where, and whether the keyboard opened it. */
   menu: { x: number; y: number; keyboard: boolean } | null;
   /** The Format view's text being edited (a window of it), from byte `at`; and where its caret is. */
@@ -77,6 +77,8 @@ export interface EditBox {
   mode: 'value' | 'rename' | 'insert';
   /** The value's path (value, rename), or the container's (insert). */
   path: Seg[];
+  /** The value's index in its container (value, rename): which member, where names repeat. */
+  i?: number;
   /** That path as shown. */
   label: string;
   /** Insert: where, and whether it's into an object (a name is asked). */

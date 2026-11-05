@@ -13,7 +13,8 @@ export type Request =
   | { id: number; op: 'prettyClose'; line: number }
   | { id: number; op: 'raw'; from: number; count: number; max: number }
   | { id: number; op: 'locate'; pos: Bytes }
-  | { id: number; op: 'resolve'; path: Seg[] }
+  /** `at`: per segment, the child's index where known (duplicate names: which member). */
+  | { id: number; op: 'resolve'; path: Seg[]; at?: number[] }
   | { id: number; op: 'text'; start: Bytes; end: Bytes; max: number }
   /** Replies with batches (not done) until done. */
   | { id: number; op: 'find'; query: string; options: FindOptions }
@@ -44,8 +45,8 @@ export type Request =
   | { id: number; op: 'save'; handle: FileSystemFileHandle | null; inPlace: boolean }
   /** Puts back the kept session of this file (summary.session), or drops it. */
   | { id: number; op: 'restoreSession' }
-  | { id: number; op: 'dropSession' }
-  /** Closing: edits not kept yet (a second after the last one) are kept now; replies once they are (then the page ends the worker). */
+  | { id: number; op: 'dropSession'; keepEdits?: boolean }
+  /** Closing: edits not kept yet (a second after the last one) are kept now; replies once they are, with whether they are (then the page ends the worker). */
   | { id: number; op: 'close' };
 
 export type Answer = {
@@ -57,7 +58,7 @@ export type Answer = {
   raw: HugeLines;
   locate: HugeLocation | null;
   resolve: HugeLocation | null;
-  text: { text: string; cut: boolean };
+  text: { text: string; cut: boolean; bad?: Float64Array };
   find: FindBatch;
   cancel: null;
   stop: null;
@@ -76,7 +77,7 @@ export type Answer = {
   save: HugeSaved;
   restoreSession: HugeEdited;
   dropSession: null;
-  close: null;
+  close: { kept: boolean };
 };
 
 export type Reply =

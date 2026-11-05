@@ -1097,7 +1097,7 @@ export class HugeSession {
       if (json === null || this.dead) return this.openText(from);
     }
     this.editFrom = from;
-    this.ui.set({ box: { mode: 'value', path: t.path, label: formatPath(t.path), index: 0, named: false, kind: kindOf(t.node.t), text: boxText(t.node, json), name: '', at: this.anchor('value') } });
+    this.ui.set({ box: { mode: 'value', path: t.path, i: t.node.i, label: formatPath(t.path), index: 0, named: false, kind: kindOf(t.node.t), text: boxText(t.node, json), name: '', at: this.anchor('value') } });
   }
 
   /** Renames the selected object member. */
@@ -1107,7 +1107,7 @@ export class HugeSession {
     const key = t.path[t.path.length - 1];
     if (typeof key !== 'string') return void this.host.toast('Only the members of an object have names', 'info');
     this.editFrom = from;
-    this.ui.set({ box: { mode: 'rename', path: t.path, label: formatPath(t.path), index: 0, named: true, kind: 'string', text: '', name: key, at: this.anchor('name') } });
+    this.ui.set({ box: { mode: 'rename', path: t.path, i: t.node.i, label: formatPath(t.path), index: 0, named: true, kind: 'string', text: '', name: key, at: this.anchor('name') } });
   }
 
   /** Inserts a value after the selected one, or inside it (a container: at its end). */
@@ -1133,14 +1133,14 @@ export class HugeSession {
     const t = this.target();
     if (!t || !this.canEdit()) return;
     if (!t.path.length) return void this.host.toast("The root value can't be deleted: edit it instead", 'info');
-    void this.edit({ op: 'remove', path: t.path }, from);
+    void this.edit({ op: 'remove', path: t.path, i: t.node.i }, from);
   }
 
   duplicateSel(from: EditFrom) {
     const t = this.target();
     if (!t || !this.canEdit()) return;
     if (!t.path.length) return void this.host.toast("The root value can't be duplicated", 'info');
-    void this.edit({ op: 'duplicate', path: t.path }, from);
+    void this.edit({ op: 'duplicate', path: t.path, i: t.node.i }, from);
   }
 
   /** The edit box's answer: the edit made, or why what was typed can't be (the box stays then). */
@@ -1153,11 +1153,11 @@ export class HugeSession {
         this.closeBox();
         return null;
       }
-      op = { op: 'rename', path: b.path, name };
+      op = { op: 'rename', path: b.path, i: b.i, name };
     } else {
       const v = valueJson(kind, text);
       if ('error' in v) return v.error;
-      op = b.mode === 'value' ? { op: 'set', path: b.path, json: v.json } : { op: 'insert', parent: b.path, index: b.index, json: v.json, name: b.named ? name : null };
+      op = b.mode === 'value' ? { op: 'set', path: b.path, i: b.i, json: v.json } : { op: 'insert', parent: b.path, index: b.index, json: v.json, name: b.named ? name : null };
     }
     this.closeBox();
     await this.edit(op, this.editFrom);
@@ -1181,7 +1181,7 @@ export class HugeSession {
     if (!t || !this.canEdit()) return;
     this.editFrom = from;
     const path = t.path;
-    this.ui.set({ box: null, textEdit: { path, label: formatPath(path), text: null } });
+    this.ui.set({ box: null, textEdit: { path, label: formatPath(path), text: null, i: t.node.i } });
     try {
       const text = dedent(await this.src.edits!.nodeText(t.node));
       const te = this.ui.get().textEdit;
@@ -1202,7 +1202,7 @@ export class HugeSession {
   async applyText(text: string): Promise<boolean> {
     const te = this.ui.get().textEdit;
     if (!te) return false;
-    const ok = await this.edit({ op: 'text', path: te.path, text }, this.editFrom);
+    const ok = await this.edit({ op: 'text', path: te.path, i: te.i, text }, this.editFrom);
     if (ok && !this.dead) this.closeText();
     return ok;
   }

@@ -40,7 +40,7 @@ const doc = openHuge(file, { name: file.name }, (p) => progress(p.bytes / p.size
 const first = await doc.summary();   // counts so far: show the first rows at once
 const s = await doc.ready;           // the whole file read (or stopped): s.error is the first problem, if any
 await doc.stop();                    // indexing ends where it is (ready resolves, s.stopped); queries go on
-await doc.close();                   // keeps edits not kept yet (a session), then lets the worker go
+await doc.close();                   // keeps edits not kept yet (a session), then lets the worker go: whether they are
 ```
 
 `HugeOptions`: `name` (`.jsonl`/`.ndjson` read as JSON Lines exactly as the normal path), `every` (checkpoint
@@ -148,7 +148,7 @@ LRU), so scrolling the Format view through a region is a lookup.
 ## Reading values
 
 - `text(start, end, max)`: the text of `[start, end)`, at most `max` bytes (`cut` if more): a node's JSON, a
-  preview of a long string.
+  preview of a long string. With invalid UTF-8 in it, `bad` (see Bounds: map offsets with utf8.ts).
 - `blob(start, end)`: the bytes as a `Blob` sliced from the File (nothing read): "Save value as file", copy. Only
   while the document isn't edited (it throws 'Edited' then).
 - `slice(start, end)` (async): the document's bytes as a `Blob` of the file's slices and the edits' bytes
@@ -174,6 +174,10 @@ place): the file bar's "N changes".
   uses). The document may be invalid between keys: its error is the normal path's, placed from a few KiB before
   it. Near an edit the index keeps checkpoints 1/64 as far apart (16 KiB), so the next keystroke there reads
   a few KiB again, not a megabyte.
+- With duplicate member names, a path names the first (path.ts's rule): `resolve(path, at)` takes, per segment, the
+  child's index in its container where known (-1: by name), and answers the member at that index only if it has
+  that name (else null: stale). Edits from a selection should say which member they mean (huge-mode's edits.ts:
+  `i`, the selected node's index).
 - Node edits, written as the document around them is (the children's separator `,\n    ` / `, ` / `,`, their
   indent, `": "` or `":"`; a value re-indented for where it goes, minified in a minified document, a line of its
   own in JSON Lines):
@@ -220,15 +224,28 @@ place): the file bar's "N changes".
 
 ## Sessions (edits kept between visits)
 
-- Edits are kept in IndexedDB a second after the last one, and at `close()` (async: it keeps what isn't kept yet,
-  then ends the worker; at most 10 s), keyed by the file's name, size and last modified: the
-  document's pieces (references to the file and the edits' bytes) and its history (256 MiB of edits' bytes at most;
-  the history goes first if it doesn't fit, then nothing is kept).
-- Reopening the same file: `summary.session` is `undefined` while the kept session is looked for, then `null`
-  (none) or `{ steps, bytes, time }` (`steps`: the changes it puts back, as `HugeEdited.steps` counts them). The
-  look ends soon after opening: if it ends after `ready`, a summary saying what it found comes through
-  `HugeClient.onSummary` (nothing needs to ask again). `restoreSession()` puts it back (the edits, then undo goes
-  on where it was; `steps` from there); `dropSession()` drops it (closing without keeping the edits).
+- Edits are kept in IndexedDB a second after the last one, and at `close()`, keyed by the file's name, size and
+  last modified, and checked against its content (a fingerprint of its first and last 64 KiB and six blocks
+  between). What's kept is the document's pieces (references to the file and the edits' bytes) and its history.
+  - **Cap:** 256 MiB of edits' bytes; the history goes first if it doesn't fit, then nothing is kept.
+  - **Cost:** a keep writes only what's new: the edits' bytes are stored once, and the record is references.
+  - **Sweep:** sessions older than 30 days go, then the oldest while all of them hold more than 1 GiB.
+- **`close()`** is async. It keeps what isn't kept yet, then ends the worker (at most 10 s). It resolves with
+  whether this document's edits are kept: `false` if there are none, they are too big, an earlier session is on
+  offer, the write failed, or it ran out of time. Say "kept" only on `true`.
+- **Reopening the same file:** `summary.session` is `undefined` while the kept session is looked for, then `null`
+  (none, or another file's content) or `{ steps, bytes, time, restorable }`. `steps` is the changes it puts back,
+  as `HugeEdited.steps` counts them. The look ends soon after opening; if it ends after `ready`, a summary saying
+  what it found comes through `HugeClient.onSummary`, so nothing needs to ask again.
+- **`restoreSession()`** puts the session back (its edits; undo then goes on where it was; `steps` from there),
+  only onto the file as opened. Once the document is edited (even if undone), `restorable` is false and restoring
+  answers 'Not allowed'.
+- **While a session is on offer, new edits aren't kept over it.** `close()` then says `false`.
+  - **`dropSession()`** drops it: closing without keeping the edits. Nothing is kept until a further edit.
+  - **`dropSession(true)`** drops it so that this document's edits are kept instead.
+- **Saves:**
+  - **In place:** the session is the old file's and goes. Edits after that are kept under the saved file's key.
+  - **A download, or a save as:** they leave the opened file, and its session, as they are.
 
 ## Bounds (what is capped, and how)
 
@@ -243,8 +260,13 @@ place): the file bar's "N changes".
   string of at least 256 KiB is cut (a preview), with its full span in its `HugeNode`.
 - An array index past 2^31 - 1 in a page is not representable in a tape's key (Int32): such items keep their
   page-local index in `PageNodes` (documents with over 2 billion items in one array).
-- Invalid UTF-8 is read as the normal path reads it (U+FFFD, no error); columns after it on the same line may
-  differ from the normal path's (it counts the replacement's UTF-16 units; huge mode counts the bytes' kinds).
+- Invalid UTF-8 is read as the normal path reads it (TextDecoder: one U+FFFD per maximal invalid subsequence, no
+  error), and every position stays the bytes': nodes, pages, lines, locate, edits. Text that goes out with invalid
+  bytes in it says which U+FFFD units they are (`bad`: [unit offset, bytes] pairs, on `text()` and raw
+  `HugeLines`). Map its offsets to bytes with lib/huge/utf8.ts `utf8Bytes(text, from, to, bad)` and back with
+  `utf16Of(text, bytes, bad)`; after typing in such a text, `badAfterEdit` moves `bad`. A U+FFFD counts 3 bytes
+  only where it is the character itself. A column after an invalid byte on a line that starts before a checkpoint
+  may still differ from the normal path's (the index's counts take an invalid byte by its kind).
 - UTF-16 files (with a UTF-16 byte order mark) aren't read in huge mode.
 - Loose JSON (comments, trailing commas, single quotes…): the first problem is the error; views show the part
   before it. A streamed repair is phase 5.
