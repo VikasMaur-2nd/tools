@@ -106,6 +106,10 @@ pretty form `depth[]`, `kind[]` (0 value, 1 opens a container, 2 closes one) and
 closing line, or -1: ask `prettyClose(line)`). Line counts: `summary.lines` (raw), `summary.prettyLines`
 (pretty, the same for any indent). A one-line minified file should open in the pretty form.
 
+Raw lines read nothing past the front (indexing, stopped, or the error): a line that goes on past it ends there,
+`cut[k]` = 2 and `length[k]` its length so far, and no line after it is given (ask again as indexing goes on). A
+long line in a document all read answers its start without reading it all (from the last checkpoint on it).
+
 The pretty form is format.ts `stringify(root, indent)` read a line at a time (pretty.ts PrettyText): every
 value a line, every container with items one more for its close. Several top-level values are written as the
 normal path writes them: as one array. Nesting so deep the indentation exceeds format.ts `MAX_INDENT` has no
@@ -145,7 +149,68 @@ LRU), so scrolling the Format view through a region is a lookup.
 
 - `text(start, end, max)`: the text of `[start, end)`, at most `max` bytes (`cut` if more): a node's JSON, a
   preview of a long string.
-- `blob(start, end)`: the bytes as a `Blob` sliced from the File (nothing read): "Save value as file", copy.
+- `blob(start, end)`: the bytes as a `Blob` sliced from the File (nothing read): "Save value as file", copy. Only
+  while the document isn't edited (it throws 'Edited' then).
+- `slice(start, end)` (async): the document's bytes as a `Blob` of the file's slices and the edits' bytes
+  (nothing copied), edited or not.
+
+## Editing
+
+Once the document is read (`summary.done`, valid or not), it can be edited. Positions are always the document's
+as it is when the edit is asked (after the edits before it). Each call is one undo step; each answers
+`HugeEdited { version, done, canUndo, canRedo, summary }`.
+
+- `replace([{ a, b, text }], typing)`: bytes `[a, b)` replaced by `text` (UTF-8); several in one step, in
+  order, each at the document the one before leaves. `typing`: joins the last step if it goes on from it (an
+  insert right after the last one's, within a second): typing is one undo step per pause.
+- Node edits, written as the document around them is (the children's separator `,\n    ` / `, ` / `,`, their
+  indent, `": "` or `":"`; a value re-indented for where it goes, minified in a minified document, a line of its
+  own in JSON Lines):
+  - `setValue(node, json)`, `rename(parent, index, name)`, `remove(parent, index)` (with its separator; the only
+    child leaves `[]` / `{}`), `insert(parent, index, json, name)` (`index` 0..count; an object's needs `name`;
+    `parent` null: an empty document's value), `duplicate(parent, index)` (right after it; an object member
+    named `"<name> (copy)"`; any size: the copy is the same bytes, nothing is read).
+  - `nodeText(node, max = 64 MiB)` (async; 'Too big' past `max`) for the normal editor, and
+    `replaceNode(node, text)` to put its text back (re-indented if it's JSON, else as it is: the document then
+    says where it's wrong).
+  - JSON given to them must be valid ('Invalid JSON' otherwise); a node edit where it can't be: 'Not allowed'.
+- `undo()`, `redo()`: the history holds edits' bytes up to 256 MiB (the oldest steps go first).
+- After an edit the document is read again from the checkpoint before it until its index is the old one again
+  (re-synced): typing and most edits are all read again when they answer (`done`, `summary` there). An edit that
+  changes the structure past where it can re-sync (an unbalanced bracket, a string opened) reads on in steps:
+  queries meanwhile see the part read (as while opening: a front, partial nodes), progress comes through
+  `onProgress`, and the summary through `HugeClient.onSummary` once all is read. A broken document is read up to
+  its error (the normal path's message and place); fixing it re-syncs with the rest.
+- `summary` then has `edited` (the document differs from the file), `version`, `canUndo`, `canRedo`,
+  `editBytes` (edits' bytes held: the document's and the history's).
+- Speed (this host, Node, 1 GiB of records, read again before the next): typing p50 8 ms / p95 15 / max 19,
+  undo 7 ms, set / remove / insert ~22 ms p50, ≤ 52 ms. The worker reads about one checkpoint's stretch (1 MiB)
+  and moves a few numbers per checkpoint (see the core report for 10 GB).
+
+## Saving
+
+- `save(handle, inPlace, onSaved)` → `{ done, stop }`:
+  - With a File System Access `FileSystemFileHandle` (Chromium: from `showOpenFilePicker`, or from a drop:
+    `DataTransferItem.getAsFileSystemHandle()`; `showSaveFilePicker` for save as): the worker writes the document
+    to `handle.createWritable()` (64 MiB at a time, progress through `onSaved`), and `close()` swaps it in at the
+    end: a stopped or failed save leaves the file as it was. Ask for permission on the page first
+    (`handle.requestPermission({ mode: 'readwrite' })`; a dropped file's handle starts read-only), then pass the
+    handle (it can be posted to the worker).
+  - `inPlace` (the handle is the opened file's): the document then reads the saved file, nothing edited, no
+    history (the old file is gone); the index stays as it is. Save as (another file): the document keeps reading
+    the opened file, edits and history kept.
+  - No handle (other browsers): the last answer has `blob`: the document as a `Blob` of the file's slices and the
+    edits' bytes (nothing copied): download it (`URL.createObjectURL`).
+  - Edits wait for a save (they answer 'Not ready' meanwhile). A kept session is cleared by a save.
+
+## Sessions (edits kept between visits)
+
+- Edits are kept in IndexedDB a second after the last one, keyed by the file's name, size and last modified: the
+  document's pieces (references to the file and the edits' bytes) and its history (256 MiB of edits' bytes at most;
+  the history goes first if it doesn't fit, then nothing is kept).
+- Reopening the same file: `summary.session` (`{ steps, bytes, time }`) once the document is read (it may come in
+  a later summary). `restoreSession()` puts it back (the edits, then undo goes on where it was);
+  `dropSession()` drops it (closing without keeping the edits).
 
 ## Bounds (what is capped, and how)
 
@@ -165,3 +230,9 @@ LRU), so scrolling the Format view through a region is a lookup.
 - UTF-16 files (with a UTF-16 byte order mark) aren't read in huge mode.
 - Loose JSON (comments, trailing commas, single quotes…): the first problem is the error; views show the part
   before it. A streamed repair is phase 5.
+- Edits: once the document is all read (while opening they answer 'Not ready'). Duplicate names after an edit:
+  an object of at most 1 MiB that the edit is in is read again whole, and nothing re-syncs before it closes, so
+  its names are checked as when opening; in a bigger object, a name the edit makes is checked against the names
+  in the stretch read again (and old duplicates stay as found), not against all of the object's.
+- A broken document's pretty lines run to the last place a whole value ends before the error (where that is
+  depends on where the checkpoints are: an edited and a fresh document may show a few lines more or fewer there).

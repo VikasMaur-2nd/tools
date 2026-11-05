@@ -13,8 +13,11 @@ import { wasmTape, type ByteSource } from '../json/tape-wasm';
 import { CachedSource, afterBreaks, content, nextBreak, textOf } from './bytes';
 import { byteBefore, duplicates, exactError, lineCol, nameAt, prefixOf, type Parse, type Problem } from './errors';
 import { HugeIndex, type Big } from './index';
+import { lengthOf, Pieces, type Piece as EditPiece } from './pieces';
+import { Tail } from './tail';
+import { utf16Units, utf8At, utf8Table } from './utf8';
 import { Wait } from './wait';
-import { DONE, FAIL, FRONT, NEED, S_AFTER, S_COLON, S_TOP, S_VALUE, STOP, Skeleton, W_AFTER, W_CHILD, W_CLOSE, W_MEMORY, type State } from './skeleton';
+import { DONE, DW, FAIL, FRONT, FW, NEED, S_AFTER, S_COLON, S_TOP, S_VALUE, STOP, Skeleton, W_AFTER, W_CHILD, W_CLOSE, W_MEMORY, type State } from './skeleton';
 import { ARR, BOOL, LIST, NUL, NUM, OBJ, STR, type Bytes, type FindBatch, type FindOptions, type HugeError, type HugeLines, type HugeLocation, type HugeNode, type HugeOptions, type HugePage, type HugeProblem, type HugeProgress, type HugeStatus, type HugeSummary, type Seg } from './types';
 
 /** The parsers queries use: tape.wasm's module (null without WebAssembly) and the JS tape parser. */
@@ -37,6 +40,19 @@ const PREVIEWS = 64;
 const PREVIEW_MS = 60;
 /** Characters of a big string's preview. */
 const PREVIEW_CHARS = 1024;
+/** An object an edit is in that is at most this big is read again from its start, so its names are all checked again. */
+const DUP_SCAN = 1 << 20;
+/** The first window when reading again after an edit (it grows: see steps). */
+const REREAD_WINDOW = 1 << 16;
+/** Stats of a parse (lib.rs stats()). */
+const STATS = 19;
+
+/** One change of an edit: bytes [a, b) of the document (as it is then) replaced by `put`. */
+export interface EditOp {
+  a: number;
+  b: number;
+  put: readonly EditPiece[];
+}
 /** What a big string shows of itself in a pretty line (bytes). */
 const PREVIEW = 1 << 12;
 
@@ -90,8 +106,8 @@ interface Region extends Built {
 }
 
 export class HugeDoc {
-  readonly src: ByteSource;
-  readonly size: number;
+  /** The document: the file's bytes (after a byte order mark) with the edits (pieces.ts). */
+  readonly src: Pieces;
   readonly bom: number;
   readonly index = new HugeIndex();
   done = false;
@@ -114,6 +130,8 @@ export class HugeDoc {
 
   private queryWindow: number;
   private pageBytes: number;
+  /** Time big children's previews may take in a page (ms): tests make it unbounded, so a page is the same however busy the machine is. */
+  private previewMs: number;
 
   /** The indexing pass's source, when it has bytes only once read ahead (prefetch.ts): whether [at, at + len) is here. */
   private indexHas: ((at: number, len: number) => boolean) | null = null;
@@ -127,21 +145,23 @@ export class HugeDoc {
     huge: WebAssembly.Module,
     private readonly parsers: Parsers,
     readonly options: HugeOptions = {},
-    tune: { window?: number; queryWindow?: number; pageBytes?: number; index?: ByteSource & { has(at: number, len: number): boolean } } = {},
+    tune: { window?: number; queryWindow?: number; pageBytes?: number; previewMs?: number; index?: ByteSource & { has(at: number, len: number): boolean } } = {},
   ) {
     this.queryWindow = tune.queryWindow ?? QUERY_WINDOW;
+    this.previewMs = tune.previewMs ?? PREVIEW_MS;
     this.pageBytes = tune.pageBytes ?? PAGE_BYTES;
     const c = content(file);
     // (A source that keeps its own blocks (bytes.ts BlockSource) isn't cached again.)
-    this.src = (file as { cached?: boolean }).cached ? c.src : new CachedSource(c.src);
-    this.size = file.size;
+    this.src = new Pieces((file as { cached?: boolean }).cached ? c.src : new CachedSource(c.src));
     this.bom = c.bom;
     this.lines = LINES_FILE.test(options.name ?? '');
+    this.big = options.big ?? 1 << 18;
     this.ix = new Skeleton(huge);
     this.q = new Skeleton(huge);
     this.front = { pos: 0, s: this.index.state(0), part: 0, partStart: -1 };
     if (c.utf16) {
-      this.final = new Float64Array(12);
+      this.utf16 = true;
+      this.final = new Float64Array(STATS);
       this.done = true;
       this.error = { msg: 'UTF-16 files are not supported for files this big', line: 1, col: 1, pos: 0, kind: 'error' };
       return;
@@ -154,12 +174,32 @@ export class HugeDoc {
       indexSrc = { size: ahead.size - bom, read: (at, len) => ahead.read(at + bom, len) };
       this.indexHas = (at, len) => ahead.has(at + bom, len);
     }
-    if (!this.ix.start(indexSrc, { window: tune.window, every: options.every ?? 1 << 20, big: options.big ?? 1 << 18, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
-      this.final = new Float64Array(12);
+    if (!this.ix.start(indexSrc, { window: tune.window, every: options.every ?? 1 << 20, big: this.big, dups: options.dups ?? true, maxDepth: MAX_DEPTH, lines: this.lines })) {
+      this.final = new Float64Array(STATS);
       this.done = true;
       this.error = { msg: 'Not enough memory to parse this document', line: 1, col: 1, pos: 0, kind: 'error' };
     }
   }
+
+  /**
+   * The document was saved to `file` (in place): it reads that from now on, nothing edited. Its index is the
+   * same (the file is the document, byte for byte, with the same byte order mark).
+   */
+  rebase(file: ByteSource) {
+    const c = content(file);
+    this.src.rebase((file as { cached?: boolean }).cached ? c.src : new CachedSource(c.src));
+    this.regions.clear();
+    this.regionBytes = 0;
+  }
+
+  /** Bytes of the file the document would be (with its byte order mark). */
+  get size(): number {
+    return this.src.size + this.bom;
+  }
+
+  private utf16 = false;
+  /** Values of this many bytes or more are in the directory. */
+  private readonly big: number;
 
   // ── Indexing ──────────────────────────────────────────────────────────
 
@@ -204,39 +244,81 @@ export class HugeDoc {
 
   /** Stops indexing where it is: what's read stays browsable (`done` stays false). */
   stop() {
-    if (this.done) return;
+    if (this.done || this.edited) return;
     this.stopped = true;
   }
 
-  /** Where the skeleton failed (-1: it didn't). */
+  /** Where the skeleton failed (-1: it didn't), and the line breaks before it. */
   private failedAt = -1;
+  private failLines = 0;
+
+  /** Line breaks read (to where the parse failed, if it did). */
+  private breaks(st: Float64Array): number {
+    return this.done && this.failedAt >= 0 ? this.failLines : st[9];
+  }
 
   /** The skeleton failed: where, why, and its place there (the error is made from it, maybe after a Wait). */
   private failed: { at: number; why: number; anchor: [number, number, number] } | null = null;
 
+  /**
+   * Work owed to the next step (so a step that needs blocks not read yet throws its Wait with nothing half done,
+   * and runs again): reading again (an edit, or past a re-sync), finishing (the end facts).
+   */
+  private pendingRead = false;
+  private pendingFinish = false;
+
   private steps(until: number): boolean {
     while (!this.done) {
+      if (this.pendingFinish) {
+        this.finish();
+        continue;
+      }
+      if (this.pendingRead) {
+        this.readAgain();
+        this.pendingRead = false;
+        continue;
+      }
       if (this.failed) {
         this.fail();
         continue;
       }
       // (Not read yet: the caller reads ahead (indexAt) and steps again.)
       if (this.indexHas && !this.indexHas(this.ix.pos, Math.min(this.ix.window, this.src.size - this.ix.pos))) return false;
-      const r = this.ix.step();
+      // (Stopped in its window at an old checkpoint that wasn't the same: on in that window. Reading again: a window
+      // up to just past where it may re-sync (no more read than needed), else from small ones twice as big each time.)
+      let win: number | undefined;
+      if (this.edited && !this.resumeIx) {
+        const to = this.cand >= 0 ? this.tail!.ix.pos[this.cand] : -1;
+        // (Whole 64-byte blocks: a window that doesn't end the document carries stage 1's state at a block's end.)
+        // (Never more than the window it was made with.)
+        win = Math.min(this.ix.window, to > this.ix.pos ? Math.max(REREAD_WINDOW, (to - this.ix.pos + 4096 + 63) & ~63) : this.rewin);
+        this.rewin = Math.min(this.ix.window, this.rewin * 2);
+      }
+      const r = this.resumeIx ? this.ix.resume() : this.ix.step(win);
+      this.resumeIx = false;
       const out = this.ix.drain();
       this.index.addCheckpoints(out.ck);
       this.index.addBig(out.dir);
       for (const v of out.warn) this.pairs.push(v);
+      if (this.edited) this.readUpTo = r === FAIL ? this.ix.failPos : r === STOP ? this.ix.snapshot().pos : this.ix.pos;
       if (r === NEED) {
         if (performance.now() >= until) return false;
+        continue;
+      }
+      if (r === STOP && this.ix.why === W_AFTER) {
+        this.trySync();
         continue;
       }
       this.final = this.ix.stats();
       if (r === FAIL) {
         this.failed = { at: this.ix.failPos, why: this.ix.why, anchor: this.ix.failAt };
+        if (this.edited) this.keepPairs(this.failed.at);
         continue;
       }
-      this.finish();
+      // (Read to the end: the old index past here is of no use, but for the pairs the indexer couldn't find again.)
+      if (this.edited) this.keepPairs(Infinity);
+      this.tail = null;
+      this.pendingFinish = true;
     }
     return true;
   }
@@ -245,27 +327,32 @@ export class HugeDoc {
   private fail() {
     const { at, why, anchor } = this.failed!;
     this.failedAt = at;
-    const second = this.final![14];
+    // (Lines as stored up to where the parse failed: how far a parse runs past it depends on its windows.)
+    this.failLines = lineCol(this.src, this.index, at).line - 1;
+    const second = this.edited ? this.secondValue() : this.final![14];
     this.error =
       why === W_MEMORY
         ? { msg: 'Not enough memory to parse this document', ...lineCol(this.src, this.index, at), pos: at, kind: 'error' }
         : // (A second top-level value begun before: the normal path reads them all as JSON Lines then.)
           this.problem(exactError(this.src, this.index, at, anchor, this.parsers.parse, this.lines || (second >= 0 && second < at)));
     this.failed = null;
-    this.finish();
+    this.pendingFinish = true;
   }
 
   private finish() {
+    // (The end facts first: they may need blocks (a Wait), and then this runs again.)
+    if (this.edited) this.endFacts();
     this.done = true;
+    this.pendingFinish = false;
     this.ms = performance.now() - this.t0;
     // (Regions parsed while reading may end where the document did then.)
     this.regions.clear();
     this.regionBytes = 0;
   }
 
-  /** The file byte the indexing pass reads next (for a read-ahead source), and how many it reads at a time. */
-  get indexAt(): [number, number] {
-    return [this.ix.pos + this.bom, this.ix.window];
+  /** The file byte the indexing pass reads next (for a read-ahead source), and how many it reads at a time; null once edited (it reads the document then). */
+  get indexAt(): [number, number] | null {
+    return this.edited ? null : [this.ix.pos + this.bom, this.ix.window];
   }
 
   private stats(): Float64Array {
@@ -279,7 +366,8 @@ export class HugeDoc {
 
   /** The top-level values are viewed as an array of them: several, or JSON Lines by name (the normal path wraps those even when one). */
   private get multi(): boolean {
-    const n = this.stats()[3];
+    // (Reading again after an edit: as many as there were, until it's known.)
+    const n = this.done ? this.stats()[3] : Math.max(this.stats()[3], this.edited ? this.topHint : 0);
     return n > 1 || (this.lines && n > 0);
   }
 
@@ -287,10 +375,11 @@ export class HugeDoc {
     const st = this.stats();
     const records = st[3];
     const multi = this.multi;
-    // Duplicate names, confirmed and placed as they come.
-    if (this.checked < this.pairs.length) {
-      this.warnings.push(...duplicates(this.src, this.index, this.pairs.slice(this.checked)));
-      this.checked = this.pairs.length;
+    // Duplicate names, confirmed and placed as they come (the first 500: the rest only counted as more).
+    if (this.checked < this.pairs.length && this.warnings.length < 500) {
+      const upTo = Math.min(this.pairs.length, this.checked + 2 * (500 - this.warnings.length));
+      this.warnings.push(...duplicates(this.src, this.index, this.pairs.slice(this.checked, upTo)));
+      this.checked = upTo;
     }
     return {
       size: this.size,
@@ -303,7 +392,7 @@ export class HugeDoc {
       jsonl: multi && st[7] === 1,
       nodes: st[1],
       depth: st[4],
-      lines: st[9] + 1,
+      lines: this.breaks(st) + 1,
       prettyLines: st[1] + st[2] + (multi ? 2 : 0),
       error: this.error,
       status: this.status(),
@@ -391,6 +480,530 @@ export class HugeDoc {
     return { kind: b.kind, start: b.start, end: b.end, depth: b.depth, key, count: b.kind >= ARR ? b.count : 0, pretty: b.nodes + b.closers + multi, prettyLines: lines, big: true };
   }
 
+  // ── Edits ─────────────────────────────────────────────────────────────
+
+  /** Old checkpoints past an edit, to re-sync with (tail.ts). */
+  private tail: Tail | null = null;
+  /** The tail checkpoint the indexer tries to re-sync at next (-1: none: it reads on). */
+  private cand = -1;
+  /** Open containers that began before this byte (the edit being read again) may have other counts at a re-sync. */
+  private syncFrom = Infinity;
+  /**
+   * An object an edit is in (open where the indexer first stops past the edit's start, `holdAt`): no re-sync
+   * while it is open, so its names after the edit are checked against the edit's (if it isn't big: DUP_SCAN).
+   */
+  private hold: { d: number; start: number } | null = null;
+  private holdAt = -1;
+  /** The indexer stopped inside its window (a re-sync tried there): it runs on in it. */
+  private resumeIx = false;
+  /** Window bytes while reading again (from REREAD_WINDOW at each restore, doubling). */
+  private rewin = REREAD_WINDOW;
+  /** Where the indexer last started reading again, and its live checkpoint then; how far it has read since its tail was made. */
+  private readStart = 0;
+  private readUpTo = -1;
+  private restartK = 0;
+  /** Edited: whole-document facts come from the index then (endFacts). */
+  private edited = false;
+  /** Names the duplicate check skipped in the indexer's runs before its current one (opening, then each reading again). */
+  private skipped = 0;
+  /** Where the second top-level value starts (-1: none; -2: to be found again since an edit). */
+  private second = -2;
+  /** Top-level values before the edit (the view stays a list while they're read again). */
+  private topHint = 0;
+
+  /** Whether the document can be edited now: all read (valid or not), or being read again after an edit. */
+  get editable(): boolean {
+    return !this.utf16 && !this.stopped && (this.done || this.edited);
+  }
+
+  /**
+   * Applies `ops` in order (each replaces bytes [a, b) of the document as it is then by its pieces), then reads
+   * again from before the first change until the index is the document's (re-synced with the old one) or `until`
+   * (a performance.now() value); indexing then goes on in steps (step()), as while opening. Returns per op the
+   * pieces it took out (putting them back undoes it), and whether the document is all read again.
+   */
+  edit(ops: readonly EditOp[], until = Infinity): { removed: EditPiece[][]; done: boolean } {
+    if (!this.editable) throw new Error('Not ready');
+    for (const o of ops) if (!(o.a >= 0 && o.a <= o.b)) throw new RangeError('Out of range');
+    let cut = false;
+    const removed: EditPiece[][] = [];
+    for (const o of ops) {
+      if (o.b > this.src.size) throw new RangeError('Out of range');
+      cut = this.apply(o.a, o.b, o.put) || cut;
+      removed.push(this.src.splice(o.a, o.b, o.put));
+      this.tail?.replaced(o.a, o.b, lengthOf(o.put));
+    }
+    if (cut) {
+      // (Read again from the next step: nothing past the index's new end is read meanwhile.)
+      this.unread();
+      this.pendingRead = true;
+    } else if (this.cand >= 0) {
+      // (Ahead of the indexer: the same candidate, unless it died.)
+      this.cand = this.nextCand(-Infinity, this.cand - 1);
+      this.aim();
+    }
+    this.regions.clear();
+    this.regionBytes = 0;
+    // (The changes are made: a step that waits for blocks is the caller's to go on with (step()), never this again.)
+    let done = false;
+    try {
+      done = this.step(until);
+    } catch (e) {
+      if (!(e instanceof Wait)) throw e;
+    }
+    return { removed, done };
+  }
+
+  /** Not all read any more (from the index's last live checkpoint on): the document's facts, error and end to be found again. */
+  private unread() {
+    this.done = false;
+    this.pendingFinish = false;
+    this.final = null;
+    this.error = null;
+    this.failed = null;
+    this.failedAt = -1;
+    this.errorSelf = false;
+    this.errorMulti = false;
+    const live = this.index;
+    this.front = { pos: live.pos[live.n - 1], s: live.state(live.n - 1), part: 0, partStart: -1 };
+  }
+
+  /** The index before change [a, b): whether it was cut back (so the indexer reads again from its new end). */
+  private apply(a: number, b: number, put: readonly EditPiece[]): boolean {
+    void b;
+    if (!this.edited) {
+      this.edited = true;
+      const f = this.final ?? this.ix.stats();
+      this.second = f[14];
+      this.topHint = f[3];
+      this.indexHas = null;
+      this.ix.use(this.src);
+    }
+    void put;
+    if (this.second === -1 || a <= this.second) this.second = -2;
+    // (Past what the indexer has read: only the tail moves.)
+    if (!this.done && a >= this.ix.pos) return false;
+    // (An old tail's counts are older than the live checkpoints moved in front of it: marked apart.)
+    this.cut(this.index.at(a - 1), this.tail !== null);
+    return true;
+  }
+
+  /** The outermost object open at live checkpoint `k` that isn't bigger than DUP_SCAN: the live checkpoint before it, its depth, start and container's start. */
+  private objectAt(k: number): { k: number; d: number; start: number; parent: number } | null {
+    const live = this.index;
+    for (let d = 0; d < live.depth[k]; d++) {
+      const o = live.frame(k, d);
+      if (live.frames[o] !== OBJ) continue;
+      const start = live.frames[o + 2];
+      const big = live.bigAt(start) ?? this.tail?.ix.bigAt(start) ?? null;
+      if (big && big.end - big.start > DUP_SCAN) continue;
+      return { k: live.at(start), d, start, parent: d > 0 ? live.frames[live.frame(k, d - 1) + 2] : -1 };
+    }
+    return null;
+  }
+
+  /**
+   * Moves the live checkpoints after `k` (and the directory records and duplicate pairs past it) to the front of
+   * the tail. `mark`: the old tail's counts are those of an older document than these (an edit while reading
+   * again): a mark (an empty dirty stretch) between them makes each re-sync on its own.
+   */
+  private cut(k: number, mark = false) {
+    const live = this.index;
+    const old = this.tail;
+    const t = new Tail(old ? old.end : this.done && !this.error && this.final ? { kind: 'done', final: this.final.slice() } : { kind: 'open' });
+    const last = live.n - 1;
+    t.ix.appendRange(live, k + 1, last + 1, true);
+    const p0 = live.pos[k];
+    for (let j = live.dirBefore(p0); j < live.nd; j++) t.ix.copyBig(live, j);
+    let pj = 0;
+    while (pj < this.pairs.length && this.pairs[pj] < p0) pj += 2;
+    t.pairs = this.pairs.slice(pj);
+    this.pairs.length = pj;
+    if (old) {
+      if (mark) {
+        const F = live.pos[last] + 1;
+        t.dirty.push(F, F);
+        for (let j = 0; j < old.dirty.length; j += 2) {
+          const e = old.dirty[j + 1];
+          if (e <= F) continue;
+          const st = Math.max(F, old.dirty[j]);
+          if (st === F && t.dirty[t.dirty.length - 1] === F) t.dirty[t.dirty.length - 1] = e;
+          else t.dirty.push(st, e);
+        }
+      } else t.dirty = old.dirty.slice();
+      // (What the indexer has read past since the old tail was made is in the index already: its checkpoints,
+      // records and pairs before there are of an older document.)
+      const F0 = this.readUpTo;
+      // (Positions grow along the tail: the ones dropped are a run at its start.)
+      let j0 = old.next;
+      while (j0 < old.ix.n && (old.ix.pos[j0] < F0 || (mark && old.ix.pos[j0] < live.pos[last] + 1))) j0++;
+      const at = t.ix.n;
+      t.ix.appendRange(old.ix, j0, old.ix.n, true);
+      for (let j = j0; j < old.ix.n; j++) if (old.dead[j]) t.setDead(at + j - j0, true);
+      for (let j = old.nextBig; j < old.ix.nd; j++) if (old.ix.dir[j * DW + 1] > F0) t.ix.copyBig(old.ix, j);
+      for (let j = old.nextPair; j < old.pairs.length; j += 2) if (old.pairs[j] >= F0) t.pairs.push(old.pairs[j], old.pairs[j + 1]);
+    }
+    live.truncate(k);
+    this.tail = t;
+    this.readUpTo = -1;
+    // (Placed warnings past the cut are placed again.)
+    this.warnings = this.warnings.filter((w) => w.pos < p0);
+    this.checked = Math.min(this.checked, this.pairs.length);
+  }
+
+  /**
+   * Reads again from the last live checkpoint, or from the start of a small object open there (its names, before
+   * and after the edit, all checked again).
+   */
+  private readAgain() {
+    const live = this.index;
+    // (A small object open there: from the checkpoint before it, so it opens again and all its names are checked;
+    // reading that stretch costs what seeking to its start would.)
+    const o = this.objectAt(live.n - 1);
+    if (o && o.k < live.n - 1) this.cut(o.k);
+    const s = live.state(live.n - 1);
+    this.pullBack(s.pos);
+    this.restore(s);
+    this.restartK = live.n - 1;
+    this.readStart = s.pos;
+    this.syncFrom = this.tail && this.tail.dirty.length ? this.tail.dirty[0] : Infinity;
+    this.hold = null;
+    this.holdAt = this.syncFrom < Infinity ? this.syncFrom : -1;
+    this.cand = this.nextCand(s.pos, -1);
+    this.aim();
+    this.unread();
+    this.moved();
+  }
+
+  /**
+   * The indexer from state `s` (a checkpoint, or a seek's state past the last live one: its stretch's facts are
+   * in it), with the document's facts before it.
+   */
+  private restore(s: State, carry = false) {
+    this.skipped += this.ix.stats()[8];
+    if (!this.ix.restore(s, carry)) throw new Error('Out of memory');
+    this.readUpTo = s.pos;
+    this.rewin = REREAD_WINDOW;
+    const live = this.index;
+    let ok = !carry || s.lok === 1;
+    let first = -1;
+    for (let k = 1; k < live.n; k++) {
+      if (!live.lok[k]) ok = false;
+      if (first < 0 && live.sep[k] >= 0) first = live.sep[k];
+    }
+    this.ix.facts(ok, first >= 0 ? first : carry ? s.sep : -1, s.top >= 2 ? this.secondValue() : -1, this.pairs.length / 2);
+    this.resumeIx = false;
+  }
+
+  /** The next tail checkpoint after byte `after` (past `k`) to re-sync at: alive, and not inside the object held. */
+  private nextCand(after: number, k: number): number {
+    const t = this.tail;
+    if (!t) return -1;
+    const T = t.ix;
+    const h = this.hold;
+    for (let j = Math.max(t.next, k + 1); j < T.n; j++) {
+      // (Not before the dirty stretch it reads again for: re-reading what was just taken would take it again.)
+      if (t.dead[j] || T.pos[j] <= after || T.pos[j] < this.syncFrom) continue;
+      if (h && T.depth[j] > h.d && T.frames[T.frame(j, h.d) + 2] === h.start) continue;
+      return j;
+    }
+    return -1;
+  }
+
+  /** The tail's directory records and duplicate pairs before byte `pos` (where the indexer reads again from): the document's, back in the index. */
+  private pullBack(pos: number) {
+    const t = this.tail;
+    if (!t) return;
+    const T = t.ix;
+    let r = t.nextBig;
+    for (; r < T.nd && T.dir[r * DW + 1] <= pos; r++) this.index.copyBig(T, r);
+    t.nextBig = r;
+    const P = t.pairs;
+    let j = t.nextPair;
+    for (; j < P.length && P[j] < pos; j += 2) this.pairs.push(P[j], P[j + 1]);
+    t.nextPair = j;
+  }
+
+  /** The indexer stops at the edit's start (to see what it's in), then at the candidate's byte (or reads on). */
+  private aim() {
+    this.ix.target(-1);
+    this.ix.stopAfter(this.holdAt >= 0 ? this.holdAt : this.cand >= 0 ? this.tail!.ix.pos[this.cand] : -1);
+  }
+
+  /** The outermost object open in `s` that isn't big (bigger than DUP_SCAN): no re-sync until it closes. */
+  private holdOf(s: State): { d: number; start: number } | null {
+    for (let d = 0; d < s.frames.length; d++) {
+      const f = s.frames[d];
+      if (f.kind !== OBJ) continue;
+      const big = this.index.bigAt(f.start) ?? this.tail?.ix.bigAt(f.start) ?? null;
+      if (big && big.end - big.start > DUP_SCAN) continue;
+      return { d, start: f.start };
+    }
+    return null;
+  }
+
+  /** The indexer stopped: past the edit's start (what it's in), or at or after the candidate: the same state there (the old index is the document's again), or on to the next. */
+  private trySync() {
+    const s = this.ix.snapshot();
+    if (this.holdAt >= 0) {
+      this.holdAt = -1;
+      this.hold = this.holdOf(s);
+      this.cand = this.nextCand(s.pos - 1, -1);
+    }
+    const k = this.cand;
+    const T = this.tail?.ix;
+    if (k >= 0 && s.pos === T!.pos[k] && this.same(s, k)) return this.take(s, this.ix.stats(), k);
+    if (!(k >= 0 && T!.pos[k] > s.pos)) this.cand = this.nextCand(s.pos, k);
+    this.aim();
+    this.resumeIx = true;
+  }
+
+  /** Whether state `s` is tail checkpoint `k`'s: the same state and open containers (kinds, starts, names; children unless they began before the edit). */
+  private same(s: State, k: number): boolean {
+    const T = this.tail!.ix;
+    if (T.st[k] !== s.state || T.depth[k] !== s.frames.length) return false;
+    // (Several top-level values: whether each is on lines of its own after here depends on the lines the last one
+    // started and ended on, which must have moved as the rest did.)
+    const end = this.tail!.end;
+    if (s.frames.length === 0 || this.lines || this.topHint > 1 || s.top > 1 || (end.kind === 'done' && end.final[3] > 1)) {
+      const dl = s.lines - T.lines[k];
+      if (s.topLine !== T.topLine[k] + dl) return false;
+      const was = T.lastTopLine[k];
+      if (s.lastTopLine < 0 ? was >= 0 : s.lastTopLine !== was + dl) return false;
+    }
+    const F = T.frames;
+    for (let d = 0; d < s.frames.length; d++) {
+      const o = T.frame(k, d);
+      const f = s.frames[d];
+      if (F[o] !== f.kind || F[o + 2] !== f.start || F[o + 3] !== f.key) return false;
+      if (f.start >= this.syncFrom && F[o + 1] !== f.count) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Re-synced at tail checkpoint `k` (state `s` there now): the tail from it up to the next dirty stretch becomes
+   * the index again, its counts moved by what changed (the same for all of it: the bytes in between are the same).
+   */
+  private take(s: State, st: Float64Array, k: number) {
+    const t = this.tail!;
+    const T = t.ix;
+    const live = this.index;
+    const old = T.state(k);
+    const dn = s.nodes - old.nodes;
+    const dc = s.closers - old.closers;
+    const dl = s.lines - old.lines;
+    const du = s.u16 - old.u16;
+    const dt = s.top - old.top;
+    const dcount = s.frames.map((f, d) => f.count - old.frames[d].count);
+    const same = (d: number, start: number) => d < s.frames.length && s.frames[d].start === start;
+    const lineU16 = (v: number) => (v === old.lineU16 ? s.lineU16 : v + du);
+    const topLine = (v: number) => (v === old.topLine ? s.topLine : v + dl);
+    const lastTop = (v: number) => (v < 0 ? v : v === old.lastTopLine ? s.lastTopLine : v + dl);
+    // The stretch: up to the last checkpoint before the next dirty one.
+    const nd = t.dirtyAfter(s.pos);
+    const limit = nd >= 0 ? t.dirty[nd] : Infinity;
+    let m = k;
+    for (let j = k + 1; j < T.n && T.pos[j] < limit; j++) if (!t.dead[j]) m = j;
+    // (Containers open there without a record: one an edit made big gets one once their ends are known: endFacts.)
+    for (let d = 0; d < s.frames.length; d++) if (!T.bigAt(s.frames[d].start) && !live.bigAt(s.frames[d].start)) this.unsized.add(d + ':' + s.frames[d].start);
+    // Checkpoint k as the indexer has it, then the rest moved.
+    live.addState(s, st[15]);
+    // The rest in bulk (no dead ones between: they're in dirty stretches), then their counts moved.
+    const base = live.n;
+    live.appendRange(T, k + 1, m + 1, false);
+    const F = live.frames;
+    for (let j = base; j < live.n; j++) {
+      live.nodes[j] += dn;
+      live.closers[j] += dc;
+      live.lines[j] += dl;
+      live.u16[j] += du;
+      live.lineU16[j] = lineU16(live.lineU16[j]);
+      live.top[j] += dt;
+      live.topLine[j] = topLine(live.topLine[j]);
+      live.lastTopLine[j] = lastTop(live.lastTopLine[j]);
+      const from = live.from[j];
+      for (let d = from, o = live.fr[j] * FW; d < live.depth[j]; d++, o += FW) {
+        if (same(d, F[o + 2])) {
+          F[o + 1] += dcount[d];
+          F[o + 4] = s.frames[d].nodes;
+          F[o + 5] = s.frames[d].closers;
+        } else {
+          F[o + 4] += dn;
+          F[o + 5] += dc;
+        }
+      }
+    }
+    // (The last stretch, when the old end is the document's: all that's left.)
+    const all = nd < 0 && t.end.kind === 'done' && dt === 0;
+    const mEnd = all ? Infinity : T.pos[m];
+    let r = t.nextBig;
+    for (; r < T.nd && T.dir[r * DW + 1] <= s.pos; r++);
+    for (; r < T.nd && T.dir[r * DW + 1] <= mEnd; r++) {
+      // (Begun before checkpoint k: one of the containers open there, or it's an old one that's gone; one an edit
+      // made smaller than `big` isn't in the directory any more.)
+      if (T.dir[r * DW] < s.pos && (!same(T.dir[r * DW + 3], T.dir[r * DW]) || T.dir[r * DW + 1] - T.dir[r * DW] < this.big)) continue;
+      live.copyBig(T, r, (g) => {
+        if (g[0] >= s.pos) {
+          g[5] += dn;
+          g[6] += dc;
+        } else if (same(g[3], g[0])) {
+          g[4] += dcount[g[3]];
+          g[5] = s.frames[g[3]].nodes;
+          g[6] = s.frames[g[3]].closers;
+        }
+        g[7] += dn;
+        g[8] += dc;
+      });
+    }
+    t.nextBig = r;
+    // Duplicate pairs: old ones the indexer couldn't find again (their first name before where it started), then the stretch's.
+    this.keepPairs(s.pos);
+    const P = t.pairs;
+    const add: number[] = [];
+    let j = t.nextPair;
+    for (; j < P.length && P[j] <= mEnd; j += 2) add.push(P[j], P[j + 1]);
+    t.nextPair = j;
+    if (add.length) this.addPairs(add);
+    t.next = m + 1;
+    // Dirty stretches passed.
+    t.dirty = t.dirty.filter((_, i) => t.dirty[i | 1] > s.pos);
+    if (nd >= 0) {
+      // On from the last of them to the next dirty stretch.
+      this.pendingRead = true;
+    } else if (all) {
+      // The end, as it was (counts moved).
+      const fin = (t.end as { final: Float64Array }).final.slice();
+      fin[1] += dn;
+      fin[2] += dc;
+      fin[3] += dt;
+      fin[9] += dl;
+      fin[10] += du;
+      fin[11] = lineU16(fin[11]);
+      fin[8] = 0;
+      this.tail = null;
+      this.final = fin;
+      this.pendingFinish = true;
+    } else {
+      // Its end changed (the top-level values), or isn't known: read on from the last of them.
+      this.tail = null;
+      this.pendingRead = true;
+    }
+  }
+
+  /**
+   * Child `i` of container `node` (or of the LIST): where it starts (an object member: its name's quote), its
+   * value's span, and its name's end (the byte after its closing quote; -1: not an object's); null if there's none.
+   */
+  memberOf(node: HugeNode, i: number): { start: number; value: number; end: number; keyEnd: number } | null {
+    if (node.kind < ARR || i < 0) return null;
+    const at = this.seek(this.box(node), i);
+    if (!at || at.closed) return null;
+    const page = this.pageOf(node, i, 1, { previews: false });
+    const n = page?.nodes[0];
+    if (!n || n.end < 0) return null;
+    const start = at.s.pos;
+    return { start, value: n.start, end: n.end, keyEnd: node.kind === OBJ ? nameEnd(this.src, start) : -1 };
+  }
+
+  /**
+   * The tail's duplicate pairs before byte `upTo` the indexer couldn't find again, reading from where it started
+   * (their first name is before there, in an object it didn't read from its start): kept, unless an edit is on them.
+   */
+  private keepPairs(upTo: number) {
+    const t = this.tail;
+    if (!t) return;
+    const P = t.pairs;
+    const add: number[] = [];
+    let j = t.nextPair;
+    for (; j < P.length && P[j] < upTo; j += 2) if (P[j] >= this.readStart && P[j + 1] < this.readStart && !inStretch(t.dirty, P[j])) add.push(P[j], P[j + 1]);
+    t.nextPair = j;
+    if (add.length) this.addPairs(add);
+  }
+
+  /** Adds duplicate pairs (sorted by name) to those read after where the indexer started. */
+  private addPairs(add: number[]) {
+    const P = this.pairs;
+    let i = 0;
+    while (i < P.length && P[i] < this.readStart) i += 2;
+    const rest: [number, number][] = [];
+    for (let j = i; j < P.length; j += 2) rest.push([P[j], P[j + 1]]);
+    for (let j = 0; j < add.length; j += 2) rest.push([add[j], add[j + 1]]);
+    // (A name found again against a later one of its object's, and kept against an earlier one: one warning, the
+    // earliest's, as when opening.)
+    rest.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    P.length = i;
+    for (let j = 0; j < rest.length; j++) if (!j || rest[j][0] !== rest[j - 1][0]) P.push(rest[j][0], rest[j][1]);
+    this.warnings = this.warnings.filter((w) => w.pos < this.readStart);
+    this.checked = Math.min(this.checked, i);
+  }
+
+  /** Containers open where the index re-synced that had no directory record (depth:start): see endFacts. */
+  private unsized = new Set<string>();
+
+  /** The directory record of the container at depth `d` that starts at byte `start`, read to its close (null: it doesn't close). */
+  private recordOf(d: number, start: number): Float64Array | null {
+    const ix = this.index;
+    const open = (k: number) => ix.depth[k] > d && ix.frames[ix.frame(k, d) + 2] === start;
+    // (From the last checkpoint it's open at, or the one before it.)
+    let lo = ix.at(start);
+    let hi = ix.n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (open(mid)) lo = mid;
+      else if (ix.pos[mid] <= start) lo = mid;
+      else hi = mid - 1;
+    }
+    const q = this.at(ix.state(lo));
+    q.limit = Infinity;
+    q.target(d + 1, start);
+    if (q.go() !== STOP || q.why !== W_CLOSE) return null;
+    const e = q.snapshot();
+    const f = e.frames[d];
+    return Float64Array.of(start, e.pos + 1, f.kind, d, f.count, f.nodes, f.closers, e.nodes, e.closers, d > 0 ? e.frames[d - 1].start : -1);
+  }
+
+  /** The whole document's facts once it's all read again: from the index (each checkpoint's stretch) and the last stretch. */
+  private endFacts() {
+    // Containers an edit made big that close past where it re-synced: their records.
+    for (const u of this.unsized) {
+      const [d, start] = u.split(':').map(Number);
+      if (this.index.bigAt(start)) continue;
+      const r = this.recordOf(d, start);
+      if (r && r[1] - r[0] >= this.big) this.index.insertBig(r);
+    }
+    this.unsized.clear();
+    const f = this.final!;
+    const live = this.index;
+    let deep = f[18];
+    let ok = f[16] === 1;
+    for (let k = 1; k < live.n; k++) {
+      if (live.deepest[k] > deep) deep = live.deepest[k];
+      if (!live.lok[k]) ok = false;
+    }
+    f[4] = deep;
+    f[7] = ok ? 1 : 0;
+    // (The runs before the last one's (added at each restore), and the last one's.)
+    f[8] = this.skipped + this.ix.stats()[8];
+    this.second = -2;
+    f[14] = this.secondValue();
+  }
+
+  /** Where the second top-level value starts (-1: none), found again after an edit (reading from the checkpoint before it). */
+  private secondValue(): number {
+    if (this.second !== -2) return this.second;
+    // (All read, valid, one top-level value: none. Broken, a second one may have begun before the error.)
+    if (this.final && this.final[3] < 2 && !this.error && !this.failed) return (this.second = -1);
+    const live = this.index;
+    const k = Math.max(0, live.lastAtMost(live.top, 1));
+    const q = this.at(live.state(k));
+    q.limit = Infinity;
+    q.target(0, -1, 1);
+    const r = q.go();
+    this.second = r === STOP && q.why === W_CHILD ? q.snapshot().pos : -1;
+    return this.second;
+  }
+
   // ── Seeking ───────────────────────────────────────────────────────────
 
   private box(node: HugeNode): Box {
@@ -411,9 +1024,9 @@ export class HugeDoc {
   /** The last checkpoint from which a parse reaches child `i` of `b`: inside it with fewer children begun, or before it. */
   private from(b: Box, i: number): number {
     const ix = this.index;
-    if (b.d === 0) return Math.max(0, ix.lastAtMost(ix.top, i));
+    if (b.d === 0) return Math.max(0, Math.min(this.lastK, ix.lastAtMost(ix.top, i)));
     const k1 = ix.at(b.start) + 1;
-    let k2 = ix.n - 1;
+    let k2 = this.lastK;
     if (b.node.end >= 0) k2 = Math.min(k2, ix.at(b.node.end - 1));
     else {
       // (Its end not known yet: the checkpoints it is open at are k1… up to the last one where it is.)
@@ -673,7 +1286,7 @@ export class HugeDoc {
     const t0 = opts.previews === false ? 0 : performance.now();
     const stubPairs: [number, HugeNode][] = stubs.map((x, j) => {
       const n = { ...nodes[x.index - from], key: x.key };
-      if (opts.previews !== false && j < PREVIEWS && performance.now() - t0 < PREVIEW_MS) {
+      if (opts.previews !== false && j < PREVIEWS && performance.now() - t0 < this.previewMs) {
         const pv = this.previewOf(n, x.at);
         if (pv !== undefined) n.preview = pv;
       }
@@ -779,11 +1392,20 @@ export class HugeDoc {
     return this.index.nodes[k] + this.index.closers[k];
   }
 
+  /**
+   * The last checkpoint queries read from: the index's last, or (broken) the last at or before the error, which can
+   * be before where the parse failed (a string the normal path closes earlier): checkpoints past it are unread.
+   */
+  private get lastK(): number {
+    const ix = this.index;
+    const f = this.front;
+    return f && this.error && ix.pos[ix.n - 1] > f.pos ? ix.at(f.pos) : ix.n - 1;
+  }
+
   /** The last checkpoint at or before pretty line `l` (before JSON Lines' opening line). */
   private checkpointOfLine(l: number): number {
-    const ix = this.index;
     let lo = 0;
-    let hi = ix.n - 1;
+    let hi = this.lastK;
     while (lo < hi) {
       const mid = (lo + hi + 1) >>> 1;
       if (this.prettyAt(mid) <= l) lo = mid;
@@ -796,9 +1418,11 @@ export class HugeDoc {
   private region(k: number): Region | null {
     const hit = this.regions.get(k);
     const ix = this.index;
-    const last = k === ix.n - 1;
+    const lastK = this.lastK;
+    if (k > lastK) return null;
+    const last = k === lastK;
     // (A stretch near the front ends where reading had got to: made again once reading has gone 512 KiB further.)
-    if (hit && (!hit.front || (this.front && this.front.pos - hit.front < 1 << 19 && ix.n - 1 === k))) {
+    if (hit && (!hit.front || (this.front && this.front.pos - hit.front < 1 << 19 && lastK === k))) {
       this.regions.delete(k);
       this.regions.set(k, hit);
       return hit;
@@ -808,7 +1432,8 @@ export class HugeDoc {
       this.regionBytes -= hit.bytes;
     }
     if (last && this.front) {
-      const r = this.frontRegion(k, this.front.pos - (1 << 16));
+      // (Broken: up to the error when a value ends right before it, so the pretty lines run up to it.)
+      const r = this.frontRegion(k, this.front.pos - (1 << 16), !!this.error);
       if (r) this.keep(r);
       return r;
     }
@@ -832,16 +1457,29 @@ export class HugeDoc {
    * The stretch from the last checkpoint `k` to the first place a value ends at or after byte `after` before the
    * front (or, failing that, the first after the checkpoint); null if none is read yet.
    */
-  private frontRegion(k: number, after: number): Region | null {
+  private frontRegion(k: number, after: number, toFront = false): Region | null {
     const s = this.index.state(k);
-    for (const a of after > s.pos + 1 ? [after, s.pos + 1] : [s.pos + 1]) {
+    const tries = after > s.pos + 1 ? [after, s.pos + 1] : [s.pos + 1];
+    if (toFront && this.front) tries.unshift(this.front.pos);
+    for (const a of tries) {
       const q = this.at(s);
+      // (Broken, all read: the byte at the error ends a token right before it, as when it was read.)
+      if (this.error && this.done && this.front) q.limit = Math.min(this.src.size, this.front.pos + 1);
       q.target(-1);
       q.stopAfter(a);
-      if (q.go() === STOP && q.why === W_AFTER) {
-        const r = this.parseRegion(k, s, q.snapshot(), q.stats()[15]);
-        if (r) r.front = this.front ? this.front.pos : 0;
-        return r;
+      const r = q.go();
+      let e: State | null = r === STOP && q.why === W_AFTER ? q.snapshot() : null;
+      // Broken: the front is where the error is; a value that ends right before it ends a stretch there (wherever
+      // the checkpoints are).
+      if (!e && r === FRONT && this.error) {
+        const f = q.snapshot();
+        const st = q.stats();
+        if ((f.state === S_AFTER || f.state === S_TOP) && st[12] === 0 && f.pos > s.pos && f.pos >= a) e = f;
+      }
+      if (e) {
+        const reg = this.parseRegion(k, s, e, q.stats()[15]);
+        if (reg) reg.front = this.front ? this.front.pos : 0;
+        return reg;
       }
     }
     return null;
@@ -1061,11 +1699,15 @@ export class HugeDoc {
 
   // ── Raw lines ─────────────────────────────────────────────────────────
 
-  /** Lines [from, from + count) of the text as stored, each cut at `max` bytes. */
+  /**
+   * Lines [from, from + count) of the text as stored, each cut at `max` bytes. Nothing past what's read (the front:
+   * indexing, stopped, or the error) is read: a line that goes on past it ends there, cut[k] = 2 (its length so far).
+   */
   rawLines(from: number, count: number, max: number): HugeLines {
     const ix = this.index;
     const st = this.stats();
-    const total = this.done ? st[9] + 1 : ix.lines[ix.n - 1] + 1;
+    const limit = this.front ? this.front.pos : this.src.size;
+    const total = this.done ? this.breaks(st) + 1 : (this.front ? this.front.s.lines : ix.lines[ix.n - 1]) + 1;
     const n = Math.max(0, Math.min(count, total - from));
     const text: string[] = [];
     const cut = new Uint8Array(n);
@@ -1074,40 +1716,40 @@ export class HugeDoc {
     // The first line's start: after the from-th break, counted from the last checkpoint before it.
     let at = 0;
     if (from > 0 && n > 0) {
-      const k = Math.max(0, ix.lastAtMost(ix.lines, from - 1));
-      at = afterBreaks(this.src, ix.pos[k], from - ix.lines[k]);
+      const k = Math.max(0, Math.min(this.lastK, ix.lastAtMost(ix.lines, from - 1)));
+      at = afterBreaks(this.src, ix.pos[k], from - ix.lines[k], limit);
     }
     let j = 0;
-    if (at >= 0) {
+    if (at >= 0 && at <= limit) {
       for (; j < n; ) {
-        const lineEnd = this.lineEnd(from + j, at);
+        const lineEnd = this.lineEnd(from + j, at, limit);
         const len = lineEnd - at;
         text.push(textOf(this.src, at, Math.min(len, max)));
-        cut[j] = len > max ? 1 : 0;
+        cut[j] = lineEnd >= limit && limit < this.src.size ? 2 : len > max ? 1 : 0;
         length[j] = len;
         pos[j] = at;
         j++;
-        if (lineEnd >= this.src.size) break;
-        at = afterBreaks(this.src, lineEnd, 1);
+        if (lineEnd >= limit) break;
+        at = afterBreaks(this.src, lineEnd, 1, limit);
       }
     }
     return { from, text, cut: cut.subarray(0, j), length: length.subarray(0, j), pos: pos.subarray(0, j), total };
   }
 
-  /** Where line `line` (starting at byte `at`) ends: at its break, or the end. */
-  private lineEnd(line: number, at: number): number {
+  /** Where line `line` (starting at byte `at`) ends: at its break, or `limit` (the end, or what's read). */
+  private lineEnd(line: number, at: number, limit: number): number {
     const ix = this.index;
     // From the last checkpoint still on this line (a long line is crossed by checkpoints, not read).
-    const k = ix.lastAtMost(ix.lines, line);
+    const k = Math.min(this.lastK, ix.lastAtMost(ix.lines, line));
     let from = k >= 0 && ix.pos[k] > at ? ix.pos[k] : at;
     // (Big strings hold no line break: skipped.)
     for (;;) {
       const g = ix.bigFrom(from);
       const big = g < ix.bigCount ? ix.big(g) : null;
-      const until = big && big.kind === STR ? big.start : this.src.size;
+      const until = big && big.kind === STR && big.start < limit ? big.start : limit;
       const b = nextBreak(this.src, from, until);
       if (b >= 0) return b;
-      if (until >= this.src.size) return this.src.size;
+      if (until >= limit) return limit;
       from = big!.end;
     }
   }
@@ -1193,16 +1835,20 @@ export class HugeDoc {
     if (pos < 0 || pos >= this.src.size) return null;
     // (Not read yet.)
     if (this.front && pos >= this.front.pos) return null;
-    let k = ix.at(pos);
+    let k = Math.min(ix.at(pos), this.lastK);
     // (Right after a value, at the comma or bracket where a checkpoint is: the value is the region before's.)
     if (k > 0 && ix.pos[k] === pos && ix.st[k] === S_AFTER) {
       const c = this.src.read(pos - 1, 1)[0];
       if (c !== 32 && c !== 9 && c !== 10 && c !== 13) k--;
     }
     // After the last checkpoint while reading: a stretch to the first clean place past `pos`, if any before the front.
-    let r = k === ix.n - 1 && this.front ? this.frontRegion(k, pos) : this.region(k);
+    let r = k === this.lastK && this.front ? this.frontRegion(k, pos) : this.region(k);
     // (Stopped at the start of the top-level value at `pos`: that value is wanted.)
-    if (r && r.front !== undefined && r.e && r.e.pos === pos && r.e.state === S_TOP) r = this.frontRegion(k, pos + 1);
+    if (r && r.front !== undefined && r.e && r.e.pos === pos && r.e.state === S_TOP) {
+      r = this.frontRegion(k, pos + 1);
+      // (None that goes past it (it breaks first): what's open at the front.)
+      if (r && r.e && r.e.pos <= pos) r = null;
+    }
     if (!r || pos > (r.e ? r.e.pos : this.src.size)) return this.frontLocation(pos);
     const t = r.tape;
     const off = offsetOf(r, pos, this.src);
@@ -1427,6 +2073,33 @@ const STRIDE = 256;
 type Piece = string | [number, number] | (Big & { node?: HugeNode });
 
 /** A text of pieces: byte ranges of `src` (decoded as the page decodes a file), strings, and stubs for big values. */
+/** The byte after the closing quote of the string whose opening quote is at `at`. */
+function nameEnd(src: ByteSource, at: number): number {
+  for (let p = at + 1; p < src.size; ) {
+    const b = src.read(p, Math.min(1 << 16, src.size - p));
+    for (let i = 0; i < b.length; i++) {
+      if (b[i] === 92) i++;
+      else if (b[i] === 34) return p + i + 1;
+    }
+    // (An escape's backslash at the end of a read: its character is the next read's first.)
+    p += b.length + (b.length && b[b.length - 1] === 92 && !evenBackslashes(b) ? 1 : 0);
+  }
+  return src.size;
+}
+
+/** Whether the backslashes ending `b` pair up (none escapes what follows). */
+function evenBackslashes(b: Uint8Array): boolean {
+  let n = 0;
+  for (let i = b.length - 1; i >= 0 && b[i] === 92; i--) n++;
+  return n % 2 === 0;
+}
+
+/** Whether byte `pos` is in one of the [start, end) pairs of `d`. */
+function inStretch(d: number[], pos: number): boolean {
+  for (let j = 0; j < d.length; j += 2) if (pos >= d[j] && pos < d[j + 1]) return true;
+  return false;
+}
+
 function build(src: ByteSource, pieces: Piece[]): Built {
   const parts: string[] = [];
   const map: number[] = [];
@@ -1476,19 +2149,11 @@ function byteOf(b: Built, off: number): number {
   if (wide === undefined) {
     // (Made once per piece: ASCII is a byte a unit; else the bytes at every STRIDE units.)
     const end = lo + 1 < m.length / 3 ? m[lo * 3 + 3] : b.text.length;
-    wide = /[^\0-\x7f]/.test(b.text.slice(at, end)) ? strides(b.text, at, end) : null;
+    wide = /[^\0-\x7f]/.test(b.text.slice(at, end)) ? utf8Table(b.text, at, end, STRIDE) : null;
     b.wide[lo] = wide;
   }
-  if (!wide) return byte + off - at;
-  const k = Math.floor((off - at) / STRIDE);
-  return byte + wide[k] + utf8Bytes(b.text, at + k * STRIDE, off);
-}
-
-/** Bytes before every STRIDE units of text[a, e). */
-function strides(text: string, a: number, e: number): Float64Array {
-  const out = new Float64Array(Math.floor((e - a) / STRIDE) + 1);
-  for (let k = 1; k < out.length; k++) out[k] = out[k - 1] + utf8Bytes(text, a + (k - 1) * STRIDE, a + k * STRIDE);
-  return out;
+  // (utf8.ts: the page's rule too.)
+  return wide ? byte + utf8At(b.text, wide, at, off, STRIDE) : byte + off - at;
 }
 
 /** The offset in a built text of document byte `pos`: in a piece, or in the stub standing for the big value holding it (-1: neither). */
@@ -1496,39 +2161,14 @@ function offsetOf(b: Built, pos: number, src: ByteSource): number {
   const m = b.map;
   for (let j = 0; j < m.length; j += 3) {
     const byte = m[j + 1];
-    if (byte >= 0 && pos >= byte && pos < byte + m[j + 2]) return m[j] + units(src.read(byte, pos - byte));
+    if (byte >= 0 && pos >= byte && pos < byte + m[j + 2]) return m[j] + utf16Units(src.read(byte, pos - byte));
   }
   for (const [at, big] of b.stubs) if (pos >= big.start && pos <= big.end) return pos === big.end ? at + 2 : at + 1;
   // (At the very end of a piece.)
-  for (let j = 0; j < m.length; j += 3) if (m[j + 1] >= 0 && pos === m[j + 1] + m[j + 2]) return m[j] + units(src.read(m[j + 1], m[j + 2]));
+  for (let j = 0; j < m.length; j += 3) if (m[j + 1] >= 0 && pos === m[j + 1] + m[j + 2]) return m[j] + utf16Units(src.read(m[j + 1], m[j + 2]));
   return -1;
 }
 
-/** UTF-16 units of UTF-8 bytes (as decoded: a \r\n is two). */
-function units(b: Uint8Array): number {
-  let n = 0;
-  for (let i = 0; i < b.length; i++) {
-    const c = b[i];
-    if (c < 0x80) n++;
-    else if (c >= 0xc0) n += c >= 0xf0 ? 2 : 1;
-  }
-  return n;
-}
-
-/** UTF-8 bytes of `s[a, e)`. */
-function utf8Bytes(s: string, a: number, e: number): number {
-  let n = e - a;
-  for (let i = a; i < e; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80) continue;
-    if (c < 0x800) n += 1;
-    else if (c >= 0xd800 && c < 0xdc00 && i + 1 < e && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
-      n += 2;
-      i++;
-    } else n += 2;
-  }
-  return n;
-}
 
 /** The end of [at, end) of `src` without the whitespace and the one comma before `end`. */
 function trimEnd(src: ByteSource, at: number, end: number): number {

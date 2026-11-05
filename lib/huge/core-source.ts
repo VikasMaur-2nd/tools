@@ -11,6 +11,7 @@ import { kids, type JNode, type Kind, type TapeLink } from '../json/parser';
 import { clip, keyLabel, preview, primText } from '../json/format';
 import { HugeClient } from './client';
 import { PageNodes } from './page';
+import { utf16Of, utf8Bytes } from './utf8';
 import { ARR, BOOL, LIST, NUM, OBJ, STR, type HugeLocation, type HugeNode as CoreNode, type HugeProgress, type HugeSummary } from './types';
 import { CELL, PREVIEW, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
 
@@ -49,12 +50,6 @@ export const own = (s: string): string => (s.length < 2 ? s : (JSON.parse(JSON.s
 const aborted = () => new DOMException('Aborted', 'AbortError');
 const check = (signal?: AbortSignal) => {
   if (signal?.aborted) throw aborted();
-};
-
-/** UTF-8 bytes of the character at `s[i]` (a pair: 4). */
-const utf8At = (s: string, i: number) => {
-  const c = s.charCodeAt(i);
-  return c < 0x80 ? 1 : c < 0x800 ? 2 : (c & 0xfc00) === 0xd800 && i + 1 < s.length && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00 ? 4 : 3;
 };
 
 export class CoreSource implements HugeSource {
@@ -394,28 +389,14 @@ export class CoreSource implements HugeSource {
     return mode === 'raw' ? loc.line - 1 : Math.max(0, loc.node.pretty);
   }
 
-  /** The column (UTF-16 units) of byte `at` on raw line `line`. */
+  /** The column (UTF-16 units) of byte `at` on raw line `line` (utf8.ts: the worker's rule). */
   colOf(line: HugeLine, at: number) {
-    let bytes = at - line.at;
-    if (bytes < 0) return -1;
-    let i = 0;
-    for (; i < line.text.length && bytes > 0; i++) {
-      const b = utf8At(line.text, i);
-      bytes -= b;
-      if (b === 4) i++;
-    }
-    return bytes > 0 ? -1 : i;
+    return at < line.at ? -1 : utf16Of(line.text, at - line.at);
   }
 
   /** The byte of column `col` (UTF-16 units) on raw line `line`. */
   atOf(line: HugeLine, col: number) {
-    let at = line.at;
-    for (let i = 0; i < Math.min(col, line.text.length); i++) {
-      const b = utf8At(line.text, i);
-      at += b;
-      if (b === 4) i++;
-    }
-    return at;
+    return line.at + utf8Bytes(line.text, 0, Math.min(col, line.text.length));
   }
 
   // ── Find & values ───────────────────────────────────────────────────────

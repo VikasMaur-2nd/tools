@@ -146,6 +146,42 @@ export interface HugeSummary {
   ms: number;
   /** Memory the index takes (bytes). */
   indexBytes: number;
+  /** Edits (editor.ts): whether the document differs from the file, the edit count (bumped by each edit, undo and redo), whether undo and redo can go, and edits' bytes held (the document's and its history's). */
+  edited?: boolean;
+  version?: number;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  editBytes?: number;
+  /** A kept session of this file (the same name, size, last modified) that can be put back: restoreSession(). */
+  session?: HugeSession | null;
+}
+
+/** A kept session: its steps of history, edits' bytes, when it was kept (ms since 1970). */
+export interface HugeSession {
+  steps: number;
+  bytes: number;
+  time: number;
+}
+
+/**
+ * After an edit (or undo, redo): the edit count, and whether the document is all read again (`summary` then);
+ * if not, reading goes on (progress, then the summary, through HugeClient's `onSummary`).
+ */
+export interface HugeEdited {
+  version: number;
+  done: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  summary: HugeSummary | null;
+}
+
+/** Saving: bytes written so far (progress), or done (`file`: the file saved in place, now the document's). */
+export interface HugeSaved {
+  written: Bytes;
+  size: Bytes;
+  done: boolean;
+  /** Downloads (no handle given): the document as a Blob of the file's slices and the edits (nothing copied). */
+  blob?: Blob;
 }
 
 /**
@@ -173,7 +209,11 @@ export interface HugePage {
 /** Lines of the pretty form or of the text as stored. */
 export interface HugeLines {
   from: number;
-  /** Each line's text, without its break; one longer than `max` is cut (cut[k] = 1). */
+  /**
+   * Each line's text, without its break; one longer than `max` is cut (cut[k] = 1). Raw only: a line that goes on
+   * past what's read (the indexing front, a stop, an error) ends there (cut[k] = 2; its length so far), and no line
+   * after it is given.
+   */
   text: string[];
   cut: Uint8Array;
   /** Full length of each line: UTF-16 units (pretty) or bytes (raw). */
