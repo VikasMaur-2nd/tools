@@ -351,9 +351,9 @@ export class CoreSource implements HugeSource {
     return [...loc.chain.map(({ node, index }) => this.fromCore(node, index)), this.fromCore(loc.node, loc.index)];
   }
 
-  async resolve(path: Seg[], signal?: AbortSignal) {
+  async resolve(path: Seg[], signal?: AbortSignal, at?: number[]) {
     if (!path.length) return [await this.root(signal)];
-    const loc = await this.doc.resolve(path);
+    const loc = await this.doc.resolve(path, at);
     check(signal);
     return this.chainOf(loc);
   }

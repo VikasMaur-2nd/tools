@@ -201,7 +201,7 @@ export interface HugeSource {
   /** Items [from, from + n) of container `c` (fewer past its end, or past what is indexed so far). */
   children(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<HugeNode[]>;
   /** The nodes from the root down to the one at `path` (null: no such node). */
-  resolve(path: Seg[], signal?: AbortSignal): Promise<HugeNode[] | null>;
+  resolve(path: Seg[], signal?: AbortSignal, at?: number[]): Promise<HugeNode[] | null>;
   /** The nodes from the root down to the innermost value holding offset `at`. */
   locate(at: number, signal?: AbortSignal): Promise<HugeNode[]>;
   /** Items [from, from + n) of array `c` as table rows (each with at most `cols` members). */

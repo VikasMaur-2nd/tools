@@ -174,6 +174,10 @@ place): the file bar's "N changes".
   uses). The document may be invalid between keys: its error is the normal path's, placed from a few KiB before
   it. Near an edit the index keeps checkpoints 1/64 as far apart (16 KiB), so the next keystroke there reads
   a few KiB again, not a megabyte.
+- With duplicate member names, a path names the first (path.ts's rule): `resolve(path, at)` takes, per segment, the
+  child's index in its container where known (-1: by name), and answers the member at that index only if it has
+  that name (else null: stale). Edits from a selection should say which member they mean (huge-mode's edits.ts:
+  `i`, the selected node's index).
 - Node edits, written as the document around them is (the children's separator `,\n    ` / `, ` / `,`, their
   indent, `": "` or `":"`; a value re-indented for where it goes, minified in a minified document, a line of its
   own in JSON Lines):

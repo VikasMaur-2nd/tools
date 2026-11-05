@@ -114,10 +114,13 @@ export class HugeClient {
     return this.ask('locate', { pos });
   }
 
-  /** The value at `path` (`$.records[5000000].name`, `/records/5000000/name`, or segments), or null. */
-  resolve(path: string | Seg[]): Promise<HugeLocation | null> {
+  /**
+   * The value at `path` (`$.records[5000000].name`, `/records/5000000/name`, or segments), or null. `at`: per
+   * segment, the child's index in its container where known (-1: by name): with duplicate names, which member.
+   */
+  resolve(path: string | Seg[], at?: number[]): Promise<HugeLocation | null> {
     const segs = typeof path === 'string' ? parsePath(path) : path;
-    return segs ? this.ask('resolve', { path: segs }) : Promise.resolve(null);
+    return segs ? this.ask('resolve', at ? { path: segs, at } : { path: segs }) : Promise.resolve(null);
   }
 
   /** The text [start, end), at most `max` bytes of it (cut: true if there was more). */

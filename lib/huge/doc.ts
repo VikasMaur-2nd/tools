@@ -2012,14 +2012,23 @@ export class HugeDoc {
 
   // ── Paths ─────────────────────────────────────────────────────────────
 
-  /** The value at `path` (path.ts resolve's rules: an object's first member with that name), or null. */
-  resolve(path: Seg[]): HugeLocation | null {
+  /**
+   * The value at `path` (path.ts resolve's rules: an object's first member with that name), or null. `at`: per
+   * segment, the child's index in its container where known (an object's member: the one at that index, if it has
+   * that name, else null: with duplicate names, a later member is meant), else -1 / absent: by name.
+   */
+  resolve(path: Seg[], at?: readonly number[]): HugeLocation | null {
     let node = this.root();
     if (!node) return null;
-    for (const seg of path) {
+    for (let j = 0; j < path.length; j++) {
+      const seg = path[j];
       if (node.kind < ARR) return null;
       let next: HugeNode | undefined;
-      if (node.kind === OBJ) {
+      const i = at?.[j] ?? -1;
+      if (node.kind === OBJ && i >= 0) {
+        next = this.pageOf(node, i, 1, { previews: false })?.nodes[0];
+        if (!next || next.key !== String(seg)) return null;
+      } else if (node.kind === OBJ) {
         const key = String(seg);
         for (let from = 0; !next; ) {
           // (No previews: only the path's node is wanted.)

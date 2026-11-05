@@ -482,7 +482,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         case 'locate':
           return reply({ id: m.id, ok: true, value: doc.locate(m.pos), done: true });
         case 'resolve':
-          return reply({ id: m.id, ok: true, value: doc.resolve(m.path), done: true });
+          return reply({ id: m.id, ok: true, value: doc.resolve(m.path, m.at), done: true });
         case 'text':
           return reply({ id: m.id, ok: true, value: doc.text(m.start, m.end, m.max), done: true });
         case 'find':

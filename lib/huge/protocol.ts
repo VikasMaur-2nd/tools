@@ -13,7 +13,8 @@ export type Request =
   | { id: number; op: 'prettyClose'; line: number }
   | { id: number; op: 'raw'; from: number; count: number; max: number }
   | { id: number; op: 'locate'; pos: Bytes }
-  | { id: number; op: 'resolve'; path: Seg[] }
+  /** `at`: per segment, the child's index where known (duplicate names: which member). */
+  | { id: number; op: 'resolve'; path: Seg[]; at?: number[] }
   | { id: number; op: 'text'; start: Bytes; end: Bytes; max: number }
   /** Replies with batches (not done) until done. */
   | { id: number; op: 'find'; query: string; options: FindOptions }

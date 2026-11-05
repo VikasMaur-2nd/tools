@@ -296,19 +296,21 @@ export class SmallSource implements HugeSource {
     }, signal);
   }
 
-  resolve(path: Seg[], signal?: AbortSignal) {
+  resolve(path: Seg[], signal?: AbortSignal, at?: number[]) {
     return this.later(() => {
       let n = this.rootNode;
       if (!n) return null;
       const chain = [this.node(n, 0, 0, this.virtual)];
-      for (const seg of path) {
+      for (const [j, seg] of path.entries()) {
         if (n.t < ARR) return null;
         const list = kids(n);
         let k = -1;
+        const want = at?.[j] ?? -1;
         if (n.t === ARR) {
           const i = typeof seg === 'number' ? seg : /^\d+$/.test(seg) ? Number(seg) : -1;
           if (i >= 0 && i < list.length) k = i;
-        } else k = list.findIndex((x) => x.key === String(seg));
+        } else if (want >= 0) k = want < list.length && list[want].key === String(seg) ? want : -1;
+        else k = list.findIndex((x) => x.key === String(seg));
         if (k < 0 || list[k].s >= this.reach) return null;
         n = list[k];
         chain.push(this.node(n, k, chain.length));
