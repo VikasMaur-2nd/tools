@@ -240,7 +240,16 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
     };
   }, [s, at]);
 
-  const label = state === 'long' ? t('This line is too long to edit here: edit its values from the tree, or as text') : state === 'cr' ? t('This part of the file has line ends this editor can’t keep (a lone CR): edit it from the tree') : state === 'none' ? t('Nothing to edit here') : null;
+  const label =
+    state === 'long'
+      ? t('This line is too long to edit here: edit its values from the tree, or as text')
+      : state === 'cr'
+        ? t('This part of the file has line ends this editor can’t keep (a lone CR): edit it from the tree')
+        : state === 'bytes'
+          ? t('This part of the file can’t be edited here: edit it from the tree')
+          : state === 'none'
+            ? t('Nothing to edit here')
+            : null;
   return (
     <div className="hg-fe">
       <div className={`ed ${PRIVATE}`} ref={box} hidden={state !== 'ready' && state !== 'loading'}>

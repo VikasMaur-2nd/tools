@@ -10,7 +10,7 @@ import { serve } from '../lib/huge/serve';
 import { CoreSource } from '../lib/huge/core-source';
 import { parse } from '../lib/json/tape-parser';
 import { LINE_MAX, TextWindow, WINDOW_ABOVE, WINDOW_BYTES, diffText } from '../lib/huge/text-window';
-import type { HugeSource, IndexState } from '../lib/huge/source';
+import type { HugeNode, HugeSource, IndexState } from '../lib/huge/source';
 import { enc, hugeMod, memSource, tapeMod } from './huge-oracle';
 
 function inProcess(bytes: Uint8Array): Port {
@@ -285,4 +285,43 @@ test('the window let go with a key not sent yet (another file replacing this one
   w3.destroy();
   assert.equal(await w3.load(0), 'none', 'nothing more is read');
   await src.destroy();
+});
+
+/** A source over bytes (not text): invalid UTF-8 kept as it is. */
+const coreBytes = (bytes: Uint8Array) => {
+  const blob = new Blob([bytes as BlobPart]);
+  return new CoreSource(blob, 'a.json', (onProgress) => new HugeClient(blob, { name: 'a.json' }, onProgress, inProcess(bytes)));
+};
+const cat = (...parts: (string | number[])[]) => {
+  const out: number[] = [];
+  for (const p of parts) out.push(...(typeof p === 'string' ? enc.encode(p) : p));
+  return new Uint8Array(out);
+};
+// (The whole document: a node at -1 is all of it, core-source.ts slice.)
+const bytesOf = async (src: HugeSource) => new Uint8Array(await (await src.slice({ at: -1, end: -1 } as HugeNode)).arrayBuffer());
+
+test("REVIEW-2 #2: invalid UTF-8 in the window: its bytes are the document's; typing after it lands on the right bytes", async () => {
+  // "café" in Latin-1 (é = E9: one invalid byte); a cut € (E2 82); FF FE.
+  for (const bad of [[0xe9], [0xe2, 0x82], [0xff, 0xfe]]) {
+    const bytes = cat('{\n  "name": "caf', bad, '",\n  "city": "Paris"\n}\n');
+    const src = coreBytes(bytes);
+    await ended(src);
+    const w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+    assert.equal(await w.load(0), true);
+    assert.equal(w.end - w.start, bytes.length, `the window's bytes (${bad})`);
+    // Typed right before "Paris".
+    const at = w.view.indexOf('Paris');
+    assert.equal(w.byteOf(at), bytes.indexOf(0x50, 20), 'the byte of an offset after it');
+    assert.equal(w.offsetOf(bytes.indexOf(0x50, 20)), at, 'and back');
+    w.edited(w.view.slice(0, at) + 'X' + w.view.slice(at));
+    await w.flush();
+    assert.deepEqual(await bytesOf(src), cat('{\n  "name": "caf', bad, '",\n  "city": "XParis"\n}\n'), `X before Paris (${bad})`);
+    // Deleting the invalid characters (one U+FFFD per invalid run: FF FE is two) takes out their bytes, all of them.
+    const q = w.view.indexOf('caf') + 3;
+    w.edited(w.view.slice(0, q) + w.view.slice(w.view.indexOf('"', q)));
+    await w.flush();
+    assert.deepEqual(await bytesOf(src), cat('{\n  "name": "caf",\n  "city": "XParis"\n}\n'), `the invalid bytes deleted (${bad})`);
+    assert.equal(w.end - w.start, (await bytesOf(src)).length);
+    await src.destroy();
+  }
 });

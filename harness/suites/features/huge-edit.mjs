@@ -487,6 +487,28 @@ test('huge edit: after an edit, the Shape panel\'s go-to buttons wait for it to 
   t.check(vals.length > 0 && vals.every(Boolean), 'and so do the values', vals);
 });
 
+// REVIEW-2 #2: a byte that isn't UTF-8 (Latin-1 é) shifted every position after it; typing in the Format view after
+// it wrote at the wrong bytes ("PaXris"). Positions are the bytes' now.
+test('huge edit: typed in the Format view after a byte that isn\'t UTF-8: written where it was typed', async (t) => {
+  const { page } = t;
+  const latin = join(dir, 'latin1.json');
+  writeFileSync(latin, Buffer.concat([Buffer.from('{\n  "name": "caf', 'latin1'), Buffer.from([0xe9]), Buffer.from('",\n  "city": "Paris"\n}\n', 'latin1')]));
+  await t.open('/');
+  await openHuge(t, latin);
+  await editFormatAt(page, 'Paris');
+  await until(page, () => /Ln 3,/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null);
+  // (The caret at the match: before "Paris".)
+  await page.keyboard.press('Home');
+  await page.keyboard.press('End');
+  for (let k = 0; k < 6; k++) await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('X');
+  await page.keyboard.press('Escape');
+  await until(page, () => !document.querySelector('.hg-fe'), null);
+  await selectPath(page, '$.city');
+  t.check(/"XParis"/.test(await selRow(page)), 'X before Paris', await selRow(page));
+  t.check(/Valid JSON/.test(await page.evaluate(() => window.__vis('.hg-sb')?.textContent ?? '')), 'still valid');
+});
+
 // REVIEW-2 #9: a .gz file's decompressed copy is new at every open; its session is keyed on the .gz file's facts, so
 // reopening the .gz offers it. Saving a copy never offers to overwrite "the opened file" (it isn't the user's).
 const gzPath = join(dir, 'users.json.gz');

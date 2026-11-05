@@ -1561,5 +1561,7 @@
   "toast.hugeSaveIsOpenedAsk": "This is the file you opened: choose Overwrite {name}… instead",
   "toast.hugeSaveIsOpenedAsk._context": "Large-file mode: \"Save as a new file…\" and the user picked the opened file itself in the browser's save window; nothing was saved. \"Overwrite {name}…\" is the save dialog's other button (app.hugeEdOverwrite). {name}: the file name.",
   "app.hugeShStaleGo": "Edited since the shape was read: read it again to go there",
-  "app.hugeShStaleGo._context": "Large-file mode, Shape panel: tooltip of a disabled \"First\" button after the document was edited (the places the panel found are from before the edit). \"Read it again\": run the shape again."
+  "app.hugeShStaleGo._context": "Large-file mode, Shape panel: tooltip of a disabled \"First\" button after the document was edited (the places the panel found are from before the edit). \"Read it again\": run the shape again.",
+  "app.hugeFeBytes": "This part of the file can’t be edited here: edit it from the tree",
+  "app.hugeFeBytes._context": "Large-file mode, Format view's text editing: a part of the file whose text and bytes don't match (a safety check that shouldn't happen) can't be edited as text; the tree can edit its values."
 }

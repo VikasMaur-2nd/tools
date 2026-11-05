@@ -228,7 +228,8 @@ export interface HugeSource {
   /** The value's JSON text as written, or null when it is longer than `max` bytes (save it as a file instead). */
   raw(n: HugeNode, max: number, signal?: AbortSignal): Promise<string | null>;
   /** The document's text [a, b) (bytes), at most `max` bytes of it (`cut`: there was more). */
-  textAt(a: number, b: number, max: number, signal?: AbortSignal): Promise<{ text: string; cut: boolean }>;
+  /** (`bad`: which of its U+FFFD units stand for invalid UTF-8 bytes, and how many each: utf8.ts.) */
+  textAt(a: number, b: number, max: number, signal?: AbortSignal): Promise<{ text: string; cut: boolean; bad?: Float64Array | null }>;
   /** The value's bytes as the document has them (its edits too), for saving it as a file. */
   slice(n: HugeNode): Promise<Blob>;
   /** Editing, if the source can (null: read-only). */

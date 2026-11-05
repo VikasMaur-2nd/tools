@@ -8,7 +8,7 @@
  * document is read again after a change it couldn't take in at once (a string or bracket opened: 'Not ready'),
  * what's typed waits, and goes as one replace when it's ready: the editor never waits for the core.
  */
-import { utf16Of, utf8Bytes } from './utf8';
+import { badAfterEdit, utf16Of, utf8Bytes } from './utf8';
 import type { HugeSource, IndexState } from './source';
 
 /**
@@ -47,8 +47,11 @@ export interface WindowEvents {
   failed(e: unknown): void;
 }
 
-/** Why a window can't be read: no lines, its first line is longer than a window, or it has a lone CR. */
-export type WindowRefusal = 'none' | 'long' | 'cr';
+/**
+ * Why a window can't be read: no lines, its first line is longer than a window, it has a lone CR, or its text
+ * doesn't add up to its bytes (never expected: a guard, so no key is written at the wrong bytes).
+ */
+export type WindowRefusal = 'none' | 'long' | 'cr' | 'bytes';
 
 export class TextWindow {
   /** The window's first line (0-based, as written), its first byte, and how many lines it holds. */
@@ -57,6 +60,11 @@ export class TextWindow {
   lines = 0;
   /** Its text as the document has it. */
   sent = '';
+  /**
+   * Which of `sent`'s U+FFFD units stand for invalid UTF-8 bytes, and how many each (utf8.ts: the core's rule):
+   * every byte offset is counted with them (REVIEW-2 #2).
+   */
+  private bad: Float64Array | null = null;
   /**
    * The same as the editor shows it: line ends as \n (the editor keeps no \r), with where a \r\n became \n
    * (`crs`: offsets of those \n in `view`), so offsets map both ways; a new line typed is written as \r\n there.
@@ -122,21 +130,23 @@ export class TextWindow {
       }
       k = lo;
     }
-    const { text } = await this.src.textAt(start, endOf(k), LINE_MAX + 8);
+    const { text, bad } = await this.src.textAt(start, endOf(k), LINE_MAX + 8);
     if (this.gone) return 'none';
     if (/\r(?!\n)/.test(text)) return 'cr';
+    if (utf8Bytes(text, 0, text.length, bad) !== endOf(k) - start) return 'bytes';
     this.line = from;
     this.start = start;
     this.lines = k;
-    this.take(text);
+    this.take(text, bad ?? null);
     this.now = this.view;
     return true;
   }
 
   /** The window's text as the document has it now: `sent`, and `view` with its \r\n as \n. */
-  private take(text: string) {
+  private take(text: string, bad: Float64Array | null) {
     this.sent = text;
-    this.end = this.start + utf8Bytes(text);
+    this.bad = bad;
+    this.end = this.start + utf8Bytes(text, 0, text.length, bad);
     this.crs = [];
     if (text.indexOf('\r') < 0) {
       this.view = text;
@@ -235,18 +245,21 @@ export class TextWindow {
     const oa = this.orig(d.p);
     const ob = this.orig(d.p + d.del);
     const ins = this.crlf ? d.ins.replace(/\n/g, '\r\n') : d.ins;
-    const a = this.start + utf8Bytes(this.sent, 0, oa);
-    const b = a + utf8Bytes(this.sent, oa, ob);
+    const a = this.start + utf8Bytes(this.sent, 0, oa, this.bad);
+    const b = a + utf8Bytes(this.sent, oa, ob, this.bad);
     this.busy = true;
     try {
       await this.src.edits!.replace([{ a, b, text: ins }], true);
       if (this.dead) return;
       const next = this.sent.slice(0, oa) + ins + this.sent.slice(ob);
-      if (this.crlf || ins.indexOf('\r') >= 0) this.take(next);
+      // (What's typed is valid: the invalid bytes in what it replaced go, the ones after it move.)
+      const bad = badAfterEdit(this.bad, oa, ob, ins.length);
+      if (this.crlf || ins.indexOf('\r') >= 0) this.take(next, bad);
       else {
         // (No CR: the editor's text is the document's; its end moves by what changed.)
         this.end += utf8Bytes(ins) - (b - a);
         this.sent = this.view = next;
+        this.bad = bad;
       }
       if (!this.gone) this.ev.sent();
     } catch (e) {
@@ -274,11 +287,11 @@ export class TextWindow {
   /** The editor's offset of document byte `at`; -1 outside the window. */
   offsetOf(at: number): number {
     if (at < this.start || at > this.end) return -1;
-    return this.viewOf(utf16Of(this.sent, at - this.start));
+    return this.viewOf(utf16Of(this.sent, at - this.start, this.bad));
   }
 
   /** The document byte of the editor's offset `off` (meaningful once flushed: the editor's text is the document's then). */
   byteOf(off: number): number {
-    return this.start + utf8Bytes(this.sent, 0, this.orig(Math.min(off, this.view.length)));
+    return this.start + utf8Bytes(this.sent, 0, this.orig(Math.min(off, this.view.length)), this.bad);
   }
 }
