@@ -207,9 +207,13 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     else pushOwed = true;
   };
 
-  /** After an edit: reads on in steps (if it isn't all read yet), and keeps the session soon. */
+  /**
+   * After an edit: reads on in steps (if it isn't all read yet); read again within the edit's time and broken, its
+   * lines past the error counted on (then a summary through the watch stream); and keeps the session soon.
+   */
   const edited = (): HugeEdited => {
     if (!doc!.done && !stepping) void run(watchId).catch(() => {});
+    else if (doc!.counting) void countOn().catch(() => {});
     later();
     return { version: doc!.src.version, done: doc!.done, canUndo: editor!.canUndo, canRedo: editor!.canRedo, steps: editor!.applied, summary: doc!.done ? summary() : null };
   };

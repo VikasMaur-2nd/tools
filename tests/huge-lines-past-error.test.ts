@@ -9,6 +9,7 @@ import { parse } from '../lib/json/tape-parser';
 import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { CoreSource } from '../lib/huge/core-source';
+import { TextWindow } from '../lib/huge/text-window';
 import { HugeDoc } from '../lib/huge/doc';
 import { HugeEditor } from '../lib/huge/editor';
 import { piecesOf } from '../lib/huge/pieces';
@@ -144,4 +145,56 @@ test('lines past the error: an edit on a broken document reads and counts again 
   while (!d.stepLines(0));
   const now = dec.decode(d.src.read(0, d.src.size));
   check(d, now, ' (edited)');
+});
+
+test('UI-NOTES 24: an edit that breaks an all-read document: its lines past the error counted in the background, the summary pushed', async () => {
+  // (The probe: a valid 5,000-line document, the comma after line 2001's object deleted through the typing window.)
+  const good = '[\n' + Array.from({ length: 5000 }, (_, i) => `  {"id": ${i}, "name": "user ${i}"}`).join(',\n') + '\n]\n';
+  const bytes = enc.encode(good);
+  const blob = new Blob([bytes as BlobPart]);
+  const [page, worker] = channel();
+  serve(worker, async () => ({ huge: hugeMod, parsers }), () => Object.assign(memSource(bytes), { cached: true }));
+  let client!: HugeClient;
+  const src = new CoreSource(blob, 'b.json', (p) => (client = new HugeClient(blob, { name: 'b.json' }, p, page)));
+  // (The next summary `ok` takes, CoreSource's handler still called.)
+  const next = (ok: (x: HugeSummary) => boolean) =>
+    new Promise<HugeSummary | null>((done) => {
+      const prev = client.onSummary;
+      client.onSummary = (x) => {
+        prev?.(x);
+        if (ok(x)) done(x);
+      };
+      setTimeout(() => done(null), 5000);
+    });
+  const ended = () =>
+    new Promise<void>((done) => {
+      if (src.state().done) return done();
+      const stop = src.onState((s) => s.done && (stop(), done()));
+    });
+  await ended();
+  const w = new TextWindow(src, { sent() {}, failed() {} });
+  await w.load(2000);
+  const c = w.view.indexOf('{"id": 2000,') + '{"id": 2000'.length;
+  const all = next((x) => !!x.error && !x.counting);
+  w.edited(w.view.slice(0, c) + w.view.slice(c + 1));
+  await w.flush();
+  await ended();
+  const s = await all;
+  assert.ok(s, 'a summary with every line counted, pushed');
+  assert.equal(s.lines, 5003);
+  assert.equal(src.state().lines, 5003, "the UI's state follows");
+  const now = await client.summary();
+  assert.equal(now.counting, undefined);
+  assert.equal(now.lines, 5003);
+  // The raw lines go on past the error to the end.
+  const lines = await src.lines('raw', 4990, 13, 200, '  ');
+  assert.equal(lines.length, 13);
+  assert.equal(lines[12].text, '');
+  assert.equal(lines[11].text, ']');
+  // Undone (valid again), broken again by a redo: counted again each time.
+  await client.undo();
+  const again = next((x) => !!x.error && !x.counting);
+  await client.redo();
+  assert.equal((await again)?.lines, 5003);
+  await client.close();
 });
