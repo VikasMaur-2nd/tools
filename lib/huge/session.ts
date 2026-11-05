@@ -15,7 +15,8 @@ import type { Portal } from './kit';
 import { fileKind, type Events, type InputSource } from '../analytics/events';
 import { StreamFind } from './find';
 import { HugeLinesView } from './lines-view';
-import { HugeStore, type Ask, type HugeUI, type HugeView } from './state';
+import { HUGE_VIEWS, HugeStore, type Ask, type HugeUI, type HugeView } from './state';
+import { HugeTasks } from './tasks';
 import { HugeTableView } from './table-view';
 import { HugeTreeView } from './tree-view';
 import type { Open } from './tree-model';
@@ -99,6 +100,9 @@ export class HugeSession {
   private rootBusy = false;
   /** The file has several top-level values (as last seen). */
   private multi = false;
+  /** The Shape panel's and the commands' work (made when first shown). */
+  private work: HugeTasks | null = null;
+  private closers: (() => void)[] = [];
 
   /**
    * `viewer`: its UI (components/huge/HugeTool.tsx) as JsonTool renders it (the store holds it while the
@@ -193,6 +197,9 @@ export class HugeSession {
     this.tree?.destroy();
     this.lines?.destroy();
     this.table?.destroy();
+    this.work?.destroy();
+    this.work = null;
+    for (const f of this.closers.splice(0)) f();
     this.tree = this.lines = null;
     this.table = null;
     if (current === this) setCurrent(null);
@@ -202,6 +209,12 @@ export class HugeSession {
 
   get closed() {
     return this.dead;
+  }
+
+  /** Runs `f` when the session closes (a decompressed file's storage is let go then). */
+  onClose(f: () => void) {
+    if (this.dead) f();
+    else this.closers.push(f);
   }
 
   private failed(e: unknown) {
@@ -301,6 +314,16 @@ export class HugeSession {
 
   // ── Views ──────────────────────────────────────────────────────────────
 
+  /** The indent unit the tool writes with (Settings). */
+  get indent() {
+    return this.host.indent;
+  }
+
+  /** The Shape panel's and the Convert view's work over the file (lib/huge/tasks.ts). */
+  get tasks(): HugeTasks {
+    return (this.work ??= new HugeTasks(this));
+  }
+
   mountTree(el: HTMLElement) {
     this.tree?.destroy();
     const tree = (this.tree = new HugeTreeView(el, this.src, {
@@ -358,9 +381,11 @@ export class HugeSession {
     if (view === 'table' && this.sel) void this.tableForSel();
     this.ui.set({ view, ask: null });
     track('view_opened', { view, via: 'other' });
-    // Find follows the view: the same query, from where that view is.
+    // Find follows the view: the same query, from where that view is. (Only into a view Find is for: a search
+    // started in Shape or Convert would read the whole file for nothing, alongside their own pass.)
     const q = this.ui.get().find.q;
-    if (q) requestAnimationFrame(() => !this.dead && this.runFind(q));
+    if (q && (view === 'format' || view === 'tree' || view === 'table')) requestAnimationFrame(() => !this.dead && this.runFind(q));
+    else if (q) this.find.stop();
   }
 
   setMode(mode: LineMode) {
@@ -485,6 +510,20 @@ export class HugeSession {
       return;
     }
     this.tree?.setFind(q, node.at);
+    this.tree?.reveal(chain, null);
+    this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree');
+  }
+
+  /** Goes to the value at byte `at` (the Shape panel's places): the tree, opened to it, and selected. */
+  async revealAt(at: number) {
+    const chain = await this.src.locate(at);
+    if (this.dead || !chain.length) return;
+    if (this.ui.get().view !== 'tree') this.setView('tree');
+    const node = chain[chain.length - 1];
+    // (The tree mounts in the next frame when it wasn't shown yet.)
+    await new Promise((r) => requestAnimationFrame(r));
+    if (this.dead) return;
+    this.tree?.setFind('', node.at);
     this.tree?.reveal(chain, null);
     this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree');
   }
@@ -647,6 +686,13 @@ export class HugeSession {
   private key(e: KeyboardEvent): boolean {
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
+    // Alt+digit: huge mode's views, in its tabs' order (Shape is the fourth). On macOS not while typing (Option+digit types).
+    const t = e.target as HTMLElement | null;
+    const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || !!t?.isContentEditable;
+    if (e.altKey && !mod && !e.shiftKey && /^Digit[1-7]$/.test(e.code) && !(/Mac|iPhone|iPad/.test(navigator.platform) && typing)) {
+      this.setView(HUGE_VIEWS[Number(e.code.slice(5)) - 1]);
+      return true;
+    }
     if (mod && !e.shiftKey && !e.altKey && k === 'g') {
       this.openAsk();
       return true;

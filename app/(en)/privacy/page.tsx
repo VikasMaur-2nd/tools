@@ -23,6 +23,9 @@ const WHEN: Record<EventName, string> = {
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',
   agent_tool_used: 'An AI agent in your browser uses one of the JSON tool’s functions for you. What it sent and what it got back are never included.',
   huge_opened: 'A file too big for the editor opens in large-file mode, once it has been indexed (or stopped, or replaced by another document first). Its name, content and exact size are never included.',
+  huge_command: 'A large-file command (Pretty, Minify, JSON Lines, JSON array, CSV, Split or Extract) finishes, fails or is stopped. Where it wrote is one of four fixed kinds; the file’s name and content, the names it wrote, the fields and values you filtered on and the exact size are never included.',
+  huge_shape: 'The Shape panel finishes reading a large file (or is stopped). How many paths it found is sent as a range; the paths themselves, their types, counts and values are never included.',
+  huge_gz: 'A compressed .json.gz or .jsonl.gz file is opened (decompressed in your browser), with how it ended. Its name, content and exact size are never included.',
 };
 
 const PROPS: Record<string, string> = {
@@ -55,6 +58,18 @@ const PROPS: Record<string, string> = {
   outcome: 'indexed, stopped at an error, cancelled or replaced',
   index_ms: 'indexing time, 2 significant digits',
   forced: 'large-file mode forced for testing',
+  sink: 'save dialog, folder, download or zip',
+  gzip: 'compressed output',
+  ms: 'time taken, 2 significant digits',
+  filtered: 'filtered by conditions',
+  paths: 'number of paths, as a range',
+};
+
+/** Where a property means something else for one event. */
+const PROPS_OF: Partial<Record<EventName, Record<string, string>>> = {
+  huge_command: { command: 'which command', target: 'whole file or selected value', outcome: 'finished, failed or stopped' },
+  huge_shape: { target: 'whole file or selected value', outcome: 'finished, failed or stopped' },
+  huge_gz: { outcome: 'opened in the editor, opened as a large file, failed, stopped or not enough space', size: 'compressed size range' },
 };
 
 const eu = /\beu\./.test(process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '');
@@ -230,7 +245,7 @@ export default function PrivacyPage() {
                     <code>{name}</code>
                   </td>
                   <td>{WHEN[name]}</td>
-                  <td>{(EVENT_PROPS[name] as readonly string[]).map((p) => PROPS[p] ?? p).join(', ')}</td>
+                  <td>{(EVENT_PROPS[name] as readonly string[]).map((p) => PROPS_OF[name]?.[p] ?? PROPS[p] ?? p).join(', ')}</td>
                 </tr>
               ))}
             </tbody>

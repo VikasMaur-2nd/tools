@@ -18,7 +18,8 @@ const FILE_KIND_LIST = ['json', 'jsonl', 'geojson', 'har', 'map', 'txt', 'log', 
 export type FileKind = (typeof FILE_KIND_LIST)[number];
 const VALIDITIES = ['valid', 'fixable', 'invalid', 'unknown'] as const;
 type Validity = (typeof VALIDITIES)[number];
-const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare'] as const;
+/** `shape`: huge-file mode's Shape panel. */
+const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'shape'] as const;
 export type ViewId = (typeof VIEW_IDS)[number];
 /** `context_menu`: an item of the right-click menu (components/ContextMenu.tsx); `agent`: an AI agent's WebMCP tool (lib/webmcp). */
 const VIAS = ['pointer', 'keyboard', 'palette', 'context_menu', 'agent', 'other'] as const;
@@ -34,6 +35,14 @@ export type AgentToolName = (typeof AGENT_TOOLS)[number];
 /** Huge-file mode (lib/huge): the file's size range (from 300 MB; smaller only when forced for testing), and how its indexing ended. */
 const HUGE_SIZE_LIST = ['0-300MB', '300MB-1GB', '1-10GB', '10-100GB', '100GB+'] as const;
 const HUGE_OUTCOMES = ['done', 'error', 'cancelled', 'replaced'] as const;
+/** Huge mode's streamed commands (lib/huge/tasks.ts), what they read, how they ended and where they wrote. */
+const HUGE_COMMANDS = ['pretty', 'minify', 'jsonl', 'json', 'csv', 'split', 'extract'] as const;
+const HUGE_TARGETS = ['file', 'value'] as const;
+const HUGE_RUN_OUTCOMES = ['done', 'error', 'stopped'] as const;
+/** `picker`: the browser's save dialog; `folder`: a folder picked for Split's parts; `download`: written in the browser's storage, then downloaded; `zip`: Split's parts in one downloaded zip. */
+const HUGE_SINKS = ['picker', 'folder', 'download', 'zip'] as const;
+/** A .gz file: opened in the editor (small), in huge mode, or not (error, stopped, no space). */
+const HUGE_GZ_OUTCOMES = ['editor', 'huge', 'error', 'stopped', 'space'] as const;
 
 /** Discrete actions, reported as `feature_used { feature }`. */
 const FEATURES = [
@@ -46,6 +55,7 @@ const FEATURES = [
   'find', 'expand_all', 'collapse_all', 'expand_level', 'fold_input',
   'compare_swap', 'compare_format', 'compare_close',
   'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
+  'shape_go', 'shape_next', 'shape_count',
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 
@@ -90,6 +100,31 @@ export interface Events {
     jsonl: boolean;
     index_ms: number;
     forced: boolean;
+  };
+  /** A streamed command over a huge file ended (Convert view). `filtered`: Extract with conditions. */
+  huge_command: {
+    command: (typeof HUGE_COMMANDS)[number];
+    target: (typeof HUGE_TARGETS)[number];
+    outcome: (typeof HUGE_RUN_OUTCOMES)[number];
+    sink: (typeof HUGE_SINKS)[number];
+    gzip: boolean;
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
+    filtered: boolean;
+  };
+  /** The Shape panel's pass over a huge file ended. `paths`: how many paths it found, as a range. */
+  huge_shape: {
+    target: (typeof HUGE_TARGETS)[number];
+    outcome: (typeof HUGE_RUN_OUTCOMES)[number];
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
+    paths: string;
+  };
+  /** A .gz file was opened (decompressed in the browser). `size`: the compressed file's range. */
+  huge_gz: {
+    outcome: (typeof HUGE_GZ_OUTCOMES)[number];
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
   };
 }
 
@@ -225,6 +260,9 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   command_run: { command: COMMAND_IDS },
   agent_tool_used: { tool: AGENT_TOOLS, ok: 'flag' },
   huge_opened: { source: INPUT_SOURCES, file_kind: FILE_KIND_LIST, size: HUGE_SIZE_LIST, outcome: HUGE_OUTCOMES, jsonl: 'flag', index_ms: 'number', forced: 'flag' },
+  huge_command: { command: HUGE_COMMANDS, target: HUGE_TARGETS, outcome: HUGE_RUN_OUTCOMES, sink: HUGE_SINKS, gzip: 'flag', size: HUGE_SIZE_LIST, ms: 'number', filtered: 'flag' },
+  huge_shape: { target: HUGE_TARGETS, outcome: HUGE_RUN_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number', paths: COUNTS },
+  huge_gz: { outcome: HUGE_GZ_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
 };
 
 /** Allowed properties per event (see `clean`). */

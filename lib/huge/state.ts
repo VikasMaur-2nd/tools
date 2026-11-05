@@ -2,7 +2,10 @@
 import type { FindView } from './find';
 import type { IndexState, LineMode } from './source';
 
-export type HugeView = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
+export type HugeView = 'format' | 'tree' | 'table' | 'shape' | 'graph' | 'convert' | 'compare';
+
+/** The views' order (tabs, Alt+digits). */
+export const HUGE_VIEWS: HugeView[] = ['format', 'tree', 'table', 'shape', 'graph', 'convert', 'compare'];
 
 /** What a "Go to" bar asks for. */
 export type Ask = { kind: 'line'; max: number } | { kind: 'index'; max: number; partial: boolean } | { kind: 'path' } | { kind: 'row'; max: number };
