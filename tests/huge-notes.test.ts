@@ -14,7 +14,7 @@ import { HugeEditor } from '../lib/huge/editor';
 import { piecesOf } from '../lib/huge/pieces';
 import { keep, keptSteps, MemorySessionStore, sessionKey, type Kept } from '../lib/huge/session-store';
 import type { HugeSummary } from '../lib/huge/types';
-import { hugeMod, open, tapeMod } from './huge-oracle';
+import { hugeMod, normalStatus, open, tapeMod } from './huge-oracle';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -94,7 +94,7 @@ test('notes 15: replaceNode puts strict JSON re-indented, anything else as typed
     assert.equal(dec.decode(d.src.read(0, d.src.size)), want, `as typed: ${JSON.stringify(typed)}`);
     assert.ok(d.summary().error, `the document says where it's wrong: ${JSON.stringify(typed)}`);
     // Its error is the normal path's for the same text.
-    assert.equal(d.summary().error!.msg, parse(want).head.error?.message ?? d.summary().error!.msg);
+    assert.equal(d.summary().error!.msg, normalStatus(enc.encode(want))?.msg);
     ed.undo();
     assert.equal(dec.decode(d.src.read(0, d.src.size)), docText);
     assert.equal(d.summary().error, null);
