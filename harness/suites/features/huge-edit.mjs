@@ -963,3 +963,38 @@ test('huge edit: two tabs, both edited: when the first closes, the second says t
   t.check(await until(b, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'reopened: the first tab\'s edit offered');
   await b.close();
 });
+
+// REVIEW-4 M1: the first edit made in the Format view's text editing discards an offered session; its toast's Undo,
+// clicked with the window still open, leaves text editing, brings the offer back, and Restore puts it back whole.
+test('huge edit: "Discarded · Undo" clicked while the Format view is edited: the kept session is offered again, whole', { engines: ['chromium'] }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await selectPath(page, '$.users[5].name');
+  await page.keyboard.press('Delete');
+  await selectPath(page, '$.users[6].name');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 2 changes/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await page.waitForTimeout(1500);
+  page.on('dialog', (d) => void d.accept());
+  await page.reload();
+  await openHuge(t, path);
+  t.assert(await until(page, () => /Restore 2 unsaved changes from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'offered');
+  // The first edit, typed in the Format view.
+  await editFormatAt(page, '"user 9"');
+  await page.keyboard.press('End');
+  await page.keyboard.type('Q');
+  t.check(await toasted(page, /Discarded the 2 kept changes/), 'discarded, said so', await toasts(page));
+  t.check(!!(await page.evaluate(() => document.querySelector('.hg-fe'))), 'still editing the text');
+  await page.locator('.toast .toast-act', { hasText: 'Undo' }).click();
+  t.check(await until(page, () => /Restore 2 unsaved changes from/.test(window.__vis('.hg-restore')?.textContent ?? '') && !window.__vis('.hg-edited'), null, { timeout: 10_000 }), 'Undo: offered again, the typed key gone', await toasts(page));
+  t.check(!(await page.evaluate(() => document.querySelector('.hg-fe'))), 'text editing left');
+  await page.locator('.hg-restore .btn.primary').click();
+  t.check(await until(page, () => /Edited · 2 changes/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 10_000 }), 'restored: both changes', await edited(page));
+  await selectPath(page, '$.users[5]');
+  t.check(/\{2\}/.test(await selRow(page)), '$.users[5] as kept', await selRow(page));
+  await selectPath(page, '$.users[6]');
+  t.check(/\{2\}/.test(await selRow(page)), '$.users[6] as kept', await selRow(page));
+  await selectPath(page, '$.users[9].name');
+  t.check(/"user 9"/.test(await selRow(page)), 'the typed key not in it', await selRow(page));
+});
