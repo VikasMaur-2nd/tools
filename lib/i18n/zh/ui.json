@@ -800,5 +800,6 @@
   "cmd.graph-start.terms": "顶部 根 第一个 开头",
   "cmd.graph-end.terms": "底部 最后 结尾",
   "cmd.graph-export.terms": "下载 png jpeg jpg svg 图片 保存",
-  "cmd.graph-copy.terms": "剪贴板 图片 png 截图"
+  "cmd.graph-copy.terms": "剪贴板 图片 png 截图",
+  "app.hugeCmdSplitFile": "拆分文件"
 }

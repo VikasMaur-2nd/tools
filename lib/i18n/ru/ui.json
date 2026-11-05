@@ -857,5 +857,6 @@
   "cmd.graph-start.terms": "верх корень первый начало",
   "cmd.graph-end.terms": "низ последний конец",
   "cmd.graph-export.terms": "скачать png jpeg jpg svg изображение сохранить",
-  "cmd.graph-copy.terms": "буфер обмена изображение png скриншот"
+  "cmd.graph-copy.terms": "буфер обмена изображение png скриншот",
+  "app.hugeCmdSplitFile": "Разделение файла"
 }

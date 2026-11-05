@@ -800,5 +800,6 @@
   "cmd.graph-start.terms": "맨 위 루트 처음 시작",
   "cmd.graph-end.terms": "맨 아래 마지막 끝",
   "cmd.graph-export.terms": "다운로드 png jpeg jpg svg 이미지 저장",
-  "cmd.graph-copy.terms": "클립보드 이미지 png 스크린샷"
+  "cmd.graph-copy.terms": "클립보드 이미지 png 스크린샷",
+  "app.hugeCmdSplitFile": "파일 분할"
 }

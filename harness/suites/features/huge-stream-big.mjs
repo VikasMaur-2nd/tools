@@ -225,7 +225,7 @@ async function run(t, page, size) {
     await c.locator('select').selectOption('eq');
     await c.locator('.hc-val').fill('false');
   });
-  await cmd('split-256mb', 'Split', async () => {
+  await cmd('split-256mb', 'Split file', async () => {
     await page.locator('#hg-convert .hc-num').first().fill('256');
     await page.locator('#hg-convert select').first().selectOption('mb');
   });

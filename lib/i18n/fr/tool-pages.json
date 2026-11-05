@@ -1544,7 +1544,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "4a678029af2c",
+    "hash": "6183ad81c2f8",
     "title": "Ouvrir un gros fichier JSON de plusieurs Go",
     "description": "Ouvrez des fichiers JSON et JSON Lines de plusieurs Go dans le navigateur. Parcourez-les dès la lecture, cherchez, modifiez, découpez, convertissez en CSV.",
     "heading": "Visualiseur de gros fichiers JSON",
@@ -1624,7 +1624,7 @@
       {
         "heading": "Comment découper un gros fichier JSON",
         "paragraphs": [
-          "Ouvrez le fichier, choisissez « Convertir », puis « Split ». « Split » prend le tableau principal d'enregistrements, le tableau JSON que vous sélectionnez dans l'arborescence ou les enregistrements d'un fichier JSON Lines. Découpez par nombre d'enregistrements par partie, de mégaoctets par partie ou de parties ; chaque partie est un tableau JSON ou un fichier JSON Lines valide. Dans Chrome et Edge, « Choose a folder… » écrit les parties directement dans un dossier ; les autres navigateurs les téléchargent dans un seul fichier zip.",
+          "Ouvrez le fichier, choisissez « Convertir », puis « Découper le fichier ». La commande prend le tableau principal d'enregistrements, le tableau JSON que vous sélectionnez dans l'arborescence ou les enregistrements d'un fichier JSON Lines. Découpez par nombre d'enregistrements par partie, de mégaoctets par partie ou de parties ; chaque partie est un tableau JSON ou un fichier JSON Lines valide. Dans Chrome et Edge, « Choose a folder… » écrit les parties directement dans un dossier ; les autres navigateurs les téléchargent dans un seul fichier zip.",
           "Pour ne garder que certains enregistrements, choisissez « Extract ». Ajoutez des conditions comme status est active ou price < 10, exigez qu'elles soient toutes remplies ou qu'une seule le soit, puis écrivez les enregistrements correspondants, ou seulement les premiers, en JSON, JSON Lines ou CSV."
         ]
       },

@@ -189,7 +189,7 @@ test('huge stream: Split writes its parts into a zip; Extract picks records by c
   await openHuge(t, linesPath);
   const r = await runCommand(
     t,
-    'Split',
+    'Split file',
     async (p) => {
       await p.locator('#hg-convert .hc-num').first().fill('700');
     },

@@ -1558,7 +1558,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "4a678029af2c",
+    "hash": "6183ad81c2f8",
     "title": "Visor de archivos JSON grandes de varios GB",
     "description": "Abre archivos JSON y JSON Lines de muchos gigabytes en tu navegador. Explora mientras se leen, busca, edita, divide o convierte a CSV, sin subir nada.",
     "heading": "Visor de archivos JSON grandes",
@@ -1637,7 +1637,7 @@
       {
         "heading": "Cómo dividir un archivo JSON grande",
         "paragraphs": [
-          "Abre el archivo, elige Convertir y después Split. Split toma el array principal de registros, el array que selecciones en el árbol o los registros de un archivo JSON Lines. Divide por registros por parte, megabytes por parte o número de partes; cada parte es un array JSON o un archivo JSON Lines válido. En Chrome y Edge, Choose a folder… escribe las partes directamente en una carpeta; los demás navegadores las descargan en un único archivo zip.",
+          "Abre el archivo, elige Convertir y después Dividir archivo. Este comando toma el array principal de registros, el array que selecciones en el árbol o los registros de un archivo JSON Lines. Divide por registros por parte, megabytes por parte o número de partes; cada parte es un array JSON o un archivo JSON Lines válido. En Chrome y Edge, Choose a folder… escribe las partes directamente en una carpeta; los demás navegadores las descargan en un único archivo zip.",
           "Para quedarte solo con algunos registros, elige Extract. Añade condiciones como status es active o price < 10, exige que se cumplan todas o cualquiera, y escribe los registros que coinciden, o solo los primeros, como JSON, JSON Lines o CSV."
         ]
       },

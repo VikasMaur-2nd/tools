@@ -1550,7 +1550,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "4a678029af2c",
+    "hash": "6183ad81c2f8",
     "title": "大 JSON 文件查看器：可打开数 GB 文件",
     "description": "在浏览器中打开数 GB 的 JSON 和 JSON Lines 文件。边读取边浏览，可搜索、编辑、拆分或转换为 CSV，无需上传。",
     "heading": "大 JSON 文件查看器",
@@ -1630,7 +1630,7 @@
       {
         "heading": "如何拆分大 JSON 文件",
         "paragraphs": [
-          "打开文件，选择“转换”，然后选择“Split”。“Split”会使用主要的记录数组、你在树中选中的数组，或 JSON Lines 文件中的记录。可以按每份的记录数、每份的大小（MB）或总份数拆分；每一份都是有效的 JSON 数组或 JSON Lines 文件。在 Chrome 和 Edge 中，“Choose a folder…”会把各部分直接写入一个文件夹；其他浏览器则把它们打包成一个 zip 文件下载。",
+          "打开文件，选择“转换”，然后选择“拆分文件”。该命令会使用主要的记录数组、你在树中选中的数组，或 JSON Lines 文件中的记录。可以按每份的记录数、每份的大小（MB）或总份数拆分；每一份都是有效的 JSON 数组或 JSON Lines 文件。在 Chrome 和 Edge 中，“Choose a folder…”会把各部分直接写入一个文件夹；其他浏览器则把它们打包成一个 zip 文件下载。",
           "如果只想保留部分记录，请选择“Extract”。添加条件，例如 status 等于 active 或 price < 10，选择满足全部条件还是任一条件，然后把匹配的记录（或仅前若干条）写成 JSON、JSON Lines 或 CSV。"
         ]
       },

@@ -321,7 +321,7 @@ export const TOOL_PAGES: ToolPage[] = [
         'Commands stream too. In Chromium, the 1 GB file was converted to CSV in about 41 seconds, split into 256 MB parts in about 25 and minified in about 20, each within 0.25 GB of extra memory.',
       ] },
       { heading: 'How to split a large JSON file', paragraphs: [
-        'Open the file, choose Convert, then Split. Split takes the main array of records, or the array you select in the tree, or the records of a JSON Lines file. Split by records per part, megabytes per part or a number of parts; each part is a valid JSON array or JSON Lines file. In Chrome and Edge, Choose a folder… writes the parts straight into a folder; other browsers download them as one zip file.',
+        'Open the file, choose Convert, then Split file. It takes the main array of records, or the array you select in the tree, or the records of a JSON Lines file. Split by records per part, megabytes per part or a number of parts; each part is a valid JSON array or JSON Lines file. In Chrome and Edge, Choose a folder… writes the parts straight into a folder; other browsers download them as one zip file.',
         'To keep only some records, choose Extract. Add conditions such as status is active or price < 10, match all or any of them, and write the matching records, or only the first ones, as JSON, JSON Lines or CSV.',
       ] },
       { heading: 'Convert a large JSON file to CSV', paragraphs: [

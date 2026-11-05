@@ -800,5 +800,6 @@
   "cmd.graph-start.terms": "先頭 ルート 最初 上",
   "cmd.graph-end.terms": "末尾 最後 下",
   "cmd.graph-export.terms": "ダウンロード png jpeg jpg svg 画像 保存",
-  "cmd.graph-copy.terms": "クリップボード 画像 png スクリーンショット"
+  "cmd.graph-copy.terms": "クリップボード 画像 png スクリーンショット",
+  "app.hugeCmdSplitFile": "ファイル分割"
 }

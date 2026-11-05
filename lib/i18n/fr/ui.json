@@ -838,5 +838,6 @@
   "cmd.graph-start.terms": "haut racine premier début",
   "cmd.graph-end.terms": "bas dernier fin",
   "cmd.graph-export.terms": "télécharger png jpeg jpg svg image enregistrer",
-  "cmd.graph-copy.terms": "presse-papiers image png capture"
+  "cmd.graph-copy.terms": "presse-papiers image png capture",
+  "app.hugeCmdSplitFile": "Découper le fichier"
 }

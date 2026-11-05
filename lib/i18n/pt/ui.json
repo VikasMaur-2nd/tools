@@ -838,5 +838,6 @@
   "cmd.graph-start.terms": "topo raiz primeiro início",
   "cmd.graph-end.terms": "fim último final",
   "cmd.graph-export.terms": "baixar png jpeg jpg svg imagem salvar",
-  "cmd.graph-copy.terms": "área de transferência imagem png captura"
+  "cmd.graph-copy.terms": "área de transferência imagem png captura",
+  "app.hugeCmdSplitFile": "Dividir arquivo"
 }

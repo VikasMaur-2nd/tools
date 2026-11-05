@@ -111,7 +111,7 @@ const KINDS: { id: CommandKind; label: string; about: string }[] = [
   { id: 'jsonl', label: 'JSON Lines', about: 'Each item of the array on a line of its own (NDJSON).' },
   { id: 'json', label: 'JSON array', about: 'The records of a JSON Lines file as one JSON array.' },
   { id: 'csv', label: 'CSV', about: 'A row per record, nested fields as dotted columns, as the CSV converter makes it.' },
-  { id: 'split', label: 'Split', about: 'The records in parts of a size you choose, each a file of its own.' },
+  { id: 'split', label: 'Split file', about: 'The records in parts of a size you choose, each a file of its own.' },
   { id: 'extract', label: 'Extract', about: 'Only the records that match, or the first ones, as JSON, JSON Lines or CSV.' },
 ];
 

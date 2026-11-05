@@ -1569,7 +1569,7 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "4a678029af2c",
+    "hash": "6183ad81c2f8",
     "title": "Große JSON-Datei öffnen, auch mehrere GB groß",
     "description": "Öffne JSON- und JSON-Lines-Dateien mit vielen GB im Browser. Schon beim Einlesen ansehen, suchen, bearbeiten, aufteilen oder in CSV umwandeln, ohne Upload.",
     "heading": "Große JSON-Datei öffnen",
@@ -1649,7 +1649,7 @@
       {
         "heading": "So teilst du eine große JSON-Datei auf",
         "paragraphs": [
-          "Öffne die Datei, wähle „Konvertieren“ und dann „Split“. „Split“ nimmt das Hauptarray mit den Datensätzen, das Array, das du im Baum auswählst, oder die Datensätze einer JSON-Lines-Datei. Teile nach Datensätzen pro Teil, Megabyte pro Teil oder Anzahl der Teile auf; jeder Teil ist ein gültiges JSON-Array oder eine gültige JSON-Lines-Datei. In Chrome und Edge schreibt „Choose a folder…“ die Teile direkt in einen Ordner; andere Browser laden sie als eine ZIP-Datei herunter.",
+          "Öffne die Datei, wähle „Konvertieren“ und dann „Datei aufteilen“. Der Befehl nimmt das Hauptarray mit den Datensätzen, das Array, das du im Baum auswählst, oder die Datensätze einer JSON-Lines-Datei. Teile nach Datensätzen pro Teil, Megabyte pro Teil oder Anzahl der Teile auf; jeder Teil ist ein gültiges JSON-Array oder eine gültige JSON-Lines-Datei. In Chrome und Edge schreibt „Choose a folder…“ die Teile direkt in einen Ordner; andere Browser laden sie als eine ZIP-Datei herunter.",
           "Wenn du nur einige Datensätze brauchst, wähle „Extract“. Füge Bedingungen hinzu, etwa status ist active oder price < 10, lass alle oder eine davon gelten und schreibe die passenden Datensätze oder nur die ersten als JSON, JSON Lines oder CSV."
         ]
       },

@@ -1312,6 +1312,8 @@
   "app.hugeCmdAs._context": "Large-file mode, Convert view: commands that write a huge JSON file again (pretty, minified, JSON Lines, CSV, split, extract) straight to a file.",
   "app.hugeCmdCSV": "CSV",
   "app.hugeCmdCSV._context": "Large-file mode, Convert view: commands that write a huge JSON file again (pretty, minified, JSON Lines, CSV, split, extract) straight to a file.",
+  "app.hugeCmdSplitFile": "Split file",
+  "app.hugeCmdSplitFile._context": "Large-file mode, Convert view: commands that write a huge JSON file again (pretty, minified, JSON Lines, CSV, split, extract) straight to a file. The name of the Split command, which cuts the file’s records into several smaller files (not Compare’s side-by-side layout, which is also called Split).",
   "app.hugeCmdCompress": "Compress",
   "app.hugeCmdCompress._context": "Large-file mode, Convert view: commands that write a huge JSON file again (pretty, minified, JSON Lines, CSV, split, extract) straight to a file.",
   "app.hugeCmdIndentedAndReadableAs": "Indented and readable, as the Format view writes it.",

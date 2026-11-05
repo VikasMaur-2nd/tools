@@ -838,5 +838,6 @@
   "cmd.graph-start.terms": "arriba raíz primero inicio",
   "cmd.graph-end.terms": "abajo último final",
   "cmd.graph-export.terms": "descargar png jpeg jpg svg imagen guardar",
-  "cmd.graph-copy.terms": "portapapeles imagen png captura"
+  "cmd.graph-copy.terms": "portapapeles imagen png captura",
+  "app.hugeCmdSplitFile": "Dividir archivo"
 }
