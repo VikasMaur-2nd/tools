@@ -303,8 +303,6 @@ static mut SCRATCH_CAP: usize = 0;
 /** A name with invalid UTF-8, as decoded (decoded()), and its room. */
 static mut NORM: usize = 0;
 static mut NORM_CAP: usize = 0;
-/** decoded(): the name is valid UTF-8 (its bytes as they are). */
-const VALID: usize = usize::MAX - 1;
 
 /// Starts a parse. `wcap`: window bytes (a multiple of 64); `flags`: 1 checkpoints, 2 duplicate names, 4 the
 /// directory, 8 JSON Lines; `ck_every`: bytes between checkpoints; `big`: the size from which a value is in the directory;
@@ -1202,6 +1200,7 @@ unsafe fn wtf8(at: &mut usize, cp: u32) {
 
 /// The UTF-8 sequence at `a + i` (i < len), as TextDecoder reads bytes: its length if valid (1-4), else 0 minus the
 /// bytes that make one U+FFFD (a maximal invalid subsequence; the next byte is read again).
+#[inline(always)]
 unsafe fn seq_at(a: usize, i: usize, len: usize) -> isize {
     let c = *((a + i) as *const u8);
     if c < 0x80 {
@@ -1235,22 +1234,9 @@ unsafe fn seq_at(a: usize, i: usize, len: usize) -> isize {
 
 /// A name's bytes as the page's text has them: each invalid UTF-8 sequence as U+FFFD (EF BF BD), as TextDecoder
 /// decodes the document before the normal path parses it (names alike once decoded are the same name), at NORM:
-/// its length; VALID if all valid (the bytes as they are); usize::MAX if too long to check.
+/// its length; usize::MAX if too long to check. `from`: where its first invalid sequence is (valid before it).
 #[inline(never)]
-unsafe fn decoded(a: usize, len: usize) -> usize {
-    let mut i = 0;
-    let mut bad = false;
-    while i < len {
-        let l = seq_at(a, i, len);
-        if l < 0 {
-            bad = true;
-            break;
-        }
-        i += l as usize;
-    }
-    if !bad {
-        return VALID;
-    }
+unsafe fn decoded(a: usize, len: usize, from: usize) -> usize {
     if len > ESC_CAP {
         return usize::MAX;
     }
@@ -1263,8 +1249,9 @@ unsafe fn decoded(a: usize, len: usize) -> usize {
         NORM = p;
         NORM_CAP = cap;
     }
-    let mut at = 0usize;
-    i = 0;
+    core::ptr::copy_nonoverlapping(a as *const u8, NORM as *mut u8, from);
+    let mut at = from;
+    let mut i = from;
     while i < len {
         let l = seq_at(a, i, len);
         if l > 0 {
@@ -1496,29 +1483,75 @@ unsafe fn dup(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
 unsafe fn dup_check(f: *mut u64, a: usize, len: usize, pos: u64) -> bool {
     let mut p = a;
     let mut l = len;
+    // ASCII names without escapes (nearly all): 8 bytes a step, until a byte >= 0x80 or a backslash (a zero byte in
+    // the word XOR backslashes); then byte by byte to it.
     let mut k = 0;
+    let mut esc = false;
     let mut high = false;
-    while k < len {
-        let c = *((a + k) as *const u8);
-        if c == b'\\' {
+    while k + 8 <= len {
+        let w = core::ptr::read_unaligned((a + k) as *const u64);
+        let x = w ^ 0x5c5c_5c5c_5c5c_5c5c;
+        if (w | (x.wrapping_sub(0x0101_0101_0101_0101) & !x)) & 0x8080_8080_8080_8080 != 0 {
             break;
         }
-        high |= c >= 0x80;
+        k += 8;
+    }
+    while k < len {
+        let c = *((a + k) as *const u8);
+        if c >= 0x80 {
+            high = true;
+            break;
+        }
+        if c == b'\\' {
+            esc = true;
+            break;
+        }
         k += 1;
     }
-    // (Invalid UTF-8 in it: as the page's text has it, before any escapes are read.)
-    if high || k < len {
-        let n = decoded(a, len);
-        if n == usize::MAX {
-            DUP_SKIPPED += 1;
-            return true;
+    if high || esc {
+        // (Non-ASCII or escapes: the rest read for both, and whether it's valid UTF-8 (each sequence checked where it
+        // starts). Invalid: the name as the page's text has it, each invalid sequence U+FFFD, before escapes are read.)
+        let mut bad = false;
+        while k < len {
+            let c = *((a + k) as *const u8);
+            if c < 0x80 {
+                // (A run of ASCII: 8 bytes a step, backslashes looked for in it.)
+                if k + 8 <= len {
+                    let w = core::ptr::read_unaligned((a + k) as *const u64);
+                    if w & 0x8080_8080_8080_8080 == 0 {
+                        let x = w ^ 0x5c5c_5c5c_5c5c_5c5c;
+                        esc |= x.wrapping_sub(0x0101_0101_0101_0101) & !x & 0x8080_8080_8080_8080 != 0;
+                        k += 8;
+                        continue;
+                    }
+                }
+                esc |= c == b'\\';
+                k += 1;
+                continue;
+            }
+            let n = seq_at(a, k, len);
+            if n < 0 {
+                bad = true;
+                break;
+            }
+            k += n as usize;
         }
-        if n != VALID {
+        if bad {
+            let first = k;
+            while k < len && !esc {
+                esc = *((a + k) as *const u8) == b'\\';
+                k += 1;
+            }
+            let n = decoded(a, len, first);
+            if n == usize::MAX {
+                DUP_SKIPPED += 1;
+                return true;
+            }
             p = NORM;
             l = n;
         }
     }
-    if k < len {
+    if esc {
         l = unescape(p, l);
         if l == usize::MAX {
             DUP_SKIPPED += 1;
