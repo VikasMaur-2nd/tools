@@ -110,6 +110,9 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   let waitLock: AbortController | null = null;
   let kept: Head | null = null;
   let aside: Head | null = null;
+  // A session another tab kept for this file (or an earlier visit), found when this tab took the file over with
+  // edits of its own: never replaced nor touched from here. This tab keeps nothing then ('other-tab-kept').
+  let blocked: Head | null = null;
   let keeper = new Keeper();
   let keptVersion = -1;
   let closing = false;
@@ -134,7 +137,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     const s = doc!.summary();
     // (undefined while the look for one is under way.)
     const session = !looked ? undefined : kept ? sessionOf(kept) : null;
-    const more = store ? { session, keeping: keepState, setAside: aside ? sessionOf(aside) : null } : { session };
+    const more = store ? { session, keeping: blocked ? ('other-tab-kept' as const) : keepState, setAside: aside ? sessionOf(aside) : null } : { session };
     if (!editor) return session === undefined && !store ? s : { ...s, ...more };
     return { ...s, edited: doc!.src.edited, version: doc!.src.version, canUndo: editor.canUndo, canRedo: editor.canRedo, steps: editor.applied, editBytes: doc!.src.editBytes + editor.historyBytes, ...more };
   };
@@ -229,7 +232,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   let keepingNow: Promise<boolean> | null = null;
   const keepNow = (): Promise<boolean> => {
     keepTimer = null;
-    if (!store || !key || !lock || !editor || kept) return Promise.resolve(false);
+    if (!store || !key || !lock || !editor || kept || blocked) return Promise.resolve(false);
     const d = doc!;
     const version = d.src.version;
     const plan = d.src.edited ? keeper.plan(d.src.list, editor.history.steps, editor.history.applied, editor.droppedSteps, d.src.base.size, print) : null;
@@ -269,7 +272,8 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     aside = null;
     keptVersion = -1;
     keeper.reset();
-    if (store && key && lock) await store.delete(key, 'all');
+    // (Not another tab's: kept as it is.)
+    if (store && key && lock && !blocked) await store.delete(key, 'all');
   };
 
   /** The session on offer set aside (a first edit made, or edits before the look ended): back with reofferSession till close. */
@@ -282,8 +286,15 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   /**
    * The session for this file found (with its lock held): on offer if the document is the file still, else set
    * aside. (A set-aside one left by a tab that didn't close: back on offer if nothing was kept after it, else gone.)
+   * `takeover`: the lock came when another tab let the file go; this document edited meanwhile, any session kept
+   * for the file stays as it is (`blocked`: this tab keeps nothing), else this tab's edits are kept.
    */
-  const found = async () => {
+  const found = async (takeover = false) => {
+    if (takeover && !unedited()) {
+      blocked = (await store!.get(key)) ?? (await store!.get(asideKey(key)));
+      if (!blocked) later();
+      return;
+    }
     let h = await store!.get(key);
     if (h) await store!.delete(key, 'aside');
     else h = await store!.aside(key, true);
@@ -323,7 +334,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       lock = l;
       keepState = 'yes';
       // (Closing waits for it.)
-      looking = found()
+      looking = found(true)
         .catch(() => {})
         .then(() => push());
     });
@@ -471,6 +482,8 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         editor?.clear();
         // (The session was the old file's: gone; edits from now on are kept under the new file's key and lock.)
         await dropKept();
+        // (Another tab's session was the old file's: this tab keeps its edits under the saved file's key.)
+        blocked = null;
         if (store) {
           lock?.release();
           lock = null;

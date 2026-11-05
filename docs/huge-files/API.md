@@ -254,13 +254,21 @@ place): the file bar's "N changes".
 - **Two tabs:** one tab keeps a file's edits at a time (a Web Lock per file key). `summary.keeping` says which:
   - `'yes'`: this tab keeps them;
   - `'other-tab'`: another tab has this file open, and this tab's edits aren't kept (say so);
+  - `'other-tab-kept'`: the other tab closed with edits kept, while this document was edited too. Those stay as
+    they are, and this tab's edits aren't kept (say so: e.g. "The edits kept in the other tab stay; edits here
+    won't be kept"). Nothing this tab does replaces or deletes that session: `dropSession()` and
+    `dropSession(true)` leave it, and `close()` says false. An in-place save gives the file a new key, so this tab
+    keeps its edits from then on (`'yes'`).
   - `'no'`: not known yet, or nowhere to keep them.
-  When the other tab closes, this one takes over (`keeping` becomes `'yes'` through `onSummary`), and the session
-  it kept is offered (this document unedited) or set aside (edited: see below; this tab's edits are kept, and
-  replace it at close).
+  When the other tab closes, this one takes over, and a summary comes through `onSummary`:
+  - with nothing kept for the file, `'yes'`, and this tab's edits are kept from then on;
+  - if this document is unedited, the session the other tab kept is offered (`session`), as when opening the
+    file;
+  - if it's edited, `'other-tab-kept'` (above): a tab never replaces a session another tab kept.
 - **`close()`** is async. It keeps what isn't kept yet, then ends the worker (at most 10 s). It resolves with
   whether this document's edits are kept: `false` if there are none, they are too big, an earlier session is on
-  offer, another tab has the file, the write failed, or it ran out of time. Say "kept" only on `true`.
+  offer, another tab has the file (or kept it: `'other-tab-kept'`), the write failed, or it ran out of time. Say
+  "kept" only on `true`.
 - **Reopening the same file:** `summary.session` is `undefined` while the kept session is looked for, then `null`
   (none) or `{ steps, bytes, time, restorable }`. `steps` is the changes it puts back, as `HugeEdited.steps`
   counts them. The look ends soon after opening (before old sessions are swept); if it ends after `ready`, a
@@ -272,8 +280,7 @@ place): the file bar's "N changes".
   - **`dropSession()`** drops it: closing without keeping the edits. Nothing is kept until a further edit.
   - **`dropSession(true)`** sets it aside so that this document's edits are kept instead.
 - **Set aside:** `summary.setAside` is the session set aside (`{ steps, bytes, time, restorable }`), by
-  `dropSession(true)`, or found only once the document was edited (the look ended late, or another tab let the
-  file go). It stays until `close()`, which deletes it if this document's edits replace it; if the document has
+  `dropSession(true)`, or found only once the document was edited (the look at open ended late). It stays until `close()`, which deletes it if this document's edits replace it; if the document has
   none then (all undone), it's the file's session again.
   - **`reofferSession()`** brings it back (an Undo for the first edit's toast): the edits since are undone and
     their history forgotten (the document is the file as opened), what was kept of them goes, and

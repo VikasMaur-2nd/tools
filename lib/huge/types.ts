@@ -167,12 +167,14 @@ export interface HugeSummary {
   session?: HugeSession | null;
   /**
    * Whether this tab keeps this document's edits: 'yes'; 'other-tab' (another tab has this file open and keeps it:
-   * edits here aren't kept; this one takes over when that one closes); 'no' (not yet known, or nowhere to keep).
+   * edits here aren't kept; this one takes over when that one closes); 'other-tab-kept' (it took over, but the other
+   * tab had kept edits of this file, and this document was edited meanwhile: those stay as they are, and edits here
+   * aren't kept; close() says false); 'no' (not yet known, or nowhere to keep).
    */
-  keeping?: 'yes' | 'other-tab' | 'no';
+  keeping?: 'yes' | 'other-tab' | 'other-tab-kept' | 'no';
   /**
    * A session set aside (dropSession(true) on a first edit while it was offered, or found only once this document
-   * was edited: the look ended late, or another tab let the file go): reofferSession() brings it back; close
+   * was edited: the look at open ended late): reofferSession() brings it back; close
    * deletes it (but with every edit undone then: it's the file's session again). null: none.
    */
   setAside?: HugeSession | null;

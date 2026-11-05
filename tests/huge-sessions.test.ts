@@ -247,7 +247,7 @@ const pushed = (doc: HugeClient, ok: (s: HugeSummary) => boolean) => new Promise
 const gensOf = (store: MemorySessionStore) => new Set([...store.partMap.keys()].map((k) => k.slice(k.lastIndexOf('\u0000') + 1).split('.')[0]));
 const day = 24 * 3600 * 1000;
 
-test('sessions B1 (REVIEW-3): two tabs on one file: one keeps, the other says another tab has it; never mixed bytes', async () => {
+test('sessions B1 (REVIEW-3): two tabs on one file: one keeps, the other says another tab has it; never mixed bytes, never replaced', async () => {
   const file = () => new File([text], 't.json', { lastModified: 5 });
   // The reviewer's order: A edits, B edits, A edits, a keep after each; B closes, then A.
   {
@@ -274,7 +274,8 @@ test('sessions B1 (REVIEW-3): two tabs on one file: one keeps, the other says an
     assert.equal(await textOf(r), wantA, "A's edits, A's bytes");
     await r.close();
   }
-  // A closes first: B takes over (A's session found while B is edited: set aside; B's edits kept from then).
+  // The other order: A closes first. B, edited meanwhile, takes the file over but not A's session: it stays A's,
+  // B's edits aren't kept ('other-tab-kept'), and nothing B does (drop, discard, close) touches it.
   {
     const store = new MemorySessionStore();
     const a = connect(file(), store);
@@ -282,16 +283,45 @@ test('sessions B1 (REVIEW-3): two tabs on one file: one keeps, the other says an
     const b = connect(file(), store);
     await sessionOf(b);
     await a.replace([{ a: 6, b: 10, text: 'tabA' }]);
-    await b.replace([{ a: 17, b: 21, text: 'tabB' }]);
-    const wantB = await textOf(b);
-    const takes = pushed(b, (s) => s.keeping === 'yes');
+    await sleep(1200);
+    await b.replace([{ a: 17, b: 21, text: 'TAB-B-WAS-HERE' }]);
+    await sleep(1200);
+    await a.replace([{ a: 28, b: 32, text: 'tabA2' }]);
+    const wantA = await textOf(a);
+    const takes = pushed(b, (s) => s.keeping !== 'other-tab');
     assert.equal(await a.close(), true);
     const s = await takes;
-    assert.equal(s.session, null);
-    assert.equal(s.setAside?.steps, 1, "A's, set aside");
-    assert.equal(await b.close(), true);
-    assert.deepEqual([...store.heads.keys()].length, 1, 'the one set aside gone at close');
+    assert.equal(s.keeping, 'other-tab-kept');
+    assert.equal(s.session, null, 'not on offer (the UI would drop it on the next key)');
+    assert.equal(s.setAside, null);
+    const heads = structuredClone([...store.heads]);
+    await b.replace([{ a: 0, b: 0, text: ' ' }]);
+    await sleep(1200);
+    await b.dropSession(true);
+    await b.dropSession();
+    assert.equal((await b.summary()).keeping, 'other-tab-kept');
+    assert.equal(await b.close(), false, "B's edits aren't kept: A's are");
+    assert.deepEqual([...store.heads], heads, "A's session as A left it");
     assert.equal(gensOf(store).size, 1);
+    const r = connect(file(), store);
+    assert.equal((await sessionOf(r))?.steps, 2);
+    await r.restoreSession();
+    assert.equal(await textOf(r), wantA, "A's edits, A's bytes");
+    await r.close();
+  }
+  // A kept nothing (no edits): B takes over and keeps its own.
+  {
+    const store = new MemorySessionStore();
+    const a = connect(file(), store);
+    await sessionOf(a);
+    const b = connect(file(), store);
+    await sessionOf(b);
+    await b.replace([{ a: 17, b: 21, text: 'tabB' }]);
+    const wantB = await textOf(b);
+    const takes = pushed(b, (s) => s.keeping !== 'other-tab');
+    assert.equal(await a.close(), false);
+    assert.equal((await takes).keeping, 'yes');
+    assert.equal(await b.close(), true);
     const r = connect(file(), store);
     await sessionOf(r);
     await r.restoreSession();
