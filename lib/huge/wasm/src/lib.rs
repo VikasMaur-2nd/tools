@@ -844,6 +844,9 @@ unsafe fn scalar(p: usize) -> usize {
 /// A top-level value that starts inside the token before it (`1true`: see dfa_splits) where a run stopped: its
 /// window offset (the token index doesn't have it), or usize::MAX.
 static mut SPLIT: usize = usize::MAX;
+/// Whether the number or literal a window cut has had a whole value at its start yet (`0` of `0123`): one that
+/// never has isn't a value (as scalar() == 0 in a window).
+static mut PEVER: bool = false;
 
 /// Where a number or literal at window offset `p` that isn't one goes wrong: its first byte that can't follow, or
 /// the byte after it if it stops short, as a token cut by a window edge fails (so where a parse fails doesn't
@@ -1579,6 +1582,15 @@ pub unsafe extern "C" fn run() -> i32 {
             break FAIL;
         }};
     }
+    // A number or literal from byte $start that isn't one: not a value after all. (Still the second top-level
+    // value's start if it was: whether the normal path takes a bare word as one is its repair's call.)
+    macro_rules! unvalue {
+        ($start:expr) => {{
+            let _ = $start;
+            nodes -= 1;
+            tcount -= 1;
+        }};
+    }
     // What comes after a value: mostly a comma, taken here (unless a checkpoint is due there).
     macro_rules! after {
         () => {{
@@ -1737,9 +1749,13 @@ pub unsafe extern "C" fn run() -> i32 {
                     nodes += 1;
                     tcount += 1;
                     PSTART = pos0 + k as u64;
+                    PEVER = false;
                     $s = dfa(D_START, c);
                 } else {
                     $s = t;
+                }
+                if $s != D_BAD && dfa_done($s) {
+                    PEVER = true;
                 }
                 if $s == D_BAD {
                     bad = k;
@@ -1748,9 +1764,10 @@ pub unsafe extern "C" fn run() -> i32 {
                 k += 1;
             }
             if bad != usize::MAX {
-                // (Not a value: not counted as one; what's read stops before it, as a broken one in a window.)
-                nodes -= 1;
-                tcount -= 1;
+                // (What's read stops before it; with no whole value at its start, it isn't one: as in a window.)
+                if !PEVER {
+                    unvalue!(PSTART);
+                }
                 part = P_SCALAR;
                 fail!(W_SYNTAX, bad);
             }
@@ -1776,8 +1793,9 @@ pub unsafe extern "C" fn run() -> i32 {
                     break NEED;
                 }
                 if !dfa_done(s) {
-                    nodes -= 1;
-                    tcount -= 1;
+                    if !PEVER {
+                        unvalue!(PSTART);
+                    }
                     fail!(W_SYNTAX, j);
                 }
                 part = P_NONE;
@@ -1894,11 +1912,15 @@ pub unsafe extern "C" fn run() -> i32 {
                 *top.add(3) = kpos;
                 if ii + 1 >= n {
                     // The name goes on in the next window.
-                    if last {
-                        fail!(W_END, wlen);
-                    }
                     part = P_KEY;
                     PSTART = kpos;
+                    if last {
+                        // (What stage 1 found wrong in it first, as when a window cuts it.)
+                        if fail_at != usize::MAX {
+                            fail!(W_SYNTAX, fail_at);
+                        }
+                        fail!(W_END, wlen);
+                    }
                     if dups {
                         CARRY_LEN = 0;
                         carry_name(p + 1, wlen);
@@ -2010,11 +2032,15 @@ pub unsafe extern "C" fn run() -> i32 {
         match c {
             b'"' => {
                 if ii + 1 >= n {
-                    if last {
-                        fail!(W_END, wlen);
-                    }
                     part = P_STR;
                     PSTART = pos0 + p as u64;
+                    if last {
+                        // (What stage 1 found wrong in it first, as when a window cuts it.)
+                        if fail_at != usize::MAX {
+                            fail!(W_SYNTAX, fail_at);
+                        }
+                        fail!(W_END, wlen);
+                    }
                     ii += 1;
                     break NEED;
                 }
@@ -2071,6 +2097,7 @@ pub unsafe extern "C" fn run() -> i32 {
                     if j == wlen {
                         let mut s = D_START;
                         PSTART = pos0 + p as u64;
+                        PEVER = false;
                         feed!(s, p, wlen);
                         part = P_SCALAR;
                         PDFA = s;
@@ -2081,8 +2108,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 let e = scalar(p);
                 if e == 0 {
                     // (Not a value: not counted as one; what's read stops before it, as when a window cuts it.)
-                    nodes -= 1;
-                    tcount -= 1;
+                    unvalue!(pos0 + p as u64);
                     part = P_SCALAR;
                     PSTART = pos0 + p as u64;
                     fail!(W_SYNTAX, bad_byte(p, wlen));
@@ -2090,8 +2116,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 let c2 = byte(e);
                 if !ENDS[c2 as usize] {
                     if depth != 0 || !splits(p, e, c2) {
-                        nodes -= 1;
-                        tcount -= 1;
+                        // (A value at its start (e > 0): counted, as one a window cuts.)
                         part = P_SCALAR;
                         PSTART = pos0 + p as u64;
                         fail!(W_SYNTAX, bad_byte(p, wlen));

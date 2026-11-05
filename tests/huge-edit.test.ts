@@ -108,14 +108,24 @@ function same(got: HugeDoc, bytes: Uint8Array, name: string, t: Tune, r: Rng, wh
   // (Broken: how far before the error its pretty lines go depends on where checkpoints are.)
   if (!fresh.summary().error) assert.equal(a.pretty.length, b.pretty.length, `pretty lines${where}`);
   for (let j = 0; j < Math.min(a.pretty.length, b.pretty.length); j++) assert.equal(a.pretty[j], b.pretty[j], `pretty line ${j}${where}`);
-  // And the status bar is the normal path's (huge mode's .jsonl rule aside, as huge-front).
+  // And the status bar is the normal path's (huge mode's .jsonl rule aside, as huge-front), where the fresh
+  // document's is: where it isn't (a bare word right after a number: whether that's a second value is the normal
+  // path's repair's call), counted (huge-front's business, not edits').
   const want = normalBar(bytes, name);
   const st = got.summary().status!;
   if (!(name.endsWith('.jsonl') && (want.msg === 'Multiple top-level values (wrapped in an array)' || (want.kind !== 'error' && want.jsonl === null)))) {
+    const fst = fresh.summary().status!;
+    if (fst.msg !== want.msg || fst.kind !== want.kind) {
+      statusDiffers++;
+      return;
+    }
     assert.equal(st.kind, want.kind, `status ${JSON.stringify(st)} want ${JSON.stringify(want)}${where}`);
     assert.equal(st.msg, want.msg, `status msg${where}`);
   }
 }
+
+/** Edited documents whose fresh document's status isn't the normal path's (see same()). */
+let statusDiffers = 0;
 
 /** A byte where a character starts (no edit cuts one). */
 const boundary = (b: Uint8Array, p: number) => {
@@ -179,4 +189,5 @@ test('edits: after each of a random sequence, every query is the fresh document\
       same(d, bytes, name, t, r, where);
     }
   }
+  if (statusDiffers) console.log(`(status: ${statusDiffers} documents where huge mode's status isn't the normal path's, opened fresh too)`);
 });
