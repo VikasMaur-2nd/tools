@@ -40,7 +40,9 @@ for (const [name, make, want] of CASES) {
 test('a small link into the Tree view shows the document there', async (t) => {
   const s = await viaLink(t, JSON.stringify({ customers: [{ id: 1, name: 'TKLB' }] }));
   t.check(/^Valid JSON/.test(s.st), 'valid', s.st);
-  t.check(s.tree, 'the Tree shows the document');
+  // (The Tree draws after the status says valid: on a slow runner it can still be empty when first read.)
+  const drawn = s.tree || (await t.page.waitForFunction(() => /TKLB|customers/.test(document.querySelector('#view-tree')?.textContent || ''), null, { timeout: 5_000 }).then(() => true, () => false));
+  t.check(drawn, 'the Tree shows the document');
   t.check(/Loaded shared JSON/.test(s.toast), 'the link says it loaded', s.toast);
 });
 
