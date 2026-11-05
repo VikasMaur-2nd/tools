@@ -162,11 +162,16 @@ export interface HugeSummary {
   session?: HugeSession | null;
 }
 
-/** A kept session: the changes it puts back (as HugeEdited.steps counts them), edits' bytes, when it was kept (ms since 1970). */
+/**
+ * A kept session: the changes it puts back (as HugeEdited.steps counts them), edits' bytes, when it was kept (ms
+ * since 1970), and whether it can be put back now (only onto the file as opened: no edit since, nothing to undo).
+ * While it's offered, edits aren't kept over it: restoreSession() or dropSession() decides.
+ */
 export interface HugeSession {
   steps: number;
   bytes: number;
   time: number;
+  restorable: boolean;
 }
 
 /**

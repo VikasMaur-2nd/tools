@@ -190,8 +190,11 @@ export interface HugeSource {
   onState(f: (s: IndexState) => void): () => void;
   /** Stops indexing (browsing what was indexed still works). Absent: indexing can't be stopped, only the file closed. */
   cancel?(): void;
-  /** Releases everything (the worker, caches). Resolves once unsaved edits are kept (the core's close). */
-  destroy(): Promise<void>;
+  /**
+   * Releases everything (the worker, caches). Resolves once unsaved edits are kept (the core's close), with whether
+   * they are (false: none, or not kept: too big, an earlier session on offer, a failed write).
+   */
+  destroy(): Promise<boolean>;
 
   /** The root: the document's top value, or for JSON Lines the list of records. Ready once the first window is read. */
   root(signal?: AbortSignal): Promise<HugeNode>;

@@ -164,13 +164,13 @@ export class CoreSource implements HugeSource {
     void this.doc.stop().catch(() => undefined);
   }
 
-  destroy(): Promise<void> {
+  destroy(): Promise<boolean> {
     this.dead = true;
     this.listeners.clear();
     for (const k of this.kept) k.view = null;
     this.kept.clear();
     this.keptBytes = 0;
-    // (Edits not kept yet are kept first: resolves once they are, and the worker has ended.)
+    // (Edits not kept yet are kept first: resolves once they are, and the worker has ended, with whether they are.)
     return this.doc.close();
   }
 

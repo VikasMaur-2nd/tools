@@ -40,7 +40,7 @@ const doc = openHuge(file, { name: file.name }, (p) => progress(p.bytes / p.size
 const first = await doc.summary();   // counts so far: show the first rows at once
 const s = await doc.ready;           // the whole file read (or stopped): s.error is the first problem, if any
 await doc.stop();                    // indexing ends where it is (ready resolves, s.stopped); queries go on
-await doc.close();                   // keeps edits not kept yet (a session), then lets the worker go
+await doc.close();                   // keeps edits not kept yet (a session), then lets the worker go: whether they are
 ```
 
 `HugeOptions`: `name` (`.jsonl`/`.ndjson` read as JSON Lines exactly as the normal path), `every` (checkpoint
@@ -220,15 +220,28 @@ place): the file bar's "N changes".
 
 ## Sessions (edits kept between visits)
 
-- Edits are kept in IndexedDB a second after the last one, and at `close()` (async: it keeps what isn't kept yet,
-  then ends the worker; at most 10 s), keyed by the file's name, size and last modified: the
-  document's pieces (references to the file and the edits' bytes) and its history (256 MiB of edits' bytes at most;
-  the history goes first if it doesn't fit, then nothing is kept).
-- Reopening the same file: `summary.session` is `undefined` while the kept session is looked for, then `null`
-  (none) or `{ steps, bytes, time }` (`steps`: the changes it puts back, as `HugeEdited.steps` counts them). The
-  look ends soon after opening: if it ends after `ready`, a summary saying what it found comes through
-  `HugeClient.onSummary` (nothing needs to ask again). `restoreSession()` puts it back (the edits, then undo goes
-  on where it was; `steps` from there); `dropSession()` drops it (closing without keeping the edits).
+- Edits are kept in IndexedDB a second after the last one, and at `close()`, keyed by the file's name, size and
+  last modified, and checked against its content (a fingerprint of its first and last 64 KiB and six blocks
+  between). What's kept is the document's pieces (references to the file and the edits' bytes) and its history.
+  - **Cap:** 256 MiB of edits' bytes; the history goes first if it doesn't fit, then nothing is kept.
+  - **Cost:** a keep writes only what's new: the edits' bytes are stored once, and the record is references.
+  - **Sweep:** sessions older than 30 days go, then the oldest while all of them hold more than 1 GiB.
+- **`close()`** is async. It keeps what isn't kept yet, then ends the worker (at most 10 s). It resolves with
+  whether this document's edits are kept: `false` if there are none, they are too big, an earlier session is on
+  offer, the write failed, or it ran out of time. Say "kept" only on `true`.
+- **Reopening the same file:** `summary.session` is `undefined` while the kept session is looked for, then `null`
+  (none, or another file's content) or `{ steps, bytes, time, restorable }`. `steps` is the changes it puts back,
+  as `HugeEdited.steps` counts them. The look ends soon after opening; if it ends after `ready`, a summary saying
+  what it found comes through `HugeClient.onSummary`, so nothing needs to ask again.
+- **`restoreSession()`** puts the session back (its edits; undo then goes on where it was; `steps` from there),
+  only onto the file as opened. Once the document is edited (even if undone), `restorable` is false and restoring
+  answers 'Not allowed'.
+- **While a session is on offer, new edits aren't kept over it.** `close()` then says `false`.
+  - **`dropSession()`** drops it: closing without keeping the edits. Nothing is kept until a further edit.
+  - **`dropSession(true)`** drops it so that this document's edits are kept instead.
+- **Saves:**
+  - **In place:** the session is the old file's and goes. Edits after that are kept under the saved file's key.
+  - **A download, or a save as:** they leave the opened file, and its session, as they are.
 
 ## Bounds (what is capped, and how)
 

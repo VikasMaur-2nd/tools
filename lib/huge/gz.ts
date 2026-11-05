@@ -102,8 +102,9 @@ export async function openGz(host: HugeHost, file: File, source: InputSource, si
       return null;
     }
     report('huge');
-    // (The decompressed file lives as long as its huge session; a Blob of it reads the disk, no copy.)
-    const hook = await big(new File([r.file!], plain), () => {
+    // (The decompressed file lives as long as its huge session; a Blob of it reads the disk, no copy. It carries
+    // the .gz file's time, so a session kept for it is found again when the same .gz is opened.)
+    const hook = await big(new File([r.file!], plain, { lastModified: file.lastModified }), () => {
       release();
       void removeTemp(name);
     });
