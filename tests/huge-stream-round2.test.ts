@@ -396,3 +396,40 @@ test('item 10: a ZIP Split of 20,000 parts keeps no per-part memory; the archive
   }
   assert.ok(spool.size > 5000 * 46, 'its central directory went to the spool');
 });
+
+// ── Item 11: Shape claims an exact distinct count only for values it compared ───
+
+const shapeOf = async (doc: string) => {
+  const b = enc.encode(doc);
+  return (await runJob(mem(b), { kind: 'shape', scope: { start: 0, end: b.length, multi: false } })).shape!;
+};
+
+test('item 11: two strings with the same first 4 KiB and length are two values (the review: distinct 1, exact)', async () => {
+  const sh = await shapeOf(JSON.stringify(['x'.repeat(4096) + 'A', 'x'.repeat(4096) + 'B']));
+  const items = sh.paths[1];
+  assert.equal(items.distinct, 2);
+  assert.ok(items.exact);
+  assert.equal(items.top!.length, 2);
+  assert.deepEqual(items.top!.map((t) => t[1]), [1, 1]);
+});
+
+test('item 11: the same string spelled two ways is one value; values too long to compare make the count an estimate', async () => {
+  const sh = await shapeOf('["A", "\\u0041", "\\u0042", "B", "é", "\\u00e9"]');
+  assert.equal(sh.paths[1].distinct, 3);
+  assert.ok(sh.paths[1].exact);
+  assert.deepEqual(sh.paths[1].top!.map((t) => t[1]), [2, 2, 2]);
+  // Long values: counted, but not claimed exact.
+  const long = (k: number) => '"' + 'y'.repeat(70_000) + k + '"';
+  const sh2 = await shapeOf('[' + [long(1), long(2), long(1), long(3)].join(',') + ']');
+  assert.equal(sh2.paths[1].exact, false);
+  assert.ok(Math.abs(sh2.paths[1].distinct - 3) <= 1, `about 3: ${sh2.paths[1].distinct}`);
+});
+
+test('item 11: values differing only past 4 KiB are told apart in the estimate too', async () => {
+  const n = 3000;
+  const vals = Array.from({ length: n }, (_, k) => JSON.stringify('z'.repeat(5000) + k));
+  const sh = await shapeOf('[' + vals.join(',') + ']');
+  const p = sh.paths[1];
+  assert.equal(p.exact, false);
+  assert.ok(Math.abs(p.distinct - n) / n < 0.08, `about ${n}: ${p.distinct}`);
+});

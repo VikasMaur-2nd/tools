@@ -8,7 +8,7 @@
  * Bounded whatever the document: at most MAX_PATHS paths, MAX_KEYS members per object path (more: they are
  * merged as one "other names" path, a map's keys), 64 values a path kept exactly, 2 KiB of HyperLogLog a path.
  */
-import { decodeString } from './reformat';
+import { decodeString, validUtf8 } from './reformat';
 import { ARR, BOOL, ESC, HI, LONG, NUL, NUM, OBJ, STR, type Visitor } from './walk';
 
 /** Kinds counted per path: null, false, true, number, string, array, object. */
@@ -110,8 +110,9 @@ class P {
   oMin = Infinity;
   oMax = -1;
   oSum = 0;
-  /** Exactly kept values: their hash → [count, first byte, text shown]. */
-  vals: Map<number, [number, number, string]> | null = new Map();
+  /** Exactly kept values: their hash → the value (others with the same hash chained), while few; null: estimated. */
+  vals: Map<number, Kept> | null = new Map();
+  nVals = 0;
   hll: Uint8Array | null = null;
   ex: [string, number][] = [];
   kids: Map<string, number> | null = null;
@@ -132,11 +133,26 @@ class P {
   ) {}
 }
 
-/** FNV-1a over b[a, e), then mixed (murmur3's finalizer): 32 bits. */
+/** A value kept to count it exactly: its kind and canonical bytes (compared on a hash match), count, first byte, text shown. */
+interface Kept {
+  kind: number;
+  bytes: Uint8Array;
+  n: number;
+  at: number;
+  text: string;
+  /** Another value with the same hash. */
+  next: Kept | null;
+}
+
+/** Bytes of a value kept for exact comparison: a longer value makes its path's count an estimate. */
+const KEPT_MAX = 16 << 10;
+/** Bytes kept for exact comparison across all paths (past it, a path needing more is estimated). */
+const KEPT_BUDGET = 32 << 20;
+
+/** FNV-1a over all of b[a, e), then mixed (murmur3's finalizer): 32 bits. */
 function hashBytes(b: Uint8Array, a: number, e: number, seed: number): number {
   let h = 0x811c9dc5 ^ seed;
-  const end = Math.min(e, a + 4096);
-  for (let i = a; i < end; i++) h = Math.imul(h ^ b[i], 0x01000193);
+  for (let i = a; i < e; i++) h = Math.imul(h ^ b[i], 0x01000193);
   h ^= e - a;
   h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
@@ -153,6 +169,45 @@ function hashText(s: string, seed: number): number {
 }
 
 const LIT_HASH = [hashText('null', 1), hashText('false', 1), hashText('true', 1)];
+/** K_STR and K_NUM, as module constants (an export read in the module is a property load each time). */
+const KS = K_STR;
+const KN = K_NUM;
+const LIT_BYTES = [new TextEncoder().encode('null'), new TextEncoder().encode('false'), new TextEncoder().encode('true')];
+
+/**
+ * `s` as WTF-8 into `out` from 0 (grown if it must be): UTF-8, and a lone surrogate as its own 3 bytes, so
+ * different strings never share bytes (a string's identity, whatever escapes spelled it). Returns the buffer
+ * and the length.
+ */
+function wtf8(s: string, out: Uint8Array): [Uint8Array, number] {
+  if (out.length < s.length * 3) out = new Uint8Array(s.length * 3 + 16);
+  let p = 0;
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c < 0x80) out[p++] = c;
+    else if (c < 0x800) {
+      out[p++] = 0xc0 | (c >> 6);
+      out[p++] = 0x80 | (c & 63);
+    } else {
+      if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+        const d = s.charCodeAt(i + 1);
+        if (d >= 0xdc00 && d <= 0xdfff) {
+          c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00);
+          i++;
+          out[p++] = 0xf0 | (c >> 18);
+          out[p++] = 0x80 | ((c >> 12) & 63);
+          out[p++] = 0x80 | ((c >> 6) & 63);
+          out[p++] = 0x80 | (c & 63);
+          continue;
+        }
+      }
+      out[p++] = 0xe0 | (c >> 12);
+      out[p++] = 0x80 | ((c >> 6) & 63);
+      out[p++] = 0x80 | (c & 63);
+    }
+  }
+  return [out, p];
+}
 
 function hllAdd(r: Uint8Array, h: number) {
   const j = h >>> (32 - HLL_BITS);
@@ -343,6 +398,12 @@ export class Shape implements Visitor {
   private nextPath = -2;
   /** Items of the scope's root once it closed (while open: counted so far). */
   private rootCount = -1;
+  /** Bytes of values kept for exact comparison (all paths); canonical string bytes (canon) and their buffer. */
+  private keptBytes = 0;
+  private scratch: Uint8Array = new Uint8Array(256);
+  private cb: Uint8Array = this.scratch;
+  private ca = 0;
+  private ce = 0;
   /** The walker's `longBytes` (a LONG string's whole length). */
   longBytes = () => 0;
 
@@ -397,29 +458,78 @@ export class Shape implements Visitor {
     return p;
   }
 
-  /** Counts scalar `h` (its identity) at `p`: true if it is new while values are kept exactly (then `keep` it, with its text). */
-  private seen(p: P, h: number): boolean {
+  /**
+   * Counts a scalar at `p`: its kind and canonical bytes b[a, e) (all of them hashed into `h`). True if it is a
+   * new value while values are counted exactly (then `keep` it, with its text); a value counts as one seen
+   * before only when its bytes equal that one's.
+   */
+  private seen(p: P, h: number, kind: number, b: Uint8Array, a: number, e: number): boolean {
     if (p.vals) {
-      const v = p.vals.get(h);
-      if (!v) return true;
-      v[0]++;
-      return false;
+      for (let v: Kept | null | undefined = p.vals.get(h); v; v = v.next) {
+        if (v.kind !== kind || v.bytes.length !== e - a) continue;
+        const kb = v.bytes;
+        let k = 0;
+        while (k < kb.length && kb[k] === b[a + k]) k++;
+        if (k === kb.length) {
+          v.n++;
+          return false;
+        }
+      }
+      // (New, but too long to keep for comparing, or the budget for that is spent: estimated from now on.)
+      if (e - a > KEPT_MAX || this.keptBytes + (e - a) > KEPT_BUDGET) {
+        this.estimate(p);
+        hllAdd(p.hll!, h);
+        return false;
+      }
+      return true;
     }
     hllAdd(p.hll!, h);
     return false;
   }
 
-  /** A new value's text (an example; kept exactly while few, else the count is estimated from now on). */
-  private keep(p: P, h: number, t: string, at: number) {
+  /** A new value (`seen` said so): an example, and kept while few; past EXACT the count is estimated from now on. */
+  private keep(p: P, h: number, kind: number, b: Uint8Array, a: number, e: number, t: string, at: number) {
     if (p.ex.length < EXAMPLES) p.ex.push([t, at]);
-    if (p.vals!.size < EXACT) {
-      p.vals!.set(h, [1, at, t]);
+    if (p.nVals < EXACT) {
+      p.vals!.set(h, { kind, bytes: b.slice(a, e), n: 1, at, text: t, next: p.vals!.get(h) ?? null });
+      p.nVals++;
+      this.keptBytes += e - a;
       return;
     }
+    this.estimate(p);
+    hllAdd(p.hll!, h);
+  }
+
+  /** An example of an estimated path (the first few distinct texts). */
+  private example(p: P, t: string, at: number) {
+    for (const x of p.ex) if (x[0] === t) return;
+    p.ex.push([t, at]);
+  }
+
+  /** `p`'s distinct values are estimated from now on (HyperLogLog), from the ones it kept. */
+  private estimate(p: P) {
     p.hll = new Uint8Array(HLL_M);
-    for (const k of p.vals!.keys()) hllAdd(p.hll, k);
+    for (const [h, v] of p.vals!) {
+      for (let x: Kept | null = v; x; x = x.next) {
+        hllAdd(p.hll, h);
+        this.keptBytes -= x.bytes.length;
+      }
+    }
     p.vals = null;
-    hllAdd(p.hll, h);
+  }
+
+  /** A string's canonical bytes (escapes decoded, invalid UTF-8 as U+FFFD) into cb[ca, ce): b[a, e) itself when it is already. */
+  private canon(b: Uint8Array, a: number, e: number, flags: number) {
+    if (!(flags & ESC) && (!(flags & HI) || validUtf8(b, a, e))) {
+      this.cb = b;
+      this.ca = a;
+      this.ce = e;
+      return;
+    }
+    const [buf, n] = wtf8(decodeString(b, a, e, flags), this.scratch);
+    this.scratch = this.cb = buf;
+    this.ca = 0;
+    this.ce = n;
   }
 
   open(kind: number, at: number) {
@@ -541,8 +651,18 @@ export class Shape implements Visitor {
         p.fmtSeen = true;
       }
     }
-    const h = hashBytes(b, a, e, STR);
-    if (this.seen(p, h)) this.keep(p, h, shownString(b, a, e, flags), at);
+    // (A string longer than the walker keeps: not all of it is here to tell it apart.)
+    if (flags & LONG && p.vals) this.estimate(p);
+    this.canon(b, a, e, flags);
+    const cb = this.cb;
+    const ca = this.ca;
+    const ce = this.ce;
+    const h = hashBytes(cb, ca, ce, STR);
+    // (Estimated: the hash alone. Counted exactly: compared.)
+    if (!p.vals) {
+      hllAdd(p.hll!, h);
+      if (p.ex.length < EXAMPLES) this.example(p, shownString(b, a, e, flags), at);
+    } else if (this.seen(p, h, KS, cb, ca, ce)) this.keep(p, h, KS, cb, ca, ce, shownString(b, a, e, flags), at);
   }
 
   num(b: Uint8Array, a: number, e: number, at: number) {
@@ -567,14 +687,19 @@ export class Shape implements Visitor {
     if (int) p.ints++;
     const h = hashBytes(b, a, e, NUM);
     // (A number longer than shown is marked cut: it is never taken for the whole value.)
-    if (this.seen(p, h)) this.keep(p, h, e - a > SHOW ? latin(b, a, a + SHOW) + '…' : latin(b, a, e), at);
+    if (!p.vals) {
+      hllAdd(p.hll!, h);
+      if (p.ex.length < EXAMPLES) this.example(p, e - a > SHOW ? latin(b, a, a + SHOW) + '…' : latin(b, a, e), at);
+    } else if (this.seen(p, h, KN, b, a, e)) this.keep(p, h, KN, b, a, e, e - a > SHOW ? latin(b, a, a + SHOW) + '…' : latin(b, a, e), at);
   }
 
   lit(kind: number, v: boolean, at: number) {
     const k = kind === NUL ? K_NULL : v ? K_TRUE : K_FALSE;
     const p = this.count(this.here(), k, at);
     if (!p) return;
-    if (this.seen(p, LIT_HASH[k])) this.keep(p, LIT_HASH[k], kind === NUL ? 'null' : v ? 'true' : 'false', at);
+    const w = LIT_BYTES[k];
+    if (this.seen(p, LIT_HASH[k], k, w, 0, w.length)) this.keep(p, LIT_HASH[k], k, w, 0, w.length, kind === NUL ? 'null' : v ? 'true' : 'false', at);
+    else if (!p.vals && p.ex.length < EXAMPLES) this.example(p, kind === NUL ? 'null' : v ? 'true' : 'false', at);
   }
 
   report(bytes: number, size: number, done: boolean): ShapeReport {
@@ -583,7 +708,8 @@ export class Shape implements Visitor {
       const scal = p.kinds[K_NULL] + p.kinds[K_FALSE] + p.kinds[K_TRUE] + p.kinds[K_NUM] + p.kinds[K_STR];
       let top: [string, number, number][] | null = null;
       if (p.vals) {
-        top = [...p.vals.values()].map(([n, at, t]): [string, number, number] => [t, n, at]);
+        top = [];
+        for (const v of p.vals.values()) for (let x: Kept | null = v; x; x = x.next) top.push([x.text, x.n, x.at]);
         top.sort((x, y) => y[1] - x[1] || x[2] - y[2]);
         top = top.slice(0, 12);
       }
@@ -603,7 +729,7 @@ export class Shape implements Visitor {
         str: p.kinds[K_STR] ? { min: p.sMin, max: p.sMax, mean: p.sSum / p.kinds[K_STR], formats: Array.from(p.fmt) } : null,
         arr: p.kinds[K_ARR] ? { min: p.aMin, max: p.aMax, mean: p.aSum / p.kinds[K_ARR] } : null,
         obj: p.kinds[K_OBJ] ? { min: p.oMin, max: p.oMax, mean: p.oSum / p.kinds[K_OBJ] } : null,
-        distinct: !scal ? 0 : p.vals ? p.vals.size : hllCount(p.hll!),
+        distinct: !scal ? 0 : p.vals ? p.nVals : hllCount(p.hll!),
         exact: !!p.vals,
         top,
         examples: p.ex.slice(),
