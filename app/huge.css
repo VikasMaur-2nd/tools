@@ -1043,6 +1043,12 @@ html[data-huge] .statusbar .cursor {
   min-width: 0;
 }
 
+/* (The banner's buttons take its text colour: Restore, the primary one, keeps its own, readable on the accent.) */
+.hg-restore .btn.primary {
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
 /* (The question; the line under it says what editing first does.) */
 .hg-restore .b-msg > span:first-child {
   color: inherit;
