@@ -764,7 +764,8 @@ test('huge edit: the Format view\'s text edited in place: numbered as the file, 
     const dt = new DataTransfer();
     dt.setData('text/plain', 'x'.repeat(9 << 20));
     const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
-    if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt });
+    // (Firefox gives a constructed paste event a clipboardData of its own, empty: the data set on the event itself.)
+    Object.defineProperty(ev, 'clipboardData', { value: dt });
     (document.activeElement ?? document.querySelector('.hg-fe .ed textarea')).dispatchEvent(ev);
   });
   t.check(await until(page, () => [...document.querySelectorAll('.toast')].some((e) => /Paste up to 8\.0\sMB at a time here \(this is 9\.0\sMB\)/.test(e.textContent ?? '')), null), 'a paste over 8 MB: said why', await page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent)));
