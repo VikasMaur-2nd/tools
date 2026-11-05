@@ -272,11 +272,51 @@ test('huge mode: what shows the document is private (session replay records an e
   t.check(leaks.length === 0, 'file name, views, status and paths are private', leaks);
 });
 
-test('huge mode: Graph shows the part explored, "+N more" reads the next items, Up and From selected, export', async (t) => {
+// The page itself must not scroll under the tool (CI run 42060133263, Firefox: the whole page was 20 px up at the
+// end of this check, and a click landed where a button had been). Every scroll of the document is recorded with
+// what did it; after each step the page is checked at its top.
+const recordPageScrolls = (page) =>
+  page.addInitScript(() => {
+    window.__pageScrolls = [];
+    let last = 0;
+    addEventListener(
+      'scroll',
+      () => {
+        const top = document.scrollingElement?.scrollTop ?? 0;
+        if (top === last) return;
+        last = top;
+        const a = document.activeElement;
+        window.__pageScrolls.push(`top=${top} focus=${a?.tagName.toLowerCase()}${a?.id ? '#' + a.id : ''}.${String(a?.className ?? '').split(' ')[0]} ${new Error().stack?.split('\n').slice(1, 4).join(' < ') ?? ''}`);
+      },
+      { passive: true },
+    );
+  });
+
+/** After a step: the page still at its top (else what scrolled it, once). */
+function pageStays(t, page) {
+  const t0 = Date.now();
+  let moved = null;
+  return {
+    async step(name) {
+      t.log(`${name} @ ${Date.now() - t0} ms`);
+      if (moved) return;
+      const top = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+      if (top) moved = { step: name, top, scrolls: await page.evaluate(() => window.__pageScrolls.slice(0, 5)) };
+    },
+    check() {
+      t.check(!moved, 'the page itself never scrolled under the tool', moved);
+    },
+  };
+}
+
+test('huge mode: Graph shows the part explored, "+N more" reads the next items, Up and From selected, export', { timeout: 90_000 }, async (t) => {
   const { page } = t;
+  await recordPageScrolls(page);
+  const steps = pageStays(t, page);
   await t.open('/');
   await openHuge(t, pretty);
   await waitIndexed(page);
+  await steps.step('indexed');
   // Alt+4 is Graph, as in the normal tool; Alt+7 is Shape.
   await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('Alt+4');
@@ -287,6 +327,7 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
   t.check(/\$/.test(await where()), 'from the root, nothing selected', await where());
   const before = await shown();
   t.check(before > 0 && before <= 2000, 'a bounded part', before);
+  await steps.step('graph drawn');
   // Down the root card's rows to "+N more" (users is shown from its first 20), Enter reads the next ones.
   await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('Alt+2');
@@ -301,6 +342,7 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
   await page.locator('#hg-graph').focus();
   await page.keyboard.press('r');
   t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users', null), 'R: the graph from the selected value', await where());
+  await steps.step('R');
   await page.keyboard.press('Home');
   let found = false;
   for (let k = 0; k < 40 && !found; k++) {
@@ -308,14 +350,17 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
     found = /more/.test(await live());
   }
   t.check(found && /^\[50\], \+2,450 more, \$…\[50\]$/.test(await live()), 'a "+N more" row, announced as such', await live());
+  await steps.step('+N more row');
   const n0 = await shown();
   await page.keyboard.press('Enter');
   t.check(await until(page, (n) => Number(((window.__vis('.hg .hg-gwhere')?.textContent ?? '').match(/([\d,]+) values?/)?.[1] ?? '0').replace(/,/g, '')) > n, n0), 'Enter reads the next items', await where());
   // (From $.users the root reads 50 at a time: the first new one is [50]; not read yet, it says its size.)
   t.check(await until(page, () => /^\[50\], \{\d+\}, \$…\[50\]$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'and selects the first of them', await live());
+  await steps.step('Enter');
   // The tree follows the graph.
   await page.keyboard.press('Alt+2');
   t.check(await until(page, () => /^50:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'the tree shows the value chosen in the graph', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
+  await steps.step('tree follows');
   // R: from the selected value; U: a level up.
   await page.keyboard.press('Alt+4');
   await page.locator('#hg-graph').focus();
@@ -323,6 +368,7 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
   t.check(await until(page, () => /\$\.users\[50\]/.test(window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? ''), null), 'R from an item read by "+N more"', await where());
   await page.keyboard.press('u');
   t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users', null), 'U a level up', await where());
+  await steps.step('U');
   // Export PNG of what is shown.
   // (The menu open first; then up to a minute for the image, as the normal tool's big exports: Firefox on a CI runner
   // gave no download in 15 s, where it takes ~1 s here. What went wrong, if anything: the toast says.)
@@ -347,26 +393,54 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
     await page.keyboard.press('Enter');
     await item.waitFor({ timeout: 10_000 });
   }
+  // (The menu pops in (0.12 s). Clicked while it moves, Playwright retries with the page scrolled to reach the item:
+  // 20 px here in Chromium and Firefox, and on a slow Firefox runner the click never settled (CI run 42060133263:
+  // the menu open, the page 20 px up, the test's minute gone). A user's click, a mouse click at the item, a DOM
+  // click and keyboard focus scroll nothing. So the click waits for the menu to be still.)
+  await page.evaluate(() => Promise.all((document.querySelector('.hg .menu')?.getAnimations() ?? []).map((a) => a.finished)));
+  await steps.step('menu open');
   const t0 = Date.now();
-  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }).catch(() => null), item.click()]);
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }).catch(() => null), item.click()]);
   const toasts = () => page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent ?? ''));
   t.check(!!dl && /-graph\.png$/.test(dl.suggestedFilename()), 'Export PNG saves the graph', dl ? `${dl.suggestedFilename()} in ${Date.now() - t0} ms` : await toasts());
+  await steps.step('exported');
+  steps.check();
+});
+
+// (From the check above, apart: on a slow runner the two took more than a minute together.)
+test('huge mode: Find from the Graph shows the part around a match; tabs numbered as the normal tool', async (t) => {
+  const { page } = t;
+  await recordPageScrolls(page);
+  const steps = pageStays(t, page);
+  await t.open('/');
+  await openHuge(t, pretty);
+  await waitIndexed(page);
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Alt+4');
+  t.assert(await until(page, () => !!window.__vis('#hg-graph .gv-ctl:not([hidden])') && /\d+ values/.test(window.__vis('.hg .hg-gwhere')?.textContent ?? ''), null, { timeout: 15_000 }), 'the graph is drawn');
+  const where = () => page.evaluate(() => window.__vis('.hg .hg-gwhere')?.textContent ?? '');
+  const live = () => page.evaluate(() => window.__vis('#hg-graph .gv-live')?.textContent ?? '');
+  await steps.step('graph drawn');
   // Find from the Graph: a match outside the part shows the part around it, the match selected.
   await page.keyboard.press(`${MOD}+f`);
   await page.locator('.hg .findbar input').fill('u2400@');
   t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users[2400]', null, { timeout: 10_000 }), 'Find: the graph around a match outside its part', await where());
   t.check(await until(page, () => /^email, string, "u2400@example\.com", \$…\.email$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'with the match selected', await live());
+  await steps.step('Find a match');
   // A $.path in Find: the Graph stays, around that value.
   await page.locator('.hg .findbar input').fill('$.users[1234].tags');
   t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users[1234].tags', null, { timeout: 10_000 }), 'Find $.path: the graph from there', await where());
   const tab = await page.evaluate(() => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent);
   t.check(tab === 'Graph', 'and the Graph stays open', tab);
+  await steps.step('Find $.path');
   await page.keyboard.press('Escape');
   // Alt+7: Shape.
   await page.keyboard.press('Alt+7');
   t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Shape', null), 'Alt+7 opens Shape');
   const tips = await page.evaluate(() => [...document.querySelectorAll('.hg [role=tab]')].map((b) => `${b.textContent}=${b.dataset.tip}`).join(' '));
   t.check(tips === 'Format=Alt+1 Tree=Alt+2 Table=Alt+3 Graph=Alt+4 Convert=Alt+5 Compare=Alt+6 Shape=Alt+7', 'tabs numbered as the normal tool, Shape seventh', tips);
+  await steps.step('done');
+  steps.check();
 });
 
 test('huge mode: Graph at its limit (2,000 values) pans within a frame', async (t) => {
