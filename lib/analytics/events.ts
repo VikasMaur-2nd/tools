@@ -48,7 +48,9 @@ const HUGE_EDIT_OPS = ['set', 'rename', 'remove', 'insert', 'duplicate', 'text',
 const HUGE_EDIT_FROM = ['tree', 'table', 'graph', 'format', 'menu', 'key', 'toolbar', 'palette', 'banner'] as const;
 /** How a huge document was saved (in place, as another file, downloaded), and how it ended. */
 const HUGE_SAVE_HOW = ['in_place', 'save_as', 'download'] as const;
-const HUGE_SAVE_OUTCOMES = ['done', 'stopped', 'failed'] as const;
+// (Nothing written: the file picked to overwrite wasn't the opened one as opened; writing to it wasn't allowed; the
+// opened file changed after a save-picker pick.)
+const HUGE_SAVE_OUTCOMES = ['done', 'stopped', 'failed', 'not_opened', 'not_allowed', 'changed'] as const;
 
 /** Discrete actions, reported as `feature_used { feature }`. */
 const FEATURES = [

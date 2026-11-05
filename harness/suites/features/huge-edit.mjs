@@ -189,6 +189,137 @@ test('huge edit: saved in place through the opened file\'s handle, the file\'s S
   }
 });
 
+// Saving without the opened file's handle (opened through the file input). Chromium's save picker may empty a file
+// the moment it is picked, so Save asks: "Overwrite" picks the file again with the open picker (stubbed with OPFS
+// handles here) and writes only if it is the opened file as opened; "Save as a new file" suggests another name; after
+// a save-picker pick, the opened file must still read as it was. (The pickers are Chromium's.)
+
+/** Files in the origin's storage; `window.__h[name]` their handles; the first opened through the file input. */
+async function openStored(t, files) {
+  const { page } = t;
+  await page.evaluate(async (files) => {
+    localStorage.setItem('tk:hugeMin', '0');
+    localStorage.removeItem('tk:hugeSim');
+    const root = await navigator.storage.getDirectory();
+    window.__h = {};
+    for (const [name, s] of Object.entries(files)) {
+      const h = await root.getFileHandle(name, { create: true });
+      const w = await h.createWritable();
+      await w.write(s);
+      await w.close();
+      window.__h[name] = h;
+    }
+    window.__sha = async (name) => {
+      const f = await (await root.getFileHandle(name)).getFile();
+      const d = await crypto.subtle.digest('SHA-256', await f.arrayBuffer());
+      return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    };
+    const input = window.__vis('.app')?.querySelector('input[type=file]');
+    const dt = new DataTransfer();
+    dt.items.add(await window.__h[Object.keys(files)[0]].getFile());
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, files);
+  t.assert(await until(page, () => !!window.__vis('.hg') && /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'huge mode opens the stored file');
+}
+
+const toasts = (page) => page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent ?? ''));
+const toasted = (page, re) => until(page, (s) => [...document.querySelectorAll('.toast')].some((e) => new RegExp(s).test(e.textContent ?? '')), re.source, { timeout: 10_000 });
+const shaOf = (page, name) => page.evaluate((n) => window.__sha(n), name);
+
+async function editName(page, i, name) {
+  await selectPath(page, `$.users[${i}].name`);
+  await page.keyboard.press('F2');
+  await until(page, () => !!document.querySelector('.hg-box .hg-box-in.mono'), null);
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.type(name);
+  await page.keyboard.press('Enter');
+  await until(page, () => /Edited · \d+ change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+}
+
+test('huge edit: without the file\'s handle Save asks; Overwrite writes only into the opened file, picked again and checked', { engines: ['chromium'] }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openStored(t, { 'mine.json': text, 'other.json': text });
+  await editName(page, 2, 'Grace');
+  const want = structuredClone(doc);
+  want.users[2].name = 'Grace';
+  t.check(!/Save to the file/.test(await page.evaluate(() => window.__vis('.hg-editbar .btn.primary')?.dataset.tip ?? '')), 'Save doesn\'t say it writes into the file');
+  // Asked; Esc: nothing.
+  await page.keyboard.press(`${MOD}+s`);
+  t.assert(await until(page, () => /Save changes to mine\.json/.test(window.__vis('.hg-modal [role=dialog]')?.textContent ?? ''), null), 'Ctrl+S asks', await page.evaluate(() => window.__vis('.hg-modal')?.textContent));
+  t.check(await page.evaluate(() => document.activeElement?.textContent === 'Overwrite mine.json…'), 'Overwrite focused', await page.evaluate(() => document.activeElement?.textContent));
+  t.check(/Save as a new file…/.test(await page.evaluate(() => window.__vis('.hg-modal')?.textContent ?? '')), 'and Save as a new file');
+  await page.keyboard.press('Escape');
+  t.check(await until(page, () => !window.__vis('.hg-modal'), null), 'Esc: closed');
+  // Another file picked to overwrite: said so, nothing written anywhere.
+  await page.evaluate(() => {
+    window.__picks = [];
+    window.showOpenFilePicker = async () => (window.__picks.push('open'), [window.__h['other.json']]);
+    window.showSaveFilePicker = async () => (window.__picks.push('save'), window.__h['other.json']);
+  });
+  await page.keyboard.press(`${MOD}+s`);
+  await until(page, () => !!window.__vis('.hg-modal'), null);
+  await page.locator('.hg-modal .btn', { hasText: 'Overwrite' }).click();
+  t.check(await toasted(page, /That isn't mine\.json as it was opened: nothing was written/), 'another file: said so', await toasts(page));
+  t.check((await shaOf(page, 'mine.json')) === sha(text) && (await shaOf(page, 'other.json')) === sha(text), 'nothing written to either file');
+  t.check(/Edited · 1 change/.test(await edited(page)), 'still edited', await edited(page));
+  t.check((await page.evaluate(() => window.__picks.join())) === 'open', 'only the open picker', await page.evaluate(() => window.__picks.join()));
+  // The opened file picked: written in place (SHA-256), the document then reads it.
+  await page.evaluate(() => (window.showOpenFilePicker = async () => (window.__picks.push('open'), [window.__h['mine.json']])));
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+s`);
+  await until(page, () => !!window.__vis('.hg-modal'), null);
+  await page.locator('.hg-modal .btn', { hasText: 'Overwrite' }).click();
+  t.check(await toasted(page, /Saved mine\.json/), 'saved, said so', await toasts(page));
+  t.check(await until(page, () => !window.__vis('.hg-edited') && !window.__vis('.hg-saving'), null, { timeout: 20_000 }), 'nothing unsaved');
+  t.check((await shaOf(page, 'mine.json')) === sha(JSON.stringify(want, null, 2)), 'the file holds the edited document (SHA-256)');
+  t.check((await shaOf(page, 'other.json')) === sha(text), 'the other file untouched');
+  t.check(!(await page.evaluate(() => window.__picks.includes('save'))), 'the save picker never used');
+  // Its handle known now: the next Save writes in place without asking.
+  await editName(page, 3, 'Linus');
+  want.users[3].name = 'Linus';
+  t.check(/Save to the file/.test(await page.evaluate(() => window.__vis('.hg-editbar .btn.primary')?.dataset.tip ?? '')), 'Save now says it writes into the file');
+  await page.keyboard.press(`${MOD}+s`);
+  t.check(await until(page, () => !window.__vis('.hg-edited') && !window.__vis('.hg-saving') && !window.__vis('.hg-modal'), null, { timeout: 20_000 }), 'saved without asking');
+  t.check((await shaOf(page, 'mine.json')) === sha(JSON.stringify(want, null, 2)), 'in place again (SHA-256)');
+});
+
+test('huge edit: Save as a new file suggests another name; the opened file emptied by the save picker stops the save', { engines: ['chromium'] }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openStored(t, { 'mine.json': text });
+  await editName(page, 2, 'Grace');
+  const want = structuredClone(doc);
+  want.users[2].name = 'Grace';
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    window.showSaveFilePicker = async (o) => ((window.__suggested = o.suggestedName), root.getFileHandle('new.json', { create: true }));
+  });
+  await page.keyboard.press(`${MOD}+s`);
+  await until(page, () => !!window.__vis('.hg-modal'), null);
+  await page.locator('.hg-modal .btn', { hasText: 'Save as a new file' }).click();
+  t.check(await toasted(page, /Saved as new\.json/), 'saved as, said so', await toasts(page));
+  t.check((await page.evaluate(() => window.__suggested)) === 'mine (edited).json', 'another name suggested', await page.evaluate(() => window.__suggested));
+  t.check((await shaOf(page, 'new.json')) === sha(JSON.stringify(want, null, 2)), 'the new file holds the edited document (SHA-256)');
+  t.check((await shaOf(page, 'mine.json')) === sha(text), 'the opened file untouched');
+  t.check(await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null), 'still edited (a new file keeps the edits)', await edited(page));
+  // The opened file picked in the save picker anyway, and emptied by it (as Chromium may): nothing written, said why.
+  await page.evaluate(() => {
+    window.showSaveFilePicker = async () => {
+      const h = window.__h['mine.json'];
+      const w = await h.createWritable();
+      await w.close();
+      return h;
+    };
+  });
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+Shift+s`);
+  t.check(await toasted(page, /Nothing was written: mine\.json has changed since it was opened/), 'stopped, said why', await toasts(page));
+  t.check(!(await page.evaluate(() => !!window.__vis('.hg-saving'))), 'no save ran');
+  t.check((await page.evaluate(async () => (await window.__h['mine.json'].getFile()).size)) === 0, '(the stub emptied it)');
+});
+
 test('huge edit: unsaved edits kept, offered again when the file is opened again', async (t) => {
   const { page } = t;
   await t.open('/');
@@ -210,9 +341,6 @@ test('huge edit: unsaved edits kept, offered again when the file is opened again
   await page.keyboard.press(`${MOD}+z`);
   t.check(await until(page, () => !window.__vis('.hg-edited'), null), 'and undo goes on from it');
 });
-
-const toasts = (page) => page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent ?? ''));
-const toasted = (page, re) => until(page, (s) => [...document.querySelectorAll('.toast')].some((e) => new RegExp(s).test(e.textContent ?? '')), re.source, { timeout: 10_000 });
 
 test('huge edit: another file opened right after an edit: the edit is kept (said once it is), offered again', async (t) => {
   const { page } = t;
@@ -294,6 +422,13 @@ for (const [name, opts] of [
     await shot('format-edit');
     await page.keyboard.press('Escape');
     await until(page, () => !document.querySelector('.hg-fe'), null);
+    // Save without the file's handle asks where (round 8).
+    await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press(`${MOD}+s`);
+    t.check(await until(page, () => !!window.__vis('.hg-modal [role=dialog]'), null), 'Save asks');
+    await shot('save-ask');
+    await page.keyboard.press('Escape');
+    await until(page, () => !window.__vis('.hg-modal'), null);
     await page.locator('.hg-file .btn.icon[aria-label="Close file"]').click();
     t.check(await until(page, () => !!document.querySelector('.hg-confirm'), null), 'closing asks first');
     await shot('confirm');

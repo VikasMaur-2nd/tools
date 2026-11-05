@@ -2,8 +2,8 @@
 
 /*
  * Editing in huge mode (lib/huge/edits.ts, the session's "Editing"): the file bar's state and buttons (Undo, Redo,
- * Save, a save's progress), the offer to restore a kept session, asking before closing with unsaved edits, the
- * edit box (a value, a name, a value to insert), the edit menu, and a value open as text in the normal editor.
+ * Save, a save's progress), the offer to restore a kept session, asking before closing with unsaved edits, asking
+ * where to save without the opened file's handle, the edit box (a value, a name, a value to insert), the edit menu, and a value open as text in the normal editor.
  * Everything here shows document data, inside `.view` or with PRIVATE of its own.
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -133,6 +133,44 @@ export function CloseConfirm({ s }: { s: HugeSession }) {
             {t('Close without saving')}
           </button>
           <button type="button" className="btn" onClick={() => void s.answerClose('cancel')}>
+            {t('Cancel')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Saving without the opened file's handle (Chromium): overwrite it (picked again with the open picker, which never
+ * empties a file, and checked to be it), or save a new file (lib/huge/save-plan.ts).
+ */
+export function SaveAsk({ s }: { s: HugeSession }) {
+  const ask = useHuge(s.ui, (u) => !!u.edit?.saveAsk);
+  const name = useHuge(s.ui, (u) => u.name);
+  const t = useT();
+  const first = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (ask) first.current?.focus();
+  }, [ask]);
+  if (!ask) return null;
+  return (
+    <div className="hg-modal" onKeyDown={(e) => e.key === 'Escape' && s.answerSave('cancel')}>
+      <div className="hg-dialog hg-confirm" role="dialog" aria-modal="true" aria-labelledby="hg-saveask-t" aria-describedby="hg-saveask-d">
+        <h2 id="hg-saveask-t" className={PRIVATE}>
+          {t('Save changes to {name}', { name })}
+        </h2>
+        <p id="hg-saveask-d" className={PRIVATE}>
+          {t('To overwrite it, pick {name} again in the window that opens: it’s checked to be the file you opened before anything is written.', { name })}
+        </p>
+        <div className="hg-dlg-btns">
+          <button type="button" className={`btn primary ${PRIVATE}`} ref={first} onClick={() => s.answerSave('overwrite')}>
+            {t('Overwrite {name}…', { name })}
+          </button>
+          <button type="button" className="btn" onClick={() => s.answerSave('new')}>
+            {t('Save as a new file…')}
+          </button>
+          <button type="button" className="btn" onClick={() => s.answerSave('cancel')}>
             {t('Cancel')}
           </button>
         </div>

@@ -17,7 +17,8 @@ import { StreamFind } from './find';
 import { HugeLinesView } from './lines-view';
 import { HUGE_VIEWS, HugeStore, type Ask, type EditUI, type HugeUI, type HugeView } from './state';
 import { HugeEditing, adjustPath, boxText, dedent, editError, kindOf, valueJson, type Effect, type EditOp, type ValueKind } from './edits';
-import { pickFile, pickSave, watchDrops, writable } from './handles';
+import { pickExisting, pickFile, pickSave, pickers, watchDrops, writable } from './handles';
+import { planSave, readable, sameFile, type SaveChoice } from './save-plan';
 import { PASTE_MAX } from './text-window';
 import { HugeTasks } from './tasks';
 import { HugeTableView } from './table-view';
@@ -68,6 +69,8 @@ export interface HugeOpen {
   lastModified: number;
   /** The file's handle, when huge mode opened it (its Open file, or a drop on it): Save writes into it. */
   handle: FileSystemFileHandle | null;
+  /** The file itself (read before saving over a picked file, to check it still is as it was opened). */
+  file: Blob;
 }
 
 /** Where an edit was asked from (the huge_edit event). */
@@ -140,6 +143,10 @@ export class HugeSession {
   /** The opened file's handle (Save writes into it), its size and last change as last saved or opened. */
   private handle: FileSystemFileHandle | null;
   private file: { size: number; lastModified: number };
+  /** The opened file (or the one saved in place): what the document reads. */
+  private opened: Blob;
+  /** "Save changes to big.json" is asked: its answer. */
+  private saveAnswer: ((a: SaveChoice) => void) | null = null;
   private saving: { stop(): void } | null = null;
   private restoreOffered = false;
   /** Where the edit box or text dialog was opened from (the huge_edit event). */
@@ -175,7 +182,7 @@ export class HugeSession {
       lines: 0,
       noRoot: false,
       graph: null,
-      edit: src.edits ? { ready: false, edited: false, steps: 0, canUndo: false, canRedo: false, busy: false, saving: null, restore: null, confirm: false, inPlace: !!meta.handle } : null,
+      edit: src.edits ? { ready: false, edited: false, steps: 0, canUndo: false, canRedo: false, busy: false, saving: null, restore: null, confirm: false, saveAsk: false, inPlace: !!meta.handle } : null,
       box: null,
       textEdit: null,
       menu: null,
@@ -184,6 +191,7 @@ export class HugeSession {
     });
     this.handle = meta.handle;
     this.file = { size: meta.size, lastModified: meta.lastModified };
+    this.opened = meta.file;
     if (src.edits) {
       this.editing = new HugeEditing({
         src,
@@ -261,6 +269,7 @@ export class HugeSession {
     this.find.stop();
     this.stopState();
     this.saving?.stop();
+    this.answerSave('cancel');
     window.removeEventListener('beforeunload', this.onUnload);
     clearTimeout(this.growTimer);
     // (Closing keeps the edits not kept yet, then ends the core's worker.)
@@ -1193,16 +1202,18 @@ export class HugeSession {
   }
 
   /**
-   * Saves the document. Into the opened file when huge mode has its handle (asking for write permission first);
-   * else, in Chromium, where the save picker says (the opened file itself, picked there, is saved in place); else
-   * downloaded. `as`: always the picker (Save as). In place, the file is then the document: no edits, no undo.
+   * Saves the document (save-plan.ts says where). Into the opened file when huge mode has its handle (asking for
+   * write permission first). Else, in Chromium, asked: the opened file overwritten (picked again with the open
+   * picker, and checked to be it before anything is written), or a new file (the save picker, another name
+   * suggested); else downloaded. `as`: always a new file (Save as). In place, the file is then the document: no
+   * edits, no undo.
    */
   async save(as = false): Promise<boolean> {
     // (What's typed in the Format view goes first.)
     await this.fe?.flush();
     const ed = this.src.edits;
     const e = this.ui.get().edit;
-    if (!ed || !e || this.dead || e.saving) return false;
+    if (!ed || !e || this.dead || e.saving || e.saveAsk) return false;
     if (!as && !e.edited) {
       this.host.toast('No changes to save', 'info');
       return false;
@@ -1211,25 +1222,36 @@ export class HugeSession {
       this.host.toast('The file is still being read: it can be saved once it is', 'info');
       return false;
     }
-    let handle: FileSystemFileHandle | null = null;
-    let inPlace = false;
-    if (!as && this.handle && (await writable(this.handle))) {
-      handle = this.handle;
-      inPlace = true;
-    } else {
-      const picked = await pickSave(this.meta.name);
-      if (picked === null) return false;
-      if (picked) {
-        handle = picked;
-        inPlace = await this.isOpened(picked);
-      }
+    const name = this.meta.name;
+    const plan = await planSave<FileSystemFileHandle>({
+      as,
+      name,
+      handle: this.handle,
+      ...pickers(),
+      writable,
+      ask: () => this.askSave(),
+      pickExisting,
+      pickSave: async (n) => (await pickSave(n)) ?? null,
+      isOpened: (h) => this.isOpened(h),
+      intact: () => this.intact(),
+    });
+    if (this.dead) return false;
+    if ('stop' in plan) {
+      const why = plan.stop;
+      if (why === 'not_opened') this.host.toast(rt("That isn't {name} as it was opened: nothing was written. Pick {name} itself, or save as a new file", { name }), 'err', undefined, 10_000);
+      else if (why === 'not_allowed') this.host.toast(rt('Writing to {name} wasn’t allowed: nothing was written', { name }), 'info');
+      else if (why === 'changed') this.host.toast(rt('Nothing was written: {name} has changed since it was opened (picking it in the save window may have emptied it), and saving reads it as it was', { name }), 'err', undefined, 15_000);
+      if (why !== 'cancel') track('huge_save', { how: why === 'changed' ? 'save_as' : 'in_place', outcome: why, size: hugeSize(this.src.state().docSize ?? this.src.size), ms: 0 });
+      return false;
     }
+    const { handle } = plan;
+    const inPlace = plan.how === 'in_place';
     // (A Convert command or the Shape pass reads the opened file's bytes: saving over it waits for them.)
     if (inPlace && this.work?.busy) {
       this.host.toast('A command is reading this file: save once it ends (or stop it)', 'info');
       return false;
     }
-    const how: Events['huge_save']['how'] = inPlace ? 'in_place' : handle ? 'save_as' : 'download';
+    const how = plan.how;
     const began = performance.now();
     const size = this.src.state().docSize ?? this.src.size;
     this.setEdit({ saving: { written: 0, size }, ready: false });
@@ -1240,13 +1262,15 @@ export class HugeSession {
       const r = await run.done;
       if (this.dead) return true;
       report('done');
-      if (how === 'download' && r.blob) this.host.saveBlob(r.blob, this.meta.name);
+      if (how === 'download' && r.blob) this.host.saveBlob(r.blob, name);
       if (inPlace && handle) {
+        // (The document reads the saved file now.)
         this.handle = handle;
         const f = await handle.getFile();
         this.file = { size: f.size, lastModified: f.lastModified };
+        this.opened = f;
       }
-      this.host.toast(inPlace ? rt('Saved {name}', { name: this.meta.name }) : handle ? rt('Saved as {name}', { name: handle.name }) : rt('Downloading {name}', { name: this.meta.name }), 'ok');
+      this.host.toast(inPlace ? rt('Saved {name}', { name }) : handle ? rt('Saved as {name}', { name: handle.name }) : rt('Downloading {name}', { name }), 'ok');
       return true;
     } catch (err) {
       if (this.dead) return false;
@@ -1268,15 +1292,47 @@ export class HugeSession {
     this.saving?.stop();
   }
 
-  /** Is `h` the opened file (picked in the save picker)? Then saving there is saving in place. */
+  /** "Save changes to big.json": overwrite it, save a new file, or not. */
+  private askSave(): Promise<SaveChoice> {
+    this.answerSave('cancel');
+    return new Promise((done) => {
+      this.saveAnswer = done;
+      this.setEdit({ saveAsk: true });
+    });
+  }
+
+  /** The answer to "Save changes to big.json" (the dialog's buttons, Esc; closing says cancel). */
+  answerSave(a: SaveChoice) {
+    const done = this.saveAnswer;
+    if (!done) return;
+    this.saveAnswer = null;
+    if (this.dead) return done('cancel');
+    this.setEdit({ saveAsk: false });
+    if (a === 'cancel') this.focusView();
+    done(a);
+  }
+
+  /** Is `h` the opened file, as it was opened (or last saved): its name, size and last change? */
   private async isOpened(h: FileSystemFileHandle): Promise<boolean> {
-    if (this.handle) return h.isSameEntry(this.handle).catch(() => false);
     try {
-      const f = await h.getFile();
-      return f.name === this.meta.name && f.size === this.file.size && f.lastModified === this.file.lastModified;
+      if (this.handle && !(await h.isSameEntry(this.handle))) return false;
+      return sameFile(await h.getFile(), { name: this.meta.name, ...this.file });
     } catch {
       return false;
     }
+  }
+
+  /** The opened file still reads as it was (its handle's file the same, its first and last bytes there). */
+  private async intact(): Promise<boolean> {
+    if (this.handle) {
+      try {
+        const f = await this.handle.getFile();
+        if (f.size !== this.file.size || f.lastModified !== this.file.lastModified) return false;
+      } catch {
+        return false;
+      }
+    }
+    return readable(this.opened);
   }
 
   /** The close button: with unsaved edits, asks first. */

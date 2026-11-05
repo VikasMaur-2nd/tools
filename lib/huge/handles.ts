@@ -66,7 +66,28 @@ export async function writable(h: FileSystemFileHandle): Promise<boolean> {
   }
 }
 
-/** The save picker (Chromium): a handle, null if the user closed it, undefined where there is none (download). */
+/** Which pickers this browser has (Chromium: both; the others: none, Save downloads). */
+export const pickers = () => ({ openPicker: 'showOpenFilePicker' in window, savePicker: 'showSaveFilePicker' in window });
+
+/**
+ * A file to write into, picked with the open picker: unlike the save picker, picking never empties it (UI-NOTES 17).
+ * Null if the user closed it.
+ */
+export async function pickExisting(): Promise<FileSystemFileHandle | null> {
+  const w = window as unknown as { showOpenFilePicker(o: object): Promise<FileSystemFileHandle[]> };
+  try {
+    const [handle] = await w.showOpenFilePicker({ types: TYPES, excludeAcceptAllOption: false });
+    return handle ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The save picker (Chromium): a handle, null if the user closed it, undefined where there is none (download).
+ * Picking an existing file may empty it at once (Chromium), before anything is written: `name` is never the opened
+ * file's own (save-plan.ts editedName), and the opened file is checked after (HugeSession.save).
+ */
 export async function pickSave(name: string): Promise<FileSystemFileHandle | null | undefined> {
   const w = window as unknown as { showSaveFilePicker?(o: object): Promise<FileSystemFileHandle> };
   if (!w.showSaveFilePicker) return undefined;

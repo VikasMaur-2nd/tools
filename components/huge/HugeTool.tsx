@@ -17,7 +17,7 @@ import type { Portal } from '@/lib/huge/kit';
 import { Icon, type IconName } from '../icons';
 import { MHead, MItem, MSep, Menu } from '../menu';
 import ShapeView from './HugeShape';
-import { CloseConfirm, EditBoxView, EditButtons, EditMenu, RestoreBar, TextDialog } from './HugeEdit';
+import { CloseConfirm, EditBoxView, EditButtons, EditMenu, RestoreBar, SaveAsk, TextDialog } from './HugeEdit';
 import FormatEditView from './HugeFormatEdit';
 import CommandsView from './HugeCommands';
 
@@ -673,6 +673,7 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
         <EditMenu s={s} />
         <TextDialog s={s} />
         <CloseConfirm s={s} />
+        <SaveAsk s={s} />
       </div>
     </section>
   );

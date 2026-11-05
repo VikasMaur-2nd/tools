@@ -1533,5 +1533,19 @@
   "app.hugeCmdKept._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file. Split into a folder the user picked was stopped: the finished parts stay there, the one being written is deleted. {folder}: the folder's name; {next}: the number of the part removed.",
   "app.hugeCmdKeptErr.one": "{n} finished part kept in {folder}.",
   "app.hugeCmdKeptErr.other": "{n} finished parts kept in {folder}.",
-  "app.hugeCmdKeptErr._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file. After an error in Split into a picked folder: the finished parts stay there."
+  "app.hugeCmdKeptErr._context": "Large-file mode, Convert view: commands that write a huge JSON file again straight to a file. After an error in Split into a picked folder: the finished parts stay there.",
+  "app.hugeEdSaveAsk": "Save changes to {name}",
+  "app.hugeEdSaveAsk._context": "Large-file mode, editing: title of the dialog asked by Save when the page can't write into the opened file directly (Chrome, Edge: a file opened from the file input or a first drop). {name}: the file name.",
+  "app.hugeEdSaveAskText": "To overwrite it, pick {name} again in the window that opens: it’s checked to be the file you opened before anything is written.",
+  "app.hugeEdSaveAskText._context": "Large-file mode, editing: the save dialog's text. \"The window that opens\": the browser's file picker. {name}: the file name.",
+  "app.hugeEdOverwrite": "Overwrite {name}…",
+  "app.hugeEdOverwrite._context": "Large-file mode, editing: the save dialog's button: write the changes into the opened file (opens the file picker to pick it again). {name}: the file name.",
+  "app.hugeEdSaveNew": "Save as a new file…",
+  "app.hugeEdSaveNew._context": "Large-file mode, editing: the save dialog's button: save the edited document as another file (opens the browser's save window).",
+  "toast.hugeSaveNotOpened": "That isn't {name} as it was opened: nothing was written. Pick {name} itself, or save as a new file",
+  "toast.hugeSaveNotOpened._context": "Large-file mode: after \"Overwrite {name}…\", the file picked is another file, or the opened file changed since it was opened; nothing was saved. {name}: the opened file's name.",
+  "toast.hugeSaveNotAllowed": "Writing to {name} wasn’t allowed: nothing was written",
+  "toast.hugeSaveNotAllowed._context": "Large-file mode: after \"Overwrite {name}…\", the user (or the browser) refused write permission on the file. {name}: the file name.",
+  "toast.hugeSaveChanged": "Nothing was written: {name} has changed since it was opened (picking it in the save window may have emptied it), and saving reads it as it was",
+  "toast.hugeSaveChanged._context": "Large-file mode: Save as a new file stopped before writing because the opened file can no longer be read as it was (the browser's save window may empty a file picked in it). Saving reads the unchanged parts of the opened file. {name}: the opened file's name."
 }

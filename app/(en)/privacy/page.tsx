@@ -26,8 +26,8 @@ const WHEN: Record<EventName, string> = {
   huge_command: 'A large-file command (Pretty, Minify, JSON Lines, JSON array, CSV, Split or Extract) finishes, fails or is stopped. Where it wrote is one of four fixed kinds; the file’s name and content, the names it wrote, the fields and values you filtered on and the exact size are never included.',
   huge_shape: 'The Shape panel finishes reading a large file (or is stopped). How many paths it found is sent as a range; the paths themselves, their types, counts and values are never included.',
   huge_gz: 'A compressed .json.gz or .jsonl.gz file is opened (decompressed in your browser), with how it ended. Its name, content and exact size are never included.',
-  huge_edit: 'A large file is edited: the kind of edit (set a value, rename, delete, insert, duplicate, edit as text, undo, redo, restore) and where it was asked from (tree, table, graph, menu, keyboard, toolbar, palette, banner). The values, names and paths are never included.',
-  huge_save: 'A large file is saved: how (in place, as another file, or downloaded), how it ended (saved, stopped or failed), how long it took and its size as a range. Its name and content are never included.',
+  huge_edit: 'A large file is edited: the kind of edit (set a value, rename, delete, insert, duplicate, edit as text, typing in the Format view, undo, redo, restore) and where it was asked from (tree, table, graph, Format view, menu, keyboard, toolbar, palette, banner). The values, names and paths are never included.',
+  huge_save: 'A large file is saved: how (in place, as another file, or downloaded), how it ended (saved, stopped, failed, or nothing written because the file picked wasn’t the one opened, writing to it wasn’t allowed, or the opened file had changed), how long it took and its size as a range. Its name and content are never included.',
 };
 
 const PROPS: Record<string, string> = {

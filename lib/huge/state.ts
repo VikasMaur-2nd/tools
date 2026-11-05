@@ -66,6 +66,8 @@ export interface EditUI {
   restore: { steps: number; time: number } | null;
   /** Closing with unsaved edits: asking first. */
   confirm: boolean;
+  /** Saving without the opened file's handle: asking where (overwrite it, or a new file). */
+  saveAsk: boolean;
   /** Save writes into the opened file itself (huge mode has its handle). */
   inPlace: boolean;
 }
