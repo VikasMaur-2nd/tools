@@ -13,6 +13,7 @@ import { reportError, track } from '../analytics';
 import type { Events } from '../analytics/events';
 import { CoreSource } from './core-source';
 import { PageNodes } from './page';
+import { utf8Bytes } from './utf8';
 import { hugeSize, type HugeSession } from './session';
 import { ARR, LIST, OBJ, type HugeNode as CoreNode, type HugeSummary } from './types';
 import { StreamClient, StreamError, canPick, canPickFolder, freeSpace, hold, removeTemp, sweep, tempName } from './stream/client';
@@ -375,13 +376,13 @@ export class HugeTasks {
     // A small object: parsed here, as the normal path would.
     const { start, end } = at.scope;
     if (!at.scope.multi && end - start <= 16 << 20) {
-      const { text, cut } = await this.core.doc.text(start, end, 16 << 20);
+      const { text, cut, bad } = await this.core.doc.text(start, end, 16 << 20);
       const res = cut ? null : parse(text);
       if (!res?.root) return at;
       const rec = recordsOf(res.root);
       if (rec === res.root) return at;
-      const enc = new TextEncoder();
-      const byteOf = (s: number) => start + enc.encode(text.slice(0, s)).length;
+      // (The parsed text's offsets as bytes: invalid UTF-8 as the core counts it, utf8.ts: REVIEW-3 B4.)
+      const byteOf = (s: number) => start + utf8Bytes(text, 0, s, bad);
       return { ...at, scope: { start: byteOf(rec.s), end: byteOf(rec.e), multi: false }, t: ARR, count: kids(rec).length };
     }
     if (!at.node) return at;
