@@ -63,7 +63,8 @@ test('notes 14: a kept session found after ready comes through onSummary; none: 
   assert.equal(after.session, null);
   assert.equal(after.steps, 2);
   assert.equal(dec.decode(new Uint8Array(await (await doc.slice(0, after.size)).arrayBuffer())), ' ' + docText);
-  doc.close();
+  // (Closing keeps what isn't kept yet: the restored edits again, now.)
+  await doc.close();
   // None kept for this file: null, at ready or pushed after it.
   const other = connect(new File([docText], 'a.json', { lastModified: 4 }), store);
   const pushed2 = new Promise<HugeSummary>((done) => (other.onSummary = done));
@@ -75,7 +76,9 @@ test('notes 14: a kept session found after ready comes through onSummary; none: 
   const quick = connect(new File([docText], 'a.json', { lastModified: 3 }), store);
   const pushed3 = new Promise<HugeSummary>((done) => (quick.onSummary = done));
   const s3 = await quick.ready;
-  assert.deepEqual(s3.session !== undefined ? s3.session : (await pushed3).session, { steps: 2, bytes: 1, time: 5 }, 'quick');
+  const found = s3.session !== undefined ? s3.session : (await pushed3).session;
+  assert.deepEqual(found && { steps: found.steps, bytes: found.bytes }, { steps: 2, bytes: 1 }, 'quick');
+  assert.ok(found!.time > 5, 'kept again at close');
   quick.close();
   // No store: nothing to look for.
   const none = connect(new File([docText], 'a.json', { lastModified: 3 }));
