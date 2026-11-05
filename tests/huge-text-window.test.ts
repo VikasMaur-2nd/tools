@@ -9,7 +9,7 @@ import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { CoreSource } from '../lib/huge/core-source';
 import { parse } from '../lib/json/tape-parser';
-import { LINE_MAX, TextWindow, WINDOW_ABOVE, WINDOW_BYTES, diffText } from '../lib/huge/text-window';
+import { LET_GO_MS, LINE_MAX, TextWindow, WINDOW_ABOVE, WINDOW_BYTES, diffText } from '../lib/huge/text-window';
 import type { HugeNode, HugeSource, IndexState } from '../lib/huge/source';
 import { enc, hugeMod, memSource, tapeMod } from './huge-oracle';
 
@@ -326,6 +326,12 @@ test("REVIEW-2 #2: invalid UTF-8 in the window: its bytes are the document's; ty
   }
 });
 
+/** Waits till the raw line count is `n` (a broken document's lines past the error are counted after `done`). */
+async function counted(src: HugeSource, n: number) {
+  for (let k = 0; k < 500 && src.lineCount('raw') < n; k++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(src.lineCount('raw'), n, 'all lines counted');
+}
+
 test('REVIEW-2 #6: a broken document all read: the window holds the error\'s line and the lines after it', async () => {
   // Part 1: opened on a broken file (a missing comma on line 22): the window at the error has it, and more.
   const recs = Array.from({ length: 5000 }, (_, i) => `  {"id": ${i}, "name": "user ${i}"}`);
@@ -334,6 +340,7 @@ test('REVIEW-2 #6: a broken document all read: the window holds the error\'s lin
   let src = core(text);
   let st = await ended(src);
   assert.ok(st.error, 'broken');
+  await counted(src, text.split('\n').length);
   const errLine = st.error!.line - 1;
   assert.equal(await src.lineOf('raw', st.error!.at), errLine, 'the error\'s line (not 0)');
   let w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
@@ -359,10 +366,34 @@ test('REVIEW-2 #6: a broken document all read: the window holds the error\'s lin
   w.edited(w.view.slice(0, c) + w.view.slice(c + 1));
   await w.flush();
   st = await ended(src);
+  // (The core doesn't count the lines past an error an edit made yet: UI-NOTES 24. The window reads them itself.)
   const broken = st.error!.line - 1;
   const before = [w.line, w.line + w.lines - 1];
   assert.equal(await w.load(w.line, 0), true);
   assert.deepEqual([w.line, w.line + w.lines - 1], before, 'read again: the same lines');
   assert.ok(broken >= w.line && broken < w.line + w.lines, 'the broken line still in it');
   await src.destroy();
+});
+
+test('REVIEW-3 C7: a window let go with keys held (the document read again) stops trying once its time is up', async () => {
+  let asked = 0;
+  // A source whose document is being read again (an unbalanced quote in a big file), then closed.
+  const src = {
+    state: () => {
+      asked++;
+      return { done: false };
+    },
+    onState: () => () => undefined,
+    edits: { replace: async () => ({}) },
+  } as unknown as HugeSource;
+  const w = new TextWindow(src, { sent() {}, failed() {} });
+  w.view = w.sent = 'abc';
+  w.edited('abcd');
+  const f = w.flush();
+  w.destroy();
+  await sleep(LET_GO_MS + 400);
+  assert.equal(await Promise.race([f.then(() => 'resolved'), sleep(50).then(() => 'pending')]), 'resolved', 'flush resolves');
+  const before = asked;
+  await sleep(1000);
+  assert.equal(asked, before, 'no more polling');
 });

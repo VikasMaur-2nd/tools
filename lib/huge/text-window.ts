@@ -25,6 +25,11 @@ export const WINDOW_ABOVE = 300;
 export const PASTE_MAX = 8 << 20;
 /** What's typed while the document can't take it ('Not ready') is tried again this often (ms), states or not. */
 const RETRY_MS = 250;
+/**
+ * A window let go with keys not taken in yet tries to send them this long at most (ms; the session waits as long
+ * before the core closes: session.ts TYPED_WAIT), then stops (REVIEW-3 C7: it polled for the page's life).
+ */
+export const LET_GO_MS = 3000;
 
 /** What changed from `a` to `b`: [p, p + del) of `a` became `ins` (null: nothing did). Never between a pair's halves. */
 export function diffText(a: string, b: string): { p: number; del: number; ins: string } | null {
@@ -87,13 +92,20 @@ export class TextWindow {
     private readonly ev: WindowEvents,
   ) {}
 
-  /** Lets the window go: nothing more is read or told; what's typed still goes (`flush` resolves once it has). */
+  /**
+   * Lets the window go: nothing more is read or told; what's typed still goes (`flush` resolves once it has), for
+   * LET_GO_MS at most.
+   */
   destroy() {
     this.gone = true;
-    if (!this.pending || this.broken) this.finish();
+    if (!this.pending || this.broken) return this.finish();
+    this.giveUp ??= setTimeout(() => this.finish(), LET_GO_MS);
   }
 
+  private giveUp: ReturnType<typeof setTimeout> | undefined;
+
   private finish() {
+    clearTimeout(this.giveUp);
     this.dead = true;
     this.waiting?.();
     for (const f of this.flushed.splice(0)) f();
@@ -115,9 +127,10 @@ export class TextWindow {
     const end = st.docSize ?? this.src.size;
     const starts = ls.map((l) => l.at);
     let lines = Math.min(n, starts.length);
-    // A document all read, with an error: the core's raw lines stop at it, though its bytes go on. The lines after
-    // the error's are found in its text, as far as a window goes, so the error's line can be seen and fixed by
-    // typing (REVIEW-2 #6).
+    // A document all read, with an error: the core's raw lines past it come as it counts them (in steps after
+    // `done`; core round 7), and after an edit that breaks the document they stopped at the error (UI-NOTES 24).
+    // Lines the core doesn't give yet are found in the text, as far as a window goes, so the error's line can be
+    // seen and fixed by typing (REVIEW-2 #6). Once the core gives them all, this reads nothing more.
     if (st.done && st.error && starts.length < WINDOW_LINES + 1) {
       const a = starts[starts.length - 1];
       const b = Math.min(end, Math.max(starts[0] + WINDOW_BYTES, a + LINE_MAX) + 1);
