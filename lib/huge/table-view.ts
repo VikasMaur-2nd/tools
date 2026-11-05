@@ -116,6 +116,17 @@ export class HugeTableView {
     this.render(true);
   }
 
+  /** After an edit: `node` (the same container, read again) with its rows and columns read again, scrolled as it was. */
+  reload(node: HugeNode) {
+    const top = this.sc.top;
+    const ar = this.ar;
+    this.setNode(node);
+    if (!this.node) return;
+    this.sc.top = top;
+    this.ar = Math.min(ar, node.count - 1);
+    this.render(true);
+  }
+
   /** The container's count grew (indexing). */
   grow(node: HugeNode) {
     if (!this.node || !this.rows || node.at !== this.node.at || node.depth !== this.node.depth) return;
@@ -263,6 +274,19 @@ export class HugeTableView {
     const col = this.cols[ci];
     if (ci > 0 && col?.key !== null && col && row.cells?.get(col.key)) return { node: row.cells.get(col.key)!, rel: [key, col.key] };
     return { node: row.node, rel: [key] };
+  }
+
+  /** A right click on a cell: selects its value (the edit menu acts on it). */
+  pickAt(t: HTMLElement) {
+    const r = t.closest('.tb-r') as HTMLElement | null;
+    if (!r) return;
+    const ri = Number(r.dataset.r);
+    const cell = t.closest('[data-c]') as HTMLElement | null;
+    const p = this.pick(ri, cell ? Number(cell.dataset.c) : 0);
+    this.el.focus({ preventScroll: true });
+    this.ar = ri;
+    this.render(true);
+    if (p) this.ev.select(p.node, p.rel);
   }
 
   private onClick = (e: MouseEvent) => {

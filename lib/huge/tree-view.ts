@@ -103,6 +103,44 @@ export class HugeTreeView {
     this.render(true);
   }
 
+  /** The paths (names and indexes) of the open containers, the root's [] first: to open them again after an edit. */
+  openPaths(): Seg[][] {
+    const out: Seg[][] = [];
+    const walk = (o: Open, segs: Seg[]) => {
+      out.push(segs);
+      for (const i of o.order) {
+        const k = o.kids.get(i)!;
+        walk(k, [...segs, k.node.key ?? i]);
+      }
+    };
+    if (this.model.root) walk(this.model.root, []);
+    return out;
+  }
+
+  /**
+   * After an edit, the document read again: the root, the containers that were open (`opens`: their chains, read
+   * again by path) open again, the cursor on `cursor`'s last node (null: on the root). The scroll stays where it
+   * was, unless the cursor's row is out of view then.
+   */
+  reload(root: HugeNode, opens: HugeNode[][], cursor: HugeNode[] | null) {
+    const top = this.sc.top;
+    this.model.setRoot(root);
+    this.cache.clear();
+    for (const chain of opens) {
+      if (chain.length < 2 || chain[chain.length - 1].t < ARR) continue;
+      const path = this.model.reveal(chain);
+      const last = chain[chain.length - 1];
+      this.model.open(this.model.openAt(path.slice(0, -1)), last.i, last);
+    }
+    if (cursor && cursor.length > 1) this.model.reveal(cursor);
+    else this.model.cursor = { path: [], kind: 'node' };
+    this.model.recount();
+    this.fit();
+    this.sc.top = top;
+    this.scrollToCursor(false);
+    this.render(true);
+  }
+
   private fit() {
     this.sc.fit(this.model.count * RH, this.sizer);
   }
@@ -465,6 +503,15 @@ export class HugeTreeView {
     // The cursor stays on the paging row it was on (it moved with the window).
     if (at >= 0) this.scrollToCursor(false);
     this.render(true);
+  }
+
+  /** A right click on a row: selects its value (the edit menu acts on it). */
+  pickAt(t: HTMLElement) {
+    const r = t.closest('.tv-r') as HTMLElement | null;
+    const i = r ? Number(r.dataset.i) : -1;
+    if (i < 0 || this.model.rowAt(i)?.kind !== 'node') return;
+    this.el.focus({ preventScroll: true });
+    this.moveTo(i, 'pointer');
   }
 
   private onClick = (e: MouseEvent) => {

@@ -14,6 +14,7 @@ import type { HugeProgress } from './types';
 import HugeTool from '@/components/huge/HugeTool';
 import { SmallSource, type SmallOptions } from './small-source';
 import { HugeSession, type HugeHook, type HugeHost } from './session';
+import { takeHandle } from './handles';
 
 type Kit = typeof kit;
 
@@ -30,6 +31,7 @@ export interface Started {
 export async function openRest(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, asText: boolean, Scroll: Kit['Scroll'], started: Started | null, sim: SmallOptions | null, closed?: () => void): Promise<HugeHook | null> {
   try {
     kit.Scroll = Scroll;
+    kit.Editor ??= Object.getPrototypeOf(host.ed).constructor as typeof kit.Editor;
     let forced = false;
     try {
       // (Opened by the debug override, not by its size: said so in the huge_opened event.)
@@ -62,7 +64,8 @@ async function open(host: HugeHost, file: File, source: InputSource, signal: Abo
     return null;
   }
   const key = String(++opened);
-  const session: HugeSession = new HugeSession(host, source_, { name: file.name, source, forced }, (portal): ReactNode => createElement(HugeTool, { key, portal }));
+  const meta = { name: file.name, source, forced, size: file.size, lastModified: file.lastModified, handle: await takeHandle(file) };
+  const session: HugeSession = new HugeSession(host, source_, meta, (portal): ReactNode => createElement(HugeTool, { key, portal }));
   if (closed) session.onClose(closed);
   signal.addEventListener('abort', () => session.close(), { once: true });
   // (Shown at once; its root comes as the index reads it.)

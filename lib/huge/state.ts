@@ -1,6 +1,7 @@
 /* What huge mode's React UI shows (components/huge/HugeTool.tsx), published by its HugeSession. */
 import type { FindView } from './find';
-import type { IndexState, LineMode } from './source';
+import type { ValueKind } from './edits';
+import type { IndexState, LineMode, Seg } from './source';
 
 export type HugeView = 'format' | 'tree' | 'table' | 'shape' | 'graph' | 'convert' | 'compare';
 
@@ -24,7 +25,7 @@ export interface HugeUI {
   /** How long indexing took (ms), once it ended. */
   took: number | null;
   /** The selected value: its path, kind, size in bytes (-1: not indexed that far yet) and item count. */
-  sel: { path: string; t: number; bytes: number; count: number; partial: boolean } | null;
+  sel: { path: string; t: number; bytes: number; count: number; partial: boolean; named: boolean; root: boolean } | null;
   find: FindView & { open: boolean; seq: number };
   ask: Ask | null;
   /** The table's container path and its shape. */
@@ -35,6 +36,53 @@ export interface HugeUI {
   graph: { path: string; up: boolean; shown: number; full: boolean } | null;
   /** No value could be read (an error before any): the tree and the table say so. */
   noRoot: boolean;
+  /** Editing (null: the source can't edit). */
+  edit: EditUI | null;
+  /** The edit box, open on a value, a name, or a value to insert. */
+  box: EditBox | null;
+  /** A value open as text in the normal editor (its dialog): its path, and its text when read. */
+  textEdit: { path: Seg[]; label: string; text: string | null } | null;
+  /** The edit menu (right click, the menu key): where, and whether the keyboard opened it. */
+  menu: { x: number; y: number; keyboard: boolean } | null;
+}
+
+export interface EditUI {
+  /** Edits can be made now (the document is all read, nothing is being saved). */
+  ready: boolean;
+  /** The document differs from the file. */
+  edited: boolean;
+  /** Undo steps (the file bar's "3 changes"). */
+  steps: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** An edit is being made, or the document read again after it. */
+  busy: boolean;
+  /** Saving: bytes written of how many, and how. */
+  saving: { written: number; size: number } | null;
+  /** A kept session of this file, offered: its steps and when it was kept (ms since 1970). */
+  restore: { steps: number; time: number } | null;
+  /** Closing with unsaved edits: asking first. */
+  confirm: boolean;
+  /** Save writes into the opened file itself (huge mode has its handle). */
+  inPlace: boolean;
+}
+
+/** The edit box: a value's new value, a member's new name, or a value to insert. */
+export interface EditBox {
+  mode: 'value' | 'rename' | 'insert';
+  /** The value's path (value, rename), or the container's (insert). */
+  path: Seg[];
+  /** That path as shown. */
+  label: string;
+  /** Insert: where, and whether it's into an object (a name is asked). */
+  index: number;
+  named: boolean;
+  /** What the value is typed as, the text it starts with, and the name (rename, insert into an object). */
+  kind: ValueKind;
+  text: string;
+  name: string;
+  /** Where it opens (viewport px: over the row or cell), null: at the top of the view. */
+  at: { x: number; y: number; w: number } | null;
 }
 
 type Listener = () => void;

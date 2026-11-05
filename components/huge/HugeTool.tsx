@@ -17,6 +17,7 @@ import type { Portal } from '@/lib/huge/kit';
 import { Icon, type IconName } from '../icons';
 import { MHead, MItem, MSep, Menu } from '../menu';
 import ShapeView from './HugeShape';
+import { CloseConfirm, EditBoxView, EditButtons, EditMenu, RestoreBar, TextDialog } from './HugeEdit';
 import CommandsView from './HugeCommands';
 
 function useHuge<T>(store: HugeStore, select: (s: HugeUI) => T): T {
@@ -49,15 +50,16 @@ function FileBar({ s }: { s: HugeSession }) {
         {name}
         <span className="hg-bytes">{t.bytes(size)}</span>
       </span>
-      <span className="hg-badge" data-tip={t('Read a window at a time, so files of any size open. Editing comes later.')}>
+      <span className="hg-badge" data-tip={t('Read a window at a time, so files of any size open, and edited without loading them whole.')}>
         {t('Large file')}
       </span>
       <span className="grow" />
-      <button type="button" className="btn" onClick={() => act((e) => e.openFile())} data-tip={t('Open another file')}>
+      <EditButtons s={s} />
+      <button type="button" className="btn" onClick={() => (s.editable ? void s.openFile() : act((e) => e.openFile()))} data-tip={t('Open another file')}>
         <Icon name="open" />
         <span className="lbl">{t('Open file')}</span>
       </button>
-      <IconBtn icon="x" label="Close file" tip={t('Close the file and go back to the editor')} onClick={() => s.close(true)} />
+      <IconBtn icon="x" label="Close file" tip={t('Close the file and go back to the editor')} onClick={() => s.askClose()} />
     </div>
   );
 }
@@ -618,7 +620,18 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
       <FileBar s={s} />
       <Progress s={s} />
       <ViewBar s={s} />
-      <div className={`view ${PRIVATE}`}>
+      <div
+        className={`view ${PRIVATE}`}
+        onContextMenu={(e) => {
+          // The edit menu on the tree, table and graph (Shift+right click: the browser's, as in the normal tool).
+          const el = e.target as HTMLElement;
+          if (!s.editable || e.shiftKey || !el.closest('#hg-tree, #hg-table, #hg-graph') || el.closest('.hg-box')) return;
+          e.preventDefault();
+          s.pickUnder(el);
+          s.openMenu({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        <RestoreBar s={s} />
         <ErrorBanner s={s} />
         <FindBar s={s} />
         <AskBar s={s} />
@@ -629,6 +642,10 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
         {view === 'convert' && <CommandsView s={s} />}
         {seen.has('graph') && <GraphView s={s} hidden={view !== 'graph'} />}
         {view === 'compare' && <NotYet s={s} />}
+        <EditBoxView s={s} />
+        <EditMenu s={s} />
+        <TextDialog s={s} />
+        <CloseConfirm s={s} />
       </div>
     </section>
   );

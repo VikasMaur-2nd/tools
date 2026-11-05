@@ -110,7 +110,8 @@ export class Explored {
         if (!was.kids || !this.room) continue;
         if (now.h.t >= ARR && !now.kids) await this.more(now, was.kids.length, signal);
         for (const k of was.kids) {
-          const m = now.kids?.find((x) => x.h.key === k.h.key && x.h.at === k.h.at);
+          // (By name or index: an edit moves what follows it, so places differ.)
+          const m = now.kids?.find((x) => x.h.key === k.h.key);
           if (m) next.push([k, m]);
         }
       }
@@ -232,7 +233,7 @@ export class HugeGraph {
    * Shows the part from `root` (at `path`): its first levels, read now. `select`: the path to select after;
    * `reset`: a new part (the camera fits it), else the same one read again (the camera stays).
    */
-  async show(root: HugeNode, path: Seg[], select: Seg[] | null = null, reset = true) {
+  async show(root: HugeNode, path: Seg[], select: Seg[] | null = null, reset = true, again = false) {
     const seq = ++this.seq;
     const view = await this.load();
     if (!view || seq !== this.seq) return;
@@ -240,7 +241,7 @@ export class HugeGraph {
     const old = this.part;
     try {
       // (The same part read again: as far as it was read; a new one: its first levels.)
-      if (!reset && old && old.path.length === path.length && old.path.every((x, k) => x === path[k])) await part.replay(old);
+      if (!reset && old && (again || (old.path.length === path.length && old.path.every((x, k) => x === path[k])))) await part.replay(old);
       else await part.expand();
     } catch (e) {
       if (seq === this.seq && !this.dead) this.host.failed(e);
@@ -357,10 +358,12 @@ export class HugeGraph {
   }
 
   /** Reads the part again (counts that grew while indexing): the camera and `select` stay. */
-  async refresh(root: HugeNode, select: Seg[] | null) {
+  /** The part read again from `root` (at `path`: the part's own, or where an edit moved it), as far as it was read. */
+  async refresh(root: HugeNode, select: Seg[] | null, path?: Seg[]) {
     const p = this.part;
     if (!p) return;
-    await this.show(root, p.path, select, false);
+    // (Moved by an edit: read again as far as it was, its paths the new ones from now on.)
+    await this.show(root, path ?? p.path, select, false, true);
   }
 
   activate() {

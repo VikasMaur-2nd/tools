@@ -953,3 +953,362 @@ html[data-huge] .statusbar .cursor {
     order: 11;
   }
 }
+
+/* ── Editing (components/huge/HugeEdit.tsx) ─────────────────────────────── */
+
+/* The file bar: "Edited · 3 changes", Undo, Redo, Save; a save's progress and Stop. */
+.hg-editbar,
+.hg-saving {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+}
+
+.hg-edited {
+  margin-right: 6px;
+  color: var(--warn);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.hg-saving {
+  gap: 8px;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hg-savebar {
+  position: relative;
+  width: 90px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+
+.hg-savebar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+/* (Text buttons without an icon keep their words in narrow toolbars: see .hg-gwhere's.) */
+.hg .hg-txtbtn {
+  width: auto;
+  padding: 0 8px;
+}
+
+@media (max-width: 760px) {
+  .hg-edited {
+    display: none;
+  }
+}
+
+/* A kept session offered. */
+.hg-restore {
+  background: var(--bg-2);
+  color: var(--fg);
+}
+
+.hg-restore .b-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The edit box: over the row or cell it edits (fixed: the views scroll under it), or at the view's top. */
+.hg-box {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 260px;
+  max-width: calc(100vw - 16px);
+  padding: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+  font-size: 12.5px;
+}
+
+.hg-box.top {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: min(560px, calc(100% - 16px));
+  transform: translateX(-50%);
+}
+
+.hg-box-h {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.hg-box-h b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.hg-box-h code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--c-key);
+  font: 11.5px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hg-box-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.hg-box-kind {
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+}
+
+.hg-box-in {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+  resize: vertical;
+}
+
+.hg-box-in.mono {
+  font: 12.5px/1.45 var(--font-mono);
+}
+
+.hg-box-in:focus,
+.hg-box-kind:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-line);
+  outline-offset: 0;
+}
+
+.hg-box-in[aria-invalid='true'] {
+  border-color: var(--err);
+}
+
+.hg-box-null {
+  align-self: center;
+  color: var(--muted);
+  font: 12.5px var(--font-mono);
+}
+
+.hg-box-err {
+  margin: 0;
+  color: var(--err);
+}
+
+.hg-box-btns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.hg-box-tip {
+  flex: 1;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+@media (max-width: 760px) {
+  .hg-box-tip {
+    display: none;
+  }
+}
+
+/* The edit menu: where the right click was (or under the row, from the keyboard). */
+.hg-menu {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 70;
+  max-width: min(340px, calc(100vw - 16px));
+}
+
+.hg-menu-path {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* Dialogs: closing with edits, and a value as text. */
+.hg-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.hg-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 100%;
+  max-height: 100%;
+  padding: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.hg-dialog h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hg-confirm {
+  width: 420px;
+}
+
+.hg-confirm p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.hg-dlg-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.hg-te {
+  width: min(1100px, 100%);
+  height: min(780px, 100%);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.hg-te-h,
+.hg-te-f {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.hg-te-h {
+  border-bottom: 1px solid var(--line);
+}
+
+.hg-te-f {
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.hg-te-path {
+  min-width: 0;
+  max-width: 40ch;
+  overflow: hidden;
+  color: var(--c-key);
+  font: 12px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hg-te-find {
+  width: 180px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+}
+
+.hg-te-count {
+  min-width: 5ch;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hg-te-ed {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.hg-te-ed .ed {
+  flex: 1;
+  height: 100%;
+}
+
+.hg-te-wait {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.hg-te-check {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hg-te-check.ok {
+  color: var(--ok);
+}
+
+.hg-te-check.err {
+  color: var(--err);
+}
+
+.hg-te-warn {
+  color: var(--warn);
+}
+
+@media (max-width: 760px) {
+  .hg-modal {
+    padding: 0;
+  }
+  .hg-te {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  .hg-te-find {
+    flex: 1 1 100%;
+    order: 10;
+    width: auto;
+  }
+}

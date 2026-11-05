@@ -43,6 +43,12 @@ const HUGE_RUN_OUTCOMES = ['done', 'error', 'stopped'] as const;
 const HUGE_SINKS = ['picker', 'folder', 'download', 'zip'] as const;
 /** A .gz file: opened in the editor (small), in huge mode, or not (error, stopped, no space). */
 const HUGE_GZ_OUTCOMES = ['editor', 'huge', 'error', 'stopped', 'space'] as const;
+/** Huge mode's edits (lib/huge/edits.ts), and where they were asked from. */
+const HUGE_EDIT_OPS = ['set', 'rename', 'remove', 'insert', 'duplicate', 'text', 'undo', 'redo', 'restore'] as const;
+const HUGE_EDIT_FROM = ['tree', 'table', 'graph', 'menu', 'key', 'toolbar', 'palette', 'banner'] as const;
+/** How a huge document was saved (in place, as another file, downloaded), and how it ended. */
+const HUGE_SAVE_HOW = ['in_place', 'save_as', 'download'] as const;
+const HUGE_SAVE_OUTCOMES = ['done', 'stopped', 'failed'] as const;
 
 /** Discrete actions, reported as `feature_used { feature }`. */
 const FEATURES = [
@@ -123,6 +129,18 @@ export interface Events {
   /** A .gz file was opened (decompressed in the browser). `size`: the compressed file's range. */
   huge_gz: {
     outcome: (typeof HUGE_GZ_OUTCOMES)[number];
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
+  };
+  /** An edit in huge mode was made: its kind and where it was asked from (never what it changed). */
+  huge_edit: {
+    op: (typeof HUGE_EDIT_OPS)[number];
+    from: (typeof HUGE_EDIT_FROM)[number];
+  };
+  /** A huge document was saved: how, how it ended, the document's size range. */
+  huge_save: {
+    how: (typeof HUGE_SAVE_HOW)[number];
+    outcome: (typeof HUGE_SAVE_OUTCOMES)[number];
     size: (typeof HUGE_SIZE_LIST)[number];
     ms: number;
   };
@@ -233,7 +251,7 @@ const COMMAND_IDS = [
   'graph-export', 'graph-copy', 'graph-png', 'graph-svg', 'convert', 'compare', 'excel', 'copy-convert', 'download-convert', 'search', 'expand',
   'collapse', 'level1', 'level2', 'level3', 'fold-input', 'unfold-input', 'close-compare', 'focus-tree', 'focus-editor', 'nested', 'copy-value',
   'copy-path', 'csv', 'csv-download', 'indent-2', 'indent-4', 'indent-tab', 'theme-system', 'theme-light', 'theme-dark', 'autoformat', 'wrap',
-  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape', ...TARGET_IDS.map((t) => `to-${t}`),
+  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape', 'huge-undo', 'huge-redo', 'huge-save', 'huge-save-as', 'huge-edit', 'huge-text', 'huge-rename', 'huge-insert', 'huge-insert-inside', 'huge-duplicate', 'huge-delete', ...TARGET_IDS.map((t) => `to-${t}`),
 ];
 const SIZES = [...SIZE_EDGES.map(([, label]) => label), '100MB+'];
 const ERROR_KIND_LIST = [...ERROR_KINDS.map(([, kind]) => kind), 'other'];
@@ -263,6 +281,8 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   huge_command: { command: HUGE_COMMANDS, target: HUGE_TARGETS, outcome: HUGE_RUN_OUTCOMES, sink: HUGE_SINKS, gzip: 'flag', size: HUGE_SIZE_LIST, ms: 'number', filtered: 'flag' },
   huge_shape: { target: HUGE_TARGETS, outcome: HUGE_RUN_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number', paths: COUNTS },
   huge_gz: { outcome: HUGE_GZ_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
+  huge_edit: { op: HUGE_EDIT_OPS, from: HUGE_EDIT_FROM },
+  huge_save: { how: HUGE_SAVE_HOW, outcome: HUGE_SAVE_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
 };
 
 /** Allowed properties per event (see `clean`). */

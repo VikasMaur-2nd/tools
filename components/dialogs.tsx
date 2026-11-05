@@ -84,6 +84,29 @@ const SHAPE: Command = {
   run: (e) => e.setView('shape' as unknown as Parameters<typeof e.setView>[0]),
 };
 
+/** Huge mode's edits: told to the open session (lib/huge/session.ts listens for 'tk:huge-cmd'). */
+const hugeCmd = (id: string, group: Command['group'], title: string, keys: string, terms?: string): Command => ({
+  id,
+  group,
+  title,
+  keys,
+  terms,
+  run: () => void window.dispatchEvent(new CustomEvent('tk:huge-cmd', { detail: id })),
+});
+const HUGE_EDITS: Command[] = [
+  hugeCmd('huge-undo', 'Edit', 'Undo', 'mod+Z'),
+  hugeCmd('huge-redo', 'Edit', 'Redo', 'mod+Shift+Z'),
+  hugeCmd('huge-save', 'File', 'Save', 'mod+S', 'write file disk'),
+  hugeCmd('huge-save-as', 'File', 'Save as…', 'mod+Shift+S', 'write file disk copy'),
+  hugeCmd('huge-edit', 'Edit', 'Edit value', 'F2', 'change set'),
+  hugeCmd('huge-text', 'Edit', 'Edit as text', 'mod+E', 'editor json'),
+  hugeCmd('huge-rename', 'Edit', 'Rename', 'Shift+F2', 'key name'),
+  hugeCmd('huge-insert', 'Edit', 'Insert after', 'mod+Enter', 'add new value item'),
+  hugeCmd('huge-insert-inside', 'Edit', 'Insert inside', 'mod+Shift+Enter', 'add new value child'),
+  hugeCmd('huge-duplicate', 'Edit', 'Duplicate', 'mod+D', 'copy clone'),
+  hugeCmd('huge-delete', 'Edit', 'Delete', 'Delete', 'remove'),
+];
+
 const HUGE_COMMANDS = new Set([
   'open', 'url', 'paste', 'sample', 'format-view', 'tree', 'table', 'graph', 'convert', 'compare', 'search',
   'theme-system', 'theme-light', 'theme-dark', 'privacy-mode', 'integrate', 'handoff', 'shortcuts',
@@ -92,7 +115,7 @@ const HUGE_COMMANDS = new Set([
 function Commands() {
   const settings = useUI((s) => s.settings);
   const huge = useUI((s) => !!s.huge);
-  const commands = huge ? [...COMMANDS.filter((c) => HUGE_COMMANDS.has(c.id)), SHAPE] : COMMANDS;
+  const commands = huge ? [...HUGE_EDITS, ...COMMANDS.filter((c) => HUGE_COMMANDS.has(c.id)), SHAPE] : COMMANDS;
   const mac = useUI((s) => s.mac);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
@@ -103,7 +126,7 @@ function Commands() {
   const names = useMemo(() => {
     const m = new Map<Command, { title: string; group: string; hay: string }>();
     // (Every command a list can show: the normal ones and huge mode's Shape.)
-    for (const c of [...COMMANDS, SHAPE]) {
+    for (const c of [...COMMANDS, SHAPE, ...HUGE_EDITS]) {
       const terms = `${c.group} ${c.terms ?? ''}`;
       const hay = t.lang ? `${t(c.group)} ${c.terms ? t(c.terms) : ''} ${c.id.startsWith('to-') ? t('convert') : ''} ${terms} ${c.title}` : terms;
       m.set(c, { title: t.msg(c.title), group: t(c.group), hay });
