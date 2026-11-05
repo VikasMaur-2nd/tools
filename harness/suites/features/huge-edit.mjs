@@ -524,6 +524,32 @@ test('huge edit: typed in the Format view after a byte that isn\'t UTF-8: writte
   t.check(/Valid JSON/.test(await page.evaluate(() => window.__vis('.hg-sb')?.textContent ?? '')), 'still valid');
 });
 
+// REVIEW-2 #6: a broken document all read: the Format view's editing window was cut before the error's line, so it
+// couldn't be fixed by typing. It holds the error's line and the lines after it.
+test('huge edit: a broken file: Go to error, F2, the error\'s line in the editor, fixed by typing', async (t) => {
+  const { page } = t;
+  const recs = Array.from({ length: 5000 }, (_, i) => `  {"id": ${i}, "name": "user ${i}"}`);
+  recs[20] = '  {"id": 20 "name": "user 20"}';
+  const broken = join(dir, 'broken.json');
+  writeFileSync(broken, '[\n' + recs.join(',\n') + '\n]\n');
+  await t.open('/');
+  await page.evaluate(() => localStorage.setItem('tk:hugeMin', '0'));
+  await page.locator('.app:visible input[type=file]').setInputFiles(broken);
+  t.assert(await until(page, () => /(Invalid|Not strict) JSON/.test(window.__vis('.hg .banner')?.textContent ?? ''), null, { timeout: 15_000 }), 'the error said');
+  await page.locator('.hg .banner .btn', { hasText: 'Go to error' }).click();
+  await page.locator('#hg-format').focus();
+  await page.keyboard.press('F2');
+  t.assert(await until(page, () => /Editing lines .* · Ln 22,/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null, { timeout: 10_000 }), 'editing at the error\'s line', await page.evaluate(() => window.__vis('.hg .vmain')?.textContent));
+  const shown = await page.evaluate(() => document.querySelector('.hg-fe textarea')?.value ?? '');
+  t.check(/"id": 20 "name"/.test(await page.evaluate(() => [...document.querySelectorAll('.hg-fe .ed-body')].map((e) => e.textContent).join(''))) || shown.includes('"id": 20 "name"'), 'the error\'s line is in the editor');
+  const range = await page.evaluate(() => /Editing lines ([\d,]+)–([\d,]+)/.exec(window.__vis('.hg .vmain')?.textContent ?? '')?.slice(1).map((x) => Number(x.replace(/,/g, ''))));
+  t.check(range && range[1] > 122, 'and lines after it', range);
+  // The caret at the error: a comma before it fixes it.
+  await page.keyboard.type(',');
+  await page.keyboard.press('Escape');
+  t.check(await until(page, () => /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? '') && !window.__vis('.hg .banner'), null, { timeout: 10_000 }), 'fixed: valid', await page.evaluate(() => window.__vis('.hg-sb')?.textContent));
+});
+
 // REVIEW-2 #9: a .gz file's decompressed copy is new at every open; its session is keyed on the .gz file's facts, so
 // reopening the .gz offers it. Saving a copy never offers to overwrite "the opened file" (it isn't the user's).
 const gzPath = join(dir, 'users.json.gz');

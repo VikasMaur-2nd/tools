@@ -325,3 +325,44 @@ test("REVIEW-2 #2: invalid UTF-8 in the window: its bytes are the document's; ty
     await src.destroy();
   }
 });
+
+test('REVIEW-2 #6: a broken document all read: the window holds the error\'s line and the lines after it', async () => {
+  // Part 1: opened on a broken file (a missing comma on line 22): the window at the error has it, and more.
+  const recs = Array.from({ length: 5000 }, (_, i) => `  {"id": ${i}, "name": "user ${i}"}`);
+  recs[20] = '  {"id": 20 "name": "user 20"}';
+  const text = '[\n' + recs.join(',\n') + '\n]\n';
+  let src = core(text);
+  let st = await ended(src);
+  assert.ok(st.error, 'broken');
+  const errLine = st.error!.line - 1;
+  assert.equal(await src.lineOf('raw', st.error!.at), errLine, 'the error\'s line (not 0)');
+  let w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  assert.equal(await w.load(errLine), true);
+  assert.ok(w.offsetOf(st.error!.at) >= 0, 'the error is in the window');
+  assert.ok(w.line + w.lines - 1 > errLine + 100, `lines after it too (window ${w.line}–${w.line + w.lines - 1}, error ${errLine})`);
+  assert.equal(w.view, text.split('\n').slice(w.line, w.line + w.lines).join('\n') + '\n', 'its text, line for line');
+  // Fixed by typing there: valid again.
+  const at = w.view.indexOf('{"id": 20 ') + '{"id": 20'.length;
+  w.edited(w.view.slice(0, at) + ',' + w.view.slice(at));
+  await w.flush();
+  st = await ended(src);
+  assert.equal(st.status?.kind, 'valid', 'fixed by typing');
+  await src.destroy();
+
+  // Part 2: valid, a window at line 2000; a comma deleted there; the window read again keeps the broken line.
+  const good = '[\n' + Array.from({ length: 5000 }, (_, i) => `  {"id": ${i}, "name": "user ${i}"}`).join(',\n') + '\n]\n';
+  src = core(good);
+  await ended(src);
+  w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  await w.load(2000);
+  const c = w.view.indexOf('{"id": 2000,') + '{"id": 2000'.length;
+  w.edited(w.view.slice(0, c) + w.view.slice(c + 1));
+  await w.flush();
+  st = await ended(src);
+  const broken = st.error!.line - 1;
+  const before = [w.line, w.line + w.lines - 1];
+  assert.equal(await w.load(w.line, 0), true);
+  assert.deepEqual([w.line, w.line + w.lines - 1], before, 'read again: the same lines');
+  assert.ok(broken >= w.line && broken < w.line + w.lines, 'the broken line still in it');
+  await src.destroy();
+});

@@ -111,10 +111,29 @@ export class TextWindow {
     // (Where each line starts: one column of each is enough. One line more: where the last one ends.)
     const ls = await this.src.lines('raw', from, n + 1, 1, '');
     if (!ls.length || this.gone) return 'none';
-    const end = this.src.state().docSize ?? this.src.size;
-    const endOf = (k: number) => (k < ls.length ? ls[k].at : end);
-    const start = ls[0].at;
-    let k = Math.min(n, ls.length);
+    const st = this.src.state();
+    const end = st.docSize ?? this.src.size;
+    const starts = ls.map((l) => l.at);
+    let lines = Math.min(n, starts.length);
+    // A document all read, with an error: the core's raw lines stop at it, though its bytes go on. The lines after
+    // the error's are found in its text, as far as a window goes, so the error's line can be seen and fixed by
+    // typing (REVIEW-2 #6).
+    if (st.done && st.error && starts.length < WINDOW_LINES + 1) {
+      const a = starts[starts.length - 1];
+      const b = Math.min(end, Math.max(starts[0] + WINDOW_BYTES, a + LINE_MAX) + 1);
+      const { text, bad } = await this.src.textAt(a, b, b - a + 8);
+      if (this.gone) return 'none';
+      for (let i = text.indexOf('\n'); i >= 0 && starts.length < WINDOW_LINES + 1; i = text.indexOf('\n', i + 1)) {
+        const s = a + utf8Bytes(text, 0, i + 1, bad);
+        if (s < end) starts.push(s);
+      }
+      // (Short of the document's end: its last line read may go on; only whole lines.)
+      const whole = b >= end || starts.length > WINDOW_LINES ? starts.length : starts.length - 1;
+      lines = Math.max(1, Math.min(WINDOW_LINES, whole));
+    }
+    const endOf = (k: number) => (k < starts.length ? starts[k] : end);
+    const start = starts[0];
+    let k = lines;
     // (A long line: a window of its own, up to LINE_MAX.)
     if (endOf(1) - start > WINDOW_BYTES) {
       if (endOf(1) - start > LINE_MAX) return 'long';
