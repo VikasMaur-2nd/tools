@@ -320,7 +320,13 @@ export default function ShapeView({ s, hidden }: { s: HugeSession; hidden: boole
               );
             })}
           </div>
-          {sel && <Detail s={s} r={report} p={sel} />}
+          {sel ? (
+            <Detail s={s} r={report} p={sel} />
+          ) : (
+            <aside className="hs-detail hs-pick">
+              <p>{t('Select a path to see its types, values and examples.')}</p>
+            </aside>
+          )}
         </div>
       )}
     </div>

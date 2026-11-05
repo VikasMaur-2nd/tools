@@ -1406,5 +1406,7 @@
   "cmd.shape._context": "Command palette, large-file mode only: opens the Shape view (Alt+7).",
   "cmd.shape.terms": "schema fields structure statistics distinct",
   "app.hugeShapeRead": "Read the file",
-  "app.hugeShapeRead._context": "Large-file mode, Shape view: starts reading the file for its shape (when it did not start by itself because Find or a command was reading it)."
+  "app.hugeShapeRead._context": "Large-file mode, Shape view: starts reading the file for its shape (when it did not start by itself because Find or a command was reading it).",
+  "app.hugeShapePick": "Select a path to see its types, values and examples.",
+  "app.hugeShapePick._context": "Large-file mode, Shape view: the empty details panel beside the list of paths, before one is selected."
 }

@@ -465,6 +465,27 @@ html[data-huge] .statusbar .cursor {
   font-size: 13px;
 }
 
+/* Before a path is selected: what the panel is for (a phone keeps the room for the list). */
+.hs-pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+.hs-pick p {
+  max-width: 26ch;
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .hs-pick {
+    display: none;
+  }
+}
+
 .hs-dhead {
   display: flex;
   align-items: flex-start;
@@ -902,18 +923,33 @@ html[data-huge] .statusbar .cursor {
   .hg-gwhere > .muted {
     display: none;
   }
+  /* (On a phone the root's path has the toolbar's second row, though status-bar paths hide.) */
+  .hg-gwhere .hg-gpath {
+    display: block;
+  }
+}
+
+/* Text buttons without an icon ("From selected", Shape's "Read again" and "Stop"): narrow toolbars squeeze text
+   buttons to icon size (globals.css), which would cut these words off. */
+.hg .hg-gwhere > .btn:not(.icon),
+.hg .hs-bar > .btn:not(.icon) {
+  width: auto;
+  padding: 0 8px;
 }
 
 /* Shape's toolbar grows with what wraps (whatever order the style sheets load in): on a phone, the filter field
-   takes a line of its own instead of being cut under the grid's header. */
+   and Read again (or Stop) take the second line instead of being cut off. */
 .hg .hs-bar {
   height: auto;
 }
 
 @media (max-width: 760px) {
   .hg .hs-bar .hs-q {
-    flex: 1 1 100%;
+    flex: 1 1 160px;
     width: auto;
     order: 10;
+  }
+  .hg .hs-bar > .btn {
+    order: 11;
   }
 }
