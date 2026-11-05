@@ -7,7 +7,7 @@
  * Everything here shows document data, inside `.view` or with PRIVATE of its own.
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { PRIVATE } from '@/lib/analytics';
+import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
 import { formatDoc } from '@/lib/json/format';
 import { ARR, parse } from '@/lib/json/parser';
@@ -34,6 +34,7 @@ const Glyph = ({ d }: { d: string }) => (
 );
 const UNDO = 'M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11';
 const REDO = 'm15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13';
+const TABS = 'M4 7h6l2-3h8v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7ZM4 7V5a1 1 0 0 1 1-1h5';
 const SAVE = 'M5 4h11l4 4v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1ZM8 4v5h7V4M8 20v-6h8v6';
 
 // ── The file bar's part ─────────────────────────────────────────────────────
@@ -57,8 +58,22 @@ export function EditButtons({ s }: { s: HugeSession }) {
       </span>
     );
   }
+  // Another tab has this file open: one tab keeps a file's edits at a time (said calmly; the tip says what it means).
+  const name = s.meta.name;
+  const keep =
+    e.keeping === 'other-tab'
+      ? { label: t('Open in another tab'), tip: t('Edits here aren’t kept while {name} is open in another tab', { name }) }
+      : e.keeping === 'other-tab-kept'
+        ? { label: t('Kept in another tab'), tip: t('Another tab kept its changes to {name}: edits here won’t be kept', { name }) }
+        : null;
   return (
     <span className="hg-editbar">
+      {keep && (
+        <span className={`hg-keep ${PRIVATE_LABELS}`} tabIndex={0} role="note" data-tip={keep.tip} aria-label={keep.tip}>
+          <Glyph d={TABS} />
+          <span className="lbl">{keep.label}</span>
+        </span>
+      )}
       {e.edited && (
         <span className={`hg-edited ${PRIVATE}`} role="status">
           {e.busy ? t('Applying…') : t.n(e.steps, 'Edited · {n} change', 'Edited · {n} changes')}

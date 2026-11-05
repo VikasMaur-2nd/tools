@@ -81,6 +81,8 @@ export type EditFrom = Events['huge_edit']['from'];
 const BOX_MAX = 64 * 1024;
 /** Typing joined into one undo step by the core: changes this close together (ms, editor.ts TYPING_MS). */
 const TYPING_PAUSE = 1000;
+/** How long "Discarded the 12 kept changes · Undo" is offered (ms). */
+const ASIDE_MS = 10_000;
 /** Closing waits this long at most for what's typed in the Format view to be taken in (ms). */
 const TYPED_WAIT = 3000;
 
@@ -188,7 +190,7 @@ export class HugeSession {
       lines: 0,
       noRoot: false,
       graph: null,
-      edit: src.edits ? { ready: false, edited: false, steps: 0, canUndo: false, canRedo: false, busy: false, saving: null, restore: null, confirm: false, saveAsk: false, inPlace: !!meta.handle } : null,
+      edit: src.edits ? { ready: false, edited: false, steps: 0, canUndo: false, canRedo: false, busy: false, saving: null, restore: null, confirm: false, saveAsk: false, inPlace: !!meta.handle, keeping: 'no' } : null,
       box: null,
       textEdit: null,
       menu: null,
@@ -276,6 +278,7 @@ export class HugeSession {
     this.stopState();
     this.saving?.stop();
     this.answerSave('cancel');
+    this.dropAsideUndo();
     window.removeEventListener('beforeunload', this.onUnload);
     clearTimeout(this.growTimer);
     // What's typed in the Format view goes first, the newest key too; then closing keeps the edits not kept yet, and
@@ -979,18 +982,56 @@ export class HugeSession {
     // Not after an edit, even undone: its edits were made on the file as opened, and would be spliced into these.
     // Editing on is the answer then: the kept edits go, these are kept instead (the core keeps nothing over a
     // session on offer).
-    // Also when the session was found only after the first edit (REVIEW-3 C8): no banner then, the same answer.
-    // Said, with how many were discarded (REVIEW-3 C5).
-    if (touched && e.session && this.offer !== 'done') {
+    // The core sets the session aside (and keeps these edits instead); it does so itself when the session turned up
+    // only after the first edit (REVIEW-3 C8). Not over what another tab kept: that stays as it is.
+    if (touched && e.session && this.offer !== 'done' && e.keeping !== 'other-tab-kept') {
       this.offer = 'done';
-      const n = e.session.steps;
-      void this.src.edits?.dropSession(true).then(
-        () => !this.dead && this.host.toast(rt.n(n, 'Discarded the {n} kept change', 'Discarded the {n} kept changes'), 'info', undefined, 8000),
-        (err: unknown) => this.failed(err),
-      );
+      void this.src.edits?.dropSession(true).catch((err: unknown) => this.failed(err));
     }
+    // Set aside: said once, with an Undo that brings the offer back (REVIEW-3 C5), while nothing more is edited.
+    const aside = e.setAside ?? null;
+    const key = aside ? `${aside.time}:${aside.steps}` : '';
+    if (aside && key !== this.asideKey) {
+      this.offer = 'done';
+      this.asideUndo(aside.steps, e.steps);
+    } else if (!aside || (this.asideAction && e.steps !== this.asideSteps)) this.dropAsideUndo();
+    this.asideKey = key;
     if (!e.session || touched) restore = null;
-    this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle });
+    this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle, keeping: e.keeping ?? 'no' });
+  }
+
+  /** The set-aside session's toast, its Undo, and the steps it was shown at. */
+  private asideKey = '';
+  private asideAction: { label: string; run: () => void } | null = null;
+  private asideSteps = 0;
+  private asideTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** "Discarded the 12 kept changes · Undo" (for ASIDE_MS, while no other edit is made). */
+  private asideUndo(n: number, steps: number) {
+    this.dropAsideUndo();
+    const action = { label: 'Undo', run: () => void this.reoffer() };
+    this.asideAction = action;
+    this.asideSteps = steps;
+    this.host.toast(rt.n(n, 'Discarded the {n} kept change', 'Discarded the {n} kept changes'), 'info', action);
+    this.asideTimer = setTimeout(() => this.dropAsideUndo(), ASIDE_MS);
+  }
+
+  private dropAsideUndo() {
+    clearTimeout(this.asideTimer);
+    if (this.asideAction && store.get().toast?.action === this.asideAction) store.set({ toast: null });
+    this.asideAction = null;
+  }
+
+  /** The toast's Undo: the kept session back on offer (the edits since undone and forgotten), the banner again. */
+  private async reoffer() {
+    this.dropAsideUndo();
+    if (!this.canEdit()) return;
+    this.setEdit({ busy: true });
+    const ok = await this.editing!.run({ op: 'reoffer' }, 'banner');
+    if (this.dead) return;
+    // (Offered again, as at an open.)
+    if (ok) this.offer = 'none';
+    this.editState();
   }
 
   /** Edits can be asked now; else says why. */

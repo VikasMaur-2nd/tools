@@ -1587,5 +1587,15 @@
   "toast.hugeEdDiscarded.one": "Discarded the {n} kept change",
   "toast.hugeEdDiscarded.one._context": "Large-file mode: the user edited the file instead of answering the Restore banner (\"Restore 1 unsaved change from 10:42?\"), so the earlier kept change was dropped and the new edits are kept instead.",
   "toast.hugeEdDiscarded.other": "Discarded the {n} kept changes",
-  "toast.hugeEdDiscarded.other._context": "Large-file mode: the user edited the file instead of answering the Restore banner (\"Restore 12 unsaved changes from 10:42?\"), so the earlier kept changes were dropped and the new edits are kept instead."
+  "toast.hugeEdDiscarded.other._context": "Large-file mode: the user edited the file instead of answering the Restore banner (\"Restore 12 unsaved changes from 10:42?\"), so the earlier kept changes were dropped and the new edits are kept instead.",
+  "app.hugeKeepOtherTab": "Open in another tab",
+  "app.hugeKeepOtherTab._context": "Large-file mode, the file bar: a short note when the same large file is open in another browser tab (only one tab keeps a file's unsaved edits for later). Its tooltip says more.",
+  "app.hugeKeepOtherTabTip": "Edits here aren’t kept while {name} is open in another tab",
+  "app.hugeKeepOtherTabTip._context": "Large-file mode, the file bar note's tooltip: unsaved edits are kept for later (offered when the file is opened again) by one tab only; this tab's aren't while the other tab has the file open. {name}: the file name.",
+  "app.hugeKeepOtherKept": "Kept in another tab",
+  "app.hugeKeepOtherKept._context": "Large-file mode, the file bar: a short note when another browser tab kept its own unsaved changes to this large file, so this tab's edits won't be kept for later. Its tooltip says more.",
+  "app.hugeKeepOtherKeptTip": "Another tab kept its changes to {name}: edits here won’t be kept",
+  "app.hugeKeepOtherKeptTip._context": "Large-file mode, the file bar note's tooltip: another tab's unsaved changes to this file were kept (they'll be offered when the file is opened again), so this tab's edits won't be kept. {name}: the file name.",
+  "toast.hugeReofferNotAllowed": "Those kept changes can’t come back: the edits since can’t all be undone",
+  "toast.hugeReofferNotAllowed._context": "Large-file mode: after \"Discarded the 12 kept changes · Undo\", Undo couldn't bring the earlier kept changes back because the edits made since can't all be undone (the undo history let the oldest go)."
 }

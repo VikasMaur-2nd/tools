@@ -997,6 +997,18 @@ html[data-huge] .statusbar .cursor {
   white-space: nowrap;
 }
 
+/* Another tab has this file open: its edits aren't kept here (a calm note, its tip says why). */
+.hg-keep {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 8px;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: default;
+}
+
 .hg-saving {
   gap: 8px;
   color: var(--fg-2);
@@ -1027,7 +1039,8 @@ html[data-huge] .statusbar .cursor {
 }
 
 @media (max-width: 760px) {
-  .hg-edited {
+  .hg-edited,
+  .hg-keep .lbl {
     display: none;
   }
 }

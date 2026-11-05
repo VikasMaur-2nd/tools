@@ -82,7 +82,9 @@ export type EditOp =
   | ({ op: 'text'; path: Seg[]; text: string } & Which)
   | { op: 'undo' }
   | { op: 'redo' }
-  | { op: 'restore' };
+  | { op: 'restore' }
+  /** The kept session set aside by the first edit back on offer: the edits since undone and forgotten. */
+  | { op: 'reoffer' };
 
 /** How paths moved with an edit (for what the views had open). */
 export interface Effect {
@@ -170,11 +172,12 @@ export class HugeEditing {
     try {
       const r = await this.apply(op);
       if (!r) return false;
-      track('huge_edit', { op: op.op as EditKind, from });
+      if (op.op !== 'reoffer') track('huge_edit', { op: op.op as EditKind, from });
       await this.host.changed(r.fx, r.select, r.selectAt ?? null);
       return true;
     } catch (e) {
-      const msg = editError(e);
+      // (The edits since the session was set aside can't all be undone: the history let the oldest go.)
+      const msg = op.op === 'reoffer' && e instanceof Error && e.message === 'Not allowed' ? 'Those kept changes can’t come back: the edits since can’t all be undone' : editError(e);
       if (msg) this.host.refused(rt(msg));
       else this.host.failed(e);
       return false;
@@ -249,6 +252,9 @@ export class HugeEditing {
         return { fx: {}, select: this.host.selPath(), selectAt: this.host.selAt?.() ?? null };
       case 'restore':
         await ed.restoreSession();
+        return { fx: {}, select: this.host.selPath(), selectAt: this.host.selAt?.() ?? null };
+      case 'reoffer':
+        if (!(await ed.reofferSession())) return null;
         return { fx: {}, select: this.host.selPath(), selectAt: this.host.selAt?.() ?? null };
     }
   }

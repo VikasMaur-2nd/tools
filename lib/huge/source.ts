@@ -136,6 +136,13 @@ export interface EditState {
    * (restoreSession: only onto the file as opened, nothing edited, nothing to undo or redo).
    */
   session: { steps: number; bytes: number; time: number; restorable?: boolean } | null;
+  /**
+   * Whether this tab keeps the edits (one tab keeps a file's at a time): yes; not while the file is open in another
+   * tab (`other-tab`); not because another tab kept its own (`other-tab-kept`); not known yet, or nowhere (`no`).
+   */
+  keeping?: 'yes' | 'other-tab' | 'other-tab-kept' | 'no';
+  /** The kept session set aside by this document's first edit (reofferSession brings it back): its steps, when. */
+  setAside?: { steps: number; bytes: number; time: number } | null;
   /** Edits' bytes held (the document's and its history's). */
   bytes: number;
 }
@@ -173,8 +180,13 @@ export interface HugeEdits {
    */
   save(handle: FileSystemFileHandle | null, inPlace: boolean, progress: (written: number, size: number) => void): { done: Promise<{ blob: Blob | null }>; stop(): void };
   restoreSession(): Promise<Edited>;
-  /** Drops the kept session (`keepEdits`: this document's edits are kept instead from now on; else not till a further edit). */
+  /** Drops the kept session (`keepEdits`: set aside, this document's edits kept instead; else nothing till a further edit). */
   dropSession(keepEdits?: boolean): Promise<void>;
+  /**
+   * The session set aside back on offer: the edits since undone and forgotten (the document is the file as opened).
+   * Null: nothing set aside. Rejects 'Not allowed' when the edits since can't all be undone.
+   */
+  reofferSession(): Promise<Edited | null>;
 }
 
 /** A table row: an item of an array, and its members if it is an object. */

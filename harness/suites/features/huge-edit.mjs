@@ -889,3 +889,77 @@ test('huge edit: duplicate names: a value found with Find, deleted; a value inse
   });
   t.check(/"a": \{"v": 1\}.*"a": \{\s*"n": 3\s*\}/s.test(doc), 'the first "a" as it was; the second has n, not v', doc.slice(0, 200));
 });
+
+// Core round 8: one tab keeps a file's edits at a time (a Web Lock per file). A second tab on the same file says so
+// calmly in its file bar; when the first closes, the second, unedited, is offered what the first kept; edited, it
+// says the other tab's changes are kept, not its own. REVIEW-3 C5: the first edit's "Discarded · Undo".
+test('huge edit: the same file in two tabs: the second says its edits aren\'t kept; then the first tab\'s are offered', { engines: ['chromium'] }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await selectPath(page, '$.users[5].name');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await page.waitForTimeout(1500);
+  // A second tab, the same file.
+  const b = await page.context().newPage();
+  const tb = { ...t, page: b };
+  await b.goto(page.url());
+  await openHuge(tb, path);
+  t.check(await until(b, () => /Open in another tab/.test(window.__vis('.hg-keep')?.textContent ?? ''), null, { timeout: 10_000 }), 'the second tab says it', await b.evaluate(() => window.__vis('.hg-file')?.textContent));
+  t.check(/aren’t kept while users\.json is open in another tab/.test(await b.evaluate(() => window.__vis('.hg-keep')?.dataset.tip ?? '')), 'its tip says why');
+  if (process.env.HUGE_SHOTS) {
+    await b.locator('.hg-keep').hover();
+    await b.waitForTimeout(600);
+    await b.screenshot({ path: join(process.env.HUGE_SHOTS, 'r11-other-tab.png') });
+  }
+  t.check(!(await page.evaluate(() => !!window.__vis('.hg-keep'))), 'the first tab says nothing');
+  // The first tab closes: the second, unedited, is offered what it kept.
+  page.on('dialog', (d) => void d.accept());
+  await page.close({ runBeforeUnload: true });
+  t.check(await until(b, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 15_000 }), 'then the second is offered what the first kept');
+  t.check(await until(b, () => !window.__vis('.hg-keep'), null), 'and keeps from now');
+  // An edit instead of Restore: discarded, with an Undo that brings the offer back.
+  await selectPath(b, '$.users[7].name');
+  await b.keyboard.press('Delete');
+  t.check(await until(b, () => [...document.querySelectorAll('.toast')].some((e) => /Discarded the 1 kept change/.test(e.textContent ?? '')), null, { timeout: 10_000 }), 'Discarded the 1 kept change', await b.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent)));
+  await b.locator('.toast .toast-act', { hasText: 'Undo' }).click();
+  t.check(await until(b, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? '') && !window.__vis('.hg-edited'), null, { timeout: 10_000 }), 'Undo: the edit gone, the offer back');
+  await b.locator('.hg-restore .btn.primary').click();
+  await until(b, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 10_000 });
+  await selectPath(b, '$.users[5]');
+  t.check(/\{2\}/.test(await b.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent ?? '')), 'restored: the first tab\'s edit');
+  await b.close();
+});
+
+test('huge edit: two tabs, both edited: when the first closes, the second says the other tab\'s changes are the kept ones', { engines: ['chromium'] }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await selectPath(page, '$.users[5].name');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await page.waitForTimeout(1500);
+  const b = await page.context().newPage();
+  const tb = { ...t, page: b };
+  await b.goto(page.url());
+  await openHuge(tb, path);
+  await until(b, () => /Open in another tab/.test(window.__vis('.hg-keep')?.textContent ?? ''), null, { timeout: 10_000 });
+  await selectPath(b, '$.users[9].name');
+  await b.keyboard.press('Delete');
+  await until(b, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  page.on('dialog', (d) => void d.accept());
+  await page.close({ runBeforeUnload: true });
+  t.check(await until(b, () => /Kept in another tab/.test(window.__vis('.hg-keep')?.textContent ?? ''), null, { timeout: 15_000 }), 'the second says the other tab\'s are kept', await b.evaluate(() => window.__vis('.hg-keep')?.textContent));
+  t.check(/Another tab kept its changes to users\.json: edits here won’t be kept/.test(await b.evaluate(() => window.__vis('.hg-keep')?.dataset.tip ?? '')), 'its tip says so');
+  t.check(!(await b.evaluate(() => !!window.__vis('.hg-restore'))), 'nothing offered over its edits');
+  // Another file: its edit couldn't be kept, as close() says.
+  const other = join(dir, 'other-tabs.json');
+  writeFileSync(other, '[4]');
+  await openHuge(tb, other);
+  t.check(await until(b, () => [...document.querySelectorAll('.toast')].some((e) => /Your 1 unsaved change to users\.json couldn’t be kept/.test(e.textContent ?? '')), null, { timeout: 10_000 }), 'its close says it couldn\'t be kept', await b.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent)));
+  // The first tab's edit is still the file's session.
+  await openHuge(tb, path);
+  t.check(await until(b, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'reopened: the first tab\'s edit offered');
+  await b.close();
+});

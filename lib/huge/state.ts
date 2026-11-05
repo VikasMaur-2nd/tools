@@ -70,6 +70,8 @@ export interface EditUI {
   saveAsk: boolean;
   /** Save writes into the opened file itself (huge mode has its handle). */
   inPlace: boolean;
+  /** Whether this tab's edits are kept (one tab keeps a file's at a time): see EditState.keeping. */
+  keeping: 'yes' | 'other-tab' | 'other-tab-kept' | 'no';
 }
 
 /** The edit box: a value's new value, a member's new name, or a value to insert. */

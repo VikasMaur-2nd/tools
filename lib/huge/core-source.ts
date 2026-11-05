@@ -132,7 +132,7 @@ export class CoreSource implements HugeSource {
     this.set({
       bytes: s.done ? (e ? Math.min(docSize, e.pos) : docSize) : this.st.bytes,
       docSize,
-      edit: { edited: !!s.edited, canUndo: !!s.canUndo, canRedo: !!s.canRedo, version: s.version ?? 0, steps: s.steps ?? 0, session: s.session ?? null, bytes: s.editBytes ?? 0 },
+      edit: { edited: !!s.edited, canUndo: !!s.canUndo, canRedo: !!s.canRedo, version: s.version ?? 0, steps: s.steps ?? 0, session: s.session ?? null, bytes: s.editBytes ?? 0, keeping: s.keeping ?? 'no', setAside: s.setAside ?? null },
       done: s.done,
       cancelled: s.stopped,
       error: e ? { msg: e.msg, at: e.pos, line: e.line, col: e.col } : null,
@@ -531,6 +531,11 @@ export class CoreSource implements HugeSource {
       };
     },
     restoreSession: () => this.edited(this.doc.restoreSession()),
+    reofferSession: async () => {
+      // (The offer again and nothing set aside come in its summary, or the one pushed once it's read again.)
+      const e = await this.doc.reofferSession();
+      return e ? this.edited(Promise.resolve(e)) : null;
+    },
     dropSession: async (keepEdits = false) => {
       await this.doc.dropSession(keepEdits);
       if (!this.dead) this.onSummary(await this.doc.summary());
