@@ -408,7 +408,7 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
 });
 
 // (From the check above, apart: on a slow runner the two took more than a minute together.)
-test('huge mode: Find from the Graph shows the part around a match; tabs numbered as the normal tool', async (t) => {
+test('huge mode: Find from the Graph re-centres it on a match, then on a path; tabs numbered as the normal tool', async (t) => {
   const { page } = t;
   await recordPageScrolls(page);
   const steps = pageStays(t, page);
