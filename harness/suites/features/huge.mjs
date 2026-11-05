@@ -326,9 +326,27 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
   // Export PNG of what is shown.
   // (The menu open first; then up to a minute for the image, as the normal tool's big exports: Firefox on a CI runner
   // gave no download in 15 s, where it takes ~1 s here. What went wrong, if anything: the toast says.)
-  await page.locator('.hg .vicons button[aria-label="More options"]').click();
+  // (CI Firefox twice showed no menu after this click, which no local run does (30+ runs, 2 and 4 at a time). If
+  // the menu isn't open in 3 s, what was under the pointer is logged and the menu is opened from the keyboard: the
+  // export is what this checks; the log says what happened to the click.)
+  const more = page.locator('.hg .vicons button[aria-label="More options"]');
+  await more.click();
   const item = page.getByRole('menuitem', { name: 'Export PNG' });
-  await item.waitFor();
+  if (!(await item.waitFor({ timeout: 3000 }).then(() => true, () => false))) {
+    t.log(
+      'the click left the menu closed',
+      await page.evaluate(() => {
+        const b = document.querySelector('.hg .vicons button[aria-label="More options"]');
+        const r = b?.getBoundingClientRect();
+        const at = r ? document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) : null;
+        const name = (e) => (e ? `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className).split(' ').join('.')}` : 'none');
+        return JSON.stringify({ expanded: b?.getAttribute('aria-expanded'), under: name(at), focus: name(document.activeElement), menus: document.querySelectorAll('.menu').length });
+      }),
+    );
+    await more.focus();
+    await page.keyboard.press('Enter');
+    await item.waitFor({ timeout: 10_000 });
+  }
   const t0 = Date.now();
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }).catch(() => null), item.click()]);
   const toasts = () => page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent ?? ''));
