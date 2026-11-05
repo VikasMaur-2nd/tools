@@ -153,6 +153,30 @@ test('the core: positions in bytes; columns in characters on a line with accents
   a.destroy();
 });
 
+test("the core: a page's spans are the document's bytes, with a pair across any boundary (REVIEW-GPT 2's case)", async () => {
+  // (Paddings putting the emoji's two halves either side of 256- and 4,096-unit boundaries, and controls.)
+  // (Every padding from 12 before to 4 after each boundary: wherever the page's text starts, one lands on it.)
+  const pads = [240, 4080, 8176].flatMap((b) => Array.from({ length: 16 }, (_, k) => b + k));
+  for (const pad of pads) {
+    const text = '[{"s": "' + 'a'.repeat(pad) + '😀é"}, 123, {"t": "ü😀"}, [4]]';
+    const a = core(text, 'a.json');
+    await ended(a);
+    const bytes = enc.encode(text);
+    const byteAt = (needle: string) => enc.encode(text.slice(0, text.indexOf(needle))).length;
+    const items = await a.children(await a.root(), 0, 10);
+    const want: [number, number][] = [
+      [byteAt('{"s"'), byteAt(', 123')],
+      [byteAt('123'), byteAt('123') + 3],
+      [byteAt('{"t"'), byteAt(', [4]')],
+      [byteAt('[4]'), byteAt('[4]') + 3],
+    ];
+    assert.deepEqual(items.map((n) => [n.at, n.end]), want, `pad ${pad}`);
+    const [member] = await a.children(items[0], 0, 1);
+    assert.equal(new TextDecoder().decode(bytes.subarray(member.at, member.end)), '"' + 'a'.repeat(pad) + '😀é"', `pad ${pad}: the string's own bytes`);
+    a.destroy();
+  }
+});
+
 test('the core: Cancel stops indexing where it is, and what was read stays browsable', async () => {
   const text = '{"meta": {"n": 1}, "records": [\n' + Array.from({ length: 300_000 }, (_, i) => JSON.stringify({ id: i, name: `user ${i}`, note: 'x'.repeat(40) })).join(',\n') + '\n]}\n';
   const a = core(text, 'big.json');

@@ -23,11 +23,36 @@ export function utf8Length(s: string): number {
   return n;
 }
 
+/** Text units between the entries of a page's table of bytes (PageNodes.bytesTo). */
+const STEP = 4096;
+
+/**
+ * UTF-8 bytes of s[from, to), a pair counted 4 at its first half and 0 at its second (a lone half: 3, as
+ * TextEncoder writes U+FFFD): the counts of ranges add up, whichever text units they start and end at.
+ */
+function bytesIn(s: string, from: number, to: number): number {
+  let n = 0;
+  for (let i = from; i < to; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if ((c & 0xfc00) === 0xd800) n += i + 1 < s.length && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00 ? 4 : 3;
+    else if ((c & 0xfc00) === 0xdc00) n += i > 0 && (s.charCodeAt(i - 1) & 0xfc00) === 0xd800 ? 0 : 3;
+    else n += 3;
+  }
+  return n;
+}
+
 export class PageNodes {
   readonly tape: Tape;
   /** Stands for the container: its children are the page's. */
   readonly root: JNode | null;
   private stubs: Map<number, HugeNode>;
+  /**
+   * UTF-8 bytes of the text before each multiple of STEP (made when first needed): a byte is found in at most STEP
+   * units, not in all of its run (a page of long records is one run of up to 4 MiB, and each node has two ends).
+   */
+  private table: Float64Array | null = null;
 
   constructor(readonly page: HugePage) {
     this.tape = receiver(page.tape)(Infinity)!;
@@ -61,7 +86,19 @@ export class PageNodes {
     const at = m[lo * 2];
     const byte = m[lo * 2 + 1];
     if (byte < 0) return -1;
-    return byte + utf8Length(this.page.text.slice(at, off));
+    return byte + this.bytesTo(off) - this.bytesTo(at);
+  }
+
+  /** UTF-8 bytes of the page's text before offset `off`. */
+  private bytesTo(off: number): number {
+    const s = this.page.text;
+    let t = this.table;
+    if (!t) {
+      t = this.table = new Float64Array(Math.floor(s.length / STEP) + 1);
+      for (let k = 1; k < t.length; k++) t[k] = t[k - 1] + bytesIn(s, (k - 1) * STEP, k * STEP);
+    }
+    const k = Math.min(t.length - 1, Math.floor(off / STEP));
+    return t[k] + bytesIn(s, k * STEP, off);
   }
 
   /** `n`'s text as bytes of the document: [start, end). */
