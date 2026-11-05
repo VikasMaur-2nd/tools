@@ -46,7 +46,7 @@ test('children, paths and offsets: what the views read', async () => {
   // Raw text of a value, bounded.
   assert.equal(await src.raw(chain[2], 1000), '{"id": 2, "name": "Grace", "tags": ["x", "y"]}');
   assert.equal(await src.raw(root, 10), null);
-  assert.equal(await src.blob(chain[4]).text(), '"y"');
+  assert.equal(await (await src.slice(chain[4])).text(), '"y"');
   src.destroy();
 });
 

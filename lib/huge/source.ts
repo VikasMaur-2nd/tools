@@ -111,6 +111,59 @@ export interface IndexState {
   lines: number;
   prettyLines: number;
   records: number;
+  /** The document's bytes now (after a byte order mark; edits change it). */
+  docSize?: number;
+  /** Editing: null for a source that can't edit (see HugeSource.edits). */
+  edit?: EditState | null;
+}
+
+/** What the document's edits are: as the source last said. */
+export interface EditState {
+  /** It differs from the file (undoing every edit makes it the file again). */
+  edited: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Bumped by each edit, undo, redo and in-place save. */
+  version: number;
+  /** A kept session of this file that can be put back (restoreSession): its steps, bytes, when (ms since 1970). */
+  session: { steps: number; bytes: number; time: number } | null;
+  /** Edits' bytes held (the document's and its history's). */
+  bytes: number;
+}
+
+/** After an edit: whether the document is all read again (else it is read on: states follow, then one `done`). */
+export interface Edited {
+  done: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+/**
+ * Editing (the core's: docs/huge-files/API.md "Editing", "Saving", "Sessions"). Each edit is one undo step; nodes
+ * are the views' (from before the edit: re-read after it, positions move). Errors are the core's fixed words:
+ * 'Not ready', 'Invalid JSON', 'Not allowed', 'Out of range', 'Too big', 'Save failed', 'Cancelled'.
+ */
+export interface HugeEdits {
+  setValue(node: HugeNode, json: string): Promise<Edited>;
+  rename(parent: HugeNode, index: number, name: string): Promise<Edited>;
+  remove(parent: HugeNode, index: number): Promise<Edited>;
+  /** `parent` null: an empty document's value. An object's child needs `name`. */
+  insert(parent: HugeNode | null, index: number, json: string, name: string | null): Promise<Edited>;
+  duplicate(parent: HugeNode, index: number): Promise<Edited>;
+  /** Bytes [a, b) of the document replaced by `text`; `typing`: joins the last step if it goes on from it. */
+  replace(ops: { a: number; b: number; text: string }[], typing: boolean): Promise<Edited>;
+  /** A value's text for the normal editor (at most `max` bytes: 'Too big' past it). */
+  nodeText(node: HugeNode, max?: number): Promise<string>;
+  replaceNode(node: HugeNode, text: string): Promise<Edited>;
+  undo(): Promise<Edited>;
+  redo(): Promise<Edited>;
+  /**
+   * Writes the document: into `handle` (`inPlace`: the opened file's own, which the document then reads: no
+   * edits, no history), or with no handle as a Blob to download.
+   */
+  save(handle: FileSystemFileHandle | null, inPlace: boolean, progress: (written: number, size: number) => void): { done: Promise<{ blob: Blob | null }>; stop(): void };
+  restoreSession(): Promise<Edited>;
+  dropSession(): Promise<void>;
 }
 
 /** A table row: an item of an array, and its members if it is an object. */
@@ -164,6 +217,8 @@ export interface HugeSource {
 
   /** The value's JSON text as written, or null when it is longer than `max` bytes (save it as a file instead). */
   raw(n: HugeNode, max: number, signal?: AbortSignal): Promise<string | null>;
-  /** The value's bytes as written, for saving it as a file. */
-  blob(n: HugeNode): Blob;
+  /** The value's bytes as the document has them (its edits too), for saving it as a file. */
+  slice(n: HugeNode): Promise<Blob>;
+  /** Editing, if the source can (null: read-only). */
+  readonly edits: HugeEdits | null;
 }

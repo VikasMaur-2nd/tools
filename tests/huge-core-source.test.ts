@@ -83,7 +83,7 @@ test('the core answers the views as the normal parser does: nodes, pages, paths 
   // Values, find.
   assert.equal(await a.raw(pa[0], 10_000), await b.raw(pb[0], 10_000));
   assert.equal(await a.raw(ra, 1000), null, 'too big to copy');
-  assert.equal(await a.blob(ca![4]).text(), '"b"');
+  assert.equal(await (await a.slice(ca![4])).text(), '"b"');
   const fa: number[] = [];
   const fb: number[] = [];
   await a.find('user 12', 0, (x) => fa.push(...x), new AbortController().signal);

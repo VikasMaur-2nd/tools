@@ -11,8 +11,8 @@ import { kids, type JNode, type Kind, type TapeLink } from '../json/parser';
 import { clip, keyLabel, preview, primText } from '../json/format';
 import { HugeClient } from './client';
 import { PageNodes } from './page';
-import { ARR, BOOL, LIST, NUM, OBJ, STR, type HugeLocation, type HugeNode as CoreNode, type HugeProgress, type HugeSummary } from './types';
-import { CELL, PREVIEW, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
+import { ARR, BOOL, LIST, NUM, OBJ, STR, type HugeEdited, type HugeLocation, type HugeNode as CoreNode, type HugeProgress, type HugeSummary } from './types';
+import { CELL, PREVIEW, type Edited, type EditState, type HugeEdits, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
 
 /**
  * A page of children while it is kept (`view` null once let go: see KEEP). Its small containers' children are
@@ -64,6 +64,8 @@ export class CoreSource implements HugeSource {
   private st: IndexState;
   private listeners = new Set<(s: IndexState) => void>();
   private refs = new WeakMap<HugeNode, Ref>();
+  /** An edit is being read again in steps (progress comes then too, and the summary once it's all read). */
+  private rereading = false;
   /** Pages kept, used longest ago first, and their bytes (see KEEP). */
   private kept = new Set<Kept>();
   private keptBytes = 0;
@@ -86,6 +88,12 @@ export class CoreSource implements HugeSource {
     this.size = file.size;
     this.st = { bytes: 0, done: false, cancelled: false, error: null, status: null, multi: false, jsonl: false, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
     this.doc = client ? client(this.onProgress) : new HugeClient(file, { name }, this.onProgress);
+    // (After an edit read on in steps, or a kept session found later: the summary when it is there.)
+    this.doc.onSummary = (s) => {
+      if (this.dead) return;
+      this.rereading = false;
+      this.onSummary(s);
+    };
     this.doc.ready.then(
       (s) => this.onSummary(s),
       () => {
@@ -102,7 +110,7 @@ export class CoreSource implements HugeSource {
   }
 
   private onProgress = (p: HugeProgress) => {
-    if (this.dead || this.st.done || this.st.cancelled) return;
+    if (this.dead || ((this.st.done || this.st.cancelled) && !this.rereading)) return;
     this.set({ ...this.st, bytes: p.bytes, nodes: p.nodes, lines: p.lines + 1, records: p.records });
     // Depth and pretty lines come with the summary: asked for now and then.
     const now = performance.now();
@@ -125,8 +133,11 @@ export class CoreSource implements HugeSource {
     this.lift = s.root?.kind === LIST ? 1 : 0;
     const e = s.error;
     const b = s.status;
+    const docSize = Math.max(0, s.size - s.bom);
     this.set({
-      bytes: s.done ? (e ? Math.min(this.size, e.pos) : this.size) : this.st.bytes,
+      bytes: s.done ? (e ? Math.min(docSize, e.pos) : docSize) : this.st.bytes,
+      docSize,
+      edit: { edited: !!s.edited, canUndo: !!s.canUndo, canRedo: !!s.canRedo, version: s.version ?? 0, session: s.session ?? null, bytes: s.editBytes ?? 0 },
       done: s.done,
       cancelled: s.stopped,
       error: e ? { msg: e.msg, at: e.pos, line: e.line, col: e.col } : null,
@@ -448,8 +459,73 @@ export class CoreSource implements HugeSource {
     return cut ? null : text;
   }
 
-  blob(n: HugeNode): Blob {
-    const [a, b] = n.at < 0 ? [0, this.size] : [n.at, n.end < 0 ? this.size : n.end];
-    return this.doc.blob(a, b);
+  slice(n: HugeNode): Promise<Blob> {
+    const size = this.st.docSize ?? this.size;
+    const [a, b] = n.at < 0 ? [0, size] : [n.at, n.end < 0 ? size : n.end];
+    return this.doc.slice(a, b);
   }
+
+  // ── Edits ───────────────────────────────────────────────────────────────
+
+  /** The core's node for a node of the views (one read from a page: made from its place in the document). */
+  private coreOf(n: HugeNode): CoreNode {
+    const r = this.refs.get(n);
+    if (r) return r.core;
+    return { kind: n.t, start: n.at, end: n.end, depth: n.depth - this.lift, key: n.key ?? null, count: n.count, pretty: -1, prettyLines: null, big: false };
+  }
+
+  /** After an edit: pages read before it are stale; the state says what the edit did. */
+  private async edited(p: Promise<HugeEdited>): Promise<Edited> {
+    const e = await p;
+    if (this.dead) return { done: e.done, canUndo: e.canUndo, canRedo: e.canRedo };
+    this.dropPages();
+    if (e.summary) {
+      this.rereading = false;
+      this.onSummary(e.summary);
+    } else {
+      // (Read on in steps: progress, then the summary through doc.onSummary.)
+      this.rereading = true;
+      const was: EditState = this.st.edit ?? { edited: true, canUndo: false, canRedo: false, version: 0, session: null, bytes: 0 };
+      this.set({ ...this.st, done: false, status: null, edit: { ...was, edited: true, canUndo: e.canUndo, canRedo: e.canRedo, version: e.version } });
+    }
+    return { done: e.done, canUndo: e.canUndo, canRedo: e.canRedo };
+  }
+
+  private dropPages() {
+    for (const k of this.kept) k.view = null;
+    this.kept.clear();
+    this.keptBytes = 0;
+  }
+
+  readonly edits: HugeEdits = {
+    setValue: (node, json) => this.edited(this.doc.setValue(this.coreOf(node), json)),
+    rename: (parent, index, name) => this.edited(this.doc.rename(this.coreOf(parent), index, name)),
+    remove: (parent, index) => this.edited(this.doc.remove(this.coreOf(parent), index)),
+    insert: (parent, index, json, name) => this.edited(this.doc.insert(parent ? this.coreOf(parent) : null, index, json, name)),
+    duplicate: (parent, index) => this.edited(this.doc.duplicate(this.coreOf(parent), index)),
+    replace: (ops, typing) => this.edited(this.doc.replace(ops, typing)),
+    nodeText: (node, max) => this.doc.nodeText(this.coreOf(node), max),
+    replaceNode: (node, text) => this.edited(this.doc.replaceNode(this.coreOf(node), text)),
+    undo: () => this.edited(this.doc.undo()),
+    redo: () => this.edited(this.doc.redo()),
+    save: (handle, inPlace, progress) => {
+      const r = this.doc.save(handle, inPlace, (x) => progress(x.written, x.size));
+      return {
+        done: r.done.then(async (x) => {
+          // (In place: the document reads the saved file now, nothing edited.)
+          if (inPlace && handle && !this.dead) {
+            this.dropPages();
+            this.onSummary(await this.doc.summary());
+          }
+          return { blob: x.blob ?? null };
+        }),
+        stop: r.stop,
+      };
+    },
+    restoreSession: () => this.edited(this.doc.restoreSession()),
+    dropSession: async () => {
+      await this.doc.dropSession();
+      if (!this.dead) this.onSummary(await this.doc.summary());
+    },
+  };
 }

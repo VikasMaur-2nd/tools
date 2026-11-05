@@ -277,10 +277,15 @@ export class HugeTasks {
     }, 60_000);
   }
 
-  /** The file's bytes before its document (a byte order mark) and its root. */
+  /**
+   * What the stream reads (the file, or once edited the document's bytes: the file's slices and the edits', nothing
+   * copied), its bytes before the document (a byte order mark), and its root.
+   */
   private async doc() {
     const s = await this.core.doc.summary();
-    return { bom: s.bom, root: s.root, size: s.size - s.bom, multi: s.root?.kind === LIST };
+    const size = s.size - s.bom;
+    if (!s.edited) return { file: this.core.doc.file, bom: s.bom, root: s.root, size, multi: s.root?.kind === LIST };
+    return { file: await this.core.doc.slice(0, size), bom: 0, root: s.root, size, multi: s.root?.kind === LIST };
   }
 
   /** What a command or the Shape pass reads: the whole file, or the selected value. */
@@ -306,7 +311,7 @@ export class HugeTasks {
     for (const c of v.children) if (c.t === OBJ) return true;
     if (!page.more) return false;
     const d = await this.doc();
-    const run = this.stream().run(this.core.doc.file, d.bom, { kind: 'seek', scope: { start: n.start, end: n.end, multi: false }, target: { path: ['*'], kind: K_OBJ }, from: 0 }, { kind: 'none' });
+    const run = this.stream().run(d.file, d.bom, { kind: 'seek', scope: { start: n.start, end: n.end, multi: false }, target: { path: ['*'], kind: K_OBJ }, from: 0 }, { kind: 'none' });
     return (await run.done).result.seek!.found > 0;
   }
 
@@ -387,7 +392,7 @@ export class HugeTasks {
     const d = await this.doc();
     const pace = new Pace();
     const began = performance.now();
-    const run = this.stream().run(this.core.doc.file, d.bom, { kind: 'shape', scope: at.scope }, { kind: 'none' }, {
+    const run = this.stream().run(d.file, d.bom, { kind: 'shape', scope: at.scope }, { kind: 'none' }, {
       progress: (done) => {
         pace.add(done, total);
         this.ui.shape({ read: done, rate: pace.rate, eta: pace.eta, ms: performance.now() - began });
@@ -454,14 +459,14 @@ export class HugeTasks {
       if (rec && rec.start > scope.start) scope = { start: rec.start, end: scope.multi ? scope.end : scope.end - 1, multi: true };
     }
     if (this.dead) return;
-    const run = this.stream().run(this.core.doc.file, d.bom, { kind: 'seek', scope, target, from: count ? 0 : Math.max(0, start), count }, { kind: 'none' });
+    const run = this.stream().run(d.file, d.bom, { kind: 'seek', scope, target, from: count ? 0 : Math.max(0, start), count }, { kind: 'none' });
     this.seekRun = run;
     try {
       const { result } = await run.done;
       if (this.dead || this.seekRun !== run) return;
       let r = result.seek!;
       // (Nothing after it: from the start again.)
-      if (!count && r.first < 0 && start > 0) r = (await this.stream().run(this.core.doc.file, d.bom, { kind: 'seek', scope: at.scope, target, from: 0 }, { kind: 'none' }).done).result.seek!;
+      if (!count && r.first < 0 && start > 0) r = (await this.stream().run(d.file, d.bom, { kind: 'seek', scope: at.scope, target, from: 0 }, { kind: 'none' }).done).result.seek!;
       if (this.dead || this.seekRun !== run) return;
       this.ui.shape({ seek: { key, busy: false, found: r.found, first: r.first, count } });
       if (!count && r.first >= 0) void this.s.revealAt(r.first);
@@ -580,7 +585,7 @@ export class HugeTasks {
       const count = spec.kind === 'split' && spec.split?.by === 'parts' ? ('count' in at ? at.count : await this.countOf(spec.target)) : 0;
       const job = await this.jobOf(spec, at.scope, count);
       const d = await this.doc();
-      const run = this.stream().run(this.core.doc.file, d.bom, job, where.out, {
+      const run = this.stream().run(d.file, d.bom, job, where.out, {
         progress: (done, total) => {
           pace.add(done, total);
           this.ui.cmd({ read: done, total, rate: pace.rate, eta: pace.eta, ms: performance.now() - began });

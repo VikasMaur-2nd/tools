@@ -790,13 +790,19 @@ export class HugeSession {
   }
 
   /** Saves a value (any size: its bytes as written) as a file. */
-  saveValue(node: HugeNode | undefined = this.sel?.node, path: Seg[] | undefined = this.sel?.path) {
+  async saveValue(node: HugeNode | undefined = this.sel?.node, path: Seg[] | undefined = this.sel?.path) {
     if (!node) return this.host.toast('Select a value to save it as a file', 'info');
     if (node.end < 0) return this.host.toast('That value is still being indexed. Try again once it is.', 'info');
     track('feature_used', { feature: 'download_output' });
     const base = this.meta.name.replace(/\.[^.]+$/, '');
     const last = path?.length ? String(path[path.length - 1]).replace(/[^\w.-]+/g, '_').slice(0, 40) : '';
-    this.host.saveBlob(this.src.blob(node), `${base}${last ? '-' + last : ''}.${node.t === STR ? 'txt' : 'json'}`);
+    try {
+      // (The document's bytes: its edits too. A Blob of the file's slices and the edits', nothing copied.)
+      const blob = await this.src.slice(node);
+      if (!this.dead) this.host.saveBlob(blob, `${base}${last ? '-' + last : ''}.${node.t === STR ? 'txt' : 'json'}`);
+    } catch (e) {
+      this.failed(e);
+    }
   }
 
   private async copy(text: string, msg: string) {

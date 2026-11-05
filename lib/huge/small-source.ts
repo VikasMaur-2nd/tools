@@ -433,10 +433,13 @@ export class SmallSource implements HugeSource {
     }, signal);
   }
 
-  blob(n: HugeNode) {
+  async slice(n: HugeNode) {
     const [a, b] = n.at === VIRTUAL ? [0, this.size] : [n.at, n.end < 0 ? this.size : n.end];
     return new Blob([this.text.slice(a, b)], { type: 'application/json' });
   }
+
+  /** (Read-only: the simulated index and the tests' small documents.) */
+  readonly edits = null;
 }
 
 /** How many of the sorted `xs` are at most `v`. */
