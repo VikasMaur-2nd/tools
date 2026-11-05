@@ -524,7 +524,14 @@ export class HugeSession {
     if (!g || !this.root) return;
     const sel = this.sel;
     if (g.rootPath && (!sel || g.has(sel.path))) return g.select(sel?.path ?? null);
-    if (!sel || !sel.path.length) return g.show(this.root, []);
+    if (!sel || !sel.path.length) {
+      // (The root as read now: the one kept may be from while the file was being read, partial: its count then.
+      // The Graph opened right as indexing ended showed an empty root (WebKit, CI run 42038805184).)
+      const root = this.root.partial ? await this.src.root().catch(() => this.root!) : this.root;
+      if (this.dead || this.graph !== g) return;
+      this.root = root;
+      return g.show(root, []);
+    }
     if (sel.node.t >= ARR) return g.show(sel.node, sel.path, sel.path);
     const up = sel.path.slice(0, -1);
     const chain = await this.src.resolve(up);
