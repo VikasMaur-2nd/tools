@@ -1204,5 +1204,21 @@
   "toast.hugeEdNotKept.few": "Не удалось сохранить ваши {n} несохранённые правки в {name}",
   "toast.hugeEdNotKept.many": "Не удалось сохранить ваши {n} несохранённых правок в {name}",
   "toast.hugeEdNotKept.other": "Не удалось сохранить ваши {n} несохранённой правки в {name}",
-  "app.hugeFeBytes": "Эту часть файла нельзя править здесь: правьте её в дереве"
+  "app.hugeFeBytes": "Эту часть файла нельзя править здесь: правьте её в дереве",
+  "toast.hugeEditReading": "Файл ещё читается: править его можно будет, когда чтение закончится",
+  "toast.hugeNothingUndo": "Нечего отменять",
+  "toast.hugeNothingRedo": "Нечего повторять",
+  "toast.hugeRenameNotMember": "Имена есть только у свойств объекта",
+  "toast.hugeInsertNotContainer": "Значения могут содержать только массив или объект",
+  "toast.hugeNoChanges": "Нет изменений для сохранения",
+  "toast.hugeSaveReading": "Файл ещё читается: сохранить его можно будет, когда чтение закончится",
+  "toast.hugeEdDiscarded.one": "Отброшена {n} сохранённая правка",
+  "toast.hugeEdDiscarded.few": "Отброшены {n} сохранённые правки",
+  "toast.hugeEdDiscarded.many": "Отброшено {n} сохранённых правок",
+  "toast.hugeEdDiscarded.other": "Отброшено {n} сохранённой правки",
+  "app.hugeKeepOtherTab": "Открыт в другой вкладке",
+  "app.hugeKeepOtherTabTip": "Правки здесь не сохраняются, пока {name} открыт в другой вкладке",
+  "app.hugeKeepOtherKept": "Сохранено в другой вкладке",
+  "app.hugeKeepOtherKeptTip": "Другая вкладка сохранила свои правки в {name}: правки здесь сохранены не будут",
+  "toast.hugeReofferNotAllowed": "Эти сохранённые правки нельзя вернуть: не все правки, сделанные после, можно отменить"
 }

@@ -1173,5 +1173,20 @@
   "toast.hugeEdNotKept.one": "Não foi possível guardar sua {n} alteração não salva em {name}",
   "toast.hugeEdNotKept.many": "Não foi possível guardar suas {n} de alterações não salvas em {name}",
   "toast.hugeEdNotKept.other": "Não foi possível guardar suas {n} alterações não salvas em {name}",
-  "app.hugeFeBytes": "Esta parte do arquivo não pode ser editada aqui: edite-a pela árvore"
+  "app.hugeFeBytes": "Esta parte do arquivo não pode ser editada aqui: edite-a pela árvore",
+  "toast.hugeEditReading": "O arquivo ainda está sendo lido: será possível editá-lo quando terminar",
+  "toast.hugeNothingUndo": "Nada para desfazer",
+  "toast.hugeNothingRedo": "Nada para refazer",
+  "toast.hugeRenameNotMember": "Só os membros de um objeto têm nome",
+  "toast.hugeInsertNotContainer": "Só um array ou um objeto pode conter valores",
+  "toast.hugeNoChanges": "Nenhuma alteração para salvar",
+  "toast.hugeSaveReading": "O arquivo ainda está sendo lido: será possível salvá-lo quando terminar",
+  "toast.hugeEdDiscarded.one": "A {n} alteração guardada foi descartada",
+  "toast.hugeEdDiscarded.many": "As {n} de alterações guardadas foram descartadas",
+  "toast.hugeEdDiscarded.other": "As {n} alterações guardadas foram descartadas",
+  "app.hugeKeepOtherTab": "Aberto em outra guia",
+  "app.hugeKeepOtherTabTip": "As edições feitas aqui não são guardadas enquanto {name} estiver aberto em outra guia",
+  "app.hugeKeepOtherKept": "Guardado em outra guia",
+  "app.hugeKeepOtherKeptTip": "Outra guia guardou as alterações dela em {name}: as edições feitas aqui não serão guardadas",
+  "toast.hugeReofferNotAllowed": "Essas alterações guardadas não podem voltar: nem todas as edições feitas depois podem ser desfeitas"
 }

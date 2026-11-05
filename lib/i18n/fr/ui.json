@@ -1173,5 +1173,20 @@
   "toast.hugeEdNotKept.one": "Votre {n} modification non enregistrée de {name} n'a pas pu être conservée",
   "toast.hugeEdNotKept.many": "Vos {n} de modifications non enregistrées de {name} n'ont pas pu être conservées",
   "toast.hugeEdNotKept.other": "Vos {n} modifications non enregistrées de {name} n'ont pas pu être conservées",
-  "app.hugeFeBytes": "Cette partie du fichier ne peut pas être modifiée ici : modifiez-la depuis l'arborescence"
+  "app.hugeFeBytes": "Cette partie du fichier ne peut pas être modifiée ici : modifiez-la depuis l'arborescence",
+  "toast.hugeEditReading": "Le fichier est encore en cours de lecture : vous pourrez le modifier une fois la lecture terminée",
+  "toast.hugeNothingUndo": "Rien à annuler",
+  "toast.hugeNothingRedo": "Rien à rétablir",
+  "toast.hugeRenameNotMember": "Seuls les membres d'un objet ont un nom",
+  "toast.hugeInsertNotContainer": "Seul un tableau JSON ou un objet peut contenir des valeurs",
+  "toast.hugeNoChanges": "Aucune modification à enregistrer",
+  "toast.hugeSaveReading": "Le fichier est encore en cours de lecture : vous pourrez l'enregistrer une fois la lecture terminée",
+  "toast.hugeEdDiscarded.one": "La {n} modification conservée a été abandonnée",
+  "toast.hugeEdDiscarded.many": "Les {n} de modifications conservées ont été abandonnées",
+  "toast.hugeEdDiscarded.other": "Les {n} modifications conservées ont été abandonnées",
+  "app.hugeKeepOtherTab": "Ouvert dans un autre onglet",
+  "app.hugeKeepOtherTabTip": "Les modifications faites ici ne sont pas conservées tant que {name} est ouvert dans un autre onglet",
+  "app.hugeKeepOtherKept": "Conservé dans un autre onglet",
+  "app.hugeKeepOtherKeptTip": "Un autre onglet a conservé ses modifications de {name} : celles faites ici ne seront pas conservées",
+  "toast.hugeReofferNotAllowed": "Ces modifications conservées ne peuvent pas revenir : les modifications faites depuis ne peuvent pas toutes être annulées"
 }

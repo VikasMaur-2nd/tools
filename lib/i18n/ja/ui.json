@@ -1111,5 +1111,18 @@
   "app.hugeShStaleGo": "構造を読み込んだ後に編集されています。移動するには再読み込みしてください",
   "app.hugeEdRestoreHint": "先に編集すると、これらの変更は破棄されます。",
   "toast.hugeEdNotKept.other": "{name}の未保存の変更{n}件を保持できませんでした",
-  "app.hugeFeBytes": "ファイルのこの部分はここでは編集できません。ツリーから編集してください"
+  "app.hugeFeBytes": "ファイルのこの部分はここでは編集できません。ツリーから編集してください",
+  "toast.hugeEditReading": "ファイルはまだ読み込み中です。読み込みが終わると編集できます",
+  "toast.hugeNothingUndo": "元に戻す操作はありません",
+  "toast.hugeNothingRedo": "やり直す操作はありません",
+  "toast.hugeRenameNotMember": "名前があるのはオブジェクトのメンバーだけです",
+  "toast.hugeInsertNotContainer": "値を入れられるのは配列かオブジェクトだけです",
+  "toast.hugeNoChanges": "保存する変更はありません",
+  "toast.hugeSaveReading": "ファイルはまだ読み込み中です。読み込みが終わると保存できます",
+  "toast.hugeEdDiscarded.other": "保持していた{n}件の変更を破棄しました",
+  "app.hugeKeepOtherTab": "別のタブで開いています",
+  "app.hugeKeepOtherTabTip": "{name}が別のタブで開いている間は、ここでの編集は保持されません",
+  "app.hugeKeepOtherKept": "別のタブで保持済み",
+  "app.hugeKeepOtherKeptTip": "別のタブが{name}の変更を保持しました。ここでの編集は保持されません",
+  "toast.hugeReofferNotAllowed": "保持していた変更は戻せません。その後の編集をすべては元に戻せないためです"
 }

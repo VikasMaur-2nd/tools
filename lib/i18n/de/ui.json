@@ -1142,5 +1142,19 @@
   "app.hugeEdRestoreHint": "Wenn du zuerst bearbeitest, werden sie verworfen.",
   "toast.hugeEdNotKept.one": "Deine {n} ungespeicherte Änderung an {name} konnte nicht aufbewahrt werden",
   "toast.hugeEdNotKept.other": "Deine {n} ungespeicherten Änderungen an {name} konnten nicht aufbewahrt werden",
-  "app.hugeFeBytes": "Dieser Teil der Datei lässt sich hier nicht bearbeiten: Bearbeite ihn im Baum"
+  "app.hugeFeBytes": "Dieser Teil der Datei lässt sich hier nicht bearbeiten: Bearbeite ihn im Baum",
+  "toast.hugeEditReading": "Die Datei wird noch eingelesen: Bearbeiten ist möglich, sobald das fertig ist",
+  "toast.hugeNothingUndo": "Nichts rückgängig zu machen",
+  "toast.hugeNothingRedo": "Nichts zu wiederholen",
+  "toast.hugeRenameNotMember": "Nur Mitglieder eines Objekts haben Namen",
+  "toast.hugeInsertNotContainer": "Nur ein Array oder ein Objekt kann Werte enthalten",
+  "toast.hugeNoChanges": "Keine Änderungen zu speichern",
+  "toast.hugeSaveReading": "Die Datei wird noch eingelesen: Speichern ist möglich, sobald das fertig ist",
+  "toast.hugeEdDiscarded.one": "Die {n} aufbewahrte Änderung wurde verworfen",
+  "toast.hugeEdDiscarded.other": "Die {n} aufbewahrten Änderungen wurden verworfen",
+  "app.hugeKeepOtherTab": "In einem anderen Tab geöffnet",
+  "app.hugeKeepOtherTabTip": "Änderungen hier werden nicht aufbewahrt, solange {name} in einem anderen Tab geöffnet ist",
+  "app.hugeKeepOtherKept": "In einem anderen Tab aufbewahrt",
+  "app.hugeKeepOtherKeptTip": "Ein anderer Tab hat seine Änderungen an {name} aufbewahrt: Änderungen hier werden nicht aufbewahrt",
+  "toast.hugeReofferNotAllowed": "Diese aufbewahrten Änderungen können nicht zurückkommen: Die Änderungen seitdem lassen sich nicht alle rückgängig machen"
 }

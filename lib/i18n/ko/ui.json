@@ -1111,5 +1111,18 @@
   "app.hugeShStaleGo": "구조를 읽은 뒤 편집되었습니다. 이동하려면 다시 읽으세요",
   "app.hugeEdRestoreHint": "먼저 편집하면 이 변경은 버려집니다.",
   "toast.hugeEdNotKept.other": "{name}에서 저장하지 않은 변경 {n}개를 보관하지 못했습니다",
-  "app.hugeFeBytes": "파일의 이 부분은 여기서 편집할 수 없습니다. 트리에서 편집하세요"
+  "app.hugeFeBytes": "파일의 이 부분은 여기서 편집할 수 없습니다. 트리에서 편집하세요",
+  "toast.hugeEditReading": "파일을 아직 읽는 중입니다. 다 읽은 뒤에 편집할 수 있습니다",
+  "toast.hugeNothingUndo": "실행 취소할 내용이 없습니다",
+  "toast.hugeNothingRedo": "다시 실행할 내용이 없습니다",
+  "toast.hugeRenameNotMember": "이름이 있는 것은 객체의 멤버뿐입니다",
+  "toast.hugeInsertNotContainer": "값을 담을 수 있는 것은 배열이나 객체뿐입니다",
+  "toast.hugeNoChanges": "저장할 변경 사항이 없습니다",
+  "toast.hugeSaveReading": "파일을 아직 읽는 중입니다. 다 읽은 뒤에 저장할 수 있습니다",
+  "toast.hugeEdDiscarded.other": "보관해 둔 변경 {n}개를 버렸습니다",
+  "app.hugeKeepOtherTab": "다른 탭에서 열려 있음",
+  "app.hugeKeepOtherTabTip": "{name}이(가) 다른 탭에서 열려 있는 동안에는 여기서 한 편집이 보관되지 않습니다",
+  "app.hugeKeepOtherKept": "다른 탭에서 보관됨",
+  "app.hugeKeepOtherKeptTip": "다른 탭이 {name}의 변경 사항을 보관했습니다. 여기서 한 편집은 보관되지 않습니다",
+  "toast.hugeReofferNotAllowed": "보관해 둔 변경 사항을 되돌릴 수 없습니다. 그 뒤의 편집을 모두 실행 취소할 수는 없습니다"
 }

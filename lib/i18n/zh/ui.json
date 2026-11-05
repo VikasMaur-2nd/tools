@@ -1111,5 +1111,18 @@
   "app.hugeShStaleGo": "读取结构后文件已编辑：请重新读取后再跳转",
   "app.hugeEdRestoreHint": "先编辑会丢弃这些更改。",
   "toast.hugeEdNotKept.other": "无法保留 {name} 的 {n} 处未保存更改",
-  "app.hugeFeBytes": "文件的这一部分无法在这里编辑：请在树中编辑"
+  "app.hugeFeBytes": "文件的这一部分无法在这里编辑：请在树中编辑",
+  "toast.hugeEditReading": "文件仍在读取：读取完成后即可编辑",
+  "toast.hugeNothingUndo": "没有可撤销的操作",
+  "toast.hugeNothingRedo": "没有可重做的操作",
+  "toast.hugeRenameNotMember": "只有对象的成员才有名称",
+  "toast.hugeInsertNotContainer": "只有数组或对象才能包含值",
+  "toast.hugeNoChanges": "没有需要保存的更改",
+  "toast.hugeSaveReading": "文件仍在读取：读取完成后即可保存",
+  "toast.hugeEdDiscarded.other": "已丢弃保留的 {n} 处更改",
+  "app.hugeKeepOtherTab": "已在其他标签页中打开",
+  "app.hugeKeepOtherTabTip": "{name} 在其他标签页中打开期间，这里的编辑不会被保留",
+  "app.hugeKeepOtherKept": "已在其他标签页中保留",
+  "app.hugeKeepOtherKeptTip": "其他标签页保留了它对 {name} 的更改：这里的编辑不会被保留",
+  "toast.hugeReofferNotAllowed": "无法恢复这些保留的更改：之后的编辑无法全部撤销"
 }

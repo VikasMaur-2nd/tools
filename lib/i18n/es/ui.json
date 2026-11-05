@@ -1173,5 +1173,20 @@
   "toast.hugeEdNotKept.one": "No se pudo conservar tu {n} cambio sin guardar en {name}",
   "toast.hugeEdNotKept.many": "No se pudieron conservar tus {n} cambios sin guardar en {name}",
   "toast.hugeEdNotKept.other": "No se pudieron conservar tus {n} cambios sin guardar en {name}",
-  "app.hugeFeBytes": "Esta parte del archivo no se puede editar aquí: edítala desde el árbol"
+  "app.hugeFeBytes": "Esta parte del archivo no se puede editar aquí: edítala desde el árbol",
+  "toast.hugeEditReading": "El archivo aún se está leyendo: podrás editarlo cuando termine",
+  "toast.hugeNothingUndo": "Nada que deshacer",
+  "toast.hugeNothingRedo": "Nada que rehacer",
+  "toast.hugeRenameNotMember": "Solo los miembros de un objeto tienen nombre",
+  "toast.hugeInsertNotContainer": "Solo un array o un objeto pueden contener valores",
+  "toast.hugeNoChanges": "No hay cambios que guardar",
+  "toast.hugeSaveReading": "El archivo aún se está leyendo: podrás guardarlo cuando termine",
+  "toast.hugeEdDiscarded.one": "Se descartó el {n} cambio conservado",
+  "toast.hugeEdDiscarded.many": "Se descartaron los {n} cambios conservados",
+  "toast.hugeEdDiscarded.other": "Se descartaron los {n} cambios conservados",
+  "app.hugeKeepOtherTab": "Abierto en otra pestaña",
+  "app.hugeKeepOtherTabTip": "Las ediciones de aquí no se conservan mientras {name} esté abierto en otra pestaña",
+  "app.hugeKeepOtherKept": "Conservado en otra pestaña",
+  "app.hugeKeepOtherKeptTip": "Otra pestaña conservó sus cambios en {name}: las ediciones de aquí no se conservarán",
+  "toast.hugeReofferNotAllowed": "Esos cambios conservados no pueden volver: las ediciones posteriores no se pueden deshacer todas"
 }
