@@ -185,8 +185,14 @@ export class BlockSource implements ByteSource {
   readonly size: number;
   private blocks = new Map<number, Uint8Array>();
   private loading = new Map<number, Promise<void>>();
-  /** Blocks read by the queries under way (asked again after a Wait): not dropped until release(). */
-  private pinned = new Set<number>();
+  /**
+   * Pins: per block, how many scopes hold it (a scope: a query under way, asked again after a Wait, or one step of
+   * a find). Blocks a scope read stay until it's closed (asking again finds them); the rest go past `keep`.
+   */
+  private pins = new Map<number, number>();
+  /** The scope reads pin to now (null: none, e.g. indexing: nothing is pinned); scopes closed (a fetch that ends after its scope did pins nothing). */
+  private scope: Set<number> | null = null;
+  private closed = new WeakSet<Set<number>>();
 
   /**
    * `shared`: the indexing pass's read-ahead (prefetch.ts): a block it has (or is reading) is taken from it, so the
@@ -219,7 +225,7 @@ export class BlockSource implements ByteSource {
           if (p) throw new Wait(() => p.catch(() => this.fetch([k])));
         }
       }
-      if (this.blocks.has(k)) this.pinned.add(k);
+      if (this.blocks.has(k)) this.pin(k);
       else missing.push(k);
     }
     // (Queries read on from where they start: the next blocks come with the missing ones, so asking again
@@ -227,7 +233,8 @@ export class BlockSource implements ByteSource {
     if (missing.length) {
       const next = missing[missing.length - 1];
       for (let k = next + 1; k <= next + AHEAD && k * this.block < this.size; k++) if (!this.blocks.has(k)) missing.push(k);
-      throw new Wait(() => this.fetch(missing));
+      const scope = this.scope;
+      throw new Wait(() => this.fetch(missing, scope));
     }
     if (first === last) {
       const blk = this.touch(first);
@@ -244,30 +251,68 @@ export class BlockSource implements ByteSource {
     return out;
   }
 
-  /** The queries under way are done: their blocks may go. */
-  release() {
-    this.pinned.clear();
+  /** Blocks kept, and of them pinned (tests, memory checks). */
+  get heldBlocks(): number {
+    return this.blocks.size;
+  }
+
+  get pinnedBlocks(): number {
+    return this.pins.size;
+  }
+
+  /** A new scope, which reads pin their blocks to from now on (until `leave`, or another scope is entered). */
+  open(): Set<number> {
+    return this.enter(new Set());
+  }
+
+  /** Reads pin to scope `s` again (a query asked again after a Wait, a find's next step). */
+  enter(s: Set<number>): Set<number> {
+    this.scope = s;
+    return s;
+  }
+
+  /** Reads pin to no scope (between a query's tries, between a find's steps). */
+  leave() {
+    this.scope = null;
+  }
+
+  /** Scope `s` is done: its blocks may go (unless another scope holds them). */
+  close(s: Set<number>) {
+    for (const k of s) {
+      const n = (this.pins.get(k) ?? 1) - 1;
+      if (n > 0) this.pins.set(k, n);
+      else this.pins.delete(k);
+    }
+    s.clear();
+    this.closed.add(s);
+    if (this.scope === s) this.scope = null;
     this.trim();
+  }
+
+  private pin(k: number, s = this.scope) {
+    if (!s || s.has(k) || this.closed.has(s)) return;
+    s.add(k);
+    this.pins.set(k, (this.pins.get(k) ?? 0) + 1);
   }
 
   private trim() {
     if (this.blocks.size <= this.keep) return;
     for (const k of [...this.blocks.keys()]) {
       if (this.blocks.size <= this.keep) break;
-      if (!this.pinned.has(k)) this.blocks.delete(k);
+      if (!this.pins.has(k)) this.blocks.delete(k);
     }
   }
 
   private touch(k: number): Uint8Array {
-    this.pinned.add(k);
+    this.pin(k);
     const blk = this.blocks.get(k)!;
     this.blocks.delete(k);
     this.blocks.set(k, blk);
     return blk;
   }
 
-  /** Reads blocks `ks` (dropping the least used past `keep`). */
-  fetch(ks: number[]): Promise<void> {
+  /** Reads blocks `ks` (dropping the least used past `keep`), pinned to `scope` (the one that missed them) if it's open. */
+  fetch(ks: number[], scope: Set<number> | null = null): Promise<void> {
     return Promise.all(
       ks.map((k) => {
         let p = this.loading.get(k);
@@ -276,7 +321,7 @@ export class BlockSource implements ByteSource {
           p = watched(() => this.file.slice(at, Math.min(this.size, at + this.block)).arrayBuffer()).then(
             (buf) => {
               this.blocks.set(k, new Uint8Array(buf));
-              this.pinned.add(k);
+              this.pin(k, scope);
               this.loading.delete(k);
               this.trim();
             },

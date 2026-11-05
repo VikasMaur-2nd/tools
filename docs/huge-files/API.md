@@ -106,6 +106,10 @@ pretty form `depth[]`, `kind[]` (0 value, 1 opens a container, 2 closes one) and
 closing line, or -1: ask `prettyClose(line)`). Line counts: `summary.lines` (raw), `summary.prettyLines`
 (pretty, the same for any indent). A one-line minified file should open in the pretty form.
 
+Raw lines read nothing past the front (indexing, stopped, or the error): a line that goes on past it ends there,
+`cut[k]` = 2 and `length[k]` its length so far, and no line after it is given (ask again as indexing goes on). A
+long line in a document all read answers its start without reading it all (from the last checkpoint on it).
+
 The pretty form is format.ts `stringify(root, indent)` read a line at a time (pretty.ts PrettyText): every
 value a line, every container with items one more for its close. Several top-level values are written as the
 normal path writes them: as one array. Nesting so deep the indentation exceeds format.ts `MAX_INDENT` has no
