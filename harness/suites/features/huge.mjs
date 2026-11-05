@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { defaults, test } from '../../lib/api.mjs';
 import { DIRS } from '../../lib/env.mjs';
+import { quantile } from '../../lib/stats.mjs';
 import { MOD, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', width: 1280, height: 860, tags: ['huge'] });
@@ -21,6 +22,8 @@ const file = (name, text) => {
 const records = (n) => Array.from({ length: n }, (_, i) => ({ id: i, name: `user ${i}`, email: `u${i}@example.com`, active: i % 3 !== 0, tags: i % 7 ? ['a', 'b'] : [], score: Math.round(i * 7.31) / 100 }));
 const pretty = file('users.json', JSON.stringify({ meta: { version: 3, note: 'x'.repeat(3000) }, users: records(2500) }, null, 2));
 const minified = file('min.json', JSON.stringify({ users: records(300), total: 300 }));
+// (100 records of 10 objects of 5 values: the graph's first read alone reaches its limit of 2,000 values.)
+const wide = file('wide.json', JSON.stringify(Array.from({ length: 100 }, (_, i) => Object.fromEntries(Array.from({ length: 10 }, (_, k) => [`part${k}`, { id: i * 10 + k, name: `n${i}.${k}`, on: k % 2 === 0, at: null, v: i * k }])))));
 const lines = file('events.jsonl', records(1200).map((r) => JSON.stringify(r)).join('\n') + '\n');
 // (An extra comma on line 329, column 14: fixable in the editor, an error in huge mode, which reads strict JSON.)
 // (Two values on one line, then more: several top-level values, not JSON Lines.)
@@ -330,6 +333,56 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
   t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Shape', null), 'Alt+7 opens Shape');
   const tips = await page.evaluate(() => [...document.querySelectorAll('.hg [role=tab]')].map((b) => `${b.textContent}=${b.dataset.tip}`).join(' '));
   t.check(tips === 'Format=Alt+1 Tree=Alt+2 Table=Alt+3 Graph=Alt+4 Convert=Alt+5 Compare=Alt+6 Shape=Alt+7', 'tabs numbered as the normal tool, Shape seventh', tips);
+});
+
+test('huge mode: Graph at its limit (2,000 values) pans within a frame', async (t) => {
+  const { page } = t;
+  // Each animation frame's work, timed in the page (a busy machine changes how many frames are painted more than
+  // how long each one takes).
+  await page.addInitScript(() => {
+    const b = (window.__zp = { cb: [], on: false });
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (fn) =>
+      raf((ts) => {
+        const s = performance.now();
+        try {
+          return fn(ts);
+        } finally {
+          if (b.on) b.cb.push(performance.now() - s);
+        }
+      });
+  });
+  await t.open('/');
+  await openHuge(t, wide);
+  await waitIndexed(page);
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-graph]')?.click());
+  const where = () => page.evaluate(() => window.__vis('.hg .hg-gwhere')?.textContent ?? '');
+  t.assert(await until(page, () => /values \(all it shows\)/.test(window.__vis('.hg .hg-gwhere')?.textContent ?? ''), null, { timeout: 15_000 }), 'the part is read up to the limit', await where());
+  t.metric('values shown', Number((await where()).match(/([\d,]+) values/)[1].replace(/,/g, '')), 'values', { better: 'higher' });
+  const box = await page.locator('#hg-graph canvas').first().boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  for (const [zoom, keys] of [['100%', []], ['Fit', ['0']]]) {
+    await page.locator('#hg-graph').focus();
+    for (const k of keys) await page.keyboard.press(k);
+    await page.evaluate(() => new Promise((r) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(r)), 400)));
+    await page.evaluate(() => {
+      window.__zp.cb = [];
+      window.__zp.on = true;
+    });
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    for (let i = 0; i < 120; i++) {
+      const f = i / 120;
+      await page.mouse.move(cx + Math.sin(f * Math.PI * 4) * 200, cy + (Math.cos(f * Math.PI * 4) - 1) * 150);
+    }
+    await page.mouse.up();
+    const cb = (await page.evaluate(() => ((window.__zp.on = false), window.__zp.cb))).filter((x) => x > 0.05);
+    const p95 = quantile(cb, 0.95);
+    t.metric(`${zoom} frame p50 ms`, quantile(cb, 0.5));
+    t.metric(`${zoom} frame p95 ms`, p95);
+    t.check(cb.length > 10 && p95 < 16, `${zoom}: frames painted while panning, each within a 60 fps frame`, { frames: cb.length, p50: quantile(cb, 0.5), p95 });
+  }
 });
 
 // Screenshots for review: light and dark, desktop and phone (only when HUGE_SHOTS names a folder).
