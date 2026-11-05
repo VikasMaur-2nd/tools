@@ -428,6 +428,7 @@ test('huge edit: the Restore banner goes on the first edit; while the Format vie
   await page.keyboard.press('Delete');
   t.check(await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null), 'edited', await edited(page));
   t.check(await until(page, () => !window.__vis('.hg-restore'), null), 'the banner goes on the first edit');
+  t.check(await toasted(page, /Discarded the 1 kept change/), 'and says the kept change was discarded', await toasts(page));
   await selectPath(page, '$.users[5]');
   t.check(/\{3\}/.test(await selRow(page)), '$.users[5] as the file has it (the kept edit not put in)', await selRow(page));
   await page.keyboard.press(`${MOD}+z`);
@@ -810,4 +811,81 @@ test('huge edit: typed in the Format view, saved in place: the file\'s SHA-256 i
   } finally {
     await t.cleanup?.();
   }
+});
+
+// REVIEW-3 B2: two lines with Latin-1 bytes selected and indented (Tab) in the Format view, saved in place: only the
+// spaces are written; the E9 and EF bytes stay as they were (they were written back as EF BF BD).
+test('huge edit: lines with bytes that aren\'t UTF-8 indented in the Format view: only the spaces change', { engines: ['chromium'] }, async (t) => {
+  const page = await storagePage(t);
+  try {
+    await t.open('/');
+    const bytes = [...Buffer.from('[\n  {"name": "caf'), 0xe9, ...Buffer.from('"},\n  {"name": "na'), 0xef, ...Buffer.from('ve"},\n  {"name": "x"}\n]\n')];
+    await page.evaluate(async (bytes) => {
+      localStorage.setItem('tk:hugeMin', '0');
+      const root = await navigator.storage.getDirectory();
+      const h = await root.getFileHandle('latin.json', { create: true });
+      const w = await h.createWritable();
+      await w.write(new Uint8Array(bytes));
+      await w.close();
+      window.showOpenFilePicker = async () => [h];
+    }, bytes);
+    await openHuge(t, path);
+    await page.locator('.hg-file .btn', { hasText: 'Open file' }).click();
+    t.assert(await until(page, () => /latin\.json/.test(window.__vis('.hg-file .fname')?.textContent ?? '') && /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'opened through its handle');
+    await editFormatAt(page, 'caf');
+    await until(page, () => /Ln 2,/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null);
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('Shift+End');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press(`${MOD}+s`);
+    t.check(await toasted(page, /Saved latin\.json/), 'saved', await toasts(page));
+    const got = await page.evaluate(async () => [...new Uint8Array(await (await (await (await navigator.storage.getDirectory()).getFileHandle('latin.json')).getFile()).arrayBuffer())]);
+    const want = [...Buffer.from('[\n    {"name": "caf'), 0xe9, ...Buffer.from('"},\n    {"name": "na'), 0xef, ...Buffer.from('ve"},\n  {"name": "x"}\n]\n')];
+    t.check(Buffer.compare(Buffer.from(got), Buffer.from(want)) === 0, 'the two lines indented, E9 and EF as they were', Buffer.from(got).toString('latin1'));
+  } finally {
+    await t.cleanup?.();
+  }
+});
+
+// REVIEW-3 B3: the second of two members named alike, reached by Find (not the tree's cursor): its edits and the
+// insert into it go there, not to the first of that name.
+test('huge edit: duplicate names: a value found with Find, deleted; a value inserted into the second "a"', async (t) => {
+  const { page } = t;
+  const dup = join(dir, 'dup-find.json');
+  writeFileSync(dup, '{\n  "a": {"v": 1},\n  "a": {"v": 22}\n}\n');
+  await t.open('/');
+  await page.evaluate(() => localStorage.setItem('tk:hugeMin', '0'));
+  await page.locator('.app:visible input[type=file]').setInputFiles(dup);
+  t.assert(await until(page, () => /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'huge mode opens');
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
+  await until(page, () => !!document.querySelector('#hg-tree [role=treeitem], #hg-tree .tv-r'), null);
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('22');
+  t.assert(await until(page, () => /^v:\s*22/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'Find selects the second a\'s v', await selRow(page));
+  await page.keyboard.press('Escape');
+  await page.locator('#hg-tree').focus();
+  // Insert after it (in the second "a"), then delete it.
+  await page.keyboard.press(`${MOD}+Enter`);
+  await until(page, () => !!document.querySelector('.hg-box'), null);
+  await page.locator('.hg-box input[aria-label="Name"]').fill('n');
+  await page.locator('.hg-box .hg-box-kind').selectOption('number');
+  await page.locator('.hg-box [aria-label="Value"]').fill('3');
+  await page.locator('.hg-box [aria-label="Value"]').press('Enter');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('22');
+  await until(page, () => /^v:\s*22/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null);
+  await page.keyboard.press('Escape');
+  await page.locator('#hg-tree').focus();
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 2 changes/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  const doc = await page.evaluate(async () => {
+    window.__vis('.hg [role=tab][aria-controls=hg-format]')?.click();
+    await new Promise((r) => setTimeout(r, 300));
+    return document.querySelector('#hg-format')?.textContent ?? '';
+  });
+  t.check(/"a": \{"v": 1\}.*"a": \{\s*"n": 3\s*\}/s.test(doc), 'the first "a" as it was; the second has n, not v', doc.slice(0, 200));
 });

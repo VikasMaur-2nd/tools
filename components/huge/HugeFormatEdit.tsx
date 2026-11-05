@@ -56,7 +56,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        setTimeout(() => ed && live && tw.edited(ed.text));
+        setTimeout(() => ed && live && tw.edited(ed.text, ed.caret));
       });
     };
     let shown = '';
@@ -97,7 +97,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       if (!ed || moving) return;
       moving = true;
       try {
-        if (ed) tw.edited(ed.text);
+        if (ed) tw.edited(ed.text, ed.caret);
         await tw.flush();
         const e = ed;
         const topRel = e.topLine();
@@ -129,7 +129,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       if (!ed) return;
       let off = tw.offsetOf(byte);
       if (off < 0) {
-        tw.edited(ed.text);
+        tw.edited(ed.text, ed.caret);
         await tw.flush();
         const line = await s.src.lineOf('raw', byte);
         if ((await tw.load(line)) !== true || !live || !ed) return;
@@ -181,7 +181,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
     const unbind = s.bindFormatEdit({
       // (What was typed since the last paint too: a save or undo right after a key has it.)
       flush: () => {
-        if (ed && live) tw.edited(ed.text);
+        if (ed && live) tw.edited(ed.text, ed.caret);
         return tw.flush();
       },
       caretByte: () => (ed ? tw.byteOf(ed.caret) : -1),
@@ -223,7 +223,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
     })();
     return () => {
       // (The newest key, typed since the last frame, still goes: the window sends what's left once let go.)
-      if (ed && live) tw.edited(ed.text);
+      if (ed && live) tw.edited(ed.text, ed.caret);
       live = false;
       cancelAnimationFrame(frame);
       cancelAnimationFrame(later);

@@ -75,7 +75,8 @@ export type EditOp =
   | ({ op: 'set'; path: Seg[]; json: string } & Which)
   | ({ op: 'rename'; path: Seg[]; name: string } & Which)
   | ({ op: 'remove'; path: Seg[] } & Which)
-  | { op: 'insert'; parent: Seg[]; index: number; json: string; name: string | null }
+  /** (`parentAt`: the container's index path, where names repeat.) */
+  | { op: 'insert'; parent: Seg[]; parentAt?: number[]; index: number; json: string; name: string | null }
   | ({ op: 'duplicate'; path: Seg[] } & Which)
   /** A value's new text: JSON (written as the document is), or anything else as typed (then the status says where it's wrong). */
   | ({ op: 'text'; path: Seg[]; text: string } & Which)
@@ -128,10 +129,14 @@ export const editError = (e: unknown): string | null => {
 /** What editing asks of the session. */
 export interface EditHost {
   readonly src: HugeSource;
-  /** The selection's path now (undo and redo keep it where it can be). */
+  /** The selection's path now (undo and redo keep it where it can be), and its index path where known. */
   selPath(): Seg[] | null;
-  /** After an edit: the views read again (`fx`: how paths moved), `select` selected (null: as it was). */
-  changed(fx: Effect, select: Seg[] | null): Promise<void>;
+  selAt?(): number[] | null;
+  /**
+   * After an edit: the views read again (`fx`: how paths moved), `select` selected (null: as it was); `selectAt`:
+   * its index path, where known (which member, where names repeat: REVIEW-3 B3).
+   */
+  changed(fx: Effect, select: Seg[] | null, selectAt?: number[] | null): Promise<void>;
   /** An edit couldn't be made: why. */
   refused(msg: string): void;
   failed(e: unknown): void;
@@ -145,6 +150,11 @@ export class HugeEditing {
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly host: EditHost) {}
+
+  /** Resolves once the edits asked so far are made (or refused), the views read again after them. */
+  settled(): Promise<void> {
+    return this.queue.then(() => undefined);
+  }
 
   /** Runs `op` after the edits before it; resolves to whether it was made. */
   run(op: EditOp, from: Events['huge_edit']['from']): Promise<boolean> {
@@ -161,7 +171,7 @@ export class HugeEditing {
       const r = await this.apply(op);
       if (!r) return false;
       track('huge_edit', { op: op.op as EditKind, from });
-      await this.host.changed(r.fx, r.select);
+      await this.host.changed(r.fx, r.select, r.selectAt ?? null);
       return true;
     } catch (e) {
       const msg = editError(e);
@@ -173,15 +183,17 @@ export class HugeEditing {
     }
   }
 
-  /** The node at `path` and its container (null: not there); `w`: which member, where names repeat. */
-  private async at(path: Seg[], w: Which = {}): Promise<{ node: HugeNode; parent: HugeNode | null } | null> {
-    const at = w.at ?? (w.i !== undefined && w.i >= 0 && path.length ? [...path.slice(0, -1).map(() => -1), w.i] : undefined);
+  /**
+   * The node at `path`, its container and its index path (null: not there); `w`: which member, where names repeat.
+   */
+  private async at(path: Seg[], w: Which = {}): Promise<{ node: HugeNode; parent: HugeNode | null; idx: number[] } | null> {
+    const at = w.at && w.at.length === path.length ? w.at : w.i !== undefined && w.i >= 0 && path.length ? [...path.slice(0, -1).map(() => -1), w.i] : undefined;
     const chain = await this.host.src.resolve(path, undefined, at);
     if (!chain?.length) return null;
-    return { node: chain[chain.length - 1], parent: chain.length > 1 ? chain[chain.length - 2] : null };
+    return { node: chain[chain.length - 1], parent: chain.length > 1 ? chain[chain.length - 2] : null, idx: chain.slice(1).map((n) => n.i) };
   }
 
-  private async apply(op: EditOp): Promise<{ fx: Effect; select: Seg[] | null } | null> {
+  private async apply(op: EditOp): Promise<{ fx: Effect; select: Seg[] | null; selectAt?: number[] | null } | null> {
     const ed = this.host.src.edits!;
     const gone = () => {
       throw new Error('Out of range');
@@ -192,14 +204,14 @@ export class HugeEditing {
         const x = (await this.at(op.path, op)) ?? gone();
         if (op.op === 'set') await ed.setValue(x.node, op.json);
         else await ed.replaceNode(x.node, op.text);
-        return { fx: {}, select: op.path };
+        return { fx: {}, select: op.path, selectAt: x.idx };
       }
       case 'rename': {
         const x = (await this.at(op.path, op)) ?? gone();
         if (!x.parent) throw new Error('Not allowed');
         await ed.rename(x.parent, x.node.i, op.name);
         const to = [...op.path.slice(0, -1), op.name];
-        return { fx: { moved: { from: op.path, to } }, select: to };
+        return { fx: { moved: { from: op.path, to } }, select: to, selectAt: x.idx };
       }
       case 'remove': {
         const x = (await this.at(op.path, op)) ?? gone();
@@ -208,16 +220,18 @@ export class HugeEditing {
         const count = x.parent.count;
         await ed.remove(x.parent, i);
         const parentPath = op.path.slice(0, -1);
+        const parentAt = x.idx.slice(0, -1);
         const fx: Effect = { removed: op.path, ...(typeof op.path[op.path.length - 1] === 'number' && { shift: { parent: parentPath, index: i + 1, delta: -1 } }) };
         // The one after it now (or the one before, at the end); none left: the container.
-        if (count <= 1) return { fx, select: parentPath };
-        return { fx, select: await this.childPath(parentPath, Math.min(i, count - 2)) };
+        if (count <= 1) return { fx, select: parentPath, selectAt: parentAt };
+        const k = Math.min(i, count - 2);
+        return { fx, select: await this.childPath(parentPath, k, parentAt), selectAt: [...parentAt, k] };
       }
       case 'insert': {
-        const p = op.parent.length ? ((await this.at(op.parent)) ?? gone()).node : await this.host.src.root();
-        await ed.insert(p, op.index, op.json, op.name);
+        const x = op.parent.length ? ((await this.at(op.parent, { at: op.parentAt })) ?? gone()) : { node: await this.host.src.root(), idx: [] };
+        await ed.insert(x.node, op.index, op.json, op.name);
         const select = [...op.parent, op.name ?? op.index];
-        return { fx: op.name === null ? { shift: { parent: op.parent, index: op.index, delta: 1 } } : {}, select };
+        return { fx: op.name === null ? { shift: { parent: op.parent, index: op.index, delta: 1 } } : {}, select, selectAt: [...x.idx, op.index] };
       }
       case 'duplicate': {
         const x = (await this.at(op.path, op)) ?? gone();
@@ -225,22 +239,23 @@ export class HugeEditing {
         const i = x.node.i;
         await ed.duplicate(x.parent, i);
         const parentPath = op.path.slice(0, -1);
+        const parentAt = x.idx.slice(0, -1);
         const arr = typeof op.path[op.path.length - 1] === 'number';
-        return { fx: arr ? { shift: { parent: parentPath, index: i + 1, delta: 1 } } : {}, select: await this.childPath(parentPath, i + 1) };
+        return { fx: arr ? { shift: { parent: parentPath, index: i + 1, delta: 1 } } : {}, select: await this.childPath(parentPath, i + 1, parentAt), selectAt: [...parentAt, i + 1] };
       }
       case 'undo':
       case 'redo':
         await (op.op === 'undo' ? ed.undo() : ed.redo());
-        return { fx: {}, select: this.host.selPath() };
+        return { fx: {}, select: this.host.selPath(), selectAt: this.host.selAt?.() ?? null };
       case 'restore':
         await ed.restoreSession();
-        return { fx: {}, select: this.host.selPath() };
+        return { fx: {}, select: this.host.selPath(), selectAt: this.host.selAt?.() ?? null };
     }
   }
 
-  /** The path of child `i` of the container at `parent` (as the document is now). */
-  private async childPath(parent: Seg[], i: number): Promise<Seg[]> {
-    const chain = await this.host.src.resolve(parent);
+  /** The path of child `i` of the container at `parent` (`parentAt`: its index path), as the document is now. */
+  private async childPath(parent: Seg[], i: number, parentAt?: number[]): Promise<Seg[]> {
+    const chain = await this.host.src.resolve(parent, undefined, parentAt && parentAt.length === parent.length ? parentAt : undefined);
     const p = chain?.[chain.length - 1];
     if (!p) return parent;
     const [kid] = await this.host.src.children(p, i, 1);
