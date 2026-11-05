@@ -15,16 +15,17 @@ export interface Sink {
 
 const BLOCK = 1 << 20;
 /** Bytes waiting for the sink before the pass pauses (with one token's output and a block, what may wait at most). */
-export const FULL = 4 << 20;
+const FULL_BYTES = 8 << 20;
+export const FULL = FULL_BYTES;
 
 const encoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-/** The first block (most outputs of a part or a cell are small): later ones are BLOCK. */
-const FIRST = 64 << 10;
+/** A first block for outputs that are mostly small (Split's parts, a cell's scratch): later ones are BLOCK. */
+export const SMALL = 64 << 10;
 
 export class Bytes {
-  buf = new Uint8Array(FIRST);
+  buf = new Uint8Array(BLOCK);
   pos = 0;
   /** Bytes handed on so far (`written` counts the block being filled too). */
   total = 0;
@@ -33,9 +34,14 @@ export class Bytes {
   /** Told when FULL bytes wait for the sink: the job pauses its walker then (after the token being written). */
   onFull: (() => void) | null = null;
 
+  /** `first`: the first block's size (later ones are 1 MiB). */
+  constructor(first = BLOCK) {
+    if (first !== BLOCK) this.buf = new Uint8Array(first);
+  }
+
   /** Enough waits for the sink: the pass should pause (see Walker.pause). */
   get full() {
-    return this.queued >= FULL;
+    return this.queued >= FULL_BYTES;
   }
 
   /** Bytes written in all. */
@@ -48,7 +54,7 @@ export class Bytes {
       this.queue.push(this.pos === this.buf.length ? this.buf : this.buf.subarray(0, this.pos));
       this.queued += this.pos;
       this.total += this.pos;
-      if (this.queued >= FULL) this.onFull?.();
+      if (this.queued >= FULL_BYTES && this.onFull) this.onFull();
     }
     this.buf = new Uint8Array(BLOCK);
     this.pos = 0;
@@ -62,8 +68,8 @@ export class Bytes {
   /** b[a, e). */
   bytes(b: Uint8Array, a: number, e: number) {
     const len = e - a;
-    // (Short runs copied in a loop: a view for set() would be garbage for each.)
-    if (len <= 512 && this.pos + len <= this.buf.length) {
+    // (Short runs copied in a loop: a view for set() would cost more.)
+    if (len <= 64 && this.pos + len <= this.buf.length) {
       const o = this.buf;
       let p = this.pos;
       for (let k = a; k < e; k++) o[p++] = b[k];

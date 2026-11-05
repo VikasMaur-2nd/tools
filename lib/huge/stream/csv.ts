@@ -12,7 +12,7 @@
 import { formulaSafe } from '../../convert/formula';
 import { cellText, nestedCell, readableIds, type GridCell } from '../../convert/xlsx';
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Key, type Kind, type Val } from '../../json/parser';
-import { Bytes } from './out';
+import { Bytes, SMALL } from './out';
 import { decodeString, Reformat, validUtf8 } from './reformat';
 import { ESC, HI, LONG, type Visitor } from './walk';
 
@@ -788,7 +788,7 @@ export class CsvTokens implements Visitor {
   private jl = 0;
   private jr = new Int32Array(64);
   private jn = 0;
-  private readonly capOut = new Bytes();
+  private readonly capOut = new Bytes(SMALL);
   private readonly capF: Reformat;
 
   constructor(

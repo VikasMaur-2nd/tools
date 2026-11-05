@@ -233,12 +233,12 @@ export class Walker {
         case S_K:
         case S_KO:
           if (c === 34) {
-            // A name: to its closing quote (escapes skipped), within this chunk (and SLICE) if it can.
+            // A name: to its closing quote (escapes skipped), within this chunk if it can. (Scanned to the
+            // chunk's end, the loop's bound b.length: a longer one than a slice is read again a slice at a time.)
             let j = i + 1;
             let hi = 0;
             let fl = 0;
-            const lim = j + slice < n ? j + slice : n;
-            while (j < lim) {
+            while (j < n) {
               const x = b[j];
               if (x === 34) break;
               if (x === 92) {
@@ -249,7 +249,7 @@ export class Walker {
               hi |= x;
               j++;
             }
-            if (j < lim) {
+            if (j < n && j - i <= slice) {
               v.key(b, i + 1, j, fl | (hi & 0x80 ? HI : 0), base + i);
               i = j + 1;
               st = S_C;
@@ -264,7 +264,7 @@ export class Walker {
                 if (x !== 32 && x !== 10 && x !== 13 && x !== 9) throw new WalkError(base + i);
                 i++;
               }
-              if (this.pause) break loop;
+              // (No pause here: a value follows, and pauses after it.)
               continue;
             }
             this.st = st;
@@ -320,8 +320,7 @@ export class Walker {
         let j = i + 1;
         let hi = 0;
         let fl = 0;
-        const lim = j + slice < n ? j + slice : n;
-        while (j < lim) {
+        while (j < n) {
           const x = b[j];
           if (x === 34) break;
           if (x === 92) {
@@ -332,7 +331,7 @@ export class Walker {
           hi |= x;
           j++;
         }
-        if (j < lim) {
+        if (j < n && j - i <= slice) {
           this.last = base + j + 1;
           v.str(b, i + 1, j, fl | (hi & 0x80 ? HI : 0), base + i);
           i = j + 1;
@@ -355,7 +354,8 @@ export class Walker {
         v.open(k, base + i);
         i++;
         st = k === OBJ ? S_KO : S_VA;
-        if (this.pause) break loop;
+        // (Only deep nesting makes much output from opens alone: a pause is looked for there.)
+        if (d > 64 && this.pause) break loop;
         continue;
       }
       if (NUMCH[c] && c !== 43 && c !== 46 && c !== 101 && c !== 69) {

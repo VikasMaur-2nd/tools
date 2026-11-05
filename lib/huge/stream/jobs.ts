@@ -8,7 +8,7 @@ import { stringify } from '../../json/format';
 import type { JNode } from '../../json/parser';
 import { CsvColumns, CsvError, CsvRows, CsvScan, CsvTokens, Trees, type CsvOptions } from './csv';
 import { matches, type Filter } from './filter';
-import { Bytes, type Sink } from './out';
+import { Bytes, SMALL, type Sink } from './out';
 import { pass, type Source } from './pass';
 import { Reformat } from './reformat';
 import { Seek, type SeekTarget } from './seek';
@@ -111,7 +111,7 @@ class Split implements Visitor {
 
   private record() {
     if (this.cur) return;
-    const out = new Bytes();
+    const out = new Bytes(SMALL);
     // (A record that expands pauses the walker too: its part is written as it goes.)
     out.onFull = () => (this.walker().pause = true);
     const f = new Reformat(out, { indent: this.job.format === 'json' ? this.job.indent : '', lines: this.job.format === 'jsonl' });
