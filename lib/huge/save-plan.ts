@@ -83,9 +83,9 @@ export interface SaveEnv<H> {
  * Where to write (`how`, as the huge_save event says it: into `handle` in place or as another file, or downloaded),
  * or why nothing is: closed or cancelled (`cancel`), the file picked to overwrite isn't the opened one as it was
  * (`not_opened`), writing to it wasn't allowed (`not_allowed`), the opened file changed after a save-picker pick
- * (`changed`).
+ * (`changed`), the opened file itself picked in the save picker (`is_opened`: Overwrite, or Save, is the way to it).
  */
-export type SavePlan<H> = { how: 'in_place' | 'save_as'; handle: H } | { how: 'download'; handle: null } | { stop: 'cancel' | 'not_opened' | 'not_allowed' | 'changed' };
+export type SavePlan<H> = { how: 'in_place' | 'save_as'; handle: H } | { how: 'download'; handle: null } | { stop: 'cancel' | 'not_opened' | 'not_allowed' | 'changed' | 'is_opened' };
 
 export async function planSave<H>(env: SaveEnv<H>): Promise<SavePlan<H>> {
   let route = saveRoute({ ...env, handle: env.handle !== null });
@@ -114,7 +114,10 @@ export async function planSave<H>(env: SaveEnv<H>): Promise<SavePlan<H>> {
       // The save picker may have emptied what was picked (the opened file, picked anyway): saving reads the opened
       // file's unchanged parts, so it must still be as it was, or nothing is written over anything.
       if (!(await env.intact())) return { stop: 'changed' };
-      return { how: (await env.isOpened(h)) ? 'in_place' : 'save_as', handle: h };
+      // The opened file itself, not emptied this time: nothing written; Overwrite (or Save) is the way to it, the save
+      // window being the one that may empty it.
+      if (await env.isOpened(h)) return { stop: 'is_opened' };
+      return { how: 'save_as', handle: h };
     }
     default:
       return { how: 'download', handle: null };

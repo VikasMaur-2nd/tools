@@ -305,6 +305,15 @@ test('huge edit: Save as a new file suggests another name; the opened file empti
   t.check((await shaOf(page, 'new.json')) === sha(JSON.stringify(want, null, 2)), 'the new file holds the edited document (SHA-256)');
   t.check((await shaOf(page, 'mine.json')) === sha(text), 'the opened file untouched');
   t.check(await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null), 'still edited (a new file keeps the edits)', await edited(page));
+  // The opened file picked in the save picker anyway, not emptied: nothing written, Overwrite is the way to it.
+  await page.evaluate(() => (window.showSaveFilePicker = async () => window.__h['mine.json']));
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+s`);
+  await until(page, () => !!window.__vis('.hg-modal'), null);
+  await page.locator('.hg-modal .btn', { hasText: 'Save as a new file' }).click();
+  t.check(await toasted(page, /This is the file you opened: choose Overwrite mine\.json… instead/), 'the opened file picked: said to use Overwrite', await toasts(page));
+  t.check((await shaOf(page, 'mine.json')) === sha(text), 'nothing written to it');
+  t.check(/Edited · 1 change/.test(await edited(page)), 'still edited', await edited(page));
   // The opened file picked in the save picker anyway, and emptied by it (as Chromium may): nothing written, said why.
   await page.evaluate(() => {
     window.showSaveFilePicker = async () => {

@@ -1266,7 +1266,8 @@ export class HugeSession {
       if (why === 'not_opened') this.host.toast(rt("That isn't {name} as it was opened: nothing was written. Pick {name} itself, or save as a new file", { name }), 'err', undefined, 10_000);
       else if (why === 'not_allowed') this.host.toast(rt('Writing to {name} wasn’t allowed: nothing was written', { name }), 'info');
       else if (why === 'changed') this.host.toast(rt('Nothing was written: {name} has changed since it was opened (picking it in the save window may have emptied it), and saving reads it as it was', { name }), 'err', undefined, 15_000);
-      if (why !== 'cancel') track('huge_save', { how: why === 'changed' ? 'save_as' : 'in_place', outcome: why, size: hugeSize(this.src.state().docSize ?? this.src.size), ms: 0 });
+      else if (why === 'is_opened') this.host.toast(this.handle ? rt('This is the file you opened: use Save to write into it') : rt('This is the file you opened: choose Overwrite {name}… instead', { name }), 'info', undefined, 10_000);
+      if (why !== 'cancel' && why !== 'is_opened') track('huge_save', { how: why === 'changed' ? 'save_as' : 'in_place', outcome: why, size: hugeSize(this.src.state().docSize ?? this.src.size), ms: 0 });
       return false;
     }
     const { handle } = plan;

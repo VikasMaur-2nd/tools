@@ -121,9 +121,13 @@ test('A new file: the save picker with another name; the opened file checked aft
   ({ e, calls } = env({ answer: 'new', picks: { save: { ...OPENED } }, emptiedOnSavePick: true }));
   assert.deepEqual(await planSave(e), { stop: 'changed' });
   assert.deepEqual(calls, ['ask', 'save picker big (edited).json', 'intact']);
-  // Picked anyway and not emptied (other browsers' pickers, or Chromium not emptying it): that is saving in place.
+  // Picked anyway and not emptied (Chromium not emptying it this time): nothing written, said to use Overwrite (or
+  // Save) for it: the save window is the one that may empty it (REVIEW-2's suspicions).
   ({ e } = env({ answer: 'new', picks: { save: { ...OPENED } } }));
-  assert.deepEqual(await planSave(e), { how: 'in_place', handle: OPENED });
+  assert.deepEqual(await planSave(e), { stop: 'is_opened' });
+  // A file of the same name elsewhere (another folder: not the opened one): saved there.
+  ({ e } = env({ answer: 'new', picks: { save: { ...OPENED, size: 7, lastModified: 1 } } }));
+  assert.deepEqual(await planSave(e), { how: 'save_as', handle: { ...OPENED, size: 7, lastModified: 1 } });
   ({ e } = env({ answer: 'new', picks: { save: null } }));
   assert.deepEqual(await planSave(e), { stop: 'cancel' });
 });
