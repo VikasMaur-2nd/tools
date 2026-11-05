@@ -131,8 +131,11 @@ export interface EditState {
   version: number;
   /** Changes applied since opened or saved in place, as undo counts them (typing joined: one); the file bar's count. */
   steps: number;
-  /** A kept session of this file that can be put back (restoreSession): its steps, bytes, when (ms since 1970). */
-  session: { steps: number; bytes: number; time: number } | null;
+  /**
+   * A kept session of this file: its steps, bytes, when (ms since 1970); `restorable`: it can be put back now
+   * (restoreSession: only onto the file as opened, nothing edited, nothing to undo or redo).
+   */
+  session: { steps: number; bytes: number; time: number; restorable?: boolean } | null;
   /** Edits' bytes held (the document's and its history's). */
   bytes: number;
 }
@@ -170,7 +173,8 @@ export interface HugeEdits {
    */
   save(handle: FileSystemFileHandle | null, inPlace: boolean, progress: (written: number, size: number) => void): { done: Promise<{ blob: Blob | null }>; stop(): void };
   restoreSession(): Promise<Edited>;
-  dropSession(): Promise<void>;
+  /** Drops the kept session (`keepEdits`: this document's edits are kept instead from now on; else not till a further edit). */
+  dropSession(keepEdits?: boolean): Promise<void>;
 }
 
 /** A table row: an item of an array, and its members if it is an object. */

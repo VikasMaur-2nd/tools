@@ -526,8 +526,8 @@ export class CoreSource implements HugeSource {
       };
     },
     restoreSession: () => this.edited(this.doc.restoreSession()),
-    dropSession: async () => {
-      await this.doc.dropSession();
+    dropSession: async (keepEdits = false) => {
+      await this.doc.dropSession(keepEdits);
       if (!this.dead) this.onSummary(await this.doc.summary());
     },
   };

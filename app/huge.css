@@ -1043,6 +1043,11 @@ html[data-huge] .statusbar .cursor {
   min-width: 0;
 }
 
+/* (The question; the line under it says what editing first does.) */
+.hg-restore .b-msg > span:first-child {
+  color: inherit;
+}
+
 /* The edit box: over the row or cell it edits (fixed: the views scroll under it), or at the view's top. */
 .hg-box {
   position: fixed;

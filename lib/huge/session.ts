@@ -152,7 +152,8 @@ export class HugeSession {
   /** "Save changes to big.json" is asked: its answer. */
   private saveAnswer: ((a: SaveChoice) => void) | null = null;
   private saving: { stop(): void } | null = null;
-  private restoreOffered = false;
+  /** A kept session of this file: not looked at yet, offered (the banner), or answered (restored, dropped, edited on). */
+  private offer: 'none' | 'shown' | 'done' = 'none';
   /** Where the edit box or text dialog was opened from (the huge_edit event). */
   private editFrom: EditFrom = 'menu';
 
@@ -283,8 +284,11 @@ export class HugeSession {
     void (async () => {
       if (typed) await typed.catch(() => undefined);
       const e = src.state().edit;
-      await src.destroy();
-      if (!back && e?.edited) host.toast(rt.n(e.steps, 'Your {n} unsaved change to {name} is kept: reopen it to restore it', 'Your {n} unsaved changes to {name} are kept: reopen it to restore them', { name: meta.name }), 'info', undefined, 8000);
+      // (Whether they are, as the core says: not when too big, or a write failed.)
+      const kept = await src.destroy();
+      if (back || !e?.edited) return;
+      if (kept) host.toast(rt.n(e.steps, 'Your {n} unsaved change to {name} is kept: reopen it to restore it', 'Your {n} unsaved changes to {name} are kept: reopen it to restore them', { name: meta.name }), 'info', undefined, 8000);
+      else host.toast(rt.n(e.steps, 'Your {n} unsaved change to {name} couldn’t be kept', 'Your {n} unsaved changes to {name} couldn’t be kept', { name: meta.name }), 'err', undefined, 10_000);
     })();
     this.tree?.destroy();
     this.lines?.destroy();
@@ -941,12 +945,18 @@ export class HugeSession {
     if (!ui || !e || !ed) return;
     let restore = ui.restore;
     const touched = e.edited || e.canUndo || e.canRedo;
-    // A kept session of this file: offered once, before anything is edited.
-    if (e.session && !this.restoreOffered && !touched && st.done) {
-      this.restoreOffered = true;
+    // A kept session of this file: offered once, before anything is edited (and only if the core can put it back).
+    if (e.session && this.offer === 'none' && !touched && st.done && e.session.restorable !== false) {
+      this.offer = 'shown';
       restore = { steps: e.session.steps, time: e.session.time };
     }
-    // (Not after an edit, even undone: its edits were made on the file as opened, and would be spliced into these.)
+    // Not after an edit, even undone: its edits were made on the file as opened, and would be spliced into these.
+    // Editing on is the answer then: the kept edits go, these are kept instead (the core keeps nothing over a
+    // session on offer).
+    if (touched && this.offer === 'shown') {
+      this.offer = 'done';
+      void this.src.edits?.dropSession(true).catch((err: unknown) => this.failed(err));
+    }
     if (!e.session || touched) restore = null;
     this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle });
   }
@@ -1215,12 +1225,14 @@ export class HugeSession {
   /** A kept session of this file: its edits put back (undo goes on where it was). */
   async restoreEdits() {
     if (!this.ui.get().edit?.restore || !this.canEdit()) return;
+    this.offer = 'done';
     this.setEdit({ restore: null });
     await this.edit({ op: 'restore' }, 'banner');
   }
 
   /** The kept session not wanted: dropped. */
   async discardRestore() {
+    this.offer = 'done';
     this.setEdit({ restore: null });
     await this.src.edits?.dropSession().catch((e: unknown) => this.failed(e));
   }

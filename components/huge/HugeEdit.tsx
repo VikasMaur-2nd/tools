@@ -96,7 +96,10 @@ export function RestoreBar({ s }: { s: HugeSession }) {
   const at = today ? when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : when.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   return (
     <div className="banner hg-restore" role="status">
-      <span className={`b-msg ${PRIVATE}`}>{t.n(r.steps, 'Restore {n} unsaved change from {time}?', 'Restore {n} unsaved changes from {time}?', { time: at })}</span>
+      <span className="b-msg">
+        <span className={PRIVATE}>{t.n(r.steps, 'Restore {n} unsaved change from {time}?', 'Restore {n} unsaved changes from {time}?', { time: at })}</span>
+        <span>{t('Editing first discards them.')}</span>
+      </span>
       <button type="button" className="btn sm primary" onClick={() => void s.restoreEdits()}>
         {t('Restore')}
       </button>

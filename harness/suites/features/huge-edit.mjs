@@ -431,6 +431,21 @@ test('huge edit: the Restore banner goes on the first edit; while the Format vie
   await page.keyboard.press(`${MOD}+z`);
   t.check(await until(page, () => !window.__vis('.hg-edited'), null), 'undone');
   t.check(!(await page.evaluate(() => window.__vis('.hg-restore'))), 'and not offered again');
+  // Editing on was the answer: these edits are kept now, not the earlier ones.
+  await page.keyboard.press(`${MOD}+Shift+z`);
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  const other = join(dir, 'other-restore.json');
+  writeFileSync(other, '[3]');
+  await openHuge(t, other);
+  t.check(await toasted(page, /Your 1 unsaved change to users\.json is kept/), 'the new edit said kept', await toasts(page));
+  await openHuge(t, path);
+  t.assert(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'offered on reopening');
+  await page.locator('.hg-restore .btn.primary').click();
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 10_000 });
+  await selectPath(page, '$.users[7]');
+  t.check(/\{2\}/.test(await selRow(page)), 'the new edit put back ($.users[7] has no name)', await selRow(page));
+  await selectPath(page, '$.users[5]');
+  t.check(/\{3\}/.test(await selRow(page)), 'not the earlier one', await selRow(page));
 });
 
 test('huge edit: while the Format view is edited, the palette\'s edits wait (its next keys land where they should)', async (t) => {
