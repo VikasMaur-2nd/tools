@@ -24,6 +24,7 @@ interface Exports {
   stats(): number;
   target(depth: number, start: number, count: number, byte: number, val: number): void;
   stop_after(after: number): void;
+  facts(linesOk: number, sep: number, second: number): void;
   load(len: number, last: number): number;
   run(): number;
   snap(): number;
@@ -69,7 +70,7 @@ export const F_LINES = 8;
 
 /** f64 per frame in a state (see State), and before the frames. */
 export const FW = 6;
-export const HW = 11;
+export const HW = 15;
 /** f64 per directory record. */
 export const DW = 10;
 
@@ -100,7 +101,15 @@ export interface State {
   lineU16: number;
   /** Top-level values begun. */
   top: number;
+  /** The deepest closing container with children since the checkpoint before (a checkpoint's own stretch). */
   deepest: number;
+  // The JSON Lines facts of the same stretch: whether its top-level values were on lines of their own (1/0),
+  // its first separator between them (-1: none); the line where the last top-level value started, the line where
+  // the one before it ended (-1: none).
+  lok: number;
+  sep: number;
+  topLine: number;
+  lastTopLine: number;
   /** Open containers, outermost first. */
   frames: Frame[];
 }
@@ -146,6 +155,10 @@ export function decodeState(a: Float64Array, at: number, frames?: Frame[]): Stat
     lineU16: a[at + 8],
     top: a[at + 9],
     deepest: a[at + 10],
+    lok: a[at + 11],
+    sep: a[at + 12],
+    topLine: a[at + 13],
+    lastTopLine: a[at + 14],
     frames: frames ?? decodeFrames(a, at + HW, depth - firstFrame(depth, a[at + 3])),
   };
 }
@@ -247,8 +260,12 @@ export class Skeleton {
     return decodeState(new Float64Array(x.memory.buffer, x.snap_ptr(), n), 0);
   }
 
-  /** Continues from state `s` (the source's bytes from s.pos on). False if out of memory. */
-  restore(s: State): boolean {
+  /**
+   * Continues from state `s` (the source's bytes from s.pos on). False if out of memory. `carry`: `s` is where a
+   * run stopped past a checkpoint, and its stretch's facts (deepest, lok, sep) go on into the next checkpoint's;
+   * else (a checkpoint, whose own stretch they are) the next stretch starts with none.
+   */
+  restore(s: State, carry = false): boolean {
     const x = this.x;
     const depth = s.frames.length;
     const p = x.snap_room(depth);
@@ -264,7 +281,11 @@ export class Skeleton {
     a[7] = s.u16;
     a[8] = s.lineU16;
     a[9] = s.top;
-    a[10] = s.deepest;
+    a[10] = carry ? s.deepest : 0;
+    a[11] = carry ? s.lok : 1;
+    a[12] = carry ? s.sep : -1;
+    a[13] = s.topLine;
+    a[14] = s.lastTopLine;
     for (let k = 0; k < depth; k++) {
       const f = s.frames[k];
       const o = HW + k * FW;
@@ -278,10 +299,20 @@ export class Skeleton {
     return x.restore() === 1;
   }
 
+  /** After restore(): the document's facts before the state's byte (see lib.rs facts()). */
+  facts(linesOk: boolean, sep: number, second: number): void {
+    this.x.facts(linesOk ? 1 : 0, sep, second);
+  }
+
+  /** Reads `src` from now on (the same document, edited: see pieces.ts). */
+  use(src: ByteSource): void {
+    this.src = src;
+  }
+
   /** Counters now: see lib.rs stats(). */
   stats(): Float64Array {
     const x = this.x;
-    return new Float64Array(x.memory.buffer, x.stats(), 16).slice();
+    return new Float64Array(x.memory.buffer, x.stats(), 19).slice();
   }
 
   /** The checkpoints, directory records and warnings since the last drain (copies), then drains. */

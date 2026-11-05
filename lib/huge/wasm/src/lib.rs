@@ -95,7 +95,7 @@ const FR: usize = 10;
 /** f64 per frame in checkpoints and snapshots: kind, children, start, key, nodes before, closing lines before. */
 const FW: usize = 6;
 /** f64 before the frames in a checkpoint or snapshot (see snap()). */
-const HW: usize = 11;
+const HW: usize = 15;
 /** f64 per directory record (see dir_out()). */
 const DW: usize = 10;
 
@@ -236,7 +236,9 @@ static mut TOPN: u64 = 0;
 static mut NODES: u64 = 0;
 /** Closing lines so far: containers with children that closed (each is a line of the pretty form). */
 static mut CLOSERS: u64 = 0;
+/** The deepest closing container (with children) since the last checkpoint (or restore); DEEP_ALL: before it. */
 static mut DEEPEST: u64 = 0;
+static mut DEEP_ALL: u64 = 0;
 /** The lowest depth since the last checkpoint (frames below it haven't changed). */
 static mut LOW: usize = 0;
 static mut NEXT_CK: u64 = 0;
@@ -259,6 +261,10 @@ static mut TOP_LINE: u64 = 0;
 static mut SEP: u64 = NONE;
 /** Where the second top-level value starts (the normal path's "Multiple top-level values" notice), or NONE. */
 static mut SECOND: u64 = NONE;
+// The same facts since the last checkpoint, in it (so an edit can tell what a stretch of the document holds):
+// whether its top-level values were on lines of their own, its first separator between them.
+static mut LOK: bool = true;
+static mut LSEP: u64 = NONE;
 
 // Target (see target()).
 static mut T_DEPTH: usize = usize::MAX;
@@ -274,7 +280,7 @@ static mut DIR: Out = Out::new();
 static mut WARN: Out = Out::new();
 static mut WARNS: usize = 0;
 static mut SNAP: Out = Out::new();
-static mut STATS: [f64; 16] = [0.0; 16];
+static mut STATS: [f64; 19] = [0.0; 19];
 
 // The duplicate check: the open objects' names (tag, byte of the name; innermost object last), where a tag
 // mixes the name's hash with its object's serial; and for objects with more than SMALL names, an
@@ -351,6 +357,10 @@ pub unsafe extern "C" fn init(wcap: usize, flags: u32, ck_every: f64, big: f64, 
     }
     WCAP = wcap;
     reset_stage1();
+    W_UNITS = 0;
+    W_BREAKS = 0;
+    W_LAST_BRK = usize::MAX;
+    SPLIT = usize::MAX;
     POS0 = 0;
     U16_0 = 0;
     LINES0 = 0;
@@ -365,6 +375,7 @@ pub unsafe extern "C" fn init(wcap: usize, flags: u32, ck_every: f64, big: f64, 
     NODES = 0;
     CLOSERS = 0;
     DEEPEST = 0;
+    DEEP_ALL = 0;
     LOW = 0;
     NEXT_CK = if flags & F_CHECKPOINTS != 0 { CK_EVERY } else { NONE };
     WHY = 0;
@@ -372,8 +383,11 @@ pub unsafe extern "C" fn init(wcap: usize, flags: u32, ck_every: f64, big: f64, 
     PART = P_NONE;
     LINES_OK = true;
     LAST_TOP_LINE = NONE;
+    TOP_LINE = 0;
     SEP = NONE;
     SECOND = NONE;
+    LOK = true;
+    LSEP = NONE;
     SERIAL = 0;
     T_DEPTH = usize::MAX;
     T_COUNT = NONE;
@@ -461,13 +475,13 @@ pub unsafe extern "C" fn drain() {
 /// [0], [10] UTF-16 units before [0], [11] the UTF-16 offset of the start of that line.
 #[no_mangle]
 pub unsafe extern "C" fn stats() -> usize {
-    let p = if II < NIDX { *(IDX as *const u32).add(II) as usize } else { WLEN };
+    let p = if SPLIT != usize::MAX { SPLIT } else if II < NIDX { *(IDX as *const u32).add(II) as usize } else { WLEN };
     let s = &mut STATS;
     s[0] = (POS0 + p as u64) as f64;
     s[1] = NODES as f64;
     s[2] = CLOSERS as f64;
     s[3] = TOPN as f64;
-    s[4] = DEEPEST as f64;
+    s[4] = DEEP_ALL.max(DEEPEST) as f64;
     s[5] = DEPTH as f64;
     s[6] = STATE as f64;
     s[7] = LINES_OK as u32 as f64;
@@ -481,6 +495,11 @@ pub unsafe extern "C" fn stats() -> usize {
     s[13] = if PART != P_NONE { PSTART as f64 } else { -1.0 };
     s[14] = if SECOND == NONE { -1.0 } else { SECOND as f64 };
     s[15] = LOW as f64;
+    // The facts since the last checkpoint (see snap()): top-level values on lines of their own, the first
+    // separator, the deepest closing container.
+    s[16] = LOK as u32 as f64;
+    s[17] = if LSEP == NONE { -1.0 } else { LSEP as f64 };
+    s[18] = DEEPEST as f64;
     s.as_ptr() as usize
 }
 
@@ -555,6 +574,7 @@ pub unsafe extern "C" fn load(len: usize, last: u32) -> i32 {
     WLEN = len;
     FINAL = last != 0;
     II = 0;
+    SPLIT = usize::MAX;
     let inp = WIN;
     core::ptr::write_bytes((inp + len) as *mut u8, b' ', 128);
     let idx = IDX as *mut u32;
@@ -821,6 +841,28 @@ unsafe fn scalar(p: usize) -> usize {
     i
 }
 
+/// A top-level value that starts inside the token before it (`1true`: see dfa_splits) where a run stopped: its
+/// window offset (the token index doesn't have it), or usize::MAX.
+static mut SPLIT: usize = usize::MAX;
+
+/// Where a number or literal at window offset `p` that isn't one goes wrong: its first byte that can't follow, or
+/// the byte after it if it stops short, as a token cut by a window edge fails (so where a parse fails doesn't
+/// depend on where windows are).
+#[cold]
+#[inline(never)]
+unsafe fn bad_byte(p: usize, wlen: usize) -> usize {
+    let mut s = D_START;
+    let mut k = p;
+    while k < wlen && !ENDS[byte(k) as usize] {
+        s = dfa(s, byte(k));
+        if s == D_BAD {
+            return k;
+        }
+        k += 1;
+    }
+    k
+}
+
 // A number or literal cut by the window, a byte at a time: its state (D_*), or D_BAD.
 const D_START: u32 = 0;
 const D_MINUS: u32 = 1;
@@ -968,7 +1010,8 @@ unsafe fn state_out(out: &mut Out, p: usize, state: u64, depth: usize, low: usiz
     if !out.reserve(HW + (depth - from) * FW) {
         return false;
     }
-    for v in [(POS0 + p as u64) as f64, state as f64, depth as f64, low as f64, NODES as f64, CLOSERS as f64, lines_at(p) as f64, (U16_0 + u16_at(p) as u64) as f64, line_u16_at(p) as f64, TOPN as f64, DEEPEST as f64] {
+    let line = |l: u64| if l == NONE { -1.0 } else { l as f64 };
+    for v in [(POS0 + p as u64) as f64, state as f64, depth as f64, low as f64, NODES as f64, CLOSERS as f64, lines_at(p) as f64, (U16_0 + u16_at(p) as u64) as f64, line_u16_at(p) as f64, TOPN as f64, DEEPEST as f64, LOK as u32 as f64, line(LSEP), line(TOP_LINE), line(LAST_TOP_LINE)] {
         out.put(v);
     }
     for d in from..depth {
@@ -983,10 +1026,13 @@ unsafe fn state_out(out: &mut Out, p: usize, state: u64, depth: usize, low: usiz
 
 /// The current state as a snapshot (header + every frame) at snap_ptr(): its length in f64. Header: byte of the
 /// next token, state, depth, (0: every frame follows), nodes, closing lines, line breaks, UTF-16 units, the UTF-16 offset of the line's
-/// start, top-level values, deepest nesting. Frames: kind, children, start, key, nodes before, closing lines before.
+/// start, top-level values, deepest nesting since the last checkpoint, whether top-level values since then were on
+/// lines of their own, the first separator between them since then (-1: none), the line where the last top-level
+/// value started, the line where the one before it ended (-1: none). Frames: kind, children, start, key, nodes
+/// before, closing lines before.
 #[no_mangle]
 pub unsafe extern "C" fn snap() -> usize {
-    let p = if II < NIDX { *(IDX as *const u32).add(II) as usize } else { WLEN };
+    let p = if SPLIT != usize::MAX { SPLIT } else if II < NIDX { *(IDX as *const u32).add(II) as usize } else { WLEN };
     SNAP.len = 0;
     if !state_out(&mut SNAP, p, STATE, DEPTH, 0) {
         return 0;
@@ -1009,7 +1055,8 @@ pub unsafe extern "C" fn snap_room(depth: usize) -> usize {
 }
 
 /// Starts again from the snapshot at snap_ptr() (a state at a token, outside any string): the next window is
-/// the document from the snapshot's byte. The duplicate check starts over (it knows no earlier names).
+/// the document from the snapshot's byte. The duplicate check starts over (it knows no earlier names); the facts
+/// of the whole document so far (facts()) are the caller's to give.
 #[no_mangle]
 pub unsafe extern "C" fn restore() -> u32 {
     let s = SNAP.p as *const f64;
@@ -1027,7 +1074,15 @@ pub unsafe extern "C" fn restore() -> u32 {
     U16_0 = h(7);
     LINE_U16 = h(8);
     TOPN = h(9);
+    // (The state's stretch's facts go on into the next checkpoint's: what they're used for (the deepest, all on
+    // lines of their own, the first separator) takes them once whatever stretch holds them.)
     DEEPEST = h(10);
+    DEEP_ALL = 0;
+    LOK = *s.add(11) != 0.0;
+    LSEP = if *s.add(12) < 0.0 { NONE } else { h(12) };
+    TOP_LINE = h(13);
+    LAST_TOP_LINE = if *s.add(14) < 0.0 { NONE } else { h(14) };
+    DUP_SKIPPED = 0;
     for d in 0..depth {
         let f = frame(d);
         for k in 0..FW {
@@ -1043,13 +1098,26 @@ pub unsafe extern "C" fn restore() -> u32 {
     LOW = depth;
     reset_stage1();
     II = 0;
+    SPLIT = usize::MAX;
     NIDX = 0;
     WLEN = 0;
+    W_UNITS = 0;
+    W_BREAKS = 0;
+    W_LAST_BRK = usize::MAX;
     FINAL = false;
     PART = P_NONE;
     WHY = 0;
     NEXT_CK = if FLAGS & F_CHECKPOINTS != 0 { POS0 + CK_EVERY } else { NONE };
     1
+}
+
+/// After restore(): the facts of the document before the snapshot's byte: whether its top-level values were on
+/// lines of their own, its first separator between them, where its second top-level value starts (-1: none).
+#[no_mangle]
+pub unsafe extern "C" fn facts(lines_ok: u32, sep: f64, second: f64) {
+    LINES_OK = lines_ok != 0;
+    SEP = if sep < 0.0 { NONE } else { sep as u64 };
+    SECOND = if second < 0.0 { NONE } else { second as u64 };
 }
 
 // ── The duplicate check ──────────────────────────────────────────────────
@@ -1535,6 +1603,7 @@ pub unsafe extern "C" fn run() -> i32 {
                 let l = lines_at($e);
                 if l != TOP_LINE {
                     LINES_OK = false;
+                    LOK = false;
                 }
                 LAST_TOP_LINE = l;
             }
@@ -1549,6 +1618,7 @@ pub unsafe extern "C" fn run() -> i32 {
             let l = lines_at($p);
             if l == LAST_TOP_LINE {
                 LINES_OK = false;
+                LOK = false;
             }
             TOP_LINE = l;
         }};
@@ -1564,6 +1634,8 @@ pub unsafe extern "C" fn run() -> i32 {
                 // A checkpoint right after a big value: a seek past it starts there.
                 if ck_on {
                     ck_at = 0;
+                    // (Kept past a stop there: the run that goes on still owes it.)
+                    NEXT_CK = 0;
                 }
             }
             top_end!($q);
@@ -1582,6 +1654,8 @@ pub unsafe extern "C" fn run() -> i32 {
                 }
                 if ck_on {
                     ck_at = 0;
+                    // (Kept past a stop there: the run that goes on still owes it.)
+                    NEXT_CK = 0;
                 }
             }
             if tcount != 0 {
@@ -1636,6 +1710,11 @@ pub unsafe extern "C" fn run() -> i32 {
             if !state_out(&mut CK, $p, state, depth, low) {
                 fail!(W_MEMORY, $p);
             }
+            // (What follows is the next checkpoint's.)
+            DEEP_ALL = DEEP_ALL.max(deepest);
+            deepest = 0;
+            LOK = true;
+            LSEP = NONE;
             low = depth;
             NEXT_CK = pos0 + $p as u64 + CK_EVERY;
             ck_at = local(NEXT_CK).min(stop_at);
@@ -1657,6 +1736,7 @@ pub unsafe extern "C" fn run() -> i32 {
                     top_start!(k);
                     nodes += 1;
                     tcount += 1;
+                    PSTART = pos0 + k as u64;
                     $s = dfa(D_START, c);
                 } else {
                     $s = t;
@@ -1668,12 +1748,19 @@ pub unsafe extern "C" fn run() -> i32 {
                 k += 1;
             }
             if bad != usize::MAX {
+                // (Not a value: not counted as one; what's read stops before it, as a broken one in a window.)
+                nodes -= 1;
+                tcount -= 1;
+                part = P_SCALAR;
                 fail!(W_SYNTAX, bad);
             }
         }};
     }
     // A top-level value right after a number or literal (see dfa_splits), in the same token: where it starts.
-    let mut split = usize::MAX;
+    // (A stop there: the run that goes on starts at it.)
+    let mut split = SPLIT;
+    SPLIT = usize::MAX;
+    let mut at_split = usize::MAX;
     let r = loop {
         // A token the last window cut.
         if part != P_NONE {
@@ -1689,6 +1776,8 @@ pub unsafe extern "C" fn run() -> i32 {
                     break NEED;
                 }
                 if !dfa_done(s) {
+                    nodes -= 1;
+                    tcount -= 1;
                     fail!(W_SYNTAX, j);
                 }
                 part = P_NONE;
@@ -1753,6 +1842,7 @@ pub unsafe extern "C" fn run() -> i32 {
             break NEED;
         }
         let mut p = if split != usize::MAX { split } else { *idx.add(ii) as usize };
+        at_split = split;
         split = usize::MAX;
         if p >= fail_at {
             fail!(W_SYNTAX, fail_at);
@@ -1818,6 +1908,9 @@ pub unsafe extern "C" fn run() -> i32 {
                 }
                 let q = *idx.add(ii + 1) as usize;
                 if q >= fail_at {
+                    // (Its name is where it breaks: being read there, as when a window cuts it.)
+                    part = P_KEY;
+                    PSTART = kpos;
                     fail!(W_SYNTAX, fail_at);
                 }
                 if dups {
@@ -1872,7 +1965,11 @@ pub unsafe extern "C" fn run() -> i32 {
                     if SEP == NONE {
                         SEP = pos0 + p as u64;
                     }
+                    if LSEP == NONE {
+                        LSEP = pos0 + p as u64;
+                    }
                     LINES_OK = false;
+                    LOK = false;
                     let mut j = p;
                     while byte(j) == b';' {
                         j += 1;
@@ -1923,6 +2020,9 @@ pub unsafe extern "C" fn run() -> i32 {
                 }
                 let q = *idx.add(ii + 1) as usize;
                 if q >= fail_at {
+                    // (The string is where it breaks: being read there, as when a window cuts it.)
+                    part = P_STR;
+                    PSTART = pos0 + p as u64;
                     fail!(W_SYNTAX, fail_at);
                 }
                 ii += 2;
@@ -1970,25 +2070,31 @@ pub unsafe extern "C" fn run() -> i32 {
                     }
                     if j == wlen {
                         let mut s = D_START;
+                        PSTART = pos0 + p as u64;
                         feed!(s, p, wlen);
                         part = P_SCALAR;
                         PDFA = s;
-                        PSTART = pos0 + p as u64;
                         ii += 1;
                         break NEED;
                     }
                 }
                 let e = scalar(p);
                 if e == 0 {
-                    // (Not a value: not counted as one.)
+                    // (Not a value: not counted as one; what's read stops before it, as when a window cuts it.)
                     nodes -= 1;
                     tcount -= 1;
-                    fail!(W_SYNTAX, p);
+                    part = P_SCALAR;
+                    PSTART = pos0 + p as u64;
+                    fail!(W_SYNTAX, bad_byte(p, wlen));
                 }
                 let c2 = byte(e);
                 if !ENDS[c2 as usize] {
                     if depth != 0 || !splits(p, e, c2) {
-                        fail!(W_SYNTAX, p);
+                        nodes -= 1;
+                        tcount -= 1;
+                        part = P_SCALAR;
+                        PSTART = pos0 + p as u64;
+                        fail!(W_SYNTAX, bad_byte(p, wlen));
                     }
                     // Another top-level value right after it, in the same token.
                     top_end!(e - 1);
@@ -2002,6 +2108,10 @@ pub unsafe extern "C" fn run() -> i32 {
             }
         }
     };
+    // (Stopped at a top-level value that starts in the token before: where it is, and where to go on from.)
+    if r == STOP {
+        SPLIT = at_split;
+    }
     // (A window that ends inside a token isn't done until what stage 1 found wrong in it is reported.)
     let r = if r == NEED && fail_at != usize::MAX {
         WHY = W_SYNTAX;
@@ -2022,6 +2132,11 @@ pub unsafe extern "C" fn run() -> i32 {
         LINES0 += W_BREAKS;
         ii = 0;
         NIDX = 0;
+        // (Counted once: a run on the empty window that's left, or a snapshot now, adds nothing more.)
+        WLEN = 0;
+        W_UNITS = 0;
+        W_BREAKS = 0;
+        W_LAST_BRK = usize::MAX;
     }
     II = ii;
     STATE = state;

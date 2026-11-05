@@ -86,9 +86,12 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     for (;;) {
       if (ahead) {
         // (Reads ahead; waits only if the parse caught up with the reads.)
-        const [at, len] = doc.indexAt;
-        const ready = ahead.need(at, len);
-        if (!ahead.has(at, len)) await ready;
+        const where = doc.indexAt;
+        if (where) {
+          const [at, len] = where;
+          const ready = ahead.need(at, len);
+          if (!ahead.has(at, len)) await ready;
+        }
       }
       if (held) await new Promise<void>((done) => (resume = done));
       let finished: boolean;
