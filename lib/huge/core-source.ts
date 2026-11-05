@@ -38,9 +38,6 @@ type Ref = { core: CoreNode; kept?: Kept; zi?: number };
  */
 export const KEEP = 64 << 20;
 
-/** Bytes of a broken document's text past its error that lineOf reads for a line number. */
-const LINE_SCAN = 2 << 20;
-
 /** How often the summary (depth, pretty lines, the root's count so far) is asked for while indexing (ms). */
 const SUMMARY_EVERY = 1000;
 
@@ -408,23 +405,15 @@ export class CoreSource implements HugeSource {
   }
 
   async lineOf(mode: LineMode, at: number, signal?: AbortSignal) {
+    // (Raw: from the bytes, anywhere once all read, past a broken document's error too.)
+    if (mode === 'raw') {
+      const line = await this.doc.lineAt(Math.max(0, at));
+      check(signal);
+      return Math.max(0, line);
+    }
     const loc = await this.doc.locate(Math.max(0, at));
     check(signal);
-    if (loc) return mode === 'raw' ? loc.line - 1 : Math.max(0, loc.node.pretty);
-    // At or past the error of a document all read, nothing is located: the raw line is the error's, and the breaks
-    // between its start and `at`, counted in its text (at most LINE_SCAN bytes of it). REVIEW-2 #6.
-    const e = this.st.error;
-    if (mode !== 'raw' || !this.st.done || !e || at < e.at) return 0;
-    const line = e.line - 1;
-    const first = await this.doc.rawLines(line, 1, 1);
-    check(signal);
-    const from = first.pos[0];
-    if (first.pos.length < 1 || at <= from) return line;
-    const { text } = await this.doc.text(from, Math.min(at, from + LINE_SCAN), LINE_SCAN + 8);
-    check(signal);
-    let n = 0;
-    for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) n++;
-    return line + n;
+    return loc ? Math.max(0, loc.node.pretty) : 0;
   }
 
   /** The column (UTF-16 units) of byte `at` on raw line `line` (utf8.ts: the worker's rule). */

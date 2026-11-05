@@ -143,7 +143,7 @@ test('review 2: the one byte↔UTF-16 mapping (worker and page): any cut adds up
   assert.equal(utf16Of('é😀', 7), -1);
 });
 
-test('review 3: raw lines read no further than what is read (while indexing, stopped, broken), and a long line answers its start', () => {
+test('review 3: raw lines read no further than what is read (while indexing, stopped), and a long line answers its start', () => {
   // (The reviewer's: 8,200 bytes, one line, 64 read.)
   const bytes = enc.encode('{"a":"' + 'x'.repeat(8192) + '"}');
   let end = 0;
@@ -162,17 +162,16 @@ test('review 3: raw lines read no further than what is read (while indexing, sto
   end = 0;
   d.rawLines(0, 3, 20);
   assert.ok(end <= front + 64, `stopped: read through ${end}`);
-  // Broken: no further than the error.
+  // Broken, all read: the bytes are all there, and raw lines go on past the error (UI-NOTES 21; huge-lines-past-error).
   const broken = enc.encode('[1,\n2,\n' + 'x'.repeat(5000) + '\n,3]');
-  let bend = 0;
-  const bsrc = { ...memSource(broken), cached: true, read: (at: number, len: number) => ((bend = Math.max(bend, at + len)), broken.subarray(at, at + len)) };
-  const bd = new HugeDoc(bsrc, hugeMod, parsers, { every: 64, big: 64 }, { window: 64, queryWindow: 64 });
+  const bd = new HugeDoc(Object.assign(memSource(broken), { cached: true }), hugeMod, parsers, { every: 64, big: 64 }, { window: 64, queryWindow: 64 });
   bd.step(Infinity);
   assert.ok(bd.summary().error);
-  bend = 0;
+  // (Its lines past the error counted, as the worker does in steps.)
+  while (!bd.stepLines(0));
   const br = bd.rawLines(0, 5, 10);
-  assert.ok(bend <= bd.summary().error!.pos + 128, `broken: read through ${bend} (error at ${bd.summary().error!.pos})`);
-  assert.deepEqual(br.text.slice(0, 2), ['[1,', '2,']);
+  assert.deepEqual(br.text, ['[1,', '2,', 'xxxxxxxxxx', ',3]']);
+  assert.deepEqual(Array.from(br.cut), [0, 0, 1, 0]);
   // All read, one long line (10 MiB, no break), minified values or one big string: its start and length come
   // without reading it all (from the last checkpoint on it; big strings skipped by the directory).
   for (const doc of ['[' + '1,'.repeat(5 << 20) + '1]', '["' + 'y'.repeat(10 << 20) + '"]']) {
