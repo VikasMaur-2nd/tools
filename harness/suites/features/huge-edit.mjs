@@ -428,6 +428,7 @@ test('huge edit: the Restore banner goes on the first edit; while the Format vie
   await page.keyboard.press('Delete');
   t.check(await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null), 'edited', await edited(page));
   t.check(await until(page, () => !window.__vis('.hg-restore'), null), 'the banner goes on the first edit');
+  t.check(await toasted(page, /Discarded the 1 kept change/), 'and says the kept change was discarded', await toasts(page));
   await selectPath(page, '$.users[5]');
   t.check(/\{3\}/.test(await selRow(page)), '$.users[5] as the file has it (the kept edit not put in)', await selRow(page));
   await page.keyboard.press(`${MOD}+z`);

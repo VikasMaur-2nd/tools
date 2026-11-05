@@ -979,9 +979,15 @@ export class HugeSession {
     // Not after an edit, even undone: its edits were made on the file as opened, and would be spliced into these.
     // Editing on is the answer then: the kept edits go, these are kept instead (the core keeps nothing over a
     // session on offer).
-    if (touched && this.offer === 'shown') {
+    // Also when the session was found only after the first edit (REVIEW-3 C8): no banner then, the same answer.
+    // Said, with how many were discarded (REVIEW-3 C5).
+    if (touched && e.session && this.offer !== 'done') {
       this.offer = 'done';
-      void this.src.edits?.dropSession(true).catch((err: unknown) => this.failed(err));
+      const n = e.session.steps;
+      void this.src.edits?.dropSession(true).then(
+        () => !this.dead && this.host.toast(rt.n(n, 'Discarded the {n} kept change', 'Discarded the {n} kept changes'), 'info', undefined, 8000),
+        (err: unknown) => this.failed(err),
+      );
     }
     if (!e.session || touched) restore = null;
     this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle });

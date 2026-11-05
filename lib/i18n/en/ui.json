@@ -1583,5 +1583,9 @@
   "toast.hugeNoChanges": "No changes to save",
   "toast.hugeNoChanges._context": "Large-file mode: Save (Ctrl+S) with no unsaved changes.",
   "toast.hugeSaveReading": "The file is still being read: it can be saved once it is",
-  "toast.hugeSaveReading._context": "Large-file mode: Save asked before the file is all read (indexing still running)."
+  "toast.hugeSaveReading._context": "Large-file mode: Save asked before the file is all read (indexing still running).",
+  "toast.hugeEdDiscarded.one": "Discarded the {n} kept change",
+  "toast.hugeEdDiscarded.one._context": "Large-file mode: the user edited the file instead of answering the Restore banner (\"Restore 1 unsaved change from 10:42?\"), so the earlier kept change was dropped and the new edits are kept instead.",
+  "toast.hugeEdDiscarded.other": "Discarded the {n} kept changes",
+  "toast.hugeEdDiscarded.other._context": "Large-file mode: the user edited the file instead of answering the Restore banner (\"Restore 12 unsaved changes from 10:42?\"), so the earlier kept changes were dropped and the new edits are kept instead."
 }
