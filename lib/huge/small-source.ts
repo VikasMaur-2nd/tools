@@ -433,6 +433,11 @@ export class SmallSource implements HugeSource {
     }, signal);
   }
 
+  textAt(a: number, b: number, max: number, signal?: AbortSignal) {
+    // (Positions are UTF-16 units here: the small documents of tests and the simulated index.)
+    return this.later(() => ({ text: this.text.slice(a, Math.min(b, a + max)), cut: b - a > max }), signal);
+  }
+
   async slice(n: HugeNode) {
     const [a, b] = n.at === VIRTUAL ? [0, this.size] : [n.at, n.end < 0 ? this.size : n.end];
     return new Blob([this.text.slice(a, b)], { type: 'application/json' });

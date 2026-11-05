@@ -1491,5 +1491,9 @@
   "cmd.huge-delete._context": "Command palette, large-file mode only: deletes the selected value.",
   "cmd.huge-delete.terms": "remove",
   "app.hugeStillReading": "…still reading",
-  "app.hugeStillReading._context": "Large-file mode, Format view (as written): after the start of a line that goes on past where the file has been read so far; more of it comes as indexing goes on."
+  "app.hugeStillReading._context": "Large-file mode, Format view (as written): after the start of a line that goes on past where the file has been read so far; more of it comes as indexing goes on.",
+  "app.hugeEdKept.one": "Your {n} unsaved change to {name} is kept: reopen it to restore it",
+  "app.hugeEdKept.one._context": "Large-file mode: toast when another file replaces an edited large file (one change). {name}: its name.",
+  "app.hugeEdKept.other": "Your {n} unsaved changes to {name} are kept: reopen it to restore them",
+  "app.hugeEdKept.other._context": "Large-file mode: toast when another file replaces an edited large file (several changes). {name}: its name."
 }

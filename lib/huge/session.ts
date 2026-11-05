@@ -73,6 +73,8 @@ export interface HugeOpen {
 export type EditFrom = Events['huge_edit']['from'];
 /** The most a value's text may be for the edit box (more: the text dialog). */
 const BOX_MAX = 64 * 1024;
+/** The core keeps a session this long after the last edit (serve.ts KEEP_MS), with a margin. */
+const KEPT_AFTER = 1500;
 
 let seq = 0;
 /** The open session (components/huge/HugeTool.tsx reads it). */
@@ -127,6 +129,8 @@ export class HugeSession {
   private file: { size: number; lastModified: number };
   private saving: { stop(): void } | null = null;
   private restoreOffered = false;
+  /** When the last edit was made (performance.now()). */
+  private editedAt = 0;
   /** Where the edit box or text dialog was opened from (the huge_edit event). */
   private editFrom: EditFrom = 'menu';
 
@@ -239,13 +243,20 @@ export class HugeSession {
   close(back = false) {
     if (this.dead) return;
     this.report(this.src.state().done ? 'done' : 'replaced');
+    const edits = this.ui.get().edit;
     this.dead = true;
     this.find.stop();
     this.stopState();
     this.saving?.stop();
     window.removeEventListener('beforeunload', this.onUnload);
     clearTimeout(this.growTimer);
-    this.src.destroy();
+    // Replaced by another document with unsaved edits: they are kept (the core keeps a session a second after the
+    // last edit: its worker stays that long), and offered when the file is opened again.
+    if (!back && edits?.edited) {
+      this.host.toast(rt.n(edits.steps, 'Your {n} unsaved change to {name} is kept: reopen it to restore it', 'Your {n} unsaved changes to {name} are kept: reopen it to restore them', { name: this.meta.name }), 'info', undefined, 8000);
+      const src = this.src;
+      setTimeout(() => src.destroy(), Math.max(0, KEPT_AFTER - (performance.now() - this.editedAt)));
+    } else this.src.destroy();
     this.tree?.destroy();
     this.lines?.destroy();
     this.table?.destroy();
@@ -939,6 +950,7 @@ export class HugeSession {
    */
   private async afterEdit(fx: Effect, select: Seg[] | null) {
     if (this.dead) return;
+    this.editedAt = performance.now();
     const tree = this.tree;
     const opens = tree ? tree.openPaths().slice(1).map((p) => adjustPath(p, fx)).filter((p): p is Seg[] => !!p) : [];
     const graphPath = this.graph?.rootPath ? (adjustPath(this.graph.rootPath, fx) ?? this.graph.rootPath.slice(0, -1)) : null;

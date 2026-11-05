@@ -1,0 +1,199 @@
+/*
+ * The Format view's editing window (lib/huge/text-window.ts): the change between two texts (never between a pair's
+ * halves), a window of whole lines with its bytes, typing sent as joined replaces (one undo step per pause), what's
+ * typed while the document is read again sent once it's ready.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { HugeClient, type Port } from '../lib/huge/client';
+import { serve } from '../lib/huge/serve';
+import { CoreSource } from '../lib/huge/core-source';
+import { parse } from '../lib/json/tape-parser';
+import { TextWindow, WINDOW_ABOVE, WINDOW_BYTES, diffText } from '../lib/huge/text-window';
+import type { HugeSource, IndexState } from '../lib/huge/source';
+import { enc, hugeMod, memSource, tapeMod } from './huge-oracle';
+
+function inProcess(bytes: Uint8Array): Port {
+  const worker: { postMessage(m: unknown): void; onmessage: ((e: { data: unknown }) => void) | null } = {
+    postMessage: (m) => setTimeout(() => client.onmessage?.({ data: m })),
+    onmessage: null,
+  };
+  const client: Port = { postMessage: (m) => setTimeout(() => worker.onmessage?.({ data: m })), onmessage: null, terminate() {} };
+  serve(worker, async () => ({ huge: hugeMod, parsers: { wasm: tapeMod, parse } }), () => memSource(bytes));
+  return client;
+}
+
+const core = (text: string) => {
+  const bytes = enc.encode(text);
+  const blob = new Blob([bytes]);
+  return new CoreSource(blob, 'a.json', (onProgress) => new HugeClient(blob, { name: 'a.json' }, onProgress, inProcess(bytes)));
+};
+
+const ended = (src: HugeSource) =>
+  new Promise<IndexState>((done) => {
+    if (src.state().done) return done(src.state());
+    const stop = src.onState((s) => s.done && (stop(), done(s)));
+  });
+
+const whole = async (src: HugeSource) => (await src.textAt(0, src.state().docSize ?? src.size, 1 << 30)).text;
+
+test('the change between two texts: one replace, never between the halves of a pair', () => {
+  assert.equal(diffText('abc', 'abc'), null);
+  assert.deepEqual(diffText('"user 1"', '"user 12"'), { p: 7, del: 0, ins: '2' });
+  assert.deepEqual(diffText('"user 12"', '"user 1"'), { p: 7, del: 1, ins: '' });
+  assert.deepEqual(diffText('aXa', 'aYa'), { p: 1, del: 1, ins: 'Y' });
+  // (Repeated letters: the earliest place.)
+  assert.deepEqual(diffText('aaa', 'aaaa'), { p: 3, del: 0, ins: 'a' });
+  // An emoji for another sharing its first half: the whole pair goes.
+  assert.deepEqual(diffText('x😀y', 'x😁y'), { p: 1, del: 2, ins: '😁' });
+  // One sharing its second half (😀 U+1F600 and 🙀 U+1F640 differ in the low half only… and 𝀀/𐀀 in the high): whole too.
+  const d = diffText('x𝐀y', 'x𝀀y')!;
+  assert.deepEqual(d, { p: 1, del: 2, ins: '𝀀' });
+});
+
+const lines = (n: number) => Array.from({ length: n }, (_, i) => `  {"id": ${i}, "name": "${i % 7 ? 'user' : 'usér 😀'} ${i}"}`);
+const doc = (n: number) => '[\n' + lines(n).join(',\n') + '\n]\n';
+
+test('a window of whole lines with its bytes; typing sent as one joined replace; undo takes it back at once', async () => {
+  const text = doc(5000);
+  const src = core(text);
+  await ended(src);
+  const sent: number[] = [];
+  const w = new TextWindow(src, { sent: () => sent.push(1), failed: (e) => assert.fail(String(e)) });
+  assert.equal(await w.load(2000), true);
+  assert.equal(w.line, 2000 - WINDOW_ABOVE);
+  const all = text.split('\n');
+  assert.equal(w.sent, all.slice(w.line, w.line + w.lines).join('\n') + '\n', 'the lines, as written');
+  assert.equal(w.view, w.sent);
+  assert.equal(w.start, enc.encode(all.slice(0, w.line).join('\n') + '\n').length, 'and where they start, in bytes');
+  // Typing at the end of a name with accents and an emoji before it: each key a replace, joined by the core.
+  const at = w.view.indexOf('usér 😀 2002"') + 'usér 😀 2002'.length;
+  let now = w.view;
+  let off = at;
+  for (const ch of 'abc') {
+    now = now.slice(0, off) + ch + now.slice(off);
+    off++;
+    w.edited(now);
+    await w.flush();
+  }
+  assert.equal(sent.length, 3);
+  assert.equal(w.view, now);
+  const want = text.replace('"usér 😀 2002"', '"usér 😀 2002abc"');
+  const got = await whole(src);
+  let i = 0;
+  while (i < got.length && got[i] === want[i]) i++;
+  assert.equal(got.length, want.length, `the document has it, byte for byte (first difference at ${i}: ${JSON.stringify(got.slice(i - 20, i + 20))} vs ${JSON.stringify(want.slice(i - 20, i + 20))})`);
+  assert.ok(got === want, `first difference at ${i}: ${JSON.stringify(got.slice(i - 30, i + 30))} vs ${JSON.stringify(want.slice(i - 30, i + 30))}`);
+  assert.equal(src.state().status?.kind, 'valid');
+  assert.equal(w.offsetOf(w.byteOf(at)), at, 'offsets and bytes map both ways');
+  await src.edits!.undo();
+  await ended(src);
+  assert.equal(await whole(src), text, 'one undo: the typing joined into one step');
+  // A change across lines (a line removed): one replace.
+  assert.equal(await w.load(100), true);
+  const gone = w.view.split('\n');
+  gone.splice(3, 1);
+  w.edited(gone.join('\n'));
+  await w.flush();
+  const rest = text.split('\n');
+  rest.splice(w.line + 3, 1);
+  assert.equal(await whole(src), rest.join('\n'));
+  src.destroy();
+});
+
+test('a window stays within its bytes; a line longer than a window is refused', async () => {
+  const long = '[\n  "' + 'x'.repeat(WINDOW_BYTES + 10) + '",\n  1\n]\n';
+  const src = core(long);
+  await ended(src);
+  const w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  assert.equal(await w.load(1, 0), 'long', 'a line over a window: not editable here');
+  assert.equal(await w.load(2, 0), true);
+  assert.equal(w.sent, '  1\n]\n');
+  const many = core(doc(40_000));
+  await ended(many);
+  const v = new TextWindow(many, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  assert.equal(await v.load(20_000), true);
+  assert.ok(enc.encode(v.sent).length <= WINDOW_BYTES && v.lines <= 2000, `${v.lines} lines`);
+  src.destroy();
+  many.destroy();
+});
+
+test("what's typed while the document is read again waits, then goes as one replace", async () => {
+  // A fake document: its first replace answers 'Not ready' while it's read again.
+  let text = '[\n  1,\n  2\n]\n';
+  let done = true;
+  const listeners = new Set<(s: IndexState) => void>();
+  const state = () => ({ done, docSize: text.length }) as IndexState;
+  const replaces: string[] = [];
+  let busyOnce = true;
+  const src = {
+    lineCount: () => text.split('\n').length - 1,
+    lines: async (_m: string, from: number, n: number) => {
+      const ls = text.split('\n');
+      const out = [];
+      for (let k = from, at = ls.slice(0, from).join('\n').length + (from ? 1 : 0); k < Math.min(from + n, ls.length - 1); k++) {
+        out.push({ text: ls[k].slice(0, 1), more: 0, at });
+        at += ls[k].length + 1;
+      }
+      return out;
+    },
+    textAt: async (a: number, b: number) => ({ text: text.slice(a, b), cut: false }),
+    state,
+    size: text.length,
+    onState: (f: (s: IndexState) => void) => (listeners.add(f), () => void listeners.delete(f)),
+    edits: {
+      replace: async (ops: { a: number; b: number; text: string }[]) => {
+        if (busyOnce) {
+          busyOnce = false;
+          done = false;
+          setTimeout(() => {
+            done = true;
+            for (const f of listeners) f(state());
+          }, 20);
+          throw new Error('Not ready');
+        }
+        for (const o of ops) text = text.slice(0, o.a) + o.text + text.slice(o.b);
+        replaces.push(ops.map((o) => `${o.a}-${o.b}:${o.text}`).join());
+        return { done: true, canUndo: true, canRedo: false };
+      },
+    },
+  } as unknown as HugeSource;
+  const w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  assert.equal(await w.load(0), true);
+  w.edited('[\n  10,\n  2\n]\n');
+  w.edited('[\n  10,\n  20\n]\n');
+  await w.flush();
+  assert.equal(text, '[\n  10,\n  20\n]\n');
+  assert.deepEqual(replaces, ['5-10:0,\n  20'], 'one replace for both, once the document was ready');
+});
+
+test('a file with CR LF line ends: the editor shows \\n, the document keeps \\r\\n, a new line typed is \\r\\n', async () => {
+  const text = doc(300).replace(/\n/g, '\r\n');
+  const src = core(text);
+  await ended(src);
+  const w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  assert.equal(await w.load(100), true);
+  assert.equal(w.view, w.sent.replace(/\r\n/g, '\n'));
+  // A new line inserted after a record's comma, and a character typed on a later line.
+  const at = w.view.indexOf('"user 102"},') + '"user 102"},'.length;
+  let now = w.view.slice(0, at) + '\n  {"id": "new"},' + w.view.slice(at);
+  const later = now.indexOf('"user 103"') + 5;
+  now = now.slice(0, later) + 'X' + now.slice(later);
+  w.edited(now);
+  await w.flush();
+  const want = text.replace('"user 102"},', '"user 102"},\r\n  {"id": "new"},').replace('"user 103"', '"userX 103"');
+  const got = await whole(src);
+  let i = 0;
+  while (i < got.length && got[i] === want[i]) i++;
+  assert.ok(got === want, `the document keeps CR LF, the new line too (first difference at ${i}: ${JSON.stringify(got.slice(i - 30, i + 30))} vs ${JSON.stringify(want.slice(i - 30, i + 30))})`);
+  // Offsets and bytes map across the \r\n.
+  const off = w.view.indexOf('"userX 103"');
+  assert.equal(w.offsetOf(w.byteOf(off)), off);
+  assert.equal((await src.textAt(w.byteOf(off), w.byteOf(off) + 11, 64)).text, '"userX 103"');
+  // A lone CR: not editable here.
+  const lone = core('[\n  1,\r  2\n]\n');
+  await ended(lone);
+  assert.equal(await new TextWindow(lone, { sent() {}, failed() {} }).load(0), 'cr');
+  src.destroy();
+  lone.destroy();
+});

@@ -463,6 +463,12 @@ export class CoreSource implements HugeSource {
     return cut ? null : text;
   }
 
+  async textAt(a: number, b: number, max: number, signal?: AbortSignal) {
+    const r = await this.doc.text(a, b, max);
+    check(signal);
+    return r;
+  }
+
   slice(n: HugeNode): Promise<Blob> {
     const size = this.st.docSize ?? this.size;
     const [a, b] = n.at < 0 ? [0, size] : [n.at, n.end < 0 ? size : n.end];
