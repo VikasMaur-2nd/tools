@@ -9,7 +9,7 @@ import type { ByteSource } from '../json/tape-wasm';
 import { HugeDoc, type EditOp, type Parsers } from './doc';
 import { HugeEditor } from './editor';
 import { piecesOf } from './pieces';
-import { keep, opsOf, pieceOf, sessionKey, type Kept, type SessionStore } from './session-store';
+import { keep, keptSteps, opsOf, pieceOf, SESSION_BYTES, sessionKey, type Kept, type SessionStore } from './session-store';
 import { Wait, watched } from './wait';
 import type { Reply, Request } from './protocol';
 import type { Prefetch } from './prefetch';
@@ -98,14 +98,20 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   let key = '';
   let kept: Kept | null = null;
   let keepTimer: ReturnType<typeof setTimeout> | null = null;
+  // Whether the look for a kept session has ended (none to look in: it has), and the open's summary gone out (a
+  // look that ends after it sends its own through the watch stream).
+  let looked = !store;
+  let readySent = false;
 
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
   const fail = (id: number, e: unknown) => reply({ id, ok: false, error: e instanceof Error && KNOWN.has(e.message) ? e.message : 'Query failed' });
 
   const summary = (): HugeSummary => {
     const s = doc!.summary();
-    if (!editor && !kept) return s;
-    return { ...s, edited: doc!.src.edited, version: doc!.src.version, canUndo: !!editor?.canUndo, canRedo: !!editor?.canRedo, editBytes: doc!.src.editBytes + (editor?.historyBytes ?? 0), session: kept ? { steps: kept.steps.length, bytes: kept.bytes, time: kept.time } : null };
+    // (undefined while the look for one is under way.)
+    const session = !looked ? undefined : kept ? { steps: keptSteps(kept), bytes: kept.bytes, time: kept.time } : null;
+    if (!editor) return session === undefined ? s : { ...s, session };
+    return { ...s, edited: doc!.src.edited, version: doc!.src.version, canUndo: editor.canUndo, canRedo: editor.canRedo, steps: editor.applied, editBytes: doc!.src.editBytes + editor.historyBytes, session };
   };
 
   /** Steps until the document is all read: progress on `id` (open) or the watch stream, then the summary. */
@@ -140,7 +146,10 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     } finally {
       stepping = false;
     }
-    if (id >= 0) reply({ id, ok: true, value: summary(), done: id !== watchId });
+    if (id >= 0) {
+      if (id !== watchId) readySent = true;
+      reply({ id, ok: true, value: summary(), done: id !== watchId });
+    }
   };
 
   /** After an edit: reads on in steps (if it isn't all read yet), and keeps the session soon. */
@@ -150,13 +159,13 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       if (keepTimer) clearTimeout(keepTimer);
       keepTimer = setTimeout(() => void keepNow().catch(() => {}), KEEP_MS);
     }
-    return { version: doc!.src.version, done: doc!.done, canUndo: editor!.canUndo, canRedo: editor!.canRedo, summary: doc!.done ? summary() : null };
+    return { version: doc!.src.version, done: doc!.done, canUndo: editor!.canUndo, canRedo: editor!.canRedo, steps: editor!.applied, summary: doc!.done ? summary() : null };
   };
 
   const keepNow = async () => {
     keepTimer = null;
     if (!store || !key || !editor) return;
-    const k = doc!.src.edited ? keep(doc!.src.list, editor.history.steps, editor.history.applied) : null;
+    const k = doc!.src.edited ? keep(doc!.src.list, editor.history.steps, editor.history.applied, SESSION_BYTES, editor.droppedSteps) : null;
     if (k) await store.put(key, k);
     else await store.delete(key);
   };
@@ -193,10 +202,17 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     // A session kept for this file (looked up while it's read).
     if (store) {
       key = sessionKey(options.name ?? (f as File).name ?? '', f.size, (f as File).lastModified ?? 0);
-      void store.get(key).then(
-        (k) => (kept = k),
-        () => {},
-      );
+      void store
+        .get(key)
+        .then(
+          (k) => (kept = k),
+          () => {},
+        )
+        .then(() => {
+          looked = true;
+          // (Ended after the open's summary went out: a summary through the watch stream says what it found.)
+          if (readySent && watchId >= 0 && doc) reply({ id: watchId, ok: true, value: summary(), done: false });
+        });
     }
     opened();
     if (stopNow) doc.stop();
@@ -323,6 +339,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     e.restoreHistory(
       k.steps.map((s) => ({ ops: s.ops.map((o) => ({ a: o.a, b: o.b, put: o.put.map(pieceOf) })), removed: s.removed.map((r) => r.map(pieceOf)) })),
       k.applied,
+      k.dropped ?? 0,
     );
     kept = null;
     return edited();

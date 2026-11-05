@@ -22,11 +22,13 @@ export type Parse = (text: string, options?: TapeOptions) => Tape;
 const MULTI = 'Multiple top-level values (wrapped in an array)';
 
 /** Bytes after the failure parsed first (more if the parser's first problem is at the end of what it got). */
-const LOOK = 1 << 16;
+const LOOK = 1 << 12;
 /** At most this much is parsed again; past it, the middle of the long token in between is left out. */
 const CAP = 1 << 26;
 /** What is kept of each side of a long token left out. */
 const SIDE = 1 << 20;
+/** UTF-16 units from a near start within which a problem may be one before it (exactError). */
+const NEAR_SLACK = 16;
 
 /**
  * A text the JS parser takes where checkpoint state `s` is: its open containers, outermost first (an array, or
@@ -101,13 +103,17 @@ export function lineCol(src: ByteSource, index: HugeIndex, pos: number, k = inde
 /**
  * The normal path's first problem in the document, which the skeleton found isn't strict JSON at byte
  * `failPos` (`anchor`: the skeleton's [UTF-16 units, line breaks, line start] there). `lines`: read as JSON Lines
- * (the file's name says so, as Engine.load decides).
+ * (the file's name says so, as Engine.load decides). `near`: a state closer before the failure to parse from (a
+ * child or two before the one it's in: typing makes many errors, each a stretch of the JS parser's), if after the
+ * usual start; a problem placed at its very start may be before it, and is placed again from the usual start.
  */
-export function exactError(src: ByteSource, index: HugeIndex, failPos: number, anchor: [number, number, number], parse: Parse, lines: boolean): Problem {
+export function exactError(src: ByteSource, index: HugeIndex, failPos: number, anchor: [number, number, number], parse: Parse, lines: boolean, near: State | null = null): Problem {
   // (One checkpoint back: repairing, the JS parser may place the problem in the string before the failure,
   // which can end right before the last checkpoint: `"a" b` is the string "a\" b".)
   const k = Math.max(0, index.at(failPos) - 1);
-  const s = index.state(k);
+  const wide = index.state(k);
+  const s = near && near.pos > wide.pos && near.pos <= failPos ? near : wide;
+  const again = () => exactError(src, index, failPos, anchor, parse, lines);
   const prefix = prefixOf(s, byteBefore(src, s.pos));
   const start = s.pos;
   for (let look = LOOK; ; look *= 8) {
@@ -124,18 +130,21 @@ export function exactError(src: ByteSource, index: HugeIndex, failPos: number, a
     const atEnd = !!pb && end < src.size && (pb.p >= text.length - 64 || /end of input/.test(pb.m));
     if ((pb && !atEnd) || end >= src.size || look >= CAP) {
       if (!pb) {
+        if (s !== wide) return again();
         // (The JS parser takes what the skeleton didn't: shouldn't happen; say where.)
         const lc = lineCol(src, index, failPos, k);
         return { msg: 'Invalid JSON', ...lc, pos: failPos, kind: 'error' };
       }
       const local = pb.p - prefix.length;
+      // (At a near start's very start: maybe before it.)
+      if (s !== wide && local < NEAR_SLACK) return again();
       const kind = pb.fatal ? 'error' : 'fixable';
       const self = pb.self;
       const multi = t.head.issues.some((x) => x.m === MULTI && x.p === pb.p);
       if (local <= head.length) {
         const b = src.read(start, headEnd - start);
         const pos = start + byteAfterUnits(b, 0, headEnd - start, local);
-        return { msg: pb.m, ...placeIn(head, local, index, k), pos, kind, self, multi };
+        return { msg: pb.m, ...placeIn(head, local, s), pos, kind, self, multi };
       }
       // In the tail: placed from the failure (whose place the skeleton knew).
       const off = local - head.length;
@@ -154,16 +163,16 @@ export function exactError(src: ByteSource, index: HugeIndex, failPos: number, a
   }
 }
 
-/** Line and column of offset `local` of `text` (the document from checkpoint `k`, as the page's text: \n line ends). */
-function placeIn(text: string, local: number, index: HugeIndex, k: number): { line: number; col: number } {
+/** Line and column of offset `local` of `text` (the document from state `s`, as the page's text: \n line ends). */
+function placeIn(text: string, local: number, s: State): { line: number; col: number } {
   let breaks = 0;
   let last = -1;
   for (let i = text.indexOf('\n'); i >= 0 && i < local; i = text.indexOf('\n', i + 1)) {
     breaks++;
     last = i;
   }
-  const line = index.lines[k] + breaks + 1;
-  const col = last >= 0 ? local - last : index.u16[k] - index.lineU16[k] + local + 1;
+  const line = s.lines + breaks + 1;
+  const col = last >= 0 ? local - last : s.u16 - s.lineU16 + local + 1;
   return { line, col };
 }
 

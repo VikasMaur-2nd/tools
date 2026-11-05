@@ -50,6 +50,8 @@ export class HugeEditor {
   /** Steps applied: undo takes steps[at - 1], redo steps[at]. */
   private at = 0;
   private held = 0;
+  /** Applied steps the history let go of (its oldest, past its bytes): still in the document, no longer undoable. */
+  private dropped = 0;
 
   constructor(
     readonly doc: HugeDoc,
@@ -67,6 +69,19 @@ export class HugeEditor {
     return this.at < this.steps.length;
   }
 
+  /**
+   * Changes applied since the file was opened (or saved in place), as undo counts them: a typing run joined into one
+   * step is one; undo takes one off, redo puts it back; steps the history let go of still count (`dropped`).
+   */
+  get applied(): number {
+    return this.dropped + this.at;
+  }
+
+  /** Applied steps the history let go of (kept with a session, so its count stays right). */
+  get droppedSteps(): number {
+    return this.dropped;
+  }
+
   /** Bytes of edits the history holds. */
   get historyBytes(): number {
     return this.held;
@@ -78,10 +93,11 @@ export class HugeEditor {
   }
 
   /** A kept session's history back (its document is the one now: put back with doc.edit). */
-  restoreHistory(steps: readonly { ops: EditOp[]; removed: Piece[][] }[], applied: number) {
+  restoreHistory(steps: readonly { ops: EditOp[]; removed: Piece[][] }[], applied: number, dropped = 0) {
     this.steps = steps.map((s) => ({ ops: s.ops, removed: s.removed, bytes: s.ops.reduce((n, o, i) => n + editBytes(o.put) + editBytes(s.removed[i] ?? []), 0), time: 0, typing: false }));
     this.at = Math.min(applied, this.steps.length);
     this.held = this.steps.reduce((n, s) => n + s.bytes, 0);
+    this.dropped = dropped;
   }
 
   /**
@@ -110,6 +126,7 @@ export class HugeEditor {
       const s = this.steps.shift()!;
       this.held -= s.bytes;
       this.at--;
+      this.dropped++;
     }
     return { done };
   }
@@ -145,6 +162,7 @@ export class HugeEditor {
     this.steps = [];
     this.at = 0;
     this.held = 0;
+    this.dropped = 0;
   }
 
   // ── Node edits ──────────────────────────────────────────────────────
@@ -223,14 +241,18 @@ export class HugeEditor {
     return dec.decode(this.doc.src.read(node.start, node.end - node.start));
   }
 
-  /** Puts `text` (from the normal editor) in place of `node`: re-indented for where it is if it's JSON, else as it is. */
+  /**
+   * Puts `text` (from the normal editor) in place of `node`: re-indented for where it is if it's strict JSON (one
+   * value, nothing the normal path only tolerates), else as typed, never repaired: the document then says where
+   * it's wrong (the normal path's message), and fixing it there, or undo, makes it valid again.
+   */
   replaceNode(node: HugeNode, text: string, until = Infinity): EditDone {
     this.ready();
     let value = text;
     try {
       value = this.format(text, this.indentAt(node.start), this.styleOf(this.parentOf(node)));
     } catch {
-      // (Not JSON: as it is; the document says where it's wrong.)
+      // (Not JSON, or JSON it can't write again (nested too deep): as typed.)
     }
     return this.apply([{ a: node.start, b: node.end, put: piecesOf(enc.encode(value)) }], until);
   }
@@ -321,9 +343,10 @@ export class HugeEditor {
   }
 
   /** JSON `json` written for a place whose line is indented `indent`: with the style's unit, or minified. */
+  /** `json` written as `style` says, indented at `indent`; 'Invalid JSON' unless it's strict JSON, one value (the parser's tolerated constructs would be repaired by writing it). */
   private format(json: string, indent: string, style: Style): string {
     const t = parse(json);
-    if (t.head.error || !t.count) throw new Error('Invalid JSON');
+    if (t.head.error || t.head.issues.length || t.head.multi || !t.count) throw new Error('Invalid JSON');
     const out = writeTape(t, json, 0, style.unit);
     return style.unit ? out.replace(/\n/g, '\n' + indent) : out;
   }
