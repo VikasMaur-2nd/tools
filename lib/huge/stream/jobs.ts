@@ -6,7 +6,7 @@
  */
 import { stringify } from '../../json/format';
 import type { JNode } from '../../json/parser';
-import { CsvColumns, CsvError, CsvRows, CsvScan, Trees, type CsvOptions } from './csv';
+import { CsvColumns, CsvError, CsvRows, CsvScan, CsvTokens, Trees, type CsvOptions } from './csv';
 import { matches, type Filter } from './filter';
 import { Bytes, type Sink } from './out';
 import { pass, type Source } from './pass';
@@ -248,10 +248,17 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
           await walk(cols, 0, 2);
           plan = scan.plan(scan.rootKind);
         }
-        const rows = new CsvRows(plan, out, job.csv);
-        const p2 = new Picked(job.filter, job.limit, (n) => rows.record(n));
-        await walk(new Trees(p2.each), 1, 2, flush, () => p2.done);
-        result.records = rows.rows;
+        if (!picked && CsvTokens.supports(plan)) {
+          // (Every record, as its tokens come: no records made.)
+          const rows = new CsvTokens(plan, out, job.csv);
+          await walk(rows, 1, 2, flush);
+          result.records = rows.rows;
+        } else {
+          const rows = new CsvRows(plan, out, job.csv);
+          const p2 = new Picked(job.filter, job.limit, (n) => rows.record(n));
+          await walk(new Trees(p2.each), 1, 2, flush, () => p2.done);
+          result.records = rows.rows;
+        }
       });
       return result;
 

@@ -12,9 +12,9 @@
 import { formulaSafe } from '../../convert/formula';
 import { cellText, nestedCell, readableIds, type GridCell } from '../../convert/xlsx';
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Key, type Kind, type Val } from '../../json/parser';
-import type { Bytes } from './out';
-import { decodeString } from './reformat';
-import { LONG, type Visitor } from './walk';
+import { Bytes } from './out';
+import { decodeString, Reformat, validUtf8 } from './reformat';
+import { ESC, HI, LONG, type Visitor } from './walk';
 
 
 export type Flatten = 'dot' | 'json';
@@ -333,6 +333,16 @@ export class CsvScan {
   }
 }
 
+/** A path of records' members (CsvColumns' trie): its plain and escaped text, and whether its column is in. */
+interface ColNode {
+  plain: string;
+  esc: string;
+  done: boolean;
+  key: Uint8Array;
+  kids: Map<string, ColNode> | null;
+  order: (ColNode | undefined)[];
+}
+
 /**
  * The first pass from the walker's tokens, no records made: what CsvScan.record finds from each record's
  * nodes (the same books, in the same order: a value's columns as grid's `put` visits it, an empty object at
@@ -356,8 +366,51 @@ export class CsvColumns implements Visitor {
   private recLen = 0;
   /** Columns are found in this record (an object item, or while every member of an object is one). */
   private cols = false;
+  /**
+   * An array or list of records: their paths are a trie shared by all records (tn[d]: the object at depth d,
+   * tp[d]: its members so far), each name predicted by its position, a column registered once per path: no
+   * path text made per value. (Objects' members as records keep the text paths: key / value rows need them.)
+   */
+  private trie = false;
+  private readonly troot: ColNode = { plain: '', esc: '', done: false, key: new Uint8Array(0), kids: null, order: [] };
+  private tn: ColNode[] = [];
+  private tp: number[] = [];
+  private tnext: ColNode | null = null;
 
   constructor(readonly s: CsvScan) {}
+
+  /** The member path for name b[a, e) of the object at depth d (CsvTokens.child's way). */
+  private tchild(d: number, b: Uint8Array, a: number, e: number, flags: number): ColNode {
+    const node = this.tn[d];
+    const p = this.tp[d]++;
+    let c = node.order[p];
+    if (c) {
+      const kb = c.key;
+      if (kb.length === e - a) {
+        let k = 0;
+        while (k < kb.length && kb[k] === b[a + k]) k++;
+        if (k === kb.length) return c;
+      }
+    }
+    const name = flags ? decodeString(b, a, e, flags) : latin(b, a, e);
+    c = node.kids?.get(name);
+    if (!c) {
+      const s = this.s;
+      if (s.dot && name.indexOf('.') >= 0) s.dotted = true;
+      const top = node === this.troot;
+      c = { plain: top ? name : node.plain + '.' + name, esc: top ? s.seg(name) : node.esc + '.' + s.seg(name), done: false, key: b.slice(a, e), kids: null, order: [] };
+      (node.kids ??= new Map()).set(name, c);
+    }
+    if (p < 4096) node.order[p] = c;
+    return c;
+  }
+
+  /** A leaf at path node `c`: its column (once). */
+  private tleaf(c: ColNode) {
+    if (c.done) return;
+    c.done = true;
+    this.s.col(c.plain, c.esc);
+  }
 
   get rootKind() {
     return this.s.rootKind;
@@ -382,6 +435,8 @@ export class CsvColumns implements Visitor {
         if (kind === OBJ) {
           s.someObj = true;
           this.cols = true;
+          this.tn[1] = this.troot;
+          this.tp[1] = 0;
         } else if (kind !== NUL) s.valueColumn();
         this.cp[1] = this.ce[1] = '';
         return;
@@ -402,11 +457,20 @@ export class CsvColumns implements Visitor {
       if (d === 2) this.recLen++;
       return;
     }
-    const k = this.name!;
-    this.name = null;
     const parent = d - 1;
     this.empty[parent] = false;
     const dot = s.dot;
+    if (this.trie) {
+      // (A member of an object in a record of an array: its path node came with its name.)
+      const c = this.tnext!;
+      if (kind === OBJ && dot) {
+        this.tn[d] = c;
+        this.tp[d] = 0;
+      } else this.tleaf(c);
+      return;
+    }
+    const k = this.name!;
+    this.name = null;
     // Column paths (records, keyed): from the record's members down.
     let cp = '';
     let ce = '';
@@ -443,6 +507,7 @@ export class CsvColumns implements Visitor {
     }
     if (this.s.rootKind < 0) {
       this.s.rootKind = kind;
+      this.trie = kind === ARR;
       this.d = 1;
       return;
     }
@@ -498,7 +563,8 @@ export class CsvColumns implements Visitor {
     }
     if (kind === OBJ && this.flat[d]) {
       if (this.empty[d]) {
-        if (this.cols) s.col(this.cp[d], this.ce[d]);
+        if (this.trie) this.tleaf(this.tn[d]);
+        else if (this.cols) s.col(this.cp[d], this.ce[d]);
         if (s.rootKind === OBJ) s.pair(this.pp[d], this.pe[d]);
       } else if (s.rootKind === OBJ) s.deep = true;
     }
@@ -506,7 +572,8 @@ export class CsvColumns implements Visitor {
 
   key(b: Uint8Array, a: number, e: number, flags: number) {
     if (this.skip) return;
-    this.name = flags ? decodeString(b, a, e, flags) : latin(b, a, e);
+    if (this.trie && this.d >= 2 && !this.recArr) this.tnext = this.tchild(this.d - 1, b, a, e, flags);
+    else this.name = flags ? decodeString(b, a, e, flags) : latin(b, a, e);
   }
 
   private scalar(str: (() => string) | null) {
@@ -640,5 +707,531 @@ export class CsvRows {
       case 'pairs':
         return this.walk(n, this.dot ? this.seg(n.key as string) : (n.key as string));
     }
+  }
+}
+
+// ── Pass 2 from tokens ──────────────────────────────────────────────────────────
+
+/** A cell of a row being made: missing (or null: written ''), or its bytes as written (strings through f(), '' as ""). */
+const C_NONE = 0;
+const C_RAW = 1;
+const utf8 = new TextEncoder();
+
+/** A path within a record (its members' names), and its column (-1: none). */
+interface PathNode {
+  col: number;
+  path: string;
+  /** The name's raw bytes (to tell, by position, the name that usually comes there). */
+  key: Uint8Array;
+  kids: Map<string, PathNode> | null;
+  /** The member at each position of the last object here. */
+  order: (PathNode | undefined)[];
+}
+
+const LIT_TRUE = new TextEncoder().encode('true');
+const LIT_NULL = new TextEncoder().encode('null');
+const LIT_FALSE = new TextEncoder().encode('false');
+
+/**
+ * The second pass straight from the walker's tokens (a Visitor), no records made: the same text as Trees +
+ * CsvRows for every table but key / value rows (`supports`). A row's cells wait in column order (strings,
+ * numbers and literals that need neither quotes nor the formula guard copied as bytes; others as text through
+ * toCsv's own rules; nested values minified as the normal path writes them, a dot-mode array of primitives
+ * joined with ", "), and are written when the record ends. A member's column is found through the record's
+ * paths, the name at each position predicted from the last record (no path text made per value).
+ */
+export class CsvTokens implements Visitor {
+  /** Rows written. */
+  rows = 0;
+  static supports(plan: CsvPlan) {
+    return plan.mode !== 'pairs';
+  }
+
+  private readonly w: number;
+  private readonly kind: Uint8Array;
+  private readonly rs: Int32Array;
+  private readonly re: Int32Array;
+  /** Columns set in the row being made (reset after it); the row made as its cells come (in column order), and its next column. */
+  private set: number[] = [];
+  private inOrder = true;
+  private nextCol = 0;
+  private arena = new Uint8Array(1 << 12);
+  private an = 0;
+  private readonly dot: boolean;
+  private readonly delim: number;
+  private readonly special: RegExp;
+  private readonly rowsOut: CsvRows;
+  private skip: boolean;
+  /** Open containers outside a nested cell (the container itself is 1, a record 2…). */
+  private d = 0;
+  private rootKind = -1;
+  /** The object path at each depth, and how many members it had so far. */
+  private nodes: PathNode[] = [];
+  private pos: number[] = [];
+  private next: PathNode | null = null;
+  private readonly root: PathNode;
+  /** A matrix row (an array record): the position of its next cell. */
+  private matrix = false;
+  private mpos = 0;
+  /** A keyed table's record key (its row's first cell). */
+  private recKey = '';
+  private recAt = 0;
+  // A nested value being written into one cell: its depth, column, writer, and (dot-mode arrays) its items.
+  private cap = 0;
+  private capCol = -1;
+  /**
+   * A dot-mode array's items while all are primitives (toCsv joins them with ", "): their raw bytes, one after
+   * another in jb, with each one's [start, end, flags, kind] in jr; jn items. `capJoin` false: not joinable.
+   */
+  private capJoin = false;
+  private jb = new Uint8Array(256);
+  private jl = 0;
+  private jr = new Int32Array(64);
+  private jn = 0;
+  private readonly capOut = new Bytes();
+  private readonly capF: Reformat;
+
+  constructor(
+    private readonly plan: CsvPlan,
+    private readonly out: Bytes,
+    o: CsvOptions = {},
+  ) {
+    this.dot = (o.flatten ?? 'dot') === 'dot';
+    const d = o.delimiter ?? ',';
+    this.delim = d.charCodeAt(0);
+    this.special = new RegExp('["\\r\\n' + (d === '\t' ? '\\t' : d) + ']');
+    // (The header, as CsvRows writes it.)
+    this.rowsOut = new CsvRows(plan, out, o);
+    this.skip = plan.mode === 'matrix' && plan.head;
+    this.w = plan.mode === 'scalar' || plan.mode === 'values' ? 1 : plan.header.length;
+    this.kind = new Uint8Array(this.w);
+    this.rs = new Int32Array(this.w);
+    this.re = new Int32Array(this.w);
+    this.root = { col: -1, path: '', key: new Uint8Array(0), kids: null, order: [] };
+    this.capF = new Reformat(this.capOut, { indent: '' });
+  }
+
+  /** toCsv's `f`. */
+  private f(s: string) {
+    s = formulaSafe(s);
+    return this.special.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  private mark(j: number) {
+    this.set.push(j);
+  }
+
+  /**
+   * Before cell j: while the row's cells come in column order (the usual case), its line is made as they come:
+   * the delimiters up to j. A cell before the last one (members out of order, a name twice) makes the row
+   * assembled from its cells at its end instead.
+   */
+  private place(j: number) {
+    if (!this.inOrder) return;
+    const from = this.nextCol;
+    if (j < from) {
+      this.inOrder = false;
+      return;
+    }
+    if (this.an + (j - from + 1) > this.arena.length) this.grow(j - from + 1);
+    const o = this.arena;
+    for (let c = from; c <= j; c++) if (c) o[this.an++] = this.delim;
+    this.nextCol = j + 1;
+  }
+
+  private none(j: number) {
+    if (j < 0) return;
+    this.place(j);
+    this.kind[j] = C_NONE;
+  }
+
+  private raw(j: number, b: Uint8Array, a: number, e: number) {
+    if (j < 0) return;
+    this.place(j);
+    const len = e - a;
+    if (this.an + len > this.arena.length) this.grow(len);
+    const o = this.arena;
+    let p = this.an;
+    for (let k = a; k < e; k++) o[p++] = b[k];
+    this.rs[j] = this.an;
+    this.re[j] = p;
+    this.an = p;
+    this.kind[j] = C_RAW;
+    this.mark(j);
+  }
+
+  private text(j: number, s: string) {
+    if (j < 0) return;
+    this.place(j);
+    this.textHere(j, s);
+  }
+
+  /** Cell j as text (placed already): '""' if empty, else through toCsv's f, as UTF-8 bytes. */
+  private textHere(j: number, s: string) {
+    const t = s === '' ? '""' : this.f(s);
+    if (this.an + t.length * 3 > this.arena.length) this.grow(t.length * 3);
+    const o = this.arena;
+    // (ASCII a byte a character; else encoded.)
+    let n = 0;
+    let p = this.an;
+    for (; n < t.length; n++) {
+      const c = t.charCodeAt(n);
+      if (c >= 0x80) break;
+      o[p++] = c;
+    }
+    if (n < t.length) n = utf8.encodeInto(t, o.subarray(this.an)).written;
+    this.rs[j] = this.an;
+    this.re[j] = this.an + n;
+    this.an += n;
+    this.kind[j] = C_RAW;
+    this.mark(j);
+  }
+
+  private str2(j: number, b: Uint8Array, a: number, e: number, flags: number) {
+    if (flags & LONG) throw new CsvError('A value is too large to convert');
+    if (j < 0) return;
+    this.place(j);
+    if (e === a) return this.textHere(j, '');
+    if (!(flags & ESC) && (!(flags & HI) || validUtf8(b, a, e))) {
+      // (Copied as it is checked: given up at a quote, a line break, the delimiter or a formula's first character.)
+      const c = b[a];
+      if (c !== 61 && c !== 43 && c !== 45 && c !== 64) {
+        const len = e - a;
+        if (this.an + len > this.arena.length) this.grow(len);
+        const o = this.arena;
+        const dl = this.delim;
+        let p = this.an;
+        let k = a;
+        for (; k < e; k++) {
+          const x = b[k];
+          if (x === dl || x === 34 || x === 13 || x === 10) break;
+          o[p++] = x;
+        }
+        if (k === e) {
+          this.rs[j] = this.an;
+          this.re[j] = p;
+          this.an = p;
+          this.kind[j] = C_RAW;
+          this.mark(j);
+          return;
+        }
+      }
+    }
+    this.textHere(j, decodeString(b, a, e, flags));
+  }
+
+  private grow(len: number) {
+    const g = new Uint8Array(Math.max(this.arena.length * 2, this.an + len + 64));
+    g.set(this.arena.subarray(0, this.an));
+    this.arena = g;
+  }
+
+  /** The row is complete: written (its line as made, or assembled in column order), and emptied. */
+  private endRow(end: number) {
+    if (end - this.recAt > RECORD_MAX) throw new CsvError('A record is too large to convert');
+    const w = this.w;
+    if (this.skip) this.skip = false;
+    else if (this.inOrder) {
+      if (this.an + (w - this.nextCol) + 2 > this.arena.length) this.grow(w - this.nextCol + 2);
+      const o = this.arena;
+      let p = this.an;
+      for (let c = this.nextCol; c < w; c++) if (c) o[p++] = this.delim;
+      o[p++] = 13;
+      o[p++] = 10;
+      this.out.bytes(o, 0, p);
+      this.rows++;
+    } else {
+      const out = this.out;
+      const kind = this.kind;
+      const arena = this.arena;
+      out.room(this.an + w + 2);
+      const o = out.buf;
+      let p = out.pos;
+      for (let j = 0; j < w; j++) {
+        if (j) o[p++] = this.delim;
+        if (kind[j] === C_RAW) {
+          const re = this.re[j];
+          for (let x = this.rs[j]; x < re; x++) o[p++] = arena[x];
+        }
+      }
+      o[p++] = 13;
+      o[p++] = 10;
+      out.pos = p;
+      this.rows++;
+    }
+    for (const j of this.set) this.kind[j] = C_NONE;
+    this.set.length = 0;
+    this.an = 0;
+    this.nextCol = 0;
+    this.inOrder = true;
+  }
+
+  private startRow(at: number) {
+    this.recAt = at;
+  }
+
+  /** The member path for name b[a, e) of the object at depth d: the one at that position last time if the name matches. */
+  private child(d: number, b: Uint8Array, a: number, e: number, flags: number): PathNode {
+    const node = this.nodes[d];
+    const p = this.pos[d]++;
+    let c = node.order[p];
+    if (c) {
+      const kb = c.key;
+      if (kb.length === e - a) {
+        let k = 0;
+        while (k < kb.length && kb[k] === b[a + k]) k++;
+        if (k === kb.length) return c;
+      }
+    }
+    const name = flags ? decodeString(b, a, e, flags) : latin(b, a, e);
+    c = node.kids?.get(name);
+    if (!c) {
+      const seg = this.plan.esc && (name.indexOf('.') >= 0 || name.indexOf('\\') >= 0) ? name.replace(ESCAPE, '\\$&') : name;
+      const path = node === this.root ? seg : node.path + '.' + seg;
+      c = { col: this.plan.cols.get(path) ?? -1, path, key: b.slice(a, e), kids: null, order: [] };
+      (node.kids ??= new Map()).set(name, c);
+    }
+    if (p < 4096) node.order[p] = c;
+    return c;
+  }
+
+  /** An item of a joinable array: its raw bytes kept (a string's as written: decoded only if it must be). */
+  private item(b: Uint8Array, a: number, e: number, flags: number, kind: number) {
+    const len = e - a;
+    if (this.jl + len > this.jb.length) {
+      const g = new Uint8Array(Math.max(this.jb.length * 2, this.jl + len));
+      g.set(this.jb.subarray(0, this.jl));
+      this.jb = g;
+    }
+    const o = this.jb;
+    let p = this.jl;
+    for (let k = a; k < e; k++) o[p++] = b[k];
+    if (this.jn * 4 + 4 > this.jr.length) {
+      const g = new Int32Array(this.jr.length * 2);
+      g.set(this.jr);
+      this.jr = g;
+    }
+    const r = this.jr;
+    const q = this.jn++ * 4;
+    r[q] = this.jl;
+    r[q + 1] = p;
+    r[q + 2] = flags;
+    r[q + 3] = kind;
+    this.jl = p;
+  }
+
+  /**
+   * A joinable array's cell: nestedCell's join of its items' texts with ", ", through toCsv's f. Written as
+   * bytes when every item is plain (no escapes, valid UTF-8) and the text can't be a formula; else as text.
+   */
+  private joined(j: number) {
+    if (j < 0) return;
+    const n = this.jn;
+    const r = this.jr;
+    const jb = this.jb;
+    const dl = this.delim;
+    let plain = n > 0;
+    // (Quoted: the ", " has a comma; or an item holds the delimiter, a quote or a line break.)
+    let quote = n > 1 && dl === 44;
+    // (Its first character: the first item's, or the separator's if that item is empty.)
+    if (plain && r[1] > r[0]) {
+      const c = jb[r[0]];
+      if (c === 61 || c === 43 || c === 45 || c === 64) plain = false;
+    }
+    // (One empty item: the text is empty, written "" as toCsv writes an empty string.)
+    if (plain && n === 1 && r[1] === r[0]) return this.text(j, '');
+    for (let k = 0; plain && k < n; k++) {
+      const a = r[k * 4];
+      const e = r[k * 4 + 1];
+      const fl = r[k * 4 + 2];
+      if (fl & ESC || (fl & HI && !validUtf8(jb, a, e))) plain = false;
+      else if (!quote) for (let x = a; x < e; x++) if (jb[x] === dl || jb[x] === 34 || jb[x] === 13 || jb[x] === 10) quote = true;
+    }
+    if (!plain) {
+      const parts: string[] = [];
+      for (let k = 0; k < n; k++) {
+        const a = r[k * 4];
+        const e = r[k * 4 + 1];
+        parts.push(r[k * 4 + 3] === STR ? decodeString(jb, a, e, r[k * 4 + 2]) : latin(jb, a, e));
+      }
+      this.text(j, parts.join(', '));
+      return;
+    }
+    this.place(j);
+    const need = this.jl + n * 2 + 2;
+    if (this.an + need > this.arena.length) this.grow(need);
+    const o = this.arena;
+    let p = this.an;
+    this.rs[j] = p;
+    if (quote) o[p++] = 34;
+    for (let k = 0; k < n; k++) {
+      if (k) {
+        o[p++] = 44;
+        o[p++] = 32;
+      }
+      const e = r[k * 4 + 1];
+      for (let x = r[k * 4]; x < e; x++) o[p++] = jb[x];
+    }
+    if (quote) o[p++] = 34;
+    this.re[j] = p;
+    this.an = p;
+    this.kind[j] = C_RAW;
+    this.mark(j);
+  }
+
+  private startCap(col: number, kind: number) {
+    this.cap = 1;
+    this.capCol = col;
+    this.capJoin = this.dot && kind === ARR;
+    this.jl = 0;
+    this.jn = 0;
+    this.capF.open(kind);
+  }
+
+
+  open(kind: number, at: number) {
+    if (this.cap) {
+      if (this.cap === 1) this.capJoin = false;
+      this.cap++;
+      this.capF.open(kind);
+      return;
+    }
+    if (this.rootKind < 0) {
+      this.rootKind = kind;
+      this.d = 1;
+      return;
+    }
+    const d = this.d;
+    const mode = this.plan.mode;
+    if (d === 1) {
+      this.startRow(at);
+      if ((mode === 'records' || mode === 'keyed') && kind === OBJ) {
+        if (mode === 'keyed') this.text(0, this.recKey);
+        this.d = 2;
+        this.nodes[2] = this.root;
+        this.pos[2] = 0;
+        return;
+      }
+      if (mode === 'matrix') {
+        this.matrix = true;
+        this.mpos = 0;
+        this.d = 2;
+        return;
+      }
+      // (An array record: one cell, its nested value.)
+      this.startCap(mode === 'records' ? this.plan.vc : 0, kind);
+      return;
+    }
+    if (this.matrix) {
+      this.startCap(this.mpos++, kind);
+      return;
+    }
+    const node = this.next!;
+    if (kind === OBJ && this.dot) {
+      this.d = d + 1;
+      this.nodes[d + 1] = node;
+      this.pos[d + 1] = 0;
+      return;
+    }
+    this.startCap(node.col, kind);
+  }
+
+  close(kind: number, end: number) {
+    if (this.cap) {
+      this.capF.close(kind);
+      if (--this.cap > 0) return;
+      if (this.capJoin) {
+        this.capOut.reset();
+        this.joined(this.capCol);
+      } else this.text(this.capCol, this.capOut.takeText());
+      // (The record itself was the nested value: its row is done.)
+      if (this.d === 1) this.endRow(end);
+      return;
+    }
+    const d = this.d;
+    if (d === 1) {
+      this.d = 0;
+      return;
+    }
+    this.d = d - 1;
+    if (d === 2) {
+      this.matrix = false;
+      this.endRow(end);
+      return;
+    }
+    // (A flattened object with no members is a cell of its own: {}.)
+    if (this.pos[d] === 0) this.text(this.nodes[d].col, '{}');
+  }
+
+  key(b: Uint8Array, a: number, e: number, flags: number) {
+    if (this.cap) {
+      this.capF.key(b, a, e, flags);
+      return;
+    }
+    if (this.d === 1) this.recKey = flags ? decodeString(b, a, e, flags) : latin(b, a, e);
+    else this.next = this.child(this.d, b, a, e, flags);
+  }
+
+  /** The column of a scalar starting now; -2: it is a record itself (see recordCol). */
+  private scalarAt(): number {
+    const d = this.d;
+    if (d === 2 && this.matrix) return this.mpos++;
+    if (d >= 2) return this.next!.col;
+    return -2;
+  }
+
+  /** A record that is a scalar (or the document, one scalar): its row begins, and its one cell's column. */
+  private recordCol(at: number): number {
+    if (this.rootKind < 0) {
+      this.rootKind = NUM;
+      this.startRow(at);
+      return 0;
+    }
+    this.startRow(at);
+    return this.plan.mode === 'records' ? this.plan.vc : 0;
+  }
+
+  str(b: Uint8Array, a: number, e: number, flags: number, at: number) {
+    if (this.cap) {
+      if (flags & LONG) throw new CsvError('A value is too large to convert');
+      this.capF.str(b, a, e, flags);
+      if (this.cap === 1 && this.capJoin) this.item(b, a, e, flags, STR);
+      return;
+    }
+    if (at - this.recAt > RECORD_MAX) throw new CsvError('A record is too large to convert');
+    const j = this.scalarAt();
+    if (j !== -2) return this.str2(j, b, a, e, flags);
+    this.str2(this.recordCol(at), b, a, e, flags);
+    this.endRow(at);
+  }
+
+  num(b: Uint8Array, a: number, e: number, at: number) {
+    if (this.cap) {
+      this.capF.num(b, a, e);
+      if (this.cap === 1 && this.capJoin) this.item(b, a, e, 0, NUM);
+      return;
+    }
+    const j = this.scalarAt();
+    if (j !== -2) return this.raw(j, b, a, e);
+    this.raw(this.recordCol(at), b, a, e);
+    this.endRow(at);
+  }
+
+  lit(kind: number, v: boolean, at: number) {
+    if (this.cap) {
+      this.capF.lit(kind, v);
+      if (this.cap === 1 && this.capJoin) {
+        const w = kind === NUL ? LIT_NULL : v ? LIT_TRUE : LIT_FALSE;
+        this.item(w, 0, w.length, 0, BOOL);
+      }
+      return;
+    }
+    let j = this.scalarAt();
+    const record = j === -2;
+    if (record) j = this.recordCol(at);
+    if (kind === NUL) this.none(j);
+    else if (v) this.raw(j, LIT_TRUE, 0, 4);
+    else this.raw(j, LIT_FALSE, 0, 5);
+    if (record) this.endRow(at);
   }
 }

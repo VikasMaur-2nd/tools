@@ -18,6 +18,7 @@ const BLOCK = 1 << 20;
 export const FULL = 4 << 20;
 
 const encoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
 /** The first block (most outputs of a part or a cell are small): later ones are BLOCK. */
 const FIRST = 64 << 10;
@@ -61,7 +62,8 @@ export class Bytes {
   /** b[a, e). */
   bytes(b: Uint8Array, a: number, e: number) {
     const len = e - a;
-    if (len <= 24 && this.pos + len <= this.buf.length) {
+    // (Short runs copied in a loop: a view for set() would be garbage for each.)
+    if (len <= 512 && this.pos + len <= this.buf.length) {
       const o = this.buf;
       let p = this.pos;
       for (let k = a; k < e; k++) o[p++] = b[k];
@@ -102,6 +104,39 @@ export class Bytes {
       this.pos += r.written;
       rest = rest.slice(r.read);
     }
+  }
+
+  /** Emptied: what was written is dropped. */
+  reset() {
+    this.queue = [];
+    this.queued = 0;
+    this.pos = 0;
+    this.total = 0;
+  }
+
+  /** Room for `n` more bytes in `buf` from `pos` (a new block if not): for writers that fill it themselves. */
+  room(n: number) {
+    if (this.pos + n > this.buf.length) {
+      this.next();
+      if (n > this.buf.length) this.buf = new Uint8Array(n);
+    }
+  }
+
+  /** Everything written so far as text, the buffer emptied (a scratch buffer, reused for small values). */
+  takeText(): string {
+    let s: string;
+    if (!this.queue.length) s = textDecoder.decode(this.buf.subarray(0, this.pos));
+    else {
+      const parts: string[] = [];
+      for (const b of this.queue) parts.push(textDecoder.decode(b, { stream: true }));
+      parts.push(textDecoder.decode(this.buf.subarray(0, this.pos)));
+      s = parts.join('');
+    }
+    this.queue = [];
+    this.queued = 0;
+    this.pos = 0;
+    this.total = 0;
+    return s;
   }
 
   /** Hands what is waiting to `sink` (in order), the block being filled too. */
