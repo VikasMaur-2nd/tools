@@ -139,9 +139,15 @@ export class HugeTableView {
     let hasValue = false;
     const lens: number[] = [];
     let keyLen = isObj ? 3 : 1;
-    for (let k = 0; k < Math.min(rows.count, 128); k++) {
+    // From the first rows read and the rows in view, whichever arrived first (blocks may come in any order).
+    let found = 0;
+    const where = new Set<number>();
+    for (let k = 0; k < Math.min(rows.count, 128); k++) where.add(k);
+    for (let k = Math.max(0, this.rFirst); k < Math.min(rows.count, this.rLast, Math.max(0, this.rFirst) + 128); k++) where.add(k);
+    for (const k of where) {
       const r = rows.get(k);
       if (!r) continue;
+      found++;
       keyLen = Math.max(keyLen, String(r.node.key ?? k).length);
       if (!r.cells) {
         hasValue = true;
@@ -157,6 +163,8 @@ export class HugeTableView {
         lens[j] = Math.max(lens[j], cell.t >= ARR ? 6 : cellText(cell).length);
       }
     }
+    // (No row read yet: the columns wait for the next ones.)
+    if (!found) return;
     const cols: Col[] = [{ key: null, label: isObj ? 'key' : '#', w: Math.round(Math.min(28, Math.max(3, keyLen)) * this.cw + 28) }];
     if (hasValue) cols.push({ key: null, label: 'value', w: Math.round(30 * this.cw + 28) });
     for (const [key, j] of seen) cols.push({ key, label: key, w: Math.round(Math.min(46, Math.max(5, lens[j])) * this.cw + 28) });
