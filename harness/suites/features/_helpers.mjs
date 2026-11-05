@@ -1,9 +1,10 @@
 // Helpers shared by the feature suites (right-click menu, file drops, share links, /integrate, UI
 // fixes, error screens). Every wait polls inside the page for a condition, never a fixed sleep.
-import { mkdirSync, statSync, existsSync, writeFileSync, renameSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, statSync, existsSync, writeFileSync, renameSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { webkit } from 'playwright-core';
 import { DIRS } from '../../lib/env.mjs';
 
 export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -289,4 +290,24 @@ export function serveHtml(html) {
     });
     s.listen(0, '127.0.0.1', () => resolve({ origin: `http://127.0.0.1:${s.address().port}`, close: () => new Promise((r) => s.close(r)) }));
   });
+}
+
+/**
+ * A page whose origin has the browser's storage (OPFS): the check's own, but in WebKit a persistent profile, as a
+ * fresh WebKit context has none (huge mode's .gz files, streamed outputs). `t.cleanup` closes it.
+ */
+export async function storagePage(t) {
+  if (t.engine !== 'webkit') return t.page;
+  const profile = mkdtempSync(join(DIRS.tmp, 'webkit-profile-'));
+  const ctx = await webkit.launchPersistentContext(profile, { headless: true, viewport: { width: 1280, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  await page.addInitScript(() => {
+    window.__vis = (sel) => [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length > 0) || null;
+  });
+  t.page = page;
+  t.cleanup = async () => {
+    await ctx.close().catch(() => {});
+    rmSync(profile, { recursive: true, force: true });
+  };
+  return page;
 }

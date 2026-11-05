@@ -2,12 +2,13 @@
 // localStorage['tk:hugeMin'] (and an index played slowly with tk:hugeSim): the tree's pages, Go to, the
 // Format view's lines, streamed Find, the table, an invalid file's error, JSON Lines, Cancel, leaving huge
 // mode, privacy classes, and screenshots in both themes on desktop and phone (HUGE_SHOTS=dir).
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { defaults, test } from '../../lib/api.mjs';
 import { DIRS } from '../../lib/env.mjs';
 import { quantile } from '../../lib/stats.mjs';
-import { MOD, until } from './_helpers.mjs';
+import { MOD, storagePage, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', width: 1280, height: 860, tags: ['huge'] });
 
@@ -393,6 +394,71 @@ test('huge mode: Graph at its limit (2,000 values) pans within a frame', async (
     t.metric(`${zoom} frame p50 ms`, quantile(cb, 0.5));
     t.metric(`${zoom} frame p95 ms`, p95);
     t.check(cb.length > 10 && p95 < 16, `${zoom}: frames painted while panning, each within a 60 fps frame`, { frames: cb.length, p50: quantile(cb, 0.5), p95 });
+  }
+});
+
+test('huge mode: the command palette lists its commands, Shape among them, and runs them (REVIEW-GPT 7)', async (t) => {
+  const { page } = t;
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await t.open('/');
+  await openHuge(t, pretty);
+  await waitIndexed(page);
+  const palette = async () => {
+    await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press(`${MOD}+k`);
+    return until(page, () => !!document.querySelector('dialog.palette')?.open && document.querySelectorAll('dialog.palette [role=option]').length > 5, null);
+  };
+  t.assert(await palette(), `${MOD}+K opens the palette with huge mode's commands`, errors.join(' | '));
+  const shape = await page.evaluate(() => document.querySelector('dialog.palette #pl-shape')?.textContent ?? '');
+  t.check(/Shape view/.test(shape) && /(Alt|⌥)7/.test(shape), 'Shape is listed, with Alt+7', shape);
+  await page.keyboard.type('shape');
+  t.check(await until(page, () => document.querySelector('dialog.palette [role=option][aria-selected=true]')?.id === 'pl-shape', null), 'typing finds it');
+  await page.keyboard.press('Enter');
+  const tab = () => page.evaluate(() => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent);
+  t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Shape', null), 'Enter runs it: Shape opens', await tab());
+  t.check(!(await page.evaluate(() => document.querySelector('dialog.palette')?.open)), 'and the palette closes');
+  // One of the normal tool's: Tree view.
+  t.assert(await palette(), 'the palette opens again');
+  await page.keyboard.type('tree view');
+  await page.keyboard.press('Enter');
+  t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Tree', null), 'Tree view from the palette', await tab());
+  t.check(!errors.length, 'no errors on the page', errors.join(' | '));
+});
+
+// (The pretty document compressed: a .json.gz huge mode opens once decompressed to the browser's storage.)
+const gzPretty = file('big.json.gz', gzipSync(readFileSync(pretty)));
+
+test('huge mode: a big .json.gz opens in huge mode; Find, the palette and Ctrl+S act on it (REVIEW-GPT 8)', async (t) => {
+  const page = await storagePage(t);
+  try {
+    await t.open('/');
+    await openHuge(t, gzPretty);
+    t.assert(await waitIndexed(page, 30_000), 'decompressed and indexed', await status(page));
+    const fname = await page.evaluate(() => window.__vis('.hg-file .fname')?.textContent ?? '');
+    t.check(fname.startsWith('big.json') && !fname.includes('.gz'), 'named without .gz', fname);
+    // The palette's view commands reach the session (not the editor behind it).
+    await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press(`${MOD}+k`);
+    t.assert(await until(page, () => !!document.querySelector('dialog.palette')?.open, null), 'the palette opens');
+    await page.keyboard.type('tree view');
+    await page.keyboard.press('Enter');
+    t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Tree', null), 'Tree view from the palette switches huge mode\'s view');
+    // Ctrl+F: huge mode's Find, on the decompressed file; a $.path selects that value.
+    await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press(`${MOD}+f`);
+    t.assert(await until(page, () => !!window.__vis('.hg .findbar input'), null), `${MOD}+F opens huge mode's find bar`);
+    await page.locator('.hg .findbar input').fill('u777@');
+    t.check(await until(page, () => /1 of 1/.test(window.__vis('.hg .findbar .count')?.textContent ?? ''), null, { timeout: 15_000 }), 'Find finds the one match', await page.evaluate(() => window.__vis('.hg .findbar .count')?.textContent));
+    await page.locator('.hg .findbar input').fill('$.users[3]');
+    t.check(await until(page, () => /^3:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'a $.path selects that value', await selText(page));
+    await page.keyboard.press('Escape');
+    // Ctrl+S: huge mode saves the selected value (the editor's document would be the whole thing, or nothing).
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), page.keyboard.press(`${MOD}+s`)]);
+    const saved = readFileSync(await dl.path(), 'utf8');
+    t.check(dl.suggestedFilename() === 'big-3.json' && JSON.parse(saved).id === 3, `${MOD}+S saves the selected value`, `${dl.suggestedFilename()}: ${saved.slice(0, 80)}`);
+  } finally {
+    await t.cleanup?.();
   }
 });
 
