@@ -12,9 +12,12 @@ import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { BlockSource } from '../lib/huge/bytes';
 import { HugeDoc } from '../lib/huge/doc';
+import { HugeEditor } from '../lib/huge/editor';
+import { PageNodes } from '../lib/huge/page';
 import { hugeMod, tapeMod, memSource } from './huge-oracle';
 
 const enc = new TextEncoder();
+const dec = new TextDecoder();
 const parsers = { wasm: tapeMod, parse };
 
 function channel(): [Port, Port] {
@@ -67,6 +70,45 @@ test('review 1: a Find holds no more blocks than the cache keeps, during it, aft
   await findDone;
   assert.equal(blocks!.pinnedBlocks, 0, 'pinned after both');
   c.close();
+});
+
+test('review 2: a character outside the BMP cut by a stride: spans, paths, pretty positions, copies and edits stay right', () => {
+  for (let n = 240; n <= 270; n++) {
+    for (const [pre, post] of [
+      ['["', '",123]'],
+      ['{"k": "', '", "v": 123}'],
+    ]) {
+      const text = pre + 'a'.repeat(n) + '😀' + post;
+      const b = enc.encode(text);
+      const where = ` (padding ${n}, ${pre})`;
+      const d = new HugeDoc(memSource(b), hugeMod, parsers);
+      d.step(Infinity);
+      const at = enc.encode(text.slice(0, text.indexOf('123'))).length;
+      const path = pre[0] === '[' ? [1] : ['v'];
+      // locate, resolve, the bytes they give, the page's span, the pretty line's position.
+      const loc = d.resolve(path)!;
+      assert.deepEqual([loc.node.start, loc.node.end], [at, at + 3], 'resolve' + where);
+      assert.deepEqual([d.locate(at)!.node.start, d.locate(at)!.node.end], [at, at + 3], 'locate' + where);
+      assert.equal(d.text(loc.node.start, loc.node.end, 100).text, '123', 'copied' + where);
+      const view = new PageNodes(d.children(d.summary().root!, 0, 5));
+      assert.deepEqual(view.span(view.children[1]), [at, at + 3], 'page span' + where);
+      const pretty = d.prettyLines(0, 10, '  ', 1 << 16);
+      assert.ok(Array.from(pretty.pos).includes(at), `pretty position ${Array.from(pretty.pos)}` + where);
+      // Edits at what they give: the bytes changed are the ones meant.
+      const ed = new HugeEditor(d);
+      ed.setValue(d.resolve(path)!.node, '45678');
+      assert.equal(dec.decode(d.src.read(0, d.src.size)), text.replace('123', '45678'), 'set' + where);
+      const root = d.summary().root!;
+      ed.duplicate(root, 1);
+      const dup = pre[0] === '[' ? text.replace('123]', '45678,45678]') : text.replace('"v": 123}', '"v": 45678, "v (copy)": 45678}');
+      assert.equal(dec.decode(d.src.read(0, d.src.size)), dup, 'duplicate' + where);
+      ed.remove(d.summary().root!, 2);
+      ed.remove(d.summary().root!, 1);
+      assert.equal(dec.decode(d.src.read(0, d.src.size)), pre + 'a'.repeat(n) + '😀' + (pre[0] === '[' ? '"]' : '"}'), 'removed' + where);
+      ed.insert(d.summary().root!, 1, '7', pre[0] === '[' ? null : 'v');
+      assert.equal(dec.decode(d.src.read(0, d.src.size)), text.replace('123', '7'), 'inserted' + where);
+    }
+  }
 });
 
 test('review 3: raw lines read no further than what is read (while indexing, stopped, broken), and a long line answers its start', () => {

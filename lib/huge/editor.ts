@@ -288,8 +288,9 @@ export class HugeEditor {
     } else if (count === 1) {
       const a = this.member(parent, 0);
       lead = text(parent.start + 1, a.start);
-      sep = ',' + lead;
       if (parent.kind === OBJ) colon = text(a.keyEnd, a.value);
+      // (No separator to copy: the whitespace after the bracket; on one line, a space if names meet values with one.)
+      sep = lead ? ',' + lead : parent.kind === OBJ && colon.endsWith(' ') ? ', ' : ',';
     }
     const pretty = sep.includes('\n') || (count === 0 && this.unit() !== '');
     const indent = sep.includes('\n') ? sep.slice(sep.lastIndexOf('\n') + 1) : pretty ? own + this.unit() : '';
