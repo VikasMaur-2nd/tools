@@ -6,6 +6,7 @@
 import { MAX_DOCUMENT } from '../link';
 import type { InputSource } from '../analytics/events';
 import { reportError } from '../analytics';
+import { rt } from '../i18n/ui';
 import { HugeClient } from './client';
 import type { HugeHook, HugeHost } from './session';
 import type { SmallOptions } from './small-source';
@@ -51,11 +52,13 @@ function start(file: File): Started {
  */
 export async function openHuge(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, asText: boolean, Scroll: (typeof kit)['Scroll'], closed?: () => void): Promise<HugeHook | null> {
   if (signal.aborted) return null;
+  // Localized pages: huge mode's strings (a chunk of their own), in before anything below shows.
+  const strings = rt.huge?.();
   // A .gz file: decompressed first (to the editor when small, else to huge mode from the browser's storage,
   // the copy removed when its session closes: `closed`).
   if (!closed && /\.gz$/i.test(file.name)) {
     try {
-      const { openGz } = await import('./gz');
+      const [{ openGz }] = await Promise.all([import('./gz'), strings]);
       // (The decompressed file's session, if it opened in huge mode: its hook goes to the engine.)
       return await openGz(host, file, source, signal, editorLimit(), async (plain, done) => {
         const hook = await openHuge(host, plain, source, signal, false, Scroll, done);
@@ -70,6 +73,7 @@ export async function openHuge(host: HugeHost, file: File, source: InputSource, 
     return null;
   }
   if (!asText && CONVERTED.test(file.name)) {
+    await strings;
     host.toast(`Converting ${file.name} to JSON isn't available for files this large yet`, 'err');
     return null;
   }
@@ -78,7 +82,7 @@ export async function openHuge(host: HugeHost, file: File, source: InputSource, 
   const sim = simOf(file);
   const started = sim ? null : start(file);
   try {
-    const { openRest } = await import('./open-rest');
+    const [{ openRest }] = await Promise.all([import('./open-rest'), strings]);
     // (How much sooner the worker started than it would have after all of this.)
     performance.mark('tk:huge:rest');
     return await openRest(host, file, source, signal, asText, Scroll, started, sim, closed);

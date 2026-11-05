@@ -29,8 +29,37 @@ function durationParts(sec: number, long: boolean): Record<string, number> {
   return { seconds: 0 };
 }
 
+/**
+ * Huge mode's strings per language (lib/i18n/huge/huge-strings.<locale>.json, from scripts/i18n-huge.mjs): files
+ * the bundler copies to /_next/static/media/huge-strings.<locale>.<hash>.json, named only in the localized pages'
+ * chunk and fetched when a huge file opens. The service worker caches a page's own language's file with its other
+ * files (and no other language's: public/sw.js), so huge mode works offline in it; English pages never name them.
+ */
+const HUGE: Record<string, URL> = {
+  es: new URL('./huge/huge-strings.es.json', import.meta.url),
+  pt: new URL('./huge/huge-strings.pt.json', import.meta.url),
+  de: new URL('./huge/huge-strings.de.json', import.meta.url),
+  fr: new URL('./huge/huge-strings.fr.json', import.meta.url),
+  ja: new URL('./huge/huge-strings.ja.json', import.meta.url),
+  ko: new URL('./huge/huge-strings.ko.json', import.meta.url),
+  zh: new URL('./huge/huge-strings.zh.json', import.meta.url),
+  ru: new URL('./huge/huge-strings.ru.json', import.meta.url),
+};
+
+/** A language's huge-mode strings ({} for none). */
+async function hugeStrings(lang: string | undefined): Promise<UiDict> {
+  const url = HUGE[lang?.slice(0, 2) ?? ''];
+  if (!url) return {};
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('huge strings');
+  return (await res.json()) as UiDict;
+}
+
 export function translator(d: UiDict | null | undefined, lang?: string): T {
   if (!d) return EN;
+  // (Huge mode's strings join it when a huge file opens: `huge` below.)
+  let dict: UiDict = d;
+  let huge: Promise<void> | undefined;
   // Locale data is expensive on a cold phone. Labels need no number formatters.
   let nf: Intl.NumberFormat | undefined;
   let rules: Intl.PluralRules | undefined;
@@ -39,13 +68,13 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
   const decimal = (n: number, digits: number) => (fixed[digits] ??= new Intl.NumberFormat(lang, { minimumFractionDigits: digits, maximumFractionDigits: digits })).format(n);
   const pick = (v: string | Forms, n: number) => (typeof v === 'string' ? v : (v[(rules ??= new Intl.PluralRules(lang)).select(n)] ?? v.other ?? ''));
   const tr = (s: string) => {
-    const v = d[s];
+    const v = dict[s];
     return v === undefined ? s : pick(v, 1);
   };
 
   let pats: Pattern[] | null = null;
   const patterns = () =>
-    (pats ??= Object.keys(d)
+    (pats ??= Object.keys(dict)
       .filter((k) => k.includes('{'))
       .map((key) => {
         const names: string[] = [];
@@ -66,7 +95,7 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
       .sort((a, b) => b.lit - a.lit));
 
   const one = (s: string): string | undefined => {
-    const v = d[s];
+    const v = dict[s];
     if (v !== undefined) return pick(v, 1);
     for (const { re, key, names } of patterns()) {
       const m = re.exec(s);
@@ -78,7 +107,7 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
         if (k === 'n') p.n = num((count = Number(x.replace(/\D/g, '')) || 0));
         else p[k] = NESTED.has(k) ? (one(x) ?? x) : x;
       });
-      return fill(pick(d[key], count), p);
+      return fill(pick(dict[key], count), p);
     }
     return undefined;
   };
@@ -88,7 +117,7 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
 
   return Object.assign((s: string, p?: Params) => fill(tr(s), p), {
     n: (c: number, one: string, other: string, p?: Params) => {
-      const v = d[one] ?? d[other];
+      const v = dict[one] ?? dict[other];
       return fill(v === undefined ? (c === 1 ? one : other) : pick(v, c), { ...p, n: num(c) });
     },
     msg: (s: string) => one(s) ?? (s.includes(SEP) ? s.split(SEP).map((x) => one(x) ?? x).join(tr(SEP)) : s),
@@ -109,5 +138,15 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
         .join(' ');
     },
     lang,
+    huge: () =>
+      (huge ??= hugeStrings(lang).then(
+        (more) => {
+          dict = { ...dict, ...more };
+          pats = null;
+        },
+        () => {
+          huge = undefined; // (offline, never cached: English this time, asked again next time)
+        },
+      )),
   });
 }

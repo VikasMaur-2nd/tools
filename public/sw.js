@@ -17,6 +17,10 @@
  * document opened at once) never shares the network or the device with 1.5 MB of
  * chunks it may not need yet.
  *
+ * Huge mode's dictionaries (/_next/static/media/huge-strings.<lang>.<hash>.json, named in
+ * every localized page's chunk) are followed for that page's own language only: a /de
+ * visit caches the German one and no other; English pages none.
+ *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
  * that works. Every /_next/static file the HTML names must make it, and the
@@ -53,6 +57,12 @@ const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 const isStatic = (path) => path.startsWith('/_next/static/');
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
+const HUGE_STRINGS_RE = /^\/_next\/static\/media\/huge-strings\.([a-z]{2})\./;
+/** Whether `url` is huge mode's dictionary of another language than the page's (`page`, a URL): not one of its files. */
+const otherStrings = (url, page) => {
+  const m = HUGE_STRINGS_RE.exec(new URL(url).pathname);
+  return !!m && '/' + m[1] !== langHome(new URL(page).pathname);
+};
 const isHTML = (res) => (res.headers.get('content-type') || '').includes('text/html');
 
 /** Requests the SW must leave alone (analytics, RSC/flight data, the SW itself). */
@@ -110,12 +120,13 @@ function filesIn(url, text) {
 /**
  * The files of a page (see the header), cached as they are found unless `fetchMissing`
  * is false (then only what the cache holds is followed); with `deep` false, only what
- * its HTML names. `ok`: every file that had to make it is cached; `files`: the URLs found.
+ * its HTML names. `page`: the page's URL (whose language's huge dictionary it needs).
+ * `ok`: every file that had to make it is cached; `files`: the URLs found.
  */
-async function pageFiles(cache, html, fetchMissing, deep = true) {
+async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN + '/') {
   const files = new Set();
   const visit = async (url, required) => {
-    if (files.has(url) || files.size >= MAX_FILES) return true;
+    if (files.has(url) || files.size >= MAX_FILES || otherStrings(url, page)) return true;
     files.add(url);
     let res = await cache.match(url, MATCH);
     if (!res) {
@@ -157,7 +168,7 @@ async function storePage(cache, key, res) {
     const html = await res.clone().text();
     const old = await cache.match(key, MATCH);
     const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
-    if (!same && !(await pageFiles(cache, html, true, false)).ok) return false;
+    if (!same && !(await pageFiles(cache, html, true, false, typeof key === 'string' ? key : key.url)).ok) return false;
   }
   await cache.put(key, res);
   return true;
@@ -197,7 +208,7 @@ async function tidy(cache, deployed, opening) {
     const path = new URL(k.url).pathname;
     if (isStatic(path) || FILE_RE.test(path) || k.url === RETIRED) continue;
     const page = await cache.match(k, MATCH);
-    if (page && isHTML(page)) (await pageFiles(cache, await page.text(), false)).files.forEach((u) => keep.add(u));
+    if (page && isHTML(page)) (await pageFiles(cache, await page.text(), false, true, k.url)).files.forEach((u) => keep.add(u));
   }
   let urls = rec ? rec.urls : [];
   let clients = rec ? rec.clients.filter((id) => live.has(id)) : [];
@@ -294,7 +305,7 @@ async function followPage(cache, url) {
   const html = await page.text();
   const key = url + ' ' + extractAssets(html).join(' ');
   if (followed.has(key)) return;
-  if ((await pageFiles(cache, html, true)).ok) followed.add(key);
+  if ((await pageFiles(cache, html, true, true, url)).ok) followed.add(key);
 }
 
 self.addEventListener('fetch', (event) => {
