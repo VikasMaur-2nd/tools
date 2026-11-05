@@ -392,8 +392,10 @@ export class CoreSource implements HugeSource {
   async lines(mode: LineMode, from: number, n: number, cols: number, indent: string, signal?: AbortSignal): Promise<HugeLine[]> {
     const got = mode === 'raw' ? await this.doc.rawLines(from, n, cols) : await this.doc.prettyLines(from, n, indent, cols);
     check(signal);
-    // (cut 1: cut at `cols`, `length` the whole line's; 2: it goes on past the front, `length` so far.)
-    return got.text.map((text, k) => (got.cut[k] === 2 ? { text, more: 0, at: got.pos[k], reading: true } : { text, more: got.cut[k] ? Math.max(0, got.length[k] - text.length) : 0, at: got.pos[k] }));
+    // (cut 1: cut at `cols`, `length` the whole line's; 2: it goes on past the front, `length` so far: still being
+    // read, or, once all is read, the error's line ending at the error: as it is, no mark.)
+    const reading = !this.st.done;
+    return got.text.map((text, k) => (got.cut[k] === 2 ? { text, more: 0, at: got.pos[k], ...(reading && { reading: true }) } : { text, more: got.cut[k] ? Math.max(0, got.length[k] - text.length) : 0, at: got.pos[k] }));
   }
 
   async lineOf(mode: LineMode, at: number, signal?: AbortSignal) {

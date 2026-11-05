@@ -197,3 +197,17 @@ test('the core: Cancel stops indexing where it is, and what was read stays brows
   assert.deepEqual(items.map((n) => n.key), [0, 1, 2, 3, 4]);
   a.destroy();
 });
+
+test("REVIEW-2 #10: a broken document all read: its error's line isn't \"still reading\"", async () => {
+  const src = core('{\n  "a": 1,\n  "b": 2 x, "c": 3\n}\n', 'broken.json');
+  const st = await ended(src);
+  assert.ok(st.done && st.error, 'all read, an error');
+  const ls = await src.lines('raw', 0, 10, 1000, '');
+  assert.ok(ls.length >= 3, 'up to the error line');
+  assert.deepEqual(
+    ls.map((l) => !!l.reading),
+    ls.map(() => false),
+    'nothing is still being read',
+  );
+  await src.destroy();
+});
