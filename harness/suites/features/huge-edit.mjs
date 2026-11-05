@@ -998,3 +998,46 @@ test('huge edit: "Discarded · Undo" clicked while the Format view is edited: th
   await selectPath(page, '$.users[9].name');
   t.check(/"user 9"/.test(await selRow(page)), 'the typed key not in it', await selRow(page));
 });
+
+// REVIEW-4 m4: "Open in another tab" is for another tab holding the file. The same tab opening the file again (its
+// previous document still closing, keeping its edits) holds the lock a moment: no note then.
+test('huge edit: the same file opened again in the same tab right after an edit: no "Open in another tab"', { engines: ['chromium'] }, async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await selectPath(page, '$.users[3].name');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await page.evaluate(() => {
+    window.__keepSeen = false;
+    new MutationObserver(() => {
+      if (document.querySelector('.hg-keep')) window.__keepSeen = true;
+    }).observe(document.body, { subtree: true, childList: true });
+  });
+  for (let k = 0; k < 3; k++) {
+    await openHuge(t, path);
+    await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 });
+  }
+  await page.waitForTimeout(2000);
+  t.check(!(await page.evaluate(() => window.__keepSeen)), 'never said "Open in another tab"');
+  // The file's lock held a moment by someone else (as another tab's sweep does): no note either. Held for good: it
+  // shows, once it has lasted a second.
+  const name = await page.evaluate(async () => (await navigator.locks.query()).held?.find((l) => l.name?.startsWith('tk-huge:'))?.name ?? '');
+  t.assert(!!name, 'the open document holds its file\'s lock', name);
+  const other = join(dir, 'other-lock.json');
+  writeFileSync(other, '[5]');
+  for (const [ms, want] of [
+    [600, false],
+    [4000, true],
+  ]) {
+    await openHuge(t, other);
+    await page.evaluate(([n, ms]) => {
+      window.__keepSeen = false;
+      void navigator.locks.request(n, () => new Promise((r) => setTimeout(r, ms)));
+    }, [name, ms]);
+    await openHuge(t, path);
+    await page.waitForTimeout(ms === 600 ? 2000 : 2500);
+    t.check((await page.evaluate(() => window.__keepSeen)) === want, want ? 'held for good: said, after a second' : 'held a moment: not said', String(ms));
+    await page.waitForTimeout(ms === 600 ? 0 : 2000);
+  }
+});

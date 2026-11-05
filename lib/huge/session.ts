@@ -81,6 +81,8 @@ export type EditFrom = Events['huge_edit']['from'];
 const BOX_MAX = 64 * 1024;
 /** Typing joined into one undo step by the core: changes this close together (ms, editor.ts TYPING_MS). */
 const TYPING_PAUSE = 1000;
+/** How long another tab must have held the file before the file bar says so (ms; REVIEW-4 m4). */
+const OTHER_TAB_MS = 1000;
 /** How long "Discarded the 12 kept changes · Undo" is offered (ms). */
 const ASIDE_MS = 10_000;
 /** Closing waits this long at most for what's typed in the Format view to be taken in (ms). */
@@ -279,6 +281,7 @@ export class HugeSession {
     this.saving?.stop();
     this.answerSave('cancel');
     this.dropAsideUndo();
+    clearTimeout(this.otherTimer);
     window.removeEventListener('beforeunload', this.onUnload);
     clearTimeout(this.growTimer);
     // What's typed in the Format view goes first, the newest key too; then closing keeps the edits not kept yet, and
@@ -997,7 +1000,30 @@ export class HugeSession {
     } else if (!aside || (this.asideAction && e.steps !== this.asideSteps)) this.dropAsideUndo();
     this.asideKey = key;
     if (!e.session || touched) restore = null;
-    this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle, keeping: e.keeping ?? 'no' });
+    this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle, keeping: this.keepingShown(e.keeping ?? 'no', ui.keeping) });
+  }
+
+  /** Since when the core has said another tab holds the file (0: it doesn't now), and the timer that confirms it. */
+  private otherSince = 0;
+  private otherTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * `keeping` as the file bar says it: 'other-tab' once it has lasted OTHER_TAB_MS. The file's lock is also busy
+   * for a moment when this tab's previous document of the file is still being closed (its edits kept), or another
+   * tab's sweep deletes an old session: no note for that (REVIEW-4 m4).
+   */
+  private keepingShown(k: EditUI['keeping'], shown: EditUI['keeping']): EditUI['keeping'] {
+    if (k !== 'other-tab') {
+      this.otherSince = 0;
+      clearTimeout(this.otherTimer);
+      return k;
+    }
+    const now = performance.now();
+    if (!this.otherSince) {
+      this.otherSince = now;
+      this.otherTimer = setTimeout(() => !this.dead && this.editState(), OTHER_TAB_MS);
+    }
+    return shown === 'other-tab' || now - this.otherSince >= OTHER_TAB_MS ? 'other-tab' : 'no';
   }
 
   /** The set-aside session's toast, its Undo, and the steps it was shown at. */
