@@ -122,6 +122,20 @@ export class SparseLines<T = HugeLine> {
     );
   }
 
+  /** Lets go of the blocks holding an item `stale` says will change (a line still being read): read again when drawn. */
+  forget(stale: (item: T) => boolean): boolean {
+    let any = false;
+    for (const [b, list] of this.blocks) {
+      if (!list.some(stale)) continue;
+      this.blocks.delete(b);
+      this.bytes -= this.weights.get(b) ?? 0;
+      this.weights.delete(b);
+      this.stuck.delete(b);
+      any = true;
+    }
+    return any;
+  }
+
   /** Keeps block `b`, letting go of the blocks used longest ago (not `b`, nor those near the view) past the limits. */
   private put(b: number, list: T[]) {
     let w = 0;

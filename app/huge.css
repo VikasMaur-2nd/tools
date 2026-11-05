@@ -142,6 +142,23 @@ html[data-huge] .statusbar .cursor {
   font: 11.5px var(--font-ui);
 }
 
+/* A line that goes on past where the file is read so far: a quiet marker, which breathes while reading goes on. */
+.hg-reading {
+  animation: hg-reading 1.6s ease-in-out infinite;
+}
+
+@keyframes hg-reading {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-reading {
+    animation: none;
+  }
+}
+
 /* The Format view's current line (the selection's, or the match's). */
 .cv-l.hg-cur {
   background: var(--row-sel);

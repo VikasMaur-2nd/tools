@@ -90,7 +90,9 @@ export class HugeLinesView {
   /** The index counted more lines (or finished): the scroll range grows. */
   grow() {
     const n = this.src.lineCount(this.mode);
-    if (n === this.lines.count) return;
+    // (A line read up to the front grows with it: read again.)
+    const reading = this.lines.forget((l) => !!l.reading);
+    if (n === this.lines.count && !reading) return;
     this.lines.count = n;
     this.html.clear();
     this.fit();
@@ -193,6 +195,7 @@ export class HugeLinesView {
     if (h === undefined) {
       h = line.text ? highlightLine(line.text, 0, line.text.length, null) : ' ';
       if (line.more) h += `<span class="hg-more">${escapeHtml(rt('… {size} more', { size: rt.bytes(line.more) }))}</span>`;
+      else if (line.reading) h += `<span class="hg-more hg-reading">${escapeHtml(rt('…still reading'))}</span>`;
       this.html.set(k, h);
     }
     const err = k === this.errLine && this.errCol >= 0 && this.errCol <= line.text.length ? `<i class="hg-errc" style="left:${(this.errCol * this.cw).toFixed(1)}px;width:${this.cw.toFixed(1)}px"></i>` : '';

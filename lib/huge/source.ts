@@ -65,6 +65,8 @@ export interface HugeLine {
   more: number;
   /** The value the line is about (pretty), or the offset the line starts at (raw): what selecting it selects. */
   at: number;
+  /** It goes on past where the file is read so far (the indexing front, a stop, the error): more to come. */
+  reading?: boolean;
 }
 
 export interface HugeError {

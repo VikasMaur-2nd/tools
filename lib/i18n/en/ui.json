@@ -1489,5 +1489,7 @@
   "cmd.huge-duplicate.terms": "copy clone",
   "cmd.huge-delete": "Delete",
   "cmd.huge-delete._context": "Command palette, large-file mode only: deletes the selected value.",
-  "cmd.huge-delete.terms": "remove"
+  "cmd.huge-delete.terms": "remove",
+  "app.hugeStillReading": "…still reading",
+  "app.hugeStillReading._context": "Large-file mode, Format view (as written): after the start of a line that goes on past where the file has been read so far; more of it comes as indexing goes on."
 }

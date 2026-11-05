@@ -134,6 +134,30 @@ function fakeFind(all: number[], per = 3, size = 1_000_000) {
   return { src, step };
 }
 
+test('a line still being read (it goes on past the front) is read again as the front moves', async () => {
+  // The last line read is cut at the front (`reading`) until the file is read further.
+  let front = 50;
+  const reads: number[] = [];
+  const lines = new SparseLines((from, n) => {
+    reads.push(from);
+    const out: HugeLine[] = [];
+    for (let k = from; k < Math.min(from + n, 3); k++) out.push(k < 2 ? { text: `line ${k}`, more: 0, at: k } : { text: 'x'.repeat(front), more: 0, at: k, reading: front < 200 });
+    return Promise.resolve(out);
+  });
+  lines.count = 3;
+  lines.want(0, 3);
+  await tick();
+  assert.equal(lines.get(2)?.text.length, 50);
+  assert.equal(lines.forget((l) => !!l.reading), true, 'its block is let go');
+  assert.equal(lines.get(2), undefined);
+  front = 200;
+  lines.want(0, 3);
+  await tick();
+  assert.deepEqual([lines.get(2)?.text.length, lines.get(2)?.reading], [200, false], 'read again: all of it now');
+  assert.equal(lines.forget((l) => !!l.reading), false, 'nothing left to read again');
+  assert.equal(reads.length, 2);
+});
+
 test('find: the first match after the view becomes current as it arrives; Next waits for more', async () => {
   const jumps: number[] = [];
   const f = fakeFind([10, 20, 30, 400, 500, 600, 700]);
