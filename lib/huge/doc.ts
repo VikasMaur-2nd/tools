@@ -928,9 +928,11 @@ export class HugeDoc {
     const rest: [number, number][] = [];
     for (let j = i; j < P.length; j += 2) rest.push([P[j], P[j + 1]]);
     for (let j = 0; j < add.length; j += 2) rest.push([add[j], add[j + 1]]);
-    rest.sort((x, y) => x[0] - y[0]);
+    // (A name found again against a later one of its object's, and kept against an earlier one: one warning, the
+    // earliest's, as when opening.)
+    rest.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
     P.length = i;
-    for (const [x, y] of rest) P.push(x, y);
+    for (let j = 0; j < rest.length; j++) if (!j || rest[j][0] !== rest[j - 1][0]) P.push(rest[j][0], rest[j][1]);
     this.warnings = this.warnings.filter((w) => w.pos < this.readStart);
     this.checked = Math.min(this.checked, i);
   }
@@ -989,8 +991,8 @@ export class HugeDoc {
   /** Where the second top-level value starts (-1: none), found again after an edit (reading from the checkpoint before it). */
   private secondValue(): number {
     if (this.second !== -2) return this.second;
-    // (All read, one top-level value: none.)
-    if (this.final && this.final[3] < 2) return (this.second = -1);
+    // (All read, valid, one top-level value: none. Broken, a second one may have begun before the error.)
+    if (this.final && this.final[3] < 2 && !this.error && !this.failed) return (this.second = -1);
     const live = this.index;
     const k = Math.max(0, live.lastAtMost(live.top, 1));
     const q = this.at(live.state(k));
