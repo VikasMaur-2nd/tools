@@ -56,7 +56,7 @@
 - [JSON repair](https://tools.vikasmaur.com/tools/json-repair): fix quotes, commas, comments and other common mistakes.
 - [JSON to table](https://tools.vikasmaur.com/tools/json-to-table): a sortable grid with one row per record.
 - [JSON path finder](https://tools.vikasmaur.com/tools/json-path-finder): copy the path to any value, or jump to a path.
-- [Large JSON file viewer](https://tools.vikasmaur.com/tools/large-json-viewer): open big JSON files locally in a fast tree view.
+- [Large JSON file viewer](https://tools.vikasmaur.com/tools/large-json-viewer): JSON and JSON Lines files of any size, read from disk a piece at a time (never uploaded): browse while it indexes, search, go to a path, the shape of every record, edit and save, split or convert to CSV.
 
 ## Other languages
 

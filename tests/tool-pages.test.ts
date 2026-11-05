@@ -125,13 +125,28 @@ test('JSON visualizer landing page keeps its search-facing coverage', () => {
   assert.ok(page.related.includes('privacy-study'));
 });
 
-test('localized JSON visualizer metadata stays within search snippet limits', () => {
+test('large JSON file viewer page answers the huge-file questions it targets', () => {
+  const page = TOOL_PAGES.find((entry) => entry.slug === 'large-json-viewer')!;
+  assert.ok(page.title.startsWith('Large JSON file viewer'));
+  assert.ok(`${page.title} | Tool Kumar`.length <= 60);
+  assert.ok(page.description.length <= 155);
+  assert.equal(page.faqs.length, 5);
+  const questions = page.faqs.map((f) => f.question).join('\n');
+  for (const q of [/open a large JSON file/, /too large to open/, /huge JSON file, like 10 GB/, /JSONL or NDJSON/, /edit a large JSON file and save/]) assert.match(questions, q);
+  for (const h of [/How to split a large JSON file/, /large JSON file to CSV/, /measured/]) assert.ok(page.sections?.some((s) => h.test(s.heading)), String(h));
+  // The editor's old limits are not this page's any more.
+  assert.doesNotMatch(JSON.stringify(page), /up to 300 MB are accepted|main thread/);
+});
+
+test('localized JSON visualizer and large-file viewer metadata stay within search snippet limits', () => {
   for (const { id } of LOCALES) {
     const pages = JSON.parse(readFileSync(join(process.cwd(), 'lib/i18n', id, 'tool-pages.json'), 'utf8')) as Record<string, { title: string; description: string }>;
-    const page = pages['json-visualizer'];
-    assert.ok(page, id);
-    assert.ok(`${page.title} | Tool Kumar`.length <= 60, `${id} title`);
-    assert.ok(page.description.length <= 155, `${id} description`);
+    for (const slug of ['json-visualizer', 'large-json-viewer']) {
+      const page = pages[slug];
+      assert.ok(page, `${id}/${slug}`);
+      assert.ok(`${page.title} | Tool Kumar`.length <= 60, `${id}/${slug} title`);
+      assert.ok(page.description.length <= 155, `${id}/${slug} description`);
+    }
   }
 });
 

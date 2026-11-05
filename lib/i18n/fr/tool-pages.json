@@ -453,7 +453,7 @@
     ]
   },
   "json-to-csv": {
-    "hash": "d51feb471099",
+    "hash": "f4961188a265",
     "title": "JSON vers CSV : convertir des enregistrements",
     "description": "Convertissez un tableau JSON en CSV dans le navigateur, sans envoi au serveur. Tool Kumar aplatit les champs imbriqués en colonnes, comme profile.city.",
     "heading": "JSON vers CSV",
@@ -487,6 +487,10 @@
       {
         "question": "Les virgules et guillemets sont-ils échappés ?",
         "answer": "Oui. Les champs CSV sont placés entre guillemets, et les guillemets qu'ils contiennent sont doublés conformément aux règles CSV standard. Un texte qui commence comme une formule de tableur (=, +, - ou @) reçoit une apostrophe devant lui, afin qu'Excel ou Sheets l'affiche au lieu de l'exécuter."
+      },
+      {
+        "question": "Puis-je convertir un gros fichier JSON en CSV ?",
+        "answer": "Oui. Les fichiers jusqu'à 300 Mo s'ouvrent dans l'éditeur et se convertissent ici. Un fichier plus gros s'ouvre en mode gros fichiers, où « Convertir » écrit le CSV directement dans un fichier au fil de la lecture, avec les mêmes colonnes et règles, quelle que soit sa taille."
       }
     ]
   },
@@ -1311,7 +1315,7 @@
     ]
   },
   "jsonl-viewer": {
-    "hash": "891b392414b5",
+    "hash": "e9ceae835e68",
     "title": "JSONL viewer : ouvrir des fichiers JSON Lines et NDJSON",
     "description": "Ouvrez un fichier .jsonl ou .ndjson dans le navigateur. Tool Kumar affiche ses enregistrements en arborescence ou en tableau, sans envoi au serveur.",
     "heading": "Visualiseur JSONL",
@@ -1352,6 +1356,10 @@
       {
         "question": "Puis-je transformer les enregistrements en tableau JSON ou en CSV ?",
         "answer": "Oui. La vue « Formater » affiche les enregistrements dans un seul tableau JSON que vous pouvez copier ou télécharger. La page JSONL vers CSV les transforme en colonnes pour un tableur."
+      },
+      {
+        "question": "Peut-il ouvrir un fichier JSONL de plusieurs gigaoctets ?",
+        "answer": "Oui. Un fichier de plus de 300 Mo s'ouvre en mode gros fichiers, qui lit les enregistrements depuis le disque au fil de la navigation au lieu de tous les charger, si bien que votre mémoire ne limite pas sa taille. Il peut aussi résumer les champs de tous les enregistrements et convertir ou découper le fichier."
       }
     ],
     "guides": [
@@ -1536,9 +1544,9 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "951455e0dd15",
-    "title": "Ouvrir un gros fichier JSON dans le navigateur",
-    "description": "Ouvrez de gros fichiers JSON dans le navigateur, sans envoi au serveur. Dans notre test sur ordinateur, 52,4 Mo ont été analysés en environ une seconde.",
+    "hash": "4a678029af2c",
+    "title": "Ouvrir un gros fichier JSON de plusieurs Go",
+    "description": "Ouvrez des fichiers JSON et JSON Lines de plusieurs Go dans le navigateur. Parcourez-les dès la lecture, cherchez, modifiez, découpez, convertissez en CSV.",
     "heading": "Visualiseur de gros fichiers JSON",
     "query": "ouvrir un gros fichier JSON",
     "secondary": [
@@ -1546,45 +1554,85 @@
       "JSON viewer gros fichier",
       "ouvrir gros fichier JSON en ligne"
     ],
-    "intro": "Ouvrez un gros fichier JSON depuis votre appareil et parcourez-le sous forme d'arborescence, de tableau ou de texte formaté. Le fichier est lu dans votre navigateur et n'est jamais envoyé au serveur. Même les documents très volumineux restent modifiables et défilent sans à-coups.",
-    "modeLabel": "Vue arborescente",
-    "exampleLabel": "Un petit exemple remplace ici votre fichier. Ouvrez votre propre fichier pour voir sa taille, son nombre de lignes et son nombre de nœuds dans la barre d'état.",
+    "intro": "Ouvrez un fichier JSON ou JSON Lines de n'importe quelle taille, même plus gros que la mémoire de votre ordinateur. Parcourez-le en arborescence, en tableau, en graphe ou en texte pendant qu'il est encore lu, faites-y des recherches, accédez à un chemin, voyez la structure de tous les enregistrements, modifiez-le et enregistrez-le, ou découpez-le et convertissez-le en CSV. Le fichier est lu depuis votre disque dans ce navigateur et n'est jamais envoyé.",
+    "modeLabel": "Arborescence pour fichiers de toute taille",
+    "exampleLabel": "Un petit exemple remplace ici votre fichier. Ouvrez le vôtre : au-delà de 300 Mo, il s'ouvre en mode gros fichiers, qui affiche dans la barre d'état la progression de la lecture, puis la taille, les lignes et les nœuds du fichier.",
     "steps": [
-      "Choisissez « Ouvrir un fichier », avec Ctrl+O ou ⌘O sur Mac, ou faites glisser le fichier sur la page.",
-      "Lorsque la barre d'état indique le résultat de l'analyse, parcourez « Arborescence » ou passez à « Tableau » pour un tableau d'enregistrements.",
-      "Appuyez sur Ctrl+F, ⌘F sur Mac, pour rechercher, ou saisissez un chemin comme $.users[1] dans la barre de recherche pour accéder à un nœud."
+      "Choisissez « Ouvrir un fichier », avec Ctrl+O ou ⌘O sur Mac, ou faites glisser le fichier sur la page. Un fichier de plus de 300 Mo s'ouvre en mode gros fichiers. Un fichier .json.gz ou .jsonl.gz est d'abord décompressé.",
+      "Parcourez-le tout de suite : la barre d'état indique la part déjà indexée et le temps restant. Dépliez l'« Arborescence » ou passez à « Formater », « Tableau » ou « Graphe ». Les grands tableaux JSON affichent 1 000 éléments à la fois, avec des boutons pour voir les suivants et aller à un indice.",
+      "Appuyez sur Ctrl+F, ⌘F sur Mac, pour chercher dans tout le fichier, ou sur Ctrl+G, ⌘G sur Mac, pour aller à une ligne, une rangée ou un chemin comme $.records[120000].email.",
+      "Ouvrez « Shape » pour voir les types, les effectifs et les valeurs de chaque chemin dans tous les enregistrements, ou « Convertir » pour écrire du CSV, du JSON Lines, des parties découpées ou les enregistrements qui remplissent vos conditions dans un nouveau fichier.",
+      "Modifiez des valeurs dans l'arborescence, le tableau ou le graphe, ou le texte dans la vue « Formater », puis appuyez sur Ctrl+S, ⌘S sur Mac, pour enregistrer."
     ],
     "options": [
-      "Les fichiers jusqu'à 300 Mo sont acceptés. C'est une limite de sécurité plutôt qu'une garantie : la taille qui s'ouvre confortablement dépend de la mémoire de l'appareil et de la structure des données.",
-      "Les grandes saisies restent modifiables. À partir de 250 000 caractères ou 30 000 lignes, l'éditeur n'affiche que les lignes visibles à l'écran, pour que la saisie reste rapide.",
-      "L'analyse s'exécute sur le thread principal. La page marque donc une pause pendant la lecture d'un très gros fichier.",
-      "Les documents de plus de 2 500 000 caractères ne sont pas enregistrés pour votre prochaine visite ; ouvrez à nouveau le fichier.",
-      "Seules les lignes visibles à l'écran sont rendues dans l'éditeur et les vues arborescente, tableau et texte. Le défilement reste donc fluide une fois le fichier ouvert."
+      "Les fichiers de plus de 300 Mo s'ouvrent en mode gros fichiers, et sur un appareil qui signale peu de mémoire, des fichiers plus petits aussi. Les autres s'ouvrent dans l'éditeur habituel, qui a tous les outils.",
+      "Les fichiers .jsonl et .ndjson s'ouvrent comme une liste d'enregistrements. Un fichier .json qui contient plusieurs valeurs à la suite s'ouvre aussi comme une liste, avec un avertissement.",
+      "L'enregistrement dans le même fichier fonctionne dans Chrome et Edge, une fois que le navigateur a demandé l'autorisation. Il vide l'historique d'annulation ; enregistrer sous un autre nom le conserve. Firefox et Safari téléchargent plutôt le fichier modifié. Les modifications non enregistrées sont conservées dans ce navigateur et proposées de nouveau quand vous rouvrez le même fichier.",
+      "Un gros fichier .gz est décompressé dans le stockage du navigateur avant de s'ouvrir ; il lui faut donc assez d'espace disque libre pour sa taille complète. Dans Firefox et Safari, les résultats de « Convertir » y sont aussi stockés avant le téléchargement. Une fenêtre de navigation privée peut ne pas autoriser ce stockage.",
+      "La modification et « Convertir » sont disponibles une fois le fichier entièrement indexé, et « Convertir » exige un fichier sans erreur. « Shape » peut démarrer pendant que le fichier est encore lu.",
+      "« Rechercher » trouve le texte tel qu'il est écrit dans le fichier, sans expressions régulières. « Comparer » et « Réparer l'entrée » fonctionnent avec des documents jusqu'à 300 Mo."
     ],
     "faqs": [
       {
-        "question": "Comment afficher un gros fichier JSON ?",
-        "answer": "Ouvrez-le ici avec « Ouvrir un fichier » ou faites-le glisser sur la page. L'arborescence montre sa structure sans tout développer, et « Rechercher » permet d'accéder aux clés, aux valeurs ou à un chemin."
+        "question": "Comment ouvrir un gros fichier JSON ?",
+        "answer": "Ouvrez cette page dans un navigateur récent sous Windows, macOS ou Linux, choisissez « Ouvrir un fichier », avec Ctrl+O ou ⌘O sur Mac, ou faites glisser le fichier sur la page. Les fichiers de plus de 300 Mo s'ouvrent en mode gros fichiers : les premières lignes apparaissent tout de suite et le reste est lu en arrière-plan. Rien n'est installé ni envoyé."
       },
       {
-        "question": "Comment afficher de gros fichiers JSON sur Mac ?",
-        "answer": "Ouvrez cette page dans Safari, Chrome ou un autre navigateur récent, puis choisissez « Ouvrir un fichier », avec ⌘O. Aucune installation n'est nécessaire."
+        "question": "Que faire quand un fichier JSON est trop gros pour être ouvert ?",
+        "answer": "La plupart des éditeurs et visualiseurs chargent le fichier entier en mémoire, et le JSON analysé occupe plusieurs fois la taille de son texte : un fichier de quelques centaines de mégaoctets peut donc les bloquer ou être refusé. Ouvrez-le ici : le mode gros fichiers le lit depuis le disque morceau par morceau, si bien que votre mémoire ne limite pas sa taille. Pour utiliser les données dans un autre outil, découpez-le en fichiers plus petits ou extrayez seulement les enregistrements dont vous avez besoin."
       },
       {
-        "question": "Comment ouvrir un gros fichier JSON sous Windows ?",
-        "answer": "Ouvrez cette page dans Edge ou Chrome, puis choisissez « Ouvrir un fichier », avec Ctrl+O. Le fichier est lu sur votre ordinateur et n'est pas envoyé au serveur."
+        "question": "Peut-il ouvrir un énorme fichier JSON, par exemple de 10 Go ?",
+        "answer": "Oui. Nous testons avec des fichiers de 10 Go dans Chromium, Firefox et WebKit. Sur une machine de test à 4 cœurs, ils ont été indexés en 82 à 121 secondes, pouvaient être parcourus pendant ce temps et ont utilisé 0,2 à 0,3 Go de mémoire de plus que l'onglet au repos. Il n'y a pas de limite de taille fixe, car le fichier n'est jamais chargé en entier ; un fichier plus gros met proportionnellement plus de temps à être indexé."
       },
       {
-        "question": "Y a-t-il une limite de taille ?",
-        "answer": "La page accepte les fichiers jusqu'à 300 Mo. La taille qui s'ouvre sans difficulté dépend de la mémoire de votre appareil et de la structure des données."
+        "question": "Puis-je afficher un gros fichier JSONL ou NDJSON ?",
+        "answer": "Oui. Un fichier .jsonl ou .ndjson de n'importe quelle taille s'ouvre comme une liste d'enregistrements, un par ligne, dans l'arborescence ou le tableau. « Shape » résume les champs de tous les enregistrements, et « Convertir » transforme les enregistrements en un seul tableau JSON ou en fichier CSV, ou les découpe en fichiers plus petits."
+      },
+      {
+        "question": "Puis-je modifier un gros fichier JSON et l'enregistrer ?",
+        "answer": "Oui. Modifiez, renommez, insérez, dupliquez ou supprimez des valeurs depuis l'arborescence, le tableau ou le graphe, ou modifiez le texte dans la vue « Formater », avec annulation et rétablissement. Chaque modification ne relit qu'environ un mégaoctet autour d'elle ; même un fichier de 10 Go se met donc à jour sans attente. Chrome et Edge enregistrent dans le même fichier ; Firefox et Safari téléchargent la copie modifiée."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Unexpected end of JSON input : trouver où un fichier a été coupé"
+      },
+      {
+        "slug": "extra-data",
+        "text": "Extra data : quand un fichier contient une valeur JSON par ligne"
       }
     ],
     "sections": [
       {
-        "heading": "Un exemple mesuré",
+        "heading": "Comment il ouvre des fichiers plus gros que la mémoire",
         "paragraphs": [
-          "Nous avons ouvert un fichier de 52,4 Mo, soit 52 428 028 octets, contenant 51 501 enregistrements, chacun étant un petit objet avec une chaîne de 996 caractères, dans Chromium 154 sur un ordinateur sous Linux. L'analyse a pris environ 1,0 seconde, et l'arborescence était prête environ 1,9 seconde après la sélection du fichier. Le document contenait 154 505 nœuds.",
-          "Ce fichier est peu imbriqué et contient surtout du texte. Des données très imbriquées, de nombreux petits nombres, un ordinateur portable ancien ou un téléphone peuvent allonger ces délais. Considérez ces chiffres comme un point de repère plutôt que comme une garantie."
+          "Le mode gros fichiers ne charge jamais le fichier entier. Un processus en arrière-plan le lit une fois du début à la fin, vérifie sa syntaxe et pose un repère environ tous les mégaoctets : l'endroit où il se trouve dans le document et les objets et tableaux JSON ouverts à cet endroit. Pour afficher une partie de l'arborescence, une ligne ou un chemin, il lit environ un mégaoctet depuis le repère le plus proche ; un endroit loin dans le fichier s'ouvre donc presque aussi vite qu'un endroit proche du début. Pour un fichier de 10 Go, les repères occupent environ 3 Mo.",
+          "Vous pouvez parcourir le fichier pendant sa lecture et arrêter celle-ci à tout moment. Si le fichier est invalide, la barre d'état indique la ligne et la colonne exactes de la première erreur, avec le même message que pour un petit fichier, et tout ce qui précède l'erreur reste ouvert."
+        ]
+      },
+      {
+        "heading": "Vitesse et mémoire mesurées",
+        "paragraphs": [
+          "Nous mesurons sur une machine cloud partagée à 4 cœurs (ARM, 15 Go de mémoire, le fichier sur son disque) dans Chromium, Firefox et WebKit, les moteurs de Chrome et Edge, de Firefox et de Safari. Votre ordinateur est différent : considérez ces chiffres comme un point de repère.",
+          "Avec un fichier de 1 Go, les premières lignes sont apparues 0,4 à 0,8 seconde après l'avoir choisi, et le fichier entier a été vérifié et indexé en 5 à 8 secondes. Aller à un chemin proche de la fin a pris environ 0,2 seconde, et chercher une valeur proche de la fin 5 à 8 secondes.",
+          "Avec un fichier de 10 Go, l'indexation a pris 82 secondes dans Chromium, 90 dans WebKit et 121 dans Firefox. Le navigateur a utilisé 0,2 à 0,3 Go de mémoire de plus qu'avant l'ouverture du fichier, pas plus qu'avec un fichier de 5,5 Go.",
+          "Les commandes travaillent aussi en flux. Dans Chromium, le fichier de 1 Go a été converti en CSV en environ 41 secondes, découpé en parties de 256 Mo en environ 25 et minifié en environ 20, chaque fois avec au plus 0,25 Go de mémoire supplémentaire."
+        ]
+      },
+      {
+        "heading": "Comment découper un gros fichier JSON",
+        "paragraphs": [
+          "Ouvrez le fichier, choisissez « Convertir », puis « Split ». « Split » prend le tableau principal d'enregistrements, le tableau JSON que vous sélectionnez dans l'arborescence ou les enregistrements d'un fichier JSON Lines. Découpez par nombre d'enregistrements par partie, de mégaoctets par partie ou de parties ; chaque partie est un tableau JSON ou un fichier JSON Lines valide. Dans Chrome et Edge, « Choose a folder… » écrit les parties directement dans un dossier ; les autres navigateurs les téléchargent dans un seul fichier zip.",
+          "Pour ne garder que certains enregistrements, choisissez « Extract ». Ajoutez des conditions comme status est active ou price < 10, exigez qu'elles soient toutes remplies ou qu'une seule le soit, puis écrivez les enregistrements correspondants, ou seulement les premiers, en JSON, JSON Lines ou CSV."
+        ]
+      },
+      {
+        "heading": "Convertir un gros fichier JSON en CSV",
+        "paragraphs": [
+          "Choisissez « Convertir », puis « CSV ». Chaque enregistrement devient une ligne et les champs imbriqués deviennent des colonnes à points comme address.city, selon les mêmes règles que le convertisseur JSON vers CSV : guillemets si nécessaire, cellules vides pour les valeurs absentes et protection contre les formules de tableur. Choisissez la virgule, le point-virgule ou la tabulation, ajoutez une marque d'ordre des octets pour Excel ou compressez le résultat avec gzip.",
+          "« Convertir » écrit aussi du JSON formaté ou minifié du fichier entier ou d'une valeur sélectionnée, et transforme un tableau JSON en JSON Lines et du JSON Lines en un seul tableau. Les résultats sont écrits au fur et à mesure : dans Chrome et Edge, dans le fichier que vous choisissez ; dans les autres navigateurs, dans le stockage du navigateur, puis dans vos téléchargements."
         ]
       }
     ]
