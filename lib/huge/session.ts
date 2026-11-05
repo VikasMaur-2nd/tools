@@ -1259,7 +1259,15 @@ export class HugeSession {
   // ── Keys ───────────────────────────────────────────────────────────────
 
   /** The open dialog's keys (edit as text: Ctrl+Enter, Ctrl+F): the engine sees keys first, then huge mode. */
-  dialogKey: ((e: KeyboardEvent) => boolean) | null = null;
+  private dialogKey: ((e: KeyboardEvent) => boolean) | null = null;
+
+  /** A dialog takes the keys it uses (true: taken); returns how to give them back. */
+  takeKeys(f: (e: KeyboardEvent) => boolean) {
+    this.dialogKey = f;
+    return () => {
+      if (this.dialogKey === f) this.dialogKey = null;
+    };
+  }
 
   private key(e: KeyboardEvent): boolean {
     const mod = e.metaKey || e.ctrlKey;

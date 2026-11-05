@@ -458,20 +458,21 @@ function TextEdit({ s, label, text }: { s: HugeSession; label: string; text: str
   };
   // (Ctrl+Enter, Ctrl+F: the engine sees keys first; huge mode passes the dialog's to it.)
   const keys = useRef(apply);
-  keys.current = apply;
-  useEffect(() => {
-    s.dialogKey = (e) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return false;
-      if (e.key === 'Enter') void keys.current();
-      else if (e.key.toLowerCase() === 'f' && !e.shiftKey) document.getElementById('hg-te-find')?.focus();
-      else return false;
-      e.preventDefault();
-      return true;
-    };
-    return () => {
-      s.dialogKey = null;
-    };
-  }, [s]);
+  useLayoutEffect(() => {
+    keys.current = apply;
+  });
+  useEffect(
+    () =>
+      s.takeKeys((e) => {
+        if (!(e.metaKey || e.ctrlKey) || e.altKey) return false;
+        if (e.key === 'Enter') void keys.current();
+        else if (e.key.toLowerCase() === 'f' && !e.shiftKey) document.getElementById('hg-te-find')?.focus();
+        else return false;
+        e.preventDefault();
+        return true;
+      }),
+    [s],
+  );
 
   return (
     <div
