@@ -50,6 +50,8 @@ export class HugeEditor {
   /** Steps applied: undo takes steps[at - 1], redo steps[at]. */
   private at = 0;
   private held = 0;
+  /** Applied steps the history let go of (its oldest, past its bytes): still in the document, no longer undoable. */
+  private dropped = 0;
 
   constructor(
     readonly doc: HugeDoc,
@@ -67,6 +69,19 @@ export class HugeEditor {
     return this.at < this.steps.length;
   }
 
+  /**
+   * Changes applied since the file was opened (or saved in place), as undo counts them: a typing run joined into one
+   * step is one; undo takes one off, redo puts it back; steps the history let go of still count (`dropped`).
+   */
+  get applied(): number {
+    return this.dropped + this.at;
+  }
+
+  /** Applied steps the history let go of (kept with a session, so its count stays right). */
+  get droppedSteps(): number {
+    return this.dropped;
+  }
+
   /** Bytes of edits the history holds. */
   get historyBytes(): number {
     return this.held;
@@ -78,10 +93,11 @@ export class HugeEditor {
   }
 
   /** A kept session's history back (its document is the one now: put back with doc.edit). */
-  restoreHistory(steps: readonly { ops: EditOp[]; removed: Piece[][] }[], applied: number) {
+  restoreHistory(steps: readonly { ops: EditOp[]; removed: Piece[][] }[], applied: number, dropped = 0) {
     this.steps = steps.map((s) => ({ ops: s.ops, removed: s.removed, bytes: s.ops.reduce((n, o, i) => n + editBytes(o.put) + editBytes(s.removed[i] ?? []), 0), time: 0, typing: false }));
     this.at = Math.min(applied, this.steps.length);
     this.held = this.steps.reduce((n, s) => n + s.bytes, 0);
+    this.dropped = dropped;
   }
 
   /**
@@ -110,6 +126,7 @@ export class HugeEditor {
       const s = this.steps.shift()!;
       this.held -= s.bytes;
       this.at--;
+      this.dropped++;
     }
     return { done };
   }
@@ -145,6 +162,7 @@ export class HugeEditor {
     this.steps = [];
     this.at = 0;
     this.held = 0;
+    this.dropped = 0;
   }
 
   // ── Node edits ──────────────────────────────────────────────────────

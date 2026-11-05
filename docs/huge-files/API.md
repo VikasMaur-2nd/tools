@@ -158,7 +158,11 @@ LRU), so scrolling the Format view through a region is a lookup.
 
 Once the document is read (`summary.done`, valid or not), it can be edited. Positions are always the document's
 as it is when the edit is asked (after the edits before it). Each call is one undo step; each answers
-`HugeEdited { version, done, canUndo, canRedo, summary }`.
+`HugeEdited { version, done, canUndo, canRedo, steps, summary }`. `replace`, `undo` and `redo` are taken while an
+edit is still being read again (typing never waits for it); node edits wait until it's all read ('Not ready').
+`steps`: the changes applied since the file was opened or saved in place, as undo counts them (+1 an edit or redo,
+-1 an undo; a typing run joined into one step is one; steps the history let go of still count; 0 after saving in
+place): the file bar's "N changes".
 
 - `replace([{ a, b, text }], typing)`: bytes `[a, b)` replaced by `text` (UTF-8); several in one step, in
   order, each at the document the one before leaves. `typing`: joins the last step if it goes on from it (an
@@ -184,7 +188,7 @@ as it is when the edit is asked (after the edits before it). Each call is one un
   queries meanwhile see the part read (as while opening: a front, partial nodes), progress comes through
   `onProgress`, and the summary through `HugeClient.onSummary` once all is read. A broken document is read up to
   its error (the normal path's message and place); fixing it re-syncs with the rest.
-- `summary` then has `edited` (the document differs from the file), `version`, `canUndo`, `canRedo`,
+- `summary` then has `edited` (the document differs from the file), `version`, `canUndo`, `canRedo`, `steps`,
   `editBytes` (edits' bytes held: the document's and the history's).
 - Speed (this host, Node, 1 GiB of records, read again before the next): typing p50 8 ms / p95 15 / max 19,
   undo 7 ms, set / remove / insert ~22 ms p50, ≤ 52 ms. The worker reads about one checkpoint's stretch (1 MiB)
@@ -211,9 +215,11 @@ as it is when the edit is asked (after the edits before it). Each call is one un
 - Edits are kept in IndexedDB a second after the last one, keyed by the file's name, size and last modified: the
   document's pieces (references to the file and the edits' bytes) and its history (256 MiB of edits' bytes at most;
   the history goes first if it doesn't fit, then nothing is kept).
-- Reopening the same file: `summary.session` (`{ steps, bytes, time }`) once the document is read (it may come in
-  a later summary). `restoreSession()` puts it back (the edits, then undo goes on where it was);
-  `dropSession()` drops it (closing without keeping the edits).
+- Reopening the same file: `summary.session` is `undefined` while the kept session is looked for, then `null`
+  (none) or `{ steps, bytes, time }` (`steps`: the changes it puts back, as `HugeEdited.steps` counts them). The
+  look ends soon after opening: if it ends after `ready`, a summary saying what it found comes through
+  `HugeClient.onSummary` (nothing needs to ask again). `restoreSession()` puts it back (the edits, then undo goes
+  on where it was; `steps` from there); `dropSession()` drops it (closing without keeping the edits).
 
 ## Bounds (what is capped, and how)
 

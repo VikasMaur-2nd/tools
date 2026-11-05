@@ -151,12 +151,18 @@ export interface HugeSummary {
   version?: number;
   canUndo?: boolean;
   canRedo?: boolean;
+  /** Changes applied since the file was opened or saved in place, as undo counts them (see HugeEdited.steps). */
+  steps?: number;
   editBytes?: number;
-  /** A kept session of this file (the same name, size, last modified) that can be put back: restoreSession(). */
+  /**
+   * A kept session of this file (the same name, size, last modified) that can be put back: restoreSession().
+   * undefined while it's looked for, null if there's none. The look ends soon after opening; if after `ready`, a
+   * summary saying what it found comes through HugeClient.onSummary.
+   */
   session?: HugeSession | null;
 }
 
-/** A kept session: its steps of history, edits' bytes, when it was kept (ms since 1970). */
+/** A kept session: the changes it puts back (as HugeEdited.steps counts them), edits' bytes, when it was kept (ms since 1970). */
 export interface HugeSession {
   steps: number;
   bytes: number;
@@ -172,6 +178,12 @@ export interface HugeEdited {
   done: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /**
+   * Changes applied since the file was opened (or saved in place), as undo counts them: +1 an edit or redo, -1 an
+   * undo, a typing run joined into one step is one, steps the history let go of (past its bytes) still count; a
+   * restored session's own; 0 after saving in place. The file bar's "N changes".
+   */
+  steps: number;
   summary: HugeSummary | null;
 }
 
