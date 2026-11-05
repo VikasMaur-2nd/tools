@@ -259,7 +259,8 @@ export class Editor {
   private gl: HTMLElement;
   private body: HTMLElement;
   /** Scroll offsets in content px (only a huge document in view mode outgrows the browser's height limit). */
-  private sc: TallScroll;
+  /** Its scroll (TallScroll: `top`, `height`), read and set by huge mode's Format view as its window moves. */
+  readonly sc: TallScroll;
   /** Content y of the caret band and the scope band; `shiftAt`: the scroll shift they were drawn with. */
   private curY = 0;
   private scopeY = 0;
@@ -766,7 +767,16 @@ export class Editor {
   }
 
   /** Is the document (by `share` of the thresholds) one for the big-document editor: big, or with many or long lines? */
+  /**
+   * A window of a bigger document (huge mode's Format view, components/huge/HugeFormatEdit.tsx): its lines are
+   * numbered from `lineBase` + 1 (set it before `init`), and `alwaysBig` keeps the big-document editor whatever
+   * its size (the native textarea lays out all of a 96 KB window on each key; the big one, the rows in view).
+   */
+  lineBase = 0;
+  alwaysBig = false;
+
   private wantsSurface(share: number) {
+    if (this.alwaysBig) return true;
     const len = this.doc.length;
     return len >= SURFACE_CHARS * share || this.ls.length >= SURFACE_LINES * share || widest(this.ls, len) >= LONG_LINE_CHARS * share;
   }
@@ -1104,7 +1114,7 @@ export class Editor {
   }
 
   /** Model line at the top of the view. */
-  private topLine() {
+  topLine() {
     return this.lineAt(this.kAt(Math.floor((this.sc.top - PAD_T) / LH)));
   }
 
@@ -1516,7 +1526,7 @@ export class Editor {
 
   private layout() {
     const lines = this.ls.length;
-    const gw = Math.round(Math.max(3, String(lines).length) * this.cw + 38);
+    const gw = Math.round(Math.max(3, String(lines + this.lineBase).length) * this.cw + 38);
     if (gw !== this.gutW) {
       this.gutW = gw;
       this.el.style.setProperty('--gw', gw + 'px');
@@ -1820,7 +1830,8 @@ export class Editor {
       const ln = this.lineAt(k);
       const cls = this.gutClass(ln);
       const f = this.close[ln] >= 0 ? `<b class="ed-f${this.folded.has(ln) ? ' c' : ''}" data-f="${ln}"></b>` : '';
-      g.push(cls ? `<div class="${cls}">${ln + 1}${f}</div>` : `<div>${ln + 1}${f}</div>`);
+      const n = ln + 1 + this.lineBase;
+      g.push(cls ? `<div class="${cls}">${n}${f}</div>` : `<div>${n}${f}</div>`);
     }
     return g;
   }

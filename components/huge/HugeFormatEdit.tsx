@@ -2,9 +2,11 @@
 
 /*
  * The Format view's free-text editing (As written): a window of the document's lines (lib/huge/text-window.ts)
- * in the normal tool's editor, its keys, selection, clipboard and screen reader as they are there. Numbered as the
- * document's lines; moved as the view nears its edge, the caret and selection kept by byte; the document's error
- * marked where it is in the window. What's typed goes to the core once the frame is painted.
+ * in the normal tool's editor (kit.Editor: the engine's own class, nothing imported), its keys, selection,
+ * clipboard and screen reader as they are there, with its window options: lines numbered as the document's
+ * (`lineBase`) and the big-document editor always (`alwaysBig`). Moved as the view nears its edge, the caret and
+ * selection kept by byte; the document's error marked where it is in the window. What's typed goes to the core once
+ * the frame is painted.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { PRIVATE } from '@/lib/analytics';
@@ -13,57 +15,10 @@ import { kit } from '@/lib/huge/kit';
 import { PASTE_MAX, TextWindow, type WindowRefusal } from '@/lib/huge/text-window';
 import type { HugeSession } from '@/lib/huge/session';
 import type { HugeStore, HugeUI } from '@/lib/huge/state';
-import type { Editor, EditorEvents } from '@/lib/engine/editor';
+import type { Editor } from '@/lib/engine/editor';
 
 function useHuge<T>(store: HugeStore, select: (s: HugeUI) => T): T {
   return useSyncExternalStore(store.subscribe, () => select(store.get()), () => select(store.get()));
-}
-
-/** What a window's editor uses of the normal editor beyond its API (its own fields and methods: see `numbered`). */
-interface Inner {
-  base: number;
-  topLine(): number;
-  render(force: boolean): void;
-  sc: { top: number; height: number };
-}
-type WindowEditor = Pick<Editor, 'text' | 'caret' | 'selection' | 'lineCol' | 'init' | 'takeOver' | 'select' | 'setCaret' | 'setDiagnostics' | 'focus' | 'destroy'> & Inner;
-
-/**
- * The normal editor numbering its lines from `base` + 1 (a window of the document's), its gutter as wide as those
- * numbers. Made from the engine's own editor class (kit.Editor: nothing imported), overriding two of its methods;
- * null if they aren't there (then the window's lines are numbered from 1, and the view bar says which they are).
- */
-function numbered(E: typeof Editor): (new (el: HTMLElement, ev: EditorEvents) => WindowEditor) | null {
-  const P = E.prototype as unknown as Record<string, unknown>;
-  if (typeof P.gutterHtml !== 'function' || typeof P.layout !== 'function' || typeof P.topLine !== 'function' || typeof P.wantsSurface !== 'function') return null;
-  // (A class over the engine's: TypeScript can't see its private methods, the runtime can.)
-  const Base = E as unknown as new (el: HTMLElement, ev: EditorEvents) => { gutterHtml(first: number, last: number): string[]; layout(): void; wantsSurface(share: number): boolean };
-  class Numbered extends Base {
-    base = 0;
-    /**
-     * The big-document editor for any window: the native textarea lays out its whole text on each key (a window
-     * of 96 KB: ~40 ms a key in Chromium), the big-document editor only the rows in view.
-     */
-    wantsSurface() {
-      return true;
-    }
-    gutterHtml(first: number, last: number): string[] {
-      const g = super.gutterHtml(first, last);
-      const b = this.base;
-      return b ? g.map((h) => h.replace(/>(\d+)/, (_: string, n: string) => '>' + (Number(n) + b))) : g;
-    }
-    layout() {
-      super.layout();
-      const me = this as unknown as { base: number; ls: ArrayLike<number>; cw: number; gutW: number; el: HTMLElement };
-      if (!me.base) return;
-      const gw = Math.round(Math.max(3, String(me.ls.length + me.base).length) * me.cw + 38);
-      if (gw !== me.gutW) {
-        me.gutW = gw;
-        me.el.style.setProperty('--gw', gw + 'px');
-      }
-    }
-  }
-  return Numbered as unknown as new (el: HTMLElement, ev: EditorEvents) => WindowEditor;
 }
 
 /** Lines from a window's edge at which it moves. */
@@ -83,11 +38,11 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
   useEffect(() => {
     let live = true;
     const el = box.current!;
-    let ed: WindowEditor | null = null;
+    let ed: Editor | null = null;
     let lh = 20;
     let moving = false;
     let frame = 0;
-    const E = numbered(kit.Editor) ?? (kit.Editor as unknown as new (el: HTMLElement, ev: EditorEvents) => WindowEditor);
+    const E = kit.Editor;
     const tw = new TextWindow(s.src, {
       sent: () => s.formatTyped(),
       failed: (e) => {
@@ -154,7 +109,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
         tw.broken = false;
         const r = again ? await tw.load(tw.line, 0) : await tw.load(topAbs);
         if (r !== true || !live || ed !== e) return;
-        e.base = tw.line;
+        e.lineBase = tw.line;
         e.init(tw.view);
         e.takeOver();
         marked = -2;
@@ -178,7 +133,7 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
         await tw.flush();
         const line = await s.src.lineOf('raw', byte);
         if ((await tw.load(line)) !== true || !live || !ed) return;
-        ed.base = tw.line;
+        ed.lineBase = tw.line;
         ed.init(tw.view);
         ed.takeOver();
         marked = -2;
@@ -226,7 +181,8 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
         escape: () => void s.exitFormatEdit(),
         copyAll: () => void navigator.clipboard?.writeText(made.text).catch(() => undefined),
       });
-      made.base = tw.line;
+      made.lineBase = tw.line;
+      made.alwaysBig = true;
       made.init(tw.view);
       made.takeOver();
       ed = made;
