@@ -72,6 +72,13 @@ test('English dictionary: client strings are unique and still used by the code',
   assert.deepEqual(unused, [], 'strings the code no longer shows: update the English text in lib/i18n/en/ui.json (same key: translations get flagged as stale) or remove the key');
 });
 
+test('English dictionary: a plural string does not share its key with a plain one', () => {
+  // ui-source.json records one English hash per key, a plural under its base: "x" and "x.one/.other" would share it,
+  // and one of the two would always read as changed since translation.
+  const bases = new Set(keys.filter((k) => PLURAL.test(k)).map((k) => k.replace(PLURAL, '')));
+  assert.deepEqual([...bases].filter((b) => b in en), [], 'give the plural its own key, e.g. app.fooCount.one / .other');
+});
+
 test('control-character templates match the parser diagnostics', () => {
   const cases = {
     'parse.badNumberControl': '-\u0001',

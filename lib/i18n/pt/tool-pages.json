@@ -1573,7 +1573,7 @@
       "Escolha “Abrir arquivo” (Ctrl+O, ou ⌘O no Mac) ou arraste o arquivo para a página. Um arquivo acima de 300 MB abre no modo de arquivos grandes. Um arquivo .json.gz ou .jsonl.gz é descompactado antes.",
       "Navegue na hora: a barra de status mostra quanto já foi indexado e o tempo restante. Expanda a “Árvore” ou mude para “Formatar”, “Tabela” ou “Grafo”. Arrays grandes mostram 1.000 itens por vez, com botões para ver os próximos e ir a um índice.",
       "Pressione Ctrl+F (⌘F) para pesquisar o arquivo inteiro, ou Ctrl+G (⌘G) para ir a uma linha, a uma linha da tabela ou a um caminho como $.records[120000].email.",
-      "Abra “Shape” para ver os tipos, as contagens e os valores de cada caminho em todos os registros, ou “Converter” para gravar CSV, JSON Lines, partes divididas ou os registros que atendem às suas condições em um novo arquivo.",
+      "Abra “Estrutura” para ver os tipos, as contagens e os valores de cada caminho em todos os registros, ou “Converter” para gravar CSV, JSON Lines, partes divididas ou os registros que atendem às suas condições em um novo arquivo.",
       "Edite valores na árvore, na tabela ou no grafo, ou o texto na visualização “Formatar”, e pressione Ctrl+S (⌘S) para salvar."
     ],
     "options": [
@@ -1581,7 +1581,7 @@
       "Arquivos .jsonl e .ndjson abrem como uma lista de registros. Um arquivo .json com vários valores em sequência também abre como lista, com um aviso.",
       "Salvar no mesmo arquivo funciona no Chrome e no Edge, depois que o navegador pede permissão. Isso limpa o histórico de desfazer; salvar com outro nome o mantém. O Firefox e o Safari baixam o arquivo editado. As alterações não salvas ficam guardadas neste navegador e são oferecidas de novo quando você reabre o mesmo arquivo.",
       "Um arquivo .gz grande é descompactado no armazenamento do navegador antes de abrir, então precisa de espaço livre em disco para o tamanho completo. No Firefox e no Safari, os resultados de “Converter” também ficam ali antes do download. Uma janela anônima pode não permitir esse armazenamento.",
-      "A edição e “Converter” ficam disponíveis quando o arquivo está totalmente indexado, e “Converter” precisa de um arquivo sem erros. O “Shape” pode começar enquanto o arquivo ainda está sendo lido.",
+      "A edição e “Converter” ficam disponíveis quando o arquivo está totalmente indexado, e “Converter” precisa de um arquivo sem erros. A “Estrutura” pode começar enquanto o arquivo ainda está sendo lido.",
       "“Localizar” encontra o texto como ele está escrito no arquivo, sem expressões regulares. “Comparar” e “Corrigir entrada” funcionam com documentos de até 300 MB."
     ],
     "faqs": [
@@ -1599,7 +1599,7 @@
       },
       {
         "question": "Posso visualizar um arquivo JSONL ou NDJSON grande?",
-        "answer": "Sim. Um arquivo .jsonl ou .ndjson de qualquer tamanho abre como uma lista de registros, um por linha, na árvore ou na tabela. O “Shape” resume os campos de todos os registros, e “Converter” transforma os registros em um único array JSON ou em um arquivo CSV, ou os divide em arquivos menores."
+        "answer": "Sim. Um arquivo .jsonl ou .ndjson de qualquer tamanho abre como uma lista de registros, um por linha, na árvore ou na tabela. A “Estrutura” resume os campos de todos os registros, e “Converter” transforma os registros em um único array JSON ou em um arquivo CSV, ou os divide em arquivos menores."
       },
       {
         "question": "Posso editar um arquivo JSON grande e salvar?",
@@ -1636,8 +1636,8 @@
       {
         "heading": "Como dividir um arquivo JSON grande",
         "paragraphs": [
-          "Abra o arquivo, escolha “Converter” e depois “Dividir arquivo”. O comando usa o array principal de registros, o array que você selecionar na árvore ou os registros de um arquivo JSON Lines. Divida por registros por parte, megabytes por parte ou número de partes; cada parte é um array JSON ou um arquivo JSON Lines válido. No Chrome e no Edge, “Choose a folder…” grava as partes direto em uma pasta; os outros navegadores baixam as partes em um único arquivo zip.",
-          "Para ficar só com alguns registros, escolha “Extract”. Adicione condições como status é active ou price < 10, exija que todas ou qualquer uma sejam atendidas e grave os registros correspondentes, ou só os primeiros, como JSON, JSON Lines ou CSV."
+          "Abra o arquivo, escolha “Converter” e depois “Dividir arquivo”. O comando usa o array principal de registros, o array que você selecionar na árvore ou os registros de um arquivo JSON Lines. Divida por registros por parte, megabytes por parte ou número de partes; cada parte é um array JSON ou um arquivo JSON Lines válido. No Chrome e no Edge, “Escolher uma pasta…” grava as partes direto em uma pasta; os outros navegadores baixam as partes em um único arquivo zip.",
+          "Para ficar só com alguns registros, escolha “Extrair”. Adicione condições como status é active ou price < 10, exija que todas ou qualquer uma sejam atendidas e grave os registros correspondentes, ou só os primeiros, como JSON, JSON Lines ou CSV."
         ]
       },
       {
