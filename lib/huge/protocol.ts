@@ -48,6 +48,8 @@ export type Request =
   /** Puts back the kept session of this file (summary.session), or drops it. */
   | { id: number; op: 'restoreSession' }
   | { id: number; op: 'dropSession'; keepEdits?: boolean }
+  /** The session set aside (by dropSession(true), or edits before the look ended) on offer again. */
+  | { id: number; op: 'reofferSession' }
   /** Closing: edits not kept yet (a second after the last one) are kept now; replies once they are, with whether they are (then the page ends the worker). */
   | { id: number; op: 'close' };
 
@@ -80,6 +82,7 @@ export type Answer = {
   save: HugeSaved;
   restoreSession: HugeEdited;
   dropSession: null;
+  reofferSession: HugeEdited | null;
   close: { kept: boolean };
 };
 

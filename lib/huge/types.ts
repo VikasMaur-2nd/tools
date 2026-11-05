@@ -165,6 +165,17 @@ export interface HugeSummary {
    * summary saying what it found comes through HugeClient.onSummary.
    */
   session?: HugeSession | null;
+  /**
+   * Whether this tab keeps this document's edits: 'yes'; 'other-tab' (another tab has this file open and keeps it:
+   * edits here aren't kept; this one takes over when that one closes); 'no' (not yet known, or nowhere to keep).
+   */
+  keeping?: 'yes' | 'other-tab' | 'no';
+  /**
+   * A session set aside (dropSession(true) on a first edit while it was offered, or found only once this document
+   * was edited: the look ended late, or another tab let the file go): reofferSession() brings it back; close
+   * deletes it. null: none.
+   */
+  setAside?: HugeSession | null;
 }
 
 /**
