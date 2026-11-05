@@ -437,14 +437,9 @@ test('huge mode: a big .json.gz opens in huge mode; Find, the palette and Ctrl+S
     t.assert(await waitIndexed(page, 30_000), 'decompressed and indexed', await status(page));
     const fname = await page.evaluate(() => window.__vis('.hg-file .fname')?.textContent ?? '');
     t.check(fname.startsWith('big.json') && !fname.includes('.gz'), 'named without .gz', fname);
-    // The palette's view commands reach the session (not the editor behind it).
-    await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
-    await page.keyboard.press(`${MOD}+k`);
-    t.assert(await until(page, () => !!document.querySelector('dialog.palette')?.open, null), 'the palette opens');
-    await page.keyboard.type('tree view');
-    await page.keyboard.press('Enter');
-    t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Tree', null), 'Tree view from the palette switches huge mode\'s view');
-    // Ctrl+F: huge mode's Find, on the decompressed file; a $.path selects that value.
+    // Ctrl+F: huge mode's Find, on the decompressed file; a $.path selects that value (in the Tree, opened by its
+    // tab, which works with or without the session's hook).
+    await page.locator('.hg [role=tab][aria-controls=hg-tree]').click();
     await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
     await page.keyboard.press(`${MOD}+f`);
     t.assert(await until(page, () => !!window.__vis('.hg .findbar input'), null), `${MOD}+F opens huge mode's find bar`);
@@ -457,6 +452,13 @@ test('huge mode: a big .json.gz opens in huge mode; Find, the palette and Ctrl+S
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), page.keyboard.press(`${MOD}+s`)]);
     const saved = readFileSync(await dl.path(), 'utf8');
     t.check(dl.suggestedFilename() === 'big-3.json' && JSON.parse(saved).id === 3, `${MOD}+S saves the selected value`, `${dl.suggestedFilename()}: ${saved.slice(0, 80)}`);
+    // The palette's view commands reach the session too (last: a palette that throws, REVIEW-GPT 7, stops the check).
+    await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press(`${MOD}+k`);
+    t.assert(await until(page, () => !!document.querySelector('dialog.palette')?.open, null), 'the palette opens');
+    await page.keyboard.type('format view');
+    await page.keyboard.press('Enter');
+    t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Format', null), 'Format view from the palette switches huge mode\'s view');
   } finally {
     await t.cleanup?.();
   }
