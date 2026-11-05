@@ -7,18 +7,44 @@
  * children from (a small container's are in its page already: no request). Its positions are bytes; columns
  * on a line are UTF-16 units (colOf/atOf convert).
  */
-import { kids, type JNode, type Kind } from '../json/parser';
+import { kids, type JNode, type Kind, type TapeLink } from '../json/parser';
 import { clip, keyLabel, preview, primText } from '../json/format';
 import { HugeClient } from './client';
 import { PageNodes } from './page';
 import { ARR, BOOL, LIST, NUM, OBJ, STR, type HugeLocation, type HugeNode as CoreNode, type HugeProgress, type HugeSummary } from './types';
-import { PREVIEW, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
+import { CELL, PREVIEW, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
 
-/** What a node was made from: the core's node (read its children from the worker), or a JNode of a page. */
-type Ref = { core: CoreNode } | { page: PageNodes; j: JNode };
+/**
+ * A page of children while it is kept (`view` null once let go: see KEEP). Its small containers' children are
+ * read from it, with no request to the worker.
+ */
+interface Kept {
+  view: PageNodes | null;
+  /** About what holding it costs: its text, its tape, and the strings decoded from it. */
+  bytes: number;
+}
+
+/**
+ * What a container node reads its children from: the core's node (from the worker), and, for one that came whole
+ * in a page, that page while it is kept (its node there by tape index: a node holds no JNode, so it doesn't hold
+ * its page). A page let go, its containers ask the worker like any other, by their place in the file.
+ */
+type Ref = { core: CoreNode; kept?: Kept; zi?: number };
+
+/**
+ * Bytes of pages kept, by all the views together (tree, table, graph, the selection): past it the pages used
+ * longest ago are let go. A page is at most 4 MiB of text; records of a few KB come 200 to a page of ~1 MB.
+ */
+export const KEEP = 64 << 20;
 
 /** How often the summary (depth, pretty lines, the root's count so far) is asked for while indexing (ms). */
 const SUMMARY_EVERY = 1000;
+
+/**
+ * `s` as a string of its own. A page's strings are slices of its text (and slices of them are too), which keep
+ * all of it alive in every engine: a node keeps only its own characters.
+ */
+export const own = (s: string): string => (s.length < 2 ? s : (JSON.parse(JSON.stringify(s)) as string));
 
 const aborted = () => new DOMException('Aborted', 'AbortError');
 const check = (signal?: AbortSignal) => {
@@ -38,6 +64,10 @@ export class CoreSource implements HugeSource {
   private st: IndexState;
   private listeners = new Set<(s: IndexState) => void>();
   private refs = new WeakMap<HugeNode, Ref>();
+  /** Pages kept, used longest ago first, and their bytes (see KEEP). */
+  private kept = new Set<Kept>();
+  private keptBytes = 0;
+  private readonly keep: number;
   /** The last summary, and the root as the views know it. */
   private last: HugeSummary | null = null;
   /** 1 when the root is the LIST of top-level values (it is depth 0 here, its records 1). */
@@ -46,9 +76,13 @@ export class CoreSource implements HugeSource {
   private summaryBusy = false;
   private dead = false;
 
-  /** `client`: made with the progress callback it is given (tests pass one over an in-process worker). */
-  constructor(file: Blob, name: string, client?: (onProgress: (p: HugeProgress) => void) => HugeClient) {
+  /**
+   * `client`: made with the progress callback it is given (tests pass one over an in-process worker). `keep`:
+   * bytes of pages kept (KEEP).
+   */
+  constructor(file: Blob, name: string, client?: (onProgress: (p: HugeProgress) => void) => HugeClient, keep = KEEP) {
     this.name = name;
+    this.keep = keep;
     this.size = file.size;
     this.st = { bytes: 0, done: false, cancelled: false, error: null, status: null, multi: false, jsonl: false, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
     this.doc = client ? client(this.onProgress) : new HugeClient(file, { name }, this.onProgress);
@@ -126,7 +160,43 @@ export class CoreSource implements HugeSource {
   destroy() {
     this.dead = true;
     this.listeners.clear();
+    for (const k of this.kept) k.view = null;
+    this.kept.clear();
+    this.keptBytes = 0;
     this.doc.close();
+  }
+
+  /** Bytes of pages kept now (KEEP), and how many. */
+  get keeping() {
+    return { bytes: this.keptBytes, pages: this.kept.size };
+  }
+
+  /** Keeps a page just read, letting go of the pages used longest ago past `keep` bytes. */
+  private hold(view: PageNodes): Kept {
+    const p = view.page;
+    const t = p.tape;
+    // (The text as UTF-16, the strings decoded from it about as much again, the tape and the offsets map.)
+    const bytes = p.text.length * 4 + t.nodes.byteLength + t.text.byteLength + t.offsets.byteLength + t.extraAt.byteLength + p.map.byteLength;
+    const k: Kept = { view, bytes };
+    this.kept.add(k);
+    this.keptBytes += bytes;
+    for (const old of this.kept) {
+      if (this.keptBytes <= this.keep || old === k) break;
+      this.letGo(old);
+    }
+    return k;
+  }
+
+  private letGo(k: Kept) {
+    k.view = null;
+    this.kept.delete(k);
+    this.keptBytes -= k.bytes;
+  }
+
+  /** `k` was used: let go of it last. */
+  private touch(k: Kept) {
+    this.kept.delete(k);
+    this.kept.add(k);
   }
 
   // ── Nodes ───────────────────────────────────────────────────────────────
@@ -153,13 +223,18 @@ export class CoreSource implements HugeSource {
     return node;
   }
 
-  /** A node of the views for JNode `j` of a page, item `i` of its container, at `depth`. */
-  private fromPage(view: PageNodes, j: JNode, i: number, depth: number): HugeNode {
+  /**
+   * A node of the views for JNode `j` of kept page `k`, item `i` of its container, at `depth`; a string's text at
+   * most `max` characters. Its strings are its own (see `own`), and a container keeps the page only as long as the
+   * page is kept.
+   */
+  private fromPage(k: Kept, view: PageNodes, j: JNode, i: number, depth: number, max = PREVIEW): HugeNode {
+    const key = typeof j.key === 'string' ? own(j.key) : (j.key ?? undefined);
     const stub = view.stub(j);
     if (stub) {
       const node = this.fromCore(stub, i);
       node.depth = depth;
-      node.key = j.key ?? undefined;
+      node.key = key;
       return node;
     }
     const [at, end] = view.span(j);
@@ -168,11 +243,16 @@ export class CoreSource implements HugeSource {
     if (j.t >= ARR) text = preview(j);
     else if (j.t === STR) {
       const s = j.v as string;
-      clipped = s.length > PREVIEW;
-      text = clipped ? s.slice(0, PREVIEW) : s;
+      clipped = s.length > max;
+      text = clipped ? s.slice(0, max) : s;
     } else text = j.t === NUM ? (j.v as string) : j.t === BOOL ? (j.v ? 'true' : 'false') : 'null';
-    const node: HugeNode = { at, end, t: j.t, key: j.key ?? undefined, i, depth, count: j.t >= ARR ? kids(j).length : 0, text, ...(clipped && { clipped: true }) };
-    this.refs.set(node, { page: view, j });
+    const count = j.t >= ARR ? kids(j).length : 0;
+    const node: HugeNode = { at, end, t: j.t, key, i, depth, count, text: own(text), ...(clipped && { clipped: true }) };
+    if (j.t >= ARR) {
+      // (The core's node for it, from its place: what it reads its children from once the page is let go.)
+      const core: CoreNode = { kind: j.t, start: at, end, depth: depth - this.lift, key: key ?? null, count, pretty: -1, prettyLines: null, big: false };
+      this.refs.set(node, { core, kept: k, zi: j.zi });
+    }
     return node;
   }
 
@@ -186,7 +266,7 @@ export class CoreSource implements HugeSource {
     } catch {
       /* as written */
     }
-    node.text = s.slice(0, PREVIEW);
+    node.text = own(s.slice(0, PREVIEW));
     node.clipped = true;
   }
 
@@ -209,35 +289,39 @@ export class CoreSource implements HugeSource {
       s += (i ? ', ' : '') + (isObj ? keyLabel(clip(c.key as string, 40)) + ': ' + v : v);
     }
     if (list.length < node.count && !s.endsWith('…')) s += ', …';
-    node.text = s + (isObj ? '}' : ']');
+    node.text = own(s + (isObj ? '}' : ']'));
   }
 
-  /** Items [from, from + n) of container `c` as nodes of the views. */
-  private async items(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<{ view: PageNodes | null; list: JNode[]; nodes: HugeNode[] }> {
+  /** Items [from, from + n) of container `c` as nodes of the views (and the page they are in, while used). */
+  private async items(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<{ kept: Kept | null; view: PageNodes | null; list: JNode[]; nodes: HugeNode[] }> {
     const ref = this.refs.get(c);
-    if (!ref) return { view: null, list: [], nodes: [] };
-    if ('j' in ref) {
-      // A small container: its items are in its page already.
-      const all = kids(ref.j);
+    if (!ref) return { kept: null, view: null, list: [], nodes: [] };
+    const k = ref.kept;
+    const view = k?.view;
+    if (k && view && ref.zi !== undefined) {
+      // A small container whose page is kept: its items are there already.
+      this.touch(k);
+      const all = kids((view.root!.z as TapeLink).at(ref.zi));
       const list = all.slice(Math.max(0, from), from + n);
-      return { view: ref.page, list, nodes: list.map((j, k) => this.fromPage(ref.page, j, from + k, c.depth + 1)) };
+      return { kept: k, view, list, nodes: list.map((j, i) => this.fromPage(k, view, j, from + i, c.depth + 1)) };
     }
     const page = await this.doc.children(ref.core, Math.max(0, from), n);
     check(signal);
-    const view = new PageNodes(page);
-    const list = view.children;
-    const nodes = list.map((j, k) => this.fromPage(view, j, from + k, c.depth + 1));
+    const pv = new PageNodes(page);
+    const kp = this.hold(pv);
+    const list = pv.children;
+    const nodes = list.map((j, i) => this.fromPage(kp, pv, j, from + i, c.depth + 1));
     // Big children come with their previews; past the core's 64 a page, they are made here.
     const big: Promise<void>[] = [];
     for (const x of nodes) {
       const r = this.refs.get(x);
-      if (!r || !('core' in r) || x.partial || x.text) continue;
+      if (!r || r.kept || x.partial || x.text) continue;
       if (x.t === STR) big.push(this.stubText(x).catch(() => undefined));
       else if (x.t >= ARR && x.count) big.push(this.stubPreview(x, r.core).catch(() => undefined));
     }
     if (big.length) await Promise.all(big);
     check(signal);
-    return { view, list, nodes };
+    return { kept: kp, view: pv, list, nodes };
   }
 
   async root(signal?: AbortSignal): Promise<HugeNode> {
@@ -273,16 +357,18 @@ export class CoreSource implements HugeSource {
   }
 
   async rows(c: HugeNode, from: number, n: number, cols: number, signal?: AbortSignal): Promise<HugeRow[]> {
-    const { view, list, nodes } = await this.items(c, from, n, signal);
+    const { kept, view, list, nodes } = await this.items(c, from, n, signal);
     return nodes.map((node, k) => {
       const j = list[k];
       let cells: Map<string, HugeNode> | null = null;
-      if (view && node.t === OBJ && !view.stub(j)) {
+      if (kept && view && node.t === OBJ && !view.stub(j)) {
         cells = new Map();
         const members = kids(j);
         for (let m = 0; m < members.length && cells.size < cols; m++) {
-          const key = members[m].key as string;
-          if (!cells.has(key)) cells.set(key, this.fromPage(view, members[m], m, node.depth + 1));
+          if (cells.has(members[m].key as string)) continue;
+          // (Keyed by the cell's own copy of the name: the member's is a slice of the page.)
+          const cell = this.fromPage(kept, view, members[m], m, node.depth + 1, CELL);
+          cells.set(cell.key as string, cell);
         }
       }
       return { node, cells };

@@ -42,6 +42,18 @@ export interface HugeNode {
 
 /** Characters of a string a node carries at most (a row shows less). */
 export const PREVIEW = 2000;
+/** Characters of a table cell's string (all the table draws of it). */
+export const CELL = 300;
+
+/** About what holding node `n` costs (its text and name, as UTF-16, and the object): the caches' byte budgets. */
+export const nodeBytes = (n: HugeNode) => 96 + 2 * (n.text.length + (typeof n.key === 'string' ? n.key.length : 0));
+
+/** nodeBytes of a table row and its cells. */
+export function rowBytes(r: HugeRow): number {
+  let b = nodeBytes(r.node);
+  if (r.cells) for (const c of r.cells.values()) b += nodeBytes(c) + 32;
+  return b;
+}
 
 export type LineMode = 'raw' | 'pretty';
 
