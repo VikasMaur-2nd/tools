@@ -169,7 +169,8 @@ export class Explored {
       of.set(j, ex);
       return j;
     };
-    const root = make(this.root, null, 0);
+    // (At their depth in the document: the view announces a path from the part's root as "$…" and the rest.)
+    const root = make(this.root, null, this.path.length);
     return { root, of, more, notes };
   }
 }

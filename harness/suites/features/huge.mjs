@@ -306,12 +306,12 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
     await page.keyboard.press('ArrowDown');
     found = /more/.test(await live());
   }
-  t.check(found && /^\[50\], \+2,450 more, \$\[50\]$/.test(await live()), 'a "+N more" row, announced as such', await live());
+  t.check(found && /^\[50\], \+2,450 more, \$…\[50\]$/.test(await live()), 'a "+N more" row, announced as such', await live());
   const n0 = await shown();
   await page.keyboard.press('Enter');
   t.check(await until(page, (n) => Number(((window.__vis('.hg .hg-gwhere')?.textContent ?? '').match(/([\d,]+) values?/)?.[1] ?? '0').replace(/,/g, '')) > n, n0), 'Enter reads the next items', await where());
   // (From $.users the root reads 50 at a time: the first new one is [50]; not read yet, it says its size.)
-  t.check(await until(page, () => /^\[50\], \{\d+\}, \$\[50\]$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'and selects the first of them', await live());
+  t.check(await until(page, () => /^\[50\], \{\d+\}, \$…\[50\]$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'and selects the first of them', await live());
   // The tree follows the graph.
   await page.keyboard.press('Alt+2');
   t.check(await until(page, () => /^50:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'the tree shows the value chosen in the graph', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
@@ -328,6 +328,17 @@ test('huge mode: Graph shows the part explored, "+N more" reads the next items, 
     await page.getByRole('menuitem', { name: 'Export PNG' }).click();
   })()]);
   t.check(/-graph\.png$/.test(dl.suggestedFilename()), 'Export PNG saves the graph', dl.suggestedFilename());
+  // Find from the Graph: a match outside the part shows the part around it, the match selected.
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('u2400@');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users[2400]', null, { timeout: 10_000 }), 'Find: the graph around a match outside its part', await where());
+  t.check(await until(page, () => /^email, string, "u2400@example\.com", \$…\.email$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'with the match selected', await live());
+  // A $.path in Find: the Graph stays, around that value.
+  await page.locator('.hg .findbar input').fill('$.users[1234].tags');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users[1234].tags', null, { timeout: 10_000 }), 'Find $.path: the graph from there', await where());
+  const tab = await page.evaluate(() => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent);
+  t.check(tab === 'Graph', 'and the Graph stays open', tab);
+  await page.keyboard.press('Escape');
   // Alt+7: Shape.
   await page.keyboard.press('Alt+7');
   t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Shape', null), 'Alt+7 opens Shape');

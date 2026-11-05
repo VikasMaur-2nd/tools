@@ -6,7 +6,7 @@
  * (app/huge.css), so the first load carries none of it.
  */
 import '@/app/huge.css';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { PRIVATE } from '@/lib/analytics';
 import { act } from '@/lib/engine/instance';
 import { useT } from '@/lib/i18n/react';
@@ -180,6 +180,7 @@ function ViewBar({ s }: { s: HugeSession }) {
   const t = useT();
   const mod = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl+';
   const browse = view === 'format' || view === 'tree' || view === 'table';
+  const find = <IconBtn icon="search" label={`${t('Find')}${t(' · ')}${mod}F`} on={findOpen} onClick={() => (findOpen ? s.closeFind() : s.openFind())} />;
   return (
     <div className="toolbar vbar" role="toolbar" aria-label={t('Viewer')}>
       <Tabs s={s} />
@@ -190,10 +191,10 @@ function ViewBar({ s }: { s: HugeSession }) {
         {view === 'table' && <TableWhere s={s} />}
         {view === 'graph' && <GraphWhere s={s} />}
       </div>
-      {view === 'graph' && <GraphIcons s={s} />}
+      {view === 'graph' && <GraphIcons s={s} find={find} />}
       {browse && (
         <div className="vicons">
-          <IconBtn icon="search" label={`${t('Find')}${t(' · ')}${mod}F`} on={findOpen} onClick={() => (findOpen ? s.closeFind() : s.openFind())} />
+          {find}
           <IconBtn icon="copy" label="Copy value" onClick={() => void s.copyValue()} />
           <IconBtn icon="download" label="Save value as file" onClick={() => s.saveValue()} />
           <Menu label="More options">
@@ -245,7 +246,7 @@ function ErrorBanner({ s }: { s: HugeSession }) {
 
 /** Find in the file (Ctrl+F): each opening is a new bar, its query selected. */
 function FindBar({ s }: { s: HugeSession }) {
-  const open = useHuge(s.ui, (u) => u.find.open && (u.view === 'format' || u.view === 'tree' || u.view === 'table'));
+  const open = useHuge(s.ui, (u) => u.find.open && (u.view === 'format' || u.view === 'tree' || u.view === 'table' || u.view === 'graph'));
   const seq = useHuge(s.ui, (u) => u.find.seq);
   return open ? <FindInput key={seq} s={s} /> : null;
 }
@@ -296,7 +297,7 @@ function FindInput({ s }: { s: HugeSession }) {
           run(e.target.value);
         }}
         onKeyDown={onKey}
-        placeholder={t(view === 'tree' || view === 'table' ? 'Find, or $.path' : 'Find')}
+        placeholder={t(view === 'format' ? 'Find' : 'Find, or $.path')}
         aria-label={t('Find in file')}
         spellCheck={false}
         autoComplete="off"
@@ -503,9 +504,10 @@ function GraphWhere({ s }: { s: HugeSession }) {
   );
 }
 
-function GraphIcons({ s }: { s: HugeSession }) {
+function GraphIcons({ s, find }: { s: HugeSession; find: ReactNode }) {
   return (
     <div className="vicons">
+      {find}
       <IconBtn icon="copy" label="Copy value" onClick={() => void s.copyValue()} />
       <Menu label="More options">
         {(close) => (

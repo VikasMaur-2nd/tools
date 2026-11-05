@@ -591,7 +591,7 @@ export class HugeSession {
   /** Searches the file for `q` (a $.path in the tree goes there). */
   runFind(q: string) {
     const view = this.ui.get().view;
-    if ((view === 'tree' || view === 'table') && (q[0] === '$' || (q[0] === '/' && q.length > 1))) {
+    if ((view === 'tree' || view === 'table' || view === 'graph') && (q[0] === '$' || (q[0] === '/' && q.length > 1))) {
       const segs = parsePath(q);
       if (segs) {
         this.find.stop();
@@ -636,6 +636,8 @@ export class HugeSession {
     this.tree?.setFind(q, node.at);
     this.tree?.reveal(chain, null);
     this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree');
+    // (In the Graph: the match selected there, or the part around it shown.)
+    if (view === 'graph') void this.graphFor();
   }
 
   /** Goes to the value at byte `at` (the Shape panel's places): the tree, opened to it, and selected. */
@@ -663,16 +665,19 @@ export class HugeSession {
     }
     const node = chain[chain.length - 1];
     if (q !== undefined) this.ui.set({ find: { ...this.ui.get().find, q, total: 1, index: 0, done: true, read: 1 } });
-    if (this.ui.get().view === 'table') {
+    const view = this.ui.get().view;
+    if (view === 'table') {
       if (node.t >= ARR) this.showTable(node, segs);
       else if (chain.length > 1) {
         this.showTable(chain[chain.length - 2], segs.slice(0, -1));
         this.table?.gotoRow(node.i, true);
       }
-    } else if (this.ui.get().view !== 'tree') this.setView('tree');
+    } else if (view !== 'tree' && view !== 'graph') this.setView('tree');
     this.tree?.setFind('', node.at);
     this.tree?.reveal(chain, null);
     this.select(node, segs, 'tree');
+    // (The Graph stays: the value selected there, or the part around it shown.)
+    if (view === 'graph') void this.graphFor();
   }
 
   // ── Go to ──────────────────────────────────────────────────────────────
