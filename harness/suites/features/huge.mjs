@@ -58,6 +58,8 @@ test('huge mode: tree pages of 1,000, Show next, Go to index, keys, copy value a
   t.check(/Valid JSON/.test(await waitIndexed(page) ? await status(page) : ''), 'valid', await status(page));
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   t.assert(await loaded(page, '#hg-tree'), 'tree rows read');
+  // (The root comes first as it is while indexing, then with its count.)
+  await until(page, () => /\{2\}/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null);
   let rows = await rowsText(page);
   t.check(rows[0]?.includes('root') && rows[0]?.includes('{2}'), 'the root and its count', rows.slice(0, 3));
   // Open users: 2,500 items, a page of 1,000 listed.
@@ -170,6 +172,9 @@ test('huge mode: Table pages an array of records; Go to row', async (t) => {
   await waitIndexed(page);
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-table]')?.click());
   t.assert(await loaded(page, '#hg-table'), 'rows read');
+  // (The list comes first as it is while indexing: its columns once rows are read.)
+  await until(page, () => document.querySelectorAll('#hg-table .tb-th').length > 1, null);
+  await until(page, () => /1,200 ×/.test(window.__vis('.hg .vmain .dims')?.textContent ?? ''), null);
   const head = await page.evaluate(() => [...document.querySelectorAll('#hg-table .tb-th')].map((h) => h.textContent));
   t.check(head.join() === '#,id,name,email,active,tags,score', 'columns from the records', head);
   const dims = await page.evaluate(() => window.__vis('.hg .vmain .dims')?.textContent);
@@ -184,14 +189,15 @@ test('huge mode: Table pages an array of records; Go to row', async (t) => {
   t.check(/JSON Lines · 1,200 records/.test(st), 'JSON Lines status', st);
 });
 
-test('huge mode: an invalid file says where, and Go to error shows its line', async (t) => {
+test('huge mode: a file with a problem says what and where, as the normal path, and Go to error shows its line', async (t) => {
   const { page } = t;
   await t.open('/');
   await openHuge(t, broken);
   await waitIndexed(page);
-  const banner = await until(page, () => window.__vis('.hg .banner.err')?.textContent, null);
-  t.check(/Invalid JSON/.test(banner ?? '') && /Ln 329, Col 14/.test(banner ?? ''), 'the error and its place', banner);
-  await page.locator('.hg .banner.err .btn').click();
+  // (An extra comma: the normal path's status calls it fixable, "Not strict JSON"; huge mode reads up to it.)
+  const banner = await until(page, () => window.__vis('.hg .banner.warn')?.textContent, null);
+  t.check(/Not strict JSON/.test(banner ?? '') && /Ln 329, Col 14: Unexpected extra comma/.test(banner ?? ''), 'the issue and its place', banner);
+  await page.locator('.hg .banner.warn .btn').click();
   t.check(await until(page, () => document.querySelector('#hg-format .hg-cur .cv-n')?.textContent === '329', null), 'Go to error shows line 329 as written', await page.evaluate(() => document.querySelector('#hg-format .hg-cur')?.textContent));
   const sb = await status(page);
   t.check(/Ln 329, Col 14/.test(sb), 'the status bar says it too', sb);
@@ -203,18 +209,18 @@ test('huge mode: several top-level values are a list, with the normal path\'s no
   await openHuge(t, several);
   await until(page, () => /Multiple top-level values/.test(window.__vis('.hg-sb')?.textContent ?? ''), null);
   const banner = await page.evaluate(() => window.__vis('.hg .banner.warn')?.textContent);
-  t.check(/Not strict JSON/.test(banner ?? '') && /Multiple top-level values \(wrapped in an array\)/.test(banner ?? ''), 'the notice', banner);
+  t.check(/Not strict JSON/.test(banner ?? '') && /Ln 1, Col 10: Multiple top-level values \(wrapped in an array\)/.test(banner ?? ''), 'the normal path\'s notice, at the second value', banner);
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   t.check(await until(page, () => /\[3\]/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null), 'the root lists the three values', await page.evaluate(() => window.__vis('#hg-tree .tv-r')?.textContent));
   await page.locator('.hg .banner.warn .btn').click();
-  t.check(await until(page, () => /^1:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'Go to the second value', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
+  t.check(await until(page, () => document.querySelector('#hg-format .hg-errl .cv-n')?.textContent === '1' && !!document.querySelector('#hg-format .hg-errc'), null), 'Go to error marks where the second value starts', await page.evaluate(() => document.querySelector('#hg-format .hg-cur')?.textContent));
 });
 
 test('huge mode: progress while indexing, browse meanwhile, Cancel', async (t) => {
   const { page } = t;
   await t.open('/');
   await openHuge(t, pretty, { sim: { speed: 120_000, latency: 10 } });
-  const st = await until(page, () => /Indexing .* of .*/.test(window.__vis('.hg-sb')?.textContent ?? '') && window.__vis('.hg-sb')?.textContent, null);
+  const st = await until(page, () => /Indexing [\d.]+ KB of/.test(window.__vis('.hg-sb')?.textContent ?? '') && window.__vis('.hg-sb')?.textContent, null);
   t.check(/Indexing [\d.]+ KB of [\d.]+ KB/.test(st ?? ''), 'progress in the status bar', st);
   t.check(await page.evaluate(() => !!window.__vis('.hg-bar[role=progressbar]')), 'a progress bar');
   // Browse while indexing: the tree is there, its counts growing.

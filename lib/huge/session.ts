@@ -154,6 +154,7 @@ export class HugeSession {
     try {
       const root = await this.src.root();
       if (this.dead) return;
+      if (!this.root && !performance.getEntriesByName('tk:huge:root').length) performance.mark('tk:huge:root');
       this.root = root;
       this.ui.set({ noRoot: false });
       this.tableAt = { node: root, path: [] };
@@ -248,8 +249,10 @@ export class HugeSession {
       this.report(st.error ? 'error' : st.cancelled ? 'cancelled' : 'done');
       if (st.error && st.bytes < 1) this.host.toast(`${this.meta.name} isn't valid JSON`, 'err');
     }
-    // The views take the counts that grew, at most once a second (and at once when it ends).
+    // The views take the counts that grew, at most once a second (and at once when it ends, or when the
+    // Format view's first lines are there to read).
     if (ended) this.grow(true);
+    else if (this.lines && !this.lines.count && this.src.lineCount(this.lines.mode) > 0) this.grow(false);
     // (Four times as often in the first seconds: the first rows and counts show at once.)
     else if (!this.growTimer) this.growTimer = setTimeout(() => this.grow(false), Math.max(0, (now - this.began < 3000 ? GROW_EVERY / 4 : GROW_EVERY) - (now - this.grewAt)));
   };
@@ -267,6 +270,8 @@ export class HugeSession {
       void this.src.root().then((r) => {
         if (this.dead) return;
         this.root = r;
+        // (A tree shown meanwhile has the root as it was: it takes this one.)
+        this.tree?.updateRoot(r);
         const t = this.tableAt.node;
         if (t && t.at === r.at && t.depth === r.depth) {
           this.tableAt.node = r;
@@ -602,20 +607,18 @@ export class HugeSession {
     return true;
   }
 
-  /** Several top-level values: goes to the second (where the normal path's notice points). */
-  gotoSecond() {
-    if (this.ui.get().view === 'format' && this.lines) {
-      void this.src.resolve([1]).then((chain) => {
-        if (chain && !this.dead) void this.showLine(chain[chain.length - 1].at, false);
-      });
-      return;
-    }
-    void this.gotoPath([1]);
+  /** The problem the status bar shows: the normal path's (once the file is read), else where reading stopped. */
+  problem() {
+    const st = this.src.state();
+    const b = st.status;
+    if (b && b.kind !== 'valid') return { kind: b.kind, msg: b.msg ?? '', at: b.at, line: b.line, col: b.col };
+    if (b?.warnings && b.msg) return { kind: 'warning' as const, msg: b.msg, at: b.at, line: b.line, col: b.col };
+    return st.error ? { kind: 'error' as const, ...st.error } : null;
   }
 
-  /** Go to error: its line in the Format view (as written), and its value in the tree. */
+  /** Go to error (or the issue, or the first warning): its line in the Format view, as written, marked. */
   async gotoError() {
-    const err = this.src.state().error;
+    const err = this.problem();
     if (!err) return;
     this.setMode('raw');
     if (this.ui.get().view !== 'format') this.setView('format');

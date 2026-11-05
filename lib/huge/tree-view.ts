@@ -49,6 +49,7 @@ export class HugeTreeView {
   /** A selection made before its row's node was read: reported once it is. */
   private selPending: 'pointer' | 'key' | null = null;
   private dead = false;
+  private marked = false;
 
   constructor(
     readonly el: HTMLElement,
@@ -82,6 +83,16 @@ export class HugeTreeView {
     this.ro.disconnect();
     this.sc.destroy();
     cancelAnimationFrame(this.raf);
+  }
+
+  /** The root as the index has it now (its count grew, or it ended): what is open stays open. */
+  updateRoot(root: HugeNode) {
+    const o = this.model.root;
+    if (!o || o.node.at !== root.at || o.node.depth !== root.depth) return;
+    o.node = root;
+    this.cache.refresh(!root.partial);
+    this.model.recount();
+    this.redraw();
   }
 
   setRoot(root: HugeNode) {
@@ -250,11 +261,20 @@ export class HugeTreeView {
     const cur = this.model.cursorRow();
     const keep = new Set<string>();
     let html = '';
+    let items = false;
     for (let r = first; r < last; r++) {
       const row = this.model.rowAt(r);
       if (!row) break;
-      if (row.kind === 'node' && row.parent && !row.open) keep.add(this.cache.pageKey(row.parent.node, row.i));
+      if (row.kind === 'node' && row.parent && !row.open) {
+        keep.add(this.cache.pageKey(row.parent.node, row.i));
+        items ||= !!this.nodeOf(row);
+      }
       html += this.row(row, r, r === cur);
+    }
+    // (Tests and timing read when the first items of the file were drawn.)
+    if (items && !this.marked) {
+      this.marked = true;
+      performance.mark('tk:huge:rows');
     }
     // (Reads for rows scrolled away are dropped.)
     this.cache.keepOnly(keep);

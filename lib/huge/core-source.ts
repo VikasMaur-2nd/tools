@@ -17,12 +17,8 @@ import { PREVIEW, type HugeLine, type HugeNode, type HugeRow, type HugeSource, t
 /** What a node was made from: the core's node (read its children from the worker), or a JNode of a page. */
 type Ref = { core: CoreNode } | { page: PageNodes; j: JNode };
 
-/** How often the summary (depth, pretty lines) is asked for while indexing (ms). */
+/** How often the summary (depth, pretty lines, the root's count so far) is asked for while indexing (ms). */
 const SUMMARY_EVERY = 1000;
-/** How often a container still being indexed has its count so far worked out (ms). */
-const COUNT_EVERY = 2000;
-/** Children read at once to work that out. */
-const PROBE = 1000;
 
 const aborted = () => new DOMException('Aborted', 'AbortError');
 const check = (signal?: AbortSignal) => {
@@ -48,15 +44,13 @@ export class CoreSource implements HugeSource {
   private lift = 0;
   private summaryAt = 0;
   private summaryBusy = false;
-  /** Children read so far of containers still being indexed (by start byte), and when last worked out. */
-  private known = new Map<number, { count: number; at: number }>();
   private dead = false;
 
   /** `client`: made with the progress callback it is given (tests pass one over an in-process worker). */
   constructor(file: Blob, name: string, client?: (onProgress: (p: HugeProgress) => void) => HugeClient) {
     this.name = name;
     this.size = file.size;
-    this.st = { bytes: 0, done: false, cancelled: false, error: null, multi: false, jsonl: false, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
+    this.st = { bytes: 0, done: false, cancelled: false, error: null, status: null, multi: false, jsonl: false, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
     this.doc = client ? client(this.onProgress) : new HugeClient(file, { name }, this.onProgress);
     this.doc.ready.then(
       (s) => this.onSummary(s),
@@ -74,7 +68,7 @@ export class CoreSource implements HugeSource {
   }
 
   private onProgress = (p: HugeProgress) => {
-    if (this.dead || this.st.done) return;
+    if (this.dead || this.st.done || this.st.cancelled) return;
     this.set({ ...this.st, bytes: p.bytes, nodes: p.nodes, lines: p.lines + 1, records: p.records });
     // Depth and pretty lines come with the summary: asked for now and then.
     const now = performance.now();
@@ -96,11 +90,14 @@ export class CoreSource implements HugeSource {
     this.last = s;
     this.lift = s.root?.kind === LIST ? 1 : 0;
     const e = s.error;
+    const b = s.status;
     this.set({
       bytes: s.done ? (e ? Math.min(this.size, e.pos) : this.size) : this.st.bytes,
       done: s.done,
-      cancelled: false,
+      cancelled: s.stopped,
       error: e ? { msg: e.msg, at: e.pos, line: e.line, col: e.col } : null,
+      // (The normal path's status bar: the error, a fixable issue such as several top-level values, or valid.)
+      status: b ? { kind: b.kind, msg: b.msg, at: b.pos, line: b.line, col: b.col, warnings: b.warnings, more: b.more } : null,
       multi: s.multi,
       jsonl: s.jsonl,
       nodes: s.nodes,
@@ -120,6 +117,12 @@ export class CoreSource implements HugeSource {
     return () => void this.listeners.delete(f);
   }
 
+  /** Stops indexing: what was read stays browsable (the summary that follows says `stopped`). */
+  cancel() {
+    if (this.st.done || this.st.cancelled) return;
+    void this.doc.stop().catch(() => undefined);
+  }
+
   destroy() {
     this.dead = true;
     this.listeners.clear();
@@ -131,7 +134,8 @@ export class CoreSource implements HugeSource {
   /** A node of the views for the core's node `n`, item `i` of its container. */
   private fromCore(n: CoreNode, i: number): HugeNode {
     const list = n.kind === LIST;
-    const partial = n.count === null && n.kind >= ARR;
+    // (Still being read: its count is so far. The core says so, from round 2; count null is the same.)
+    const partial = n.kind >= ARR && (!!n.partial || n.count === null);
     const node: HugeNode = {
       at: list ? -1 : n.start,
       end: partial || n.end < 0 ? -1 : list ? this.size : n.end,
@@ -139,9 +143,11 @@ export class CoreSource implements HugeSource {
       key: n.key ?? undefined,
       i,
       depth: list ? 0 : n.depth + this.lift,
-      count: n.count ?? this.known.get(n.start)?.count ?? 0,
+      count: n.count ?? 0,
       ...(partial && { partial: true }),
-      text: '',
+      // A big child's preview, from the core (a container's first children; a string's decoded start).
+      text: n.preview ?? '',
+      ...(n.kind === STR && { clipped: true }),
     };
     this.refs.set(node, { core: n });
     return node;
@@ -206,20 +212,10 @@ export class CoreSource implements HugeSource {
     node.text = s + (isObj ? '}' : ']');
   }
 
-  /**
-   * Can container `c` be paged now? While indexing, a page reaching a big child still being read makes the
-   * core build all of that child's text read so far (seconds, and past 512 MB a failure: reported to the
-   * core), so a container whose count isn't known yet is paged only once indexing ends (the list of JSON
-   * Lines records excepted: its records are small).
-   */
-  private pageable(c: HugeNode, ref: Ref) {
-    return this.st.done || !c.partial || ('core' in ref && ref.core.kind === LIST);
-  }
-
   /** Items [from, from + n) of container `c` as nodes of the views. */
   private async items(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<{ view: PageNodes | null; list: JNode[]; nodes: HugeNode[] }> {
     const ref = this.refs.get(c);
-    if (!ref || !this.pageable(c, ref)) return { view: null, list: [], nodes: [] };
+    if (!ref) return { view: null, list: [], nodes: [] };
     if ('j' in ref) {
       // A small container: its items are in its page already.
       const all = kids(ref.j);
@@ -231,11 +227,11 @@ export class CoreSource implements HugeSource {
     const view = new PageNodes(page);
     const list = view.children;
     const nodes = list.map((j, k) => this.fromPage(view, j, from + k, c.depth + 1));
-    // Big children: a string's start, a container's first items, for their rows.
+    // Big children come with their previews; past the core's 64 a page, they are made here.
     const big: Promise<void>[] = [];
     for (const x of nodes) {
       const r = this.refs.get(x);
-      if (!r || !('core' in r) || x.partial) continue;
+      if (!r || !('core' in r) || x.partial || x.text) continue;
       if (x.t === STR) big.push(this.stubText(x).catch(() => undefined));
       else if (x.t >= ARR && x.count) big.push(this.stubPreview(x, r.core).catch(() => undefined));
     }
@@ -247,96 +243,33 @@ export class CoreSource implements HugeSource {
   async root(signal?: AbortSignal): Promise<HugeNode> {
     const s = await this.doc.summary();
     check(signal);
-    if (!this.st.done) this.onSummary(s);
+    if (!this.st.done && !this.st.cancelled) this.onSummary(s);
     if (!s.root) throw new Error('No JSON value');
-    const node = this.fromCore(s.root, 0);
-    if (node.partial) node.count = await this.countSoFar(s.root, signal);
-    return node;
-  }
-
-  /**
-   * How many children of `n` (a container still being indexed) are read so far, at most every COUNT_EVERY ms.
-   * One page from the last count known says it when it ends at an open child (the one being read: nothing
-   * can follow it yet) or short. Only a full page of closed items (an array of records being read) is
-   * followed by probes further on, which the index answers with a checkpoint seek; a probe past an open
-   * child would make it parse all that child's text read so far, so there is none.
-   */
-  private async countSoFar(n: CoreNode, signal?: AbortSignal): Promise<number> {
-    if (n.kind === LIST) return this.st.records;
-    // (Not paged while indexing: see pageable.)
-    if (!this.st.done) return 0;
-    const was = this.known.get(n.start);
-    const now = performance.now();
-    if (was && now - was.at < COUNT_EVERY) return was.count;
-    const from = was ? Math.max(0, was.count - 1) : 0;
-    const page = await this.doc.children(n, from, PROBE);
-    check(signal);
-    let lo = from + page.count;
-    if (page.count === PROBE && page.more) {
-      const view = new PageNodes(page);
-      const kids = view.children;
-      const last = kids.length ? view.stub(kids[kids.length - 1]) : null;
-      if (!last || last.count !== null) {
-        const has = async (k: number) => (await this.doc.children(n, k, 1)).count > 0;
-        let step = PROBE * 4;
-        let hi = lo + step;
-        while (await has(hi - 1)) {
-          check(signal);
-          lo = hi;
-          step *= 4;
-          hi = lo + step;
-        }
-        while (hi - lo > 1) {
-          const mid = Math.floor((lo + hi) / 2);
-          if (await has(mid - 1)) lo = mid;
-          else hi = mid;
-        }
-      }
-    }
-    this.known.set(n.start, { count: lo, at: performance.now() });
-    return lo;
+    return this.fromCore(s.root, 0);
   }
 
   async children(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<HugeNode[]> {
-    const { nodes } = await this.items(c, from, n, signal);
-    // A child still being indexed (the last read): its count so far.
-    for (const x of nodes) {
-      const ref = this.refs.get(x);
-      if (x.partial && ref && 'core' in ref) x.count = await this.countSoFar(ref.core, signal);
-    }
-    return nodes;
+    return (await this.items(c, from, n, signal)).nodes;
   }
 
-  /** The nodes from the root down to the one `loc` found. */
-  private async chainOf(loc: HugeLocation | null, signal?: AbortSignal): Promise<HugeNode[] | null> {
+  /** The nodes from the root down to the one `loc` found (its chain, from the core in one reply). */
+  private chainOf(loc: HugeLocation | null): HugeNode[] | null {
     if (!loc) return null;
-    const s = this.last ?? (await this.doc.summary());
-    if (!s.root) return null;
-    const up: HugeNode[] = [];
-    let cur: HugeLocation = loc;
-    // (The root itself: found as the LIST, or as the value with no parent.)
-    const isRoot = (x: HugeLocation) => x.node.kind === LIST || (!this.lift && x.parent === null);
-    while (!isRoot(cur)) {
-      up.push(this.fromCore(cur.node, cur.index));
-      const p = cur.parent;
-      if (!p || p.kind === LIST || (!this.lift && p.depth === 0 && p.start === s.root.start)) break;
-      const next = await this.doc.locate(p.start);
-      check(signal);
-      if (!next) break;
-      cur = next;
-    }
-    const root = this.fromCore(s.root, 0);
-    if (root.partial) root.count = await this.countSoFar(s.root, signal);
-    return [root, ...up.reverse()];
+    if (loc.node.kind === LIST || !loc.chain.length) return [this.fromCore(loc.node, 0)];
+    return [...loc.chain.map(({ node, index }) => this.fromCore(node, index)), this.fromCore(loc.node, loc.index)];
   }
 
   async resolve(path: Seg[], signal?: AbortSignal) {
     if (!path.length) return [await this.root(signal)];
-    return this.chainOf(await this.doc.resolve(path), signal);
+    const loc = await this.doc.resolve(path);
+    check(signal);
+    return this.chainOf(loc);
   }
 
   async locate(at: number, signal?: AbortSignal) {
-    return (await this.chainOf(await this.doc.locate(at), signal)) ?? [await this.root(signal)];
+    const loc = await this.doc.locate(at);
+    check(signal);
+    return this.chainOf(loc) ?? [await this.root(signal)];
   }
 
   async rows(c: HugeNode, from: number, n: number, cols: number, signal?: AbortSignal): Promise<HugeRow[]> {

@@ -51,6 +51,7 @@ export class HugeLinesView {
   private qn = '';
   private cs = false;
   private dead = false;
+  private marked = false;
 
   constructor(
     readonly el: HTMLElement,
@@ -170,6 +171,10 @@ export class HugeLinesView {
       out += this.row(k, line);
     }
     this.rowsEl.innerHTML = out;
+    if (!this.marked && this.lines.get(first)) {
+      this.marked = true;
+      performance.mark('tk:huge:lines');
+    }
     if (this.toCol) this.scrollToCol();
     if (widest !== this.widest) {
       this.widest = widest;
