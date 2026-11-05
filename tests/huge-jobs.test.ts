@@ -170,29 +170,39 @@ test('sinks: gzip output decompresses to the bytes written; a ZIP64 archive of p
   assert.ok(inner.closed);
   assert.deepEqual(new Uint8Array(gunzipSync(inner.bytes())), data);
   // A zip of two entries, read back by its central directory.
-  let all = new Uint8Array(1 << 16);
-  const f = {
-    name: 'z',
-    size: 0,
-    write(b: Uint8Array) {
-      all.set(b, f.size);
-      f.size += b.length;
-    },
-    writeAt(b: Uint8Array, at: number) {
-      all.set(b, at);
-    },
-    close: async () => {},
-    abort: async () => {},
-    file: async () => new File([], 'z'),
+  /** A file in memory (OpfsFile's shape). */
+  const memFile = (name: string) => {
+    const m = {
+      data: new Uint8Array(1 << 16),
+      name,
+      size: 0,
+      write(b: Uint8Array) {
+        m.data.set(b, m.size);
+        m.size += b.length;
+      },
+      writeAt(b: Uint8Array, at: number) {
+        m.data.set(b, at);
+      },
+      readAt(b: Uint8Array, at: number) {
+        const n = Math.max(0, Math.min(b.length, m.size - at));
+        b.set(m.data.subarray(at, at + n));
+        return n;
+      },
+      close: async () => {},
+      abort: async () => {},
+      file: async () => new File([], name),
+    };
+    return m;
   };
-  const zip = new ZipWriter(f);
+  const f = memFile('z');
+  const zip = new ZipWriter(f, memFile('z.cd'));
   for (const [name, text] of [['a.jsonl', '{"a":1}\n'], ['b.jsonl', 'é'.repeat(1000)]]) {
     const e = zip.entry(name);
     await e.write(enc.encode(text));
     await e.close();
   }
   await zip.close();
-  all = all.slice(0, f.size);
+  const all = f.data.slice(0, f.size);
   // End of central directory: entries and the ZIP64 record.
   const v = new DataView(all.buffer);
   assert.equal(v.getUint32(all.length - 22, true), 0x06054b50);

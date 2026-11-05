@@ -22,10 +22,17 @@ export interface ServePort {
   onmessage: ((e: { data: unknown }) => void) | null;
 }
 
+/** The temp file a ZIP's central directory is spooled to. */
+const spoolName = (name: string) => `${name}.cd`;
+
 const partName = (names: string, k: number) => names.replace('{n}', String(k + 1).padStart(4, '0'));
 
-/** The job's outputs for `out`; `opfs`: the OPFS file written, if any (to hand back). */
-async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs: Outputs; done: () => Promise<File | undefined> }> {
+/**
+ * The job's outputs for `out`: `done` (all written: the OPFS file to hand back, if any) and `abort` (stopped
+ * or failed: every file it opened closed and deleted, whether or not the job got to write to it).
+ */
+async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs: Outputs; done: () => Promise<File | undefined>; abort: () => Promise<void> }> {
+  const none = async () => {};
   // (What reaches the file: after gzip, if any.)
   const counted = (s: Sink): Sink => ({
     write: (b) => {
@@ -38,23 +45,33 @@ async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs:
   const gz = (s: Sink, on: boolean) => (on ? gzipSink(counted(s)) : counted(s));
   switch (out.kind) {
     case 'none':
-      return { outs: { main: () => Promise.reject(new JobError('No output')), part: () => Promise.reject(new JobError('No output')) }, done: async () => undefined };
+      return { outs: { main: () => Promise.reject(new JobError('No output')), part: () => Promise.reject(new JobError('No output')) }, done: async () => undefined, abort: none };
     case 'file':
       return {
         outs: { main: async () => gz(writableSink(await out.handle.createWritable()), out.gzip), part: () => Promise.reject(new JobError('No output')) },
         done: async () => undefined,
+        // (The job aborts its writable: the picked file keeps what it had.)
+        abort: none,
       };
-    case 'dir':
+    case 'dir': {
+      // (Parts made in the picked folder: deleted if the split doesn't finish, as a stopped save keeps nothing.)
+      const made: string[] = [];
       return {
         outs: {
           main: () => Promise.reject(new JobError('No output')),
           part: async (k) => {
-            const fh = await out.handle.getFileHandle(partName(out.names, k), { create: true });
+            const name = partName(out.names, k);
+            const fh = await out.handle.getFileHandle(name, { create: true });
+            made.push(name);
             return gz(writableSink(await fh.createWritable()), out.gzip);
           },
         },
         done: async () => undefined,
+        abort: async () => {
+          for (const name of made) await out.handle.removeEntry(name).catch(() => {});
+        },
       };
+    }
     case 'opfs': {
       let f: OpfsFile | null = null;
       return {
@@ -63,25 +80,31 @@ async function outputsFor(out: Out, written: { bytes: number }): Promise<{ outs:
           part: () => Promise.reject(new JobError('No output')),
         },
         done: async () => (f ? f.file() : undefined),
+        abort: async () => {
+          await f?.abort().catch(() => {});
+        },
       };
     }
     case 'zip': {
       const f = await opfsFile(out.name);
-      const zip = new ZipWriter(f);
-      let used = false;
+      let spool: OpfsFile;
+      try {
+        spool = await opfsFile(spoolName(out.name));
+      } catch (e) {
+        await f.abort().catch(() => {});
+        throw e;
+      }
+      const zip = new ZipWriter(f, spool);
       return {
         outs: {
           main: () => Promise.reject(new JobError('No output')),
-          part: async (k) => {
-            used = true;
-            return gz(zip.entry(partName(out.names, k)), out.gzip);
-          },
+          part: async (k) => gz(zip.entry(partName(out.names, k)), out.gzip),
         },
         done: async () => {
           await zip.close();
-          void used;
           return f.file();
         },
+        abort: () => zip.abort(),
       };
     }
   }
@@ -177,11 +200,11 @@ export function serve(port: ServePort) {
   const reply = (r: StreamReply) => port.postMessage(r);
 
   const run = async (q: Extract<StreamRequest, { op: 'run' }>) => {
-    let done: () => Promise<File | undefined> = async () => undefined;
+    let abort: () => Promise<void> = async () => {};
     try {
       const written = { bytes: 0 };
       const o = await outputsFor(q.out, written);
-      done = o.done;
+      abort = o.abort;
       let last = 0;
       const result = await runJob(blobSource(q.file, q.skip), q.job, o.outs, {
         stopped: () => stops.has(q.id),
@@ -193,12 +216,14 @@ export function serve(port: ServePort) {
         },
         report: (report) => reply({ id: q.id, type: 'shape', report }),
       });
-      const file = await done();
+      const file = await o.done();
       if (q.out.kind !== 'none') result.bytes = written.bytes;
       reply({ id: q.id, type: 'done', result, file });
     } catch (e) {
-      // (A temporary output that won't be downloaded goes at once.)
+      // (What it opened is closed and deleted: a temporary output that won't be downloaded goes at once.)
+      await abort().catch(() => {});
       if (q.out.kind === 'opfs' || q.out.kind === 'zip') await removeTemp(q.out.name);
+      if (q.out.kind === 'zip') await removeTemp(spoolName(q.out.name));
       reply({ id: q.id, type: 'error', error: messageOf(e), at: e instanceof JobError ? e.at : -1 });
     } finally {
       stops.delete(q.id);

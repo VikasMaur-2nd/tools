@@ -6,14 +6,14 @@
  */
 import { stringify } from '../../json/format';
 import type { JNode } from '../../json/parser';
-import { CsvColumns, CsvError, CsvRows, CsvScan, Trees, type CsvOptions } from './csv';
+import { CsvColumns, CsvError, CsvRows, CsvScan, CsvTokens, Trees, type CsvOptions } from './csv';
 import { matches, type Filter } from './filter';
-import { Bytes, type Sink } from './out';
+import { Bytes, SMALL, type Sink } from './out';
 import { pass, type Source } from './pass';
 import { Reformat } from './reformat';
 import { Seek, type SeekTarget } from './seek';
 import { Shape, type ShapeReport } from './shape';
-import { ARR, Walker, WalkError, type Visitor } from './walk';
+import { ARR, SLICE, Walker, WalkError, type Visitor } from './walk';
 
 /** Bytes [start, end) of the document (after a byte order mark): one value, or (`multi`) a list of values. */
 export interface Scope {
@@ -111,7 +111,9 @@ class Split implements Visitor {
 
   private record() {
     if (this.cur) return;
-    const out = new Bytes();
+    const out = new Bytes(SMALL);
+    // (A record that expands pauses the walker too: its part is written as it goes.)
+    out.onFull = () => (this.walker().pause = true);
     const f = new Reformat(out, { indent: this.job.format === 'json' ? this.job.indent : '', lines: this.job.format === 'jsonl' });
     f.open(ARR);
     this.cur = { out, f, k: this.parts++, n: 0 };
@@ -176,8 +178,18 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
     stopped: hooks.stopped,
     progress: (done: number) => hooks.progress?.(k * size + done, of * size),
   });
+  /** The walker reading now: an output that fills up pauses it. */
+  let current: Walker | null = null;
+  const pressure = (out: Bytes) => {
+    out.onFull = () => {
+      if (current) current.pause = true;
+    };
+    return out;
+  };
   const walk = async (v: Visitor, k = 0, of = 1, flush?: () => Promise<void>, done?: () => boolean, parts = false, w?: (w: Walker) => void) => {
-    const walker = new Walker(v, { multi: scope.multi, parts });
+    // (Writers get strings in parts above a slice: they write them as they come, never whole.)
+    const walker = new Walker(v, { multi: scope.multi, parts, keep: parts ? SLICE : undefined });
+    current = walker;
     w?.(walker);
     try {
       await pass(src, scope.start, scope.end, walker, { ...opts(k, of), flush, done });
@@ -192,7 +204,7 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
   /** One output: written as the pass goes, committed at the end, dropped on failure. */
   const single = async (run: (out: Bytes, flush: () => Promise<void>) => Promise<void>) => {
     const sink = await outs.main();
-    const out = new Bytes();
+    const out = pressure(new Bytes());
     const flush = () => out.drain(sink);
     try {
       await run(out, flush);
@@ -236,10 +248,17 @@ export async function runJob(src: Source, job: Job, outs: Outputs = noSink(), ho
           await walk(cols, 0, 2);
           plan = scan.plan(scan.rootKind);
         }
-        const rows = new CsvRows(plan, out, job.csv);
-        const p2 = new Picked(job.filter, job.limit, (n) => rows.record(n));
-        await walk(new Trees(p2.each), 1, 2, flush, () => p2.done);
-        result.records = rows.rows;
+        if (!picked && CsvTokens.supports(plan)) {
+          // (Every record, as its tokens come: no records made.)
+          const rows = new CsvTokens(plan, out, job.csv);
+          await walk(rows, 1, 2, flush);
+          result.records = rows.rows;
+        } else {
+          const rows = new CsvRows(plan, out, job.csv);
+          const p2 = new Picked(job.filter, job.limit, (n) => rows.record(n));
+          await walk(new Trees(p2.each), 1, 2, flush, () => p2.done);
+          result.records = rows.rows;
+        }
       });
       return result;
 

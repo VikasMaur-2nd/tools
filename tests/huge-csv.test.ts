@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { records, toCsv, type CsvOptions } from '../lib/convert/xlsx';
 import { parse, type JNode } from '../lib/json/parser';
 import { Bytes, MemorySink } from '../lib/huge/stream/out';
-import { CsvColumns, CsvRows, CsvScan, Trees } from '../lib/huge/stream/csv';
+import { CsvColumns, CsvRows, CsvScan, CsvTokens, Trees } from '../lib/huge/stream/csv';
 import { Walker } from '../lib/huge/stream/walk';
 import { genStrict } from './oracle/tape';
 import { rng, type Rng } from './oracle/compare';
@@ -86,7 +86,23 @@ function streamed(r: Rng, bytes: Uint8Array, a: number, e: number, multi: boolea
   walk(new Trees((n) => rows.record(n)));
   const sink = new MemorySink();
   void out.drain(sink);
-  return sink.text();
+  const text = sink.text();
+  // The second pass from tokens (every table but key / value rows): the same text.
+  if (CsvTokens.supports(plan)) {
+    const out2 = new Bytes();
+    const tokens = new CsvTokens(plan, out2, o);
+    walk(tokens as unknown as Trees);
+    const sink2 = new MemorySink();
+    void out2.drain(sink2);
+    const t2 = sink2.text();
+    if (t2 !== text) {
+      let k = 0;
+      while (k < t2.length && t2[k] === text[k]) k++;
+      assert.fail(`CsvTokens (${plan.mode}) doc ${show(new TextDecoder().decode(bytes.subarray(a, e)))} at ${k}: want ${JSON.stringify(text.slice(Math.max(0, k - 60), k + 120))}\ngot  ${JSON.stringify(t2.slice(Math.max(0, k - 60), k + 120))}`);
+    }
+    assert.equal(tokens.rows, rows.rows, 'rows');
+  }
+  return text;
 }
 
 function check(r: Rng, doc: string, name: string, o: CsvOptions): boolean {

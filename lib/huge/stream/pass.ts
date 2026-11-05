@@ -1,8 +1,8 @@
 /**
  * One streamed pass over bytes [start, end) of a document: chunks read ahead (two 16 MiB reads in flight,
  * `slice().arrayBuffer()`: the read the research measured fastest across engines for a whole-file pass), fed
- * to a walker in order, what the visitor wrote handed to its sinks between chunks, progress, and a stop that
- * takes effect between chunks.
+ * to a walker in order, what the visitor wrote handed to its sinks between chunks and whenever too much waits
+ * (the job pauses the walker then), progress, and a stop that takes effect between chunks and pauses.
  */
 import type { ByteSource } from '../../json/tape-wasm';
 import type { Walker } from './walk';
@@ -85,7 +85,12 @@ export async function pass(src: Source, start: number, end: number, walker: Walk
       i = walker.feed(b, at, i);
       if (o.done?.()) return;
       if (i >= b.length) break;
+      // (Paused: its output goes to the sink first; a stop request gets its turn now and then.)
       await o.flush?.();
+      if (performance.now() - yielded > 30) {
+        await nextTask();
+        yielded = performance.now();
+      }
       if (o.stopped?.()) throw new Stopped();
     }
     at += b.length;
