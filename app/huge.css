@@ -903,3 +903,17 @@ html[data-huge] .statusbar .cursor {
     display: none;
   }
 }
+
+/* Shape's toolbar grows with what wraps (whatever order the style sheets load in): on a phone, the filter field
+   takes a line of its own instead of being cut under the grid's header. */
+.hg .hs-bar {
+  height: auto;
+}
+
+@media (max-width: 760px) {
+  .hg .hs-bar .hs-q {
+    flex: 1 1 100%;
+    width: auto;
+    order: 10;
+  }
+}

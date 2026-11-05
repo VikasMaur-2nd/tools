@@ -268,6 +268,70 @@ test('huge mode: what shows the document is private (session replay records an e
   t.check(leaks.length === 0, 'file name, views, status and paths are private', leaks);
 });
 
+test('huge mode: Graph shows the part explored, "+N more" reads the next items, Up and From selected, export', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, pretty);
+  await waitIndexed(page);
+  // Alt+4 is Graph, as in the normal tool; Alt+7 is Shape.
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Alt+4');
+  t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Graph', null), 'Alt+4 opens Graph');
+  t.assert(await until(page, () => !!window.__vis('#hg-graph .gv-ctl:not([hidden])') && /\d+ values/.test(window.__vis('.hg .hg-gwhere')?.textContent ?? ''), null, { timeout: 15_000 }), 'the graph is drawn', await page.evaluate(() => window.__vis('.hg .hg-gwhere')?.textContent));
+  const where = () => page.evaluate(() => window.__vis('.hg .hg-gwhere')?.textContent ?? '');
+  const shown = async () => Number(((await where()).match(/([\d,]+) values?/)?.[1] ?? '0').replace(/,/g, ''));
+  t.check(/\$/.test(await where()), 'from the root, nothing selected', await where());
+  const before = await shown();
+  t.check(before > 0 && before <= 2000, 'a bounded part', before);
+  // Down the root card's rows to "+N more" (users is shown from its first 20), Enter reads the next ones.
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Alt+2');
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('$.users');
+  await until(page, () => /^users:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Alt+4');
+  // The graph shows $.users already (the root's item): it is selected there.
+  const live = () => page.evaluate(() => window.__vis('#hg-graph .gv-live')?.textContent ?? '');
+  t.check(await until(page, () => /\$\.users$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'the tree\'s selection is selected in the graph', await live());
+  await page.locator('#hg-graph').focus();
+  await page.keyboard.press('r');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users', null), 'R: the graph from the selected value', await where());
+  await page.keyboard.press('Home');
+  let found = false;
+  for (let k = 0; k < 40 && !found; k++) {
+    await page.keyboard.press('ArrowDown');
+    found = /more/.test(await live());
+  }
+  t.check(found && /^\[50\], \+2,450 more, \$\[50\]$/.test(await live()), 'a "+N more" row, announced as such', await live());
+  const n0 = await shown();
+  await page.keyboard.press('Enter');
+  t.check(await until(page, (n) => Number(((window.__vis('.hg .hg-gwhere')?.textContent ?? '').match(/([\d,]+) values?/)?.[1] ?? '0').replace(/,/g, '')) > n, n0), 'Enter reads the next items', await where());
+  // (From $.users the root reads 50 at a time: the first new one is [50]; not read yet, it says its size.)
+  t.check(await until(page, () => /^\[50\], \{\d+\}, \$\[50\]$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'and selects the first of them', await live());
+  // The tree follows the graph.
+  await page.keyboard.press('Alt+2');
+  t.check(await until(page, () => /^50:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'the tree shows the value chosen in the graph', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
+  // R: from the selected value; U: a level up.
+  await page.keyboard.press('Alt+4');
+  await page.locator('#hg-graph').focus();
+  await page.keyboard.press('r');
+  t.check(await until(page, () => /\$\.users\[50\]/.test(window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? ''), null), 'R from an item read by "+N more"', await where());
+  await page.keyboard.press('u');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users', null), 'U a level up', await where());
+  // Export PNG of what is shown.
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), (async () => {
+    await page.locator('.hg .vicons button[aria-label="More options"]').click();
+    await page.getByRole('menuitem', { name: 'Export PNG' }).click();
+  })()]);
+  t.check(/-graph\.png$/.test(dl.suggestedFilename()), 'Export PNG saves the graph', dl.suggestedFilename());
+  // Alt+7: Shape.
+  await page.keyboard.press('Alt+7');
+  t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Shape', null), 'Alt+7 opens Shape');
+  const tips = await page.evaluate(() => [...document.querySelectorAll('.hg [role=tab]')].map((b) => `${b.textContent}=${b.dataset.tip}`).join(' '));
+  t.check(tips === 'Format=Alt+1 Tree=Alt+2 Table=Alt+3 Graph=Alt+4 Convert=Alt+5 Compare=Alt+6 Shape=Alt+7', 'tabs numbered as the normal tool, Shape seventh', tips);
+});
+
 // Screenshots for review: light and dark, desktop and phone (only when HUGE_SHOTS names a folder).
 for (const [name, opts] of [
   ['desktop-light', {}],
@@ -313,7 +377,14 @@ for (const [name, opts] of [
     await loaded(page, '#hg-format');
     await shot(`${name}-format-find.png`);
     await view('graph');
-    await shot(`${name}-graph-notyet.png`);
+    await until(page, () => !!window.__vis('#hg-graph .gv-ctl:not([hidden])'), null, { timeout: 15_000 });
+    await shot(`r3-${name}-graph.png`);
+    await view('shape');
+    await until(page, () => !!window.__vis('#hg-shape .hs-grid'), null, { timeout: 20_000 });
+    await shot(`r3-${name}-shape.png`);
+    await view('convert');
+    await until(page, () => !!window.__vis('.hg .view button, .hg .view [role=radio]'), null, { timeout: 10_000 });
+    await shot(`r3-${name}-convert.png`);
     await openHuge(t, broken);
     await waitIndexed(page);
     await view('table');

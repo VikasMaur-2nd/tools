@@ -325,6 +325,8 @@ export class HugeGraph {
     const first = ex.kids?.[before];
     this.want = first ? p.pathOf(first) : null;
     this.draw(false);
+    // (The session, the tree and the path bar follow: the view selects it without saying so.)
+    if (first) this.host.select(first.h, p.pathOf(first));
   }
 
   /** A container shown by its size: its first levels. */
@@ -342,6 +344,7 @@ export class HugeGraph {
     if (!ex.kids?.length) return this.full();
     this.want = p.pathOf(ex);
     this.draw(false);
+    this.host.select(ex.h, p.pathOf(ex));
   }
 
   /** No room left: said in the toolbar (the host's `changed` has `full`). */

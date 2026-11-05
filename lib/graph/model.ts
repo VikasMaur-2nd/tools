@@ -253,6 +253,8 @@ let notes: WeakMap<JNode, string> | null = null;
 export const setValueNotes = (m: WeakMap<JNode, string> | null) => {
   notes = m;
 };
+/** The note standing in for `n`'s value, if huge mode set one. */
+export const valueNote = (n: JNode) => (notes === null ? undefined : notes.get(n));
 
 /** Value column text of a row: a primitive, `{}`/`[]`, an inline array, or a nested container's size (`{3}`, `[12]`). */
 export function valueText(n: JNode, build = true): string {
