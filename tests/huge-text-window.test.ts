@@ -367,7 +367,8 @@ test('REVIEW-2 #6: a broken document all read: the window holds the error\'s lin
   w.edited(w.view.slice(0, c) + w.view.slice(c + 1));
   await w.flush();
   st = await ended(src);
-  // (The core doesn't count the lines past an error an edit made yet: UI-NOTES 24. The window reads them itself.)
+  // (The lines past the error an edit made are counted after it's all read again, in steps: core round 8.)
+  await counted(src, good.split('\n').length);
   const broken = st.error!.line - 1;
   const before = [w.line, w.line + w.lines - 1];
   assert.equal(await w.load(w.line, 0), true);

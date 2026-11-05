@@ -214,27 +214,10 @@ export class TextWindow {
     // (Where each line starts: one column of each is enough. One line more: where the last one ends.)
     const ls = await this.src.lines('raw', from, n + 1, 1, '');
     if (!ls.length || this.gone) return 'none';
-    const st = this.src.state();
-    const end = st.docSize ?? this.src.size;
+    const end = this.src.state().docSize ?? this.src.size;
     const starts = ls.map((l) => l.at);
-    let lines = Math.min(n, starts.length);
-    // A document all read, with an error: the core's raw lines past it come as it counts them (in steps after
-    // `done`; core round 7), and after an edit that breaks the document they stopped at the error (UI-NOTES 24).
-    // Lines the core doesn't give yet are found in the text, as far as a window goes, so the error's line can be
-    // seen and fixed by typing (REVIEW-2 #6). Once the core gives them all, this reads nothing more.
-    if (st.done && st.error && starts.length < WINDOW_LINES + 1) {
-      const a = starts[starts.length - 1];
-      const b = Math.min(end, Math.max(starts[0] + WINDOW_BYTES, a + LINE_MAX) + 1);
-      const { text, bad } = await this.src.textAt(a, b, b - a + 8);
-      if (this.gone) return 'none';
-      for (let i = text.indexOf('\n'); i >= 0 && starts.length < WINDOW_LINES + 1; i = text.indexOf('\n', i + 1)) {
-        const s = a + utf8Bytes(text, 0, i + 1, bad);
-        if (s < end) starts.push(s);
-      }
-      // (Short of the document's end: its last line read may go on; only whole lines.)
-      const whole = b >= end || starts.length > WINDOW_LINES ? starts.length : starts.length - 1;
-      lines = Math.max(1, Math.min(WINDOW_LINES, whole));
-    }
+    // (A broken document all read: the core's raw lines go on past its error, counted after `done`: core round 7.)
+    const lines = Math.min(n, starts.length);
     const endOf = (k: number) => (k < starts.length ? starts[k] : end);
     const start = starts[0];
     let k = lines;
