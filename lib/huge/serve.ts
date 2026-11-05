@@ -160,6 +160,36 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       if (id !== watchId) readySent = true;
       reply({ id, ok: true, value: summary(), done: id !== watchId });
     }
+    if (doc!.counting) await countOn();
+  };
+
+  /** A broken document's lines past its error: counted on in steps; then the summary through the watch stream. */
+  let countingOn = false;
+  const countOn = async () => {
+    if (countingOn) return;
+    countingOn = true;
+    try {
+      while (doc && doc.counting) {
+        if (held) await new Promise<void>((done) => (resume = done));
+        try {
+          if (doc.stepLines(performance.now() + SLICE)) break;
+        } catch (e) {
+          if (!(e instanceof Wait)) throw e;
+          await e.until();
+          continue;
+        }
+        await nextTask();
+      }
+    } finally {
+      countingOn = false;
+    }
+    if (doc && doc.done && !doc.counting) push();
+  };
+
+  /** A summary through the watch stream (owed, if it isn't asked for yet: sent when it is). */
+  const push = () => {
+    if (watchId >= 0) reply({ id: watchId, ok: true, value: summary(), done: false });
+    else pushOwed = true;
   };
 
   /** After an edit: reads on in steps (if it isn't all read yet), and keeps the session soon. */
@@ -262,8 +292,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
           looked = true;
           // (Ended after the open's summary went out: a summary through the watch stream says what it found.)
           if (!readySent || !doc) return;
-          if (watchId >= 0) reply({ id: watchId, ok: true, value: summary(), done: false });
-          else pushOwed = true;
+          push();
         });
     }
     opened();
@@ -479,6 +508,8 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
           return reply({ id: m.id, ok: true, value: doc.prettyClose(m.line), done: true });
         case 'raw':
           return reply({ id: m.id, ok: true, value: doc.rawLines(m.from, m.count, m.max), done: true });
+        case 'lineAt':
+          return reply({ id: m.id, ok: true, value: doc.lineAt(m.pos), done: true });
         case 'locate':
           return reply({ id: m.id, ok: true, value: doc.locate(m.pos), done: true });
         case 'resolve':

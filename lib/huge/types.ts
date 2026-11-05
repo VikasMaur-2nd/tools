@@ -126,8 +126,13 @@ export interface HugeSummary {
   nodes: number;
   /** Deepest nesting (the root's children are 1). */
   depth: number;
-  /** Raw lines (line breaks + 1). */
+  /** Raw lines (line breaks + 1): the whole file's (a broken document's go on past the error: see `counting`). */
   lines: number;
+  /**
+   * Broken and all read: its lines past the error are being counted (`lines` grows; a summary comes through
+   * onSummary when they all are).
+   */
+  counting?: boolean;
   /** Lines of the pretty form (whatever the indent). */
   prettyLines: number;
   /** The first problem (the document is valid up to it; views show what comes before). */
@@ -238,6 +243,11 @@ export interface HugeLines {
    * many bytes each ([unit offset, bytes] pairs; null: none), for utf8.ts's utf8Bytes / utf16Of (columns ↔ bytes).
    */
   bad?: (Float64Array | null)[];
+  /**
+   * Raw, once all read: the error's line among them (its index here) and where on it (bytes from its start; a column:
+   * utf16Of(text, byte, bad)). A broken document's raw lines go on past the error, to the file's end.
+   */
+  error?: { line: number; byte: number };
   /** Full length of each line: UTF-16 units (pretty) or bytes (raw). */
   length: Float64Array;
   /** Pretty: the byte where each line's node starts (a closing line: its container's end - 1). Raw: where each line starts. */

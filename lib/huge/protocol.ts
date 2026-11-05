@@ -13,6 +13,8 @@ export type Request =
   | { id: number; op: 'prettyClose'; line: number }
   | { id: number; op: 'raw'; from: number; count: number; max: number }
   | { id: number; op: 'locate'; pos: Bytes }
+  /** The raw line (0-based) byte `pos` is on (once all read: anywhere, past an error too; -1: not read yet). */
+  | { id: number; op: 'lineAt'; pos: Bytes }
   /** `at`: per segment, the child's index where known (duplicate names: which member). */
   | { id: number; op: 'resolve'; path: Seg[]; at?: number[] }
   | { id: number; op: 'text'; start: Bytes; end: Bytes; max: number }
@@ -57,6 +59,7 @@ export type Answer = {
   prettyClose: number;
   raw: HugeLines;
   locate: HugeLocation | null;
+  lineAt: number;
   resolve: HugeLocation | null;
   text: { text: string; cut: boolean; bad?: Float64Array };
   find: FindBatch;

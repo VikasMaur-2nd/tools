@@ -114,6 +114,11 @@ export class HugeClient {
     return this.ask('locate', { pos });
   }
 
+  /** The raw line (0-based) byte `pos` is on: once all read, anywhere (past a broken document's error too); -1: not read yet. */
+  lineAt(pos: Bytes): Promise<number> {
+    return this.ask('lineAt', { pos });
+  }
+
   /**
    * The value at `path` (`$.records[5000000].name`, `/records/5000000/name`, or segments), or null. `at`: per
    * segment, the child's index in its container where known (-1: by name): with duplicate names, which member.

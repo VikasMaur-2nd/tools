@@ -50,6 +50,8 @@ const REREAD_PER_MS = 1 << 17;
 const DENSE_PAST = 1 << 17;
 /** Bytes before a failure from which its error is placed (nearFail), when a value ends there. */
 const NEAR_FAIL = 2048;
+/** Bytes between the samples of a broken document's line count past its error (HugeDoc.past). */
+const LINE_SAMPLE = 1 << 20;
 /** Stats of a parse (lib.rs stats()). */
 const STATS = 19;
 
@@ -260,10 +262,86 @@ export class HugeDoc {
   /** Where the skeleton failed (-1: it didn't), and the line breaks before it. */
   private failedAt = -1;
   private failLines = 0;
+  /**
+   * A broken document's lines past its error (the index stops there), once it's done: counted on in steps
+   * (stepLines: a scan for line breaks), with samples every LINE_SAMPLE bytes ([byte, breaks before it] pairs, never
+   * between a \r and its \n) for raw lines and lineAt there. `at`: how far it has counted; `cr`: the byte before it
+   * is a \r (null: not read yet).
+   */
+  private past: { at: number; breaks: number; cr: boolean | null; samples: number[] } | null = null;
 
   /** Line breaks read (to where the parse failed, if it did). */
   private breaks(st: Float64Array): number {
-    return this.done && this.failedAt >= 0 ? this.failLines : st[9];
+    return this.done && this.failedAt >= 0 ? (this.past ? this.past.breaks : this.failLines) : st[9];
+  }
+
+  /** Whether a broken document's lines past its error are still being counted (stepLines; summary.counting). */
+  get counting(): boolean {
+    return this.done && !!this.past && this.past.at < this.src.size;
+  }
+
+  /**
+   * Counts on a broken document's lines past its error until `until` (a performance.now() value): whether all are
+   * counted. Reads first, then counts (a Wait leaves nothing half done: ask again).
+   */
+  stepLines(until = Infinity): boolean {
+    const p = this.past;
+    if (!p || !this.done) return true;
+    if (p.cr === null) {
+      const cr = p.at > 0 && this.src.read(p.at - 1, 1)[0] === 13;
+      p.cr = cr;
+      if (!cr) p.samples.push(p.at, p.breaks);
+    }
+    while (p.at < this.src.size) {
+      const len = Math.min(LINE_SAMPLE, this.src.size - p.at);
+      const b = this.src.read(p.at, len);
+      p.breaks += breaksIn(b, p.cr);
+      p.cr = b[len - 1] === 13;
+      p.at += len;
+      if (!p.cr) p.samples.push(p.at, p.breaks);
+      if (performance.now() >= until) break;
+    }
+    return p.at >= this.src.size;
+  }
+
+  /** The last sample of the count past the error at or before byte `pos` (its index in the samples; -1: none). */
+  private sampleAt(pos: number): number {
+    const s = this.past?.samples;
+    if (!s || !s.length || s[0] > pos) return -1;
+    let lo = 0;
+    let hi = s.length / 2 - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (s[mid * 2] <= pos) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo * 2;
+  }
+
+  /**
+   * The raw line (0-based) byte `pos` is on: once the document is all read, anywhere (past a broken one's error too:
+   * from the count past it); while it's read, up to the front (-1 past it).
+   */
+  lineAt(pos: Bytes): number {
+    pos = Math.max(0, Math.min(pos, this.src.size));
+    const j = this.done && this.failedAt >= 0 && pos > this.failedAt ? this.sampleAt(pos) : -1;
+    if (j >= 0) {
+      const s = this.past!.samples;
+      let at = s[j];
+      let breaks = s[j + 1];
+      let cr = false;
+      while (at < pos) {
+        const len = Math.min(LINE_SAMPLE, pos - at);
+        const b = this.src.read(at, len);
+        breaks += breaksIn(b, cr);
+        cr = b[len - 1] === 13;
+        at += len;
+      }
+      return breaks;
+    }
+    if (!this.done && this.front && pos > this.front.pos) return -1;
+    const k = Math.max(0, Math.min(this.lastK, this.index.at(pos)));
+    return lineCol(this.src, this.index, pos, k).line - 1;
   }
 
   /** The skeleton failed: where, why, and its place there (the error is made from it, maybe after a Wait). */
@@ -393,6 +471,8 @@ export class HugeDoc {
     this.done = true;
     this.pendingFinish = false;
     this.ms = performance.now() - this.t0;
+    // (Broken: its lines past the error are counted on, in steps.)
+    this.past = this.failedAt >= 0 ? { at: this.failedAt, breaks: this.failLines, cr: null, samples: [] } : null;
     // (Regions parsed while reading may end where the document did then.)
     this.regions.clear();
     this.regionBytes = 0;
@@ -441,6 +521,7 @@ export class HugeDoc {
       nodes: st[1],
       depth: st[4],
       lines: this.breaks(st) + 1,
+      ...(this.counting ? { counting: true } : {}),
       prettyLines: st[1] + st[2] + (multi ? 2 : 0),
       error: this.error,
       status: this.status(),
@@ -615,6 +696,7 @@ export class HugeDoc {
   /** Not all read any more (from the index's last live checkpoint on): the document's facts, error and end to be found again. */
   private unread() {
     this.done = false;
+    this.past = null;
     this.pendingFinish = false;
     this.final = null;
     this.error = null;
@@ -1793,7 +1875,8 @@ export class HugeDoc {
   rawLines(from: number, count: number, max: number): HugeLines {
     const ix = this.index;
     const st = this.stats();
-    const limit = this.front ? this.front.pos : this.src.size;
+    // (All read, broken or not: the bytes are all there, past an error too.)
+    const limit = this.done || !this.front ? this.src.size : this.front.pos;
     const total = this.done ? this.breaks(st) + 1 : (this.front ? this.front.s.lines : ix.lines[ix.n - 1]) + 1;
     const n = Math.max(0, Math.min(count, total - from));
     const text: string[] = [];
@@ -1803,8 +1886,21 @@ export class HugeDoc {
     // The first line's start: after the from-th break, counted from the last checkpoint before it.
     let at = 0;
     if (from > 0 && n > 0) {
-      const k = Math.max(0, Math.min(this.lastK, ix.lastAtMost(ix.lines, from - 1)));
-      at = afterBreaks(this.src, ix.pos[k], from - ix.lines[k], limit);
+      const sm = this.past?.samples;
+      if (this.done && sm && sm.length && from > sm[1]) {
+        // (Past a broken document's error: from the last sample of its count before the line's break.)
+        let lo = 0;
+        let hi = sm.length / 2 - 1;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >> 1;
+          if (sm[mid * 2 + 1] < from) lo = mid;
+          else hi = mid - 1;
+        }
+        at = afterBreaks(this.src, sm[lo * 2], from - sm[lo * 2 + 1], limit);
+      } else {
+        const k = Math.max(0, Math.min(this.lastK, ix.lastAtMost(ix.lines, from - 1)));
+        at = afterBreaks(this.src, ix.pos[k], from - ix.lines[k], limit);
+      }
     }
     let j = 0;
     let bad: (Float64Array | null)[] | null = null;
@@ -1827,6 +1923,16 @@ export class HugeDoc {
     }
     const out: HugeLines = { from, text, cut: cut.subarray(0, j), length: length.subarray(0, j), pos: pos.subarray(0, j), total };
     if (bad) out.bad = Array.from({ length: j }, (_, k) => bad![k] ?? null);
+    // (The error's line among them: where on it, in bytes.)
+    const e = this.done ? this.error : null;
+    if (e) {
+      for (let k = 0; k < j; k++) {
+        if (e.pos >= pos[k] && e.pos <= pos[k] + length[k]) {
+          out.error = { line: k, byte: e.pos - pos[k] };
+          break;
+        }
+      }
+    }
     return out;
   }
 
@@ -2203,6 +2309,14 @@ function evenBackslashes(b: Uint8Array): boolean {
   let n = 0;
   for (let i = b.length - 1; i >= 0 && b[i] === 92; i--) n++;
   return n % 2 === 0;
+}
+
+/** Line breaks in `b` (\r\n, \r and \n each one; `cr`: the byte before it is a \r, so a \n first is that one's). */
+function breaksIn(b: Uint8Array, cr: boolean): number {
+  let n = 0;
+  for (let i = b.indexOf(13); i >= 0; i = b.indexOf(13, i + 1)) n++;
+  for (let i = b.indexOf(10); i >= 0; i = b.indexOf(10, i + 1)) if (i > 0 ? b[i - 1] !== 13 : !cr) n++;
+  return n;
 }
 
 /** Whether byte `pos` is in one of the [start, end) pairs of `d`. */
