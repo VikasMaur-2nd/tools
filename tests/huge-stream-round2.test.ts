@@ -8,6 +8,8 @@ import { formatDoc } from '../lib/json/format';
 import { parse } from '../lib/json/parser';
 import { runJob, type Outputs } from '../lib/huge/stream/jobs';
 import { Bytes, MemorySink, type Sink } from '../lib/huge/stream/out';
+import { condValueOf, filterOf, formValue, test as condTest, type Op } from '../lib/huge/stream/filter';
+import { rng } from './oracle/compare';
 import { enc } from './huge-oracle';
 
 const mem = (b: Uint8Array) => ({ size: b.length, read: async (at: number, len: number) => b.slice(at, at + len) });
@@ -108,4 +110,107 @@ test('item 5: Stop is seen during an expansion-heavy Pretty (between bounded amo
   await assert.rejects(job, (e: Error) => e.message === 'Stopped');
   assert.ok(s.aborted, 'the output was dropped');
   assert.ok(s.bytes < 400e6, `stopped early: ${s.bytes} written of ~400 MB`);
+});
+
+// ── Item 6: numbers in conditions compare exactly ───────────────────────────────
+
+test('item 6: Extract with id = 9007199254740993 picks that record only (the review: both were written)', async () => {
+  const s = '[{"id":9007199254740992},{"id":9007199254740993}]';
+  const b = enc.encode(s);
+  const f = filterOf({ conds: [{ path: 'id', op: 'eq', value: '9007199254740993' }], any: false });
+  const out = new MemorySink();
+  const r = await runJob(mem(b), { kind: 'extract', scope: { start: 0, end: b.length, multi: false }, filter: f, format: 'jsonl', indent: '' }, { main: async () => out, part: async () => out });
+  assert.equal(out.text(), '{"id":9007199254740993}\n');
+  assert.equal(r.records, 1);
+  // ≠, < and > on the same pair.
+  const rec = (t: string) => parse(t).root!;
+  const one = rec('{"id":9007199254740993}');
+  const two = rec('{"id":9007199254740992}');
+  const c = (op: Op, v: string) => filterOf({ conds: [{ path: 'id', op, value: v }], any: false })!.conds[0];
+  assert.ok(condTest(two, c('ne', '9007199254740993')) && !condTest(one, c('ne', '9007199254740993')));
+  assert.ok(condTest(two, c('lt', '9007199254740993')) && !condTest(one, c('lt', '9007199254740993')));
+  assert.ok(condTest(one, c('gt', '9007199254740992')) && !condTest(two, c('gt', '9007199254740992')));
+});
+
+test('item 6: decimals, exponents, zeros and signs compare as the numbers they write', () => {
+  const rec = (t: string) => parse(`{"v":${t}}`).root!;
+  const c = (op: Op, v: string) => filterOf({ conds: [{ path: 'v', op, value: v }], any: false })!.conds[0];
+  const eq = [
+    ['100', '1e2'],
+    ['1.50', '1.5'],
+    ['0', '-0'],
+    ['0.0', '0e10'],
+    ['12345678901234567890123', '1.2345678901234567890123e22'],
+    ['-0.000001', '-1E-6'],
+    ['1e400', '10e399'],
+  ];
+  for (const [a, b] of eq) assert.ok(condTest(rec(a), c('eq', b)), `${a} = ${b}`);
+  const lt = [
+    ['0.1', '0.1000000000000000055511151231257827'],
+    ['1e399', '1e400'],
+    ['-1e400', '-1e399'],
+    ['9007199254740992', '9007199254740993'],
+    ['-9007199254740993', '-9007199254740992'],
+    ['1.0000000000000000000001', '1.0000000000000000000002'],
+    ['-0.5', '0'],
+    ['0', '5e-324'],
+    ['5e-325', '5e-324'],
+  ];
+  for (const [a, b] of lt) {
+    assert.ok(condTest(rec(a), c('lt', b)), `${a} < ${b}`);
+    assert.ok(!condTest(rec(a), c('eq', b)), `${a} ≠ ${b}`);
+    assert.ok(condTest(rec(b), c('gt', a)), `${b} > ${a}`);
+    assert.ok(condTest(rec(a), c('le', b)) && !condTest(rec(a), c('ge', b)), `${a} ≤ ${b}`);
+  }
+});
+
+test('item 6: ordering agrees with exact arithmetic on random numbers', () => {
+  const r = rng(61);
+  // value × 10^60 as a BigInt (exponents kept within ±30).
+  const exact = (t: string) => {
+    const m = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([-+]?\d+))?$/.exec(t)!;
+    const frac = m[3] ?? '';
+    const e = Number(m[4] ?? 0) - frac.length + 60;
+    let v = BigInt(m[2] + frac);
+    v = e >= 0 ? v * 10n ** BigInt(e) : v / 10n ** BigInt(-e);
+    return m[1] ? -v : v;
+  };
+  const num = () => {
+    const ip = r.chance(0.3) ? '0' : String(1 + r.int(9)) + Array.from({ length: r.int(22) }, () => r.int(10)).join('');
+    const fp = r.chance(0.5) ? '.' + Array.from({ length: 1 + r.int(12) }, () => r.int(10)).join('') : '';
+    const ep = r.chance(0.4) ? 'e' + (r.chance(0.5) ? '-' : '') + r.int(25) : '';
+    return (r.chance(0.3) ? '-' : '') + ip + fp + ep;
+  };
+  for (let k = 0; k < 5000; k++) {
+    const a = num();
+    // (Often a neighbour: the same digits with one changed, where rounding to a double would make them equal.)
+    const near = () => {
+      const m = /^(-?)(\d+)(.*)$/.exec(a)!;
+      const ds = m[2].split('');
+      const k = Math.max(0, ds.length - 1 - r.int(3));
+      ds[k] = String((Number(ds[k]) + 1 + r.int(8)) % 10);
+      if (ds.length > 1 && ds[0] === '0') ds[0] = '1';
+      return m[1] + ds.join('') + m[3];
+    };
+    const b = r.chance(0.1) ? a : r.chance(0.5) ? near() : num();
+    const want = exact(a) < exact(b) ? -1 : exact(a) > exact(b) ? 1 : 0;
+    const node = parse(`{"v":${a}}`).root!;
+    const cond = (op: Op) => filterOf({ conds: [{ path: 'v', op, value: b }], any: false })!.conds[0];
+    assert.equal(condTest(node, cond('lt')), want < 0, `${a} < ${b}`);
+    assert.equal(condTest(node, cond('eq')), want === 0, `${a} = ${b}`);
+    assert.equal(condTest(node, cond('gt')), want > 0, `${a} > ${b}`);
+  }
+});
+
+test('item 6: the Shape panel hands a big number to Extract as written', () => {
+  // (Its common values are text as written; the Convert form gets that text, and its filter compares it exactly.)
+  const conds = [{ path: ['id'], op: 'eq' as const, value: condValueOf('9007199254740993') }];
+  const form = conds.map((x) => formValue(x.value));
+  assert.deepEqual(form, ['9007199254740993']);
+  const f = filterOf({ conds: [{ path: 'id', op: 'eq', value: form[0] }], any: false })!;
+  assert.ok(condTest(parse('{"id":9007199254740993}').root!, f.conds[0]));
+  assert.ok(!condTest(parse('{"id":9007199254740992}').root!, f.conds[0]));
+  // A string that reads as a number stays a string.
+  assert.equal(formValue('12'), '"12"');
+  assert.equal(filterOf({ conds: [{ path: 'id', op: 'eq', value: formValue('12') }], any: false })!.conds[0].value, '12');
 });

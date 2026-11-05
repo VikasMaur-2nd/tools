@@ -17,7 +17,7 @@ import { hugeSize, type HugeSession } from './session';
 import { ARR, LIST, OBJ, type HugeNode as CoreNode } from './types';
 import { StreamClient, StreamError, canPick, canPickFolder, freeSpace, hold, removeTemp, sweep, tempName } from './stream/client';
 import type { CsvOptions } from './stream/csv';
-import { condPath, type Cond, type Filter, type Op } from './stream/filter';
+import { condPath, formValue, type Cond, type Filter, type Op } from './stream/filter';
 export { condPath, filterOf, parseCondPath } from './stream/filter';
 import type { Job, JobFormat, Scope } from './stream/jobs';
 import type { Out } from './stream/protocol';
@@ -242,7 +242,7 @@ export class HugeTasks {
   /** The Convert form filled in. */
   prefill(o: { kind: 'extract'; conds: Cond[]; target: Target }) {
     const f = this.ui.get().form;
-    const conds = o.conds.map((c): CondUI => ({ path: condPath(c.path), op: c.op, value: c.value === undefined ? '' : typeof c.value === 'string' ? c.value : JSON.stringify(c.value) }));
+    const conds = o.conds.map((c): CondUI => ({ path: condPath(c.path), op: c.op, value: formValue(c.value) }));
     this.ui.form({ kind: o.kind, target: o.target, extract: { ...f.extract, conds } });
   }
 

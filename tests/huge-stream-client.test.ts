@@ -67,6 +67,6 @@ test('Extract form: condition paths and values as typed', () => {
   assert.ok(matches(rec, f));
   assert.ok(!matches(parse('{"id": 1, "kind": "a"}').root!, f));
   // A number typed is a number; quoted, text.
-  assert.equal(filterOf({ conds: [{ path: 'id', op: 'eq', value: '12' }], any: false })!.conds[0].value, 12);
+  assert.deepEqual(filterOf({ conds: [{ path: 'id', op: 'eq', value: '12' }], any: false })!.conds[0].value, { num: '12' });
   assert.equal(filterOf({ conds: [{ path: 'id', op: 'eq', value: '"12"' }], any: false })!.conds[0].value, '12');
 });

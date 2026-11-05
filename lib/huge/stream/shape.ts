@@ -566,7 +566,8 @@ export class Shape implements Visitor {
     p.nSum += v;
     if (int) p.ints++;
     const h = hashBytes(b, a, e, NUM);
-    if (this.seen(p, h)) this.keep(p, h, latin(b, a, Math.min(e, a + SHOW)), at);
+    // (A number longer than shown is marked cut: it is never taken for the whole value.)
+    if (this.seen(p, h)) this.keep(p, h, e - a > SHOW ? latin(b, a, a + SHOW) + '…' : latin(b, a, e), at);
   }
 
   lit(kind: number, v: boolean, at: number) {

@@ -12,7 +12,7 @@ import { useT } from '@/lib/i18n/react';
 import type { HugeSession } from '@/lib/huge/session';
 import type { ShapeUI, TaskStore, TaskUI } from '@/lib/huge/tasks';
 import { FORMATS, K_ARR, K_FALSE, K_NULL, K_NUM, K_OBJ, K_STR, K_TRUE, pathText, type ShapePath, type ShapeReport } from '@/lib/huge/stream/shape';
-import type { Cond } from '@/lib/huge/stream/filter';
+import { condValueOf, type Cond } from '@/lib/huge/stream/filter';
 
 export function useTasks<T>(store: TaskStore, select: (s: TaskUI) => T): T {
   return useSyncExternalStore(store.subscribe, () => select(store.get()), () => select(store.get()));
@@ -517,8 +517,8 @@ function Detail({ s, r, p }: { s: HugeSession; r: ShapeReport; p: ShapePath }) {
                     <i style={{ width: `${pct(n, p.n)}%` }} />
                   </span>
                   <Count n={n} of={p.n} />
-                  {recordPath && !text.endsWith('…"') && (
-                    <button type="button" className="hs-link" onClick={() => extract({ path: recordPath, op: 'eq', value: JSON.parse(text) as string })}>
+                  {recordPath && !text.endsWith('…"') && !text.endsWith('…') && (
+                    <button type="button" className="hs-link" onClick={() => extract({ path: recordPath, op: 'eq', value: condValueOf(text) })}>
                       {t('Extract')}
                     </button>
                   )}
