@@ -346,6 +346,16 @@ function Count({ n, of }: { n: number; of: number }) {
   );
 }
 
+/**
+ * The shape was read before the last edit: its places (byte offsets) are another version's, and would land on
+ * another value: its go-to buttons wait for it to be read again.
+ */
+function useStale(s: HugeSession): boolean {
+  const read = useTasks(s.tasks.ui, (u) => u.shape.version);
+  const now = useSyncExternalStore(s.ui.subscribe, () => s.ui.get().index.edit?.version ?? 0, () => 0);
+  return read >= 0 && now !== read;
+}
+
 /** First, Next and Count for one kind of a path's values (or the objects missing it). */
 function Places({ s, segs, kind, missing: m, first }: { s: HugeSession; segs: (string | number)[] | null; kind?: number; missing?: boolean; first: number }) {
   const tasks = s.tasks;
@@ -355,9 +365,10 @@ function Places({ s, segs, kind, missing: m, first }: { s: HugeSession; segs: (s
   const keyOf = (count: boolean) => JSON.stringify([tgt, count]);
   const counted = seek && !seek.busy && seek.key === keyOf(true) ? seek.found : null;
   const busy = !!seek?.busy && (seek.key === keyOf(true) || seek.key === keyOf(false));
+  const stale = useStale(s);
   return (
     <span className="hs-acts">
-      <button type="button" className="hs-link" disabled={first < 0} onClick={() => tasks.goto(first)}>
+      <button type="button" className="hs-link" disabled={first < 0 || stale} onClick={() => tasks.goto(first)} data-tip={stale ? t('Edited since the shape was read: read it again to go there') : undefined}>
         {t('First')}
       </button>
       {tgt && (
@@ -377,6 +388,7 @@ function Places({ s, segs, kind, missing: m, first }: { s: HugeSession; segs: (s
 
 function Detail({ s, r, p }: { s: HugeSession; r: ShapeReport; p: ShapePath }) {
   const tasks = s.tasks;
+  const stale = useStale(s);
   const target = useTasks(tasks.ui, (u) => u.shape.target);
   const t = useT();
   const segs = segsOf(r, p);
@@ -513,7 +525,7 @@ function Detail({ s, r, p }: { s: HugeSession; r: ShapeReport; p: ShapePath }) {
             <ul className="hs-top">
               {p.top.map(([text, n, at]) => (
                 <li key={text}>
-                  <button type="button" className="hs-val mono" onClick={() => tasks.goto(at)} title={text}>
+                  <button type="button" className="hs-val mono" disabled={stale} onClick={() => tasks.goto(at)} title={text}>
                     {text}
                   </button>
                   <span className="hs-tbar" aria-hidden="true">
@@ -535,7 +547,7 @@ function Detail({ s, r, p }: { s: HugeSession; r: ShapeReport; p: ShapePath }) {
               <ul className="hs-top">
                 {p.examples.map(([text, at], k) => (
                   <li key={k}>
-                    <button type="button" className="hs-val mono" onClick={() => tasks.goto(at)} title={text}>
+                    <button type="button" className="hs-val mono" disabled={stale} onClick={() => tasks.goto(at)} title={text}>
                       {text}
                     </button>
                   </li>

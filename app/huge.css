@@ -650,6 +650,13 @@ html[data-huge] .statusbar .cursor {
   background: var(--bg-3);
 }
 
+/* (Edited since the shape was read: its places wait for it to be read again.) */
+.hs-val:disabled {
+  background: none;
+  cursor: default;
+  opacity: 0.6;
+}
+
 .hs-tbar {
   height: 5px;
   border-radius: 3px;

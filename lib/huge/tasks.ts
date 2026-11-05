@@ -449,9 +449,15 @@ export class HugeTasks {
     this.ui.shape({ sel: id, seek: null });
   }
 
-  /** Goes to byte `at` of the document: its value in the tree. */
+  /** The document's version now. */
+  private version() {
+    return this.s.src.state().edit?.version ?? 0;
+  }
+
+  /** Goes to byte `at` of the document (from the shape: not once edited since, when it would be another value's). */
   goto(at: number) {
-    if (at < 0) return;
+    const v = this.ui.get().shape.version;
+    if (at < 0 || (v >= 0 && v !== this.version())) return;
     track('feature_used', { feature: 'shape_go' });
     void this.s.revealAt(at);
   }
@@ -499,7 +505,8 @@ export class HugeTasks {
       if (!count && r.first < 0 && start > 0) r = (await this.stream().run(snap.blob, 0, { kind: 'seek', scope: at.scope, target, from: 0 }, { kind: 'none' }).done).result.seek!;
       if (this.dead || this.seekRun !== run) return;
       this.ui.shape({ seek: { key, busy: false, found: r.found, first: r.first, count } });
-      if (!count && r.first >= 0) void this.s.revealAt(r.first);
+      // (Found in the version the seek read: not shown if an edit landed since.)
+      if (!count && r.first >= 0 && snap.version === this.version()) void this.s.revealAt(r.first);
     } catch (e) {
       if (this.dead || this.seekRun !== run) return;
       this.ui.shape({ seek: null });

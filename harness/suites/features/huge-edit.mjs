@@ -462,6 +462,31 @@ test('huge edit: while the Format view is edited, the palette\'s edits wait (its
   t.check(/\{3\}/.test(await selRow(page)), '$.users[2] still there', await selRow(page));
 });
 
+// REVIEW-2 (suspicion): the Shape panel's go-to buttons hold byte offsets of the version it read; after an edit they
+// would land on another value. They wait for the shape to be read again.
+test('huge edit: after an edit, the Shape panel\'s go-to buttons wait for it to be read again', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  const tab = (id) => page.evaluate((id) => window.__vis(`.hg [role=tab][aria-controls=${id}]`)?.click(), id);
+  await tab('hg-shape');
+  t.assert(await until(page, () => /read in/.test(document.querySelector('#hg-shape .hs-status')?.textContent ?? ''), null, { timeout: 30_000 }), 'the shape is read');
+  await page.locator('#hg-shape .hs-row', { has: page.locator('.hs-path', { hasText: /^name$/ }) }).click();
+  const first = page.locator('#hg-shape .hs-detail .hs-link', { hasText: 'First' }).first();
+  t.check(await first.isEnabled(), 'First, before an edit');
+  await first.click();
+  t.check(await until(page, () => window.__vis('.hg .vmain .path')?.textContent === '$.users[0].name', null), 'goes to $.users[0].name', await page.evaluate(() => window.__vis('.hg .vmain .path')?.textContent));
+  // An edit that moves every byte after it.
+  await selectPath(page, '$.meta');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await tab('hg-shape');
+  t.check(await until(page, () => /edited since/.test(document.querySelector('#hg-shape .hs-status')?.textContent ?? ''), null), 'the panel says it was edited since');
+  t.check(await first.isDisabled(), 'First waits for the shape to be read again');
+  const vals = await page.evaluate(() => [...document.querySelectorAll('#hg-shape .hs-detail .hs-val')].map((b) => b.disabled));
+  t.check(vals.length > 0 && vals.every(Boolean), 'and so do the values', vals);
+});
+
 // REVIEW-2 #9: a .gz file's decompressed copy is new at every open; its session is keyed on the .gz file's facts, so
 // reopening the .gz offers it. Saving a copy never offers to overwrite "the opened file" (it isn't the user's).
 const gzPath = join(dir, 'users.json.gz');
