@@ -542,6 +542,9 @@ test('huge edit: a broken file: Go to error, F2, the error\'s line in the editor
   await page.locator('.app:visible input[type=file]').setInputFiles(broken);
   t.assert(await until(page, () => /(Invalid|Not strict) JSON/.test(window.__vis('.hg .banner')?.textContent ?? ''), null, { timeout: 15_000 }), 'the error said');
   await page.locator('.hg .banner .btn', { hasText: 'Go to error' }).click();
+  // (Go to error moves the Format view's current line once it has drawn; F2 edits there: under load, pressed
+  // before that, it opened at line 1 (WebKit night run, load 7).)
+  await until(page, () => (document.querySelector('#hg-format .hg-cur')?.textContent ?? '').includes('"id": 20 "name"'), null, { timeout: 10_000 });
   await page.locator('#hg-format').focus();
   await page.keyboard.press('F2');
   t.assert(await until(page, () => /Editing lines .* · Ln 22,/.test(window.__vis('.hg .vmain')?.textContent ?? ''), null, { timeout: 10_000 }), 'editing at the error\'s line', await page.evaluate(() => window.__vis('.hg .vmain')?.textContent));
