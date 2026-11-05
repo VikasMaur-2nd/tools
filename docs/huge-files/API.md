@@ -236,25 +236,48 @@ place): the file bar's "N changes".
 
 ## Sessions (edits kept between visits)
 
-- Edits are kept in IndexedDB a second after the last one, and at `close()`, keyed by the file's name, size and
-  last modified, and checked against its content (a fingerprint of its first and last 64 KiB and six blocks
-  between). What's kept is the document's pieces (references to the file and the edits' bytes) and its history.
+- Edits are kept in IndexedDB a second after the last one, and at `close()`, keyed by the file's name, size, last
+  modified and content (a fingerprint: its first and last 64 KiB and 32 blocks of 4 KiB between, each hashed on its
+  own, and the size). What's kept is the document's pieces (references to the file and the edits' bytes) and its
+  history.
   - **Cap:** 256 MiB of edits' bytes; the history goes first if it doesn't fit, then nothing is kept.
-  - **Cost:** a keep writes only what's new: the edits' bytes are stored once, and the record is references.
-  - **Sweep:** sessions older than 30 days go, then the oldest while all of them hold more than 1 GiB.
+  - **Cost:** a keep writes what's new since the last one: the edits' new bytes, the history segment (64 steps)
+    that changed, the blocks of the document's tables around what changed, and a small head. After 50,000 typed
+    keys in 2,000 places, a keep plans in ~3 ms and writes ~3 KB (it was 0.2 s and 3.6 MB).
+  - **Sweep:** sessions older than 30 days go, then the oldest while all of them hold more than 1 GiB. A session
+    another tab has open is never swept. The sweep reads each session's key, time and size only.
+  - **Residual risk of the key:** another file with the same name, size and last modified is told apart by the
+    fingerprint's samples (~190 KiB of it). A change of the same length outside them, with the last modified time
+    kept (`rsync -a`, an archive's extraction, a FAT disk's 2 s times), isn't seen: that file would be offered the
+    session, and it would be put back at the same byte offsets. Such a file never deletes another's session.
+- **Two tabs:** one tab keeps a file's edits at a time (a Web Lock per file key). `summary.keeping` says which:
+  - `'yes'`: this tab keeps them;
+  - `'other-tab'`: another tab has this file open, and this tab's edits aren't kept (say so);
+  - `'no'`: not known yet, or nowhere to keep them.
+  When the other tab closes, this one takes over (`keeping` becomes `'yes'` through `onSummary`), and the session
+  it kept is offered (this document unedited) or set aside (edited: see below; this tab's edits are kept, and
+  replace it at close).
 - **`close()`** is async. It keeps what isn't kept yet, then ends the worker (at most 10 s). It resolves with
   whether this document's edits are kept: `false` if there are none, they are too big, an earlier session is on
-  offer, the write failed, or it ran out of time. Say "kept" only on `true`.
+  offer, another tab has the file, the write failed, or it ran out of time. Say "kept" only on `true`.
 - **Reopening the same file:** `summary.session` is `undefined` while the kept session is looked for, then `null`
-  (none, or another file's content) or `{ steps, bytes, time, restorable }`. `steps` is the changes it puts back,
-  as `HugeEdited.steps` counts them. The look ends soon after opening; if it ends after `ready`, a summary saying
-  what it found comes through `HugeClient.onSummary`, so nothing needs to ask again.
+  (none) or `{ steps, bytes, time, restorable }`. `steps` is the changes it puts back, as `HugeEdited.steps`
+  counts them. The look ends soon after opening (before old sessions are swept); if it ends after `ready`, a
+  summary saying what it found comes through `HugeClient.onSummary`, so nothing needs to ask again.
 - **`restoreSession()`** puts the session back (its edits; undo then goes on where it was; `steps` from there),
   only onto the file as opened. Once the document is edited (even if undone), `restorable` is false and restoring
   answers 'Not allowed'.
 - **While a session is on offer, new edits aren't kept over it.** `close()` then says `false`.
   - **`dropSession()`** drops it: closing without keeping the edits. Nothing is kept until a further edit.
-  - **`dropSession(true)`** drops it so that this document's edits are kept instead.
+  - **`dropSession(true)`** sets it aside so that this document's edits are kept instead.
+- **Set aside:** `summary.setAside` is the session set aside (`{ steps, bytes, time, restorable }`), by
+  `dropSession(true)`, or found only once the document was edited (the look ended late, or another tab let the
+  file go). It stays until `close()`, which deletes it.
+  - **`reofferSession()`** brings it back (an Undo for the first edit's toast): the edits since are undone and
+    their history forgotten (the document is the file as opened), what was kept of them goes, and
+    `summary.session` offers it again. It answers like an edit (`HugeEdited`), or null if none is set aside;
+    'Not allowed' if the edits since can't all be undone (the history let the oldest go).
+  - A tab that ends without closing leaves it: the next open offers it, unless edits were kept after it.
 - **Saves:**
   - **In place:** the session is the old file's and goes. Edits after that are kept under the saved file's key.
   - **A download, or a save as:** they leave the opened file, and its session, as they are.
@@ -267,7 +290,9 @@ place): the file bar's "N changes".
 - Duplicate property names: each object remembers its first 4,096 names (later names are still checked against
   them, not remembered); 262,144 names across all open objects; a name over 64 KiB with escapes, or one cut by a
   window edge and over 4 KiB, isn't checked. `summary.unchecked` counts what was skipped. Hash matches are
-  confirmed by reading both names, so a reported duplicate is real.
+  confirmed by reading both names, so a reported duplicate is real. Names are compared decoded, as the normal path
+  compares them: invalid UTF-8 in a name counts as U+FFFD (one per maximal invalid subsequence), so `"caf\xE9"`
+  and `"caf\xE8"` are duplicates.
 - Strings longer than a window are read across windows without being kept. In a page or the pretty form, a
   string of at least 256 KiB is cut (a preview), with its full span in its `HugeNode`.
 - An array index past 2^31 - 1 in a page is not representable in a tape's key (Int32): such items keep their
