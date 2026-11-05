@@ -592,3 +592,32 @@ test('sessions D3/D4 (REVIEW-3): a keep after many keys writes what is new (O(lo
   // list(): each session's key, time and bytes only.
   assert.deepEqual(await store.list(), [{ key: 'k', time: head!.time, bytes: head!.bytes }]);
 });
+
+test('sessions M2 (REVIEW-4): a set-aside session stays the file\'s when this visit\'s edits can\'t be kept', async () => {
+  const fileOf = () => new File([text], 't.json', { lastModified: 5 });
+  const store = new MemorySessionStore();
+  // An earlier visit kept S0.
+  const p = connect(fileOf(), store);
+  await p.ready;
+  await p.replace([{ a: 6, b: 10, text: 'S0S0' }]);
+  const s0 = await textOf(p);
+  assert.equal(await p.close(), true);
+  // This visit edits instead of restoring (S0 set aside), then every keep fails (storage full).
+  const a = connect(fileOf(), store);
+  assert.ok(await sessionOf(a));
+  await a.replace([{ a: 17, b: 21, text: 'tabA' }]);
+  await a.dropSession(true);
+  const put = store.put;
+  store.put = async () => {
+    throw new Error('QuotaExceededError');
+  };
+  await sleep(1200);
+  assert.equal(await a.close(), false, "close says these edits weren't kept");
+  store.put = put;
+  // Reopen: S0 is offered and restores whole.
+  const r = connect(fileOf(), store);
+  assert.ok(await sessionOf(r), 'S0 still offered');
+  await r.restoreSession();
+  assert.equal(await textOf(r), s0);
+  await r.close();
+});

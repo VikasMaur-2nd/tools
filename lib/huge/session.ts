@@ -1024,8 +1024,11 @@ export class HugeSession {
 
   /** The toast's Undo: the kept session back on offer (the edits since undone and forgotten), the banner again. */
   private async reoffer() {
+    // (From the Format view's text editing: what's typed goes in first, and is undone with the rest. Asked before
+    // the toast goes, so an Undo that can't run now isn't lost: REVIEW-4 M1.)
+    if (this.ui.get().fe) await this.exitFormatEdit(false);
+    if (this.dead || !this.canEdit()) return;
     this.dropAsideUndo();
-    if (!this.canEdit()) return;
     this.setEdit({ busy: true });
     const ok = await this.editing!.run({ op: 'reoffer' }, 'banner');
     if (this.dead) return;

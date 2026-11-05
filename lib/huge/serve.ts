@@ -596,7 +596,8 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
           // (A session set aside and not brought back: gone now, if this document's edits replace it; with none
           // (all undone), it's the file's session again. The file's lock: free for another tab.)
           if (aside && store && lock) {
-            const back = !!doc && !doc.src.edited;
+            // (Nor when this document's edits couldn't be kept: the set-aside session is all there is: REVIEW-4 M2.)
+            const back = !ok || !doc!.src.edited;
             await (back ? store.delete(key, 'current').then(() => store.aside(key, true)) : store.delete(key, 'aside')).catch(() => {});
           }
           waitLock?.abort();
