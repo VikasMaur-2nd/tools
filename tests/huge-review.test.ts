@@ -14,6 +14,7 @@ import { BlockSource } from '../lib/huge/bytes';
 import { HugeDoc } from '../lib/huge/doc';
 import { HugeEditor } from '../lib/huge/editor';
 import { PageNodes } from '../lib/huge/page';
+import { utf16Of, utf16Units, utf8At, utf8Bytes, utf8Table } from '../lib/huge/utf8';
 import { hugeMod, tapeMod, memSource } from './huge-oracle';
 
 const enc = new TextEncoder();
@@ -109,6 +110,37 @@ test('review 2: a character outside the BMP cut by a stride: spans, paths, prett
       assert.equal(dec.decode(d.src.read(0, d.src.size)), text.replace('123', '7'), 'inserted' + where);
     }
   }
+});
+
+test('review 2: the one byte↔UTF-16 mapping (worker and page): any cut adds up, whole characters count as encoded', () => {
+  // (Pairs, 2- and 3-byte characters and lone halves, on every offset around the steps' boundaries.)
+  const lone = '\ud83d';
+  const body = 'ab😀é€' + lone + 'c' + '\ude00' + '😀😀' + 'x';
+  const whole = (s: string, i: number) => i === 0 || i === s.length || !((s.charCodeAt(i) & 0xfc00) === 0xdc00 && (s.charCodeAt(i - 1) & 0xfc00) === 0xd800);
+  for (const step of [4, 7, 256]) {
+    for (let pad = Math.max(0, step - 8); pad <= step + 4; pad++) {
+      const s = 'a'.repeat(pad) + body + 'é'.repeat(step) + '😀';
+      for (const from of [0, 1, pad, pad + 2]) {
+        const table = utf8Table(s, from, s.length, step);
+        for (let off = from; off <= s.length; off++) {
+          const n = utf8Bytes(s, from, off);
+          assert.equal(utf8At(s, table, from, off, step), n, `table: step ${step}, pad ${pad}, ${from}..${off}`);
+          // Cut anywhere, the parts add up.
+          for (const mid of [from, (from + off) >> 1, off]) assert.equal(utf8Bytes(s, from, mid) + utf8Bytes(s, mid, off), n);
+          // Whole characters: as TextEncoder writes them (a lone half: 3, U+FFFD), and back.
+          if (whole(s, from) && whole(s, off)) {
+            assert.equal(n, enc.encode(s.slice(from, off)).length, `encoded: step ${step}, pad ${pad}, ${from}..${off}`);
+            if (from === 0) assert.equal(utf16Of(s, n), off, `back: ${off}`);
+            if (!s.slice(from, off).includes(lone) && !s.slice(from, off).includes('\ude00')) assert.equal(utf16Units(enc.encode(s.slice(from, off))), off - from);
+          }
+        }
+      }
+    }
+  }
+  // Into a character: on past it; past the end: -1.
+  assert.equal(utf16Of('é😀', 1), 1);
+  assert.equal(utf16Of('é😀', 3), 3);
+  assert.equal(utf16Of('é😀', 7), -1);
 });
 
 test('review 3: raw lines read no further than what is read (while indexing, stopped, broken), and a long line answers its start', () => {

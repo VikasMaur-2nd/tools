@@ -7,41 +7,10 @@ import { lazyResult } from '../json/lazy';
 import type { JNode } from '../json/parser';
 import { receiver, type Tape } from '../json/tape';
 import type { Bytes, HugeNode, HugePage } from './types';
-
-/** UTF-8 bytes of `s` (a lone surrogate is 3, as TextEncoder writes U+FFFD). */
-export function utf8Length(s: string): number {
-  let n = s.length;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80) continue;
-    if (c < 0x800) n += 1;
-    else if (c >= 0xd800 && c < 0xdc00 && i + 1 < s.length && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
-      n += 2;
-      i++;
-    } else n += 2;
-  }
-  return n;
-}
+import { utf8At, utf8Table } from './utf8';
 
 /** Text units between the entries of a page's table of bytes (PageNodes.bytesTo). */
 const STEP = 4096;
-
-/**
- * UTF-8 bytes of s[from, to), a pair counted 4 at its first half and 0 at its second (a lone half: 3, as
- * TextEncoder writes U+FFFD): the counts of ranges add up, whichever text units they start and end at.
- */
-function bytesIn(s: string, from: number, to: number): number {
-  let n = 0;
-  for (let i = from; i < to; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80) n += 1;
-    else if (c < 0x800) n += 2;
-    else if ((c & 0xfc00) === 0xd800) n += i + 1 < s.length && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00 ? 4 : 3;
-    else if ((c & 0xfc00) === 0xdc00) n += i > 0 && (s.charCodeAt(i - 1) & 0xfc00) === 0xd800 ? 0 : 3;
-    else n += 3;
-  }
-  return n;
-}
 
 export class PageNodes {
   readonly tape: Tape;
@@ -89,16 +58,11 @@ export class PageNodes {
     return byte + this.bytesTo(off) - this.bytesTo(at);
   }
 
-  /** UTF-8 bytes of the page's text before offset `off`. */
+  /** UTF-8 bytes of the page's text before offset `off` (utf8.ts: the worker's rule too). */
   private bytesTo(off: number): number {
     const s = this.page.text;
-    let t = this.table;
-    if (!t) {
-      t = this.table = new Float64Array(Math.floor(s.length / STEP) + 1);
-      for (let k = 1; k < t.length; k++) t[k] = t[k - 1] + bytesIn(s, (k - 1) * STEP, k * STEP);
-    }
-    const k = Math.min(t.length - 1, Math.floor(off / STEP));
-    return t[k] + bytesIn(s, k * STEP, off);
+    this.table ??= utf8Table(s, 0, s.length, STEP);
+    return utf8At(s, this.table, 0, off, STEP);
   }
 
   /** `n`'s text as bytes of the document: [start, end). */

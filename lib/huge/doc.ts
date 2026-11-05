@@ -15,6 +15,7 @@ import { byteBefore, duplicates, exactError, lineCol, nameAt, prefixOf, type Par
 import { HugeIndex, type Big } from './index';
 import { lengthOf, Pieces, type Piece as EditPiece } from './pieces';
 import { Tail } from './tail';
+import { utf16Units, utf8At, utf8Table } from './utf8';
 import { Wait } from './wait';
 import { DONE, DW, FAIL, FRONT, FW, NEED, S_AFTER, S_COLON, S_TOP, S_VALUE, STOP, Skeleton, W_AFTER, W_CHILD, W_CLOSE, W_MEMORY, type State } from './skeleton';
 import { ARR, BOOL, LIST, NUL, NUM, OBJ, STR, type Bytes, type FindBatch, type FindOptions, type HugeError, type HugeLines, type HugeLocation, type HugeNode, type HugeOptions, type HugePage, type HugeProblem, type HugeProgress, type HugeStatus, type HugeSummary, type Seg } from './types';
@@ -2148,19 +2149,11 @@ function byteOf(b: Built, off: number): number {
   if (wide === undefined) {
     // (Made once per piece: ASCII is a byte a unit; else the bytes at every STRIDE units.)
     const end = lo + 1 < m.length / 3 ? m[lo * 3 + 3] : b.text.length;
-    wide = /[^\0-\x7f]/.test(b.text.slice(at, end)) ? strides(b.text, at, end) : null;
+    wide = /[^\0-\x7f]/.test(b.text.slice(at, end)) ? utf8Table(b.text, at, end, STRIDE) : null;
     b.wide[lo] = wide;
   }
-  if (!wide) return byte + off - at;
-  const k = Math.floor((off - at) / STRIDE);
-  return byte + wide[k] + utf8Bytes(b.text, at + k * STRIDE, off);
-}
-
-/** Bytes before every STRIDE units of text[a, e). */
-function strides(text: string, a: number, e: number): Float64Array {
-  const out = new Float64Array(Math.floor((e - a) / STRIDE) + 1);
-  for (let k = 1; k < out.length; k++) out[k] = out[k - 1] + utf8Bytes(text, a + (k - 1) * STRIDE, a + k * STRIDE);
-  return out;
+  // (utf8.ts: the page's rule too.)
+  return wide ? byte + utf8At(b.text, wide, at, off, STRIDE) : byte + off - at;
 }
 
 /** The offset in a built text of document byte `pos`: in a piece, or in the stub standing for the big value holding it (-1: neither). */
@@ -2168,38 +2161,14 @@ function offsetOf(b: Built, pos: number, src: ByteSource): number {
   const m = b.map;
   for (let j = 0; j < m.length; j += 3) {
     const byte = m[j + 1];
-    if (byte >= 0 && pos >= byte && pos < byte + m[j + 2]) return m[j] + units(src.read(byte, pos - byte));
+    if (byte >= 0 && pos >= byte && pos < byte + m[j + 2]) return m[j] + utf16Units(src.read(byte, pos - byte));
   }
   for (const [at, big] of b.stubs) if (pos >= big.start && pos <= big.end) return pos === big.end ? at + 2 : at + 1;
   // (At the very end of a piece.)
-  for (let j = 0; j < m.length; j += 3) if (m[j + 1] >= 0 && pos === m[j + 1] + m[j + 2]) return m[j] + units(src.read(m[j + 1], m[j + 2]));
+  for (let j = 0; j < m.length; j += 3) if (m[j + 1] >= 0 && pos === m[j + 1] + m[j + 2]) return m[j] + utf16Units(src.read(m[j + 1], m[j + 2]));
   return -1;
 }
 
-/** UTF-16 units of UTF-8 bytes (as decoded: a \r\n is two). */
-function units(b: Uint8Array): number {
-  let n = 0;
-  for (let i = 0; i < b.length; i++) {
-    const c = b[i];
-    if (c < 0x80) n++;
-    else if (c >= 0xc0) n += c >= 0xf0 ? 2 : 1;
-  }
-  return n;
-}
-
-/** UTF-8 bytes of `s[a, e)`. */
-function utf8Bytes(s: string, a: number, e: number): number {
-  let n = e - a;
-  for (let i = a; i < e; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80) continue;
-    if (c < 0x800) n += 1;
-    // (Each half of a surrogate pair is 2 of its 4 bytes: a range may cut the pair, as STRIDE does.)
-    else if (c >= 0xd800 && c < 0xe000) n += 1;
-    else n += 2;
-  }
-  return n;
-}
 
 /** The end of [at, end) of `src` without the whitespace and the one comma before `end`. */
 function trimEnd(src: ByteSource, at: number, end: number): number {
