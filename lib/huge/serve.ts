@@ -9,7 +9,8 @@ import type { ByteSource } from '../json/tape-wasm';
 import { HugeDoc, type EditOp, type Parsers } from './doc';
 import { HugeEditor } from './editor';
 import { piecesOf } from './pieces';
-import { fingerprint, Keeper, keptSteps, opsOf, sessionKey, sweepOf, type Kept, type SessionStore } from './session-store';
+import { asideKey, fingerprint, Keeper, keptSteps, opsOf, ownerOf, sessionKey, sweepOf, type Head, type SessionLock, type SessionStore } from './session-store';
+import { Arena } from './pieces';
 import { Wait, watched } from './wait';
 import type { Reply, Request } from './protocol';
 import type { Prefetch } from './prefetch';
@@ -96,16 +97,27 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   // A save under way (edits wait for it), and the ones asked to stop.
   let saving = false;
   const stopSave = new Set<number>();
-  // Sessions: this file's key (its name as opened, size, last modified) and content (fingerprint); the session
-  // found for it, on offer until put back or dropped (new edits don't overwrite it meanwhile); what's stored of
-  // this document's edits (keeper: a keep writes what's new) and the version it holds (-1: none); the keep timer.
+  // Sessions: this file's key (its name as opened, size, last modified, content fingerprint), once that's known;
+  // its lock (one tab keeps a file at a time: `keepState` says whether this one does, a wait for it if another
+  // does); the session found for it, on offer until put back or dropped (new edits don't overwrite it meanwhile);
+  // one set aside (by a first edit, or edits made before the look ended), back with reofferSession, gone at close;
+  // what's stored of this document's edits (keeper: a keep writes what's new) and the version it holds (-1: none).
   let key = '';
   let name = '';
   let print = '';
-  let kept: Kept | null = null;
-  const keeper = new Keeper();
+  let lock: SessionLock | null = null;
+  let keepState: 'yes' | 'other-tab' | 'no' = 'no';
+  let waitLock: AbortController | null = null;
+  let kept: Head | null = null;
+  let aside: Head | null = null;
+  let keeper = new Keeper();
   let keptVersion = -1;
+  let closing = false;
+  // (Typed text: its keys run on in shared buffers, one piece a run.)
+  const arena = new Arena();
   let keepTimer: ReturnType<typeof setTimeout> | null = null;
+  // The look for this file's session under way (at open, or once another tab let the file go): closing waits for it.
+  let looking: Promise<unknown> = Promise.resolve();
   // Whether the look for a kept session has ended (none to look in: it has), and the open's summary gone out (a
   // look that ends after it sends its own through the watch stream).
   let looked = !store;
@@ -116,12 +128,15 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
   const fail = (id: number, e: unknown) => reply({ id, ok: false, error: e instanceof Error && KNOWN.has(e.message) ? e.message : 'Query failed' });
 
+  const sessionOf = (h: Head) => ({ steps: keptSteps(h), bytes: h.bytes, time: h.time, restorable: unedited() });
+
   const summary = (): HugeSummary => {
     const s = doc!.summary();
     // (undefined while the look for one is under way.)
-    const session = !looked ? undefined : kept ? { steps: keptSteps(kept), bytes: kept.bytes, time: kept.time, restorable: unedited() } : null;
-    if (!editor) return session === undefined ? s : { ...s, session };
-    return { ...s, edited: doc!.src.edited, version: doc!.src.version, canUndo: editor.canUndo, canRedo: editor.canRedo, steps: editor.applied, editBytes: doc!.src.editBytes + editor.historyBytes, session };
+    const session = !looked ? undefined : kept ? sessionOf(kept) : null;
+    const more = store ? { session, keeping: keepState, setAside: aside ? sessionOf(aside) : null } : { session };
+    if (!editor) return session === undefined && !store ? s : { ...s, ...more };
+    return { ...s, edited: doc!.src.edited, version: doc!.src.version, canUndo: editor.canUndo, canRedo: editor.canRedo, steps: editor.applied, editBytes: doc!.src.editBytes + editor.historyBytes, ...more };
   };
 
   /** Steps until the document is all read: progress on `id` (open) or the watch stream, then the summary. */
@@ -195,10 +210,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   /** After an edit: reads on in steps (if it isn't all read yet), and keeps the session soon. */
   const edited = (): HugeEdited => {
     if (!doc!.done && !stepping) void run(watchId).catch(() => {});
-    if (store && key) {
-      if (keepTimer) clearTimeout(keepTimer);
-      keepTimer = setTimeout(() => void keepNow().catch(() => {}), KEEP_MS);
-    }
+    later();
     return { version: doc!.src.version, done: doc!.done, canUndo: editor!.canUndo, canRedo: editor!.canRedo, steps: editor!.applied, summary: doc!.done ? summary() : null };
   };
 
@@ -206,48 +218,112 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   const unedited = () => !doc!.src.edited && !editor?.canUndo && !editor?.canRedo;
 
   /**
-   * Keeps the edits as a session now: what's new of them (keeper), the record (`keeping` until it's stored: closing
-   * waits for it). Whether this document's edits are stored. Not while a session found for the file is on offer: it
-   * isn't overwritten before it's put back or dropped.
+   * Keeps the edits as a session now: what's new of them (keeper), the head (`keepingNow` until it's stored: closing
+   * waits for it). Whether this document's edits are stored. Only in the tab holding the file's lock, and not while a
+   * session found for it is on offer (it isn't overwritten before it's put back, set aside or dropped).
    */
-  let keeping: Promise<boolean> | null = null;
+  let keepingNow: Promise<boolean> | null = null;
   const keepNow = (): Promise<boolean> => {
     keepTimer = null;
-    if (!store || !key || !editor || kept) return Promise.resolve(false);
+    if (!store || !key || !lock || !editor || kept) return Promise.resolve(false);
     const d = doc!;
     const version = d.src.version;
     const plan = d.src.edited ? keeper.plan(d.src.list, editor.history.steps, editor.history.applied, editor.droppedSteps, d.src.base.size, print) : null;
     const k = key;
-    const p: Promise<boolean> = (plan ? store.put(k, plan.kept, plan.add, plan.drop) : store.delete(k).then(() => keeper.reset()))
+    const clean = keeper.fresh;
+    const p: Promise<boolean> = (plan ? store.put(k, plan.head, plan.add, plan.drop, clean, aside?.gen ?? '') : store.delete(k, 'current').then(() => keeper.reset()))
       .then(
         () => {
+          if (plan) keeper.fresh = false;
           keptVersion = plan ? version : -1;
           return !!plan;
         },
-        // (Not stored: what the keeper counted on isn't either; the key's record and chunks go, to start over.)
+        // (Not stored: the head kept before stays; a new generation starts, its first keep writing all of it.)
         () => {
           keptVersion = -1;
           keeper.reset();
-          return store.delete(k).then(
-            () => false,
-            () => false,
-          );
+          return false;
         },
       )
       .finally(() => {
-        if (keeping === p) keeping = null;
+        if (keepingNow === p) keepingNow = null;
       });
-    keeping = p;
+    keepingNow = p;
     return p;
   };
 
+  const later = () => {
+    if (keepTimer) clearTimeout(keepTimer);
+    keepTimer = store && key && lock ? setTimeout(() => void keepNow().catch(() => {}), KEEP_MS) : null;
+  };
+
+  /** Drops this file's sessions (its own and one set aside): closing without keeping, or saved in place. */
   const dropKept = async () => {
     if (keepTimer) clearTimeout(keepTimer);
     keepTimer = null;
     kept = null;
+    aside = null;
     keptVersion = -1;
     keeper.reset();
-    if (store && key) await store.delete(key);
+    if (store && key && lock) await store.delete(key, 'all');
+  };
+
+  /** The session on offer set aside (a first edit made, or edits before the look ended): back with reofferSession till close. */
+  const putAside = async (h: Head) => {
+    aside = h;
+    if (kept === h) kept = null;
+    if (store && lock) await store.aside(key);
+  };
+
+  /**
+   * The session for this file found (with its lock held): on offer if the document is the file still, else set
+   * aside. (A set-aside one left by a tab that didn't close: back on offer if nothing was kept after it, else gone.)
+   */
+  const found = async () => {
+    let h = await store!.get(key);
+    if (h) await store!.delete(key, 'aside');
+    else h = await store!.aside(key, true);
+    if (h && h.print === print && h.base === doc!.src.base.size) {
+      if (unedited()) kept = h;
+      else await putAside(h);
+    }
+    if (doc!.src.edited) later();
+  };
+
+  /** Sessions too old, or past the total, go: not the open one's, nor one another tab has open (its lock). */
+  const sweep = async () => {
+    for (const k of sweepOf(await store!.list(), Date.now(), [key, asideKey(key)])) {
+      const owner = ownerOf(k);
+      const l = await store!.lock(owner);
+      if (!l) continue;
+      try {
+        await store!.delete(owner, k === owner ? 'current' : 'aside');
+      } finally {
+        l.release();
+      }
+    }
+  };
+
+  /** The file's lock: taken if free, else waited for (another tab has the file open: its edits are kept there). */
+  const takeLock = async () => {
+    lock = await store!.lock(key);
+    if (lock) {
+      keepState = 'yes';
+      return true;
+    }
+    keepState = 'other-tab';
+    waitLock = new AbortController();
+    void store!.lock(key, waitLock.signal).then((l) => {
+      if (!l) return;
+      if (closing) return l.release();
+      lock = l;
+      keepState = 'yes';
+      // (Closing waits for it.)
+      looking = found()
+        .catch(() => {})
+        .then(() => push());
+    });
+    return false;
   };
 
   const ed = (): HugeEditor => {
@@ -272,28 +348,22 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         await e.until();
       }
     }
-    // A session kept for this file (looked up while it's read): its content checked (another file with the same
-    // name, size and time is another); old sessions swept.
+    // A session kept for this file (looked up while it's read): its key has its content's fingerprint (another file
+    // with the same name, size and time is another key: never offered, never deleted), its lock this tab's if no
+    // other tab has the file open. The look ends (and says so) before old sessions are swept.
     if (store) {
       name = options.name ?? (f as File).name ?? '';
-      key = sessionKey(name, f.size, (f as File).lastModified ?? 0);
-      const d = doc;
-      void fingerprint(f)
-        .then(async (fp) => {
-          print = fp;
-          const k = await store.get(key);
-          if (k && (k.print !== print || k.base !== d.src.base.size)) await store.delete(key);
-          else kept = k;
-          const gone = sweepOf(await store.list(), Date.now(), key);
-          for (const x of gone) await store.delete(x);
-        })
-        .catch(() => {})
-        .then(() => {
-          looked = true;
-          // (Ended after the open's summary went out: a summary through the watch stream says what it found.)
-          if (!readySent || !doc) return;
-          push();
-        });
+      looking = (async () => {
+        print = await fingerprint(f);
+        key = sessionKey(name, f.size, (f as File).lastModified ?? 0, print);
+        if (await takeLock()) await found();
+      })().catch(() => {});
+      void looking.then(() => {
+        looked = true;
+        // (Ended after the open's summary went out: a summary through the watch stream says what it found.)
+        if (readySent && doc) push();
+        if (key) void sweep().catch(() => {});
+      });
     }
     opened();
     if (stopNow) doc.stop();
@@ -395,11 +465,15 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
           }
         }
         editor?.clear();
-        // (The session was the old file's: gone; edits from now on are kept under the new file's key.)
+        // (The session was the old file's: gone; edits from now on are kept under the new file's key and lock.)
         await dropKept();
         if (store) {
-          key = sessionKey(name, nf.size, nf.lastModified);
+          lock?.release();
+          lock = null;
+          waitLock?.abort();
           print = await fingerprint(nf);
+          key = sessionKey(name, nf.size, nf.lastModified, print);
+          await takeLock();
         }
       }
       // (Saved as another file: the opened file and its session stay as they are.)
@@ -420,26 +494,57 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   /** Puts the kept session back: only onto the file as opened (an edit since would have its changes land elsewhere). */
   const restoreSession = async (id: number) => {
     const e = ed();
-    if (!kept || !doc!.done || !store) throw new Error('Not ready');
+    if (!kept || !doc!.done || !store || !lock) throw new Error('Not ready');
     if (!unedited()) throw new Error('Not allowed');
-    const k = kept;
-    const chunks = await store.chunks(key, keeper.chunksOf(k));
-    // (Edited, or put back or dropped, while its bytes were read.)
-    if (kept !== k || !unedited() || saving) throw new Error('Not allowed');
-    let got: ReturnType<Keeper['load']>;
+    const h = kept;
+    const k = new Keeper();
+    let got: Awaited<ReturnType<Keeper['load']>>;
     try {
-      got = keeper.load(k, chunks);
-    } catch {
-      // (Its bytes aren't all there: it can't be put back.)
-      await dropKept();
-      throw new Error('Not allowed');
+      got = await k.load(h, (names) => store.parts(key, names));
+    } catch (err) {
+      // (Its parts aren't all there, or not as its head says: it can't be put back.)
+      if (err instanceof Error && err.message === 'Not allowed' && kept === h) await dropKept();
+      throw err;
     }
+    // (Edited, or put back, set aside or dropped, while its parts were read.)
+    if (kept !== h || !unedited() || saving) throw new Error('Not allowed');
+    keeper = k;
     e.doc.edit(opsOf(got.pieces, doc!.src.base.size), performance.now() + EDIT_MS);
-    e.restoreHistory(got.steps, k.applied, k.dropped);
+    e.restoreHistory(got.steps, h.applied, h.dropped);
     kept = null;
-    // (Stored as it is: the next keep writes what's new.)
+    // (Stored as it is: the next keep writes what's new, in its generation.)
     keptVersion = doc!.src.version;
     reply({ id, ok: true, value: edited(), done: true });
+  };
+
+  /**
+   * The session set aside on offer again (the Undo of a first edit that set it aside): the edits since undone and
+   * their history gone, so the document is the file as opened; what was kept of them goes. 'Not allowed' if they
+   * can't all be undone (the oldest let go of), or while saving.
+   */
+  const reofferSession = async (id: number) => {
+    if (!aside || !store || !lock) return reply({ id, ok: true, value: null, done: true });
+    const e = ed();
+    if (e.droppedSteps > 0) throw new Error('Not allowed');
+    if (keepTimer) clearTimeout(keepTimer);
+    keepTimer = null;
+    await keepingNow;
+    // (Closed, saved or set aside no more meanwhile.)
+    if (!aside || !lock || saving) throw new Error('Not allowed');
+    while (e.canUndo) e.undo(performance.now() + EDIT_MS);
+    e.clear();
+    const h = aside;
+    kept = h;
+    aside = null;
+    keeper.reset();
+    keptVersion = -1;
+    await store.delete(key, 'current');
+    await store.aside(key, true);
+    const r = edited();
+    // (Nothing to keep: the document is the file as opened.)
+    if (keepTimer) clearTimeout(keepTimer);
+    keepTimer = null;
+    reply({ id, ok: true, value: r, done: true });
   };
 
   port.onmessage = (e) => {
@@ -461,12 +566,28 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     if (m.op === 'close') {
       // (Edits not kept yet, a second after the last one: kept now, so closing loses none; one being kept: awaited.
       // The answer: whether this document's edits are kept (none, too big, a session on offer, a failed write: no).)
-      const owed = keepTimer !== null;
-      if (keepTimer) clearTimeout(keepTimer);
-      keepTimer = null;
-      void (owed ? keepNow() : (keeping ?? Promise.resolve(false))).then(() =>
-        reply({ id: m.id, ok: true, value: { kept: !!doc && doc.src.edited && keptVersion === doc.src.version }, done: true }),
-      );
+      closing = true;
+      void looking
+        .then(() => {
+          const owed = keepTimer !== null;
+          if (keepTimer) clearTimeout(keepTimer);
+          keepTimer = null;
+          return owed ? keepNow() : (keepingNow ?? false);
+        })
+        .then(async () => {
+          const ok = !!doc && doc.src.edited && keptVersion === doc.src.version && !!lock;
+          // (A session set aside and not brought back: gone now, if this document's edits replace it; with none
+          // (all undone), it's the file's session again. The file's lock: free for another tab.)
+          if (aside && store && lock) {
+            const back = !!doc && !doc.src.edited;
+            await (back ? store.delete(key, 'current').then(() => store.aside(key, true)) : store.delete(key, 'aside')).catch(() => {});
+          }
+          waitLock?.abort();
+          lock?.release();
+          lock = null;
+          return ok;
+        })
+        .then((ok) => reply({ id: m.id, ok: true, value: { kept: ok }, done: true }));
       return;
     }
     if (m.op === 'stop') {
@@ -523,7 +644,8 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
           return reply({ id: m.id, ok: true, value: new Blob(parts(Math.max(0, m.start), Math.min(doc.src.size, m.end)) as BlobPart[]), done: true });
         // Edits: each is one undo step; reads (a node's place) come before any change, so one that waits is asked again whole.
         case 'edit': {
-          const ops: EditOp[] = m.ops.map((o) => ({ a: o.a, b: o.b, put: piecesOf(enc.encode(o.text)) }));
+          // (Typed: its bytes in the arena, so a run of keys is one piece.)
+          const ops: EditOp[] = m.ops.map((o) => ({ a: o.a, b: o.b, put: m.typing ? arena.put(enc.encode(o.text)) : piecesOf(enc.encode(o.text)) }));
           ed().apply(ops, m.typing ? performance.now() + TYPING_MS : until, m.typing);
           return reply({ id: m.id, ok: true, value: edited(), done: true });
         }
@@ -559,13 +681,14 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         case 'restoreSession':
           restoreSession(m.id).catch((err) => fail(m.id, err));
           return;
+        case 'reofferSession':
+          reofferSession(m.id).catch((err) => fail(m.id, err));
+          return;
         case 'dropSession':
-          dropKept().then(
-            () => {
-              // (Dropped to keep this document's edits instead: from now on. Else nothing till the next edit.)
-              if (m.keepEdits && doc!.src.edited && store && key) keepTimer = setTimeout(() => void keepNow().catch(() => {}), KEEP_MS);
-              reply({ id: m.id, ok: true, value: null, done: true });
-            },
+          // (To keep this document's edits instead: the session on offer, if any, set aside, back with
+          // reofferSession till close; else all of it dropped, closing without keeping.)
+          (m.keepEdits ? (kept ? putAside(kept) : Promise.resolve()).then(later) : dropKept()).then(
+            () => reply({ id: m.id, ok: true, value: null, done: true }),
             (err) => fail(m.id, err),
           );
           return;

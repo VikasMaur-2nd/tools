@@ -12,7 +12,7 @@ import { serve } from '../lib/huge/serve';
 import { BlockSource } from '../lib/huge/bytes';
 import { HugeEditor } from '../lib/huge/editor';
 import { piecesOf } from '../lib/huge/pieces';
-import { fingerprint, Keeper, keptSteps, MemorySessionStore, sessionKey, type Kept } from '../lib/huge/session-store';
+import { fingerprint, Keeper, keptSteps, MemorySessionStore, sessionKey, type Head } from '../lib/huge/session-store';
 import type { HugeSummary } from '../lib/huge/types';
 import { hugeMod, normalStatus, open, tapeMod } from './huge-oracle';
 
@@ -28,7 +28,7 @@ function channel(): [Port, Port] {
 /** A session store whose look-ups take `delay` ms (IndexedDB opening late). */
 class SlowStore extends MemorySessionStore {
   delay = 0;
-  async get(key: string): Promise<Kept | null> {
+  async get(key: string): Promise<Head | null> {
     await new Promise((r) => setTimeout(r, this.delay));
     return super.get(key);
   }
@@ -46,8 +46,9 @@ test('notes 14: a kept session found after ready comes through onSummary; none: 
   const file = new File([docText], 'a.json', { lastModified: 3 });
   const store = new SlowStore();
   // A session of this file: a space before it, two changes the history had let go of.
-  const seed = new Keeper().plan([{ buf: enc.encode(' '), off: 0, len: 1 }, { buf: null, off: 0, len: file.size }], [], 0, 2, file.size, await fingerprint(file))!;
-  await store.put(sessionKey('a.json', file.size, 3), { ...seed.kept, time: 5 }, seed.add, seed.drop);
+  const print = await fingerprint(file);
+  const seed = new Keeper().plan([{ buf: enc.encode(' '), off: 0, len: 1 }, { buf: null, off: 0, len: file.size }], [], 0, 2, file.size, print)!;
+  await store.put(sessionKey('a.json', file.size, 3, print), { ...seed.head, time: 5 }, seed.add, seed.drop);
   store.delay = 300;
   const doc = connect(file, store);
   const pushed = new Promise<HugeSummary>((done) => (doc.onSummary = done));
@@ -144,9 +145,9 @@ test('notes 16: steps: +1 an edit or redo, -1 an undo, a typing run one, dropped
   assert.equal(undone, 5 - ed.droppedSteps);
   // Kept as a session: what didn't fit counts as dropped too.
   const k = new Keeper().plan(d.src.list, ed.history.steps, ed.history.applied, ed.droppedSteps, d.src.base.size, '', 1 << 20)!;
-  assert.equal(keptSteps(k.kept), ed.applied);
+  assert.equal(keptSteps(k.head), ed.applied);
   ed.redo();
   const tight = new Keeper().plan(d.src.list, ed.history.steps, ed.history.applied, ed.droppedSteps, d.src.base.size, '', d.src.editBytes)!;
-  assert.equal(tight.kept.steps.length, 0, 'the history did not fit');
-  assert.equal(keptSteps(tight.kept), ed.applied);
+  assert.equal(tight.head.steps, 0, 'the history did not fit');
+  assert.equal(keptSteps(tight.head), ed.applied);
 });

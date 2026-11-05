@@ -11,7 +11,7 @@
  */
 import { parse } from '../json/tape-parser';
 import { writeTape } from '../json/pretty';
-import { lengthOf, piecesOf, type Piece } from './pieces';
+import { joinPieces, lengthOf, piecesOf, type Piece } from './pieces';
 import type { EditOp, HugeDoc } from './doc';
 import { ARR, LIST, OBJ, type HugeNode } from './types';
 
@@ -119,7 +119,7 @@ export class HugeEditor {
     const on = typing && last && last.typing && now - last.time < TYPING_MS && ops.length === 1;
     if (on && op.a === caret && op.b === op.a && removed[0].length === 0) {
       // (Typed on: the same change, its text longer.)
-      last.ops[last.ops.length - 1] = { a: prev!.a, b: prev!.b, put: [...prev!.put, ...op.put] };
+      last.ops[last.ops.length - 1] = { a: prev!.a, b: prev!.b, put: joinPieces(prev!.put, op.put) };
       last.bytes += bytes;
       last.time = now;
     } else if (on && !op.put.length && op.b > op.a && (op.b === caret || op.a === caret)) {

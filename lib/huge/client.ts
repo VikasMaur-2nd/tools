@@ -234,10 +234,21 @@ export class HugeClient {
 
   /**
    * Drops the kept session (closing without keeping the edits: nothing is kept till a further edit). `keepEdits`:
-   * dropping an earlier session, offered while this document was edited, so that its edits are kept instead.
+   * sets the session on offer aside (summary.setAside: back with reofferSession() until close) so that this
+   * document's edits are kept instead.
    */
   dropSession(keepEdits = false): Promise<null> {
     return this.ask('dropSession', { keepEdits });
+  }
+
+  /**
+   * The session set aside (summary.setAside: dropSession(true) on a first edit, or edits made before the look for
+   * it ended) on offer again, for an Undo of that: the edits since are undone and their history forgotten (the
+   * document is the file as opened), and summary.session offers it. Null: none set aside. 'Not allowed': the edits
+   * since can't all be undone (the history let the oldest go).
+   */
+  reofferSession(): Promise<HugeEdited | null> {
+    return this.ask('reofferSession', {}).then((e) => (e ? this.edits(Promise.resolve(e)) : null));
   }
 
   /**

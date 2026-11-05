@@ -15,6 +15,38 @@ export interface Piece {
 /** The bytes of `text` as one piece (none if empty). */
 export const piecesOf = (bytes: Uint8Array): Piece[] => (bytes.length ? [{ buf: bytes, off: 0, len: bytes.length }] : []);
 
+/**
+ * Typed text's bytes, in shared buffers: keys typed one after the other are next to each other in one buffer, so
+ * the piece table joins them into one piece (and a kept session stores each buffer's new bytes, not a buffer a
+ * key). A buffer is only ever added to, after what's in it: pieces already made of it stay as they are.
+ */
+export class Arena {
+  private buf = new Uint8Array(0);
+  private used = 0;
+  constructor(private readonly size = 1 << 16) {}
+
+  /** `bytes` as a piece of the arena's buffer (none if empty). */
+  put(bytes: Uint8Array): Piece[] {
+    if (!bytes.length) return [];
+    if (bytes.length > this.buf.length - this.used) {
+      this.buf = new Uint8Array(Math.max(this.size, bytes.length));
+      this.used = 0;
+    }
+    this.buf.set(bytes, this.used);
+    const p = { buf: this.buf, off: this.used, len: bytes.length };
+    this.used += bytes.length;
+    return [p];
+  }
+}
+
+/** `a` then `b`, the last of `a` and the first of `b` one piece if they run on in one buffer. */
+export function joinPieces(a: readonly Piece[], b: readonly Piece[]): Piece[] {
+  const x = a[a.length - 1];
+  const y = b[0];
+  if (x && y && x.buf && x.buf === y.buf && x.off + x.len === y.off) return [...a.slice(0, -1), { buf: x.buf, off: x.off, len: x.len + y.len }, ...b.slice(1)];
+  return [...a, ...b];
+}
+
 /** Bytes in `ps`. */
 export const lengthOf = (ps: readonly Piece[]): number => {
   let n = 0;

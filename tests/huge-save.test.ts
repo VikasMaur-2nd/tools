@@ -173,7 +173,7 @@ test('save: a session of edits is kept for the same file, put back with its hist
   const want = await textOf(doc);
   // (Kept a second after the last edit.)
   await new Promise((r) => setTimeout(r, 1300));
-  assert.equal(store.kept.size, 1);
+  assert.equal(store.heads.size, 1);
   doc.close();
   // The same file again: offered, put back, and undo goes on where it was.
   const again = connect(new File([text], 'a.json', { lastModified: 7 }), store);
@@ -193,7 +193,7 @@ test('save: a session of edits is kept for the same file, put back with its hist
   other.close();
   // Dropped: gone.
   await again.dropSession();
-  assert.equal(store.kept.size, 0);
+  assert.equal(store.heads.size, 0);
   again.close();
 });
 
@@ -212,7 +212,7 @@ test('save: closing keeps the edits not kept yet (no second to wait), and nothin
   await doc.close();
   assert.ok(performance.now() - t0 < 900, `closed in ${Math.round(performance.now() - t0)} ms`);
   assert.equal(await late, 'Closed');
-  assert.equal(store.kept.size, 1, 'kept at close');
+  assert.equal(store.heads.size, 1, 'kept at close');
   const again = connect(file(), store);
   const s = await again.ready;
   const session = s.session !== undefined ? s.session : (await new Promise<HugeSummary>((done) => (again.onSummary = done))).session;
@@ -222,11 +222,11 @@ test('save: closing keeps the edits not kept yet (no second to wait), and nothin
   // Dropped, then closed: nothing kept.
   await again.dropSession();
   await again.close();
-  assert.equal(store.kept.size, 0);
+  assert.equal(store.heads.size, 0);
   // Not edited: nothing kept, and closing twice is fine.
   const plain = connect(file(), store);
   await plain.ready;
   await plain.close();
   await plain.close();
-  assert.equal(store.kept.size, 0);
+  assert.equal(store.heads.size, 0);
 });
