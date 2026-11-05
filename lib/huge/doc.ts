@@ -127,6 +127,8 @@ export class HugeDoc {
 
   private queryWindow: number;
   private pageBytes: number;
+  /** Time big children's previews may take in a page (ms): tests make it unbounded, so a page is the same however busy the machine is. */
+  private previewMs: number;
 
   /** The indexing pass's source, when it has bytes only once read ahead (prefetch.ts): whether [at, at + len) is here. */
   private indexHas: ((at: number, len: number) => boolean) | null = null;
@@ -140,9 +142,10 @@ export class HugeDoc {
     huge: WebAssembly.Module,
     private readonly parsers: Parsers,
     readonly options: HugeOptions = {},
-    tune: { window?: number; queryWindow?: number; pageBytes?: number; index?: ByteSource & { has(at: number, len: number): boolean } } = {},
+    tune: { window?: number; queryWindow?: number; pageBytes?: number; previewMs?: number; index?: ByteSource & { has(at: number, len: number): boolean } } = {},
   ) {
     this.queryWindow = tune.queryWindow ?? QUERY_WINDOW;
+    this.previewMs = tune.previewMs ?? PREVIEW_MS;
     this.pageBytes = tune.pageBytes ?? PAGE_BYTES;
     const c = content(file);
     // (A source that keeps its own blocks (bytes.ts BlockSource) isn't cached again.)
@@ -173,6 +176,17 @@ export class HugeDoc {
       this.done = true;
       this.error = { msg: 'Not enough memory to parse this document', line: 1, col: 1, pos: 0, kind: 'error' };
     }
+  }
+
+  /**
+   * The document was saved to `file` (in place): it reads that from now on, nothing edited. Its index is the
+   * same (the file is the document, byte for byte, with the same byte order mark).
+   */
+  rebase(file: ByteSource) {
+    const c = content(file);
+    this.src.rebase((file as { cached?: boolean }).cached ? c.src : new CachedSource(c.src));
+    this.regions.clear();
+    this.regionBytes = 0;
   }
 
   /** Bytes of the file the document would be (with its byte order mark). */
@@ -243,8 +257,24 @@ export class HugeDoc {
   /** The skeleton failed: where, why, and its place there (the error is made from it, maybe after a Wait). */
   private failed: { at: number; why: number; anchor: [number, number, number] } | null = null;
 
+  /**
+   * Work owed to the next step (so a step that needs blocks not read yet throws its Wait with nothing half done,
+   * and runs again): reading again (an edit, or past a re-sync), finishing (the end facts).
+   */
+  private pendingRead = false;
+  private pendingFinish = false;
+
   private steps(until: number): boolean {
     while (!this.done) {
+      if (this.pendingFinish) {
+        this.finish();
+        continue;
+      }
+      if (this.pendingRead) {
+        this.readAgain();
+        this.pendingRead = false;
+        continue;
+      }
       if (this.failed) {
         this.fail();
         continue;
@@ -276,7 +306,7 @@ export class HugeDoc {
       // (Read to the end: the old index past here is of no use, but for the pairs the indexer couldn't find again.)
       if (this.edited) this.keepPairs(Infinity);
       this.tail = null;
-      this.finish();
+      this.pendingFinish = true;
     }
     return true;
   }
@@ -294,12 +324,14 @@ export class HugeDoc {
         : // (A second top-level value begun before: the normal path reads them all as JSON Lines then.)
           this.problem(exactError(this.src, this.index, at, anchor, this.parsers.parse, this.lines || (second >= 0 && second < at)));
     this.failed = null;
-    this.finish();
+    this.pendingFinish = true;
   }
 
   private finish() {
-    this.done = true;
+    // (The end facts first: they may need blocks (a Wait), and then this runs again.)
     if (this.edited) this.endFacts();
+    this.done = true;
+    this.pendingFinish = false;
     this.ms = performance.now() - this.t0;
     // (Regions parsed while reading may end where the document did then.)
     this.regions.clear();
@@ -487,15 +519,39 @@ export class HugeDoc {
       removed.push(this.src.splice(o.a, o.b, o.put));
       this.tail?.replaced(o.a, o.b, lengthOf(o.put));
     }
-    if (cut) this.readAgain();
-    else if (this.cand >= 0) {
+    if (cut) {
+      // (Read again from the next step: nothing past the index's new end is read meanwhile.)
+      this.unread();
+      this.pendingRead = true;
+    } else if (this.cand >= 0) {
       // (Ahead of the indexer: the same candidate, unless it died.)
       this.cand = this.nextCand(-Infinity, this.cand - 1);
       this.aim();
     }
     this.regions.clear();
     this.regionBytes = 0;
-    return { removed, done: this.step(until) };
+    // (The changes are made: a step that waits for blocks is the caller's to go on with (step()), never this again.)
+    let done = false;
+    try {
+      done = this.step(until);
+    } catch (e) {
+      if (!(e instanceof Wait)) throw e;
+    }
+    return { removed, done };
+  }
+
+  /** Not all read any more (from the index's last live checkpoint on): the document's facts, error and end to be found again. */
+  private unread() {
+    this.done = false;
+    this.pendingFinish = false;
+    this.final = null;
+    this.error = null;
+    this.failed = null;
+    this.failedAt = -1;
+    this.errorSelf = false;
+    this.errorMulti = false;
+    const live = this.index;
+    this.front = { pos: live.pos[live.n - 1], s: live.state(live.n - 1), part: 0, partStart: -1 };
   }
 
   /** The index before change [a, b): whether it was cut back (so the indexer reads again from its new end). */
@@ -614,13 +670,7 @@ export class HugeDoc {
     this.holdAt = this.syncFrom < Infinity ? this.syncFrom : -1;
     this.cand = this.nextCand(s.pos, -1);
     this.aim();
-    this.done = false;
-    this.final = null;
-    this.error = null;
-    this.failed = null;
-    this.failedAt = -1;
-    this.errorSelf = false;
-    this.errorMulti = false;
+    this.unread();
     this.moved();
   }
 
@@ -821,7 +871,7 @@ export class HugeDoc {
     t.dirty = t.dirty.filter((_, i) => t.dirty[i | 1] > s.pos);
     if (nd >= 0) {
       // On from the last of them to the next dirty stretch.
-      this.readAgain();
+      this.pendingRead = true;
     } else if (all) {
       // The end, as it was (counts moved).
       const fin = (t.end as { final: Float64Array }).final.slice();
@@ -834,12 +884,11 @@ export class HugeDoc {
       fin[8] = 0;
       this.tail = null;
       this.final = fin;
-      this.finish();
-      this.moved();
+      this.pendingFinish = true;
     } else {
       // Its end changed (the top-level values), or isn't known: read on from the last of them.
       this.tail = null;
-      this.readAgain();
+      this.pendingRead = true;
     }
   }
 
@@ -1234,7 +1283,7 @@ export class HugeDoc {
     const t0 = opts.previews === false ? 0 : performance.now();
     const stubPairs: [number, HugeNode][] = stubs.map((x, j) => {
       const n = { ...nodes[x.index - from], key: x.key };
-      if (opts.previews !== false && j < PREVIEWS && performance.now() - t0 < PREVIEW_MS) {
+      if (opts.previews !== false && j < PREVIEWS && performance.now() - t0 < this.previewMs) {
         const pv = this.previewOf(n, x.at);
         if (pv !== undefined) n.preview = pv;
       }

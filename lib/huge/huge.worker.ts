@@ -8,6 +8,7 @@
 import { BlockSource } from './bytes';
 import { Prefetch, SyncChunks } from './prefetch';
 import { serve } from './serve';
+import { IdbSessionStore } from './session-store';
 import type { Parsers } from './doc';
 import type { Parse } from './errors';
 import { Wait } from './wait';
@@ -52,6 +53,7 @@ const webkit = /AppleWebKit\//.test(ua) && !/(Chrome|Chromium)\//.test(ua);
 
 // (The read-ahead of the file being opened: query blocks take what it has read.)
 let ahead: Prefetch | null = null;
+let aheadOf: Blob | null = null;
 
 serve(
   self as unknown as Parameters<typeof serve>[0],
@@ -61,7 +63,10 @@ serve(
   (file) =>
     firefox || webkit
       ? { size: file.size, read: (at, len) => new Uint8Array(readSync(file.slice(at, at + len))) }
-      : Object.assign(new BlockSource(file, 1 << 20, 24, ahead ?? undefined), { cached: true }),
+      : // (The read-ahead's chunks are its file's: a file saved in place is another.)
+        Object.assign(new BlockSource(file, 1 << 20, 24, ahead && aheadOf === file ? ahead : undefined), { cached: true }),
   // Indexing: FileReaderSync 16 MiB at a time in Firefox (flat memory), 16 MiB arrayBuffer() two in flight elsewhere.
-  (file) => (firefox ? new SyncChunks(file, readSync) : (ahead = new Prefetch(file))),
+  (file) => (firefox ? new SyncChunks(file, readSync) : ((aheadOf = file), (ahead = new Prefetch(file)))),
+  // Edits kept between visits, where there is IndexedDB.
+  typeof indexedDB === 'undefined' ? undefined : new IdbSessionStore(),
 );

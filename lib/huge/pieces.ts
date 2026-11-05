@@ -30,7 +30,7 @@ export class Pieces implements ByteSource {
   /** Where each piece starts in the document. */
   private starts: number[];
 
-  constructor(readonly base: ByteSource) {
+  constructor(public base: ByteSource) {
     this.size = base.size;
     this.ps = base.size ? [{ buf: null, off: 0, len: base.size }] : [];
     this.starts = base.size ? [0] : [];
@@ -139,6 +139,12 @@ export class Pieces implements ByteSource {
       if (to > from) out.push({ buf: p.buf, off: p.off + from, len: to - from });
     }
     return out;
+  }
+
+  /** Reads `base` from now on, as the whole document (it was saved there): nothing edited. */
+  rebase(base: ByteSource): void {
+    this.base = base;
+    this.reset();
   }
 
   /** The base's bytes (no edits) again. */

@@ -7,7 +7,7 @@
  *   const page = await doc.children(summary.root!, 0, 1000);
  */
 import type { Answer, Reply, Request } from './protocol';
-import type { Bytes, FindBatch, FindOptions, HugeLines, HugeLocation, HugeNode, HugeOptions, HugePage, HugeProgress, HugeSummary, Seg } from './types';
+import type { Bytes, FindBatch, FindOptions, HugeEdited, HugeLines, HugeLocation, HugeNode, HugeOptions, HugePage, HugeProgress, HugeSaved, HugeSummary, Seg } from './types';
 import { parsePath } from '../json/path';
 
 /** What the client talks to: a Worker, or (tests) anything that passes messages the same way. */
@@ -34,9 +34,13 @@ export class HugeClient {
   private closed = false;
   /** Bytes before the document's first (a UTF-8 byte order mark), known from the first summary. */
   private bom = 0;
+  /** Whether the document has been edited since it was opened (or saved in place): blob() reads the file only until then. */
+  private changed = false;
+  /** After an edit that wasn't all read again at once: the summary when it is (and progress meanwhile, through onProgress). */
+  onSummary: ((s: HugeSummary) => void) | null = null;
 
   constructor(
-    readonly file: Blob,
+    public file: Blob,
     options: HugeOptions = {},
     onProgress?: (p: HugeProgress) => void,
     port?: Port,
@@ -44,6 +48,12 @@ export class HugeClient {
     this.port = port ?? (new Worker(new URL('./huge.worker.ts', import.meta.url)) as unknown as Port);
     this.port.onmessage = (e) => this.receive(e.data as Reply);
     this.ready = this.ask('open', { file, options }, (v) => onProgress?.(v as HugeProgress)).then((s) => this.saw(s as HugeSummary));
+    // (Never done: what reading again after edits says.)
+    void this.ask('watch', {}, (v) => {
+      const x = v as HugeProgress | HugeSummary;
+      if ('status' in x) this.onSummary?.(this.saw(x));
+      else onProgress?.(x);
+    }).catch(() => {});
   }
 
   private receive(r: Reply) {
@@ -113,9 +123,108 @@ export class HugeClient {
     return this.ask('text', { start, end, max });
   }
 
-  /** The bytes [start, end) as a Blob (the file's own: nothing is read): a value to save or copy. Call after a summary. */
+  /**
+   * The bytes [start, end) as a Blob (the file's own: nothing is read): a value to save or copy. Call after a
+   * summary, and only while the document isn't edited (else `slice`: the document's bytes are the edits' too).
+   */
   blob(start: Bytes, end: Bytes): Blob {
+    if (this.changed) throw new Error('Edited');
     return this.file.slice(this.bom + start, this.bom + end);
+  }
+
+  /** The document's bytes [start, end) as a Blob (the file's slices and the edits' bytes: nothing copied). */
+  slice(start: Bytes, end: Bytes): Promise<Blob> {
+    return this.ask('slice', { start, end });
+  }
+
+  // ── Edits (editor.ts): each is one undo step. Positions are the document's as it is when the edit is asked. ──
+
+  private edits(p: Promise<HugeEdited>): Promise<HugeEdited> {
+    return p.then((e) => {
+      this.changed = true;
+      if (e.summary) this.saw(e.summary);
+      return e;
+    });
+  }
+
+  /** Replaces bytes [a, b) with `text` (several changes at once: in order, each at the document the one before leaves). `typing`: joins the last step if it goes on from it. */
+  replace(ops: { a: Bytes; b: Bytes; text: string }[], typing = false): Promise<HugeEdited> {
+    return this.edits(this.ask('edit', { ops, typing }));
+  }
+
+  /** Sets `node`'s value to JSON `json` (re-indented for where it is). */
+  setValue(node: HugeNode, json: string): Promise<HugeEdited> {
+    return this.edits(this.ask('setValue', { node, json }));
+  }
+
+  /** Renames child `index` of object `parent`. */
+  rename(parent: HugeNode, index: number, name: string): Promise<HugeEdited> {
+    return this.edits(this.ask('rename', { parent, index, name }));
+  }
+
+  /** Removes child `index` of `parent` (a container or the LIST), with its separator. */
+  remove(parent: HugeNode, index: number): Promise<HugeEdited> {
+    return this.edits(this.ask('remove', { parent, index }));
+  }
+
+  /** Inserts JSON `json` as child `index` of `parent` (named `name` in an object; parent null: an empty document's value). */
+  insert(parent: HugeNode | null, index: number, json: string, name: string | null = null): Promise<HugeEdited> {
+    return this.edits(this.ask('insert', { parent, index, json, name }));
+  }
+
+  /** Copies child `index` of `parent` right after it (an object member: "<name> (copy)"). Any size: nothing is read. */
+  duplicate(parent: HugeNode, index: number): Promise<HugeEdited> {
+    return this.edits(this.ask('duplicate', { parent, index }));
+  }
+
+  /** `node`'s text for the normal editor (at most `max` bytes, else the error 'Too big'). */
+  nodeText(node: HugeNode, max = 64 << 20): Promise<string> {
+    return this.ask('nodeText', { node, max });
+  }
+
+  /** Puts `text` (from the normal editor) in place of `node` (re-indented if it's JSON). */
+  replaceNode(node: HugeNode, text: string): Promise<HugeEdited> {
+    return this.edits(this.ask('replaceNode', { node, text }));
+  }
+
+  undo(): Promise<HugeEdited> {
+    return this.edits(this.ask('undo', {}));
+  }
+
+  redo(): Promise<HugeEdited> {
+    return this.edits(this.ask('redo', {}));
+  }
+
+  /**
+   * Writes the document: to `handle`'s file (File System Access; `inPlace`: the opened file, which the document
+   * then reads: no edits, no history), or with no handle as a Blob to download (`blob` in the last answer). Progress
+   * through `onSaved`; call the returned function to stop (the file is left as it was).
+   */
+  save(handle: FileSystemFileHandle | null, inPlace: boolean, onSaved?: (s: HugeSaved) => void): { done: Promise<HugeSaved>; stop: () => void } {
+    const done = this.ask('save', { handle, inPlace }, (v) => onSaved?.(v as HugeSaved));
+    const id = this.seq;
+    return {
+      done: done.then(async (s) => {
+        if (inPlace && handle) {
+          this.file = await handle.getFile();
+          this.changed = false;
+        }
+        return s;
+      }),
+      stop: () => {
+        if (this.pending.has(id)) void this.ask('cancel', { target: id });
+      },
+    };
+  }
+
+  /** Puts back the kept session of this file (summary.session): its edits and history. */
+  restoreSession(): Promise<HugeEdited> {
+    return this.edits(this.ask('restoreSession', {}));
+  }
+
+  /** Drops the kept session of this file (closing without keeping the edits). */
+  dropSession(): Promise<null> {
+    return this.ask('dropSession', {});
   }
 
   /**
@@ -151,4 +260,4 @@ export function openHuge(file: Blob, options: HugeOptions = {}, onProgress?: (p:
   return new HugeClient(file, options, onProgress);
 }
 
-export type { HugeLines, HugeLocation, HugeNode, HugePage, HugeSummary };
+export type { HugeEdited, HugeLines, HugeLocation, HugeNode, HugePage, HugeSaved, HugeSummary };

@@ -72,9 +72,16 @@ export class HugeEditor {
     return this.held;
   }
 
-  /** The history's steps (forward changes, the bytes they put in) for a session to keep: steps[0, applied) are applied. */
-  get history(): { steps: readonly { ops: readonly EditOp[] }[]; applied: number } {
+  /** The history's steps (their changes and what each took out) for a session to keep: steps[0, applied) are applied. */
+  get history(): { steps: readonly { ops: readonly EditOp[]; removed: readonly Piece[][] }[]; applied: number } {
     return { steps: this.steps, applied: this.at };
+  }
+
+  /** A kept session's history back (its document is the one now: put back with doc.edit). */
+  restoreHistory(steps: readonly { ops: EditOp[]; removed: Piece[][] }[], applied: number) {
+    this.steps = steps.map((s) => ({ ops: s.ops, removed: s.removed, bytes: s.ops.reduce((n, o, i) => n + editBytes(o.put) + editBytes(s.removed[i] ?? []), 0), time: 0, typing: false }));
+    this.at = Math.min(applied, this.steps.length);
+    this.held = this.steps.reduce((n, s) => n + s.bytes, 0);
   }
 
   /**

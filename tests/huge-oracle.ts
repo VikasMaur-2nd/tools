@@ -93,7 +93,7 @@ export interface EditTune {
 }
 
 export const open = (bytes: Uint8Array, name: string, t: EditTune) => {
-  const d = new HugeDoc(memSource(bytes), hugeMod, { wasm: tapeMod, parse }, { name, every: t.every, big: t.big }, { window: t.window, queryWindow: t.window, pageBytes: t.pageBytes });
+  const d = new HugeDoc(memSource(bytes), hugeMod, { wasm: tapeMod, parse }, { name, every: t.every, big: t.big }, { window: t.window, queryWindow: t.window, pageBytes: t.pageBytes, previewMs: Infinity });
   d.step(Infinity);
   return d;
 };
