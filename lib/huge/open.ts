@@ -56,7 +56,8 @@ export async function openHuge(host: HugeHost, file: File, source: InputSource, 
   if (!closed && /\.gz$/i.test(file.name)) {
     try {
       const { openGz } = await import('./gz');
-      await openGz(host, file, source, signal, editorLimit(), async (plain, done) => {
+      // (The decompressed file's session, if it opened in huge mode: its hook goes to the engine.)
+      return await openGz(host, file, source, signal, editorLimit(), async (plain, done) => {
         const hook = await openHuge(host, plain, source, signal, false, Scroll, done);
         // (Not opened: the copy goes now.)
         if (!hook) done();

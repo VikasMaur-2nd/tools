@@ -102,7 +102,8 @@ function Commands() {
   // Titles and search terms in the page's language; the English ones stay searchable.
   const names = useMemo(() => {
     const m = new Map<Command, { title: string; group: string; hay: string }>();
-    for (const c of COMMANDS) {
+    // (Every command a list can show: the normal ones and huge mode's Shape.)
+    for (const c of [...COMMANDS, SHAPE]) {
       const terms = `${c.group} ${c.terms ?? ''}`;
       const hay = t.lang ? `${t(c.group)} ${c.terms ? t(c.terms) : ''} ${c.id.startsWith('to-') ? t('convert') : ''} ${terms} ${c.title}` : terms;
       m.set(c, { title: t.msg(c.title), group: t(c.group), hay });

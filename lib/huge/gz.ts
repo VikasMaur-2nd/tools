@@ -10,7 +10,7 @@ import type { Events, InputSource } from '../analytics/events';
 import { store } from '../engine/store';
 import { rt } from '../i18n/ui';
 import HugeGz from '@/components/huge/HugeGz';
-import { hugeSize, type HugeHost } from './session';
+import { hugeSize, type HugeHook, type HugeHost } from './session';
 import { StreamClient, StreamError, freeSpace, gzSize, hold, removeTemp, tempName } from './stream/client';
 
 export interface GzState {
@@ -42,19 +42,19 @@ export class GzStore {
 }
 
 /** What opening the decompressed big file needs: opens it in huge mode; `closed` runs when that session closes. */
-export type OpenBig = (file: File, closed: () => void) => Promise<unknown>;
+export type OpenBig = (file: File, closed: () => void) => Promise<HugeHook | null>;
 
 /** Opens .gz file `file`: in the editor (decompressed size up to `limit`), or in huge mode through `big`. */
-export async function openGz(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, limit: number, big: OpenBig): Promise<void> {
+export async function openGz(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, limit: number, big: OpenBig): Promise<HugeHook | null> {
   const began = performance.now();
   const plain = file.name.replace(/\.gz$/i, '') || 'data.json';
   const report = (outcome: Events['huge_gz']['outcome']) => track('huge_gz', { outcome, size: hugeSize(file.size), ms: Math.round(performance.now() - began) });
   const est = await gzSize(file);
-  if (signal.aborted) return;
+  if (signal.aborted) return null;
   if (est === null) {
     report('error');
     host.toast(`Couldn't open ${file.name}: it isn't a gzip file`, 'err');
-    return;
+    return null;
   }
   const toDisk = est > limit;
   if (toDisk) {
@@ -62,7 +62,7 @@ export async function openGz(host: HugeHost, file: File, source: InputSource, si
     if (free !== null && free < est) {
       report('space');
       host.toast(`Not enough free disk space to decompress ${file.name}: it needs about ${rt.bytes(est)}, ${rt.bytes(free)} is free`, 'err', undefined, 10_000);
-      return;
+      return null;
     }
   }
   const ui = new GzStore({ name: file.name, size: file.size, read: 0, out: 0, eta: null, big: toDisk });
@@ -92,22 +92,23 @@ export async function openGz(host: HugeHost, file: File, source: InputSource, si
       release();
       if (r.file) void removeTemp(name);
       leave();
-      return;
+      return null;
     }
     if (r.blob) {
       release();
       leave();
       report('editor');
       await host.loadFile(new File([r.blob], plain, { type: 'application/json' }), source, false);
-      return;
+      return null;
     }
     report('huge');
     // (The decompressed file lives as long as its huge session; a Blob of it reads the disk, no copy.)
-    await big(new File([r.file!], plain), () => {
+    const hook = await big(new File([r.file!], plain), () => {
       release();
       void removeTemp(name);
     });
     leave();
+    return hook;
   } catch (e) {
     signal.removeEventListener('abort', stop);
     client.close();
@@ -118,19 +119,20 @@ export async function openGz(host: HugeHost, file: File, source: InputSource, si
     if (msg === 'Stopped') {
       report('stopped');
       host.focusEditor();
-      return;
+      return null;
     }
     if (msg === 'Not enough storage space') {
       report('space');
       host.toast(`Not enough free disk space to decompress ${file.name}`, 'err', undefined, 10_000);
-      return;
+      return null;
     }
     report('error');
     if (msg === 'No storage') {
       host.toast(`Couldn't decompress ${file.name}: your browser won't let this page store it (a private window?)`, 'err', undefined, 10_000);
-      return;
+      return null;
     }
     if (msg !== 'Not a gzip file') reportError(e, 'huge');
     host.toast(`Couldn't decompress ${file.name}: it isn't valid gzip`, 'err');
+    return null;
   }
 }
