@@ -24,6 +24,8 @@ type Args<O extends Request['op']> = Omit<Extract<Request, { op: O }>, 'id' | 'o
 
 /** Lines a pretty or raw line is cut at by default (a view shows the start of a long line). */
 export const LINE_MAX = 1 << 16;
+/** How long close() waits for the edits to be kept before the worker ends (ms). */
+const CLOSE_MS = 10_000;
 
 export class HugeClient {
   /** The summary once the whole document is read (the first problem, if any, is in it). */
@@ -247,11 +249,28 @@ export class HugeClient {
   }
 
   /** Stops the worker: the document is let go. */
-  close() {
+  /**
+   * Closes the document: edits not kept yet as a session (it's kept a second after the last edit) are kept first,
+   * so reopening the file offers them; then the worker ends. Other requests fail ('Closed') at once. Resolves once
+   * the worker has ended (at most CLOSE_MS after: an unfinished keep then leaves the session as last kept).
+   */
+  close(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    const id = this.seq + 1;
+    const kept = this.ask('close', {}).catch(() => null);
     this.closed = true;
-    for (const p of this.pending.values()) p.fail(new Error('Closed'));
-    this.pending.clear();
-    this.port.terminate?.();
+    for (const [k, p] of this.pending) {
+      if (k === id) continue;
+      p.fail(new Error('Closed'));
+      this.pending.delete(k);
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((done) => (timer = setTimeout(() => done(null), CLOSE_MS)));
+    return Promise.race([kept, late]).then(() => {
+      clearTimeout(timer);
+      this.pending.clear();
+      this.port.terminate?.();
+    });
   }
 }
 

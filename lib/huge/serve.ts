@@ -104,6 +104,8 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
   // look that ends after it sends its own through the watch stream).
   let looked = !store;
   let readySent = false;
+  // (Owed before the watch stream was asked for: a small document can be read before its request comes.)
+  let pushOwed = false;
 
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
   const fail = (id: number, e: unknown) => reply({ id, ok: false, error: e instanceof Error && KNOWN.has(e.message) ? e.message : 'Query failed' });
@@ -164,12 +166,17 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     return { version: doc!.src.version, done: doc!.done, canUndo: editor!.canUndo, canRedo: editor!.canRedo, steps: editor!.applied, summary: doc!.done ? summary() : null };
   };
 
-  const keepNow = async () => {
+  /** Keeps the edits as a session now (and `keeping` until it's stored: closing waits for it). */
+  let keeping: Promise<void> | null = null;
+  const keepNow = () => {
     keepTimer = null;
-    if (!store || !key || !editor) return;
+    if (!store || !key || !editor) return Promise.resolve();
     const k = doc!.src.edited ? keep(doc!.src.list, editor.history.steps, editor.history.applied, SESSION_BYTES, editor.droppedSteps) : null;
-    if (k) await store.put(key, k);
-    else await store.delete(key);
+    const p = (k ? store.put(key, k) : store.delete(key)).finally(() => {
+      if (keeping === p) keeping = null;
+    });
+    keeping = p;
+    return p;
   };
 
   const dropKept = async () => {
@@ -213,7 +220,9 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         .then(() => {
           looked = true;
           // (Ended after the open's summary went out: a summary through the watch stream says what it found.)
-          if (readySent && watchId >= 0 && doc) reply({ id: watchId, ok: true, value: summary(), done: false });
+          if (!readySent || !doc) return;
+          if (watchId >= 0) reply({ id: watchId, ok: true, value: summary(), done: false });
+          else pushOwed = true;
         });
     }
     opened();
@@ -363,6 +372,17 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       reply({ id: m.id, ok: true, value: null, done: true });
       return;
     }
+    if (m.op === 'close') {
+      // (Edits not kept yet, a second after the last one: kept now, so closing loses none; one being kept: awaited.)
+      const owed = keepTimer !== null;
+      if (keepTimer) clearTimeout(keepTimer);
+      keepTimer = null;
+      void (owed ? keepNow() : (keeping ?? Promise.resolve())).then(
+        () => reply({ id: m.id, ok: true, value: null, done: true }),
+        () => reply({ id: m.id, ok: false, error: 'Save failed' }),
+      );
+      return;
+    }
     if (m.op === 'stop') {
       if (doc) doc.stop();
       else stopNow = true;
@@ -371,6 +391,10 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     }
     if (m.op === 'watch') {
       watchId = m.id;
+      if (pushOwed) {
+        pushOwed = false;
+        reply({ id: watchId, ok: true, value: summary(), done: false });
+      }
       return;
     }
     if (doc) answer(m);

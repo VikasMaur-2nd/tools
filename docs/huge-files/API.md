@@ -40,7 +40,7 @@ const doc = openHuge(file, { name: file.name }, (p) => progress(p.bytes / p.size
 const first = await doc.summary();   // counts so far: show the first rows at once
 const s = await doc.ready;           // the whole file read (or stopped): s.error is the first problem, if any
 await doc.stop();                    // indexing ends where it is (ready resolves, s.stopped); queries go on
-doc.close();                         // lets the worker (and the document) go
+await doc.close();                   // keeps edits not kept yet (a session), then lets the worker go
 ```
 
 `HugeOptions`: `name` (`.jsonl`/`.ndjson` read as JSON Lines exactly as the normal path), `every` (checkpoint
@@ -220,7 +220,8 @@ place): the file bar's "N changes".
 
 ## Sessions (edits kept between visits)
 
-- Edits are kept in IndexedDB a second after the last one, keyed by the file's name, size and last modified: the
+- Edits are kept in IndexedDB a second after the last one, and at `close()` (async: it keeps what isn't kept yet,
+  then ends the worker; at most 10 s), keyed by the file's name, size and last modified: the
   document's pieces (references to the file and the edits' bytes) and its history (256 MiB of edits' bytes at most;
   the history goes first if it doesn't fit, then nothing is kept).
 - Reopening the same file: `summary.session` is `undefined` while the kept session is looked for, then `null`
