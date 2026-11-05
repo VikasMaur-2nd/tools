@@ -18,6 +18,7 @@ import { HugeLinesView } from './lines-view';
 import { HUGE_VIEWS, HugeStore, type Ask, type HugeUI, type HugeView } from './state';
 import { HugeTasks } from './tasks';
 import { HugeTableView } from './table-view';
+import { HugeGraph } from './graph';
 import { HugeTreeView } from './tree-view';
 import type { Open } from './tree-model';
 import type { HugeNode, HugeSource, IndexState, LineMode, Seg } from './source';
@@ -80,6 +81,7 @@ export class HugeSession {
   private tree: HugeTreeView | null = null;
   private lines: HugeLinesView | null = null;
   private table: HugeTableView | null = null;
+  private graph: HugeGraph | null = null;
   private root: HugeNode | null = null;
   /** The selected value and its path. */
   private sel: { node: HugeNode; path: Seg[] } | null = null;
@@ -133,6 +135,7 @@ export class HugeSession {
       table: { path: '$', rows: 0, cols: 0, ok: false },
       lines: 0,
       noRoot: false,
+      graph: null,
     });
     this.find = new StreamFind(src, (at) => void this.jumpTo(at), () => this.ui.set({ find: { ...this.ui.get().find, ...this.find.view() } }), (e) => this.failed(e));
     this.stopState = src.onState(this.onState);
@@ -198,6 +201,8 @@ export class HugeSession {
     this.tree?.destroy();
     this.lines?.destroy();
     this.table?.destroy();
+    this.graph?.destroy();
+    this.graph = null;
     this.work?.destroy();
     this.work = null;
     for (const f of this.closers.splice(0)) f();
@@ -266,6 +271,7 @@ export class HugeSession {
     this.lines?.grow();
     this.ui.set({ lines: this.lines?.count ?? this.src.lineCount(this.ui.get().mode) });
     void this.tree?.refreshCounts(all);
+    if (all) void this.refreshGraph();
     if (this.root?.partial || all) {
       void this.src.root().then((r) => {
         if (this.dead) return;
@@ -379,18 +385,128 @@ export class HugeSession {
     };
   }
 
+  mountGraph(el: HTMLElement) {
+    this.graph?.destroy();
+    const graph = (this.graph = new HugeGraph(el, {
+      src: this.src,
+      select: (node, path) => this.select(node, path, 'graph'),
+      copy: (node, path, what) => (what === 'path' ? this.copyPath(path) : void this.copyValue(node, path)),
+      escape: () => document.querySelector<HTMLElement>('.hg [role="tab"][aria-selected="true"]')?.focus(),
+      changed: (path, shown, full) => this.ui.set({ graph: { path: formatPath(path), up: path.length > 0, shown, full } }),
+      failed: (e) => this.failed(e),
+    }));
+    graph.onUp = () => void this.graphUp();
+    graph.onFrom = () => void this.graphFrom();
+    if (this.ui.get().view === 'graph') {
+      graph.activate();
+      void this.graphFor();
+    }
+    return () => {
+      if (this.graph === graph) this.graph = null;
+      graph.destroy();
+    };
+  }
+
+  /**
+   * The graph for the selection: the part it shows already has it (selected there), or the part from the selected
+   * container (the container holding a selected value; the file's root with nothing selected).
+   */
+  private async graphFor() {
+    const g = this.graph;
+    if (!g || !this.root) return;
+    const sel = this.sel;
+    if (g.rootPath && (!sel || g.has(sel.path))) return g.select(sel?.path ?? null);
+    if (!sel || !sel.path.length) return g.show(this.root, []);
+    if (sel.node.t >= ARR) return g.show(sel.node, sel.path, sel.path);
+    const up = sel.path.slice(0, -1);
+    const chain = await this.src.resolve(up);
+    if (this.dead || this.graph !== g || !chain) return;
+    await g.show(chain[chain.length - 1], up, sel.path);
+  }
+
+  /** The graph's root one level up (the old root stays selected). */
+  async graphUp() {
+    const g = this.graph;
+    const path = g?.rootPath;
+    if (!g || !path?.length) return;
+    const up = path.slice(0, -1);
+    const chain = up.length ? await this.src.resolve(up) : [this.root!];
+    if (this.dead || this.graph !== g || !chain?.length) return;
+    await g.show(chain[chain.length - 1], up, path);
+  }
+
+  /** The graph from the selected value (its container for a value). */
+  async graphFrom() {
+    const g = this.graph;
+    const sel = this.sel;
+    if (!g || !sel) return;
+    if (sel.node.t >= ARR) return g.show(sel.node, sel.path, sel.path);
+    const up = sel.path.slice(0, -1);
+    const chain = up.length ? await this.src.resolve(up) : [this.root!];
+    if (this.dead || this.graph !== g || !chain?.length) return;
+    await g.show(chain[chain.length - 1], up, sel.path);
+  }
+
+  /** Indexing ended: the graph's counts are read again (its root and selection kept). */
+  private async refreshGraph() {
+    const g = this.graph;
+    const path = g?.rootPath;
+    if (!g || !path) return;
+    const chain = path.length ? await this.src.resolve(path) : [await this.src.root()];
+    if (this.dead || this.graph !== g || !chain?.length) return;
+    await g.refresh(chain[chain.length - 1], this.sel?.path ?? null);
+  }
+
+  graphFit() {
+    this.graph?.fit();
+  }
+
+  graphZoom(f: number) {
+    this.graph?.zoomBy(f);
+  }
+
+  graphCollapse() {
+    this.graph?.collapseAll();
+  }
+
+  /** Saves the graph shown as an image (PNG at twice the size, or SVG). */
+  async graphExport(format: 'png' | 'svg') {
+    const g = this.graph;
+    if (!g) return;
+    try {
+      const blob = await g.exportImage({ format, area: 'all', background: 'theme', scale: 2 });
+      if (this.dead) return;
+      track('feature_used', { feature: format === 'png' ? 'graph_export_png' : 'graph_export_svg' });
+      this.host.saveBlob(blob, `${this.meta.name.replace(/\.[^.]+$/, '')}-graph.${format}`);
+    } catch {
+      this.host.toast("Couldn't make the image", 'err');
+    }
+  }
+
+  /** The page's theme changed: the graph draws in the new colours. */
+  themeChanged() {
+    this.graph?.theme();
+  }
+
   setView(view: HugeView) {
     const was = this.ui.get().view;
     if (view === was) return;
+    if (view === 'graph') {
+      this.graph?.activate();
+      void this.graphFor();
+    } else if (was === 'graph') this.graph?.deactivate();
     // The table shows the selected container (or the one holding the selected value).
     if (view === 'table' && this.sel) void this.tableForSel();
     this.ui.set({ view, ask: null });
     track('view_opened', { view, via: 'other' });
-    // Find follows the view: the same query, from where that view is. (Only into a view Find is for: a search
-    // started in Shape or Convert would read the whole file for nothing, alongside their own pass.)
+    // Find follows the view without searching again (its matches are places in the file, whatever the view):
+    // the current one is shown in this view. Shape and Convert read the whole file themselves: a search still
+    // running stops there rather than read alongside them.
     const q = this.ui.get().find.q;
-    if (q && (view === 'format' || view === 'tree' || view === 'table')) requestAnimationFrame(() => !this.dead && this.runFind(q));
-    else if (q) this.find.stop();
+    if (q && (view === 'format' || view === 'tree' || view === 'table')) {
+      const at = this.find.index >= 0 ? this.find.hits[this.find.index] : -1;
+      if (at >= 0) requestAnimationFrame(() => !this.dead && void this.jumpTo(at));
+    } else if (q && (view === 'shape' || view === 'convert')) this.find.stop();
   }
 
   setMode(mode: LineMode) {
@@ -431,10 +547,13 @@ export class HugeSession {
 
   // ── Selection ──────────────────────────────────────────────────────────
 
-  private select(node: HugeNode, path: Seg[], from: 'tree' | 'table' | 'lines') {
+  private select(node: HugeNode, path: Seg[], from: 'tree' | 'table' | 'lines' | 'graph') {
     this.sel = { node, path };
     this.ui.set({ sel: { path: formatPath(path), t: node.t, bytes: node.end < 0 ? -1 : node.end - node.at, count: node.count, partial: !!node.partial } });
     if (from !== 'lines' && this.lines) void this.showLine(node.at, false);
+    // The tree follows a choice in the graph (and the graph one elsewhere, when it shows that value).
+    if (from === 'graph') void this.src.resolve(path).then((chain) => chain && !this.dead && this.tree?.reveal(chain, null));
+    else this.graph?.select(path);
   }
 
   /** A click in the Format view: selects the value there. */
@@ -689,7 +808,7 @@ export class HugeSession {
   private key(e: KeyboardEvent): boolean {
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
-    // Alt+digit: huge mode's views, in its tabs' order (Shape is the fourth). On macOS not while typing (Option+digit types).
+    // Alt+digit: the views as numbered in the normal tool (Alt+4 is Graph), Shape seventh. On macOS not while typing (Option+digit types).
     const t = e.target as HTMLElement | null;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || !!t?.isContentEditable;
     if (e.altKey && !mod && !e.shiftKey && /^Digit[1-7]$/.test(e.code) && !(/Mac|iPhone|iPad/.test(navigator.platform) && typing)) {

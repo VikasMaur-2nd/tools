@@ -877,3 +877,29 @@ html[data-huge] .statusbar .cursor {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Graph (lib/huge/graph.ts): the normal tool's graph, filling the view; its root and count in the toolbar. */
+.hg > .view > .hg-graph {
+  flex: 1;
+  min-height: 0;
+}
+
+.hg-gwhere {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hg-gwhere .hg-gpath {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .hg-gwhere > .muted {
+    display: none;
+  }
+}

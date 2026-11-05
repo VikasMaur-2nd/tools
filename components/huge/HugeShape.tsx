@@ -146,9 +146,20 @@ export default function ShapeView({ s, hidden }: { s: HugeSession; hidden: boole
   const [closed, setClosed] = useState<Set<number>>(() => new Set());
   const [q, setQ] = useState('');
   const grid = useRef<HTMLDivElement>(null);
-  // (Read once the panel first shows: what it is for.)
+  // (Read once the panel first shows: what it is for. Not by itself while Find or a Convert command reads the
+  // whole file: two passes at once, unasked; its button reads it then.)
+  const busy = useSyncExternalStore(
+    s.ui.subscribe,
+    () => {
+      const f = s.ui.get().find;
+      return (!!f.q && !f.done) || tasks.ui.get().cmd.state === 'running';
+    },
+    () => false,
+  );
   useEffect(() => {
-    if (!hidden && sh.state === 'idle' && tasks.supported) void tasks.startShape('file');
+    if (!hidden && sh.state === 'idle' && tasks.supported && !busy) void tasks.startShape('file');
+    // (Once: a search ending later doesn't start it.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hidden, sh.state, tasks]);
   const report = sh.report;
   const rows = useMemo(() => (report ? rowsOf(report, closed, q) : []), [report, closed, q]);
@@ -235,6 +246,11 @@ export default function ShapeView({ s, hidden }: { s: HugeSession; hidden: boole
           {running ? <i className="spin" /> : null}
           <b>{running ? t('Reading every record…') : t('The shape of every record')}</b>
           <p>{t('One pass over the file: each path’s types, how often it is there, ranges, distinct values and examples. Live as it reads.')}</p>
+          {sh.state === 'idle' && (
+            <button type="button" className="btn" onClick={() => void tasks.startShape('file')}>
+              {t('Read the file')}
+            </button>
+          )}
         </div>
       ) : (
         <div className="hs-main">

@@ -74,6 +74,16 @@ function HeldKeys() {
  * Huge-file mode (a file too big for the editor is open): the commands that still mean something. The rest
  * act on the editor's document, hidden meanwhile.
  */
+/** Huge mode's Shape view: Alt+7, after the views the normal tool numbers 1 to 6. */
+const SHAPE: Command = {
+  id: 'shape',
+  group: 'View',
+  title: 'Shape view (paths, types and counts)',
+  keys: 'Alt+7',
+  terms: 'schema fields structure statistics distinct',
+  run: (e) => e.setView('shape' as unknown as Parameters<typeof e.setView>[0]),
+};
+
 const HUGE_COMMANDS = new Set([
   'open', 'url', 'paste', 'sample', 'format-view', 'tree', 'table', 'graph', 'convert', 'compare', 'search',
   'theme-system', 'theme-light', 'theme-dark', 'privacy-mode', 'integrate', 'handoff', 'shortcuts',
@@ -82,7 +92,7 @@ const HUGE_COMMANDS = new Set([
 function Commands() {
   const settings = useUI((s) => s.settings);
   const huge = useUI((s) => !!s.huge);
-  const commands = huge ? COMMANDS.filter((c) => HUGE_COMMANDS.has(c.id)) : COMMANDS;
+  const commands = huge ? [...COMMANDS.filter((c) => HUGE_COMMANDS.has(c.id)), SHAPE] : COMMANDS;
   const mac = useUI((s) => s.mac);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);

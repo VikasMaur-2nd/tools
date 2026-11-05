@@ -244,9 +244,26 @@ export function inlineCols(n: JNode): number {
 /** True when `n` gets its own card (a non-empty container that isn't shown inline). */
 const isCard = (n: JNode) => n.t >= ARR && (n.v as JNode[]).length > 0 && inlineCols(n) < 0;
 
+/**
+ * Value texts that stand in for a node's own, set by huge-file mode (lib/huge/graph.ts) for what it hasn't read:
+ * "+980 more" (an empty array standing for the next items) or a container's size (`[1,234]`). Null in the
+ * normal tool, which never pays more than this check.
+ */
+let notes: WeakMap<JNode, string> | null = null;
+export const setValueNotes = (m: WeakMap<JNode, string> | null) => {
+  notes = m;
+};
+
 /** Value column text of a row: a primitive, `{}`/`[]`, an inline array, or a nested container's size (`{3}`, `[12]`). */
 export function valueText(n: JNode, build = true): string {
   let s: string;
+  if (notes !== null) {
+    const note = notes.get(n);
+    if (note !== undefined) {
+      fitCols = note.length;
+      return build ? note : '';
+    }
+  }
   switch (n.t) {
     case STR: {
       const body = fit(n.v as string, G.valMax - 2, true, build);

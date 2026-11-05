@@ -233,7 +233,7 @@ const COMMAND_IDS = [
   'graph-export', 'graph-copy', 'graph-png', 'graph-svg', 'convert', 'compare', 'excel', 'copy-convert', 'download-convert', 'search', 'expand',
   'collapse', 'level1', 'level2', 'level3', 'fold-input', 'unfold-input', 'close-compare', 'focus-tree', 'focus-editor', 'nested', 'copy-value',
   'copy-path', 'csv', 'csv-download', 'indent-2', 'indent-4', 'indent-tab', 'theme-system', 'theme-light', 'theme-dark', 'autoformat', 'wrap',
-  'privacy-mode', 'integrate', 'handoff', 'shortcuts', ...TARGET_IDS.map((t) => `to-${t}`),
+  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape', ...TARGET_IDS.map((t) => `to-${t}`),
 ];
 const SIZES = [...SIZE_EDGES.map(([, label]) => label), '100MB+'];
 const ERROR_KIND_LIST = [...ERROR_KINDS.map(([, kind]) => kind), 'other'];
