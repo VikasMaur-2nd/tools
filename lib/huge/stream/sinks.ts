@@ -65,6 +65,8 @@ export interface OpfsFile extends Sink {
   /** Bytes written so far. */
   size: number;
   writeAt(b: Uint8Array, at: number): void;
+  /** Reads into `b` from byte `at`: how many bytes it read. */
+  readAt(b: Uint8Array, at: number): number;
   file(): Promise<File>;
 }
 
@@ -97,6 +99,7 @@ export async function opfsFile(name: string): Promise<OpfsFile> {
       f.size += b.length;
     },
     writeAt: put,
+    readAt: (b, at) => h.read(b, { at }),
     async close() {
       if (!open) return;
       open = false;
@@ -202,11 +205,16 @@ function dosTime(d: Date): [number, number] {
  * A ZIP archive written into an OPFS file, its entries one after another (stored: JSON parts are best
  * compressed by the gzip option, and a stored entry streams). Every header is ZIP64, so parts and archives past
  * 4 GiB are fine; a local header's CRC and sizes are written in place once its entry ends (no data descriptors).
+ * Each entry's central-directory record goes to `spool` (a second temp file) as the entry ends, and is copied
+ * after the last: memory doesn't grow with the number of parts.
  */
 export class ZipWriter {
-  private entries: { name: Uint8Array; at: number; size: number; crc: number }[] = [];
+  private count = 0;
   private readonly time: [number, number];
-  constructor(private readonly f: OpfsFile) {
+  constructor(
+    private readonly f: OpfsFile,
+    private readonly spool: OpfsFile,
+  ) {
     this.time = dosTime(new Date());
   }
 
@@ -231,57 +239,68 @@ export class ZipWriter {
     u16(v, 30 + n.length, 1);
     u16(v, 32 + n.length, 16);
     this.f.write(head);
-    const e = { name: n, at, size: 0, crc: 0 };
-    this.entries.push(e);
+    let size = 0;
+    let crc = 0;
     return {
       write: (b) => {
-        e.crc = crc32(b, e.crc);
-        e.size += b.length;
+        crc = crc32(b, crc);
+        size += b.length;
         this.f.write(b);
       },
       close: async () => {
-        u32(v, 14, e.crc);
-        u64(v, 34 + n.length, e.size);
-        u64(v, 42 + n.length, e.size);
+        u32(v, 14, crc);
+        u64(v, 34 + n.length, size);
+        u64(v, 42 + n.length, size);
         this.f.writeAt(head, at);
+        this.spool.write(this.central(n, at, size, crc));
+        this.count++;
       },
+      // (The archive goes whole: ZipWriter.abort.)
       abort: async () => {},
     };
   }
 
-  /** The central directory and its ends; then the file is complete. */
+  /** An entry's central-directory record. */
+  private central(name: Uint8Array, at: number, size: number, crc: number): Uint8Array {
+    const rec = new Uint8Array(46 + name.length + 28);
+    const v = new DataView(rec.buffer);
+    u32(v, 0, 0x02014b50);
+    u16(v, 4, 45);
+    u16(v, 6, 45);
+    u16(v, 8, 0x0800);
+    u16(v, 10, 0);
+    u16(v, 12, this.time[0]);
+    u16(v, 14, this.time[1]);
+    u32(v, 16, crc);
+    u32(v, 20, 0xffffffff);
+    u32(v, 24, 0xffffffff);
+    u16(v, 28, name.length);
+    u16(v, 30, 28);
+    u16(v, 32, 0);
+    u16(v, 34, 0);
+    u16(v, 36, 0);
+    u32(v, 38, 0);
+    u32(v, 42, 0xffffffff);
+    rec.set(name, 46);
+    const x = 46 + name.length;
+    u16(v, x, 1);
+    u16(v, x + 2, 24);
+    u64(v, x + 4, size);
+    u64(v, x + 12, size);
+    u64(v, x + 20, at);
+    return rec;
+  }
+
+  /** The central directory (copied from the spool) and its ends; then the archive is complete, the spool gone. */
   async close() {
     const cdAt = this.f.size;
-    let cdSize = 0;
-    for (const e of this.entries) {
-      const rec = new Uint8Array(46 + e.name.length + 28);
-      const v = new DataView(rec.buffer);
-      u32(v, 0, 0x02014b50);
-      u16(v, 4, 45);
-      u16(v, 6, 45);
-      u16(v, 8, 0x0800);
-      u16(v, 10, 0);
-      u16(v, 12, this.time[0]);
-      u16(v, 14, this.time[1]);
-      u32(v, 16, e.crc);
-      u32(v, 20, 0xffffffff);
-      u32(v, 24, 0xffffffff);
-      u16(v, 28, e.name.length);
-      u16(v, 30, 28);
-      u16(v, 32, 0);
-      u16(v, 34, 0);
-      u16(v, 36, 0);
-      u32(v, 38, 0);
-      u32(v, 42, 0xffffffff);
-      rec.set(e.name, 46);
-      const x = 46 + e.name.length;
-      u16(v, x, 1);
-      u16(v, x + 2, 24);
-      u64(v, x + 4, e.size);
-      u64(v, x + 12, e.size);
-      u64(v, x + 20, e.at);
-      this.f.write(rec);
-      cdSize += rec.length;
+    const cdSize = this.spool.size;
+    const buf = new Uint8Array(Math.min(1 << 20, Math.max(1, cdSize)));
+    for (let at = 0; at < cdSize; ) {
+      const got = this.spool.readAt(buf, at);
+      if (got <= 0) throw new Error('Read failed');
+      this.f.write(got === buf.length ? buf : buf.subarray(0, got));
+      at += got;
     }
     const end = new Uint8Array(56 + 20 + 22);
     const v = new DataView(end.buffer);
@@ -292,8 +311,8 @@ export class ZipWriter {
     u16(v, 14, 45);
     u32(v, 16, 0);
     u32(v, 20, 0);
-    u64(v, 24, this.entries.length);
-    u64(v, 32, this.entries.length);
+    u64(v, 24, this.count);
+    u64(v, 32, this.count);
     u64(v, 40, cdSize);
     u64(v, 48, cdAt);
     u32(v, 56, 0x07064b50);
@@ -310,5 +329,12 @@ export class ZipWriter {
     u16(v, 96, 0);
     this.f.write(end);
     await this.f.close();
+    await this.spool.abort();
+  }
+
+  /** Stopped or failed: both files closed and deleted. */
+  async abort() {
+    await this.f.abort().catch(() => {});
+    await this.spool.abort().catch(() => {});
   }
 }

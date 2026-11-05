@@ -459,7 +459,7 @@
     ]
   },
   "json-to-csv": {
-    "hash": "d51feb471099",
+    "hash": "f4961188a265",
     "title": "JSON in CSV konvertieren für tabellarische Datensätze",
     "description": "Konvertiere ein Array aus JSON-Datensätzen online in CSV. Tool Kumar löst verschachtelte Felder in Spalten mit Punktnotation auf, lokal und ohne Upload.",
     "heading": "JSON in CSV konvertieren",
@@ -494,6 +494,10 @@
       {
         "question": "Werden Kommas und Anführungszeichen maskiert?",
         "answer": "Ja. CSV-Felder werden in Anführungszeichen gesetzt. Enthaltene Anführungszeichen werden gemäß den üblichen CSV-Regeln verdoppelt. Text, der wie eine Tabellenformel beginnt (=, +, - oder @), erhält einen vorangestellten Apostroph, damit Excel oder Sheets ihn anzeigt, statt ihn auszuführen."
+      },
+      {
+        "question": "Kann ich eine große JSON-Datei in CSV umwandeln?",
+        "answer": "Ja. Dateien bis 300 MB öffnen sich im Editor und werden hier umgewandelt. Eine größere Datei öffnet sich im Großdateimodus, wo „Konvertieren“ die CSV schon beim Lesen direkt in eine Datei schreibt, mit denselben Spalten und Regeln, in jeder Größe."
       }
     ]
   },
@@ -1333,7 +1337,7 @@
     ]
   },
   "jsonl-viewer": {
-    "hash": "891b392414b5",
+    "hash": "e9ceae835e68",
     "title": "JSONL-Viewer für JSON-Lines- und NDJSON-Dateien",
     "description": "Öffne .jsonl- oder .ndjson-Dateien und durchsuche Datensätze als Baum oder Tabelle. Tool Kumar liest JSON Lines lokal im Browser, ohne Upload.",
     "heading": "JSONL-Viewer",
@@ -1374,6 +1378,10 @@
       {
         "question": "Kann ich die Datensätze in ein JSON-Array oder CSV konvertieren?",
         "answer": "Ja. Die Ansicht „Formatieren“ zeigt die Datensätze als ein JSON-Array, das du kopieren oder herunterladen kannst. Die Seite „JSONL in CSV konvertieren“ konvertiert sie in Tabellenspalten."
+      },
+      {
+        "question": "Kann es eine JSONL-Datei mit mehreren Gigabyte öffnen?",
+        "answer": "Ja. Eine Datei über 300 MB öffnet sich im Großdateimodus, der die Datensätze beim Ansehen von der Festplatte liest, statt alle zu laden, sodass dein Arbeitsspeicher ihre Größe nicht begrenzt. Er kann außerdem die Felder aller Datensätze zusammenfassen und die Datei umwandeln oder aufteilen."
       }
     ],
     "guides": [
@@ -1561,9 +1569,9 @@
     ]
   },
   "large-json-viewer": {
-    "hash": "951455e0dd15",
-    "title": "Große JSON-Datei öffnen: direkt im Browser ansehen",
-    "description": "Öffne große JSON-Dateien lokal im Browser als Baum, Tabelle oder Text, ohne Upload. In unserem Desktoptest war eine 52,4-MB-Datei in etwa einer Sekunde geparst.",
+    "hash": "6183ad81c2f8",
+    "title": "Große JSON-Datei öffnen, auch mehrere GB groß",
+    "description": "Öffne JSON- und JSON-Lines-Dateien mit vielen GB im Browser. Schon beim Einlesen ansehen, suchen, bearbeiten, aufteilen oder in CSV umwandeln, ohne Upload.",
     "heading": "Große JSON-Datei öffnen",
     "query": "große json datei öffnen",
     "secondary": [
@@ -1571,45 +1579,85 @@
       "large json viewer",
       "json viewer für große dateien"
     ],
-    "intro": "Öffne eine große JSON-Datei von deinem Gerät und sieh sie als Baum, Tabelle oder formatierten Text an. Die Datei wird im Browser gelesen und niemals hochgeladen. Auch sehr große Dokumente bleiben bearbeitbar und lassen sich flüssig scrollen.",
-    "modeLabel": "Baumansicht",
-    "exampleLabel": "Hier steht ein kleines Beispiel stellvertretend für deine Datei. Öffne deine eigene Datei, um Größe, Zeilenanzahl und Knotenanzahl in der Statusleiste zu sehen.",
+    "intro": "Öffne eine JSON- oder JSON-Lines-Datei jeder Größe, auch eine, die größer ist als der Arbeitsspeicher deines Computers. Sieh sie als Baum, Tabelle, Graph oder Text an, während sie noch eingelesen wird, durchsuche sie, springe zu einem Pfad, sieh dir die Struktur aller Datensätze an, bearbeite und speichere sie oder teile sie auf und wandle sie in CSV um. Die Datei wird in diesem Browser von deiner Festplatte gelesen und nie hochgeladen.",
+    "modeLabel": "Baumansicht für Dateien jeder Größe",
+    "exampleLabel": "Hier steht ein kleines Beispiel stellvertretend für deine Datei. Öffne deine eigene: Ab 300 MB öffnet sie sich im Großdateimodus, der in der Statusleiste zuerst den Lesefortschritt und dann Größe, Zeilen und Knoten der Datei zeigt.",
     "steps": [
-      "Wähle „Datei öffnen“ mit Ctrl+O oder ⌘O auf dem Mac oder ziehe die Datei auf die Seite.",
-      "Sobald die Statusleiste das Parsing-Ergebnis meldet, sieh dir die Daten unter „Baum“ an. Für ein Array aus Datensätzen kannst du zu „Tabelle“ wechseln.",
-      "Drücke Ctrl+F oder ⌘F, um zu suchen. Gib alternativ einen Pfad wie $.users[1] in die Suchleiste ein, um zu einem Knoten zu springen."
+      "Wähle „Datei öffnen“ mit Ctrl+O oder ⌘O auf dem Mac oder ziehe die Datei auf die Seite. Eine Datei über 300 MB öffnet sich im Großdateimodus. Eine .json.gz- oder .jsonl.gz-Datei wird vorher entpackt.",
+      "Sieh dir die Daten sofort an: Die Statusleiste zeigt, wie viel schon indiziert ist und wie lange es noch dauert. Klappe den „Baum“ auf oder wechsle zu „Formatieren“, „Tabelle“ oder „Graph“. Große Arrays zeigen jeweils 1.000 Einträge, mit Buttons zum Weiterblättern und zum Springen zu einem Index.",
+      "Drücke Ctrl+F oder ⌘F, um die ganze Datei zu durchsuchen, oder Ctrl+G oder ⌘G, um zu einer Zeile, einer Tabellenzeile oder einem Pfad wie $.records[120000].email zu springen.",
+      "Öffne „Shape“, um Typen, Anzahlen und Werte jedes Pfads über alle Datensätze zu sehen, oder „Konvertieren“, um CSV, JSON Lines, Teildateien oder die Datensätze, die deine Bedingungen erfüllen, in eine neue Datei zu schreiben.",
+      "Bearbeite Werte im Baum, in der Tabelle oder im Graph oder den Text in der Ansicht „Formatieren“ und drücke dann Ctrl+S oder ⌘S, um zu speichern."
     ],
     "options": [
-      "Dateien bis 300 MB werden akzeptiert. Das ist eine Sicherheitsgrenze, keine Zusage. Welche Dateien sich gut öffnen lassen, hängt vom Gerätespeicher und der Datenstruktur ab.",
-      "Große Eingaben bleiben bearbeitbar. Ab 250.000 Zeichen oder 30.000 Zeilen zeichnet der Editor nur die sichtbaren Zeilen, damit das Tippen schnell bleibt.",
-      "Das Parsing läuft auf dem Hauptthread. Deshalb reagiert die Seite während des Einlesens einer sehr großen Datei vorübergehend nicht.",
-      "Dokumente mit mehr als 2.500.000 Zeichen werden nicht für deinen nächsten Besuch gespeichert. Öffne die Datei stattdessen erneut.",
-      "In Editor, Baum-, Tabellen- und Textansicht werden nur die sichtbaren Zeilen gerendert. So bleibt das Scrollen flüssig, sobald die Datei geöffnet ist."
+      "Dateien über 300 MB öffnen sich im Großdateimodus, auf einem Gerät, das wenig Arbeitsspeicher meldet, auch kleinere. Alle anderen Dateien öffnen sich im normalen Editor, der alle Werkzeuge hat.",
+      ".jsonl- und .ndjson-Dateien öffnen sich als Liste von Datensätzen. Eine .json-Datei mit mehreren Werten hintereinander öffnet sich ebenfalls als Liste, mit einem Hinweis.",
+      "Speichern in dieselbe Datei funktioniert in Chrome und Edge, nachdem der Browser um Erlaubnis gefragt hat. Danach lässt sich nichts mehr rückgängig machen; Speichern unter einem anderen Namen behält den Verlauf. Firefox und Safari laden stattdessen die bearbeitete Datei herunter. Ungespeicherte Änderungen bleiben in diesem Browser erhalten und werden wieder angeboten, wenn du dieselbe Datei erneut öffnest.",
+      "Eine große .gz-Datei wird vor dem Öffnen in den Speicher des Browsers entpackt und braucht dafür freien Speicherplatz in voller Größe. In Firefox und Safari landen auch die Ergebnisse von „Konvertieren“ dort, bevor sie heruntergeladen werden. Ein privates Fenster erlaubt diesen Speicher möglicherweise nicht.",
+      "Bearbeiten und „Konvertieren“ sind möglich, sobald die Datei vollständig indiziert ist, und „Konvertieren“ braucht eine fehlerfreie Datei. „Shape“ kann schon starten, während die Datei noch eingelesen wird.",
+      "„Suchen“ findet Text so, wie er in der Datei steht, ohne reguläre Ausdrücke. „Vergleichen“ und „Eingabe reparieren“ funktionieren mit Dokumenten bis 300 MB."
     ],
     "faqs": [
       {
-        "question": "Wie kann ich eine große JSON-Datei anzeigen?",
-        "answer": "Öffne sie hier mit „Datei öffnen“ oder ziehe sie auf die Seite. Der Baum zeigt die Struktur, ohne alles aufzuklappen. „Suchen“ springt zu Schlüsseln, Werten oder einem Pfad."
+        "question": "Wie öffne ich eine große JSON-Datei?",
+        "answer": "Öffne diese Seite in einem aktuellen Browser unter Windows, macOS oder Linux, wähle „Datei öffnen“ mit Ctrl+O oder ⌘O auf dem Mac oder ziehe die Datei auf die Seite. Dateien über 300 MB öffnen sich im Großdateimodus: Die ersten Zeilen erscheinen sofort, der Rest wird im Hintergrund eingelesen. Nichts wird installiert oder hochgeladen."
       },
       {
-        "question": "Wie zeige ich große JSON-Dateien auf einem Mac an?",
-        "answer": "Öffne diese Seite in Safari, Chrome oder einem anderen aktuellen Browser und wähle „Datei öffnen“ mit ⌘O. Du musst nichts installieren."
+        "question": "Was tun, wenn eine JSON-Datei zu groß zum Öffnen ist?",
+        "answer": "Die meisten Editoren und Viewer laden die ganze Datei in den Arbeitsspeicher, und geparstes JSON braucht ein Mehrfaches seiner Textgröße. Schon eine Datei mit einigen hundert Megabyte kann sie deshalb einfrieren lassen oder wird abgelehnt. Öffne sie hier: Der Großdateimodus liest sie stückweise von der Festplatte, sodass dein Arbeitsspeicher ihre Größe nicht begrenzt. Um die Daten in einem anderen Werkzeug zu nutzen, teile sie in kleinere Dateien auf oder extrahiere nur die Datensätze, die du brauchst."
       },
       {
-        "question": "Wie öffne ich eine große JSON-Datei unter Windows?",
-        "answer": "Öffne diese Seite in Edge oder Chrome und wähle „Datei öffnen“ mit Ctrl+O. Die Datei wird auf deinem Computer gelesen und nicht hochgeladen."
+        "question": "Kann es eine riesige JSON-Datei öffnen, etwa 10 GB?",
+        "answer": "Ja. Wir testen mit 10-GB-Dateien in Chromium, Firefox und WebKit. Auf einer Testmaschine mit 4 Kernen waren sie nach 82 bis 121 Sekunden indiziert, ließen sich schon währenddessen ansehen und brauchten 0,2 bis 0,3 GB mehr Arbeitsspeicher als der Tab im Leerlauf. Eine feste Größengrenze gibt es nicht, weil die Datei nie ganz geladen wird; eine größere Datei braucht entsprechend länger zum Indizieren."
       },
       {
-        "question": "Gibt es eine Größenbegrenzung?",
-        "answer": "Die Seite akzeptiert Dateien bis 300 MB. Welche Dateigröße sich flüssig öffnen lässt, hängt vom Speicher deines Geräts und von der Datenstruktur ab."
+        "question": "Kann ich eine große JSONL- oder NDJSON-Datei ansehen?",
+        "answer": "Ja. Eine .jsonl- oder .ndjson-Datei jeder Größe öffnet sich als Liste von Datensätzen, einer pro Zeile, im Baum oder in der Tabelle. „Shape“ fasst die Felder aller Datensätze zusammen, und „Konvertieren“ macht aus den Datensätzen ein einziges JSON-Array oder eine CSV-Datei oder teilt sie in kleinere Dateien auf."
+      },
+      {
+        "question": "Kann ich eine große JSON-Datei bearbeiten und speichern?",
+        "answer": "Ja. Ändere, benenne um, füge ein, dupliziere oder lösche Werte im Baum, in der Tabelle oder im Graph, oder bearbeite den Text in der Ansicht „Formatieren“, mit Rückgängig und Wiederholen. Jede Änderung liest nur etwa ein Megabyte um sich herum neu ein, deshalb aktualisiert sich selbst eine 10-GB-Datei ohne Wartezeit. Chrome und Edge speichern in dieselbe Datei; Firefox und Safari laden die bearbeitete Kopie herunter."
+      }
+    ],
+    "guides": [
+      {
+        "slug": "unexpected-end-of-json-input",
+        "text": "Unexpected end of JSON input: finden, wo eine Datei abgeschnitten wurde"
+      },
+      {
+        "slug": "extra-data",
+        "text": "Extra data: wenn eine Datei einen JSON-Wert pro Zeile enthält"
       }
     ],
     "sections": [
       {
-        "heading": "Ein gemessenes Beispiel",
+        "heading": "So öffnet es Dateien, die größer sind als der Arbeitsspeicher",
         "paragraphs": [
-          "Wir haben in Chromium 154 unter Linux auf dem Desktop eine Datei mit 52,4 MB und 52.428.028 Bytes geöffnet. Sie enthielt 51.501 Datensätze, jeweils ein kleines Objekt mit einem 996 Zeichen langen String. Das Parsing dauerte etwa 1,0 Sekunden. Der Baum war etwa 1,9 Sekunden nach der Dateiauswahl bereit. Das Dokument hatte 154.505 Knoten.",
-          "Diese Datei ist nur wenig verschachtelt und besteht überwiegend aus Text. Tief verschachtelte Daten, viele kleine Zahlen, ein älterer Laptop oder ein Smartphone können länger brauchen. Betrachte diese Werte daher als einzelnen Anhaltspunkt und nicht als Garantie."
+          "Der Großdateimodus lädt nie die ganze Datei. Ein Hintergrundprozess liest sie einmal von Anfang bis Ende, prüft die Syntax und setzt etwa jedes Megabyte ein Lesezeichen: wo im Dokument er gerade ist und welche Objekte und Arrays dort offen sind. Um einen Teil des Baums, eine Zeile oder einen Pfad zu zeigen, liest er etwa ein Megabyte ab dem nächsten Lesezeichen. Eine Stelle tief in der Datei öffnet sich deshalb etwa so schnell wie eine am Anfang. Bei einer 10-GB-Datei belegen die Lesezeichen etwa 3 MB.",
+          "Du kannst die Datei schon während des Einlesens ansehen und das Einlesen jederzeit stoppen. Ist die Datei fehlerhaft, nennt die Statusleiste die genaue Zeile und Spalte des ersten Fehlers, mit derselben Meldung wie bei einer kleinen Datei, und alles vor dem Fehler bleibt geöffnet."
+        ]
+      },
+      {
+        "heading": "Geschwindigkeit und Speicher, gemessen",
+        "paragraphs": [
+          "Wir messen auf einer gemeinsam genutzten Cloud-Maschine mit 4 Kernen (ARM, 15 GB Arbeitsspeicher, die Datei auf ihrer Festplatte) in Chromium, Firefox und WebKit, den Engines von Chrome und Edge, Firefox und Safari. Dein Computer ist anders, betrachte diese Zahlen also als einen Anhaltspunkt.",
+          "Bei einer 1-GB-Datei erschienen die ersten Zeilen 0,4 bis 0,8 Sekunden nach der Auswahl, und die ganze Datei war nach 5 bis 8 Sekunden geprüft und indiziert. Der Sprung zu einem Pfad nahe dem Ende dauerte etwa 0,2 Sekunden, die Suche nach einem Wert nahe dem Ende 5 bis 8 Sekunden.",
+          "Bei einer 10-GB-Datei dauerte das Indizieren 82 Sekunden in Chromium, 90 in WebKit und 121 in Firefox. Der Browser brauchte 0,2 bis 0,3 GB mehr Arbeitsspeicher als vor dem Öffnen der Datei, nicht mehr als bei einer 5,5-GB-Datei.",
+          "Auch Befehle arbeiten im Datenstrom. In Chromium wurde die 1-GB-Datei in etwa 41 Sekunden in CSV umgewandelt, in etwa 25 in Teile zu 256 MB aufgeteilt und in etwa 20 minifiziert, jeweils mit höchstens 0,25 GB zusätzlichem Arbeitsspeicher."
+        ]
+      },
+      {
+        "heading": "So teilst du eine große JSON-Datei auf",
+        "paragraphs": [
+          "Öffne die Datei, wähle „Konvertieren“ und dann „Datei aufteilen“. Der Befehl nimmt das Hauptarray mit den Datensätzen, das Array, das du im Baum auswählst, oder die Datensätze einer JSON-Lines-Datei. Teile nach Datensätzen pro Teil, Megabyte pro Teil oder Anzahl der Teile auf; jeder Teil ist ein gültiges JSON-Array oder eine gültige JSON-Lines-Datei. In Chrome und Edge schreibt „Choose a folder…“ die Teile direkt in einen Ordner; andere Browser laden sie als eine ZIP-Datei herunter.",
+          "Wenn du nur einige Datensätze brauchst, wähle „Extract“. Füge Bedingungen hinzu, etwa status ist active oder price < 10, lass alle oder eine davon gelten und schreibe die passenden Datensätze oder nur die ersten als JSON, JSON Lines oder CSV."
+        ]
+      },
+      {
+        "heading": "Große JSON-Datei in CSV umwandeln",
+        "paragraphs": [
+          "Wähle „Konvertieren“ und dann „CSV“. Jeder Datensatz wird zu einer Zeile, verschachtelte Felder werden zu Spalten mit Punkten wie address.city, nach denselben Regeln wie beim Konverter von JSON in CSV: Anführungszeichen, wo nötig, leere Zellen für fehlende Werte und ein Schutz vor Tabellenformeln. Wähle Komma, Semikolon oder Tabulator, füge eine Byte-Order-Mark für Excel hinzu oder komprimiere das Ergebnis mit gzip.",
+          "„Konvertieren“ schreibt außerdem formatiertes oder minifiziertes JSON der ganzen Datei oder eines ausgewählten Werts und macht aus einem Array JSON Lines und aus JSON Lines ein einziges Array. Ergebnisse werden geschrieben, während sie entstehen: in Chrome und Edge in die Datei, die du auswählst, in anderen Browsern erst in den Speicher des Browsers und dann in deine Downloads."
         ]
       }
     ]

@@ -6,9 +6,12 @@
 // (In a persistent profile: a fresh context is off the record, and Chromium keeps its OPFS in memory there,
 // which a user's browser doesn't.)
 // Tagged slow (the night window on the shared host); HUGE_GB sets the size (default 1); the files are made once
-// and deleted with HUGE_KEEP unset. Results: the log, and HUGE_STREAM_JSON (a file) if set.
+// and deleted with HUGE_KEEP unset. Results: the log, and HUGE_STREAM_JSON (a file) if set. HUGE_STREAM_ONLY
+// (names, comma-separated: shape, minify, pretty, csv, jsonl-of-records, extract-inactive, split-256mb,
+// minify-gzip, gz-open) runs only those. In Firefox and WebKit (-e firefox / -e webkit, one at a time, night
+// window only) there is no save dialog: outputs are written to the browser's storage and downloaded, as there.
 import { appendFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
+import { chromium, firefox, webkit } from 'playwright-core';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
@@ -17,7 +20,7 @@ import { DIRS } from '../../lib/env.mjs';
 import { browserMemory } from '../breaker/_mem.mjs';
 import { until } from './_helpers.mjs';
 
-defaults({ engines: ['chromium'], width: 1280, height: 860, tags: ['slow', 'huge-big'], slots: 'all', timeout: 3_600_000 });
+defaults({ engines: ['chromium', 'firefox', 'webkit'], width: 1280, height: 860, tags: ['slow', 'huge-big'], slots: 'all', timeout: 3_600_000 });
 
 const GB = Number(process.env.HUGE_GB || 1);
 const dir = join(DIRS.tmp, 'huge-big');
@@ -82,13 +85,19 @@ test('huge stream, a real big file: each command’s throughput and memory', asy
   await make();
   const size = statSync(path).size;
   const profile = mkdtempSync(join(DIRS.tmp, 'huge-profile-'));
-  const ctx = await chromium.launchPersistentContext(profile, { headless: true, args: ['--disable-dev-shm-usage', '--disable-background-networking'], viewport: { width: 1280, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const type = { chromium, firefox, webkit }[t.engine];
+  const args = t.engine === 'chromium' ? ['--disable-dev-shm-usage', '--disable-background-networking'] : [];
+  const ctx = await type.launchPersistentContext(profile, { headless: true, args, viewport: { width: 1280, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   t.page = page;
   await page.addInitScript(() => {
     window.__vis = (sel) => [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length > 0) || null;
   });
-  await page.addInitScript(PICKERS);
+  // (Chromium's dialogs, answered with OPFS handles; elsewhere the real path: storage, then a download.)
+  if (t.engine === 'chromium') await page.addInitScript(PICKERS);
+  page.on('download', (d) => {
+    lastDownload = d;
+  });
   try {
     await run(t, page, size);
   } finally {
@@ -96,6 +105,9 @@ test('huge stream, a real big file: each command’s throughput and memory', asy
     rmSync(profile, { recursive: true, force: true });
   }
 });
+
+let lastDownload = null;
+const only = process.env.HUGE_STREAM_ONLY ? new Set(process.env.HUGE_STREAM_ONLY.split(',')) : null;
 
 async function run(t, page, size) {
   await t.open('/');
@@ -119,7 +131,9 @@ async function run(t, page, size) {
   const note = (line) => process.env.HUGE_STREAM_LOG && appendFileSync(process.env.HUGE_STREAM_LOG, `${new Date().toISOString()} ${line}\n`);
   /** Runs `fn` (which starts the work) until `done()` in the page; times it and samples PSS. */
   const measure = async (name, start, done, input = size, arg = null) => {
+    if (only && !only.has(name)) return;
     note(`${name}: start`);
+    lastDownload = null;
     await clean();
     await page.evaluate(() => new Promise((r) => setTimeout(r, 1500)));
     const before = browserMemory().pss;
@@ -134,7 +148,7 @@ async function run(t, page, size) {
     }
     const ms = Date.now() - t0;
     clearInterval(timer);
-    const out = await page.evaluate(async () => {
+    let out = await page.evaluate(async () => {
       const root = await navigator.storage.getDirectory();
       const f = await root
         .getFileHandle('bench-out')
@@ -142,6 +156,14 @@ async function run(t, page, size) {
         .catch(() => null);
       return f ? f.size : -1;
     });
+    // (Downloaded instead: its size, then the file goes.)
+    if (out < 0 && lastDownload) {
+      const p = await lastDownload.path().catch(() => null);
+      if (p) {
+        out = statSync(p).size;
+        rmSync(p, { force: true });
+      }
+    }
     const r = { ok, ms, mbs: +(input / 1e6 / (ms / 1000)).toFixed(1), pssBefore: before, pssPeak: peak, peakAbove: peak - before, out };
     results.commands[name] = r;
     const line = `${name}: ${ok ? 'ok' : 'FAILED'} ${(ms / 1000).toFixed(1)} s, ${r.mbs} MB/s, PSS ${Math.round(before / 2 ** 20)} → ${Math.round(peak / 2 ** 20)} MiB (+${Math.round((peak - before) / 2 ** 20)}), out ${out}`;
@@ -203,7 +225,7 @@ async function run(t, page, size) {
     await c.locator('select').selectOption('eq');
     await c.locator('.hc-val').fill('false');
   });
-  await cmd('split-256mb', 'Split', async () => {
+  await cmd('split-256mb', 'Split file', async () => {
     await page.locator('#hg-convert .hc-num').first().fill('256');
     await page.locator('#hg-convert select').first().selectOption('mb');
   });

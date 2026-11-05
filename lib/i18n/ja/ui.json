@@ -53,6 +53,7 @@
   "home.tools.3": "コメント、末尾のカンマ、シングルクォートなど、よくある入力の間違いを修復します。",
   "home.tools.4": "JSONを圧縮し、キーをソートして、整理した結果をコピーできます。",
   "home.tools.5": "折りたたみ可能なツリービューやテーブルビューで、ネストしたオブジェクトを確認できます。",
+  "home.tools.large": "パソコンのメモリより大きな数ギガバイトのJSONやJSON Linesファイルも、<large>大容量JSONビューアー</large>で開けます。",
   "home.tools.6": "キーや値の検索、JSONパスのコピー、ドキュメントの比較、別の形式への変換ができます。",
   "home.howH2": "JSONビューアーの使い方",
   "home.how.1": "入力欄にJSONを貼り付けるか、端末内のJSONファイルを選びます。",
@@ -68,7 +69,7 @@
   "home.faq.3.q": "このJSONビューアーはプライバシーを守れますか？",
   "home.faq.3.a": "はい。解析と整形はブラウザー内で行うため、ドキュメントを端末の外に送る必要はありません。",
   "home.faq.4.q": "大きなJSONファイルの構文をチェックできますか？",
-  "home.faq.4.a": "はい。大きなドキュメントを扱える設計で、ファイルの解析中も入力はローカルに保たれます。",
+  "home.faq.4.a": "はい、サイズに関係なくチェックできます。300 MBを超えるファイルは、ディスクから少しずつ読み込む大容量ファイルモードで開き、ファイル全体をチェックして、エラーの正確な行と列を示します。読み込み中から閲覧もできます。ファイルはお使いのデバイスから出ません。",
   "home.more.blog": "<blog>Tool KumarのJSONブログ</blog>では、JSONの整形と構文チェックの実践的なガイドや、<origin>JSONの誕生の経緯</origin>を紹介しています。",
   "home.more.errors": "Unexpected tokenやUnexpected end of JSON inputなどのパーサーエラーが出ましたか？エラーの解決ガイドで<errors>JSONエラーメッセージに合った解決方法を探せます</errors>。",
   "home.more.resources": "標準のルールは<reference>JSON構文リファレンス</reference>で確認できます。ドキュメントやテストには、<examples>APIと設定用のJSONサンプル</examples>をダウンロードして使えます。",
@@ -799,5 +800,6 @@
   "cmd.graph-start.terms": "先頭 ルート 最初 上",
   "cmd.graph-end.terms": "末尾 最後 下",
   "cmd.graph-export.terms": "ダウンロード png jpeg jpg svg 画像 保存",
-  "cmd.graph-copy.terms": "クリップボード 画像 png スクリーンショット"
+  "cmd.graph-copy.terms": "クリップボード 画像 png スクリーンショット",
+  "app.hugeCmdSplitFile": "ファイル分割"
 }

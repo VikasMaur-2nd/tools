@@ -21,6 +21,8 @@ export const COLS = 4000;
 export interface HugeLinesEvents {
   /** A line was clicked: the value at offset `at` (raw: the character clicked; pretty: the line's value). */
   pick(at: number): void;
+  /** A line was double-clicked (as written): edit the text there, at offset `at`. */
+  edit?(at: number): void;
   failed(e: unknown): void;
 }
 
@@ -72,6 +74,7 @@ export class HugeLinesView {
     this.sc = new kit.Scroll(el);
     el.addEventListener('scroll', this.onScroll, { passive: true });
     el.addEventListener('click', this.onClick);
+    el.addEventListener('dblclick', this.onDouble);
     this.ro = new ResizeObserver(() => this.render(true));
     this.ro.observe(el);
     this.fit();
@@ -82,6 +85,7 @@ export class HugeLinesView {
     this.lines.reset();
     this.el.removeEventListener('scroll', this.onScroll);
     this.el.removeEventListener('click', this.onClick);
+    this.el.removeEventListener('dblclick', this.onDouble);
     this.ro.disconnect();
     this.sc.destroy();
     cancelAnimationFrame(this.raf);
@@ -281,6 +285,29 @@ export class HugeLinesView {
   /** The line at the top of the view. */
   get topLine() {
     return this.visible[0];
+  }
+
+  /** The offset of the character under (x) on line `k` (as written), or the line's start. */
+  private atIn(r: HTMLElement, k: number, x: number): number {
+    const line = this.lines.get(k);
+    if (!line) return -1;
+    if (this.mode !== 'raw') return line.at;
+    const c = r.querySelector('.cv-c') as HTMLElement;
+    const col = Math.max(0, Math.min(line.text.length, Math.round((x - c.getBoundingClientRect().left) / this.cw)));
+    return this.src.atOf ? this.src.atOf(line, col) : line.at + col;
+  }
+
+  private onDouble = (e: MouseEvent) => {
+    const r = (e.target as HTMLElement).closest('.cv-l[data-l]') as HTMLElement | null;
+    if (!r || this.mode !== 'raw' || !this.ev.edit) return;
+    const at = this.atIn(r, Number(r.dataset.l), e.clientX);
+    if (at >= 0) this.ev.edit(at);
+  };
+
+  /** The current line's start (where editing the text begins from the keyboard), or -1. */
+  get currentAt(): number {
+    const k = this.cur >= 0 ? this.cur : this.topLine;
+    return this.curAt >= 0 ? this.curAt : (this.lines.get(k)?.at ?? -1);
   }
 
   private onClick = (e: MouseEvent) => {

@@ -453,7 +453,7 @@ function TextEdit({ s, label, text }: { s: HugeSession; label: string; text: str
     if (!e || busy) return;
     if (!check.ok && !anyway) return setAnyway(true);
     setBusy(true);
-    await s.applyText(e.text, !check.ok);
+    await s.applyText(e.text);
     setBusy(false);
   };
   // (Ctrl+Enter, Ctrl+F: the engine sees keys first; huge mode passes the dialog's to it.)

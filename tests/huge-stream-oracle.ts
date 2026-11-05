@@ -30,13 +30,18 @@ export function normal(bytes: Uint8Array, name: string): { text: string; res: Pa
 
 /** Feeds `bytes` to a walker over `v` in random chunks (1 to `max` bytes), pausing now and then. */
 export function walkAll(r: Rng, bytes: Uint8Array, v: Visitor, multi: boolean, max = 64, keep?: number, parts = false): Walker {
-  const w = new Walker(v, { multi, keep, parts });
+  // (Strings are read a slice at a time: small slices now and then, so that path is walked too.)
+  const w = new Walker(v, { multi, keep, parts, slice: r.chance(0.4) ? 1 + r.int(8) : undefined });
   let at = 0;
   while (at < bytes.length) {
     const len = 1 + r.int(max);
     const b = bytes.slice(at, at + len);
     let i = 0;
-    while (i < b.length) i = w.feed(b, at, i);
+    // (A pause now and then, as output pressure makes one.)
+    while (i < b.length) {
+      if (r.chance(0.05)) w.pause = true;
+      i = w.feed(b, at, i);
+    }
     at += b.length;
   }
   w.finish(bytes.length);

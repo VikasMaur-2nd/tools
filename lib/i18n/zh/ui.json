@@ -53,6 +53,7 @@
   "home.tools.3": "修复注释、尾随逗号、单引号等常见的输入错误。",
   "home.tools.4": "压缩 JSON、按键名排序，并复制整洁的结果。",
   "home.tools.5": "在可折叠的树形视图或表格视图中浏览嵌套对象。",
+  "home.tools.large": "用<large>大 JSON 文件查看器</large>打开数 GB 的 JSON 和 JSON Lines 文件，即使比电脑内存还大也可以。",
   "home.tools.6": "搜索键和值、复制 JSON 路径、对比文档，并将 JSON 转换为其他格式。",
   "home.howH2": "如何使用 JSON 查看器",
   "home.how.1": "将 JSON 粘贴到输入面板，或从设备中选择 JSON 文件。",
@@ -68,7 +69,7 @@
   "home.faq.3.q": "这个 JSON 查看器注重隐私吗？",
   "home.faq.3.a": "是的。解析和格式化都在你的浏览器中完成，因此你的文档无需离开你的设备。",
   "home.faq.4.q": "可以校验大型 JSON 文件吗？",
-  "home.faq.4.a": "可以。查看器专为大型文档设计，解析文件时输入内容始终保留在本地。",
+  "home.faq.4.a": "可以，任意大小都行。超过 300 MB 的文件会以大文件模式打开，从磁盘逐块读取：检查整个文件，给出错误的确切行号和列号，并且读取过程中就能浏览。文件始终保留在你的设备上。",
   "home.more.blog": "在 <blog>Tool Kumar JSON 博客</blog>中了解更多，包括格式化与校验 JSON 的实用指南，以及 <origin>JSON 的起源故事</origin>。",
   "home.more.errors": "遇到了 Unexpected token 或 Unexpected end of JSON input 等解析器错误？在错误指南中<errors>查找 JSON 错误消息对应的解决方法</errors>。",
   "home.more.resources": "使用 <reference>JSON 语法参考</reference>查看标准规则，或下载<examples>适用于 API 和配置的 JSON 示例</examples>，用于文档和测试。",
@@ -799,5 +800,6 @@
   "cmd.graph-start.terms": "顶部 根 第一个 开头",
   "cmd.graph-end.terms": "底部 最后 结尾",
   "cmd.graph-export.terms": "下载 png jpeg jpg svg 图片 保存",
-  "cmd.graph-copy.terms": "剪贴板 图片 png 截图"
+  "cmd.graph-copy.terms": "剪贴板 图片 png 截图",
+  "app.hugeCmdSplitFile": "拆分文件"
 }

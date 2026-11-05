@@ -20,6 +20,8 @@ export class StreamError extends Error {
   constructor(
     msg: string,
     readonly at = -1,
+    /** Split into a picked folder: the finished parts kept there. */
+    readonly parts = 0,
   ) {
     super(msg);
   }
@@ -56,7 +58,7 @@ export class StreamClient {
     else {
       this.pending.delete(r.id);
       if (r.type === 'done') h.done(r);
-      else h.fail(new StreamError(r.error, r.at));
+      else h.fail(new StreamError(r.error, r.at, r.parts ?? 0));
     }
   }
 

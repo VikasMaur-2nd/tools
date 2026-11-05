@@ -53,6 +53,7 @@
   "home.tools.3": "주석, 후행 쉼표, 작은따옴표 등 흔한 입력 오류를 복구합니다.",
   "home.tools.4": "JSON을 압축하고 키를 정렬한 뒤 정리된 결과를 복사합니다.",
   "home.tools.5": "접고 펼칠 수 있는 트리나 테이블 보기로 중첩된 객체를 살펴봅니다.",
+  "home.tools.large": "컴퓨터 메모리보다 큰 수 기가바이트의 JSON 및 JSON Lines 파일도 <large>대용량 JSON 파일 뷰어</large>에서 엽니다.",
   "home.tools.6": "키와 값을 검색하고, JSON 경로를 복사하고, 문서를 비교하고, JSON을 다른 형식으로 변환합니다.",
   "home.howH2": "JSON 뷰어 사용 방법",
   "home.how.1": "입력 창에 JSON을 붙여넣거나 기기에서 JSON 파일을 선택합니다.",
@@ -68,7 +69,7 @@
   "home.faq.3.q": "이 JSON 뷰어는 개인정보를 보호하나요?",
   "home.faq.3.a": "예. 파싱과 포맷은 브라우저에서 처리하므로 문서를 기기 밖으로 보낼 필요가 없습니다.",
   "home.faq.4.q": "대용량 JSON 파일도 유효성을 검사할 수 있나요?",
-  "home.faq.4.a": "예. 이 뷰어는 대용량 문서를 처리하도록 설계되었으며 파일을 파싱하는 동안 입력을 로컬에 유지합니다.",
+  "home.faq.4.a": "예, 크기에 상관없이 검사할 수 있습니다. 300 MB가 넘는 파일은 디스크에서 조금씩 읽는 대용량 파일 모드로 열리며, 파일 전체를 검사해 오류의 정확한 줄과 열을 알려 주고, 읽는 동안에도 탐색할 수 있습니다. 파일은 기기를 떠나지 않습니다.",
   "home.more.blog": "<blog>Tool Kumar JSON 블로그</blog>에서 JSON 포맷과 유효성 검사에 관한 실용 가이드 및 <origin>JSON의 탄생 이야기</origin>를 읽어 볼 수 있습니다.",
   "home.more.errors": "Unexpected token 또는 Unexpected end of JSON input 같은 파서 오류가 발생했나요? 오류 가이드에서 <errors>JSON 오류 메시지에 맞는 해결 방법을 찾아봅니다</errors>.",
   "home.more.resources": "<reference>JSON 문법 참고 자료</reference>에서 표준 규칙을 확인하거나, 문서 작성과 테스트에 사용할 <examples>API 및 설정용 JSON 예제</examples>를 다운로드할 수 있습니다.",
@@ -799,5 +800,6 @@
   "cmd.graph-start.terms": "맨 위 루트 처음 시작",
   "cmd.graph-end.terms": "맨 아래 마지막 끝",
   "cmd.graph-export.terms": "다운로드 png jpeg jpg svg 이미지 저장",
-  "cmd.graph-copy.terms": "클립보드 이미지 png 스크린샷"
+  "cmd.graph-copy.terms": "클립보드 이미지 png 스크린샷",
+  "app.hugeCmdSplitFile": "파일 분할"
 }

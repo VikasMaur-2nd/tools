@@ -227,6 +227,7 @@ export const ERROR_GUIDES: ErrorGuide[] = [
       { question: 'Can I fix truncation by adding a closing brace?', answer: 'Only if you know the complete intended data. A missing brace may be one symptom of lost values. Recover the complete file or response before changing it.' },
     ],
     related: ['unexpected-token-html', 'undefined-is-not-valid-json', 'extra-data', 'firefox-unexpected-character'],
+    tools: [{ href: '/tools/large-json-viewer', label: 'Find where a large JSON file was cut off' }],
   },
   {
     slug: 'undefined-is-not-valid-json',

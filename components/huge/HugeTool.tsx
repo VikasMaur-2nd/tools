@@ -18,6 +18,7 @@ import { Icon, type IconName } from '../icons';
 import { MHead, MItem, MSep, Menu } from '../menu';
 import ShapeView from './HugeShape';
 import { CloseConfirm, EditBoxView, EditButtons, EditMenu, RestoreBar, TextDialog } from './HugeEdit';
+import FormatEditView from './HugeFormatEdit';
 import CommandsView from './HugeCommands';
 
 function useHuge<T>(store: HugeStore, select: (s: HugeUI) => T): T {
@@ -182,13 +183,19 @@ function ViewBar({ s }: { s: HugeSession }) {
   const t = useT();
   const mod = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl+';
   const browse = view === 'format' || view === 'tree' || view === 'table';
+  const editing = useHuge(s.ui, (u) => !!u.fe);
   const find = <IconBtn icon="search" label={`${t('Find')}${t(' · ')}${mod}F`} on={findOpen} onClick={() => (findOpen ? s.closeFind() : s.openFind())} />;
   return (
     <div className="toolbar vbar" role="toolbar" aria-label={t('Viewer')}>
       <Tabs s={s} />
       <span className="grow" />
       <div className="vmain">
-        {view === 'format' && <ModeSwitch s={s} />}
+        {view === 'format' && (editing ? <FormatEditBar s={s} /> : <ModeSwitch s={s} />)}
+        {view === 'format' && !editing && s.editable && (
+          <button type="button" className="btn sm hg-txtbtn" onClick={() => s.formatEdit()} data-tip={`${t('Edit the text here')}${t(' · ')}F2`}>
+            {t('Edit')}
+          </button>
+        )}
         {view === 'tree' && <SelPath s={s} />}
         {view === 'table' && <TableWhere s={s} />}
         {view === 'graph' && <GraphWhere s={s} />}
@@ -390,14 +397,34 @@ function useMount(mount: (el: HTMLElement) => () => void, deps: unknown[]) {
 
 function FormatView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
   const mode = useHuge(s.ui, (u) => u.mode);
+  const editing = useHuge(s.ui, (u) => !!u.fe);
   const t = useT();
   const ref = useMount((el) => s.mountLines(el), [mode]);
   return (
-    <div id="hg-format" key={mode} className="cv hg-lines" ref={ref} hidden={hidden} tabIndex={0} aria-label={t(mode === 'pretty' ? 'Formatted output' : 'The file as it is written')}>
-      <div className="cv-sizer">
-        <div className="cv-rows" />
+    <>
+      <div id="hg-format" key={mode} className="cv hg-lines" ref={ref} hidden={hidden || editing} tabIndex={0} aria-label={t(mode === 'pretty' ? 'Formatted output' : 'The file as it is written')}>
+        <div className="cv-sizer">
+          <div className="cv-rows" />
+        </div>
       </div>
-    </div>
+      {!hidden && <FormatEditView s={s} />}
+    </>
+  );
+}
+
+/** The Format view's bar while its text is edited: which lines, where the caret is, and Done. */
+function FormatEditBar({ s }: { s: HugeSession }) {
+  const info = useHuge(s.ui, (u) => u.feInfo);
+  const t = useT();
+  return (
+    <span className="hg-gwhere">
+      <span className={`muted sm nowrap ${PRIVATE}`}>
+        {info ? t('Editing lines {first}–{last} · Ln {line}, Col {col}', { first: t.num(info.first), last: t.num(info.last), line: t.num(info.line), col: t.num(info.col) }) : t('Loading…')}
+      </span>
+      <button type="button" className="btn sm primary" onClick={() => void s.exitFormatEdit()} data-tip={`${t('Done')}${t(' · ')}Esc`}>
+        {t('Done')}
+      </button>
+    </span>
   );
 }
 

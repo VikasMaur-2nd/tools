@@ -14,10 +14,15 @@ export interface Sink {
 }
 
 const BLOCK = 1 << 20;
-/** Bytes waiting for the sink before the pass pauses. */
-const FULL = 32 << 20;
+/** Bytes waiting for the sink before the pass pauses (with one token's output and a block, what may wait at most). */
+const FULL_BYTES = 8 << 20;
+export const FULL = FULL_BYTES;
 
 const encoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+/** A first block for outputs that are mostly small (Split's parts, a cell's scratch): later ones are BLOCK. */
+export const SMALL = 64 << 10;
 
 export class Bytes {
   buf = new Uint8Array(BLOCK);
@@ -26,10 +31,17 @@ export class Bytes {
   total = 0;
   private queue: Uint8Array[] = [];
   private queued = 0;
+  /** Told when FULL bytes wait for the sink: the job pauses its walker then (after the token being written). */
+  onFull: (() => void) | null = null;
+
+  /** `first`: the first block's size (later ones are 1 MiB). */
+  constructor(first = BLOCK) {
+    if (first !== BLOCK) this.buf = new Uint8Array(first);
+  }
 
   /** Enough waits for the sink: the pass should pause (see Walker.pause). */
   get full() {
-    return this.queued >= FULL;
+    return this.queued >= FULL_BYTES;
   }
 
   /** Bytes written in all. */
@@ -42,6 +54,7 @@ export class Bytes {
       this.queue.push(this.pos === this.buf.length ? this.buf : this.buf.subarray(0, this.pos));
       this.queued += this.pos;
       this.total += this.pos;
+      if (this.queued >= FULL_BYTES && this.onFull) this.onFull();
     }
     this.buf = new Uint8Array(BLOCK);
     this.pos = 0;
@@ -55,7 +68,8 @@ export class Bytes {
   /** b[a, e). */
   bytes(b: Uint8Array, a: number, e: number) {
     const len = e - a;
-    if (len <= 24 && this.pos + len <= this.buf.length) {
+    // (Short runs copied in a loop: a view for set() would cost more.)
+    if (len <= 64 && this.pos + len <= this.buf.length) {
       const o = this.buf;
       let p = this.pos;
       for (let k = a; k < e; k++) o[p++] = b[k];
@@ -96,6 +110,39 @@ export class Bytes {
       this.pos += r.written;
       rest = rest.slice(r.read);
     }
+  }
+
+  /** Emptied: what was written is dropped. */
+  reset() {
+    this.queue = [];
+    this.queued = 0;
+    this.pos = 0;
+    this.total = 0;
+  }
+
+  /** Room for `n` more bytes in `buf` from `pos` (a new block if not): for writers that fill it themselves. */
+  room(n: number) {
+    if (this.pos + n > this.buf.length) {
+      this.next();
+      if (n > this.buf.length) this.buf = new Uint8Array(n);
+    }
+  }
+
+  /** Everything written so far as text, the buffer emptied (a scratch buffer, reused for small values). */
+  takeText(): string {
+    let s: string;
+    if (!this.queue.length) s = textDecoder.decode(this.buf.subarray(0, this.pos));
+    else {
+      const parts: string[] = [];
+      for (const b of this.queue) parts.push(textDecoder.decode(b, { stream: true }));
+      parts.push(textDecoder.decode(this.buf.subarray(0, this.pos)));
+      s = parts.join('');
+    }
+    this.queue = [];
+    this.queued = 0;
+    this.pos = 0;
+    this.total = 0;
+    return s;
   }
 
   /** Hands what is waiting to `sink` (in order), the block being filled too. */

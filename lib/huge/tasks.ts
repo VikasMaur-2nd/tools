@@ -14,15 +14,25 @@ import type { Events } from '../analytics/events';
 import { CoreSource } from './core-source';
 import { PageNodes } from './page';
 import { hugeSize, type HugeSession } from './session';
-import { ARR, LIST, OBJ, type HugeNode as CoreNode } from './types';
+import { ARR, LIST, OBJ, type HugeNode as CoreNode, type HugeSummary } from './types';
 import { StreamClient, StreamError, canPick, canPickFolder, freeSpace, hold, removeTemp, sweep, tempName } from './stream/client';
 import type { CsvOptions } from './stream/csv';
-import { condPath, type Cond, type Filter, type Op } from './stream/filter';
+import { condPath, formValue, type Cond, type Filter, type Op } from './stream/filter';
 export { condPath, filterOf, parseCondPath } from './stream/filter';
 import type { Job, JobFormat, Scope } from './stream/jobs';
 import type { Out } from './stream/protocol';
 import { K_OBJ, type ShapeReport } from './stream/shape';
 import type { SeekTarget } from './stream/seek';
+import { snapshot, SnapshotError, type Snapshot } from './stream/snapshot';
+
+/** A command's scope in a snapshot: its bytes, its path (the selection's), its node and kind, its records. */
+interface At {
+  scope: Scope;
+  path: (string | number)[];
+  node: CoreNode | null;
+  t: number;
+  count: number;
+}
 
 export type CommandKind = 'pretty' | 'minify' | 'jsonl' | 'json' | 'csv' | 'split' | 'extract';
 export type Target = 'file' | 'value';
@@ -56,6 +66,8 @@ export interface ShapeUI {
   sel: number;
   /** A "find next" or count running or done for the selected path. */
   seek: { key: string; busy: boolean; found: number; first: number; count: boolean } | null;
+  /** The document's version the shape was read from (-1: none yet): an edit since makes it out of date. */
+  version: number;
 }
 
 export interface CmdUI {
@@ -71,6 +83,8 @@ export interface CmdUI {
   ms: number;
   result: { name: string; bytes: number; records: number; parts: number; file: File | null; picked: boolean } | null;
   error: string | null;
+  /** Split into a picked folder, stopped or failed: the finished parts it kept there. */
+  kept: { parts: number; folder: string } | null;
 }
 
 /** A condition as the Extract form holds it (typed text). */
@@ -179,6 +193,9 @@ export const COMMAND_MESSAGES: Record<string, string> = {
   'Invalid JSON': 'The file has an error: fix it first (see the status bar)',
   'Not enough storage space': 'Not enough free disk space for the result',
   'No storage': 'Your browser won’t let this page store the result (a private window?)',
+  'Not ready': 'The file is being read again after an edit: try again once it is',
+  Changed: 'The document changed as the command started: try again',
+  Saving: 'Wait for the save to finish',
   'Nesting is too deep to format': 'Nesting is too deep to format',
   'A record is too large to convert': 'A record is too large to convert (over 32 MB)',
   'A value is too large to convert': 'A value is too large for a CSV cell',
@@ -196,6 +213,9 @@ export class HugeTasks {
   private shapeRun: { stop(): void } | null = null;
   private cmdRun: { stop(): void } | null = null;
   private seekRun: { stop(): void } | null = null;
+  /** A command is taking its snapshot (not running yet), and a stop was asked meanwhile. */
+  private starting = false;
+  private stopAsked = false;
   /** OPFS outputs this tab made (deleted when the file closes, or replaced). */
   private temps = new Map<string, () => void>();
   private stopState: () => void;
@@ -204,8 +224,8 @@ export class HugeTasks {
   constructor(private readonly s: HugeSession) {
     const st = s.src.state();
     this.ui = new TaskStore({
-      shape: { state: 'idle', target: 'file', label: '$', report: null, read: 0, total: 0, rate: 0, eta: null, ms: 0, error: null, sel: -1, seek: null },
-      cmd: { state: 'idle', seq: 0, kind: null, name: '', read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null },
+      shape: { state: 'idle', target: 'file', label: '$', report: null, read: 0, total: 0, rate: 0, eta: null, ms: 0, error: null, sel: -1, seek: null, version: -1 },
+      cmd: { state: 'idle', seq: 0, kind: null, name: '', read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null, kept: null },
       form: {
         kind: 'pretty',
         target: 'file',
@@ -242,7 +262,7 @@ export class HugeTasks {
   /** The Convert form filled in. */
   prefill(o: { kind: 'extract'; conds: Cond[]; target: Target }) {
     const f = this.ui.get().form;
-    const conds = o.conds.map((c): CondUI => ({ path: condPath(c.path), op: c.op, value: c.value === undefined ? '' : typeof c.value === 'string' ? c.value : JSON.stringify(c.value) }));
+    const conds = o.conds.map((c): CondUI => ({ path: condPath(c.path), op: c.op, value: formValue(c.value) }));
     this.ui.form({ kind: o.kind, target: o.target, extract: { ...f.extract, conds } });
   }
 
@@ -277,53 +297,55 @@ export class HugeTasks {
     }, 60_000);
   }
 
-  /**
-   * What the stream reads (the file, or once edited the document's bytes: the file's slices and the edits', nothing
-   * copied), its bytes before the document (a byte order mark), and its root.
-   */
-  private async doc() {
-    const s = await this.core.doc.summary();
-    const size = s.size - s.bom;
-    if (!s.edited) return { file: this.core.doc.file, bom: s.bom, root: s.root, size, multi: s.root?.kind === LIST };
-    return { file: await this.core.doc.slice(0, size), bom: 0, root: s.root, size, multi: s.root?.kind === LIST };
-  }
-
-  /** What a command or the Shape pass reads: the whole file, or the selected value. */
-  private async scopeOf(target: Target): Promise<{ scope: Scope; path: (string | number)[]; node: CoreNode | null; t: number; count: number } | null> {
-    const d = await this.doc();
+  /** A command's scope: bytes of the snapshot, and what it is. */
+  private async scopeIn(s: HugeSummary, target: Target): Promise<At | null> {
     if (target === 'value') {
       const sel = this.s.selected;
-      if (sel && sel.node.at >= 0) {
-        if (sel.node.end < 0) return null;
-        return { scope: { start: sel.node.at, end: sel.node.end, multi: false }, path: sel.path, node: null, t: sel.node.t, count: sel.node.count };
+      if (sel && sel.path.length) {
+        // (Found again by its path, in this version: the place the selection was found at may predate an edit.)
+        const loc = await this.core.doc.resolve(sel.path);
+        if (!loc) return null;
+        const n = loc.node;
+        return { scope: { start: n.start, end: n.end, multi: false }, path: sel.path, node: n, t: n.kind === LIST ? ARR : n.kind, count: n.count ?? 0 };
       }
     }
-    if (!d.root) return null;
-    return { scope: { start: 0, end: d.size, multi: d.multi }, path: [], node: d.root, t: d.multi ? ARR : d.root.kind, count: d.root.count ?? 0 };
+    if (!s.root) return null;
+    const multi = s.root.kind === LIST;
+    return { scope: { start: 0, end: Math.max(0, s.size - s.bom), multi }, path: [], node: s.root, t: multi ? ARR : s.root.kind, count: s.root.count ?? 0 };
+  }
+
+  /**
+   * The document now (edited or not) and the command's scope on it, consistently (stream/snapshot.ts): what the
+   * command reads. `records`: its scope is the records container (CSV, Extract, Split: as records() picks).
+   */
+  private take(target: Target, records = false): Promise<Snapshot<At | null>> {
+    return snapshot(this.core.doc, async (s, blob) => {
+      const at = await this.scopeIn(s, target);
+      return at && records ? this.records(at, blob) : at;
+    });
   }
 
   // ── The records CSV reads (xlsx.ts `records`) ─────────────────────────────
 
-  /** Whether the big array `n` has an object among its items (its first page, else a streamed look). */
-  private async hasObject(n: CoreNode): Promise<boolean> {
+  /** Whether the big array `n` has an object among its items (its first page, else a streamed look at `blob`, the snapshot). */
+  private async hasObject(n: CoreNode, blob: () => Promise<Blob>): Promise<boolean> {
     const page = await this.core.doc.children(n, 0, 200);
     const v = new PageNodes(page);
     for (const c of v.children) if (c.t === OBJ) return true;
     if (!page.more) return false;
-    const d = await this.doc();
-    const run = this.stream().run(d.file, d.bom, { kind: 'seek', scope: { start: n.start, end: n.end, multi: false }, target: { path: ['*'], kind: K_OBJ }, from: 0 }, { kind: 'none' });
+    const run = this.stream().run(await blob(), 0, { kind: 'seek', scope: { start: n.start, end: n.end, multi: false }, target: { path: ['*'], kind: K_OBJ }, from: 0 }, { kind: 'none' });
     return (await run.done).result.seek!.found > 0;
   }
 
   /** The largest array of objects among `n`'s children and grandchildren (as `records`), or null. */
-  private async bestArray(n: CoreNode): Promise<{ start: number; end: number; count: number } | null> {
+  private async bestArray(n: CoreNode, blob: () => Promise<Blob>): Promise<{ start: number; end: number; count: number } | null> {
     let best: { start: number; end: number; count: number } | null = null;
     const consider = async (j: JNode, v: PageNodes) => {
       if (j.t !== ARR) return;
       const stub = v.stub(j);
       const count = stub ? (stub.count ?? 0) : kids(j).length;
       if (!count) return;
-      const has = stub ? await this.hasObject(stub) : kids(j).some((c) => c.t === OBJ);
+      const has = stub ? await this.hasObject(stub, blob) : kids(j).some((c) => c.t === OBJ);
       if (!has || (best && count <= best.count)) return;
       const [start, end] = v.span(j);
       best = { start, end, count };
@@ -347,10 +369,8 @@ export class HugeTasks {
     return best;
   }
 
-  /** CSV's container for `target`: as the normal path's `records(root)`. */
-  private async records(target: Target): Promise<{ scope: Scope; path: (string | number)[]; count: number } | null> {
-    const at = await this.scopeOf(target);
-    if (!at) return null;
+  /** CSV's container in scope `at`: as the normal path's `records(root)`. */
+  private async records(at: At, blob: () => Promise<Blob>): Promise<At> {
     if (at.t !== OBJ) return at;
     // A small object: parsed here, as the normal path would.
     const { start, end } = at.scope;
@@ -362,16 +382,11 @@ export class HugeTasks {
       if (rec === res.root) return at;
       const enc = new TextEncoder();
       const byteOf = (s: number) => start + enc.encode(text.slice(0, s)).length;
-      return { scope: { start: byteOf(rec.s), end: byteOf(rec.e), multi: false }, path: at.path, count: kids(rec).length };
+      return { ...at, scope: { start: byteOf(rec.s), end: byteOf(rec.e), multi: false }, t: ARR, count: kids(rec).length };
     }
-    let node = at.node;
-    if (!node) {
-      const loc = await this.core.doc.resolve(at.path);
-      node = loc?.node ?? null;
-    }
-    if (!node) return at;
-    const best = await this.bestArray(node);
-    return best ? { scope: { start: best.start, end: best.end, multi: false }, path: at.path, count: best.count } : at;
+    if (!at.node) return at;
+    const best = await this.bestArray(at.node, blob);
+    return best ? { ...at, scope: { start: best.start, end: best.end, multi: false }, t: ARR, count: best.count } : at;
   }
 
   // ── Shape ─────────────────────────────────────────────────────────────────
@@ -380,7 +395,15 @@ export class HugeTasks {
     if (!this.supported) return;
     this.shapeRun?.stop();
     this.seekRun?.stop();
-    const at = await this.scopeOf(target);
+    if (this.saving()) return this.ui.shape({ state: 'error', error: 'Saving', target });
+    let snap: Snapshot<At | null>;
+    try {
+      snap = await this.take(target);
+    } catch (e) {
+      if (this.dead) return;
+      return this.ui.shape({ state: 'error', error: e instanceof SnapshotError ? e.message : 'Command failed', target });
+    }
+    const at = snap.scope;
     if (this.dead) return;
     if (!at) {
       this.ui.shape({ state: 'error', error: 'Select a value that has been read', target });
@@ -388,11 +411,10 @@ export class HugeTasks {
     }
     const label = at.path.length ? formatPath(at.path) : '$';
     const total = at.scope.end - at.scope.start;
-    this.ui.shape({ state: 'running', target, label, report: null, read: 0, total, rate: 0, eta: null, ms: 0, error: null, sel: -1, seek: null });
-    const d = await this.doc();
+    this.ui.shape({ state: 'running', target, label, report: null, read: 0, total, rate: 0, eta: null, ms: 0, error: null, sel: -1, seek: null, version: snap.version });
     const pace = new Pace();
     const began = performance.now();
-    const run = this.stream().run(d.file, d.bom, { kind: 'shape', scope: at.scope }, { kind: 'none' }, {
+    const run = this.stream().run(snap.blob, 0, { kind: 'shape', scope: at.scope }, { kind: 'none' }, {
       progress: (done) => {
         pace.add(done, total);
         this.ui.shape({ read: done, rate: pace.rate, eta: pace.eta, ms: performance.now() - began });
@@ -443,30 +465,38 @@ export class HugeTasks {
     if (!sh.report || !this.supported) return;
     this.seekRun?.stop();
     const key = JSON.stringify([target, count]);
-    const at = await this.scopeOf(sh.target);
-    if (!at || this.dead) return;
     // From just after the selected value (or the last match), so "Next" moves on.
     const start = from >= 0 ? from : (this.s.selected?.node.at ?? -1) + 1;
+    let snap: Snapshot<{ at: At; scope: Scope } | null>;
+    try {
+      snap = await snapshot(this.core.doc, async (s) => {
+        const at = await this.scopeIn(s, sh.target);
+        if (!at) return null;
+        // "Next" in a list of records starts at the record holding the selection (nothing before it is read again).
+        let scope = at.scope;
+        if (!count && start > scope.start && at.t === ARR) {
+          const loc = await this.core.doc.locate(start).catch(() => null);
+          const k = loc ? loc.chain.findIndex((c) => (scope.multi ? c.node.kind === LIST : c.node.kind === ARR && c.node.start === scope.start)) : -1;
+          const rec = k >= 0 ? (loc!.chain[k + 1]?.node ?? loc!.node) : null;
+          if (rec && rec.start > scope.start) scope = { start: rec.start, end: scope.multi ? scope.end : scope.end - 1, multi: true };
+        }
+        return { at, scope };
+      });
+    } catch {
+      return;
+    }
+    if (!snap.scope || this.dead) return;
+    const { at, scope } = snap.scope;
     this.ui.shape({ seek: { key, busy: true, found: 0, first: -1, count } });
     track('feature_used', { feature: count ? 'shape_count' : 'shape_next' });
-    const d = await this.doc();
-    // "Next" in a list of records starts at the record holding the selection (nothing before it is read again).
-    let scope = at.scope;
-    if (!count && start > scope.start && at.t === ARR) {
-      const loc = await this.core.doc.locate(start).catch(() => null);
-      const k = loc ? loc.chain.findIndex((c) => (scope.multi ? c.node.kind === LIST : c.node.kind === ARR && c.node.start === scope.start)) : -1;
-      const rec = k >= 0 ? (loc!.chain[k + 1]?.node ?? loc!.node) : null;
-      if (rec && rec.start > scope.start) scope = { start: rec.start, end: scope.multi ? scope.end : scope.end - 1, multi: true };
-    }
-    if (this.dead) return;
-    const run = this.stream().run(d.file, d.bom, { kind: 'seek', scope, target, from: count ? 0 : Math.max(0, start), count }, { kind: 'none' });
+    const run = this.stream().run(snap.blob, 0, { kind: 'seek', scope, target, from: count ? 0 : Math.max(0, start), count }, { kind: 'none' });
     this.seekRun = run;
     try {
       const { result } = await run.done;
       if (this.dead || this.seekRun !== run) return;
       let r = result.seek!;
       // (Nothing after it: from the start again.)
-      if (!count && r.first < 0 && start > 0) r = (await this.stream().run(d.file, d.bom, { kind: 'seek', scope: at.scope, target, from: 0 }, { kind: 'none' }).done).result.seek!;
+      if (!count && r.first < 0 && start > 0) r = (await this.stream().run(snap.blob, 0, { kind: 'seek', scope: at.scope, target, from: 0 }, { kind: 'none' }).done).result.seek!;
       if (this.dead || this.seekRun !== run) return;
       this.ui.shape({ seek: { key, busy: false, found: r.found, first: r.first, count } });
       if (!count && r.first >= 0) void this.s.revealAt(r.first);
@@ -532,18 +562,15 @@ export class HugeTasks {
     }
   }
 
-  /** Records of a scope (Split into N parts needs how many there are). */
-  private async countOf(target: Target): Promise<number> {
-    if (target === 'value') return this.s.selected?.node.count ?? 0;
-    const s = await this.core.doc.summary();
-    return s.root?.count ?? s.records;
-  }
-
   /** Runs `spec` (from a click: Chromium's picker opens first). */
   async run(spec: CommandSpec) {
-    if (!this.supported || this.cmdRun) return;
+    if (!this.supported || this.cmdRun || this.starting) return;
     const ui = this.ui.get();
     if (!ui.ready) return;
+    if (this.saving()) {
+      this.ui.cmd({ state: 'error', seq: ui.cmd.seq + 1, kind: spec.kind, name: '', result: null, error: 'Saving' });
+      return;
+    }
     const sel = this.s.selected;
     const { name, parts } = nameOf(spec, this.s.meta.name, spec.target === 'value' && sel ? sel.path : []);
     let where: Awaited<ReturnType<HugeTasks['outFor']>>;
@@ -557,7 +584,7 @@ export class HugeTasks {
     }
     if (!where) return;
     const began = performance.now();
-    this.ui.cmd({ state: 'running', seq: this.ui.get().cmd.seq + 1, kind: spec.kind, name, read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null });
+    this.ui.cmd({ state: 'running', seq: this.ui.get().cmd.seq + 1, kind: spec.kind, name, read: 0, total: 0, rate: 0, eta: null, ms: 0, result: null, error: null, kept: null });
     const pace = new Pace();
     const event = (outcome: Events['huge_command']['outcome']) =>
       track('huge_command', {
@@ -571,9 +598,12 @@ export class HugeTasks {
         filtered: !!spec.extract?.filter?.conds.length,
       });
     const release = where.temp ? hold(where.temp) : null;
+    this.starting = true;
     try {
+      // The document as it is now: the command writes this version, whatever is edited while it runs.
       // (CSV, Extract and Split read records: of the container records() picks, as the normal path's CSV.)
-      const at = spec.kind === 'csv' || spec.kind === 'extract' || spec.kind === 'split' ? await this.records(spec.target) : await this.scopeOf(spec.target);
+      const snap = await this.take(spec.target, spec.kind === 'csv' || spec.kind === 'extract' || spec.kind === 'split');
+      const at = snap.scope;
       if (!at) throw new StreamError('Select a value that has been read');
       const size = at.scope.end - at.scope.start;
       // Room for an OPFS result: about the size it reads (Pretty: twice), compressed a tenth.
@@ -582,16 +612,17 @@ export class HugeTasks {
         const need = (spec.kind === 'pretty' || spec.kind === 'json' ? 2 : 1) * size * (spec.gzip ? 0.15 : 1);
         if (free !== null && free < need) throw new StreamError('Not enough storage space');
       }
-      const count = spec.kind === 'split' && spec.split?.by === 'parts' ? ('count' in at ? at.count : await this.countOf(spec.target)) : 0;
+      const count = spec.kind === 'split' && spec.split?.by === 'parts' ? at.count : 0;
       const job = await this.jobOf(spec, at.scope, count);
-      const d = await this.doc();
-      const run = this.stream().run(d.file, d.bom, job, where.out, {
+      if (this.stopAsked) throw new StreamError('Stopped');
+      const run = this.stream().run(snap.blob, 0, job, where.out, {
         progress: (done, total) => {
           pace.add(done, total);
           this.ui.cmd({ read: done, total, rate: pace.rate, eta: pace.eta, ms: performance.now() - began });
         },
       });
       this.cmdRun = run;
+      this.starting = false;
       const { result, file } = await run.done;
       if (this.dead) return;
       let shown: File | null = null;
@@ -614,16 +645,31 @@ export class HugeTasks {
       release?.();
       if (where.temp) void removeTemp(where.temp);
       if (this.dead) return;
-      const msg = e instanceof StreamError ? e.message : 'Command failed';
-      this.ui.cmd({ state: msg === 'Stopped' ? 'stopped' : 'error', error: msg === 'Stopped' ? null : msg, eta: null });
+      const msg = e instanceof StreamError || e instanceof SnapshotError ? e.message : 'Command failed';
+      // (Split into a picked folder keeps its finished parts: said with the outcome.)
+      const kept = where.sink === 'folder' && e instanceof StreamError && e.parts > 0 ? { parts: e.parts, folder: (where.out as { handle?: FileSystemDirectoryHandle }).handle?.name ?? '' } : null;
+      this.ui.cmd({ state: msg === 'Stopped' ? 'stopped' : 'error', error: msg === 'Stopped' ? null : msg, eta: null, kept });
       event(msg === 'Stopped' ? 'stopped' : 'error');
-      if (!(e instanceof StreamError)) reportError(e, 'huge');
+      if (!(e instanceof StreamError) && !(e instanceof SnapshotError)) reportError(e, 'huge');
     } finally {
       this.cmdRun = null;
+      this.starting = false;
+      this.stopAsked = false;
     }
   }
 
+  /** A save is under way: commands wait (a command reads the opened file, which an in-place save replaces). */
+  private saving() {
+    return !!this.s.ui.get().edit?.saving;
+  }
+
+  /** A command or the Shape pass is reading the document (an in-place save waits for it). */
+  get busy() {
+    return this.starting || !!this.cmdRun || !!this.shapeRun || !!this.seekRun;
+  }
+
   stopCommand() {
+    if (this.starting) this.stopAsked = true;
     this.cmdRun?.stop();
   }
 

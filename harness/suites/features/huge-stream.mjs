@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { gzipSync, inflateRawSync } from 'node:zlib';
 import { defaults, test } from '../../lib/api.mjs';
 import { DIRS } from '../../lib/env.mjs';
-import { poll, until } from './_helpers.mjs';
+import { MOD, poll, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', width: 1280, height: 860, tags: ['huge'] });
 
@@ -189,7 +189,7 @@ test('huge stream: Split writes its parts into a zip; Extract picks records by c
   await openHuge(t, linesPath);
   const r = await runCommand(
     t,
-    'Split',
+    'Split file',
     async (p) => {
       await p.locator('#hg-convert .hc-num').first().fill('700');
     },
@@ -315,6 +315,54 @@ test('huge stream: "Extract records without it" from the Shape panel fills in Co
     const text = readFileSync(await d.path(), 'utf8');
     const want = recs.filter((x) => !('vip' in x)).map((x) => JSON.stringify(x) + '\n').join('');
     t.check(text === want, 'the 2,700 records of $.users without vip', text.slice(0, 200));
+  } finally {
+    await t.cleanup?.();
+  }
+});
+
+test('huge stream: commands write the edited document; the Shape panel says when it was read before an edit', async (t) => {
+  const page = await storagePage(t);
+  try {
+    await page.addInitScript(NO_PICKERS);
+    await t.open('/');
+    await openHuge(t, prettyPath);
+    await view(page, 'shape');
+    t.assert(await shapeDone(page), 'shape read');
+    // Edit: users[1].name set, users[2] deleted (the editing suite's keys).
+    const select = async (p) => {
+      await view(page, 'tree');
+      await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+      await page.keyboard.press(`${MOD}+f`);
+      await page.locator('.hg .findbar input').fill(p);
+      await until(page, (p) => window.__vis('.hg .vmain .path')?.textContent === p, p, { timeout: 5000 });
+      await page.keyboard.press('Escape');
+      await page.locator('#hg-tree').focus();
+    };
+    await select('$.users[1].name');
+    await page.keyboard.press('F2');
+    t.assert(await until(page, () => !!document.querySelector('.hg-box .hg-box-in'), null), 'the edit box');
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.type('Ada');
+    await page.keyboard.press('Enter');
+    t.assert(await until(page, () => /Edited/.test(window.__vis('.hg-edited')?.textContent ?? ''), null), 'edited');
+    await select('$.users[2]');
+    await page.keyboard.press('Delete');
+    t.assert(await until(page, () => /2 changes/.test(window.__vis('.hg-edited')?.textContent ?? ''), null), 'two changes', await page.evaluate(() => window.__vis('.hg-edited')?.textContent));
+    const want = structuredClone(doc);
+    want.users[1].name = 'Ada';
+    want.users.splice(2, 1);
+    await view(page, 'shape');
+    t.check(await until(page, () => /edited since/.test(document.querySelector('#hg-shape .hs-status')?.textContent ?? ''), null, { timeout: 10_000 }), 'the shape says it predates the edits');
+    // Minify and CSV of the edited document.
+    t.assert(await until(page, () => /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'read again');
+    const m = await runCommand(t, 'Minify');
+    t.check(m.data === JSON.stringify(want), 'Minify: the edited document', m.data.slice(0, 200));
+    const c = await runCommand(t, 'CSV');
+    t.check(c.data === csvOf(want.users), 'CSV: the edited records', c.data.slice(0, 300));
+    // The Shape read again: no note.
+    await view(page, 'shape');
+    await page.locator('#hg-shape .btn', { hasText: 'Read again' }).click();
+    t.check(await until(page, () => { const st = document.querySelector('#hg-shape .hs-status')?.textContent ?? ''; return /read in/.test(st) && !/edited since/.test(st); }, null, { timeout: 30_000 }), 'read again: current', await page.evaluate(() => document.querySelector('#hg-shape .hs-status')?.textContent));
   } finally {
     await t.cleanup?.();
   }

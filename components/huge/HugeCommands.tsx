@@ -111,7 +111,7 @@ const KINDS: { id: CommandKind; label: string; about: string }[] = [
   { id: 'jsonl', label: 'JSON Lines', about: 'Each item of the array on a line of its own (NDJSON).' },
   { id: 'json', label: 'JSON array', about: 'The records of a JSON Lines file as one JSON array.' },
   { id: 'csv', label: 'CSV', about: 'A row per record, nested fields as dotted columns, as the CSV converter makes it.' },
-  { id: 'split', label: 'Split', about: 'The records in parts of a size you choose, each a file of its own.' },
+  { id: 'split', label: 'Split file', about: 'The records in parts of a size you choose, each a file of its own.' },
   { id: 'extract', label: 'Extract', about: 'Only the records that match, or the first ones, as JSON, JSON Lines or CSV.' },
 ];
 
@@ -379,10 +379,17 @@ export default function CommandsView({ s }: { s: HugeSession }) {
               )}
             </div>
           )}
-          {cmd.state === 'stopped' && <div className="hc-done warn">{t('Stopped: nothing was saved')}</div>}
+          {cmd.state === 'stopped' && (
+            <div className="hc-done warn">
+              {cmd.kept
+                ? t.n(cmd.kept.parts, 'Stopped: {n} part written to {folder}, the unfinished part {next} removed', 'Stopped: {n} parts written to {folder}, the unfinished part {next} removed', { folder: cmd.kept.folder, next: t.num(cmd.kept.parts + 1) })
+                : t('Stopped: nothing was saved')}
+            </div>
+          )}
           {cmd.state === 'error' && (
             <div className="hc-done err">
               {t(COMMAND_MESSAGES[cmd.error ?? ''] ?? cmd.error ?? 'Something went wrong writing the result')}
+              {cmd.kept && <span> {t.n(cmd.kept.parts, '{n} finished part kept in {folder}.', '{n} finished parts kept in {folder}.', { folder: cmd.kept.folder })}</span>}
               {cmd.error === 'Invalid JSON' && (
                 <button type="button" className="btn sm" onClick={() => void s.gotoError()}>
                   {t('Go to error')}

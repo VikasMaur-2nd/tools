@@ -44,6 +44,9 @@ export interface HugeUI {
   textEdit: { path: Seg[]; label: string; text: string | null } | null;
   /** The edit menu (right click, the menu key): where, and whether the keyboard opened it. */
   menu: { x: number; y: number; keyboard: boolean } | null;
+  /** The Format view's text being edited (a window of it), from byte `at`; and where its caret is. */
+  fe: { id: number; at: number } | null;
+  feInfo: { line: number; col: number; first: number; last: number } | null;
 }
 
 export interface EditUI {

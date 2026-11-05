@@ -44,8 +44,8 @@ const HUGE_SINKS = ['picker', 'folder', 'download', 'zip'] as const;
 /** A .gz file: opened in the editor (small), in huge mode, or not (error, stopped, no space). */
 const HUGE_GZ_OUTCOMES = ['editor', 'huge', 'error', 'stopped', 'space'] as const;
 /** Huge mode's edits (lib/huge/edits.ts), and where they were asked from. */
-const HUGE_EDIT_OPS = ['set', 'rename', 'remove', 'insert', 'duplicate', 'text', 'undo', 'redo', 'restore'] as const;
-const HUGE_EDIT_FROM = ['tree', 'table', 'graph', 'menu', 'key', 'toolbar', 'palette', 'banner'] as const;
+const HUGE_EDIT_OPS = ['set', 'rename', 'remove', 'insert', 'duplicate', 'text', 'type', 'undo', 'redo', 'restore'] as const;
+const HUGE_EDIT_FROM = ['tree', 'table', 'graph', 'format', 'menu', 'key', 'toolbar', 'palette', 'banner'] as const;
 /** How a huge document was saved (in place, as another file, downloaded), and how it ended. */
 const HUGE_SAVE_HOW = ['in_place', 'save_as', 'download'] as const;
 const HUGE_SAVE_OUTCOMES = ['done', 'stopped', 'failed'] as const;

@@ -10,9 +10,9 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import { PRIVATE } from '@/lib/analytics';
 import { useT } from '@/lib/i18n/react';
 import type { HugeSession } from '@/lib/huge/session';
-import type { ShapeUI, TaskStore, TaskUI } from '@/lib/huge/tasks';
+import { COMMAND_MESSAGES, type ShapeUI, type TaskStore, type TaskUI } from '@/lib/huge/tasks';
 import { FORMATS, K_ARR, K_FALSE, K_NULL, K_NUM, K_OBJ, K_STR, K_TRUE, pathText, type ShapePath, type ShapeReport } from '@/lib/huge/stream/shape';
-import type { Cond } from '@/lib/huge/stream/filter';
+import { condValueOf, type Cond } from '@/lib/huge/stream/filter';
 
 export function useTasks<T>(store: TaskStore, select: (s: TaskUI) => T): T {
   return useSyncExternalStore(store.subscribe, () => select(store.get()), () => select(store.get()));
@@ -108,7 +108,7 @@ function rowsOf(r: ShapeReport, closed: Set<number>, q: string): Row[] {
   return out;
 }
 
-function Status({ sh, records }: { sh: ShapeUI; records: number }) {
+function Status({ sh, records, version }: { sh: ShapeUI; records: number; version: number }) {
   const t = useT();
   const paths = sh.report?.paths.length ?? 0;
   if (sh.state === 'running') {
@@ -124,7 +124,7 @@ function Status({ sh, records }: { sh: ShapeUI; records: number }) {
   if (sh.state === 'error') {
     // (An error in the file: what was read before it stays shown.)
     if (sh.error === 'Invalid JSON' && sh.report) return <span className="hs-status warn">{t('The file has an error: the shape shows what comes before it')}</span>;
-    return <span className="hs-status err">{t(sh.error ?? 'Something went wrong')}</span>;
+    return <span className="hs-status err">{t(COMMAND_MESSAGES[sh.error ?? ''] ?? sh.error ?? 'Something went wrong')}</span>;
   }
   if (!sh.report) return null;
   return (
@@ -134,6 +134,8 @@ function Status({ sh, records }: { sh: ShapeUI; records: number }) {
       {sh.state === 'stopped' && <span className="warn"> · {t('stopped at {done} of {size}', { done: t.bytes(sh.read), size: t.bytes(sh.total) })}</span>}
       {sh.state === 'done' && <span className="muted"> · {t('read in {time}', { time: t.dur(Math.max(1, Math.round(sh.ms / 1000))) })}</span>}
       {(sh.report.dropped > 0 || sh.report.paths.some((p) => p.manyKeys)) && <span className="muted"> · {t('some names merged')}</span>}
+      {/* (Read from the document as it was: an edit since moves what it says and where its places are.) */}
+      {sh.version >= 0 && version !== sh.version && <span className="warn"> · {t('edited since: read again')}</span>}
     </span>
   );
 }
@@ -142,6 +144,7 @@ export default function ShapeView({ s, hidden }: { s: HugeSession; hidden: boole
   const tasks = s.tasks;
   const sh = useTasks(tasks.ui, (u) => u.shape);
   const hasSel = useSyncExternalStore(s.ui.subscribe, () => (s.ui.get().sel?.t ?? 0) >= 4, () => false);
+  const version = useSyncExternalStore(s.ui.subscribe, () => s.ui.get().index.edit?.version ?? 0, () => 0);
   const t = useT();
   const [closed, setClosed] = useState<Set<number>>(() => new Set());
   const [q, setQ] = useState('');
@@ -219,7 +222,7 @@ export default function ShapeView({ s, hidden }: { s: HugeSession; hidden: boole
           </button>
         </div>
         {sh.target === 'value' && <span className={`hs-scope ${PRIVATE}`}>{sh.label}</span>}
-        <Status sh={sh} records={report?.records ?? 0} />
+        <Status sh={sh} records={report?.records ?? 0} version={version} />
         <span className="grow" />
         {report && report.paths.length > 12 && (
           <input className="hs-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Filter paths')} aria-label={t('Filter paths')} spellCheck={false} autoComplete="off" />
@@ -517,8 +520,8 @@ function Detail({ s, r, p }: { s: HugeSession; r: ShapeReport; p: ShapePath }) {
                     <i style={{ width: `${pct(n, p.n)}%` }} />
                   </span>
                   <Count n={n} of={p.n} />
-                  {recordPath && !text.endsWith('…"') && (
-                    <button type="button" className="hs-link" onClick={() => extract({ path: recordPath, op: 'eq', value: JSON.parse(text) as string })}>
+                  {recordPath && !text.endsWith('…"') && !text.endsWith('…') && (
+                    <button type="button" className="hs-link" onClick={() => extract({ path: recordPath, op: 'eq', value: condValueOf(text) })}>
                       {t('Extract')}
                     </button>
                   )}

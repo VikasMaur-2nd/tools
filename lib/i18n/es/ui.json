@@ -53,6 +53,7 @@
   "home.tools.3": "Corrige comentarios, comas finales, comillas simples y otros errores habituales de entrada.",
   "home.tools.4": "Minifica JSON, ordena las claves y copia el resultado limpio.",
   "home.tools.5": "Explora objetos anidados en una vista de árbol o tabla contraíble.",
+  "home.tools.large": "Abre archivos JSON y JSON Lines de muchos gigabytes, más grandes que la memoria de tu equipo, en el <large>visor de archivos JSON grandes</large>.",
   "home.tools.6": "Busca claves y valores, copia rutas JSON, compara documentos y convierte JSON a otros formatos.",
   "home.howH2": "Cómo usar el visor JSON",
   "home.how.1": "Pega JSON en el panel de entrada o elige un archivo JSON de tu dispositivo.",
@@ -68,7 +69,7 @@
   "home.faq.3.q": "¿Este visor JSON es privado?",
   "home.faq.3.a": "Sí. El análisis y el formato se realizan en tu navegador, por lo que tu documento no necesita salir de tu dispositivo.",
   "home.faq.4.q": "¿Puedo validar un archivo JSON grande?",
-  "home.faq.4.a": "Sí. El visor está diseñado para documentos grandes y mantiene la entrada en tu dispositivo mientras analiza el archivo.",
+  "home.faq.4.a": "Sí, de cualquier tamaño. Un archivo de más de 300 MB se abre en un modo de archivos grandes que lo lee del disco por partes: comprueba el archivo completo, indica la línea y la columna exactas de un error y te deja explorarlo mientras se lee. El archivo se queda en tu dispositivo.",
   "home.more.blog": "Encontrarás más información en el <blog>blog de JSON de Tool Kumar</blog>, con una guía práctica para formatear y validar JSON y la <origin>historia del origen de JSON</origin>.",
   "home.more.errors": "¿Aparece un error del analizador como Unexpected token o Unexpected end of JSON input? <errors>Encuentra una solución para tu mensaje de error JSON</errors> en nuestras guías de errores.",
   "home.more.resources": "Consulta la <reference>referencia de sintaxis JSON</reference> para comprobar las reglas del estándar o descarga <examples>ejemplos de JSON para API y configuración</examples> para documentación y pruebas.",
@@ -837,5 +838,6 @@
   "cmd.graph-start.terms": "arriba raíz primero inicio",
   "cmd.graph-end.terms": "abajo último final",
   "cmd.graph-export.terms": "descargar png jpeg jpg svg imagen guardar",
-  "cmd.graph-copy.terms": "portapapeles imagen png captura"
+  "cmd.graph-copy.terms": "portapapeles imagen png captura",
+  "app.hugeCmdSplitFile": "Dividir archivo"
 }
