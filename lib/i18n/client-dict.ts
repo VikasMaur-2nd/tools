@@ -1,6 +1,6 @@
 /**
  * The browser's dictionaries, built from lib/i18n/<locale>/ui.json: a localized page's (lib/i18n/server.ts
- * `clientUi`, in its RSC payload) and huge mode's (lib/i18n/huge/<locale>.json, written by
+ * `clientUi`, in its RSC payload) and huge mode's (lib/i18n/huge/huge-strings.<locale>.json, written by
  * scripts/i18n-huge.mjs and loaded when a huge file opens: lib/i18n/translate.ts `huge`). Plain data, no
  * imports at run time: the server, the scripts and the tests share it.
  */
@@ -48,5 +48,5 @@ export function clientDict(en: Strings, translated: Strings, keep: (key: string)
 /** A localized page's dictionary: what the browser shows, but huge mode's strings. */
 export const pageDict = (en: Strings, translated: Strings) => clientDict(en, translated, (k) => CLIENT.test(k) && !isHugeKey(k));
 
-/** Huge mode's dictionary (lib/i18n/huge/<locale>.json). */
+/** Huge mode's dictionary (lib/i18n/huge/huge-strings.<locale>.json). */
 export const hugeDict = (en: Strings, translated: Strings) => clientDict(en, translated, (k) => CLIENT.test(k) && isHugeKey(k));

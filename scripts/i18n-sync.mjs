@@ -102,6 +102,6 @@ for (const locale of locales) {
 }
 
 write(sourcePath, Object.fromEntries(Object.keys(source).sort().map((l) => [l, source[l]])));
-// Huge mode's dictionaries follow the interface strings (lib/i18n/huge/<locale>.json).
+// Huge mode's dictionaries follow the interface strings (lib/i18n/huge/huge-strings.<locale>.json).
 writeHugeDicts();
 process.exit(failed ? 1 : 0);

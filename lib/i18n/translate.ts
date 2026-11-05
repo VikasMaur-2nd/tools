@@ -30,22 +30,30 @@ function durationParts(sec: number, long: boolean): Record<string, number> {
 }
 
 /**
- * Huge mode's strings per language (lib/i18n/huge/<locale>.json, from scripts/i18n-huge.mjs): a chunk each,
- * named only here, in the localized pages' chunk. A page waits for one only when a huge file opens; English
- * pages never name them. (The service worker follows the chunks a page's scripts name once the page has
- * settled, so they are cached for offline use like huge mode's own code.)
+ * Huge mode's strings per language (lib/i18n/huge/huge-strings.<locale>.json, from scripts/i18n-huge.mjs): files
+ * the bundler copies to /_next/static/media/huge-strings.<locale>.<hash>.json, named only in the localized pages'
+ * chunk and fetched when a huge file opens. The service worker caches a page's own language's file with its other
+ * files (and no other language's: public/sw.js), so huge mode works offline in it; English pages never name them.
  */
-const HUGE: Record<string, () => Promise<{ default: UiDict }>> = {
-  es: () => import('./huge/es.json'),
-  pt: () => import('./huge/pt.json'),
-  de: () => import('./huge/de.json'),
-  fr: () => import('./huge/fr.json'),
-  ja: () => import('./huge/ja.json'),
-  ko: () => import('./huge/ko.json'),
-  zh: () => import('./huge/zh.json'),
-  ru: () => import('./huge/ru.json'),
+const HUGE: Record<string, URL> = {
+  es: new URL('./huge/huge-strings.es.json', import.meta.url),
+  pt: new URL('./huge/huge-strings.pt.json', import.meta.url),
+  de: new URL('./huge/huge-strings.de.json', import.meta.url),
+  fr: new URL('./huge/huge-strings.fr.json', import.meta.url),
+  ja: new URL('./huge/huge-strings.ja.json', import.meta.url),
+  ko: new URL('./huge/huge-strings.ko.json', import.meta.url),
+  zh: new URL('./huge/huge-strings.zh.json', import.meta.url),
+  ru: new URL('./huge/huge-strings.ru.json', import.meta.url),
 };
-const none = () => Promise.resolve({ default: {} as UiDict });
+
+/** A language's huge-mode strings ({} for none). */
+async function hugeStrings(lang: string | undefined): Promise<UiDict> {
+  const url = HUGE[lang?.slice(0, 2) ?? ''];
+  if (!url) return {};
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('huge strings');
+  return (await res.json()) as UiDict;
+}
 
 export function translator(d: UiDict | null | undefined, lang?: string): T {
   if (!d) return EN;
@@ -131,9 +139,9 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
     },
     lang,
     huge: () =>
-      (huge ??= (HUGE[lang?.slice(0, 2) ?? ''] ?? none)().then(
-        (m) => {
-          dict = { ...dict, ...m.default };
+      (huge ??= hugeStrings(lang).then(
+        (more) => {
+          dict = { ...dict, ...more };
           pats = null;
         },
         () => {

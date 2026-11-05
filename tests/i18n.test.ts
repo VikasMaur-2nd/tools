@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { TOOL_PAGES } from '../lib/tool-pages';
 import { LOCALES } from '../lib/i18n/locales';
 import { pageHash, textHash } from '../lib/i18n/page-text';
@@ -84,6 +85,10 @@ test('huge mode strings: out of every page dictionary, in a dictionary of their 
   const hugeTexts = new Set(keys.filter((k) => CLIENT_KEYS.test(k) && isHugeKey(k)).map((k) => en[k]));
   assert.ok(hugeTexts.has('Large file') && hugeTexts.has('Shape'));
   const loaders = read('lib/i18n/translate.ts');
+  // translate.ts fetches the file next to it; in the test build that URL is under .test-build: read the source's.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string | URL) => new Response(readFileSync(fileURLToPath(String(u)).replace(`${sep}.test-build${sep}`, sep)))) as typeof fetch;
+  try {
   // A page's dictionary is clientUi (lib/i18n/server.ts, server-only: read, not run here); scripts/verify-i18n.mjs checks built pages too.
   assert.match(read('lib/i18n/server.ts'), /return memo\(`client:\$\{locale\}`, \(\) => pageDict\(/);
   for (const { id, lang } of LOCALES) {
@@ -91,10 +96,12 @@ test('huge mode strings: out of every page dictionary, in a dictionary of their 
     const page = pageDict(en, tr);
     assert.deepEqual(Object.keys(page).filter((s) => hugeTexts.has(s)), [], `${id}: a page's dictionary carries huge mode's strings`);
     const huge = hugeDict(en, tr);
-    assert.deepEqual(json<typeof huge>(`lib/i18n/huge/${id}.json`), huge, `lib/i18n/huge/${id}.json is out of date: run pnpm i18n:huge`);
+    assert.deepEqual(json<typeof huge>(`lib/i18n/huge/huge-strings.${id}.json`), huge, `lib/i18n/huge/huge-strings.${id}.json is out of date: run pnpm i18n:huge`);
     // translate.ts picks the dictionary by the page's language (<html lang>, e.g. pt-BR, zh-Hans).
     assert.equal(lang.slice(0, 2), id);
-    assert.ok(loaders.includes(`${id}: () => import('./huge/${id}.json')`), `translate.ts loads lib/i18n/huge/${id}.json`);
+    // (The file name matters: the service worker caches a page's own language's huge-strings.<lang>.* only.)
+    // (Spelled in two parts: the test runner rewrites that expression wherever it appears.)
+    assert.ok(loaders.includes(`${id}: new URL('./huge/huge-strings.${id}.json', ${'import.meta'}.url)`), `translate.ts loads lib/i18n/huge/huge-strings.${id}.json`);
     if (!Object.keys(tr).length) continue;
     // The page's translator, then huge mode's strings added to it (templates included: msg's patterns are made again).
     const t = translator(page, lang);
@@ -107,6 +114,9 @@ test('huge mode strings: out of every page dictionary, in a dictionary of their 
     assert.equal(t.n(3, '{n} record', '{n} records'), fill((huge['{n} records'] as Record<string, string>)[new Intl.PluralRules(lang).select(3)], { n: 3 }), id);
     // The page's own strings are still there.
     assert.equal(t('Tree'), tr['app.tree']);
+  }
+  } finally {
+    globalThis.fetch = realFetch;
   }
   // English pages have no dictionary to add.
   assert.equal(EN.huge, undefined);
