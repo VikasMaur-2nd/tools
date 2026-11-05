@@ -199,6 +199,7 @@ export class SmallSource implements HugeSource {
     this.dead = true;
     if (this.timer) clearTimeout(this.timer);
     this.listeners.clear();
+    return Promise.resolve();
   }
 
   // ── Reads ───────────────────────────────────────────────────────────────

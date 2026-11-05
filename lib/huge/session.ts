@@ -89,9 +89,6 @@ export interface FormatEditApi {
   goto(at: number): Promise<void>;
 }
 
-/** The core keeps a session this long after the last edit (serve.ts KEEP_MS), with a margin. */
-const KEPT_AFTER = 1500;
-
 let seq = 0;
 /** The open session (components/huge/HugeTool.tsx reads it). */
 export let current: HugeSession | null = null;
@@ -145,8 +142,6 @@ export class HugeSession {
   private file: { size: number; lastModified: number };
   private saving: { stop(): void } | null = null;
   private restoreOffered = false;
-  /** When the last edit was made (performance.now()). */
-  private editedAt = 0;
   /** Where the edit box or text dialog was opened from (the huge_edit event). */
   private editFrom: EditFrom = 'menu';
 
@@ -268,13 +263,13 @@ export class HugeSession {
     this.saving?.stop();
     window.removeEventListener('beforeunload', this.onUnload);
     clearTimeout(this.growTimer);
-    // Replaced by another document with unsaved edits: they are kept (the core keeps a session a second after the
-    // last edit: its worker stays that long), and offered when the file is opened again.
+    // (Closing keeps the edits not kept yet, then ends the core's worker.)
+    const kept = this.src.destroy();
+    // Replaced by another document with unsaved edits: they are kept, and offered when the file is opened again.
     if (!back && edits?.edited) {
-      this.host.toast(rt.n(edits.steps, 'Your {n} unsaved change to {name} is kept: reopen it to restore it', 'Your {n} unsaved changes to {name} are kept: reopen it to restore them', { name: this.meta.name }), 'info', undefined, 8000);
-      const src = this.src;
-      setTimeout(() => src.destroy(), Math.max(0, KEPT_AFTER - (performance.now() - this.editedAt)));
-    } else this.src.destroy();
+      const { host, meta } = this;
+      void kept.then(() => host.toast(rt.n(edits.steps, 'Your {n} unsaved change to {name} is kept: reopen it to restore it', 'Your {n} unsaved changes to {name} are kept: reopen it to restore them', { name: meta.name }), 'info', undefined, 8000));
+    }
     this.tree?.destroy();
     this.lines?.destroy();
     this.table?.destroy();
@@ -981,7 +976,6 @@ export class HugeSession {
    */
   private async afterEdit(fx: Effect, select: Seg[] | null) {
     if (this.dead) return;
-    this.editedAt = performance.now();
     const tree = this.tree;
     const opens = tree ? tree.openPaths().slice(1).map((p) => adjustPath(p, fx)).filter((p): p is Seg[] => !!p) : [];
     const graphPath = this.graph?.rootPath ? (adjustPath(this.graph.rootPath, fx) ?? this.graph.rootPath.slice(0, -1)) : null;
@@ -1354,7 +1348,6 @@ export class HugeSession {
   formatTyped() {
     const now = performance.now();
     this.feTyped = true;
-    this.editedAt = now;
     if (now - this.typedAt > TYPING_PAUSE) track('huge_edit', { op: 'type', from: 'format' });
     this.typedAt = now;
   }

@@ -211,6 +211,25 @@ test('huge edit: unsaved edits kept, offered again when the file is opened again
   t.check(await until(page, () => !window.__vis('.hg-edited'), null), 'and undo goes on from it');
 });
 
+const toasts = (page) => page.evaluate(() => [...document.querySelectorAll('.toast')].map((e) => e.textContent ?? ''));
+const toasted = (page, re) => until(page, (s) => [...document.querySelectorAll('.toast')].some((e) => new RegExp(s).test(e.textContent ?? '')), re.source, { timeout: 10_000 });
+
+test('huge edit: another file opened right after an edit: the edit is kept (said once it is), offered again', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, path);
+  await selectPath(page, '$.users[5].name');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  // At once (not a second later, when the core keeps a session anyway): closing keeps it first.
+  const other = join(dir, 'other.json');
+  writeFileSync(other, JSON.stringify({ other: true }));
+  await openHuge(t, other);
+  t.check(await toasted(page, /Your 1 unsaved change to users\.json is kept: reopen it to restore it/), 'said kept', await toasts(page));
+  await openHuge(t, path);
+  t.check(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 10_000 }), 'offered again');
+});
+
 // Screenshots for review (HUGE_SHOTS names a folder): the edit box, the edit menu, the text dialog, the file bar
 // with edits, asking before closing; light and dark, desktop and phone.
 for (const [name, opts] of [
