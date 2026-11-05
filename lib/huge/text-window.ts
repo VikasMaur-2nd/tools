@@ -11,11 +11,16 @@
 import { utf16Of, utf8Bytes } from './utf8';
 import type { HugeSource, IndexState } from './source';
 
-/** Lines and bytes a window holds at most. */
-export const WINDOW_LINES = 2000;
-export const WINDOW_BYTES = 1 << 20;
+/**
+ * Lines and bytes a window holds at most: small enough for the editor's native editing (under its 100,000
+ * characters, editor.ts LAZY_CHARS), where a key costs least; a window moves often, and moving is cheap.
+ */
+export const WINDOW_LINES = 1000;
+export const WINDOW_BYTES = 96_000;
+/** A line longer than a window gets one of its own, up to this. */
+export const LINE_MAX = 1 << 20;
 /** Lines kept above the line a window is read for. */
-export const WINDOW_ABOVE = 500;
+export const WINDOW_ABOVE = 300;
 /** Characters a paste may have. */
 export const PASTE_MAX = 8 << 20;
 
@@ -91,9 +96,12 @@ export class TextWindow {
     const endOf = (k: number) => (k < ls.length ? ls[k].at : end);
     const start = ls[0].at;
     let k = Math.min(n, ls.length);
-    if (endOf(1) - start > WINDOW_BYTES) return 'long';
-    // (The most lines within WINDOW_BYTES: line starts only grow.)
-    if (endOf(k) - start > WINDOW_BYTES) {
+    // (A long line: a window of its own, up to LINE_MAX.)
+    if (endOf(1) - start > WINDOW_BYTES) {
+      if (endOf(1) - start > LINE_MAX) return 'long';
+      k = 1;
+    } else if (endOf(k) - start > WINDOW_BYTES) {
+      // (The most lines within WINDOW_BYTES: line starts only grow.)
       let lo = 1;
       let hi = k;
       while (lo < hi) {
@@ -103,7 +111,7 @@ export class TextWindow {
       }
       k = lo;
     }
-    const { text } = await this.src.textAt(start, endOf(k), WINDOW_BYTES + 8);
+    const { text } = await this.src.textAt(start, endOf(k), LINE_MAX + 8);
     if (this.dead) return 'none';
     if (/\r(?!\n)/.test(text)) return 'cr';
     this.line = from;
@@ -117,6 +125,7 @@ export class TextWindow {
   /** The window's text as the document has it now: `sent`, and `view` with its \r\n as \n. */
   private take(text: string) {
     this.sent = text;
+    this.end = this.start + utf8Bytes(text);
     this.crs = [];
     if (text.indexOf('\r') < 0) {
       this.view = text;
@@ -159,9 +168,7 @@ export class TextWindow {
   }
 
   /** The window's last byte (exclusive), as the document has it. */
-  get end() {
-    return this.start + utf8Bytes(this.sent);
-  }
+  end = 0;
 
   /** The editor's text now: what changed is sent when the document takes edits. */
   edited(now: string) {
@@ -217,7 +224,13 @@ export class TextWindow {
     try {
       await this.src.edits!.replace([{ a, b, text: ins }], true);
       if (this.dead) return;
-      this.take(this.sent.slice(0, oa) + ins + this.sent.slice(ob));
+      const next = this.sent.slice(0, oa) + ins + this.sent.slice(ob);
+      if (this.crlf || ins.indexOf('\r') >= 0) this.take(next);
+      else {
+        // (No CR: the editor's text is the document's; its end moves by what changed.)
+        this.end += utf8Bytes(ins) - (b - a);
+        this.sent = this.view = next;
+      }
       this.ev.sent();
     } catch (e) {
       if (this.dead) return;

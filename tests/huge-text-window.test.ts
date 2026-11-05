@@ -9,7 +9,7 @@ import { HugeClient, type Port } from '../lib/huge/client';
 import { serve } from '../lib/huge/serve';
 import { CoreSource } from '../lib/huge/core-source';
 import { parse } from '../lib/json/tape-parser';
-import { TextWindow, WINDOW_ABOVE, WINDOW_BYTES, diffText } from '../lib/huge/text-window';
+import { LINE_MAX, TextWindow, WINDOW_ABOVE, WINDOW_BYTES, diffText } from '../lib/huge/text-window';
 import type { HugeSource, IndexState } from '../lib/huge/source';
 import { enc, hugeMod, memSource, tapeMod } from './huge-oracle';
 
@@ -102,7 +102,7 @@ test('a window of whole lines with its bytes; typing sent as one joined replace;
 });
 
 test('a window stays within its bytes; a line longer than a window is refused', async () => {
-  const long = '[\n  "' + 'x'.repeat(WINDOW_BYTES + 10) + '",\n  1\n]\n';
+  const long = '[\n  "' + 'x'.repeat(LINE_MAX + 10) + '",\n  1\n]\n';
   const src = core(long);
   await ended(src);
   const w = new TextWindow(src, { sent() {}, failed: (e) => assert.fail(String(e)) });
@@ -113,7 +113,14 @@ test('a window stays within its bytes; a line longer than a window is refused', 
   await ended(many);
   const v = new TextWindow(many, { sent() {}, failed: (e) => assert.fail(String(e)) });
   assert.equal(await v.load(20_000), true);
-  assert.ok(enc.encode(v.sent).length <= WINDOW_BYTES && v.lines <= 2000, `${v.lines} lines`);
+  assert.ok(enc.encode(v.sent).length <= WINDOW_BYTES && v.lines <= 1000, `${v.lines} lines`);
+  // A line longer than a window but within LINE_MAX: a window of its own.
+  const one = core('[\n  "' + 'y'.repeat(WINDOW_BYTES * 2) + '"\n]\n');
+  await ended(one);
+  const u = new TextWindow(one, { sent() {}, failed: (e) => assert.fail(String(e)) });
+  assert.equal(await u.load(1, 0), true);
+  assert.equal(u.lines, 1);
+  one.destroy();
   src.destroy();
   many.destroy();
 });

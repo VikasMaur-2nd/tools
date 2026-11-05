@@ -18,6 +18,7 @@ import { HugeLinesView } from './lines-view';
 import { HUGE_VIEWS, HugeStore, type Ask, type EditUI, type HugeUI, type HugeView } from './state';
 import { HugeEditing, adjustPath, boxText, dedent, editError, kindOf, valueJson, type Effect, type EditOp, type ValueKind } from './edits';
 import { pickFile, pickSave, watchDrops, writable } from './handles';
+import { PASTE_MAX } from './text-window';
 import { HugeTasks } from './tasks';
 import { HugeTableView } from './table-view';
 import { HugeGraph } from './graph';
@@ -73,6 +74,21 @@ export interface HugeOpen {
 export type EditFrom = Events['huge_edit']['from'];
 /** The most a value's text may be for the edit box (more: the text dialog). */
 const BOX_MAX = 64 * 1024;
+/** Typing joined into one undo step by the core: changes this close together (ms, editor.ts TYPING_MS). */
+const TYPING_PAUSE = 1000;
+
+/** What the Format view's editing window does for the session (components/huge/HugeFormatEdit.tsx). */
+export interface FormatEditApi {
+  /** Resolves once everything typed is taken in by the document. */
+  flush(): Promise<void>;
+  /** The caret's byte in the document. */
+  caretByte(): number;
+  /** The window read again where it is (after undo). */
+  reload(): Promise<void>;
+  /** The caret at byte `at` (the window read there if it's outside). */
+  goto(at: number): Promise<void>;
+}
+
 /** The core keeps a session this long after the last edit (serve.ts KEEP_MS), with a margin. */
 const KEPT_AFTER = 1500;
 
@@ -168,6 +184,8 @@ export class HugeSession {
       box: null,
       textEdit: null,
       menu: null,
+      fe: null,
+      feInfo: null,
     });
     this.handle = meta.handle;
     this.file = { size: meta.size, lastModified: meta.lastModified };
@@ -292,6 +310,8 @@ export class HugeSession {
 
   private onState = (st: IndexState) => {
     if (this.dead) return;
+    const was = this.ui.get().index;
+    const wasEnded = was.done || was.cancelled;
     const now = performance.now();
     this.samples.push([now, st.bytes]);
     while (this.samples.length > 2 && now - this.samples[0][0] > 3000) this.samples.shift();
@@ -310,14 +330,18 @@ export class HugeSession {
       }
     }
     if (!this.root) void this.readRoot();
-    if (ended) {
+    if (ended && !wasEnded) {
       this.report(st.error ? 'error' : st.cancelled ? 'cancelled' : 'done');
       if (st.error && st.bytes < 1) this.host.toast(`${this.meta.name} isn't valid JSON`, 'err');
     }
+    // (The Format view's text being edited: the other views read the document again when that ends; each key's
+    // state would otherwise send them all to the worker, ahead of the next key.)
+    if (this.ui.get().fe) return;
     // The views take the counts that grew, at most once a second (and at once when it ends, or when the
-    // Format view's first lines are there to read).
-    if (ended) this.grow(true);
-    else if (this.lines && !this.lines.count && this.src.lineCount(this.lines.mode) > 0) this.grow(false);
+    // Format view's first lines are there to read). Done before (an edit's state): nothing grew.
+    if (ended) {
+      if (!wasEnded) this.grow(true);
+    } else if (this.lines && !this.lines.count && this.src.lineCount(this.lines.mode) > 0) this.grow(false);
     // (Four times as often in the first seconds: the first rows and counts show at once.)
     else if (!this.growTimer) this.growTimer = setTimeout(() => this.grow(false), Math.max(0, (now - this.began < 3000 ? GROW_EVERY / 4 : GROW_EVERY) - (now - this.grewAt)));
   };
@@ -419,6 +443,7 @@ export class HugeSession {
     const mode = this.ui.get().mode;
     const lines = (this.lines = new HugeLinesView(el, this.src, mode, this.host.indent, {
       pick: (at) => void this.pickAt(at),
+      edit: (at) => this.editing && this.formatEdit(at),
       failed: (e) => this.failed(e),
     }));
     this.ui.set({ lines: lines.count });
@@ -556,6 +581,7 @@ export class HugeSession {
   setView(view: HugeView) {
     const was = this.ui.get().view;
     if (view === was) return;
+    if (this.ui.get().fe) void this.exitFormatEdit(false);
     if (view === 'graph') {
       this.graph?.activate();
       void this.graphFor();
@@ -577,6 +603,7 @@ export class HugeSession {
   setMode(mode: LineMode) {
     this.modeSet = true;
     if (mode === this.ui.get().mode) return;
+    if (this.ui.get().fe) void this.exitFormatEdit(false);
     this.ui.set({ mode, lines: this.src.lineCount(mode) });
   }
 
@@ -632,6 +659,8 @@ export class HugeSession {
 
   /** The line showing offset `at` in the Format view. */
   private async showLine(at: number, hit: boolean) {
+    // (Editing the Format view's text: the window goes there.)
+    if (this.fe && hit) return this.fe.goto(at);
     const lines = this.lines;
     if (!lines) return;
     const k = await this.src.lineOf(lines.mode, Math.max(0, at));
@@ -934,11 +963,13 @@ export class HugeSession {
   }
 
   undo(from: EditFrom) {
+    if (this.fe) return void this.formatUndo('undo', from);
     if (this.ui.get().edit?.canUndo) void this.edit({ op: 'undo' }, from);
     else if (this.editing) this.host.toast('Nothing to undo', 'info');
   }
 
   redo(from: EditFrom) {
+    if (this.fe) return void this.formatUndo('redo', from);
     if (this.ui.get().edit?.canRedo) void this.edit({ op: 'redo' }, from);
     else if (this.editing) this.host.toast('Nothing to redo', 'info');
   }
@@ -1173,6 +1204,8 @@ export class HugeSession {
    * downloaded. `as`: always the picker (Save as). In place, the file is then the document: no edits, no undo.
    */
   async save(as = false): Promise<boolean> {
+    // (What's typed in the Format view goes first.)
+    await this.fe?.flush();
     const ed = this.src.edits;
     const e = this.ui.get().edit;
     if (!ed || !e || this.dead || e.saving) return false;
@@ -1268,6 +1301,101 @@ export class HugeSession {
     if (!(await pickFile((f) => void this.host.loadFile(f, 'file', false)))) this.host.openFile();
   }
 
+  // ── Editing the Format view's text ─────────────────────────────────────
+
+  /** The window being edited (components/huge/HugeFormatEdit.tsx), while it is. */
+  private fe: FormatEditApi | null = null;
+  private feSeq = 0;
+  /** Something was typed since editing began: the other views read the document again when it ends. */
+  private feTyped = false;
+  private typedAt = 0;
+
+  /** Edits the Format view's text (As written) at byte `at` (default: its current line, or the selection's). */
+  formatEdit(at?: number) {
+    if (!this.canEdit()) return;
+    if (this.ui.get().view !== 'format') this.setView('format');
+    if (this.ui.get().mode !== 'raw') this.setMode('raw');
+    const pos = at ?? this.lines?.currentAt ?? this.sel?.node.at ?? 0;
+    this.ui.set({ fe: { id: ++this.feSeq, at: Math.max(0, pos) }, feInfo: null });
+  }
+
+  /** Leaves the Format view's editing: what's typed goes first; the views read the document again. */
+  async exitFormatEdit(focus = true) {
+    const fe = this.fe;
+    if (!this.ui.get().fe) return;
+    await fe?.flush();
+    const at = fe?.caretByte() ?? -1;
+    this.ui.set({ fe: null, feInfo: null });
+    if (this.dead) return;
+    if (this.feTyped) {
+      this.feTyped = false;
+      await this.afterEdit({}, this.sel?.path ?? null);
+    }
+    if (at >= 0 && this.lines) {
+      const k = await this.src.lineOf('raw', at);
+      if (!this.dead && this.lines) this.lines.goto(k, at, true);
+    }
+    if (focus) this.focusView();
+  }
+
+  /** The window component's hooks (returns how to let go of them). */
+  bindFormatEdit(api: FormatEditApi) {
+    this.fe = api;
+    return () => {
+      if (this.fe === api) this.fe = null;
+    };
+  }
+
+  /** A change typed in the window was taken in: one change counted per pause (the core joins typing so). */
+  formatTyped() {
+    const now = performance.now();
+    this.feTyped = true;
+    this.editedAt = now;
+    if (this.editing && now - this.typedAt > TYPING_PAUSE) {
+      this.editing.steps++;
+      track('huge_edit', { op: 'type', from: 'format' });
+    }
+    this.typedAt = now;
+    this.editState();
+  }
+
+  formatFailed(e: unknown) {
+    const m = editError(e);
+    if (m) this.host.toast(rt(m), 'info');
+    else this.failed(e);
+  }
+
+  /** Where the window's caret is (the view bar shows it). */
+  formatInfo(info: { line: number; col: number; first: number; last: number }) {
+    this.ui.set({ feInfo: info });
+  }
+
+  pasteTooBig(n: number) {
+    this.host.toast(rt('Paste up to {max} at a time here (this is {size}): insert a bigger value from the tree, as a value or as text', { max: rt.bytes(PASTE_MAX), size: rt.bytes(n) }), 'info', undefined, 8000);
+  }
+
+  /** Undo or redo while the window is edited: what's typed goes first, then the window is read again. */
+  private async formatUndo(op: 'undo' | 'redo', from: EditFrom) {
+    const fe = this.fe;
+    const ed = this.src.edits;
+    if (!fe || !ed) return;
+    await fe.flush();
+    const e = this.ui.get().edit;
+    if (!(op === 'undo' ? e?.canUndo : e?.canRedo)) return void this.host.toast(op === 'undo' ? 'Nothing to undo' : 'Nothing to redo', 'info');
+    try {
+      await (op === 'undo' ? ed.undo() : ed.redo());
+    } catch (err) {
+      return this.formatFailed(err);
+    }
+    if (this.editing) this.editing.steps = Math.max(0, this.editing.steps + (op === 'undo' ? -1 : 1));
+    // (A typing after this starts a new step.)
+    this.typedAt = 0;
+    this.feTyped = true;
+    track('huge_edit', { op, from });
+    this.editState();
+    await fe.reload();
+  }
+
   // ── Keys ───────────────────────────────────────────────────────────────
 
   /** The open dialog's keys (edit as text: Ctrl+Enter, Ctrl+F): the engine sees keys first, then huge mode. */
@@ -1286,6 +1414,12 @@ export class HugeSession {
     const k = e.key.toLowerCase();
     // In huge mode's dialogs, the edit box and the menu: their own keys; the tool's commands (which would act on the
     // editor hidden behind) do nothing there; typing, Esc and the rest go on to them.
+    // The Format view's editing window: undo and redo are the document's (the editor's own would undo its window).
+    if ((e.target as HTMLElement | null)?.closest?.('.hg-fe') && mod && !e.altKey && (k === 'z' || (k === 'y' && !e.shiftKey))) {
+      if (k === 'y' || e.shiftKey) this.redo('format');
+      else this.undo('format');
+      return true;
+    }
     const inDialog = (e.target as HTMLElement | null)?.closest?.('.hg-modal, .hg-box, .hg-menu');
     if (inDialog) {
       if (this.dialogKey?.(e)) return true;
@@ -1326,6 +1460,11 @@ export class HugeSession {
     if (mod && !e.altKey && (k === 'z' || (k === 'y' && !e.shiftKey))) {
       if (k === 'y' || e.shiftKey) this.redo('key');
       else this.undo('key');
+      return true;
+    }
+    // The Format view: F2 or Enter edits its text there.
+    if (t?.closest('#hg-format') && !mod && !e.altKey && !e.shiftKey && (e.key === 'F2' || e.key === 'Enter')) {
+      this.formatEdit();
       return true;
     }
     if (!t?.closest('#hg-tree, #hg-table, #hg-graph') || e.altKey) return false;

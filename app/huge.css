@@ -1329,3 +1329,25 @@ html[data-huge] .statusbar .cursor {
     width: auto;
   }
 }
+
+/* The Format view's text, edited (components/huge/HugeFormatEdit.tsx): the normal editor, filling the view. */
+.hg > .view > .hg-fe {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.hg-fe > .ed {
+  flex: 1;
+  min-height: 0;
+}
+
+.hg-fe > .ed[hidden] {
+  display: none;
+}
+
+.hg-vbar .hg-gwhere .muted,
+.vbar .hg-gwhere .muted {
+  font-variant-numeric: tabular-nums;
+}
