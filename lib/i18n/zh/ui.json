@@ -1104,5 +1104,12 @@
   "app.hugeEdSaveNew": "另存为新文件…",
   "toast.hugeSaveNotOpened": "这不是打开时的 {name}：没有写入任何内容。请选择 {name} 本身，或另存为新文件",
   "toast.hugeSaveNotAllowed": "不允许写入 {name}：没有写入任何内容",
-  "toast.hugeSaveChanged": "没有写入任何内容：{name} 在打开后已更改（在保存窗口中选择它可能已将其清空），而保存时会按打开时的内容读取它"
+  "toast.hugeSaveChanged": "没有写入任何内容：{name} 在打开后已更改（在保存窗口中选择它可能已将其清空），而保存时会按打开时的内容读取它",
+  "toast.hugeLeaveTextEdit": "请先退出文本编辑（Esc）",
+  "toast.hugeSaveIsOpened": "这是你打开的文件：请使用“保存”写入它",
+  "toast.hugeSaveIsOpenedAsk": "这是你打开的文件：请改为选择“覆盖 {name}…”",
+  "app.hugeShStaleGo": "读取结构后文件已编辑：请重新读取后再跳转",
+  "app.hugeEdRestoreHint": "先编辑会丢弃这些更改。",
+  "toast.hugeEdNotKept.other": "无法保留 {name} 的 {n} 处未保存更改",
+  "app.hugeFeBytes": "文件的这一部分无法在这里编辑：请在树中编辑"
 }

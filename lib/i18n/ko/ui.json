@@ -1104,5 +1104,12 @@
   "app.hugeEdSaveNew": "새 파일로 저장…",
   "toast.hugeSaveNotOpened": "처음 열었던 {name}이(가) 아닙니다. 아무것도 쓰지 않았습니다. {name} 자체를 선택하거나 새 파일로 저장하세요",
   "toast.hugeSaveNotAllowed": "{name}에 쓰는 것이 허용되지 않았습니다. 아무것도 쓰지 않았습니다",
-  "toast.hugeSaveChanged": "아무것도 쓰지 않았습니다. {name}이(가) 연 뒤에 바뀌었습니다(저장 창에서 선택하면 비워질 수 있습니다). 저장할 때는 연 당시의 내용을 읽습니다"
+  "toast.hugeSaveChanged": "아무것도 쓰지 않았습니다. {name}이(가) 연 뒤에 바뀌었습니다(저장 창에서 선택하면 비워질 수 있습니다). 저장할 때는 연 당시의 내용을 읽습니다",
+  "toast.hugeLeaveTextEdit": "먼저 텍스트 편집을 끝내세요(Esc)",
+  "toast.hugeSaveIsOpened": "지금 열려 있는 파일입니다. 이 파일에 쓰려면 ‘저장’을 사용하세요",
+  "toast.hugeSaveIsOpenedAsk": "지금 열려 있는 파일입니다. 대신 ‘{name} 덮어쓰기…’를 선택하세요",
+  "app.hugeShStaleGo": "구조를 읽은 뒤 편집되었습니다. 이동하려면 다시 읽으세요",
+  "app.hugeEdRestoreHint": "먼저 편집하면 이 변경은 버려집니다.",
+  "toast.hugeEdNotKept.other": "{name}에서 저장하지 않은 변경 {n}개를 보관하지 못했습니다",
+  "app.hugeFeBytes": "파일의 이 부분은 여기서 편집할 수 없습니다. 트리에서 편집하세요"
 }

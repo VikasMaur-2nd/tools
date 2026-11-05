@@ -1164,5 +1164,14 @@
   "app.hugeEdSaveNew": "Guardar como archivo nuevo…",
   "toast.hugeSaveNotOpened": "Ese no es {name} tal como se abrió: no se escribió nada. Elige el propio {name} o guarda como archivo nuevo",
   "toast.hugeSaveNotAllowed": "No se permitió escribir en {name}: no se escribió nada",
-  "toast.hugeSaveChanged": "No se escribió nada: {name} cambió desde que se abrió (elegirlo en la ventana de guardar puede haberlo vaciado), y al guardar se lee tal como estaba"
+  "toast.hugeSaveChanged": "No se escribió nada: {name} cambió desde que se abrió (elegirlo en la ventana de guardar puede haberlo vaciado), y al guardar se lee tal como estaba",
+  "toast.hugeLeaveTextEdit": "Sal primero de la edición del texto (Esc)",
+  "toast.hugeSaveIsOpened": "Este es el archivo que abriste: usa Guardar para escribir en él",
+  "toast.hugeSaveIsOpenedAsk": "Este es el archivo que abriste: elige Sobrescribir {name}… en su lugar",
+  "app.hugeShStaleGo": "Editado desde que se leyó la estructura: vuelve a leerla para ir ahí",
+  "app.hugeEdRestoreHint": "Si editas primero, se descartan.",
+  "toast.hugeEdNotKept.one": "No se pudo conservar tu {n} cambio sin guardar en {name}",
+  "toast.hugeEdNotKept.many": "No se pudieron conservar tus {n} cambios sin guardar en {name}",
+  "toast.hugeEdNotKept.other": "No se pudieron conservar tus {n} cambios sin guardar en {name}",
+  "app.hugeFeBytes": "Esta parte del archivo no se puede editar aquí: edítala desde el árbol"
 }

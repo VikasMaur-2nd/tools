@@ -1105,7 +1105,14 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -2213,7 +2220,14 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -3321,7 +3335,14 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -4429,7 +4450,14 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -5537,7 +5565,14 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -6645,7 +6680,14 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -7753,7 +7795,14 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -8861,6 +8910,13 @@
     "app.hugeEdSaveNew": "c682964f",
     "toast.hugeSaveNotOpened": "82adc85a",
     "toast.hugeSaveNotAllowed": "e3fabcc5",
-    "toast.hugeSaveChanged": "c7386024"
+    "toast.hugeSaveChanged": "c7386024",
+    "toast.hugeLeaveTextEdit": "249a6bab",
+    "toast.hugeSaveIsOpened": "39aad4ca",
+    "toast.hugeSaveIsOpenedAsk": "3afa21f8",
+    "app.hugeShStaleGo": "0d54f611",
+    "app.hugeEdRestoreHint": "3d7d02ef",
+    "toast.hugeEdNotKept": "5a72258d",
+    "app.hugeFeBytes": "969a52f3"
   }
 }

@@ -1134,5 +1134,13 @@
   "app.hugeEdSaveNew": "Als neue Datei speichern…",
   "toast.hugeSaveNotOpened": "Das ist nicht {name}, wie es geöffnet wurde: Es wurde nichts geschrieben. Wähle {name} selbst oder speichere als neue Datei",
   "toast.hugeSaveNotAllowed": "Schreiben in {name} wurde nicht erlaubt: Es wurde nichts geschrieben",
-  "toast.hugeSaveChanged": "Es wurde nichts geschrieben: {name} hat sich seit dem Öffnen geändert (es im Speicherfenster auszuwählen, kann es geleert haben), und beim Speichern wird es so gelesen, wie es war"
+  "toast.hugeSaveChanged": "Es wurde nichts geschrieben: {name} hat sich seit dem Öffnen geändert (es im Speicherfenster auszuwählen, kann es geleert haben), und beim Speichern wird es so gelesen, wie es war",
+  "toast.hugeLeaveTextEdit": "Beende zuerst die Textbearbeitung (Esc)",
+  "toast.hugeSaveIsOpened": "Das ist die geöffnete Datei: Nutze „Speichern“, um in sie zu schreiben",
+  "toast.hugeSaveIsOpenedAsk": "Das ist die geöffnete Datei: Wähle stattdessen „{name} überschreiben…“",
+  "app.hugeShStaleGo": "Seit dem Lesen der Struktur bearbeitet: Lies sie neu, um dorthin zu springen",
+  "app.hugeEdRestoreHint": "Wenn du zuerst bearbeitest, werden sie verworfen.",
+  "toast.hugeEdNotKept.one": "Deine {n} ungespeicherte Änderung an {name} konnte nicht aufbewahrt werden",
+  "toast.hugeEdNotKept.other": "Deine {n} ungespeicherten Änderungen an {name} konnten nicht aufbewahrt werden",
+  "app.hugeFeBytes": "Dieser Teil der Datei lässt sich hier nicht bearbeiten: Bearbeite ihn im Baum"
 }

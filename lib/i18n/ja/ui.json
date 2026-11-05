@@ -1104,5 +1104,12 @@
   "app.hugeEdSaveNew": "新しいファイルとして保存…",
   "toast.hugeSaveNotOpened": "開いたときの{name}ではないため、何も書き込んでいません。{name}自体を選ぶか、新しいファイルとして保存してください",
   "toast.hugeSaveNotAllowed": "{name}への書き込みが許可されませんでした。何も書き込んでいません",
-  "toast.hugeSaveChanged": "何も書き込んでいません：{name}は開いた後に変更されています（保存ウィンドウで選ぶと空になることがあります）。保存では開いたときの内容を読み込みます"
+  "toast.hugeSaveChanged": "何も書き込んでいません：{name}は開いた後に変更されています（保存ウィンドウで選ぶと空になることがあります）。保存では開いたときの内容を読み込みます",
+  "toast.hugeLeaveTextEdit": "先にテキストの編集を終えてください（Esc）",
+  "toast.hugeSaveIsOpened": "これは開いているファイルです。書き込むには「保存」を使ってください",
+  "toast.hugeSaveIsOpenedAsk": "これは開いているファイルです。代わりに「{name}を上書き…」を選んでください",
+  "app.hugeShStaleGo": "構造を読み込んだ後に編集されています。移動するには再読み込みしてください",
+  "app.hugeEdRestoreHint": "先に編集すると、これらの変更は破棄されます。",
+  "toast.hugeEdNotKept.other": "{name}の未保存の変更{n}件を保持できませんでした",
+  "app.hugeFeBytes": "ファイルのこの部分はここでは編集できません。ツリーから編集してください"
 }

@@ -1164,5 +1164,14 @@
   "app.hugeEdSaveNew": "Enregistrer comme nouveau fichier…",
   "toast.hugeSaveNotOpened": "Ce n'est pas {name} tel qu'il a été ouvert : rien n'a été écrit. Choisissez {name} lui-même, ou enregistrez comme nouveau fichier",
   "toast.hugeSaveNotAllowed": "L'écriture dans {name} n'a pas été autorisée : rien n'a été écrit",
-  "toast.hugeSaveChanged": "Rien n'a été écrit : {name} a changé depuis son ouverture (le choisir dans la fenêtre d'enregistrement a pu le vider), et l'enregistrement le lit tel qu'il était"
+  "toast.hugeSaveChanged": "Rien n'a été écrit : {name} a changé depuis son ouverture (le choisir dans la fenêtre d'enregistrement a pu le vider), et l'enregistrement le lit tel qu'il était",
+  "toast.hugeLeaveTextEdit": "Quittez d'abord la modification du texte (Esc)",
+  "toast.hugeSaveIsOpened": "C'est le fichier que vous avez ouvert : utilisez « Enregistrer » pour y écrire",
+  "toast.hugeSaveIsOpenedAsk": "C'est le fichier que vous avez ouvert : choisissez plutôt « Écraser {name}… »",
+  "app.hugeShStaleGo": "Modifié depuis la lecture de la structure : relisez-la pour y aller",
+  "app.hugeEdRestoreHint": "Modifier d'abord les abandonne.",
+  "toast.hugeEdNotKept.one": "Votre {n} modification non enregistrée de {name} n'a pas pu être conservée",
+  "toast.hugeEdNotKept.many": "Vos {n} de modifications non enregistrées de {name} n'ont pas pu être conservées",
+  "toast.hugeEdNotKept.other": "Vos {n} modifications non enregistrées de {name} n'ont pas pu être conservées",
+  "app.hugeFeBytes": "Cette partie du fichier ne peut pas être modifiée ici : modifiez-la depuis l'arborescence"
 }

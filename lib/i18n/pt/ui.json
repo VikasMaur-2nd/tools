@@ -1164,5 +1164,14 @@
   "app.hugeEdSaveNew": "Salvar como novo arquivo…",
   "toast.hugeSaveNotOpened": "Esse não é o {name} como foi aberto: nada foi gravado. Escolha o próprio {name} ou salve como novo arquivo",
   "toast.hugeSaveNotAllowed": "A gravação em {name} não foi permitida: nada foi gravado",
-  "toast.hugeSaveChanged": "Nada foi gravado: {name} mudou desde que foi aberto (escolhê-lo na janela de salvar pode tê-lo esvaziado), e salvar lê o arquivo como ele estava"
+  "toast.hugeSaveChanged": "Nada foi gravado: {name} mudou desde que foi aberto (escolhê-lo na janela de salvar pode tê-lo esvaziado), e salvar lê o arquivo como ele estava",
+  "toast.hugeLeaveTextEdit": "Saia primeiro da edição do texto (Esc)",
+  "toast.hugeSaveIsOpened": "Este é o arquivo que você abriu: use “Salvar” para gravar nele",
+  "toast.hugeSaveIsOpenedAsk": "Este é o arquivo que você abriu: escolha “Substituir {name}…”",
+  "app.hugeShStaleGo": "Editado desde que a estrutura foi lida: leia de novo para ir até lá",
+  "app.hugeEdRestoreHint": "Editar antes descarta essas alterações.",
+  "toast.hugeEdNotKept.one": "Não foi possível guardar sua {n} alteração não salva em {name}",
+  "toast.hugeEdNotKept.many": "Não foi possível guardar suas {n} de alterações não salvas em {name}",
+  "toast.hugeEdNotKept.other": "Não foi possível guardar suas {n} alterações não salvas em {name}",
+  "app.hugeFeBytes": "Esta parte do arquivo não pode ser editada aqui: edite-a pela árvore"
 }
