@@ -2,7 +2,11 @@
 import type { FindView } from './find';
 import type { IndexState, LineMode } from './source';
 
-export type HugeView = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
+export type HugeView = 'format' | 'tree' | 'table' | 'shape' | 'graph' | 'convert' | 'compare';
+
+/** The views' order (tabs, Alt+digits). */
+/** Huge mode's views in their tabs' order: the normal tool's (Alt+1 to Alt+6, Graph is Alt+4), then Shape (Alt+7). */
+export const HUGE_VIEWS: HugeView[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'shape'];
 
 /** What a "Go to" bar asks for. */
 export type Ask = { kind: 'line'; max: number } | { kind: 'index'; max: number; partial: boolean } | { kind: 'path' } | { kind: 'row'; max: number };
@@ -27,6 +31,8 @@ export interface HugeUI {
   table: { path: string; rows: number; cols: number; ok: boolean };
   /** The Format view's line count (so far). */
   lines: number;
+  /** The graph: the path of its root, whether it can go up, values shown, and whether it is at its limit. */
+  graph: { path: string; up: boolean; shown: number; full: boolean } | null;
   /** No value could be read (an error before any): the tree and the table say so. */
   noRoot: boolean;
 }

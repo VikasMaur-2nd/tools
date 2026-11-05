@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { defaults, test } from '../../lib/api.mjs';
 import { DIRS } from '../../lib/env.mjs';
+import { quantile } from '../../lib/stats.mjs';
 import { MOD, until } from './_helpers.mjs';
 
 defaults({ engines: 'all', width: 1280, height: 860, tags: ['huge'] });
@@ -21,6 +22,8 @@ const file = (name, text) => {
 const records = (n) => Array.from({ length: n }, (_, i) => ({ id: i, name: `user ${i}`, email: `u${i}@example.com`, active: i % 3 !== 0, tags: i % 7 ? ['a', 'b'] : [], score: Math.round(i * 7.31) / 100 }));
 const pretty = file('users.json', JSON.stringify({ meta: { version: 3, note: 'x'.repeat(3000) }, users: records(2500) }, null, 2));
 const minified = file('min.json', JSON.stringify({ users: records(300), total: 300 }));
+// (100 records of 10 objects of 5 values: the graph's first read alone reaches its limit of 2,000 values.)
+const wide = file('wide.json', JSON.stringify(Array.from({ length: 100 }, (_, i) => Object.fromEntries(Array.from({ length: 10 }, (_, k) => [`part${k}`, { id: i * 10 + k, name: `n${i}.${k}`, on: k % 2 === 0, at: null, v: i * k }])))));
 const lines = file('events.jsonl', records(1200).map((r) => JSON.stringify(r)).join('\n') + '\n');
 // (An extra comma on line 329, column 14: fixable in the editor, an error in huge mode, which reads strict JSON.)
 // (Two values on one line, then more: several top-level values, not JSON Lines.)
@@ -58,6 +61,8 @@ test('huge mode: tree pages of 1,000, Show next, Go to index, keys, copy value a
   t.check(/Valid JSON/.test(await waitIndexed(page) ? await status(page) : ''), 'valid', await status(page));
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   t.assert(await loaded(page, '#hg-tree'), 'tree rows read');
+  // (The root comes first as it is while indexing, then with its count.)
+  await until(page, () => /\{2\}/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null);
   let rows = await rowsText(page);
   t.check(rows[0]?.includes('root') && rows[0]?.includes('{2}'), 'the root and its count', rows.slice(0, 3));
   // Open users: 2,500 items, a page of 1,000 listed.
@@ -170,6 +175,9 @@ test('huge mode: Table pages an array of records; Go to row', async (t) => {
   await waitIndexed(page);
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-table]')?.click());
   t.assert(await loaded(page, '#hg-table'), 'rows read');
+  // (The list comes first as it is while indexing: its columns once rows are read.)
+  await until(page, () => document.querySelectorAll('#hg-table .tb-th').length > 1, null);
+  await until(page, () => /1,200 ×/.test(window.__vis('.hg .vmain .dims')?.textContent ?? ''), null);
   const head = await page.evaluate(() => [...document.querySelectorAll('#hg-table .tb-th')].map((h) => h.textContent));
   t.check(head.join() === '#,id,name,email,active,tags,score', 'columns from the records', head);
   const dims = await page.evaluate(() => window.__vis('.hg .vmain .dims')?.textContent);
@@ -184,14 +192,15 @@ test('huge mode: Table pages an array of records; Go to row', async (t) => {
   t.check(/JSON Lines · 1,200 records/.test(st), 'JSON Lines status', st);
 });
 
-test('huge mode: an invalid file says where, and Go to error shows its line', async (t) => {
+test('huge mode: a file with a problem says what and where, as the normal path, and Go to error shows its line', async (t) => {
   const { page } = t;
   await t.open('/');
   await openHuge(t, broken);
   await waitIndexed(page);
-  const banner = await until(page, () => window.__vis('.hg .banner.err')?.textContent, null);
-  t.check(/Invalid JSON/.test(banner ?? '') && /Ln 329, Col 14/.test(banner ?? ''), 'the error and its place', banner);
-  await page.locator('.hg .banner.err .btn').click();
+  // (An extra comma: the normal path's status calls it fixable, "Not strict JSON"; huge mode reads up to it.)
+  const banner = await until(page, () => window.__vis('.hg .banner.warn')?.textContent, null);
+  t.check(/Not strict JSON/.test(banner ?? '') && /Ln 329, Col 14: Unexpected extra comma/.test(banner ?? ''), 'the issue and its place', banner);
+  await page.locator('.hg .banner.warn .btn').click();
   t.check(await until(page, () => document.querySelector('#hg-format .hg-cur .cv-n')?.textContent === '329', null), 'Go to error shows line 329 as written', await page.evaluate(() => document.querySelector('#hg-format .hg-cur')?.textContent));
   const sb = await status(page);
   t.check(/Ln 329, Col 14/.test(sb), 'the status bar says it too', sb);
@@ -203,18 +212,18 @@ test('huge mode: several top-level values are a list, with the normal path\'s no
   await openHuge(t, several);
   await until(page, () => /Multiple top-level values/.test(window.__vis('.hg-sb')?.textContent ?? ''), null);
   const banner = await page.evaluate(() => window.__vis('.hg .banner.warn')?.textContent);
-  t.check(/Not strict JSON/.test(banner ?? '') && /Multiple top-level values \(wrapped in an array\)/.test(banner ?? ''), 'the notice', banner);
+  t.check(/Not strict JSON/.test(banner ?? '') && /Ln 1, Col 10: Multiple top-level values \(wrapped in an array\)/.test(banner ?? ''), 'the normal path\'s notice, at the second value', banner);
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   t.check(await until(page, () => /\[3\]/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null), 'the root lists the three values', await page.evaluate(() => window.__vis('#hg-tree .tv-r')?.textContent));
   await page.locator('.hg .banner.warn .btn').click();
-  t.check(await until(page, () => /^1:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'Go to the second value', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
+  t.check(await until(page, () => document.querySelector('#hg-format .hg-errl .cv-n')?.textContent === '1' && !!document.querySelector('#hg-format .hg-errc'), null), 'Go to error marks where the second value starts', await page.evaluate(() => document.querySelector('#hg-format .hg-cur')?.textContent));
 });
 
 test('huge mode: progress while indexing, browse meanwhile, Cancel', async (t) => {
   const { page } = t;
   await t.open('/');
   await openHuge(t, pretty, { sim: { speed: 120_000, latency: 10 } });
-  const st = await until(page, () => /Indexing .* of .*/.test(window.__vis('.hg-sb')?.textContent ?? '') && window.__vis('.hg-sb')?.textContent, null);
+  const st = await until(page, () => /Indexing [\d.]+ KB of/.test(window.__vis('.hg-sb')?.textContent ?? '') && window.__vis('.hg-sb')?.textContent, null);
   t.check(/Indexing [\d.]+ KB of [\d.]+ KB/.test(st ?? ''), 'progress in the status bar', st);
   t.check(await page.evaluate(() => !!window.__vis('.hg-bar[role=progressbar]')), 'a progress bar');
   // Browse while indexing: the tree is there, its counts growing.
@@ -262,6 +271,131 @@ test('huge mode: what shows the document is private (session replay records an e
   t.check(leaks.length === 0, 'file name, views, status and paths are private', leaks);
 });
 
+test('huge mode: Graph shows the part explored, "+N more" reads the next items, Up and From selected, export', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await openHuge(t, pretty);
+  await waitIndexed(page);
+  // Alt+4 is Graph, as in the normal tool; Alt+7 is Shape.
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Alt+4');
+  t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Graph', null), 'Alt+4 opens Graph');
+  t.assert(await until(page, () => !!window.__vis('#hg-graph .gv-ctl:not([hidden])') && /\d+ values/.test(window.__vis('.hg .hg-gwhere')?.textContent ?? ''), null, { timeout: 15_000 }), 'the graph is drawn', await page.evaluate(() => window.__vis('.hg .hg-gwhere')?.textContent));
+  const where = () => page.evaluate(() => window.__vis('.hg .hg-gwhere')?.textContent ?? '');
+  const shown = async () => Number(((await where()).match(/([\d,]+) values?/)?.[1] ?? '0').replace(/,/g, ''));
+  t.check(/\$/.test(await where()), 'from the root, nothing selected', await where());
+  const before = await shown();
+  t.check(before > 0 && before <= 2000, 'a bounded part', before);
+  // Down the root card's rows to "+N more" (users is shown from its first 20), Enter reads the next ones.
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Alt+2');
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('$.users');
+  await until(page, () => /^users:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Alt+4');
+  // The graph shows $.users already (the root's item): it is selected there.
+  const live = () => page.evaluate(() => window.__vis('#hg-graph .gv-live')?.textContent ?? '');
+  t.check(await until(page, () => /\$\.users$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'the tree\'s selection is selected in the graph', await live());
+  await page.locator('#hg-graph').focus();
+  await page.keyboard.press('r');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users', null), 'R: the graph from the selected value', await where());
+  await page.keyboard.press('Home');
+  let found = false;
+  for (let k = 0; k < 40 && !found; k++) {
+    await page.keyboard.press('ArrowDown');
+    found = /more/.test(await live());
+  }
+  t.check(found && /^\[50\], \+2,450 more, \$…\[50\]$/.test(await live()), 'a "+N more" row, announced as such', await live());
+  const n0 = await shown();
+  await page.keyboard.press('Enter');
+  t.check(await until(page, (n) => Number(((window.__vis('.hg .hg-gwhere')?.textContent ?? '').match(/([\d,]+) values?/)?.[1] ?? '0').replace(/,/g, '')) > n, n0), 'Enter reads the next items', await where());
+  // (From $.users the root reads 50 at a time: the first new one is [50]; not read yet, it says its size.)
+  t.check(await until(page, () => /^\[50\], \{\d+\}, \$…\[50\]$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'and selects the first of them', await live());
+  // The tree follows the graph.
+  await page.keyboard.press('Alt+2');
+  t.check(await until(page, () => /^50:/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'the tree shows the value chosen in the graph', await page.evaluate(() => document.querySelector('#hg-tree #htv-sel')?.textContent));
+  // R: from the selected value; U: a level up.
+  await page.keyboard.press('Alt+4');
+  await page.locator('#hg-graph').focus();
+  await page.keyboard.press('r');
+  t.check(await until(page, () => /\$\.users\[50\]/.test(window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? ''), null), 'R from an item read by "+N more"', await where());
+  await page.keyboard.press('u');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users', null), 'U a level up', await where());
+  // Export PNG of what is shown.
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), (async () => {
+    await page.locator('.hg .vicons button[aria-label="More options"]').click();
+    await page.getByRole('menuitem', { name: 'Export PNG' }).click();
+  })()]);
+  t.check(/-graph\.png$/.test(dl.suggestedFilename()), 'Export PNG saves the graph', dl.suggestedFilename());
+  // Find from the Graph: a match outside the part shows the part around it, the match selected.
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('u2400@');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users[2400]', null, { timeout: 10_000 }), 'Find: the graph around a match outside its part', await where());
+  t.check(await until(page, () => /^email, string, "u2400@example\.com", \$…\.email$/.test(window.__vis('#hg-graph .gv-live')?.textContent ?? ''), null), 'with the match selected', await live());
+  // A $.path in Find: the Graph stays, around that value.
+  await page.locator('.hg .findbar input').fill('$.users[1234].tags');
+  t.check(await until(page, () => (window.__vis('.hg .hg-gwhere .hg-gpath')?.textContent ?? '') === '$.users[1234].tags', null, { timeout: 10_000 }), 'Find $.path: the graph from there', await where());
+  const tab = await page.evaluate(() => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent);
+  t.check(tab === 'Graph', 'and the Graph stays open', tab);
+  await page.keyboard.press('Escape');
+  // Alt+7: Shape.
+  await page.keyboard.press('Alt+7');
+  t.check(await until(page, () => document.querySelector('.hg [role=tab][aria-selected=true]')?.textContent === 'Shape', null), 'Alt+7 opens Shape');
+  const tips = await page.evaluate(() => [...document.querySelectorAll('.hg [role=tab]')].map((b) => `${b.textContent}=${b.dataset.tip}`).join(' '));
+  t.check(tips === 'Format=Alt+1 Tree=Alt+2 Table=Alt+3 Graph=Alt+4 Convert=Alt+5 Compare=Alt+6 Shape=Alt+7', 'tabs numbered as the normal tool, Shape seventh', tips);
+});
+
+test('huge mode: Graph at its limit (2,000 values) pans within a frame', async (t) => {
+  const { page } = t;
+  // Each animation frame's work, timed in the page (a busy machine changes how many frames are painted more than
+  // how long each one takes).
+  await page.addInitScript(() => {
+    const b = (window.__zp = { cb: [], on: false });
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (fn) =>
+      raf((ts) => {
+        const s = performance.now();
+        try {
+          return fn(ts);
+        } finally {
+          if (b.on) b.cb.push(performance.now() - s);
+        }
+      });
+  });
+  await t.open('/');
+  await openHuge(t, wide);
+  await waitIndexed(page);
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-graph]')?.click());
+  const where = () => page.evaluate(() => window.__vis('.hg .hg-gwhere')?.textContent ?? '');
+  t.assert(await until(page, () => /values \(all it shows\)/.test(window.__vis('.hg .hg-gwhere')?.textContent ?? ''), null, { timeout: 15_000 }), 'the part is read up to the limit', await where());
+  t.metric('values shown', Number((await where()).match(/([\d,]+) values/)[1].replace(/,/g, '')), 'values', { better: 'higher' });
+  const box = await page.locator('#hg-graph canvas').first().boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  for (const [zoom, keys] of [['100%', []], ['Fit', ['0']]]) {
+    await page.locator('#hg-graph').focus();
+    for (const k of keys) await page.keyboard.press(k);
+    await page.evaluate(() => new Promise((r) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(r)), 400)));
+    await page.evaluate(() => {
+      window.__zp.cb = [];
+      window.__zp.on = true;
+    });
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    for (let i = 0; i < 120; i++) {
+      const f = i / 120;
+      await page.mouse.move(cx + Math.sin(f * Math.PI * 4) * 200, cy + (Math.cos(f * Math.PI * 4) - 1) * 150);
+    }
+    await page.mouse.up();
+    const cb = (await page.evaluate(() => ((window.__zp.on = false), window.__zp.cb))).filter((x) => x > 0.05);
+    const p95 = quantile(cb, 0.95);
+    t.metric(`${zoom} frame p50 ms`, quantile(cb, 0.5));
+    t.metric(`${zoom} frame p95 ms`, p95);
+    t.check(cb.length > 10 && p95 < 16, `${zoom}: frames painted while panning, each within a 60 fps frame`, { frames: cb.length, p50: quantile(cb, 0.5), p95 });
+  }
+});
+
 // Screenshots for review: light and dark, desktop and phone (only when HUGE_SHOTS names a folder).
 for (const [name, opts] of [
   ['desktop-light', {}],
@@ -285,6 +419,8 @@ for (const [name, opts] of [
         pick.dispatchEvent(new Event('change', { bubbles: true }));
       }, v);
     const shot = async (file) => {
+      // (The mouse out of the way: a click left it over whatever the next view puts there, hovered.)
+      await page.mouse.move(1, 300);
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 250))));
       await page.screenshot({ path: join(out, file) });
     };
@@ -307,7 +443,17 @@ for (const [name, opts] of [
     await loaded(page, '#hg-format');
     await shot(`${name}-format-find.png`);
     await view('graph');
-    await shot(`${name}-graph-notyet.png`);
+    await until(page, () => !!window.__vis('#hg-graph .gv-ctl:not([hidden])'), null, { timeout: 15_000 });
+    await shot(`r3-${name}-graph.png`);
+    // (Shape and Convert read the file itself, which the simulated index doesn't have: the file again, as it is.)
+    await openHuge(t, pretty);
+    await waitIndexed(page);
+    await view('shape');
+    t.check(await until(page, () => !!window.__vis('#hg-shape .hs-grid'), null, { timeout: 20_000 }), 'shape read');
+    await shot(`r3-${name}-shape.png`);
+    await view('convert');
+    await until(page, () => !!window.__vis('.hg .view button, .hg .view [role=radio]'), null, { timeout: 10_000 });
+    await shot(`r3-${name}-convert.png`);
     await openHuge(t, broken);
     await waitIndexed(page);
     await view('table');

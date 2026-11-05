@@ -15,8 +15,10 @@ import type { Portal } from './kit';
 import { fileKind, type Events, type InputSource } from '../analytics/events';
 import { StreamFind } from './find';
 import { HugeLinesView } from './lines-view';
-import { HugeStore, type Ask, type HugeUI, type HugeView } from './state';
+import { HUGE_VIEWS, HugeStore, type Ask, type HugeUI, type HugeView } from './state';
+import { HugeTasks } from './tasks';
 import { HugeTableView } from './table-view';
+import { HugeGraph } from './graph';
 import { HugeTreeView } from './tree-view';
 import type { Open } from './tree-model';
 import type { HugeNode, HugeSource, IndexState, LineMode, Seg } from './source';
@@ -79,6 +81,7 @@ export class HugeSession {
   private tree: HugeTreeView | null = null;
   private lines: HugeLinesView | null = null;
   private table: HugeTableView | null = null;
+  private graph: HugeGraph | null = null;
   private root: HugeNode | null = null;
   /** The selected value and its path. */
   private sel: { node: HugeNode; path: Seg[] } | null = null;
@@ -99,6 +102,9 @@ export class HugeSession {
   private rootBusy = false;
   /** The file has several top-level values (as last seen). */
   private multi = false;
+  /** The Shape panel's and the commands' work (made when first shown). */
+  private work: HugeTasks | null = null;
+  private closers: (() => void)[] = [];
 
   /**
    * `viewer`: its UI (components/huge/HugeTool.tsx) as JsonTool renders it (the store holds it while the
@@ -129,6 +135,7 @@ export class HugeSession {
       table: { path: '$', rows: 0, cols: 0, ok: false },
       lines: 0,
       noRoot: false,
+      graph: null,
     });
     this.find = new StreamFind(src, (at) => void this.jumpTo(at), () => this.ui.set({ find: { ...this.ui.get().find, ...this.find.view() } }), (e) => this.failed(e));
     this.stopState = src.onState(this.onState);
@@ -150,6 +157,7 @@ export class HugeSession {
     try {
       const root = await this.src.root();
       if (this.dead) return;
+      if (!this.root && !performance.getEntriesByName('tk:huge:root').length) performance.mark('tk:huge:root');
       this.root = root;
       this.ui.set({ noRoot: false });
       this.tableAt = { node: root, path: [] };
@@ -193,6 +201,11 @@ export class HugeSession {
     this.tree?.destroy();
     this.lines?.destroy();
     this.table?.destroy();
+    this.graph?.destroy();
+    this.graph = null;
+    this.work?.destroy();
+    this.work = null;
+    for (const f of this.closers.splice(0)) f();
     this.tree = this.lines = null;
     this.table = null;
     if (current === this) setCurrent(null);
@@ -202,6 +215,12 @@ export class HugeSession {
 
   get closed() {
     return this.dead;
+  }
+
+  /** Runs `f` when the session closes (a decompressed file's storage is let go then). */
+  onClose(f: () => void) {
+    if (this.dead) f();
+    else this.closers.push(f);
   }
 
   private failed(e: unknown) {
@@ -235,8 +254,10 @@ export class HugeSession {
       this.report(st.error ? 'error' : st.cancelled ? 'cancelled' : 'done');
       if (st.error && st.bytes < 1) this.host.toast(`${this.meta.name} isn't valid JSON`, 'err');
     }
-    // The views take the counts that grew, at most once a second (and at once when it ends).
+    // The views take the counts that grew, at most once a second (and at once when it ends, or when the
+    // Format view's first lines are there to read).
     if (ended) this.grow(true);
+    else if (this.lines && !this.lines.count && this.src.lineCount(this.lines.mode) > 0) this.grow(false);
     // (Four times as often in the first seconds: the first rows and counts show at once.)
     else if (!this.growTimer) this.growTimer = setTimeout(() => this.grow(false), Math.max(0, (now - this.began < 3000 ? GROW_EVERY / 4 : GROW_EVERY) - (now - this.grewAt)));
   };
@@ -250,10 +271,13 @@ export class HugeSession {
     this.lines?.grow();
     this.ui.set({ lines: this.lines?.count ?? this.src.lineCount(this.ui.get().mode) });
     void this.tree?.refreshCounts(all);
+    if (all) void this.refreshGraph();
     if (this.root?.partial || all) {
       void this.src.root().then((r) => {
         if (this.dead) return;
         this.root = r;
+        // (A tree shown meanwhile has the root as it was: it takes this one.)
+        this.tree?.updateRoot(r);
         const t = this.tableAt.node;
         if (t && t.at === r.at && t.depth === r.depth) {
           this.tableAt.node = r;
@@ -300,6 +324,16 @@ export class HugeSession {
   }
 
   // ── Views ──────────────────────────────────────────────────────────────
+
+  /** The indent unit the tool writes with (Settings). */
+  get indent() {
+    return this.host.indent;
+  }
+
+  /** The Shape panel's and the Convert view's work over the file (lib/huge/tasks.ts). */
+  get tasks(): HugeTasks {
+    return (this.work ??= new HugeTasks(this));
+  }
 
   mountTree(el: HTMLElement) {
     this.tree?.destroy();
@@ -351,16 +385,128 @@ export class HugeSession {
     };
   }
 
+  mountGraph(el: HTMLElement) {
+    this.graph?.destroy();
+    const graph = (this.graph = new HugeGraph(el, {
+      src: this.src,
+      select: (node, path) => this.select(node, path, 'graph'),
+      copy: (node, path, what) => (what === 'path' ? this.copyPath(path) : void this.copyValue(node, path)),
+      escape: () => document.querySelector<HTMLElement>('.hg [role="tab"][aria-selected="true"]')?.focus(),
+      changed: (path, shown, full) => this.ui.set({ graph: { path: formatPath(path), up: path.length > 0, shown, full } }),
+      failed: (e) => this.failed(e),
+    }));
+    graph.onUp = () => void this.graphUp();
+    graph.onFrom = () => void this.graphFrom();
+    if (this.ui.get().view === 'graph') {
+      graph.activate();
+      void this.graphFor();
+    }
+    return () => {
+      if (this.graph === graph) this.graph = null;
+      graph.destroy();
+    };
+  }
+
+  /**
+   * The graph for the selection: the part it shows already has it (selected there), or the part from the selected
+   * container (the container holding a selected value; the file's root with nothing selected).
+   */
+  private async graphFor() {
+    const g = this.graph;
+    if (!g || !this.root) return;
+    const sel = this.sel;
+    if (g.rootPath && (!sel || g.has(sel.path))) return g.select(sel?.path ?? null);
+    if (!sel || !sel.path.length) return g.show(this.root, []);
+    if (sel.node.t >= ARR) return g.show(sel.node, sel.path, sel.path);
+    const up = sel.path.slice(0, -1);
+    const chain = await this.src.resolve(up);
+    if (this.dead || this.graph !== g || !chain) return;
+    await g.show(chain[chain.length - 1], up, sel.path);
+  }
+
+  /** The graph's root one level up (the old root stays selected). */
+  async graphUp() {
+    const g = this.graph;
+    const path = g?.rootPath;
+    if (!g || !path?.length) return;
+    const up = path.slice(0, -1);
+    const chain = up.length ? await this.src.resolve(up) : [this.root!];
+    if (this.dead || this.graph !== g || !chain?.length) return;
+    await g.show(chain[chain.length - 1], up, path);
+  }
+
+  /** The graph from the selected value (its container for a value). */
+  async graphFrom() {
+    const g = this.graph;
+    const sel = this.sel;
+    if (!g || !sel) return;
+    if (sel.node.t >= ARR) return g.show(sel.node, sel.path, sel.path);
+    const up = sel.path.slice(0, -1);
+    const chain = up.length ? await this.src.resolve(up) : [this.root!];
+    if (this.dead || this.graph !== g || !chain?.length) return;
+    await g.show(chain[chain.length - 1], up, sel.path);
+  }
+
+  /** Indexing ended: the graph's counts are read again (its root and selection kept). */
+  private async refreshGraph() {
+    const g = this.graph;
+    const path = g?.rootPath;
+    if (!g || !path) return;
+    const chain = path.length ? await this.src.resolve(path) : [await this.src.root()];
+    if (this.dead || this.graph !== g || !chain?.length) return;
+    await g.refresh(chain[chain.length - 1], this.sel?.path ?? null);
+  }
+
+  graphFit() {
+    this.graph?.fit();
+  }
+
+  graphZoom(f: number) {
+    this.graph?.zoomBy(f);
+  }
+
+  graphCollapse() {
+    this.graph?.collapseAll();
+  }
+
+  /** Saves the graph shown as an image (PNG at twice the size, or SVG). */
+  async graphExport(format: 'png' | 'svg') {
+    const g = this.graph;
+    if (!g) return;
+    try {
+      const blob = await g.exportImage({ format, area: 'all', background: 'theme', scale: 2 });
+      if (this.dead) return;
+      track('feature_used', { feature: format === 'png' ? 'graph_export_png' : 'graph_export_svg' });
+      this.host.saveBlob(blob, `${this.meta.name.replace(/\.[^.]+$/, '')}-graph.${format}`);
+    } catch {
+      this.host.toast("Couldn't make the image", 'err');
+    }
+  }
+
+  /** The page's theme changed: the graph draws in the new colours. */
+  themeChanged() {
+    this.graph?.theme();
+  }
+
   setView(view: HugeView) {
     const was = this.ui.get().view;
     if (view === was) return;
+    if (view === 'graph') {
+      this.graph?.activate();
+      void this.graphFor();
+    } else if (was === 'graph') this.graph?.deactivate();
     // The table shows the selected container (or the one holding the selected value).
     if (view === 'table' && this.sel) void this.tableForSel();
     this.ui.set({ view, ask: null });
     track('view_opened', { view, via: 'other' });
-    // Find follows the view: the same query, from where that view is.
+    // Find follows the view without searching again (its matches are places in the file, whatever the view):
+    // the current one is shown in this view. Shape and Convert read the whole file themselves: a search still
+    // running stops there rather than read alongside them.
     const q = this.ui.get().find.q;
-    if (q) requestAnimationFrame(() => !this.dead && this.runFind(q));
+    if (q && (view === 'format' || view === 'tree' || view === 'table')) {
+      const at = this.find.index >= 0 ? this.find.hits[this.find.index] : -1;
+      if (at >= 0) requestAnimationFrame(() => !this.dead && void this.jumpTo(at));
+    } else if (q && (view === 'shape' || view === 'convert')) this.find.stop();
   }
 
   setMode(mode: LineMode) {
@@ -401,10 +547,13 @@ export class HugeSession {
 
   // ── Selection ──────────────────────────────────────────────────────────
 
-  private select(node: HugeNode, path: Seg[], from: 'tree' | 'table' | 'lines') {
+  private select(node: HugeNode, path: Seg[], from: 'tree' | 'table' | 'lines' | 'graph') {
     this.sel = { node, path };
     this.ui.set({ sel: { path: formatPath(path), t: node.t, bytes: node.end < 0 ? -1 : node.end - node.at, count: node.count, partial: !!node.partial } });
     if (from !== 'lines' && this.lines) void this.showLine(node.at, false);
+    // The tree follows a choice in the graph (and the graph one elsewhere, when it shows that value).
+    if (from === 'graph') void this.src.resolve(path).then((chain) => chain && !this.dead && this.tree?.reveal(chain, null));
+    else this.graph?.select(path);
   }
 
   /** A click in the Format view: selects the value there. */
@@ -442,7 +591,7 @@ export class HugeSession {
   /** Searches the file for `q` (a $.path in the tree goes there). */
   runFind(q: string) {
     const view = this.ui.get().view;
-    if ((view === 'tree' || view === 'table') && (q[0] === '$' || (q[0] === '/' && q.length > 1))) {
+    if ((view === 'tree' || view === 'table' || view === 'graph') && (q[0] === '$' || (q[0] === '/' && q.length > 1))) {
       const segs = parsePath(q);
       if (segs) {
         this.find.stop();
@@ -487,6 +636,22 @@ export class HugeSession {
     this.tree?.setFind(q, node.at);
     this.tree?.reveal(chain, null);
     this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree');
+    // (In the Graph: the match selected there, or the part around it shown.)
+    if (view === 'graph') void this.graphFor();
+  }
+
+  /** Goes to the value at byte `at` (the Shape panel's places): the tree, opened to it, and selected. */
+  async revealAt(at: number) {
+    const chain = await this.src.locate(at);
+    if (this.dead || !chain.length) return;
+    if (this.ui.get().view !== 'tree') this.setView('tree');
+    const node = chain[chain.length - 1];
+    // (The tree mounts in the next frame when it wasn't shown yet.)
+    await new Promise((r) => requestAnimationFrame(r));
+    if (this.dead) return;
+    this.tree?.setFind('', node.at);
+    this.tree?.reveal(chain, null);
+    this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree');
   }
 
   /** Goes to the value at `segs` (from Find's $.path or the "Go to" bar). */
@@ -500,16 +665,19 @@ export class HugeSession {
     }
     const node = chain[chain.length - 1];
     if (q !== undefined) this.ui.set({ find: { ...this.ui.get().find, q, total: 1, index: 0, done: true, read: 1 } });
-    if (this.ui.get().view === 'table') {
+    const view = this.ui.get().view;
+    if (view === 'table') {
       if (node.t >= ARR) this.showTable(node, segs);
       else if (chain.length > 1) {
         this.showTable(chain[chain.length - 2], segs.slice(0, -1));
         this.table?.gotoRow(node.i, true);
       }
-    } else if (this.ui.get().view !== 'tree') this.setView('tree');
+    } else if (view !== 'tree' && view !== 'graph') this.setView('tree');
     this.tree?.setFind('', node.at);
     this.tree?.reveal(chain, null);
     this.select(node, segs, 'tree');
+    // (The Graph stays: the value selected there, or the part around it shown.)
+    if (view === 'graph') void this.graphFor();
   }
 
   // ── Go to ──────────────────────────────────────────────────────────────
@@ -563,20 +731,18 @@ export class HugeSession {
     return true;
   }
 
-  /** Several top-level values: goes to the second (where the normal path's notice points). */
-  gotoSecond() {
-    if (this.ui.get().view === 'format' && this.lines) {
-      void this.src.resolve([1]).then((chain) => {
-        if (chain && !this.dead) void this.showLine(chain[chain.length - 1].at, false);
-      });
-      return;
-    }
-    void this.gotoPath([1]);
+  /** The problem the status bar shows: the normal path's (once the file is read), else where reading stopped. */
+  problem() {
+    const st = this.src.state();
+    const b = st.status;
+    if (b && b.kind !== 'valid') return { kind: b.kind, msg: b.msg ?? '', at: b.at, line: b.line, col: b.col };
+    if (b?.warnings && b.msg) return { kind: 'warning' as const, msg: b.msg, at: b.at, line: b.line, col: b.col };
+    return st.error ? { kind: 'error' as const, ...st.error } : null;
   }
 
-  /** Go to error: its line in the Format view (as written), and its value in the tree. */
+  /** Go to error (or the issue, or the first warning): its line in the Format view, as written, marked. */
   async gotoError() {
-    const err = this.src.state().error;
+    const err = this.problem();
     if (!err) return;
     this.setMode('raw');
     if (this.ui.get().view !== 'format') this.setView('format');
@@ -647,6 +813,13 @@ export class HugeSession {
   private key(e: KeyboardEvent): boolean {
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
+    // Alt+digit: the views as numbered in the normal tool (Alt+4 is Graph), Shape seventh. On macOS not while typing (Option+digit types).
+    const t = e.target as HTMLElement | null;
+    const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || !!t?.isContentEditable;
+    if (e.altKey && !mod && !e.shiftKey && /^Digit[1-7]$/.test(e.code) && !(/Mac|iPhone|iPad/.test(navigator.platform) && typing)) {
+      this.setView(HUGE_VIEWS[Number(e.code.slice(5)) - 1]);
+      return true;
+    }
     if (mod && !e.shiftKey && !e.altKey && k === 'g') {
       this.openAsk();
       return true;

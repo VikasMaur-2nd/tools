@@ -6,28 +6,26 @@
  * (app/huge.css), so the first load carries none of it.
  */
 import '@/app/huge.css';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { PRIVATE } from '@/lib/analytics';
 import { act } from '@/lib/engine/instance';
 import { useT } from '@/lib/i18n/react';
 import { current, type HugeSession } from '@/lib/huge/session';
-import type { HugeStore, HugeUI, HugeView } from '@/lib/huge/state';
+import { HUGE_VIEWS, type HugeStore, type HugeUI, type HugeView } from '@/lib/huge/state';
+import { useUI } from '@/lib/engine/store';
 import type { Portal } from '@/lib/huge/kit';
 import { Icon, type IconName } from '../icons';
 import { MHead, MItem, MSep, Menu } from '../menu';
+import ShapeView from './HugeShape';
+import CommandsView from './HugeCommands';
 
 function useHuge<T>(store: HugeStore, select: (s: HugeUI) => T): T {
   return useSyncExternalStore(store.subscribe, () => select(store.get()), () => select(store.get()));
 }
 
-const VIEWS: { id: HugeView; label: string }[] = [
-  { id: 'format', label: 'Format' },
-  { id: 'tree', label: 'Tree' },
-  { id: 'table', label: 'Table' },
-  { id: 'graph', label: 'Graph' },
-  { id: 'convert', label: 'Convert' },
-  { id: 'compare', label: 'Compare' },
-];
+const LABELS: Record<HugeView, string> = { format: 'Format', tree: 'Tree', table: 'Table', graph: 'Graph', convert: 'Convert', compare: 'Compare', shape: 'Shape' };
+/** In the normal tool's order and numbers (Alt+1 to Alt+6), then Shape (Alt+7): see HUGE_VIEWS. */
+const VIEWS = HUGE_VIEWS.map((id) => ({ id, label: LABELS[id] }));
 
 function IconBtn({ icon, label, onClick, on, tip }: { icon: IconName; label: string; onClick: () => void; on?: boolean; tip?: string }) {
   const t = useT();
@@ -182,6 +180,7 @@ function ViewBar({ s }: { s: HugeSession }) {
   const t = useT();
   const mod = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl+';
   const browse = view === 'format' || view === 'tree' || view === 'table';
+  const find = <IconBtn icon="search" label={`${t('Find')}${t(' · ')}${mod}F`} on={findOpen} onClick={() => (findOpen ? s.closeFind() : s.openFind())} />;
   return (
     <div className="toolbar vbar" role="toolbar" aria-label={t('Viewer')}>
       <Tabs s={s} />
@@ -190,10 +189,12 @@ function ViewBar({ s }: { s: HugeSession }) {
         {view === 'format' && <ModeSwitch s={s} />}
         {view === 'tree' && <SelPath s={s} />}
         {view === 'table' && <TableWhere s={s} />}
+        {view === 'graph' && <GraphWhere s={s} />}
       </div>
+      {view === 'graph' && <GraphIcons s={s} find={find} />}
       {browse && (
         <div className="vicons">
-          <IconBtn icon="search" label={`${t('Find')}${t(' · ')}${mod}F`} on={findOpen} onClick={() => (findOpen ? s.closeFind() : s.openFind())} />
+          {find}
           <IconBtn icon="copy" label="Copy value" onClick={() => void s.copyValue()} />
           <IconBtn icon="download" label="Save value as file" onClick={() => s.saveValue()} />
           <Menu label="More options">
@@ -222,16 +223,19 @@ function ViewBar({ s }: { s: HugeSession }) {
 
 // ── Banner, Find and Go to ──────────────────────────────────────────────────
 
+/** The normal path's banner: an error, or a fixable issue (several top-level values, for one), once known. */
 function ErrorBanner({ s }: { s: HugeSession }) {
-  const error = useHuge(s.ui, (u) => u.index.error);
+  useHuge(s.ui, (u) => u.index);
+  const p = s.problem();
   const t = useT();
-  if (!error) return null;
+  if (!p || p.kind === 'warning') return null;
+  const err = p.kind === 'error';
   return (
-    <div className="banner err" role="status" aria-live="polite">
+    <div className={`banner ${err ? 'err' : 'warn'}`} role="status" aria-live="polite">
       <Icon name="alert" size={15} />
       <button type="button" className="b-msg" onClick={() => void s.gotoError()}>
-        <b>{t('Invalid JSON')}</b>
-        <span>{t('Ln {line}, Col {col}: {msg}', { line: t.num(error.line), col: t.num(error.col), msg: t.msg(error.msg) })}</span>
+        <b>{err ? t('Invalid JSON') : t('Not strict JSON')}</b>
+        <span>{t('Ln {line}, Col {col}: {msg}', { line: t.num(p.line), col: t.num(p.col), msg: t.msg(p.msg) })}</span>
       </button>
       <button type="button" className="btn sm" onClick={() => void s.gotoError()}>
         {t('Go to error')}
@@ -241,27 +245,8 @@ function ErrorBanner({ s }: { s: HugeSession }) {
 }
 
 /** Find in the file (Ctrl+F): each opening is a new bar, its query selected. */
-/** Several top-level values (not JSON Lines): browsed as a list of them, with the normal path's notice. */
-function MultiBanner({ s }: { s: HugeSession }) {
-  const show = useHuge(s.ui, (u) => u.index.multi && !u.index.jsonl && !u.index.error);
-  const t = useT();
-  if (!show) return null;
-  return (
-    <div className="banner warn" role="status" aria-live="polite">
-      <Icon name="alert" size={15} />
-      <button type="button" className="b-msg" onClick={() => s.gotoSecond()}>
-        <b>{t('Not strict JSON')}</b>
-        <span>{t.msg('Multiple top-level values (wrapped in an array)')}</span>
-      </button>
-      <button type="button" className="btn sm" onClick={() => s.gotoSecond()}>
-        {t('Go to the second value')}
-      </button>
-    </div>
-  );
-}
-
 function FindBar({ s }: { s: HugeSession }) {
-  const open = useHuge(s.ui, (u) => u.find.open && (u.view === 'format' || u.view === 'tree' || u.view === 'table'));
+  const open = useHuge(s.ui, (u) => u.find.open && (u.view === 'format' || u.view === 'tree' || u.view === 'table' || u.view === 'graph'));
   const seq = useHuge(s.ui, (u) => u.find.seq);
   return open ? <FindInput key={seq} s={s} /> : null;
 }
@@ -312,7 +297,7 @@ function FindInput({ s }: { s: HugeSession }) {
           run(e.target.value);
         }}
         onKeyDown={onKey}
-        placeholder={t(view === 'tree' || view === 'table' ? 'Find, or $.path' : 'Find')}
+        placeholder={t(view === 'format' ? 'Find' : 'Find, or $.path')}
         aria-label={t('Find in file')}
         spellCheck={false}
         autoComplete="off"
@@ -465,23 +450,86 @@ function TableView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
   );
 }
 
-/** Graph, Convert and Compare: not for files this big yet, said kindly, with where to go instead. */
-function NotYet({ s, view }: { s: HugeSession; view: 'graph' | 'convert' | 'compare' }) {
+/** Graph and Compare: not for files this big yet, said kindly, with where to go instead. */
+/** Compare: not for files this large, said kindly, with where to go instead. */
+function NotYet({ s }: { s: HugeSession }) {
   const t = useT();
-  const copy = {
-    graph: [t('The graph of a file this large is on its way'), t('It will draw the part you are exploring. Until then, the tree shows every value, a page at a time.')],
-    convert: [t('Converting a file this large is on its way'), t('It will write the result straight to a file. Until then, select a value in the tree and copy or save it.')],
-    compare: [t('Compare works with documents up to 300 MB'), t('To compare parts of this file, save a value as a file and open it in another tab.')],
-  }[view];
   return (
-    <div id={`hg-${view}`} className="hg-notyet" tabIndex={-1}>
-      <Icon name={view === 'graph' ? 'tree' : view === 'convert' ? 'code' : 'diff'} size={22} />
-      <b>{copy[0]}</b>
-      <p>{copy[1]}</p>
+    <div id="hg-compare" className="hg-notyet" tabIndex={-1}>
+      <Icon name="diff" size={22} />
+      <b>{t('Compare works with documents up to 300 MB')}</b>
+      <p>{t('To compare parts of this file, save a value as a file and open it in another tab.')}</p>
       <button type="button" className="btn" onClick={() => s.setView('tree')}>
         <Icon name="tree" size={14} />
         <span className="lbl">{t('Open the tree')}</span>
       </button>
+    </div>
+  );
+}
+
+/**
+ * The graph of the part being explored (lib/huge/graph.ts draws it with the normal tool's graph): its root,
+ * a few levels deep, "+N more" rows reading the next items.
+ */
+function GraphView({ s, hidden }: { s: HugeSession; hidden: boolean }) {
+  const ref = useMount((el) => s.mountGraph(el), []);
+  // The page's theme (Light, Dark, System): the graph's colours follow.
+  const theme = useUI((u) => u.settings.theme);
+  useEffect(() => s.themeChanged(), [s, theme]);
+  // (The graph names itself and its keys: see GraphView.)
+  return <div id="hg-graph" className="gv hg-graph" ref={ref} tabIndex={0} hidden={hidden} />;
+}
+
+/** Where the graph starts (click: up a level), how much it shows, and showing it from the selected value. */
+function GraphWhere({ s }: { s: HugeSession }) {
+  const g = useHuge(s.ui, (u) => u.graph);
+  const hasSel = useHuge(s.ui, (u) => !!u.sel);
+  const t = useT();
+  if (!g) return <span className="muted sm nowrap">{t('Loading…')}</span>;
+  return (
+    <span className="hg-gwhere">
+      <button type="button" className="btn icon sm" disabled={!g.up} onClick={() => void s.graphUp()} aria-label={t('Up a level')} data-tip={`${t('Up a level')}${t(' · ')}U`}>
+        <Icon name="up" size={14} />
+      </button>
+      <span className={`path hg-gpath ${PRIVATE}`} title={g.path}>
+        {g.path.length > 120 ? g.path.slice(0, 120) + '…' : g.path}
+      </span>
+      <span className={`muted sm nowrap ${PRIVATE}`} title={g.full ? t('The graph shows {n} values at most: show it from a part to see more', { n: t.num(2000) }) : undefined}>
+        {g.full ? t('{n} values (all it shows)', { n: t.num(g.shown) }) : t.n(g.shown, '{n} value', '{n} values')}
+      </span>
+      <button type="button" className="btn sm" disabled={!hasSel} onClick={() => void s.graphFrom()} data-tip={`${t('Show the graph from the selected value')}${t(' · ')}R`}>
+        {t('From selected')}
+      </button>
+    </span>
+  );
+}
+
+function GraphIcons({ s, find }: { s: HugeSession; find: ReactNode }) {
+  return (
+    <div className="vicons">
+      {find}
+      <IconBtn icon="copy" label="Copy value" onClick={() => void s.copyValue()} />
+      <Menu label="More options">
+        {(close) => (
+          <>
+            <MHead>Graph</MHead>
+            <MItem label="Fit to screen" keys="0" onClick={() => s.graphFit()} close={close} />
+            <MItem label="Zoom in" keys="+" onClick={() => s.graphZoom(1.25)} close={close} />
+            <MItem label="Zoom out" keys="-" onClick={() => s.graphZoom(0.8)} close={close} />
+            <MItem label="Collapse all" onClick={() => s.graphCollapse()} close={close} />
+            <MSep />
+            <MItem label="Up a level" keys="U" onClick={() => void s.graphUp()} close={close} />
+            <MItem label="Show the graph from the selected value" keys="R" onClick={() => void s.graphFrom()} close={close} />
+            <MSep />
+            <MItem label="Copy path" keys="P" onClick={() => s.copyPath()} close={close} />
+            <MItem label="Copy value" keys="C" onClick={() => void s.copyValue()} close={close} />
+            <MItem label="Save value as file" keys="mod+S" onClick={() => s.saveValue()} close={close} />
+            <MSep />
+            <MItem label="Export PNG" onClick={() => void s.graphExport('png')} close={close} />
+            <MItem label="Export SVG" onClick={() => void s.graphExport('svg')} close={close} />
+          </>
+        )}
+      </Menu>
     </div>
   );
 }
@@ -508,11 +556,12 @@ function Status({ s }: { s: HugeSession }) {
       </span>
     );
   }
-  if (st.error) {
+  const p = s.problem();
+  if (p && p.kind !== 'warning') {
     return (
-      <button type="button" className="st st-link err" onClick={() => void s.gotoError()} title={t('Go to error')}>
+      <button type="button" className={`st st-link ${p.kind === 'error' ? 'err' : 'warn'}`} onClick={() => void s.gotoError()} title={t('Go to error')}>
         <i className="dot" />
-        <span className="st-msg">{t('Ln {line}, Col {col}: {msg}', { line: t.num(st.error.line), col: t.num(st.error.col), msg: t.msg(st.error.msg) })}</span>
+        <span className="st-msg">{t('Ln {line}, Col {col}: {msg}', { line: t.num(p.line), col: t.num(p.col), msg: t.msg(p.msg) })}</span>
       </button>
     );
   }
@@ -532,22 +581,16 @@ function Status({ s }: { s: HugeSession }) {
       </>
     );
   }
-  if (st.multi && !st.jsonl) {
-    return (
-      <>
-        <button type="button" className="st st-link warn" onClick={() => s.gotoSecond()}>
-          <i className="dot" />
-          <span className="st-msg">{t.msg('Multiple top-level values (wrapped in an array)')}</span>
-        </button>
-        {stats}
-      </>
-    );
-  }
   return (
     <>
       <span className="st ok" title={st.jsonl ? t('One JSON value per line, shown as an array of records') : undefined}>
         <i className="dot" />
         <span className="st-msg">{st.jsonl ? t.n(st.records, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}</span>
+        {st.status && st.status.warnings > 0 && (
+          <button type="button" className="st-link warn" onClick={() => void s.gotoError()} title={st.status.msg ? t.msg(st.status.msg) : undefined}>
+            · {st.status.more ? t('{n}+ duplicate keys', { n: t.num(st.status.warnings) }) : t.n(st.status.warnings, '{n} duplicate key', '{n} duplicate keys')}
+          </button>
+        )}
       </span>
       <span className="sz sz-raw">
         {t.bytes(size)} <i>{t('raw')}</i>
@@ -577,13 +620,15 @@ function HugePane({ s, paneRef }: { s: HugeSession; paneRef: (el: HTMLElement | 
       <ViewBar s={s} />
       <div className={`view ${PRIVATE}`}>
         <ErrorBanner s={s} />
-        <MultiBanner s={s} />
         <FindBar s={s} />
         <AskBar s={s} />
         {seen.has('format') && <FormatView s={s} hidden={view !== 'format'} />}
         {seen.has('tree') && <TreeView s={s} hidden={view !== 'tree'} />}
         {seen.has('table') && <TableView s={s} hidden={view !== 'table'} />}
-        {(view === 'graph' || view === 'convert' || view === 'compare') && <NotYet s={s} view={view} />}
+        {seen.has('shape') && <ShapeView s={s} hidden={view !== 'shape'} />}
+        {view === 'convert' && <CommandsView s={s} />}
+        {seen.has('graph') && <GraphView s={s} hidden={view !== 'graph'} />}
+        {view === 'compare' && <NotYet s={s} />}
       </div>
     </section>
   );

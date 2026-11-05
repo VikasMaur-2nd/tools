@@ -11,7 +11,7 @@ import { ARR, BOOL, NUM, OBJ, STR, kids, parse, type JNode } from '../json/parse
 import { clip, preview, quote } from '../json/format';
 import { nodeAt } from '../json/path';
 import { jsonLines } from '../engine/rules';
-import { PREVIEW, type HugeError, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
+import { PREVIEW, type HugeError, type HugeStatus, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
 
 export interface SmallOptions {
   /** Index speed in bytes per second (Infinity: indexed at once, still reported asynchronously). */
@@ -43,6 +43,8 @@ export class SmallSource implements HugeSource {
   private readonly rootNode: JNode | null;
   private readonly jsonl: boolean;
   private readonly multi: boolean;
+  /** The normal path's status of the whole document (shown once indexed). */
+  private readonly status: HugeStatus;
   private readonly error: HugeError | null;
   /** Start of each line. */
   private readonly ls: number[] = [];
@@ -80,7 +82,15 @@ export class SmallSource implements HugeSource {
     this.ls.push(0);
     for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) this.ls.push(i + 1);
     if (root) this.index(root);
-    this.st = { bytes: 0, done: false, cancelled: false, error: null, multi, jsonl: this.jsonl, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
+    // What the normal path's status bar says (Engine.statusOf; JSON Lines have no issue for their several values).
+    const issues = this.jsonl ? res.issues.filter((x) => x.m !== MULTI) : res.issues;
+    const first = issues[0];
+    const err = res.error;
+    const w = res.warnings[0];
+    const bar = (kind: HugeStatus['kind'], x: { m: string; p: number } | undefined): HugeStatus =>
+      x ? { kind, msg: x.m, at: x.p, ...this.lineCol(x.p), warnings: kind === 'valid' ? res.warnings.length : 0, more: false } : { kind, msg: null, at: 0, line: 1, col: 1, warnings: 0, more: false };
+    this.status = !first && !err ? bar('valid', w) : err && (!first || err.p <= first.p) ? bar('error', err) : err ? bar('error', first) : bar('fixable', first);
+    this.st = { bytes: 0, done: false, cancelled: false, error: null, status: null, multi, jsonl: this.jsonl, nodes: 0, depth: 0, lines: 0, prettyLines: 0, records: 0 };
     this.began = Date.now();
     this.timer = setTimeout(this.tick, 0);
   }
@@ -156,6 +166,7 @@ export class SmallSource implements HugeSource {
       done,
       cancelled: false,
       error,
+      status: done ? this.status : null,
       multi: this.multi,
       jsonl: this.jsonl,
       nodes,

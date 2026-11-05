@@ -1,41 +1,47 @@
 /*
- * Huge mode's entry, loaded only when a file is too big for the editor (Engine.loadFile, see ./min.ts):
- * checks the file is JSON text, makes its source and opens a session on it.
+ * Huge mode's entry, loaded only when a file is too big for the editor (Engine.loadFile): starts the core's
+ * worker at once (its modules and Wasm load while the rest of huge mode's code does), then hands over to
+ * ./open-rest.ts (the binary check, the source, the session and its viewer).
  */
-import { looksBinary, binaryFile } from '../engine/asks';
 import { MAX_DOCUMENT } from '../link';
 import type { InputSource } from '../analytics/events';
 import { reportError } from '../analytics';
-import { createElement, type ReactNode } from 'react';
-import HugeTool from '@/components/huge/HugeTool';
-import { kit } from './kit';
-import { HUGE_MIN } from './min';
-import { CoreSource } from './core-source';
-import { SmallSource, type SmallOptions } from './small-source';
-import { HugeSession, type HugeHook, type HugeHost } from './session';
-import type { HugeSource } from './source';
+import { HugeClient } from './client';
+import type { HugeHook, HugeHost } from './session';
+import type { SmallOptions } from './small-source';
+import type { Started } from './open-rest';
+import type { HugeProgress } from './types';
+import type { kit } from './kit';
 
 /** Formats the normal path converts to JSON: not in huge mode yet (a streamed conversion comes later). */
 const CONVERTED = /\.(csv|tsv|ya?ml|xml|toml)$/i;
 
-type Kit = typeof kit;
-
-/** Files opened: each one's viewer is a new one (its React key). */
-let opened = 0;
-
 /**
- * The source for `file`: the core's index in a worker (any size). For trying the UI, `tk:hugeSim`
- * ({"speed": bytes/s, "latency": ms}) plays an index over the file parsed whole instead (small files only).
+ * For trying the UI: `tk:hugeSim` ({"speed": bytes/s, "latency": ms}) plays an index over a small file parsed
+ * whole instead of the core's (null: the core, any size).
  */
-async function sourceFor(file: File): Promise<HugeSource> {
-  let sim: SmallOptions | null = null;
+function simOf(file: File): SmallOptions | null {
   try {
-    sim = JSON.parse(localStorage.getItem('tk:hugeSim') ?? 'null') as SmallOptions | null;
+    const sim = JSON.parse(localStorage.getItem('tk:hugeSim') ?? 'null') as SmallOptions | null;
+    return sim && file.size <= MAX_DOCUMENT ? { speed: Number(sim.speed) || undefined, latency: Number(sim.latency) || 0 } : null;
   } catch {
-    /* none */
+    return null;
   }
-  if (sim && file.size <= MAX_DOCUMENT) return new SmallSource(await file.text(), file.name, { speed: Number(sim.speed) || undefined, latency: Number(sim.latency) || 0 });
-  return new CoreSource(file, file.name);
+}
+
+/** The core's worker, started now: its progress is kept until the source takes it. */
+function start(file: File): Started {
+  let taker: ((p: HugeProgress) => void) | null = null;
+  const early: HugeProgress[] = [];
+  const client = new HugeClient(file, { name: file.name }, (p) => (taker ? taker(p) : early.push(p)));
+  performance.mark('tk:huge:worker');
+  return {
+    client,
+    take(f) {
+      taker = f;
+      for (const p of early.splice(0)) f(p);
+    },
+  };
 }
 
 /**
@@ -43,47 +49,54 @@ async function sourceFor(file: File): Promise<HugeSource> {
  * it is open: the session closes). `asText`: opened whatever it looks like ("Open as text" on a file that
  * looks binary). `Scroll`: the first load's TallScroll (see kit.ts).
  */
-export async function openHuge(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, asText: boolean, Scroll: Kit['Scroll']): Promise<HugeHook | null> {
-  try {
-    kit.Scroll = Scroll;
-    let forced = false;
+export async function openHuge(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, asText: boolean, Scroll: (typeof kit)['Scroll'], closed?: () => void): Promise<HugeHook | null> {
+  if (signal.aborted) return null;
+  // A .gz file: decompressed first (to the editor when small, else to huge mode from the browser's storage,
+  // the copy removed when its session closes: `closed`).
+  if (!closed && /\.gz$/i.test(file.name)) {
     try {
-      // (Opened by the debug override, not by its size: said so in the huge_opened event.)
-      forced = !!localStorage.getItem('tk:hugeMin') && file.size <= HUGE_MIN;
-    } catch {
-      /* storage refused */
+      const { openGz } = await import('./gz');
+      // (The decompressed file's session, if it opened in huge mode: its hook goes to the engine.)
+      return await openGz(host, file, source, signal, editorLimit(), async (plain, done) => {
+        const hook = await openHuge(host, plain, source, signal, false, Scroll, done);
+        // (Not opened: the copy goes now.)
+        if (!hook) done();
+        return hook;
+      });
+    } catch (e) {
+      reportError(e, 'huge');
+      if (!signal.aborted) host.toast(`Couldn't read ${file.name}`, 'err');
     }
-    return await open(host, file, source, signal, forced, asText);
-  } catch (e) {
-    reportError(e, 'huge');
+    return null;
+  }
+  if (!asText && CONVERTED.test(file.name)) {
+    host.toast(`Converting ${file.name} to JSON isn't available for files this large yet`, 'err');
+    return null;
+  }
+  for (const m of ['open', 'worker', 'rest', 'root', 'rows', 'lines']) performance.clearMarks('tk:huge:' + m);
+  performance.mark('tk:huge:open');
+  const sim = simOf(file);
+  const started = sim ? null : start(file);
+  try {
+    const { openRest } = await import('./open-rest');
+    // (How much sooner the worker started than it would have after all of this.)
+    performance.mark('tk:huge:rest');
+    return await openRest(host, file, source, signal, asText, Scroll, started, sim, closed);
+  } catch {
+    // (The rest of huge mode's code didn't load: offline, say.)
+    started?.client.close();
     if (!signal.aborted) host.toast(`Couldn't read ${file.name}`, 'err');
     return null;
   }
 }
 
-/** The open session's hook for the engine (null: nothing opened). */
-async function open(host: HugeHost, file: File, source: InputSource, signal: AbortSignal, forced: boolean, asText: boolean): Promise<HugeHook | null> {
-  if (signal.aborted) return null;
-  if (!asText && CONVERTED.test(file.name)) {
-    host.toast(`Converting ${file.name} to JSON isn't available for files this large yet`, 'err');
-    return null;
+/** The largest file the editor opens (Engine.loadFile's threshold: 300 MiB, less on a device with little memory, or tk:hugeMin). */
+function editorLimit(): number {
+  let forced: string | null = null;
+  try {
+    forced = localStorage.getItem('tk:hugeMin');
+  } catch {
+    /* storage refused */
   }
-  // (Its first 64 KB tell whether it is text at all.)
-  const head = asText ? '' : await file.slice(0, 65_536).text();
-  if (signal.aborted) return null;
-  if (looksBinary(head)) {
-    host.toast(...binaryFile(file.name, () => void host.loadFile(file, source, true)));
-    return null;
-  }
-  const src = await sourceFor(file);
-  if (signal.aborted) {
-    src.destroy();
-    return null;
-  }
-  const key = String(++opened);
-  const session: HugeSession = new HugeSession(host, src, { name: file.name, source, forced }, (portal): ReactNode => createElement(HugeTool, { key, portal }));
-  signal.addEventListener('abort', () => session.close(), { once: true });
-  // (Shown at once; its root comes as the index reads it.)
-  void session.start();
-  return session.hook;
+  return Math.min(MAX_DOCUMENT, forced ? +forced : ((navigator as { deviceMemory?: number }).deviceMemory || 8) * 2 ** 26);
 }

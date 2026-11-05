@@ -244,9 +244,28 @@ export function inlineCols(n: JNode): number {
 /** True when `n` gets its own card (a non-empty container that isn't shown inline). */
 const isCard = (n: JNode) => n.t >= ARR && (n.v as JNode[]).length > 0 && inlineCols(n) < 0;
 
+/**
+ * Value texts that stand in for a node's own, set by huge-file mode (lib/huge/graph.ts) for what it hasn't read:
+ * "+980 more" (an empty array standing for the next items) or a container's size (`[1,234]`, also its card's). Null in the
+ * normal tool, which never pays more than this check.
+ */
+let notes: WeakMap<JNode, string> | null = null;
+export const setValueNotes = (m: WeakMap<JNode, string> | null) => {
+  notes = m;
+};
+/** The note standing in for `n`'s value, if huge mode set one. */
+export const valueNote = (n: JNode) => (notes === null ? undefined : notes.get(n));
+
 /** Value column text of a row: a primitive, `{}`/`[]`, an inline array, or a nested container's size (`{3}`, `[12]`). */
 export function valueText(n: JNode, build = true): string {
   let s: string;
+  if (notes !== null) {
+    const note = notes.get(n);
+    if (note !== undefined) {
+      fitCols = note.length;
+      return build ? note : '';
+    }
+  }
   switch (n.t) {
     case STR: {
       const body = fit(n.v as string, G.valMax - 2, true, build);
@@ -281,8 +300,8 @@ export function valueText(n: JNode, build = true): string {
   return s;
 }
 
-/** `{3}` / `[12]` / `{}` / `[]`. */
-export const sizeText = (n: JNode) => sizeTextOf(n.t, count(n));
+/** `{3}` / `[12]` / `{}` / `[]` (or huge mode's note: the size of what it read part of). */
+export const sizeText = (n: JNode) => valueNote(n) ?? sizeTextOf(n.t, count(n));
 const sizeTextOf = (t: Kind, c: number) => (t === OBJ ? (c ? `{${c}}` : '{}') : c ? `[${c}]` : '[]');
 
 /** A card's header label: its key, `[index]`, or `root`. */
@@ -326,6 +345,8 @@ function colsIn(s: string, from: number, to: number, max: number, quoted: boolea
 
 /** Columns of sizeText(n). */
 const sizeCols = (n: JNode) => {
+  const note = valueNote(n);
+  if (note !== undefined) return note.length;
   const c = (n.v as JNode[]).length;
   return c ? digits(c) + 2 : 2;
 };
