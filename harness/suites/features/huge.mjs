@@ -58,6 +58,8 @@ test('huge mode: tree pages of 1,000, Show next, Go to index, keys, copy value a
   t.check(/Valid JSON/.test(await waitIndexed(page) ? await status(page) : ''), 'valid', await status(page));
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
   t.assert(await loaded(page, '#hg-tree'), 'tree rows read');
+  // (The root comes first as it is while indexing, then with its count.)
+  await until(page, () => /\{2\}/.test(window.__vis('#hg-tree .tv-r')?.textContent ?? ''), null);
   let rows = await rowsText(page);
   t.check(rows[0]?.includes('root') && rows[0]?.includes('{2}'), 'the root and its count', rows.slice(0, 3));
   // Open users: 2,500 items, a page of 1,000 listed.
@@ -170,6 +172,9 @@ test('huge mode: Table pages an array of records; Go to row', async (t) => {
   await waitIndexed(page);
   await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-table]')?.click());
   t.assert(await loaded(page, '#hg-table'), 'rows read');
+  // (The list comes first as it is while indexing: its columns once rows are read.)
+  await until(page, () => document.querySelectorAll('#hg-table .tb-th').length > 1, null);
+  await until(page, () => /1,200 ×/.test(window.__vis('.hg .vmain .dims')?.textContent ?? ''), null);
   const head = await page.evaluate(() => [...document.querySelectorAll('#hg-table .tb-th')].map((h) => h.textContent));
   t.check(head.join() === '#,id,name,email,active,tags,score', 'columns from the records', head);
   const dims = await page.evaluate(() => window.__vis('.hg .vmain .dims')?.textContent);
