@@ -121,7 +121,7 @@ export class HugeClient {
   }
 
   /** The text [start, end), at most `max` bytes of it (cut: true if there was more). */
-  text(start: Bytes, end: Bytes, max = 1 << 20): Promise<{ text: string; cut: boolean }> {
+  text(start: Bytes, end: Bytes, max = 1 << 20): Promise<{ text: string; cut: boolean; bad?: Float64Array }> {
     return this.ask('text', { start, end, max });
   }
 

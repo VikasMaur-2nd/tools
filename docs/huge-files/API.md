@@ -148,7 +148,7 @@ LRU), so scrolling the Format view through a region is a lookup.
 ## Reading values
 
 - `text(start, end, max)`: the text of `[start, end)`, at most `max` bytes (`cut` if more): a node's JSON, a
-  preview of a long string.
+  preview of a long string. With invalid UTF-8 in it, `bad` (see Bounds: map offsets with utf8.ts).
 - `blob(start, end)`: the bytes as a `Blob` sliced from the File (nothing read): "Save value as file", copy. Only
   while the document isn't edited (it throws 'Edited' then).
 - `slice(start, end)` (async): the document's bytes as a `Blob` of the file's slices and the edits' bytes
@@ -243,8 +243,13 @@ place): the file bar's "N changes".
   string of at least 256 KiB is cut (a preview), with its full span in its `HugeNode`.
 - An array index past 2^31 - 1 in a page is not representable in a tape's key (Int32): such items keep their
   page-local index in `PageNodes` (documents with over 2 billion items in one array).
-- Invalid UTF-8 is read as the normal path reads it (U+FFFD, no error); columns after it on the same line may
-  differ from the normal path's (it counts the replacement's UTF-16 units; huge mode counts the bytes' kinds).
+- Invalid UTF-8 is read as the normal path reads it (TextDecoder: one U+FFFD per maximal invalid subsequence, no
+  error), and every position stays the bytes': nodes, pages, lines, locate, edits. Text that goes out with invalid
+  bytes in it says which U+FFFD units they are (`bad`: [unit offset, bytes] pairs, on `text()` and raw
+  `HugeLines`). Map its offsets to bytes with lib/huge/utf8.ts `utf8Bytes(text, from, to, bad)` and back with
+  `utf16Of(text, bytes, bad)`; after typing in such a text, `badAfterEdit` moves `bad`. A U+FFFD counts 3 bytes
+  only where it is the character itself. A column after an invalid byte on a line that starts before a checkpoint
+  may still differ from the normal path's (the index's counts take an invalid byte by its kind).
 - UTF-16 files (with a UTF-16 byte order mark) aren't read in huge mode.
 - Loose JSON (comments, trailing commas, single quotes…): the first problem is the error; views show the part
   before it. A streamed repair is phase 5.

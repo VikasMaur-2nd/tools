@@ -67,6 +67,8 @@ export interface HugeLine {
   at: number;
   /** It goes on past where the file is read so far (the indexing front, a stop, the error): more to come. */
   reading?: boolean;
+  /** Raw, with invalid UTF-8 on it: which of its U+FFFD units stand for invalid bytes, and how many each (utf8.ts). */
+  bad?: Float64Array;
 }
 
 export interface HugeError {

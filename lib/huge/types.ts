@@ -228,6 +228,11 @@ export interface HugeLines {
    */
   text: string[];
   cut: Uint8Array;
+  /**
+   * Raw only, if any line has invalid UTF-8: per line, which of its U+FFFD units stand for invalid bytes and how
+   * many bytes each ([unit offset, bytes] pairs; null: none), for utf8.ts's utf8Bytes / utf16Of (columns ↔ bytes).
+   */
+  bad?: (Float64Array | null)[];
   /** Full length of each line: UTF-16 units (pretty) or bytes (raw). */
   length: Float64Array;
   /** Pretty: the byte where each line's node starts (a closing line: its container's end - 1). Raw: where each line starts. */

@@ -57,7 +57,7 @@ export type Answer = {
   raw: HugeLines;
   locate: HugeLocation | null;
   resolve: HugeLocation | null;
-  text: { text: string; cut: boolean };
+  text: { text: string; cut: boolean; bad?: Float64Array };
   find: FindBatch;
   cancel: null;
   stop: null;

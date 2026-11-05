@@ -393,7 +393,13 @@ export class CoreSource implements HugeSource {
     const got = mode === 'raw' ? await this.doc.rawLines(from, n, cols) : await this.doc.prettyLines(from, n, indent, cols);
     check(signal);
     // (cut 1: cut at `cols`, `length` the whole line's; 2: it goes on past the front, `length` so far.)
-    return got.text.map((text, k) => (got.cut[k] === 2 ? { text, more: 0, at: got.pos[k], reading: true } : { text, more: got.cut[k] ? Math.max(0, got.length[k] - text.length) : 0, at: got.pos[k] }));
+    return got.text.map((text, k) => {
+      const line: HugeLine = got.cut[k] === 2 ? { text, more: 0, at: got.pos[k], reading: true } : { text, more: got.cut[k] ? Math.max(0, got.length[k] - text.length) : 0, at: got.pos[k] };
+      // (Invalid bytes on it: what its U+FFFD units stand for, for colOf/atOf.)
+      const bad = got.bad?.[k];
+      if (bad) line.bad = bad;
+      return line;
+    });
   }
 
   async lineOf(mode: LineMode, at: number, signal?: AbortSignal) {
@@ -405,12 +411,12 @@ export class CoreSource implements HugeSource {
 
   /** The column (UTF-16 units) of byte `at` on raw line `line` (utf8.ts: the worker's rule). */
   colOf(line: HugeLine, at: number) {
-    return at < line.at ? -1 : utf16Of(line.text, at - line.at);
+    return at < line.at ? -1 : utf16Of(line.text, at - line.at, line.bad);
   }
 
   /** The byte of column `col` (UTF-16 units) on raw line `line`. */
   atOf(line: HugeLine, col: number) {
-    return line.at + utf8Bytes(line.text, 0, Math.min(col, line.text.length));
+    return line.at + utf8Bytes(line.text, 0, Math.min(col, line.text.length), line.bad);
   }
 
   // ── Find & values ───────────────────────────────────────────────────────
