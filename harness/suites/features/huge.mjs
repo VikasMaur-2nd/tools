@@ -220,7 +220,7 @@ test('huge mode: progress while indexing, browse meanwhile, Cancel', async (t) =
   const { page } = t;
   await t.open('/');
   await openHuge(t, pretty, { sim: { speed: 120_000, latency: 10 } });
-  const st = await until(page, () => /Indexing .* of .*/.test(window.__vis('.hg-sb')?.textContent ?? '') && window.__vis('.hg-sb')?.textContent, null);
+  const st = await until(page, () => /Indexing [\d.]+ KB of/.test(window.__vis('.hg-sb')?.textContent ?? '') && window.__vis('.hg-sb')?.textContent, null);
   t.check(/Indexing [\d.]+ KB of [\d.]+ KB/.test(st ?? ''), 'progress in the status bar', st);
   t.check(await page.evaluate(() => !!window.__vis('.hg-bar[role=progressbar]')), 'a progress bar');
   // Browse while indexing: the tree is there, its counts growing.
