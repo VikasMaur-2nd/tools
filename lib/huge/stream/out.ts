@@ -14,8 +14,8 @@ export interface Sink {
 }
 
 const BLOCK = 1 << 20;
-/** Bytes waiting for the sink before the pass pauses. */
-const FULL = 32 << 20;
+/** Bytes waiting for the sink before the pass pauses (with one token's output and a block, what may wait at most). */
+export const FULL = 4 << 20;
 
 const encoder = new TextEncoder();
 
@@ -26,6 +26,8 @@ export class Bytes {
   total = 0;
   private queue: Uint8Array[] = [];
   private queued = 0;
+  /** Told when FULL bytes wait for the sink: the job pauses its walker then (after the token being written). */
+  onFull: (() => void) | null = null;
 
   /** Enough waits for the sink: the pass should pause (see Walker.pause). */
   get full() {
@@ -42,6 +44,7 @@ export class Bytes {
       this.queue.push(this.pos === this.buf.length ? this.buf : this.buf.subarray(0, this.pos));
       this.queued += this.pos;
       this.total += this.pos;
+      if (this.queued >= FULL) this.onFull?.();
     }
     this.buf = new Uint8Array(BLOCK);
     this.pos = 0;

@@ -62,6 +62,8 @@ export interface WalkOptions {
   keep?: number;
   /** Strings longer than `keep` come in parts (Visitor.part) rather than cut. */
   parts?: boolean;
+  /** Bytes of a string read in one go (default SLICE; tests make it small). */
+  slice?: number;
 }
 
 // States.
@@ -88,6 +90,9 @@ const S_LIT = 10;
 
 /** The list of top-level values, on the stack. */
 const LIST = 6;
+
+/** Bytes of a string read in one go: a longer one is read (and handed on, in parts mode) a slice at a time. */
+export const SLICE = 1 << 20;
 
 /** Bytes a number may have (cut by chunks; longer is refused). */
 const NUM_MAX = 64 << 20;
@@ -117,6 +122,7 @@ export class Walker {
   private readonly list: boolean;
   private readonly keep: number;
   private readonly parts: boolean;
+  private readonly slice: number;
   /** A value was read at the top (a single root: no second may follow). */
   private any = false;
   // A token cut by a chunk's end.
@@ -138,6 +144,7 @@ export class Walker {
     this.list = !!o.multi;
     this.keep = o.keep ?? 64 << 20;
     this.parts = !!o.parts && !!v.part;
+    this.slice = Math.max(1, o.slice ?? SLICE);
     if (this.list) {
       this.kinds[0] = LIST;
       this.d = 1;
@@ -156,19 +163,37 @@ export class Walker {
 
   /**
    * Reads b[from…], whose first byte is the document's byte `base`. Returns where it stopped: b.length, or
-   * earlier if the visitor set `pause` (call again from there).
+   * earlier if the visitor set `pause` (call again from there). A visitor may pause after any token, and
+   * within a long string between its slices (see SLICE): what it writes stays bounded however much a token
+   * expands.
    */
   feed(b: Uint8Array, base: number, from = 0): number {
     const n = b.length;
     let i = from;
-    if (this.st >= S_STR) {
-      i = this.resume(b, base, i);
-      if (i < 0) return n;
+    for (;;) {
+      // (A token in progress: a string the chunk cut, or one too long to read in one go; a number, a literal.)
+      while (this.st >= S_STR) {
+        i = this.resume(b, base, i);
+        if (i < 0) return n;
+        if (this.pause) {
+          this.pause = false;
+          return i;
+        }
+      }
+      if (i >= n) return n;
+      i = this.scan(b, base, i);
       if (this.pause) {
         this.pause = false;
         return i;
       }
+      if (i >= n) return n;
     }
+  }
+
+  /** The tokens of b[i…] until its end, a pause, or a string cut there or too long for one go (then `st` is S_STR). */
+  private scan(b: Uint8Array, base: number, i: number): number {
+    const n = b.length;
+    const slice = this.slice;
     const v = this.v;
     let st = this.st;
     let d = this.d;
@@ -208,11 +233,12 @@ export class Walker {
         case S_K:
         case S_KO:
           if (c === 34) {
-            // A name: to its closing quote (escapes skipped), within this chunk if it can.
+            // A name: to its closing quote (escapes skipped), within this chunk (and SLICE) if it can.
             let j = i + 1;
             let hi = 0;
             let fl = 0;
-            while (j < n) {
+            const lim = j + slice < n ? j + slice : n;
+            while (j < lim) {
               const x = b[j];
               if (x === 34) break;
               if (x === 92) {
@@ -223,7 +249,7 @@ export class Walker {
               hi |= x;
               j++;
             }
-            if (j < n) {
+            if (j < lim) {
               v.key(b, i + 1, j, fl | (hi & 0x80 ? HI : 0), base + i);
               i = j + 1;
               st = S_C;
@@ -238,12 +264,13 @@ export class Walker {
                 if (x !== 32 && x !== 10 && x !== 13 && x !== 9) throw new WalkError(base + i);
                 i++;
               }
+              if (this.pause) break loop;
               continue;
             }
             this.st = st;
             this.d = d;
-            this.cutString(b, base, i, j > n, fl | (hi & 0x80 ? HI : 0), true);
-            return n;
+            this.cut(base + i, true);
+            return i + 1;
           }
           if (c === 125 && st === S_KO) {
             d--;
@@ -293,7 +320,8 @@ export class Walker {
         let j = i + 1;
         let hi = 0;
         let fl = 0;
-        while (j < n) {
+        const lim = j + slice < n ? j + slice : n;
+        while (j < lim) {
           const x = b[j];
           if (x === 34) break;
           if (x === 92) {
@@ -304,7 +332,7 @@ export class Walker {
           hi |= x;
           j++;
         }
-        if (j < n) {
+        if (j < lim) {
           this.last = base + j + 1;
           v.str(b, i + 1, j, fl | (hi & 0x80 ? HI : 0), base + i);
           i = j + 1;
@@ -316,8 +344,8 @@ export class Walker {
         }
         this.st = st;
         this.d = d;
-        this.cutString(b, base, i, j > n, fl | (hi & 0x80 ? HI : 0), false);
-        return n;
+        this.cut(base + i, false);
+        return i + 1;
       }
       if (c === 123 || c === 91) {
         if (d === kinds.length) kinds = this.grow();
@@ -327,6 +355,7 @@ export class Walker {
         v.open(k, base + i);
         i++;
         st = k === OBJ ? S_KO : S_VA;
+        if (this.pause) break loop;
         continue;
       }
       if (NUMCH[c] && c !== 43 && c !== 46 && c !== 101 && c !== 69) {
@@ -376,11 +405,7 @@ export class Walker {
     }
     this.st = st;
     this.d = d;
-    if (this.pause) {
-      this.pause = false;
-      return i;
-    }
-    return n;
+    return i;
   }
 
   /** The document ended (after its last byte was fed): closes the list; throws if a value is unfinished. */
@@ -433,17 +458,19 @@ export class Walker {
     this.carryLen += len;
   }
 
-  /** A string (or name) from its quote at b[i] runs past the chunk: kept (or handed on) until it ends. */
-  private cutString(b: Uint8Array, base: number, i: number, esc: boolean, flags: number, key: boolean) {
-    this.tAt = base + i;
+  /**
+   * A string (or name) whose quote is at byte `at` runs past the chunk, or past SLICE: read from the byte after
+   * its quote as a token in progress (kept, or handed on in parts, until it ends).
+   */
+  private cut(at: number, key: boolean) {
+    this.tAt = at;
     this.tKey = key;
-    this.tFlags = flags;
-    this.tEsc = esc;
+    this.tFlags = 0;
+    this.tEsc = false;
     this.tBytes = 0;
     this.tMode = 0;
     this.carryLen = 0;
     this.st = S_STR;
-    this.take(b, i + 1, b.length);
   }
 
   /** The cut string's bytes b[a, e): kept, counted (LONG), or handed on (PART). */
@@ -504,7 +531,7 @@ export class Walker {
       this.counted();
       return j;
     }
-    // A string.
+    // A string: at most SLICE bytes of it at a time (a visitor may pause between them).
     let j = i;
     let hi = 0;
     let fl = this.tFlags;
@@ -512,7 +539,8 @@ export class Walker {
       j++;
       this.tEsc = false;
     }
-    while (j < n) {
+    const lim = j + this.slice < n ? j + this.slice : n;
+    while (j < lim) {
       const x = b[j];
       if (x === 34) break;
       if (x === 92) {
@@ -525,10 +553,15 @@ export class Walker {
     }
     if (hi & 0x80) fl |= HI;
     this.tFlags = fl;
-    if (j >= n) {
-      this.tEsc = j > n;
-      this.take(b, i, n);
-      return -1;
+    if (j >= lim) {
+      if (lim === n || j >= n) {
+        this.tEsc = j > n;
+        this.take(b, i, n);
+        return -1;
+      }
+      // (Its next slice comes next: no escape is cut, the loop stepped over each whole.)
+      this.take(b, i, j);
+      return j;
     }
     const key = this.tKey;
     const at = this.tAt;
