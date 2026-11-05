@@ -116,7 +116,8 @@ Once all read (`done`), the bytes are all there, and `cut` is never 2:
   `utf16Of(text, byte, bad)`).
 - **Its lines past the error are counted in steps** (the index stops at the error). While they are,
   `summary.counting` is true and `summary.lines` grows. A summary comes through `onSummary` once all are counted;
-  then `lines` is the whole file's.
+  then `lines` is the whole file's. The same after an edit, undo or redo that leaves the document broken: counted
+  again in the background, then that summary.
 - **`lineAt(byte)`** gives the raw line (0-based) of any byte, past an error too, or -1 past the front while
   reading. CoreSource's `lineOf('raw', …)` uses it.
 
@@ -279,6 +280,19 @@ place): the file bar's "N changes".
     `summary.session` offers it again. It answers like an edit (`HugeEdited`), or null if none is set aside;
     'Not allowed' if the edits since can't all be undone (the history let the oldest go).
   - A tab that ends without closing leaves it: the next open offers it, unless edits were kept after it.
+  - **A "Discarded · Undo" toast:** show it when `setAside` turns non-null (after your `dropSession(true)` on the
+    first edit, or in a pushed summary when the session turned up only after it). Its Undo:
+
+    ```ts
+    const e = await doc.reofferSession();     // null: nothing set aside any more (closed, or already back)
+    if (e) {
+      refreshView(e);                         // as after an undo: the document is the file as opened again
+      const s = await doc.summary();          // s.session: the offer again (restorable), s.setAside: null
+      showRestoreBanner(s.session);
+    }
+    ```
+
+    It rejects with 'Not allowed' when the edits since can't all be undone (or while saving): hide the Undo then.
 - **Saves:**
   - **In place:** the session is the old file's and goes. Edits after that are kept under the saved file's key.
   - **A download, or a save as:** they leave the opened file, and its session, as they are.
