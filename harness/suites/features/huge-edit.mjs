@@ -776,7 +776,11 @@ test('huge edit: the Format view\'s text edited in place: numbered as the file, 
   await page.keyboard.press('Escape');
   t.check(await until(page, () => !document.querySelector('.hg-fe') && !!window.__vis('#hg-format'), null), 'Esc: back to the view');
   await selectPath(page, '$.users[120].name');
-  t.check(/"user 120XYZ"/.test(await selRow(page)), 'the tree reads the edit', await selRow(page));
+  // (The tree is read again after the edit: its rows are placeholders until their pages come, ~10–200 ms here,
+  // longer on a CI runner, where a read at once got "" (run 42047884451, WebKit).)
+  const t0 = Date.now();
+  const filled = await until(page, () => /"user 120XYZ"/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null, { timeout: 10_000 });
+  t.check(filled, 'the tree reads the edit', `${await selRow(page)} (${Date.now() - t0} ms)`);
 });
 
 test('huge edit: typed in the Format view, saved in place: the file\'s SHA-256 is the edited text\'s', { engines: ['chromium'] }, async (t) => {
