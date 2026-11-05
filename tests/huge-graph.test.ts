@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARR, OBJ, kids, type JNode } from '../lib/json/parser';
-import { buildModel, rowValueText, setValueNotes, valueText } from '../lib/graph/model';
+import { buildModel, cardSizeText, rowValueText, setValueNotes, valueText } from '../lib/graph/model';
 import { Explored, LEVELS, MAX_NODES, PAGE, ROOT_PAGE } from '../lib/huge/graph';
 import { SmallSource } from '../lib/huge/small-source';
 import type { IndexState } from '../lib/huge/source';
@@ -106,11 +106,14 @@ test('the graph model shows the stand-ins\' notes; without notes nothing changes
     assert.ok(found >= 0, 'a row for "+N more"');
     assert.equal(rowValueText(m, found), `+${100 - PAGE} more`);
     assert.ok(m.w.every((w, c) => w >= plain.w[c]), 'cards as wide as their notes need');
+    const card = m.node.indexOf(kids(b.root)[0]);
+    assert.equal(cardSizeText(m, card), '[100]', "a card read in part shows the container's size, not its rows'");
   } finally {
     setValueNotes(null);
   }
-  // (Notes off: the same node shows as what it is, an empty array.)
+  // (Notes off: the same node shows as what it is, an empty array; the card, its rows.)
   assert.equal(valueText(stand), '[]');
+  assert.equal(cardSizeText(plain, plain.node.indexOf(kids(b.root)[0])), `[${PAGE + 1}]`);
   assert.equal(valueText(kids(b.root)[1]), '1');
   assert.equal(b.root.t, OBJ);
   src.destroy();

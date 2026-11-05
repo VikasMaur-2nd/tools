@@ -16,6 +16,9 @@ import { rt } from '../i18n/ui';
 import { PRIVATE } from '../analytics';
 import { G, cardFinder, cardHeadText, cardKey, cardNode, cardOfRow, cardPath, cardSizeText, childCards, entryCount, fit, locate, locateIndex, modelBuilder, rowEntry, rowKey, rowKind, rowLabelText, rowValue, rowValueText, valueNote, valueText, type GraphModel } from './model';
 import { cardAt, layouter, type GraphLayout } from './layout';
+
+/** For huge-file mode (lib/huge/graph.ts), which loads only this module. */
+export { setValueNotes } from './model';
 import { charWidth, readTheme, type GraphTheme } from './theme';
 import { MARGIN, ZOOM_MAX, bound, clamp, ease, fitCam, follow, initialCam, lerpCam, lodOf, minZoom, zoomAt, type Cam } from './camera';
 import { grid, paint, partAt, releasePaint } from './render';

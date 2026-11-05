@@ -246,7 +246,7 @@ const isCard = (n: JNode) => n.t >= ARR && (n.v as JNode[]).length > 0 && inline
 
 /**
  * Value texts that stand in for a node's own, set by huge-file mode (lib/huge/graph.ts) for what it hasn't read:
- * "+980 more" (an empty array standing for the next items) or a container's size (`[1,234]`). Null in the
+ * "+980 more" (an empty array standing for the next items) or a container's size (`[1,234]`, also its card's). Null in the
  * normal tool, which never pays more than this check.
  */
 let notes: WeakMap<JNode, string> | null = null;
@@ -300,8 +300,8 @@ export function valueText(n: JNode, build = true): string {
   return s;
 }
 
-/** `{3}` / `[12]` / `{}` / `[]`. */
-export const sizeText = (n: JNode) => sizeTextOf(n.t, count(n));
+/** `{3}` / `[12]` / `{}` / `[]` (or huge mode's note: the size of what it read part of). */
+export const sizeText = (n: JNode) => valueNote(n) ?? sizeTextOf(n.t, count(n));
 const sizeTextOf = (t: Kind, c: number) => (t === OBJ ? (c ? `{${c}}` : '{}') : c ? `[${c}]` : '[]');
 
 /** A card's header label: its key, `[index]`, or `root`. */
@@ -345,6 +345,8 @@ function colsIn(s: string, from: number, to: number, max: number, quoted: boolea
 
 /** Columns of sizeText(n). */
 const sizeCols = (n: JNode) => {
+  const note = valueNote(n);
+  if (note !== undefined) return note.length;
   const c = (n.v as JNode[]).length;
   return c ? digits(c) + 2 : 2;
 };

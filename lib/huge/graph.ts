@@ -151,6 +151,8 @@ export class Explored {
           for (const k of ex.kids) list.push(make(k, j, d + 1));
           const left = ex.more;
           if (left) {
+            // (Its card's size: the container's, not the rows read.)
+            notes.set(j, sizeText(h));
             // "+N more": an empty array standing for the next items (its row reads them).
             const stand = new JNode(ARR as Kind, [], Math.max(0, h.end), d + 1, j, h.t === ARR ? ex.kids.length : '…');
             notes.set(stand, h.partial ? rt('+{n} more so far', { n: rt.num(left) }) : rt('+{n} more', { n: rt.num(left) }));
@@ -185,14 +187,13 @@ export interface GraphHost {
 }
 
 type GraphModule = typeof import('../graph/view');
-type ModelModule = typeof import('../graph/model');
 
 /** The Graph view of huge mode: an Explored part in a GraphView. */
 export class HugeGraph {
   private view: GraphViewApi | null = null;
   private part: Explored | null = null;
   private built: Built | null = null;
-  private setNotes: ModelModule['setValueNotes'] | null = null;
+  private setNotes: GraphModule['setValueNotes'] | null = null;
   private active = false;
   private seq = 0;
   private dead = false;
@@ -210,7 +211,8 @@ export class HugeGraph {
 
   private async load(): Promise<GraphViewApi | null> {
     if (this.view) return this.view;
-    const [{ GraphView }, { setValueNotes }]: [GraphModule, ModelModule] = await Promise.all([import('../graph/view'), import('../graph/model')]);
+    // (Through the view's module only: importing the model on its own would split it from the modules it's bundled with.)
+    const { GraphView, setValueNotes }: GraphModule = await import('../graph/view');
     if (this.dead) return null;
     this.setNotes = setValueNotes;
     this.view = new GraphView(this.el, {
