@@ -2,7 +2,7 @@
 // usage: pnpm build && pnpm start, then: node scripts/verify-i18n.mjs [base-url]   (default http://localhost:3000)
 // Checks per page: 200, <html lang>, localized title + description, self canonical, the complete
 // reciprocal hreflang cluster with x-default, one <h1>, JSON-LD that parses with the right inLanguage,
-// og:locale; then the sitemap (exact localized URL set, xhtml alternates), 404s and llms.txt links.
+// og:locale, no huge-mode strings in its dictionary; then the sitemap (exact localized URL set, xhtml alternates), 404s and llms.txt links.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,8 @@ const pagesOf = (l) => {
 };
 const slugs = Object.fromEntries(live.map((l) => [l.id, new Set(pagesOf(l))]));
 const enUi = readJson('lib/i18n/en/ui.json');
+// A sentence only huge mode shows: its translation must not ride in a page's dictionary (lib/i18n/client-dict.ts).
+const HUGE_PROBE = 'app.hugeShOnePassOverThe';
 const paths = ['/', '/tools', ...TOOL_PAGES.map((p) => `/tools/${p.slug}`)];
 const has = (l, path) => l.id === 'en' || !path.startsWith('/tools/') || slugs[l.id].has(path.slice(7));
 const at = (l, path) => (l.id === 'en' ? path : path === '/' ? `/${l.id}` : `/${l.id}${path}`);
@@ -98,6 +100,9 @@ for (const l of [ENGLISH, ...live]) {
       if (og !== l.og) fail(url, `og:locale ${og}, want ${l.og}`);
       // Interface strings render translated in the server HTML.
       if (path === '/' && html.includes(`>${enUi['app.ready']}<`)) fail(url, 'status bar renders in English');
+      // Huge mode's strings come with huge mode, not with every page.
+      const probe = readJson(`lib/i18n/${l.id}/ui.json`)[HUGE_PROBE];
+      if (probe && html.includes(probe)) fail(url, "carries huge mode's strings in its dictionary");
     }
   }
 }

@@ -29,6 +29,11 @@ export interface T {
   dur(sec: number, long?: boolean): string;
   /** The page's language (`<html lang>`); undefined on English pages, which keep the browser's own formats. */
   lang?: string;
+  /**
+   * Localized pages: adds huge mode's strings, which their dictionary leaves out (a chunk per language, loaded
+   * on first use; never rejects: a failed load leaves them English). English pages have none to add.
+   */
+  huge?(): Promise<void>;
 }
 
 export const fill = (s: string, p?: Params) => (p ? s.replace(/\{(\w+)\}/g, (m, k: string) => (p[k] === undefined ? m : String(p[k]))) : s);

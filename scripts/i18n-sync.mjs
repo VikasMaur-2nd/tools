@@ -4,13 +4,14 @@
 // Reads <dir>/<locale>/ui.json and <dir>/<locale>/tool-pages.json (each optional) and writes
 // lib/i18n/<locale>/ui.json and tool-pages.json in English key order, without notes. For every
 // interface string it records which English text it was translated from (lib/i18n/ui-source.json),
-// so `pnpm test` can tell when the English changes later. Exit 1 when a file has errors (nothing
-// is written for that file).
+// so `pnpm test` can tell when the English changes later, then rewrites huge mode's dictionaries
+// (scripts/i18n-huge.mjs). Exit 1 when a file has errors (nothing is written for that file).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCALES } from '../lib/i18n/locales.ts';
 import { textHash } from '../lib/i18n/page-text.ts';
+import { writeHugeDicts } from './i18n-huge.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -101,4 +102,6 @@ for (const locale of locales) {
 }
 
 write(sourcePath, Object.fromEntries(Object.keys(source).sort().map((l) => [l, source[l]])));
+// Huge mode's dictionaries follow the interface strings (lib/i18n/huge/<locale>.json).
+writeHugeDicts();
 process.exit(failed ? 1 : 0);

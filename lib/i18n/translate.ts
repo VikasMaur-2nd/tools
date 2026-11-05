@@ -29,8 +29,29 @@ function durationParts(sec: number, long: boolean): Record<string, number> {
   return { seconds: 0 };
 }
 
+/**
+ * Huge mode's strings per language (lib/i18n/huge/<locale>.json, from scripts/i18n-huge.mjs): a chunk each,
+ * named only here, in the localized pages' chunk. A page waits for one only when a huge file opens; English
+ * pages never name them. (The service worker follows the chunks a page's scripts name once the page has
+ * settled, so they are cached for offline use like huge mode's own code.)
+ */
+const HUGE: Record<string, () => Promise<{ default: UiDict }>> = {
+  es: () => import('./huge/es.json'),
+  pt: () => import('./huge/pt.json'),
+  de: () => import('./huge/de.json'),
+  fr: () => import('./huge/fr.json'),
+  ja: () => import('./huge/ja.json'),
+  ko: () => import('./huge/ko.json'),
+  zh: () => import('./huge/zh.json'),
+  ru: () => import('./huge/ru.json'),
+};
+const none = () => Promise.resolve({ default: {} as UiDict });
+
 export function translator(d: UiDict | null | undefined, lang?: string): T {
   if (!d) return EN;
+  // (Huge mode's strings join it when a huge file opens: `huge` below.)
+  let dict: UiDict = d;
+  let huge: Promise<void> | undefined;
   // Locale data is expensive on a cold phone. Labels need no number formatters.
   let nf: Intl.NumberFormat | undefined;
   let rules: Intl.PluralRules | undefined;
@@ -39,13 +60,13 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
   const decimal = (n: number, digits: number) => (fixed[digits] ??= new Intl.NumberFormat(lang, { minimumFractionDigits: digits, maximumFractionDigits: digits })).format(n);
   const pick = (v: string | Forms, n: number) => (typeof v === 'string' ? v : (v[(rules ??= new Intl.PluralRules(lang)).select(n)] ?? v.other ?? ''));
   const tr = (s: string) => {
-    const v = d[s];
+    const v = dict[s];
     return v === undefined ? s : pick(v, 1);
   };
 
   let pats: Pattern[] | null = null;
   const patterns = () =>
-    (pats ??= Object.keys(d)
+    (pats ??= Object.keys(dict)
       .filter((k) => k.includes('{'))
       .map((key) => {
         const names: string[] = [];
@@ -66,7 +87,7 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
       .sort((a, b) => b.lit - a.lit));
 
   const one = (s: string): string | undefined => {
-    const v = d[s];
+    const v = dict[s];
     if (v !== undefined) return pick(v, 1);
     for (const { re, key, names } of patterns()) {
       const m = re.exec(s);
@@ -78,7 +99,7 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
         if (k === 'n') p.n = num((count = Number(x.replace(/\D/g, '')) || 0));
         else p[k] = NESTED.has(k) ? (one(x) ?? x) : x;
       });
-      return fill(pick(d[key], count), p);
+      return fill(pick(dict[key], count), p);
     }
     return undefined;
   };
@@ -88,7 +109,7 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
 
   return Object.assign((s: string, p?: Params) => fill(tr(s), p), {
     n: (c: number, one: string, other: string, p?: Params) => {
-      const v = d[one] ?? d[other];
+      const v = dict[one] ?? dict[other];
       return fill(v === undefined ? (c === 1 ? one : other) : pick(v, c), { ...p, n: num(c) });
     },
     msg: (s: string) => one(s) ?? (s.includes(SEP) ? s.split(SEP).map((x) => one(x) ?? x).join(tr(SEP)) : s),
@@ -109,5 +130,15 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
         .join(' ');
     },
     lang,
+    huge: () =>
+      (huge ??= (HUGE[lang?.slice(0, 2) ?? ''] ?? none)().then(
+        (m) => {
+          dict = { ...dict, ...m.default };
+          pats = null;
+        },
+        () => {
+          huge = undefined; // (offline, never cached: English this time, asked again next time)
+        },
+      )),
   });
 }
