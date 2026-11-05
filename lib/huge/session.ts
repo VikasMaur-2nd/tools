@@ -202,7 +202,8 @@ export class HugeSession {
       this.editing = new HugeEditing({
         src,
         selPath: () => this.sel?.path ?? null,
-        changed: (fx, select) => this.afterEdit(fx, select),
+        selAt: () => this.sel?.at ?? null,
+        changed: (fx, select, selectAt) => this.afterEdit(fx, select, selectAt),
         refused: (msg) => this.host.toast(msg, 'info'),
         failed: (e) => this.failed(e),
       });
@@ -459,7 +460,7 @@ export class HugeSession {
     const mode = this.ui.get().mode;
     const lines = (this.lines = new HugeLinesView(el, this.src, mode, this.host.indent, {
       pick: (at) => void this.pickAt(at),
-      edit: (at) => this.editing && this.formatEdit(at),
+      edit: (at) => this.editing && void this.formatEdit(at),
       failed: (e) => this.failed(e),
     }));
     this.ui.set({ lines: lines.count });
@@ -656,12 +657,31 @@ export class HugeSession {
   // ── Selection ──────────────────────────────────────────────────────────
 
   private select(node: HugeNode, path: Seg[], from: 'tree' | 'table' | 'lines' | 'graph', at?: number[]) {
-    this.sel = { node, path, ...(at && at.length === path.length && { at }) };
+    const sel: { node: HugeNode; path: Seg[]; at?: number[] } = { node, path, ...(at && at.length === path.length && { at }) };
+    this.sel = sel;
+    // (No index path given (the table, the graph): found from the value's first byte, which says which member.)
+    if (!sel.at && path.length) void this.indexPath(node, path).then((x) => x && this.sel === sel && (sel.at = x));
     this.ui.set({ sel: { path: formatPath(path), t: node.t, bytes: node.end < 0 ? -1 : node.end - node.at, count: node.count, partial: !!node.partial, named: typeof path[path.length - 1] === 'string', root: !path.length } });
     if (from !== 'lines' && this.lines) void this.showLine(node.at, false);
     // The tree follows a choice in the graph (and the graph one elsewhere, when it shows that value).
     if (from === 'graph') void this.src.resolve(path).then((chain) => chain && !this.dead && this.tree?.reveal(chain, null));
     else this.graph?.select(path);
+  }
+
+  /** `node`'s index path (each segment's index in its container), from the chain down to its first byte. */
+  private async indexPath(node: HugeNode, path: Seg[]): Promise<number[] | undefined> {
+    const chain = await this.src.locate(node.at).catch(() => null);
+    const last = chain?.[chain.length - 1];
+    if (!chain || !last || chain.length !== path.length + 1 || last.at !== node.at) return undefined;
+    return chain.slice(1).map((n) => n.i);
+  }
+
+  /** The value an edit is for, with its index path (found now if it isn't known yet: which member, where names repeat). */
+  private async targetAt(): Promise<{ node: HugeNode; path: Seg[]; at?: number[] } | null> {
+    const t = this.target();
+    if (!t || t.at || !t.path.length) return t;
+    const at = await this.indexPath(t.node, t.path);
+    return at ? { ...t, at } : t;
   }
 
   /** A click in the Format view: selects the value there. */
@@ -745,12 +765,12 @@ export class HugeSession {
       const tn = this.tableAt.node;
       const d = tn ? chain.findIndex((n) => n.at === tn.at && n.depth === tn.depth) : -1;
       if (d >= 0 && chain[d + 1]) this.table?.gotoRow(chain[d + 1].i, true);
-      this.select(node, chain.slice(1).map((n) => n.key as Seg), 'table');
+      this.select(node, chain.slice(1).map((n) => n.key as Seg), 'table', chain.slice(1).map((n) => n.i));
       return;
     }
     this.tree?.setFind(q, node.at);
     this.tree?.reveal(chain, null);
-    this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree');
+    this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree', chain.slice(1).map((n) => n.i));
     // (In the Graph: the match selected there, or the part around it shown.)
     if (view === 'graph') void this.graphFor();
   }
@@ -766,7 +786,7 @@ export class HugeSession {
     if (this.dead) return;
     this.tree?.setFind('', node.at);
     this.tree?.reveal(chain, null);
-    this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree');
+    this.select(node, chain.slice(1).map((n) => n.key as Seg), 'tree', chain.slice(1).map((n) => n.i));
   }
 
   /** Goes to the value at `segs` (from Find's $.path or the "Go to" bar). */
@@ -790,7 +810,7 @@ export class HugeSession {
     } else if (view !== 'tree' && view !== 'graph') this.setView('tree');
     this.tree?.setFind('', node.at);
     this.tree?.reveal(chain, null);
-    this.select(node, segs, 'tree');
+    this.select(node, segs, 'tree', chain.slice(1).map((n) => n.i));
     // (The Graph stays: the value selected there, or the part around it shown.)
     if (view === 'graph') void this.graphFor();
   }
@@ -959,9 +979,15 @@ export class HugeSession {
     // Not after an edit, even undone: its edits were made on the file as opened, and would be spliced into these.
     // Editing on is the answer then: the kept edits go, these are kept instead (the core keeps nothing over a
     // session on offer).
-    if (touched && this.offer === 'shown') {
+    // Also when the session was found only after the first edit (REVIEW-3 C8): no banner then, the same answer.
+    // Said, with how many were discarded (REVIEW-3 C5).
+    if (touched && e.session && this.offer !== 'done') {
       this.offer = 'done';
-      void this.src.edits?.dropSession(true).catch((err: unknown) => this.failed(err));
+      const n = e.session.steps;
+      void this.src.edits?.dropSession(true).then(
+        () => !this.dead && this.host.toast(rt.n(n, 'Discarded the {n} kept change', 'Discarded the {n} kept changes'), 'info', undefined, 8000),
+        (err: unknown) => this.failed(err),
+      );
     }
     if (!e.session || touched) restore = null;
     this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle });
@@ -1014,7 +1040,7 @@ export class HugeSession {
    * again (moved as `fx` says), and `select` selected (where the edit says; else where the selection was, or the
    * nearest value above it that's still there).
    */
-  private async afterEdit(fx: Effect, select: Seg[] | null) {
+  private async afterEdit(fx: Effect, select: Seg[] | null, selectAt: number[] | null = null) {
     if (this.dead) return;
     const tree = this.tree;
     const opens = tree ? tree.openPaths().slice(1).map((p) => adjustPath(p, fx)).filter((p): p is Seg[] => !!p) : [];
@@ -1033,7 +1059,8 @@ export class HugeSession {
     if (this.ui.get().noRoot) this.ui.set({ noRoot: false });
     const at = async (p: Seg[]) => (p.length ? await this.src.resolve(p) : [root]);
     let path = select ?? (this.sel ? adjustPath(this.sel.path, fx) : null);
-    let chain = path ? await at(path) : null;
+    // (By its index path where the edit says it: where names repeat, the member it made or changed: REVIEW-3 B3.)
+    let chain = path ? (selectAt && selectAt.length === path.length && path.length ? await this.src.resolve(path, undefined, selectAt) : null) ?? (await at(path)) : null;
     while (path && !chain && path.length) {
       path = path.slice(0, -1);
       chain = await at(path);
@@ -1048,7 +1075,7 @@ export class HugeSession {
       if (this.dead) return;
       tree.reload(root, chains, chain);
     }
-    if (chain && path) this.select(chain[chain.length - 1], path, 'tree');
+    if (chain && path) this.select(chain[chain.length - 1], path, 'tree', chain.slice(1).map((n) => n.i));
     else {
       this.sel = null;
       this.ui.set({ sel: null });
@@ -1102,8 +1129,9 @@ export class HugeSession {
 
   /** Edits the selected value: in the edit box, or (a container, a long string) as text. */
   async editValue(from: EditFrom) {
-    const t = this.target();
-    if (!t || !this.canEdit()) return;
+    if (!this.target() || !this.canEdit()) return;
+    const t = await this.targetAt();
+    if (!t || this.dead) return;
     if (t.node.t >= ARR) return this.openText(from);
     let json: string | null = null;
     if (t.node.clipped) {
@@ -1117,9 +1145,10 @@ export class HugeSession {
   }
 
   /** Renames the selected object member. */
-  renameSel(from: EditFrom) {
-    const t = this.target();
-    if (!t || !this.canEdit()) return;
+  async renameSel(from: EditFrom) {
+    if (!this.target() || !this.canEdit()) return;
+    const t = await this.targetAt();
+    if (!t || this.dead) return;
     const key = t.path[t.path.length - 1];
     if (typeof key !== 'string') return void this.host.toast('Only the members of an object have names', 'info');
     this.editFrom = from;
@@ -1127,9 +1156,10 @@ export class HugeSession {
   }
 
   /** Inserts a value after the selected one, or inside it (a container: at its end). */
-  insertSel(where: 'after' | 'inside', from: EditFrom) {
-    const t = this.target();
-    if (!t || !this.canEdit()) return;
+  async insertSel(where: 'after' | 'inside', from: EditFrom) {
+    if (!this.target() || !this.canEdit()) return;
+    const t = await this.targetAt();
+    if (!t || this.dead) return;
     const inside = where === 'inside' || !t.path.length;
     if (inside && t.node.t < ARR) return void this.host.toast('Only an array or an object can hold values', 'info');
     const path = inside ? t.path : t.path.slice(0, -1);
@@ -1137,7 +1167,9 @@ export class HugeSession {
     // (Into an object: the container itself, or the selected value's, when its last step is a name.)
     const named = inside ? t.node.t === OBJ && !this.listRoot(t) : typeof t.path[t.path.length - 1] === 'string';
     this.editFrom = from;
-    this.ui.set({ box: { mode: 'insert', path, label: formatPath(path), index, named, kind: 'string', text: '', name: '', at: this.anchor('value') } });
+    // (The container's index path: which one, where names repeat.)
+    const indexes = inside ? t.at : t.at?.slice(0, -1);
+    this.ui.set({ box: { mode: 'insert', path, indexes, label: formatPath(path), index, named, kind: 'string', text: '', name: '', at: this.anchor('value') } });
   }
 
   /** The root of several top-level values (an array of them, as shown). */
@@ -1145,16 +1177,18 @@ export class HugeSession {
     return !t.path.length && this.src.state().multi;
   }
 
-  removeSel(from: EditFrom) {
-    const t = this.target();
-    if (!t || !this.canEdit()) return;
+  async removeSel(from: EditFrom) {
+    if (!this.target() || !this.canEdit()) return;
+    const t = await this.targetAt();
+    if (!t || this.dead) return;
     if (!t.path.length) return void this.host.toast("The root value can't be deleted: edit it instead", 'info');
     void this.edit({ op: 'remove', path: t.path, i: t.node.i, at: t.at }, from);
   }
 
-  duplicateSel(from: EditFrom) {
-    const t = this.target();
-    if (!t || !this.canEdit()) return;
+  async duplicateSel(from: EditFrom) {
+    if (!this.target() || !this.canEdit()) return;
+    const t = await this.targetAt();
+    if (!t || this.dead) return;
     if (!t.path.length) return void this.host.toast("The root value can't be duplicated", 'info');
     void this.edit({ op: 'duplicate', path: t.path, i: t.node.i, at: t.at }, from);
   }
@@ -1173,7 +1207,7 @@ export class HugeSession {
     } else {
       const v = valueJson(kind, text);
       if ('error' in v) return v.error;
-      op = b.mode === 'value' ? { op: 'set', path: b.path, i: b.i, at: b.indexes, json: v.json } : { op: 'insert', parent: b.path, index: b.index, json: v.json, name: b.named ? name : null };
+      op = b.mode === 'value' ? { op: 'set', path: b.path, i: b.i, at: b.indexes, json: v.json } : { op: 'insert', parent: b.path, parentAt: b.indexes, index: b.index, json: v.json, name: b.named ? name : null };
     }
     this.closeBox();
     await this.edit(op, this.editFrom);
@@ -1193,8 +1227,9 @@ export class HugeSession {
 
   /** Opens the selected value as text in the normal editor (its dialog), read from the document (≤ 64 MB). */
   async openText(from: EditFrom) {
-    const t = this.target();
-    if (!t || !this.canEdit()) return;
+    if (!this.target() || !this.canEdit()) return;
+    const t = await this.targetAt();
+    if (!t || this.dead) return;
     this.editFrom = from;
     const path = t.path;
     this.ui.set({ box: null, textEdit: { path, label: formatPath(path), text: null, i: t.node.i, at: t.at } });
@@ -1409,8 +1444,14 @@ export class HugeSession {
   private typedAt = 0;
 
   /** Edits the Format view's text (As written) at byte `at` (default: its current line, or the selection's). */
-  formatEdit(at?: number) {
+  async formatEdit(at?: number) {
     if (this.ui.get().fe || !this.canEdit()) return;
+    // A node edit on its way: the window opens once it's made, on the document it leaves (read before, it would
+    // hold the bytes from before it, and its next key would go in at old offsets: REVIEW-3 D1).
+    if (this.editing?.busy) {
+      await this.editing.settled();
+      if (this.dead || this.ui.get().fe || !this.canEdit()) return;
+    }
     if (this.ui.get().view !== 'format') this.setView('format');
     if (this.ui.get().mode !== 'raw') this.setMode('raw');
     const pos = at ?? this.lines?.currentAt ?? this.sel?.node.at ?? 0;
@@ -1556,15 +1597,15 @@ export class HugeSession {
     }
     // The Format view: F2 or Enter edits its text there.
     if (t?.closest('#hg-format') && !mod && !e.altKey && !e.shiftKey && (e.key === 'F2' || e.key === 'Enter')) {
-      this.formatEdit();
+      void this.formatEdit();
       return true;
     }
     if (!t?.closest('#hg-tree, #hg-table, #hg-graph') || e.altKey) return false;
-    if (e.key === 'F2' && !mod && e.shiftKey) this.renameSel('key');
+    if (e.key === 'F2' && !mod && e.shiftKey) void this.renameSel('key');
     else if (e.key === 'F2' && !mod) void this.editValue('key');
-    else if (e.key === 'Delete' && !mod && !e.shiftKey) this.removeSel('key');
-    else if (e.key === 'Enter' && mod) this.insertSel(e.shiftKey ? 'inside' : 'after', 'key');
-    else if (k === 'd' && mod && !e.shiftKey) this.duplicateSel('key');
+    else if (e.key === 'Delete' && !mod && !e.shiftKey) void this.removeSel('key');
+    else if (e.key === 'Enter' && mod) void this.insertSel(e.shiftKey ? 'inside' : 'after', 'key');
+    else if (k === 'd' && mod && !e.shiftKey) void this.duplicateSel('key');
     else if (k === 'e' && mod && !e.shiftKey) void this.openText('key');
     else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey && !mod)) this.openMenu(null);
     else return false;
@@ -1599,15 +1640,15 @@ export class HugeSession {
       case 'huge-text':
         return void this.openText(from);
       case 'huge-rename':
-        return this.renameSel(from);
+        return void this.renameSel(from);
       case 'huge-insert':
-        return this.insertSel('after', from);
+        return void this.insertSel('after', from);
       case 'huge-insert-inside':
-        return this.insertSel('inside', from);
+        return void this.insertSel('inside', from);
       case 'huge-duplicate':
-        return this.duplicateSel(from);
+        return void this.duplicateSel(from);
       case 'huge-delete':
-        return this.removeSel(from);
+        return void this.removeSel(from);
     }
   }
 

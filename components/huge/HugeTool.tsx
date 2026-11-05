@@ -192,7 +192,7 @@ function ViewBar({ s }: { s: HugeSession }) {
       <div className="vmain">
         {view === 'format' && (editing ? <FormatEditBar s={s} /> : <ModeSwitch s={s} />)}
         {view === 'format' && !editing && s.editable && (
-          <button type="button" className="btn sm hg-txtbtn" onClick={() => s.formatEdit()} data-tip={`${t('Edit the text here')}${t(' · ')}F2`}>
+          <button type="button" className="btn sm hg-txtbtn" onClick={() => void s.formatEdit()} data-tip={`${t('Edit the text here')}${t(' · ')}F2`}>
             {t('Edit')}
           </button>
         )}

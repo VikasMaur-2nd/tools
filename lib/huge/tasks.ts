@@ -13,6 +13,7 @@ import { reportError, track } from '../analytics';
 import type { Events } from '../analytics/events';
 import { CoreSource } from './core-source';
 import { PageNodes } from './page';
+import { utf8Bytes } from './utf8';
 import { hugeSize, type HugeSession } from './session';
 import { ARR, LIST, OBJ, type HugeNode as CoreNode, type HugeSummary } from './types';
 import { StreamClient, StreamError, canPick, canPickFolder, freeSpace, hold, removeTemp, sweep, tempName } from './stream/client';
@@ -302,8 +303,9 @@ export class HugeTasks {
     if (target === 'value') {
       const sel = this.s.selected;
       if (sel && sel.path.length) {
-        // (Found again by its path, in this version: the place the selection was found at may predate an edit.)
-        const loc = await this.core.doc.resolve(sel.path);
+        // (Found again by its path, in this version: the place the selection was found at may predate an edit. By its
+        // index path where known: which member, where names repeat: REVIEW-3 B3.)
+        const loc = await this.core.doc.resolve(sel.path, sel.at && sel.at.length === sel.path.length ? sel.at : undefined);
         if (!loc) return null;
         const n = loc.node;
         return { scope: { start: n.start, end: n.end, multi: false }, path: sel.path, node: n, t: n.kind === LIST ? ARR : n.kind, count: n.count ?? 0 };
@@ -375,13 +377,13 @@ export class HugeTasks {
     // A small object: parsed here, as the normal path would.
     const { start, end } = at.scope;
     if (!at.scope.multi && end - start <= 16 << 20) {
-      const { text, cut } = await this.core.doc.text(start, end, 16 << 20);
+      const { text, cut, bad } = await this.core.doc.text(start, end, 16 << 20);
       const res = cut ? null : parse(text);
       if (!res?.root) return at;
       const rec = recordsOf(res.root);
       if (rec === res.root) return at;
-      const enc = new TextEncoder();
-      const byteOf = (s: number) => start + enc.encode(text.slice(0, s)).length;
+      // (The parsed text's offsets as bytes: invalid UTF-8 as the core counts it, utf8.ts: REVIEW-3 B4.)
+      const byteOf = (s: number) => start + utf8Bytes(text, 0, s, bad);
       return { ...at, scope: { start: byteOf(rec.s), end: byteOf(rec.e), multi: false }, t: ARR, count: kids(rec).length };
     }
     if (!at.node) return at;

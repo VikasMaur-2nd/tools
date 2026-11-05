@@ -25,9 +25,21 @@ export const WINDOW_ABOVE = 300;
 export const PASTE_MAX = 8 << 20;
 /** What's typed while the document can't take it ('Not ready') is tried again this often (ms), states or not. */
 const RETRY_MS = 250;
+/**
+ * A window let go with keys not taken in yet tries to send them this long at most (ms; the session waits as long
+ * before the core closes: session.ts TYPED_WAIT), then stops (REVIEW-3 C7: it polled for the page's life).
+ */
+export const LET_GO_MS = 3000;
+
+/** A change of a text: [p, p + del) became `ins`. */
+export interface Change {
+  p: number;
+  del: number;
+  ins: string;
+}
 
 /** What changed from `a` to `b`: [p, p + del) of `a` became `ins` (null: nothing did). Never between a pair's halves. */
-export function diffText(a: string, b: string): { p: number; del: number; ins: string } | null {
+export function diffText(a: string, b: string): Change | null {
   if (a === b) return null;
   const n = Math.min(a.length, b.length);
   let p = 0;
@@ -38,6 +50,90 @@ export function diffText(a: string, b: string): { p: number; del: number; ins: s
   while (s < most && a.charCodeAt(a.length - 1 - s) === b.charCodeAt(b.length - 1 - s)) s++;
   if (s > 0 && (a.charCodeAt(a.length - s) & 0xfc00) === 0xdc00) s--;
   return { p, del: a.length - p - s, ins: b.slice(p, b.length - s) };
+}
+
+const fffds = (s: string) => {
+  const out: number[] = [];
+  for (let i = s.indexOf('\uFFFD'); i >= 0; i = s.indexOf('\uFFFD', i + 1)) out.push(i);
+  return out;
+};
+
+/** `old` (at `p`) becoming `ins`, as changes around the U+FFFD units both have (as many, in order): those stay. */
+function around(old: string, ins: string, p: number): Change[] {
+  const po = fffds(old);
+  const pn = fffds(ins);
+  if (!po.length || po.length !== pn.length) return [{ p, del: old.length, ins }];
+  const out: Change[] = [];
+  let a = 0;
+  let b = 0;
+  for (let k = 0; k <= po.length; k++) {
+    const ea = k < po.length ? po[k] : old.length;
+    const eb = k < pn.length ? pn[k] : ins.length;
+    const d = diffText(old.slice(a, ea), ins.slice(b, eb));
+    if (d) out.push({ p: p + a + d.p, del: d.del, ins: d.ins });
+    a = ea + 1;
+    b = eb + 1;
+  }
+  return out;
+}
+
+/**
+ * Change `c` of `text` as changes that leave alone every character it didn't change (in order, each at `text`'s
+ * offsets): across lines with as many lines after it (an indented selection, keys on several lines), each line's
+ * own; within one, around each U+FFFD both sides still have. Such a unit can be an invalid byte sequence of the
+ * file: replaced, it would be written back as EF BF BD (REVIEW-3 B2). A pure insert or delete is as it is.
+ */
+export function splitChange(text: string, c: Change): Change[] {
+  if (!c.del || !c.ins) return [c];
+  const old = text.slice(c.p, c.p + c.del);
+  const ol = old.split('\n');
+  const nl = c.ins.split('\n');
+  if (ol.length < 2 || ol.length !== nl.length) return around(old, c.ins, c.p);
+  const out: Change[] = [];
+  let p = c.p;
+  for (let k = 0; k < ol.length; k++) {
+    const d = diffText(ol[k], nl[k]);
+    if (d) out.push(...around(ol[k].slice(d.p, d.p + d.del), d.ins, p + d.p));
+    p += ol[k].length + 1;
+  }
+  return out;
+}
+
+/**
+ * Deletion `d` of `text` moved back over U+FFFD units to start at `caret` where it can: in a run of them, which one
+ * the user deleted (the one at the caret after it) can't be told from the text, and each can stand for other bytes.
+ */
+export function slideTo(text: string, d: Change, caret: number): Change {
+  if (d.ins || caret >= d.p) return d;
+  let p = d.p;
+  while (p > caret && text.charCodeAt(p - 1) === 0xfffd && text.charCodeAt(p + d.del - 1) === 0xfffd) p--;
+  return p === d.p ? d : { p, del: d.del, ins: '' };
+}
+
+/** A text with \r\n as the editor has it (\n), and where each \r\n was (`crs`: offsets of those \n in `view`). */
+function lfView(text: string): { view: string; crs: number[] } {
+  if (text.indexOf('\r') < 0) return { view: text, crs: [] };
+  const crs: number[] = [];
+  let view = '';
+  let from = 0;
+  for (let i = text.indexOf('\r\n'); i >= 0; i = text.indexOf('\r\n', i + 2)) {
+    view += text.slice(from, i);
+    crs.push(view.length);
+    from = i + 1;
+  }
+  return { view: view + text.slice(from), crs };
+}
+
+/** The text's offset of view offset `v` (each \r\n before it is a unit longer there). */
+function origIn(crs: readonly number[], v: number) {
+  let lo = 0;
+  let hi = crs.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (crs[mid] < v) lo = mid + 1;
+    else hi = mid;
+  }
+  return v + lo;
 }
 
 export interface WindowEvents {
@@ -87,13 +183,20 @@ export class TextWindow {
     private readonly ev: WindowEvents,
   ) {}
 
-  /** Lets the window go: nothing more is read or told; what's typed still goes (`flush` resolves once it has). */
+  /**
+   * Lets the window go: nothing more is read or told; what's typed still goes (`flush` resolves once it has), for
+   * LET_GO_MS at most.
+   */
   destroy() {
     this.gone = true;
-    if (!this.pending || this.broken) this.finish();
+    if (!this.pending || this.broken) return this.finish();
+    this.giveUp ??= setTimeout(() => this.finish(), LET_GO_MS);
   }
 
+  private giveUp: ReturnType<typeof setTimeout> | undefined;
+
   private finish() {
+    clearTimeout(this.giveUp);
     this.dead = true;
     this.waiting?.();
     for (const f of this.flushed.splice(0)) f();
@@ -115,9 +218,10 @@ export class TextWindow {
     const end = st.docSize ?? this.src.size;
     const starts = ls.map((l) => l.at);
     let lines = Math.min(n, starts.length);
-    // A document all read, with an error: the core's raw lines stop at it, though its bytes go on. The lines after
-    // the error's are found in its text, as far as a window goes, so the error's line can be seen and fixed by
-    // typing (REVIEW-2 #6).
+    // A document all read, with an error: the core's raw lines past it come as it counts them (in steps after
+    // `done`; core round 7), and after an edit that breaks the document they stopped at the error (UI-NOTES 24).
+    // Lines the core doesn't give yet are found in the text, as far as a window goes, so the error's line can be
+    // seen and fixed by typing (REVIEW-2 #6). Once the core gives them all, this reads nothing more.
     if (st.done && st.error && starts.length < WINDOW_LINES + 1) {
       const a = starts[starts.length - 1];
       const b = Math.min(end, Math.max(starts[0] + WINDOW_BYTES, a + LINE_MAX) + 1);
@@ -158,6 +262,7 @@ export class TextWindow {
     this.lines = k;
     this.take(text, bad ?? null);
     this.now = this.view;
+    this.queue = [];
     return true;
   }
 
@@ -166,33 +271,13 @@ export class TextWindow {
     this.sent = text;
     this.bad = bad;
     this.end = this.start + utf8Bytes(text, 0, text.length, bad);
-    this.crs = [];
-    if (text.indexOf('\r') < 0) {
-      this.view = text;
-      this.crlf = false;
-      return;
-    }
-    this.crlf = true;
-    let view = '';
-    let from = 0;
-    for (let i = text.indexOf('\r\n'); i >= 0; i = text.indexOf('\r\n', i + 2)) {
-      view += text.slice(from, i);
-      this.crs.push(view.length);
-      from = i + 1;
-    }
-    this.view = view + text.slice(from);
+    this.crlf = text.indexOf('\r') >= 0;
+    ({ view: this.view, crs: this.crs } = lfView(text));
   }
 
   /** `sent`'s offset of `view`'s offset `v` (each \r\n before it is a unit longer there). */
   private orig(v: number) {
-    let lo = 0;
-    let hi = this.crs.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (this.crs[mid] < v) lo = mid + 1;
-      else hi = mid;
-    }
-    return v + lo;
+    return origIn(this.crs, v);
   }
 
   /** `view`'s offset of `sent`'s offset `o`. */
@@ -210,15 +295,40 @@ export class TextWindow {
   /** The window's last byte (exclusive), as the document has it. */
   end = 0;
 
-  /** The editor's text now: what changed is sent when the document takes edits. */
-  edited(now: string) {
+  /**
+   * Changes typed and not sent yet, in order, each of the text the one before leaves (the first: `view`). Kept
+   * apart (not one diff of the window), so that a send never covers what's between two of them (REVIEW-3 B2).
+   */
+  private queue: Change[] = [];
+
+  /**
+   * The editor's text now: what changed is sent when the document takes edits. `caret`: the editor's caret after
+   * the change, to tell which of a run of U+FFFD units was deleted (slideTo).
+   */
+  edited(now: string, caret?: number) {
+    let d = diffText(this.now, now);
+    if (d && caret !== undefined) d = slideTo(this.now, d, caret);
     this.now = now;
+    if (d) this.push(d);
     this.kick();
+  }
+
+  private push(d: Change) {
+    const last = this.queue[this.queue.length - 1];
+    const end = last ? last.p + last.ins.length : -1;
+    if (last && !d.del && d.p === end) {
+      // (Typed on where the last change ends: one change, longer, which the core joins as typing.)
+      last.ins += d.ins;
+    } else if (last && !d.ins && d.p + d.del === end && d.p >= last.p) {
+      // (Backspace into what the last change typed: shorter.)
+      last.ins = last.ins.slice(0, d.p - last.p);
+      if (!last.ins && !last.del) this.queue.pop();
+    } else this.queue.push(d);
   }
 
   /** Is anything typed not taken in by the document yet? */
   get pending() {
-    return this.busy || this.now !== this.view;
+    return this.busy || this.queue.length > 0;
   }
 
   /** Resolves once everything typed is taken in (before undo, saving, moving the window, leaving). */
@@ -229,7 +339,7 @@ export class TextWindow {
 
   private kick() {
     if (this.dead || this.busy || this.broken) return;
-    if (this.now === this.view) {
+    if (!this.queue.length) {
       if (this.gone) return this.finish();
       for (const f of this.flushed.splice(0)) f();
       return;
@@ -258,38 +368,59 @@ export class TextWindow {
   }
 
   private async send() {
-    const now = this.now;
-    const d = diffText(this.view, now);
-    if (!d) return this.kick();
-    const oa = this.orig(d.p);
-    const ob = this.orig(d.p + d.del);
-    const ins = this.crlf ? d.ins.replace(/\n/g, '\r\n') : d.ins;
-    const a = this.start + utf8Bytes(this.sent, 0, oa, this.bad);
-    const b = a + utf8Bytes(this.sent, oa, ob, this.bad);
+    const changes = this.queue.splice(0);
+    if (!changes.length) return this.kick();
+    // Each change at the text the one before leaves, each split so that nothing it didn't change is written: ops in
+    // that order, each at the document the one before leaves (a change's parts from its last: the ones before it
+    // keep their offsets).
+    let text = this.sent;
+    let bad = this.bad;
+    let view = this.view;
+    let crs = this.crs;
+    let grew = 0;
+    let cr = this.crlf;
+    const ops: { a: number; b: number; text: string }[] = [];
+    for (let j = 0; j < changes.length; j++) {
+      const parts = splitChange(view, changes[j]);
+      for (let k = parts.length - 1; k >= 0; k--) {
+        const q = parts[k];
+        const oa = origIn(crs, q.p);
+        const ob = origIn(crs, q.p + q.del);
+        const ins = this.crlf ? q.ins.replace(/\n/g, '\r\n') : q.ins;
+        const a = this.start + utf8Bytes(text, 0, oa, bad);
+        const b = a + utf8Bytes(text, oa, ob, bad);
+        ops.push({ a, b, text: ins });
+        grew += utf8Bytes(ins) - (b - a);
+        text = text.slice(0, oa) + ins + text.slice(ob);
+        // (What's typed is valid: the invalid bytes in what it replaced go, the ones after it move.)
+        bad = badAfterEdit(bad, oa, ob, ins.length);
+        if (ins.indexOf('\r') >= 0) cr = true;
+      }
+      if (j + 1 < changes.length) ({ view, crs } = cr ? lfView(text) : { view: text, crs });
+    }
     this.busy = true;
     try {
-      await this.src.edits!.replace([{ a, b, text: ins }], true);
+      if (ops.length) await this.src.edits!.replace(ops, true);
       if (this.dead) return;
-      const next = this.sent.slice(0, oa) + ins + this.sent.slice(ob);
-      // (What's typed is valid: the invalid bytes in what it replaced go, the ones after it move.)
-      const bad = badAfterEdit(this.bad, oa, ob, ins.length);
-      if (this.crlf || ins.indexOf('\r') >= 0) this.take(next, bad);
+      if (cr) this.take(text, bad);
       else {
         // (No CR: the editor's text is the document's; its end moves by what changed.)
-        this.end += utf8Bytes(ins) - (b - a);
-        this.sent = this.view = next;
+        this.end += grew;
+        this.sent = this.view = text;
         this.bad = bad;
       }
       if (!this.gone) this.ev.sent();
     } catch (e) {
       if (this.dead) return;
-      // (Still reading again after the last change: sent once it's done.)
+      // (Still reading again after the last change: sent once it's done, with what's typed since.)
       if (e instanceof Error && e.message === 'Not ready') {
+        this.queue.unshift(...changes);
         this.busy = false;
         return this.waitReady();
       }
       // (Anything else: nothing more is sent; the window is read again from the document: see `broken`.)
       this.broken = true;
+      this.queue = [];
       for (const f of this.flushed.splice(0)) f();
       if (this.gone) this.finish();
       else this.ev.failed(e);

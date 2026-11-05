@@ -175,3 +175,68 @@ test('text that isn\'t JSON goes in as typed: the document is invalid, its statu
   assert.equal(src.state().status?.kind, 'fixable');
   src.destroy();
 });
+
+test('REVIEW-3 D1: settled() resolves once the edits asked so far are made and the views told (the Format window waits for it)', async () => {
+  const src = core(JSON.stringify({ a: 1, b: [1, 2, 3] }, null, 2));
+  await ended(src);
+  const order: string[] = [];
+  const ed = new HugeEditing({
+    src,
+    selPath: () => null,
+    changed: async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      order.push('views read again');
+    },
+    refused: (m) => assert.fail(m),
+    failed: (e) => assert.fail(String(e)),
+  });
+  assert.equal(ed.busy, false);
+  void ed.run({ op: 'set', path: ['a'], json: '2' }, 'tree');
+  void ed.run({ op: 'remove', path: ['b', 0] }, 'tree');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(ed.busy, true, 'busy while an edit runs');
+  await ed.settled();
+  order.push('settled');
+  assert.deepEqual(order, ['views read again', 'views read again', 'settled']);
+  assert.equal(ed.busy, false);
+  assert.equal((await src.textAt(0, src.state().docSize!, 1 << 20)).text, JSON.stringify({ a: 2, b: [2, 3] }, null, 2), 'both edits in');
+  await src.destroy();
+});
+
+test('REVIEW-3 B3: duplicate names: insert, set, remove and the selection after them go by index path', async () => {
+  const run = async (text: string, op: EditOp) => {
+    const src = core(text);
+    await ended(src);
+    let after: { select: Seg[] | null; at: number[] | null } | null = null;
+    const ed = new HugeEditing({
+      src,
+      selPath: () => null,
+      changed: async (_fx, select, selectAt) => {
+        after = { select, at: selectAt ?? null };
+      },
+      refused: (m) => assert.fail(m),
+      failed: (e) => assert.fail(String(e)),
+    });
+    assert.equal(await ed.run(op, 'menu'), true, JSON.stringify(op));
+    const doc = (await src.textAt(0, src.state().docSize!, 1 << 20)).text;
+    // What the session selects after it: by the index path the edit gives.
+    const a = after as { select: Seg[] | null; at: number[] | null } | null;
+    const chain = a?.select && a.at ? await src.resolve(a.select, undefined, a.at) : null;
+    const sel = chain ? doc.slice(chain.at(-1)!.at, chain.at(-1)!.end) : null;
+    await src.destroy();
+    return { doc, sel };
+  };
+  // Insert inside the second "a" (an object), and after its "y".
+  assert.deepEqual(await run('{"a": {"x": 1}, "a": {"y": 2}}', { op: 'insert', parent: ['a'], parentAt: [1], index: 1, json: '3', name: 'n' }), { doc: '{"a": {"x": 1}, "a": {"y": 2, "n": 3}}', sel: '3' });
+  // Into the second "a" (an array) at its end.
+  assert.deepEqual(await run('{"a": [1], "a": [2, 3]}', { op: 'insert', parent: ['a'], parentAt: [1], index: 2, json: '9', name: null }), { doc: '{"a": [1], "a": [2, 3, 9]}', sel: '9' });
+  // The second a.v (reached by Find, the Shape panel, the table, the graph: their chain's index path).
+  assert.deepEqual(await run('{"a": {"v": 1}, "a": {"v": 2}}', { op: 'set', path: ['a', 'v'], i: 0, at: [1, 0], json: '99' }), { doc: '{"a": {"v": 1}, "a": {"v": 99}}', sel: '99' });
+  assert.deepEqual((await run('{"a": {"v": 1}, "a": {"v": 2}}', { op: 'remove', path: ['a', 'v'], i: 0, at: [1, 0] })).doc, '{"a": {"v": 1}, "a": {}}');
+  // After an edit on the second "a", the selection is the second "a" (not the first, by name).
+  assert.deepEqual(await run('{"a": 1, "a": 2}', { op: 'set', path: ['a'], i: 1, at: [1], json: '99' }), { doc: '{"a": 1, "a": 99}', sel: '99' });
+  // Several levels: the second a's second b.
+  assert.deepEqual(await run('{"a": {"b": 1}, "x": 0, "a": {"b": 2, "b": 3}}', { op: 'set', path: ['a', 'b'], at: [2, 1], json: '99' }), { doc: '{"a": {"b": 1}, "x": 0, "a": {"b": 2, "b": 99}}', sel: '99' });
+  // Duplicate in the second "a": the copy selected.
+  assert.deepEqual(await run('{"a": [1], "a": [2]}', { op: 'duplicate', path: ['a', 0], at: [1, 0] }), { doc: '{"a": [1], "a": [2,2]}', sel: '2' });
+});
