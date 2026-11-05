@@ -1,14 +1,19 @@
 /**
  * The worker's side of protocol.ts: one document (HugeDoc) per worker, indexed in steps between which
  * requests are answered (the views browse what's read while the rest is read), and finds that stream their
- * matches and can be stopped. huge.worker.ts runs it on the worker's own port; tests run it in process.
+ * matches and can be stopped. Edits (editor.ts) read the document again around them in the same steps; saves
+ * stream it to a file or a Blob; a session of edits is kept (session-store.ts) for the file to be reopened.
+ * huge.worker.ts runs it on the worker's own port; tests run it in process.
  */
 import type { ByteSource } from '../json/tape-wasm';
-import { HugeDoc, type Parsers } from './doc';
-import { Wait } from './wait';
+import { HugeDoc, type EditOp, type Parsers } from './doc';
+import { HugeEditor } from './editor';
+import { piecesOf } from './pieces';
+import { keep, opsOf, pieceOf, sessionKey, type Kept, type SessionStore } from './session-store';
+import { Wait, watched } from './wait';
 import type { Reply, Request } from './protocol';
 import type { Prefetch } from './prefetch';
-import type { FindBatch, HugePage } from './types';
+import type { FindBatch, HugeEdited, HugePage, HugeSummary } from './types';
 
 export interface ServePort {
   postMessage(message: unknown, transfer?: Transferable[]): void;
@@ -18,13 +23,21 @@ export interface ServePort {
 /** Indexing runs this long between looks at the requests (ms): a request waits at most this for a step to end (10 ms
  * costs indexing nothing measurable; 25 ms held every first query back by ~12 ms on average). */
 const SLICE = 10;
+/** An edit reads the document again for at most this long before it replies (ms); the rest goes on in steps. */
+const EDIT_MS = 50;
 /** Progress is posted at most this often (ms). */
 const PROGRESS = 100;
+/** A session is kept this long after the last edit (ms). */
+const KEEP_MS = 1000;
+/** A save writes this many bytes at a time (progress, cancel). */
+const WRITE = 64 << 20;
 
 /** Messages this worker may send as an error (others are replaced: they could say something of the document). */
-const KNOWN = new Set(['Out of memory', 'Nesting is too deep to format', 'No document', 'Read failed']);
+const KNOWN = new Set(['Out of memory', 'Nesting is too deep to format', 'No document', 'Read failed', 'Not ready', 'Not allowed', 'Invalid JSON', 'Too big', 'Out of range', 'Save failed', 'Cancelled']);
 /** Tries of a query that waits (blocks to read, the parser to load) before it fails. */
 const TRIES = 256;
+
+const enc = new TextEncoder();
 
 /** Resolves in a new task (a MessageChannel message: timers would be clamped). */
 const nextTask = () =>
@@ -39,12 +52,15 @@ const nextTask = () =>
 
 /**
  * `sourceOf`: random reads of a file (queries). `aheadOf`: the indexing pass's read-ahead source (prefetch.ts), or
- * none (the indexing pass reads through `sourceOf`).
+ * none (the indexing pass reads through `sourceOf`). `store`: where sessions of edits are kept (none: not kept).
  */
-export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource, aheadOf?: (file: Blob) => Pick<Prefetch, 'has' | 'need' | 'read' | 'size'>) {
+export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.Module; parsers: Parsers }>, sourceOf: (file: Blob) => ByteSource, aheadOf?: (file: Blob) => Pick<Prefetch, 'has' | 'need' | 'read' | 'size'>, store?: SessionStore) {
   let doc: HugeDoc | null = null;
+  let editor: HugeEditor | null = null;
+  let file: Blob | null = null;
   /** The document's source for queries (one that reads async blocks pins those a query uses until it ends). */
   let src: (ByteSource & { release?(): void }) | null = null;
+  let ahead: Pick<Prefetch, 'has' | 'need' | 'read' | 'size'> | undefined;
   // A stop that came before the document existed.
   let stopNow = false;
   // Requests that come before the document exists (its modules still loading) wait for it.
@@ -61,15 +77,98 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       resume = null;
     }
   };
+  // Reading in steps (opening, or again after an edit): one loop at a time; the watch stream hears of it.
+  let stepping = false;
+  let watchId = -1;
+  // A save under way (edits wait for it), and the ones asked to stop.
+  let saving = false;
+  const stopSave = new Set<number>();
+  // The kept session of this file, its key, and the timer that keeps the edits.
+  let key = '';
+  let kept: Kept | null = null;
+  let keepTimer: ReturnType<typeof setTimeout> | null = null;
+
   const reply = (r: Reply, transfer: Transferable[] = []) => port.postMessage(r, transfer);
   const fail = (id: number, e: unknown) => reply({ id, ok: false, error: e instanceof Error && KNOWN.has(e.message) ? e.message : 'Query failed' });
 
-  const open = async (id: number, file: Blob, options: import('./types').HugeOptions) => {
+  const summary = (): HugeSummary => {
+    const s = doc!.summary();
+    if (!editor && !kept) return s;
+    return { ...s, edited: doc!.src.edited, version: doc!.src.version, canUndo: !!editor?.canUndo, canRedo: !!editor?.canRedo, editBytes: doc!.src.editBytes + (editor?.historyBytes ?? 0), session: kept ? { steps: kept.steps.length, bytes: kept.bytes, time: kept.time } : null };
+  };
+
+  /** Steps until the document is all read: progress on `id` (open) or the watch stream, then the summary. */
+  const run = async (id: number) => {
+    stepping = true;
+    let shown = 0;
+    try {
+      while (!doc!.done && !doc!.stopped) {
+        const where = ahead ? doc!.indexAt : null;
+        if (ahead && where) {
+          // (Reads ahead; waits only if the parse caught up with the reads.)
+          const [at, len] = where;
+          const ready = ahead.need(at, len);
+          if (!ahead.has(at, len)) await ready;
+        }
+        if (held) await new Promise<void>((done) => (resume = done));
+        try {
+          if (doc!.step(performance.now() + SLICE)) break;
+        } catch (e) {
+          // (Blocks or the parser not here yet.)
+          if (!(e instanceof Wait)) throw e;
+          await e.until();
+          continue;
+        }
+        const now = performance.now();
+        if (now - shown >= PROGRESS && id >= 0) {
+          shown = now;
+          reply({ id, ok: true, value: doc!.progress(), done: false });
+        }
+        await nextTask();
+      }
+    } finally {
+      stepping = false;
+    }
+    if (id >= 0) reply({ id, ok: true, value: summary(), done: id !== watchId });
+  };
+
+  /** After an edit: reads on in steps (if it isn't all read yet), and keeps the session soon. */
+  const edited = (): HugeEdited => {
+    if (!doc!.done && !stepping) void run(watchId).catch(() => {});
+    if (store && key) {
+      if (keepTimer) clearTimeout(keepTimer);
+      keepTimer = setTimeout(() => void keepNow().catch(() => {}), KEEP_MS);
+    }
+    return { version: doc!.src.version, done: doc!.done, canUndo: editor!.canUndo, canRedo: editor!.canRedo, summary: doc!.done ? summary() : null };
+  };
+
+  const keepNow = async () => {
+    keepTimer = null;
+    if (!store || !key || !editor) return;
+    const k = doc!.src.edited ? keep(doc!.src.list, editor.history.steps, editor.history.applied) : null;
+    if (k) await store.put(key, k);
+    else await store.delete(key);
+  };
+
+  const dropKept = async () => {
+    if (keepTimer) clearTimeout(keepTimer);
+    keepTimer = null;
+    kept = null;
+    if (store && key) await store.delete(key);
+  };
+
+  const ed = (): HugeEditor => {
+    if (saving || !doc || !doc.editable) throw new Error('Not ready');
+    return (editor ??= new HugeEditor(doc));
+  };
+
+  const open = async (id: number, f: Blob, options: import('./types').HugeOptions) => {
     const { huge, parsers } = await load();
-    const ahead = aheadOf?.(file);
+    file = f;
+    ahead = aheadOf?.(f);
     // (The read-ahead starts now: the first pages can take the start of the file from it.)
     void ahead?.need(0, 1 << 20).catch(() => {});
-    src = sourceOf(file);
+    src = sourceOf(f);
     for (;;) {
       try {
         doc = new HugeDoc(src, huge, parsers, options, { index: ahead });
@@ -80,35 +179,17 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         await e.until();
       }
     }
+    // A session kept for this file (looked up while it's read).
+    if (store) {
+      key = sessionKey(options.name ?? (f as File).name ?? '', f.size, (f as File).lastModified ?? 0);
+      void store.get(key).then(
+        (k) => (kept = k),
+        () => {},
+      );
+    }
     opened();
     if (stopNow) doc.stop();
-    let shown = 0;
-    for (;;) {
-      if (ahead) {
-        // (Reads ahead; waits only if the parse caught up with the reads.)
-        const [at, len] = doc.indexAt;
-        const ready = ahead.need(at, len);
-        if (!ahead.has(at, len)) await ready;
-      }
-      if (held) await new Promise<void>((done) => (resume = done));
-      let finished: boolean;
-      try {
-        finished = doc.step(performance.now() + SLICE);
-      } catch (e) {
-        // (Placing an error needs blocks or the parser not here yet.)
-        if (!(e instanceof Wait)) throw e;
-        await e.until();
-        continue;
-      }
-      if (finished) break;
-      const now = performance.now();
-      if (now - shown >= PROGRESS) {
-        shown = now;
-        reply({ id, ok: true, value: doc.progress(), done: false });
-      }
-      await nextTask();
-    }
-    reply({ id, ok: true, value: doc.summary(), done: true });
+    await run(id);
   };
 
   const find = async (id: number, query: string, options: import('./types').FindOptions) => {
@@ -133,6 +214,93 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     finds.delete(id);
   };
 
+  /** The document's bytes [start, end) as Blob parts: the file's slices and edits' bytes (nothing copied). */
+  const parts = (start: number, end: number): (Blob | Uint8Array)[] => {
+    const d = doc!;
+    const out: (Blob | Uint8Array)[] = [];
+    for (const p of d.src.slice(start, end)) out.push(p.buf ? p.buf.subarray(p.off, p.off + p.len) : file!.slice(d.bom + p.off, d.bom + p.off + p.len));
+    return out;
+  };
+
+  const save = async (id: number, handle: FileSystemFileHandle | null, inPlace: boolean) => {
+    const d = doc!;
+    if (saving) throw new Error('Not ready');
+    const size = d.size;
+    // (The document now, with its byte order mark: edits wait until it's written.)
+    const all = [...(d.bom ? [file!.slice(0, d.bom)] : []), ...parts(0, d.src.size)];
+    if (!handle) {
+      reply({ id, ok: true, value: { written: size, size, done: true, blob: new Blob(all as BlobPart[]) }, done: true });
+      await dropKept();
+      return;
+    }
+    saving = true;
+    let w: FileSystemWritableFileStream | null = null;
+    try {
+      w = await handle.createWritable();
+      let written = 0;
+      let shown = 0;
+      for (const part of all) {
+        const n = part instanceof Blob ? part.size : part.length;
+        for (let o = 0; o < n; o += WRITE) {
+          if (stopSave.has(id)) throw new Error('Cancelled');
+          const piece = part.slice(o, Math.min(n, o + WRITE));
+          await watched(() => w!.write(piece as Blob));
+          written += (piece as Blob | Uint8Array) instanceof Blob ? (piece as Blob).size : (piece as Uint8Array).length;
+          const now = performance.now();
+          if (now - shown >= PROGRESS) {
+            shown = now;
+            reply({ id, ok: true, value: { written, size, done: false }, done: false });
+          }
+        }
+      }
+      await w.close();
+      w = null;
+      if (inPlace) {
+        // The file is the document now: read from it, nothing edited, no history (it read the old file).
+        const nf = await handle.getFile();
+        file = nf;
+        src = sourceOf(nf);
+        for (;;) {
+          try {
+            d.rebase(src);
+            break;
+          } catch (e) {
+            // (Its first bytes (a byte order mark?) read first.)
+            if (!(e instanceof Wait)) throw e;
+            await e.until();
+          }
+        }
+        editor?.clear();
+      }
+      await dropKept();
+      reply({ id, ok: true, value: { written, size, done: true }, done: true });
+    } catch (e) {
+      try {
+        await w?.abort();
+      } catch {
+        // (Already gone.)
+      }
+      throw e instanceof Error && KNOWN.has(e.message) ? e : new Error('Save failed');
+    } finally {
+      saving = false;
+      stopSave.delete(id);
+    }
+  };
+
+  const restoreSession = (): HugeEdited => {
+    const e = ed();
+    if (!kept || !doc!.done) throw new Error('Not ready');
+    const k = kept;
+    const ops = opsOf(k.pieces.map(pieceOf), doc!.src.base.size);
+    e.doc.edit(ops, performance.now() + EDIT_MS);
+    e.restoreHistory(
+      k.steps.map((s) => ({ ops: s.ops.map((o) => ({ a: o.a, b: o.b, put: o.put.map(pieceOf) })), removed: s.removed.map((r) => r.map(pieceOf)) })),
+      k.applied,
+    );
+    kept = null;
+    return edited();
+  };
+
   port.onmessage = (e) => {
     const m = e.data as Request;
     if (m.op === 'open') {
@@ -145,6 +313,7 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     }
     if (m.op === 'cancel') {
       finds.set(m.target, false);
+      stopSave.add(m.target);
       reply({ id: m.id, ok: true, value: null, done: true });
       return;
     }
@@ -152,6 +321,10 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
       if (doc) doc.stop();
       else stopNow = true;
       reply({ id: m.id, ok: true, value: null, done: true });
+      return;
+    }
+    if (m.op === 'watch') {
+      watchId = m.id;
       return;
     }
     if (doc) answer(m);
@@ -162,9 +335,10 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
     let waiting = false;
     try {
       if (!doc) throw new Error('No document');
+      const until = performance.now() + EDIT_MS;
       switch (m.op) {
         case 'summary':
-          return reply({ id: m.id, ok: true, value: doc.summary(), done: true });
+          return reply({ id: m.id, ok: true, value: summary(), done: true });
         case 'children': {
           const page: HugePage = doc.children(m.node, m.from, m.count);
           const t = page.tape;
@@ -184,6 +358,51 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
           return reply({ id: m.id, ok: true, value: doc.text(m.start, m.end, m.max), done: true });
         case 'find':
           find(m.id, m.query, m.options).catch((err) => fail(m.id, err));
+          return;
+        case 'slice':
+          return reply({ id: m.id, ok: true, value: new Blob(parts(Math.max(0, m.start), Math.min(doc.src.size, m.end)) as BlobPart[]), done: true });
+        // Edits: each is one undo step; reads (a node's place) come before any change, so one that waits is asked again whole.
+        case 'edit': {
+          const ops: EditOp[] = m.ops.map((o) => ({ a: o.a, b: o.b, put: piecesOf(enc.encode(o.text)) }));
+          ed().apply(ops, until, m.typing);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        }
+        case 'setValue':
+          ed().setValue(m.node, m.json, until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'rename':
+          ed().rename(m.parent, m.index, m.name, until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'remove':
+          ed().remove(m.parent, m.index, until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'insert':
+          ed().insert(m.parent, m.index, m.json, m.name, until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'duplicate':
+          ed().duplicate(m.parent, m.index, until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'replaceNode':
+          ed().replaceNode(m.node, m.text, until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'undo':
+          ed().undo(until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'redo':
+          ed().redo(until);
+          return reply({ id: m.id, ok: true, value: edited(), done: true });
+        case 'nodeText':
+          return reply({ id: m.id, ok: true, value: (editor ?? new HugeEditor(doc)).nodeText(m.node, m.max), done: true });
+        case 'save':
+          save(m.id, m.handle, m.inPlace).catch((err) => fail(m.id, err));
+          return;
+        case 'restoreSession':
+          return reply({ id: m.id, ok: true, value: restoreSession(), done: true });
+        case 'dropSession':
+          dropKept().then(
+            () => reply({ id: m.id, ok: true, value: null, done: true }),
+            (err) => fail(m.id, err),
+          );
           return;
       }
     } catch (err) {
