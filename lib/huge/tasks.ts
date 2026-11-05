@@ -303,8 +303,9 @@ export class HugeTasks {
     if (target === 'value') {
       const sel = this.s.selected;
       if (sel && sel.path.length) {
-        // (Found again by its path, in this version: the place the selection was found at may predate an edit.)
-        const loc = await this.core.doc.resolve(sel.path);
+        // (Found again by its path, in this version: the place the selection was found at may predate an edit. By its
+        // index path where known: which member, where names repeat: REVIEW-3 B3.)
+        const loc = await this.core.doc.resolve(sel.path, sel.at && sel.at.length === sel.path.length ? sel.at : undefined);
         if (!loc) return null;
         const n = loc.node;
         return { scope: { start: n.start, end: n.end, multi: false }, path: sel.path, node: n, t: n.kind === LIST ? ARR : n.kind, count: n.count ?? 0 };

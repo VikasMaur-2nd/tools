@@ -846,3 +846,45 @@ test('huge edit: lines with bytes that aren\'t UTF-8 indented in the Format view
     await t.cleanup?.();
   }
 });
+
+// REVIEW-3 B3: the second of two members named alike, reached by Find (not the tree's cursor): its edits and the
+// insert into it go there, not to the first of that name.
+test('huge edit: duplicate names: a value found with Find, deleted; a value inserted into the second "a"', async (t) => {
+  const { page } = t;
+  const dup = join(dir, 'dup-find.json');
+  writeFileSync(dup, '{\n  "a": {"v": 1},\n  "a": {"v": 22}\n}\n');
+  await t.open('/');
+  await page.evaluate(() => localStorage.setItem('tk:hugeMin', '0'));
+  await page.locator('.app:visible input[type=file]').setInputFiles(dup);
+  t.assert(await until(page, () => /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 15_000 }), 'huge mode opens');
+  await page.evaluate(() => window.__vis('.hg [role=tab][aria-controls=hg-tree]')?.click());
+  await until(page, () => !!document.querySelector('#hg-tree [role=treeitem], #hg-tree .tv-r'), null);
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('22');
+  t.assert(await until(page, () => /^v:\s*22/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null), 'Find selects the second a\'s v', await selRow(page));
+  await page.keyboard.press('Escape');
+  await page.locator('#hg-tree').focus();
+  // Insert after it (in the second "a"), then delete it.
+  await page.keyboard.press(`${MOD}+Enter`);
+  await until(page, () => !!document.querySelector('.hg-box'), null);
+  await page.locator('.hg-box input[aria-label="Name"]').fill('n');
+  await page.locator('.hg-box .hg-box-kind').selectOption('number');
+  await page.locator('.hg-box [aria-label="Value"]').fill('3');
+  await page.locator('.hg-box [aria-label="Value"]').press('Enter');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  await page.locator('.hg-file').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${MOD}+f`);
+  await page.locator('.hg .findbar input').fill('22');
+  await until(page, () => /^v:\s*22/.test(document.querySelector('#hg-tree #htv-sel')?.textContent ?? ''), null);
+  await page.keyboard.press('Escape');
+  await page.locator('#hg-tree').focus();
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 2 changes/.test(window.__vis('.hg-edited')?.textContent ?? ''), null);
+  const doc = await page.evaluate(async () => {
+    window.__vis('.hg [role=tab][aria-controls=hg-format]')?.click();
+    await new Promise((r) => setTimeout(r, 300));
+    return document.querySelector('#hg-format')?.textContent ?? '';
+  });
+  t.check(/"a": \{"v": 1\}.*"a": \{\s*"n": 3\s*\}/s.test(doc), 'the first "a" as it was; the second has n, not v', doc.slice(0, 200));
+});

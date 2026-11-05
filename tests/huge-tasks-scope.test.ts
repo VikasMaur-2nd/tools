@@ -53,3 +53,20 @@ test('REVIEW-3 B4: the records array of a small object, after invalid UTF-8: its
     await src.destroy();
   }
 });
+
+test('REVIEW-3 B3: a command on the selected value: the second of two members named alike, by its index path', async () => {
+  const text = '{"a": {"v": 1}, "a": {"v": 2, "w": [3]}}';
+  const bytes = enc.encode(text);
+  const blob = new Blob([bytes as BlobPart]);
+  const src = new CoreSource(blob, 'd.json', (p) => new HugeClient(blob, { name: 'd.json' }, p, inProcess(bytes)));
+  await ended(src);
+  const chain = (await src.resolve(['a'], undefined, [1]))!;
+  const selected = { node: chain.at(-1)!, path: ['a'], at: [1] };
+  const session = { src, indent: '  ', selected, meta: { name: 'd.json' }, ui: { get: () => ({ edit: null }) } } as unknown as HugeSession;
+  const tasks = new HugeTasks(session);
+  const summary = await (src as unknown as { doc: { summary(): Promise<unknown> } }).doc.summary();
+  const at = await (tasks as unknown as { scopeIn(s: unknown, t: string): Promise<{ scope: { start: number; end: number } }> }).scopeIn(summary, 'value');
+  assert.equal(text.slice(at.scope.start, at.scope.end), '{"v": 2, "w": [3]}', 'the second "a"');
+  tasks.destroy();
+  await src.destroy();
+});
