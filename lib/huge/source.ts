@@ -67,6 +67,8 @@ export interface HugeLine {
   at: number;
   /** It goes on past where the file is read so far (the indexing front, a stop, the error): more to come. */
   reading?: boolean;
+  /** Raw, with invalid UTF-8 on it: which of its U+FFFD units stand for invalid bytes, and how many each (utf8.ts). */
+  bad?: Float64Array;
 }
 
 export interface HugeError {
@@ -188,15 +190,18 @@ export interface HugeSource {
   onState(f: (s: IndexState) => void): () => void;
   /** Stops indexing (browsing what was indexed still works). Absent: indexing can't be stopped, only the file closed. */
   cancel?(): void;
-  /** Releases everything (the worker, caches). Resolves once unsaved edits are kept (the core's close). */
-  destroy(): Promise<void>;
+  /**
+   * Releases everything (the worker, caches). Resolves once unsaved edits are kept (the core's close), with whether
+   * they are (false: none, or not kept: too big, an earlier session on offer, a failed write).
+   */
+  destroy(): Promise<boolean>;
 
   /** The root: the document's top value, or for JSON Lines the list of records. Ready once the first window is read. */
   root(signal?: AbortSignal): Promise<HugeNode>;
   /** Items [from, from + n) of container `c` (fewer past its end, or past what is indexed so far). */
   children(c: HugeNode, from: number, n: number, signal?: AbortSignal): Promise<HugeNode[]>;
   /** The nodes from the root down to the one at `path` (null: no such node). */
-  resolve(path: Seg[], signal?: AbortSignal): Promise<HugeNode[] | null>;
+  resolve(path: Seg[], signal?: AbortSignal, at?: number[]): Promise<HugeNode[] | null>;
   /** The nodes from the root down to the innermost value holding offset `at`. */
   locate(at: number, signal?: AbortSignal): Promise<HugeNode[]>;
   /** Items [from, from + n) of array `c` as table rows (each with at most `cols` members). */

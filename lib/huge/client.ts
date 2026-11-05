@@ -114,14 +114,17 @@ export class HugeClient {
     return this.ask('locate', { pos });
   }
 
-  /** The value at `path` (`$.records[5000000].name`, `/records/5000000/name`, or segments), or null. */
-  resolve(path: string | Seg[]): Promise<HugeLocation | null> {
+  /**
+   * The value at `path` (`$.records[5000000].name`, `/records/5000000/name`, or segments), or null. `at`: per
+   * segment, the child's index in its container where known (-1: by name): with duplicate names, which member.
+   */
+  resolve(path: string | Seg[], at?: number[]): Promise<HugeLocation | null> {
     const segs = typeof path === 'string' ? parsePath(path) : path;
-    return segs ? this.ask('resolve', { path: segs }) : Promise.resolve(null);
+    return segs ? this.ask('resolve', at ? { path: segs, at } : { path: segs }) : Promise.resolve(null);
   }
 
   /** The text [start, end), at most `max` bytes of it (cut: true if there was more). */
-  text(start: Bytes, end: Bytes, max = 1 << 20): Promise<{ text: string; cut: boolean }> {
+  text(start: Bytes, end: Bytes, max = 1 << 20): Promise<{ text: string; cut: boolean; bad?: Float64Array }> {
     return this.ask('text', { start, end, max });
   }
 
@@ -224,9 +227,12 @@ export class HugeClient {
     return this.edits(this.ask('restoreSession', {}));
   }
 
-  /** Drops the kept session of this file (closing without keeping the edits). */
-  dropSession(): Promise<null> {
-    return this.ask('dropSession', {});
+  /**
+   * Drops the kept session (closing without keeping the edits: nothing is kept till a further edit). `keepEdits`:
+   * dropping an earlier session, offered while this document was edited, so that its edits are kept instead.
+   */
+  dropSession(keepEdits = false): Promise<null> {
+    return this.ask('dropSession', { keepEdits });
   }
 
   /**
@@ -252,12 +258,17 @@ export class HugeClient {
   /**
    * Closes the document: edits not kept yet as a session (it's kept a second after the last edit) are kept first,
    * so reopening the file offers them; then the worker ends. Other requests fail ('Closed') at once. Resolves once
-   * the worker has ended (at most CLOSE_MS after: an unfinished keep then leaves the session as last kept).
+   * the worker has ended (at most CLOSE_MS after: an unfinished keep then leaves the session as last kept), with
+   * whether this document's edits are kept (false: none, too big to keep, an earlier session on offer, a failed
+   * write, or not in time).
    */
-  close(): Promise<void> {
-    if (this.closed) return Promise.resolve();
+  close(): Promise<boolean> {
+    if (this.closed) return Promise.resolve(false);
     const id = this.seq + 1;
-    const kept = this.ask('close', {}).catch(() => null);
+    const kept = this.ask('close', {}).then(
+      (r) => r.kept,
+      () => false,
+    );
     this.closed = true;
     for (const [k, p] of this.pending) {
       if (k === id) continue;
@@ -265,11 +276,12 @@ export class HugeClient {
       this.pending.delete(k);
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<null>((done) => (timer = setTimeout(() => done(null), CLOSE_MS)));
-    return Promise.race([kept, late]).then(() => {
+    const late = new Promise<boolean>((done) => (timer = setTimeout(() => done(false), CLOSE_MS)));
+    return Promise.race([kept, late]).then((k) => {
       clearTimeout(timer);
       this.pending.clear();
       this.port.terminate?.();
+      return k;
     });
   }
 }

@@ -1,8 +1,9 @@
 /**
  * Bytes of a huge document: reading them as text the way the page reads a file (read.ts: UTF-8, invalid bytes
- * as U+FFFD), and counting what positions need (UTF-16 units, line breaks) the way huge.wasm counts them.
+ * as U+FFFD), and counting what positions need (UTF-16 units, line breaks) the way that text has them (utf8.ts).
  */
 import type { ByteSource } from '../json/tape-wasm';
+import { seqAt } from './utf8';
 import { Wait, watched } from './wait';
 
 const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
@@ -64,18 +65,21 @@ export class CachedSource implements ByteSource {
 }
 
 /**
- * Counts bytes `b[from, to)` as huge.wasm does: UTF-16 units (a continuation byte is none, a 4-byte character's
- * first byte two, a \n after a \r none), line breaks (\r\n, \r and \n each one), and the UTF-16 units since the
- * last break (or -1 if none). `cr`: the byte before `from` is a \r.
+ * Counts bytes `b[from, to)` as the page's text of them has them (TextDecoder, utf8.ts): UTF-16 units (a 4-byte
+ * character two, any other one, an invalid sequence one U+FFFD, a \n after a \r none), line breaks (\r\n, \r
+ * and \n each one), and the UTF-16 units since the last break (or -1 if none). `cr`: the byte before `from` is a
+ * \r. (huge.wasm's counts at checkpoints take an invalid byte as its kind says: columns after one on a line from
+ * before a checkpoint may differ.)
  */
 export function count(b: Uint8Array, from: number, to: number, cr = false): { units: number; breaks: number; sinceBreak: number } {
   let units = 0;
   let breaks = 0;
   let since = -1;
   let prevCr = cr;
-  for (let i = from; i < to; i++) {
+  for (let i = from; i < to; ) {
     const c = b[i];
     if (c < 0x80) {
+      i++;
       if (c === 10) {
         if (prevCr) {
           prevCr = false;
@@ -98,10 +102,11 @@ export function count(b: Uint8Array, from: number, to: number, cr = false): { un
       continue;
     }
     prevCr = false;
-    if (c < 0xc0) continue;
-    const u = c >= 0xf0 ? 2 : 1;
+    const l = seqAt(b, i, to);
+    const u = l === 4 ? 2 : 1;
     units += u;
     if (since >= 0) since += u;
+    i += l > 0 ? l : -l;
   }
   return { units, breaks, sinceBreak: since };
 }
@@ -111,18 +116,24 @@ export function byteAfterUnits(b: Uint8Array, from: number, to: number, units: n
   let u = 0;
   let prevCr = cr;
   let i = from;
-  for (; i < to && u < units; i++) {
+  while (i < to && u < units) {
     const c = b[i];
     if (c === 10 && prevCr) {
       prevCr = false;
+      i++;
       continue;
     }
     prevCr = c === 13;
-    if (c < 0x80) u++;
-    else if (c >= 0xc0) u += c >= 0xf0 ? 2 : 1;
+    if (c < 0x80) {
+      u++;
+      i++;
+      continue;
+    }
+    // (Whole characters, or an invalid sequence's bytes together: one U+FFFD.)
+    const l = seqAt(b, i, to);
+    u += l === 4 ? 2 : 1;
+    i += l > 0 ? l : -l;
   }
-  // (Past a character's first byte: on to its last.)
-  while (i < to && b[i] >= 0x80 && b[i] < 0xc0) i++;
   // (A \n that ends a \r\n counts with its \r.)
   if (i < to && i > from && b[i] === 10 && b[i - 1] === 13) i++;
   return i;
