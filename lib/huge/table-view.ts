@@ -10,7 +10,7 @@ import type { TallScroll } from '../engine/tall';
 import { kit } from './kit';
 import { rt } from '../i18n/ui';
 import { SparseLines } from './lines-model';
-import type { HugeNode, HugeRow, HugeSource, Seg } from './source';
+import { CELL, rowBytes, type HugeNode, type HugeRow, type HugeSource, type Seg } from './source';
 
 const TRH = 30;
 const OVERSCAN = 12;
@@ -104,7 +104,7 @@ export class HugeTableView {
     this.el.tabIndex = 0;
     this.el.setAttribute('aria-label', rt('Table'));
     this.el.setAttribute('aria-rowcount', String(c.count + 1));
-    const rows = (this.rows = new SparseLines<HugeRow>((from, n, signal) => this.src.rows(c, from, n, MAX_COLS, signal)));
+    const rows = (this.rows = new SparseLines<HugeRow>((from, n, signal) => this.src.rows(c, from, n, MAX_COLS, signal), rowBytes));
     rows.count = c.count;
     rows.loaded = () => {
       if (!this.cols.length) this.buildCols();
@@ -229,7 +229,8 @@ export class HugeTableView {
       else {
         const cls2 = c.t === STR ? 'tv-s' : c.t === NUM ? 'tv-n' : c.t === BOOL ? 'tv-l' : 'tv-z';
         let t = cellText(c);
-        if (t.length > 300) t = t.slice(0, 300) + '…';
+        if (t.length > CELL) t = t.slice(0, CELL) + '…';
+        else if (c.clipped) t += '…';
         html += `<span class="${cls2}">${escapeHtml(t)}</span></div>`;
       }
     }

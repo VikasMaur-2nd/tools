@@ -8,7 +8,7 @@
  * Nodes are read from the source a page of FETCH at a time and kept in a bounded cache (NodeCache).
  */
 import { ARR } from '../json/parser';
-import type { HugeNode, HugeSource } from './source';
+import { nodeBytes, type HugeNode, type HugeSource } from './source';
 
 /** Items an open container lists per page ("Show next 1,000"). */
 export const PAGE = 1000;
@@ -16,8 +16,10 @@ export const PAGE = 1000;
 export const MAX_WINDOW = 50_000;
 /** Items read from the source per request. */
 export const FETCH = 200;
-/** Pages of FETCH nodes kept (the least recently used go first). */
+/** Pages of FETCH nodes kept (the least recently used go first)... */
 export const CACHE_PAGES = 400;
+/** ...and their bytes at most (nodeBytes: texts and names): a page of long strings weighs ~800 KB, of records ~40 KB. */
+export const CACHE_BYTES = 16 << 20;
 
 export class Open {
   /** The items listed: [from, from + shown), cut to the count. */
@@ -307,15 +309,19 @@ function insertSorted(xs: number[], v: number) {
 }
 
 /**
- * Items of open containers read from the source FETCH at a time, kept for the CACHE_PAGES pages used last.
- * `get` answers from what is here and asks for what is missing; `loaded` is called as pages arrive.
+ * Items of open containers read from the source FETCH at a time, kept for the pages used last (CACHE_PAGES,
+ * CACHE_BYTES; never the ones in view). `get` answers from what is here and asks for what is missing; `loaded` is
+ * called as pages arrive.
  */
 export class NodeCache {
   /**
    * Pages by container and number: the items read so far (a source may answer with fewer than asked: the
-   * rest is asked for next), and whether the last read added none (not asked again until a refresh).
+   * rest is asked for next), whether the last read added none (not asked again until a refresh), their bytes.
    */
-  private pages = new Map<string, { list: HugeNode[]; stuck: boolean }>();
+  private pages = new Map<string, { list: HugeNode[]; stuck: boolean; bytes: number }>();
+  private bytes = 0;
+  /** The pages of the rows drawn last (keepOnly): kept whatever they weigh. */
+  private inView = new Set<string>();
   private asked = new Map<string, AbortController>();
   /** Called when asked-for pages arrive (redraw). */
   loaded: () => void = () => undefined;
@@ -361,8 +367,10 @@ export class NodeCache {
       (got) => {
         if (gen !== this.gen || this.asked.get(key) !== c) return;
         this.asked.delete(key);
-        this.pages.set(key, { list: got.length ? have.concat(got) : have, stuck: !got.length });
-        while (this.pages.size > CACHE_PAGES) this.pages.delete(this.pages.keys().next().value as string);
+        const list = got.length ? have.concat(got) : have;
+        let bytes = 0;
+        for (const n of list) bytes += nodeBytes(n);
+        this.put(key, { list, stuck: !got.length, bytes });
         if (got.length) this.loaded();
       },
       (e: unknown) => {
@@ -372,13 +380,31 @@ export class NodeCache {
     );
   }
 
+  /** Keeps a page read, letting go of the ones used longest ago (not `key`, nor those in view) past the limits. */
+  private put(key: string, p: { list: HugeNode[]; stuck: boolean; bytes: number }) {
+    this.drop(key);
+    this.pages.set(key, p);
+    this.bytes += p.bytes;
+    for (const k of this.pages.keys()) {
+      if (this.pages.size <= CACHE_PAGES && this.bytes <= CACHE_BYTES) break;
+      if (k !== key && !this.inView.has(k)) this.drop(k);
+    }
+  }
+
+  private drop(key: string) {
+    const p = this.pages.get(key);
+    if (!p) return;
+    this.pages.delete(key);
+    this.bytes -= p.bytes;
+  }
+
   /** Drops the pages of containers still being indexed (their last pages grow), or all. */
   refresh(all = false) {
     if (all) {
       this.clear();
       return;
     }
-    for (const [key, p] of this.pages) if (p.list.length < FETCH) this.pages.delete(key);
+    for (const [key, p] of this.pages) if (p.list.length < FETCH) this.drop(key);
   }
 
   /** Stops every read and forgets every page. */
@@ -387,10 +413,12 @@ export class NodeCache {
     for (const c of this.asked.values()) c.abort();
     this.asked.clear();
     this.pages.clear();
+    this.bytes = 0;
   }
 
-  /** Stops the reads of pages not in `keep` (scrolled away). */
+  /** The view draws the rows of the pages `keep`: they stay; reads of others (scrolled away) stop. */
   keepOnly(keep: Set<string>) {
+    this.inView = keep;
     for (const [key, c] of this.asked) {
       if (keep.has(key)) continue;
       c.abort();
@@ -405,5 +433,10 @@ export class NodeCache {
 
   get size() {
     return this.pages.size;
+  }
+
+  /** nodeBytes of the pages kept. */
+  get weight() {
+    return this.bytes;
   }
 }

@@ -11,7 +11,7 @@ import { ARR, BOOL, NUM, OBJ, STR, kids, parse, type JNode } from '../json/parse
 import { clip, preview, quote } from '../json/format';
 import { nodeAt } from '../json/path';
 import { jsonLines } from '../engine/rules';
-import { PREVIEW, type HugeError, type HugeStatus, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
+import { CELL, PREVIEW, type HugeError, type HugeStatus, type HugeLine, type HugeNode, type HugeRow, type HugeSource, type IndexState, type LineMode, type Seg } from './source';
 
 export interface SmallOptions {
   /** Index speed in bytes per second (Infinity: indexed at once, still reported asynchronously). */
@@ -350,7 +350,14 @@ export class SmallSource implements HugeSource {
           const members = kids(item);
           for (let m = 0; m < members.length && cells.size < cols; m++) {
             const key = members[m].key as string;
-            if (!cells.has(key)) cells.set(key, this.node(members[m], m, c.depth + 2));
+            if (cells.has(key)) continue;
+            // (A cell's string as CoreSource cuts it: what the table draws.)
+            const cell = this.node(members[m], m, c.depth + 2);
+            if (cell.t === STR && cell.text.length > CELL) {
+              cell.text = cell.text.slice(0, CELL);
+              cell.clipped = true;
+            }
+            cells.set(key, cell);
           }
         }
         out.push({ node: this.node(item, k, c.depth + 1), cells });
