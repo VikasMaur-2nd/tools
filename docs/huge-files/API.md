@@ -272,7 +272,8 @@ place): the file bar's "N changes".
   - **`dropSession(true)`** sets it aside so that this document's edits are kept instead.
 - **Set aside:** `summary.setAside` is the session set aside (`{ steps, bytes, time, restorable }`), by
   `dropSession(true)`, or found only once the document was edited (the look ended late, or another tab let the
-  file go). It stays until `close()`, which deletes it.
+  file go). It stays until `close()`, which deletes it if this document's edits replace it; if the document has
+  none then (all undone), it's the file's session again.
   - **`reofferSession()`** brings it back (an Undo for the first edit's toast): the edits since are undone and
     their history forgotten (the document is the file as opened), what was kept of them goes, and
     `summary.session` offers it again. It answers like an edit (`HugeEdited`), or null if none is set aside;

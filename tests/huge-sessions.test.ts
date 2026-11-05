@@ -391,6 +391,19 @@ test('sessions C5 (REVIEW-3): a first edit sets the offer aside, not gone: reoff
   await d2.restoreSession();
   assert.equal(await textOf(d2), keptDoc);
   assert.equal(await d2.close(), true);
+  // Its key undone in the document (not the toast) and closed: nothing of this document's to keep, so it stays.
+  const u = connect(file(), store);
+  await sessionOf(u);
+  await u.replace([{ a: 1, b: 1, text: 'x' }]);
+  await u.dropSession(true);
+  await sleep(1200);
+  await u.undo();
+  assert.equal(await u.close(), false);
+  const u2 = connect(file(), store);
+  assert.equal((await sessionOf(u2))?.steps, 1);
+  await u2.restoreSession();
+  assert.equal(await textOf(u2), keptDoc);
+  await u2.close();
   // Not brought back: gone at close, the new edits kept.
   const d3 = connect(file(), store);
   await sessionOf(d3);

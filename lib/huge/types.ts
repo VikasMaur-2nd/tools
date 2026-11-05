@@ -173,7 +173,7 @@ export interface HugeSummary {
   /**
    * A session set aside (dropSession(true) on a first edit while it was offered, or found only once this document
    * was edited: the look ended late, or another tab let the file go): reofferSession() brings it back; close
-   * deletes it. null: none.
+   * deletes it (but with every edit undone then: it's the file's session again). null: none.
    */
   setAside?: HugeSession | null;
 }

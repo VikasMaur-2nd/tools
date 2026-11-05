@@ -576,8 +576,12 @@ export function serve(port: ServePort, load: () => Promise<{ huge: WebAssembly.M
         })
         .then(async () => {
           const ok = !!doc && doc.src.edited && keptVersion === doc.src.version && !!lock;
-          // (A session set aside and not brought back: gone now. The file's lock: free for another tab.)
-          if (aside && store && lock) await store.delete(key, 'aside').catch(() => {});
+          // (A session set aside and not brought back: gone now, if this document's edits replace it; with none
+          // (all undone), it's the file's session again. The file's lock: free for another tab.)
+          if (aside && store && lock) {
+            const back = !!doc && !doc.src.edited;
+            await (back ? store.delete(key, 'current').then(() => store.aside(key, true)) : store.delete(key, 'aside')).catch(() => {});
+          }
           waitLock?.abort();
           lock?.release();
           lock = null;
