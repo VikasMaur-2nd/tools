@@ -11,22 +11,42 @@ import { useT } from '@/lib/i18n/react';
 import { Kbd, keyLabel } from './Kbd';
 import { Icon } from './icons';
 
-/** A native <dialog> opened/closed from store state (focus trap + Esc for free). */
+/** A text field's selection, to put back. */
+type Caret = { el: HTMLTextAreaElement | HTMLInputElement; a: number; b: number; dir: 'forward' | 'backward' | 'none'; len: number };
+
+/**
+ * A native <dialog> opened/closed from store state (focus trap + Esc for free).
+ *
+ * Closed, it gives the focus back to the field it was in; Chromium doesn't give back that field's selection: its
+ * caret at 0, keys typed then lost (the editor's textarea), or put at the start of the big-document editor's
+ * passage. So the field's selection as it was when the dialog opened is put back (REVIEW-3 D2).
+ */
 export function Modal({ open, onClose, className, label, children }: { open: boolean; onClose: () => void; className: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const caret = useRef<Caret | null>(null);
   // (Shown before paint: the keys held for it while it loaded go to its field, see heldKeys.)
   useLayoutEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
-    else if (!open && d.open) d.close();
+    if (open && !d.open) {
+      const el = document.activeElement;
+      caret.current = (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) && el.selectionStart !== null ? { el, a: el.selectionStart, b: el.selectionEnd ?? el.selectionStart, dir: el.selectionDirection ?? 'none', len: el.value.length } : null;
+      d.showModal();
+    } else if (!open && d.open) d.close();
   }, [open]);
+  const closed = () => {
+    // (The focus is back by now; what a command does comes after, in the next frame.)
+    const c = caret.current;
+    caret.current = null;
+    if (c && document.activeElement === c.el && c.el.value.length === c.len && (c.el.selectionStart !== c.a || c.el.selectionEnd !== c.b)) c.el.setSelectionRange(c.a, c.b, c.dir);
+    onClose();
+  };
   return (
     <dialog
       ref={ref}
       className={className}
       aria-label={label}
-      onClose={onClose}
+      onClose={closed}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) e.currentTarget.close();
       }}

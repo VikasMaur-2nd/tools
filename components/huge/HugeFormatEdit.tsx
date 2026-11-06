@@ -148,29 +148,6 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       if (!moving && near()) void move();
     };
     // A paste is bounded: past it, said why (the window's editor would hold it, and the core's history keep it).
-    // The caret where it was when the focus comes back (the palette, a dialog, another window): Chromium may put the
-    // textarea's selection at its start then (REVIEW-2 #3's check), and the next key would land there. Not after a
-    // click in the editor (the click places it).
-    const ta = el.querySelector('textarea')!;
-    let kept: { a: number; b: number; line: number } | null = null;
-    let pressed = false;
-    const onBlur = () => {
-      if (!ed) return;
-      const [a, b] = ed.selection;
-      kept = { a, b, line: tw.line };
-    };
-    const onPress = () => {
-      pressed = true;
-    };
-    const onFocus = () => {
-      const k = kept;
-      kept = null;
-      const click = pressed;
-      pressed = false;
-      if (!ed || !k || click || k.line !== tw.line || Math.max(k.a, k.b) > ed.text.length) return;
-      const [a, b] = ed.selection;
-      if (a !== k.a || b !== k.b) ed.select(k.a, k.b, false);
-    };
     const onPaste = (e: ClipboardEvent) => {
       const n = e.clipboardData?.getData('text/plain').length ?? 0;
       if (n <= PASTE_MAX) return;
@@ -214,9 +191,6 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       made.focus();
       el.addEventListener('scroll', onScroll, { passive: true });
       el.addEventListener('paste', onPaste, true);
-      el.addEventListener('pointerdown', onPress, true);
-      ta.addEventListener('blur', onBlur);
-      ta.addEventListener('focus', onFocus);
       setState('ready');
       mark();
       info();
@@ -231,9 +205,6 @@ function FormatEdit({ s, at }: { s: HugeSession; at: number }) {
       stopState();
       el.removeEventListener('scroll', onScroll);
       el.removeEventListener('paste', onPaste, true);
-      el.removeEventListener('pointerdown', onPress, true);
-      ta.removeEventListener('blur', onBlur);
-      ta.removeEventListener('focus', onFocus);
       tw.destroy();
       ed?.destroy();
       ed = null;
