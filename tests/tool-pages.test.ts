@@ -42,7 +42,7 @@ test('conversion pages select a converter target and import pages select an impo
   }
   for (const slug of ['yaml-to-json', 'csv-to-json', 'xml-to-json', 'toml-to-json']) {
     const page = TOOL_PAGES.find((entry) => entry.slug === slug);
-    assert.ok(page?.preset.initialImport, slug);
+    assert.equal(page?.preset.input, slug.slice(0, -'-to-json'.length), slug);
     assert.equal(page?.preset.settings?.view, 'format', slug);
   }
 });
@@ -82,7 +82,7 @@ test('TOML pages demonstrate tables and disclose lossy values', async () => {
   assert.ok(output.includes('[profile]'));
   assert.equal(output.match(/\[\[items\]\]/g)?.length, 2);
   assert.ok(output.includes('# note = null (omitted: TOML has no null)'));
-  assert.equal(importer.preset.initialImport, 'toml');
+  assert.equal(importer.preset.input, 'toml');
   const imported = importToJson(importer.sample, 'toml', '  ');
   assert.ok('json' in imported);
   assert.deepEqual(JSON.parse(imported.json), {

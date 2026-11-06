@@ -420,7 +420,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "d6e32c71205e",
+    "hash": "77780ec2e2d0",
     "title": "YAML in JSON konvertieren, direkt im Browser",
     "description": "Konvertiere YAML online in formatiertes JSON. Tool Kumar parst YAML mit reinen Daten lokal im Browser, meldet Fehler und lädt dein Dokument nicht hoch.",
     "heading": "YAML in JSON konvertieren",
@@ -434,9 +434,9 @@
     "modeLabel": "YAML-Import als JSON",
     "exampleLabel": "Das folgende formatierte JSON entsteht beim Import dieses YAML-Beispiels.",
     "steps": [
-      "Füge YAML ein oder öffne eine .yaml- oder .yml-Datei.",
-      "Wähle „YAML → JSON“, wenn der Import YAML erkennt.",
-      "Prüfe das formatierte JSON und kopiere es oder lade es herunter."
+      "Füge YAML ein oder öffne eine .yaml- oder .yml-Datei. Der Editor behält dein YAML so, wie du es geschrieben hast.",
+      "Das JSON erscheint schon beim Tippen rechts. Ein YAML-Fehler wird im Editor unterstrichen und mit Zeile und Spalte angezeigt.",
+      "Kopiere das JSON oder lade es herunter. „Als Eingabe verwenden“ ersetzt das YAML durch das JSON, und „Rückgängig“ holt das YAML zurück."
     ],
     "options": [
       "Einfache Mappings und Sequenzen werden zu JSON-Objekten und Arrays.",
@@ -454,7 +454,7 @@
       },
       {
         "question": "Kann ich eine YAML-Datei öffnen?",
-        "answer": "Ja. Wähle „Datei öffnen“. Tool Kumar erkennt vor dem Import die Dateiendungen .yaml und .yml."
+        "answer": "Ja. Öffne eine .yaml- oder .yml-Datei. Sie bleibt im Editor YAML, und ihr JSON erscheint rechts. „Herunterladen“ liefert das JSON als .json-Datei."
       }
     ]
   },
@@ -498,7 +498,7 @@
     ]
   },
   "csv-to-json": {
-    "hash": "58d77f369e7a",
+    "hash": "7741f9a152c1",
     "title": "CSV in JSON konvertieren mit Typableitung",
     "description": "Konvertiere CSV online in JSON. Tool Kumar erkennt Spalten, Zahlen und boolesche Werte und verarbeitet das Ergebnis lokal im Browser, ohne Upload.",
     "heading": "CSV in JSON konvertieren",
@@ -512,14 +512,15 @@
     "modeLabel": "CSV-Import als JSON",
     "exampleLabel": "Das folgende JSON entsteht beim Import des CSV-Beispiels.",
     "steps": [
-      "Füge CSV mit einer Kopfzeile ein.",
-      "Wähle „CSV → JSON“, sobald das Eingabeformat erkannt wurde.",
-      "Prüfe das Array und kopiere das JSON oder lade es herunter."
+      "Füge CSV ein oder öffne eine .csv- oder .tsv-Datei. Der Editor behält dein CSV unverändert.",
+      "Das JSON-Array erscheint schon beim Tippen rechts. In den „CSV-Optionen“ legst du Trennzeichen, Kopfzeile und Zahlenerkennung fest.",
+      "Kopiere das JSON oder lade es herunter, oder wechsle zu „Tabelle“, um die Zeilen zu prüfen."
     ],
     "options": [
-      "Komma, Semikolon, Tabulator und senkrechter Strich werden als Trennzeichen erkannt.",
+      "Komma, Semikolon, Tabulator und senkrechter Strich werden als Trennzeichen erkannt, oder du wählst eines selbst aus.",
       "Felder in Anführungszeichen dürfen Kommas und Zeilenumbrüche enthalten.",
-      "Leere Felder ohne Anführungszeichen werden zu null. Leere Felder in Anführungszeichen bleiben leere Strings."
+      "Leere Felder ohne Anführungszeichen werden zu null. Leere Felder in Anführungszeichen bleiben leere Strings.",
+      "Ohne Kopfzeile wird jede Zeile zu einem Array. Ist die Zahlenerkennung ausgeschaltet, bleibt jeder Wert ein String."
     ],
     "faqs": [
       {
@@ -528,7 +529,7 @@
       },
       {
         "question": "Wie werden Zahlen erkannt?",
-        "answer": "Zellen ohne Anführungszeichen, die der JSON-Zahlensyntax entsprechen, werden zu Zahlen. Setze einen Wert in Anführungszeichen, wenn er ein String bleiben muss."
+        "answer": "Zellen ohne Anführungszeichen, die der JSON-Zahlensyntax entsprechen, werden zu Zahlen. Setze einen Wert in Anführungszeichen oder schalte die Zahlenerkennung in den „CSV-Optionen“ aus, wenn er ein String bleiben muss."
       },
       {
         "question": "Kann ich eine TSV-Datei öffnen?",
@@ -576,7 +577,7 @@
     ]
   },
   "xml-to-json": {
-    "hash": "1ca1d5a99a27",
+    "hash": "ca150d46b41f",
     "title": "XML in JSON konvertieren für einfache Dokumente",
     "description": "Konvertiere XML online in formatiertes JSON. Tool Kumar parst Elemente und Attribute lokal im Browser und zeigt das Ergebnis ohne Upload der Quelldatei.",
     "heading": "XML in JSON konvertieren",
@@ -590,9 +591,9 @@
     "modeLabel": "XML-Import als JSON",
     "exampleLabel": "Das folgende JSON entsteht beim Import der beiden wiederholten user-Elemente.",
     "steps": [
-      "Füge XML ein oder öffne eine .xml-Datei.",
-      "Wähle „XML → JSON“, sobald XML als Eingabeformat erkannt wurde.",
-      "Prüfe das Objekt und kopiere das formatierte JSON."
+      "Füge XML ein oder öffne eine .xml-Datei. Der Editor behält dein XML unverändert.",
+      "Das JSON erscheint schon beim Tippen rechts. Wiederholte Elemente werden darin zu Arrays.",
+      "Kopiere das formatierte JSON oder lade es herunter."
     ],
     "options": [
       "Wiederholte Namen von Kindelementen werden zu Arrays.",
@@ -610,7 +611,7 @@
       },
       {
         "question": "Kann ich eine XML-Datei öffnen?",
-        "answer": "Ja. Tool Kumar erkennt .xml-Dateien in der Dateiauswahl und bietet die Konvertierung von XML in JSON an."
+        "answer": "Ja. Öffne eine .xml-Datei. Sie bleibt im Editor XML, und ihr JSON erscheint rechts."
       }
     ]
   },
@@ -1123,7 +1124,7 @@
     ]
   },
   "toml-to-json": {
-    "hash": "da150149c95e",
+    "hash": "0ad13fe62663",
     "title": "TOML in JSON konvertieren für Konfigurationsdateien",
     "description": "Konvertiere TOML-Tabellen, Tabellenarrays und Skalare lokal im Browser in formatiertes JSON. Öffne eine TOML-Datei und lade das Ergebnis herunter.",
     "heading": "TOML in JSON konvertieren",
@@ -1137,8 +1138,8 @@
     "modeLabel": "TOML-Import als JSON",
     "exampleLabel": "Die Tabelle server wird zu einem Objekt. Die wiederholten Tabellen users werden zu einem Array aus Objekten.",
     "steps": [
-      "Füge TOML ein oder öffne eine .toml-Datei.",
-      "Eine geöffnete .toml-Datei wird sofort umgewandelt. Wähle bei eingefügtem TOML in der Hinweisleiste „TOML → JSON“ und prüfe dann das Ergebnis.",
+      "Füge TOML ein oder öffne eine .toml-Datei. Der Editor behält dein TOML unverändert.",
+      "Das JSON erscheint schon beim Tippen rechts. Bei einem TOML-Fehler siehst du Zeile und Spalte.",
       "Kopiere das JSON für die empfangende Anwendung oder lade es herunter."
     ],
     "options": [

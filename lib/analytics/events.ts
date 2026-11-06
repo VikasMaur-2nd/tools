@@ -20,6 +20,9 @@ const VALIDITIES = ['valid', 'fixable', 'invalid', 'unknown'] as const;
 type Validity = (typeof VALIDITIES)[number];
 const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare'] as const;
 export type ViewId = (typeof VIEW_IDS)[number];
+/** What the input is read as (lib/engine/source.ts). */
+const INPUT_FORMATS = ['json', 'yaml', 'csv', 'xml', 'toml'] as const;
+type InputFormat = (typeof INPUT_FORMATS)[number];
 /** `context_menu`: an item of the right-click menu (components/ContextMenu.tsx); `agent`: an AI agent's WebMCP tool (lib/webmcp). */
 const VIAS = ['pointer', 'keyboard', 'palette', 'context_menu', 'agent', 'other'] as const;
 export type Via = (typeof VIAS)[number];
@@ -38,7 +41,7 @@ const FEATURES = [
   'graph_fit', 'graph_zoom_in', 'graph_zoom_out', 'graph_export_png', 'graph_export_jpeg', 'graph_export_svg', 'graph_copy_image', 'graph_jump',
   'share_link', 'share_compare', 'repair', 'unescape', 'escape', 'decode_jwt', 'expand_nested', 'use_output',
   'format_input', 'minify_input', 'sort_input', 'clear',
-  'import_yaml', 'import_xml', 'import_csv', 'import_toml',
+  'import_yaml', 'import_xml', 'import_csv', 'import_toml', 'input_format', 'csv_delimiter', 'csv_header', 'csv_types',
   'find', 'expand_all', 'collapse_all', 'expand_level', 'fold_input',
   'compare_swap', 'compare_format', 'compare_close',
   'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
@@ -64,6 +67,8 @@ export interface Events {
     parse_ms?: number;
     jsonl?: boolean;
     jwt?: boolean;
+    /** What the input is read as (JSON, or another format whose JSON the views show). */
+    input?: InputFormat;
   };
   /** `target`: the Convert language active when the Convert view opens. */
   view_opened: { view: ViewId; via: Via; target?: string };
@@ -176,7 +181,7 @@ export function errorKind(msg: string | undefined): string | undefined {
 const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'];
 const COMMAND_IDS = [
   'undo', 'redo', 'use-output', 'format', 'minify', 'sort', 'out-pretty', 'out-minify', 'out-string', 'out-sort', 'copy-output', 'download-output',
-  'repair', 'escape', 'unescape', 'error', 'jwt', 'from-yaml', 'from-xml', 'from-csv', 'from-toml', 'copy', 'download', 'open', 'paste', 'url',
+  'repair', 'escape', 'unescape', 'error', 'jwt', 'from-yaml', 'from-xml', 'from-csv', 'from-toml', 'from-json', 'copy', 'download', 'open', 'paste', 'url',
   'share', 'share-markdown', 'share-html', 'sample', 'clear', 'format-view', 'tree', 'table', 'graph', 'graph-fit', 'graph-start', 'graph-end',
   'graph-export', 'graph-copy', 'graph-png', 'graph-svg', 'convert', 'compare', 'excel', 'copy-convert', 'download-convert', 'search', 'expand',
   'collapse', 'level1', 'level2', 'level3', 'fold-input', 'unfold-input', 'close-compare', 'focus-tree', 'focus-editor', 'nested', 'copy-value',
@@ -194,7 +199,7 @@ type Rule = readonly (string | number)[] | 'flag' | 'number';
 const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } = {
   json_loaded: {
     source: INPUT_SOURCES, editor: [1, 2], file_kind: FILE_KIND_LIST, size: SIZES, size_kb: 'number', validity: VALIDITIES, error_kind: ERROR_KIND_LIST,
-    issues: COUNTS, nodes: COUNTS, depth: 'number', parse_ms: 'number', jsonl: 'flag', jwt: 'flag',
+    issues: COUNTS, nodes: COUNTS, depth: 'number', parse_ms: 'number', jsonl: 'flag', jwt: 'flag', input: INPUT_FORMATS,
   },
   view_opened: { view: VIEW_IDS, via: VIAS, target: TARGET_IDS },
   convert_target_selected: { target: TARGET_IDS, group: ['types', 'data'], via: VIAS },
@@ -202,8 +207,8 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   format_option_changed: { option: ['style', 'sort_keys', 'indent'], value: ['pretty', 'minify', 'string', 'true', 'false', '2', '4', 'tab'] },
   feature_used: {
     feature: FEATURES, via: VIAS, view: VIEW_IDS, level: 'number', on: 'flag', jsonpath: 'flag',
-    // Share formats, themes, and the right-click menu's areas.
-    value: ['link', 'markdown', 'html', 'system', 'light', 'dark', 'input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff'],
+    // Share formats, themes, the right-click menu's areas, input formats and CSV separators.
+    value: ['link', 'markdown', 'html', 'system', 'light', 'dark', 'input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff', ...INPUT_FORMATS, 'auto', 'comma', 'semicolon', 'tab', 'pipe'],
   },
   command_run: { command: COMMAND_IDS },
   agent_tool_used: { tool: AGENT_TOOLS, ok: 'flag' },
@@ -251,6 +256,7 @@ export interface RawLoad {
   stats?: { nodes: number; depth: number; ms: number };
   jsonl?: boolean;
   jwt?: boolean;
+  input?: InputFormat;
 }
 
 export function loadedProps(r: RawLoad): Events['json_loaded'] {
@@ -270,5 +276,6 @@ export function loadedProps(r: RawLoad): Events['json_loaded'] {
     parse_ms: s ? round2(s.ms) : undefined,
     jsonl: r.jsonl,
     jwt: r.jwt,
+    input: r.input,
   };
 }

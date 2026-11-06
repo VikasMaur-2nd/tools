@@ -220,6 +220,22 @@ test('Undo and Redo past a load tell the file name of the document they bring ba
   assert.deepEqual(names, ['a.json', 'b.json', 'a.json']);
 });
 
+test('Undo and Redo past a step that changed what the document is read as tell that format, after its text', () => {
+  const { el } = editorElement();
+  const told: string[] = [];
+  const ed = new Editor(el as unknown as HTMLElement, { ...events, reformat: (f: string) => told.push(`${f} ${ed.text}`) });
+  ed.init('a: 1');
+  frames();
+  ed.setValue('{"a":1}', 0, false, undefined, ['yaml', 'json']);
+  ed.setValue('{"a":2}', 0, false, undefined, ['json', 'json']);
+  ed.undo();
+  assert.deepEqual(told, [], 'a step that kept the format tells none');
+  ed.undo();
+  assert.equal(ed.text, 'a: 1');
+  ed.redo();
+  assert.deepEqual(told, ['yaml a: 1', 'json {"a":1}']);
+});
+
 test("an input method's commit reaches the tool once, whichever comes first: its input event or compositionend (F22)", () => {
   // Chromium fires the commit's input event before compositionend, Firefox after it.
   for (const order of ['input first', 'compositionend first']) {

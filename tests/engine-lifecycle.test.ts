@@ -51,7 +51,7 @@ function session() {
   let id = 0;
   const defer = (fn: () => void) => { tasks.set(++id, fn); return id; };
   const cancel = (k: number) => { tasks.delete(k); };
-  const state: Dynamic = { fileName: null, status: { kind: 'empty' }, sizes: null, convert: { loading: false, error: null, lines: 0, bytes: 0 }, find: { open: false, q: '', total: 0, index: -1, seq: 0 }, toast: null, menu: null };
+  const state: Dynamic = { fileName: null, status: { kind: 'empty' }, sizes: null, convert: { loading: false, error: null, lines: 0, bytes: 0 }, find: { open: false, q: '', total: 0, index: -1, seq: 0 }, toast: null, menu: null, input: { format: 'json', delimiter: 'auto', detected: ',' } };
   const errors: unknown[] = [];
   const toasts: string[] = [];
   let workers = 0;
@@ -102,13 +102,13 @@ function session() {
       if (name === './sizes') return { compressedSizes: () => Promise.resolve({ gzip: 1 }) };
       if (name === './editor') return { loadSurface: () => Promise.resolve() };
       if (name === '../json/smart') return { embeddedJson: (s: string) => s };
-      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === './asks' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
+      if (name === '../link' || name === './targets' || name === './doc' || name === './rules' || name === './asks' || name === './source' || name === '../convert/import' || name.startsWith('../json/')) return load(resolve(__dirname, '../lib/engine', name));
       return {};
     },
   });
   const make = () => {
     const engine = new exports.Engine();
-    engine.settings = { view: 'format', indent: '2', minify: false, escape: false, sortKeys: false, target: 'typescript', rootName: 'Root', tsStyle: 'interface', csharpLib: 'stj', autoFormat: false };
+    engine.settings = { view: 'format', indent: '2', minify: false, escape: false, sortKeys: false, target: 'typescript', rootName: 'Root', tsStyle: 'interface', csharpLib: 'stj', autoFormat: false, csvHeader: true, csvTypes: true };
     engine.toast = (msg: string) => { if (!engine.dead) toasts.push(msg); };
     return engine;
   };
@@ -287,12 +287,15 @@ test('files open in the order they were asked for, whichever is read first', asy
   }
 });
 
-test('a file that fails to convert opens as text, and its error stays in view', async () => {
-  const { engine, loads, toasts } = loading();
+test('a YAML, CSV, XML or TOML file opens as itself, read as what its name says (errors and all); its file goes to the worker only as JSON', async () => {
+  const { engine, toasts } = loading();
+  const opened: string[] = [];
+  engine.load = (text: string, name: string | null, _persist: boolean, _first: boolean, f: unknown, format: string) => opened.push(`${name} ${format} ${JSON.stringify(text)} ${f ? 'file' : '-'}`);
   await engine.loadFile(file('bad.yaml', Promise.resolve('a: [1, 2\nb: c\n')));
-  assert.deepEqual(loads, ['1:bad.yaml']);
-  assert.equal(toasts.length, 1, JSON.stringify(toasts));
-  assert.match(toasts[0], /^Couldn't read bad\.yaml: /);
+  await engine.loadFile(file('rows.tsv', Promise.resolve('a\tb\n1\t2\n')));
+  await engine.loadFile(file('data.json', Promise.resolve('{"a":1}')));
+  assert.deepEqual(opened, ['bad.yaml yaml "a: [1, 2\\nb: c\\n" -', 'rows.tsv csv "a\\tb\\n1\\t2\\n" -', 'data.json json "{\\"a\\":1}" file']);
+  assert.deepEqual(toasts, ['Opened bad.yaml', 'Opened rows.tsv', 'Opened data.json']);
 });
 
 test('a binary file is said to be one, and read again (not kept meanwhile) when opened as text anyway', async () => {
@@ -950,4 +953,209 @@ test('Copy waiting for pretty output read off a tape gets it in parts, made in s
   await s.drain();
   assert.equal(whole, 0, 'pending Copy must use PrettyText.parts(), just as Copy after rendering does');
   assert.deepEqual(copied, ['{\n  "a": 1\n}']);
+});
+
+// ── Input in another format (YAML, CSV, XML, TOML) ──
+
+/**
+ * A session whose input editor keeps its text and the steps whole-document changes make, with the views the
+ * analysis updates faked. `diags`: the offsets each analysis underlined; `colors`: the colouring it set.
+ */
+/** A value made in the engine's realm, as one of this one (deepEqual compares prototypes too). */
+const realm = (x: unknown) => JSON.parse(JSON.stringify(x)) as unknown;
+
+function sourcing(text: string, format = 'yaml') {
+  const s = session();
+  const e = s.engine;
+  const diags: number[][] = [];
+  const ed: Dynamic = {
+    text, version: Doc.of(text), caret: 0, steps: [] as unknown[], colors: null, el: { removeEventListener() {} },
+    get blank() { return !this.text.trim(); },
+    get length() { return this.text.length; },
+    get ls() { return this.text.split('\n'); },
+    lineCol(p: number) {
+      const before = this.text.slice(0, p).split('\n');
+      return { line: before.length, col: before[before.length - 1].length + 1 };
+    },
+    setValue(t: string, _caret?: number, _load?: boolean, names?: unknown, formats?: unknown) {
+      if (t === this.text) return;
+      this.text = t;
+      this.version = Doc.of(t);
+      this.steps.push({ names: names ?? null, formats: formats && (formats as string[])[0] !== (formats as string[])[1] ? formats : null });
+      e.onChange('set');
+    },
+    setJwt() {}, setColors(c: unknown) { this.colors = c; }, setDiagnostics(d: { p: number }[]) { diags.push(d.map((x) => x.p)); },
+    setScope() {}, setBrackets() {}, setCaret() {}, focus() {}, destroy() {},
+  };
+  Object.assign(e, {
+    ed, inFmt: format,
+    tree: { setRoot() {}, select() {}, releaseRoot() {}, render() {}, destroy() {} },
+    table: { setNode() {}, destroy() {} },
+    setGraphRoot() {}, measure() {}, syncTableState() {}, afterDoc() {}, releaseWorkerDocuments() {}, persistSoon() {},
+  });
+  s.state.input = { format, delimiter: 'auto', detected: ',' };
+  /** Edits the input as typing would, then lets the analysis run. */
+  const type = async (t: string) => {
+    ed.text = t;
+    ed.version = Doc.of(t);
+    e.onChange('input');
+    await s.drain();
+  };
+  return { ...s, ed, diags, type };
+}
+
+test('an input in another format stays as typed: the views show its JSON, an error is underlined at its place', async () => {
+  const s = sourcing('name: Ada\ntags:\n  - json\n');
+  s.engine.analyze();
+  await s.drain();
+  assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0, src: 'yaml' });
+  assert.equal(s.engine.converted, '{"name":"Ada","tags":["json"]}');
+  assert.equal(s.engine.res.root.v.length, 2);
+  assert.equal(s.engine.synced, false, 'tree positions are the JSON\'s, not the YAML\'s');
+  assert.ok(s.ed.colors, 'coloured as YAML');
+  assert.equal(s.ed.text, 'name: Ada\ntags:\n  - json\n', 'the input is never replaced');
+  assert.equal(s.state.hint, null);
+
+  await s.type('name: Ada\ntags: [json\n');
+  const st = s.state.status;
+  assert.equal(st.kind, 'error');
+  assert.equal(st.src, 'yaml');
+  assert.deepEqual([st.line, st.col], [s.ed.lineCol(st.p).line, s.ed.lineCol(st.p).col]);
+  assert.deepEqual(realm(s.diags[s.diags.length - 1]), [st.p]);
+  assert.equal(s.state.stale, true, 'the JSON shown is the last good one, dimmed');
+  assert.equal(s.engine.converted, null);
+  assert.equal(s.engine.good.root.v.length, 2);
+});
+
+test('text read as CSV that clearly is JSON says so, and reading it as JSON keeps the text', async () => {
+  const s = sourcing('{"a": [1, 2]}', 'csv');
+  s.engine.analyze();
+  await s.drain();
+  assert.equal(s.state.status.kind, 'valid');
+  assert.equal(s.state.hint, 'json');
+  s.engine.setInput('json');
+  await s.drain();
+  assert.equal(s.engine.inFmt, 'json');
+  assert.equal(s.state.input.format, 'json');
+  assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0 });
+  assert.equal(s.ed.colors, null, 'coloured as JSON again');
+  assert.equal(s.ed.text, '{"a": [1, 2]}');
+  assert.equal(s.engine.synced, true);
+});
+
+test('Use as input replaces the YAML with its JSON, read as JSON from then on, under a .json name; the step carries both back', async () => {
+  const s = sourcing('name: Ada\nage: 36\n');
+  s.engine.edName = 'example.yaml';
+  s.state.fileName = 'example.yaml';
+  s.engine.analyze();
+  await s.drain();
+  s.engine.useOutput();
+  await s.drain();
+  assert.equal(s.ed.text, '{\n  "name": "Ada",\n  "age": 36\n}');
+  assert.equal(s.engine.inFmt, 'json');
+  assert.equal(s.state.fileName, 'example.json');
+  assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0 });
+  assert.deepEqual(JSON.parse(JSON.stringify(s.ed.steps)), [{ names: ['example.yaml', 'example.json'], formats: ['yaml', 'json'] }]);
+  assert.match(s.toasts[s.toasts.length - 1], /^Formatted input · replaced the YAML with JSON · .*Z to undo$/);
+  // Undo: the editor tells the name and the format back (Editor.undo), after its text.
+  s.ed.text = 'name: Ada\nage: 36\n';
+  s.ed.version = Doc.of(s.ed.text);
+  s.engine.onChange('input');
+  s.engine.renamed('example.yaml');
+  s.engine.reformatted('yaml');
+  await s.drain();
+  assert.equal(s.engine.inFmt, 'yaml');
+  assert.equal(s.state.input.format, 'yaml');
+  assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0, src: 'yaml' });
+});
+
+test('CSV: the separator is detected unless chosen, and the header row and typed values can be turned off', async () => {
+  const s = sourcing('a;b\n1;x\n', 'csv');
+  s.engine.analyze();
+  await s.drain();
+  assert.equal(s.engine.converted, '[{"a":1,"b":"x"}]');
+  assert.equal(s.state.input.detected, ';');
+  s.engine.setCsv({ header: false });
+  assert.equal(s.engine.converted, '[["a","b"],[1,"x"]]');
+  s.engine.setCsv({ header: true, types: false });
+  assert.equal(s.engine.converted, '[{"a":"1","b":"x"}]');
+  s.engine.setCsv({ types: true, delimiter: ',' });
+  assert.equal(s.engine.converted, '[{"a;b":"1;x"}]');
+  assert.equal(s.state.input.delimiter, ',');
+  // A new document detects its separator again; a .tsv file's is a tab.
+  s.engine.finishLoad = () => {};
+  s.engine.load('a\tb\n1\t2\n', 'rows.tsv');
+  assert.deepEqual([s.engine.inFmt, s.state.input.delimiter], ['csv', '\t']);
+  s.engine.load('a,b\n1,2\n', null);
+  assert.deepEqual([s.engine.inFmt, s.state.input.delimiter], ['csv', 'auto'], 'a paste keeps the format it is pasted into');
+  s.engine.load('{}', 'data.json');
+  assert.equal(s.engine.inFmt, 'json');
+});
+
+test('the format is saved with the document, and only with it; a share link says what its document is', async () => {
+  const s = sourcing('name: Ada\n');
+  Object.assign(s.engine, { persistEnabled: true, edName: null });
+  s.engine.persist(null);
+  assert.equal(s.storage.get('jf:doc'), 'name: Ada\n');
+  assert.equal(s.storage.get('jf:fmt'), 'yaml');
+  s.engine.inFmt = 'json';
+  s.engine.persist(null);
+  assert.equal(s.storage.get('jf:fmt'), undefined);
+
+  const link = load(resolve(__dirname, '../lib/link'));
+  const hash: string = await link.linkHash({ a: { text: 'name: Ada\n' }, view: 'tree', in: 'yaml' });
+  assert.match(hash, /&in=yaml$/);
+  assert.equal(link.parseLink(hash).in, 'yaml');
+  assert.equal(link.parseLink(hash.replace('in=yaml', 'in=exe')).in, undefined);
+  assert.doesNotMatch(await link.linkHash({ a: { text: '{}' }, in: 'json' }), /in=/);
+});
+
+test('Download input saves another format as itself', () => {
+  const s = sourcing('a,b\n1,2\n', 'csv');
+  const saved: string[] = [];
+  s.engine.save = (_text: string, name: string, type: string) => saved.push(`${name} ${type}`);
+  s.engine.download();
+  s.state.fileName = 'rows.tsv';
+  s.engine.download();
+  assert.deepEqual(saved, ['data.csv text/csv', 'rows.tsv text/csv']);
+});
+
+test('a big input in another format converts in the worker, its JSON parsed in steps; a reply for an older version or reading is dropped', async () => {
+  const yaml = Array.from({ length: 4000 }, (_, i) => `- id: ${i}\n  name: user ${i}\n`).join('');
+  assert.ok(yaml.length > 100_000);
+  const s = sourcing(yaml);
+  const posted: Dynamic[] = [];
+  s.engine.srcMod = load(resolve(__dirname, '../lib/engine/source'));
+  s.engine.srcWorker = { postMessage: (m: Dynamic) => posted.push(m), terminate() {} };
+  s.engine.analyzeInSteps();
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].format, 'yaml');
+  assert.equal(s.state.status.kind, 'parsing');
+  const reply = (m: Dynamic) => s.engine.sourceConverted({ seq: m.seq, json: s.engine.srcMod.convertSource(m.text, m.format, m.csv).json });
+  reply(posted[0]);
+  await s.drain();
+  assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0, src: 'yaml' });
+  assert.equal(s.engine.res.root.v.length, 4000);
+  assert.equal(s.engine.synced, false);
+
+  // Typed again: the reply for the version before is dropped, the newest one is shown.
+  await s.type(yaml + '- id: x\n');
+  assert.equal(posted.length, 2);
+  await s.type(yaml + '- id: y\n');
+  assert.equal(posted.length, 3);
+  reply(posted[1]);
+  await s.drain();
+  assert.equal(s.state.status.kind, 'parsing');
+  reply(posted[2]);
+  await s.drain();
+  assert.equal(s.engine.res.root.v.length, 4001);
+  assert.equal(s.engine.res.root.v[4000].v[0].v, 'y');
+
+  // An error from the worker is shown at its place, as one made here.
+  await s.type(yaml + 'x: [1\n');
+  s.engine.sourceConverted({ seq: posted[3].seq, error: 'Unterminated flow sequence', p: yaml.length + 3 });
+  await s.drain();
+  assert.equal(s.state.status.kind, 'error');
+  assert.equal(s.state.status.p, yaml.length + 3);
+  assert.equal(s.state.status.src, 'yaml');
 });

@@ -40,10 +40,10 @@ export function menuLetter(e: ReactKeyboardEvent<HTMLElement>) {
 }
 
 /**
- * A small popover menu anchored to a button: ⋯, or `icon` with the label shown (Share). Keyboard:
- * ↑ ↓ to move, Esc to close.
+ * A small popover menu anchored to a button: ⋯, or `icon` with the label shown (Share), or only `icon` (`hideLabel`,
+ * the label its tooltip). Keyboard: ↑ ↓ to move, Esc to close.
  */
-export function Menu({ label, icon, tip, children }: { label: string; icon?: IconName; tip?: string; children: (close: () => void) => ReactNode }) {
+export function Menu({ label, icon, tip, hideLabel, start, children }: { label: string; icon?: IconName; tip?: string; hideLabel?: boolean; /** Opens from its button's start (a button at the start of a toolbar). */ start?: boolean; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -79,7 +79,7 @@ export function Menu({ label, icon, tip, children }: { label: string; icon?: Ico
       <button
         id={id}
         type="button"
-        className={`btn${icon ? '' : ' icon'}${open ? ' on' : ''}`}
+        className={`btn${icon && !hideLabel ? '' : ' icon'}${open ? ' on' : ''}`}
         aria-label={name}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -87,10 +87,10 @@ export function Menu({ label, icon, tip, children }: { label: string; icon?: Ico
         onClick={() => setOpen((o) => !o)}
       >
         <Icon name={icon ?? 'more'} />
-        {icon && <span className="lbl">{name}</span>}
+        {icon && !hideLabel && <span className="lbl">{name}</span>}
       </button>
       {open && (
-        <div className="menu" role="menu" aria-label={name} onKeyDown={onKey}>
+        <div className={start ? 'menu start' : 'menu'} role="menu" aria-label={name} onKeyDown={onKey}>
           {children(close)}
         </div>
       )}
