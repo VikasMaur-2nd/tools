@@ -80,7 +80,7 @@ test('downloads: input, formatted output, converted code and CSV are exact files
   const { page } = t;
   await t.open('/');
   t.assert(await load(page, DOC, 'orders.json'), 'the document loads');
-  const input = await downloaded(page, () => command(page, 'Download input as .json'));
+  const input = await downloaded(page, () => command(page, 'Download input'));
   t.check(input?.name === 'orders.json' && input.bytes?.toString() === DOC, 'Download input: orders.json, the exact text', input && { name: input.name, text: input.bytes?.toString().slice(0, 80) });
   await view(page, 'format');
   const out = await downloaded(page, () => command(page, 'Download formatted output'));

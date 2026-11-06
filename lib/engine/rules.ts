@@ -19,6 +19,27 @@ export function formatOfName(name: string | null | undefined): SourceFormat {
   return 'json';
 }
 
+/** Above this, text pasted over everything isn't checked to be JSON (JSON.parse: ~30 ms at 5 MB). */
+const PLAIN_JSON_MAX = 5_000_000;
+
+/**
+ * Whether text pasted over everything is plainly JSON: an object or array that JSON.parse reads. The input is then
+ * read as JSON again, whatever it was read as (a YAML flow mapping like `{a: 1}` isn't JSON, so it stays YAML).
+ */
+export function plainJson(text: string): boolean {
+  if (text.length > PLAIN_JSON_MAX) return false;
+  let i = 0;
+  while (i < text.length && text.charCodeAt(i) <= 32) i++;
+  const c = text.charCodeAt(i);
+  if (c !== 123 && c !== 91) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function persistenceAfterChange(enabled: boolean, kind: ChangeKind): boolean {
   return enabled || kind !== 'set';
 }

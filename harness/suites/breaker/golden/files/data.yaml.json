@@ -1,14 +1,14 @@
 {
  "status": {
-  "msg": "Valid JSON",
+  "msg": "Valid YAML",
   "kind": "ok",
-  "raw": "183 B raw",
-  "min": "110 B min",
-  "stats": "19 lines · 15 nodes · depth 2"
+  "raw": "95 B raw",
+  "min": null,
+  "stats": "12 lines · 15 nodes · depth 2"
  },
  "toasts": [
-  "Converted data.yaml to JSON"
+  "Opened data.yaml"
  ],
- "input": "{\n  \"a\": {\n    \"b\": 1\n  },\n  \"c\": {\n    \"b\": 1\n  },\n  \"d\": [\n    1,\n    2,\n    \"3\"\n  ],\n  \"e\": 31,\n  \"f\": null,\n  \"g\": \"2026-10-26\",\n  \"h\": \"yes\",\n  \"i\": null,\n  \"j\": \"two\\nlines\\n\"\n}",
+ "input": "a: &x {b: 1}\nc: *x\nd: [1, 2, \"3\"]\ne: 0x1F\nf: .inf\ng: 2026-10-26\nh: yes\ni: ~\nj: |\n  two\n  lines\n",
  "formatted": "{\n  \"a\": {\n    \"b\": 1\n  },\n  \"c\": {\n    \"b\": 1\n  },\n  \"d\": [\n    1,\n    2,\n    \"3\"\n  ],\n  \"e\": 31,\n  \"f\": null,\n  \"g\": \"2026-10-26\",\n  \"h\": \"yes\",\n  \"i\": null,\n  \"j\": \"two\\nlines\\n\"\n}"
 }

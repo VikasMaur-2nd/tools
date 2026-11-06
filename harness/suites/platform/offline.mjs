@@ -33,7 +33,7 @@ async function checkErrors(t, scenario) {
 
 /**
  * The lazily loaded features in a page that has just opened (before its warm-up loads them): the graph,
- * Convert to every format, the Excel writer and the YAML importer are each their own chunk.
+ * Convert to every format, the Excel writer and the YAML reader are each their own chunk.
  */
 async function features(t, page, label, { broken = false } = {}) {
   const unavailable = (detail) => {
@@ -97,9 +97,15 @@ async function features(t, page, label, { broken = false } = {}) {
   const name = await dl;
   t.check(!!name && name.endsWith('.xlsx') && !(await errToast()), `${label}: Excel download`, String(name));
 
+  // A YAML file opens as itself, read as YAML: the Format view shows its JSON.
+  await t.app.view(page, 'format');
   await page.setInputFiles('.app:visible input[type=file]', { name: 'people.yaml', mimeType: 'text/yaml', buffer: Buffer.from('people:\n  - name: Ada\n    born: 1815\n  - name: Grace\n') });
-  const yaml = await page.waitForFunction(() => /"born": 1815/.test(document.getElementById('input').value), null, { ...POLL, timeout: t.budget(15_000) }).then(() => true, () => false);
+  const yaml = await page.waitForFunction(() => /^Valid YAML/.test(window.__vis('.sb-l')?.textContent ?? '') && /"born": 1815/.test(document.getElementById('view-format')?.textContent || ''), null, { ...POLL, timeout: t.budget(15_000) }).then(() => true, () => false);
   t.check(yaml && !(await errToast()), `${label}: YAML import`);
+  // Undone, the JSON document is back, read as JSON (so the next tab, which opens the saved one, gets JSON too).
+  await t.app.command(page, 'Undo');
+  const undone = await t.app.waitValid(page, { timeout: t.budget(5000) }).then(() => true, () => false);
+  t.check(undone, `${label}: Undo brings the JSON document back`);
 
   if (!broken) return;
   await t.app.view(page, 'format');

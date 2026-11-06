@@ -1069,6 +1069,31 @@ test('Use as input replaces the YAML with its JSON, read as JSON from then on, u
   assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0, src: 'yaml' });
 });
 
+test('valid JSON pasted over a document in another format is read as JSON again; a YAML flow mapping stays YAML', async () => {
+  const s = sourcing('name: Ada\n');
+  s.engine.analyze();
+  await s.drain();
+  /** A paste over everything as the editor makes it: its step asks for the formats, then the change follows. */
+  const paste = async (t: string) => {
+    const formats = s.engine.pastedFormats(t);
+    s.ed.text = t;
+    s.ed.version = Doc.of(t);
+    s.ed.pasteFull = true;
+    s.engine.onChange('paste');
+    await s.drain();
+    return formats && realm(formats);
+  };
+  assert.equal(await paste('{a: 1}'), undefined);
+  assert.equal(s.engine.inFmt, 'yaml');
+  assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0, src: 'yaml' });
+  assert.deepEqual(await paste('{"a": [1, 2]}'), ['yaml', 'json'], 'its step carries the YAML back (see Editor.undo)');
+  assert.equal(s.engine.inFmt, 'json');
+  assert.equal(s.state.input.format, 'json');
+  assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0 });
+  assert.equal(s.ed.colors, null, 'coloured as JSON');
+  assert.equal(await paste('[1]'), undefined, 'read as JSON already: nothing changes');
+});
+
 test('CSV: the separator is detected unless chosen, and the header row and typed values can be turned off', async () => {
   const s = sourcing('a;b\n1;x\n', 'csv');
   s.engine.analyze();

@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { convertSource, otherFormat, sourceColors } from '../lib/engine/source';
-import { formatOf, formatOfName } from '../lib/engine/rules';
+import { formatOf, formatOfName, plainJson } from '../lib/engine/rules';
 
 /** The text of colour HTML: its tags taken out, its entities read. */
 const plain = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
@@ -43,6 +43,13 @@ describe('input in another format', () => {
     assert.equal(formatOf('toml'), 'toml');
     assert.equal(formatOf('exe'), 'json');
     assert.equal(formatOf(null), 'json');
+  });
+
+  test('text pasted over everything is plainly JSON when it is an object or array JSON.parse reads', () => {
+    for (const t of ['{"a": 1}', ' \n[1, 2]\n', '[]', '{}']) assert.equal(plainJson(t), true, t);
+    // (YAML flow style, JSON with a trailing comma or comments, JSON Lines, a bare value: read as they were.)
+    for (const t of ['{a: 1}', '[1, 2,]', '{"a": 1} // note', '{"a":1}\n{"a":2}', '42', '"x"', 'a: 1', '[a],b\n1,2', '']) assert.equal(plainJson(t), false, t);
+    assert.equal(plainJson('[' + '0,'.repeat(2_600_000) + '0]'), false, 'past 5 MB it is not checked');
   });
 });
 

@@ -20,7 +20,7 @@ import type { SourceReply, SourceRequest } from './source.worker';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
-import { formatOf, formatOfName, jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
+import { formatOf, formatOfName, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
@@ -337,6 +337,8 @@ export class Engine {
   private jwtWait = false;
   /** What the input is read as: in another format than JSON, `res` and the views describe the JSON it converts to. */
   private inFmt: SourceFormat = 'json';
+  /** A paste over everything that is plainly JSON, in another format: read as JSON again once it is in (see onChange). */
+  private pasteJson = false;
   /** The JSON the input converted to, while it is in another format and converts. */
   private converted: string | null = null;
   /** The reader for other formats (./source.ts): loaded once an input is in one. */
@@ -395,12 +397,13 @@ export class Engine {
       name: () => this.edName,
       undoing: this.undoing,
       reformat: this.reformatted,
+      pasteFormats: this.pastedFormats,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
-        if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format' || this.inFmt !== 'json') return false;
+        if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format' || this.pasteFormat(text) !== 'json') return false;
         this.refocus = true;
         this.request(1);
-        this.load(text, null, true, true);
+        this.load(text, null, true, true, undefined, 'json');
         return true;
       },
     });
@@ -577,6 +580,8 @@ export class Engine {
     this.fmtStatSeq++;
     this.persistEnabled = persistenceAfterChange(this.persistEnabled, kind);
     if (kind === 'paste' && this.ed.pasteFull) {
+      // (Its undo step tells the format it was read as before: see pastedFormats.)
+      if (this.pasteJson) this.setInputFormat('json', false);
       this.resetNext = true;
       this.edName = null;
       if (store.get().fileName) {
@@ -585,6 +590,7 @@ export class Engine {
       }
       if (this.settings.autoFormat && this.inFmt === 'json') setTimeout(this.autoFormat, 0);
     }
+    this.pasteJson = false;
     this.ed.setBrackets(-1, -1);
     clearTimeout(this.fmtTimer);
     clearTimeout(this.convTimer);
@@ -1562,6 +1568,21 @@ export class Engine {
   /** Undo or Redo went past a step that changed what the input is read as. */
   private reformatted = (format: string) => this.setInputFormat(formatOf(format));
 
+  /**
+   * What text pasted over everything is read as: JSON, when it plainly is (a document left in another format, a
+   * JSON response pasted on the CSV page), else what the input was read as. Undo brings the other format back.
+   */
+  private pasteFormat(text: string): SourceFormat {
+    return this.inFmt !== 'json' && plainJson(text) ? 'json' : this.inFmt;
+  }
+
+  /** The editor's paste over everything (see EditorEvents.pasteFormats): the formats of its step. */
+  private pastedFormats = (text: string): [string, string] | undefined => {
+    const to = this.pasteFormat(text);
+    this.pasteJson = to !== this.inFmt;
+    return this.pasteJson ? [this.inFmt, to] : undefined;
+  };
+
   /** CSV input: the separator (this document's), whether the first row is a header, and whether values are typed. */
   setCsv(patch: { delimiter?: CsvDelimiter; header?: boolean; types?: boolean }) {
     if (patch.delimiter !== undefined && patch.delimiter !== this.csvDelim) {
@@ -2380,7 +2401,7 @@ export class Engine {
         return;
       }
       noteLoad('paste_button');
-      this.load(text, null);
+      this.load(text, null, undefined, undefined, undefined, this.pasteFormat(text));
       if (this.settings.autoFormat) this.autoFormat();
     } catch {
       if (signal.aborted) return;

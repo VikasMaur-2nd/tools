@@ -1,14 +1,14 @@
 {
  "status": {
-  "msg": "Valid JSON",
+  "msg": "Valid TOML",
   "kind": "ok",
-  "raw": "129 B raw",
-  "min": "68 B min",
-  "stats": "14 lines · 9 nodes · depth 3"
+  "raw": "65 B raw",
+  "min": null,
+  "stats": "8 lines · 9 nodes · depth 3"
  },
  "toasts": [
-  "Converted data.toml to JSON"
+  "Opened data.toml"
  ],
- "input": "{\n  \"a\": 1,\n  \"b\": {\n    \"c\": \"d\"\n  },\n  \"e\": [\n    {\n      \"f\": \"1979-05-27T07:32:00Z\"\n    },\n    {\n      \"f\": 1.5e3\n    }\n  ]\n}",
+ "input": "a = 1\n[b]\nc = \"d\"\n[[e]]\nf = 1979-05-27T07:32:00Z\n[[e]]\nf = 1.5e3\n",
  "formatted": "{\n  \"a\": 1,\n  \"b\": {\n    \"c\": \"d\"\n  },\n  \"e\": [\n    {\n      \"f\": \"1979-05-27T07:32:00Z\"\n    },\n    {\n      \"f\": 1.5e3\n    }\n  ]\n}"
 }

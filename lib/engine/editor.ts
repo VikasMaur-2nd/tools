@@ -128,6 +128,11 @@ export interface EditorEvents {
   name?(): string | null;
   /** Undo or Redo went past a step that changed what format the document is read as (see setValue): that format now. */
   reformat?(format: string): void;
+  /**
+   * A paste over everything, of `text`: the formats the document is read as before and after it, if the paste
+   * changes that (the listener does when the document changes). Undo and Redo tell them, see reformat.
+   */
+  pasteFormats?(text: string): [string, string] | undefined;
   /** Undo is about to be applied: true if the listener takes it instead (a document still being read, undone once it arrives). */
   undoing?(): boolean;
 }
@@ -2445,6 +2450,7 @@ export class Editor {
     const sb = this.selBefore;
     if (!r && old.length === now.length && old.toString() === now.toString()) return;
     const [a, eo, en] = r ?? diffRange(old.toString(), now.toString(), Math.min(sb[0], this.selAfter[0]));
+    const formats = kind === 'insertFromPaste' ? this.pasteFormats(now) : undefined;
     const ch: Change = {
       a,
       del: old.slice(a, eo),
@@ -2454,6 +2460,7 @@ export class Editor {
       t: Date.now(),
       kind: kind === 'insertText' || kind === 'insertCompositionText' ? 'type' : kind.startsWith('delete') ? 'del' : 'other',
       names: kind === 'insertFromPaste' ? this.leaving() : undefined,
+      ...(formats && { formats }),
     };
     const last = this.undo_[this.undo_.length - 1];
     const recent = last && ch.t - last.t < 1200;
@@ -2477,6 +2484,12 @@ export class Editor {
   private leaving(): [string | null, string | null] | undefined {
     const name = this.pasteFull ? (this.ev.name?.() ?? null) : null;
     return name === null ? undefined : [name, null];
+  }
+
+  /** The formats of a paste's step (see Change.formats): a paste over everything, of `doc`, may change it. */
+  private pasteFormats(doc: Doc | string): [string, string] | undefined {
+    const f = this.pasteFull ? this.ev.pasteFormats?.(doc.toString()) : undefined;
+    return f && f[0] !== f[1] ? f : undefined;
   }
 
   private push(ch: Change) {
@@ -2562,6 +2575,8 @@ export class Editor {
     const del = this.doc.slice(a, b);
     const s1 = selA ?? a + text.length;
     const s2 = selB ?? s1;
+    // (A paste over everything is all of the text, or it with the blank document's spaces around it.)
+    formats ??= kind === 'paste' ? this.pasteFormats(text) : undefined;
     this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names: names ?? (kind === 'paste' ? this.leaving() : undefined), ...(formats && formats[0] !== formats[1] && { formats }) });
     this.redo_ = [];
     this.typing = true;
