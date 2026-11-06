@@ -254,7 +254,8 @@ export class HugeEditing {
         await ed.restoreSession();
         return { fx: {}, select: this.host.selPath(), selectAt: this.host.selAt?.() ?? null };
       case 'reoffer':
-        if (!(await ed.reofferSession())) return null;
+        // (Nothing set aside any more: said as the core's refusal is.)
+        if (!(await ed.reofferSession())) throw new Error('Not allowed');
         return { fx: {}, select: this.host.selPath(), selectAt: this.host.selAt?.() ?? null };
     }
   }

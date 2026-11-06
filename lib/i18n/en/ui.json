@@ -1595,5 +1595,9 @@
   "app.hugeKeepOtherKeptTip": "Another tab kept its changes to {name}: edits here won’t be kept",
   "app.hugeKeepOtherKeptTip._context": "Large-file mode, the file bar note's tooltip: another tab's unsaved changes to this file were kept (they'll be offered when the file is opened again), so this tab's edits won't be kept. {name}: the file name.",
   "toast.hugeReofferNotAllowed": "Those kept changes can’t come back: the edits since can’t all be undone",
-  "toast.hugeReofferNotAllowed._context": "Large-file mode: after \"Discarded the 12 kept changes · Undo\", Undo couldn't bring the earlier kept changes back because the edits made since can't all be undone (the undo history let the oldest go)."
+  "toast.hugeReofferNotAllowed._context": "Large-file mode: after \"Discarded the 12 kept changes · Undo\", Undo couldn't bring the earlier kept changes back because the edits made since can't all be undone (the undo history let the oldest go).",
+  "toast.hugeReofferAfterSave": "Undo runs once the save ends",
+  "toast.hugeReofferAfterSave._context": "Large-file mode: the user clicked Undo on \"Discarded the 12 kept changes\" while the file was being saved; the earlier kept changes come back as soon as the save ends.",
+  "toast.hugeReofferAfterRead": "Undo runs once the file is read",
+  "toast.hugeReofferAfterRead._context": "Large-file mode: the user clicked Undo on \"Discarded the 12 kept changes\" while the file was being read again after an edit; the earlier kept changes come back as soon as it's read."
 }

@@ -281,6 +281,7 @@ export class HugeSession {
     this.saving?.stop();
     this.answerSave('cancel');
     this.dropAsideUndo();
+    this.reofferWait = null;
     clearTimeout(this.otherTimer);
     window.removeEventListener('beforeunload', this.onUnload);
     clearTimeout(this.growTimer);
@@ -1010,6 +1011,14 @@ export class HugeSession {
     } else if (!aside || (this.asideAction && e.steps !== this.asideSteps)) this.dropAsideUndo();
     this.asideKey = key;
     if (!e.session || touched) restore = null;
+    // An Undo that waited: run once the save or the read ends, if it's still the same set-aside session and nothing
+    // else was changed; else said plainly (a save in place lets go of it and of the history).
+    const w = this.reofferWait;
+    if (w && st.done && !this.ui.get().edit?.saving) {
+      this.reofferWait = null;
+      if (aside && key === w.key && e.steps === w.steps) void this.reoffer();
+      else this.host.toast(rt('Those kept changes can’t come back: the edits since can’t all be undone'), 'info');
+    }
     this.setEdit({ ready: st.done && !ui.saving, edited: e.edited, steps: e.edited ? e.steps : 0, canUndo: e.canUndo, canRedo: e.canRedo, busy: ed.busy || (e.edited && !st.done), restore, inPlace: !!this.handle, keeping: this.keepingShown(e.keeping ?? 'no', ui.keeping) });
   }
 
@@ -1035,6 +1044,9 @@ export class HugeSession {
     }
     return shown === 'other-tab' || now - this.otherSince >= OTHER_TAB_MS ? 'other-tab' : 'no';
   }
+
+  /** An Undo clicked while a save ran or the document was read again: the set-aside session it's for, and the steps. */
+  private reofferWait: { key: string; steps: number } | null = null;
 
   /** The set-aside session's toast, its Undo, and the steps it was shown at. */
   private asideKey = '';
@@ -1063,7 +1075,17 @@ export class HugeSession {
     // (From the Format view's text editing: what's typed goes in first, and is undone with the rest. Asked before
     // the toast goes, so an Undo that can't run now isn't lost: REVIEW-4 M1.)
     if (this.ui.get().fe) await this.exitFormatEdit(false);
-    if (this.dead || !this.canEdit()) return;
+    if (this.dead) return;
+    // A save running, or the document read again after an edit: the Undo waits for it, and runs then if it still can
+    // (editState). The toast is gone by now (the host clears it before its action), so it's said.
+    const saving = !!this.ui.get().edit?.saving;
+    if (saving || !this.src.state().done) {
+      this.reofferWait = { key: this.asideKey, steps: this.asideSteps };
+      this.dropAsideUndo();
+      this.host.toast(saving ? 'Undo runs once the save ends' : 'Undo runs once the file is read', 'info');
+      return;
+    }
+    if (!this.canEdit()) return;
     this.dropAsideUndo();
     this.setEdit({ busy: true });
     const ok = await this.editing!.run({ op: 'reoffer' }, 'banner');

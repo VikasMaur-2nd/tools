@@ -3,7 +3,7 @@
 // invalid and fixed, saving in place (a file handle from huge mode's Open file: OPFS standing in for the picker's)
 // with the saved file's SHA-256 checked, and a kept session restored after a reload.
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { defaults, test } from '../../lib/api.mjs';
@@ -1087,4 +1087,127 @@ test('huge edit: without the pickers, Save downloads the edited document (tree e
   got = await save();
   want.users[7].name = 'user 7X';
   t.check(sha(got) === sha(JSON.stringify(want, null, 2)), 'with the key typed (SHA-256)', got.slice(got.indexOf('"user 7') - 10, got.indexOf('"user 7') + 20));
+});
+
+// Round 16: Undo on "Discarded the N kept changes" clicked while a save runs. The toast host clears the toast, and
+// the edit can't run till the save ends: the Undo must wait for it, not be lost (a session it could bring back
+// would go at close). A file big enough that saving takes a while (~40 MB).
+const bigUsers = join(dir, 'users-40mb.json');
+if (!existsSync(bigUsers)) writeFileSync(bigUsers, JSON.stringify({ meta: { version: 1 }, users: records(400_000) }, null, 2));
+
+/** The kept session of `p` (one change: $.users[5].name deleted) offered on reopening: its banner up. */
+async function offered(t, open) {
+  const { page } = t;
+  await open();
+  await selectPath(page, '$.users[5].name');
+  await page.keyboard.press('Delete');
+  await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 20_000 });
+  await page.waitForTimeout(1500);
+  page.on('dialog', (d) => void d.accept());
+  await page.reload();
+  await open();
+  t.assert(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? ''), null, { timeout: 20_000 }), 'offered');
+}
+
+/** The first edit (discards the offer: "Discarded · Undo"), then a save started and Undo clicked while it runs. */
+async function undoDuringSave(t, save) {
+  const { page } = t;
+  await selectPath(page, '$.users[7].name');
+  await page.keyboard.press('Delete');
+  t.assert(await toasted(page, /Discarded the 1 kept change/), 'discarded, with Undo', await toasts(page));
+  await until(page, () => /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 20_000 });
+  // (The save shows its progress; Undo clicked in the frame it does.)
+  const clicked = page.evaluate(
+    () =>
+      new Promise((done) => {
+        const end = performance.now() + 20_000;
+        const look = () => {
+          if (window.__vis('.hg-saving')) {
+            const b = [...document.querySelectorAll('.toast .toast-act')].find((x) => x.textContent === 'Undo');
+            b?.click();
+            return done(!!b);
+          }
+          if (performance.now() > end) return done(false);
+          requestAnimationFrame(look);
+        };
+        look();
+      }),
+  );
+  await save();
+  t.assert(await clicked, 'Undo clicked while saving');
+}
+
+test('huge edit: Undo on "Discarded" clicked while a Save as runs: the offer comes back once it ends', { engines: ['chromium'], timeout: 120_000 }, async (t) => {
+  const page = await storagePage(t);
+  try {
+    await t.open('/');
+    await offered(t, () => openHuge(t, bigUsers));
+    await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      window.showSaveFilePicker = async () => root.getFileHandle('copy-40mb.json', { create: true });
+    });
+    await undoDuringSave(t, () => page.keyboard.press(`${MOD}+Shift+s`));
+    t.check(await toasted(page, /Undo runs once the save ends/), 'said it waits for the save', await toasts(page));
+    t.check(await until(page, () => /Restore 1 unsaved change from/.test(window.__vis('.hg-restore')?.textContent ?? '') && !window.__vis('.hg-edited'), null, { timeout: 30_000 }), 'after the save: the edit undone, the offer back', await toasts(page));
+    await page.locator('.hg-restore .btn.primary').click();
+    await until(page, () => /Edited · 1 change/.test(window.__vis('.hg-edited')?.textContent ?? ''), null, { timeout: 20_000 });
+    await selectPath(page, '$.users[5]');
+    t.check(/\{2\}/.test(await selRow(page)), 'restored: the kept change', await selRow(page));
+    await selectPath(page, '$.users[7]');
+    t.check(/\{3\}/.test(await selRow(page)), 'not the one undone', await selRow(page));
+  } finally {
+    await t.cleanup?.();
+  }
+});
+
+test('huge edit: Undo on "Discarded" clicked while saving in place: said plainly that it can\'t come back', { engines: ['chromium'], timeout: 120_000 }, async (t) => {
+  const page = await storagePage(t);
+  try {
+    await t.open('/');
+    // The file opened through its handle (huge mode's Open file), so Save writes into it.
+    const text = (await import('node:fs')).readFileSync(bigUsers);
+    await page.evaluate(async () => {
+      localStorage.setItem('tk:hugeMin', '0');
+      const root = await navigator.storage.getDirectory();
+      window.__h = await root.getFileHandle('own-40mb.json', { create: true });
+      window.showOpenFilePicker = async () => [window.__h];
+    });
+    // (Written in parts: 40 MB in one evaluate is too much to pass.)
+    for (let i = 0; i < text.length; i += 8 << 20) {
+      await page.evaluate(
+        async ([b64, first]) => {
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const w = await window.__h.createWritable({ keepExistingData: !first });
+          if (!first) await w.seek((await window.__h.getFile()).size);
+          await w.write(bytes);
+          await w.close();
+        },
+        [text.subarray(i, i + (8 << 20)).toString('base64'), i === 0],
+      );
+    }
+    const open = async () => {
+      await page.evaluate(() => {
+        localStorage.setItem('tk:hugeMin', '0');
+        window.showOpenFilePicker = async () => [window.__h];
+      });
+      await openHuge(t, path);
+      await page.locator('.hg-file .btn', { hasText: 'Open file' }).click();
+      t.assert(await until(page, () => /own-40mb\.json/.test(window.__vis('.hg-file .fname')?.textContent ?? '') && /Valid JSON/.test(window.__vis('.hg-sb')?.textContent ?? ''), null, { timeout: 30_000 }), 'opened through its handle');
+    };
+    await page.evaluate(async () => {
+      window.__h = await (await navigator.storage.getDirectory()).getFileHandle('own-40mb.json');
+    });
+    await offered(t, async () => {
+      await page.evaluate(async () => {
+        window.__h = await (await navigator.storage.getDirectory()).getFileHandle('own-40mb.json');
+      });
+      await open();
+    });
+    await undoDuringSave(t, () => page.keyboard.press(`${MOD}+s`));
+    t.check(await toasted(page, /Undo runs once the save ends/), 'said it waits for the save', await toasts(page));
+    t.check(await toasted(page, /Those kept changes can’t come back/), 'after the save in place: said it can\'t come back', await toasts(page));
+    t.check(!(await page.evaluate(() => !!window.__vis('.hg-restore'))), 'no offer');
+  } finally {
+    await t.cleanup?.();
+  }
 });
