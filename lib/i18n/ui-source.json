@@ -1034,7 +1034,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -1125,7 +1124,9 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -2162,7 +2163,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -2253,7 +2253,9 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -3290,7 +3292,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -3381,7 +3382,9 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -4418,7 +4421,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -4509,7 +4511,9 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -5546,7 +5550,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -5637,7 +5640,9 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -6674,7 +6679,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -6765,7 +6769,9 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -7802,7 +7808,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -7893,7 +7898,9 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -8930,7 +8937,6 @@
     "app.hugeGraphMoreSoFar": "a918e23e",
     "app.hugeExportPng": "ef08555a",
     "app.hugeExportSvg": "3b20ad4d",
-    "toast.hugeGraphImage": "0af698e2",
     "cmd.shape": "005ab950",
     "cmd.shape.terms": "ad14f0f3",
     "app.hugeShapeRead": "827c90b6",
@@ -9021,6 +9027,8 @@
     "app.hugeKeepOtherTabTip": "c1f917aa",
     "app.hugeKeepOtherKept": "40852e86",
     "app.hugeKeepOtherKeptTip": "9817a272",
-    "toast.hugeReofferNotAllowed": "bdbbb678"
+    "toast.hugeReofferNotAllowed": "bdbbb678",
+    "toast.hugeReofferAfterSave": "36774e16",
+    "toast.hugeReofferAfterRead": "7dd6bf62"
   }
 }

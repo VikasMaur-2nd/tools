@@ -1123,5 +1123,7 @@
   "app.hugeKeepOtherTabTip": "{name}이(가) 다른 탭에서 열려 있는 동안에는 여기서 한 편집이 보관되지 않습니다",
   "app.hugeKeepOtherKept": "다른 탭에서 보관됨",
   "app.hugeKeepOtherKeptTip": "다른 탭이 {name}의 변경 사항을 보관했습니다. 여기서 한 편집은 보관되지 않습니다",
-  "toast.hugeReofferNotAllowed": "보관해 둔 변경 사항을 되돌릴 수 없습니다. 그 뒤의 편집을 모두 실행 취소할 수는 없습니다"
+  "toast.hugeReofferNotAllowed": "보관해 둔 변경 사항을 되돌릴 수 없습니다. 그 뒤의 편집을 모두 실행 취소할 수는 없습니다",
+  "toast.hugeReofferAfterSave": "저장이 끝나면 실행 취소합니다",
+  "toast.hugeReofferAfterRead": "파일을 다 읽으면 실행 취소합니다"
 }

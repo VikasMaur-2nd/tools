@@ -1187,5 +1187,7 @@
   "app.hugeKeepOtherTabTip": "Les modifications faites ici ne sont pas conservées tant que {name} est ouvert dans un autre onglet",
   "app.hugeKeepOtherKept": "Conservé dans un autre onglet",
   "app.hugeKeepOtherKeptTip": "Un autre onglet a conservé ses modifications de {name} : celles faites ici ne seront pas conservées",
-  "toast.hugeReofferNotAllowed": "Ces modifications conservées ne peuvent pas revenir : les modifications faites depuis ne peuvent pas toutes être annulées"
+  "toast.hugeReofferNotAllowed": "Ces modifications conservées ne peuvent pas revenir : les modifications faites depuis ne peuvent pas toutes être annulées",
+  "toast.hugeReofferAfterSave": "L'annulation aura lieu une fois l'enregistrement terminé",
+  "toast.hugeReofferAfterRead": "L'annulation aura lieu une fois le fichier lu"
 }

@@ -1187,5 +1187,7 @@
   "app.hugeKeepOtherTabTip": "Las ediciones de aquí no se conservan mientras {name} esté abierto en otra pestaña",
   "app.hugeKeepOtherKept": "Conservado en otra pestaña",
   "app.hugeKeepOtherKeptTip": "Otra pestaña conservó sus cambios en {name}: las ediciones de aquí no se conservarán",
-  "toast.hugeReofferNotAllowed": "Esos cambios conservados no pueden volver: las ediciones posteriores no se pueden deshacer todas"
+  "toast.hugeReofferNotAllowed": "Esos cambios conservados no pueden volver: las ediciones posteriores no se pueden deshacer todas",
+  "toast.hugeReofferAfterSave": "Deshacer se aplicará cuando termine el guardado",
+  "toast.hugeReofferAfterRead": "Deshacer se aplicará cuando termine de leerse el archivo"
 }

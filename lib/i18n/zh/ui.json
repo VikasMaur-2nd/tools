@@ -1123,5 +1123,7 @@
   "app.hugeKeepOtherTabTip": "{name} 在其他标签页中打开期间，这里的编辑不会被保留",
   "app.hugeKeepOtherKept": "已在其他标签页中保留",
   "app.hugeKeepOtherKeptTip": "其他标签页保留了它对 {name} 的更改：这里的编辑不会被保留",
-  "toast.hugeReofferNotAllowed": "无法恢复这些保留的更改：之后的编辑无法全部撤销"
+  "toast.hugeReofferNotAllowed": "无法恢复这些保留的更改：之后的编辑无法全部撤销",
+  "toast.hugeReofferAfterSave": "保存完成后将执行撤销",
+  "toast.hugeReofferAfterRead": "文件读取完成后将执行撤销"
 }

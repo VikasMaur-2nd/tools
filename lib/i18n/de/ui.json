@@ -1155,5 +1155,7 @@
   "app.hugeKeepOtherTabTip": "Änderungen hier werden nicht aufbewahrt, solange {name} in einem anderen Tab geöffnet ist",
   "app.hugeKeepOtherKept": "In einem anderen Tab aufbewahrt",
   "app.hugeKeepOtherKeptTip": "Ein anderer Tab hat seine Änderungen an {name} aufbewahrt: Änderungen hier werden nicht aufbewahrt",
-  "toast.hugeReofferNotAllowed": "Diese aufbewahrten Änderungen können nicht zurückkommen: Die Änderungen seitdem lassen sich nicht alle rückgängig machen"
+  "toast.hugeReofferNotAllowed": "Diese aufbewahrten Änderungen können nicht zurückkommen: Die Änderungen seitdem lassen sich nicht alle rückgängig machen",
+  "toast.hugeReofferAfterSave": "Rückgängig wird ausgeführt, sobald das Speichern fertig ist",
+  "toast.hugeReofferAfterRead": "Rückgängig wird ausgeführt, sobald die Datei eingelesen ist"
 }

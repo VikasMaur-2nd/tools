@@ -1123,5 +1123,7 @@
   "app.hugeKeepOtherTabTip": "{name}が別のタブで開いている間は、ここでの編集は保持されません",
   "app.hugeKeepOtherKept": "別のタブで保持済み",
   "app.hugeKeepOtherKeptTip": "別のタブが{name}の変更を保持しました。ここでの編集は保持されません",
-  "toast.hugeReofferNotAllowed": "保持していた変更は戻せません。その後の編集をすべては元に戻せないためです"
+  "toast.hugeReofferNotAllowed": "保持していた変更は戻せません。その後の編集をすべては元に戻せないためです",
+  "toast.hugeReofferAfterSave": "保存が終わると元に戻します",
+  "toast.hugeReofferAfterRead": "ファイルの読み込みが終わると元に戻します"
 }

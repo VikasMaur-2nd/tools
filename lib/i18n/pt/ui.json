@@ -1187,5 +1187,7 @@
   "app.hugeKeepOtherTabTip": "As edições feitas aqui não são guardadas enquanto {name} estiver aberto em outra guia",
   "app.hugeKeepOtherKept": "Guardado em outra guia",
   "app.hugeKeepOtherKeptTip": "Outra guia guardou as alterações dela em {name}: as edições feitas aqui não serão guardadas",
-  "toast.hugeReofferNotAllowed": "Essas alterações guardadas não podem voltar: nem todas as edições feitas depois podem ser desfeitas"
+  "toast.hugeReofferNotAllowed": "Essas alterações guardadas não podem voltar: nem todas as edições feitas depois podem ser desfeitas",
+  "toast.hugeReofferAfterSave": "O desfazer será aplicado quando o salvamento terminar",
+  "toast.hugeReofferAfterRead": "O desfazer será aplicado quando a leitura do arquivo terminar"
 }
