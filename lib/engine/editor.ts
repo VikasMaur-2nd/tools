@@ -2512,7 +2512,8 @@ export class Editor {
     if (!ch) return;
     this.histChars -= ch.del.length + ch.ins.length;
     this.redo_.push(ch);
-    this.write(ch.a, ch.a + ch.ins.length, ch.del, ch.selB);
+    // (A step of the reading alone changed no text: see reformatStep.)
+    if (ch.del || ch.ins) this.write(ch.a, ch.a + ch.ins.length, ch.del, ch.selB);
     if (ch.names) this.ev.renamed?.(ch.names[0]);
     if (ch.formats) this.ev.reformat?.(ch.formats[0]);
   }
@@ -2522,7 +2523,7 @@ export class Editor {
     const ch = this.redo_.pop();
     if (!ch) return;
     this.push(ch);
-    this.write(ch.a, ch.a + ch.del.length, ch.ins, ch.selA);
+    if (ch.del || ch.ins) this.write(ch.a, ch.a + ch.del.length, ch.ins, ch.selA);
     if (ch.names) this.ev.renamed?.(ch.names[1]);
     if (ch.formats) this.ev.reformat?.(ch.formats[1]);
   }
@@ -2610,8 +2611,19 @@ export class Editor {
       } finally {
         this.loading = false;
       }
-    }
+    } else if (formats) this.reformatStep(formats, names);
     this.select(caret, caret, true);
+  }
+
+  /**
+   * The same text, read as another format from now on (see Change.formats): a step of its own, so Undo brings the
+   * reading before back (and the file name, `names`, when that changes with it).
+   */
+  reformatStep(formats: [string, string], names?: [string | null, string | null]) {
+    if (this.locked || formats[0] === formats[1]) return;
+    const sel = this.selection;
+    this.push({ a: 0, del: '', ins: '', selB: sel, selA: sel, t: 0, kind: 'other', names, formats });
+    this.redo_ = [];
   }
 
   select(a: number, b: number, center = true) {

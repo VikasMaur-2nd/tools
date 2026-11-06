@@ -984,8 +984,9 @@ function sourcing(text: string, format = 'yaml') {
       this.steps.push({ names: names ?? null, formats: formats && (formats as string[])[0] !== (formats as string[])[1] ? formats : null });
       e.onChange('set');
     },
+    reformatStep(formats: unknown, names?: unknown) { this.steps.push({ names: names ?? null, formats }); },
     setJwt() {}, setColors(c: unknown) { this.colors = c; }, setDiagnostics(d: { p: number }[]) { diags.push(d.map((x) => x.p)); },
-    setScope() {}, setBrackets() {}, setCaret() {}, focus() {}, destroy() {},
+    setScope() {}, setBrackets() {}, setCaret() {}, select() {}, focus() {}, destroy() {},
   };
   Object.assign(e, {
     ed, inFmt: format,
@@ -1041,6 +1042,9 @@ test('text read as CSV that clearly is JSON says so, and reading it as JSON keep
   assert.equal(s.ed.colors, null, 'coloured as JSON again');
   assert.equal(s.ed.text, '{"a": [1, 2]}');
   assert.equal(s.engine.synced, true);
+  assert.deepEqual(realm(s.ed.steps), [{ names: null, formats: ['csv', 'json'] }], 'one undo step: Undo reads it as CSV again');
+  s.engine.setInput('json');
+  assert.equal(s.ed.steps.length, 1, 'the same reading again is no step');
 });
 
 test('Use as input replaces the YAML with its JSON, read as JSON from then on, under a .json name; the step carries both back', async () => {
@@ -1092,6 +1096,68 @@ test('valid JSON pasted over a document in another format is read as JSON again;
   assert.deepEqual(realm(s.state.status), { kind: 'valid', warnings: 0 });
   assert.equal(s.ed.colors, null, 'coloured as JSON');
   assert.equal(await paste('[1]'), undefined, 'read as JSON already: nothing changes');
+});
+
+test('a converter failing (not the input) says the conversion failed, reported, as the worker says it', async () => {
+  const s = sourcing('name: Ada\n');
+  s.engine.analyze();
+  await s.drain();
+  s.engine.srcMod = { ...s.engine.srcMod, convertSource() { throw new TypeError('bug'); } };
+  await s.type('name: Lin\n');
+  assert.equal(s.state.status.kind, 'error');
+  assert.equal(s.state.status.msg, 'Conversion failed');
+  assert.equal(s.state.status.src, 'yaml');
+  assert.equal(s.errors.length, 1, 'reported (without the input)');
+});
+
+test('Unescape and Swap with an input in another format: the JSON is read as JSON; nothing to swap while it doesn\'t convert', async () => {
+  const s = sourcing('"{\\"a\\": 1}"\n');
+  s.engine.analyze();
+  await s.drain();
+  assert.equal(s.engine.converted, '"{\\"a\\": 1}"', 'a YAML string holding JSON');
+  s.engine.unescapeDoc();
+  await s.drain();
+  assert.equal(s.ed.text, '{\n  "a": 1\n}');
+  assert.equal(s.engine.inFmt, 'json', 'unescaped JSON is read as JSON');
+  assert.deepEqual(realm(s.ed.steps[s.ed.steps.length - 1].formats), ['yaml', 'json']);
+
+  const t = sourcing('a: [1\n');
+  t.engine.analyze();
+  await t.drain();
+  t.engine.ed2 = { text: '{"b": 1}', setValue() { throw new Error('nothing goes over'); } };
+  t.engine.swapCompare();
+  assert.equal(t.toasts[t.toasts.length - 1], "Can't do that yet. Fix the error first.");
+  assert.equal(t.ed.text, 'a: [1\n', 'the YAML stays');
+});
+
+test('an agent tool waits for the reader of the input\'s format, so a YAML input isn\'t empty to it', async () => {
+  const s = sourcing('name: Ada\n');
+  assert.equal(s.engine.srcMod, null);
+  await s.engine.agentReady();
+  assert.ok(s.engine.srcMod, 'the reader is loaded');
+  const doc = s.engine.agentDoc();
+  assert.equal(doc.format, 'yaml');
+  assert.equal(doc.res.root.v.length, 1);
+  assert.equal(doc.src, '{"name":"Ada"}');
+});
+
+test('CSV options changed while a big CSV converts in the worker: a command meanwhile reads it the new way', async () => {
+  const csv = 'id,name\n' + Array.from({ length: 8000 }, (_, i) => `${i},user ${i}`).join('\n') + '\n';
+  assert.ok(csv.length > 100_000);
+  const s = sourcing(csv, 'csv');
+  const posted: Dynamic[] = [];
+  s.engine.srcMod = load(resolve(__dirname, '../lib/engine/source'));
+  s.engine.srcWorker = { postMessage: (m: Dynamic) => posted.push(m), terminate() {} };
+  s.engine.analyzeInSteps();
+  s.engine.sourceConverted({ seq: posted[0].seq, json: s.engine.srcMod.convertSource(posted[0].text, 'csv', posted[0].csv).json });
+  await s.drain();
+  assert.ok(s.engine.converted.startsWith('[{"id":0,'));
+  s.engine.setCsv({ header: false });
+  assert.equal(posted.length, 2, 'the new reading goes to the worker');
+  assert.equal(s.engine.res, null, 'the reading before is no answer now');
+  // (A command before its reply: fresh() reads it here, the new way.)
+  s.engine.fresh();
+  assert.ok(s.engine.converted.startsWith('[["id","name"],[0,"user 0"]'), s.engine.converted.slice(0, 40));
 });
 
 test('CSV: the separator is detected unless chosen, and the header row and typed values can be turned off', async () => {
@@ -1150,8 +1216,13 @@ test('a big input in another format converts in the worker, its JSON parsed in s
   assert.ok(yaml.length > 100_000);
   const s = sourcing(yaml);
   const posted: Dynamic[] = [];
+  const workers: Dynamic[] = [];
   s.engine.srcMod = load(resolve(__dirname, '../lib/engine/source'));
-  s.engine.srcWorker = { postMessage: (m: Dynamic) => posted.push(m), terminate() {} };
+  // (A worker as the page makes one: started on first use, and again after one was stopped.)
+  s.engine.sourceWorker = () => {
+    if (s.engine.srcWorker === undefined) workers.push((s.engine.srcWorker = { postMessage: (m: Dynamic) => posted.push(m), terminate() { this.stopped = true; }, stopped: false }));
+    return s.engine.srcWorker;
+  };
   s.engine.analyzeInSteps();
   assert.equal(posted.length, 1);
   assert.equal(posted[0].format, 'yaml');
@@ -1166,8 +1237,10 @@ test('a big input in another format converts in the worker, its JSON parsed in s
   // Typed again: the reply for the version before is dropped, the newest one is shown.
   await s.type(yaml + '- id: x\n');
   assert.equal(posted.length, 2);
+  assert.equal(workers.length, 1, 'an idle worker takes the next one');
   await s.type(yaml + '- id: y\n');
   assert.equal(posted.length, 3);
+  assert.deepEqual([workers.length, workers[0].stopped], [2, true], 'one still converting an older text is stopped, not waited out');
   reply(posted[1]);
   await s.drain();
   assert.equal(s.state.status.kind, 'parsing');

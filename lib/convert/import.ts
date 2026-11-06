@@ -258,8 +258,10 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
     }
     if (row.length > 1 || row[0] !== '' || q[0]) {
       if (!header) {
+        // (Its first row says whether the file quotes every field, as the first data row does with a header.)
+        if (quoteAll < 0) quoteAll = q.every(Boolean) ? 1 : 0;
         out += (count++ ? ',' : '') + p1 + '[';
-        for (let j = 0; j < row.length; j++) out += (j ? ',' + p2 : p2) + cell(row[j], q[j]);
+        for (let j = 0; j < row.length; j++) out += (j ? ',' + p2 : p2) + (quoteAll && q[j] && row[j] !== '' ? cell(row[j], false) : cell(row[j], q[j]));
         out += p1 + ']';
       } else if (!keys) {
         keys = [];

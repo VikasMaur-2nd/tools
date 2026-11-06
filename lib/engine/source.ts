@@ -82,9 +82,9 @@ function lineOf(t: string, a: number): [number, number] {
 /**
  * The editor's colours for an input read as `format`: each line on its own (a YAML block scalar or a TOML string
  * over several lines colours as the lines it spans). CSV by column, as the Convert view colours it, with `delimiter`;
- * the first line bold when it is the header.
+ * the line at offset `head` bold when it is the header (after Excel's `sep=;` line, which is shown as a comment).
  */
-export function sourceColors(format: Exclude<SourceFormat, 'json'>, delimiter = ',', header = true): Colors {
+export function sourceColors(format: Exclude<SourceFormat, 'json'>, delimiter = ',', header = true, head = 0): Colors {
   // (A long line soft-wraps into rows, each coloured with the same line: its tokens are found once.)
   let lastLine = '';
   let lastAt = -1;
@@ -100,7 +100,12 @@ export function sourceColors(format: Exclude<SourceFormat, 'json'>, delimiter = 
     tokens = [];
     classes = [];
     if (format === 'csv') {
-      const head = header && at + s === 0 ? ' ch' : '';
+      if (head && at + s === 0) {
+        tokens.push(0, line.length);
+        classes.push('tc');
+        return;
+      }
+      const bold = header && at + s === head ? ' ch' : '';
       let col = 0;
       let q = false;
       for (let i = 0; i < line.length; ) {
@@ -125,7 +130,7 @@ export function sourceColors(format: Exclude<SourceFormat, 'json'>, delimiter = 
         }
         if (j === i) j++;
         tokens.push(i, j);
-        classes.push(`cc${col % 8}${head}`);
+        classes.push(`cc${col % 8}${bold}`);
         i = j;
       }
       return;

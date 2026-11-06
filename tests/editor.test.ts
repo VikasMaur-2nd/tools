@@ -236,6 +236,33 @@ test('Undo and Redo past a step that changed what the document is read as tell t
   assert.deepEqual(told, ['yaml a: 1', 'json {"a":1}']);
 });
 
+test('the same text read another way is a step of its own: Undo and Redo tell the format (and name), the text untouched', () => {
+  const { el } = editorElement();
+  const told: string[] = [];
+  const changes: string[] = [];
+  const ed = new Editor(el as unknown as HTMLElement, { ...events, change: (k: string) => changes.push(k), reformat: (f: string) => told.push(f), renamed: (n: string | null) => told.push(`name ${n}`) });
+  ed.init('{"a":1}');
+  frames();
+  ed.replace(7, 7, ' ');
+  ed.reformatStep(['json', 'yaml']);
+  ed.reformatStep(['yaml', 'yaml']);
+  // (Use as input when the output is the text itself: the reading and the name change, not the text.)
+  ed.setValue('{"a":1} ', 0, false, ['a.yaml', 'a.json'], ['yaml', 'json']);
+  assert.equal(ed.canUndo, true);
+  const n = changes.length;
+  ed.undo();
+  assert.deepEqual(told, ['name a.yaml', 'yaml']);
+  ed.undo();
+  assert.deepEqual(told.slice(2), ['json'], 'one step for the picker; one that kept the format is none');
+  assert.equal(changes.length, n, 'no text changed, so no change was told');
+  assert.equal(ed.text, '{"a":1} ');
+  ed.undo();
+  assert.equal(ed.text, '{"a":1}', 'the typing before is the next step');
+  ed.redo();
+  ed.redo();
+  assert.deepEqual(told.slice(3), ['yaml']);
+});
+
 test('a paste over everything asks what the document is read as after it: Undo and Redo tell that format', () => {
   const { el, ta } = editorElement();
   const told: string[] = [];

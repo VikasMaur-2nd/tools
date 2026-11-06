@@ -517,6 +517,10 @@ describe('CSV import', () => {
     assert.deepEqual(json(text, { delimiter: ',' }), [{ 'a;b;c': '1;2', column_2: '5;3' }]);
     assert.deepEqual(json('sep=;\na,b\n1,2\n', { delimiter: ',' }), [{ a: 1, b: 2 }], 'the sep= line is the file\'s, not data');
     assert.deepEqual(json('id,ok,none\n007,true,\n', { header: false }), [['id', 'ok', 'none'], ['007', true, null]]);
+    // A file that quotes every field (Excel's) still gets its numbers and booleans, with or without a header row.
+    assert.deepEqual(json('"id","n"\n"1","true"\n', {}), [{ id: 1, n: true }]);
+    assert.deepEqual(json('"id","n"\n"1","true"\n', { header: false }), [['id', 'n'], [1, true]]);
+    assert.deepEqual(json('"id","n"\n"1","true"\n', { header: false, types: false }), [['id', 'n'], ['1', 'true']]);
     assert.deepEqual(json('id,ok,none,q\n7,true,,""\n8\n', { types: false }), [{ id: '7', ok: 'true', none: '', q: '' }, { id: '8', ok: '', none: '', q: '' }]);
     assert.deepEqual(json('a\tb\n1\t2\n', { delimiter: '\t', header: false, types: false }), [['a', 'b'], ['1', '2']]);
     const r = importToJson('a,b\n1,2\n', 'csv', '  ', { header: false });

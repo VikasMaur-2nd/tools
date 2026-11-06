@@ -72,6 +72,12 @@ describe('the editor colours another format', () => {
     // (A document read from offset 8 on: its first line isn't the header.)
     assert.doesNotMatch(sourceColors('csv', ';')(csv.slice(8), 0, 3, 8), / ch/);
     assert.doesNotMatch(sourceColors('csv', ';', false)(csv, 0, 7, 0), / ch/, 'no header row: none is bold');
+    // Excel's `sep=;` line names the separator: it is a comment, and the header is the line after it.
+    const sep = 'sep=;\na;b\n1;2\n';
+    const x = sourceColors('csv', ';', true, 6);
+    assert.equal(x(sep, 0, 5, 0), '<span class="tc">sep=;</span>');
+    assert.match(x(sep, 6, 9, 0), /class="cc0 ch">a</);
+    assert.doesNotMatch(x(sep, 10, 13, 0), / ch/);
   });
 
   test('a piece of a line (a soft-wrapped row) colours as the whole line does, with markup in it escaped', () => {
