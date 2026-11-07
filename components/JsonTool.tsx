@@ -673,13 +673,20 @@ function Banner() {
   );
 }
 
-/** Raw state (nothing typed or pasted yet): the name, centered on the divider. */
-function Watermark() {
+/**
+ * Raw state (nothing typed or pasted yet): the name, centered on the divider. The homepage adds the site's
+ * slogan under it (server-rendered, so its text is not in the app's script).
+ */
+function Watermark({ slogan }: { slogan?: ReactNode }) {
   const empty = useUI((s) => s.empty);
   const view = useUI((s) => s.settings.view);
   if (!empty || view === 'compare') return null;
+  if (!slogan) return <div className="watermark" aria-hidden="true" />;
   return (
-    <div className="watermark" aria-hidden="true" />
+    <div className="watermark wm-slogan">
+      <div className="wm-name" aria-hidden="true" />
+      {slogan}
+    </div>
   );
 }
 
@@ -1136,7 +1143,17 @@ function DropOverlay() {
 
 // ── Root ───────────────────────────────────────────────────────────────────
 
-export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /** Language switcher (server-rendered links). */ langs?: ReactNode } = {}) {
+export default function JsonTool({
+  preset,
+  langs,
+  slogan,
+}: {
+  preset?: EnginePreset;
+  /** Language switcher (server-rendered links). */
+  langs?: ReactNode;
+  /** The homepage's slogan, shown under the name until there is a document (server-rendered). */
+  slogan?: ReactNode;
+} = {}) {
   const t = useT();
   const tRef = useRef(t);
   const presetRef = useRef(preset);
@@ -1217,18 +1234,13 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
 
   return (
     <div className={`app${comparing ? ' comparing' : ''}${empty ? ' is-empty' : ''}`}>
-      {!preset && (
-        <>
-          <h1 className="sr-only">{t('Tool Kumar: JSON Formatter & Viewer')}</h1>
-          <p className="sr-only">{t('Format, validate, repair and explore JSON instantly. Tree, table, graph, convert and compare views. No upload, no ads, works offline.')}</p>
-        </>
-      )}
+      {!preset && <h1 className="sr-only">{t('Tool Kumar: JSON Formatter & Viewer')}</h1>}
       {/* The page supplies the main landmark (home: around the tool and its guide; landing pages: the content below). */}
       <div className="panes">
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />
         <Splitter />
-        <Watermark />
+        <Watermark slogan={slogan} />
         <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} />
         <HugeHost />
       </div>

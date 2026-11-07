@@ -1260,6 +1260,35 @@ html:has(.content-page:not([style*='none'])) {
   font-size: 14px;
 }
 
+/* The site's slogan, the same on every page (the homepage shows it in the app). */
+.foot-slogan {
+  margin-bottom: 40px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 32px;
+}
+
+.foot-slogan p {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.foot-slogan .foot-slogan-title {
+  margin: 0;
+  color: var(--fg);
+  font: 650 clamp(20px, 2.4vw, 26px) / 1.25 var(--font-ui);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.foot-slogan a {
+  color: var(--fg);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
 .foot-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) repeat(4, minmax(0, 1fr));

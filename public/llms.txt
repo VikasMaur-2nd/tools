@@ -1,6 +1,6 @@
 # Tool Kumar
 
-> Free, private JSON tools that run in the browser. Documents stay on the device and the app works offline after it loads.
+> Open the biggest JSON out there, at the fastest of speeds. Free, private JSON tools that run in the browser and open JSON files as big as 10 GB. Documents stay on the device and the app works offline after it loads.
 
 ## Primary pages
 

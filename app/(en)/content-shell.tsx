@@ -4,7 +4,7 @@ import NavMenu from '@/components/NavMenu';
 import { FooterLangs } from '@/components/LangSwitch';
 import { localePath } from '@/lib/i18n/locales';
 import { getLocale } from '@/lib/i18n/locale';
-import { serverT } from '@/lib/i18n/server';
+import { serverT, toolPage } from '@/lib/i18n/server';
 import { POSTS } from './blogs/posts';
 
 /** The app icon, drawn with theme colors so it follows light and dark mode. */
@@ -42,6 +42,8 @@ export default async function ContentShell({
   const to = (p: string) => localePath(locale, p);
   // Sections that are not translated link to the English pages, marked as such.
   const en = locale === 'en' ? {} : { hrefLang: 'en', title: t('site.englishOnly') };
+  // The slogan's measurements are on the large JSON viewer page, in this language where it is translated.
+  const measured = locale === 'en' || toolPage(locale, 'large-json-viewer');
   // Inline on wide screens, in the menu on narrow ones (app/content.css): both carry the same links.
   const sections = (
     <>
@@ -90,6 +92,15 @@ export default async function ContentShell({
 
       <footer className="site-footer">
         <div className="container">
+          <div className="foot-slogan">
+            <p className="foot-slogan-title">{t('site.slogan.title')}</p>
+            <p>
+              {t('site.slogan.text')}{' '}
+              <IntentLink href={measured ? to('/tools/large-json-viewer') : '/tools/large-json-viewer'} {...(measured ? {} : en)}>
+                {t('site.footer.measured')}
+              </IntentLink>
+            </p>
+          </div>
           <div className="foot-grid">
             <div className="foot-brand">
               <IntentLink className="site-brand" href={to('/')}>
