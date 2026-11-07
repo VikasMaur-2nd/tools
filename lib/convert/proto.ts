@@ -29,7 +29,13 @@ function ident(key: string): string {
     .replace(/^_|_$/g, '');
   return /^[0-9]/.test(s) ? 'the_' + s : s;
 }
-const fieldName = (key: string) => ident(key) || 'field';
+/** Macros g++ predefines in its default GNU mode: protoc's C++ code would write `namespace linux`, `unix()`. */
+const MACROS = new Set(['linux', 'unix']);
+/** A field name: a macro gets a '_', from which protoc still derives the key as the JSON name. */
+const fieldName = (key: string) => {
+  const f = ident(key) || 'field';
+  return MACROS.has(f) ? f + '_' : f;
+};
 
 /** The JSON name protoc gives a field (each '_' dropped, the character after it upper-cased). */
 const jsonName = (f: string) => f.replace(/_+(.?)/g, (_, c: string) => c.toUpperCase());
@@ -39,13 +45,12 @@ const UNNAMED = /^\[[\s\S]*\]$|\0|[\ud800-\udbff](?![\udc00-\udfff])|(?:^|[^\ud8
 
 /**
  * Packages that get a '_': Java keywords (protoc's Java generator writes `package int;` as it is; its C++
- * generator escapes keywords itself) and the macros g++ predefines in its default GNU mode (`namespace linux`).
+ * generator escapes keywords itself) and the g++ macros.
  */
-const RESERVED = new Set(
-  'abstract assert boolean break byte case catch char class const continue default do double else enum extends false final finally float for goto if implements import instanceof int interface long native new null package private protected public return short static strictfp super switch synchronized this throw throws transient true try void volatile while linux unix'.split(
-    ' ',
-  ),
-);
+const RESERVED = new Set([
+  ...'abstract assert boolean break byte case catch char class const continue default do double else enum extends false final finally float for goto if implements import instanceof int interface long native new null package private protected public return short static strictfp super switch synchronized this throw throws transient true try void volatile while'.split(' '),
+  ...MACROS,
+]);
 
 /** Field numbers 19000-19999 are reserved for the protobuf implementation. */
 const fieldNumber = (i: number) => (i < 19000 ? i : i + 1000);
@@ -111,9 +116,10 @@ export function toProto(root: JNode, o: ConvertOptions): string {
     const next = new Map<string, number>();
     for (const i of rest) {
       const bare = bases[i].replace(/_/g, '');
+      const stem = bases[i].replace(/_$/, '');
       let n = next.get(bare) ?? 2;
       let f: string;
-      do f = `${bases[i]}_${n++}`;
+      do f = `${stem}_${n++}`;
       while (!free(f));
       next.set(bare, n);
       take(i, f);

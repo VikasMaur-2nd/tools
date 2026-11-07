@@ -286,9 +286,13 @@ test('Protocol Buffers: JSON names', () => {
       '  double big = 4; // integers beyond int64: double rounds them; protobuf can\'t take JSON key "[big]" as this field\'s JSON name',
   );
   // ...and they don't take the field (and derived JSON name) a usable key would get, whatever the order.
-  // A key whose own name is free keeps it: a renamed key's number doesn't take it.
-  assert.equal(root('{"ID":2,"id":3,"Id2":4}'), '  int64 id_3 = 1 [json_name = "ID"];\n  int64 id = 2;\n  int64 id2 = 3 [json_name = "Id2"];');
   assert.equal(root('{"[fooBar]":"s","fooBar":2}'), '  string foo_bar_2 = 1; // protobuf can\'t take JSON key "[fooBar]" as this field\'s JSON name\n  int64 foo_bar = 2;');
+  // A key whose own name is free keeps it, even one protobuf takes no JSON name for: renamed keys are numbered after.
+  assert.equal(root('{"ID":2,"id":3,"Id2":4}'), '  int64 id_3 = 1 [json_name = "ID"];\n  int64 id = 2;\n  int64 id2 = 3 [json_name = "Id2"];');
+  assert.equal(root('{"ID":1,"id":2,"[id_2]":3}'), '  int64 id_3 = 1 [json_name = "ID"];\n  int64 id = 2;\n  int64 id_2 = 3; // protobuf can\'t take JSON key "[id_2]" as this field\'s JSON name');
+  // g++ macros (GNU mode) aren't field names: unix_ still has "unix" as its JSON name.
+  assert.equal(root('{"unix":1,"linux":2,"time":3}'), '  int64 unix_ = 1;\n  int64 linux_ = 2;\n  int64 time = 3;');
+  assert.equal(root('{"unix":1,"unix_":2}'), '  int64 unix_2 = 1 [json_name = "unix"];\n  int64 unix_ = 2 [json_name = "unix_"];');
   // Many keys that differ in case only, or share a name (other scripts all derive to "field"): linear.
   for (const keys of [
     Array.from({ length: 20000 }, (_, i) => (i % 2 ? `K${i}X` : `k${i}x`)),
