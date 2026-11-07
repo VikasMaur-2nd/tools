@@ -43,7 +43,7 @@ const API = JSON.stringify({
 test('TARGETS are ordered and complete', () => {
   assert.deepEqual(
     TARGETS.map((t) => t.id),
-    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'],
+    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'],
   );
   assert.ok(TARGETS.every((t) => t.group === (['csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'].includes(t.id) ? 'Data' : 'Types')));
   // every target but CSV and Excel (xlsx.ts) has a converter
@@ -199,6 +199,84 @@ test('Rust (serde)', () => {
     '    pub empty: Vec<serde_json::Value>,',
   );
   has(conv('{"firstName":"a","lastName":"b","userId":1}', 'rust'), '#[serde(rename_all = "camelCase")]\npub struct Root {\n    pub first_name: String,');
+});
+
+// The outputs below were compiled with protoc and read the documents back with protobuf's JSON parser (json_format).
+test('Protocol Buffers (proto3)', () => {
+  const nested = '{"user-id":42,"profile":{"city":"London","created_at":"2026-10-14T09:00:00Z"},"items":[{"price":12,"note":null},{"price":12.5,"note":"gift"}]}';
+  assert.equal(
+    conv(nested, 'protobuf'),
+    'syntax = "proto3";\n\nimport "google/protobuf/timestamp.proto";\n\n' +
+      'message Root {\n  int64 user_id = 1 [json_name = "user-id"];\n  Profile profile = 2;\n  repeated Item items = 3;\n}\n\n' +
+      'message Profile {\n  string city = 1;\n  google.protobuf.Timestamp created_at = 2 [json_name = "created_at"];\n}\n\n' +
+      'message Item {\n  double price = 1;\n  optional string note = 2;\n}\n',
+  );
+  const out = conv(API, 'protobuf');
+  has(
+    out,
+    'syntax = "proto3";\n\nimport "google/protobuf/struct.proto";\nimport "google/protobuf/timestamp.proto";\n\nmessage Root {\n',
+    '  double id = 1; // integers beyond int64: double rounds them\n  int64 page = 2;\n',
+    '  string first_name = 3 [json_name = "first-name"];\n  bool the_1abc = 4 [json_name = "1abc"];\n  string class = 5;\n  string type = 6;\n',
+    '  google.protobuf.Timestamp created_at = 7;\n',
+    '  repeated google.protobuf.Value empty = 10;\n  map<string, google.protobuf.Value> meta = 11;\n  repeated User users = 12;\n  Address billing = 13;\n',
+    '  string field = 16 [json_name = "名前"];\n',
+    'message User {\n  int64 id = 1;\n  string name = 2;\n  Address address = 3;\n  optional string nick = 4;\n  repeated string roles = 5;\n}',
+  );
+  // Every field line: a type, an ASCII snake_case name, a number.
+  for (const l of out.split('\n').filter((l) => l.startsWith('  '))) assert.match(l, /^ {2}(?:optional |repeated )?(?:map<string, [\w.]+>|[\w.]+) [a-z][a-z\d_]* = \d+(?: \[json_name = "[^"]*"\])?;(?: \/\/ .*)?$/, l);
+
+  // Nulls: a scalar field is optional; list items and map values that can be null are Values; null alone is a Value.
+  assert.equal(conv('{"a":[1,null],"m":{"1":null,"2":3},"n":null,"t":[{"x":"2024-01-02T03:04:05Z"},{"x":null}]}', 'protobuf').split('message Root {\n')[1].split('\n}')[0],
+    '  repeated google.protobuf.Value a = 1;\n  map<string, google.protobuf.Value> m = 2;\n  google.protobuf.Value n = 3;\n  repeated TItem t = 4;');
+  has(conv('{"t":[{"x":"2024-01-02T03:04:05Z"},{"x":null}]}', 'protobuf'), 'message TItem {\n  google.protobuf.Timestamp x = 1;\n}');
+  // Lists of lists and of dictionaries, maps of lists and of maps.
+  has(conv('{"a":[[1],[2]],"b":[{"1":"x"}],"c":{"1":[1]},"d":{"1":{"2":3}}}', 'protobuf'),
+    '  repeated google.protobuf.ListValue a = 1;\n  repeated google.protobuf.Struct b = 2;\n  map<string, google.protobuf.ListValue> c = 3;\n  map<string, google.protobuf.Struct> d = 4;');
+  // optionalAll: scalars track presence; lists, maps and messages can't be (and needn't be) optional.
+  has(conv('{"a":1,"c":{"d":true},"e":[1]}', 'protobuf', { optionalAll: true }), '  optional int64 a = 1;\n  C c = 2;\n  repeated int64 e = 3;', '  optional bool d = 1;');
+});
+
+test('Protocol Buffers: JSON names', () => {
+  const root = (src: string) => conv(src, 'protobuf').split('message Root {\n')[1].split('\n}')[0];
+  // camelCase keys are the JSON names protoc derives from snake_case fields.
+  assert.equal(root('{"firstName":"a","userId":1,"x":2}'), '  string first_name = 1;\n  int64 user_id = 2;\n  int64 x = 3;');
+  // snake_case keys alone: the field names, printed as they are with proto field names (said once, at the top).
+  const snake = conv('{"first_name":"a","name":"b"}', 'protobuf');
+  has(snake, 'syntax = "proto3";\n\n// Keys are snake_case field names: print JSON with proto field names (e.g. protojson UseProtoNames) to keep them.\n\nmessage Root {\n  string first_name = 1;\n  string name = 2;\n}');
+  // Mixed with other keys: json_name keeps them under the default printer.
+  assert.equal(root('{"first_name":"a","lastName":"b"}'), '  string first_name = 1 [json_name = "first_name"];\n  string last_name = 2;');
+  assert.ok(!conv('{"first_name":"a","lastName":"b"}', 'protobuf').includes('UseProtoNames'));
+  // Keys that are field names keep them; the others are named after them, with a json_name.
+  assert.equal(root('{"userId":1,"user_id":2}'), '  int64 user_id_2 = 1 [json_name = "userId"];\n  int64 user_id = 2 [json_name = "user_id"];');
+  assert.equal(root('{"":1,"field":2}'), '  int64 field_2 = 1 [json_name = ""];\n  int64 field = 2;');
+  // JSON names must differ ignoring case (protoc) and from other fields' names (parsers read both): the later key says why it has none.
+  assert.equal(root('{"id":1,"ID":2}'), '  int64 id = 1;\n  int64 id_2 = 2; // JSON key "ID": too close to another field\'s name for protobuf JSON');
+  assert.equal(
+    root('{"fooBar":1,"foo_bar":2,"foobar":3}'),
+    '  int64 foo_bar_3 = 1 [json_name = "fooBar"];\n  int64 foo_bar = 2 [json_name = "foo_bar"];\n  int64 foobar_2 = 3; // JSON key "foobar": too close to another field\'s name for protobuf JSON',
+  );
+  // Names are ASCII identifiers: accents dropped, other scripts and punctuation give way, keys escaped in json_name.
+  assert.equal(
+    root('{"naïve":1,"日本":2,"10":3,"a\\"b\\nc":4,"$ref":5}'),
+    '  int64 naive = 1 [json_name = "naïve"];\n  int64 field = 2 [json_name = "日本"];\n  int64 the_10 = 3 [json_name = "10"];\n  int64 a_b_c = 4 [json_name = "a\\"b\\nc"];\n  int64 ref = 5 [json_name = "$ref"];',
+  );
+  has(conv('{"日本":{"a":1},"2x":{"b":1}}', 'protobuf'), '  Type field = 1 [json_name = "日本"];\n  The2x the_2x = 2 [json_name = "2x"];', 'message Type {', 'message The2x {');
+});
+
+test('Protocol Buffers: a root that is not an object, field numbers', () => {
+  assert.equal(conv('[1,2]', 'protobuf'), 'syntax = "proto3";\n\n// The JSON is an array: this message holds it as {"items": [...]}.\nmessage Root {\n  repeated int64 items = 1;\n}\n');
+  assert.equal(conv('"x"', 'protobuf'), 'syntax = "proto3";\n\n// The JSON is a single value: this message holds it as {"value": ...}.\nmessage Root {\n  string value = 1;\n}\n');
+  has(conv('null', 'protobuf'), 'import "google/protobuf/struct.proto";', '  google.protobuf.Value value = 1;');
+  has(conv('[[1],[2]]', 'protobuf'), '  repeated google.protobuf.ListValue items = 1;');
+  has(conv('[{"id":1,"email":"a"},{"id":2}]', 'protobuf', { rootName: 'users' }), 'message Users {\n  repeated User items = 1;\n}\n\nmessage User {\n  int64 id = 1;\n  optional string email = 2;\n}');
+  assert.equal(
+    conv('{"2024-01-01":{"n":1}}', 'protobuf'),
+    'syntax = "proto3";\n\n// The JSON object has data for keys: this message holds it as {"entries": {...}}.\nmessage Root {\n  map<string, RootItem> entries = 1;\n}\n\nmessage RootItem {\n  int64 n = 1;\n}\n',
+  );
+  has(conv('{}', 'protobuf'), '  map<string, google.protobuf.Value> entries = 1;');
+  // 19000-19999 are reserved: the 19000th field is 20000.
+  const many = conv(JSON.stringify(Object.fromEntries(Array.from({ length: 19001 }, (_, i) => [`f${i + 1}`, 1]))), 'protobuf');
+  has(many, '  int64 f18999 = 18999;\n  int64 f19000 = 20000;\n  int64 f19001 = 20001;\n}');
 });
 
 test('Java, C#, Kotlin, Swift', () => {
@@ -418,6 +496,7 @@ const DECL: Record<string, RegExp> = {
   swift: /^struct (\w+): Codable/gm,
   go: /^type (\w+) /gm,
   rust: /^pub (?:struct|type) (\w+)/gm,
+  protobuf: /^message (\w+) \{/gm,
   dart: /^class (\w+) \{/gm,
   php: /^final class (\w+)/gm,
 };

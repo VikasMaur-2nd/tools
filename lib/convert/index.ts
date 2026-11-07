@@ -1,6 +1,6 @@
 /**
  * Convert: JSON -> types (TypeScript, Zod, JSON Schema, C#, Dart, Java, Python,
- * Go, Kotlin, Swift, PHP, Rust) and data formats (YAML, XML, TOML, JSON Lines;
+ * Go, Kotlin, Swift, PHP, Rust, Protocol Buffers) and data formats (YAML, XML, TOML, JSON Lines;
  * CSV and Excel are xlsx.ts). Zero dependencies; meant to be lazy-loaded. The
  * targets themselves (labels, extensions…) are lib/engine/targets.ts.
  */
@@ -8,6 +8,7 @@ import { tooDeep, type JNode } from '../json/parser';
 import type { ConvertOptions } from './infer';
 import { toJSONL, toTOML, toXML, toYAML } from './data';
 import { toCSharp, toDart, toGo, toJava, toKotlin, toPHP, toPython, toRust, toSwift } from './langs';
+import { toProto } from './proto';
 import { toJSONSchema, toTypeScript, toZod } from './types';
 
 export type { ConvertOptions } from './infer';
@@ -28,6 +29,7 @@ const EMIT: Record<string, Emitter> = {
   swift: toSwift,
   php: toPHP,
   rust: toRust,
+  protobuf: toProto,
   yaml: toYAML,
   xml: (r, o) => toXML(r, o.rootName),
   toml: (r, o) => toTOML(r, o.rootName),

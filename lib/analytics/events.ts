@@ -178,7 +178,7 @@ export function errorKind(msg: string | undefined): string | undefined {
 // ── What each property may hold ──────────────────────────────────────────────
 
 /** Convert targets (lib/engine/targets.ts) and the palette's commands (lib/engine/commands.ts): tests/analytics.test.ts checks every one passes. */
-const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'];
+const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'];
 const COMMAND_IDS = [
   'undo', 'redo', 'use-output', 'format', 'minify', 'sort', 'out-pretty', 'out-minify', 'out-string', 'out-sort', 'copy-output', 'download-output',
   'repair', 'escape', 'unescape', 'error', 'jwt', 'from-yaml', 'from-xml', 'from-csv', 'from-toml', 'from-json', 'copy', 'download', 'open', 'paste', 'url',

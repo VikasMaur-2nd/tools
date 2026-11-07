@@ -394,7 +394,7 @@ export const TOOLS: AgentTool[] = [
     title: 'Convert JSON',
     description:
       'Generate code or data from the open document: types for a programming language (TypeScript, Zod, JSON Schema, C#, Dart, Java, ' +
-      'Python Pydantic models, Go, Kotlin, Swift, PHP, Rust serde) inferred from its values, or the same data as CSV, YAML, XML, TOML or JSON Lines. ' +
+      'Python Pydantic models, Go, Kotlin, Swift, PHP, Rust serde, Protocol Buffers proto3) inferred from its values, or the same data as CSV, YAML, XML, TOML or JSON Lines. ' +
       "Shows the result in the page's Convert view and returns it.",
     inputSchema: {
       type: 'object',

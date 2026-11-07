@@ -35,7 +35,7 @@ test('landing presets never replace saved documents, but user changes persist', 
 });
 
 test('conversion pages select a converter target and import pages select an importer', () => {
-  for (const slug of ['json-to-typescript', 'json-to-zod', 'json-schema-generator', 'json-to-go', 'json-to-python', 'json-to-yaml', 'json-to-csv', 'json-to-xml', 'json-to-excel', 'json-to-dart', 'json-to-kotlin', 'json-to-swift', 'json-to-java', 'json-to-csharp', 'json-to-rust', 'json-to-php', 'json-to-toml']) {
+  for (const slug of ['json-to-typescript', 'json-to-zod', 'json-schema-generator', 'json-to-go', 'json-to-python', 'json-to-yaml', 'json-to-csv', 'json-to-xml', 'json-to-excel', 'json-to-dart', 'json-to-kotlin', 'json-to-swift', 'json-to-java', 'json-to-csharp', 'json-to-rust', 'json-to-protobuf', 'json-to-php', 'json-to-toml']) {
     const page = TOOL_PAGES.find((entry) => entry.slug === slug);
     assert.ok(page?.preset.settings?.view === 'convert', slug);
     assert.ok(page?.preset.settings?.target, slug);
@@ -58,6 +58,7 @@ test('new language pages emit the documented models from their nested samples', 
     ['json-to-java', 'java', 'public record Root(', '@JsonProperty("user-id")', 'List<Item> items', 'public record Item(double price, String note)'],
     ['json-to-csharp', 'csharp', 'using System.Text.Json.Serialization;', '[JsonPropertyName("user-id")]', 'required List<Item> Items', 'required string? Note'],
     ['json-to-rust', 'rust', '#[derive(Debug, Clone, Serialize, Deserialize)]', '#[serde(rename = "user-id")]', 'pub items: Vec<Item>', 'pub note: Option<String>'],
+    ['json-to-protobuf', 'protobuf', 'syntax = "proto3";', 'int64 user_id = 1 [json_name = "user-id"];', 'repeated Item items = 3;', 'optional string note = 2;', 'google.protobuf.Timestamp created_at = 2'],
     ['json-to-php', 'php', 'declare(strict_types=1);', 'public readonly array $items', 'public static function fromArray', "$data['user-id']"],
   ];
   for (const [slug, target, ...expected] of cases) {

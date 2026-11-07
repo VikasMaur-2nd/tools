@@ -132,6 +132,7 @@ test('code rows colour as the whole document in every converter language', () =>
     ['java', 'String s = """\n  text "with" quotes\n  """;\n/* a\n*/ int x = 0x1F;\n'],
     ['csharp', 'public class A\n{\n    public string B { get; set; }\n}\n'],
     ['php', '<?php\n$a = \'x\'; // c\n# hash\n/** @var int */\n'],
+    ['proto', 'syntax = "proto3";\n/* block\n comment */\nmessage A {\n  optional string b = 1 [json_name = "b-\\"c\\""]; // note\n  map<string, google.protobuf.Value> m = 2;\n  repeated int64 r = 3 [json_name = \'r\'];\n}\n'],
     ['swift', 'struct A: Codable {\n    let b: String\n}\nlet s = """\nmulti\n"""\n'],
     ['json', '{\n  "a": [1, -2.5e3, true, null],\n  "b": {"c": "d\\"e"}\n}\n'],
   ];
@@ -141,7 +142,7 @@ test('code rows colour as the whole document in every converter language', () =>
 test('rows colour as the whole document for any text (fuzz)', () => {
   const r = rng(99);
   const alphabet = ['\n', '\n', ' ', ' ', '\t', '"', '"', "'", '`', '/', '*', '#', '[', ']', '{', '}', '(', ')', ':', ': ', '=', ',', '-', '- ', '\\', 'a', 'b', 'Ab', 'true', 'null', '1', '2.5', 'e', '.', '|', '>', '"""', "'''", '/*', '*/', '//'];
-  for (const lang of ['yaml', 'toml', 'typescript', 'go', 'python', 'java', 'csharp', 'kotlin', 'swift', 'dart', 'php', 'rust', 'json']) {
+  for (const lang of ['yaml', 'toml', 'typescript', 'go', 'python', 'java', 'csharp', 'kotlin', 'swift', 'dart', 'php', 'rust', 'proto', 'json']) {
     for (let k = 0; k < 60; k++) {
       let d = '';
       const n = Math.floor(r() * 120);

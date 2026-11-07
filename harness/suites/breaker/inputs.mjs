@@ -1,5 +1,5 @@
 // Tricky small documents, every output exact: the status bar, the Format view (pretty, minified,
-// escaped string, sorted keys), the tree (expanded), the root table and its CSV, and all 17 text Convert
+// escaped string, sorted keys), the tree (expanded), the root table and its CSV, and all 18 text Convert
 // targets. The same golden outputs hold in every engine, so a difference between engines fails too.
 // Golden values: golden/inputs/<case>.json (BREAKER_UPDATE=1 pnpm e2e breaker/inputs -e chromium).
 import { defaults, test } from '../../lib/api.mjs';
@@ -10,7 +10,7 @@ import { converted, copied, golden, load, tableRows, treeRows, until } from './_
 defaults({ engines: 'all', tags: ['breaker'], timeout: 120_000 });
 
 // Only an array or object has a table and a CSV; scalars and loose JSON get fewer outputs.
-const TARGETS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'csv', 'yaml', 'xml', 'toml', 'jsonl'];
+const TARGETS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'yaml', 'xml', 'toml', 'jsonl'];
 
 for (const [name, text] of Object.entries(CASES)) {
   test(`${name}: status, every Format style, tree, table, CSV and every Convert target are exact`, async (t) => {

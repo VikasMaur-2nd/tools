@@ -22,6 +22,7 @@ export const TARGETS: TargetInfo[] = [
   { id: 'swift', label: 'Swift', group: 'Types', ext: 'swift', lang: 'swift', mime: 'text/plain' },
   { id: 'php', label: 'PHP', group: 'Types', ext: 'php', lang: 'php', mime: 'text/plain' },
   { id: 'rust', label: 'Rust (serde)', group: 'Types', ext: 'rs', lang: 'rust', mime: 'text/plain' },
+  { id: 'protobuf', label: 'Protobuf (proto3)', group: 'Types', ext: 'proto', lang: 'proto', mime: 'text/plain' },
   { id: 'csv', label: 'CSV', group: 'Data', ext: 'csv', lang: 'csv', mime: 'text/csv' },
   { id: 'xlsx', label: 'Excel (.xlsx)', group: 'Data', ext: 'xlsx', lang: 'csv', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
   { id: 'yaml', label: 'YAML', group: 'Data', ext: 'yaml', lang: 'yaml', mime: 'text/yaml' },
