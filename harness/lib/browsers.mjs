@@ -5,6 +5,7 @@ import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { cancelledLoad } from './console.mjs';
 import { DIRS, EXTRA_HEADERS } from './env.mjs';
 import { chromium, firefox, webkit } from 'playwright-core';
 
@@ -181,7 +182,10 @@ export async function openPage(engine, opts = {}) {
         if (!BENIGN_ERRORS.test(String(e))) errors.push(String(e.stack || e).split('\n').slice(0, 3).join(' | ').slice(0, 400));
       });
       page.on('console', (m) => {
-        if (m.type() === 'error' && !IGNORED_CONSOLE.test(m.text() + ' ' + (m.location()?.url || '')) && !BENIGN_ERRORS.test(m.text())) errors.push('console: ' + m.text().slice(0, 300));
+        if (m.type() !== 'error') return;
+        const text = m.text();
+        if (IGNORED_CONSOLE.test(text + ' ' + (m.location()?.url || '')) || BENIGN_ERRORS.test(text) || cancelledLoad(text, page.url())) return;
+        errors.push('console: ' + text.slice(0, 300));
       });
       page.on('crash', () => errors.push('CRASH'));
     };
