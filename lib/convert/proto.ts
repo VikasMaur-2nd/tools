@@ -37,9 +37,14 @@ const jsonName = (f: string) => f.replace(/_+(.?)/g, (_, c: string) => c.toUpper
 /** Keys protobuf takes no json_name for: "[…]" (extension syntax), a NUL, a lone surrogate (not UTF-8). */
 const UNNAMED = /^\[[\s\S]*\]$|\0|[\ud800-\udbff](?![\udc00-\udfff])|(?:^|[^\ud800-\udbff])[\udc00-\udfff]/;
 
-/** Packages the Java and C++ generators would write as a keyword (package int; namespace int): they get a '_'. */
+/**
+ * Packages that get a '_': Java keywords (protoc's Java generator writes `package int;` as it is; its C++
+ * generator escapes keywords itself) and the macros g++ predefines in its default GNU mode (`namespace linux`).
+ */
 const RESERVED = new Set(
-  'abstract and asm assert auto bool boolean break byte case catch char class const continue default delete do double else enum explicit export extends extern false final finally float for friend goto if implements import inline instanceof int interface long mutable namespace native new not null operator or package private protected public register return short signed sizeof static strictfp struct super switch synchronized template this throw throws transient true try typedef typeid typename union unsigned using virtual void volatile while xor'.split(' '),
+  'abstract assert boolean break byte case catch char class const continue default do double else enum extends false final finally float for goto if implements import instanceof int interface long native new null package private protected public return short static strictfp super switch synchronized this throw throws transient true try void volatile while linux unix'.split(
+    ' ',
+  ),
 );
 
 /** Field numbers 19000-19999 are reserved for the protobuf implementation. */
@@ -82,28 +87,36 @@ export function toProto(root: JNode, o: ConvertOptions): string {
   };
 
   const props = (t: Obj) => [...t.props.values()];
-  // Each message's field names. Keys that are field names already keep them; the others are named after
-  // them, those protobuf takes no JSON name for last (they mustn't take the name a usable key derives to).
-  // Proto3 field names must differ ignoring case and underscores (protoc, protobuf-go).
+  // Each message's field names. Proto3 field names must differ ignoring case and underscores (protoc,
+  // protobuf-go). Every key whose name is free takes it: first the keys that are field names already, then the
+  // others, then those protobuf takes no JSON name for (they mustn't take the name a usable key derives to).
+  // The keys left are numbered after their names.
   const named = new Map<Obj, string[]>();
   for (const t of m.types) {
     const ps = props(t);
+    const bases = ps.map((p) => fieldName(p.key));
+    const rank = ps.map((p, i) => (p.key === bases[i] ? 2 : UNNAMED.test(p.key) ? 0 : 1));
     const fs: string[] = [];
     const names = new Set<string>();
     const loose = new Set<string>();
-    // The next number to try per name without underscores: names tried before stay taken.
-    const next = new Map<string, number>();
-    const rank = (i: number) => (ps[i].key === fieldName(ps[i].key) ? 2 : UNNAMED.test(ps[i].key) ? 0 : 1);
-    for (const i of ps.map((_, i) => i).sort((a, b) => rank(b) - rank(a) || a - b)) {
-      const base = fieldName(ps[i].key);
-      const bare = base.replace(/_/g, '');
-      let f = base;
-      let n = next.get(bare) ?? 2;
-      while (names.has(f) || loose.has(f.replace(/_/g, ''))) f = `${base}_${n++}`;
-      next.set(bare, n);
+    const free = (f: string) => !names.has(f) && !loose.has(f.replace(/_/g, ''));
+    const take = (i: number, f: string) => {
+      fs[i] = f;
       names.add(f);
       loose.add(f.replace(/_/g, ''));
-      fs[i] = f;
+    };
+    const order = ps.map((_, i) => i).sort((a, b) => rank[b] - rank[a] || a - b);
+    const rest = order.filter((i) => !free(bases[i]) || (take(i, bases[i]), false));
+    // The next number to try per name without underscores: names tried before stay taken.
+    const next = new Map<string, number>();
+    for (const i of rest) {
+      const bare = bases[i].replace(/_/g, '');
+      let n = next.get(bare) ?? 2;
+      let f: string;
+      do f = `${bases[i]}_${n++}`;
+      while (!free(f));
+      next.set(bare, n);
+      take(i, f);
     }
     named.set(t, fs);
   }

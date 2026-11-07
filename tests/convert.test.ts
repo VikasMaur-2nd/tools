@@ -252,6 +252,8 @@ test('Protocol Buffers (proto3)', () => {
   has(conv('{"a":1}', 'protobuf', { rootName: '日本' }), '\npackage root;\n');
   // A package the Java and C++ generators would write as a keyword gets a '_'.
   has(conv('{"a":1}', 'protobuf', { rootName: 'int' }), '\npackage int_;\n\nmessage Int {');
+  has(conv('{"a":1}', 'protobuf', { rootName: 'linux' }), '\npackage linux_;\n');
+  has(conv('{"a":1}', 'protobuf', { rootName: 'union' }), '\npackage union;\n');
 });
 
 test('Protocol Buffers: JSON names', () => {
@@ -284,6 +286,8 @@ test('Protocol Buffers: JSON names', () => {
       '  double big = 4; // integers beyond int64: double rounds them; protobuf can\'t take JSON key "[big]" as this field\'s JSON name',
   );
   // ...and they don't take the field (and derived JSON name) a usable key would get, whatever the order.
+  // A key whose own name is free keeps it: a renamed key's number doesn't take it.
+  assert.equal(root('{"ID":2,"id":3,"Id2":4}'), '  int64 id_3 = 1 [json_name = "ID"];\n  int64 id = 2;\n  int64 id2 = 3 [json_name = "Id2"];');
   assert.equal(root('{"[fooBar]":"s","fooBar":2}'), '  string foo_bar_2 = 1; // protobuf can\'t take JSON key "[fooBar]" as this field\'s JSON name\n  int64 foo_bar = 2;');
   // Many keys that differ in case only, or share a name (other scripts all derive to "field"): linear.
   for (const keys of [
@@ -294,7 +298,10 @@ test('Protocol Buffers: JSON names', () => {
     const t0 = Date.now();
     const out = conv(JSON.stringify(Object.fromEntries(keys.map((k) => [k, 1]))), 'protobuf');
     assert.ok(Date.now() - t0 < 3000, `${keys[1]}: ${Date.now() - t0} ms`);
-    assert.equal(new Set([...out.matchAll(/^ {2}int64 (\w+) = /gm)].map((m) => m[1])).size, keys.length);
+    // One field per key, the names different ignoring case and underscores (protoc, protobuf-go).
+    const names = [...out.matchAll(/^ {2}int64 (\w+) = /gm)].map((m) => m[1]);
+    assert.equal(names.length, keys.length);
+    assert.equal(new Set(names.map((n) => n.toLowerCase().replace(/_/g, ''))).size, keys.length);
   }
   has(conv(JSON.stringify(Object.fromEntries(['日', '本', '語'].map((k) => [k, 1]))), 'protobuf'), '  int64 field = 1 [json_name = "日"];\n  int64 field_2 = 2 [json_name = "本"];\n  int64 field_3 = 3 [json_name = "語"];');
   // Names are ASCII identifiers: accents dropped, other scripts and punctuation give way, keys escaped in json_name.
