@@ -1009,6 +1009,59 @@
       }
     ]
   },
+  "json-to-protobuf": {
+    "hash": "6f69fb56ca12",
+    "title": "JSON a Protobuf: genera mensajes proto3",
+    "description": "Genera un archivo .proto de proto3 desde JSON: mensajes, campos repeated y map, opciones json_name y well-known types. En tu navegador y sin subir datos.",
+    "heading": "JSON a Protobuf",
+    "query": "JSON a Protobuf",
+    "secondary": [
+      "JSON a proto",
+      "generar archivo proto desde JSON",
+      "JSON to Protobuf"
+    ],
+    "intro": "Genera mensajes proto3 a partir de un JSON de ejemplo. Los tipos de campo siguen el mapeo JSON de protobuf, así que protojson, JsonFormat o json_format vuelven a leer el mismo documento, y json_name conserva las claves que difieren de los nombres de campo.",
+    "modeLabel": "Salida de JSON a Protobuf",
+    "exampleLabel": "Esta salida procede del conversor integrado. Los dos precios permiten inferir un campo de coma flotante; los valores null y de cadena de note permiten inferir un campo que admite null.",
+    "steps": [
+      "Pega una respuesta representativa que incluya registros cuyos campos difieran.",
+      "Revisa la salida generada y cambia el nombre raíz si es necesario.",
+      "Copia o descarga el código y comprueba después los tipos con el contrato de tu API."
+    ],
+    "options": [
+      "Los objetos se convierten en mensajes y los arrays, en campos repeated. Los objetos cuyas claves son datos, como identificadores o fechas, se convierten en campos map<string, …>. Los números de campo siguen el orden de las claves.",
+      "Los escalares que son null o faltan en algunos registros llevan optional. Los valores desconocidos, los que solo son null y los que mezclan tipos usan google.protobuf.Value, y los arrays anidados usan ListValue, porque un campo repeated no puede contener null ni otra lista.",
+      "Los enteros son int64 y las fracciones, double. El JSON de protobuf escribe los valores int64 como cadenas; los enteros de más de 64 bits se señalan porque un double los redondea.",
+      "Los valores de fecha y hora RFC 3339 se convierten en google.protobuf.Timestamp, que se escribe en UTC. Las fechas, los UUID y los correos electrónicos siguen siendo string; los enums y las reglas de validación requieren el contrato de tu API."
+    ],
+    "faqs": [
+      {
+        "question": "¿El generador escribe proto3?",
+        "answer": "Sí. El archivo empieza con syntax = \"proto3\", marca como optional los escalares que pueden faltar e importa solo los well-known types que usa, como Timestamp y Value."
+      },
+      {
+        "question": "¿Protobuf analizará mi JSON original?",
+        "answer": "Los tipos siguen el mapeo JSON de protobuf, así que analizadores como protojson, JsonFormat y json_format leen documentos con la misma forma que el ejemplo. Las claves que solo difieren en mayúsculas y minúsculas no pueden tener ambas un nombre JSON, y el archivo señala las que quedan fuera."
+      },
+      {
+        "question": "¿Qué pasa si la raíz del JSON es un array?",
+        "answer": "Un mensaje protobuf siempre es un objeto JSON, así que el mensaje raíz guarda el array en un campo repeated items. Cada elemento recibe además su propio mensaje, que puedes analizar directamente."
+      },
+      {
+        "question": "¿Cómo se asignan los números de campo?",
+        "answer": "Desde 1 en el orden de las claves, saltando del 19000 al 19999, que protobuf reserva. Cuando los datos ya estén en uso, conserva cada número y reserva los números de los campos eliminados."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Leer JSON existente con protobuf",
+        "paragraphs": [
+          "Las claves como firstName ya coinciden con el nombre JSON que protoc deriva de first_name, así que no necesitan ninguna opción. Las claves con signos de puntuación, dígitos u otros sistemas de escritura reciben json_name. Cuando todas las claves están en snake_case, una nota indica que, en su lugar, escribas el JSON con los nombres de campo de proto.",
+          "Compila el archivo con protoc o buf y analiza una respuesta de API con el mapeo JSON de tu lenguaje. Así, un servicio puede enviar protobuf binario a los clientes que lo pidan, mientras los demás siguen recibiendo JSON."
+        ]
+      }
+    ]
+  },
   "json-to-php": {
     "hash": "7fc19be29801",
     "title": "JSON a PHP: clases con propiedades readonly tipadas",

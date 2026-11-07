@@ -1007,6 +1007,59 @@
       }
     ]
   },
+  "json-to-protobuf": {
+    "hash": "6f69fb56ca12",
+    "title": "JSON para Protobuf: gere mensagens proto3",
+    "description": "Gere um arquivo .proto proto3 de JSON com mensagens, campos repeated e map, opções json_name e well-known types, localmente no navegador, sem upload.",
+    "heading": "JSON para Protobuf",
+    "query": "JSON para Protobuf",
+    "secondary": [
+      "JSON para proto",
+      "gerar arquivo proto a partir de JSON",
+      "JSON to Protobuf"
+    ],
+    "intro": "Gere mensagens proto3 a partir de um exemplo JSON. Os tipos dos campos seguem o mapeamento JSON do protobuf, então protojson, JsonFormat ou json_format leem o mesmo documento de volta, e json_name preserva as chaves diferentes dos nomes dos campos.",
+    "modeLabel": "Saída Protobuf",
+    "exampleLabel": "Esta saída vem do conversor integrado. Os dois preços de item permitem inferir um campo de ponto flutuante. Os valores null e string de note permitem inferir um campo que aceita null.",
+    "steps": [
+      "Cole uma resposta representativa, incluindo registros cujos campos sejam diferentes.",
+      "Revise a saída gerada e altere o nome raiz se necessário.",
+      "Copie ou baixe o código e confira se os tipos correspondem ao contrato da sua API."
+    ],
+    "options": [
+      "Objetos viram mensagens, arrays viram campos repeated, e objetos cujas chaves são dados, como IDs ou datas, viram campos map<string, …>. Os números dos campos seguem a ordem das chaves.",
+      "Escalares que são null ou ausentes em alguns registros recebem optional. Valores desconhecidos, observados apenas como null ou de tipos mistos usam google.protobuf.Value, e arrays aninhados usam ListValue, porque um campo repeated não pode conter null nem outra lista.",
+      "Inteiros são int64 e valores fracionários são double. O JSON do protobuf escreve valores int64 como strings; inteiros acima de 64 bits são sinalizados porque um double os arredonda.",
+      "Datas e horas RFC 3339 viram google.protobuf.Timestamp, que é escrito em UTC. Datas, UUIDs e e-mails continuam string; enums e regras de validação exigem o contrato da sua API."
+    ],
+    "faqs": [
+      {
+        "question": "O gerador escreve proto3?",
+        "answer": "Sim. O arquivo começa com syntax = \"proto3\", marca como optional os escalares que podem estar ausentes e importa apenas os well-known types que usa, como Timestamp e Value."
+      },
+      {
+        "question": "O protobuf vai analisar meu JSON original?",
+        "answer": "Os tipos seguem o mapeamento JSON do protobuf, então analisadores como protojson, JsonFormat e json_format leem documentos com a mesma estrutura do exemplo. Chaves que diferem apenas em maiúsculas e minúsculas não podem ter ambas um nome JSON, e o arquivo sinaliza as que ficaram de fora."
+      },
+      {
+        "question": "E se a raiz do JSON for um array?",
+        "answer": "Uma mensagem protobuf é sempre um objeto JSON, então a mensagem raiz guarda o array em um campo repeated items. Cada elemento também recebe sua própria mensagem, que você pode analisar diretamente."
+      },
+      {
+        "question": "Como os números dos campos são atribuídos?",
+        "answer": "A partir de 1, na ordem das chaves, pulando de 19000 a 19999, faixa que o protobuf reserva. Depois que os dados estiverem em uso, mantenha cada número e reserve os números dos campos removidos."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Leia JSON existente com protobuf",
+        "paragraphs": [
+          "Chaves como firstName já correspondem ao nome JSON que o protoc deriva de first_name, então não precisam de opção. Chaves com pontuação, dígitos ou outros sistemas de escrita recebem json_name. Quando todas as chaves estão em snake_case, uma nota orienta a escrever o JSON com os nomes de campo do proto.",
+          "Compile o arquivo com protoc ou buf e analise uma resposta de API com o mapeamento JSON da sua linguagem. Assim, um serviço pode enviar protobuf binário aos clientes que o solicitarem, enquanto os demais chamadores continuam recebendo JSON."
+        ]
+      }
+    ]
+  },
   "json-to-php": {
     "hash": "7fc19be29801",
     "title": "JSON para classe PHP com propriedades readonly",
