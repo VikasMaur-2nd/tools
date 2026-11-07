@@ -91,7 +91,15 @@ function realDay(v: string): boolean {
   const d = +v.slice(8, 10);
   return d <= DAYS[m - 1] && (m !== 2 || d < 29 || (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)));
 }
-const matches = (f: string, v: string) => FMT[f].test(v) && ((f !== 'date' && f !== 'date-time') || realDay(v));
+/** A date-time's instant is in 0001-9999 in UTC too (the offset can carry the first and last days out of it). */
+function inRange(v: string): boolean {
+  const day = v.slice(0, 10);
+  const off = /([+-])(\d\d):(\d\d)$/.exec(v);
+  if (!off || (day !== '0001-01-01' && day !== '9999-12-31')) return true;
+  const utc = +v.slice(11, 13) * 60 + +v.slice(14, 16) - (off[1] === '-' ? -1 : 1) * (+off[2] * 60 + +off[3]);
+  return day === '0001-01-01' ? utc >= 0 : utc < 1440;
+}
+const matches = (f: string, v: string) => FMT[f].test(v) && ((f !== 'date' && f !== 'date-time') || realDay(v)) && (f !== 'date-time' || inRange(v));
 
 function fmtOf(v: string, prev: string | undefined): string | null {
   if (v.length > 2048) return null;

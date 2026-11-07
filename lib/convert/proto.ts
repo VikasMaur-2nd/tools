@@ -37,6 +37,11 @@ const jsonName = (f: string) => f.replace(/_+(.?)/g, (_, c: string) => c.toUpper
 /** Keys protobuf takes no json_name for: "[…]" (extension syntax), a NUL, a lone surrogate (not UTF-8). */
 const UNNAMED = /^\[[\s\S]*\]$|\0|[\ud800-\udbff](?![\udc00-\udfff])|(?:^|[^\ud800-\udbff])[\udc00-\udfff]/;
 
+/** Packages the Java and C++ generators would write as a keyword (package int; namespace int): they get a '_'. */
+const RESERVED = new Set(
+  'abstract and asm assert auto bool boolean break byte case catch char class const continue default delete do double else enum explicit export extends extern false final finally float for friend goto if implements import inline instanceof int interface long mutable namespace native new not null operator or package private protected public register return short signed sizeof static strictfp struct super switch synchronized template this throw throws transient true try typedef typeid typename union unsigned using virtual void volatile while xor'.split(' '),
+);
+
 /** Field numbers 19000-19999 are reserved for the protobuf implementation. */
 const fieldNumber = (i: number) => (i < 19000 ? i : i + 1000);
 
@@ -78,18 +83,24 @@ export function toProto(root: JNode, o: ConvertOptions): string {
 
   const props = (t: Obj) => [...t.props.values()];
   // Each message's field names. Keys that are field names already keep them; the others are named after
-  // them. Proto3 field names must differ ignoring case and underscores (protoc, protobuf-go).
+  // them, those protobuf takes no JSON name for last (they mustn't take the name a usable key derives to).
+  // Proto3 field names must differ ignoring case and underscores (protoc, protobuf-go).
   const named = new Map<Obj, string[]>();
   for (const t of m.types) {
     const ps = props(t);
     const fs: string[] = [];
     const names = new Set<string>();
     const loose = new Set<string>();
-    const exact = (i: number) => +(ps[i].key === fieldName(ps[i].key));
-    for (const i of ps.map((_, i) => i).sort((a, b) => exact(b) - exact(a) || a - b)) {
+    // The next number to try per name without underscores: names tried before stay taken.
+    const next = new Map<string, number>();
+    const rank = (i: number) => (ps[i].key === fieldName(ps[i].key) ? 2 : UNNAMED.test(ps[i].key) ? 0 : 1);
+    for (const i of ps.map((_, i) => i).sort((a, b) => rank(b) - rank(a) || a - b)) {
       const base = fieldName(ps[i].key);
+      const bare = base.replace(/_/g, '');
       let f = base;
-      for (let n = 2; names.has(f) || loose.has(f.replace(/_/g, '')); n++) f = `${base}_${n}`;
+      let n = next.get(bare) ?? 2;
+      while (names.has(f) || loose.has(f.replace(/_/g, ''))) f = `${base}_${n++}`;
+      next.set(bare, n);
       names.add(f);
       loose.add(f.replace(/_/g, ''));
       fs[i] = f;
@@ -144,7 +155,8 @@ export function toProto(root: JNode, o: ConvertOptions): string {
   const done = new Map<Obj, string>();
   for (const t of seen) done.set(t, message(t));
   const body = [top, ...m.types.filter((t) => done.has(t)).map((t) => done.get(t)!)].filter(Boolean).join('\n\n');
-  const head = ['syntax = "proto3";', '', `package ${ident(o.rootName) || 'root'};`];
+  const pkg = ident(o.rootName) || 'root';
+  const head = ['syntax = "proto3";', '', `package ${RESERVED.has(pkg) ? pkg + '_' : pkg};`];
   if (imports.size) head.push('', ...[...imports].sort().map((i) => `import "${i}";`));
   if (protoNames) head.push('', '// Keys are snake_case field names: print JSON with proto field names (e.g. protojson UseProtoNames) to keep them.');
   return `${head.join('\n')}\n\n${body}\n`;

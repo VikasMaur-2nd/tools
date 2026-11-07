@@ -242,9 +242,16 @@ test('Protocol Buffers (proto3)', () => {
     conv('{"a":"2024-02-29T00:00:00.123456789Z","b":"0000-01-01T00:00:00Z","c":"2023-02-29T00:00:00Z","d":"2024-04-31T00:00:00Z","e":"2024-01-01T00:00:00.1234567891Z"}', 'protobuf').split('message Root {\n')[1].split('\n}')[0],
     '  google.protobuf.Timestamp a = 1;\n  string b = 2;\n  string c = 3;\n  string d = 4;\n  string e = 5;',
   );
+  // The range is in UTC: an offset can carry the first or last day out of it.
+  assert.equal(
+    conv('{"a":"0001-01-01T00:59:59+01:00","b":"0001-01-01T01:00:00+01:00","c":"9999-12-31T23:30:00-01:00","d":"9999-12-31T22:59:59-01:00","e":"0001-01-01T00:00:00-05:00"}', 'protobuf').split('message Root {\n')[1].split('\n}')[0],
+    '  string a = 1;\n  google.protobuf.Timestamp b = 2;\n  string c = 3;\n  google.protobuf.Timestamp d = 4;\n  google.protobuf.Timestamp e = 5;',
+  );
   // The package is the root's name in snake_case.
   has(conv('{"a":1}', 'protobuf', { rootName: 'User Profile' }), 'syntax = "proto3";\n\npackage user_profile;\n\nmessage UserProfile {');
   has(conv('{"a":1}', 'protobuf', { rootName: '日本' }), '\npackage root;\n');
+  // A package the Java and C++ generators would write as a keyword gets a '_'.
+  has(conv('{"a":1}', 'protobuf', { rootName: 'int' }), '\npackage int_;\n\nmessage Int {');
 });
 
 test('Protocol Buffers: JSON names', () => {
@@ -276,11 +283,20 @@ test('Protocol Buffers: JSON names', () => {
       '  int64 x = 3; // protobuf can\'t take JSON key "x\\ud800" as this field\'s JSON name\n' +
       '  double big = 4; // integers beyond int64: double rounds them; protobuf can\'t take JSON key "[big]" as this field\'s JSON name',
   );
-  // Many keys that differ in case only: linear.
-  const pairs = Object.fromEntries(Array.from({ length: 20000 }, (_, i) => [i % 2 ? `K${i}X` : `k${i}x`, 1]));
-  const t0 = Date.now();
-  conv(JSON.stringify(pairs), 'protobuf');
-  assert.ok(Date.now() - t0 < 3000);
+  // ...and they don't take the field (and derived JSON name) a usable key would get, whatever the order.
+  assert.equal(root('{"[fooBar]":"s","fooBar":2}'), '  string foo_bar_2 = 1; // protobuf can\'t take JSON key "[fooBar]" as this field\'s JSON name\n  int64 foo_bar = 2;');
+  // Many keys that differ in case only, or share a name (other scripts all derive to "field"): linear.
+  for (const keys of [
+    Array.from({ length: 20000 }, (_, i) => (i % 2 ? `K${i}X` : `k${i}x`)),
+    Array.from({ length: 20000 }, (_, i) => String.fromCharCode(0x4e00 + i)),
+    Array.from({ length: 4096 }, (_, i) => [...'aaaaaaaaaaaa'].map((c, b) => (i >> b) & 1 ? 'A' : c).join('')),
+  ]) {
+    const t0 = Date.now();
+    const out = conv(JSON.stringify(Object.fromEntries(keys.map((k) => [k, 1]))), 'protobuf');
+    assert.ok(Date.now() - t0 < 3000, `${keys[1]}: ${Date.now() - t0} ms`);
+    assert.equal(new Set([...out.matchAll(/^ {2}int64 (\w+) = /gm)].map((m) => m[1])).size, keys.length);
+  }
+  has(conv(JSON.stringify(Object.fromEntries(['日', '本', '語'].map((k) => [k, 1]))), 'protobuf'), '  int64 field = 1 [json_name = "日"];\n  int64 field_2 = 2 [json_name = "本"];\n  int64 field_3 = 3 [json_name = "語"];');
   // Names are ASCII identifiers: accents dropped, other scripts and punctuation give way, keys escaped in json_name.
   assert.equal(
     root('{"naïve":1,"日本":2,"10":3,"a\\"b\\nc":4,"$ref":5}'),
