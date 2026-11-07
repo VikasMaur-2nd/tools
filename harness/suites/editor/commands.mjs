@@ -7,7 +7,7 @@ import { hashText, installHelpers, slow, stepErrors, waitSettled } from './_help
 
 defaults({ engines: 'all', allowErrors: true, timeout: 240_000 });
 
-const TARGETS = ['TypeScript', 'Zod schema', 'JSON Schema', 'C#', 'Dart', 'Java', 'Python (Pydantic)', 'Go', 'Kotlin', 'Swift', 'PHP', 'Rust (serde)', 'CSV', 'Excel (.xlsx)', 'YAML', 'XML', 'TOML', 'JSON Lines (NDJSON)'];
+const TARGETS = ['TypeScript', 'Zod schema', 'JSON Schema', 'C#', 'Dart', 'Java', 'Python (Pydantic)', 'Go', 'Kotlin', 'Swift', 'PHP', 'Rust (serde)', 'Protobuf (proto3)', 'CSV', 'Excel (.xlsx)', 'YAML', 'XML', 'TOML', 'JSON Lines (NDJSON)'];
 const STEPS = [
   'Output: minified', 'Output: pretty', 'Output: sort keys', 'Output: escaped JSON string', 'Output: pretty', 'Output: sort keys',
   'Copy formatted output', 'Download formatted output',

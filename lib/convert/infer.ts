@@ -73,19 +73,30 @@ export interface Model {
 }
 
 const DATE = '\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])';
-// Conservative: every string at a position must match for a format to be reported.
+// Conservative: every string at a position must match for a format to be reported. A date-time is one every
+// target reads: protobuf's Timestamp takes years 0001-9999 and at most 9 fractional digits.
 const FMT: Record<string, RegExp> = {
-  'date-time': new RegExp(`^${DATE}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$`),
+  'date-time': new RegExp(`^(?!0000)${DATE}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,9})?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$`),
   date: new RegExp(`^${DATE}$`),
   uuid: /^[\da-f]{8}-[\da-f]{4}-[1-8][\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i,
   email: /^[\w+-]+(?:\.[\w+-]+)*@(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z]{2,}$/i,
   uri: /^https?:\/\/[a-z\d](?:[a-z\d.-]*[a-z\d])?(?::\d{1,5})?(?:[/?#](?:[\w.~:/?#@!$&'()*+,;=-]|%[\da-f]{2})*)?$/i,
 };
 
+const DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+/** A date's day exists (RFC 3339 5.7: February 29 only in leap years). */
+function realDay(v: string): boolean {
+  const y = +v.slice(0, 4);
+  const m = +v.slice(5, 7);
+  const d = +v.slice(8, 10);
+  return d <= DAYS[m - 1] && (m !== 2 || d < 29 || (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)));
+}
+const matches = (f: string, v: string) => FMT[f].test(v) && ((f !== 'date' && f !== 'date-time') || realDay(v));
+
 function fmtOf(v: string, prev: string | undefined): string | null {
   if (v.length > 2048) return null;
-  if (prev) return FMT[prev].test(v) ? prev : null;
-  for (const f in FMT) if (FMT[f].test(v)) return f;
+  if (prev) return matches(prev, v) ? prev : null;
+  for (const f in FMT) if (matches(f, v)) return f;
   return null;
 }
 

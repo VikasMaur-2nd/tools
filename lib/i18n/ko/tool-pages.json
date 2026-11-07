@@ -1010,7 +1010,7 @@
     ]
   },
   "json-to-protobuf": {
-    "hash": "6f69fb56ca12",
+    "hash": "a13f1b05aee2",
     "title": "JSON to Protobuf: proto3 메시지 생성",
     "description": "JSON으로 메시지, repeated, map, json_name, Well-Known Types를 갖춘 proto3 .proto 파일을 만듭니다. 브라우저에서 로컬로 실행됩니다.",
     "heading": "JSON을 Protobuf 메시지로 변환",
@@ -1031,21 +1031,21 @@
     "options": [
       "객체는 메시지, 배열은 repeated 필드가 되고, ID나 날짜 같은 데이터를 키로 쓰는 객체는 map<string, …> 필드가 됩니다. 필드 번호는 키 순서를 따릅니다.",
       "일부 레코드에서 null이거나 누락된 스칼라는 optional이 됩니다. 알 수 없거나 null로만 관찰되거나 타입이 섞인 값은 google.protobuf.Value를, 중첩 배열은 ListValue를 사용합니다. repeated 필드에는 null이나 다른 리스트를 담을 수 없기 때문입니다.",
-      "정수는 int64, 소수는 double이 됩니다. Protobuf JSON은 int64 값을 문자열로 씁니다. 64비트를 넘는 정수는 double에서 반올림되므로 따로 표시됩니다.",
+      "정수는 int64, 소수는 double이 됩니다. Protobuf JSON은 int64 값을 문자열로 씁니다. int64 범위를 넘는 정수는 double에서 반올림되므로 따로 표시됩니다.",
       "RFC 3339 형식의 날짜와 시간은 UTC로 출력되는 google.protobuf.Timestamp가 됩니다. 날짜, UUID, 이메일은 string으로 남으며, enum과 유효성 검사 규칙은 API 명세를 바탕으로 정해야 합니다."
     ],
     "faqs": [
       {
         "question": "proto3 형식으로 생성하나요?",
-        "answer": "네. 파일은 syntax = \"proto3\"로 시작하고, 없을 수 있는 스칼라를 optional로 표시하며, Timestamp나 Value처럼 사용하는 Well-Known Types만 import합니다."
+        "answer": "네. 파일은 syntax = \"proto3\"와 루트 메시지 이름을 딴 패키지로 시작하고, 없을 수 있는 스칼라를 optional로 표시하며, Timestamp나 Value처럼 사용하는 Well-Known Types만 import합니다."
       },
       {
         "question": "protobuf가 원래 JSON을 파싱할 수 있나요?",
-        "answer": "타입이 protobuf JSON 매핑을 따르므로 protojson, JsonFormat, json_format 같은 파서는 샘플과 같은 구조의 문서를 읽습니다. 대소문자만 다른 키는 둘 다 JSON 이름을 가질 수 없으며, 제외된 키는 파일에 표시됩니다."
+        "answer": "타입이 protobuf JSON 매핑을 따르므로 protojson, JsonFormat, json_format 같은 파서는 샘플과 같은 구조의 문서를 읽습니다. [0]처럼 protobuf가 JSON 이름으로 쓸 수 없는 키는 해당 필드 옆에 표시됩니다."
       },
       {
         "question": "JSON 루트가 배열이면 어떻게 되나요?",
-        "answer": "protobuf 메시지는 JSON에서 항상 객체이므로, 루트 메시지가 배열을 repeated 필드 items에 담습니다. 각 요소에도 별도의 메시지가 생성되며, 이 메시지로 요소를 직접 파싱할 수 있습니다."
+        "answer": "protobuf 메시지는 JSON에서 항상 객체이므로, 루트 메시지가 배열을 repeated 필드 items에 담습니다. 요소가 객체이면 각 요소에도 별도의 메시지가 생성되며, 이 메시지로 요소를 직접 파싱할 수 있습니다."
       },
       {
         "question": "필드 번호는 어떻게 지정되나요?",
@@ -1056,7 +1056,7 @@
       {
         "heading": "기존 JSON을 protobuf로 읽기",
         "paragraphs": [
-          "firstName 같은 키는 protoc 컴파일러가 first_name에서 도출하는 JSON 이름과 이미 일치하므로 옵션이 필요 없습니다. 구두점, 숫자, 다른 문자 체계의 문자가 들어간 키에는 json_name이 붙습니다. 모든 키가 snake_case인 경우에는 대신 proto 필드 이름으로 JSON을 출력하라는 안내가 들어갑니다.",
+          "firstName 같은 키는 protoc 컴파일러가 first_name에서 도출하는 JSON 이름과 이미 일치하므로 옵션이 필요 없습니다. user-id, ID, 1abc 같은 그 밖의 키에는 json_name이 붙습니다. 모든 키가 snake_case인 경우에는 대신 proto 필드 이름으로 JSON을 출력하라는 안내가 들어갑니다.",
           "protoc 또는 buf로 파일을 컴파일하고, 사용하는 언어의 JSON 매핑으로 API 응답을 파싱합니다. 그러면 서비스는 요청한 클라이언트에는 바이너리 protobuf를 보내고, 다른 호출자에게는 계속 JSON을 보낼 수 있습니다."
         ]
       }

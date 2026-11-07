@@ -97,6 +97,9 @@ test('formats are only reported when every value matches', () => {
   const s = JSON.parse(out);
   assert.equal(s.$defs.RootItem.properties.d.format, 'date');
   assert.equal(s.$defs.RootItem.properties.u.format, undefined);
+  // A date or date-time on a day that doesn't exist is no date (Zod's .date() and .datetime() reject it too).
+  const days = JSON.parse(conv('{"a":"2024-02-29","b":"2023-02-29","c":"2024-04-31","d":"2023-02-28T10:00:00Z","e":"1900-02-29T10:00:00Z","f":"2000-02-29T10:00:00Z"}', 'json-schema')).properties;
+  assert.deepEqual(['a', 'b', 'c', 'd', 'e', 'f'].map((k) => days[k].format), ['date', undefined, undefined, 'date-time', undefined, 'date-time']);
 });
 
 test('TypeScript', () => {
@@ -206,7 +209,7 @@ test('Protocol Buffers (proto3)', () => {
   const nested = '{"user-id":42,"profile":{"city":"London","created_at":"2026-10-14T09:00:00Z"},"items":[{"price":12,"note":null},{"price":12.5,"note":"gift"}]}';
   assert.equal(
     conv(nested, 'protobuf'),
-    'syntax = "proto3";\n\nimport "google/protobuf/timestamp.proto";\n\n' +
+    'syntax = "proto3";\n\npackage root;\n\nimport "google/protobuf/timestamp.proto";\n\n' +
       'message Root {\n  int64 user_id = 1 [json_name = "user-id"];\n  Profile profile = 2;\n  repeated Item items = 3;\n}\n\n' +
       'message Profile {\n  string city = 1;\n  google.protobuf.Timestamp created_at = 2 [json_name = "created_at"];\n}\n\n' +
       'message Item {\n  double price = 1;\n  optional string note = 2;\n}\n',
@@ -214,7 +217,7 @@ test('Protocol Buffers (proto3)', () => {
   const out = conv(API, 'protobuf');
   has(
     out,
-    'syntax = "proto3";\n\nimport "google/protobuf/struct.proto";\nimport "google/protobuf/timestamp.proto";\n\nmessage Root {\n',
+    'syntax = "proto3";\n\npackage root;\n\nimport "google/protobuf/struct.proto";\nimport "google/protobuf/timestamp.proto";\n\nmessage Root {\n',
     '  double id = 1; // integers beyond int64: double rounds them\n  int64 page = 2;\n',
     '  string first_name = 3 [json_name = "first-name"];\n  bool the_1abc = 4 [json_name = "1abc"];\n  string class = 5;\n  string type = 6;\n',
     '  google.protobuf.Timestamp created_at = 7;\n',
@@ -234,6 +237,14 @@ test('Protocol Buffers (proto3)', () => {
     '  repeated google.protobuf.ListValue a = 1;\n  repeated google.protobuf.Struct b = 2;\n  map<string, google.protobuf.ListValue> c = 3;\n  map<string, google.protobuf.Struct> d = 4;');
   // optionalAll: scalars track presence; lists, maps and messages can't be (and needn't be) optional.
   has(conv('{"a":1,"c":{"d":true},"e":[1]}', 'protobuf', { optionalAll: true }), '  optional int64 a = 1;\n  C c = 2;\n  repeated int64 e = 3;', '  optional bool d = 1;');
+  // Timestamp only for date-times protobuf reads: years 0001-9999, real days, at most 9 fractional digits.
+  assert.equal(
+    conv('{"a":"2024-02-29T00:00:00.123456789Z","b":"0000-01-01T00:00:00Z","c":"2023-02-29T00:00:00Z","d":"2024-04-31T00:00:00Z","e":"2024-01-01T00:00:00.1234567891Z"}', 'protobuf').split('message Root {\n')[1].split('\n}')[0],
+    '  google.protobuf.Timestamp a = 1;\n  string b = 2;\n  string c = 3;\n  string d = 4;\n  string e = 5;',
+  );
+  // The package is the root's name in snake_case.
+  has(conv('{"a":1}', 'protobuf', { rootName: 'User Profile' }), 'syntax = "proto3";\n\npackage user_profile;\n\nmessage UserProfile {');
+  has(conv('{"a":1}', 'protobuf', { rootName: '日本' }), '\npackage root;\n');
 });
 
 test('Protocol Buffers: JSON names', () => {
@@ -242,19 +253,34 @@ test('Protocol Buffers: JSON names', () => {
   assert.equal(root('{"firstName":"a","userId":1,"x":2}'), '  string first_name = 1;\n  int64 user_id = 2;\n  int64 x = 3;');
   // snake_case keys alone: the field names, printed as they are with proto field names (said once, at the top).
   const snake = conv('{"first_name":"a","name":"b"}', 'protobuf');
-  has(snake, 'syntax = "proto3";\n\n// Keys are snake_case field names: print JSON with proto field names (e.g. protojson UseProtoNames) to keep them.\n\nmessage Root {\n  string first_name = 1;\n  string name = 2;\n}');
+  has(snake, 'syntax = "proto3";\n\npackage root;\n\n// Keys are snake_case field names: print JSON with proto field names (e.g. protojson UseProtoNames) to keep them.\n\nmessage Root {\n  string first_name = 1;\n  string name = 2;\n}');
   // Mixed with other keys: json_name keeps them under the default printer.
   assert.equal(root('{"first_name":"a","lastName":"b"}'), '  string first_name = 1 [json_name = "first_name"];\n  string last_name = 2;');
   assert.ok(!conv('{"first_name":"a","lastName":"b"}', 'protobuf').includes('UseProtoNames'));
+  // ...and so when a snake_case key can't keep its name as the field's (proto names would print "a_b_2").
+  assert.equal(conv('{"ab":1,"a_b":2}', 'protobuf'), 'syntax = "proto3";\n\npackage root;\n\nmessage Root {\n  int64 ab = 1;\n  int64 a_b_2 = 2 [json_name = "a_b"];\n}\n');
   // Keys that are field names keep them; the others are named after them, with a json_name.
   assert.equal(root('{"userId":1,"user_id":2}'), '  int64 user_id_2 = 1 [json_name = "userId"];\n  int64 user_id = 2 [json_name = "user_id"];');
   assert.equal(root('{"":1,"field":2}'), '  int64 field_2 = 1 [json_name = ""];\n  int64 field = 2;');
-  // JSON names must differ ignoring case (protoc) and from other fields' names (parsers read both): the later key says why it has none.
-  assert.equal(root('{"id":1,"ID":2}'), '  int64 id = 1;\n  int64 id_2 = 2; // JSON key "ID": too close to another field\'s name for protobuf JSON');
+  // Field names differ ignoring case and underscores (protoc, protobuf-go); JSON names only need to differ.
+  assert.equal(root('{"id":1,"ID":2,"Id":3}'), '  int64 id = 1;\n  int64 id_2 = 2 [json_name = "ID"];\n  int64 id_3 = 3 [json_name = "Id"];');
   assert.equal(
     root('{"fooBar":1,"foo_bar":2,"foobar":3}'),
-    '  int64 foo_bar_3 = 1 [json_name = "fooBar"];\n  int64 foo_bar = 2 [json_name = "foo_bar"];\n  int64 foobar_2 = 3; // JSON key "foobar": too close to another field\'s name for protobuf JSON',
+    '  int64 foo_bar_3 = 1 [json_name = "fooBar"];\n  int64 foo_bar = 2 [json_name = "foo_bar"];\n  int64 foobar_2 = 3 [json_name = "foobar"];',
   );
+  // Keys protobuf takes no JSON name for ("[…]" is extension syntax; NUL; a lone surrogate isn't UTF-8) say so, after any other note.
+  assert.equal(
+    root('{"[0]":1,"k\\u0000":2,"x\\ud800":3,"[big]":12345678901234567890}'),
+    '  int64 the_0 = 1; // protobuf can\'t take JSON key "[0]" as this field\'s JSON name\n' +
+      '  int64 k = 2; // protobuf can\'t take JSON key "k\\u0000" as this field\'s JSON name\n' +
+      '  int64 x = 3; // protobuf can\'t take JSON key "x\\ud800" as this field\'s JSON name\n' +
+      '  double big = 4; // integers beyond int64: double rounds them; protobuf can\'t take JSON key "[big]" as this field\'s JSON name',
+  );
+  // Many keys that differ in case only: linear.
+  const pairs = Object.fromEntries(Array.from({ length: 20000 }, (_, i) => [i % 2 ? `K${i}X` : `k${i}x`, 1]));
+  const t0 = Date.now();
+  conv(JSON.stringify(pairs), 'protobuf');
+  assert.ok(Date.now() - t0 < 3000);
   // Names are ASCII identifiers: accents dropped, other scripts and punctuation give way, keys escaped in json_name.
   assert.equal(
     root('{"naïve":1,"日本":2,"10":3,"a\\"b\\nc":4,"$ref":5}'),
@@ -264,14 +290,14 @@ test('Protocol Buffers: JSON names', () => {
 });
 
 test('Protocol Buffers: a root that is not an object, field numbers', () => {
-  assert.equal(conv('[1,2]', 'protobuf'), 'syntax = "proto3";\n\n// The JSON is an array: this message holds it as {"items": [...]}.\nmessage Root {\n  repeated int64 items = 1;\n}\n');
-  assert.equal(conv('"x"', 'protobuf'), 'syntax = "proto3";\n\n// The JSON is a single value: this message holds it as {"value": ...}.\nmessage Root {\n  string value = 1;\n}\n');
+  assert.equal(conv('[1,2]', 'protobuf'), 'syntax = "proto3";\n\npackage root;\n\n// The JSON is an array: this message holds it as {"items": [...]}.\nmessage Root {\n  repeated int64 items = 1;\n}\n');
+  assert.equal(conv('"x"', 'protobuf'), 'syntax = "proto3";\n\npackage root;\n\n// The JSON is a single value: this message holds it as {"value": ...}.\nmessage Root {\n  string value = 1;\n}\n');
   has(conv('null', 'protobuf'), 'import "google/protobuf/struct.proto";', '  google.protobuf.Value value = 1;');
   has(conv('[[1],[2]]', 'protobuf'), '  repeated google.protobuf.ListValue items = 1;');
   has(conv('[{"id":1,"email":"a"},{"id":2}]', 'protobuf', { rootName: 'users' }), 'message Users {\n  repeated User items = 1;\n}\n\nmessage User {\n  int64 id = 1;\n  optional string email = 2;\n}');
   assert.equal(
     conv('{"2024-01-01":{"n":1}}', 'protobuf'),
-    'syntax = "proto3";\n\n// The JSON object has data for keys: this message holds it as {"entries": {...}}.\nmessage Root {\n  map<string, RootItem> entries = 1;\n}\n\nmessage RootItem {\n  int64 n = 1;\n}\n',
+    'syntax = "proto3";\n\npackage root;\n\n// The JSON object has data for keys: this message holds it as {"entries": {...}}.\nmessage Root {\n  map<string, RootItem> entries = 1;\n}\n\nmessage RootItem {\n  int64 n = 1;\n}\n',
   );
   has(conv('{}', 'protobuf'), '  map<string, google.protobuf.Value> entries = 1;');
   // 19000-19999 are reserved: the 19000th field is 20000.

@@ -21,17 +21,21 @@ function typeName(key: string): string {
   return !n || /^[A-Za-z]/.test(n) ? n : 'X' + n;
 }
 
-/** A field name: lower_snake_case ASCII. */
-function fieldName(key: string): string {
+/** lower_snake_case ASCII, from a letter ('' if nothing is left). */
+function ident(key: string): string {
   const s = snake(ascii(key))
     .replace(/[^a-z0-9_]/g, '')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
-  return !s ? 'field' : /^[0-9]/.test(s) ? 'the_' + s : s;
+  return /^[0-9]/.test(s) ? 'the_' + s : s;
 }
+const fieldName = (key: string) => ident(key) || 'field';
 
 /** The JSON name protoc gives a field (each '_' dropped, the character after it upper-cased). */
 const jsonName = (f: string) => f.replace(/_+(.?)/g, (_, c: string) => c.toUpperCase());
+
+/** Keys protobuf takes no json_name for: "[…]" (extension syntax), a NUL, a lone surrogate (not UTF-8). */
+const UNNAMED = /^\[[\s\S]*\]$|\0|[\ud800-\udbff](?![\udc00-\udfff])|(?:^|[^\ud800-\udbff])[\udc00-\udfff]/;
 
 /** Field numbers 19000-19999 are reserved for the protobuf implementation. */
 const fieldNumber = (i: number) => (i < 19000 ? i : i + 1000);
@@ -67,68 +71,58 @@ export function toProto(root: JNode, o: ConvertOptions): string {
     const k = kind(s);
     return k === 'big' || (k === 'arr' ? rounded(s.arr!) : k === 'map' && rounded(s.obj!.map!));
   };
-  const line = (s: Shape, opt: boolean, name: string, n: number, opts = '', note = '') =>
-    `  ${type(s, opt)} ${name} = ${fieldNumber(n)}${opts};${rounded(s) ? ' // integers beyond int64: double rounds them' : note}`;
+  const line = (s: Shape, opt: boolean, name: string, n: number, opts = '', notes: string[] = []) => {
+    if (rounded(s)) notes = ['integers beyond int64: double rounds them', ...notes];
+    return `  ${type(s, opt)} ${name} = ${fieldNumber(n)}${opts};${notes.length ? ' // ' + notes.join('; ') : ''}`;
+  };
 
-  // Keys written in snake_case are the field names already, and printers keep them when told to use proto
-  // names: json_name on each is only needed when other keys (camelCase, punctuation) want the default printer.
   const props = (t: Obj) => [...t.props.values()];
-  let snakeKeys = false;
-  let otherKeys = false;
+  // Each message's field names. Keys that are field names already keep them; the others are named after
+  // them. Proto3 field names must differ ignoring case and underscores (protoc, protobuf-go).
+  const named = new Map<Obj, string[]>();
   for (const t of m.types) {
-    for (const p of props(t)) {
-      const f = fieldName(p.key);
-      if (p.key === f) snakeKeys ||= p.key !== jsonName(f);
-      else otherKeys = true;
-    }
-  }
-  const protoNames = snakeKeys && !otherKeys;
-
-  const message = (t: Obj): string => {
     const ps = props(t);
     const fs: string[] = [];
     const names = new Set<string>();
-    // protoc wants the JSON names it derives from field names to differ ignoring case (lower-cased here).
-    const defaults = new Set<string>();
-    // Keys that are field names already keep them; the others are named after them.
+    const loose = new Set<string>();
     const exact = (i: number) => +(ps[i].key === fieldName(ps[i].key));
     for (const i of ps.map((_, i) => i).sort((a, b) => exact(b) - exact(a) || a - b)) {
       const base = fieldName(ps[i].key);
       let f = base;
-      for (let n = 2; names.has(f) || defaults.has(jsonName(f).toLowerCase()); n++) f = `${base}_${n}`;
+      for (let n = 2; names.has(f) || loose.has(f.replace(/_/g, '')); n++) f = `${base}_${n}`;
       names.add(f);
-      defaults.add(jsonName(f).toLowerCase());
+      loose.add(f.replace(/_/g, ''));
       fs[i] = f;
     }
-    // json_name where the key isn't the JSON name protoc derives. The JSON names in effect (json_name, else the
-    // derived one) must differ ignoring case too (protoc), and parsers read a field by its name as well (upb):
-    // while two fields clash, the later one's json_name goes (or the earlier one's, if only it has one).
-    const wanted = ps.map((p, i) => p.key !== jsonName(fs[i]) && !(protoNames && p.key === fs[i]));
-    const custom = [...wanted];
-    const byName = new Map(fs.map((f, i) => [f, i]));
-    for (let clash = true; clash; ) {
-      clash = false;
-      const owner = new Map<string, number>();
-      for (let i = 0; i < ps.length && !clash; i++) {
-        const low = (custom[i] ? ps[i].key : jsonName(fs[i])).toLowerCase();
-        const j = owner.get(low) ?? (custom[i] ? byName.get(low) : undefined);
-        if (j === undefined || j === i) owner.set(low, i);
-        else {
-          custom[custom[i] ? i : j] = false;
-          clash = true;
+    named.set(t, fs);
+  }
+  // When every key is its field's name and some have underscores (snake_case), printers keep them when told to
+  // use proto names, so no field needs a json_name. Otherwise those keys get one, for the default printer.
+  const all = m.types.flatMap((t) => props(t).map((p, i) => [p.key, named.get(t)![i]]));
+  const protoNames = all.some(([k]) => k.includes('_')) && all.every(([k, f]) => k === f);
+
+  const message = (t: Obj): string => {
+    const ps = props(t);
+    const fs = named.get(t)!;
+    const names = new Set(fs);
+    // json_name where the key isn't the JSON name protoc derives. Parsers read a field by its name and its JSON
+    // name, so none of these may stand for two fields (protoc, upb); fields without json_name come first.
+    const want = ps.map((p, i) => p.key !== jsonName(fs[i]) && !protoNames);
+    const taken = new Set(fs.flatMap((f, i) => (want[i] ? [] : [jsonName(f)])));
+    const rows = ps.map((p, i) => {
+      let opts = '';
+      const notes: string[] = [];
+      if (want[i]) {
+        if (UNNAMED.test(p.key) || taken.has(p.key) || (names.has(p.key) && p.key !== fs[i])) {
+          notes.push(`protobuf can't take JSON key ${JSON.stringify(p.key)} as this field's JSON name`);
+          taken.add(jsonName(fs[i]));
+        } else {
+          opts = ` [json_name = ${lit(p.key)}]`;
+          taken.add(p.key);
         }
       }
-    }
-    const rows = ps.map((p, i) =>
-      line(
-        p.s,
-        p.opt,
-        fs[i],
-        i + 1,
-        custom[i] ? ` [json_name = ${lit(p.key)}]` : '',
-        wanted[i] && !custom[i] ? ` // JSON key ${JSON.stringify(p.key)}: too close to another field's name for protobuf JSON` : '',
-      ),
-    );
+      return line(p.s, p.opt, fs[i], i + 1, opts, notes);
+    });
     return `message ${t.name} {\n${rows.join('\n')}\n}`;
   };
 
@@ -150,7 +144,7 @@ export function toProto(root: JNode, o: ConvertOptions): string {
   const done = new Map<Obj, string>();
   for (const t of seen) done.set(t, message(t));
   const body = [top, ...m.types.filter((t) => done.has(t)).map((t) => done.get(t)!)].filter(Boolean).join('\n\n');
-  const head = ['syntax = "proto3";'];
+  const head = ['syntax = "proto3";', '', `package ${ident(o.rootName) || 'root'};`];
   if (imports.size) head.push('', ...[...imports].sort().map((i) => `import "${i}";`));
   if (protoNames) head.push('', '// Keys are snake_case field names: print JSON with proto field names (e.g. protojson UseProtoNames) to keep them.');
   return `${head.join('\n')}\n\n${body}\n`;

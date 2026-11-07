@@ -1003,7 +1003,7 @@
     ]
   },
   "json-to-protobuf": {
-    "hash": "6f69fb56ca12",
+    "hash": "a13f1b05aee2",
     "title": "JSON 转 Protobuf：生成 proto3 消息",
     "description": "根据 JSON 生成 proto3 .proto 文件，支持消息、repeated、map、json_name 和 Well-Known Types，在浏览器本地运行。",
     "heading": "JSON 转 Protobuf",
@@ -1023,21 +1023,21 @@
     "options": [
       "对象变成消息，数组变成 repeated 字段，以 ID 或日期等数据作为键的对象变成 map<string, …> 字段。字段编号按键的顺序分配。",
       "在部分记录中为 null 或缺失的标量会标为 optional。未知、只出现过 null 或类型混合的值使用 google.protobuf.Value，嵌套数组使用 ListValue，因为 repeated 字段不能容纳 null 或另一个列表。",
-      "整数使用 int64，小数使用 double。Protobuf 的 JSON 格式把 int64 值写成字符串；超出 64 位的整数会被标注出来，因为 double 会对其舍入。",
+      "整数使用 int64，小数使用 double。Protobuf 的 JSON 格式把 int64 值写成字符串；超出 int64 范围的整数会被标注出来，因为 double 会对其舍入。",
       "RFC 3339 日期时间变成 google.protobuf.Timestamp，以 UTC 输出。日期、UUID 和电子邮件地址保持为 string；枚举和校验规则需要依据你的 API 契约来定。"
     ],
     "faqs": [
       {
         "question": "生成器输出的是 proto3 吗？",
-        "answer": "是的。文件以 syntax = \"proto3\" 开头，把可能缺失的标量标为 optional，并且只导入用到的 Well-Known Types，例如 Timestamp 和 Value。"
+        "answer": "是的。文件以 syntax = \"proto3\" 和按根消息命名的包开头，把可能缺失的标量标为 optional，并且只导入用到的 Well-Known Types，例如 Timestamp 和 Value。"
       },
       {
         "question": "protobuf 能解析我原来的 JSON 吗？",
-        "answer": "类型遵循 protobuf 的 JSON 映射，因此 protojson、JsonFormat 和 json_format 等解析器能读取与示例结构相同的文档。只有大小写不同的键无法同时拥有 JSON 名称，文件会标注被略去的键。"
+        "answer": "类型遵循 protobuf 的 JSON 映射，因此 protojson、JsonFormat 和 json_format 等解析器能读取与示例结构相同的文档。像 [0] 这样无法被 protobuf 用作 JSON 名称的键，会在对应字段旁标注。"
       },
       {
         "question": "如果 JSON 的根是数组怎么办？",
-        "answer": "protobuf 消息在 JSON 中总是对象，因此根消息用一个 repeated 字段 items 保存该数组。每个元素也有自己的消息，你可以直接用它解析单个元素。"
+        "answer": "protobuf 消息在 JSON 中总是对象，因此根消息用一个 repeated 字段 items 保存该数组。如果元素是对象，每个元素也有自己的消息，你可以直接用它解析单个元素。"
       },
       {
         "question": "字段编号如何分配？",
@@ -1048,7 +1048,7 @@
       {
         "heading": "用 protobuf 读取现有 JSON",
         "paragraphs": [
-          "firstName 这样的键已经与 protoc 根据 first_name 推导出的 JSON 名称一致，因此不需要选项。含标点、数字或其他文字系统字符的键会加上 json_name。如果所有键都是 snake_case，文件中会有一条说明，提示改用 proto 字段名输出 JSON。",
+          "firstName 这样的键已经与 protoc 根据 first_name 推导出的 JSON 名称一致，因此不需要选项。user-id、ID 或 1abc 等其他键会加上 json_name。如果所有键都是 snake_case，文件中会有一条说明，提示改用 proto 字段名输出 JSON。",
           "用 protoc 或 buf 编译该文件，再用你所用语言的 JSON 映射解析 API 响应。这样，服务就可以为请求二进制 protobuf 的客户端提供二进制数据，其他调用方则继续收到 JSON。"
         ]
       }

@@ -1008,7 +1008,7 @@
     ]
   },
   "json-to-protobuf": {
-    "hash": "6f69fb56ca12",
+    "hash": "a13f1b05aee2",
     "title": "JSON para Protobuf: gere mensagens proto3",
     "description": "Gere um arquivo .proto proto3 de JSON com mensagens, campos repeated e map, opções json_name e well-known types, localmente no navegador, sem upload.",
     "heading": "JSON para Protobuf",
@@ -1029,21 +1029,21 @@
     "options": [
       "Objetos viram mensagens, arrays viram campos repeated, e objetos cujas chaves são dados, como IDs ou datas, viram campos map<string, …>. Os números dos campos seguem a ordem das chaves.",
       "Escalares que são null ou ausentes em alguns registros recebem optional. Valores desconhecidos, observados apenas como null ou de tipos mistos usam google.protobuf.Value, e arrays aninhados usam ListValue, porque um campo repeated não pode conter null nem outra lista.",
-      "Inteiros são int64 e valores fracionários são double. O JSON do protobuf escreve valores int64 como strings; inteiros acima de 64 bits são sinalizados porque um double os arredonda.",
+      "Inteiros são int64 e valores fracionários são double. O JSON do protobuf escreve valores int64 como strings; inteiros fora do intervalo de int64 são sinalizados porque um double os arredonda.",
       "Datas e horas RFC 3339 viram google.protobuf.Timestamp, que é escrito em UTC. Datas, UUIDs e e-mails continuam string; enums e regras de validação exigem o contrato da sua API."
     ],
     "faqs": [
       {
         "question": "O gerador escreve proto3?",
-        "answer": "Sim. O arquivo começa com syntax = \"proto3\", marca como optional os escalares que podem estar ausentes e importa apenas os well-known types que usa, como Timestamp e Value."
+        "answer": "Sim. O arquivo começa com syntax = \"proto3\" e um pacote com o nome da mensagem raiz, marca como optional os escalares que podem estar ausentes e importa apenas os well-known types que usa, como Timestamp e Value."
       },
       {
         "question": "O protobuf vai analisar meu JSON original?",
-        "answer": "Os tipos seguem o mapeamento JSON do protobuf, então analisadores como protojson, JsonFormat e json_format leem documentos com a mesma estrutura do exemplo. Chaves que diferem apenas em maiúsculas e minúsculas não podem ter ambas um nome JSON, e o arquivo sinaliza as que ficaram de fora."
+        "answer": "Os tipos seguem o mapeamento JSON do protobuf, então analisadores como protojson, JsonFormat e json_format leem documentos com a mesma estrutura do exemplo. Uma chave que o protobuf não pode usar como nome JSON, como [0], é sinalizada ao lado do seu campo."
       },
       {
         "question": "E se a raiz do JSON for um array?",
-        "answer": "Uma mensagem protobuf é sempre um objeto JSON, então a mensagem raiz guarda o array em um campo repeated items. Cada elemento também recebe sua própria mensagem, que você pode analisar diretamente."
+        "answer": "Uma mensagem protobuf é sempre um objeto JSON, então a mensagem raiz guarda o array em um campo repeated items. Quando os elementos são objetos, cada um também recebe sua própria mensagem, que você pode analisar diretamente."
       },
       {
         "question": "Como os números dos campos são atribuídos?",
@@ -1054,7 +1054,7 @@
       {
         "heading": "Leia JSON existente com protobuf",
         "paragraphs": [
-          "Chaves como firstName já correspondem ao nome JSON que o protoc deriva de first_name, então não precisam de opção. Chaves com pontuação, dígitos ou outros sistemas de escrita recebem json_name. Quando todas as chaves estão em snake_case, uma nota orienta a escrever o JSON com os nomes de campo do proto.",
+          "Chaves como firstName já correspondem ao nome JSON que o protoc deriva de first_name, então não precisam de opção. Outras chaves, como user-id, ID ou 1abc, recebem json_name. Quando todas as chaves estão em snake_case, uma nota orienta a escrever o JSON com os nomes de campo do proto.",
           "Compile o arquivo com protoc ou buf e analise uma resposta de API com o mapeamento JSON da sua linguagem. Assim, um serviço pode enviar protobuf binário aos clientes que o solicitarem, enquanto os demais chamadores continuam recebendo JSON."
         ]
       }

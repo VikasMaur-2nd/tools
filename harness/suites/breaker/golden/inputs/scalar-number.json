@@ -34,7 +34,7 @@
   "swift": "import Foundation\n\ntypealias Root = Double\n",
   "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: float\n",
   "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = f64;\n",
-  "protobuf": "syntax = \"proto3\";\n\n// The JSON is a single value: this message holds it as {\"value\": ...}.\nmessage Root {\n  double value = 1;\n}\n",
+  "protobuf": "syntax = \"proto3\";\n\npackage root;\n\n// The JSON is a single value: this message holds it as {\"value\": ...}.\nmessage Root {\n  double value = 1;\n}\n",
   "csv": "value\r\n-12.50e+3\r\n",
   "yaml": "-12.50e+3\n",
   "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>-12.50e+3</root>\n",

@@ -1017,7 +1017,7 @@
     ]
   },
   "json-to-protobuf": {
-    "hash": "6f69fb56ca12",
+    "hash": "a13f1b05aee2",
     "title": "Protobuf aus JSON generieren: proto3-Messages",
     "description": "Generiere aus JSON eine .proto-Datei für proto3 mit Messages, repeated- und map-Feldern, json_name-Optionen und Well-Known Types. Läuft lokal im Browser.",
     "heading": "Protobuf aus JSON generieren",
@@ -1038,21 +1038,21 @@
     "options": [
       "Objekte werden zu Messages, Arrays zu repeated-Feldern. Objekte, deren Schlüssel Daten wie IDs oder Datumsangaben sind, werden zu Feldern vom Typ map<string, …>. Die Feldnummern folgen der Schlüsselreihenfolge.",
       "Skalare Werte, die in manchen Datensätzen null sind oder fehlen, sind optional. Für unbekannte, nur null enthaltende und gemischte Werte wird google.protobuf.Value verwendet, für verschachtelte Arrays ListValue, weil ein repeated-Feld weder null noch eine weitere Liste enthalten kann.",
-      "Ganzzahlen werden zu int64, Brüche zu double. Protobuf-JSON schreibt int64-Werte als Strings. Ganzzahlen jenseits von 64 Bit werden gekennzeichnet, weil ein double sie rundet.",
+      "Ganzzahlen werden zu int64, Brüche zu double. Protobuf-JSON schreibt int64-Werte als Strings. Ganzzahlen außerhalb des int64-Bereichs werden gekennzeichnet, weil ein double sie rundet.",
       "Datums-/Uhrzeitwerte nach RFC 3339 werden zum Typ google.protobuf.Timestamp, der in UTC ausgegeben wird. Reine Datumsangaben, UUIDs und E-Mail-Adressen bleiben string. Für Enums und Validierungsregeln brauchst du deinen API-Vertrag."
     ],
     "faqs": [
       {
         "question": "Erzeugt der Generator proto3?",
-        "answer": "Ja. Die Datei beginnt mit syntax = \"proto3\", kennzeichnet Skalare, die fehlen können, als optional und importiert nur die verwendeten Well-Known Types wie Timestamp und Value."
+        "answer": "Ja. Die Datei beginnt mit syntax = \"proto3\" und einem Package, das nach der Stamm-Message benannt ist. Sie kennzeichnet Skalare, die fehlen können, als optional und importiert nur die verwendeten Well-Known Types wie Timestamp und Value."
       },
       {
         "question": "Kann Protobuf mein ursprüngliches JSON parsen?",
-        "answer": "Die Typen folgen dem JSON-Mapping von Protobuf. Parser wie protojson, JsonFormat und json_format lesen daher Dokumente, die wie das Beispiel aufgebaut sind. Schlüssel, die sich nur in der Groß- und Kleinschreibung unterscheiden, können nicht beide JSON-Namen erhalten. Die Datei kennzeichnet die ausgelassenen Schlüssel."
+        "answer": "Die Typen folgen dem JSON-Mapping von Protobuf. Parser wie protojson, JsonFormat und json_format lesen daher Dokumente, die wie das Beispiel aufgebaut sind. Ein Schlüssel, den Protobuf nicht als JSON-Namen verwenden kann, etwa [0], wird neben seinem Feld gekennzeichnet."
       },
       {
         "question": "Was passiert, wenn das JSON-Wurzelelement ein Array ist?",
-        "answer": "Eine Protobuf-Message ist in JSON immer ein Objekt. Deshalb enthält die Stamm-Message das Array in einem repeated-Feld items. Jedes Element erhält außerdem eine eigene Message, die du direkt parsen kannst."
+        "answer": "Eine Protobuf-Message ist in JSON immer ein Objekt. Deshalb enthält die Stamm-Message das Array in einem repeated-Feld items. Sind die Elemente Objekte, erhält jedes außerdem eine eigene Message, die du direkt parsen kannst."
       },
       {
         "question": "Wie werden Feldnummern vergeben?",
@@ -1063,7 +1063,7 @@
       {
         "heading": "Vorhandenes JSON mit Protobuf lesen",
         "paragraphs": [
-          "Schlüssel wie firstName entsprechen bereits dem JSON-Namen, den protoc aus first_name ableitet, und brauchen daher keine Option. Schlüssel mit Satzzeichen, Ziffern oder anderen Schriftsystemen erhalten json_name. Sind alle Schlüssel in snake_case, weist ein Hinweis darauf hin, JSON stattdessen mit den Proto-Feldnamen auszugeben.",
+          "Schlüssel wie firstName entsprechen bereits dem JSON-Namen, den protoc aus first_name ableitet, und brauchen daher keine Option. Andere Schlüssel wie user-id, ID oder 1abc erhalten json_name. Sind alle Schlüssel in snake_case, weist ein Hinweis darauf hin, JSON stattdessen mit den Proto-Feldnamen auszugeben.",
           "Kompiliere die Datei mit protoc oder buf und parse eine API-Antwort mit dem JSON-Mapping deiner Sprache. Ein Dienst kann dann binäres Protobuf an Clients senden, die es anfordern, während andere Aufrufer weiterhin JSON erhalten."
         ]
       }

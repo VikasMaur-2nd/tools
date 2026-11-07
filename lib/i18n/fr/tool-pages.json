@@ -999,7 +999,7 @@
     ]
   },
   "json-to-protobuf": {
-    "hash": "6f69fb56ca12",
+    "hash": "a13f1b05aee2",
     "title": "JSON to Protobuf : générer des messages proto3",
     "description": "Générez un fichier .proto proto3 à partir de JSON : messages, champs repeated et map, options json_name, well-known types. En local dans le navigateur.",
     "heading": "JSON vers Protobuf",
@@ -1020,21 +1020,21 @@
     "options": [
       "Les objets deviennent des messages et les tableaux, des champs repeated. Les objets dont les clés sont des données, comme des identifiants ou des dates, deviennent des champs map<string, …>. Les numéros de champ suivent l'ordre des clés.",
       "Les scalaires null ou absents dans certains enregistrements sont déclarés optional. Les valeurs inconnues, uniquement null ou de types hétérogènes utilisent google.protobuf.Value, et les tableaux imbriqués utilisent ListValue, car un champ repeated ne peut contenir ni null ni une autre liste.",
-      "Les entiers sont de type int64 et les nombres décimaux de type double. Le JSON de protobuf écrit les valeurs int64 sous forme de chaînes ; les entiers au-delà de 64 bits sont signalés, car un double les arrondit.",
+      "Les entiers sont de type int64 et les nombres décimaux de type double. Le JSON de protobuf écrit les valeurs int64 sous forme de chaînes ; les entiers hors de la plage des int64 sont signalés, car un double les arrondit.",
       "Les valeurs date-heure RFC 3339 deviennent google.protobuf.Timestamp, qui s'écrit en UTC. Les dates, les UUID et les adresses e-mail restent de type string ; les enums et les règles de validation nécessitent votre contrat d'API."
     ],
     "faqs": [
       {
         "question": "Le générateur produit-il du proto3 ?",
-        "answer": "Oui. Le fichier commence par syntax = \"proto3\", déclare optional les scalaires qui peuvent être absents et n'importe que les well-known types qu'il utilise, comme Timestamp et Value."
+        "answer": "Oui. Le fichier commence par syntax = \"proto3\" et un package nommé d'après le message racine, déclare optional les scalaires qui peuvent être absents et n'importe que les well-known types qu'il utilise, comme Timestamp et Value."
       },
       {
         "question": "Protobuf peut-il analyser mon JSON d'origine ?",
-        "answer": "Les types suivent le mappage JSON de protobuf : les analyseurs comme protojson, JsonFormat et json_format lisent donc les documents structurés comme l'exemple. Deux clés qui ne diffèrent que par la casse ne peuvent pas avoir chacune un nom JSON, et le fichier signale celles qui sont laissées de côté."
+        "answer": "Les types suivent le mappage JSON de protobuf : les analyseurs comme protojson, JsonFormat et json_format lisent donc les documents structurés comme l'exemple. Une clé que protobuf ne peut pas utiliser comme nom JSON, par exemple [0], est signalée à côté de son champ."
       },
       {
         "question": "Que se passe-t-il si la racine du JSON est un tableau ?",
-        "answer": "Un message protobuf est toujours un objet JSON : le message racine place donc le tableau dans un champ repeated items. Chaque élément reçoit aussi son propre message, que vous pouvez analyser directement."
+        "answer": "Un message protobuf est toujours un objet JSON : le message racine place donc le tableau dans un champ repeated items. Lorsque les éléments sont des objets, chacun reçoit aussi son propre message, que vous pouvez analyser directement."
       },
       {
         "question": "Comment les numéros de champ sont-ils attribués ?",
@@ -1045,7 +1045,7 @@
       {
         "heading": "Lire du JSON existant avec protobuf",
         "paragraphs": [
-          "Les clés comme firstName correspondent déjà au nom JSON que protoc dérive de first_name : elles n'ont besoin d'aucune option. Les clés contenant de la ponctuation, des chiffres ou d'autres systèmes d'écriture reçoivent json_name. Lorsque toutes les clés sont en snake_case, une note indique plutôt d'écrire le JSON avec les noms de champs proto.",
+          "Les clés comme firstName correspondent déjà au nom JSON que protoc dérive de first_name : elles n'ont besoin d'aucune option. D'autres clés, comme user-id, ID ou 1abc, reçoivent json_name. Lorsque toutes les clés sont en snake_case, une note indique plutôt d'écrire le JSON avec les noms de champs proto.",
           "Compilez le fichier avec protoc ou buf, puis analysez une réponse d'API avec le mappage JSON de votre langage. Un service peut alors envoyer du protobuf binaire aux clients qui le demandent, tandis que les autres appelants continuent de recevoir du JSON."
         ]
       }
