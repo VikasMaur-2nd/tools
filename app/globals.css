@@ -687,6 +687,22 @@ svg {
   color: var(--bg);
 }
 
+/* What the input is read as (JSON, YAML, CSV…): a quiet chip beside the file name. */
+.fmt-pick {
+  flex: none;
+  min-width: 0;
+}
+
+.fmt-pick select {
+  height: 24px;
+  padding: 0 22px 0 8px;
+  font-size: 12px;
+}
+
+.fmt-pick svg {
+  right: 7px;
+}
+
 /* Convert toolbar */
 .pick {
   position: relative;
@@ -1163,6 +1179,8 @@ kbd {
   background: var(--bg);
 }
 
+/* The last valid document, shown while the input is broken: clearly not the current one. */
+.view.stale .cv,
 .view.stale .tv,
 .view.stale .tbl,
 .view.stale .gv-canvas {
@@ -2816,6 +2834,12 @@ dialog[open] {
   background: var(--bg);
   box-shadow: var(--shadow-lg);
   animation: pop 0.12s ease-out;
+}
+
+/* A menu whose button sits at the start of its toolbar opens from there. */
+.menu.start {
+  right: auto;
+  left: 0;
 }
 
 .mi {

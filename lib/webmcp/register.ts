@@ -5,6 +5,7 @@
 import { reportError, track, withVia } from '../analytics';
 import type { Engine } from '../engine/engine';
 import { getEngine } from '../engine/instance';
+import { formatOfName } from '../engine/rules';
 import { store } from '../engine/store';
 import { TOOLS, cap, type AgentTool, type Page } from './tools';
 
@@ -29,7 +30,8 @@ const page: Page = {
   indent: () => engine().indent,
   open: (text, name) =>
     agent((e) => {
-      e.load(text, name);
+      // (Read as what its name says, else JSON: an agent's document is JSON unless named otherwise.)
+      e.load(text, name, true, false, undefined, formatOfName(name));
       e.toast(`Opened a document from your AI agent · ${e.mod}Z to undo`, 'ok');
     }),
   show: (view) => agent((e) => e.setView(view)),

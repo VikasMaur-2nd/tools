@@ -8,7 +8,7 @@ import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
-import { store, useUI, type IndentId, type JwtInfo, type View } from '@/lib/engine/store';
+import { store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
 import { TARGETS, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
@@ -53,6 +53,64 @@ function Btn({
 
 // ── Editor pane ─────────────────────────────────────────────────────────────
 
+/** Format names as the interface says them (never translated). */
+const FORMATS: { v: SourceFormat; label: string }[] = [
+  { v: 'json', label: 'JSON' },
+  { v: 'yaml', label: 'YAML' },
+  { v: 'csv', label: 'CSV' },
+  { v: 'xml', label: 'XML' },
+  { v: 'toml', label: 'TOML' },
+];
+const formatLabel = (f: SourceFormat) => FORMATS.find((x) => x.v === f)!.label;
+
+/** What the input is read as: JSON, or a format whose JSON the views show (the input stays as it is). */
+function FormatPick() {
+  const format = useUI((s) => s.input.format);
+  const t = useT();
+  return (
+    <label className="pick fmt-pick" data-tip={t('Read the input as JSON, YAML, CSV, XML or TOML')}>
+      <span className="sr-only">{t('Input format')}</span>
+      <select value={format} onChange={(e) => act((en) => en.setInput(e.target.value as SourceFormat))}>
+        {FORMATS.map((f) => (
+          <option key={f.v} value={f.v}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+      <Icon name="down" size={12} />
+    </label>
+  );
+}
+
+const SEPARATORS: { v: CsvDelimiter; label: string }[] = [
+  { v: 'auto', label: 'Auto' },
+  { v: ',', label: ',' },
+  { v: ';', label: ';' },
+  { v: '\t', label: 'Tab' },
+  { v: '|', label: '|' },
+];
+
+/** CSV input: the separator, the header row and typed values. */
+function CsvOptions() {
+  const csv = useUI((s) => s.input.format === 'csv');
+  const delimiter = useUI((s) => s.input.delimiter);
+  const header = useUI((s) => s.settings.csvHeader);
+  const types = useUI((s) => s.settings.csvTypes);
+  if (!csv) return null;
+  return (
+    <Menu label="CSV options" icon="sliders" hideLabel start>
+      {() => (
+        <>
+          <MHead>CSV</MHead>
+          <MChoice label="Separator" value={delimiter} options={SEPARATORS} onPick={(v) => act((e) => e.setCsv({ delimiter: v }))} />
+          <MCheck label="First row is the header" checked={header} onClick={() => act((e) => e.setCsv({ header: !header }))} />
+          <MCheck label="Detect numbers and booleans" checked={types} onClick={() => act((e) => e.setCsv({ types: !types }))} />
+        </>
+      )}
+    </Menu>
+  );
+}
+
 /** Input side: only what concerns the input itself. Everything that transforms it lives on the right. */
 const InputBar = memo(function InputBar() {
   const fileName = useUI((s) => s.fileName);
@@ -71,6 +129,8 @@ const InputBar = memo(function InputBar() {
           !comparing && t('Input')
         )}
       </span>
+      <FormatPick />
+      <CsvOptions />
       <span className="grow" />
       {/* The link, or a "View in Tool Kumar" button around it as /integrate makes them (lib/badge.ts). */}
       <Menu label="Share" icon="share" tip={comparing ? 'Share both documents as a link or a button (nothing is uploaded)' : 'Share this JSON as a link or a button (nothing is uploaded)'}>
@@ -145,11 +205,14 @@ function EditorDom({
 }
 
 function EditorPane({ edRef }: { edRef: React.RefObject<HTMLDivElement | null> }) {
+  const format = useUI((s) => s.input.format);
   const t = useT();
+  const json = format === 'json';
+  const label = json ? t('JSON input') : t('{format} input', { format: formatLabel(format) });
   return (
-    <section className="pane pane-ed" aria-label={t('JSON input')}>
+    <section className="pane pane-ed" aria-label={label}>
       <InputBar />
-      <EditorDom edRef={edRef} id="input" label={t('JSON input')} placeholder={t("Looks like someone's got a JSON…")} autoFocus />
+      <EditorDom edRef={edRef} id="input" label={label} placeholder={json ? t("Looks like someone's got a JSON…") : t('Paste or type {format}…', { format: formatLabel(format) })} autoFocus />
     </section>
   );
 }
@@ -627,6 +690,21 @@ function Banner() {
   const status = useUI((s) => s.status);
   const hint = useUI((s) => s.hint);
   const t = useT();
+  // (Input read as another format that clearly is something else: CSV reads almost any text.)
+  if (status.kind === 'valid' && status.src && hint && hint !== 'unescape') {
+    return (
+      <div className="banner info" role="status" aria-live="polite">
+        <Icon name="braces" size={15} />
+        <span className="b-msg">
+          <b>{t('This looks like {format}', { format: formatLabel(hint) })}</b>
+          <span>{t('It is read as {format} now.', { format: formatLabel(status.src) })}</span>
+        </span>
+        <button type="button" className="btn sm accent" onClick={() => act((e) => e.setInput(hint))} data-tip={t('Keep the input as it is and show its JSON')}>
+          {t('Read as {format}', { format: formatLabel(hint) })}
+        </button>
+      </div>
+    );
+  }
   if (status.kind === 'valid' && hint === 'unescape') {
     return (
       <div className="banner info" role="status" aria-live="polite">
@@ -643,11 +721,13 @@ function Banner() {
   }
   if (status.kind !== 'error' && status.kind !== 'fixable') return null;
   const err = status.kind === 'error';
+  // (Input in another format: its own error, in its own terms.)
+  const src = status.kind === 'error' ? status.src : undefined;
   return (
     <div className={`banner ${err ? 'err' : 'warn'}`} role="status" aria-live="polite">
       <Icon name="alert" size={15} />
       <button type="button" className="b-msg" onClick={() => act((e) => e.gotoError())}>
-        <b>{err ? t('Invalid JSON') : t.n(status.count, 'Not strict JSON · {n} fixable issue', 'Not strict JSON · {n} fixable issues')}</b>
+        <b>{src ? t('Invalid {format}', { format: formatLabel(src) }) : err ? t('Invalid JSON') : t.n(status.count, 'Not strict JSON · {n} fixable issue', 'Not strict JSON · {n} fixable issues')}</b>
         <span>{t('Ln {line}, Col {col}: {msg}', { line: status.line, col: status.col, msg: t.msg(status.msg) })}</span>
       </button>
       {hint === 'unescape' && (
@@ -655,9 +735,9 @@ function Banner() {
           {t('Unescape JSON')}
         </button>
       )}
-      {(hint === 'yaml' || hint === 'xml' || hint === 'csv' || hint === 'toml') && (
-        <button type="button" className="btn sm accent" onClick={() => act((e) => e.importAs(hint))}>
-          {t('{format} → JSON', { format: hint.toUpperCase() })}
+      {hint && hint !== 'unescape' && (
+        <button type="button" className="btn sm accent" onClick={() => act((e) => e.setInput(hint))} data-tip={t('Keep the input as it is and show its JSON')}>
+          {t('Read as {format}', { format: formatLabel(hint) })}
         </button>
       )}
       {err ? (
@@ -932,7 +1012,7 @@ function StatusMsg() {
       return (
         <span className="st ok" title={status.jsonl ? t('One JSON value per line, shown as an array of records') : undefined}>
           <i className="dot" />
-          <span className="st-msg">{status.jsonl ? t.n(status.jsonl, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}</span>
+          <span className="st-msg">{status.src ? t('Valid {format}', { format: formatLabel(status.src) }) : status.jsonl ? t.n(status.jsonl, 'JSON Lines · {n} record', 'JSON Lines · {n} records') : t('Valid JSON')}</span>
           {status.warnings > 0 && (
             <button type="button" className="st-link warn" onClick={() => act((e) => e.gotoError())} title={status.msg && t.msg(status.msg)}>
               · {status.more ? t('{n}+ duplicate keys', { n: t.num(status.warnings) }) : t.n(status.warnings, '{n} duplicate key', '{n} duplicate keys')}
@@ -962,8 +1042,8 @@ const CODECS = [
 function Sizes() {
   const raw = useUI((s) => s.stats?.bytes);
   const sizes = useUI((s) => s.sizes);
-  // A JWT input has no minified form of its own: just its raw size.
-  const parsed = useUI((s) => (s.status.kind === 'valid' && !s.status.jwt) || s.status.kind === 'fixable');
+  // A JWT input has no minified form of its own: just its raw size (nor has another format: its JSON's are the Format view's).
+  const parsed = useUI((s) => (s.status.kind === 'valid' && !s.status.jwt && !s.status.src) || s.status.kind === 'fixable');
   // (While a document loads, what is known is the one before's.)
   const loading = useUI((s) => s.status.kind === 'parsing');
   const t = useT();

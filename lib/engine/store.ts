@@ -5,7 +5,12 @@ import type { Seg } from '../json/path';
 export type Theme = 'system' | 'light' | 'dark';
 export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
 export type IndentId = '2' | '4' | 'tab';
-export type Hint = 'unescape' | 'yaml' | 'xml' | 'csv' | 'toml' | null;
+/** What the input is read as: JSON, or a format whose JSON the views show (lib/engine/source.ts). */
+export type SourceFormat = 'json' | 'yaml' | 'csv' | 'xml' | 'toml';
+/** CSV field separator: detected, or one chosen. */
+export type CsvDelimiter = 'auto' | ',' | ';' | '\t' | '|';
+/** Smart suggestion for input that doesn't read as its format: unescape it, or read it as another format. */
+export type Hint = 'unescape' | SourceFormat | null;
 
 export interface Settings {
   theme: Theme;
@@ -31,6 +36,9 @@ export interface Settings {
   rootName: string;
   tsStyle: 'interface' | 'type';
   csharpLib: 'stj' | 'newtonsoft';
+  /** CSV input: the first row names the columns (rows become objects), and unquoted numbers and booleans become JSON ones. */
+  csvHeader: boolean;
+  csvTypes: boolean;
 }
 
 /** A tool page's starting state. */
@@ -38,7 +46,8 @@ export interface EnginePreset {
   settings?: Partial<Settings>;
   initialText?: string;
   initialFileName?: string;
-  initialImport?: 'yaml' | 'xml' | 'csv' | 'toml';
+  /** What the sample is read as (default: what its file name says, else JSON). */
+  input?: SourceFormat;
 }
 
 /** A JWT input: its algorithm and NumericDate claims (seconds), shown live (they age). */
@@ -54,9 +63,11 @@ export type Status =
   /** `progress`: how much of a document parsed here in steps is done (0 to 1). */
   | { kind: 'parsing'; progress?: number }
   /** `more`: the parser stopped listing warnings (MAX_ISSUES), so there are at least `warnings`. */
-  | { kind: 'valid'; warnings: number; more?: boolean; msg?: string; p?: number; line?: number; col?: number; jwt?: JwtInfo; jsonl?: number }
+  /** `src`: the input is in that format, and valid (its JSON is what the views show). */
+  | { kind: 'valid'; warnings: number; more?: boolean; msg?: string; p?: number; line?: number; col?: number; jwt?: JwtInfo; jsonl?: number; src?: Exclude<SourceFormat, 'json'> }
   | { kind: 'fixable'; msg: string; p: number; line: number; col: number; count: number }
-  | { kind: 'error'; msg: string; p: number; line: number; col: number };
+  /** `src`: the input doesn't read as that format (the error is its importer's). */
+  | { kind: 'error'; msg: string; p: number; line: number; col: number; src?: Exclude<SourceFormat, 'json'> };
 
 export interface Sizes {
   min: number;
@@ -150,8 +161,10 @@ export interface UIState {
   /** Find bar (searches whichever view is open). */
   find: { open: boolean; q: string; total: number; index: number; note?: string; /** bumps when q is set from outside the find bar */ seq: number };
   table: { segs: Seg[]; rows: number; cols: number; ok: boolean };
-  /** Smart suggestion for input that isn't JSON (yet). */
+  /** Smart suggestion for input that isn't JSON (yet), or that doesn't read as its format. */
   hint: Hint;
+  /** What the input is read as; for CSV, the separator chosen and the one detected (what `auto` reads with). */
+  input: { format: SourceFormat; delimiter: CsvDelimiter; detected: string };
   fileName: string | null;
   convert: { loading: boolean; error: string | null; lines: number; bytes: number };
   /** Format view output: line count and the byte size of both variants; `tooLarge`: none could be made (see MAX_TEXT). */
@@ -190,6 +203,8 @@ export const DEFAULT_SETTINGS: Settings = {
   rootName: 'Root',
   tsStyle: 'interface',
   csharpLib: 'stj',
+  csvHeader: true,
+  csvTypes: true,
 };
 
 const INITIAL: UIState = {
@@ -205,6 +220,7 @@ const INITIAL: UIState = {
   find: { open: false, q: '', total: 0, index: -1, seq: 0 },
   table: { segs: [], rows: 0, cols: 0, ok: false },
   hint: null,
+  input: { format: 'json', delimiter: 'auto', detected: ',' },
   fileName: null,
   convert: { loading: false, error: null, lines: 0, bytes: 0 },
   fmt: { lines: 0, pretty: 0, minified: 0, escaped: 0 },

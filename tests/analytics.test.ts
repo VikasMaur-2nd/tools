@@ -392,8 +392,8 @@ test('graph analytics use fixed view and feature values', () => {
 
 /** lib/analytics/load.ts against a stand-in UI store: what `json_loaded` events it sends, and when. */
 function loads() {
-  type State = { status: { kind: string; warnings?: number }; stats: { bytes: number; lines: number; nodes: number; depth: number; ms: number } | null; cmpText: string };
-  let state: State = { status: { kind: 'empty' }, stats: null, cmpText: '' };
+  type State = { status: { kind: string; warnings?: number }; stats: { bytes: number; lines: number; nodes: number; depth: number; ms: number } | null; cmpText: string; input: { format: string } };
+  let state: State = { status: { kind: 'empty' }, stats: null, cmpText: '', input: { format: 'json' } };
   const subs = new Set<() => void>();
   const store = {
     get: () => state,

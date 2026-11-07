@@ -1,6 +1,44 @@
 /* Document rules kept free of the browser-only engine, so tests can import them. */
 import type { JNode, ParseResult } from '../json/parser';
 import type { ChangeKind } from './editor';
+import type { SourceFormat } from './store';
+
+/** What an input can be read as (lib/engine/source.ts reads the others than JSON). */
+export const SOURCE_FORMATS: readonly SourceFormat[] = ['json', 'yaml', 'csv', 'xml', 'toml'];
+
+/** A stored or linked format name, or JSON. */
+export const formatOf = (v: unknown): SourceFormat => SOURCE_FORMATS.find((f) => f === v) ?? 'json';
+
+/** What a file is read as, by its name: YAML, CSV (and TSV), XML and TOML files by their extension; anything else is JSON. */
+export function formatOfName(name: string | null | undefined): SourceFormat {
+  const n = name ?? '';
+  if (/\.ya?ml$/i.test(n)) return 'yaml';
+  if (/\.(csv|tsv)$/i.test(n)) return 'csv';
+  if (/\.xml$/i.test(n)) return 'xml';
+  if (/\.toml$/i.test(n)) return 'toml';
+  return 'json';
+}
+
+/** Above this, text pasted over everything isn't checked to be JSON (JSON.parse: ~30 ms at 5 MB). */
+const PLAIN_JSON_MAX = 5_000_000;
+
+/**
+ * Whether text pasted over everything is plainly JSON: an object or array that JSON.parse reads. The input is then
+ * read as JSON again, whatever it was read as (a YAML flow mapping like `{a: 1}` isn't JSON, so it stays YAML).
+ */
+export function plainJson(text: string): boolean {
+  if (text.length > PLAIN_JSON_MAX) return false;
+  let i = 0;
+  while (i < text.length && text.charCodeAt(i) <= 32) i++;
+  const c = text.charCodeAt(i);
+  if (c !== 123 && c !== 91) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function persistenceAfterChange(enabled: boolean, kind: ChangeKind): boolean {
   return enabled || kind !== 'set';

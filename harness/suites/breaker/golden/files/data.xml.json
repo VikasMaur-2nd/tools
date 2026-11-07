@@ -1,14 +1,14 @@
 {
  "status": {
-  "msg": "Valid JSON",
+  "msg": "Valid XML",
   "kind": "ok",
-  "raw": "102 B raw",
-  "min": "51 B min",
-  "stats": "11 lines · 8 nodes · depth 3"
+  "raw": "111 B raw",
+  "min": null,
+  "stats": "1 line · 8 nodes · depth 3"
  },
  "toasts": [
-  "Converted data.xml to JSON"
+  "Opened data.xml"
  ],
- "input": "{\n  \"r\": {\n    \"@a\": \"1\",\n    \"x\": [\n      \"&e;\",\n      \"2\"\n    ],\n    \"y\": null,\n    \"z\": \"<b>\"\n  }\n}",
+ "input": "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY e \"boom\">]><r a=\"1\"><x>&e;</x><x>2</x><y/><z><![CDATA[<b>]]></z></r>",
  "formatted": "{\n  \"r\": {\n    \"@a\": \"1\",\n    \"x\": [\n      \"&e;\",\n      \"2\"\n    ],\n    \"y\": null,\n    \"z\": \"<b>\"\n  }\n}"
 }
