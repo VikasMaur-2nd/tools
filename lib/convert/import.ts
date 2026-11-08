@@ -314,6 +314,53 @@ function yScalar(t: string): V {
   return t;
 }
 
+const YINT = /^([-+]?)(?:0x([\da-fA-F]+)|0o([0-7]+)|(\d+))$/;
+
+/** `str` for `!!str` or `!<tag:yaml.org,2002:str>`, `!` for the non-specific tag, '' for any other tag. */
+const yTagName = (tag: string) => (tag === '!' ? tag : tag.startsWith('!!') ? tag.slice(2) : tag.startsWith('!<tag:yaml.org,2002:') && tag.endsWith('>') ? tag.slice(20, -1) : '');
+
+/** Whether a scalar's tag makes it something other than its text (a mapping key is then that value's JSON text). */
+const yTypedTag = (tag: string) => /^(?:int|float|bool|null)$/.test(yTagName(tag));
+
+/**
+ * The value of a node with tag `tag` at `p`. The core tags (`!!str`, `!!int`, `!!float`, `!!bool`, `!!null`,
+ * `!!seq`, `!!map`, also written `!<tag:yaml.org,2002:…>`) and the non-specific `!` (a scalar is a string) build
+ * it from the scalar's `text` (null: the node is the collection `v`) or reject content that is not of their
+ * kind; any other tag (an application's own, such as `!Ref`) leaves `v` as read without it.
+ */
+function yTagged(tag: string, v: V, text: string | null, p: number): V {
+  const t = yTagName(tag);
+  if (text === null) {
+    if (t === 'seq' ? Array.isArray(v) : t === 'map' ? v instanceof Map : !/^(?:str|int|float|bool|null|binary|timestamp)$/.test(t)) return v;
+  } else
+    switch (t) {
+      case '!': case 'str': case 'binary': case 'timestamp':
+        return text;
+      case 'null':
+        if (/^(?:~|null|Null|NULL|)$/.test(text)) return null;
+        break;
+      case 'bool':
+        if (/^(?:true|True|TRUE)$/.test(text)) return true;
+        if (/^(?:false|False|FALSE)$/.test(text)) return false;
+        break;
+      case 'int': {
+        const m = YINT.exec(text);
+        if (!m) break;
+        const r = m[4] !== undefined ? m[4].replace(/^0+(?=\d)/, '') : BigInt((m[2] !== undefined ? '0x' : '0o') + (m[2] ?? m[3])).toString();
+        return new Num(m[1] === '-' && r !== '0' ? '-' + r : r);
+      }
+      case 'float':
+        if (/^[-+]?(?:\.\d+|\d+(?:\.\d*)?)(?:[eE][-+]?\d+)?$/.test(text)) return new Num(normalizeNumber(text));
+        if (/^[-+]?\.(?:inf|Inf|INF)$|^\.(?:nan|NaN|NAN)$/.test(text)) return null;
+        break;
+      case 'seq': case 'map':
+        break;
+      default:
+        return v;
+    }
+  return fail(`The value does not match its tag ${tag}`, p);
+}
+
 /** Most JSON (characters) a YAML document that uses aliases may expand to: this, or 8× the document's length if more. */
 const ALIAS_OUTPUT = 16 * 1024 * 1024;
 
@@ -437,18 +484,26 @@ function yaml(src: string, indent: string): V {
     }
     return -1;
   };
-  const props = () => {
-    let anchor = '';
-    let tag = '';
+  /** A node's properties at i, each followed by spaces: [anchor, tag, where the tag is] (empty: none). In flow context a tag also ends at a flow indicator. */
+  type Props = [string, string, number];
+  const props = (flow: boolean): Props => {
+    const r: Props = ['', '', -1];
     for (;;) {
       const c = at(i);
-      if (c !== 38 && c !== 33) return [anchor, tag];
+      if (c !== 38 && c !== 33) return r;
       const s = i;
-      while (i < n && !sepAt(i) && !(c === 38 && i > s && flowInd(at(i)))) i++;
+      if (c === 33 && at(i + 1) === 60) {
+        // verbatim !<…>: may hold commas and brackets
+        while (i < n && !sepAt(i) && at(i) !== 62) i++;
+        if (at(i) === 62) i++;
+      } else while (i < n && !sepAt(i) && !((c === 38 || flow) && i > s && flowInd(at(i)))) i++;
       if (c === 38) {
-        anchor = src.slice(s + 1, i);
-        if (!anchor) f('Expected an anchor name after &', s);
-      } else tag = src.slice(s, i);
+        r[0] = src.slice(s + 1, i);
+        if (!r[0]) f('Expected an anchor name after &', s);
+      } else {
+        r[1] = src.slice(s, i);
+        r[2] = s;
+      }
       sp();
     }
   };
@@ -524,7 +579,8 @@ function yaml(src: string, indent: string): V {
     }
     return src.slice(s, e);
   };
-  const plain = (ind: number, asStr: boolean): V => {
+  /** A block plain scalar's text, its lines folded. */
+  const plain = (ind: number): string => {
     const c = at(i);
     if (c === 64 || c === 96) f(`Plain values cannot start with '${src[i]}'. Wrap the value in quotes`);
     let t = plainLine();
@@ -546,7 +602,7 @@ function yaml(src: string, indent: string): V {
       t += breaks > 1 ? '\n'.repeat(breaks - 1) : ' ';
       t += plainLine();
     }
-    return asStr ? t : yScalar(t);
+    return t;
   };
   const blockScalar = (ind: number): string => {
     const fold = at(i++) === 62;
@@ -570,11 +626,15 @@ function yaml(src: string, indent: string): V {
     let empty = 0;
     let more = false;
     let first = true;
+    // whether the last content line ends with a line break (the end of the input is none: YAML 1.2 [165])
+    let brk = true;
     let p = i < n ? i + 1 : n;
     while (p < n) {
       let q = p;
       while (at(q) === 32 && (bi < 0 || q - p < bi)) q++;
-      if (at(q) === 10 || q >= n) {
+      // (spaces with no line break after them end the input: no empty line)
+      if (q >= n) break;
+      if (at(q) === 10) {
         empty++;
         p = q + 1;
         continue;
@@ -598,12 +658,13 @@ function yaml(src: string, indent: string): V {
       else if (!first) out += ' ';
       out += line;
       first = false;
+      brk = e < n;
       empty = 0;
       p = e + 1;
     }
     i = Math.min(p, n);
-    if (chomp > 0) out += '\n'.repeat(first ? empty : empty + 1);
-    else if (!chomp && !first) out += '\n';
+    if (chomp > 0) out += '\n'.repeat(first || !brk ? empty : empty + 1);
+    else if (!chomp && !first && brk) out += '\n';
     return out;
   };
   const fws = () => {
@@ -625,17 +686,26 @@ function yaml(src: string, indent: string): V {
         }
     }
   };
+  /** Gives node `v` its anchor, if any. */
+  const anchor = (name: string, v: V) => {
+    if (!name) return;
+    anchors.set(name, v);
+    if (v instanceof Map || Array.isArray(v)) anchored.add(v);
+  };
+  /** The plain scalar text of the flow node read last as a mapping key may be (a merge key `<<` is one): null for any other node. */
   let rawKey: string | null = null;
   const flowNode = (): V => {
     fws();
-    const [anchor, tag] = props();
+    const [name, tag, tp] = props(true);
     fws();
-    rawKey = null;
     const c = at(i);
     let v: V;
-    if (c === 91 || c === 123) v = flow();
-    else if (c === 34 || c === 39) v = quoted(c);
-    else if (c === 42) v = alias();
+    let key: string | null = null;
+    if (c === 91 || c === 123) v = tag ? yTagged(tag, flow(), null, tp) : flow();
+    else if (c === 34 || c === 39) {
+      const s = quoted(c);
+      v = tag ? yTagged(tag, s, s, tp) : s;
+    } else if (c === 42) v = alias();
     else {
       const s = i;
       let e = i;
@@ -646,13 +716,11 @@ function yaml(src: string, indent: string): V {
         if (!isWs(d) && d !== 10) e = i;
       }
       const t = src.slice(s, e).replace(/[ \t]*\n\s*/g, ' ');
-      rawKey = t;
-      v = tag === '!!str' ? t : yScalar(t);
+      v = tag ? yTagged(tag, yScalar(t), t, tp) : yScalar(t);
+      if (!tag || yTagName(tag) === 'merge' || (!yTypedTag(tag) && t !== '<<')) key = t;
     }
-    if (anchor) {
-      anchors.set(anchor, v);
-      if (v instanceof Map || Array.isArray(v)) anchored.add(v);
-    }
+    anchor(name, v);
+    rawKey = key;
     return v;
   };
   const keyOf = (v: V, p: number): string => {
@@ -674,6 +742,8 @@ function yaml(src: string, indent: string): V {
         i++;
         break;
       }
+      // (a comma ends an entry: one with nothing before it is no entry)
+      if (at(i) === 44) f("Unexpected ',': expected a value");
       const kp = i;
       const k = flowNode();
       const key = rawKey;
@@ -703,45 +773,77 @@ function yaml(src: string, indent: string): V {
   };
   const MAP = 1;
   const SEQ = 2;
+  /** At the end of a line (or of the input): skips to the next content and says whether a node indented for `ind` / `ctx` starts there. */
+  const nextLine = (ind: number, ctx: number) => {
+    comment();
+    skip();
+    const c = i < n && !docMark(i) ? col(i) : -2;
+    return c > ind || (ctx === MAP && c === ind && dash(i));
+  };
   const node = (ind: number, ctx: number): V => {
     sp();
-    const [anchor, tag] = props();
+    // Properties may come before the line break, on a line of their own or before the content; on the
+    // content's line in front of an implicit key they are the key's ("&a a: b" anchors the key a).
+    let at0 = i;
+    let own = props(false);
+    let line: Props | null = null;
     let fresh = ctx === 0;
     let has = true;
     if (i >= n || at(i) === 10 || at(i) === 35) {
       // the value starts on a following line (or is empty)
-      comment();
-      skip();
-      const c = i < n && !docMark(i) ? col(i) : -2;
       fresh = true;
-      has = c > ind || (ctx === MAP && c === ind && dash(i));
+      has = nextLine(ind, ctx);
+      while (has && (at(i) === 38 || at(i) === 33)) {
+        at0 = i;
+        const p = props(false);
+        if (i < n && at(i) !== 10 && at(i) !== 35) {
+          line = p;
+          break;
+        }
+        own = [p[0] || own[0], p[1] || own[1], p[1] ? p[2] : own[2]];
+        has = nextLine(ind, ctx);
+      }
+    } else {
+      line = own;
+      own = ['', '', -1];
     }
     let v: V = null;
+    // the scalar's text (null: a collection; undefined: an alias, which takes no tag)
+    let text: string | null | undefined = '';
     if (has) {
       const c = at(i);
       if (dash(i)) {
         if (!fresh && ctx === MAP) f('A sequence cannot start on the same line as its key. Move it to the next line');
         v = seq(col(i));
-      } else if (c === 124 || c === 62) v = blockScalar(ind);
+        text = null;
+      } else if (c === 124 || c === 62) text = v = blockScalar(ind);
       else if (c === 42) {
         v = alias();
+        text = undefined;
         eolRest();
       } else if (c === 63 && sepAt(i + 1)) f('Complex mapping keys (?) are not supported');
       else if (keyEnd(i) >= 0) {
         if (!fresh && ctx === MAP) f('Mapping values are not allowed here. Quote the value if it contains ": "', keyEnd(i));
+        if (line && (line[0] || line[1])) {
+          // the key's properties: the mapping starts at them
+          i = at0;
+          line = null;
+        }
         v = map(col(i));
+        text = null;
       } else if (c === 91 || c === 123) {
         v = flow();
+        text = null;
         eolRest();
       } else if (c === 34 || c === 39) {
-        v = quoted(c);
+        text = v = quoted(c);
         eolRest();
-      } else v = plain(ind, tag === '!!str');
+      } else v = yScalar((text = plain(ind)));
     }
-    if (anchor) {
-      anchors.set(anchor, v);
-      if (v instanceof Map || Array.isArray(v)) anchored.add(v);
-    }
+    const name = line?.[0] || own[0];
+    const tag = line?.[1] || own[1];
+    if (tag && text !== undefined) v = yTagged(tag, v, text, line?.[1] ? line[2] : own[2]);
+    anchor(name, v);
     return v;
   };
   const map = (c: number): Map<string, V> => {
@@ -749,15 +851,22 @@ function yaml(src: string, indent: string): V {
     let merged: Set<string> | null = null;
     for (;;) {
       const kp = i;
+      const [name, tag, tp] = props(false);
       if (at(i) === 63 && sepAt(i + 1)) f('Complex mapping keys (?) are not supported');
       const ce = keyEnd(i);
       if (ce < 0) f(dash(i) ? 'Expected a mapping key, found a sequence item. Check the indentation' : 'Expected a mapping key (key: value)');
       const q = at(i);
+      const isQ = q === 34 || q === 39;
       let ke = ce;
-      while (isWs(at(ke - 1))) ke--;
-      const k = q === 34 || q === 39 ? quoted(q) : src.slice(i, ke);
+      while (ke > i && isWs(at(ke - 1))) ke--;
+      let k = isQ ? quoted(q) : src.slice(i, ke);
+      if (name || tag) {
+        const kv = tag ? yTagged(tag, isQ ? k : yScalar(k), k, tp) : isQ ? k : yScalar(k);
+        if (yTypedTag(tag)) k = kv instanceof Num ? kv.r : String(kv);
+        anchor(name, kv);
+      }
       i = ce + 1;
-      if (k === '<<' && q !== 34 && q !== 39) mergeInto(m, node(c, MAP), (merged ??= new Set()), kp);
+      if (k === '<<' && !isQ && (!tag || yTagName(tag) === 'merge')) mergeInto(m, node(c, MAP), (merged ??= new Set()), kp);
       else {
         if (m.has(k) && !merged?.delete(k)) f(`Duplicate key "${k}"`, kp);
         m.set(k, node(c, MAP));
