@@ -278,3 +278,22 @@ describe('TOML', () => {
     ]);
   });
 });
+
+describe('CSV', () => {
+  test('a file that quotes every field gets its numbers and booleans, but whitespace inside quotes is kept', () => {
+    same('csv', [
+      ['"b"\n"3\t"\n', [{ b: '3\t' }]],
+      ['"b"\n"\n0"\n', [{ b: '\n0' }]],
+      ['"a","b"\n" 1","true "\n"2","TRUE"\n', [{ a: ' 1', b: 'true ' }, { a: 2, b: true }]],
+      ['"a","b","c"\r\n"\r\n3","0.5\n","1e3"\r\n', [{ a: '\r\n3', b: '0.5\n', c: 1000 }]],
+      ['"a","b"\n"",""\n', [{ a: '', b: '' }]],
+      // (text after the closing quote is kept with the field, so is its whitespace)
+      ['"a"\n"3" \n', [{ a: '3 ' }]],
+    ]);
+    const r = importToJson('"x","y"\n" 7","8"\n', 'csv', '', { header: false });
+    assert.ok('json' in r);
+    assert.deepEqual(JSON.parse(r.json), [['x', 'y'], [' 7', 8]]);
+    // unquoted fields are trimmed around a number as before; quoted ones in a file that does not quote every field stay strings
+    same('csv', [['a,b\n 1 ,"2"\n', [{ a: 1, b: '2' }]]]);
+  });
+});

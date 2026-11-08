@@ -167,11 +167,15 @@ export function detectFormat(text: string, fileName?: string): Format {
 
 const CSV_NUM = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][-+]?\d+)?$/;
 
-/** JSON text for one CSV field. Unquoted: number / boolean / null inference; quoted: string. */
-const csvCell = (f: string, quoted: boolean): string => {
+/**
+ * JSON text for one CSV field. Unquoted: number / boolean / null inference, around spaces left out; quoted:
+ * string. `exact`: a quoted field of a file that quotes every field, inferred only when nothing surrounds the
+ * number or boolean (the quotes keep whitespace as it is: "3\t" stays a string).
+ */
+const csvCell = (f: string, quoted: boolean, exact = false): string => {
   if (quoted) return quote(f);
   if (f === '') return 'null';
-  const t = f.charCodeAt(0) <= 32 || f.charCodeAt(f.length - 1) <= 32 ? f.trim() : f;
+  const t = !exact && (f.charCodeAt(0) <= 32 || f.charCodeAt(f.length - 1) <= 32) ? f.trim() : f;
   const c = t.charCodeAt(0);
   if ((c >= 48 && c <= 57) || c === 45) {
     if (CSV_NUM.test(t)) {
@@ -198,6 +202,8 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
   }
   const d = (delim ?? sniff(src.slice(i))[0]).charCodeAt(0);
   const cell = types ? csvCell : (f: string) => quote(f);
+  /** A field of a file that quotes every field, typed as unquoted ones are when nothing but the value is between its quotes. */
+  const all = (f: string, quoted: boolean) => (quoted && f !== '' ? cell(f, false, true) : cell(f, quoted));
   const n = src.length;
   const nl = indent ? '\n' : '';
   const colon = indent ? ': ' : ':';
@@ -261,7 +267,7 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
         // (Its first row says whether the file quotes every field, as the first data row does with a header.)
         if (quoteAll < 0) quoteAll = q.every(Boolean) ? 1 : 0;
         out += (count++ ? ',' : '') + p1 + '[';
-        for (let j = 0; j < row.length; j++) out += (j ? ',' + p2 : p2) + (quoteAll && q[j] && row[j] !== '' ? cell(row[j], false) : cell(row[j], q[j]));
+        for (let j = 0; j < row.length; j++) out += (j ? ',' + p2 : p2) + (quoteAll ? all(row[j], q[j]) : cell(row[j], q[j]));
         out += p1 + ']';
       } else if (!keys) {
         keys = [];
@@ -272,7 +278,7 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
         while (keys.length < row.length) addKey('');
         out += (count++ ? ',' : '') + p1 + '{';
         for (let j = 0; j < keys.length; j++) {
-          const v = j < row.length ? (quoteAll && q[j] && row[j] !== '' ? cell(row[j], false) : cell(row[j], q[j])) : types ? 'null' : '""';
+          const v = j < row.length ? (quoteAll ? all(row[j], q[j]) : cell(row[j], q[j])) : types ? 'null' : '""';
           out += (j ? ',' + qk[j] : qk[j]) + v;
         }
         out += (keys.length ? p1 : '') + '}';
