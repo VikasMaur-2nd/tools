@@ -224,3 +224,38 @@ test('service worker: files posted by a page are cached only when really there',
   assert.ok(!sw.has('/_next/static/chunks/gone.js'));
   assert.ok(!sw.has('/manifest.webmanifest'));
 });
+
+test("service worker: a page caches huge mode's dictionary of its own language only", async () => {
+  // Every page loads a chunk that names the dictionaries of all languages (they load when a huge file opens).
+  const html = (title: string) => `<!doctype html><title>${title}</title><script src="/_next/static/chunks/h-main.js"></script>`;
+  const dict = (l: string) => `/_next/static/media/huge-strings.${l}.0a1b2c.json`;
+  const sw = worker();
+  sw.serve({
+    '/': html('Home'),
+    '/de': html('Start'),
+    '/de/tools/json-graph': html('Graph'),
+    '/ja': html('ホーム'),
+    '/_next/static/chunks/h-main.js': ['de', 'ja', 'es'].map((l) => `u(new URL("static/media/huge-strings.${l}.0a1b2c.json"))`).join(';') + ';x.l("static/chunks/h-lazy.js")',
+    '/_next/static/chunks/h-lazy.js': 'lazy()',
+    [dict('de')]: '{"Large file":"Große Datei"}',
+    [dict('ja')]: '{"Large file":"大容量ファイル"}',
+    [dict('es')]: '{"Large file":"Archivo grande"}',
+  });
+  const dicts = () => sw.statics().filter((p) => p.includes('huge-strings'));
+  await sw.install();
+  await sw.post(['/']);
+  // English: none, while the page's other chunks are followed.
+  assert.ok(sw.has('/_next/static/chunks/h-lazy.js'));
+  assert.deepEqual(dicts(), []);
+  await sw.visit('/de/tools/json-graph');
+  await sw.post(['/de/tools/json-graph']);
+  assert.deepEqual(dicts(), [dict('de')]);
+  assert.ok(!sw.fetched.some((p) => p.includes('huge-strings.ja') || p.includes('huge-strings.es')));
+  // Another language's page: its own as well.
+  await sw.visit('/ja');
+  await sw.post(['/ja']);
+  assert.deepEqual(dicts(), [dict('de'), dict('ja')]);
+  // Offline, the German page's dictionary is answered from the cache.
+  sw.offline();
+  assert.equal(sw.cached(dict('de')), '{"Large file":"Große Datei"}');
+});

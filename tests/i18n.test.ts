@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { TOOL_PAGES } from '../lib/tool-pages';
 import { LOCALES } from '../lib/i18n/locales';
 import { pageHash, textHash } from '../lib/i18n/page-text';
 import { EN, fill } from '../lib/i18n/ui';
 import { translator } from '../lib/i18n/translate';
+import { CLIENT as CLIENT_KEYS, hugeDict, isHugeKey, pageDict } from '../lib/i18n/client-dict';
 import { parse } from '../lib/json/parser';
 
 /*
@@ -43,7 +45,7 @@ const walk = (dir: string, acc: string[] = []): string[] => {
   return acc;
 };
 /** Code that renders strings in the browser, plus the libraries whose English messages it shows. */
-const clientFiles = [...walk('components'), ...walk('lib/engine'), ...walk('lib/graph'), 'lib/i18n/translate.ts', 'lib/json/smart.ts', 'lib/json/parser.ts', 'lib/convert/import.ts', 'lib/convert/xlsx.ts', 'lib/diff/diff.ts'].filter(
+const clientFiles = [...walk('components'), ...walk('lib/engine'), ...walk('lib/graph'), ...walk('lib/huge'), 'lib/i18n/translate.ts', 'lib/json/smart.ts', 'lib/json/parser.ts', 'lib/convert/import.ts', 'lib/convert/xlsx.ts', 'lib/diff/diff.ts'].filter(
   // Server components translate by stable key instead.
   (f) => !read(f).includes("from '@/lib/i18n/server'"),
 );
@@ -70,6 +72,65 @@ test('English dictionary: client strings are unique and still used by the code',
   }
   assert.deepEqual(dup, [], 'the browser looks strings up by their English text, so two keys cannot share one');
   assert.deepEqual(unused, [], 'strings the code no longer shows: update the English text in lib/i18n/en/ui.json (same key: translations get flagged as stale) or remove the key');
+});
+
+test('English dictionary: a plural string does not share its key with a plain one', () => {
+  // ui-source.json records one English hash per key, a plural under its base: "x" and "x.one/.other" would share it,
+  // and one of the two would always read as changed since translation.
+  const bases = new Set(keys.filter((k) => PLURAL.test(k)).map((k) => k.replace(PLURAL, '')));
+  assert.deepEqual([...bases].filter((b) => b in en), [], 'give the plural its own key, e.g. app.fooCount.one / .other');
+});
+
+test('huge mode strings: out of every page dictionary, in a dictionary of their own that the translator loads', async () => {
+  const hugeTexts = new Set(keys.filter((k) => CLIENT_KEYS.test(k) && isHugeKey(k)).map((k) => en[k]));
+  assert.ok(hugeTexts.has('Large file') && hugeTexts.has('Shape'));
+  const loaders = read('lib/i18n/translate.ts');
+  // translate.ts fetches the file next to it; in the test build that URL is under .test-build: read the source's.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string | URL) => new Response(readFileSync(fileURLToPath(String(u)).replace(`${sep}.test-build${sep}`, sep)))) as typeof fetch;
+  try {
+  // A page's dictionary is clientUi (lib/i18n/server.ts, server-only: read, not run here); scripts/verify-i18n.mjs checks built pages too.
+  assert.match(read('lib/i18n/server.ts'), /return memo\(`client:\$\{locale\}`, \(\) => pageDict\(/);
+  for (const { id, lang } of LOCALES) {
+    const tr = json(`lib/i18n/${id}/ui.json`);
+    const page = pageDict(en, tr);
+    assert.deepEqual(Object.keys(page).filter((s) => hugeTexts.has(s)), [], `${id}: a page's dictionary carries huge mode's strings`);
+    const huge = hugeDict(en, tr);
+    assert.deepEqual(json<typeof huge>(`lib/i18n/huge/huge-strings.${id}.json`), huge, `lib/i18n/huge/huge-strings.${id}.json is out of date: run pnpm i18n:huge`);
+    // translate.ts picks the dictionary by the page's language (<html lang>, e.g. pt-BR, zh-Hans).
+    assert.equal(lang.slice(0, 2), id);
+    // (The file name matters: the service worker caches a page's own language's huge-strings.<lang>.* only.)
+    // (Spelled in two parts: the test runner rewrites that expression wherever it appears.)
+    assert.ok(loaders.includes(`${id}: new URL('./huge/huge-strings.${id}.json', ${'import.meta'}.url)`), `translate.ts loads lib/i18n/huge/huge-strings.${id}.json`);
+    if (!Object.keys(tr).length) continue;
+    // The page's translator, then huge mode's strings added to it (templates included: msg's patterns are made again).
+    const t = translator(page, lang);
+    assert.equal(t('Large file'), 'Large file');
+    assert.equal(t('Indexing {done} of {size}'), 'Indexing {done} of {size}');
+    t.msg('Indexing 1 GB of 10 GB'); // (makes msg's patterns from the page's strings alone)
+    await t.huge!();
+    assert.equal(t('Large file'), huge['Large file'], id);
+    assert.equal(t.msg('Indexing 1 GB of 10 GB'), fill(huge['Indexing {done} of {size}'] as string, { done: '1 GB', size: '10 GB' }), id);
+    assert.equal(t.n(3, '{n} record', '{n} records'), fill((huge['{n} records'] as Record<string, string>)[new Intl.PluralRules(lang).select(3)], { n: 3 }), id);
+    // The page's own strings are still there.
+    assert.equal(t('Tree'), tr['app.tree']);
+  }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  // English pages have no dictionary to add.
+  assert.equal(EN.huge, undefined);
+});
+
+test('huge-only strings are not translated by the rest of the app', () => {
+  // Strings passed to t() as literals outside huge mode's code must stay in every page's dictionary.
+  // (The palette lists huge mode's edit commands, by variable, only while a huge file is open.)
+  const hugeTexts = new Set(keys.filter((k) => CLIENT_KEYS.test(k) && isHugeKey(k)).map((k) => en[k]));
+  const used: string[] = [];
+  for (const f of clientFiles.filter((f) => !/^(components|lib)\/huge\//.test(f))) {
+    for (const m of read(f).matchAll(/(?:\b(?:t|tr|rt)|useT\(\))(?:\.n)?\(\s*(?:[^,()'"]+,\s*)?(['"])((?:\\.|(?!\1).)+)\1/g)) if (hugeTexts.has(unescape(m[2]))) used.push(`${f}: ${unescape(m[2])}`);
+  }
+  assert.deepEqual(used, [], 'shown outside huge mode: leave these keys out of isHugeKey (lib/i18n/client-dict.ts)');
 });
 
 test('control-character templates match the parser diagnostics', () => {

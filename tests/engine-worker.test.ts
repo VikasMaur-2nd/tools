@@ -45,7 +45,7 @@ function session() {
     }) as ts.SourceFile] },
   }).outputText;
   runInNewContext(js, {
-    exports, performance, URL, console, AbortController, queueMicrotask,
+    exports, performance, URL, console, AbortController, queueMicrotask, navigator: {},
     setTimeout: defer, clearTimeout: (id: number) => tasks.delete(id), window: { setTimeout: defer },
     require: (name: string) => {
       if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };

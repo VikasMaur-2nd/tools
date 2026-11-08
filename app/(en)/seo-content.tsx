@@ -19,9 +19,11 @@ export default function SeoContent({ locale = 'en' }: { locale?: SiteLocale }) {
         <li>{t('home.tools.1')}</li>
         {graph && <li><Link href={localePath(locale, '/tools/json-visualizer')}>{graph.heading}</Link>. {graph.intro}</li>}
         <li>{rich(t('home.tools.validator'), { validator: link('/tools/json-validator', true) })}</li>
-        {([3, 4, 5, 6] as const).map((i) => (
+        {([3, 4, 5] as const).map((i) => (
           <li key={i}>{t(`home.tools.${i}`)}</li>
         ))}
+        <li>{rich(t('home.tools.large'), { large: link('/tools/large-json-viewer', true) })}</li>
+        <li>{t('home.tools.6')}</li>
       </ul>
       <h2>{t('home.howH2')}</h2>
       <ol>

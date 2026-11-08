@@ -1,0 +1,1384 @@
+/* Huge-file mode (components/huge/HugeTool.tsx): loaded with it, only when a file too big for the editor opens. */
+
+/* The large file takes the whole tool: no editor, no splitter, no Compare column. */
+html[data-huge] .panes {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+html[data-huge] .pane-ed,
+html[data-huge] .pane-cmp,
+html[data-huge] .pane-view,
+html[data-huge] .split,
+html[data-huge] .watermark,
+html[data-huge] .statusbar > .sb-l:not(.hg-sb),
+html[data-huge] .statusbar .cursor {
+  display: none;
+}
+
+.hg-sb {
+  order: -1;
+}
+
+.hg > .view {
+  flex: 1;
+}
+
+.hg > .view > .cv,
+.hg > .view > .tv,
+.hg > .view > .tbl {
+  flex: 1;
+}
+
+/* File bar: the file's name and size, what this mode is, Open and Close. */
+.hg-file .fname {
+  max-width: 50%;
+  color: var(--fg);
+}
+
+.hg-bytes {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.hg-badge {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--fg-2);
+  font: 600 11px/1.2 var(--font-ui);
+  letter-spacing: 0.02em;
+  cursor: default;
+}
+
+/* Indexing: a thin bar under the file bar. */
+.hg-bar {
+  position: relative;
+  flex: none;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.hg-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  transition: width 0.25s linear;
+}
+
+/* A row or line still being read: a soft bar where its text will be. */
+.hg-sk {
+  display: inline-block;
+  max-width: 70%;
+  height: 9px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--bg-3) 0%, var(--line-2) 50%, var(--bg-3) 100%) 0 0 / 200% 100%;
+  vertical-align: middle;
+  animation: hg-shimmer 1.2s ease-in-out infinite;
+}
+
+.cv-l .hg-sk {
+  margin-top: 5px;
+  vertical-align: top;
+}
+
+@keyframes hg-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-sk {
+    animation: none;
+  }
+  .hg-bar > i {
+    transition: none;
+  }
+}
+
+/* Paging rows of a container of thousands: "Show next 1,000 · 12,345 more · Go to index…". */
+.hg-page {
+  gap: 8px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.hg-pg {
+  padding: 1px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 500 12px/18px var(--font-ui);
+  cursor: pointer;
+}
+
+.hg-pg:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.hg-go {
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg-2);
+}
+
+.hg-left {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A long string's size, after its start; a long line's rest. */
+.hg-size,
+.hg-more {
+  margin-left: 8px;
+  color: var(--muted);
+  font: 11.5px var(--font-ui);
+}
+
+/* A line that goes on past where the file is read so far: a quiet marker, which breathes while reading goes on. */
+.hg-reading {
+  animation: hg-reading 1.6s ease-in-out infinite;
+}
+
+@keyframes hg-reading {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-reading {
+    animation: none;
+  }
+}
+
+/* The Format view's current line (the selection's, or the match's). */
+.cv-l.hg-cur {
+  background: var(--row-sel);
+}
+
+.hg-lines .cv-l[data-l] {
+  cursor: default;
+}
+
+/* The file's error: its line, and the character it is at. */
+.cv-l.hg-errl {
+  background: var(--err-soft);
+}
+
+.hg-errc {
+  position: absolute;
+  top: 2px;
+  bottom: 1px;
+  border-bottom: 2px solid var(--err);
+  pointer-events: none;
+}
+
+/* Graph, Convert, Compare: not for files this large yet. */
+.hg-notyet {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 24px;
+  color: var(--muted);
+  text-align: center;
+  outline: none;
+}
+
+.hg-notyet b {
+  color: var(--fg);
+  font: 600 14px/1.4 var(--font-ui);
+}
+
+.hg-notyet p {
+  max-width: 420px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hg-notyet svg {
+  color: var(--fg-2);
+}
+
+/* Find and Go to. */
+.hg-searching {
+  color: var(--faint, var(--muted));
+}
+
+.hg-ask input {
+  width: 260px;
+}
+
+.hg-ask input.bad {
+  color: var(--err);
+}
+
+.hg-st .st-link.hg-cancel {
+  margin-left: 4px;
+  color: var(--fg-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hg-tpath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
+}
+
+@media (max-width: 760px) {
+  .hg-file .fname {
+    max-width: 45%;
+  }
+  .hg-file .btn .lbl {
+    display: none;
+  }
+  .hg-ask input,
+  .findbar input {
+    width: 140px;
+  }
+}
+
+/* ── Shape panel (components/huge/HugeShape.tsx) ─────────────────────────── */
+
+.hg > .view > .hs,
+.hg > .view > .hc {
+  flex: 1;
+  min-height: 0;
+}
+
+.hs {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hs-bar {
+  gap: 8px;
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.hs-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-status .spin {
+  margin-right: 4px;
+}
+
+.hs-status.err,
+.hs-n.warn,
+.hc-done.err {
+  color: var(--err);
+}
+
+.hs-status .warn,
+.hs-status.warn,
+.hc-done.warn {
+  color: var(--warn);
+}
+
+.hs-scope {
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-2);
+  font: 12px var(--font-mono);
+}
+
+.hs-q {
+  width: 180px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+}
+
+.hs-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+}
+
+.hs-grid {
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+  font-size: 12.5px;
+}
+
+.hs-grid:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-line);
+}
+
+.hs-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.4fr) minmax(130px, 1.2fr) 64px 56px 72px minmax(90px, 1fr) minmax(90px, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 0 12px 0 4px;
+  border-bottom: 1px solid var(--line);
+  cursor: default;
+}
+
+.hs-row:hover {
+  background: var(--row-hover);
+}
+
+.hs-row.on {
+  background: var(--row-sel);
+}
+
+.hs-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 26px;
+  background: var(--bg-2);
+  color: var(--muted);
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.hs-head:hover {
+  background: var(--bg-2);
+}
+
+.hs-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hs-n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-path {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+}
+
+.hs-key {
+  color: var(--c-key);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hs-items,
+.hs-root {
+  color: var(--fg-2);
+}
+
+.hs-tw,
+.hs-tw-sp {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.hs-tw {
+  position: relative;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.hs-tw::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  border: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  border-right: 0;
+  transition: transform 0.12s;
+}
+
+.hs-tw.open::before {
+  transform: rotate(90deg);
+}
+
+.hs-tw:hover {
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.hs-kinds {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hs-kbar {
+  flex: none;
+  display: flex;
+  width: 54px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  overflow: hidden;
+}
+
+.hs-kbar > i {
+  min-width: 2px;
+  height: 100%;
+}
+
+.hs-kt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-2);
+}
+
+.hs-range,
+.hs-ex {
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.hs-detail {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 24px;
+  border-left: 1px solid var(--line);
+  background: var(--bg-2);
+  font-size: 13px;
+}
+
+/* Before a path is selected: what the panel is for (a phone keeps the room for the list). */
+.hs-pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+.hs-pick p {
+  max-width: 26ch;
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .hs-pick {
+    display: none;
+  }
+}
+
+.hs-dhead {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.hs-dpath {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--c-key);
+  font: 600 13px/1.4 var(--font-mono);
+}
+
+.hs-sum {
+  margin: 4px 0 12px;
+  color: var(--fg-2);
+}
+
+.hs-detail h4 {
+  margin: 16px 0 6px;
+  color: var(--muted);
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.hs-list,
+.hs-top {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hs-list li {
+  display: grid;
+  grid-template-columns: 10px 64px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.hs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.hs-dot.hs-miss {
+  border: 1.5px dashed var(--muted);
+  background: none;
+}
+
+.hs-lk {
+  color: var(--fg);
+}
+
+.hs-c {
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.hs-link {
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--accent);
+  font: 500 12px/18px var(--font-ui);
+  cursor: pointer;
+}
+
+.hs-link:hover {
+  background: var(--accent-soft);
+}
+
+.hs-link:disabled {
+  color: var(--muted);
+  background: none;
+  cursor: default;
+}
+
+.hs-xs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.hs-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.hs-dl dt {
+  color: var(--muted);
+}
+
+.hs-dl dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-fmt {
+  display: contents;
+}
+
+.hs-detail .mono,
+.hs-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.hs-top li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.hs-val {
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--c-str);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hs-val:hover {
+  background: var(--bg-3);
+}
+
+/* (Edited since the shape was read: its places wait for it to be read again.) */
+.hs-val:disabled {
+  background: none;
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hs-tbar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  overflow: hidden;
+}
+
+.hs-tbar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+/* ── Convert view: the commands (components/huge/HugeCommands.tsx) ─────────── */
+
+.hc {
+  overflow: auto;
+  padding: 24px 16px 40px;
+  outline: none;
+}
+
+.hc-card {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.hc-title {
+  margin: 0 0 14px;
+  color: var(--fg);
+  font: 600 16px/1.3 var(--font-ui);
+}
+
+.hc-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hc-kind {
+  padding: 6px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg-2);
+  font: 500 13px/1.2 var(--font-ui);
+  cursor: pointer;
+}
+
+.hc-kind:hover {
+  border-color: var(--accent-line);
+  color: var(--fg);
+}
+
+.hc-kind[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.hc-about {
+  min-height: 1.5em;
+  margin: 10px 0 18px;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.hc-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.hc-lbl {
+  padding-top: 5px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.hc-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.hc-in {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px var(--font-mono);
+}
+
+.hc-in:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.hc-in.bad,
+.hc-in[aria-invalid='true'] {
+  border-color: var(--err);
+}
+
+.hc-num {
+  width: 110px;
+}
+
+.hc-path {
+  width: 220px;
+}
+
+.hc-val {
+  width: 170px;
+}
+
+.hc-conds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.hc-cond,
+.hc-condbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.hc-pick select {
+  height: 28px;
+}
+
+.hc-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.hc-go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.hc-run {
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.hc-prog {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hc-prog .spin {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+.hc-run .hg-bar {
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+}
+
+.hc-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.hc-done .ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .hs-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .hs-row {
+    grid-template-columns: minmax(110px, 1fr) minmax(90px, 1fr) 56px;
+  }
+  .hs-wide {
+    display: none;
+  }
+  .hs-detail {
+    max-height: 48vh;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+  .hs-q {
+    width: 120px;
+  }
+  .hc-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .hc-lbl {
+    padding-top: 0;
+  }
+  .hc-path,
+  .hc-val {
+    width: 100%;
+  }
+}
+
+/* ── A .gz file being decompressed (components/huge/HugeGz.tsx) ──────────── */
+
+.hz {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.hz b {
+  font: 600 14px/1.4 var(--font-ui);
+}
+
+.hz .hg-bar {
+  width: min(420px, 80vw);
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+}
+
+.hz p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Graph (lib/huge/graph.ts): the normal tool's graph, filling the view; its root and count in the toolbar. */
+.hg > .view > .hg-graph {
+  flex: 1;
+  min-height: 0;
+}
+
+.hg-gwhere {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hg-gwhere .hg-gpath {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .hg-gwhere > .muted {
+    display: none;
+  }
+  /* (On a phone the root's path has the toolbar's second row, though status-bar paths hide.) */
+  .hg-gwhere .hg-gpath {
+    display: block;
+  }
+}
+
+/* Text buttons without an icon ("From selected", Shape's "Read again" and "Stop"): narrow toolbars squeeze text
+   buttons to icon size (globals.css), which would cut these words off. */
+.hg .hg-gwhere > .btn:not(.icon),
+.hg .hs-bar > .btn:not(.icon) {
+  width: auto;
+  padding: 0 8px;
+}
+
+/* Shape's toolbar grows with what wraps (whatever order the style sheets load in): on a phone, the filter field
+   and Read again (or Stop) take the second line instead of being cut off. */
+.hg .hs-bar {
+  height: auto;
+}
+
+@media (max-width: 760px) {
+  .hg .hs-bar .hs-q {
+    flex: 1 1 160px;
+    width: auto;
+    order: 10;
+  }
+  .hg .hs-bar > .btn {
+    order: 11;
+  }
+}
+
+/* ── Editing (components/huge/HugeEdit.tsx) ─────────────────────────────── */
+
+/* The file bar: "Edited · 3 changes", Undo, Redo, Save; a save's progress and Stop. */
+.hg-editbar,
+.hg-saving {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+}
+
+.hg-edited {
+  margin-right: 6px;
+  color: var(--warn);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Another tab has this file open: its edits aren't kept here (a calm note, its tip says why). */
+.hg-keep {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 8px;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.hg-saving {
+  gap: 8px;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hg-savebar {
+  position: relative;
+  width: 90px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+
+.hg-savebar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+/* (Text buttons without an icon keep their words in narrow toolbars: see .hg-gwhere's.) */
+.hg .hg-txtbtn {
+  width: auto;
+  padding: 0 8px;
+}
+
+@media (max-width: 760px) {
+  .hg-edited,
+  .hg-keep .lbl {
+    display: none;
+  }
+}
+
+/* A kept session offered. */
+.hg-restore {
+  background: var(--bg-2);
+  color: var(--fg);
+}
+
+.hg-restore .b-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+/* (The banner's buttons take its text colour: Restore, the primary one, keeps its own, readable on the accent.) */
+.hg-restore .btn.primary {
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* (The question; the line under it says what editing first does.) */
+.hg-restore .b-msg > span:first-child {
+  color: inherit;
+}
+
+/* The edit box: over the row or cell it edits (fixed: the views scroll under it), or at the view's top. */
+.hg-box {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 260px;
+  max-width: calc(100vw - 16px);
+  padding: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+  font-size: 12.5px;
+}
+
+.hg-box.top {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: min(560px, calc(100% - 16px));
+  transform: translateX(-50%);
+}
+
+.hg-box-h {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.hg-box-h b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.hg-box-h code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--c-key);
+  font: 11.5px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hg-box-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.hg-box-kind {
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+}
+
+.hg-box-in {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+  resize: vertical;
+}
+
+.hg-box-in.mono {
+  font: 12.5px/1.45 var(--font-mono);
+}
+
+.hg-box-in:focus,
+.hg-box-kind:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-line);
+  outline-offset: 0;
+}
+
+.hg-box-in[aria-invalid='true'] {
+  border-color: var(--err);
+}
+
+.hg-box-null {
+  align-self: center;
+  color: var(--muted);
+  font: 12.5px var(--font-mono);
+}
+
+.hg-box-err {
+  margin: 0;
+  color: var(--err);
+}
+
+.hg-box-btns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.hg-box-tip {
+  flex: 1;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+@media (max-width: 760px) {
+  .hg-box-tip {
+    display: none;
+  }
+}
+
+/* The edit menu: where the right click was (or under the row, from the keyboard). */
+.hg-menu {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 70;
+  max-width: min(340px, calc(100vw - 16px));
+}
+
+.hg-menu-path {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* Dialogs: closing with edits, and a value as text. */
+.hg-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.hg-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 100%;
+  max-height: 100%;
+  padding: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.hg-dialog h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hg-confirm {
+  width: 420px;
+}
+
+.hg-confirm p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.hg-dlg-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.hg-te {
+  width: min(1100px, 100%);
+  height: min(780px, 100%);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.hg-te-h,
+.hg-te-f {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.hg-te-h {
+  border-bottom: 1px solid var(--line);
+}
+
+.hg-te-f {
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.hg-te-path {
+  min-width: 0;
+  max-width: 40ch;
+  overflow: hidden;
+  color: var(--c-key);
+  font: 12px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hg-te-find {
+  width: 180px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 12.5px var(--font-ui);
+}
+
+.hg-te-count {
+  min-width: 5ch;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hg-te-ed {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.hg-te-ed .ed {
+  flex: 1;
+  height: 100%;
+}
+
+.hg-te-wait {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.hg-te-check {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hg-te-check.ok {
+  color: var(--ok);
+}
+
+.hg-te-check.err {
+  color: var(--err);
+}
+
+.hg-te-warn {
+  color: var(--warn);
+}
+
+@media (max-width: 760px) {
+  .hg-modal {
+    padding: 0;
+  }
+  .hg-te {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  .hg-te-find {
+    flex: 1 1 100%;
+    order: 10;
+    width: auto;
+  }
+}
+
+/* The Format view's text, edited (components/huge/HugeFormatEdit.tsx): the normal editor, filling the view. */
+.hg > .view > .hg-fe {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.hg-fe > .ed {
+  flex: 1;
+  min-height: 0;
+}
+
+.hg-fe > .ed[hidden] {
+  display: none;
+}
+
+.hg-vbar .hg-gwhere .muted,
+.vbar .hg-gwhere .muted {
+  font-variant-numeric: tabular-nums;
+}

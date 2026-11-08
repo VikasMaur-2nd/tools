@@ -7,7 +7,7 @@
 type Dates = { published?: string; updated: string };
 
 export const PAGE_DATES = {
-  '/': { updated: '2026-10-19' },
+  '/': { updated: '2026-11-05' },
   '/about': { updated: '2026-10-18' },
   '/privacy': { updated: '2026-10-24' },
   '/integrate': { published: '2026-10-21', updated: '2026-10-23' },

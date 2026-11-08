@@ -27,6 +27,8 @@ import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import type { SnippetFormat } from '../badge';
 import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+import type { HugeHook } from '../huge/session';
+import { TallScroll } from './tall';
 
 /** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
 export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
@@ -377,6 +379,8 @@ export class Engine {
   /** Current find query (applies to the open view). */
   private query = '';
   private dead = false;
+  /** Huge-file mode (lib/huge), while a file too big for the editor is open: it has the viewer, the view switch, Find and some keys (a closed one's hook takes nothing). */
+  private huge: HugeHook | null = null;
 
   constructor(els: EngineEls, options: EngineOptions = {}) {
     this.els = els;
@@ -496,6 +500,7 @@ export class Engine {
   }
 
   destroy() {
+    this.huge?.close();
     // (Saved below: the document still on its way is the one kept, see persist.)
     const pending = this.pendingNow();
     this.worker?.terminate();
@@ -1736,6 +1741,8 @@ export class Engine {
    * as the one before it was). Undo brings back the one before with the document before.
    */
   load(text: string, name: string | null, persist = true, outputFirst = false, file?: File, format: SourceFormat = name ? formatOfName(name) : this.inFmt) {
+    // (A document in the editor: huge mode's file goes.)
+    this.huge?.close();
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
     // worker, over this text) must match the editor's, or values and positions shift a character a line.
     text = lf(text);
@@ -2370,10 +2377,11 @@ export class Engine {
     performance.clearMarks('tk:formatted');
     performance.mark('tk:input');
     this.markOutput = true;
-    if (f.size > MAX_DOCUMENT) {
-      this.toast('That file is too large to open in a browser tab', 'err');
-      return;
-    }
+    // Too big for the editor: huge-file mode reads it a window at a time (lib/huge, loaded only now).
+    // From 300 MiB (less where the device has little memory; tk:hugeMin, in bytes, forces it for smaller files).
+    const huge = read('tk:hugeMin');
+    // (A .gz file is decompressed there too: to the editor when it is small.)
+    if (f.size > Math.min(MAX_DOCUMENT, huge ? +huge : ((navigator as { deviceMemory?: number }).deviceMemory || 8) * 2 ** 26) || /\.gz$/i.test(f.name)) return void import('../huge/open').then((m) => m.openHuge(this, f, source, signal, asText, TallScroll)).then((h) => void (this.huge = h ?? this.huge), () => this.toast(`Couldn't read ${f.name}`, 'err'));
     // A big file shows it is being opened while it is read too.
     const before = store.get().status;
     let reading: Status | null = null;
@@ -2969,6 +2977,7 @@ export class Engine {
   private viewSeq = 0;
 
   setView(view: View, ready?: () => void) {
+    if (this.huge?.view(view)) return;
     this.flushLoad();
     store.set({ menu: null });
     const viewSeq = ++this.viewSeq;
@@ -3968,6 +3977,7 @@ export class Engine {
 
   /** Opens the find bar for the open view, prefilled with the editor selection. */
   focusSearch() {
+    if (this.huge?.find()) return;
     if (this.settings.view === 'compare') this.setView('format');
     const picked = this.ed.hasFocus() ? this.ed.selectedText() : '';
     if (picked && picked.length < 100 && !picked.includes('\n')) this.find(picked, true);
@@ -4165,6 +4175,8 @@ export class Engine {
     }
     // (Keys held for what closed before it showed (Esc, a click away) are for nothing now: never replayed.)
     if (this.held.length) this.held = [];
+    // (Huge mode's own keys: it stops them itself.)
+    if (this.huge?.key(e)) return;
     const mod = e.metaKey || e.ctrlKey;
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;

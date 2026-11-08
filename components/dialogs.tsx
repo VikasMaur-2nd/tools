@@ -11,22 +11,42 @@ import { useT } from '@/lib/i18n/react';
 import { Kbd, keyLabel } from './Kbd';
 import { Icon } from './icons';
 
-/** A native <dialog> opened/closed from store state (focus trap + Esc for free). */
+/** A text field's selection, to put back. */
+type Caret = { el: HTMLTextAreaElement | HTMLInputElement; a: number; b: number; dir: 'forward' | 'backward' | 'none'; len: number };
+
+/**
+ * A native <dialog> opened/closed from store state (focus trap + Esc for free).
+ *
+ * Closed, it gives the focus back to the field it was in; Chromium doesn't give back that field's selection: its
+ * caret at 0, keys typed then lost (the editor's textarea), or put at the start of the big-document editor's
+ * passage. So the field's selection as it was when the dialog opened is put back (REVIEW-3 D2).
+ */
 export function Modal({ open, onClose, className, label, children }: { open: boolean; onClose: () => void; className: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const caret = useRef<Caret | null>(null);
   // (Shown before paint: the keys held for it while it loaded go to its field, see heldKeys.)
   useLayoutEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
-    else if (!open && d.open) d.close();
+    if (open && !d.open) {
+      const el = document.activeElement;
+      caret.current = (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) && el.selectionStart !== null ? { el, a: el.selectionStart, b: el.selectionEnd ?? el.selectionStart, dir: el.selectionDirection ?? 'none', len: el.value.length } : null;
+      d.showModal();
+    } else if (!open && d.open) d.close();
   }, [open]);
+  const closed = () => {
+    // (The focus is back by now; what a command does comes after, in the next frame.)
+    const c = caret.current;
+    caret.current = null;
+    if (c && document.activeElement === c.el && c.el.value.length === c.len && (c.el.selectionStart !== c.a || c.el.selectionEnd !== c.b)) c.el.setSelectionRange(c.a, c.b, c.dir);
+    onClose();
+  };
   return (
     <dialog
       ref={ref}
       className={className}
       aria-label={label}
-      onClose={onClose}
+      onClose={closed}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) e.currentTarget.close();
       }}
@@ -70,8 +90,52 @@ function HeldKeys() {
   return null;
 }
 
+/**
+ * Huge-file mode (a file too big for the editor is open): the commands that still mean something. The rest
+ * act on the editor's document, hidden meanwhile.
+ */
+/** Huge mode's Shape view: Alt+7, after the views the normal tool numbers 1 to 6. */
+const SHAPE: Command = {
+  id: 'shape',
+  group: 'View',
+  title: 'Shape view (paths, types and counts)',
+  keys: 'Alt+7',
+  terms: 'schema fields structure statistics distinct',
+  run: (e) => e.setView('shape' as unknown as Parameters<typeof e.setView>[0]),
+};
+
+/** Huge mode's edits: told to the open session (lib/huge/session.ts listens for 'tk:huge-cmd'). */
+const hugeCmd = (id: string, group: Command['group'], title: string, keys: string, terms?: string): Command => ({
+  id,
+  group,
+  title,
+  keys,
+  terms,
+  run: () => void window.dispatchEvent(new CustomEvent('tk:huge-cmd', { detail: id })),
+});
+const HUGE_EDITS: Command[] = [
+  hugeCmd('huge-undo', 'Edit', 'Undo', 'mod+Z'),
+  hugeCmd('huge-redo', 'Edit', 'Redo', 'mod+Shift+Z'),
+  hugeCmd('huge-save', 'File', 'Save', 'mod+S', 'write file disk'),
+  hugeCmd('huge-save-as', 'File', 'Save as…', 'mod+Shift+S', 'write file disk copy'),
+  hugeCmd('huge-edit', 'Edit', 'Edit value', 'F2', 'change set'),
+  hugeCmd('huge-text', 'Edit', 'Edit as text', 'mod+E', 'editor json'),
+  hugeCmd('huge-rename', 'Edit', 'Rename', 'Shift+F2', 'key name'),
+  hugeCmd('huge-insert', 'Edit', 'Insert after', 'mod+Enter', 'add new value item'),
+  hugeCmd('huge-insert-inside', 'Edit', 'Insert inside', 'mod+Shift+Enter', 'add new value child'),
+  hugeCmd('huge-duplicate', 'Edit', 'Duplicate', 'mod+D', 'copy clone'),
+  hugeCmd('huge-delete', 'Edit', 'Delete', 'Delete', 'remove'),
+];
+
+const HUGE_COMMANDS = new Set([
+  'open', 'url', 'paste', 'sample', 'format-view', 'tree', 'table', 'graph', 'convert', 'compare', 'search',
+  'theme-system', 'theme-light', 'theme-dark', 'privacy-mode', 'integrate', 'handoff', 'shortcuts',
+]);
+
 function Commands() {
   const settings = useUI((s) => s.settings);
+  const huge = useUI((s) => !!s.huge);
+  const commands = huge ? [...HUGE_EDITS, ...COMMANDS.filter((c) => HUGE_COMMANDS.has(c.id)), SHAPE] : COMMANDS;
   const mac = useUI((s) => s.mac);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
@@ -81,7 +145,8 @@ function Commands() {
   // Titles and search terms in the page's language; the English ones stay searchable.
   const names = useMemo(() => {
     const m = new Map<Command, { title: string; group: string; hay: string }>();
-    for (const c of COMMANDS) {
+    // (Every command a list can show: the normal ones and huge mode's Shape.)
+    for (const c of [...COMMANDS, SHAPE, ...HUGE_EDITS]) {
       const terms = `${c.group} ${c.terms ?? ''}`;
       const hay = t.lang ? `${t(c.group)} ${c.terms ? t(c.terms) : ''} ${c.id.startsWith('to-') ? t('convert') : ''} ${terms} ${c.title}` : terms;
       m.set(c, { title: t.msg(c.title), group: t(c.group), hay });
@@ -92,13 +157,13 @@ function Commands() {
   /** The commands `query` finds, best first. */
   const matching = (query: string) => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return COMMANDS;
-    return COMMANDS.map((c) => ({ c, s: Math.max(fuzzy(needle, names.get(c)!.title) * 1.2, fuzzy(needle, names.get(c)!.hay)) }))
+    if (!needle) return commands;
+    return commands.map((c) => ({ c, s: Math.max(fuzzy(needle, names.get(c)!.title) * 1.2, fuzzy(needle, names.get(c)!.hay)) }))
       .filter((x) => x.s >= 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.c);
   };
-  const list = useMemo(() => matching(q), [q, names]); // eslint-disable-line react-hooks/exhaustive-deps
+  const list = useMemo(() => matching(q), [q, names, huge]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const active = Math.min(sel, Math.max(0, list.length - 1));
 

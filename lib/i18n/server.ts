@@ -9,7 +9,8 @@ import 'server-only';
 import { SITE } from '@/lib/site';
 import { TOOL_PAGES, TOOL_PAGE_BY_SLUG, type ToolPage } from '@/lib/tool-pages';
 import { LOCALES, localeInfo, localePath, type Locale, type SiteLocale } from './locales';
-import { fill, type Forms, type Params, type UiDict } from './ui';
+import { fill, type Params, type UiDict } from './ui';
+import { pageDict } from './client-dict';
 import en from './en/ui.json';
 import esUi from './es/ui.json';
 import ptUi from './pt/ui.json';
@@ -91,36 +92,15 @@ export function serverT(locale: SiteLocale) {
   return (key: UiKey, p?: Params) => fill(s[key] ?? EN_UI[key] ?? key, p);
 }
 
-/** Interface string namespaces the browser needs (the rest renders on the server). */
-const CLIENT = /^(app|dlg|cmd|cmp|toast|eng|target|parse|import|unit)\./;
-const PLURAL = /\.(zero|one|two|few|many|other)$/;
-
 /**
  * The client dictionary of a localized page: English text → translation, for
  * the strings the app renders in the browser. Untranslated strings are left
- * out (the app shows them in English); English pages get none at all.
+ * out (the app shows them in English); English pages get none at all. Huge
+ * mode's strings aren't in it: they come with huge mode (lib/i18n/client-dict.ts).
  */
 export function clientUi(locale: SiteLocale): UiDict | undefined {
   if (locale === 'en') return undefined;
-  return memo(`client:${locale}`, () => {
-    const s = strings(locale);
-    const translated = PSEUDO === locale ? s : CATALOG[locale].ui;
-    const out: UiDict = {};
-    for (const key of Object.keys(EN_UI)) {
-      if (isNote(key) || !CLIENT.test(key)) continue;
-      const m = PLURAL.exec(key);
-      if (m) {
-        if (m[1] !== 'other') continue;
-        const base = key.slice(0, -'.other'.length);
-        const forms: Forms = {};
-        for (const k of Object.keys(translated)) if (k.startsWith(base + '.') && PLURAL.test(k.slice(base.length))) forms[k.slice(base.length + 1) as Intl.LDMLPluralRule] = translated[k];
-        if (!forms.other) continue;
-        out[EN_UI[base + '.one'] ?? EN_UI[key]] = forms;
-        out[EN_UI[key]] = forms;
-      } else if (translated[key] && translated[key] !== EN_UI[key]) out[EN_UI[key]] = translated[key];
-    }
-    return out;
-  });
+  return memo(`client:${locale}`, () => pageDict(EN_UI, PSEUDO === locale ? strings(locale) : CATALOG[locale].ui));
 }
 
 /** The error boundary's strings for a localized root layout. */

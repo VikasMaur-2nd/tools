@@ -18,7 +18,8 @@ const FILE_KIND_LIST = ['json', 'jsonl', 'geojson', 'har', 'map', 'txt', 'log', 
 export type FileKind = (typeof FILE_KIND_LIST)[number];
 const VALIDITIES = ['valid', 'fixable', 'invalid', 'unknown'] as const;
 type Validity = (typeof VALIDITIES)[number];
-const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare'] as const;
+/** `shape`: huge-file mode's Shape panel. */
+const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'shape'] as const;
 export type ViewId = (typeof VIEW_IDS)[number];
 /** What the input is read as (lib/engine/source.ts). */
 const INPUT_FORMATS = ['json', 'yaml', 'csv', 'xml', 'toml'] as const;
@@ -34,6 +35,26 @@ const AGENT_TOOLS = [
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOLS)[number];
 
+/** Huge-file mode (lib/huge): the file's size range (from 300 MB; smaller only when forced for testing), and how its indexing ended. */
+const HUGE_SIZE_LIST = ['0-300MB', '300MB-1GB', '1-10GB', '10-100GB', '100GB+'] as const;
+const HUGE_OUTCOMES = ['done', 'error', 'cancelled', 'replaced'] as const;
+/** Huge mode's streamed commands (lib/huge/tasks.ts), what they read, how they ended and where they wrote. */
+const HUGE_COMMANDS = ['pretty', 'minify', 'jsonl', 'json', 'csv', 'split', 'extract'] as const;
+const HUGE_TARGETS = ['file', 'value'] as const;
+const HUGE_RUN_OUTCOMES = ['done', 'error', 'stopped'] as const;
+/** `picker`: the browser's save dialog; `folder`: a folder picked for Split's parts; `download`: written in the browser's storage, then downloaded; `zip`: Split's parts in one downloaded zip. */
+const HUGE_SINKS = ['picker', 'folder', 'download', 'zip'] as const;
+/** A .gz file: opened in the editor (small), in huge mode, or not (error, stopped, no space). */
+const HUGE_GZ_OUTCOMES = ['editor', 'huge', 'error', 'stopped', 'space'] as const;
+/** Huge mode's edits (lib/huge/edits.ts), and where they were asked from. */
+const HUGE_EDIT_OPS = ['set', 'rename', 'remove', 'insert', 'duplicate', 'text', 'type', 'undo', 'redo', 'restore'] as const;
+const HUGE_EDIT_FROM = ['tree', 'table', 'graph', 'format', 'menu', 'key', 'toolbar', 'palette', 'banner'] as const;
+/** How a huge document was saved (in place, as another file, downloaded), and how it ended. */
+const HUGE_SAVE_HOW = ['in_place', 'save_as', 'download'] as const;
+// (Nothing written: the file picked to overwrite wasn't the opened one as opened; writing to it wasn't allowed; the
+// opened file changed after a save-picker pick.)
+const HUGE_SAVE_OUTCOMES = ['done', 'stopped', 'failed', 'not_opened', 'not_allowed', 'changed'] as const;
+
 /** Discrete actions, reported as `feature_used { feature }`. */
 const FEATURES = [
   'copy_input', 'copy_output', 'copy_convert', 'copy_value', 'copy_path', 'copy_csv',
@@ -45,6 +66,7 @@ const FEATURES = [
   'find', 'expand_all', 'collapse_all', 'expand_level', 'fold_input',
   'compare_swap', 'compare_format', 'compare_close',
   'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
+  'shape_go', 'shape_next', 'shape_count',
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 
@@ -79,6 +101,56 @@ export interface Events {
   command_run: { command: string };
   /** An AI agent called one of the tool's functions (`ok`: it did what was asked). What it sent and got back is never included. */
   agent_tool_used: { tool: AgentToolName; ok: boolean };
+  /**
+   * A file too big for the editor opened in huge-file mode. Sent once its indexing ends (finished, stopped at an
+   * error, cancelled) or when another document replaces it first. `forced`: huge mode was forced for testing.
+   */
+  huge_opened: {
+    source: InputSource;
+    file_kind: FileKind;
+    size: (typeof HUGE_SIZE_LIST)[number];
+    outcome: (typeof HUGE_OUTCOMES)[number];
+    jsonl: boolean;
+    index_ms: number;
+    forced: boolean;
+  };
+  /** A streamed command over a huge file ended (Convert view). `filtered`: Extract with conditions. */
+  huge_command: {
+    command: (typeof HUGE_COMMANDS)[number];
+    target: (typeof HUGE_TARGETS)[number];
+    outcome: (typeof HUGE_RUN_OUTCOMES)[number];
+    sink: (typeof HUGE_SINKS)[number];
+    gzip: boolean;
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
+    filtered: boolean;
+  };
+  /** The Shape panel's pass over a huge file ended. `paths`: how many paths it found, as a range. */
+  huge_shape: {
+    target: (typeof HUGE_TARGETS)[number];
+    outcome: (typeof HUGE_RUN_OUTCOMES)[number];
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
+    paths: string;
+  };
+  /** A .gz file was opened (decompressed in the browser). `size`: the compressed file's range. */
+  huge_gz: {
+    outcome: (typeof HUGE_GZ_OUTCOMES)[number];
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
+  };
+  /** An edit in huge mode was made: its kind and where it was asked from (never what it changed). */
+  huge_edit: {
+    op: (typeof HUGE_EDIT_OPS)[number];
+    from: (typeof HUGE_EDIT_FROM)[number];
+  };
+  /** A huge document was saved: how, how it ended, the document's size range. */
+  huge_save: {
+    how: (typeof HUGE_SAVE_HOW)[number];
+    outcome: (typeof HUGE_SAVE_OUTCOMES)[number];
+    size: (typeof HUGE_SIZE_LIST)[number];
+    ms: number;
+  };
 }
 
 export type EventName = keyof Events;
@@ -186,7 +258,7 @@ const COMMAND_IDS = [
   'graph-export', 'graph-copy', 'graph-png', 'graph-svg', 'convert', 'compare', 'excel', 'copy-convert', 'download-convert', 'search', 'expand',
   'collapse', 'level1', 'level2', 'level3', 'fold-input', 'unfold-input', 'close-compare', 'focus-tree', 'focus-editor', 'nested', 'copy-value',
   'copy-path', 'csv', 'csv-download', 'indent-2', 'indent-4', 'indent-tab', 'theme-system', 'theme-light', 'theme-dark', 'autoformat', 'wrap',
-  'privacy-mode', 'integrate', 'handoff', 'shortcuts', ...TARGET_IDS.map((t) => `to-${t}`),
+  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape', 'huge-undo', 'huge-redo', 'huge-save', 'huge-save-as', 'huge-edit', 'huge-text', 'huge-rename', 'huge-insert', 'huge-insert-inside', 'huge-duplicate', 'huge-delete', ...TARGET_IDS.map((t) => `to-${t}`),
 ];
 const SIZES = [...SIZE_EDGES.map(([, label]) => label), '100MB+'];
 const ERROR_KIND_LIST = [...ERROR_KINDS.map(([, kind]) => kind), 'other'];
@@ -212,6 +284,12 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   },
   command_run: { command: COMMAND_IDS },
   agent_tool_used: { tool: AGENT_TOOLS, ok: 'flag' },
+  huge_opened: { source: INPUT_SOURCES, file_kind: FILE_KIND_LIST, size: HUGE_SIZE_LIST, outcome: HUGE_OUTCOMES, jsonl: 'flag', index_ms: 'number', forced: 'flag' },
+  huge_command: { command: HUGE_COMMANDS, target: HUGE_TARGETS, outcome: HUGE_RUN_OUTCOMES, sink: HUGE_SINKS, gzip: 'flag', size: HUGE_SIZE_LIST, ms: 'number', filtered: 'flag' },
+  huge_shape: { target: HUGE_TARGETS, outcome: HUGE_RUN_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number', paths: COUNTS },
+  huge_gz: { outcome: HUGE_GZ_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
+  huge_edit: { op: HUGE_EDIT_OPS, from: HUGE_EDIT_FROM },
+  huge_save: { how: HUGE_SAVE_HOW, outcome: HUGE_SAVE_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
 };
 
 /** Allowed properties per event (see `clean`). */
