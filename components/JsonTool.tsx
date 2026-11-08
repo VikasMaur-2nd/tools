@@ -1297,12 +1297,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
 
   return (
     <div className={`app${comparing ? ' comparing' : ''}${empty ? ' is-empty' : ''}`}>
-      {!preset && (
-        <>
-          <h1 className="sr-only">{t('Tool Kumar: JSON Formatter & Viewer')}</h1>
-          <p className="sr-only">{t('Format, validate, repair and explore JSON instantly. Tree, table, graph, convert and compare views. No upload, no ads, works offline.')}</p>
-        </>
-      )}
+      {!preset && <h1 className="sr-only">{t('Tool Kumar: JSON Formatter & Viewer')}</h1>}
       {/* The page supplies the main landmark (home: around the tool and its guide; landing pages: the content below). */}
       <div className="panes">
         <EditorPane edRef={edRef} />
