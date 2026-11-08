@@ -209,3 +209,72 @@ describe('XML', () => {
     fails('xml', [['\u00a0<r/>', 'Text is not allowed before the root element', 1, 1]]);
   });
 });
+
+describe('TOML', () => {
+  test('an escape must stand for a Unicode scalar value', () => {
+    same('toml', [
+      ['a = "\\uD7FF\\uE000\\U0010FFFF\\U0001F600"\n', { a: '\ud7ff\ue000\u{10FFFF}\u{1F600}' }],
+      // a literal string has no escapes
+      ["a = '\\ud800'\n", { a: '\\ud800' }],
+    ]);
+    fails('toml', [
+      ['a = "\\ud800"\n', 'Invalid escape sequence \\ud800', 1, 6],
+      ['a = "x\\uDFFF"\n', 'Invalid escape sequence \\uDFFF', 1, 7],
+      // two halves of a surrogate pair are two invalid escapes, not one character
+      ['a = "\\ud83d\\ude00"\n', 'Invalid escape sequence \\ud83d', 1, 6],
+      ['a = "\\U0000D800"\n', 'Invalid escape sequence \\U0000D800', 1, 6],
+      ['a = """\n\\U00110000"""\n', 'Invalid escape sequence \\U00110000', 2, 1],
+      ['a = "\\u12"\n', 'Invalid escape sequence \\u', 1, 6],
+    ]);
+  });
+
+  test('dates and times must exist: months, days of the month, hours, minutes, seconds, offsets', () => {
+    same('toml', [
+      ['a = 2024-02-29\nb = 2000-02-29\nc = 2023-12-31\nd = 2023-04-30\n', { a: '2024-02-29', b: '2000-02-29', c: '2023-12-31', d: '2023-04-30' }],
+      ['a = 1979-05-27T23:59:59.999+23:59\nb = 00:00:00\nc = 1979-05-27 00:00:00-23:59\n', { a: '1979-05-27T23:59:59.999+23:59', b: '00:00:00', c: '1979-05-27T00:00:00-23:59' }],
+      // RFC 3339 has a leap second 60 and the year 0000; tomllib rejects them only because Python's datetime has neither
+      ['a = 2016-12-31T23:59:60Z\nb = 23:59:60\nc = 0000-01-01\n', { a: '2016-12-31T23:59:60Z', b: '23:59:60', c: '0000-01-01' }],
+    ]);
+    fails('toml', [
+      ['a = 2024-13-45\n', "Invalid date or time '2024-13-45'", 1, 5],
+      ['a = 2024-00-10\n', "Invalid date or time '2024-00-10'", 1, 5],
+      ['a = 2024-01-00\n', "Invalid date or time '2024-01-00'", 1, 5],
+      ['a = 2023-02-29\n', "Invalid date or time '2023-02-29'", 1, 5],
+      ['a = 1900-02-29\n', "Invalid date or time '1900-02-29'", 1, 5],
+      ['a = 2024-02-30\n', "Invalid date or time '2024-02-30'", 1, 5],
+      ['a = 2024-04-31\n', "Invalid date or time '2024-04-31'", 1, 5],
+      ['a = 1979-05-27T25:00:00\n', "Invalid date or time '1979-05-27T25:00:00'", 1, 5],
+      ['a = 1979-05-27 24:00:00\n', "Invalid date or time '1979-05-27 24:00:00'", 1, 5],
+      ['a = 1979-05-27T07:60:00\n', "Invalid date or time '1979-05-27T07:60:00'", 1, 5],
+      ['a = 07:32:61\n', "Invalid date or time '07:32:61'", 1, 5],
+      ['a = 1979-05-27T07:32:00+24:00\n', "Invalid date or time '1979-05-27T07:32:00+24:00'", 1, 5],
+      ['a = 1979-05-27T07:32:00-01:60\n', "Invalid date or time '1979-05-27T07:32:00-01:60'", 1, 5],
+      // a date or time of the wrong shape is no number either
+      ['a = 2024-1-01\n', "Invalid date or time '2024-1-01'", 1, 5],
+      ['a = 1979-05-27T07:32:00Q\n', "Invalid date or time '1979-05-27T07:32:00Q'", 1, 5],
+      ['n = 012\n', "Invalid number '012'", 1, 5],
+    ]);
+  });
+
+  test('dotted keys may add to a table a deeper [header] created on its way, not to one a [header] defined', () => {
+    same('toml', [
+      ['[a.b.c]\nz = 9\n[a]\nb.d = 1\n', { a: { b: { c: { z: 9 }, d: 1 } } }],
+      ['[a.b.c]\n[a]\nb.d.e = 1\nb.f = 2\n[a.b.g]\nh = 3\n', { a: { b: { c: {}, d: { e: 1 }, f: 2, g: { h: 3 } } } }],
+      ['[[a.b.c]]\n[a]\nb.d = 1\n', { a: { b: { c: [{}], d: 1 } } }],
+      ['[x.y.z]\nb.c = 1\n[x]\ny.w = 2\n', { x: { y: { z: { b: { c: 1 } }, w: 2 } } }],
+      ['[[t]]\n[t.a.x]\n[[t]]\na.y = 1\n', { t: [{ a: { x: {} } }, { a: { y: 1 } }] }],
+    ]);
+    fails('toml', [
+      // [a.b] defined it
+      ['[a.b]\nc = 1\n[a]\nb.d = 2\n', 'Cannot add keys to "b": it is already defined', 4, 1],
+      ['[a.b.c]\n[a.b]\n[a]\nb.d = 1\n', 'Cannot add keys to "b": it is already defined', 4, 1],
+      // so did the dotted keys, for any [header] after them
+      ['[a.b.c]\n[a]\nb.d = 1\n[a.b]\n', 'Table [a.b] is defined more than once', 4, 1],
+      ['[a]\nb.c = 1\n[a.b]\n', 'Table [a.b] is defined more than once', 3, 1],
+      // inline tables and arrays stay closed
+      ['a = {b = 1}\na.c = 2\n', 'Cannot add keys to "a": it is already defined', 2, 1],
+      ['[[a.b]]\n[a]\nb.c = 1\n', 'Cannot add keys to "b": it is already defined', 3, 1],
+      ['[a.b.c]\n[a]\nb.c.d = 1\n', 'Cannot add keys to "b.c": it is already defined', 3, 1],
+    ]);
+  });
+});

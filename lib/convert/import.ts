@@ -1138,14 +1138,30 @@ function xml(src: string): V {
 
 // ── TOML ─────────────────────────────────────────────────────────────────
 
-const DT = /^\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:\d{2})?)?$|^\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
+/** A date, date-time or time (RFC 3339; seconds optional as in TOML 1.1). Groups: year, month, day, hour, minute, second, offset hour, offset minute; a local time's hour, minute, second. */
+const DT = /^(?:(\d{4})-(\d{2})-(\d{2})(?:[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:[Zz]|[+-](\d{2}):(\d{2}))?)?|(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)$/;
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/** Whether the parts DT matched name a real date and time: a day of its month (Feb 29 in leap years), 00:00 to 23:59 with a leap second 60, offsets within ±23:59. */
+function dtValid(m: RegExpExecArray): boolean {
+  if (m[1] !== undefined) {
+    const y = +m[1];
+    const mo = +m[2];
+    const leap = mo === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+    if (mo < 1 || mo > 12 || +m[3] < 1 || +m[3] > MONTH_DAYS[mo - 1] + (leap ? 1 : 0)) return false;
+  }
+  const h = m[4] ?? m[9];
+  if (h !== undefined && (+h > 23 || +(m[5] ?? m[10]) > 59 || +(m[6] ?? m[11] ?? 0) > 60)) return false;
+  return m[7] === undefined || (+m[7] <= 23 && +m[8] <= 59);
+}
 
 function toml(src: string): V {
   const n = src.length;
   let i = 0;
   const root = new Map<string, V>();
   let cur = root;
-  // tables defined by [headers] / created by dotted keys / immutable (inline tables, static arrays) / arrays of tables
+  // tables defined by [headers] / created or extended by dotted keys / immutable (inline tables, static arrays) / arrays of tables;
+  // a table only created on the way to a deeper [header] is in none: a [header] or dotted keys may still define it
   const defined = new Set<object>();
   const dotted = new Set<object>();
   const frozen = new Set<object>();
@@ -1175,10 +1191,13 @@ function toml(src: string): V {
     const simple = 'btnfre"\\'.indexOf(c);
     if (simple >= 0) return '\b\t\n\f\r\x1b"\\'[simple];
     const len = c === 'x' ? 2 : c === 'u' ? 4 : c === 'U' ? 8 : 0;
-    const v = len ? hexEsc(src, i, len) : null;
-    if (v === null) return f(`Invalid escape sequence \\${c ?? ''}`, i - 2);
+    const h = src.slice(i, i + len);
+    if (!len || h.length < len || !/^[\da-fA-F]+$/.test(h)) return f(`Invalid escape sequence \\${c ?? ''}`, i - 2);
+    const cp = parseInt(h, 16);
+    // a Unicode scalar value: no surrogate (not even half of a pair), nothing past U+10FFFF
+    if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) f(`Invalid escape sequence \\${c}${h}`, i - 2);
     i += len;
-    return v;
+    return String.fromCodePoint(cp);
   };
   const str = (key: boolean): string => {
     const s = i;
@@ -1296,7 +1315,9 @@ function toml(src: string): V {
     if (/^[+-]?(0|[1-9](_?\d)*)$/.test(t)) return new Num(t.replace(/_|^\+/g, ''));
     if (/^0x[\da-fA-F](_?[\da-fA-F])*$|^0o[0-7](_?[0-7])*$|^0b[01](_?[01])*$/.test(t)) return new Num(BigInt(t.replace(/_/g, '')).toString());
     if (/^[+-]?(0|[1-9](_?\d)*)(\.\d(_?\d)*)?([eE][+-]?\d(_?\d)*)?$/.test(t)) return new Num(t.replace(/_|^\+/g, ''));
-    if (DT.test(t)) return t.replace(/^(\d{4}-\d{2}-\d{2})[Tt ]/, '$1T').replace(/z$/, 'Z');
+    const dt = DT.exec(t);
+    if (dt && dtValid(dt)) return t.replace(/^(\d{4}-\d{2}-\d{2})[Tt ]/, '$1T').replace(/z$/, 'Z');
+    if (dt || /^\d{4}-\d|^\d{2}:\d/.test(t)) f(`Invalid date or time '${t}'`, s);
     return f(/^[+-]?\d/.test(t) ? `Invalid number '${t}'` : `Invalid value '${t}': strings must be quoted`, s);
   };
   const keyval = (t: Map<string, V>) => {
@@ -1313,7 +1334,9 @@ function toml(src: string): V {
         x = new Map();
         m.set(path[k], x);
         dotted.add(x);
-      } else if (!(x instanceof Map) || !dotted.has(x) || frozen.has(x)) f(`Cannot add keys to "${path.slice(0, k + 1).join('.')}": it is already defined`, kp);
+      } else if (!(x instanceof Map) || defined.has(x) || frozen.has(x)) f(`Cannot add keys to "${path.slice(0, k + 1).join('.')}": it is already defined`, kp);
+      // (dotted keys define it now: no [header] may)
+      else dotted.add(x);
       m = x as Map<string, V>;
     }
     const last = path[path.length - 1];
