@@ -27,6 +27,7 @@ const LANG_TERMS: Record<string, string> = {
   swift: 'codable struct ios',
   php: 'class',
   rust: 'serde struct',
+  protobuf: 'proto proto3 protocol buffers grpc message',
   csv: 'spreadsheet comma',
   xlsx: 'excel spreadsheet sheet',
   yaml: 'yml',

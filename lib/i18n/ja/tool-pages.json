@@ -1009,6 +1009,58 @@
       }
     ]
   },
+  "json-to-protobuf": {
+    "hash": "a13f1b05aee2",
+    "title": "JSONをProtobufのメッセージに変換：proto3対応",
+    "description": "JSONからproto3の.protoファイルを生成します。メッセージ、repeated、map、json_name、Well-Known Typesに対応し、ブラウザー内でローカルに動作します。",
+    "heading": "JSONをProtobufのメッセージに変換",
+    "query": "JSON Protobuf 変換",
+    "secondary": [
+      "json to protobuf",
+      "JSON proto ファイル 生成"
+    ],
+    "intro": "JSONのサンプルからproto3のメッセージを生成します。フィールドの型はprotobufのJSONマッピングに従うため、protojson、JsonFormat、json_formatで同じドキュメントを読み込めます。フィールド名と異なるキーは、json_nameで保持されます。",
+    "modeLabel": "Protobufの出力",
+    "exampleLabel": "この出力は組み込みの変換機能で生成したものです。2つのitemのpriceからは浮動小数点数のフィールドが、nullと文字列のnoteからはnull許容のフィールドが推論されます。",
+    "steps": [
+      "フィールドが異なるレコードも含めて、代表的なレスポンスを貼り付けます。",
+      "生成された出力を確認し、必要に応じてルート名を変更します。",
+      "コードをコピーまたはダウンロードし、型がAPI仕様と合っているか確認します。"
+    ],
+    "options": [
+      "オブジェクトはメッセージに、配列はrepeatedフィールドになります。IDや日付などのデータをキーとするオブジェクトは、map<string, …>フィールドになります。フィールド番号はキーの順序に従います。",
+      "一部のレコードでnullになる、または存在しないスカラーはoptionalになります。不明な値、nullのみの値、型が混在する値にはgoogle.protobuf.Valueを、ネストした配列にはListValueを使います。repeatedフィールドはnullや別のリストを保持できないためです。",
+      "整数はint64、小数はdoubleになります。protobufのJSONでは、int64の値は文字列として書き出されます。int64の範囲を超える整数は、doubleでは丸められるため注記が付きます。",
+      "RFC 3339の日時はgoogle.protobuf.Timestampになり、UTCで出力されます。日付、UUID、メールアドレスはstringのままです。列挙型やバリデーションルールは、API仕様に基づいて決める必要があります。"
+    ],
+    "faqs": [
+      {
+        "question": "proto3で出力されますか？",
+        "answer": "はい。ファイルはsyntax = \"proto3\"と、ルートのメッセージの名前を付けたパッケージで始まり、存在しないことがあるスカラーをoptionalにします。インポートするのは、TimestampやValueなど、使用しているWell-Known Typesだけです。"
+      },
+      {
+        "question": "元のJSONをprotobufで解析できますか？",
+        "answer": "型はprotobufのJSONマッピングに従うため、protojson、JsonFormat、json_formatなどのパーサーは、サンプルと同じ構造のドキュメントを読み込めます。[0]のように、protobufがJSON名として使えないキーには、そのフィールドの横に注記が付きます。"
+      },
+      {
+        "question": "JSONのルートが配列の場合はどうなりますか？",
+        "answer": "protobufのメッセージはJSONでは常にオブジェクトになるため、ルートのメッセージはrepeatedのitemsフィールドに配列を保持します。要素がオブジェクトの場合は、各要素にも専用のメッセージが生成され、要素を直接解析することもできます。"
+      },
+      {
+        "question": "フィールド番号はどのように割り当てられますか？",
+        "answer": "キーの順序に従って1から割り当て、protobufが予約している19000から19999までは飛ばします。データの運用を始めたら、各番号を変えずに維持し、削除したフィールドの番号は予約してください。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "既存のJSONをprotobufで読み込む",
+        "paragraphs": [
+          "firstNameのようなキーは、protocがfirst_nameから導出するJSON名とすでに一致するため、オプションは不要です。user-id、ID、1abcなど、それ以外のキーにはjson_nameが付きます。すべてのキーがsnake_caseの場合は、代わりにprotoのフィールド名でJSONを出力するよう促す注記が入ります。",
+          "protocまたはbufでファイルをコンパイルし、使用する言語のJSONマッピングでAPIレスポンスを解析します。これにより、サービスは要求したクライアントにはバイナリのprotobufを送り、ほかの呼び出し元には引き続きJSONを返せます。"
+        ]
+      }
+    ]
+  },
   "json-to-php": {
     "hash": "7fc19be29801",
     "title": "JSONをPHPのクラスに変換：型付きreadonlyプロパティ",

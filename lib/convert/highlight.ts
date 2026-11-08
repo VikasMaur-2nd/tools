@@ -33,6 +33,7 @@ const LANGS: Record<string, [string, string, string?]> = {
   dart: ['cst$k', 'class final const factory required this return if typedef import', 'int double num bool dynamic void'],
   php: ['chs$k', 'php declare final class public private protected readonly function static return new fn isset', 'int float string bool array mixed self'],
   toml: ['hst=H-', ''],
+  proto: ['cs', 'syntax import package option message enum service rpc returns repeated optional map reserved oneof stream', 'double float int32 int64 uint32 uint64 sint32 sint64 fixed32 fixed64 sfixed32 sfixed64 bool string bytes'],
 };
 // Plain JavaScript (error-guide examples) reads well with the TypeScript rules.
 LANGS.javascript = LANGS.typescript;

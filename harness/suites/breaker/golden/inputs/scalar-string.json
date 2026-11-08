@@ -34,6 +34,7 @@
   "swift": "import Foundation\n\ntypealias Root = String\n",
   "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: string\n",
   "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = String;\n",
+  "protobuf": "syntax = \"proto3\";\n\npackage root;\n\n// The JSON is a single value: this message holds it as {\"value\": ...}.\nmessage Root {\n  string value = 1;\n}\n",
   "csv": "value\r\n\"just a string with \"\"quotes\"\" and é\"\r\n",
   "yaml": "just a string with \"quotes\" and é\n",
   "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>just a string with \"quotes\" and é</root>\n",
