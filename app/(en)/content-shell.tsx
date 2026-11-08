@@ -6,6 +6,7 @@ import { localePath } from '@/lib/i18n/locales';
 import { getLocale } from '@/lib/i18n/locale';
 import { serverT, toolPage } from '@/lib/i18n/server';
 import { POSTS } from './blogs/posts';
+import Slogan from './slogan';
 
 /** The app icon, drawn with theme colors so it follows light and dark mode. */
 export function Logo({ size = 24 }: { size?: number }) {
@@ -92,15 +93,11 @@ export default async function ContentShell({
 
       <footer className="site-footer">
         <div className="container">
-          <div className="foot-slogan">
-            <p className="foot-slogan-title">{t('site.slogan.title')}</p>
-            <p>
-              {t('site.slogan.text')}{' '}
-              <IntentLink href={measured ? to('/tools/large-json-viewer') : '/tools/large-json-viewer'} {...(measured ? {} : en)}>
-                {t('site.footer.measured')}
-              </IntentLink>
-            </p>
-          </div>
+          <Slogan locale={locale}>
+            <IntentLink href={measured ? to('/tools/large-json-viewer') : '/tools/large-json-viewer'} {...(measured ? {} : en)}>
+              {t('site.footer.measured')}
+            </IntentLink>
+          </Slogan>
           <div className="foot-grid">
             <div className="foot-brand">
               <IntentLink className="site-brand" href={to('/')}>

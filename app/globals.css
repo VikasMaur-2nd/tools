@@ -1760,8 +1760,7 @@ button.tv-x:hover {
 }
 
 /* Generated content: pure decoration, so it carries no text for contrast checks or screen readers. */
-.watermark:not(.wm-slogan)::before,
-.wm-name::before {
+.watermark::before {
   content: 'Tool Kumar';
 }
 
@@ -1770,55 +1769,6 @@ button.tv-x:hover {
     top: var(--split, 50%);
     left: 50%;
   }
-}
-
-/* Homepage: the slogan under the name. Clamped so a divider dragged far to one side keeps it on screen. */
-.wm-slogan {
-  --wm-w: min(560px, calc(100vw - 32px));
-  left: clamp(calc(var(--wm-w) / 2 + 16px), var(--split, 50%), calc(100% - var(--wm-w) / 2 - 16px));
-  width: var(--wm-w);
-  padding: 16px 20px;
-  text-align: center;
-  white-space: normal;
-}
-
-.wm-title {
-  margin: 10px 0 0;
-  color: var(--fg-2);
-  font: 600 clamp(17px, 1.55vw, 21px) / 1.3 var(--font-ui);
-  letter-spacing: -0.01em;
-  text-wrap: balance;
-}
-
-.wm-text {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font: 400 14px / 1.6 var(--font-ui);
-  letter-spacing: 0;
-  text-wrap: pretty;
-}
-
-@media (max-width: 760px) {
-  .wm-slogan {
-    left: 50%;
-    padding: 12px 16px;
-  }
-
-  .wm-text {
-    font-size: 13.5px;
-  }
-}
-
-/* Short screens (a phone held sideways): the name and the slogan only. */
-@media (max-height: 560px) {
-  .wm-text {
-    display: none;
-  }
-}
-
-/* Returning visitors: their saved document replaces the raw state, so the name never flashes. */
-[data-doc] .watermark {
-  visibility: hidden;
 }
 
 /* Phones: the watermark sits on the divider, over the viewer's toolbar. Until

@@ -5,7 +5,6 @@ import { serverT } from '@/lib/i18n/server';
 import { pageMetadata } from '../page-metadata';
 import { homeJsonLd, jsonLdScript } from './seo';
 import SeoContent from './seo-content';
-import Slogan from './slogan';
 
 const t = serverT('en');
 export const metadata: Metadata = pageMetadata({ path: '/', title: t('home.title'), fullTitle: true, description: t('home.description') });
@@ -14,7 +13,7 @@ export default function Page() {
   return (
     <main className="home-page">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(homeJsonLd()) }} />
-      <JsonTool langs={<StatusLangs path="/" locale="en" />} slogan={<Slogan />} />
+      <JsonTool langs={<StatusLangs path="/" locale="en" />} />
       <SeoContent />
     </main>
   );

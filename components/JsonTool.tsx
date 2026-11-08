@@ -673,20 +673,13 @@ function Banner() {
   );
 }
 
-/**
- * Raw state (nothing typed or pasted yet): the name, centered on the divider. The homepage adds the site's
- * slogan under it (server-rendered, so its text is not in the app's script).
- */
-function Watermark({ slogan }: { slogan?: ReactNode }) {
+/** Raw state (nothing typed or pasted yet): the name, centered on the divider. */
+function Watermark() {
   const empty = useUI((s) => s.empty);
   const view = useUI((s) => s.settings.view);
   if (!empty || view === 'compare') return null;
-  if (!slogan) return <div className="watermark" aria-hidden="true" />;
   return (
-    <div className="watermark wm-slogan">
-      <div className="wm-name" aria-hidden="true" />
-      {slogan}
-    </div>
+    <div className="watermark" aria-hidden="true" />
   );
 }
 
@@ -1143,17 +1136,7 @@ function DropOverlay() {
 
 // ── Root ───────────────────────────────────────────────────────────────────
 
-export default function JsonTool({
-  preset,
-  langs,
-  slogan,
-}: {
-  preset?: EnginePreset;
-  /** Language switcher (server-rendered links). */
-  langs?: ReactNode;
-  /** The homepage's slogan, shown under the name until there is a document (server-rendered). */
-  slogan?: ReactNode;
-} = {}) {
+export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /** Language switcher (server-rendered links). */ langs?: ReactNode } = {}) {
   const t = useT();
   const tRef = useRef(t);
   const presetRef = useRef(preset);
@@ -1240,7 +1223,7 @@ export default function JsonTool({
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />
         <Splitter />
-        <Watermark slogan={slogan} />
+        <Watermark />
         <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} />
         <HugeHost />
       </div>

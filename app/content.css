@@ -1260,22 +1260,15 @@ html:has(.content-page:not([style*='none'])) {
   font-size: 14px;
 }
 
-/* The site's slogan, the same on every page (the homepage shows it in the app). */
-.foot-slogan {
+/* The site's slogan, the same on every page: under the app on the homepage, above the footer elsewhere.
+   p.class selectors also outrank the homepage introduction's paragraph style. */
+.slogan {
   margin-bottom: 40px;
   border-bottom: 1px solid var(--line);
   padding-bottom: 32px;
 }
 
-.foot-slogan p {
-  max-width: 720px;
-  margin: 10px 0 0;
-  color: var(--muted);
-  line-height: 1.65;
-  text-wrap: pretty;
-}
-
-.foot-slogan .foot-slogan-title {
+.slogan p.slogan-title {
   margin: 0;
   color: var(--fg);
   font: 650 clamp(20px, 2.4vw, 26px) / 1.25 var(--font-ui);
@@ -1283,7 +1276,15 @@ html:has(.content-page:not([style*='none'])) {
   text-wrap: balance;
 }
 
-.foot-slogan a {
+.slogan p.slogan-text {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.slogan a {
   color: var(--fg);
   text-underline-offset: 3px;
   white-space: nowrap;

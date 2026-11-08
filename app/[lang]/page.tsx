@@ -6,7 +6,6 @@ import { getLocale } from '@/lib/i18n/locale';
 import { clientUi, serverT } from '@/lib/i18n/server';
 import { homeJsonLd, jsonLdScript } from '../(en)/seo';
 import SeoContent from '../(en)/seo-content';
-import Slogan from '../(en)/slogan';
 import { pageMetadata } from '../page-metadata';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -21,7 +20,7 @@ export default async function LocalizedHome() {
   return (
     <main className="home-page">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(homeJsonLd(locale)) }} />
-      <LocalizedTool ui={clientUi(locale)} lang={localeInfo(locale).lang} langs={<StatusLangs path="/" locale={locale} />} slogan={<Slogan locale={locale} />} />
+      <LocalizedTool ui={clientUi(locale)} lang={localeInfo(locale).lang} langs={<StatusLangs path="/" locale={locale} />} />
       <SeoContent locale={locale} />
     </main>
   );

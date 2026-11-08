@@ -3,6 +3,7 @@ import { localePath, type SiteLocale } from '@/lib/i18n/locales';
 import { rich } from '@/lib/i18n/rich';
 import { serverT, toolPage } from '@/lib/i18n/server';
 import { faqEntries } from './seo';
+import Slogan from './slogan';
 
 export default function SeoContent({ locale = 'en' }: { locale?: SiteLocale }) {
   const t = serverT(locale);
@@ -12,6 +13,9 @@ export default function SeoContent({ locale = 'en' }: { locale?: SiteLocale }) {
   const link = (href: string, local = false) => <Link href={local ? localePath(locale, href) : href} {...(local ? {} : en)} />;
   return (
     <section className="seo-content" aria-labelledby="seo-content-title">
+      <Slogan locale={locale}>
+        <Link href={localePath(locale, '/tools/large-json-viewer')}>{t('site.footer.measured')}</Link>
+      </Slogan>
       <h2 id="seo-content-title">{t('home.h2')}</h2>
       <p>{t('home.intro')}</p>
       <h2>{t('home.toolsH2')}</h2>

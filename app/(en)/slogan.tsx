@@ -1,13 +1,19 @@
+import type { ReactNode } from 'react';
 import type { SiteLocale } from '@/lib/i18n/locales';
 import { serverT } from '@/lib/i18n/server';
 
-/** The site's slogan in the homepage app until there is a document. Every other page shows it above the footer (content-shell.tsx). */
-export default function Slogan({ locale = 'en' }: { locale?: SiteLocale }) {
+/**
+ * The site's slogan and its paragraph: under the app on the homepage, above the footer on every other page.
+ * `children` is the link to the measurements (each page passes its own kind of link).
+ */
+export default function Slogan({ locale, children }: { locale: SiteLocale; children: ReactNode }) {
   const t = serverT(locale);
   return (
-    <>
-      <p className="wm-title">{t('site.slogan.title')}</p>
-      <p className="wm-text">{t('site.slogan.text')}</p>
-    </>
+    <div className="slogan">
+      <p className="slogan-title">{t('site.slogan.title')}</p>
+      <p className="slogan-text">
+        {t('site.slogan.text')} {children}
+      </p>
+    </div>
   );
 }
