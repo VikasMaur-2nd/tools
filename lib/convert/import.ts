@@ -929,19 +929,18 @@ const ENT = new Map([
   ['quot', '"'],
   ['apos', "'"],
 ]);
-const decode = (s: string) =>
-  s.indexOf('&') < 0
-    ? s
-    : s.replace(/&(#x[\da-fA-F]+|#\d+|[A-Za-z][\w.-]*);/g, (m, e: string) => {
-        if (e[0] !== '#') return ENT.get(e) ?? m;
-        const cp = e[1] === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-        return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
-      });
+/** A character or entity reference: hex digits, decimal digits or an entity name. */
+const REF = /&(?:#x([\da-fA-F]+)|#(\d+)|([A-Za-z][\w.-]*));/g;
+/** XML 1.0 Char (2.2): what a character reference may stand for. */
+const xmlChar = (cp: number) => (cp >= 0x20 && cp <= 0xd7ff) || cp === 9 || cp === 10 || cp === 13 || (cp >= 0xe000 && cp <= 0xfffd) || (cp >= 0x10000 && cp <= 0x10ffff);
+/** XML whitespace (S, 2.3): only these, not every Unicode space, are trimmed from text. */
+const xmlWs = (c: number) => c === 32 || c === 10 || c === 9 || c === 13;
 
 /**
  * xmltodict convention: `{root: …}`; attributes → "@name"; repeated child
  * elements → arrays; text-only elements → string; text next to attributes or
- * children → "#text"; empty elements → null. Text is trimmed; values stay strings.
+ * children → "#text"; empty elements → null. Text is trimmed of the whitespace the markup has around it
+ * (not of characters references stand for, such as &#32;); values stay strings.
  */
 function xml(src: string): V {
   const n = src.length;
@@ -949,7 +948,10 @@ function xml(src: string): V {
   interface Frame {
     name: string;
     m: Map<string, V> | null;
+    /** Its text so far, without the literal whitespace in front. */
     text: string;
+    /** How much of the end of `text` is literal whitespace (left out when it closes). */
+    ws: number;
     p: number;
   }
   const stack: Frame[] = [];
@@ -969,8 +971,48 @@ function xml(src: string): V {
   const ws = () => {
     while (isWs(at(i)) || at(i) === 10) i++;
   };
+  /** The text the reference `m` at `p` stands for (an unknown entity stays as written); a character that is no XML Char is an error. */
+  const ref = (m: RegExpExecArray, p: number): string => {
+    if (m[3] !== undefined) return ENT.get(m[3]) ?? m[0];
+    const cp = m[1] !== undefined ? parseInt(m[1], 16) : parseInt(m[2], 10);
+    if (!xmlChar(cp)) f(`Invalid character reference ${m[0]}`, p);
+    return String.fromCodePoint(cp);
+  };
+  /** An attribute value at `p`, references replaced. */
+  const attr = (s: string, p: number): string => {
+    if (s.indexOf('&') < 0) return s;
+    let out = '';
+    let k = 0;
+    REF.lastIndex = 0;
+    for (let m; (m = REF.exec(s)); k = REF.lastIndex) out += s.slice(k, m.index) + ref(m, p + m.index);
+    return out + s.slice(k);
+  };
+  /** Appends text as written to `fr`, keeping track of its literal whitespace. */
+  const lit = (fr: Frame, s: string) => {
+    const e = s.length;
+    let a = 0;
+    if (!fr.text) while (a < e && xmlWs(s.charCodeAt(a))) a++;
+    if (a === e) return;
+    let b = e;
+    while (b > a && xmlWs(s.charCodeAt(b - 1))) b--;
+    fr.text += a ? s.slice(a) : s;
+    fr.ws = b > a ? e - b : fr.ws + e - a;
+  };
+  /** Appends the character data `s` at `p` to `fr`, references replaced. */
+  const text = (fr: Frame, s: string, p: number) => {
+    let k = 0;
+    if (s.indexOf('&') >= 0) {
+      REF.lastIndex = 0;
+      for (let m; (m = REF.exec(s)); k = REF.lastIndex) {
+        lit(fr, s.slice(k, m.index));
+        fr.text += ref(m, p + m.index);
+        fr.ws = 0;
+      }
+    }
+    lit(fr, k ? s.slice(k) : s);
+  };
   const close = (fr: Frame) => {
-    const t = fr.text.trim();
+    const t = fr.ws ? fr.text.slice(0, fr.text.length - fr.ws) : fr.text;
     let v: V = t || null;
     if (fr.m) {
       if (t) fr.m.set('#text', t);
@@ -989,8 +1031,9 @@ function xml(src: string): V {
       else m.set(fr.name, [prev, v]);
     }
   };
-  const skipTo = (end: string, what: string) => {
-    const e = src.indexOf(end, i);
+  /** Skips past `end`, looked for from `from` (after the opening, which may not share its characters: <!--> is no comment). */
+  const skipTo = (end: string, what: string, from: number) => {
+    const e = src.indexOf(end, from);
     if (e < 0) f(`Unterminated ${what}`);
     i = e + end.length;
   };
@@ -999,23 +1042,23 @@ function xml(src: string): V {
     const end = lt < 0 ? n : lt;
     if (end > i) {
       const top = stack[stack.length - 1];
-      if (top) top.text += decode(src.slice(i, end));
+      if (top) text(top, src.slice(i, end), i);
       else {
-        const k = src.slice(i, end).search(/\S/);
+        const k = src.slice(i, end).search(/[^ \t\n\r]/);
         if (k >= 0) f(root ? 'Unexpected text after the root element' : 'Text is not allowed before the root element', i + k);
       }
     }
     if (lt < 0) break;
     i = lt;
-    if (src.startsWith('<!--', i)) skipTo('-->', 'comment: missing -->');
+    if (src.startsWith('<!--', i)) skipTo('-->', 'comment: missing -->', i + 4);
     else if (src.startsWith('<![CDATA[', i)) {
       const top = stack[stack.length - 1];
       if (!top) f('CDATA is only allowed inside an element');
       const e = src.indexOf(']]>', i + 9);
       if (e < 0) f('Unterminated CDATA section: missing ]]>');
-      top.text += src.slice(i + 9, e);
+      lit(top, src.slice(i + 9, e));
       i = e + 3;
-    } else if (src.startsWith('<?', i)) skipTo('?>', 'processing instruction: missing ?>');
+    } else if (src.startsWith('<?', i)) skipTo('?>', 'processing instruction: missing ?>', i + 2);
     else if (src.startsWith('<!', i)) {
       let depth = 0;
       let j = i + 2;
@@ -1049,7 +1092,7 @@ function xml(src: string): V {
       const nm = name();
       if (!nm) f(`Invalid character after '<'. Escape it as &lt;`, lt);
       if (!stack.length && root) f('Only one root element is allowed', lt);
-      const fr: Frame = { name: nm, m: null, text: '', p: lt };
+      const fr: Frame = { name: nm, m: null, text: '', ws: 0, p: lt };
       let self = false;
       for (;;) {
         const sp = i;
@@ -1079,7 +1122,8 @@ function xml(src: string): V {
         if (e < 0) f('Unterminated attribute value');
         const m = fr.m ?? (fr.m = new Map());
         if (m.has('@' + an)) f(`Duplicate attribute ${an}`, ap);
-        m.set('@' + an, decode(src.slice(i + 1, e).replace(/[\t\n\r]/g, ' ')));
+        // (literal tabs and line breaks normalize to spaces, ones references stand for stay: 3.3.3)
+        m.set('@' + an, attr(src.slice(i + 1, e).replace(/[\t\n\r]/g, ' '), i + 1));
         i = e + 1;
       }
       if (self) close(fr);

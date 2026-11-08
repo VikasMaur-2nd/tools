@@ -157,3 +157,55 @@ describe('YAML', () => {
     fails('yaml', [['{[a]: 1}', 'Collections cannot be used as mapping keys', 1, 2]]);
   });
 });
+
+describe('XML', () => {
+  test('a comment runs to the first --> after its opening <!--', () => {
+    same('xml', [
+      ['<r><!-->hidden--></r>', { r: null }],
+      ['<r><!--->x--></r>', { r: null }],
+      ['<r>a<!-- c -->b</r>', { r: 'ab' }],
+    ]);
+    fails('xml', [
+      ['<r><!---></r>', 'Unterminated comment: missing -->', 1, 4],
+      // a processing instruction needs its target too
+      ['<r><?>x</r>', 'Unterminated processing instruction: missing ?>', 1, 4],
+    ]);
+  });
+
+  test('a character reference must stand for an XML Char', () => {
+    same('xml', [
+      ['<r>&#x10FFFF;&#xFFFD;&#xE000;&#xD7FF;&#x20;</r>', { r: '\u{10FFFF}\ufffd\ue000\ud7ff ' }],
+      ['<r>&#9;&#xA;&#13;</r>', { r: '\t\n\r' }],
+      ['<r>&#x0000000041;&#65;</r>', { r: 'AA' }],
+    ]);
+    fails('xml', [
+      ['<r>&#xD800;</r>', 'Invalid character reference &#xD800;', 1, 4],
+      // two halves of a surrogate pair are two invalid references, not one character
+      ['<r>&#xD800;&#xDC00;</r>', 'Invalid character reference &#xD800;', 1, 4],
+      ['<r>x &#0;</r>', 'Invalid character reference &#0;', 1, 6],
+      ['<r>&#x110000;</r>', 'Invalid character reference &#x110000;', 1, 4],
+      ['<r>&#xFFFE;</r>', 'Invalid character reference &#xFFFE;', 1, 4],
+      ['<r>&#8;</r>', 'Invalid character reference &#8;', 1, 4],
+      ['<r>&#99999999999999999999;</r>', 'Invalid character reference &#99999999999999999999;', 1, 4],
+      ['<r>\n  <a b="x&#xDFFF;"/></r>', 'Invalid character reference &#xDFFF;', 2, 10],
+    ]);
+  });
+
+  test('only literal XML whitespace is trimmed: characters references stand for and other spaces stay', () => {
+    same('xml', [
+      ['<r>&#160;x&#32;</r>', { r: '\u00a0x ' }],
+      ['<r>&#32;</r>', { r: ' ' }],
+      ['<r> \t\n x \r\n</r>', { r: 'x' }],
+      ['<r>\u00a0x\u00a0</r>', { r: '\u00a0x\u00a0' }],
+      ['<r>\u2003x\u3000</r>', { r: '\u2003x\u3000' }],
+      ['<r> &#10; x &#9; </r>', { r: '\n x \t' }],
+      ['<r>  </r>', { r: null }],
+      ['<r><![CDATA[  x  ]]></r>', { r: 'x' }],
+      ['<r> &amp; </r>', { r: '&' }],
+      ['<r>text <b>bold</b> tail</r>', { r: { b: 'bold', '#text': 'text  tail' } }],
+      ['<r a=" &#10;x&#9; " b="\tl\nm "/>', { r: { '@a': ' \nx\t ', '@b': ' l m ' } }],
+    ]);
+    // U+00A0 is no XML whitespace, so it is text outside the root element
+    fails('xml', [['\u00a0<r/>', 'Text is not allowed before the root element', 1, 1]]);
+  });
+});
