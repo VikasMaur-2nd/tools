@@ -10,7 +10,7 @@ import type { AgentToolName, Feature } from '../analytics/events';
 import { snippet, type SnippetFormat } from '../badge';
 import type { Change } from '../diff/diff';
 import { jsonLines } from '../engine/rules';
-import type { IndentId, Settings } from '../engine/store';
+import type { IndentId, Settings, SourceFormat } from '../engine/store';
 import { TARGETS, convertFileName, targetInfo } from '../engine/targets';
 import { byteLength, copyText, formatBytes, formatDoc, preview, primText, tooLarge } from '../json/format';
 import type { JwtInput } from '../json/jwt';
@@ -23,10 +23,15 @@ export interface Doc {
   text: string;
   /** Its parse (of the decoded document, for a JWT); null while nothing has been parsed. */
   res: ParseResult | null;
-  /** The text `res` was parsed from: the editor's, or a JWT's decoded document. */
+  /** The text `res` was parsed from: the editor's, a JWT's decoded document, or the JSON another format converts to. */
   src: string;
   jwt: JwtInput | null;
+  /** What the editor's text is read as (absent: JSON). Another format's JSON is `src`; its error is at its place in `text`. */
+  format?: SourceFormat;
 }
+
+/** What the open text is, by name: JSON, or the format it is read as. */
+const formatName = (d: Doc) => (d.format && d.format !== 'json' ? d.format.toUpperCase() : 'JSON');
 
 export type AgentView = 'format' | 'tree' | 'table' | 'graph';
 export type FormatStyle = 'pretty' | 'minified' | 'escaped';
@@ -169,7 +174,7 @@ function parsed(d: Doc): { res: ParseResult & { root: JNode } } | { result: Resu
   const r = d.res;
   if (r.error || !r.root) {
     const e = r.error && !(r.issues[0] && r.issues[0].p < r.error.p) ? r.error : r.issues[0] ?? r.error!;
-    return { result: fail(`The document isn't valid JSON: ${e.m} (${at(d.src, e.p)}). This has to be fixed by hand; repair_json can't fix it.`) };
+    return { result: fail(`The document isn't valid ${formatName(d)}: ${e.m} (${at(d.src, e.p)}). This has to be fixed by hand; repair_json can't fix it.`) };
   }
   return { res: r as ParseResult & { root: JNode } };
 }
@@ -200,7 +205,8 @@ export function describe(d: Doc): Result {
   const lines = isLines(d);
   const what = lines ? `JSON Lines with ${plural(kids(p.res.root).length, 'record')}` : shape(p.res.root);
   if (r.issues.length && !lines) return done(`Not valid JSON yet: ${plural(r.issues.length, 'issue')}, all of which repair_json fixes. Repaired, it is ${what} (${size}).\n${issueList(d.src, r.issues)}`);
-  let text = `Valid ${lines ? what : `JSON: ${what}`} (${size}).`;
+  const source = formatName(d);
+  let text = source !== 'JSON' ? `Valid ${source}, shown as JSON: ${what} (${size}).` : `Valid ${lines ? what : `JSON: ${what}`} (${size}).`;
   if (r.warnings.length) text += `\nWarnings:\n${issueList(d.src, r.warnings)}`;
   return done(text);
 }
@@ -339,7 +345,7 @@ export const TOOLS: AgentTool[] = [
       const d = page.doc();
       const p = parsed(d);
       if ('result' in p) return p.result;
-      if (d.jwt || !p.res.issues.length || isLines(d)) return done(`The document is already valid ${isLines(d) ? 'JSON Lines' : 'JSON'}; there is nothing to repair.`);
+      if (d.jwt || !p.res.issues.length || isLines(d)) return done(`The document is already valid ${isLines(d) ? 'JSON Lines' : formatName(d)}; there is nothing to repair.`);
       const fixed = issueList(d.src, p.res.issues);
       page.repair();
       const after = page.doc().text;
@@ -440,7 +446,8 @@ export const TOOLS: AgentTool[] = [
       if (!from) return fail(`Error: from must be one of ${list(FROM)}.`);
       const d = page.doc();
       if (!d.text.trim()) return EMPTY;
-      if (d.res?.root && !d.res.error && !d.res.issues.length && !d.jwt) return fail('The open document is already valid JSON; there is nothing to turn into JSON.');
+      // (Text read as another format is already shown as JSON: this replaces it with that JSON.)
+      if (formatName(d) === 'JSON' && d.res?.root && !d.res.error && !d.res.issues.length && !d.jwt) return fail('The open document is already valid JSON; there is nothing to turn into JSON.');
       const { importToJson } = await import('../convert/import');
       const r = importToJson(d.text, from, page.indent());
       const name = from.toUpperCase();

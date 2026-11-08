@@ -418,7 +418,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "d6e32c71205e",
+    "hash": "77780ec2e2d0",
     "title": "YAML para JSON com conversão no navegador",
     "description": "Converta YAML em JSON formatado online. O Tool Kumar analisa YAML com dados simples, informa erros e mantém o resultado no seu dispositivo, sem upload.",
     "heading": "YAML para JSON",
@@ -431,9 +431,9 @@
     "modeLabel": "Importação de YAML para JSON",
     "exampleLabel": "O JSON formatado abaixo é produzido pela importação deste exemplo YAML.",
     "steps": [
-      "Cole YAML ou abra um arquivo .yaml ou .yml.",
-      "Escolha “YAML → JSON” quando o importador detectar YAML.",
-      "Confira o JSON formatado e copie ou baixe o resultado."
+      "Cole YAML ou abra um arquivo .yaml ou .yml. O editor mantém o YAML exatamente como você escreveu.",
+      "O JSON aparece à direita enquanto você digita. Um erro de YAML fica sublinhado no editor, com a linha e a coluna.",
+      "Copie ou baixe o JSON. “Usar como entrada” substitui o YAML pelo JSON, e “Desfazer” traz o YAML de volta."
     ],
     "options": [
       "Mapeamentos e sequências simples viram objetos e arrays JSON.",
@@ -451,7 +451,7 @@
       },
       {
         "question": "Posso abrir um arquivo YAML?",
-        "answer": "Sim. Use “Abrir arquivo”, e o Tool Kumar detecta as extensões .yaml e .yml antes de importar."
+        "answer": "Sim. Abra um arquivo .yaml ou .yml: ele continua em YAML no editor, com o JSON à direita. “Baixar” entrega o JSON como um arquivo .json."
       }
     ]
   },
@@ -498,7 +498,7 @@
     ]
   },
   "csv-to-json": {
-    "hash": "58d77f369e7a",
+    "hash": "7741f9a152c1",
     "title": "CSV para JSON com inferência de tipos",
     "description": "Converta CSV em JSON online. O Tool Kumar detecta colunas, interpreta números e booleanos e mantém o resultado importado no navegador, sem upload.",
     "heading": "CSV para JSON",
@@ -511,14 +511,15 @@
     "modeLabel": "Importação de CSV para JSON",
     "exampleLabel": "O JSON abaixo é gerado pela importação do exemplo CSV.",
     "steps": [
-      "Cole um CSV com uma linha de cabeçalho.",
-      "Escolha “CSV → JSON” quando o detector identificar a entrada.",
-      "Confira o array e copie ou baixe o JSON."
+      "Cole CSV ou abra um arquivo .csv ou .tsv. O editor mantém o CSV como está.",
+      "O array JSON aparece à direita enquanto você digita. Em “Opções de CSV”, você define o separador, a linha de cabeçalho e a detecção de números.",
+      "Copie ou baixe o JSON, ou mude para “Tabela” para conferir as linhas."
     ],
     "options": [
-      "Os delimitadores vírgula, ponto e vírgula, tabulação e barra vertical são detectados.",
+      "Os delimitadores vírgula, ponto e vírgula, tabulação e barra vertical são detectados, ou você pode escolher um.",
       "Campos entre aspas podem conter vírgulas e quebras de linha.",
-      "Campos vazios sem aspas viram null; campos vazios entre aspas continuam sendo strings vazias."
+      "Campos vazios sem aspas viram null; campos vazios entre aspas continuam sendo strings vazias.",
+      "Sem linha de cabeçalho, cada linha vira um array. Com a detecção de números desligada, todos os valores continuam sendo strings."
     ],
     "faqs": [
       {
@@ -527,7 +528,7 @@
       },
       {
         "question": "Como os números são detectados?",
-        "answer": "Células sem aspas que seguem a sintaxe de números JSON viram números. Coloque um valor entre aspas quando ele precisar continuar sendo uma string."
+        "answer": "Células sem aspas que seguem a sintaxe de números JSON viram números. Coloque um valor entre aspas, ou desligue a detecção de números em “Opções de CSV”, quando ele precisar continuar sendo uma string."
       },
       {
         "question": "Posso abrir um arquivo TSV?",
@@ -574,7 +575,7 @@
     ]
   },
   "xml-to-json": {
-    "hash": "1ca1d5a99a27",
+    "hash": "ca150d46b41f",
     "title": "XML para JSON em documentos simples",
     "description": "Converta XML em JSON formatado online. O Tool Kumar analisa elementos e atributos no navegador e exibe o resultado sem enviar o arquivo de origem.",
     "heading": "XML para JSON",
@@ -587,9 +588,9 @@
     "modeLabel": "Importação de XML para JSON",
     "exampleLabel": "O JSON abaixo é gerado pela importação dos dois elementos user repetidos.",
     "steps": [
-      "Cole XML ou abra um arquivo .xml.",
-      "Escolha “XML → JSON” quando o detector identificar XML.",
-      "Confira o objeto e copie o JSON formatado."
+      "Cole XML ou abra um arquivo .xml. O editor mantém o XML como está.",
+      "O JSON aparece à direita enquanto você digita, com elementos repetidos como arrays.",
+      "Copie ou baixe o JSON formatado."
     ],
     "options": [
       "Elementos filhos com nomes repetidos viram arrays.",
@@ -607,7 +608,7 @@
       },
       {
         "question": "Posso abrir um arquivo XML?",
-        "answer": "Sim. O Tool Kumar detecta arquivos .xml no seletor de arquivos e oferece a conversão de XML para JSON."
+        "answer": "Sim. Abra um arquivo .xml: ele continua em XML no editor, com o JSON à direita."
       }
     ]
   },
@@ -1117,7 +1118,7 @@
     ]
   },
   "toml-to-json": {
-    "hash": "da150149c95e",
+    "hash": "0ad13fe62663",
     "title": "TOML para JSON: converta arquivos de configuração",
     "description": "Converta tabelas TOML, arrays de tabelas e escalares em JSON formatado no navegador, sem upload. Abra um arquivo, confira o resultado e baixe JSON.",
     "heading": "TOML para JSON",
@@ -1130,8 +1131,8 @@
     "modeLabel": "Importação de TOML para JSON",
     "exampleLabel": "A tabela server vira um objeto, e as tabelas users repetidas viram um array de objetos.",
     "steps": [
-      "Cole TOML ou abra um arquivo .toml.",
-      "Um arquivo .toml aberto é convertido imediatamente. Para TOML colado, escolha “TOML → JSON” no aviso e confira o resultado.",
+      "Cole TOML ou abra um arquivo .toml. O editor mantém o TOML como está.",
+      "O JSON aparece à direita enquanto você digita. Um erro de TOML mostra a linha e a coluna.",
       "Copie ou baixe o JSON para a aplicação de destino."
     ],
     "options": [

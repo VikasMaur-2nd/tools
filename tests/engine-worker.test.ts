@@ -29,7 +29,7 @@ function session() {
   const tasks = new Map<number, () => void>();
   let timer = 0;
   const defer = (fn: () => void) => { tasks.set(++timer, fn); return timer; };
-  const state: Record<string, unknown> = { fileName: null };
+  const state: Record<string, unknown> = { fileName: null, input: { format: 'json', delimiter: 'auto', detected: ',' } };
   // The status bar as shown: what the store holds at the end of each task (see look).
   const seen: unknown[] = [];
   const look = () => { if (seen.at(-1) !== state.status) seen.push(state.status); };

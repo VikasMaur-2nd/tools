@@ -1,14 +1,14 @@
 {
  "status": {
-  "msg": "Valid JSON",
+  "msg": "Valid CSV",
   "kind": "ok",
-  "raw": "82 B raw",
-  "min": "45 B min",
-  "stats": "10 lines · 7 nodes · depth 2"
+  "raw": "20 B raw",
+  "min": null,
+  "stats": "4 lines · 7 nodes · depth 2"
  },
  "toasts": [
-  "Converted data.tsv to JSON"
+  "Opened data.tsv"
  ],
- "input": "[\n  {\n    \"id\": 1,\n    \"name\": \"Ada\"\n  },\n  {\n    \"id\": 2,\n    \"name\": \"Lin\"\n  }\n]",
+ "input": "id\tname\n1\tAda\n2\tLin\n",
  "formatted": "[\n  {\n    \"id\": 1,\n    \"name\": \"Ada\"\n  },\n  {\n    \"id\": 2,\n    \"name\": \"Lin\"\n  }\n]"
 }

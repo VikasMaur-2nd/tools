@@ -25,6 +25,7 @@ Browse the [resource library](https://tools.vikasmaur.com/resources) or [open th
 - **[Graph view](https://tools.vikasmaur.com/tools/json-visualizer)** with connected object and array cards, pan, zoom, minimap, branch collapse, editor sync, search, keyboard navigation and local PNG/JPEG/SVG export. Export the whole graph, visible area or selected branch with a theme, white, transparent or custom background at 1×, 2× or 3× resolution. The canvas paints only the visible part for large documents.
 - **Table view** of any array/object with sorting, drill-down and CSV export.
 - **Convert** to TypeScript, Zod, JSON Schema, C#, Dart, Java, Python, Go, Kotlin, Swift, PHP, Rust, CSV, Excel, YAML, XML and TOML.
+- **Read YAML, CSV, XML or TOML** as input: the editor keeps the text as written (coloured, errors underlined at their line and column), every view shows its JSON live, and *Use as input* replaces it with that JSON (undoable). CSV options: separator, header row, typed values.
 - **Compare** two JSON documents (structural diff, JSON Patch).
 - Editor ↔ tree sync, bracket matching, auto-indent, command palette (`Ctrl/⌘ K`), keyboard shortcuts (`?`).
 - Huge files (tens of MB) open instantly in a virtualized read-only view.

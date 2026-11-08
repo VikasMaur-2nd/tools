@@ -416,7 +416,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "d6e32c71205e",
+    "hash": "77780ec2e2d0",
     "title": "YAML 转 JSON：在浏览器中本地转换",
     "description": "在线把 YAML 转成格式化的 JSON。Tool Kumar 在本地解析纯数据 YAML 并报告错误，转换结果始终留在你的设备上。",
     "heading": "YAML 转 JSON",
@@ -429,9 +429,9 @@
     "modeLabel": "YAML 导入为 JSON",
     "exampleLabel": "下面这份格式化的 JSON，是导入这个 YAML 示例后得到的。",
     "steps": [
-      "粘贴 YAML，或打开 .yaml 或 .yml 文件。",
-      "导入器识别出 YAML 后，选择 YAML → JSON。",
-      "检查格式化后的 JSON，然后复制或下载。"
+      "粘贴 YAML，或打开 .yaml 或 .yml 文件。编辑器会按你写的原样保留 YAML。",
+      "输入时，JSON 会实时显示在右侧。YAML 错误会在编辑器中以下划线标出，并显示行号和列号。",
+      "复制或下载 JSON。“用作输入”会用 JSON 替换 YAML，“撤销”可以恢复 YAML。"
     ],
     "options": [
       "普通的映射和序列会变成 JSON 对象和数组。",
@@ -449,7 +449,7 @@
       },
       {
         "question": "可以打开 YAML 文件吗？",
-        "answer": "可以。使用“打开文件”，Tool Kumar 会在导入前识别 .yaml 和 .yml 扩展名。"
+        "answer": "可以。打开 .yaml 或 .yml 文件后，编辑器中仍是 YAML，右侧显示对应的 JSON。“下载”会把 JSON 保存为 .json 文件。"
       }
     ]
   },
@@ -496,7 +496,7 @@
     ]
   },
   "csv-to-json": {
-    "hash": "58d77f369e7a",
+    "hash": "7741f9a152c1",
     "title": "CSV 转 JSON 在线转换：自动推断类型",
     "description": "在线把 CSV 转换为 JSON。Tool Kumar 会自动识别列，解析数字和布尔值，导入结果始终留在你的浏览器中。",
     "heading": "CSV 转 JSON",
@@ -509,14 +509,15 @@
     "modeLabel": "CSV 导入为 JSON",
     "exampleLabel": "下面的 JSON 是导入 CSV 示例后生成的。",
     "steps": [
-      "粘贴带表头行的 CSV。",
-      "检测器识别出输入格式后，选择 CSV → JSON。",
-      "检查数组，然后复制或下载 JSON。"
+      "粘贴 CSV，或打开 .csv 或 .tsv 文件。编辑器会原样保留 CSV。",
+      "输入时，JSON 数组会实时显示在右侧。在“CSV 选项”中可以设置分隔符、表头行和数字识别。",
+      "复制或下载 JSON，或者切换到“表格”检查各行。"
     ],
     "options": [
-      "自动识别逗号、分号、制表符和竖线分隔符。",
+      "自动识别逗号、分号、制表符和竖线分隔符，也可以手动选择。",
       "带引号的字段可以包含逗号和换行。",
-      "不带引号的空字段变成 null；带引号的空字段保持为空字符串。"
+      "不带引号的空字段变成 null；带引号的空字段保持为空字符串。",
+      "没有表头行时，每一行会变成一个数组。关闭数字识别后，所有值都保持为字符串。"
     ],
     "faqs": [
       {
@@ -525,7 +526,7 @@
       },
       {
         "question": "数字是怎么识别的？",
-        "answer": "不带引号且符合 JSON 数字语法的单元格会变成数字。如果某个值必须保持为字符串，请给它加上引号。"
+        "answer": "不带引号且符合 JSON 数字语法的单元格会变成数字。如果某个值必须保持为字符串，请给它加上引号，或在“CSV 选项”中关闭数字识别。"
       },
       {
         "question": "可以打开 TSV 文件吗？",
@@ -572,7 +573,7 @@
     ]
   },
   "xml-to-json": {
-    "hash": "1ca1d5a99a27",
+    "hash": "ca150d46b41f",
     "title": "XML 转 JSON 在线转换：适合简单 XML 文档",
     "description": "在线把 XML 转换为格式化的 JSON。Tool Kumar 在本地解析元素和属性并显示结果，无需上传源文件。",
     "heading": "XML 转 JSON",
@@ -585,9 +586,9 @@
     "modeLabel": "XML 导入为 JSON",
     "exampleLabel": "下面的 JSON 是导入两个重复的 user 元素后生成的。",
     "steps": [
-      "粘贴 XML，或打开 .xml 文件。",
-      "检测器识别出 XML 后，选择 XML → JSON。",
-      "检查生成的对象，然后复制格式化的 JSON。"
+      "粘贴 XML，或打开 .xml 文件。编辑器会原样保留 XML。",
+      "输入时，JSON 会实时显示在右侧，重复的元素会变成数组。",
+      "复制或下载格式化的 JSON。"
     ],
     "options": [
       "重复的子元素名会变成数组。",
@@ -605,7 +606,7 @@
       },
       {
         "question": "可以打开 XML 文件吗？",
-        "answer": "可以。Tool Kumar 会在文件选择器中识别 .xml 文件，并提供 XML 转 JSON。"
+        "answer": "可以。打开 .xml 文件后，编辑器中仍是 XML，右侧显示对应的 JSON。"
       }
     ]
   },
@@ -1111,7 +1112,7 @@
     ]
   },
   "toml-to-json": {
-    "hash": "da150149c95e",
+    "hash": "0ad13fe62663",
     "title": "TOML 转 JSON：配置文件在线转换",
     "description": "在本地把 TOML 表、表数组和标量值转换为格式化的 JSON。打开 TOML 文件，检查结果，然后下载 JSON。",
     "heading": "TOML 转 JSON",
@@ -1124,8 +1125,8 @@
     "modeLabel": "TOML 导入为 JSON",
     "exampleLabel": "server 表变成一个对象，重复的 users 表变成一个对象数组。",
     "steps": [
-      "粘贴 TOML，或打开 .toml 文件。",
-      "打开的 .toml 文件会直接转换。如果是粘贴的 TOML，请在提示栏中选择 TOML → JSON，然后检查结果。",
+      "粘贴 TOML，或打开 .toml 文件。编辑器会原样保留 TOML。",
+      "输入时，JSON 会实时显示在右侧。TOML 错误会显示所在的行号和列号。",
       "复制或下载 JSON，供接收方应用使用。"
     ],
     "options": [

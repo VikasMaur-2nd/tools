@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { crc32, inflateRawSync } from 'node:zlib';
 import { JNode, parse } from '../lib/json/parser';
 import { records, tabulate, toCsv, toXlsx } from '../lib/convert/xlsx';
-import { detectFormat, importToJson, type ImportFormat } from '../lib/convert/import';
+import { detectFormat, importToJson, sniffDelimiter, type CsvOptions, type ImportFormat } from '../lib/convert/import';
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -30,7 +30,10 @@ const val = (text: string, fmt: ImportFormat) => conv(text, fmt).value;
 const err = (text: string, fmt: ImportFormat) => {
   const r = importToJson(text, fmt, '  ');
   if (!('error' in r)) return assert.fail(`expected an error, got ${r.json.slice(0, 200)}`);
-  return r;
+  // (Its offset is the same place as its line and column: checked on its own below.)
+  const rest = { ...r };
+  delete rest.p;
+  return rest;
 };
 
 interface ZipEntry {
@@ -501,6 +504,52 @@ describe('CSV import', () => {
 
   test('unterminated quote reports line and column', () => {
     assert.deepEqual(err('a,b\n1,"oops\n2,3', 'csv'), { error: 'Unterminated quoted field: missing closing "', line: 2, col: 3 });
+  });
+
+  test('options: a separator chosen wins over detection, rows as arrays without a header, every value a string untyped', () => {
+    const json = (text: string, o: CsvOptions) => {
+      const r = importToJson(text, 'csv', '', o);
+      if ('error' in r) return assert.fail(r.error);
+      return JSON.parse(r.json) as unknown;
+    };
+    const text = 'a;b;c\n1;2,5;3\n';
+    assert.deepEqual(json(text, {}), [{ a: 1, b: '2,5', c: 3 }]);
+    assert.deepEqual(json(text, { delimiter: ',' }), [{ 'a;b;c': '1;2', column_2: '5;3' }]);
+    assert.deepEqual(json('sep=;\na,b\n1,2\n', { delimiter: ',' }), [{ a: 1, b: 2 }], 'the sep= line is the file\'s, not data');
+    assert.deepEqual(json('id,ok,none\n007,true,\n', { header: false }), [['id', 'ok', 'none'], ['007', true, null]]);
+    // A file that quotes every field (Excel's) still gets its numbers and booleans, with or without a header row.
+    assert.deepEqual(json('"id","n"\n"1","true"\n', {}), [{ id: 1, n: true }]);
+    assert.deepEqual(json('"id","n"\n"1","true"\n', { header: false }), [['id', 'n'], [1, true]]);
+    assert.deepEqual(json('"id","n"\n"1","true"\n', { header: false, types: false }), [['id', 'n'], ['1', 'true']]);
+    assert.deepEqual(json('id,ok,none,q\n7,true,,""\n8\n', { types: false }), [{ id: '7', ok: 'true', none: '', q: '' }, { id: '8', ok: '', none: '', q: '' }]);
+    assert.deepEqual(json('a\tb\n1\t2\n', { delimiter: '\t', header: false, types: false }), [['a', 'b'], ['1', '2']]);
+    const r = importToJson('a,b\n1,2\n', 'csv', '  ', { header: false });
+    assert.ok('json' in r);
+    assert.equal(r.json, '[\n  [\n    "a",\n    "b"\n  ],\n  [\n    1,\n    2\n  ]\n]');
+  });
+
+  test('sniffDelimiter: the sep= line, else the most consistent separator', () => {
+    assert.equal(sniffDelimiter('sep=|\na,b\n'), '|');
+    assert.equal(sniffDelimiter('a;b;c\n1;2;3\n'), ';');
+    assert.equal(sniffDelimiter('\ufeffa\tb\n1\t2\n'), '\t');
+    assert.equal(sniffDelimiter('one column\n'), ',');
+  });
+});
+
+describe('import errors', () => {
+  test('say where they are as an offset into the text given, a BOM included', () => {
+    for (const [text, fmt] of [
+      ['a,b\n1,"oops\n2,3', 'csv'],
+      ['a: 1\nb: [1, 2\n', 'yaml'],
+      ['\ufeffa: 1\n  b: 2\n c: 3\n', 'yaml'],
+      ['<a><b></a>', 'xml'],
+      ['x = 1\nx = 2\n', 'toml'],
+    ] as const) {
+      const r = importToJson(text, fmt, '');
+      assert.ok('error' in r && r.p !== undefined && r.line !== undefined && r.col !== undefined, `${fmt}: ${JSON.stringify(text)}`);
+      const lines = text.slice(0, r.p).split('\n');
+      assert.deepEqual([lines.length, lines[lines.length - 1].replace(/^\ufeff/, '').length + 1], [r.line, r.col], `${fmt}: ${JSON.stringify(text)}`);
+    }
   });
 });
 

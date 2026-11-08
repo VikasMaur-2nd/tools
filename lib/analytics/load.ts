@@ -35,6 +35,7 @@ function report(editor: 1 | 2) {
     stats: s.stats ?? undefined,
     jsonl: st.kind === 'valid' && !!st.jsonl,
     jwt: st.kind === 'valid' && !!st.jwt,
+    input: s.input.format,
   });
 }
 

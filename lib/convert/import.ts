@@ -7,7 +7,18 @@ import { quote } from '../json/format';
 
 export type Format = 'json' | 'csv' | 'tsv' | 'yaml' | 'xml' | 'toml' | 'unknown';
 export type ImportFormat = 'csv' | 'tsv' | 'yaml' | 'xml' | 'toml';
-export type ImportResult = { json: string } | { error: string; line?: number; col?: number };
+/** `p`: where the error is, as an offset into the text given (line and col: the same place, 1-based). */
+export type ImportResult = { json: string } | { error: string; line?: number; col?: number; p?: number };
+
+/** How CSV and TSV are read. */
+export interface CsvOptions {
+  /** The field separator (`,` `;` TAB `|`); null or absent: detected (a first line `sep=;` says which, as Excel writes it). */
+  delimiter?: string | null;
+  /** The first row names the columns, and each row after it becomes an object (default); false: every row is an array. */
+  header?: boolean;
+  /** Unquoted numbers, booleans and empty fields become JSON numbers, booleans and null (default); false: every field is a string. */
+  types?: boolean;
+}
 
 /** A number kept as JSON number text. */
 class Num {
@@ -122,6 +133,13 @@ function sniff(s: string): [string, number] {
   return [String.fromCharCode(DELIMS[best]), share];
 }
 
+/** The separator CSV `text` is read with when none is chosen: its `sep=` first line's, or the one detected. */
+export function sniffDelimiter(text: string): string {
+  const i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const hint = /^sep=(.)\r?\n/.exec(text.slice(i, i + 8));
+  return hint ? hint[1] : sniff(text.slice(i, i + 65536))[0];
+}
+
 /** Cheap format guess; a known file extension wins. */
 export function detectFormat(text: string, fileName?: string): Format {
   const ext = /\.([a-z0-9]+)$/i.exec(fileName ?? '')?.[1].toLowerCase();
@@ -170,14 +188,16 @@ const csvCell = (f: string, quoted: boolean): string => {
   return quote(f);
 };
 
-function csv(src: string, delim: string | null, indent: string): string {
+function csv(src: string, delim: string | null, indent: string, header = true, types = true): string {
   let i = src.charCodeAt(0) === 0xfeff ? 1 : 0;
   const hint = /^sep=(.)\r?\n/.exec(src.slice(i, i + 8));
   if (hint) {
-    delim = hint[1];
+    // (A separator chosen by hand wins; the line is the file's, not data, either way.)
+    delim ??= hint[1];
     i += hint[0].length;
   }
   const d = (delim ?? sniff(src.slice(i))[0]).charCodeAt(0);
+  const cell = types ? csvCell : (f: string) => quote(f);
   const n = src.length;
   const nl = indent ? '\n' : '';
   const colon = indent ? ': ' : ':';
@@ -237,7 +257,13 @@ function csv(src: string, delim: string | null, indent: string): string {
       continue;
     }
     if (row.length > 1 || row[0] !== '' || q[0]) {
-      if (!keys) {
+      if (!header) {
+        // (Its first row says whether the file quotes every field, as the first data row does with a header.)
+        if (quoteAll < 0) quoteAll = q.every(Boolean) ? 1 : 0;
+        out += (count++ ? ',' : '') + p1 + '[';
+        for (let j = 0; j < row.length; j++) out += (j ? ',' + p2 : p2) + (quoteAll && q[j] && row[j] !== '' ? cell(row[j], false) : cell(row[j], q[j]));
+        out += p1 + ']';
+      } else if (!keys) {
         keys = [];
         seen = new Set();
         for (const k of row) addKey(k);
@@ -246,7 +272,7 @@ function csv(src: string, delim: string | null, indent: string): string {
         while (keys.length < row.length) addKey('');
         out += (count++ ? ',' : '') + p1 + '{';
         for (let j = 0; j < keys.length; j++) {
-          const v = j < row.length ? (quoteAll && q[j] && row[j] !== '' ? csvCell(row[j], false) : csvCell(row[j], q[j])) : 'null';
+          const v = j < row.length ? (quoteAll && q[j] && row[j] !== '' ? cell(row[j], false) : cell(row[j], q[j])) : types ? 'null' : '""';
           out += (j ? ',' + qk[j] : qk[j]) + v;
         }
         out += (keys.length ? p1 : '') + '}';
@@ -1191,10 +1217,11 @@ function toml(src: string): V {
 // ── entry point ──────────────────────────────────────────────────────────
 
 /** Converts CSV / TSV / YAML / XML / TOML text to JSON text (`indent` '' = minified). */
-export function importToJson(text: string, format: ImportFormat, indent: string): ImportResult {
-  let src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+export function importToJson(text: string, format: ImportFormat, indent: string, options: CsvOptions = {}): ImportResult {
+  const bom = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let src = bom ? text.slice(1) : text;
   try {
-    if (format === 'csv' || format === 'tsv') return { json: csv(src, format === 'tsv' ? '\t' : null, indent) };
+    if (format === 'csv' || format === 'tsv') return { json: csv(src, options.delimiter || (format === 'tsv' ? '\t' : null), indent, options.header !== false, options.types !== false) };
     src = src.replace(/\r\n?/g, '\n');
     const v = format === 'yaml' ? yaml(src, indent) : format === 'xml' ? xml(src) : toml(src);
     return { json: emit(v, indent) };
@@ -1206,7 +1233,7 @@ export function importToJson(text: string, format: ImportFormat, indent: string)
         line++;
         ls = k + 1;
       }
-      return { error: e.m, line, col: e.p - ls + 1 };
+      return { error: e.m, line, col: e.p - ls + 1, p: e.p + bom };
     }
     if (e instanceof RangeError || tooDeep(e)) return { error: /string length/i.test((e as Error).message) ? 'The result is too large' : 'Nesting is too deep to convert' };
     throw e;

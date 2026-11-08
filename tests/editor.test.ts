@@ -220,6 +220,96 @@ test('Undo and Redo past a load tell the file name of the document they bring ba
   assert.deepEqual(names, ['a.json', 'b.json', 'a.json']);
 });
 
+test('Undo and Redo past a step that changed what the document is read as tell that format, after its text', () => {
+  const { el } = editorElement();
+  const told: string[] = [];
+  const ed = new Editor(el as unknown as HTMLElement, { ...events, reformat: (f: string) => told.push(`${f} ${ed.text}`) });
+  ed.init('a: 1');
+  frames();
+  ed.setValue('{"a":1}', 0, false, undefined, ['yaml', 'json']);
+  ed.setValue('{"a":2}', 0, false, undefined, ['json', 'json']);
+  ed.undo();
+  assert.deepEqual(told, [], 'a step that kept the format tells none');
+  ed.undo();
+  assert.equal(ed.text, 'a: 1');
+  ed.redo();
+  assert.deepEqual(told, ['yaml a: 1', 'json {"a":1}']);
+});
+
+test('the same text read another way is a step of its own: Undo and Redo tell the format (and name), the text untouched', () => {
+  const { el } = editorElement();
+  const told: string[] = [];
+  const changes: string[] = [];
+  const ed = new Editor(el as unknown as HTMLElement, { ...events, change: (k: string) => changes.push(k), reformat: (f: string) => told.push(f), renamed: (n: string | null) => told.push(`name ${n}`) });
+  ed.init('{"a":1}');
+  frames();
+  ed.replace(7, 7, ' ');
+  ed.reformatStep(['json', 'yaml']);
+  ed.reformatStep(['yaml', 'yaml']);
+  // (Use as input when the output is the text itself: the reading and the name change, not the text.)
+  ed.setValue('{"a":1} ', 0, false, ['a.yaml', 'a.json'], ['yaml', 'json']);
+  assert.equal(ed.canUndo, true);
+  const n = changes.length;
+  ed.undo();
+  assert.deepEqual(told, ['name a.yaml', 'yaml']);
+  ed.undo();
+  assert.deepEqual(told.slice(2), ['json'], 'one step for the picker; one that kept the format is none');
+  assert.equal(changes.length, n, 'no text changed, so no change was told');
+  assert.equal(ed.text, '{"a":1} ');
+  ed.undo();
+  assert.equal(ed.text, '{"a":1}', 'the typing before is the next step');
+  ed.redo();
+  ed.redo();
+  assert.deepEqual(told.slice(3), ['yaml']);
+});
+
+test('a paste over everything asks what the document is read as after it: Undo and Redo tell that format', () => {
+  const { el, ta } = editorElement();
+  const told: string[] = [];
+  const asked: string[] = [];
+  let format = 'yaml';
+  const ed = new Editor(el as unknown as HTMLElement, {
+    ...events,
+    reformat: (f: string) => told.push((format = f)),
+    pasteFormats: (text: string) => {
+      asked.push(text);
+      return text.startsWith('{') ? [format, (format = 'json')] : undefined;
+    },
+  });
+  ed.init('a: 1');
+  frames();
+  const inner = ed as unknown as { onPaste(e: unknown): void; onBeforeInput(e: unknown): void; onInput(e: unknown): void };
+  const paste = (text: string, a = 0, b = ta.value.length) => {
+    ta.setSelectionRange(a, b);
+    let taken = false;
+    inner.onPaste({ clipboardData: { getData: () => text }, preventDefault: () => (taken = true) });
+    if (taken) return;
+    inner.onBeforeInput({ inputType: 'insertFromPaste', cancelable: true, preventDefault() {} });
+    ta.value = ta.value.slice(0, a) + text + ta.value.slice(b);
+    ta.setSelectionRange(a + text.length, a + text.length);
+    inner.onInput({ inputType: 'insertFromPaste' });
+  };
+  paste('{"a":1}');
+  assert.deepEqual(asked, ['{"a":1}']);
+  paste('2', 5, 6);
+  assert.deepEqual(asked, ['{"a":1}'], 'a paste over part of it is not asked');
+  ed.undo();
+  ed.undo();
+  assert.equal(ed.text, 'a: 1');
+  assert.deepEqual(told, ['yaml'], 'Undo: the format of the document it brings back');
+  ed.redo();
+  assert.deepEqual(told, ['yaml', 'json']);
+  // A big paste, which the editor puts in itself, the same.
+  ed.undo();
+  format = 'yaml';
+  const big = JSON.stringify({ a: Array.from({ length: 6000 }, (_, i) => i) });
+  const n = told.length;
+  paste(big);
+  assert.equal(asked[asked.length - 1], big);
+  ed.undo();
+  assert.deepEqual(told.slice(n), ['yaml']);
+});
+
 test("an input method's commit reaches the tool once, whichever comes first: its input event or compositionend (F22)", () => {
   // Chromium fires the commit's input event before compositionend, Firefox after it.
   for (const order of ['input first', 'compositionend first']) {

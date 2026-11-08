@@ -14,12 +14,13 @@ import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { convertFileName, targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type ContextMenu, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type Status, type EnginePreset, type Theme, type View } from './store';
+import { DEFAULT_SETTINGS, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
+import type { SourceReply, SourceRequest } from './source.worker';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
-import { jsonLines, persistenceAfterChange, persistenceAfterLoad } from './rules';
+import { formatOf, formatOfName, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
@@ -32,7 +33,7 @@ import { TallScroll } from './tall';
 /** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
 export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
 
-const KEYS = { doc: 'jf:doc', file: 'jf:file', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
+const KEYS = { doc: 'jf:doc', file: 'jf:file', fmt: 'jf:fmt', settings: 'jf:settings', theme: 'jf:theme', cmp: 'jf:cmp' };
 const INDENTS: Record<IndentId, string> = { '2': '  ', '4': '    ', tab: '\t' };
 const MAX_PERSIST = 2_500_000;
 const THEME_COLORS = { light: '#ffffff', dark: '#000000' };
@@ -75,6 +76,20 @@ const jsonRow: LineHighlighter = (t, inStr, esc) => {
 };
 
 type ConvertModule = typeof import('../convert');
+type SourceModule = typeof import('./source');
+type Source = Exclude<SourceFormat, 'json'>;
+
+/** Format names as the interface says them. */
+const FORMAT_LABEL: Record<SourceFormat, string> = { json: 'JSON', yaml: 'YAML', csv: 'CSV', xml: 'XML', toml: 'TOML' };
+/** A downloaded input's extension and type, by what it is read as. */
+const FORMAT_FILE: Record<SourceFormat, [string, string]> = {
+  json: ['json', 'application/json'],
+  yaml: ['yaml', 'application/yaml'],
+  csv: ['csv', 'text/csv'],
+  xml: ['xml', 'application/xml'],
+  toml: ['toml', 'application/toml'],
+};
+
 
 const read = (k: string) => {
   try {
@@ -114,6 +129,8 @@ function loadSettings(): Settings {
     out.escape = false;
     if (out.tsStyle !== 'type') out.tsStyle = 'interface';
     if (out.csharpLib !== 'newtonsoft') out.csharpLib = 'stj';
+    out.csvHeader = out.csvHeader !== false;
+    out.csvTypes = out.csvTypes !== false;
     out.rootName = String(out.rootName || 'Root').slice(0, 60);
     return out;
   } catch {
@@ -184,6 +201,12 @@ const FORMAT_MADE = 0.32;
 const FORMATTED = 0.37;
 const EDITOR = 0.5;
 const ANALYSIS_SENT = 0.1;
+
+/**
+ * From this size, an input in another format than JSON converts in a worker and its JSON is parsed here in steps (see
+ * convertBig): YAML converts at a few hundred milliseconds a megabyte, which would hold the page after each pause in typing.
+ */
+const SOURCE_WORKER_MIN = 100_000;
 
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
 const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
@@ -314,6 +337,31 @@ export class Engine {
   private jwtLoad: Promise<void> | null = null;
   /** An analysis waits for the JWT reader (see waitForJwt). */
   private jwtWait = false;
+  /** What the input is read as: in another format than JSON, `res` and the views describe the JSON it converts to. */
+  private inFmt: SourceFormat = 'json';
+  /** A paste over everything that is plainly JSON, in another format: read as JSON again once it is in (see onChange). */
+  private pasteJson = false;
+  /** The JSON the input converted to, while it is in another format and converts. */
+  private converted: string | null = null;
+  /** The reader for other formats (./source.ts): loaded once an input is in one. */
+  private srcMod: SourceModule | null = null;
+  private srcLoad: Promise<void> | null = null;
+  /** An analysis waits for that reader (see waitForSource). */
+  private srcWait = false;
+  /** CSV input: the separator chosen (`auto`: detected), for this document. */
+  private csvDelim: CsvDelimiter = 'auto';
+  /** The editor's colours for the input's format, and what they were made for. */
+  private colorsKey = 'json';
+  /** Converts big inputs in another format (./source.worker.ts): started on first use; null when it couldn't be. */
+  private srcWorker: Worker | null | undefined;
+  /** The worker is converting (its reply hasn't come): a newer request stops it rather than waits behind it. */
+  private srcBusy = false;
+  /** Bumped by each conversion asked of the worker, and by a new reading (format, CSV options): older ones are dropped. */
+  private srcSeq = 0;
+  /** The conversion the worker is making: of that editor version, read that way (`key`, see sourceOptions). */
+  private srcWanted: { seq: number; ver: object; key: string } | null = null;
+  /** The last conversion the worker made, and that its JSON was parsed (analyze uses it for that version and reading). */
+  private srcDone: { ver: object; key: string; conv: { json: string } | { error: string; p: number } } | null = null;
   private sel: JNode | null = null;
   private selPath: Seg[] | null = null;
   private tablePath: Seg[] = [];
@@ -354,12 +402,14 @@ export class Engine {
       renamed: this.renamed,
       name: () => this.edName,
       undoing: this.undoing,
+      reformat: this.reformatted,
+      pasteFormats: this.pastedFormats,
       // A big document pasted over everything opens like a file: output first, then the editor.
       fullPaste: (text) => {
-        if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format') return false;
+        if (this.settings.autoFormat || text.length < OUTPUT_FIRST || this.settings.view !== 'format' || this.pasteFormat(text) !== 'json') return false;
         this.refocus = true;
         this.request(1);
-        this.load(text, null, true, true);
+        this.load(text, null, true, true, undefined, 'json');
         return true;
       },
     });
@@ -409,11 +459,15 @@ export class Engine {
 
     // Restore: text typed/restored before hydration wins, then saved doc. A landing
     // page replaces it with its own sample at once, so it isn't parsed there.
-    if (!this.ed.text && !options.preserveDocument) {
+    if (!options.preserveDocument) {
       const saved = read(KEYS.doc);
-      if (saved) this.ed.init(saved);
+      if (saved && !this.ed.text) this.ed.init(saved);
+      // What the saved document is read as, kept with it: also when the editor already holds it (a tool mounted
+      // again keeps its text, and adopts it).
+      if (saved && this.ed.length === saved.length && this.ed.text === saved) this.inFmt = formatOf(read(KEYS.fmt));
     }
     store.set({ fileName: (this.edName = read(KEYS.file)) });
+    this.publishInput();
     this.analyzeInSteps();
     if (this.settings.view === 'graph') this.setView('graph');
     if (this.ed2.text) this.analyzeCompare();
@@ -451,6 +505,7 @@ export class Engine {
     const pending = this.pendingNow();
     this.worker?.terminate();
     this.analysisWorker?.terminate();
+    this.srcWorker?.terminate();
     clearTimeout(this.analysisTimer);
     this.dead = true;
     // Whatever is still on its way drops itself (each step checks its sequence), and nothing more starts.
@@ -532,14 +587,17 @@ export class Engine {
     this.fmtStatSeq++;
     this.persistEnabled = persistenceAfterChange(this.persistEnabled, kind);
     if (kind === 'paste' && this.ed.pasteFull) {
+      // (Its undo step tells the format it was read as before: see pastedFormats.)
+      if (this.pasteJson) this.setInputFormat('json', false);
       this.resetNext = true;
       this.edName = null;
       if (store.get().fileName) {
         store.set({ fileName: null });
         write(KEYS.file, null);
       }
-      if (this.settings.autoFormat) setTimeout(this.autoFormat, 0);
+      if (this.settings.autoFormat && this.inFmt === 'json') setTimeout(this.autoFormat, 0);
     }
+    this.pasteJson = false;
     this.ed.setBrackets(-1, -1);
     clearTimeout(this.fmtTimer);
     clearTimeout(this.convTimer);
@@ -573,7 +631,7 @@ export class Engine {
 
   /** Pretty-prints compact JSON right after it is pasted (one undo step reverts it). */
   private autoFormat = () => {
-    if (this.dead) return;
+    if (this.dead || this.inFmt !== 'json') return;
     const ed = this.ed;
     const text = ed.text;
     const lines = ed.ls.length;
@@ -637,6 +695,7 @@ export class Engine {
    * so neither blocks the keys.
    */
   private analyzeTyped = () => {
+    if (this.convertBig()) return;
     const ver = this.ed.version;
     const text = this.ed.length >= WORKER_MIN ? ver as Doc : this.ed.text;
     if (!this.outputFirst(text, store.get().fileName, (res, metrics) => this.ed.version === ver && this.analyze(res, metrics), true)) this.analyze();
@@ -658,7 +717,7 @@ export class Engine {
    * has. True if the analysis must wait.
    */
   private waitForJwt() {
-    if (this.jwtReader || !mayBeJwt(this.ed.version as Doc)) return false;
+    if (this.jwtReader || this.inFmt !== 'json' || !mayBeJwt(this.ed.version as Doc)) return false;
     store.set({ status: { kind: 'parsing' } });
     if (!this.jwtWait) {
       this.jwtWait = true;
@@ -670,6 +729,41 @@ export class Engine {
     return true;
   }
 
+  /** Loads the reader for other formats than JSON, once (see waitForSource). */
+  private loadSource() {
+    return (this.srcLoad ??= import('./source').then(
+      (m) => void (this.srcMod = m),
+      (e: unknown) => {
+        this.srcLoad = null;
+        throw e;
+      },
+    ));
+  }
+
+  /**
+   * An input in another format than JSON before its reader has loaded: says "Parsing…" and analyses again once it
+   * has. True if the analysis must wait. (Offline without it, the status says the conversion failed.)
+   */
+  private waitForSource() {
+    if (this.srcMod || this.inFmt === 'json' || this.ed.blank) return false;
+    if (store.get().status.kind !== 'parsing') store.set({ status: { kind: 'parsing' } });
+    if (!this.srcWait) {
+      this.srcWait = true;
+      this.loadSource().then(
+        () => {
+          this.srcWait = false;
+          // (A big one converts in the worker: see convertBig.)
+          if (!this.dead) this.analyzeInSteps();
+        },
+        () => {
+          this.srcWait = false;
+          if (!this.dead && !this.srcMod && this.inFmt !== 'json') store.set({ status: { kind: 'error', msg: 'Conversion failed', p: 0, line: 1, col: 1, src: this.inFmt } });
+        },
+      );
+    }
+    return true;
+  }
+
   /**
    * Analyses a new document. A big one is parsed here in steps, the first at once (one it finishes is ready
    * as soon as in one go): input is handled between them, the status shows how far it got, and an edit or
@@ -677,27 +771,14 @@ export class Engine {
    * the previous document.
    */
   private analyzeInSteps() {
-    const text = this.ed.length >= STEPS_MIN && this.resetNext ? this.ed.text : '';
+    if (this.convertBig()) return;
+    const text = this.ed.length >= STEPS_MIN && this.resetNext && this.inFmt === 'json' ? this.ed.text : '';
     if (!text || mayBeJwt(text)) return this.analyze();
     const seq = this.loadSeq;
     const ver = this.ed.version;
     const p = parser(text, { lines: LINES_FILE.test(store.get().fileName ?? ''), repair: true });
     this.steps = { p, seq, ver };
-    // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
-    clearTimeout(this.timer);
-    this.packed = this.goodPacked = null;
-    this.res = this.good = null;
-    this.goodMetrics = null;
-    this.goodText = '';
-    this.goodVer = null;
-    this.sel = null;
-    this.selPath = null;
-    this.tablePath = [];
-    this.tree.setRoot(null, true);
-    this.setGraphRoot(null, true);
-    this.table.setNode(null);
-    this.ed.setDiagnostics([]);
-    this.ed.setScope(-1, -1);
+    this.blankViews();
     // (The load this parse is part of goes on from where it got to.)
     const from = Math.max(0, this.progressShown());
     store.set({ empty: false, stale: false, status: (this.progressStatus = { kind: 'parsing', progress: from }), stats: null, sizes: null, path: null, hint: null });
@@ -744,6 +825,107 @@ export class Engine {
     run();
   }
 
+  /** A new document is on its way (parsed or converted in steps): the views show nothing of the one before meanwhile. */
+  private blankViews() {
+    // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
+    clearTimeout(this.timer);
+    this.packed = this.goodPacked = null;
+    this.res = this.good = null;
+    this.goodMetrics = null;
+    this.goodText = '';
+    this.goodVer = null;
+    this.sel = null;
+    this.selPath = null;
+    this.tablePath = [];
+    this.tree.setRoot(null, true);
+    this.setGraphRoot(null, true);
+    this.table.setNode(null);
+    this.ed.setDiagnostics([]);
+    this.ed.setScope(-1, -1);
+  }
+
+  /** The worker for big inputs in another format (null when it can't start: they convert here). */
+  private sourceWorker(): Worker | null {
+    if (this.dead) return null;
+    if (this.srcWorker !== undefined) return this.srcWorker;
+    try {
+      const w = new Worker(new URL('./source.worker.ts', import.meta.url));
+      w.onmessage = (e: MessageEvent<SourceReply>) => this.sourceConverted(e.data);
+      w.onerror = (e) => {
+        // (It couldn't load, offline before it was ever cached say: converted here from now on.)
+        e.preventDefault();
+        w.terminate();
+        this.srcWorker = null;
+        this.srcBusy = false;
+        if (this.srcWanted && !this.dead) {
+          this.srcWanted = null;
+          this.analyze();
+        }
+      };
+      return (this.srcWorker = w);
+    } catch {
+      return (this.srcWorker = null);
+    }
+  }
+
+  /**
+   * A big input in another format (from SOURCE_WORKER_MIN): converted in the worker, its JSON then parsed here in steps,
+   * input handled meanwhile (see sourceConverted). True if that is under way; false: analyze() converts it here.
+   */
+  private convertBig(): boolean {
+    const fmt = this.inFmt;
+    if (fmt === 'json' || !this.srcMod || this.ed.length < SOURCE_WORKER_MIN) return false;
+    const ver = this.ed.version;
+    const text = this.ed.text;
+    const { options, key } = this.sourceOptions(text, fmt);
+    // (Converted already: analyze() uses it.)
+    if (this.srcDone?.ver === ver && this.srcDone.key === key) return false;
+    let w = this.sourceWorker();
+    if (!w) return false;
+    if (this.srcWanted?.ver === ver && this.srcWanted.key === key) return true;
+    // A conversion of an older text or reading still under way is stopped, not waited out (seconds at a few MB).
+    if (this.srcBusy) {
+      w.terminate();
+      this.srcWorker = undefined;
+      this.srcBusy = false;
+      w = this.sourceWorker();
+      if (!w) return false;
+    }
+    const seq = ++this.srcSeq;
+    this.srcWanted = { seq, ver, key };
+    clearTimeout(this.timer);
+    if (this.resetNext) {
+      this.blankViews();
+      store.set({ empty: false, stale: false, status: { kind: 'parsing' }, stats: null, sizes: null, path: null, hint: null });
+    } else store.set({ status: { kind: 'parsing' } });
+    w.postMessage({ seq, text, format: fmt, csv: options } satisfies SourceRequest);
+    this.srcBusy = true;
+    return true;
+  }
+
+  /** The worker's conversion: its JSON is parsed here in short steps, then analysed (dropped if the input changed meanwhile). */
+  private sourceConverted(d: SourceReply) {
+    this.srcBusy = false;
+    const want = this.srcWanted;
+    if (this.dead || !want || d.seq !== want.seq) return;
+    this.srcWanted = null;
+    const current = () => !this.dead && want.seq === this.srcSeq && want.ver === this.ed.version;
+    if (!current()) return;
+    if ('error' in d) {
+      this.srcDone = { ver: want.ver, key: want.key, conv: { error: d.error, p: d.p } };
+      return this.analyze();
+    }
+    const p = parser(d.json, { repair: true });
+    const step = () => {
+      if (!current()) return;
+      const res = p.step(performance.now() + STEP);
+      if (!res) return soon(step);
+      this.srcDone = { ver: want.ver, key: want.key, conv: { json: d.json } };
+      this.analyze(res);
+    };
+    step();
+  }
+
   /** The status a big load shows, "Parsing… N%" (see startProgress). Any other status ends it. */
   private progressStatus: Status | null = null;
 
@@ -777,7 +959,7 @@ export class Engine {
 
   /** Publish analysis; a Format-only result can retain its packed tree until needed. */
   analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
-    if (this.waitForJwt()) return;
+    if (this.waitForJwt() || this.waitForSource()) return;
     // (Outputs asked for meanwhile are made once this analysis has published: see whenAnalysed.)
     if (this.analysed.length) queueMicrotask(() => { for (const f of this.analysed.splice(0)) f(); });
     if (!lazy) this.packed = null;
@@ -799,6 +981,7 @@ export class Engine {
       this.goodMetrics = null;
       this.jwt = null;
       ed.setJwt(null);
+      this.converted = null;
       this.goodText = '';
       this.goodVer = null;
       this.sel = null;
@@ -817,16 +1000,24 @@ export class Engine {
     }
 
     const t0 = performance.now();
-    const jwt = this.jwtReader && mayBeJwt(text) ? this.jwtReader(text, this.indent) : null;
-    const src = jwt ? jwt.json : text;
-    const res = parsed ?? parse(src, { lines: !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
-    const lines = !jwt && (metrics?.records !== undefined || jsonLines(text, res));
+    const fmt = this.inFmt;
+    // Another format: its JSON is what is parsed and shown (or its error, at its place in the input).
+    const conv = fmt === 'json' ? null : this.convertInput(text, fmt);
+    const converted = conv && 'json' in conv ? conv.json : null;
+    const jwt = fmt === 'json' && this.jwtReader && mayBeJwt(text) ? this.jwtReader(text, this.indent) : null;
+    const src = jwt ? jwt.json : converted ?? text;
+    const res =
+      conv && 'error' in conv
+        ? { root: null, issues: [], warnings: [], error: { p: conv.p, m: conv.error }, nodes: 0, depth: 0, exact: false, multi: false }
+        : parsed ?? parse(src, { lines: fmt === 'json' && !jwt && LINES_FILE.test(store.get().fileName ?? ''), repair: true });
+    const lines = fmt === 'json' && !jwt && (metrics?.records !== undefined || jsonLines(text, res));
     // (Used once: it holds that version's text.)
     const counted = this.counted?.ver === ed.version ? this.counted : null;
     this.counted = null;
     const ms = counted?.ms ?? performance.now() - t0;
     this.res = res;
     this.jwt = jwt;
+    this.converted = converted;
     ed.setJwt(jwt ? jwt.at : null);
     if (reset) {
       this.sel = null;
@@ -875,9 +1066,11 @@ export class Engine {
       ed.setScope(-1, -1);
     }
 
-    // Diagnostics → editor squiggles (a decoded JWT's positions aren't in the editor).
+    // Diagnostics → editor squiggles (a decoded JWT's positions aren't in the editor, nor are converted JSON's).
     const diags: Diagnostic[] = [];
-    if (!jwt) {
+    if (conv) {
+      if ('error' in conv) diags.push({ p: conv.p, cls: 'me' });
+    } else if (!jwt) {
       for (let i = 0; i < res.issues.length && i < 300 && !lines; i++) diags.push({ p: res.issues[i].p, cls: 'me' });
       if (res.error) diags.push({ p: res.error.p, cls: 'me' });
       for (let i = 0; i < res.warnings.length && i < 300; i++) diags.push({ p: res.warnings[i].p, cls: 'mw' });
@@ -885,7 +1078,9 @@ export class Engine {
     ed.setDiagnostics(diags);
 
     let hint: Hint = null;
-    if (jwt || lines) hint = null;
+    // (Another format reads almost anything, CSV above all: text that clearly is something else says so, valid or not.)
+    if (conv) hint = this.srcMod!.otherFormat(text, fmt);
+    else if (jwt || lines) hint = null;
     // (A worker measured it: a long root string isn't decoded here just for this.)
     else if (metrics ? metrics.unescape : res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
     else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
@@ -893,7 +1088,7 @@ export class Engine {
     store.set({
       empty: false,
       stale: !lazy && !res.root && !!(this.good || this.goodPacked),
-      status: jwt ? this.jwtStatus(jwt) : lines ? this.linesStatus(res, metrics?.records) : text.length <= 1_000_000 && JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
+      status: conv ? this.sourceStatus(conv, fmt as Source) : jwt ? this.jwtStatus(jwt) : lines ? this.linesStatus(res, metrics?.records) : text.length <= 1_000_000 && JWT_RE.test(text.trim()) ? { kind: 'error', msg: "This looks like a JWT, but a part isn't valid base64url JSON", p: 0, ...this.ed.lineCol(0) } : this.statusOf(res),
       stats: { bytes: metrics?.bytes ?? counted?.bytes ?? byteLength(text), lines: ed.ls.length, nodes: res.nodes, depth: res.depth, ms },
       path: lazy && this.selPath ? formatPath(this.selPath) : this.sel ? formatPath(pathOf(this.sel)) : null,
       hint,
@@ -905,7 +1100,8 @@ export class Engine {
     this.syncTableState();
     this.updateBrackets();
     if (metrics && (res.root || lazy && this.packed!.tree.nodes.length) && !jwt) store.set({ sizes: this.measuredSizes?.id === this.loadSeq ? this.measuredSizes.sizes : { min: metrics.min, stale: false } });
-    else this.measure(res.root && !jwt ? res : null, text);
+    // (An input in another format has no minified form of its own, as a JWT has none: its JSON's sizes are the Format view's.)
+    else this.measure(res.root && !jwt && !conv ? res : null, text);
     this.afterDoc();
   }
 
@@ -914,6 +1110,51 @@ export class Engine {
     const w = res.warnings[0];
     const jsonl = records ?? (res.root!.v as JNode[]).length;
     return w ? { kind: 'valid', warnings: res.warnings.length, more: res.warnings.length >= MAX_ISSUES, msg: w.m, p: w.p, ...this.ed.lineCol(w.p), jsonl } : { kind: 'valid', warnings: 0, jsonl };
+  }
+
+  /**
+   * Converts the input from `fmt` (the reader is loaded: see waitForSource), and keeps the editor's colours and the
+   * detected CSV separator in step with it.
+   */
+  private convertInput(text: string, fmt: Source) {
+    const { options, key } = this.sourceOptions(text, fmt);
+    const done = this.srcDone;
+    if (done?.ver === this.ed.version && done.key === key) return done.conv;
+    // (Converted here: one the worker is still making for it isn't wanted.)
+    this.srcWanted = null;
+    try {
+      return this.srcMod!.convertSource(text, fmt, options);
+    } catch (error) {
+      // (A converter's own failure, not the input's: said as the worker says it.)
+      reportError(error, 'import');
+      return { error: 'Conversion failed', p: 0 };
+    }
+  }
+
+  /**
+   * How the input is read in `fmt` (the CSV options, its separator detected unless chosen) and that as a key; keeps the
+   * editor's colours and the detected separator shown in step with it.
+   */
+  private sourceOptions(text: string, fmt: Source) {
+    const m = this.srcMod!;
+    const csv = fmt === 'csv';
+    const detected = csv ? m.csvDelimiter(text) : ',';
+    const delimiter = csv && this.csvDelim !== 'auto' ? this.csvDelim : detected;
+    const { csvHeader: header, csvTypes: types } = this.settings;
+    // (Excel's first line `sep=;` names the separator: the header row is the line after it.)
+    const head = csv ? (/^\ufeff?sep=.\r?\n/.exec(text.slice(0, 9))?.[0].length ?? 0) : 0;
+    const colors = csv ? `csv${delimiter}${header}${head}` : fmt;
+    if (colors !== this.colorsKey) {
+      this.colorsKey = colors;
+      this.ed.setColors(m.sourceColors(fmt, delimiter, header, head));
+    }
+    if (csv && store.get().input.detected !== detected) store.set({ input: { ...store.get().input, detected } });
+    return { options: csv ? { delimiter, header, types } : {}, key: csv ? `csv${delimiter}${header}${types}` : fmt };
+  }
+
+  /** An input in another format: valid (its JSON is shown), or where it doesn't read as that format and why. */
+  private sourceStatus(conv: { json: string } | { error: string; p: number }, src: Source): Status {
+    return 'error' in conv ? { kind: 'error', msg: conv.error, p: conv.p, ...this.ed.lineCol(conv.p), src } : { kind: 'valid', warnings: 0, src };
   }
 
   /** A decoded JWT (signature not verified); the UI shows its expiry live. */
@@ -1019,7 +1260,14 @@ export class Engine {
     this.loaded = false;
     if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
-    else if (v === 'compare') store.set({ docText: this.ed.text });
+    else if (v === 'compare') store.set({ docText: this.compareLeft() });
+  }
+
+  /** What Compare diffs as the original: the input, or the JSON it converts to when it is in another format. */
+  private compareLeft() {
+    const json = this.converted;
+    if (json === null) return this.inFmt === 'json' ? this.ed.text : '';
+    return (this.good && this.unlessTooLarge(() => formatDoc(json, this.good!, this.indent), false)) ?? json;
   }
 
   private statusOf(res: ParseResult): Status {
@@ -1037,7 +1285,12 @@ export class Engine {
 
   /** Is the viewer showing positions that match the current text? */
   private get synced() {
-    return !this.packed && !!this.res?.root && this.parsedVer === this.ed.version && !this.jwt;
+    return !this.packed && !!this.res?.root && this.parsedVer === this.ed.version && !this.jwt && this.converted === null;
+  }
+
+  /** The JSON the views show when it isn't the input's text: a JWT's decoded document, or another format's conversion. */
+  private get decoded(): string | null {
+    return this.jwt ? this.jwt.json : this.converted;
   }
 
   // ── Selection sync ─────────────────────────────────────────────────────
@@ -1144,20 +1397,24 @@ export class Engine {
       this.gotoError();
       return;
     }
-    // A JWT input is rewritten from its decoded document (undoable).
+    // A JWT input, or one in another format, is rewritten from its JSON (undoable).
     const jwt = this.jwt;
+    const decoded = this.decoded;
+    const from = this.inFmt;
     const before = this.ed.text;
     // Keep the caret on the same node across the rewrite.
-    const at = jwt ? null : nodeAt(r.root, this.ed.caret, before);
+    const at = decoded !== null ? null : nodeAt(r.root, this.ed.caret, before);
     const path = at ? pathOf(at) : null;
-    const next = this.unlessTooLarge(() => fn(r, jwt ? jwt.json : before));
+    const next = this.unlessTooLarge(() => fn(r, decoded ?? before));
     if (next === null) return;
-    const msg = done(r) + (jwt ? ` · replaced the JWT with its decoded JSON · ${this.mod}Z to undo` : '');
-    if (next === before) {
+    const msg =
+      done(r) +
+      (jwt ? ` · replaced the JWT with its decoded JSON · ${this.mod}Z to undo` : from !== 'json' ? ` · replaced the ${FORMAT_LABEL[from]} with JSON · ${this.mod}Z to undo` : '');
+    if (next === before && from === 'json') {
       this.toast(msg.replace(/ ·.*/, '') + ' · no changes', 'info');
       return;
     }
-    this.ed.setValue(next);
+    this.setJson(next);
     this.analyze();
     const target = path && this.res?.root ? resolve(this.res.root, path) : null;
     if (target) this.ed.setCaret(target.s);
@@ -1181,20 +1438,39 @@ export class Engine {
 
   /** Before an agent's tool runs: the JWT reader is loaded, so a JWT is read as one at once (it loads when idle otherwise). */
   agentReady(): Promise<void> {
-    return this.loadJwt();
+    // (An input in another format is read by ./source: without it, it would look empty to the agent.)
+    const source = this.inFmt !== 'json' ? this.loadSource().catch(() => undefined) : undefined;
+    return Promise.all([this.loadJwt(), source]).then(() => undefined);
   }
 
   /** The open document as a command sees it, its parse finished now if it was still on its way. */
   agentDoc() {
     const res = this.fresh();
     const text = this.ed.text;
-    return { text, res, src: this.jwt ? this.jwt.json : text, jwt: this.jwt };
+    return { text, res, src: this.decoded ?? text, jwt: this.jwt, format: this.inFmt };
   }
 
-  /** Replaces the input with `next` as one undoable edit, and says so (`msg`). */
+  /**
+   * Replaces the input with JSON `next` as one undoable step (the caret at `caret`). An input in another format becomes
+   * JSON with it, its file too (example.yaml: example.json); Undo brings back both.
+   */
+  private setJson(next: string, caret = 0) {
+    const from = this.inFmt;
+    if (from === 'json') return this.ed.setValue(next, caret);
+    const name = this.edName;
+    const renamed = name ? name.replace(/\.[a-z0-9]+$/i, '') + '.json' : null;
+    this.ed.setValue(next, caret, false, renamed !== name ? [name, renamed] : undefined, [from, 'json']);
+    if (renamed !== name) {
+      this.edName = renamed;
+      store.set({ fileName: renamed });
+    }
+    this.setInputFormat('json', false);
+  }
+
+  /** Replaces the input with JSON `next` as one undoable edit, and says so (`msg`). */
   replaceText(next: string, msg: string) {
     this.flushLoad();
-    this.ed.setValue(next);
+    this.setJson(next);
     this.analyze();
     this.toast(`${msg} · ${this.mod}Z to undo`, 'ok');
   }
@@ -1262,35 +1538,122 @@ export class Engine {
     const pr = parse(inner);
     const next = pr.root && !pr.error ? this.unlessTooLarge(() => formatDoc(inner, pr, this.indent)) : inner;
     if (next === null) return;
-    this.ed.setValue(next);
+    this.setJson(next);
     this.analyze();
     track('feature_used', { feature: 'unescape' });
     this.toast('Unescaped', 'ok');
   }
 
-  /** Converts the current text from another format into JSON (undoable). */
-  async importAs(fmt: 'yaml' | 'xml' | 'csv' | 'toml') {
-    const r = this.fresh();
-    if (r?.root && !r.error && !r.issues.length) {
-      this.toast(`This is already valid JSON, nothing to convert from ${fmt.toUpperCase()}`, 'info');
-      return;
+  // ── Input format ───────────────────────────────────────────────────────
+
+  /** Reads the input as `format` (YAML, CSV, XML, TOML or JSON): the text stays as it is, the views show its JSON. */
+  setInput(format: SourceFormat) {
+    this.flushLoad();
+    if (format === this.inFmt) return;
+    track('feature_used', { feature: 'input_format', value: format });
+    // (One undo step: Undo reads the text as it was read before.)
+    this.ed.reformatStep([this.inFmt, format]);
+    this.setInputFormat(format);
+    this.persistSoon();
+  }
+
+  /**
+   * Reads the document as `format` from now on, and analyses it again (`analyse`: the caller does). A new reading:
+   * the views start over, as for a new document.
+   */
+  private setInputFormat(format: SourceFormat, analyse = true) {
+    if (format === this.inFmt) return;
+    this.inFmt = format;
+    if (format === 'json') {
+      this.colorsKey = 'json';
+      this.ed.setColors(null);
     }
-    try {
-      const { importToJson } = await import('../convert/import');
-      if (this.dead) return;
-      const r = importToJson(this.ed.text, fmt, this.indent);
-      if ('error' in r) {
-        this.toast(`Couldn't read ${fmt.toUpperCase()}: ${r.error}${r.line ? ` (line ${r.line})` : ''}`, 'err');
-        return;
-      }
-      this.ed.setValue(r.json);
-      this.analyze();
-      track('feature_used', { feature: `import_${fmt}` });
-      this.toast(`Converted ${fmt.toUpperCase()} to JSON · ${this.mod}Z to undo`, 'ok');
-    } catch (error) {
-      reportError(error, 'import');
-      this.toast('Conversion failed', 'err');
+    // (What was made for the other reading of the same text isn't this one's: see formatCurrent.)
+    this.docGen++;
+    this.supersede();
+    this.loadSeq++;
+    this.progressStatus = null;
+    this.workerParse = null;
+    this.reindentJob = null;
+    this.worker?.postMessage({ id: this.loadSeq, cancel: true });
+    this.analysisWorker?.postMessage({ id: this.loadSeq, cancel: true });
+    clearTimeout(this.analysisTimer);
+    clearTimeout(this.timer);
+    this.measuredSizes = null;
+    this.fmtStatSeq++;
+    this.fmtKey = '';
+    this.fmtSrcVer = null;
+    this.packed = this.goodPacked = null;
+    // (The parse of the other reading is no answer for a command now: see fresh.)
+    this.res = null;
+    this.srcSeq++;
+    this.srcWanted = this.srcDone = null;
+    this.parsed = '';
+    this.parsedVer = null;
+    this.resetNext = true;
+    this.publishInput();
+    if (analyse && !this.dead) this.analyzeInSteps();
+  }
+
+  /** Undo or Redo went past a step that changed what the input is read as. */
+  private reformatted = (format: string) => {
+    this.setInputFormat(formatOf(format));
+    this.persistSoon();
+  };
+
+  /**
+   * What text pasted over everything is read as: JSON, when it plainly is (a document left in another format, a
+   * JSON response pasted on the CSV page), else what the input was read as. Undo brings the other format back.
+   */
+  private pasteFormat(text: string): SourceFormat {
+    return this.inFmt !== 'json' && plainJson(text) ? 'json' : this.inFmt;
+  }
+
+  /** The editor's paste over everything (see EditorEvents.pasteFormats): the formats of its step. */
+  private pastedFormats = (text: string): [string, string] | undefined => {
+    const to = this.pasteFormat(text);
+    this.pasteJson = to !== this.inFmt;
+    return this.pasteJson ? [this.inFmt, to] : undefined;
+  };
+
+  /** CSV input: the separator (this document's), whether the first row is a header, and whether values are typed. */
+  setCsv(patch: { delimiter?: CsvDelimiter; header?: boolean; types?: boolean }) {
+    if (patch.delimiter !== undefined && patch.delimiter !== this.csvDelim) {
+      this.csvDelim = patch.delimiter;
+      const names = { auto: 'auto', ',': 'comma', ';': 'semicolon', '\t': 'tab', '|': 'pipe' } as const;
+      track('feature_used', { feature: 'csv_delimiter', value: names[patch.delimiter] });
     }
+    const s: Partial<Settings> = {};
+    if (patch.header !== undefined && patch.header !== this.settings.csvHeader) {
+      s.csvHeader = patch.header;
+      track('feature_used', { feature: 'csv_header', on: patch.header });
+    }
+    if (patch.types !== undefined && patch.types !== this.settings.csvTypes) {
+      s.csvTypes = patch.types;
+      track('feature_used', { feature: 'csv_types', on: patch.types });
+    }
+    this.setSettings(s);
+    this.publishInput();
+    if (this.inFmt !== 'csv') return;
+    // (The same text, read another way: what was made for the reading before isn't this one's.)
+    this.docGen++;
+    this.supersede();
+    this.fmtKey = '';
+    this.fmtSrcVer = null;
+    this.srcSeq++;
+    this.srcWanted = this.srcDone = null;
+    // (The parse of the reading before is no answer for a command now: see fresh.)
+    this.res = null;
+    this.parsed = '';
+    this.parsedVer = null;
+    this.flushLoad();
+    if (!this.convertBig()) this.analyze();
+  }
+
+  /** Tells the interface what the input is read as. */
+  private publishInput() {
+    const { input } = store.get();
+    if (input.format !== this.inFmt || input.delimiter !== this.csvDelim) store.set({ input: { ...input, format: this.inFmt, delimiter: this.csvDelim } });
   }
 
   /** Turns a string value that holds JSON (`"{\"a\":1}"`) into real JSON, in place. */
@@ -1339,7 +1702,7 @@ export class Engine {
     if (s.kind === 'error' || s.kind === 'fixable' || (s.kind === 'valid' && s.p !== undefined)) {
       const p = (s as { p: number }).p;
       this.ed.select(p, p, true);
-    } else if (s.kind === 'valid') this.toast(this.jwt ? 'No errors, this JWT decodes' : 'No errors, this is valid JSON', 'ok');
+    } else if (s.kind === 'valid') this.toast(this.jwt ? 'No errors, this JWT decodes' : this.inFmt !== 'json' ? `No errors, this is valid ${FORMAT_LABEL[this.inFmt]}` : 'No errors, this is valid JSON', 'ok');
   }
 
   undo() {
@@ -1373,7 +1736,11 @@ export class Engine {
 
   /** `outputFirst`: the caller reads nothing back afterwards, so a big document may draw its output first. */
   /** `file`: the file `text` was read from, as is (readText), which the analysis worker then reads itself. */
-  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File) {
+  /**
+   * `format`: what the document is read as (default: what its file name says; a document without one, pasted, is read
+   * as the one before it was). Undo brings back the one before with the document before.
+   */
+  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File, format: SourceFormat = name ? formatOfName(name) : this.inFmt) {
     // (A document in the editor: huge mode's file goes.)
     this.huge?.close();
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
@@ -1391,15 +1758,20 @@ export class Engine {
     // sizes and counts shown were the document before's.)
     store.set({ fileName: name, sizes: null, stats: null });
     const names: [string | null, string | null] = [this.edName, name];
+    const formats: [SourceFormat, SourceFormat] = [this.inFmt, format];
+    // (A new document: its CSV separator is detected again, a .tsv file's is a tab.)
+    this.csvDelim = /\.tsv$/i.test(name ?? '') ? '\t' : 'auto';
+    if (format !== this.inFmt) this.setInputFormat(format, false);
+    else this.publishInput();
     if (text.length >= STEPS_MIN) this.startProgress();
     // (Its output, read off its tape, comes with its analysis: until then the view shows nothing of the one before.)
     if (this.settings.view === 'format' && this.prettyFromTape(text.length)) this.blankFormat();
-    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, names))) {
+    if (outputFirst && this.outputFirst(text, name, () => this.finishLoad(text, persist, true, names, formats))) {
       // Until the editor has it, input would act on the old document: the first input hands it over at once.
-      this.pendingLoad = { seq: this.loadSeq, text, persist, names };
+      this.pendingLoad = { seq: this.loadSeq, text, persist, names, formats };
       return;
     }
-    this.finishLoad(text, persist, false, names);
+    this.finishLoad(text, persist, false, names, formats);
   }
 
   /**
@@ -1430,7 +1802,7 @@ export class Engine {
   };
 
   /** A load whose output is drawn first and whose editor text is still to come (see flushLoad). */
-  private pendingLoad: { seq: number; text: string; persist: boolean; names: [string | null, string | null] } | null = null;
+  private pendingLoad: { seq: number; text: string; persist: boolean; names: [string | null, string | null]; formats: [SourceFormat, SourceFormat] } | null = null;
   /** The file name of the document the editor holds (the store's is a loading document's at once). */
   private edName: string | null = null;
   /** The file being read for the input editor (its request), and one an Undo asked to undo once it arrives. */
@@ -1448,7 +1820,7 @@ export class Engine {
     if (p.seq !== this.loadSeq) return;
     // The load's deferred steps are dropped; the analysis draws its output as usual.
     this.loadSeq++;
-    this.finishLoad(p.text, p.persist, true, p.names);
+    this.finishLoad(p.text, p.persist, true, p.names, p.formats);
     // Arrived for an edit: editable at once, not in the quiet view.
     if (edit) this.ed.takeOver();
     this.onCaret();
@@ -1461,7 +1833,8 @@ export class Engine {
    */
   private outputFirst(text: string | Doc, name: string | null, next: (res?: ParseResult, metrics?: DocumentMetrics) => void, typed = false, retained?: Doc): boolean {
     const s = this.settings;
-    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || mayBeJwt(text)) return false;
+    // (Only JSON: another format's output is its conversion, made with its analysis.)
+    if (text.length < OUTPUT_FIRST || !typed && (s.view !== 'format' || s.sortKeys || LINES_FILE.test(name ?? '')) || mayBeJwt(text) || this.inFmt !== 'json') return false;
     // A big document's Pretty output is read off its tape (see runFormat): nothing to make here. A load goes
     // on to the editor and the analysis (finishLoad); after typing, only the analysis runs.
     if (this.prettyFromTape(text.length)) return typed && this.analyzeOnly(retained ?? (typeof text === 'string' ? Doc.of(text) : text), name, next);
@@ -1890,14 +2263,14 @@ export class Engine {
   private refocus = false;
 
   /** `split`: the output is already shown, so the editor and the analysis go in separate tasks (input is handled between them). */
-  private finishLoad(text: string, persist: boolean, split: boolean, names: [string | null, string | null]) {
+  private finishLoad(text: string, persist: boolean, split: boolean, names: [string | null, string | null], formats: [SourceFormat, SourceFormat]) {
     this.pendingLoad = null;
     const loading = this.progressShown() >= 0 ? this.progressStatus : null;
     this.edName = names[1];
     // (Undo and Redo bring the file names back with the documents. Pasted, the caret goes after it, as a paste's does.)
     this.landing = true;
     try {
-      this.ed.setValue(text, this.refocus ? text.length : 0, true, names);
+      this.ed.setValue(text, this.refocus ? text.length : 0, true, names, formats);
     } finally {
       this.landing = false;
     }
@@ -1926,7 +2299,7 @@ export class Engine {
       // A big document in the Format view is parsed and measured by the analysis worker, its tree kept
       // packed until a command needs nodes (as after typing): the page would block on it for seconds.
       // The other views need every node at once; without a worker, the page parses it too.
-      if (text.length >= WORKER_MIN && this.settings.view === 'format' && this.analysisFails < 3) {
+      if (text.length >= WORKER_MIN && this.settings.view === 'format' && this.analysisFails < 3 && this.inFmt === 'json') {
         const here = () => seq === this.loadSeq && this.analyzeInSteps();
         // (Putting the text in the editor scheduled a typed analysis, which analyze() would cancel.)
         clearTimeout(this.timer);
@@ -2033,14 +2406,14 @@ export class Engine {
       const undone = this.undoLoad === signal;
       this.undoLoad = null;
       // (A file that didn't convert opens as text, and its error stays in view: "Opened" would replace it.)
-      const open = (json: string, name: string, said: string | false) => {
+      const open = (format: SourceFormat) => {
         noteLoad(source, 1, f.name);
-        // (The file itself goes to the analysis worker only for its own text, not a conversion.)
-        this.load(json, name, true, json === text, json === text ? f : undefined);
+        // (The file itself goes to the analysis worker only for JSON: another format's JSON is its conversion.)
+        this.load(text, f.name, true, true, format === 'json' ? f : undefined, format);
         if (undone) {
           this.flushLoad();
           this.ed.undo();
-        } else if (said) this.toast(said, 'ok');
+        } else this.toast(`Opened ${f.name}`, 'ok');
       };
       // Not text (a zip, an image, a video opened by mistake): said so, and read again only when asked (the
       // text, up to hundreds of megabytes, isn't held for as long as the toast stays).
@@ -2049,19 +2422,8 @@ export class Engine {
         if (!undone) this.toast(...binaryFile(f.name, again));
         return;
       }
-      let said: string | false = `Opened ${f.name}`;
-      if (!asText && /\.(csv|tsv|ya?ml|xml|toml)$/i.test(f.name)) {
-        const { detectFormat, importToJson } = await import('../convert/import');
-        if (signal.aborted) return unshow();
-        const fmt = detectFormat(text, f.name);
-        if (fmt !== 'json' && fmt !== 'unknown') {
-          const r = importToJson(text, fmt, this.indent);
-          if ('json' in r) return open(r.json, f.name.replace(/\.[^.]+$/, '.json'), `Converted ${f.name} to JSON`);
-          this.toast(`Couldn't read ${f.name}: ${r.error}`, 'err');
-          said = false;
-        }
-      }
-      open(text, f.name, said);
+      // A YAML, CSV, XML or TOML file opens as itself, read as that format (its JSON shows on the right).
+      open(asText ? 'json' : formatOfName(f.name));
     } catch {
       if (this.reading === signal) this.reading = null;
       unshow();
@@ -2079,7 +2441,7 @@ export class Engine {
         return;
       }
       noteLoad('paste_button');
-      this.load(text, null);
+      this.load(text, null, undefined, undefined, undefined, this.pasteFormat(text));
       if (this.settings.autoFormat) this.autoFormat();
     } catch {
       if (signal.aborted) return;
@@ -2186,14 +2548,15 @@ export class Engine {
   /** Called by the Compare panel with per-line marks for both editors (nulls also when it closes). */
   compareMarks(left: Uint8Array | null, right: Uint8Array | null) {
     const on = this.settings.view === 'compare';
-    this.ed.setLineMarks(on ? left : null);
+    // (Another format's lines aren't the JSON's the panel compared.)
+    this.ed.setLineMarks(on && this.inFmt === 'json' ? left : null);
     this.ed2.setLineMarks(on ? right : null);
     if (!on && store.get().cmpParsed) store.set({ cmpParsed: null });
   }
 
   /** Reveal a difference in both documents without moving focus. */
   compareJump(left: number | undefined, right: number | undefined) {
-    if (left !== undefined) this.ed.point(left);
+    if (left !== undefined && this.inFmt === 'json') this.ed.point(left);
     if (right !== undefined) this.ed2.point(right);
   }
 
@@ -2265,14 +2628,25 @@ export class Engine {
   swapCompare() {
     track('feature_used', { feature: 'compare_swap' });
     this.flushLoad();
-    const a = this.ed.text;
+    // (An input in another format goes over as its JSON, which Compare compared: the modified document is JSON.)
+    const json = this.inFmt === 'json';
+    // (Its JSON is what goes over: there is none while it doesn't read as its format.)
+    if (!json) this.fresh();
+    if (!json && this.converted === null) {
+      this.toast("Can't do that yet. Fix the error first.", 'err');
+      this.gotoError();
+      return;
+    }
+    const a = json ? this.ed.text : this.compareLeft();
     const b = this.ed2.text;
-    const fa = this.edName;
+    const name = this.edName;
+    const fa = json || !name ? name : name.replace(/\.[a-z0-9]+$/i, '') + '.json';
     const fb = store.get().cmpFile;
     this.resetNext = true;
     this.edName = fb;
-    this.ed.setValue(b, 0, false, [fa, fb]);
+    this.ed.setValue(b, 0, false, [name, fb], [this.inFmt, 'json']);
     this.ed2.setValue(a, 0, false, [fb, fa]);
+    this.setInputFormat('json', false);
     store.set({ fileName: fb, cmpFile: fa });
     write(KEYS.file, fb);
     this.analyze();
@@ -2304,9 +2678,11 @@ export class Engine {
   download() {
     this.flushLoad();
     if (!this.ed.text) return this.toast('Nothing to download yet', 'info');
-    const name = store.get().fileName || 'data.json';
+    // (Saved as what it is: a YAML input as .yaml.)
+    const [ext, type] = FORMAT_FILE[this.inFmt];
+    const name = store.get().fileName || `data.${ext}`;
     track('feature_used', { feature: 'download_input' });
-    this.save(this.ed.text, /\.[a-z0-9]+$/i.test(name) ? name : name + '.json', 'application/json');
+    this.save(this.ed.text, /\.[a-z0-9]+$/i.test(name) ? name : `${name}.${ext}`, type);
   }
 
   private save(text: string, name: string, type: string) {
@@ -2375,11 +2751,14 @@ export class Engine {
     const r = this.fresh();
     const rb = b.trim() ? parse(b) : null;
     const compact = (text: string, r: ParseResult | null) => (r?.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text);
+    // (Another format travels as typed, and says what it is.)
+    const source = this.inFmt !== 'json';
     const hash = await linkHash({
-      a: a.trim() ? { text: this.jwt ? a.trim() : compact(a, r) } : undefined,
+      a: a.trim() ? { text: this.jwt ? a.trim() : source ? a : compact(a, r) } : undefined,
       b: rb ? { text: compact(b, rb) } : undefined,
       view: this.settings.view,
       to: this.settings.target,
+      in: this.inFmt !== 'json' ? this.inFmt : undefined,
     });
     return { url: `${location.origin}/${hash}`, comparing };
   }
@@ -2413,7 +2792,7 @@ export class Engine {
         }
         return this.toast('That share link is too large to open', 'err');
       }
-      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to }, signal);
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in }, signal);
     };
     await open(LINK_DOCUMENT);
   };
@@ -2477,8 +2856,10 @@ export class Engine {
     const had = !!this.ed.text.trim();
     if (a) {
       noteLoad(source(r.a!), 1, a.name);
-      const pretty = open(a.text);
-      this.load(pretty ?? a.text, a.name, true, pretty === null);
+      // (Another format, as the link says or its URL's file name does, opens as itself.)
+      const format = r.in ?? formatOfName(a.name);
+      const pretty = format === 'json' ? open(a.text) : null;
+      this.load(pretty ?? a.text, a.name, true, pretty === null, undefined, format);
     }
     if (b) {
       noteLoad(source(r.b!), 2, b.name);
@@ -2516,7 +2897,7 @@ export class Engine {
       }
       const text = await (await import('../json/read')).readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
-      return { text, name: /\.json$/i.test(name) ? name : name + '.json', host: url.hostname };
+      return { text, name: /\.json$/i.test(name) || formatOfName(name) !== 'json' ? name : name + '.json', host: url.hostname };
     } catch {
       if (signal.aborted) return null;
       const why = res ? 'The connection dropped before the whole file arrived. Try again.' : await this.fetchFailure(url, signal);
@@ -2650,7 +3031,7 @@ export class Engine {
     if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
     if (view === 'compare') {
-      store.set({ docText: this.ed.text, cmpText: this.ed2.text });
+      store.set({ docText: this.compareLeft(), cmpText: this.ed2.text });
       requestAnimationFrame(() => {
         if (this.dead) return;
         this.ed2.render(true);
@@ -3656,7 +4037,7 @@ export class Engine {
     const s = p.settings ?? {};
     this.presetting = true;
     try {
-      this.load(p.initialText ?? '', p.initialFileName ?? null, false);
+      this.load(p.initialText ?? '', p.initialFileName ?? null, false, false, undefined, p.input ?? formatOfName(p.initialFileName));
       if (s.view === 'convert') {
         this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface' });
       } else if (s.view) {
@@ -3666,7 +4047,6 @@ export class Engine {
     } finally {
       this.presetting = false;
     }
-    if (p.initialImport) window.setTimeout(() => { if (!this.dead) void this.importAs(p.initialImport!); }, 0);
   }
 
   setIndent(indent: IndentId) {
@@ -4088,6 +4468,8 @@ export class Engine {
     write(KEYS.doc, keep ? (p ? p.text : this.ed.text) : null);
     // The file name goes with the document kept (a name over nothing, or over the one before, would mislead).
     write(KEYS.file, keep ? (p ? p.names[1] : this.edName) : null);
+    // (And what it is read as: a YAML document opens as YAML again.)
+    write(KEYS.fmt, keep && this.inFmt !== 'json' ? this.inFmt : null);
   }
 
   /** Offers to reload into the new version the service worker has cached. */
@@ -4123,6 +4505,7 @@ export class Engine {
             () => import('./sizes'),
             () => import('../convert'),
             () => import('../convert/import'),
+            () => import('./source'),
             () => import('../convert/xlsx'),
             () => import('../json/smart'),
           ];

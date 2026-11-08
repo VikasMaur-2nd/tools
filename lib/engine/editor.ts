@@ -126,12 +126,22 @@ export interface EditorEvents {
   renamed?(name: string | null): void;
   /** The file name of the document it holds: a paste over all of it leaves that file (Undo tells it again, see renamed). */
   name?(): string | null;
+  /** Undo or Redo went past a step that changed what format the document is read as (see setValue): that format now. */
+  reformat?(format: string): void;
+  /**
+   * A paste over everything, of `text`: the formats the document is read as before and after it, if the paste
+   * changes that (the listener does when the document changes). Undo and Redo tell them, see reformat.
+   */
+  pasteFormats?(text: string): [string, string] | undefined;
   /** Undo is about to be applied: true if the listener takes it instead (a document still being read, undone once it arrives). */
   undoing?(): boolean;
 }
 
-/** Colours [a, b) of `text`, which starts at document offset `at`, as escaped HTML: for a document that isn't JSON (see setColors). */
-export type Colors = (text: string, a: number, b: number, at: number) => string;
+/**
+ * Colours [a, b) of `text`, which starts at document offset `at`, as escaped HTML: for a document that isn't JSON (see
+ * setColors). `marks`: the diagnostics on that piece, at offsets into `text`, to underline as highlightLine does.
+ */
+export type Colors = (text: string, a: number, b: number, at: number, marks?: Mark[] | null) => string;
 
 export interface Diagnostic {
   p: number;
@@ -148,6 +158,8 @@ interface Change {
   kind: 'type' | 'del' | 'other';
   /** The file names before and after a load (see setValue) or a paste over everything: told on undo and redo. */
   names?: [string | null, string | null];
+  /** The formats the document is read as before and after the step (see setValue): told on undo and redo. */
+  formats?: [string, string];
 }
 
 const LINE_MARK = ['', 'dla', 'dld', 'dlc'];
@@ -1648,10 +1660,10 @@ export class Editor {
         sa = this.stringStart(a, sa);
         const pad = (sa - a) * this.cw;
         const [t, o] = this.win(sa, sb + 1);
-        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa - o, sb - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, sb - o, o) : highlightLine(t, sa - o, sb - o, moved(marks, o), sb === b)}${sb === b ? ph : ''}</div>`);
+        html.push(`${open(sa)}<i class="ed-sp" style="width:${pad}px"></i>${this.jwt ? jwtLine(t, sa - o, sb - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, sb - o, o, moved(marks, o)) : highlightLine(t, sa - o, sb - o, moved(marks, o), sb === b)}${sb === b ? ph : ''}</div>`);
       } else {
         const [t, o] = this.win(a, b + 1);
-        html.push(`${open(a)}${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
+        html.push(`${open(a)}${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o, moved(marks, o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
       }
     }
     this.draw(html, this.gutterHtml(first, last), offs);
@@ -1725,7 +1737,7 @@ export class Editor {
           const end = sb === b;
           // Other scripts: the row's neighbours as bidi context (see bidiContext).
           const se = odd && !end ? trimWs(t, sa - o, sb - o) + o : sb;
-          let body = this.jwt ? jwtLine(t, sa - o, se - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, se - o, o) : highlightLine(t, sa - o, se - o, ms, end, str);
+          let body = this.jwt ? jwtLine(t, sa - o, se - o, this.jwtAt(o)) : this.colors ? this.colors(t, sa - o, se - o, o, ms) : highlightLine(t, sa - o, se - o, ms, end, str);
           if (odd) {
             // Where the browser keeps a word's letters joined across the break, so does the copy.
             const zl = wr.exact && wr.joinsAt(t, sa - o) ? '\u200d' : '';
@@ -1743,7 +1755,7 @@ export class Editor {
       } else {
         if (top < 0) top = y;
         const [t, o] = this.win(a, b + 1);
-        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
+        html.push(`<div${lm ? ` class="${LINE_MARK[lm]}"` : ''}>${this.jwt ? jwtLine(t, a - o, b - o, this.jwtAt(o)) : this.colors ? this.colors(t, a - o, b - o, o, moved(marks, o)) : highlightLine(t, a - o, b - o, moved(marks, o))}${ph}</div>`);
         offs?.push(a);
       }
       // Gutter: the number on a line's first row, its bars on every row.
@@ -2449,6 +2461,7 @@ export class Editor {
     const sb = this.selBefore;
     if (!r && old.length === now.length && old.toString() === now.toString()) return;
     const [a, eo, en] = r ?? diffRange(old.toString(), now.toString(), Math.min(sb[0], this.selAfter[0]));
+    const formats = kind === 'insertFromPaste' ? this.pasteFormats(now) : undefined;
     const ch: Change = {
       a,
       del: old.slice(a, eo),
@@ -2458,6 +2471,7 @@ export class Editor {
       t: Date.now(),
       kind: kind === 'insertText' || kind === 'insertCompositionText' ? 'type' : kind.startsWith('delete') ? 'del' : 'other',
       names: kind === 'insertFromPaste' ? this.leaving() : undefined,
+      ...(formats && { formats }),
     };
     const last = this.undo_[this.undo_.length - 1];
     const recent = last && ch.t - last.t < 1200;
@@ -2483,6 +2497,12 @@ export class Editor {
     return name === null ? undefined : [name, null];
   }
 
+  /** The formats of a paste's step (see Change.formats): a paste over everything, of `doc`, may change it. */
+  private pasteFormats(doc: Doc | string): [string, string] | undefined {
+    const f = this.pasteFull ? this.ev.pasteFormats?.(doc.toString()) : undefined;
+    return f && f[0] !== f[1] ? f : undefined;
+  }
+
   private push(ch: Change) {
     this.undo_.push(ch);
     this.grew(ch.del.length + ch.ins.length);
@@ -2503,8 +2523,10 @@ export class Editor {
     if (!ch) return;
     this.histChars -= ch.del.length + ch.ins.length;
     this.redo_.push(ch);
-    this.write(ch.a, ch.a + ch.ins.length, ch.del, ch.selB);
+    // (A step of the reading alone changed no text: see reformatStep.)
+    if (ch.del || ch.ins) this.write(ch.a, ch.a + ch.ins.length, ch.del, ch.selB);
     if (ch.names) this.ev.renamed?.(ch.names[0]);
+    if (ch.formats) this.ev.reformat?.(ch.formats[0]);
   }
 
   redo() {
@@ -2512,8 +2534,9 @@ export class Editor {
     const ch = this.redo_.pop();
     if (!ch) return;
     this.push(ch);
-    this.write(ch.a, ch.a + ch.del.length, ch.ins, ch.selA);
+    if (ch.del || ch.ins) this.write(ch.a, ch.a + ch.del.length, ch.ins, ch.selA);
     if (ch.names) this.ev.renamed?.(ch.names[1]);
+    if (ch.formats) this.ev.reformat?.(ch.formats[1]);
   }
 
   /** Low-level replace without recording history. */
@@ -2558,13 +2581,15 @@ export class Editor {
     this.apply(a, b, text, selA, selB, 'input');
   }
 
-  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind, names?: [string | null, string | null]) {
+  private apply(a: number, b: number, text: string, selA: number | undefined, selB: number | undefined, kind: ChangeKind, names?: [string | null, string | null], formats?: [string, string]) {
     text = lf(text);
     const sb = this.selection;
     const del = this.doc.slice(a, b);
     const s1 = selA ?? a + text.length;
     const s2 = selB ?? s1;
-    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names: names ?? (kind === 'paste' ? this.leaving() : undefined) });
+    // (A paste over everything is all of the text, or it with the blank document's spaces around it.)
+    formats ??= kind === 'paste' ? this.pasteFormats(text) : undefined;
+    this.push({ a, del, ins: text, selB: sb, selA: [s1, s2], t: 0, kind: 'other', names: names ?? (kind === 'paste' ? this.leaving() : undefined), ...(formats && formats[0] !== formats[1] && { formats }) });
     this.redo_ = [];
     this.typing = true;
     this.shiftFolds(a, b, text, true);
@@ -2585,19 +2610,31 @@ export class Editor {
 
   /** Replaces the whole document as one undoable step. `load`: a new document (see LAZY_CHARS). */
   /** `names`: the file names before and after, when the document comes from or leaves a file (see EditorEvents.renamed). */
-  setValue(next: string, caret = 0, load = false, names?: [string | null, string | null]) {
+  /** `formats`: what the document is read as before and after, when that changes with it (see EditorEvents.reformat). */
+  setValue(next: string, caret = 0, load = false, names?: [string | null, string | null], formats?: [string, string]) {
     next = lf(next);
     if (next.length !== this.doc.length || next !== this.text) {
       // (A new document may open in the quiet view: see LAZY_CHARS.)
       this.forceEdit = false;
       this.loading = load;
       try {
-        this.apply(0, this.doc.length, next, caret, caret, 'set', names);
+        this.apply(0, this.doc.length, next, caret, caret, 'set', names, formats);
       } finally {
         this.loading = false;
       }
-    }
+    } else if (formats) this.reformatStep(formats, names);
     this.select(caret, caret, true);
+  }
+
+  /**
+   * The same text, read as another format from now on (see Change.formats): a step of its own, so Undo brings the
+   * reading before back (and the file name, `names`, when that changes with it).
+   */
+  reformatStep(formats: [string, string], names?: [string | null, string | null]) {
+    if (this.locked || formats[0] === formats[1]) return;
+    const sel = this.selection;
+    this.push({ a: 0, del: '', ins: '', selB: sel, selA: sel, t: 0, kind: 'other', names, formats });
+    this.redo_ = [];
   }
 
   select(a: number, b: number, center = true) {

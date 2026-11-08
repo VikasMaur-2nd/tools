@@ -419,7 +419,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "d6e32c71205e",
+    "hash": "77780ec2e2d0",
     "title": "YAML a JSON con formato en tu navegador",
     "description": "Convierte YAML a JSON con formato sin subir el documento. Tool Kumar analiza YAML de datos simples en tu navegador e informa de los errores.",
     "heading": "YAML a JSON",
@@ -432,9 +432,9 @@
     "modeLabel": "Importación de YAML a JSON",
     "exampleLabel": "El JSON con formato que aparece abajo se genera al importar este ejemplo YAML.",
     "steps": [
-      "Pega YAML o abre un archivo .yaml o .yml.",
-      "Elige YAML → JSON cuando el importador detecte YAML.",
-      "Revisa el JSON con formato y cópialo o descárgalo."
+      "Pega YAML o abre un archivo .yaml o .yml. El editor conserva tu YAML tal como lo escribiste.",
+      "El JSON aparece a la derecha mientras escribes. Un error de YAML se subraya en el editor y se indica su línea y columna.",
+      "Copia o descarga el JSON. Usar como entrada reemplaza el YAML por el JSON, y Deshacer recupera el YAML."
     ],
     "options": [
       "Los mapeos y secuencias simples se convierten en objetos y arrays JSON.",
@@ -452,7 +452,7 @@
       },
       {
         "question": "¿Puedo abrir un archivo YAML?",
-        "answer": "Sí. Usa Abrir archivo y Tool Kumar detectará las extensiones .yaml y .yml antes de importar."
+        "answer": "Sí. Abre un archivo .yaml o .yml: en el editor sigue siendo YAML, con su JSON a la derecha. Descargar te da el JSON como archivo .json."
       }
     ]
   },
@@ -500,7 +500,7 @@
     ]
   },
   "csv-to-json": {
-    "hash": "58d77f369e7a",
+    "hash": "7741f9a152c1",
     "title": "CSV a JSON con inferencia de tipos",
     "description": "Convierte CSV a JSON sin subir archivos. Tool Kumar detecta columnas, interpreta números y booleanos y conserva el resultado en tu navegador.",
     "heading": "CSV a JSON",
@@ -514,14 +514,15 @@
     "modeLabel": "Importación de CSV a JSON",
     "exampleLabel": "El JSON que aparece abajo se genera al importar el ejemplo CSV.",
     "steps": [
-      "Pega CSV con una fila de encabezados.",
-      "Elige CSV → JSON cuando el detector identifique la entrada.",
-      "Revisa el array y copia o descarga el JSON."
+      "Pega CSV o abre un archivo .csv o .tsv. El editor conserva tu CSV tal cual.",
+      "El array JSON aparece a la derecha mientras escribes. En Opciones de CSV eliges el separador, la fila de encabezados y la detección de números.",
+      "Copia o descarga el JSON, o cambia a Tabla para revisar las filas."
     ],
     "options": [
-      "Se detectan los delimitadores coma, punto y coma, tabulación y barra vertical.",
+      "Se detectan los delimitadores coma, punto y coma, tabulación y barra vertical, o puedes elegir uno.",
       "Los campos entre comillas pueden contener comas y saltos de línea.",
-      "Los campos vacíos sin comillas se convierten en null; los campos vacíos entre comillas siguen siendo cadenas vacías."
+      "Los campos vacíos sin comillas se convierten en null; los campos vacíos entre comillas siguen siendo cadenas vacías.",
+      "Sin fila de encabezados, cada fila se convierte en un array. Con la detección de números desactivada, todos los valores siguen siendo cadenas."
     ],
     "faqs": [
       {
@@ -530,7 +531,7 @@
       },
       {
         "question": "¿Cómo se detectan los números?",
-        "answer": "Las celdas sin comillas que cumplen la sintaxis numérica de JSON se convierten en números. Entrecomilla un valor si debe seguir siendo una cadena."
+        "answer": "Las celdas sin comillas que cumplen la sintaxis numérica de JSON se convierten en números. Entrecomilla un valor, o desactiva la detección de números en Opciones de CSV, si debe seguir siendo una cadena."
       },
       {
         "question": "¿Puedo abrir un archivo TSV?",
@@ -578,7 +579,7 @@
     ]
   },
   "xml-to-json": {
-    "hash": "1ca1d5a99a27",
+    "hash": "ca150d46b41f",
     "title": "XML a JSON para documentos de datos simples",
     "description": "Convierte XML a JSON con formato sin subir el archivo original. Tool Kumar analiza los elementos y atributos localmente en tu navegador.",
     "heading": "XML a JSON",
@@ -592,9 +593,9 @@
     "modeLabel": "Importación de XML a JSON",
     "exampleLabel": "El JSON que aparece abajo se genera al importar los dos elementos user repetidos.",
     "steps": [
-      "Pega XML o abre un archivo .xml.",
-      "Elige XML → JSON cuando el detector identifique XML.",
-      "Revisa el objeto y copia el JSON con formato."
+      "Pega XML o abre un archivo .xml. El editor conserva tu XML tal cual.",
+      "El JSON aparece a la derecha mientras escribes, con los elementos repetidos como arrays.",
+      "Copia o descarga el JSON con formato."
     ],
     "options": [
       "Los elementos hijos con nombres repetidos se convierten en arrays.",
@@ -612,7 +613,7 @@
       },
       {
         "question": "¿Puedo abrir un archivo XML?",
-        "answer": "Sí. Tool Kumar detecta los archivos .xml en el selector de archivos y ofrece XML a JSON."
+        "answer": "Sí. Abre un archivo .xml: en el editor sigue siendo XML, con su JSON a la derecha."
       }
     ]
   },
@@ -1120,7 +1121,7 @@
     ]
   },
   "toml-to-json": {
-    "hash": "da150149c95e",
+    "hash": "0ad13fe62663",
     "title": "TOML a JSON para archivos de configuración",
     "description": "Convierte tablas TOML, arrays de tablas y escalares a JSON con formato en tu navegador, sin subir archivos. Revisa el resultado y descarga JSON.",
     "heading": "TOML a JSON",
@@ -1134,8 +1135,8 @@
     "modeLabel": "Importación de TOML a JSON",
     "exampleLabel": "La tabla server se convierte en un objeto y las tablas users repetidas se convierten en un array de objetos.",
     "steps": [
-      "Pega TOML o abre un archivo .toml.",
-      "Al abrir un archivo .toml, la conversión es inmediata. Si pegas TOML, elige TOML → JSON en el aviso y revisa después el resultado.",
+      "Pega TOML o abre un archivo .toml. El editor conserva tu TOML tal cual.",
+      "El JSON aparece a la derecha mientras escribes. Un error de TOML indica su línea y columna.",
       "Copia o descarga el JSON para la aplicación receptora."
     ],
     "options": [

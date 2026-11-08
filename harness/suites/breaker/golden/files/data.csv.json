@@ -1,14 +1,14 @@
 {
  "status": {
-  "msg": "Valid JSON",
+  "msg": "Valid CSV",
   "kind": "ok",
-  "raw": "220 B raw",
-  "min": "147 B min",
-  "stats": "17 lines · 13 nodes · depth 2"
+  "raw": "81 B raw",
+  "min": null,
+  "stats": "6 lines · 13 nodes · depth 2"
  },
  "toasts": [
-  "Converted data.csv to JSON"
+  "Opened data.csv"
  ],
- "input": "[\n  {\n    \"id\": 1,\n    \"name\": \"Zoë, the \\\"great\\\"\",\n    \"note\": \"=cmd|\\\"/c calc\\\"!A0\"\n  },\n  {\n    \"id\": 2,\n    \"name\": null,\n    \"note\": null\n  },\n  {\n    \"id\": 3,\n    \"name\": \"東京\",\n    \"note\": \"multi\\nline\"\n  }\n]",
+ "input": "id,name,note\n1,\"Zoë, the \"\"great\"\"\",=cmd|\"/c calc\"!A0\n2,,\n3,東京,\"multi\nline\"\n",
  "formatted": "[\n  {\n    \"id\": 1,\n    \"name\": \"Zoë, the \\\"great\\\"\",\n    \"note\": \"=cmd|\\\"/c calc\\\"!A0\"\n  },\n  {\n    \"id\": 2,\n    \"name\": null,\n    \"note\": null\n  },\n  {\n    \"id\": 3,\n    \"name\": \"東京\",\n    \"note\": \"multi\\nline\"\n  }\n]"
 }
