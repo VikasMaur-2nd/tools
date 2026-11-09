@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parse } from '../lib/json/parser';
+import { parse, type JNode } from '../lib/json/parser';
 import { formatPath, parsePath, pathOf, resolve } from '../lib/json/path';
 import { lazyResult } from '../lib/json/lazy';
 import { tapeOf } from '../lib/json/tape-send';
-import { TreeView, type TreeEvents } from '../lib/engine/tree';
+import { matchRanges, TreeView, type TreeEvents } from '../lib/engine/tree';
 import { GraphView } from '../lib/graph/view';
 import { diff } from '../lib/diff/diff';
 
@@ -104,4 +104,38 @@ test('Compare: ignoring `$type` ignores that key (anywhere), not "type"', () => 
   assert.deepEqual(lines(['$["$type"]', 'type']), ['$.x.$type']);
   assert.deepEqual(lines(['$type.q', 'x.$type']), ['$.type', '$.$type', '$.x.type']);
   assert.deepEqual(lines(['$.type']), ['$.$type', '$.x.$type', '$.x.type']);
+});
+
+test('tree Find marks what it found where it shows: lowercasing that changes lengths, escaped text', () => {
+  const r = (text: string, q: string) => {
+    const cs = q !== q.toLowerCase();
+    return matchRanges(text, cs ? q : q.toLowerCase(), cs);
+  };
+  assert.deepEqual(r('İstanbul', 'stan'), [1, 5]);
+  assert.deepEqual(r('İstanbul', 'i'), [0, 1]);
+  assert.deepEqual(r('İİx', 'x'), [2, 3]);
+  assert.deepEqual(r('aİb', 'İb'), [1, 3]);
+  assert.deepEqual(r('😀a😀a', 'a'), [2, 3, 5, 6]);
+  assert.deepEqual(r('aaa', 'aa'), [0, 2]);
+  assert.equal(r('abc', 'x'), null);
+
+  const tree = new TreeView(new Viewport() as unknown as HTMLElement, events);
+  const text = '{"city":"İstanbul","q":"say a\\"b","İİx":"plain","long":"' + 'z'.repeat(420) + '","t":"a\\tb"}';
+  const root = parse(text).root!;
+  tree.setRoot(root, true);
+  const row = (n: JNode) => (tree as unknown as { row(n: JNode, i: number): string }).row(n, 0);
+  const node = (k: string) => resolve(root, [k])!;
+  tree.search('stan', false);
+  assert.ok(row(node('city')).includes('&quot;İ<mark>stan</mark>bul&quot;'), row(node('city')));
+  tree.search('a"b', false);
+  assert.ok(row(node('q')).includes('say <mark>a\\&quot;b</mark>'), row(node('q')));
+  tree.search('x', false);
+  assert.ok(row(node('İİx')).includes('İİ<mark>x</mark>'), row(node('İİx')));
+  // a match past what a row shows marks nothing; one across the cut marks what shows
+  tree.search('zzzz', false);
+  assert.equal((row(node('long')).match(/<mark>/g) ?? []).length, 1);
+  assert.ok(row(node('long')).includes('<mark>' + 'z'.repeat(400) + '</mark>…'));
+  // an escape's letter isn't the text: \t shows as \t but a "t" search marks only the key
+  tree.search('t', false);
+  assert.ok(!row(node('t')).includes('\\<mark>'), row(node('t')));
 });

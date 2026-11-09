@@ -27,6 +27,67 @@ const MAX_MATCHES = 100_000;
 const COLOR = /^(#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(?:rgb|hsl)a?\(\s*[\d.%\s,/+-]+\))$/i;
 const URL_RE = /^https?:\/\/[^\s"<>]+$/i;
 
+/**
+ * Where the search finds `qn` in `text` (`cs` false: `qn` is lowercase and is found in text.toLowerCase(), as the
+ * search finds it), as [start, end) ranges of `text` itself: lowercasing can make a character longer (İ is i̇),
+ * so its offsets are mapped back, a match in part of a character marking all of it. Null: none.
+ */
+export function matchRanges(text: string, qn: string, cs: boolean): number[] | null {
+  if (!qn) return null;
+  const hay = cs ? text : text.toLowerCase();
+  let i = hay.indexOf(qn);
+  if (i < 0) return null;
+  // hay offset → text offset: where the character it is in starts (lo), and ends (hi, for ends of matches)
+  let lo: Int32Array | null = null;
+  let hi: Int32Array | null = null;
+  if (hay.length !== text.length) {
+    lo = new Int32Array(hay.length + 1);
+    hi = new Int32Array(hay.length + 1);
+    let p = 0;
+    for (let r = 0; r < text.length && p <= hay.length; ) {
+      const cp = text.codePointAt(r)!;
+      const w = cp > 0xffff ? 2 : 1;
+      const len = String.fromCodePoint(cp).toLowerCase().length;
+      for (let k = 0; k < len && p + k <= hay.length; k++) {
+        lo[p + k] = r;
+        hi[p + k + 1] = r + w;
+      }
+      p += len;
+      r += w;
+    }
+    // (lowercased otherwise than a character at a time: no marks rather than wrong ones)
+    if (p !== hay.length) return null;
+    lo[p] = text.length;
+  }
+  const out: number[] = [];
+  while (i >= 0) {
+    const j = i + qn.length;
+    let a = lo ? lo[i] : i;
+    let b = hi ? hi[j] : j;
+    // (whole characters: never half of a surrogate pair)
+    if (a > 0 && isLow(text.charCodeAt(a)) && isHigh(text.charCodeAt(a - 1))) a--;
+    if (b < text.length && isLow(text.charCodeAt(b)) && isHigh(text.charCodeAt(b - 1))) b++;
+    if (out.length && a <= out[out.length - 1]) out[out.length - 1] = Math.max(b, out[out.length - 1]);
+    else out.push(a, b);
+    i = hay.indexOf(qn, j);
+  }
+  return out;
+}
+
+const isHigh = (c: number) => c >= 0xd800 && c <= 0xdbff;
+const isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
+
+/** `text` with ranges `r` (see matchRanges) in <mark>, each part written by `write`. */
+function marked(text: string, r: number[], write: (s: string) => string): string {
+  let out = '';
+  let p = 0;
+  for (let x = 0; x < r.length; x += 2) {
+    out += write(text.slice(p, r[x])) + '<mark>' + write(text.slice(r[x], r[x + 1])) + '</mark>';
+    p = r[x + 1];
+  }
+  return out + write(text.slice(p));
+}
+
 export interface TreeEvents {
   select(node: JNode, how: 'pointer' | 'key' | 'search'): void;
   copy(node: JNode, what: 'value' | 'path'): void;
@@ -547,20 +608,31 @@ export class TreeView {
     this.placeActs();
   }
 
-  private mark(raw: string): string {
-    if (!this.q || !(this.matchSet || this.hitSet)) return escapeHtml(raw);
-    const hay = this.cs ? raw : raw.toLowerCase();
-    const q = this.qn;
-    let i = hay.indexOf(q);
-    if (i < 0) return escapeHtml(raw);
-    let out = '';
-    let p = 0;
-    while (i >= 0) {
-      out += escapeHtml(raw.slice(p, i)) + '<mark>' + escapeHtml(raw.slice(i, i + q.length)) + '</mark>';
-      p = i + q.length;
-      i = hay.indexOf(q, p);
+  /** `text` (shown as it is: a key, a number) with the search's matches marked. */
+  private mark(text: string): string {
+    if (!this.q || !(this.matchSet || this.hitSet)) return escapeHtml(text);
+    const r = matchRanges(text, this.qn, this.cs);
+    return r ? marked(text, r, escapeHtml) : escapeHtml(text);
+  }
+
+  /**
+   * String `s` as a row shows it (quoted and escaped as JSON, the first 400 units) with the search's matches
+   * marked: found in the value, as the search reads it, and marked where they show in its escaped text.
+   */
+  private markString(s: string): string {
+    const shown = s.length > 400 ? s.slice(0, 400) + '…' : s;
+    const esc = (t: string) => escapeHtml(JSON.stringify(t).slice(1, -1));
+    // (Matches starting in the part shown: a match is at most qn.length units of the value.)
+    const r = this.q && (this.matchSet || this.hitSet) ? matchRanges(s.length > 400 ? s.slice(0, 400 + this.qn.length) : s, this.qn, this.cs) : null;
+    if (r && s.length > 400) {
+      let k = 0;
+      for (let x = 0; x < r.length && r[x] < 400; x += 2) {
+        r[k++] = r[x];
+        r[k++] = Math.min(400, r[x + 1]);
+      }
+      r.length = k;
     }
-    return out + escapeHtml(raw.slice(p));
+    return '&quot;' + (r && r.length ? marked(shown, r, esc) : esc(shown)) + '&quot;';
   }
 
   private row(n: JNode, i: number): string {
@@ -596,7 +668,6 @@ export class TreeView {
         // (A long string not decoded yet: only its start, which is all a row shows.)
         const whole = n._v !== undefined || !n.z;
         const s = whole ? (n.v as string) : n.z!.head(n, 2001);
-        const shown = JSON.stringify(s.length > 400 ? s.slice(0, 400) + '…' : s);
         // Badges (nested JSON, JWT) need their hint now; other hints only label the
         // tooltip, built on hover (date labels load the browser's locale data).
         const c0 = s.charCodeAt(0);
@@ -610,7 +681,7 @@ export class TreeView {
         else if (hint?.kind === 'jwt') extra += '<span class="tv-x">JWT</span>';
         let title = hint ? hint.label : '';
         if (s.length > 60) title = (title ? title + '\n\n' : '') + (s.length > 2000 ? s.slice(0, 2000) + '…' : s);
-        h += `${extra}<span class="${vcls}"${title ? ` title="${escapeHtml(title)}"` : ''}${badge ? '' : ' data-h'}>${this.mark(shown)}</span>`;
+        h += `${extra}<span class="${vcls}"${title ? ` title="${escapeHtml(title)}"` : ''}${badge ? '' : ' data-h'}>${this.markString(s)}</span>`;
         break;
       }
       case NUM: {
