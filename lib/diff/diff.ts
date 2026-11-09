@@ -37,7 +37,8 @@ export interface DiffOptions {
   /**
    * Paths to skip. `$.meta.updatedAt`, `$.items[*].ts`, `/a/b` (JSON Pointer)
    * are absolute; a bare key or relative path (`updatedAt`, `meta.etag`,
-   * `$..etag`) matches at any depth. `*` matches any key or index.
+   * `$..etag`) matches at any depth. `*` matches any key or index. `$` starts
+   * a path only as `$`, `$.` or `$[`: `$type` is the key "$type".
    */
   ignorePaths?: readonly string[];
   /** Compare strings case-insensitively (default false). */
@@ -338,10 +339,14 @@ function compileIgnore(list: readonly string[]): { abs: Trie | null; any: Trie |
     } else if (s.startsWith('..')) {
       anywhere = true;
       s = s.slice(2);
-    } else if (s[0] !== '$' && s[0] !== '/') anywhere = true;
+    } else if (s[0] !== '/' && !(s[0] === '$' && (s.length === 1 || s[1] === '.' || s[1] === '['))) {
+      // A key or relative path (`$type` and `$ref.id` too: `$` starts a path only as `$`, `$.` or `$[`, as in parsePath).
+      anywhere = true;
+    }
     s = s.replace(/\[\s*\*\s*\]/g, '.*');
     if (anywhere && s[0] === '.') s = s.slice(1);
-    const segs = parsePath(s) ?? [s];
+    // (a relative path is read from a `.`, so a first key starting with `$` stays a key)
+    const segs = (anywhere ? parsePath(s[0] === '[' ? s : '.' + s) : parsePath(s)) ?? [s];
     if (!segs.length) continue;
     if (anywhere) addPattern(any ?? (any = trie()), segs);
     else addPattern(abs ?? (abs = trie()), segs);

@@ -6,6 +6,8 @@ const IDENT = /^[A-Za-z_$][\w$]*$/;
 /** Digit segments become array indices; `01` stays a string so it can still name an object key. */
 const INDEX = /^(?:0|[1-9]\d{0,14})$/;
 const seg = (p: string): Seg => (INDEX.test(p) ? Number(p) : p);
+/** What String.prototype.trim removes. */
+const WS = /\s/;
 
 export function pathOf(node: JNode): Seg[] {
   const segs: Seg[] = [];
@@ -23,17 +25,31 @@ export function formatPath(segs: Seg[]): string {
   return s;
 }
 
-/** Parses `$.a.b[0]["c d"]`, `a.b[0]`, `.a.b` or `/a/b/0` (JSON Pointer). Returns null if malformed (a JSON Pointer's ~ not ~0 or ~1 included). */
+/**
+ * Parses `$.a.b[0]["c d"]`, `a.b[0]`, `.a.b` or `/a/b/0` (JSON Pointer). Returns null if malformed (a JSON
+ * Pointer's ~ not ~0 or ~1 included), and for text that starts with `$` but not `$.`, `$[` or `$` alone:
+ * `$type`, `$ref` are key names (searched as text), not a path below the root.
+ *
+ * Whitespace around a path (pasted text) is left out, but a JSON Pointer's tokens are read as they are: only
+ * whitespace before its first `/` and line breaks after its end go, so `/a ` names the key "a ".
+ */
 export function parsePath(q: string): Seg[] | null {
-  let s = q.trim();
-  if (s.startsWith('/') || s === '') {
-    if (!s) return [];
-    const parts = s.slice(1).split('/');
+  let p = 0;
+  while (p < q.length && WS.test(q[p])) p++;
+  if (q[p] === '/') {
+    let e = q.length;
+    while (e > p && (q.charCodeAt(e - 1) === 10 || q.charCodeAt(e - 1) === 13)) e--;
+    const parts = q.slice(p + 1, e).split('/');
     // (RFC 6901: ~ only as ~0 or ~1.)
-    if (parts.some((p) => /~(?![01])/.test(p))) return null;
-    return parts.map((p) => seg(p.replace(/~1/g, '/').replace(/~0/g, '~')));
+    if (parts.some((t) => /~(?![01])/.test(t))) return null;
+    return parts.map((t) => seg(t.replace(/~1/g, '/').replace(/~0/g, '~')));
   }
-  if (s[0] === '$') s = s.slice(1);
+  let s = q.trim();
+  if (!s) return [];
+  if (s[0] === '$') {
+    if (s.length > 1 && s[1] !== '.' && s[1] !== '[') return null;
+    s = s.slice(1);
+  }
   const segs: Seg[] = [];
   let i = 0;
   while (i < s.length) {
@@ -92,8 +108,11 @@ export function resolve(root: JNode | null, segs: Seg[]): JNode | null {
     }
     const list = kids(n);
     if (n.t === OBJ) {
+      // Of a duplicated key, the last member (JSON.parse semantics, as the Table and Compare read it).
       const key = String(k);
-      n = list.find((c) => c.key === key) ?? null;
+      let hit: JNode | null = null;
+      for (let i = list.length - 1; i >= 0 && !hit; i--) if (list[i].key === key) hit = list[i];
+      n = hit;
     } else {
       n = typeof k === 'number' || /^\d+$/.test(k) ? (list[Number(k)] ?? null) : null;
     }

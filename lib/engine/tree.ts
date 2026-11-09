@@ -413,7 +413,7 @@ export class TreeView {
     const root = this.root;
     let note: string | undefined;
     if (q && root) {
-      // `$.a[0]` / `/a/0` jump to that node; if it doesn't resolve, it's plain text ($ref, /v1/users…).
+      // `$.a[0]` / `/a/0` jump to that node; if it doesn't resolve, it's plain text (/v1/users…), as `$ref`, `$type` always are.
       const segs = q[0] === '$' || (q[0] === '/' && q.length > 1) ? parsePath(q) : null;
       const hit = segs && segs.length ? resolve(root, segs) : null;
       // Wildcards, recursive descent, filters and slices are JSONPath queries, not one location.

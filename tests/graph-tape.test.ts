@@ -145,7 +145,7 @@ function check(text: string, label: string, opts?: ParseOptions, queries: string
   const every = Math.max(1, Math.floor(m.n / 3000));
   for (let c = 0; c < m.n; c += every) {
     const path = pathOf(m.node[c]);
-    // (Duplicate keys: a path names the first member of that name, as `resolve` does.)
+    // (Duplicate keys: a path names the last member of that name, as `resolve` does.)
     assert.equal(onTape(path), onNodes(path), `${label}: path of card ${c}`);
     const bogus: Seg[][] = [[...path, 'zz'], [...path, 0], [...path, 70], [...path, '1'], [...path, -1], [...path, 1.5], path.slice(0, -1).concat(typeof path.at(-1) === 'number' ? String(path.at(-1)) : 0)];
     for (const segs of bogus) assert.equal(onTape(segs), onNodes(segs), `${label}: ${JSON.stringify(segs).slice(0, 80)}`);
