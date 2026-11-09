@@ -208,30 +208,57 @@ function grid(root: JNode, dot: boolean, esc: boolean): Table {
 }
 
 /**
- * An object of objects that are the rows of one table: keyed by data (ids, dates: the objects infer.ts makes
- * dictionaries), or of alike objects (each shares at least half its and the first one's keys between them).
+ * Whether an object's children are the rows of one table, fed a child at a time (huge mode reads them in pages):
+ * all objects, keyed by data (ids, dates: the objects infer.ts makes dictionaries) or alike (each shares at least
+ * half its and the first one's keys between them). `keys`: the child's own keys, when it is an object.
  */
+export function rowsCheck() {
+  let n = 0;
+  let objs = true;
+  let data = true;
+  let alike = true;
+  let first: Set<string> | null = null;
+  return {
+    add(c: JNode, keys: string[]) {
+      n++;
+      if (!objs || c.t !== OBJ) return void (objs = false);
+      if (data && !isDataKey(c.key as string)) data = false;
+      if (!alike) return;
+      if (!first) return void (first = new Set(keys));
+      let shared = 0;
+      for (const k of keys) if (first.has(k)) shared++;
+      // (shared / union >= 1/2)
+      if (!(shared > 0 && shared * 3 >= first.size + keys.length)) alike = false;
+    },
+    rows: () => n > 0 && objs && (data || (n >= 2 && alike)),
+  };
+}
+
 function keyedRows(n: JNode): boolean {
-  const l = kids(n);
-  if (!l.length || !l.every((c) => c.t === OBJ)) return false;
-  if (l.every((c) => isDataKey(c.key as string))) return true;
-  if (l.length < 2) return false;
-  const first = new Set(kids(l[0]).map((c) => c.key as string));
-  return l.every((o) => {
-    const ks = kids(o);
-    let shared = 0;
-    for (const c of ks) if (first.has(c.key as string)) shared++;
-    // (shared / union >= 1/2)
-    return shared > 0 && shared * 3 >= first.size + ks.length;
-  });
+  const check = rowsCheck();
+  for (const c of kids(n)) check.add(c, c.t === OBJ ? kids(c).map((g) => g.key as string) : []);
+  return check.rows();
 }
 
 // An object with an id of its own is one record (an API's wrapper holds records, it isn't one), but for a JSON-RPC
 // response's id, which is the call's.
 const ID = /^(?:_?id|uuid|guid)$/i;
+/** Whether an object is a single record, fed a child at a time (as rowsCheck). */
+export function recordCheck() {
+  let id = false;
+  let rpc = false;
+  return {
+    add(c: JNode) {
+      if ((c.t === STR || c.t === NUM) && ID.test(c.key as string)) id = true;
+      if (c.key === 'jsonrpc') rpc = true;
+    },
+    one: () => id && !rpc,
+  };
+}
 const oneRecord = (n: JNode) => {
-  const l = kids(n);
-  return l.some((c) => (c.t === STR || c.t === NUM) && ID.test(c.key as string)) && !l.some((c) => c.key === 'jsonrpc');
+  const check = recordCheck();
+  for (const c of kids(n)) check.add(c);
+  return check.one();
 };
 
 /**

@@ -7,7 +7,7 @@
  * and HugeCommands.tsx. One command at a time; the Shape pass runs alongside.
  */
 import { kids, parse, type JNode } from '../json/parser';
-import { records as recordsOf } from '../convert/xlsx';
+import { recordCheck, records as recordsOf, rowsCheck } from '../convert/xlsx';
 import { formatPath } from '../json/path';
 import { reportError, track } from '../analytics';
 import type { Events } from '../analytics/events';
@@ -339,36 +339,55 @@ export class HugeTasks {
     return (await run.done).result.seek!.found > 0;
   }
 
-  /** The largest array of objects among `n`'s children and grandchildren (as `records`), or null. */
+  /**
+   * As `records`: the largest array of objects among `n`'s children and grandchildren, or null where `n` is the
+   * records itself: an object of alike objects (a table already) or one record (with an id of its own); nor is an
+   * array inside a record among its children picked. (A big child object's keys: those of its first page.)
+   */
   private async bestArray(n: CoreNode, blob: () => Promise<Blob>): Promise<{ start: number; end: number; count: number } | null> {
-    let best: { start: number; end: number; count: number } | null = null;
-    const consider = async (j: JNode, v: PageNodes) => {
-      if (j.t !== ARR) return;
+    type Best = { start: number; end: number; count: number } | null;
+    let best: Best = null;
+    const consider = async (j: JNode, v: PageNodes, prev: Best): Promise<Best> => {
+      if (j.t !== ARR) return prev;
       const stub = v.stub(j);
       const count = stub ? (stub.count ?? 0) : kids(j).length;
-      if (!count) return;
+      if (!count || (prev && count <= prev.count)) return prev;
       const has = stub ? await this.hasObject(stub, blob) : kids(j).some((c) => c.t === OBJ);
-      if (!has || (best && count <= best.count)) return;
+      if (!has) return prev;
       const [start, end] = v.span(j);
-      best = { start, end, count };
+      return { start, end, count };
     };
-    const pages = async (c: CoreNode, each: (j: JNode, v: PageNodes) => Promise<void>) => {
+    const pages = async (c: CoreNode, each: (j: JNode, v: PageNodes, first: boolean) => Promise<void>) => {
       for (let from = 0; ; ) {
         const page = await this.core.doc.children(c, from, 1000);
         const v = new PageNodes(page);
-        for (const j of v.children) await each(j, v);
+        for (const j of v.children) await each(j, v, from === 0);
         from += page.count;
         if (!page.more || !page.count || this.dead) break;
       }
     };
+    const rows = rowsCheck();
+    const record = recordCheck();
     await pages(n, async (j, v) => {
-      await consider(j, v);
-      if (j.t !== OBJ) return;
+      record.add(j);
+      best = await consider(j, v, best);
+      if (j.t !== OBJ) return rows.add(j, []);
+      // The child's own keys, whether it is a record, and its best array (taken unless it is a record).
+      const keys: string[] = [];
+      const inner = recordCheck();
+      let mine: Best = best;
+      const each = async (g: JNode, gv: PageNodes, first = true) => {
+        if (first) keys.push(g.key as string);
+        inner.add(g);
+        mine = await consider(g, gv, mine);
+      };
       const stub = v.stub(j);
-      if (stub) await pages(stub, consider);
-      else for (const g of kids(j)) await consider(g, v);
+      if (stub) await pages(stub, each);
+      else for (const g of kids(j)) await each(g, v);
+      rows.add(j, keys);
+      if (!inner.one()) best = mine;
     });
-    return best;
+    return rows.rows() || record.one() ? null : best;
   }
 
   /** CSV's container in scope `at`: as the normal path's `records(root)`. */
