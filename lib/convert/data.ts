@@ -44,8 +44,9 @@ const Y_RESERVED = /^(?:[-+]?(?:[\d_.,:]+(?:e[-+]?\d+)?|0[xob]\w+|\.(?:inf|nan))
 const Y_BAD = /[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029\ufeff\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?:^|[^\ud800-\udbff])[\udc00-\udfff]/;
 const Y_ESC: Record<string, string> = { '\0': '\\0', '\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r', '"': '\\"', '\\': '\\\\' };
 
+// (`... ` starting a line ends the document: a top-level key or string can't start so.)
 const yPlain = (s: string) =>
-  s !== '' && !/^[\s\-?:,[\]{}#&*!|>'"%@`]/.test(s) && !/\s$|: |\s#|:$|[\t\n]/.test(s) && !Y_RESERVED.test(s) && !Y_BAD.test(s);
+  s !== '' && !/^[\s\-?:,[\]{}#&*!|>'"%@`]|^\.\.\.(?:\s|$)/.test(s) && !/\s$|: |\s#|:$|[\t\n]/.test(s) && !Y_RESERVED.test(s) && !Y_BAD.test(s);
 const yQuote = (s: string) =>
   '"' +
   s.replace(/[\ud800-\udbff][\udc00-\udfff]|[\\"\x00-\x1f\x7f-\x9f\u2028\u2029\ufeff\ufffe\uffff\ud800-\udfff]/g, (c) =>

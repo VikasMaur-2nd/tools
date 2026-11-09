@@ -154,3 +154,11 @@ test('JSON Schema and Zod: no date format for days that do not exist', () => {
   assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map((k) => s[k].format), [undefined, 'date', undefined, undefined, undefined]);
   has(conv('{"a":"2023-02-30","b":"2024-02-29"}', 'zod'), '  a: z.string(),\n  b: z.string().date(),');
 });
+
+test('YAML: keys and strings that start like a document marker are quoted', () => {
+  // `... x: 1` at the start of a line ends the document: PyYAML fails on it
+  assert.equal(conv('{"... x":1,"--- y":"... z","...":"...","a":{"... n":1}}', 'yaml'), '"... x": 1\n"--- y": "... z"\n"...": "..."\na:\n  "... n": 1\n');
+  assert.equal(conv('"... x"', 'yaml'), '"... x"\n');
+  assert.equal(conv('"..."', 'yaml'), '"..."\n');
+  assert.equal(conv('["...x","x ..."]', 'yaml'), '- ...x\n- x ...\n');
+});
