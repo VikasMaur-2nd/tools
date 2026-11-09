@@ -471,6 +471,61 @@ describe('diff: arrays', () => {
     void rng;
   });
 
+  test('large runs of edited elements stay aligned around an insertion or a removal', () => {
+    for (const n of [50, 70, 200, 3000]) {
+      const a = Array.from({ length: n }, (_, i) => ({ k: 'r' + i, y: i }));
+      // every record edited (an updatedAt), one inserted at 10
+      const b: J[] = a.map((o) => ({ ...o, y: o.y + 1 }));
+      b.splice(10, 0, { k: 'new', y: 0 });
+      const r = assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(b));
+      assert.deepEqual(r.summary, { added: 1, removed: 0, changed: n, type: 0, total: n + 1 }, `${n}`);
+      assert.deepEqual(lines(r).slice(9, 12), ['changed $[9].y', 'added $[10]', 'changed $[10].y'], `${n}`);
+      assert.ok(lines(r).every((l) => l === 'added $[10]' || /^changed \$\[\d+\]\.y$/.test(l)), `${n}`);
+      // one removed at 10 and one appended: runs of equal length, not edits in place
+      const c: J[] = a.map((o) => ({ ...o, y: o.y + 1 }));
+      c.splice(10, 1);
+      c.push({ k: 'new', y: 0 });
+      const q = assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(c));
+      assert.deepEqual(q.summary, { added: 1, removed: 1, changed: n - 1, type: 0, total: n + 1 }, `${n}`);
+      assert.deepEqual(lines(q).slice(9, 12), ['changed $[9].y', 'removed $[10]', 'changed $[11].y'], `${n}`);
+      // arrays as elements: their items anchor them
+      const x = Array.from({ length: n }, (_, i) => [i, 'x' + i, 2 * i]);
+      const z: J[] = x.map((t) => [t[0], t[1], (t[2] as number) + 1]);
+      z.splice(10, 0, [-1, 'new', 0]);
+      const t = assertPatchRoundTrip(JSON.stringify(x), JSON.stringify(z));
+      assert.deepEqual(t.summary, { added: 1, removed: 0, changed: n, type: 0, total: n + 1 }, `${n} arrays`);
+    }
+    // nothing in common between the edited elements: in place
+    assert.deepEqual(lines(run('[{"y":1},{"y":2},{"y":3}]', '[{"y":5},{"y":6},{"y":7}]')), ['changed $[0].y', 'changed $[1].y', 'changed $[2].y']);
+    // ignoreArrayOrder: shuffled and every record edited, paired by what they still share
+    const rng = prng(5);
+    const a = Array.from({ length: 500 }, (_, i) => ({ k: 'r' + i, y: i }));
+    const b = a.map((o) => ({ ...o, y: o.y + 1 }));
+    for (let i = b.length - 1; i > 0; i--) {
+      const j = rng.int(i + 1);
+      [b[i], b[j]] = [b[j], b[i]];
+    }
+    const u = assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(b), { ignoreArrayOrder: true }, canonUnordered);
+    assert.deepEqual(u.summary, { added: 0, removed: 0, changed: 500, type: 0, total: 500 });
+  });
+
+  test('anchoring large runs stays fast', () => {
+    const n = 50000;
+    const a = JSON.stringify(Array.from({ length: n }, (_, i) => ({ title: 'User ' + i, email: `u${i}@x.io`, score: i % 100, updatedAt: 1000 + i })));
+    const list = Array.from({ length: n }, (_, i) => ({ title: 'User ' + i, email: `u${i}@x.io`, score: i % 100, updatedAt: 5e6 + i }));
+    const same = JSON.stringify(list);
+    list.splice(10, 0, { title: 'new', email: '', score: 0, updatedAt: 1 });
+    const b = JSON.stringify(list);
+    const ra = root(a);
+    for (const [label, rb, changes] of [['in place', root(same), n], ['insertion', root(b), n + 1]] as const) {
+      const t0 = cpuNow();
+      const r = diff(ra, rb);
+      const ms = cpuNow() - t0;
+      assert.equal(r.summary.total, changes, label);
+      assert.ok(ms < 4000, `${label}: ${ms.toFixed(0)} ms of CPU time`);
+    }
+  });
+
   test('worst cases fall back without quadratic blowups', () => {
     const rng = prng(42);
     const n = 20000;
