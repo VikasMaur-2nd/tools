@@ -1075,3 +1075,19 @@ multi = [
     }
   });
 });
+
+// ── Audit regressions (CSV / Excel export) ───────────────────────────────
+
+describe('spreadsheet export audit', () => {
+  test('CSV: a one-column row with nothing in it is "", so readers keep it', () => {
+    // CSV readers (this importer, Python's csv.DictReader, pandas) skip a blank line: [1,null,3] read back as two rows.
+    const csv = toCsv(root('[1,null,3]'));
+    assert.equal(csv, 'value\r\n1\r\n""\r\n3\r\n');
+    // (CSV has no null: it reads back as an empty string)
+    assert.deepEqual(val(csv, 'csv'), [{ value: 1 }, { value: '' }, { value: 3 }]);
+    assert.equal(toCsv(root('[{"":1},{"":null}]')), '""\r\n1\r\n""\r\n');
+    // rows with a delimiter are never blank: empty fields stay empty (null)
+    assert.equal(toCsv(root('[{"a":null,"b":null}]')), 'a,b\r\n,\r\n');
+    assert.deepEqual(val(toCsv(root('[{"a":null,"b":null}]')), 'csv'), [{ a: null, b: null }]);
+  });
+});

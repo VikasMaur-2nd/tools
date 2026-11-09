@@ -635,7 +635,8 @@ export class CsvRows {
     this.special = new RegExp('["\\r\\n' + (this.delim === '\t' ? '\\t' : this.delim) + ']');
     this.skip = plan.mode === 'matrix' && plan.head;
     if (o.bom) out.text('\ufeff');
-    if (plan.header.length && plan.mode !== 'none') out.text(plan.header.map((s) => this.f(s)).join(this.delim) + '\r\n');
+    // (A line is never empty, as toCsv writes it: a one-column header or row with nothing in it is "".)
+    if (plan.header.length && plan.mode !== 'none') out.text((plan.header.map((s) => this.f(s)).join(this.delim) || '""') + '\r\n');
   }
 
   /** toCsv's `f`: formula-like text made safe, then quoted if it must be. */
@@ -651,7 +652,7 @@ export class CsvRows {
       const s = cellText(c);
       line += (j ? this.delim : '') + (s === '' && c !== undefined && (typeof c === 'string' || c.t === STR) ? '""' : this.f(s));
     }
-    this.out.text(line + '\r\n');
+    this.out.text((line || (n ? '""' : '')) + '\r\n');
     this.rows++;
   }
 
@@ -932,10 +933,15 @@ export class CsvTokens implements Visitor {
     const w = this.w;
     if (this.skip) this.skip = false;
     else if (this.inOrder) {
-      if (this.an + (w - this.nextCol) + 2 > this.arena.length) this.grow(w - this.nextCol + 2);
+      if (this.an + (w - this.nextCol) + 4 > this.arena.length) this.grow(w - this.nextCol + 4);
       const o = this.arena;
       let p = this.an;
       for (let c = this.nextCol; c < w; c++) if (c) o[p++] = this.delim;
+      // (Never an empty line: see CsvRows.)
+      if (!p && w) {
+        o[p++] = 34;
+        o[p++] = 34;
+      }
       o[p++] = 13;
       o[p++] = 10;
       this.out.bytes(o, 0, p);
@@ -944,15 +950,20 @@ export class CsvTokens implements Visitor {
       const out = this.out;
       const kind = this.kind;
       const arena = this.arena;
-      out.room(this.an + w + 2);
+      out.room(this.an + w + 4);
       const o = out.buf;
-      let p = out.pos;
+      const p0 = out.pos;
+      let p = p0;
       for (let j = 0; j < w; j++) {
         if (j) o[p++] = this.delim;
         if (kind[j] === C_RAW) {
           const re = this.re[j];
           for (let x = this.rs[j]; x < re; x++) o[p++] = arena[x];
         }
+      }
+      if (p === p0 && w) {
+        o[p++] = 34;
+        o[p++] = 34;
       }
       o[p++] = 13;
       o[p++] = 10;

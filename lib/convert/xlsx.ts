@@ -259,7 +259,11 @@ export interface CsvOptions {
   bom?: boolean;
 }
 
-/** RFC 4180 CSV (CRLF line endings). null/missing → empty field, "" → `""`. Numbers keep their exact source text; formula-like text gets a leading ' (formulaSafe). */
+/**
+ * RFC 4180 CSV (CRLF line endings). null/missing → empty field, "" → `""`. Numbers keep their exact source text;
+ * formula-like text gets a leading ' (formulaSafe). A line is never empty: readers skip blank lines, so a
+ * one-column row (or header) with nothing in it is `""` (which reads back as an empty string: CSV has no null).
+ */
 export function toCsv(root: JNode, opts: CsvOptions = {}): string {
   const d = opts.delimiter ?? ',';
   const { h, r } = table(root, opts.flatten ?? 'dot');
@@ -267,7 +271,7 @@ export function toCsv(root: JNode, opts: CsvOptions = {}): string {
   // (Text that would run as a formula is kept as text: see formulaSafe.)
   const f = (s: string) => ((s = formulaSafe(s)), re.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
   let out = opts.bom ? '\ufeff' : '';
-  if (h.length) out += h.map(f).join(d) + '\r\n';
+  if (h.length) out += (h.map(f).join(d) || '""') + '\r\n';
   for (const row of r) {
     let line = '';
     for (let j = 0; j < h.length; j++) {
@@ -275,7 +279,7 @@ export function toCsv(root: JNode, opts: CsvOptions = {}): string {
       const s = text(c);
       line += (j ? d : '') + (s === '' && c !== undefined && (typeof c === 'string' || c.t === STR) ? '""' : f(s));
     }
-    out += line + '\r\n';
+    out += (line || (h.length ? '""' : '')) + '\r\n';
   }
   return out;
 }
