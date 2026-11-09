@@ -66,10 +66,25 @@ const PY_MODEL = set(
   'construct copy dict from_orm json model_computed_fields model_config model_construct model_copy model_dump model_dump_json model_extra model_fields model_fields_set model_json_schema model_parametrized_name model_post_init model_rebuild model_validate model_validate_json model_validate_strings parse_file parse_obj parse_raw schema schema_json update_forward_refs validate',
 );
 const pyReserved = (n: string) => PY_RES.has(n) || PY_MODEL.has(n);
-const PY_ID = new RegExp('^[\\p{L}_][\\p{L}\\p{Nd}_]*$', 'u');
+// What Python takes for an identifier (checked on the source text, which it then reads NFKC-normalised: `ﬁle` is `file`).
+const PY_ID = new RegExp('^[\\p{XID_Start}_]\\p{XID_Continue}*$', 'u');
+const nfkc = (s: string) => s.normalize('NFKC');
+
+/** Names of the record types a shape's annotation refers to. */
+const refs = (s: Shape, acc: Set<string>): Set<string> => {
+  if (s.arr) refs(s.arr, acc);
+  const ob = s.obj;
+  if (ob?.map) refs(ob.map, acc);
+  else if (ob?.name) acc.add(ob.name);
+  return acc;
+};
 
 export function toPython(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, 'BaseModel ConfigDict Field RootModel Any Dict List Optional Union None True False');
+  // (Type names as Python reads them, so two that normalise alike are told apart; "Type" if not an identifier.)
+  const m = infer(root, o, 'BaseModel ConfigDict Field RootModel Any Dict List Optional Union None True False', (s) => {
+    const n = nfkc(pascal(s));
+    return PY_ID.test(n) ? n : '';
+  });
   const P: Prim = {
     bool: 'bool',
     int: 'int',
@@ -84,13 +99,23 @@ export function toPython(root: JNode, o: ConvertOptions): string {
   };
   const out: string[] = [];
   for (const t of m.deps) {
-    const u = uniq();
+    // A field with a default or an alias (`= Field(…)`) is a class attribute: named like a type the annotations
+    // use, it hides that type from them (an annotation is evaluated after its own assignment, and from Python 3.14
+    // after the whole class body), so it takes another name and keeps its key as the alias.
+    const types = new Set<string>();
+    for (const p of props(t)) refs(p.s, types);
+    const used = new Set<string>();
     let ns = false;
     const lines = props(t).map((p) => {
-      const ok = PY_ID.test(p.key) && !pyReserved(p.key) && p.key[0] !== '_';
-      let f = ok ? p.key : snake(p.key) || 'field';
-      if (!ok && pyReserved(f)) f += '_';
-      f = u(f);
+      const n = nfkc(p.key);
+      const ok = PY_ID.test(p.key) && !pyReserved(n) && n[0] !== '_' && !(types.has(n) && (p.opt || n !== p.key));
+      let f = ok ? n : nfkc(snake(n));
+      if (!PY_ID.test(f)) f = 'field';
+      if (!ok && (pyReserved(f) || types.has(f))) f += '_';
+      // Unique among the fields, and never a type name when the field is bound (it has a default or an alias).
+      let r = f;
+      for (let i = 2; used.has(r) || (types.has(r) && (p.opt || r !== p.key)); i++) r = f + i;
+      used.add((f = r));
       if (f.startsWith('model_')) ns = true;
       const alias = f !== p.key ? `alias=${lit(p.key)}` : '';
       const def = p.opt ? (alias ? ` = Field(default=None, ${alias})` : ' = None') : alias ? ` = Field(${alias})` : '';
