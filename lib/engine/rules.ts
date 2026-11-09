@@ -46,9 +46,9 @@ export const HOLDS_JSON_PARSE_MAX = 1_000_000;
 /**
  * Whether text `s` (a JSON string's value: what Unescape would show) is a JSON object or array, whitespace around it
  * allowed: its first and last characters other than whitespace are `{…}` or `[…]`, and JSON.parse reads it (prose
- * such as `[citation needed]` isn't). `last`: that last character when `s` is only the text's start (a long string
- * isn't decoded whole for this), or when `s` is longer than HOLDS_JSON_PARSE_MAX: then the pair alone decides, and
- * Unescape checks the rest.
+ * such as `[citation needed]` isn't). `last`: the text's last such character, when `s` is only its start (a long
+ * string isn't decoded whole for this). Then, as for an `s` longer than HOLDS_JSON_PARSE_MAX, the pair alone decides
+ * (Unescape checks the rest).
  */
 export function holdsJson(s: string, last = -1): boolean {
   let a = 0;
