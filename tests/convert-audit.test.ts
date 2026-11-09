@@ -126,3 +126,25 @@ test('Kotlin: objects past the JVM\'s 255 parameter slots box their numbers, or 
   // (the types inside it are no longer used)
   assert.ok(!big.includes('Inner'), big);
 });
+
+test('Zod: optional keys named like Object.prototype members accept objects without them', () => {
+  // z.object() reads a missing "constructor" as the inherited Object: `{"a":1}` failed "expected string, received function".
+  const out = conv('[{"a":1,"constructor":"c","n":{"toString":1}},{"a":2,"n":{}},{"a":3,"__proto__":4,"n":{"valueOf":2}}]', 'zod');
+  has(
+    out,
+    'import { z } from "zod";\n\n// Objects with keys that every object inherits',
+    'export const NSchema = z.preprocess(own, z.object({\n  toString: z.number().int().optional(),',
+    'export const RootItemSchema = z.preprocess(own, z.object({',
+  );
+  assert.equal(out.match(/const own = /g)?.length, 1);
+  // the helper: a copy without a prototype, other values as they are
+  const own = new Function(`${/const own = .*/.exec(out)![0].replace(/\(v: unknown\)/, '(v)')} return own;`)() as (v: unknown) => unknown;
+  const copy = own(JSON.parse('{"a":1,"__proto__":2}')) as Record<string, unknown>;
+  assert.equal(Object.getPrototypeOf(copy), null);
+  assert.deepEqual(Object.keys(copy), ['a', '__proto__']);
+  assert.equal(copy.constructor, undefined);
+  for (const v of [null, [1], 'x', 1]) assert.equal(own(v), v);
+  // required ones need no copy (a missing one fails either way), nor do other objects
+  assert.ok(!conv('{"constructor":"c","a":1}', 'zod').includes('preprocess'));
+  assert.ok(!conv('[{"a":1},{}]', 'zod').includes('own'));
+});

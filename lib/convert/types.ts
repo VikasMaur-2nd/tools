@@ -38,6 +38,13 @@ export function toTypeScript(root: JNode, o: ConvertOptions): string {
   return out.join('\n\n') + '\n';
 }
 
+// Object.prototype's members (what an object without such a key still reads for it).
+const INHERITED = new Set(Object.getOwnPropertyNames(Object.prototype));
+const OWN =
+  '// Objects with keys that every object inherits (constructor, toString…) are parsed as copies without a prototype:\n' +
+  '// otherwise Zod would read the inherited member for a missing key.\n' +
+  'const own = (v: unknown) => (v !== null && typeof v === "object" && !Array.isArray(v) ? Object.assign(Object.create(null), v) : v);';
+
 const ZFMT: Record<string, string> = {
   'date-time': '.datetime({ offset: true })',
   date: '.date()',
@@ -74,12 +81,17 @@ export function toZod(root: JNode, o: ConvertOptions): string {
   };
   const out = ['import { z } from "zod";'];
   const decl = (n: string, schema: string) => `export const ${n}Schema = ${schema};\nexport type ${n} = z.infer<typeof ${n}Schema>;`;
+  let own = false;
   for (const t of m.deps) {
     const body = props(t)
       .map((p) => `  ${objKey(p.key)}: ${field(p.s, p.opt)},${hasBig(p.s) ? BIG : ''}`)
       .join('\n');
-    out.push(decl(t.name, `z.object({\n${body}\n})`));
+    // Zod reads a missing key's inherited value: without "constructor", ({}).constructor is still Object.
+    const inherits = props(t).some((p) => p.opt && INHERITED.has(p.key));
+    own ||= inherits;
+    out.push(decl(t.name, inherits ? `z.preprocess(own, z.object({\n${body}\n}))` : `z.object({\n${body}\n})`));
   }
+  if (own) out.splice(1, 0, OWN);
   if (!m.obj) out.push(decl(m.name, zt(m.root)));
   return out.join('\n\n') + '\n';
 }
