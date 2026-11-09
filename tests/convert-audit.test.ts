@@ -115,3 +115,14 @@ test('Java: the key "" is read through @JsonAlias', () => {
   );
   assert.ok(!out.includes('@JsonProperty("")'), out);
 });
+
+test('Kotlin: objects past the JVM\'s 255 parameter slots box their numbers, or are a JsonObject', () => {
+  // (Its constructors also take a mask Int per 32 properties and a marker.)
+  const boxed = conv(JSON.stringify({ w: wide(130, 1), s: 'x' }), 'kotlin');
+  has(boxed, "// Long and Double properties are nullable (boxed): as primitives they'd take more than the JVM's 255 parameter slots.\n@Serializable\ndata class W(\n    val f0: Long? = null,");
+  assert.ok(conv(JSON.stringify(wide(120, 1)), 'kotlin').includes('    val f0: Long,\n'));
+  const big = conv(JSON.stringify({ big: { ...wide(300, 's'), inner: { q: 1 } }, other: { z: 1 } }), 'kotlin');
+  has(big, 'import kotlinx.serialization.json.JsonObject\n', "// Too many properties for a serializable class (the JVM's 255 parameter slots): a JsonObject.\ntypealias Big = JsonObject\n", 'data class Other(');
+  // (the types inside it are no longer used)
+  assert.ok(!big.includes('Inner'), big);
+});

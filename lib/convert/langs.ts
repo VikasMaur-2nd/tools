@@ -1,6 +1,6 @@
 /** Typed-language emitters: Go, Python, Rust, Java, C#, Kotlin, Swift, Dart, PHP. */
 import type { JNode } from '../json/parser';
-import { type ConvertOptions, type Obj, type Prim, type Shape, camel, infer, isNull, kind, lit, pascal, snake, typeOf, uniq } from './infer';
+import { type ConvertOptions, type Model, type Obj, type Prim, type Shape, camel, infer, isNull, kind, lit, pascal, snake, typeOf, uniq } from './infer';
 
 const props = (t: Obj) => [...t.props.values()];
 // Languages without union types: mixed values are `any`, so objects inside them get no type.
@@ -309,8 +309,26 @@ export function toCSharp(root: JNode, o: ConvertOptions): string {
 
 const KT_KW = set('as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while');
 
+/** The named types still referenced from the root when the `cut` ones are written as an untyped stand-in. */
+function reached(m: Model, cut: Set<Obj>): Obj[] {
+  const seen = new Set<Obj>();
+  // (As infer's naming walks the shapes, without unions.)
+  const walk = (s: Shape): void => {
+    if (kind(s) === 'union') return;
+    if (s.arr) walk(s.arr);
+    const ob = s.obj;
+    if (!ob) return;
+    if (ob.map) return walk(ob.map);
+    if (!ob.name || seen.has(ob)) return;
+    seen.add(ob);
+    if (!cut.has(ob)) for (const p of ob.props.values()) walk(p.s);
+  };
+  walk(m.root);
+  return m.types.filter((t) => seen.has(t));
+}
+
 export function toKotlin(root: JNode, o: ConvertOptions): string {
-  const m = inferNU(root, o, 'String Int Long Double Boolean List Map Set Any Unit Nothing Array Pair Triple Serializable SerialName JsonElement Char Number Float Short Byte Result');
+  const m = inferNU(root, o, 'String Int Long Double Boolean List Map Set Any Unit Nothing Array Pair Triple Serializable SerialName JsonElement JsonObject Char Number Float Short Byte Result');
   const P: Prim = {
     bool: 'Boolean',
     int: 'Long',
@@ -323,23 +341,42 @@ export function toKotlin(root: JNode, o: ConvertOptions): string {
     nul: (t) => t + '?',
     an: true,
   };
+  // Every constructor of a @Serializable data class takes all its properties: the primary one, the one for default
+  // values and copy$default (plus a mask Int per 32 parameters and a marker), and the serialization plugin's
+  // (plus a "seen" Int per 32 properties and a marker), within the JVM's 255 parameter slots. Past it, Long and
+  // Double (two slots each) become Long? and Double? (one); past that too, the object is a JsonObject.
+  const plan = m.types.map((t) => {
+    const n = t.props.size;
+    const extra = Math.ceil(n / 32) + 1;
+    const tys = props(t).map((p) => typeOf(p.s, P, p.opt));
+    return { t, tys, mode: fitsJvm(tys, (ty) => ty === 'Long' || ty === 'Double', extra) ? 0 : fitsJvm(tys, () => false, extra) ? 1 : 2 };
+  });
+  const cut = new Set(plan.filter((x) => x.mode === 2).map((x) => x.t));
+  const live = cut.size ? new Set(reached(m, cut)) : null;
   const out: string[] = [];
   if (!m.obj) out.push(`typealias ${m.name} = ${typeOf(m.root, P)}`);
-  for (const t of m.types) {
+  for (const { t, tys, mode } of plan) {
+    if (live && !live.has(t)) continue;
+    if (mode === 2) {
+      out.push(`// Too many properties for a serializable class (the JVM's 255 parameter slots): a JsonObject.\ntypealias ${t.name} = JsonObject`);
+      continue;
+    }
     const u = uniq();
-    const ps = props(t).map((p) => {
+    const ps = props(t).map((p, i) => {
       const f = u(camel(p.key) || 'field');
-      const ty = typeOf(p.s, P, p.opt);
+      const ty = mode && (tys[i] === 'Long' || tys[i] === 'Double') ? tys[i] + '?' : tys[i];
       const sn = f !== p.key ? `@SerialName(${lit(p.key, '"', false, true)}) ` : '';
       return `    ${sn}val ${KT_KW.has(f) ? '`' + f + '`' : f}: ${ty}${ty.endsWith('?') ? ' = null' : ''},`;
     });
-    out.push(`@Serializable\ndata class ${t.name}(\n${ps.join('\n')}\n)`);
+    const note = mode ? "// Long and Double properties are nullable (boxed): as primitives they'd take more than the JVM's 255 parameter slots.\n" : '';
+    out.push(`${note}@Serializable\ndata class ${t.name}(\n${ps.join('\n')}\n)`);
   }
   const body = out.join('\n\n');
   const imp = [
     body.includes('@SerialName(') && 'kotlinx.serialization.SerialName',
     body.includes('@Serializable') && 'kotlinx.serialization.Serializable',
     has(body, '\\bJsonElement\\b') && 'kotlinx.serialization.json.JsonElement',
+    has(body, '= JsonObject\\b') && 'kotlinx.serialization.json.JsonObject',
   ].filter(Boolean);
   return (imp.length ? imp.map((i) => `import ${i}`).join('\n') + '\n\n' : '') + body + '\n';
 }
