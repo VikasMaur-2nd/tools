@@ -37,7 +37,7 @@ function csvOf(rs) {
   const cell = (r, c) => {
     const v = r[c];
     if (v === undefined || v === null) return '';
-    if (Array.isArray(v)) return v.length ? q(v.join(', ')) : '""';
+    if (Array.isArray(v)) return v.length ? q(v.join(', ')) : '[]';
     return q(String(v));
   };
   return cols.join(',') + '\r\n' + rs.map((r) => cols.map((c) => cell(r, c)).join(',') + '\r\n').join('');

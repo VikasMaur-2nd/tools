@@ -49,7 +49,7 @@ function session(view: string, fileName: string, doc: string, shown: (root: JNod
   const engine = new out.Engine();
   engine.settings = state.settings;
   engine.fresh = () => res;
-  engine.table = { exportNode: () => shown(res.root!) };
+  engine.table = { exportNode: () => shown(res.root!), exportOrder: () => null };
   engine.toast = (...args: unknown[]) => calls.push(['toast', ...args]);
   engine.saveBlob = (blob: Blob, name: string) => calls.push(['save', blob, name]);
   return { engine, calls, root: res.root! };

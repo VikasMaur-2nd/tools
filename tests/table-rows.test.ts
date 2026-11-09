@@ -82,7 +82,7 @@ test('a Table from a tape shows, sorts, finds and copies every row as from nodes
       }
       a.sort(Math.min(1, a.view.colCount - 1));
       b.sort(Math.min(1, b.view.colCount - 1));
-      assert.equal(toCsv(b.view.exportNode()!), toCsv(a.view.exportNode()!), label('CSV sorted'));
+      assert.equal(toCsv(b.view.exportNode()!, { order: b.view.exportOrder() }), toCsv(a.view.exportNode()!, { order: a.view.exportOrder() }), label('CSV sorted'));
       // Selecting a cell: the same node (by place) to the engine, and the one every view gets.
       const step = (v: TableView) => (v as unknown as { activate(r: number, c: number): void }).activate(0, Math.min(1, v.colCount - 1));
       if (a.view.rowCount) {

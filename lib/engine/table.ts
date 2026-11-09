@@ -640,19 +640,18 @@ export class TableView {
     return c;
   }
 
-  /**
-   * What the table shows, to export (CSV, Excel: convert/xlsx flattens it): its array or object, or, sorted, the
-   * same items in the order shown. Items from a tape are made.
-   */
+  /** What the table shows, to export (CSV, Excel: convert/xlsx flattens it): its array or object. */
   exportNode(): JNode | null {
-    const n = this.node;
-    if (!n) return null;
+    return this.node;
+  }
+
+  /**
+   * The order its rows are shown in (indexes of exportNode's items), or null in document order. The export
+   * reorders the rows only: its columns are the document's, whichever column the table is sorted by.
+   */
+  exportOrder(): Int32Array | null {
     const order = this.order;
-    let sorted = false;
-    for (let i = 0; i < order.length && !sorted; i++) sorted = order[i] !== i;
-    if (!sorted) return n;
-    const out = new JNode(n.t, Array.from(order, (i) => this.item(i)), n.s, n.d, null, undefined);
-    out.e = n.e;
-    return out;
+    for (let i = 0; i < order.length; i++) if (order[i] !== i) return order;
+    return null;
   }
 }

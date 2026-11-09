@@ -218,7 +218,7 @@ test('scrolling on draws only the rows coming into view, and they read as a full
 });
 
 /** The table's CSV export: what Copy as CSV and Download CSV write. */
-const csv = (view: TableView) => toCsv(view.exportNode()!);
+const csv = (view: TableView) => toCsv(view.exportNode()!, { order: view.exportOrder() });
 
 test('the CSV and Excel exports write the table shown: its sub-table, in its order, nested objects as dotted columns', () => {
   const doc = '{"meta":{"n":2},"users":[{"name":"Bo","address":{"city":"Oslo","zip":"0150"},"tags":["a","b"]},{"name":"Al","address":{"city":"Rome"}}]}';
@@ -231,18 +231,30 @@ test('the CSV and Excel exports write the table shown: its sub-table, in its ord
   const lines = csv(view).trimEnd().split('\r\n');
   assert.equal(lines[0], 'name,address.city,address.zip,tags');
   assert.deepEqual(lines.slice(1), ['Bo,Oslo,0150,"a, b"', 'Al,Rome,,']);
-  // Sorted by name: exported in that order (the same item nodes), the document untouched.
-  sort(1);
-  const sorted = view.exportNode()!;
-  assert.notEqual(sorted, users[1]);
-  assert.deepEqual(sorted.v, [(users[1].v as JNode[])[1], (users[1].v as JNode[])[0]]);
-  assert.deepEqual(csv(view).trimEnd().split('\r\n').slice(1), ['Al,Rome,,', 'Bo,Oslo,0150,"a, b"']);
-  assert.equal(tabulate(sorted).headers.join(','), lines[0]);
-  sort(1);
+  // Sorted by name: the rows exported in that order, the columns still the document's, the document untouched.
   sort(1);
   assert.equal(view.exportNode(), users[1]);
+  assert.deepEqual(Array.from(view.exportOrder()!), [1, 0]);
+  assert.deepEqual(csv(view).trimEnd().split('\r\n'), [lines[0], 'Al,Rome,,', 'Bo,Oslo,0150,"a, b"']);
+  assert.equal(tabulate(view.exportNode()!).headers.join(','), lines[0]);
+  sort(1);
+  sort(1);
+  assert.equal(view.exportOrder(), null);
   view.setNode(null);
   assert.equal(view.exportNode(), null);
+});
+
+test('a sorted table exports its columns in document order: sorting moves rows, not columns', () => {
+  // Record 1 has a key the others lack: first-seen column order would change with the row order.
+  const { view, sort } = table('[{"id":1,"b":"y"},{"id":2,"a":"x"},{"id":3,"a":"w"}]');
+  const head = csv(view).split('\r\n')[0];
+  assert.equal(head, 'id,b,a');
+  for (let k = 0; k < 2; k++) {
+    sort(0);
+    const out = csv(view).trimEnd().split('\r\n');
+    assert.equal(out[0], head, `sorted ${k ? 'descending' : 'ascending'}: the same columns`);
+  }
+  assert.deepEqual(csv(view).trimEnd().split('\r\n').slice(1), ['3,,w', '2,,x', '1,y,']);
 });
 
 test('a duplicated key shows its last value, as everything else reads it (JSON.parse, Compare, YAML)', () => {

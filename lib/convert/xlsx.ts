@@ -311,7 +311,12 @@ export interface CsvOptions {
   delimiter?: ',' | ';' | '\t';
   /** Prepend a UTF-8 BOM so Excel detects the encoding. */
   bom?: boolean;
+  /** The rows in this order (indexes of `root`'s items, as a sorted table shows them); the columns stay in document order. */
+  order?: ArrayLike<number> | null;
 }
+
+/** `t`'s rows in `order` (when it is one for them). */
+const inOrder = (r: Cell[][], order: ArrayLike<number> | null | undefined) => (order && order.length === r.length ? Array.from(order, (i) => r[i]) : r);
 
 /**
  * RFC 4180 CSV (CRLF line endings). null/missing → empty field, "" → `""`. Numbers keep their exact source text;
@@ -320,7 +325,8 @@ export interface CsvOptions {
  */
 export function toCsv(root: JNode, opts: CsvOptions = {}): string {
   const d = opts.delimiter ?? ',';
-  const { h, r } = table(root, opts.flatten ?? 'dot');
+  const { h, r: rows } = table(root, opts.flatten ?? 'dot');
+  const r = inOrder(rows, opts.order);
   const re = new RegExp('["\\r\\n' + (d === '\t' ? '\\t' : d) + ']');
   // (Text that would run as a formula is kept as text: see formulaSafe.)
   const f = (s: string) => ((s = formulaSafe(s)), re.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
@@ -425,11 +431,14 @@ const sheetName = (s: string | undefined) => {
 export interface XlsxOptions {
   sheetName?: string;
   flatten?: Flatten;
+  /** As CsvOptions' `order`. */
+  order?: ArrayLike<number> | null;
 }
 
 /** Builds a single-sheet .xlsx: bold frozen header with autofilter, typed cells, content-sized columns. */
 export async function toXlsx(root: JNode, opts: XlsxOptions = {}): Promise<Blob> {
-  const { h, r } = table(root, opts.flatten ?? 'dot');
+  const { h, r: rows } = table(root, opts.flatten ?? 'dot');
+  const r = inOrder(rows, opts.order);
   const nc = h.length;
   const nr = r.length;
   if (nc > MAX_COLS) throw new Error(`Too many columns for Excel: ${nc.toLocaleString()} (max ${MAX_COLS.toLocaleString()})`);

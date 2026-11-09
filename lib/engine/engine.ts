@@ -1728,10 +1728,11 @@ export class Engine {
     if (!root) return this.toast('Paste or open valid JSON first', 'info');
     if ((current?.root ? current : this.good)!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
     const shown = this.settings.view === 'table' ? this.table.exportNode() : null;
+    const order = shown ? this.table.exportOrder() : null;
     try {
       const { records, toXlsx } = await import('../convert/xlsx');
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-      this.saveBlob(await toXlsx(shown ?? records(root), { sheetName: sheetBase(base) }), `${base}.xlsx`);
+      this.saveBlob(await toXlsx(shown ?? records(root), { sheetName: sheetBase(base), order }), `${base}.xlsx`);
       track('feature_used', { feature: 'export_xlsx' });
     } catch (e) {
       this.toast(tooDeep(e) ? 'Nesting is too deep to convert' : "Couldn't create the Excel file", 'err');
@@ -3759,10 +3760,10 @@ export class Engine {
    * The table shown (its sort included) as CSV, as the Excel export and the CSV converter write it (nested
    * objects as dotted columns): undefined (after saying why) when it can't be.
    */
-  private async tableCsv(n: JNode): Promise<string | undefined> {
+  private async tableCsv(n: JNode, order: Int32Array | null): Promise<string | undefined> {
     try {
       const { toCsv } = await import('../convert/xlsx');
-      return toCsv(n);
+      return toCsv(n, { order });
     } catch (e) {
       if (tooDeep(e)) this.toast('Nesting is too deep to convert', 'err');
       else if (tooLarge(e)) this.toast('The result is too large', 'err');
@@ -3779,7 +3780,7 @@ export class Engine {
     if (!n) return this.toast('Open an array or object in the table first', 'info');
     track('feature_used', { feature: 'copy_csv' });
     // (The CSV comes from a module loaded on first use: the copy waits for it, keeping the click's permission.)
-    void this.copyLater(this.tableCsv(n), 'Copied table as CSV', () => this.toast('Nothing to copy yet', 'info'));
+    void this.copyLater(this.tableCsv(n, this.table.exportOrder()), 'Copied table as CSV', () => this.toast('Nothing to copy yet', 'info'));
   }
 
   downloadCSV() {
@@ -3787,7 +3788,7 @@ export class Engine {
     if (!n) return this.toast('Open an array or object in the table first', 'info');
     track('feature_used', { feature: 'download_csv' });
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    void this.tableCsv(n).then((csv) => {
+    void this.tableCsv(n, this.table.exportOrder()).then((csv) => {
       if (csv !== undefined && !this.dead) this.save(csv, `${base}.csv`, 'text/csv');
     });
   }
