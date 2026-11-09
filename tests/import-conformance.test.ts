@@ -363,10 +363,10 @@ describe('YAML explicit keys', () => {
 
   test('a list or mapping is no key; nor is "?" a value on its key\'s line', () => {
     fails('yaml', [
-      ['? - a\n: 1\n', 'Complex mapping keys (?) are not supported', 1, 1],
-      ['? a: b\n: 1\n', 'Complex mapping keys (?) are not supported', 1, 1],
-      ['x:\n  ? [a]\n  : 1\n', 'Complex mapping keys (?) are not supported', 2, 3],
-      ['? {a: 1}\n', 'Complex mapping keys (?) are not supported', 1, 1],
+      ['? - a\n: 1\n', 'Collections cannot be used as mapping keys', 1, 1],
+      ['? a: b\n: 1\n', 'Collections cannot be used as mapping keys', 1, 1],
+      ['x:\n  ? [a]\n  : 1\n', 'Collections cannot be used as mapping keys', 2, 3],
+      ['? {a: 1}\n', 'Collections cannot be used as mapping keys', 1, 1],
       ['x: {? [a]: b}\n', 'Collections cannot be used as mapping keys', 1, 5],
       ['a: ? b\n', "Plain values cannot start with '?'. Wrap the value in quotes", 1, 4],
       // ": value" belongs at the "?"'s indentation

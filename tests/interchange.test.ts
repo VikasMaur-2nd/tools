@@ -789,7 +789,7 @@ seqs:
   key: v
 - last
 `;
-    assert.match(err('? [complex]\n: key\n', 'yaml').error, /Complex mapping keys/);
+    assert.match(err('? [complex]\n: key\n', 'yaml').error, /Collections cannot be used as mapping keys/);
     assert.deepEqual(val(src, 'yaml'), {
       list: ['a', 'b c', 'd', { e: 1, f: [2, 3] }, ['x', 'y'], { k: 'v' }],
       map: { a: 1, b: null, c: null },

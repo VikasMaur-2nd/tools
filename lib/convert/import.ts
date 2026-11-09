@@ -898,7 +898,7 @@ function yaml(src: string, indent: string): V {
         i++;
         const kv = node(c, EXPL);
         // (JSON keys are strings: a list or mapping cannot be one)
-        if (kv instanceof Map || Array.isArray(kv)) f('Complex mapping keys (?) are not supported', kp);
+        if (kv instanceof Map || Array.isArray(kv)) f('Collections cannot be used as mapping keys', kp);
         k = rawKey ?? (kv instanceof Num ? kv.r : String(kv));
         merge = rawKey === '<<';
         skip();
