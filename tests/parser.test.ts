@@ -536,6 +536,45 @@ describe('repairs', () => {
   });
 });
 
+describe('tolerant reading keeps values the same (audit regressions)', () => {
+  const value = (src: string, options = {}) => {
+    const r = parse(src, options);
+    assert.equal(r.error, null, `${show(src)}: ${JSON.stringify(r.error)}`);
+    return JSON.parse(stringify(r.root as JNode, ''));
+  };
+  const first = (src: string, options = {}) => parse(src, options).issues[0];
+
+  test('a sign before a word: -Infinity / +NaN are null, anything longer is a bare word as without the sign', () => {
+    assert.deepEqual(value('[-Infinity, +Infinity, -NaN, +NaN, NaN]'), [null, null, null, null, null]);
+    for (const src of ['[-NaN]', '[+NaN]', '{"a": -NaN}']) assert.deepEqual(first(src, { repair: true }), { p: src.indexOf('NaN') - 1, m: 'NaN is not valid JSON (replaced with null)' }, show(src));
+    assert.deepEqual(value('[Infinityx]'), ['Infinityx']);
+    assert.deepEqual(value('[-Infinityx, +NaNa, -foo]'), ['-Infinityx', '+NaNa', '-foo']);
+    assert.deepEqual(first('[-Infinityx]'), { p: 1, m: "Unexpected '-Infinityx': strings must be wrapped in double quotes" });
+    // (Still no value: a sign alone.)
+    for (const src of ['[-]', '[- 1]', '[+]']) assert.ok(parse(src, { repair: true }).error, show(src));
+  });
+
+  test('\\0 (no digit after it) and \\v stand for U+0000 and U+000B, still reported', () => {
+    assert.deepEqual(value('["a\\0b", "\\v", "\\01", "\\0"]'), ['a\u0000b', '\u000b', '01', '\u0000']);
+    assert.deepEqual(parse('["a\\0b"]').issues, [{ p: 3, m: 'Invalid escape sequence \\0' }]);
+    assert.deepEqual(parse('["\\v"]').issues, [{ p: 2, m: 'Invalid escape sequence \\v' }]);
+  });
+
+  test('a number with more right after it (a date, an IP, a version, 0o17) is one bare word, in arrays and objects alike', () => {
+    assert.deepEqual(value('[2024-01-15, 2024-02-01]'), ['2024-01-15', '2024-02-01']);
+    assert.deepEqual(value('[10.0.0.1, 1.2.3, 0o17, 5px, 1e5x, -1-2, 0x1Fg, 3.5°C]'), ['10.0.0.1', '1.2.3', '0o17', '5px', '1e5x', '-1-2', '0x1Fg', '3.5°C']);
+    assert.deepEqual(value('{"d": 2024-01-15, "t": 2024-01-15T10:30:00Z, "ip": 10.0.0.1}'), { d: '2024-01-15', t: '2024-01-15T10:30:00Z', ip: '10.0.0.1' });
+    assert.deepEqual(value('2024-01-15'), '2024-01-15');
+    assert.deepEqual(parse('[2024-01-15]').issues, [{ p: 1, m: "Unexpected '2024-01-15': strings must be wrapped in double quotes" }], 'one issue: none about the number');
+    assert.deepEqual(parse('[1..2]').issues.map((x) => x.m), ["Unexpected '1..2': strings must be wrapped in double quotes"]);
+    // Still numbers: a missing comma with a space, and what a number can end with.
+    assert.deepEqual(value('[1 2, 3 -4]'), [1, 2, 3, -4]);
+    assert.deepEqual(value('[1,2]'), [1, 2]);
+    assert.deepEqual(value('[1"a", 2[3], 4{"b":5}]'), [1, 'a', 2, [3], 4, { b: 5 }]);
+    assert.deepEqual(value('[1 ]'), [1], 'exotic space after a number');
+  });
+});
+
 // ── 3. error positions & messages ────────────────────────────────────────
 
 describe('error positions', () => {

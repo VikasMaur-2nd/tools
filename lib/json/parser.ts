@@ -245,6 +245,14 @@ const startsValue = (c: number) =>
   isIdentStart(c) ||
   isSmartQuote(c);
 
+/**
+ * ASCII that can't follow a number, but goes on a token that starts like one (`2024-01-15`, `10.0.0.1`, `0o17`,
+ * `5px`): letters, digits, `_`, `$`, `-`, `+` and `.` (past ASCII, what isIdentStart takes). Such a token is a
+ * bare word (see bare()), not a number and what follows it.
+ */
+export const NUMBER_TAIL = new Uint8Array(128);
+for (const r of ['az', 'AZ', '09', '__', '$$', '--', '++', '..']) for (let c = r.charCodeAt(0); c <= r.charCodeAt(1); c++) NUMBER_TAIL[c] = 1;
+
 const INT_KEY = /^(?:0|[1-9]\d{0,9})$/;
 /** JSON whitespace. */
 const isSpace = (c: number) => c === 32 || c === 10 || c === 13 || c === 9;
@@ -760,7 +768,8 @@ const esc = (): string => {
     return '';
   }
   fix(i - 2, `Invalid escape sequence \\${String.fromCharCode(c)}`);
-  return String.fromCharCode(c);
+  // (JavaScript's \v, and \0 when no digit follows it, as JSON5 reads them: what they stand for.)
+  return c === 118 ? '\v' : c === 48 && !isDigit(src.charCodeAt(i)) ? '\0' : String.fromCharCode(c);
 };
 
 /** Reads a string starting at the opening quote; `q`/`q2` are the accepted closing quotes. */
@@ -1016,6 +1025,42 @@ const num = (): string => {
   return clean ? raw : normalizeNumber(raw);
 };
 
+/**
+ * A number at `s`, or, when what follows it right away goes on the token (see NUMBER_TAIL: `2024-01-15`,
+ * `10.0.0.1`), that token as a bare word, in an array as in an object.
+ */
+const number = (s: number, d: number, u: JNode | null, key: Key): JNode => {
+  const had = issues.length;
+  const v = num();
+  const c = src.charCodeAt(i);
+  if (!(c < 128 ? NUMBER_TAIL[c] === 1 : isIdentStart(c))) return leaf(NUM, v, s, d, u, key);
+  // (What num() reported was about a number, which this isn't.)
+  issues.length = had;
+  return bare(s, d, u, key);
+};
+
+/** A bare word from `s` (i is in it): a string up to the end of its value (, } ] or the line's end), with the issue. */
+const bare = (s: number, d: number, u: JNode | null, key: Key): JNode => {
+  while (i < n) {
+    const ch = src.charCodeAt(i);
+    if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
+    // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
+    if (ch === 47) {
+      const nx = src.charCodeAt(i + 1);
+      const pv = src.charCodeAt(i - 1);
+      if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
+    }
+    i++;
+  }
+  let e = i;
+  while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
+  const text = src.slice(s, e);
+  fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
+  const nd = new JNode(STR, text, s, d, u, key);
+  nd.e = e;
+  return nd;
+};
+
 const looseKey = (c: number): string => {
   if (c === 39) {
     fix(i, 'Property names must use double quotes');
@@ -1083,12 +1128,19 @@ const loose = (c: number, d: number, u: JNode | null, key: Key): JNode | null =>
       i += 3;
       return leaf(NUL, null, s, d, u, key);
     }
-    if (c !== 46 && src.startsWith('Infinity', i + 1)) {
-      fix(s, 'Infinity is not valid JSON (replaced with null)');
-      i += 9;
-      return leaf(NUL, null, s, d, u, key);
+    if (c !== 46 && isIdentStart(src.charCodeAt(i + 1))) {
+      // A sign before a word: -Infinity, +NaN (null, as the word alone), else a bare word as the word alone is.
+      let e = i + 1;
+      while (e < n && isIdent(src.charCodeAt(e))) e++;
+      const w = src.slice(i + 1, e);
+      if (w === 'Infinity' || w === 'NaN') {
+        fix(s, `${w} is not valid JSON (replaced with null)`);
+        i = e;
+        return leaf(NUL, null, s, d, u, key);
+      }
+      return bare(s, d, u, key);
     }
-    return leaf(NUM, num(), s, d, u, key);
+    return number(s, d, u, key);
   }
   if (isIdentStart(c)) {
     while (i < n && isIdent(src.charCodeAt(i))) i++;
@@ -1150,24 +1202,7 @@ const loose = (c: number, d: number, u: JNode | null, key: Key): JNode | null =>
       return null;
     }
     i = end;
-    while (i < n) {
-      const ch = src.charCodeAt(i);
-      if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
-      // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
-      if (ch === 47) {
-        const nx = src.charCodeAt(i + 1);
-        const pv = src.charCodeAt(i - 1);
-        if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
-      }
-      i++;
-    }
-    let e = i;
-    while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
-    const text = src.slice(s, e);
-    fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
-    const nd = new JNode(STR, text, s, d, u, key);
-    nd.e = e;
-    return nd;
+    return bare(s, d, u, key);
   }
   // Repairing, a property's missing value: null.
   if (fixing && typeof key === 'string') {
@@ -1310,7 +1345,7 @@ const value = (d: number, u: JNode | null, key: Key): JNode | null => {
   if (c === 34) return leaf(STR, fixing ? joined(str(34)) : str(34), s, d, u, key);
   if (c === 123) return openObj(d, u, key);
   if (c === 91) return openArr(d, u, key);
-  if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, key);
+  if (isDigit(c) || (c === 45 && isDigit(src.charCodeAt(i + 1)))) return number(s, d, u, key);
   if (c === 116 && word('true')) return leaf(BOOL, true, s, d, u, key);
   if (c === 102 && word('false')) return leaf(BOOL, false, s, d, u, key);
   if (c === 110 && word('null')) return leaf(NUL, null, s, d, u, key);

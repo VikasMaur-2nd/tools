@@ -2,9 +2,11 @@
  * The recursive-descent parser that lib/json/parser.ts replaced, frozen as the
  * oracle for differential tests: the resumable parser must give exactly the same
  * result for every input this one can parse (it only goes deeper). Don't edit,
- * except to keep it compiling.
+ * except to keep it compiling, or to make a deliberate change of what the parser
+ * reads here too, written the recursive way (e.g. bare words that start like a
+ * number, signed NaN, \0 and \v).
  */
-import { ARR, BOOL, JNode, NO_VALUE, NUL, NUM, OBJ, STR, type Issue, type Key, type Kind, type ParseOptions, type ParseResult, type Val } from '../../lib/json/parser';
+import { ARR, BOOL, JNode, NO_VALUE, NUL, NUM, NUMBER_TAIL, OBJ, STR, type Issue, type Key, type Kind, type ParseOptions, type ParseResult, type Val } from '../../lib/json/parser';
 
 class ParseError {
   p: number;
@@ -198,6 +200,8 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
       return '';
     }
     fix(i - 2, `Invalid escape sequence \\${String.fromCharCode(c)}`);
+    if (c === 118) return '\v';
+    if (c === 48 && !isDigit(src.charCodeAt(i))) return '\0';
     return String.fromCharCode(c);
   };
 
@@ -283,6 +287,39 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
     const raw = src.slice(s, i);
     if (exact && !isCanonical(raw)) exact = false;
     return clean ? raw : normalizeNumber(raw);
+  };
+
+  /** A bare word from `s`, up to the end of its value. */
+  const bare = (s: number, d: number, u: JNode | null, key: Key): JNode => {
+    while (i < n) {
+      const ch = src.charCodeAt(i);
+      if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
+      // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
+      if (ch === 47) {
+        const nx = src.charCodeAt(i + 1);
+        const pv = src.charCodeAt(i - 1);
+        if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
+      }
+      i++;
+    }
+    let e = i;
+    while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
+    const text = src.slice(s, e);
+    fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
+    const nd = new JNode(STR, text, s, d, u, key);
+    nd.e = e;
+    return nd;
+  };
+
+  /** A number, or the bare word it starts when more follows it right away (`2024-01-15`). */
+  const number = (s: number, d: number, u: JNode | null, key: Key): JNode => {
+    const before = issues.length;
+    const v = num();
+    const c = src.charCodeAt(i);
+    const more = c < 128 ? NUMBER_TAIL[c] === 1 : isIdentStart(c);
+    if (!more) return leaf(NUM, v, s, d, u, key);
+    issues = issues.slice(0, before);
+    return bare(s, d, u, key);
   };
 
   const looseKey = (c: number): string => {
@@ -499,12 +536,16 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
       return leaf(STR, str(96), s, d, u, key);
     }
     if (c === 43 || c === 45 || c === 46) {
-      if (c !== 46 && src.startsWith('Infinity', i + 1)) {
-        fix(s, 'Infinity is not valid JSON (replaced with null)');
-        i += 9;
+      if (c !== 46 && isIdentStart(src.charCodeAt(i + 1))) {
+        let e = i + 1;
+        while (e < n && isIdent(src.charCodeAt(e))) e++;
+        const w = src.slice(i + 1, e);
+        if (w !== 'Infinity' && w !== 'NaN') return bare(s, d, u, key);
+        fix(s, `${w} is not valid JSON (replaced with null)`);
+        i = e;
         return leaf(NUL, null, s, d, u, key);
       }
-      return leaf(NUM, num(), s, d, u, key);
+      return number(s, d, u, key);
     }
     if (isIdentStart(c)) {
       while (i < n && isIdent(src.charCodeAt(i))) i++;
@@ -572,24 +613,7 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
         return inner;
       }
       i = save;
-      while (i < n) {
-        const ch = src.charCodeAt(i);
-        if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
-        // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
-        if (ch === 47) {
-          const nx = src.charCodeAt(i + 1);
-          const pv = src.charCodeAt(i - 1);
-          if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
-        }
-        i++;
-      }
-      let e = i;
-      while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
-      const text = src.slice(s, e);
-      fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
-      const nd = new JNode(STR, text, s, d, u, key);
-      nd.e = e;
-      return nd;
+      return bare(s, d, u, key);
     }
     if (i >= n) fail(i, 'Unexpected end of input: expected a value');
     return fail(i, `Unexpected ${describe(i)}: expected a value`);
@@ -604,7 +628,7 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
     if (c === 34) return leaf(STR, str(34), s, d, u, key);
     if (c === 123) return obj(d, u, key);
     if (c === 91) return arr(d, u, key);
-    if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, key);
+    if (isDigit(c) || (c === 45 && isDigit(src.charCodeAt(i + 1)))) return number(s, d, u, key);
     if (c === 116 && word('true')) return leaf(BOOL, true, s, d, u, key);
     if (c === 102 && word('false')) return leaf(BOOL, false, s, d, u, key);
     if (c === 110 && word('null')) return leaf(NUL, null, s, d, u, key);

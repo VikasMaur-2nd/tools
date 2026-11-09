@@ -106,6 +106,12 @@ describe('tape parser: the same as parser.ts', () => {
       '[1] [2',
       '\u0001',
       '[ 1]',
+      // Audit regressions: signs before words, \0 and \v, bare words that start like numbers.
+      '[-Infinityx, +NaN, -NaN, -foo, +Infinity]',
+      '["a\\0b", "\\v", "\\01"]',
+      '[2024-01-15, 10.0.0.1, 0o17, 1e5x, -1-2, 0x1Fg, 3.5°C, 1..2]',
+      '{"d": 2024-01-15T10:30:00Z, "e": 5px}',
+      '2024-01-15',
     ];
     for (const src of docs) {
       same(src, {}, [1, 2, 5]);

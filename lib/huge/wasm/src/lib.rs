@@ -938,16 +938,11 @@ fn dfa(s: u32, c: u8) -> u32 {
 }
 
 /// Whether a top-level value can start at byte `c`, right after a number or literal that ended as `s` (a DFA
-/// state) without a separator: tape-parser.ts reads `1true` and `1-2` as two values, `0123`, `0x1`, `1.5.2` and
-/// `truex` as one (loose).
+/// state) without a separator: tape-parser.ts reads `true-1` as two values and `truex` as one (loose); after a
+/// number, never: `1true`, `1-2`, `0123`, `0x1` and `1.5.2` are one (a bare word or a loose number: its NUMBER_TAIL),
+/// and no value starts with another byte that isn't the token's end.
 fn dfa_splits(s: u32, c: u8) -> bool {
-    if s >= D_LIT {
-        return !(c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80);
-    }
-    if digit(c) || c == b'.' || c == b'e' || c == b'E' {
-        return false;
-    }
-    !(s == D_ZERO && (c == b'x' || c == b'X'))
+    s >= D_LIT && !(c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80)
 }
 
 /// dfa_splits for the number or literal at window offsets [p, e), followed by byte `c`.

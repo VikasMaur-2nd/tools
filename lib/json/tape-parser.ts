@@ -17,7 +17,7 @@
  * level), unless `maxDepth` says otherwise.
  */
 import { decodeNumber, decodeString } from './decode';
-import { ARR, BOOL, NO_VALUE, NUL, NUM, OBJ, PASSES, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
+import { ARR, BOOL, NO_VALUE, NUL, NUM, NUMBER_TAIL, OBJ, PASSES, STR, unescaped, type Issue, type ParseOptions, type Unescaped } from './parser';
 import {
   KEY_INDEX,
   KEY_NAME,
@@ -978,6 +978,11 @@ function fast(): void {
           do ch = s.charCodeAt(++j);
           while (ch >= 48 && ch <= 57);
         }
+        // (More right after it that a number can't have: a bare word, `2024-01-15`. Past ASCII the tolerant parser looks.)
+        if (ch < 128 ? NUMBER_TAIL[ch] === 1 : ch === ch) {
+          budget++;
+          break;
+        }
         if (ex && !canonicalAt(s, at, j)) ex = false;
         meta = NUM | (VALUE_SLICE << 5);
         e = j;
@@ -1556,7 +1561,7 @@ function decodeUntil(start: number, end: number): string {
           k += 2;
         } else if (e === 10 || e === 13) {
           if (e === 13 && src.charCodeAt(k) === 10) k++;
-        } else out += String.fromCharCode(e);
+        } else out += e === 118 ? '\v' : e === 48 && !isDigit(src.charCodeAt(k)) ? '\0' : String.fromCharCode(e);
     }
     seg = k;
   }
@@ -1626,6 +1631,36 @@ const num = (): number => {
   return clean ? VALUE_SLICE : VALUE_DECODE;
 };
 
+/** parser.ts's number(): a number at `s`, or the bare word it starts (`2024-01-15`). */
+const number = (s: number, d: number, u: number, kk: number, key: number): number => {
+  const had = issues.length;
+  const vk = num();
+  const c = src.charCodeAt(i);
+  if (!(c < 128 ? NUMBER_TAIL[c] === 1 : isIdentStart(c))) return leaf(NUM, vk, s, d, u, kk, key);
+  issues.length = had;
+  return bare(s, d, u, kk, key);
+};
+
+/** parser.ts's bare(): a bare word from `s` (i is in it), up to the end of its value, with the issue. */
+const bare = (s: number, d: number, u: number, kk: number, key: number): number => {
+  while (i < n) {
+    const ch = src.charCodeAt(i);
+    if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
+    // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
+    if (ch === 47) {
+      const nx = src.charCodeAt(i + 1);
+      const pv = src.charCodeAt(i - 1);
+      if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
+    }
+    i++;
+  }
+  let e = i;
+  while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
+  const text = src.slice(s, e);
+  fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
+  return node(STR, VALUE_RAW, s, e, d, u, kk, key);
+};
+
 const looseKey = (c: number): string => {
   if (c === 39) {
     fix(i, 'Property names must use double quotes');
@@ -1693,12 +1728,19 @@ const loose = (c: number, d: number, u: number, kk: number, key: number): number
       i += 3;
       return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
     }
-    if (c !== 46 && src.startsWith('Infinity', i + 1)) {
-      fix(s, 'Infinity is not valid JSON (replaced with null)');
-      i += 9;
-      return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+    if (c !== 46 && isIdentStart(src.charCodeAt(i + 1))) {
+      // parser.ts: a sign before a word: -Infinity, +NaN (null), else a bare word.
+      let e = i + 1;
+      while (e < n && isIdent(src.charCodeAt(e))) e++;
+      const w = src.slice(i + 1, e);
+      if (w === 'Infinity' || w === 'NaN') {
+        fix(s, `${w} is not valid JSON (replaced with null)`);
+        i = e;
+        return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
+      }
+      return bare(s, d, u, kk, key);
     }
-    return leaf(NUM, num(), s, d, u, kk, key);
+    return number(s, d, u, kk, key);
   }
   if (isIdentStart(c)) {
     while (i < n && isIdent(src.charCodeAt(i))) i++;
@@ -1760,22 +1802,7 @@ const loose = (c: number, d: number, u: number, kk: number, key: number): number
       return CALL;
     }
     i = end;
-    while (i < n) {
-      const ch = src.charCodeAt(i);
-      if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
-      // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
-      if (ch === 47) {
-        const nx = src.charCodeAt(i + 1);
-        const pv = src.charCodeAt(i - 1);
-        if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
-      }
-      i++;
-    }
-    let e = i;
-    while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
-    const text = src.slice(s, e);
-    fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
-    return node(STR, VALUE_RAW, s, e, d, u, kk, key);
+    return bare(s, d, u, kk, key);
   }
   // Repairing, a property's missing value: null.
   if (fixing && kk === KEY_NAME) {
@@ -1938,7 +1965,7 @@ const value = (d: number, u: number, kk: number, key: number): number => {
   }
   if (c === 123) return openObj(d, u, kk, key);
   if (c === 91) return openArr(d, u, kk, key);
-  if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, kk, key);
+  if (isDigit(c) || (c === 45 && isDigit(src.charCodeAt(i + 1)))) return number(s, d, u, kk, key);
   if (c === 116 && word('true')) return leaf(BOOL, VALUE_TRUE, s, d, u, kk, key);
   if (c === 102 && word('false')) return leaf(BOOL, VALUE_FALSE, s, d, u, kk, key);
   if (c === 110 && word('null')) return leaf(NUL, VALUE_NULL, s, d, u, kk, key);
