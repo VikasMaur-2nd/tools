@@ -5,6 +5,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { stringify, toValue } from '../json/format';
 import { formulaSafe } from './formula';
+import { isDataKey } from './keys';
 
 export type Flatten = 'dot' | 'json';
 export type CellValue = string | number | boolean | null;
@@ -207,12 +208,40 @@ function grid(root: JNode, dot: boolean, esc: boolean): Table {
 }
 
 /**
- * The array of records a spreadsheet should show: the root if it's an array,
- * otherwise the largest array of objects within two levels (`data`, `items`,
- * `results`… in API responses). Falls back to the root.
+ * An object of objects that are the rows of one table: keyed by data (ids, dates: the objects infer.ts makes
+ * dictionaries), or of alike objects (each shares at least half its and the first one's keys between them).
+ */
+function keyedRows(n: JNode): boolean {
+  const l = kids(n);
+  if (!l.length || !l.every((c) => c.t === OBJ)) return false;
+  if (l.every((c) => isDataKey(c.key as string))) return true;
+  if (l.length < 2) return false;
+  const first = new Set(kids(l[0]).map((c) => c.key as string));
+  return l.every((o) => {
+    const ks = kids(o);
+    let shared = 0;
+    for (const c of ks) if (first.has(c.key as string)) shared++;
+    // (shared / union >= 1/2)
+    return shared > 0 && shared * 3 >= first.size + ks.length;
+  });
+}
+
+// An object with an id of its own is one record (an API's wrapper holds records, it isn't one), but for a JSON-RPC
+// response's id, which is the call's.
+const ID = /^(?:_?id|uuid|guid)$/i;
+const oneRecord = (n: JNode) => {
+  const l = kids(n);
+  return l.some((c) => (c.t === STR || c.t === NUM) && ID.test(c.key as string)) && !l.some((c) => c.key === 'jsonrpc');
+};
+
+/**
+ * The records a spreadsheet should show: the root, unless it is an object that wraps them: then the largest
+ * array of objects within two levels (`data`, `items`, `results`… in API responses). An object of alike objects
+ * is a table already (one row per key), and a single record (one with an id) isn't replaced by an array it
+ * holds, nor is a record inside the wrapper.
  */
 export function records(root: JNode): JNode {
-  if (root.t === ARR) return root;
+  if (root.t !== OBJ || keyedRows(root) || oneRecord(root)) return root;
   let best: JNode | null = null;
   const consider = (n: JNode) => {
     if (n.t !== ARR) return;
@@ -220,11 +249,9 @@ export function records(root: JNode): JNode {
     if (!list.length || !list.some((c) => c.t === OBJ)) return;
     if (!best || list.length > (best.v as JNode[]).length) best = n;
   };
-  if (root.t === OBJ) {
-    for (const c of root.v as JNode[]) {
-      consider(c);
-      if (c.t === OBJ) for (const g of c.v as JNode[]) consider(g);
-    }
+  for (const c of root.v as JNode[]) {
+    consider(c);
+    if (c.t === OBJ && !oneRecord(c)) for (const g of c.v as JNode[]) consider(g);
   }
   return best ?? root;
 }

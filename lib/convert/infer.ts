@@ -9,6 +9,7 @@
  * are then deduplicated and given unique PascalCase names.
  */
 import { ARR, BOOL, JNode, NUL, NUM, STR, kids } from '../json/parser';
+import { isDataKey } from './keys';
 
 export interface ConvertOptions {
   /** Name of the top-level type (default "Root"). */
@@ -191,15 +192,12 @@ function merge(a: Shape, b: Shape): void {
   }
 }
 
-// Keys that are data rather than field names: numbers, UUIDs, dates.
-const DATA_KEY = /^(?:-?\d+(?:\.\d+)?|[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}|\d{4}-\d\d-\d\d\S*)$/i;
-
 function fin(s: Shape, all: boolean): void {
   if (s.arr) fin(s.arr, all);
   const o = s.obj;
   if (!o) return;
   const ps = [...o.props.values()];
-  if (ps.every((p) => DATA_KEY.test(p.key))) {
+  if (ps.every((p) => isDataKey(p.key))) {
     const v = shape();
     for (const p of ps) merge(v, p.s);
     o.map = v;

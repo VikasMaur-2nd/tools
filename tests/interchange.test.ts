@@ -1096,4 +1096,25 @@ describe('spreadsheet export audit', () => {
     assert.equal(toCsv(root('[{"a":[]}]'), { flatten: 'json' }), 'a\r\n[]\r\n');
     assert.deepEqual(tabulate(root('[{"a":[]}]')).rows, [['[]']]);
   });
+
+  test('records: wrappers are unwrapped, tables and single records are not', () => {
+    const csv = (json: string) => toCsv(records(root(json)));
+    // a map of alike objects: one row per key, not one entry's inner array
+    assert.equal(
+      csv('{"alice":{"age":30,"orders":[{"id":1},{"id":2}]},"bob":{"age":40,"orders":[{"id":3}]}}'),
+      'key,age,orders\r\nalice,30,"[{""id"":1},{""id"":2}]"\r\nbob,40,"[{""id"":3}]"\r\n',
+    );
+    // keyed by data (ids, dates), however different the objects
+    const byId = root('{"1":{"a":[{"x":1},{"x":2}]},"2":{"b":1}}');
+    assert.equal(records(byId), byId);
+    const one = root('{"2024-01-01":{"events":[{"x":1},{"x":2}]}}');
+    assert.equal(records(one), one);
+    // a single record isn't replaced by an array it holds
+    assert.equal(csv('{"id":1,"items":[{"a":1},{"a":2}]}'), 'key,value\r\nid,1\r\nitems,"[{""a"":1},{""a"":2}]"\r\n');
+    // API wrappers still are, one or two levels down
+    assert.equal(csv('{"data":[{"a":1},{"a":2}],"meta":{"page":1}}'), 'a\r\n1\r\n2\r\n');
+    assert.equal(csv('{"data":{"items":[{"a":1},{"a":2}],"total":2},"meta":{"page":1,"total":2}}'), 'a\r\n1\r\n2\r\n');
+    assert.equal(csv('{"jsonrpc":"2.0","id":7,"result":[{"a":1}]}'), 'a\r\n1\r\n');
+    assert.equal(csv('{"status":"ok","user":{"id":5,"name":"n","repos":[{"r":1},{"r":2}]}}'), 'key,value\r\nstatus,ok\r\nuser.id,5\r\nuser.name,n\r\nuser.repos,"[{""r"":1},{""r"":2}]"\r\n');
+  });
 });
