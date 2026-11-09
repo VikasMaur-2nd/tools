@@ -4,7 +4,8 @@ import { type ConvertOptions, type Obj, type Prim, type Shape, camel, infer, isN
 
 const props = (t: Obj) => [...t.props.values()];
 // Languages without union types: mixed values are `any`, so objects inside them get no type.
-const inferNU = (root: JNode, o: ConvertOptions, reserved: string, pc?: (s: string) => string) => infer(root, o, reserved, pc, false);
+const inferNU = (root: JNode, o: ConvertOptions, reserved: string, pc?: (s: string) => string, fold?: (s: string) => string) =>
+  infer(root, o, reserved, pc, false, fold);
 const set = (s: string) => new Set(s.split(' '));
 const has = (body: string, re: string) => new RegExp(re).test(body);
 
@@ -471,14 +472,33 @@ export function toDart(root: JNode, o: ConvertOptions): string {
 
 /* ---------- PHP 8.1+ (readonly promoted properties + fromArray) ---------- */
 
+// Class names PHP refuses: keywords and type names, then the classes, interfaces and enums declared in the global
+// namespace by the engine and the extensions most builds load (a file without a namespace can't declare them again).
+// Names with an underscore (mysqli_result…) are left out: generated names never have one.
 const PHP_RES =
-  'Array Bool Callable Class Default Enum False Float Fn Function Int Iterable List Match Mixed Never New Null Object Parent Print Readonly Self Static String True Void Abstract And As Break Case Catch Clone Const Continue Declare Die Do Echo Else Empty Eval Exit Extends Final Finally For Foreach Global Goto If Implements Include Instanceof Insteadof Interface Isset Namespace Or Private Protected Public Require Return Switch Throw Trait Try Unset Use Var While Xor Yield';
+  'Array Bool Callable Class Default Enum False Float Fn Function Int Iterable List Match Mixed Never New Null Object Parent Print Readonly Self Static String True Void Abstract And As Break Case Catch Clone Const Continue Declare Die Do Echo Else Elseif Empty Enddeclare Endfor Endforeach Endif Endswitch Endwhile Eval Exit Extends Final Finally For Foreach Global Goto If Implements Include Instanceof Insteadof Interface Isset Namespace Or Private Protected Public Require Return Switch Throw Trait Try Unset Use Var While Xor Yield Resource Numeric ' +
+  // engine, standard, json, tokenizer, hash
+  'stdClass Traversable IteratorAggregate Iterator ArrayAccess Serializable Countable Stringable InternalIterator Closure Generator ClosedGeneratorException WeakReference WeakMap Fiber FiberError Attribute ReturnTypeWillChange AllowDynamicProperties SensitiveParameter SensitiveParameterValue Override Deprecated NoDiscard DelayedTargetValidation UnitEnum BackedEnum Throwable Exception ErrorException Error CompileError ParseError TypeError ArgumentCountError ValueError ArithmeticError DivisionByZeroError UnhandledMatchError RequestParseBodyException AssertionError Directory StreamBucket RoundingMode JsonException JsonSerializable PhpToken HashContext ' +
+  // date
+  'DateTimeInterface DateTime DateTimeImmutable DateTimeZone DateInterval DatePeriod DateError DateObjectError DateRangeError DateException DateInvalidTimeZoneException DateInvalidOperationException DateMalformedStringException DateMalformedIntervalStringException DateMalformedPeriodStringException ' +
+  // SPL
+  'ArrayIterator ArrayObject RecursiveArrayIterator AppendIterator CachingIterator CallbackFilterIterator DirectoryIterator EmptyIterator FilesystemIterator FilterIterator GlobIterator InfiniteIterator IteratorIterator LimitIterator MultipleIterator NoRewindIterator OuterIterator ParentIterator RecursiveCachingIterator RecursiveCallbackFilterIterator RecursiveDirectoryIterator RecursiveFilterIterator RecursiveIterator RecursiveIteratorIterator RecursiveRegexIterator RecursiveTreeIterator RegexIterator SeekableIterator SplDoublyLinkedList SplFileInfo SplFileObject SplFixedArray SplHeap SplMinHeap SplMaxHeap SplObjectStorage SplObserver SplPriorityQueue SplQueue SplStack SplSubject SplTempFileObject BadFunctionCallException BadMethodCallException DomainException InvalidArgumentException LengthException LogicException OutOfBoundsException OutOfRangeException OverflowException RangeException RuntimeException UnderflowException UnexpectedValueException ' +
+  // Reflection
+  'Reflection Reflector ReflectionException ReflectionClass ReflectionObject ReflectionMethod ReflectionFunction ReflectionFunctionAbstract ReflectionParameter ReflectionProperty ReflectionClassConstant ReflectionConstant ReflectionExtension ReflectionZendExtension ReflectionType ReflectionNamedType ReflectionUnionType ReflectionIntersectionType ReflectionGenerator ReflectionReference ReflectionAttribute ReflectionEnum ReflectionEnumUnitCase ReflectionEnumBackedCase ReflectionFiber PropertyHookType ' +
+  // common extensions: intl, DOM, XML, PDO, SQLite3, mysqli, curl, zip, sockets, gd, session, Phar, OpenSSL, zlib, SOAP, FFI…
+  'Collator NumberFormatter Normalizer Locale MessageFormatter IntlDateFormatter IntlDatePatternGenerator IntlListFormatter ResourceBundle Transliterator Spoofchecker IntlTimeZone IntlCalendar IntlGregorianCalendar IntlBreakIterator IntlRuleBasedBreakIterator IntlCodePointBreakIterator IntlPartsIterator IntlIterator IntlException IntlChar UConverter ' +
+  'DOMException DOMImplementation DOMNode DOMNameSpaceNode DOMDocumentFragment DOMDocument DOMNodeList DOMNamedNodeMap DOMCharacterData DOMAttr DOMElement DOMText DOMComment DOMCdataSection DOMDocumentType DOMNotation DOMEntity DOMEntityReference DOMProcessingInstruction DOMXPath DOMParentNode DOMChildNode ' +
+  'SimpleXMLElement SimpleXMLIterator XMLReader XMLWriter XMLParser LibXMLError XSLTProcessor PDO PDOStatement PDOException PDORow SQLite3 SQLite3Stmt SQLite3Result SQLite3Exception mysqli ' +
+  'CurlHandle CurlMultiHandle CurlShareHandle CurlSharePersistentHandle CURLFile CURLStringFile ZipArchive Socket AddressInfo GdImage GdFont SessionHandler SessionHandlerInterface SessionIdInterface SessionUpdateTimestampHandlerInterface Phar PharData PharFileInfo PharException finfo GMP ' +
+  'OpenSSLCertificate OpenSSLCertificateSigningRequest OpenSSLAsymmetricKey DeflateContext InflateContext SoapClient SoapServer SoapFault SoapHeader SoapParam SoapVar FFI Shmop SysvMessageQueue SysvSemaphore SysvSharedMemory EnchantBroker EnchantDictionary tidy tidyNode SNMP SNMPException';
+// PHP compares class names (and keywords) ASCII case-insensitively.
+const phpFold = (s: string) => s.replace(/[A-Z]+/g, (c) => c.toLowerCase());
 
 // Single quotes unless escapes are needed (then double quotes with `$` escaped).
 const phpStr = (k: string) => (/[\x00-\x1f\x7f]/.test(k) ? lit(k, '"', true, true) : lit(k, "'"));
 
 export function toPHP(root: JNode, o: ConvertOptions): string {
-  const m = inferNU(root, o, PHP_RES);
+  const m = inferNU(root, o, PHP_RES, undefined, phpFold);
   const P: Prim = {
     bool: 'bool',
     int: 'int',

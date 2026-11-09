@@ -283,9 +283,18 @@ function item(hint: string): string {
  * Infers the type model of a document. `reserved` lists type names that would
  * clash with the target language (they get a "Class" suffix); `pc` turns a key
  * into a type name. Without `unions`, mixed values become the language's
- * "any" type, so objects inside them are neither named nor emitted.
+ * "any" type, so objects inside them are neither named nor emitted. `fold`
+ * maps a name to what the language compares (PHP: ASCII case-insensitive), for
+ * both the reserved check and uniqueness.
  */
-export function infer(node: JNode, o: ConvertOptions, reserved = '', pc: (s: string) => string = pascal, unions = true): Model {
+export function infer(
+  node: JNode,
+  o: ConvertOptions,
+  reserved = '',
+  pc: (s: string) => string = pascal,
+  unions = true,
+  fold: (s: string) => string = (s) => s,
+): Model {
   stamp = 0;
   const root = shape();
   add(root, node);
@@ -316,13 +325,13 @@ export function infer(node: JNode, o: ConvertOptions, reserved = '', pc: (s: str
   };
   canon(root);
 
-  const res = new Set(reserved.split(' '));
+  const res = new Set(reserved.split(' ').map(fold));
   const used = new Set<string>();
   const unique = (n: string) => {
-    if (res.has(n)) n += 'Class';
+    if (res.has(fold(n))) n += 'Class';
     let u = n;
-    for (let i = 2; used.has(u); i++) u = n + i;
-    used.add(u);
+    for (let i = 2; used.has(fold(u)); i++) u = n + i;
+    used.add(fold(u));
     return u;
   };
   const types: Obj[] = [];
