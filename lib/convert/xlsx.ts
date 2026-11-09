@@ -19,11 +19,11 @@ interface Table {
 const text = (c: Cell): string =>
   c === undefined ? '' : typeof c === 'string' ? c : c.t === NUL ? '' : c.t === BOOL ? (c.v ? 'true' : 'false') : (c.v as string);
 
-/** Nested value as one cell: arrays of primitives joined with ", " (dot mode), else minified JSON. */
+/** Nested value as one cell: non-empty arrays of primitives joined with ", " (dot mode), else minified JSON (`[]` as `{}` is). */
 const nested = (n: JNode, dot: boolean): Cell => {
   if (n.t < ARR) return n;
   const k = kids(n);
-  if (dot && n.t === ARR && k.every((c) => c.t < ARR)) return k.map((c) => (c.t === NUL ? 'null' : text(c))).join(', ');
+  if (dot && n.t === ARR && k.length && k.every((c) => c.t < ARR)) return k.map((c) => (c.t === NUL ? 'null' : text(c))).join(', ');
   return stringify(n, '');
 };
 

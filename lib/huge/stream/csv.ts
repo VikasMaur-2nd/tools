@@ -1151,7 +1151,8 @@ export class CsvTokens implements Visitor {
     if (this.cap) {
       this.capF.close(kind);
       if (--this.cap > 0) return;
-      if (this.capJoin) {
+      // (An empty array isn't joined: nestedCell writes it as "[]".)
+      if (this.capJoin && this.jn) {
         this.capOut.reset();
         this.joined(this.capCol);
       } else this.text(this.capCol, this.capOut.takeText());

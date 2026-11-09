@@ -1090,4 +1090,10 @@ describe('spreadsheet export audit', () => {
     assert.equal(toCsv(root('[{"a":null,"b":null}]')), 'a,b\r\n,\r\n');
     assert.deepEqual(val(toCsv(root('[{"a":null,"b":null}]')), 'csv'), [{ a: null, b: null }]);
   });
+
+  test('CSV: an empty array is "[]", as an empty object is "{}"', () => {
+    assert.equal(toCsv(root('[{"a":[],"b":{},"c":"","d":[1,null]}]')), 'a,b,c,d\r\n[],{},"","1, null"\r\n');
+    assert.equal(toCsv(root('[{"a":[]}]'), { flatten: 'json' }), 'a\r\n[]\r\n');
+    assert.deepEqual(tabulate(root('[{"a":[]}]')).rows, [['[]']]);
+  });
 });

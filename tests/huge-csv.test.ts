@@ -146,3 +146,20 @@ test('csv: and on the other documents (records, JSON Lines, anything)', () => {
   }
   assert.ok(checked > 150 * SCALE, `checked ${checked}`);
 });
+
+test('csv: as toCsv, an empty array is "[]" and no line is empty', () => {
+  const r = rng(SEED + 23);
+  const docs: [string, string][] = [
+    // (a one-column row with nothing in it is "": readers skip blank lines)
+    ['[1,null,3]', 'value\r\n1\r\n""\r\n3\r\n'],
+    ['[{"a":null},{"a":1},{}]', 'a\r\n""\r\n1\r\n""\r\n'],
+    ['[[1],[],[null]]', '1\r\n1\r\n""\r\n""\r\n'],
+    ['[{"":1}]', '""\r\n1\r\n'],
+    ['[{"a":[],"b":{}},{"a":[1,2],"b":{"c":1}}]', 'a,b,b.c\r\n[],{},\r\n"1, 2",,1\r\n'],
+    ['{"k":[],"o":{"p":[]}}', 'key,value\r\nk,[]\r\no.p,[]\r\n'],
+  ];
+  for (const [doc, want] of docs) {
+    assert.equal(toCsv(records(parse(doc).root!)), want, doc);
+    for (const flatten of ['dot', 'json'] as const) assert.ok(check(r, doc, 'a.json', { flatten }), doc);
+  }
+});
