@@ -4,7 +4,7 @@
 import { test, describe } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { parse } from '../lib/json/parser';
-import { importToJson, type ImportFormat } from '../lib/convert/import';
+import { detectFormat, importToJson, type ImportFormat } from '../lib/convert/import';
 
 /** The JSON value `text` converts to; fails the test on an error or output that is not strict JSON. */
 const val = (text: string, fmt: ImportFormat): unknown => {
@@ -301,5 +301,86 @@ describe('CSV', () => {
     assert.deepEqual(JSON.parse(r.json), [['x', 'y'], [' 7', 8]]);
     // unquoted fields are trimmed around a number as before; quoted ones in a file that does not quote every field stay strings
     same('csv', [['a,b\n 1 ,"2"\n', [{ a: 1, b: '2' }]]]);
+  });
+});
+
+describe('YAML explicit keys', () => {
+  // JSON to YAML writes keys longer than 1024 characters as "? key" / ": value": YAML allows no longer implicit key.
+  const long = 'k'.repeat(1100);
+
+  test('a scalar key after "?", its value after ":" at the same indentation (none: null)', () => {
+    same('yaml', [
+      [`? ${long}\n: 1\n`, { [long]: 1 }],
+      ['? a\n: 1\nb: 2\n? c\n', { a: 1, b: 2, c: null }],
+      ['? a\n? b\n', { a: null, b: null }],
+      ['? a # c\n: b # c\n', { a: 'b' }],
+      ['?\n  a\n: 1\n', { a: 1 }],
+      ['? a\n  b\n: 1\n', { 'a b': 1 }],
+      ['? a\n:\n', { a: null }],
+      // quoted and block scalar keys
+      ['? "q\\tk"\n: v\n', { 'q\tk': 'v' }],
+      ["? 'it''s'\n: v\n", { "it's": 'v' }],
+      ['? |\n  two\n  lines\n: v\n', { 'two\nlines\n': 'v' }],
+      ['? >-\n  folded\n  key\n: v\n', { 'folded key': 'v' }],
+      // a plain key keeps its text, as an implicit key does; a typed tag makes it its value's JSON text
+      ['? 1.0\n: x\n? !!str 12\n: y\n? !!int 0x1F\n: z\n', { '1.0': 'x', '12': 'y', '31': 'z' }],
+      ['? &k a\n: 1\nb: *k\n', { a: 1, b: 'a' }],
+      ['? <<\n: {m: 1}\nz: 2\n', { m: 1, z: 2 }],
+      ['? "<<"\n: 1\n', { '<<': 1 }],
+    ]);
+  });
+
+  test('the value may be any block node: below the ":", or a compact sequence or mapping on its line', () => {
+    same('yaml', [
+      ['? a\n:\n  b: 1\n', { a: { b: 1 } }],
+      ['? a\n: b: 1\n  c: 2\nd: 3\n', { a: { b: 1, c: 2 }, d: 3 }],
+      ['? a\n: - 1\n  - 2\n', { a: [1, 2] }],
+      ['? a\n:\n- 1\n- 2\n', { a: [1, 2] }],
+      ['? a\n: |\n  t\n', { a: 't\n' }],
+      ['? a\n: [1, {b: 2}]\n', { a: [1, { b: 2 }] }],
+    ]);
+  });
+
+  test('inside mappings and sequence items, as the exporter nests them', () => {
+    same('yaml', [
+      [`x:\n  ? ${long}\n  : 1\n  b: 2\ny: 3\n`, { x: { [long]: 1, b: 2 }, y: 3 }],
+      [`- ? ${long}\n  : v\n- b\n`, [{ [long]: 'v' }, 'b']],
+      [`- a: 1\n  ? ${long}\n  :\n    - ? ${long}\n      : null\n`, [{ a: 1, [long]: [{ [long]: null }] }]],
+      ['---\n? a\n: 1\n---\n? b\n', [{ a: 1 }, { b: null }]],
+    ]);
+  });
+
+  test('flow mappings and sequences', () => {
+    same('yaml', [
+      ['{? a : b, c: d}', { a: 'b', c: 'd' }],
+      ['{? a}', { a: null }],
+      ['{? a, ? b: 1}', { a: null, b: 1 }],
+      ['[? a : b, c]', [{ a: 'b' }, 'c']],
+      ['[a, ? b]', ['a', { b: null }]],
+      [`x: {? "${long}": 1}`, { x: { [long]: 1 } }],
+    ]);
+  });
+
+  test('a list or mapping is no key; nor is "?" a value on its key\'s line', () => {
+    fails('yaml', [
+      ['? - a\n: 1\n', 'Complex mapping keys (?) are not supported', 1, 1],
+      ['? a: b\n: 1\n', 'Complex mapping keys (?) are not supported', 1, 1],
+      ['x:\n  ? [a]\n  : 1\n', 'Complex mapping keys (?) are not supported', 2, 3],
+      ['? {a: 1}\n', 'Complex mapping keys (?) are not supported', 1, 1],
+      ['x: {? [a]: b}\n', 'Collections cannot be used as mapping keys', 1, 5],
+      ['a: ? b\n', "Plain values cannot start with '?'. Wrap the value in quotes", 1, 4],
+      // ": value" belongs at the "?"'s indentation
+      ['? a\n  : b\n', 'Bad indentation of a mapping entry', 2, 3],
+      ['? a\n: 1\na: 2\n', 'Duplicate key "a"', 3, 1],
+      // properties go after the "?" (or on a line before the mapping)
+      ['&x ? a\n: 1\n', 'Expected a mapping key (key: value)', 1, 1],
+    ]);
+    same('yaml', [['x: &m\n  ? a\n  : 1\ny: *m\n', { x: { a: 1 }, y: { a: 1 } }]]);
+  });
+
+  test('a document that starts with an explicit key reads as YAML', () => {
+    assert.equal(detectFormat(`? ${long}\n: 1\n`), 'yaml');
+    assert.equal(detectFormat('# c\n? a\n: 1\n'), 'yaml');
+    assert.equal(detectFormat('?\n  a\n: 1\n'), 'yaml');
   });
 });
