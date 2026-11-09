@@ -535,6 +535,24 @@ describe('diff: ignore paths', () => {
     assert.deepEqual(lines(run(x, y, { ignorePaths: ['at'] })), ['added $[0]']);
   });
 
+  test('an ignored id-like field never decides which elements pair up', () => {
+    const x = '[{"id":1,"v":"a"},{"id":5,"v":"b"}]';
+    const y = '[{"id":2,"v":"a"},{"id":5,"v":"b"}]';
+    assert.deepEqual(lines(run(x, y)), ['removed $[0]', 'added $[0]']);
+    for (const ignore of ['id', '$[*].id', '..id', '/0/id', '$[0].id']) {
+      for (const o of [{}, { ignoreArrayOrder: true }]) {
+        const r = assertPatchRoundTrip(x, y, { ...o, ignorePaths: [ignore] }, () => null);
+        assert.deepEqual(lines(r), [], `${ignore} ${JSON.stringify(o)}`);
+      }
+    }
+    // the next id-like key still pairs them
+    const p = '[{"id":1,"name":"a","v":1},{"id":2,"name":"b","v":2}]';
+    const q = '[{"id":7,"name":"x","v":0},{"id":8,"name":"a","v":1},{"id":9,"name":"b","v":20}]';
+    assert.deepEqual(lines(run(p, q, { ignorePaths: ['id'] })), ['added $[0]', 'changed $[1].v']);
+    // ignored deeper down only: still an id here
+    assert.deepEqual(lines(run('{"a":[{"id":1,"v":1}],"b":[{"id":1}]}', '{"a":[{"id":2,"v":1}],"b":[{"id":2}]}', { ignorePaths: ['$.b[*].id'] })), ['changed $.a[0].id']);
+  });
+
   test('parseIgnoreList splits on commas / newlines outside brackets and quotes', () => {
     assert.deepEqual(parseIgnoreList(' $.a.b, updatedAt\n$["x, y"] ; $.items[*].ts ,, '), ['$.a.b', 'updatedAt', '$["x, y"]', '$.items[*].ts']);
     assert.deepEqual(lines(run('{"x, y":1,"z":1}', '{"x, y":2,"z":1}', { ignorePaths: parseIgnoreList('$["x, y"]') })), []);

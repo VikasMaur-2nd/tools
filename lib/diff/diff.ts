@@ -259,6 +259,12 @@ const NO: Ig = [];
 
 const trie = (): Trie => ({ end: false, kids: null, star: null });
 
+const sameIg = (p: Ig, q: Ig) => {
+  if (p.length !== q.length) return false;
+  for (let i = 0; i < p.length; i++) if (p[i] !== q[i]) return false;
+  return true;
+};
+
 function addPattern(root: Trie, segs: Seg[]) {
   let t = root;
   for (const s of segs) {
@@ -597,18 +603,33 @@ class Differ {
     return false;
   }
 
+  /** Whether member `key` of some element of `list` (array ignore state `st`) is ignored. */
+  private memberIgnored(list: JNode[], st: Ig, key: string): boolean {
+    // (Elements mostly share one ignore state: an equal one gives the same answer.)
+    let prev: Ig | null = null;
+    for (let i = 0; i < list.length; i++) {
+      const s = this.step(st, i);
+      if (!s || (prev && sameIg(s, prev))) continue;
+      if (!this.step(s, key)) return true;
+      prev = s;
+    }
+    return false;
+  }
+
   /**
    * Id tokens when every element of both arrays is an object with the same
    * id-like key (string / number value, unique per side): fills `ta` / `tb`
-   * and returns true.
+   * and returns true. A key the ignore paths skip is no id: it must not decide
+   * which elements are the same.
    */
-  private idTokens(a: JNode[], b: JNode[], ta: number[], tb: number[]): boolean {
+  private idTokens(a: JNode[], b: JNode[], il: Ig, ir: Ig, ta: number[], tb: number[]): boolean {
     const n = a.length;
     const m = b.length;
     if (!n || !m) return false;
     for (const x of a) if (x.t !== OBJ) return false;
     for (const x of b) if (x.t !== OBJ) return false;
     next: for (const key of ID_KEYS) {
+      if (this.ig && (this.memberIgnored(a, il, key) || this.memberIgnored(b, ir, key))) continue;
       ta.length = 0;
       tb.length = 0;
       const strs = new Map<string, number>();
@@ -646,7 +667,7 @@ class Differ {
 
   /** Alignment tokens: id tokens (returns true) or 52-bit structural hashes. */
   private tokens(a: JNode[], b: JNode[], il: Ig, ir: Ig, ta: number[], tb: number[]): boolean {
-    if (this.idTokens(a, b, ta, tb)) return true;
+    if (this.idTokens(a, b, il, ir, ta, tb)) return true;
     for (let i = 0; i < a.length; i++) ta.push(this.hash(a[i], this.step(il, i) ?? NO));
     for (let j = 0; j < b.length; j++) tb.push(this.hash(b[j], this.step(ir, j) ?? NO));
     return false;
