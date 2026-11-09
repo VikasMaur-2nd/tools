@@ -56,3 +56,9 @@ test('Python: identifiers are compared as Python reads them (NFKC)', () => {
   const cls = [...conv('{"Ｎａｍｅ":{"a":1},"name":{"b":2}}', 'python').matchAll(/^class (\S+)\(/gm)].map((m) => m[1]);
   assert.deepEqual(cls, ['Name', 'Name2', 'Root']);
 });
+
+test('Go: the key "-" is a field, not a skipped one', () => {
+  // encoding/json skips a field tagged `json:"-"`: the key "-" is `json:"-,"`
+  has(conv('{"-":1,"a":2}', 'go'), 'Field int64 `json:"-,"`');
+  has(conv('[{"-":1},{}]', 'go'), '`json:"-,omitempty"`');
+});

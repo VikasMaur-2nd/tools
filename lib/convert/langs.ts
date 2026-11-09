@@ -44,7 +44,10 @@ export function toGo(root: JNode, o: ConvertOptions): string {
         u(goName(p.key) || 'Field'),
         // Optional structs become pointers so `omitempty` can drop them.
         typeOf(p.s, P, p.opt && kind(p.s) === 'obj'),
-        GO_TAG.test(p.key) ? `\`json:"${p.key}${p.opt ? ',omitempty' : ''}"\`` : `\`json:"-"\` // key ${JSON.stringify(p.key)} can't be expressed in a tag`,
+        // (A tag of just "-" skips the field: the key "-" is written "-,".)
+        GO_TAG.test(p.key)
+          ? `\`json:"${p.key}${p.opt ? ',omitempty' : p.key === '-' ? ',' : ''}"\``
+          : `\`json:"-"\` // key ${JSON.stringify(p.key)} can't be expressed in a tag`,
       ];
       w0 = Math.max(w0, r[0].length);
       w1 = Math.max(w1, r[1].length);
