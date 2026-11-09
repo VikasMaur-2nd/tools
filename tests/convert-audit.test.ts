@@ -81,3 +81,9 @@ test('C#: a member made unique never takes its class name', () => {
   const out = conv('{"a":{"x":1},"b":{"a":{"a":1,"a_":2}}}', 'csharp');
   has(out, 'public class A2\n{\n    [JsonPropertyName("a")]\n    public required long A { get; set; }\n\n    [JsonPropertyName("a_")]\n    public required long A3 { get; set; }\n}');
 });
+
+test('Swift: type names never take the names the JSONValue helper uses', () => {
+  const out = conv('{"decoder":{"a":1},"encoder":{"b":1},"u":[1,"x"]}', 'swift');
+  has(out, 'struct DecoderClass: Codable {', 'struct EncoderClass: Codable {', 'let decoder: DecoderClass', 'init(from decoder: Decoder) throws');
+  assert.ok(!/struct (?:Decoder|Encoder):/.test(out), out);
+});

@@ -354,7 +354,8 @@ export function toSwift(root: JNode, o: ConvertOptions): string {
   const m = inferNU(
     root,
     o,
-    'String Int Double Bool Data Date URL Array Dictionary Set Optional Codable Decodable Encodable CodingKeys CodingKey Error Any AnyObject Type Self Character Float Decimal UUID Never Void Protocol JSONValue',
+    // (Decoder and Encoder: JSONValue's init(from:) and encode(to:) name them.)
+    'String Int Double Bool Data Date URL Array Dictionary Set Optional Codable Decodable Encodable CodingKeys CodingKey Decoder Encoder Error Any AnyObject Type Self Character Float Decimal UUID Never Void Protocol JSONValue Foundation',
   );
   const P: Prim = {
     bool: 'Bool',
