@@ -645,6 +645,8 @@
   "parse.afterValue": "プロパティの値の後に','または'}'が必要ですが、{token}が見つかりました。",
   "parse.missingValue": "配列に値がありません。",
   "parse.eofBracket": "入力が予期せず終了しました。']'がありません。",
+  "parse.eolBrace": "行が予期せず終了しました。'}'がありません。",
+  "parse.eolBracket": "行が予期せず終了しました。']'がありません。",
   "parse.bracketBrace": "配列を閉じる']'が必要ですが、'}'が見つかりました。",
   "parse.commaItems": "配列の要素間に','が必要です。",
   "parse.afterItem": "配列の要素の後に','または']'が必要ですが、{token}が見つかりました。",

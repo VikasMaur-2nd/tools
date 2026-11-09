@@ -645,6 +645,8 @@
   "parse.afterValue": "속성 값 뒤에 ',' 또는 '}'가 필요합니다. 실제 입력: {token}",
   "parse.missingValue": "배열에서 값이 누락되었습니다.",
   "parse.eofBracket": "예기치 않게 입력이 끝났습니다. ']'가 없습니다.",
+  "parse.eolBrace": "예기치 않게 줄이 끝났습니다. '}'가 없습니다.",
+  "parse.eolBracket": "예기치 않게 줄이 끝났습니다. ']'가 없습니다.",
   "parse.bracketBrace": "배열을 닫는 ']'가 필요하지만 '}'가 있습니다.",
   "parse.commaItems": "배열 항목 사이에 ','가 필요합니다.",
   "parse.afterItem": "배열 항목 뒤에 ',' 또는 ']'가 필요합니다. 실제 입력: {token}",

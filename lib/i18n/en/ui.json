@@ -803,6 +803,8 @@
   "parse.afterValue": "Expected ',' or '}' after property value, found {token}",
   "parse.missingValue": "Missing value in array",
   "parse.eofBracket": "Unexpected end of input: missing ']'",
+  "parse.eolBrace": "Unexpected end of line: missing '}'",
+  "parse.eolBracket": "Unexpected end of line: missing ']'",
   "parse.bracketBrace": "Expected ']' to close the array, found '}'",
   "parse.commaItems": "Expected ',' between array items",
   "parse.afterItem": "Expected ',' or ']' after array item, found {token}",

@@ -339,6 +339,12 @@ let quoting = false;
 let prose = false;
 let turned = false;
 let turnedLast = false;
+/** parser.ts's `rec`: where the top-level value being read starts; and lineCut()'s last answers. */
+let rec = 0;
+let eolOf = -1;
+let recEol = -1;
+let cutP = -1;
+let cutAt = -1;
 
 // The tape: W numbers per node in T (see tape.ts), `count` in use.
 let T: Int32Array<ArrayBuffer> = NONE;
@@ -397,6 +403,8 @@ function begin(text: string, jsonLines: boolean, perRun: number, deepest: number
   callS = [];
   tol = 1;
   fixing = quoting = prose = turned = false;
+  rec = 0;
+  eolOf = cutP = -1;
   T = NONE;
   count = grownAt = grownCount = 0;
   keys = [];
@@ -457,6 +465,7 @@ interface State {
   quoting: boolean;
   prose: boolean;
   turned: boolean;
+  rec: number;
   T: Int32Array<ArrayBuffer>;
   count: number;
   keys: string[];
@@ -509,6 +518,7 @@ function save(state?: State): State {
     quoting,
     prose,
     turned,
+    rec,
     T,
     count,
     keys,
@@ -562,6 +572,7 @@ function load(s: State) {
     quoting,
     prose,
     turned,
+    rec,
     T,
     count,
     keys,
@@ -581,6 +592,7 @@ function load(s: State) {
     sets,
   } = s);
   opened = false;
+  eolOf = cutP = -1;
 }
 
 /** Runs the loaded parse: its tape, or undefined when `until` has passed. */
@@ -609,7 +621,7 @@ function steps(until: number): Tape | undefined {
       }
       if (i >= n) return finish(null);
       before = issues.length;
-      start = i;
+      rec = start = i;
       phase = 1;
     }
     for (;;) {
@@ -839,6 +851,22 @@ function addKey(t: string, h: number, pos: number, slot: number): number {
     kTable = table;
   }
   return k;
+}
+
+/** Takes back key `k`, the last one added (no node has it): its slot emptied, and the run of slots after it put back in place. */
+function dropKey(k: number) {
+  const mask = kTable.length - 1;
+  let slot = mix(kHash[k]) & mask;
+  while (kTable[slot] !== k + 1) slot = (slot + 1) & mask;
+  kTable[slot] = 0;
+  for (let j = (slot + 1) & mask; kTable[j] !== 0; j = (j + 1) & mask) {
+    const x = kTable[j];
+    kTable[j] = 0;
+    let to = mix(kHash[x - 1]) & mask;
+    while (kTable[to] !== 0) to = (to + 1) & mask;
+    kTable[to] = x;
+  }
+  keys.length = k;
 }
 
 /**
@@ -1110,7 +1138,7 @@ function fast(): void {
       let c = j < s.length ? s.charCodeAt(j) : -1;
       while (c <= 32 && (c === 32 || c === 10 || c === 13 || c === 9)) c = ++j < s.length ? s.charCodeAt(j) : -1;
       if (m < 2 || !startsStrict(c)) break;
-      at = j;
+      at = rec = j;
       md = VALUE;
       continue;
     }
@@ -1316,7 +1344,7 @@ const str = (q: number, q2: number): number => {
     if (i >= n) {
       if (fixing) {
         const k = found & ESCAPED ? -1 : memberCut(s + 1, n);
-        if (k >= 0) return cutAt(k, found);
+        if (k >= 0) return closeAt(k, found);
         fix(n, 'Missing closing quote: the string was closed at the end of the input');
         return found | CUT;
       }
@@ -1352,7 +1380,12 @@ const str = (q: number, q2: number): number => {
     if (c < 32) {
       if (fixing && (c === 10 || c === 13)) {
         const k = found & ESCAPED ? -1 : memberCut(s + 1, i);
-        if (k >= 0) return cutAt(k, found);
+        if (k >= 0) return closeAt(k, found);
+        fix(i, 'Missing closing quote: the string was closed at the end of the line');
+        return found | CUT;
+      }
+      // parser.ts: JSON Lines, a record cut in a string ends here.
+      if ((c === 10 || c === 13) && (phase === 2 || lines) && lineCut(nextAfter(i)) === i) {
         fix(i, 'Missing closing quote: the string was closed at the end of the line');
         return found | CUT;
       }
@@ -1394,11 +1427,62 @@ const memberCut = (a: number, e: number): number => {
   return -1;
 };
 
-/** parser.ts's cutAt(): repairing, the string str() reads closed before `k`. */
-const cutAt = (k: number, found: number): number => {
+/** parser.ts's closeAt(): repairing, the string str() reads closed before `k`. */
+const closeAt = (k: number, found: number): number => {
   fix(k, `Missing closing quote: the string was closed before the '${src[k]}'`);
   i = k;
   return found | CUT;
+};
+
+/** Where the next character other than JSON whitespace is from `p`. */
+const nextAfter = (p: number): number => {
+  while (isSpace(src.charCodeAt(p))) p++;
+  return p;
+};
+
+/** parser.ts's lineCut(): JSON Lines, where the record being read is cut (the line break that ends its first line), else -1. */
+const lineCut = (p: number): number => {
+  const c = src.charCodeAt(p);
+  if ((c !== 123 && c !== 91) || (phase !== 2 && !lines)) return -1;
+  if (p === cutP) return cutAt;
+  cutP = p;
+  cutAt = -1;
+  if (eolOf !== rec) {
+    eolOf = rec;
+    recEol = rec;
+    while (recEol < n && src.charCodeAt(recEol) !== 10 && src.charCodeAt(recEol) !== 13) recEol++;
+  }
+  const e = recEol;
+  if (e >= p || nextAfter(e) !== p) return -1;
+  let level = 0;
+  for (let k = p; k < n; k++) {
+    const x = src.charCodeAt(k);
+    if (x === 10 || x === 13) break;
+    if (x === 34) {
+      for (k++; k < n; k++) {
+        const y = src.charCodeAt(k);
+        if (y === 34 || y === 10 || y === 13) break;
+        if (y === 92 && src.charCodeAt(k + 1) !== 10 && src.charCodeAt(k + 1) !== 13) k++;
+      }
+      if (k >= n || src.charCodeAt(k) !== 34) break;
+    } else if (x === 123 || x === 91) level++;
+    else if (x === 125 || x === 93) {
+      if (--level === 0) {
+        k++;
+        while (src.charCodeAt(k) === 32 || src.charCodeAt(k) === 9) k++;
+        if (k < n && src.charCodeAt(k) !== 10 && src.charCodeAt(k) !== 13) return -1;
+        break;
+      }
+    }
+  }
+  return (cutAt = e);
+};
+
+/** parser.ts's cutObj(): JSON Lines, the object being filled closes where its record is cut. */
+const cutObj = (): number => {
+  fix(cutAt, "Unexpected end of line: missing '}'");
+  i = cutAt;
+  return CLOSED;
 };
 
 /** parser.ts's unclosed(): repairing, where a string without escapes ([a, e), closing quote at e) should end, or -1. */
@@ -1879,6 +1963,7 @@ const topLevel = (r: number): boolean => {
     wrap = node(ARR, VALUE_NONE, start, start, 0, -1, KEY_NONE, 0);
     enter(0);
     phase = 2;
+    cutP = -1;
     return !nextLine();
   }
   if (i < n) {
@@ -2030,6 +2115,10 @@ const fillObj = (p: number, pd: number): number => {
             fix(i, "Expected '}' to close the object, found ']'");
             return CLOSED;
           }
+          if (lineCut(i) >= 0) {
+            fix(cp, 'Trailing commas are not allowed');
+            return cutObj();
+          }
         } else if (c === 125) {
           i++;
           return CLOSED;
@@ -2041,8 +2130,12 @@ const fillObj = (p: number, pd: number): number => {
           return CLOSED;
         } else if (c === 34 || c === 39 || c === 96 || isIdentStart(c) || isSmartQuote(c)) {
           fix(i, "Expected ',' between properties");
-        } else fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
-      } else c = src.charCodeAt(i);
+        } else if (lineCut(i) >= 0) return cutObj();
+        else fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
+      } else {
+        c = src.charCodeAt(i);
+        if (lineCut(i) >= 0) return cutObj();
+      }
       // Repairing: a `...` placeholder for members is skipped.
       if (fixing && c === 46 && src.startsWith('...', i)) {
         fix(i, "Placeholder '...' was skipped");
@@ -2079,6 +2172,10 @@ const fillObj = (p: number, pd: number): number => {
       else if (c === 61) {
         fix(i, "Expected ':' after property name");
         i++;
+      } else if (lineCut(i) >= 0) {
+        // (Its name is left out, as its value isn't on its line: and so is the name if new.)
+        if (keys.length > had) dropKey(had);
+        return cutObj();
       } else if (startsValue(c)) fix(i, "Expected ':' after property name");
       else fail(i, `Expected ':' after property name, found ${describe(i)}`);
     }
@@ -2132,6 +2229,10 @@ const fillArr = (p: number, pd: number): number => {
         return CLOSED;
       } else if (c === 125) {
         fix(i, "Expected ']' to close the array, found '}'");
+        return CLOSED;
+      } else if (lineCut(i) >= 0) {
+        fix(cutAt, "Unexpected end of line: missing ']'");
+        i = cutAt;
         return CLOSED;
       } else if (startsValue(c)) fix(i, "Expected ',' between array items");
       else fail(i, `Expected ',' or ']' after array item, found ${describe(i)}`);
@@ -2187,6 +2288,7 @@ const run = (): boolean => {
         cur = wrap;
         curD = 0;
         mode = VALUE;
+        rec = i;
         continue;
       }
       opened = false;

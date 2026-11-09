@@ -585,6 +585,53 @@ describe('tolerant reading keeps values the same (audit regressions)', () => {
     assert.deepEqual(value('[1"a", 2[3], 4{"b":5}]'), [1, 'a', 2, [3], 4, { b: 5 }]);
     assert.deepEqual(value('[1 ]'), [1], 'exotic space after a number');
   });
+
+  test('JSON Lines: a broken record is reported on its own line, and the next line is a record', () => {
+    const at = (src: string, p: number) => {
+      const before = src.slice(0, p);
+      return [before.split(/\r\n|\r|\n/).length, p - Math.max(before.lastIndexOf('\n'), before.lastIndexOf('\r'))];
+    };
+    const cases: [string, unknown[], string[]][] = [
+      ['{"a":1}\n{"b":2\n{"c":3}', [{ a: 1 }, { b: 2 }, { c: 3 }], ["Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":[1,2\n{"c":3}\n', [{ a: 1 }, { b: [1, 2] }, { c: 3 }], ["Unexpected end of line: missing ']'", "Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":"cut\n{"c":3}\n{"d":4}\n', [{ a: 1 }, { b: 'cut' }, { c: 3 }, { d: 4 }], ['Missing closing quote: the string was closed at the end of the line', "Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":1,\n{"c":3}', [{ a: 1 }, { b: 1 }, { c: 3 }], ['Trailing commas are not allowed', "Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":1,"c"\n{"c":3}', [{ a: 1 }, { b: 1 }, { c: 3 }], ["Unexpected end of line: missing '}'"]],
+      ['{"a":1}\r\n{"b":[1\r\n\r\n{"c":3}\r\n', [{ a: 1 }, { b: [1] }, { c: 3 }], ["Unexpected end of line: missing ']'", "Unexpected end of line: missing '}'"]],
+    ];
+    for (const [src, want, msgs] of cases) {
+      for (const options of [{}, { lines: true }, { repair: true }, { lines: true, repair: true }]) {
+        const r = parse(src, options);
+        assert.equal(r.error, null, `${show(src)} ${JSON.stringify(options)}: ${JSON.stringify(r.error)}`);
+        assert.deepEqual(JSON.parse(stringify(r.root as JNode, '')), want, show(src));
+        const own = r.issues.filter((x) => !/^Multiple top-level/.test(x.m));
+        assert.deepEqual(own.map((x) => x.m), msgs, show(src));
+        // On the broken line (line 2), at its end.
+        const lineEnd = src.slice(src.indexOf('\n') + 1).search(/[\r\n]/) + src.indexOf('\n') + 1;
+        assert.deepEqual(at(src, own[own.length - 1].p), at(src, lineEnd), show(src));
+      }
+    }
+    // The first record broken: only known to be JSON Lines with `lines` (a .jsonl file).
+    assert.deepEqual(JSON.parse(stringify(parse('{"a":1\n{"b":2}', { lines: true }).root as JNode, '')), [{ a: 1 }, { b: 2 }]);
+    assert.ok(parse('{"a":1\n{"b":2}').error);
+  });
+
+  test('JSON Lines: what parses as it is, and records over several lines, are read as before', () => {
+    for (const src of [
+      '{\n  "a": [\n    1,\n    2\n  ]\n}\n{\n  "b": 2\n}',
+      '{"a":1}\n[\n{"c":3}\n]',
+      '{"a":1}\n[{"x":1},\n{"y":2}]',
+      '[\n  {"a": 1},\n  {"b": 2}\n]',
+    ]) {
+      for (const lines of [false, true]) {
+        const r = parse(src, { lines });
+        assert.ok(!r.issues.some((x) => !/^Multiple top-level/.test(x.m)), `${show(src)}: ${JSON.stringify(r.issues)}`);
+      }
+    }
+    // Broken, but not a record per line: merged as before (a missing comma), not cut.
+    assert.deepEqual(JSON.parse(stringify(parse('{"a":1}\n[{"x":1}\n{"y":2}]').root as JNode, '')), [{ a: 1 }, [{ x: 1 }, { y: 2 }]]);
+    assert.deepEqual(JSON.parse(stringify(parse('{"a":1}\n{"m":"x\n{y}"}').root as JNode, '')), [{ a: 1 }, { m: 'x\n{y}' }]);
+  });
 });
 
 // ── 3. error positions & messages ────────────────────────────────────────

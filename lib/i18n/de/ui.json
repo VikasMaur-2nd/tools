@@ -662,6 +662,8 @@
   "parse.afterValue": "Erwartet wurde ',' oder '}' nach dem Eigenschaftswert, gefunden: {token}",
   "parse.missingValue": "Fehlender Wert im Array",
   "parse.eofBracket": "Unerwartetes Ende der Eingabe: ']' fehlt",
+  "parse.eolBrace": "Unerwartetes Zeilenende: '}' fehlt",
+  "parse.eolBracket": "Unerwartetes Zeilenende: ']' fehlt",
   "parse.bracketBrace": "Erwartet wurde ']' zum Schließen des Arrays, gefunden: '}'",
   "parse.commaItems": "Erwartet wurde ',' zwischen den Array-Elementen",
   "parse.afterItem": "Erwartet wurde ',' oder ']' nach dem Array-Element, gefunden: {token}",

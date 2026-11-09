@@ -679,6 +679,8 @@
   "parse.afterValue": "Virgule ',' ou accolade '}' attendue après la valeur de la propriété, {token} trouvé",
   "parse.missingValue": "Valeur manquante dans le tableau",
   "parse.eofBracket": "Fin de l'entrée inattendue : crochet fermant ']' manquant",
+  "parse.eolBrace": "Fin de ligne inattendue : accolade fermante '}' manquante",
+  "parse.eolBracket": "Fin de ligne inattendue : crochet fermant ']' manquant",
   "parse.bracketBrace": "Crochet ']' attendu pour fermer le tableau, '}' trouvé",
   "parse.commaItems": "Virgule ',' attendue entre les éléments du tableau",
   "parse.afterItem": "Virgule ',' ou crochet ']' attendu après l'élément du tableau, {token} trouvé",

@@ -645,6 +645,8 @@
   "parse.afterValue": "属性值后应为 ',' 或 '}'，但找到 {token}",
   "parse.missingValue": "数组中缺少值",
   "parse.eofBracket": "输入意外结束：缺少 ']'",
+  "parse.eolBrace": "行意外结束：缺少 '}'",
+  "parse.eolBracket": "行意外结束：缺少 ']'",
   "parse.bracketBrace": "应使用 ']' 结束数组，但找到 '}'",
   "parse.commaItems": "数组项之间应有 ','",
   "parse.afterItem": "数组项后应为 ',' 或 ']'，但找到 {token}",

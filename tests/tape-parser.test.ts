@@ -106,13 +106,23 @@ describe('tape parser: the same as parser.ts', () => {
       '[1] [2',
       '\u0001',
       '[ 1]',
-      // Audit regressions: signs before words, \0 and \v, separators, bare words that start like numbers.
+      // Audit regressions: signs before words, \0 and \v, separators, bare words that start like numbers, JSON Lines cuts.
       '[-Infinityx, +NaN, -NaN, -foo, +Infinity]',
       '["a\\0b", "\\v", "\\01"]',
       '1,2;3',
       '[2024-01-15, 10.0.0.1, 0o17, 1e5x, -1-2, 0x1Fg, 3.5°C, 1..2]',
       '{"d": 2024-01-15T10:30:00Z, "e": 5px}',
       '2024-01-15',
+      '{"a":1}\n{"b":2\n{"c":3}',
+      '{"a":1}\n{"b":[1,2\n{"c":3}\n',
+      '{"a":1}\n{"b":"cut\n{"c":3}\n{"d":4}',
+      '{"a":1}\n{"b":1,\n{"c":3}',
+      '{"a":1}\n{"b":1,"new"\n{"c":3}',
+      '{"a":1}\r\n{"b":[1\r\n\r\n{"c":3}\r\n',
+      '{"a":1}\n{\n{"c":3}',
+      '{"a":1}\n[{"x":1}\n{"y":2}]',
+      '{"a":1}\n{"m":"x\n{y}"}',
+      '{"a":1\n{"b":2}',
     ];
     for (const src of docs) {
       same(src, {}, [1, 2, 5]);

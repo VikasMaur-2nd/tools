@@ -679,6 +679,8 @@
   "parse.afterValue": "Esperado ',' ou '}' após o valor da propriedade, encontrado {token}",
   "parse.missingValue": "Valor ausente no array",
   "parse.eofBracket": "Fim inesperado da entrada: falta ']'",
+  "parse.eolBrace": "Fim de linha inesperado: falta '}'",
+  "parse.eolBracket": "Fim de linha inesperado: falta ']'",
   "parse.bracketBrace": "Esperado ']' para fechar o array, encontrado '}'",
   "parse.commaItems": "Esperado ',' entre itens do array",
   "parse.afterItem": "Esperado ',' ou ']' após o item do array, encontrado {token}",

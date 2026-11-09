@@ -4,7 +4,8 @@
  * result for every input this one can parse (it only goes deeper). Don't edit,
  * except to keep it compiling, or to make a deliberate change of what the parser
  * reads here too, written the recursive way (e.g. bare words that start like a
- * number, signed NaN, \0 and \v).
+ * number, signed NaN, \0 and \v, separators between top-level values, JSON
+ * Lines cut at a line break).
  */
 import { ARR, BOOL, JNode, NO_VALUE, NUL, NUM, NUMBER_TAIL, OBJ, STR, type Issue, type Key, type Kind, type ParseOptions, type ParseResult, type Val } from '../../lib/json/parser';
 
@@ -98,6 +99,9 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
   let multi = false;
   let issues: Issue[] = [];
   let warnings: Issue[] = [];
+  // Reading JSON Lines (several top-level values, or `lines`), and where the top-level value being read starts.
+  let jsonl = lines;
+  let rec = 0;
 
   const fix = (p: number, m: string) => {
     if (issues.length < MAX_ISSUES) issues.push({ p, m });
@@ -143,6 +147,38 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
         i++;
       } else return;
     }
+  };
+
+  const nextAfter = (p: number) => {
+    while (src.charCodeAt(p) === 32 || src.charCodeAt(p) === 10 || src.charCodeAt(p) === 13 || src.charCodeAt(p) === 9) p++;
+    return p;
+  };
+
+  /** JSON Lines: where the record being read is cut, at `p` where it can't go on (see lib/json/parser.ts), else -1. */
+  const lineCut = (p: number): number => {
+    const c = src.charCodeAt(p);
+    if (!jsonl || (c !== 123 && c !== 91)) return -1;
+    let e = rec;
+    while (e < n && src.charCodeAt(e) !== 10 && src.charCodeAt(e) !== 13) e++;
+    if (e >= p || nextAfter(e) !== p) return -1;
+    // p's line: one value that closes at its end, or is still open there.
+    const line = src.slice(p, nextBreak(p));
+    let level = 0;
+    let inString = false;
+    for (let k = 0; k < line.length; k++) {
+      const x = line[k];
+      if (inString) {
+        if (x === '\\') k++;
+        else if (x === '"') inString = false;
+      } else if (x === '"') inString = true;
+      else if (x === '{' || x === '[') level++;
+      else if ((x === '}' || x === ']') && --level === 0) return /^[ \t]*$/.test(line.slice(k + 1)) ? e : -1;
+    }
+    return e;
+  };
+  const nextBreak = (p: number) => {
+    while (p < n && src.charCodeAt(p) !== 10 && src.charCodeAt(p) !== 13) p++;
+    return p;
   };
 
   const word = (w: string) => {
@@ -226,6 +262,10 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
         continue;
       }
       if (c < 32) {
+        if ((c === 10 || c === 13) && lineCut(nextAfter(i)) === i) {
+          fix(i, 'Missing closing quote: the string was closed at the end of the line');
+          return out + src.slice(seg, i);
+        }
         fix(i, c === 10 || c === 13 ? 'Line breaks inside strings must be escaped as \\n' : 'Control characters inside strings must be escaped');
       }
       i++;
@@ -367,6 +407,15 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
       node.e = i;
       return node;
     }
+    const cut = (e: number) => {
+      fix(e, "Unexpected end of line: missing '}'");
+      i = e;
+    };
+    if (lineCut(i) >= 0) {
+      cut(lineCut(i));
+      node.e = i;
+      return node;
+    }
     for (;;) {
       const ks = i;
       const k = c === 34 ? str(34) : looseKey(c);
@@ -393,6 +442,9 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
       else if (c === 61) {
         fix(i, "Expected ':' after property name");
         i++;
+      } else if (lineCut(i) >= 0) {
+        cut(lineCut(i));
+        break;
       } else if (startsValue(c)) fix(i, "Expected ':' after property name");
       else fail(i, `Expected ':' after property name, found ${describe(i)}`);
       list.push(value(d + 1, node, k));
@@ -424,6 +476,11 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
           fix(i, "Expected '}' to close the object, found ']'");
           break;
         }
+        if (lineCut(i) >= 0) {
+          fix(cp, 'Trailing commas are not allowed');
+          cut(lineCut(i));
+          break;
+        }
         continue;
       }
       if (c === 125) {
@@ -441,6 +498,10 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
       if (c === 34 || c === 39 || c === 96 || isIdentStart(c) || isSmartQuote(c)) {
         fix(i, "Expected ',' between properties");
         continue;
+      }
+      if (lineCut(i) >= 0) {
+        cut(lineCut(i));
+        break;
       }
       fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
     }
@@ -505,6 +566,12 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
       }
       if (c === 125) {
         fix(i, "Expected ']' to close the array, found '}'");
+        break;
+      }
+      if (lineCut(i) >= 0) {
+        const e = lineCut(i);
+        fix(e, "Unexpected end of line: missing ']'");
+        i = e;
         break;
       }
       if (startsValue(c)) {
@@ -653,6 +720,7 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
     if (i < n) {
       const before = issues.length;
       const start = i;
+      rec = start;
       root = value(0, null, undefined);
       const skipTail = () => {
         for (;;) {
@@ -674,6 +742,7 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
       if ((i < n && startsValue(src.charCodeAt(i))) || lines) {
         // Several top-level values (NDJSON / JSON Lines): re-parse them into one array.
         multi = true;
+        jsonl = true;
         issues = issues.slice(0, before);
         warnings = [];
         nodes = 1;
@@ -690,6 +759,7 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
           }
           if (i >= n || (fence && src.startsWith('```', i))) break;
           if (list.length === 1) fix(i, 'Multiple top-level values (wrapped in an array)');
+          rec = i;
           list.push(value(1, wrap, list.length));
         }
         wrap.e = i;
