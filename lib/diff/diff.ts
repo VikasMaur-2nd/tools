@@ -1579,10 +1579,12 @@ class Myers {
     const N = aHi - aLo;
     const M = bHi - bLo;
     const maxD = (N + M + 1) >> 1;
-    const off = maxD;
-    const len = 2 * maxD + 2;
-    const v1 = new Int32Array(len).fill(-1);
-    const v2 = new Int32Array(len).fill(-1);
+    // Diagonals -off…off (± d + 1 at edit count d), grown as d grows: a split found after few edits
+    // (most of them) costs what it finds, not the segment's length.
+    let off = Math.min(maxD, 32);
+    let len = 2 * off + 2;
+    let v1 = new Int32Array(len).fill(-1);
+    let v2 = new Int32Array(len).fill(-1);
     v1[off + 1] = 0;
     v2[off + 1] = 0;
     const delta = N - M;
@@ -1594,6 +1596,18 @@ class Myers {
     for (let d = 0; d < maxD; d++) {
       this.work += 2 * d + 2;
       if (this.work > this.limit) throw OVERFLOW;
+      if (d + 2 > off && off < maxD) {
+        const o2 = Math.min(maxD, 2 * off);
+        const l2 = 2 * o2 + 2;
+        const w1 = new Int32Array(l2).fill(-1);
+        const w2 = new Int32Array(l2).fill(-1);
+        w1.set(v1, o2 - off);
+        w2.set(v2, o2 - off);
+        v1 = w1;
+        v2 = w2;
+        off = o2;
+        len = l2;
+      }
       for (let k1 = -d + k1s; k1 <= d - k1e; k1 += 2) {
         const k1o = off + k1;
         let x1 = k1 === -d || (k1 !== d && v1[k1o - 1] < v1[k1o + 1]) ? v1[k1o + 1] : v1[k1o - 1] + 1;

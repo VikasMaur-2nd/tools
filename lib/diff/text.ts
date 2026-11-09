@@ -9,7 +9,9 @@
  *   anchor the alignment (longest increasing subsequence) and the gaps between
  *   anchors are diffed again; gaps without such a line (brackets, repeated
  *   values) use Myers' O(ND) linear-space algorithm shared with the structural
- *   diff. Work is capped: past the budget the remaining gaps become removals +
+ *   diff, on the whole gap when it fits one run (minimal), else in overlapping
+ *   windows aligned toward the rest of the gap (near-minimal, `exact` false).
+ *   Work is capped: past the budget the remaining gaps become removals +
  *   additions, so even 100k-line documents finish in tens of milliseconds.
  *   Changed groups are then slid to the most natural spot for JSON (a whole
  *   block, starting at the lowest indentation), like git's indent heuristic.
@@ -153,6 +155,7 @@ export function diffLines(a: readonly string[], b: readonly string[], budget = W
   const eb: number[] = [];
   let work = 0;
   let exact = true;
+  let fwd: Fwd | undefined;
 
   const st = [0, na, 0, nb];
   while (st.length) {
@@ -212,29 +215,46 @@ export function diffLines(a: readonly string[], b: readonly string[], budget = W
       continue;
     }
 
-    // No line occurs once on both sides (brackets, repeated values): Myers,
-    // in overlapping windows when the gap is large.
+    // No line occurs once on both sides (brackets, repeated values): Myers on the whole gap when its
+    // cost, about (N + M)·D for D edits (at least the length difference), fits one run; otherwise in
+    // overlapping windows (see the loop), which can't promise the fewest edits.
     let x = a0;
     let y = b0;
+    let whole = (a1 - a0 + b1 - b0) * Math.abs(a1 - a0 - (b1 - b0)) <= MYERS;
     while (x < a1 && y < b1 && work <= budget) {
-      const xe = Math.min(a1, x + WIN);
-      const ye = Math.min(b1, y + WIN);
-      const last = (a1 - x) * (b1 - y) <= 4 * WIN * WIN;
-      const ex = last ? a1 : xe;
-      const ey = last ? b1 : ye;
+      const last = whole || (a1 - x) * (b1 - y) <= 4 * WIN * WIN;
+      const ex = last ? a1 : Math.min(a1, x + WIN);
+      const ey = last ? b1 : Math.min(b1, y + WIN);
       const cap = Math.max(1, Math.min(MYERS, budget - work));
       ea.length = 0;
       eb.length = 0;
-      const spent = align(ta.subarray(x, ex), tb.subarray(y, ey), ea, eb, cap);
+      let spent: number;
+      if (last) {
+        spent = align(ta.subarray(x, ex), tb.subarray(y, ey), ea, eb, cap);
+        if (spent > cap) {
+          exact = false;
+          if (whole && (a1 - x) * (b1 - y) > 4 * WIN * WIN) {
+            // (more edits than the length difference said: in windows after all)
+            work += spent;
+            whole = false;
+            continue;
+          }
+        }
+      } else {
+        // A window's ends cut the documents at places that needn't correspond: aligned to both, the
+        // edits that line them up land anywhere repeating lines allow, near its start too. So it runs
+        // from its start to either end (see openEnded); the part near its end is aligned again in the
+        // next window.
+        exact = false;
+        spent = openEnded(ta, tb, x, ex, y, ey, a1 - x, b1 - y, ea, eb, (fwd ??= new Fwd()));
+      }
       work += spent + ex - x + ey - y;
-      if (spent > cap) exact = false;
       // keep what the window's far end can't have distorted: up to the last match before KEEP
       let end = ea.length;
       if (!last) {
         end = 0;
         for (let k = 0; k < ea.length; k++) if (ea[k] >= 0 && eb[k] >= 0 && (ea[k] < KEEP || eb[k] < KEEP)) end = k + 1;
         if (!end) {
-          exact = false;
           ca.fill(1, x, x + KEEP);
           cb.fill(1, y, y + KEEP);
           x += KEEP;
@@ -285,6 +305,119 @@ export function diffLines(a: readonly string[], b: readonly string[], budget = W
     }
   }
   return { hunks, added, removed, exact };
+}
+
+/** The furthest-reaching paths of each edit count, kept for the walk back (see openEnded); reused. */
+class Fwd {
+  /** Per edit count d: the furthest x on diagonals -d…d (k = x - y; -1: none), at d·d + d + k. */
+  v = new Int32Array(1 << 12);
+}
+
+/**
+ * Aligns a window a[x0, x1) × b[y0, y1) of a gap whose rest (from x0 and y0) is `la` and `lb` lines long, from
+ * the window's start to its bottom or right end: Myers' greedy forward pass, walked back from the end point
+ * with the fewest edits plus the fewest the rest of the gap then needs at least (the difference of the
+ * lengths left). Without that second term the pass would run ahead on one side wherever lines repeat
+ * (brackets), trading the gap's real removals for made-up additions; with it, a window takes the edits its
+ * part of the gap has. Appends the script (indices relative to x0 / y0) to `ea` / `eb`; returns the work.
+ */
+function openEnded(ta: Int32Array, tb: Int32Array, x0: number, x1: number, y0: number, y1: number, la: number, lb: number, ea: number[], eb: number[], f: Fwd): number {
+  const N = x1 - x0;
+  const M = y1 - y0;
+  // The diagonal the rest of the gap leads to (as far as this window can go toward it): an end point on
+  // diagonal k needs at least |dw - k| more edits after it.
+  const dw = Math.max(-M, Math.min(N, la - lb));
+  let work = 0;
+  let best = Infinity;
+  let bestD = -1;
+  let bestK = 0;
+  let stop = Infinity;
+  /** Where diagonal k's furthest point at d comes from: k + 1 (down: an addition), k - 1 (right: a removal), 0 (none). */
+  const from = (v: Int32Array, pr: number, d: number, k: number) => {
+    const xd = k + 1 <= d - 1 ? v[pr + k + 1] : -1;
+    const xr = k - 1 >= 1 - d ? v[pr + k - 1] : -1;
+    const down = xd >= 0 && xd - k - 1 < M;
+    const right = xr >= 0 && xr < N;
+    return down && (!right || xd > xr) ? 1 : right ? -1 : 0;
+  };
+  for (let d = 0; d <= stop && d < best; d++) {
+    const need = (d + 1) * (d + 1);
+    if (need > f.v.length) {
+      const grown = new Int32Array(Math.max(need, 2 * f.v.length));
+      grown.set(f.v);
+      f.v = grown;
+    }
+    const v = f.v;
+    const at = d * d + d; // diagonal 0 of edit count d
+    const pr = (d - 1) * (d - 1) + (d - 1); // … of d - 1
+    work += d + 1;
+    for (let k = -d; k <= d; k += 2) {
+      // (off the grid, or no better than the best end point even if it got there at once)
+      if (k < -M || k > N || Math.abs(dw - k) >= best - d) {
+        v[at + k] = -1;
+        continue;
+      }
+      let x = 0;
+      if (d) {
+        const s = from(v, pr, d, k);
+        if (!s) {
+          v[at + k] = -1;
+          continue;
+        }
+        x = s > 0 ? v[pr + k + 1] : v[pr + k - 1] + 1;
+      }
+      let y = x - k;
+      const x00 = x;
+      while (x < N && y < M && ta[x0 + x] === tb[y0 + y]) {
+        x++;
+        y++;
+      }
+      work += x - x00;
+      v[at + k] = x;
+      if ((x >= N || y >= M) && d + Math.abs(dw - k) < best) {
+        best = d + Math.abs(dw - k);
+        bestD = d;
+        bestK = k;
+        // (a little further for a better end point, not to every one: memory is (d + 1)²)
+        if (stop === Infinity) stop = d + Math.max(32, d >> 2);
+      }
+    }
+  }
+  // Walked back from the end point: snakes and edits, in reverse.
+  const v = f.v;
+  const ra: number[] = [];
+  const rb: number[] = [];
+  let k = bestK;
+  let x = v[bestD * bestD + bestD + k];
+  for (let d = bestD; d > 0; d--) {
+    const pr = (d - 1) * (d - 1) + (d - 1);
+    const down = from(v, pr, d, k) > 0;
+    const kp = down ? k + 1 : k - 1;
+    const xp = v[pr + kp];
+    const xs = down ? xp : xp + 1;
+    for (let i = x - 1; i >= xs; i--) {
+      ra.push(i);
+      rb.push(i - k);
+    }
+    if (down) {
+      ra.push(-1);
+      rb.push(xp - kp);
+    } else {
+      ra.push(xp);
+      rb.push(-1);
+    }
+    x = xp;
+    k = kp;
+  }
+  for (let i = x - 1; i >= 0; i--) {
+    ra.push(i);
+    rb.push(i);
+  }
+  for (let i = ra.length - 1; i >= 0; i--) {
+    ea.push(ra[i]);
+    eb.push(rb[i]);
+  }
+  return work;
 }
 
 /** How unnatural a changed block looks (lower = better): starts deep or with a closer, ends with an opener. */
