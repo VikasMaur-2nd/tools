@@ -40,6 +40,57 @@ export function plainJson(text: string): boolean {
   }
 }
 
+/** Up to this length, text that may be JSON is checked with JSON.parse (holdsJson); longer, by its first and last characters. */
+export const HOLDS_JSON_PARSE_MAX = 1_000_000;
+
+/**
+ * Whether text `s` (a JSON string's value: what Unescape would show) is a JSON object or array, whitespace around it
+ * allowed: its first and last characters other than whitespace are `{…}` or `[…]`, and JSON.parse reads it (prose
+ * such as `[citation needed]` isn't). `last`: that last character when `s` is only the text's start (a long string
+ * isn't decoded whole for this), or when `s` is longer than HOLDS_JSON_PARSE_MAX: then the pair alone decides, and
+ * Unescape checks the rest.
+ */
+export function holdsJson(s: string, last = -1): boolean {
+  let a = 0;
+  while (a < s.length && isJsonSpace(s.charCodeAt(a))) a++;
+  const o = s.charCodeAt(a);
+  if (o !== 123 && o !== 91) return false;
+  const whole = last < 0;
+  if (whole) {
+    let b = s.length - 1;
+    while (b > a && isJsonSpace(s.charCodeAt(b))) b--;
+    last = s.charCodeAt(b);
+  }
+  if (last !== (o === 123 ? 125 : 93)) return false;
+  if (!whole || s.length > HOLDS_JSON_PARSE_MAX) return true;
+  try {
+    JSON.parse(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const isJsonSpace = (c: number) => c === 32 || c === 10 || c === 13 || c === 9;
+
+/**
+ * The text of a document that is a JSON string written without being one (`{\"a\": 1}`, with or without its outer
+ * quotes), with its escapes undone; null if they aren't all valid, or it has a quote not escaped. Raw control
+ * characters (a tab, a CRLF line break) are taken as they are, as in a string the parser reads loosely.
+ */
+export function unescapeText(text: string): string | null {
+  const body = text.trim().replace(/^"|"$/g, '').replace(/[\u0000-\u001f]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+  try {
+    const v: unknown = JSON.parse('"' + body + '"');
+    return typeof v === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether `text`, JSON written as a string (see unescapeText), holds JSON (holdsJson): taken as so past HOLDS_JSON_PARSE_MAX. */
+export const holdsEscapedJson = (text: string) => text.length > HOLDS_JSON_PARSE_MAX || holdsJson(unescapeText(text) ?? '');
+
 export function persistenceAfterChange(enabled: boolean, kind: ChangeKind): boolean {
   return enabled || kind !== 'set';
 }
