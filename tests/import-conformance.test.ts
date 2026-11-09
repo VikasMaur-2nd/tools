@@ -234,6 +234,9 @@ describe('TOML', () => {
       ['a = 1979-05-27T23:59:59.999+23:59\nb = 00:00:00\nc = 1979-05-27 00:00:00-23:59\n', { a: '1979-05-27T23:59:59.999+23:59', b: '00:00:00', c: '1979-05-27T00:00:00-23:59' }],
       // RFC 3339 has a leap second 60 and the year 0000; tomllib rejects them only because Python's datetime has neither
       ['a = 2016-12-31T23:59:60Z\nb = 23:59:60\nc = 0000-01-01\n', { a: '2016-12-31T23:59:60Z', b: '23:59:60', c: '0000-01-01' }],
+      // written in RFC 3339's form: T between date and time, Z for UTC; a local time keeps its fraction
+      ['a = 1979-05-27t07:32:00z\nb = 1979-05-27 07:32:00Z\nc = 1979-05-27 07:32:00.5\nd = 07:32:00.999999\n', { a: '1979-05-27T07:32:00Z', b: '1979-05-27T07:32:00Z', c: '1979-05-27T07:32:00.5', d: '07:32:00.999999' }],
+      ['a = [1979-05-27, 07:32:00, 1]\nb = {d = 2000-02-29}\n', { a: ['1979-05-27', '07:32:00', 1], b: { d: '2000-02-29' } }],
     ]);
     fails('toml', [
       ['a = 2024-13-45\n', "Invalid date or time '2024-13-45'", 1, 5],
@@ -252,7 +255,10 @@ describe('TOML', () => {
       // a date or time of the wrong shape is no number either
       ['a = 2024-1-01\n', "Invalid date or time '2024-1-01'", 1, 5],
       ['a = 1979-05-27T07:32:00Q\n', "Invalid date or time '1979-05-27T07:32:00Q'", 1, 5],
+      ['a = 2024-\n', "Invalid date or time '2024-'", 1, 5],
+      ['a = 12:3\n', "Invalid date or time '12:3'", 1, 5],
       ['n = 012\n', "Invalid number '012'", 1, 5],
+      ['n = 1e10-5\n', "Invalid number '1e10-5'", 1, 5],
     ]);
   });
 

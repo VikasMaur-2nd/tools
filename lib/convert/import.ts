@@ -325,8 +325,11 @@ const YINT = /^([-+]?)(?:0x([\da-fA-F]+)|0o([0-7]+)|(\d+))$/;
 /** `str` for `!!str` or `!<tag:yaml.org,2002:str>`, `!` for the non-specific tag, '' for any other tag. */
 const yTagName = (tag: string) => (tag === '!' ? tag : tag.startsWith('!!') ? tag.slice(2) : tag.startsWith('!<tag:yaml.org,2002:') && tag.endsWith('>') ? tag.slice(20, -1) : '');
 
-/** Whether a scalar's tag makes it something other than its text (a mapping key is then that value's JSON text). */
-const yTypedTag = (tag: string) => /^(?:int|float|bool|null)$/.test(yTagName(tag));
+/** The tags yTagged builds a scalar's value for, from its text alone. */
+const Y_SCALAR_TAGS = new Set(['!', 'str', 'int', 'float', 'bool', 'null', 'binary', 'timestamp']);
+
+/** Whether a scalar's tag (`t`: its yTagName) makes it something other than its text (a mapping key is then that value's JSON text). */
+const yTypedTag = (tag: string, t = yTagName(tag)) => t === 'int' || t === 'float' || t === 'bool' || t === 'null';
 
 /**
  * The value of a node with tag `tag` at `p`. The core tags (`!!str`, `!!int`, `!!float`, `!!bool`, `!!null`,
@@ -334,10 +337,9 @@ const yTypedTag = (tag: string) => /^(?:int|float|bool|null)$/.test(yTagName(tag
  * it from the scalar's `text` (null: the node is the collection `v`) or reject content that is not of their
  * kind; any other tag (an application's own, such as `!Ref`) leaves `v` as read without it.
  */
-function yTagged(tag: string, v: V, text: string | null, p: number): V {
-  const t = yTagName(tag);
+function yTagged(tag: string, v: V, text: string | null, p: number, t = yTagName(tag)): V {
   if (text === null) {
-    if (t === 'seq' ? Array.isArray(v) : t === 'map' ? v instanceof Map : !/^(?:str|int|float|bool|null|binary|timestamp)$/.test(t)) return v;
+    if (t === 'seq' ? Array.isArray(v) : t === 'map' ? v instanceof Map : t === '!' || !Y_SCALAR_TAGS.has(t)) return v;
   } else
     switch (t) {
       case '!': case 'str': case 'binary': case 'timestamp':
@@ -722,8 +724,15 @@ function yaml(src: string, indent: string): V {
         if (!isWs(d) && d !== 10) e = i;
       }
       const t = src.slice(s, e).replace(/[ \t]*\n\s*/g, ' ');
-      v = tag ? yTagged(tag, yScalar(t), t, tp) : yScalar(t);
-      if (!tag || yTagName(tag) === 'merge' || (!yTypedTag(tag) && t !== '<<')) key = t;
+      if (!tag) {
+        v = yScalar(t);
+        key = t;
+      } else {
+        const tn = yTagName(tag);
+        // (a core tag builds the value from the text: no need to resolve it untagged)
+        v = yTagged(tag, Y_SCALAR_TAGS.has(tn) ? null : yScalar(t), t, tp, tn);
+        if (tn === 'merge' || (!yTypedTag(tag, tn) && t !== '<<')) key = t;
+      }
     }
     anchor(name, v);
     rawKey = key;
@@ -1146,6 +1155,10 @@ function xml(src: string): V {
 
 /** A date, date-time or time (RFC 3339; seconds optional as in TOML 1.1). Groups: year, month, day, hour, minute, second, offset hour, offset minute; a local time's hour, minute, second. */
 const DT = /^(?:(\d{4})-(\d{2})-(\d{2})(?:[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:[Zz]|[+-](\d{2}):(\d{2}))?)?|(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)$/;
+const digitAt = (t: string, k: number) => {
+  const c = t.charCodeAt(k);
+  return c >= 48 && c <= 57;
+};
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 /** Whether the parts DT matched name a real date and time: a day of its month (Feb 29 in leap years), 00:00 to 23:59 with a leap second 60, offsets within ±23:59. */
@@ -1317,13 +1330,18 @@ function toml(src: string): V {
     if (!t) f(i >= n || at(i) === 10 ? 'Expected a value' : `Unexpected '${src[i]}': expected a value`);
     if (t === 'true') return true;
     if (t === 'false') return false;
+    // a date (4 digits, '-') or time (2 digits, ':'): no number starts like either
+    if (digitAt(t, 0) && digitAt(t, 1) && (t.charCodeAt(2) === 58 || (digitAt(t, 2) && digitAt(t, 3) && t.charCodeAt(4) === 45))) {
+      const dt = DT.exec(t);
+      if (!dt || !dtValid(dt)) f(`Invalid date or time '${t}'`, s);
+      // RFC 3339 form: 'T' between the date and the time, 'Z' for UTC
+      const r = dt[1] !== undefined && t.length > 10 && t.charCodeAt(10) !== 84 ? t.slice(0, 10) + 'T' + t.slice(11) : t;
+      return r.charCodeAt(r.length - 1) === 122 ? r.slice(0, -1) + 'Z' : r;
+    }
     if (/^[+-]?(inf|nan)$/.test(t)) return null;
     if (/^[+-]?(0|[1-9](_?\d)*)$/.test(t)) return new Num(t.replace(/_|^\+/g, ''));
     if (/^0x[\da-fA-F](_?[\da-fA-F])*$|^0o[0-7](_?[0-7])*$|^0b[01](_?[01])*$/.test(t)) return new Num(BigInt(t.replace(/_/g, '')).toString());
     if (/^[+-]?(0|[1-9](_?\d)*)(\.\d(_?\d)*)?([eE][+-]?\d(_?\d)*)?$/.test(t)) return new Num(t.replace(/_|^\+/g, ''));
-    const dt = DT.exec(t);
-    if (dt && dtValid(dt)) return t.replace(/^(\d{4}-\d{2}-\d{2})[Tt ]/, '$1T').replace(/z$/, 'Z');
-    if (dt || /^\d{4}-\d|^\d{2}:\d/.test(t)) f(`Invalid date or time '${t}'`, s);
     return f(/^[+-]?\d/.test(t) ? `Invalid number '${t}'` : `Invalid value '${t}': strings must be quoted`, s);
   };
   const keyval = (t: Map<string, V>) => {
