@@ -227,3 +227,35 @@ test('a duplicated key shows its last value, as everything else reads it (JSON.p
   const wide = '{' + Array.from({ length: 14 }, (_, i) => `"k${i}":${i}`).join(',') + ',"k0":"last"}';
   assert.equal(table(`[${wide}]`).view.toCSV().split('\r\n')[1].split(',')[0], 'last');
 });
+
+test("Find doesn't match an array's row numbers (an object's keys are data, and match)", () => {
+  const rows = JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ name: 'n' + String.fromCharCode(97 + (i % 26)), ok: i % 2 === 0 })));
+  assert.deepEqual(table(rows).view.find('1'), { total: 0, index: -1 });
+  assert.deepEqual(table('["a", "b1", "c"]').view.find('1'), { total: 1, index: 0 });
+  assert.deepEqual(table('{"k1": "x", "k2": "y1", "z": "q"}').view.find('1'), { total: 2, index: 0 });
+});
+
+test('sorting an object table by its keys sorts them, both ways, as text cells sort', () => {
+  const { view, drawn, sort } = table('{"b":1,"a":2,"c":0,"a10":3,"a9":4}');
+  const keys = () => drawn().map((x) => ['b', 'a', 'c', 'a10', 'a9'][x.r]);
+  sort(0);
+  assert.deepEqual(keys(), ['a', 'a9', 'a10', 'b', 'c']);
+  assert.ok(view.el.querySelector('.tb-head')!.innerHTML.includes('aria-sort="ascending"'));
+  sort(0);
+  assert.deepEqual(keys(), ['c', 'b', 'a10', 'a9', 'a']);
+  sort(0);
+  assert.deepEqual(keys(), ['b', 'a', 'c', 'a10', 'a9']);
+  // an array's row numbers: its order, or the other way
+  const arr = table('[3,1,2]');
+  arr.sort(0);
+  assert.deepEqual(arr.drawn().map((x) => x.r), [0, 1, 2]);
+  arr.sort(0);
+  assert.deepEqual(arr.drawn().map((x) => x.r), [2, 1, 0]);
+});
+
+test("the row label and value columns never take a member's name", () => {
+  const labels = (json: string) => (table(json).view as unknown as { cols: { label: string }[] }).cols.map((c) => c.label);
+  assert.deepEqual(labels('[{"key":1,"#":2,"value":3},4]'), ['_#', '_value', 'key', '#', 'value']);
+  assert.deepEqual(labels('{"a":{"key":1,"_key":2},"b":5}'), ['__key', 'value', 'key', '_key']);
+  assert.deepEqual(labels('[{"a":1},2]'), ['#', 'value', 'a']);
+});
