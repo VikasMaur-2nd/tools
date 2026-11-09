@@ -1,11 +1,9 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type CellFn, type Key } from '../json/parser';
-import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
 import type { FindResult } from './codeview';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
 import { rt } from '../i18n/ui';
-import { formulaSafe } from '../convert/formula';
 
 /*
  * Virtualized grid of an array (rows = items) or object (rows = properties).
@@ -35,8 +33,6 @@ export interface TableEvents {
 
 /** A primitive cell's text, from its kind and value (as JNode.v has it). */
 const cellText = (t: number, v: string | boolean | null): string => (t === BOOL ? (v ? 'true' : 'false') : t === NUL ? 'null' : (v as string));
-
-const csvEscape = (s: string) => ((s = formulaSafe(s)), /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
 
 /** Sort rank of a cell of kind `t` (-1: none): numbers, text, booleans, null, arrays and objects, then missing. */
 const typeRank = (t: number) => (t < 0 ? 9 : t === NUM ? 0 : t === STR ? 1 : t === BOOL ? 2 : t === NUL ? 3 : 4);
@@ -227,8 +223,13 @@ export class TableView {
       if (it.t === OBJ) for (const c of kids(it)) add(c.key);
       else hasValue = true;
     }
-    const cols: Col[] = [{ key: null, idx: true, label: isObj ? 'key' : '#', w: 0 }];
-    if (hasValue) cols.push({ key: null, label: 'value', w: 0 });
+    // The row label and value columns give way to members of the same name (`_key`, `__value`…), as in the exports.
+    const own = (name: string) => {
+      while (seen.has(name)) name = '_' + name;
+      return name;
+    };
+    const cols: Col[] = [{ key: null, idx: true, label: own(isObj ? 'key' : '#'), w: 0 }];
+    if (hasValue) cols.push({ key: null, label: own('value'), w: 0 });
     for (const k of seen.keys()) cols.push({ key: k, label: k, w: 0 });
 
     // Width from a sample of content.
@@ -266,7 +267,7 @@ export class TableView {
 
   private maps = new WeakMap<JNode, Map<string, JNode>>();
 
-  // ── Find (rows whose key or any cell contains the query) ────────────────
+  // ── Find (rows whose key or any cell contains the query; an array's row numbers aren't its data) ──
 
   private fq = '';
   /** Rows holding a match: display positions in `order`, and items (which a sort doesn't move). */
@@ -286,7 +287,7 @@ export class TableView {
       const qn = cs ? q : q.toLowerCase();
       const has = (s: string) => (cs ? s : s.toLowerCase()).includes(qn);
       const hit = new Uint8Array(this.order.length);
-      for (let r = 0; r < hit.length; r++) hit[r] = +has(this.label(this.order[r]));
+      if (this.node.t === OBJ) for (let r = 0; r < hit.length; r++) hit[r] = +has(this.label(this.order[r]));
       this.cells(this.order, this.cols.slice(1).map((c) => c.key), (r, _k, t, v) => hit[r] || (t >= 0 && t < ARR && has(cellText(t, v)) && (hit[r] = 1)));
       for (let r = 0; r < hit.length; r++) if (hit[r]) this.fhits.push(r);
       this.fset = new Set(this.fhits.map((r) => this.order[r]));
@@ -323,7 +324,14 @@ export class TableView {
     const n = this.rowCount;
     const order = new Int32Array(n);
     for (let i = 0; i < n; i++) order[i] = i;
-    if (this.sortCol > 0) {
+    const dir = this.sortDir;
+    const byKey = this.sortCol === 0 && this.node?.t === OBJ;
+    const coll = byKey || this.sortCol > 0 ? new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }) : null;
+    if (byKey) {
+      // An object's keys, compared as text cells are (an array's row numbers are its order).
+      const keys = Array.from(order, (i) => this.label(i));
+      order.sort((a, b) => coll!.compare(keys[a], keys[b]) * dir || a - b);
+    } else if (this.sortCol > 0) {
       const col = this.cols[this.sortCol];
       // Each row's cell read once (from a tape, there): its rank, and a number or text to compare.
       const rank = new Uint8Array(n);
@@ -334,15 +342,13 @@ export class TableView {
         if (t === NUM || t === STR) text[i] = v as string;
         num[i] = t === NUM || t === BOOL ? Number(v) : t >= ARR ? this.size(c) : 0;
       });
-      const dir = this.sortDir;
-      const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
       order.sort((a, b) => {
         const rx = rank[a];
         if (rx !== rank[b]) return rx - rank[b]; // missing values always last
         let c = 0;
         // (Numbers: as compareNumbers, its doubles read once.)
         if (rx === 0) c = num[a] !== num[b] ? (num[a] < num[b] ? -1 : 1) : compareNumbers(text[a]!, text[b]!);
-        else if (rx === 1) c = coll.compare(text[a]!, text[b]!);
+        else if (rx === 1) c = coll!.compare(text[a]!, text[b]!);
         // (Booleans, item counts; null and missing: 0.)
         else c = num[a] - num[b];
         // (Ties in the document's order, in every engine.)
@@ -634,22 +640,19 @@ export class TableView {
     return c;
   }
 
-  toCSV(): string {
-    if (!this.node) return '';
-    const isObj = this.node.t === OBJ;
-    const cols = this.cols.slice(isObj ? 0 : 1);
-    const lines = [cols.map((c) => csvEscape(c.idx ? 'key' : c.label)).join(',')];
-    let line: string[] = [];
-    this.cells(
-      this.order,
-      this.cols.slice(1).map((c) => c.key),
-      (_r, _k, t, v, c) => void line.push(t < 0 || t === NUL ? '' : csvEscape(t < ARR ? cellText(t, v) : typeof c === 'number' ? this.node!.z!.json(c) : stringify(c, ''))),
-      (r) => {
-        if (isObj) line.unshift(csvEscape(this.label(this.order[r])));
-        lines.push(line.join(','));
-        line = [];
-      },
-    );
-    return lines.join('\r\n');
+  /**
+   * What the table shows, to export (CSV, Excel: convert/xlsx flattens it): its array or object, or, sorted, the
+   * same items in the order shown. Items from a tape are made.
+   */
+  exportNode(): JNode | null {
+    const n = this.node;
+    if (!n) return null;
+    const order = this.order;
+    let sorted = false;
+    for (let i = 0; i < order.length && !sorted; i++) sorted = order[i] !== i;
+    if (!sorted) return n;
+    const out = new JNode(n.t, Array.from(order, (i) => this.item(i)), n.s, n.d, null, undefined);
+    out.e = n.e;
+    return out;
   }
 }

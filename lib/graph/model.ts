@@ -1219,19 +1219,17 @@ export function cardFinder(m: GraphModel, root: JNode): (segs: Seg[]) => number 
     }
     return k < list.length ? list[k] : -1;
   };
-  // The first member of that name, as `resolve`.
+  // The last member of that name (JSON.parse semantics), as `resolve`.
   const member = (i: number, key: string) => {
     let map = members.get(i);
     if (!map) {
       const end = nextOf(t, i);
       let c = i + 1;
-      for (let j = 0; c < end && j < SCAN; c = nextOf(t, c), j++) if (t.keys[a[c * W + 4]] === key) return c;
-      if (c >= end) return -1;
+      let hit = -1;
+      for (let j = 0; c < end && j < SCAN; c = nextOf(t, c), j++) if (t.keys[a[c * W + 4]] === key) hit = c;
+      if (c >= end) return hit;
       map = new Map();
-      for (c = i + 1; c < end; c = nextOf(t, c)) {
-        const name = t.keys[a[c * W + 4]];
-        if (!map.has(name)) map.set(name, c);
-      }
+      for (c = i + 1; c < end; c = nextOf(t, c)) map.set(t.keys[a[c * W + 4]], c);
       members.set(i, map);
     }
     return map.get(key) ?? -1;
