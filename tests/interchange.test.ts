@@ -1117,4 +1117,15 @@ describe('spreadsheet export audit', () => {
     assert.equal(csv('{"jsonrpc":"2.0","id":7,"result":[{"a":1}]}'), 'a\r\n1\r\n');
     assert.equal(csv('{"status":"ok","user":{"id":5,"name":"n","repos":[{"r":1},{"r":2}]}}'), 'key,value\r\nstatus,ok\r\nuser.id,5\r\nuser.name,n\r\nuser.repos,"[{""r"":1},{""r"":2}]"\r\n');
   });
+
+  test('XLSX: CR survives (a character reference), sheet names keep whole characters', async () => {
+    // XML parsers read a raw CR as LF: "x\r\ny" read back "x\ny"
+    const { sheet, text } = await xlsxParts('[{"a":"x\\r\\ny","b":"p\\rq","c":"_x000D_"}]', { sheetName: 'a'.repeat(30) + '😀' });
+    assert.ok(sheet.includes('<t>x&#13;\ny</t>') && sheet.includes('<t>p&#13;q</t>') && sheet.includes('<t>_x005F_x000D_</t>'), sheet);
+    wellFormed(sheet);
+    // Excel's 31-unit limit would cut the emoji in two: it is left out
+    assert.ok(text('xl/workbook.xml').includes(`<sheet name="${'a'.repeat(30)}" `), text('xl/workbook.xml'));
+    const fits = await xlsxParts('[1]', { sheetName: 'a'.repeat(29) + '😀b' });
+    assert.ok(fits.text('xl/workbook.xml').includes(`<sheet name="${'a'.repeat(29)}😀" `));
+  });
 });

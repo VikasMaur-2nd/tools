@@ -323,11 +323,13 @@ const REL = NS + 'officeDocument/2006/relationships';
 const PKG = NS + 'package/2006/relationships';
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
-// XML specials, characters illegal in XML 1.0 (stripped) and Excel's own `_xHHHH_` escapes (protected).
-const XT = /[&<>\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]|_x[\da-fA-F]{4}_/;
+// XML specials, CR, characters illegal in XML 1.0 (dropped) and text that reads as Excel's own `_xHHHH_` escapes
+// (protected). CR is a character reference, as XML parsers read a raw one as LF; not Excel's `_x000D_`, which
+// openpyxl (so pandas) leaves as it is in inline strings, as it would the other control characters' escapes.
+const XT = /[&<>\r\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]|_x[\da-fA-F]{4}_/;
 const XR = new RegExp(XT.source, 'g');
-const xe = (s: string) =>
-  XT.test(s) ? s.replace(XR, (m) => (m === '&' ? '&amp;' : m === '<' ? '&lt;' : m === '>' ? '&gt;' : m.length > 1 ? '_x005F' + m : '')) : s;
+const X_ENT: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\r': '&#13;' };
+const xe = (s: string) => (XT.test(s) ? s.replace(XR, (m) => X_ENT[m] ?? (m.length > 1 ? '_x005F' + m : '')) : s);
 const xa = (s: string) => xe(s).replace(/"/g, '&quot;');
 
 /** `<is>` payload for an inline string (truncated to Excel's 32,767-character cell limit). */
@@ -382,11 +384,13 @@ const numeric = (c: JNode) => {
   return a === 0 ? /^-?[0.]+(?:[eE]|$)/.test(raw) : a >= 2.2251e-308 && a <= 9.99999999999999e307;
 };
 
+// (Excel's limit is 31 UTF-16 code units: a character that would be cut in two is left out.)
 const sheetName = (s: string | undefined) => {
   const t = (s ?? '')
     .replace(/[\\/?*:[\]\x00-\x1f]/g, ' ')
     .trim()
     .slice(0, 31)
+    .replace(/[\ud800-\udbff]$/, '')
     .replace(/^'+|'+$/g, '');
   return t && t.toLowerCase() !== 'history' ? t : 'Sheet1';
 };
