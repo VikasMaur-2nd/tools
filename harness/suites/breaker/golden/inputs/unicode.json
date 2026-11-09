@@ -38,7 +38,7 @@
   ],
   "empty": false
  },
- "csv": "key,value\r\nk‮RLO,v‮evil‬\r\n👨‍👩‍👧‍👦,Z͓͑͒ ǟ é\r\nls,a b c\r\nesc,\"\b\f\n\r\t\"\"\\/\"\r\nctl,\u0001\u001f\r\nastral,😀𝓐\r\nlone,\ud800 \udfff\r\nnul,\u0000",
+ "csv": "key,value\r\nk‮RLO,v‮evil‬\r\n👨‍👩‍👧‍👦,Z͓͑͒ ǟ é\r\nls,a b c\r\nesc,\"\b\f\n\r\t\"\"\\/\"\r\nctl,\u0001\u001f\r\nastral,😀𝓐\r\nlone,� �\r\nnul,\u0000\r\n",
  "convert": {
   "typescript": "export interface Root {\n  \"k‮RLO\": string;\n  \"👨‍👩‍👧‍👦\": string;\n  ls: string;\n  esc: string;\n  ctl: string;\n  astral: string;\n  lone: string;\n  nul: string;\n}\n",
   "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.object({\n  \"k‮RLO\": z.string(),\n  \"👨‍👩‍👧‍👦\": z.string(),\n  ls: z.string(),\n  esc: z.string(),\n  ctl: z.string(),\n  astral: z.string(),\n  lone: z.string(),\n  nul: z.string(),\n});\nexport type Root = z.infer<typeof RootSchema>;\n",

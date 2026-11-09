@@ -35,7 +35,7 @@
   "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: mixed\n",
   "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = serde_json::Value;\n",
   "protobuf": "syntax = \"proto3\";\n\npackage root;\n\nimport \"google/protobuf/struct.proto\";\n\n// The JSON is a single value: this message holds it as {\"value\": ...}.\nmessage Root {\n  google.protobuf.Value value = 1;\n}\n",
-  "csv": "value\r\n\r\n",
+  "csv": "value\r\n\"\"\r\n",
   "yaml": "null\n",
   "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root/>\n",
   "toml": "# A TOML document must be a table: the top-level value is stored under \"root\".\n# root = null (omitted: TOML has no null)\n",

@@ -48,7 +48,7 @@
   ],
   "empty": false
  },
- "csv": "value\r\n1e400\r\n-0\r\n1.0000000000000000000001\r\n123456789012345678901234567890123\r\n9007199254740993\r\n-1e-400\r\n0.1e1\r\n1E+2\r\n0\r\n-0.0\r\n5e-324\r\n1.5e-10\r\n100000000000000000000000",
+ "csv": "value\r\n1e400\r\n-0\r\n1.0000000000000000000001\r\n123456789012345678901234567890123\r\n9007199254740993\r\n-1e-400\r\n0.1e1\r\n1E+2\r\n0\r\n-0.0\r\n5e-324\r\n1.5e-10\r\n100000000000000000000000\r\n",
  "convert": {
   "typescript": "export type Root = number[]; // exceeds Number.MAX_SAFE_INTEGER: precision is lost as a JS number\n",
   "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.array(z.number());\nexport type Root = z.infer<typeof RootSchema>;\n",
