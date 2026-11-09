@@ -97,7 +97,11 @@ export interface LineDiff {
   hunks: Hunk[];
   added: number;
   removed: number;
-  /** False when the work budget ran out (the diff is still valid, just not minimal). */
+  /**
+   * False when part of it may have more edits than Myers would find: the work budget ran out, or a large gap
+   * without anchors was aligned in windows (the diff is still valid). Anchoring on unique lines (patience)
+   * prefers readable hunks to the fewest edits either way.
+   */
   exact: boolean;
 }
 

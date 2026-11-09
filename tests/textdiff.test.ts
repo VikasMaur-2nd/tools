@@ -186,7 +186,7 @@ describe('textdiff: line diff', () => {
     }
   });
 
-  test('exact means minimal: a diff past one Myers run says it may not be', () => {
+  test('without unique lines, exact means minimal: a gap aligned in windows says it may not be', () => {
     const lcs = (a: readonly string[], b: readonly string[]) => {
       let prev = new Int32Array(b.length + 1);
       let cur = new Int32Array(b.length + 1);
