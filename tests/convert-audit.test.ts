@@ -162,3 +162,13 @@ test('YAML: keys and strings that start like a document marker are quoted', () =
   assert.equal(conv('"..."', 'yaml'), '"..."\n');
   assert.equal(conv('["...x","x ..."]', 'yaml'), '- ...x\n- x ...\n');
 });
+
+test('YAML: keys longer than 1024 characters are explicit', () => {
+  // An implicit key ("key: value") is at most 1024 characters long.
+  const k = 'k'.repeat(1025);
+  assert.equal(conv(JSON.stringify({ [k]: 1, a: { [k]: { b: [1] } }, s: [{ [k]: 2, c: 3 }] }), 'yaml'), `? ${k}\n: 1\na:\n  ? ${k}\n  :\n    b:\n      - 1\ns:\n  - ? ${k}\n    : 2\n    c: 3\n`);
+  // (as written: a quoted key's escapes count)
+  assert.equal(conv(JSON.stringify({ ['k'.repeat(1024)]: 1 }), 'yaml'), `${'k'.repeat(1024)}: 1\n`);
+  assert.ok(conv(JSON.stringify({ ['"'.repeat(511)]: 1 }), 'yaml').startsWith('"\\"'));
+  assert.ok(conv(JSON.stringify({ ['"'.repeat(512)]: 1 }), 'yaml').startsWith('? "'));
+});

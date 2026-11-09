@@ -84,14 +84,18 @@ export function toYAML(root: JNode): string {
     }
     return kids(n).length ? '' : n.t === OBJ ? '{}' : '[]';
   };
-  const key = (k: string) => (yPlain(k) ? k : yQuote(k));
+  // An implicit key ("key: value") is at most 1024 characters: a longer one is an explicit "? key" with ": value" below.
+  const key = (k: string, ind: string) => {
+    const s = yPlain(k) ? k : yQuote(k);
+    return s.length > 1024 ? '? ' + s + '\n' + ind + ':' : s + ':';
+  };
   // Non-empty mapping / sequence; `inline`: the first entry continues the current line (after "- ").
   const block = (n: JNode, ind: string, inline: boolean): void => {
     const isObj = n.t === OBJ;
     const list = isObj ? entries(n) : kids(n);
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      b.add((i || !inline ? '\n' + ind : '') + (isObj ? key(c.key as string) + ':' : '- '));
+      b.add((i || !inline ? '\n' + ind : '') + (isObj ? key(c.key as string, ind) : '- '));
       const s = scalar(c, ind + '  ');
       if (s) b.add(isObj ? ' ' + s : s);
       else block(c, ind + '  ', !isObj);
