@@ -1840,6 +1840,7 @@ const skipTail = () => {
 const nextLine = (): boolean => {
   ws();
   while (src.charCodeAt(i) === 44 || src.charCodeAt(i) === 59) {
+    fix(i, `Unexpected ${describe(i)}`);
     i++;
     ws();
   }

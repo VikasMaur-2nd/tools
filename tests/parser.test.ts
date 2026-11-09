@@ -560,6 +560,18 @@ describe('tolerant reading keeps values the same (audit regressions)', () => {
     assert.deepEqual(parse('["\\v"]').issues, [{ p: 2, m: 'Invalid escape sequence \\v' }]);
   });
 
+  test('a comma or semicolon between top-level values is reported where strict JSON fails', () => {
+    for (const [src, at, m] of [['1,2', 1, "Unexpected ','"], ['1;2', 1, "Unexpected ';'"], ['{"a":1},\n{"b":2}', 7, "Unexpected ','"], ['1\n2,', 3, "Unexpected ','"]] as const) {
+      for (const lines of [false, true]) {
+        const r = parse(src, { lines, repair: true });
+        assert.equal(r.error, null);
+        assert.ok(r.issues.some((x) => x.p === at && x.m === m), `${show(src)} ${lines}: ${JSON.stringify(r.issues)}`);
+        assert.equal(r.issues[0].p, Math.min(at, r.issues[0].p));
+      }
+    }
+    assert.deepEqual(first('1,2'), { p: 1, m: "Unexpected ','" });
+  });
+
   test('a number with more right after it (a date, an IP, a version, 0o17) is one bare word, in arrays and objects alike', () => {
     assert.deepEqual(value('[2024-01-15, 2024-02-01]'), ['2024-01-15', '2024-02-01']);
     assert.deepEqual(value('[10.0.0.1, 1.2.3, 0o17, 5px, 1e5x, -1-2, 0x1Fg, 3.5°C]'), ['10.0.0.1', '1.2.3', '0o17', '5px', '1e5x', '-1-2', '0x1Fg', '3.5°C']);

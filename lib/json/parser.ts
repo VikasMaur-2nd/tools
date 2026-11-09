@@ -1240,7 +1240,9 @@ const skipTail = () => {
 const nextLine = (): boolean => {
   const list = wrap!._v as JNode[];
   ws();
+  // (A comma or semicolon between values: reported, as after a single value (skipTail), where strict JSON fails.)
   while (src.charCodeAt(i) === 44 || src.charCodeAt(i) === 59) {
+    fix(i, `Unexpected ${describe(i)}`);
     i++;
     ws();
   }

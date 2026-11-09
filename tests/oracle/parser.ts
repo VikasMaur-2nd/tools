@@ -684,6 +684,7 @@ export function parseRecursive(src: string, { lines = false }: ParseOptions = {}
         for (;;) {
           ws();
           while (src.charCodeAt(i) === 44 || src.charCodeAt(i) === 59) {
+            fix(i, `Unexpected ${describe(i)}`);
             i++;
             ws();
           }

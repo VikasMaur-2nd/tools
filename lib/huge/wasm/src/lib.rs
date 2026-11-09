@@ -187,7 +187,11 @@ static mut FLAGS: u32 = 0;
 const F_CHECKPOINTS: u32 = 1;
 const F_DUPS: u32 = 2;
 const F_DIR: u32 = 4;
-/** JSON Lines (the file's name says so): separators after a single top-level value are fine (tape-parser.ts `lines`). */
+/**
+ * JSON Lines (the file's name says so). Not read any more: a separator after a top-level value fails either way,
+ * as tape-parser.ts reports it either way. (The flag is still passed: lib/huge/skeleton.ts.)
+ */
+#[allow(dead_code)]
 const F_LINES: u32 = 8;
 static mut CK_EVERY: u64 = 1 << 20;
 static mut BIG: u64 = 1 << 18;
@@ -1998,13 +2002,6 @@ pub unsafe extern "C" fn run() -> i32 {
             }
             if last {
                 if state == S_TOP {
-                    // (A separator after the only top-level value is one too many: "Unexpected ','".)
-                    if SEP != NONE && tcount == 1 && flags & F_LINES == 0 {
-                        WHY = W_SYNTAX;
-                        failed_at(wlen);
-                        FAIL_POS = SEP;
-                        break FAIL;
-                    }
                     break DONE;
                 }
                 fail!(W_END, wlen);
@@ -2139,26 +2136,9 @@ pub unsafe extern "C" fn run() -> i32 {
                     }
                 }
                 if c == b',' || c == b';' {
-                    // Separators between top-level values (as tape-parser.ts takes JSON Lines): not JSON Lines.
-                    if SEP == NONE {
-                        SEP = pos0 + p as u64;
-                    }
-                    if LSEP == NONE {
-                        LSEP = pos0 + p as u64;
-                    }
-                    LINES_OK = false;
-                    LOK = false;
-                    let mut j = p;
-                    while byte(j) == b';' {
-                        j += 1;
-                    }
-                    if c == b',' || ENDS[byte(j) as usize] {
-                        ii += 1;
-                        continue;
-                    }
-                    // A value right after a `;` (one token with it).
-                    p = j;
-                    c = byte(p);
+                    // A separator between or after top-level values isn't JSON: tape-parser.ts reports it there
+                    // ("Unexpected ','", as JSON.parse fails), JSON Lines or not. (So SEP and LSEP stay NONE.)
+                    fail!(W_SYNTAX, p);
                 }
             }
             _ => {}
