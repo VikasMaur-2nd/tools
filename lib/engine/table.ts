@@ -1,11 +1,9 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type CellFn, type Key } from '../json/parser';
-import { stringify } from '../json/format';
 import { pathOf } from '../json/path';
 import type { FindResult } from './codeview';
 import { escapeHtml } from './highlight';
 import { TallScroll } from './tall';
 import { rt } from '../i18n/ui';
-import { formulaSafe } from '../convert/formula';
 
 /*
  * Virtualized grid of an array (rows = items) or object (rows = properties).
@@ -35,8 +33,6 @@ export interface TableEvents {
 
 /** A primitive cell's text, from its kind and value (as JNode.v has it). */
 const cellText = (t: number, v: string | boolean | null): string => (t === BOOL ? (v ? 'true' : 'false') : t === NUL ? 'null' : (v as string));
-
-const csvEscape = (s: string) => ((s = formulaSafe(s)), /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
 
 /** Sort rank of a cell of kind `t` (-1: none): numbers, text, booleans, null, arrays and objects, then missing. */
 const typeRank = (t: number) => (t < 0 ? 9 : t === NUM ? 0 : t === STR ? 1 : t === BOOL ? 2 : t === NUL ? 3 : 4);
@@ -644,22 +640,19 @@ export class TableView {
     return c;
   }
 
-  toCSV(): string {
-    if (!this.node) return '';
-    const isObj = this.node.t === OBJ;
-    const cols = this.cols.slice(isObj ? 0 : 1);
-    const lines = [cols.map((c) => csvEscape(c.label)).join(',')];
-    let line: string[] = [];
-    this.cells(
-      this.order,
-      this.cols.slice(1).map((c) => c.key),
-      (_r, _k, t, v, c) => void line.push(t < 0 || t === NUL ? '' : csvEscape(t < ARR ? cellText(t, v) : typeof c === 'number' ? this.node!.z!.json(c) : stringify(c, ''))),
-      (r) => {
-        if (isObj) line.unshift(csvEscape(this.label(this.order[r])));
-        lines.push(line.join(','));
-        line = [];
-      },
-    );
-    return lines.join('\r\n');
+  /**
+   * What the table shows, to export (CSV, Excel: convert/xlsx flattens it): its array or object, or, sorted, the
+   * same items in the order shown. Items from a tape are made.
+   */
+  exportNode(): JNode | null {
+    const n = this.node;
+    if (!n) return null;
+    const order = this.order;
+    let sorted = false;
+    for (let i = 0; i < order.length && !sorted; i++) sorted = order[i] !== i;
+    if (!sorted) return n;
+    const out = new JNode(n.t, Array.from(order, (i) => this.item(i)), n.s, n.d, null, undefined);
+    out.e = n.e;
+    return out;
   }
 }

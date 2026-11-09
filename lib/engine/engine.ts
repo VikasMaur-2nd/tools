@@ -247,6 +247,14 @@ function sniff(text: string): Hint {
  */
 type Output = string | string[] | null | undefined;
 
+/** A file's base name as an Excel sheet name: at most 31 units, never ending in half a surrogate pair. */
+const sheetBase = (base: string) => {
+  let s = base.slice(0, 31);
+  const last = s.charCodeAt(s.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) s = s.slice(0, -1);
+  return s || 'Sheet1';
+};
+
 /**
  * Copies and downloads waiting for an output still being made (see outputPending, convPending): one wait, shared
  * by every one asked for meanwhile (a key held down asks dozens of times), bound to what it asked for (its key:
@@ -1715,17 +1723,21 @@ export class Engine {
     this.ed.redo();
   }
 
-  /** Downloads an .xlsx of the data without changing the current view. */
+  /**
+   * Downloads an .xlsx without changing the current view: in the Table, of the table shown (its sort
+   * included), as Copy / Download CSV write it; elsewhere, of the data's main array of records.
+   */
   async exportExcel() {
     const current = this.fresh();
     if (!current?.root) this.materializeGood();
     const root = current?.root ?? this.good?.root;
     if (!root) return this.toast('Paste or open valid JSON first', 'info');
     if ((current?.root ? current : this.good)!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
+    const shown = this.settings.view === 'table' ? this.table.exportNode() : null;
     try {
       const { records, toXlsx } = await import('../convert/xlsx');
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-      this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), `${base}.xlsx`);
+      this.saveBlob(await toXlsx(shown ?? records(root), { sheetName: sheetBase(base) }), `${base}.xlsx`);
       track('feature_used', { feature: 'export_xlsx' });
     } catch (e) {
       this.toast(tooDeep(e) ? 'Nesting is too deep to convert' : "Couldn't create the Excel file", 'err');
@@ -3710,7 +3722,7 @@ export class Engine {
       if (this.good!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
       try {
         const { records, toXlsx } = await import('../convert/xlsx');
-        this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
+        this.saveBlob(await toXlsx(records(root), { sheetName: sheetBase(base) }), name);
       } catch (error) {
         if (tooDeep(error)) return this.toast('Nesting is too deep to convert', 'err');
         reportError(error, 'export');
@@ -3749,19 +3761,41 @@ export class Engine {
     store.set({ table: { segs: n ? pathOf(n) : [], rows: this.table.rowCount, cols: this.table.colCount, ok: !!n } });
   }
 
+  /**
+   * The table shown (its sort included) as CSV, as the Excel export and the CSV converter write it (nested
+   * objects as dotted columns): undefined (after saying why) when it can't be.
+   */
+  private async tableCsv(n: JNode): Promise<string | undefined> {
+    try {
+      const { toCsv } = await import('../convert/xlsx');
+      return toCsv(n);
+    } catch (e) {
+      if (tooDeep(e)) this.toast('Nesting is too deep to convert', 'err');
+      else if (tooLarge(e)) this.toast('The result is too large', 'err');
+      else {
+        reportError(e, 'export');
+        this.toast('Conversion failed', 'err');
+      }
+      return undefined;
+    }
+  }
+
   copyCSV() {
-    const csv = this.table.toCSV();
-    if (!csv) return this.toast('Open an array or object in the table first', 'info');
+    const n = this.table.exportNode();
+    if (!n) return this.toast('Open an array or object in the table first', 'info');
     track('feature_used', { feature: 'copy_csv' });
-    void this.copy(csv, 'Copied table as CSV');
+    // (The CSV comes from a module loaded on first use: the copy waits for it, keeping the click's permission.)
+    void this.copyLater(this.tableCsv(n), 'Copied table as CSV', () => this.toast('Nothing to copy yet', 'info'));
   }
 
   downloadCSV() {
-    const csv = this.table.toCSV();
-    if (!csv) return this.toast('Open an array or object in the table first', 'info');
+    const n = this.table.exportNode();
+    if (!n) return this.toast('Open an array or object in the table first', 'info');
     track('feature_used', { feature: 'download_csv' });
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    this.save(csv, `${base}.csv`, 'text/csv');
+    void this.tableCsv(n).then((csv) => {
+      if (csv !== undefined && !this.dead) this.save(csv, `${base}.csv`, 'text/csv');
+    });
   }
 
   // ── Folding (acts on the open view: format, convert or tree) ────────────

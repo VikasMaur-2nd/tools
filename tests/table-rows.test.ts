@@ -7,6 +7,7 @@ import { lazyResult, madeCount, nodeAtIndex } from '../lib/json/lazy';
 import { tapeOf } from '../lib/json/tape-send';
 import { rng } from './oracle/compare';
 import { genStrict, loosen } from './oracle/tape';
+import { toCsv } from '../lib/convert/xlsx';
 
 // The Table of a node from a tape (items as tape indexes, nodes made for the rows drawn or used) against the
 // same Table of the node as the page parses it: rows, cells, sorts, find and CSV the same.
@@ -69,7 +70,7 @@ test('a Table from a tape shows, sorts, finds and copies every row as from nodes
       assert.equal(b.view.rowCount, a.view.rowCount, label('rows'));
       assert.equal(b.view.colCount, a.view.colCount, label('columns'));
       assert.deepEqual(b.all(), a.all(), label('shown'));
-      assert.equal(b.view.toCSV(), a.view.toCSV(), label('CSV'));
+      assert.equal(toCsv(b.view.exportNode()!), toCsv(a.view.exportNode()!), label('CSV'));
       for (const q of QUERIES) assert.deepEqual(b.view.find(q), a.view.find(q), label(`find ${q}`));
       assert.deepEqual(b.all(), a.all(), label('shown after find'));
       for (let c = 0; c < a.view.colCount; c++) {
@@ -81,7 +82,7 @@ test('a Table from a tape shows, sorts, finds and copies every row as from nodes
       }
       a.sort(Math.min(1, a.view.colCount - 1));
       b.sort(Math.min(1, b.view.colCount - 1));
-      assert.equal(b.view.toCSV(), a.view.toCSV(), label('CSV sorted'));
+      assert.equal(toCsv(b.view.exportNode()!), toCsv(a.view.exportNode()!), label('CSV sorted'));
       // Selecting a cell: the same node (by place) to the engine, and the one every view gets.
       const step = (v: TableView) => (v as unknown as { activate(r: number, c: number): void }).activate(0, Math.min(1, v.colCount - 1));
       if (a.view.rowCount) {
@@ -97,7 +98,7 @@ test('a Table from a tape shows, sorts, finds and copies every row as from nodes
   assert.ok(tables > 150, `${tables} tables`);
 });
 
-test('a Table from a tape makes no node for a row it doesn\'t draw: sorted, found and copied', () => {
+test('a Table from a tape makes no node for a row it doesn\'t draw: sorted and found', () => {
   const text = JSON.stringify(Array.from({ length: 100_000 }, (_, i) => ({ id: 100_000 - i, name: `n${i % 97}`, v: i % 5 ? i / 3 : null, tags: [i] })));
   const res = parse(text);
   const lazy = lazyResult(tapeOf(res, text), text);
@@ -110,7 +111,7 @@ test('a Table from a tape makes no node for a row it doesn\'t draw: sorted, foun
   assert.equal(view.colCount, 5);
   for (let c = 1; c < 5; c++) sort(c);
   assert.equal(view.find('n96').total, 1030);
-  const csv = view.toCSV();
-  assert.equal(csv.split('\r\n').length, 100_001);
-  assert.ok(madeCount(lazy.root) < 100 * 6 * 3, `${madeCount(lazy.root)} made after sorting, finding and copying`);
+  assert.ok(madeCount(lazy.root) < 100 * 6 * 3, `${madeCount(lazy.root)} made after sorting and finding`);
+  // (An export makes the rows: convert/xlsx flattens nodes.)
+  assert.equal(toCsv(view.exportNode()!).split('\r\n').length, 100_002);
 });
