@@ -408,8 +408,10 @@ export function toSwift(root: JNode, o: ConvertOptions): string {
 // Dart identifiers are ASCII-only.
 const dartId = (s: string, pre: string) => s.replace(/[^\w$]/g, '').replace(/^(?=\d)/, pre);
 
+// Keywords, Object's members, the class's own methods, and the types its code names: a field `num` or
+// `dynamic` would hide the type from the class (`final int num;`, `Map<String, dynamic> json`).
 const DART_KW = set(
-  'assert break case catch class const continue default do else enum extends false final finally for if in is new null rethrow return super switch this throw true try var void while with hashCode runtimeType toString noSuchMethod toJson fromJson',
+  'assert break case catch class const continue default do else enum extends false final finally for if in is new null rethrow return super switch this throw true try var void while with hashCode runtimeType toString noSuchMethod toJson fromJson bool double dynamic int num String List Map MapEntry Object Null',
 );
 
 export function toDart(root: JNode, o: ConvertOptions): string {

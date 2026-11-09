@@ -62,3 +62,16 @@ test('Go: the key "-" is a field, not a skipped one', () => {
   has(conv('{"-":1,"a":2}', 'go'), 'Field int64 `json:"-,"`');
   has(conv('[{"-":1},{}]', 'go'), '`json:"-,omitempty"`');
 });
+
+test('Dart: fields never hide the types the class names', () => {
+  const out = conv('{"num":1,"int":2,"double":1.5,"bool":true,"dynamic":"x","n":{"num":2.5}}', 'dart');
+  has(
+    out,
+    '  final int num_;\n  final int int_;\n  final double double_;\n  final bool bool_;\n  final String dynamic_;\n',
+    "    num_: json['num'] as int,",
+    "    double_: (json['double'] as num).toDouble(),",
+    "    'dynamic': dynamic_,",
+    "  factory N.fromJson(Map<String, dynamic> json) => N(\n    num_: (json['num'] as num).toDouble(),",
+  );
+  assert.ok(!/final \S+ (?:num|int|double|bool|dynamic);|this\.(?:num|int|double|bool|dynamic),/.test(out), out);
+});
