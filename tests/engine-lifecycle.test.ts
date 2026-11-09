@@ -1110,6 +1110,32 @@ test('a converter failing (not the input) says the conversion failed, reported, 
   assert.equal(s.errors.length, 1, 'reported (without the input)');
 });
 
+test('Unescape: offered and done only for JSON in a string; escaped JSON with raw tabs and CRLF unescapes', async () => {
+  const unescaping = async (text: string) => {
+    const s = sourcing(text, 'json');
+    s.engine.analyze();
+    await s.drain();
+    const hint = s.state.hint;
+    s.engine.unescapeDoc();
+    await s.drain();
+    return { hint, text: s.ed.text, toast: s.toasts[s.toasts.length - 1] };
+  };
+  // Prose in a string that starts with a bracket: no banner, nothing changed.
+  for (const text of ['"[citation needed]"', '"[1, 2] and more"']) {
+    assert.deepEqual(await unescaping(text), { hint: null, text, toast: "This doesn't look like an escaped JSON string" }, text);
+  }
+  assert.deepEqual(await unescaping('"{\\"a\\": [1, 2]}"'), { hint: 'unescape', text: '{\n  "a": [\n    1,\n    2\n  ]\n}', toast: 'Unescaped' });
+  // Pasted without its quotes, with a raw tab and a CRLF line break (JSON.parse rejects both in a string).
+  for (const text of ['{\\"a\\":\t1}', '{\\"a\\":1,\r\n\\"b\\":2}']) {
+    const r = await unescaping(text);
+    assert.equal(r.hint, 'unescape', JSON.stringify(text));
+    assert.equal(r.toast, 'Unescaped', JSON.stringify(text));
+    assert.deepEqual(JSON.parse(r.text), text.includes('b') ? { a: 1, b: 2 } : { a: 1 });
+  }
+  // Escaped, but not JSON once unescaped: not offered.
+  assert.equal((await unescaping('[\\"citation\\" needed]')).hint, null);
+});
+
 test('Unescape and Swap with an input in another format: the JSON is read as JSON; nothing to swap while it doesn\'t convert', async () => {
   const s = sourcing('"{\\"a\\": 1}"\n');
   s.engine.analyze();

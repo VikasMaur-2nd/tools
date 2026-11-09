@@ -20,7 +20,7 @@ import type { SourceReply, SourceRequest } from './source.worker';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
-import { formatOf, formatOfName, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson } from './rules';
+import { formatOf, formatOfName, holdsEscapedJson, holdsJson, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson, unescapeText } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
@@ -211,10 +211,11 @@ const SOURCE_WORKER_MIN = 100_000;
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
 const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
 
-/** Cheap guess at what non-JSON input is, to offer a one-click conversion. */
-function sniff(text: string): Hint {
+/** Cheap guess at what non-JSON input is, to offer a one-click conversion (`whole`: `text` is all of it, not its start). */
+function sniff(text: string, whole: boolean): Hint {
   const t = text.slice(0, 4000).trim();
-  if (t.includes('\\"') && /^"?\s*[[{]/.test(t)) return 'unescape';
+  // (JSON written as a string: offered only if its escapes undone are JSON, when that can be told.)
+  if (t.includes('\\"') && /^"?\s*[[{]/.test(t) && (!whole || holdsEscapedJson(text))) return 'unescape';
   if (t[0] === '<') return 'xml';
   if (t[0] === '{' || t[0] === '[') {
     // `[table]` headers followed by key = value lines → TOML
@@ -1090,8 +1091,8 @@ export class Engine {
     if (conv) hint = this.srcMod!.otherFormat(text, fmt);
     else if (jwt || lines) hint = null;
     // (A worker measured it: a long root string isn't decoded here just for this.)
-    else if (metrics ? metrics.unescape : res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
-    else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
+    else if (metrics ? metrics.unescape : res.root?.t === STR && holdsJson(res.root.v as string)) hint = 'unescape';
+    else if (res.error || res.issues.length) hint = text.length >= WORKER_MIN ? sniff((ed.version as Doc).slice(0, 4000), false) : sniff(text, true);
 
     store.set({
       empty: false,
@@ -1166,8 +1167,8 @@ export class Engine {
   }
 
   /** A decoded JWT (signature not verified); the UI shows its expiry live. */
-  private jwtStatus({ alg, exp, iat, nbf }: JwtInput): Status {
-    return { kind: 'valid', warnings: 0, jwt: { alg, exp, iat, nbf } };
+  private jwtStatus({ alg, exp, iat, nbf, unsigned }: JwtInput): Status {
+    return { kind: 'valid', warnings: 0, jwt: { alg, exp, iat, nbf, unsigned } };
   }
 
   private sizeTimer = 0;
@@ -1529,22 +1530,15 @@ export class Engine {
     this.flushLoad();
     const text = this.ed.text;
     const r = this.fresh();
-    let inner: string | null = null;
-    if (r?.root?.t === STR) inner = r.root.v as string;
-    else {
-      try {
-        const v: unknown = JSON.parse('"' + text.trim().replace(/^"|"$/g, '').replace(/\n/g, '\\n') + '"');
-        if (typeof v === 'string') inner = v;
-      } catch {
-        inner = null;
-      }
-    }
-    if (inner === null) {
+    // The document's string, or its text read as one (escaped JSON pasted without its quotes), if it is JSON: strict,
+    // so prose in a string (`"[citation needed]"`) isn't read loosely into something else.
+    const inner = r?.root?.t === STR ? (r.root.v as string) : unescapeText(text);
+    const pr = inner === null ? null : parse(inner);
+    if (inner === null || !pr!.root || pr!.error || pr!.issues.length) {
       this.toast("This doesn't look like an escaped JSON string", 'err');
       return;
     }
-    const pr = parse(inner);
-    const next = pr.root && !pr.error ? this.unlessTooLarge(() => formatDoc(inner, pr, this.indent)) : inner;
+    const next = this.unlessTooLarge(() => formatDoc(inner, pr!, this.indent));
     if (next === null) return;
     this.setJson(next);
     this.analyze();

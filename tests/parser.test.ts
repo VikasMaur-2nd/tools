@@ -536,6 +536,104 @@ describe('repairs', () => {
   });
 });
 
+describe('tolerant reading keeps values the same (audit regressions)', () => {
+  const value = (src: string, options = {}) => {
+    const r = parse(src, options);
+    assert.equal(r.error, null, `${show(src)}: ${JSON.stringify(r.error)}`);
+    return JSON.parse(stringify(r.root as JNode, ''));
+  };
+  const first = (src: string, options = {}) => parse(src, options).issues[0];
+
+  test('a sign before a word: -Infinity / +NaN are null, anything longer is a bare word as without the sign', () => {
+    assert.deepEqual(value('[-Infinity, +Infinity, -NaN, +NaN, NaN]'), [null, null, null, null, null]);
+    for (const src of ['[-NaN]', '[+NaN]', '{"a": -NaN}']) assert.deepEqual(first(src, { repair: true }), { p: src.indexOf('NaN') - 1, m: 'NaN is not valid JSON (replaced with null)' }, show(src));
+    assert.deepEqual(value('[Infinityx]'), ['Infinityx']);
+    assert.deepEqual(value('[-Infinityx, +NaNa, -foo]'), ['-Infinityx', '+NaNa', '-foo']);
+    assert.deepEqual(first('[-Infinityx]'), { p: 1, m: "Unexpected '-Infinityx': strings must be wrapped in double quotes" });
+    // (Still no value: a sign alone.)
+    for (const src of ['[-]', '[- 1]', '[+]']) assert.ok(parse(src, { repair: true }).error, show(src));
+  });
+
+  test('\\0 (no digit after it) and \\v stand for U+0000 and U+000B, still reported', () => {
+    assert.deepEqual(value('["a\\0b", "\\v", "\\01", "\\0"]'), ['a\u0000b', '\u000b', '01', '\u0000']);
+    assert.deepEqual(parse('["a\\0b"]').issues, [{ p: 3, m: 'Invalid escape sequence \\0' }]);
+    assert.deepEqual(parse('["\\v"]').issues, [{ p: 2, m: 'Invalid escape sequence \\v' }]);
+  });
+
+  test('a comma or semicolon between top-level values is reported where strict JSON fails', () => {
+    for (const [src, at, m] of [['1,2', 1, "Unexpected ','"], ['1;2', 1, "Unexpected ';'"], ['{"a":1},\n{"b":2}', 7, "Unexpected ','"], ['1\n2,', 3, "Unexpected ','"]] as const) {
+      for (const lines of [false, true]) {
+        const r = parse(src, { lines, repair: true });
+        assert.equal(r.error, null);
+        assert.ok(r.issues.some((x) => x.p === at && x.m === m), `${show(src)} ${lines}: ${JSON.stringify(r.issues)}`);
+        assert.equal(r.issues[0].p, Math.min(at, r.issues[0].p));
+      }
+    }
+    assert.deepEqual(first('1,2'), { p: 1, m: "Unexpected ','" });
+  });
+
+  test('a number with more right after it (a date, an IP, a version, 0o17) is one bare word, in arrays and objects alike', () => {
+    assert.deepEqual(value('[2024-01-15, 2024-02-01]'), ['2024-01-15', '2024-02-01']);
+    assert.deepEqual(value('[10.0.0.1, 1.2.3, 0o17, 5px, 1e5x, -1-2, 0x1Fg, 3.5°C]'), ['10.0.0.1', '1.2.3', '0o17', '5px', '1e5x', '-1-2', '0x1Fg', '3.5°C']);
+    assert.deepEqual(value('{"d": 2024-01-15, "t": 2024-01-15T10:30:00Z, "ip": 10.0.0.1}'), { d: '2024-01-15', t: '2024-01-15T10:30:00Z', ip: '10.0.0.1' });
+    assert.deepEqual(value('2024-01-15'), '2024-01-15');
+    assert.deepEqual(parse('[2024-01-15]').issues, [{ p: 1, m: "Unexpected '2024-01-15': strings must be wrapped in double quotes" }], 'one issue: none about the number');
+    assert.deepEqual(parse('[1..2]').issues.map((x) => x.m), ["Unexpected '1..2': strings must be wrapped in double quotes"]);
+    // Still numbers: a missing comma with a space, and what a number can end with.
+    assert.deepEqual(value('[1 2, 3 -4]'), [1, 2, 3, -4]);
+    assert.deepEqual(value('[1,2]'), [1, 2]);
+    assert.deepEqual(value('[1"a", 2[3], 4{"b":5}]'), [1, 'a', 2, [3], 4, { b: 5 }]);
+    assert.deepEqual(value('[1 ]'), [1], 'exotic space after a number');
+  });
+
+  test('JSON Lines: a broken record is reported on its own line, and the next line is a record', () => {
+    const at = (src: string, p: number) => {
+      const before = src.slice(0, p);
+      return [before.split(/\r\n|\r|\n/).length, p - Math.max(before.lastIndexOf('\n'), before.lastIndexOf('\r'))];
+    };
+    const cases: [string, unknown[], string[]][] = [
+      ['{"a":1}\n{"b":2\n{"c":3}', [{ a: 1 }, { b: 2 }, { c: 3 }], ["Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":[1,2\n{"c":3}\n', [{ a: 1 }, { b: [1, 2] }, { c: 3 }], ["Unexpected end of line: missing ']'", "Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":"cut\n{"c":3}\n{"d":4}\n', [{ a: 1 }, { b: 'cut' }, { c: 3 }, { d: 4 }], ['Missing closing quote: the string was closed at the end of the line', "Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":1,\n{"c":3}', [{ a: 1 }, { b: 1 }, { c: 3 }], ['Trailing commas are not allowed', "Unexpected end of line: missing '}'"]],
+      ['{"a":1}\n{"b":1,"c"\n{"c":3}', [{ a: 1 }, { b: 1 }, { c: 3 }], ["Unexpected end of line: missing '}'"]],
+      ['{"a":1}\r\n{"b":[1\r\n\r\n{"c":3}\r\n', [{ a: 1 }, { b: [1] }, { c: 3 }], ["Unexpected end of line: missing ']'", "Unexpected end of line: missing '}'"]],
+    ];
+    for (const [src, want, msgs] of cases) {
+      for (const options of [{}, { lines: true }, { repair: true }, { lines: true, repair: true }]) {
+        const r = parse(src, options);
+        assert.equal(r.error, null, `${show(src)} ${JSON.stringify(options)}: ${JSON.stringify(r.error)}`);
+        assert.deepEqual(JSON.parse(stringify(r.root as JNode, '')), want, show(src));
+        const own = r.issues.filter((x) => !/^Multiple top-level/.test(x.m));
+        assert.deepEqual(own.map((x) => x.m), msgs, show(src));
+        // On the broken line (line 2), at its end.
+        const lineEnd = src.slice(src.indexOf('\n') + 1).search(/[\r\n]/) + src.indexOf('\n') + 1;
+        assert.deepEqual(at(src, own[own.length - 1].p), at(src, lineEnd), show(src));
+      }
+    }
+    // The first record broken: only known to be JSON Lines with `lines` (a .jsonl file).
+    assert.deepEqual(JSON.parse(stringify(parse('{"a":1\n{"b":2}', { lines: true }).root as JNode, '')), [{ a: 1 }, { b: 2 }]);
+    assert.ok(parse('{"a":1\n{"b":2}').error);
+  });
+
+  test('JSON Lines: what parses as it is, and records over several lines, are read as before', () => {
+    for (const src of [
+      '{\n  "a": [\n    1,\n    2\n  ]\n}\n{\n  "b": 2\n}',
+      '{"a":1}\n[\n{"c":3}\n]',
+      '{"a":1}\n[{"x":1},\n{"y":2}]',
+      '[\n  {"a": 1},\n  {"b": 2}\n]',
+    ]) {
+      for (const lines of [false, true]) {
+        const r = parse(src, { lines });
+        assert.ok(!r.issues.some((x) => !/^Multiple top-level/.test(x.m)), `${show(src)}: ${JSON.stringify(r.issues)}`);
+      }
+    }
+    // Broken, but not a record per line: merged as before (a missing comma), not cut.
+    assert.deepEqual(JSON.parse(stringify(parse('{"a":1}\n[{"x":1}\n{"y":2}]').root as JNode, '')), [{ a: 1 }, [{ x: 1 }, { y: 2 }]]);
+    assert.deepEqual(JSON.parse(stringify(parse('{"a":1}\n{"m":"x\n{y}"}').root as JNode, '')), [{ a: 1 }, { m: 'x\n{y}' }]);
+  });
+});
+
 // ── 3. error positions & messages ────────────────────────────────────────
 
 describe('error positions', () => {

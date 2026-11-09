@@ -199,7 +199,8 @@ function format(data: Request, text: string, refused = false) {
   let out: string | null = null;
   let display: string | undefined;
   try {
-    out = data.sortKeys && parsed?.root ? formatDoc(text, parsed, indent, true) : (indent === '' && min !== null ? min : reindent(text, indent)) ?? (parsed?.root ? formatDoc(text, parsed, indent) : null);
+    // (Re-indenting the text gives its own value: neither sorted nor wrapped, as JSON Lines are, even one record of a .jsonl file.)
+    out = parsed?.root && (data.sortKeys || parsed.multi) ? formatDoc(text, parsed, indent, data.sortKeys) : (indent === '' && min !== null ? min : reindent(text, indent)) ?? (parsed?.root ? formatDoc(text, parsed, indent) : null);
     display = data.escape && out ? JSON.stringify(out) : undefined;
   } catch (e) {
     if (!tooLarge(e)) throw e;

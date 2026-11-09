@@ -108,6 +108,27 @@ test('the parse request and the output of loose documents read the tape: the sam
   } finally { await worker.terminate(); }
 });
 
+test('a .jsonl file with one record is a list of one in every path: Pretty after typing, Minify and the fast path', async () => {
+  const { worker, request, receive } = session();
+  try {
+    let id = 0;
+    for (const text of ['{"a":1,"b":[1,2]}', '{"a":1,"b":[1,2]}\n', '[1,{"c":2}]\n']) {
+      const res = parse(text, { lines: true, repair: true });
+      for (const indent of ['  ', '\t', '']) {
+        const want = formatDoc(text, res, indent);
+        assert.ok(want.startsWith('['), 'wrapped');
+        // The parse request (typing in a 200 KB to 2 MB document): its tree, then its output.
+        await request({ id: ++id, text, parse: true, indent, lines: true });
+        assert.equal((await receive(id)).out, want, `parse ${JSON.stringify(text)} ${JSON.stringify(indent)}`);
+        assert.equal((await request({ id: ++id, text, fast: true, indent, lines: true })).out, want, `fast ${JSON.stringify(text)} ${JSON.stringify(indent)}`);
+        // Sorted keys too.
+        await request({ id: ++id, text, parse: true, indent, lines: true, sortKeys: true });
+        assert.equal((await receive(id)).out, formatDoc(text, res, indent, true));
+      }
+    }
+  } finally { await worker.terminate(); }
+});
+
 test("parser.ts's parser stays out of the worker: nothing it imports calls it", () => {
   // (The worker parses to tapes only, which keeps the old parser's ~4 KB out of its bundle. Its constants,
   // repair passes and types may still come from parser.ts.)
