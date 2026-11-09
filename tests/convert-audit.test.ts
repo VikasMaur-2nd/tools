@@ -148,3 +148,9 @@ test('Zod: optional keys named like Object.prototype members accept objects with
   assert.ok(!conv('{"constructor":"c","a":1}', 'zod').includes('preprocess'));
   assert.ok(!conv('[{"a":1},{}]', 'zod').includes('own'));
 });
+
+test('JSON Schema and Zod: no date format for days that do not exist', () => {
+  const s = JSON.parse(conv('{"a":"2023-02-30","b":"2024-02-29","c":"2023-02-28T24:00:00Z","d":"2023-11-31T10:00:00Z","e":"2023-02-28T23:59:60Z"}', 'json-schema')).properties;
+  assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map((k) => s[k].format), [undefined, 'date', undefined, undefined, undefined]);
+  has(conv('{"a":"2023-02-30","b":"2024-02-29"}', 'zod'), '  a: z.string(),\n  b: z.string().date(),');
+});
