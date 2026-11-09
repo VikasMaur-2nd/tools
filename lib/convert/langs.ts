@@ -190,12 +190,17 @@ const JAVA_KW = set(
 );
 const BOX: Record<string, string> = { boolean: 'Boolean', long: 'Long', double: 'Double' };
 const box = (t: string) => BOX[t] || t;
+/**
+ * A JVM method takes at most 255 parameter slots, `this` included; long and double take two. `extra` = slots
+ * besides `this` and the fields (Kotlin's synthetic constructors add a mask int per 32 fields and a marker).
+ */
+const fitsJvm = (types: string[], wide: (t: string) => boolean, extra = 0) => types.reduce((n, t) => n + (wide(t) ? 2 : 1), 1 + extra) <= 255;
 
 export function toJava(root: JNode, o: ConvertOptions): string {
   const m = inferNU(
     root,
     o,
-    'String Object Long Double Boolean Integer List Map Record BigInteger JsonProperty Override Class Number Character Byte Short Float Void Math System Exception Error Thread Runtime Iterable Comparable Enum',
+    'String Object Long Double Boolean Integer List Map Record BigInteger JsonProperty JsonAlias Override Class Number Character Byte Short Float Void Math System Exception Error Thread Runtime Iterable Comparable Enum',
   );
   const P: Prim = {
     bool: 'boolean',
@@ -211,15 +216,35 @@ export function toJava(root: JNode, o: ConvertOptions): string {
   // One public top-level type (the file is Root.java); the others are nested public records.
   const rec = (t: Obj, ind: string, body: string) => {
     const u = uniq();
-    const cs = props(t).map((p) => {
+    let note = '';
+    const fs = props(t).map((p) => {
+      const ty = typeOf(p.s, P, p.opt);
+      if (p.key === '') {
+        // Jackson takes @JsonProperty("") for "the default name": the key "" is read through an alias, and the
+        // name it is written under (the field's) must be no other key's.
+        let c = 'field';
+        for (let i = 2; t.props.has(c); i++) c = 'field' + i;
+        let f = u(c);
+        while (t.props.has(f)) f = u(c);
+        note = `${ind}// The key "" is read through @JsonAlias (Jackson can't name a property ""): it is written as "${f}".\n`;
+        return { ann: '@JsonAlias("") ', ty, f };
+      }
       let f = camel(p.key) || 'field';
       if (JAVA_KW.has(f)) f += '_';
       f = u(f);
-      return `${f !== p.key ? `@JsonProperty(${lit(p.key)}) ` : ''}${typeOf(p.s, P, p.opt)} ${f}`;
+      return { ann: f !== p.key ? `@JsonProperty(${lit(p.key)}) ` : '', ty, f };
     });
+    if (!fitsJvm(fs.map((x) => x.ty), (ty) => ty === 'long' || ty === 'double')) {
+      // A record's canonical constructor takes every component: past the JVM's limit, a class with public fields
+      // (which Jackson sets after calling its no-argument constructor).
+      note += `${ind}// A class, not a record: a constructor can't take this many fields (the JVM's 255 parameter slots).\n`;
+      const fields = fs.map((x) => `${ind}    ${x.ann}public ${x.ty} ${x.f};`).join('\n');
+      return `${note}${ind}public ${ind ? 'static ' : ''}final class ${t.name} {\n${fields}\n${body === '}' ? ind + body : body}`;
+    }
+    const cs = fs.map((x) => x.ann + x.ty + ' ' + x.f);
     const head = `${ind}public record ${t.name}(`;
     const line = head + cs.join(', ') + ') {' + body;
-    return line.length <= 100 && !body.includes('\n') ? line : `${head}\n${ind}    ${cs.join(`,\n${ind}    `)}\n${ind}) {${body}`;
+    return note + (line.length <= 100 && !body.includes('\n') ? line : `${head}\n${ind}    ${cs.join(`,\n${ind}    `)}\n${ind}) {${body}`);
   };
   const nested = m.types.filter((t) => t !== m.obj).map((t) => rec(t, '    ', '}'));
   const inner = nested.length ? `\n${nested.join('\n\n')}\n}` : '}';
@@ -227,6 +252,7 @@ export function toJava(root: JNode, o: ConvertOptions): string {
     ? rec(m.obj, '', inner)
     : `// ${m.name}: ${box(typeOf(m.root, P))}` + (nested.length ? `\npublic final class ${m.name} {\n    private ${m.name}() {}\n${inner}` : '');
   const imp = [
+    body.includes('@JsonAlias(') && 'com.fasterxml.jackson.annotation.JsonAlias',
     body.includes('@JsonProperty(') && 'com.fasterxml.jackson.annotation.JsonProperty',
     has(body, '\\bBigInteger\\b') && 'java.math.BigInteger',
     has(body, '\\bList<') && 'java.util.List',

@@ -87,3 +87,31 @@ test('Swift: type names never take the names the JSONValue helper uses', () => {
   has(out, 'struct DecoderClass: Codable {', 'struct EncoderClass: Codable {', 'let decoder: DecoderClass', 'init(from decoder: Decoder) throws');
   assert.ok(!/struct (?:Decoder|Encoder):/.test(out), out);
 });
+
+const wide = (n: number, v: unknown, p = 'f') => Object.fromEntries(Array.from({ length: n }, (_, i) => [p + i, v]));
+
+test('Java: objects past the JVM\'s 255 parameter slots are classes, not records', () => {
+  // A record's constructor takes every component; long and double take two slots, `this` one.
+  assert.ok(conv(JSON.stringify(wide(127, 1)), 'java').startsWith('public record Root(\n    long f0,'));
+  const cls = conv(JSON.stringify({ a: 'x', w: wide(128, 1) }), 'java');
+  has(
+    cls,
+    "    // A class, not a record: a constructor can't take this many fields (the JVM's 255 parameter slots).\n    public static final class W {\n        public long f0;\n",
+    '        public long f127;\n    }\n}',
+  );
+  assert.ok(conv(JSON.stringify(wide(254, 'x')), 'java').startsWith('public record Root('));
+  has(conv(JSON.stringify({ ...wide(128, 1.5), 'a-b': 1 }), 'java'), 'public final class Root {\n', '    @JsonProperty("a-b") public long aB;\n}');
+});
+
+test('Java: the key "" is read through @JsonAlias', () => {
+  // Jackson takes @JsonProperty("") for "the field's own name": the key "" was never read.
+  const out = conv('{"":7,"field":2,"x":{"":1}}', 'java');
+  has(
+    out,
+    'import com.fasterxml.jackson.annotation.JsonAlias;\n\n',
+    // (under a name no key has)
+    '// The key "" is read through @JsonAlias (Jackson can\'t name a property ""): it is written as "field2".\npublic record Root(\n    @JsonAlias("") long field2,\n    long field,',
+    '    public record X(@JsonAlias("") long field) {}',
+  );
+  assert.ok(!out.includes('@JsonProperty("")'), out);
+});
