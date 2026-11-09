@@ -3,6 +3,8 @@ import * as assert from 'node:assert/strict';
 import { readJwt } from '../lib/json/jwt';
 import { duration } from '../lib/i18n/duration';
 import { jwtLine } from '../lib/engine/highlight';
+import { valueHints } from '../lib/json/smart';
+import { parse, type JNode } from '../lib/json/parser';
 
 const b64u = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
 const H = b64u('{"alg":"HS256","typ":"JWT"}');
@@ -43,6 +45,27 @@ describe('readJwt', () => {
     assert.equal(text.slice(h, p - 1), H);
     assert.equal(text.slice(p, s - 1), P);
     assert.equal(text.slice(s, end), 'c2ln');
+  });
+
+  test('an unsigned token (alg "none", in any case, or no signature) says so; a signed one does not', () => {
+    for (const [header, sig, unsigned] of [
+      ['{"alg":"none","typ":"JWT"}', '', true],
+      ['{"alg":"NoNe"}', '', true],
+      ['{"alg":"none"}', 'c2ln', true],
+      ['{"alg":"HS256","typ":"JWT"}', '', true],
+      ['{"typ":"JWT"}', '', true],
+      ['{"alg":"HS256","typ":"JWT"}', 'c2ln', false],
+      ['{"typ":"JWT"}', 'c2ln', false],
+    ] as const) {
+      const token = `${b64u(header)}.${P}.${sig}`;
+      const j = readJwt(token, '  ', NOW);
+      assert.ok(j, token);
+      assert.equal(j.unsigned, unsigned, `${header} ${JSON.stringify(sig)}`);
+      // The tree's hint for a string holding it, too.
+      const root = parse(JSON.stringify({ t: token })).root!;
+      const hint = valueHints((root.v as JNode[])[0], NOW).find((x) => x.kind === 'jwt');
+      assert.equal(hint?.label.includes('not signed'), unsigned, hint?.label);
+    }
   });
 
   test('ordinary documents and broken tokens are not JWTs', () => {

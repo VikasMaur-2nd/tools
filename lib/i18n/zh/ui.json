@@ -201,6 +201,8 @@
   "app.jwtExpiresIn": "{duration}后过期",
   "app.jwtNoExpiry": "无过期时间",
   "app.jwtTip": "在你的浏览器中解码。不会验证签名。",
+  "app.jwtUnsigned": "未签名",
+  "app.jwtUnsignedTip": "未签名：任何人都可以创建或修改此令牌。",
   "app.innerJson": "这是一个包含 JSON 的 JSON 字符串",
   "app.innerJsonText": "将其反转义，即可查看和编辑内部文档。",
   "app.unescape": "反转义 JSON",

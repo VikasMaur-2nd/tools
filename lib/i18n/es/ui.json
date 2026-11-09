@@ -201,6 +201,8 @@
   "app.jwtExpiresIn": "caduca en {duration}",
   "app.jwtNoExpiry": "sin caducidad",
   "app.jwtTip": "Decodificado en tu navegador. La firma no se verifica.",
+  "app.jwtUnsigned": "sin firmar",
+  "app.jwtUnsignedTip": "Sin firmar: cualquiera puede crear o modificar este token.",
   "app.innerJson": "Esta es una cadena JSON que contiene JSON",
   "app.innerJsonText": "Desescápala para ver y editar el documento que contiene.",
   "app.unescape": "Desescapar JSON",

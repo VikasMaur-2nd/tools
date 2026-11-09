@@ -72,7 +72,15 @@ export interface Decoded extends DecodedJwt {
   h: string;
   p: string;
   exp?: number;
+  /** Not signed (see unsigned()). */
+  unsigned: boolean;
 }
+
+/**
+ * Whether a token isn't signed: its algorithm is "none" (an unsecured JWT, RFC 7519 §6; in any case, as attacks
+ * that pass one off as signed write it), or its signature is empty. Anyone can make or change such a token.
+ */
+const unsigned = (header: Record<string, unknown>, signature: string) => signature === '' || (typeof header.alg === 'string' && header.alg.toLowerCase() === 'none');
 
 const isObj = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -106,7 +114,7 @@ export function decode(token: string, now: number): Decoded | null {
       claims.expired = exp * 1000 <= now;
     }
   }
-  return { header, payload, signature: m[3], claims, h, p, exp };
+  return { header, payload, signature: m[3], claims, h, p, exp, unsigned: unsigned(header, m[3]) };
 }
 
 /**
@@ -168,6 +176,8 @@ export interface JwtInput {
   exp?: number;
   iat?: number;
   nbf?: number;
+  /** Not signed: its algorithm is "none", or its signature is empty. Its signature isn't verified either way. */
+  unsigned: boolean;
   /** Offsets: "Bearer " prefix start, header start, payload start, signature start, signature end. Dots sit just before payload and signature. */
   at: [number, number, number, number, number];
 }
@@ -193,5 +203,5 @@ export function readJwt(text: string, indent: string, now = Date.now()): JwtInpu
     const v = isObj(d.payload) ? d.payload[k] : undefined;
     return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
   };
-  return { json: toJson(d, indent), alg: typeof alg === 'string' ? alg : undefined, exp: d.exp, iat: claim('iat'), nbf: claim('nbf'), at: [i, h, p, s, s + m[3].length] };
+  return { json: toJson(d, indent), alg: typeof alg === 'string' ? alg : undefined, exp: d.exp, iat: claim('iat'), nbf: claim('nbf'), unsigned: d.unsigned, at: [i, h, p, s, s + m[3].length] };
 }

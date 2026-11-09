@@ -201,6 +201,8 @@
   "app.jwtExpiresIn": "{duration}後に期限切れ",
   "app.jwtNoExpiry": "有効期限なし",
   "app.jwtTip": "ブラウザー内でデコードします。署名は検証しません。",
+  "app.jwtUnsigned": "署名なし",
+  "app.jwtUnsignedTip": "署名がありません。誰でもこのトークンを作成・変更できます。",
   "app.innerJson": "このJSON文字列にはJSONが含まれています",
   "app.innerJsonText": "エスケープを解除すると、内部のドキュメントを表示して編集できます。",
   "app.unescape": "JSONのエスケープを解除",

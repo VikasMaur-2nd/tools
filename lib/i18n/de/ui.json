@@ -201,6 +201,8 @@
   "app.jwtExpiresIn": "läuft in {duration} ab",
   "app.jwtNoExpiry": "kein Ablaufdatum",
   "app.jwtTip": "Im Browser dekodiert. Die Signatur wird nicht überprüft.",
+  "app.jwtUnsigned": "nicht signiert",
+  "app.jwtUnsignedTip": "Nicht signiert: Jeder kann dieses Token erstellen oder ändern.",
   "app.innerJson": "Dies ist ein JSON-String, der JSON enthält",
   "app.innerJsonText": "Löse die Escape-Sequenzen auf, um das innere Dokument anzuzeigen und zu bearbeiten.",
   "app.unescape": "JSON-Escape-Sequenzen auflösen",

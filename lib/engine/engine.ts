@@ -1159,8 +1159,8 @@ export class Engine {
   }
 
   /** A decoded JWT (signature not verified); the UI shows its expiry live. */
-  private jwtStatus({ alg, exp, iat, nbf }: JwtInput): Status {
-    return { kind: 'valid', warnings: 0, jwt: { alg, exp, iat, nbf } };
+  private jwtStatus({ alg, exp, iat, nbf, unsigned }: JwtInput): Status {
+    return { kind: 'valid', warnings: 0, jwt: { alg, exp, iat, nbf, unsigned } };
   }
 
   private sizeTimer = 0;

@@ -678,10 +678,11 @@ function jwtWhen(j: JwtInfo, nowMs: number, t: T) {
 function JwtStatus({ jwt }: { jwt: JwtInfo }) {
   const t = useT();
   const w = jwtWhen(jwt, useNow(1000), t);
+  // (An unsigned token, alg "none", is a warning as an expired one is: anyone can make it.)
   return (
-    <span className={`st ${w.warn ? 'warn' : 'ok'}`} title={t('Decoded in your browser. The signature is not verified.')}>
+    <span className={`st ${w.warn || jwt.unsigned ? 'warn' : 'ok'}`} title={jwt.unsigned ? t('Not signed: anyone can create or change this token.') : t('Decoded in your browser. The signature is not verified.')}>
       <i className="dot" />
-      {['JWT', jwt.alg, w.text].filter(Boolean).join(t(' · '))}
+      {['JWT', jwt.alg, jwt.unsigned && t('not signed'), w.text].filter(Boolean).join(t(' · '))}
     </span>
   );
 }
