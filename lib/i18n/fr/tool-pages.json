@@ -415,7 +415,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "77780ec2e2d0",
+    "hash": "a354b5d54b87",
     "title": "YAML vers JSON : conversion dans le navigateur",
     "description": "Convertissez du YAML simple en JSON formaté dans le navigateur, sans envoi au serveur. Tool Kumar signale les erreurs et garde le résultat sur votre appareil.",
     "heading": "YAML vers JSON",
@@ -435,7 +435,7 @@
     "options": [
       "Les associations et séquences simples deviennent des objets et tableaux JSON.",
       "Les valeurs entre guillemets restent des chaînes ; les nombres et booléens sans guillemets deviennent des valeurs JSON.",
-      "Les ancres, les balises personnalisées et le YAML exécutable ne sont pas pris en charge par cet importateur de données simples."
+      "Les ancres, les alias et les clés de fusion << sont développés, et les balises standard comme !!int fixent le type d'une valeur. Les balises personnalisées sont ignorées et rien n'est exécuté."
     ],
     "faqs": [
       {
@@ -443,8 +443,8 @@
         "answer": "Oui. Les éléments indentés précédés d'un tiret deviennent des tableaux JSON, y compris lorsqu'ils sont imbriqués dans des objets."
       },
       {
-        "question": "Quelles fonctionnalités YAML ne sont pas prises en charge ?",
-        "answer": "L'importateur se limite aux données simples. Les balises personnalisées, les ancres et les directives propres à une application peuvent nécessiter une bibliothèque YAML."
+        "question": "L'importateur prend-il en charge les ancres et les balises ?",
+        "answer": "Oui. Les ancres, les alias et les clés de fusion << sont développés en JSON simple, et les balises standard comme !!str et !!int fixent le type de la valeur. Les balises personnalisées comme !Ref sont ignorées et leur valeur est conservée comme donnée simple : rien dans le YAML n'est jamais exécuté. Un fichier contenant plusieurs documents séparés par --- devient un tableau JSON."
       },
       {
         "question": "Puis-je ouvrir un fichier YAML ?",

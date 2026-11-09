@@ -765,7 +765,7 @@
   "import.expectedValue": "Valeur attendue",
   "import.unexpectedValue": "Caractère inattendu '{char}' : valeur attendue",
   "import.number": "Nombre non valide « {text} »",
-  "import.tag": "La valeur ne correspond pas à son étiquette {tag}",
+  "import.tag": "La valeur ne correspond pas à sa balise {tag}",
   "import.charRef": "Référence de caractère non valide {ref}",
   "import.dateTime": "Date ou heure non valide « {text} »",
   "import.quoteStrings": "Valeur non valide « {text} » : les chaînes doivent être entre guillemets",
