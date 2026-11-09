@@ -245,23 +245,25 @@ export function camel(s: string): string {
 
 export const snake = (s: string) => words(s).join('_').toLowerCase();
 
-const IRREG: Record<string, string> = {
-  people: 'person',
-  children: 'child',
-  men: 'man',
-  women: 'woman',
-  indices: 'index',
-  matrices: 'matrix',
-  vertices: 'vertex',
-  analyses: 'analysis',
-  aliases: 'alias',
-  data: '',
-};
+// (A Map: an object would find "constructor" on Object.prototype.)
+const IRREG = new Map<string, string>([
+  ['people', 'person'],
+  ['children', 'child'],
+  ['men', 'man'],
+  ['women', 'woman'],
+  ['indices', 'index'],
+  ['matrices', 'matrix'],
+  ['vertices', 'vertex'],
+  ['analyses', 'analysis'],
+  ['aliases', 'alias'],
+  ['data', ''],
+]);
 
 /** Singular form of an English plural, or null when the word isn't plural. */
 export function singular(w: string): string | null {
   const l = w.toLowerCase();
-  if (l in IRREG) return IRREG[l] ? (w === l ? IRREG[l] : cap(IRREG[l], false)) : null;
+  const irr = IRREG.get(l);
+  if (irr !== undefined) return irr ? (w === l ? irr : cap(irr, false)) : null;
   if (/(?:ss|us|is|news|series|species)$/.test(l)) return null;
   const up = w === w.toUpperCase() && w !== l;
   if (/[^aeiou]ies$/.test(l) && !/(?:movie|cookie|zombie|rookie|calorie|selfie|pie|tie|lie)s$/.test(l)) return w.slice(0, -3) + (up ? 'Y' : 'y');

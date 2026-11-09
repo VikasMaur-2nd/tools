@@ -185,3 +185,10 @@ test('XML: names use only characters both editions of XML 1.0 (and Expat) allow'
   // characters outside the BMP never are
   assert.equal(conv('{"a😀":1}', 'xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <a_>1</a_>\n</root>\n');
 });
+
+test('names of Object.prototype members are plain words', () => {
+  // singular() looked "constructor" up in an object and found Object.prototype.constructor: a type FunctionObjectNativeCode
+  has(conv('{"constructor":[{"a":1}],"toString":[{"b":1}]}', 'typescript'), '  constructor: ConstructorItem[];', '  toString: ToStringItem[];', 'export interface ConstructorItem {');
+  assert.throws(() => conv('1', 'constructor'), /Unknown conversion target "constructor"/);
+  assert.throws(() => conv('1', 'toString'), /Unknown conversion target/);
+});
