@@ -263,6 +263,7 @@ export function toCSharp(root: JNode, o: ConvertOptions): string {
   if (!m.obj) out.push(`// ${m.name}: ${typeOf(m.root, P)}`);
   for (const t of m.types) {
     const u = uniq();
+    u(t.name); // (taken: so a number added to make a member unique can't make it the class name either)
     const ps = props(t).map((p) => {
       let f = pascal(p.key) || 'Field';
       if (f === t.name || CS_OBJECT.has(f)) f += 'Value'; // members can't share the class name or hide object's
