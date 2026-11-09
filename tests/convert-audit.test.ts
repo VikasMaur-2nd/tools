@@ -172,3 +172,16 @@ test('YAML: keys longer than 1024 characters are explicit', () => {
   assert.ok(conv(JSON.stringify({ ['"'.repeat(511)]: 1 }), 'yaml').startsWith('"\\"'));
   assert.ok(conv(JSON.stringify({ ['"'.repeat(512)]: 1 }), 'yaml').startsWith('? "'));
 });
+
+test('XML: names use only characters both editions of XML 1.0 (and Expat) allow', () => {
+  // µ, ª and º are letters but not XML name characters; ſ, ĳ, ǅ and ﬀ are only in the 5th edition's names, and ー and 々
+  // only in the 5th edition's first characters.
+  assert.equal(
+    conv('{"µs":1,"o":{"@ª":"1","@bº":"2"},"ſ":1,"ĳ":1,"ǅ":1,"xー":1,"々x":1,"ﬀ":1}', 'xml', { rootName: 'µ' }),
+    '<?xml version="1.0" encoding="UTF-8"?>\n<_>\n  <_s>1</_s>\n  <o _="1" b_="2"/>\n  <_>1</_>\n  <_>1</_>\n  <_>1</_>\n  <xー>1</xー>\n  <_々x>1</_々x>\n  <_>1</_>\n</_>\n',
+  );
+  // letters, digits and marks of both editions stay
+  assert.equal(conv('{"café":1,"名前":2,"Ωmega":3,"a·b":4,"x\u0301":5,"٣a":6,"a:b":7}', 'xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <café>1</café>\n  <名前>2</名前>\n  <Ωmega>3</Ωmega>\n  <a·b>4</a·b>\n  <x\u0301>5</x\u0301>\n  <_٣a>6</_٣a>\n  <a_b>7</a_b>\n</root>\n');
+  // characters outside the BMP never are
+  assert.equal(conv('{"a😀":1}', 'xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <a_>1</a_>\n</root>\n');
+});

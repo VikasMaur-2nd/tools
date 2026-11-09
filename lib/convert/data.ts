@@ -109,11 +109,41 @@ export function toYAML(root: JNode): string {
 
 /* ---------- XML ---------- */
 
-const XN_BAD = new RegExp('[^\\p{L}\\p{Nd}._-]', 'gu');
-const XN_START = new RegExp('^[\\p{L}_]', 'u');
+/*
+ * Element and attribute names use only characters that both editions of XML 1.0 allow in names: the 5th edition
+ * takes almost any character, the 4th only the letters, digits and marks of Unicode 2.0, and Expat (so Python, PHP,
+ * Perl…) still reads names by the 4th (`<ſ/>`, `<ー/>`, `<ﬀ/>`, `<µs/>` are not well-formed there). Everything else
+ * (and ":", which namespaces reserve) becomes "_". The non-ASCII ranges, as Expat accepts them: base-36 pairs of
+ * (gap since the end of the last range or U+0000, length - 1); NameStartChar, then the characters that may only follow.
+ */
+const XN_START_CP =
+  '5c,m,1,u,1,1l,2,a,2,7,1,1g,1,1v,9,z,3,1,4,t,1k,2g,i,6,5g,0,1,2,1,0,1,j,1,17,1,6,3,0,1,0,1,0,1,0,1,h,d,b,1,1t,1,b,1,z,e,1g,2,1,2,1,3,r,2,7,2,1,1j,11,2,0,7,11,21,q,5,2,1a,p,6,9,12,1y,2,4,1,e,1,3,1,0,f,1,f2,1g,3,0,q,9,z,7,2,1,2,l,1,6,1,0,3,3,y,1,1,2,e,1,j,5,4,1,2,l,1,6,1,1,1,1,1,1,v,3,1,0,j,2,g,6,1,0,1,2,1,l,1,6,1,1,1,4,3,0,y,0,10,7,2,1,2,l,1,6,1,1,2,3,3,0,u,1,1,2,z,5,3,2,1,3,3,1,1,0,1,1,3,1,3,2,3,7,1,2,23,7,1,2,1,m,1,9,1,4,12,1,z,7,1,2,1,m,1,9,1,4,10,0,1,1,z,7,1,2,1,m,1,f,12,1,4f,19,1,0,1,1,c,5,1n,1,1,0,2,1,1,0,2,0,6,3,1,6,1,2,1,0,1,0,2,1,1,1,1,0,1,1,9,0,2,4,3f,7,1,w,8m,11,a,12,9,0,1,1,1,2,1,0,1,1,1,4,15,0,1,0,1,0,b,0,1,0,1,0,3,1,3,0,5,2,1,0,1,0,1,0,1,0,3,1,3,1,1,0,14,0,9,0,2,0,2,1,7,1,1,0,1,6,14,0,4,0,8,0,2di,4b,4,2h,6,l,2,5,2,11,2,5,2,7,1,0,1,0,1,0,1,u,2,1g,1,6,1,0,3,2,1,6,3,3,2,5,4,c,5,2,1,6,89,0,3,1,2,0,29,2,2v8,0,p,8,n,2b,c,2h,a,13,5oz,g4l,2fu,8mb';
+const XN_MORE_CP =
+  '53,0,ew,1,1a,1x,q,1,11,0,6z,3,7e,g,1,m,1,2,1,0,1,1,1,0,3f,0,a,7,d,9,6,0,2t,e,2,1,1,3,2,9,ef,2,1k,0,1,f,3,3,d,1,2,9,h,2,1k,0,1,6,2,1,2,2,9,0,a,1,2,9,i,0,1l,0,1,4,4,1,2,2,o,b,f,2,1k,0,1,7,1,2,1,2,o,9,h,2,1k,0,1,5,3,1,2,2,8,1,e,9,i,1,1m,4,3,2,1,3,9,0,f,8,h,2,1m,6,1,2,1,3,7,1,f,9,i,1,1m,6,1,2,1,3,7,1,f,9,i,1,1m,5,2,2,1,3,9,0,e,9,5d,0,2,6,b,8,1,9,2f,0,2,5,1,1,9,0,1,5,2,9,1q,1,6,9,b,0,1,0,1,0,4,1,1d,j,1,5,4,5,1,0,1,k,3,6,1,0,3di,c,4,0,2zn,0,10,5,1,4,2r,1,2,1,2l,2';
+/** A character class body for the ranges of `enc`. */
+const xnRanges = (enc: string) => {
+  const n = enc.split(',').map((x) => parseInt(x, 36));
+  const u = (c: number) => '\\u' + c.toString(16).padStart(4, '0');
+  let s = '';
+  for (let i = 0, p = 0; i < n.length; i += 2) {
+    const a = p + n[i];
+    p = a + n[i + 1];
+    s += u(a) + (p > a ? '-' + u(p) : '');
+    p++;
+  }
+  return s;
+};
+/** [characters to replace, a valid first character], made when a name first needs them. */
+let XN: [RegExp, RegExp] | null = null;
+const xnInit = (): [RegExp, RegExp] => {
+  const start = xnRanges(XN_START_CP);
+  return [new RegExp(`[^\\w.\\-${start}${xnRanges(XN_MORE_CP)}]`, 'gu'), new RegExp(`^[A-Z_a-z${start}]`, 'u')];
+};
 const xname = (k: string) => {
-  const n = k.replace(XN_BAD, '_');
-  return XN_START.test(n) && !/^xml/i.test(n) ? n : '_' + n;
+  if (/^[A-Za-z_][\w.-]*$/.test(k)) return /^xml/i.test(k) ? '_' + k : k;
+  XN ??= xnInit();
+  const n = k.replace(XN[0], '_');
+  return XN[1].test(n) && !/^xml/i.test(n) ? n : '_' + n;
 };
 const X_ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\r': '&#13;', '\n': '&#10;', '\t': '&#9;' };
 // Characters XML 1.0 can't contain at all are replaced with U+FFFD.
