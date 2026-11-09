@@ -472,11 +472,15 @@ class Differ {
     const list = kids(n);
     const isArr = n.t === ARR;
     const free = isArr ? this.unordered : this.keyFree;
-    let a = free ? 0 : isArr ? S_ARR : S_OBJ;
+    // (Seeded by kind in every mode: an empty array and an empty object must not hash alike.)
+    let a = isArr ? S_ARR : S_OBJ;
     let b = a ^ 0x7f4a7c15;
     let cnt = 0;
+    // Of a duplicated key only the last member counts, as in the comparison (JSON.parse semantics).
+    const last = !isArr && hasDupKeys(list) ? keyMap(list) : null;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
+      if (last && last.get(c.key as string) !== c) continue;
       const s = this.step(ig, isArr ? i : (c.key as string));
       if (!s) continue;
       const h = this.hash(c, s);

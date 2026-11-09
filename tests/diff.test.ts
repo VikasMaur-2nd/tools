@@ -224,6 +224,29 @@ describe('diff: basics', () => {
     assert.deepEqual(lines(run('{"k":1,"k":2}', '{"k":2}')), []);
     assert.deepEqual(lines(run('{"k":1,"k":2}', '{"k":1}')), ['changed $.k']);
   });
+
+  test('duplicate keys inside array elements: the last one wins there too (aligned by hash)', () => {
+    for (const o of [{}, { ignoreArrayOrder: true }, { ignoreKeyOrder: false }]) {
+      assert.deepEqual(lines(run('[{"a":1,"a":2}]', '[{"a":2,"a":1}]', o)), ['changed $[0].a'], JSON.stringify(o));
+      assert.deepEqual(lines(run('{"x":[{"a":1,"a":2}]}', '{"x":[{"a":2,"a":1}]}', o)), ['changed $.x[0].a'], JSON.stringify(o));
+      assert.deepEqual(lines(run('[0,{"a":1,"a":2},9]', '[0,{"a":2},9]', o)), [], JSON.stringify(o));
+      assert.deepEqual(lines(run('[0,{"a":1,"a":2},9]', '[0,{"a":1},9]', o)), ['changed $[1].a'], JSON.stringify(o));
+    }
+    // (wide objects: the duplicate is found through the key hashes)
+    const wide = (last: number) => '{' + Array.from({ length: 20 }, (_, i) => `"k${i}":${i}`).join(',') + `,"k3":${last}}`;
+    assert.deepEqual(lines(run(`[${wide(3)}]`, `[${wide(4)}]`)), ['changed $[0].k3']);
+    assert.deepEqual(lines(run(`[${wide(3)}]`, `[${wide(3)}]`)), []);
+  });
+
+  test('an empty array and an empty object never compare equal, in any mode', () => {
+    for (const o of [{}, { ignoreArrayOrder: true }, { ignoreKeyOrder: false }, { ignoreArrayOrder: true, ignoreKeyOrder: false }]) {
+      const k = JSON.stringify(o);
+      assert.deepEqual(lines(run('[[]]', '[{}]', o)), ['type $[0]'], k);
+      assert.deepEqual(lines(run('{"x":[{"v":[]}]}', '{"x":[{"v":{}}]}', o)), ['type $.x[0].v'], k);
+      assertPatchRoundTrip('[[],{},1]', '[["é"],{},1]', o, o.ignoreArrayOrder ? canonUnordered : undefined);
+      assertPatchRoundTrip('[{},[]]', '[[],[]]', o, o.ignoreArrayOrder ? canonUnordered : undefined);
+    }
+  });
 });
 
 describe('diff: numbers and strings', () => {
