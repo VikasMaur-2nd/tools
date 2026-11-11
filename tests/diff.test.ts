@@ -224,6 +224,29 @@ describe('diff: basics', () => {
     assert.deepEqual(lines(run('{"k":1,"k":2}', '{"k":2}')), []);
     assert.deepEqual(lines(run('{"k":1,"k":2}', '{"k":1}')), ['changed $.k']);
   });
+
+  test('duplicate keys inside array elements: the last one wins there too (aligned by hash)', () => {
+    for (const o of [{}, { ignoreArrayOrder: true }, { ignoreKeyOrder: false }]) {
+      assert.deepEqual(lines(run('[{"a":1,"a":2}]', '[{"a":2,"a":1}]', o)), ['changed $[0].a'], JSON.stringify(o));
+      assert.deepEqual(lines(run('{"x":[{"a":1,"a":2}]}', '{"x":[{"a":2,"a":1}]}', o)), ['changed $.x[0].a'], JSON.stringify(o));
+      assert.deepEqual(lines(run('[0,{"a":1,"a":2},9]', '[0,{"a":2},9]', o)), [], JSON.stringify(o));
+      assert.deepEqual(lines(run('[0,{"a":1,"a":2},9]', '[0,{"a":1},9]', o)), ['changed $[1].a'], JSON.stringify(o));
+    }
+    // (wide objects: the duplicate is found through the key hashes)
+    const wide = (last: number) => '{' + Array.from({ length: 20 }, (_, i) => `"k${i}":${i}`).join(',') + `,"k3":${last}}`;
+    assert.deepEqual(lines(run(`[${wide(3)}]`, `[${wide(4)}]`)), ['changed $[0].k3']);
+    assert.deepEqual(lines(run(`[${wide(3)}]`, `[${wide(3)}]`)), []);
+  });
+
+  test('an empty array and an empty object never compare equal, in any mode', () => {
+    for (const o of [{}, { ignoreArrayOrder: true }, { ignoreKeyOrder: false }, { ignoreArrayOrder: true, ignoreKeyOrder: false }]) {
+      const k = JSON.stringify(o);
+      assert.deepEqual(lines(run('[[]]', '[{}]', o)), ['type $[0]'], k);
+      assert.deepEqual(lines(run('{"x":[{"v":[]}]}', '{"x":[{"v":{}}]}', o)), ['type $.x[0].v'], k);
+      assertPatchRoundTrip('[[],{},1]', '[["é"],{},1]', o, o.ignoreArrayOrder ? canonUnordered : undefined);
+      assertPatchRoundTrip('[{},[]]', '[[],[]]', o, o.ignoreArrayOrder ? canonUnordered : undefined);
+    }
+  });
 });
 
 describe('diff: numbers and strings', () => {
@@ -448,6 +471,61 @@ describe('diff: arrays', () => {
     void rng;
   });
 
+  test('large runs of edited elements stay aligned around an insertion or a removal', () => {
+    for (const n of [50, 70, 200, 3000]) {
+      const a = Array.from({ length: n }, (_, i) => ({ k: 'r' + i, y: i }));
+      // every record edited (an updatedAt), one inserted at 10
+      const b: J[] = a.map((o) => ({ ...o, y: o.y + 1 }));
+      b.splice(10, 0, { k: 'new', y: 0 });
+      const r = assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(b));
+      assert.deepEqual(r.summary, { added: 1, removed: 0, changed: n, type: 0, total: n + 1 }, `${n}`);
+      assert.deepEqual(lines(r).slice(9, 12), ['changed $[9].y', 'added $[10]', 'changed $[10].y'], `${n}`);
+      assert.ok(lines(r).every((l) => l === 'added $[10]' || /^changed \$\[\d+\]\.y$/.test(l)), `${n}`);
+      // one removed at 10 and one appended: runs of equal length, not edits in place
+      const c: J[] = a.map((o) => ({ ...o, y: o.y + 1 }));
+      c.splice(10, 1);
+      c.push({ k: 'new', y: 0 });
+      const q = assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(c));
+      assert.deepEqual(q.summary, { added: 1, removed: 1, changed: n - 1, type: 0, total: n + 1 }, `${n}`);
+      assert.deepEqual(lines(q).slice(9, 12), ['changed $[9].y', 'removed $[10]', 'changed $[11].y'], `${n}`);
+      // arrays as elements: their items anchor them
+      const x = Array.from({ length: n }, (_, i) => [i, 'x' + i, 2 * i]);
+      const z: J[] = x.map((t) => [t[0], t[1], (t[2] as number) + 1]);
+      z.splice(10, 0, [-1, 'new', 0]);
+      const t = assertPatchRoundTrip(JSON.stringify(x), JSON.stringify(z));
+      assert.deepEqual(t.summary, { added: 1, removed: 0, changed: n, type: 0, total: n + 1 }, `${n} arrays`);
+    }
+    // nothing in common between the edited elements: in place
+    assert.deepEqual(lines(run('[{"y":1},{"y":2},{"y":3}]', '[{"y":5},{"y":6},{"y":7}]')), ['changed $[0].y', 'changed $[1].y', 'changed $[2].y']);
+    // ignoreArrayOrder: shuffled and every record edited, paired by what they still share
+    const rng = prng(5);
+    const a = Array.from({ length: 500 }, (_, i) => ({ k: 'r' + i, y: i }));
+    const b = a.map((o) => ({ ...o, y: o.y + 1 }));
+    for (let i = b.length - 1; i > 0; i--) {
+      const j = rng.int(i + 1);
+      [b[i], b[j]] = [b[j], b[i]];
+    }
+    const u = assertPatchRoundTrip(JSON.stringify(a), JSON.stringify(b), { ignoreArrayOrder: true }, canonUnordered);
+    assert.deepEqual(u.summary, { added: 0, removed: 0, changed: 500, type: 0, total: 500 });
+  });
+
+  test('anchoring large runs stays fast', () => {
+    const n = 50000;
+    const a = JSON.stringify(Array.from({ length: n }, (_, i) => ({ title: 'User ' + i, email: `u${i}@x.io`, score: i % 100, updatedAt: 1000 + i })));
+    const list = Array.from({ length: n }, (_, i) => ({ title: 'User ' + i, email: `u${i}@x.io`, score: i % 100, updatedAt: 5e6 + i }));
+    const same = JSON.stringify(list);
+    list.splice(10, 0, { title: 'new', email: '', score: 0, updatedAt: 1 });
+    const b = JSON.stringify(list);
+    const ra = root(a);
+    for (const [label, rb, changes] of [['in place', root(same), n], ['insertion', root(b), n + 1]] as const) {
+      const t0 = cpuNow();
+      const r = diff(ra, rb);
+      const ms = cpuNow() - t0;
+      assert.equal(r.summary.total, changes, label);
+      assert.ok(ms < 4000, `${label}: ${ms.toFixed(0)} ms of CPU time`);
+    }
+  });
+
   test('worst cases fall back without quadratic blowups', () => {
     const rng = prng(42);
     const n = 20000;
@@ -510,6 +588,24 @@ describe('diff: ignore paths', () => {
     const x = JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ v: i, at: i })));
     const y = JSON.stringify([{ v: -1, at: 0 }, ...Array.from({ length: 30 }, (_, i) => ({ v: i, at: i * 7 }))]);
     assert.deepEqual(lines(run(x, y, { ignorePaths: ['at'] })), ['added $[0]']);
+  });
+
+  test('an ignored id-like field never decides which elements pair up', () => {
+    const x = '[{"id":1,"v":"a"},{"id":5,"v":"b"}]';
+    const y = '[{"id":2,"v":"a"},{"id":5,"v":"b"}]';
+    assert.deepEqual(lines(run(x, y)), ['removed $[0]', 'added $[0]']);
+    for (const ignore of ['id', '$[*].id', '..id', '/0/id', '$[0].id']) {
+      for (const o of [{}, { ignoreArrayOrder: true }]) {
+        const r = assertPatchRoundTrip(x, y, { ...o, ignorePaths: [ignore] }, () => null);
+        assert.deepEqual(lines(r), [], `${ignore} ${JSON.stringify(o)}`);
+      }
+    }
+    // the next id-like key still pairs them
+    const p = '[{"id":1,"name":"a","v":1},{"id":2,"name":"b","v":2}]';
+    const q = '[{"id":7,"name":"x","v":0},{"id":8,"name":"a","v":1},{"id":9,"name":"b","v":20}]';
+    assert.deepEqual(lines(run(p, q, { ignorePaths: ['id'] })), ['added $[0]', 'changed $[1].v']);
+    // ignored deeper down only: still an id here
+    assert.deepEqual(lines(run('{"a":[{"id":1,"v":1}],"b":[{"id":1}]}', '{"a":[{"id":2,"v":1}],"b":[{"id":2}]}', { ignorePaths: ['$.b[*].id'] })), ['changed $.a[0].id']);
   });
 
   test('parseIgnoreList splits on commas / newlines outside brackets and quotes', () => {

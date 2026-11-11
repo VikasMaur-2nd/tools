@@ -71,7 +71,11 @@ export function decodeString(src: string, start: number, max = Infinity): string
           i += 2;
         } else if (e === 10 || e === 13) {
           if (e === 13 && src.charCodeAt(i) === 10) i++;
-        } else out += String.fromCharCode(e);
+        } else {
+          // (JavaScript's \v, and \0 when no digit follows it: what they stand for, as the parser reads them.)
+          const d = src.charCodeAt(i);
+          out += e === 118 ? '\v' : e === 48 && !(d >= 48 && d <= 57) ? '\0' : String.fromCharCode(e);
+        }
     }
     seg = i;
     room = max - out.length;

@@ -20,7 +20,7 @@ import type { SourceReply, SourceRequest } from './source.worker';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
-import { formatOf, formatOfName, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson } from './rules';
+import { formatOf, formatOfName, holdsEscapedJson, holdsJson, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson, unescapeText } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
@@ -211,10 +211,11 @@ const SOURCE_WORKER_MIN = 100_000;
 /** JWT-shaped, for a clearer error when a part doesn't decode. */
 const JWT_RE = /^(?:[Bb]earer\s+)?eyJ[^\s.]*\.[^\s.]+\.[^\s.]*$/;
 
-/** Cheap guess at what non-JSON input is, to offer a one-click conversion. */
-function sniff(text: string): Hint {
+/** Cheap guess at what non-JSON input is, to offer a one-click conversion (`whole`: `text` is all of it, not its start). */
+function sniff(text: string, whole: boolean): Hint {
   const t = text.slice(0, 4000).trim();
-  if (t.includes('\\"') && /^"?\s*[[{]/.test(t)) return 'unescape';
+  // (JSON written as a string: offered only if its escapes undone are JSON, when that can be told.)
+  if (t.includes('\\"') && /^"?\s*[[{]/.test(t) && (!whole || holdsEscapedJson(text))) return 'unescape';
   if (t[0] === '<') return 'xml';
   if (t[0] === '{' || t[0] === '[') {
     // `[table]` headers followed by key = value lines → TOML
@@ -246,6 +247,14 @@ function sniff(text: string): Hint {
  * when none could be made, or undefined when what it asked for was superseded first (nothing copied or saved).
  */
 type Output = string | string[] | null | undefined;
+
+/** A file's base name as an Excel sheet name: at most 31 units, never ending in half a surrogate pair. */
+const sheetBase = (base: string) => {
+  let s = base.slice(0, 31);
+  const last = s.charCodeAt(s.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) s = s.slice(0, -1);
+  return s || 'Sheet1';
+};
 
 /**
  * Copies and downloads waiting for an output still being made (see outputPending, convPending): one wait, shared
@@ -1082,8 +1091,8 @@ export class Engine {
     if (conv) hint = this.srcMod!.otherFormat(text, fmt);
     else if (jwt || lines) hint = null;
     // (A worker measured it: a long root string isn't decoded here just for this.)
-    else if (metrics ? metrics.unescape : res.root?.t === STR && /^\s*[[{]/.test(res.root.v as string)) hint = 'unescape';
-    else if (res.error || res.issues.length) hint = sniff(text.length >= WORKER_MIN ? (ed.version as Doc).slice(0, 4000) : text);
+    else if (metrics ? metrics.unescape : res.root?.t === STR && holdsJson(res.root.v as string)) hint = 'unescape';
+    else if (res.error || res.issues.length) hint = text.length >= WORKER_MIN ? sniff((ed.version as Doc).slice(0, 4000), false) : sniff(text, true);
 
     store.set({
       empty: false,
@@ -1158,8 +1167,8 @@ export class Engine {
   }
 
   /** A decoded JWT (signature not verified); the UI shows its expiry live. */
-  private jwtStatus({ alg, exp, iat, nbf }: JwtInput): Status {
-    return { kind: 'valid', warnings: 0, jwt: { alg, exp, iat, nbf } };
+  private jwtStatus({ alg, exp, iat, nbf, unsigned }: JwtInput): Status {
+    return { kind: 'valid', warnings: 0, jwt: { alg, exp, iat, nbf, unsigned } };
   }
 
   private sizeTimer = 0;
@@ -1521,22 +1530,15 @@ export class Engine {
     this.flushLoad();
     const text = this.ed.text;
     const r = this.fresh();
-    let inner: string | null = null;
-    if (r?.root?.t === STR) inner = r.root.v as string;
-    else {
-      try {
-        const v: unknown = JSON.parse('"' + text.trim().replace(/^"|"$/g, '').replace(/\n/g, '\\n') + '"');
-        if (typeof v === 'string') inner = v;
-      } catch {
-        inner = null;
-      }
-    }
-    if (inner === null) {
+    // The document's string, or its text read as one (escaped JSON pasted without its quotes), if it is JSON: strict,
+    // so prose in a string (`"[citation needed]"`) isn't read loosely into something else.
+    const inner = r?.root?.t === STR ? (r.root.v as string) : unescapeText(text);
+    const pr = inner === null ? null : parse(inner);
+    if (inner === null || !pr!.root || pr!.error || pr!.issues.length) {
       this.toast("This doesn't look like an escaped JSON string", 'err');
       return;
     }
-    const pr = parse(inner);
-    const next = pr.root && !pr.error ? this.unlessTooLarge(() => formatDoc(inner, pr, this.indent)) : inner;
+    const next = this.unlessTooLarge(() => formatDoc(inner, pr!, this.indent));
     if (next === null) return;
     this.setJson(next);
     this.analyze();
@@ -1715,17 +1717,22 @@ export class Engine {
     this.ed.redo();
   }
 
-  /** Downloads an .xlsx of the data without changing the current view. */
+  /**
+   * Downloads an .xlsx without changing the current view: in the Table, of the table shown (its sort
+   * included), as Copy / Download CSV write it; elsewhere, of the data's main array of records.
+   */
   async exportExcel() {
     const current = this.fresh();
     if (!current?.root) this.materializeGood();
     const root = current?.root ?? this.good?.root;
     if (!root) return this.toast('Paste or open valid JSON first', 'info');
     if ((current?.root ? current : this.good)!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
+    const shown = this.settings.view === 'table' ? this.table.exportNode() : null;
+    const order = shown ? this.table.exportOrder() : null;
     try {
       const { records, toXlsx } = await import('../convert/xlsx');
       const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-      this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), `${base}.xlsx`);
+      this.saveBlob(await toXlsx(shown ?? records(root), { sheetName: sheetBase(base), order }), `${base}.xlsx`);
       track('feature_used', { feature: 'export_xlsx' });
     } catch (e) {
       this.toast(tooDeep(e) ? 'Nesting is too deep to convert' : "Couldn't create the Excel file", 'err');
@@ -3710,7 +3717,7 @@ export class Engine {
       if (this.good!.depth > MAX_WALK_DEPTH) return this.toast('Nesting is too deep to convert', 'err');
       try {
         const { records, toXlsx } = await import('../convert/xlsx');
-        this.saveBlob(await toXlsx(records(root), { sheetName: base.slice(0, 31) || 'Sheet1' }), name);
+        this.saveBlob(await toXlsx(records(root), { sheetName: sheetBase(base) }), name);
       } catch (error) {
         if (tooDeep(error)) return this.toast('Nesting is too deep to convert', 'err');
         reportError(error, 'export');
@@ -3749,19 +3756,41 @@ export class Engine {
     store.set({ table: { segs: n ? pathOf(n) : [], rows: this.table.rowCount, cols: this.table.colCount, ok: !!n } });
   }
 
+  /**
+   * The table shown (its sort included) as CSV, as the Excel export and the CSV converter write it (nested
+   * objects as dotted columns): undefined (after saying why) when it can't be.
+   */
+  private async tableCsv(n: JNode, order: Int32Array | null): Promise<string | undefined> {
+    try {
+      const { toCsv } = await import('../convert/xlsx');
+      return toCsv(n, { order });
+    } catch (e) {
+      if (tooDeep(e)) this.toast('Nesting is too deep to convert', 'err');
+      else if (tooLarge(e)) this.toast('The result is too large', 'err');
+      else {
+        reportError(e, 'export');
+        this.toast('Conversion failed', 'err');
+      }
+      return undefined;
+    }
+  }
+
   copyCSV() {
-    const csv = this.table.toCSV();
-    if (!csv) return this.toast('Open an array or object in the table first', 'info');
+    const n = this.table.exportNode();
+    if (!n) return this.toast('Open an array or object in the table first', 'info');
     track('feature_used', { feature: 'copy_csv' });
-    void this.copy(csv, 'Copied table as CSV');
+    // (The CSV comes from a module loaded on first use: the copy waits for it, keeping the click's permission.)
+    void this.copyLater(this.tableCsv(n, this.table.exportOrder()), 'Copied table as CSV', () => this.toast('Nothing to copy yet', 'info'));
   }
 
   downloadCSV() {
-    const csv = this.table.toCSV();
-    if (!csv) return this.toast('Open an array or object in the table first', 'info');
+    const n = this.table.exportNode();
+    if (!n) return this.toast('Open an array or object in the table first', 'info');
     track('feature_used', { feature: 'download_csv' });
     const base = (store.get().fileName || 'data.json').replace(/\.[a-z0-9]+$/i, '');
-    this.save(csv, `${base}.csv`, 'text/csv');
+    void this.tableCsv(n, this.table.exportOrder()).then((csv) => {
+      if (csv !== undefined && !this.dead) this.save(csv, `${base}.csv`, 'text/csv');
+    });
   }
 
   // ── Folding (acts on the open view: format, convert or tree) ────────────

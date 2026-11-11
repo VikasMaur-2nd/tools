@@ -58,7 +58,7 @@
   ],
   "empty": false
  },
- "csv": "value,a,b\r\n1,,\r\na,,\r\n,,\r\ntrue,,\r\nfalse,,\r\n,1,\r\n\"[1,2]\",,\r\n,,[]\r\n[],,\r\n,,\r\n[[]],,\r\n[{}],,\r\n-0.5,,\r\n,,",
+ "csv": "value,a,b\r\n1,,\r\na,,\r\n,,\r\ntrue,,\r\nfalse,,\r\n,1,\r\n\"1, 2\",,\r\n,,[]\r\n[],,\r\n,,\r\n[[]],,\r\n[{}],,\r\n-0.5,,\r\n\"\",,\r\n",
  "convert": {
   "typescript": "export type Root = (boolean | number | string | (number | unknown[] | Record<string, unknown>)[] | RootItem | null)[];\n\nexport interface RootItem {\n  a?: number;\n  b?: unknown[];\n}\n",
   "zod": "import { z } from \"zod\";\n\nexport const RootItemSchema = z.object({\n  a: z.number().int().optional(),\n  b: z.array(z.unknown()).optional(),\n});\nexport type RootItem = z.infer<typeof RootItemSchema>;\n\nexport const RootSchema = z.array(z.union([z.boolean(), z.number(), z.string(), z.array(z.union([z.number().int(), z.array(z.unknown()), z.record(z.string(), z.unknown())])), RootItemSchema]).nullable());\nexport type Root = z.infer<typeof RootSchema>;\n",
@@ -73,7 +73,7 @@
   "php": "<?php\n\ndeclare(strict_types=1);\n\n// Root: mixed[]\n",
   "rust": "use serde::{Deserialize, Serialize};\n\npub type Root = Vec<serde_json::Value>;\n",
   "protobuf": "syntax = \"proto3\";\n\npackage root;\n\nimport \"google/protobuf/struct.proto\";\n\n// The JSON is an array: this message holds it as {\"items\": [...]}.\nmessage Root {\n  repeated google.protobuf.Value items = 1;\n}\n",
-  "csv": "value,a,b\r\n1,,\r\na,,\r\n,,\r\ntrue,,\r\nfalse,,\r\n,1,\r\n\"1, 2\",,\r\n,,\"\"\r\n\"\",,\r\n,,\r\n[[]],,\r\n[{}],,\r\n-0.5,,\r\n\"\",,\r\n",
+  "csv": "value,a,b\r\n1,,\r\na,,\r\n,,\r\ntrue,,\r\nfalse,,\r\n,1,\r\n\"1, 2\",,\r\n,,[]\r\n[],,\r\n,,\r\n[[]],,\r\n[{}],,\r\n-0.5,,\r\n\"\",,\r\n",
   "yaml": "- 1\n- a\n- null\n- true\n- false\n- a: 1\n- - 1\n  - 2\n- b: []\n- []\n- {}\n- - []\n- - {}\n- -0.5\n- \"\"\n",
   "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item>1</item>\n  <item>a</item>\n  <item/>\n  <item>true</item>\n  <item>false</item>\n  <item>\n    <a>1</a>\n  </item>\n  <item>\n    <item>1</item>\n    <item>2</item>\n  </item>\n  <item>\n    <b/>\n  </item>\n  <item>\n    <item/>\n  </item>\n  <item/>\n  <item>\n    <item>\n      <item/>\n    </item>\n  </item>\n  <item>\n    <item/>\n  </item>\n  <item>-0.5</item>\n  <item></item>\n</root>\n",
   "toml": "# A TOML document must be a table: the top-level array is stored under \"root\".\nroot = [\n  1,\n  \"a\",\n  true,\n  false,\n  { a = 1 },\n  [1, 2],\n  { b = [] },\n  [],\n  {},\n  [[]],\n  [{}],\n  -0.5,\n  \"\",\n]  # null values omitted (TOML has no null)\n",

@@ -7,10 +7,11 @@
  *   linear-space LCS over structural hashes (or over id values when every
  *   element is an object with a unique `id` / `_id` / `uuid` / `key` / `name`),
  *   so one inserted element doesn't mark everything after it as changed.
- *   Unaligned runs are then paired by similarity, so an edited element shows up
- *   as field-level changes instead of a removal plus an addition. The LCS work
- *   is capped; past the cap it falls back to patience-style anchoring
- *   (unique elements + LIS, O(n log n)).
+ *   Unaligned runs are then paired by similarity (small runs), or anchored on
+ *   field values found in one element per side (large runs, see matchGap), so
+ *   an edited element shows up as field-level changes instead of a removal
+ *   plus an addition. The LCS work is capped; past the cap it falls back to
+ *   patience-style anchoring (unique elements + LIS, O(n log n)).
  * - With `ignoreArrayOrder`, arrays are compared as multisets (by id or hash).
  * - Numbers are compared by exact decimal value from their source text
  *   (`1.0` = `1`, `1e2` = `100`, big integers / long decimals never lose
@@ -36,7 +37,8 @@ export interface DiffOptions {
   /**
    * Paths to skip. `$.meta.updatedAt`, `$.items[*].ts`, `/a/b` (JSON Pointer)
    * are absolute; a bare key or relative path (`updatedAt`, `meta.etag`,
-   * `$..etag`) matches at any depth. `*` matches any key or index.
+   * `$..etag`) matches at any depth. `*` matches any key or index. `$` starts
+   * a path only as `$`, `$.` or `$[`: `$type` is the key "$type".
    */
   ignorePaths?: readonly string[];
   /** Compare strings case-insensitively (default false). */
@@ -259,6 +261,26 @@ const NO: Ig = [];
 
 const trie = (): Trie => ({ end: false, kids: null, star: null });
 
+/** Whether a non-zero value repeats in ks[base, base + n). */
+function repeats(ks: Int32Array, base: number, n: number): boolean {
+  if (n <= 16) {
+    for (let i = base; i < base + n; i++) {
+      const k = ks[i];
+      if (k) for (let j = i + 1; j < base + n; j++) if (ks[j] === k) return true;
+    }
+    return false;
+  }
+  const s = ks.slice(base, base + n).sort();
+  for (let i = 1; i < n; i++) if (s[i] && s[i] === s[i - 1]) return true;
+  return false;
+}
+
+const sameIg = (p: Ig, q: Ig) => {
+  if (p.length !== q.length) return false;
+  for (let i = 0; i < p.length; i++) if (p[i] !== q[i]) return false;
+  return true;
+};
+
 function addPattern(root: Trie, segs: Seg[]) {
   let t = root;
   for (const s of segs) {
@@ -317,10 +339,14 @@ function compileIgnore(list: readonly string[]): { abs: Trie | null; any: Trie |
     } else if (s.startsWith('..')) {
       anywhere = true;
       s = s.slice(2);
-    } else if (s[0] !== '$' && s[0] !== '/') anywhere = true;
+    } else if (s[0] !== '/' && !(s[0] === '$' && (s.length === 1 || s[1] === '.' || s[1] === '['))) {
+      // A key or relative path (`$type` and `$ref.id` too: `$` starts a path only as `$`, `$.` or `$[`, as in parsePath).
+      anywhere = true;
+    }
     s = s.replace(/\[\s*\*\s*\]/g, '.*');
     if (anywhere && s[0] === '.') s = s.slice(1);
-    const segs = parsePath(s) ?? [s];
+    // (a relative path is read from a `.`, so a first key starting with `$` stays a key)
+    const segs = (anywhere ? parsePath(s[0] === '[' ? s : '.' + s) : parsePath(s)) ?? [s];
     if (!segs.length) continue;
     if (anywhere) addPattern(any ?? (any = trie()), segs);
     else addPattern(abs ?? (abs = trie()), segs);
@@ -337,8 +363,16 @@ const OVERFLOW = { overflow: true };
 /** LCS work (diagonal steps) allowed per array, and per diff overall. */
 const LCS_ARRAY_BUDGET = 8e6;
 const LCS_TOTAL_BUDGET = 4e7;
-/** Largest k×l gap paired by similarity (beyond: positional). */
+/** Largest k×l gap (sides of unequal length) paired by the similarity DP (beyond: anchored, see matchGap). */
 const GAP_DP_MAX = 4096;
+/** Similarity DP cells per diff. */
+const GAP_DP_BUDGET = 4e6;
+/** Element features read for anchoring gaps, per diff. */
+const GAP_FEATURE_BUDGET = 2e7;
+/** Nesting of anchored runs within runs (each level is a stack frame or two). */
+const GAP_DEPTH = 48;
+/** Member mixes captured per aligned array (see tokens); past it, features are made again as needed. */
+const CAPTURE_MAX = 1 << 23;
 
 /** Last child with `key` (JSON.parse semantics for duplicate keys). */
 function lastChild(list: JNode[], key: string): JNode | undefined {
@@ -346,7 +380,8 @@ function lastChild(list: JNode[], key: string): JNode | undefined {
   return undefined;
 }
 
-function hasDupKeys(list: JNode[]): boolean {
+/** Whether an object's members repeat a key (`set`: scratch space for wide objects, left empty). */
+function hasDupKeys(list: JNode[], set?: Set<string>): boolean {
   const n = list.length;
   if (n < 2) return false;
   if (n <= 12) {
@@ -356,13 +391,18 @@ function hasDupKeys(list: JNode[]): boolean {
     }
     return false;
   }
-  const set = new Set<string>();
+  set ??= new Set<string>();
+  let dup = false;
   for (const c of list) {
     const k = c.key as string;
-    if (set.has(k)) return true;
+    if (set.has(k)) {
+      dup = true;
+      break;
+    }
     set.add(k);
   }
-  return false;
+  set.clear();
+  return dup;
 }
 
 function keyMap(list: JNode[]): Map<string, JNode> {
@@ -385,6 +425,27 @@ class Differ {
   private readonly ig: boolean;
   readonly root: Ig;
   private lcsLeft = LCS_TOTAL_BUDGET;
+  /** Element features left to read for anchoring large gaps (see matchGap). */
+  private gapLeft = GAP_FEATURE_BUDGET;
+  /** Similarity DP cells left (see pairDP). */
+  private dpLeft = GAP_DP_BUDGET;
+  /** Scratch set for duplicate-key checks of wide objects. */
+  private readonly keySet = new Set<string>();
+  /** Key hash stack of the objects being hashed, and its top (see hash). */
+  private ks = new Int32Array(256);
+  private sp = 0;
+  /**
+   * Capture of the elements of the array being aligned (see tokens): their
+   * member mixes, element after element, in `cap` up to `capLen`; per side,
+   * where each element's run starts and ends (start -1: not captured).
+   */
+  private cap = new Int32Array(1024);
+  private capLen = 0;
+  private capStart = 0;
+  private capOn = false;
+  private captured = false;
+  private capA: Int32Array | null = null;
+  private capB: Int32Array | null = null;
   /** Hash seed (see `DiffOptions.seed`). */
   private readonly salt: number;
 
@@ -451,7 +512,16 @@ class Differ {
     return a === b || (this.ci && a.toLowerCase() === b.toLowerCase());
   }
 
-  /** Structural hash consistent with the options (equal values ⇒ equal hashes). */
+  private dupKeys(list: JNode[]): boolean {
+    return hasDupKeys(list, this.keySet);
+  }
+
+  /**
+   * Structural hash consistent with the options (equal values ⇒ equal hashes).
+   * Of a duplicated key only the last member counts, as in the comparison
+   * (JSON.parse semantics). With `capOn` (set by tokens for one array element),
+   * the element's member mixes are also captured as its features (see matchGap).
+   */
   hash(n: JNode, ig: Ig): number {
     switch (n.t) {
       case NUL:
@@ -463,6 +533,9 @@ class Differ {
       case STR:
         return strHash(this.ci ? (n.v as string).toLowerCase() : (n.v as string), this.salt ^ S_STR);
     }
+    // (only the element itself is captured, not what it holds)
+    const cap = this.capOn;
+    this.capOn = false;
     // only array elements are looked up again later (when their array is aligned)
     const memoize = n.u !== null && n.u.t === ARR;
     if (memoize) {
@@ -470,35 +543,77 @@ class Differ {
       if (memo !== undefined) return memo;
     }
     const list = kids(n);
+    const len = list.length;
     const isArr = n.t === ARR;
     const free = isArr ? this.unordered : this.keyFree;
-    let a = free ? 0 : isArr ? S_ARR : S_OBJ;
-    let b = a ^ 0x7f4a7c15;
-    let cnt = 0;
-    for (let i = 0; i < list.length; i++) {
-      const c = list[i];
-      const s = this.step(ig, isArr ? i : (c.key as string));
-      if (!s) continue;
-      const h = this.hash(c, s);
-      let x = laneLo(h);
-      let y = laneHi(h);
-      if (!isArr) {
-        const kh = strHash(c.key as string, this.salt ^ S_KEY);
-        x = fmix(laneLo(kh) + Math.imul(x, 0x9e3779b1));
-        y = fmix(laneHi(kh) + Math.imul(y, 0x85ebca6b));
+    // An object's key hashes go on a stack (`ks`, 0: left out), where a repeated one, rarely a duplicated
+    // key, shows without comparing keys.
+    const base = this.sp;
+    if (!isArr) {
+      if (base + len > this.ks.length) {
+        const ks = new Int32Array(Math.max(2 * this.ks.length, base + len));
+        ks.set(this.ks);
+        this.ks = ks;
       }
-      if (free) {
-        a = (a + fmix(x)) | 0;
-        b = (b + fmix(y ^ 0x27d4eb2f)) | 0;
-      } else {
-        a = (Math.imul(a ^ x, 0x01000193) + 0x9e3779b9) | 0;
-        b = (Math.imul(b ^ y, 0x5bd1e995) + 0x165667b1) | 0;
-      }
-      cnt++;
+      this.sp = base + len;
     }
-    const h = pack(fmix(a ^ Math.imul(cnt, 0x27d4eb2f)), fmix(b + cnt));
-    if (memoize) this.hc.set(n, h);
-    return h;
+    let last: Map<string, JNode> | null = null;
+    for (;;) {
+      if (cap) this.capLen = this.capStart;
+      // (Seeded by kind in every mode: an empty array and an empty object must not hash alike.)
+      let a = isArr ? S_ARR : S_OBJ;
+      let b = a ^ 0x7f4a7c15;
+      let cnt = 0;
+      for (let i = 0; i < len; i++) {
+        const c = list[i];
+        const s = last && last.get(c.key as string) !== c ? null : this.step(ig, isArr ? i : (c.key as string));
+        if (!s) {
+          if (!isArr) this.ks[base + i] = 0;
+          continue;
+        }
+        const h = this.hash(c, s);
+        let x = laneLo(h);
+        let y = laneHi(h);
+        if (!isArr) {
+          const kh = strHash(c.key as string, this.salt ^ S_KEY);
+          this.ks[base + i] = laneLo(kh) || 1;
+          x = fmix(laneLo(kh) + Math.imul(x, 0x9e3779b1));
+          y = fmix(laneHi(kh) + Math.imul(y, 0x85ebca6b));
+        }
+        if (cap) {
+          if (this.capLen < this.cap.length) this.cap[this.capLen++] = x || 1;
+          else this.capture(x);
+        }
+        if (free) {
+          a = (a + fmix(x)) | 0;
+          b = (b + fmix(y ^ 0x27d4eb2f)) | 0;
+        } else {
+          a = (Math.imul(a ^ x, 0x01000193) + 0x9e3779b9) | 0;
+          b = (Math.imul(b ^ y, 0x5bd1e995) + 0x165667b1) | 0;
+        }
+        cnt++;
+      }
+      if (!isArr && !last && len > 1 && repeats(this.ks, base, len) && this.dupKeys(list)) {
+        last = keyMap(list);
+        continue;
+      }
+      this.sp = base;
+      if (cap) this.captured = true;
+      const h = pack(fmix(a ^ Math.imul(cnt, 0x27d4eb2f)), fmix(b + cnt));
+      if (memoize) this.hc.set(n, h);
+      return h;
+    }
+  }
+
+  /** Appends a captured member mix (see hash) while the capture buffer has room. */
+  private capture(x: number) {
+    if (this.capLen === this.cap.length) {
+      if (this.capLen >= CAPTURE_MAX) return;
+      const c = new Int32Array(Math.min(CAPTURE_MAX, 2 * this.cap.length));
+      c.set(this.cap);
+      this.cap = c;
+    }
+    this.cap[this.capLen++] = x || 1;
   }
 
   // ── comparison ──
@@ -530,7 +645,7 @@ class Differ {
           break;
         }
       }
-      if (same && !hasDupKeys(a)) {
+      if (same && !this.dupKeys(a)) {
         for (let i = 0; i < n; i++) {
           const k = a[i].key as string;
           const sl = this.step(il, k);
@@ -593,18 +708,33 @@ class Differ {
     return false;
   }
 
+  /** Whether member `key` of some element of `list` (array ignore state `st`) is ignored. */
+  private memberIgnored(list: JNode[], st: Ig, key: string): boolean {
+    // (Elements mostly share one ignore state: an equal one gives the same answer.)
+    let prev: Ig | null = null;
+    for (let i = 0; i < list.length; i++) {
+      const s = this.step(st, i);
+      if (!s || (prev && sameIg(s, prev))) continue;
+      if (!this.step(s, key)) return true;
+      prev = s;
+    }
+    return false;
+  }
+
   /**
    * Id tokens when every element of both arrays is an object with the same
    * id-like key (string / number value, unique per side): fills `ta` / `tb`
-   * and returns true.
+   * and returns true. A key the ignore paths skip is no id: it must not decide
+   * which elements are the same.
    */
-  private idTokens(a: JNode[], b: JNode[], ta: number[], tb: number[]): boolean {
+  private idTokens(a: JNode[], b: JNode[], il: Ig, ir: Ig, ta: number[], tb: number[]): boolean {
     const n = a.length;
     const m = b.length;
     if (!n || !m) return false;
     for (const x of a) if (x.t !== OBJ) return false;
     for (const x of b) if (x.t !== OBJ) return false;
     next: for (const key of ID_KEYS) {
+      if (this.ig && (this.memberIgnored(a, il, key) || this.memberIgnored(b, ir, key))) continue;
       ta.length = 0;
       tb.length = 0;
       const strs = new Map<string, number>();
@@ -640,12 +770,35 @@ class Differ {
     return false;
   }
 
-  /** Alignment tokens: id tokens (returns true) or 52-bit structural hashes. */
+  /**
+   * Alignment tokens: id tokens (returns true) or 52-bit structural hashes.
+   * Hashing captures each element's member mixes (capA / capB), the features
+   * matchGap pairs by, which it reads before any nested array is tokenized.
+   */
   private tokens(a: JNode[], b: JNode[], il: Ig, ir: Ig, ta: number[], tb: number[]): boolean {
-    if (this.idTokens(a, b, ta, tb)) return true;
-    for (let i = 0; i < a.length; i++) ta.push(this.hash(a[i], this.step(il, i) ?? NO));
-    for (let j = 0; j < b.length; j++) tb.push(this.hash(b[j], this.step(ir, j) ?? NO));
+    if (this.idTokens(a, b, il, ir, ta, tb)) return true;
+    this.capLen = 0;
+    this.capA = this.hashAll(a, il, ta);
+    this.capB = this.hashAll(b, ir, tb);
     return false;
+  }
+
+  /** Hashes `list` (array ignore state `st`) into `out`; returns where each element's capture starts and ends. */
+  private hashAll(list: JNode[], st: Ig, out: number[]): Int32Array {
+    const n = list.length;
+    const at = new Int32Array(2 * n);
+    for (let i = 0; i < n; i++) {
+      this.capStart = this.capLen;
+      this.capOn = true;
+      this.captured = false;
+      out.push(this.hash(list[i], this.step(st, i) ?? NO));
+      this.capOn = false;
+      // (Not captured: a primitive, an element hashed before, or the buffer is full.)
+      const ok = this.captured && this.capLen < CAPTURE_MAX;
+      at[2 * i] = ok ? this.capStart : -1;
+      at[2 * i + 1] = this.capLen;
+    }
+    return at;
   }
 
   private arr(l: JNode, r: JNode, il: Ig, ir: Ig) {
@@ -740,7 +893,7 @@ class Differ {
           if (ea[x] >= 0) dels.push(ea[x]);
           else ins.push(eb[x]);
         }
-        const pairs = this.matchGap(a, b, dels, ins);
+        const pairs = this.matchGap(a, b, dels, ins, il, ir, true);
         let pd = 0;
         let pi = 0;
         for (let q = 0; q <= pairs.length; q += 2) {
@@ -831,7 +984,7 @@ class Differ {
       const ins: number[] = [];
       for (let i = 0; i < n; i++) if (pairOf[i] < 0) dels.push(i);
       for (let j = 0; j < m; j++) if (!used[j]) ins.push(j);
-      const pairs = this.matchGap(a, b, dels, ins);
+      const pairs = this.matchGap(a, b, dels, ins, il, ir, false);
       for (let p = 0; p < pairs.length; p += 2) {
         pairOf[dels[pairs[p]]] = ins[pairs[p + 1]];
         used[ins[pairs[p + 1]]] = 1;
@@ -874,32 +1027,110 @@ class Differ {
   }
 
   /**
-   * Order-preserving pairing of the removed (`dels`) and inserted (`ins`)
-   * elements of one gap, so edited elements diff field by field. Returns
-   * flat [u0, v0, u1, v1, …] indices into `dels` / `ins`.
+   * Pairs the removed (`dels`) and inserted (`ins`) elements of one gap, so
+   * edited elements diff field by field instead of as a removal plus an
+   * addition. Returns flat [u0, v0, u1, v1, …] indices into `dels` / `ins`:
+   * ascending when `ordered` (pairs never cross), else in any order.
+   *
+   * Small gaps with sides of unequal length: a weighted LCS over pairwise
+   * similarity (pairDP, O(k·l)). Larger gaps, and gaps with sides of equal
+   * length (mostly edits in place, but not when one element was removed in one
+   * place and another added elsewhere), are anchored the way patience diff
+   * anchors lines (anchor): every element is reduced to features (an object's
+   * members as key + value hash, an array's item hashes); a feature found in
+   * exactly one removed and exactly one inserted element links those two (an
+   * unchanged `sku`, e-mail, title or timestamp…), weighted by how many
+   * features the two share; the heaviest chain of links in order (a weighted
+   * longest increasing subsequence, O(L log L)) is paired, and the runs between
+   * its links are matched again the same way (features unique within the run),
+   * by the DP when small, else in place. Feature reads and DP cells are
+   * budgeted per diff, so a 50k-element gap stays near-linear.
    */
-  private matchGap(a: JNode[], b: JNode[], dels: number[], ins: number[]): number[] {
-    const k = dels.length;
-    const l = ins.length;
+  private matchGap(a: JNode[], b: JNode[], dels: number[], ins: number[], il: Ig, ir: Ig, ordered: boolean): number[] {
     const out: number[] = [];
-    if (!k || !l) return out;
-    if (k === l || k * l > GAP_DP_MAX) {
-      for (let u = 0; u < Math.min(k, l); u++) out.push(u, u);
-      return out;
+    if (!dels.length || !ins.length) return out;
+    const g: Gap = { a, b, dels, ins, il, ir, sa: null, ea: null, sb: null, eb: null };
+    if (ordered) this.pairRange(g, 0, dels.length, 0, ins.length, out, 0);
+    else this.pairAny(g, out);
+    return out;
+  }
+
+  /** Ordered pairing of dels[u0, u1) with ins[v0, v1), appended to `out` in ascending order. */
+  private pairRange(g: Gap, u0: number, u1: number, v0: number, v1: number, out: number[], depth: number) {
+    const k = u1 - u0;
+    const l = v1 - v0;
+    if (!k || !l) return;
+    if (k !== l && k * l <= GAP_DP_MAX && this.dpLeft >= k * l) return this.pairDP(g, u0, u1, v0, v1, out);
+    if ((k > 1 || l > 1) && depth < GAP_DEPTH && this.gapLeft > 0 && !(k === l && this.inPlace(g, u0, u1, v0, v1))) {
+      const ln = this.links(g, u0, u1, v0, v1);
+      if (ln) {
+        const chain = heaviestChain(ln, v0, l);
+        let inPlace = k === l;
+        for (let x = 0; inPlace && x < chain.length; x++) inPlace = ln.u[chain[x]] - u0 === ln.v[chain[x]] - v0;
+        if (!inPlace) {
+          let pu = u0;
+          let pv = v0;
+          for (const x of chain) {
+            this.pairRange(g, pu, ln.u[x], pv, ln.v[x], out, depth + 1);
+            out.push(ln.u[x], ln.v[x]);
+            pu = ln.u[x] + 1;
+            pv = ln.v[x] + 1;
+          }
+          this.pairRange(g, pu, u1, pv, v1, out, depth + 1);
+          return;
+        }
+      }
     }
-    // weighted LCS over pairwise similarity (element summaries computed once)
-    const sa = dels.map((i) => this.sig(a[i]));
-    const sb = ins.map((j) => this.sig(b[j]));
+    // nothing to go by (or the links agree): in place
+    for (let t = 0; t < k && t < l; t++) out.push(u0 + t, v0 + t);
+  }
+
+  /** Unordered pairing (ignoreArrayOrder): the heaviest links first, then the rest in place. */
+  private pairAny(g: Gap, out: number[]) {
+    const k = g.dels.length;
+    const l = g.ins.length;
+    if (k !== l && k * l <= GAP_DP_MAX && this.dpLeft >= k * l) return this.pairDP(g, 0, k, 0, l, out);
+    const ln = this.gapLeft > 0 ? this.links(g, 0, k, 0, l) : null;
+    const usedA = new Uint8Array(k);
+    const usedB = new Uint8Array(l);
+    if (ln) {
+      const by = Array.from(ln.w.keys()).sort((x, y) => ln.w[y] - ln.w[x] || x - y);
+      for (const x of by) {
+        const u = ln.u[x];
+        const v = ln.v[x];
+        if (usedA[u] || usedB[v]) continue;
+        usedA[u] = usedB[v] = 1;
+        out.push(u, v);
+      }
+    }
+    for (let u = 0, v = 0; u < k && v < l; u++, v++) {
+      while (u < k && usedA[u]) u++;
+      while (v < l && usedB[v]) v++;
+      if (u < k && v < l) out.push(u, v);
+    }
+  }
+
+  /** Weighted LCS over pairwise similarity of dels[u0, u1) × ins[v0, v1) (element summaries made once). */
+  private pairDP(g: Gap, u0: number, u1: number, v0: number, v1: number, out: number[]) {
+    const { a, b, dels, ins } = g;
+    const k = u1 - u0;
+    const l = v1 - v0;
+    this.dpLeft -= k * l;
+    const sa: Sig[] = [];
+    const sb: Sig[] = [];
+    for (let u = u0; u < u1; u++) sa.push(this.sig(a[dels[u]], this.step(g.il, dels[u]) ?? NO));
+    for (let v = v0; v < v1; v++) sb.push(this.sig(b[ins[v]], this.step(g.ir, ins[v]) ?? NO));
     const w = l + 1;
     const dp = new Float64Array((k + 1) * w);
     for (let u = 1; u <= k; u++) {
       for (let v = 1; v <= l; v++) {
-        const s = similarity(a[dels[u - 1]], b[ins[v - 1]], sa[u - 1], sb[v - 1]);
+        const s = similarity(a[dels[u0 + u - 1]], b[ins[v0 + v - 1]], sa[u - 1], sb[v - 1]);
         let best = Math.max(dp[(u - 1) * w + v], dp[u * w + v - 1]);
         if (s > 0 && dp[(u - 1) * w + v - 1] + s > best) best = dp[(u - 1) * w + v - 1] + s;
         dp[u * w + v] = best;
       }
     }
+    const rev: number[] = [];
     let u = k;
     let v = l;
     while (u > 0 && v > 0) {
@@ -907,26 +1138,175 @@ class Differ {
       if (cur === dp[(u - 1) * w + v]) u--;
       else if (cur === dp[u * w + v - 1]) v--;
       else {
-        out.push(v - 1, u - 1); // reversed below
+        rev.push(v0 + v - 1, u0 + u - 1);
         u--;
         v--;
       }
     }
-    out.reverse(); // → [u0, v0, u1, v1, …] in ascending order
-    return out;
+    for (let x = rev.length - 1; x >= 0; x--) out.push(rev[x]);
   }
 
-  /** Similarity summary: key → value hash (objects), value hash → count (arrays up to 256 items). */
-  private sig(x: JNode): Sig {
+  /**
+   * Where the features of one side's elements are in `cap` (element x's from
+   * s[x] to e[x], sorted): as hash captured them while tokens hashed the
+   * array, else made again (see features) and added after them.
+   */
+  private sideFeatures(list: JNode[], idx: number[], st: Ig, capAt: Int32Array | null): [Int32Array, Int32Array] {
+    const n = idx.length;
+    const s = new Int32Array(n);
+    const e = new Int32Array(n);
+    for (let x = 0; x < n; x++) {
+      const i = idx[x];
+      if (capAt && capAt[2 * i] >= 0) {
+        s[x] = capAt[2 * i];
+        e[x] = capAt[2 * i + 1];
+      } else if (list[i].t < ARR) s[x] = e[x] = 0;
+      else {
+        const f = this.features(list[i], this.step(st, i) ?? NO);
+        if (this.capLen + f.length > this.cap.length) {
+          const c = new Int32Array(Math.max(2 * this.cap.length, this.capLen + f.length));
+          c.set(this.cap.subarray(0, this.capLen));
+          this.cap = c;
+        }
+        s[x] = this.capLen;
+        this.cap.set(f, this.capLen);
+        e[x] = this.capLen += f.length;
+      }
+    }
+    // (sorted in place: `cap` is scratch space until the next array is tokenized)
+    for (let x = 0; x < n; x++) sortRun(this.cap, s[x], e[x]);
+    return [s, e];
+  }
+
+  /**
+   * An element's features: per object member its key mixed with its value's
+   * hash, per array item its hash (as hash mixes them); none for a primitive.
+   * Ignored members and items, and all but the last of a duplicated key, have
+   * none. Never 0.
+   */
+  private features(x: JNode, st: Ig): Int32Array {
+    if (x.t < ARR) return NO_FEATURES;
+    const list = kids(x);
+    const out = new Int32Array(list.length);
+    const last = x.t === OBJ && this.dupKeys(list) ? keyMap(list) : null;
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (last && last.get(c.key as string) !== c) continue;
+      const s = this.step(st, x.t === OBJ ? (c.key as string) : i);
+      if (!s) continue;
+      const h = this.hash(c, s);
+      out[n++] = (x.t === OBJ ? fmix(laneLo(strHash(c.key as string, this.salt ^ S_KEY)) + Math.imul(laneLo(h), 0x9e3779b1)) : laneLo(h)) || 1;
+    }
+    return out.subarray(0, n);
+  }
+
+  /** Finds or makes the gap's features (see sideFeatures) once. */
+  private gapFeatures(g: Gap) {
+    if (g.sa) return;
+    [g.sa, g.ea] = this.sideFeatures(g.a, g.dels, g.il, this.capA);
+    [g.sb, g.eb] = this.sideFeatures(g.b, g.ins, g.ir, this.capB);
+  }
+
+  /**
+   * Whether runs of equal length are plainly edits in place (the common case:
+   * every record of a long array edited), cheaper than linking them: each
+   * element shares more features with its counterpart than with the
+   * counterpart's neighbours (elements without features: with none). Where
+   * elements were added in one place and removed in another, the elements in
+   * between share only their common values (or less) with their counterparts,
+   * as much as with the neighbours, and the runs are linked. Sequential merges
+   * of sorted runs, no table.
+   */
+  private inPlace(g: Gap, u0: number, u1: number, v0: number, v1: number): boolean {
+    this.gapFeatures(g);
+    const f = this.cap;
+    const sa = g.sa!;
+    const ea = g.ea!;
+    const sb = g.sb!;
+    const eb = g.eb!;
+    for (let t = 0; t < u1 - u0; t++) {
+      const u = u0 + t;
+      const v = v0 + t;
+      if (sa[u] === ea[u] && sb[v] === eb[v]) continue;
+      const own = shared(f, sa[u], ea[u], sb[v], eb[v]);
+      if (!own) return false;
+      if (v > v0 && shared(f, sa[u], ea[u], sb[v - 1], eb[v - 1]) >= own) return false;
+      if (v + 1 < v1 && shared(f, sa[u], ea[u], sb[v + 1], eb[v + 1]) >= own) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Links between dels[u0, u1) and ins[v0, v1): pairs that hold the same
+   * feature, found in no other element of the range on either side, weighted
+   * by the features the two share. Grouped by u ascending, v descending within
+   * one u. Null when there are none.
+   */
+  private links(g: Gap, u0: number, u1: number, v0: number, v1: number): Links | null {
+    this.gapFeatures(g);
+    const fs = this.cap;
+    const sa = g.sa!;
+    const ea = g.ea!;
+    const sb = g.sb!;
+    const eb = g.eb!;
+    let na = 0;
+    let nb = 0;
+    for (let u = u0; u < u1; u++) na += ea[u] - sa[u];
+    for (let v = v0; v < v1; v++) nb += eb[v] - sb[v];
+    this.gapLeft -= na + nb;
+    if (!na || !nb) return null;
+    const ua = new Unique(na);
+    const ub = new Unique(nb);
+    for (let u = u0; u < u1; u++) for (let p = sa[u]; p < ea[u]; p++) ua.add(fs[p], u);
+    for (let v = v0; v < v1; v++) for (let p = sb[v]; p < eb[v]; p++) ub.add(fs[p], v);
+    const lu: number[] = [];
+    const lv: number[] = [];
+    const lw: number[] = [];
+    for (let u = u0; u < u1; u++) {
+      const first = lu.length;
+      for (let p = sa[u]; p < ea[u]; p++) {
+        const f = fs[p];
+        if (ua.get(f) !== u) continue;
+        const v = ub.get(f);
+        if (v < 0) continue;
+        let x = first;
+        while (x < lu.length && lv[x] !== v) x++;
+        if (x < lu.length) continue; // (linked already)
+        const w = shared(fs, sa[u], ea[u], sb[v], eb[v]);
+        // (v descending within one u: into place among this element's few links)
+        lu.push(u);
+        lv.push(v);
+        lw.push(w);
+        for (; x > first && lv[x - 1] < v; x--) {
+          lv[x] = lv[x - 1];
+          lw[x] = lw[x - 1];
+        }
+        lv[x] = v;
+        lw[x] = w;
+      }
+    }
+    return lu.length ? { u: lu, v: lv, w: lw } : null;
+  }
+
+  /** Similarity summary: key → value hash (objects), value hash → count (arrays up to 256 items); ignored members left out. */
+  private sig(x: JNode, st: Ig): Sig {
     if (x.t < ARR) return null;
     const list = kids(x);
     const m: Sig = new Map();
     if (x.t === OBJ) {
-      for (const c of list) m.set(c.key as string, this.hash(c, NO));
+      for (const c of list) {
+        const s = this.step(st, c.key as string);
+        // (the last of a duplicated key wins)
+        if (s) m.set(c.key as string, this.hash(c, s));
+        else m.delete(c.key as string);
+      }
     } else {
       if (list.length > 256) return null;
-      for (const c of list) {
-        const h = this.hash(c, NO);
+      for (let i = 0; i < list.length; i++) {
+        const s = this.step(st, i);
+        if (!s) continue;
+        const h = this.hash(list[i], s);
         m.set(h, (m.get(h) ?? 0) + 1);
       }
     }
@@ -935,6 +1315,125 @@ class Differ {
 }
 
 type Sig = Map<string | number, number> | null;
+
+/** One gap being paired (see matchGap): its elements and their features, made as needed. */
+interface Gap {
+  a: JNode[];
+  b: JNode[];
+  dels: number[];
+  ins: number[];
+  il: Ig;
+  ir: Ig;
+  /** Where each element's features are in Differ.cap, per side: from s[x] to e[x] (found when first needed). */
+  sa: Int32Array | null;
+  ea: Int32Array | null;
+  sb: Int32Array | null;
+  eb: Int32Array | null;
+}
+
+/** Links of a gap (see Differ.links): link x pairs dels[u[x]] with ins[v[x]], weight w[x]. */
+interface Links {
+  u: number[];
+  v: number[];
+  w: number[];
+}
+
+const NO_FEATURES = new Int32Array(0);
+
+/** Feature → the one element of a range it occurs in (-1: more than one), in an open-addressing table. */
+class Unique {
+  /** Feature and element side by side (one cache line per probe); feature 0 = free. */
+  private readonly t: Int32Array;
+  private readonly mask: number;
+
+  constructor(n: number) {
+    let cap = 16;
+    while (cap < 2 * n) cap *= 2;
+    this.t = new Int32Array(2 * cap);
+    this.mask = cap - 1;
+  }
+
+  /** (Features are mixed hashes, never 0: their low bits place them.) */
+  add(f: number, x: number) {
+    const t = this.t;
+    let i = f & this.mask;
+    while (t[2 * i] !== 0 && t[2 * i] !== f) i = (i + 1) & this.mask;
+    if (t[2 * i] === 0) {
+      t[2 * i] = f;
+      t[2 * i + 1] = x;
+    } else if (t[2 * i + 1] !== x) t[2 * i + 1] = -1;
+  }
+
+  /** The element, -1 when several hold `f`, -2 when none does. */
+  get(f: number): number {
+    const t = this.t;
+    let i = f & this.mask;
+    while (t[2 * i] !== 0) {
+      if (t[2 * i] === f) return t[2 * i + 1];
+      i = (i + 1) & this.mask;
+    }
+    return -2;
+  }
+}
+
+/** Sorts f[a, b) (an element's few features: in place). */
+function sortRun(f: Int32Array, a: number, b: number) {
+  if (b - a > 24) return void f.subarray(a, b).sort();
+  for (let i = a + 1; i < b; i++) {
+    const x = f[i];
+    let j = i;
+    for (; j > a && f[j - 1] > x; j--) f[j] = f[j - 1];
+    f[j] = x;
+  }
+}
+
+/** Features two sorted runs f[i, ie) and f[j, je) share (with multiplicity). */
+function shared(f: Int32Array, i: number, ie: number, j: number, je: number): number {
+  let n = 0;
+  while (i < ie && j < je) {
+    const x = f[i];
+    const y = f[j];
+    if (x === y) {
+      n++;
+      i++;
+      j++;
+    } else if (x < y) i++;
+    else j++;
+  }
+  return n;
+}
+
+/**
+ * The heaviest chain of links increasing in both u and v (links grouped by u,
+ * v descending within one u, so two links of one element never chain): a
+ * weighted longest increasing subsequence over v with a Fenwick tree of
+ * prefix maxima, O(L log l). Returns link indices in order.
+ */
+function heaviestChain(ln: Links, v0: number, l: number): number[] {
+  const { v, w } = ln;
+  const n = v.length;
+  const best = new Float64Array(n);
+  const prev = new Int32Array(n);
+  const tree = new Int32Array(l + 1).fill(-1);
+  let top = -1;
+  for (let x = 0; x < n; x++) {
+    let q = -1;
+    for (let i = v[x] - v0; i > 0; i -= i & -i) {
+      const y = tree[i];
+      if (y >= 0 && (q < 0 || best[y] > best[q])) q = y;
+    }
+    best[x] = w[x] + (q >= 0 ? best[q] : 0);
+    prev[x] = q;
+    for (let i = v[x] - v0 + 1; i <= l; i += i & -i) {
+      const y = tree[i];
+      if (y < 0 || best[x] > best[y]) tree[i] = x;
+    }
+    if (top < 0 || best[x] > best[top]) top = x;
+  }
+  const chain: number[] = [];
+  for (let x = top; x >= 0; x = prev[x]) chain.push(x);
+  return chain.reverse();
+}
 
 /** 0 = unrelated (never paired) … 1 = identical. */
 function similarity(x: JNode, y: JNode, sx: Sig, sy: Sig): number {
@@ -945,6 +1444,8 @@ function similarity(x: JNode, y: JNode, sx: Sig, sy: Sig): number {
   if (!nx && !ny) return 1;
   if (x.t === OBJ) {
     if (!nx || !ny || !sx || !sy) return 0;
+    // (every member ignored on both sides: alike)
+    if (!sx.size && !sy.size) return 1;
     let score = 0;
     for (const [key, h] of sx) {
       const g = sy.get(key);
@@ -1078,10 +1579,12 @@ class Myers {
     const N = aHi - aLo;
     const M = bHi - bLo;
     const maxD = (N + M + 1) >> 1;
-    const off = maxD;
-    const len = 2 * maxD + 2;
-    const v1 = new Int32Array(len).fill(-1);
-    const v2 = new Int32Array(len).fill(-1);
+    // Diagonals -off…off (± d + 1 at edit count d), grown as d grows: a split found after few edits
+    // (most of them) costs what it finds, not the segment's length.
+    let off = Math.min(maxD, 32);
+    let len = 2 * off + 2;
+    let v1 = new Int32Array(len).fill(-1);
+    let v2 = new Int32Array(len).fill(-1);
     v1[off + 1] = 0;
     v2[off + 1] = 0;
     const delta = N - M;
@@ -1093,6 +1596,18 @@ class Myers {
     for (let d = 0; d < maxD; d++) {
       this.work += 2 * d + 2;
       if (this.work > this.limit) throw OVERFLOW;
+      if (d + 2 > off && off < maxD) {
+        const o2 = Math.min(maxD, 2 * off);
+        const l2 = 2 * o2 + 2;
+        const w1 = new Int32Array(l2).fill(-1);
+        const w2 = new Int32Array(l2).fill(-1);
+        w1.set(v1, o2 - off);
+        w2.set(v2, o2 - off);
+        v1 = w1;
+        v2 = w2;
+        off = o2;
+        len = l2;
+      }
       for (let k1 = -d + k1s; k1 <= d - k1e; k1 += 2) {
         const k1o = off + k1;
         let x1 = k1 === -d || (k1 !== d && v1[k1o - 1] < v1[k1o + 1]) ? v1[k1o + 1] : v1[k1o - 1] + 1;

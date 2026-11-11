@@ -70,3 +70,34 @@ test('REVIEW-3 B3: a command on the selected value: the second of two members na
   tasks.destroy();
   await src.destroy();
 });
+
+test('A big object\'s records array (bestArray) is the one records() picks: wrappers unwrapped, tables and records kept', async () => {
+  const { records: recordsOf } = await import('../lib/convert/xlsx');
+  const { parse: parseNodes } = await import('../lib/json/parser');
+  const docs = [
+    { meta: { page: 1 }, data: [{ a: 1 }, { a: 2 }] },
+    { result: { items: [{ a: 1 }, { a: 2 }, { a: 3 }], next: null }, other: [{ b: 1 }] },
+    { alice: { age: 30, orders: [{ id: 1 }, { id: 2 }] }, bob: { age: 40, orders: [{ id: 3 }] } },
+    { '2026-01-01': { n: 1, list: [{ x: 1 }] }, '2026-01-02': { n: 2 } },
+    { id: 1, items: [{ a: 1 }, { a: 2 }] },
+    { jsonrpc: '2.0', id: 7, result: [{ a: 1 }] },
+    { data: { id: 5, tags: [{ t: 1 }, { t: 2 }] }, list: [{ z: 1 }] },
+    { a: 1, b: 'x' },
+  ];
+  for (const doc of docs) {
+    const text = JSON.stringify(doc);
+    const bytes = enc.encode(text);
+    const blob = new Blob([bytes as BlobPart]);
+    const src = new CoreSource(blob, 'r.json', (p) => new HugeClient(blob, { name: 'r.json' }, p, inProcess(bytes)));
+    await ended(src);
+    const session = { src, indent: '  ', selected: null, meta: { name: 'r.json' }, ui: { get: () => ({ edit: null }) } } as unknown as HugeSession;
+    const tasks = new HugeTasks(session);
+    const best = await (tasks as unknown as { bestArray(n: unknown, blob: () => Promise<Blob>): Promise<{ start: number; end: number } | null> }).bestArray(((await (src as unknown as { doc: { summary(): Promise<{ root: unknown }> } }).doc.summary()).root), async () => blob);
+    const root = parseNodes(text).root!;
+    const rec = recordsOf(root);
+    const want = rec === root ? null : text.slice(rec.s, rec.e);
+    assert.equal(best && text.slice(best.start, best.end), want, text);
+    tasks.destroy();
+    await src.destroy();
+  }
+});

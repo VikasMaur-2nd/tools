@@ -9,6 +9,7 @@
  * are then deduplicated and given unique PascalCase names.
  */
 import { ARR, BOOL, JNode, NUL, NUM, STR, kids } from '../json/parser';
+import { isDataKey } from './keys';
 
 export interface ConvertOptions {
   /** Name of the top-level type (default "Root"). */
@@ -191,15 +192,12 @@ function merge(a: Shape, b: Shape): void {
   }
 }
 
-// Keys that are data rather than field names: numbers, UUIDs, dates.
-const DATA_KEY = /^(?:-?\d+(?:\.\d+)?|[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}|\d{4}-\d\d-\d\d\S*)$/i;
-
 function fin(s: Shape, all: boolean): void {
   if (s.arr) fin(s.arr, all);
   const o = s.obj;
   if (!o) return;
   const ps = [...o.props.values()];
-  if (ps.every((p) => DATA_KEY.test(p.key))) {
+  if (ps.every((p) => isDataKey(p.key))) {
     const v = shape();
     for (const p of ps) merge(v, p.s);
     o.map = v;
@@ -247,23 +245,25 @@ export function camel(s: string): string {
 
 export const snake = (s: string) => words(s).join('_').toLowerCase();
 
-const IRREG: Record<string, string> = {
-  people: 'person',
-  children: 'child',
-  men: 'man',
-  women: 'woman',
-  indices: 'index',
-  matrices: 'matrix',
-  vertices: 'vertex',
-  analyses: 'analysis',
-  aliases: 'alias',
-  data: '',
-};
+// (A Map: an object would find "constructor" on Object.prototype.)
+const IRREG = new Map<string, string>([
+  ['people', 'person'],
+  ['children', 'child'],
+  ['men', 'man'],
+  ['women', 'woman'],
+  ['indices', 'index'],
+  ['matrices', 'matrix'],
+  ['vertices', 'vertex'],
+  ['analyses', 'analysis'],
+  ['aliases', 'alias'],
+  ['data', ''],
+]);
 
 /** Singular form of an English plural, or null when the word isn't plural. */
 export function singular(w: string): string | null {
   const l = w.toLowerCase();
-  if (l in IRREG) return IRREG[l] ? (w === l ? IRREG[l] : cap(IRREG[l], false)) : null;
+  const irr = IRREG.get(l);
+  if (irr !== undefined) return irr ? (w === l ? irr : cap(irr, false)) : null;
   if (/(?:ss|us|is|news|series|species)$/.test(l)) return null;
   const up = w === w.toUpperCase() && w !== l;
   if (/[^aeiou]ies$/.test(l) && !/(?:movie|cookie|zombie|rookie|calorie|selfie|pie|tie|lie)s$/.test(l)) return w.slice(0, -3) + (up ? 'Y' : 'y');
@@ -283,9 +283,18 @@ function item(hint: string): string {
  * Infers the type model of a document. `reserved` lists type names that would
  * clash with the target language (they get a "Class" suffix); `pc` turns a key
  * into a type name. Without `unions`, mixed values become the language's
- * "any" type, so objects inside them are neither named nor emitted.
+ * "any" type, so objects inside them are neither named nor emitted. `fold`
+ * maps a name to what the language compares (PHP: ASCII case-insensitive), for
+ * both the reserved check and uniqueness.
  */
-export function infer(node: JNode, o: ConvertOptions, reserved = '', pc: (s: string) => string = pascal, unions = true): Model {
+export function infer(
+  node: JNode,
+  o: ConvertOptions,
+  reserved = '',
+  pc: (s: string) => string = pascal,
+  unions = true,
+  fold: (s: string) => string = (s) => s,
+): Model {
   stamp = 0;
   const root = shape();
   add(root, node);
@@ -316,13 +325,13 @@ export function infer(node: JNode, o: ConvertOptions, reserved = '', pc: (s: str
   };
   canon(root);
 
-  const res = new Set(reserved.split(' '));
+  const res = new Set(reserved.split(' ').map(fold));
   const used = new Set<string>();
   const unique = (n: string) => {
-    if (res.has(n)) n += 'Class';
+    if (res.has(fold(n))) n += 'Class';
     let u = n;
-    for (let i = 2; used.has(u); i++) u = n + i;
-    used.add(u);
+    for (let i = 2; used.has(fold(u)); i++) u = n + i;
+    used.add(fold(u));
     return u;
   };
   const types: Obj[] = [];

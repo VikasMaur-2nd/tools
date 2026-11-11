@@ -789,7 +789,7 @@ seqs:
   key: v
 - last
 `;
-    assert.match(err('? complex\n: key\n', 'yaml').error, /Complex mapping keys/);
+    assert.match(err('? [complex]\n: key\n', 'yaml').error, /Collections cannot be used as mapping keys/);
     assert.deepEqual(val(src, 'yaml'), {
       list: ['a', 'b c', 'd', { e: 1, f: [2, 3] }, ['x', 'y'], { k: 'v' }],
       map: { a: 1, b: null, c: null },
@@ -1073,5 +1073,59 @@ multi = [
       assert.match(e.error, re, src);
       assert.deepEqual([e.line, e.col], [line, col], `${JSON.stringify(src)}: ${e.error}`);
     }
+  });
+});
+
+// ── Audit regressions (CSV / Excel export) ───────────────────────────────
+
+describe('spreadsheet export audit', () => {
+  test('CSV: a one-column row with nothing in it is "", so readers keep it', () => {
+    // CSV readers (this importer, Python's csv.DictReader, pandas) skip a blank line: [1,null,3] read back as two rows.
+    const csv = toCsv(root('[1,null,3]'));
+    assert.equal(csv, 'value\r\n1\r\n""\r\n3\r\n');
+    // (CSV has no null: it reads back as an empty string)
+    assert.deepEqual(val(csv, 'csv'), [{ value: 1 }, { value: '' }, { value: 3 }]);
+    assert.equal(toCsv(root('[{"":1},{"":null}]')), '""\r\n1\r\n""\r\n');
+    // rows with a delimiter are never blank: empty fields stay empty (null)
+    assert.equal(toCsv(root('[{"a":null,"b":null}]')), 'a,b\r\n,\r\n');
+    assert.deepEqual(val(toCsv(root('[{"a":null,"b":null}]')), 'csv'), [{ a: null, b: null }]);
+  });
+
+  test('CSV: an empty array is "[]", as an empty object is "{}"', () => {
+    assert.equal(toCsv(root('[{"a":[],"b":{},"c":"","d":[1,null]}]')), 'a,b,c,d\r\n[],{},"","1, null"\r\n');
+    assert.equal(toCsv(root('[{"a":[]}]'), { flatten: 'json' }), 'a\r\n[]\r\n');
+    assert.deepEqual(tabulate(root('[{"a":[]}]')).rows, [['[]']]);
+  });
+
+  test('records: wrappers are unwrapped, tables and single records are not', () => {
+    const csv = (json: string) => toCsv(records(root(json)));
+    // a map of alike objects: one row per key, not one entry's inner array
+    assert.equal(
+      csv('{"alice":{"age":30,"orders":[{"id":1},{"id":2}]},"bob":{"age":40,"orders":[{"id":3}]}}'),
+      'key,age,orders\r\nalice,30,"[{""id"":1},{""id"":2}]"\r\nbob,40,"[{""id"":3}]"\r\n',
+    );
+    // keyed by data (ids, dates), however different the objects
+    const byId = root('{"1":{"a":[{"x":1},{"x":2}]},"2":{"b":1}}');
+    assert.equal(records(byId), byId);
+    const one = root('{"2024-01-01":{"events":[{"x":1},{"x":2}]}}');
+    assert.equal(records(one), one);
+    // a single record isn't replaced by an array it holds
+    assert.equal(csv('{"id":1,"items":[{"a":1},{"a":2}]}'), 'key,value\r\nid,1\r\nitems,"[{""a"":1},{""a"":2}]"\r\n');
+    // API wrappers still are, one or two levels down
+    assert.equal(csv('{"data":[{"a":1},{"a":2}],"meta":{"page":1}}'), 'a\r\n1\r\n2\r\n');
+    assert.equal(csv('{"data":{"items":[{"a":1},{"a":2}],"total":2},"meta":{"page":1,"total":2}}'), 'a\r\n1\r\n2\r\n');
+    assert.equal(csv('{"jsonrpc":"2.0","id":7,"result":[{"a":1}]}'), 'a\r\n1\r\n');
+    assert.equal(csv('{"status":"ok","user":{"id":5,"name":"n","repos":[{"r":1},{"r":2}]}}'), 'key,value\r\nstatus,ok\r\nuser.id,5\r\nuser.name,n\r\nuser.repos,"[{""r"":1},{""r"":2}]"\r\n');
+  });
+
+  test('XLSX: CR survives (a character reference), sheet names keep whole characters', async () => {
+    // XML parsers read a raw CR as LF: "x\r\ny" read back "x\ny"
+    const { sheet, text } = await xlsxParts('[{"a":"x\\r\\ny","b":"p\\rq","c":"_x000D_"}]', { sheetName: 'a'.repeat(30) + '😀' });
+    assert.ok(sheet.includes('<t>x&#13;\ny</t>') && sheet.includes('<t>p&#13;q</t>') && sheet.includes('<t>_x005F_x000D_</t>'), sheet);
+    wellFormed(sheet);
+    // Excel's 31-unit limit would cut the emoji in two: it is left out
+    assert.ok(text('xl/workbook.xml').includes(`<sheet name="${'a'.repeat(30)}" `), text('xl/workbook.xml'));
+    const fits = await xlsxParts('[1]', { sheetName: 'a'.repeat(29) + '😀b' });
+    assert.ok(fits.text('xl/workbook.xml').includes(`<sheet name="${'a'.repeat(29)}😀" `));
   });
 });

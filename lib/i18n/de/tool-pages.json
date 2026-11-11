@@ -420,7 +420,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "77780ec2e2d0",
+    "hash": "a354b5d54b87",
     "title": "YAML in JSON konvertieren, direkt im Browser",
     "description": "Konvertiere YAML online in formatiertes JSON. Tool Kumar parst YAML mit reinen Daten lokal im Browser, meldet Fehler und lädt dein Dokument nicht hoch.",
     "heading": "YAML in JSON konvertieren",
@@ -441,7 +441,7 @@
     "options": [
       "Einfache Mappings und Sequenzen werden zu JSON-Objekten und Arrays.",
       "Werte in Anführungszeichen bleiben Strings. Zahlen und boolesche Werte ohne Anführungszeichen werden zu den entsprechenden JSON-Werten.",
-      "Anker, benutzerdefinierte Tags und ausführbares YAML sind vom Import reiner Daten nicht abgedeckt."
+      "Anker, Aliase und <<-Merge-Schlüssel werden aufgelöst, und Standard-Tags wie !!int legen den Typ eines Werts fest. Benutzerdefinierte Tags werden ignoriert, und nichts wird ausgeführt."
     ],
     "faqs": [
       {
@@ -449,8 +449,8 @@
         "answer": "Ja. Eingerückte Einträge mit Bindestrich werden zu JSON-Arrays, auch wenn sie in Objekten verschachtelt sind."
       },
       {
-        "question": "Welche YAML-Funktionen werden nicht unterstützt?",
-        "answer": "Der Import konzentriert sich auf reine Daten. Für benutzerdefinierte Tags, Anker und anwendungsspezifische Direktiven benötigst du möglicherweise eine YAML-Bibliothek."
+        "question": "Unterstützt der Import Anker und Tags?",
+        "answer": "Ja. Anker, Aliase und <<-Merge-Schlüssel werden zu reinem JSON aufgelöst, und Standard-Tags wie !!str und !!int legen den Typ des Werts fest. Benutzerdefinierte Tags wie !Ref werden ignoriert und ihr Wert bleibt reine Daten, sodass nichts aus dem YAML ausgeführt wird. Eine Datei mit mehreren durch --- getrennten Dokumenten wird zu einem JSON-Array."
       },
       {
         "question": "Kann ich eine YAML-Datei öffnen?",

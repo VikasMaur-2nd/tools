@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { FakeElement, installDom } from './dom';
 import { TableView } from '../lib/engine/table';
 import { parse, type JNode } from '../lib/json/parser';
+import { tabulate, toCsv } from '../lib/convert/xlsx';
 
 installDom();
 
@@ -216,14 +217,84 @@ test('scrolling on draws only the rows coming into view, and they read as a full
   assert.ok(full > 800 && drawn < full / 2, `${drawn} rows drawn, ${full} redrawn whole`);
 });
 
-test('Copy table as CSV keeps formula-like text from running in a spreadsheet; numbers stay numbers', () => {
-  const { view } = table('[{"=k": "=1+1", "n": -5, "s": "-5", "t": "@SUM(A1)", "u": "\\t=1", "v": "plain"}]');
-  assert.equal(view.toCSV(), "'=k,n,s,t,u,v\r\n'=1+1,-5,-5,'@SUM(A1),'\t=1,plain");
+/** The table's CSV export: what Copy as CSV and Download CSV write. */
+const csv = (view: TableView) => toCsv(view.exportNode()!, { order: view.exportOrder() });
+
+test('the CSV and Excel exports write the table shown: its sub-table, in its order, nested objects as dotted columns', () => {
+  const doc = '{"meta":{"n":2},"users":[{"name":"Bo","address":{"city":"Oslo","zip":"0150"},"tags":["a","b"]},{"name":"Al","address":{"city":"Rome"}}]}';
+  const { view, sort } = table(doc);
+  // The object at the root: its own table (a row per member), not some array within it.
+  assert.equal(view.exportNode(), view.node);
+  const users = view.node!.v as JNode[];
+  view.setNode(users[1]);
+  assert.equal(view.exportNode(), users[1]);
+  const lines = csv(view).trimEnd().split('\r\n');
+  assert.equal(lines[0], 'name,address.city,address.zip,tags');
+  assert.deepEqual(lines.slice(1), ['Bo,Oslo,0150,"a, b"', 'Al,Rome,,']);
+  // Sorted by name: the rows exported in that order, the columns still the document's, the document untouched.
+  sort(1);
+  assert.equal(view.exportNode(), users[1]);
+  assert.deepEqual(Array.from(view.exportOrder()!), [1, 0]);
+  assert.deepEqual(csv(view).trimEnd().split('\r\n'), [lines[0], 'Al,Rome,,', 'Bo,Oslo,0150,"a, b"']);
+  assert.equal(tabulate(view.exportNode()!).headers.join(','), lines[0]);
+  sort(1);
+  sort(1);
+  assert.equal(view.exportOrder(), null);
+  view.setNode(null);
+  assert.equal(view.exportNode(), null);
+});
+
+test('a sorted table exports its columns in document order: sorting moves rows, not columns', () => {
+  // Record 1 has a key the others lack: first-seen column order would change with the row order.
+  const { view, sort } = table('[{"id":1,"b":"y"},{"id":2,"a":"x"},{"id":3,"a":"w"}]');
+  const head = csv(view).split('\r\n')[0];
+  assert.equal(head, 'id,b,a');
+  for (let k = 0; k < 2; k++) {
+    sort(0);
+    const out = csv(view).trimEnd().split('\r\n');
+    assert.equal(out[0], head, `sorted ${k ? 'descending' : 'ascending'}: the same columns`);
+  }
+  assert.deepEqual(csv(view).trimEnd().split('\r\n').slice(1), ['3,,w', '2,,x', '1,y,']);
 });
 
 test('a duplicated key shows its last value, as everything else reads it (JSON.parse, Compare, YAML)', () => {
-  assert.equal(table('[{"a":1,"a":2},{"a":3}]').view.toCSV(), 'a\r\n2\r\n3');
+  assert.equal(csv(table('[{"a":1,"a":2},{"a":3}]').view), 'a\r\n2\r\n3\r\n');
   // (Rows of many keys are looked up through a map.)
   const wide = '{' + Array.from({ length: 14 }, (_, i) => `"k${i}":${i}`).join(',') + ',"k0":"last"}';
-  assert.equal(table(`[${wide}]`).view.toCSV().split('\r\n')[1].split(',')[0], 'last');
+  const { view } = table(`[${wide}]`);
+  assert.equal(csv(view).split('\r\n')[1].split(',')[0], 'last');
+  const cell = (view as unknown as { cell(it: JNode, key: string): JNode | undefined }).cell((view.node!.v as JNode[])[0], 'k0');
+  assert.equal(cell?.v, 'last');
+});
+
+test("Find doesn't match an array's row numbers (an object's keys are data, and match)", () => {
+  const rows = JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ name: 'n' + String.fromCharCode(97 + (i % 26)), ok: i % 2 === 0 })));
+  assert.deepEqual(table(rows).view.find('1'), { total: 0, index: -1 });
+  assert.deepEqual(table('["a", "b1", "c"]').view.find('1'), { total: 1, index: 0 });
+  assert.deepEqual(table('{"k1": "x", "k2": "y1", "z": "q"}').view.find('1'), { total: 2, index: 0 });
+});
+
+test('sorting an object table by its keys sorts them, both ways, as text cells sort', () => {
+  const { view, drawn, sort } = table('{"b":1,"a":2,"c":0,"a10":3,"a9":4}');
+  const keys = () => drawn().map((x) => ['b', 'a', 'c', 'a10', 'a9'][x.r]);
+  sort(0);
+  assert.deepEqual(keys(), ['a', 'a9', 'a10', 'b', 'c']);
+  assert.ok(view.el.querySelector('.tb-head')!.innerHTML.includes('aria-sort="ascending"'));
+  sort(0);
+  assert.deepEqual(keys(), ['c', 'b', 'a10', 'a9', 'a']);
+  sort(0);
+  assert.deepEqual(keys(), ['b', 'a', 'c', 'a10', 'a9']);
+  // an array's row numbers: its order, or the other way
+  const arr = table('[3,1,2]');
+  arr.sort(0);
+  assert.deepEqual(arr.drawn().map((x) => x.r), [0, 1, 2]);
+  arr.sort(0);
+  assert.deepEqual(arr.drawn().map((x) => x.r), [2, 1, 0]);
+});
+
+test("the row label and value columns never take a member's name", () => {
+  const labels = (json: string) => (table(json).view as unknown as { cols: { label: string }[] }).cols.map((c) => c.label);
+  assert.deepEqual(labels('[{"key":1,"#":2,"value":3},4]'), ['_#', '_value', 'key', '#', 'value']);
+  assert.deepEqual(labels('{"a":{"key":1,"_key":2},"b":5}'), ['__key', 'value', 'key', '_key']);
+  assert.deepEqual(labels('[{"a":1},2]'), ['#', 'value', 'a']);
 });

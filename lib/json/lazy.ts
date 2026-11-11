@@ -239,9 +239,9 @@ export class Filler implements TapeLink {
     const t = this.tape;
     const end = nextOf(t, n.zi);
     if (n.t === OBJ) {
-      const key = String(k);
-      for (let c = n.zi + 1; c < end; c = nextOf(t, c)) if (keyOf(t, c) === key) return this.at(c);
-      return null;
+      // (Of a duplicated key, the last: see member.)
+      const c = this.member(n.zi, String(k));
+      return c < 0 ? null : this.at(c);
     }
     if (typeof k !== 'number' && !/^\d+$/.test(k)) return null;
     let want = Number(k);

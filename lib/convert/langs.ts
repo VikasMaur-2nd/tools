@@ -1,10 +1,11 @@
 /** Typed-language emitters: Go, Python, Rust, Java, C#, Kotlin, Swift, Dart, PHP. */
 import type { JNode } from '../json/parser';
-import { type ConvertOptions, type Obj, type Prim, type Shape, camel, infer, isNull, kind, lit, pascal, snake, typeOf, uniq } from './infer';
+import { type ConvertOptions, type Model, type Obj, type Prim, type Shape, camel, infer, isNull, kind, lit, pascal, snake, typeOf, uniq } from './infer';
 
 const props = (t: Obj) => [...t.props.values()];
 // Languages without union types: mixed values are `any`, so objects inside them get no type.
-const inferNU = (root: JNode, o: ConvertOptions, reserved: string, pc?: (s: string) => string) => infer(root, o, reserved, pc, false);
+const inferNU = (root: JNode, o: ConvertOptions, reserved: string, pc?: (s: string) => string, fold?: (s: string) => string) =>
+  infer(root, o, reserved, pc, false, fold);
 const set = (s: string) => new Set(s.split(' '));
 const has = (body: string, re: string) => new RegExp(re).test(body);
 
@@ -43,7 +44,10 @@ export function toGo(root: JNode, o: ConvertOptions): string {
         u(goName(p.key) || 'Field'),
         // Optional structs become pointers so `omitempty` can drop them.
         typeOf(p.s, P, p.opt && kind(p.s) === 'obj'),
-        GO_TAG.test(p.key) ? `\`json:"${p.key}${p.opt ? ',omitempty' : ''}"\`` : `\`json:"-"\` // key ${JSON.stringify(p.key)} can't be expressed in a tag`,
+        // (A tag of just "-" skips the field: the key "-" is written "-,".)
+        GO_TAG.test(p.key)
+          ? `\`json:"${p.key}${p.opt ? ',omitempty' : p.key === '-' ? ',' : ''}"\``
+          : `\`json:"-"\` // key ${JSON.stringify(p.key)} can't be expressed in a tag`,
       ];
       w0 = Math.max(w0, r[0].length);
       w1 = Math.max(w1, r[1].length);
@@ -65,10 +69,25 @@ const PY_MODEL = set(
   'construct copy dict from_orm json model_computed_fields model_config model_construct model_copy model_dump model_dump_json model_extra model_fields model_fields_set model_json_schema model_parametrized_name model_post_init model_rebuild model_validate model_validate_json model_validate_strings parse_file parse_obj parse_raw schema schema_json update_forward_refs validate',
 );
 const pyReserved = (n: string) => PY_RES.has(n) || PY_MODEL.has(n);
-const PY_ID = new RegExp('^[\\p{L}_][\\p{L}\\p{Nd}_]*$', 'u');
+// What Python takes for an identifier (checked on the source text, which it then reads NFKC-normalised: `ﬁle` is `file`).
+const PY_ID = new RegExp('^[\\p{XID_Start}_]\\p{XID_Continue}*$', 'u');
+const nfkc = (s: string) => s.normalize('NFKC');
+
+/** Names of the record types a shape's annotation refers to. */
+const refs = (s: Shape, acc: Set<string>): Set<string> => {
+  if (s.arr) refs(s.arr, acc);
+  const ob = s.obj;
+  if (ob?.map) refs(ob.map, acc);
+  else if (ob?.name) acc.add(ob.name);
+  return acc;
+};
 
 export function toPython(root: JNode, o: ConvertOptions): string {
-  const m = infer(root, o, 'BaseModel ConfigDict Field RootModel Any Dict List Optional Union None True False');
+  // (Type names as Python reads them, so two that normalise alike are told apart; "Type" if not an identifier.)
+  const m = infer(root, o, 'BaseModel ConfigDict Field RootModel Any Dict List Optional Union None True False', (s) => {
+    const n = nfkc(pascal(s));
+    return PY_ID.test(n) ? n : '';
+  });
   const P: Prim = {
     bool: 'bool',
     int: 'int',
@@ -83,13 +102,23 @@ export function toPython(root: JNode, o: ConvertOptions): string {
   };
   const out: string[] = [];
   for (const t of m.deps) {
-    const u = uniq();
+    // A field with a default or an alias (`= Field(…)`) is a class attribute: named like a type the annotations
+    // use, it hides that type from them (an annotation is evaluated after its own assignment, and from Python 3.14
+    // after the whole class body), so it takes another name and keeps its key as the alias.
+    const types = new Set<string>();
+    for (const p of props(t)) refs(p.s, types);
+    const used = new Set<string>();
     let ns = false;
     const lines = props(t).map((p) => {
-      const ok = PY_ID.test(p.key) && !pyReserved(p.key) && p.key[0] !== '_';
-      let f = ok ? p.key : snake(p.key) || 'field';
-      if (!ok && pyReserved(f)) f += '_';
-      f = u(f);
+      const n = nfkc(p.key);
+      const ok = PY_ID.test(p.key) && !pyReserved(n) && n[0] !== '_' && !(types.has(n) && (p.opt || n !== p.key));
+      let f = ok ? n : nfkc(snake(n));
+      if (!PY_ID.test(f)) f = 'field';
+      if (!ok && (pyReserved(f) || types.has(f))) f += '_';
+      // Unique among the fields, and never a type name when the field is bound (it has a default or an alias).
+      let r = f;
+      for (let i = 2; used.has(r) || (types.has(r) && (p.opt || r !== p.key)); i++) r = f + i;
+      used.add((f = r));
       if (f.startsWith('model_')) ns = true;
       const alias = f !== p.key ? `alias=${lit(p.key)}` : '';
       const def = p.opt ? (alias ? ` = Field(default=None, ${alias})` : ' = None') : alias ? ` = Field(${alias})` : '';
@@ -161,12 +190,17 @@ const JAVA_KW = set(
 );
 const BOX: Record<string, string> = { boolean: 'Boolean', long: 'Long', double: 'Double' };
 const box = (t: string) => BOX[t] || t;
+/**
+ * A JVM method takes at most 255 parameter slots, `this` included; long and double take two. `extra` = slots
+ * besides `this` and the fields (Kotlin's synthetic constructors add a mask int per 32 fields and a marker).
+ */
+const fitsJvm = (types: string[], wide: (t: string) => boolean, extra = 0) => types.reduce((n, t) => n + (wide(t) ? 2 : 1), 1 + extra) <= 255;
 
 export function toJava(root: JNode, o: ConvertOptions): string {
   const m = inferNU(
     root,
     o,
-    'String Object Long Double Boolean Integer List Map Record BigInteger JsonProperty Override Class Number Character Byte Short Float Void Math System Exception Error Thread Runtime Iterable Comparable Enum',
+    'String Object Long Double Boolean Integer List Map Record BigInteger JsonProperty JsonAlias Override Class Number Character Byte Short Float Void Math System Exception Error Thread Runtime Iterable Comparable Enum',
   );
   const P: Prim = {
     bool: 'boolean',
@@ -182,15 +216,35 @@ export function toJava(root: JNode, o: ConvertOptions): string {
   // One public top-level type (the file is Root.java); the others are nested public records.
   const rec = (t: Obj, ind: string, body: string) => {
     const u = uniq();
-    const cs = props(t).map((p) => {
+    let note = '';
+    const fs = props(t).map((p) => {
+      const ty = typeOf(p.s, P, p.opt);
+      if (p.key === '') {
+        // Jackson takes @JsonProperty("") for "the default name": the key "" is read through an alias, and the
+        // name it is written under (the field's) must be no other key's.
+        let c = 'field';
+        for (let i = 2; t.props.has(c); i++) c = 'field' + i;
+        let f = u(c);
+        while (t.props.has(f)) f = u(c);
+        note = `${ind}// The key "" is read through @JsonAlias (Jackson can't name a property ""): it is written as "${f}".\n`;
+        return { ann: '@JsonAlias("") ', ty, f };
+      }
       let f = camel(p.key) || 'field';
       if (JAVA_KW.has(f)) f += '_';
       f = u(f);
-      return `${f !== p.key ? `@JsonProperty(${lit(p.key)}) ` : ''}${typeOf(p.s, P, p.opt)} ${f}`;
+      return { ann: f !== p.key ? `@JsonProperty(${lit(p.key)}) ` : '', ty, f };
     });
+    if (!fitsJvm(fs.map((x) => x.ty), (ty) => ty === 'long' || ty === 'double')) {
+      // A record's canonical constructor takes every component: past the JVM's limit, a class with public fields
+      // (which Jackson sets after calling its no-argument constructor).
+      note += `${ind}// A class, not a record: a constructor can't take this many fields (the JVM's 255 parameter slots).\n`;
+      const fields = fs.map((x) => `${ind}    ${x.ann}public ${x.ty} ${x.f};`).join('\n');
+      return `${note}${ind}public ${ind ? 'static ' : ''}final class ${t.name} {\n${fields}\n${body === '}' ? ind + body : body}`;
+    }
+    const cs = fs.map((x) => x.ann + x.ty + ' ' + x.f);
     const head = `${ind}public record ${t.name}(`;
     const line = head + cs.join(', ') + ') {' + body;
-    return line.length <= 100 && !body.includes('\n') ? line : `${head}\n${ind}    ${cs.join(`,\n${ind}    `)}\n${ind}) {${body}`;
+    return note + (line.length <= 100 && !body.includes('\n') ? line : `${head}\n${ind}    ${cs.join(`,\n${ind}    `)}\n${ind}) {${body}`);
   };
   const nested = m.types.filter((t) => t !== m.obj).map((t) => rec(t, '    ', '}'));
   const inner = nested.length ? `\n${nested.join('\n\n')}\n}` : '}';
@@ -198,6 +252,7 @@ export function toJava(root: JNode, o: ConvertOptions): string {
     ? rec(m.obj, '', inner)
     : `// ${m.name}: ${box(typeOf(m.root, P))}` + (nested.length ? `\npublic final class ${m.name} {\n    private ${m.name}() {}\n${inner}` : '');
   const imp = [
+    body.includes('@JsonAlias(') && 'com.fasterxml.jackson.annotation.JsonAlias',
     body.includes('@JsonProperty(') && 'com.fasterxml.jackson.annotation.JsonProperty',
     has(body, '\\bBigInteger\\b') && 'java.math.BigInteger',
     has(body, '\\bList<') && 'java.util.List',
@@ -234,6 +289,7 @@ export function toCSharp(root: JNode, o: ConvertOptions): string {
   if (!m.obj) out.push(`// ${m.name}: ${typeOf(m.root, P)}`);
   for (const t of m.types) {
     const u = uniq();
+    u(t.name); // (taken: so a number added to make a member unique can't make it the class name either)
     const ps = props(t).map((p) => {
       let f = pascal(p.key) || 'Field';
       if (f === t.name || CS_OBJECT.has(f)) f += 'Value'; // members can't share the class name or hide object's
@@ -253,8 +309,26 @@ export function toCSharp(root: JNode, o: ConvertOptions): string {
 
 const KT_KW = set('as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while');
 
+/** The named types still referenced from the root when the `cut` ones are written as an untyped stand-in. */
+function reached(m: Model, cut: Set<Obj>): Obj[] {
+  const seen = new Set<Obj>();
+  // (As infer's naming walks the shapes, without unions.)
+  const walk = (s: Shape): void => {
+    if (kind(s) === 'union') return;
+    if (s.arr) walk(s.arr);
+    const ob = s.obj;
+    if (!ob) return;
+    if (ob.map) return walk(ob.map);
+    if (!ob.name || seen.has(ob)) return;
+    seen.add(ob);
+    if (!cut.has(ob)) for (const p of ob.props.values()) walk(p.s);
+  };
+  walk(m.root);
+  return m.types.filter((t) => seen.has(t));
+}
+
 export function toKotlin(root: JNode, o: ConvertOptions): string {
-  const m = inferNU(root, o, 'String Int Long Double Boolean List Map Set Any Unit Nothing Array Pair Triple Serializable SerialName JsonElement Char Number Float Short Byte Result');
+  const m = inferNU(root, o, 'String Int Long Double Boolean List Map Set Any Unit Nothing Array Pair Triple Serializable SerialName JsonElement JsonObject Char Number Float Short Byte Result');
   const P: Prim = {
     bool: 'Boolean',
     int: 'Long',
@@ -267,23 +341,42 @@ export function toKotlin(root: JNode, o: ConvertOptions): string {
     nul: (t) => t + '?',
     an: true,
   };
+  // Every constructor of a @Serializable data class takes all its properties: the primary one, the one for default
+  // values and copy$default (plus a mask Int per 32 parameters and a marker), and the serialization plugin's
+  // (plus a "seen" Int per 32 properties and a marker), within the JVM's 255 parameter slots. Past it, Long and
+  // Double (two slots each) become Long? and Double? (one); past that too, the object is a JsonObject.
+  const plan = m.types.map((t) => {
+    const n = t.props.size;
+    const extra = Math.ceil(n / 32) + 1;
+    const tys = props(t).map((p) => typeOf(p.s, P, p.opt));
+    return { t, tys, mode: fitsJvm(tys, (ty) => ty === 'Long' || ty === 'Double', extra) ? 0 : fitsJvm(tys, () => false, extra) ? 1 : 2 };
+  });
+  const cut = new Set(plan.filter((x) => x.mode === 2).map((x) => x.t));
+  const live = cut.size ? new Set(reached(m, cut)) : null;
   const out: string[] = [];
   if (!m.obj) out.push(`typealias ${m.name} = ${typeOf(m.root, P)}`);
-  for (const t of m.types) {
+  for (const { t, tys, mode } of plan) {
+    if (live && !live.has(t)) continue;
+    if (mode === 2) {
+      out.push(`// Too many properties for a serializable class (the JVM's 255 parameter slots): a JsonObject.\ntypealias ${t.name} = JsonObject`);
+      continue;
+    }
     const u = uniq();
-    const ps = props(t).map((p) => {
+    const ps = props(t).map((p, i) => {
       const f = u(camel(p.key) || 'field');
-      const ty = typeOf(p.s, P, p.opt);
+      const ty = mode && (tys[i] === 'Long' || tys[i] === 'Double') ? tys[i] + '?' : tys[i];
       const sn = f !== p.key ? `@SerialName(${lit(p.key, '"', false, true)}) ` : '';
       return `    ${sn}val ${KT_KW.has(f) ? '`' + f + '`' : f}: ${ty}${ty.endsWith('?') ? ' = null' : ''},`;
     });
-    out.push(`@Serializable\ndata class ${t.name}(\n${ps.join('\n')}\n)`);
+    const note = mode ? "// Long and Double properties are nullable (boxed): as primitives they'd take more than the JVM's 255 parameter slots.\n" : '';
+    out.push(`${note}@Serializable\ndata class ${t.name}(\n${ps.join('\n')}\n)`);
   }
   const body = out.join('\n\n');
   const imp = [
     body.includes('@SerialName(') && 'kotlinx.serialization.SerialName',
     body.includes('@Serializable') && 'kotlinx.serialization.Serializable',
     has(body, '\\bJsonElement\\b') && 'kotlinx.serialization.json.JsonElement',
+    has(body, '= JsonObject\\b') && 'kotlinx.serialization.json.JsonObject',
   ].filter(Boolean);
   return (imp.length ? imp.map((i) => `import ${i}`).join('\n') + '\n\n' : '') + body + '\n';
 }
@@ -324,7 +417,8 @@ export function toSwift(root: JNode, o: ConvertOptions): string {
   const m = inferNU(
     root,
     o,
-    'String Int Double Bool Data Date URL Array Dictionary Set Optional Codable Decodable Encodable CodingKeys CodingKey Error Any AnyObject Type Self Character Float Decimal UUID Never Void Protocol JSONValue',
+    // (Decoder and Encoder: JSONValue's init(from:) and encode(to:) name them.)
+    'String Int Double Bool Data Date URL Array Dictionary Set Optional Codable Decodable Encodable CodingKeys CodingKey Decoder Encoder Error Any AnyObject Type Self Character Float Decimal UUID Never Void Protocol JSONValue Foundation',
   );
   const P: Prim = {
     bool: 'Bool',
@@ -379,8 +473,10 @@ export function toSwift(root: JNode, o: ConvertOptions): string {
 // Dart identifiers are ASCII-only.
 const dartId = (s: string, pre: string) => s.replace(/[^\w$]/g, '').replace(/^(?=\d)/, pre);
 
+// Keywords, Object's members, the class's own methods, and the types its code names: a field `num` or
+// `dynamic` would hide the type from the class (`final int num;`, `Map<String, dynamic> json`).
 const DART_KW = set(
-  'assert break case catch class const continue default do else enum extends false final finally for if in is new null rethrow return super switch this throw true try var void while with hashCode runtimeType toString noSuchMethod toJson fromJson',
+  'assert break case catch class const continue default do else enum extends false final finally for if in is new null rethrow return super switch this throw true try var void while with hashCode runtimeType toString noSuchMethod toJson fromJson bool double dynamic int num String List Map MapEntry Object Null',
 );
 
 export function toDart(root: JNode, o: ConvertOptions): string {
@@ -471,14 +567,33 @@ export function toDart(root: JNode, o: ConvertOptions): string {
 
 /* ---------- PHP 8.1+ (readonly promoted properties + fromArray) ---------- */
 
+// Class names PHP refuses: keywords and type names, then the classes, interfaces and enums declared in the global
+// namespace by the engine and the extensions most builds load (a file without a namespace can't declare them again).
+// Names with an underscore (mysqli_result…) are left out: generated names never have one.
 const PHP_RES =
-  'Array Bool Callable Class Default Enum False Float Fn Function Int Iterable List Match Mixed Never New Null Object Parent Print Readonly Self Static String True Void Abstract And As Break Case Catch Clone Const Continue Declare Die Do Echo Else Empty Eval Exit Extends Final Finally For Foreach Global Goto If Implements Include Instanceof Insteadof Interface Isset Namespace Or Private Protected Public Require Return Switch Throw Trait Try Unset Use Var While Xor Yield';
+  'Array Bool Callable Class Default Enum False Float Fn Function Int Iterable List Match Mixed Never New Null Object Parent Print Readonly Self Static String True Void Abstract And As Break Case Catch Clone Const Continue Declare Die Do Echo Else Elseif Empty Enddeclare Endfor Endforeach Endif Endswitch Endwhile Eval Exit Extends Final Finally For Foreach Global Goto If Implements Include Instanceof Insteadof Interface Isset Namespace Or Private Protected Public Require Return Switch Throw Trait Try Unset Use Var While Xor Yield Resource Numeric ' +
+  // engine, standard, json, tokenizer, hash
+  'stdClass Traversable IteratorAggregate Iterator ArrayAccess Serializable Countable Stringable InternalIterator Closure Generator ClosedGeneratorException WeakReference WeakMap Fiber FiberError Attribute ReturnTypeWillChange AllowDynamicProperties SensitiveParameter SensitiveParameterValue Override Deprecated NoDiscard DelayedTargetValidation UnitEnum BackedEnum Throwable Exception ErrorException Error CompileError ParseError TypeError ArgumentCountError ValueError ArithmeticError DivisionByZeroError UnhandledMatchError RequestParseBodyException AssertionError Directory StreamBucket RoundingMode JsonException JsonSerializable PhpToken HashContext ' +
+  // date
+  'DateTimeInterface DateTime DateTimeImmutable DateTimeZone DateInterval DatePeriod DateError DateObjectError DateRangeError DateException DateInvalidTimeZoneException DateInvalidOperationException DateMalformedStringException DateMalformedIntervalStringException DateMalformedPeriodStringException ' +
+  // SPL
+  'ArrayIterator ArrayObject RecursiveArrayIterator AppendIterator CachingIterator CallbackFilterIterator DirectoryIterator EmptyIterator FilesystemIterator FilterIterator GlobIterator InfiniteIterator IteratorIterator LimitIterator MultipleIterator NoRewindIterator OuterIterator ParentIterator RecursiveCachingIterator RecursiveCallbackFilterIterator RecursiveDirectoryIterator RecursiveFilterIterator RecursiveIterator RecursiveIteratorIterator RecursiveRegexIterator RecursiveTreeIterator RegexIterator SeekableIterator SplDoublyLinkedList SplFileInfo SplFileObject SplFixedArray SplHeap SplMinHeap SplMaxHeap SplObjectStorage SplObserver SplPriorityQueue SplQueue SplStack SplSubject SplTempFileObject BadFunctionCallException BadMethodCallException DomainException InvalidArgumentException LengthException LogicException OutOfBoundsException OutOfRangeException OverflowException RangeException RuntimeException UnderflowException UnexpectedValueException ' +
+  // Reflection
+  'Reflection Reflector ReflectionException ReflectionClass ReflectionObject ReflectionMethod ReflectionFunction ReflectionFunctionAbstract ReflectionParameter ReflectionProperty ReflectionClassConstant ReflectionConstant ReflectionExtension ReflectionZendExtension ReflectionType ReflectionNamedType ReflectionUnionType ReflectionIntersectionType ReflectionGenerator ReflectionReference ReflectionAttribute ReflectionEnum ReflectionEnumUnitCase ReflectionEnumBackedCase ReflectionFiber PropertyHookType ' +
+  // common extensions: intl, DOM, XML, PDO, SQLite3, mysqli, curl, zip, sockets, gd, session, Phar, OpenSSL, zlib, SOAP, FFI…
+  'Collator NumberFormatter Normalizer Locale MessageFormatter IntlDateFormatter IntlDatePatternGenerator IntlListFormatter ResourceBundle Transliterator Spoofchecker IntlTimeZone IntlCalendar IntlGregorianCalendar IntlBreakIterator IntlRuleBasedBreakIterator IntlCodePointBreakIterator IntlPartsIterator IntlIterator IntlException IntlChar UConverter ' +
+  'DOMException DOMImplementation DOMNode DOMNameSpaceNode DOMDocumentFragment DOMDocument DOMNodeList DOMNamedNodeMap DOMCharacterData DOMAttr DOMElement DOMText DOMComment DOMCdataSection DOMDocumentType DOMNotation DOMEntity DOMEntityReference DOMProcessingInstruction DOMXPath DOMParentNode DOMChildNode ' +
+  'SimpleXMLElement SimpleXMLIterator XMLReader XMLWriter XMLParser LibXMLError XSLTProcessor PDO PDOStatement PDOException PDORow SQLite3 SQLite3Stmt SQLite3Result SQLite3Exception mysqli ' +
+  'CurlHandle CurlMultiHandle CurlShareHandle CurlSharePersistentHandle CURLFile CURLStringFile ZipArchive Socket AddressInfo GdImage GdFont SessionHandler SessionHandlerInterface SessionIdInterface SessionUpdateTimestampHandlerInterface Phar PharData PharFileInfo PharException finfo GMP ' +
+  'OpenSSLCertificate OpenSSLCertificateSigningRequest OpenSSLAsymmetricKey DeflateContext InflateContext SoapClient SoapServer SoapFault SoapHeader SoapParam SoapVar FFI Shmop SysvMessageQueue SysvSemaphore SysvSharedMemory EnchantBroker EnchantDictionary tidy tidyNode SNMP SNMPException';
+// PHP compares class names (and keywords) ASCII case-insensitively.
+const phpFold = (s: string) => s.replace(/[A-Z]+/g, (c) => c.toLowerCase());
 
 // Single quotes unless escapes are needed (then double quotes with `$` escaped).
 const phpStr = (k: string) => (/[\x00-\x1f\x7f]/.test(k) ? lit(k, '"', true, true) : lit(k, "'"));
 
 export function toPHP(root: JNode, o: ConvertOptions): string {
-  const m = inferNU(root, o, PHP_RES);
+  const m = inferNU(root, o, PHP_RES, undefined, phpFold);
   const P: Prim = {
     bool: 'bool',
     int: 'int',

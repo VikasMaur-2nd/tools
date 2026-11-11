@@ -176,6 +176,45 @@ describe('textdiff: line diff', () => {
     assert.ok(d.removed <= 300 && d.added <= 302, `${d.removed} / ${d.added}`);
   });
 
+  test('gaps of repeating lines (brackets) lose only the removed lines, however long', () => {
+    for (const [n, rate, seed] of [[3000, 0.01, 1], [3000, 0.1, 2], [6000, 0.1, 3], [20000, 0.01, 4], [20000, 0.1, 5]]) {
+      const r = rng(seed);
+      const a = Array.from({ length: n }, (_, i) => ['{', '  "a": 1', '},'][i % 3]);
+      const b = a.filter(() => r() >= rate);
+      const d = run(a, b);
+      assert.deepEqual([d.removed, d.added], [n - b.length, 0], `${n} lines, ${rate * 100}% removed`);
+    }
+  });
+
+  test('without unique lines, exact means minimal: a gap aligned in windows says it may not be', () => {
+    const lcs = (a: readonly string[], b: readonly string[]) => {
+      let prev = new Int32Array(b.length + 1);
+      let cur = new Int32Array(b.length + 1);
+      for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+        [prev, cur] = [cur, prev];
+      }
+      return prev[b.length];
+    };
+    const r = rng(17);
+    for (let t = 0; t < 6; t++) {
+      const n = 2200 + Math.floor(r() * 1500);
+      const k = 2 + Math.floor(r() * 3);
+      const a = Array.from({ length: n }, (_, i) => String(t % 2 ? i % k : Math.floor(r() * k)));
+      const b: string[] = [];
+      const del = r() * 0.15;
+      const ins = r() * (t < 3 ? 0.02 : 0.1);
+      for (const x of a) {
+        if (r() < ins) b.push(String(Math.floor(r() * k)));
+        if (r() >= del) b.push(x);
+      }
+      const d = run(a, b);
+      const min = a.length + b.length - 2 * lcs(a, b);
+      if (d.exact) assert.equal(d.added + d.removed, min, `case ${t}: exact but not minimal`);
+      else assert.ok(d.added + d.removed <= min * 1.1, `case ${t}: ${d.added + d.removed} edits, ${min} at least`);
+    }
+  });
+
   test('stays fast on ~50k-line documents', () => {
     const r = rng(11);
     const items = Array.from({ length: 6000 }, (_, i) => ({ id: i, name: `item ${i}`, tags: ['a', 'b'], v: Math.floor(r() * 100) }));

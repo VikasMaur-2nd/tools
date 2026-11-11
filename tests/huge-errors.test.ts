@@ -84,9 +84,20 @@ test('errors: chosen cases', () => {
     '[1.]',
     '[1e]',
     '{"a":1,"a":2}',
+    // A broken JSON Lines record, reported at the end of its own line; separators; a bare word that starts like a number.
+    '{"a":1}\n{"b":2\n{"c":3}\n',
+    '{"a":1}\n{"b":[1,2\n{"c":3}\n',
+    '{"a":1}\n{"b":"cut\n{"c":3}\n{"d":4}\n',
+    '{"a":1}\n{"b":1,"c"\n{"c":3}\n',
+    '{"a":1}\r\n{"b":[1\r\n\r\n{"c":3}\r\n',
+    '{"a":1\n{"b":2}\n',
+    '{"a":1}\n{"x":[' + '1,'.repeat(200) + '2\n{"c":3}\n',
+    '1,2\n',
+    '1-2',
+    '[2024-01-15]',
   ];
   for (const doc of cases) {
-    for (const every of [64, 128, 1 << 20]) for (const window of [64, 128, 4096]) check(enc.encode(doc), 'a.json', every, 64, window);
+    for (const every of [64, 128, 1 << 20]) for (const window of [64, 128, 4096]) for (const name of doc.includes('\n') ? ['a.json', 'a.jsonl'] : ['a.json']) check(enc.encode(doc), name, every, 64, window);
   }
 });
 

@@ -287,13 +287,10 @@ function strHint(n: JNode, now: number): ValueHint | null {
     const d = decode(s, now);
     if (d) {
       const exp = d.exp;
-      const label =
-        exp === undefined
-          ? 'JWT'
-          : d.claims.expired
-            ? 'JWT' + rt(' · ') + rt('expired {duration} ago', { duration: rt.dur(now / 1000 - exp) })
-            : 'JWT' + rt(' · ') + rt('expires in {duration}', { duration: rt.dur(exp - now / 1000) });
-      return { kind: 'jwt', label };
+      const parts = ['JWT'];
+      if (d.unsigned) parts.push(rt('not signed'));
+      if (exp !== undefined) parts.push(d.claims.expired ? rt('expired {duration} ago', { duration: rt.dur(now / 1000 - exp) }) : rt('expires in {duration}', { duration: rt.dur(exp - now / 1000) }));
+      return { kind: 'jwt', label: parts.join(rt(' · ')) };
     }
   }
   if (len <= 254 && s.indexOf('@') > 0 && EMAIL.test(s)) return { kind: 'email', label: rt('Email address') };

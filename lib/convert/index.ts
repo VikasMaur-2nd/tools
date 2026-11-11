@@ -40,7 +40,8 @@ const COMMENT: Record<string, string> = { python: '# ', yaml: '# ', toml: '# ', 
 
 /** Converts a parsed document to `target` (a target id other than CSV and Excel: see xlsx.ts). */
 export function convert(root: JNode, target: string, opts: ConvertOptions): string {
-  const f = EMIT[target];
+  // (Own keys only: "constructor" or "toString" would find Object.prototype's.)
+  const f = Object.hasOwn(EMIT, target) ? EMIT[target] : undefined;
   if (!f) throw new Error(`Unknown conversion target "${target}"`);
   const rootName = (opts.rootName || '').trim() || 'Root';
   try {

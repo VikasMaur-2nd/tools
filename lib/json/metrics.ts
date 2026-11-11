@@ -2,6 +2,7 @@ import { ARR, OBJ, STR, type JNode, type ParseResult } from './parser';
 import { byteLength, formatDoc } from './format';
 import { tapeOfNode } from './lazy';
 import { SIZE_BIG, sizeOf, W, type Tape } from './tape';
+import { HOLDS_JSON_PARSE_MAX, holdsJson } from '../engine/rules';
 
 /** documentMetrics' whitespace counts, read off a tape: per container with k children at depth d, k + 1 (+ k for an object's colons) and k(d + 1) + d indent units. */
 function tapeMetrics(t: Tape): { extra: number; units: number } {
@@ -74,8 +75,33 @@ export function documentMetrics(text: string, res: ParseResult, minified?: strin
     for (const child of list) if (child.t >= ARR) stack.push(child);
   }
   const metrics: DocumentMetrics = { bytes: byteLength(text), min: res.root ? min ?? byteLength(minified ?? formatDoc(text, res, '')) : 0, extra, units };
-  // (A string's start is enough: a long one from a tape isn't decoded whole for this.)
+  // Unescape: a string that holds JSON. (A long one from a tape isn't decoded whole for this: its start, and its
+  // last character read off the source.)
   const root = res.root;
-  if (root?.t === STR && /^\s*[[{]/.test(root._v === undefined && root.z ? root.z.head(root, 65_536) : (root.v as string))) metrics.unescape = true;
+  if (root?.t === STR && (root._v === undefined && root.z && root.e - root.s > HOLDS_JSON_PARSE_MAX ? holdsJson(root.z.head(root, 65_536), lastChar(text, root)) : holdsJson(root.v as string))) metrics.unescape = true;
   return metrics;
+}
+
+/**
+ * The last character of string `n`'s value other than JSON whitespace, read backwards off source `text` (escaped
+ * whitespace, `\n` `\r` `\t`, skipped); -1 when it isn't a plain "…" string there (a call(…) holds it).
+ */
+function lastChar(text: string, n: JNode): number {
+  let k = n.e - 1;
+  if (text.charCodeAt(k) !== 34 || text.charCodeAt(n.s) !== 34) return -1;
+  for (k--; k > n.s; k--) {
+    const c = text.charCodeAt(k);
+    if (c === 32 || c === 9 || c === 10 || c === 13) continue;
+    if (c === 110 || c === 114 || c === 116) {
+      // (An escape if an odd number of backslashes is before it.)
+      let b = k - 1;
+      while (b > n.s && text.charCodeAt(b) === 92) b--;
+      if ((k - 1 - b) % 2 === 1) {
+        k--;
+        continue;
+      }
+    }
+    return c;
+  }
+  return -1;
 }

@@ -5,6 +5,7 @@
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids } from '../json/parser';
 import { stringify, toValue } from '../json/format';
 import { formulaSafe } from './formula';
+import { isDataKey } from './keys';
 
 export type Flatten = 'dot' | 'json';
 export type CellValue = string | number | boolean | null;
@@ -19,11 +20,11 @@ interface Table {
 const text = (c: Cell): string =>
   c === undefined ? '' : typeof c === 'string' ? c : c.t === NUL ? '' : c.t === BOOL ? (c.v ? 'true' : 'false') : (c.v as string);
 
-/** Nested value as one cell: arrays of primitives joined with ", " (dot mode), else minified JSON. */
+/** Nested value as one cell: non-empty arrays of primitives joined with ", " (dot mode), else minified JSON (`[]` as `{}` is). */
 const nested = (n: JNode, dot: boolean): Cell => {
   if (n.t < ARR) return n;
   const k = kids(n);
-  if (dot && n.t === ARR && k.every((c) => c.t < ARR)) return k.map((c) => (c.t === NUL ? 'null' : text(c))).join(', ');
+  if (dot && n.t === ARR && k.length && k.every((c) => c.t < ARR)) return k.map((c) => (c.t === NUL ? 'null' : text(c))).join(', ');
   return stringify(n, '');
 };
 
@@ -207,12 +208,67 @@ function grid(root: JNode, dot: boolean, esc: boolean): Table {
 }
 
 /**
- * The array of records a spreadsheet should show: the root if it's an array,
- * otherwise the largest array of objects within two levels (`data`, `items`,
- * `results`… in API responses). Falls back to the root.
+ * Whether an object's children are the rows of one table, fed a child at a time (huge mode reads them in pages):
+ * all objects, keyed by data (ids, dates: the objects infer.ts makes dictionaries) or alike (each shares at least
+ * half its and the first one's keys between them). `keys`: the child's own keys, when it is an object.
+ */
+export function rowsCheck() {
+  let n = 0;
+  let objs = true;
+  let data = true;
+  let alike = true;
+  let first: Set<string> | null = null;
+  return {
+    add(c: JNode, keys: string[]) {
+      n++;
+      if (!objs || c.t !== OBJ) return void (objs = false);
+      if (data && !isDataKey(c.key as string)) data = false;
+      if (!alike) return;
+      if (!first) return void (first = new Set(keys));
+      let shared = 0;
+      for (const k of keys) if (first.has(k)) shared++;
+      // (shared / union >= 1/2)
+      if (!(shared > 0 && shared * 3 >= first.size + keys.length)) alike = false;
+    },
+    rows: () => n > 0 && objs && (data || (n >= 2 && alike)),
+  };
+}
+
+function keyedRows(n: JNode): boolean {
+  const check = rowsCheck();
+  for (const c of kids(n)) check.add(c, c.t === OBJ ? kids(c).map((g) => g.key as string) : []);
+  return check.rows();
+}
+
+// An object with an id of its own is one record (an API's wrapper holds records, it isn't one), but for a JSON-RPC
+// response's id, which is the call's.
+const ID = /^(?:_?id|uuid|guid)$/i;
+/** Whether an object is a single record, fed a child at a time (as rowsCheck). */
+export function recordCheck() {
+  let id = false;
+  let rpc = false;
+  return {
+    add(c: JNode) {
+      if ((c.t === STR || c.t === NUM) && ID.test(c.key as string)) id = true;
+      if (c.key === 'jsonrpc') rpc = true;
+    },
+    one: () => id && !rpc,
+  };
+}
+const oneRecord = (n: JNode) => {
+  const check = recordCheck();
+  for (const c of kids(n)) check.add(c);
+  return check.one();
+};
+
+/**
+ * The records a spreadsheet should show: the root, unless it is an object that wraps them: then the largest
+ * array of objects within two levels (`data`, `items`, `results`… in API responses). An object of alike objects
+ * is a table already (one row per key), and a single record (one with an id) isn't replaced by an array it
+ * holds, nor is a record inside the wrapper.
  */
 export function records(root: JNode): JNode {
-  if (root.t === ARR) return root;
+  if (root.t !== OBJ || keyedRows(root) || oneRecord(root)) return root;
   let best: JNode | null = null;
   const consider = (n: JNode) => {
     if (n.t !== ARR) return;
@@ -220,11 +276,9 @@ export function records(root: JNode): JNode {
     if (!list.length || !list.some((c) => c.t === OBJ)) return;
     if (!best || list.length > (best.v as JNode[]).length) best = n;
   };
-  if (root.t === OBJ) {
-    for (const c of root.v as JNode[]) {
-      consider(c);
-      if (c.t === OBJ) for (const g of c.v as JNode[]) consider(g);
-    }
+  for (const c of root.v as JNode[]) {
+    consider(c);
+    if (c.t === OBJ && !oneRecord(c)) for (const g of c.v as JNode[]) consider(g);
   }
   return best ?? root;
 }
@@ -257,17 +311,27 @@ export interface CsvOptions {
   delimiter?: ',' | ';' | '\t';
   /** Prepend a UTF-8 BOM so Excel detects the encoding. */
   bom?: boolean;
+  /** The rows in this order (indexes of `root`'s items, as a sorted table shows them); the columns stay in document order. */
+  order?: ArrayLike<number> | null;
 }
 
-/** RFC 4180 CSV (CRLF line endings). null/missing → empty field, "" → `""`. Numbers keep their exact source text; formula-like text gets a leading ' (formulaSafe). */
+/** `t`'s rows in `order` (when it is one for them). */
+const inOrder = (r: Cell[][], order: ArrayLike<number> | null | undefined) => (order && order.length === r.length ? Array.from(order, (i) => r[i]) : r);
+
+/**
+ * RFC 4180 CSV (CRLF line endings). null/missing → empty field, "" → `""`. Numbers keep their exact source text;
+ * formula-like text gets a leading ' (formulaSafe). A line is never empty: readers skip blank lines, so a
+ * one-column row (or header) with nothing in it is `""` (which reads back as an empty string: CSV has no null).
+ */
 export function toCsv(root: JNode, opts: CsvOptions = {}): string {
   const d = opts.delimiter ?? ',';
-  const { h, r } = table(root, opts.flatten ?? 'dot');
+  const { h, r: rows } = table(root, opts.flatten ?? 'dot');
+  const r = inOrder(rows, opts.order);
   const re = new RegExp('["\\r\\n' + (d === '\t' ? '\\t' : d) + ']');
   // (Text that would run as a formula is kept as text: see formulaSafe.)
   const f = (s: string) => ((s = formulaSafe(s)), re.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
   let out = opts.bom ? '\ufeff' : '';
-  if (h.length) out += h.map(f).join(d) + '\r\n';
+  if (h.length) out += (h.map(f).join(d) || '""') + '\r\n';
   for (const row of r) {
     let line = '';
     for (let j = 0; j < h.length; j++) {
@@ -275,7 +339,7 @@ export function toCsv(root: JNode, opts: CsvOptions = {}): string {
       const s = text(c);
       line += (j ? d : '') + (s === '' && c !== undefined && (typeof c === 'string' || c.t === STR) ? '""' : f(s));
     }
-    out += line + '\r\n';
+    out += (line || (h.length ? '""' : '')) + '\r\n';
   }
   return out;
 }
@@ -292,11 +356,13 @@ const REL = NS + 'officeDocument/2006/relationships';
 const PKG = NS + 'package/2006/relationships';
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
-// XML specials, characters illegal in XML 1.0 (stripped) and Excel's own `_xHHHH_` escapes (protected).
-const XT = /[&<>\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]|_x[\da-fA-F]{4}_/;
+// XML specials, CR, characters illegal in XML 1.0 (dropped) and text that reads as Excel's own `_xHHHH_` escapes
+// (protected). CR is a character reference, as XML parsers read a raw one as LF; not Excel's `_x000D_`, which
+// openpyxl (so pandas) leaves as it is in inline strings, as it would the other control characters' escapes.
+const XT = /[&<>\r\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]|_x[\da-fA-F]{4}_/;
 const XR = new RegExp(XT.source, 'g');
-const xe = (s: string) =>
-  XT.test(s) ? s.replace(XR, (m) => (m === '&' ? '&amp;' : m === '<' ? '&lt;' : m === '>' ? '&gt;' : m.length > 1 ? '_x005F' + m : '')) : s;
+const X_ENT: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\r': '&#13;' };
+const xe = (s: string) => (XT.test(s) ? s.replace(XR, (m) => X_ENT[m] ?? (m.length > 1 ? '_x005F' + m : '')) : s);
 const xa = (s: string) => xe(s).replace(/"/g, '&quot;');
 
 /** `<is>` payload for an inline string (truncated to Excel's 32,767-character cell limit). */
@@ -351,11 +417,13 @@ const numeric = (c: JNode) => {
   return a === 0 ? /^-?[0.]+(?:[eE]|$)/.test(raw) : a >= 2.2251e-308 && a <= 9.99999999999999e307;
 };
 
+// (Excel's limit is 31 UTF-16 code units: a character that would be cut in two is left out.)
 const sheetName = (s: string | undefined) => {
   const t = (s ?? '')
     .replace(/[\\/?*:[\]\x00-\x1f]/g, ' ')
     .trim()
     .slice(0, 31)
+    .replace(/[\ud800-\udbff]$/, '')
     .replace(/^'+|'+$/g, '');
   return t && t.toLowerCase() !== 'history' ? t : 'Sheet1';
 };
@@ -363,11 +431,14 @@ const sheetName = (s: string | undefined) => {
 export interface XlsxOptions {
   sheetName?: string;
   flatten?: Flatten;
+  /** As CsvOptions' `order`. */
+  order?: ArrayLike<number> | null;
 }
 
 /** Builds a single-sheet .xlsx: bold frozen header with autofilter, typed cells, content-sized columns. */
 export async function toXlsx(root: JNode, opts: XlsxOptions = {}): Promise<Blob> {
-  const { h, r } = table(root, opts.flatten ?? 'dot');
+  const { h, r: rows } = table(root, opts.flatten ?? 'dot');
+  const r = inOrder(rows, opts.order);
   const nc = h.length;
   const nr = r.length;
   if (nc > MAX_COLS) throw new Error(`Too many columns for Excel: ${nc.toLocaleString()} (max ${MAX_COLS.toLocaleString()})`);

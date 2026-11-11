@@ -245,6 +245,14 @@ const startsValue = (c: number) =>
   isIdentStart(c) ||
   isSmartQuote(c);
 
+/**
+ * ASCII that can't follow a number, but goes on a token that starts like one (`2024-01-15`, `10.0.0.1`, `0o17`,
+ * `5px`): letters, digits, `_`, `$`, `-`, `+` and `.` (past ASCII, what isIdentStart takes). Such a token is a
+ * bare word (see bare()), not a number and what follows it.
+ */
+export const NUMBER_TAIL = new Uint8Array(128);
+for (const r of ['az', 'AZ', '09', '__', '$$', '--', '++', '..']) for (let c = r.charCodeAt(0); c <= r.charCodeAt(1); c++) NUMBER_TAIL[c] = 1;
+
 const INT_KEY = /^(?:0|[1-9]\d{0,9})$/;
 /** JSON whitespace. */
 const isSpace = (c: number) => c === 32 || c === 10 || c === 13 || c === 9;
@@ -537,6 +545,15 @@ let prose = false;
 /** One of `quoting` or `prose` repaired something (and `turnedLast` when the parse that did finished). */
 let turned = false;
 let turnedLast = false;
+/** Where the top-level value being read starts (JSON Lines: its record; see lineCut()). */
+let rec = 0;
+// lineCut()'s last answers (worked out again after load(): they follow from the state): the line break that
+// ends the line where record `eolOf` starts (-1: none), and whether the record is cut at `cutP` (the line
+// break where, else -1).
+let eolOf = -1;
+let recEol = -1;
+let cutP = -1;
+let cutAt = -1;
 
 function begin(text: string, jsonLines: boolean, perRun: number) {
   src = text;
@@ -555,6 +572,8 @@ function begin(text: string, jsonLines: boolean, perRun: number) {
   callD = [];
   callS = [];
   fixing = quoting = prose = turned = false;
+  rec = 0;
+  eolOf = cutP = -1;
 }
 
 interface State {
@@ -586,17 +605,19 @@ interface State {
   quoting: boolean;
   prose: boolean;
   turned: boolean;
+  rec: number;
 }
 
 /** The running parse's state, into `state` (a new object without it). */
 function save(state?: State): State {
-  const s: State = { src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing, quoting, prose, turned };
+  const s: State = { src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing, quoting, prose, turned, rec };
   return state ? Object.assign(state, s) : s;
 }
 
 function load(s: State) {
-  ({ src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing, quoting, prose, turned } = s);
+  ({ src, n, lines, every, i, nodes, depth, exact, multi, issues, warnings, cur, mode, nextKey, ret, sets, callD, callS, fence, before, start, root, wrap, phase, fixing, quoting, prose, turned, rec } = s);
   opened = false;
+  eolOf = cutP = -1;
 }
 
 /** Runs the loaded parse: its result, or undefined when `until` has passed. */
@@ -625,7 +646,7 @@ function steps(until: number): ParseResult | undefined {
       }
       if (i >= n) return finish(null);
       before = issues.length;
-      start = i;
+      rec = start = i;
       phase = 1;
     }
     // (A step always makes progress. Short runs keep run() a hot function the engine optimizes as such.)
@@ -760,7 +781,8 @@ const esc = (): string => {
     return '';
   }
   fix(i - 2, `Invalid escape sequence \\${String.fromCharCode(c)}`);
-  return String.fromCharCode(c);
+  // (JavaScript's \v, and \0 when no digit follows it, as JSON5 reads them: what they stand for.)
+  return c === 118 ? '\v' : c === 48 && !isDigit(src.charCodeAt(i)) ? '\0' : String.fromCharCode(c);
 };
 
 /** Reads a string starting at the opening quote; `q`/`q2` are the accepted closing quotes. */
@@ -775,7 +797,7 @@ const str = (q: number, q2 = q): string => {
     if (i >= n) {
       if (fixing) {
         const k = plain ? memberCut(s + 1, n) : -1;
-        if (k >= 0) return cutAt(s, k);
+        if (k >= 0) return closeAt(s, k);
         fix(n, 'Missing closing quote: the string was closed at the end of the input');
         return out + src.slice(seg, i);
       }
@@ -813,7 +835,12 @@ const str = (q: number, q2 = q): string => {
     if (c < 32) {
       if (fixing && (c === 10 || c === 13)) {
         const k = plain ? memberCut(s + 1, i) : -1;
-        if (k >= 0) return cutAt(s, k);
+        if (k >= 0) return closeAt(s, k);
+        fix(i, 'Missing closing quote: the string was closed at the end of the line');
+        return out + src.slice(seg, i);
+      }
+      // JSON Lines: a record cut in a string (see lineCut()) ends here.
+      if ((c === 10 || c === 13) && (phase === 2 || lines) && lineCut(nextAfter(i)) === i) {
         fix(i, 'Missing closing quote: the string was closed at the end of the line');
         return out + src.slice(seg, i);
       }
@@ -821,6 +848,59 @@ const str = (q: number, q2 = q): string => {
     }
     i++;
   }
+};
+
+/** Where the next character other than JSON whitespace is from `p`. */
+const nextAfter = (p: number): number => {
+  while (isSpace(src.charCodeAt(p))) p++;
+  return p;
+};
+
+/**
+ * Reading JSON Lines (several top-level values, or ParseOptions.lines), whether the record being read (the
+ * top-level value from `rec`) is cut at the end of the line it starts on, rather than read on: where that line
+ * ends (its line break), else -1. `p` is where it can't go on (a missing comma, a property name or a colon
+ * missing, or a line break in a string), and it is cut when it is still open at the end of its first line and
+ * `p` starts the next line that isn't blank with a record of its own: a `{` or `[` whose line holds a value that
+ * closes at the line's end, or is still open there. So a broken line is reported on its own line, and the next
+ * line is a record. A record over several lines (pretty JSON) is never cut, nor anything that parses as it is.
+ */
+const lineCut = (p: number): number => {
+  const c = src.charCodeAt(p);
+  if ((c !== 123 && c !== 91) || (phase !== 2 && !lines)) return -1;
+  if (p === cutP) return cutAt;
+  cutP = p;
+  cutAt = -1;
+  if (eolOf !== rec) {
+    eolOf = rec;
+    recEol = rec;
+    while (recEol < n && src.charCodeAt(recEol) !== 10 && src.charCodeAt(recEol) !== 13) recEol++;
+  }
+  const e = recEol;
+  if (e >= p || nextAfter(e) !== p) return -1;
+  // p's line: brackets (outside strings) never close more than they opened, and nothing but spaces after the value closes.
+  let level = 0;
+  for (let k = p; k < n; k++) {
+    const x = src.charCodeAt(k);
+    if (x === 10 || x === 13) break;
+    if (x === 34) {
+      for (k++; k < n; k++) {
+        const y = src.charCodeAt(k);
+        if (y === 34 || y === 10 || y === 13) break;
+        if (y === 92 && src.charCodeAt(k + 1) !== 10 && src.charCodeAt(k + 1) !== 13) k++;
+      }
+      if (k >= n || src.charCodeAt(k) !== 34) break;
+    } else if (x === 123 || x === 91) level++;
+    else if (x === 125 || x === 93) {
+      if (--level === 0) {
+        k++;
+        while (src.charCodeAt(k) === 32 || src.charCodeAt(k) === 9) k++;
+        if (k < n && src.charCodeAt(k) !== 10 && src.charCodeAt(k) !== 13) return -1;
+        break;
+      }
+    }
+  }
+  return (cutAt = e);
 };
 
 /**
@@ -855,7 +935,7 @@ const memberCut = (a: number, e: number): number => {
 };
 
 /** Repairing, the string opened at `s` closed before `k` (see memberCut). */
-const cutAt = (s: number, k: number): string => {
+const closeAt = (s: number, k: number): string => {
   fix(k, `Missing closing quote: the string was closed before the '${src[k]}'`);
   i = k;
   return src.slice(s + 1, k);
@@ -1016,6 +1096,42 @@ const num = (): string => {
   return clean ? raw : normalizeNumber(raw);
 };
 
+/**
+ * A number at `s`, or, when what follows it right away goes on the token (see NUMBER_TAIL: `2024-01-15`,
+ * `10.0.0.1`), that token as a bare word, in an array as in an object.
+ */
+const number = (s: number, d: number, u: JNode | null, key: Key): JNode => {
+  const had = issues.length;
+  const v = num();
+  const c = src.charCodeAt(i);
+  if (!(c < 128 ? NUMBER_TAIL[c] === 1 : isIdentStart(c))) return leaf(NUM, v, s, d, u, key);
+  // (What num() reported was about a number, which this isn't.)
+  issues.length = had;
+  return bare(s, d, u, key);
+};
+
+/** A bare word from `s` (i is in it): a string up to the end of its value (, } ] or the line's end), with the issue. */
+const bare = (s: number, d: number, u: JNode | null, key: Key): JNode => {
+  while (i < n) {
+    const ch = src.charCodeAt(i);
+    if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
+    // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
+    if (ch === 47) {
+      const nx = src.charCodeAt(i + 1);
+      const pv = src.charCodeAt(i - 1);
+      if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
+    }
+    i++;
+  }
+  let e = i;
+  while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
+  const text = src.slice(s, e);
+  fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
+  const nd = new JNode(STR, text, s, d, u, key);
+  nd.e = e;
+  return nd;
+};
+
 const looseKey = (c: number): string => {
   if (c === 39) {
     fix(i, 'Property names must use double quotes');
@@ -1083,12 +1199,19 @@ const loose = (c: number, d: number, u: JNode | null, key: Key): JNode | null =>
       i += 3;
       return leaf(NUL, null, s, d, u, key);
     }
-    if (c !== 46 && src.startsWith('Infinity', i + 1)) {
-      fix(s, 'Infinity is not valid JSON (replaced with null)');
-      i += 9;
-      return leaf(NUL, null, s, d, u, key);
+    if (c !== 46 && isIdentStart(src.charCodeAt(i + 1))) {
+      // A sign before a word: -Infinity, +NaN (null, as the word alone), else a bare word as the word alone is.
+      let e = i + 1;
+      while (e < n && isIdent(src.charCodeAt(e))) e++;
+      const w = src.slice(i + 1, e);
+      if (w === 'Infinity' || w === 'NaN') {
+        fix(s, `${w} is not valid JSON (replaced with null)`);
+        i = e;
+        return leaf(NUL, null, s, d, u, key);
+      }
+      return bare(s, d, u, key);
     }
-    return leaf(NUM, num(), s, d, u, key);
+    return number(s, d, u, key);
   }
   if (isIdentStart(c)) {
     while (i < n && isIdent(src.charCodeAt(i))) i++;
@@ -1150,24 +1273,7 @@ const loose = (c: number, d: number, u: JNode | null, key: Key): JNode | null =>
       return null;
     }
     i = end;
-    while (i < n) {
-      const ch = src.charCodeAt(i);
-      if (ch === 44 || ch === 125 || ch === 93 || ch === 10 || ch === 13) break;
-      // `value // comment` or `value /* comment */` (but keep URLs such as http://x)
-      if (ch === 47) {
-        const nx = src.charCodeAt(i + 1);
-        const pv = src.charCodeAt(i - 1);
-        if ((nx === 47 || nx === 42) && (pv === 32 || pv === 9)) break;
-      }
-      i++;
-    }
-    let e = i;
-    while (e > s && (src.charCodeAt(e - 1) === 32 || src.charCodeAt(e - 1) === 9)) e--;
-    const text = src.slice(s, e);
-    fix(s, `Unexpected '${text.length > 24 ? text.slice(0, 24) + '…' : text}': strings must be wrapped in double quotes`);
-    const nd = new JNode(STR, text, s, d, u, key);
-    nd.e = e;
-    return nd;
+    return bare(s, d, u, key);
   }
   // Repairing, a property's missing value: null.
   if (fixing && typeof key === 'string') {
@@ -1205,7 +1311,9 @@ const skipTail = () => {
 const nextLine = (): boolean => {
   const list = wrap!._v as JNode[];
   ws();
+  // (A comma or semicolon between values: reported, as after a single value (skipTail), where strict JSON fails.)
   while (src.charCodeAt(i) === 44 || src.charCodeAt(i) === 59) {
+    fix(i, `Unexpected ${describe(i)}`);
     i++;
     ws();
   }
@@ -1244,6 +1352,7 @@ const topLevel = (r: JNode): boolean => {
     i = start;
     wrap = new JNode(ARR, [], start, 0, null, undefined);
     phase = 2;
+    cutP = -1;
     return !nextLine();
   }
   if (i < n) {
@@ -1310,7 +1419,7 @@ const value = (d: number, u: JNode | null, key: Key): JNode | null => {
   if (c === 34) return leaf(STR, fixing ? joined(str(34)) : str(34), s, d, u, key);
   if (c === 123) return openObj(d, u, key);
   if (c === 91) return openArr(d, u, key);
-  if (isDigit(c) || (c === 45 && src.charCodeAt(i + 1) !== 73)) return leaf(NUM, num(), s, d, u, key);
+  if (isDigit(c) || (c === 45 && isDigit(src.charCodeAt(i + 1)))) return number(s, d, u, key);
   if (c === 116 && word('true')) return leaf(BOOL, true, s, d, u, key);
   if (c === 102 && word('false')) return leaf(BOOL, false, s, d, u, key);
   if (c === 110 && word('null')) return leaf(NUL, null, s, d, u, key);
@@ -1345,6 +1454,13 @@ const closeCalls = (v: JNode): JNode => {
     v.e = i;
   }
   return v;
+};
+
+/** JSON Lines: the object being filled closes where its record is cut (see lineCut()). */
+const cutObj = (): null => {
+  fix(cutAt, "Unexpected end of line: missing '}'");
+  i = cutAt;
+  return null;
 };
 
 /**
@@ -1396,6 +1512,10 @@ const fillObj = (p: JNode, levels: number): JNode | null | undefined => {
             fix(i, "Expected '}' to close the object, found ']'");
             return null;
           }
+          if (lineCut(i) >= 0) {
+            fix(cp, 'Trailing commas are not allowed');
+            return cutObj();
+          }
         } else if (c === 125) {
           i++;
           return null;
@@ -1407,8 +1527,12 @@ const fillObj = (p: JNode, levels: number): JNode | null | undefined => {
           return null;
         } else if (c === 34 || c === 39 || c === 96 || isIdentStart(c) || isSmartQuote(c)) {
           fix(i, "Expected ',' between properties");
-        } else fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
-      } else c = src.charCodeAt(i);
+        } else if (lineCut(i) >= 0) return cutObj();
+        else fail(i, `Expected ',' or '}' after property value, found ${describe(i)}`);
+      } else {
+        c = src.charCodeAt(i);
+        if (lineCut(i) >= 0) return cutObj();
+      }
       // A property name and its colon.
       // Repairing: a `...` placeholder for members is skipped.
       if (fixing && c === 46 && src.startsWith('...', i)) {
@@ -1448,6 +1572,9 @@ const fillObj = (p: JNode, levels: number): JNode | null | undefined => {
       else if (c === 61) {
         fix(i, "Expected ':' after property name");
         i++;
+      } else if (lineCut(i) >= 0) {
+        // (Its name is left out: its value isn't on its line.)
+        return cutObj();
       } else if (startsValue(c)) fix(i, "Expected ':' after property name");
       else fail(i, `Expected ':' after property name, found ${describe(i)}`);
     }
@@ -1515,6 +1642,10 @@ const fillArr = (p: JNode, levels: number): JNode | null | undefined => {
       } else if (c === 125) {
         fix(i, "Expected ']' to close the array, found '}'");
         return null;
+      } else if (lineCut(i) >= 0) {
+        fix(cutAt, "Unexpected end of line: missing ']'");
+        i = cutAt;
+        return null;
       } else if (startsValue(c)) fix(i, "Expected ',' between array items");
       else fail(i, `Expected ',' or ']' after array item, found ${describe(i)}`);
     }
@@ -1577,6 +1708,7 @@ const run = (): boolean => {
         // JSON Lines: the next value goes in `wrap`.
         cur = wrap;
         mode = VALUE;
+        rec = i;
         continue;
       }
       opened = false;

@@ -38,7 +38,7 @@
   ],
   "empty": false
  },
- "csv": "key,value\r\nname,Ada\r\nok,true\r\nnone,\r\nn,\r\ninf,\r\nhex,31\r\nlist,\"[1,2]\"",
+ "csv": "key,value\r\nname,Ada\r\nok,true\r\nnone,\r\nn,\r\ninf,\r\nhex,31\r\nlist,\"1, 2\"\r\n",
  "convert": {
   "typescript": "export interface Root {\n  name: string;\n  ok: boolean;\n  none: null;\n  n: null;\n  inf: null;\n  hex: number;\n  list: number[];\n}\n",
   "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.object({\n  name: z.string(),\n  ok: z.boolean(),\n  none: z.null(),\n  n: z.null(),\n  inf: z.null(),\n  hex: z.number().int(),\n  list: z.array(z.number().int()),\n});\nexport type Root = z.infer<typeof RootSchema>;\n",

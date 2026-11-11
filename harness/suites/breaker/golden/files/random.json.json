@@ -1,10 +1,10 @@
 {
  "status": {
-  "msg": "Ln 1, Col 2: Multiple top-level values (wrapped in an array)",
+  "msg": "Ln 1, Col 1: Unexpected '2�Ba�\bΒ�v�\f˳�[�J\u0000��Jњ��\u0002…': strings must be wrapped in double quotes",
   "kind": "err",
   "raw": "1.7 MB raw",
   "min": null,
-  "stats": "7,808 lines · 4 nodes · depth 1"
+  "stats": "7,808 lines · 1 node · depth 0"
  },
  "toasts": [
   "random.json looks like a binary file, not JSONOpen as text",

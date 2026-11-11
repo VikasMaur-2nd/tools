@@ -419,7 +419,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "77780ec2e2d0",
+    "hash": "a354b5d54b87",
     "title": "YAML a JSON con formato en tu navegador",
     "description": "Convierte YAML a JSON con formato sin subir el documento. Tool Kumar analiza YAML de datos simples en tu navegador e informa de los errores.",
     "heading": "YAML a JSON",
@@ -439,7 +439,7 @@
     "options": [
       "Los mapeos y secuencias simples se convierten en objetos y arrays JSON.",
       "Los valores entre comillas siguen siendo cadenas; los números y booleanos sin comillas se convierten en valores JSON.",
-      "El importador de datos simples no admite anclajes, etiquetas personalizadas ni YAML ejecutable."
+      "Los anclajes, los alias y las claves de fusión << se expanden, y las etiquetas estándar como !!int fijan el tipo del valor. Las etiquetas personalizadas se ignoran y no se ejecuta nada."
     ],
     "faqs": [
       {
@@ -447,8 +447,8 @@
         "answer": "Sí. Los elementos con sangría y guion se convierten en arrays JSON, incluidos los arrays anidados dentro de objetos."
       },
       {
-        "question": "¿Qué funciones de YAML no se admiten?",
-        "answer": "El importador se centra en datos simples. Las etiquetas personalizadas, los anclajes y las directivas específicas de una aplicación pueden requerir una biblioteca YAML."
+        "question": "¿El importador admite anclajes y etiquetas?",
+        "answer": "Sí. Los anclajes, los alias y las claves de fusión << se expanden en JSON simple, y las etiquetas estándar como !!str y !!int fijan el tipo del valor. Las etiquetas personalizadas como !Ref se ignoran y su valor se conserva como dato simple, así que nunca se ejecuta nada del YAML. Un archivo con varios documentos separados por --- se convierte en un array JSON."
       },
       {
         "question": "¿Puedo abrir un archivo YAML?",

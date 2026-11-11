@@ -28,7 +28,7 @@
   ],
   "empty": false
  },
- "csv": "key,value\r\n<img src=x onerror=window.__xss=1>,<script>window.__xss=2</script>\r\n\"a\"\"b\",</textarea><svg onload=window.__xss=3>\r\n&amp;,&lt;b&gt;",
+ "csv": "key,value\r\n<img src=x onerror=window.__xss=1>,<script>window.__xss=2</script>\r\n\"a\"\"b\",</textarea><svg onload=window.__xss=3>\r\n&amp;,&lt;b&gt;\r\n",
  "convert": {
   "typescript": "export interface Root {\n  \"<img src=x onerror=window.__xss=1>\": string;\n  \"a\\\"b\": string;\n  \"&amp;\": string;\n}\n",
   "zod": "import { z } from \"zod\";\n\nexport const RootSchema = z.object({\n  \"<img src=x onerror=window.__xss=1>\": z.string(),\n  \"a\\\"b\": z.string(),\n  \"&amp;\": z.string(),\n});\nexport type Root = z.infer<typeof RootSchema>;\n",

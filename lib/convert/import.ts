@@ -156,7 +156,8 @@ export function detectFormat(text: string, fileName?: string): Format {
   if (/^\/[/*]/.test(s)) return 'json';
   const line = s.split('\n').find((l) => l.trim() && !/^\s*#/.test(l)) ?? '';
   if (/^\[\[?[\w."' -]+\]\]?\s*(#.*)?$/.test(line) || /^[\w"'-][\w.\-"' ]*=\s*\S/.test(line)) return 'toml';
-  if (/^\s*-(\s|$)/.test(line) || /^\s*("[^"]*"|'[^']*'|[^\s#'"{[,][^#,]*?):(\s|$)/.test(line)) return 'yaml';
+  // (a sequence item, a key, or an explicit key: "? key", as long keys are written)
+  if (/^\s*[-?](\s|$)/.test(line) || /^\s*("[^"]*"|'[^']*'|[^\s#'"{[,][^#,]*?):(\s|$)/.test(line)) return 'yaml';
   const [d, share] = sniff(s);
   if (line.includes(d) && share >= 0.8) return d === '\t' ? 'tsv' : 'csv';
   if (/^("|-?\d|(true|false|null)\s*$)/.test(s)) return 'json';
@@ -167,11 +168,15 @@ export function detectFormat(text: string, fileName?: string): Format {
 
 const CSV_NUM = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][-+]?\d+)?$/;
 
-/** JSON text for one CSV field. Unquoted: number / boolean / null inference; quoted: string. */
-const csvCell = (f: string, quoted: boolean): string => {
+/**
+ * JSON text for one CSV field. Unquoted: number / boolean / null inference, around spaces left out; quoted:
+ * string. `exact`: a quoted field of a file that quotes every field, inferred only when nothing surrounds the
+ * number or boolean (the quotes keep whitespace as it is: "3\t" stays a string).
+ */
+const csvCell = (f: string, quoted: boolean, exact = false): string => {
   if (quoted) return quote(f);
   if (f === '') return 'null';
-  const t = f.charCodeAt(0) <= 32 || f.charCodeAt(f.length - 1) <= 32 ? f.trim() : f;
+  const t = !exact && (f.charCodeAt(0) <= 32 || f.charCodeAt(f.length - 1) <= 32) ? f.trim() : f;
   const c = t.charCodeAt(0);
   if ((c >= 48 && c <= 57) || c === 45) {
     if (CSV_NUM.test(t)) {
@@ -198,6 +203,8 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
   }
   const d = (delim ?? sniff(src.slice(i))[0]).charCodeAt(0);
   const cell = types ? csvCell : (f: string) => quote(f);
+  /** A field of a file that quotes every field, typed as unquoted ones are when nothing but the value is between its quotes. */
+  const all = (f: string, quoted: boolean) => (quoted && f !== '' ? cell(f, false, true) : cell(f, quoted));
   const n = src.length;
   const nl = indent ? '\n' : '';
   const colon = indent ? ': ' : ':';
@@ -261,7 +268,7 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
         // (Its first row says whether the file quotes every field, as the first data row does with a header.)
         if (quoteAll < 0) quoteAll = q.every(Boolean) ? 1 : 0;
         out += (count++ ? ',' : '') + p1 + '[';
-        for (let j = 0; j < row.length; j++) out += (j ? ',' + p2 : p2) + (quoteAll && q[j] && row[j] !== '' ? cell(row[j], false) : cell(row[j], q[j]));
+        for (let j = 0; j < row.length; j++) out += (j ? ',' + p2 : p2) + (quoteAll ? all(row[j], q[j]) : cell(row[j], q[j]));
         out += p1 + ']';
       } else if (!keys) {
         keys = [];
@@ -272,7 +279,7 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
         while (keys.length < row.length) addKey('');
         out += (count++ ? ',' : '') + p1 + '{';
         for (let j = 0; j < keys.length; j++) {
-          const v = j < row.length ? (quoteAll && q[j] && row[j] !== '' ? cell(row[j], false) : cell(row[j], q[j])) : types ? 'null' : '""';
+          const v = j < row.length ? (quoteAll ? all(row[j], q[j]) : cell(row[j], q[j])) : types ? 'null' : '""';
           out += (j ? ',' + qk[j] : qk[j]) + v;
         }
         out += (keys.length ? p1 : '') + '}';
@@ -312,6 +319,55 @@ function yScalar(t: string): V {
     if (/^[-+]?\.(inf|Inf|INF)$|^\.(nan|NaN|NAN)$/.test(t)) return null;
   }
   return t;
+}
+
+const YINT = /^([-+]?)(?:0x([\da-fA-F]+)|0o([0-7]+)|(\d+))$/;
+
+/** `str` for `!!str` or `!<tag:yaml.org,2002:str>`, `!` for the non-specific tag, '' for any other tag. */
+const yTagName = (tag: string) => (tag === '!' ? tag : tag.startsWith('!!') ? tag.slice(2) : tag.startsWith('!<tag:yaml.org,2002:') && tag.endsWith('>') ? tag.slice(20, -1) : '');
+
+/** The tags yTagged builds a scalar's value for, from its text alone. */
+const Y_SCALAR_TAGS = new Set(['!', 'str', 'int', 'float', 'bool', 'null', 'binary', 'timestamp']);
+
+/** Whether a scalar's tag (`t`: its yTagName) makes it something other than its text (a mapping key is then that value's JSON text). */
+const yTypedTag = (tag: string, t = yTagName(tag)) => t === 'int' || t === 'float' || t === 'bool' || t === 'null';
+
+/**
+ * The value of a node with tag `tag` at `p`. The core tags (`!!str`, `!!int`, `!!float`, `!!bool`, `!!null`,
+ * `!!seq`, `!!map`, also written `!<tag:yaml.org,2002:…>`) and the non-specific `!` (a scalar is a string) build
+ * it from the scalar's `text` (null: the node is the collection `v`) or reject content that is not of their
+ * kind; any other tag (an application's own, such as `!Ref`) leaves `v` as read without it.
+ */
+function yTagged(tag: string, v: V, text: string | null, p: number, t = yTagName(tag)): V {
+  if (text === null) {
+    if (t === 'seq' ? Array.isArray(v) : t === 'map' ? v instanceof Map : t === '!' || !Y_SCALAR_TAGS.has(t)) return v;
+  } else
+    switch (t) {
+      case '!': case 'str': case 'binary': case 'timestamp':
+        return text;
+      case 'null':
+        if (/^(?:~|null|Null|NULL|)$/.test(text)) return null;
+        break;
+      case 'bool':
+        if (/^(?:true|True|TRUE)$/.test(text)) return true;
+        if (/^(?:false|False|FALSE)$/.test(text)) return false;
+        break;
+      case 'int': {
+        const m = YINT.exec(text);
+        if (!m) break;
+        const r = m[4] !== undefined ? m[4].replace(/^0+(?=\d)/, '') : BigInt((m[2] !== undefined ? '0x' : '0o') + (m[2] ?? m[3])).toString();
+        return new Num(m[1] === '-' && r !== '0' ? '-' + r : r);
+      }
+      case 'float':
+        if (/^[-+]?(?:\.\d+|\d+(?:\.\d*)?)(?:[eE][-+]?\d+)?$/.test(text)) return new Num(normalizeNumber(text));
+        if (/^[-+]?\.(?:inf|Inf|INF)$|^\.(?:nan|NaN|NAN)$/.test(text)) return null;
+        break;
+      case 'seq': case 'map':
+        break;
+      default:
+        return v;
+    }
+  return fail(`The value does not match its tag ${tag}`, p);
 }
 
 /** Most JSON (characters) a YAML document that uses aliases may expand to: this, or 8× the document's length if more. */
@@ -437,18 +493,26 @@ function yaml(src: string, indent: string): V {
     }
     return -1;
   };
-  const props = () => {
-    let anchor = '';
-    let tag = '';
+  /** A node's properties at i, each followed by spaces: [anchor, tag, where the tag is] (empty: none). In flow context a tag also ends at a flow indicator. */
+  type Props = [string, string, number];
+  const props = (flow: boolean): Props => {
+    const r: Props = ['', '', -1];
     for (;;) {
       const c = at(i);
-      if (c !== 38 && c !== 33) return [anchor, tag];
+      if (c !== 38 && c !== 33) return r;
       const s = i;
-      while (i < n && !sepAt(i) && !(c === 38 && i > s && flowInd(at(i)))) i++;
+      if (c === 33 && at(i + 1) === 60) {
+        // verbatim !<…>: may hold commas and brackets
+        while (i < n && !sepAt(i) && at(i) !== 62) i++;
+        if (at(i) === 62) i++;
+      } else while (i < n && !sepAt(i) && !((c === 38 || flow) && i > s && flowInd(at(i)))) i++;
       if (c === 38) {
-        anchor = src.slice(s + 1, i);
-        if (!anchor) f('Expected an anchor name after &', s);
-      } else tag = src.slice(s, i);
+        r[0] = src.slice(s + 1, i);
+        if (!r[0]) f('Expected an anchor name after &', s);
+      } else {
+        r[1] = src.slice(s, i);
+        r[2] = s;
+      }
       sp();
     }
   };
@@ -524,7 +588,8 @@ function yaml(src: string, indent: string): V {
     }
     return src.slice(s, e);
   };
-  const plain = (ind: number, asStr: boolean): V => {
+  /** A block plain scalar's text, its lines folded. */
+  const plain = (ind: number): string => {
     const c = at(i);
     if (c === 64 || c === 96) f(`Plain values cannot start with '${src[i]}'. Wrap the value in quotes`);
     let t = plainLine();
@@ -546,7 +611,7 @@ function yaml(src: string, indent: string): V {
       t += breaks > 1 ? '\n'.repeat(breaks - 1) : ' ';
       t += plainLine();
     }
-    return asStr ? t : yScalar(t);
+    return t;
   };
   const blockScalar = (ind: number): string => {
     const fold = at(i++) === 62;
@@ -570,11 +635,15 @@ function yaml(src: string, indent: string): V {
     let empty = 0;
     let more = false;
     let first = true;
+    // whether the last content line ends with a line break (the end of the input is none: YAML 1.2 [165])
+    let brk = true;
     let p = i < n ? i + 1 : n;
     while (p < n) {
       let q = p;
       while (at(q) === 32 && (bi < 0 || q - p < bi)) q++;
-      if (at(q) === 10 || q >= n) {
+      // (spaces with no line break after them end the input: no empty line)
+      if (q >= n) break;
+      if (at(q) === 10) {
         empty++;
         p = q + 1;
         continue;
@@ -598,12 +667,13 @@ function yaml(src: string, indent: string): V {
       else if (!first) out += ' ';
       out += line;
       first = false;
+      brk = e < n;
       empty = 0;
       p = e + 1;
     }
     i = Math.min(p, n);
-    if (chomp > 0) out += '\n'.repeat(first ? empty : empty + 1);
-    else if (!chomp && !first) out += '\n';
+    if (chomp > 0) out += '\n'.repeat(first || !brk ? empty : empty + 1);
+    else if (!chomp && !first && brk) out += '\n';
     return out;
   };
   const fws = () => {
@@ -625,17 +695,26 @@ function yaml(src: string, indent: string): V {
         }
     }
   };
+  /** Gives node `v` its anchor, if any. */
+  const anchor = (name: string, v: V) => {
+    if (!name) return;
+    anchors.set(name, v);
+    if (v instanceof Map || Array.isArray(v)) anchored.add(v);
+  };
+  /** The plain scalar text of the flow node read last as a mapping key may be (a merge key `<<` is one): null for any other node. */
   let rawKey: string | null = null;
   const flowNode = (): V => {
     fws();
-    const [anchor, tag] = props();
+    const [name, tag, tp] = props(true);
     fws();
-    rawKey = null;
     const c = at(i);
     let v: V;
-    if (c === 91 || c === 123) v = flow();
-    else if (c === 34 || c === 39) v = quoted(c);
-    else if (c === 42) v = alias();
+    let key: string | null = null;
+    if (c === 91 || c === 123) v = tag ? yTagged(tag, flow(), null, tp) : flow();
+    else if (c === 34 || c === 39) {
+      const s = quoted(c);
+      v = tag ? yTagged(tag, s, s, tp) : s;
+    } else if (c === 42) v = alias();
     else {
       const s = i;
       let e = i;
@@ -646,13 +725,18 @@ function yaml(src: string, indent: string): V {
         if (!isWs(d) && d !== 10) e = i;
       }
       const t = src.slice(s, e).replace(/[ \t]*\n\s*/g, ' ');
-      rawKey = t;
-      v = tag === '!!str' ? t : yScalar(t);
+      if (!tag) {
+        v = yScalar(t);
+        key = t;
+      } else {
+        const tn = yTagName(tag);
+        // (a core tag builds the value from the text: no need to resolve it untagged)
+        v = yTagged(tag, Y_SCALAR_TAGS.has(tn) ? null : yScalar(t), t, tp, tn);
+        key = plainKey(t, tag, tn);
+      }
     }
-    if (anchor) {
-      anchors.set(anchor, v);
-      if (v instanceof Map || Array.isArray(v)) anchored.add(v);
-    }
+    anchor(name, v);
+    rawKey = key;
     return v;
   };
   const keyOf = (v: V, p: number): string => {
@@ -674,7 +758,12 @@ function yaml(src: string, indent: string): V {
         i++;
         break;
       }
+      // (a comma ends an entry: one with nothing before it is no entry)
+      if (at(i) === 44) f("Unexpected ',': expected a value");
       const kp = i;
+      // an explicit key ("? key"): a pair even without a value
+      const ex = at(i) === 63 && (sepAt(i + 1) || flowInd(at(i + 1)));
+      if (ex) i++;
       const k = flowNode();
       const key = rawKey;
       fws();
@@ -694,54 +783,103 @@ function yaml(src: string, indent: string): V {
         const ks = keyOf(k, kp);
         if (m.has(ks)) f(`Duplicate key "${ks}"`, kp);
         m.set(ks, null);
-      } else a.push(k);
+      } else a.push(ex ? new Map([[keyOf(k, kp), null]]) : k);
       fws();
       if (at(i) === 44) i++;
       else if (at(i) !== close) f(i >= n ? `Unterminated flow ${isMap ? "mapping: missing '}'" : "sequence: missing ']'"}` : `Expected ',' or '${isMap ? '}' : ']'}'`, i >= n ? s : i);
     }
     return isMap ? m : a;
   };
+  // A node's context: a block mapping's value after "key:", a sequence item, or an explicit entry's key or value
+  // (after "?" or ":" on a line of their own, which may start a compact sequence or mapping as an item does).
   const MAP = 1;
   const SEQ = 2;
+  const EXPL = 3;
+  /** At the end of a line (or of the input): skips to the next content and says whether a node indented for `ind` / `ctx` starts there. */
+  const nextLine = (ind: number, ctx: number) => {
+    comment();
+    skip();
+    const c = i < n && !docMark(i) ? col(i) : -2;
+    // (a block sequence may sit at the indentation of the mapping it is a value in)
+    return c > ind || ((ctx === MAP || ctx === EXPL) && c === ind && dash(i));
+  };
+  /** A plain scalar's text `t` as a mapping key: null when tag `tag` gives it a type (its value's JSON text is the key then); a tagged << is no merge key. */
+  const plainKey = (t: string, tag: string, tn = yTagName(tag)): string | null => (!tag || tn === 'merge' || (!yTypedTag(tag, tn) && t !== '<<') ? t : null);
   const node = (ind: number, ctx: number): V => {
     sp();
-    const [anchor, tag] = props();
+    // Properties may come before the line break, on a line of their own or before the content; on the
+    // content's line in front of an implicit key they are the key's ("&a a: b" anchors the key a).
+    let at0 = i;
+    let own = props(false);
+    let line: Props | null = null;
     let fresh = ctx === 0;
     let has = true;
     if (i >= n || at(i) === 10 || at(i) === 35) {
       // the value starts on a following line (or is empty)
-      comment();
-      skip();
-      const c = i < n && !docMark(i) ? col(i) : -2;
       fresh = true;
-      has = c > ind || (ctx === MAP && c === ind && dash(i));
+      has = nextLine(ind, ctx);
+      while (has && (at(i) === 38 || at(i) === 33)) {
+        at0 = i;
+        const p = props(false);
+        if (i < n && at(i) !== 10 && at(i) !== 35) {
+          line = p;
+          break;
+        }
+        own = [p[0] || own[0], p[1] || own[1], p[1] ? p[2] : own[2]];
+        has = nextLine(ind, ctx);
+      }
+    } else {
+      line = own;
+      own = ['', '', -1];
     }
     let v: V = null;
+    // the scalar's text (null: a collection; undefined: an alias, which takes no tag), and whether it is plain (or empty)
+    let text: string | null | undefined = '';
+    let isPlain = !has;
     if (has) {
       const c = at(i);
       if (dash(i)) {
         if (!fresh && ctx === MAP) f('A sequence cannot start on the same line as its key. Move it to the next line');
         v = seq(col(i));
-      } else if (c === 124 || c === 62) v = blockScalar(ind);
+        text = null;
+      } else if (c === 124 || c === 62) text = v = blockScalar(ind);
       else if (c === 42) {
         v = alias();
+        text = undefined;
         eolRest();
-      } else if (c === 63 && sepAt(i + 1)) f('Complex mapping keys (?) are not supported');
-      else if (keyEnd(i) >= 0) {
-        if (!fresh && ctx === MAP) f('Mapping values are not allowed here. Quote the value if it contains ": "', keyEnd(i));
+      } else if (c === 63 && sepAt(i + 1)) {
+        // a mapping that starts with an explicit key
+        if (!fresh && ctx === MAP) f("Plain values cannot start with '?'. Wrap the value in quotes");
+        if (line && (line[0] || line[1])) f('Expected a mapping key (key: value)', at0);
         v = map(col(i));
+        text = null;
+      } else if (keyEnd(i) >= 0) {
+        if (!fresh && ctx === MAP) f('Mapping values are not allowed here. Quote the value if it contains ": "', keyEnd(i));
+        if (line && (line[0] || line[1])) {
+          // the key's properties: the mapping starts at them
+          i = at0;
+          line = null;
+        }
+        v = map(col(i));
+        text = null;
       } else if (c === 91 || c === 123) {
         v = flow();
+        text = null;
         eolRest();
       } else if (c === 34 || c === 39) {
-        v = quoted(c);
+        text = v = quoted(c);
         eolRest();
-      } else v = plain(ind, tag === '!!str');
+      } else {
+        v = yScalar((text = plain(ind)));
+        isPlain = true;
+      }
     }
-    if (anchor) {
-      anchors.set(anchor, v);
-      if (v instanceof Map || Array.isArray(v)) anchored.add(v);
-    }
+    const name = line?.[0] || own[0];
+    const tag = line?.[1] || own[1];
+    if (tag && text !== undefined) v = yTagged(tag, v, text, line?.[1] ? line[2] : own[2]);
+    anchor(name, v);
+    // (for an explicit key: like flowNode)
+    rawKey = isPlain ? (tag ? plainKey(text as string, tag) : (text as string)) : null;
     return v;
   };
   const map = (c: number): Map<string, V> => {
@@ -749,18 +887,45 @@ function yaml(src: string, indent: string): V {
     let merged: Set<string> | null = null;
     for (;;) {
       const kp = i;
-      if (at(i) === 63 && sepAt(i + 1)) f('Complex mapping keys (?) are not supported');
-      const ce = keyEnd(i);
-      if (ce < 0) f(dash(i) ? 'Expected a mapping key, found a sequence item. Check the indentation' : 'Expected a mapping key (key: value)');
-      const q = at(i);
-      let ke = ce;
-      while (isWs(at(ke - 1))) ke--;
-      const k = q === 34 || q === 39 ? quoted(q) : src.slice(i, ke);
-      i = ce + 1;
-      if (k === '<<' && q !== 34 && q !== 39) mergeInto(m, node(c, MAP), (merged ??= new Set()), kp);
+      const [name, tag, tp] = props(false);
+      let k: string;
+      let merge: boolean;
+      // the value's context (0: no value, which is null)
+      let vc = MAP;
+      if (at(i) === 63 && sepAt(i + 1)) {
+        // an explicit key ("? key", as written for long keys), then ": value" at the same indentation if there is one
+        if (name || tag) f('Expected a mapping key (key: value)', kp);
+        i++;
+        const kv = node(c, EXPL);
+        // (JSON keys are strings: a list or mapping cannot be one)
+        if (kv instanceof Map || Array.isArray(kv)) f('Collections cannot be used as mapping keys', kp);
+        k = rawKey ?? (kv instanceof Num ? kv.r : String(kv));
+        merge = rawKey === '<<';
+        skip();
+        if (at(i) === 58 && sepAt(i + 1) && col(i) === c) {
+          i++;
+          vc = EXPL;
+        } else vc = 0;
+      } else {
+        const ce = keyEnd(i);
+        if (ce < 0) f(dash(i) ? 'Expected a mapping key, found a sequence item. Check the indentation' : 'Expected a mapping key (key: value)');
+        const q = at(i);
+        const isQ = q === 34 || q === 39;
+        let ke = ce;
+        while (ke > i && isWs(at(ke - 1))) ke--;
+        k = isQ ? quoted(q) : src.slice(i, ke);
+        if (name || tag) {
+          const kv = tag ? yTagged(tag, isQ ? k : yScalar(k), k, tp) : isQ ? k : yScalar(k);
+          if (yTypedTag(tag)) k = kv instanceof Num ? kv.r : String(kv);
+          anchor(name, kv);
+        }
+        merge = k === '<<' && !isQ && (!tag || yTagName(tag) === 'merge');
+        i = ce + 1;
+      }
+      if (merge) mergeInto(m, vc ? node(c, vc) : null, (merged ??= new Set()), kp);
       else {
         if (m.has(k) && !merged?.delete(k)) f(`Duplicate key "${k}"`, kp);
-        m.set(k, node(c, MAP));
+        m.set(k, vc ? node(c, vc) : null);
       }
       skip();
       if (i >= n || docMark(i)) break;
@@ -820,19 +985,18 @@ const ENT = new Map([
   ['quot', '"'],
   ['apos', "'"],
 ]);
-const decode = (s: string) =>
-  s.indexOf('&') < 0
-    ? s
-    : s.replace(/&(#x[\da-fA-F]+|#\d+|[A-Za-z][\w.-]*);/g, (m, e: string) => {
-        if (e[0] !== '#') return ENT.get(e) ?? m;
-        const cp = e[1] === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-        return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
-      });
+/** A character or entity reference: hex digits, decimal digits or an entity name. */
+const REF = /&(?:#x([\da-fA-F]+)|#(\d+)|([A-Za-z][\w.-]*));/g;
+/** XML 1.0 Char (2.2): what a character reference may stand for. */
+const xmlChar = (cp: number) => (cp >= 0x20 && cp <= 0xd7ff) || cp === 9 || cp === 10 || cp === 13 || (cp >= 0xe000 && cp <= 0xfffd) || (cp >= 0x10000 && cp <= 0x10ffff);
+/** XML whitespace (S, 2.3): only these, not every Unicode space, are trimmed from text. */
+const xmlWs = (c: number) => c === 32 || c === 10 || c === 9 || c === 13;
 
 /**
  * xmltodict convention: `{root: …}`; attributes → "@name"; repeated child
  * elements → arrays; text-only elements → string; text next to attributes or
- * children → "#text"; empty elements → null. Text is trimmed; values stay strings.
+ * children → "#text"; empty elements → null. Text is trimmed of the whitespace the markup has around it
+ * (not of characters references stand for, such as &#32;); values stay strings.
  */
 function xml(src: string): V {
   const n = src.length;
@@ -840,7 +1004,10 @@ function xml(src: string): V {
   interface Frame {
     name: string;
     m: Map<string, V> | null;
+    /** Its text so far, without the literal whitespace in front. */
     text: string;
+    /** How much of the end of `text` is literal whitespace (left out when it closes). */
+    ws: number;
     p: number;
   }
   const stack: Frame[] = [];
@@ -860,8 +1027,48 @@ function xml(src: string): V {
   const ws = () => {
     while (isWs(at(i)) || at(i) === 10) i++;
   };
+  /** The text the reference `m` at `p` stands for (an unknown entity stays as written); a character that is no XML Char is an error. */
+  const ref = (m: RegExpExecArray, p: number): string => {
+    if (m[3] !== undefined) return ENT.get(m[3]) ?? m[0];
+    const cp = m[1] !== undefined ? parseInt(m[1], 16) : parseInt(m[2], 10);
+    if (!xmlChar(cp)) f(`Invalid character reference ${m[0]}`, p);
+    return String.fromCodePoint(cp);
+  };
+  /** An attribute value at `p`, references replaced. */
+  const attr = (s: string, p: number): string => {
+    if (s.indexOf('&') < 0) return s;
+    let out = '';
+    let k = 0;
+    REF.lastIndex = 0;
+    for (let m; (m = REF.exec(s)); k = REF.lastIndex) out += s.slice(k, m.index) + ref(m, p + m.index);
+    return out + s.slice(k);
+  };
+  /** Appends text as written to `fr`, keeping track of its literal whitespace. */
+  const lit = (fr: Frame, s: string) => {
+    const e = s.length;
+    let a = 0;
+    if (!fr.text) while (a < e && xmlWs(s.charCodeAt(a))) a++;
+    if (a === e) return;
+    let b = e;
+    while (b > a && xmlWs(s.charCodeAt(b - 1))) b--;
+    fr.text += a ? s.slice(a) : s;
+    fr.ws = b > a ? e - b : fr.ws + e - a;
+  };
+  /** Appends the character data `s` at `p` to `fr`, references replaced. */
+  const text = (fr: Frame, s: string, p: number) => {
+    let k = 0;
+    if (s.indexOf('&') >= 0) {
+      REF.lastIndex = 0;
+      for (let m; (m = REF.exec(s)); k = REF.lastIndex) {
+        lit(fr, s.slice(k, m.index));
+        fr.text += ref(m, p + m.index);
+        fr.ws = 0;
+      }
+    }
+    lit(fr, k ? s.slice(k) : s);
+  };
   const close = (fr: Frame) => {
-    const t = fr.text.trim();
+    const t = fr.ws ? fr.text.slice(0, fr.text.length - fr.ws) : fr.text;
     let v: V = t || null;
     if (fr.m) {
       if (t) fr.m.set('#text', t);
@@ -880,8 +1087,9 @@ function xml(src: string): V {
       else m.set(fr.name, [prev, v]);
     }
   };
-  const skipTo = (end: string, what: string) => {
-    const e = src.indexOf(end, i);
+  /** Skips past `end`, looked for from `from` (after the opening, which may not share its characters: <!--> is no comment). */
+  const skipTo = (end: string, what: string, from: number) => {
+    const e = src.indexOf(end, from);
     if (e < 0) f(`Unterminated ${what}`);
     i = e + end.length;
   };
@@ -890,23 +1098,23 @@ function xml(src: string): V {
     const end = lt < 0 ? n : lt;
     if (end > i) {
       const top = stack[stack.length - 1];
-      if (top) top.text += decode(src.slice(i, end));
+      if (top) text(top, src.slice(i, end), i);
       else {
-        const k = src.slice(i, end).search(/\S/);
+        const k = src.slice(i, end).search(/[^ \t\n\r]/);
         if (k >= 0) f(root ? 'Unexpected text after the root element' : 'Text is not allowed before the root element', i + k);
       }
     }
     if (lt < 0) break;
     i = lt;
-    if (src.startsWith('<!--', i)) skipTo('-->', 'comment: missing -->');
+    if (src.startsWith('<!--', i)) skipTo('-->', 'comment: missing -->', i + 4);
     else if (src.startsWith('<![CDATA[', i)) {
       const top = stack[stack.length - 1];
       if (!top) f('CDATA is only allowed inside an element');
       const e = src.indexOf(']]>', i + 9);
       if (e < 0) f('Unterminated CDATA section: missing ]]>');
-      top.text += src.slice(i + 9, e);
+      lit(top, src.slice(i + 9, e));
       i = e + 3;
-    } else if (src.startsWith('<?', i)) skipTo('?>', 'processing instruction: missing ?>');
+    } else if (src.startsWith('<?', i)) skipTo('?>', 'processing instruction: missing ?>', i + 2);
     else if (src.startsWith('<!', i)) {
       let depth = 0;
       let j = i + 2;
@@ -940,7 +1148,7 @@ function xml(src: string): V {
       const nm = name();
       if (!nm) f(`Invalid character after '<'. Escape it as &lt;`, lt);
       if (!stack.length && root) f('Only one root element is allowed', lt);
-      const fr: Frame = { name: nm, m: null, text: '', p: lt };
+      const fr: Frame = { name: nm, m: null, text: '', ws: 0, p: lt };
       let self = false;
       for (;;) {
         const sp = i;
@@ -970,7 +1178,8 @@ function xml(src: string): V {
         if (e < 0) f('Unterminated attribute value');
         const m = fr.m ?? (fr.m = new Map());
         if (m.has('@' + an)) f(`Duplicate attribute ${an}`, ap);
-        m.set('@' + an, decode(src.slice(i + 1, e).replace(/[\t\n\r]/g, ' ')));
+        // (literal tabs and line breaks normalize to spaces, ones references stand for stay: 3.3.3)
+        m.set('@' + an, attr(src.slice(i + 1, e).replace(/[\t\n\r]/g, ' '), i + 1));
         i = e + 1;
       }
       if (self) close(fr);
@@ -985,14 +1194,34 @@ function xml(src: string): V {
 
 // ── TOML ─────────────────────────────────────────────────────────────────
 
-const DT = /^\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:\d{2})?)?$|^\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
+/** A date, date-time or time (RFC 3339; seconds optional as in TOML 1.1). Groups: year, month, day, hour, minute, second, offset hour, offset minute; a local time's hour, minute, second. */
+const DT = /^(?:(\d{4})-(\d{2})-(\d{2})(?:[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:[Zz]|[+-](\d{2}):(\d{2}))?)?|(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)$/;
+const digitAt = (t: string, k: number) => {
+  const c = t.charCodeAt(k);
+  return c >= 48 && c <= 57;
+};
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/** Whether the parts DT matched name a real date and time: a day of its month (Feb 29 in leap years), 00:00 to 23:59 with a leap second 60, offsets within ±23:59. */
+function dtValid(m: RegExpExecArray): boolean {
+  if (m[1] !== undefined) {
+    const y = +m[1];
+    const mo = +m[2];
+    const leap = mo === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+    if (mo < 1 || mo > 12 || +m[3] < 1 || +m[3] > MONTH_DAYS[mo - 1] + (leap ? 1 : 0)) return false;
+  }
+  const h = m[4] ?? m[9];
+  if (h !== undefined && (+h > 23 || +(m[5] ?? m[10]) > 59 || +(m[6] ?? m[11] ?? 0) > 60)) return false;
+  return m[7] === undefined || (+m[7] <= 23 && +m[8] <= 59);
+}
 
 function toml(src: string): V {
   const n = src.length;
   let i = 0;
   const root = new Map<string, V>();
   let cur = root;
-  // tables defined by [headers] / created by dotted keys / immutable (inline tables, static arrays) / arrays of tables
+  // tables defined by [headers] / created or extended by dotted keys / immutable (inline tables, static arrays) / arrays of tables;
+  // a table only created on the way to a deeper [header] is in none: a [header] or dotted keys may still define it
   const defined = new Set<object>();
   const dotted = new Set<object>();
   const frozen = new Set<object>();
@@ -1022,10 +1251,13 @@ function toml(src: string): V {
     const simple = 'btnfre"\\'.indexOf(c);
     if (simple >= 0) return '\b\t\n\f\r\x1b"\\'[simple];
     const len = c === 'x' ? 2 : c === 'u' ? 4 : c === 'U' ? 8 : 0;
-    const v = len ? hexEsc(src, i, len) : null;
-    if (v === null) return f(`Invalid escape sequence \\${c ?? ''}`, i - 2);
+    const h = src.slice(i, i + len);
+    if (!len || h.length < len || !/^[\da-fA-F]+$/.test(h)) return f(`Invalid escape sequence \\${c ?? ''}`, i - 2);
+    const cp = parseInt(h, 16);
+    // a Unicode scalar value: no surrogate (not even half of a pair), nothing past U+10FFFF
+    if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) f(`Invalid escape sequence \\${c}${h}`, i - 2);
     i += len;
-    return v;
+    return String.fromCodePoint(cp);
   };
   const str = (key: boolean): string => {
     const s = i;
@@ -1139,11 +1371,18 @@ function toml(src: string): V {
     if (!t) f(i >= n || at(i) === 10 ? 'Expected a value' : `Unexpected '${src[i]}': expected a value`);
     if (t === 'true') return true;
     if (t === 'false') return false;
+    // a date (4 digits, '-') or time (2 digits, ':'): no number starts like either
+    if (digitAt(t, 0) && digitAt(t, 1) && (t.charCodeAt(2) === 58 || (digitAt(t, 2) && digitAt(t, 3) && t.charCodeAt(4) === 45))) {
+      const dt = DT.exec(t);
+      if (!dt || !dtValid(dt)) f(`Invalid date or time '${t}'`, s);
+      // RFC 3339 form: 'T' between the date and the time, 'Z' for UTC
+      const r = dt[1] !== undefined && t.length > 10 && t.charCodeAt(10) !== 84 ? t.slice(0, 10) + 'T' + t.slice(11) : t;
+      return r.charCodeAt(r.length - 1) === 122 ? r.slice(0, -1) + 'Z' : r;
+    }
     if (/^[+-]?(inf|nan)$/.test(t)) return null;
     if (/^[+-]?(0|[1-9](_?\d)*)$/.test(t)) return new Num(t.replace(/_|^\+/g, ''));
     if (/^0x[\da-fA-F](_?[\da-fA-F])*$|^0o[0-7](_?[0-7])*$|^0b[01](_?[01])*$/.test(t)) return new Num(BigInt(t.replace(/_/g, '')).toString());
     if (/^[+-]?(0|[1-9](_?\d)*)(\.\d(_?\d)*)?([eE][+-]?\d(_?\d)*)?$/.test(t)) return new Num(t.replace(/_|^\+/g, ''));
-    if (DT.test(t)) return t.replace(/^(\d{4}-\d{2}-\d{2})[Tt ]/, '$1T').replace(/z$/, 'Z');
     return f(/^[+-]?\d/.test(t) ? `Invalid number '${t}'` : `Invalid value '${t}': strings must be quoted`, s);
   };
   const keyval = (t: Map<string, V>) => {
@@ -1160,7 +1399,9 @@ function toml(src: string): V {
         x = new Map();
         m.set(path[k], x);
         dotted.add(x);
-      } else if (!(x instanceof Map) || !dotted.has(x) || frozen.has(x)) f(`Cannot add keys to "${path.slice(0, k + 1).join('.')}": it is already defined`, kp);
+      } else if (!(x instanceof Map) || defined.has(x) || frozen.has(x)) f(`Cannot add keys to "${path.slice(0, k + 1).join('.')}": it is already defined`, kp);
+      // (dotted keys define it now: no [header] may)
+      else dotted.add(x);
       m = x as Map<string, V>;
     }
     const last = path[path.length - 1];

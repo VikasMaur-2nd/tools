@@ -213,7 +213,7 @@ export function fileKind(name: string | null | undefined): FileKind {
  */
 const ERROR_KINDS: [RegExp, string][] = [
   [/^Unterminated string/, 'unterminated_string'],
-  [/^Unexpected end of input/, 'unexpected_end'],
+  [/^Unexpected end of (input|line)/, 'unexpected_end'],
   [/^Comments are not allowed/, 'comments'],
   [/^Trailing commas/, 'trailing_comma'],
   [/^Unexpected (extra )?comma/, 'extra_comma'],

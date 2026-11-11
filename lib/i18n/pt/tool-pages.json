@@ -418,7 +418,7 @@
     ]
   },
   "yaml-to-json": {
-    "hash": "77780ec2e2d0",
+    "hash": "a354b5d54b87",
     "title": "YAML para JSON com conversão no navegador",
     "description": "Converta YAML em JSON formatado online. O Tool Kumar analisa YAML com dados simples, informa erros e mantém o resultado no seu dispositivo, sem upload.",
     "heading": "YAML para JSON",
@@ -438,7 +438,7 @@
     "options": [
       "Mapeamentos e sequências simples viram objetos e arrays JSON.",
       "Valores entre aspas continuam sendo strings; números e booleanos sem aspas viram os valores correspondentes em JSON.",
-      "Âncoras, tags personalizadas e YAML executável não fazem parte do escopo do importador de dados simples."
+      "Âncoras, aliases e chaves de mesclagem << são expandidos, e tags padrão como !!int definem o tipo do valor. Tags personalizadas são ignoradas e nada é executado."
     ],
     "faqs": [
       {
@@ -446,8 +446,8 @@
         "answer": "Sim. Itens indentados com hífen viram arrays JSON, incluindo arrays aninhados dentro de objetos."
       },
       {
-        "question": "Quais recursos do YAML não são compatíveis?",
-        "answer": "O importador se concentra em dados simples. Tags personalizadas, âncoras e diretivas específicas de aplicações podem exigir uma biblioteca YAML."
+        "question": "O importador é compatível com âncoras e tags?",
+        "answer": "Sim. Âncoras, aliases e chaves de mesclagem << são expandidos em JSON simples, e tags padrão como !!str e !!int definem o tipo do valor. Tags personalizadas como !Ref são ignoradas e o valor é mantido como dado simples, então nada no YAML é executado. Um arquivo com vários documentos separados por --- vira um array JSON."
       },
       {
         "question": "Posso abrir um arquivo YAML?",

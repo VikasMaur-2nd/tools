@@ -52,7 +52,7 @@
   ],
   "empty": false
  },
- "csv": "id,name,tags,addr,active,extra\r\n1,Ada,\"[\"\"x\"\",\"\"y\"\"]\",\"{\"\"city\"\":\"\"London\"\",\"\"zip\"\":\"\"N1\"\"}\",,\r\n2,Lin,,,false,\r\n3,,,\"{\"\"city\"\":\"\"Oslo\"\"}\",,\"[1,{\"\"deep\"\":true}]\"",
+ "csv": "id,name,tags,addr.city,addr.zip,active,extra\r\n1,Ada,\"x, y\",London,N1,,\r\n2,Lin,,,,false,\r\n3,,,Oslo,,,\"[1,{\"\"deep\"\":true}]\"\r\n",
  "convert": {
   "typescript": "export type Root = RootItem[];\n\nexport interface RootItem {\n  id: number;\n  name: string | null;\n  tags?: string[];\n  addr?: Addr;\n  active?: boolean;\n  extra?: (number | ExtraItem)[];\n}\n\nexport interface Addr {\n  city: string;\n  zip?: string;\n}\n\nexport interface ExtraItem {\n  deep: boolean;\n}\n",
   "zod": "import { z } from \"zod\";\n\nexport const AddrSchema = z.object({\n  city: z.string(),\n  zip: z.string().optional(),\n});\nexport type Addr = z.infer<typeof AddrSchema>;\n\nexport const ExtraItemSchema = z.object({\n  deep: z.boolean(),\n});\nexport type ExtraItem = z.infer<typeof ExtraItemSchema>;\n\nexport const RootItemSchema = z.object({\n  id: z.number().int(),\n  name: z.string().nullable(),\n  tags: z.array(z.string()).optional(),\n  addr: AddrSchema.optional(),\n  active: z.boolean().optional(),\n  extra: z.array(z.union([z.number().int(), ExtraItemSchema])).optional(),\n});\nexport type RootItem = z.infer<typeof RootItemSchema>;\n\nexport const RootSchema = z.array(RootItemSchema);\nexport type Root = z.infer<typeof RootSchema>;\n",

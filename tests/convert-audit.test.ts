@@ -1,0 +1,194 @@
+// Regressions from the audit of the code and data emitters: output that the target's own compiler or parser rejects
+// or reads back differently.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parse } from '../lib/json/parser';
+import { convert, type ConvertOptions } from '../lib/convert';
+
+const doc = (src: string) => {
+  const r = parse(src);
+  assert.ok(r.root, r.error?.m);
+  return r.root;
+};
+const conv = (src: string, target: string, opts: Partial<ConvertOptions> = {}) => convert(doc(src), target, { rootName: 'Root', ...opts });
+const has = (out: string, ...parts: string[]) => {
+  for (const p of parts) assert.ok(out.includes(p), `expected to find:\n${p}\n--- in ---\n${out}`);
+};
+
+test('PHP: class names never take a built-in class or a keyword, whatever their case', () => {
+  const classes = (src: string, o: Partial<ConvertOptions> = {}) => [...conv(src, 'php', o).matchAll(/^final class (\w+)/gm)].map((m) => m[1]);
+  // "Cannot declare class Error, because the name is already in use"
+  assert.deepEqual(classes('{"error":{"code":1,"message":"x"}}'), ['Root', 'ErrorClass']);
+  const builtin = ['exception', 'directory', 'closure', 'generator', 'iterator', 'attribute', 'dateTime', 'arrayObject', 'stdClass', 'pdo', 'traversable', 'jsonSerializable'];
+  assert.deepEqual(
+    // (one shape each: alike ones are one type)
+    classes(JSON.stringify(Object.fromEntries(builtin.map((k) => [k, { [k + 1]: 1 }])))),
+    ['Root', 'ExceptionClass', 'DirectoryClass', 'ClosureClass', 'GeneratorClass', 'IteratorClass', 'AttributeClass', 'DateTimeClass', 'ArrayObjectClass', 'StdClassClass', 'PdoClass', 'TraversableClass', 'JsonSerializableClass'],
+  );
+  // keywords in another case: `class ReadOnly` and `class ForEach` are parse errors
+  assert.deepEqual(classes('{"readOnly":{"a":1},"forEach":{"b":1},"endWhile":{"c":1}}'), ['Root', 'ReadOnlyClass', 'ForEachClass', 'EndWhileClass']);
+  // class names differing only in case are one name
+  assert.deepEqual(classes('{"userId":{"a":1},"userID":{"b":"x"}}'), ['Root', 'UserId', 'UserID2']);
+  assert.deepEqual(classes('{"a":1}', { rootName: 'exception' }), ['ExceptionClass']);
+  // (other languages still compare names exactly)
+  has(conv('{"userId":{"a":1},"userID":{"b":"x"}}', 'csharp'), 'public class UserId\n', 'public class UserID\n');
+});
+
+test('Python: a field with a default never hides a type its class uses', () => {
+  // `Address: Optional[Address] = None`: Python 3.14 reads the annotation after the class body, which bound Address to None.
+  const out = conv('{"items":[{"Address":{"city":"x"}},{}]}', 'python');
+  has(out, 'from pydantic import BaseModel, Field\n', 'class Item(BaseModel):\n    address: Optional[Address] = Field(default=None, alias="Address")\n');
+  // the field keeps a name of its own when the snake_case one is the type's too
+  has(conv('{"名前":{"a":1},"x":[{"名前":{"a":2}},{}]}', 'python'), '    名前_: Optional[名前] = Field(default=None, alias="名前")\n');
+  // a required field without an alias binds nothing: it keeps the key's name
+  has(conv('{"Address":{"city":"x"}}', 'python'), '    Address: Address\n');
+  // a field named like a type another field uses
+  const two = conv('{"items":[{"Other":{"a":1},"other":{"b":"x"}},{"Other":{"a":2}}]}', 'python');
+  has(two, '    Other: Other\n', '    other: Optional[Other2] = None\n');
+});
+
+test('Python: identifiers are compared as Python reads them (NFKC)', () => {
+  // `ﬁle` is the identifier `file`, and `ｎａｍｅ` is `name`: each gets an alias, and the two `name`s two fields.
+  has(conv('{"ﬁle":1,"ｎａｍｅ":"x","name":"y"}', 'python'), '    file: int = Field(alias="ﬁle")\n    name: str = Field(alias="ｎａｍｅ")\n    name2: str = Field(alias="name")\n');
+  // `＿x` is `_x`: private to Pydantic
+  has(conv('{"＿x":1}', 'python'), '    x: int = Field(alias="＿x")\n');
+  // class names too
+  const cls = [...conv('{"Ｎａｍｅ":{"a":1},"name":{"b":2}}', 'python').matchAll(/^class (\S+)\(/gm)].map((m) => m[1]);
+  assert.deepEqual(cls, ['Name', 'Name2', 'Root']);
+});
+
+test('Go: the key "-" is a field, not a skipped one', () => {
+  // encoding/json skips a field tagged `json:"-"`: the key "-" is `json:"-,"`
+  has(conv('{"-":1,"a":2}', 'go'), 'Field int64 `json:"-,"`');
+  has(conv('[{"-":1},{}]', 'go'), '`json:"-,omitempty"`');
+});
+
+test('Dart: fields never hide the types the class names', () => {
+  const out = conv('{"num":1,"int":2,"double":1.5,"bool":true,"dynamic":"x","n":{"num":2.5}}', 'dart');
+  has(
+    out,
+    '  final int num_;\n  final int int_;\n  final double double_;\n  final bool bool_;\n  final String dynamic_;\n',
+    "    num_: json['num'] as int,",
+    "    double_: (json['double'] as num).toDouble(),",
+    "    'dynamic': dynamic_,",
+    "  factory N.fromJson(Map<String, dynamic> json) => N(\n    num_: (json['num'] as num).toDouble(),",
+  );
+  assert.ok(!/final \S+ (?:num|int|double|bool|dynamic);|this\.(?:num|int|double|bool|dynamic),/.test(out), out);
+});
+
+test('C#: a member made unique never takes its class name', () => {
+  // CS0542: renumbering "a_" (A) past "a" gave A2 inside class A2
+  const out = conv('{"a":{"x":1},"b":{"a":{"a":1,"a_":2}}}', 'csharp');
+  has(out, 'public class A2\n{\n    [JsonPropertyName("a")]\n    public required long A { get; set; }\n\n    [JsonPropertyName("a_")]\n    public required long A3 { get; set; }\n}');
+});
+
+test('Swift: type names never take the names the JSONValue helper uses', () => {
+  const out = conv('{"decoder":{"a":1},"encoder":{"b":1},"u":[1,"x"]}', 'swift');
+  has(out, 'struct DecoderClass: Codable {', 'struct EncoderClass: Codable {', 'let decoder: DecoderClass', 'init(from decoder: Decoder) throws');
+  assert.ok(!/struct (?:Decoder|Encoder):/.test(out), out);
+});
+
+const wide = (n: number, v: unknown, p = 'f') => Object.fromEntries(Array.from({ length: n }, (_, i) => [p + i, v]));
+
+test('Java: objects past the JVM\'s 255 parameter slots are classes, not records', () => {
+  // A record's constructor takes every component; long and double take two slots, `this` one.
+  assert.ok(conv(JSON.stringify(wide(127, 1)), 'java').startsWith('public record Root(\n    long f0,'));
+  const cls = conv(JSON.stringify({ a: 'x', w: wide(128, 1) }), 'java');
+  has(
+    cls,
+    "    // A class, not a record: a constructor can't take this many fields (the JVM's 255 parameter slots).\n    public static final class W {\n        public long f0;\n",
+    '        public long f127;\n    }\n}',
+  );
+  assert.ok(conv(JSON.stringify(wide(254, 'x')), 'java').startsWith('public record Root('));
+  has(conv(JSON.stringify({ ...wide(128, 1.5), 'a-b': 1 }), 'java'), 'public final class Root {\n', '    @JsonProperty("a-b") public long aB;\n}');
+});
+
+test('Java: the key "" is read through @JsonAlias', () => {
+  // Jackson takes @JsonProperty("") for "the field's own name": the key "" was never read.
+  const out = conv('{"":7,"field":2,"x":{"":1}}', 'java');
+  has(
+    out,
+    'import com.fasterxml.jackson.annotation.JsonAlias;\n\n',
+    // (under a name no key has)
+    '// The key "" is read through @JsonAlias (Jackson can\'t name a property ""): it is written as "field2".\npublic record Root(\n    @JsonAlias("") long field2,\n    long field,',
+    '    public record X(@JsonAlias("") long field) {}',
+  );
+  assert.ok(!out.includes('@JsonProperty("")'), out);
+});
+
+test('Kotlin: objects past the JVM\'s 255 parameter slots box their numbers, or are a JsonObject', () => {
+  // (Its constructors also take a mask Int per 32 properties and a marker.)
+  const boxed = conv(JSON.stringify({ w: wide(130, 1), s: 'x' }), 'kotlin');
+  has(boxed, "// Long and Double properties are nullable (boxed): as primitives they'd take more than the JVM's 255 parameter slots.\n@Serializable\ndata class W(\n    val f0: Long? = null,");
+  assert.ok(conv(JSON.stringify(wide(120, 1)), 'kotlin').includes('    val f0: Long,\n'));
+  const big = conv(JSON.stringify({ big: { ...wide(300, 's'), inner: { q: 1 } }, other: { z: 1 } }), 'kotlin');
+  has(big, 'import kotlinx.serialization.json.JsonObject\n', "// Too many properties for a serializable class (the JVM's 255 parameter slots): a JsonObject.\ntypealias Big = JsonObject\n", 'data class Other(');
+  // (the types inside it are no longer used)
+  assert.ok(!big.includes('Inner'), big);
+});
+
+test('Zod: optional keys named like Object.prototype members accept objects without them', () => {
+  // z.object() reads a missing "constructor" as the inherited Object: `{"a":1}` failed "expected string, received function".
+  const out = conv('[{"a":1,"constructor":"c","n":{"toString":1}},{"a":2,"n":{}},{"a":3,"__proto__":4,"n":{"valueOf":2}}]', 'zod');
+  has(
+    out,
+    'import { z } from "zod";\n\n// Objects with keys that every object inherits',
+    'export const NSchema = z.preprocess(own, z.object({\n  toString: z.number().int().optional(),',
+    'export const RootItemSchema = z.preprocess(own, z.object({',
+  );
+  assert.equal(out.match(/const own = /g)?.length, 1);
+  // the helper: a copy without a prototype, other values as they are
+  const own = new Function(`${/const own = .*/.exec(out)![0].replace(/\(v: unknown\)/, '(v)')} return own;`)() as (v: unknown) => unknown;
+  const copy = own(JSON.parse('{"a":1,"__proto__":2}')) as Record<string, unknown>;
+  assert.equal(Object.getPrototypeOf(copy), null);
+  assert.deepEqual(Object.keys(copy), ['a', '__proto__']);
+  assert.equal(copy.constructor, undefined);
+  for (const v of [null, [1], 'x', 1]) assert.equal(own(v), v);
+  // required ones need no copy (a missing one fails either way), nor do other objects
+  assert.ok(!conv('{"constructor":"c","a":1}', 'zod').includes('preprocess'));
+  assert.ok(!conv('[{"a":1},{}]', 'zod').includes('own'));
+});
+
+test('JSON Schema and Zod: no date format for days that do not exist', () => {
+  const s = JSON.parse(conv('{"a":"2023-02-30","b":"2024-02-29","c":"2023-02-28T24:00:00Z","d":"2023-11-31T10:00:00Z","e":"2023-02-28T23:59:60Z"}', 'json-schema')).properties;
+  assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map((k) => s[k].format), [undefined, 'date', undefined, undefined, undefined]);
+  has(conv('{"a":"2023-02-30","b":"2024-02-29"}', 'zod'), '  a: z.string(),\n  b: z.string().date(),');
+});
+
+test('YAML: keys and strings that start like a document marker are quoted', () => {
+  // `... x: 1` at the start of a line ends the document: PyYAML fails on it
+  assert.equal(conv('{"... x":1,"--- y":"... z","...":"...","a":{"... n":1}}', 'yaml'), '"... x": 1\n"--- y": "... z"\n"...": "..."\na:\n  "... n": 1\n');
+  assert.equal(conv('"... x"', 'yaml'), '"... x"\n');
+  assert.equal(conv('"..."', 'yaml'), '"..."\n');
+  assert.equal(conv('["...x","x ..."]', 'yaml'), '- ...x\n- x ...\n');
+});
+
+test('YAML: keys longer than 1024 characters are explicit', () => {
+  // An implicit key ("key: value") is at most 1024 characters long.
+  const k = 'k'.repeat(1025);
+  assert.equal(conv(JSON.stringify({ [k]: 1, a: { [k]: { b: [1] } }, s: [{ [k]: 2, c: 3 }] }), 'yaml'), `? ${k}\n: 1\na:\n  ? ${k}\n  :\n    b:\n      - 1\ns:\n  - ? ${k}\n    : 2\n    c: 3\n`);
+  // (as written: a quoted key's escapes count)
+  assert.equal(conv(JSON.stringify({ ['k'.repeat(1024)]: 1 }), 'yaml'), `${'k'.repeat(1024)}: 1\n`);
+  assert.ok(conv(JSON.stringify({ ['"'.repeat(511)]: 1 }), 'yaml').startsWith('"\\"'));
+  assert.ok(conv(JSON.stringify({ ['"'.repeat(512)]: 1 }), 'yaml').startsWith('? "'));
+});
+
+test('XML: names use only characters both editions of XML 1.0 (and Expat) allow', () => {
+  // µ, ª and º are letters but not XML name characters; ſ, ĳ, ǅ and ﬀ are only in the 5th edition's names, and ー and 々
+  // only in the 5th edition's first characters.
+  assert.equal(
+    conv('{"µs":1,"o":{"@ª":"1","@bº":"2"},"ſ":1,"ĳ":1,"ǅ":1,"xー":1,"々x":1,"ﬀ":1}', 'xml', { rootName: 'µ' }),
+    '<?xml version="1.0" encoding="UTF-8"?>\n<_>\n  <_s>1</_s>\n  <o _="1" b_="2"/>\n  <_>1</_>\n  <_>1</_>\n  <_>1</_>\n  <xー>1</xー>\n  <_々x>1</_々x>\n  <_>1</_>\n</_>\n',
+  );
+  // letters, digits and marks of both editions stay
+  assert.equal(conv('{"café":1,"名前":2,"Ωmega":3,"a·b":4,"x\u0301":5,"٣a":6,"a:b":7}', 'xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <café>1</café>\n  <名前>2</名前>\n  <Ωmega>3</Ωmega>\n  <a·b>4</a·b>\n  <x\u0301>5</x\u0301>\n  <_٣a>6</_٣a>\n  <a_b>7</a_b>\n</root>\n');
+  // characters outside the BMP never are
+  assert.equal(conv('{"a😀":1}', 'xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <a_>1</a_>\n</root>\n');
+});
+
+test('names of Object.prototype members are plain words', () => {
+  // singular() looked "constructor" up in an object and found Object.prototype.constructor: a type FunctionObjectNativeCode
+  has(conv('{"constructor":[{"a":1}],"toString":[{"b":1}]}', 'typescript'), '  constructor: ConstructorItem[];', '  toString: ToStringItem[];', 'export interface ConstructorItem {');
+  assert.throws(() => conv('1', 'constructor'), /Unknown conversion target "constructor"/);
+  assert.throws(() => conv('1', 'toString'), /Unknown conversion target/);
+});

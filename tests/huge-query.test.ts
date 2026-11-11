@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { lazyResult } from '../lib/json/lazy';
-import { MAX_DEPTH, type JNode } from '../lib/json/parser';
+import { ARR, MAX_DEPTH, OBJ, type JNode } from '../lib/json/parser';
 import { formatPath, nodeAt, pathOf } from '../lib/json/path';
 import { PrettyText, prettyIndexer, writeTape } from '../lib/json/pretty';
 import { childCount, endOf, nextOf, startOf, type Tape } from '../lib/json/tape';
@@ -203,7 +203,8 @@ test('locate and resolve: the node at a byte and its path, as path.ts finds them
       assert.equal(formatPath(got!.path), formatPath(pathOf(want)), `path at ${p}${c.where}`);
       assert.equal(got!.node.start, byteOfText(c, want.s), `start at ${p}${c.where}`);
       if (got!.node.end >= 0) assert.equal(got!.node.end, byteOfText(c, want.e), `end at ${p}${c.where}`);
-      // And back from its path (an object's first member with a name: what path.ts resolve finds).
+      // And back from its path (huge mode names an object's first member with a name; path.ts resolve reads
+      // the last, as JSON.parse does).
       const back = c.d.resolve(pathOf(want));
       const first = resolveFirst(root, pathOf(want));
       assert.equal(back?.node.start, first ? byteOfText(c, first.s) : undefined, `resolve ${formatPath(pathOf(want))}${c.where}`);
@@ -214,8 +215,9 @@ test('locate and resolve: the node at a byte and its path, as path.ts finds them
 function resolveFirst(root: JNode, path: (string | number)[]): JNode | null {
   let n: JNode | null = root;
   for (const k of path) {
-    if (!n) return null;
-    n = n.z!.child(n, k);
+    if (!n || n.t < ARR) return null;
+    const list = n.v as JNode[];
+    n = n.t === OBJ ? (list.find((c) => c.key === String(k)) ?? null) : typeof k === 'number' || /^\d+$/.test(k) ? (list[Number(k)] ?? null) : null;
   }
   return n;
 }

@@ -57,6 +57,8 @@ export interface JwtInfo {
   exp?: number;
   iat?: number;
   nbf?: number;
+  /** Not signed (alg "none", or no signature): shown as a warning. */
+  unsigned?: boolean;
 }
 
 export type Status =

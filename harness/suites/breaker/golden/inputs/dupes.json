@@ -34,7 +34,7 @@
   ],
   "empty": false
  },
- "csv": "key,value,c\r\na,1,\r\na,2,\r\nb,,\"{\"\"d\"\":2}\"\r\na,3,",
+ "csv": "key,value\r\na,1\r\na,2\r\nb.c,1\r\nb.c.d,2\r\na,3\r\n",
  "convert": {
   "typescript": "export interface Root {\n  a: number;\n  b: B;\n}\n\nexport interface B {\n  c: number | C;\n}\n\nexport interface C {\n  d: number;\n}\n",
   "zod": "import { z } from \"zod\";\n\nexport const CSchema = z.object({\n  d: z.number().int(),\n});\nexport type C = z.infer<typeof CSchema>;\n\nexport const BSchema = z.object({\n  c: z.union([z.number().int(), CSchema]),\n});\nexport type B = z.infer<typeof BSchema>;\n\nexport const RootSchema = z.object({\n  a: z.number().int(),\n  b: BSchema,\n});\nexport type Root = z.infer<typeof RootSchema>;\n",
