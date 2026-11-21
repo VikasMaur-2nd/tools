@@ -57,8 +57,9 @@ function session(text: string, view = 'convert') {
   // The tree kept from GOOD and its conversion, as analyze() and runConvert() leave them.
   engine.goodVer = good.version;
   engine.parsedVer = ed.version;
-  // (As the engine parses: repairing what it can, each repair an issue.)
+  // (As the engine parses: repairing what it can, each repair an issue; its status says valid, fixable or error.)
   const res: ParseResult = parse(text, { repair: true });
+  state.status = { kind: res.root ? (res.issues.length ? 'fixable' : 'valid') : 'error' };
   engine.fresh = () => res;
   engine.convLater = () => null;
   engine.convOutput = () => FLAT;
@@ -66,7 +67,7 @@ function session(text: string, view = 'convert') {
   engine.replaceText = (...args: unknown[]) => calls.push(['replace', ...args]);
   engine.setConvert = (...args: unknown[]) => calls.push(['setConvert', ...args]);
   engine.transform = (...args: unknown[]) => calls.push(['transform', args.length]);
-  return { engine, calls, ed };
+  return { engine, calls, ed, state };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -150,4 +151,35 @@ test('Use as input on input the parser repaired: says to fix it (Format still ap
   const f = session('{"b":', 'format');
   f.engine.useOutput();
   assert.deepEqual(plain(f.calls, 'track'), [['transform', 2]]);
+});
+
+test('Use as input after pasting JSONP while the JWT reader loads: the repaired parse that arrives is never applied', async () => {
+  // (fresh() gave the earlier, valid text's parse while the reader loaded; the new text's parse, repaired, came after.)
+  const s = pending();
+  const jsonp = 'example({"a":{"b":1}})';
+  s.ed.text = jsonp;
+  s.ed.version = {};
+  // The conversion was asked for this version (as useOutput would at its click): redo the request on it.
+  s.calls.length = 0;
+  s.engine.viewSeq = 9;
+  s.engine.useOutput();
+  // The reader came: the text is analysed, with a repair, and converted.
+  s.engine.res = parse(jsonp, { repair: true });
+  s.engine.goodVer = s.ed.version;
+  s.engine.parsedVer = s.ed.version;
+  s.state.status = { kind: 'fixable' };
+  s.arrive(FLAT);
+  await flush();
+  assert.deepEqual(plain(s.calls, 'track'), []);
+});
+
+test('Use as input on JSON Lines (read as records, not repaired): it applies', async () => {
+  const lines = '{"a":{"b":1}}\n{"a":{"b":2}}\n';
+  const s = session(lines);
+  // (Its parse has the "several top-level values" issue; the engine reads it as JSON Lines, valid.)
+  s.state.status = { kind: 'valid', jsonl: 2 };
+  s.ed.version = s.engine.goodVer;
+  s.engine.useOutput();
+  await flush();
+  assert.deepEqual(plain(s.calls, 'track'), [['replace', FLAT, 'Flattened input'], ['setConvert', { target: 'unflatten' }]]);
 });

@@ -96,6 +96,10 @@ const failed = (error: string): FlatResult => ({ text: '', note: '', warn: false
 export type Steps<T> = Generator<void, T, void>;
 /** Steps yield every this many items (a mask: 1,024). */
 const EVERY = 1023;
+/** One conversion's count of items done, shared by all its parts so that small parts add up to a step. */
+interface Work {
+  n: number;
+}
 /** Runs steps to the end. */
 function finish<T>(g: Steps<T>): T {
   for (;;) {
@@ -125,7 +129,7 @@ function valueText(n: JNode, pad: string): string {
  * under an empty top-level key, a flat key's value) can be as big as the document. lib/json/format.ts
  * stringifyNodes' walk, indented by two spaces from `pad`.
  */
-function* valueSteps(n: JNode, pad: string): Steps<string> {
+function* valueSteps(n: JNode, pad: string, work: Work): Steps<string> {
   let out = '';
   const pads = [pad];
   const padAt = (d: number) => {
@@ -137,9 +141,8 @@ function* valueSteps(n: JNode, pad: string): Steps<string> {
   const objs: boolean[] = [];
   const at: number[] = [];
   let node = n;
-  let steps = 0;
   for (;;) {
-    if (!(++steps & EVERY)) yield;
+    if (!(++work.n & EVERY)) yield;
     if (out.length > MAX_TEXT) throw tooLong();
     const list = node.t >= ARR ? kids(node) : null;
     if (!list?.length) out += valueText(node, '');
@@ -306,6 +309,8 @@ class Flattener {
   n = 0;
   /** Without escapes: unflatten's budget of missing items, spent as it would spend it (see misread). */
   private budget = HOLES;
+  /** Without escapes: unflatten itself, to place the keys of a record whose paths look misread (see moved). */
+  private sim: Unflattener | null = null;
 
   constructor(o: FlatOptions) {
     this.o = o;
@@ -392,7 +397,7 @@ class Flattener {
   /** One flat object of `root` (an object or array), or `root` itself when it has nothing to flatten. */
   *one(root: JNode, pad: string): Steps<string> {
     if (root.t < ARR) return valueText(root, pad);
-    if (!kids(root).length || (this.keep && root.t === ARR)) return yield* valueSteps(root, pad);
+    if (!kids(root).length || (this.keep && root.t === ARR)) return yield* valueSteps(root, pad, this);
     const { sep, depth, escape } = this.o;
     const { bracket, keep, read } = this;
     const inner = pad + '  ';
@@ -405,6 +410,9 @@ class Flattener {
     const objs: boolean[] = [root.t === OBJ];
     const at: number[] = [0];
     const paths: (string | null)[] = [null];
+    // (Without escapes: each flat key with its real place, and the count of keys suspect before this record.)
+    const entries: { path: string; parts: Part[]; leaf: JNode }[] | null = read ? [] : null;
+    const before = this.unsafe;
     const top = yield* this.scan(root);
     const digits: boolean[] = [escape && top >= 0];
     const bad: boolean[] = [!escape && this.misread(lists[0].length, top)];
@@ -443,16 +451,53 @@ class Flattener {
         at.push(0);
         paths.push(path);
         digits.push(escape && max >= 0);
-        bad.push(bad[d] || (!escape && this.misread(kids(c).length, max)));
+        // (Asked for every object, under a misread one too: unflatten spends its budget on all of them, in this order.)
+        const misread = !escape && this.misread(kids(c).length, max);
+        bad.push(bad[d] || misread);
         parts?.push([...parts[d], c.key as Part]);
         continue;
       }
       if ((bad[d] || (read && !this.same(read(path), parts![d], c.key as Part))) && !this.unsafe++) this.example = path;
-      out += (first ? '\n' : ',\n') + inner + quote(path) + ': ' + (c.t < ARR ? valueText(c, inner) : yield* valueSteps(c, inner));
+      entries?.push({ path, parts: [...parts![d], c.key as Part], leaf: c });
+      out += (first ? '\n' : ',\n') + inner + quote(path) + ': ' + (c.t < ARR ? valueText(c, inner) : yield* valueSteps(c, inner, this));
       first = false;
       if (out.length > MAX_TEXT) throw tooLong();
     }
+    // Suspect keys can move others (a misread key can make an array of indexes an object): the count is the keys
+    // unflatten would really put elsewhere.
+    if (entries && this.unsafe > before) {
+      const m = yield* this.moved(entries);
+      this.unsafe = before + m.count;
+      if (!before) this.example = m.first;
+    }
     return first ? '{}' : out + '\n' + pad + '}';
+  }
+
+  /**
+   * How many of a record's flat keys unflatten puts somewhere else than their real place, and the first: built and
+   * laid out by unflatten itself (one for all records, as its budget of missing items is). All of them when their
+   * paths clash: unflatten then gives nothing back.
+   */
+  private *moved(entries: { path: string; parts: Part[]; leaf: JNode }[]): Steps<{ count: number; first: string }> {
+    const u = (this.sim ??= new Unflattener(this.o));
+    const conflicts = u.conflicts;
+    const root = new Box('');
+    for (const e of entries) {
+      if (!(++this.n & EVERY)) yield;
+      u.put(root, u.read(e.path), e.leaf, e.path);
+    }
+    if (u.conflicts > conflicts) return { count: entries.length, first: entries[0].path };
+    const places = new Map<JNode, Part[]>();
+    yield* u.places(root, places);
+    let count = 0;
+    let first = '';
+    for (const e of entries) {
+      if (!(++this.n & EVERY)) yield;
+      const p = places.get(e.leaf)!;
+      if (p.length === e.parts.length && p.every((x, i) => x === e.parts[i])) continue;
+      if (!count++) first = e.path;
+    }
+    return { count, first };
   }
 
   /** Whether a path read back gives its parts (dot style: an index-like key reads as a number; see scan). */
@@ -554,7 +599,7 @@ export function* unflattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps
       for (let i = 0; i < items.length; i++) {
         if (!(++u.n & EVERY)) yield;
         const it = items[i];
-        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? yield* u.one(it, '  ') : it.t < ARR ? valueText(it, '  ') : yield* valueSteps(it, '  '));
+        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? yield* u.one(it, '  ') : it.t < ARR ? valueText(it, '  ') : yield* valueSteps(it, '  ', u));
         if (text.length > MAX_TEXT) throw tooLong();
       }
       text += '\n]';
@@ -573,8 +618,8 @@ export function* unflattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps
 class Unflattener {
   private readonly bracket: boolean;
   private readonly dot: boolean;
-  private readonly read: (p: string) => Part[];
-  private conflicts = 0;
+  readonly read: (p: string) => Part[];
+  conflicts = 0;
   private firstConflict = '';
   private deep = false;
   private holes = 0;
@@ -614,7 +659,7 @@ class Unflattener {
     if (!this.conflicts++) this.firstConflict = fill(msg, { a: shown(a), b: shown(b) });
   }
 
-  private put(start: Box, parts: Part[], n: JNode, key: string) {
+  put(start: Box, parts: Part[], n: JNode, key: string) {
     let box = start;
     for (let j = 0; ; j++) {
       const part = parts[j];
@@ -643,11 +688,14 @@ class Unflattener {
   }
 
   /** A box's items in output order (null: a missing item), and its keys (null for an array). */
-  private layout(b: Box): [(Box | JNode | null)[], string[] | null] {
+  private *layout(b: Box): Steps<[(Box | JNode | null)[], string[] | null]> {
     const arr = this.bracket ? b.kind === 1 : this.dot && b.num;
     if (!arr) return [b.vals, b.keys];
     let max = -1;
-    for (const k of b.keys) max = Math.max(max, +k);
+    for (const k of b.keys) {
+      if (!(++this.n & EVERY)) yield;
+      max = Math.max(max, +k);
+    }
     const holes = max + 1 - b.keys.length;
     if (holes > this.budget) {
       this.sparse++;
@@ -656,8 +704,30 @@ class Unflattener {
     this.budget -= holes;
     this.holes += holes;
     const slots: (Box | JNode | null)[] = new Array(max + 1).fill(null);
-    for (let i = 0; i < b.keys.length; i++) slots[+b.keys[i]] = b.vals[i];
+    for (let i = 0; i < b.keys.length; i++) {
+      if (!(++this.n & EVERY)) yield;
+      slots[+b.keys[i]] = b.vals[i];
+    }
     return [slots, null];
+  }
+
+  /** Where each value lands (its parts: keys, and indexes in arrays), laid out as write lays boxes out, in its order. */
+  *places(root: Box, out: Map<JNode, Part[]>): Steps<void> {
+    const stack: [Box, Part[]][] = [[root, []]];
+    while (stack.length) {
+      const [b, at] = stack.pop()!;
+      const [slots, keys] = yield* this.layout(b);
+      // (Children are laid out in document order: pushed last to first.)
+      const boxes: [Box, Part[]][] = [];
+      for (let i = 0; i < slots.length; i++) {
+        if (!(++this.n & EVERY)) yield;
+        const v = slots[i];
+        const p = [...at, keys ? keys[i] : i];
+        if (v instanceof Box) boxes.push([v, p]);
+        else if (v) out.set(v, p);
+      }
+      for (let i = boxes.length; i--; ) stack.push(boxes[i]);
+    }
   }
 
   private *write(root: Box, pad: string): Steps<string> {
@@ -669,17 +739,20 @@ class Unflattener {
     const at: number[] = [];
     const pads: string[] = [];
     const inners: string[] = [];
-    const open = (b: Box, p: string) => {
-      const [s, k] = this.layout(b);
-      slots.push(s);
-      names.push(k);
-      at.push(0);
-      pads.push(p);
-      inners.push(p + '  ');
-      out += k ? '{\n' : '[\n';
-    };
-    open(root, pad);
-    while (slots.length) {
+    // A box to open next, at that indent (the root first).
+    let next: Box | null = root;
+    let nextPad = pad;
+    while (next || slots.length) {
+      if (next) {
+        const [s, k] = yield* this.layout(next);
+        slots.push(s);
+        names.push(k);
+        at.push(0);
+        pads.push(nextPad);
+        inners.push(nextPad + '  ');
+        out += k ? '{\n' : '[\n';
+        next = null;
+      }
       if (!(++this.n & EVERY)) yield;
       const d = slots.length - 1;
       const i = at[d]++;
@@ -700,8 +773,10 @@ class Unflattener {
       if (keys) out += quote(keys[i]) + ': ';
       const v = list[i];
       if (v === null) out += 'null';
-      else if (v instanceof Box) open(v, inner);
-      else out += v.t < ARR ? valueText(v, inner) : yield* valueSteps(v, inner);
+      else if (v instanceof Box) {
+        next = v;
+        nextPad = inner;
+      } else out += v.t < ARR ? valueText(v, inner) : yield* valueSteps(v, inner, this);
       if (out.length > MAX_TEXT) throw tooLong();
     }
     return out;
