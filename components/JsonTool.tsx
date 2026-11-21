@@ -8,8 +8,8 @@ import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
-import { store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
-import { TARGETS, targetInfo } from '@/lib/engine/targets';
+import { store, useUI, type CsvDelimiter, type FlatSettings, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
+import { TARGETS, isFlat, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
 import { startAgentTools } from '@/lib/webmcp';
@@ -369,6 +369,7 @@ function ViewMenu() {
                 />
               )}
               {info.group === 'Types' && <MSep />}
+              {isFlat(info.id) && <FlatItems flatten={info.id === 'flatten'} close={close} />}
               <FoldItems close={close} />
               <WrapItem />
             </>
@@ -376,6 +377,36 @@ function ViewMenu() {
         </>
       )}
     </Menu>
+  );
+}
+
+/** Flatten and unflatten's options, the same for both (so flat JSON unflattens with what made it). */
+function FlatItems({ flatten, close }: { flatten: boolean; close: () => void }) {
+  const f = useUI((s) => s.settings.flat);
+  const t = useT();
+  const set = (p: Partial<FlatSettings>) => act((e) => e.setFlat(p));
+  return (
+    <>
+      <MChoice label="Separator" value={f.sep} options={['.', '/', '_', '__'].map((v) => ({ v, label: v }))} onPick={(sep) => set({ sep })} />
+      <label className="mi mi-row">
+        <span>{t('Custom separator')}</span>
+        <input className={`mi-input ${PRIVATE}`} value={f.sep} maxLength={8} spellCheck={false} onChange={(e) => act((en) => en.setFlat({ sep: e.target.value.replace(/[\\[\]\d]/g, '') }, true))} />
+      </label>
+      <MChoice
+        label="Array indexes"
+        value={f.arrays}
+        options={[
+          { v: 'bracket', label: 'a[0]' },
+          { v: 'dot', label: `a${f.sep || '.'}0` },
+          { v: 'keep', label: 'None' },
+        ]}
+        onPick={(arrays) => set({ arrays })}
+      />
+      <MCheck label="Escape keys" checked={f.escape} onClick={() => set({ escape: !f.escape })} />
+      {flatten && <MChoice label="Depth" value={f.depth} options={[{ v: 0, label: 'All' }, ...[1, 2, 3].map((v) => ({ v, label: String(v) }))]} onPick={(depth) => set({ depth })} />}
+      <MItem label="Use as input" keys="mod+Enter" onClick={() => act((e) => e.useConvert())} close={close} />
+      <MSep />
+    </>
   );
 }
 
@@ -771,6 +802,26 @@ function FormatNote() {
   return <div className="cv-note">{t('The result is too large')}</div>;
 }
 
+/** Flatten and unflatten's notes on their output: a warning when it won't convert back as it is. */
+function ConvertBanner() {
+  const on = useUI((s) => s.settings.view === 'convert' && isFlat(s.settings.target));
+  const { note, warn, flip } = useUI((s) => s.convert);
+  const flatten = useUI((s) => s.settings.target === 'flatten');
+  const t = useT();
+  if (!on || !note) return null;
+  return (
+    <div className={`banner ${warn ? 'warn' : 'info'}`} role="status" aria-live="polite">
+      <Icon name={warn ? 'alert' : 'braces'} size={15} />
+      <span className="b-msg">{t.msg(note)}</span>
+      {flip && (
+        <button type="button" className="btn sm accent" onClick={() => act((e) => e.setConvert({ target: flatten ? 'unflatten' : 'flatten' }))}>
+          {flatten ? t('Unflatten instead') : t('Flatten instead')}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ConvertNote() {
   const { error } = useUI((s) => s.convert);
   const t = useT();
@@ -803,6 +854,7 @@ function ViewerPane({
       {/* Everything in here shows the document: session replay records it as an empty box. */}
       <div className={`view ${PRIVATE}${stale ? ' stale' : ''}`}>
         <Banner />
+        <ConvertBanner />
         <FindBar />
         <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label={t('Formatted output')}>
           <div className="cv-sizer">

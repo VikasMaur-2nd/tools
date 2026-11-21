@@ -95,7 +95,7 @@ export interface Events {
   /** `target`: the Convert language active when the Convert view opens. */
   view_opened: { view: ViewId; via: Via; target?: string };
   convert_target_selected: { target: string; group: 'types' | 'data'; via: Via };
-  convert_option_changed: { option: 'ts_style' | 'csharp_lib'; value: string };
+  convert_option_changed: { option: 'ts_style' | 'csharp_lib' | 'flat_sep' | 'flat_arrays' | 'flat_escape' | 'flat_depth'; value: string };
   format_option_changed: { option: 'style' | 'sort_keys' | 'indent'; value: string };
   feature_used: { feature: Feature; via: Via; view?: ViewId; level?: number; on?: boolean; value?: string; jsonpath?: boolean };
   command_run: { command: string };
@@ -250,7 +250,7 @@ export function errorKind(msg: string | undefined): string | undefined {
 // ── What each property may hold ──────────────────────────────────────────────
 
 /** Convert targets (lib/engine/targets.ts) and the palette's commands (lib/engine/commands.ts): tests/analytics.test.ts checks every one passes. */
-const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'];
+const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl', 'flatten', 'unflatten'];
 const COMMAND_IDS = [
   'undo', 'redo', 'use-output', 'format', 'minify', 'sort', 'out-pretty', 'out-minify', 'out-string', 'out-sort', 'copy-output', 'download-output',
   'repair', 'escape', 'unescape', 'error', 'jwt', 'from-yaml', 'from-xml', 'from-csv', 'from-toml', 'from-json', 'copy', 'download', 'open', 'paste', 'url',
@@ -275,7 +275,8 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   },
   view_opened: { view: VIEW_IDS, via: VIAS, target: TARGET_IDS },
   convert_target_selected: { target: TARGET_IDS, group: ['types', 'data'], via: VIAS },
-  convert_option_changed: { option: ['ts_style', 'csharp_lib'], value: ['interface', 'type', 'stj', 'newtonsoft'] },
+  // Flatten: the separator only when picked from the menu's ('.', '/', '_', '__'; a typed one is never sent), array style, escapes, depth.
+  convert_option_changed: { option: ['ts_style', 'csharp_lib', 'flat_sep', 'flat_arrays', 'flat_escape', 'flat_depth'], value: ['interface', 'type', 'stj', 'newtonsoft', '.', '/', '_', '__', 'bracket', 'dot', 'keep', 'true', 'false', '0', '1', '2', '3'] },
   format_option_changed: { option: ['style', 'sort_keys', 'indent'], value: ['pretty', 'minify', 'string', 'true', 'false', '2', '4', 'tab'] },
   feature_used: {
     feature: FEATURES, via: VIAS, view: VIEW_IDS, level: 'number', on: 'flag', jsonpath: 'flag',

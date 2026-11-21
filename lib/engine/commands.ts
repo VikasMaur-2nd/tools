@@ -33,6 +33,8 @@ const LANG_TERMS: Record<string, string> = {
   yaml: 'yml',
   xml: 'markup',
   toml: 'config',
+  flatten: 'flat dot notation paths keys',
+  unflatten: 'nest nested expand dot notation paths keys',
 };
 
 export const COMMANDS: Command[] = [

@@ -1,12 +1,13 @@
 /**
  * Convert: JSON -> types (TypeScript, Zod, JSON Schema, C#, Dart, Java, Python,
- * Go, Kotlin, Swift, PHP, Rust, Protocol Buffers) and data formats (YAML, XML, TOML, JSON Lines;
- * CSV and Excel are xlsx.ts). Zero dependencies; meant to be lazy-loaded. The
+ * Go, Kotlin, Swift, PHP, Rust, Protocol Buffers) and data formats (YAML, XML, TOML, JSON Lines,
+ * flat and nested JSON; CSV and Excel are xlsx.ts). Zero dependencies; meant to be lazy-loaded. The
  * targets themselves (labels, extensions…) are lib/engine/targets.ts.
  */
 import { tooDeep, type JNode } from '../json/parser';
 import type { ConvertOptions } from './infer';
 import { toJSONL, toTOML, toXML, toYAML } from './data';
+import { flatten, unflatten, type FlatResult } from './flat';
 import { toCSharp, toDart, toGo, toJava, toKotlin, toPHP, toPython, toRust, toSwift } from './langs';
 import { toProto } from './proto';
 import { toJSONSchema, toTypeScript, toZod } from './types';
@@ -34,9 +35,17 @@ const EMIT: Record<string, Emitter> = {
   xml: (r, o) => toXML(r, o.rootName),
   toml: (r, o) => toTOML(r, o.rootName),
   jsonl: toJSONL,
+  flatten: (r, o) => flat(flatten(r, o.flat), o),
+  unflatten: (r, o) => flat(unflatten(r, o.flat), o),
 };
 
-const COMMENT: Record<string, string> = { python: '# ', yaml: '# ', toml: '# ', 'json-schema': '', jsonl: '' };
+/** Flatten and unflatten say more than their output (notes, or an error instead of it): handed to `o.report`. */
+function flat(r: FlatResult, o: ConvertOptions) {
+  o.report?.(r);
+  return r.text;
+}
+
+const COMMENT: Record<string, string> = { python: '# ', yaml: '# ', toml: '# ', 'json-schema': '', jsonl: '', flatten: '', unflatten: '' };
 
 /** Converts a parsed document to `target` (a target id other than CSV and Excel: see xlsx.ts). */
 export function convert(root: JNode, target: string, opts: ConvertOptions): string {
