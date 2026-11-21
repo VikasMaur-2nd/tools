@@ -173,7 +173,7 @@ test('the view toolbar: every view reachable and nothing overlapping, with a doc
   for (const [path, widths] of cases) {
     await t.open(path);
     t.check(await setDoc(page, JSON.stringify({ id: 1, name: 'Ada', tags: ['a', 'b'] }, null, 2)), `${path}: a document`);
-    for (const view of ['Alt+1', 'Alt+5', 'Alt+7']) {
+    for (const view of ['Alt+1', 'Alt+2', 'Alt+3', 'Alt+5', 'Alt+7']) {
       await page.keyboard.press(view);
       if (view === 'Alt+7') await until(page, () => !!document.querySelector('.pane-sch:not([hidden])'), null, { timeout: 20_000 });
       for (const width of widths) {
@@ -196,6 +196,16 @@ test('the view toolbar: every view reachable and nothing overlapping, with a doc
     }
   }
   t.check(!bad.length, 'every view has a tab or the dropdown, and the tabs, the view\'s control and the icons don\'t overlap', bad.slice(0, 6));
+  // Where everything fits, one row: no row lost to the toolbar (a 1280px window's viewer is 640px wide).
+  await t.open('/');
+  t.check(await setDoc(page, JSON.stringify({ id: 1, name: 'Ada', tags: ['a', 'b'] }, null, 2)), '/: a document');
+  const rows = [];
+  for (const [width, view] of [[1280, 'Alt+2'], [1280, 'Alt+3'], [1280, 'Alt+4'], [1600, 'Alt+1'], [1600, 'Alt+5']]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.keyboard.press(view);
+    rows.push([width, view, await page.evaluate(() => Math.round(document.querySelector('.pane-view .vbar').getBoundingClientRect().height))]);
+  }
+  t.check(rows.every(([, , h]) => h <= 46), 'a view whose tabs, control and icons fit keeps a one-row toolbar', rows);
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
 
@@ -237,18 +247,25 @@ test('the palette\'s Generate on a fresh page: the view opens with the generated
 // (The failed request is logged by the browser: the test checks the other errors itself.)
 test('a German page whose Schema strings failed to load once: English, then German when the view opens again (round 2, finding 10)', { allowErrors: true }, async (t) => {
   const { page } = t;
-  let failed = 0;
+  let asked = 0;
   // (The first request for the Schema view's strings fails; the next ones go through.)
-  await page.route(/schema-strings\.de\./, (route) => (failed++ ? route.continue() : route.fulfill({ status: 404, body: '' })));
+  await page.route(/\/i18n\/schema-strings\.de\.[0-9a-f]+\.json/, (route) => (asked++ ? route.continue() : route.fulfill({ status: 404, body: '' })));
   await t.open('/de');
   t.check(await setDoc(page, '{"id": 1}'), 'a document');
+  // The view opens at once, in English while its strings are asked for; the request fails.
+  const failed = page.waitForResponse((r) => /\/i18n\/schema-strings\.de\./.test(r.url()) && r.status() === 404, { timeout: 20_000 }).then(() => true, () => false);
   await page.keyboard.press('Alt+7');
+  t.check(await failed, 'the view asks for its strings when it opens', { asked });
   const english = await until(page, () => (document.querySelector('.sch-fmt')?.textContent ?? '').includes('Check formats'), null, { timeout: 20_000 });
-  t.check(english === true && failed === 1, 'the view shows, in English, after the failed request', { failed });
-  // Closed and opened again: asked for again, and shown in German.
-  await page.keyboard.press('Alt+1');
-  await page.keyboard.press('Alt+7');
+  t.check(english === true, 'the view shows, in English');
+  // Closed and opened again: asked for again, and shown in German. (A reopening while the failed request is still
+  // being answered waits for that answer: opened again until it is asked for again.)
+  for (let i = 0; i < 5 && asked < 2; i++) {
+    await page.keyboard.press('Alt+1');
+    await page.keyboard.press('Alt+7');
+    for (let k = 0; k < 10 && asked < 2; k++) await page.waitForTimeout(100);
+  }
   const german = await until(page, () => (document.querySelector('.sch-fmt')?.textContent ?? '').includes('Formate prüfen'), null, { timeout: 20_000 });
-  t.check(german === true && failed === 2, 'opened again: German', { failed });
+  t.check(german === true && asked >= 2, 'opened again: German', { asked });
   t.check(!t.errors.filter((e) => !/404|Failed to load resource/.test(e)).length, 'no page errors', t.errors.slice(0, 3));
 });
