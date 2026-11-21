@@ -16,8 +16,9 @@ class FakeEditor implements SchemaEditor {
     return this.t;
   }
   set text(v: string) {
+    // (The same text again is no change: the version stays, as the app's editor's.)
+    if (v !== this.t) this.version = {};
     this.t = v;
-    this.version = {};
   }
   diags: number[] = [];
   onChange: ((kind: 'input' | 'paste' | 'set') => void) | null = null;
