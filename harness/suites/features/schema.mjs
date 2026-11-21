@@ -1,7 +1,7 @@
 // The Schema view (JSON Schema validation): the validator page's sample and its six errors, a click or Enter on an
 // error selecting it in the document, a keyword selecting the rule in the schema, keyboard navigation, fixing to
 // Valid and undoing, a broken schema, Check formats, the phone layout, and from the home page Alt+7, Generate from
-// the document and Close.
+// the document and Close; the view toolbar at the widths where its row is full.
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, setDoc, until } from './_helpers.mjs';
 
@@ -158,5 +158,40 @@ test('a schema file opened over the page\'s sample is saved with its name', asyn
   t.check(!!(await until(page, (x) => document.getElementById('schema-input')?.value === x, text)), 'the file is in the schema editor');
   const saved = await until(page, () => localStorage.getItem('jf:schema') && [localStorage.getItem('jf:schema'), localStorage.getItem('jf:schema-file')], null, { timeout: 5000 });
   t.check(JSON.stringify(saved) === JSON.stringify([text, 'orders.schema.json']), 'saved, text and name together, without typing', saved);
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('the view toolbar: every view reachable and nothing overlapping, with a document, in English and Russian', async (t) => {
+  const { page } = t;
+  // Viewer widths where the seven tabs, the Format view's control and the icons no longer fit on one row (English
+  // overlapped at 1280–1440px windows; Russian, the longest labels, just below its dropdown at 900px).
+  const cases = [['/', [1100, 1280, 1360, 1440, 1600]], ['/ru', [1820, 1900, 1960, 2100]]];
+  const bad = [];
+  for (const [path, widths] of cases) {
+    await t.open(path);
+    t.check(await setDoc(page, JSON.stringify({ id: 1, name: 'Ada', tags: ['a', 'b'] }, null, 2)), `${path}: a document`);
+    for (const view of ['Alt+1', 'Alt+5', 'Alt+7']) {
+      await page.keyboard.press(view);
+      if (view === 'Alt+7') await until(page, () => !!document.querySelector('.pane-sch:not([hidden])'), null, { timeout: 20_000 });
+      for (const width of widths) {
+        await page.setViewportSize({ width, height: 800 });
+        const r = await page.evaluate(() => {
+          const bar = document.querySelector('.pane-view .vbar').getBoundingClientRect();
+          const boxes = [...document.querySelectorAll('.pane-view .vbar :is(.tabs, .tabs-pick, .vmain > *, .vicons)')].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 0);
+          let overlap = 0;
+          for (const [i, a] of boxes.entries())
+            for (const b of boxes.slice(i + 1)) {
+              const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+              if (x > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlap = Math.max(overlap, Math.round(x));
+            }
+          const tabs = [...document.querySelectorAll('.pane-view .tabs [role=tab]')].filter((e) => e.getBoundingClientRect().width > 0).length;
+          const pick = !!document.querySelector('.pane-view .tabs-pick')?.getBoundingClientRect().width;
+          return { overlap, reachable: tabs === 7 || pick, outside: boxes.some((b) => b.right > bar.right + 1), viewer: Math.round(bar.width) };
+        });
+        if (r.overlap || !r.reachable || r.outside || r.viewer < 200) bad.push(`${path} ${view} ${width}px: ${JSON.stringify(r)}`);
+      }
+    }
+  }
+  t.check(!bad.length, 'every view has a tab or the dropdown, and the tabs, the view\'s control and the icons don\'t overlap', bad.slice(0, 6));
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
