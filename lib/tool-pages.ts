@@ -1,5 +1,4 @@
 import type { EnginePreset } from './engine/store';
-import { SAMPLE_DOC, SAMPLE_SCHEMA } from './schema/sample';
 
 export type ToolPage = {
   slug: string;
@@ -67,6 +66,40 @@ const graph = JSON.stringify({
 }, null, 2);
 const store = '{"store":{"name":"Corner Books","books":[{"title":"Dune","price":9.99,"tags":["sci-fi","classic"]},{"title":"Emma","price":7.5,"author":{"first name":"Jane","last name":"Austen"}}]}}';
 const events = '[{"id":9007199254740993,"event":"click","tags":["home","cta"]},{"id":9007199254740994,"event":"view","meta":{"page":"/pricing"}}]';
+// The JSON Schema validator's sample: a user record that breaks six rules (the same as lib/schema/sample.ts, which the
+// app's Try an example loads: tests/schema.test.ts checks they match; scripts read this file with Node, which can't
+// import that one).
+const userSchema = `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "User",
+  "type": "object",
+  "required": ["id", "name", "email"],
+  "properties": {
+    "id": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "email": { "type": "string", "format": "email" },
+    "age": { "type": "integer", "minimum": 0 },
+    "role": { "enum": ["admin", "editor", "viewer"] },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "balance": { "type": "number", "multipleOf": 0.01 }
+  },
+  "additionalProperties": false
+}
+`;
+const user = `{
+  "id": 7,
+  "name": "Ada",
+  "age": "36",
+  "role": "owner",
+  "tags": ["admin", "admin"],
+  "balance": 19.999,
+  "nickname": "ada"
+}
+`;
 // HS256, signed with the secret "tool-kumar-example-secret"; issued 2026-10-01, expires 2027-10-01.
 const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFkYSBMb3ZlbGFjZSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc5MDgxMjgwMCwiZXhwIjoxODIyMzQ4ODAwfQ.8cC1krME5G5HZQKPQy8oBEQueQ60R5UgQLB1iXcLpBs';
 
@@ -379,7 +412,7 @@ export const TOOL_PAGES: ToolPage[] = [
     slug: 'json-schema-validator', updated: '2026-11-21', query: 'json schema validator', secondary: ['validate json against schema', 'json schema validator online'],
     title: 'JSON Schema validator: validate JSON online', description: 'Validate JSON against a JSON Schema: drafts 2020-12, 2019-09, 07, 06 and 04. See each error with its line, path and rule. Nothing is uploaded.',
     heading: 'JSON Schema validator', intro: 'Paste a JSON document and its JSON Schema to check one against the other as you type. Each error shows where it is, as a JSON Pointer with its line and column, which rule failed and why. Drafts 2020-12, 2019-09, 07, 06 and 04 are supported, and nothing leaves your browser.', modeLabel: 'JSON Schema validation',
-    preset: { settings: { view: 'schema' }, initialText: SAMPLE_DOC, initialFileName: 'user.json', schema: SAMPLE_SCHEMA }, sample: SAMPLE_DOC, sampleName: 'user.json', exampleSchema: { name: 'user.schema.json', text: SAMPLE_SCHEMA },
+    preset: { settings: { view: 'schema' }, initialText: user, initialFileName: 'user.json', schema: userSchema }, sample: user, sampleName: 'user.json', exampleSchema: { name: 'user.schema.json', text: userSchema },
     exampleLabel: 'This user record breaks six rules of the 2020-12 schema below. The output is what the validator reports for it: each error with its JSON Pointer, line and column, its message and the keyword that failed. 19.999 is not a multiple of 0.01: the numbers are compared exactly, with no floating-point rounding.',
     steps: ['Paste the JSON document in the left editor, or open a file.', 'Paste the JSON Schema in the middle editor or open a schema file. Generate from the document in its ⋯ menu infers a schema to start from.', 'Read the result on the right: Valid, or every error with its location. Click an error or press Enter to select it in the document; its keyword button selects the rule in the schema.', 'Fix the document or the schema. Both are checked again as you type, and Ctrl+Z (⌘Z on a Mac) undoes changes in either editor.'],
     options: [

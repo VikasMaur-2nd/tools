@@ -1,6 +1,6 @@
 {
   "json-validator": {
-    "hash": "f808b40ea2e6",
+    "hash": "45c73c24c63a",
     "title": "Validateur et linter JSON en ligne",
     "description": "Validez JSON en ligne avec la ligne et la colonne des erreurs. Repérez les virgules finales et vérifiez les corrections localement, sans envoyer vos données.",
     "heading": "Validateur et linter JSON",
@@ -33,7 +33,7 @@
       },
       {
         "question": "L'outil valide-t-il JSON selon un schéma ?",
-        "answer": "Non. Cette page vérifie la syntaxe JSON. Elle ne valide ni les propriétés obligatoires, ni les types de champs, ni les autres règles d'un JSON Schema."
+        "answer": "Non. Cette page vérifie seulement la syntaxe JSON. Pour vérifier les propriétés obligatoires, les types de champs et les autres règles d'un JSON Schema, utilisez le validateur JSON Schema : il liste chaque erreur avec sa ligne et son chemin."
       },
       {
         "question": "Peut-il réparer du JSON invalide ?",
@@ -63,7 +63,7 @@
         "heading": "Supprimer une virgule finale dans un objet JSON",
         "paragraphs": [
           "Un linter JSON vérifie les guillemets, les virgules et les crochets. Dans cet exemple, supprimez la virgule après 36 pour obtenir l'objet valide ci-dessous. JSON exige des guillemets doubles pour les clés et les chaînes ; les commentaires et les virgules finales ne font pas partie de sa syntaxe.",
-          "La validation syntaxique ne vérifie ni les champs obligatoires ni les règles de l'application. Par exemple, un âge écrit comme une chaîne peut être du JSON valide alors que votre API exige un nombre. Ces règles nécessitent un validateur JSON Schema ou du code applicatif."
+          "La validation syntaxique ne vérifie ni les champs obligatoires ni les règles de l'application. Par exemple, un âge écrit comme une chaîne peut être du JSON valide alors que votre API exige un nombre. Ces règles nécessitent un JSON Schema : le validateur JSON Schema vérifie un document avec un schéma et liste chaque erreur avec sa ligne et son chemin."
         ]
       }
     ]
@@ -233,7 +233,7 @@
     ]
   },
   "json-schema-generator": {
-    "hash": "40303de8e661",
+    "hash": "56f0765eb853",
     "title": "Générateur JSON Schema à partir d'un exemple",
     "description": "Générez un JSON Schema depuis un exemple JSON. Tool Kumar déduit propriétés, tableaux et types primitifs dans le navigateur, sans envoi au serveur.",
     "heading": "Générateur JSON Schema",
@@ -256,7 +256,7 @@
       "Une propriété figure dans required si tous les objets échantillonnés à cet emplacement la possèdent. Un seul exemple complet rend donc toutes les propriétés observées obligatoires ; dans un tableau d'objets, une clé absente de certains objets devient facultative.",
       "Lorsqu'une propriété vaut null dans certains objets, null est ajouté à son type au lieu de la rendre facultative.",
       "La sortie est un point de départ. Vérifiez required, ajoutez des formats, des plages de valeurs et des motifs, puis supprimez tout ce que votre contrat d'API ne garantit pas.",
-      "Cette page génère un schéma ; elle ne valide pas un document selon un schéma. Utilisez la page du validateur pour vérifier la syntaxe JSON avant la génération."
+      "Pour vérifier des documents avec le schéma généré, ouvrez le validateur JSON Schema. Son action Générer à partir du document crée le même schéma, prêt à être modifié."
     ],
     "faqs": [
       {
@@ -270,6 +270,10 @@
       {
         "question": "Peut-il déduire la structure des éléments d'un tableau ?",
         "answer": "Oui. Les tableaux d'objets produisent un schéma items fondé sur la structure des objets observés."
+      },
+      {
+        "question": "Puis-je valider du JSON avec le schéma généré ?",
+        "answer": "Oui. Ouvrez le validateur JSON Schema et collez le schéma, ou choisissez-y Générer à partir du document, puis ajustez les règles. Chaque erreur d'un document est listée avec sa ligne et son chemin pendant la saisie."
       }
     ],
     "sections": [
@@ -1938,6 +1942,88 @@
         "heading": "Exporter une image du graphe",
         "paragraphs": [
           "Exportez le graphe entier, la zone visible ou la branche sélectionnée en PNG, JPEG ou SVG. Choisissez l’arrière-plan du thème, le blanc, la transparence (PNG/SVG) ou une couleur, puis une résolution 1×, 2× ou 3× et un nom de fichier. La même boîte de dialogue peut copier l’image dans le presse-papiers ; l’export reste dans le navigateur."
+        ]
+      }
+    ]
+  },
+  "json-schema-validator": {
+    "hash": "8207f964042c",
+    "title": "Validateur JSON Schema : valider JSON en ligne",
+    "description": "Validez du JSON avec un JSON Schema : drafts 2020-12, 2019-09, 07, 06 et 04. Chaque erreur avec sa ligne, son chemin et sa règle. Aucun envoi.",
+    "heading": "Validateur JSON Schema",
+    "query": "validateur JSON Schema",
+    "secondary": [
+      "valider JSON avec un schéma",
+      "JSON Schema validator"
+    ],
+    "intro": "Collez un document JSON et son JSON Schema pour vérifier l'un avec l'autre pendant la saisie. Chaque erreur indique où elle se trouve, sous forme de JSON Pointer avec sa ligne et sa colonne, quelle règle a échoué et pourquoi. Les drafts 2020-12, 2019-09, 07, 06 et 04 sont pris en charge, et rien ne quitte votre navigateur.",
+    "modeLabel": "Validation avec JSON Schema",
+    "exampleLabel": "Cet enregistrement d'utilisateur enfreint six règles du schéma 2020-12 ci-dessous. La sortie est ce que le validateur signale : chaque erreur avec son JSON Pointer, sa ligne et sa colonne, son message et le mot-clé en échec. 19.999 n'est pas un multiple de 0.01 : les nombres sont comparés exactement, sans arrondi en virgule flottante.",
+    "steps": [
+      "Collez le document JSON dans l'éditeur de gauche, ou ouvrez un fichier.",
+      "Collez le JSON Schema dans l'éditeur du milieu, ou ouvrez un fichier de schéma. Générer à partir du document, dans son menu ⋯, déduit un schéma de départ.",
+      "Lisez le résultat à droite : Valide, ou chaque erreur avec son emplacement. Cliquez sur une erreur ou appuyez sur Entrée pour la sélectionner dans le document ; son bouton de mot-clé sélectionne la règle dans le schéma.",
+      "Corrigez le document ou le schéma. Les deux sont vérifiés de nouveau pendant la saisie, et Ctrl+Z (⌘Z sur Mac) annule les modifications dans l'un ou l'autre éditeur."
+    ],
+    "options": [
+      "Le draft vient de $schema. Un schéma sans $schema utilise le sélecteur de draft de la barre du schéma : 2020-12 par défaut, ou 2019-09, draft-07, draft-06 ou draft-04.",
+      "Vérifier les formats fait de format une vérification pour date-time, date, time, duration, email, idn-email, hostname, idn-hostname, ipv4, ipv6, uri, uri-reference, iri, iri-reference, uri-template, json-pointer, relative-json-pointer, regex et uuid. Désactivé, format est une annotation, comme le prévoient 2019-09 et 2020-12.",
+      "Chaque erreur indique son JSON Pointer, sa ligne et sa colonne, son message et le chemin du mot-clé à travers les $ref. Quand anyOf ou oneOf ne correspond à rien, les erreurs de la branche la plus proche sont listées dessous. Les boutons de mot-clé au-dessus de la liste n'affichent qu'un type d'erreur.",
+      "Les problèmes du schéma sont listés à part des erreurs du document et soulignés dans le schéma : un $ref non résolu, une expression régulière non valide, un mot-clé dont la valeur a le mauvais type, et des avertissements pour les mots-clés inconnus, ceux d'un autre draft ou le nullable d'OpenAPI.",
+      "Les commentaires et les virgules finales dans l'un ou l'autre texte sont tolérés et signalés. Un document JSON Lines est validé enregistrement par enregistrement.",
+      "Les 1 000 premières erreurs sont listées, et le décompte les inclut toutes. La validation s'exécute dans un worker en arrière-plan : la saisie reste fluide avec des documents de plusieurs mégaoctets, et une exécution trop longue, comme une expression régulière catastrophique, est arrêtée."
+    ],
+    "faqs": [
+      {
+        "question": "Qu'est-ce qui a changé entre draft-07 et 2020-12 ?",
+        "answer": "2019-09 a ajouté $defs, $anchor, dependentRequired, dependentSchemas, unevaluatedProperties, unevaluatedItems, minContains et maxContains, et permet à $ref de côtoyer d'autres mots-clés. 2020-12 a remplacé la forme tableau de items par prefixItems, items avec additionalItems par items, et $recursiveRef par $dynamicRef. Le validateur applique les règles de chaque draft aux schémas qui le nomment dans $schema."
+      },
+      {
+        "question": "Quelle différence entre additionalProperties et unevaluatedProperties ?",
+        "answer": "additionalProperties ne voit que les properties et patternProperties voisines : avec allOf ou $ref, il refuse donc des propriétés définies par un autre sous-schéma. unevaluatedProperties, depuis 2019-09, voit chaque propriété évaluée par le schéma et ses sous-schémas valides, y compris via allOf, anyOf, oneOf, if, then, else et $ref. Utilisez-le pour fermer un schéma composé de parties."
+      },
+      {
+        "question": "Pourquoi format n'est-il pas vérifié par défaut ?",
+        "answer": "Depuis 2019-09, la spécification fait de format une annotation, sauf si l'on demande au validateur de le vérifier, et les drafts précédents le laissaient facultatif. Activez Vérifier les formats pour valider date-time, email, uri, uuid, ipv4, ipv6 et les autres formats standard. Les formats inconnus passent toujours, avec un avertissement tant que la vérification est activée."
+      },
+      {
+        "question": "Comment autoriser les valeurs null ?",
+        "answer": "Ajoutez \"null\" à type, comme dans \"type\": [\"string\", \"null\"], ou combinez des schémas avec anyOf. \"nullable\": true d'OpenAPI 3.0 n'est pas un mot-clé JSON Schema : le validateur l'ignore et affiche un avertissement qui le dit."
+      },
+      {
+        "question": "Les grands nombres et les décimales sont-ils vérifiés exactement ?",
+        "answer": "Oui. Le document et le schéma sont lus sans convertir les nombres en virgule flottante : 19.99 est un multiple de 0.01, les entiers supérieurs à 2^53 gardent tous leurs chiffres pour minimum et maximum, et 1e308 est comparé tel qu'il est écrit. 1.0 compte comme un entier à partir de draft-06, comme le dit la spécification."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Drafts et mots-clés pris en charge",
+        "paragraphs": [
+          "Les drafts 2020-12, 2019-09, draft-07, draft-06 et draft-04 sont pris en charge, chacun avec ses règles. Le draft nommé par $schema décide ; une ressource de schéma intégrée avec son propre $id peut en nommer un autre. draft-04 lit id, exclusiveMaximum et exclusiveMinimum booléens, et ne compte comme entier qu'un nombre sans partie fractionnaire ni exposant. Avant 2019-09, $ref remplace les mots-clés voisins.",
+          "Noyau : $schema, $id (id en draft-04), $ref, $defs et definitions, $anchor, $dynamicRef et $dynamicAnchor (2020-12), $recursiveRef et $recursiveAnchor (2019-09), et les fragments nommés dans $id avant 2019-09.",
+          "Applicateurs : allOf, anyOf, oneOf, not, if, then, else, dependentSchemas et dependencies, prefixItems, items, additionalItems, contains, properties, patternProperties, additionalProperties, propertyNames, unevaluatedItems et unevaluatedProperties.",
+          "Assertions : type, enum, const, multipleOf, maximum, exclusiveMaximum, minimum, exclusiveMinimum, maxLength, minLength, pattern, maxItems, minItems, uniqueItems, maxContains, minContains, maxProperties, minProperties, required et dependentRequired. La longueur d'une chaîne compte les caractères (points de code), et pattern est une expression régulière ECMA-262 avec l'indicateur u.",
+          "Les nombres sont comparés par leur valeur décimale exacte. multipleOf 0.01 accepte 19.99, un maximum de 18446744073709551615 s'applique aux entiers au-delà de la plage sûre de JavaScript, et 1 est égal à 1.0 pour const, enum et uniqueItems."
+        ]
+      },
+      {
+        "heading": "Références, schémas distants et confidentialité",
+        "paragraphs": [
+          "$ref résout les JSON Pointers comme #/$defs/address, les ancres comme #address et les autres ressources intégrées au même schéma par leur $id, y compris avec des URI relatives. Une boucle qui applique de nouveau le même schéma à la même valeur est signalée au lieu de bloquer la page.",
+          "Les références distantes ne sont jamais récupérées : un $ref vers une URL qui n'est pas une ressource de ce schéma apparaît comme non résolu, et cette partie du document n'est pas vérifiée. Pour utiliser ce schéma, ajoutez-le dans $defs avec son $id ; les références vers cette URL sont alors résolues localement. Les métaschémas officiels ne sont pas chargés non plus : le validateur vérifie lui-même la valeur de chaque mot-clé qu'il connaît."
+        ]
+      },
+      {
+        "heading": "Ce qui n'est pas pris en charge",
+        "paragraphs": [
+          "draft-03 (validé comme draft-04, avec un avertissement) et les drafts postérieurs à 2020-12. contentEncoding, contentMediaType et contentSchema sont lus comme des annotations, sans vérification. Le $vocabulary d'un métaschéma personnalisé n'est pas lu, car le métaschéma n'est pas récupéré. La sortie liste des erreurs, pas des annotations.",
+          "idn-hostname suit IDNA2008 avec les données Unicode du navigateur : quelques points de code plus récents que ces données peuvent donc être jugés autrement."
+        ]
+      },
+      {
+        "heading": "Testé avec la suite de tests officielle",
+        "paragraphs": [
+          "Le validateur exécute la JSON-Schema-Test-Suite de l'organisation JSON Schema pour chaque draft qu'il prend en charge. En novembre 2026, il réussit les 5 133 tests obligatoires (draft-04 672, draft-06 878, draft-07 972, 2019-09 1 292, 2020-12 1 319), les 2 776 tests de formats avec Vérifier les formats activé et 760 des 764 tests facultatifs, dont ceux de bignum, float-overflow, regex ECMAScript et entre drafts. Les quatre échecs sont des tests de contenu de draft-07, qui attendent la vérification de contentEncoding et contentMediaType."
         ]
       }
     ]

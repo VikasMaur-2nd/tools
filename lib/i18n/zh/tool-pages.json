@@ -1,6 +1,6 @@
 {
   "json-validator": {
-    "hash": "f808b40ea2e6",
+    "hash": "45c73c24c63a",
     "title": "在线 JSON 验证器与 Linter",
     "description": "在线验证 JSON 语法，精确定位错误行列。检查末尾逗号并审阅修复结果，所有操作均在浏览器本地完成，无需上传数据。",
     "heading": "JSON 验证器与 Linter",
@@ -33,7 +33,7 @@
       },
       {
         "question": "它会根据 Schema 验证 JSON 吗？",
-        "answer": "不会。此页面检查 JSON 语法，不验证 JSON Schema 中的必填属性、字段类型或其他规则。"
+        "answer": "不会。此页面只检查 JSON 语法。要检查 JSON Schema 中的必填属性、字段类型和其他规则，请使用 JSON Schema 校验工具：它会列出每个错误的行号和路径。"
       },
       {
         "question": "能修复无效的 JSON 吗？",
@@ -63,7 +63,7 @@
         "heading": "修复 JSON 对象末尾的逗号",
         "paragraphs": [
           "JSON Linter 检查引号、逗号和括号等语法。本例中，删除 36 后的逗号即可得到下方的有效对象。JSON 的键和字符串必须使用双引号；注释和末尾逗号不属于 JSON 语法。",
-          "语法验证不检查必填字段或应用规则。例如，将年龄写成字符串仍可能是有效 JSON，但 API 可能要求数字。检查这些规则需要 JSON Schema 验证器或应用代码。"
+          "语法验证不检查必填字段或应用规则。例如，将年龄写成字符串仍可能是有效 JSON，但 API 可能要求数字。检查这些规则需要 JSON Schema：JSON Schema 校验工具会根据 schema 检查文档，并列出每个错误的行号和路径。"
         ]
       }
     ]
@@ -234,7 +234,7 @@
     ]
   },
   "json-schema-generator": {
-    "hash": "40303de8e661",
+    "hash": "56f0765eb853",
     "title": "JSON Schema 生成器：根据示例 JSON 生成",
     "description": "根据 JSON 示例生成 JSON Schema。Tool Kumar 在你的浏览器中推断属性、数组和基本类型，无需上传。",
     "heading": "JSON Schema 生成器",
@@ -257,7 +257,7 @@
       "如果某个位置上所有被采样的对象都有某个属性，它就会列入 required。因此，一份完整的示例会让每个出现过的属性都成为必填；在对象数组中，只有部分对象具有的键则是可选的。",
       "在部分对象中为 null 的值，不会让属性变成可选，而是把 null 加入该属性的类型。",
       "输出只是一个起点。请检查 required，补充 format、取值范围和 pattern，并删除你的 API 契约没有承诺的内容。",
-      "本页用于生成 schema，不会根据 schema 校验文档。生成之前，可以先在“JSON 校验工具”页面检查 JSON 语法。"
+      "要用生成的 schema 检查文档，请打开 JSON Schema 校验工具。其中的“根据文档生成”会生成同样的 schema，可直接编辑。"
     ],
     "faqs": [
       {
@@ -271,6 +271,10 @@
       {
         "question": "能推断数组元素的结构吗？",
         "answer": "能。对象数组会根据示例中的对象结构生成 items schema。"
+      },
+      {
+        "question": "能用生成的 schema 校验 JSON 吗？",
+        "answer": "能。打开 JSON Schema 校验工具并粘贴 schema，或在那里选择“根据文档生成”，然后调整规则。文档中的每个错误都会随输入列出行号和路径。"
       }
     ],
     "sections": [
@@ -1944,6 +1948,88 @@
         "heading": "导出图谱图片",
         "paragraphs": [
           "可以将整个图谱、可见区域或选中分支导出为 PNG、JPEG 或 SVG。选择主题背景、白色、透明（PNG/SVG）或任意颜色，设置 1×、2× 或 3× 分辨率和文件名。同一对话框还可以将图片复制到剪贴板，导出过程保留在浏览器内。"
+        ]
+      }
+    ]
+  },
+  "json-schema-validator": {
+    "hash": "8207f964042c",
+    "title": "JSON Schema 校验工具：在线校验 JSON",
+    "description": "根据 JSON Schema 校验 JSON，支持草案 2020-12、2019-09、07、06 和 04。每个错误都显示行号、路径和规则。无需上传。",
+    "heading": "JSON Schema 校验工具",
+    "query": "JSON Schema 校验",
+    "secondary": [
+      "JSON Schema 验证器",
+      "根据 Schema 校验 JSON"
+    ],
+    "intro": "粘贴 JSON 文档及其 JSON Schema，即可在输入时实时互相校验。每个错误都会显示位置（带行号和列号的 JSON Pointer）、失败的规则及原因。支持草案 2020-12、2019-09、07、06 和 04，数据不会离开你的浏览器。",
+    "modeLabel": "JSON Schema 校验",
+    "exampleLabel": "这条用户记录违反了下面 2020-12 schema 的六条规则。输出是校验工具报告的内容：每个错误的 JSON Pointer、行号和列号、消息以及失败的关键字。19.999 不是 0.01 的倍数：数字按精确值比较，不做浮点舍入。",
+    "steps": [
+      "在左侧编辑器中粘贴 JSON 文档，或打开文件。",
+      "在中间编辑器中粘贴 JSON Schema，或打开 schema 文件。⋯ 菜单中的“根据文档生成”可推断出一个 schema 作为起点。",
+      "在右侧查看结果：“有效”，或每个错误及其位置。点击错误或按 Enter，即可在文档中选中它；关键字按钮会在 schema 中选中对应规则。",
+      "修改文档或 schema。两者都会随输入重新校验，Ctrl+Z（Mac 上为 ⌘Z）可撤销任一编辑器中的更改。"
+    ],
+    "options": [
+      "草案由 $schema 决定。没有 $schema 的 schema 使用 schema 工具栏中的草案选择：默认 2020-12，也可选 2019-09、draft-07、draft-06 或 draft-04。",
+      "开启“校验 format”后，format 会校验 date-time、date、time、duration、email、idn-email、hostname、idn-hostname、ipv4、ipv6、uri、uri-reference、iri、iri-reference、uri-template、json-pointer、relative-json-pointer、regex 和 uuid。关闭时，format 按 2019-09 和 2020-12 的规定只作注解。",
+      "每个错误都会列出 JSON Pointer、行号和列号、消息，以及经过各个 $ref 的关键字路径。anyOf 或 oneOf 一个也不符合时，最接近的分支的错误会列在其下方。列表上方的关键字按钮可只显示一类错误。",
+      "Schema 问题与文档错误分开列出，并在 schema 中加下划线：无法解析的 $ref、无效的正则表达式、值类型错误的关键字，以及对未知关键字、其他草案的关键字或 OpenAPI 的 nullable 的警告。",
+      "两份文本中的注释和末尾逗号都会被容忍并提示。JSON Lines 文档会逐条记录校验。",
+      "列出前 1,000 个错误，计数包含全部错误。校验在后台 worker 中运行，因此即使文档有好几 MB，输入依然流畅；耗时过长的运行（例如灾难性回溯的正则表达式）会被停止。"
+    ],
+    "faqs": [
+      {
+        "question": "draft-07 和 2020-12 有什么区别？",
+        "answer": "2019-09 新增了 $defs、$anchor、dependentRequired、dependentSchemas、unevaluatedProperties、unevaluatedItems、minContains 和 maxContains，并允许 $ref 与其他关键字并列。2020-12 用 prefixItems 取代了数组形式的 items，用 items 取代了搭配 additionalItems 的 items，用 $dynamicRef 取代了 $recursiveRef。校验工具会按 $schema 指定的草案规则校验。"
+      },
+      {
+        "question": "additionalProperties 和 unevaluatedProperties 有什么区别？",
+        "answer": "additionalProperties 只看与它并列的 properties 和 patternProperties，因此与 allOf 或 $ref 一起使用时，会拒绝其他子 schema 定义的属性。从 2019-09 起的 unevaluatedProperties 会考虑 schema 及其成功的子 schema 评估过的所有属性，包括经由 allOf、anyOf、oneOf、if、then、else 和 $ref 的属性。要封闭一个由多个部分组成的 schema，就用它。"
+      },
+      {
+        "question": "为什么默认不校验 format？",
+        "answer": "从 2019-09 起，规范把 format 定为注解，除非要求校验工具进行断言；更早的草案则把它留作可选。开启“校验 format”即可校验 date-time、email、uri、uuid、ipv4、ipv6 等标准 format。未知 format 总是通过，开启校验时会给出警告。"
+      },
+      {
+        "question": "如何允许 null 值？",
+        "answer": "在 type 中加入 \"null\"，例如 \"type\": [\"string\", \"null\"]，或用 anyOf 组合 schema。OpenAPI 3.0 的 \"nullable\": true 不是 JSON Schema 关键字，因此校验工具会忽略它，并给出说明这一点的警告。"
+      },
+      {
+        "question": "大数和小数能精确校验吗？",
+        "answer": "能。文档和 schema 读取时不会把数字转换为浮点数，所以 19.99 是 0.01 的倍数，大于 2^53 的整数在 minimum 和 maximum 中保留每一位，1e308 也按书写的值比较。按照规范，从 draft-06 起 1.0 算作整数。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "支持的草案和关键字",
+        "paragraphs": [
+          "支持草案 2020-12、2019-09、draft-07、draft-06 和 draft-04，各自按其规则校验。以 $schema 指定的草案为准；带有自己 $id 的内嵌 schema 资源可以指定另一个草案。draft-04 读取 id 和布尔值的 exclusiveMaximum、exclusiveMinimum，并且只把没有小数部分和指数部分的数字视为整数。在 2019-09 之前，$ref 会取代与它并列的关键字。",
+          "核心：$schema、$id（draft-04 中为 id）、$ref、$defs 和 definitions、$anchor、$dynamicRef 和 $dynamicAnchor（2020-12）、$recursiveRef 和 $recursiveAnchor（2019-09），以及 2019-09 之前 $id 中的命名片段。",
+          "应用器：allOf、anyOf、oneOf、not、if、then、else、dependentSchemas 和 dependencies、prefixItems、items、additionalItems、contains、properties、patternProperties、additionalProperties、propertyNames、unevaluatedItems 和 unevaluatedProperties。",
+          "断言：type、enum、const、multipleOf、maximum、exclusiveMaximum、minimum、exclusiveMinimum、maxLength、minLength、pattern、maxItems、minItems、uniqueItems、maxContains、minContains、maxProperties、minProperties、required 和 dependentRequired。字符串长度按字符（码位）计算，pattern 是带 u 标志的 ECMA-262 正则表达式。",
+          "数字按精确的十进制值比较。multipleOf 0.01 接受 19.99，maximum 为 18446744073709551615 时对超出 JavaScript 安全范围的整数同样正确，在 const、enum 和 uniqueItems 中 1 等于 1.0。"
+        ]
+      },
+      {
+        "heading": "引用、远程 schema 与隐私",
+        "paragraphs": [
+          "$ref 可以解析 #/$defs/address 这样的 JSON Pointer、#address 这样的锚点，以及通过 $id 内嵌在同一 schema 中的其他资源，包括相对 URI。把同一个 schema 再次应用到同一个值上的循环会被报告出来，而不会让页面卡死。",
+          "从不获取远程引用：指向本 schema 之外 URL 的 $ref 会显示为无法解析，文档的这一部分不会被校验。要使用那个 schema，请连同其 $id 加到 $defs 中，之后对该 URL 的引用就会在本地解析。官方元 schema 也不会加载：校验工具会自己检查每个已知关键字的值。"
+        ]
+      },
+      {
+        "heading": "不支持的内容",
+        "paragraphs": [
+          "draft-03（按 draft-04 校验并给出警告）以及 2020-12 之后的草案。contentEncoding、contentMediaType 和 contentSchema 只作为注解读取，不做校验。由于不获取元 schema，自定义元 schema 的 $vocabulary 不会被读取。输出列出的是错误，而不是注解。",
+          "idn-hostname 使用浏览器的 Unicode 数据按 IDNA2008 判断，因此少数比浏览器数据更新的码位可能会被判定得不同。"
+        ]
+      },
+      {
+        "heading": "用官方测试套件验证",
+        "paragraphs": [
+          "校验工具针对其支持的每个草案运行 JSON Schema 组织的 JSON-Schema-Test-Suite。截至 2026 年 11 月，它通过了全部 5,133 项必需测试（draft-04 672 项、draft-06 878 项、draft-07 972 项、2019-09 1,292 项、2020-12 1,319 项），开启“校验 format”后的全部 2,776 项 format 测试，以及 764 项可选测试中的 760 项，包括 bignum、float-overflow、ECMAScript 正则和跨草案测试。未通过的 4 项是 draft-07 的内容测试，它们期望校验 contentEncoding 和 contentMediaType。"
         ]
       }
     ]

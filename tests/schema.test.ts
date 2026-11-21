@@ -11,6 +11,7 @@ import type { WorkerReply, WorkerRequest } from '../lib/schema/schema.worker';
 import { SAMPLE_DOC, SAMPLE_SCHEMA } from '../lib/schema/sample';
 import { errorText, problemText } from '../components/schema-messages';
 import { EN } from '../lib/i18n/ui';
+import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
 
 // lib/schema beyond the official suite (tests/schema-suite.test.ts): exact numbers, where errors are, references
 // across embedded resources, schema problems, cancellation, and speed on a multi-megabyte document.
@@ -110,6 +111,14 @@ test('error locations: JSON Pointer, line and column, escaped and Unicode keys',
   const req = run({ required: ['email'] }, '\n\n  { "a": 1 }');
   assert.deepEqual([req.errors[0].loc!.line, req.errors[0].loc!.col, req.errors[0].pointer], [3, 3, '']);
   assert.equal(keyBefore('{"a\\\\": 1}', 8)?.join(), '1,6');
+});
+
+test('the sample: the page and Try an example show the same one', () => {
+  const page = TOOL_PAGE_BY_SLUG.get('json-schema-validator')!;
+  assert.equal(page.sample, SAMPLE_DOC);
+  assert.equal(page.exampleSchema?.text, SAMPLE_SCHEMA);
+  assert.equal(page.preset.schema, SAMPLE_SCHEMA);
+  assert.equal(page.preset.initialText, SAMPLE_DOC);
 });
 
 test('the sample: six errors, in document order, with their messages', () => {
