@@ -3403,12 +3403,10 @@ export class Engine {
       const at = this.viewSeq;
       void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
         // (The status is the latest analysis's: of this version once its parse arrived, valid only without repairs.)
-        const st = store.get().status;
-        if (out && !this.dead && this.ed.version === ver && st.kind === 'valid' && this.viewSeq === at) {
-          // JSON Lines (a .jsonl or .ndjson file, or pasted lines) stays JSON Lines, one record a line (the converters,
-          // loaded for the output, write it): as one array, a file of that name would read it as a single record. (A
-          // conversion's output is one string, here the list of records.)
-          this.replaceText(st.jsonl ? this.conv!.convert(parse(out as string).root!, 'jsonl', s) : (out as string), s.target === 'flatten' ? 'Flattened input' : 'Unflattened input');
+        if (out && !this.dead && this.ed.version === ver && store.get().status.kind === 'valid' && this.viewSeq === at) {
+          // (A conversion's output is one string. JSON Lines' is JSON Lines, one record a line, as the converters write it
+          // for a document read as JSON Lines: as one array, a .jsonl file would read it as a single record.)
+          this.replaceText(out as string, s.target === 'flatten' ? 'Flattened input' : 'Unflattened input');
           this.setConvert({ target: s.target === 'flatten' ? 'unflatten' : 'flatten' });
         }
       });
@@ -3738,7 +3736,7 @@ export class Engine {
         ? xlsx.toCsv(xlsx.records(root))
         : // (The settings as they are: convert() reads its own, and a cleared root name is "Root". Flatten and
           // unflatten run in slices, typing going on in between: a newer conversion stops this one.)
-          await mod.convert(root, info.id, { ...s, report: (x) => (r = x), live: current });
+          await mod.convert(root, info.id, { ...s, lines: this.good!.multi, report: (x) => (r = x), live: current });
       if (!current()) return;
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
       else {

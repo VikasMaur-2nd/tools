@@ -9,7 +9,8 @@ import { parse, type ParseResult } from '../lib/json/parser';
 import { EN } from '../lib/i18n/ui';
 import { paired } from '../lib/engine/store';
 import { jsonLines } from '../lib/engine/rules';
-import { convert } from '../lib/convert';
+import * as converters from '../lib/convert';
+import { cpuNow } from './timing';
 
 // Use as input (Ctrl+Enter, or the menu) while Flatten or Unflatten shows, as the engine runs it: the output
 // replaces the input only when it is the conversion of the text in the editor now. A broken edit keeps the last
@@ -176,17 +177,8 @@ test('Use as input after pasting JSONP while the JWT reader loads: the repaired 
 });
 
 test('Use as input on JSON Lines (read as records, not repaired): it applies', async () => {
-  const lines = '{"a":{"b":1}}\n{"a":{"b":2}}\n';
-  const s = session(lines);
   // (Its parse has the "several top-level values" issue; the engine reads it as JSON Lines, valid.)
-  s.state.status = { kind: 'valid', jsonl: 2 };
-  s.ed.version = s.engine.goodVer;
-  s.engine.convOutput = () => '[\n  {\n    "a.b": 1\n  },\n  {\n    "a.b": 2\n  }\n]';
-  s.engine.conv = { convert };
-  s.engine.useOutput();
-  await flush();
-  // (Written back as JSON Lines: see the round trip below.)
-  assert.deepEqual(plain(s.calls, 'track'), [['replace', '{"a.b":1}\n{"a.b":2}\n', 'Flattened input'], ['setConvert', { target: 'unflatten' }]]);
+  assert.equal(await pressUseAsInput('{"a":{"b":1}}\n{"a":{"b":2}}\n', null, 'flatten'), '{"a.b":1}\n{"a.b":2}\n');
 });
 
 /** The engine's reading of `text` (analyze): JSON Lines by a .jsonl or .ndjson name or by its layout, and its status. */
@@ -197,18 +189,27 @@ function read(text: string, name: string | null) {
 }
 
 /** Use as input on Convert › `target`, with `text` in the editor (from a file named `name`): the text it puts there. */
-async function pressUseAsInput(text: string, name: string | null, target: 'flatten' | 'unflatten') {
+async function pressUseAsInput(text: string, name: string | null, target: 'flatten' | 'unflatten', time?: (ms: number) => void) {
   const s = session(GOOD);
   const { res, status } = read(text, name);
   s.engine.settings.target = target;
   Object.assign(s.state, { status, fileName: name });
   s.engine.fresh = () => res;
-  const out = convert(res.root!, target, { rootName: 'Root' });
-  s.engine.convOutput = () => out;
-  // (The converters, loaded for that output.)
-  s.engine.conv = { convert };
+  // As analyze() leaves the document (its tree, this version's), then the engine's own conversion of it.
+  s.engine.good = res;
+  s.engine.goodVer = s.ed.version;
+  s.engine.parsedVer = s.ed.version;
+  s.engine.code = { setText: () => {}, text: '' };
+  s.engine.loadConverters = async () => (s.engine.conv = converters);
+  s.engine.convSeq = 0;
+  s.engine.convDone = { seq: 0, out: '', ver: null, key: '' };
+  delete s.engine.convLater;
+  delete s.engine.convOutput;
+  await s.engine.runConvert();
+  const t = cpuNow();
   s.engine.useOutput();
   await flush();
+  time?.(cpuNow() - t);
   return s.calls.find((c) => c[0] === 'replace')?.[1] as string | undefined;
 }
 
@@ -228,4 +229,14 @@ test('JSON Lines (a .jsonl or .ndjson file, or pasted lines): Flatten, Use as in
   assert.equal(await pressUseAsInput('{"a.b":1}\n', 'one.jsonl', 'unflatten'), '{"a":{"b":1}}\n');
   // A JSON array is not JSON Lines: it stays a formatted array.
   assert.equal(await pressUseAsInput('[{"a":{"b":1}},{"a":{"b":2}}]', 'records.json', 'flatten'), '[\n  {\n    "a.b": 1\n  },\n  {\n    "a.b": 2\n  }\n]');
+});
+
+test('Use as input on JSON Lines whose records grow big: no parse or rewrite on the main thread when it applies', async () => {
+  // (32 bytes of NDJSON unflatten to 3 MB: rewriting the preview as lines took ~130 ms in one go. The conversion now
+  // writes the lines, in steps.)
+  const text = '{"x[250000]":1}\n{"y.z":2}\n';
+  let ms = Infinity;
+  const back = await pressUseAsInput(text, 'big.ndjson', 'unflatten', (t) => (ms = t));
+  assert.equal(back, `{"x":[${'null,'.repeat(250000)}1]}\n{"y":{"z":2}}\n`);
+  assert.ok(ms < 30, `applying took ${ms.toFixed(1)} ms of CPU time`);
 });
