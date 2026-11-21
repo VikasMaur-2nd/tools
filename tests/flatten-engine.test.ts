@@ -8,6 +8,8 @@ import ts from 'typescript';
 import { parse, type ParseResult } from '../lib/json/parser';
 import { EN } from '../lib/i18n/ui';
 import { paired } from '../lib/engine/store';
+import { jsonLines } from '../lib/engine/rules';
+import { convert } from '../lib/convert';
 
 // Use as input (Ctrl+Enter, or the menu) while Flatten or Unflatten shows, as the engine runs it: the output
 // replaces the input only when it is the conversion of the text in the editor now. A broken edit keeps the last
@@ -179,7 +181,51 @@ test('Use as input on JSON Lines (read as records, not repaired): it applies', a
   // (Its parse has the "several top-level values" issue; the engine reads it as JSON Lines, valid.)
   s.state.status = { kind: 'valid', jsonl: 2 };
   s.ed.version = s.engine.goodVer;
+  s.engine.convOutput = () => '[\n  {\n    "a.b": 1\n  },\n  {\n    "a.b": 2\n  }\n]';
+  s.engine.conv = { convert };
   s.engine.useOutput();
   await flush();
-  assert.deepEqual(plain(s.calls, 'track'), [['replace', FLAT, 'Flattened input'], ['setConvert', { target: 'unflatten' }]]);
+  // (Written back as JSON Lines: see the round trip below.)
+  assert.deepEqual(plain(s.calls, 'track'), [['replace', '{"a.b":1}\n{"a.b":2}\n', 'Flattened input'], ['setConvert', { target: 'unflatten' }]]);
+});
+
+/** The engine's reading of `text` (analyze): JSON Lines by a .jsonl or .ndjson name or by its layout, and its status. */
+function read(text: string, name: string | null) {
+  const res = parse(text, { lines: /\.(jsonl|ndjson)$/i.test(name ?? ''), repair: true });
+  const status = jsonLines(text, res) ? { kind: 'valid', warnings: 0, jsonl: (res.root!.v as unknown[]).length } : { kind: res.root ? (res.issues.length ? 'fixable' : 'valid') : 'error' };
+  return { res, status };
+}
+
+/** Use as input on Convert › `target`, with `text` in the editor (from a file named `name`): the text it puts there. */
+async function pressUseAsInput(text: string, name: string | null, target: 'flatten' | 'unflatten') {
+  const s = session(GOOD);
+  const { res, status } = read(text, name);
+  s.engine.settings.target = target;
+  Object.assign(s.state, { status, fileName: name });
+  s.engine.fresh = () => res;
+  const out = convert(res.root!, target, { rootName: 'Root' });
+  s.engine.convOutput = () => out;
+  // (The converters, loaded for that output.)
+  s.engine.conv = { convert };
+  s.engine.useOutput();
+  await flush();
+  return s.calls.find((c) => c[0] === 'replace')?.[1] as string | undefined;
+}
+
+test('JSON Lines (a .jsonl or .ndjson file, or pasted lines): Flatten, Use as input, Unflatten, Use as input gives it back exactly', async () => {
+  // (Written as one array, a .jsonl file read the flat records as a single one: Unflatten gave [[...]].)
+  for (const name of ['records.jsonl', 'records.ndjson', null]) {
+    for (const text of ['{"a":{"b":1}}\n{"a":{"b":2}}\n', '{"id":9007199254740993,"a":{"b":[1,{"c":null}]}}\n{"x":{}}\n{"y":[]}\n']) {
+      const flat = await pressUseAsInput(text, name, 'flatten');
+      assert.ok(flat !== undefined, `${name}: flattened`);
+      assert.equal(read(flat, name).status.jsonl, read(text, name).status.jsonl, `${name}: the same records, as JSON Lines`);
+      assert.equal(await pressUseAsInput(flat, name, 'unflatten'), text, `${name}: back exactly`);
+    }
+  }
+  assert.equal(await pressUseAsInput('{"a":{"b":1}}\n{"a":{"b":2}}\n', 'records.jsonl', 'flatten'), '{"a.b":1}\n{"a.b":2}\n');
+  // One record in a .jsonl file is still JSON Lines.
+  assert.equal(await pressUseAsInput('{"a":{"b":1}}\n', 'one.jsonl', 'flatten'), '{"a.b":1}\n');
+  assert.equal(await pressUseAsInput('{"a.b":1}\n', 'one.jsonl', 'unflatten'), '{"a":{"b":1}}\n');
+  // A JSON array is not JSON Lines: it stays a formatted array.
+  assert.equal(await pressUseAsInput('[{"a":{"b":1}},{"a":{"b":2}}]', 'records.json', 'flatten'), '[\n  {\n    "a.b": 1\n  },\n  {\n    "a.b": 2\n  }\n]');
 });

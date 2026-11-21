@@ -3401,9 +3401,12 @@ export class Engine {
       const at = this.viewSeq;
       void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
         // (The status is the latest analysis's: of this version once its parse arrived, valid only without repairs.)
-        if (out && !this.dead && this.ed.version === ver && store.get().status.kind === 'valid' && this.viewSeq === at) {
-          // (A conversion's output is one string.)
-          this.replaceText(out as string, s.target === 'flatten' ? 'Flattened input' : 'Unflattened input');
+        const st = store.get().status;
+        if (out && !this.dead && this.ed.version === ver && st.kind === 'valid' && this.viewSeq === at) {
+          // JSON Lines (a .jsonl or .ndjson file, or pasted lines) stays JSON Lines, one record a line (the converters,
+          // loaded for the output, write it): as one array, a file of that name would read it as a single record. (A
+          // conversion's output is one string, here the list of records.)
+          this.replaceText(st.jsonl ? this.conv!.convert(parse(out as string).root!, 'jsonl', s) : (out as string), s.target === 'flatten' ? 'Flattened input' : 'Unflattened input');
           this.setConvert({ target: s.target === 'flatten' ? 'unflatten' : 'flatten' });
         }
       });
