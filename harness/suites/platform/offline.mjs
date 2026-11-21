@@ -184,7 +184,8 @@ test('localized: after one visit, the Schema view and Flatten show their own str
     const p2 = await t.context.newPage();
     const de = await opened(p2, proxy.origin, '/de/tools/json-schema-validator');
     t.check(de.ok && de.lang === 'de' && de.tool === 1, 'localized offline: the visited page opens', de);
-    const head = await p2.waitForFunction(() => window.__vis('#view-schema .sch-state')?.textContent, null, { ...POLL, timeout: t.budget(20_000) }).then((h) => h.jsonValue(), () => '');
+    // (The result, not "Validierung" while it runs.)
+    const head = await p2.waitForFunction(() => /Fehler/.test(window.__vis('#view-schema .sch-state')?.textContent ?? '') && window.__vis('#view-schema .sch-state').textContent, null, { ...POLL, timeout: t.budget(20_000) }).then((h) => h.jsonValue(), () => p2.evaluate(() => window.__vis('#view-schema .sch-state')?.textContent ?? ''));
     t.check(/^6 Fehler/.test(head), 'localized offline: the Schema view in German', head);
     await t.app.view(p2, 'convert');
     await p2.locator('.app:visible .vmain select').selectOption('unflatten');
