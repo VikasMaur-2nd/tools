@@ -797,7 +797,9 @@ export class Validator {
   /** A keyword the draft doesn't define: another draft's (named), OpenAPI's `nullable`, or unknown (ignored, as specified). */
   private unknown(k: string, v: JNode, d: Draft) {
     if (k === 'nullable') return this.issue('nullable', {}, v, k, true);
-    const other = ([2020, 2019, 7, 6, 4] as Draft[]).find((x) => x !== d && knownKeywords(x).has(k));
+    // (Named by the draft that introduced it, or for a keyword since dropped, the last draft that had it.)
+    const has = ([4, 6, 7, 2019, 2020] as Draft[]).filter((x) => x !== d && knownKeywords(x).has(k));
+    const other = has.find((x) => x > d) ?? has.reverse().find((x) => x < d);
     if (other) {
       // (Annotations and containers that work as well without being read: no notice.)
       if (QUIET.has(k) || (k === 'id' && d >= 6) || (k === '$id' && d === 4)) return;

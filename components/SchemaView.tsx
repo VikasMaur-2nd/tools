@@ -885,7 +885,9 @@ function SchemaPanel() {
               const target = e.target as HTMLElement;
               const kw = target.closest<HTMLElement>('[data-s]');
               const rowEl = target.closest<HTMLElement>('[data-i]');
-              if (!rowEl || window.getSelection()?.toString()) return;
+              // (Text being selected in the list, to copy it, isn't a click on its row.)
+              const picked = window.getSelection();
+              if (!rowEl || (picked && !picked.isCollapsed && listRef.current?.contains(picked.anchorNode))) return;
               select(Number(rowEl.dataset.i), true, !!kw);
             }}
           >

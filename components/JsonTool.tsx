@@ -368,6 +368,7 @@ function ViewMenu() {
                   onPick={(v) => act((e) => e.setConvert({ csharpLib: v as 'stj' | 'newtonsoft' }))}
                 />
               )}
+              {info.id === 'json-schema' && <MItem label="Validate against this schema" onClick={() => act((e) => (store.set({ schemaIn: { seq: Date.now(), generate: true } }), e.setView('schema')))} close={close} />}
               {info.group === 'Types' && <MSep />}
               <FoldItems close={close} />
               <WrapItem />

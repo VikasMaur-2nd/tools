@@ -220,9 +220,11 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
   out.draft = v.draft;
   const sch = sr.root.t === OBJ ? kids(sr.root).find((m) => m.key === '$schema') : undefined;
   if (sch && typeof sch.v === 'string' && draftOf(sch.v) !== null && draftOf(sch.v) !== 3) out.draftFrom = 'schema';
+  // (In the order they are in the schema's text.)
   const problems = () => {
     if (sr.issues.length) out.problems.push({ code: 'schemaLoose', params: {}, kw: '', warn: true, loc: schemaLines.loc(sr.issues[0].p, sr.issues[0].p + 1) });
-    out.problems.push(...v.issues.map((i: SchemaIssue) => ({ code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: i.at ? schemaKeyLoc(req.schema, schemaLines, i.at) : null })));
+    const list = v.issues.map((i: SchemaIssue) => ({ code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: i.at ? schemaKeyLoc(req.schema, schemaLines, i.at) : null }));
+    out.problems.push(...list.sort((a, b) => (a.loc?.p ?? -1) - (b.loc?.p ?? -1)));
   };
 
   if (!req.doc.trim()) {
