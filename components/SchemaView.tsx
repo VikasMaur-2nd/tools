@@ -247,8 +247,8 @@ class Controller {
       this.decorate(o, doc, schema);
       if (!this.tracked && o.state === 'ok') {
         this.tracked = true;
-        // (The draft, whether the document was valid, and its errors as a number rounded to two digits.)
-        track('feature_used', { feature: 'schema_validate', value: DRAFT_NAME[o.draft], on: o.valid, level: o.total });
+        // (Whether the document was valid, and its errors as a number rounded to two digits.)
+        track('feature_used', { feature: 'schema_validate', on: o.valid, level: o.total });
       }
     });
   }
@@ -371,9 +371,7 @@ function DraftPick() {
       <select
         value={draft ?? 'auto'}
         onChange={(e) => {
-          const v = e.target.value === 'auto' ? null : (Number(e.target.value) as Draft);
-          track('feature_used', { feature: 'schema_draft', value: v ? DRAFT_NAME[v] : 'auto' });
-          ctl.setOpts({ draft: v });
+          ctl.setOpts({ draft: e.target.value === 'auto' ? null : (Number(e.target.value) as Draft) });
         }}
       >
         <option value="auto">{t('Auto ({draft})', { draft: '2020-12' })}</option>

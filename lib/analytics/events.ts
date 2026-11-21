@@ -67,7 +67,7 @@ const FEATURES = [
   'compare_swap', 'compare_format', 'compare_close',
   'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
   'shape_go', 'shape_next', 'shape_count',
-  'schema_validate', 'schema_generate', 'schema_draft', 'schema_formats',
+  'schema_validate', 'schema_generate', 'schema_formats',
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 
@@ -283,9 +283,7 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   feature_used: {
     feature: FEATURES, via: VIAS, view: VIEW_IDS, level: 'number', on: 'flag', jsonpath: 'flag',
     // Share formats, themes, the right-click menu's areas, input formats and CSV separators.
-    value: ['link', 'markdown', 'html', 'system', 'light', 'dark', 'input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff', ...INPUT_FORMATS, 'auto', 'comma', 'semicolon', 'tab', 'pipe',
-      // The Schema view's drafts.
-      '2020-12', '2019-09', 'draft-07', 'draft-06', 'draft-04'],
+    value: ['link', 'markdown', 'html', 'system', 'light', 'dark', 'input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff', ...INPUT_FORMATS, 'auto', 'comma', 'semicolon', 'tab', 'pipe'],
   },
   command_run: { command: COMMAND_IDS },
   agent_tool_used: { tool: AGENT_TOOLS, ok: 'flag' },
