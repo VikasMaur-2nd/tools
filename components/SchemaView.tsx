@@ -40,16 +40,19 @@ const read = (k: string) => {
     return null;
   }
 };
+/** True when stored; a value the storage refuses (full) removes the key instead. */
 const write = (k: string, v: string | null) => {
   try {
     if (v === null) localStorage.removeItem(k);
     else localStorage.setItem(k, v);
+    return true;
   } catch {
     try {
       localStorage.removeItem(k);
     } catch {
       /* private mode */
     }
+    return false;
   }
 };
 
@@ -218,7 +221,7 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
     if (!engine || !el) return;
     const Ed = Object.getPrototypeOf(engine.ed).constructor as typeof Editor;
     const ed = new Ed(el, {
-      change: (kind) => ctl.edited(kind),
+      change: () => ctl.edited(),
       caret: () => undefined,
       nav: () => undefined,
       escape: () => resultsHost?.querySelector<HTMLElement>('.sch-list, .sch-empty')?.focus(),
@@ -229,8 +232,14 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
     const s = store.get().settings;
     ed.indentUnit = UNITS[s.indent];
     ed.setWrap(s.wrap);
-    ctl.attach(ed, store.get().schemaIn);
-    return () => ctl.detach();
+    // (Every edit of the document makes the shown result an older text's until the new text is read.)
+    const watch = (text: string | null) => (text === null ? ctl.docEdited() : ctl.setDoc(text));
+    engine.docWatch = watch;
+    if (ctl.attach(ed, store.get().schemaIn)) void generate();
+    return () => {
+      if (engine.docWatch === watch) engine.docWatch = null;
+      ctl.detach();
+    };
   }, [ready]);
   useEffect(() => schemaEd()?.setWrap(wrap), [wrap]);
   useEffect(() => {
@@ -430,10 +439,11 @@ function Empty({ icon, title, text, children, tone }: { icon: 'braces' | 'alert'
   );
 }
 
-function Status({ r, busy, outcome, rows }: { r: ValidateResult | null; busy: boolean; outcome: SchemaState['outcome']; rows: number }) {
+function Status({ r, stale, busy, outcome, rows }: { r: ValidateResult | null; stale: boolean; busy: boolean; outcome: SchemaState['outcome']; rows: number }) {
   const t = useT();
   if (outcome === 'timeout') return <span className="sch-state err">{t('Stopped: took too long')}</span>;
-  if (!r) return <span className="sch-state muted">{busy ? <i className="spin" /> : null}{t(busy ? 'Validating…' : 'Validation')}</span>;
+  // (The result shown is an older text's: never as the current verdict.)
+  if (!r || stale) return <span className="sch-state muted">{busy || stale ? <i className="spin" /> : null}{t(busy || stale ? 'Validating…' : 'Validation')}</span>;
   const problems = r.problems.filter((p) => !p.warn).length;
   if (r.state !== 'ok') return <span className="sch-state muted">{busy && <i className="spin" />}{t('Validation')}</span>;
   // Valid only for a complete check; no errors past a part of the schema that couldn't be applied: not fully checked.
@@ -621,9 +631,9 @@ const Panel = memo(function Panel() {
   };
 
   return (
-    <div className={`sch${stale ? ' stale' : ''}`} role="region" aria-label={t('Validation')}>
+    <div className={`sch${stale ? ' stale' : ''}`} role="region" aria-label={t('Validation')} aria-busy={stale}>
       <div className="sch-head">
-        <Status r={r} busy={busy} outcome={outcome} rows={rows.length} />
+        <Status r={r} stale={stale} busy={busy} outcome={outcome} rows={rows.length} />
         <span className="grow" />
         <button type="button" className="sch-opt sch-fmt" aria-pressed={formats} onClick={toggleFormats} data-tip={t('Check format (email, date-time, uri…): an annotation unless turned on')}>
           <Icon name="check" size={13} />
@@ -682,7 +692,7 @@ const Panel = memo(function Panel() {
         {empty}
       </div>
       <div className={`sr-only ${PRIVATE}`} aria-live="polite">
-        {live || (r?.state === 'ok' ? (r.valid ? t('Valid') : r.total ? t.n(r.total, '{n} error', '{n} errors') : t('Not fully checked')) : '')}
+        {live || (r?.state === 'ok' && !stale ? (r.valid ? t('Valid') : r.total ? t.n(r.total, '{n} error', '{n} errors') : t('Not fully checked')) : '')}
       </div>
     </div>
   );
@@ -695,15 +705,14 @@ const Panel = memo(function Panel() {
 export default function SchemaView({ hidden, portal, host }: { hidden: boolean; portal: Portal; host: RefObject<HTMLDivElement | null> }) {
   // (This tool's own host, by ref: a page Next.js keeps hidden has one too. Loaded after the viewer is on the page.)
   const el = host.current;
-  // (A localized page's strings for this view come with it, not with the page.)
-  const strings = useLazyStrings('schema');
+  // (A localized page's strings for this view come with it, not with the page: asked for while it is open.)
+  useLazyStrings('schema', !hidden);
   useEffect(() => {
     resultsHost = el;
     return () => {
       if (resultsHost === el) resultsHost = null;
     };
   }, [el]);
-  if (!strings) return null;
   return (
     <>
       <SchemaPane hidden={hidden} />

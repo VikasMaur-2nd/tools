@@ -3,14 +3,19 @@
  * schema's text and file name (saved in this browser), the options, and when to validate and what to show.
  * No React and no DOM here: the view hands over the editor and what it needs of the page (`SchemaHost`).
  *
- * Each change (either text, an option, closing the view) starts a new generation; a result is shown only if it
- * belongs to the current one, so a worker reply for older texts never shows as current.
+ * Each change (either text, an option, closing the view, an edit of the document before its new text arrives)
+ * starts a new generation; a result is shown only if it belongs to the current one, so a worker reply for older texts
+ * never shows as current, and the shown result is marked stale until the current one comes.
  */
 import type { Outcome } from './client';
 import { DRAFTS, type Draft } from './drafts';
 import type { ValidateRequest, ValidateResult } from './index';
 
-export const SCHEMA_KEYS = { text: 'jf:schema', file: 'jf:schema-file', opts: 'jf:schema-opts' };
+/**
+ * Where the schema is saved: `doc`, one record of its text and file name (written whole or not at all); `text` and
+ * `file`, the two keys before it, read when there is no record (and removed once one is written).
+ */
+export const SCHEMA_KEYS = { doc: 'jf:schema-doc', text: 'jf:schema', file: 'jf:schema-file', opts: 'jf:schema-opts' };
 /** Texts longer than this aren't saved (as for the main document). */
 const MAX_PERSIST = 2_500_000;
 
@@ -30,7 +35,8 @@ export interface SchemaHost {
   main(): { readonly text: string; readonly length: number; setLineMarks(m: Uint8Array | null): void } | null;
   docIsJson(): boolean;
   read(key: string): string | null;
-  write(key: string, value: string | null): void;
+  /** True when stored (a full storage refuses: the key is then removed, see SchemaView's). */
+  write(key: string, value: string | null): boolean;
   validator(): { validate(req: ValidateRequest, done: (o: Outcome) => void): void; destroy(): void };
   /** `on`: the document was valid (and the check complete); `level`: its errors. */
   track(feature: 'schema_validate', on: boolean, level: number): void;
@@ -72,8 +78,10 @@ export class SchemaController {
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
   /** The panel is open: validation runs (closed, nothing does). */
   private open = false;
-  /** The text is a page's sample nobody replaced: it isn't saved over the visitor's own schema. */
-  private sample = false;
+  /** A page's sample: while the editor shows it (unnamed), it isn't saved over the visitor's own schema, Undo included. */
+  private sample: string | null = null;
+  /** The document was edited: a newer text is on its way (setDoc), the shown result is for an older one. */
+  private docPending = false;
   private tracked = false;
   private inSeq = 0;
   /** Bumped by every change: a result of an older generation is dropped. */
@@ -106,19 +114,32 @@ export class SchemaController {
   }
 
   /**
-   * Takes over a new schema editor: a schema handed over that this controller hasn't had (a page's sample, but not
-   * again when coming back from that page), else the saved schema.
+   * Takes over a new schema editor: the saved schema, then a schema handed over that this controller hasn't had (a
+   * page's sample, but not again when coming back from that page; see take). True: generate from the document now.
    */
-  attach(ed: SchemaEditor, incoming: SchemaIn | null) {
+  attach(ed: SchemaEditor, incoming: SchemaIn | null): boolean {
     this.ed = ed;
-    if (incoming && incoming.seq !== this.inSeq) this.take(incoming);
-    else if (!ed.text) {
-      this.sample = false;
-      const saved = this.host.read(SCHEMA_KEYS.text);
-      if (saved) ed.init(saved);
-      this.set({ file: this.host.read(SCHEMA_KEYS.file) });
+    const fresh = incoming && incoming.seq !== this.inSeq ? incoming : null;
+    // (A text handed over replaces it; generating starts from it, so Undo gives it back.)
+    if (fresh?.text === undefined && !ed.text) {
+      const saved = this.saved();
+      if (saved.text) ed.init(saved.text);
+      this.set({ file: saved.file });
     }
+    const generate = fresh ? this.take(fresh) : false;
     this.set({ blank: !ed.length });
+    return generate;
+  }
+
+  /** The saved schema and its name: the record, else the keys from before it. */
+  private saved(): { text: string | null; file: string | null } {
+    try {
+      const rec = JSON.parse(this.host.read(SCHEMA_KEYS.doc) ?? 'null') as { text?: unknown; file?: unknown } | null;
+      if (rec && typeof rec.text === 'string') return { text: rec.text, file: typeof rec.file === 'string' ? rec.file : null };
+    } catch {
+      /* a broken record: the keys from before */
+    }
+    return { text: this.host.read(SCHEMA_KEYS.text), file: this.host.read(SCHEMA_KEYS.file) };
   }
 
   detach() {
@@ -133,7 +154,11 @@ export class SchemaController {
     this.set({ busy: false });
   }
 
-  /** A schema handed over through the store: a page's sample, or one to load. True: it wants generating from the document (the view does that). */
+  /**
+   * A schema handed over through the store (a page's sample, one to load, or generating from the document), each one
+   * once: the only place they are taken (attach and the view's effect both come here). True: generate now (the view
+   * does that).
+   */
   take(inc: SchemaIn): boolean {
     if (!this.ed || inc.seq === this.inSeq) return false;
     this.inSeq = inc.seq;
@@ -141,7 +166,7 @@ export class SchemaController {
     if (inc.text === undefined) return false;
     if (inc.sample) {
       this.ed.init(inc.text);
-      this.sample = true;
+      this.sample = inc.text;
       this.set({ file: null, blank: !inc.text });
       this.changed();
     } else this.load(inc.text, null);
@@ -153,16 +178,14 @@ export class SchemaController {
     const ed = this.ed;
     if (!ed) return;
     const before = this.state.file;
-    this.sample = false;
     this.set({ file: name });
     ed.setValue(text, 0, false, [before, name]);
     // (setValue reports the change, unless the text was the same: the name still changed.)
     this.changed();
   }
 
-  /** The editor's text changed: `kind` 'set' is a whole replacement (load, undo), anything else typing or a paste. */
-  edited(kind: 'input' | 'paste' | 'set') {
-    if (kind !== 'set') this.sample = false;
+  /** The editor's text changed (typing, a paste, a load, Undo). */
+  edited() {
     this.set({ blank: !(this.ed?.length ?? 0) });
     this.changed();
   }
@@ -173,14 +196,25 @@ export class SchemaController {
     this.changed();
   }
 
+  /** The document was edited: its new text comes once it is read (setDoc). Until then nothing shows as current. */
+  docEdited() {
+    // (Closed, nothing shows: opening reads the document as it is then.)
+    if (!this.open) return;
+    this.docPending = true;
+    this.schedule(-1);
+  }
+
+  /** The document's text, once read after an edit (the same text again too: an edit undone). */
   setDoc(text: string) {
-    if (text === this.doc) return;
+    if (text === this.doc && !this.docPending) return;
+    this.docPending = false;
     this.doc = text;
     this.schedule(text.length < 1_000_000 ? 40 : 150);
   }
 
   setOpen(on: boolean) {
     this.open = on;
+    if (!on) this.docPending = false;
     if (on) {
       this.tracked = false;
       this.schedule(0);
@@ -206,29 +240,40 @@ export class SchemaController {
     this.persistTimer = setTimeout(() => this.persistNow(), 400);
   }
 
-  /** Saves the schema with its file name (both or neither: the name never goes with another text). */
+  /**
+   * Saves the schema with its file name, as one record: both or neither (a full storage refusing the text never
+   * leaves the name with another one). The page's sample, unnamed, is never saved: Undo back to it saves nothing.
+   */
   persistNow() {
     clearTimeout(this.persistTimer);
     this.persistTimer = undefined;
     const ed = this.ed;
-    if (!ed || this.sample) return;
+    if (!ed) return;
     const text = ed.text;
+    const file = this.state.file;
+    if (this.sample !== null && text === this.sample && file === null) return;
     const keep = !!text && text.length <= MAX_PERSIST;
-    this.host.write(SCHEMA_KEYS.text, keep ? text : null);
-    this.host.write(SCHEMA_KEYS.file, keep ? this.state.file : null);
+    const stored = keep && this.host.write(SCHEMA_KEYS.doc, JSON.stringify({ text, file }));
+    // (Stored, or nothing to store: the keys from before go. Refused: they stay, the pair they were.)
+    if (stored || !keep) {
+      if (!keep) this.host.write(SCHEMA_KEYS.doc, null);
+      this.host.write(SCHEMA_KEYS.text, null);
+      this.host.write(SCHEMA_KEYS.file, null);
+    }
   }
 
+  /** A new generation (the shown result is stale from now on), checked after `ms` (-1: not yet, a text is on its way). */
   private schedule(ms: number) {
     this.gen++;
     if (this.state.result) this.set({ stale: true });
     clearTimeout(this.timer);
-    if (!this.open) return;
+    if (!this.open || ms < 0 || this.docPending) return;
     this.timer = setTimeout(() => this.run(), ms);
   }
 
   run() {
     const ed = this.ed;
-    if (!ed || !this.open) return;
+    if (!ed || !this.open || this.docPending) return;
     const gen = this.gen;
     const schema = ed.text;
     const doc = this.doc;

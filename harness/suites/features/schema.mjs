@@ -1,7 +1,8 @@
 // The Schema view (JSON Schema validation): the validator page's sample and its six errors, a click or Enter on an
 // error selecting it in the document, a keyword selecting the rule in the schema, keyboard navigation, fixing to
 // Valid and undoing, a broken schema, Check formats, the phone layout, and from the home page Alt+7, Generate from
-// the document and Close; the view toolbar at the widths where its row is full; a German page's strings.
+// the document and Close; the view toolbar at the widths where its row is full; a German page's strings, also after
+// a failed load; the palette's Generate on a fresh page.
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, setDoc, until } from './_helpers.mjs';
 
@@ -161,11 +162,12 @@ test('a schema file opened over the page\'s sample is saved with its name', asyn
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
 
-test('the view toolbar: every view reachable and nothing overlapping, with a document, in English and Russian', async (t) => {
+test('the view toolbar: every view reachable and nothing overlapping, with a document, in English, Russian and German', async (t) => {
   const { page } = t;
   // Viewer widths where the seven tabs, the Format view's control and the icons no longer fit on one row (English
-  // overlapped at 1280–1440px windows; Russian, the longest labels, just below its dropdown at 900px).
-  const cases = [['/', [1100, 1280, 1360, 1440, 1600]], ['/ru', [1820, 1900, 1960, 2100]]];
+  // overlapped at 1280–1440px windows; Russian, the longest labels, just below its dropdown at 900px). Odd windows
+  // give the viewer half a pixel: 1803px makes it 900.5px, between the dropdown's 900px and the wrap's start.
+  const cases = [['/', [1100, 1203, 1280, 1360, 1440, 1600]], ['/ru', [1803, 1820, 1900, 1960, 2100]], ['/de', [1803]]];
   const bad = [];
   for (const [path, widths] of cases) {
     await t.open(path);
@@ -205,15 +207,46 @@ test('a German page: the Schema view and Flatten show their own strings, loaded 
   });
   await t.open('/de/tools/json-schema-validator');
   t.check((await until(page, (s) => document.querySelectorAll(s).length === 6, ROWS, { timeout: 30_000 })) === true, 'the sample\'s six errors');
-  t.check(/^6 Fehler/.test(await state(page)), 'the header in German', await state(page));
-  const first = await page.evaluate((s) => document.querySelector(s)?.querySelector('.sch-msg')?.textContent, ROWS);
-  t.check(first === 'Die Pflichteigenschaft "email" fehlt', 'its messages in German', first);
+  // (The view shows at once, in English where its strings aren't in yet: then in German.)
+  t.check(!!(await waitState(page, /^6 Fehler/)), 'the header in German', await state(page));
+  const first = await until(page, (s) => document.querySelector(s)?.querySelector('.sch-msg')?.textContent === 'Die Pflichteigenschaft "email" fehlt' || document.querySelector(s)?.querySelector('.sch-msg')?.textContent, ROWS);
+  t.check(first === true, 'its messages in German', first);
   t.check((await page.evaluate(() => document.querySelector('.sch-fmt')?.textContent ?? '')).includes('Formate prüfen'), 'its options in German');
   // Flatten: Nested JSON (unflatten) of this nested document says there is nothing to unflatten.
   await page.keyboard.press('Alt+5');
   await page.locator('.app:visible .vmain select').selectOption('unflatten');
-  const note = await until(page, () => document.querySelector('.view .banner .b-msg')?.textContent, null, { timeout: 15_000 });
+  const note = await until(page, () => /Verschachteln$/.test(document.querySelector('.view .banner .b-msg')?.textContent ?? '') && document.querySelector('.view .banner .b-msg').textContent, null, { timeout: 15_000 });
   t.check(note === 'Dieses JSON hat keine flachen Schlüssel zum Verschachteln', 'Flatten\'s note in German', note);
   t.check(asked.length === 2 && /^\/i18n\/schema-strings\.de\.[0-9a-f]{12}\.json$/.test(asked[0]) && /^\/i18n\/flatten-strings\.de\.[0-9a-f]{12}\.json$/.test(asked[1]), 'each feature\'s strings fetched once, when it opens: the page\'s language\'s', asked);
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('the palette\'s Generate on a fresh page: the view opens with the generated schema (round 2, finding 4)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.check(await setDoc(page, '{"id": 1, "tags": ["a", "b"]}'), 'a document');
+  // (Schema was never opened on this page: the command opens it.)
+  await t.app.command(page, 'Generate a JSON Schema and validate against it');
+  const schema = await until(page, () => document.getElementById('schema-input')?.value.includes('"$schema"') && document.getElementById('schema-input').value, null, { timeout: 20_000 });
+  t.check(!!schema && schema.includes('"tags"'), 'the generated schema is in the schema editor', schema?.slice(0, 80));
+  t.check(!!(await waitState(page, /^Valid/)), 'and the document is valid against it', await state(page));
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('a German page whose Schema strings failed to load once: English, then German when the view opens again (round 2, finding 10)', async (t) => {
+  const { page } = t;
+  let failed = 0;
+  // (The first request for the Schema view's strings fails; the next ones go through.)
+  await page.route(/schema-strings\.de\./, (route) => (failed++ ? route.continue() : route.fulfill({ status: 404, body: '' })));
+  await t.open('/de');
+  t.check(await setDoc(page, '{"id": 1}'), 'a document');
+  await page.keyboard.press('Alt+7');
+  const english = await until(page, () => (document.querySelector('.sch-fmt')?.textContent ?? '').includes('Check formats'), null, { timeout: 20_000 });
+  t.check(english === true && failed === 1, 'the view shows, in English, after the failed request', { failed });
+  // Closed and opened again: asked for again, and shown in German.
+  await page.keyboard.press('Alt+1');
+  await page.keyboard.press('Alt+7');
+  const german = await until(page, () => (document.querySelector('.sch-fmt')?.textContent ?? '').includes('Formate prüfen'), null, { timeout: 20_000 });
+  t.check(german === true && failed === 2, 'opened again: German', { failed });
+  t.check(!t.errors.filter((e) => !/404|Failed to load resource/.test(e)).length, 'no page errors', t.errors.slice(0, 3));
 });

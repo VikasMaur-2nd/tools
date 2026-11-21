@@ -154,7 +154,9 @@
   transition: opacity 0.15s;
 }
 
-.sch.stale .sch-list {
+/* (A result for an older text, while the current one is on its way: never shown as current.) */
+.sch.stale .sch-list,
+.sch.stale .sch-empty {
   opacity: 0.55;
 }
 

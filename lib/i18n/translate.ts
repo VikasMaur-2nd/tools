@@ -41,13 +41,14 @@ async function strings(url: string | undefined): Promise<UiDict> {
 /**
  * `files`: the page's own language's dictionaries that load later (huge mode's, the lazy features'), which the
  * server names in the page (lib/i18n/server.ts `stringFiles`): this code carries no table of every language's.
+ * `loaded`: told when one has joined (components/LocalizedTool.tsx renders what shows them again).
  */
-export function translator(d: UiDict | null | undefined, lang?: string, files?: StringFiles): T {
+export function translator(d: UiDict | null | undefined, lang?: string, files?: StringFiles, loaded?: () => void): T {
   if (!d) return EN;
   // (Huge mode's and the lazy features' strings join it when they open: `huge` and `lazy` below.)
   let dict: UiDict = d;
   const loads = new Map<string, Promise<void>>();
-  const loaded = new Set<string>();
+  const done = new Set<string>();
   /** Fetches one more dictionary into this one, once (a failed fetch is tried again next time; never rejects). */
   const more = (name: string, url: string | undefined) => {
     let p = loads.get(name);
@@ -56,7 +57,8 @@ export function translator(d: UiDict | null | undefined, lang?: string, files?: 
         (add) => {
           dict = { ...dict, ...add };
           pats = null;
-          loaded.add(name);
+          done.add(name);
+          loaded?.();
         },
         () => {
           loads.delete(name); // (offline, never cached: English this time, asked again next time)
@@ -146,6 +148,6 @@ export function translator(d: UiDict | null | undefined, lang?: string, files?: 
     lang,
     huge: () => more('huge', files?.huge),
     lazy: (f: LazyFeature) => more(f, files?.[f]),
-    has: (f: LazyFeature) => loaded.has(f),
+    has: (f: LazyFeature) => done.has(f),
   });
 }

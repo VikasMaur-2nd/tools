@@ -2811,7 +2811,8 @@ dialog[open] {
   }
 }
 
-@container (min-width: 901px) and (max-width: 980px) {
+/* (Right past the dropdown's 900px: fractional widths such as 900.5px included.) */
+@container (900px < width <= 980px) {
   html:not([lang='en']) .vbar {
     flex-wrap: wrap;
     height: auto;

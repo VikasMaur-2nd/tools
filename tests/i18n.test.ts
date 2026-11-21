@@ -131,13 +131,15 @@ test('a dictionary that loads later and is missing or unreachable: English for n
     const none = translator(pageDict(en, tr), 'de', undefined);
     await none.lazy!('schema');
     assert.deepEqual([none('Valid'), none.has!('schema'), asked], ['Valid', true, 0]);
-    // Offline and never cached: English this time, fetched again on the next opening.
-    const t = translator(pageDict(en, tr), 'de', FILES.de);
+    // Offline and never cached: English this time, fetched again on the next opening. Told once they are in (the
+    // page then renders what shows them again: components/LocalizedTool.tsx).
+    let told = 0;
+    const t = translator(pageDict(en, tr), 'de', FILES.de, () => told++);
     await t.lazy!('schema');
-    assert.deepEqual([t('Valid'), t.has!('schema'), asked], ['Valid', false, 1]);
+    assert.deepEqual([t('Valid'), t.has!('schema'), asked, told], ['Valid', false, 1, 0]);
     up = true;
     await t.lazy!('schema');
-    assert.deepEqual([t('Valid'), t.has!('schema'), asked], [lazyDict(en, tr, 'schema').Valid, true, 2]);
+    assert.deepEqual([t('Valid'), t.has!('schema'), asked, told], [lazyDict(en, tr, 'schema').Valid, true, 2, 1]);
     // A file the server no longer has (404): English as well.
     const gone = translator(pageDict(en, tr), 'de', { schema: '/i18n/schema-strings.de.000000000000.json' });
     await gone.lazy!('schema');

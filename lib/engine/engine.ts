@@ -577,6 +577,7 @@ export class Engine {
 
   private onChange = (kind: ChangeKind) => {
     if (this.dead) return;
+    this.docWatch?.(null);
     // (A load's text arriving in the editor is that load's document, not a new one: see finishLoad.)
     if (!this.landing) {
       this.docGen++;
@@ -1261,6 +1262,8 @@ export class Engine {
 
   /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
   private loaded = false;
+  /** The Schema view's watch on the document (components/SchemaView.tsx): null at each edit, then the text read after it (even unchanged). */
+  docWatch: ((text: string | null) => void) | null = null;
 
   /** Keeps the secondary views (convert, compare) in step with the document. */
   private afterDoc() {
@@ -1269,7 +1272,11 @@ export class Engine {
     this.loaded = false;
     if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
-    else if (paired(v)) store.set({ docText: this.compareLeft() });
+    else if (paired(v)) {
+      const text = this.compareLeft();
+      store.set({ docText: text });
+      this.docWatch?.(text);
+    }
   }
 
   /** What Compare diffs as the original: the input, or the JSON it converts to when it is in another format. */
