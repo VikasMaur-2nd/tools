@@ -17,7 +17,7 @@ const WHEN: Record<EventName, string> = {
   json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL, opened from a link, handed over by another site, or the sample), once it has been checked (or, without its size and validity, when another document replaces it first).',
   view_opened: 'You open Format, Tree, Table, Graph, Convert or Compare.',
   convert_target_selected: 'You pick a Convert language or format.',
-  convert_option_changed: 'You change a Convert option: TypeScript interface or type, or the C# JSON library. The root type name you type is never sent.',
+  convert_option_changed: 'You change a Convert option: TypeScript interface or type, the C# JSON library, or a Flatten option (the separator when you pick one of the listed ones, array indexes, escapes, depth). The root type name and a separator you type are never sent.',
   format_option_changed: 'You change the output style, key sorting or indentation.',
   feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), reading the input as JSON, YAML, CSV, XML or TOML, a CSV option (which separator, header row or typed values on or off), and similar.',
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',

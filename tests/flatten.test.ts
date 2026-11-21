@@ -4,6 +4,7 @@ import { parse, type JNode } from '../lib/json/parser';
 import { stringify } from '../lib/json/format';
 import { FLAT_DEFAULTS, flatOptions, flatten, pathParts, unflatten, validSep, type FlatArrays, type FlatOptions, type Part } from '../lib/convert/flat';
 import { convert } from '../lib/convert';
+import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
 
 /*
  * Flatten and unflatten (lib/convert/flat.ts): golden outputs, every edge case the module comment defines, an
@@ -332,6 +333,26 @@ test('convert(): flatten and unflatten report notes and errors beside their text
   assert.equal(err, '');
   assert.equal((seen[1] as { error: string }).error, 'Keys "a" and "a.b" conflict: one holds a value, the other goes inside it');
   assert.equal(convert(doc('{"a/b":[1]}'), 'unflatten', { rootName: 'Root', flat: { sep: '/', arrays: 'keep' } }), '{\n  "a": {\n    "b": [\n      1\n    ]\n  }\n}');
+});
+
+test('the json-flatten page: its preset, worked examples and notices are what the converter gives', () => {
+  const page = TOOL_PAGE_BY_SLUG.get('json-flatten')!;
+  assert.ok(`${page.title} | Tool Kumar`.length <= 60);
+  assert.ok(page.description.length <= 155);
+  assert.deepEqual(page.preset.settings, { view: 'convert', target: 'flatten', rootName: 'Root' });
+  assert.equal(page.preset.initialText, page.sample);
+  assert.equal(canon(page.sample), canon(SAMPLE));
+  assert.equal(flat(page.sample).text, flat(SAMPLE).text);
+  for (const slug of ['json-to-csv', 'json-to-table', 'json-path-finder', 'csv-to-json']) assert.ok(TOOL_PAGE_BY_SLUG.get(slug)!.related.includes('json-flatten'), slug);
+  assert.deepEqual(page.related, ['json-to-csv', 'json-to-table', 'json-path-finder', 'home']);
+  const [unflattenCode, escapeCode, conflictCode] = page.sections!.map((s) => s.code!);
+  const [, flatIn, nested] = /^Flat JSON:\n(.*)\n\nUnflattened:\n([\s\S]*)$/.exec(unflattenCode)!;
+  assert.deepEqual(unflat(flatIn), { text: nested, note: '', warn: false, flip: false, error: '' });
+  const [, keysIn, flattened, notice] = /^Input:\n(.*)\n\nFlattened:\n([\s\S]*)\n\nNotice: (.*)$/.exec(escapeCode)!;
+  assert.deepEqual(flat(keysIn), { text: flattened, note: notice, warn: false, flip: false, error: '' });
+  assert.ok(back(keysIn).ok);
+  const [, clash, error] = /^Flat JSON:\n(.*)\n\nUnflatten error:\n(.*)$/.exec(conflictCode)!;
+  assert.equal(unflat(clash).error, error);
 });
 
 // ── An independent reference ─────────────────────────────────────────────────

@@ -9,11 +9,11 @@ type Dates = { published?: string; updated: string };
 export const PAGE_DATES = {
   '/': { updated: '2026-11-05' },
   '/about': { updated: '2026-10-18' },
-  '/privacy': { updated: '2026-10-24' },
+  '/privacy': { updated: '2026-11-21' },
   '/integrate': { published: '2026-10-21', updated: '2026-10-23' },
   // The listings' own text; their sitemap dates include their entries.
   '/blogs': { updated: '2026-10-13' },
-  '/tools': { updated: '2026-10-14' },
+  '/tools': { updated: '2026-11-21' },
   '/json-errors': { updated: '2026-10-15' },
   '/resources': { updated: '2026-10-14' },
   '/resources/json-reference': { published: '2026-10-14', updated: '2026-10-14' },

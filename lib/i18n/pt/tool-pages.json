@@ -1955,5 +1955,75 @@
         ]
       }
     ]
+  },
+  "json-flatten": {
+    "hash": "a06a361b3eaf",
+    "title": "JSON flatten e unflatten: achatar e aninhar",
+    "description": "Achate JSON aninhado em um objeto com chaves de caminho como user.address.city ou aninhe de novo. Arrays, separadores e números grandes, sem upload.",
+    "heading": "JSON flatten e unflatten",
+    "query": "json flatten",
+    "secondary": [
+      "achatar json",
+      "json unflatten"
+    ],
+    "intro": "Cole JSON aninhado para obter um único objeto plano cujas chaves são caminhos, como user.address.city ou orders[0].sku. Cole JSON plano e escolha JSON aninhado (unflatten) para aninhá-lo de novo. Cada valor mantém seus dígitos exatos, e o JSON nunca sai do seu dispositivo.",
+    "modeLabel": "Saída em JSON plano",
+    "exampleLabel": "Cada valor ganha uma chave: as chaves de objeto são unidas com pontos e os itens de array ganham [0], [1]. O array tags e o objeto meta vazios continuam como valores, e o id de 16 dígitos mantém todos os dígitos.",
+    "steps": [
+      "Cole JSON aninhado ou abra um arquivo. A visualização “Converter” mostra o resultado achatado.",
+      "Defina o separador, os índices de array e a profundidade no menu “Mais opções” (⋯). Para aninhar, escolha JSON aninhado (unflatten) no menu do conversor.",
+      "Copie ou baixe o resultado. “Usar como entrada” (Ctrl+Enter, ou ⌘Enter no Mac) leva o resultado para o editor e troca para a direção oposta, para você conferir que ele volta ao original. Ctrl+Z desfaz."
+    ],
+    "options": [
+      "Separador: um ponto por padrão; uma barra, um sublinhado, dois sublinhados ou qualquer texto de até 8 caracteres sem dígitos, barras invertidas ou colchetes. Ao aninhar, as chaves são divididas com a mesma configuração.",
+      "Índices de array: a[0] (padrão), a.0 com o seu separador, ou “Nenhum” para manter os arrays inteiros como valores. Com a[0], ao aninhar só os índices entre colchetes viram itens de array; com a.0, vira item uma parte do caminho feita só de dígitos, a menos que o objeto dela tenha também outras chaves.",
+      "Profundidade: “Todos” achata todos os níveis. 1, 2 ou 3 junta só esses níveis nas chaves e mantém objetos e arrays mais profundos como valores.",
+      "Objetos e arrays vazios continuam como {} e [], null, true, false, números e strings não mudam, e as chaves mantêm a ordem.",
+      "Um array no nível superior é lido como uma lista de registros, como as linhas de um CSV: cada item é achatado separadamente. Ao aninhar, uma lista de registros planos é lida do mesmo jeito. Um valor isolado não tem nada para achatar e continua igual.",
+      "“Escapar chaves”, ativado por padrão, coloca uma barra invertida antes dos caracteres que um caminho leria errado, como um ponto dentro de uma chave, para que ao aninhar a chave volte exata. Um aviso acima da saída conta essas chaves e alerta sobre chaves duplicadas ou qualquer outra coisa que não voltaria igual."
+    ],
+    "faqs": [
+      {
+        "question": "Como os arrays são achatados e aninhados de novo?",
+        "answer": "Por padrão cada item ganha seu índice entre colchetes: tags[0], tags[1], e orders[0].sku para um valor dentro de um item. Escolha a.0 no menu para escrever o índice como outra parte do caminho, ou “Nenhum” para manter os arrays inteiros. Ao aninhar, o mesmo estilo volta a ser array."
+      },
+      {
+        "question": "Posso usar um separador diferente do ponto?",
+        "answer": "Sim. Escolha uma barra, um sublinhado ou dois sublinhados no menu “Mais opções”, ou digite o seu, com até 8 caracteres. Dígitos, barras invertidas e colchetes não são permitidos porque os caminhos os usam para índices e escapes."
+      },
+      {
+        "question": "O que acontece quando duas chaves planas entram em conflito?",
+        "answer": "O unflatten para e cita as duas chaves, por exemplo \"a\" e \"a.b\", ou a mesma chave repetida. Nenhum valor é descartado sem aviso. Corrija ou renomeie uma das chaves e o JSON aninhado aparece."
+      },
+      {
+        "question": "Objetos vazios, arrays vazios e null são mantidos?",
+        "answer": "Sim. Um objeto vazio continua {} e um array vazio continua [] na própria chave, e null continua null, então ao aninhar você recebe o mesmo documento."
+      },
+      {
+        "question": "Números grandes e a ordem das chaves são preservados?",
+        "answer": "Sim. Os valores são copiados do seu texto, então um ID como 9007199254740993 ou um decimal longo mantém todos os dígitos em vez de ser arredondado, e as chaves mantêm a ordem nas duas direções."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Como aninhar JSON de novo (unflatten)",
+        "paragraphs": [
+          "Escolha JSON aninhado (unflatten) no menu do conversor e cole o JSON plano. Cada chave é dividida no separador, e um índice entre colchetes como [0] vira um item de array. Os itens ficam na ordem dos índices; se faltar um índice, o lugar dele recebe null e o aviso diz quantos."
+        ]
+      },
+      {
+        "heading": "Chaves que contêm pontos ou colchetes",
+        "paragraphs": [
+          "Uma chave como user.name seria lida como dois níveis ao aninhar. Com “Escapar chaves” ativado, o achatamento escreve uma barra invertida antes do ponto, e ao aninhar ela volta a ser uma única chave. Um colchete também ganha uma barra invertida, e uma barra invertida dentro de uma chave é duplicada. No texto JSON, cada barra invertida aparece como duas.",
+          "Para manter as chaves exatamente como estão, escolha um separador que suas chaves não contenham, como uma barra, ou desative “Escapar chaves”. O aviso então conta as chaves que voltariam diferentes."
+        ]
+      },
+      {
+        "heading": "Quando o unflatten encontra um conflito",
+        "paragraphs": [
+          "Alguns objetos planos pedem dois valores diferentes no mesmo lugar: \"a\": 1 e \"a.b\": 2 exigem que a seja ao mesmo tempo um número e um objeto. Em vez de manter um e descartar o outro, o Tool Kumar mostra um erro que cita as duas chaves e conta os demais conflitos. O mesmo acontece quando uma chave aparece duas vezes, ou quando a[0] e a.b fariam de a um array e um objeto ao mesmo tempo."
+        ]
+      }
+    ]
   }
 }

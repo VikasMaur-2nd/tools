@@ -3721,7 +3721,7 @@ export class Engine {
   useConvert() {
     const s = this.settings;
     const flat = s.target === 'flatten';
-    const use = (out: Output) => {
+    const apply = (out: Output) => {
       if (this.dead || out === undefined) return;
       if (!out || typeof out !== 'string') return this.toast(store.get().convert.error ?? 'Nothing to format yet. Paste some JSON first.', 'info');
       track('feature_used', { feature: 'use_output', view: 'convert' });
@@ -3729,8 +3729,8 @@ export class Engine {
       if (this.ed.text === out) this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
     };
     const later = this.convLater();
-    if (later) void later.then(use);
-    else use(this.convOutput());
+    if (later) void later.then(apply);
+    else apply(this.convOutput());
   }
 
   async downloadConvert() {
