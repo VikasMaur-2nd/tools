@@ -58,35 +58,41 @@ function cmpAbs(a: Dec, b: Dec): number {
   return 0;
 }
 
-/** b^e mod m for BigInts, e ≥ 0: about log2(e) multiplications. */
-function powMod(b: bigint, e: bigint, m: bigint): bigint {
-  let r = 1n % m;
-  let x = b % m;
-  let k = e;
-  while (k > 0n) {
-    if (k & 1n) r = (r * x) % m;
-    x = (x * x) % m;
-    k >>= 1n;
+/** How many times `p` (a prime) divides x ≠ 0, and x without those factors. */
+function strip(x: bigint, p: bigint): [number, bigint] {
+  let n = 0;
+  // (By p^16 first: a 1,000-digit divisor has at most a few hundred factors of 5.)
+  const big = p ** 16n;
+  while (x % big === 0n) {
+    x /= big;
+    n += 16;
   }
-  return r;
+  while (x % p === 0n) {
+    x /= p;
+    n++;
+  }
+  return [n, x];
 }
 
-/** Exponent gaps past this many bits (10^30,000 and more) aren't worked out: multipleOf says it can't tell. */
-const MAX_GAP_BITS = 100_000;
-
 /**
- * Whether a / b is a whole number (b > 0). With a = da × 10^ea and b = db × 10^eb, that is db | da × 10^(ea − eb).
- * For ea < eb it never is: `da` has no trailing zero, so 10^(eb − ea) can't divide it. Null: the exponents are so
- * far apart (a gap of 10^30,000 or more) that the answer isn't computed.
+ * Whether a / b is a whole number (b > 0). With a = da × 10^ea and b = db × 10^eb, that is db | da × 10^k, k = ea − eb.
+ * For k < 0 it never is: `da` has no trailing zero, so 10^−k can't divide it. Otherwise, with db = 2^p × 5^q × r and r
+ * prime to 10: 2^p must divide da × 2^k, 5^q must divide da × 5^k, and r must divide da (10^k is invertible mod r).
+ * So no power of ten is ever made: the cost is that of the digits, whatever the exponents.
  */
-export function isMultiple(a: Dec, b: Dec): boolean | null {
+export function isMultiple(a: Dec, b: Dec): boolean {
   if (isZero(a)) return true;
   const k = a.exp - b.exp;
   if (k < 0n) return false;
   const db = BigInt(b.digits);
   if (db === 1n) return true;
-  if (k.toString(2).length > MAX_GAP_BITS) return null;
-  return ((BigInt(a.digits) % db) * powMod(10n, k, db)) % db === 0n;
+  const da = BigInt(a.digits);
+  const p = BigInt((db & -db).toString(2).length - 1);
+  const [q5, r] = strip(db >> p, 5n);
+  const q = BigInt(q5);
+  if (p > k && (da & ((1n << (p - k)) - 1n)) !== 0n) return false;
+  if (q > k && da % 5n ** (q - k) !== 0n) return false;
+  return r === 1n || da % r === 0n;
 }
 
 /** The value as short text: the digits with the decimal point placed, or scientific notation when that is shorter. */

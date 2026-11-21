@@ -2031,7 +2031,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "7cbc4507eca7",
+    "hash": "95d2422436de",
     "title": "Validador de JSON Schema: valide JSON online",
     "description": "Valide JSON com um JSON Schema: drafts 2020-12, 2019-09, 07, 06 e 04. Veja cada erro com linha, caminho e regra. Nada é enviado.",
     "heading": "Validador de JSON Schema",
@@ -2076,7 +2076,7 @@
       },
       {
         "question": "Números grandes e decimais são verificados de forma exata?",
-        "answer": "Sim. O documento e o schema são lidos sem converter os números para ponto flutuante, então 19.99 é múltiplo de 0.01, inteiros maiores que 2^53 mantêm todos os dígitos para minimum e maximum, e expoentes de qualquer tamanho, como em 1e400, são comparados como estão escritos. 1.0 conta como inteiro a partir do draft-06, como diz a especificação. Só um caso não é calculado: multipleOf quando os expoentes dos dois números diferem por um número com mais de 30.000 dígitos. Ele aparece entre os problemas do schema, e o documento mostra Verificação incompleta."
+        "answer": "Sim. O documento e o schema são lidos sem converter os números para ponto flutuante, então 19.99 é múltiplo de 0.01, inteiros maiores que 2^53 mantêm todos os dígitos para minimum e maximum, e expoentes de qualquer tamanho, como em 1e400, são comparados como estão escritos. 1.0 conta como inteiro a partir do draft-06, como diz a especificação."
       }
     ],
     "sections": [

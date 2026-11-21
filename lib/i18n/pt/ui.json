@@ -808,7 +808,6 @@
   "app.schema.msg.nullable": "nullable é uma palavra-chave do OpenAPI 3.0 que o JSON Schema ignora: adicione \"null\" ao type",
   "app.schema.msg.unknownFormat": "O formato {format} não é verificado: não é um formato conhecido",
   "app.schema.msg.schemaLoose": "O schema não é JSON estrito: foi lido na versão reparada",
-  "app.schema.msg.multipleOfRange": "Não é possível verificar multipleOf {limit} para {value}: as escalas estão distantes demais",
   "app.schema.msg.nonNegativeInteger": "{kw} deve ser um inteiro não negativo",
   "app.schema.msg.number": "{kw} deve ser um número",
   "app.schema.msg.positive": "{kw} deve ser um número maior que 0",

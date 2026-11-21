@@ -2044,7 +2044,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "7cbc4507eca7",
+    "hash": "95d2422436de",
     "title": "JSON Schema Validator: JSON online validieren",
     "description": "JSON gegen ein JSON Schema validieren: Drafts 2020-12, 2019-09, 07, 06 und 04. Jeder Fehler mit Zeile, Pfad und Regel. Kein Upload.",
     "heading": "JSON Schema Validator",
@@ -2089,7 +2089,7 @@
       },
       {
         "question": "Werden große Zahlen und Dezimalzahlen exakt geprüft?",
-        "answer": "Ja. Dokument und Schema werden gelesen, ohne Zahlen in Gleitkommazahlen umzuwandeln. Deshalb ist 19.99 ein Vielfaches von 0.01, Ganzzahlen über 2^53 behalten für minimum und maximum jede Ziffer, und Exponenten jeder Größe, etwa in 1e400, werden so verglichen, wie sie geschrieben sind. 1.0 gilt ab draft-06 als Ganzzahl, wie es die Spezifikation sagt. Nur ein Fall wird nicht berechnet: multipleOf, wenn sich die Exponenten der beiden Zahlen um eine Zahl mit mehr als 30.000 Stellen unterscheiden. Er steht unter den Problemen im Schema, und das Dokument heißt Nicht vollständig geprüft."
+        "answer": "Ja. Dokument und Schema werden gelesen, ohne Zahlen in Gleitkommazahlen umzuwandeln. Deshalb ist 19.99 ein Vielfaches von 0.01, Ganzzahlen über 2^53 behalten für minimum und maximum jede Ziffer, und Exponenten jeder Größe, etwa in 1e400, werden so verglichen, wie sie geschrieben sind. 1.0 gilt ab draft-06 als Ganzzahl, wie es die Spezifikation sagt."
       }
     ],
     "sections": [

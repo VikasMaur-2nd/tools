@@ -983,7 +983,6 @@
   "app.schema.msg.nullable._context": "Keep nullable, type and \"null\" in English.",
   "app.schema.msg.unknownFormat": "Format {format} is not checked: it is not a known format",
   "app.schema.msg.schemaLoose": "The schema is not strict JSON: it was read as repaired",
-  "app.schema.msg.multipleOfRange": "multipleOf {limit} can't be checked for {value}: their scales are too far apart",
   "app.schema.msg.nonNegativeInteger": "{kw} must be a non-negative integer",
   "app.schema.msg.nonNegativeInteger._context": "{kw} is a JSON Schema keyword.",
   "app.schema.msg.number": "{kw} must be a number",

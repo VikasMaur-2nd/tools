@@ -1,0 +1,412 @@
+{
+    "description": "Tool Kumar's own cases in the JSON-Schema-Test-Suite format: review findings (round 2) that the official suite doesn't cover. \"complete\" (Tool Kumar's): whether the check is complete, false for not fully checked.",
+    "tests": [
+        {
+            "description": "a prefixItems entry that isn't a schema keeps its place, and is unknown where it applies (round 2, finding 1)",
+            "compatibility": "=2020",
+            "schema": {
+                "not": {
+                    "prefixItems": [
+                        42,
+                        {
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "tests": [
+                {
+                    "description": "item 1 passes its own rule, item 0's is unknown: not can't decide",
+                    "data": [
+                        1,
+                        "ok"
+                    ],
+                    "valid": false,
+                    "complete": false
+                },
+                {
+                    "description": "item 1 fails its own rule: not passes for sure",
+                    "data": [
+                        1,
+                        2
+                    ],
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "no item 0: nothing unknown",
+                    "data": [],
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "the array form of items keeps a non-schema entry's place (round 2, finding 1)",
+            "compatibility": "<=2019",
+            "schema": {
+                "not": {
+                    "items": [
+                        42,
+                        {
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "tests": [
+                {
+                    "description": "item 1 passes its own rule, item 0's is unknown",
+                    "data": [
+                        1,
+                        "ok"
+                    ],
+                    "valid": false,
+                    "complete": false
+                },
+                {
+                    "description": "item 1 fails its own rule",
+                    "data": [
+                        1,
+                        2
+                    ],
+                    "valid": true,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "a property whose subschema isn't a schema keeps its name: additionalProperties doesn't take it (round 2, finding 1)",
+            "compatibility": "6",
+            "schema": {
+                "not": {
+                    "properties": {
+                        "x": 42
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "x is the property's, unknown: not can't decide",
+                    "data": {
+                        "x": 1
+                    },
+                    "valid": false,
+                    "complete": false
+                },
+                {
+                    "description": "y is an extra property for sure: not passes",
+                    "data": {
+                        "y": 1
+                    },
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "no x: nothing unknown",
+                    "data": {},
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "a pattern property whose subschema isn't a schema keeps its pattern (round 2, finding 1)",
+            "compatibility": "6",
+            "schema": {
+                "not": {
+                    "patternProperties": {
+                        "^x": 42
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "x1 matches the pattern, unknown",
+                    "data": {
+                        "x1": 1
+                    },
+                    "valid": false,
+                    "complete": false
+                },
+                {
+                    "description": "y is an extra property for sure",
+                    "data": {
+                        "y": 1
+                    },
+                    "valid": true,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "properties or patternProperties that can't be read: additionalProperties can't call a name extra (round 2, finding 1)",
+            "compatibility": "6",
+            "schema": {
+                "not": {
+                    "patternProperties": {
+                        "[": {}
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "whether x matches the broken pattern isn't known",
+                    "data": {
+                        "x": 1
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "a broken subschema applies only where it is reached (round 2, finding 1)",
+            "compatibility": "6",
+            "schema": {
+                "properties": {
+                    "x": 42
+                },
+                "definitions": {
+                    "unused": 42
+                },
+                "type": "object"
+            },
+            "tests": [
+                {
+                    "description": "no x: complete",
+                    "data": {
+                        "y": 1
+                    },
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "x: unknown",
+                    "data": {
+                        "x": 1
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "a broken $defs entry or contentSchema nothing applies leaves the check complete (round 2, finding 1)",
+            "compatibility": "2019",
+            "schema": {
+                "$defs": {
+                    "x": 42
+                },
+                "contentSchema": 42,
+                "type": "string"
+            },
+            "tests": [
+                {
+                    "description": "a string",
+                    "data": "a",
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "not a string",
+                    "data": 1,
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "a dependentSchemas entry that isn't a schema is unknown when its property is there (round 2, finding 1)",
+            "compatibility": "2019",
+            "schema": {
+                "not": {
+                    "dependentSchemas": {
+                        "a": 42
+                    },
+                    "required": [
+                        "b"
+                    ]
+                }
+            },
+            "tests": [
+                {
+                    "description": "a and b: unknown",
+                    "data": {
+                        "a": 1,
+                        "b": 1
+                    },
+                    "valid": false,
+                    "complete": false
+                },
+                {
+                    "description": "b alone: not fails for sure",
+                    "data": {
+                        "b": 1
+                    },
+                    "valid": false,
+                    "complete": true
+                },
+                {
+                    "description": "no b: not passes for sure",
+                    "data": {
+                        "a": 1
+                    },
+                    "valid": true,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "an unevaluatedProperties elsewhere doesn't make a definite not failure unknown (round 2, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "not": {
+                    "anyOf": [
+                        {
+                            "$ref": "https://example.test/missing"
+                        },
+                        true
+                    ]
+                },
+                "properties": {
+                    "unused": {
+                        "unevaluatedProperties": false
+                    }
+                }
+            },
+            "tests": [
+                {
+                    "description": "anyOf matches for sure: not fails for sure",
+                    "data": {},
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "unknown annotations matter only to the unevaluated* keyword reading them (round 2, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "anyOf": [
+                    {
+                        "$ref": "https://example.test/missing"
+                    },
+                    true
+                ],
+                "unevaluatedProperties": false
+            },
+            "tests": [
+                {
+                    "description": "no property to decide on: complete",
+                    "data": {},
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "a may have been evaluated by the unknown branch",
+                    "data": {
+                        "a": 1
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "unknown annotations of a property's value don't reach its parent's unevaluatedProperties (round 2, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "properties": {
+                    "a": {
+                        "anyOf": [
+                            {
+                                "$ref": "https://example.test/missing"
+                            },
+                            true
+                        ]
+                    }
+                },
+                "unevaluatedProperties": false
+            },
+            "tests": [
+                {
+                    "description": "a is evaluated for sure",
+                    "data": {
+                        "a": {
+                            "x": 1
+                        }
+                    },
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "b isn't evaluated by anything",
+                    "data": {
+                        "a": 1,
+                        "b": 1
+                    },
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "unevaluatedItems reads unknown annotations the same way (round 2, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "anyOf": [
+                    {
+                        "$ref": "https://example.test/missing"
+                    },
+                    true
+                ],
+                "unevaluatedItems": false
+            },
+            "tests": [
+                {
+                    "description": "no item: complete",
+                    "data": [],
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "an item the unknown branch may have evaluated",
+                    "data": [
+                        1
+                    ],
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "a definite failure next to unknown annotations is still one (round 2, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "allOf": [
+                    {
+                        "$ref": "https://example.test/missing"
+                    }
+                ],
+                "unevaluatedProperties": false,
+                "required": [
+                    "b"
+                ]
+            },
+            "tests": [
+                {
+                    "description": "b is missing for sure",
+                    "data": {
+                        "a": 1
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        }
+    ]
+}

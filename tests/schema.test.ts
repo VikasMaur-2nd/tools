@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse } from '../lib/json/parser';
-import { validateTexts, keyBefore, type ValidateResult } from '../lib/schema/index';
+import { SchemaSession, validateTexts, keyBefore, type ValidateResult } from '../lib/schema/index';
 import { Validator } from '../lib/schema/validator';
 import { cmp, dec, isMultiple, isWhole } from '../lib/schema/decimal';
 import { resolveUri, normalizeUri } from '../lib/schema/uri';
@@ -40,7 +40,7 @@ test('decimal: exact comparison and multipleOf on the source digits', () => {
   assert.ok(isMultiple(d('0'), d('0.3')));
   assert.ok(isMultiple(d('4.5'), d('1.5')));
   assert.ok(!isMultiple(d('0.3'), d('0.2')));
-  // A billion-digit power of ten is reduced by modular exponentiation, not built.
+  // A billion-digit power of ten is never built.
   const t = performance.now();
   assert.ok(!isMultiple(d('1e999999999'), d('7')));
   assert.ok(isMultiple(d('1e999999999'), d('8')));
@@ -53,8 +53,45 @@ test('decimal: exact comparison and multipleOf on the source digits', () => {
   assert.ok(isWhole(d('1e9007199254740992')) && !isWhole(d('1.5e-9007199254740992')));
   assert.equal(isMultiple(d('7e9007199254740993'), d('7')), true);
   assert.equal(isMultiple(d('1'), d('1e-9007199254740993')), true);
-  // A scale gap past 10^30,000 isn't worked out: null, which the validator reports, never a silent pass.
-  assert.equal(isMultiple(d('1e' + '1'.repeat(30200)), d('7')), null);
+  // Any scale gap is worked out (review round 2, finding 9): no "can't tell" any more.
+  assert.equal(isMultiple(d('1e' + '1'.repeat(30200)), d('7')), false);
+  assert.equal(isMultiple(d('1e' + '1'.repeat(30200)), d('2.5e-3')), true);
+});
+
+test('round 2, finding 9: multipleOf costs the digits, not the exponents; the powers of 2 and 5 and the rest', () => {
+  const d = (s: string) => dec(s)!;
+  // Exact against plain rational arithmetic on every pair of a few hundred numbers.
+  const nums = ['0', '1', '2', '3', '5', '7', '10', '12', '25', '0.5', '0.25', '0.01', '0.2', '1.5', '19.99', '19.999', '4e3', '8e-2', '125', '0.0016', '1e-5', '3e2', '6.25', '640', '0.008', '13', '1.3e1', '7e10', '2.8e-3', '96', '1e20', '3.2e-7'];
+  const exact = (a: string, b: string) => {
+    const [x, y] = [d(a), d(b)];
+    if (x.digits === '') return true;
+    const k = x.exp - y.exp;
+    return (BigInt(x.digits) * (k >= 0n ? 10n ** k : 1n)) % (BigInt(y.digits) * (k < 0n ? 10n ** -k : 1n)) === 0n;
+  };
+  for (const a of nums) for (const b of nums) if (b !== '0') assert.equal(isMultiple(d(a), d(b)), exact(a, b), `${a} / ${b}`);
+  // A 1,000-digit exponent against a 1,000-digit divisor: was 82 ms (modular exponentiation over the gap).
+  let x = 7;
+  const digits = (n: number) => Array.from({ length: n }, (_, i) => (i ? (x = (x * 1103515245 + 12345) % 2147483648) % 10 : 1 + (x % 9))).join('');
+  const exp = digits(1000);
+  const div = digits(1000) + '7';
+  const t = performance.now();
+  assert.equal(isMultiple(d(`7e${exp}`), d(div)), false);
+  assert.equal(isMultiple(d(`${div}e${exp}`), d(div)), true);
+  assert.equal(isMultiple(d(`${digits(1000)}e${exp}`), d(`0.${'0'.repeat(500)}${div}`)), false);
+  assert.equal(isMultiple(d(`3e${exp}`), d(`1.6e-${exp}`)), true);
+  const ms = performance.now() - t;
+  console.log(`multipleOf, 1,000-digit exponents and divisors: ${ms.toFixed(2)} ms`);
+  assert.ok(ms < 20, `${ms.toFixed(1)} ms`);
+});
+
+test('round 2, finding 9: a problem of one check (a $ref loop) isn\'t kept for the next document', () => {
+  const session = new SchemaSession();
+  // (It loops only through property a.)
+  const schema = JSON.stringify({ properties: { a: { $ref: '#/$defs/x' } }, $defs: { x: { $ref: '#/$defs/x' } } });
+  const loop = session.run({ schema, doc: '{"a": 1}', draft: null, formats: false });
+  assert.deepEqual(loop.problems.map((p) => [p.code, p.reached]), [['loop', true]]);
+  const next = session.run({ schema, doc: '14', draft: null, formats: false });
+  assert.deepEqual([next.valid, next.complete, next.problems], [true, true, []]);
 });
 
 test('numbers: lossless checks through the whole validator', () => {
@@ -433,11 +470,10 @@ test('finding 2: a schema that can\'t be applied gives no success: not fully che
   const broken = { properties: { s: { minLength: -1 }, n: { minLength: -1 } } };
   assert.deepEqual([run(broken, '{"n": 1}').valid, run(broken, '{"n": 1}').complete], [true, true]);
   assert.deepEqual([run(broken, '{"s": "x"}').valid, run(broken, '{"s": "x"}').complete], [false, false]);
-  // A $ref loop, and a multipleOf too far in scale to work out.
+  // A $ref loop. (A multipleOf far in scale is worked out since round 2: see finding 9's test.)
   assert.deepEqual([run({ $ref: '#' }, '1').valid, run({ $ref: '#' }, '1').complete], [false, false]);
   const far = run({ multipleOf: 7 }, '1e' + '1'.repeat(30200));
-  assert.deepEqual([far.valid, far.complete, far.problems.map((p) => [p.code, p.reached])], [false, false, [['multipleOfRange', true]]]);
-  assert.match(problemText('multipleOfRange', far.problems[0].params, EN), /^multipleOf 7 can't be checked/);
+  assert.deepEqual([far.valid, far.complete, far.errors.map((e) => e.code), far.problems], [false, true, ['multipleOf'], []]);
 });
 
 test('finding 10: required with 24,000 keys is linear, not quadratic', () => {

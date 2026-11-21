@@ -750,7 +750,6 @@
   "app.schema.msg.nullable": "nullableはOpenAPI 3.0のキーワードで、JSON Schemaでは無視されます。代わりにtypeに\"null\"を追加してください",
   "app.schema.msg.unknownFormat": "format {format}は検証しません。既知のformatではありません",
   "app.schema.msg.schemaLoose": "スキーマは厳密なJSONではありません。修復した内容で読み込みました",
-  "app.schema.msg.multipleOfRange": "{value}に対してmultipleOf {limit}を検証できません。桁が離れすぎています",
   "app.schema.msg.nonNegativeInteger": "{kw}は0以上の整数である必要があります",
   "app.schema.msg.number": "{kw}は数値である必要があります",
   "app.schema.msg.positive": "{kw}は0より大きい数値である必要があります",
