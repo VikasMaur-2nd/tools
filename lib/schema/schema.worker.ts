@@ -12,6 +12,8 @@ export interface WorkerRequest {
   draft: ValidateRequest['draft'];
   formats: boolean;
   max: number;
+  /** The document can't be read as its format (see ValidateRequest). */
+  unread?: boolean;
 }
 
 export type WorkerReply = { id: number; result: ValidateResult } | { id: number; error: true };
@@ -26,7 +28,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   if (r.schema !== null) schema = r.schema;
   let reply: WorkerReply;
   try {
-    reply = { id: r.id, result: session.run({ doc, schema, draft: r.draft, formats: r.formats, max: r.max }) };
+    reply = { id: r.id, result: session.run({ doc, schema, draft: r.draft, formats: r.formats, max: r.max, unread: r.unread }) };
   } catch {
     reply = { id: r.id, error: true };
   }

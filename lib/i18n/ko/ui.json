@@ -684,6 +684,7 @@
   "app.schema.schemaSyntax": "스키마가 올바른 JSON이 아닙니다",
   "app.schema.addDoc": "검증하려면 왼쪽에 JSON 문서를 추가하세요.",
   "app.schema.docSyntax": "왼쪽 JSON 문서를 수정하세요",
+  "app.schema.docUnread": "검증하려면 왼쪽 문서를 수정하세요",
   "app.schema.tooDeep": "중첩이 너무 깊어 검증할 수 없습니다",
   "app.schema.matches": "문서가 스키마({draft})에 맞습니다.",
   "app.schema.loose": "문서가 엄격한 JSON이 아닙니다. 복구한 내용으로 검사했습니다",

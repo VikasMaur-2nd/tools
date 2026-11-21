@@ -2767,6 +2767,18 @@ dialog[open] {
   margin-right: 6px;
 }
 
+/* (Compare and Schema have no control here: nothing, not an empty row where the toolbar wraps.) */
+.vmain:empty {
+  display: none;
+}
+
+/* (A hint in place of a path, "Select a node": shortened like the path, never under the icons.) */
+.vmain > .nowrap {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .vicons {
   display: flex;
   align-items: center;
@@ -2801,7 +2813,12 @@ dialog[open] {
     padding-block: 6px;
     row-gap: 4px;
   }
-  /* (Format's styles and sizes, Convert's language: never narrower than they are.) */
+  /* (A path or crumbs never make a second row, they shorten (sized from nothing, right-aligned as before); Format's
+     styles and sizes and Convert's language are never narrower than they are, so they may.) */
+  html[lang='en'] .vmain {
+    flex: 1 1 0;
+    justify-content: flex-end;
+  }
   html[lang='en'] .vmain:has(.seg, .pick) {
     min-width: max-content;
   }
@@ -2818,6 +2835,10 @@ dialog[open] {
     min-height: 44px;
     padding-block: 6px;
     row-gap: 4px;
+  }
+  html:not([lang='en']) .vmain {
+    flex: 1 1 0;
+    justify-content: flex-end;
   }
   html:not([lang='en']) .vmain:has(.seg, .pick) {
     min-width: max-content;

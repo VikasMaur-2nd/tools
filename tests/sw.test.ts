@@ -39,29 +39,32 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
   let online = true;
   let failPut: (url: string) => boolean = () => false;
   const fetched: string[] = [];
-  const store = new Map<string, { body: string; type: string }>();
+  const store = new Map<string, { body: string; type: string; headers?: [string, string][] }>();
   const key = (r: string | { url: string }) => new URL(typeof r === 'string' ? r : r.url, ORIGIN).href.split('#')[0];
-  const response = (body: string, type: string, status = 200) => {
-    const res = new Response(status === 200 ? body : null, { status, headers: { 'content-type': type } });
+  const response = (body: string, type: string, status = 200, headers: [string, string][] = []) => {
+    const res = new Response(status === 200 ? body : null, { status, headers: [['content-type', type], ...headers.filter(([k]) => k !== 'content-type')] });
     Object.defineProperty(res, 'type', { value: 'basic' });
     return res;
   };
   const cache = {
     match: async (r: string | { url: string }) => {
       const hit = store.get(key(r));
-      return hit ? response(hit.body, hit.type) : undefined;
+      return hit ? response(hit.body, hit.type, 200, hit.headers) : undefined;
     },
     put: async (r: string | { url: string }, res: Response) => {
       if (failPut(key(r))) throw new DOMException('Quota exceeded', 'QuotaExceededError');
-      store.set(key(r), { body: await res.text(), type: res.headers.get('content-type') ?? '' });
+      store.set(key(r), { body: await res.text(), type: res.headers.get('content-type') ?? '', headers: [...res.headers] });
     },
     delete: async (r: string | { url: string }) => store.delete(key(r)),
     keys: async () => [...store.keys()].map((url) => ({ url })),
   };
+  /** Responses held until released (see hold). */
+  const held = new Map<string, Promise<void>>();
   const fetchFn = async (r: string | { url: string }) => {
     const url = new URL(key(r));
     if (!online) throw new TypeError('Failed to fetch');
     fetched.push(url.pathname);
+    await held.get(url.pathname);
     const body = files[url.pathname];
     if (typeof body === 'number') return response('', 'text/plain', body);
     if (body === undefined) return response('', 'text/html', 404);
@@ -77,7 +80,14 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     clients: { matchAll: async () => tabs.map((id) => ({ id, postMessage() {} })), claim: async () => {} },
   };
   const caches = { open: async () => cache, keys: async () => ['json-viewer-v2'], delete: async () => true };
-  runInNewContext(source, { self, caches, fetch: fetchFn, Response, URL, Set, Map, Promise, JSON, Date, DOMException });
+  /** The worker's clock (see later). */
+  let now = Date.now();
+  const Clock = class extends Date {
+    static now() {
+      return now;
+    }
+  };
+  runInNewContext(source, { self, caches, fetch: fetchFn, Response, Headers, URL, Set, Map, Promise, JSON, Date: Clock, DOMException });
   /** Dispatches an event and waits for everything it asked to wait for. */
   const dispatch = async (type: string, props: Record<string, unknown> = {}) => {
     const waits: Promise<unknown>[] = [];
@@ -108,6 +118,17 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
       return res ? await res.text() : null;
     },
     dicts: () => [...store.keys()].filter((u) => u.includes('/i18n/')).map((u) => new URL(u).pathname).sort(),
+    /** Time passes for the worker. */
+    later: (ms: number) => void (now += ms),
+    /** Holds `path`'s responses until the returned function is called. */
+    hold: (path: string) => {
+      let release = () => {};
+      held.set(path, new Promise<void>((r) => (release = r)));
+      return () => {
+        held.delete(path);
+        release();
+      };
+    },
     fetched,
   };
 }
@@ -169,6 +190,7 @@ test("service worker: a deploy keeps the old build's chunks while a tab of it is
   await sw.visit('/', 'new-tab');
   assert.ok(sw.has('/_next/static/chunks/a-graph.js'));
   // Once they are closed, the old build's files go (the new tab, on build b, stays open).
+  // (Seen open before: gone at once, no waiting.)
   sw.tabs(['new-tab']);
   await sw.post(['/_next/static/chunks/b-main.js'], 'new-tab');
   assert.deepEqual(sw.statics(), filesOf('b'));
@@ -275,7 +297,7 @@ test('service worker: a localized page caches the dictionaries it names (its own
   assert.equal(await sw.get(de[1]), `{"file":"${de[1]}"}`);
 });
 
-test('service worker: a cached page replaced by a later build\'s retires the dictionaries nothing needs, once no tab of it is open (round 3, finding 8)', async () => {
+test('service worker: a cached page replaced by a later build\'s leaves the dictionaries nothing needs, once no tab of it is open (round 3, finding 8)', async () => {
   const hash = (n: number) => `/i18n/schema-strings.de.${String(n).repeat(12)}.json`;
   const sw = worker();
   sw.serve(localized('a', { de: [hash(1)] }));
@@ -293,13 +315,16 @@ test('service worker: a cached page replaced by a later build\'s retires the dic
   const fetches = sw.fetched.length;
   assert.equal(await sw.get(hash(2)), `{"file":"${hash(2)}"}`);
   assert.equal(sw.fetched.length, fetches, 'cache-first: not fetched again');
-  // That tab closed: the next visit's tidy-up deletes it. Builds c and d, visiting /de only (never '/'): one each.
-  sw.tabs([]);
+  // That tab closed: the next tidy-up deletes it. Builds c and d, visiting /de only (never '/'): one each.
+  sw.tabs(['tab-b']);
+  sw.later(60_000);
   await sw.post(['/de'], 'tab-b');
   assert.deepEqual(sw.dicts(), [hash(2)]);
   for (const [tag, n] of [['c', 3], ['d', 4]] as const) {
     sw.serve(localized(tag, { de: [hash(n)] }));
     await sw.visit('/de', `tab-${tag}`);
+    sw.tabs([`tab-${tag}`]);
+    sw.later(60_000);
     await sw.post(['/de'], `tab-${tag}`);
     assert.deepEqual(sw.dicts(), [hash(n)], `build ${tag}`);
   }
@@ -309,6 +334,66 @@ test('service worker: a cached page replaced by a later build\'s retires the dic
   await sw.visit('/de', 'tab-e');
   await sw.post(['/de'], 'tab-e');
   assert.deepEqual(sw.dicts(), [hash(4), hash(5)]);
+});
+
+test('service worker: what replacements that failed brought in, and old builds\' files, go once nothing needs them, whichever tab stays open (round 4, finding 8)', async () => {
+  const hash = (n: number) => `/i18n/schema-strings.de.${String(n).repeat(12)}.json`;
+  const sw = worker();
+  sw.serve(localized('a', { de: [hash(1)] }));
+  await sw.install();
+  await sw.visit('/de', 'tab-a');
+  await sw.post(['/de'], 'tab-a');
+  // Three deploys whose German page can't be stored (its page script is missing): their dictionaries came in anyway.
+  for (const [tag, n] of [['b', 2], ['c', 3], ['d', 4]] as const) {
+    sw.serve({ ...localized(tag, { de: [hash(n)] }), [`/_next/static/chunks/${tag}-main.js`]: 404 });
+    await sw.visit('/de', `tab-${tag}`);
+  }
+  assert.match(sw.cached('/de')!, /de a/);
+  // No tab open: what no page needs goes, the cached page's dictionary stays.
+  sw.tabs([]);
+  sw.later(60_000);
+  await sw.post(['/de'], 'tab-a');
+  assert.deepEqual(sw.dicts(), [hash(1)]);
+  // An unrelated tab (on the current build) staying open holds nothing back: no timer, a file goes when unneeded.
+  sw.serve(localized('e', { de: [hash(5)] }));
+  await sw.visit('/de', 'tab-e');
+  sw.tabs(['tab-e']);
+  sw.later(19 * 24 * 3600 * 1000);
+  await sw.post(['/de'], 'tab-e');
+  assert.deepEqual(sw.dicts(), [hash(5)]);
+});
+
+test('service worker: a tab opening from the cached copy while another build replaces it keeps that copy\'s files (round 4, finding 1)', async () => {
+  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
+  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+  const sw = worker();
+  sw.serve(localized('a', { de: [a] }));
+  await sw.install();
+  await sw.visit('/de', 'tab-a');
+  await sw.post(['/de'], 'tab-a');
+  // Build b's German page is being stored: held just before its dictionary arrives.
+  sw.serve(localized('b', { de: [b] }));
+  const release = sw.hold(b);
+  const storing = sw.visit('/de', 'tab-b');
+  await new Promise((r) => setTimeout(r, 10));
+  // Meanwhile a second visit, offline, opens from the cached copy (build a).
+  sw.offline();
+  assert.match((await sw.visit('/de', 'tab-opening'))!, /de a/);
+  sw.offline(false);
+  // The replacement finishes before that tab shows among the clients; no other tab is open.
+  sw.tabs([]);
+  release();
+  await storing;
+  assert.match(sw.cached('/de')!, /de b/);
+  await sw.post(['/de'], 'tab-b');
+  // The opening tab, offline, opens the Schema view: build a's dictionary is still there.
+  sw.offline();
+  assert.equal(await sw.get(a), `{"file":"${a}"}`);
+  // Once it is gone (closed), so is the dictionary.
+  sw.offline(false);
+  sw.later(60_000);
+  await sw.post(['/de'], 'tab-b');
+  assert.deepEqual(sw.dicts(), [b]);
 });
 
 test('service worker: a dictionary that doesn\'t arrive is asked for again, and a cached page keeps working until its replacement\'s have (round 3, finding 4)', async () => {

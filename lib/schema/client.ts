@@ -89,7 +89,7 @@ export class SchemaClient {
     }
     const id = ++this.seq;
     const { doc, schema } = w.req;
-    port.postMessage({ id, doc: doc === this.sentDoc ? null : doc, schema: schema === this.sentSchema ? null : schema, draft: w.req.draft, formats: w.req.formats, max: w.req.max ?? 1000 });
+    port.postMessage({ id, doc: doc === this.sentDoc ? null : doc, schema: schema === this.sentSchema ? null : schema, draft: w.req.draft, formats: w.req.formats, max: w.req.max ?? 1000, unread: w.req.unread });
     this.sentDoc = doc;
     this.sentSchema = schema;
     const timer = setTimeout(() => this.expire(id), this.limit(doc.length + schema.length));

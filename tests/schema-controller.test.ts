@@ -16,8 +16,9 @@ class FakeEditor implements SchemaEditor {
     return this.t;
   }
   set text(v: string) {
+    // (The same text again is no change: the version stays, as the app's editor's.)
+    if (v !== this.t) this.version = {};
     this.t = v;
-    this.version = {};
   }
   diags: number[] = [];
   onChange: ((kind: 'input' | 'paste' | 'set') => void) | null = null;
@@ -319,14 +320,59 @@ test('round 3, finding 2: every new document or reading goes through the engine\
     assert.ok(at >= 0, head);
     return src.slice(at, src.indexOf('\n  }\n', at));
   };
-  // The document's identity (docId) moves in one place, which tells the view at once.
-  assert.equal(src.match(/this\.docGen\+\+/g)?.length, 1);
+  // The document's identity (docId) moves in one place, which tells the view at once; unique across engines (round 4,
+  // finding 4: a page Next.js keeps and shows again makes another engine).
+  assert.equal(src.match(/this\.docGen = \+\+docs/g)?.length, 1);
+  assert.match(src, /^let docs = 0;$/m);
+  assert.match(src, /private docGen = \+\+docs;/);
   const newDoc = body('private newDoc()');
-  assert.match(newDoc, /this\.docGen\+\+/);
+  assert.match(newDoc, /this\.docGen = \+\+docs/);
   assert.match(newDoc, /this\.docWatch\?\.\(null\)/);
   // An edit, a load (file, URL, share link, sample, a huge file's handover back), another input format, CSV options.
   for (const head of ['private onChange = ', 'load(text: string, name', 'private setInputFormat(', 'setCsv(patch']) assert.match(body(head), /this\.newDoc\(\)/, head);
-  // The text the view gets comes with which document it is: a conversion's or a JWT's is the reading's that made it.
-  assert.match(body('leftDoc(): {'), /this\.readGen/);
-  assert.match(body('private compareLeft()'), /if \(this\.jwt\) return this\.jwt\.json;/);
+  // The text the view gets comes with which document it is, once read; a JWT's decoded JSON for the Schema view only
+  // (round 4, finding 6: Compare is main's, its offsets are the token's).
+  const left = body('leftDoc(): {');
+  assert.match(left, /this\.readGen !== this\.docGen/);
+  assert.match(left, /if \(this\.jwt\) return \{ text: this\.jwt\.json, id: this\.docGen \}/);
+  assert.doesNotMatch(body('private compareLeft()'), /jwt/);
+  // Read as whatever it is (a blank editor, a reading that fails) once analysed: never left waiting (round 4, finding 3).
+  assert.match(src, /if \(this\.waitForJwt\(\) \|\| this\.waitForSource\(\)\) return;\n\s*\/\/ [^\n]*\n\s*this\.readGen = this\.docGen;/);
+});
+
+test('round 4, finding 3: a document that can\'t be read as its format is answered at once, never left on "Validating…"', async () => {
+  const { ctl, ed, asked, doc } = setup();
+  ctl.attach(ed, null);
+  ed.type('{"type": "object"}');
+  ctl.setDoc('{"a": 1}', doc.id);
+  ctl.setOpen(true);
+  await tick();
+  asked[0].done(result(true));
+  // Switched to XML, "<root>" typed: the reading fails. The view is told so, with the document there now.
+  doc.id++;
+  ctl.docEdited();
+  ctl.setDoc(null, doc.id);
+  await tick(60);
+  assert.equal(asked.length, 2);
+  assert.deepEqual([asked[1].req.unread, asked[1].req.doc], [true, '']);
+  asked[1].done({ ...result(false), state: 'doc-unread' });
+  assert.deepEqual([ctl.state.result?.state, ctl.state.stale, ctl.state.busy], ['doc-unread', false, false]);
+  // Fixed: read again, validated again.
+  doc.id++;
+  ctl.docEdited();
+  ctl.setDoc('{"root": null}', doc.id);
+  await tick(60);
+  assert.equal(asked.length, 3);
+  assert.equal(asked[2].req.unread, undefined);
+  ctl.detach();
+});
+
+test('round 4, finding 5: a replacement now, Clear over a blank schema too, outdates one asked for before', () => {
+  const { ctl, ed } = setup();
+  ctl.attach(ed, null);
+  // Generate asked for over a blank schema, then Clear (the same text: the editor doesn't change).
+  const generating = ctl.ask();
+  ctl.load('', null);
+  assert.equal(ctl.still(generating), false);
+  ctl.detach();
 });

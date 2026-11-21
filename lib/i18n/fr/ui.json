@@ -730,6 +730,7 @@
   "app.schema.schemaSyntax": "Le schéma n'est pas du JSON valide",
   "app.schema.addDoc": "Ajoutez le document JSON à gauche pour le valider.",
   "app.schema.docSyntax": "Corrigez le document JSON de gauche",
+  "app.schema.docUnread": "Corrigez le document de gauche pour le valider",
   "app.schema.tooDeep": "Imbrication trop profonde pour valider",
   "app.schema.matches": "Le document respecte le schéma ({draft}).",
   "app.schema.loose": "Le document n'est pas du JSON strict : sa version réparée a été vérifiée",

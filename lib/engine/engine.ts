@@ -308,6 +308,9 @@ const loadPack = () => (packLoad ??= import('../json/pack').then((m) => (pack = 
 let swStarted = false;
 let updateWaiting = false;
 
+/** Document generations, across engines (a page Next.js keeps and shows again gets a new one): see Engine.docGen. */
+let docs = 0;
+
 export class Engine {
   readonly ed: Editor;
   /** Compare: the modified document. */
@@ -968,6 +971,8 @@ export class Engine {
   /** Publish analysis; a Format-only result can retain its packed tree until needed. */
   analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
     if (this.waitForJwt() || this.waitForSource()) return;
+    // (This document is read from here on, as whatever it is: see leftDoc.)
+    this.readGen = this.docGen;
     // (Outputs asked for meanwhile are made once this analysis has published: see whenAnalysed.)
     if (this.analysed.length) queueMicrotask(() => { for (const f of this.analysed.splice(0)) f(); });
     if (!lazy) this.packed = null;
@@ -1026,7 +1031,6 @@ export class Engine {
     this.res = res;
     this.jwt = jwt;
     this.converted = converted;
-    this.readGen = this.docGen;
     ed.setJwt(jwt ? jwt.at : null);
     if (reset) {
       this.sel = null;
@@ -1262,9 +1266,9 @@ export class Engine {
   /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
   private loaded = false;
   /** The Schema view's watch on the document (components/SchemaView.tsx): null at each new document (newDoc), then the document read (leftDoc). */
-  docWatch: ((doc: { text: string; id: number } | null) => void) | null = null;
-  /** The generation the conversion's or JWT's JSON was made in (see leftDoc). */
-  private readGen = 0;
+  docWatch: ((doc: { text: string | null; id: number } | null) => void) | null = null;
+  /** The document generation last read (analyze: see leftDoc). */
+  private readGen = -1;
 
   /** Keeps the secondary views (convert, compare) in step with the document. */
   private afterDoc() {
@@ -1274,27 +1278,25 @@ export class Engine {
     if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
     else if (paired(v)) {
-      const doc = this.leftDoc();
-      store.set({ docText: doc.text });
-      this.docWatch?.(doc);
+      store.set({ docText: this.compareLeft() });
+      this.docWatch?.(this.leftDoc());
     }
   }
 
   /**
-   * The document as the Schema view validates it, with which document it is (docId; -1: another reading's text isn't
-   * made yet): the input, or the JSON of a conversion or a JWT, which are as recent as the reading that made them.
+   * The document as the Schema view validates it, with which document it is (docId): the input, or the JSON of a
+   * conversion or of a JWT (decoded); null text when the input can't be read as its format (the view says so). Id -1
+   * while it isn't read yet: it comes once it is (afterDoc).
    */
-  leftDoc(): { text: string; id: number } {
-    const read = this.jwt !== null || this.converted !== null;
-    return { text: this.compareLeft(), id: read ? this.readGen : this.inFmt === 'json' || this.ed.blank ? this.docGen : -1 };
+  leftDoc(): { text: string | null; id: number } {
+    if (this.readGen !== this.docGen) return { text: null, id: -1 };
+    if (this.jwt) return { text: this.jwt.json, id: this.docGen };
+    if (this.inFmt !== 'json' && this.converted === null && !this.ed.blank) return { text: null, id: this.docGen };
+    return { text: this.compareLeft(), id: this.docGen };
   }
 
-  /**
-   * What Compare diffs as the original and the Schema view validates: the input, or the JSON it converts to when it
-   * is in another format, or a JWT's (what the other views show).
-   */
+  /** What Compare diffs as the original: the input, or the JSON it converts to when it is in another format. */
   private compareLeft() {
-    if (this.jwt) return this.jwt.json;
     const json = this.converted;
     if (json === null) return this.inFmt === 'json' ? this.ed.text : '';
     return (this.good && this.unlessTooLarge(() => formatDoc(json, this.good!, this.indent), false)) ?? json;
@@ -1808,7 +1810,7 @@ export class Engine {
    * Bumped by each new document and each change to it, a load's arriving in the editor aside (see landing): a copy
    * or download waiting for an output is for the document of its generation (see Waiting). Only newDoc bumps it.
    */
-  private docGen = 0;
+  private docGen = ++docs;
 
   /** What the document is (see docGen): the Schema view checks a reply is for the document still there. */
   get docId() {
@@ -1820,7 +1822,7 @@ export class Engine {
    * was made for the one before isn't this one's, and the Schema view is told at once (docWatch).
    */
   private newDoc() {
-    this.docGen++;
+    this.docGen = ++docs;
     this.supersede();
     this.docWatch?.(null);
   }

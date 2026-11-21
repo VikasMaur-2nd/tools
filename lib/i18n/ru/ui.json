@@ -753,6 +753,7 @@
   "app.schema.schemaSyntax": "Схема — некорректный JSON",
   "app.schema.addDoc": "Добавьте JSON-документ слева, чтобы проверить его.",
   "app.schema.docSyntax": "Исправьте JSON-документ слева",
+  "app.schema.docUnread": "Исправьте документ слева, чтобы проверить его",
   "app.schema.tooDeep": "Слишком глубокая вложенность для проверки",
   "app.schema.matches": "Документ соответствует схеме ({draft}).",
   "app.schema.loose": "Документ — нестрогий JSON: проверен исправленный вариант",

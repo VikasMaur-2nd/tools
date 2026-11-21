@@ -20,6 +20,8 @@ export interface ValidateRequest {
   formats: boolean;
   /** Instance errors kept (the rest are only counted). */
   max?: number;
+  /** The document can't be read as its format (another format's syntax error): nothing to validate yet. */
+  unread?: boolean;
 }
 
 /** A place in a text: [p, e) to select, and where p is. */
@@ -66,8 +68,11 @@ export interface SyntaxError {
 }
 
 export interface ValidateResult {
-  /** `empty-schema` / `empty-doc`: nothing to validate with or yet; `*-syntax`: that text isn't JSON; `too-deep`: nesting past the validator's stack. */
-  state: 'ok' | 'empty-schema' | 'empty-doc' | 'schema-syntax' | 'doc-syntax' | 'too-deep';
+  /**
+   * `empty-schema` / `empty-doc`: nothing to validate with or yet; `*-syntax`: that text isn't JSON; `doc-unread`: the
+   * document can't be read as its format yet (ValidateRequest.unread); `too-deep`: nesting past the validator's stack.
+   */
+  state: 'ok' | 'empty-schema' | 'empty-doc' | 'schema-syntax' | 'doc-syntax' | 'doc-unread' | 'too-deep';
   draft: Draft;
   /** Where the draft came from. */
   draftFrom: 'schema' | 'picked' | 'default';
@@ -239,6 +244,11 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
     out.problems.push(...list.sort((a, b) => (a.loc?.p ?? -1) - (b.loc?.p ?? -1)));
   };
 
+  if (req.unread) {
+    out.state = 'doc-unread';
+    problems();
+    return out;
+  }
   if (!req.doc.trim()) {
     out.state = 'empty-doc';
     problems();

@@ -892,6 +892,8 @@
   "app.schema.schemaSyntax": "The schema is not valid JSON",
   "app.schema.addDoc": "Add the JSON document on the left to validate it.",
   "app.schema.docSyntax": "Fix the JSON document on the left",
+  "app.schema.docUnread": "Fix the document on the left to validate it",
+  "app.schema.docUnread._context": "Schema view, when the input is in another format than JSON (YAML, CSV, XML, TOML) and can’t be read yet (a syntax error): nothing to validate until it is fixed. A \"Go to error\" button follows.",
   "app.schema.tooDeep": "Nesting is too deep to validate",
   "app.schema.matches": "The document matches the schema ({draft}).",
   "app.schema.matches._context": "{draft} is a draft name such as 2020-12.",

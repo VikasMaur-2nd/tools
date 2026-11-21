@@ -200,12 +200,41 @@ test('the view toolbar: every view reachable and nothing overlapping, with a doc
   await t.open('/');
   t.check(await setDoc(page, JSON.stringify({ id: 1, name: 'Ada', tags: ['a', 'b'] }, null, 2)), '/: a document');
   const rows = [];
-  for (const [width, view] of [[1280, 'Alt+2'], [1280, 'Alt+3'], [1280, 'Alt+4'], [1600, 'Alt+1'], [1600, 'Alt+5']]) {
+  // (Compare and Schema at 1280px: a 434px viewer, where main's narrow rule wraps; their toolbar has no control.)
+  for (const [width, view] of [[1280, 'Alt+2'], [1280, 'Alt+3'], [1280, 'Alt+4'], [1600, 'Alt+1'], [1600, 'Alt+5'], [1280, 'Alt+6'], [1280, 'Alt+7']]) {
     await page.setViewportSize({ width, height: 800 });
     await page.keyboard.press(view);
     rows.push([width, view, await page.evaluate(() => Math.round(document.querySelector('.pane-view .vbar').getBoundingClientRect().height))]);
   }
   t.check(rows.every(([, , h]) => h <= 46), 'a view whose tabs, control and icons fit keeps a one-row toolbar', rows);
+  // Compare and Schema have no control there: no box at all, not an empty flex line under main's narrow wrap.
+  const empty = [];
+  for (const view of ['Alt+6', 'Alt+7']) {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.keyboard.press(view);
+    empty.push(await page.evaluate(() => document.querySelector('.pane-view .vbar .vmain')?.getClientRects().length ?? 0));
+  }
+  t.check(empty.every((n) => n === 0), 'an empty view control takes no row', empty);
+  // A long path shortens rather than taking a row: the Tree view with a deep value selected (CI's fonts are wider
+  // than some hosts': the path must never decide it).
+  await page.setViewportSize({ width: 1280, height: 800 });
+  t.check(await setDoc(page, JSON.stringify({ data: [{ id: 1 }, { id: 2 }, { name: { first: 'Ingrid', last: 'Haddad' }, account_number: 9007199254764750 }] }, null, 2)), '/: a deep document');
+  await page.keyboard.press('Alt+2');
+  await page.evaluate(() => {
+    const ta = document.getElementById('input');
+    const p = ta.value.indexOf('Ingrid');
+    ta.focus();
+    ta.setSelectionRange(p, p);
+  });
+  await page.keyboard.press('ArrowRight');
+  const deep = await until(page, () => (document.querySelector('.pane-view .vbar .path')?.textContent ?? '').length > 15 && document.querySelector('.pane-view .vbar .path').textContent, null, { timeout: 10_000 });
+  const bar = await page.evaluate(() => {
+    const vbar = document.querySelector('.pane-view .vbar');
+    const boxes = [...vbar.querySelectorAll(':is(.tabs, .vmain > *, .vicons)')].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 0);
+    const overlap = boxes.some((a, i) => boxes.slice(i + 1).some((b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1));
+    return { h: Math.round(vbar.getBoundingClientRect().height), overlap };
+  });
+  t.check(!!deep && bar.h <= 46 && !bar.overlap, 'a long path shortens: one row, nothing overlapping', { deep, ...bar });
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
 
@@ -268,4 +297,51 @@ test('a German page whose Schema strings failed to load once: English, then Germ
   const german = await until(page, () => (document.querySelector('.sch-fmt')?.textContent ?? '').includes('Formate prüfen'), null, { timeout: 20_000 });
   t.check(german === true && asked >= 2, 'opened again: German', { asked });
   t.check(!t.errors.filter((e) => !/404|Failed to load resource/.test(e)).length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('a document that can\'t be read as its format: the panel says to fix it, never "Validating…" (round 4, finding 3)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.check(await setDoc(page, '{"id": 1}'), 'a document');
+  await page.keyboard.press('Alt+7');
+  await page.locator('.pane-sch [aria-label="Schema options"]').click();
+  await page.getByRole('menuitem', { name: 'Generate from the document' }).click();
+  t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'valid against its generated schema', await state(page));
+  // Read as XML, then "<root>": not XML yet.
+  await page.locator('.pane-ed .fmt-pick select').selectOption('xml');
+  await page.evaluate(() => {
+    const ta = document.getElementById('input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, '<root>');
+  });
+  const fix = await until(page, () => (document.querySelector('#view-schema .sch-empty')?.textContent ?? '').includes('Fix the document on the left to validate it') && !/Validating/.test(document.querySelector('#view-schema .sch-state')?.textContent ?? ''), null, { timeout: 15_000 });
+  t.check(fix === true, 'the panel says to fix the document', await page.evaluate(() => [document.querySelector('#view-schema .sch-state')?.textContent, document.querySelector('#view-schema .sch-empty')?.textContent]));
+  // Fixed: validated again.
+  await page.evaluate(() => {
+    const ta = document.getElementById('input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, '<root><id>1</id></root>');
+  });
+  t.check(!!(await until(page, () => /^(Valid(?!ating)|\d+ errors?|Not fully)/.test(document.querySelector('#view-schema .sch-state')?.textContent ?? ''), null, { timeout: 15_000 })), 'the XML read: validated', await state(page));
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('Schema open, another page, then Back: the result shows again, not "Validating…" (round 4, finding 4)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.check(await setDoc(page, '{"id": 1, "tags": ["a"]}'), 'a document');
+  await page.keyboard.press('Alt+7');
+  await page.locator('.pane-sch [aria-label="Schema options"]').click();
+  await page.getByRole('menuitem', { name: 'Generate from the document' }).click();
+  t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'validated', await state(page));
+  const engines = await t.app.engineCount(page);
+  await t.app.navigate(page, '/privacy');
+  await page.evaluate(() => history.back());
+  await page.waitForFunction(() => location.pathname === '/', null, { timeout: 60_000, polling: 50 });
+  await t.app.waitEngine(page, { after: engines, timeout: 60_000 });
+  const shown = await until(page, () => [...document.querySelectorAll('#view-schema .sch-state')].some((el) => el.offsetParent && /^Valid(?!ating)/.test(el.textContent)), null, { timeout: 15_000 });
+  t.check(shown === true, 'Valid again after Back', await page.evaluate(() => [...document.querySelectorAll('#view-schema .sch-state')].map((el) => el.textContent)));
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
