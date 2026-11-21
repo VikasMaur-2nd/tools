@@ -184,7 +184,7 @@ test('invalid schemas: each problem is located in the schema; the keyword is ski
   const schema = '{\n  "minLength": -1,\n  "pattern": "(",\n  "type": "strng",\n  "required": "email",\n  "properties": 5,\n  "patternProperties": { "[": {} },\n  "multipleOf": 0,\n  "items": [true],\n  "nullable": true,\n  "prefixItem": [],\n  "prefixItem2": []\n}';
   const r = validateTexts({ schema, doc: '"x"', draft: null, formats: false });
   const got = r.problems.map((p) => `${p.code}:${p.params.kw ?? ''}:${p.loc?.line}:${p.warn ? 'w' : 'e'}`);
-  assert.deepEqual(got, ['badValue:minLength:2:e', 'badRegex:pattern:3:e', 'badValue:type:4:e', 'badValue:required:5:e', 'badValue:properties:6:e', 'badRegex:patternProperties:7:e', 'badValue:multipleOf:8:e', 'itemsArray2020::9:e', 'nullable::10:w', 'unknownKeyword:prefixItem:11:w', 'unknownKeyword:prefixItem2:12:w']);
+  assert.deepEqual([...got], ['badValue:minLength:2:e', 'badRegex:pattern:3:e', 'badValue:type:4:e', 'badValue:required:5:e', 'badValue:properties:6:e', 'badRegex:patternProperties:7:e', 'badValue:multipleOf:8:e', 'itemsArray2020::9:e', 'nullable::10:w', 'unknownKeyword:prefixItem:11:w', 'unknownKeyword:prefixItem2:12:w']);
   assert.ok(r.valid, 'every keyword was broken, so nothing failed');
   // A broken schema's JSON is its own state.
   const syn = validateTexts({ schema: '{ "type": }', doc: '1', draft: null, formats: false });
@@ -315,12 +315,12 @@ test('client: the latest request wins, unchanged texts are not sent again, long 
     assert.equal(ports.length, 1);
     assert.equal(ports[0].sent.length, 1);
     ports[0].answer(0);
-    assert.deepEqual(got, []);
+    assert.deepEqual([...got], []);
     assert.equal(ports[0].sent.length, 2);
     // The schema didn't change: it isn't sent again.
     assert.equal(ports[0].sent[1].schema, null);
     ports[0].answer(1);
-    assert.deepEqual(got, ['D2|null']);
+    assert.deepEqual([...got], ['D2|null']);
     // Same document, new schema: the document stays in the worker.
     c.validate(req('D2', 'S2'), (o) => got.push(typeof o === 'string' ? o : (o as unknown as { tag: string }).tag));
     assert.equal(ports[0].sent[2].doc, null);
@@ -332,7 +332,7 @@ test('client: the latest request wins, unchanged texts are not sent again, long 
     assert.equal(ports.length, 2);
     assert.deepEqual([ports[1].sent[0].doc, ports[1].sent[0].schema], ['D3', 'S2']);
     ports[1].answer();
-    assert.deepEqual(got, ['D2|null', 'D3|S2']);
+    assert.deepEqual([...got], ['D2|null', 'D3|S2']);
     // A run past its time limit is stopped and reported.
     c.validate(req('slow'), (o) => got.push(typeof o === 'string' ? o : 'result'));
     await new Promise((r) => setTimeout(r, 1100));
