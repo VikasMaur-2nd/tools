@@ -3350,11 +3350,11 @@ export class Engine {
 
   /** Replaces the input with the Format view's output (undoable); flatten's or unflatten's while one shows (see useConvert). */
   useOutput() {
-    if (this.settings.view === 'convert' && isFlat(this.settings.target)) return this.useConvert();
     const r = this.fresh();
     if (!r?.root) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
-    track('feature_used', { feature: 'use_output' });
     const s = this.settings;
+    track('feature_used', { feature: 'use_output', view: s.view });
+    if (s.view === 'convert' && isFlat(s.target)) return this.useConvert();
     const fixed = this.fixed(r);
     this.transform(
       (res, t) => (s.escape ? JSON.stringify(formatDoc(t, res, '', s.sortKeys)) : formatDoc(t, res, s.minify ? '' : this.indent, s.sortKeys)),
@@ -3677,8 +3677,10 @@ export class Engine {
       let r: { note: string; warn: boolean; flip: boolean; error?: string } | undefined;
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
-        : // (The settings as they are: convert() reads its own, and a cleared root name is "Root".)
-          mod.convert(root, info.id, { ...s, report: (x) => (r = x) });
+        : // (The settings as they are: convert() reads its own, and a cleared root name is "Root". Flatten and
+          // unflatten run in slices, typing going on in between: a newer conversion stops this one.)
+          await mod.convert(root, info.id, { ...s, report: (x) => (r = x), live: current });
+      if (!current()) return;
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
       else {
         // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)
@@ -3713,15 +3715,21 @@ export class Engine {
     void this.copy(out, msg);
   }
 
-  /** Flatten / unflatten: the output replaces the input (undoable) and the other direction shows, giving the input back. */
-  useConvert() {
+  /**
+   * Flatten / unflatten (useOutput, once the input is valid): the output replaces the input (undoable) and the other
+   * direction shows, giving the input back. Only the conversion of the text in the editor now: a broken edit keeps
+   * the last valid document's on show, which must never take its place.
+   */
+  private useConvert() {
     const flat = this.settings.target === 'flatten';
-    // (No output: the view says why, an error or nothing valid to convert.)
+    const ver = this.ed.version;
+    // (Valid then, so the tree shown was this version's: goodVer is ver while the editor still has it.)
     void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
-      if (!out || typeof out !== 'string' || this.dead) return;
-      track('feature_used', { feature: 'use_output', view: 'convert' });
-      this.replaceText(out, flat ? 'Flattened input' : 'Unflattened input');
-      this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
+      if (out && !this.dead && this.ed.version === ver) {
+        // (A conversion's output is one string.)
+        this.replaceText(out as string, flat ? 'Flattened input' : 'Unflattened input');
+        this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
+      }
     });
   }
 

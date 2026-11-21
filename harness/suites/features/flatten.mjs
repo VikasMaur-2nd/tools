@@ -115,3 +115,37 @@ test('flatten on a phone: the menu fits and its controls work', { mobile: true }
   t.check(out.includes('"user_address_city": "London"') && out.includes('"orders[0]_price": 12.50'), 'separator _ applies', out.slice(0, 200));
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
+
+test('flatten: a typed separator shows only in masked elements, and a broken edit is never replaced', async (t) => {
+  const { page } = t;
+  await t.open('/tools/json-flatten');
+  await openMenu(page);
+  await page.locator('.menu input.mi-input').fill('SECRET');
+  // (It applies after a pause.)
+  await until(page, () => /SECRET/.test(document.querySelector('#view-convert')?.textContent ?? ''), null, { timeout: 10_000 });
+  // Session replay masks .ph-no-capture: no text outside it may carry the separator (the menu's a.0 example did).
+  const leaks = await page.evaluate(() => {
+    const out = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.textContent.includes('SECRET') && !n.parentElement.closest('.ph-no-capture')) out.push(n.parentElement.outerHTML.slice(0, 120));
+    for (const el of document.querySelectorAll('[aria-label],[title],[data-tip]')) for (const a of ['aria-label', 'title', 'data-tip']) if (el.getAttribute(a)?.includes('SECRET') && !el.closest('.ph-no-capture')) out.push(`${a}: ${el.outerHTML.slice(0, 120)}`);
+    return out;
+  });
+  t.check(!leaks.length, 'no unmasked text or label shows the typed separator', leaks);
+  t.check(await page.locator('.menu [role=menuitemradio]', { hasText: /^a\.0$/ }).count() === 1, 'the array style example stays a.0 for a typed separator');
+  await closeMenu(page);
+  t.check((await output(page))?.includes('"userSECRETname": "Ada"'), 'the typed separator applies');
+
+  // Ctrl+Enter on a broken edit: the edit stays (the Convert view keeps showing the last valid document's output).
+  await choose(page, 'menuitemradio', /^\.$/);
+  await closeMenu(page);
+  t.assert(await setDoc(page, '{"a":{"b":1}}'), 'pasted a document');
+  t.check((await outputIs(page, '{\n  "a.b": 1\n}')) === '{\n  "a.b": 1\n}', 'it flattens');
+  t.assert(await setDoc(page, '{"a":{', 'input', { valid: false }), 'broke it');
+  await page.locator('#input').focus();
+  await page.keyboard.press(`${MOD}+Enter`);
+  t.check(!!(await until(page, () => /Fix the error first/.test(window.__vis('.toasts')?.textContent ?? ''))), 'a toast says to fix the error first');
+  t.check((await page.evaluate(() => document.getElementById('input').value)) === '{"a":{', 'the broken edit is still the input');
+  t.check((await target(page)) === 'flatten', 'still flattening');
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
