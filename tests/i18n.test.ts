@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { TOOL_PAGES } from '../lib/tool-pages';
 import { LOCALES } from '../lib/i18n/locales';
 import { pageHash, textHash } from '../lib/i18n/page-text';
 import { EN, fill } from '../lib/i18n/ui';
 import { translator } from '../lib/i18n/translate';
-import { CLIENT as CLIENT_KEYS, LAZY_FEATURES, hugeDict, isHugeKey, lazyDict, lazyFeature, pageDict } from '../lib/i18n/client-dict';
+import { CLIENT as CLIENT_KEYS, LAZY_FEATURES, STRING_FILES, hugeDict, isHugeKey, lazyDict, lazyFeature, pageDict, type StringFiles } from '../lib/i18n/client-dict';
 import { parse } from '../lib/json/parser';
 
 /*
@@ -81,13 +81,79 @@ test('English dictionary: a plural string does not share its key with a plain on
   assert.deepEqual([...bases].filter((b) => b in en), [], 'give the plural its own key, e.g. app.fooCount.one / .other');
 });
 
+/** The dictionaries localized pages load later, per locale (scripts/i18n-huge.mjs). */
+const FILES = json<Record<string, StringFiles>>('lib/i18n/strings-files.json');
+/** fetch() of those files, from public/. */
+const fetchPublic = (async (u: string | URL) => {
+  const path = String(u);
+  return existsSync(join(root, 'public', path)) && path.startsWith('/i18n/') ? new Response(read(`public${path}`)) : new Response('', { status: 404 });
+}) as typeof fetch;
+
+test('the dictionaries that load later: one per name and locale, named by their content, listed, none stale; the page names its own', () => {
+  const listed = new Set<string>();
+  for (const { id } of LOCALES) {
+    const tr = json(`lib/i18n/${id}/ui.json`);
+    assert.deepEqual(Object.keys(FILES[id] ?? {}).sort(), [...STRING_FILES].sort(), `${id}: lib/i18n/strings-files.json is out of date: run pnpm i18n:huge`);
+    for (const name of STRING_FILES) {
+      const url = FILES[id][name]!;
+      const m = new RegExp(`^/i18n/${name}-strings\\.${id}\\.([0-9a-f]{12})\\.json$`).exec(url);
+      assert.ok(m, `${id} ${name}: ${url}`);
+      const path = `public${url}`;
+      assert.ok(existsSync(join(root, path)), `${path} is missing: run pnpm i18n:huge`);
+      const text = read(path);
+      assert.equal(createHash('sha256').update(text).digest('hex').slice(0, 12), m[1], `${path}: named by another text`);
+      assert.deepEqual(JSON.parse(text), name === 'huge' ? hugeDict(en, tr) : lazyDict(en, tr, name), `${path} is out of date: run pnpm i18n:huge`);
+      listed.add(url.slice('/i18n/'.length));
+    }
+  }
+  assert.deepEqual(readdirSync(join(root, 'public/i18n')).filter((f) => !listed.has(f)), [], 'public/i18n holds files no list names: run pnpm i18n:huge');
+  // Only the server reads the list: a localized page hands its own language's files to its translator; the
+  // browser's code has no table of every language's (scripts/verify-i18n.mjs checks the built pages).
+  const server = read('lib/i18n/server.ts');
+  assert.match(server, /import FILES from '\.\/strings-files\.json'/);
+  assert.match(server, /return locale === 'en' \? undefined : \(FILES as Record<string, StringFiles>\)\[locale\];/);
+  for (const page of ['app/[lang]/page.tsx', 'app/[lang]/tools/[slug]/page.tsx']) assert.match(read(page), /<LocalizedTool [^>]*files=\{stringFiles\(locale\)\}/, page);
+  assert.ok(!/-strings\.|new URL\(/.test(read('lib/i18n/translate.ts')), 'translate.ts names no dictionary file');
+});
+
+test('a dictionary that loads later and is missing or unreachable: English for now, asked again next time', async () => {
+  const realFetch = globalThis.fetch;
+  let up = false;
+  let asked = 0;
+  globalThis.fetch = (async (u: string | URL) => {
+    asked++;
+    if (!up) throw new TypeError('Failed to fetch');
+    return fetchPublic(u);
+  }) as typeof fetch;
+  try {
+    const tr = json('lib/i18n/de/ui.json');
+    // No file named (a page cached before there were any): nothing to wait for or fetch, English.
+    const none = translator(pageDict(en, tr), 'de', undefined);
+    await none.lazy!('schema');
+    assert.deepEqual([none('Valid'), none.has!('schema'), asked], ['Valid', true, 0]);
+    // Offline and never cached: English this time, fetched again on the next opening. Told once they are in (the
+    // page then renders what shows them again: components/LocalizedTool.tsx).
+    let told = 0;
+    const t = translator(pageDict(en, tr), 'de', FILES.de, () => told++);
+    await t.lazy!('schema');
+    assert.deepEqual([t('Valid'), t.has!('schema'), asked, told], ['Valid', false, 1, 0]);
+    up = true;
+    await t.lazy!('schema');
+    assert.deepEqual([t('Valid'), t.has!('schema'), asked, told], [lazyDict(en, tr, 'schema').Valid, true, 2, 1]);
+    // A file the server no longer has (404): English as well.
+    const gone = translator(pageDict(en, tr), 'de', { schema: '/i18n/schema-strings.de.000000000000.json' });
+    await gone.lazy!('schema');
+    assert.deepEqual([gone('Valid'), gone.has!('schema')], ['Valid', false]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('huge mode strings: out of every page dictionary, in a dictionary of their own that the translator loads', async () => {
   const hugeTexts = new Set(keys.filter((k) => CLIENT_KEYS.test(k) && isHugeKey(k)).map((k) => en[k]));
   assert.ok(hugeTexts.has('Large file') && hugeTexts.has('Shape'));
-  const loaders = read('lib/i18n/translate.ts');
-  // translate.ts fetches the file next to it; in the test build that URL is under .test-build: read the source's.
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (u: string | URL) => new Response(readFileSync(fileURLToPath(String(u)).replace(`${sep}.test-build${sep}`, sep)))) as typeof fetch;
+  globalThis.fetch = fetchPublic;
   try {
   // A page's dictionary is clientUi (lib/i18n/server.ts, server-only: read, not run here); scripts/verify-i18n.mjs checks built pages too.
   assert.match(read('lib/i18n/server.ts'), /return memo\(`client:\$\{locale\}`, \(\) => pageDict\(/);
@@ -96,15 +162,9 @@ test('huge mode strings: out of every page dictionary, in a dictionary of their 
     const page = pageDict(en, tr);
     assert.deepEqual(Object.keys(page).filter((s) => hugeTexts.has(s)), [], `${id}: a page's dictionary carries huge mode's strings`);
     const huge = hugeDict(en, tr);
-    assert.deepEqual(json<typeof huge>(`lib/i18n/huge/huge-strings.${id}.json`), huge, `lib/i18n/huge/huge-strings.${id}.json is out of date: run pnpm i18n:huge`);
-    // translate.ts picks the dictionary by the page's language (<html lang>, e.g. pt-BR, zh-Hans).
-    assert.equal(lang.slice(0, 2), id);
-    // (The file name matters: the service worker caches a page's own language's huge-strings.<lang>.* only.)
-    // (Spelled in two parts: the test runner rewrites that expression wherever it appears.)
-    assert.ok(loaders.includes(`${id}: new URL('./huge/huge-strings.${id}.json', ${'import.meta'}.url)`), `translate.ts loads lib/i18n/huge/huge-strings.${id}.json`);
     if (!Object.keys(tr).length) continue;
     // The page's translator, then huge mode's strings added to it (templates included: msg's patterns are made again).
-    const t = translator(page, lang);
+    const t = translator(page, lang, FILES[id]);
     assert.equal(t('Large file'), 'Large file');
     assert.equal(t('Indexing {done} of {size}'), 'Indexing {done} of {size}');
     t.msg('Indexing 1 GB of 10 GB'); // (makes msg's patterns from the page's strings alone)
@@ -124,9 +184,8 @@ test('huge mode strings: out of every page dictionary, in a dictionary of their 
 
 test('lazy features\' strings: out of every page dictionary, in a dictionary of their own per feature that the translator loads', async () => {
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (u: string | URL) => new Response(readFileSync(fileURLToPath(String(u)).replace(`${sep}.test-build${sep}`, sep)))) as typeof fetch;
+  globalThis.fetch = fetchPublic;
   try {
-    const loaders = read('lib/i18n/translate.ts');
     // The tab, the palette's commands and the Convert targets stay with the page.
     for (const k of ['app.schema', 'app.schema.close', 'cmd.schema', 'target.flatten', 'target.unflatten']) assert.equal(lazyFeature(k), null, k);
     assert.equal(lazyFeature('app.schema.valid'), 'schema');
@@ -138,12 +197,9 @@ test('lazy features\' strings: out of every page dictionary, in a dictionary of 
         const texts = new Set(keys.filter((k) => CLIENT_KEYS.test(k) && lazyFeature(k) === f).map((k) => en[k]));
         assert.ok(texts.size > 10, `${f}: ${texts.size} strings`);
         assert.deepEqual(Object.keys(page).filter((s) => texts.has(s)), [], `${id}: the page's dictionary carries ${f}'s strings`);
-        const dict = lazyDict(en, tr, f);
-        assert.deepEqual(json<typeof dict>(`lib/i18n/lazy/${f}-strings.${id}.json`), dict, `lib/i18n/lazy/${f}-strings.${id}.json is out of date: run pnpm i18n:huge`);
-        assert.ok(loaders.includes(`${id}: new URL('./lazy/${f}-strings.${id}.json', ${'import.meta'}.url)`), `translate.ts loads lib/i18n/lazy/${f}-strings.${id}.json`);
       }
       if (!Object.keys(tr).length) continue;
-      const t = translator(page, lang);
+      const t = translator(page, lang, FILES[id]);
       assert.equal(t('Valid'), 'Valid');
       assert.equal(t.has!('schema'), false);
       await t.lazy!('schema');

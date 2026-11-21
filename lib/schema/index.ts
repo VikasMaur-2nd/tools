@@ -233,7 +233,9 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
   const reached = new Set<SchemaIssue>();
   const problems = () => {
     if (sr.issues.length) out.problems.push({ code: 'schemaLoose', params: {}, kw: '', warn: true, loc: schemaLines.loc(sr.issues[0].p, sr.issues[0].p + 1) });
-    const list = v.issues.map((i: SchemaIssue): Problem => ({ code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: i.at ? schemaKeyLoc(req.schema, schemaLines, i.at) : null, ...(reached.has(i) && { reached: true }) }));
+    // (The schema's own problems, then this check's: a $ref loop depends on the document, so it is never kept for the next one.)
+    const own = new Set(v.issues);
+    const list = [...v.issues, ...[...reached].filter((i) => !own.has(i))].map((i: SchemaIssue): Problem => ({ code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: i.at ? schemaKeyLoc(req.schema, schemaLines, i.at) : null, ...(reached.has(i) && { reached: true }) }));
     out.problems.push(...list.sort((a, b) => (a.loc?.p ?? -1) - (b.loc?.p ?? -1)));
   };
 

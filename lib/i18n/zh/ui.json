@@ -750,7 +750,6 @@
   "app.schema.msg.nullable": "nullable 是 OpenAPI 3.0 的关键字，JSON Schema 会忽略它：请改为在 type 中加入 \"null\"",
   "app.schema.msg.unknownFormat": "未校验 format {format}：不是已知的 format",
   "app.schema.msg.schemaLoose": "schema 不是严格的 JSON：已按修复后的内容读取",
-  "app.schema.msg.multipleOfRange": "无法对 {value} 校验 multipleOf {limit}：两者的数量级相差太大",
   "app.schema.msg.nonNegativeInteger": "{kw} 必须是非负整数",
   "app.schema.msg.number": "{kw} 必须是数字",
   "app.schema.msg.positive": "{kw} 必须是大于 0 的数字",

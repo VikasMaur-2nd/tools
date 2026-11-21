@@ -5,6 +5,8 @@ import type { Seg } from '../json/path';
 
 export type Theme = 'system' | 'light' | 'dark';
 export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare' | 'schema';
+/** Compare and Schema: views with a second editor beside the input, whose result the viewer shows. */
+export const paired = (v: View) => v === 'compare' || v === 'schema';
 export type IndentId = '2' | '4' | 'tab';
 /** What the input is read as: JSON, or a format whose JSON the views show (lib/engine/source.ts). */
 export type SourceFormat = 'json' | 'yaml' | 'csv' | 'xml' | 'toml';

@@ -750,7 +750,6 @@
   "app.schema.msg.nullable": "nullable은 OpenAPI 3.0 키워드라 JSON Schema에서는 무시됩니다: 대신 type에 \"null\"을 추가하세요",
   "app.schema.msg.unknownFormat": "format {format}은(는) 검사하지 않습니다: 알려진 format이 아닙니다",
   "app.schema.msg.schemaLoose": "스키마가 엄격한 JSON이 아닙니다. 복구한 내용으로 읽었습니다",
-  "app.schema.msg.multipleOfRange": "{value}에 대해 multipleOf {limit}을(를) 검사할 수 없습니다: 자릿수 차이가 너무 큽니다",
   "app.schema.msg.nonNegativeInteger": "{kw}은(는) 0 이상의 정수여야 합니다",
   "app.schema.msg.number": "{kw}은(는) 숫자여야 합니다",
   "app.schema.msg.positive": "{kw}은(는) 0보다 큰 숫자여야 합니다",

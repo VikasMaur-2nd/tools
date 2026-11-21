@@ -3,7 +3,7 @@
  * (through components/LocalizedTool), so English pages never pay for it.
  */
 import { EN, fill, type Forms, type Params, type T, type UiDict } from './ui';
-import type { LazyFeature } from './client-dict';
+import type { LazyFeature, StringFiles } from './client-dict';
 
 /** Placeholders whose value is itself an English message (an importer error inside a toast, a token description inside a parser error). */
 const NESTED = new Set(['msg', 'error', 'token', 'target']);
@@ -30,75 +30,35 @@ function durationParts(sec: number, long: boolean): Record<string, number> {
   return { seconds: 0 };
 }
 
-/**
- * Huge mode's strings per language (lib/i18n/huge/huge-strings.<locale>.json, from scripts/i18n-huge.mjs): files
- * the bundler copies to /_next/static/media/huge-strings.<locale>.<hash>.json, named only in the localized pages'
- * chunk and fetched when a huge file opens. The service worker caches a page's own language's file with its other
- * files (and no other language's: public/sw.js), so huge mode works offline in it; English pages never name them.
- */
-const HUGE: Record<string, URL> = {
-  es: new URL('./huge/huge-strings.es.json', import.meta.url),
-  pt: new URL('./huge/huge-strings.pt.json', import.meta.url),
-  de: new URL('./huge/huge-strings.de.json', import.meta.url),
-  fr: new URL('./huge/huge-strings.fr.json', import.meta.url),
-  ja: new URL('./huge/huge-strings.ja.json', import.meta.url),
-  ko: new URL('./huge/huge-strings.ko.json', import.meta.url),
-  zh: new URL('./huge/huge-strings.zh.json', import.meta.url),
-  ru: new URL('./huge/huge-strings.ru.json', import.meta.url),
-};
-
-/**
- * The lazily loaded features' strings per language (lib/i18n/lazy/<feature>-strings.<locale>.json, from
- * scripts/i18n-huge.mjs), fetched when the feature opens, as huge mode's are (the service worker caches the page's
- * own language's files only).
- */
-const LAZY: Record<LazyFeature, Record<string, URL>> = {
-  schema: {
-    es: new URL('./lazy/schema-strings.es.json', import.meta.url),
-    pt: new URL('./lazy/schema-strings.pt.json', import.meta.url),
-    de: new URL('./lazy/schema-strings.de.json', import.meta.url),
-    fr: new URL('./lazy/schema-strings.fr.json', import.meta.url),
-    ja: new URL('./lazy/schema-strings.ja.json', import.meta.url),
-    ko: new URL('./lazy/schema-strings.ko.json', import.meta.url),
-    zh: new URL('./lazy/schema-strings.zh.json', import.meta.url),
-    ru: new URL('./lazy/schema-strings.ru.json', import.meta.url),
-  },
-  flatten: {
-    es: new URL('./lazy/flatten-strings.es.json', import.meta.url),
-    pt: new URL('./lazy/flatten-strings.pt.json', import.meta.url),
-    de: new URL('./lazy/flatten-strings.de.json', import.meta.url),
-    fr: new URL('./lazy/flatten-strings.fr.json', import.meta.url),
-    ja: new URL('./lazy/flatten-strings.ja.json', import.meta.url),
-    ko: new URL('./lazy/flatten-strings.ko.json', import.meta.url),
-    zh: new URL('./lazy/flatten-strings.zh.json', import.meta.url),
-    ru: new URL('./lazy/flatten-strings.ru.json', import.meta.url),
-  },
-};
-
 /** A dictionary file ({} for none). */
-async function strings(url: URL | undefined): Promise<UiDict> {
+async function strings(url: string | undefined): Promise<UiDict> {
   if (!url) return {};
   const res = await fetch(url);
   if (!res.ok) throw new Error('strings');
   return (await res.json()) as UiDict;
 }
 
-export function translator(d: UiDict | null | undefined, lang?: string): T {
+/**
+ * `files`: the page's own language's dictionaries that load later (huge mode's, the lazy features'), which the
+ * server names in the page (lib/i18n/server.ts `stringFiles`): this code carries no table of every language's.
+ * `loaded`: told when one has joined (components/LocalizedTool.tsx renders what shows them again).
+ */
+export function translator(d: UiDict | null | undefined, lang?: string, files?: StringFiles, loaded?: () => void): T {
   if (!d) return EN;
   // (Huge mode's and the lazy features' strings join it when they open: `huge` and `lazy` below.)
   let dict: UiDict = d;
   const loads = new Map<string, Promise<void>>();
-  const loaded = new Set<string>();
-  const two = lang?.slice(0, 2) ?? '';
+  const done = new Set<string>();
   /** Fetches one more dictionary into this one, once (a failed fetch is tried again next time; never rejects). */
-  const more = (name: string, url: URL | undefined) => {
+  const more = (name: string, url: string | undefined) => {
     let p = loads.get(name);
     if (!p) {
       p = strings(url).then(
         (add) => {
           dict = { ...dict, ...add };
           pats = null;
-          loaded.add(name);
+          done.add(name);
+          loaded?.();
         },
         () => {
           loads.delete(name); // (offline, never cached: English this time, asked again next time)
@@ -186,8 +146,8 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
         .join(' ');
     },
     lang,
-    huge: () => more('huge', HUGE[two]),
-    lazy: (f: LazyFeature) => more(f, LAZY[f][two]),
-    has: (f: LazyFeature) => loaded.has(f),
+    huge: () => more('huge', files?.huge),
+    lazy: (f: LazyFeature) => more(f, files?.[f]),
+    has: (f: LazyFeature) => done.has(f),
   });
 }

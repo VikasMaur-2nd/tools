@@ -2030,7 +2030,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "7cbc4507eca7",
+    "hash": "95d2422436de",
     "title": "Validador JSON Schema: valida JSON en línea",
     "description": "Valida JSON con un JSON Schema: drafts 2020-12, 2019-09, 07, 06 y 04. Ve cada error con su línea, ruta y regla. No se sube nada.",
     "heading": "Validador JSON Schema",
@@ -2075,7 +2075,7 @@
       },
       {
         "question": "¿Se comprueban de forma exacta los números grandes y los decimales?",
-        "answer": "Sí. El documento y el esquema se leen sin convertir los números a coma flotante, así que 19.99 es múltiplo de 0.01, los enteros mayores que 2^53 conservan todos sus dígitos para minimum y maximum, y los exponentes de cualquier tamaño, como en 1e400, se comparan tal como están escritos. 1.0 cuenta como entero desde draft-06, como dice la especificación. Solo hay un caso que no se calcula: multipleOf cuando los exponentes de los dos números difieren en una cantidad de más de 30 000 dígitos. Aparece entre los problemas del esquema y el documento muestra Comprobación incompleta."
+        "answer": "Sí. El documento y el esquema se leen sin convertir los números a coma flotante, así que 19.99 es múltiplo de 0.01, los enteros mayores que 2^53 conservan todos sus dígitos para minimum y maximum, y los exponentes de cualquier tamaño, como en 1e400, se comparan tal como están escritos. 1.0 cuenta como entero desde draft-06, como dice la especificación."
       }
     ],
     "sections": [

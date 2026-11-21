@@ -1,6 +1,6 @@
 import LocalizedTool from '@/components/LocalizedTool';
 import IntentLink from '@/components/IntentLink';
-import { clientUi, toolPages } from '@/lib/i18n/server';
+import { clientUi, stringFiles, toolPages } from '@/lib/i18n/server';
 import { isLocale, localeInfo } from '@/lib/i18n/locales';
 import ToolPageRoute from '../../../(en)/tools/[slug]/tool-page';
 
@@ -10,7 +10,7 @@ import ToolPageRoute from '../../../(en)/tools/[slug]/tool-page';
 export { generateMetadata } from '../../../(en)/tools/[slug]/tool-page';
 
 export default function Page(props: PageProps<'/[lang]/tools/[slug]'>) {
-  return ToolPageRoute(props, (toolProps, locale) => <LocalizedTool {...toolProps} ui={clientUi(locale)} lang={localeInfo(locale).lang} />, IntentLink);
+  return ToolPageRoute(props, (toolProps, locale) => <LocalizedTool {...toolProps} ui={clientUi(locale)} files={stringFiles(locale)} lang={localeInfo(locale).lang} />, IntentLink);
 }
 
 export const ensureStatic = 'navigation';

@@ -2,7 +2,8 @@
 // usage: pnpm build && pnpm start, then: node scripts/verify-i18n.mjs [base-url]   (default http://localhost:3000)
 // Checks per page: 200, <html lang>, localized title + description, self canonical, the complete
 // reciprocal hreflang cluster with x-default, one <h1>, JSON-LD that parses with the right inLanguage,
-// og:locale, no huge-mode strings in its dictionary; then the sitemap (exact localized URL set, xhtml alternates), 404s and llms.txt links.
+// og:locale, no huge-mode strings in its dictionary, exactly its own language's later dictionaries named (none in English), each
+// served; then the sitemap (exact localized URL set, xhtml alternates), 404s and llms.txt links.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,10 @@ const slugs = Object.fromEntries(live.map((l) => [l.id, new Set(pagesOf(l))]));
 const enUi = readJson('lib/i18n/en/ui.json');
 // A sentence only huge mode shows: its translation must not ride in a page's dictionary (lib/i18n/client-dict.ts).
 const HUGE_PROBE = 'app.hugeShOnePassOverThe';
+/** The dictionaries a localized page loads later (scripts/i18n-huge.mjs): it names its own language's, no other. */
+const FILES = readJson('lib/i18n/strings-files.json');
+const STRINGS_RE = /\/i18n\/[a-z]+-strings\.[a-z]{2}\.[0-9a-f]+\.json/g;
+const served = new Map();
 const paths = ['/', '/tools', ...TOOL_PAGES.map((p) => `/tools/${p.slug}`)];
 const has = (l, path) => l.id === 'en' || !path.startsWith('/tools/') || slugs[l.id].has(path.slice(7));
 const at = (l, path) => (l.id === 'en' ? path : path === '/' ? `/${l.id}` : `/${l.id}${path}`);
@@ -77,6 +82,11 @@ for (const l of [ENGLISH, ...live]) {
     const want = cluster(path);
     if (JSON.stringify(Object.entries(alts).sort()) !== JSON.stringify(Object.entries(want).sort()))
       fail(url, `hreflang cluster ${JSON.stringify(alts)} ≠ ${JSON.stringify(want)}`);
+    // The tool's later dictionaries: its own language's three on a localized tool, none elsewhere.
+    const named = [...new Set(html.match(STRINGS_RE) ?? [])].sort();
+    const own = l.id !== 'en' && (path === '/' || path.startsWith('/tools/')) ? Object.values(FILES[l.id]).sort() : [];
+    if (JSON.stringify(named) !== JSON.stringify(own)) fail(url, `names the dictionaries ${JSON.stringify(named)}, want ${JSON.stringify(own)}`);
+    for (const u of named) if (!served.has(u)) served.set(u, await get(u));
     const h1 = (html.match(/<h1[\s>]/gi) ?? []).length;
     if (h1 !== 1) fail(url, `${h1} <h1>`);
     const ld = [...html.matchAll(/<script type="application\/ld\+json">([^<]*)<\/script>/g)].map((m) => m[1]);
@@ -106,6 +116,15 @@ for (const l of [ENGLISH, ...live]) {
     }
   }
 }
+
+for (const [u, { status, text }] of served) {
+  try {
+    if (status !== 200 || typeof JSON.parse(text) !== 'object') fail(u, `HTTP ${status}`);
+  } catch {
+    fail(u, 'not JSON');
+  }
+}
+if (served.size !== live.length * Object.keys(FILES[live[0].id]).length) fail('dictionaries', `${served.size} named in all`);
 
 // Sitemap: localized URLs exactly as expected, each with its cluster.
 const sitemap = (await get('/sitemap.xml')).text;

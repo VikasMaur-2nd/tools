@@ -2017,7 +2017,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "7cbc4507eca7",
+    "hash": "95d2422436de",
     "title": "Validateur JSON Schema : valider JSON en ligne",
     "description": "Validez du JSON avec un JSON Schema : drafts 2020-12, 2019-09, 07, 06 et 04. Chaque erreur avec sa ligne, son chemin et sa règle. Aucun envoi.",
     "heading": "Validateur JSON Schema",
@@ -2062,7 +2062,7 @@
       },
       {
         "question": "Les grands nombres et les décimales sont-ils vérifiés exactement ?",
-        "answer": "Oui. Le document et le schéma sont lus sans convertir les nombres en virgule flottante : 19.99 est un multiple de 0.01, les entiers supérieurs à 2^53 gardent tous leurs chiffres pour minimum et maximum, et les exposants de toute taille, comme dans 1e400, sont comparés tels qu'ils sont écrits. 1.0 compte comme un entier à partir de draft-06, comme le dit la spécification. Un seul cas n'est pas calculé : multipleOf quand les exposants des deux nombres diffèrent d'un nombre de plus de 30 000 chiffres. Il figure parmi les problèmes du schéma, et le document affiche Vérification incomplète."
+        "answer": "Oui. Le document et le schéma sont lus sans convertir les nombres en virgule flottante : 19.99 est un multiple de 0.01, les entiers supérieurs à 2^53 gardent tous leurs chiffres pour minimum et maximum, et les exposants de toute taille, comme dans 1e400, sont comparés tels qu'ils sont écrits. 1.0 compte comme un entier à partir de draft-06, comme le dit la spécification."
       }
     ],
     "sections": [

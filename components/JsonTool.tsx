@@ -8,7 +8,7 @@ import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
-import { store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
+import { paired, store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
 import { TARGETS, isFlat, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
@@ -386,7 +386,7 @@ function ViewMenu() {
 function FindBar() {
   const { open, q, total, index, note, seq } = useUI((s) => s.find);
   const view = useUI((s) => s.settings.view);
-  if (!open || view === 'compare' || view === 'schema') return null;
+  if (!open || paired(view)) return null;
   return <FindInput key={seq} initial={q} q={q} total={total} index={index} note={note} view={view} />;
 }
 
@@ -639,7 +639,7 @@ function ViewToolbar() {
         {view === 'table' && <Crumbs />}
         {view === 'convert' && <TargetPick />}
       </div>
-      {view !== 'compare' && view !== 'schema' && (
+      {!paired(view) && (
         <div className="vicons">
           <button
             type="button"
@@ -760,7 +760,7 @@ function Banner() {
 function Watermark() {
   const empty = useUI((s) => s.empty);
   const view = useUI((s) => s.settings.view);
-  if (!empty || view === 'compare' || view === 'schema') return null;
+  if (!empty || paired(view)) return null;
   return (
     <div className="watermark" aria-hidden="true" />
   );
@@ -949,7 +949,7 @@ function CompareHost() {
 function Splitter() {
   const split = useUI((s) => s.settings.split);
   const splitCmp = useUI((s) => s.settings.splitCmp);
-  const comparing = useUI((s) => s.settings.view === 'compare' || s.settings.view === 'schema');
+  const comparing = useUI((s) => paired(s.settings.view));
   const vertical = () => matchMedia('(max-width: 760px)').matches;
   // Normal: editor vs viewer. Compare and Schema: both editors vs the differences or errors panel.
   const [lo, hi, cur, prop] = comparing ? [0.4, 0.85, splitCmp, '--split-c'] : [0.2, 0.8, split, '--split'];
@@ -1251,7 +1251,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const ed2Ref = useRef<HTMLDivElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
   const schRef = useRef<HTMLDivElement>(null);
-  const comparing = useUI((s) => s.settings.view === 'compare' || s.settings.view === 'schema');
+  const comparing = useUI((s) => paired(s.settings.view));
   const empty = useUI((s) => s.empty);
 
   // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views (loaded once the page is idle).

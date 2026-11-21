@@ -73,6 +73,12 @@ export function runSuite(dir: string, drafts = SUITE_DRAFTS): CaseResult[] {
               // (Valid means complete as well: a part of the schema left unapplied is no pass.)
               const res = v.validate(get(t, 'data')!);
               r.got = res.valid && res.complete;
+              // Tool Kumar's cases may say whether the check is complete too ("complete": false: not fully checked).
+              const complete = get(t, 'complete');
+              if (complete && complete.t === BOOL && complete.v !== res.complete) {
+                r.got = 'error';
+                r.error = `complete: ${res.complete}`;
+              }
             } catch (e) {
               r.error = String(e);
             }

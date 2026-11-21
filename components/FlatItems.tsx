@@ -20,8 +20,8 @@ const SEPARATORS = ['.', '/', '_', '__'];
 
 /** With `close`: the options, in the ⋯ menu. Without: the note on the output. */
 export default function Flat({ flatten, close }: { flatten?: boolean; close?: () => void }) {
-  // (A localized page's strings for these come with this chunk, not with the page: lib/i18n/client-dict.ts lazyFeature.)
-  if (!useLazyStrings('flatten')) return null;
+  // (A localized page's strings for these load with them, not with the page: lib/i18n/client-dict.ts lazyFeature.)
+  useLazyStrings('flatten');
   return close ? <FlatItems flatten={!!flatten} close={close} /> : <FlatNote />;
 }
 
