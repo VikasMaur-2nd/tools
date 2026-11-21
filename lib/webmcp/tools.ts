@@ -59,7 +59,7 @@ export interface Page {
   /** The open document's file name, if it has one. */
   fileName(): string | null;
   /** The Format and Convert settings the page shows its output with. */
-  settings(): Pick<Settings, 'minify' | 'escape' | 'sortKeys' | 'target' | 'rootName' | 'tsStyle' | 'csharpLib'>;
+  settings(): Pick<Settings, 'minify' | 'escape' | 'sortKeys' | 'target' | 'rootName' | 'tsStyle' | 'csharpLib' | 'flat'>;
   /** Downloads `file` as `name`; `feature` is the download's analytics name. */
   save(file: Blob, name: string, feature: DownloadFeature): void;
   /** Downloads the graph as an image (the Graph view opens for it): the file, or null if it couldn't be made. */
@@ -394,7 +394,8 @@ export const TOOLS: AgentTool[] = [
     title: 'Convert JSON',
     description:
       'Generate code or data from the open document: types for a programming language (TypeScript, Zod, JSON Schema, C#, Dart, Java, ' +
-      'Python Pydantic models, Go, Kotlin, Swift, PHP, Rust serde, Protocol Buffers proto3) inferred from its values, or the same data as CSV, YAML, XML, TOML or JSON Lines. ' +
+      'Python Pydantic models, Go, Kotlin, Swift, PHP, Rust serde, Protocol Buffers proto3) inferred from its values, or the same data as CSV, YAML, XML, TOML or JSON Lines, ' +
+      'as flat JSON whose keys are paths such as user.address.city (flatten), or as nested JSON again from such keys (unflatten, with the page\'s separator and array options). ' +
       "Shows the result in the page's Convert view and returns it.",
     inputSchema: {
       type: 'object',
@@ -422,10 +423,13 @@ export const TOOLS: AgentTool[] = [
       if (p.res.depth > MAX_WALK_DEPTH) return fail('The document is nested too deeply to convert.');
       page.convert({ target: to, rootName, tsStyle: ts, csharpLib: cs ? CSHARP[cs] : undefined });
       const [mod, xlsx] = await Promise.all([import('../convert'), to === 'csv' ? import('../convert/xlsx') : null]);
+      let error = '';
       const out = attempt(() =>
-        xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, to, { rootName: rootName ?? 'Root', tsStyle: ts ?? 'interface', csharpLib: cs ? CSHARP[cs] : 'stj' }),
+        xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, to, { rootName: rootName ?? 'Root', tsStyle: ts ?? 'interface', csharpLib: cs ? CSHARP[cs] : 'stj', flat: page.settings().flat, report: (r) => (error = r.error) }),
       );
       if (typeof out !== 'string') return out;
+      // (Unflatten's conflicting keys: no output, and why.)
+      if (error) return fail(`${error}.`);
       return done(cap(out));
     },
   },
@@ -582,8 +586,10 @@ export const TOOLS: AgentTool[] = [
         return saved(page, file, `${stem(base, 'xlsx')}.xlsx`, 'export_xlsx');
       }
       const [mod, xlsx] = await Promise.all([import('../convert'), info.id === 'csv' ? import('../convert/xlsx') : null]);
-      const out = attempt(() => (xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib })));
+      let error = '';
+      const out = attempt(() => (xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib, flat: s.flat, report: (r) => (error = r.error) })));
       if (typeof out !== 'string') return out;
+      if (error) return fail(`${error}.`);
       const name = convertFileName(info, stem(base, info.id === 'zod' ? 'schema.ts' : info.ext), s.rootName);
       return saved(page, new Blob([out], { type: info.mime }), name, 'download_convert');
     },

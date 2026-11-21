@@ -1954,5 +1954,75 @@
         ]
       }
     ]
+  },
+  "json-flatten": {
+    "hash": "a06a361b3eaf",
+    "title": "Aplanar y desaplanar JSON en línea",
+    "description": "Aplana JSON anidado en un objeto con claves de ruta como user.address.city o desaplánalo. Arrays, separadores y números grandes, sin subir datos.",
+    "heading": "Aplanar y desaplanar JSON",
+    "query": "aplanar JSON",
+    "secondary": [
+      "desaplanar JSON",
+      "aplanar JSON anidado"
+    ],
+    "intro": "Pega JSON anidado para obtener un único objeto plano cuyas claves son rutas, como user.address.city u orders[0].sku. Pega JSON plano y elige JSON anidado (desaplanar) para volver a anidarlo. Cada valor conserva sus dígitos exactos y el JSON nunca sale de tu dispositivo.",
+    "modeLabel": "Salida de JSON plano",
+    "exampleLabel": "Cada valor recibe una clave: las claves de objeto se unen con puntos y los elementos de array reciben [0], [1]. El array tags y el objeto meta vacíos se quedan como valores, y el id de 16 dígitos conserva todos sus dígitos.",
+    "steps": [
+      "Pega JSON anidado o abre un archivo. La vista Convertir lo muestra aplanado.",
+      "Elige el separador, los índices de array y la profundidad en el menú Más opciones (⋯). Para desaplanar, elige JSON anidado (desaplanar) en el menú del conversor.",
+      "Copia o descarga el resultado. Usar como entrada (Ctrl+Enter, o ⌘Enter en Mac) lo lleva al editor y cambia a la dirección contraria, así compruebas que vuelve al original. Ctrl+Z lo deshace."
+    ],
+    "options": [
+      "Separador: un punto por defecto; una barra, un guion bajo, dos guiones bajos o cualquier texto de hasta 8 caracteres sin dígitos, barras invertidas ni corchetes. Al desaplanar, las claves se dividen con el mismo ajuste.",
+      "Índices de array: a[0] (por defecto), a.0 con tu separador, o Ninguno para conservar los arrays enteros como valores. Con a[0], al desaplanar solo los índices entre corchetes se convierten en elementos de array; con a.0, lo hace una parte de la ruta formada solo por dígitos, salvo que su objeto tenga también otras claves.",
+      "Profundidad: Todos aplana todos los niveles. 1, 2 o 3 une solo esos niveles en las claves y conserva los objetos y arrays más profundos como valores.",
+      "Los objetos y arrays vacíos se quedan como {} y [], null, true, false, los números y las cadenas no cambian, y las claves conservan su orden.",
+      "Un array de nivel superior se lee como una lista de registros, igual que las filas de un CSV: cada elemento se aplana por separado. Al desaplanar, una lista de registros planos se lee igual. Un valor suelto no tiene nada que aplanar y se queda como está.",
+      "Escapar claves, activado por defecto, pone una barra invertida delante de los caracteres que una ruta leería mal, como un punto dentro de una clave, para que al desaplanar la clave vuelva exacta. Un aviso encima de la salida cuenta esas claves y advierte de claves duplicadas o de cualquier otra cosa que no volvería igual."
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo se aplanan y desaplanan los arrays?",
+        "answer": "Por defecto cada elemento recibe su índice entre corchetes: tags[0], tags[1], y orders[0].sku para un valor dentro de un elemento. Elige a.0 en el menú para escribir el índice como otra parte de la ruta, o Ninguno para conservar los arrays enteros. Al desaplanar, el mismo estilo vuelve a ser arrays."
+      },
+      {
+        "question": "¿Puedo usar un separador distinto del punto?",
+        "answer": "Sí. Elige una barra, un guion bajo o dos guiones bajos en el menú Más opciones, o escribe uno propio de hasta 8 caracteres. No se permiten dígitos, barras invertidas ni corchetes, porque las rutas los usan para índices y escapes."
+      },
+      {
+        "question": "¿Qué pasa cuando dos claves planas chocan?",
+        "answer": "Desaplanar se detiene y nombra ambas claves, por ejemplo \"a\" y \"a.b\", o la misma clave repetida. Ningún valor se descarta en silencio. Corrige o renombra una de las claves y aparecerá el JSON anidado."
+      },
+      {
+        "question": "¿Se conservan los objetos vacíos, los arrays vacíos y null?",
+        "answer": "Sí. Un objeto vacío se queda como {} y un array vacío como [] bajo su propia clave, y null sigue siendo null, así que al desaplanar se obtiene el mismo documento."
+      },
+      {
+        "question": "¿Se mantienen los números grandes y el orden de las claves?",
+        "answer": "Sí. Los valores se copian de tu texto, así que un ID como 9007199254740993 o un decimal largo conserva todos sus dígitos en lugar de redondearse, y las claves mantienen su orden en ambas direcciones."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Cómo desaplanar JSON",
+        "paragraphs": [
+          "Elige JSON anidado (desaplanar) en el menú del conversor y pega el JSON plano. Cada clave se divide por el separador, y un índice entre corchetes como [0] se convierte en un elemento de array. Los elementos se colocan por orden de índice; si falta un índice, su lugar recibe null y el aviso indica cuántos."
+        ]
+      },
+      {
+        "heading": "Claves que contienen puntos o corchetes",
+        "paragraphs": [
+          "Una clave como user.name se leería como dos niveles al desaplanar. Con Escapar claves activado, al aplanar se escribe una barra invertida delante del punto, y al desaplanar vuelve a ser una sola clave. Un corchete también recibe una barra invertida, y una barra invertida dentro de una clave se duplica. En el texto JSON cada barra invertida aparece como dos.",
+          "Para conservar las claves tal cual, elige un separador que tus claves no contengan, como una barra, o desactiva Escapar claves. El aviso cuenta entonces las claves que volverían distintas."
+        ]
+      },
+      {
+        "heading": "Cuando desaplanar encuentra un conflicto",
+        "paragraphs": [
+          "Algunos objetos planos piden dos valores distintos en el mismo sitio: \"a\": 1 y \"a.b\": 2 necesitan que a sea a la vez un número y un objeto. En lugar de quedarse con uno y descartar el otro, Tool Kumar muestra un error que nombra ambas claves y cuenta los demás conflictos. Lo mismo ocurre cuando una clave aparece dos veces, o cuando a[0] y a.b harían de a un array y un objeto a la vez."
+        ]
+      }
+    ]
   }
 }

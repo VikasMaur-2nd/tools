@@ -9,6 +9,7 @@
  * are then deduplicated and given unique PascalCase names.
  */
 import { ARR, BOOL, JNode, NUL, NUM, STR, kids } from '../json/parser';
+import type { FlatOptions, FlatResult } from './flat';
 import { isDataKey } from './keys';
 
 export interface ConvertOptions {
@@ -20,6 +21,10 @@ export interface ConvertOptions {
   optionalAll?: boolean;
   /** C#: System.Text.Json (default) or Newtonsoft.Json attributes. */
   csharpLib?: 'stj' | 'newtonsoft';
+  /** Flatten and unflatten: separator, array style, escapes and depth (default: lib/convert/flat.ts FLAT_DEFAULTS). */
+  flat?: Partial<FlatOptions>;
+  /** Flatten and unflatten: their note, or the error that left no output. */
+  report?: (r: Omit<FlatResult, 'text'>) => void;
 }
 
 /** Kind bits of a shape. */

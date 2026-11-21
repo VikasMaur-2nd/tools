@@ -1941,5 +1941,75 @@
         ]
       }
     ]
+  },
+  "json-flatten": {
+    "hash": "a06a361b3eaf",
+    "title": "Aplatir et désaplatir du JSON en ligne",
+    "description": "Aplatissez un JSON imbriqué en un objet à clés de chemin comme user.address.city, ou désaplatissez-le, dans le navigateur, sans envoi au serveur.",
+    "heading": "Aplatir et désaplatir du JSON",
+    "query": "aplatir JSON",
+    "secondary": [
+      "JSON flatten",
+      "aplatir un JSON imbriqué"
+    ],
+    "intro": "Collez un JSON imbriqué pour obtenir un seul objet plat dont les clés sont des chemins, comme user.address.city ou orders[0].sku. Collez un JSON plat et choisissez JSON imbriqué (désaplatir) pour le réimbriquer. Chaque valeur garde ses chiffres exacts, et le JSON ne quitte jamais votre appareil.",
+    "modeLabel": "Sortie JSON plat",
+    "exampleLabel": "Chaque valeur reçoit une clé : les clés d'objet sont reliées par des points et les éléments de tableau reçoivent [0], [1]. Le tableau tags et l'objet meta vides restent des valeurs, et l'id à 16 chiffres garde tous ses chiffres.",
+    "steps": [
+      "Collez un JSON imbriqué ou ouvrez un fichier. La vue « Convertir » l'affiche aplati.",
+      "Réglez le séparateur, les indices de tableau et la profondeur dans le menu « Plus d'options » (⋯). Pour désaplatir, choisissez plutôt JSON imbriqué (désaplatir) dans le menu du convertisseur.",
+      "Copiez ou téléchargez le résultat. « Utiliser comme entrée » (Ctrl+Entrée, ou ⌘Entrée sur Mac) le place dans l'éditeur et passe à l'autre sens, pour vérifier qu'il redonne l'original. Ctrl+Z annule l'opération."
+    ],
+    "options": [
+      "Séparateur : un point par défaut ; une barre oblique, un tiret bas, deux tirets bas, ou tout texte de 8 caractères au plus sans chiffres, barres obliques inverses ni crochets. Le désaplatissement découpe les clés avec le même réglage.",
+      "Indices de tableau : a[0] (par défaut), a.0 avec votre séparateur, ou « Aucun » pour garder les tableaux entiers comme valeurs. Avec a[0], seuls les indices entre crochets deviennent des éléments de tableau au désaplatissement ; avec a.0, c'est le cas d'une partie de chemin faite uniquement de chiffres, sauf si son objet a aussi d'autres clés.",
+      "Profondeur : « Tous » aplatit chaque niveau. 1, 2 ou 3 ne joint que ce nombre de niveaux dans les clés et garde les objets et tableaux plus profonds comme valeurs.",
+      "Les objets et tableaux vides restent {} et [], null, true, false, les nombres et les chaînes ne changent pas, et les clés gardent leur ordre.",
+      "Un tableau de premier niveau est lu comme une liste d'enregistrements, comme des lignes CSV : chaque élément est aplati séparément. Le désaplatissement lit de la même façon une liste d'enregistrements plats. Une valeur seule n'a rien à aplatir et reste telle quelle.",
+      "« Échapper les clés », activé par défaut, place une barre oblique inverse devant les caractères qu'un chemin lirait mal, comme un point dans une clé, pour que le désaplatissement restitue la clé exacte. Un bandeau au-dessus de la sortie compte ces clés et signale les clés en double ou tout autre élément qui ne reviendrait pas à l'identique."
+    ],
+    "faqs": [
+      {
+        "question": "Comment les tableaux sont-ils aplatis et désaplatis ?",
+        "answer": "Par défaut, chaque élément reçoit son indice entre crochets : tags[0], tags[1], et orders[0].sku pour une valeur dans un élément. Choisissez a.0 dans le menu pour écrire l'indice comme une autre partie du chemin, ou « Aucun » pour garder les tableaux entiers. Le désaplatissement reconvertit le même style en tableaux."
+      },
+      {
+        "question": "Puis-je utiliser un autre séparateur que le point ?",
+        "answer": "Oui. Choisissez une barre oblique, un tiret bas ou deux tirets bas dans le menu « Plus d'options », ou saisissez le vôtre, de 8 caractères au plus. Les chiffres, barres obliques inverses et crochets sont exclus, car les chemins les utilisent pour les indices et les échappements."
+      },
+      {
+        "question": "Que se passe-t-il quand deux clés plates se contredisent ?",
+        "answer": "Le désaplatissement s'arrête et nomme les deux clés, par exemple \"a\" et \"a.b\", ou la même clé donnée deux fois. Aucune valeur n'est écartée en silence. Corrigez ou renommez l'une des clés et le JSON imbriqué apparaît."
+      },
+      {
+        "question": "Les objets vides, les tableaux vides et null sont-ils conservés ?",
+        "answer": "Oui. Un objet vide reste {} et un tableau vide reste [] sous sa propre clé, et null reste null : le désaplatissement redonne donc le même document."
+      },
+      {
+        "question": "Les grands nombres et l'ordre des clés sont-ils préservés ?",
+        "answer": "Oui. Les valeurs sont copiées depuis votre texte : un identifiant comme 9007199254740993 ou un long nombre décimal garde tous ses chiffres au lieu d'être arrondi, et les clés gardent leur ordre dans les deux sens."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Comment désaplatir du JSON",
+        "paragraphs": [
+          "Choisissez JSON imbriqué (désaplatir) dans le menu du convertisseur et collez le JSON plat. Chaque clé est découpée au séparateur, et un indice entre crochets comme [0] devient un élément de tableau. Les éléments sont placés dans l'ordre des indices ; s'il manque un indice, sa place reçoit null et le bandeau indique combien."
+        ]
+      },
+      {
+        "heading": "Clés qui contiennent des points ou des crochets",
+        "paragraphs": [
+          "Une clé comme user.name serait lue comme deux niveaux au désaplatissement. Avec « Échapper les clés », l'aplatissement écrit une barre oblique inverse devant le point, et le désaplatissement en refait une seule clé. Un crochet reçoit aussi une barre oblique inverse, et une barre oblique inverse dans une clé est doublée. Dans le texte JSON, chaque barre oblique inverse apparaît en double.",
+          "Pour garder les clés telles quelles, choisissez un séparateur que vos clés ne contiennent pas, comme une barre oblique, ou désactivez « Échapper les clés ». Le bandeau compte alors les clés qui reviendraient différentes."
+        ]
+      },
+      {
+        "heading": "Quand le désaplatissement trouve un conflit",
+        "paragraphs": [
+          "Certains objets plats demandent deux valeurs différentes au même endroit : \"a\": 1 et \"a.b\": 2 exigent que a soit à la fois un nombre et un objet. Au lieu de garder l'une et d'écarter l'autre, Tool Kumar affiche une erreur qui nomme les deux clés et compte les autres conflits. Il en va de même quand une clé apparaît deux fois, ou quand a[0] et a.b feraient de a à la fois un tableau et un objet."
+        ]
+      }
+    ]
   }
 }

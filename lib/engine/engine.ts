@@ -13,7 +13,7 @@ import type { GraphExport, GraphViewApi } from '../graph/types';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
-import { convertFileName, targetInfo } from './targets';
+import { convertFileName, isFlat, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
@@ -3344,8 +3344,9 @@ export class Engine {
     this.expTimer = window.setTimeout(() => this.settings.view === 'format' && this.noteExpiry(out), Math.abs(left) < 3600 ? 1000 : 30_000);
   }
 
-  /** Replaces the input with the Format view's output (undoable). */
+  /** Replaces the input with the Format view's output (undoable); flatten's or unflatten's while one shows (see useConvert). */
   useOutput() {
+    if (this.settings.view === 'convert' && isFlat(this.settings.target)) return this.useConvert();
     const r = this.fresh();
     if (!r?.root) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
     track('feature_used', { feature: 'use_output' });
@@ -3536,7 +3537,7 @@ export class Engine {
 
   // ── Convert ────────────────────────────────────────────────────────────
 
-  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib'>>) {
+  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib' | 'flat'>>) {
     if (!this.presetting) {
       const s = this.settings;
       // The target and options come from fixed lists. The root type name is typed, so it is never sent.
@@ -3569,7 +3570,7 @@ export class Engine {
   /** The Convert view's settings and the document, as a key: what a conversion was made for (see convFinished). */
   private convKey() {
     const s = this.settings;
-    return `${s.target}\n${s.rootName}\n${s.tsStyle}\n${s.csharpLib}\n${this.docGen}`;
+    return `${s.target}\n${s.rootName}\n${s.tsStyle}\n${s.csharpLib}\n${JSON.stringify(s.flat)}\n${this.docGen}`;
   }
 
   /** Copy/Download waiting for the conversion asked for last (see convPending). */
@@ -3669,9 +3670,11 @@ export class Engine {
       // records; Excel is a binary download, so its preview is the same table.
       const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
       if (!current()) return;
+      let r: { note: string; warn: boolean; flip: boolean; error?: string } | undefined;
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
-        : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
+        : // (The settings as they are: convert() reads its own, and a cleared root name is "Root".)
+          mod.convert(root, info.id, { ...s, report: (x) => (r = x) });
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
       else {
         // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)
@@ -3679,7 +3682,7 @@ export class Engine {
         this.code.setText(out, rows.hl, false, rows.scanner);
       }
       this.convFinished(seq, out, ver, key);
-      store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
+      store.set({ convert: { loading: false, error: r?.error || null, lines: out ? out.split('\n').length : 0, bytes: out.length, flat: r } });
     } catch (e) {
       if (!current()) return;
       // The CSV and Excel preview isn't behind convert(), which reports deep nesting itself.
@@ -3704,6 +3707,18 @@ export class Engine {
     if (!out) return this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_convert' });
     void this.copy(out, msg);
+  }
+
+  /** Flatten / unflatten: the output replaces the input (undoable) and the other direction shows, giving the input back. */
+  useConvert() {
+    const flat = this.settings.target === 'flatten';
+    // (No output: the view says why, an error or nothing valid to convert.)
+    void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
+      if (!out || typeof out !== 'string' || this.dead) return;
+      track('feature_used', { feature: 'use_output', view: 'convert' });
+      this.replaceText(out, flat ? 'Flattened input' : 'Unflattened input');
+      this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
+    });
   }
 
   async downloadConvert() {
@@ -4068,7 +4083,7 @@ export class Engine {
     try {
       this.load(p.initialText ?? '', p.initialFileName ?? null, false, false, undefined, p.input ?? formatOfName(p.initialFileName));
       if (s.view === 'convert') {
-        this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface' });
+        this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface', flat: s.flat });
       } else if (s.view) {
         this.setView(s.view);
         if (s.view === 'format') this.setFormat({ minify: s.minify ?? false, sortKeys: s.sortKeys ?? false, escape: s.escape ?? false });

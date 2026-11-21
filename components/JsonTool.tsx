@@ -9,7 +9,7 @@ import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
-import { TARGETS, targetInfo } from '@/lib/engine/targets';
+import { TARGETS, isFlat, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
 import { parseLink } from '@/lib/link';
 import { startAgentTools } from '@/lib/webmcp';
@@ -369,6 +369,7 @@ function ViewMenu() {
                 />
               )}
               {info.group === 'Types' && <MSep />}
+              {isFlat(info.id) && <Flat flatten={info.id === 'flatten'} close={close} />}
               <FoldItems close={close} />
               <WrapItem />
             </>
@@ -796,6 +797,7 @@ function ViewerPane({
   const view = useUI((s) => s.settings.view);
   const stale = useUI((s) => s.stale);
   const empty = useUI((s) => s.empty);
+  const flat = useUI((s) => isFlat(s.settings.target));
   const t = useT();
   return (
     <section className="pane pane-view" aria-label={t('JSON viewer')}>
@@ -803,6 +805,7 @@ function ViewerPane({
       {/* Everything in here shows the document: session replay records it as an empty box. */}
       <div className={`view ${PRIVATE}${stale ? ' stale' : ''}`}>
         <Banner />
+        {view === 'convert' && flat && <Flat />}
         <FindBar />
         <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label={t('Formatted output')}>
           <div className="cv-sizer">
@@ -853,6 +856,8 @@ function ViewerPane({
 const CommandPalette = dynamic(() => import('./dialogs').then((m) => m.CommandPalette), { ssr: false });
 const ShortcutsDialog = dynamic(() => import('./dialogs').then((m) => m.ShortcutsDialog), { ssr: false });
 const ContextMenuPopup = dynamic(() => import('./ContextMenu'), { ssr: false });
+// Flatten and unflatten's options (with `close`: in the menu) and note on the output: loaded when one of them is the target.
+const Flat = dynamic(() => import('./FlatItems'), { ssr: false });
 
 /** True once the page has been idle after it started. */
 function useIdle() {

@@ -40,6 +40,19 @@ export interface Settings {
   /** CSV input: the first row names the columns (rows become objects), and unquoted numbers and booleans become JSON ones. */
   csvHeader: boolean;
   csvTypes: boolean;
+  /** Convert: flatten and unflatten's options (absent: the defaults, lib/convert/flat.ts FLAT_DEFAULTS). */
+  flat?: FlatSettings;
+}
+
+export interface FlatSettings {
+  /** Joins the keys of a path ('' while one is typed: "." is used). */
+  sep: string;
+  /** Array items as a[0], as a.0, or kept whole. */
+  arrays: 'bracket' | 'dot' | 'keep';
+  /** Backslash escapes for keys a path would misread. */
+  escape: boolean;
+  /** Levels flattened (0: all). */
+  depth: number;
 }
 
 /** A tool page's starting state. */
@@ -169,7 +182,8 @@ export interface UIState {
   /** What the input is read as; for CSV, the separator chosen and the one detected (what `auto` reads with). */
   input: { format: SourceFormat; delimiter: CsvDelimiter; detected: string };
   fileName: string | null;
-  convert: { loading: boolean; error: string | null; lines: number; bytes: number };
+  /** `flat`: flatten and unflatten's note on the output (`warn`: it won't convert back as it is; `flip`: the other direction fits the input). */
+  convert: { loading: boolean; error: string | null; lines: number; bytes: number; flat?: { note: string; warn: boolean; flip: boolean } };
   /** Format view output: line count and the byte size of both variants; `tooLarge`: none could be made (see MAX_TEXT). */
   fmt: { lines: number; pretty: number; minified: number; escaped: number; tooLarge?: boolean };
   /** Wire sizes of the valid document: minified, then compressed by each codec the browser has. */
