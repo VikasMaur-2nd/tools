@@ -2017,7 +2017,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "8207f964042c",
+    "hash": "7cbc4507eca7",
     "title": "Validateur JSON Schema : valider JSON en ligne",
     "description": "Validez du JSON avec un JSON Schema : drafts 2020-12, 2019-09, 07, 06 et 04. Chaque erreur avec sa ligne, son chemin et sa règle. Aucun envoi.",
     "heading": "Validateur JSON Schema",
@@ -2062,7 +2062,7 @@
       },
       {
         "question": "Les grands nombres et les décimales sont-ils vérifiés exactement ?",
-        "answer": "Oui. Le document et le schéma sont lus sans convertir les nombres en virgule flottante : 19.99 est un multiple de 0.01, les entiers supérieurs à 2^53 gardent tous leurs chiffres pour minimum et maximum, et 1e308 est comparé tel qu'il est écrit. 1.0 compte comme un entier à partir de draft-06, comme le dit la spécification."
+        "answer": "Oui. Le document et le schéma sont lus sans convertir les nombres en virgule flottante : 19.99 est un multiple de 0.01, les entiers supérieurs à 2^53 gardent tous leurs chiffres pour minimum et maximum, et les exposants de toute taille, comme dans 1e400, sont comparés tels qu'ils sont écrits. 1.0 compte comme un entier à partir de draft-06, comme le dit la spécification. Un seul cas n'est pas calculé : multipleOf quand les exposants des deux nombres diffèrent d'un nombre de plus de 30 000 chiffres. Il figure parmi les problèmes du schéma, et le document affiche Vérification incomplète."
       }
     ],
     "sections": [
@@ -2080,7 +2080,7 @@
         "heading": "Références, schémas distants et confidentialité",
         "paragraphs": [
           "$ref résout les JSON Pointers comme #/$defs/address, les ancres comme #address et les autres ressources intégrées au même schéma par leur $id, y compris avec des URI relatives. Une boucle qui applique de nouveau le même schéma à la même valeur est signalée au lieu de bloquer la page.",
-          "Les références distantes ne sont jamais récupérées : un $ref vers une URL qui n'est pas une ressource de ce schéma apparaît comme non résolu, et cette partie du document n'est pas vérifiée. Pour utiliser ce schéma, ajoutez-le dans $defs avec son $id ; les références vers cette URL sont alors résolues localement. Les métaschémas officiels ne sont pas chargés non plus : le validateur vérifie lui-même la valeur de chaque mot-clé qu'il connaît."
+          "Les références distantes ne sont jamais récupérées : un $ref vers une URL qui n'est pas une ressource de ce schéma apparaît comme non résolu, et cette partie du document n'est pas vérifiée ; un document sans autre erreur affiche alors Vérification incomplète au lieu de Valide. Il en va de même pour un mot-clé dont la valeur est invalide. Pour utiliser ce schéma, ajoutez-le dans $defs avec son $id ; les références vers cette URL sont alors résolues localement. Les métaschémas officiels ne sont pas chargés non plus : le validateur vérifie lui-même la valeur de chaque mot-clé qu'il connaît."
         ]
       },
       {

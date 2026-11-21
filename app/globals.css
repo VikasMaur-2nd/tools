@@ -341,6 +341,14 @@ svg {
   border-left: 1px solid var(--line);
 }
 
+/* (The Schema view's column is code-split: the splitter and the viewer keep their places while it loads.) */
+.comparing .panes > .split {
+  grid-column: 3;
+}
+.comparing .panes > .pane-view {
+  grid-column: 4;
+}
+
 .side-tag {
   padding: 2px 7px;
   border: 1px solid var(--line-2);
@@ -362,6 +370,12 @@ svg {
   .pane-cmp {
     border-left: 0;
     border-top: 1px solid var(--line);
+  }
+  .comparing .panes > .split {
+    grid-area: 3 / 1;
+  }
+  .comparing .panes > .pane-view {
+    grid-area: 4 / 1;
   }
   .split,
   .resizing {
@@ -2775,10 +2789,42 @@ dialog[open] {
   }
 }
 
-/* The Schema tab needs room next to the other six, the view's control and its icons: on a narrower viewer it
-   shows only while open (Alt+7, the palette and the dropdown open it too). */
+/* Every view keeps a visible tab (or the dropdown). Where the seven tabs, the view's own control (Format's styles
+   and sizes, a path, a language) and the four icons don't fit on one row, the control takes a second row instead of
+   running under the icons. Measured widths, tabs + control + icons: English 787px; translated up to 961px (Russian),
+   tabs + icons alone up to 654px (French). */
 @container (max-width: 800px) {
-  .tabs [aria-controls='view-schema']:not([aria-selected='true']) {
+  html[lang='en'] .vbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding-block: 6px;
+    row-gap: 6px;
+  }
+  html[lang='en'] .vmain {
+    order: 3;
+    flex: 1 1 100%;
+    margin: 0;
+  }
+  html[lang='en'] .vmain:empty {
+    display: none;
+  }
+}
+
+@container (min-width: 901px) and (max-width: 980px) {
+  html:not([lang='en']) .vbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 44px;
+    padding-block: 6px;
+    row-gap: 6px;
+  }
+  html:not([lang='en']) .vmain {
+    order: 3;
+    flex: 1 1 100%;
+    margin: 0;
+  }
+  html:not([lang='en']) .vmain:empty {
     display: none;
   }
 }

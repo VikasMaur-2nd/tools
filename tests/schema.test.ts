@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parse } from '../lib/json/parser';
 import { validateTexts, keyBefore, type ValidateResult } from '../lib/schema/index';
 import { Validator } from '../lib/schema/validator';
-import { cmp, dec, isMultiple } from '../lib/schema/decimal';
+import { cmp, dec, isMultiple, isWhole } from '../lib/schema/decimal';
 import { resolveUri, normalizeUri } from '../lib/schema/uri';
 import { punyDecode, punyEncode } from '../lib/schema/formats';
 import { SchemaClient, type Port } from '../lib/schema/client';
@@ -45,7 +45,16 @@ test('decimal: exact comparison and multipleOf on the source digits', () => {
   assert.ok(!isMultiple(d('1e999999999'), d('7')));
   assert.ok(isMultiple(d('1e999999999'), d('8')));
   assert.ok(performance.now() - t < 50);
-  assert.equal(dec('1e99999999999999999999'), null, 'an exponent past 2^53 is refused, not rounded');
+  // Exponents past 2^53 are exact too (review round 1, finding 9).
+  assert.equal(cmp(d('1e9007199254740992'), d('1000')), 1);
+  assert.equal(cmp(d('9e9007199254740991'), d('11e9007199254740991')), -1);
+  assert.equal(cmp(d('1.1e9007199254740992'), d('11e9007199254740991')), 0);
+  assert.equal(cmp(d('1e99999999999999999999'), d('1e99999999999999999998')), 1);
+  assert.ok(isWhole(d('1e9007199254740992')) && !isWhole(d('1.5e-9007199254740992')));
+  assert.equal(isMultiple(d('7e9007199254740993'), d('7')), true);
+  assert.equal(isMultiple(d('1'), d('1e-9007199254740993')), true);
+  // A scale gap past 10^30,000 isn't worked out: null, which the validator reports, never a silent pass.
+  assert.equal(isMultiple(d('1e' + '1'.repeat(30200)), d('7')), null);
 });
 
 test('numbers: lossless checks through the whole validator', () => {
@@ -185,7 +194,9 @@ test('invalid schemas: each problem is located in the schema; the keyword is ski
   const r = validateTexts({ schema, doc: '"x"', draft: null, formats: false });
   const got = r.problems.map((p) => `${p.code}:${p.params.kw ?? ''}:${p.loc?.line}:${p.warn ? 'w' : 'e'}`);
   assert.deepEqual([...got], ['badValue:minLength:2:e', 'badRegex:pattern:3:e', 'badValue:type:4:e', 'badValue:required:5:e', 'badValue:properties:6:e', 'badRegex:patternProperties:7:e', 'badValue:multipleOf:8:e', 'itemsArray2020::9:e', 'nullable::10:w', 'unknownKeyword:prefixItem:11:w', 'unknownKeyword:prefixItem2:12:w']);
-  assert.ok(r.valid, 'every keyword was broken, so nothing failed');
+  // Nothing failed, but the broken keywords weren't applied: not valid, not complete (review round 1, finding 2).
+  assert.equal(r.total, 0);
+  assert.ok(!r.valid && !r.complete);
   // A broken schema's JSON is its own state.
   const syn = validateTexts({ schema: '{ "type": }', doc: '1', draft: null, formats: false });
   assert.equal(syn.state, 'schema-syntax');
@@ -295,7 +306,7 @@ class FakePort implements Port {
   }
   answer(i = this.sent.length - 1) {
     const m = this.sent[i];
-    this.onmessage?.({ data: { id: m.id, result: { state: 'ok', valid: true, errors: [], total: 0, problems: [], draft: 2020, draftFrom: 'default', ms: { parse: 0, compile: 0, validate: 0 }, ...({ tag: `${m.doc}|${m.schema}` } as object) } } as WorkerReply });
+    this.onmessage?.({ data: { id: m.id, result: { state: 'ok', valid: true, complete: true, errors: [], total: 0, problems: [], draft: 2020, draftFrom: 'default', ms: { parse: 0, compile: 0, validate: 0 }, ...({ tag: `${m.doc}|${m.schema}` } as object) } } as WorkerReply });
   }
 }
 
@@ -388,4 +399,76 @@ test('speed: a 7.5 MB document (16,000 records) against a realistic schema, form
   console.log(`speed: ${(doc.length / 1e6).toFixed(1)} MB, ${orders.length} records: ${ms.toFixed(0)} ms (parse ${r.ms.parse.toFixed(0)}, compile ${r.ms.compile.toFixed(1)}, validate ${r.ms.validate.toFixed(0)})`);
   assert.deepEqual(r.errors.map((e) => `${e.pointer} ${e.code}`), ['/9000/items/1/price multipleOf']);
   assert.ok(ms < 6000, `${ms.toFixed(0)} ms`);
+});
+
+// ── Review round 1 ──────────────────────────────────────────────────────────
+
+test('finding 2: a schema that can\'t be applied gives no success: not fully checked, the skipped parts named', () => {
+  const remote = run({ $ref: 'https://example.test/missing' }, { a: 1 });
+  assert.equal(remote.state, 'ok');
+  assert.deepEqual([remote.valid, remote.complete, remote.total], [false, false, 0]);
+  assert.deepEqual(remote.problems.map((p) => [p.code, p.reached]), [['unresolved', true]]);
+  const number = run('42', '{}');
+  assert.deepEqual([number.valid, number.complete], [false, false]);
+  assert.deepEqual(number.problems.map((p) => [p.code, p.reached]), [['notSchema', true]]);
+  // An unresolved ref in one anyOf branch: incomplete only when that branch decides.
+  const branch = { anyOf: [{ type: 'string' }, { $ref: 'https://example.test/missing' }] };
+  assert.deepEqual([run(branch, '"a"').valid, run(branch, '"a"').complete], [true, true]);
+  assert.deepEqual([run(branch, '1').valid, run(branch, '1').complete, run(branch, '1').total], [false, false, 0]);
+  // Where a pass decides against the document, a skipped part is no evidence: no false error.
+  const not = run({ not: { $ref: 'https://example.test/missing' } }, '1');
+  assert.deepEqual([not.total, not.valid, not.complete], [0, false, false]);
+  const iff = run({ if: { $ref: 'https://example.test/missing' }, then: { type: 'string' }, else: { type: 'number' } }, 'true');
+  assert.deepEqual([iff.total, iff.complete], [0, false]);
+  const one = run({ oneOf: [{ type: 'number' }, { $ref: 'https://example.test/missing' }] }, '1');
+  assert.deepEqual([one.total, one.complete], [0, false]);
+  const contains = run({ contains: { $ref: 'https://example.test/missing' } }, '[1]');
+  assert.deepEqual([contains.total, contains.complete], [0, false]);
+  const uneval = run({ $ref: 'https://example.test/missing', unevaluatedProperties: false }, '{"a": 1}');
+  assert.deepEqual([uneval.total, uneval.complete], [0, false]);
+  // A definite failure is still reported past a skipped part.
+  const both = run({ allOf: [{ $ref: 'https://example.test/missing' }, { type: 'string' }] }, '1');
+  assert.deepEqual([both.errors.map((e) => e.code), both.complete], [['type'], false]);
+  // A broken keyword counts only for the values it applies to.
+  const broken = { properties: { s: { minLength: -1 }, n: { minLength: -1 } } };
+  assert.deepEqual([run(broken, '{"n": 1}').valid, run(broken, '{"n": 1}').complete], [true, true]);
+  assert.deepEqual([run(broken, '{"s": "x"}').valid, run(broken, '{"s": "x"}').complete], [false, false]);
+  // A $ref loop, and a multipleOf too far in scale to work out.
+  assert.deepEqual([run({ $ref: '#' }, '1').valid, run({ $ref: '#' }, '1').complete], [false, false]);
+  const far = run({ multipleOf: 7 }, '1e' + '1'.repeat(30200));
+  assert.deepEqual([far.valid, far.complete, far.problems.map((p) => [p.code, p.reached])], [false, false, [['multipleOfRange', true]]]);
+  assert.match(problemText('multipleOfRange', far.problems[0].params, EN), /^multipleOf 7 can't be checked/);
+});
+
+test('finding 10: required with 24,000 keys is linear, not quadratic', () => {
+  const keys = Array.from({ length: 24_000 }, (_, i) => `k${i}`);
+  const v = new Validator(parse(JSON.stringify({ required: keys, dependentRequired: { k0: keys.slice(0, 2000) } })).root!);
+  const doc = parse(JSON.stringify(Object.fromEntries(keys.map((k, i) => [k, i])))).root!;
+  const t = performance.now();
+  const r = v.validate(doc);
+  const ms = performance.now() - t;
+  console.log(`required × 24,000: ${ms.toFixed(1)} ms`);
+  assert.ok(r.valid);
+  // (Measured 2.33 s before the per-object lookup; about 10 ms after.)
+  assert.ok(ms < 300, `${ms.toFixed(0)} ms`);
+});
+
+test('finding 12: errors from failed applications and the unevaluated* errors they no longer hide', () => {
+  const props = run({ allOf: [{ properties: { x: { type: 'number' } } }], unevaluatedProperties: false }, { x: 's' });
+  assert.deepEqual(props.errors.map((e) => `${e.code} ${e.pointer}`), ['type /x', 'unevaluatedProperties /x']);
+  const items = run({ allOf: [{ prefixItems: [{ type: 'number' }] }], unevaluatedItems: false }, ['s']);
+  assert.deepEqual(items.errors.map((e) => `${e.code} ${e.pointer}`), ['type /0', 'unevaluatedItems /0']);
+  const ref = run({ $defs: { x: { properties: { x: { type: 'number' } } } }, $ref: '#/$defs/x', unevaluatedProperties: false }, { x: 's' });
+  assert.deepEqual(ref.errors.map((e) => e.code), ['type', 'unevaluatedProperties']);
+});
+
+test('finding 13: a false subschema is located at itself, with its keyword\'s message', () => {
+  const schema = JSON.stringify({ properties: { x: false }, additionalProperties: false, prefixItems: [true, false] }, null, 2);
+  const r = validateTexts({ schema, doc: '{"x": 0, "y": 1}', draft: null, formats: false });
+  assert.deepEqual(r.errors.map((e) => [e.path, e.code, schema.slice(e.schemaLoc!.p, e.schemaLoc!.e)]), [
+    ['/properties/x', 'false', '"x"'],
+    ['/additionalProperties', 'additionalProperties', '"additionalProperties"'],
+  ]);
+  const arr = validateTexts({ schema, doc: '[1, 2]', draft: null, formats: false });
+  assert.deepEqual(arr.errors.map((e) => [e.path, e.code, schema.slice(e.schemaLoc!.p, e.schemaLoc!.e)]), [['/prefixItems/1', 'false', 'false']]);
 });

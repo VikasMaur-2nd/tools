@@ -56,6 +56,13 @@ test('JSON-Schema-Test-Suite: the curated subset in tests/schema-suite passes fo
   check(results, false);
 });
 
+test('Tool Kumar regression cases (tests/schema-cases, the suite format) pass for every draft they apply to', () => {
+  const results = runSuite(join(process.cwd(), 'tests/schema-cases'));
+  assert.ok(results.length >= 40, `ran ${results.length} cases`);
+  const failing = results.filter((r) => r.got !== r.expected).map(id);
+  assert.deepEqual(failing, []);
+});
+
 const full = process.env.SCHEMA_SUITE ?? join(homedir(), '.cache/schema-suite/suite/validation/tests');
 
 test('JSON-Schema-Test-Suite: the whole suite (when present)', { skip: !existsSync(full) && 'the suite is not on this machine (set SCHEMA_SUITE)' }, () => {

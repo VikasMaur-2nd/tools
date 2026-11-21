@@ -235,8 +235,10 @@ test("service worker: a page caches huge mode's dictionary of its own language o
     '/de': html('Start'),
     '/de/tools/json-graph': html('Graph'),
     '/ja': html('ホーム'),
-    '/_next/static/chunks/h-main.js': ['de', 'ja', 'es'].map((l) => `u(new URL("static/media/huge-strings.${l}.0a1b2c.json"))`).join(';') + ';x.l("static/chunks/h-lazy.js")',
+    '/_next/static/chunks/h-main.js':
+      ['de', 'ja', 'es'].map((l) => `u(new URL("static/media/huge-strings.${l}.0a1b2c.json"));u(new URL("static/media/schema-strings.${l}.3d4e5f.json"))`).join(';') + ';x.l("static/chunks/h-lazy.js")',
     '/_next/static/chunks/h-lazy.js': 'lazy()',
+    ...Object.fromEntries(['de', 'ja', 'es'].map((l) => [`/_next/static/media/schema-strings.${l}.3d4e5f.json`, '{"Valid":"…"}'])),
     [dict('de')]: '{"Large file":"Große Datei"}',
     [dict('ja')]: '{"Large file":"大容量ファイル"}',
     [dict('es')]: '{"Large file":"Archivo grande"}',
@@ -251,6 +253,8 @@ test("service worker: a page caches huge mode's dictionary of its own language o
   await sw.post(['/de/tools/json-graph']);
   assert.deepEqual(dicts(), [dict('de')]);
   assert.ok(!sw.fetched.some((p) => p.includes('huge-strings.ja') || p.includes('huge-strings.es')));
+  // The Schema view's (a lazy feature's) the same way.
+  assert.deepEqual(sw.statics().filter((p) => p.includes('schema-strings')), ['/_next/static/media/schema-strings.de.3d4e5f.json']);
   // Another language's page: its own as well.
   await sw.visit('/ja');
   await sw.post(['/ja']);

@@ -3,6 +3,9 @@
 /** draft-04, draft-06, draft-07, 2019-09, 2020-12, by number (ordered: a later draft is a bigger number). */
 export type Draft = 4 | 6 | 7 | 2019 | 2020;
 
+/** Every supported draft, newest first. */
+export const DRAFTS: readonly Draft[] = [2020, 2019, 7, 6, 4];
+
 export const DRAFT_NAME: Record<Draft, string> = { 4: 'draft-04', 6: 'draft-06', 7: 'draft-07', 2019: '2019-09', 2020: '2020-12' };
 
 /** The draft a `$schema` value names (null: none of these; 3: draft-03, which isn't supported). */

@@ -2030,7 +2030,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "8207f964042c",
+    "hash": "7cbc4507eca7",
     "title": "Validador JSON Schema: valida JSON en línea",
     "description": "Valida JSON con un JSON Schema: drafts 2020-12, 2019-09, 07, 06 y 04. Ve cada error con su línea, ruta y regla. No se sube nada.",
     "heading": "Validador JSON Schema",
@@ -2075,7 +2075,7 @@
       },
       {
         "question": "¿Se comprueban de forma exacta los números grandes y los decimales?",
-        "answer": "Sí. El documento y el esquema se leen sin convertir los números a coma flotante, así que 19.99 es múltiplo de 0.01, los enteros mayores que 2^53 conservan todos sus dígitos para minimum y maximum, y 1e308 se compara tal como está escrito. 1.0 cuenta como entero desde draft-06, como dice la especificación."
+        "answer": "Sí. El documento y el esquema se leen sin convertir los números a coma flotante, así que 19.99 es múltiplo de 0.01, los enteros mayores que 2^53 conservan todos sus dígitos para minimum y maximum, y los exponentes de cualquier tamaño, como en 1e400, se comparan tal como están escritos. 1.0 cuenta como entero desde draft-06, como dice la especificación. Solo hay un caso que no se calcula: multipleOf cuando los exponentes de los dos números difieren en una cantidad de más de 30 000 dígitos. Aparece entre los problemas del esquema y el documento muestra Comprobación incompleta."
       }
     ],
     "sections": [
@@ -2093,7 +2093,7 @@
         "heading": "Referencias, esquemas remotos y privacidad",
         "paragraphs": [
           "$ref resuelve JSON Pointers como #/$defs/address, anclas como #address y otros recursos incrustados en el mismo esquema por su $id, también con URI relativas. Un bucle que vuelve a aplicar el mismo esquema al mismo valor se informa en lugar de bloquear la página.",
-          "Las referencias remotas nunca se descargan: un $ref a una URL que no es un recurso de este esquema aparece como sin resolver, y esa parte del documento no se comprueba. Para usar ese esquema, añádelo en $defs con su $id; las referencias a esa URL se resuelven entonces de forma local. Tampoco se cargan los metaesquemas oficiales: el validador comprueba él mismo el valor de cada palabra clave que conoce."
+          "Las referencias remotas nunca se descargan: un $ref a una URL que no es un recurso de este esquema aparece como sin resolver, y esa parte del documento no se comprueba, así que un documento sin otros errores muestra Comprobación incompleta en lugar de Válido. Lo mismo ocurre con una palabra clave cuyo valor está roto. Para usar ese esquema, añádelo en $defs con su $id; las referencias a esa URL se resuelven entonces de forma local. Tampoco se cargan los metaesquemas oficiales: el validador comprueba él mismo el valor de cada palabra clave que conoce."
         ]
       },
       {

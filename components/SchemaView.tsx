@@ -9,17 +9,19 @@
  * of the first load's chunks).
  */
 import '@/app/schema.css';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { PRIVATE, PRIVATE_LABELS, reportError, track } from '@/lib/analytics';
 import type { Editor } from '@/lib/engine/editor';
 import { act, getEngine } from '@/lib/engine/instance';
 import { store, useUI } from '@/lib/engine/store';
+import { useLazyStrings } from '@/lib/i18n/lazy-strings';
 import { useT } from '@/lib/i18n/react';
 import type { T } from '@/lib/i18n/ui';
 import { formatDoc } from '@/lib/json/format';
 import { parse } from '@/lib/json/parser';
-import { SchemaClient, type Outcome } from '@/lib/schema/client';
-import { DRAFT_NAME, type Draft } from '@/lib/schema/drafts';
+import { SchemaClient } from '@/lib/schema/client';
+import { SchemaController, type SchemaState } from '@/lib/schema/controller';
+import { DRAFTS, DRAFT_NAME, type Draft } from '@/lib/schema/drafts';
 import type { InstanceError, Loc, Problem, ValidateResult } from '@/lib/schema/index';
 import type { Portal } from '@/lib/huge/kit';
 import { SAMPLE_DOC, SAMPLE_SCHEMA } from '@/lib/schema/sample';
@@ -27,12 +29,9 @@ import { Icon } from './icons';
 import { LEVELS, MCheck, MChoice, MItem, MSep, Menu } from './menu';
 import { errorText, problemText } from './schema-messages';
 
-const KEYS = { text: 'jf:schema', file: 'jf:schema-file', opts: 'jf:schema-opts' };
-const MAX_PERSIST = 2_500_000;
 const ROW_H = 46;
 const OVERSCAN = 6;
 const UNITS = { '2': '  ', '4': '    ', tab: '\t' } as const;
-const DRAFT_OPTIONS: Draft[] = [2020, 2019, 7, 6, 4];
 
 const read = (k: string) => {
   try {
@@ -54,289 +53,23 @@ const write = (k: string, v: string | null) => {
   }
 };
 
-// ── state shared by the schema editor and the panel ────────────────────────
-
-interface State {
-  result: ValidateResult | null;
-  /** The texts and options the result is for no longer match (it shows dimmed until the next one). */
-  stale: boolean;
-  /** Validating for longer than a moment. */
-  busy: boolean;
-  outcome: 'ok' | 'timeout' | 'failed';
-  /** The draft for a schema without $schema (null: automatic, 2020-12). */
-  draft: Draft | null;
-  formats: boolean;
-  file: string | null;
-  /** The schema editor holds no text. */
-  blank: boolean;
-}
-
-function savedOpts(): Pick<State, 'draft' | 'formats'> {
-  try {
-    const o = JSON.parse(read(KEYS.opts) ?? '{}') as { draft?: unknown; formats?: unknown };
-    return { draft: DRAFT_OPTIONS.includes(o.draft as Draft) ? (o.draft as Draft) : null, formats: o.formats === true };
-  } catch {
-    return { draft: null, formats: false };
-  }
-}
-
-class Controller {
-  state: State = { result: null, stale: false, busy: false, outcome: 'ok', ...savedOpts(), file: null, blank: true };
-  ed: Editor | null = null;
-  private ls = new Set<() => void>();
-  private client: SchemaClient | null = null;
-  private doc = '';
-  private timer = 0;
-  private busyTimer = 0;
-  private persistTimer = 0;
-  /** The panel is open: validation runs (closed, nothing does). */
-  private open = false;
-  /** The text came from a page's sample and hasn't been edited: not saved over the visitor's own schema. */
-  private sample = false;
-  private tracked = false;
-  private inSeq = 0;
-  /** What the shown result was asked for. */
-  private asked: { doc: string; schema: string } | null = null;
-
-  subscribe = (f: () => void) => {
-    this.ls.add(f);
-    return () => void this.ls.delete(f);
-  };
-  get = () => this.state;
-  private set(p: Partial<State>) {
-    this.state = { ...this.state, ...p };
-    for (const f of this.ls) f();
-  }
-
-  attach(el: HTMLElement) {
-    const engine = getEngine();
-    if (!engine || this.ed) return;
-    const Ed = Object.getPrototypeOf(engine.ed).constructor as typeof Editor;
-    const ed = new Ed(el, {
-      change: (kind) => {
-        if (kind !== 'set') this.sample = false;
-        this.set({ blank: !ed.length });
-        this.edited();
-      },
-      caret: () => undefined,
-      nav: () => undefined,
-      escape: () => document.querySelector<HTMLElement>('#view-schema .sch-list, #view-schema .sch-empty')?.focus(),
-      copyAll: () => void navigator.clipboard?.writeText(ed.text).catch(() => undefined),
-      renamed: (name) => {
-        this.set({ file: name });
-        write(KEYS.file, name);
-      },
-      name: () => this.state.file,
-    });
-    this.ed = ed;
-    const s = store.get().settings;
-    ed.indentUnit = UNITS[s.indent];
-    ed.setWrap(s.wrap);
-    // A schema handed over that this editor hasn't had (a page's sample: not when coming back from that page), else the saved one.
-    const incoming = store.get().schemaIn;
-    if (incoming && incoming.seq !== this.inSeq) this.take(incoming);
-    else if (!ed.text) {
-      this.sample = false;
-      const saved = read(KEYS.text);
-      if (saved) ed.init(saved);
-      this.set({ file: read(KEYS.file) });
-    }
-    this.set({ blank: !ed.length });
-  }
-
-  detach() {
-    clearTimeout(this.timer);
-    clearTimeout(this.busyTimer);
-    if (this.persistTimer) this.persistNow();
-    this.client?.destroy();
-    this.client = null;
-    this.ed?.destroy();
-    this.ed = null;
-  }
-
-  /** A schema handed over through the store: a page's sample, or "generate from the document" (the palette). */
-  take(inc: NonNullable<ReturnType<typeof store.get>['schemaIn']>) {
-    if (!this.ed || inc.seq === this.inSeq) return;
-    this.inSeq = inc.seq;
-    if (inc.generate) void this.generate();
-    else if (inc.text !== undefined) {
-      if (inc.sample) {
-        this.ed.init(inc.text);
-        this.sample = true;
-        this.set({ file: null, blank: !inc.text });
-        this.edited();
-      } else this.load(inc.text, null);
-    }
-  }
-
-  /** Replaces the schema (one undoable step). */
-  load(text: string, name: string | null) {
-    const ed = this.ed;
-    if (!ed) return;
-    const before = this.state.file;
-    this.set({ file: name });
-    write(KEYS.file, name);
-    ed.setValue(text, 0, false, [before, name]);
-  }
-
-  setDoc(text: string) {
-    if (text === this.doc) return;
-    this.doc = text;
-    this.schedule(text.length < 1_000_000 ? 40 : 150);
-  }
-
-  setOpen(on: boolean) {
-    this.open = on;
-    if (on) {
-      this.tracked = false;
-      this.schedule(0);
-    } else {
-      clearTimeout(this.timer);
-      getEngine()?.ed.setLineMarks(null);
-    }
-  }
-
-  setOpts(p: Partial<Pick<State, 'draft' | 'formats'>>) {
-    this.set(p);
-    write(KEYS.opts, JSON.stringify({ draft: this.state.draft, formats: this.state.formats }));
-    this.schedule(0);
-  }
-
-  private edited() {
-    const len = this.ed?.length ?? 0;
-    this.schedule(len < 100_000 ? 120 : len < 1_000_000 ? 250 : 500);
-    clearTimeout(this.persistTimer);
-    this.persistTimer = window.setTimeout(() => this.persistNow(), 400);
-  }
-
-  private persistNow() {
-    clearTimeout(this.persistTimer);
-    this.persistTimer = 0;
-    const ed = this.ed;
-    if (!ed || this.sample) return;
-    const text = ed.text;
-    write(KEYS.text, text && text.length <= MAX_PERSIST ? text : null);
-  }
-
-  private schedule(ms: number) {
-    if (this.state.result) this.set({ stale: true });
-    clearTimeout(this.timer);
-    if (!this.open) return;
-    this.timer = window.setTimeout(() => this.run(), ms);
-  }
-
-  run() {
-    const ed = this.ed;
-    if (!ed || !this.open) return;
-    const schema = ed.text;
-    const doc = this.doc;
-    const client = (this.client ??= new SchemaClient());
-    clearTimeout(this.busyTimer);
-    this.busyTimer = window.setTimeout(() => this.set({ busy: true }), 200);
-    const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000 };
-    client.validate(req, (o: Outcome) => {
-      clearTimeout(this.busyTimer);
-      if (o === 'timeout' || o === 'failed') {
-        if (o === 'failed') reportError(new Error('Schema validation failed'));
-        this.asked = null;
-        this.set({ busy: false, stale: false, outcome: o, result: null });
-        getEngine()?.ed.setLineMarks(null);
-        ed.setDiagnostics([]);
-        return;
-      }
-      this.asked = { doc, schema };
-      this.set({ result: o, busy: false, stale: false, outcome: 'ok' });
-      this.decorate(o, doc, schema);
-      if (!this.tracked && o.state === 'ok') {
-        this.tracked = true;
-        // (Whether the document was valid, and its errors as a number rounded to two digits.)
-        track('feature_used', { feature: 'schema_validate', on: o.valid, level: o.total });
-      }
-    });
-  }
-
-  /** Squiggles for the schema's problems; the document's lines with errors tinted. */
-  private decorate(r: ValidateResult, doc: string, schema: string) {
-    const ed = this.ed;
-    if (ed && ed.text === schema) {
-      const diags: { p: number; cls: 'me' | 'mw' }[] = [];
-      if (r.schemaError) diags.push({ p: r.schemaError.loc.p, cls: 'me' });
-      for (const p of r.problems.slice(0, 300)) if (p.loc) diags.push({ p: p.loc.p, cls: p.warn ? 'mw' : 'me' });
-      ed.setDiagnostics(diags);
-    }
-    const main = getEngine()?.ed;
-    if (!main) return;
-    if (!r.errors.length || !docMatches(doc)) return main.setLineMarks(null);
-    const marks = new Uint8Array(lineCount(doc));
-    for (const e of r.errors) if (e.loc) marks[e.loc.line - 1] = 2;
-    main.setLineMarks(marks);
-  }
-
-  /** Whether the result's locations are in the texts the editors hold now. */
-  inDoc() {
-    return !!this.asked && docMatches(this.asked.doc);
-  }
-
-  inSchema() {
-    return !!this.asked && this.ed?.text === this.asked.schema;
-  }
-
-  async generate() {
-    track('feature_used', { feature: 'schema_generate' });
-    const doc = store.get().docText;
-    const r = doc.trim() ? parse(doc) : null;
-    if (!doc.trim()) return toast('Add a JSON document first', 'info');
-    if (!r?.root || r.error) return toast("Can't generate a schema: fix the document's JSON first", 'info');
-    try {
-      const { convert } = await import('@/lib/convert');
-      this.load(convert(r.root, 'json-schema', { rootName: 'Root' }) + '\n', null);
-      toast('Generated a schema from the document. Review it, then edit the rules.', 'ok');
-    } catch (e) {
-      reportError(e);
-    }
-  }
-
-  example() {
-    const e = getEngine();
-    if (!e || !this.ed) return;
-    e.load(SAMPLE_DOC, 'user.json');
-    this.load(SAMPLE_SCHEMA, 'user.schema.json');
-  }
-
-  formatSchema() {
-    const ed = this.ed;
-    if (!ed) return;
-    const text = ed.text;
-    const r = parse(text);
-    if (!r.root || r.error) return toast("Can't format it yet. Fix the error first.", 'err');
-    const out = formatDoc(text, r, UNITS[store.get().settings.indent]);
-    if (out !== text) ed.setValue(out);
-  }
-
-  setWrap(on: boolean) {
-    this.ed?.setWrap(on);
-  }
-
-  setIndent(unit: string) {
-    if (this.ed) this.ed.indentUnit = unit;
-  }
-}
-
-const ctl = new Controller();
+/** The state shared by the schema editor and the panel (lib/schema/controller.ts), on this page. */
+const ctl = new SchemaController({
+  main: () => getEngine()?.ed ?? null,
+  docIsJson: () => store.get().input.format === 'json',
+  read,
+  write,
+  validator: () => new SchemaClient(),
+  // (Whether the document was valid, the check complete, and its errors as a number rounded to two digits.)
+  track: (feature, on, level) => track('feature_used', { feature, on, level }),
+  report: (e) => reportError(e),
+});
 const toast = (msg: string, kind: 'ok' | 'err' | 'info') => act((e) => e.toast(msg, kind));
 const useCtl = () => useSyncExternalStore(ctl.subscribe, ctl.get, ctl.get);
-
-function lineCount(text: string) {
-  let n = 1;
-  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) n++;
-  return n;
-}
-
-/** The main editor holds this text (positions in the document are its positions: not so for a converted YAML input). */
-function docMatches(doc: string) {
-  const ed = getEngine()?.ed;
-  return !!ed && store.get().input.format === 'json' && ed.length === doc.length && ed.text === doc;
-}
+/** The schema editor (the app's editor class: ctl.ed is it). */
+const schemaEd = () => ctl.ed as Editor | null;
+/** This tool's results host (#view-schema), handed over by JsonTool: what keys move the focus to. */
+let resultsHost: HTMLElement | null = null;
 
 function jumpDoc(loc: Loc | null, focus: boolean) {
   const ed = getEngine()?.ed;
@@ -347,11 +80,43 @@ function jumpDoc(loc: Loc | null, focus: boolean) {
 }
 
 function jumpSchema(loc: Loc | null, focus: boolean) {
-  const ed = ctl.ed;
+  const ed = schemaEd();
   if (!loc || !ed || !ctl.inSchema()) return false;
   if (focus) ed.select(loc.p, loc.e, true);
   else ed.point(loc.p);
   return true;
+}
+
+async function generate() {
+  track('feature_used', { feature: 'schema_generate' });
+  const doc = store.get().docText;
+  if (!doc.trim()) return toast('Add a JSON document first', 'info');
+  const r = parse(doc);
+  if (!r.root || r.error) return toast("Can't generate a schema: fix the document's JSON first", 'info');
+  try {
+    const { convert } = await import('@/lib/convert');
+    ctl.load(convert(r.root, 'json-schema', { rootName: 'Root' }) + '\n', null);
+    toast('Generated a schema from the document. Review it, then edit the rules.', 'ok');
+  } catch (e) {
+    reportError(e);
+  }
+}
+
+function example() {
+  const e = getEngine();
+  if (!e || !ctl.ed) return;
+  e.load(SAMPLE_DOC, 'user.json');
+  ctl.load(SAMPLE_SCHEMA, 'user.schema.json');
+}
+
+function formatSchema() {
+  const ed = ctl.ed;
+  if (!ed) return;
+  const text = ed.text;
+  const r = parse(text);
+  if (!r.root || r.error) return toast("Can't format it yet. Fix the error first.", 'err');
+  const out = formatDoc(text, r, UNITS[store.get().settings.indent]);
+  if (out !== text) ed.setValue(out);
 }
 
 // ── the schema editor's column ─────────────────────────────────────────────
@@ -377,7 +142,7 @@ function DraftPick() {
         }}
       >
         <option value="auto">{t('Auto ({draft})', { draft: '2020-12' })}</option>
-        {DRAFT_OPTIONS.map((d) => (
+        {DRAFTS.map((d) => (
           <option key={d} value={d}>
             {DRAFT_NAME[d]}
           </option>
@@ -394,7 +159,7 @@ async function pasteSchema() {
     if (!text) return toast('Your clipboard is empty', 'info');
     ctl.load(text, null);
   } catch {
-    ctl.ed?.focus();
+    schemaEd()?.focus();
     toast(`Press ${store.get().mac ? '⌘' : 'Ctrl+'}V to paste`, 'info');
   }
 }
@@ -443,25 +208,47 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
   const wrap = useUI((s) => s.settings.wrap);
   const indent = useUI((s) => s.settings.indent);
   const incoming = useUI((s) => s.schemaIn);
+  // (The editor is made once this tool's engine runs: coming back to a page Next.js kept, this column's effects run
+  // before JsonTool's, which makes the engine.)
+  const ready = useUI((s) => s.ready);
 
   useEffect(() => {
-    ctl.attach(edRef.current!);
+    const engine = ready ? getEngine() : null;
+    const el = edRef.current;
+    if (!engine || !el) return;
+    const Ed = Object.getPrototypeOf(engine.ed).constructor as typeof Editor;
+    const ed = new Ed(el, {
+      change: (kind) => ctl.edited(kind),
+      caret: () => undefined,
+      nav: () => undefined,
+      escape: () => resultsHost?.querySelector<HTMLElement>('.sch-list, .sch-empty')?.focus(),
+      copyAll: () => void navigator.clipboard?.writeText(ed.text).catch(() => undefined),
+      renamed: (name) => ctl.renamed(name),
+      name: () => ctl.state.file,
+    });
+    const s = store.get().settings;
+    ed.indentUnit = UNITS[s.indent];
+    ed.setWrap(s.wrap);
+    ctl.attach(ed, store.get().schemaIn);
     return () => ctl.detach();
-  }, []);
-  useEffect(() => ctl.setWrap(wrap), [wrap]);
-  useEffect(() => ctl.setIndent(UNITS[indent]), [indent]);
+  }, [ready]);
+  useEffect(() => schemaEd()?.setWrap(wrap), [wrap]);
   useEffect(() => {
-    if (incoming) ctl.take(incoming);
+    const ed = schemaEd();
+    if (ed) ed.indentUnit = UNITS[indent];
+  }, [indent]);
+  useEffect(() => {
+    if (incoming && ctl.take(incoming)) void generate();
   }, [incoming]);
   useEffect(() => {
-    if (!hidden) requestAnimationFrame(() => ctl.ed?.render(true));
+    if (!hidden) requestAnimationFrame(() => schemaEd()?.render(true));
   }, [hidden]);
 
   const onKey = (e: ReactKeyboardEvent<HTMLElement>) => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
     const k = e.key.toLowerCase();
-    if (e.key === 'Enter') ctl.formatSchema();
+    if (e.key === 'Enter') formatSchema();
     else if (k === 's') downloadSchema();
     else if (k === 'o') pickSchemaFile();
     else return;
@@ -501,14 +288,14 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
             <>
               <MItem label="Paste" onClick={() => void pasteSchema()} close={close} />
               <MItem label="Open file" keys="mod+O" onClick={pickSchemaFile} close={close} />
-              <MItem label="Generate from the document" onClick={() => void ctl.generate()} close={close} />
-              <MItem label="Try an example" onClick={() => ctl.example()} close={close} />
-              <MItem label="Format" keys="mod+Enter" onClick={() => ctl.formatSchema()} close={close} />
+              <MItem label="Generate from the document" onClick={() => void generate()} close={close} />
+              <MItem label="Try an example" onClick={example} close={close} />
+              <MItem label="Format" keys="mod+Enter" onClick={formatSchema} close={close} />
               <MSep />
               <MCheck label="Check formats" checked={formats} onClick={() => toggleFormats()} close={close} />
-              <MItem label="Collapse all" onClick={() => ctl.ed?.foldLevel(1)} close={close} />
-              <MItem label="Expand all" onClick={() => ctl.ed?.unfoldAll()} close={close} />
-              <MChoice label="Show levels" options={LEVELS} onPick={(l) => ctl.ed?.foldLevel(l)} close={close} />
+              <MItem label="Collapse all" onClick={() => schemaEd()?.foldLevel(1)} close={close} />
+              <MItem label="Expand all" onClick={() => schemaEd()?.unfoldAll()} close={close} />
+              <MChoice label="Show levels" options={LEVELS} onPick={(l) => schemaEd()?.foldLevel(l)} close={close} />
               <MSep />
               <MItem label="Download schema" keys="mod+S" onClick={downloadSchema} close={close} />
               <MItem label="Clear" onClick={() => ctl.load('', null)} close={close} />
@@ -599,6 +386,7 @@ const RowView = memo(function RowView({ row, i, sel }: { row: Row; i: number; se
           <span className={`sch-msg ${PRIVATE}`}>{problemText(p.code, p.params, t)}</span>
           <span className={`sch-at ${PRIVATE}`}>
             {t(p.warn ? 'Schema warning' : 'Schema error')}
+            {p.reached && `${t(' · ')}${t('not applied to the document')}`}
             {p.loc && `${t(' · ')}${t('Ln {line}, Col {col}', { line: p.loc.line, col: p.loc.col })}`}
           </span>
         </span>
@@ -642,17 +430,20 @@ function Empty({ icon, title, text, children, tone }: { icon: 'braces' | 'alert'
   );
 }
 
-function Status({ r, busy, outcome, rows }: { r: ValidateResult | null; busy: boolean; outcome: State['outcome']; rows: number }) {
+function Status({ r, busy, outcome, rows }: { r: ValidateResult | null; busy: boolean; outcome: SchemaState['outcome']; rows: number }) {
   const t = useT();
   if (outcome === 'timeout') return <span className="sch-state err">{t('Stopped: took too long')}</span>;
   if (!r) return <span className="sch-state muted">{busy ? <i className="spin" /> : null}{t(busy ? 'Validating…' : 'Validation')}</span>;
   const problems = r.problems.filter((p) => !p.warn).length;
   if (r.state !== 'ok') return <span className="sch-state muted">{busy && <i className="spin" />}{t('Validation')}</span>;
+  // Valid only for a complete check; no errors past a part of the schema that couldn't be applied: not fully checked.
+  const open = !r.valid && !r.total;
   return (
-    <span className={`sch-state ${r.valid ? 'ok' : 'err'} ${PRIVATE}`}>
-      {busy ? <i className="spin" /> : <Icon name={r.valid ? 'check' : 'x'} size={15} />}
-      {r.valid ? t('Valid') : t.n(r.total, '{n} error', '{n} errors')}
-      {problems > 0 && <span className="sch-sub warn">{t(' · ')}{t.n(problems, '{n} schema problem', '{n} schema problems')}</span>}
+    <span className={`sch-state ${r.valid ? 'ok' : open ? 'warn' : 'err'} ${PRIVATE}`}>
+      {busy ? <i className="spin" /> : <Icon name={r.valid ? 'check' : open ? 'alert' : 'x'} size={15} />}
+      {r.valid ? t('Valid') : open ? t('Not fully checked') : t.n(r.total, '{n} error', '{n} errors')}
+      {!open && !r.complete && <span className="sch-sub warn">{t(' · ')}{t('Not fully checked')}</span>}
+      {(open || r.complete) && problems > 0 && <span className="sch-sub warn">{t(' · ')}{t.n(problems, '{n} schema problem', '{n} schema problems')}</span>}
       {!r.valid && r.errors.length < r.total && rows > 0 && <span className="sch-sub">{t(' · ')}{t('first {count}', { count: t.num(r.errors.length) })}</span>}
     </span>
   );
@@ -744,7 +535,7 @@ const Panel = memo(function Panel() {
       return;
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      document.querySelector<HTMLElement>('.pane-view [role="tab"][aria-selected="true"]')?.focus();
+      resultsHost?.closest('.pane-view')?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
       return;
     }
     if (to < 0) return;
@@ -755,11 +546,11 @@ const Panel = memo(function Panel() {
   let empty: ReactNode = null;
   const actions = (
     <span className="sch-acts">
-      <button type="button" className="btn sm" onClick={() => void ctl.generate()}>
+      <button type="button" className="btn sm" onClick={() => void generate()}>
         <Icon name="wand" size={14} />
         {t('Generate from the document')}
       </button>
-      <button type="button" className="btn sm" onClick={() => ctl.example()}>
+      <button type="button" className="btn sm" onClick={example}>
         {t('Try an example')}
       </button>
     </span>
@@ -815,6 +606,7 @@ const Panel = memo(function Panel() {
     if (r.records) notes.push(t.n(r.records, 'JSON Lines: {n} record checked one by one', 'JSON Lines: {n} records checked one by one'));
     if (r.loose) notes.push(t('The document is not strict JSON: it was checked as repaired'));
     if (r.valid && r.problems.length) notes.push(t('The document matches the schema ({draft}).', { draft: DRAFT_NAME[r.draft] }));
+    if (!r.complete) notes.push(t("Part of the schema couldn't be applied, so the document isn't confirmed valid: see the schema problems marked not applied to the document."));
   }
 
   const showList = !!r && !empty && rows.length > 0;
@@ -890,7 +682,7 @@ const Panel = memo(function Panel() {
         {empty}
       </div>
       <div className={`sr-only ${PRIVATE}`} aria-live="polite">
-        {live || (r?.state === 'ok' ? (r.valid ? t('Valid') : t.n(r.total, '{n} error', '{n} errors')) : '')}
+        {live || (r?.state === 'ok' ? (r.valid ? t('Valid') : r.total ? t.n(r.total, '{n} error', '{n} errors') : t('Not fully checked')) : '')}
       </div>
     </div>
   );
@@ -900,13 +692,22 @@ const Panel = memo(function Panel() {
  * The view: the schema editor's column where JsonTool puts it, and while open, the results in the viewer's
  * #view-schema (through `portal`, react-dom's createPortal, handed over by JsonTool).
  */
-export default function SchemaView({ hidden, portal }: { hidden: boolean; portal: Portal }) {
-  // (Client-only, and loaded after the viewer is on the page: its host is there.)
-  const [host] = useState(() => document.getElementById('view-schema'));
+export default function SchemaView({ hidden, portal, host }: { hidden: boolean; portal: Portal; host: RefObject<HTMLDivElement | null> }) {
+  // (This tool's own host, by ref: a page Next.js keeps hidden has one too. Loaded after the viewer is on the page.)
+  const el = host.current;
+  // (A localized page's strings for this view come with it, not with the page.)
+  const strings = useLazyStrings('schema');
+  useEffect(() => {
+    resultsHost = el;
+    return () => {
+      if (resultsHost === el) resultsHost = null;
+    };
+  }, [el]);
+  if (!strings) return null;
   return (
     <>
       <SchemaPane hidden={hidden} />
-      {!hidden && host && portal(<Panel />, host)}
+      {!hidden && el && portal(<Panel />, el)}
     </>
   );
 }

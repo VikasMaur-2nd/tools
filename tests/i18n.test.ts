@@ -8,7 +8,7 @@ import { LOCALES } from '../lib/i18n/locales';
 import { pageHash, textHash } from '../lib/i18n/page-text';
 import { EN, fill } from '../lib/i18n/ui';
 import { translator } from '../lib/i18n/translate';
-import { CLIENT as CLIENT_KEYS, hugeDict, isHugeKey, pageDict } from '../lib/i18n/client-dict';
+import { CLIENT as CLIENT_KEYS, LAZY_FEATURES, hugeDict, isHugeKey, lazyDict, lazyFeature, pageDict } from '../lib/i18n/client-dict';
 import { parse } from '../lib/json/parser';
 
 /*
@@ -120,6 +120,55 @@ test('huge mode strings: out of every page dictionary, in a dictionary of their 
   }
   // English pages have no dictionary to add.
   assert.equal(EN.huge, undefined);
+});
+
+test('lazy features\' strings: out of every page dictionary, in a dictionary of their own per feature that the translator loads', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string | URL) => new Response(readFileSync(fileURLToPath(String(u)).replace(`${sep}.test-build${sep}`, sep)))) as typeof fetch;
+  try {
+    const loaders = read('lib/i18n/translate.ts');
+    // The tab, the palette's commands and the Convert targets stay with the page.
+    for (const k of ['app.schema', 'app.schema.close', 'cmd.schema', 'target.flatten', 'target.unflatten']) assert.equal(lazyFeature(k), null, k);
+    assert.equal(lazyFeature('app.schema.valid'), 'schema');
+    assert.equal(lazyFeature('eng.flatEscaped.one'), 'flatten');
+    for (const { id, lang } of LOCALES) {
+      const tr = json(`lib/i18n/${id}/ui.json`);
+      const page = pageDict(en, tr);
+      for (const f of LAZY_FEATURES) {
+        const texts = new Set(keys.filter((k) => CLIENT_KEYS.test(k) && lazyFeature(k) === f).map((k) => en[k]));
+        assert.ok(texts.size > 10, `${f}: ${texts.size} strings`);
+        assert.deepEqual(Object.keys(page).filter((s) => texts.has(s)), [], `${id}: the page's dictionary carries ${f}'s strings`);
+        const dict = lazyDict(en, tr, f);
+        assert.deepEqual(json<typeof dict>(`lib/i18n/lazy/${f}-strings.${id}.json`), dict, `lib/i18n/lazy/${f}-strings.${id}.json is out of date: run pnpm i18n:huge`);
+        assert.ok(loaders.includes(`${id}: new URL('./lazy/${f}-strings.${id}.json', ${'import.meta'}.url)`), `translate.ts loads lib/i18n/lazy/${f}-strings.${id}.json`);
+      }
+      if (!Object.keys(tr).length) continue;
+      const t = translator(page, lang);
+      assert.equal(t('Valid'), 'Valid');
+      assert.equal(t.has!('schema'), false);
+      await t.lazy!('schema');
+      assert.equal(t.has!('schema'), true);
+      assert.equal(t('Valid'), lazyDict(en, tr, 'schema').Valid, id);
+      await t.lazy!('flatten');
+      assert.equal(t('Escape keys'), lazyDict(en, tr, 'flatten')['Escape keys'], id);
+      assert.equal(t('Tree'), tr['app.tree']);
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('lazy features\' strings are not translated by the rest of the app', () => {
+  const texts = new Map(keys.filter((k) => CLIENT_KEYS.test(k) && lazyFeature(k)).map((k) => [en[k], lazyFeature(k)!]));
+  const own: Record<string, RegExp> = { schema: /^components\/(SchemaView|schema-messages)\./, flatten: /^components\/FlatItems\./ };
+  const used: string[] = [];
+  for (const f of clientFiles) {
+    for (const m of read(f).matchAll(/(?:\b(?:t|tr|rt)|useT\(\))(?:\.n)?\(\s*(?:[^,()'"]+,\s*)?(['"])((?:\\.|(?!\1).)+)\1/g)) {
+      const feature = texts.get(unescape(m[2]));
+      if (feature && !own[feature].test(f)) used.push(`${f}: ${unescape(m[2])}`);
+    }
+  }
+  assert.deepEqual(used, [], 'shown outside the feature: leave these keys out of lazyFeature (lib/i18n/client-dict.ts)');
 });
 
 test('huge-only strings are not translated by the rest of the app', () => {

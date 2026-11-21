@@ -107,3 +107,56 @@ test('home: Alt+7 opens Schema, Generate from the document, Close goes back', as
   t.check(await until(page, () => document.querySelector('.pane-sch')?.hidden && !document.getElementById('view-format').hidden, null), 'Close schema goes back to the view before');
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
+
+test('a schema that can\'t be applied is not fully checked, never Valid', async (t) => {
+  const { page } = t;
+  await t.open('/tools/json-schema-validator');
+  t.check((await until(page, (s) => document.querySelectorAll(s).length === 6, ROWS, { timeout: 30_000 })) === true, 'the sample');
+  await page.evaluate(() => {
+    const ta = document.getElementById('schema-input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, '{"$ref": "https://example.test/missing"}');
+  });
+  t.check(!!(await waitState(page, /^Not fully checked/)), 'an unresolved $ref: not fully checked', await state(page));
+  const row = await page.evaluate((s) => document.querySelector(s)?.textContent ?? '', ROWS);
+  t.check(/Can't resolve \$ref https:\/\/example\.test\/missing/.test(row) && /not applied to the document/.test(row), 'the problem says it wasn\'t applied', row);
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('back on the page after another page: the schema editor still validates', async (t) => {
+  const { page } = t;
+  await t.open('/tools/json-schema-validator');
+  t.check((await until(page, (s) => document.querySelectorAll(s).length === 6, ROWS, { timeout: 30_000 })) === true, 'the sample');
+  const engines = await t.app.engineCount(page);
+  await t.app.navigate(page, '/privacy');
+  await page.evaluate(() => history.back());
+  await page.waitForFunction(() => location.pathname === '/tools/json-schema-validator', null, { timeout: 60_000, polling: 50 });
+  await t.app.waitEngine(page, { after: engines, timeout: 60_000 });
+  // (The page left is kept hidden in the DOM: only the shown tool's rows count.)
+  t.check((await until(page, (s) => [...document.querySelectorAll(s)].filter((el) => el.offsetParent).length === 6, ROWS, { timeout: 30_000 })) === true, 'six errors again');
+  // Edits in either editor are validated again.
+  await page.evaluate((text) => {
+    const ta = [...document.querySelectorAll('#schema-input')].find((el) => el.offsetParent);
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, text);
+  }, '{"type": "object"}');
+  t.check(!!(await until(page, () => [...document.querySelectorAll('#view-schema .sch-state')].some((el) => el.offsetParent && /^Valid/.test(el.textContent)), null, { timeout: 15_000 })), 'a schema edit after Back is validated');
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('a schema file opened over the page\'s sample is saved with its name', async (t) => {
+  const { page } = t;
+  await t.open('/tools/json-schema-validator');
+  t.check((await until(page, (s) => document.querySelectorAll(s).length === 6, ROWS, { timeout: 30_000 })) === true, 'the sample');
+  const text = '{\n  "title": "Orders",\n  "type": "array"\n}\n';
+  const chooser = page.waitForEvent('filechooser');
+  await page.locator('.pane-sch [aria-label="Schema options"]').click();
+  await page.getByRole('menuitem', { name: /^Open file/ }).click();
+  await (await chooser).setFiles({ name: 'orders.schema.json', mimeType: 'application/json', buffer: Buffer.from(text) });
+  t.check(!!(await until(page, (x) => document.getElementById('schema-input')?.value === x, text)), 'the file is in the schema editor');
+  const saved = await until(page, () => localStorage.getItem('jf:schema') && [localStorage.getItem('jf:schema'), localStorage.getItem('jf:schema-file')], null, { timeout: 5000 });
+  t.check(JSON.stringify(saved) === JSON.stringify([text, 'orders.schema.json']), 'saved, text and name together, without typing', saved);
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});

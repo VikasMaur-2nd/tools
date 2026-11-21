@@ -70,7 +70,9 @@ export function runSuite(dir: string, drafts = SUITE_DRAFTS): CaseResult[] {
           const r: CaseResult = { draft, file, kind, case: get(tc, 'description')!.v as string, test: get(t, 'description')!.v as string, expected: expected.t === BOOL && expected.v === true, got: 'error' };
           if (v) {
             try {
-              r.got = v.validate(get(t, 'data')!).valid;
+              // (Valid means complete as well: a part of the schema left unapplied is no pass.)
+              const res = v.validate(get(t, 'data')!);
+              r.got = res.valid && res.complete;
             } catch (e) {
               r.error = String(e);
             }
