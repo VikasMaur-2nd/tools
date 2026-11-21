@@ -120,7 +120,7 @@ function loadSettings(): Settings {
     out.splitCmp = Math.min(0.85, Math.max(0.4, Number(out.splitCmp) || 0.66));
     if (!['2', '4', 'tab'].includes(out.indent)) out.indent = '2';
     if (!['system', 'light', 'dark'].includes(out.theme)) out.theme = 'system';
-    if (!['format', 'tree', 'table', 'graph', 'convert', 'compare'].includes(out.view)) out.view = 'format';
+    if (!['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'].includes(out.view)) out.view = 'format';
     if (!['format', 'tree', 'table', 'graph', 'convert'].includes(out.prevView)) out.prevView = 'format';
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
@@ -1269,7 +1269,7 @@ export class Engine {
     this.loaded = false;
     if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
-    else if (v === 'compare') store.set({ docText: this.compareLeft() });
+    else if (v === 'compare' || v === 'schema') store.set({ docText: this.compareLeft() });
   }
 
   /** What Compare diffs as the original: the input, or the JSON it converts to when it is in another format. */
@@ -2984,7 +2984,8 @@ export class Engine {
   private viewSeq = 0;
 
   setView(view: View, ready?: () => void) {
-    if (this.huge?.view(view)) return;
+    // (Huge mode has no Schema view: a file too big for the editor isn't validated.)
+    if (view === 'schema' ? this.huge : this.huge?.view(view)) return;
     this.flushLoad();
     store.set({ menu: null });
     const viewSeq = ++this.viewSeq;
@@ -2995,7 +2996,7 @@ export class Engine {
       if (!this.graph) void this.loadGraph().then(() => this.showGraph(viewSeq));
     }
     const packed = this.packed?.id === this.loadSeq ? this.packed : this.goodPacked;
-    if (view !== 'format' && view !== 'compare' && packed) {
+    if (view !== 'format' && view !== 'compare' && view !== 'schema' && packed) {
       const { tree, text, metrics } = packed;
       const seq = this.loadSeq;
       // (The Tree and the Table read the root's children at once: they are made in the steps too.)
@@ -3023,8 +3024,10 @@ export class Engine {
     if (prev === 'graph' && view !== 'graph') this.graph?.deactivate();
     if (prev !== view && !this.presetting) track('view_opened', { view, ...(view === 'convert' && { target: targetInfo(this.settings.target).id }) });
     if (this.query && prev !== view) this.findIn(prev, '');
-    this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
-    if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
+    // (Compare and Schema have a second editor: closing one goes back to the view open before them.)
+    const side = (v: View) => v === 'compare' || v === 'schema';
+    this.setSettings(side(view) && !side(prev) ? { view, prevView: prev as Settings['prevView'] } : { view });
+    if (this.query) requestAnimationFrame(() => this.dead || (side(this.settings.view) ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
       // (A selected primitive root has no container: the table says what it can show, as for an unselected one.)
@@ -3037,6 +3040,7 @@ export class Engine {
     }
     if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
+    if (view === 'schema') store.set({ docText: this.compareLeft() });
     if (view === 'compare') {
       store.set({ docText: this.compareLeft(), cmpText: this.ed2.text });
       requestAnimationFrame(() => {
@@ -4022,7 +4026,7 @@ export class Engine {
   /** Opens the find bar for the open view, prefilled with the editor selection. */
   focusSearch() {
     if (this.huge?.find()) return;
-    if (this.settings.view === 'compare') this.setView('format');
+    if (this.settings.view === 'compare' || this.settings.view === 'schema') this.setView('format');
     const picked = this.ed.hasFocus() ? this.ed.selectedText() : '';
     if (picked && picked.length < 100 && !picked.includes('\n')) this.find(picked, true);
     else store.set({ find: { ...store.get().find, open: true } });
@@ -4082,6 +4086,7 @@ export class Engine {
     this.presetting = true;
     try {
       this.load(p.initialText ?? '', p.initialFileName ?? null, false, false, undefined, p.input ?? formatOfName(p.initialFileName));
+      if (p.schema) store.set({ schemaIn: { seq: Date.now(), text: p.schema, sample: true } });
       if (s.view === 'convert') {
         this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface', flat: s.flat });
       } else if (s.view) {
@@ -4232,6 +4237,8 @@ export class Engine {
       this.menuKeyAt = e.timeStamp;
       run = () => this.openMenu(area, t);
     } else if (mod && !e.altKey && (k === 'k' || (e.shiftKey && k === 'p'))) run = () => this.openPalette();
+    // (The schema editor has its own Ctrl/⌘ keys: components/SchemaView.tsx.)
+    else if (mod && t.closest?.('.pane-sch')) return;
     else if (mod && !e.altKey && e.key === 'Enter' && this.ed2.hasFocus()) run = () => this.formatCompare();
     else if (mod && !e.altKey && e.key === 'Enter') run = e.shiftKey ? () => this.minify() : () => this.useOutput();
     else if (e.altKey && e.shiftKey && !mod && e.code === 'KeyF') run = () => this.format();
@@ -4241,8 +4248,8 @@ export class Engine {
     // Alt+Z like VS Code (on macOS, Option+Z types Ω: not while typing).
     else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ' && !(s.mac && typing)) run = () => this.toggleWrap();
     // On macOS, Option+digit types characters (#, €…): never steal it while typing.
-    else if (e.altKey && !mod && /^Digit[1-6]$/.test(e.code) && !(s.mac && typing)) {
-      const views: View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
+    else if (e.altKey && !mod && /^Digit[1-7]$/.test(e.code) && !(s.mac && typing)) {
+      const views: View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'];
       run = () => this.setView(views[Number(e.code.slice(5)) - 1]);
     }
     else if (!typing && !mod && !e.altKey) {

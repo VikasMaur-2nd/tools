@@ -2775,6 +2775,14 @@ dialog[open] {
   }
 }
 
+/* The Schema tab needs room next to the other six, the view's control and its icons: on a narrower viewer it
+   shows only while open (Alt+7, the palette and the dropdown open it too). */
+@container (max-width: 800px) {
+  .tabs [aria-controls='view-schema']:not([aria-selected='true']) {
+    display: none;
+  }
+}
+
 /* Very narrow: the main control takes its own row. */
 /* Translated labels need the compact layout earlier than the English controls. */
 @container (max-width: 900px) {

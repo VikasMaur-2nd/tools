@@ -4,7 +4,7 @@ import type { ParseResult } from '../json/parser';
 import type { Seg } from '../json/path';
 
 export type Theme = 'system' | 'light' | 'dark';
-export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
+export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare' | 'schema';
 export type IndentId = '2' | '4' | 'tab';
 /** What the input is read as: JSON, or a format whose JSON the views show (lib/engine/source.ts). */
 export type SourceFormat = 'json' | 'yaml' | 'csv' | 'xml' | 'toml';
@@ -17,8 +17,8 @@ export interface Settings {
   theme: Theme;
   indent: IndentId;
   view: View;
-  /** The view to return to when Compare closes. */
-  prevView: Exclude<View, 'compare'>;
+  /** The view to return to when Compare or Schema closes. */
+  prevView: Exclude<View, 'compare' | 'schema'>;
   /** Pretty-print minified JSON when it is pasted into an empty editor. */
   autoFormat: boolean;
   /** Soft-wrap long lines in the editors and the code views. */
@@ -62,6 +62,8 @@ export interface EnginePreset {
   initialFileName?: string;
   /** What the sample is read as (default: what its file name says, else JSON). */
   input?: SourceFormat;
+  /** The Schema view's sample schema. */
+  schema?: string;
 }
 
 /** A JWT input: its algorithm and NumericDate claims (seconds), shown live (they age). */
@@ -204,6 +206,8 @@ export interface UIState {
   toast: Toast | null;
   /** Huge-file mode's viewer, while a file too big for the editor is open (lib/huge): JsonTool renders it, handing it react-dom's createPortal. */
   huge: ((portal: Portal) => ReactNode) | null;
+  /** For the Schema view's editor (components/SchemaView.tsx): a page's sample schema, or a schema to generate from the document. */
+  schemaIn: { seq: number; text?: string; sample?: boolean; generate?: boolean } | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -255,6 +259,7 @@ const INITIAL: UIState = {
   dragging: false,
   toast: null,
   huge: null,
+  schemaIn: null,
 };
 
 type Listener = () => void;

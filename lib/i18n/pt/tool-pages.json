@@ -1,6 +1,6 @@
 {
   "json-validator": {
-    "hash": "f808b40ea2e6",
+    "hash": "45c73c24c63a",
     "title": "Validador e linter JSON online",
     "description": "Valide JSON online com erros de linha e coluna. Encontre vírgulas finais, revise os reparos e confira a sintaxe localmente sem enviar seus dados.",
     "heading": "Validador e linter JSON",
@@ -33,7 +33,7 @@
       },
       {
         "question": "Ele valida JSON contra um schema?",
-        "answer": "Não. Esta página verifica a sintaxe JSON. Ela não valida propriedades obrigatórias, tipos de campos nem outras regras de um JSON Schema."
+        "answer": "Não. Esta página verifica só a sintaxe JSON. Para verificar propriedades obrigatórias, tipos de campos e outras regras de um JSON Schema, use o validador de JSON Schema: ele lista cada erro com linha e caminho."
       },
       {
         "question": "Ele pode reparar JSON inválido?",
@@ -63,7 +63,7 @@
         "heading": "Corrigir uma vírgula final em um objeto JSON",
         "paragraphs": [
           "Um linter JSON verifica aspas, vírgulas e colchetes. Neste exemplo, remova a vírgula depois de 36 para obter o objeto válido abaixo. JSON exige aspas duplas em chaves e strings; comentários e vírgulas finais não fazem parte da sintaxe.",
-          "Validar a sintaxe não verifica campos obrigatórios nem regras da aplicação. Por exemplo, uma idade escrita como string pode ser JSON válido mesmo que sua API exija um número. Para conferir essas regras, é necessário um validador JSON Schema ou código da aplicação."
+          "Validar a sintaxe não verifica campos obrigatórios nem regras da aplicação. Por exemplo, uma idade escrita como string pode ser JSON válido mesmo que sua API exija um número. Para conferir essas regras, é preciso um JSON Schema: o validador de JSON Schema verifica um documento com um schema e lista cada erro com linha e caminho."
         ]
       }
     ]
@@ -235,7 +235,7 @@
     ]
   },
   "json-schema-generator": {
-    "hash": "40303de8e661",
+    "hash": "56f0765eb853",
     "title": "Gerador de JSON Schema a partir de um exemplo",
     "description": "Gere JSON Schema a partir de um exemplo JSON. O Tool Kumar infere propriedades, arrays e tipos primitivos no navegador, sem enviar seus dados.",
     "heading": "Gerador de JSON Schema",
@@ -258,7 +258,7 @@
       "Uma propriedade entra em required quando todos os objetos de amostra naquela posição a contêm. Por isso, uma única amostra completa torna obrigatórias todas as propriedades observadas; em um array de objetos, uma chave ausente em alguns objetos se torna opcional.",
       "Valores null em alguns objetos acrescentam null ao tipo da propriedade, em vez de torná-la opcional.",
       "A saída é um ponto de partida. Revise required, adicione formatos, intervalos e padrões e remova tudo o que o contrato da sua API não garante.",
-      "Esta página gera um schema; ela não valida um documento com base em um schema. Use a página do validador para verificar a sintaxe JSON antes de gerar o schema."
+      "Para verificar documentos com o schema gerado, abra o validador de JSON Schema. A ação Gerar a partir do documento dele cria o mesmo schema, pronto para editar."
     ],
     "faqs": [
       {
@@ -272,6 +272,10 @@
       {
         "question": "Ele pode inferir a estrutura dos itens de um array?",
         "answer": "Sim. Arrays de objetos geram um schema items com base na estrutura de objeto observada."
+      },
+      {
+        "question": "Posso validar JSON com o schema gerado?",
+        "answer": "Sim. Abra o validador de JSON Schema e cole o schema, ou escolha Gerar a partir do documento lá, e depois ajuste as regras. Cada erro de um documento aparece com linha e caminho enquanto você digita."
       }
     ],
     "sections": [
@@ -2022,6 +2026,88 @@
         "heading": "Quando o unflatten encontra um conflito",
         "paragraphs": [
           "Alguns objetos planos pedem dois valores diferentes no mesmo lugar: \"a\": 1 e \"a.b\": 2 exigem que a seja ao mesmo tempo um número e um objeto. Em vez de manter um e descartar o outro, o Tool Kumar mostra um erro que cita as duas chaves e conta os demais conflitos. O mesmo acontece quando uma chave aparece duas vezes, ou quando a[0] e a.b fariam de a um array e um objeto ao mesmo tempo."
+        ]
+      }
+    ]
+  },
+  "json-schema-validator": {
+    "hash": "8207f964042c",
+    "title": "Validador de JSON Schema: valide JSON online",
+    "description": "Valide JSON com um JSON Schema: drafts 2020-12, 2019-09, 07, 06 e 04. Veja cada erro com linha, caminho e regra. Nada é enviado.",
+    "heading": "Validador de JSON Schema",
+    "query": "validador de JSON Schema",
+    "secondary": [
+      "validar JSON com schema",
+      "json schema validator"
+    ],
+    "intro": "Cole um documento JSON e o seu JSON Schema para verificar um com o outro enquanto você digita. Cada erro mostra onde está, como JSON Pointer com linha e coluna, qual regra falhou e por quê. Os drafts 2020-12, 2019-09, 07, 06 e 04 são compatíveis, e nada sai do seu navegador.",
+    "modeLabel": "Validação com JSON Schema",
+    "exampleLabel": "Este registro de usuário viola seis regras do schema 2020-12 abaixo. A saída é o que o validador informa: cada erro com seu JSON Pointer, linha e coluna, sua mensagem e a palavra-chave que falhou. 19.999 não é múltiplo de 0.01: os números são comparados de forma exata, sem arredondamento de ponto flutuante.",
+    "steps": [
+      "Cole o documento JSON no editor da esquerda ou abra um arquivo.",
+      "Cole o JSON Schema no editor do meio ou abra um arquivo de schema. Gerar a partir do documento, no menu ⋯ dele, infere um schema para começar.",
+      "Leia o resultado à direita: Válido, ou cada erro com sua localização. Clique em um erro ou pressione Enter para selecioná-lo no documento; o botão da palavra-chave seleciona a regra no schema.",
+      "Corrija o documento ou o schema. Os dois são verificados de novo enquanto você digita, e Ctrl+Z (⌘Z no Mac) desfaz alterações em qualquer um dos editores."
+    ],
+    "options": [
+      "O draft vem do $schema. Um schema sem ele usa o seletor de draft da barra do schema: 2020-12 por padrão, ou 2019-09, draft-07, draft-06 ou draft-04.",
+      "Verificar formatos transforma format em uma verificação de date-time, date, time, duration, email, idn-email, hostname, idn-hostname, ipv4, ipv6, uri, uri-reference, iri, iri-reference, uri-template, json-pointer, relative-json-pointer, regex e uuid. Desativado, format é uma anotação, como especificam o 2019-09 e o 2020-12.",
+      "Cada erro mostra seu JSON Pointer, linha e coluna, sua mensagem e o caminho da palavra-chave passando por qualquer $ref. Quando anyOf ou oneOf não atendem a nenhuma opção, os erros do ramo mais próximo aparecem abaixo. Os botões de palavra-chave acima da lista mostram um só tipo de erro.",
+      "Os problemas do schema aparecem separados dos erros do documento e sublinhados no schema: um $ref não resolvido, uma expressão regular inválida, uma palavra-chave com valor do tipo errado e avisos para palavras-chave desconhecidas, palavras-chave de outro draft ou o nullable do OpenAPI.",
+      "Comentários e vírgulas finais em qualquer um dos textos são tolerados e indicados. Um documento JSON Lines é validado registro a registro.",
+      "Os primeiros 1.000 erros são listados e a contagem inclui todos. A validação roda em um worker em segundo plano, então a digitação continua fluida com documentos de vários megabytes, e uma execução que demora demais, como uma expressão regular catastrófica, é interrompida."
+    ],
+    "faqs": [
+      {
+        "question": "O que mudou entre o draft-07 e o 2020-12?",
+        "answer": "O 2019-09 adicionou $defs, $anchor, dependentRequired, dependentSchemas, unevaluatedProperties, unevaluatedItems, minContains e maxContains, e permite $ref ao lado de outras palavras-chave. O 2020-12 trocou a forma de array de items por prefixItems, items com additionalItems por items, e $recursiveRef por $dynamicRef. O validador aplica as regras de cada draft aos schemas que o indicam no $schema."
+      },
+      {
+        "question": "Qual é a diferença entre additionalProperties e unevaluatedProperties?",
+        "answer": "additionalProperties só vê as properties e patternProperties ao lado dele, então com allOf ou $ref ele rejeita propriedades definidas por outro subschema. unevaluatedProperties, a partir do 2019-09, vê todas as propriedades avaliadas pelo schema e pelos subschemas válidos, inclusive por allOf, anyOf, oneOf, if, then, else e $ref. Use-o para fechar um schema montado a partir de partes."
+      },
+      {
+        "question": "Por que format não é verificado por padrão?",
+        "answer": "A partir do 2019-09, a especificação trata format como anotação, a menos que se peça ao validador para verificá-lo, e os drafts anteriores o deixavam opcional. Ative Verificar formatos para validar date-time, email, uri, uuid, ipv4, ipv6 e os outros formatos padrão. Formatos desconhecidos sempre passam, com um aviso enquanto a verificação está ativada."
+      },
+      {
+        "question": "Como permito valores null?",
+        "answer": "Adicione \"null\" ao type, como em \"type\": [\"string\", \"null\"], ou combine schemas com anyOf. O \"nullable\": true do OpenAPI 3.0 não é uma palavra-chave do JSON Schema, então o validador o ignora e mostra um aviso explicando isso."
+      },
+      {
+        "question": "Números grandes e decimais são verificados de forma exata?",
+        "answer": "Sim. O documento e o schema são lidos sem converter os números para ponto flutuante, então 19.99 é múltiplo de 0.01, inteiros maiores que 2^53 mantêm todos os dígitos para minimum e maximum, e 1e308 é comparado como está escrito. 1.0 conta como inteiro a partir do draft-06, como diz a especificação."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Drafts e palavras-chave compatíveis",
+        "paragraphs": [
+          "Os drafts 2020-12, 2019-09, draft-07, draft-06 e draft-04 são compatíveis, cada um com as próprias regras. Vale o draft indicado pelo $schema; um recurso de schema incorporado com o próprio $id pode indicar outro. O draft-04 lê id, exclusiveMaximum e exclusiveMinimum booleanos, e só considera inteiro um número sem parte fracionária nem expoente. Antes do 2019-09, $ref substitui as palavras-chave ao lado dele.",
+          "Núcleo: $schema, $id (id no draft-04), $ref, $defs e definitions, $anchor, $dynamicRef e $dynamicAnchor (2020-12), $recursiveRef e $recursiveAnchor (2019-09), e fragmentos com nome em $id antes do 2019-09.",
+          "Aplicadores: allOf, anyOf, oneOf, not, if, then, else, dependentSchemas e dependencies, prefixItems, items, additionalItems, contains, properties, patternProperties, additionalProperties, propertyNames, unevaluatedItems e unevaluatedProperties.",
+          "Asserções: type, enum, const, multipleOf, maximum, exclusiveMaximum, minimum, exclusiveMinimum, maxLength, minLength, pattern, maxItems, minItems, uniqueItems, maxContains, minContains, maxProperties, minProperties, required e dependentRequired. O comprimento de uma string conta caracteres (code points), e pattern é uma expressão regular ECMA-262 com a flag u.",
+          "Os números são comparados pelo valor decimal exato. multipleOf 0.01 aceita 19.99, um maximum de 18446744073709551615 vale para inteiros além da faixa segura do JavaScript, e 1 é igual a 1.0 em const, enum e uniqueItems."
+        ]
+      },
+      {
+        "heading": "Referências, schemas remotos e privacidade",
+        "paragraphs": [
+          "$ref resolve JSON Pointers como #/$defs/address, âncoras como #address e outros recursos incorporados no mesmo schema pelo $id, inclusive com URIs relativas. Um loop que aplica de novo o mesmo schema ao mesmo valor é informado, em vez de travar a página.",
+          "Referências remotas nunca são baixadas: um $ref para uma URL que não é um recurso deste schema aparece como não resolvido, e essa parte do documento não é verificada. Para usar esse schema, adicione-o em $defs com o seu $id; as referências a essa URL passam a ser resolvidas localmente. Os metaschemas oficiais também não são carregados: o próprio validador verifica o valor de cada palavra-chave que conhece."
+        ]
+      },
+      {
+        "heading": "O que não é compatível",
+        "paragraphs": [
+          "draft-03 (validado como draft-04, com um aviso) e drafts posteriores ao 2020-12. contentEncoding, contentMediaType e contentSchema são lidos como anotações, não verificados. O $vocabulary de um metaschema personalizado não é lido, porque o metaschema não é baixado. A saída lista erros, não anotações.",
+          "idn-hostname segue o IDNA2008 com os dados Unicode do navegador, então alguns code points mais novos que os dados do seu navegador podem ser avaliados de outra forma."
+        ]
+      },
+      {
+        "heading": "Testado com a suíte de testes oficial",
+        "paragraphs": [
+          "O validador roda a JSON-Schema-Test-Suite da organização JSON Schema para cada draft compatível. Em novembro de 2026, ele passa em todos os 5.133 testes obrigatórios (draft-04 672, draft-06 878, draft-07 972, 2019-09 1.292, 2020-12 1.319), em todos os 2.776 testes de formato com Verificar formatos ativado e em 760 dos 764 opcionais, incluindo os de bignum, float-overflow, regex do ECMAScript e entre drafts. Os quatro em que falha são testes de conteúdo do draft-07, que esperam que contentEncoding e contentMediaType sejam verificados."
         ]
       }
     ]

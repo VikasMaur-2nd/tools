@@ -1,6 +1,6 @@
 {
   "json-validator": {
-    "hash": "f808b40ea2e6",
+    "hash": "45c73c24c63a",
     "title": "JSONバリデーター・リンター オンライン",
     "description": "JSONの構文をオンラインで検証し、エラーの行と列を確認できます。末尾のカンマや修正内容をブラウザー内で確認でき、データのアップロードは不要です。",
     "heading": "JSONバリデーター・リンター",
@@ -33,7 +33,7 @@
       },
       {
         "question": "JSONをスキーマに照らして検証しますか？",
-        "answer": "いいえ。このページはJSONの構文を確認します。JSON Schemaで指定する必須プロパティ、フィールドの型、その他のルールは検証しません。"
+        "answer": "いいえ。このページはJSONの構文だけを確認します。JSON Schemaの必須プロパティ、フィールドの型、その他のルールを確認するには、JSON Schemaバリデーターを使ってください。各エラーを行とパス付きで一覧表示します。"
       },
       {
         "question": "不正なJSONを修復できますか？",
@@ -63,7 +63,7 @@
         "heading": "JSONオブジェクトの末尾のカンマを修正する",
         "paragraphs": [
           "JSONリンターは引用符、カンマ、括弧などの構文を確認します。この例では36の後のカンマを削除すると、下に示す正しいオブジェクトになります。JSONのキーと文字列には二重引用符が必要です。コメントや末尾のカンマはJSONの構文に含まれません。",
-          "構文検証では、必須フィールドやアプリケーションのルールは確認しません。たとえば年齢を文字列で書いてもJSONとしては正しく、APIが数値を要求するかどうかは別の問題です。その確認にはJSON Schemaバリデーターやアプリケーションのコードが必要です。"
+          "構文検証では、必須フィールドやアプリケーションのルールは確認しません。たとえば年齢を文字列で書いてもJSONとしては正しく、APIが数値を要求するかどうかは別の問題です。その確認にはJSON Schemaが必要です。JSON Schemaバリデーターはドキュメントをスキーマと照合し、各エラーを行とパス付きで一覧表示します。"
         ]
       }
     ]
@@ -236,7 +236,7 @@
     ]
   },
   "json-schema-generator": {
-    "hash": "40303de8e661",
+    "hash": "56f0765eb853",
     "title": "JSON Schema生成：サンプルのJSONから作成",
     "description": "サンプルのJSONからJSON Schemaを生成します。Tool Kumarはプロパティ、配列、プリミティブ型をブラウザー内で推論し、データをアップロードしません。",
     "heading": "JSON Schema生成",
@@ -258,7 +258,7 @@
       "プロパティは、その位置にあるサンプルのオブジェクトすべてに存在する場合にrequiredへ含まれます。そのため、完全なサンプルが1つあれば、確認されたすべてのプロパティがrequiredになります。オブジェクトの配列では、一部のオブジェクトにないキーは省略可能になります。",
       "一部のオブジェクトでnullになっている値は、プロパティを省略可能にするのではなく、プロパティの型にnullを追加します。",
       "出力はあくまでたたき台です。requiredを見直し、format、値の範囲、パターンを追加し、API仕様で保証していない内容は削除してください。",
-      "このページはスキーマを生成するもので、ドキュメントをスキーマに照らして検証する機能はありません。生成の前に、「JSON構文チェック」ページでJSONの構文を確認できます。"
+      "生成したスキーマでドキュメントを検証するには、JSON Schemaバリデーターを開いてください。その「ドキュメントから生成」で、同じスキーマを編集可能な状態で作れます。"
     ],
     "faqs": [
       {
@@ -272,6 +272,10 @@
       {
         "question": "配列の要素の構造も推論できますか？",
         "answer": "はい。オブジェクトの配列からは、サンプル内のオブジェクトの構造に基づいてitemsスキーマが生成されます。"
+      },
+      {
+        "question": "生成したスキーマでJSONを検証できますか？",
+        "answer": "はい。JSON Schemaバリデーターを開いてスキーマを貼り付けるか、そこで「ドキュメントから生成」を選び、ルールを調整してください。ドキュメントの各エラーが、入力に合わせて行とパス付きで一覧表示されます。"
       }
     ],
     "sections": [
@@ -2017,6 +2021,88 @@
         "heading": "復元時に矛盾が見つかった場合",
         "paragraphs": [
           "フラットなオブジェクトの中には、同じ位置に2つの異なる値を求めるものがあります。\"a\": 1と\"a.b\": 2では、aが数値とオブジェクトの両方である必要があります。Tool Kumarは片方を残してもう片方を捨てることはせず、両方のキーを示すエラーを表示し、ほかの矛盾の数も示します。同じキーが2回現れた場合や、a[0]とa.bによってaが配列とオブジェクトの両方になる場合も同様です。"
+        ]
+      }
+    ]
+  },
+  "json-schema-validator": {
+    "hash": "8207f964042c",
+    "title": "JSON Schemaバリデーター：JSONをオンラインで検証",
+    "description": "JSONをJSON Schemaで検証。ドラフト2020-12、2019-09、07、06、04に対応し、各エラーの行、パス、ルールを表示します。アップロードは不要です。",
+    "heading": "JSON Schemaバリデーター",
+    "query": "JSON Schema バリデーター",
+    "secondary": [
+      "JSON スキーマ 検証",
+      "json schema validator"
+    ],
+    "intro": "JSONドキュメントとそのJSON Schemaを貼り付けると、入力に合わせて照合します。各エラーには、場所（行と列付きのJSON Pointer）、失敗したルール、その理由が表示されます。ドラフト2020-12、2019-09、07、06、04に対応し、データがブラウザーの外に出ることはありません。",
+    "modeLabel": "JSON Schemaによる検証",
+    "exampleLabel": "このユーザーレコードは、下の2020-12のスキーマのルールを6つ破っています。出力はバリデーターが報告する内容で、各エラーのJSON Pointer、行と列、メッセージ、失敗したキーワードを示します。19.999は0.01の倍数ではありません。数値は浮動小数点の丸めなしに正確に比較されます。",
+    "steps": [
+      "JSONドキュメントを左のエディターに貼り付けるか、ファイルを開きます。",
+      "JSON Schemaを中央のエディターに貼り付けるか、スキーマファイルを開きます。⋯メニューの「ドキュメントから生成」で、たたき台になるスキーマを推論できます。",
+      "右側の結果を確認します。「有効」、またはエラーごとの場所が表示されます。エラーをクリックするかEnterを押すとドキュメント内で選択され、キーワードのボタンでスキーマ内のルールが選択されます。",
+      "ドキュメントかスキーマを修正します。どちらも入力に合わせて再検証され、Ctrl+Z（Macは⌘Z）でどちらのエディターの変更も元に戻せます。"
+    ],
+    "options": [
+      "ドラフトは$schemaで決まります。$schemaのないスキーマには、スキーマのツールバーにあるドラフト選択が使われます。既定は2020-12で、2019-09、draft-07、draft-06、draft-04も選べます。",
+      "「formatを検証」をオンにすると、formatがdate-time、date、time、duration、email、idn-email、hostname、idn-hostname、ipv4、ipv6、uri、uri-reference、iri、iri-reference、uri-template、json-pointer、relative-json-pointer、regex、uuidの検証になります。オフのときは、2019-09と2020-12の仕様どおり注釈として扱います。",
+      "各エラーには、JSON Pointer、行と列、メッセージ、$refを経由したキーワードのパスが表示されます。anyOfやoneOfがどれにも適合しないときは、最も近い分岐のエラーがその下に表示されます。一覧の上にあるキーワードのボタンで、1種類のエラーだけを表示できます。",
+      "スキーマの問題は、ドキュメントのエラーとは別に一覧表示され、スキーマ内で下線が引かれます。解決できない$ref、無効な正規表現、値の型が正しくないキーワードに加え、不明なキーワード、別のドラフトのキーワード、OpenAPIのnullableには警告が出ます。",
+      "どちらのテキストでも、コメントや末尾のカンマは許容され、その旨が表示されます。JSON Linesのドキュメントは1レコードずつ検証されます。",
+      "最初の1,000件のエラーを一覧表示し、件数にはすべてのエラーを含めます。検証はバックグラウンドのワーカーで実行されるため、数MBのドキュメントでも入力は軽快なままです。壊滅的なバックトラックを起こす正規表現など、時間がかかりすぎる実行は停止されます。"
+    ],
+    "faqs": [
+      {
+        "question": "draft-07と2020-12の違いは何ですか？",
+        "answer": "2019-09で$defs、$anchor、dependentRequired、dependentSchemas、unevaluatedProperties、unevaluatedItems、minContains、maxContainsが追加され、$refをほかのキーワードと並べられるようになりました。2020-12では、配列形式のitemsがprefixItemsに、additionalItemsを伴うitemsがitemsに、$recursiveRefが$dynamicRefに置き換わりました。バリデーターは、$schemaで指定されたドラフトのルールを適用します。"
+      },
+      {
+        "question": "additionalPropertiesとunevaluatedPropertiesの違いは何ですか？",
+        "answer": "additionalPropertiesは隣にあるpropertiesとpatternPropertiesしか見ないため、allOfや$refと組み合わせると、別のサブスキーマで定義されたプロパティを拒否してしまいます。2019-09以降のunevaluatedPropertiesは、allOf、anyOf、oneOf、if、then、else、$refを含め、スキーマと成功したサブスキーマが評価したすべてのプロパティを考慮します。部品を組み合わせたスキーマを閉じるときに使います。"
+      },
+      {
+        "question": "なぜformatは既定で検証されないのですか？",
+        "answer": "2019-09以降の仕様では、検証を求めない限りformatは注釈であり、それ以前のドラフトでも任意でした。date-time、email、uri、uuid、ipv4、ipv6などの標準formatを検証するには、「formatを検証」をオンにしてください。不明なformatは常に合格とし、検証がオンのときは警告を表示します。"
+      },
+      {
+        "question": "null値を許可するには？",
+        "answer": "\"type\": [\"string\", \"null\"]のようにtypeに\"null\"を追加するか、anyOfでスキーマを組み合わせます。OpenAPI 3.0の\"nullable\": trueはJSON Schemaのキーワードではないため、バリデーターは無視し、その旨の警告を表示します。"
+      },
+      {
+        "question": "大きな数値や小数は正確に検証されますか？",
+        "answer": "はい。ドキュメントもスキーマも数値を浮動小数点に変換せずに読み込むため、19.99は0.01の倍数となり、2^53を超える整数もminimumとmaximumですべての桁が保たれ、1e308も書かれたとおりに比較されます。仕様どおり、draft-06以降では1.0は整数とみなされます。"
+      }
+    ],
+    "sections": [
+      {
+        "heading": "対応するドラフトとキーワード",
+        "paragraphs": [
+          "ドラフト2020-12、2019-09、draft-07、draft-06、draft-04に、それぞれのルールで対応します。$schemaで指定されたドラフトが優先され、独自の$idを持つ埋め込みのスキーマリソースは別のドラフトを指定できます。draft-04ではid、ブール値のexclusiveMaximumとexclusiveMinimumを読み、小数部や指数部のない数値だけを整数とみなします。2019-09より前は、$refがその隣のキーワードを置き換えます。",
+          "コア：$schema、$id（draft-04ではid）、$ref、$defsとdefinitions、$anchor、$dynamicRefと$dynamicAnchor（2020-12）、$recursiveRefと$recursiveAnchor（2019-09）、2019-09より前の$idにおける名前付きフラグメント。",
+          "アプリケーター：allOf、anyOf、oneOf、not、if、then、else、dependentSchemasとdependencies、prefixItems、items、additionalItems、contains、properties、patternProperties、additionalProperties、propertyNames、unevaluatedItems、unevaluatedProperties。",
+          "アサーション：type、enum、const、multipleOf、maximum、exclusiveMaximum、minimum、exclusiveMinimum、maxLength、minLength、pattern、maxItems、minItems、uniqueItems、maxContains、minContains、maxProperties、minProperties、required、dependentRequired。文字列の長さは文字（コードポイント）で数え、patternはuフラグ付きのECMA-262正規表現です。",
+          "数値は正確な10進数の値で比較します。multipleOf 0.01は19.99を受け入れ、18446744073709551615のmaximumはJavaScriptの安全な範囲を超える整数にも正しく適用され、const、enum、uniqueItemsでは1と1.0は等しいとみなします。"
+        ]
+      },
+      {
+        "heading": "参照、リモートのスキーマ、プライバシー",
+        "paragraphs": [
+          "$refは、#/$defs/addressのようなJSON Pointer、#addressのようなアンカー、同じスキーマに$idで埋め込まれた別のリソースを、相対URIも含めて解決します。同じ値に同じスキーマを再び適用するループは、ページを止めずに問題として報告します。",
+          "リモートの参照は取得しません。このスキーマのリソースではないURLへの$refは「解決できない」と表示され、ドキュメントのその部分は検証されません。そのスキーマを使うには、その$idを付けて$defsに追加してください。そのURLへの参照がローカルで解決されるようになります。公式のメタスキーマも読み込まず、バリデーター自身が既知の各キーワードの値を検証します。"
+        ]
+      },
+      {
+        "heading": "対応していないもの",
+        "paragraphs": [
+          "draft-03（警告付きでdraft-04として検証）と、2020-12より後のドラフト。contentEncoding、contentMediaType、contentSchemaは注釈として読むだけで、検証はしません。メタスキーマを取得しないため、独自メタスキーマの$vocabularyは読みません。出力はエラーの一覧で、注釈は含みません。",
+          "idn-hostnameはブラウザーのUnicodeデータを使ってIDNA2008に従うため、お使いのブラウザーのデータより新しい一部のコードポイントは判定が異なる場合があります。"
+        ]
+      },
+      {
+        "heading": "公式テストスイートで検証済み",
+        "paragraphs": [
+          "このバリデーターは、対応する各ドラフトについてJSON SchemaオーガニゼーションのJSON-Schema-Test-Suiteを実行しています。2026年11月時点で、必須テスト5,133件（draft-04 672件、draft-06 878件、draft-07 972件、2019-09 1,292件、2020-12 1,319件）すべて、「formatを検証」オンでのformatテスト2,776件すべて、任意テスト764件中760件に合格しています。任意テストにはbignum、float-overflow、ECMAScriptの正規表現、ドラフト間のテストが含まれます。不合格の4件は、contentEncodingとcontentMediaTypeの検証を前提とするdraft-07のコンテンツのテストです。"
         ]
       }
     ]

@@ -1,6 +1,6 @@
 {
   "json-validator": {
-    "hash": "f808b40ea2e6",
+    "hash": "45c73c24c63a",
     "title": "Validador y linter JSON online",
     "description": "Valida JSON online con errores de línea y columna. Detecta comas finales, revisa las reparaciones y comprueba la sintaxis sin subir tus datos.",
     "heading": "Validador y linter JSON",
@@ -33,7 +33,7 @@
       },
       {
         "question": "¿Valida JSON frente a un esquema?",
-        "answer": "No. Esta página comprueba la sintaxis JSON. No valida propiedades obligatorias, tipos de campo ni otras reglas de un JSON Schema."
+        "answer": "No. Esta página solo comprueba la sintaxis JSON. Para comprobar propiedades obligatorias, tipos de campo y otras reglas de un JSON Schema, usa el validador JSON Schema: lista cada error con su línea y ruta."
       },
       {
         "question": "¿Puede reparar JSON inválido?",
@@ -63,7 +63,7 @@
         "heading": "Corregir una coma final en un objeto JSON",
         "paragraphs": [
           "Un linter JSON comprueba comillas, comas y corchetes. En este ejemplo, elimina la coma después de 36 para obtener el objeto válido que aparece abajo. JSON exige comillas dobles en las claves y cadenas; no admite comentarios ni comas finales.",
-          "Validar la sintaxis no comprueba campos obligatorios ni reglas de la aplicación. Por ejemplo, una edad escrita como cadena puede ser JSON válido aunque tu API exija un número. Para comprobar esas reglas necesitas un validador JSON Schema o código de la aplicación."
+          "Validar la sintaxis no comprueba campos obligatorios ni reglas de la aplicación. Por ejemplo, una edad escrita como cadena puede ser JSON válido aunque tu API exija un número. Para comprobar esas reglas necesitas un JSON Schema: el validador JSON Schema comprueba un documento con uno y lista cada error con su línea y ruta."
         ]
       }
     ]
@@ -236,7 +236,7 @@
     ]
   },
   "json-schema-generator": {
-    "hash": "40303de8e661",
+    "hash": "56f0765eb853",
     "title": "Generar JSON Schema a partir de un ejemplo JSON",
     "description": "Genera JSON Schema desde un ejemplo JSON sin subir datos. Tool Kumar infiere propiedades, arrays y tipos primitivos en tu navegador.",
     "heading": "Generador de JSON Schema",
@@ -259,7 +259,7 @@
       "Una propiedad se incluye en required cuando está presente en todos los objetos de muestra de esa posición. Por tanto, una sola muestra completa hace que todas las propiedades observadas sean obligatorias; en un array de objetos, una clave ausente en algunos objetos se vuelve opcional.",
       "Los valores null en algunos objetos añaden null al tipo de la propiedad en lugar de hacerla opcional.",
       "La salida es un punto de partida. Revisa required, añade formatos, rangos y patrones, y elimina todo lo que el contrato de tu API no garantice.",
-      "Esta página genera un esquema; no valida un documento frente a uno. Usa la página del validador para comprobar la sintaxis JSON antes de generar el esquema."
+      "Para comprobar documentos con el esquema generado, abre el validador JSON Schema. Su acción Generar a partir del documento crea el mismo esquema, listo para editar."
     ],
     "faqs": [
       {
@@ -273,6 +273,10 @@
       {
         "question": "¿Puede inferir la estructura de los elementos de un array?",
         "answer": "Sí. Los arrays de objetos generan un esquema items basado en la estructura observada de los objetos."
+      },
+      {
+        "question": "¿Puedo validar JSON con el esquema generado?",
+        "answer": "Sí. Abre el validador JSON Schema y pega el esquema, o elige allí Generar a partir del documento, y luego ajusta las reglas. Cada error de un documento aparece con su línea y ruta mientras escribes."
       }
     ],
     "sections": [
@@ -2021,6 +2025,88 @@
         "heading": "Cuando desaplanar encuentra un conflicto",
         "paragraphs": [
           "Algunos objetos planos piden dos valores distintos en el mismo sitio: \"a\": 1 y \"a.b\": 2 necesitan que a sea a la vez un número y un objeto. En lugar de quedarse con uno y descartar el otro, Tool Kumar muestra un error que nombra ambas claves y cuenta los demás conflictos. Lo mismo ocurre cuando una clave aparece dos veces, o cuando a[0] y a.b harían de a un array y un objeto a la vez."
+        ]
+      }
+    ]
+  },
+  "json-schema-validator": {
+    "hash": "8207f964042c",
+    "title": "Validador JSON Schema: valida JSON en línea",
+    "description": "Valida JSON con un JSON Schema: drafts 2020-12, 2019-09, 07, 06 y 04. Ve cada error con su línea, ruta y regla. No se sube nada.",
+    "heading": "Validador JSON Schema",
+    "query": "validador JSON Schema",
+    "secondary": [
+      "validar JSON con un esquema",
+      "json schema validator"
+    ],
+    "intro": "Pega un documento JSON y su JSON Schema para comprobar uno con el otro mientras escribes. Cada error muestra dónde está, como JSON Pointer con su línea y columna, qué regla falló y por qué. Se admiten los drafts 2020-12, 2019-09, 07, 06 y 04, y nada sale de tu navegador.",
+    "modeLabel": "Validación con JSON Schema",
+    "exampleLabel": "Este registro de usuario incumple seis reglas del esquema 2020-12 de abajo. La salida es lo que el validador informa: cada error con su JSON Pointer, línea y columna, su mensaje y la palabra clave que falló. 19.999 no es múltiplo de 0.01: los números se comparan de forma exacta, sin redondeo de coma flotante.",
+    "steps": [
+      "Pega el documento JSON en el editor de la izquierda o abre un archivo.",
+      "Pega el JSON Schema en el editor central o abre un archivo de esquema. Generar a partir del documento, en su menú ⋯, infiere un esquema para empezar.",
+      "Lee el resultado a la derecha: Válido, o cada error con su ubicación. Haz clic en un error o pulsa Intro para seleccionarlo en el documento; su botón de palabra clave selecciona la regla en el esquema.",
+      "Corrige el documento o el esquema. Ambos se vuelven a comprobar mientras escribes, y Ctrl+Z (⌘Z en Mac) deshace los cambios en cualquiera de los dos editores."
+    ],
+    "options": [
+      "El draft lo indica $schema. Un esquema sin $schema usa el selector de draft de la barra del esquema: 2020-12 por defecto, o 2019-09, draft-07, draft-06 o draft-04.",
+      "Comprobar formatos convierte format en una comprobación de date-time, date, time, duration, email, idn-email, hostname, idn-hostname, ipv4, ipv6, uri, uri-reference, iri, iri-reference, uri-template, json-pointer, relative-json-pointer, regex y uuid. Desactivado, format es una anotación, como especifican 2019-09 y 2020-12.",
+      "Cada error indica su JSON Pointer, línea y columna, su mensaje y la ruta de la palabra clave a través de cualquier $ref. Cuando anyOf u oneOf no cumplen ninguna opción, debajo aparecen los errores de la rama más cercana. Los botones de palabra clave sobre la lista muestran un solo tipo de error.",
+      "Los problemas del esquema se listan aparte de los errores del documento y se subrayan en el esquema: un $ref sin resolver, una expresión regular no válida, una palabra clave con un valor de tipo incorrecto, y avisos por palabras clave desconocidas, palabras clave de otro draft o el nullable de OpenAPI.",
+      "Los comentarios y las comas finales en cualquiera de los dos textos se toleran y se indican. Un documento JSON Lines se valida registro a registro.",
+      "Se listan los primeros 1000 errores y el recuento los incluye todos. La validación se ejecuta en un worker en segundo plano, así que escribir sigue siendo fluido con documentos de varios megabytes, y una ejecución que tarda demasiado, como una expresión regular catastrófica, se detiene."
+    ],
+    "faqs": [
+      {
+        "question": "¿Qué cambió entre draft-07 y 2020-12?",
+        "answer": "2019-09 añadió $defs, $anchor, dependentRequired, dependentSchemas, unevaluatedProperties, unevaluatedItems, minContains y maxContains, y permite que $ref conviva con otras palabras clave. 2020-12 sustituyó la forma de array de items por prefixItems, items con additionalItems por items, y $recursiveRef por $dynamicRef. El validador aplica las reglas de cada draft a los esquemas que lo indican en $schema."
+      },
+      {
+        "question": "¿Qué diferencia hay entre additionalProperties y unevaluatedProperties?",
+        "answer": "additionalProperties solo ve las properties y patternProperties que tiene al lado, así que con allOf o $ref rechaza propiedades que define otro subesquema. unevaluatedProperties, desde 2019-09, ve todas las propiedades que evaluaron el esquema y sus subesquemas válidos, también a través de allOf, anyOf, oneOf, if, then, else y $ref. Úsalo para cerrar un esquema construido a partir de partes."
+      },
+      {
+        "question": "¿Por qué no se comprueba format por defecto?",
+        "answer": "Desde 2019-09, la especificación hace de format una anotación salvo que se pida al validador que lo compruebe, y los drafts anteriores lo dejaban opcional. Activa Comprobar formatos para validar date-time, email, uri, uuid, ipv4, ipv6 y los demás formatos estándar. Los formatos desconocidos siempre pasan, con un aviso mientras la comprobación está activada."
+      },
+      {
+        "question": "¿Cómo permito valores null?",
+        "answer": "Añade \"null\" a type, como en \"type\": [\"string\", \"null\"], o combina esquemas con anyOf. \"nullable\": true de OpenAPI 3.0 no es una palabra clave de JSON Schema, así que el validador lo ignora y muestra un aviso que lo indica."
+      },
+      {
+        "question": "¿Se comprueban de forma exacta los números grandes y los decimales?",
+        "answer": "Sí. El documento y el esquema se leen sin convertir los números a coma flotante, así que 19.99 es múltiplo de 0.01, los enteros mayores que 2^53 conservan todos sus dígitos para minimum y maximum, y 1e308 se compara tal como está escrito. 1.0 cuenta como entero desde draft-06, como dice la especificación."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Drafts y palabras clave compatibles",
+        "paragraphs": [
+          "Se admiten los drafts 2020-12, 2019-09, draft-07, draft-06 y draft-04, cada uno con sus reglas. Decide el draft que indica $schema; un recurso de esquema incrustado con su propio $id puede indicar otro. draft-04 lee id, exclusiveMaximum y exclusiveMinimum booleanos, y considera entero solo un número sin parte fraccionaria ni exponente. Antes de 2019-09, $ref sustituye a las palabras clave que lo acompañan.",
+          "Núcleo: $schema, $id (id en draft-04), $ref, $defs y definitions, $anchor, $dynamicRef y $dynamicAnchor (2020-12), $recursiveRef y $recursiveAnchor (2019-09), y fragmentos con nombre en $id antes de 2019-09.",
+          "Aplicadores: allOf, anyOf, oneOf, not, if, then, else, dependentSchemas y dependencies, prefixItems, items, additionalItems, contains, properties, patternProperties, additionalProperties, propertyNames, unevaluatedItems y unevaluatedProperties.",
+          "Aserciones: type, enum, const, multipleOf, maximum, exclusiveMaximum, minimum, exclusiveMinimum, maxLength, minLength, pattern, maxItems, minItems, uniqueItems, maxContains, minContains, maxProperties, minProperties, required y dependentRequired. La longitud de una cadena cuenta caracteres (puntos de código), y pattern es una expresión regular ECMA-262 con el indicador u.",
+          "Los números se comparan por su valor decimal exacto. multipleOf 0.01 acepta 19.99, un maximum de 18446744073709551615 se cumple para enteros más allá del rango seguro de JavaScript, y 1 es igual a 1.0 en const, enum y uniqueItems."
+        ]
+      },
+      {
+        "heading": "Referencias, esquemas remotos y privacidad",
+        "paragraphs": [
+          "$ref resuelve JSON Pointers como #/$defs/address, anclas como #address y otros recursos incrustados en el mismo esquema por su $id, también con URI relativas. Un bucle que vuelve a aplicar el mismo esquema al mismo valor se informa en lugar de bloquear la página.",
+          "Las referencias remotas nunca se descargan: un $ref a una URL que no es un recurso de este esquema aparece como sin resolver, y esa parte del documento no se comprueba. Para usar ese esquema, añádelo en $defs con su $id; las referencias a esa URL se resuelven entonces de forma local. Tampoco se cargan los metaesquemas oficiales: el validador comprueba él mismo el valor de cada palabra clave que conoce."
+        ]
+      },
+      {
+        "heading": "Lo que no se admite",
+        "paragraphs": [
+          "draft-03 (se valida como draft-04, con un aviso) y los drafts posteriores a 2020-12. contentEncoding, contentMediaType y contentSchema se leen como anotaciones, no se comprueban. No se lee el $vocabulary de un metaesquema personalizado, porque el metaesquema no se descarga. La salida lista errores, no anotaciones.",
+          "idn-hostname sigue IDNA2008 con los datos Unicode del navegador, así que unos pocos puntos de código más recientes que los datos de tu navegador pueden juzgarse de otra forma."
+        ]
+      },
+      {
+        "heading": "Probado con la suite de pruebas oficial",
+        "paragraphs": [
+          "El validador ejecuta la JSON-Schema-Test-Suite de la organización JSON Schema para cada draft que admite. A noviembre de 2026 supera las 5133 pruebas obligatorias (draft-04 672, draft-06 878, draft-07 972, 2019-09 1292, 2020-12 1319), las 2776 pruebas de formatos con Comprobar formatos activado y 760 de las 764 opcionales, incluidas las de bignum, float-overflow, regex de ECMAScript y entre drafts. Las cuatro que falla son pruebas de contenido de draft-07, que esperan que se comprueben contentEncoding y contentMediaType."
         ]
       }
     ]

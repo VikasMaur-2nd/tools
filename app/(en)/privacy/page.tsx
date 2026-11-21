@@ -15,11 +15,11 @@ export const metadata: Metadata = pageMetadata({ path: '/privacy', title: 'Priva
 /** When each event is sent. Its properties are listed straight from lib/analytics/events.ts. */
 const WHEN: Record<EventName, string> = {
   json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL, opened from a link, handed over by another site, or the sample), once it has been checked (or, without its size and validity, when another document replaces it first).',
-  view_opened: 'You open Format, Tree, Table, Graph, Convert or Compare.',
+  view_opened: 'You open Format, Tree, Table, Graph, Convert, Compare or Schema.',
   convert_target_selected: 'You pick a Convert language or format.',
   convert_option_changed: 'You change a Convert option: TypeScript interface or type, the C# JSON library, or a Flatten option (the separator when you pick one of the listed ones, array indexes, escapes, depth). The root type name and a separator you type are never sent.',
   format_option_changed: 'You change the output style, key sorting or indentation.',
-  feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), reading the input as JSON, YAML, CSV, XML or TOML, a CSV option (which separator, header row or typed values on or off), and similar.',
+  feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), reading the input as JSON, YAML, CSV, XML or TOML, a CSV option (which separator, header row or typed values on or off), in the Schema view a check of a document against a JSON Schema (once each time the view opens: whether the document was valid and the number of errors, rounded; never the document, the schema or the messages), generating a schema, checking formats on or off, and similar.',
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',
   agent_tool_used: 'An AI agent in your browser uses one of the JSON tool’s functions for you. What it sent and what it got back are never included.',
   huge_opened: 'A file too big for the editor opens in large-file mode, once it has been indexed (or stopped, or replaced by another document first). Its name, content and exact size are never included.',
@@ -52,7 +52,7 @@ const PROPS: Record<string, string> = {
   option: 'which option',
   value: 'chosen value from a fixed list',
   feature: 'which feature',
-  level: 'fold level',
+  level: 'fold level, or in the Schema view the number of errors (2 significant digits)',
   on: 'on or off',
   jsonpath: 'query starts with $',
   command: 'command ID',
@@ -120,10 +120,11 @@ export default function PrivacyPage() {
         <ul>
           <li>Parsing, formatting, converting, comparing and downloads run in your browser. Opening a file reads it locally; nothing is uploaded.</li>
           <li>
-            Your last document, the second document in Compare and your settings are kept in this browser’s local storage, so they are still there when
-            you come back. Clearing the site’s data removes them.
+            Your last document, the second document in Compare, the schema in the Schema view and your settings are kept in this browser’s local
+            storage, so they are still there when you come back. Clearing the site’s data removes them.
           </li>
           <li>Load from URL, and a link that names a URL, fetch it straight from your browser. That server sees the request; we don’t.</li>
+          <li>The Schema view validates in your browser and never fetches a URL: a $ref to a remote schema is reported as unresolved, not downloaded.</li>
           <li>
             A share link, or a <Link href="/integrate">View in Tool Kumar</Link> link, carries the document in the part after{' '}
             <code>#</code>. Browsers never send that part to a server, and our analytics remove it.

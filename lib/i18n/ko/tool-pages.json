@@ -1,6 +1,6 @@
 {
   "json-validator": {
-    "hash": "f808b40ea2e6",
+    "hash": "45c73c24c63a",
     "title": "온라인 JSON 검사기 및 린터",
     "description": "JSON을 온라인으로 검사하고 오류의 정확한 줄과 열을 확인하세요. 끝 쉼표와 수정 결과를 브라우저에서 확인하며 데이터를 업로드하지 않습니다.",
     "heading": "JSON 검사기 및 린터",
@@ -33,7 +33,7 @@
       },
       {
         "question": "스키마에 맞는 JSON인지 검사하나요?",
-        "answer": "아니요. 이 페이지는 JSON 문법을 검사합니다. JSON Schema의 필수 속성, 필드 타입이나 다른 규칙은 검사하지 않습니다."
+        "answer": "아니요. 이 페이지는 JSON 문법만 검사합니다. JSON Schema의 필수 속성, 필드 타입, 다른 규칙을 검사하려면 JSON Schema 검증기를 쓰세요. 각 오류를 줄과 경로와 함께 보여 줍니다."
       },
       {
         "question": "잘못된 JSON을 복구할 수 있나요?",
@@ -63,7 +63,7 @@
         "heading": "JSON 객체의 끝 쉼표 수정하기",
         "paragraphs": [
           "JSON 린터는 따옴표, 쉼표, 괄호 등의 문법을 검사합니다. 이 예에서는 36 뒤의 쉼표를 지우면 아래의 올바른 객체가 됩니다. JSON의 키와 문자열에는 큰따옴표가 필요하며, 주석과 끝 쉼표는 문법에 포함되지 않습니다.",
-          "문법 검사는 필수 필드나 애플리케이션 규칙을 확인하지 않습니다. 예를 들어 나이를 문자열로 작성해도 유효한 JSON일 수 있지만 API에서는 숫자를 요구할 수 있습니다. 이런 규칙을 확인하려면 JSON Schema 검사기나 애플리케이션 코드가 필요합니다."
+          "문법 검사는 필수 필드나 애플리케이션 규칙을 확인하지 않습니다. 예를 들어 나이를 문자열로 작성해도 유효한 JSON일 수 있지만 API에서는 숫자를 요구할 수 있습니다. 이런 규칙을 확인하려면 JSON Schema가 필요합니다. JSON Schema 검증기는 문서를 스키마에 맞춰 검사하고 각 오류를 줄과 경로와 함께 보여 줍니다."
         ]
       }
     ]
@@ -236,7 +236,7 @@
     ]
   },
   "json-schema-generator": {
-    "hash": "40303de8e661",
+    "hash": "56f0765eb853",
     "title": "JSON Schema 생성기: 예시 JSON에서 생성",
     "description": "JSON 예시로 JSON Schema를 생성합니다. Tool Kumar가 속성, 배열, 기본 타입을 업로드 없이 브라우저에서 추론합니다.",
     "heading": "JSON Schema 생성기",
@@ -259,7 +259,7 @@
       "해당 위치의 샘플 객체가 모두 가진 속성만 required에 들어갑니다. 따라서 완전한 샘플 하나로는 관찰된 모든 속성이 required가 되며, 객체 배열에서는 일부 객체에 없는 키가 선택 사항이 됩니다.",
       "일부 객체에서 null인 값은 속성을 선택 사항으로 만들지 않고, 속성 타입에 null을 추가합니다.",
       "출력은 출발점일 뿐입니다. required를 검토하고, format, 범위, 패턴을 추가하며, API 명세가 보장하지 않는 내용은 삭제해야 합니다.",
-      "이 페이지는 스키마를 생성할 뿐, 문서를 스키마에 대해 검증하지는 않습니다. 생성하기 전에 ‘JSON 유효성 검사기’ 페이지에서 JSON 문법을 확인할 수 있습니다."
+      "생성한 스키마로 문서를 검사하려면 JSON Schema 검증기를 여세요. 그곳의 ‘문서에서 생성’ 기능이 같은 스키마를 편집할 수 있게 만들어 줍니다."
     ],
     "faqs": [
       {
@@ -273,6 +273,10 @@
       {
         "question": "배열 항목의 구조도 추론하나요?",
         "answer": "네. 객체 배열에서는 관찰된 객체 구조를 바탕으로 items 스키마를 만듭니다."
+      },
+      {
+        "question": "생성한 스키마로 JSON을 검증할 수 있나요?",
+        "answer": "네. JSON Schema 검증기를 열고 스키마를 붙여넣거나 그곳에서 ‘문서에서 생성’을 고른 뒤 규칙을 다듬으세요. 문서의 각 오류가 입력하는 대로 줄과 경로와 함께 표시됩니다."
       }
     ],
     "sections": [
@@ -2022,6 +2026,88 @@
         "heading": "복원 중 충돌이 생기는 경우",
         "paragraphs": [
           "어떤 평탄한 객체는 한 자리에 서로 다른 두 값을 요구합니다. \"a\": 1과 \"a.b\": 2는 a가 숫자이면서 동시에 객체여야 합니다. Tool Kumar는 하나를 남기고 다른 하나를 버리지 않고, 두 키를 모두 알려 주는 오류를 표시하며 다른 충돌의 수도 셉니다. 같은 키가 두 번 나오거나 a[0]과 a.b 때문에 a가 배열이면서 객체가 되어야 하는 경우도 마찬가지입니다."
+        ]
+      }
+    ]
+  },
+  "json-schema-validator": {
+    "hash": "8207f964042c",
+    "title": "JSON Schema 검증기: 온라인에서 JSON 검증",
+    "description": "JSON을 JSON Schema로 검증하세요. draft 2020-12, 2019-09, 07, 06, 04를 지원하며 오류마다 줄, 경로, 규칙을 보여 줍니다. 업로드는 없습니다.",
+    "heading": "JSON Schema 검증기",
+    "query": "json schema 검증",
+    "secondary": [
+      "json 스키마 검사",
+      "json schema validator"
+    ],
+    "intro": "JSON 문서와 JSON Schema를 붙여넣으면 입력하는 대로 서로 맞춰 봅니다. 각 오류마다 위치(줄과 열이 있는 JSON Pointer), 실패한 규칙, 그 이유를 보여 줍니다. draft 2020-12, 2019-09, 07, 06, 04를 지원하며 데이터는 브라우저 밖으로 나가지 않습니다.",
+    "modeLabel": "JSON Schema 검증",
+    "exampleLabel": "이 사용자 레코드는 아래 2020-12 스키마의 규칙 여섯 개를 어깁니다. 출력은 검증기가 보고하는 내용으로, 각 오류의 JSON Pointer, 줄과 열, 메시지, 실패한 키워드를 보여 줍니다. 19.999는 0.01의 배수가 아닙니다. 숫자는 부동소수점 반올림 없이 정확하게 비교합니다.",
+    "steps": [
+      "왼쪽 편집기에 JSON 문서를 붙여넣거나 파일을 엽니다.",
+      "가운데 편집기에 JSON Schema를 붙여넣거나 스키마 파일을 엽니다. ⋯ 메뉴의 ‘문서에서 생성’으로 시작점이 될 스키마를 추론할 수 있습니다.",
+      "오른쪽에서 결과를 확인합니다. ‘유효’ 또는 위치가 표시된 각 오류가 나타납니다. 오류를 클릭하거나 Enter를 누르면 문서에서 선택되고, 키워드 버튼은 스키마에서 해당 규칙을 선택합니다.",
+      "문서나 스키마를 고칩니다. 둘 다 입력하는 대로 다시 검사되며, Ctrl+Z(Mac은 ⌘Z)로 어느 편집기의 변경이든 되돌릴 수 있습니다."
+    ],
+    "options": [
+      "draft는 $schema로 정해집니다. $schema가 없는 스키마는 스키마 도구 모음의 draft 선택을 따릅니다. 기본은 2020-12이며 2019-09, draft-07, draft-06, draft-04도 고를 수 있습니다.",
+      "‘format 검사’를 켜면 format이 date-time, date, time, duration, email, idn-email, hostname, idn-hostname, ipv4, ipv6, uri, uri-reference, iri, iri-reference, uri-template, json-pointer, relative-json-pointer, regex, uuid 검사가 됩니다. 끄면 2019-09와 2020-12 사양대로 format은 주석입니다.",
+      "각 오류에는 JSON Pointer, 줄과 열, 메시지, $ref를 거친 키워드 경로가 표시됩니다. anyOf나 oneOf가 아무것에도 맞지 않으면 가장 가까운 분기의 오류가 그 아래에 나옵니다. 목록 위의 키워드 버튼으로 한 종류의 오류만 볼 수 있습니다.",
+      "스키마 문제는 문서 오류와 따로 표시되고 스키마에 밑줄로 나타납니다. 확인할 수 없는 $ref, 올바르지 않은 정규식, 값 타입이 틀린 키워드가 해당되며, 알 수 없는 키워드, 다른 draft의 키워드, OpenAPI의 nullable에는 경고가 나옵니다.",
+      "두 텍스트 모두 주석과 끝 쉼표를 허용하고 그 사실을 알려 줍니다. JSON Lines 문서는 레코드 하나씩 검증합니다.",
+      "처음 1,000개의 오류를 보여 주고 개수에는 모두 포함합니다. 검증은 백그라운드 워커에서 실행되므로 몇 MB짜리 문서에서도 입력이 부드럽고, 파국적인 역추적을 일으키는 정규식처럼 너무 오래 걸리는 실행은 중지합니다."
+    ],
+    "faqs": [
+      {
+        "question": "draft-07과 2020-12는 무엇이 다른가요?",
+        "answer": "2019-09에서 $defs, $anchor, dependentRequired, dependentSchemas, unevaluatedProperties, unevaluatedItems, minContains, maxContains가 추가되었고 $ref를 다른 키워드 옆에 쓸 수 있게 되었습니다. 2020-12에서는 배열 형태의 items가 prefixItems로, additionalItems와 함께 쓰던 items가 items로, $recursiveRef가 $dynamicRef로 바뀌었습니다. 검증기는 $schema에 지정된 draft의 규칙을 적용합니다."
+      },
+      {
+        "question": "additionalProperties와 unevaluatedProperties는 어떻게 다른가요?",
+        "answer": "additionalProperties는 옆에 있는 properties와 patternProperties만 보기 때문에, allOf나 $ref와 함께 쓰면 다른 하위 스키마가 정의한 속성까지 거부합니다. 2019-09부터 있는 unevaluatedProperties는 allOf, anyOf, oneOf, if, then, else, $ref를 거친 것을 포함해 스키마와 성공한 하위 스키마가 평가한 모든 속성을 봅니다. 여러 부분으로 만든 스키마를 닫을 때 사용하세요."
+      },
+      {
+        "question": "format은 왜 기본으로 검사하지 않나요?",
+        "answer": "2019-09부터 사양은 검사를 요청하지 않는 한 format을 주석으로 정하며, 이전 draft에서도 선택 사항이었습니다. date-time, email, uri, uuid, ipv4, ipv6 같은 표준 format을 검증하려면 ‘format 검사’를 켜세요. 알 수 없는 format은 항상 통과하며, 검사가 켜져 있으면 경고를 표시합니다."
+      },
+      {
+        "question": "null 값을 허용하려면 어떻게 하나요?",
+        "answer": "\"type\": [\"string\", \"null\"]처럼 type에 \"null\"을 추가하거나 anyOf로 스키마를 조합하세요. OpenAPI 3.0의 \"nullable\": true는 JSON Schema 키워드가 아니므로 검증기는 이를 무시하고 그렇다는 경고를 보여 줍니다."
+      },
+      {
+        "question": "큰 숫자와 소수도 정확하게 검사하나요?",
+        "answer": "네. 문서와 스키마를 읽을 때 숫자를 부동소수점으로 바꾸지 않으므로 19.99는 0.01의 배수이고, 2^53보다 큰 정수도 minimum과 maximum에서 모든 자릿수를 유지하며, 1e308은 쓰인 그대로 비교합니다. 사양대로 draft-06부터 1.0은 정수로 칩니다."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "지원하는 draft와 키워드",
+        "paragraphs": [
+          "draft 2020-12, 2019-09, draft-07, draft-06, draft-04를 각각의 규칙대로 지원합니다. $schema가 지정한 draft를 따르며, 자체 $id가 있는 내장 스키마 리소스는 다른 draft를 지정할 수 있습니다. draft-04에서는 id, 불리언 exclusiveMaximum과 exclusiveMinimum을 읽고, 소수부나 지수부가 없는 숫자만 정수로 봅니다. 2019-09 이전에는 $ref가 옆의 키워드를 대신합니다.",
+          "코어: $schema, $id(draft-04는 id), $ref, $defs와 definitions, $anchor, $dynamicRef와 $dynamicAnchor(2020-12), $recursiveRef와 $recursiveAnchor(2019-09), 2019-09 이전 $id의 이름 프래그먼트.",
+          "적용자: allOf, anyOf, oneOf, not, if, then, else, dependentSchemas와 dependencies, prefixItems, items, additionalItems, contains, properties, patternProperties, additionalProperties, propertyNames, unevaluatedItems, unevaluatedProperties.",
+          "단언: type, enum, const, multipleOf, maximum, exclusiveMaximum, minimum, exclusiveMinimum, maxLength, minLength, pattern, maxItems, minItems, uniqueItems, maxContains, minContains, maxProperties, minProperties, required, dependentRequired. 문자열 길이는 문자(코드 포인트) 단위로 세며, pattern은 u 플래그를 쓴 ECMA-262 정규식입니다.",
+          "숫자는 정확한 10진수 값으로 비교합니다. multipleOf 0.01은 19.99를 허용하고, 18446744073709551615라는 maximum은 JavaScript의 안전한 범위를 넘는 정수에도 정확히 적용되며, const, enum, uniqueItems에서 1과 1.0은 같습니다."
+        ]
+      },
+      {
+        "heading": "참조, 원격 스키마와 개인정보",
+        "paragraphs": [
+          "$ref는 #/$defs/address 같은 JSON Pointer, #address 같은 앵커, 같은 스키마에 $id로 내장된 다른 리소스를 상대 URI까지 포함해 확인합니다. 같은 값에 같은 스키마를 다시 적용하는 루프는 페이지를 멈추는 대신 문제로 보고합니다.",
+          "원격 참조는 가져오지 않습니다. 이 스키마의 리소스가 아닌 URL을 가리키는 $ref는 ‘확인할 수 없음’으로 표시되고, 문서의 그 부분은 검사하지 않습니다. 그런 스키마를 쓰려면 그 $id와 함께 $defs에 추가하세요. 그러면 그 URL에 대한 참조가 로컬에서 확인됩니다. 공식 메타스키마도 불러오지 않으며, 검증기가 알고 있는 키워드의 값을 직접 검사합니다."
+        ]
+      },
+      {
+        "heading": "지원하지 않는 것",
+        "paragraphs": [
+          "draft-03(경고와 함께 draft-04로 검증)과 2020-12 이후의 draft. contentEncoding, contentMediaType, contentSchema는 주석으로만 읽고 검사하지 않습니다. 메타스키마를 가져오지 않으므로 사용자 정의 메타스키마의 $vocabulary는 읽지 않습니다. 출력은 오류 목록이며 주석은 포함하지 않습니다.",
+          "idn-hostname은 브라우저의 유니코드 데이터로 IDNA2008을 따르므로, 브라우저 데이터보다 새로운 일부 코드 포인트는 다르게 판단될 수 있습니다."
+        ]
+      },
+      {
+        "heading": "공식 테스트 스위트로 검사",
+        "paragraphs": [
+          "이 검증기는 지원하는 모든 draft에 대해 JSON Schema 조직의 JSON-Schema-Test-Suite를 실행합니다. 2026년 11월 기준으로 필수 테스트 5,133개(draft-04 672개, draft-06 878개, draft-07 972개, 2019-09 1,292개, 2020-12 1,319개)를 모두, ‘format 검사’를 켠 format 테스트 2,776개를 모두, 선택 테스트 764개 중 760개를 통과합니다. 선택 테스트에는 bignum, float-overflow, ECMAScript 정규식, draft 간 테스트가 포함됩니다. 통과하지 못한 4개는 contentEncoding과 contentMediaType 검사를 기대하는 draft-07 콘텐츠 테스트입니다."
         ]
       }
     ]

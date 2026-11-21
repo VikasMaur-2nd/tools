@@ -19,7 +19,7 @@ export type FileKind = (typeof FILE_KIND_LIST)[number];
 const VALIDITIES = ['valid', 'fixable', 'invalid', 'unknown'] as const;
 type Validity = (typeof VALIDITIES)[number];
 /** `shape`: huge-file mode's Shape panel. */
-const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'shape'] as const;
+const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'shape', 'schema'] as const;
 export type ViewId = (typeof VIEW_IDS)[number];
 /** What the input is read as (lib/engine/source.ts). */
 const INPUT_FORMATS = ['json', 'yaml', 'csv', 'xml', 'toml'] as const;
@@ -67,6 +67,7 @@ const FEATURES = [
   'compare_swap', 'compare_format', 'compare_close',
   'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
   'shape_go', 'shape_next', 'shape_count',
+  'schema_validate', 'schema_generate', 'schema_formats',
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 
@@ -258,7 +259,9 @@ const COMMAND_IDS = [
   'graph-export', 'graph-copy', 'graph-png', 'graph-svg', 'convert', 'compare', 'excel', 'copy-convert', 'download-convert', 'search', 'expand',
   'collapse', 'level1', 'level2', 'level3', 'fold-input', 'unfold-input', 'close-compare', 'focus-tree', 'focus-editor', 'nested', 'copy-value',
   'copy-path', 'csv', 'csv-download', 'indent-2', 'indent-4', 'indent-tab', 'theme-system', 'theme-light', 'theme-dark', 'autoformat', 'wrap',
-  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape', 'huge-undo', 'huge-redo', 'huge-save', 'huge-save-as', 'huge-edit', 'huge-text', 'huge-rename', 'huge-insert', 'huge-insert-inside', 'huge-duplicate', 'huge-delete', ...TARGET_IDS.map((t) => `to-${t}`),
+  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape',
+  'schema', 'schema-generate', 'close-schema',
+  'huge-undo', 'huge-redo', 'huge-save', 'huge-save-as', 'huge-edit', 'huge-text', 'huge-rename', 'huge-insert', 'huge-insert-inside', 'huge-duplicate', 'huge-delete', ...TARGET_IDS.map((t) => `to-${t}`),
 ];
 const SIZES = [...SIZE_EDGES.map(([, label]) => label), '100MB+'];
 const ERROR_KIND_LIST = [...ERROR_KINDS.map(([, kind]) => kind), 'other'];

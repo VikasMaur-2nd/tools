@@ -386,7 +386,7 @@ function ViewMenu() {
 function FindBar() {
   const { open, q, total, index, note, seq } = useUI((s) => s.find);
   const view = useUI((s) => s.settings.view);
-  if (!open || view === 'compare') return null;
+  if (!open || view === 'compare' || view === 'schema') return null;
   return <FindInput key={seq} initial={q} q={q} total={total} index={index} note={note} view={view} />;
 }
 
@@ -497,6 +497,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'graph', label: 'Graph' },
   { id: 'convert', label: 'Convert' },
   { id: 'compare', label: 'Compare' },
+  { id: 'schema', label: 'Schema' },
 ];
 
 /** Text tabs; on narrow panes a single dropdown instead. */
@@ -638,7 +639,7 @@ function ViewToolbar() {
         {view === 'table' && <Crumbs />}
         {view === 'convert' && <TargetPick />}
       </div>
-      {view !== 'compare' && (
+      {view !== 'compare' && view !== 'schema' && (
         <div className="vicons">
           <button
             type="button"
@@ -759,7 +760,7 @@ function Banner() {
 function Watermark() {
   const empty = useUI((s) => s.empty);
   const view = useUI((s) => s.settings.view);
-  if (!empty || view === 'compare') return null;
+  if (!empty || view === 'compare' || view === 'schema') return null;
   return (
     <div className="watermark" aria-hidden="true" />
   );
@@ -846,6 +847,8 @@ function ViewerPane({
         <div id="view-compare" className="cmp-host" ref={cmpRef} hidden={view !== 'compare'}>
           {view === 'compare' && <CompareHost />}
         </div>
+        {/* The Schema view's results (components/SchemaView.tsx renders into it). */}
+        <div id="view-schema" className="cmp-host" hidden={view !== 'schema'} />
       </div>
     </section>
   );
@@ -907,6 +910,16 @@ const CompareView = dynamic(() => import('./CompareView'), {
     return <div className="cv-note">{useT()('Loading compare…')}</div>;
   },
 });
+// The Schema view (JSON Schema validation) is code-split the same way: its schema editor's column, kept once opened
+// (its text and undo stay while another view is open), and its results, put in the viewer with react-dom's
+// createPortal (handed over: react-dom stays in the first load's chunks).
+const SchemaView = dynamic(() => import('./SchemaView'), { ssr: false });
+function SchemaColumn() {
+  const on = useUI((s) => s.settings.view === 'schema');
+  const [seen, setSeen] = useState(false);
+  if (on && !seen) setSeen(true);
+  return seen ? <SchemaView hidden={!on} portal={createPortal} /> : null;
+}
 /**
  * Huge-file mode (a file too big for the editor, lib/huge): its own viewer, loaded with it only when one opens.
  * (Its status goes in the status bar through react-dom's portal, handed over: react-dom stays in the first load's chunks.)
@@ -934,9 +947,9 @@ function CompareHost() {
 function Splitter() {
   const split = useUI((s) => s.settings.split);
   const splitCmp = useUI((s) => s.settings.splitCmp);
-  const comparing = useUI((s) => s.settings.view === 'compare');
+  const comparing = useUI((s) => s.settings.view === 'compare' || s.settings.view === 'schema');
   const vertical = () => matchMedia('(max-width: 760px)').matches;
-  // Normal: editor vs viewer. Compare: both editors vs the differences panel.
+  // Normal: editor vs viewer. Compare and Schema: both editors vs the differences or errors panel.
   const [lo, hi, cur, prop] = comparing ? [0.4, 0.85, splitCmp, '--split-c'] : [0.2, 0.8, split, '--split'];
   const clamp = (r: number) => Math.min(hi, Math.max(lo, r));
   const set = (r: number) => document.documentElement.style.setProperty(prop, `${(clamp(r) * 100).toFixed(2)}%`);
@@ -1235,7 +1248,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const fmtRef = useRef<HTMLDivElement>(null);
   const ed2Ref = useRef<HTMLDivElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
-  const comparing = useUI((s) => s.settings.view === 'compare');
+  const comparing = useUI((s) => s.settings.view === 'compare' || s.settings.view === 'schema');
   const empty = useUI((s) => s.empty);
 
   // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views (loaded once the page is idle).
@@ -1308,6 +1321,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <div className="panes">
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />
+        <SchemaColumn />
         <Splitter />
         <Watermark />
         <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} />

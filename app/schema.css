@@ -1,0 +1,379 @@
+/* ─── Schema view (JSON Schema validation) ─────────────────────────────────────
+   The schema editor's column and the validation panel (components/SchemaView.tsx),
+   loaded with them. Only design tokens from globals.css, so light and dark themes
+   apply by themselves. Every class is prefixed with `sch-` (and `.pane-sch`). */
+
+.pane-sch {
+  border-left: 1px solid var(--line);
+}
+
+@media (max-width: 760px) {
+  .pane-sch {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+.sch-draft {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--fg-2);
+  font: 500 11.5px/1.3 var(--font-ui);
+  white-space: nowrap;
+}
+
+/* ── panel ── */
+
+.sch {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  container-type: inline-size;
+}
+
+.sch-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 38px;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sch-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font: 600 13px/1.2 var(--font-ui);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sch-state.ok {
+  color: var(--ok);
+}
+
+.sch-state.err {
+  color: var(--err);
+}
+
+.sch-state.muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.sch-sub {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.sch-sub.warn {
+  color: var(--warn);
+}
+
+.sch-opts {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sch-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 24px;
+  padding: 0 9px 0 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg-2);
+  font: 500 12px/1 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sch-opts .sch-opt {
+  padding: 0 9px;
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+.sch-opt svg {
+  opacity: 0;
+  margin-right: -2px;
+}
+
+.sch-opt:hover {
+  border-color: var(--faint);
+  color: var(--fg);
+}
+
+.sch-opt[aria-pressed='true'] {
+  border-color: var(--fg);
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.sch-opt[aria-pressed='true'] svg {
+  opacity: 1;
+}
+
+.sch-note {
+  color: var(--muted);
+  font: 12px/1.4 var(--font-ui);
+}
+
+.sch-lw {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.sch-list {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  outline: none;
+  transition: opacity 0.15s;
+}
+
+.sch.stale .sch-list {
+  opacity: 0.55;
+}
+
+.sch-list:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+
+.sch-sizer {
+  position: relative;
+}
+
+.sch-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  contain: strict;
+}
+
+.sch-row:hover {
+  background: var(--row-hover);
+}
+
+.sch-row.sel {
+  background: var(--row-sel);
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+.sch-row.sub .sch-msg {
+  color: var(--fg-2);
+}
+
+.sch-headrow {
+  gap: 8px;
+  padding-top: 14px;
+  color: var(--fg);
+  font: 600 12px/1 var(--font-ui);
+  cursor: default;
+}
+
+.sch-headrow:hover {
+  background: none;
+}
+
+.sch-count {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.sch-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--err);
+  border-radius: 5px;
+  color: var(--err);
+}
+
+.sch-mark.w {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sch-mark.e {
+  background: var(--err-soft);
+}
+
+.sch-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sch-msg,
+.sch-at {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sch-msg {
+  color: var(--fg);
+  font: 12.5px/16px var(--font-ui);
+}
+
+.sch-at {
+  color: var(--muted);
+  font: 12px/17px var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+.sch-kw {
+  flex: none;
+  max-width: 40%;
+  height: 22px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg-2);
+  font: 11.5px/20px var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.sch-kw:hover {
+  border-color: var(--faint);
+  color: var(--fg);
+}
+
+/* ── empty and whole-panel states ── */
+
+.sch-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.sch-empty:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+
+.sch-empty p {
+  max-width: 420px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sch-empty b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.sch-empty > svg {
+  flex: none;
+  color: var(--faint);
+}
+
+.sch-empty.ok > svg,
+.sch-empty.ok b {
+  color: var(--ok);
+}
+
+.sch-empty.err > svg {
+  color: var(--err);
+}
+
+.sch-empty ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.sch-empty li {
+  padding-left: 18px;
+  text-indent: -14px;
+}
+
+.sch-empty li::before {
+  content: '\2713';
+  display: inline-block;
+  width: 14px;
+  color: var(--fg);
+  text-indent: 0;
+}
+
+.sch-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.sch-acts .btn {
+  gap: 6px;
+}
+
+@container (max-width: 420px) {
+  .sch-fmt {
+    padding: 0 7px;
+  }
+  .sch-kw {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sch-list {
+    transition: none;
+  }
+}
