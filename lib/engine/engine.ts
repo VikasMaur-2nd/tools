@@ -14,7 +14,7 @@ import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { convertFileName, isFlat, targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type FlatSettings, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
+import { DEFAULT_SETTINGS, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
 import { rt } from '../i18n/ui';
@@ -132,8 +132,6 @@ function loadSettings(): Settings {
     out.csvHeader = out.csvHeader !== false;
     out.csvTypes = out.csvTypes !== false;
     out.rootName = String(out.rootName || 'Root').slice(0, 60);
-    const f = { ...DEFAULT_SETTINGS.flat, ...out.flat };
-    out.flat = { sep: /^[^\\[\]\d]{1,8}$/.test(f.sep) ? f.sep : '.', arrays: f.arrays === 'dot' || f.arrays === 'keep' ? f.arrays : 'bracket', escape: f.escape !== false, depth: [1, 2, 3].includes(f.depth) ? f.depth : 0 };
     return out;
   } catch {
     return DEFAULT_SETTINGS;
@@ -3539,7 +3537,7 @@ export class Engine {
 
   // ── Convert ────────────────────────────────────────────────────────────
 
-  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib' | 'flat'>>, typed = patch.rootName !== undefined) {
+  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib' | 'flat'>>) {
     if (!this.presetting) {
       const s = this.settings;
       // The target and options come from fixed lists. The root type name is typed, so it is never sent.
@@ -3551,15 +3549,10 @@ export class Engine {
     }
     this.setSettings(patch);
     if (this.settings.view !== 'convert') this.setView('convert');
-    else this.scheduleConvert(typed ? 200 : 0);
+    else this.scheduleConvert(patch.rootName !== undefined ? 200 : 0);
   }
 
-  /** Flatten and unflatten's options. `typed`: a separator typed (never sent; converted after a pause). */
-  setFlat(patch: Partial<FlatSettings>, typed = false) {
-    // (Option names and values from fixed lists: the separator only when it is one of the menu's.)
-    if (!typed) for (const [k, v] of Object.entries(patch)) track('convert_option_changed', { option: `flat_${k as keyof FlatSettings}`, value: String(v) });
-    this.setConvert({ flat: { ...this.settings.flat, ...patch } }, typed);
-  }
+
 
   private scheduleConvert(delay: number) {
     clearTimeout(this.convTimer);
@@ -3679,10 +3672,10 @@ export class Engine {
       // records; Excel is a binary download, so its preview is the same table.
       const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
       if (!current()) return;
-      let r: { note: string; warn: boolean; flip: boolean; error: string } | undefined;
+      let r: { note: string; warn: boolean; flip: boolean; error?: string } | undefined;
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
-        : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib, flat: s.flat, report: (x) => (r = x) });
+        : mod.convert(root, info.id, { ...s, report: (x) => (r = x) });
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
       else {
         // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)
@@ -3690,7 +3683,7 @@ export class Engine {
         this.code.setText(out, rows.hl, false, rows.scanner);
       }
       this.convFinished(seq, out, ver, key);
-      store.set({ convert: { loading: false, error: r?.error || null, lines: out ? out.split('\n').length : 0, bytes: out.length, note: r?.note, warn: r?.warn, flip: r?.flip } });
+      store.set({ convert: { loading: false, error: r?.error || null, lines: out ? out.split('\n').length : 0, bytes: out.length, flat: r } });
     } catch (e) {
       if (!current()) return;
       // The CSV and Excel preview isn't behind convert(), which reports deep nesting itself.
@@ -3719,18 +3712,14 @@ export class Engine {
 
   /** Flatten / unflatten: the output replaces the input (undoable) and the other direction shows, giving the input back. */
   useConvert() {
-    const s = this.settings;
-    const flat = s.target === 'flatten';
-    const apply = (out: Output) => {
-      if (this.dead || out === undefined) return;
-      if (!out || typeof out !== 'string') return this.toast(store.get().convert.error ?? 'Nothing to format yet. Paste some JSON first.', 'info');
+    const flat = this.settings.target === 'flatten';
+    // (No output: the view says why, an error or nothing valid to convert.)
+    void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
+      if (!out || typeof out !== 'string' || this.dead) return;
       track('feature_used', { feature: 'use_output', view: 'convert' });
-      this.transform(() => out, () => (flat ? 'Flattened input' : 'Unflattened input'));
-      if (this.ed.text === out) this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
-    };
-    const later = this.convLater();
-    if (later) void later.then(apply);
-    else apply(this.convOutput());
+      this.replaceText(out, flat ? 'Flattened input' : 'Unflattened input');
+      this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
+    });
   }
 
   async downloadConvert() {
@@ -4095,7 +4084,7 @@ export class Engine {
     try {
       this.load(p.initialText ?? '', p.initialFileName ?? null, false, false, undefined, p.input ?? formatOfName(p.initialFileName));
       if (s.view === 'convert') {
-        this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface', flat: s.flat ?? DEFAULT_SETTINGS.flat });
+        this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface', flat: s.flat });
       } else if (s.view) {
         this.setView(s.view);
         if (s.view === 'format') this.setFormat({ minify: s.minify ?? false, sortKeys: s.sortKeys ?? false, escape: s.escape ?? false });

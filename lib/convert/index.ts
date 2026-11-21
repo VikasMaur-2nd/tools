@@ -39,10 +39,10 @@ const EMIT: Record<string, Emitter> = {
   unflatten: (r, o) => flat(unflatten(r, o.flat), o),
 };
 
-/** Flatten and unflatten say more than their output (notes, or an error instead of it): handed to `o.report`. */
-function flat(r: FlatResult, o: ConvertOptions) {
-  o.report?.(r);
-  return r.text;
+/** Flatten and unflatten say more than their output (a note, or an error instead of it): handed to `o.report`. */
+function flat({ text, ...note }: FlatResult, o: ConvertOptions) {
+  o.report?.(note);
+  return text;
 }
 
 const COMMENT: Record<string, string> = { python: '# ', yaml: '# ', toml: '# ', 'json-schema': '', jsonl: '', flatten: '', unflatten: '' };

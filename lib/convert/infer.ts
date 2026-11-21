@@ -23,8 +23,8 @@ export interface ConvertOptions {
   csharpLib?: 'stj' | 'newtonsoft';
   /** Flatten and unflatten: separator, array style, escapes and depth (default: lib/convert/flat.ts FLAT_DEFAULTS). */
   flat?: Partial<FlatOptions>;
-  /** Flatten and unflatten: their notes, or the error that left no output. */
-  report?: (r: FlatResult) => void;
+  /** Flatten and unflatten: their note, or the error that left no output. */
+  report?: (r: Omit<FlatResult, 'text'>) => void;
 }
 
 /** Kind bits of a shape. */

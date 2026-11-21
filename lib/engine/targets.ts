@@ -34,7 +34,7 @@ export const TARGETS: TargetInfo[] = [
 ];
 
 /** Flatten and unflatten: JSON both ways, sharing their options (Settings.flat). */
-export const isFlat = (id: string) => id === 'flatten' || id === 'unflatten';
+export const isFlat = (id: string) => id.endsWith('flatten');
 
 export const targetInfo = (id: string) => TARGETS.find((t) => t.id === id) ?? TARGETS[0];
 

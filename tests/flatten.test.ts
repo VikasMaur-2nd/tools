@@ -328,7 +328,7 @@ test('convert(): flatten and unflatten report notes and errors beside their text
   const seen: unknown[] = [];
   const out = convert(doc('{"a.b":1,"c":{"d":2}}'), 'flatten', { rootName: 'Root', report: (r) => seen.push(r) });
   assert.equal(out, '{\n  "a\\\\.b": 1,\n  "c.d": 2\n}');
-  assert.deepEqual(seen, [{ text: out, note: 'Escaped 1 key with a backslash so that Unflatten restores it', warn: false, flip: false, error: '' }]);
+  assert.deepEqual(seen, [{ note: 'Escaped 1 key with a backslash so that Unflatten restores it', warn: false, flip: false, error: '' }]);
   const err = convert(doc('{"a":1,"a.b":2}'), 'unflatten', { rootName: 'Root', report: (r) => seen.push(r) });
   assert.equal(err, '');
   assert.equal((seen[1] as { error: string }).error, 'Keys "a" and "a.b" conflict: one holds a value, the other goes inside it');
