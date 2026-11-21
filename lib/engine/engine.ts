@@ -3362,18 +3362,20 @@ export class Engine {
     const r = this.fresh();
     const s = this.settings;
     const flat = s.view === 'convert' && isFlat(s.target);
-    // (Format offers the repaired document; flatten and unflatten take the input only as it is, valid.)
-    if (!r?.root || (flat && r.issues.length)) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
+    // (Format offers the repaired document; flatten and unflatten take the input only as it is, valid: JSON Lines and
+    // other formats as they read, never with repairs.)
+    if (!r?.root || (flat && store.get().status.kind !== 'valid')) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
     track('feature_used', { feature: 'use_output' });
     if (flat) {
-      // Only the conversion of the text in the editor now (a broken edit keeps the last valid document's on show),
-      // and for this view session: leaving Convert stops its conversion, and the one made on coming back must not act
-      // on it. (Other options or another target end its wait with nothing: see convFinished.) Valid now, so the tree
-      // shown is this version's.
+      // Only the conversion of the text in the editor now, read as it is: checked when it arrives, as the parse
+      // above may be an earlier text's while a reader (JWT, YAML…) still loads, and a broken edit keeps the last valid
+      // document's on show. And only for this view session: leaving Convert stops its conversion, and the one made on
+      // coming back must not act on it. (Other options or another target end its wait with nothing: convFinished.)
       const ver = this.ed.version;
       const at = this.viewSeq;
       void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
-        if (out && !this.dead && this.ed.version === ver && this.viewSeq === at) {
+        // (The status is the latest analysis's: of this version once its parse arrived, valid only without repairs.)
+        if (out && !this.dead && this.ed.version === ver && store.get().status.kind === 'valid' && this.viewSeq === at) {
           // (A conversion's output is one string.)
           this.replaceText(out as string, s.target === 'flatten' ? 'Flattened input' : 'Unflattened input');
           this.setConvert({ target: s.target === 'flatten' ? 'unflatten' : 'flatten' });

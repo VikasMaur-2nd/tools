@@ -205,6 +205,17 @@ test('an array under an empty top-level key stays whole in bracket style, so it 
   }
 });
 
+test('the count of keys that won\'t come back is exact (every all-digit object spends unflatten\'s budget)', () => {
+  // (Under a misread object, its all-digit children didn't spend the budget, so b looked like an array too.)
+  const o = { arrays: 'dot', escape: false } as const;
+  const x = '{"a":{"0":{"700000":1}},"b":{"600000":2}}';
+  const r = flat(x, o);
+  assert.equal(r.note, '1 key won\'t unflatten to the same place: "a.0.700000" · Turn on Escape keys to keep them apart');
+  const u = unflat(r.text, o);
+  assert.match(canon(u.text), /^\{"a":\[\[null,/);
+  assert.match(canon(u.text), /"b":\{"600000":2\}\}$/);
+});
+
 test('messages put keys in as they are, {b} and $& included', () => {
   // (Filled one placeholder after the other, "{b}" in the first key took the second's place, and String.replace read
   // "$&" as the text it replaced.)
@@ -443,6 +454,40 @@ function refEscape(k: string, o: FlatOptions) {
   return r;
 }
 
+/** A leaf's place: object keys and array indexes, each with its container's kind. */
+type Place = (['o', string] | ['a', number])[];
+
+/** The leaves the reference flattens to (one per flat key), each with its place in the document and its compact JSON. */
+function refLeaves(v: V, o: FlatOptions): [Place, string][] {
+  const out: [Place, string][] = [];
+  const one = (root: V, at: Place) => {
+    if (!isBox(root) || !root.e.length || (root.t === 'a' && o.arrays === 'keep')) return;
+    const walk = (n: Extract<V, { t: 'o' | 'a' }>, place: Place, level: number) => {
+      const items: [string | number, V][] = n.t === 'o' ? n.e : n.e.map((x, i) => [i, x]);
+      for (const [k, c] of items) {
+        const p: Place = [...place, typeof k === 'string' ? ['o', k] : ['a', k]];
+        const emptyTop = o.arrays === 'bracket' && level === 0 && n.t === 'o' && k === '' && c.t === 'a';
+        if (isBox(c) && c.e.length && !(c.t === 'a' && o.arrays === 'keep') && !emptyTop && (!o.depth || level < o.depth)) walk(c, p, level + 1);
+        else out.push([p, jwrite(c)]);
+      }
+    };
+    walk(root, at, 0);
+  };
+  if (v.t === 'a' && v.e.length) v.e.forEach((x, i) => one(x, [['a', i]]));
+  else one(v, []);
+  return out;
+}
+
+/** The value at `place` in `v` (the same kinds of containers all the way), or null. */
+function at(v: V, place: Place): V | null {
+  let n: V | undefined = v;
+  for (const [kind, k] of place) {
+    if (!n || n.t !== kind) return null;
+    n = n.t === 'o' ? n.e.find(([key]) => key === k)?.[1] : n.e[k as number];
+  }
+  return n ?? null;
+}
+
 function refFlatten(v: V, o: FlatOptions): V {
   const one = (root: V): V => {
     if (!isBox(root) || !root.e.length || (root.t === 'a' && o.arrays === 'keep')) return root;
@@ -671,6 +716,15 @@ test('fuzz: unflatten(flatten(x)) is x exactly when flatten does not warn, and m
       const ru = refUnflatten(rf, o);
       assert.equal(!!ru && jwrite(ru) === jwrite(v), ok, `${JSON.stringify(o)}\n${text}`);
       if (ru && !u.error) assert.equal(jwrite(jparse(u.text)), jwrite(ru));
+      // The count it warns of is exactly the number of keys that don't come back to their place (with escapes off;
+      // without duplicate keys, which merge or clash).
+      if (!o.escape && !u.error && !f.note.includes('duplicate')) {
+        const back = jparse(u.text);
+        const moved = refLeaves(v, o).filter(([place, json]) => at(back, place) === null || jwrite(at(back, place)!) !== json).length;
+        const said = Number(/^(?:.* · )?([\d,]+) keys? won't unflatten/.exec(f.note)?.[1].replace(/,/g, '') ?? 0);
+        assert.equal(said, moved, `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
+        add(moved ? 'counted moved keys' : 'nothing moved');
+      }
     }
   }
   console.log(`flatten fuzz over ${DOCS} documents: documents with ${JSON.stringify(g.kinds)}\nresults: ${JSON.stringify(counts)}`);
@@ -729,6 +783,7 @@ function stepped(steps: Steps<FlatResult>) {
 test('steps stay short for long lists of small records, scalars and values kept whole', () => {
   const N = 60_000;
   const big = `[${Array.from({ length: N }, (_, i) => `{"i":${i},"tags":["a","b"],"n":null}`).join(',')}]`;
+  const medium = `{${Array.from({ length: 128 }, (_, a) => `"a${a}":[${Array.from({ length: 1000 }, (_, i) => i).join(',')}]`).join(',')}}`;
   const cases: [string, string, (r: JNode, o?: Partial<FlatOptions>) => Steps<FlatResult>, Partial<FlatOptions>?][] = [
     // (Each record or scalar is one item: none of them yielded, 191 ms and 125 ms in one step for 750 KB.)
     ['a top-level array of empty objects, flattened', `[${'{},'.repeat(N - 1)}{}]`, flattenSteps],
@@ -740,6 +795,10 @@ test('steps stay short for long lists of small records, scalars and values kept 
     ['a big array kept whole (None)', `{"rows":${big}}`, flattenSteps, { arrays: 'keep' }],
     ['a depth-1 flatten of a big nested value', `{"data":{"rows":${big}}}`, flattenSteps, { depth: 1 }],
     ['a flat key holding a big array, unflattened', `{"data.rows":${big}}`, unflattenSteps],
+    // (Each kept container counted its own items from 0: 128 arrays of 1,000 numbers converted in one step.)
+    ['many medium arrays kept whole (None)', medium, flattenSteps, { arrays: 'keep' }],
+    ['many medium arrays as flat values, unflattened', medium, unflattenSteps],
+    ['many medium arrays rebuilt from indexes, unflattened', `{${Array.from({ length: 128 }, (_, a) => Array.from({ length: 1000 }, (_, i) => `"a${a}[${i}]":${i}`).join(',')).join(',')}}`, unflattenSteps],
     ['a big object, its keys checked for duplicates', `{${Array.from({ length: N }, (_, i) => `"k${i}":${i}`).join(',')}}`, flattenSteps],
   ];
   for (const [what, text, run, o] of cases) {
