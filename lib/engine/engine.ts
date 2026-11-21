@@ -3679,8 +3679,8 @@ export class Engine {
         ? xlsx.toCsv(xlsx.records(root))
         : // (The settings as they are: convert() reads its own, and a cleared root name is "Root". Flatten and
           // unflatten run in slices, typing going on in between: a newer conversion stops this one.)
-          await mod.convertSliced(root, info.id, { ...s, report: (x) => (r = x), live: current });
-      if (out === null || !current()) return;
+          await mod.convert(root, info.id, { ...s, report: (x) => (r = x), live: current });
+      if (!current()) return;
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
       else {
         // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)
@@ -3723,9 +3723,11 @@ export class Engine {
   private useConvert() {
     const flat = this.settings.target === 'flatten';
     const ver = this.ed.version;
+    // (Valid then, so the tree shown was this version's: goodVer is ver while the editor still has it.)
     void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
-      if (typeof out === 'string' && out && !this.dead && this.goodVer === ver && this.ed.version === ver) {
-        this.replaceText(out, flat ? 'Flattened input' : 'Unflattened input');
+      if (out && !this.dead && this.ed.version === ver) {
+        // (A conversion's output is one string.)
+        this.replaceText(out as string, flat ? 'Flattened input' : 'Unflattened input');
         this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
       }
     });

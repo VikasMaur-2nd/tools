@@ -29,7 +29,7 @@
  * so keys such as "__proto__" are just keys.
  *
  * Both run in steps (flattenSteps, unflattenSteps: generators that yield every 1,024 items or so), so the page
- * can convert a big document in short slices between keystrokes (lib/convert/index.ts convertSliced).
+ * can convert a big document in short slices between keystrokes (lib/convert/index.ts convert, with `live`).
  *
  * Messages are English: the page translates them by their text (lib/i18n/translate.ts).
  */

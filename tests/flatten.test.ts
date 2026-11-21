@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parse, type JNode } from '../lib/json/parser';
 import { stringify } from '../lib/json/format';
 import { FLAT_DEFAULTS, flatOptions, flatten, pathParts, unflatten, validSep, type FlatArrays, type FlatOptions, type Part } from '../lib/convert/flat';
-import { convert, convertSliced } from '../lib/convert';
+import { convert } from '../lib/convert';
 import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
 import { cpuNow } from './timing';
 
@@ -713,7 +713,7 @@ function records(n: number, seed = 42) {
   return `{"data":[${Array.from({ length: n }, (_, i) => rec(i)).join(',')}],"total":${n}}`;
 }
 
-test('convertSliced: the same output in slices of about 8 ms, the page free in between, and stops when not wanted', async () => {
+test('convert with live (the page): the same output in slices of about 8 ms, the page free in between, and stops when not wanted', async () => {
   const text = records(4600); // about 1 MB
   const x = doc(text);
   // Slices: the longest stretch of work between two yields to the page.
@@ -738,11 +738,11 @@ test('convertSliced: the same output in slices of about 8 ms, the page free in b
       const notes: unknown[] = [];
       [longest, slices, last] = [0, 0, performance.now()];
       const t0 = performance.now();
-      const out = await convertSliced(input, target, { rootName: 'Root', live: () => true, report: (n) => notes.push(n) });
+      const out = await convert(input, target, { rootName: 'Root', live: () => true, report: (n) => notes.push(n) });
       longest = Math.max(longest, performance.now() - last);
       assert.equal(out, convert(input, target, { rootName: 'Root' }), target);
       assert.deepEqual(notes, [{ note: '', warn: false, flip: false, error: '' }]);
-      console.log(`convertSliced ${target}, 1 MB: ${slices} slices in ${Math.round(performance.now() - t0)} ms, the longest ${longest.toFixed(1)} ms`);
+      console.log(`sliced ${target}, 1 MB: ${slices} slices in ${Math.round(performance.now() - t0)} ms, the longest ${longest.toFixed(1)} ms`);
       assert.ok(slices > 3, `${target}: ${slices} slices`);
       // 8 ms a slice, plus the work between two checks (1,024 items) on a busy machine.
       assert.ok(longest < 60, `${target}: a slice took ${longest} ms`);
@@ -753,11 +753,11 @@ test('convertSliced: the same output in slices of about 8 ms, the page free in b
   // Not wanted any more: it stops at the next slice, reporting nothing.
   const notes: unknown[] = [];
   let asked = 0;
-  assert.equal(await convertSliced(x, 'flatten', { rootName: 'Root', live: () => ++asked < 2, report: (n) => notes.push(n) }), null);
+  assert.equal(await convert(x, 'flatten', { rootName: 'Root', live: () => ++asked < 2, report: (n) => notes.push(n) }), '');
   assert.deepEqual([asked, notes], [2, []]);
   // Other targets convert at once; small documents in one slice.
-  assert.equal(await convertSliced(doc('{"a":1}'), 'yaml', { rootName: 'Root', live: () => false }), 'a: 1\n');
-  assert.equal(await convertSliced(doc('{"a":{"b":1}}'), 'flatten', { rootName: 'Root', live: () => false }), '{\n  "a.b": 1\n}');
+  assert.equal(convert(doc('{"a":1}'), 'yaml', { rootName: 'Root', live: () => false }), 'a: 1\n');
+  assert.equal(await convert(doc('{"a":{"b":1}}'), 'flatten', { rootName: 'Root', live: () => false }), '{\n  "a.b": 1\n}');
 });
 
 test('speed: a 5 MB document flattens and unflattens within 3 s of CPU time each', () => {

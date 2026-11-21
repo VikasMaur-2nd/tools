@@ -61,13 +61,11 @@ const nextTask = () =>
 /** Main-thread time per slice of a long conversion (ms): short enough that typing stays smooth. */
 const SLICE = 8;
 
-/**
- * convert, for the page: flatten and unflatten run in slices of about 8 ms with the page free in between, so a
- * big document converts without holding up typing. `live`, asked between slices: false once the result isn't
- * wanted any more (the document or the settings changed), which stops it (null). Other targets convert at once.
- */
-export async function convertSliced(root: JNode, target: string, opts: ConvertOptions & { live: () => boolean }): Promise<string | null> {
-  if (target !== 'flatten' && target !== 'unflatten') return convert(root, target, opts);
+/** The page's options: `live`, asked between slices of a long conversion, false once its result isn't wanted. */
+type Sliced = ConvertOptions & { live: () => boolean };
+
+/** Flatten and unflatten in slices of about 8 ms with the page free in between; '' once not `live` any more. */
+async function sliced(root: JNode, target: string, opts: Sliced): Promise<string> {
   const steps = (target === 'flatten' ? flattenSteps : unflattenSteps)(root, opts.flat);
   let until = performance.now() + SLICE;
   for (;;) {
@@ -75,13 +73,19 @@ export async function convertSliced(root: JNode, target: string, opts: ConvertOp
     if (r.done) return flat(r.value, opts);
     if (performance.now() < until) continue;
     await nextTask();
-    if (!opts.live()) return null;
+    if (!opts.live()) return '';
     until = performance.now() + SLICE;
   }
 }
 
-/** Converts a parsed document to `target` (a target id other than CSV and Excel: see xlsx.ts). */
-export function convert(root: JNode, target: string, opts: ConvertOptions): string {
+/**
+ * Converts a parsed document to `target` (a target id other than CSV and Excel: see xlsx.ts). With `live` (the
+ * page), flatten and unflatten run in slices so a big document converts without holding up typing: a promise.
+ */
+export function convert(root: JNode, target: string, opts: Sliced): string | Promise<string>;
+export function convert(root: JNode, target: string, opts: ConvertOptions): string;
+export function convert(root: JNode, target: string, opts: ConvertOptions | Sliced): string | Promise<string> {
+  if ('live' in opts && (target === 'flatten' || target === 'unflatten')) return sliced(root, target, opts);
   // (Own keys only: "constructor" or "toString" would find Object.prototype's.)
   const f = Object.hasOwn(EMIT, target) ? EMIT[target] : undefined;
   if (!f) throw new Error(`Unknown conversion target "${target}"`);
