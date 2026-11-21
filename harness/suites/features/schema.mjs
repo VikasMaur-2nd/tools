@@ -1,8 +1,8 @@
 // The Schema view (JSON Schema validation): the validator page's sample and its six errors, a click or Enter on an
 // error selecting it in the document, a keyword selecting the rule in the schema, keyboard navigation, fixing to
-// Valid and undoing, a broken schema, Check formats, the phone layout, and from the home page Alt+7, Generate from
-// the document and Close; the view toolbar at the widths where its row is full; a German page's strings, also after
-// a failed load; the palette's Generate on a fresh page.
+// Valid and undoing (Valid, never "Validating…" while a check is on its way), a broken schema, Check formats, the
+// phone layout, and from the home page Alt+7, Generate from the document and Close; the view toolbar at the widths
+// where its row is full; a German page's strings, also after a failed load; the palette's Generate on a fresh page.
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, setDoc, until } from './_helpers.mjs';
 
@@ -51,7 +51,7 @@ test('the validator page: six errors, jumps, keyboard, fixed to Valid, undo, a b
     ta.select();
     document.execCommand('insertText', false, text);
   }, FIXED);
-  t.check(!!(await waitState(page, /^Valid/)), 'fixing the document shows Valid', await state(page));
+  t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'fixing the document shows Valid', await state(page));
   t.check(/matches the schema \(2020-12\)/.test(await page.evaluate(() => document.querySelector('#view-schema .sch-empty')?.textContent ?? '')), 'with the draft');
   await page.keyboard.press(`${MOD}+z`);
   t.check(!!(await waitState(page, /6 errors/)), 'Undo brings the errors back', await state(page));
@@ -75,7 +75,7 @@ test('the validator page: six errors, jumps, keyboard, fixed to Valid, undo, a b
     ta.select();
     document.execCommand('insertText', false, text);
   }, FIXED.replace('ada@example.com', 'not-an-email'));
-  t.check(!!(await waitState(page, /^Valid/)), 'format is an annotation by default', await state(page));
+  t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'format is an annotation by default', await state(page));
   await page.locator('.sch-fmt').click();
   t.check(!!(await waitState(page, /1 error/)), 'Check formats finds the bad email', await state(page));
   t.check((await page.evaluate((s) => document.querySelector(s)?.querySelector('.sch-msg')?.textContent, ROWS)) === 'Must be a valid email', 'with its message');
@@ -103,7 +103,7 @@ test('home: Alt+7 opens Schema, Generate from the document, Close goes back', as
   await page.getByRole('button', { name: 'Generate from the document' }).click();
   const schema = await until(page, () => document.getElementById('schema-input')?.value.includes('"$schema"') && document.getElementById('schema-input').value, null);
   t.check(!!schema && schema.includes('"price"'), 'the generated schema is in the schema editor', schema?.slice(0, 80));
-  t.check(!!(await waitState(page, /^Valid/)), 'and the document is valid against it', await state(page));
+  t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'and the document is valid against it', await state(page));
   await page.locator('.pane-sch [aria-label="Close schema"]').click();
   t.check(await until(page, () => document.querySelector('.pane-sch')?.hidden && !document.getElementById('view-format').hidden, null), 'Close schema goes back to the view before');
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
@@ -143,7 +143,7 @@ test('back on the page after another page: the schema editor still validates', a
     ta.select();
     document.execCommand('insertText', false, text);
   }, '{"type": "object"}');
-  t.check(!!(await until(page, () => [...document.querySelectorAll('#view-schema .sch-state')].some((el) => el.offsetParent && /^Valid/.test(el.textContent)), null, { timeout: 15_000 })), 'a schema edit after Back is validated');
+  t.check(!!(await until(page, () => [...document.querySelectorAll('#view-schema .sch-state')].some((el) => el.offsetParent && /^Valid(?!ating)/.test(el.textContent)), null, { timeout: 15_000 })), 'a schema edit after Back is validated');
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
 
@@ -157,8 +157,9 @@ test('a schema file opened over the page\'s sample is saved with its name', asyn
   await page.getByRole('menuitem', { name: /^Open file/ }).click();
   await (await chooser).setFiles({ name: 'orders.schema.json', mimeType: 'application/json', buffer: Buffer.from(text) });
   t.check(!!(await until(page, (x) => document.getElementById('schema-input')?.value === x, text)), 'the file is in the schema editor');
-  const saved = await until(page, () => localStorage.getItem('jf:schema') && [localStorage.getItem('jf:schema'), localStorage.getItem('jf:schema-file')], null, { timeout: 5000 });
-  t.check(JSON.stringify(saved) === JSON.stringify([text, 'orders.schema.json']), 'saved, text and name together, without typing', saved);
+  // (One record, text and name: lib/schema/controller.ts SCHEMA_KEYS.doc.)
+  const saved = await until(page, () => localStorage.getItem('jf:schema-doc') && JSON.parse(localStorage.getItem('jf:schema-doc')), null, { timeout: 5000 });
+  t.check(JSON.stringify(saved) === JSON.stringify({ text, file: 'orders.schema.json' }), 'saved, text and name together, without typing', saved);
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
 
@@ -229,11 +230,12 @@ test('the palette\'s Generate on a fresh page: the view opens with the generated
   await t.app.command(page, 'Generate a JSON Schema and validate against it');
   const schema = await until(page, () => document.getElementById('schema-input')?.value.includes('"$schema"') && document.getElementById('schema-input').value, null, { timeout: 20_000 });
   t.check(!!schema && schema.includes('"tags"'), 'the generated schema is in the schema editor', schema?.slice(0, 80));
-  t.check(!!(await waitState(page, /^Valid/)), 'and the document is valid against it', await state(page));
+  t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'and the document is valid against it', await state(page));
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
 
-test('a German page whose Schema strings failed to load once: English, then German when the view opens again (round 2, finding 10)', async (t) => {
+// (The failed request is logged by the browser: the test checks the other errors itself.)
+test('a German page whose Schema strings failed to load once: English, then German when the view opens again (round 2, finding 10)', { allowErrors: true }, async (t) => {
   const { page } = t;
   let failed = 0;
   // (The first request for the Schema view's strings fails; the next ones go through.)
