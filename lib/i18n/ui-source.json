@@ -1309,7 +1309,8 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -2621,7 +2622,8 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -3933,7 +3935,8 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -5245,7 +5248,8 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -6557,7 +6561,8 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -7869,7 +7874,8 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -9181,7 +9187,8 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -10493,6 +10500,7 @@
     "toast.schemaStale": "4b0a1388",
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
-    "app.schema.incomplete": "e21922f6"
+    "app.schema.incomplete": "e21922f6",
+    "app.schema.docUnread": "767fd611"
   }
 }

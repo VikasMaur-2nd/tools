@@ -7,6 +7,11 @@
   border-left: 1px solid var(--line);
 }
 
+/* A huge file takes the whole tool (app/huge.css): the schema's column too. */
+html[data-huge] .pane-sch {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .pane-sch {
     border-left: 0;

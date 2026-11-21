@@ -684,6 +684,7 @@
   "app.schema.schemaSyntax": "schema 不是有效的 JSON",
   "app.schema.addDoc": "在左侧添加 JSON 文档即可校验。",
   "app.schema.docSyntax": "请修正左侧的 JSON 文档",
+  "app.schema.docUnread": "请修正左侧的文档后再校验",
   "app.schema.tooDeep": "嵌套太深，无法校验",
   "app.schema.matches": "文档符合 schema（{draft}）。",
   "app.schema.loose": "文档不是严格的 JSON：已按修复后的内容校验",

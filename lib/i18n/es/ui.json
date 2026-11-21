@@ -730,6 +730,7 @@
   "app.schema.schemaSyntax": "El esquema no es JSON válido",
   "app.schema.addDoc": "Añade a la izquierda el documento JSON para validarlo.",
   "app.schema.docSyntax": "Corrige el documento JSON de la izquierda",
+  "app.schema.docUnread": "Corrige el documento de la izquierda para validarlo",
   "app.schema.tooDeep": "El anidamiento es demasiado profundo para validarlo",
   "app.schema.matches": "El documento cumple el esquema ({draft}).",
   "app.schema.loose": "El documento no es JSON estricto: se comprobó en su versión reparada",

@@ -684,6 +684,7 @@
   "app.schema.schemaSyntax": "スキーマが有効なJSONではありません",
   "app.schema.addDoc": "検証するには、左にJSONドキュメントを追加してください。",
   "app.schema.docSyntax": "左のJSONドキュメントを修正してください",
+  "app.schema.docUnread": "検証するには、左のドキュメントを修正してください",
   "app.schema.tooDeep": "ネストが深すぎて検証できません",
   "app.schema.matches": "ドキュメントはスキーマ（{draft}）に適合しています。",
   "app.schema.loose": "ドキュメントは厳密なJSONではありません。修復した内容で検証しました",

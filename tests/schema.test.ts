@@ -541,3 +541,11 @@ test('round 3, finding 9: a $ref loop met by several JSON Lines records is one p
   session.run({ schema, doc: '{"a": 1}\n{"a": 2}\n', draft: null, formats: false });
   assert.deepEqual(session.run({ schema, doc: '{"b": 1}', draft: null, formats: false }).problems, []);
 });
+
+test('round 4, finding 3: a document that can\'t be read as its format: said so, after the schema\'s own state', () => {
+  const r = validateTexts({ schema: '{"type": "object", "minLength": -1}', doc: '', draft: null, formats: false, unread: true });
+  assert.equal(r.state, 'doc-unread');
+  assert.deepEqual(r.problems.map((p) => p.code), ['badValue']);
+  assert.equal(validateTexts({ schema: '{"type": ', doc: '', draft: null, formats: false, unread: true }).state, 'schema-syntax');
+  assert.equal(validateTexts({ schema: ' ', doc: '', draft: null, formats: false, unread: true }).state, 'empty-schema');
+});

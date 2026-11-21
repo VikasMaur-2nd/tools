@@ -707,6 +707,7 @@
   "app.schema.schemaSyntax": "Das Schema ist kein gültiges JSON",
   "app.schema.addDoc": "Füge links das JSON-Dokument ein, um es zu validieren.",
   "app.schema.docSyntax": "Behebe den Fehler im JSON-Dokument links",
+  "app.schema.docUnread": "Behebe den Fehler im Dokument links, um es zu validieren",
   "app.schema.tooDeep": "Zu tief verschachtelt für die Validierung",
   "app.schema.matches": "Das Dokument entspricht dem Schema ({draft}).",
   "app.schema.loose": "Das Dokument ist kein striktes JSON: Geprüft wurde die reparierte Fassung",

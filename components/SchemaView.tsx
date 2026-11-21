@@ -98,6 +98,7 @@ async function generate() {
   if (!e) return;
   // (The document now, and which one it is: a schema generated for it replaces nothing if either changes meanwhile.)
   const doc = e.leftDoc();
+  if (doc.text === null) return toast("Can't generate a schema: fix the document's JSON first", 'info');
   if (!doc.text.trim()) return toast('Add a JSON document first', 'info');
   const r = parse(doc.text);
   if (!r.root || r.error) return toast("Can't generate a schema: fix the document's JSON first", 'info');
@@ -244,10 +245,14 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
     const s = store.get().settings;
     ed.indentUnit = UNITS[s.indent];
     ed.setWrap(s.wrap);
-    // (Every new document makes the shown result an older one's until its text is read.)
-    const watch = (doc: { text: string; id: number } | null) => (doc ? ctl.setDoc(doc.text, doc.id) : ctl.docEdited());
+    // (Every new document makes the shown result an older one's until its text is read; the one there now, at once:
+    // an engine made again, a page Next.js kept shown again, may have read it before this watch.)
+    const watch = (doc: { text: string | null; id: number } | null) => (doc ? ctl.setDoc(doc.text, doc.id) : ctl.docEdited());
     engine.docWatch = watch;
-    if (ctl.attach(ed, store.get().schemaIn)) void generate();
+    const generating = ctl.attach(ed, store.get().schemaIn);
+    const now = engine.leftDoc();
+    ctl.setDoc(now.text, now.id);
+    if (generating) void generate();
     return () => {
       if (engine.docWatch === watch) engine.docWatch = null;
       ctl.detach();
@@ -619,6 +624,15 @@ const Panel = memo(function Panel() {
     const de = r.docError;
     empty = (
       <Empty icon="alert" tone="err" title={t('Fix the JSON document on the left')} text={<span className={PRIVATE}>{t('Ln {line}, Col {col}: {msg}', { line: de.loc.line, col: de.loc.col, msg: t.msg(de.msg) })}</span>}>
+        <button type="button" className="btn sm" onClick={() => act((e) => e.gotoError())}>
+          {t('Go to error')}
+        </button>
+      </Empty>
+    );
+  } else if (r.state === 'doc-unread') {
+    // (Another format than JSON that doesn't read yet: the status bar says why, Go to error goes there.)
+    empty = (
+      <Empty icon="alert" tone="err" title={t('Fix the document on the left to validate it')}>
         <button type="button" className="btn sm" onClick={() => act((e) => e.gotoError())}>
           {t('Go to error')}
         </button>

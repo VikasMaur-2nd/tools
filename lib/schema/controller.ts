@@ -79,6 +79,8 @@ export class SchemaController {
   private host: SchemaHost;
   private client: ReturnType<SchemaHost['validator']> | null = null;
   private doc = '';
+  /** The document can't be read as its format: nothing to validate, said so (ValidateRequest.unread). */
+  private unread = false;
   /** Which document `doc` is (see SchemaHost.docId). */
   private docOf = -1;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -175,6 +177,7 @@ export class SchemaController {
     if (inc.generate) return true;
     if (inc.text === undefined) return false;
     if (inc.sample) {
+      this.asks++;
       this.ed.init(inc.text);
       this.sample = inc.text;
       this.set({ file: null, blank: !inc.text });
@@ -200,6 +203,8 @@ export class SchemaController {
   load(text: string, name: string | null) {
     const ed = this.ed;
     if (!ed) return;
+    // (A replacement now: one asked for before and still on its way no longer applies, even over the same text.)
+    this.asks++;
     const before = this.state.file;
     this.set({ file: name });
     ed.setValue(text, 0, false, [before, name]);
@@ -227,13 +232,17 @@ export class SchemaController {
     this.schedule(-1);
   }
 
-  /** The document's text and which document it is, once read (the same text again too: an edit undone). */
-  setDoc(text: string, id: number) {
-    if (text === this.doc && id === this.docOf && !this.docPending) return;
+  /**
+   * The document's text and which document it is, once read (the same text again too: an edit undone). Null text:
+   * it can't be read as its format; id -1: not read yet (its text comes later).
+   */
+  setDoc(text: string | null, id: number) {
+    if ((text ?? '') === this.doc && (text === null) === this.unread && id === this.docOf && !this.docPending) return;
     this.docPending = false;
-    this.doc = text;
+    this.doc = text ?? '';
+    this.unread = text === null;
     this.docOf = id;
-    this.schedule(text.length < 1_000_000 ? 40 : 150);
+    this.schedule(this.doc.length < 1_000_000 ? 40 : 150);
   }
 
   /** The text held is the document there now's (else another is on its way: nothing is checked or shown for it). */
@@ -313,7 +322,7 @@ export class SchemaController {
     const client = (this.client ??= this.host.validator());
     clearTimeout(this.busyTimer);
     this.busyTimer = setTimeout(() => this.set({ busy: true }), 200);
-    const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000 };
+    const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000, ...(this.unread && { unread: true }) };
     client.validate(req, (o: Outcome) => {
       // (Something changed since this was asked: the next run shows its own result. The document isn't the one
       // checked any more, whatever made it another: the new one's text comes, see setDoc.)
