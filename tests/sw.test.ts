@@ -275,32 +275,71 @@ test('service worker: a localized page caches the dictionaries it names (its own
   assert.equal(await sw.get(de[1]), `{"file":"${de[1]}"}`);
 });
 
-test('service worker: a dictionary of older texts goes after a deploy, once no cached page or open tab needs it', async () => {
-  const before = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
-  const after = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+test('service worker: a cached page replaced by a later build\'s retires the dictionaries nothing needs, once no tab of it is open (round 3, finding 8)', async () => {
+  const hash = (n: number) => `/i18n/schema-strings.de.${String(n).repeat(12)}.json`;
   const sw = worker();
-  sw.serve(localized('a', { de: [before] }));
+  sw.serve(localized('a', { de: [hash(1)] }));
   await sw.install();
-  await sw.visit('/de');
-  await sw.post(['/de']);
-  assert.deepEqual(sw.dicts(), [before]);
-  // The translation changes (build b). Online, the page gets the new one; served from the cache as a hashed file.
-  sw.tabs([]);
-  sw.serve(localized('b', { de: [after] }));
-  await sw.visit('/', 'b-tab');
-  await sw.post(['/'], 'b-tab');
-  await sw.visit('/de', 'b-tab');
-  await sw.post(['/de'], 'b-tab');
-  assert.deepEqual(sw.dicts(), [after, before].sort());
+  await sw.visit('/de', 'tab-a');
+  await sw.post(['/de'], 'tab-a');
+  assert.deepEqual(sw.dicts(), [hash(1)]);
+  // Build b changes the translation: a tab of the German page is still open on build a.
+  sw.tabs(['tab-a']);
+  sw.serve(localized('b', { de: [hash(2)] }));
+  await sw.visit('/de', 'tab-b');
+  await sw.post(['/de'], 'tab-b');
+  assert.deepEqual(sw.dicts(), [hash(1), hash(2)], 'the open tab of build a can still open the Schema view offline');
+  // Served from the cache as a hashed file.
   const fetches = sw.fetched.length;
-  assert.equal(await sw.get(after), `{"file":"${after}"}`);
+  assert.equal(await sw.get(hash(2)), `{"file":"${hash(2)}"}`);
   assert.equal(sw.fetched.length, fetches, 'cache-first: not fetched again');
-  // The next deploy retires what no cached page names; deleted once that deploy's opening tab is gone.
-  sw.serve(localized('c', { de: [after] }));
+  // That tab closed: the next visit's tidy-up deletes it. Builds c and d, visiting /de only (never '/'): one each.
   sw.tabs([]);
-  await sw.visit('/', 'c-tab');
-  await sw.post(['/'], 'other');
-  assert.deepEqual(sw.dicts(), [after]);
+  await sw.post(['/de'], 'tab-b');
+  assert.deepEqual(sw.dicts(), [hash(2)]);
+  for (const [tag, n] of [['c', 3], ['d', 4]] as const) {
+    sw.serve(localized(tag, { de: [hash(n)] }));
+    await sw.visit('/de', `tab-${tag}`);
+    await sw.post(['/de'], `tab-${tag}`);
+    assert.deepEqual(sw.dicts(), [hash(n)], `build ${tag}`);
+  }
+  // Another cached page still naming an older one keeps it.
+  sw.serve({ ...localized('e', { de: [hash(5)] }), '/de/tools/json-graph': localized('d', { de: [hash(4)] })['/de/tools/json-graph'] });
+  await sw.visit('/de/tools/json-graph', 'tab-d');
+  await sw.visit('/de', 'tab-e');
+  await sw.post(['/de'], 'tab-e');
+  assert.deepEqual(sw.dicts(), [hash(4), hash(5)]);
+});
+
+test('service worker: a dictionary that doesn\'t arrive is asked for again, and a cached page keeps working until its replacement\'s have (round 3, finding 4)', async () => {
+  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
+  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+  const sw = worker();
+  // A first visit whose dictionary is missing on the server: the warm-up isn't complete, and is done again.
+  sw.serve({ ...localized('a', { de: [a] }), [a]: 404 });
+  await sw.install();
+  await sw.visit('/de', 'tab');
+  await sw.post(['/de'], 'tab');
+  assert.deepEqual(sw.dicts(), []);
+  sw.serve(localized('a', { de: [a] }));
+  await sw.post(['/de'], 'tab');
+  assert.deepEqual(sw.dicts(), [a], 'the same worker asks for it again once the server has it');
+  // A deploy whose new dictionary 404s: the German page cached before stays, with its dictionary, offline.
+  sw.tabs([]);
+  sw.serve({ ...localized('b', { de: [b] }), [b]: 404 });
+  assert.match((await sw.visit('/de', 'tab'))!, /de b/, 'online, the new page itself is shown');
+  await sw.post(['/de'], 'tab');
+  assert.match(sw.cached('/de')!, /de a/);
+  assert.deepEqual(sw.dicts(), [a]);
+  sw.offline();
+  assert.match((await sw.visit('/de', 'tab'))!, /de a/);
+  assert.equal(await sw.get(a), `{"file":"${a}"}`);
+  // The server has it again: the next online visit replaces the page, with its dictionary.
+  sw.offline(false);
+  sw.serve(localized('b', { de: [b] }));
+  await sw.visit('/de', 'tab');
+  assert.match(sw.cached('/de')!, /de b/);
+  assert.ok(sw.dicts().includes(b));
 });
 
 test("service worker: an older build's chunk naming every language's dictionaries: the page's own only", async () => {

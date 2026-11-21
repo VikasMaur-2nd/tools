@@ -1,14 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { SCHEMA_KEYS, SchemaController, type SchemaEditor, type SchemaHost } from '../lib/schema/controller';
 import type { Outcome } from '../lib/schema/client';
 import type { ValidateRequest, ValidateResult } from '../lib/schema/index';
 
 // The Schema view's state (lib/schema/controller.ts): what is saved, and which results show (review round 1,
-// findings 4 and 6; round 2, findings 2, 3, 4 and 11).
+// findings 4 and 6; round 2, findings 2, 3, 4 and 11; round 3, findings 2 and 3).
 
 class FakeEditor implements SchemaEditor {
-  text = '';
+  private t = '';
+  /** A new object after every change, as the app's editor's. */
+  version: object = {};
+  get text() {
+    return this.t;
+  }
+  set text(v: string) {
+    this.t = v;
+    this.version = {};
+  }
   diags: number[] = [];
   onChange: ((kind: 'input' | 'paste' | 'set') => void) | null = null;
   get length() {
@@ -47,9 +57,12 @@ class FakeEditor implements SchemaEditor {
 function setup(stored: Record<string, string> = {}, quota = Infinity) {
   const storage = new Map(Object.entries(stored));
   const asked: { req: ValidateRequest; done: (o: Outcome) => void }[] = [];
+  /** Which document is there (the engine's docId). */
+  const doc = { id: 1 };
   const host: SchemaHost = {
     main: () => null,
     docIsJson: () => true,
+    docId: () => doc.id,
     read: (k) => storage.get(k) ?? null,
     write: (k, v) => {
       if (v !== null && v.length > quota) {
@@ -68,7 +81,12 @@ function setup(stored: Record<string, string> = {}, quota = Infinity) {
   const ed = new FakeEditor();
   ed.onChange = () => ctl.edited();
   ed.onRenamed = (name) => ctl.renamed(name);
-  return { ctl, ed, storage, asked };
+  /** A new document (the engine's newDoc): told at once, its text later (setDoc). */
+  const newDoc = () => {
+    doc.id++;
+    ctl.docEdited();
+  };
+  return { ctl, ed, storage, asked, doc, newDoc };
 }
 
 /** What is saved: the record's text and name (null: none). */
@@ -119,10 +137,10 @@ test('finding 4: a name never goes with another text', () => {
 });
 
 test('finding 6: a reply for older texts never shows as the current result', async () => {
-  const { ctl, ed, asked } = setup();
+  const { ctl, ed, asked, doc } = setup();
   ctl.attach(ed, null);
   ed.type('{"type": "object"}');
-  ctl.setDoc('{}');
+  ctl.setDoc('{}', doc.id);
   ctl.setOpen(true);
   await tick();
   assert.equal(asked.length, 1);
@@ -130,7 +148,7 @@ test('finding 6: a reply for older texts never shows as the current result', asy
   assert.equal(ctl.state.result?.valid, true);
   assert.equal(ctl.state.stale, false);
   // The schema gains a rule; before the debounce sends it, a reply for the old texts comes back.
-  ctl.setDoc('{"x": 1}');
+  ctl.setDoc('{"x": 1}', doc.id);
   await tick(60);
   assert.equal(asked.length, 2);
   ed.type('{"type": "object", "required": ["id"]}');
@@ -154,10 +172,10 @@ test('finding 6: a reply for older texts never shows as the current result', asy
 });
 
 test('round 2, finding 2: an edit of the document makes the shown result stale at once; a reply for the text before never shows as current', async () => {
-  const { ctl, ed, asked } = setup();
+  const { ctl, ed, asked, doc, newDoc } = setup();
   ctl.attach(ed, null);
   ed.type('{"required": ["id"]}');
-  ctl.setDoc('{"id": 1}');
+  ctl.setDoc('{"id": 1}', doc.id);
   ctl.setOpen(true);
   await tick();
   assert.equal(asked.length, 1);
@@ -167,7 +185,7 @@ test('round 2, finding 2: an edit of the document makes the shown result stale a
   ctl.setOpts({ formats: true });
   await tick();
   assert.equal(asked.length, 2);
-  ctl.docEdited();
+  newDoc();
   assert.equal(ctl.state.stale, true, 'stale from the edit on, before the new text is read');
   // Its reply comes before the engine reads the new text: not shown as current.
   asked[1].done(result(true));
@@ -175,15 +193,15 @@ test('round 2, finding 2: an edit of the document makes the shown result stale a
   await tick(60);
   assert.equal(asked.length, 2, 'nothing is checked before the new text comes');
   // The new text comes: checked, and its result shows.
-  ctl.setDoc('{}');
+  ctl.setDoc('{}', doc.id);
   await tick(60);
   assert.equal(asked.length, 3);
   assert.equal(asked[2].req.doc, '{}');
   asked[2].done(result(false));
   assert.deepEqual([ctl.state.result?.valid, ctl.state.stale], [false, false]);
   // An edit undone before it is read: the same text comes again, and is checked again.
-  ctl.docEdited();
-  ctl.setDoc('{}');
+  newDoc();
+  ctl.setDoc('{}', doc.id);
   await tick(60);
   assert.equal(asked.length, 4);
   asked[3].done(result(false));
@@ -242,4 +260,73 @@ test('round 2, finding 11: a storage too full for the text keeps no name without
   again.ctl.attach(again.ed, null);
   assert.deepEqual([again.ed.text, again.ctl.state.file], ['', null]);
   again.ctl.detach();
+});
+
+test('round 3, finding 2: a reply is shown only while its document is still the one there, whatever made it another', async () => {
+  const { ctl, ed, asked, doc } = setup();
+  ctl.attach(ed, null);
+  ed.type('{"type": "object"}');
+  ctl.setDoc('{"id": 1}', doc.id);
+  ctl.setOpen(true);
+  await tick();
+  assert.equal(asked.length, 1);
+  // Another document without an edit the view was told of (another input format, a reading still loading, huge mode).
+  doc.id = 7;
+  asked[0].done(result(true));
+  assert.deepEqual([ctl.state.result, ctl.state.stale], [null, false], 'nothing shown for the document before');
+  // Its text with which document it is: checked, shown.
+  ctl.setDoc('[{"id": "1"}]', 7);
+  await tick(60);
+  assert.equal(asked.length, 2);
+  asked[1].done(result(false));
+  assert.deepEqual([ctl.state.result?.valid, ctl.state.stale], [false, false]);
+  // A text of a document that isn't the one there (an older reading's): not checked.
+  ctl.setDoc('{"old": true}', 6);
+  await tick(60);
+  assert.equal(asked.length, 2);
+  assert.equal(ctl.state.stale, true);
+  // A result shown, then the document becomes another: the reply on its way is dropped, the result is stale.
+  ctl.setDoc('[]', 7);
+  await tick(60);
+  assert.equal(asked.length, 3);
+  doc.id = 8;
+  asked[2].done(result(true));
+  assert.deepEqual([ctl.state.result?.valid, ctl.state.stale], [false, true]);
+  ctl.detach();
+});
+
+test('round 3, finding 3: a schema replacement that comes later applies only if it is the last asked for, over the same schema', () => {
+  const { ctl, ed } = setup();
+  ctl.attach(ed, null);
+  // Generating asked for, then a file opened before it is ready: the file stays.
+  const generating = ctl.ask();
+  const file = ctl.ask();
+  ctl.load('{"title": "file"}', 'file.json');
+  assert.deepEqual([ctl.still(generating), ctl.still(file)], [false, false]);
+  // Asked for, then the schema typed in: it stays.
+  const pasting = ctl.ask();
+  assert.equal(ctl.still(pasting), true);
+  ed.type('{"title": "typed"}');
+  assert.equal(ctl.still(pasting), false);
+  ctl.detach();
+});
+
+test('round 3, finding 2: every new document or reading goes through the engine\'s newDoc, which tells the Schema view', () => {
+  const src = readFileSync('lib/engine/engine.ts', 'utf8');
+  /** A method's body (up to its closing brace at two spaces). */
+  const body = (head: string) => {
+    const at = src.indexOf(head);
+    assert.ok(at >= 0, head);
+    return src.slice(at, src.indexOf('\n  }\n', at));
+  };
+  // The document's identity (docId) moves in one place, which tells the view at once.
+  assert.equal(src.match(/this\.docGen\+\+/g)?.length, 1);
+  const newDoc = body('private newDoc()');
+  assert.match(newDoc, /this\.docGen\+\+/);
+  assert.match(newDoc, /this\.docWatch\?\.\(null\)/);
+  // An edit, a load (file, URL, share link, sample, a huge file's handover back), another input format, CSV options.
+  for (const head of ['private onChange = ', 'load(text: string, name', 'private setInputFormat(', 'setCsv(patch']) assert.match(body(head), /this\.newDoc\(\)/, head);
+  // The text the view gets comes with which document it is: a conversion's or a JWT's is the reading's that made it.
+  assert.match(body('leftDoc(): {'), /this\.readGen/);
+  assert.match(body('private compareLeft()'), /if \(this\.jwt\) return this\.jwt\.json;/);
 });

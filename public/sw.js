@@ -20,11 +20,14 @@
  *
  * The dictionaries a localized page loads later (huge mode's, the Schema view's and
  * Flatten's: /i18n/<name>-strings.<lang>.<hash>.json, named by their content) are named
- * in that page's HTML, its own language's only, and followed with its chunks (not with
- * its HTML: they wait for the page's warm-up too). A /de visit caches the German ones
- * and no other; English pages none. Builds before them named every language's in a
- * chunk (/_next/static/media/huge-strings.<lang>.<hash>.json): followed for the page's
- * language only as well.
+ * in that page's HTML, its own language's only, and followed with its chunks (on a first
+ * visit not with its HTML: they wait for the page's warm-up too). They are files the
+ * page must have: one that doesn't arrive (a 404, the network) leaves the warm-up to be
+ * done again, and a cached copy of the page is replaced only once the new one's are
+ * cached. A /de visit caches the German ones and no other; English pages none. Builds
+ * before them named every language's in a chunk
+ * (/_next/static/media/huge-strings.<lang>.<hash>.json): followed for the page's language
+ * only as well.
  *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
@@ -32,8 +35,9 @@
  * network must not fail; a chunk named only inside a script that the server
  * doesn't have holds nothing back (a stray name is no file).
  *
- * Deploys: when '/' changes build, the /_next/static files that no cached page
- * needs any more are retired, not deleted: tabs open at that moment run the old
+ * Deploys: when '/' changes build, or a cached page is replaced by another build's
+ * copy, the hashed files (/_next/static, dictionaries) that no cached page needs any
+ * more are retired, not deleted: tabs open at that moment run the old
  * build and may still load any chunk of it (a feature opened for the first time,
  * offline). Retired files are deleted once all those tabs are closed (checked on
  * later visits and page messages), or after RETIRE_MS. The cache so holds the
@@ -91,6 +95,8 @@ const cacheable = (res) => res && res.status === 200 && res.type === 'basic' && 
 
 /** The later dictionaries a page's HTML names (its language's: see the header). */
 const stringsIn = (html) => Array.from(new Set(html.match(STRINGS_RE) || [])).map((p) => ORIGIN + p);
+/** Everything a page's HTML names: what tells one build of it from another. */
+const namesOf = (html) => extractAssets(html).concat(stringsIn(html));
 
 /** Same-origin asset URLs referenced by an HTML document. */
 function extractAssets(html) {
@@ -134,9 +140,10 @@ function filesIn(url, text) {
  * The files of a page (see the header), cached as they are found unless `fetchMissing`
  * is false (then only what the cache holds is followed); with `deep` false, only what
  * its HTML names. `page`: the page's URL (whose language's huge dictionary it needs).
- * `ok`: every file that had to make it is cached; `files`: the URLs found.
+ * `strings`: its dictionaries too (with its chunks; with its HTML when it replaces a
+ * copy: see storePage). `ok`: every file that had to make it is cached; `files`: the URLs found.
  */
-async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN + '/') {
+async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN + '/', strings = deep) {
   const files = new Set();
   const visit = async (url, required) => {
     if (files.has(url) || files.size >= MAX_FILES || otherStrings(url, page)) return true;
@@ -163,8 +170,8 @@ async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN +
     return results.indexOf(false) === -1;
   };
   const visits = extractAssets(html).map((u) => visit(u, isStatic(new URL(u).pathname)));
-  // (Its later dictionaries come with its chunks, not with its HTML.)
-  if (deep) stringsIn(html).forEach((u) => visits.push(visit(u, false)));
+  // (Its dictionaries must make it: a page offline without them would be in English.)
+  if (strings) stringsIn(html).forEach((u) => visits.push(visit(u, true)));
   const results = await Promise.all(visits);
   return { ok: results.indexOf(false) === -1, files };
 }
@@ -178,15 +185,21 @@ function sameFiles(a, b) {
 /**
  * Puts a page (`res`, a 200) into the cache once its files are; resolves false when they
  * couldn't be (the copy there stays). A copy of the same build only gets fresher HTML.
+ * Replacing a copy of another build: its dictionaries must be cached too (the copy there
+ * keeps working offline until they are), and the files nothing needs any more are retired.
  */
 async function storePage(cache, key, res) {
+  let replaced = false;
   if (isHTML(res)) {
     const html = await res.clone().text();
     const old = await cache.match(key, MATCH);
-    const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
-    if (!same && !(await pageFiles(cache, html, true, false, typeof key === 'string' ? key : key.url)).ok) return false;
+    const oldHtml = old && isHTML(old) ? await old.text() : null;
+    const same = oldHtml !== null && sameFiles(namesOf(oldHtml), namesOf(html));
+    if (!same && !(await pageFiles(cache, html, true, false, typeof key === 'string' ? key : key.url, oldHtml !== null)).ok) return false;
+    replaced = oldHtml !== null && !same;
   }
   await cache.put(key, res);
+  if (replaced) await serially(() => tidy(cache, true));
   return true;
 }
 

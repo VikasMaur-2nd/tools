@@ -189,7 +189,8 @@ test('localized: after one visit, the Schema view and Flatten show their own str
     t.check(/^6 Fehler/.test(head), 'localized offline: the Schema view in German', head);
     await t.app.view(p2, 'convert');
     await p2.locator('.app:visible .vmain select').selectOption('unflatten');
-    const note = await p2.waitForFunction(() => window.__vis('.view .banner .b-msg')?.textContent, null, { ...POLL, timeout: t.budget(15_000) }).then((h) => h.jsonValue(), () => '');
+    // (The note shows at once, in English until Flatten's strings are in: from the cache, here.)
+    const note = await p2.waitForFunction(() => /Verschachteln$/.test(window.__vis('.view .banner .b-msg')?.textContent ?? '') && window.__vis('.view .banner .b-msg').textContent, null, { ...POLL, timeout: t.budget(15_000) }).then((h) => h.jsonValue(), () => p2.evaluate(() => window.__vis('.view .banner .b-msg')?.textContent ?? ''));
     t.check(note === 'Dieses JSON hat keine flachen Schlüssel zum Verschachteln', 'localized offline: Flatten in German, never opened online', note);
     await checkErrors(t, 'localized');
   } finally {

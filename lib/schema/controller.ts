@@ -3,9 +3,11 @@
  * schema's text and file name (saved in this browser), the options, and when to validate and what to show.
  * No React and no DOM here: the view hands over the editor and what it needs of the page (`SchemaHost`).
  *
- * Each change (either text, an option, closing the view, an edit of the document before its new text arrives)
- * starts a new generation; a result is shown only if it belongs to the current one, so a worker reply for older texts
- * never shows as current, and the shown result is marked stale until the current one comes.
+ * Each change (either text, an option, closing the view, a new document before its text arrives) starts a new
+ * generation; a result is shown only if it belongs to the current one, so a worker reply for older texts never shows
+ * as current, and the shown result is marked stale until the current one comes. The document's text comes with which
+ * document it is (the engine's docId): it is checked, and its result shown, only while that is still the document,
+ * whatever made it another one (an edit, a load, another input format or reading, huge mode).
  */
 import type { Outcome } from './client';
 import { DRAFTS, type Draft } from './drafts';
@@ -23,6 +25,8 @@ const MAX_PERSIST = 2_500_000;
 export interface SchemaEditor {
   readonly text: string;
   readonly length: number;
+  /** A new object after every change (compared by identity). */
+  readonly version: object;
   init(text: string): void;
   setValue(next: string, caret?: number, load?: boolean, names?: [string | null, string | null]): void;
   setDiagnostics(list: { p: number; cls: 'me' | 'mw' }[]): void;
@@ -34,6 +38,8 @@ export interface SchemaHost {
   /** The document editor's text and line tints, when it holds the JSON that was validated (not a converted YAML input). */
   main(): { readonly text: string; readonly length: number; setLineMarks(m: Uint8Array | null): void } | null;
   docIsJson(): boolean;
+  /** Which document is there now (the engine's docId; -1: none the view can check, a huge file's). */
+  docId(): number;
   read(key: string): string | null;
   /** True when stored (a full storage refuses: the key is then removed, see SchemaView's). */
   write(key: string, value: string | null): boolean;
@@ -73,6 +79,8 @@ export class SchemaController {
   private host: SchemaHost;
   private client: ReturnType<SchemaHost['validator']> | null = null;
   private doc = '';
+  /** Which document `doc` is (see SchemaHost.docId). */
+  private docOf = -1;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private busyTimer: ReturnType<typeof setTimeout> | undefined;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -86,6 +94,8 @@ export class SchemaController {
   private inSeq = 0;
   /** Bumped by every change: a result of an older generation is dropped. */
   private gen = 0;
+  /** Replacements of the schema asked for (see ask). */
+  private asks = 0;
   /** What the shown result was asked for. */
   private asked: { doc: string; schema: string } | null = null;
 
@@ -173,6 +183,19 @@ export class SchemaController {
     return false;
   }
 
+  /**
+   * A replacement of the schema asked for now that comes later (a file read, the clipboard, generating): it applies
+   * only if nothing else was asked for since and the schema wasn't changed meanwhile (see still).
+   */
+  ask(): { seq: number; ver: object | null } {
+    return { seq: ++this.asks, ver: this.ed?.version ?? null };
+  }
+
+  /** Whether a replacement asked for (ask) still applies: the last one asked for, over the schema as it was then. */
+  still(a: { seq: number; ver: object | null }): boolean {
+    return a.seq === this.asks && !!this.ed && this.ed.version === a.ver;
+  }
+
   /** Replaces the schema (one undoable step): a file opened, pasted, generated. It is the visitor's now, saved with its name. */
   load(text: string, name: string | null) {
     const ed = this.ed;
@@ -204,12 +227,18 @@ export class SchemaController {
     this.schedule(-1);
   }
 
-  /** The document's text, once read after an edit (the same text again too: an edit undone). */
-  setDoc(text: string) {
-    if (text === this.doc && !this.docPending) return;
+  /** The document's text and which document it is, once read (the same text again too: an edit undone). */
+  setDoc(text: string, id: number) {
+    if (text === this.doc && id === this.docOf && !this.docPending) return;
     this.docPending = false;
     this.doc = text;
+    this.docOf = id;
     this.schedule(text.length < 1_000_000 ? 40 : 150);
+  }
+
+  /** The text held is the document there now's (else another is on its way: nothing is checked or shown for it). */
+  private docCurrent() {
+    return this.docOf !== -1 && this.docOf === this.host.docId();
   }
 
   setOpen(on: boolean) {
@@ -274,6 +303,10 @@ export class SchemaController {
   run() {
     const ed = this.ed;
     if (!ed || !this.open || this.docPending) return;
+    if (!this.docCurrent()) {
+      this.docPending = true;
+      return;
+    }
     const gen = this.gen;
     const schema = ed.text;
     const doc = this.doc;
@@ -282,8 +315,16 @@ export class SchemaController {
     this.busyTimer = setTimeout(() => this.set({ busy: true }), 200);
     const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000 };
     client.validate(req, (o: Outcome) => {
-      // (Something changed since this was asked: the next run shows its own result.)
+      // (Something changed since this was asked: the next run shows its own result. The document isn't the one
+      // checked any more, whatever made it another: the new one's text comes, see setDoc.)
       if (gen !== this.gen) return;
+      if (!this.docCurrent()) {
+        clearTimeout(this.busyTimer);
+        this.docPending = true;
+        this.gen++;
+        this.set({ busy: false, stale: !!this.state.result });
+        return;
+      }
       clearTimeout(this.busyTimer);
       if (o === 'timeout' || o === 'failed') {
         if (o === 'failed') this.host.report(new Error('Schema validation failed'));

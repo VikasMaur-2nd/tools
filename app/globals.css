@@ -2789,25 +2789,24 @@ dialog[open] {
   }
 }
 
-/* Every view keeps a visible tab (or the dropdown). Where the seven tabs, the view's own control (Format's styles
-   and sizes, a path, a language) and the four icons don't fit on one row, the control takes a second row instead of
-   running under the icons. Measured widths, tabs + control + icons: English 787px; translated up to 961px (Russian),
-   tabs + icons alone up to 654px (French). */
+/* Every view keeps a visible tab (or the dropdown), and nothing runs under anything else: where the seven tabs, the
+   view's own control and the four icons don't fit on one row, the control and the icons take a second one. Only
+   then: a control that can be shortened (a path, a table's crumbs) is, and a view whose row fits keeps one row.
+   Measured widths, tabs + control + icons: English up to 787px (Format); translated up to 961px (Russian). */
 @container (max-width: 800px) {
   html[lang='en'] .vbar {
     flex-wrap: wrap;
     height: auto;
     min-height: 44px;
     padding-block: 6px;
-    row-gap: 6px;
+    row-gap: 4px;
   }
-  html[lang='en'] .vmain {
-    order: 3;
-    flex: 1 1 100%;
-    margin: 0;
+  /* (Format's styles and sizes, Convert's language: never narrower than they are.) */
+  html[lang='en'] .vmain:has(.seg, .pick) {
+    min-width: max-content;
   }
-  html[lang='en'] .vmain:empty {
-    display: none;
+  html[lang='en'] .vicons {
+    margin-left: auto;
   }
 }
 
@@ -2818,15 +2817,13 @@ dialog[open] {
     height: auto;
     min-height: 44px;
     padding-block: 6px;
-    row-gap: 6px;
+    row-gap: 4px;
   }
-  html:not([lang='en']) .vmain {
-    order: 3;
-    flex: 1 1 100%;
-    margin: 0;
+  html:not([lang='en']) .vmain:has(.seg, .pick) {
+    min-width: max-content;
   }
-  html:not([lang='en']) .vmain:empty {
-    display: none;
+  html:not([lang='en']) .vicons {
+    margin-left: auto;
   }
 }
 

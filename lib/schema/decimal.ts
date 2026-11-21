@@ -74,26 +74,46 @@ function strip(x: bigint, p: bigint): [number, bigint] {
   return [n, x];
 }
 
+/** A multipleOf divisor b = db × 10^exp, with db = 2^p × 5^q × r and r prime to 10 (and 5^q): worked out once per schema. */
+export interface Divisor {
+  db: bigint;
+  exp: bigint;
+  p: bigint;
+  q: bigint;
+  q5: bigint;
+  r: bigint;
+}
+
+/** `b` (> 0) ready to divide by: its digits' factors of 2 and 5 counted once, however many numbers it checks. */
+export function divisor(b: Dec): Divisor {
+  const db = BigInt(b.digits || '0');
+  if (db === 0n) return { db, exp: b.exp, p: 0n, q: 0n, q5: 1n, r: 1n };
+  const p = BigInt((db & -db).toString(2).length - 1);
+  const [q, r] = strip(db >> p, 5n);
+  return { db, exp: b.exp, p, q: BigInt(q), q5: 5n ** BigInt(q), r };
+}
+
 /**
  * Whether a / b is a whole number (b > 0). With a = da × 10^ea and b = db × 10^eb, that is db | da × 10^k, k = ea − eb.
- * For k < 0 it never is: `da` has no trailing zero, so 10^−k can't divide it. Otherwise, with db = 2^p × 5^q × r and r
- * prime to 10: 2^p must divide da × 2^k, 5^q must divide da × 5^k, and r must divide da (10^k is invertible mod r).
- * So no power of ten is ever made: the cost is that of the digits, whatever the exponents.
+ * For k < 0 it never is: `da` has no trailing zero, so 10^−k can't divide it. For k = 0 it is a plain remainder.
+ * Otherwise, with db = 2^p × 5^q × r: 2^p must divide da × 2^k, 5^q must divide da × 5^k, and r must divide da
+ * (10^k is invertible mod r). So no power of ten is ever made: the cost is that of the digits, whatever the exponents.
  */
-export function isMultiple(a: Dec, b: Dec): boolean {
+export function multipleOf(a: Dec, d: Divisor): boolean {
   if (isZero(a)) return true;
-  const k = a.exp - b.exp;
+  const k = a.exp - d.exp;
   if (k < 0n) return false;
-  const db = BigInt(b.digits);
-  if (db === 1n) return true;
+  if (d.db === 1n) return true;
   const da = BigInt(a.digits);
-  const p = BigInt((db & -db).toString(2).length - 1);
-  const [q5, r] = strip(db >> p, 5n);
-  const q = BigInt(q5);
-  if (p > k && (da & ((1n << (p - k)) - 1n)) !== 0n) return false;
-  if (q > k && da % 5n ** (q - k) !== 0n) return false;
-  return r === 1n || da % r === 0n;
+  if (k === 0n) return da % d.db === 0n;
+  if (d.p > k && (da & ((1n << (d.p - k)) - 1n)) !== 0n) return false;
+  // (5^q | da × 5^k, with 5^q made once: 5^k is no bigger than it.)
+  if (d.q > k && (da * 5n ** k) % d.q5 !== 0n) return false;
+  return d.r === 1n || da % d.r === 0n;
 }
+
+/** Whether a is a multiple of b (b > 0): see multipleOf (a schema keeps b's Divisor). */
+export const isMultiple = (a: Dec, b: Dec) => multipleOf(a, divisor(b));
 
 /** The value as short text: the digits with the decimal point placed, or scientific notation when that is shorter. */
 export function decText(d: Dec): string {

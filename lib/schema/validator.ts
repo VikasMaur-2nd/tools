@@ -14,7 +14,7 @@
  * - A `$ref` cycle that comes back to the same schema for the same value is a schema problem, not a hang.
  */
 import { ARR, BOOL, JNode, NUL, NUM, OBJ, STR, kids, type Kind } from '../json/parser';
-import { cmp, dec, decKey, decText, isMultiple, isWhole, isZero, type Dec } from './decimal';
+import { cmp, dec, decKey, decText, divisor, isWhole, isZero, multipleOf, type Dec, type Divisor } from './decimal';
 import { DRAFT_NAME, arraySchemaKeywords, draftOf, knownKeywords, mapSchemaKeywords, singleSchemaKeywords, type Draft } from './drafts';
 import { checkFormat, knownFormat } from './formats';
 import { decodeFragment, escapeToken, isAbsolute, normalizeUri, pointer, pointerTokens, resolveUri, splitFragment } from './uri';
@@ -124,6 +124,8 @@ interface S {
   constKey?: string;
   constNode?: JNode;
   multipleOf?: Dec;
+  /** multipleOf's value factored once (decimal.ts divisor), for every number it checks. */
+  divisor?: Divisor;
   maximum?: Dec;
   minimum?: Dec;
   exMax?: Dec;
@@ -172,26 +174,49 @@ interface S {
 }
 
 /**
- * What a schema and its in-place subschemas evaluated of an instance (for the unevaluated* keywords). `unknown`: a part
- * that couldn't be applied may have evaluated more (only the unevaluated* keywords reading these annotations care).
+ * What a schema and its in-place subschemas evaluated of an instance (for the unevaluated* keywords): property names
+ * and items for sure, and in `maybe` those that may have been: what a pass that isn't certain evaluated, or a part
+ * that couldn't be applied (all of them, then). Only an unevaluated* keyword reading them, for those very names and
+ * items, is affected: its failure there is unknown, anywhere else it is an error.
  */
 class Ann {
   props: Set<string> | null = null;
-  unknown = false;
   allProps = false;
   items = 0;
   allItems = false;
   idx: Set<number> | null = null;
+  maybe: Ann | null = null;
   prop(k: string) {
     (this.props ??= new Set()).add(k);
   }
-  merge(o: Ann) {
-    if (o.unknown) this.unknown = true;
+  item(i: number) {
+    (this.idx ??= new Set()).add(i);
+  }
+  /** `o`'s names and items join these: for sure only when `sure` (and o had them for sure). */
+  merge(o: Ann, sure = true) {
+    (sure ? this : this.unsure()).add(o);
+    if (o.maybe) this.unsure().add(o.maybe);
+  }
+  private add(o: Ann) {
     if (o.allProps) this.allProps = true;
     else if (o.props) for (const k of o.props) this.prop(k);
     if (o.allItems) this.allItems = true;
     if (o.items > this.items) this.items = o.items;
-    if (o.idx) for (const i of o.idx) (this.idx ??= new Set()).add(i);
+    if (o.idx) for (const i of o.idx) this.item(i);
+  }
+  unsure(): Ann {
+    return (this.maybe ??= new Ann());
+  }
+  /** Anything may have been evaluated (a part that couldn't be applied, an `if` not decided). */
+  unknown() {
+    const m = this.unsure();
+    m.allProps = m.allItems = true;
+  }
+  hasProp(k: string) {
+    return this.allProps || !!this.props?.has(k);
+  }
+  hasItem(i: number) {
+    return this.allItems || i < this.items || !!this.idx?.has(i);
   }
 }
 
@@ -675,7 +700,10 @@ export class Validator {
     if (mo) {
       const v = this.num('multipleOf', mo);
       if (v && (isZero(v) || v.neg)) this.bad('multipleOf', 'positive', mo);
-      else s.multipleOf = v;
+      else if (v) {
+        s.multipleOf = v;
+        s.divisor = divisor(v);
+      }
     }
     const max = get('maximum');
     if (max) s.maximum = this.num('maximum', max);
@@ -906,8 +934,8 @@ export class Validator {
   // is skipped as if it passed, and `unk` notes it: the result can't then be "valid", only "not fully checked".
   // Where a pass decides against the instance (not, if, oneOf, contains counts), a pass that met such a part is no
   // evidence either way: it fails nothing and leaves the result incomplete. A failure is always real.
-  // What such a part may have evaluated is a separate question (Ann.unknown): only the unevaluated* keywords that
-  // read those annotations, for that value, are affected (their failures there become unknown).
+  // What such a part may have evaluated is a separate question (Ann.maybe): only the unevaluated* keywords that
+  // read those annotations, for those names and items, are affected (their failures there become unknown).
 
   private errs: Failure[] = [];
   /** The list validate() returns (errors past its cap are counted). */
@@ -922,7 +950,7 @@ export class Validator {
   private depth = 0;
   /** Synthetic string nodes for property names (propertyNames): name node → its member. */
   private keyNodes = new WeakMap<JNode, JNode>();
-  /** A $ref loop's problem, by the schema it loops on (once per check: it depends on the document). */
+  /** A $ref loop's problem, by the schema it loops on (once per check, all its records: it depends on the document). */
   private loops = new Map<S, SchemaIssue>();
   /** The evaluation in progress met a part of the schema it couldn't apply. */
   private unk = false;
@@ -934,9 +962,10 @@ export class Validator {
   /**
    * Validates `inst`. Returns the errors (at most `max` kept, `total` counting all), whether it is valid, and whether
    * the check was complete (`reached`: the schema problems that left part of it unapplied). Throws a RangeError for
-   * an instance nested too deeply.
+   * an instance nested too deeply. `more`: another value of the same check (a JSON Lines record after the first):
+   * a problem of the check (a $ref loop) met again is the same one, not one per record.
    */
-  validate(inst: JNode, max = 1000): { valid: boolean; complete: boolean; reached: SchemaIssue[]; errors: Failure[]; total: number } {
+  validate(inst: JNode, max = 1000, more = false): { valid: boolean; complete: boolean; reached: SchemaIssue[]; errors: Failure[]; total: number } {
     this.errs = this.main = [];
     this.cap = max;
     this.collect = true;
@@ -947,7 +976,7 @@ export class Validator {
     this.unk = false;
     this.reached = new Set();
     this.byName = new WeakMap();
-    this.loops = new Map();
+    if (!more) this.loops = new Map();
     const valid = this.ev(this.root, inst, this.needAnn ? new Ann() : null);
     const errors = this.errs;
     this.errs = [];
@@ -1043,10 +1072,8 @@ export class Validator {
     const child = this.needAnn ? new Ann() : null;
     const [ok, unk] = this.alone(() => this.ev(s, inst, child));
     if (unk) this.unk = true;
-    if (ann && child && ok) {
-      ann.merge(child);
-      if (unk) ann.unknown = true;
-    }
+    // (A pass that isn't certain: what it evaluated may not count.)
+    if (ann && child && ok) ann.merge(child, !unk);
     this.kp.length -= tokens.length;
     return ok;
   }
@@ -1056,7 +1083,7 @@ export class Validator {
       for (const b of s.blocked) {
         if (!applies(b.kw, inst.t)) continue;
         this.skip(b.issue);
-        if (ann && ANNOTATING.has(b.kw)) ann.unknown = true;
+        if (ann && ANNOTATING.has(b.kw)) ann.unknown();
       }
     }
     if (s.bool !== null) {
@@ -1081,7 +1108,7 @@ export class Validator {
       let issue = this.loops.get(target);
       if (!issue) this.loops.set(target, (issue = { code: 'loop', params: { ref: ref.raw }, at: ref.at, kw, warn: false }));
       this.skip(issue);
-      if (ann) ann.unknown = true;
+      ann?.unknown();
       return true;
     }
     active.push(inst);
@@ -1194,7 +1221,7 @@ export class Validator {
       // (An `if` that passed only past a skipped part may not have: which branch applies isn't known, neither is checked.)
       if (passed && unk) {
         this.unk = true;
-        if (ann) ann.unknown = true;
+        ann?.unknown();
       } else {
         if (passed && ifAnn && ann) ann.merge(ifAnn);
         const branch = passed ? s.then : s.else;
@@ -1217,8 +1244,8 @@ export class Validator {
     if (inst.t === OBJ && s.unevaluatedProperties && ann) {
       for (const m of members(inst)) {
         const k = m.key as string;
-        if (ann.allProps || ann.props?.has(k)) continue;
-        if (!this.unevaluated(ann, () => this.child(s.unevaluatedProperties!, m, ['unevaluatedProperties'], 'unevaluatedProperties'))) {
+        if (ann.hasProp(k)) continue;
+        if (!this.unevaluated(!!ann.maybe?.hasProp(k), () => this.child(s.unevaluatedProperties!, m, ['unevaluatedProperties'], 'unevaluatedProperties'))) {
           ok = false;
           if (q()) return ok;
         }
@@ -1228,8 +1255,8 @@ export class Validator {
     if (inst.t === ARR && s.unevaluatedItems && ann) {
       const items = kids(inst);
       for (let i = 0; i < items.length; i++) {
-        if (ann.allItems || i < ann.items || ann.idx?.has(i)) continue;
-        if (!this.unevaluated(ann, () => this.child(s.unevaluatedItems!, items[i], ['unevaluatedItems'], 'unevaluatedItems', items.length))) {
+        if (ann.hasItem(i)) continue;
+        if (!this.unevaluated(!!ann.maybe?.hasItem(i), () => this.child(s.unevaluatedItems!, items[i], ['unevaluatedItems'], 'unevaluatedItems', items.length))) {
           ok = false;
           if (q()) return ok;
         }
@@ -1240,11 +1267,11 @@ export class Validator {
   }
 
   /**
-   * An unevaluated* keyword applied to a value no annotation names. Where a skipped part may have evaluated it
-   * (`ann.unknown`), a failure isn't one for sure: unknown, not an error.
+   * An unevaluated* keyword applied to a value no annotation names for sure. Where one may (`maybe`: a pass that
+   * isn't certain evaluated it, or a part that couldn't be applied), a failure isn't one for sure: unknown, not an error.
    */
-  private unevaluated(ann: Ann, run: () => boolean): boolean {
-    if (!ann.unknown) return run();
+  private unevaluated(maybe: boolean, run: () => boolean): boolean {
+    if (!maybe) return run();
     const [r, unk] = this.alone(() => this.quiet(run));
     if (!r || unk) this.unk = true;
     return true;
@@ -1289,7 +1316,7 @@ export class Validator {
     if (!ok && !this.collect) return ok;
     if (s.exMin) check(cmp(x, s.exMin) <= 0, 'exclusiveMinimum', s.exMin, 'exclusiveMinimum');
     if (!ok && !this.collect) return ok;
-    if (s.multipleOf && !isMultiple(x, s.multipleOf)) {
+    if (s.multipleOf && !multipleOf(x, s.divisor!)) {
       ok = false;
       this.fail('multipleOf', { limit: decText(s.multipleOf), value: decText(x) }, inst, 'multipleOf', at('multipleOf'));
     }
@@ -1332,7 +1359,7 @@ export class Validator {
     const at = (k: string) => s.kw.get(k);
     const q = () => !ok && !this.collect;
     /** An item a subschema evaluated successfully (annotations come from successful applications only). */
-    const evaluated = (i: number) => ann && (ann.idx ??= new Set()).add(i);
+    const evaluated = (i: number) => ann?.item(i);
     if (s.maxItems !== undefined && len > s.maxItems) {
       ok = false;
       this.fail('maxItems', { limit: s.maxItems, count: len }, inst, 'maxItems', at('maxItems'));
@@ -1390,14 +1417,17 @@ export class Validator {
       let sure = 0;
       let maybe = 0;
       const idx = ann && s.draft === 2020 ? new Set<number>() : null;
+      const maybes: number[] = [];
       const max = s.draft >= 2019 ? s.maxContains : undefined;
       const min = s.draft >= 2019 ? s.minContains ?? 1 : 1;
       for (let i = 0; i < len; i++) {
         const sub = ann && s.draft === 2020 ? new Ann() : null;
         const [hit, unk] = this.alone(() => this.quiet(() => this.apply(s.contains!, items[i], sub, ['contains'])));
         if (!hit) continue;
-        if (unk) maybe++;
-        else {
+        if (unk) {
+          maybe++;
+          if (idx) maybes.push(i);
+        } else {
           sure++;
           idx?.add(i);
         }
@@ -1418,9 +1448,12 @@ export class Validator {
           if (q()) return ok;
         } else if (sure + maybe > max) this.unk = true;
       }
-      if (passed && idx && ann) for (const i of idx) (ann.idx ??= new Set()).add(i);
-      // (Items it may match past a skipped part: whether they are evaluated isn't known.)
-      if (maybe && ann) ann.unknown = true;
+      // (Items it may match past a skipped part may be evaluated; when the count itself isn't decided, all its matches.)
+      if (passed && idx && ann) {
+        const undecided = sure < min || (max !== undefined && sure + maybe > max);
+        for (const i of idx) (undecided ? ann.unsure() : ann).item(i);
+        for (const i of maybes) ann.unsure().item(i);
+      }
     }
     return ok;
   }
@@ -1532,15 +1565,18 @@ export class Validator {
         sure = true;
         if (ann && child) ann.merge(child);
         if (!this.needAnn) break;
-      } else if (r.ok) maybe = true;
+      } else if (r.ok) {
+        maybe = true;
+        // (A branch that may not pass: what it evaluated may not count.)
+        if (ann && child) ann.merge(child, false);
+      }
       else if (!sure && !maybe && r.errs) {
         const score = this.score(r.errs, inst);
         if (!best || score < best.score) best = { errs: r.errs, score };
       }
     }
-    // (Without a sure branch the result is unknown; beside one it is certain, but a maybe-branch's annotations aren't.)
+    // (Without a sure branch the result is unknown; beside one it is certain.)
     if (maybe && !sure) this.unk = true;
-    if (maybe && ann) ann.unknown = true;
     if (sure || maybe) return true;
     this.fail('anyOf', { count: list.length }, inst, 'anyOf', s.kw.get('anyOf'), { sub: best?.errs });
     return false;
@@ -1550,6 +1586,8 @@ export class Validator {
     const sure: number[] = [];
     let maybe = 0;
     let match: Ann | null = null;
+    /** What the branches that may pass evaluated. */
+    const maybes: Ann[] = [];
     let best: { errs: Failure[]; score: number } | null = null;
     for (let i = 0; i < list.length; i++) {
       const child = ann ? new Ann() : null;
@@ -1559,7 +1597,10 @@ export class Validator {
         sure.push(i);
         match = child;
         if (sure.length > 1) break;
-      } else if (r.ok) maybe++;
+      } else if (r.ok) {
+        maybe++;
+        if (child) maybes.push(child);
+      }
       else if (r.errs) {
         const score = this.score(r.errs, inst);
         if (!best || score < best.score) best = { errs: r.errs, score };
@@ -1573,9 +1614,10 @@ export class Validator {
       this.fail('oneOf', { count: list.length }, inst, 'oneOf', s.kw.get('oneOf'), { sub: best?.errs });
       return false;
     }
+    // (With a branch that may pass too, whether oneOf passes isn't known: what any of them evaluated may not count.)
     if (maybe) {
       this.unk = true;
-      if (ann) ann.unknown = true;
+      if (ann) for (const m of match ? [match, ...maybes] : maybes) ann.merge(m, false);
     } else if (ann && match) ann.merge(match);
     return true;
   }

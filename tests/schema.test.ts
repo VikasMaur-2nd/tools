@@ -13,6 +13,12 @@ import { errorText, problemText } from '../components/schema-messages';
 import { EN } from '../lib/i18n/ui';
 import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
 
+/** This process's CPU time in ms: timing bounds that the other test files running meanwhile don't move. */
+const cpuNow = () => {
+  const u = process.cpuUsage();
+  return (u.user + u.system) / 1000;
+};
+
 // lib/schema beyond the official suite (tests/schema-suite.test.ts): exact numbers, where errors are, references
 // across embedded resources, schema problems, cancellation, and speed on a multi-megabyte document.
 
@@ -41,10 +47,10 @@ test('decimal: exact comparison and multipleOf on the source digits', () => {
   assert.ok(isMultiple(d('4.5'), d('1.5')));
   assert.ok(!isMultiple(d('0.3'), d('0.2')));
   // A billion-digit power of ten is never built.
-  const t = performance.now();
+  const t = cpuNow();
   assert.ok(!isMultiple(d('1e999999999'), d('7')));
   assert.ok(isMultiple(d('1e999999999'), d('8')));
-  assert.ok(performance.now() - t < 50);
+  assert.ok(cpuNow() - t < 50);
   // Exponents past 2^53 are exact too (review round 1, finding 9).
   assert.equal(cmp(d('1e9007199254740992'), d('1000')), 1);
   assert.equal(cmp(d('9e9007199254740991'), d('11e9007199254740991')), -1);
@@ -74,12 +80,12 @@ test('round 2, finding 9: multipleOf costs the digits, not the exponents; the po
   const digits = (n: number) => Array.from({ length: n }, (_, i) => (i ? (x = (x * 1103515245 + 12345) % 2147483648) % 10 : 1 + (x % 9))).join('');
   const exp = digits(1000);
   const div = digits(1000) + '7';
-  const t = performance.now();
+  const t = cpuNow();
   assert.equal(isMultiple(d(`7e${exp}`), d(div)), false);
   assert.equal(isMultiple(d(`${div}e${exp}`), d(div)), true);
   assert.equal(isMultiple(d(`${digits(1000)}e${exp}`), d(`0.${'0'.repeat(500)}${div}`)), false);
   assert.equal(isMultiple(d(`3e${exp}`), d(`1.6e-${exp}`)), true);
-  const ms = performance.now() - t;
+  const ms = cpuNow() - t;
   console.log(`multipleOf, 1,000-digit exponents and divisors: ${ms.toFixed(2)} ms`);
   assert.ok(ms < 20, `${ms.toFixed(1)} ms`);
 });
@@ -281,9 +287,9 @@ test('pathological schemas: $ref loops are problems, deep documents are refused,
   assert.equal(r.state, 'too-deep');
   // uniqueItems on 200,000 items is linear (canonical keys in a map), not a pairwise comparison.
   const items = JSON.stringify(Array.from({ length: 200_000 }, (_, i) => ({ id: i, v: [i, String(i)] })));
-  const t = performance.now();
+  const t = cpuNow();
   assert.ok(validateTexts({ doc: items, schema: '{"uniqueItems": true}', draft: null, formats: false }).valid);
-  assert.ok(performance.now() - t < 5000);
+  assert.ok(cpuNow() - t < 5000);
 });
 
 test('JSON Lines are validated record by record; loose JSON is validated as repaired', () => {
@@ -430,9 +436,9 @@ test('speed: a 7.5 MB document (16,000 records) against a realistic schema, form
   }));
   orders[9000].items[1].price = 0.999;
   const doc = JSON.stringify(orders, null, 2);
-  const t = performance.now();
+  const t = cpuNow();
   const r = validateTexts({ doc, schema: JSON.stringify(schema), draft: null, formats: true });
-  const ms = performance.now() - t;
+  const ms = cpuNow() - t;
   console.log(`speed: ${(doc.length / 1e6).toFixed(1)} MB, ${orders.length} records: ${ms.toFixed(0)} ms (parse ${r.ms.parse.toFixed(0)}, compile ${r.ms.compile.toFixed(1)}, validate ${r.ms.validate.toFixed(0)})`);
   assert.deepEqual(r.errors.map((e) => `${e.pointer} ${e.code}`), ['/9000/items/1/price multipleOf']);
   assert.ok(ms < 6000, `${ms.toFixed(0)} ms`);
@@ -480,9 +486,9 @@ test('finding 10: required with 24,000 keys is linear, not quadratic', () => {
   const keys = Array.from({ length: 24_000 }, (_, i) => `k${i}`);
   const v = new Validator(parse(JSON.stringify({ required: keys, dependentRequired: { k0: keys.slice(0, 2000) } })).root!);
   const doc = parse(JSON.stringify(Object.fromEntries(keys.map((k, i) => [k, i])))).root!;
-  const t = performance.now();
+  const t = cpuNow();
   const r = v.validate(doc);
-  const ms = performance.now() - t;
+  const ms = cpuNow() - t;
   console.log(`required × 24,000: ${ms.toFixed(1)} ms`);
   assert.ok(r.valid);
   // (Measured 2.33 s before the per-object lookup; about 10 ms after.)
@@ -507,4 +513,31 @@ test('finding 13: a false subschema is located at itself, with its keyword\'s me
   ]);
   const arr = validateTexts({ schema, doc: '[1, 2]', draft: null, formats: false });
   assert.deepEqual(arr.errors.map((e) => [e.path, e.code, schema.slice(e.schemaLoc!.p, e.schemaLoc!.e)]), [['/prefixItems/1', 'false', 'false']]);
+});
+
+test('round 3, finding 7: one huge multipleOf divisor is factored once for every number it checks', () => {
+  // 5^12000 written out (8,388 digits), against 200 numbers of the same size at the same exponent.
+  const f = 5n ** 12000n;
+  const v = new Validator(parse(`{"items": {"multipleOf": ${f}}}`).root!);
+  const doc = parse('[' + Array.from({ length: 200 }, (_, i) => String(f * BigInt(2 * i + 1) + (i % 2 ? 2n : 0n))).join(',') + ']').root!;
+  // (CPU time of this process: the other test files running meanwhile don't count.)
+  const cpu = process.cpuUsage();
+  const r = v.validate(doc);
+  const used = process.cpuUsage(cpu);
+  const ms = (used.user + used.system) / 1000;
+  console.log(`multipleOf, 8,388-digit divisor × 200 numbers: ${ms.toFixed(0)} ms of CPU`);
+  assert.deepEqual([r.total, r.errors.every((e) => e.code === 'multipleOf')], [100, true]);
+  // (Factored for every number before: about 1.8 s; once: about 60 ms, most of it reading the numbers' digits.)
+  assert.ok(ms < 600, `${ms.toFixed(0)} ms`);
+});
+
+test('round 3, finding 9: a $ref loop met by several JSON Lines records is one problem of the check', () => {
+  const schema = JSON.stringify({ properties: { a: { $ref: '#/$defs/x' } }, $defs: { x: { $ref: '#/$defs/x' } } });
+  const r = validateTexts({ schema, doc: '{"a": 1}\n{"a": 2}\n{"a": 3}\n', draft: null, formats: false });
+  assert.equal(r.records, 3);
+  assert.deepEqual(r.problems.map((p) => [p.code, p.reached]), [['loop', true]]);
+  // Scoped to it still: the next request starts without it.
+  const session = new SchemaSession();
+  session.run({ schema, doc: '{"a": 1}\n{"a": 2}\n', draft: null, formats: false });
+  assert.deepEqual(session.run({ schema, doc: '{"b": 1}', draft: null, formats: false }).problems, []);
 });
