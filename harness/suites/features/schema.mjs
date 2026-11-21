@@ -102,7 +102,7 @@ test('home: Alt+7 opens Schema, Generate from the document, Close goes back', as
   t.check(!!(await until(page, () => (document.querySelector('#view-schema .sch-empty')?.textContent ?? '').includes('Validate JSON against a JSON Schema'), null, { timeout: 20_000 })), 'an empty schema explains what to do');
   await page.getByRole('button', { name: 'Generate from the document' }).click();
   const schema = await until(page, () => document.getElementById('schema-input')?.value.includes('"$schema"') && document.getElementById('schema-input').value, null);
-  t.check(!!schema && schema.includes('"price"'), 'the generated schema is in the schema editor', schema?.slice(0, 80));
+  t.check(!!schema && schema.includes('"price"'), 'the generated schema is in the schema editor', String(schema).slice(0, 80));
   t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'and the document is valid against it', await state(page));
   await page.locator('.pane-sch [aria-label="Close schema"]').click();
   t.check(await until(page, () => document.querySelector('.pane-sch')?.hidden && !document.getElementById('view-format').hidden, null), 'Close schema goes back to the view before');
@@ -229,7 +229,7 @@ test('the palette\'s Generate on a fresh page: the view opens with the generated
   // (Schema was never opened on this page: the command opens it.)
   await t.app.command(page, 'Generate a JSON Schema and validate against it');
   const schema = await until(page, () => document.getElementById('schema-input')?.value.includes('"$schema"') && document.getElementById('schema-input').value, null, { timeout: 20_000 });
-  t.check(!!schema && schema.includes('"tags"'), 'the generated schema is in the schema editor', schema?.slice(0, 80));
+  t.check(!!schema && schema.includes('"tags"'), 'the generated schema is in the schema editor', String(schema).slice(0, 80));
   t.check(!!(await waitState(page, /^Valid(?!ating)/)), 'and the document is valid against it', await state(page));
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
