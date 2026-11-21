@@ -549,3 +549,37 @@ test('round 4, finding 3: a document that can\'t be read as its format: said so,
   assert.equal(validateTexts({ schema: '{"type": ', doc: '', draft: null, formats: false, unread: true }).state, 'schema-syntax');
   assert.equal(validateTexts({ schema: ' ', doc: '', draft: null, formats: false, unread: true }).state, 'empty-schema');
 });
+
+test('round 5, finding 4: conditions that can\'t be decided never make validation exponential; a budget stops any that would', () => {
+  // 18 definitions, each an unresolved if whose branches both go to the next one.
+  const chain = (n: number, branch: (next: string) => object) => {
+    const $defs: Record<string, object> = {};
+    for (let i = 0; i < n; i++) $defs[`d${i}`] = i === n - 1 ? { type: 'string' } : { if: { $ref: 'https://example.test/missing' }, ...branch(`#/$defs/d${i + 1}`) };
+    return { $defs, $ref: '#/$defs/d0' };
+  };
+  const same = new Validator(parse(JSON.stringify(chain(18, (next) => ({ then: { $ref: next }, else: { $ref: next } })))).root!);
+  let t = cpuNow();
+  same.validate(parse('"x"').root!);
+  t = cpuNow() - t;
+  console.log(`18 undecided ifs, the same branches: ${same.evaluations} schemas applied, ${t.toFixed(1)} ms of CPU`);
+  assert.ok(same.evaluations < 200, `${same.evaluations} applied`);
+  assert.ok(t < 50, `${t.toFixed(1)} ms`);
+  const other = new Validator(parse(JSON.stringify(chain(18, (next) => ({ then: { $ref: next }, else: { $ref: next, title: 'else' } })))).root!);
+  other.validate(parse('"x"').root!);
+  assert.ok(other.evaluations < 200, `different branches: ${other.evaluations} applied`);
+  // A schema that does branch without end (anyOf whose first branch fails only at the end of the chain): stopped.
+  const $defs: Record<string, object> = {};
+  for (let i = 0; i < 24; i++) $defs[`d${i}`] = i === 23 ? { type: 'number' } : { anyOf: [{ $ref: `#/$defs/d${i + 1}`, type: 'number' }, { $ref: `#/$defs/d${i + 1}` }] };
+  const schema = JSON.stringify({ $defs, $ref: '#/$defs/d0' });
+  t = cpuNow();
+  const r = validateTexts({ schema, doc: '"x"\n"y"\n', draft: null, formats: false });
+  t = cpuNow() - t;
+  console.log(`24 anyOf levels, 2 JSON Lines records: ${t.toFixed(0)} ms of CPU`);
+  assert.deepEqual([r.valid, r.complete, r.problems.map((p) => [p.code, p.reached])], [false, false, [['tooComplex', true]]]);
+  assert.match(problemText('tooComplex', r.problems[0].params, EN), /branches too much/);
+  assert.ok(t < 1500, `${t.toFixed(0)} ms`);
+  // A big document gets a budget to match: 16,000 records against a schema with a few subschemas each.
+  const records = JSON.stringify(Array.from({ length: 16_000 }, (_, i) => ({ id: i, tags: ['a', 'b'], name: { first: 'A', last: 'B' } })));
+  const big = validateTexts({ schema: JSON.stringify({ items: { properties: { id: { type: 'integer' }, tags: { items: { type: 'string' } }, name: { properties: { first: { type: 'string' } } } } } }), doc: records, draft: null, formats: false });
+  assert.deepEqual([big.valid, big.complete], [true, true]);
+});

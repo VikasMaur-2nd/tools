@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { SCHEMA_KEYS, SchemaController, type SchemaEditor, type SchemaHost } from '../lib/schema/controller';
+import { SCHEMA_KEYS, SchemaController, readDoc, type SchemaEditor, type SchemaHost } from '../lib/schema/controller';
 import type { Outcome } from '../lib/schema/client';
 import type { ValidateRequest, ValidateResult } from '../lib/schema/index';
 
@@ -375,4 +375,17 @@ test('round 4, finding 5: a replacement now, Clear over a blank schema too, outd
   ctl.load('', null);
   assert.equal(ctl.still(generating), false);
   ctl.detach();
+});
+
+test('round 5, finding 7: Generate waits for the document an edit is still being read into', async () => {
+  // (leftDoc: id -1 while the analysis is on its way, then the document.)
+  let calls = 0;
+  const doc = () => (++calls < 3 ? { text: null, id: -1 } : { text: '{"a": 1}', id: 9 });
+  assert.deepEqual(await readDoc(doc, 1), { text: '{"a": 1}', id: 9 });
+  assert.equal(calls, 3);
+  // Never read (a reader that never loads): as it is, after the tries.
+  assert.deepEqual(await readDoc(() => ({ text: null, id: -1 }), 1, 3), { text: null, id: -1 });
+  // SchemaView's Generate goes through it, asking before it waits (a schema loaded meanwhile wins).
+  const view = readFileSync('components/SchemaView.tsx', 'utf8');
+  assert.match(view, /const asked = ctl\.ask\(\);\n\s*const doc = await readDoc\(\(\) => e\.leftDoc\(\)\);/);
 });

@@ -838,6 +838,7 @@
   "app.schema.msg.nullable": "nullable — ключевое слово OpenAPI 3.0, JSON Schema его игнорирует: добавьте вместо него \"null\" в type",
   "app.schema.msg.unknownFormat": "Формат {format} не проверяется: это неизвестный формат",
   "app.schema.msg.schemaLoose": "Схема — нестрогий JSON: прочитан исправленный вариант",
+  "app.schema.msg.tooComplex": "Эта схема слишком сильно ветвится: часть документа не проверена",
   "app.schema.msg.nonNegativeInteger": "{kw} должно быть неотрицательным целым числом",
   "app.schema.msg.number": "{kw} должно быть числом",
   "app.schema.msg.positive": "{kw} должно быть числом больше 0",

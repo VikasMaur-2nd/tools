@@ -130,6 +130,8 @@ export function problemText(code: string, p: Params, t: T): string {
       return t('Format {format} is not checked: it is not a known format', p);
     case 'schemaLoose':
       return t('The schema is not strict JSON: it was read as repaired');
+    case 'tooComplex':
+      return t('This schema branches too much: part of the document wasn\'t checked');
     default:
       return code;
   }

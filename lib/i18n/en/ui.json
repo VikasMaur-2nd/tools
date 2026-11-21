@@ -985,6 +985,8 @@
   "app.schema.msg.nullable._context": "Keep nullable, type and \"null\" in English.",
   "app.schema.msg.unknownFormat": "Format {format} is not checked: it is not a known format",
   "app.schema.msg.schemaLoose": "The schema is not strict JSON: it was read as repaired",
+  "app.schema.msg.tooComplex": "This schema branches too much: part of the document wasn't checked",
+  "app.schema.msg.tooComplex._context": "Schema problem: validating stopped after too many steps (a schema whose conditions branch at every level); the result is \"Not fully checked\".",
   "app.schema.msg.nonNegativeInteger": "{kw} must be a non-negative integer",
   "app.schema.msg.nonNegativeInteger._context": "{kw} is a JSON Schema keyword.",
   "app.schema.msg.number": "{kw} must be a number",
