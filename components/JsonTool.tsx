@@ -844,9 +844,8 @@ function ViewerPane({
         <div id="view-compare" className="cmp-host" ref={cmpRef} hidden={view !== 'compare'}>
           {view === 'compare' && <CompareHost />}
         </div>
-        <div id="view-schema" className="cmp-host" hidden={view !== 'schema'}>
-          {view === 'schema' && <SchemaPanel />}
-        </div>
+        {/* The Schema view's results (components/SchemaView.tsx renders into it). */}
+        <div id="view-schema" className="cmp-host" hidden={view !== 'schema'} />
       </div>
     </section>
   );
@@ -906,15 +905,15 @@ const CompareView = dynamic(() => import('./CompareView'), {
     return <div className="cv-note">{useT()('Loading compare…')}</div>;
   },
 });
-// The Schema view (JSON Schema validation) is code-split the same way: its schema editor and its errors panel.
-const SchemaPanel = dynamic(() => import('./SchemaView'), { ssr: false });
-const SchemaPane = dynamic(() => import('./SchemaView').then((m) => m.SchemaPane), { ssr: false });
-/** The schema editor's column, kept once opened (its text and undo stay while another view is open). */
+// The Schema view (JSON Schema validation) is code-split the same way: its schema editor's column, kept once opened
+// (its text and undo stay while another view is open), and its results, put in the viewer with react-dom's
+// createPortal (handed over: react-dom stays in the first load's chunks).
+const SchemaView = dynamic(() => import('./SchemaView'), { ssr: false });
 function SchemaColumn() {
   const on = useUI((s) => s.settings.view === 'schema');
   const [seen, setSeen] = useState(false);
   if (on && !seen) setSeen(true);
-  return seen ? <SchemaPane hidden={!on} /> : null;
+  return seen ? <SchemaView hidden={!on} portal={createPortal} /> : null;
 }
 /**
  * Huge-file mode (a file too big for the editor, lib/huge): its own viewer, loaded with it only when one opens.

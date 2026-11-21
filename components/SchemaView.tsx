@@ -21,6 +21,7 @@ import { parse } from '@/lib/json/parser';
 import { SchemaClient, type Outcome } from '@/lib/schema/client';
 import { DRAFT_NAME, type Draft } from '@/lib/schema/drafts';
 import type { InstanceError, Loc, Problem, ValidateResult } from '@/lib/schema/index';
+import type { Portal } from '@/lib/huge/kit';
 import { SAMPLE_DOC, SAMPLE_SCHEMA } from '@/lib/schema/sample';
 import { Icon } from './icons';
 import { LEVELS, MCheck, MChoice, MItem, MSep, Menu } from './menu';
@@ -423,7 +424,7 @@ function closeSchema() {
   });
 }
 
-export const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
+const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
   const t = useT();
   const { file, formats } = useCtl();
   const edRef = useRef<HTMLDivElement>(null);
@@ -658,7 +659,7 @@ function Status({ r, busy, outcome, rows }: { r: ValidateResult | null; busy: bo
   );
 }
 
-function SchemaPanel() {
+const Panel = memo(function Panel() {
   const t = useT();
   const { result: r, stale, busy, outcome, formats, blank } = useCtl();
   const docText = useUI((s) => s.docText);
@@ -888,6 +889,19 @@ function SchemaPanel() {
       </div>
     </div>
   );
-}
+});
 
-export default memo(SchemaPanel);
+/**
+ * The view: the schema editor's column where JsonTool puts it, and while open, the results in the viewer's
+ * #view-schema (through `portal`, react-dom's createPortal, handed over by JsonTool).
+ */
+export default function SchemaView({ hidden, portal }: { hidden: boolean; portal: Portal }) {
+  // (Client-only, and loaded after the viewer is on the page: its host is there.)
+  const [host] = useState(() => document.getElementById('view-schema'));
+  return (
+    <>
+      <SchemaPane hidden={hidden} />
+      {!hidden && host && portal(<Panel />, host)}
+    </>
+  );
+}
