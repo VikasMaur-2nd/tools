@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parse, type JNode } from '../lib/json/parser';
 import { stringify } from '../lib/json/format';
 import { FLAT_DEFAULTS, flatOptions, flatten, pathParts, unflatten, validSep, type FlatArrays, type FlatOptions, type Part } from '../lib/convert/flat';
-import { convert } from '../lib/convert';
+import { convert, convertSliced } from '../lib/convert';
 import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
 import { cpuNow } from './timing';
 
@@ -187,16 +187,33 @@ test('without escapes, keys stay as written and flatten counts the ones that wou
   assert.equal(canon(unflat('{"a\\\\.b":1}').text), '{"a.b":1}');
 });
 
-test('an empty top-level key holding an array is the one path no escape can tell apart (bracket style)', () => {
-  const r = flat('{"":[1,2]}');
-  assert.equal(r.text, '{\n  "[0]": 1,\n  "[1]": 2\n}');
-  assert.equal(r.note, '2 keys won\'t unflatten to the same place, such as "[0]"');
-  assert.equal(r.warn, true);
-  // Elsewhere, or in the other styles, it is fine.
-  for (const [x, o] of [['{"a":{"":[1]}}', {}], ['{"":[1]}', { arrays: 'dot' }], ['{"":[1]}', { arrays: 'keep' }], ['{"":[]}', {}], ['{"":{"a":1}}', {}]] as const) {
+test('an array under an empty top-level key stays whole in bracket style, so it comes back', () => {
+  // ("[0]" would read as a top-level array: {"":[1],"other":2} flattened to {"[0]":1,"other":2}, which unflatten refused.)
+  for (const escape of [true, false]) {
+    const r = flat('{"":[1,{"a":2}],"other":2}', { escape });
+    assert.equal(r.text, '{\n  "": [\n    1,\n    {\n      "a": 2\n    }\n  ],\n  "other": 2\n}');
+    assert.deepEqual([r.note, r.warn], ['', false]);
+    assert.ok(back('{"":[1,{"a":2}],"other":2}', { escape }).ok);
+  }
+  assert.equal(flat('[{"":[1]},{"":[]}]').text, '[\n  {\n    "": [\n      1\n    ]\n  },\n  {\n    "": []\n  }\n]');
+  // Elsewhere, or in the other styles, its items flatten as usual.
+  assert.equal(flat('{"a":{"":[1]}}').text, '{\n  "a.[0]": 1\n}');
+  assert.equal(flat('{"":[1]}', { arrays: 'dot' }).text, '{\n  ".0": 1\n}');
+  for (const [x, o] of [['{"a":{"":[1]}}', {}], ['{"":[1]}', { arrays: 'dot' }], ['{"":[1]}', { arrays: 'keep' }], ['{"":[]}', {}], ['{"":{"a":1}}', {}], ['{"":[1],"other":2}', {}]] as const) {
     assert.equal(flat(x, o).warn, false, x);
     assert.ok(back(x, o).ok, x);
   }
+});
+
+test('messages put keys in as they are, {b} and $& included', () => {
+  // (Filled one placeholder after the other, "{b}" in the first key took the second's place, and String.replace read
+  // "$&" as the text it replaced.)
+  assert.equal(unflat('{"{b}":1,"{b}.x":2}').error, 'Keys "{b}" and "{b}.x" conflict: one holds a value, the other goes inside it');
+  assert.equal(unflat('{"$&":1,"$&.x":2}').error, 'Keys "$&" and "$&.x" conflict: one holds a value, the other goes inside it');
+  assert.equal(unflat("{\"$'\":1,\"$'\":2}").error, `Keys "$'" and "$'" give the same path`);
+  assert.equal(unflat('{"a[0]":1,"a.{a}":2}').error, 'Keys "a[0]" and "a.{a}" conflict: one makes an array, the other an object');
+  assert.equal(flat('{"$&.{key}":{"x":1}}', { escape: false }).note, '1 key won\'t unflatten to the same place: "$&.{key}.x" · Turn on Escape keys to keep them apart');
+  assert.equal(flat('{"{n}.x":{"y":1},"{n}.y":{"z":2}}', { escape: false }).note, '2 keys won\'t unflatten to the same place, such as "{n}.x.y" · Turn on Escape keys to keep them apart');
 });
 
 test('duplicate keys: flatten keeps them all and warns, unflatten names the clash', () => {
@@ -439,7 +456,9 @@ function refFlatten(v: V, o: FlatOptions): V {
           const seg = !o.escape ? k : digits ? '\\' + k : refEscape(k, o);
           p = path === null ? seg : path + o.sep + seg;
         } else p = o.arrays === 'bracket' ? `${path ?? ''}[${k}]` : path === null ? `${k}` : `${path}${o.sep}${k}`;
-        if (isBox(c) && c.e.length && !(c.t === 'a' && o.arrays === 'keep') && (!o.depth || level < o.depth)) walk(c, p, level + 1);
+        // (Bracket style: an array under an empty top-level key stays whole, see the module comment.)
+        const emptyTop = o.arrays === 'bracket' && level === 0 && n.t === 'o' && k === '' && c.t === 'a';
+        if (isBox(c) && c.e.length && !(c.t === 'a' && o.arrays === 'keep') && !emptyTop && (!o.depth || level < o.depth)) walk(c, p, level + 1);
         else out.push([p, c]);
       }
     };
@@ -638,6 +657,8 @@ test('fuzz: unflatten(flatten(x)) is x exactly when flatten does not warn, and m
       const ok = !u.error && canon(u.text) === canon(text);
       add(f.warn ? (ok ? 'BUG: warned but came back' : 'warned, does not come back') : ok ? 'came back' : 'BUG: silent loss');
       if (ok === f.warn) assert.fail(`${JSON.stringify(o)}\n${text}\nflat: ${f.text}\nnote: ${f.note}\nback: ${u.text || u.error}`);
+      // With escapes, only duplicate keys keep a document from coming back.
+      if (o.escape && f.warn) assert.ok(/duplicate keys?:/.test(f.note) && !f.note.includes('same place'), `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
       if (f.note.includes('Escaped')) add('escaped keys');
       if (f.flip) add('looked flat');
       // The reference: the same flat JSON, and the same verdict found by actually converting back.
@@ -684,6 +705,60 @@ test('fuzz: unflatten of random flat keys matches the reference (results, confli
 });
 
 // ── Speed ────────────────────────────────────────────────────────────────────
+
+/** A big API response: `n` records of nested objects, arrays and numbers. */
+function records(n: number, seed = 42) {
+  const r = mulberry32(seed);
+  const rec = (i: number) => `{"id":${9007199254740000 + i},"name":"user ${i}","active":${i % 2 === 0},"profile":{"city":"City ${i % 97}","zip":"${10000 + i}","geo":{"lat":${(r() * 180 - 90).toFixed(6)},"lng":${(r() * 360 - 180).toFixed(6)}}},"tags":["t${i % 7}","t${i % 11}"],"orders":[{"sku":"S${i}","qty":${i % 5},"price":${(r() * 100).toFixed(2)}}],"meta":{}}`;
+  return `{"data":[${Array.from({ length: n }, (_, i) => rec(i)).join(',')}],"total":${n}}`;
+}
+
+test('convertSliced: the same output in slices of about 8 ms, the page free in between, and stops when not wanted', async () => {
+  const text = records(4600); // about 1 MB
+  const x = doc(text);
+  // Slices: the longest stretch of work between two yields to the page.
+  const RealChannel = globalThis.MessageChannel;
+  let longest = 0;
+  let last = performance.now();
+  let slices = 0;
+  globalThis.MessageChannel = class extends RealChannel {
+    constructor() {
+      super();
+      const t = performance.now();
+      longest = Math.max(longest, t - last);
+      slices++;
+      const p1 = this.port1;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(p1), 'onmessage')!.set!;
+      Object.defineProperty(p1, 'onmessage', { set: (f: (e: MessageEvent) => void) => set.call(p1, (e: MessageEvent) => ((last = performance.now()), f(e))) });
+    }
+  } as typeof MessageChannel;
+  try {
+    for (const target of ['flatten', 'unflatten'] as const) {
+      const input = target === 'flatten' ? x : doc(flatten(x).text);
+      const notes: unknown[] = [];
+      [longest, slices, last] = [0, 0, performance.now()];
+      const t0 = performance.now();
+      const out = await convertSliced(input, target, { rootName: 'Root', live: () => true, report: (n) => notes.push(n) });
+      longest = Math.max(longest, performance.now() - last);
+      assert.equal(out, convert(input, target, { rootName: 'Root' }), target);
+      assert.deepEqual(notes, [{ note: '', warn: false, flip: false, error: '' }]);
+      console.log(`convertSliced ${target}, 1 MB: ${slices} slices in ${Math.round(performance.now() - t0)} ms, the longest ${longest.toFixed(1)} ms`);
+      assert.ok(slices > 3, `${target}: ${slices} slices`);
+      // 8 ms a slice, plus the work between two checks (1,024 items) on a busy machine.
+      assert.ok(longest < 60, `${target}: a slice took ${longest} ms`);
+    }
+  } finally {
+    globalThis.MessageChannel = RealChannel;
+  }
+  // Not wanted any more: it stops at the next slice, reporting nothing.
+  const notes: unknown[] = [];
+  let asked = 0;
+  assert.equal(await convertSliced(x, 'flatten', { rootName: 'Root', live: () => ++asked < 2, report: (n) => notes.push(n) }), null);
+  assert.deepEqual([asked, notes], [2, []]);
+  // Other targets convert at once; small documents in one slice.
+  assert.equal(await convertSliced(doc('{"a":1}'), 'yaml', { rootName: 'Root', live: () => false }), 'a: 1\n');
+  assert.equal(await convertSliced(doc('{"a":{"b":1}}'), 'flatten', { rootName: 'Root', live: () => false }), '{\n  "a.b": 1\n}');
+});
 
 test('speed: a 5 MB document flattens and unflattens within 3 s of CPU time each', () => {
   const r = mulberry32(42);

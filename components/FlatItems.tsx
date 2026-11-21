@@ -61,14 +61,15 @@ function FlatItems({ flatten, close }: { flatten: boolean; close: () => void }) 
         value={f.arrays}
         options={[
           { v: 'bracket', label: 'a[0]' },
-          { v: 'dot', label: `a${f.sep || '.'}0` },
+          // (A typed separator is the user's own text and the menu isn't masked from session replay: its example stays a.0.)
+          { v: 'dot', label: SEPARATORS.includes(f.sep) ? `a${f.sep}0` : 'a.0' },
           { v: 'keep', label: 'None' },
         ]}
         onPick={(arrays) => set({ arrays })}
       />
       <MCheck label="Escape keys" checked={f.escape} onClick={() => set({ escape: !f.escape })} />
       {flatten && <MChoice label="Depth" value={f.depth} options={[{ v: 0, label: 'All' }, ...[1, 2, 3].map((v) => ({ v, label: String(v) }))]} onPick={(depth) => set({ depth })} />}
-      <MItem label="Use as input" keys="mod+Enter" onClick={() => act((e) => e.useConvert())} close={close} />
+      <MItem label="Use as input" keys="mod+Enter" onClick={() => act((e) => e.useOutput())} close={close} />
       <MSep />
     </>
   );

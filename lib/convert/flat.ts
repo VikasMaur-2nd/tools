@@ -15,9 +15,10 @@
  * backslashes are plain characters.
  *
  * Roots. An object flattens to one flat object. An array is a list of records (as CSV rows are): each item is
- * flattened on its own. Any other value, and an empty object or array, stays as it is. Unflatten reads the
- * same shapes, so unflatten(flatten(x)) is x, for every option, except where flatten says it isn't: duplicate
- * keys, keys that need escapes while they are off, and (bracket style) an empty top-level key holding an array.
+ * flattened on its own. Any other value, and an empty object or array, stays as it is. In bracket style an
+ * array under an empty top-level key stays whole too: its paths, `[0]`…, would read as a top-level array.
+ * Unflatten reads the same shapes, so unflatten(flatten(x)) is x, for every option, except where flatten says
+ * it isn't: duplicate keys, and keys that need escapes while they are off.
  *
  * Unflatten. A path's parts nest in key order. A part becomes an array item when every key under the same
  * parent is an index: `[n]` in bracket style, an unescaped `n` in dot style (0 or 1 to 999,999,999 without
@@ -26,6 +27,9 @@
  * contradict each other (the same path twice, a value with keys inside it, an array and an object at one path)
  * are errors that name both keys: nothing is ever dropped. Output is built as text, never as JavaScript objects,
  * so keys such as "__proto__" are just keys.
+ *
+ * Both run in steps (flattenSteps, unflattenSteps: generators that yield every 1,024 items or so), so the page
+ * can convert a big document in short slices between keystrokes (lib/convert/index.ts convertSliced).
  *
  * Messages are English: the page translates them by their text (lib/i18n/translate.ts).
  */
@@ -78,10 +82,27 @@ export function flatOptions(o?: Partial<FlatOptions>): FlatOptions {
   };
 }
 
-const count = (n: number, one: string, other: string) => (n === 1 ? one : other).replace('{n}', n.toLocaleString('en-US'));
+/**
+ * `msg` with its {placeholders} filled in one pass, by a function: a key is any text, `{b}` or `$&` included,
+ * and neither a later placeholder nor String.replace's patterns may read it as theirs.
+ */
+const fill = (msg: string, p: Record<string, string>) => msg.replace(/\{(\w+)\}/g, (m, k: string) => p[k] ?? m);
+const count = (n: number, one: string, other: string, p?: Record<string, string>) => fill(n === 1 ? one : other, { ...p, n: n.toLocaleString('en-US') });
 /** A key in a message: quoted, and cut short (a key can be any length). */
 const shown = (k: string) => JSON.stringify(clip(k, 60));
 const failed = (error: string): FlatResult => ({ text: '', note: '', warn: false, flip: false, error });
+
+/** A conversion in steps: a generator that yields now and then, returning its result at the end. */
+export type Steps<T> = Generator<void, T, void>;
+/** Steps yield every this many items (a mask: 1,024). */
+const EVERY = 1023;
+/** Runs steps to the end. */
+function finish<T>(g: Steps<T>): T {
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+  }
+}
 
 /** A scalar's JSON, or a whole object or array, indented to sit at `pad`. */
 function valueText(n: JNode, pad: string): string {
@@ -191,7 +212,10 @@ function reader(o: FlatOptions): (p: string) => Part[] {
 // ── Flatten ──────────────────────────────────────────────────────────────────
 
 /** Nested JSON to flat JSON (see the module comment). */
-export function flatten(root: JNode, opts?: Partial<FlatOptions>): FlatResult {
+export const flatten = (root: JNode, opts?: Partial<FlatOptions>): FlatResult => finish(flattenSteps(root, opts));
+
+/** flatten, in steps. */
+export function* flattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps<FlatResult> {
   const f = new Flattener(flatOptions(opts));
   try {
     let text: string;
@@ -200,12 +224,12 @@ export function flatten(root: JNode, opts?: Partial<FlatOptions>): FlatResult {
       // A list of records, as CSV rows are: each item flattened on its own.
       text = '[';
       for (let i = 0; i < items.length; i++) {
-        text += (i ? ',\n  ' : '\n  ') + f.one(items[i], '  ');
+        text += (i ? ',\n  ' : '\n  ') + (yield* f.one(items[i], '  '));
         if (text.length > MAX_TEXT) throw tooLong();
       }
       text += '\n]';
-    } else text = f.one(root, '');
-    return f.result(text, root, root.t < ARR);
+    } else text = yield* f.one(root, '');
+    return f.result(text, yield* looksFlat(root, f.o), root.t < ARR);
   } catch (e) {
     if (tooLarge(e)) return failed('The result is too large');
     throw e;
@@ -213,7 +237,7 @@ export function flatten(root: JNode, opts?: Partial<FlatOptions>): FlatResult {
 }
 
 class Flattener {
-  private readonly o: FlatOptions;
+  readonly o: FlatOptions;
   private readonly bracket: boolean;
   private readonly dot: boolean;
   private readonly keep: boolean;
@@ -225,9 +249,9 @@ class Flattener {
   private escaped = 0;
   private dups = 0;
   private unsafe = 0;
-  /** Unsafe keys that escapes would have kept apart. */
-  private fixable = 0;
   private example = '';
+  /** Items done, for yielding now and then. */
+  private n = 0;
   /** Without escapes: unflatten's budget of missing items, spent as it would spend it (see misread). */
   private budget = HOLES;
 
@@ -307,7 +331,7 @@ class Flattener {
   }
 
   /** One flat object of `root` (an object or array), or `root` itself when it has nothing to flatten. */
-  one(root: JNode, pad: string): string {
+  *one(root: JNode, pad: string): Steps<string> {
     if (root.t < ARR || !kids(root).length || (this.keep && root.t === ARR)) return valueText(root, pad);
     const { sep, depth, escape } = this.o;
     const { bracket, keep, read } = this;
@@ -315,17 +339,18 @@ class Flattener {
     let out = '{';
     let first = true;
     // The open containers: their items, whether they are objects, the item next, their path, whether their keys
-    // get the all-digits escape, and whether what is under them won't unflatten back (the reason: 1 a misread
-    // key, 2 an empty top-level key holding an array). `parts`: their real path parts (to check paths, see read).
+    // get the all-digits escape, and whether what is under them won't unflatten back (a key misread without
+    // escapes). `parts`: their real path parts (to check paths, see read).
     const lists: JNode[][] = [kids(root)];
     const objs: boolean[] = [root.t === OBJ];
     const at: number[] = [0];
     const paths: (string | null)[] = [null];
     const digits: boolean[] = [escape && this.digitKeys(root)];
-    const bad: number[] = [!escape && this.misread(root) ? 1 : 0];
+    const bad: boolean[] = [!escape && this.misread(root)];
     const parts: Part[][] | null = read ? [[]] : null;
     this.countDups(root);
     while (lists.length) {
+      if (!(++this.n & EVERY)) yield;
       const d = lists.length - 1;
       const list = lists[d];
       if (at[d] === list.length) {
@@ -349,25 +374,21 @@ class Flattener {
         const i = c.key as number;
         path = bracket ? (pre ?? '') + '[' + i + ']' : pre === null ? String(i) : pre + sep + i;
       }
-      if (c.t >= ARR && (depth === 0 || d < depth) && !(keep && c.t === ARR) && kids(c).length) {
+      // (Bracket style: `{"": [1]}` would flatten to "[0]", which reads as a top-level array, so it stays whole.)
+      const emptyTop = bracket && d === 0 && objs[0] && c.key === '' && c.t === ARR;
+      if (c.t >= ARR && (depth === 0 || d < depth) && !(keep && c.t === ARR) && !emptyTop && kids(c).length) {
         const misread = !escape && this.misread(c);
         lists.push(kids(c));
         objs.push(c.t === OBJ);
         at.push(0);
         paths.push(path);
         digits.push(escape && this.digitKeys(c));
-        // (`{"": [1]}` flattens to "[0]", which reads as a top-level array: no escape can tell them apart.)
-        bad.push(bad[d] || (misread ? 1 : bracket && d === 0 && pre === null && objs[0] && c.key === '' && c.t === ARR ? 2 : 0));
+        bad.push(bad[d] || misread);
         parts?.push([...parts[d], c.key as Part]);
         this.countDups(c);
         continue;
       }
-      let why = bad[d];
-      if (!why && read && !this.same(read(path), parts![d], c.key as Part)) why = 1;
-      if (why) {
-        if (!this.unsafe++) this.example = path;
-        if (why === 1) this.fixable++;
-      }
+      if ((bad[d] || (read && !this.same(read(path), parts![d], c.key as Part))) && !this.unsafe++) this.example = path;
       out += (first ? '\n' : ',\n') + inner + quote(path) + ': ' + valueText(c, inner);
       first = false;
       if (out.length > MAX_TEXT) throw tooLong();
@@ -383,17 +404,15 @@ class Flattener {
     return eq(got[parent.length], last);
   }
 
-  result(text: string, root: JNode, single: boolean): FlatResult {
+  /** `flip`: the input looks flat already (see looksFlat). */
+  result(text: string, flip: boolean, single: boolean): FlatResult {
     // (Flat JSON flattened again only gains escapes: what it needs is the other direction.)
-    const flip = looksFlat(root, this.o);
     const notes: string[] = [];
     if (flip) notes.push('This looks like flat JSON already');
     else if (single) notes.push('A single value has no keys to flatten');
     if (this.dups) notes.push(count(this.dups, "{n} duplicate key: the result won't unflatten to the same document", "{n} duplicate keys: the result won't unflatten to the same document"));
-    if (this.unsafe) {
-      notes.push(count(this.unsafe, "{n} key won't unflatten to the same place: {key}", "{n} keys won't unflatten to the same place, such as {key}").replace('{key}', shown(this.example)));
-      if (this.fixable) notes.push('Turn on Escape keys to keep them apart');
-    }
+    // (Only keys misread without escapes are unsafe: escapes would keep them apart.)
+    if (this.unsafe) notes.push(count(this.unsafe, "{n} key won't unflatten to the same place: {key}", "{n} keys won't unflatten to the same place, such as {key}", { key: shown(this.example) }), 'Turn on Escape keys to keep them apart');
     if (this.escaped && !flip) notes.push(count(this.escaped, 'Escaped {n} key with a backslash so that Unflatten restores it', 'Escaped {n} keys with a backslash so that Unflatten restores them'));
     return { text, note: notes.join(' · '), warn: !!(this.dups || this.unsafe), flip, error: '' };
   }
@@ -403,14 +422,16 @@ class Flattener {
  * Flat JSON already: an object (or a list of objects) whose values are all scalars or empty, with a key that
  * reads as a path of several parts.
  */
-function looksFlat(root: JNode, o: FlatOptions): boolean {
+function* looksFlat(root: JNode, o: FlatOptions): Steps<boolean> {
   const objs = root.t === OBJ ? [root] : root.t === ARR ? kids(root) : [];
   if (!objs.length) return false;
   const read = reader(o);
   let path = false;
-  for (const n of objs) {
-    if (n.t !== OBJ) return false;
-    for (const c of kids(n)) {
+  let n = 0;
+  for (const obj of objs) {
+    if (obj.t !== OBJ) return false;
+    for (const c of kids(obj)) {
+      if (!(++n & EVERY)) yield;
       if (c.t >= ARR && kids(c).length) return false;
       if (!path && read(c.key as string).length > 1) path = true;
     }
@@ -459,7 +480,10 @@ const INSIDE = 'Keys {a} and {b} conflict: one holds a value, the other goes ins
 const KIND = 'Keys {a} and {b} conflict: one makes an array, the other an object';
 
 /** Flat JSON to nested JSON (see the module comment). */
-export function unflatten(root: JNode, opts?: Partial<FlatOptions>): FlatResult {
+export const unflatten = (root: JNode, opts?: Partial<FlatOptions>): FlatResult => finish(unflattenSteps(root, opts));
+
+/** unflatten, in steps. */
+export function* unflattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps<FlatResult> {
   const u = new Unflattener(flatOptions(opts));
   try {
     let text: string;
@@ -469,11 +493,11 @@ export function unflatten(root: JNode, opts?: Partial<FlatOptions>): FlatResult 
       text = '[';
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? u.one(it, '  ') : valueText(it, '  '));
+        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? yield* u.one(it, '  ') : valueText(it, '  '));
         if (text.length > MAX_TEXT) throw tooLong();
       }
       text += '\n]';
-    } else if (root.t === OBJ) text = u.one(root, '');
+    } else if (root.t === OBJ) text = yield* u.one(root, '');
     else {
       if (root.t < ARR) u.single = true;
       text = valueText(root, '');
@@ -499,6 +523,8 @@ class Unflattener {
   private paths = false;
   private nested = false;
   single = false;
+  /** Items done, for yielding now and then. */
+  private n = 0;
 
   constructor(o: FlatOptions) {
     this.bracket = o.arrays === 'bracket';
@@ -506,9 +532,10 @@ class Unflattener {
     this.read = reader(o);
   }
 
-  one(obj: JNode, pad: string): string {
+  *one(obj: JNode, pad: string): Steps<string> {
     const root = new Box('');
     for (const c of kids(obj)) {
+      if (!(++this.n & EVERY)) yield;
       const key = c.key as string;
       const parts = this.read(key);
       if (parts.length > MAX_WALK_DEPTH) {
@@ -519,11 +546,11 @@ class Unflattener {
       if (c.t >= ARR && kids(c).length) this.nested = true;
       this.put(root, parts, c, key);
     }
-    return this.conflicts || this.deep ? '' : this.write(root, pad);
+    return this.conflicts || this.deep ? '' : yield* this.write(root, pad);
   }
 
   private conflict(msg: string, a: string, b: string) {
-    if (!this.conflicts++) this.firstConflict = msg.replace('{a}', shown(a)).replace('{b}', shown(b));
+    if (!this.conflicts++) this.firstConflict = fill(msg, { a: shown(a), b: shown(b) });
   }
 
   private put(start: Box, parts: Part[], n: JNode, key: string) {
@@ -572,7 +599,7 @@ class Unflattener {
     return [slots, null];
   }
 
-  private write(root: Box, pad: string): string {
+  private *write(root: Box, pad: string): Steps<string> {
     if (!root.keys.length) return '{}';
     let out = '';
     // The open boxes: their items, keys (null for an array), next item, and indents (their own, their items').
@@ -592,6 +619,7 @@ class Unflattener {
     };
     open(root, pad);
     while (slots.length) {
+      if (!(++this.n & EVERY)) yield;
       const d = slots.length - 1;
       const i = at[d]++;
       const list = slots[d];

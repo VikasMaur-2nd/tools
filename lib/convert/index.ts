@@ -7,7 +7,7 @@
 import { tooDeep, type JNode } from '../json/parser';
 import type { ConvertOptions } from './infer';
 import { toJSONL, toTOML, toXML, toYAML } from './data';
-import { flatten, unflatten, type FlatResult } from './flat';
+import { flatten, flattenSteps, unflatten, unflattenSteps, type FlatResult } from './flat';
 import { toCSharp, toDart, toGo, toJava, toKotlin, toPHP, toPython, toRust, toSwift } from './langs';
 import { toProto } from './proto';
 import { toJSONSchema, toTypeScript, toZod } from './types';
@@ -46,6 +46,39 @@ function flat({ text, ...note }: FlatResult, o: ConvertOptions) {
 }
 
 const COMMENT: Record<string, string> = { python: '# ', yaml: '# ', toml: '# ', 'json-schema': '', jsonl: '', flatten: '', unflatten: '' };
+
+/** A new task right away (no timer clamping): the page handles input before the next slice. */
+const nextTask = () =>
+  new Promise<void>((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => {
+      ch.port1.close();
+      resolve();
+    };
+    ch.port2.postMessage(0);
+  });
+
+/** Main-thread time per slice of a long conversion (ms): short enough that typing stays smooth. */
+const SLICE = 8;
+
+/**
+ * convert, for the page: flatten and unflatten run in slices of about 8 ms with the page free in between, so a
+ * big document converts without holding up typing. `live`, asked between slices: false once the result isn't
+ * wanted any more (the document or the settings changed), which stops it (null). Other targets convert at once.
+ */
+export async function convertSliced(root: JNode, target: string, opts: ConvertOptions & { live: () => boolean }): Promise<string | null> {
+  if (target !== 'flatten' && target !== 'unflatten') return convert(root, target, opts);
+  const steps = (target === 'flatten' ? flattenSteps : unflattenSteps)(root, opts.flat);
+  let until = performance.now() + SLICE;
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return flat(r.value, opts);
+    if (performance.now() < until) continue;
+    await nextTask();
+    if (!opts.live()) return null;
+    until = performance.now() + SLICE;
+  }
+}
 
 /** Converts a parsed document to `target` (a target id other than CSV and Excel: see xlsx.ts). */
 export function convert(root: JNode, target: string, opts: ConvertOptions): string {
