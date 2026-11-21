@@ -3344,7 +3344,7 @@ export class Engine {
     this.expTimer = window.setTimeout(() => this.settings.view === 'format' && this.noteExpiry(out), Math.abs(left) < 3600 ? 1000 : 30_000);
   }
 
-  /** Replaces the input with the Format view's output (undoable). */
+  /** Replaces the input with the Format view's output (undoable); flatten's or unflatten's while one shows (see useConvert). */
   useOutput() {
     if (this.settings.view === 'convert' && isFlat(this.settings.target)) return this.useConvert();
     const r = this.fresh();
@@ -3552,8 +3552,6 @@ export class Engine {
     else this.scheduleConvert(patch.rootName !== undefined ? 200 : 0);
   }
 
-
-
   private scheduleConvert(delay: number) {
     clearTimeout(this.convTimer);
     this.convSeq++;
@@ -3675,7 +3673,8 @@ export class Engine {
       let r: { note: string; warn: boolean; flip: boolean; error?: string } | undefined;
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
-        : mod.convert(root, info.id, { ...s, report: (x) => (r = x) });
+        : // (The settings as they are: convert() reads its own, and a cleared root name is "Root".)
+          mod.convert(root, info.id, { ...s, report: (x) => (r = x) });
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
       else {
         // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)

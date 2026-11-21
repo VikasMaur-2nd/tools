@@ -246,6 +246,17 @@ describe('convert_json', () => {
     assert.match((await run('convert_json', page, { to: 'yaml' })).text, /- id: 1\n {2}name: Ada/);
   });
 
+  test('flatten and unflatten, with the page\'s options, and unflatten\'s conflicts as errors', async () => {
+    const { page } = fakePage('{"user":{"name":"Ada","tags":["x"]}}');
+    assert.equal((await run('convert_json', page, { to: 'flatten' })).text, '{\n  "user.name": "Ada",\n  "user.tags[0]": "x"\n}');
+    const slash = fakePage('{"user/name":"Ada","user/tags":["x"]}');
+    slash.page.settings().flat = { sep: '/', arrays: 'keep', escape: true, depth: 0 };
+    assert.equal((await run('convert_json', slash.page, { to: 'unflatten' })).text, '{\n  "user": {\n    "name": "Ada",\n    "tags": [\n      "x"\n    ]\n  }\n}');
+    const clash = await run('convert_json', fakePage('{"a":1,"a.b":2}').page, { to: 'unflatten' });
+    assert.equal(clash.ok, false);
+    assert.equal(clash.text, 'Keys "a" and "a.b" conflict: one holds a value, the other goes inside it.');
+  });
+
   test('unknown targets and broken documents are explained', async () => {
     const { page } = fakePage(doc);
     assert.match((await run('convert_json', page, { to: 'xlsx' })).text, /^Error: to must be one of "typescript", "zod"/);

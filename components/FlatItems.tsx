@@ -75,7 +75,10 @@ function FlatNote() {
   return (
     <div className={`banner ${note.warn ? 'warn' : 'info'}`} role="status" aria-live="polite">
       <Icon name={note.warn ? 'alert' : 'braces'} size={15} />
-      <span className="b-msg">{t.msg(note.note)}</span>
+      {/* (A quoted key is one long word: it breaks rather than overflows a phone.) */}
+      <span className="b-msg" style={{ overflowWrap: 'anywhere' }}>
+        {t.msg(note.note)}
+      </span>
       {note.flip && (
         <button type="button" className="btn sm accent" onClick={() => act((e) => e.setConvert({ target: flatten ? 'unflatten' : 'flatten' }))}>
           {flatten ? t('Unflatten instead') : t('Flatten instead')}
