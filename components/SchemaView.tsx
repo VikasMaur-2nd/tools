@@ -246,15 +246,8 @@ class Controller {
       this.decorate(o, doc, schema);
       if (!this.tracked && o.state === 'ok') {
         this.tracked = true;
-        track('schema_validated', {
-          draft: DRAFT_NAME[o.draft] as '2020-12',
-          from: o.draftFrom,
-          valid: o.valid,
-          errors: countBucket(o.total),
-          problems: countBucket(o.problems.length),
-          formats: this.state.formats,
-          ms: Math.round(o.ms.parse + o.ms.compile + o.ms.validate),
-        });
+        // (The draft, whether the document was valid, and its errors as a number rounded to two digits.)
+        track('feature_used', { feature: 'schema_validate', value: DRAFT_NAME[o.draft], on: o.valid, level: o.total });
       }
     });
   }
@@ -329,11 +322,6 @@ class Controller {
 const ctl = new Controller();
 const toast = (msg: string, kind: 'ok' | 'err' | 'info') => act((e) => e.toast(msg, kind));
 const useCtl = () => useSyncExternalStore(ctl.subscribe, ctl.get, ctl.get);
-
-/** A count as lib/analytics/events.ts ranges it (not imported: this chunk takes nothing more from the first load's). */
-function countBucket(n: number) {
-  return n === 0 ? '0' : n < 10 ? '1-9' : n < 100 ? '10-99' : n < 1000 ? '100-999' : n < 10_000 ? '1k-9.9k' : n < 100_000 ? '10k-99k' : n < 1_000_000 ? '100k-999k' : '1M+';
-}
 
 function lineCount(text: string) {
   let n = 1;
@@ -429,7 +417,6 @@ function downloadSchema() {
 }
 
 function closeSchema() {
-  track('feature_used', { feature: 'schema_close' });
   act((e) => {
     e.setView(store.get().settings.prevView);
     e.focusEditor();
@@ -721,11 +708,9 @@ function SchemaPanel() {
       return;
     }
     if (toSchema) {
-      track('feature_used', { feature: 'schema_jump', value: 'schema' });
       jumpSchema(row.e.schemaLoc, true);
       return;
     }
-    if (jump) track('feature_used', { feature: 'schema_jump', value: 'document' });
     if (!jumpDoc(row.e.loc, jump) && jump) toast('The document changed: wait for the next check', 'info');
   };
   const step = (from: number, d: number) => {

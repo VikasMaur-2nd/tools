@@ -662,7 +662,6 @@
   "app.schema.example": "Voir un exemple",
   "app.schema.checkFormats": "Vérifier les formats",
   "app.schema.download": "Télécharger le schéma",
-  "app.schema.validateThis": "Valider avec ce schéma",
   "app.schema.problems": "Problèmes du schéma",
   "app.schema.errors": "Erreurs du document",
   "app.schema.record": "Enregistrement {n}",

@@ -628,7 +628,6 @@
   "app.schema.example": "例を試す",
   "app.schema.checkFormats": "formatを検証",
   "app.schema.download": "スキーマをダウンロード",
-  "app.schema.validateThis": "このスキーマで検証",
   "app.schema.problems": "スキーマの問題",
   "app.schema.errors": "ドキュメントのエラー",
   "app.schema.record": "レコード{n}",

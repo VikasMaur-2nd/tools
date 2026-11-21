@@ -797,8 +797,6 @@
   "app.schema.checkFormats": "Check formats",
   "app.schema.checkFormats._context": "Toggle: validate the \"format\" keyword (email, date-time, uri…) instead of treating it as a note. Short.",
   "app.schema.download": "Download schema",
-  "app.schema.validateThis": "Validate against this schema",
-  "app.schema.validateThis._context": "Convert view menu, with JSON Schema as the target: opens the Schema view with the generated schema.",
   "app.schema.problems": "Schema problems",
   "app.schema.problems._context": "Heading above the list of problems in the schema itself.",
   "app.schema.errors": "Document errors",

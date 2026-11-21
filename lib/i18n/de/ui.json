@@ -645,7 +645,6 @@
   "app.schema.example": "Beispiel ansehen",
   "app.schema.checkFormats": "Formate prüfen",
   "app.schema.download": "Schema herunterladen",
-  "app.schema.validateThis": "Gegen dieses Schema validieren",
   "app.schema.problems": "Probleme im Schema",
   "app.schema.errors": "Fehler im Dokument",
   "app.schema.record": "Datensatz {n}",

@@ -81,7 +81,7 @@ test('the validator page: six errors, jumps, keyboard, fixed to Valid, undo, a b
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });
 
-test('on a phone: the three panes stack and the errors show', { mobile: true }, async (t) => {
+test('on a phone: the three panes stack and the errors show', { mobile: true, width: 390, height: 844 }, async (t) => {
   const { page } = t;
   await t.open('/tools/json-schema-validator');
   t.check((await until(page, (s) => document.querySelectorAll(s).length === 6, ROWS, { timeout: 30_000 })) === true, 'six errors');

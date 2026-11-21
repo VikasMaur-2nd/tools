@@ -628,7 +628,6 @@
   "app.schema.example": "查看示例",
   "app.schema.checkFormats": "校验 format",
   "app.schema.download": "下载 schema",
-  "app.schema.validateThis": "根据此 schema 校验",
   "app.schema.problems": "Schema 问题",
   "app.schema.errors": "文档错误",
   "app.schema.record": "第 {n} 条记录",

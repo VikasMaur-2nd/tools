@@ -54,8 +54,6 @@ const HUGE_SAVE_HOW = ['in_place', 'save_as', 'download'] as const;
 // (Nothing written: the file picked to overwrite wasn't the opened one as opened; writing to it wasn't allowed; the
 // opened file changed after a save-picker pick.)
 const HUGE_SAVE_OUTCOMES = ['done', 'stopped', 'failed', 'not_opened', 'not_allowed', 'changed'] as const;
-/** JSON Schema drafts the Schema view validates with. */
-const SCHEMA_DRAFTS = ['2020-12', '2019-09', 'draft-07', 'draft-06', 'draft-04'] as const;
 
 /** Discrete actions, reported as `feature_used { feature }`. */
 const FEATURES = [
@@ -69,7 +67,7 @@ const FEATURES = [
   'compare_swap', 'compare_format', 'compare_close',
   'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
   'shape_go', 'shape_next', 'shape_count',
-  'schema_generate', 'schema_draft', 'schema_formats', 'schema_jump', 'schema_close',
+  'schema_validate', 'schema_generate', 'schema_draft', 'schema_formats',
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 
@@ -146,20 +144,6 @@ export interface Events {
   huge_edit: {
     op: (typeof HUGE_EDIT_OPS)[number];
     from: (typeof HUGE_EDIT_FROM)[number];
-  };
-  /**
-   * The Schema view checked a document against a schema (once each time the view opens): the draft and where it
-   * came from ($schema, the draft picker, the default), whether it was valid, its errors and schema problems as
-   * ranges, whether formats were checked, and how long it took.
-   */
-  schema_validated: {
-    draft: (typeof SCHEMA_DRAFTS)[number];
-    from: 'schema' | 'picked' | 'default';
-    valid: boolean;
-    errors: string;
-    problems: string;
-    formats: boolean;
-    ms: number;
   };
   /** A huge document was saved: how, how it ended, the document's size range. */
   huge_save: {
@@ -300,8 +284,8 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
     feature: FEATURES, via: VIAS, view: VIEW_IDS, level: 'number', on: 'flag', jsonpath: 'flag',
     // Share formats, themes, the right-click menu's areas, input formats and CSV separators.
     value: ['link', 'markdown', 'html', 'system', 'light', 'dark', 'input', 'compare', 'format', 'convert', 'tree', 'table', 'graph', 'diff', ...INPUT_FORMATS, 'auto', 'comma', 'semicolon', 'tab', 'pipe',
-      // The Schema view: a draft picked, and where a click on an error went.
-      ...SCHEMA_DRAFTS, 'schema', 'document'],
+      // The Schema view's drafts.
+      '2020-12', '2019-09', 'draft-07', 'draft-06', 'draft-04'],
   },
   command_run: { command: COMMAND_IDS },
   agent_tool_used: { tool: AGENT_TOOLS, ok: 'flag' },
@@ -311,7 +295,6 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   huge_gz: { outcome: HUGE_GZ_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
   huge_edit: { op: HUGE_EDIT_OPS, from: HUGE_EDIT_FROM },
   huge_save: { how: HUGE_SAVE_HOW, outcome: HUGE_SAVE_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
-  schema_validated: { draft: SCHEMA_DRAFTS, from: ['schema', 'picked', 'default'], valid: 'flag', errors: COUNTS, problems: COUNTS, formats: 'flag', ms: 'number' },
 };
 
 /** Allowed properties per event (see `clean`). */

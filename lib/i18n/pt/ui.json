@@ -662,7 +662,6 @@
   "app.schema.example": "Ver um exemplo",
   "app.schema.checkFormats": "Verificar formatos",
   "app.schema.download": "Baixar schema",
-  "app.schema.validateThis": "Validar com este schema",
   "app.schema.problems": "Problemas do schema",
   "app.schema.errors": "Erros do documento",
   "app.schema.record": "Registro {n}",

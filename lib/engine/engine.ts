@@ -4222,8 +4222,8 @@ export class Engine {
       this.menuKeyAt = e.timeStamp;
       run = () => this.openMenu(area, t);
     } else if (mod && !e.altKey && (k === 'k' || (e.shiftKey && k === 'p'))) run = () => this.openPalette();
-    // (The schema editor formats, saves and opens its own document: components/SchemaView.tsx.)
-    else if (mod && !e.altKey && (e.key === 'Enter' || k === 's' || k === 'o') && t.closest?.('.pane-sch')) return;
+    // (The schema editor has its own Ctrl/⌘ keys: components/SchemaView.tsx.)
+    else if (mod && t.closest?.('.pane-sch')) return;
     else if (mod && !e.altKey && e.key === 'Enter' && this.ed2.hasFocus()) run = () => this.formatCompare();
     else if (mod && !e.altKey && e.key === 'Enter') run = e.shiftKey ? () => this.minify() : () => this.useOutput();
     else if (e.altKey && e.shiftKey && !mod && e.code === 'KeyF') run = () => this.format();

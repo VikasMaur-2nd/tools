@@ -679,7 +679,6 @@
   "app.schema.example": "Показать пример",
   "app.schema.checkFormats": "Проверять форматы",
   "app.schema.download": "Скачать схему",
-  "app.schema.validateThis": "Проверить по этой схеме",
   "app.schema.problems": "Проблемы схемы",
   "app.schema.errors": "Ошибки документа",
   "app.schema.record": "Запись {n}",

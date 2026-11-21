@@ -628,7 +628,6 @@
   "app.schema.example": "예시 보기",
   "app.schema.checkFormats": "format 검사",
   "app.schema.download": "스키마 다운로드",
-  "app.schema.validateThis": "이 스키마로 검증",
   "app.schema.problems": "스키마 문제",
   "app.schema.errors": "문서 오류",
   "app.schema.record": "레코드 {n}",
