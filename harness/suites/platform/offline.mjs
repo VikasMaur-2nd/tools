@@ -169,6 +169,33 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
   }
 });
 
+test('localized: after one visit, the Schema view and Flatten show their own strings offline', async (t) => {
+  const proxy = await startProxy({ A: t.base });
+  try {
+    await t.context.addInitScript(WATCH_POSTS);
+    const page = t.page;
+    // A first visit to a German tool page (its Schema view opens with the sample); Flatten is never opened.
+    await page.goto(proxy.origin + '/de/tools/json-schema-validator', { waitUntil: 'load' });
+    await swIdle(page, { posted: true, timeout: 90_000 });
+    const dicts = (await cacheKeys(page)).filter((k) => k.startsWith('/i18n/'));
+    t.check(dicts.length === 3 && dicts.every((k) => /^\/i18n\/(huge|schema|flatten)-strings\.de\.[0-9a-f]{12}\.json$/.test(k)), 'localized: the page\'s own three dictionaries are cached, no other language\'s', dicts);
+
+    proxy.offline();
+    const p2 = await t.context.newPage();
+    const de = await opened(p2, proxy.origin, '/de/tools/json-schema-validator');
+    t.check(de.ok && de.lang === 'de' && de.tool === 1, 'localized offline: the visited page opens', de);
+    const head = await p2.waitForFunction(() => window.__vis('#view-schema .sch-state')?.textContent, null, { ...POLL, timeout: t.budget(20_000) }).then((h) => h.jsonValue(), () => '');
+    t.check(/^6 Fehler/.test(head), 'localized offline: the Schema view in German', head);
+    await t.app.view(p2, 'convert');
+    await p2.locator('.app:visible .vmain select').selectOption('unflatten');
+    const note = await p2.waitForFunction(() => window.__vis('.view .banner .b-msg')?.textContent, null, { ...POLL, timeout: t.budget(15_000) }).then((h) => h.jsonValue(), () => '');
+    t.check(note === 'Dieses JSON hat keine flachen Schlüssel zum Verschachteln', 'localized offline: Flatten in German, never opened online', note);
+    await checkErrors(t, 'localized');
+  } finally {
+    proxy.close();
+  }
+});
+
 test("deploy: a tab open during a deploy keeps its build offline; new tabs get the new one", { variant: 'redeploy' }, async (t) => {
   const A = (await serveVariant('default')).base;
   const proxy = await startProxy({ A, A2: t.base });

@@ -5,6 +5,7 @@
  *                       page's language (/es, /ja…), then the cached '/'
  *  /_next/static/*      cache-first (content-hashed, immutable); a worker's script
  *                       is answered with a new Response so it keeps its #params=
+ *  /i18n/*-strings.*    cache-first too (named by their content)
  *  other same-origin    stale-while-revalidate
  *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests
  *
@@ -17,10 +18,13 @@
  * document opened at once) never shares the network or the device with 1.5 MB of
  * chunks it may not need yet.
  *
- * Huge mode's dictionaries (/_next/static/media/huge-strings.<lang>.<hash>.json, named in
- * every localized page's chunk), and the Schema view's and Flatten's (schema-strings,
- * flatten-strings), are followed for that page's own language only: a /de visit caches
- * the German ones and no other; English pages none.
+ * The dictionaries a localized page loads later (huge mode's, the Schema view's and
+ * Flatten's: /i18n/<name>-strings.<lang>.<hash>.json, named by their content) are named
+ * in that page's HTML, its own language's only, and followed with its chunks (not with
+ * its HTML: they wait for the page's warm-up too). A /de visit caches the German ones
+ * and no other; English pages none. Builds before them named every language's in a
+ * chunk (/_next/static/media/huge-strings.<lang>.<hash>.json): followed for the page's
+ * language only as well.
  *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
@@ -56,10 +60,14 @@ const CHUNK_RE = /["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g;
 const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 
 const isStatic = (path) => path.startsWith('/_next/static/');
+// A localized page's later dictionaries, named in its HTML (in the RSC payload).
+const STRINGS_RE = /\/i18n\/[a-z]+-strings\.[a-z]{2}\.[0-9a-f]+\.json/g;
+/** Files named by their content: never change, retired after deploys like /_next/static files. */
+const isHashed = (path) => isStatic(path) || /^\/i18n\/[a-z]+-strings\./.test(path);
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
 /** Huge mode's and the lazy features' dictionaries (huge-strings, schema-strings, flatten-strings: lib/i18n/translate.ts). */
-const HUGE_STRINGS_RE = /^\/_next\/static\/media\/(?:huge|schema|flatten)-strings\.([a-z]{2})\./;
+const HUGE_STRINGS_RE = /^\/(?:_next\/static\/media|i18n)\/(?:huge|schema|flatten)-strings\.([a-z]{2})\./;
 /** Whether `url` is a dictionary (huge mode's, a lazy feature's) of another language than the page's (`page`, a URL): not one of its files. */
 const otherStrings = (url, page) => {
   const m = HUGE_STRINGS_RE.exec(new URL(url).pathname);
@@ -80,6 +88,9 @@ function bypass(url, headers) {
 
 /** Only full, same-origin, non-redirected 200s are worth keeping. */
 const cacheable = (res) => res && res.status === 200 && res.type === 'basic' && !res.redirected;
+
+/** The later dictionaries a page's HTML names (its language's: see the header). */
+const stringsIn = (html) => Array.from(new Set(html.match(STRINGS_RE) || [])).map((p) => ORIGIN + p);
 
 /** Same-origin asset URLs referenced by an HTML document. */
 function extractAssets(html) {
@@ -151,7 +162,10 @@ async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN +
     const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
   };
-  const results = await Promise.all(extractAssets(html).map((u) => visit(u, isStatic(new URL(u).pathname))));
+  const visits = extractAssets(html).map((u) => visit(u, isStatic(new URL(u).pathname)));
+  // (Its later dictionaries come with its chunks, not with its HTML.)
+  if (deep) stringsIn(html).forEach((u) => visits.push(visit(u, false)));
+  const results = await Promise.all(visits);
   return { ok: results.indexOf(false) === -1, files };
 }
 
@@ -217,7 +231,7 @@ async function tidy(cache, deployed, opening) {
   let at = rec ? rec.at : Date.now();
   if (deployed) {
     const old = new Set(urls);
-    keys.forEach((k) => isStatic(new URL(k.url).pathname) && !keep.has(k.url) && old.add(k.url));
+    keys.forEach((k) => isHashed(new URL(k.url).pathname) && !keep.has(k.url) && old.add(k.url));
     urls = Array.from(old);
     clients = Array.from(new Set(clients.concat(Array.from(live))));
     at = Date.now();
@@ -305,7 +319,7 @@ async function followPage(cache, url) {
   const page = await cache.match(url, MATCH);
   if (!page || !isHTML(page)) return;
   const html = await page.text();
-  const key = url + ' ' + extractAssets(html).join(' ');
+  const key = url + ' ' + extractAssets(html).concat(stringsIn(html)).join(' ');
   if (followed.has(key)) return;
   if ((await pageFiles(cache, html, true, true, url)).ok) followed.add(key);
 }
@@ -326,7 +340,7 @@ self.addEventListener('fetch', (event) => {
     } else {
       event.respondWith(networkFirst(event, req));
     }
-  } else if (isStatic(url.pathname)) {
+  } else if (isHashed(url.pathname)) {
     event.respondWith(cacheFirst(event, req));
   } else {
     event.respondWith(staleWhileRevalidate(event, req));

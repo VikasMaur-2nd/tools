@@ -1,7 +1,7 @@
 // The Schema view (JSON Schema validation): the validator page's sample and its six errors, a click or Enter on an
 // error selecting it in the document, a keyword selecting the rule in the schema, keyboard navigation, fixing to
 // Valid and undoing, a broken schema, Check formats, the phone layout, and from the home page Alt+7, Generate from
-// the document and Close; the view toolbar at the widths where its row is full.
+// the document and Close; the view toolbar at the widths where its row is full; a German page's strings.
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, setDoc, until } from './_helpers.mjs';
 
@@ -193,5 +193,27 @@ test('the view toolbar: every view reachable and nothing overlapping, with a doc
     }
   }
   t.check(!bad.length, 'every view has a tab or the dropdown, and the tabs, the view\'s control and the icons don\'t overlap', bad.slice(0, 6));
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('a German page: the Schema view and Flatten show their own strings, loaded when they open', async (t) => {
+  const { page } = t;
+  const asked = [];
+  page.on('request', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (path.startsWith('/i18n/')) asked.push(path);
+  });
+  await t.open('/de/tools/json-schema-validator');
+  t.check((await until(page, (s) => document.querySelectorAll(s).length === 6, ROWS, { timeout: 30_000 })) === true, 'the sample\'s six errors');
+  t.check(/^6 Fehler/.test(await state(page)), 'the header in German', await state(page));
+  const first = await page.evaluate((s) => document.querySelector(s)?.querySelector('.sch-msg')?.textContent, ROWS);
+  t.check(first === 'Die Pflichteigenschaft "email" fehlt', 'its messages in German', first);
+  t.check((await page.evaluate(() => document.querySelector('.sch-fmt')?.textContent ?? '')).includes('Formate prüfen'), 'its options in German');
+  // Flatten: Nested JSON (unflatten) of this nested document says there is nothing to unflatten.
+  await page.keyboard.press('Alt+5');
+  await page.locator('.app:visible .vmain select').selectOption('unflatten');
+  const note = await until(page, () => document.querySelector('.view .banner .b-msg')?.textContent, null, { timeout: 15_000 });
+  t.check(note === 'Dieses JSON hat keine flachen Schlüssel zum Verschachteln', 'Flatten\'s note in German', note);
+  t.check(asked.length === 2 && /^\/i18n\/schema-strings\.de\.[0-9a-f]{12}\.json$/.test(asked[0]) && /^\/i18n\/flatten-strings\.de\.[0-9a-f]{12}\.json$/.test(asked[1]), 'each feature\'s strings fetched once, when it opens: the page\'s language\'s', asked);
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });

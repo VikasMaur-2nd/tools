@@ -102,6 +102,12 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     cached: (path: string) => store.get(ORIGIN + path)?.body,
     has: (path: string) => store.has(ORIGIN + path),
     statics: () => [...store.keys()].filter((u) => u.includes('/_next/static/')).map((u) => new URL(u).pathname).sort(),
+    /** The page's own requests (not navigations): what the worker answers with. */
+    get: async (path: string) => {
+      const res = await dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache: 'default' } });
+      return res ? await res.text() : null;
+    },
+    dicts: () => [...store.keys()].filter((u) => u.includes('/i18n/')).map((u) => new URL(u).pathname).sort(),
     fetched,
   };
 }
@@ -225,8 +231,80 @@ test('service worker: files posted by a page are cached only when really there',
   assert.ok(!sw.has('/manifest.webmanifest'));
 });
 
-test("service worker: a page caches huge mode's dictionary of its own language only", async () => {
-  // Every page loads a chunk that names the dictionaries of all languages (they load when a huge file opens).
+/**
+ * A build whose localized pages name their language's later dictionaries in their RSC payload (lib/i18n/server.ts
+ * stringFiles): `dicts` maps a locale to its files' URLs. `tag` makes the hashed chunk names.
+ */
+function localized(tag: string, dicts: Record<string, string[]>): Files {
+  const page = (title: string, urls: string[] = []) =>
+    `<!doctype html><title>${title}</title><script src="/_next/static/chunks/${tag}-main.js"></script>` +
+    `<script>self.__next_f.push([1,"{\\"files\\":{${urls.map((u, i) => `\\"f${i}\\":\\"${u}\\"`).join(',')}}}"])</script>`;
+  return {
+    '/': page('Home ' + tag),
+    ...Object.fromEntries(Object.entries(dicts).map(([l, urls]) => [`/${l}`, page(`${l} ${tag}`, urls)])),
+    '/de/tools/json-graph': page('Graph ' + tag, dicts.de),
+    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-lazy.js")`,
+    [`/_next/static/chunks/${tag}-lazy.js`]: 'lazy()',
+    ...Object.fromEntries(Object.values(dicts).flat().map((u) => [u, `{"file":"${u}"}`])),
+  };
+}
+
+test('service worker: a localized page caches the dictionaries it names (its own language\'s) with its chunks, not with its HTML', async () => {
+  const de = ['/i18n/huge-strings.de.0a1b2c3d4e5f.json', '/i18n/schema-strings.de.1a1b2c3d4e5f.json', '/i18n/flatten-strings.de.2a1b2c3d4e5f.json'];
+  const ja = ['/i18n/huge-strings.ja.3a1b2c3d4e5f.json', '/i18n/schema-strings.ja.4a1b2c3d4e5f.json', '/i18n/flatten-strings.ja.5a1b2c3d4e5f.json'];
+  const sw = worker();
+  sw.serve(localized('a', { de, ja }));
+  await sw.install();
+  await sw.post(['/']);
+  // English: none, while the page's other chunks are followed.
+  assert.ok(sw.has('/_next/static/chunks/a-lazy.js'));
+  assert.deepEqual(sw.dicts(), []);
+  // A German page: its HTML comes with what it names to run; the dictionaries wait for its warm-up, as its chunks do.
+  await sw.visit('/de/tools/json-graph');
+  assert.match(sw.cached('/de/tools/json-graph')!, /Graph a/);
+  assert.ok(!sw.fetched.some((p) => p.startsWith('/i18n/')));
+  await sw.post(['/de/tools/json-graph']);
+  assert.deepEqual(sw.dicts(), [...de].sort());
+  assert.ok(!sw.fetched.some((p) => p.includes('.ja.')));
+  // Another language's page: its own as well.
+  await sw.visit('/ja');
+  await sw.post(['/ja']);
+  assert.deepEqual(sw.dicts(), [...de, ...ja].sort());
+  // Offline, a feature opening on the German page gets its strings from the cache.
+  sw.offline();
+  assert.equal(await sw.get(de[1]), `{"file":"${de[1]}"}`);
+});
+
+test('service worker: a dictionary of older texts goes after a deploy, once no cached page or open tab needs it', async () => {
+  const before = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
+  const after = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+  const sw = worker();
+  sw.serve(localized('a', { de: [before] }));
+  await sw.install();
+  await sw.visit('/de');
+  await sw.post(['/de']);
+  assert.deepEqual(sw.dicts(), [before]);
+  // The translation changes (build b). Online, the page gets the new one; served from the cache as a hashed file.
+  sw.tabs([]);
+  sw.serve(localized('b', { de: [after] }));
+  await sw.visit('/', 'b-tab');
+  await sw.post(['/'], 'b-tab');
+  await sw.visit('/de', 'b-tab');
+  await sw.post(['/de'], 'b-tab');
+  assert.deepEqual(sw.dicts(), [after, before].sort());
+  const fetches = sw.fetched.length;
+  assert.equal(await sw.get(after), `{"file":"${after}"}`);
+  assert.equal(sw.fetched.length, fetches, 'cache-first: not fetched again');
+  // The next deploy retires what no cached page names; deleted once that deploy's opening tab is gone.
+  sw.serve(localized('c', { de: [after] }));
+  sw.tabs([]);
+  await sw.visit('/', 'c-tab');
+  await sw.post(['/'], 'other');
+  assert.deepEqual(sw.dicts(), [after]);
+});
+
+test("service worker: an older build's chunk naming every language's dictionaries: the page's own only", async () => {
+  // Builds before the pages named their own: every page loaded a chunk that named the dictionaries of all languages.
   const html = (title: string) => `<!doctype html><title>${title}</title><script src="/_next/static/chunks/h-main.js"></script>`;
   const dict = (l: string) => `/_next/static/media/huge-strings.${l}.0a1b2c.json`;
   const sw = worker();

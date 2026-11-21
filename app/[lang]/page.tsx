@@ -3,7 +3,7 @@ import LocalizedTool from '@/components/LocalizedTool';
 import { StatusLangs } from '@/components/LangSwitch';
 import { localeInfo } from '@/lib/i18n/locales';
 import { getLocale } from '@/lib/i18n/locale';
-import { clientUi, serverT } from '@/lib/i18n/server';
+import { clientUi, serverT, stringFiles } from '@/lib/i18n/server';
 import { homeJsonLd, jsonLdScript } from '../(en)/seo';
 import SeoContent from '../(en)/seo-content';
 import { pageMetadata } from '../page-metadata';
@@ -20,7 +20,7 @@ export default async function LocalizedHome() {
   return (
     <main className="home-page">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(homeJsonLd(locale)) }} />
-      <LocalizedTool ui={clientUi(locale)} lang={localeInfo(locale).lang} langs={<StatusLangs path="/" locale={locale} />} />
+      <LocalizedTool ui={clientUi(locale)} files={stringFiles(locale)} lang={localeInfo(locale).lang} langs={<StatusLangs path="/" locale={locale} />} />
       <SeoContent locale={locale} />
     </main>
   );
