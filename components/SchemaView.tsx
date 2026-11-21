@@ -20,7 +20,7 @@ import type { T } from '@/lib/i18n/ui';
 import { formatDoc } from '@/lib/json/format';
 import { parse } from '@/lib/json/parser';
 import { SchemaClient } from '@/lib/schema/client';
-import { SchemaController, type SchemaState } from '@/lib/schema/controller';
+import { SchemaController, readDoc, type SchemaState } from '@/lib/schema/controller';
 import { DRAFTS, DRAFT_NAME, type Draft } from '@/lib/schema/drafts';
 import type { InstanceError, Loc, Problem, ValidateResult } from '@/lib/schema/index';
 import type { Portal } from '@/lib/huge/kit';
@@ -96,13 +96,15 @@ async function generate() {
   track('feature_used', { feature: 'schema_generate' });
   const e = getEngine();
   if (!e) return;
-  // (The document now, and which one it is: a schema generated for it replaces nothing if either changes meanwhile.)
-  const doc = e.leftDoc();
+  // (The document now, and which one it is: a schema generated for it replaces nothing if either changes meanwhile.
+  // Still being read, an edit's analysis on its way: once it is.)
+  const asked = ctl.ask();
+  const doc = await readDoc(() => e.leftDoc());
+  if (!ctl.still(asked) || getEngine() !== e) return;
   if (doc.text === null) return toast("Can't generate a schema: fix the document's JSON first", 'info');
   if (!doc.text.trim()) return toast('Add a JSON document first', 'info');
   const r = parse(doc.text);
   if (!r.root || r.error) return toast("Can't generate a schema: fix the document's JSON first", 'info');
-  const asked = ctl.ask();
   try {
     const { convert } = await import('@/lib/convert');
     if (!ctl.still(asked) || e.docId !== doc.id) return;

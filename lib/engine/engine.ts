@@ -768,7 +768,12 @@ export class Engine {
         },
         () => {
           this.srcWait = false;
-          if (!this.dead && !this.srcMod && this.inFmt !== 'json') store.set({ status: { kind: 'error', msg: 'Conversion failed', p: 0, line: 1, col: 1, src: this.inFmt } });
+          if (this.dead || this.srcMod || this.inFmt === 'json') return;
+          store.set({ status: { kind: 'error', msg: 'Conversion failed', p: 0, line: 1, col: 1, src: this.inFmt } });
+          // (Read as far as it can be: not at all. The Schema view says so rather than wait: see leftDoc.)
+          this.jwt = this.converted = null;
+          this.readGen = this.docGen;
+          if (paired(this.settings.view)) this.docWatch?.(this.leftDoc());
         },
       );
     }

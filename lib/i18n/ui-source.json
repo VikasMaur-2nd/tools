@@ -1310,7 +1310,8 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   },
   "es": {
     "site.skip": "ac576a66",
@@ -2623,7 +2624,8 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   },
   "fr": {
     "site.skip": "ac576a66",
@@ -3936,7 +3938,8 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   },
   "ja": {
     "site.skip": "ac576a66",
@@ -5249,7 +5252,8 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   },
   "ko": {
     "site.skip": "ac576a66",
@@ -6562,7 +6566,8 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   },
   "pt": {
     "site.skip": "ac576a66",
@@ -7875,7 +7880,8 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   },
   "ru": {
     "site.skip": "ac576a66",
@@ -9188,7 +9194,8 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   },
   "zh": {
     "site.skip": "ac576a66",
@@ -10501,6 +10508,7 @@
     "app.schema.notChecked": "562d8b33",
     "app.schema.notApplied": "45dfa106",
     "app.schema.incomplete": "e21922f6",
-    "app.schema.docUnread": "767fd611"
+    "app.schema.docUnread": "767fd611",
+    "app.schema.msg.tooComplex": "e558752f"
   }
 }

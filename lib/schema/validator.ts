@@ -80,6 +80,21 @@ const applies = (kw: string, t: Kind) => ONLY[kw] === undefined || ONLY[kw] === 
 const ANNOTATING = new Set(['', '$ref', '$dynamicRef', '$recursiveRef', 'allOf', 'anyOf', 'oneOf', 'if', 'then', 'else', 'dependentSchemas', 'dependencies', 'prefixItems', 'items', 'additionalItems', 'contains', 'properties', 'patternProperties', 'additionalProperties', 'unevaluatedItems', 'unevaluatedProperties']);
 /** Errors kept per anyOf / oneOf branch to pick the closest one and show its errors. */
 const BRANCH_ERRORS = 20;
+/** Schemas a validation applies at most: this many, and this many more per value of the document (see Validator.ev). */
+const EVAL_BASE = 10_000;
+const EVAL_PER_VALUE = 100;
+
+/** How many values a document has (itself included). */
+function values(root: JNode): number {
+  let n = 0;
+  const stack = [root];
+  while (stack.length) {
+    const x = stack.pop()!;
+    n++;
+    if (x.t === ARR || x.t === OBJ) for (const c of kids(x)) stack.push(c);
+  }
+  return n;
+}
 
 interface Resource {
   uri: string;
@@ -171,6 +186,8 @@ interface S {
   blocked?: { issue: SchemaIssue; kw: string }[];
   /** properties or patternProperties couldn't be read: which names they take isn't known (additionalProperties). */
   namesUnknown?: SchemaIssue;
+  /** An `if`'s then and else are the same JSON (see sameBranches). */
+  sameBranches?: boolean;
 }
 
 /**
@@ -950,6 +967,17 @@ export class Validator {
   private depth = 0;
   /** Synthetic string nodes for property names (propertyNames): name node → its member. */
   private keyNodes = new WeakMap<JNode, JNode>();
+  /** What each schema may evaluate in place (see may). */
+  private mays = new Map<S, Ann>();
+  /** Schemas applied in this validation, and how many may be (see ev): past that, the rest is unknown. */
+  private evals = 0;
+  private limit = Infinity;
+  /** This validation's problem when it gave up (see ev). */
+  private tooMany: SchemaIssue | null = null;
+  /** How many schemas the last validation applied (tests). */
+  get evaluations() {
+    return this.evals;
+  }
   /** A $ref loop's problem, by the schema it loops on (once per check, all its records: it depends on the document). */
   private loops = new Map<S, SchemaIssue>();
   /** The evaluation in progress met a part of the schema it couldn't apply. */
@@ -977,6 +1005,10 @@ export class Validator {
     this.reached = new Set();
     this.byName = new WeakMap();
     if (!more) this.loops = new Map();
+    // (However a schema branches, a validation applies at most this many schemas, for a document of this size.)
+    this.evals = 0;
+    this.limit = EVAL_BASE + EVAL_PER_VALUE * values(inst);
+    if (!more) this.tooMany = null;
     const valid = this.ev(this.root, inst, this.needAnn ? new Ann() : null);
     const errors = this.errs;
     this.errs = [];
@@ -1079,6 +1111,12 @@ export class Validator {
   }
 
   private ev(s: S, inst: JNode, ann: Ann | null): boolean {
+    // Too many applications for this document (a schema that branches without end): the rest is unknown, said so.
+    if (++this.evals > this.limit) {
+      this.skip((this.tooMany ??= { code: 'tooComplex', params: { n: this.limit }, at: null, kw: '', warn: false }));
+      ann?.unknown();
+      return true;
+    }
     if (s.blocked) {
       for (const b of s.blocked) {
         if (!applies(b.kw, inst.t)) continue;
@@ -1218,20 +1256,24 @@ export class Validator {
     if (s.if && (s.then || s.else || ann)) {
       const ifAnn = ann ? new Ann() : null;
       const [passed, unk] = this.alone(() => this.quiet(() => this.apply(s.if!, inst, ifAnn, ['if'])));
-      // An `if` that passed only past a skipped part may not have: which branch applies isn't known. Each is applied
-      // (quietly): the result is certain only if both pass for sure (a missing branch passes); what the condition and
-      // each branch may evaluate is what may be evaluated, nothing more.
+      // An `if` that passed only past a skipped part may not have: which branch applies isn't known. Branches the
+      // same (by their JSON) decide as one; a single branch decides when it passes for sure; otherwise the result is
+      // unknown. What may be evaluated: the condition's, and each branch's at most (found in the schema, see may),
+      // so no branch is applied twice: a chain of such ifs stays linear.
       if (passed && unk) {
-        let sure = true;
-        for (const [b, kw] of [[s.then, 'then'], [s.else, 'else']] as const) {
-          if (!b) continue;
-          const bAnn = ann ? new Ann() : null;
-          const [ok2, unk2] = this.alone(() => this.quiet(() => this.apply(b, inst, bAnn, [kw])));
-          if (!ok2 || unk2) sure = false;
-          if (ann && bAnn) ann.merge(bAnn, false);
-        }
-        if (!sure) this.unk = true;
         if (ann && ifAnn) ann.merge(ifAnn, false);
+        if (ann) for (const b of [s.then, s.else]) if (b) ann.merge(this.may(b), false);
+        if (s.then && s.else) {
+          if (!this.sameBranches(s)) this.unk = true;
+          else if (!this.apply(s.then, inst, ann, ['then'])) {
+            ok = false;
+            if (q()) return ok;
+          }
+        } else if (s.then || s.else) {
+          const b = (s.then ?? s.else)!;
+          const [ok2, unk2] = this.alone(() => this.quiet(() => this.apply(b, inst, null, [b === s.then ? 'then' : 'else'])));
+          if (!ok2 || unk2) this.unk = true;
+        }
       } else {
         if (passed && ifAnn && ann) ann.merge(ifAnn);
         const branch = passed ? s.then : s.else;
@@ -1274,6 +1316,31 @@ export class Validator {
       ann.allItems = true;
     }
     return ok;
+  }
+
+  /** What applying `s` in place may evaluate of any instance, at most: from the schema alone, once per schema. */
+  private may(s: S): Ann {
+    let m = this.mays.get(s);
+    if (m) return m;
+    m = new Ann();
+    // (Set first: a cycle of in-place references adds nothing the rest of it doesn't.)
+    this.mays.set(s, m);
+    if (s.blocked?.some((b) => ANNOTATING.has(b.kw)) || s.dynRef || s.recRef) {
+      m.allProps = m.allItems = true;
+      return m;
+    }
+    if (s.bool !== null) return m;
+    if (s.properties) for (const k of s.properties.keys()) m.prop(k);
+    if (s.patternProperties || s.additionalProperties || s.unevaluatedProperties) m.allProps = true;
+    if (s.prefix) m.items = s.prefix.length;
+    if (s.items || s.additionalItems || s.unevaluatedItems || s.contains) m.allItems = true;
+    for (const x of [...(s.allOf ?? []), ...(s.anyOf ?? []), ...(s.oneOf ?? []), ...(s.dependentSchemas ?? []).map((d) => d.s), s.if, s.then, s.else, s.ref?.target]) if (x) m.merge(this.may(x));
+    return m;
+  }
+
+  /** Whether an `if`'s then and else are the same schema (the same JSON in the same place: whichever applies, it does). */
+  private sameBranches(s: S): boolean {
+    return (s.sameBranches ??= canon(s.then!.node) === canon(s.else!.node));
   }
 
   /**

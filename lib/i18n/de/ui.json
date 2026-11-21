@@ -780,6 +780,7 @@
   "app.schema.msg.nullable": "nullable ist ein Schlüsselwort aus OpenAPI 3.0, das JSON Schema ignoriert: Füge stattdessen \"null\" zu type hinzu",
   "app.schema.msg.unknownFormat": "Das Format {format} wird nicht geprüft: Es ist kein bekanntes Format",
   "app.schema.msg.schemaLoose": "Das Schema ist kein striktes JSON: Gelesen wurde die reparierte Fassung",
+  "app.schema.msg.tooComplex": "Dieses Schema verzweigt sich zu stark: Ein Teil des Dokuments wurde nicht geprüft",
   "app.schema.msg.nonNegativeInteger": "{kw} muss eine nicht negative Ganzzahl sein",
   "app.schema.msg.number": "{kw} muss eine Zahl sein",
   "app.schema.msg.positive": "{kw} muss eine Zahl größer als 0 sein",

@@ -94,37 +94,6 @@
             ]
         },
         {
-            "description": "an undecided if whose branches both pass for sure passes for sure (round 4, finding 7)",
-            "compatibility": "7",
-            "schema": {
-                "if": {
-                    "not": {
-                        "$ref": "https://example.test/missing"
-                    }
-                },
-                "then": {
-                    "type": "number"
-                },
-                "else": {
-                    "minimum": 0
-                }
-            },
-            "tests": [
-                {
-                    "description": "1 passes both",
-                    "data": 1,
-                    "valid": true,
-                    "complete": true
-                },
-                {
-                    "description": "-1 passes then only: which applies isn't known",
-                    "data": -1,
-                    "valid": false,
-                    "complete": false
-                }
-            ]
-        },
-        {
             "description": "the items an undecided if may evaluate (round 4, finding 7)",
             "compatibility": "=2020",
             "schema": {

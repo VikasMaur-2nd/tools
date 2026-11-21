@@ -386,6 +386,19 @@ export class SchemaController {
   }
 }
 
+/**
+ * The document once read: `doc()` again while its id is -1 (still being read: an edit's analysis on its way), every
+ * `ms`, at most `tries` times (then as it is). Generating waits on it rather than call valid JSON unreadable.
+ */
+export async function readDoc(doc: () => { text: string | null; id: number }, ms = 50, tries = 200) {
+  let d = doc();
+  for (let i = 0; d.id === -1 && i < tries; i++) {
+    await new Promise((r) => setTimeout(r, ms));
+    d = doc();
+  }
+  return d;
+}
+
 function lineCount(text: string) {
   let n = 1;
   for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) n++;
