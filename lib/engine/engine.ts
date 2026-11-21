@@ -14,7 +14,7 @@ import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
 import { convertFileName, isFlat, targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
+import { DEFAULT_SETTINGS, paired, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
 import { rt } from '../i18n/ui';
@@ -1269,7 +1269,7 @@ export class Engine {
     this.loaded = false;
     if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
-    else if (v === 'compare' || v === 'schema') store.set({ docText: this.compareLeft() });
+    else if (paired(v)) store.set({ docText: this.compareLeft() });
   }
 
   /** What Compare diffs as the original: the input, or the JSON it converts to when it is in another format. */
@@ -2996,7 +2996,7 @@ export class Engine {
       if (!this.graph) void this.loadGraph().then(() => this.showGraph(viewSeq));
     }
     const packed = this.packed?.id === this.loadSeq ? this.packed : this.goodPacked;
-    if (view !== 'format' && view !== 'compare' && view !== 'schema' && packed) {
+    if (view !== 'format' && !paired(view) && packed) {
       const { tree, text, metrics } = packed;
       const seq = this.loadSeq;
       // (The Tree and the Table read the root's children at once: they are made in the steps too.)
@@ -3025,9 +3025,8 @@ export class Engine {
     if (prev !== view && !this.presetting) track('view_opened', { view, ...(view === 'convert' && { target: targetInfo(this.settings.target).id }) });
     if (this.query && prev !== view) this.findIn(prev, '');
     // (Compare and Schema have a second editor: closing one goes back to the view open before them.)
-    const side = (v: View) => v === 'compare' || v === 'schema';
-    this.setSettings(side(view) && !side(prev) ? { view, prevView: prev as Settings['prevView'] } : { view });
-    if (this.query) requestAnimationFrame(() => this.dead || (side(this.settings.view) ? this.closeFind() : this.refind(true)));
+    this.setSettings(paired(view) && !paired(prev) ? { view, prevView: prev as Settings['prevView'] } : { view });
+    if (this.query) requestAnimationFrame(() => this.dead || (paired(this.settings.view) ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
       // (A selected primitive root has no container: the table says what it can show, as for an unselected one.)
@@ -4034,7 +4033,7 @@ export class Engine {
   /** Opens the find bar for the open view, prefilled with the editor selection. */
   focusSearch() {
     if (this.huge?.find()) return;
-    if (this.settings.view === 'compare' || this.settings.view === 'schema') this.setView('format');
+    if (paired(this.settings.view)) this.setView('format');
     const picked = this.ed.hasFocus() ? this.ed.selectedText() : '';
     if (picked && picked.length < 100 && !picked.includes('\n')) this.find(picked, true);
     else store.set({ find: { ...store.get().find, open: true } });
