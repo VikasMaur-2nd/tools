@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { Doc } from '../lib/engine/doc';
 import { parse, type JNode } from '../lib/json/parser';
+import { paired } from '../lib/engine/store';
 
 /** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
 const streamOf = (text: string | Promise<string>) => new ReadableStream<Uint8Array>({
@@ -93,7 +94,7 @@ function session() {
       terminate() {}
     },
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); }, settings() {} } };
+      if (name === './store') return { paired, store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); }, settings() {} } };
       if (name === './idle') return { soon: defer, idle: defer };
       if (name === './instance') return { getEngine: () => current, getDiffMenu: () => null };
       if (name === '../analytics') return { PRIVATE: 'private', track() {}, reportError: (error: unknown) => errors.push(error) };

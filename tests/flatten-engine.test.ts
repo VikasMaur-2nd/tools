@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { parse, type ParseResult } from '../lib/json/parser';
 import { EN } from '../lib/i18n/ui';
+import { paired } from '../lib/engine/store';
 
 // Use as input (Ctrl+Enter, or the menu) while Flatten or Unflatten shows, as the engine runs it: the output
 // replaces the input only when it is the conversion of the text in the editor now. A broken edit keeps the last
@@ -38,7 +39,7 @@ function session(text: string) {
   runInNewContext(js, {
     exports: out, performance, URL, Blob, Error, Promise,
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
+      if (name === './store') return { paired, store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
       if (name === '../analytics') return { track: (...args: unknown[]) => calls.push(['track', ...args]), reportError: () => {} };
       if (name === '../i18n/ui') return { rt: EN };
       if (name === './targets') return load(resolve(__dirname, '../lib/engine/targets'));
