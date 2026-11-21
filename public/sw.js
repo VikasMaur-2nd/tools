@@ -5,7 +5,6 @@
  *                       page's language (/es, /ja…), then the cached '/'
  *  /_next/static/*      cache-first (content-hashed, immutable); a worker's script
  *                       is answered with a new Response so it keeps its #params=
- *  /i18n/*-strings.*    cache-first too (named by their content)
  *  other same-origin    stale-while-revalidate
  *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests
  *
@@ -18,16 +17,13 @@
  * document opened at once) never shares the network or the device with 1.5 MB of
  * chunks it may not need yet.
  *
- * The dictionaries a localized page loads later (huge mode's, the Schema view's and
- * Flatten's: /i18n/<name>-strings.<lang>.<hash>.json, named by their content) are named
- * in that page's HTML, its own language's only, and followed with its chunks (on a first
- * visit not with its HTML: they wait for the page's warm-up too). They are files the
- * page must have: one that doesn't arrive (a 404, the network) leaves the warm-up to be
- * done again, and a cached copy of the page is replaced only once the new one's are
- * cached. A /de visit caches the German ones and no other; English pages none. Builds
- * before them named every language's in a chunk
- * (/_next/static/media/huge-strings.<lang>.<hash>.json): followed for the page's language
- * only as well.
+ * A localized page's dictionaries (huge mode's, the Schema view's, Flatten's:
+ * /i18n/<name>-strings.<lang>.<hash>.json, named by their content) are named in its HTML,
+ * its own language's only, and handled as its /_next/static files are: cached with it,
+ * required, cache-first, retired after deploys. A /de visit so caches the German ones
+ * and no other; English pages none. (Builds before them named huge mode's in a chunk,
+ * /_next/static/media/huge-strings.<lang>.<hash>.json, every language's: followed for
+ * the page's own language only.)
  *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
@@ -35,27 +31,21 @@
  * network must not fail; a chunk named only inside a script that the server
  * doesn't have holds nothing back (a stray name is no file).
  *
- * Old builds: a hashed file (/_next/static, a dictionary) stays while a page needs it:
- * a cached page, or the page a tab was opened with (each navigation's HTML is kept for
- * its tab, '/sw.js?served=<tab>', while the tab is open, and up to OPENING_MS before it
- * shows among the clients), since a tab of an old build may still load any chunk of it
- * (a feature opened for the first time, offline). Every other hashed file is deleted
- * (checked on later visits and page messages): an old build's once its tabs are closed,
- * what a replacement that failed brought in. While a tab whose page this worker didn't
- * serve is open (an older worker's), nothing is deleted. Storing a page (its files, then
- * its HTML) and tidying up run one at a time, so a tidy-up never comes in between.
+ * Deploys: when '/' changes build, the /_next/static files that no cached page
+ * needs any more are retired, not deleted: tabs open at that moment run the old
+ * build and may still load any chunk of it (a feature opened for the first time,
+ * offline). Retired files are deleted once all those tabs are closed (checked on
+ * later visits and page messages), or after RETIRE_MS. The cache so holds the
+ * current build, the builds its cached pages were saved with, and older builds
+ * only while their tabs live. The record ('/sw.js?retired') is never served.
  */
 const VERSION = 'v2';
 const PREFIX = 'json-viewer-';
 const CACHE = PREFIX + VERSION;
 const ORIGIN = self.location.origin;
 const MATCH = { ignoreVary: true };
-/** A tab's page (see the header), never served: the tab's id follows. */
-const SERVED = ORIGIN + '/sw.js?served=';
-/** How long a tab's page is kept before the tab shows among the clients (a navigation still opening). */
-const OPENING_MS = 30 * 1000;
-/** Older workers' record of retired files: dropped. */
 const RETIRED = ORIGIN + '/sw.js?retired';
+const RETIRE_MS = 7 * 24 * 3600 * 1000;
 /** The most files followed for one page (the home page has about 40). */
 const MAX_FILES = 500;
 
@@ -69,15 +59,14 @@ const CHUNK_RE = /["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g;
 const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 
 const isStatic = (path) => path.startsWith('/_next/static/');
-// A localized page's later dictionaries, named in its HTML (in the RSC payload).
+// A localized page's dictionaries, named in its HTML (in the RSC payload); named by their content.
 const STRINGS_RE = /\/i18n\/[a-z]+-strings\.[a-z]{2}\.[0-9a-f]+\.json/g;
-/** Files named by their content: never change, retired after deploys like /_next/static files. */
+/** Files named by their content: /_next/static files and those dictionaries (see the header). */
 const isHashed = (path) => isStatic(path) || /^\/i18n\/[a-z]+-strings\./.test(path);
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
-/** Huge mode's and the lazy features' dictionaries (huge-strings, schema-strings, flatten-strings: lib/i18n/translate.ts). */
-const HUGE_STRINGS_RE = /^\/(?:_next\/static\/media|i18n)\/(?:huge|schema|flatten)-strings\.([a-z]{2})\./;
-/** Whether `url` is a dictionary (huge mode's, a lazy feature's) of another language than the page's (`page`, a URL): not one of its files. */
+const HUGE_STRINGS_RE = /^\/_next\/static\/media\/huge-strings\.([a-z]{2})\./;
+/** Whether `url` is huge mode's dictionary of another language than the page's (`page`, a URL): not one of its files. */
 const otherStrings = (url, page) => {
   const m = HUGE_STRINGS_RE.exec(new URL(url).pathname);
   return !!m && '/' + m[1] !== langHome(new URL(page).pathname);
@@ -98,14 +87,9 @@ function bypass(url, headers) {
 /** Only full, same-origin, non-redirected 200s are worth keeping. */
 const cacheable = (res) => res && res.status === 200 && res.type === 'basic' && !res.redirected;
 
-/** The later dictionaries a page's HTML names (its language's: see the header). */
-const stringsIn = (html) => Array.from(new Set(html.match(STRINGS_RE) || [])).map((p) => ORIGIN + p);
-/** Everything a page's HTML names: what tells one build of it from another. */
-const namesOf = (html) => extractAssets(html).concat(stringsIn(html));
-
 /** Same-origin asset URLs referenced by an HTML document. */
 function extractAssets(html) {
-  const found = new Set(html.match(STATIC_RE) || []);
+  const found = new Set((html.match(STATIC_RE) || []).concat(html.match(STRINGS_RE) || []));
   let m;
   ATTR_RE.lastIndex = 0;
   while ((m = ATTR_RE.exec(html))) found.add(m[1]);
@@ -145,10 +129,9 @@ function filesIn(url, text) {
  * The files of a page (see the header), cached as they are found unless `fetchMissing`
  * is false (then only what the cache holds is followed); with `deep` false, only what
  * its HTML names. `page`: the page's URL (whose language's huge dictionary it needs).
- * `strings`: its dictionaries too (with its chunks; with its HTML when it replaces a
- * copy: see storePage). `ok`: every file that had to make it is cached; `files`: the URLs found.
+ * `ok`: every file that had to make it is cached; `files`: the URLs found.
  */
-async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN + '/', strings = deep) {
+async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN + '/') {
   const files = new Set();
   const visit = async (url, required) => {
     if (files.has(url) || files.size >= MAX_FILES || otherStrings(url, page)) return true;
@@ -174,10 +157,7 @@ async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN +
     const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
   };
-  const visits = extractAssets(html).map((u) => visit(u, isStatic(new URL(u).pathname)));
-  // (Its dictionaries must make it: a page offline without them would be in English.)
-  if (strings) stringsIn(html).forEach((u) => visits.push(visit(u, true)));
-  const results = await Promise.all(visits);
+  const results = await Promise.all(extractAssets(html).map((u) => visit(u, isHashed(new URL(u).pathname))));
   return { ok: results.indexOf(false) === -1, files };
 }
 
@@ -190,107 +170,70 @@ function sameFiles(a, b) {
 /**
  * Puts a page (`res`, a 200) into the cache once its files are; resolves false when they
  * couldn't be (the copy there stays). A copy of the same build only gets fresher HTML.
- * Replacing a copy of another build: its dictionaries must be cached too (the copy there
- * keeps working offline until they are), and the files nothing needs any more are retired.
  */
 async function storePage(cache, key, res) {
-  if (!isHTML(res)) {
-    await cache.put(key, res);
-    return true;
-  }
-  return serially(async () => {
+  if (isHTML(res)) {
     const html = await res.clone().text();
     const old = await cache.match(key, MATCH);
-    const oldHtml = old && isHTML(old) ? await old.text() : null;
-    const same = oldHtml !== null && sameFiles(namesOf(oldHtml), namesOf(html));
-    if (!same && !(await pageFiles(cache, html, true, false, typeof key === 'string' ? key : key.url, oldHtml !== null)).ok) return false;
-    await cache.put(key, res);
-    // (Another build's copy replaced: what only it needed can go.)
-    if (oldHtml !== null && !same) await tidy(cache);
-    return true;
-  });
+    const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
+    if (!same && !(await pageFiles(cache, html, true, false, typeof key === 'string' ? key : key.url)).ok) return false;
+  }
+  await cache.put(key, res);
+  return true;
 }
 
-/** Cache `url` unless present (a page with its files; `page` false: a file, never stored as a page). Resolves false when it couldn't be. */
-async function cacheIfMissing(cache, url, page = true) {
+/** Cache `url` unless present (a page with its files). Resolves false when it couldn't be. */
+async function cacheIfMissing(cache, url) {
   if (await cache.match(url, MATCH)) return true;
   try {
     const res = await fetch(url, { credentials: 'same-origin' });
-    if (!cacheable(res)) return false;
-    if (page) return await storePage(cache, url, res);
-    await cache.put(url, res);
-    return true;
+    return cacheable(res) && (await storePage(cache, url, res));
   } catch {
     return false;
   }
 }
 
-/** One at a time: storing a page, tidying up (see the header). Never nested. */
-let queue = Promise.resolve();
-const serially = (fn) => {
-  const run = queue.then(fn, fn);
-  queue = run.catch(() => {});
-  return run;
-};
-
-/** Tabs' pages being written (a tidy-up waits for them: see keepServed). */
-const writing = new Set();
+/** One deploy tidy-up at a time (each reads and writes the retired record). */
+let tidying = Promise.resolve();
+const serially = (fn) => (tidying = tidying.then(fn, fn));
 
 /**
- * Keeps the page a navigation (`event`) is answered with (`res`) for its tab, while the tab is open (see the
- * header). Written at once, not behind a page being stored: a tidy-up waits for it, so a tab opening from a copy
- * that is being replaced keeps that copy's files.
+ * After a deploy (`deployed`), retires the /_next/static files no cached page needs,
+ * with the tabs open now (`opening`: one being opened from the old shell); then deletes
+ * retired files once those tabs are all gone, or RETIRE_MS later (see the header).
  */
-function keepServed(event, cache, res, page) {
-  const id = event.resultingClientId;
-  if (!id || !res || !isHTML(res)) return;
-  const copy = res.clone();
-  const w = copy
-    .text()
-    .then((text) => cache.put(SERVED + encodeURIComponent(id), new Response(text, { headers: { 'content-type': 'text/html', 'x-page': page, 'x-at': String(Date.now()) } })))
-    .catch(() => {});
-  writing.add(w);
-  w.then(() => writing.delete(w));
-  event.waitUntil(w);
-}
-
-/**
- * Deletes the hashed files no page needs (see the header): not a cached page, not a tab's.
- * Tabs' pages go with their tabs. Run through `serially` only.
- */
-async function tidy(cache) {
-  await Promise.all(Array.from(writing));
+async function tidy(cache, deployed, opening) {
+  const saved = await cache.match(RETIRED);
+  const rec = saved ? await saved.json().catch(() => null) : null;
+  if (!deployed && !rec) return;
   const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   const live = new Set(tabs.map((c) => c.id));
-  const known = new Set();
+  if (opening) live.add(opening);
   const keys = await cache.keys();
+  // What cached pages need, from what the cache holds.
   const keep = new Set();
   for (const k of keys) {
-    if (k.url === RETIRED) {
-      await cache.delete(k);
-      continue;
-    }
-    const page = !k.url.startsWith(SERVED) && (isStatic(new URL(k.url).pathname) || FILE_RE.test(new URL(k.url).pathname)) ? null : await cache.match(k, MATCH);
-    if (!page || !isHTML(page)) continue;
-    let url = k.url;
-    const text = await page.text();
-    if (k.url.startsWith(SERVED)) {
-      const id = decodeURIComponent(k.url.slice(SERVED.length));
-      const seen = page.headers.get('x-seen') === '1';
-      // (Gone: once it was seen among the clients, or OPENING_MS after its navigation if it never showed.)
-      if (!live.has(id) && (seen || Date.now() - Number(page.headers.get('x-at') || 0) > OPENING_MS)) {
-        await cache.delete(k);
-        continue;
-      }
-      if (live.has(id) && !seen) await cache.put(k, new Response(text, { headers: { 'content-type': 'text/html', 'x-page': page.headers.get('x-page') || '', 'x-at': page.headers.get('x-at') || '0', 'x-seen': '1' } }));
-      known.add(id);
-      url = page.headers.get('x-page') || ORIGIN + '/';
-    }
-    (await pageFiles(cache, text, false, true, url)).files.forEach((u) => keep.add(u));
+    const path = new URL(k.url).pathname;
+    if (isStatic(path) || FILE_RE.test(path) || k.url === RETIRED) continue;
+    const page = await cache.match(k, MATCH);
+    if (page && isHTML(page)) (await pageFiles(cache, await page.text(), false, true, k.url)).files.forEach((u) => keep.add(u));
   }
-  // (A tab whose page isn't known, an older worker's: what it may load isn't known either.)
-  if (tabs.some((c) => !known.has(c.id))) return;
-  await Promise.all(keys.filter((k) => isHashed(new URL(k.url).pathname) && !keep.has(k.url)).map((k) => cache.delete(k)));
+  let urls = rec ? rec.urls : [];
+  let clients = rec ? rec.clients.filter((id) => live.has(id)) : [];
+  let at = rec ? rec.at : Date.now();
+  if (deployed) {
+    const old = new Set(urls);
+    keys.forEach((k) => isHashed(new URL(k.url).pathname) && !keep.has(k.url) && old.add(k.url));
+    urls = Array.from(old);
+    clients = Array.from(new Set(clients.concat(Array.from(live))));
+    at = Date.now();
+  }
+  if (clients.length && Date.now() - at < RETIRE_MS) {
+    await cache.put(RETIRED, new Response(JSON.stringify({ urls, clients, at }), { headers: { 'content-type': 'application/json' } }));
+    return;
+  }
+  await Promise.all(urls.filter((u) => !keep.has(u)).map((u) => cache.delete(u)));
+  await cache.delete(RETIRED);
 }
 
 /**
@@ -300,24 +243,22 @@ async function tidy(cache) {
  * other hashed files) the old build's files are retired. `opening`: the tab
  * being opened from the old shell, when a visit to '/' asked for this.
  */
-async function refreshShell() {
+async function refreshShell(opening) {
   const cache = await caches.open(CACHE);
   const res = await fetch('/', { cache: 'no-cache', credentials: 'same-origin' });
   if (!cacheable(res)) return;
-  const deployed = await serially(async () => {
-    const html = await res.clone().text();
-    const old = await cache.match('/', MATCH);
-    const prev = old ? extractAssets(await old.text()) : null;
-    const now = extractAssets(html);
-    if (prev && sameFiles(prev, now)) {
-      // The same build: its files came with it (pages post what they load); anything its HTML names that is missing, again.
-      await Promise.all(now.map((u) => cacheIfMissing(cache, u, false)));
-    } else if (!(await pageFiles(cache, html, true, false)).ok && prev) return false; // flaky network or a half-done deploy: keep the consistent old shell
-    await cache.put('/', res);
-    await tidy(cache);
-    return !!prev && !prev.every((u) => now.indexOf(u) !== -1);
-  });
-  if (!deployed) return; // first install, same build, or not stored
+  const html = await res.clone().text();
+  const old = await cache.match('/', MATCH);
+  const prev = old ? extractAssets(await old.text()) : null;
+  const now = extractAssets(html);
+  if (prev && sameFiles(prev, now)) {
+    // The same build: its files came with it (pages post what they load); anything its HTML names that is missing, again.
+    await Promise.all(now.map((u) => cacheIfMissing(cache, u)));
+  } else if (!(await pageFiles(cache, html, true, false)).ok && prev) return; // flaky network or a half-done deploy: keep the consistent old shell
+  await cache.put('/', res);
+  const deployed = !!prev && !prev.every((u) => now.indexOf(u) !== -1);
+  await serially(() => tidy(cache, deployed, opening));
+  if (!deployed) return; // first install, or same build
   // A new deploy is cached and ready: let open tabs offer a reload.
   const tabs = await self.clients.matchAll({ type: 'window' });
   tabs.forEach((c) => c.postMessage({ type: 'updated' }));
@@ -354,7 +295,7 @@ self.addEventListener('message', (event) => {
         // The page has settled: now the chunks its pages' scripts can load later (see the header).
         .then(() => Promise.all(urls.map((u) => followPage(cache, u))))
         // Tabs of an old build may have closed since: their files can go.
-        .then(() => serially(() => tidy(cache)))
+        .then(() => serially(() => tidy(cache, false)))
         .catch(() => {}),
     ),
   );
@@ -370,7 +311,7 @@ async function followPage(cache, url) {
   const page = await cache.match(url, MATCH);
   if (!page || !isHTML(page)) return;
   const html = await page.text();
-  const key = url + ' ' + extractAssets(html).concat(stringsIn(html)).join(' ');
+  const key = url + ' ' + extractAssets(html).join(' ');
   if (followed.has(key)) return;
   if ((await pageFiles(cache, html, true, true, url)).ok) followed.add(key);
 }
@@ -385,14 +326,9 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') {
     if (url.pathname === '/') {
       // Stale-while-revalidate the shell; query strings (utm_*, etc.) are ignored.
-      const cache = caches.open(CACHE);
-      const answer = cache.then(async (c) => {
-        const res = (await c.match('/', MATCH)) || (await fetch(req));
-        keepServed(event, c, res, ORIGIN + '/');
-        return res;
-      });
-      event.respondWith(answer);
-      event.waitUntil(answer.then(() => refreshShell()).catch(() => {}));
+      const hit = caches.open(CACHE).then((c) => c.match('/', MATCH));
+      event.respondWith(hit.then((res) => res || fetch(req)));
+      event.waitUntil(hit.then(() => refreshShell(event.resultingClientId)).catch(() => {}));
     } else {
       event.respondWith(networkFirst(event, req));
     }
@@ -408,18 +344,12 @@ async function networkFirst(event, req) {
   return fetch(req).then(
     (res) => {
       // Kept with its files only (see the header): until they are, the cached copy stays.
-      if (cacheable(res)) {
-        keepServed(event, cache, res, req.url);
-        event.waitUntil(storePage(cache, req, res.clone()).catch(() => {}));
-      }
+      if (cacheable(res)) event.waitUntil(storePage(cache, req, res.clone()).catch(() => {}));
       return res;
     },
     async () => {
       const home = langHome(new URL(req.url).pathname);
-      const res = (await cache.match(req, MATCH)) || (home && (await cache.match(home, MATCH))) || (await cache.match('/', MATCH));
-      // (Its tab runs that copy's build, an old one maybe: its files stay while it is open.)
-      keepServed(event, cache, res, req.url);
-      return res || Response.error();
+      return (await cache.match(req, MATCH)) || (home && (await cache.match(home, MATCH))) || (await cache.match('/', MATCH)) || Response.error();
     },
   );
 }

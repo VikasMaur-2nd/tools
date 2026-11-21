@@ -39,32 +39,29 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
   let online = true;
   let failPut: (url: string) => boolean = () => false;
   const fetched: string[] = [];
-  const store = new Map<string, { body: string; type: string; headers?: [string, string][] }>();
+  const store = new Map<string, { body: string; type: string }>();
   const key = (r: string | { url: string }) => new URL(typeof r === 'string' ? r : r.url, ORIGIN).href.split('#')[0];
-  const response = (body: string, type: string, status = 200, headers: [string, string][] = []) => {
-    const res = new Response(status === 200 ? body : null, { status, headers: [['content-type', type], ...headers.filter(([k]) => k !== 'content-type')] });
+  const response = (body: string, type: string, status = 200) => {
+    const res = new Response(status === 200 ? body : null, { status, headers: { 'content-type': type } });
     Object.defineProperty(res, 'type', { value: 'basic' });
     return res;
   };
   const cache = {
     match: async (r: string | { url: string }) => {
       const hit = store.get(key(r));
-      return hit ? response(hit.body, hit.type, 200, hit.headers) : undefined;
+      return hit ? response(hit.body, hit.type) : undefined;
     },
     put: async (r: string | { url: string }, res: Response) => {
       if (failPut(key(r))) throw new DOMException('Quota exceeded', 'QuotaExceededError');
-      store.set(key(r), { body: await res.text(), type: res.headers.get('content-type') ?? '', headers: [...res.headers] });
+      store.set(key(r), { body: await res.text(), type: res.headers.get('content-type') ?? '' });
     },
     delete: async (r: string | { url: string }) => store.delete(key(r)),
     keys: async () => [...store.keys()].map((url) => ({ url })),
   };
-  /** Responses held until released (see hold). */
-  const held = new Map<string, Promise<void>>();
   const fetchFn = async (r: string | { url: string }) => {
     const url = new URL(key(r));
     if (!online) throw new TypeError('Failed to fetch');
     fetched.push(url.pathname);
-    await held.get(url.pathname);
     const body = files[url.pathname];
     if (typeof body === 'number') return response('', 'text/plain', body);
     if (body === undefined) return response('', 'text/html', 404);
@@ -80,14 +77,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     clients: { matchAll: async () => tabs.map((id) => ({ id, postMessage() {} })), claim: async () => {} },
   };
   const caches = { open: async () => cache, keys: async () => ['json-viewer-v2'], delete: async () => true };
-  /** The worker's clock (see later). */
-  let now = Date.now();
-  const Clock = class extends Date {
-    static now() {
-      return now;
-    }
-  };
-  runInNewContext(source, { self, caches, fetch: fetchFn, Response, Headers, URL, Set, Map, Promise, JSON, Date: Clock, DOMException });
+  runInNewContext(source, { self, caches, fetch: fetchFn, Response, URL, Set, Map, Promise, JSON, Date, DOMException });
   /** Dispatches an event and waits for everything it asked to wait for. */
   const dispatch = async (type: string, props: Record<string, unknown> = {}) => {
     const waits: Promise<unknown>[] = [];
@@ -112,23 +102,6 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     cached: (path: string) => store.get(ORIGIN + path)?.body,
     has: (path: string) => store.has(ORIGIN + path),
     statics: () => [...store.keys()].filter((u) => u.includes('/_next/static/')).map((u) => new URL(u).pathname).sort(),
-    /** The page's own requests (not navigations): what the worker answers with. */
-    get: async (path: string) => {
-      const res = await dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache: 'default' } });
-      return res ? await res.text() : null;
-    },
-    dicts: () => [...store.keys()].filter((u) => u.includes('/i18n/')).map((u) => new URL(u).pathname).sort(),
-    /** Time passes for the worker. */
-    later: (ms: number) => void (now += ms),
-    /** Holds `path`'s responses until the returned function is called. */
-    hold: (path: string) => {
-      let release = () => {};
-      held.set(path, new Promise<void>((r) => (release = r)));
-      return () => {
-        held.delete(path);
-        release();
-      };
-    },
     fetched,
   };
 }
@@ -190,7 +163,6 @@ test("service worker: a deploy keeps the old build's chunks while a tab of it is
   await sw.visit('/', 'new-tab');
   assert.ok(sw.has('/_next/static/chunks/a-graph.js'));
   // Once they are closed, the old build's files go (the new tab, on build b, stays open).
-  // (Seen open before: gone at once, no waiting.)
   sw.tabs(['new-tab']);
   await sw.post(['/_next/static/chunks/b-main.js'], 'new-tab');
   assert.deepEqual(sw.statics(), filesOf('b'));
@@ -253,182 +225,8 @@ test('service worker: files posted by a page are cached only when really there',
   assert.ok(!sw.has('/manifest.webmanifest'));
 });
 
-/**
- * A build whose localized pages name their language's later dictionaries in their RSC payload (lib/i18n/server.ts
- * stringFiles): `dicts` maps a locale to its files' URLs. `tag` makes the hashed chunk names.
- */
-function localized(tag: string, dicts: Record<string, string[]>): Files {
-  const page = (title: string, urls: string[] = []) =>
-    `<!doctype html><title>${title}</title><script src="/_next/static/chunks/${tag}-main.js"></script>` +
-    `<script>self.__next_f.push([1,"{\\"files\\":{${urls.map((u, i) => `\\"f${i}\\":\\"${u}\\"`).join(',')}}}"])</script>`;
-  return {
-    '/': page('Home ' + tag),
-    ...Object.fromEntries(Object.entries(dicts).map(([l, urls]) => [`/${l}`, page(`${l} ${tag}`, urls)])),
-    '/de/tools/json-graph': page('Graph ' + tag, dicts.de),
-    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-lazy.js")`,
-    [`/_next/static/chunks/${tag}-lazy.js`]: 'lazy()',
-    ...Object.fromEntries(Object.values(dicts).flat().map((u) => [u, `{"file":"${u}"}`])),
-  };
-}
-
-test('service worker: a localized page caches the dictionaries it names (its own language\'s) with its chunks, not with its HTML', async () => {
-  const de = ['/i18n/huge-strings.de.0a1b2c3d4e5f.json', '/i18n/schema-strings.de.1a1b2c3d4e5f.json', '/i18n/flatten-strings.de.2a1b2c3d4e5f.json'];
-  const ja = ['/i18n/huge-strings.ja.3a1b2c3d4e5f.json', '/i18n/schema-strings.ja.4a1b2c3d4e5f.json', '/i18n/flatten-strings.ja.5a1b2c3d4e5f.json'];
-  const sw = worker();
-  sw.serve(localized('a', { de, ja }));
-  await sw.install();
-  await sw.post(['/']);
-  // English: none, while the page's other chunks are followed.
-  assert.ok(sw.has('/_next/static/chunks/a-lazy.js'));
-  assert.deepEqual(sw.dicts(), []);
-  // A German page: its HTML comes with what it names to run; the dictionaries wait for its warm-up, as its chunks do.
-  await sw.visit('/de/tools/json-graph');
-  assert.match(sw.cached('/de/tools/json-graph')!, /Graph a/);
-  assert.ok(!sw.fetched.some((p) => p.startsWith('/i18n/')));
-  await sw.post(['/de/tools/json-graph']);
-  assert.deepEqual(sw.dicts(), [...de].sort());
-  assert.ok(!sw.fetched.some((p) => p.includes('.ja.')));
-  // Another language's page: its own as well.
-  await sw.visit('/ja');
-  await sw.post(['/ja']);
-  assert.deepEqual(sw.dicts(), [...de, ...ja].sort());
-  // Offline, a feature opening on the German page gets its strings from the cache.
-  sw.offline();
-  assert.equal(await sw.get(de[1]), `{"file":"${de[1]}"}`);
-});
-
-test('service worker: a cached page replaced by a later build\'s leaves the dictionaries nothing needs, once no tab of it is open (round 3, finding 8)', async () => {
-  const hash = (n: number) => `/i18n/schema-strings.de.${String(n).repeat(12)}.json`;
-  const sw = worker();
-  sw.serve(localized('a', { de: [hash(1)] }));
-  await sw.install();
-  await sw.visit('/de', 'tab-a');
-  await sw.post(['/de'], 'tab-a');
-  assert.deepEqual(sw.dicts(), [hash(1)]);
-  // Build b changes the translation: a tab of the German page is still open on build a.
-  sw.tabs(['tab-a']);
-  sw.serve(localized('b', { de: [hash(2)] }));
-  await sw.visit('/de', 'tab-b');
-  await sw.post(['/de'], 'tab-b');
-  assert.deepEqual(sw.dicts(), [hash(1), hash(2)], 'the open tab of build a can still open the Schema view offline');
-  // Served from the cache as a hashed file.
-  const fetches = sw.fetched.length;
-  assert.equal(await sw.get(hash(2)), `{"file":"${hash(2)}"}`);
-  assert.equal(sw.fetched.length, fetches, 'cache-first: not fetched again');
-  // That tab closed: the next tidy-up deletes it. Builds c and d, visiting /de only (never '/'): one each.
-  sw.tabs(['tab-b']);
-  sw.later(60_000);
-  await sw.post(['/de'], 'tab-b');
-  assert.deepEqual(sw.dicts(), [hash(2)]);
-  for (const [tag, n] of [['c', 3], ['d', 4]] as const) {
-    sw.serve(localized(tag, { de: [hash(n)] }));
-    await sw.visit('/de', `tab-${tag}`);
-    sw.tabs([`tab-${tag}`]);
-    sw.later(60_000);
-    await sw.post(['/de'], `tab-${tag}`);
-    assert.deepEqual(sw.dicts(), [hash(n)], `build ${tag}`);
-  }
-  // Another cached page still naming an older one keeps it.
-  sw.serve({ ...localized('e', { de: [hash(5)] }), '/de/tools/json-graph': localized('d', { de: [hash(4)] })['/de/tools/json-graph'] });
-  await sw.visit('/de/tools/json-graph', 'tab-d');
-  await sw.visit('/de', 'tab-e');
-  await sw.post(['/de'], 'tab-e');
-  assert.deepEqual(sw.dicts(), [hash(4), hash(5)]);
-});
-
-test('service worker: what replacements that failed brought in, and old builds\' files, go once nothing needs them, whichever tab stays open (round 4, finding 8)', async () => {
-  const hash = (n: number) => `/i18n/schema-strings.de.${String(n).repeat(12)}.json`;
-  const sw = worker();
-  sw.serve(localized('a', { de: [hash(1)] }));
-  await sw.install();
-  await sw.visit('/de', 'tab-a');
-  await sw.post(['/de'], 'tab-a');
-  // Three deploys whose German page can't be stored (its page script is missing): their dictionaries came in anyway.
-  for (const [tag, n] of [['b', 2], ['c', 3], ['d', 4]] as const) {
-    sw.serve({ ...localized(tag, { de: [hash(n)] }), [`/_next/static/chunks/${tag}-main.js`]: 404 });
-    await sw.visit('/de', `tab-${tag}`);
-  }
-  assert.match(sw.cached('/de')!, /de a/);
-  // No tab open: what no page needs goes, the cached page's dictionary stays.
-  sw.tabs([]);
-  sw.later(60_000);
-  await sw.post(['/de'], 'tab-a');
-  assert.deepEqual(sw.dicts(), [hash(1)]);
-  // An unrelated tab (on the current build) staying open holds nothing back: no timer, a file goes when unneeded.
-  sw.serve(localized('e', { de: [hash(5)] }));
-  await sw.visit('/de', 'tab-e');
-  sw.tabs(['tab-e']);
-  sw.later(19 * 24 * 3600 * 1000);
-  await sw.post(['/de'], 'tab-e');
-  assert.deepEqual(sw.dicts(), [hash(5)]);
-});
-
-test('service worker: a tab opening from the cached copy while another build replaces it keeps that copy\'s files (round 4, finding 1)', async () => {
-  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
-  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
-  const sw = worker();
-  sw.serve(localized('a', { de: [a] }));
-  await sw.install();
-  await sw.visit('/de', 'tab-a');
-  await sw.post(['/de'], 'tab-a');
-  // Build b's German page is being stored: held just before its dictionary arrives.
-  sw.serve(localized('b', { de: [b] }));
-  const release = sw.hold(b);
-  const storing = sw.visit('/de', 'tab-b');
-  await new Promise((r) => setTimeout(r, 10));
-  // Meanwhile a second visit, offline, opens from the cached copy (build a).
-  sw.offline();
-  assert.match((await sw.visit('/de', 'tab-opening'))!, /de a/);
-  sw.offline(false);
-  // The replacement finishes before that tab shows among the clients; no other tab is open.
-  sw.tabs([]);
-  release();
-  await storing;
-  assert.match(sw.cached('/de')!, /de b/);
-  await sw.post(['/de'], 'tab-b');
-  // The opening tab, offline, opens the Schema view: build a's dictionary is still there.
-  sw.offline();
-  assert.equal(await sw.get(a), `{"file":"${a}"}`);
-  // Once it is gone (closed), so is the dictionary.
-  sw.offline(false);
-  sw.later(60_000);
-  await sw.post(['/de'], 'tab-b');
-  assert.deepEqual(sw.dicts(), [b]);
-});
-
-test('service worker: a dictionary that doesn\'t arrive is asked for again, and a cached page keeps working until its replacement\'s have (round 3, finding 4)', async () => {
-  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
-  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
-  const sw = worker();
-  // A first visit whose dictionary is missing on the server: the warm-up isn't complete, and is done again.
-  sw.serve({ ...localized('a', { de: [a] }), [a]: 404 });
-  await sw.install();
-  await sw.visit('/de', 'tab');
-  await sw.post(['/de'], 'tab');
-  assert.deepEqual(sw.dicts(), []);
-  sw.serve(localized('a', { de: [a] }));
-  await sw.post(['/de'], 'tab');
-  assert.deepEqual(sw.dicts(), [a], 'the same worker asks for it again once the server has it');
-  // A deploy whose new dictionary 404s: the German page cached before stays, with its dictionary, offline.
-  sw.tabs([]);
-  sw.serve({ ...localized('b', { de: [b] }), [b]: 404 });
-  assert.match((await sw.visit('/de', 'tab'))!, /de b/, 'online, the new page itself is shown');
-  await sw.post(['/de'], 'tab');
-  assert.match(sw.cached('/de')!, /de a/);
-  assert.deepEqual(sw.dicts(), [a]);
-  sw.offline();
-  assert.match((await sw.visit('/de', 'tab'))!, /de a/);
-  assert.equal(await sw.get(a), `{"file":"${a}"}`);
-  // The server has it again: the next online visit replaces the page, with its dictionary.
-  sw.offline(false);
-  sw.serve(localized('b', { de: [b] }));
-  await sw.visit('/de', 'tab');
-  assert.match(sw.cached('/de')!, /de b/);
-  assert.ok(sw.dicts().includes(b));
-});
-
-test("service worker: an older build's chunk naming every language's dictionaries: the page's own only", async () => {
-  // Builds before the pages named their own: every page loaded a chunk that named the dictionaries of all languages.
+test("service worker: a page caches huge mode's dictionary of its own language only", async () => {
+  // Every page loads a chunk that names the dictionaries of all languages (they load when a huge file opens).
   const html = (title: string) => `<!doctype html><title>${title}</title><script src="/_next/static/chunks/h-main.js"></script>`;
   const dict = (l: string) => `/_next/static/media/huge-strings.${l}.0a1b2c.json`;
   const sw = worker();
@@ -437,10 +235,8 @@ test("service worker: an older build's chunk naming every language's dictionarie
     '/de': html('Start'),
     '/de/tools/json-graph': html('Graph'),
     '/ja': html('ホーム'),
-    '/_next/static/chunks/h-main.js':
-      ['de', 'ja', 'es'].map((l) => `u(new URL("static/media/huge-strings.${l}.0a1b2c.json"));u(new URL("static/media/schema-strings.${l}.3d4e5f.json"))`).join(';') + ';x.l("static/chunks/h-lazy.js")',
+    '/_next/static/chunks/h-main.js': ['de', 'ja', 'es'].map((l) => `u(new URL("static/media/huge-strings.${l}.0a1b2c.json"))`).join(';') + ';x.l("static/chunks/h-lazy.js")',
     '/_next/static/chunks/h-lazy.js': 'lazy()',
-    ...Object.fromEntries(['de', 'ja', 'es'].map((l) => [`/_next/static/media/schema-strings.${l}.3d4e5f.json`, '{"Valid":"…"}'])),
     [dict('de')]: '{"Large file":"Große Datei"}',
     [dict('ja')]: '{"Large file":"大容量ファイル"}',
     [dict('es')]: '{"Large file":"Archivo grande"}',
@@ -455,8 +251,6 @@ test("service worker: an older build's chunk naming every language's dictionarie
   await sw.post(['/de/tools/json-graph']);
   assert.deepEqual(dicts(), [dict('de')]);
   assert.ok(!sw.fetched.some((p) => p.includes('huge-strings.ja') || p.includes('huge-strings.es')));
-  // The Schema view's (a lazy feature's) the same way.
-  assert.deepEqual(sw.statics().filter((p) => p.includes('schema-strings')), ['/_next/static/media/schema-strings.de.3d4e5f.json']);
   // Another language's page: its own as well.
   await sw.visit('/ja');
   await sw.post(['/ja']);
@@ -464,4 +258,86 @@ test("service worker: an older build's chunk naming every language's dictionarie
   // Offline, the German page's dictionary is answered from the cache.
   sw.offline();
   assert.equal(sw.cached(dict('de')), '{"Large file":"Große Datei"}');
+});
+
+/**
+ * A build whose localized pages name their language's dictionaries in their RSC payload (lib/i18n/server.ts
+ * stringFiles): `dicts` maps a locale to its files' URLs. `tag` makes the hashed chunk names.
+ */
+function localized(tag: string, dicts: Record<string, string[]>): Files {
+  const page = (title: string, urls: string[] = []) =>
+    `<!doctype html><title>${title}</title><script src="/_next/static/chunks/${tag}-main.js"></script>` +
+    `<script>self.__next_f.push([1,"{\\"files\\":{${urls.map((u, i) => `\\"f${i}\\":\\"${u}\\"`).join(',')}}}"])</script>`;
+  return {
+    '/': page('Home ' + tag),
+    ...Object.fromEntries(Object.entries(dicts).map(([l, urls]) => [`/${l}`, page(`${l} ${tag}`, urls)])),
+    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-lazy.js")`,
+    [`/_next/static/chunks/${tag}-lazy.js`]: 'lazy()',
+    ...Object.fromEntries(Object.values(dicts).flat().map((u) => [u, `{"file":"${u}"}`])),
+  };
+}
+const dictsOf = (sw: ReturnType<typeof worker>) => [...new Set(sw.fetched)].filter((p) => p.startsWith('/i18n/'));
+
+test('service worker: a localized page\'s dictionaries come with it, as its chunks do: its own language\'s only, offline too', async () => {
+  const de = ['/i18n/huge-strings.de.0a1b2c3d4e5f.json', '/i18n/schema-strings.de.1a1b2c3d4e5f.json', '/i18n/flatten-strings.de.2a1b2c3d4e5f.json'];
+  const ja = ['/i18n/huge-strings.ja.3a1b2c3d4e5f.json', '/i18n/schema-strings.ja.4a1b2c3d4e5f.json', '/i18n/flatten-strings.ja.5a1b2c3d4e5f.json'];
+  const sw = worker();
+  sw.serve(localized('a', { de, ja }));
+  await sw.install();
+  await sw.post(['/']);
+  // English: none.
+  assert.deepEqual(dictsOf(sw), []);
+  // A German page: stored with its files, its dictionaries among them; no other language's.
+  await sw.visit('/de');
+  assert.match(sw.cached('/de')!, /de a/);
+  assert.deepEqual(de.filter((u) => sw.has(u)), de);
+  assert.ok(!sw.fetched.some((p) => p.includes('.ja.')));
+  // Offline, a feature opening on the German page gets its strings from the cache.
+  sw.offline();
+  assert.match((await sw.visit('/de'))!, /de a/);
+  assert.equal(sw.cached(de[1]), `{"file":"${de[1]}"}`);
+});
+
+test('service worker: a dictionary that doesn\'t arrive holds its page back, as a missing chunk does (main\'s fail404)', async () => {
+  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
+  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+  const sw = worker();
+  sw.serve(localized('a', { de: [a] }));
+  await sw.install();
+  await sw.visit('/de');
+  assert.match(sw.cached('/de')!, /de a/);
+  // A deploy whose German dictionary is missing: the page itself is shown, the cached copy stays, with its dictionary.
+  sw.serve({ ...localized('b', { de: [b] }), [b]: 404 });
+  assert.match((await sw.visit('/de'))!, /de b/);
+  assert.match(sw.cached('/de')!, /de a/);
+  sw.offline();
+  assert.match((await sw.visit('/de'))!, /de a/);
+  assert.equal(sw.cached(a), `{"file":"${a}"}`);
+  // The server has it again: the next visit stores the new copy with it.
+  sw.offline(false);
+  sw.serve(localized('b', { de: [b] }));
+  await sw.visit('/de');
+  assert.match(sw.cached('/de')!, /de b/);
+  assert.ok(sw.has(b));
+});
+
+test('service worker: after a deploy, an old build\'s dictionaries go once its tabs are closed, as its chunks do', async () => {
+  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
+  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+  const sw = worker();
+  sw.serve(localized('a', { de: [a] }));
+  await sw.install();
+  await sw.visit('/de', 'tab-a');
+  sw.tabs(['tab-a']);
+  // Build b: the German page is visited again, then the shell's change is seen (a deploy).
+  sw.serve(localized('b', { de: [b] }));
+  await sw.visit('/de', 'tab-b');
+  await sw.visit('/', 'tab-b');
+  await sw.post(['/'], 'tab-b');
+  // The tab of build a is still open: its dictionary stays.
+  assert.ok(sw.has(a) && sw.has(b));
+  // Closed: it goes with build a's chunks.
+  sw.tabs(['tab-b']);
+  await sw.post(['/de'], 'tab-b');
+  assert.deepEqual([sw.has(a), sw.has(b), sw.has('/_next/static/chunks/a-main.js')], [false, true, false]);
 });
