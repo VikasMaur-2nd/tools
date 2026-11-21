@@ -1218,10 +1218,20 @@ export class Validator {
     if (s.if && (s.then || s.else || ann)) {
       const ifAnn = ann ? new Ann() : null;
       const [passed, unk] = this.alone(() => this.quiet(() => this.apply(s.if!, inst, ifAnn, ['if'])));
-      // (An `if` that passed only past a skipped part may not have: which branch applies isn't known, neither is checked.)
+      // An `if` that passed only past a skipped part may not have: which branch applies isn't known. Each is applied
+      // (quietly): the result is certain only if both pass for sure (a missing branch passes); what the condition and
+      // each branch may evaluate is what may be evaluated, nothing more.
       if (passed && unk) {
-        this.unk = true;
-        ann?.unknown();
+        let sure = true;
+        for (const [b, kw] of [[s.then, 'then'], [s.else, 'else']] as const) {
+          if (!b) continue;
+          const bAnn = ann ? new Ann() : null;
+          const [ok2, unk2] = this.alone(() => this.quiet(() => this.apply(b, inst, bAnn, [kw])));
+          if (!ok2 || unk2) sure = false;
+          if (ann && bAnn) ann.merge(bAnn, false);
+        }
+        if (!sure) this.unk = true;
+        if (ann && ifAnn) ann.merge(ifAnn, false);
       } else {
         if (passed && ifAnn && ann) ann.merge(ifAnn);
         const branch = passed ? s.then : s.else;
