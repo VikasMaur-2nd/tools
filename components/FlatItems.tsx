@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { PRIVATE, track } from '@/lib/analytics';
 import { act } from '@/lib/engine/instance';
-import { useUI, type FlatSettings } from '@/lib/engine/store';
+import { store, useUI, type FlatSettings } from '@/lib/engine/store';
 import { useT } from '@/lib/i18n/react';
 import { Icon } from './icons';
 import { MCheck, MChoice, MItem, MSep } from './menu';
@@ -30,8 +30,16 @@ function FlatItems({ flatten, close }: { flatten: boolean; close: () => void }) 
   const [typed, setTyped] = useState<string | null>(null);
   const timer = useRef(0);
   const set = (p: Partial<FlatSettings>, quiet = false) => {
-    if (!quiet) for (const [option, value] of Object.entries(p)) track('convert_option_changed', { option: `flat_${option as keyof FlatSettings}`, value: String(value) });
-    act((e) => e.setConvert({ flat: { ...f, ...p } }));
+    if (!quiet) {
+      // (A pick wins over a separator still being typed.)
+      if (p.sep !== undefined) {
+        window.clearTimeout(timer.current);
+        setTyped(null);
+      }
+      for (const [option, value] of Object.entries(p)) track('convert_option_changed', { option: `flat_${option as keyof FlatSettings}`, value: String(value) });
+    }
+    // (The settings as they are now: a typed separator lands 200 ms later, maybe after another option changed.)
+    act((e) => e.setConvert({ flat: { ...(store.get().settings.flat ?? DEFAULTS), ...p } }));
   };
   const type = (sep: string) => {
     setTyped(sep);
