@@ -207,6 +207,14 @@ test('the view toolbar: every view reachable and nothing overlapping, with a doc
     rows.push([width, view, await page.evaluate(() => Math.round(document.querySelector('.pane-view .vbar').getBoundingClientRect().height))]);
   }
   t.check(rows.every(([, , h]) => h <= 46), 'a view whose tabs, control and icons fit keeps a one-row toolbar', rows);
+  // Compare and Schema have no control there: no box at all, not an empty flex line under main's narrow wrap.
+  const empty = [];
+  for (const view of ['Alt+6', 'Alt+7']) {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.keyboard.press(view);
+    empty.push(await page.evaluate(() => document.querySelector('.pane-view .vbar .vmain')?.getClientRects().length ?? 0));
+  }
+  t.check(empty.every((n) => n === 0), 'an empty view control takes no row', empty);
   // A long path shortens rather than taking a row: the Tree view with a deep value selected (CI's fonts are wider
   // than some hosts': the path must never decide it).
   await page.setViewportSize({ width: 1280, height: 800 });
