@@ -261,7 +261,8 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
   let complete = true;
   try {
     for (let i = 0; i < roots.length; i++) {
-      const res = v.validate(roots[i], Math.max(0, max - out.errors.length));
+      // (The records are one check: a problem met in several of them is listed once.)
+      const res = v.validate(roots[i], Math.max(0, max - out.errors.length), i > 0);
       if (!res.valid) valid = false;
       if (!res.complete) complete = false;
       for (const r of res.reached) reached.add(r);
