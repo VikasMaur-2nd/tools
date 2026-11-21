@@ -33,7 +33,7 @@
  *
  * Messages are English: the page translates them by their text (lib/i18n/translate.ts).
  */
-import { ARR, BOOL, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, kids, type JNode } from '../json/parser';
+import { ARR, BOOL, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, kids, type JNode, type Key } from '../json/parser';
 import { MAX_TEXT, clip, quote, stringify, tooLarge, tooLong } from '../json/format';
 
 export type FlatArrays = 'bracket' | 'dot' | 'keep';
@@ -104,7 +104,7 @@ function finish<T>(g: Steps<T>): T {
   }
 }
 
-/** A scalar's JSON, or a whole object or array, indented to sit at `pad`. */
+/** A scalar's JSON, or a whole object or array, indented to sit at `pad` (big ones: valueSteps). */
 function valueText(n: JNode, pad: string): string {
   switch (n.t) {
     case NUL:
@@ -118,6 +118,56 @@ function valueText(n: JNode, pad: string): string {
   }
   const s = stringify(n, '  ');
   return pad ? s.replace(/\n/g, '\n' + pad) : s;
+}
+
+/**
+ * valueText of an object or array, in steps: one kept whole (arrays with None, values past the depth, an array
+ * under an empty top-level key, a flat key's value) can be as big as the document. lib/json/format.ts
+ * stringifyNodes' walk, indented by two spaces from `pad`.
+ */
+function* valueSteps(n: JNode, pad: string): Steps<string> {
+  let out = '';
+  const pads = [pad];
+  const padAt = (d: number) => {
+    while (pads.length <= d) pads.push(pads[pads.length - 1] + '  ');
+    return pads[d];
+  };
+  // The open containers: their items, whether they are objects, the item being written.
+  const lists: JNode[][] = [];
+  const objs: boolean[] = [];
+  const at: number[] = [];
+  let node = n;
+  let steps = 0;
+  for (;;) {
+    if (!(++steps & EVERY)) yield;
+    if (out.length > MAX_TEXT) throw tooLong();
+    const list = node.t >= ARR ? kids(node) : null;
+    if (!list?.length) out += valueText(node, '');
+    else {
+      const obj = node.t === OBJ;
+      out += (obj ? '{\n' : '[\n') + padAt(lists.length + 1) + (obj ? quote(list[0].key as string) + ': ' : '');
+      lists.push(list);
+      objs.push(obj);
+      at.push(0);
+      node = list[0];
+      continue;
+    }
+    // Written: on to the next item, closing the containers that are done.
+    for (;;) {
+      const d = lists.length;
+      if (!d) return out;
+      const list = lists[d - 1];
+      const i = ++at[d - 1];
+      if (i < list.length) {
+        out += ',\n' + padAt(d) + (objs[d - 1] ? quote(list[i].key as string) + ': ' : '');
+        node = list[i];
+        break;
+      }
+      lists.pop();
+      at.pop();
+      out += '\n' + padAt(d - 1) + (objs.pop() ? '}' : ']');
+    }
+  }
 }
 
 /** A character class of `chars`, written as \u escapes so any character (a lone surrogate too) is safe in it. */
@@ -224,6 +274,8 @@ export function* flattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps<F
       // A list of records, as CSV rows are: each item flattened on its own.
       text = '[';
       for (let i = 0; i < items.length; i++) {
+        // (Records count as items too: a list of empty objects or of numbers is still long work.)
+        if (!(++f.n & EVERY)) yield;
         text += (i ? ',\n  ' : '\n  ') + (yield* f.one(items[i], '  '));
         if (text.length > MAX_TEXT) throw tooLong();
       }
@@ -251,7 +303,7 @@ class Flattener {
   private unsafe = 0;
   private example = '';
   /** Items done, for yielding now and then. */
-  private n = 0;
+  n = 0;
   /** Without escapes: unflatten's budget of missing items, spent as it would spend it (see misread). */
   private budget = HOLES;
 
@@ -265,43 +317,50 @@ class Flattener {
     this.read = o.escape ? null : reader(o);
   }
 
-  /** Dot style: an object whose keys all read as array indexes (an array, when unflattened). */
-  private digitKeys(n: JNode) {
-    if (!this.dot || n.t !== OBJ) return false;
-    for (const c of kids(n)) if (!INDEX.test(c.key as string)) return false;
-    return true;
-  }
-
   /**
-   * Without escapes, dot style: whether unflatten turns this all-digit object into an array (it keeps one whose
-   * missing items its budget can't fill an object, keyed as it is). Asked in the order unflatten builds them.
+   * An object's keys, read once, in steps: counts the keys it repeats and (dot style) tells whether they all read
+   * as array indexes (an array, when unflattened): the largest index then, else -1.
    */
-  private misread(n: JNode) {
-    if (!this.digitKeys(n)) return false;
+  private *scan(n: JNode): Steps<number> {
+    if (n.t !== OBJ) return -1;
     const list = kids(n);
+    let digits = this.dot;
     let max = -1;
-    for (const c of list) max = Math.max(max, +(c.key as string));
-    const holes = max + 1 - list.length;
-    if (holes > this.budget) return false;
-    this.budget -= Math.max(0, holes);
-    return true;
-  }
-
-  /** Counts the keys an object repeats. */
-  private countDups(n: JNode) {
-    if (n.t !== OBJ) return;
-    const list = kids(n);
-    if (list.length < 2) return;
-    if (list.length <= 8) {
-      for (let i = 1; i < list.length; i++) {
+    // (A short list is searched faster than a set is made.)
+    const seen = list.length > 8 ? new Set<Key>() : null;
+    for (let i = 0; i < list.length; i++) {
+      if (!(++this.n & EVERY)) yield;
+      const k = list[i].key as string;
+      if (digits) {
+        if (INDEX.test(k)) max = Math.max(max, +k);
+        else digits = false;
+      }
+      if (seen) {
+        if (seen.has(k)) this.dups++;
+        else seen.add(k);
+      } else {
         for (let j = 0; j < i; j++) {
-          if (list[i].key === list[j].key) {
+          if (list[j].key === k) {
             this.dups++;
             break;
           }
         }
       }
-    } else this.dups += list.length - new Set(list.map((c) => c.key)).size;
+    }
+    return digits ? max : -1;
+  }
+
+  /**
+   * Without escapes: whether unflatten turns an all-digit object of `length` keys up to index `max` (see scan) into an
+   * array (it keeps one whose missing items its budget can't fill an object, keyed as it is). Asked in the order
+   * unflatten builds them.
+   */
+  private misread(length: number, max: number) {
+    if (max < 0) return false;
+    const holes = max + 1 - length;
+    if (holes > this.budget) return false;
+    this.budget -= Math.max(0, holes);
+    return true;
   }
 
   private escapeKey(k: string, digits: boolean): string {
@@ -332,7 +391,8 @@ class Flattener {
 
   /** One flat object of `root` (an object or array), or `root` itself when it has nothing to flatten. */
   *one(root: JNode, pad: string): Steps<string> {
-    if (root.t < ARR || !kids(root).length || (this.keep && root.t === ARR)) return valueText(root, pad);
+    if (root.t < ARR) return valueText(root, pad);
+    if (!kids(root).length || (this.keep && root.t === ARR)) return yield* valueSteps(root, pad);
     const { sep, depth, escape } = this.o;
     const { bracket, keep, read } = this;
     const inner = pad + '  ';
@@ -345,10 +405,10 @@ class Flattener {
     const objs: boolean[] = [root.t === OBJ];
     const at: number[] = [0];
     const paths: (string | null)[] = [null];
-    const digits: boolean[] = [escape && this.digitKeys(root)];
-    const bad: boolean[] = [!escape && this.misread(root)];
+    const top = yield* this.scan(root);
+    const digits: boolean[] = [escape && top >= 0];
+    const bad: boolean[] = [!escape && this.misread(lists[0].length, top)];
     const parts: Part[][] | null = read ? [[]] : null;
-    this.countDups(root);
     while (lists.length) {
       if (!(++this.n & EVERY)) yield;
       const d = lists.length - 1;
@@ -377,26 +437,25 @@ class Flattener {
       // (Bracket style: `{"": [1]}` would flatten to "[0]", which reads as a top-level array, so it stays whole.)
       const emptyTop = bracket && d === 0 && objs[0] && c.key === '' && c.t === ARR;
       if (c.t >= ARR && (depth === 0 || d < depth) && !(keep && c.t === ARR) && !emptyTop && kids(c).length) {
-        const misread = !escape && this.misread(c);
+        const max = yield* this.scan(c);
         lists.push(kids(c));
         objs.push(c.t === OBJ);
         at.push(0);
         paths.push(path);
-        digits.push(escape && this.digitKeys(c));
-        bad.push(bad[d] || misread);
+        digits.push(escape && max >= 0);
+        bad.push(bad[d] || (!escape && this.misread(kids(c).length, max)));
         parts?.push([...parts[d], c.key as Part]);
-        this.countDups(c);
         continue;
       }
       if ((bad[d] || (read && !this.same(read(path), parts![d], c.key as Part))) && !this.unsafe++) this.example = path;
-      out += (first ? '\n' : ',\n') + inner + quote(path) + ': ' + valueText(c, inner);
+      out += (first ? '\n' : ',\n') + inner + quote(path) + ': ' + (c.t < ARR ? valueText(c, inner) : yield* valueSteps(c, inner));
       first = false;
       if (out.length > MAX_TEXT) throw tooLong();
     }
     return first ? '{}' : out + '\n' + pad + '}';
   }
 
-  /** Whether a path read back gives its parts (dot style: an index-like key reads as a number; see digitKeys). */
+  /** Whether a path read back gives its parts (dot style: an index-like key reads as a number; see scan). */
   private same(got: Part[], parent: Part[], last: Part) {
     if (got.length !== parent.length + 1) return false;
     const eq = this.dot ? (a: Part, b: Part) => String(a) === String(b) : (a: Part, b: Part) => a === b;
@@ -429,6 +488,7 @@ function* looksFlat(root: JNode, o: FlatOptions): Steps<boolean> {
   let path = false;
   let n = 0;
   for (const obj of objs) {
+    if (!(++n & EVERY)) yield;
     if (obj.t !== OBJ) return false;
     for (const c of kids(obj)) {
       if (!(++n & EVERY)) yield;
@@ -492,8 +552,9 @@ export function* unflattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps
       // A list of flat records, as CSV rows with dotted columns give: each item unflattened on its own.
       text = '[';
       for (let i = 0; i < items.length; i++) {
+        if (!(++u.n & EVERY)) yield;
         const it = items[i];
-        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? yield* u.one(it, '  ') : valueText(it, '  '));
+        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? yield* u.one(it, '  ') : it.t < ARR ? valueText(it, '  ') : yield* valueSteps(it, '  '));
         if (text.length > MAX_TEXT) throw tooLong();
       }
       text += '\n]';
@@ -524,7 +585,7 @@ class Unflattener {
   private nested = false;
   single = false;
   /** Items done, for yielding now and then. */
-  private n = 0;
+  n = 0;
 
   constructor(o: FlatOptions) {
     this.bracket = o.arrays === 'bracket';
@@ -640,7 +701,7 @@ class Unflattener {
       const v = list[i];
       if (v === null) out += 'null';
       else if (v instanceof Box) open(v, inner);
-      else out += valueText(v, inner);
+      else out += v.t < ARR ? valueText(v, inner) : yield* valueSteps(v, inner);
       if (out.length > MAX_TEXT) throw tooLong();
     }
     return out;

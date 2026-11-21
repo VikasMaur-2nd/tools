@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse, type JNode } from '../lib/json/parser';
 import { stringify } from '../lib/json/format';
-import { FLAT_DEFAULTS, flatOptions, flatten, pathParts, unflatten, validSep, type FlatArrays, type FlatOptions, type Part } from '../lib/convert/flat';
+import { FLAT_DEFAULTS, flatOptions, flatten, flattenSteps, pathParts, unflatten, unflattenSteps, validSep, type FlatArrays, type FlatOptions, type FlatResult, type Part, type Steps } from '../lib/convert/flat';
 import { convert } from '../lib/convert';
 import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
 import { cpuNow } from './timing';
@@ -654,6 +654,9 @@ test('fuzz: unflatten(flatten(x)) is x exactly when flatten does not warn, and m
       const f = flatten(x, o);
       assert.equal(f.error, '');
       const u = unflatten(doc(f.text), o);
+      // Written exactly as the formatter indents (kept and nested values are written in steps of their own).
+      assert.equal(f.text, stringify(doc(f.text), '  '));
+      if (u.text) assert.equal(u.text, stringify(doc(u.text), '  '));
       const ok = !u.error && canon(u.text) === canon(text);
       add(f.warn ? (ok ? 'BUG: warned but came back' : 'warned, does not come back') : ok ? 'came back' : 'BUG: silent loss');
       if (ok === f.warn) assert.fail(`${JSON.stringify(o)}\n${text}\nflat: ${f.text}\nnote: ${f.note}\nback: ${u.text || u.error}`);
@@ -705,6 +708,53 @@ test('fuzz: unflatten of random flat keys matches the reference (results, confli
 });
 
 // ── Speed ────────────────────────────────────────────────────────────────────
+
+/**
+ * A conversion's steps: how many, the 95th percentile and longest of their times (ms of CPU time: other processes
+ * taking the machine don't count, see ./timing.ts), and its result.
+ */
+function stepped(steps: Steps<FlatResult>) {
+  const times: number[] = [];
+  for (;;) {
+    const t = cpuNow();
+    const r = steps.next();
+    times.push(cpuNow() - t);
+    if (r.done) {
+      const sorted = times.slice().sort((a, b) => a - b);
+      return { count: times.length, p95: sorted[Math.floor(sorted.length * 0.95)], slow: times.filter((t) => t > 20).length, longest: sorted[sorted.length - 1], result: r.value };
+    }
+  }
+}
+
+test('steps stay short for long lists of small records, scalars and values kept whole', () => {
+  const N = 60_000;
+  const big = `[${Array.from({ length: N }, (_, i) => `{"i":${i},"tags":["a","b"],"n":null}`).join(',')}]`;
+  const cases: [string, string, (r: JNode, o?: Partial<FlatOptions>) => Steps<FlatResult>, Partial<FlatOptions>?][] = [
+    // (Each record or scalar is one item: none of them yielded, 191 ms and 125 ms in one step for 750 KB.)
+    ['a top-level array of empty objects, flattened', `[${'{},'.repeat(N - 1)}{}]`, flattenSteps],
+    ['a top-level array of empty objects, unflattened', `[${'{},'.repeat(N - 1)}{}]`, unflattenSteps],
+    ['a top-level array of scalars, flattened', `[${Array.from({ length: N }, (_, i) => (i % 2 ? `"s${i}"` : i)).join(',')}]`, flattenSteps],
+    ['a top-level array of scalars, unflattened', `[${Array.from({ length: N }, (_, i) => (i % 2 ? `"s${i}"` : i)).join(',')}]`, unflattenSteps],
+    // (Values kept whole were written in one go.)
+    ['a big array under the empty key', `{"":${big},"x":1}`, flattenSteps],
+    ['a big array kept whole (None)', `{"rows":${big}}`, flattenSteps, { arrays: 'keep' }],
+    ['a depth-1 flatten of a big nested value', `{"data":{"rows":${big}}}`, flattenSteps, { depth: 1 }],
+    ['a flat key holding a big array, unflattened', `{"data.rows":${big}}`, unflattenSteps],
+    ['a big object, its keys checked for duplicates', `{${Array.from({ length: N }, (_, i) => `"k${i}":${i}`).join(',')}}`, flattenSteps],
+  ];
+  for (const [what, text, run, o] of cases) {
+    const x = doc(text);
+    const r = stepped(run(x, o));
+    assert.equal(r.result.text, (run === flattenSteps ? flatten : unflatten)(x, o).text, what);
+    console.log(`steps: ${what}: ${r.count} steps, 95% within ${r.p95.toFixed(2)} ms, the longest ${r.longest.toFixed(1)} ms`);
+    assert.ok(r.count > 20, `${what}: ${r.count} steps`);
+    // About 1,024 items a step: well under a millisecond. A garbage collection lands in a step now and then (tens of
+    // ms, more on a busy machine), never the whole job.
+    assert.ok(r.p95 < 5, `${what}: 95% of the steps within ${r.p95.toFixed(2)} ms`);
+    assert.ok(r.slow <= 3, `${what}: ${r.slow} steps over 20 ms`);
+    assert.ok(r.longest < 250, `${what}: a step took ${r.longest.toFixed(1)} ms`);
+  }
+});
 
 /** A big API response: `n` records of nested objects, arrays and numbers. */
 function records(n: number, seed = 42) {

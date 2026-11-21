@@ -31,12 +31,13 @@ const FLAT = '{\n  "a.b": 1\n}';
  * An engine on Convert › Flat JSON whose last conversion is GOOD's (FLAT), its editor holding `text`: GOOD (the
  * conversion is current) or a broken edit of it (the conversion is of the tree kept from before).
  */
-function session(text: string) {
+function session(text: string, view = 'convert') {
   const calls: unknown[][] = [];
-  const state: Dynamic = { settings: { view: 'convert', target: 'flatten' }, convert: { error: null } };
+  const state: Dynamic = { settings: { view, target: 'flatten' }, convert: { error: null } };
   const out: Dynamic = {};
   runInNewContext(js, {
-    exports: out, performance, URL, Blob, Error, Promise,
+    // (No timers: the wait's two-minute expiry never matters here.)
+    exports: out, performance, URL, Blob, Error, Promise, setTimeout: () => 0,
     require: (name: string) => {
       if (name === './store') return { store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
       if (name === '../analytics') return { track: (...args: unknown[]) => calls.push(['track', ...args]), reportError: () => {} };
@@ -55,13 +56,15 @@ function session(text: string) {
   // The tree kept from GOOD and its conversion, as analyze() and runConvert() leave them.
   engine.goodVer = good.version;
   engine.parsedVer = ed.version;
-  const res: ParseResult = parse(text);
+  // (As the engine parses: repairing what it can, each repair an issue.)
+  const res: ParseResult = parse(text, { repair: true });
   engine.fresh = () => res;
   engine.convLater = () => null;
   engine.convOutput = () => FLAT;
   engine.toast = (...args: unknown[]) => calls.push(['toast', ...args]);
   engine.replaceText = (...args: unknown[]) => calls.push(['replace', ...args]);
   engine.setConvert = (...args: unknown[]) => calls.push(['setConvert', ...args]);
+  engine.transform = (...args: unknown[]) => calls.push(['transform', args.length]);
   return { engine, calls, ed };
 }
 
@@ -74,7 +77,7 @@ test('Use as input on Flat JSON: the current document\'s output replaces the inp
   s.engine.useOutput();
   await flush();
   assert.deepEqual(plain(s.calls, 'track'), [['replace', FLAT, 'Flattened input'], ['setConvert', { target: 'unflatten' }]]);
-  assert.deepEqual(plain(s.calls.filter((c) => c[0] === 'track')), [['track', 'feature_used', { feature: 'use_output', view: 'convert' }]]);
+  assert.deepEqual(plain(s.calls.filter((c) => c[0] === 'track')), [['track', 'feature_used', { feature: 'use_output' }]]);
 });
 
 test('Use as input after a broken edit: says to fix it, and keeps the edit (never the old document\'s output)', async () => {
@@ -94,4 +97,56 @@ test('Use as input when the editor changes before the conversion arrives: nothin
   arrive(FLAT);
   await flush();
   assert.deepEqual(plain(s.calls, 'track'), []);
+});
+
+/**
+ * A session whose conversion is on its way when Use as input is pressed (the engine's own wait, see convLater):
+ * `arrive` finishes a conversion for the settings and document as they are then, as runConvert does.
+ */
+function pending() {
+  const s = session(GOOD);
+  delete s.engine.convLater;
+  s.engine.whenAnalysed = () => {};
+  s.engine.convSeq = 2;
+  s.engine.convDone = { seq: 1, out: '', ver: null, key: '' };
+  s.engine.viewSeq = 7;
+  s.engine.useOutput();
+  return { ...s, arrive: (out: string) => s.engine.convFinished(s.engine.convSeq, out, s.engine.goodVer) };
+}
+
+test('Use as input while converting, then Format and back to Convert: the conversion made on return never replaces the input', async () => {
+  // (Leaving Convert stopped the conversion the request waited for; the one made on coming back delivered to it.)
+  const s = pending();
+  s.engine.viewSeq += 2;
+  s.arrive(FLAT);
+  await flush();
+  assert.deepEqual(plain(s.calls, 'track'), []);
+});
+
+test('Use as input while converting, then other options or another target: nothing replaced', async () => {
+  for (const change of [(e: Dynamic) => (e.settings.flat = { sep: '/', arrays: 'bracket', escape: true, depth: 0 }), (e: Dynamic) => (e.settings.target = 'unflatten')]) {
+    const s = pending();
+    change(s.engine);
+    s.arrive(FLAT);
+    await flush();
+    assert.deepEqual(plain(s.calls, 'track'), []);
+  }
+  // Nothing changed meanwhile: it arrives and replaces the input.
+  const s = pending();
+  s.arrive(FLAT);
+  await flush();
+  assert.deepEqual(plain(s.calls, 'track'), [['replace', FLAT, 'Flattened input'], ['setConvert', { target: 'unflatten' }]]);
+});
+
+test('Use as input on input the parser repaired: says to fix it (Format still applies its repair)', async () => {
+  // ({"b": parses as {"b":null} with repairs: it replaced the text with the flattened repair.)
+  for (const text of ['{"b":', '{"a":1,}', "{a:'x'}"]) {
+    const s = session(text);
+    s.engine.useOutput();
+    await flush();
+    assert.deepEqual(plain(s.calls), [['toast', "Can't do that yet. Fix the error first.", 'err']], text);
+  }
+  const f = session('{"b":', 'format');
+  f.engine.useOutput();
+  assert.deepEqual(plain(f.calls, 'track'), [['transform', 2]]);
 });

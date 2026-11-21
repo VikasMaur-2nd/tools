@@ -3348,13 +3348,33 @@ export class Engine {
     this.expTimer = window.setTimeout(() => this.settings.view === 'format' && this.noteExpiry(out), Math.abs(left) < 3600 ? 1000 : 30_000);
   }
 
-  /** Replaces the input with the Format view's output (undoable); flatten's or unflatten's while one shows (see useConvert). */
+  /**
+   * Replaces the input with the Format view's output (undoable). While Flatten or Unflatten shows: with theirs, and
+   * the other direction shows, giving the input back.
+   */
   useOutput() {
     const r = this.fresh();
-    if (!r?.root) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
     const s = this.settings;
-    track('feature_used', { feature: 'use_output', view: s.view });
-    if (s.view === 'convert' && isFlat(s.target)) return this.useConvert();
+    const flat = s.view === 'convert' && isFlat(s.target);
+    // (Format offers the repaired document; flatten and unflatten take the input only as it is, valid.)
+    if (!r?.root || (flat && r.issues.length)) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
+    track('feature_used', { feature: 'use_output' });
+    if (flat) {
+      // Only the conversion of the text in the editor now (a broken edit keeps the last valid document's on show),
+      // and for this view session: leaving Convert stops its conversion, and the one made on coming back must not act
+      // on it. (Other options or another target end its wait with nothing: see convFinished.) Valid now, so the tree
+      // shown is this version's.
+      const ver = this.ed.version;
+      const at = this.viewSeq;
+      void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
+        if (out && !this.dead && this.ed.version === ver && this.viewSeq === at) {
+          // (A conversion's output is one string.)
+          this.replaceText(out as string, s.target === 'flatten' ? 'Flattened input' : 'Unflattened input');
+          this.setConvert({ target: s.target === 'flatten' ? 'unflatten' : 'flatten' });
+        }
+      });
+      return;
+    }
     const fixed = this.fixed(r);
     this.transform(
       (res, t) => (s.escape ? JSON.stringify(formatDoc(t, res, '', s.sortKeys)) : formatDoc(t, res, s.minify ? '' : this.indent, s.sortKeys)),
@@ -3713,24 +3733,6 @@ export class Engine {
     if (!out) return this.toast('Nothing to copy yet', 'info');
     track('feature_used', { feature: 'copy_convert' });
     void this.copy(out, msg);
-  }
-
-  /**
-   * Flatten / unflatten (useOutput, once the input is valid): the output replaces the input (undoable) and the other
-   * direction shows, giving the input back. Only the conversion of the text in the editor now: a broken edit keeps
-   * the last valid document's on show, which must never take its place.
-   */
-  private useConvert() {
-    const flat = this.settings.target === 'flatten';
-    const ver = this.ed.version;
-    // (Valid then, so the tree shown was this version's: goodVer is ver while the editor still has it.)
-    void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
-      if (out && !this.dead && this.ed.version === ver) {
-        // (A conversion's output is one string.)
-        this.replaceText(out as string, flat ? 'Flattened input' : 'Unflattened input');
-        this.setConvert({ target: flat ? 'unflatten' : 'flatten' });
-      }
-    });
   }
 
   async downloadConvert() {
