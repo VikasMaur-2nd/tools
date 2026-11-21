@@ -15,11 +15,11 @@ export const metadata: Metadata = pageMetadata({ path: '/privacy', title: 'Priva
 /** When each event is sent. Its properties are listed straight from lib/analytics/events.ts. */
 const WHEN: Record<EventName, string> = {
   json_loaded: 'A document arrives in an editor (pasted, opened, dropped, loaded from a URL, opened from a link, handed over by another site, or the sample), once it has been checked (or, without its size and validity, when another document replaces it first).',
-  view_opened: 'You open Format, Tree, Table, Graph, Convert or Compare.',
+  view_opened: 'You open Format, Tree, Table, Graph, Convert, Compare or Schema.',
   convert_target_selected: 'You pick a Convert language or format.',
   convert_option_changed: 'You change a Convert option: TypeScript interface or type, or the C# JSON library. The root type name you type is never sent.',
   format_option_changed: 'You change the output style, key sorting or indentation.',
-  feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), reading the input as JSON, YAML, CSV, XML or TOML, a CSV option (which separator, header row or typed values on or off), and similar.',
+  feature_used: 'You use a feature: copy, download, share (as a link or a Markdown or HTML button), repair, find, expand or collapse, wrap lines, theme, graph fit, zoom and jumps to its start or end, graph image export (PNG, JPEG or SVG) or copy, opening the right-click menu (which area it opened in), reading the input as JSON, YAML, CSV, XML or TOML, a CSV option (which separator, header row or typed values on or off), in the Schema view generating a schema, picking a draft, checking formats on or off, going to an error in the document or the schema, and similar.',
   command_run: 'You run a command from the command palette (its fixed ID, such as to-typescript).',
   agent_tool_used: 'An AI agent in your browser uses one of the JSON tool’s functions for you. What it sent and what it got back are never included.',
   huge_opened: 'A file too big for the editor opens in large-file mode, once it has been indexed (or stopped, or replaced by another document first). Its name, content and exact size are never included.',
@@ -27,6 +27,7 @@ const WHEN: Record<EventName, string> = {
   huge_shape: 'The Shape panel finishes reading a large file (or is stopped). How many paths it found is sent as a range; the paths themselves, their types, counts and values are never included.',
   huge_gz: 'A compressed .json.gz or .jsonl.gz file is opened (decompressed in your browser), with how it ended. Its name, content and exact size are never included.',
   huge_edit: 'A large file is edited: the kind of edit (set a value, rename, delete, insert, duplicate, edit as text, typing in the Format view, undo, redo, restore) and where it was asked from (tree, table, graph, Format view, menu, keyboard, toolbar, palette, banner). The values, names and paths are never included.',
+  schema_validated: 'The Schema view checks a document against a JSON Schema, once each time you open the view: the draft (2020-12, 2019-09, draft-07, draft-06 or draft-04) and whether it came from $schema, the draft picker or the default, whether the document was valid, the number of errors and of schema problems as ranges, whether formats were checked, and how long it took. The document, the schema, the error messages and where they are are never included.',
   huge_save: 'A large file is saved: how (in place, as another file, or downloaded), how it ended (saved, stopped, failed, or nothing written because the file picked wasn’t the one opened, writing to it wasn’t allowed, or the opened file had changed), how long it took and its size as a range. Its name and content are never included.',
 };
 
@@ -66,6 +67,12 @@ const PROPS: Record<string, string> = {
   ms: 'time taken, 2 significant digits',
   filtered: 'filtered by conditions',
   paths: 'number of paths, as a range',
+  draft: 'JSON Schema draft',
+  from: '$schema, draft picker or default',
+  valid: 'whether the document was valid',
+  errors: 'number of errors, as a range',
+  problems: 'number of schema problems, as a range',
+  formats: 'formats checked',
 };
 
 /** Where a property means something else for one event. */

@@ -429,7 +429,12 @@ html:has(.content-page:not([style*='none'])) {
   margin: 20px 0 36px;
 }
 
-.tool-example-grid h3 {
+.tool-example-schema {
+  margin: 20px 0 0;
+}
+
+.tool-example-grid h3,
+.tool-example-schema h3 {
   margin: 0 0 8px;
   color: var(--muted);
   font: 500 12px/1.4 var(--font-mono);
@@ -438,6 +443,7 @@ html:has(.content-page:not([style*='none'])) {
 }
 
 .tool-example-grid pre,
+.tool-example-schema pre,
 .tool-usage {
   min-height: 120px;
   max-height: 420px;

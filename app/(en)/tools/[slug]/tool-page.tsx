@@ -13,6 +13,10 @@ import { formatDoc } from '@/lib/json/format';
 import { jwtToJson } from '@/lib/json/jwt';
 import { ARR, OBJ, STR, kids, parse, type JNode } from '@/lib/json/parser';
 import { formatPath, pathOf } from '@/lib/json/path';
+import { validateTexts, type ValidateResult } from '@/lib/schema/index';
+import { DRAFT_NAME } from '@/lib/schema/drafts';
+import { errorText } from '@/components/schema-messages';
+import { EN } from '@/lib/i18n/ui';
 import { jsonLdScript } from '../../seo';
 import { SITE } from '@/lib/site';
 import { pageMetadata } from '../../../page-metadata';
@@ -75,7 +79,18 @@ function pathList(root: JNode) {
   return out.join('\n');
 }
 
+/** The Schema view's result as text: the same messages and locations, numbered. */
+function schemaReport(r: ValidateResult) {
+  if (r.valid) return `Valid (${DRAFT_NAME[r.draft]})`;
+  const lines = [`Invalid: ${EN.n(r.total, '{n} error', '{n} errors')} (${DRAFT_NAME[r.draft]})`];
+  r.errors.forEach((e, i) => {
+    lines.push('', `${i + 1}. ${errorText(e.code, e.params, EN)}`, `   at ${e.pointer || '(root)'}, line ${e.loc?.line}, column ${e.loc?.col} · keyword ${e.path}`);
+  });
+  return lines.join('\n');
+}
+
 function exampleOutput(page: ToolPage) {
+  if (page.slug === 'json-schema-validator' && page.exampleSchema) return schemaReport(validateTexts({ doc: page.sample, schema: page.exampleSchema.text, draft: null, formats: false }));
   if (page.slug === 'json-validator') {
     const result = parse(page.sample);
     const issue = result.error ?? result.issues[0];
@@ -204,6 +219,7 @@ function ToolContent({ page, locale, Link }: { page: ToolPage; locale: SiteLocal
 
         <h2>{t('tool.example')}</h2>
         <p>{page.exampleLabel}</p>
+        {page.exampleSchema && <div className="tool-example-schema"><h3>{t('tool.schema')} · {page.exampleSchema.name}</h3><pre><code>{page.exampleSchema.text}</code></pre></div>}
         <div className="tool-example-grid">
           <div><h3>{t('tool.input')}{page.sampleName ? ` · ${page.sampleName}` : ''}</h3><pre><code>{page.sample}</code></pre></div>
           <div><h3>{t('tool.output')}</h3><pre><code>{output}</code></pre></div>

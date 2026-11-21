@@ -1,4 +1,5 @@
 import type { EnginePreset } from './engine/store';
+import { SAMPLE_DOC, SAMPLE_SCHEMA } from './schema/sample';
 
 export type ToolPage = {
   slug: string;
@@ -20,6 +21,8 @@ export type ToolPage = {
   /** Error guides (json-errors slugs) to link, with their anchor text. */
   guides?: { slug: string; text: string }[];
   sections?: { heading: string; paragraphs: string[]; code?: string }[];
+  /** A schema shown with the worked example, before its input (the JSON Schema validator). */
+  exampleSchema?: { name: string; text: string };
   /** Its own social preview: public/og/<image>.png (default: the site-wide image). */
   image?: string;
   /** ISO date (YYYY-MM-DD) of the last change to the page's text, in every language (sitemap). Keywords and presets don't count. */
@@ -371,6 +374,52 @@ export const TOOL_PAGES: ToolPage[] = [
     slug: 'json-to-jsonl', updated: '2026-10-14', query: 'json to jsonl', secondary: ['json to ndjson', 'json array to ndjson'],
     title: 'JSON to JSONL converter (JSON array to NDJSON)', description: 'Convert a JSON array to JSON Lines, with one compact record per line and exact numbers. Download a .jsonl file without uploading your data.',
     heading: 'JSON to JSONL', intro: 'Turn a JSON array into JSON Lines, also called NDJSON: each element on its own line as compact JSON. Log pipelines, bulk imports and datasets that read one record at a time expect this format.', modeLabel: 'JSON Lines output', preset: convertPreset('jsonl', events), sample: events, exampleLabel: 'Each element of the array becomes one line. Nested arrays and objects stay inside their record, and the large IDs keep every digit.', steps: ['Paste a JSON array or open a file.', 'Read the JSON Lines in the Convert view.', 'Copy the lines, or download them as a .jsonl file.'], options: ['Each element of the top-level array becomes one line of compact JSON, in order, and every line ends with a newline.', 'A document that is not an array becomes a single line.', 'Nested arrays and objects stay within their record; only the top level is split.', 'Numbers keep their source digits.'], faqs: [{ question: 'How do I convert JSON to JSONL?', answer: 'Paste a JSON array here. The converter writes each element on its own line; copy the result or download it as .jsonl.' }, { question: 'Is NDJSON the same as JSONL?', answer: 'In practice, yes. Both mean one JSON value per line, so the output suits tools that ask for either name.' }, { question: 'Can I convert JSONL back to a JSON array?', answer: 'Yes. NDJSON to JSON reads the lines and returns one JSON array.' }], related: ['ndjson-to-json', 'jsonl-viewer', 'json-to-csv', 'large-json-viewer']
+  },
+  {
+    slug: 'json-schema-validator', updated: '2026-11-21', query: 'json schema validator', secondary: ['validate json against schema', 'json schema validator online'],
+    title: 'JSON Schema validator: validate JSON online', description: 'Validate JSON against a JSON Schema: drafts 2020-12, 2019-09, 07, 06 and 04. See each error with its line, path and rule. Nothing is uploaded.',
+    heading: 'JSON Schema validator', intro: 'Paste a JSON document and its JSON Schema to check one against the other as you type. Each error shows where it is, as a JSON Pointer with its line and column, which rule failed and why. Drafts 2020-12, 2019-09, 07, 06 and 04 are supported, and nothing leaves your browser.', modeLabel: 'JSON Schema validation',
+    preset: { settings: { view: 'schema' }, initialText: SAMPLE_DOC, initialFileName: 'user.json', schema: SAMPLE_SCHEMA }, sample: SAMPLE_DOC, sampleName: 'user.json', exampleSchema: { name: 'user.schema.json', text: SAMPLE_SCHEMA },
+    exampleLabel: 'This user record breaks six rules of the 2020-12 schema below. The output is what the validator reports for it: each error with its JSON Pointer, line and column, its message and the keyword that failed. 19.999 is not a multiple of 0.01: the numbers are compared exactly, with no floating-point rounding.',
+    steps: ['Paste the JSON document in the left editor, or open a file.', 'Paste the JSON Schema in the middle editor or open a schema file. Generate from the document in its ⋯ menu infers a schema to start from.', 'Read the result on the right: Valid, or every error with its location. Click an error or press Enter to select it in the document; its keyword button selects the rule in the schema.', 'Fix the document or the schema. Both are checked again as you type, and Ctrl+Z (⌘Z on a Mac) undoes changes in either editor.'],
+    options: [
+      'The draft comes from $schema. A schema without one uses the draft picker in the schema toolbar: 2020-12 by default, or 2019-09, draft-07, draft-06 or draft-04.',
+      'Check formats turns format into a check for date-time, date, time, duration, email, idn-email, hostname, idn-hostname, ipv4, ipv6, uri, uri-reference, iri, iri-reference, uri-template, json-pointer, relative-json-pointer, regex and uuid. Off, format is an annotation, as 2019-09 and 2020-12 specify.',
+      'Each error lists its JSON Pointer, line and column, its message and the keyword path through any $ref. When anyOf or oneOf matches nothing, the errors of the closest branch are listed under it. Keyword buttons above the list show only one kind of error.',
+      'Schema problems are listed apart from document errors and underlined in the schema: an unresolved $ref, an invalid regular expression, a keyword with a value of the wrong type, and warnings for unknown keywords, keywords of another draft or OpenAPI’s nullable.',
+      'Comments and trailing commas in either text are tolerated and noted. A JSON Lines document is validated one record at a time.',
+      'The first 1,000 errors are listed and the count includes all of them. Validation runs in a background worker, so typing stays responsive with documents of several megabytes, and a run that takes too long, such as a catastrophic regular expression, is stopped.',
+    ],
+    sections: [
+      { heading: 'Supported drafts and keywords', paragraphs: [
+        'Drafts 2020-12, 2019-09, draft-07, draft-06 and draft-04 are supported, each with its own rules. The draft named by $schema decides; an embedded schema resource with its own $id may name another draft. draft-04 reads id, the boolean exclusiveMaximum and exclusiveMinimum, and an integer only without a fraction or exponent. Before 2019-09, $ref replaces its sibling keywords.',
+        'Core: $schema, $id (id in draft-04), $ref, $defs and definitions, $anchor, $dynamicRef and $dynamicAnchor (2020-12), $recursiveRef and $recursiveAnchor (2019-09), and plain-name fragments in $id before 2019-09.',
+        'Applicators: allOf, anyOf, oneOf, not, if, then, else, dependentSchemas and dependencies, prefixItems, items, additionalItems, contains, properties, patternProperties, additionalProperties, propertyNames, unevaluatedItems and unevaluatedProperties.',
+        'Assertions: type, enum, const, multipleOf, maximum, exclusiveMaximum, minimum, exclusiveMinimum, maxLength, minLength, pattern, maxItems, minItems, uniqueItems, maxContains, minContains, maxProperties, minProperties, required and dependentRequired. String length counts characters (code points), and pattern is an ECMA-262 regular expression with the u flag.',
+        'Numbers are compared by their exact decimal value. multipleOf 0.01 accepts 19.99, a maximum of 18446744073709551615 holds for integers beyond JavaScript’s safe range, and 1 equals 1.0 for const, enum and uniqueItems.',
+      ] },
+      { heading: 'References, remote schemas and privacy', paragraphs: [
+        '$ref resolves JSON Pointers such as #/$defs/address, anchors such as #address, and other resources embedded in the same schema by their $id, relative URIs included. A loop that applies the same schema to the same value again is reported instead of hanging the page.',
+        'Remote references are never fetched: a $ref to a URL that isn’t a resource of this schema is listed as unresolved, and that part of the document isn’t checked. To use such a schema, add it under $defs with its $id; references to that URL then resolve locally. The official meta-schemas aren’t loaded either: the validator checks the value of every keyword it knows itself.',
+      ] },
+      { heading: 'What isn’t supported', paragraphs: [
+        'draft-03 (validated as draft-04, with a warning) and drafts after 2020-12. contentEncoding, contentMediaType and contentSchema are read as annotations, not checked. The $vocabulary of a custom meta-schema isn’t read, because the meta-schema isn’t fetched. The output lists errors, not annotations.',
+        'idn-hostname follows IDNA2008 with the browser’s Unicode data, so a few code points newer than your browser’s data may be judged differently.',
+      ] },
+      { heading: 'Tested against the official test suite', paragraphs: [
+        'The validator runs the JSON-Schema-Test-Suite of the JSON Schema organization for every draft it supports. As of November 2026 it passes all 5,133 required tests (draft-04 672, draft-06 878, draft-07 972, 2019-09 1,292, 2020-12 1,319), all 2,776 format tests with Check formats on, and 760 of the 764 optional ones, including the bignum, float-overflow, ECMAScript regex and cross-draft tests. The four it fails are draft-07 content tests, which expect contentEncoding and contentMediaType to be checked.',
+      ] },
+    ],
+    faqs: [
+      { question: 'How do I validate JSON against a schema?', answer: 'Paste the JSON document on the left and the JSON Schema in the middle. The result appears on the right as you type: Valid, or each error with its JSON Pointer, line, column and the rule that failed. Click an error to select it in the document.' },
+      { question: 'What changed between draft-07 and 2020-12?', answer: '2019-09 added $defs, $anchor, dependentRequired, dependentSchemas, unevaluatedProperties, unevaluatedItems, minContains and maxContains, and lets $ref sit beside other keywords. 2020-12 replaced the array form of items with prefixItems, items with additionalItems, and $recursiveRef with $dynamicRef. The validator applies each draft’s rules to schemas that name it in $schema.' },
+      { question: 'What is the difference between additionalProperties and unevaluatedProperties?', answer: 'additionalProperties only sees the properties and patternProperties next to it, so with allOf or $ref it rejects properties that another subschema defines. unevaluatedProperties, from 2019-09 on, sees every property that the schema and its successful subschemas evaluated, including through allOf, anyOf, oneOf, if, then, else and $ref. Use it to close a schema that is built from parts.' },
+      { question: 'Why isn’t format checked by default?', answer: 'From 2019-09 on, the specification makes format an annotation unless a validator is asked to assert it, and earlier drafts left it optional. Turn on Check formats to validate date-time, email, uri, uuid, ipv4, ipv6 and the other standard formats. Unknown formats always pass, with a warning while the check is on.' },
+      { question: 'How do I allow null values?', answer: 'Add "null" to the type, as in "type": ["string", "null"], or combine schemas with anyOf. OpenAPI 3.0’s "nullable": true is not a JSON Schema keyword, so the validator ignores it and shows a warning that says so.' },
+      { question: 'Are big numbers and decimals checked exactly?', answer: 'Yes. The document and the schema are read without converting numbers to floating point, so 19.99 is a multiple of 0.01, integers larger than 2^53 keep every digit for minimum and maximum, and 1e308 is compared as written. 1.0 counts as an integer from draft-06 on, as the specification says.' },
+      { question: 'Does the validator fetch $ref URLs or upload my data?', answer: 'No. The document and the schema stay in your browser, and the validator never fetches a URL. A remote $ref is reported as unresolved; to use that schema, embed it under $defs with its $id.' },
+    ],
+    related: ['json-schema-generator', 'json-validator', 'json-to-zod', 'json-to-typescript'],
   },
 ];
 

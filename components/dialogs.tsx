@@ -340,6 +340,7 @@ const SHORTCUTS: { title: string; items: [string, string, string?][] }[] = [
       ['Alt+4', 'Graph view'],
       ['Alt+5', 'Convert'],
       ['Alt+6', 'Compare'],
+      ['Alt+7', 'Schema'],
       ['Alt+Z', 'Wrap long lines on or off'],
       ['Shift+F10', 'Right-click menu'],
       ['?', 'This help'],
