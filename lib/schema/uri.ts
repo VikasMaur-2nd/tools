@@ -134,9 +134,6 @@ export const escapeToken = (t: string | number) => String(t).replace(/~/g, '~0')
 /** A JSON Pointer from tokens. */
 export const pointer = (tokens: readonly (string | number)[]) => tokens.map((t) => '/' + escapeToken(t)).join('');
 
-/** A pointer as a URI fragment: what isn't allowed in one is percent-encoded. */
-export const fragmentOf = (ptr: string) => encodeURI(ptr).replace(/#/g, '%23');
-
 /** A URI fragment decoded (null: a broken percent-encoding). */
 export function decodeFragment(frag: string): string | null {
   try {

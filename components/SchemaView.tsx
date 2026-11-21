@@ -9,7 +9,7 @@
  * of the first load's chunks).
  */
 import '@/app/schema.css';
-import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { PRIVATE, PRIVATE_LABELS, reportError, track } from '@/lib/analytics';
 import type { Editor } from '@/lib/engine/editor';
 import { act, getEngine } from '@/lib/engine/instance';
@@ -132,11 +132,13 @@ class Controller {
     const s = store.get().settings;
     ed.indentUnit = UNITS[s.indent];
     ed.setWrap(s.wrap);
+    // A schema handed over that this editor hasn't had (a page's sample: not when coming back from that page), else the saved one.
     const incoming = store.get().schemaIn;
-    if (incoming) this.take(incoming);
-    else {
+    if (incoming && incoming.seq !== this.inSeq) this.take(incoming);
+    else if (!ed.text) {
+      this.sample = false;
       const saved = read(KEYS.text);
-      if (saved && !ed.text) ed.init(saved);
+      if (saved) ed.init(saved);
       this.set({ file: read(KEYS.file) });
     }
     this.set({ blank: !ed.length });
@@ -360,7 +362,7 @@ function DraftPick() {
   const fromSchema = result?.draftFrom === 'schema' && result.state !== 'schema-syntax' && result.state !== 'empty-schema';
   if (fromSchema) {
     return (
-      <span className="sch-draft" data-tip={t('Set by $schema in the schema')}>
+      <span className={`sch-draft ${PRIVATE}`} data-tip={t('Set by $schema in the schema')}>
         {DRAFT_NAME[result.draft]}
       </span>
     );
@@ -397,6 +399,18 @@ async function pasteSchema() {
   }
 }
 
+/** Picks a schema file (an input made for it: none waits in the page, where the main Open file's is the only one). */
+function pickSchemaFile() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json,application/schema+json,text/plain';
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (f) void openSchemaFile(f);
+  };
+  input.click();
+}
+
 async function openSchemaFile(f: File) {
   try {
     ctl.load(await f.text(), f.name);
@@ -426,7 +440,6 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
   const t = useT();
   const { file, formats } = useCtl();
   const edRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const wrap = useUI((s) => s.settings.wrap);
   const indent = useUI((s) => s.settings.indent);
   const incoming = useUI((s) => s.schemaIn);
@@ -450,7 +463,7 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
     const k = e.key.toLowerCase();
     if (e.key === 'Enter') ctl.formatSchema();
     else if (k === 's') downloadSchema();
-    else if (k === 'o') fileRef.current?.click();
+    else if (k === 'o') pickSchemaFile();
     else return;
     e.preventDefault();
   };
@@ -487,7 +500,7 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
           {(close) => (
             <>
               <MItem label="Paste" onClick={() => void pasteSchema()} close={close} />
-              <MItem label="Open file" keys="mod+O" onClick={() => fileRef.current?.click()} close={close} />
+              <MItem label="Open file" keys="mod+O" onClick={pickSchemaFile} close={close} />
               <MItem label="Generate from the document" onClick={() => void ctl.generate()} close={close} />
               <MItem label="Try an example" onClick={() => ctl.example()} close={close} />
               <MItem label="Format" keys="mod+Enter" onClick={() => ctl.formatSchema()} close={close} />
@@ -517,18 +530,6 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
           <textarea id="schema-input" spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" wrap="off" aria-label={t('JSON Schema')} placeholder={t('Paste a JSON Schema, or generate one from the document…')} />
         </div>
       </div>
-      <input
-        ref={fileRef}
-        className={PRIVATE}
-        type="file"
-        accept=".json,application/json,application/schema+json,text/plain"
-        hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = '';
-          if (f) void openSchemaFile(f);
-        }}
-      />
     </section>
   );
 });
@@ -665,20 +666,26 @@ const Panel = memo(function Panel() {
   const [sel, setSel] = useState(-1);
   const [scroll, setScroll] = useState(0);
   const [viewH, setViewH] = useState(400);
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const resize = useRef<ResizeObserver | null>(null);
+  // (The list comes and goes with the results: its height is watched while it is there.)
+  const setList = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el;
+    resize.current?.disconnect();
+    resize.current = null;
+    if (!el) return;
+    resize.current = new ResizeObserver(() => setViewH(el.clientHeight || 400));
+    resize.current.observe(el);
+  }, []);
 
   useEffect(() => {
     ctl.setOpen(true);
-    return () => ctl.setOpen(false);
+    return () => {
+      ctl.setOpen(false);
+      resize.current?.disconnect();
+    };
   }, []);
   useEffect(() => ctl.setDoc(docText), [docText]);
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setViewH(el.clientHeight || 400));
-    ro.observe(el);
-    return () => ro.disconnect();
-  });
 
   const rows = useMemo(() => rowsOf(r, filter, t), [r, filter, t]);
   const kinds = useMemo(() => {
@@ -800,7 +807,7 @@ const Panel = memo(function Panel() {
     );
   } else if (r.state === 'too-deep') empty = <Empty icon="alert" tone="err" title={t('Nesting is too deep to validate')} />;
   else if (r.valid && !r.errors.length && !r.problems.length) {
-    empty = <Empty icon="check" tone="ok" title={t('Valid')} text={t('The document matches the schema ({draft}).', { draft: DRAFT_NAME[r.draft] })} />;
+    empty = <Empty icon="check" tone="ok" title={t('Valid')} text={<span className={PRIVATE}>{t('The document matches the schema ({draft}).', { draft: DRAFT_NAME[r.draft] })}</span>} />;
   }
 
   const notes: string[] = [];
@@ -857,7 +864,7 @@ const Panel = memo(function Panel() {
       <div className="sch-lw">
         {showList && (
           <div
-            ref={listRef}
+            ref={setList}
             className="sch-list"
             role="listbox"
             aria-label={t('Validation results')}

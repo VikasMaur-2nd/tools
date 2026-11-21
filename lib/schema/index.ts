@@ -4,7 +4,7 @@
  * offsets into each text, with line and column (1-based, the editor's).
  */
 import { ARR, OBJ, kids, parse, tooDeep, type JNode, type ParseResult } from '../json/parser';
-import { DRAFT_NAME, draftOf, type Draft } from './drafts';
+import { draftOf, type Draft } from './drafts';
 import { pointer } from './uri';
 import { Validator, type Failure, type Params, type SchemaIssue } from './validator';
 
@@ -289,5 +289,3 @@ function schemaKeyLoc(text: string, lines: Lines, at: JNode): Loc {
   }
   return lines.loc(at.s, at.t >= ARR ? at.s + 1 : Math.max(at.e, at.s + 1));
 }
-
-export const draftName = (d: Draft) => DRAFT_NAME[d];

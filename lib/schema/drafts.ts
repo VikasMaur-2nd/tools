@@ -3,17 +3,7 @@
 /** draft-04, draft-06, draft-07, 2019-09, 2020-12, by number (ordered: a later draft is a bigger number). */
 export type Draft = 4 | 6 | 7 | 2019 | 2020;
 
-export const DRAFTS: readonly Draft[] = [2020, 2019, 7, 6, 4];
-
 export const DRAFT_NAME: Record<Draft, string> = { 4: 'draft-04', 6: 'draft-06', 7: 'draft-07', 2019: '2019-09', 2020: '2020-12' };
-
-export const DRAFT_URI: Record<Draft, string> = {
-  4: 'http://json-schema.org/draft-04/schema#',
-  6: 'http://json-schema.org/draft-06/schema#',
-  7: 'http://json-schema.org/draft-07/schema#',
-  2019: 'https://json-schema.org/draft/2019-09/schema',
-  2020: 'https://json-schema.org/draft/2020-12/schema',
-};
 
 /** The draft a `$schema` value names (null: none of these; 3: draft-03, which isn't supported). */
 export function draftOf(uri: string): Draft | 3 | null {

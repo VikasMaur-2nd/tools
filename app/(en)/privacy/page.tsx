@@ -120,10 +120,11 @@ export default function PrivacyPage() {
         <ul>
           <li>Parsing, formatting, converting, comparing and downloads run in your browser. Opening a file reads it locally; nothing is uploaded.</li>
           <li>
-            Your last document, the second document in Compare and your settings are kept in this browser’s local storage, so they are still there when
-            you come back. Clearing the site’s data removes them.
+            Your last document, the second document in Compare, the schema in the Schema view and your settings are kept in this browser’s local
+            storage, so they are still there when you come back. Clearing the site’s data removes them.
           </li>
           <li>Load from URL, and a link that names a URL, fetch it straight from your browser. That server sees the request; we don’t.</li>
+          <li>The Schema view validates in your browser and never fetches a URL: a $ref to a remote schema is reported as unresolved, not downloaded.</li>
           <li>
             A share link, or a <Link href="/integrate">View in Tool Kumar</Link> link, carries the document in the part after{' '}
             <code>#</code>. Browsers never send that part to a server, and our analytics remove it.
