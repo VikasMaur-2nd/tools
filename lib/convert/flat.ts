@@ -575,17 +575,20 @@ class Unflattener {
   private write(root: Box, pad: string): string {
     if (!root.keys.length) return '{}';
     let out = '';
+    // The open boxes: their items, keys (null for an array), next item, and indents (their own, their items').
     const slots: (Box | JNode | null)[][] = [];
     const names: (string[] | null)[] = [];
     const at: number[] = [];
     const pads: string[] = [];
+    const inners: string[] = [];
     const open = (b: Box, p: string) => {
       const [s, k] = this.layout(b);
       slots.push(s);
       names.push(k);
       at.push(0);
       pads.push(p);
-      out += k ? '{' : '[';
+      inners.push(p + '  ');
+      out += k ? '{\n' : '[\n';
     };
     open(root, pad);
     while (slots.length) {
@@ -599,10 +602,13 @@ class Unflattener {
         names.pop();
         at.pop();
         pads.pop();
+        inners.pop();
         continue;
       }
-      const inner = pads[d] + '  ';
-      out += (i ? ',\n' : '\n') + inner + (keys ? quote(keys[i]) + ': ' : '');
+      const inner = inners[d];
+      if (i) out += ',\n';
+      out += inner;
+      if (keys) out += quote(keys[i]) + ': ';
       const v = list[i];
       if (v === null) out += 'null';
       else if (v instanceof Box) open(v, inner);

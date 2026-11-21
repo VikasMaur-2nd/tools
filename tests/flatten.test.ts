@@ -5,6 +5,7 @@ import { stringify } from '../lib/json/format';
 import { FLAT_DEFAULTS, flatOptions, flatten, pathParts, unflatten, validSep, type FlatArrays, type FlatOptions, type Part } from '../lib/convert/flat';
 import { convert } from '../lib/convert';
 import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
+import { cpuNow } from './timing';
 
 /*
  * Flatten and unflatten (lib/convert/flat.ts): golden outputs, every edge case the module comment defines, an
@@ -684,7 +685,7 @@ test('fuzz: unflatten of random flat keys matches the reference (results, confli
 
 // ── Speed ────────────────────────────────────────────────────────────────────
 
-test('speed: a 5 MB document flattens and unflattens in well under a second each', () => {
+test('speed: a 5 MB document flattens and unflattens within 3 s of CPU time each', () => {
   const r = mulberry32(42);
   const rec = (i: number) => `{"id":${9007199254740000 + i},"name":"user ${i}","active":${i % 2 === 0},"profile":{"city":"City ${i % 97}","zip":"${10000 + i}","geo":{"lat":${(r() * 180 - 90).toFixed(6)},"lng":${(r() * 360 - 180).toFixed(6)}}},"tags":["t${i % 7}","t${i % 11}"],"orders":[{"sku":"S${i}","qty":${i % 5},"price":${(r() * 100).toFixed(2)}}],"meta":{}}`;
   const items: string[] = [];
@@ -696,17 +697,19 @@ test('speed: a 5 MB document flattens and unflattens in well under a second each
   }
   const text = `{"data":[${items.join(',')}],"total":${items.length}}`;
   const x = doc(text);
-  const t0 = performance.now();
+  // (CPU time, not the clock: see ./timing.ts.)
+  const [w0, c0] = [performance.now(), cpuNow()];
   const f = flatten(x);
-  const t1 = performance.now();
+  const [w1, c1] = [performance.now(), cpuNow()];
   const fx = doc(f.text);
-  const t2 = performance.now();
+  const [w2, c2] = [performance.now(), cpuNow()];
   const u = unflatten(fx);
-  const t3 = performance.now();
-  console.log(`speed: ${(text.length / 1e6).toFixed(1)} MB, ${items.length} records: flatten ${Math.round(t1 - t0)} ms (${(f.text.length / 1e6).toFixed(1)} MB out), unflatten ${Math.round(t3 - t2)} ms`);
+  const [w3, c3] = [performance.now(), cpuNow()];
+  console.log(`speed: ${(text.length / 1e6).toFixed(1)} MB, ${items.length} records: flatten ${Math.round(w1 - w0)} ms (${Math.round(c1 - c0)} ms CPU, ${(f.text.length / 1e6).toFixed(1)} MB out), unflatten ${Math.round(w3 - w2)} ms (${Math.round(c3 - c2)} ms CPU)`);
   assert.equal(f.note, '');
   assert.equal(canon(u.text), canon(text));
-  // Generous bounds for a shared, busy machine: about 10× what an idle laptop takes.
-  assert.ok(t1 - t0 < 1500, `flatten took ${t1 - t0} ms`);
-  assert.ok(t3 - t2 < 1500, `unflatten took ${t3 - t2} ms`);
+  // (Measured on a busy 4-core host: about 0.5 s and 1.0–1.4 s, garbage collection included. A slip to quadratic
+  // work over the 450,000 keys would take minutes.)
+  assert.ok(c1 - c0 < 3000, `flatten took ${c1 - c0} ms of CPU time`);
+  assert.ok(c3 - c2 < 3000, `unflatten took ${c3 - c2} ms of CPU time`);
 });
