@@ -28,6 +28,9 @@
  * are errors that name both keys: nothing is ever dropped. Output is built as text, never as JavaScript objects,
  * so keys such as "__proto__" are just keys.
  *
+ * JSON Lines (a parse with `multi`: a .jsonl or .ndjson file, or several values on their lines) goes out as JSON
+ * Lines, a compact record a line, so that it reads back as the same records (`lines`).
+ *
  * Both run in steps (flattenSteps, unflattenSteps: generators that yield every 1,024 items or so), so the page
  * can convert a big document in short slices between keystrokes (lib/convert/index.ts convert, with `live`).
  *
@@ -96,6 +99,15 @@ const failed = (error: string): FlatResult => ({ text: '', note: '', warn: false
 export type Steps<T> = Generator<void, T, void>;
 /** Steps yield every this many items (a mask: 1,024). */
 const EVERY = 1023;
+/** How output is laid out: pretty (two spaces), or compact for JSON Lines (a record a line, see `lines`). */
+interface Layout {
+  nl: string;
+  ind: string;
+  colon: string;
+}
+const PRETTY: Layout = { nl: '\n', ind: '  ', colon: ': ' };
+const COMPACT: Layout = { nl: '', ind: '', colon: ':' };
+
 /** One conversion's count of items done, shared by all its parts so that small parts add up to a step. */
 interface Work {
   n: number;
@@ -129,11 +141,11 @@ function valueText(n: JNode, pad: string): string {
  * under an empty top-level key, a flat key's value) can be as big as the document. lib/json/format.ts
  * stringifyNodes' walk, indented by two spaces from `pad`.
  */
-function* valueSteps(n: JNode, pad: string, work: Work): Steps<string> {
+function* valueSteps(n: JNode, pad: string, work: Work, { nl, ind, colon }: Layout): Steps<string> {
   let out = '';
   const pads = [pad];
   const padAt = (d: number) => {
-    while (pads.length <= d) pads.push(pads[pads.length - 1] + '  ');
+    while (pads.length <= d) pads.push(pads[pads.length - 1] + ind);
     return pads[d];
   };
   // The open containers: their items, whether they are objects, the item being written.
@@ -148,7 +160,7 @@ function* valueSteps(n: JNode, pad: string, work: Work): Steps<string> {
     if (!list?.length) out += valueText(node, '');
     else {
       const obj = node.t === OBJ;
-      out += (obj ? '{\n' : '[\n') + padAt(lists.length + 1) + (obj ? quote(list[0].key as string) + ': ' : '');
+      out += (obj ? '{' : '[') + nl + padAt(lists.length + 1) + (obj ? quote(list[0].key as string) + colon : '');
       lists.push(list);
       objs.push(obj);
       at.push(0);
@@ -162,13 +174,13 @@ function* valueSteps(n: JNode, pad: string, work: Work): Steps<string> {
       const list = lists[d - 1];
       const i = ++at[d - 1];
       if (i < list.length) {
-        out += ',\n' + padAt(d) + (objs[d - 1] ? quote(list[i].key as string) + ': ' : '');
+        out += ',' + nl + padAt(d) + (objs[d - 1] ? quote(list[i].key as string) + colon : '');
         node = list[i];
         break;
       }
       lists.pop();
       at.pop();
-      out += '\n' + padAt(d - 1) + (objs.pop() ? '}' : ']');
+      out += nl + padAt(d - 1) + (objs.pop() ? '}' : ']');
     }
   }
 }
@@ -265,15 +277,25 @@ function reader(o: FlatOptions): (p: string) => Part[] {
 // ── Flatten ──────────────────────────────────────────────────────────────────
 
 /** Nested JSON to flat JSON (see the module comment). */
-export const flatten = (root: JNode, opts?: Partial<FlatOptions>): FlatResult => finish(flattenSteps(root, opts));
+export const flatten = (root: JNode, opts?: Partial<FlatOptions>, lines = false): FlatResult => finish(flattenSteps(root, opts, lines));
 
-/** flatten, in steps. */
-export function* flattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps<FlatResult> {
-  const f = new Flattener(flatOptions(opts));
+/**
+ * flatten, in steps. `lines`: the document is JSON Lines (its parse's `multi`), so the records go out as JSON Lines
+ * too, one compact record a line, each line ending in a line feed: they read back as the same records.
+ */
+export function* flattenSteps(root: JNode, opts?: Partial<FlatOptions>, lines = false): Steps<FlatResult> {
+  const items = root.t === ARR ? kids(root) : null;
+  const f = new Flattener(flatOptions(opts), lines && !!items?.length ? COMPACT : PRETTY);
   try {
     let text: string;
-    const items = root.t === ARR ? kids(root) : null;
-    if (items?.length) {
+    if (items?.length && f.fmt === COMPACT) {
+      text = '';
+      for (let i = 0; i < items.length; i++) {
+        if (!(++f.n & EVERY)) yield;
+        text += (yield* f.one(items[i], '')) + '\n';
+        if (text.length > MAX_TEXT) throw tooLong();
+      }
+    } else if (items?.length) {
       // A list of records, as CSV rows are: each item flattened on its own.
       text = '[';
       for (let i = 0; i < items.length; i++) {
@@ -316,8 +338,12 @@ class Flattener {
    */
   private sim: Unflattener | null = null;
 
-  constructor(o: FlatOptions) {
+  /** How the flat objects are written. */
+  readonly fmt: Layout;
+
+  constructor(o: FlatOptions, fmt: Layout = PRETTY) {
     this.o = o;
+    this.fmt = fmt;
     this.bracket = o.arrays === 'bracket';
     this.dot = o.arrays === 'dot';
     this.keep = o.arrays === 'keep';
@@ -401,10 +427,11 @@ class Flattener {
   /** One flat object of `root` (an object or array), or `root` itself when it has nothing to flatten. */
   *one(root: JNode, pad: string): Steps<string> {
     if (root.t < ARR) return valueText(root, pad);
-    if (!kids(root).length || (this.keep && root.t === ARR)) return yield* valueSteps(root, pad, this);
+    if (!kids(root).length || (this.keep && root.t === ARR)) return yield* valueSteps(root, pad, this, this.fmt);
     const { sep, depth, escape } = this.o;
     const { bracket, keep, read } = this;
-    const inner = pad + '  ';
+    const { nl, colon } = this.fmt;
+    const inner = pad + this.fmt.ind;
     let out = '{';
     let first = true;
     // The open containers: their items, whether they are objects, the item next, their path, whether their keys
@@ -463,7 +490,7 @@ class Flattener {
       }
       if ((bad[d] || (read && !this.same(read(path), parts![d], c.key as Part))) && !this.unsafe++) this.example = path;
       entries?.push({ path, parts: [...parts![d], c.key as Part], leaf: c });
-      out += (first ? '\n' : ',\n') + inner + quote(path) + ': ' + (c.t < ARR ? valueText(c, inner) : yield* valueSteps(c, inner, this));
+      out += (first ? nl : ',' + nl) + inner + quote(path) + colon + (c.t < ARR ? valueText(c, inner) : yield* valueSteps(c, inner, this, this.fmt));
       first = false;
       if (out.length > MAX_TEXT) throw tooLong();
     }
@@ -474,7 +501,7 @@ class Flattener {
       this.unsafe = before + m.count;
       if (!before) this.example = m.first;
     }
-    return first ? '{}' : out + '\n' + pad + '}';
+    return first ? '{}' : out + nl + pad + '}';
   }
 
   /**
@@ -589,21 +616,30 @@ const INSIDE = 'Keys {a} and {b} conflict: one holds a value, the other goes ins
 const KIND = 'Keys {a} and {b} conflict: one makes an array, the other an object';
 
 /** Flat JSON to nested JSON (see the module comment). */
-export const unflatten = (root: JNode, opts?: Partial<FlatOptions>): FlatResult => finish(unflattenSteps(root, opts));
+export const unflatten = (root: JNode, opts?: Partial<FlatOptions>, lines = false): FlatResult => finish(unflattenSteps(root, opts, lines));
 
 /** unflatten, in steps. */
-export function* unflattenSteps(root: JNode, opts?: Partial<FlatOptions>): Steps<FlatResult> {
-  const u = new Unflattener(flatOptions(opts));
+export function* unflattenSteps(root: JNode, opts?: Partial<FlatOptions>, lines = false): Steps<FlatResult> {
+  const items = root.t === ARR ? kids(root) : null;
+  const u = new Unflattener(flatOptions(opts), lines && !!items?.length ? COMPACT : PRETTY);
   try {
     let text: string;
-    const items = root.t === ARR ? kids(root) : null;
-    if (items?.length) {
+    if (items?.length && u.fmt === COMPACT) {
+      // JSON Lines: a record a line (see flattenSteps).
+      text = '';
+      for (let i = 0; i < items.length; i++) {
+        if (!(++u.n & EVERY)) yield;
+        const it = items[i];
+        text += (it.t === OBJ ? yield* u.one(it, '') : it.t < ARR ? valueText(it, '') : yield* valueSteps(it, '', u, COMPACT)) + '\n';
+        if (text.length > MAX_TEXT) throw tooLong();
+      }
+    } else if (items?.length) {
       // A list of flat records, as CSV rows with dotted columns give: each item unflattened on its own.
       text = '[';
       for (let i = 0; i < items.length; i++) {
         if (!(++u.n & EVERY)) yield;
         const it = items[i];
-        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? yield* u.one(it, '  ') : it.t < ARR ? valueText(it, '  ') : yield* valueSteps(it, '  ', u));
+        text += (i ? ',\n  ' : '\n  ') + (it.t === OBJ ? yield* u.one(it, '  ') : it.t < ARR ? valueText(it, '  ') : yield* valueSteps(it, '  ', u, PRETTY));
         if (text.length > MAX_TEXT) throw tooLong();
       }
       text += '\n]';
@@ -636,10 +672,14 @@ class Unflattener {
   /** Items done, for yielding now and then. */
   n = 0;
 
-  constructor(o: FlatOptions) {
+  /** How the nested JSON is written. */
+  readonly fmt: Layout;
+
+  constructor(o: FlatOptions, fmt: Layout = PRETTY) {
     this.bracket = o.arrays === 'bracket';
     this.dot = o.arrays === 'dot';
     this.read = reader(o);
+    this.fmt = fmt;
   }
 
   *one(obj: JNode, pad: string): Steps<string> {
@@ -750,6 +790,7 @@ class Unflattener {
 
   private *write(root: Box, pad: string): Steps<string> {
     if (!root.keys.length) return '{}';
+    const { nl, ind, colon } = this.fmt;
     let out = '';
     // The open boxes: their items, keys (null for an array), next item, and indents (their own, their items').
     const slots: (Box | JNode | null)[][] = [];
@@ -767,8 +808,8 @@ class Unflattener {
         names.push(k);
         at.push(0);
         pads.push(nextPad);
-        inners.push(nextPad + '  ');
-        out += k ? '{\n' : '[\n';
+        inners.push(nextPad + ind);
+        out += (k ? '{' : '[') + nl;
         next = null;
       }
       if (!(++this.n & EVERY)) yield;
@@ -777,7 +818,7 @@ class Unflattener {
       const list = slots[d];
       const keys = names[d];
       if (i === list.length) {
-        out += '\n' + pads[d] + (keys ? '}' : ']');
+        out += nl + pads[d] + (keys ? '}' : ']');
         slots.pop();
         names.pop();
         at.pop();
@@ -786,15 +827,15 @@ class Unflattener {
         continue;
       }
       const inner = inners[d];
-      if (i) out += ',\n';
+      if (i) out += ',' + nl;
       out += inner;
-      if (keys) out += quote(keys[i]) + ': ';
+      if (keys) out += quote(keys[i]) + colon;
       const v = list[i];
       if (v === null) out += 'null';
       else if (v instanceof Box) {
         next = v;
         nextPad = inner;
-      } else out += v.t < ARR ? valueText(v, inner) : yield* valueSteps(v, inner, this);
+      } else out += v.t < ARR ? valueText(v, inner) : yield* valueSteps(v, inner, this, this.fmt);
       if (out.length > MAX_TEXT) throw tooLong();
     }
     return out;

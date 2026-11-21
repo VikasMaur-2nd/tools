@@ -35,8 +35,8 @@ const EMIT: Record<string, Emitter> = {
   xml: (r, o) => toXML(r, o.rootName),
   toml: (r, o) => toTOML(r, o.rootName),
   jsonl: toJSONL,
-  flatten: (r, o) => flat(flatten(r, o.flat), o),
-  unflatten: (r, o) => flat(unflatten(r, o.flat), o),
+  flatten: (r, o) => flat(flatten(r, o.flat, o.lines), o),
+  unflatten: (r, o) => flat(unflatten(r, o.flat, o.lines), o),
 };
 
 /** Flatten and unflatten say more than their output (a note, or an error instead of it): handed to `o.report`. */
@@ -66,7 +66,7 @@ type Sliced = ConvertOptions & { live: () => boolean };
 
 /** Flatten and unflatten in slices of about 8 ms with the page free in between; '' once not `live` any more. */
 async function sliced(root: JNode, target: string, opts: Sliced): Promise<string> {
-  const steps = (target === 'flatten' ? flattenSteps : unflattenSteps)(root, opts.flat);
+  const steps = (target === 'flatten' ? flattenSteps : unflattenSteps)(root, opts.flat, opts.lines);
   let until = performance.now() + SLICE;
   for (;;) {
     const r = steps.next();
