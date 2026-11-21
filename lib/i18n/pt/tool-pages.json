@@ -2031,7 +2031,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "8207f964042c",
+    "hash": "7cbc4507eca7",
     "title": "Validador de JSON Schema: valide JSON online",
     "description": "Valide JSON com um JSON Schema: drafts 2020-12, 2019-09, 07, 06 e 04. Veja cada erro com linha, caminho e regra. Nada é enviado.",
     "heading": "Validador de JSON Schema",
@@ -2076,7 +2076,7 @@
       },
       {
         "question": "Números grandes e decimais são verificados de forma exata?",
-        "answer": "Sim. O documento e o schema são lidos sem converter os números para ponto flutuante, então 19.99 é múltiplo de 0.01, inteiros maiores que 2^53 mantêm todos os dígitos para minimum e maximum, e 1e308 é comparado como está escrito. 1.0 conta como inteiro a partir do draft-06, como diz a especificação."
+        "answer": "Sim. O documento e o schema são lidos sem converter os números para ponto flutuante, então 19.99 é múltiplo de 0.01, inteiros maiores que 2^53 mantêm todos os dígitos para minimum e maximum, e expoentes de qualquer tamanho, como em 1e400, são comparados como estão escritos. 1.0 conta como inteiro a partir do draft-06, como diz a especificação. Só um caso não é calculado: multipleOf quando os expoentes dos dois números diferem por um número com mais de 30.000 dígitos. Ele aparece entre os problemas do schema, e o documento mostra Verificação incompleta."
       }
     ],
     "sections": [
@@ -2094,7 +2094,7 @@
         "heading": "Referências, schemas remotos e privacidade",
         "paragraphs": [
           "$ref resolve JSON Pointers como #/$defs/address, âncoras como #address e outros recursos incorporados no mesmo schema pelo $id, inclusive com URIs relativas. Um loop que aplica de novo o mesmo schema ao mesmo valor é informado, em vez de travar a página.",
-          "Referências remotas nunca são baixadas: um $ref para uma URL que não é um recurso deste schema aparece como não resolvido, e essa parte do documento não é verificada. Para usar esse schema, adicione-o em $defs com o seu $id; as referências a essa URL passam a ser resolvidas localmente. Os metaschemas oficiais também não são carregados: o próprio validador verifica o valor de cada palavra-chave que conhece."
+          "Referências remotas nunca são baixadas: um $ref para uma URL que não é um recurso deste schema aparece como não resolvido, e essa parte do documento não é verificada, então um documento sem outros erros mostra Verificação incompleta em vez de Válido. O mesmo vale para uma palavra-chave com valor inválido. Para usar esse schema, adicione-o em $defs com o seu $id; as referências a essa URL passam a ser resolvidas localmente. Os metaschemas oficiais também não são carregados: o próprio validador verifica o valor de cada palavra-chave que conhece."
         ]
       },
       {

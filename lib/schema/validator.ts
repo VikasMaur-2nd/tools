@@ -66,6 +66,16 @@ const ANCHOR = /^[A-Za-z_][A-Za-z0-9._-]*$/;
 /** Other drafts' keywords not worth a notice: annotations, and `$defs` (references into it work by JSON Pointer in any draft). */
 const QUIET = new Set(['definitions', 'dependencies', '$comment', 'examples', 'readOnly', 'writeOnly', 'deprecated', 'contentMediaType', 'contentEncoding', '$defs']);
 const MAX_DEPTH = 6000;
+/** Schema problems that leave part of a schema unapplied (the others are warnings, or are reported where they bite). */
+const BLOCKING = new Set(['badValue', 'badRegex', 'unresolved', 'refNotSchema', 'itemsArray2020']);
+/** Keywords that apply to one kind of value only: a broken one doesn't make other kinds' validation incomplete. */
+const ONLY: Record<string, Kind> = {
+  minLength: STR, maxLength: STR, pattern: STR, format: STR,
+  multipleOf: NUM, maximum: NUM, minimum: NUM, exclusiveMaximum: NUM, exclusiveMinimum: NUM,
+  items: ARR, prefixItems: ARR, additionalItems: ARR, contains: ARR, minItems: ARR, maxItems: ARR, uniqueItems: ARR, minContains: ARR, maxContains: ARR, unevaluatedItems: ARR,
+  properties: OBJ, patternProperties: OBJ, additionalProperties: OBJ, required: OBJ, dependentRequired: OBJ, dependentSchemas: OBJ, dependencies: OBJ, minProperties: OBJ, maxProperties: OBJ, propertyNames: OBJ, unevaluatedProperties: OBJ,
+} as Record<string, Kind>;
+const applies = (kw: string, t: Kind) => ONLY[kw] === undefined || ONLY[kw] === t;
 /** Errors kept per anyOf / oneOf branch to pick the closest one and show its errors. */
 const BRANCH_ERRORS = 20;
 
@@ -153,6 +163,8 @@ interface S {
   else?: S;
   /** Cycle detection: the instances this schema is being applied to through a reference right now. */
   active?: JNode[];
+  /** Problems that stop one of its keywords (`kw`, '' for all of it) from being applied: validating there is incomplete. */
+  blocked?: { issue: SchemaIssue; kw: string }[];
 }
 
 /** What a schema and its in-place subschemas evaluated of an instance (for the unevaluated* keywords). */
@@ -286,6 +298,8 @@ export class Validator {
   /** Some schema uses unevaluatedProperties / unevaluatedItems: annotations are tracked. */
   private needAnn = false;
   private pending: S[] = [];
+  /** The schema whose keywords are being read (its blocking problems are kept with it). */
+  private filling: S | null = null;
   private rootRes: Resource;
 
   constructor(schema: JNode, opts: CompileOptions = {}) {
@@ -333,8 +347,12 @@ export class Validator {
     return { draft, vocab };
   }
 
-  private issue(code: string, params: Params, at: JNode | null, kw: string, warn = false) {
-    this.issues.push({ code, params, at, kw, warn });
+  private issue(code: string, params: Params, at: JNode | null, kw: string, warn = false): SchemaIssue {
+    const i: SchemaIssue = { code, params, at, kw, warn };
+    this.issues.push(i);
+    // (A keyword that can't be applied, met while reading a schema: validating there can't be complete.)
+    if (!warn && this.filling && BLOCKING.has(code)) (this.filling.blocked ??= []).push({ issue: i, kw });
+    return i;
   }
 
   private newResource(uri: string, root: JNode, draft: Draft): Resource {
@@ -361,7 +379,8 @@ export class Validator {
     if (id && id.t === STR && !refSibling) {
       const raw = id.v as string;
       if (draft <= 7 && raw.startsWith('#')) {
-        if (ANCHOR.test(raw.slice(1))) res.anchors.set(raw.slice(1), node);
+        const name = decodeFragment(raw.slice(1)) ?? '';
+        if (ANCHOR.test(name)) res.anchors.set(name, node);
       } else {
         const [uri, frag] = splitFragment(resolveUri(parent.uri, raw));
         if (frag && draft >= 2019) this.issue('idFragment', { id: raw }, id, idKw, true);
@@ -379,7 +398,8 @@ export class Validator {
           } else res = this.newResource(key, node, draft);
           ptr = '';
         }
-        if (frag && draft <= 7 && ANCHOR.test(frag)) res.anchors.set(frag, node);
+        const name = decodeFragment(frag) ?? '';
+        if (name && draft <= 7 && ANCHOR.test(name)) res.anchors.set(name, node);
       }
     }
     if (draft >= 2019) {
@@ -447,7 +467,7 @@ export class Validator {
       return s;
     }
     if (node.t !== OBJ) {
-      this.issue('notSchema', { type: KIND_NAME[node.t] }, node, '');
+      s.blocked = [{ issue: this.issue('notSchema', { type: KIND_NAME[node.t] }, node, ''), kw: '' }];
       s.bool = true;
       return s;
     }
@@ -462,7 +482,15 @@ export class Validator {
   }
 
   private drain() {
-    while (this.pending.length) this.fill(this.pending.pop()!);
+    while (this.pending.length) {
+      const s = this.pending.pop()!;
+      this.filling = s;
+      try {
+        this.fill(s);
+      } finally {
+        this.filling = null;
+      }
+    }
   }
 
   /** A subschema keyword's value, compiled (or an issue when it isn't a schema). */
@@ -563,7 +591,8 @@ export class Validator {
         if (dr.t !== STR) this.bad('$dynamicRef', 'string', dr);
         else {
           const target = this.resolve(s, dr.v as string, dr, '$dynamicRef');
-          const frag = splitFragment(dr.v as string)[1];
+          // (The fragment as resolution reads it, percent-decoded: #%6Eode names the dynamic anchor "node" too.)
+          const frag = decodeFragment(splitFragment(dr.v as string)[1]) ?? '';
           const anchor = frag && ANCHOR.test(frag) && target && target.node.t === OBJ && (member(target.node, '$dynamicAnchor')?.v as string | undefined) === frag ? frag : null;
           s.dynRef = { raw: dr.v as string, target, at: dr, anchor };
         }
@@ -867,6 +896,11 @@ export class Validator {
   }
 
   // ── validation ──────────────────────────────────────────────────────────
+  //
+  // A part of the schema that can't be applied (an unresolved $ref, a keyword with a broken value, a $ref loop)
+  // is skipped as if it passed, and `unk` notes it: the result can't then be "valid", only "not fully checked".
+  // Where a pass decides against the instance (not, if, oneOf, contains counts, unevaluated*), a pass that met such
+  // a part is no evidence either way: it fails nothing and leaves the result incomplete. A failure is always real.
 
   private errs: Failure[] = [];
   /** The list validate() returns (errors past its cap are counted). */
@@ -881,13 +915,23 @@ export class Validator {
   private depth = 0;
   /** Synthetic string nodes for property names (propertyNames): name node → its member. */
   private keyNodes = new WeakMap<JNode, JNode>();
-  private loops = new Set<S>();
+  /** A $ref loop's problem, by the schema it loops on (reported once). */
+  private loops = new Map<S, SchemaIssue>();
+  /** multipleOf values too far in scale from a number to work out, by schema (reported once). */
+  private ranges = new Map<S, SchemaIssue>();
+  /** The evaluation in progress met a part of the schema it couldn't apply. */
+  private unk = false;
+  /** The blocking problems met while validating (what "not fully checked" is about). */
+  private reached = new Set<SchemaIssue>();
+  /** Big objects' members by name (last wins), made once per validation: `required` on 20,000 keys stays linear. */
+  private byName = new WeakMap<JNode, Map<string, JNode>>();
 
   /**
-   * Validates `inst`. Returns the errors (at most `max` kept, `total` counting all) and whether it is valid.
-   * Throws a RangeError for an instance nested too deeply.
+   * Validates `inst`. Returns the errors (at most `max` kept, `total` counting all), whether it is valid, and whether
+   * the check was complete (`reached`: the schema problems that left part of it unapplied). Throws a RangeError for
+   * an instance nested too deeply.
    */
-  validate(inst: JNode, max = 1000): { valid: boolean; errors: Failure[]; total: number } {
+  validate(inst: JNode, max = 1000): { valid: boolean; complete: boolean; reached: SchemaIssue[]; errors: Failure[]; total: number } {
     this.errs = this.main = [];
     this.cap = max;
     this.collect = true;
@@ -895,13 +939,47 @@ export class Validator {
     this.kp = [];
     this.scope = [];
     this.depth = 0;
+    this.unk = false;
+    this.reached = new Set();
+    this.byName = new WeakMap();
     const valid = this.ev(this.root, inst, this.needAnn ? new Ann() : null);
     const errors = this.errs;
     this.errs = [];
-    return { valid, errors, total: errors.length + this.overflow };
+    return { valid, complete: !this.unk, reached: [...this.reached], errors, total: errors.length + this.overflow };
   }
 
-  private fail(code: string, params: Params, inst: JNode, kw: string, at: JNode | null | undefined, extra?: { key?: boolean; sub?: Failure[] }) {
+  /** Member `key` of instance object `obj` (last wins): a scan for small objects, a map made once for big ones. */
+  private get(obj: JNode, key: string): JNode | undefined {
+    const all = kids(obj);
+    if (all.length <= 16) return member(obj, key);
+    let map = this.byName.get(obj);
+    if (!map) {
+      map = new Map();
+      for (const m of all) map.set(m.key as string, m);
+      this.byName.set(obj, map);
+    }
+    return map.get(key);
+  }
+
+  private skip(issue?: SchemaIssue) {
+    this.unk = true;
+    if (issue) this.reached.add(issue);
+  }
+
+  /** Runs `f` with an unknown flag of its own: its result, and whether it met a part it couldn't apply (the outer flag stays as it was). */
+  private alone<T>(f: () => T): [T, boolean] {
+    const was = this.unk;
+    this.unk = false;
+    try {
+      const r = f();
+      return [r, this.unk];
+    } finally {
+      this.unk = was;
+    }
+  }
+
+  /** `here`: the error is about the schema at the keyword path itself (a false subschema), not a keyword in it. */
+  private fail(code: string, params: Params, inst: JNode, kw: string, at: JNode | null | undefined, extra?: { key?: boolean; sub?: Failure[]; here?: boolean }) {
     if (!this.collect) return;
     if (this.errs.length >= this.cap) {
       if (this.errs === this.main) this.overflow++;
@@ -915,7 +993,7 @@ export class Validator {
       inst: keyOf ?? inst,
       key: !!keyOf || !!extra?.key,
       kw,
-      path: pointer(kw ? [...this.kp, kw] : this.kp),
+      path: pointer(kw && !extra?.here ? [...this.kp, kw] : this.kp),
       at: at ?? null,
       ...(extra?.sub && { sub: extra.sub }),
     });
@@ -949,28 +1027,34 @@ export class Validator {
     }
   }
 
-  /** Applies `s` (pushing `token`s onto the keyword path) and merges its annotations into `ann` when it passes (or when collecting). */
-  private apply(s: S, inst: JNode, ann: Ann | null, tokens: (string | number)[], merge: 'pass' | 'always' = 'always'): boolean {
+  /** Applies `s` (pushing `token`s onto the keyword path); its annotations join `ann` only when it passes. */
+  private apply(s: S, inst: JNode, ann: Ann | null, tokens: (string | number)[]): boolean {
     for (const t of tokens) this.kp.push(t);
     // (Every evaluation has its own annotations when they are tracked: its unevaluated* keywords read them.)
     const child = this.needAnn ? new Ann() : null;
     const ok = this.ev(s, inst, child);
-    if (ann && child && (ok || (merge === 'always' && this.collect))) ann.merge(child);
+    if (ann && child && ok) ann.merge(child);
     this.kp.length -= tokens.length;
     return ok;
   }
 
   private ev(s: S, inst: JNode, ann: Ann | null): boolean {
     if (s.bool !== null) {
+      if (s.blocked) this.skip(s.blocked[0].issue);
       if (!s.bool) this.fail('false', {}, inst, '', s.node);
       return s.bool;
     }
     if (++this.depth > MAX_DEPTH) throw new RangeError('Maximum call stack size exceeded (schema recursion)');
     const entered = this.scope[this.scope.length - 1] !== s.res;
     if (entered) this.scope.push(s.res);
+    // (This schema's own flag: its unevaluated* keywords can't trust annotations where a part was skipped.)
+    const outer = this.unk;
+    this.unk = false;
     try {
+      if (s.blocked) for (const b of s.blocked) if (applies(b.kw, inst.t)) this.skip(b.issue);
       return this.evObject(s, inst, ann);
     } finally {
+      this.unk = outer || this.unk;
       if (entered) this.scope.pop();
       this.depth--;
     }
@@ -979,10 +1063,9 @@ export class Validator {
   private follow(ref: Ref, target: S, inst: JNode, ann: Ann | null, kw: string): boolean {
     const active = (target.active ??= []);
     if (active.includes(inst)) {
-      if (!this.loops.has(target)) {
-        this.loops.add(target);
-        this.issue('loop', { ref: ref.raw }, ref.at, kw);
-      }
+      let issue = this.loops.get(target);
+      if (!issue) this.loops.set(target, (issue = this.issue('loop', { ref: ref.raw }, ref.at, kw)));
+      this.skip(issue);
       return true;
     }
     active.push(inst);
@@ -1081,8 +1164,9 @@ export class Validator {
       if (q()) return ok;
     }
     if (s.not) {
-      const matched = this.quiet(() => this.apply(s.not!, inst, null, ['not']));
-      if (matched) {
+      const [matched, unk] = this.alone(() => this.quiet(() => this.apply(s.not!, inst, null, ['not'])));
+      if (matched && unk) this.unk = true;
+      else if (matched) {
         ok = false;
         this.fail('not', {}, inst, 'not', at('not'));
         if (q()) return ok;
@@ -1090,42 +1174,50 @@ export class Validator {
     }
     if (s.if && (s.then || s.else || ann)) {
       const ifAnn = ann ? new Ann() : null;
-      const passed = this.quiet(() => this.apply(s.if!, inst, ifAnn, ['if']));
-      if (passed && ifAnn && ann) ann.merge(ifAnn);
-      const branch = passed ? s.then : s.else;
-      if (branch && !this.apply(branch, inst, ann, [passed ? 'then' : 'else'])) {
-        ok = false;
-        if (q()) return ok;
+      const [passed, unk] = this.alone(() => this.quiet(() => this.apply(s.if!, inst, ifAnn, ['if'])));
+      // (An `if` that passed only past a skipped part may not have: which branch applies isn't known, neither is checked.)
+      if (passed && unk) this.unk = true;
+      else {
+        if (passed && ifAnn && ann) ann.merge(ifAnn);
+        const branch = passed ? s.then : s.else;
+        if (branch && !this.apply(branch, inst, ann, [passed ? 'then' : 'else'])) {
+          ok = false;
+          if (q()) return ok;
+        }
       }
     }
     if (inst.t === OBJ && s.dependentSchemas) {
       for (const dsc of s.dependentSchemas) {
-        if (member(inst, dsc.key) === undefined) continue;
+        if (this.get(inst, dsc.key) === undefined) continue;
         if (!this.apply(dsc.s, inst, ann, [dsc.kw, dsc.key])) {
           ok = false;
           if (q()) return ok;
         }
       }
     }
-    // Last: they see what everything else evaluated.
+    // Last: they see what everything else evaluated (not past a skipped part, whose annotations are missing).
     if (inst.t === OBJ && s.unevaluatedProperties && ann) {
-      for (const m of members(inst)) {
-        const k = m.key as string;
-        if (ann.allProps || ann.props?.has(k)) continue;
-        if (!this.child(s.unevaluatedProperties, m, ['unevaluatedProperties'], 'unevaluatedProperties', at('unevaluatedProperties'))) {
-          ok = false;
-          if (q()) return ok;
+      if (!this.unk) {
+        for (const m of members(inst)) {
+          const k = m.key as string;
+          if (ann.allProps || ann.props?.has(k)) continue;
+          if (!this.child(s.unevaluatedProperties, m, ['unevaluatedProperties'], 'unevaluatedProperties')) {
+            ok = false;
+            if (q()) return ok;
+          }
         }
       }
       ann.allProps = true;
     }
     if (inst.t === ARR && s.unevaluatedItems && ann) {
-      const items = kids(inst);
-      for (let i = 0; i < items.length; i++) {
-        if (ann.allItems || i < ann.items || ann.idx?.has(i)) continue;
-        if (!this.child(s.unevaluatedItems, items[i], ['unevaluatedItems'], 'unevaluatedItems', at('unevaluatedItems'), items.length)) {
-          ok = false;
-          if (q()) return ok;
+      if (!this.unk) {
+        const items = kids(inst);
+        for (let i = 0; i < items.length; i++) {
+          if (ann.allItems || i < ann.items || ann.idx?.has(i)) continue;
+          if (!this.child(s.unevaluatedItems, items[i], ['unevaluatedItems'], 'unevaluatedItems', items.length)) {
+            ok = false;
+            if (q()) return ok;
+          }
         }
       }
       ann.allItems = true;
@@ -1135,14 +1227,16 @@ export class Validator {
 
   /**
    * Applies `sub` to child value `c` of the instance. A `false` subschema gets its keyword's own message ("Property
-   * x is not allowed") instead of the generic one.
+   * x is not allowed") instead of the generic one, located at the subschema itself (/properties/x).
    */
-  private child(sub: S, c: JNode, tokens: (string | number)[], kw: string, at: JNode | undefined, len?: number): boolean {
+  private child(sub: S, c: JNode, tokens: (string | number)[], kw: string, len?: number): boolean {
     if (sub.bool === false) {
+      for (const t of tokens) this.kp.push(t);
       const isProp = typeof c.key === 'string';
-      if (kw === 'additionalProperties' || kw === 'unevaluatedProperties') this.fail(kw, { name: String(c.key) }, c, kw, at, { key: true });
-      else if (kw === 'additionalItems' || kw === 'items' || kw === 'unevaluatedItems') this.fail(kw === 'unevaluatedItems' ? kw : 'additionalItems', { index: Number(c.key), count: len ?? 0 }, c, kw, at);
-      else this.fail('false', {}, c, kw, at, { key: isProp && kw === 'propertyNames' });
+      if (kw === 'additionalProperties' || kw === 'unevaluatedProperties') this.fail(kw, { name: String(c.key) }, c, kw, sub.node, { key: true, here: true });
+      else if (kw === 'additionalItems' || kw === 'items' || kw === 'unevaluatedItems') this.fail(kw === 'unevaluatedItems' ? kw : 'additionalItems', { index: Number(c.key), count: len ?? 0 }, c, kw, sub.node, { here: true });
+      else this.fail('false', {}, c, kw, sub.node, { key: isProp && kw === 'propertyNames', here: true });
+      this.kp.length -= tokens.length;
       return false;
     }
     return this.apply(sub, c, null, tokens);
@@ -1151,7 +1245,11 @@ export class Validator {
   private evNumber(s: S, inst: JNode): boolean {
     let ok = true;
     const x = dec(inst.v as string);
-    if (!x) return true;
+    // (The parser only makes JSON numbers: never, but not a silent pass either.)
+    if (!x) {
+      this.skip();
+      return true;
+    }
     const at = (k: string) => s.kw.get(k);
     const check = (bad: boolean, code: string, limit: Dec, kw: string) => {
       if (!bad) return;
@@ -1166,9 +1264,17 @@ export class Validator {
     if (!ok && !this.collect) return ok;
     if (s.exMin) check(cmp(x, s.exMin) <= 0, 'exclusiveMinimum', s.exMin, 'exclusiveMinimum');
     if (!ok && !this.collect) return ok;
-    if (s.multipleOf && !isMultiple(x, s.multipleOf)) {
-      ok = false;
-      this.fail('multipleOf', { limit: decText(s.multipleOf), value: decText(x) }, inst, 'multipleOf', at('multipleOf'));
+    if (s.multipleOf) {
+      const m = isMultiple(x, s.multipleOf);
+      if (m === null) {
+        // (A gap of more than 10^30,000 in scale: said so, rather than passed.)
+        let issue = this.ranges.get(s);
+        if (!issue) this.ranges.set(s, (issue = this.issue('multipleOfRange', { limit: decText(s.multipleOf), value: decText(x) }, at('multipleOf') ?? null, 'multipleOf')));
+        this.skip(issue);
+      } else if (!m) {
+        ok = false;
+        this.fail('multipleOf', { limit: decText(s.multipleOf), value: decText(x) }, inst, 'multipleOf', at('multipleOf'));
+      }
     }
     return ok;
   }
@@ -1208,6 +1314,8 @@ export class Validator {
     const len = items.length;
     const at = (k: string) => s.kw.get(k);
     const q = () => !ok && !this.collect;
+    /** An item a subschema evaluated successfully (annotations come from successful applications only). */
+    const evaluated = (i: number) => ann && (ann.idx ??= new Set()).add(i);
     if (s.maxItems !== undefined && len > s.maxItems) {
       ok = false;
       this.fail('maxItems', { limit: s.maxItems, count: len }, inst, 'maxItems', at('maxItems'));
@@ -1222,25 +1330,29 @@ export class Validator {
     if (s.prefix) {
       const kw = s.draft === 2020 && s.kw.has('prefixItems') ? 'prefixItems' : 'items';
       const n = Math.min(len, s.prefix.length);
+      let all = true;
       for (let i = 0; i < n; i++) {
-        if (!this.child(s.prefix[i], items[i], [kw, i], kw, at(kw), len)) {
-          ok = false;
+        if (this.child(s.prefix[i], items[i], [kw, i], kw, len)) evaluated(i);
+        else {
+          ok = all = false;
           if (q()) return ok;
         }
       }
       done = n;
-      if (ann && n > ann.items) ann.items = n;
+      if (ann && all && n > ann.items) ann.items = n;
     }
     const rest = s.items && (s.draft === 2020 || !s.prefix) ? s.items : s.prefix && s.draft <= 2019 ? s.additionalItems : undefined;
     if (rest) {
       const kw = rest === s.items ? 'items' : 'additionalItems';
+      let all = true;
       for (let i = done; i < len; i++) {
-        if (!this.child(rest, items[i], [kw], kw, at(kw), s.prefix?.length ?? 0)) {
-          ok = false;
+        if (this.child(rest, items[i], [kw], kw, s.prefix?.length ?? 0)) evaluated(i);
+        else {
+          ok = all = false;
           if (q()) return ok;
         }
       }
-      if (ann) ann.allItems = true;
+      if (ann && all) ann.allItems = true;
     }
     if (s.uniqueItems && len > 1) {
       const seen = new Map<string, number>();
@@ -1257,32 +1369,40 @@ export class Validator {
       if (q()) return ok;
     }
     if (s.contains) {
-      let found = 0;
+      // Matches for sure, and matches only past a skipped part (which may or may not be matches).
+      let sure = 0;
+      let maybe = 0;
       const idx = ann && s.draft === 2020 ? new Set<number>() : null;
       const max = s.draft >= 2019 ? s.maxContains : undefined;
       const min = s.draft >= 2019 ? s.minContains ?? 1 : 1;
       for (let i = 0; i < len; i++) {
         const sub = ann && s.draft === 2020 ? new Ann() : null;
-        const hit = this.quiet(() => this.apply(s.contains!, items[i], sub, ['contains']));
-        if (hit) {
-          found++;
+        const [hit, unk] = this.alone(() => this.quiet(() => this.apply(s.contains!, items[i], sub, ['contains'])));
+        if (!hit) continue;
+        if (unk) maybe++;
+        else {
+          sure++;
           idx?.add(i);
-          // (Without annotations to collect, counting can stop once the answer is known.)
-          if (!idx && found >= min && max === undefined) break;
         }
+        // (Without annotations to collect, counting can stop once the answer is known.)
+        if (!idx && sure >= min && max === undefined) break;
       }
-      if (idx && ann) for (const i of idx) (ann.idx ??= new Set()).add(i);
-      if (found < min) {
-        ok = false;
+      let passed = true;
+      if (sure + maybe < min) {
+        ok = passed = false;
         if (min === 1 && !s.kw.has('minContains')) this.fail('contains', {}, inst, 'contains', at('contains'));
-        else this.fail('minContains', { limit: min, count: found }, inst, 'minContains', at('minContains') ?? at('contains'));
+        else this.fail('minContains', { limit: min, count: sure }, inst, 'minContains', at('minContains') ?? at('contains'));
         if (q()) return ok;
+      } else if (sure < min) this.unk = true;
+      if (max !== undefined) {
+        if (sure > max) {
+          ok = passed = false;
+          this.fail('maxContains', { limit: max, count: sure }, inst, 'maxContains', at('maxContains'));
+          if (q()) return ok;
+        } else if (sure + maybe > max) this.unk = true;
       }
-      if (max !== undefined && found > max) {
-        ok = false;
-        this.fail('maxContains', { limit: max, count: found }, inst, 'maxContains', at('maxContains'));
-        if (q()) return ok;
-      }
+      if (passed && idx && ann) for (const i of idx) (ann.idx ??= new Set()).add(i);
+      if (maybe && ann) this.unk = true;
     }
     return ok;
   }
@@ -1304,7 +1424,7 @@ export class Validator {
     }
     if (s.required) {
       for (const k of s.required) {
-        if (member(inst, k) !== undefined) continue;
+        if (this.get(inst, k) !== undefined) continue;
         ok = false;
         this.fail('required', { name: k }, inst, 'required', at('required'));
         if (q()) return ok;
@@ -1312,9 +1432,9 @@ export class Validator {
     }
     if (s.dependentRequired) {
       for (const dr of s.dependentRequired) {
-        if (member(inst, dr.key) === undefined) continue;
+        if (this.get(inst, dr.key) === undefined) continue;
         for (const k of dr.deps) {
-          if (member(inst, k) !== undefined) continue;
+          if (this.get(inst, k) !== undefined) continue;
           ok = false;
           this.fail('dependentRequired', { name: k, dep: dr.key }, inst, dr.kw, at(dr.kw));
           if (q()) return ok;
@@ -1326,10 +1446,11 @@ export class Validator {
         const k = m.key as string;
         let matched = false;
         const p = s.properties?.get(k);
+        // (A property counts as evaluated only where a subschema validated it.)
         if (p) {
           matched = true;
-          ann?.prop(k);
-          if (!this.child(p, m, ['properties', k], 'properties', at('properties'))) {
+          if (this.child(p, m, ['properties', k], 'properties')) ann?.prop(k);
+          else {
             ok = false;
             if (q()) return ok;
           }
@@ -1338,16 +1459,16 @@ export class Validator {
           for (const pp of s.patternProperties) {
             if (!pp.re.test(k)) continue;
             matched = true;
-            ann?.prop(k);
-            if (!this.child(pp.s, m, ['patternProperties', pp.src], 'patternProperties', at('patternProperties'))) {
+            if (this.child(pp.s, m, ['patternProperties', pp.src], 'patternProperties')) ann?.prop(k);
+            else {
               ok = false;
               if (q()) return ok;
             }
           }
         }
         if (!matched && s.additionalProperties) {
-          ann?.prop(k);
-          if (!this.child(s.additionalProperties, m, ['additionalProperties'], 'additionalProperties', at('additionalProperties'))) {
+          if (this.child(s.additionalProperties, m, ['additionalProperties'], 'additionalProperties')) ann?.prop(k);
+          else {
             ok = false;
             if (q()) return ok;
           }
@@ -1359,7 +1480,7 @@ export class Validator {
         const name = new JNode(STR, m.key as string, m.s, m.d, inst, m.key);
         name.e = m.s;
         this.keyNodes.set(name, m);
-        if (!this.child(s.propertyNames, name, ['propertyNames'], 'propertyNames', at('propertyNames'))) {
+        if (!this.child(s.propertyNames, name, ['propertyNames'], 'propertyNames')) {
           ok = false;
           if (q()) return ok;
         }
@@ -1376,48 +1497,59 @@ export class Validator {
   }
 
   private evAny(s: S, list: S[], inst: JNode, ann: Ann | null): boolean {
-    let any = false;
-    let best: { errs: Failure[]; score: number; ann: Ann | null } | null = null;
+    // A branch that passes for sure decides; one that passes only past a skipped part leaves the result open.
+    let sure = false;
+    let maybe = false;
+    let best: { errs: Failure[]; score: number } | null = null;
     for (let i = 0; i < list.length; i++) {
       const child = ann ? new Ann() : null;
-      const r = this.branch(() => this.apply(list[i], inst, child, ['anyOf', i], 'pass'));
-      if (r.ok) {
-        any = true;
+      const [r, unk] = this.alone(() => this.branch(() => this.apply(list[i], inst, child, ['anyOf', i])));
+      if (r.ok && !unk) {
+        sure = true;
         if (ann && child) ann.merge(child);
         if (!this.needAnn) break;
-      } else if (!any && r.errs) {
+      } else if (r.ok) maybe = true;
+      else if (!sure && !maybe && r.errs) {
         const score = this.score(r.errs, inst);
-        if (!best || score < best.score) best = { errs: r.errs, score, ann: child };
+        if (!best || score < best.score) best = { errs: r.errs, score };
       }
     }
-    if (any) return true;
-    if (best?.ann && ann) ann.merge(best.ann);
+    // (A maybe-branch's annotations are unknown: the unevaluated* keywords around it can't be trusted.)
+    if (maybe && (!sure || ann)) this.unk = true;
+    if (sure || maybe) return true;
     this.fail('anyOf', { count: list.length }, inst, 'anyOf', s.kw.get('anyOf'), { sub: best?.errs });
     return false;
   }
 
   private evOne(s: S, list: S[], inst: JNode, ann: Ann | null): boolean {
-    const matched: number[] = [];
+    const sure: number[] = [];
+    let maybe = 0;
     let match: Ann | null = null;
     let best: { errs: Failure[]; score: number } | null = null;
     for (let i = 0; i < list.length; i++) {
       const child = ann ? new Ann() : null;
-      const r = matched.length ? { ok: this.quiet(() => this.apply(list[i], inst, child, ['oneOf', i], 'pass')), errs: null } : this.branch(() => this.apply(list[i], inst, child, ['oneOf', i], 'pass'));
-      if (r.ok) {
-        matched.push(i);
+      const run = () => this.apply(list[i], inst, child, ['oneOf', i]);
+      const [r, unk] = this.alone(() => (sure.length || maybe ? { ok: this.quiet(run), errs: null } : this.branch(run)));
+      if (r.ok && !unk) {
+        sure.push(i);
         match = child;
-        if (matched.length > 1) break;
-      } else if (r.errs) {
+        if (sure.length > 1) break;
+      } else if (r.ok) maybe++;
+      else if (r.errs) {
         const score = this.score(r.errs, inst);
         if (!best || score < best.score) best = { errs: r.errs, score };
       }
     }
-    if (matched.length === 1) {
-      if (ann && match) ann.merge(match);
-      return true;
+    if (sure.length > 1) {
+      this.fail('oneOfMany', { a: sure[0], b: sure[1] }, inst, 'oneOf', s.kw.get('oneOf'));
+      return false;
     }
-    if (!matched.length) this.fail('oneOf', { count: list.length }, inst, 'oneOf', s.kw.get('oneOf'), { sub: best?.errs });
-    else this.fail('oneOfMany', { a: matched[0], b: matched[1] }, inst, 'oneOf', s.kw.get('oneOf'));
-    return false;
+    if (!sure.length && !maybe) {
+      this.fail('oneOf', { count: list.length }, inst, 'oneOf', s.kw.get('oneOf'), { sub: best?.errs });
+      return false;
+    }
+    if (maybe) this.unk = true;
+    else if (ann && match) ann.merge(match);
+    return true;
   }
 }

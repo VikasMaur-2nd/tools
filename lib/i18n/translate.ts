@@ -3,6 +3,7 @@
  * (through components/LocalizedTool), so English pages never pay for it.
  */
 import { EN, fill, type Forms, type Params, type T, type UiDict } from './ui';
+import type { LazyFeature } from './client-dict';
 
 /** Placeholders whose value is itself an English message (an importer error inside a toast, a token description inside a parser error). */
 const NESTED = new Set(['msg', 'error', 'token', 'target']);
@@ -46,20 +47,67 @@ const HUGE: Record<string, URL> = {
   ru: new URL('./huge/huge-strings.ru.json', import.meta.url),
 };
 
-/** A language's huge-mode strings ({} for none). */
-async function hugeStrings(lang: string | undefined): Promise<UiDict> {
-  const url = HUGE[lang?.slice(0, 2) ?? ''];
+/**
+ * The lazily loaded features' strings per language (lib/i18n/lazy/<feature>-strings.<locale>.json, from
+ * scripts/i18n-huge.mjs), fetched when the feature opens, as huge mode's are (the service worker caches the page's
+ * own language's files only).
+ */
+const LAZY: Record<LazyFeature, Record<string, URL>> = {
+  schema: {
+    es: new URL('./lazy/schema-strings.es.json', import.meta.url),
+    pt: new URL('./lazy/schema-strings.pt.json', import.meta.url),
+    de: new URL('./lazy/schema-strings.de.json', import.meta.url),
+    fr: new URL('./lazy/schema-strings.fr.json', import.meta.url),
+    ja: new URL('./lazy/schema-strings.ja.json', import.meta.url),
+    ko: new URL('./lazy/schema-strings.ko.json', import.meta.url),
+    zh: new URL('./lazy/schema-strings.zh.json', import.meta.url),
+    ru: new URL('./lazy/schema-strings.ru.json', import.meta.url),
+  },
+  flatten: {
+    es: new URL('./lazy/flatten-strings.es.json', import.meta.url),
+    pt: new URL('./lazy/flatten-strings.pt.json', import.meta.url),
+    de: new URL('./lazy/flatten-strings.de.json', import.meta.url),
+    fr: new URL('./lazy/flatten-strings.fr.json', import.meta.url),
+    ja: new URL('./lazy/flatten-strings.ja.json', import.meta.url),
+    ko: new URL('./lazy/flatten-strings.ko.json', import.meta.url),
+    zh: new URL('./lazy/flatten-strings.zh.json', import.meta.url),
+    ru: new URL('./lazy/flatten-strings.ru.json', import.meta.url),
+  },
+};
+
+/** A dictionary file ({} for none). */
+async function strings(url: URL | undefined): Promise<UiDict> {
   if (!url) return {};
   const res = await fetch(url);
-  if (!res.ok) throw new Error('huge strings');
+  if (!res.ok) throw new Error('strings');
   return (await res.json()) as UiDict;
 }
 
 export function translator(d: UiDict | null | undefined, lang?: string): T {
   if (!d) return EN;
-  // (Huge mode's strings join it when a huge file opens: `huge` below.)
+  // (Huge mode's and the lazy features' strings join it when they open: `huge` and `lazy` below.)
   let dict: UiDict = d;
-  let huge: Promise<void> | undefined;
+  const loads = new Map<string, Promise<void>>();
+  const loaded = new Set<string>();
+  const two = lang?.slice(0, 2) ?? '';
+  /** Fetches one more dictionary into this one, once (a failed fetch is tried again next time; never rejects). */
+  const more = (name: string, url: URL | undefined) => {
+    let p = loads.get(name);
+    if (!p) {
+      p = strings(url).then(
+        (add) => {
+          dict = { ...dict, ...add };
+          pats = null;
+          loaded.add(name);
+        },
+        () => {
+          loads.delete(name); // (offline, never cached: English this time, asked again next time)
+        },
+      );
+      loads.set(name, p);
+    }
+    return p;
+  };
   // Locale data is expensive on a cold phone. Labels need no number formatters.
   let nf: Intl.NumberFormat | undefined;
   let rules: Intl.PluralRules | undefined;
@@ -138,15 +186,8 @@ export function translator(d: UiDict | null | undefined, lang?: string): T {
         .join(' ');
     },
     lang,
-    huge: () =>
-      (huge ??= hugeStrings(lang).then(
-        (more) => {
-          dict = { ...dict, ...more };
-          pats = null;
-        },
-        () => {
-          huge = undefined; // (offline, never cached: English this time, asked again next time)
-        },
-      )),
+    huge: () => more('huge', HUGE[two]),
+    lazy: (f: LazyFeature) => more(f, LAZY[f][two]),
+    has: (f: LazyFeature) => loaded.has(f),
   });
 }

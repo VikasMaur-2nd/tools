@@ -37,6 +37,8 @@ export interface Problem {
   warn: boolean;
   /** In the schema text. */
   loc: Loc | null;
+  /** Validating met it: that part of the schema wasn't applied to the document (the result isn't complete). */
+  reached?: boolean;
 }
 
 export interface InstanceError {
@@ -75,7 +77,14 @@ export interface ValidateResult {
   loose?: number;
   /** JSON Lines: records validated one by one. */
   records?: number;
+  /** No errors, and every part of the schema that applies was applied. */
   valid: boolean;
+  /**
+   * Every part of the schema that applies to the document was applied. False: some couldn't be (an unresolved $ref,
+   * a keyword with a broken value: the problems marked `reached`), so a document without errors isn't `valid`, only
+   * not fully checked.
+   */
+  complete: boolean;
   errors: InstanceError[];
   /** All instance errors, including those past `max`. */
   total: number;
@@ -198,7 +207,7 @@ export function validateTexts(req: ValidateRequest): ValidateResult {
 }
 
 function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
-  const out: ValidateResult = { state: 'ok', draft: req.draft ?? 2020, draftFrom: req.draft ? 'picked' : 'default', valid: false, errors: [], total: 0, problems: [], ms: { parse: 0, compile: 0, validate: 0 } };
+  const out: ValidateResult = { state: 'ok', draft: req.draft ?? 2020, draftFrom: req.draft ? 'picked' : 'default', valid: false, complete: false, errors: [], total: 0, problems: [], ms: { parse: 0, compile: 0, validate: 0 } };
   const schemaLines = new Lines(req.schema);
   const docLines = new Lines(req.doc);
   if (!req.schema.trim()) {
@@ -221,9 +230,10 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
   const sch = sr.root.t === OBJ ? kids(sr.root).find((m) => m.key === '$schema') : undefined;
   if (sch && typeof sch.v === 'string' && draftOf(sch.v) !== null && draftOf(sch.v) !== 3) out.draftFrom = 'schema';
   // (In the order they are in the schema's text.)
+  const reached = new Set<SchemaIssue>();
   const problems = () => {
     if (sr.issues.length) out.problems.push({ code: 'schemaLoose', params: {}, kw: '', warn: true, loc: schemaLines.loc(sr.issues[0].p, sr.issues[0].p + 1) });
-    const list = v.issues.map((i: SchemaIssue) => ({ code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: i.at ? schemaKeyLoc(req.schema, schemaLines, i.at) : null }));
+    const list = v.issues.map((i: SchemaIssue): Problem => ({ code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: i.at ? schemaKeyLoc(req.schema, schemaLines, i.at) : null, ...(reached.has(i) && { reached: true }) }));
     out.problems.push(...list.sort((a, b) => (a.loc?.p ?? -1) - (b.loc?.p ?? -1)));
   };
 
@@ -246,10 +256,13 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
   const roots = dr.multi ? kids(dr.root) : [dr.root];
   if (dr.multi) out.records = roots.length;
   let valid = true;
+  let complete = true;
   try {
     for (let i = 0; i < roots.length; i++) {
       const res = v.validate(roots[i], Math.max(0, max - out.errors.length));
       if (!res.valid) valid = false;
+      if (!res.complete) complete = false;
+      for (const r of res.reached) reached.add(r);
       const conv = (f: Failure): InstanceError => ({
         code: f.code,
         params: f.params,
@@ -274,7 +287,9 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
     problems();
     return out;
   }
-  out.valid = valid;
+  // (Valid only when nothing was skipped: an unresolved $ref passes nothing.)
+  out.complete = complete;
+  out.valid = valid && complete;
   out.ms.validate = performance.now() - t3;
   // (After validating: a $ref loop is found while applying the schema.)
   problems();

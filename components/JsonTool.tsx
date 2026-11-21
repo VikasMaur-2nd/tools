@@ -787,6 +787,7 @@ function ViewerPane({
   codeRef,
   fmtRef,
   cmpRef,
+  schRef,
 }: {
   treeRef: React.RefObject<HTMLDivElement | null>;
   fmtRef: React.RefObject<HTMLDivElement | null>;
@@ -794,6 +795,7 @@ function ViewerPane({
   graphRef: React.RefObject<HTMLDivElement | null>;
   codeRef: React.RefObject<HTMLDivElement | null>;
   cmpRef: React.RefObject<HTMLDivElement | null>;
+  schRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const view = useUI((s) => s.settings.view);
   const stale = useUI((s) => s.stale);
@@ -848,7 +850,7 @@ function ViewerPane({
           {view === 'compare' && <CompareHost />}
         </div>
         {/* The Schema view's results (components/SchemaView.tsx renders into it). */}
-        <div id="view-schema" className="cmp-host" hidden={view !== 'schema'} />
+        <div id="view-schema" className="cmp-host" ref={schRef} hidden={view !== 'schema'} />
       </div>
     </section>
   );
@@ -914,11 +916,11 @@ const CompareView = dynamic(() => import('./CompareView'), {
 // (its text and undo stay while another view is open), and its results, put in the viewer with react-dom's
 // createPortal (handed over: react-dom stays in the first load's chunks).
 const SchemaView = dynamic(() => import('./SchemaView'), { ssr: false });
-function SchemaColumn() {
+function SchemaColumn({ host }: { host: React.RefObject<HTMLDivElement | null> }) {
   const on = useUI((s) => s.settings.view === 'schema');
   const [seen, setSeen] = useState(false);
   if (on && !seen) setSeen(true);
-  return seen ? <SchemaView hidden={!on} portal={createPortal} /> : null;
+  return seen ? <SchemaView hidden={!on} portal={createPortal} host={host} /> : null;
 }
 /**
  * Huge-file mode (a file too big for the editor, lib/huge): its own viewer, loaded with it only when one opens.
@@ -1248,6 +1250,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const fmtRef = useRef<HTMLDivElement>(null);
   const ed2Ref = useRef<HTMLDivElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
+  const schRef = useRef<HTMLDivElement>(null);
   const comparing = useUI((s) => s.settings.view === 'compare' || s.settings.view === 'schema');
   const empty = useUI((s) => s.empty);
 
@@ -1321,10 +1324,10 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <div className="panes">
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />
-        <SchemaColumn />
+        <SchemaColumn host={schRef} />
         <Splitter />
         <Watermark />
-        <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} />
+        <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} schRef={schRef} />
         <HugeHost />
       </div>
       <StatusBar langs={langs} />

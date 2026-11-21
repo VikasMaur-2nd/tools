@@ -18,8 +18,9 @@
  * chunks it may not need yet.
  *
  * Huge mode's dictionaries (/_next/static/media/huge-strings.<lang>.<hash>.json, named in
- * every localized page's chunk) are followed for that page's own language only: a /de
- * visit caches the German one and no other; English pages none.
+ * every localized page's chunk), and the Schema view's and Flatten's (schema-strings,
+ * flatten-strings), are followed for that page's own language only: a /de visit caches
+ * the German ones and no other; English pages none.
  *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
@@ -57,8 +58,9 @@ const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 const isStatic = (path) => path.startsWith('/_next/static/');
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
-const HUGE_STRINGS_RE = /^\/_next\/static\/media\/huge-strings\.([a-z]{2})\./;
-/** Whether `url` is huge mode's dictionary of another language than the page's (`page`, a URL): not one of its files. */
+/** Huge mode's and the lazy features' dictionaries (huge-strings, schema-strings, flatten-strings: lib/i18n/translate.ts). */
+const HUGE_STRINGS_RE = /^\/_next\/static\/media\/(?:huge|schema|flatten)-strings\.([a-z]{2})\./;
+/** Whether `url` is a dictionary (huge mode's, a lazy feature's) of another language than the page's (`page`, a URL): not one of its files. */
 const otherStrings = (url, page) => {
   const m = HUGE_STRINGS_RE.exec(new URL(url).pathname);
   return !!m && '/' + m[1] !== langHome(new URL(page).pathname);

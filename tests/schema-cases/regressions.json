@@ -1,0 +1,144 @@
+{
+    "description": "Tool Kumar's own cases in the JSON-Schema-Test-Suite format: review findings (round 1) that the official suite doesn't cover",
+    "tests": [
+        {
+            "description": "a percent-encoded $dynamicRef fragment keeps the dynamic scope",
+            "compatibility": "=2020",
+            "schema": {
+                "$id": "https://example.test/outer",
+                "$dynamicAnchor": "node",
+                "required": ["outer"],
+                "$ref": "tree",
+                "$defs": {
+                    "tree": {
+                        "$id": "https://example.test/tree",
+                        "$dynamicAnchor": "node",
+                        "properties": { "kids": { "items": { "$dynamicRef": "#%6Eode" } } }
+                    }
+                }
+            },
+            "tests": [
+                { "description": "a child missing the outer resource's required property is invalid", "data": { "outer": 1, "kids": [{}] }, "valid": false },
+                { "description": "a child with it is valid", "data": { "outer": 1, "kids": [{ "outer": 2 }] }, "valid": true }
+            ]
+        },
+        {
+            "description": "the same with the plain fragment",
+            "compatibility": "=2020",
+            "schema": {
+                "$id": "https://example.test/outer",
+                "$dynamicAnchor": "node",
+                "required": ["outer"],
+                "$ref": "tree",
+                "$defs": {
+                    "tree": {
+                        "$id": "https://example.test/tree",
+                        "$dynamicAnchor": "node",
+                        "properties": { "kids": { "items": { "$dynamicRef": "#node" } } }
+                    }
+                }
+            },
+            "tests": [
+                { "description": "a child missing the outer resource's required property is invalid", "data": { "outer": 1, "kids": [{}] }, "valid": false }
+            ]
+        },
+        {
+            "description": "a percent-encoded plain-name $id fragment names the anchor",
+            "compatibility": "6,<=7",
+            "schema": {
+                "definitions": { "a": { "$id": "#%66oo", "type": "integer" } },
+                "properties": { "x": { "$ref": "#foo" } }
+            },
+            "tests": [
+                { "description": "an integer is valid", "data": { "x": 1 }, "valid": true },
+                { "description": "a string is invalid", "data": { "x": "s" }, "valid": false }
+            ]
+        },
+        {
+            "description": "maximum with an exponent past 2^53",
+            "schema": { "maximum": 1000 },
+            "tests": [
+                { "description": "1e9007199254740992 is above 1000", "data": 1e9007199254740992, "valid": false },
+                { "description": "1e-9007199254740992 is below it", "data": 1e-9007199254740992, "valid": true },
+                { "description": "-1e9007199254740992 is below it", "data": -1e9007199254740992, "valid": true }
+            ]
+        },
+        {
+            "description": "maximum when both exponents are past 2^53",
+            "schema": { "maximum": 11e9007199254740991 },
+            "tests": [
+                { "description": "9e9007199254740991 is below 11e9007199254740991", "data": 9e9007199254740991, "valid": true },
+                { "description": "12e9007199254740991 is above it", "data": 12e9007199254740991, "valid": false },
+                { "description": "1.1e9007199254740992 is equal to it", "data": 1.1e9007199254740992, "valid": true }
+            ]
+        },
+        {
+            "description": "minimum and multipleOf with huge exponents",
+            "schema": { "minimum": -1e9007199254740993, "multipleOf": 7 },
+            "tests": [
+                { "description": "-2e9007199254740993 is below the minimum", "data": -2e9007199254740993, "valid": false },
+                { "description": "1e9007199254740993 is not a multiple of 7", "data": 1e9007199254740993, "valid": false },
+                { "description": "7e9007199254740993 is a multiple of 7", "data": 7e9007199254740993, "valid": true }
+            ]
+        },
+        {
+            "description": "a multipleOf far smaller than the number",
+            "schema": { "multipleOf": 1e-9007199254740993 },
+            "tests": [
+                { "description": "1 is a multiple", "data": 1, "valid": true },
+                { "description": "3e-9007199254740994 is not", "data": 3e-9007199254740994, "valid": false }
+            ]
+        },
+        {
+            "description": "integers with exponents past 2^53",
+            "compatibility": "6",
+            "schema": { "type": "integer" },
+            "tests": [
+                { "description": "1e9007199254740992 is an integer", "data": 1e9007199254740992, "valid": true },
+                { "description": "1.5e-9007199254740992 is not", "data": 1.5e-9007199254740992, "valid": false }
+            ]
+        },
+        {
+            "description": "a failed allOf branch doesn't evaluate its properties",
+            "compatibility": "2019",
+            "schema": { "allOf": [{ "properties": { "x": { "type": "number" } } }], "unevaluatedProperties": false },
+            "tests": [
+                { "description": "a valid x is evaluated", "data": { "x": 1 }, "valid": true },
+                { "description": "an invalid x is invalid", "data": { "x": "s" }, "valid": false }
+            ]
+        },
+        {
+            "description": "a failed allOf branch doesn't evaluate its items",
+            "compatibility": "2020",
+            "schema": { "allOf": [{ "prefixItems": [{ "type": "number" }] }], "unevaluatedItems": false },
+            "tests": [
+                { "description": "a valid first item is evaluated", "data": [1], "valid": true },
+                { "description": "an invalid one is invalid", "data": ["s"], "valid": false }
+            ]
+        },
+        {
+            "description": "only successful anyOf branches and if/then branches evaluate",
+            "compatibility": "2019",
+            "schema": {
+                "anyOf": [{ "properties": { "a": { "type": "number" } }, "required": ["a"] }, { "required": ["b"] }],
+                "if": { "required": ["c"] },
+                "then": { "properties": { "c": { "const": 1 } } },
+                "unevaluatedProperties": false
+            },
+            "tests": [
+                { "description": "a and c valid", "data": { "a": 1, "c": 1 }, "valid": true },
+                { "description": "b alone: a passing branch that evaluates nothing", "data": { "b": 1 }, "valid": false },
+                { "description": "c failing then", "data": { "a": 1, "c": 2 }, "valid": false }
+            ]
+        },
+        {
+            "description": "false subschemas",
+            "compatibility": "6",
+            "schema": { "properties": { "x": false }, "items": false },
+            "tests": [
+                { "description": "a property with a false schema is invalid", "data": { "x": 0 }, "valid": false },
+                { "description": "an object without it is valid", "data": { "y": 0 }, "valid": true }
+            ]
+        }
+    ]
+}
