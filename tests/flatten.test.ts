@@ -216,6 +216,28 @@ test('the count of keys that won\'t come back is exact (every all-digit object s
   assert.match(canon(u.text), /"b":\{"600000":2\}\}$/);
 });
 
+test('the count is exact across records: once a record looks misread, every later one is placed by unflatten', () => {
+  // (The first record's guessed gaps used up the budget, though unflatten kept "a" an object: the second record's
+  // {"2":3}, which does become [null,null,3], wasn't counted.)
+  const o = { arrays: 'dot', escape: false } as const;
+  const x = '[{"a":{"999999":1},"a.x":2},{"2":3}]';
+  const r = flat(x, o);
+  assert.equal(r.note, '2 keys won\'t unflatten to the same place, such as "a.x" · Turn on Escape keys to keep them apart');
+  assert.equal(canon(unflat(r.text, o).text), '[{"a":{"999999":1,"x":2}},[null,null,3]]');
+});
+
+test('sparse huge indexes: their gaps are counted, not walked', () => {
+  // (Placing {"a":{"1000000":1}} visited a million empty slots: 976 steps and 130 ms for 19 bytes.)
+  const o = { arrays: 'dot', escape: false } as const;
+  const x = doc('{"a":{"1000000":1},"b":{"999999999":2}}');
+  const t = cpuNow();
+  const r = stepped(flattenSteps(x, o));
+  const ms = cpuNow() - t;
+  assert.equal(r.result.note, '1 key won\'t unflatten to the same place: "a.1000000" · Turn on Escape keys to keep them apart');
+  assert.ok(r.count < 5, `${r.count} steps`);
+  assert.ok(ms < 50, `${ms} ms of CPU time`);
+});
+
 test('messages put keys in as they are, {b} and $& included', () => {
   // (Filled one placeholder after the other, "{b}" in the first key took the second's place, and String.replace read
   // "$&" as the text it replaced.)
@@ -478,6 +500,17 @@ function refLeaves(v: V, o: FlatOptions): [Place, string][] {
   return out;
 }
 
+/** nodeAt for a parsed document: the node at `place` (the same kinds of containers all the way), or null. */
+function nodeAt(root: JNode, place: Place): JNode | null {
+  let n: JNode | undefined = root;
+  for (const [kind, k] of place) {
+    if (!n || n.t !== (kind === 'o' ? 5 : 4)) return null;
+    const list = n.v as JNode[];
+    n = kind === 'o' ? list.find((c) => c.key === k) : list[k as number];
+  }
+  return n ?? null;
+}
+
 /** The value at `place` in `v` (the same kinds of containers all the way), or null. */
 function at(v: V, place: Place): V | null {
   let n: V | undefined = v;
@@ -731,6 +764,51 @@ test('fuzz: unflatten(flatten(x)) is x exactly when flatten does not warn, and m
   assert.equal(counts['BUG: silent loss'] ?? 0, 0);
   for (const k of ['came back', 'warned, does not come back', 'escaped keys', 'looked flat']) assert.ok(counts[k] > 20, k);
   for (const k of ['duplicate key', 'all-digit object', 'key with a separator', 'key with a bracket', 'key with a backslash', 'empty key', 'non-ASCII key', '__proto__ or constructor', 'empty object', 'empty array', 'big or exact number']) assert.ok(g.kinds[k] > 20, k);
+});
+
+test('fuzz: lists of records whose all-digit objects compete for the gap budget: the count is exact', () => {
+  const r = mulberry32(0xb0d9e7);
+  const pick = <T,>(a: readonly T[]) => a[Math.floor(r() * a.length)];
+  const BIG = [600000, 700000, 999990, 999999, 1000000];
+  const SMALL = [0, 1, 2, 5, 30];
+  const counts: Record<string, number> = {};
+  for (let n = 0; n < 400; n++) {
+    const sep = pick(['.', '_']);
+    const o: FlatOptions = { sep, arrays: r() < 0.8 ? 'dot' : 'bracket', escape: false, depth: 0 };
+    const rec = () => {
+      const x = r();
+      // Looks like an array with a big gap, but its other key keeps it an object: unflatten spends nothing on it.
+      if (x < 0.3) return `{"a":{"${pick(BIG)}":1},"a${sep}x":2}`;
+      // A small real gap, filled or kept as keys depending on what is left of the budget.
+      if (x < 0.65) return r() < 0.5 ? `{"${pick(SMALL)}":3}` : `{"k":{"${pick(SMALL)}":4,"${pick(SMALL)}":5}}`;
+      return pick(['{"a":{"b":1}}', `{"x${sep}y":1}`, '{"0":"z","q":1}', '{"n":[1,2]}']);
+    };
+    const recs = Array.from({ length: 2 + Math.floor(r() * 3) }, rec);
+    // Now and then a real gap of nearly all the budget first (written out: a million nulls, so not often), leaving
+    // too little for the gap of a record after it.
+    if (n % 20 === 0) {
+      recs.unshift(`{"${pick([999999, 1000000])}":6}`);
+      recs.push('{"30":3}');
+    }
+    const text = `[${recs.join(',')}]`;
+    const f = flat(text, o);
+    const u = unflat(f.text, o);
+    // (The output can hold a million nulls: read once, by the fast parser.)
+    const back = u.error ? null : doc(u.text);
+    const ok = !!back && stringify(back, '') === canon(text);
+    assert.equal(ok, !f.warn, `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
+    if (!back) continue;
+    const moved = refLeaves(jparse(text), o).filter(([place, json]) => {
+      const n = nodeAt(back, place);
+      return !n || stringify(n, '') !== json;
+    }).length;
+    const said = Number(/^(?:.* · )?([\d,]+) keys? won't unflatten/.exec(f.note)?.[1].replace(/,/g, '') ?? 0);
+    assert.equal(said, moved, `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
+    const k = !moved ? 'none moved' : u.note.includes('far apart') ? 'moved, a gap too big' : u.note.includes('missing') ? 'moved, with gaps filled' : 'moved';
+    counts[k] = (counts[k] ?? 0) + 1;
+  }
+  console.log(`records fuzz: ${JSON.stringify(counts)}`);
+  for (const k of ['moved, with gaps filled', 'moved, a gap too big', 'none moved']) assert.ok(counts[k] > 10, k);
 });
 
 test('fuzz: unflatten of random flat keys matches the reference (results, conflicts, holes)', () => {

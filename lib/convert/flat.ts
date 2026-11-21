@@ -309,7 +309,11 @@ class Flattener {
   n = 0;
   /** Without escapes: unflatten's budget of missing items, spent as it would spend it (see misread). */
   private budget = HOLES;
-  /** Without escapes: unflatten itself, to place the keys of a record whose paths look misread (see moved). */
+  /**
+   * Without escapes: unflatten itself, placing the keys of every record from the first one whose paths look misread
+   * on (see moved). Before it, no record spent unflatten's budget of missing items (nothing becomes an array with
+   * gaps), so later records are placed as unflatten would; after it, the guess may be off, so each is placed.
+   */
   private sim: Unflattener | null = null;
 
   constructor(o: FlatOptions) {
@@ -465,7 +469,7 @@ class Flattener {
     }
     // Suspect keys can move others (a misread key can make an array of indexes an object): the count is the keys
     // unflatten would really put elsewhere.
-    if (entries && this.unsafe > before) {
+    if (entries && (this.sim || this.unsafe > before)) {
       const m = yield* this.moved(entries);
       this.unsafe = before + m.count;
       if (!before) this.example = m.first;
@@ -688,9 +692,12 @@ class Unflattener {
   }
 
   /** A box's items in output order (null: a missing item), and its keys (null for an array). */
-  private *layout(b: Box): Steps<[(Box | JNode | null)[], string[] | null]> {
-    const arr = this.bracket ? b.kind === 1 : this.dot && b.num;
-    if (!arr) return [b.vals, b.keys];
+  /**
+   * Whether a box is written as an array: its length then, else -1 (an object). Its missing items are counted, never
+   * visited, and spent from the budget as write spends it, in write's order.
+   */
+  private *arrayLength(b: Box): Steps<number> {
+    if (!(this.bracket ? b.kind === 1 : this.dot && b.num)) return -1;
     let max = -1;
     for (const k of b.keys) {
       if (!(++this.n & EVERY)) yield;
@@ -699,11 +706,17 @@ class Unflattener {
     const holes = max + 1 - b.keys.length;
     if (holes > this.budget) {
       this.sparse++;
-      return [b.vals, b.keys];
+      return -1;
     }
     this.budget -= holes;
     this.holes += holes;
-    const slots: (Box | JNode | null)[] = new Array(max + 1).fill(null);
+    return max + 1;
+  }
+
+  private *layout(b: Box): Steps<[(Box | JNode | null)[], string[] | null]> {
+    const length = yield* this.arrayLength(b);
+    if (length < 0) return [b.vals, b.keys];
+    const slots: (Box | JNode | null)[] = new Array(length).fill(null);
     for (let i = 0; i < b.keys.length; i++) {
       if (!(++this.n & EVERY)) yield;
       slots[+b.keys[i]] = b.vals[i];
@@ -711,20 +724,25 @@ class Unflattener {
     return [slots, null];
   }
 
-  /** Where each value lands (its parts: keys, and indexes in arrays), laid out as write lays boxes out, in its order. */
+  /**
+   * Where each value lands (its parts: keys, and indexes in arrays), decided as write decides, boxes in its order.
+   * Only the items there are visited, an array's in index order (a missing one is only counted, see arrayLength).
+   */
   *places(root: Box, out: Map<JNode, Part[]>): Steps<void> {
     const stack: [Box, Part[]][] = [[root, []]];
     while (stack.length) {
       const [b, at] = stack.pop()!;
-      const [slots, keys] = yield* this.layout(b);
+      const array = (yield* this.arrayLength(b)) >= 0;
+      const order = b.keys.map((_, i) => i);
+      if (array) order.sort((x, y) => +b.keys[x] - +b.keys[y]);
       // (Children are laid out in document order: pushed last to first.)
       const boxes: [Box, Part[]][] = [];
-      for (let i = 0; i < slots.length; i++) {
+      for (const i of order) {
         if (!(++this.n & EVERY)) yield;
-        const v = slots[i];
-        const p = [...at, keys ? keys[i] : i];
+        const v = b.vals[i];
+        const p = [...at, array ? +b.keys[i] : b.keys[i]];
         if (v instanceof Box) boxes.push([v, p]);
-        else if (v) out.set(v, p);
+        else out.set(v, p);
       }
       for (let i = boxes.length; i--; ) stack.push(boxes[i]);
     }
