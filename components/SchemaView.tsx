@@ -60,6 +60,8 @@ const write = (k: string, v: string | null) => {
 const ctl = new SchemaController({
   main: () => getEngine()?.ed ?? null,
   docIsJson: () => store.get().input.format === 'json',
+  // (A huge file is no document this view checks.)
+  docId: () => (store.get().huge ? -1 : (getEngine()?.docId ?? -1)),
   read,
   write,
   validator: () => new SchemaClient(),
@@ -92,12 +94,17 @@ function jumpSchema(loc: Loc | null, focus: boolean) {
 
 async function generate() {
   track('feature_used', { feature: 'schema_generate' });
-  const doc = store.get().docText;
-  if (!doc.trim()) return toast('Add a JSON document first', 'info');
-  const r = parse(doc);
+  const e = getEngine();
+  if (!e) return;
+  // (The document now, and which one it is: a schema generated for it replaces nothing if either changes meanwhile.)
+  const doc = e.leftDoc();
+  if (!doc.text.trim()) return toast('Add a JSON document first', 'info');
+  const r = parse(doc.text);
   if (!r.root || r.error) return toast("Can't generate a schema: fix the document's JSON first", 'info');
+  const asked = ctl.ask();
   try {
     const { convert } = await import('@/lib/convert');
+    if (!ctl.still(asked) || e.docId !== doc.id) return;
     ctl.load(convert(r.root, 'json-schema', { rootName: 'Root' }) + '\n', null);
     toast('Generated a schema from the document. Review it, then edit the rules.', 'ok');
   } catch (e) {
@@ -157,8 +164,10 @@ function DraftPick() {
 }
 
 async function pasteSchema() {
+  const asked = ctl.ask();
   try {
     const text = await navigator.clipboard.readText();
+    if (!ctl.still(asked)) return;
     if (!text) return toast('Your clipboard is empty', 'info');
     ctl.load(text, null);
   } catch {
@@ -180,8 +189,11 @@ function pickSchemaFile() {
 }
 
 async function openSchemaFile(f: File) {
+  const asked = ctl.ask();
   try {
-    ctl.load(await f.text(), f.name);
+    const text = await f.text();
+    // (Read after another file asked for, or a change to the schema since: that one stays.)
+    if (ctl.still(asked)) ctl.load(text, f.name);
   } catch {
     toast(`Couldn't read ${f.name}`, 'err');
   }
@@ -232,8 +244,8 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
     const s = store.get().settings;
     ed.indentUnit = UNITS[s.indent];
     ed.setWrap(s.wrap);
-    // (Every edit of the document makes the shown result an older text's until the new text is read.)
-    const watch = (text: string | null) => (text === null ? ctl.docEdited() : ctl.setDoc(text));
+    // (Every new document makes the shown result an older one's until its text is read.)
+    const watch = (doc: { text: string; id: number } | null) => (doc ? ctl.setDoc(doc.text, doc.id) : ctl.docEdited());
     engine.docWatch = watch;
     if (ctl.attach(ed, store.get().schemaIn)) void generate();
     return () => {
@@ -462,7 +474,7 @@ function Status({ r, stale, busy, outcome, rows }: { r: ValidateResult | null; s
 const Panel = memo(function Panel() {
   const t = useT();
   const { result: r, stale, busy, outcome, formats, blank } = useCtl();
-  const docText = useUI((s) => s.docText);
+  const huge = useUI((s) => !!s.huge);
   const [filter, setFilter] = useState<string | null>(null);
   const [sel, setSel] = useState(-1);
   const [scroll, setScroll] = useState(0);
@@ -486,7 +498,13 @@ const Panel = memo(function Panel() {
       resize.current?.disconnect();
     };
   }, []);
-  useEffect(() => ctl.setDoc(docText), [docText]);
+  // The document as it is now, with which one it is (then the engine tells of each new one: see SchemaPane). A huge
+  // file opened is no document this view checks: what it shows is for the one before, until that comes back.
+  useEffect(() => {
+    if (huge) return ctl.docEdited();
+    const doc = getEngine()?.leftDoc();
+    if (doc) ctl.setDoc(doc.text, doc.id);
+  }, [huge]);
 
   const rows = useMemo(() => rowsOf(r, filter, t), [r, filter, t]);
   const kinds = useMemo(() => {

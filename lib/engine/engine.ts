@@ -577,11 +577,9 @@ export class Engine {
 
   private onChange = (kind: ChangeKind) => {
     if (this.dead) return;
-    this.docWatch?.(null);
     // (A load's text arriving in the editor is that load's document, not a new one: see finishLoad.)
     if (!this.landing) {
-      this.docGen++;
-      this.supersede();
+      this.newDoc();
       // The file read no longer is the editor's text: the analysis worker is sent the text (see postDocument).
       if (this.fromFile && this.fromFile.doc !== this.ed.version) this.fromFile = null;
     }
@@ -1028,6 +1026,7 @@ export class Engine {
     this.res = res;
     this.jwt = jwt;
     this.converted = converted;
+    this.readGen = this.docGen;
     ed.setJwt(jwt ? jwt.at : null);
     if (reset) {
       this.sel = null;
@@ -1262,8 +1261,10 @@ export class Engine {
 
   /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
   private loaded = false;
-  /** The Schema view's watch on the document (components/SchemaView.tsx): null at each edit, then the text read after it (even unchanged). */
-  docWatch: ((text: string | null) => void) | null = null;
+  /** The Schema view's watch on the document (components/SchemaView.tsx): null at each new document (newDoc), then the document read (leftDoc). */
+  docWatch: ((doc: { text: string; id: number } | null) => void) | null = null;
+  /** The generation the conversion's or JWT's JSON was made in (see leftDoc). */
+  private readGen = 0;
 
   /** Keeps the secondary views (convert, compare) in step with the document. */
   private afterDoc() {
@@ -1273,14 +1274,27 @@ export class Engine {
     if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
     else if (paired(v)) {
-      const text = this.compareLeft();
-      store.set({ docText: text });
-      this.docWatch?.(text);
+      const doc = this.leftDoc();
+      store.set({ docText: doc.text });
+      this.docWatch?.(doc);
     }
   }
 
-  /** What Compare diffs as the original: the input, or the JSON it converts to when it is in another format. */
+  /**
+   * The document as the Schema view validates it, with which document it is (docId; -1: another reading's text isn't
+   * made yet): the input, or the JSON of a conversion or a JWT, which are as recent as the reading that made them.
+   */
+  leftDoc(): { text: string; id: number } {
+    const read = this.jwt !== null || this.converted !== null;
+    return { text: this.compareLeft(), id: read ? this.readGen : this.inFmt === 'json' || this.ed.blank ? this.docGen : -1 };
+  }
+
+  /**
+   * What Compare diffs as the original and the Schema view validates: the input, or the JSON it converts to when it
+   * is in another format, or a JWT's (what the other views show).
+   */
   private compareLeft() {
+    if (this.jwt) return this.jwt.json;
     const json = this.converted;
     if (json === null) return this.inFmt === 'json' ? this.ed.text : '';
     return (this.good && this.unlessTooLarge(() => formatDoc(json, this.good!, this.indent), false)) ?? json;
@@ -1578,8 +1592,7 @@ export class Engine {
       this.ed.setColors(null);
     }
     // (What was made for the other reading of the same text isn't this one's: see formatCurrent.)
-    this.docGen++;
-    this.supersede();
+    this.newDoc();
     this.loadSeq++;
     this.progressStatus = null;
     this.workerParse = null;
@@ -1645,8 +1658,7 @@ export class Engine {
     this.publishInput();
     if (this.inFmt !== 'csv') return;
     // (The same text, read another way: what was made for the reading before isn't this one's.)
-    this.docGen++;
-    this.supersede();
+    this.newDoc();
     this.fmtKey = '';
     this.fmtSrcVer = null;
     this.srcSeq++;
@@ -1760,8 +1772,7 @@ export class Engine {
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
     // worker, over this text) must match the editor's, or values and positions shift a character a line.
     text = lf(text);
-    this.docGen++;
-    this.supersede();
+    this.newDoc();
     this.fromFile = file ? { file, text, doc: null } : null;
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
@@ -1795,9 +1806,24 @@ export class Engine {
   private fromFile: { file: File; text?: string; doc: Doc | null } | null = null;
   /**
    * Bumped by each new document and each change to it, a load's arriving in the editor aside (see landing): a copy
-   * or download waiting for an output is for the document of its generation (see Waiting).
+   * or download waiting for an output is for the document of its generation (see Waiting). Only newDoc bumps it.
    */
   private docGen = 0;
+
+  /** What the document is (see docGen): the Schema view checks a reply is for the document still there. */
+  get docId() {
+    return this.docGen;
+  }
+
+  /**
+   * The document is another one, or another reading of it (an edit, a load, another input format, CSV options): what
+   * was made for the one before isn't this one's, and the Schema view is told at once (docWatch).
+   */
+  private newDoc() {
+    this.docGen++;
+    this.supersede();
+    this.docWatch?.(null);
+  }
   /** A load's text is going into the editor (see finishLoad): its change is that load's. */
   private landing = false;
 
