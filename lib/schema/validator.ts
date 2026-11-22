@@ -63,6 +63,8 @@ export interface CompileOptions {
   resources?: Map<string, JNode>;
   /** Schemas for URIs nothing else names: the official meta-schemas (./meta.ts), by their https and http URLs. */
   fallback?: Map<string, JNode>;
+  /** The URI the schema was retrieved from (a link's schema by URL): the base of its relative refs, when it has no $id. */
+  base?: string;
 }
 
 /** The base URI of a schema that doesn't name its own (refs relative to it stay inside this schema). */
@@ -360,6 +362,8 @@ export class Validator {
   /** CompileOptions.resources and .fallback by normalized URI (the first one with it). */
   private external = new Map<string, JNode>();
   private fallback = new Map<string, JNode>();
+  /** Each of those schemas' first URI there: its base (where it came from), the others naming it too. */
+  private baseOf = new Map<JNode, string>();
   /** URIs two different resources claim (see claim): a $ref to one is unresolved. */
   private clashes = new Set<string>();
   /** The documents the scanned schemas refer to (their $ref, $dynamicRef and $recursiveRef URIs, without fragments). */
@@ -378,12 +382,13 @@ export class Validator {
       for (const [u, n] of from ?? []) {
         const key = normalizeUri(splitFragment(u)[0]);
         if (!into.has(key)) into.set(key, n);
+        if (!this.baseOf.has(n)) this.baseOf.set(n, key);
       }
     }
     const { draft, vocab, known } = this.dialect(schema, opts.draft ?? 2020);
     this.draft = draft;
     this.fromSchema = known;
-    const res = (this.rootRes = this.newResource(DEFAULT_BASE, schema, draft));
+    const res = (this.rootRes = this.newResource(opts.base ? normalizeUri(splitFragment(opts.base)[0]) : DEFAULT_BASE, schema, draft));
     res.vocab = vocab;
     this.scan(schema, res, '', draft, true);
     this.register();
@@ -435,10 +440,11 @@ export class Validator {
       this.claim(key, known, null);
       return this.resources.get(key);
     }
-    // (Read in the draft its own `$schema` names, else in this schema's.)
+    // (Read in the draft its own `$schema` names, else in this schema's; based where it came from, named by `key` too.)
     const { draft, vocab } = this.dialect(node, this.draft);
-    const res = this.newResource(key, node, draft, soft);
+    const res = this.newResource(this.baseOf.get(node) ?? key, node, draft, soft);
     res.vocab = vocab;
+    this.claim(key, res, null);
     this.scan(node, res, '', draft, true);
     return this.resources.get(key);
   }

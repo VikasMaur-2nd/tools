@@ -19,7 +19,8 @@ export type FetchFailure =
   | { kind: 'status'; status: number; statusText: string }
   | { kind: 'cors' | 'mixed' | 'offline' | 'unreachable' | 'dropped' | 'timeout' | 'tooBig' | 'notJson' | 'notSchema' | 'notHttp' };
 
-export type Fetched = { url: string; text: string } | { url: string; failure: FetchFailure };
+/** `base`: where it came from after redirects, when not `url` (the base of its relative refs). */
+export type Fetched = { url: string; text: string; base?: string } | { url: string; failure: FetchFailure };
 
 /** What fetching needs of the page (tests pass their own). */
 export interface FetchEnv {
@@ -96,7 +97,7 @@ async function one(url: string, signal: AbortSignal, env: FetchEnv): Promise<Fet
     if (!r.root || r.error) return { url, failure: { kind: 'notJson' } };
     // (A schema is one object or boolean: JSON Lines, an array, a number aren't one.)
     if (r.multi || (r.root.t !== OBJ && r.root.t !== BOOL)) return { url, failure: { kind: 'notSchema' } };
-    return { url, text };
+    return { url, text, ...(res.redirected && res.url && res.url !== url && { base: res.url }) };
   } catch (e) {
     if (signal.aborted) return null;
     if (late) return { url, failure: { kind: 'timeout' } };

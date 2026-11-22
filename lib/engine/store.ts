@@ -212,7 +212,7 @@ export interface UIState {
    * For the Schema view's editor (components/SchemaView.tsx): a page's sample schema, a schema to generate from the
    * document, or a link's schema (its file name, and its draft and Check formats: lib/link.ts).
    */
-  schemaIn: { seq: number; text?: string; sample?: boolean; generate?: boolean; name?: string | null; draft?: string; formats?: boolean } | null;
+  schemaIn: { seq: number; text?: string; sample?: boolean; generate?: boolean; name?: string | null; url?: string; draft?: string; formats?: boolean } | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

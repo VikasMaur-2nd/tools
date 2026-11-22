@@ -201,3 +201,30 @@ test('a reply that is JSON but not one schema is a failure, offered again (revie
   const got = await run(['https://a.test/lines', 'https://a.test/array', 'https://a.test/number', 'https://a.test/true', 'https://a.test/loose'], e);
   assert.deepEqual(got!.map((r) => ('failure' in r ? r.failure.kind : 'ok')), ['notSchema', 'notSchema', 'notSchema', 'ok', 'ok']);
 });
+
+test('relative refs are relative to where a schema came from: a link\'s schema by URL, a fetched one after redirects (review 2, finding 5)', async () => {
+  const v = (schema: object, doc: unknown, more: Partial<Parameters<typeof validateTexts>[0]>) => validateTexts({ schema: JSON.stringify(schema), doc: JSON.stringify(doc), draft: null, formats: false, ...more });
+  // The schema itself, opened from https://example.com/schemas/main.json, with no $id.
+  const base = 'https://example.com/schemas/main.json';
+  assert.deepEqual(v({ $ref: 'types.json' }, 1, { base }).remote, ['https://example.com/schemas/types.json']);
+  assert.deepEqual(v({ $ref: 'main.json#/$defs/n', $defs: { n: { type: 'number' } } }, 'x', { base }).errors.map((e) => e.code), ['type']);
+  // Its own $id is still its base.
+  assert.deepEqual(v({ $id: 'https://other.example/x/s.json', $ref: 'types.json' }, 1, { base }).remote, ['https://other.example/x/types.json']);
+  // A fetched schema that was redirected: relative to where it came from; the URL asked for, and that one, name it.
+  const { env: e } = env({
+    'https://a.test/s.json': () => {
+      const res = new Response('{"$ref": "types.json"}');
+      Object.defineProperty(res, 'url', { value: 'https://cdn.test/v2/s.json' });
+      Object.defineProperty(res, 'redirected', { value: true });
+      return Promise.resolve(res);
+    },
+    'https://a.test/plain.json': json({}),
+  });
+  assert.deepEqual(await run(['https://a.test/s.json', 'https://a.test/plain.json'], e), [
+    { url: 'https://a.test/s.json', text: '{"$ref": "types.json"}', base: 'https://cdn.test/v2/s.json' },
+    { url: 'https://a.test/plain.json', text: '{}' },
+  ]);
+  const resources = { 'https://a.test/s.json': { text: '{"$ref": "types.json"}', url: 'https://cdn.test/v2/s.json' } };
+  const r = v({ allOf: [{ $ref: 'https://a.test/s.json' }, { $ref: 'https://cdn.test/v2/s.json' }] }, 1, { resources });
+  assert.deepEqual([r.remote, r.problems.map((p) => p.code)], [['https://cdn.test/v2/types.json'], ['unresolved']]);
+});

@@ -12,6 +12,9 @@ import { Validator, type Failure, type Params, type SchemaIssue } from './valida
 export type { Draft } from './drafts';
 export type { Params } from './validator';
 
+/** Fetched schemas (see ValidateRequest.resources). */
+export type Resources = Record<string, string | { text: string; url: string }>;
+
 export interface ValidateRequest {
   doc: string;
   schema: string;
@@ -24,10 +27,13 @@ export interface ValidateRequest {
   /** The document can't be read as its format (another format's syntax error): nothing to validate yet. */
   unread?: boolean;
   /**
-   * Schemas fetched from the web when the visitor asked (lib/schema/remote.ts): URL (no fragment) → text. A `$ref`
-   * to one resolves to it, as to a resource of this schema; one to any other URL stays unresolved.
+   * Schemas fetched from the web when the visitor asked (lib/schema/remote.ts): URL (no fragment) → text, or its
+   * text and the URL it came from after redirects (the base of its relative refs). A `$ref` to one resolves to it, as
+   * to a resource of this schema; one to any other URL stays unresolved.
    */
-  resources?: Record<string, string>;
+  resources?: Resources;
+  /** The URL the schema came from (a link's schema by URL): the base of its relative refs, unless it has an $id. */
+  base?: string;
 }
 
 /** A place in a text: [p, e) to select, and where p is. */
@@ -216,7 +222,8 @@ export class SchemaSession {
    */
   schema(req: ValidateRequest): { sr: ParseResult; v: Validator | null; docs: Map<JNode, string>; ms: number } {
     const urls = Object.keys(req.resources ?? {});
-    const key = `${req.draft ?? ''}|${req.formats ? 1 : 0}|${this.meta ? 'meta' : ''}|${urls.sort().join(' ')}|${req.schema}`;
+    const from = (u: string) => (typeof req.resources![u] === 'string' ? '' : `>${(req.resources![u] as { url: string }).url}`);
+    const key = `${req.draft ?? ''}|${req.formats ? 1 : 0}|${this.meta ? 'meta' : ''}|${req.base ?? ''}|${urls.sort().map((u) => u + from(u)).join(' ')}|${req.schema}`;
     if (this.compiled && key === this.schemaKey) return { ...this.compiled, ms: 0 };
     const t = performance.now();
     const sr = parse(req.schema);
@@ -224,8 +231,11 @@ export class SchemaSession {
     const resources = new Map<string, JNode>();
     const docs = new Map<JNode, string>();
     for (const url of urls) {
-      const root = parse(req.resources![url]).root;
+      const got = req.resources![url];
+      const root = parse(typeof got === 'string' ? got : got.text).root;
       if (!root) continue;
+      // (Where it came from first: its base. Where it was asked for names it too.)
+      if (typeof got !== 'string') resources.set(got.url, root);
       resources.set(url, root);
       docs.set(root, url);
     }
@@ -237,7 +247,7 @@ export class SchemaSession {
     }
     if (sr.root && !sr.error) {
       try {
-        v = new Validator(sr.root, { draft: req.draft ?? 2020, formats: req.formats, resources, fallback });
+        v = new Validator(sr.root, { draft: req.draft ?? 2020, formats: req.formats, resources, fallback, ...(req.base && { base: req.base }) });
       } catch {
         v = null;
       }

@@ -2912,7 +2912,7 @@ export class Engine {
    * `signal`: its request (see requests).
    */
   private async openRequest(r: LinkRequest, signal: AbortSignal, from?: string) {
-    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '' })));
+    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '', url: '' })));
     if (signal.aborted || this.dead || got.includes(null)) return; // (fetchText said why)
     const [a, b] = got;
     const source = (d: LinkDoc): InputSource => (from !== undefined ? 'handoff' : 'url' in d ? 'link_url' : 'link');
@@ -2931,7 +2931,8 @@ export class Engine {
     }
     const view = r.view ?? (b ? 'compare' : undefined);
     // (With the Schema view, b is the schema: its editor takes it, with its options.)
-    if (b && view === 'schema') store.set({ schemaIn: { seq: Date.now(), text: open(b.text) ?? b.text, name: b.name, draft: r.draft, formats: !!r.formats } });
+    // (One fetched by URL keeps where it came from: its relative refs are relative to it.)
+    if (b && view === 'schema') store.set({ schemaIn: { seq: Date.now(), text: open(b.text) ?? b.text, name: b.name, ...(b.url && { url: b.url }), draft: r.draft, formats: !!r.formats } });
     else if (b) {
       noteLoad(source(r.b!), 2, b.name);
       this.loadCompare(open(b.text) ?? b.text, b.name);
@@ -2954,8 +2955,11 @@ export class Engine {
     this.toast(a && had ? `${msg} · ${this.mod}Z restores your previous document` : msg, 'ok');
   }
 
-  /** Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). */
-  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string } | null> {
+  /**
+   * Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). `url`:
+   * where it came from, after redirects.
+   */
+  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string; url: string } | null> {
     let url: URL;
     try {
       url = new URL(raw.trim());
@@ -2976,7 +2980,7 @@ export class Engine {
       }
       const text = await (await import('../json/read')).readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
-      return { text, name: /\.json$/i.test(name) || formatOfName(name) !== 'json' ? name : name + '.json', host: url.hostname };
+      return { text, name: /\.json$/i.test(name) || formatOfName(name) !== 'json' ? name : name + '.json', host: url.hostname, url: res.url || url.href };
     } catch {
       if (signal.aborted) return null;
       const why = res ? 'The connection dropped before the whole file arrived. Try again.' : await this.fetchFailure(url, signal);

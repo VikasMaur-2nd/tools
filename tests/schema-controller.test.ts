@@ -543,3 +543,39 @@ test('remote $refs: twenty that fail never hold back the rest; failures are trie
   assert.deepEqual(fetches[n].urls, urls.slice(0, 20));
   ctl.detach();
 });
+
+test('a link\'s schema by URL is validated with that URL as its base: through edits, saved with it, back with Undo (review 2, finding 5)', async () => {
+  const { ctl, ed, asked, doc, storage } = setup();
+  ctl.attach(ed, null);
+  ctl.setDoc('{}', doc.id);
+  ctl.setOpen(true);
+  ctl.take({ seq: 7, text: '{"$ref": "types.json"}', name: 'main.json', url: 'https://example.com/schemas/main.json' });
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, 'https://example.com/schemas/main.json');
+  ed.type('{"$ref": "types.json", "type": "object"}');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, 'https://example.com/schemas/main.json', 'kept through an edit');
+  ctl.persistNow();
+  assert.equal(JSON.parse(storage.get('jf:schema-doc')!).url, 'https://example.com/schemas/main.json');
+  // Another schema loaded (a file): none. Undo back past that load: the URL again.
+  ctl.load('{"$ref": "types.json"}', 'other.json');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, undefined);
+  ctl.renamed('main.json');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, 'https://example.com/schemas/main.json');
+  // A file of the same name loaded later forgets it.
+  ctl.load('{}', 'main.json');
+  ctl.renamed('main.json');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, undefined);
+  ctl.detach();
+  // Saved with it: a new page's controller reads it back.
+  const next = setup({ 'jf:schema-doc': JSON.stringify({ text: '{"$ref": "types.json"}', file: 'main.json', url: 'https://example.com/schemas/main.json' }) });
+  next.ctl.attach(next.ed, null);
+  next.ctl.setDoc('{}', next.doc.id);
+  next.ctl.setOpen(true);
+  await tick(200);
+  assert.equal(next.asked.at(-1)!.req.base, 'https://example.com/schemas/main.json');
+  next.ctl.detach();
+});

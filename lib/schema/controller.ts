@@ -12,7 +12,7 @@
 import type { Outcome } from './client';
 import { REMOTE_MAX_COUNT, type FetchFailure, type Fetched } from './remote';
 import { DRAFTS, DRAFT_NAME, type Draft } from './drafts';
-import type { ValidateRequest, ValidateResult } from './index';
+import type { Resources, ValidateRequest, ValidateResult } from './index';
 
 /**
  * Where the schema is saved: `doc`, one record of its text and file name (written whole or not at all); `text` and
@@ -88,6 +88,8 @@ export interface SchemaIn {
   generate?: boolean;
   /** A link's schema (lib/link.ts): its file name (one fetched by URL), its draft by name and Check formats. */
   name?: string | null;
+  /** One fetched by URL: where it came from (the base of its relative refs). */
+  url?: string;
   draft?: string;
   formats?: boolean;
 }
@@ -115,9 +117,16 @@ export class SchemaController {
   private tracked = false;
   private inSeq = 0;
   /** Schemas fetched from the web when the visitor asked, for this tab only (never saved, never in links): URL → text. */
-  private fetched = new Map<string, string>();
+  private fetched = new Map<string, Resources[string]>();
+  /**
+   * The URL the schema came from (a link's schema by URL; null: none), the base of its relative refs. It goes with
+   * the file name that load gave: kept through edits, saved with the schema, back with Undo to it (see renamed).
+   */
+  private base: string | null = null;
+  /** The URL each file name loaded from a URL had (another load by that name forgets it). */
+  private urls = new Map<string, string>();
   /** The same, for requests (a new object only when one more is fetched: the worker isn't sent it again). */
-  private resources: Record<string, string> | undefined;
+  private resources: Resources | undefined;
   /** The fetch going on (see fetchRemote): stopped by any change. */
   private fetchStop: AbortController | null = null;
   /** Bumped by every change: a result of an older generation is dropped. */
@@ -163,21 +172,31 @@ export class SchemaController {
       const saved = this.saved();
       if (saved.text) ed.init(saved.text);
       this.set({ file: saved.file });
+      this.named(saved.file, saved.url);
     }
     const generate = fresh ? this.take(fresh) : false;
     this.set({ blank: !ed.length });
     return generate;
   }
 
-  /** The saved schema and its name: the record, else the keys from before it. */
-  private saved(): { text: string | null; file: string | null } {
+  /** The saved schema, its name and the URL it came from: the record, else the keys from before it. */
+  private saved(): { text: string | null; file: string | null; url: string | null } {
     try {
-      const rec = JSON.parse(this.host.read(SCHEMA_KEYS.doc) ?? 'null') as { text?: unknown; file?: unknown } | null;
-      if (rec && typeof rec.text === 'string') return { text: rec.text, file: typeof rec.file === 'string' ? rec.file : null };
+      const rec = JSON.parse(this.host.read(SCHEMA_KEYS.doc) ?? 'null') as { text?: unknown; file?: unknown; url?: unknown } | null;
+      if (rec && typeof rec.text === 'string') return { text: rec.text, file: typeof rec.file === 'string' ? rec.file : null, url: typeof rec.url === 'string' && typeof rec.file === 'string' ? rec.url : null };
     } catch {
       /* a broken record: the keys from before */
     }
-    return { text: this.host.read(SCHEMA_KEYS.text), file: this.host.read(SCHEMA_KEYS.file) };
+    return { text: this.host.read(SCHEMA_KEYS.text), file: this.host.read(SCHEMA_KEYS.file), url: null };
+  }
+
+  /** The schema is now the file `name`, loaded from `url` (null: not from a URL), or with Undo (undefined) as it was. */
+  private named(name: string | null, url?: string | null) {
+    if (url !== undefined && name !== null) {
+      if (url) this.urls.set(name, url);
+      else this.urls.delete(name);
+    }
+    this.base = name === null ? null : (url ?? this.urls.get(name) ?? null);
   }
 
   detach() {
@@ -208,9 +227,10 @@ export class SchemaController {
       this.ed.init(inc.text);
       this.sample = inc.text;
       this.set({ file: null, blank: !inc.text });
+      this.named(null);
       this.changed();
     } else {
-      this.load(inc.text, inc.name ?? null);
+      this.load(inc.text, inc.name ?? null, inc.url ?? null);
       // (A link says how the schema was checked: its options, the defaults where it names none.)
       if (inc.formats !== undefined) this.setOpts({ draft: DRAFTS.find((d) => DRAFT_NAME[d] === inc.draft) ?? null, formats: inc.formats });
     }
@@ -230,14 +250,18 @@ export class SchemaController {
     return a.seq === this.asks && !!this.ed && this.ed.version === a.ver;
   }
 
-  /** Replaces the schema (one undoable step): a file opened, pasted, generated. It is the visitor's now, saved with its name. */
-  load(text: string, name: string | null) {
+  /**
+   * Replaces the schema (one undoable step): a file opened, pasted, generated, a link's (from `url`, if fetched). It
+   * is the visitor's now, saved with its name.
+   */
+  load(text: string, name: string | null, url: string | null = null) {
     const ed = this.ed;
     if (!ed) return;
     // (A replacement now: one asked for before and still on its way no longer applies, even over the same text.)
     this.asks++;
     const before = this.state.file;
     this.set({ file: name });
+    this.named(name, url);
     ed.setValue(text, 0, false, [before, name]);
     // (setValue reports the change, unless the text was the same: the name still changed.)
     this.changed();
@@ -252,6 +276,7 @@ export class SchemaController {
   /** Undo or Redo went past a load: the file name of the text shown now. */
   renamed(name: string | null) {
     this.set({ file: name });
+    this.named(name);
     this.changed();
   }
 
@@ -323,7 +348,7 @@ export class SchemaController {
         let ok = 0;
         for (const r of got) {
           if ('text' in r) {
-            this.fetched.set(r.url, r.text);
+            this.fetched.set(r.url, r.base ? { text: r.text, url: r.base } : r.text);
             delete failed[r.url];
             ok++;
           } else failed[r.url] = r.failure;
@@ -381,7 +406,7 @@ export class SchemaController {
     const file = this.state.file;
     if (this.sample !== null && text === this.sample && file === null) return;
     const keep = !!text && text.length <= MAX_PERSIST;
-    const stored = keep && this.host.write(SCHEMA_KEYS.doc, JSON.stringify({ text, file }));
+    const stored = keep && this.host.write(SCHEMA_KEYS.doc, JSON.stringify({ text, file, ...(this.base && { url: this.base }) }));
     // (Stored, or nothing to store: the keys from before go. Refused: they stay, the pair they were.)
     if (stored || !keep) {
       if (!keep) this.host.write(SCHEMA_KEYS.doc, null);
@@ -414,7 +439,7 @@ export class SchemaController {
     const client = (this.client ??= this.host.validator());
     clearTimeout(this.busyTimer);
     this.busyTimer = setTimeout(() => this.set({ busy: true }), 200);
-    const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000, ...(this.unread && { unread: true }), ...(this.resources && { resources: this.resources }) };
+    const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000, ...(this.unread && { unread: true }), ...(this.resources && { resources: this.resources }), ...(this.base && { base: this.base }) };
     client.validate(req, (o: Outcome) => {
       // (Something changed since this was asked: the next run shows its own result. The document isn't the one
       // checked any more, whatever made it another: the new one's text comes, see setDoc.)
