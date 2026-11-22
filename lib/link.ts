@@ -138,11 +138,12 @@ export async function linkHash(r: LinkRequest): Promise<string> {
   if (r.view && VIEWS.includes(r.view) && !(r.view === 'compare' && r.b)) parts.push(`view=${r.view}`);
   if (r.view === 'convert' && r.to && TARGETS.some((t) => t.id === r.to)) {
     parts.push(`to=${r.to}`);
-    if (isFlat(r.to)) {
-      const f = flatOf(r.flat?.sep, r.flat?.arrays, r.flat?.depth, r.flat?.escape);
-      // (A separator that can't be percent-encoded, a lone surrogate, is left out.)
+    const f = r.flat;
+    if (f && isFlat(r.to)) {
+      // (The settings' options: valid ones. A separator being typed, '', converts with '.'; one that can't be
+      // percent-encoded, a lone surrogate, is left out.)
       try {
-        if (f.sep !== '.') parts.push('sep=' + encodeURIComponent(f.sep));
+        if (f.sep && f.sep !== '.') parts.push('sep=' + encodeURIComponent(f.sep));
       } catch {}
       if (f.arrays !== 'bracket') parts.push('arrays=' + f.arrays);
       if (f.depth) parts.push('depth=' + f.depth);
