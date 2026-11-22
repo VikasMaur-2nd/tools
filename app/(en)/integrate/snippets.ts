@@ -9,8 +9,11 @@ import { TARGETS } from '@/lib/engine/targets';
 /** Method 1: builds a link that carries the JSON. Browsers and Node.js 18+. */
 export const LINK_SNIPPET = `// A link that opens \`json\` in Tool Kumar: a JSON string (kept as
 // written) or any value. Options: compare (a second document, opens
-// Compare), view ('tree', 'table', 'graph'…), to (Convert target).
-async function toolKumarLink(json, { compare, view, to } = {}) {
+// Compare), view ('tree', 'table', 'graph'…), to (Convert target), and
+// with to 'flatten' or 'unflatten': sep (default '.'), arrays ('dot' or
+// 'keep'; default a[0]), depth (1 to 3; default all), escape (false).
+async function toolKumarLink(json, options = {}) {
+  const { compare, view, to, sep, arrays, depth, escape } = options;
   const encode = async (value) => {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
     const stream = new Blob([text]).stream()
@@ -27,14 +30,19 @@ async function toolKumarLink(json, { compare, view, to } = {}) {
   if (compare !== undefined) hash += '&b=' + (await encode(compare));
   if (view) hash += '&view=' + view;
   if (to) hash += '&to=' + to;
+  if (sep) hash += '&sep=' + encodeURIComponent(sep);
+  if (arrays) hash += '&arrays=' + arrays;
+  if (depth) hash += '&depth=' + depth;
+  if (escape === false) hash += '&escape=0';
   return 'https://tools.vikasmaur.com/#' + hash;
 }`;
 
 /** Method 2: opens a tab and hands the JSON over with postMessage, for documents too big for a link. */
 export const HANDOFF_SNIPPET = `// Opens \`json\` in a new Tool Kumar tab, any size. Call it straight
-// from a click. Options: compare, view, to (as for links). Resolves
-// with the tab once Tool Kumar has the document.
-function openInToolKumar(json, { compare, view, to } = {}) {
+// from a click. Options: compare, view, to, sep, arrays, depth, escape
+// (as for links). Resolves with the tab once Tool Kumar has the document.
+function openInToolKumar(json, options = {}) {
+  const { compare, view, to, sep, arrays, depth, escape } = options;
   const origin = 'https://tools.vikasmaur.com';
   const text = (value) => typeof value === 'string' || value === undefined
     ? value : JSON.stringify(value);
@@ -55,7 +63,7 @@ function openInToolKumar(json, { compare, view, to } = {}) {
       if (kind === 'ready') {
         const a = text(json);
         const b = text(compare);
-        tab.postMessage({ toolkumar: 'open', a, b, view, to }, origin);
+        tab.postMessage({ toolkumar: 'open', a, b, view, to, sep, arrays, depth, escape }, origin);
       } else if (kind === 'opened') done();
       else if (kind === 'error') fail(e.data.reason);
     }
@@ -79,6 +87,14 @@ const OPTIONS_TS = `interface ToolKumarOptions {
   /** Convert target, with view: 'convert'. */
   to?:
 ${targetLines.join('\n')};
+  /** With to: 'flatten' or 'unflatten': what joins the keys (default '.'). */
+  sep?: string;
+  /** Array indexes as a.0 ('dot') or none ('keep'); default a[0]. */
+  arrays?: 'bracket' | 'dot' | 'keep';
+  /** Levels joined into keys (default: all). */
+  depth?: 1 | 2 | 3;
+  /** false: keys stay as written (default: escaped with backslashes). */
+  escape?: boolean;
 }`;
 
 export const LINK_SNIPPET_TS = `${OPTIONS_TS}
@@ -87,8 +103,9 @@ export const LINK_SNIPPET_TS = `${OPTIONS_TS}
 // written) or any value.
 async function toolKumarLink(
   json: unknown,
-  { compare, view, to }: ToolKumarOptions = {},
+  options: ToolKumarOptions = {},
 ): Promise<string> {
+  const { compare, view, to, sep, arrays, depth, escape } = options;
   const encode = async (value: unknown): Promise<string> => {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
     const stream = new Blob([text]).stream()
@@ -105,6 +122,10 @@ async function toolKumarLink(
   if (compare !== undefined) hash += '&b=' + (await encode(compare));
   if (view) hash += '&view=' + view;
   if (to) hash += '&to=' + to;
+  if (sep) hash += '&sep=' + encodeURIComponent(sep);
+  if (arrays) hash += '&arrays=' + arrays;
+  if (depth) hash += '&depth=' + depth;
+  if (escape === false) hash += '&escape=0';
   return 'https://tools.vikasmaur.com/#' + hash;
 }`;
 
@@ -114,8 +135,9 @@ export const HANDOFF_SNIPPET_TS = `${OPTIONS_TS}
 // from a click. Resolves with the tab once Tool Kumar has the document.
 function openInToolKumar(
   json: unknown,
-  { compare, view, to }: ToolKumarOptions = {},
+  options: ToolKumarOptions = {},
 ): Promise<Window> {
+  const { compare, view, to, sep, arrays, depth, escape } = options;
   const origin = 'https://tools.vikasmaur.com';
   const text = (value: unknown): string | undefined =>
     typeof value === 'string' || value === undefined
@@ -130,7 +152,7 @@ function openInToolKumar(
       if (data?.toolkumar === 'ready') {
         const a = text(json);
         const b = text(compare);
-        tab.postMessage({ toolkumar: 'open', a, b, view, to }, origin);
+        tab.postMessage({ toolkumar: 'open', a, b, view, to, sep, arrays, depth, escape }, origin);
       } else if (data?.toolkumar === 'opened') done();
       else if (data?.toolkumar === 'error') fail(data.reason ?? 'error');
     };

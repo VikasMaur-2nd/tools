@@ -13,7 +13,7 @@ import type { GraphExport, GraphViewApi } from '../graph/types';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
-import { convertFileName, isFlat, targetInfo } from './targets';
+import { convertFileName, convertMime, isFlat, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, paired, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
@@ -2806,6 +2806,7 @@ export class Engine {
       view: this.settings.view,
       to: this.settings.target,
       in: this.inFmt !== 'json' ? this.inFmt : undefined,
+      flat: this.settings.flat,
     });
     return { url: `${location.origin}/${hash}`, comparing };
   }
@@ -2839,7 +2840,7 @@ export class Engine {
         }
         return this.toast('That share link is too large to open', 'err');
       }
-      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in }, signal);
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, flat: link.flat }, signal);
     };
     await open(LINK_DOCUMENT);
   };
@@ -2913,7 +2914,14 @@ export class Engine {
       this.loadCompare(open(b.text) ?? b.text, b.name);
     }
     const view = r.view ?? (b ? 'compare' : undefined);
-    if (view === 'convert') this.setConvert(r.to ? { target: r.to } : {});
+    if (view === 'convert') {
+      // Flatten's options, before the conversion: for this visit only (presetting saves nothing), so the reader's
+      // own come back on the next one.
+      this.presetting = !!r.flat;
+      if (r.flat) this.setSettings({ flat: r.flat });
+      this.presetting = false;
+      this.setConvert(r.to ? { target: r.to } : {});
+    }
     else if (view && view !== this.settings.view) this.setView(view);
     const msg =
       from !== undefined ? (from ? `Opened JSON sent by ${from}` : 'Opened JSON sent by another page')
@@ -3796,19 +3804,25 @@ export class Engine {
       }
       return;
     }
+    // Named when it is saved, as the document it was made of: flatten's and unflatten's output for JSON Lines (the
+    // parse's `multi`, as runConvert hands it over) is JSON Lines, a .jsonl file.
+    const save = (out: string) => {
+      const lines = !!this.good?.multi;
+      this.save(out, convertFileName(info, base, s0.rootName, lines), convertMime(info, lines));
+    };
     const later = this.convLater();
     if (later) {
       void later.then((out) => {
         // (Superseded: another target or document before this one's conversion came, never saved under this name.)
         if (this.dead || out === undefined) return;
         if (!out || typeof out !== 'string') return this.toast('Nothing to download yet', 'info');
-        this.save(out, name, info.mime);
+        save(out);
       });
       return;
     }
     const out = this.convOutput();
     if (!out) return this.toast('Nothing to download yet', 'info');
-    this.save(out, name, info.mime);
+    save(out as string);
   }
 
   tableShow(n: JNode | null) {

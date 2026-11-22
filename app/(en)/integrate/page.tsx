@@ -190,6 +190,29 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
                 <th scope="row"><Part cls="lk-k">to</Part></th>
                 <td>Optional, with <Pair name="view" value="convert" />: {TARGETS.map((t, i) => <span key={t.id}>{i ? ', ' : ''}<Part cls="lk-v">{t.id}</Part></span>)}.</td>
               </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">sep</Part></th>
+                <td>
+                  Optional, with <Pair name="to" value="flatten" /> or <Pair name="to" value="unflatten" />: what joins the keys of a path, 1 to 8 characters
+                  with no digits, backslashes or brackets, percent-encoded. The default is a dot.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">arrays</Part></th>
+                <td>Optional, with the same targets: array indexes as <Part cls="lk-v">bracket</Part> (a[0], the default), <Part cls="lk-v">dot</Part> (a.0) or <Part cls="lk-v">keep</Part> (arrays stay whole).</td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">depth</Part></th>
+                <td>Optional, with <Pair name="to" value="flatten" />: <Part cls="lk-v">1</Part>, <Part cls="lk-v">2</Part> or <Part cls="lk-v">3</Part> levels joined into keys. The default is all of them.</td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">escape</Part></th>
+                <td>
+                  Optional, with the same targets: <Part cls="lk-v">0</Part> keeps keys as written, without the backslashes that otherwise mark a dot or
+                  bracket inside a key. A link to flatten or unflatten opens with exactly these options, the defaults for those it leaves out, and
+                  readers keep their own for their next visit.
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -271,7 +294,8 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
           <li>When Tool Kumar is ready, it tells your page with <code>{'{ toolkumar: "ready", version: 1 }'}</code>.</li>
           <li>
             Your page sends <code>{'{ toolkumar: "open", a, b, view, to }'}</code> to that tab, where <code>a</code> and <code>b</code> are the JSON
-            text.
+            text. With <code>to: &quot;flatten&quot;</code> or <code>&quot;unflatten&quot;</code> it may add <code>sep</code>, <code>arrays</code>,{' '}
+            <code>depth</code> (a number) and <code>escape</code> (a boolean), as for links.
           </li>
           <li>Tool Kumar opens it and answers <code>{'{ toolkumar: "opened" }'}</code>, or <code>{'{ toolkumar: "error", reason }'}</code>.</li>
         </ol>
