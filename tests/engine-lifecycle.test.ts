@@ -1296,27 +1296,52 @@ test('a big input in another format converts in the worker, its JSON parsed in s
   assert.equal(s.state.status.src, 'yaml');
 });
 
-test('the Schema view\'s places in a big input are found in the source worker, a small one\'s here; one on its way ends with the worker (review 2, finding 6)', async () => {
-  const real = load(resolve(__dirname, '../lib/engine/source'));
-  const here: unknown[][] = [];
-  const csv = 'id,name\n' + Array.from({ length: 12_000 }, (_, i) => `${i},user ${i}`).join('\n') + '\n';
-  assert.ok(csv.length > 100_000);
-  const big = sourcing(csv, 'csv');
-  big.engine.srcMod = { ...real, locateImport: (...a: unknown[]) => (here.push(a), real.locateImport(...a)) };
-  const w = big.engine.sourceWorker();
-  const posted: Dynamic[] = [];
-  w.postMessage = (m: Dynamic) => posted.push(m);
-  const got = big.engine.locateSource('csv', { delimiter: ',', header: true }, ['/5/name'], [false]);
-  assert.deepEqual([posted.length, JSON.stringify(posted[0].locate), posted[0].text === csv, here.length], [1, '{"pointers":["/5/name"],"keys":[false]}', true, 0]);
-  w.onmessage({ data: { seq: posted[0].seq, places: [{ p: 42, exact: true }] } });
-  assert.deepEqual(await got, [{ p: 42, exact: true }]);
-  // The worker fails (or is stopped for a newer conversion): what was asked of it comes back as nothing.
-  const lost = big.engine.locateSource('csv', { delimiter: ',', header: true }, ['/5/name'], [false]);
+test('the source worker\'s places replies go to the Schema view\'s hook, and it hears when the worker ends (review 2, finding 6)', () => {
+  const s = sourcing('id,name\n1,Ada\n', 'csv');
+  const heard: unknown[] = [];
+  s.engine.placesIn = (d: unknown) => heard.push(d === null ? null : JSON.stringify(d));
+  const w = s.engine.sourceWorker();
+  let converted = 0;
+  s.engine.sourceConverted = () => converted++;
+  w.onmessage({ data: { seq: 3, places: [{ p: 8, exact: true }] } });
+  w.onmessage({ data: { seq: 1, json: '[]' } });
+  assert.deepEqual([heard, converted], [['{"seq":3,"places":[{"p":8,"exact":true}]}'], 1]);
   w.onerror({ preventDefault() {} });
-  assert.equal(await lost, null);
-  // A small input: here, no worker.
-  const small = sourcing('id,name\n1,Ada\n', 'csv');
-  small.engine.srcMod = { ...real, locateImport: (...a: unknown[]) => (here.push(a), real.locateImport(...a)) };
-  const places = await small.engine.locateSource('csv', { delimiter: ',', header: true }, ['/0/name'], [false]);
-  assert.deepEqual([places, here.length, small.engine.srcWorker], [[{ p: 10, exact: true }], 1, undefined]);
+  assert.deepEqual(heard.at(-1), null);
+});
+
+test('the warm-up hands the service worker the page and the app files it loaded, never what it fetched for the visitor (review 2, finding 2)', async () => {
+  const s = session();
+  const posted: Dynamic[] = [];
+  s.location.pathname = '/de/tools/json-schema-validator';
+  Object.assign(s.navigator.serviceWorker, { register: () => Promise.resolve(), ready: Promise.resolve({ active: { postMessage: (m: Dynamic) => posted.push(m) } }) });
+  const o = 'https://tools.example';
+  const entries = [
+    { name: `${o}/_next/static/chunks/a.js`, initiatorType: 'script' },
+    { name: `${o}/icon-192.png`, initiatorType: 'img' },
+    // Fetched: a schema, a document by URL, an API answer (a page's dictionaries come with its HTML); and analytics.
+    { name: `${o}/schema.json`, initiatorType: 'fetch' },
+    { name: `${o}/data/doc.json?x=1`, initiatorType: 'xmlhttprequest' },
+    { name: `${o}/api/schema`, initiatorType: 'fetch' },
+    { name: `${o}/i18n/schema-strings.de.0123456789ab.json`, initiatorType: 'fetch' },
+    { name: `${o}/_vercel/insights/script.js`, initiatorType: 'script' },
+    { name: 'https://other.example/x.js', initiatorType: 'script' },
+  ];
+  const real = performance.getEntriesByType;
+  performance.getEntriesByType = (() => entries) as unknown as typeof performance.getEntriesByType;
+  try {
+    s.engine.registerSW();
+    await s.drain();
+    await s.drain();
+  } finally {
+    performance.getEntriesByType = real;
+  }
+  assert.equal(posted.length, 1);
+  assert.deepEqual([...posted[0].urls], [
+    `${o}/`,
+    `${o}/de`,
+    `${o}/de/tools/json-schema-validator`,
+    `${o}/_next/static/chunks/a.js`,
+    `${o}/icon-192.png`,
+  ]);
 });

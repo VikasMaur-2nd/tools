@@ -17,7 +17,7 @@ import { convertFileName, convertMime, isFlat, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, paired, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
-import type { CsvOptions, ImportFormat, Place } from '../convert/import';
+import type { Place } from '../convert/import';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
@@ -31,7 +31,6 @@ import type { SnippetFormat } from '../badge';
 import type { HandoffReply, LinkDoc, LinkRequest } from '../link';
 import type { HugeHook } from '../huge/session';
 import { TallScroll } from './tall';
-import { warmUrls } from './warm';
 
 /** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
 export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
@@ -379,9 +378,8 @@ export class Engine {
   private srcSeq = 0;
   /** The conversion the worker is making: of that editor version, read that way (`key`, see sourceOptions). */
   private srcWanted: { seq: number; ver: object; key: string } | null = null;
-  /** Places asked of the worker (see locateSource), by request; answered null if it ends first. */
-  private srcPlaces = new Map<number, (p: Place[] | null) => void>();
-  private placesSeq = 0;
+  /** Gets the worker's places replies (lib/schema/places.ts asks), and null when it fails or is stopped: they won't come then. */
+  placesIn?: ((d: { seq: number; places: Place[] | null } | null) => void) | null;
   /** The last conversion the worker made, and that its JSON was parsed (analyze uses it for that version and reading). */
   private srcDone: { ver: object; key: string; conv: { json: string } | { error: string; p: number } } | null = null;
   private sel: JNode | null = null;
@@ -528,7 +526,6 @@ export class Engine {
     this.worker?.terminate();
     this.analysisWorker?.terminate();
     this.srcWorker?.terminate();
-    this.placesDropped();
     clearTimeout(this.analysisTimer);
     this.dead = true;
     // Whatever is still on its way drops itself (each step checks its sequence), and nothing more starts.
@@ -872,21 +869,17 @@ export class Engine {
   }
 
   /** The worker for big inputs in another format (null when it can't start: they convert here). */
-  private sourceWorker(): Worker | null {
+  sourceWorker(): Worker | null {
     if (this.dead) return null;
     if (this.srcWorker !== undefined) return this.srcWorker;
     try {
       const w = new Worker(new URL('./source.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<SourceReply>) => {
-        if (!('places' in e.data)) return this.sourceConverted(e.data);
-        this.srcPlaces.get(e.data.seq)?.(e.data.places);
-        this.srcPlaces.delete(e.data.seq);
-      };
+      w.onmessage = (e: MessageEvent<SourceReply>) => ('places' in e.data ? this.placesIn?.(e.data) : this.sourceConverted(e.data));
       w.onerror = (e) => {
         // (It couldn't load, offline before it was ever cached say: converted here from now on.)
         e.preventDefault();
         w.terminate();
-        this.placesDropped();
+        this.placesIn?.(null);
         this.srcWorker = null;
         this.srcBusy = false;
         if (this.srcWanted && !this.dead) {
@@ -918,7 +911,7 @@ export class Engine {
     // A conversion of an older text or reading still under way is stopped, not waited out (seconds at a few MB).
     if (this.srcBusy) {
       w.terminate();
-      this.placesDropped();
+      this.placesIn?.(null);
       this.srcWorker = undefined;
       this.srcBusy = false;
       w = this.sourceWorker();
@@ -934,29 +927,6 @@ export class Engine {
     w.postMessage({ seq, text, format: fmt, csv: options } satisfies SourceRequest);
     this.srcBusy = true;
     return true;
-  }
-
-  /**
-   * Where the values at JSON Pointers `pointers` (with `keys[i]`, property names) of what the input converts to are
-   * in it (lib/convert/import.ts locateImport): a big input's found in the worker, never on the page; a small one's
-   * here. null: it doesn't convert, or the places can't be found now.
-   */
-  locateSource(format: ImportFormat, options: CsvOptions, pointers: string[], keys: boolean[]): Promise<Place[] | null> {
-    const text = this.ed.text;
-    if (text.length < SOURCE_WORKER_MIN) return Promise.resolve(this.srcMod?.locateImport(text, format, options, pointers, keys) ?? null);
-    const w = this.sourceWorker();
-    if (!w) return Promise.resolve(null);
-    const seq = ++this.placesSeq;
-    return new Promise((resolve) => {
-      this.srcPlaces.set(seq, resolve);
-      w.postMessage({ seq, text, format, csv: options, locate: { pointers, keys } } satisfies SourceRequest);
-    });
-  }
-
-  /** The worker ended: the places asked of it won't come. */
-  private placesDropped() {
-    for (const resolve of this.srcPlaces.values()) resolve(null);
-    this.srcPlaces.clear();
   }
 
   /** The worker's conversion: its JSON is parsed here in short steps, then analysed (dropped if the input changed meanwhile). */
@@ -4691,8 +4661,14 @@ export class Engine {
           const next = () => {
             const load = mods.shift();
             if (load) return void load().then(() => idle(next), () => idle(next));
-            // Hand the SW the app's files this page loaded so the app works offline (./warm.ts).
-            reg.active?.postMessage({ type: 'cache', urls: warmUrls(performance.getEntriesByType('resource') as PerformanceResourceTiming[], location.origin, location.pathname) });
+            // Hand the SW the files this page loaded so the app works offline: never what it fetched (a document or
+            // schema by URL, which the SW would fetch again with cookies and keep). The app's own fetched files, a
+            // page's dictionaries, are named in its HTML: the SW gets them with it.
+            const urls = (performance.getEntriesByType('resource') as PerformanceResourceTiming[])
+              .filter((e) => e.name.startsWith(location.origin + '/') && !e.name.includes('/_vercel/') && !/^(fetch|xmlhttprequest|beacon)$/.test(e.initiatorType))
+              .map((e) => e.name);
+            const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
+            reg.active?.postMessage({ type: 'cache', urls: [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] });
           };
           idle(next);
         })

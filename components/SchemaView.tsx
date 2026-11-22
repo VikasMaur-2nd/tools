@@ -22,6 +22,7 @@ import { parse } from '@/lib/json/parser';
 import { SchemaClient } from '@/lib/schema/client';
 import { SchemaController, readDoc, type SchemaState } from '@/lib/schema/controller';
 import { REMOTE_MAX_BYTES, REMOTE_MAX_COUNT, REMOTE_TIMEOUT, fetchSchemas, type FetchFailure } from '@/lib/schema/remote';
+import { locateSource } from '@/lib/schema/places';
 import { DRAFTS, DRAFT_NAME, type Draft } from '@/lib/schema/drafts';
 import type { InstanceError, Loc, Problem, ValidateResult } from '@/lib/schema/index';
 import type { Portal } from '@/lib/huge/kit';
@@ -111,9 +112,8 @@ const placeKey = (x: InstanceError) => (x.key ? 'k' : 'v') + x.pointer;
 
 /**
  * The places of result `r`'s errors in the input, when it is in another format than JSON: its text read again for
- * where each JSON Pointer's value (or property name) is written (lib/convert/import.ts locateImport, with the
- * engine's reader and options; a big input's in the engine's source worker, never holding up the page). By
- * placeKey; null while not known.
+ * where each JSON Pointer's value (or property name) is written (lib/schema/places.ts: with the engine's reader and
+ * options; a big input's in the engine's source worker, never holding up the page). By placeKey; null while not known.
  */
 function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, SrcPlace> | null {
   const [got, setGot] = useState<{ r: ValidateResult; at: Map<string, SrcPlace> } | null>(null);
@@ -136,7 +136,7 @@ function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, 
     const { input, settings } = store.get();
     const delimiter = input.delimiter === 'auto' ? m.csvDelimiter(text) : input.delimiter;
     const options = format === 'csv' ? { delimiter, header: settings.csvHeader, types: settings.csvTypes } : {};
-    void e.locateSource(format as 'yaml', options, list.map((x) => x.pointer), list.map((x) => x.key)).then((places) => {
+    void locateSource(e, format as 'yaml', options, list.map((x) => x.pointer), list.map((x) => x.key)).then((places) => {
       // (The text changed meanwhile: places in another text mean nothing.)
       if (!on || !places || !ctl.current() || e.ed.text !== text) return;
       const at = new Map<string, SrcPlace>();
