@@ -10,7 +10,7 @@
  * whatever made it another one (an edit, a load, another input format or reading, huge mode).
  */
 import type { Outcome } from './client';
-import { DRAFTS, type Draft } from './drafts';
+import { DRAFTS, DRAFT_NAME, type Draft } from './drafts';
 import type { ValidateRequest, ValidateResult } from './index';
 
 /**
@@ -70,6 +70,10 @@ export interface SchemaIn {
   text?: string;
   sample?: boolean;
   generate?: boolean;
+  /** A link's schema (lib/link.ts): its file name (one fetched by URL), its draft by name and Check formats. */
+  name?: string | null;
+  draft?: string;
+  formats?: boolean;
 }
 
 export class SchemaController {
@@ -98,8 +102,8 @@ export class SchemaController {
   private gen = 0;
   /** Replacements of the schema asked for (see ask). */
   private asks = 0;
-  /** What the shown result was asked for. */
-  private asked: { doc: string; schema: string } | null = null;
+  /** What the shown result was asked for, and which document that was (see current). */
+  private asked: { doc: string; schema: string; id: number } | null = null;
 
   constructor(host: SchemaHost) {
     this.host = host;
@@ -182,7 +186,11 @@ export class SchemaController {
       this.sample = inc.text;
       this.set({ file: null, blank: !inc.text });
       this.changed();
-    } else this.load(inc.text, null);
+    } else {
+      this.load(inc.text, inc.name ?? null);
+      // (A link says how the schema was checked: its options, the defaults where it names none.)
+      if (inc.formats !== undefined) this.setOpts({ draft: DRAFTS.find((d) => DRAFT_NAME[d] === inc.draft) ?? null, formats: inc.formats });
+    }
     return false;
   }
 
@@ -319,6 +327,7 @@ export class SchemaController {
     const gen = this.gen;
     const schema = ed.text;
     const doc = this.doc;
+    const id = this.docOf;
     const client = (this.client ??= this.host.validator());
     clearTimeout(this.busyTimer);
     this.busyTimer = setTimeout(() => this.set({ busy: true }), 200);
@@ -343,7 +352,7 @@ export class SchemaController {
         ed.setDiagnostics([]);
         return;
       }
-      this.asked = { doc, schema };
+      this.asked = { doc, schema, id };
       this.set({ result: o, busy: false, stale: false, outcome: 'ok' });
       this.decorate(o, doc, schema);
       if (!this.tracked && o.state === 'ok') {
@@ -374,6 +383,17 @@ export class SchemaController {
   private docMatches(doc: string) {
     const main = this.host.main();
     return !!main && this.host.docIsJson() && main.length === doc.length && main.text === doc;
+  }
+
+  /** The schema and its options for a share link (lib/link.ts): the draft and Check formats only when set. */
+  share(): { text: string; draft?: string; formats?: boolean } {
+    const { draft, formats } = this.state;
+    return { text: this.ed?.text ?? '', ...(draft !== null && { draft: DRAFT_NAME[draft] }), ...(formats && { formats }) };
+  }
+
+  /** Whether the shown result is for the document there now (its places in another format: see SchemaView's). */
+  current() {
+    return !!this.asked && this.asked.id === this.host.docId();
   }
 
   /** Whether the shown result's locations are in the texts the editors hold now. */

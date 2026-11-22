@@ -167,7 +167,8 @@ export default function IntegratePage() {
           pairs joined by <Part cls="lk-s">&amp;</Part>:
         </p>
         <Code lang="text" links>{`https://tools.vikasmaur.com/#a=<document>&view=tree
-https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
+https://tools.vikasmaur.com/#a=<original>&b=<modified>
+https://tools.vikasmaur.com/#a=<document>&b=<schema>&view=schema`}</Code>
         <div className="table-wrap">
           <table>
             <thead>
@@ -180,15 +181,29 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
               </tr>
               <tr>
                 <th scope="row"><Part cls="lk-k">b</Part></th>
-                <td>Optional. A second document in the same form. Two documents open in Compare.</td>
+                <td>
+                  Optional. A second document in the same form. Two documents open in Compare. With <Pair name="view" value="schema" />, it is
+                  instead the JSON Schema the document is validated against.
+                </td>
               </tr>
               <tr>
                 <th scope="row"><Part cls="lk-k">view</Part></th>
-                <td>Optional. <Part cls="lk-v">format</Part>, <Part cls="lk-v">tree</Part>, <Part cls="lk-v">table</Part>, <Part cls="lk-v">graph</Part>, <Part cls="lk-v">convert</Part> or <Part cls="lk-v">compare</Part>. Without it, readers keep the view they last used.</td>
+                <td>Optional. <Part cls="lk-v">format</Part>, <Part cls="lk-v">tree</Part>, <Part cls="lk-v">table</Part>, <Part cls="lk-v">graph</Part>, <Part cls="lk-v">convert</Part>, <Part cls="lk-v">compare</Part> or <Part cls="lk-v">schema</Part>. Without it, readers keep the view they last used.</td>
               </tr>
               <tr>
                 <th scope="row"><Part cls="lk-k">to</Part></th>
                 <td>Optional, with <Pair name="view" value="convert" />: {TARGETS.map((t, i) => <span key={t.id}>{i ? ', ' : ''}<Part cls="lk-v">{t.id}</Part></span>)}.</td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">draft</Part></th>
+                <td>
+                  Optional, with a schema: the draft for a schema without <code>$schema</code>. <Part cls="lk-v">2020-12</Part> (the default),{' '}
+                  <Part cls="lk-v">2019-09</Part>, <Part cls="lk-v">draft-07</Part>, <Part cls="lk-v">draft-06</Part> or <Part cls="lk-v">draft-04</Part>.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">formats</Part></th>
+                <td>Optional, with a schema: <Part cls="lk-v">1</Part> checks <code>format</code> (email, date-time, uri…), which is otherwise an annotation.</td>
               </tr>
             </tbody>
           </table>
@@ -239,7 +254,8 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
         <script dangerouslySetInnerHTML={{ __html: CODE_LANG_SCRIPT }} />
         <CodeSnippet name="toolKumarLink" js={LINK_SNIPPET} ts={LINK_SNIPPET_TS} />
         <Code lang="javascript" links>{`const link = await toolKumarLink(response, { view: 'tree' });
-const diff = await toolKumarLink(before, { compare: after });`}</Code>
+const diff = await toolKumarLink(before, { compare: after });
+const checked = await toolKumarLink(response, { schema: userSchema });`}</Code>
         <p>
           A link to a URL needs no compression: <LinkCode lang="javascript">{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</LinkCode>. The reader&apos;s browser
           fetches it, so its server must allow cross-origin requests (CORS); public GitHub files and most public APIs do. In other languages:
@@ -271,7 +287,8 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
           <li>When Tool Kumar is ready, it tells your page with <code>{'{ toolkumar: "ready", version: 1 }'}</code>.</li>
           <li>
             Your page sends <code>{'{ toolkumar: "open", a, b, view, to }'}</code> to that tab, where <code>a</code> and <code>b</code> are the JSON
-            text.
+            text. With <code>{'view: "schema"'}</code>, <code>b</code> is the JSON Schema, and <code>draft</code> and <code>formats: true</code> may
+            come with it as for links.
           </li>
           <li>Tool Kumar opens it and answers <code>{'{ toolkumar: "opened" }'}</code>, or <code>{'{ toolkumar: "error", reason }'}</code>.</li>
         </ol>

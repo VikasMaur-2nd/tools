@@ -2787,12 +2787,17 @@ export class Engine {
     }
   }
 
+  /** The Schema view's schema and options, for a link (components/SchemaView.tsx sets it while the view is on the page). */
+  schemaShare: (() => { text: string; draft?: string; formats?: boolean }) | null = null;
+
   /** The link `share` makes (null: nothing to share). Rejects where the browser can't compress. */
   async shareUrl(): Promise<{ url: string; comparing: boolean } | null> {
     this.flushLoad();
     const comparing = this.settings.view === 'compare';
+    // (From the Schema view, b is its schema: lib/link.ts.)
+    const schema = this.settings.view === 'schema' ? this.schemaShare?.() : undefined;
     const a = this.ed.text;
-    const b = comparing ? this.ed2.text : '';
+    const b = comparing ? this.ed2.text : (schema?.text ?? '');
     if (!a.trim() && !b.trim()) return null;
     // Valid JSON travels minified (a shorter link) and opens formatted; anything else as typed.
     const r = this.fresh();
@@ -2806,6 +2811,8 @@ export class Engine {
       view: this.settings.view,
       to: this.settings.target,
       in: this.inFmt !== 'json' ? this.inFmt : undefined,
+      draft: schema?.draft,
+      formats: schema?.formats,
     });
     return { url: `${location.origin}/${hash}`, comparing };
   }
@@ -2839,7 +2846,7 @@ export class Engine {
         }
         return this.toast('That share link is too large to open', 'err');
       }
-      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in }, signal);
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, draft: link.draft, formats: link.formats }, signal);
     };
     await open(LINK_DOCUMENT);
   };
@@ -2908,15 +2915,18 @@ export class Engine {
       const pretty = format === 'json' ? open(a.text) : null;
       this.load(pretty ?? a.text, a.name, true, pretty === null, undefined, format);
     }
-    if (b) {
+    const view = r.view ?? (b ? 'compare' : undefined);
+    // (With the Schema view, b is the schema: its editor takes it, with its options.)
+    if (b && view === 'schema') store.set({ schemaIn: { seq: Date.now(), text: open(b.text) ?? b.text, name: b.name, draft: r.draft, formats: !!r.formats } });
+    else if (b) {
       noteLoad(source(r.b!), 2, b.name);
       this.loadCompare(open(b.text) ?? b.text, b.name);
     }
-    const view = r.view ?? (b ? 'compare' : undefined);
     if (view === 'convert') this.setConvert(r.to ? { target: r.to } : {});
     else if (view && view !== this.settings.view) this.setView(view);
     const msg =
       from !== undefined ? (from ? `Opened JSON sent by ${from}` : 'Opened JSON sent by another page')
+      : b && view === 'schema' ? (a ? 'Loaded shared JSON and its schema' : 'Loaded the shared schema')
       : b ? 'Loaded the shared comparison'
       : a?.host ? `Loaded ${a.host}`
       : 'Loaded shared JSON';

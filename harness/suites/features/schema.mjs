@@ -2,9 +2,10 @@
 // error selecting it in the document, a keyword selecting the rule in the schema, keyboard navigation, fixing to
 // Valid and undoing (Valid, never "Validating…" while a check is on its way), a broken schema, Check formats, the
 // phone layout, and from the home page Alt+7, Generate from the document and Close; the view toolbar at the widths
-// where its row is full; a German page's strings, also after a failed load; the palette's Generate on a fresh page.
+// where its row is full; a German page's strings, also after a failed load; the palette's Generate on a fresh page;
+// share links with a schema; errors' places in YAML and CSV input.
 import { defaults, test } from '../../lib/api.mjs';
-import { MOD, setDoc, until } from './_helpers.mjs';
+import { MOD, docOf, enc, resetClip, setDoc, until, waitClip } from './_helpers.mjs';
 
 defaults({ engines: ['chromium'], width: 1280, height: 900, tags: ['schema'] });
 
@@ -343,5 +344,101 @@ test('Schema open, another page, then Back: the result shows again, not "Validat
   await t.app.waitEngine(page, { after: engines, timeout: 60_000 });
   const shown = await until(page, () => [...document.querySelectorAll('#view-schema .sch-state')].some((el) => el.offsetParent && /^Valid(?!ating)/.test(el.textContent)), null, { timeout: 15_000 });
   t.check(shown === true, 'Valid again after Back', await page.evaluate(() => [...document.querySelectorAll('#view-schema .sch-state')].map((el) => el.textContent)));
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('Share from the Schema view carries the schema and its options; the link opens them, a schema by URL too (D)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  t.check(await setDoc(page, '{"id": "7", "email": "not-an-email"}'), 'a document');
+  await page.keyboard.press('Alt+7');
+  await page.evaluate((text) => {
+    const ta = document.getElementById('schema-input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, text);
+  }, '{\n  "properties": {\n    "id": { "type": "integer" },\n    "email": { "format": "email" }\n  }\n}\n');
+  await page.locator('.sch-fmt').click();
+  t.check(!!(await waitState(page, /^2 errors/)), 'two errors, formats checked', await state(page));
+  await resetClip(page);
+  await page.getByRole('button', { name: 'Share', exact: true }).first().click();
+  await page.getByRole('menuitem', { name: 'Copy link' }).click();
+  const url = await waitClip(page);
+  const hash = url ? new URL(url).hash : '';
+  t.check(/&view=schema/.test(hash) && /&formats=1/.test(hash) && !/draft=/.test(hash), 'the link names the Schema view and Check formats', hash.replace(/=[\w-]{12,}/g, '=…'));
+  t.check(!!url && docOf(url, 'b') === '{"properties":{"id":{"type":"integer"},"email":{"format":"email"}}}', 'b is the schema, minified', url && docOf(url, 'b'));
+  // Opened in a fresh tab: the document, the schema in its editor, formats on, the same two errors.
+  const p2 = await t.context.newPage();
+  await p2.goto(url, { waitUntil: 'commit' });
+  await t.app.waitEngine(p2);
+  const opened = await until(p2, () => (document.getElementById('schema-input')?.value ?? '').includes('"format": "email"') && /^2 errors/.test(document.querySelector('#view-schema .sch-state')?.textContent ?? ''), null, { timeout: 20_000 });
+  t.check(opened === true, 'the schema in the schema editor, validated: 2 errors', await p2.evaluate(() => [document.querySelector('#view-schema .sch-state')?.textContent, document.getElementById('schema-input')?.value.slice(0, 40)]));
+  t.check((await p2.evaluate(() => document.querySelector('.sch-fmt')?.getAttribute('aria-pressed'))) === 'true', 'Check formats is on');
+  await p2.close();
+  // An old link: b and no view is Compare's document, as before.
+  await page.goto(`${t.base}/#a=${enc('[1]')}&b=${enc('[2]')}`, { waitUntil: 'commit' });
+  await t.app.waitEngine(page);
+  t.check(!!(await until(page, () => !document.querySelector('.pane-cmp')?.hidden && document.getElementById('input2')?.value.includes('2'), null, { timeout: 15_000 })), 'b without a view opens Compare');
+  // A schema by URL, fetched as a document's is; its file name shows.
+  await page.route('https://schemas.example.test/**', (route) => route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' }, body: '{"type": "array", "items": {"type": "number"}}' }));
+  await page.goto(`${t.base}/#a=${enc('[1, "x"]')}&b=${encodeURIComponent('https://schemas.example.test/numbers.schema.json')}&view=schema&draft=draft-07`, { waitUntil: 'commit' });
+  await t.app.waitEngine(page);
+  const fetched = await until(page, () => /^1 error/.test(document.querySelector('#view-schema .sch-state')?.textContent ?? '') && document.querySelector('.pane-sch .fname')?.textContent, null, { timeout: 20_000 });
+  t.check(fetched === 'Schemanumbers.schema.json', 'the fetched schema, named, validated: 1 error', fetched);
+  t.check((await page.evaluate(() => document.querySelector('.pane-sch select')?.value)) === '7', 'the draft the link names is picked');
+  t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('input in another format: errors show and select their places in it, YAML and CSV, a missing CSV cell near its row (E)', async (t) => {
+  const { page } = t;
+  await t.open('/');
+  await page.locator('.pane-ed .fmt-pick select').selectOption('yaml');
+  const yaml = 'name: Ada\nage: "36"\ntags:\n  - admin\n  - 7\n';
+  await page.evaluate((text) => {
+    const ta = document.getElementById('input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, text);
+  }, yaml);
+  await page.keyboard.press('Alt+7');
+  await page.evaluate((text) => {
+    const ta = document.getElementById('schema-input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, text);
+  }, '{"properties": {"age": {"type": "integer"}, "tags": {"items": {"type": "string"}}}}');
+  t.check(!!(await waitState(page, /^2 errors/)), 'two errors', await state(page));
+  const at = await until(page, (s) => {
+    const all = [...document.querySelectorAll(s)].map((r) => r.querySelector('.sch-at')?.textContent ?? '');
+    return all.length === 2 && all.every((x) => /Ln \d/.test(x)) && all;
+  }, ROWS, { timeout: 10_000 });
+  t.check(JSON.stringify(at) === JSON.stringify(['/age · Ln 2, Col 1', '/tags/1 · Ln 5, Col 3']), 'each error at its line in the YAML', at);
+  await page.locator(`${ROWS}[data-i="0"] .sch-msg`).click();
+  t.check((await selected(page)) === 'input:age: "36"', 'a click selects it in the YAML', await selected(page));
+  await page.locator('.sch-list').focus();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  t.check((await selected(page)) === 'input:- 7', 'Enter does too', await selected(page));
+  // CSV: a cell, and a record without the cell (near its row).
+  await page.locator('.pane-ed .fmt-pick select').selectOption('csv');
+  await page.evaluate((text) => {
+    const ta = document.getElementById('input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, text);
+  }, 'id,email\nx1,a@b.c\n2\n');
+  await page.evaluate((text) => {
+    const ta = document.getElementById('schema-input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, text);
+  }, '{"items": {"properties": {"id": {"type": "integer"}, "email": {"type": "string"}}}}');
+  const csv = await until(page, (s) => {
+    const all = [...document.querySelectorAll(s)].map((r) => r.querySelector('.sch-at')?.textContent ?? '');
+    return all.length === 2 && all.every((x) => /Ln \d/.test(x)) && all;
+  }, ROWS, { timeout: 15_000 });
+  t.check(JSON.stringify(csv) === JSON.stringify(['/0/id · Ln 2, Col 1', '/1/email · near Ln 3']), 'a CSV cell, and a missing one near its record', csv);
+  await page.locator(`${ROWS}[data-i="0"] .sch-msg`).click();
+  t.check((await selected(page)) === 'input:x1', 'a click selects the cell', await selected(page));
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
 });

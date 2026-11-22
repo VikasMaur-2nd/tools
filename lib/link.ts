@@ -4,9 +4,13 @@
  *
  *   /#a=<doc>                     open a document
  *   /#a=<doc>&b=<doc>             compare two documents (Compare opens by itself)
- *   /#a=<doc>&view=tree           open in a view: format, tree, table, graph, convert, compare
+ *   /#a=<doc>&view=tree           open in a view: format, tree, table, graph, convert, compare, schema
  *   /#a=<doc>&view=convert&to=go  open Convert with a target (lib/engine/targets.ts ids)
  *   /#a=<doc>&in=yaml             document a is YAML (yaml, csv, xml, toml): it opens as itself, its JSON in the views
+ *   /#a=<doc>&b=<schema>&view=schema
+ *                                 validate a against the JSON Schema b (with view=schema, b is the schema, not
+ *                                 Compare's document); &draft=draft-07 (2020-12, 2019-09, draft-07, draft-06,
+ *                                 draft-04: for a schema without $schema) and &formats=1 (Check formats) when set
  *   /#handoff                     receive the documents by postMessage from window.opener
  *
  * <doc> is the text compressed with raw DEFLATE (RFC 1951) and encoded as
@@ -19,7 +23,9 @@ import { TARGETS } from './engine/targets';
 import { SOURCE_FORMATS } from './engine/rules';
 import type { SourceFormat, View } from './engine/store';
 
-const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
+const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'];
+/** A JSON Schema draft as a link names it (with view=schema: the draft picker's choice). */
+const DRAFT = /^(2020-12|2019-09|draft-0[467])$/;
 /**
  * The largest document a tab opens, however it arrives: a file, a link or a handoff.
  * Links themselves have no length limit of ours (browsers have theirs: about 2 MB of
@@ -66,12 +72,19 @@ export interface LinkRequest {
   to?: string;
   /** What document a is (absent: JSON, or what its URL's file name says). */
   in?: Exclude<SourceFormat, 'json'>;
+  /** With view 'schema' and a schema (b): the draft for a schema without $schema (see DRAFT), and Check formats. */
+  draft?: string;
+  formats?: boolean;
 }
 
 /** A document as a link carries it: still encoded (see `decodeDoc`), or a URL. */
 export type LinkSource = { data: string } | { url: string };
 /** What a fragment asks for: nothing (an ordinary anchor), a handoff, documents, or something broken. */
-export type ParsedLink = null | 'handoff' | 'broken' | { a?: LinkSource; b?: LinkSource; view?: View; to?: string; in?: Exclude<SourceFormat, 'json'> };
+export type ParsedLink = null | 'handoff' | 'broken' | { a?: LinkSource; b?: LinkSource; view?: View; to?: string; in?: Exclude<SourceFormat, 'json'>; draft?: string; formats?: boolean };
+
+/** A schema's options (LinkRequest draft, formats), with view 'schema' and a schema only: unknown values left out. */
+const schemaOpts = (view: unknown, b: unknown, draft: unknown, formats: unknown) =>
+  view === 'schema' && b ? { ...(typeof draft === 'string' && DRAFT.test(draft) && { draft }), ...(formats === true && { formats }) } : {};
 
 /** A format a link names for its document (`in`), other than JSON. */
 const sourceIn = (v: unknown) => SOURCE_FORMATS.find((f): f is Exclude<SourceFormat, 'json'> => f !== 'json' && f === v);
@@ -97,7 +110,7 @@ export function parseLink(hash: string): ParsedLink {
   const view = VIEWS.find((v) => v === p.get('view'));
   const to = TARGETS.find((t) => t.id === p.get('to'))?.id;
   const fmt = a ? sourceIn(p.get('in')) : undefined;
-  return { a, b, view, to, ...(fmt && { in: fmt }) };
+  return { a, b, view, to, ...(fmt && { in: fmt }), ...schemaOpts(view, b, p.get('draft'), p.get('formats') === '1') };
 }
 
 /** The fragment for a request, `#` included. Unknown views and targets are left out. */
@@ -110,6 +123,9 @@ export async function linkHash(r: LinkRequest): Promise<string> {
   if (r.view && VIEWS.includes(r.view) && !(r.view === 'compare' && r.b)) parts.push(`view=${r.view}`);
   if (r.view === 'convert' && r.to && TARGETS.some((t) => t.id === r.to)) parts.push(`to=${r.to}`);
   if (r.a && sourceIn(r.in)) parts.push(`in=${r.in}`);
+  const o = schemaOpts(r.view, r.b, r.draft, r.formats);
+  if (o.draft) parts.push(`draft=${o.draft}`);
+  if (o.formats) parts.push('formats=1');
   return '#' + parts.join('&');
 }
 
@@ -151,7 +167,7 @@ export type HandoffReply = { toolkumar: 'ready'; version: number } | { toolkumar
 /** A handoff `open` message as a request, or the reason it can't be one (null: not a Tool Kumar message). */
 export function readHandoff(data: unknown): LinkRequest | 'invalid' | 'too_large' | null {
   if (!data || typeof data !== 'object' || (data as { toolkumar?: unknown }).toolkumar !== 'open') return null;
-  const { a, b, view, to, in: fmt } = data as Record<string, unknown>;
+  const { a, b, view, to, in: fmt, draft, formats } = data as Record<string, unknown>;
   const ok = (v: unknown) => v === undefined || typeof v === 'string';
   if (!ok(a) || !ok(b) || (a === undefined && b === undefined)) return 'invalid';
   if (((a as string | undefined)?.length ?? 0) > MAX_DOCUMENT || ((b as string | undefined)?.length ?? 0) > MAX_DOCUMENT) return 'too_large';
@@ -161,5 +177,6 @@ export function readHandoff(data: unknown): LinkRequest | 'invalid' | 'too_large
     view: VIEWS.find((v) => v === view),
     to: TARGETS.find((t) => t.id === to)?.id,
     ...(typeof a === 'string' && sourceIn(fmt) && { in: sourceIn(fmt) }),
+    ...schemaOpts(view, b, draft, formats),
   };
 }

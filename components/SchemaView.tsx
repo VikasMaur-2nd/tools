@@ -84,6 +84,69 @@ function jumpDoc(loc: Loc | null, focus: boolean) {
   return true;
 }
 
+/** An error's place in an input in another format (YAML, CSV, XML, TOML): see sourcePlaces. `e`: where selecting it ends. */
+type SrcPlace = { p: number; e: number; line: number; col: number; exact: boolean };
+
+/** Selects (or points at) an error's place in an input in another format, while the result is the document's. */
+function jumpSource(place: SrcPlace | undefined, focus: boolean) {
+  const ed = getEngine()?.ed;
+  if (!ed || !ctl.current()) return false;
+  if (!place) return true;
+  if (focus) ed.select(place.p, place.e, true);
+  else ed.point(place.p);
+  return true;
+}
+
+/** Inputs in another format past this size aren't read again for places (their errors show no line). */
+const PLACES_MAX = 5_000_000;
+
+/**
+ * The places of result `r`'s errors in the input, when it is in another format than JSON: its text read again for
+ * where each JSON Pointer's value is written (lib/convert/import.ts locateImport, the reader the engine converts
+ * with, with the same options). By pointer; null while not known.
+ */
+function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, SrcPlace> | null {
+  const [got, setGot] = useState<{ r: ValidateResult; at: Map<string, SrcPlace> } | null>(null);
+  useEffect(() => {
+    const e = getEngine();
+    if (!r || format === 'json' || !r.errors.length || !e || !ctl.current()) return;
+    const text = e.ed.text;
+    if (text.length > PLACES_MAX) return;
+    let on = true;
+    void import('@/lib/convert/import').then(({ locateImport, sniffDelimiter }) => {
+      if (!on || !ctl.current()) return;
+      const pointers = new Set<string>();
+      const add = (x: InstanceError) => {
+        pointers.add(x.pointer);
+        x.sub?.forEach(add);
+      };
+      r.errors.forEach(add);
+      const { input, settings } = store.get();
+      const delimiter = input.delimiter === 'auto' ? sniffDelimiter(text) : input.delimiter;
+      const list = [...pointers];
+      const places = locateImport(text, format as 'yaml', format === 'csv' ? { delimiter, header: settings.csvHeader, types: settings.csvTypes } : {}, list);
+      if (!places) return;
+      const at = new Map<string, SrcPlace>();
+      list.forEach((ptr, k) => {
+        const { p, exact } = places[k];
+        // (Selected: a CSV cell up to its separator, anything else to the end of its line.)
+        let end = text.indexOf('\n', p);
+        if (end < 0) end = text.length;
+        if (format === 'csv' && exact) {
+          const d = text.indexOf(delimiter, p);
+          if (d >= 0 && d < end && text[p] !== '"') end = d;
+        }
+        at.set(ptr, { p, e: end, ...e.ed.lineCol(p), exact });
+      });
+      setGot({ r, at });
+    }, () => undefined);
+    return () => {
+      on = false;
+    };
+  }, [r, format]);
+  return got && got.r === r ? got.at : null;
+}
+
 function jumpSchema(loc: Loc | null, focus: boolean) {
   const ed = schemaEd();
   if (!loc || !ed || !ctl.inSchema()) return false;
@@ -251,12 +314,16 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
     // an engine made again, a page Next.js kept shown again, may have read it before this watch.)
     const watch = (doc: { text: string | null; id: number } | null) => (doc ? ctl.setDoc(doc.text, doc.id) : ctl.docEdited());
     engine.docWatch = watch;
+    // (Share from this view carries the schema: lib/link.ts.)
+    const share = () => ctl.share();
+    engine.schemaShare = share;
     const generating = ctl.attach(ed, store.get().schemaIn);
     const now = engine.leftDoc();
     ctl.setDoc(now.text, now.id);
     if (generating) void generate();
     return () => {
       if (engine.docWatch === watch) engine.docWatch = null;
+      if (engine.schemaShare === share) engine.schemaShare = null;
       ctl.detach();
     };
   }, [ready]);
@@ -376,23 +443,32 @@ function rowsOf(r: ValidateResult | null, filter: string | null, t: T): Row[] {
   return out;
 }
 
-/** Where an error is, as its second line says it. */
-function whereText(e: InstanceError, t: T) {
+/**
+ * Where an error is, as its second line says it. `src`: the input is in another format: its place there (`at`,
+ * none while unknown); the line and column in the JSON it converts to are no place in the editor.
+ */
+function whereText(e: InstanceError, t: T, src?: { at: SrcPlace | undefined }) {
   const parts: string[] = [];
   if (e.record) parts.push(t('Record {n}', { n: e.record }));
   parts.push(e.pointer || t('(root)'));
   if (e.key && e.code !== 'additionalProperties' && e.code !== 'unevaluatedProperties') parts.push(t('property name'));
-  if (e.loc) parts.push(t('Ln {line}, Col {col}', { line: e.loc.line, col: e.loc.col }));
+  const at = src ? src.at : e.loc;
+  // (Not its own place, the nearest one written: a missing CSV cell's record, say.)
+  if (at && src && !src.at!.exact) parts.push(t('near Ln {line}', { line: at.line }));
+  else if (at) parts.push(t('Ln {line}, Col {col}', { line: at.line, col: at.col }));
   return parts.join(t(' · '));
 }
 
-function describeRow(row: Row, t: T): string {
+/** An error row's place in an input in another format (see useSourcePlaces), or undefined for a JSON input. */
+const srcOf = (row: Row, places: Map<string, SrcPlace> | null, json: boolean) => (json || row.kind !== 'error' ? undefined : { at: places?.get(row.e.pointer) });
+
+function describeRow(row: Row, t: T, src?: { at: SrcPlace | undefined }): string {
   if (row.kind === 'head') return `${row.label} (${row.count})`;
   if (row.kind === 'problem') return problemText(row.p.code, row.p.params, t);
-  return `${errorText(row.e.code, row.e.params, t)}${t(' · ')}${whereText(row.e, t)}`;
+  return `${errorText(row.e.code, row.e.params, t)}${t(' · ')}${whereText(row.e, t, src)}`;
 }
 
-const RowView = memo(function RowView({ row, i, sel }: { row: Row; i: number; sel: boolean }) {
+const RowView = memo(function RowView({ row, i, sel, src }: { row: Row; i: number; sel: boolean; src?: { at: SrcPlace | undefined } }) {
   const t = useT();
   const style = { top: i * ROW_H };
   if (row.kind === 'head') {
@@ -429,7 +505,7 @@ const RowView = memo(function RowView({ row, i, sel }: { row: Row; i: number; se
       </span>
       <span className="sch-main">
         <span className={`sch-msg ${PRIVATE}`}>{errorText(e.code, e.params, t)}</span>
-        <span className={`sch-at ${PRIVATE}`}>{whereText(e, t)}</span>
+        <span className={`sch-at ${PRIVATE}`}>{whereText(e, t, src)}</span>
       </span>
       {e.schemaLoc && (
         <button type="button" className={`sch-kw ${PRIVATE_LABELS}`} data-s={i} tabIndex={-1} data-tip={t('Show in the schema')} aria-label={t('Show {keyword} in the schema', { keyword: e.kw })}>
@@ -514,12 +590,16 @@ const Panel = memo(function Panel() {
   }, [huge]);
 
   const rows = useMemo(() => rowsOf(r, filter, t), [r, filter, t]);
+  // (Input in another format: its errors' places in it.)
+  const format = useUI((s) => s.input.format);
+  const json = format === 'json';
+  const places = useSourcePlaces(r, format);
   const kinds = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of r?.errors ?? []) m.set(e.kw, (m.get(e.kw) ?? 0) + 1);
     return [...m].sort((a, b) => b[1] - a[1]).slice(0, 6);
   }, [r]);
-  const live = r && sel >= 0 && rows[sel] ? describeRow(rows[sel], t) : '';
+  const live = r && sel >= 0 && rows[sel] ? describeRow(rows[sel], t, srcOf(rows[sel], places, json)) : '';
   // (A filter for a keyword the new result doesn't have is dropped.)
   if (filter && !kinds.some(([k]) => k === filter)) setFilter(null);
   if (sel >= rows.length) setSel(rows.length ? rows.length - 1 : -1);
@@ -543,7 +623,8 @@ const Panel = memo(function Panel() {
       jumpSchema(row.e.schemaLoc, true);
       return;
     }
-    if (!jumpDoc(row.e.loc, jump) && jump) toast('The document changed: wait for the next check', 'info');
+    const done = json ? jumpDoc(row.e.loc, jump) : jumpSource(places?.get(row.e.pointer), jump);
+    if (!done && jump) toast('The document changed: wait for the next check', 'info');
   };
   const step = (from: number, d: number) => {
     let i = from;
@@ -657,7 +738,7 @@ const Panel = memo(function Panel() {
   const first = Math.max(0, Math.floor(scroll / ROW_H) - OVERSCAN);
   const last = Math.min(rows.length, Math.ceil((scroll + viewH) / ROW_H) + OVERSCAN);
   const items: ReactNode[] = [];
-  if (showList) for (let i = first; i < last; i++) items.push(<RowView key={i} row={rows[i]} i={i} sel={i === sel} />);
+  if (showList) for (let i = first; i < last; i++) items.push(<RowView key={i} row={rows[i]} i={i} sel={i === sel} src={srcOf(rows[i], places, json)} />);
   const nav = (d: number) => {
     const to = sel < 0 ? step(d > 0 ? -1 : rows.length, d) : step(sel, d);
     select(to, false);

@@ -389,3 +389,25 @@ test('round 5, finding 7: Generate waits for the document an edit is still being
   const view = readFileSync('components/SchemaView.tsx', 'utf8');
   assert.match(view, /const asked = ctl\.ask\(\);\n\s*const doc = await readDoc\(\(\) => e\.leftDoc\(\)\);/);
 });
+
+test('share links: a link\'s schema is loaded with its name and options (defaults where it names none); share() gives them back', () => {
+  const { ctl, ed, storage } = setup({ [SCHEMA_KEYS.opts]: JSON.stringify({ draft: 2019, formats: true }) });
+  ctl.attach(ed, null);
+  assert.deepEqual(ctl.share(), { text: '', draft: '2019-09', formats: true });
+  // A link with only a schema: the options it shows are the defaults (as the sharer had them).
+  ctl.take({ seq: 1, text: '{"type": "object"}', name: null, formats: false });
+  assert.deepEqual([ed.text, ctl.state.file, ctl.state.draft, ctl.state.formats], ['{"type": "object"}', null, null, false]);
+  assert.deepEqual(ctl.share(), { text: '{"type": "object"}' });
+  // A schema by URL keeps its file name; draft-07 and Check formats as the link says.
+  ctl.take({ seq: 2, text: '{"minimum": 0}', name: 'n.schema.json', draft: 'draft-07', formats: true });
+  assert.deepEqual([ctl.state.file, ctl.state.draft, ctl.state.formats], ['n.schema.json', 7, true]);
+  assert.deepEqual(ctl.share(), { text: '{"minimum": 0}', draft: 'draft-07', formats: true });
+  assert.deepEqual(JSON.parse(storage.get(SCHEMA_KEYS.opts)!), { draft: 7, formats: true });
+  // A schema handed over another way (the palette's, a page's) leaves the options alone.
+  ctl.take({ seq: 3, text: '{}' });
+  assert.deepEqual([ctl.state.draft, ctl.state.formats], [7, true]);
+  // Undo gives the schema before back (the visitor's own one too).
+  ed.undo();
+  assert.equal(ed.text, '{"minimum": 0}');
+  ctl.detach();
+});
