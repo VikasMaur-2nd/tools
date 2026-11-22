@@ -179,3 +179,16 @@ test('a fetched schema is known by its $id whichever ref comes first (review 2, 
   const r = v({ allOf: [{ $ref: 'https://a.test/canonical.json#/$defs/n' }, { $ref: 'https://a.test/hub.json' }] }, 'x', via);
   assert.deepEqual([r.complete, r.errors.map((e) => e.code)], [true, ['type']]);
 });
+
+test('a reply that is JSON but not one schema is a failure, offered again (review 2, finding 8)', async () => {
+  const body = (text: string) => new Response(text, { status: 200 });
+  const { env: e } = env({
+    'https://a.test/lines': body('{"type": "string"}\n{"type": "number"}\n'),
+    'https://a.test/array': body('[{"type": "string"}]'),
+    'https://a.test/number': body('5'),
+    'https://a.test/true': body('true'),
+    'https://a.test/loose': body('{"type": "string", // a comment\n}'),
+  });
+  const got = await run(['https://a.test/lines', 'https://a.test/array', 'https://a.test/number', 'https://a.test/true', 'https://a.test/loose'], e);
+  assert.deepEqual(got!.map((r) => ('failure' in r ? r.failure.kind : 'ok')), ['notSchema', 'notSchema', 'notSchema', 'ok', 'ok']);
+});

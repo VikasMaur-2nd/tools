@@ -728,6 +728,7 @@
   "app.schema.remote.timeout": "Pas de réponse en {seconds} secondes. Réessayez.",
   "app.schema.remote.tooBig": "Plus de {size} : non récupéré.",
   "app.schema.remote.notJson": "Ce n'est pas du JSON, donc pas un schéma.",
+  "app.schema.remote.notSchema": "C'est du JSON, mais pas un schéma : un schéma est un seul objet JSON, ou true ou false.",
   "app.schema.inDoc": "dans {url}",
   "app.schema.incomplete": "Une partie du schéma n'a pas pu être appliquée, le document n'est donc pas confirmé valide : voir les problèmes du schéma marqués non appliqués au document.",
   "app.schema.timeout": "La validation était trop longue et a été arrêtée",

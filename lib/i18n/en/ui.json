@@ -897,6 +897,8 @@
   "app.schema.remote.timeout": "No answer within {seconds} seconds. Try again.",
   "app.schema.remote.tooBig": "Larger than {size}: not fetched.",
   "app.schema.remote.notJson": "It isn't JSON, so it isn't a schema.",
+  "app.schema.remote.notSchema": "It's JSON, but not one schema: a schema is one JSON object, or true or false.",
+  "app.schema.remote.notSchema._context": "Why a referenced schema fetched from the web wasn't used: the reply is valid JSON but not a single JSON object or boolean (JSON Lines, an array, a number…).",
   "app.schema.inDoc": "in {url}",
   "app.schema.inDoc._context": "Where a schema problem is when it is in a schema fetched from a URL (not in the schema the user typed): that URL.",
   "app.schema.incomplete": "Part of the schema couldn't be applied, so the document isn't confirmed valid: see the schema problems marked not applied to the document.",

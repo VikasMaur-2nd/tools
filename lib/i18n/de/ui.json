@@ -705,6 +705,7 @@
   "app.schema.remote.timeout": "Keine Antwort innerhalb von {seconds} Sekunden. Versuche es erneut.",
   "app.schema.remote.tooBig": "Größer als {size}: nicht abgerufen.",
   "app.schema.remote.notJson": "Das ist kein JSON und damit kein Schema.",
+  "app.schema.remote.notSchema": "Das ist JSON, aber kein einzelnes Schema: Ein Schema ist ein JSON-Objekt oder true bzw. false.",
   "app.schema.inDoc": "in {url}",
   "app.schema.incomplete": "Ein Teil des Schemas ließ sich nicht anwenden, daher ist das Dokument nicht als gültig bestätigt: siehe die Probleme im Schema, die als nicht auf das Dokument angewendet markiert sind.",
   "app.schema.timeout": "Die Validierung dauerte zu lange und wurde abgebrochen",

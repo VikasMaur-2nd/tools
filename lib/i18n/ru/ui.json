@@ -753,6 +753,7 @@
   "app.schema.remote.timeout": "Нет ответа за {seconds} с. Попробуйте ещё раз.",
   "app.schema.remote.tooBig": "Больше {size}: не загружено.",
   "app.schema.remote.notJson": "Это не JSON, значит, и не схема.",
+  "app.schema.remote.notSchema": "Это JSON, но не одна схема: схема — это один объект JSON либо true или false.",
   "app.schema.inDoc": "в {url}",
   "app.schema.incomplete": "Часть схемы не удалось применить, поэтому корректность документа не подтверждена: см. проблемы схемы с пометкой «не применено к документу».",
   "app.schema.timeout": "Проверка шла слишком долго и была остановлена",

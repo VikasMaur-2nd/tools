@@ -4,7 +4,7 @@
  * without cookies, read up to a size limit and checked to be JSON. Why one failed says what the visitor can do,
  * in the words the app uses when it fetches a document (lib/engine/engine.ts fetchText, fetchFailure).
  */
-import { parse } from '../json/parser';
+import { BOOL, OBJ, parse } from '../json/parser';
 
 /** The largest schema fetched (bytes). */
 export const REMOTE_MAX_BYTES = 5 * 1024 * 1024;
@@ -16,7 +16,7 @@ export const REMOTE_TIMEOUT = 20_000;
 /** Why a URL wasn't fetched. */
 export type FetchFailure =
   | { kind: 'status'; status: number; statusText: string }
-  | { kind: 'cors' | 'mixed' | 'offline' | 'unreachable' | 'dropped' | 'timeout' | 'tooBig' | 'notJson' | 'notHttp' };
+  | { kind: 'cors' | 'mixed' | 'offline' | 'unreachable' | 'dropped' | 'timeout' | 'tooBig' | 'notJson' | 'notSchema' | 'notHttp' };
 
 export type Fetched = { url: string; text: string } | { url: string; failure: FetchFailure };
 
@@ -92,6 +92,8 @@ async function one(url: string, signal: AbortSignal, env: FetchEnv): Promise<Fet
     const text = await body(res);
     const r = parse(text);
     if (!r.root || r.error) return { url, failure: { kind: 'notJson' } };
+    // (A schema is one object or boolean: JSON Lines, an array, a number aren't one.)
+    if (r.multi || (r.root.t !== OBJ && r.root.t !== BOOL)) return { url, failure: { kind: 'notSchema' } };
     return { url, text };
   } catch (e) {
     if (signal.aborted) return null;

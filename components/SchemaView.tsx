@@ -545,6 +545,8 @@ function failText(f: FetchFailure, t: T): string {
       return t('Larger than {size}: not fetched.', { size: t.bytes(REMOTE_MAX_BYTES) });
     case 'notJson':
       return t("It isn't JSON, so it isn't a schema.");
+    case 'notSchema':
+      return t("It's JSON, but not one schema: a schema is one JSON object, or true or false.");
     case 'notHttp':
       return t('Enter a valid http(s) URL');
     default:

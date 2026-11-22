@@ -681,6 +681,7 @@
   "app.schema.remote.timeout": "{seconds}초 안에 응답이 없습니다. 다시 시도하세요.",
   "app.schema.remote.tooBig": "{size}보다 커서 가져오지 않았습니다.",
   "app.schema.remote.notJson": "JSON이 아니므로 스키마가 아닙니다.",
+  "app.schema.remote.notSchema": "JSON이지만 스키마 하나가 아닙니다. 스키마는 JSON 객체 하나이거나 true 또는 false입니다.",
   "app.schema.inDoc": "{url} 안",
   "app.schema.incomplete": "스키마의 일부를 적용하지 못해 문서가 유효한지 확인되지 않았습니다. ‘문서에 적용되지 않음’으로 표시된 스키마 문제를 확인하세요.",
   "app.schema.timeout": "검증이 너무 오래 걸려 중지했습니다",

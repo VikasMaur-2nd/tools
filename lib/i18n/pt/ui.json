@@ -728,6 +728,7 @@
   "app.schema.remote.timeout": "Sem resposta em {seconds} segundos. Tente de novo.",
   "app.schema.remote.tooBig": "Maior que {size}: não baixado.",
   "app.schema.remote.notJson": "Não é JSON, então não é um schema.",
+  "app.schema.remote.notSchema": "É JSON, mas não um schema: um schema é um único objeto JSON, ou true ou false.",
   "app.schema.inDoc": "em {url}",
   "app.schema.incomplete": "Parte do schema não pôde ser aplicada, então o documento não é confirmado como válido: veja os problemas do schema marcados como não aplicados ao documento.",
   "app.schema.timeout": "A validação demorou demais e foi interrompida",

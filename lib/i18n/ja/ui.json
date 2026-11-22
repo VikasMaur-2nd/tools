@@ -681,6 +681,7 @@
   "app.schema.remote.timeout": "{seconds}秒以内に応答がありません。もう一度お試しください。",
   "app.schema.remote.tooBig": "{size}を超えるため取得しません。",
   "app.schema.remote.notJson": "JSONではないため、スキーマではありません。",
+  "app.schema.remote.notSchema": "JSONですが、1つのスキーマではありません。スキーマは1つのJSONオブジェクト、またはtrueかfalseです。",
   "app.schema.inDoc": "{url} 内",
   "app.schema.incomplete": "スキーマの一部を適用できなかったため、ドキュメントが有効とは確認できません。「ドキュメントに適用されていません」と表示されたスキーマの問題を確認してください。",
   "app.schema.timeout": "検証に時間がかかりすぎたため停止しました",

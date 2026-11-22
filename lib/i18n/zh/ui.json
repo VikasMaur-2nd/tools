@@ -681,6 +681,7 @@
   "app.schema.remote.timeout": "{seconds} 秒内没有响应。请重试。",
   "app.schema.remote.tooBig": "超过 {size}：未获取。",
   "app.schema.remote.notJson": "它不是 JSON，所以不是 Schema。",
+  "app.schema.remote.notSchema": "它是 JSON，但不是单个 Schema：Schema 是一个 JSON 对象，或 true、false。",
   "app.schema.inDoc": "位于 {url}",
   "app.schema.incomplete": "schema 的一部分无法应用，因此不能确认文档有效：请查看标为“未应用到文档”的 schema 问题。",
   "app.schema.timeout": "校验耗时过长，已停止",
