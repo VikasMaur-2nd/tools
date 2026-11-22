@@ -64,7 +64,11 @@ function world() {
     online: true,
     failPut: ((): boolean => false) as (url: string) => boolean,
     fetched: [] as string[],
-    store: new Map<string, { body: string; type: string }>(),
+    store: new Map<string, { body: string; type: string; url?: string }>(),
+    /** Keys keep the fragment of the request stored (as WebKit's Cache Storage lists them); matching ignores it. */
+    fragments: false,
+    /** Cache reads that fail (storage errors). */
+    failMatch: ((): boolean => false) as (url: string) => boolean,
     tabs: [] as string[],
     /** Fetches of a path wait for these, one each (see hold). */
     holds: new Map<string, Promise<void>[]>(),
@@ -86,15 +90,17 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
   };
   const cache = {
     match: async (r: string | { url: string }) => {
+      if (env.failMatch(key(r))) throw new DOMException('Unable to read', 'UnknownError');
       const hit = env.store.get(key(r));
       return hit ? response(hit.body, hit.type) : undefined;
     },
     put: async (r: string | { url: string }, res: Response) => {
       if (env.failPut(key(r))) throw new DOMException('Quota exceeded', 'QuotaExceededError');
-      env.store.set(key(r), { body: await res.text(), type: res.headers.get('content-type') ?? '' });
+      const url = new URL(typeof r === 'string' ? r : r.url, ORIGIN).href;
+      env.store.set(key(r), { body: await res.text(), type: res.headers.get('content-type') ?? '', url });
     },
     delete: async (r: string | { url: string }) => env.store.delete(key(r)),
-    keys: async () => [...env.store.keys()].map((url) => ({ url })),
+    keys: async () => [...env.store.entries()].map(([url, e]) => ({ url: env.fragments && e.url ? e.url : url })),
   };
   const fetchFn = async (r: string | { url: string }) => {
     const url = new URL(key(r));
@@ -152,6 +158,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     serve: (f: Files) => void (env.files = f),
     offline: (off = true) => void (env.online = !off),
     failPut: (fn: (url: string) => boolean) => void (env.failPut = fn),
+    failMatch: (fn: (url: string) => boolean) => void (env.failMatch = fn),
     tabs: (ids: string[]) => void (env.tabs = ids),
     /** Moves the clock on. */
     advance: (ms: number) => void (env.now += ms),
@@ -166,9 +173,9 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     activate: () => dispatch('activate'),
     open,
     visit,
-    /** A file a tab (`client`) loads (a chunk, by client-side navigation say): its text, or null when it can't. */
-    load: async (path: string, client: string) => {
-      const res = await dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'no-cors', headers: new Headers(), destination: 'script', cache: 'default' }, clientId: client });
+    /** A file a tab (`client`) loads (a chunk, by client-side navigation say; a worker's script): its text, or null when it can't. */
+    load: async (path: string, client: string, destination = 'script') => {
+      const res = await dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: destination === 'worker' ? 'same-origin' : 'no-cors', headers: new Headers(), destination, cache: 'default' }, clientId: client });
       return res && res.ok ? await res.text() : null;
     },
     /** A tab's report of what it loaded (its 'cache' message), waited for. */
@@ -721,4 +728,46 @@ test('service worker: a page is never stored without a file that a clean-up dele
   await sw.visit('/tools/json-diff', 'b5');
   assert.match(sw.cached('/tools/json-diff')!, /Diff b/);
   assert.ok(sw.has('/_next/static/chunks/b-diff.js'));
+});
+
+test("service worker: a worker's script cached under its #params URL (WebKit lists keys so) is never taken for an unneeded file", async () => {
+  // Turbopack starts a worker at its bootstrap's URL plus #params=… (its chunks); the page's report names it without.
+  const files = (tag: string): Files => ({
+    ...build(tag),
+    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-graph.js");w("static/chunks/worker.js")`,
+    '/_next/static/chunks/worker.js': 'boot()',
+  });
+  const WORKER = '/_next/static/chunks/worker.js#params=%5B%5B%22static%2Fchunks%2Fw.js%22%5D%5D';
+  const env = world();
+  env.fragments = true;
+  const sw = worker(undefined, env);
+  sw.serve(files('a'));
+  await sw.install();
+  sw.tabs(['old']);
+  // The tab's worker starts once the service worker controls it: its script is stored under the URL it asked for.
+  assert.equal(await sw.load(WORKER, 'old', 'worker'), 'boot()');
+  await sw.post(['/', '/_next/static/chunks/worker.js'], 'old');
+  // A deploy (the same bootstrap), seen on '/'; the old tabs close; a tab of the new build reports in.
+  sw.serve(files('b'));
+  await sw.visit('/', 'v');
+  sw.tabs(['old', 'v']);
+  await sw.post(['/'], 'v');
+  sw.tabs(['n']);
+  await sw.post(['/', '/_next/static/chunks/worker.js'], 'n');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), "build a's files went");
+  // Offline, the new build's worker still starts from the cache.
+  sw.offline();
+  assert.equal(await sw.load(WORKER, 'n', 'worker'), 'boot()');
+});
+
+test("service worker: when the cache can't be read, the network answers (never a failed load the network could serve)", async () => {
+  const sw = worker();
+  sw.serve(build('a'));
+  await sw.install();
+  await sw.post(['/']);
+  sw.failMatch(() => true);
+  assert.equal(await sw.load('/_next/static/chunks/a-main.js', 'tab'), build('a')['/_next/static/chunks/a-main.js']);
+  assert.equal(await sw.load('/icon.svg', 'tab', 'image'), '<svg/>');
+  assert.match((await sw.visit('/', 'tab2'))!, /Home a/);
+  assert.match((await sw.visit('/tools/json-graph', 'tab3'))!, /Graph a/);
 });

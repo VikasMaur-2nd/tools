@@ -66,6 +66,11 @@ const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 const isStatic = (path) => path.startsWith('/_next/static/');
 /** Files named by their content, never changed (a new build names new ones): what deploys retire. */
 const isHashed = (path) => isStatic(path);
+/**
+ * A URL as the cache matches it: without its fragment. (Cache keys can keep one: WebKit lists a worker's
+ * script under the URL it was started with, Turbopack's bootstrap plus #params=…, which pages name without.)
+ */
+const bare = (url) => url.split('#')[0];
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
 const HUGE_STRINGS_RE = /^\/_next\/static\/media\/huge-strings\.([a-z]{2})\./;
@@ -274,18 +279,18 @@ function generations(rec, live) {
   if (Array.isArray(rec.gens)) return rec.gens.filter((g) => g && Array.isArray(g.urls) && Array.isArray(g.clients) && typeof g.at === 'number');
   // An older worker's record: one list, given the tabs open at each deploy. The tabs open now join it,
   // as that worker's next deploy would have had them (they may run a build whose files it lists).
-  if (Array.isArray(rec.urls) && Array.isArray(rec.clients)) return [{ urls: rec.urls, clients: rec.clients.concat(Array.from(live)), at: rec.at || Date.now() }];
+  if (Array.isArray(rec.urls) && Array.isArray(rec.clients)) return [{ urls: rec.urls.map(bare), clients: rec.clients.concat(Array.from(live)), at: rec.at || Date.now() }];
   return [];
 }
 
-/** Every file the cached pages need, from what the cache holds (`keys`: its keys). */
+/** Every file the cached pages need, from what the cache holds (`keys`: its keys), as bare URLs. */
 async function needed(cache, keys) {
   const keep = new Set();
   for (const k of keys) {
     const path = new URL(k.url).pathname;
     if (isStatic(path) || FILE_RE.test(path) || k.url === RETIRED) continue;
     const page = await cache.match(k, MATCH);
-    if (page && isHTML(page)) (await pageFiles(cache, await page.text(), false, true, k.url)).files.forEach((u) => keep.add(u));
+    if (page && isHTML(page)) (await pageFiles(cache, await page.text(), false, true, k.url)).files.forEach((u) => keep.add(bare(u)));
   }
   return keep;
 }
@@ -332,15 +337,16 @@ async function tidy(cache, replaced, posted, from) {
   if (replaced) {
     const keys = await cache.keys();
     keep = await needed(cache, keys);
-    const cached = new Set(keys.map((k) => k.url));
+    // (Bare URLs throughout: a key is compared without its fragment, as the cache matches it.)
+    const cached = new Set(keys.map((k) => bare(k.url)));
     const freed = new Set();
-    (await pageFiles(cache, replaced.html, false, true, replaced.page)).files.forEach((u) => cached.has(u) && !keep.has(u) && freed.add(u));
+    (await pageFiles(cache, replaced.html, false, true, replaced.page)).files.forEach((u) => cached.has(bare(u)) && !keep.has(bare(u)) && freed.add(bare(u)));
     const held = new Set();
     gens.forEach((g) => {
       g.urls = g.urls.filter((u) => !freed.has(u));
       g.urls.forEach((u) => held.add(u));
     });
-    const urls = keys.map((k) => k.url).filter((u) => isHashed(new URL(u).pathname) && !keep.has(u) && !held.has(u));
+    const urls = Array.from(cached).filter((u) => isHashed(new URL(u).pathname) && !keep.has(u) && !held.has(u));
     const clients = Array.from(ids).filter((id) => id !== replaced.fresh);
     if (urls.length) gens.push({ urls, clients: clients.concat(unnamed ? [UNSEEN] : []), at: now });
   }
@@ -472,7 +478,7 @@ self.addEventListener('fetch', (event) => {
     const tab = noteOpening(event.resultingClientId);
     if (url.pathname === '/') {
       // Stale-while-revalidate the shell; query strings (utm_*, etc.) are ignored.
-      const hit = caches.open(CACHE).then((c) => c.match('/', MATCH));
+      const hit = cachedCopy('/');
       event.respondWith(
         hit.then((res) => {
           if (res) return res;
@@ -491,29 +497,39 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+/**
+ * What the cache holds for `req`, or nothing when it can't be read (a storage error): the network
+ * answers then, so a request the network can serve never fails because of the cache.
+ */
+const cachedCopy = (req) => caches.open(CACHE).then((c) => c.match(req, MATCH)).catch(() => undefined);
+
 /** `tab`: the navigation's entry among the tabs being opened (see opening). */
-async function networkFirst(event, req, tab) {
-  const cache = await caches.open(CACHE);
+function networkFirst(event, req, tab) {
   return fetch(req).then(
     (res) => {
       opening.delete(tab); // the network's page: the current build
       // Kept with its files only (see the header): until they are, the cached copy stays. A new build: the homes follow.
       const fresh = event.resultingClientId;
-      if (cacheable(res)) event.waitUntil(storePage(cache, req, res.clone(), fresh).then((r) => r && r.replaced && refreshHomes(cache, req.url, fresh)).catch(() => {}));
+      if (cacheable(res)) {
+        const copy = res.clone();
+        event.waitUntil(caches.open(CACHE).then((cache) => storePage(cache, req, copy, fresh).then((r) => r && r.replaced && refreshHomes(cache, req.url, fresh))).catch(() => {}));
+      }
       return res;
     },
     async () => {
       const home = langHome(new URL(req.url).pathname);
-      return (await cache.match(req, MATCH)) || (home && (await cache.match(home, MATCH))) || (await cache.match('/', MATCH)) || Response.error();
+      return (await cachedCopy(req)) || (home && (await cachedCopy(home))) || (await cachedCopy('/')) || Response.error();
     },
   );
 }
 
 async function cacheFirst(event, req) {
-  const cache = await caches.open(CACHE);
-  const hit = await cache.match(req, MATCH);
+  const hit = await cachedCopy(req);
   const res = hit || (await fetch(req));
-  if (!hit && cacheable(res)) event.waitUntil(cache.put(req, res.clone()).catch(() => {}));
+  if (!hit && cacheable(res)) {
+    const copy = res.clone();
+    event.waitUntil(caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}));
+  }
   return req.destination === 'worker' ? asNew(res) : res;
 }
 
@@ -527,11 +543,11 @@ async function cacheFirst(event, req) {
 const asNew = (res) => new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
 
 async function staleWhileRevalidate(event, req) {
-  const cache = await caches.open(CACHE);
-  const hit = await cache.match(req, MATCH);
+  const hit = await cachedCopy(req);
   const net = fetch(req).then((res) => {
-    if (cacheable(res)) return cache.put(req, res.clone()).then(() => res, () => res);
-    return res;
+    if (!cacheable(res)) return res;
+    const copy = res.clone();
+    return caches.open(CACHE).then((c) => c.put(req, copy)).then(() => res, () => res);
   });
   event.waitUntil(net.catch(() => {}));
   return hit || net;
