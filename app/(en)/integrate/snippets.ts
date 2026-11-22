@@ -9,11 +9,13 @@ import { TARGETS } from '@/lib/engine/targets';
 /** Method 1: builds a link that carries the JSON. Browsers and Node.js 18+. */
 export const LINK_SNIPPET = `// A link that opens \`json\` in Tool Kumar: a JSON string (kept as
 // written) or any value. Options: compare (a second document, opens
-// Compare), view ('tree', 'table', 'graph'…), to (Convert target), and
-// with to 'flatten' or 'unflatten': sep (default '.'), arrays ('dot' or
-// 'keep'; default a[0]), depth (1 to 3; default all), escape (false).
+// Compare), schema (a JSON Schema: opens the Schema view, validating
+// json against it), view ('tree', 'table', 'graph'…), to (Convert
+// target), and with to 'flatten' or 'unflatten': sep (default '.'),
+// arrays ('dot' or 'keep'; default a[0]), depth (1 to 3; default all),
+// escape (false).
 async function toolKumarLink(json, options = {}) {
-  const { compare, view, to, sep, arrays, depth, escape } = options;
+  const { compare, schema, view, to, sep, arrays, depth, escape } = options;
   const encode = async (value) => {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
     const stream = new Blob([text]).stream()
@@ -27,8 +29,9 @@ async function toolKumarLink(json, options = {}) {
       .replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
   };
   let hash = 'a=' + (await encode(json));
-  if (compare !== undefined) hash += '&b=' + (await encode(compare));
-  if (view) hash += '&view=' + view;
+  if (schema !== undefined) hash += '&b=' + (await encode(schema)) + '&view=schema';
+  else if (compare !== undefined) hash += '&b=' + (await encode(compare));
+  if (view && schema === undefined) hash += '&view=' + view;
   if (to) hash += '&to=' + to;
   if (sep) hash += '&sep=' + encodeURIComponent(sep);
   if (arrays) hash += '&arrays=' + arrays;
@@ -39,10 +42,11 @@ async function toolKumarLink(json, options = {}) {
 
 /** Method 2: opens a tab and hands the JSON over with postMessage, for documents too big for a link. */
 export const HANDOFF_SNIPPET = `// Opens \`json\` in a new Tool Kumar tab, any size. Call it straight
-// from a click. Options: compare, view, to, sep, arrays, depth, escape
-// (as for links). Resolves with the tab once Tool Kumar has the document.
+// from a click. Options: compare, schema, view, to, sep, arrays, depth,
+// escape (as for links). Resolves with the tab once Tool Kumar has the
+// document.
 function openInToolKumar(json, options = {}) {
-  const { compare, view, to, sep, arrays, depth, escape } = options;
+  const { compare, schema, view, to, sep, arrays, depth, escape } = options;
   const origin = 'https://tools.vikasmaur.com';
   const text = (value) => typeof value === 'string' || value === undefined
     ? value : JSON.stringify(value);
@@ -62,8 +66,9 @@ function openInToolKumar(json, options = {}) {
       const kind = e.data && e.data.toolkumar;
       if (kind === 'ready') {
         const a = text(json);
-        const b = text(compare);
-        tab.postMessage({ toolkumar: 'open', a, b, view, to, sep, arrays, depth, escape }, origin);
+        const b = text(schema === undefined ? compare : schema);
+        const v = schema === undefined ? view : 'schema';
+        tab.postMessage({ toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape }, origin);
       } else if (kind === 'opened') done();
       else if (kind === 'error') fail(e.data.reason);
     }
@@ -83,7 +88,9 @@ for (let i = 0; i < ids.length; i += 5) targetLines.push(`    | ${ids.slice(i, i
 const OPTIONS_TS = `interface ToolKumarOptions {
   /** A second document: the link opens Compare. */
   compare?: unknown;
-  view?: 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
+  /** A JSON Schema: the link opens the Schema view, validating the document against it. */
+  schema?: unknown;
+  view?: 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare' | 'schema';
   /** Convert target, with view: 'convert'. */
   to?:
 ${targetLines.join('\n')};
@@ -105,7 +112,7 @@ async function toolKumarLink(
   json: unknown,
   options: ToolKumarOptions = {},
 ): Promise<string> {
-  const { compare, view, to, sep, arrays, depth, escape } = options;
+  const { compare, schema, view, to, sep, arrays, depth, escape } = options;
   const encode = async (value: unknown): Promise<string> => {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
     const stream = new Blob([text]).stream()
@@ -119,8 +126,9 @@ async function toolKumarLink(
       .replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
   };
   let hash = 'a=' + (await encode(json));
-  if (compare !== undefined) hash += '&b=' + (await encode(compare));
-  if (view) hash += '&view=' + view;
+  if (schema !== undefined) hash += '&b=' + (await encode(schema)) + '&view=schema';
+  else if (compare !== undefined) hash += '&b=' + (await encode(compare));
+  if (view && schema === undefined) hash += '&view=' + view;
   if (to) hash += '&to=' + to;
   if (sep) hash += '&sep=' + encodeURIComponent(sep);
   if (arrays) hash += '&arrays=' + arrays;
@@ -137,7 +145,7 @@ function openInToolKumar(
   json: unknown,
   options: ToolKumarOptions = {},
 ): Promise<Window> {
-  const { compare, view, to, sep, arrays, depth, escape } = options;
+  const { compare, schema, view, to, sep, arrays, depth, escape } = options;
   const origin = 'https://tools.vikasmaur.com';
   const text = (value: unknown): string | undefined =>
     typeof value === 'string' || value === undefined
@@ -151,8 +159,9 @@ function openInToolKumar(
       const data = e.data as { toolkumar?: string; reason?: string } | null;
       if (data?.toolkumar === 'ready') {
         const a = text(json);
-        const b = text(compare);
-        tab.postMessage({ toolkumar: 'open', a, b, view, to, sep, arrays, depth, escape }, origin);
+        const b = text(schema === undefined ? compare : schema);
+        const v = schema === undefined ? view : 'schema';
+        tab.postMessage({ toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape }, origin);
       } else if (data?.toolkumar === 'opened') done();
       else if (data?.toolkumar === 'error') fail(data.reason ?? 'error');
     };

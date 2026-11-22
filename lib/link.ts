@@ -4,13 +4,18 @@
  *
  *   /#a=<doc>                     open a document
  *   /#a=<doc>&b=<doc>             compare two documents (Compare opens by itself)
- *   /#a=<doc>&view=tree           open in a view: format, tree, table, graph, convert, compare
+ *   /#a=<doc>&view=tree           open in a view: format, tree, table, graph, convert, compare, schema
  *   /#a=<doc>&view=convert&to=go  open Convert with a target (lib/engine/targets.ts ids)
  *   /#a=<doc>&in=yaml             document a is YAML (yaml, csv, xml, toml): it opens as itself, its JSON in the views
  *   /#a=<doc>&view=convert&to=flatten&sep=%2F&arrays=dot&depth=2&escape=0
  *                                 flatten's (and unflatten's) options, only with those targets: sep (1 to 8
  *                                 characters, percent-encoded; no digits, backslashes or brackets), arrays (bracket,
  *                                 dot, keep), depth (1 to 3; 0, all levels, is the default), escape (0 or 1)
+ *   /#a=<doc>&b=<schema>&view=schema
+ *                                 validate a against the JSON Schema b (with view=schema, b is the schema, not
+ *                                 Compare's document); &draft=draft-07 (2020-12, 2019-09, draft-07, draft-06,
+ *                                 draft-04: for a schema without $schema) and &formats=1 (Check formats) when set.
+ *                                 (Passed on as they are: the Schema view reads them, lib/schema/controller.ts take.)
  *   /#handoff                     receive the documents by postMessage from window.opener
  *
  * <doc> is the text compressed with raw DEFLATE (RFC 1951) and encoded as
@@ -27,7 +32,7 @@ import { TARGETS, isFlat } from './engine/targets';
 import { SOURCE_FORMATS } from './engine/rules';
 import type { FlatSettings, SourceFormat, View } from './engine/store';
 
-const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
+const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'];
 /**
  * The largest document a tab opens, however it arrives: a file, a link or a handoff.
  * Links themselves have no length limit of ours (browsers have theirs: about 2 MB of
@@ -76,12 +81,16 @@ export interface LinkRequest {
   in?: Exclude<SourceFormat, 'json'>;
   /** Flatten's and unflatten's options (with those targets): a link writes those that aren't the defaults. */
   flat?: FlatSettings;
+  /** With view 'schema' and a schema (b): the draft for a schema without $schema by name, and Check formats. */
+  draft?: string;
+  formats?: boolean;
 }
 
 /** A document as a link carries it: still encoded (see `decodeDoc`), or a URL. */
 export type LinkSource = { data: string } | { url: string };
 /** What a fragment asks for: nothing (an ordinary anchor), a handoff, documents, or something broken. */
-export type ParsedLink = null | 'handoff' | 'broken' | { a?: LinkSource; b?: LinkSource; view?: View; to?: string; in?: Exclude<SourceFormat, 'json'>; flat?: FlatSettings };
+/** `draft` and `formats`: with view=schema, as written (the Schema view reads them: see the header). */
+export type ParsedLink = null | 'handoff' | 'broken' | { a?: LinkSource; b?: LinkSource; view?: View; to?: string; in?: Exclude<SourceFormat, 'json'>; flat?: FlatSettings; draft?: string | null; formats?: string | null };
 
 /** A format a link names for its document (`in`), other than JSON. */
 const sourceIn = (v: unknown) => SOURCE_FORMATS.find((f): f is Exclude<SourceFormat, 'json'> => f !== 'json' && f === v);
@@ -125,7 +134,7 @@ export function parseLink(hash: string): ParsedLink {
   } catch {}
   const depth = p.get('depth');
   const flat = to && isFlat(to) ? flatOf(sep, p.get('arrays'), depth?.length === 1 ? +depth : 0, p.get('escape') !== '0') : undefined;
-  return { a, b, view, to, ...(fmt && { in: fmt }), ...(flat && { flat }) };
+  return { a, b, view, to, ...(fmt && { in: fmt }), ...(flat && { flat }), ...(view === 'schema' && { draft: p.get('draft'), formats: p.get('formats') }) };
 }
 
 /** The fragment for a request, `#` included. Unknown views and targets are left out. */
@@ -151,6 +160,10 @@ export async function linkHash(r: LinkRequest): Promise<string> {
     }
   }
   if (r.a && sourceIn(r.in)) parts.push(`in=${r.in}`);
+  if (r.view === 'schema' && r.b) {
+    if (r.draft) parts.push(`draft=${encodeURIComponent(r.draft)}`);
+    if (r.formats) parts.push('formats=1');
+  }
   return '#' + parts.join('&');
 }
 

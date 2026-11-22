@@ -208,8 +208,11 @@ export interface UIState {
   toast: Toast | null;
   /** Huge-file mode's viewer, while a file too big for the editor is open (lib/huge): JsonTool renders it, handing it react-dom's createPortal. */
   huge: ((portal: Portal) => ReactNode) | null;
-  /** For the Schema view's editor (components/SchemaView.tsx): a page's sample schema, or a schema to generate from the document. */
-  schemaIn: { seq: number; text?: string; sample?: boolean; generate?: boolean } | null;
+  /**
+   * For the Schema view's editor (components/SchemaView.tsx): a page's sample schema, a schema to generate from the
+   * document, or a link's schema (its file name, and its draft and Check formats: lib/link.ts).
+   */
+  schemaIn: { seq: number; text?: string; sample?: boolean; generate?: boolean; name?: string | null; draft?: string; formats?: boolean } | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

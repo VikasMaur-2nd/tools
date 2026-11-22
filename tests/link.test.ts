@@ -8,7 +8,7 @@ import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } fr
 import { FLAT_DEFAULTS } from '../lib/convert/flat';
 
 /** The function /integrate tells other sites to paste: it must build exactly what the viewer reads. */
-type LinkOptions = { compare?: unknown; view?: string; to?: string; sep?: string; arrays?: string; depth?: number; escape?: boolean };
+type LinkOptions = { compare?: unknown; schema?: unknown; view?: string; to?: string; sep?: string; arrays?: string; depth?: number; escape?: boolean };
 const toolKumarLink = new Function(`${LINK_SNIPPET}\nreturn toolKumarLink;`)() as (json: unknown, o?: LinkOptions) => Promise<string>;
 
 const data = (s: LinkSource | undefined) => (s && 'data' in s ? s.data : assert.fail('expected encoded data'));
@@ -97,7 +97,8 @@ test('the published link function builds links the viewer reads', async () => {
 test('the published handoff function is plain JavaScript that sends the documented message', () => {
   const openInToolKumar = new Function(`${HANDOFF_SNIPPET}\nreturn openInToolKumar;`)();
   assert.equal(typeof openInToolKumar, 'function');
-  assert.match(HANDOFF_SNIPPET, /postMessage\(\{ toolkumar: 'open', a, b, view, to, sep, arrays, depth, escape \}, origin\)/);
+  assert.match(HANDOFF_SNIPPET, /postMessage\(\{ toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape \}, origin\)/);
+  assert.match(HANDOFF_SNIPPET, /const b = text\(schema === undefined \? compare : schema\);\n\s*const v = schema === undefined \? view : 'schema';/);
   assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined }));
 });
 
@@ -245,4 +246,56 @@ test('the example links on /integrate still open their documents', async () => {
   const cmp = parseLink(new URL(SAMPLE_COMPARE_LINK).hash);
   assert.ok(cmp && typeof cmp === 'object');
   assert.deepEqual(JSON.parse(await decodeDoc(data(cmp.b))), { id: 42, name: 'Ada King', roles: ['author', 'mathematician', 'translator'], active: true });
+});
+
+test('schema links: b is the schema with view=schema, its draft and Check formats passed on; old links unchanged', async () => {
+  // Old links: b without a view (or with another) is Compare's, and carries no schema options.
+  assert.deepEqual(parseLink('#a=abc&b=def'), { a: { data: 'abc' }, b: { data: 'def' }, view: undefined, to: undefined });
+  assert.deepEqual(parseLink('#a=abc&b=def&view=tree&draft=draft-07&formats=1'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'tree', to: undefined });
+  // The Schema view: its options as written (the Schema view reads them: lib/schema/controller.ts take).
+  assert.deepEqual(parseLink('#a=abc&b=def&view=schema'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'schema', to: undefined, draft: null, formats: null });
+  assert.deepEqual(parseLink('#a=abc&b=def&view=schema&draft=draft-07&formats=1'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'schema', to: undefined, draft: 'draft-07', formats: '1' });
+  // A schema by URL, fetched as a's are.
+  assert.deepEqual(parseLink(`#a=abc&b=${encodeURIComponent('https://x.test/user.schema.json')}&view=schema`), { a: { data: 'abc' }, b: { url: 'https://x.test/user.schema.json' }, view: 'schema', to: undefined, draft: null, formats: null });
+  // Round trip: the view is kept (it says what b is), the options only when set.
+  const h = await linkHash({ a: { text: '{"a":1}' }, b: { text: '{"type":"object"}' }, view: 'schema', draft: '2019-09', formats: true });
+  assert.match(h, /&view=schema&draft=2019-09&formats=1$/);
+  const back = parseLink(h);
+  assert.ok(back && typeof back === 'object');
+  assert.deepEqual([await decodeDoc(data(back.b)), back.view, back.draft, back.formats], ['{"type":"object"}', 'schema', '2019-09', '1']);
+  assert.match(await linkHash({ a: { text: '1' }, b: { text: '{}' }, view: 'schema' }), /&view=schema$/);
+  assert.doesNotMatch(await linkHash({ a: { text: '1' }, b: { text: '{}' }, view: 'compare', draft: 'draft-07', formats: true }), /draft|formats|view/);
+  assert.doesNotMatch(await linkHash({ a: { text: '1' }, view: 'schema', draft: 'draft-07', formats: true }), /draft|formats/, 'no schema: no options');
+  // Handoff: the Schema view with b as its schema.
+  assert.deepEqual(readHandoff({ toolkumar: 'open', a: '[1]', b: '{}', view: 'schema' }), { a: { text: '[1]' }, b: { text: '{}' }, view: 'schema', to: undefined });
+});
+
+test('the published functions open the Schema view with a schema option', async () => {
+  const one = parseLink(new URL(await toolKumarLink({ id: 1 }, { schema: { type: 'object' }, view: 'tree' })).hash);
+  assert.ok(one && typeof one === 'object');
+  assert.deepEqual([await decodeDoc(data(one.a)), await decodeDoc(data(one.b)), one.view], ['{"id":1}', '{"type":"object"}', 'schema']);
+  // Compare as before; schema wins when both are given (b is one document).
+  const cmp = parseLink(new URL(await toolKumarLink(1, { compare: 2, view: 'tree' })).hash) as { b: LinkSource; view?: string };
+  assert.deepEqual([await decodeDoc(data(cmp.b)), cmp.view], ['2', 'tree']);
+  const both = parseLink(new URL(await toolKumarLink(1, { compare: 2, schema: { type: 'number' } })).hash) as { b: LinkSource; view?: string };
+  assert.deepEqual([await decodeDoc(data(both.b)), both.view], ['{"type":"number"}', 'schema']);
+  // TypeScript: the same links, and the option type-checks.
+  const js = ts.transpileModule(`${LINK_SNIPPET_TS}\nreturn toolKumarLink;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const tsLink = new Function(js)() as typeof toolKumarLink;
+  assert.equal(await tsLink([1], { schema: { items: { type: 'number' } } }), await toolKumarLink([1], { schema: { items: { type: 'number' } } }));
+  assert.deepEqual(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink({}, { schema: { type: 'object' }, view: 'schema' });`), []);
+  // The handoff sends b as the schema and view 'schema'.
+  const sent: unknown[] = [];
+  const listeners: ((e: unknown) => void)[] = [];
+  const tab = { postMessage: (m: unknown) => sent.push(m) };
+  const fn = new Function('window', 'addEventListener', 'removeEventListener', `${HANDOFF_SNIPPET}\nreturn openInToolKumar;`)(
+    { open: () => tab },
+    (_: string, f: (e: unknown) => void) => listeners.push(f),
+    () => undefined,
+  );
+  void fn({ id: 1 }, { schema: { required: ['id'] } });
+  listeners[0]({ source: tab, origin: 'https://tools.vikasmaur.com', data: { toolkumar: 'ready', version: 1 } });
+  assert.deepEqual(sent, [{ toolkumar: 'open', a: '{"id":1}', b: '{"required":["id"]}', view: 'schema', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined }]);
+  assert.ok(readHandoff(sent[0]) && typeof readHandoff(sent[0]) === 'object');
+  listeners[0]({ source: tab, origin: 'https://tools.vikasmaur.com', data: { toolkumar: 'opened' } });
 });
