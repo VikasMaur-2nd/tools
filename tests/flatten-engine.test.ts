@@ -188,8 +188,8 @@ function read(text: string, name: string | null) {
   return { res, status };
 }
 
-/** Use as input on Convert › `target`, with `text` in the editor (from a file named `name`): the text it puts there. */
-async function pressUseAsInput(text: string, name: string | null, target: 'flatten' | 'unflatten', time?: (ms: number) => void) {
+/** An engine on Convert › `target` with `text` in the editor (from a file named `name`), its conversion made by runConvert. */
+async function converted(text: string, name: string | null, target: 'flatten' | 'unflatten') {
   const s = session(GOOD);
   const { res, status } = read(text, name);
   s.engine.settings.target = target;
@@ -206,6 +206,12 @@ async function pressUseAsInput(text: string, name: string | null, target: 'flatt
   delete s.engine.convLater;
   delete s.engine.convOutput;
   await s.engine.runConvert();
+  return s;
+}
+
+/** Use as input on Convert › `target`, with `text` in the editor (from a file named `name`): the text it puts there. */
+async function pressUseAsInput(text: string, name: string | null, target: 'flatten' | 'unflatten', time?: (ms: number) => void) {
+  const s = await converted(text, name, target);
   const t = cpuNow();
   s.engine.useOutput();
   await flush();
@@ -239,4 +245,25 @@ test('Use as input on JSON Lines whose records grow big: no parse or rewrite on 
   const back = await pressUseAsInput(text, 'big.ndjson', 'unflatten', (t) => (ms = t));
   assert.equal(back, `{"x":[${'null,'.repeat(250000)}1]}\n{"y":{"z":2}}\n`);
   assert.ok(ms < 30, `applying took ${ms.toFixed(1)} ms of CPU time`);
+});
+
+test('Download on Flatten and Unflatten: JSON Lines in, a .jsonl file of type application/x-ndjson out', async () => {
+  // (The output was JSON Lines, but the file was named .flat.json / .nested.json and typed as JSON.)
+  const download = async (text: string, name: string | null, target: 'flatten' | 'unflatten') => {
+    const s = await converted(text, name, target);
+    const saved: string[][] = [];
+    s.engine.save = (out: string, file: string, type: string) => saved.push([out, file, type]);
+    await s.engine.downloadConvert();
+    await flush();
+    return saved;
+  };
+  const lines = '{"a":{"b":1}}\n{"a":{"b":2}}\n';
+  for (const name of ['events.jsonl', 'events.ndjson', null]) {
+    const base = name ? 'events' : 'data';
+    assert.deepEqual(await download(lines, name, 'flatten'), [['{"a.b":1}\n{"a.b":2}\n', `${base}.flat.jsonl`, 'application/x-ndjson']], String(name));
+    assert.deepEqual(await download('{"a.b":1}\n{"a.b":2}\n', name, 'unflatten'), [[lines, `${base}.nested.jsonl`, 'application/x-ndjson']], String(name));
+  }
+  // Not JSON Lines: JSON, named and typed as before.
+  assert.deepEqual(await download('[{"a":{"b":1}}]', 'events.json', 'flatten'), [['[\n  {\n    "a.b": 1\n  }\n]', 'events.flat.json', 'application/json']]);
+  assert.deepEqual(await download('{"a":{"b":1}}', null, 'flatten'), [['{\n  "a.b": 1\n}', 'data.flat.json', 'application/json']]);
 });

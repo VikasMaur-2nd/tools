@@ -13,7 +13,7 @@ import type { GraphExport, GraphViewApi } from '../graph/types';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
-import { convertFileName, isFlat, targetInfo } from './targets';
+import { convertFileName, convertMime, isFlat, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, paired, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
@@ -3796,19 +3796,25 @@ export class Engine {
       }
       return;
     }
+    // Named when it is saved, as the document it was made of: flatten's and unflatten's output for JSON Lines (the
+    // parse's `multi`, as runConvert hands it over) is JSON Lines, a .jsonl file.
+    const save = (out: string) => {
+      const lines = !!this.good?.multi;
+      this.save(out, convertFileName(info, base, s0.rootName, lines), convertMime(info, lines));
+    };
     const later = this.convLater();
     if (later) {
       void later.then((out) => {
         // (Superseded: another target or document before this one's conversion came, never saved under this name.)
         if (this.dead || out === undefined) return;
         if (!out || typeof out !== 'string') return this.toast('Nothing to download yet', 'info');
-        this.save(out, name, info.mime);
+        save(out);
       });
       return;
     }
     const out = this.convOutput();
     if (!out) return this.toast('Nothing to download yet', 'info');
-    this.save(out, name, info.mime);
+    save(out as string);
   }
 
   tableShow(n: JNode | null) {

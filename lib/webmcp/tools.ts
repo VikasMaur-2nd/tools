@@ -11,7 +11,7 @@ import { snippet, type SnippetFormat } from '../badge';
 import type { Change } from '../diff/diff';
 import { jsonLines } from '../engine/rules';
 import type { IndentId, Settings, SourceFormat } from '../engine/store';
-import { TARGETS, convertFileName, targetInfo } from '../engine/targets';
+import { TARGETS, convertFileName, convertMime, targetInfo } from '../engine/targets';
 import { byteLength, copyText, formatBytes, formatDoc, preview, primText, tooLarge } from '../json/format';
 import type { JwtInput } from '../json/jwt';
 import { ARR, BOOL, kids, MAX_ISSUES, MAX_WALK_DEPTH, NUL, NUM, OBJ, STR, parse, tooDeep, type Issue, type JNode, type ParseResult } from '../json/parser';
@@ -425,7 +425,8 @@ export const TOOLS: AgentTool[] = [
       const [mod, xlsx] = await Promise.all([import('../convert'), to === 'csv' ? import('../convert/xlsx') : null]);
       let error = '';
       const out = attempt(() =>
-        xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, to, { rootName: rootName ?? 'Root', tsStyle: ts ?? 'interface', csharpLib: cs ? CSHARP[cs] : 'stj', flat: page.settings().flat, report: (r) => (error = r.error) }),
+        // (As the page converts: JSON Lines gives JSON Lines from flatten and unflatten.)
+        xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, to, { rootName: rootName ?? 'Root', tsStyle: ts ?? 'interface', csharpLib: cs ? CSHARP[cs] : 'stj', flat: page.settings().flat, lines: p.res.multi, report: (r) => (error = r.error) }),
       );
       if (typeof out !== 'string') return out;
       // (Unflatten's conflicting keys: no output, and why.)
@@ -587,11 +588,13 @@ export const TOOLS: AgentTool[] = [
       }
       const [mod, xlsx] = await Promise.all([import('../convert'), info.id === 'csv' ? import('../convert/xlsx') : null]);
       let error = '';
-      const out = attempt(() => (xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib, flat: s.flat, report: (r) => (error = r.error) })));
+      const lines = p.res.multi;
+      const out = attempt(() => (xlsx ? xlsx.toCsv(xlsx.records(p.res.root)) : mod.convert(p.res.root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib, flat: s.flat, lines, report: (r) => (error = r.error) })));
       if (typeof out !== 'string') return out;
       if (error) return fail(`${error}.`);
-      const name = convertFileName(info, stem(base, info.id === 'zod' ? 'schema.ts' : info.ext), s.rootName);
-      return saved(page, new Blob([out], { type: info.mime }), name, 'download_convert');
+      // (A name asked for loses the extension the file gets: .schema.ts, .flat.jsonl…)
+      const name = convertFileName(info, stem(base, convertFileName(info, '', s.rootName, lines).replace(/^[^.]*\./, '')), s.rootName, lines);
+      return saved(page, new Blob([out], { type: convertMime(info, lines) }), name, 'download_convert');
     },
   },
   {
