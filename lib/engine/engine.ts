@@ -17,6 +17,7 @@ import { convertFileName, convertMime, isFlat, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, paired, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
+import type { CsvOptions, ImportFormat, Place } from '../convert/import';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
@@ -378,6 +379,9 @@ export class Engine {
   private srcSeq = 0;
   /** The conversion the worker is making: of that editor version, read that way (`key`, see sourceOptions). */
   private srcWanted: { seq: number; ver: object; key: string } | null = null;
+  /** Places asked of the worker (see locateSource), by request; answered null if it ends first. */
+  private srcPlaces = new Map<number, (p: Place[] | null) => void>();
+  private placesSeq = 0;
   /** The last conversion the worker made, and that its JSON was parsed (analyze uses it for that version and reading). */
   private srcDone: { ver: object; key: string; conv: { json: string } | { error: string; p: number } } | null = null;
   private sel: JNode | null = null;
@@ -524,6 +528,7 @@ export class Engine {
     this.worker?.terminate();
     this.analysisWorker?.terminate();
     this.srcWorker?.terminate();
+    this.placesDropped();
     clearTimeout(this.analysisTimer);
     this.dead = true;
     // Whatever is still on its way drops itself (each step checks its sequence), and nothing more starts.
@@ -872,11 +877,16 @@ export class Engine {
     if (this.srcWorker !== undefined) return this.srcWorker;
     try {
       const w = new Worker(new URL('./source.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<SourceReply>) => this.sourceConverted(e.data);
+      w.onmessage = (e: MessageEvent<SourceReply>) => {
+        if (!('places' in e.data)) return this.sourceConverted(e.data);
+        this.srcPlaces.get(e.data.seq)?.(e.data.places);
+        this.srcPlaces.delete(e.data.seq);
+      };
       w.onerror = (e) => {
         // (It couldn't load, offline before it was ever cached say: converted here from now on.)
         e.preventDefault();
         w.terminate();
+        this.placesDropped();
         this.srcWorker = null;
         this.srcBusy = false;
         if (this.srcWanted && !this.dead) {
@@ -908,6 +918,7 @@ export class Engine {
     // A conversion of an older text or reading still under way is stopped, not waited out (seconds at a few MB).
     if (this.srcBusy) {
       w.terminate();
+      this.placesDropped();
       this.srcWorker = undefined;
       this.srcBusy = false;
       w = this.sourceWorker();
@@ -925,8 +936,31 @@ export class Engine {
     return true;
   }
 
+  /**
+   * Where the values at JSON Pointers `pointers` (with `keys[i]`, property names) of what the input converts to are
+   * in it (lib/convert/import.ts locateImport): a big input's found in the worker, never on the page; a small one's
+   * here. null: it doesn't convert, or the places can't be found now.
+   */
+  locateSource(format: ImportFormat, options: CsvOptions, pointers: string[], keys: boolean[]): Promise<Place[] | null> {
+    const text = this.ed.text;
+    if (text.length < SOURCE_WORKER_MIN) return Promise.resolve(this.srcMod?.locateImport(text, format, options, pointers, keys) ?? null);
+    const w = this.sourceWorker();
+    if (!w) return Promise.resolve(null);
+    const seq = ++this.placesSeq;
+    return new Promise((resolve) => {
+      this.srcPlaces.set(seq, resolve);
+      w.postMessage({ seq, text, format, csv: options, locate: { pointers, keys } } satisfies SourceRequest);
+    });
+  }
+
+  /** The worker ended: the places asked of it won't come. */
+  private placesDropped() {
+    for (const resolve of this.srcPlaces.values()) resolve(null);
+    this.srcPlaces.clear();
+  }
+
   /** The worker's conversion: its JSON is parsed here in short steps, then analysed (dropped if the input changed meanwhile). */
-  private sourceConverted(d: SourceReply) {
+  private sourceConverted(d: Exclude<SourceReply, { places: unknown }>) {
     this.srcBusy = false;
     const want = this.srcWanted;
     if (this.dead || !want || d.seq !== want.seq) return;

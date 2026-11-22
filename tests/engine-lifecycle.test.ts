@@ -1295,3 +1295,28 @@ test('a big input in another format converts in the worker, its JSON parsed in s
   assert.equal(s.state.status.p, yaml.length + 3);
   assert.equal(s.state.status.src, 'yaml');
 });
+
+test('the Schema view\'s places in a big input are found in the source worker, a small one\'s here; one on its way ends with the worker (review 2, finding 6)', async () => {
+  const real = load(resolve(__dirname, '../lib/engine/source'));
+  const here: unknown[][] = [];
+  const csv = 'id,name\n' + Array.from({ length: 12_000 }, (_, i) => `${i},user ${i}`).join('\n') + '\n';
+  assert.ok(csv.length > 100_000);
+  const big = sourcing(csv, 'csv');
+  big.engine.srcMod = { ...real, locateImport: (...a: unknown[]) => (here.push(a), real.locateImport(...a)) };
+  const w = big.engine.sourceWorker();
+  const posted: Dynamic[] = [];
+  w.postMessage = (m: Dynamic) => posted.push(m);
+  const got = big.engine.locateSource('csv', { delimiter: ',', header: true }, ['/5/name'], [false]);
+  assert.deepEqual([posted.length, JSON.stringify(posted[0].locate), posted[0].text === csv, here.length], [1, '{"pointers":["/5/name"],"keys":[false]}', true, 0]);
+  w.onmessage({ data: { seq: posted[0].seq, places: [{ p: 42, exact: true }] } });
+  assert.deepEqual(await got, [{ p: 42, exact: true }]);
+  // The worker fails (or is stopped for a newer conversion): what was asked of it comes back as nothing.
+  const lost = big.engine.locateSource('csv', { delimiter: ',', header: true }, ['/5/name'], [false]);
+  w.onerror({ preventDefault() {} });
+  assert.equal(await lost, null);
+  // A small input: here, no worker.
+  const small = sourcing('id,name\n1,Ada\n', 'csv');
+  small.engine.srcMod = { ...real, locateImport: (...a: unknown[]) => (here.push(a), real.locateImport(...a)) };
+  const places = await small.engine.locateSource('csv', { delimiter: ',', header: true }, ['/0/name'], [false]);
+  assert.deepEqual([places, here.length, small.engine.srcWorker], [[{ p: 10, exact: true }], 1, undefined]);
+});

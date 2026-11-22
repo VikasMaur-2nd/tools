@@ -88,3 +88,47 @@ test('reading for places changes nothing importToJson makes', () => {
   locateImport(yaml, 'yaml', {}, ['/a/1/b']);
   assert.deepEqual(importToJson(yaml, 'yaml', ''), before);
 });
+
+test('a property name\'s error is at its key: a CSV column\'s header cell, a YAML, XML or TOML key (review 2, finding 7)', () => {
+  const key = (text: string, format: ImportFormat, pointers: string[], options = {}) =>
+    locateImport(text, format, options, pointers, pointers.map(() => true))!.map(({ p, exact }) => `${exact ? '' : '~'}${text.slice(p).split('\n')[0]}`);
+  // CSV: `name,Bad Header` / `Ada,ok`: propertyNames fails for "Bad Header", in record 0: its header cell, not "ok".
+  const csv = 'name,Bad Header\nAda,ok\n';
+  const r = validateTexts({ schema: JSON.stringify({ items: { propertyNames: { pattern: '^[a-z]+$' } } }), doc: (importToJson(csv, 'csv', '', { header: true }) as { json: string }).json, draft: null, formats: false });
+  assert.deepEqual(r.errors.map((e) => [e.pointer, e.key]), [['/0/Bad Header', true]]);
+  assert.deepEqual(key(csv, 'csv', ['/0/Bad Header'], { header: true }), ['Bad Header']);
+  assert.deepEqual(at(csv, 'csv', ['/0/Bad Header'], { header: true }), ['ok'], 'its value is still its cell');
+  // A column the header doesn't name (a longer record): the header row, not exact.
+  assert.deepEqual(key('a,b\n1,2,3\n', 'csv', ['/0/column_3'], { header: true }), ['~a,b']);
+  // YAML, XML, TOML: the key, as for its value.
+  assert.deepEqual(key('name: Ada\nBad Key: 1\n', 'yaml', ['/Bad Key']), ['Bad Key: 1']);
+  assert.deepEqual(key('<r>\n  <Bad>1</Bad>\n  <ok a="1"/>\n</r>\n', 'xml', ['/r/Bad', '/r/ok/@a']).map((s) => s.trim()), ['<Bad>1</Bad>', 'a="1"/>']);
+  assert.deepEqual(key('name = "Ada"\n"Bad Key" = 1\n', 'toml', ['/Bad Key']), ['"Bad Key" = 1']);
+});
+
+test('a text read for places is read once while it and its options stay the same; CSV places write no JSON (review 2, finding 6)', () => {
+  const rows = Array.from({ length: 150_000 }, (_, i) => `${i},user ${i},user${i}@example.com,${i % 97}`);
+  const csv = 'id,name,email,score\n' + rows.join('\n') + '\n';
+  const cpu = () => {
+    const u = process.cpuUsage();
+    return (u.user + u.system) / 1000;
+  };
+  const time = (f: () => void) => {
+    const t = cpu();
+    f();
+    return cpu() - t;
+  };
+  let first: unknown;
+  const read = time(() => (first = locateImport(csv, 'csv', { header: true }, ['/149999/email'])));
+  let again: unknown;
+  const reuse = time(() => (again = locateImport(csv, 'csv', { header: true }, ['/149999/email', '/5/id'])));
+  assert.deepEqual((again as unknown[])[0], (first as unknown[])[0]);
+  assert.ok(reuse < Math.max(2, read / 10), `read ${read.toFixed(1)} ms, again ${reuse.toFixed(1)} ms`);
+  // Another option: read again (the header row is a record now).
+  assert.equal(locateImport(csv, 'csv', { header: false }, ['/1/0'])![0].p, csv.indexOf('0,user 0'));
+  // Reading for places takes well under converting (no JSON is written).
+  const convert = time(() => importToJson(csv, 'csv', '', { header: true }));
+  const fresh = csv + '\n';
+  const locate = time(() => locateImport(fresh, 'csv', { header: true }, ['/0/id']));
+  assert.ok(locate < convert, `locate ${locate.toFixed(1)} ms, convert ${convert.toFixed(1)} ms`);
+});

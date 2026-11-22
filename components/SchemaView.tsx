@@ -106,10 +106,14 @@ function jumpSource(place: SrcPlace | undefined, focus: boolean) {
 /** Inputs in another format past this size aren't read again for places (their errors show no line). */
 const PLACES_MAX = 5_000_000;
 
+/** An error's key in the places of its input (see useSourcePlaces): its pointer, and whether it is about the property name. */
+const placeKey = (x: InstanceError) => (x.key ? 'k' : 'v') + x.pointer;
+
 /**
  * The places of result `r`'s errors in the input, when it is in another format than JSON: its text read again for
- * where each JSON Pointer's value is written (lib/convert/import.ts locateImport, through the reader the engine
- * converts with, with the same options). By pointer; null while not known.
+ * where each JSON Pointer's value (or property name) is written (lib/convert/import.ts locateImport, with the
+ * engine's reader and options; a big input's in the engine's source worker, never holding up the page). By
+ * placeKey; null while not known.
  */
 function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, SrcPlace> | null {
   const [got, setGot] = useState<{ r: ValidateResult; at: Map<string, SrcPlace> } | null>(null);
@@ -118,25 +122,25 @@ function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, 
     if (!r || format === 'json' || !r.errors.length || !e || !ctl.current()) return;
     const text = e.ed.text;
     if (text.length > PLACES_MAX) return;
-    let on = true;
     // (The reader the engine converts it with, loaded: no other copy of it.)
     const m = e.source;
     if (!m) return;
-    void Promise.resolve(m).then(({ locateImport, csvDelimiter }) => {
-      if (!on || !ctl.current()) return;
-      const pointers = new Set<string>();
-      const add = (x: InstanceError) => {
-        pointers.add(x.pointer);
-        x.sub?.forEach(add);
-      };
-      r.errors.forEach(add);
-      const { input, settings } = store.get();
-      const delimiter = input.delimiter === 'auto' ? csvDelimiter(text) : input.delimiter;
-      const list = [...pointers];
-      const places = locateImport(text, format as 'yaml', format === 'csv' ? { delimiter, header: settings.csvHeader, types: settings.csvTypes } : {}, list);
-      if (!places) return;
+    let on = true;
+    const wanted = new Map<string, InstanceError>();
+    const add = (x: InstanceError) => {
+      wanted.set(placeKey(x), x);
+      x.sub?.forEach(add);
+    };
+    r.errors.forEach(add);
+    const list = [...wanted.values()];
+    const { input, settings } = store.get();
+    const delimiter = input.delimiter === 'auto' ? m.csvDelimiter(text) : input.delimiter;
+    const options = format === 'csv' ? { delimiter, header: settings.csvHeader, types: settings.csvTypes } : {};
+    void e.locateSource(format as 'yaml', options, list.map((x) => x.pointer), list.map((x) => x.key)).then((places) => {
+      // (The text changed meanwhile: places in another text mean nothing.)
+      if (!on || !places || !ctl.current() || e.ed.text !== text) return;
       const at = new Map<string, SrcPlace>();
-      list.forEach((ptr, k) => {
+      list.forEach((x, k) => {
         const { p, exact } = places[k];
         // (Selected: a CSV cell up to its separator, anything else to the end of its line.)
         let end = text.indexOf('\n', p);
@@ -145,7 +149,7 @@ function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, 
           const d = text.indexOf(delimiter, p);
           if (d >= 0 && d < end && text[p] !== '"') end = d;
         }
-        at.set(ptr, { p, e: end, ...e.ed.lineCol(p), exact });
+        at.set(placeKey(x), { p, e: end, ...e.ed.lineCol(p), exact });
       });
       setGot({ r, at });
     }, () => undefined);
@@ -469,7 +473,7 @@ function whereText(e: InstanceError, t: T, src?: { at: SrcPlace | undefined }) {
 }
 
 /** An error row's place in an input in another format (see useSourcePlaces), or undefined for a JSON input. */
-const srcOf = (row: Row, places: Map<string, SrcPlace> | null, json: boolean) => (json || row.kind !== 'error' ? undefined : { at: places?.get(row.e.pointer) });
+const srcOf = (row: Row, places: Map<string, SrcPlace> | null, json: boolean) => (json || row.kind !== 'error' ? undefined : { at: places?.get(placeKey(row.e)) });
 
 function describeRow(row: Row, t: T, src?: { at: SrcPlace | undefined }): string {
   if (row.kind === 'head') return `${row.label} (${row.count})`;
