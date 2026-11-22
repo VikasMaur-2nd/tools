@@ -893,6 +893,8 @@
   "app.schema.remote.max": "Up to {n} are fetched at a time.",
   "app.schema.remote.fetch": "Fetch referenced schemas",
   "app.schema.remote.fetch._context": "Button: fetches the schemas listed above from the web (the only way they are ever fetched).",
+  "app.schema.remote.retry": "Try the failed ones again",
+  "app.schema.remote.retry._context": "Button under the list of referenced schema URLs: fetches again only the URLs that failed before (the other button fetches those never tried). \"ones\" = referenced schemas.",
   "app.schema.remote.fetching": "Fetching {done} of {count}…",
   "app.schema.remote.timeout": "No answer within {seconds} seconds. Try again.",
   "app.schema.remote.tooBig": "Larger than {size}: not fetched.",

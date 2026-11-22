@@ -677,6 +677,7 @@
   "app.schema.remote.note": "求めるまで何も取得しません。取得したものはこのタブの中だけに保持されます。",
   "app.schema.remote.max": "一度に取得するのは最大{n}件です。",
   "app.schema.remote.fetch": "参照先のスキーマを取得",
+  "app.schema.remote.retry": "失敗したものを再試行",
   "app.schema.remote.fetching": "{count}件中{done}件を取得中…",
   "app.schema.remote.timeout": "{seconds}秒以内に応答がありません。もう一度お試しください。",
   "app.schema.remote.tooBig": "{size}を超えるため取得しません。",

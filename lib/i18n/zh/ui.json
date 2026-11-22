@@ -677,6 +677,7 @@
   "app.schema.remote.note": "在你要求之前不会获取任何内容，获取的内容只保留在此标签页中。",
   "app.schema.remote.max": "每次最多获取 {n} 个。",
   "app.schema.remote.fetch": "获取引用的 Schema",
+  "app.schema.remote.retry": "重试失败的项",
   "app.schema.remote.fetching": "正在获取第 {done} 个，共 {count} 个…",
   "app.schema.remote.timeout": "{seconds} 秒内没有响应。请重试。",
   "app.schema.remote.tooBig": "超过 {size}：未获取。",

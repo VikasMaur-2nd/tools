@@ -452,3 +452,15 @@ html[data-huge] .pane-sch {
   margin-left: 23px;
   gap: 6px;
 }
+
+/* Fetch referenced schemas, and Try the failed ones again: side by side, wrapping on a phone. */
+.sch-fetches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 23px;
+}
+
+.sch-fetches .sch-fetch {
+  margin-left: 0;
+}

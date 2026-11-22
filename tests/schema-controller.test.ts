@@ -457,7 +457,7 @@ test('remote $refs: nothing is fetched until asked; then once, and validated aga
   await tick();
   assert.deepEqual(asked[3].req.resources, { 'https://a.test/s.json': '{"type": "object"}' });
   assert.equal(asked[3].req.resources, asked[2].req.resources, 'the same object: the worker isn\'t sent it again');
-  ctl.fetchRemote(['https://a.test/s.json', 'https://b.test/t.json']);
+  ctl.fetchRemote(['https://a.test/s.json', 'https://b.test/t.json'], true);
   assert.deepEqual(fetches[1].urls, ['https://b.test/t.json']);
   fetches[1].answer([{ url: 'https://b.test/t.json', text: '{}' }]);
   await tick();
@@ -512,5 +512,34 @@ test('remote $refs: at most 20 a click, the rest on the next; dismissing hides o
   assert.deepEqual(fetches[1].urls, urls.slice(20));
   ctl.dismissRemote(['https://x.test/a']);
   assert.equal(ctl.state.remote.dismissed, 'https://x.test/a');
+  ctl.detach();
+});
+
+test('remote $refs: twenty that fail never hold back the rest; failures are tried again only when asked (review 2, finding 3)', async () => {
+  const { ctl, ed, asked, doc, fetches } = setup();
+  ctl.attach(ed, null);
+  ed.type('{}');
+  ctl.setDoc('{}', doc.id);
+  ctl.setOpen(true);
+  await tick();
+  const urls = Array.from({ length: 21 }, (_, i) => `https://a.test/${i}.json`);
+  asked[0].done(withRemote(urls));
+  // The first twenty all 404.
+  ctl.fetchRemote(urls);
+  assert.deepEqual(fetches[0].urls, urls.slice(0, 20));
+  fetches[0].answer(fetches[0].urls.map((url) => ({ url, failure: { kind: 'status' as const, status: 404, statusText: 'Not Found' } })));
+  await tick();
+  assert.equal(Object.keys(ctl.state.remote.failed).length, 20);
+  // Asked again: the 21st, never tried, not the twenty that failed.
+  ctl.fetchRemote(urls);
+  assert.deepEqual(fetches[1].urls, [urls[20]]);
+  fetches[1].answer([{ url: urls[20], text: '{}' }]);
+  await tick();
+  // Nothing new left: the plain fetch asks for nothing; trying the failed ones again asks for them, twenty at a time.
+  const n = fetches.length;
+  ctl.fetchRemote(urls);
+  assert.equal(fetches.length, n);
+  ctl.fetchRemote(urls, true);
+  assert.deepEqual(fetches[n].urls, urls.slice(0, 20));
   ctl.detach();
 });

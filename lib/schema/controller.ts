@@ -298,13 +298,15 @@ export class SchemaController {
   }
 
   /**
-   * Fetches the remote schemas `urls` name (the result's `remote`), the visitor having asked: those not fetched
-   * yet, at most REMOTE_MAX_COUNT, then validates again with them. Nothing of it counts if anything changes meanwhile
-   * (the document, the schema, an option, the view closing): the fetch stops and its replies are dropped. What a
-   * fetched schema refers to in turn is listed again (fetched when asked again); failures are kept to say why.
+   * Fetches the remote schemas `urls` name (the result's `remote`), the visitor having asked: those never asked for
+   * yet, or with `retry` those that failed, at most REMOTE_MAX_COUNT, then validates again with them (failures that
+   * keep failing never hold back the rest). Nothing of it counts if anything changes meanwhile (the document, the
+   * schema, an option, the view closing): the fetch stops and its replies are dropped. What a fetched schema refers
+   * to in turn is listed again (fetched when asked again); failures are kept to say why.
    */
-  fetchRemote(urls: string[]) {
-    const list = [...new Set(urls)].filter((u) => !this.fetched.has(u)).slice(0, REMOTE_MAX_COUNT);
+  fetchRemote(urls: string[], retry = false) {
+    const failed = this.state.remote.failed;
+    const list = [...new Set(urls)].filter((u) => !this.fetched.has(u) && retry === u in failed).slice(0, REMOTE_MAX_COUNT);
     if (!list.length || !this.open) return;
     this.stopFetch();
     const stop = (this.fetchStop = new AbortController());

@@ -563,6 +563,10 @@ function RemoteRefs({ urls }: { urls: string[] }) {
   const { remote } = useCtl();
   if (remote.dismissed === urls.join(' ')) return null;
   const f = remote.fetching;
+  // (Those never asked for, and those that failed: each has its own button, so failures never hold back the rest.)
+  const failed = urls.filter((u) => u in remote.failed).length;
+  const fresh = urls.length - failed;
+  const fetching = f && <span className={PRIVATE}>{t('Fetching {done} of {count}…', { done: t.num(f.done), count: t.num(f.count) })}</span>;
   return (
     <div className="sch-remote" role="group" aria-label={t('Schemas this schema refers to')}>
       <div className="sch-remote-head">
@@ -570,7 +574,7 @@ function RemoteRefs({ urls }: { urls: string[] }) {
         <p>
           <b className={PRIVATE}>{t.n(urls.length, 'This schema refers to {n} schema on the web.', 'This schema refers to {n} schemas on the web.')}</b>{' '}
           {t('Nothing is fetched until you ask, and what is fetched stays in this tab.')}
-          {urls.length > REMOTE_MAX_COUNT && ` ${t('Up to {n} are fetched at a time.', { n: t.num(REMOTE_MAX_COUNT) })}`}
+          {fresh > REMOTE_MAX_COUNT && <span className={PRIVATE}>{` ${t('Up to {n} are fetched at a time.', { n: t.num(REMOTE_MAX_COUNT) })}`}</span>}
         </p>
         <button type="button" className="btn sm icon" aria-label={t('Dismiss')} data-tip={t('Dismiss')} onClick={() => ctl.dismissRemote(urls)}>
           <Icon name="x" size={14} />
@@ -584,12 +588,27 @@ function RemoteRefs({ urls }: { urls: string[] }) {
           </li>
         ))}
       </ul>
-      <button type="button" className="btn sm sch-fetch" disabled={!!f} onClick={() => ctl.fetchRemote(urls)}>
-        {f && <i className="spin" />}
-        {f ? t('Fetching {done} of {count}…', { done: t.num(f.done), count: t.num(f.count) }) : t('Fetch referenced schemas')}
-      </button>
+      {f ? (
+        <button type="button" className="btn sm sch-fetch" disabled>
+          <i className="spin" />
+          {fetching}
+        </button>
+      ) : (
+        <div className="sch-fetches">
+          {fresh > 0 && (
+            <button type="button" className="btn sm sch-fetch" onClick={() => ctl.fetchRemote(urls)}>
+              {t('Fetch referenced schemas')}
+            </button>
+          )}
+          {failed > 0 && (
+            <button type="button" className="btn sm sch-fetch" onClick={() => ctl.fetchRemote(urls, true)}>
+              {t('Try the failed ones again')}
+            </button>
+          )}
+        </div>
+      )}
       <span className="sr-only" aria-live="polite">
-        {f ? t('Fetching {done} of {count}…', { done: t.num(f.done), count: t.num(f.count) }) : ''}
+        {fetching}
       </span>
     </div>
   );

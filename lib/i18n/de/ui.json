@@ -701,6 +701,7 @@
   "app.schema.remote.note": "Nichts wird abgerufen, bevor du es anforderst, und Abgerufenes bleibt in diesem Tab.",
   "app.schema.remote.max": "Es werden bis zu {n} auf einmal abgerufen.",
   "app.schema.remote.fetch": "Referenzierte Schemas abrufen",
+  "app.schema.remote.retry": "Fehlgeschlagene erneut versuchen",
   "app.schema.remote.fetching": "{done} von {count} werden abgerufen…",
   "app.schema.remote.timeout": "Keine Antwort innerhalb von {seconds} Sekunden. Versuche es erneut.",
   "app.schema.remote.tooBig": "Größer als {size}: nicht abgerufen.",

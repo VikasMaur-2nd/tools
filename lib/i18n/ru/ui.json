@@ -749,6 +749,7 @@
   "app.schema.remote.note": "Ничего не загружается, пока вы не попросите, а загруженное остаётся только в этой вкладке.",
   "app.schema.remote.max": "За раз загружается не больше {n}.",
   "app.schema.remote.fetch": "Загрузить схемы по ссылкам",
+  "app.schema.remote.retry": "Повторить неудавшиеся",
   "app.schema.remote.fetching": "Загружено {done} из {count}…",
   "app.schema.remote.timeout": "Нет ответа за {seconds} с. Попробуйте ещё раз.",
   "app.schema.remote.tooBig": "Больше {size}: не загружено.",
