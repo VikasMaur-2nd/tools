@@ -8,7 +8,7 @@ import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } fr
 import { FLAT_DEFAULTS } from '../lib/convert/flat';
 
 /** The function /integrate tells other sites to paste: it must build exactly what the viewer reads. */
-type LinkOptions = { compare?: unknown; schema?: unknown; view?: string; to?: string; sep?: string; arrays?: string; depth?: number; escape?: boolean };
+type LinkOptions = { compare?: unknown; schema?: unknown; view?: string; to?: string; sep?: string; arrays?: string; depth?: number; escape?: boolean; in?: string; delimiter?: string; header?: boolean; types?: boolean };
 const toolKumarLink = new Function(`${LINK_SNIPPET}\nreturn toolKumarLink;`)() as (json: unknown, o?: LinkOptions) => Promise<string>;
 
 const data = (s: LinkSource | undefined) => (s && 'data' in s ? s.data : assert.fail('expected encoded data'));
@@ -97,9 +97,9 @@ test('the published link function builds links the viewer reads', async () => {
 test('the published handoff function is plain JavaScript that sends the documented message', () => {
   const openInToolKumar = new Function(`${HANDOFF_SNIPPET}\nreturn openInToolKumar;`)();
   assert.equal(typeof openInToolKumar, 'function');
-  assert.match(HANDOFF_SNIPPET, /postMessage\(\{ toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape \}, origin\)/);
+  assert.match(HANDOFF_SNIPPET, /postMessage\(\{\s*toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape,\s*in: format, delimiter, header, types,\s*\}, origin\)/);
   assert.match(HANDOFF_SNIPPET, /const b = text\(schema === undefined \? compare : schema\);\n\s*const v = schema === undefined \? view : 'schema';/);
-  assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined }));
+  assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined, in: undefined, delimiter: undefined, header: undefined, types: undefined }));
 });
 
 /** Parsed library files (lib.dom.d.ts alone is ~2 MB), shared by every typeErrors call. */
@@ -261,6 +261,52 @@ test('CSV links carry how CSV reads: only with in=csv, only what isn\'t the defa
   assert.equal('csv' in (readHandoff({ toolkumar: 'open', a: 'x: 1', in: 'yaml', header: false }) as object), false);
 });
 
+test('the published functions carry in= and how CSV reads, as the viewer reads them (links and the handoff, JS and TS)', async () => {
+  // (/integrate documented neither: the functions couldn't make a CSV, YAML, XML or TOML link.)
+  const js = ts.transpileModule(`${LINK_SNIPPET_TS}\nreturn toolKumarLink;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const tsLink = new Function(js)() as typeof toolKumarLink;
+  const sheet = 'name;n\nAda;1\n';
+  for (const [delimiter, ch] of [['comma', ','], ['semicolon', ';'], ['tab', '\t'], ['pipe', '|']] as const) {
+    const o = { in: 'csv', delimiter, header: false, types: false };
+    const url = await toolKumarLink(sheet, o);
+    assert.equal(await tsLink(sheet, o), url);
+    const link = parseLink(new URL(url).hash) as { a: LinkSource; in?: string; csv?: unknown };
+    assert.deepEqual([await decodeDoc(data(link.a)), link.in, link.csv], [sheet, 'csv', { delimiter: ch, header: false, types: false }], delimiter);
+  }
+  // The defaults aren't written; the other formats need only in.
+  const plain = await toolKumarLink(sheet, { in: 'csv', header: true, types: true });
+  assert.match(plain, /&in=csv$/);
+  assert.deepEqual((parseLink(new URL(plain).hash) as { csv: unknown }).csv, { delimiter: 'auto', header: true, types: true });
+  for (const format of ['yaml', 'xml', 'toml']) {
+    const link = parseLink(new URL(await toolKumarLink('x: 1', { in: format, view: 'tree' })).hash) as { in?: string; csv?: unknown; view?: string };
+    assert.deepEqual([link.in, link.view, 'csv' in link], [format, 'tree', false], format);
+  }
+  assert.equal((parseLink(new URL(await toolKumarLink([1])).hash) as { in?: string }).in, undefined, 'JSON: no in');
+  // TypeScript: the options type-check, wrong values don't.
+  assert.deepEqual(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink('a;b', { in: 'csv', delimiter: 'semicolon', header: false, types: false });`), []);
+  assert.deepEqual(typeErrors(`${HANDOFF_SNIPPET_TS}\nvoid openInToolKumar('a: 1', { in: 'yaml', view: 'tree' });`), []);
+  for (const bad of ["in: 'json'", "in: 'csv', delimiter: ';'", "in: 'csv', header: 0"]) assert.ok(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink('x', { ${bad} });`).length, bad);
+  // The handoff, JS and TS: the same names, header and types as booleans.
+  const tsHandoff = ts.transpileModule(`${HANDOFF_SNIPPET_TS}\nreturn openInToolKumar;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  for (const source of [`${HANDOFF_SNIPPET}\nreturn openInToolKumar;`, tsHandoff]) {
+    const sent: Record<string, unknown>[] = [];
+    const listeners: ((e: unknown) => void)[] = [];
+    const tab = { postMessage: (m: Record<string, unknown>) => sent.push(m) };
+    const open = new Function('window', 'addEventListener', 'removeEventListener', 'setTimeout', 'clearTimeout', source)(
+      { open: () => tab },
+      (_: string, f: (e: unknown) => void) => listeners.push(f),
+      () => undefined,
+      () => 0,
+      () => undefined,
+    );
+    void open(sheet, { in: 'csv', delimiter: 'tab', header: false, types: false, view: 'table' });
+    listeners[0]({ source: tab, origin: 'https://tools.vikasmaur.com', data: { toolkumar: 'ready', version: 1 } });
+    assert.deepEqual([sent[0].in, sent[0].delimiter, sent[0].header, sent[0].types], ['csv', 'tab', false, false]);
+    const r = readHandoff(sent[0]) as { a: { text: string }; in?: string; csv?: unknown; view?: string };
+    assert.deepEqual([r.a.text, r.in, r.csv, r.view], [sheet, 'csv', { delimiter: '\t', header: false, types: false }, 'table']);
+  }
+});
+
 test('the published link functions leave out a separator they can\'t encode instead of failing', async () => {
   // (Half an emoji made encodeURIComponent throw: the whole link was rejected.)
   const half = '🙂'.slice(0, 1);
@@ -351,7 +397,7 @@ test('the published functions open the Schema view with a schema option', async 
   );
   void fn({ id: 1 }, { schema: { required: ['id'] } });
   listeners[0]({ source: tab, origin: 'https://tools.vikasmaur.com', data: { toolkumar: 'ready', version: 1 } });
-  assert.deepEqual(sent, [{ toolkumar: 'open', a: '{"id":1}', b: '{"required":["id"]}', view: 'schema', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined }]);
+  assert.deepEqual(sent, [{ toolkumar: 'open', a: '{"id":1}', b: '{"required":["id"]}', view: 'schema', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined, in: undefined, delimiter: undefined, header: undefined, types: undefined }]);
   assert.ok(readHandoff(sent[0]) && typeof readHandoff(sent[0]) === 'object');
   listeners[0]({ source: tab, origin: 'https://tools.vikasmaur.com', data: { toolkumar: 'opened' } });
 });
